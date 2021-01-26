@@ -15,16 +15,18 @@ from tkinter import messagebox
 from segm_FUNCTIONS_v4 import (load_shifts, select_slice_toAlign, align_frames_3D,
                    align_frames_2D, single_entry_messagebox, twobuttonsmessagebox,
                    auto_select_slice, num_frames_toSegm_tk, draw_ROI_2D_frames,
-                   text_label_centroid, file_dialog)
+                   text_label_centroid, file_dialog, win_size)
 
 script_dirname = os.path.dirname(os.path.realpath(__file__))
 unet_path = f'{script_dirname}/YeaZ-unet/unet/'
 
 #append all the paths where the modules are stored. Such that this script
 #looks into all of these folders when importing modules.
-sys.path.append(unet_path)
-import neural_network as nn
-from segment import segment
+#sys.path.append(unet_path)
+# Beno edit: this should be "src"
+from YeaZ.unet import neural_network as nn
+from YeaZ.unet import segment
+from YeaZ.unet import tracking
 
 class load_data:
     def __init__(self, path):
@@ -182,7 +184,7 @@ def find_contours(label_img, cells_ids, group=False, concat=False,
     return all_contours
 
 
-plt.dark()
+#plt.dark()
 root = tk.Tk()
 root.withdraw()
 
@@ -353,47 +355,48 @@ if ROI_coords is not None:
         ROI_img = frames[0][y_start:y_end, x_start:x_end]
     print(f'ROI image data shape = {ROI_img.shape}')
 
-for frame_i, img in enumerate(frames):
-    print(f'Segmenting frame {start+frame_i+1}/{num_frames}...')
-    if num_slices > 1:
-        img = img[slices[start+frame_i]]
-    r, c = img.shape
-    if ROI_coords is not None:
-        y_start, y_end, x_start, x_end = ROI_coords
-        img = img[y_start:y_end, x_start:x_end]
-    t0 = time()
-    img = equalize_adapthist(img)
-    img = img*1.0
-    pred = nn.prediction(img, is_pc=is_pc)
-    # plt.imshow_tk(pred)
-    thresh = nn.threshold(pred)
-    # plt.imshow_tk(thresh)
-    lab = segment(thresh, pred, min_distance=5).astype(int)
-    # plt.imshow_tk(lab)
-    t_end = time()
-    if ROI_coords is not None:
-        lab = np.pad(lab, ((y_start, r-y_end), (x_start, c-x_end)))
-        img = np.pad(img, ((y_start, r-y_end), (x_start, c-x_end)))
-    if num_frames > 1:
-        segm_npy[start+frame_i] = lab
-    else:
-        segm_npy = lab.copy()
-    if save_segm:
-        np.save(data.segm_npy_path, segm_npy)
-        np.save(data.pred_npy_path, pred)
+if num_slices > 1:
+    frames = frames[:, slices[start:stop]]
+r, c = frames.shape[-2], frames.shape[-1]
+if ROI_coords is not None:
+    y_start, y_end, x_start, x_end = ROI_coords
+    frames = frames[:, y_start:y_end, x_start:x_end]
+t0 = time()
+frames = np.array([equalize_adapthist(f) for f in frames])
+frames = frames.astype(float)
+path_weights = nn.determine_path_weights()
+print('Running UNet for Segmentation:')
+pred_stack = nn.batch_prediction(frames, is_pc=is_pc, path_weights=path_weights, batch_size=1)
+# plt.imshow_tk(pred)
+thresh_stack = nn.threshold(pred_stack)
+# plt.imshow_tk(thresh)
+lab_stack = segment.segment_stack(thresh_stack, pred_stack, min_distance=10).astype(int)
+# plt.imshow_tk(lab)
+tracked_stack = tracking.correspondence_stack(lab_stack).astype(int)
+t_end = time()
 
+# for simplicity, pad image back to original shape before saving
+# TODO: save only ROI and ROI borders, to save disk space
+if ROI_coords is not None:
+    tracked_stack = np.pad(tracked_stack, ((0, 0), (y_start, r - y_end), (x_start, c - x_end)))
+    frames = np.pad(frames, ((0, 0), (y_start, r - y_end), (x_start, c - x_end)))
+
+#save Segmentation results
 if save_segm:
-    np.save(data.segm_npy_backup_path, segm_npy)
+    np.save(data.segm_npy_path, tracked_stack)
 
-rp = regionprops(lab)
+# plot last frame for qualitative evaluation
+test_mask = tracked_stack[-1]
+test_img = frames[-1]
+rp = regionprops(test_mask)
 IDs = [obj.label for obj in rp]
-contours = find_contours(lab, IDs, group=True)
+contours = find_contours(test_mask, IDs, group=True)
 
 
-fig, ax = plt.subplots(1,2)
+fig, ax = plt.subplots(1, 2)
 
-ax[0].imshow(img)
-ax[1].imshow(lab)
+ax[0].imshow(test_img)
+ax[1].imshow(test_mask)
 text_label_centroid(rp, ax[0], 12, 'semibold', 'center', 'center',
                     color='r', clear=True)
 text_label_centroid(rp, ax[1], 12, 'semibold', 'center', 'center',
@@ -408,8 +411,8 @@ for cont in contours:
 for a in ax:
     a.axis('off')
 
-fig.suptitle(f'Neural network execution time = {t_end-t0: .3f} s', y=0.9,
+fig.suptitle(f'Segment&Track overall execution time = {t_end-t0: .3f} s', y=0.9,
              size=18)
 
-plt.win_size()
+#win_size()
 plt.show()

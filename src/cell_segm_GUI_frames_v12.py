@@ -11,13 +11,12 @@ import pandas as pd
 import matplotlib as mpl
 from math import atan2
 import matplotlib.pyplot as plt
-from matplotlib.widgets import Slider, Button, MyRadioButtons, TextBox
+from matplotlib.widgets import Slider, Button, RadioButtons, TextBox
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle, Circle
 from matplotlib.backend_bases import NavigationToolbar2
-from tkinter import tk_breakpoint, E, S, W, END
+from tkinter import E, S, W, END
 import tkinter as tk
-from tkinter.filedialog import folder_dialog, file_dialog
 from skimage import io, img_as_float
 from skimage.feature import peak_local_max
 from skimage.filters import (gaussian, sobel, apply_hysteresis_threshold,
@@ -35,13 +34,14 @@ from segm_FUNCTIONS_v4 import (auto_select_slice, manual_emerg_bud,
                        CellInt_slideshow, num_frames_toSegm_tk, newID_app,
                        CellInt_slideshow_2D, ShowWindow_from_title,
                        select_exp_folder, align_frames_3D, align_frames_2D,
-                       load_shifts)
+                       load_shifts, tk_breakpoint, folder_dialog, file_dialog,
+                               win_size)
 
 # Import YeaZ module
-script_dirname = os.path.dirname(os.path.realpath(__file__))
-unet_path = f'{script_dirname}/YeaZ-unet/unet/'
-sys.path.append(unet_path)
-from segment import segment
+#script_dirname = os.path.dirname(os.path.realpath(__file__))
+#unet_path = f'{script_dirname}/YeaZ-unet/unet/'
+#sys.path.append(unet_path)
+from YeaZ.unet import segment
 
 
 """
@@ -244,6 +244,7 @@ class init_App:
         filenames = os.listdir(parent_path)
         self.parent_path = parent_path
         self.last_tracked_i = -1
+        segm_npy_found = False
         for j, filename in enumerate(filenames):
             if filename.find('_segm.npy') != -1:
                 segm_npy_found = True
@@ -1143,7 +1144,8 @@ pd.set_option('display.expand_frame_repr', False)
 pd.set_option('display.float_format', lambda x: '%.3f' % x)
 
 """Initialize app GUI parameters"""
-plt.dark()
+plt.style.use('dark_background')
+plt.rc('axes', edgecolor='0.1')
 axcolor = '0.1'
 slider_color = '0.2'
 hover_color = '0.25'
@@ -1157,6 +1159,7 @@ bW = 0.1  # buttons width
 # Folder dialog
 exp_path = folder_dialog(
                  title='Select experiment folder containing Position_n folders')
+
 
 select_folder = select_exp_folder()
 values = select_folder.get_values_segmGUI(exp_path)
@@ -1235,7 +1238,7 @@ s_slice = Slider(ax_slice, 'Z-slice', 5, app.num_slices,
                     valinit=app.s,
                     valstep=1,
                     color=slider_color,
-                    init_val_line_color=hover_color,
+#                    init_val_line_color=hover_color,
                     valfmt='%1.0f')
 # s_lowT = Slider(ax_lowT, 'Low T.', 0, 255,
 #                     valinit=ia.lowT,
@@ -1257,43 +1260,43 @@ s_slice = Slider(ax_slice, 'Z-slice', 5, app.num_slices,
 #                     init_val_line_color=hover_color,
 #                     valfmt='%1.0f')
 autosave_b = Button(ax_autosave, 'Auto-save (slower)',
-                color=axcolor, hovercolor=hover_color,
-                presscolor=presscolor)
+                color=axcolor, hovercolor=hover_color)
+#                presscolor=presscolor)
 overlay_b = Button(ax_overlay, 'Overlay', color=axcolor,
-                hovercolor=hover_color, presscolor=presscolor)
+                hovercolor=hover_color)#presscolor=presscolor)
 brightness_slider = Slider(ax_bright_sl, 'Brightness', -1, 30,
                     valinit=4,
                     valstep=1,
                     color=slider_color,
-                    init_val_line_color=hover_color,
+                    #init_val_line_color=hover_color,
                     valfmt='%1.0f')
 alpha_slider = Slider(ax_alpha_sl, 'alpha overlay', -0.1, 1.1,
                     valinit=0.5,
                     valstep=0.01,
                     color=slider_color,
-                    init_val_line_color=hover_color,
+                    #init_val_line_color=hover_color,
                     valfmt='%1.2f')
 
 next_b = Button(ax_next, 'Next frame',
-                color=axcolor, hovercolor=hover_color,
-                presscolor=presscolor)
+                color=axcolor, hovercolor=hover_color)
+                #presscolor=presscolor)
 prev_b = Button(ax_prev, 'Prev. frame',
-                color=axcolor, hovercolor=hover_color,
-                presscolor=presscolor)
+                color=axcolor, hovercolor=hover_color)
+                #presscolor=presscolor)
 enlarge_cells = Button(ax_enlarge_cells, 'Enlarge cells',
-                     color=axcolor, hovercolor=hover_color,
-                     presscolor=presscolor)
+                     color=axcolor, hovercolor=hover_color)
+                     #presscolor=presscolor)
 reduce_cells = Button(ax_reduce_cells, 'Reduce cells',
-                     color=axcolor, hovercolor=hover_color,
-                     presscolor=presscolor)
+                     color=axcolor, hovercolor=hover_color)
+                     #presscolor=presscolor)
 if ia.do_tracking:
     track_b = Button(ax_track, 'Tracking is ENABLED',
-                     color=button_true_color, hovercolor=button_true_color,
-                     presscolor=presscolor)
+                     color=button_true_color, hovercolor=button_true_color)
+                     #presscolor=presscolor)
 else:
     track_b = Button(ax_track, 'Tracking is DISABLED',
-                     color=axcolor, hovercolor=hover_color,
-                     presscolor=presscolor)
+                     color=axcolor, hovercolor=hover_color)
+                     #presscolor=presscolor)
 # plus_locT = Button(ax_plus_locT, 'Range\n$+$',
 #                      color=axcolor, hovercolor=hover_color,
 #                      presscolor=presscolor)
@@ -1301,44 +1304,44 @@ else:
 #                      color=axcolor, hovercolor=hover_color,
 #                      presscolor=presscolor)
 frames_slideshow = Button(ax_frames_slideshow, 'Cells slideshow',
-                     color=axcolor, hovercolor=hover_color,
-                     presscolor=presscolor)
+                     color=axcolor, hovercolor=hover_color)
+                     #presscolor=presscolor)
 man_clos = Button(ax_man_clos, 'Switch to manual closing',
-                     color=axcolor, hovercolor=hover_color,
-                     presscolor=presscolor)
+                     color=axcolor, hovercolor=hover_color)
+                     #presscolor=presscolor)
 switch_segm_mode = Button(ax_switch_to_edge, 'Switch to contour mode',
-                     color=axcolor, hovercolor=hover_color,
-                     presscolor=presscolor)
+                     color=axcolor, hovercolor=hover_color)
+                     #presscolor=presscolor)
 undo_auto_cont = Button(ax_undo_auto_edge, 'Undo auto cont.',
-                     color=axcolor, hovercolor=hover_color,
-                     presscolor=presscolor)
-radio_b_ccStage = MyRadioButtons(ax_ccstage_radio,
+                     color=axcolor, hovercolor=hover_color)
+                     #presscolor=presscolor)
+radio_b_ccStage = RadioButtons(ax_ccstage_radio,
                               ('IDs and contours',
                               'Only contours',
                               'Disable'),
                               active = 0,
-                              activecolor = button_true_color,
-                              orientation = 'horizontal',
-                              size = 59,
-                              circ_p_color = button_true_color)
+                              activecolor = button_true_color)
+                              #orientation = 'horizontal',
+                              #size = 59,
+                              #circ_p_color = button_true_color)
 reload_segm_b = Button(ax_reload_segm, 'Reload segmentation',
-                 color=axcolor, hovercolor=hover_color,
-                 presscolor=presscolor)
+                 color=axcolor, hovercolor=hover_color)
+                 #presscolor=presscolor)
 repeat_tracking_b = Button(ax_retrack, 'Repeat tracking',
-                 color=axcolor, hovercolor=hover_color,
-                 presscolor=presscolor)
+                 color=axcolor, hovercolor=hover_color)
+                 #presscolor=presscolor)
 repeat_segm_b = Button(ax_repeat_segm, 'Repeat segmentation',
-                 color=axcolor, hovercolor=hover_color,
-                 presscolor=presscolor)
+                 color=axcolor, hovercolor=hover_color)
+                 #presscolor=presscolor)
 save_b = Button(ax_save, 'Save and close',
-                 color=axcolor, hovercolor=hover_color,
-                 presscolor=presscolor)
+                 color=axcolor, hovercolor=hover_color)
+                 #presscolor=presscolor)
 view_slices_sl = Slider(ax_view_slices, 'View slice', 0, app.num_slices,
                     valinit=app.s,
                     valstep=1,
                     orientation='horizontal',
                     color=slider_color,
-                    init_val_line_color=hover_color,
+                    #init_val_line_color=hover_color,
                     valfmt='%1.0f')
 morhp_ids_tb = TextBox(ax_morph_IDs, 'Enlarge\Reduce only cells IDs:',
                       initial='All',color=axcolor, hovercolor=hover_color)
@@ -1913,7 +1916,7 @@ def tracking_state_cb(event):
 
 def repeat_segm_cb(event):
     if app.unet_first_call:
-        import neural_network as nn
+        from YeaZ.unet import neural_network as nn
         app.nn = nn
         app.unet_first_call = False
     nn = app.nn
@@ -2678,6 +2681,6 @@ man_clos_cb(None)
 app.set_orig_lims()
 app.store_state(ia)
 
-plt.win_size(swap_screen=False)
+#win_size(swap_screen=False)
 app.fig.canvas.set_window_title(f'Cell segmentation GUI - {app.exp_name}\\{app.pos_foldername}')
 plt.show()

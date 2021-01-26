@@ -6,7 +6,7 @@ from numpy.linalg import det, norm
 import pandas as pd
 import tkinter as tk
 from tkinter import N, S, E, W, END
-from tkinter import messagebox
+from tkinter import messagebox, filedialog
 import scipy.ndimage as nd
 from scipy.stats import entropy
 from scipy.optimize import curve_fit
@@ -22,7 +22,7 @@ from skimage.registration import phase_cross_correlation
 from skimage.draw import disk, circle_perimeter, line, line_aa
 from skimage.exposure import histogram
 import matplotlib.pyplot as plt
-from matplotlib.widgets import Slider, Button, MyRadioButtons
+from matplotlib.widgets import Slider, Button, RadioButtons
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle
 from natsort import natsorted
@@ -31,6 +31,9 @@ import ctypes
 from ctypes import wintypes
 from tkinter import ttk
 from datetime import datetime
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from pyglet.canvas import Display
+
 
 #expand dataframe beyond page width in the terminal
 pd.set_option('display.max_columns', 20)
@@ -2007,37 +2010,40 @@ class draw_ROI_2D_frames:
         (self.ax).axis('off')
         (self.ax).set_title(f'Draw ROI with mouse right-button for {slice_used_for}')
         """Embed plt window into a tkinter window"""
-        sub_win = plt.embed_tk('Select slices for alignment', [1024,768,400,150], self.fig)
+        sub_win = embed_tk('Select slices for alignment', [1024,768,400,150], self.fig)
         # [left, bottom, width, height]
         self.ax_frame_sl = self.fig.add_subplot(
                                 position=[sl_left, 0.15-0.03-0.01, sl_width, 0.03],
                                 facecolor='0.1')
         self.frame_sl = Slider(self.ax_frame_sl, 'Frame', -1, self.num_frames-1,
-                                canvas=sub_win.canvas,
+                                #canvas=sub_win.canvas,
                                 valinit=0,
                                 valstep=1,
                                 color='0.2',
-                                init_val_line_color='0.3',
+                                #init_val_line_color='0.3',
                                 valfmt='%1.0f')
         (self.frame_sl).on_changed(self.update_frame)
         self.ax_ok = self.fig.add_subplot(
                                 position=[ok_left, 0.04, ok_width, 0.05])
-        self.ok_b = Button(self.ax_ok, 'Happy with that', canvas=sub_win.canvas,
+        self.ok_b = Button(self.ax_ok, 'Happy with that',
+                           #canvas=sub_win.canvas,
                                 color='0.2',
-                                hovercolor='0.25',
-                                presscolor='0.35')
+                                hovercolor='0.25')
+                                #presscolor='0.35')
         self.ax_start = self.fig.add_subplot(
                                 position=[ok_left-ok_width, 0.04, ok_width, 0.05])
-        self.start_b = Button(self.ax_start, 'First frame', canvas=sub_win.canvas,
+        self.start_b = Button(self.ax_start, 'First frame',
+                              #canvas=sub_win.canvas,
                                 color='0.1',
-                                hovercolor='0.25',
-                                presscolor='0.35')
+                                hovercolor='0.25')
+                                #presscolor='0.35')
         self.ax_end = self.fig.add_subplot(
                                 position=[ok_left+ok_width, 0.04, ok_width, 0.05])
-        self.end_b = Button(self.ax_end, 'Last frame', canvas=sub_win.canvas,
+        self.end_b = Button(self.ax_end, 'Last frame',
+                            #canvas=sub_win.canvas,
                                 color='0.1',
-                                hovercolor='0.25',
-                                presscolor='0.35')
+                                hovercolor='0.25')
+                             #   presscolor='0.35')
         (self.ok_b).on_clicked(self.ok)
         (self.start_b).on_clicked(self.show_start)
         (self.end_b).on_clicked(self.show_end)
@@ -2186,6 +2192,165 @@ class draw_ROI_2D_frames:
         self.sub_win.root.quit()
         self.sub_win.root.destroy()
         exit('Execution aborted by the user')
+
+#TODO: evaluate if it's worth to keep this customized class instead of trying to use tk code
+class Directory(tk.commondialog.Dialog):
+    "Ask for a directory"
+
+    command = "tk_chooseDirectory"
+
+    def _fixresult(self, widget, result):
+        if result:
+            # convert Tcl path objects to strings
+            try:
+                result = result.string
+            except AttributeError:
+                # it already is a string
+                pass
+            # keep directory until next time
+            self.options["initialdir"] = result
+        self.directory = result # compatibility
+        return result
+
+#TODO: evaluate if it's worth to keep this customized function instead of trying to use tk code
+def file_dialog(**options):
+    #Prompt the user to select the image file
+    root = tk.Tk()
+    root.withdraw()
+    path = tk.askopenfilename(**options)
+    root.destroy()
+    return path
+
+#TODO: evaluate if it's worth to keep this customized function instead of trying to use tk code
+def folder_dialog(**options):
+    #Prompt the user to select the image file
+    root = tk.Tk()
+    root.withdraw()
+    path = Directory(**options).show()
+    root.destroy()
+    return path
+
+#TODO: evaluate if it's worth to keep this customized class instead of trying to use tk code
+class win_size:
+    def __init__(self, w=1, h=1, swap_screen=False):
+        monitor = Display()
+        screens = monitor.get_screens()
+        num_screens = len(screens)
+        displ_w = int(screens[0].width*w)
+        displ_h = int(screens[0].height*h)
+        x_displ = screens[0].x
+        #Display plots maximized window
+        mng = plt.get_current_fig_manager()
+        if swap_screen:
+            geom = "{}x{}+{}+{}".format(displ_w,(displ_h-70),(displ_w-8), 0)
+            mng.window.wm_geometry(geom) #move GUI window to second monitor
+                                         #with string "widthxheight+x+y"
+        else:
+            geom = "{}x{}+{}+{}".format(displ_w,(displ_h-70),-8, 0)
+            mng.window.wm_geometry(geom) #move GUI window to second monitor
+                                         #with string "widthxheight+x+y"
+
+#TODO: evaluate if it's worth to keep this customized class instead of trying to use tk code
+class embed_tk:
+    """Example:
+    -----------
+    img = np.ones((600,600))
+    fig = plt.Figure(figsize=(5, 4), dpi=100)
+    ax = fig.add_subplot()
+    ax.imshow(img)
+
+    sub_win = plt.embed_tk('Embeddding in tk', [1024,768,300,100], fig)
+
+    def on_key_event(event):
+        print('you pressed %s' % event.key)
+
+    sub_win.canvas.mpl_connect('key_press_event', on_key_event)
+
+    sub_win.root.mainloop()
+
+    print('cazz')
+    """
+    def __init__(self, win_title, geom, fig):
+        root = tk.Tk()
+        root.wm_title(win_title)
+        root.geometry("{}x{}+{}+{}".format(*geom)) # WidthxHeight+Left+Top
+        # a tk.DrawingArea
+        canvas = FigureCanvasTkAgg(fig, master=root)
+        canvas.draw()
+        canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+        toolbar = NavigationToolbar2Tk(canvas, root)
+        toolbar.update()
+        canvas._tkcanvas.pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+        self.canvas = canvas
+        self.toolbar = toolbar
+        self.root = root
+
+#TODO: evaluate if it's worth to keep this customized class instead of trying to use tk code
+class tk_breakpoint:
+    '''Geometry: "WidthxHeight+Left+Top" '''
+    def __init__(self, title='Breakpoint', geometry="230x120+2500+400",
+                 message='Breakpoint', button_1_text='Continue',
+                 button_2_text='Abort', button_3_text='Delete breakpoint'):
+        self.abort = False
+        self.next_i = False
+        self.del_breakpoint = False
+        self.title = title
+        self.geometry = geometry
+        self.message = message
+        self.button_1_text = button_1_text
+        self.button_2_text = button_2_text
+        self.button_3_text = button_3_text
+
+    def pausehere(self):
+        global root
+        if not self.del_breakpoint:
+            root = tk.Tk()
+            root.lift()
+            root.attributes("-topmost", True)
+            root.title(self.title)
+            root.geometry(self.geometry)
+            tk.Label(root,
+                     text=self.message,
+                     font=(None, 11)).grid(row=0, column=0,
+                                           columnspan=2, pady=4, padx=4)
+
+            tk.Button(root,
+                      text=self.button_1_text,
+                      command=self.continue_button,
+                      width=10,).grid(row=4,
+                                      column=0,
+                                      pady=8, padx=8)
+
+            tk.Button(root,
+                      text=self.button_2_text,
+                      command=self.abort_button,
+                      width=15).grid(row=4,
+                                     column=1,
+                                     pady=8, padx=8)
+            tk.Button(root,
+                      text=self.button_3_text,
+                      command=self.delete_breakpoint,
+                      width=20).grid(row=5,
+                                     column=0,
+                                     columnspan=2)
+
+            tk.mainloop()
+
+    def continue_button(self):
+        self.next_i=True
+        root.quit()
+        root.destroy()
+
+    def delete_breakpoint(self):
+        self.del_breakpoint=True
+        root.quit()
+        root.destroy()
+
+    def abort_button(self):
+        self.abort=True
+        exit('Execution aborted by the user')
+        root.quit()
+        root.destroy()
 
 class cc_stage_df_frame0:
     """Display a tkinter window where the user initializes values of
@@ -2421,7 +2586,7 @@ class CellInt_slideshow:
                                     color='0.2',
                                     init_val_line_color='0.3',
                                     valfmt='%1.0f')
-        self.radio_b_ccStage = MyRadioButtons(self.ax_ccstage_radio,
+        self.radio_b_ccStage = RadioButtons(self.ax_ccstage_radio,
                                       ('show IDs',
                                       'Disable'),
                                       active = 0,
@@ -3020,6 +3185,8 @@ class select_exp_folder:
         ttk.Label(root, text = label_txt,
                   font = (None, 10)).grid(column=0, row=0, padx=10, pady=10)
 
+        print(values)
+
         # Combobox
         pos_n_sv = tk.StringVar()
         self.pos_n_sv = pos_n_sv
@@ -3029,9 +3196,11 @@ class select_exp_folder:
         pos_b_combob.grid(column=1, row=0, padx=10)
         pos_b_combob.current(current)
 
+
         # Ok button
         ok_b = ttk.Button(root, text='Ok!', comman=self._close)
         ok_b.grid(column=0, row=1, pady=10, sticky=tk.E)
+
 
         # Show in explorer button
         if showinexplorer_button:
@@ -3044,6 +3213,7 @@ class select_exp_folder:
         if len(values) > 1:
             root.mainloop()
         else:
+            root.quit()
             root.destroy()
         try:
             val = pos_n_sv.get()
@@ -3370,6 +3540,6 @@ def file_dialog(**options):
     #Prompt the user to select the image file
     root = tk.Tk()
     root.withdraw()
-    path = tk.filedialog.askopenfilename(**options)
+    path = filedialog.askopenfilename(**options)
     root.destroy()
     return path

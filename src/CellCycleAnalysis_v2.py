@@ -9,7 +9,7 @@ import cv2
 import matplotlib
 import matplotlib.pyplot as plt
 from copy import deepcopy
-from matplotlib.widgets import Slider, Button, MyRadioButtons, TextBox
+from matplotlib.widgets import Slider, Button, RadioButtons, TextBox
 from matplotlib.patches import Rectangle
 from matplotlib.backend_bases import NavigationToolbar2
 from pyglet.canvas import Display
@@ -23,7 +23,6 @@ from skimage.morphology import skeletonize, thin
 from skimage.measure import label, regionprops
 from skimage.draw import circle, line
 import scipy.ndimage as nd
-from tkinter.filedialog import folder_dialog, file_dialog
 from tkinter import Tk, messagebox, simpledialog, Toplevel
 from segm_FUNCTIONS_v4 import (separate_overlapping, text_label_centroid,
         apply_hyst_local_threshold, align_frames_3D, del_min_area_obj,
@@ -31,7 +30,8 @@ from segm_FUNCTIONS_v4 import (separate_overlapping, text_label_centroid,
         merge_objs, delete_objs, select_slice_toAlign, cc_stage_df_frame0,
         find_contours, twobuttonsmessagebox, single_entry_messagebox,
         twobuttonsmessagebox, CellInt_slideshow, CellInt_slideshow_2D,
-        ShowWindow_from_title, select_exp_folder, align_frames_2D)
+        ShowWindow_from_title, select_exp_folder, align_frames_2D, folder_dialog,
+                               file_dialog)
 
 def set_lims(ax, ax_limits):
     for a, axes in enumerate(ax):
@@ -426,28 +426,26 @@ ax_rgb = plt.axes([0.1, 0.69, 0.25, 0.2])
 
 #Create buttons
 prev_button = Button(ax_prev_button, 'Prev. frame', color=axcolor,
-                        hovercolor=hover_color, presscolor=presscolor)
+                        hovercolor=hover_color)
 next_button = Button(ax_next_button, 'Next frame', color=axcolor,
-                        hovercolor=hover_color, presscolor=presscolor)
-save_b = Button(ax_save, 'Save and close', color=axcolor, hovercolor=hover_color,
-                presscolor=presscolor)
-help_b = Button(ax_help, 'Help', color=axcolor, hovercolor=hover_color,
-                presscolor=presscolor)
+                        hovercolor=hover_color)
+save_b = Button(ax_save, 'Save and close', color=axcolor, hovercolor=hover_color)
+help_b = Button(ax_help, 'Help', color=axcolor, hovercolor=hover_color)
 slideshow_b = Button(ax_slideshow, 'Slideshow', color=axcolor,
-                hovercolor=hover_color, presscolor=presscolor)
+                hovercolor=hover_color)
 overlay_b = Button(ax_overlay, 'Overlay', color=axcolor,
-                hovercolor=hover_color, presscolor=presscolor)
+                hovercolor=hover_color)
 brightness_slider = Slider(ax_bright_sl, 'Brightness', -1, 30,
                     valinit=4,
                     valstep=1,
                     color=slider_color,
-                    init_val_line_color=hover_color,
+                    #init_val_line_color=hover_color,
                     valfmt='%1.0f')
 alpha_slider = Slider(ax_alpha_sl, 'alpha overlay', -0.1, 1.1,
                     valinit=0.5,
                     valstep=0.01,
                     color=slider_color,
-                    init_val_line_color=hover_color,
+                    #init_val_line_color=hover_color,
                     valfmt='%1.2f')
 
 def closest_value_idx(a, val):
@@ -962,7 +960,7 @@ else:
     height = screens[0].height - 70
     left = width-7
     geom = "{}x{}+{}+0".format(width,height,left)
-    mng.window.wm_geometry(geom) #move GUI window to second monitor
+    #mng.window.wm_geometry(geom) #move GUI window to second monitor
                                  #with string "widthxheight+x+y"
 
 pos_foldername = os.path.basename(os.path.dirname(parent_path))
