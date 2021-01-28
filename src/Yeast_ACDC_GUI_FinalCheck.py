@@ -5,7 +5,6 @@ import pandas as pd
 import cv2
 import matplotlib
 import matplotlib.pyplot as plt
-from matplotlib.widgets import Slider, Button, RadioButtons, MyRadioButtons
 from matplotlib.patches import Rectangle
 from pyglet.canvas import Display
 from skimage import io, img_as_float
@@ -21,7 +20,8 @@ import scipy.ndimage as nd
 from tkinter import filedialog as fd
 from tkinter.filedialog import folder_dialog, file_dialog
 from tkinter import Tk, messagebox, simpledialog
-from segm_FUNCTIONS_v4 import (separate_overlapping, text_label_centroid,
+from Yeast_ACDC_MyWidgets import Slider, Button, RadioButtons, MyRadioButtons
+from Yeast_ACDC import (separate_overlapping, text_label_centroid,
         apply_hyst_local_threshold, align_frames, del_min_area_obj,
         load_shifts, cells_tracking, fig_text, sep_overlap_manual_seeds,
         merge_objs, delete_objs, select_slice_toAlign, z_proj_max,

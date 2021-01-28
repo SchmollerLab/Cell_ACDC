@@ -30,8 +30,8 @@ from skimage.exposure import equalize_adapthist, rescale_intensity
 from skimage.segmentation import relabel_sequential
 from scipy.ndimage.morphology import binary_fill_holes, distance_transform_edt
 from tifffile import TiffFile
-from YeaSTaC_MyWidgets import Slider, Button, MyRadioButtons, TextBox
-from YeaSTaC_FUNCTIONS import (auto_select_slice, separate_overlapping,
+from Yeast_ACDC_MyWidgets import Slider, Button, MyRadioButtons, TextBox
+from Yeast_ACDC_FUNCTIONS import (auto_select_slice, separate_overlapping,
                        text_label_centroid, tk_breakpoint, manual_emerg_bud,
                        CellInt_slideshow, twobuttonsmessagebox,
                        single_entry_messagebox, beyond_listdir_pos,

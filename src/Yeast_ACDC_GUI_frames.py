@@ -28,9 +28,9 @@ from skimage.draw import line, line_aa
 from skimage.color import gray2rgb
 from scipy.ndimage.morphology import binary_fill_holes, distance_transform_edt
 from tifffile import TiffFile
-from YeaSTaC_MyWidgets import (Slider, Button, RadioButtons, TextBox,
+from Yeast_ACDC_MyWidgets import (Slider, Button, RadioButtons, TextBox,
                        MyRadioButtons)
-from YeaSTaC_FUNCTIONS import (auto_select_slice, manual_emerg_bud,
+from Yeast_ACDC_FUNCTIONS import (auto_select_slice, manual_emerg_bud,
                        separate_overlapping, text_label_centroid, tk_breakpoint,
                        CellInt_slideshow, num_frames_toSegm_tk, newID_app,
                        CellInt_slideshow_2D, ShowWindow_from_title,

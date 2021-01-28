@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 from time import time
 from tifffile import TiffFile
 from tkinter import messagebox
-from YeaSTaC_FUNCTIONS import (load_shifts, select_slice_toAlign, align_frames_3D,
+from Yeast_ACDC_FUNCTIONS import (load_shifts, select_slice_toAlign, align_frames_3D,
                    align_frames_2D, single_entry_messagebox, twobuttonsmessagebox,
                    auto_select_slice, num_frames_toSegm_tk, draw_ROI_2D_frames,
                    text_label_centroid, file_dialog, win_size, dark_mode)

@@ -22,7 +22,7 @@ from skimage.registration import phase_cross_correlation
 from skimage.draw import disk, circle_perimeter, line, line_aa
 from skimage.exposure import histogram
 import matplotlib.pyplot as plt
-from YeaSTaC_MyWidgets import Slider, Button, RadioButtons
+from Yeast_ACDC_MyWidgets import Slider, Button, RadioButtons
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle
 from natsort import natsorted
