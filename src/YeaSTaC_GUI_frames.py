@@ -1923,13 +1923,14 @@ def repeat_segm_cb(event):
         app.nn = nn
         app.unet_first_call = False
     nn = app.nn
+    path_weights = nn.determine_path_weights()
     start_t = time()
     img = equalize_adapthist(ia.img)
     img = img*1.0
     print('Neural network is thinking...')
-    pred = nn.prediction(img, is_pc=True)
+    pred = nn.prediction(img, is_pc=True, path_weights=path_weights)
     thresh = nn.threshold(pred)
-    lab = segment(thresh, pred, min_distance=5).astype(int)
+    lab = segment.segment(thresh, pred, min_distance=5).astype(int)
     stop_t = time()
     print('Neural network execution time: {0:.3f}'.format(stop_t-start_t))
     ia.lab = lab.astype(int)
