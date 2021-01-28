@@ -10,14 +10,12 @@ import pandas as pd
 import matplotlib as mpl
 from math import atan2
 import matplotlib.pyplot as plt
-from matplotlib.widgets import Slider, Button, MyRadioButtons, TextBox
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle, Circle
 from matplotlib.backend_bases import NavigationToolbar2
 from matplotlib.path import Path
-from tkinter import tk_breakpoint, E, S, W, END
+from tkinter import E, S, W, END
 import tkinter as tk
-from tkinter.filedialog import folder_dialog
 from skimage import io
 from skimage.util import img_as_float, img_as_ubyte
 from skimage.feature import peak_local_max
@@ -32,11 +30,13 @@ from skimage.exposure import equalize_adapthist, rescale_intensity
 from skimage.segmentation import relabel_sequential
 from scipy.ndimage.morphology import binary_fill_holes, distance_transform_edt
 from tifffile import TiffFile
-from segm_FUNCTIONS_v4 import (auto_select_slice, separate_overlapping,
+from YeaSTaC_MyWidgets import Slider, Button, MyRadioButtons, TextBox
+from YeaSTaC_FUNCTIONS import (auto_select_slice, separate_overlapping,
                        text_label_centroid, tk_breakpoint, manual_emerg_bud,
                        CellInt_slideshow, twobuttonsmessagebox,
                        single_entry_messagebox, beyond_listdir_pos,
-                       select_exp_folder, expand_labels)
+                       select_exp_folder, expand_labels, tk_breakpoint,
+                       folder_dialog)
 
 script_dirname = os.path.dirname(os.path.realpath(__file__))
 unet_path = f'{script_dirname}/YeaZ-unet/unet/'

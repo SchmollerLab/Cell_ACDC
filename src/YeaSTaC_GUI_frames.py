@@ -1135,6 +1135,8 @@ class img_analysis:
         self.lab = lab
         self.rp = rp
 
+matplotlib.use("TkAgg")
+
 mpl.rcParams['keymap.back'] = ['q', 'backspace', 'MouseButton.BACK']
 mpl.rcParams['keymap.forward'] = ['v', 'MouseButton.FORWARD']
 mpl.rcParams['keymap.quit'] = []
