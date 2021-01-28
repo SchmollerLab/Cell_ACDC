@@ -2452,7 +2452,8 @@ class cc_stage_df_frame0:
             relationship_var = tk.StringVar(root)
             relationship_var.trace('w', self.changeNumCycle)
             relationship_var.set(str(init_relationship[row])) # default value
-            relationship = tk.OptionMenu(root, relationship_var, *relationship_opt)
+            relationship = tk.OptionMenu(root, relationship_var,
+                                         *relationship_opt)
             relationship.grid(row=row+1, column=col, pady=4, padx=4)
             self.relationship_list.append(relationship_var)
 

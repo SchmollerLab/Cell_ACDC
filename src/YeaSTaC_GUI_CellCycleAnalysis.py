@@ -84,14 +84,14 @@ def update_plots(ax, rp, img, segm_npy_frame, cca_df, vmin, vmax, frame_i, fig,
 
 def init_cc_stage_df(all_cells_ids, init_cca_df=None):
     if init_cca_df is None:
-        cc_stage = ['ND' for ID in all_cells_ids]
+        cc_stage = ['S' for ID in all_cells_ids]
         num_cycles = [-1]*len(all_cells_ids)
-        relationship = ['ND' for ID in all_cells_ids]
+        relationship = ['mother' for ID in all_cells_ids]
         related_to = [0]*len(all_cells_ids)
         discard = np.zeros(len(all_cells_ids), bool)
         df = pd.DataFrame({'Cell cycle stage': cc_stage,
                            '# of cycles': num_cycles,
-                           'Relative\'s ID': related_to,
+                           'Relative\'s ID': all_cells_ids,
                            'Relationship': relationship,
                            'Emerg_frame_i': num_cycles,
                            'Division_frame_i': num_cycles,
@@ -361,6 +361,7 @@ rp_cells_labels_separate = regionprops(segm_npy_frame)
 IDs = [obj.label for obj in rp_cells_labels_separate]
 if frame_i == 0:
     cca_df = init_cc_stage_df(IDs, init_cca_df=cca_df_li[0])
+    print(cca_df)
     if cca_df_li[0] is None:
         display_ccStage = 'IDs'
     else:
@@ -368,6 +369,7 @@ if frame_i == 0:
 else:
     cca_df = cca_df_li[last_analyzed_frame_i]
     display_ccStage = 'Only stage'
+
 
 #Initialize plots
 if V3D:
@@ -393,7 +395,7 @@ frameTXT_x = 0.6
 buttons_left = frameTXT_x-buttons_width
 pltBottom = 0.2
 ol_img = None
-fig, ax = plt.subplots(1, 2)
+fig, ax = plt.subplots(1, 2, figsize=[13.66, 7.68])
 plt.subplots_adjust(left=sliders_left, bottom=pltBottom)
 ax[0].imshow(img)
 text_label_centroid(rp_cells_labels_separate, ax[0], 12,
@@ -483,6 +485,7 @@ def next_frame(event):
     if frame_i < num_frames:
         cancel = False
         if frame_i == 0:
+            print(cca_df)
             IDs = [obj.label for obj in rp_cells_labels_separate]
             init_cca_df_frame0 = cc_stage_df_frame0(IDs, cca_df)
             cca_df = init_cca_df_frame0.df
