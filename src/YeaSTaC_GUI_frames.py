@@ -11,7 +11,6 @@ import pandas as pd
 import matplotlib as mpl
 from math import atan2
 import matplotlib.pyplot as plt
-from matplotlib.widgets import Slider, Button, RadioButtons, TextBox
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle, Circle
 from matplotlib.backend_bases import NavigationToolbar2
@@ -29,13 +28,15 @@ from skimage.draw import line, line_aa
 from skimage.color import gray2rgb
 from scipy.ndimage.morphology import binary_fill_holes, distance_transform_edt
 from tifffile import TiffFile
-from segm_FUNCTIONS_v4 import (auto_select_slice, manual_emerg_bud,
+from YeaSTaC_MyWidgets import (Slider, Button, RadioButtons, TextBox,
+                       MyRadioButtons)
+from YeaSTaC_FUNCTIONS import (auto_select_slice, manual_emerg_bud,
                        separate_overlapping, text_label_centroid, tk_breakpoint,
                        CellInt_slideshow, num_frames_toSegm_tk, newID_app,
                        CellInt_slideshow_2D, ShowWindow_from_title,
                        select_exp_folder, align_frames_3D, align_frames_2D,
                        load_shifts, tk_breakpoint, folder_dialog, file_dialog,
-                               win_size)
+                       win_size, imshow_tk)
 
 # Import YeaZ module
 #script_dirname = os.path.dirname(os.path.realpath(__file__))
@@ -309,10 +310,11 @@ class init_App:
         self.ol_RGB_val = [1,1,0]
         self.init_attr()
 
-    def store_state(self, ia):
+    def set_state(self, ia):
         if self.is_undo or self.is_redo:
             self.prev_states = []
             self.is_undo = False
+        ia.warn_txt_text = app.warn_txt._text
         self.prev_states.append(deepcopy(ia))
         self.count_states = len(self.prev_states)-1
 
@@ -346,7 +348,7 @@ class init_App:
         return img
 
     def init_plots(self, left=0.08, bottom=0.2):
-        fig, ax = plt.subplots(1,3)
+        fig, ax = plt.subplots(1,3, figsize=[13.66, 7.68])
         plt.subplots_adjust(left=left, bottom=bottom)
         self.mng = plt.get_current_fig_manager()
         self.fig = fig
@@ -944,7 +946,7 @@ class img_analysis:
             self.contours = self.find_contours(lab, IDs, group=True)
         except:
             rp = regionprops(lab)
-            traceback.print_exc()
+            # traceback.print_exc()
         self.rp = rp
         return lab, rp
 
@@ -1042,8 +1044,8 @@ class img_analysis:
                     old_ID = IDs_curr_untracked[old_ID_idx]
                 tracked_IDs.append(tracked_ID)
                 old_IDs.append(old_ID)
-        print(f'Old untracked IDs: {old_IDs}')
-        print(f'Newly assigned tracked IDs: {tracked_IDs}')
+        # print(f'Old untracked IDs: {old_IDs}')
+        # print(f'Newly assigned tracked IDs: {tracked_IDs}')
         lost_IDs = [ID for ID in IDs_prev if ID not in tracked_IDs]
         new_untracked_IDs = [ID for ID in IDs_curr_untracked if ID not in old_IDs]
         new_tracked_IDs_2 = []
@@ -1060,7 +1062,7 @@ class img_analysis:
             new_tracked_IDs_2 = [max_ID+i+1 for i in range(len(new_untracked_IDs))]
             tracked_lab = self.np_replace_values(tracked_lab, new_tracked_IDs,
                                                  new_tracked_IDs_2)
-        print(f'New tracked cells IDs in current frame: {new_tracked_IDs_2}')
+        # print(f'New tracked cells IDs in current frame: {new_tracked_IDs_2}')
         rp = regionprops(tracked_lab)
         for yd, xd, replacingID in self.manual_newID_coords:
             IDs = [obj.label for obj in rp]
@@ -1077,8 +1079,8 @@ class img_analysis:
         new_tracked_IDs_2 = [ID for ID in curr_IDs if ID not in IDs_prev]
         self.lost_IDs = lost_IDs
         self.new_IDs = new_tracked_IDs_2
-        print(f'Cells IDs lost in current frame: {lost_IDs}')
-        print(f'Untracked new IDs in current frame: {new_untracked_IDs}')
+        # print(f'Cells IDs lost in current frame: {lost_IDs}')
+        # print(f'Untracked new IDs in current frame: {new_untracked_IDs}')
         warn_txt = ''
         if lost_IDs:
             warn_txt = f'Cells IDs lost in current frame: {lost_IDs}'
@@ -1184,7 +1186,6 @@ num_slices = app.num_slices
 
 """Initialize plots"""
 home = NavigationToolbar2.home
-
 def new_home(self, *args, **kwargs):
     try:
         app.ax_limits = deepcopy(ia.home_ax_limits)
@@ -1193,8 +1194,16 @@ def new_home(self, *args, **kwargs):
         traceback.print_exc()
         pass
     home(self, *args, **kwargs)
-
 NavigationToolbar2.home = new_home
+
+release_zoom = NavigationToolbar2.release_zoom
+def my_release_zoom(self, event):
+    release_zoom(self, event)
+    # Disconnect zoom to rect after having used it once
+    self.zoom()
+    self.push_current()
+    self.release(event)
+NavigationToolbar2.release_zoom = my_release_zoom
 
 app.init_plots()
 img = app.get_img(frames, app.frame_i, num_slices, slice=app.s)
@@ -1234,115 +1243,109 @@ ax_alpha_sl = plt.axes([0.1, 0.69, 0.1, 0.2])
 ax_rgb = plt.axes([0.1, 0.69, 0.25, 0.2])
 
 """Widgets"""
+
+# Sliders
+sliders = []
 s_slice = Slider(ax_slice, 'Z-slice', 5, app.num_slices,
                     valinit=app.s,
                     valstep=1,
                     color=slider_color,
-#                    init_val_line_color=hover_color,
+                    init_val_line_color=hover_color,
                     valfmt='%1.0f')
-# s_lowT = Slider(ax_lowT, 'Low T.', 0, 255,
-#                     valinit=ia.lowT,
-#                     valstep=1,
-#                     color=slider_color,
-#                     init_val_line_color=hover_color,
-#                     valfmt='%1.0f')
-# s_highT = Slider(ax_highT, 'High T.', ia.lowT, 255,
-#                     valinit=ia.highT,
-#                     valstep=1,
-#                     color=slider_color,
-#                     init_val_line_color=hover_color,
-#                     valfmt='%1.0f')
-# s_locT = Slider(ax_locT, '$\Delta$Local T.', -5, 20,
-#                     valinit=10,
-#                     valstep=1,
-#                     orientation='vertical',
-#                     color=slider_color,
-#                     init_val_line_color=hover_color,
-#                     valfmt='%1.0f')
-autosave_b = Button(ax_autosave, 'Auto-save (slower)',
-                color=axcolor, hovercolor=hover_color)
-#                presscolor=presscolor)
-overlay_b = Button(ax_overlay, 'Overlay', color=axcolor,
-                hovercolor=hover_color)#presscolor=presscolor)
 brightness_slider = Slider(ax_bright_sl, 'Brightness', -1, 30,
                     valinit=4,
                     valstep=1,
                     color=slider_color,
-                    #init_val_line_color=hover_color,
+                    init_val_line_color=hover_color,
                     valfmt='%1.0f')
 alpha_slider = Slider(ax_alpha_sl, 'alpha overlay', -0.1, 1.1,
                     valinit=0.5,
                     valstep=0.01,
                     color=slider_color,
-                    #init_val_line_color=hover_color,
+                    init_val_line_color=hover_color,
                     valfmt='%1.2f')
-
-next_b = Button(ax_next, 'Next frame',
-                color=axcolor, hovercolor=hover_color)
-                #presscolor=presscolor)
-prev_b = Button(ax_prev, 'Prev. frame',
-                color=axcolor, hovercolor=hover_color)
-                #presscolor=presscolor)
-enlarge_cells = Button(ax_enlarge_cells, 'Enlarge cells',
-                     color=axcolor, hovercolor=hover_color)
-                     #presscolor=presscolor)
-reduce_cells = Button(ax_reduce_cells, 'Reduce cells',
-                     color=axcolor, hovercolor=hover_color)
-                     #presscolor=presscolor)
-if ia.do_tracking:
-    track_b = Button(ax_track, 'Tracking is ENABLED',
-                     color=button_true_color, hovercolor=button_true_color)
-                     #presscolor=presscolor)
-else:
-    track_b = Button(ax_track, 'Tracking is DISABLED',
-                     color=axcolor, hovercolor=hover_color)
-                     #presscolor=presscolor)
-# plus_locT = Button(ax_plus_locT, 'Range\n$+$',
-#                      color=axcolor, hovercolor=hover_color,
-#                      presscolor=presscolor)
-# del_locT = Button(ax_del_locT, 'Delete local T. polygon',
-#                      color=axcolor, hovercolor=hover_color,
-#                      presscolor=presscolor)
-frames_slideshow = Button(ax_frames_slideshow, 'Cells slideshow',
-                     color=axcolor, hovercolor=hover_color)
-                     #presscolor=presscolor)
-man_clos = Button(ax_man_clos, 'Switch to manual closing',
-                     color=axcolor, hovercolor=hover_color)
-                     #presscolor=presscolor)
-switch_segm_mode = Button(ax_switch_to_edge, 'Switch to contour mode',
-                     color=axcolor, hovercolor=hover_color)
-                     #presscolor=presscolor)
-undo_auto_cont = Button(ax_undo_auto_edge, 'Undo auto cont.',
-                     color=axcolor, hovercolor=hover_color)
-                     #presscolor=presscolor)
-radio_b_ccStage = RadioButtons(ax_ccstage_radio,
-                              ('IDs and contours',
-                              'Only contours',
-                              'Disable'),
-                              active = 0,
-                              activecolor = button_true_color)
-                              #orientation = 'horizontal',
-                              #size = 59,
-                              #circ_p_color = button_true_color)
-reload_segm_b = Button(ax_reload_segm, 'Reload segmentation',
-                 color=axcolor, hovercolor=hover_color)
-                 #presscolor=presscolor)
-repeat_tracking_b = Button(ax_retrack, 'Repeat tracking',
-                 color=axcolor, hovercolor=hover_color)
-                 #presscolor=presscolor)
-repeat_segm_b = Button(ax_repeat_segm, 'Repeat segmentation',
-                 color=axcolor, hovercolor=hover_color)
-                 #presscolor=presscolor)
-save_b = Button(ax_save, 'Save and close',
-                 color=axcolor, hovercolor=hover_color)
-                 #presscolor=presscolor)
 view_slices_sl = Slider(ax_view_slices, 'View slice', 0, app.num_slices,
                     valinit=app.s,
                     valstep=1,
                     orientation='horizontal',
                     color=slider_color,
-                    #init_val_line_color=hover_color,
+                    init_val_line_color=hover_color,
                     valfmt='%1.0f')
+sliders.extend([s_slice, brightness_slider, alpha_slider, view_slices_sl])
+
+# Buttons
+buttons = []
+autosave_b = Button(ax_autosave, 'Auto-save (slower)',
+                color=axcolor, hovercolor=hover_color,
+                presscolor=presscolor)
+overlay_b = Button(ax_overlay, 'Overlay', color=axcolor,
+                hovercolor=hover_color, presscolor=presscolor)
+next_b = Button(ax_next, 'Next frame',
+                color=axcolor, hovercolor=hover_color,
+                presscolor=presscolor)
+prev_b = Button(ax_prev, 'Prev. frame',
+                color=axcolor, hovercolor=hover_color,
+                presscolor=presscolor)
+enlarge_cells = Button(ax_enlarge_cells, 'Enlarge cells',
+                     color=axcolor, hovercolor=hover_color,
+                     presscolor=presscolor)
+reduce_cells = Button(ax_reduce_cells, 'Reduce cells',
+                     color=axcolor, hovercolor=hover_color,
+                     presscolor=presscolor)
+
+buttons.extend([autosave_b, overlay_b, next_b, prev_b,
+                enlarge_cells, reduce_cells])
+
+if ia.do_tracking:
+    track_b = Button(ax_track, 'Tracking is ENABLED',
+                     color=button_true_color, hovercolor=button_true_color,
+                     presscolor=presscolor)
+else:
+    track_b = Button(ax_track, 'Tracking is DISABLED',
+                     color=axcolor, hovercolor=hover_color,
+                     presscolor=presscolor)
+
+frames_slideshow = Button(ax_frames_slideshow, 'Cells slideshow',
+                     color=axcolor, hovercolor=hover_color,
+                     presscolor=presscolor)
+man_clos = Button(ax_man_clos, 'Switch to manual closing',
+                     color=axcolor, hovercolor=hover_color,
+                     presscolor=presscolor)
+switch_segm_mode = Button(ax_switch_to_edge, 'Switch to contour mode',
+                     color=axcolor, hovercolor=hover_color,
+                     presscolor=presscolor)
+undo_auto_cont = Button(ax_undo_auto_edge, 'Undo auto cont.',
+                     color=axcolor, hovercolor=hover_color,
+                     presscolor=presscolor)
+
+reload_segm_b = Button(ax_reload_segm, 'Reload segmentation',
+                 color=axcolor, hovercolor=hover_color,
+                 presscolor=presscolor)
+repeat_tracking_b = Button(ax_retrack, 'Repeat tracking',
+                 color=axcolor, hovercolor=hover_color,
+                 presscolor=presscolor)
+repeat_segm_b = Button(ax_repeat_segm, 'Repeat segmentation',
+                 color=axcolor, hovercolor=hover_color,
+                 presscolor=presscolor)
+save_b = Button(ax_save, 'Save and close',
+                 color=axcolor, hovercolor=hover_color,
+                 presscolor=presscolor)
+
+buttons.extend([track_b, frames_slideshow, man_clos, switch_segm_mode,
+                undo_auto_cont, reload_segm_b, repeat_tracking_b,
+                repeat_segm_b, save_b])
+
+
+radio_b_ccStage = MyRadioButtons(ax_ccstage_radio,
+                              ('IDs and contours',
+                              'Only contours',
+                              'Disable'),
+                              active = 0,
+                              activecolor = button_true_color,
+                              orientation = 'horizontal',
+                              size = 59,
+                              circ_p_color = button_true_color)
+
 morhp_ids_tb = TextBox(ax_morph_IDs, 'Enlarge\Reduce only cells IDs:',
                       initial='All',color=axcolor, hovercolor=hover_color)
 
@@ -1520,7 +1523,7 @@ def next_f(event):
         app.connect_axes_cb()
         app.set_orig_lims()
         app.prev_states = []
-        app.store_state(ia)
+        app.set_state(ia)
 
 def prev_f(event):
     global ia, param
@@ -1739,14 +1742,14 @@ def view_slice(val):
 def reload_segmentation_cb(event):
     global param
     if app.is_undo or app.is_redo:
-        app.store_state(ia)
+        app.set_state(ia)
     img = app.get_img(frames, app.frame_i, num_slices, slice=app.s)
     ia.init_attr(img)
     orig_segm_npy = app.orig_segm_npy[app.frame_i].copy()
     app.segm_npy_done[app.frame_i] = orig_segm_npy
     param = load_param_from_folder(app)
     app.update_ALLplots(ia)
-    app.store_state(ia)
+    app.set_state(ia)
 
 def auto_save_cb(value):
     if not app.auto_save:
@@ -1766,7 +1769,7 @@ def auto_save_cb(value):
 
 def repeat_tracking_cb(event):
     if app.is_undo or app.is_redo:
-        app.store_state(ia)
+        app.set_state(ia)
     temporarily_activate_tracking = not ia.do_tracking
     if temporarily_activate_tracking:
         ia.do_tracking = True
@@ -1774,7 +1777,7 @@ def repeat_tracking_cb(event):
     app.update_LABplot(ia.lab, ia.rp, ia)
     if temporarily_activate_tracking:
         ia.do_tracking = False
-    app.store_state(ia)
+    app.set_state(ia)
 
 def morph_IDs_invalid_entry_warning():
     tk.messagebox.showwarning('Invalid entry',
@@ -1835,7 +1838,7 @@ def mask_lab_morph(lab, IDs_li, invalid_entry, is_range):
 
 def apply_morph_cells(event):
     if app.is_undo or app.is_redo:
-        app.store_state(ia)
+        app.set_state(ia)
     # Initialize on first call
     if event.inaxes == ax_enlarge_cells:
         morph_func = dilation
@@ -1890,7 +1893,7 @@ def apply_morph_cells(event):
     ia.contours = ia.find_contours(ia.lab, IDs, group=True)
     app.update_LABplot(ia.lab, ia.rp, ia)
     ia.modified = True
-    app.store_state(ia)
+    app.set_state(ia)
 
 def morph_IDs_on_submit(text):
     ia.orig_lab = ia.lab.copy()
@@ -1944,7 +1947,7 @@ def overlay_cb(event):
         overlay_b.hovercolor = hover_color
         overlay_b.label._text = 'Overlay'
         overlay_b.ax.set_facecolor(axcolor)
-        fig.canvas.draw_idle()
+        app.fig.canvas.draw_idle()
         app.do_overlay = False
     else:
         ol_path = file_dialog(title='Select image file to overlay',
@@ -1978,7 +1981,8 @@ def overlay_cb(event):
                 loaded_shifts, shifts_found = load_shifts(images_path)
                 if shifts_found:
                     print('Aligning overlay image frames...')
-                    align_func = align_frames_3D if V3D else align_frames_2D
+                    is_3D = app.num_slices > 1
+                    align_func = align_frames_3D if is_3D else align_frames_2D
                     aligned_frames, shifts = align_func(app.ol_frames,
                                                       slices=None,
                                                       register=False,
@@ -1993,10 +1997,10 @@ def overlay_cb(event):
                         f'\"..._align_shift.npy\" file not found!\n'
                         'Overlay images cannot be aligned to the cells image.')
                     raise FileNotFoundError('Shifts file not found!')
-            app.update_IMGplot(ia, ia.img, app.ax[0])
-            app.set_lims()
-            fig.canvas.draw_idle()
-            app.connect_axes_cb()
+    app.update_IMGplot(ia, ia.img, app.ax[0], clear=True)
+    app.set_lims()
+    fig.canvas.draw_idle()
+    app.connect_axes_cb()
 
 def update_overlay_cb(event):
     if app.do_overlay:
@@ -2040,9 +2044,21 @@ overlay_b.on_clicked(overlay_cb)
 brightness_slider.on_changed(update_overlay_cb)
 alpha_slider.on_changed(update_overlay_cb)
 
+
+def get_font_size_from_winsize(fig_size_pixels):
+    w, h = fig_size_pixels
+    return w/1920*11
+
 """Canvas events functions"""
 def resize_widgets(event):
     # [left, bottom, width, height]
+    fig = app.fig
+    # Resize font size according to figure window size
+    fig_size_pixels = fig.get_size_inches()*fig.dpi
+    font_size = get_font_size_from_winsize(fig_size_pixels)
+    [rb.set_fontsize(font_size) for rb in radio_b_ccStage.labels]
+    [button.label.set_fontsize(font_size) for button in buttons]
+    morhp_ids_tb.label.set_fontsize(font_size)
     ax = app.ax
     ax0_l, ax0_b, ax0_r, ax0_t = ax[0].get_position().get_points().flatten()
     ax1_l, ax1_b, ax1_r, ax1_t = ax[1].get_position().get_points().flatten()
@@ -2131,6 +2147,7 @@ def key_down(event):
         if app.count_states-1 >= 0:
             app.count_states -= 1
             ia = app.get_state(ia, app.count_states)
+            app.warn_txt._text = ia.warn_txt_text
             app.update_ALLplots(ia)
         else:
             print('There are no previous states to restore!')
@@ -2139,6 +2156,7 @@ def key_down(event):
         if app.count_states+1 < len(app.prev_states):
             app.count_states += 1
             ia = app.get_state(ia, app.count_states)
+            app.warn_txt._text = ia.warn_txt_text
             app.update_ALLplots(ia)
         else:
             print('No next states to restore!')
@@ -2206,7 +2224,7 @@ def mouse_down(event):
         ID = ia.lab[yd, xd]
         if ID != 0:
             if app.is_undo or app.is_redo:
-                app.store_state(ia)
+                app.set_state(ia)
             labels_onlyID = np.zeros(ia.lab.shape, bool)
             labels_onlyID[ia.lab == ID] = True
             hull_img_ID = convex_hull_image(labels_onlyID)
@@ -2217,7 +2235,7 @@ def mouse_down(event):
             app.update_ax2_plot(ia)
             app.update_LABplot(ia.lab, ia.rp, ia)
             ia.modified = True
-            app.store_state(ia)
+            app.set_state(ia)
     # Zoom out to home view
     if right_click and event.dblclick and not_ax:
         for a, axes in enumerate(app.ax):
@@ -2263,7 +2281,7 @@ def mouse_down(event):
         ia.sep_bud = False
         if not meb.cancel:
             if app.is_undo or app.is_redo:
-                app.store_state(ia)
+                app.set_state(ia)
             meb_lab = remove_small_objects(meb.sep_bud_label,
                                              min_size=20,
                                              connectivity=2)
@@ -2281,7 +2299,7 @@ def mouse_down(event):
             app.update_LABplot(ia.lab, ia.rp, ia)
             app.update_ax2_plot(ia)
             ia.modified = True
-            app.store_state(ia)
+            app.set_state(ia)
             app.update_cells_slideshow(ia)
     # Manual correction: replace old ID and assign new ID
     elif wheel_click and ax0_click:
@@ -2292,7 +2310,7 @@ def mouse_down(event):
                                 'You cannot assign a new ID to the background')
         else:
             if app.is_undo or app.is_redo:
-                app.store_state(ia)
+                app.set_state(ia)
             prev_ia = param[app.frame_i-1]
             new_ID = newID_app(old_ID=old_ID).new_ID
             IDs = [obj.label for obj in ia.rp]
@@ -2312,7 +2330,7 @@ def mouse_down(event):
             app.update_LABplot(ia.lab, ia.rp, ia)
             ia.modified = True
             ia.manual_newID_coords.append((yd, xd, new_ID))
-            app.store_state(ia)
+            app.set_state(ia)
             app.update_cells_slideshow(ia)
     elif right_click and ax0_click:
         app.xdrc = xd
@@ -2320,7 +2338,7 @@ def mouse_down(event):
     # Manual correction: delete ID
     elif wheel_click and ax1_click and not app.draw_ROI_delete and not event.dblclick:
         if app.is_undo or app.is_redo:
-            app.store_state(ia)
+            app.set_state(ia)
         prev_ia = param[app.frame_i-1]
         ID = ia.lab[yd, xd]
         ia.lab[ia.lab == ID] = 0
@@ -2335,7 +2353,7 @@ def mouse_down(event):
         app.update_LABplot(ia.lab, ia.rp, ia)
         app.update_ax2_plot(ia)
         ia.modified = True
-        app.store_state(ia)
+        app.set_state(ia)
         app.update_cells_slideshow(ia)
     elif wheel_click and ax1_click and app.draw_ROI_delete:
         app.ROI_delete_patch = Rectangle((0, 0), 1, 1, fill=False, color='r')
@@ -2346,7 +2364,7 @@ def mouse_down(event):
     # Manual correction: Delete contour pixel
     elif wheel_click and ax2_click and ia.edge_mode:
         if app.is_undo or app.is_redo:
-            app.store_state(ia)
+            app.set_state(ia)
         xx, yy = ia.contour_plot
         dist = ((np.asarray(yy) - yd)**2 + (np.asarray(xx) - xd)**2)
         min_idx = dist.argmin()
@@ -2362,7 +2380,7 @@ def mouse_down(event):
         app.update_ax2_plot(ia)
         app.update_LABplot(lab, rp, ia)
         ia.modified = True
-        app.store_state(ia)
+        app.set_state(ia)
     elif wheel_click and ax1_click and event.dblclick:
         app.ax[1].patches = []
         app.ROI_delete_coords = []
@@ -2372,7 +2390,7 @@ def mouse_down(event):
         ID = ia.lab[yd, xd]
         if ID != 0:
             if app.is_undo or app.is_redo:
-                app.store_state(ia)
+                app.set_state(ia)
             prev_ia = param[app.frame_i-1]
             max_ID = ia.lab.max()
             ia.lab = ia.auto_separate_bud_ID(ID, ia.lab, ia.rp, max_ID,
@@ -2387,7 +2405,7 @@ def mouse_down(event):
                 ia.rp = regionprops(tracked_lab)
             app.update_ax2_plot(ia)
             app.update_LABplot(ia.lab, ia.rp, ia)
-            app.store_state(ia)
+            app.set_state(ia)
             app.update_cells_slideshow(ia)
     # Change RGB color of the overlay
     if left_click and event.inaxes == ax_rgb and app.do_overlay:
@@ -2463,7 +2481,7 @@ def mouse_up(event):
     # Manual correction: add automatically drawn contour
     elif right_click and ax2_click and ia.edge_mode and ia.clos_mode == 'Auto closing':
         if app.is_undo or app.is_redo:
-            app.store_state(ia)
+            app.set_state(ia)
         app.xu2rc = xu
         app.yu2rc = yu
         lab, rp = ia.auto_contour(app)
@@ -2473,11 +2491,11 @@ def mouse_up(event):
         tracking_routine(app, ia)
         app.update_LABplot(ia.lab, ia.rp, ia)
         ia.modified = True
-        app.store_state(ia)
+        app.set_state(ia)
     # Manual correction: add manually drawn contour
     elif right_click and ax2_click and ia.edge_mode and ia.clos_mode == 'Manual closing':
         if app.is_undo or app.is_redo:
-            app.store_state(ia)
+            app.set_state(ia)
         app.fig.canvas.mpl_disconnect(app.cid2_rc)
         IDs = [obj.label for obj in ia.rp]
         lab, rp = ia.close_manual_cont()
@@ -2508,12 +2526,12 @@ def mouse_up(event):
         app.update_LABplot(ia.lab, ia.rp, ia)
         ia.modified = True
         ia.auto_edge_img = np.zeros_like(ia.auto_edge_img)
-        app.store_state(ia)
+        app.set_state(ia)
         app.update_cells_slideshow(ia)
     # Manual correction: merge IDs
     elif right_click and ax1_click and not ia.sep_bud:
         if app.is_undo or app.is_redo:
-            app.store_state(ia)
+            app.set_state(ia)
         ia.merge_yx[2] = yu
         ia.merge_yx[3] = xu
         r0, c0, r1, c1 = ia.merge_yx
@@ -2531,7 +2549,7 @@ def mouse_up(event):
         app.update_LABplot(ia.lab, ia.rp, ia)
         app.update_ax2_plot(ia)
         ia.modified = True
-        app.store_state(ia)
+        app.set_state(ia)
         app.update_cells_slideshow(ia)
     elif right_click and ax0_click and not ia.set_moth:
         budID = ia.lab[app.ydrc, app.xdrc]
@@ -2556,7 +2574,7 @@ def mouse_up(event):
     # Draw ROI rectangle for constant delete
     elif wheel_click and app.draw_ROI_delete:
         if app.is_undo or app.is_redo:
-            app.store_state(ia)
+            app.set_state(ia)
         prev_ia = param[app.frame_i-1]
         app.fig.canvas.mpl_disconnect(app.cid_ROI_delete)
         event_x, event_y = event.x, event.y
@@ -2582,7 +2600,7 @@ def mouse_up(event):
         app.update_LABplot(ia.lab, ia.rp, ia)
         app.update_ax2_plot(ia)
         app.draw_ROI_delete = False
-        app.store_state(ia)
+        app.set_state(ia)
 
 
 def axes_enter(event):
@@ -2679,8 +2697,8 @@ else:
     analyse_img(img)
 man_clos_cb(None)
 app.set_orig_lims()
-app.store_state(ia)
+app.set_state(ia)
 
-#win_size(swap_screen=False)
+# win_size(swap_screen=False)
 app.fig.canvas.set_window_title(f'Cell segmentation GUI - {app.exp_name}\\{app.pos_foldername}')
 plt.show()

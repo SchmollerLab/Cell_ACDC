@@ -22,7 +22,7 @@ from skimage.registration import phase_cross_correlation
 from skimage.draw import disk, circle_perimeter, line, line_aa
 from skimage.exposure import histogram
 import matplotlib.pyplot as plt
-from matplotlib.widgets import Slider, Button, RadioButtons
+from YeaSTaC_MyWidgets import Slider, Button, RadioButtons
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle
 from natsort import natsorted
@@ -64,13 +64,14 @@ class num_frames_toSegm_tk:
         else:
             txt = f'(there is a total of {tot_frames} frames)'
         if last_tracked_i != -1:
-            txt = f'{txt}\nlast tracked frame is index {last_tracked_i}'
+            txt = f'{txt[:-1]}\nlast tracked frame is index {last_tracked_i})'
         tk.Label(root,
                  text=txt,
                  font=(None, 10)).grid(row=1, column=0, columnspan=3)
         tk.Label(root,
                  text="Start frame",
-                 font=(None, 10, 'bold')).grid(row=2, column=0, sticky=E, padx=4)
+                 font=(None, 10, 'bold')).grid(row=2, column=0, sticky=E,
+                                               padx=4)
         tk.Label(root,
                  text="Number of frames to analyze",
                  font=(None, 10, 'bold')).grid(row=3, column=0, padx=4)
@@ -134,7 +135,7 @@ class num_frames_toSegm_tk:
             num = int(self.num_frames.get())
             stopf = startf + num
             self.frange = (startf, stopf)
-            self.root.quit()
+            # self.root.quit()
             self.root.destroy()
 
     def on_closing(self):
@@ -947,7 +948,7 @@ def find_contours(label_img, cells_ids, group=False, concatenate=False,
         #     fig = plt.Figure()
         #     ax = fig.add_subplot()
         #     ax.imshow(contours_img)
-        #     plt.embed_tk('New contours img', [1024,768,400,150], fig)
+        #     embed_tk('New contours img', [1024,768,400,150], fig)
     if return_img:
         contours_img = np.zeros_like(label_img)
         for contour in contours:
@@ -1146,7 +1147,7 @@ class manual_emerg_bud:
                 self.ax.plot(x,y,'r.')
 
         """Embed plt window into a tkinter window"""
-        sub_win = plt.embed_tk('Mother-bud zoom', [1024,768,400,150], self.fig)
+        sub_win = embed_tk('Mother-bud zoom', [1024,768,400,150], self.fig)
 
 
         """Create buttons"""
@@ -1568,7 +1569,7 @@ class select_slice_toAlign:
         self.fig_title = f'Select slice for {slice_used_for}'
         (self.ax).set_title(self.fig_title)
         """Embed plt window into a tkinter window"""
-        sub_win = plt.embed_tk(title, [1024,768,400,150], self.fig)
+        sub_win = embed_tk(title, [1024,768,400,150], self.fig)
         # [left, bottom, width, height]
         self.ax_sl = self.fig.add_subplot(
                                 position=[sl_left, 0.15, sl_width, 0.03],
@@ -1825,7 +1826,7 @@ class auto_select_slice:
         (self.ax).axis('off')
         (self.ax).set_title(f'Select slice for {slice_used_for}')
         """Embed plt window into a tkinter window"""
-        sub_win = plt.embed_tk('Mother-bud zoom', [1024,768,400,150], self.fig)
+        sub_win = embed_tk('Mother-bud zoom', [1024,768,400,150], self.fig)
         self.ax_sl = self.fig.add_subplot(
                                 position=[sl_left, 0.12, sl_width, 0.04],
                                 facecolor='0.1')
@@ -2193,25 +2194,6 @@ class draw_ROI_2D_frames:
         self.sub_win.root.destroy()
         exit('Execution aborted by the user')
 
-#TODO: evaluate if it's worth to keep this customized class instead of trying to use tk code
-class Directory(tk.commondialog.Dialog):
-    "Ask for a directory"
-
-    command = "tk_chooseDirectory"
-
-    def _fixresult(self, widget, result):
-        if result:
-            # convert Tcl path objects to strings
-            try:
-                result = result.string
-            except AttributeError:
-                # it already is a string
-                pass
-            # keep directory until next time
-            self.options["initialdir"] = result
-        self.directory = result # compatibility
-        return result
-
 #TODO: evaluate if it's worth to keep this customized function instead of trying to use tk code
 def file_dialog(**options):
     #Prompt the user to select the image file
@@ -2226,9 +2208,13 @@ def folder_dialog(**options):
     #Prompt the user to select the image file
     root = tk.Tk()
     root.withdraw()
-    path = Directory(**options).show()
+    path = tk.filedialog.Directory(**options).show()
     root.destroy()
     return path
+
+def dark_mode():
+    plt.style.use('dark_background')
+    plt.rc('axes', edgecolor='0.1')
 
 #TODO: evaluate if it's worth to keep this customized class instead of trying to use tk code
 class win_size:
@@ -2259,7 +2245,7 @@ class embed_tk:
     ax = fig.add_subplot()
     ax.imshow(img)
 
-    sub_win = plt.embed_tk('Embeddding in tk', [1024,768,300,100], fig)
+    sub_win = embed_tk('Embeddding in tk', [1024,768,300,100], fig)
 
     def on_key_event(event):
         print('you pressed %s' % event.key)
@@ -2561,7 +2547,7 @@ class CellInt_slideshow:
         fig = plt.Figure()
         ax = fig.add_subplot()
         fig.subplots_adjust(bottom=0.2)
-        inlay = plt.embed_tk('Cell intensity image slideshow',
+        inlay = embed_tk('Cell intensity image slideshow',
                                     [900,768,500,70], fig)
         sl_width = 0.6
         sl_left = 0.5 - (sl_width/2)
@@ -2734,7 +2720,7 @@ class CellInt_slideshow_2D:
         fig = plt.Figure()
         ax = fig.add_subplot()
         fig.subplots_adjust(bottom=0.2)
-        inlay = plt.embed_tk('Cell intensity image slideshow',
+        inlay = embed_tk('Cell intensity image slideshow',
                                     [900,768,500,70], fig)
         sl_width = 0.6
         sl_left = 0.5 - (sl_width/2)
@@ -3456,7 +3442,6 @@ class beyond_listdir_pos:
             all_exp_info.append(exp_info)
         return all_exp_info
 
-
 def expand_labels(label_image, distance=1):
     """Expand labels in label image by ``distance`` pixels without overlapping.
     Given a label image, ``expand_labels`` grows label regions (connected components)
@@ -3543,3 +3528,24 @@ def file_dialog(**options):
     path = filedialog.askopenfilename(**options)
     root.destroy()
     return path
+
+class imshow_tk:
+    def __init__(self, img, dots_coords=None, x_idx=1, axis=None):
+        fig = plt.Figure()
+        ax = fig.add_subplot()
+        ax.imshow(img)
+        if dots_coords is not None:
+            ax.plot(dots_coords[:,x_idx], dots_coords[:,x_idx-1], 'r.')
+        if axis:
+            ax.axis('off')
+        sub_win = embed_tk('Imshow embedded in tk', [800,600,400,150], fig)
+        sub_win.root.protocol("WM_DELETE_WINDOW", self._close)
+        self.sub_win = sub_win
+        sub_win.root.wm_attributes('-topmost',True)
+        sub_win.root.focus_force()
+        sub_win.root.after_idle(sub_win.root.attributes,'-topmost',False)
+        sub_win.root.mainloop()
+
+    def _close(self):
+        self.sub_win.root.quit()
+        self.sub_win.root.destroy()

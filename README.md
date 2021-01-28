@@ -6,7 +6,8 @@ Python scripts for yeast cells segmentation, tracking and cell lineage analysis
 here come the instructions for doing so
 ### 2) Run YeaZ segmentation and tracking
 here come the instructions for doing so
-### 3) Run the script cell_segm_GUI_frames.py for correcting segmentation and tracking
-here come the instructions for doing so
-### 4) Run the script CellCycleAnalysis.py for performing cell cycle analysis
+### 3) Run the script YeaSTac_GUI_frames.py for correcting segmentation and tracking
+#### Edit Operations
+Draw a new cell: *right-click* on right image. Roughly follow a bright contour to draw a new label (e.g. small bud missed by segmentation)
+### 4) Run the script YeaSTaC_GUI_CellCycleAnalysis.py for performing cell cycle analysis
 here come the instructions for doing so
