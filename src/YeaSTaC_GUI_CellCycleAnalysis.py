@@ -24,7 +24,7 @@ from skimage.measure import label, regionprops
 from skimage.draw import circle, line
 import scipy.ndimage as nd
 from tkinter import Tk, messagebox, simpledialog, Toplevel
-from segm_FUNCTIONS_v4 import (separate_overlapping, text_label_centroid,
+from YeaSTaC_FUNCTIONS import (separate_overlapping, text_label_centroid,
         apply_hyst_local_threshold, align_frames_3D, del_min_area_obj,
         load_shifts, cells_tracking, fig_text, sep_overlap_manual_seeds,
         merge_objs, delete_objs, select_slice_toAlign, cc_stage_df_frame0,
@@ -222,6 +222,10 @@ def line_mother_bud(cca_df, frame_i, rp, ax):
                                  f' disappeared from frame {frame_i}')
 
 
+matplotlib.rcParams['keymap.back'] = ['q', 'backspace', 'MouseButton.BACK']
+matplotlib.rcParams['keymap.forward'] = ['v', 'MouseButton.FORWARD']
+matplotlib.rcParams['keymap.quit'] = []
+matplotlib.rcParams['keymap.quit_all'] = []
 plt.ioff()
 plt.style.use('dark_background')
 plt.rc('axes', edgecolor='0.1')
