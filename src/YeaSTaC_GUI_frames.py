@@ -1204,7 +1204,7 @@ def my_release_zoom(self, event):
     # Disconnect zoom to rect after having used it once
     self.zoom()
     self.push_current()
-    self.release(event)
+    # self.release(event)
 NavigationToolbar2.release_zoom = my_release_zoom
 
 app.init_plots()

@@ -32,7 +32,7 @@ from YeaSTaC_FUNCTIONS import (separate_overlapping, text_label_centroid,
         find_contours, twobuttonsmessagebox, single_entry_messagebox,
         twobuttonsmessagebox, CellInt_slideshow, CellInt_slideshow_2D,
         ShowWindow_from_title, select_exp_folder, align_frames_2D, folder_dialog,
-                               file_dialog)
+        file_dialog, tk_breakpoint)
 
 def set_lims(ax, ax_limits):
     for a, axes in enumerate(ax):
@@ -43,6 +43,7 @@ def get_overlay(img, ol_img, ol_RGB_val=[1,1,0], ol_brightness=4, ol_alpha=0.5):
     img_rgb = gray2rgb(img_as_float(img))
     ol_img_rgb = gray2rgb(img_as_float(ol_img))*ol_RGB_val
     overlay = (img_rgb*(1.0 - ol_alpha) + ol_img_rgb*ol_alpha)*ol_brightness
+    overlay = (np.clip(overlay, 0, 1)*255).astype(np.uint8)
     return overlay
 
 def update_plots(ax, rp, img, segm_npy_frame, cca_df, vmin, vmax, frame_i, fig,
@@ -163,7 +164,7 @@ def auto_assign_bud(segm_npy_frame, new_IDs, old_IDs, cca_df, prev_cca_df, frame
         warning_txt = ''
     return cca_df, warning_txt
 
-def manual_division(ID_press, cca_df, prev_cca_df, frame_i):
+def manual_division(ID_press, cca_df, prev_cca_df, frame_i, verbose=False):
     rel_ID_press = cca_df.at[ID_press, 'Relative\'s ID']
     cc_stage_ID = cca_df.at[ID_press, 'Cell cycle stage']
     num_cycle_ID = cca_df.at[ID_press, '# of cycles']
@@ -193,7 +194,8 @@ def manual_division(ID_press, cca_df, prev_cca_df, frame_i):
         f'You clicked on cell ID {ID_press} which is not a bud.\n'
         'Make sure to click on a cell that has either \'S-0\' (to assign division) '
         'or \'G1-1\' (to undo division) writing on it.')
-    print(cca_df)
+    if verbose:
+        print(cca_df)
     return cca_df, rel_ID_press
 
 def line_mother_bud(cca_df, frame_i, rp, ax):
@@ -237,6 +239,8 @@ hover_color = '0.25'
 presscolor = '0.35'
 button_true_color = '0.4'
 do_overlay = False
+
+bp = tk_breakpoint()
 
 # Folder dialog
 exp_path = folder_dialog(
@@ -307,7 +311,6 @@ expected_shape = 4 if V3D else 3
 #Initial variables
 frame_text = None
 num_frames = len(segm_npy)-1
-start_from_0 = True
 if not cca_found:
     cca_df_li = [None]*(num_frames+1)
 else:
@@ -316,16 +319,16 @@ else:
 modified_prev = False
 viewing_prev = False
 modified_IDs = []
+frame_i = 0
 if last_analyzed_frame_i is not None:
-    start_from_0 = twobuttonsmessagebox('Select starting frame',
-                   f'The last analyzed frame was {last_analyzed_frame_i}\n'
-                   'Do you want to resume analysis\n from last analyzed frame\n'
-                   'or start back from frame 0?',
-                   'Start from frame 0',
-                   f'Resume from frame {last_analyzed_frame_i}').button_left
+    frame_i = int(single_entry_messagebox(
+               entry_label=f'Last analysed frame: {last_analyzed_frame_i}\n\n'
+                            'Start analysing from:',
+               input_txt=f'{last_analyzed_frame_i}',
+               toplevel=False).entry_txt)
+    viewing_prev = frame_i <= last_analyzed_frame_i
 
 #Convert to grayscale if needed and initialize variables
-frame_i = 0 if start_from_0 else last_analyzed_frame_i #load first frame
 if len(phc_aligned_npy.shape) == expected_shape:
     V = phc_aligned_npy[frame_i]
     segm_npy_frame = segm_npy[frame_i]
@@ -361,13 +364,12 @@ rp_cells_labels_separate = regionprops(segm_npy_frame)
 IDs = [obj.label for obj in rp_cells_labels_separate]
 if frame_i == 0:
     cca_df = init_cc_stage_df(IDs, init_cca_df=cca_df_li[0])
-    print(cca_df)
     if cca_df_li[0] is None:
         display_ccStage = 'IDs'
     else:
         display_ccStage = 'Only stage'
 else:
-    cca_df = cca_df_li[last_analyzed_frame_i]
+    cca_df = cca_df_li[frame_i]
     display_ccStage = 'Only stage'
 
 
@@ -434,15 +436,22 @@ ax_rgb = plt.axes([0.1, 0.69, 0.25, 0.2])
 
 #Create buttons
 prev_button = Button(ax_prev_button, 'Prev. frame', color=axcolor,
-                        hovercolor=hover_color)
+                        hovercolor=hover_color,
+                        presscolor=presscolor)
 next_button = Button(ax_next_button, 'Next frame', color=axcolor,
-                        hovercolor=hover_color)
-save_b = Button(ax_save, 'Save and close', color=axcolor, hovercolor=hover_color)
-help_b = Button(ax_help, 'Help', color=axcolor, hovercolor=hover_color)
+                        hovercolor=hover_color,
+                        presscolor=presscolor)
+save_b = Button(ax_save, 'Save and close', color=axcolor,
+                        hovercolor=hover_color,
+                        presscolor=presscolor)
+help_b = Button(ax_help, 'Help', color=axcolor, hovercolor=hover_color,
+                        presscolor=presscolor)
 slideshow_b = Button(ax_slideshow, 'Slideshow', color=axcolor,
-                hovercolor=hover_color)
+                hovercolor=hover_color,
+                presscolor=presscolor)
 overlay_b = Button(ax_overlay, 'Overlay', color=axcolor,
-                hovercolor=hover_color)
+                hovercolor=hover_color,
+                presscolor=presscolor)
 brightness_slider = Slider(ax_bright_sl, 'Brightness', -1, 30,
                     valinit=4,
                     valstep=1,
@@ -485,7 +494,6 @@ def next_frame(event):
     if frame_i < num_frames:
         cancel = False
         if frame_i == 0:
-            print(cca_df)
             IDs = [obj.label for obj in rp_cells_labels_separate]
             init_cca_df_frame0 = cc_stage_df_frame0(IDs, cca_df)
             cca_df = init_cca_df_frame0.df
@@ -496,12 +504,15 @@ def next_frame(event):
                     modified_prev = True
         if not cancel:
             cca_df_li[frame_i] = cca_df.copy()
+            prev_stored_cca_df = cca_df_li[frame_i].copy()
             frame_i += 1
             if not isinstance(cca_df_li[frame_i], pd.DataFrame):
                 # Current frame was not analysed
                 viewing_prev = False
                 modified_prev = False
                 modified_IDs = []
+            elif modified_prev:
+                cca_df = cca_df_li[frame_i].copy()
             if V3D:
                 img = phc_aligned_npy[frame_i, slices[frame_i]]
                 if do_overlay:
@@ -512,7 +523,7 @@ def next_frame(event):
                     ol_img = ol_frames[frame_i]
             segm_npy_frame = segm_npy[frame_i]
             rp_cells_labels_separate = regionprops(segm_npy_frame)
-            # Compute new cell cycle analysise table (new_cca_df)
+            # Compute new cell cycle analysis table (new_cca_df)
             prev_rp = regionprops(segm_npy[frame_i-1])
             prev_IDs = [obj.label for obj in prev_rp]
             current_IDs = [obj.label for obj in rp_cells_labels_separate]
@@ -524,22 +535,27 @@ def next_frame(event):
                                                    cca_df_li[frame_i-1],
                                                    frame_i)
             else:
-                new_cca_df = cca_df
+                new_cca_df = cca_df.copy()
             # Drop cells that disappeared in current frame
             new_cca_df = new_cca_df.filter(items=current_IDs, axis=0)
             # Check if we are viewing a previously analysed frame or a new frame
             # and if we modified a previously analysed frame
+            print(viewing_prev, modified_prev, frame_i)
             if not viewing_prev:
                 # we are on a frame that was never analysed
                 cca_df = new_cca_df
             elif modified_prev:
+                print(modified_IDs)
                 # we modified a previously analysed frame
+                # reinsert what was manually modified
                 new_idx = ~new_cca_df.index.isin(modified_IDs)
                 prev_idx = ~cca_df.index.isin(modified_IDs)
                 new_cca_df.loc[new_idx] = cca_df.loc[prev_idx]
                 cca_df = new_cca_df
+                modified_prev = False
             else:
-                # we are on a frame that was already analysed and we didn't modify it
+                # we are on a frame that was already analysed and
+                # we didn't modify it
                 cca_df = cca_df_li[frame_i]
             frame_text = update_plots(ax, rp_cells_labels_separate, img,
                                       segm_npy_frame, cca_df, vmin, vmax, frame_i,
@@ -563,7 +579,7 @@ def prev_frame(event):
     if frame_i-1 >= 0:
         viewing_prev = True
         frame_i -= 1
-        cca_df = cca_df_li[frame_i]
+        cca_df = cca_df_li[frame_i].copy()
         if V3D:
             img = phc_aligned_npy[frame_i, slices[frame_i]]
             if do_overlay:
@@ -791,7 +807,8 @@ def mouse_down(event):
         x = int(event.xdata)
         cell_ID = segm_npy_frame[y,x]
         prev_cca_df = cca_df_li[frame_i-1]
-        cca_df, rel_ID = manual_division(cell_ID, cca_df, prev_cca_df, frame_i)
+        cca_df, rel_ID = manual_division(cell_ID, cca_df, prev_cca_df, frame_i,
+                                         verbose=True)
         modified_IDs.extend([cell_ID, rel_ID])
         frame_text = update_plots(ax, rp_cells_labels_separate, img,
                                   segm_npy_frame, cca_df, vmin, vmax, frame_i,
@@ -802,6 +819,21 @@ def mouse_down(event):
                                   ol_brightness=brightness_slider.val,
                                   ol_alpha=alpha_slider.val)
         cca_df_li[frame_i] = cca_df.copy()
+        cc_stage = cca_df.at[cell_ID, 'Cell cycle stage']
+        i = frame_i+1
+        if i < num_frames:
+            cc_stage_i = cca_df_li[i].at[cell_ID, 'Cell cycle stage']
+            # Correct all future frames cell cycle analysis table if present
+            while cc_stage_i != cc_stage:
+                if i >= num_frames:
+                    break
+                elif cca_df_li[i] is not None:
+                    manual_division(cell_ID, cca_df_li[i], prev_cca_df, i)
+                    i += 1
+                    cc_stage_i = cca_df_li[i].at[cell_ID, 'Cell cycle stage']
+                else:
+                    break
+
     # Correct bud assignment
     if right_click and event.inaxes == ax[0] and assign_bud:
         modified_prev = True if viewing_prev else False
@@ -947,6 +979,15 @@ def new_home(self, *args, **kwargs):
         pass
     home(self, *args, **kwargs)
 NavigationToolbar2.home = new_home
+
+release_zoom = NavigationToolbar2.release_zoom
+def my_release_zoom(self, event):
+    release_zoom(self, event)
+    # Disconnect zoom to rect after having used it once
+    self.zoom()
+    self.push_current()
+    # self.release(event)
+NavigationToolbar2.release_zoom = my_release_zoom
 
 #Canvas events
 (fig.canvas).mpl_connect('key_press_event', key_pressed)
