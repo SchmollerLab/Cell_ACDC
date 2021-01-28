@@ -9,7 +9,7 @@ import cv2
 import matplotlib
 import matplotlib.pyplot as plt
 from copy import deepcopy
-from matplotlib.widgets import Slider, Button, RadioButtons, TextBox
+
 from matplotlib.patches import Rectangle
 from matplotlib.backend_bases import NavigationToolbar2
 from pyglet.canvas import Display
@@ -24,6 +24,7 @@ from skimage.measure import label, regionprops
 from skimage.draw import circle, line
 import scipy.ndimage as nd
 from tkinter import Tk, messagebox, simpledialog, Toplevel
+from YeaSTaC_MyWidgets import Slider, Button, RadioButtons, TextBox
 from YeaSTaC_FUNCTIONS import (separate_overlapping, text_label_centroid,
         apply_hyst_local_threshold, align_frames_3D, del_min_area_obj,
         load_shifts, cells_tracking, fig_text, sep_overlap_manual_seeds,
@@ -221,6 +222,7 @@ def line_mother_bud(cca_df, frame_i, rp, ax):
                 print(f'WARNING: Bud with ID {bud_ID}'
                                  f' disappeared from frame {frame_i}')
 
+matplotlib.use("TkAgg")
 
 matplotlib.rcParams['keymap.back'] = ['q', 'backspace', 'MouseButton.BACK']
 matplotlib.rcParams['keymap.forward'] = ['v', 'MouseButton.FORWARD']
