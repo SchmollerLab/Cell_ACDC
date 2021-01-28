@@ -2617,7 +2617,7 @@ def axes_leave(event):
         try:
             app.mng.window.configure(cursor='arrow')
         except:
-            # If the backend is not TkAgg than I still don't know how to change
+            # If the backend is not TkAgg then I still don't know how to change
             # the mouse cursor to arrow
             pass
 
@@ -2646,12 +2646,12 @@ def figure_leave(event):
     try:
         ShowWindow_from_title('Cell intensity image slideshow')
     except:
-        traceback.print_exc()
+        # traceback.print_exc()
         pass
     try:
         ShowWindow_from_title('Mother-bud zoom')
     except:
-        traceback.print_exc()
+        # traceback.print_exc()
         pass
 
 
@@ -2667,7 +2667,7 @@ def figure_enter(event):
         try:
             ShowWindow_from_title('Cell segmentation GUI')
         except:
-            traceback.print_exc()
+            # traceback.print_exc()
             pass
 
 # Canvas events

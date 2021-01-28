@@ -135,7 +135,7 @@ class num_frames_toSegm_tk:
             num = int(self.num_frames.get())
             stopf = startf + num
             self.frange = (startf, stopf)
-            # self.root.quit()
+            self.root.quit()
             self.root.destroy()
 
     def on_closing(self):
