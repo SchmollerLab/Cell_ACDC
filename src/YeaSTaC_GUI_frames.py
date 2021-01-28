@@ -8,7 +8,7 @@ import re
 import cv2
 import numpy as np
 import pandas as pd
-import matplotlib as mpl
+import matplotlib
 from math import atan2
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
@@ -1137,10 +1137,10 @@ class img_analysis:
 
 matplotlib.use("TkAgg")
 
-mpl.rcParams['keymap.back'] = ['q', 'backspace', 'MouseButton.BACK']
-mpl.rcParams['keymap.forward'] = ['v', 'MouseButton.FORWARD']
-mpl.rcParams['keymap.quit'] = []
-mpl.rcParams['keymap.quit_all'] = []
+matplotlib.rcParams['keymap.back'] = ['q', 'backspace', 'MouseButton.BACK']
+matplotlib.rcParams['keymap.forward'] = ['v', 'MouseButton.FORWARD']
+matplotlib.rcParams['keymap.quit'] = []
+matplotlib.rcParams['keymap.quit_all'] = []
 np.set_printoptions(precision=4, linewidth=200, suppress=True)
 pd.set_option('display.max_columns', 40)
 pd.set_option('display.precision', 3)

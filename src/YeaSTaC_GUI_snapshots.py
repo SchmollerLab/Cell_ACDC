@@ -7,7 +7,7 @@ from natsort import natsorted
 from collections import Counter
 import numpy as np
 import pandas as pd
-import matplotlib as mpl
+import matplotlib as matplotlib
 from math import atan2
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
@@ -1252,13 +1252,15 @@ class img_analysis:
         ia.contour_plot = [[], []]
         ia.modified = False
 
-mpl.rcParams['keymap.back'] = ['q', 'backspace', 'MouseButton.BACK']
-mpl.rcParams['keymap.forward'] = ['v', 'MouseButton.FORWARD']
-mpl.rcParams['keymap.quit'] = []
-mpl.rcParams['keymap.quit_all'] = []
+matplotlib.use("TkAgg")
+
+matplotlib.rcParams['keymap.back'] = ['q', 'backspace', 'MouseButton.BACK']
+matplotlib.rcParams['keymap.forward'] = ['v', 'MouseButton.FORWARD']
+matplotlib.rcParams['keymap.quit'] = []
+matplotlib.rcParams['keymap.quit_all'] = []
 
 """Initialize app GUI parameters"""
-plt.dark()
+dark_mode()
 axcolor = '0.1'
 slider_color = '0.2'
 hover_color = '0.25'
