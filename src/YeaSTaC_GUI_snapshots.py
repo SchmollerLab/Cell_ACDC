@@ -7,17 +7,15 @@ from natsort import natsorted
 from collections import Counter
 import numpy as np
 import pandas as pd
-import matplotlib as mpl
+import matplotlib as matplotlib
 from math import atan2
 import matplotlib.pyplot as plt
-from matplotlib.widgets import Slider, Button, MyRadioButtons, TextBox
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle, Circle
 from matplotlib.backend_bases import NavigationToolbar2
 from matplotlib.path import Path
-from tkinter import tk_breakpoint, E, S, W, END
+from tkinter import E, S, W, END
 import tkinter as tk
-from tkinter.filedialog import folder_dialog
 from skimage import io
 from skimage.util import img_as_float, img_as_ubyte
 from skimage.feature import peak_local_max
@@ -32,11 +30,13 @@ from skimage.exposure import equalize_adapthist, rescale_intensity
 from skimage.segmentation import relabel_sequential
 from scipy.ndimage.morphology import binary_fill_holes, distance_transform_edt
 from tifffile import TiffFile
-from segm_FUNCTIONS_v4 import (auto_select_slice, separate_overlapping,
+from YeaSTaC_MyWidgets import Slider, Button, MyRadioButtons, TextBox
+from YeaSTaC_FUNCTIONS import (auto_select_slice, separate_overlapping,
                        text_label_centroid, tk_breakpoint, manual_emerg_bud,
                        CellInt_slideshow, twobuttonsmessagebox,
                        single_entry_messagebox, beyond_listdir_pos,
-                       select_exp_folder, expand_labels)
+                       select_exp_folder, expand_labels, tk_breakpoint,
+                       folder_dialog, dark_mode, win_size)
 
 script_dirname = os.path.dirname(os.path.realpath(__file__))
 unet_path = f'{script_dirname}/YeaZ-unet/unet/'
@@ -1252,13 +1252,15 @@ class img_analysis:
         ia.contour_plot = [[], []]
         ia.modified = False
 
-mpl.rcParams['keymap.back'] = ['q', 'backspace', 'MouseButton.BACK']
-mpl.rcParams['keymap.forward'] = ['v', 'MouseButton.FORWARD']
-mpl.rcParams['keymap.quit'] = []
-mpl.rcParams['keymap.quit_all'] = []
+matplotlib.use("TkAgg")
+
+matplotlib.rcParams['keymap.back'] = ['q', 'backspace', 'MouseButton.BACK']
+matplotlib.rcParams['keymap.forward'] = ['v', 'MouseButton.FORWARD']
+matplotlib.rcParams['keymap.quit'] = []
+matplotlib.rcParams['keymap.quit_all'] = []
 
 """Initialize app GUI parameters"""
-plt.dark()
+dark_mode()
 axcolor = '0.1'
 slider_color = '0.2'
 hover_color = '0.25'
@@ -1291,7 +1293,6 @@ if app.is_pc:
 
 """Initialize plots"""
 home = NavigationToolbar2.home
-
 def new_home(self, *args, **kwargs):
     try:
         app.ax_limits = deepcopy(ia.home_ax_limits)
@@ -1302,8 +1303,16 @@ def new_home(self, *args, **kwargs):
     home(self, *args, **kwargs)
     app.set_lims()
     app.fig.canvas.draw_idle()
-
 NavigationToolbar2.home = new_home
+
+release_zoom = NavigationToolbar2.release_zoom
+def my_release_zoom(self, event):
+    release_zoom(self, event)
+    # Disconnect zoom to rect after having used it once
+    self.zoom()
+    self.push_current()
+    self.release(event)
+NavigationToolbar2.release_zoom = my_release_zoom
 
 app.init_plots()
 sharp_img = app.preprocess_img_data(phc[app.p, app.s])
@@ -2665,6 +2674,6 @@ app.set_orig_lims()
 app.store_state(ia)
 
 win_title = f'{app.exp_parent_foldername}/{app.exp_name}'
-plt.win_size(swap_screen=False)
+win_size(swap_screen=False)
 app.fig.canvas.set_window_title(f'Cell segmentation GUI - {win_title}')
 plt.show()

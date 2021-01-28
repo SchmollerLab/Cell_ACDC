@@ -3171,8 +3171,6 @@ class select_exp_folder:
         ttk.Label(root, text = label_txt,
                   font = (None, 10)).grid(column=0, row=0, padx=10, pady=10)
 
-        print(values)
-
         # Combobox
         pos_n_sv = tk.StringVar()
         self.pos_n_sv = pos_n_sv
