@@ -2614,7 +2614,12 @@ def axes_enter(event):
 def axes_leave(event):
     app.key_mode = ''
     if event.inaxes == app.ax[2] and ia.clos_mode == 'Manual closing':
-        app.mng.window.configure(cursor='arrow')
+        try:
+            app.mng.window.configure(cursor='arrow')
+        except:
+            # If the backend is not TkAgg than I still don't know how to change
+            # the mouse cursor to arrow
+            pass
 
 def on_xlim_changed(axes):
     ax_idx = list(app.ax).index(axes)
