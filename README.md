@@ -1,4 +1,4 @@
-# Yeast cell segmentation, tracking and cell lineage analysis
+# Yeast cells segmentation, tracking and cell lineage analysis
 Python scripts for yeast cells segmentation, tracking and cell lineage analysis
 
 ## steps for running analyses with the code
