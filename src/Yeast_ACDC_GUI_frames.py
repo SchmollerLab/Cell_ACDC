@@ -228,7 +228,7 @@ class load_data:
         return SizeT, SizeZ
 
 """Classes"""
-class init_App:
+class app_GUI:
     def __init__(self, img_path):
         data = load_data(img_path)
         self.segm_npy_done = [None]*data.SizeT
@@ -310,6 +310,7 @@ class init_App:
         self.do_overlay = False
         self.ol_frames = None
         self.ol_RGB_val = [1,1,0]
+        self.scroll_zoom = False
         self.init_attr()
 
     def set_state(self, ia):
@@ -1183,7 +1184,7 @@ print(f'Loading {img_path}...')
 # img_path = file_dialog(title = "Select phase contrast or bright-field image file")
 
 """Load data"""
-app = init_App(img_path)
+app = app_GUI(img_path)
 frames = app.data.img_data
 num_frames = app.data.SizeT
 num_slices = app.num_slices
@@ -2172,6 +2173,8 @@ def key_down(event):
             app.update_ALLplots(ia)
         else:
             print('No next states to restore!')
+    elif key == 'control':
+        app.scroll_zoom = True
 
 def key_up(event):
     key = event.key
@@ -2183,6 +2186,8 @@ def key_up(event):
         app.draw_ROI_delete = False
     elif key == 'c':
         app.do_cut = False
+    elif key == 'control':
+        app.scroll_zoom = False
 
 def mouse_down(event):
     right_click = event.button == 3
@@ -2258,7 +2263,7 @@ def mouse_down(event):
     if ax_click:
         ia.modified = True
     if right_click and ax2_click and not ia.edge_mode:
-        cid2_rc = app.fig.canvas.mpl_connect('motion_notify_event', mouse_drag)
+        cid2_rc = app.fig.canvas.mpl_connect('motion_notify_event', mouse_motion)
         app.cid2_rc = cid2_rc
         app.xdrc = xd
         app.ydrc = yd
@@ -2269,7 +2274,7 @@ def mouse_down(event):
         app.xdrc = xd
         app.ydrc = yd
     elif right_click and ax2_click and ia.edge_mode and ia.clos_mode == 'Manual closing':
-        cid2_rc = app.fig.canvas.mpl_connect('motion_notify_event', mouse_drag)
+        cid2_rc = app.fig.canvas.mpl_connect('motion_notify_event', mouse_motion)
         app.cid2_rc = cid2_rc
         ia.init_manual_cont(app, xd, yd)
     elif wheel_click and ax2_click and not ia.edge_mode:
@@ -2370,7 +2375,7 @@ def mouse_down(event):
     elif wheel_click and ax1_click and app.draw_ROI_delete:
         app.ROI_delete_patch = Rectangle((0, 0), 1, 1, fill=False, color='r')
         app.cid_ROI_delete = app.fig.canvas.mpl_connect('motion_notify_event',
-                                                        mouse_drag)
+                                                        mouse_motion)
         app.xdwc_ax1 = xd
         app.ydwc_ax1 = yd
     # Manual correction: Delete contour pixel
@@ -2429,7 +2434,7 @@ def mouse_down(event):
         update_overlay_cb(event)
 
 
-def mouse_drag(event):
+def mouse_motion(event):
     right_click = event.button == 3
     left_click = event.button == 1
     wheel_click = event.button == 2
@@ -2682,6 +2687,47 @@ def figure_enter(event):
             # traceback.print_exc()
             pass
 
+t0 = 0
+sensitivity = 6
+def scroll_cb(event):
+    global t0, t1
+    # Scroll zoom (activated with 'control')
+    if event.inaxes and app.scroll_zoom:
+        t1 = time()
+        rate = 1/(t1-t0)
+        step = event.step*sensitivity
+        step_rate = abs(step*rate)
+        # Adjust zoom factor by scrolling rate
+        if step_rate > sensitivity:
+            if step_rate > 50:
+                step = 50*event.step
+            else:
+                step = step_rate*event.step
+        Y, X = ia.img.shape
+        xc = event.xdata
+        yc = event.ydata
+        xl, xr = event.inaxes.get_xlim()
+        yb, yt = event.inaxes.get_ylim()
+        # Center zoom at mouse cursor position (xc, yc)
+        step_left = (xc-xl)/(X/2)*step
+        step_right = (xr-xc)/(X/2)*step
+        step_bottom = (yb-yc)/(Y/2)*step
+        step_top = (yc-yt)/(Y/2)*step
+        new_xl = xl+step_left
+        new_xr = xr-step_right
+        new_yb = yb-step_bottom
+        new_yt = yt+step_top
+        # Avoid zoomming out more than the image shape
+        new_xl = new_xl if new_xl > -0.5 else -0.5
+        new_xr = new_xr if new_xr < X-0.5 else X-0.5
+        new_yb = new_yb if new_yb < Y-0.5 else Y-0.5
+        new_yt = new_yt if new_yt > -0.5 else -0.5
+        # Apply zoom
+        event.inaxes.set_xlim((new_xl, new_xr))
+        event.inaxes.set_ylim((new_yb, new_yt))
+        app.fig.canvas.draw_idle()
+        t0 = t1
+
 # Canvas events
 (app.fig.canvas).mpl_connect('button_press_event', mouse_down)
 (app.fig.canvas).mpl_connect('button_release_event', mouse_up)
@@ -2693,6 +2739,7 @@ def figure_enter(event):
 cid_close = (app.fig.canvas).mpl_connect('close_event', handle_close)
 (app.fig.canvas).mpl_connect('figure_leave_event', figure_leave)
 (app.fig.canvas).mpl_connect('figure_enter_event', figure_enter)
+(app.fig.canvas).mpl_connect('scroll_event', scroll_cb)
 # NOTE: axes limit changed event is connected first time in resize_widgets
 
 app.frame_txt = app.fig.text(0.5, 0.15,

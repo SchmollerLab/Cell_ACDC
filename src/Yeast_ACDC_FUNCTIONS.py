@@ -3441,15 +3441,17 @@ class beyond_listdir_pos:
                                 pos_ok = True
                 if num_segm_pos < num_pos:
                     if num_segm_pos != 0:
-                        exp_info = f'{rel_path} (N. of segmented pos: {num_segm_pos})'
+                        exp_info = (f'{rel_path} (N. of segmented pos: '
+                                    f'{num_segm_pos})')
                     else:
-                        exp_info = f'{rel_path} (NONE of the pos have been segmented)'
+                        exp_info = (f'{rel_path} '
+                                     '(NONE of the pos have been segmented)')
                 elif num_segm_pos == num_pos:
                     if num_pos != 0:
                         tmtime = max(tmtimes)
                         modified_on = (datetime.utcfromtimestamp(tmtime)
                                                .strftime('%Y/%m/%d'))
-                        exp_info = f'{rel_path} (All pos segememted - {modified_on})'
+                        exp_info = f'{rel_path} (All pos segmented - {modified_on})'
                 elif num_segm_pos > num_pos:
                     print('Position_n folders that contain multiple segm.npy files:\n'
                           f'{pos_paths_multi_segm}')

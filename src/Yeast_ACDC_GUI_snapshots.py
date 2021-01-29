@@ -7,15 +7,16 @@ from natsort import natsorted
 from collections import Counter
 import numpy as np
 import pandas as pd
-import matplotlib as matplotlib
+import matplotlib
 from math import atan2
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
-from matplotlib.patches import Rectangle, Circle
+from matplotlib.patches import Rectangle
 from matplotlib.backend_bases import NavigationToolbar2
 from matplotlib.path import Path
 from tkinter import E, S, W, END
 import tkinter as tk
+import skimage
 from skimage import io
 from skimage.util import img_as_float, img_as_ubyte
 from skimage.feature import peak_local_max
@@ -349,6 +350,8 @@ class app_GUI:
         self.saved_cc_stages = [None]*len(directories)
         self.slices_used = [None]*len(directories)
         self.saved_slices_used = [None]*len(directories)
+        self.brush_mode_on = False
+        self.eraser_on = False
         self.is_pc = twobuttonsmessagebox('Img mode', 'Select imaging mode',
                                          'Phase contrast', 'Bright-field'
                                          ).button_left
@@ -453,6 +456,8 @@ class app_GUI:
         self.do_cut = False
         self.is_lab_frozen = False
         self.do_approx = False
+        self.zoom_on = False
+        self.scroll_zoom = False
         print('Total number of Positions = {}'.format(len(self.phc)))
         self.bp = tk_breakpoint()
         self.init_attr()
@@ -552,6 +557,14 @@ class app_GUI:
             lab[filled_mask_ID] = ID
         return lab
 
+    def get_overlay(self, img, ol_img, ol_RGB_val=[1,1,0],
+                    ol_brightness=4, ol_alpha=0.5):
+        img_rgb = gray2rgb(img_as_float(img))*ol_RGB_val
+        ol_img_rgb = gray2rgb(img_as_float(ol_img))
+        overlay = (ol_img_rgb*(1.0 - ol_alpha)+img_rgb*ol_alpha)*ol_brightness
+        overlay = (np.clip(overlay, 0, 1)*255).astype(np.uint8)
+        return overlay
+
     def update_IMGplot(self, ia, img, ax_img):
         ax_img.imshow(img)
         for cont in ia.contours:
@@ -590,7 +603,11 @@ class app_GUI:
         for a in ax:
             a.clear()
         self.update_IMGplot(ia, img, ax[0])
-        ax[1].imshow(lab)
+        if self.brush_mode_on:
+            ax1_img = self.get_labels_overlay(lab, ia.img, bg_label=0)
+        else:
+            ax1_img = lab
+        ax[1].imshow(ax1_img)
         text_label_centroid(ia.rp, ax[1], 12, 'semibold', 'center', 'center')
         self.set_lims()
         ax[2].imshow(edge)
@@ -625,16 +642,24 @@ class app_GUI:
         ax[2].axis('off')
         self.fig.canvas.draw_idle()
 
-    def update_LABplot(self, lab, rp, ia, draw=True):
+    def get_labels_overlay(self, lab, img, bg_label=0):
+        overlay = skimage.color.label2rgb(lab, image=img, bg_label=bg_label)
+        return overlay
+
+    def update_ax1_plot(self, lab, rp, ia, draw=True):
         ia.rp = rp
         ia.cc_stage_df = ia.init_cc_stage_df(rp)
         ia.cc_stage_df = ia.assign_bud(ia.cc_stage_df, rp)
         ia.lab = lab
+        if self.brush_mode_on:
+            ax1_img = self.get_labels_overlay(lab, ia.img, bg_label=0)
+        else:
+            ax1_img = lab
         ax = self.ax
         ax[0].clear()
         self.update_IMGplot(ia, ia.img, ax[0])
         ax[1].clear()
-        ax[1].imshow(lab)
+        ax[1].imshow(ax1_img)
         text_label_centroid(ia.rp, ax[1], 12, 'semibold', 'center', 'center')
         ax[1].axis('off')
         self.set_lims()
@@ -698,7 +723,8 @@ class app_GUI:
                   f'    {slice_path}')
             app.saved_slices_used[i] = ia.slice_used
 
-    def ax_transData_and_coerce(self, ax, event_x, event_y, img_shape):
+    def ax_transData_and_coerce(self, ax, event_x, event_y, img_shape,
+                                return_int=True):
         x, y = ax.transData.inverted().transform((event_x, event_y))
         ymax, xmax = img_shape
         xmin, ymin = 0, 0
@@ -707,13 +733,13 @@ class app_GUI:
         elif x > xmax:
             x_coerced = xmax
         else:
-            x_coerced = int(round(x))
+            x_coerced = int(round(x)) if return_int else x
         if y < ymin:
             y_coerced = 0
         elif y > ymax:
             y_coerced = ymax
         else:
-            y_coerced = int(round(y))
+            y_coerced = int(round(y)) if return_int else y
         return x_coerced, y_coerced
 
 
@@ -727,14 +753,13 @@ class img_analysis:
         init_highT = img_slice_max * highT_f
         self.lowT = init_lowT
         self.highT = init_highT
-        self.edge_mode = False
         self.clos_mode = 'Auto closing'
         self.bp = tk_breakpoint()
         self.modified = False
         self.contours = []
         self.exclude_border = 30
         self.peak_dist = 10
-        self.manual_draw = False
+        self.draw_bg_mask_on = False
         self.frozen_lab = None
         y, x = img.shape
         self.home_ax_limits = [[(-0.5, x-0.5), (y-0.5, -0.5)] for _ in range(3)]
@@ -993,7 +1018,7 @@ class img_analysis:
         if update_plots:
             app.update_ax2_plot(self, thresh)
             lab, rp = self.segmentation(thresh)
-            app.update_LABplot(lab, rp, self)
+            app.update_ax1_plot(lab, rp, self)
 
     def remove_inner_obj(self, thresh):
         lab = label(thresh)
@@ -1186,10 +1211,7 @@ class img_analysis:
     def full_IAroutine(self, img, app, ia):
         lowT = self.lowT
         highT = self.highT
-        if self.edge_mode:
-            edge = self.edge_detector(img)
-        else:
-            edge = img.copy()
+        edge = self.edge_detector(img)
         thresh = self.thresholding(edge, lowT, highT)
         self.img = img
         self.edge = edge
@@ -1215,10 +1237,7 @@ class img_analysis:
         self.rp = rp
 
     def unet_segmentation(self, img, app, ia):
-        if self.edge_mode:
-            edge = self.edge_detector(img)
-        else:
-            edge = img.copy()
+        edge = self.edge_detector(img)
         self.img = img
         self.edge = edge
         start_t = time()
@@ -1231,7 +1250,7 @@ class img_analysis:
             pred = nn.prediction(edge, is_pc=True)
         self.pred = pred
         thresh = nn.threshold(pred)
-        lab = segment(thresh, pred, min_distance=5).astype(int)
+        lab = segment.segment(thresh, pred, min_distance=5).astype(int)
         lab = remove_small_objects(lab, min_size=20, connectivity=2)
         stop_t = time()
         print('Neural network execution time: {0:.3f}'.format(stop_t-start_t))
@@ -1291,7 +1310,7 @@ if app.is_pc:
     import neural_network as nn
     from segment import segment
 
-"""Initialize plots"""
+"""Customize toolbar behaviour and initialize plots"""
 home = NavigationToolbar2.home
 def new_home(self, *args, **kwargs):
     try:
@@ -1311,8 +1330,15 @@ def my_release_zoom(self, event):
     # Disconnect zoom to rect after having used it once
     self.zoom()
     self.push_current()
+    app.zoom_on = False
     # self.release(event)
 NavigationToolbar2.release_zoom = my_release_zoom
+
+zoom = NavigationToolbar2.zoom
+def my_zoom(self, *args):
+    app.zoom_on = True
+    zoom(self, *args)
+NavigationToolbar2.zoom = my_zoom
 
 app.init_plots()
 sharp_img = app.preprocess_img_data(phc[app.p, app.s])
@@ -1335,14 +1361,14 @@ ax_enlarge_cells = plt.axes([0.9, 0.2, 0.05, 0.03])
 ax_reduce_cells = plt.axes([0.6, 0.8, 0.05, 0.05])
 ax_use_unet = plt.axes([0.4, 0.8, 0.05, 0.05])
 ax_man_clos = plt.axes([0.7, 0.8, 0.05, 0.05])
-ax_switch_to_edge = plt.axes([0.03, 0.8, 0.05, 0.05])
+ax_brush_mode_b = plt.axes([0.03, 0.8, 0.05, 0.05])
 ax_keep_current_lab = plt.axes([0.012, 0.8, 0.05, 0.05])
 ax_ccstage_radio = plt.axes([0.015, 0.8, 0.05, 0.05])
 ax_save = plt.axes([0.001, 0.8, 0.05, 0.05])
 ax_view_slices = plt.axes([0.001, 0.080, 0.05, 0.05])
 ax_repeat_segm = plt.axes([0.007, 0.080, 0.05, 0.05])
 ax_morph_IDs = plt.axes([0.125, 0.36, 0.007, 0.9])
-ax_manual_draw = plt.axes([0.125, 0.98756, 0.007, 0.9])
+ax_draw_bg_mask_on = plt.axes([0.125, 0.98756, 0.007, 0.9])
 ax_reload_segm = plt.axes([0.007, 0.080, 0.008945, 0.05])
 ax_reset_ccstage_df = plt.axes([0.007, 0.09512, 0.4581, 0.05])
 ax_segment_z = plt.axes([0.007, 0.09512, 0.158744, 0.05])
@@ -1393,7 +1419,7 @@ use_unet = Button(ax_use_unet, 'Neural network ACTIVE',
 man_clos = Button(ax_man_clos, 'Switch to manual closing',
                      color=axcolor, hovercolor=hover_color,
                      presscolor=presscolor)
-switch_segm_mode = Button(ax_switch_to_edge, 'Switch to edge mode',
+brush_mode_b = Button(ax_brush_mode_b, 'Brush mode OFF',
                      color=axcolor, hovercolor=hover_color,
                      presscolor=presscolor)
 keep_current_lab_b = Button(ax_keep_current_lab, 'Freeze segmentation',
@@ -1429,7 +1455,7 @@ view_slices_sl = Slider(ax_view_slices, 'View slice', 0, phc.shape[1],
                     valfmt='%1.0f')
 morhp_ids_tb = TextBox(ax_morph_IDs, 'Enlarge\Reduce only cells IDs:',
                       initial='All',color=axcolor, hovercolor=hover_color)
-manual_draw_b = Button(ax_manual_draw,
+draw_bg_mask_on_b = Button(ax_draw_bg_mask_on,
                      'Press \'d\' to activate objects\'s removal mode',
                      color=axcolor, hovercolor=axcolor,
                      presscolor=presscolor)
@@ -1477,10 +1503,7 @@ def load_param_from_folder(app):
         ia.manual_mask = app.masks[app.p]
     else:
         ia.manual_mask = np.zeros(ia.img.shape, bool)
-    if ia.edge_mode:
-        ia.edge = ia.edge_detector(ia.img)
-    else:
-        ia.edge = ia.img.copy()
+    ia.edge = ia.edge_detector(ia.img)
     ia.contour_plot = [[], []]
     app.pos_txt._text = (f'Current position = {app.p+1}/{num_pos}   '
                          f'({app.pos_foldernames[app.p]})')
@@ -1504,6 +1527,8 @@ def store_app_param(ia):
 def next_f(event):
     global param, ia, param
     app.reset_view = True
+    app.brush_mode_on = False
+    brush_mode_button(False)
     if app.segm_npy_done[app.p] is not None:
         param = store_param(ia)
         store_app_param(ia)
@@ -1567,6 +1592,8 @@ def next_f(event):
 def prev_f(event):
     global ia, param
     app.reset_view = True
+    app.brush_mode_on = False
+    brush_mode_button(False)
     if app.segm_npy_done[app.p] is not None and ia.modified:
         param = store_param(ia)
         store_app_param(ia)
@@ -1649,7 +1676,7 @@ def update_segm(val):
     ia.repeat_manual_func(thresh)
     lab, rp = ia.segmentation(ia.thresh)
     app.update_ax2_plot(ia, ia.thresh)
-    app.update_LABplot(lab, rp, ia)
+    app.update_ax1_plot(lab, rp, ia)
 
 def morph_IDs_invalid_entry_warning():
     tk.messagebox.showwarning('Invalid entry',
@@ -1767,7 +1794,7 @@ def apply_morph_cells(event):
     ia.rp = regionprops(ia.lab)
     IDs = [obj.label for obj in ia.rp]
     ia.contours = ia.find_contours(ia.lab, IDs, group=True)
-    app.update_LABplot(ia.lab, ia.rp, ia)
+    app.update_ax1_plot(ia.lab, ia.rp, ia)
     app.store_state(ia)
 
 def morph_IDs_on_submit(text):
@@ -1791,40 +1818,36 @@ def undo_del_t_cb(event):
     update_segm(None)
 
 
-def switch_segm_mode_cb(event):
-    if ia.edge_mode:
-        switch_segm_mode.color = axcolor
-        switch_segm_mode.hovercolor = hover_color
-        switch_segm_mode.label._text = 'Switch to edge mode'
-        switch_segm_mode.ax.set_facecolor(axcolor)
+def brush_mode_cb(event):
+    if app.brush_mode_on:
+        brush_mode_b.color = axcolor
+        brush_mode_b.hovercolor = hover_color
+        brush_mode_b.label._text = 'Brush mode OFF'
+        brush_mode_b.ax.set_facecolor(axcolor)
         (app.fig.canvas).draw_idle()
-        ia.edge_mode = False
-        app.use_unet = True
-        switch_use_unet_button(app.use_unet)
-        repeat_segmentation_cb(None)
+        app.brush_mode_on = False
+        app.update_ax1_plot(ia.lab, ia.rp, ia)
     else:
-        switch_segm_mode.color = button_true_color
-        switch_segm_mode.hovercolor = button_true_color
-        switch_segm_mode.label._text = 'Use edge mode'
-        switch_segm_mode.ax.set_facecolor(button_true_color)
-        (app.fig.canvas).draw_idle()
-        ia.edge_mode = True
-        app.use_unet = False
-        switch_use_unet_button(app.use_unet)
-        repeat_segmentation_cb(None)
+        brush_mode_b.color = button_true_color
+        brush_mode_b.hovercolor = button_true_color
+        brush_mode_b.label._text = 'Brush mode ON'
+        brush_mode_b.ax.set_facecolor(button_true_color)
+        app.brush_mode_on = True
+        app.brush_size = 1
+        app.update_ax1_plot(ia.lab, ia.rp, ia)
 
-def switch_segm_mode_button(value):
+def brush_mode_button(value):
     if value:
-        switch_segm_mode.color = button_true_color
-        switch_segm_mode.hovercolor = button_true_color
-        switch_segm_mode.label._text = 'Use edge mode'
-        switch_segm_mode.ax.set_facecolor(button_true_color)
+        brush_mode.color = button_true_color
+        brush_mode.hovercolor = button_true_color
+        brush_mode.label._text = 'Brush mode ON'
+        brush_mode.ax.set_facecolor(button_true_color)
         (app.fig.canvas).draw_idle()
     else:
-        switch_segm_mode.color = axcolor
-        switch_segm_mode.hovercolor = hover_color
-        switch_segm_mode.label._text = 'Switch to edge mode'
-        switch_segm_mode.ax.set_facecolor(axcolor)
+        brush_mode.color = axcolor
+        brush_mode.hovercolor = hover_color
+        brush_mode.label._text = 'Brush mode OFF'
+        brush_mode.ax.set_facecolor(axcolor)
         (app.fig.canvas).draw_idle()
 
 def switch_use_unet_button(value):
@@ -1936,8 +1959,8 @@ def use_unet_cb(event):
         app.use_unet = False
         analyse_img(ia.img)
     else:
-        import neural_network as nn
-        from segment import segment
+        from YeaZ.unet import neural_network as nn
+        from YeaZ.unet import segment
         use_unet.color = button_true_color
         use_unet.hovercolor = button_true_color
         use_unet.label._text = 'Neural network ACTIVE'
@@ -1946,19 +1969,19 @@ def use_unet_cb(event):
         app.use_unet = True
         analyse_img(ia.img)
 
-def manual_draw_cb(event):
-    if ia.manual_draw:
-        manual_draw_b.color = axcolor
-        manual_draw_b.label._text = 'Press \'d\' to activate objects\'s removal mode'
-        manual_draw_b.ax.set_facecolor(axcolor)
+def draw_bg_mask_on_cb(event):
+    if ia.draw_bg_mask_on:
+        draw_bg_mask_on_b.color = axcolor
+        draw_bg_mask_on_b.label._text = 'Press \'d\' to activate objects\'s removal mode'
+        draw_bg_mask_on_b.ax.set_facecolor(axcolor)
         (app.fig.canvas).draw_idle()
-        ia.manual_draw = False
+        ia.draw_bg_mask_on = False
     else:
-        manual_draw_b.color = button_true_color
-        manual_draw_b.label._text = 'Objects\'s removal mode ACTIVE'
-        manual_draw_b.ax.set_facecolor(button_true_color)
+        draw_bg_mask_on_b.color = button_true_color
+        draw_bg_mask_on_b.label._text = 'Objects\'s removal mode ACTIVE'
+        draw_bg_mask_on_b.ax.set_facecolor(button_true_color)
         (app.fig.canvas).draw_idle()
-        ia.manual_draw = True
+        ia.draw_bg_mask_on = True
 
 def reload_segmentation_cb(event):
     global param
@@ -2023,7 +2046,7 @@ def keep_release_current_lab_cb(event):
         keep_current_lab_b.ax.set_facecolor(axcolor)
         (app.fig.canvas).draw_idle()
         app.update_ax2_plot(ia)
-        app.update_LABplot(ia.lab, ia.rp, ia)
+        app.update_ax1_plot(ia.lab, ia.rp, ia)
         app.is_lab_frozen = False
     elif event.button != 1:
         keep_current_lab_b.color = axcolor
@@ -2057,7 +2080,7 @@ morhp_ids_tb.on_submit(morph_IDs_on_submit)
 use_unet.on_clicked(use_unet_cb)
 # undo_del_t.on_clicked(undo_del_t_cb)
 man_clos.on_clicked(man_clos_cb)
-switch_segm_mode.on_clicked(switch_segm_mode_cb)
+brush_mode_b.on_clicked(brush_mode_cb)
 radio_b_ccStage.on_clicked(radio_b_ccStage_cb)
 s_slice.on_changed(s_slice_cb)
 save_b.on_clicked(save_cb)
@@ -2091,10 +2114,10 @@ def resize_widgets(event):
     ax_keep_current_lab.set_position([ax1_r-bW, ax1_t+(spF/3), bW, wH])
     udtL, udtb, udtR, udtT = ax_man_clos.get_position().get_points().flatten()
     uaeW = ax2_r-udtR-(spF/11)
-    ax_switch_to_edge.set_position([ax2_r-bW, ax2_t+(spF/3), bW, wH])
+    ax_brush_mode_b.set_position([ax2_r-bW, ax2_t+(spF/3), bW, wH])
     ax_ccstage_radio.set_position([ax0_l, ax0_t+(spF/11), ax0_r-ax0_l, wH])
     ax_radio_l, _, _, ax_radio_t = ax_ccstage_radio.get_position().get_points().flatten()
-    ax_manual_draw.set_position([ax_radio_l, ax_radio_t+(spF/7), bW*2, wH])
+    ax_draw_bg_mask_on.set_position([ax_radio_l, ax_radio_t+(spF/7), bW*2, wH])
     ax_slice.set_position([ax2_l, ax2_b-(spF/11)-wH, ax2_r-ax2_l, wH])
     _, ax_next_b, _, _ = ax_next.get_position().get_points().flatten()
     ax_repeat_segm_b = ax_next_b-wH-(spF/3)
@@ -2142,7 +2165,7 @@ def key_down(event):
     elif key == 'c':
         man_clos_cb(None)
     elif key == 'd':
-        manual_draw_cb(None)
+        draw_bg_mask_on_cb(None)
     elif key == 'ctrl+z':
         app.is_undo = True
         if app.count_states-1 >= 0:
@@ -2163,6 +2186,15 @@ def key_down(event):
         app.do_cut = True
     elif key == 'a':
         app.do_approx = True
+    elif key == 'x' and app.brush_mode_on:
+        # Switch eraser mode on or off
+        app.eraser_on = not app.eraser_on
+    elif key == 'up' and app.brush_mode_on:
+        app.brush_size += 1
+    elif key == 'down' and app.brush_mode_on:
+        app.brush_size -= 1
+    elif key == 'control':
+        app.scroll_zoom = True
 
 def key_up(event):
     key = event.key
@@ -2174,6 +2206,8 @@ def key_up(event):
         app.do_cut = False
     elif key == 'a':
         app.do_approx = False
+    elif key == 'control':
+        app.scroll_zoom = False
 
 def mouse_down(event):
     right_click = event.button == 3
@@ -2220,7 +2254,7 @@ def mouse_down(event):
             ia.contours = ia.find_contours(ia.lab, IDs, group=True)
             ia.reset_auto_edge_img(ia.contours)
             app.update_ax2_plot(ia)
-            app.update_LABplot(ia.lab, ia.rp, ia)
+            app.update_ax1_plot(ia.lab, ia.rp, ia)
             ia.modified = True
             app.store_state(ia)
     # Zoom out to home view
@@ -2236,7 +2270,7 @@ def mouse_down(event):
         app.xdrc = xd
         app.ydrc = yd
     elif right_click and ax2_click and ia.clos_mode == 'Manual closing':
-        cid2_rc = app.fig.canvas.mpl_connect('motion_notify_event', mouse_drag)
+        cid2_rc = app.fig.canvas.mpl_connect('motion_notify_event', mouse_motion)
         app.cid2_rc = cid2_rc
         ia.init_manual_cont(app, xd, yd)
     # Initialize merging IDs
@@ -2268,7 +2302,7 @@ def mouse_down(event):
             IDs = [obj.label for obj in ia.rp]
             ia.contours = ia.find_contours(ia.lab, IDs, group=True)
             ia.reset_auto_edge_img(ia.contours)
-            app.update_LABplot(ia.lab, rp, ia)
+            app.update_ax1_plot(ia.lab, rp, ia)
             app.update_ax2_plot(ia)
             app.store_state(ia)
     elif wheel_click and ax0_click:
@@ -2296,14 +2330,14 @@ def mouse_down(event):
             IDs = [obj.label for obj in ia.rp]
             ia.contours = ia.find_contours(ia.lab, IDs, group=True)
             ia.reset_auto_edge_img(ia.contours)
-            app.update_LABplot(ia.lab, ia.rp, ia)
+            app.update_ax1_plot(ia.lab, ia.rp, ia)
             app.update_ax2_plot(ia)
             app.store_state(ia)
         else:
             app.draw_ROI_delete = True
             app.ROI_delete_patch = Rectangle((0, 0), 1, 1, fill=False, color='r')
             app.cid_ROI_delete = app.fig.canvas.mpl_connect('motion_notify_event',
-                                                            mouse_drag)
+                                                            mouse_motion)
             app.xdwc_ax1 = xd
             app.ydwc_ax1 = yd
     # Manual correction: delete contour pixel
@@ -2323,10 +2357,12 @@ def mouse_down(event):
         ia.auto_edge_img = binary_fill_holes(contour_img)
         lab, rp = ia.separate_overlap(label(ia.auto_edge_img))
         app.update_ax2_plot(ia)
-        app.update_LABplot(lab, rp, ia)
+        app.update_ax1_plot(lab, rp, ia)
         app.store_state(ia)
-    elif left_click and ax0_click and ia.manual_draw:
-        cid0_lc = app.fig.canvas.mpl_connect('motion_notify_event', mouse_drag)
+    # Freely draw contour on ax0 to save a mask used for downstream analysis
+    # of amounts from fluorescent signal
+    elif left_click and ax0_click and ia.draw_bg_mask_on and not app.brush_mode_on:
+        cid0_lc = app.fig.canvas.mpl_connect('motion_notify_event', mouse_motion)
         app.cid0_lc = cid0_lc
         app.xdlc_0 = xd
         app.ydlc_0 = yd
@@ -2348,25 +2384,28 @@ def mouse_down(event):
             ia.contours = ia.find_contours(ia.lab, IDs, group=True)
             ia.reset_auto_edge_img(ia.contours)
             app.update_ax2_plot(ia)
-            app.update_LABplot(ia.lab, ia.rp, ia)
+            app.update_ax1_plot(ia.lab, ia.rp, ia)
             app.store_state(ia)
 
 
-def mouse_drag(event):
-    right_click = event.button == 3
-    left_click = event.button == 1
-    wheel_click = event.button == 2
-    ax0_click = event.inaxes == app.ax[0]
-    ax1_click = event.inaxes == app.ax[1]
-    ax2_click = event.inaxes == app.ax[2]
+def mouse_motion(event):
+    right_motion = event.button == 3
+    left_motion = event.button == 1
+    wheel_motion = event.button == 2
+    ax0_motion = event.inaxes == app.ax[0]
+    ax1_motion = event.inaxes == app.ax[1]
+    ax2_motion = event.inaxes == app.ax[2]
     event_x, event_y = event.x, event.y
+    brush_circle_on = (not ia.draw_bg_mask_on and app.brush_mode_on
+                       and ax1_motion and not app.zoom_on)
     if event.xdata:
         xdr = int(round(event.xdata))
         ydr = int(round(event.ydata))
-    if right_click and ax2_click and ia.clos_mode == 'Manual closing':
+    if right_motion and ax2_motion and ia.clos_mode == 'Manual closing':
         ia.manual_contour(app, ydr, xdr)
-    # Freely draw contour
-    elif left_click and ia.manual_draw:
+    # Freely draw contour on ax0 to save a mask used for downstream analysis
+    # of amounts from fluorescent signal
+    elif left_motion and ia.draw_bg_mask_on and not app.brush_mode_on:
         x_lc, y_lc = app.ax_transData_and_coerce(app.ax[1], event_x, event_y,
                                                  ia.img.shape)
         line_ld = Line2D([app.xdlc, x_lc], [app.ydlc, y_lc], color='r')
@@ -2378,7 +2417,8 @@ def mouse_drag(event):
         if app.manual_count > 3:
             app.fig.canvas.draw_idle()
             app.manual_count = 0
-    elif wheel_click and app.draw_ROI_delete:
+    # Draw rectangular ROI to delete all objects inside the rectangle
+    elif wheel_motion and app.draw_ROI_delete:
         event_x, event_y = event.x, event.y
         ax = app.ax[1]
         ax.patches = []
@@ -2391,6 +2431,25 @@ def mouse_drag(event):
         ROI_delete_patch = Rectangle((x_start, y_start), rect_w, rect_h,
                                         fill=False, color='r')
         ax.add_patch(ROI_delete_patch)
+        app.fig.canvas.draw_idle()
+    # Overlay a circle with radius=brush_size on the mouse cursor when it is
+    # moving on top of labels image (center image)
+    elif brush_circle_on:
+        x_mot, y_mot = app.ax_transData_and_coerce(app.ax[1], event_x, event_y,
+                                                   ia.img.shape,
+                                                   return_int=False)
+        try:
+            app.brush_circle.set_visible(False)
+            app.brush_circle.remove()
+            app.ax[1].patches = []
+        except:
+            pass
+        c = 'r' if app.eraser_on else 'w'
+        app.brush_circle = matplotlib.patches.Circle((xdr, ydr),
+                                radius=app.brush_size,
+                                fill=False,
+                                color=c, alpha=0.7)
+        app.ax[1].add_patch(app.brush_circle)
         app.fig.canvas.draw_idle()
 
 
@@ -2415,7 +2474,7 @@ def mouse_up(event):
         lab[lab>0] += ia.lab.max() + 1
         lab_mask = ia.lab>0
         lab[lab_mask] = ia.lab[lab_mask]
-        app.update_LABplot(ia.lab, ia.rp, ia)
+        app.update_ax1_plot(ia.lab, ia.rp, ia)
         app.store_state(ia)
     # Manual correction: add manually drawn contour
     if right_click and ax2_click and ia.clos_mode == 'Manual closing':
@@ -2428,11 +2487,11 @@ def mouse_up(event):
         ia.rp = regionprops(ia.lab)
         IDs = [obj.label for obj in ia.rp]
         ia.contours = ia.find_contours(ia.lab, IDs, group=True)
-        app.update_LABplot(ia.lab, ia.rp, ia)
+        app.update_ax1_plot(ia.lab, ia.rp, ia)
         # ia.auto_edge_img = np.zeros_like(ia.auto_edge_img)
         app.store_state(ia)
     # Close freely drawn contour and add to mask points inside contour
-    elif left_click and ia.manual_draw:
+    elif left_click and ia.draw_bg_mask_on and not app.brush_mode_on:
         if app.is_undo or app.is_redo:
             app.store_state(ia)
         app.fig.canvas.mpl_disconnect(app.cid0_lc)
@@ -2492,7 +2551,7 @@ def mouse_up(event):
             app.ax[0].scatter(xc, yc, s=72, c='r', marker='x')
         app.manual_verts = []
         app.fig.canvas.draw_idle()
-        manual_draw_cb(event)
+        draw_bg_mask_on_cb(event)
         app.store_state(ia)
     # Manual correction: merge IDs
     elif right_click and ax1_click and not ia.sep_bud:
@@ -2511,7 +2570,7 @@ def mouse_up(event):
         ia.rp = regionprops(ia.lab)
         IDs = [obj.label for obj in ia.rp]
         ia.contours = ia.find_contours(ia.lab, IDs, group=True)
-        app.update_LABplot(ia.lab, ia.rp, ia)
+        app.update_ax1_plot(ia.lab, ia.rp, ia)
         app.update_ax2_plot(ia)
         app.store_state(ia)
     # Manual correction: delete all IDs inside rectangular ROI
@@ -2534,7 +2593,7 @@ def mouse_up(event):
         ia.rp = regionprops(ia.lab)
         IDs = [obj.label for obj in ia.rp]
         ia.contours = ia.find_contours(ia.lab, IDs, group=True)
-        app.update_LABplot(ia.lab, ia.rp, ia)
+        app.update_ax1_plot(ia.lab, ia.rp, ia)
         app.update_ax2_plot(ia)
         app.store_state(ia)
     # Manually assign bud to mother
@@ -2606,14 +2665,11 @@ def mouse_up(event):
                               'on a bud (i.e. a cell in S-0)')
 
 
-
 def axes_enter(event):
     if event.inaxes == ax_slice:
         app.key_mode = 'Z-slice'
     elif event.inaxes == ax_view_slices or event.inaxes == app.ax[0]:
         app.key_mode = 'view_slice'
-    # elif event.inaxes == app.ax[2] and ia.clos_mode == 'Manual closing':
-    #     app.mng.window.configure(cursor='circle')
 
 def axes_leave(event):
     app.key_mode = ''
@@ -2637,6 +2693,50 @@ def handle_close(event):
     if save:
         save_cb(None)
 
+t0 = 0
+sensitivity = 6
+def scroll_cb(event):
+    global t0, t1
+    # Scroll zoom (activated with 'control')
+    if event.inaxes and app.scroll_zoom:
+        t1 = time()
+        rate = 1/(t1-t0)
+        step = event.step*sensitivity
+        step_rate = abs(step*rate)
+        # Adjust zoom factor by scrolling rate
+        if step_rate > sensitivity:
+            if step_rate > 50:
+                step = 50*event.step
+            else:
+                step = step_rate*event.step
+        Y, X = ia.img.shape
+        xc = event.xdata
+        yc = event.ydata
+        xl, xr = event.inaxes.get_xlim()
+        yb, yt = event.inaxes.get_ylim()
+        # Center zoom at mouse cursor position (xc, yc)
+        step_left = (xc-xl)/(X/2)*step
+        step_right = (xr-xc)/(X/2)*step
+        step_bottom = (yb-yc)/(Y/2)*step
+        step_top = (yc-yt)/(Y/2)*step
+        new_xl = xl+step_left
+        new_xr = xr-step_right
+        new_yb = yb-step_bottom
+        new_yt = yt+step_top
+        # Avoid zoomming out more than the image shape
+        new_xl = new_xl if new_xl > -0.5 else -0.5
+        new_xr = new_xr if new_xr < X-0.5 else X-0.5
+        new_yb = new_yb if new_yb < Y-0.5 else Y-0.5
+        new_yt = new_yt if new_yt > -0.5 else -0.5
+        # Apply zoom
+        event.inaxes.set_xlim((new_xl, new_xr))
+        event.inaxes.set_ylim((new_yb, new_yt))
+        app.fig.canvas.draw_idle()
+        t0 = t1
+
+
+
+
 # Canvas events
 (app.fig.canvas).mpl_connect('button_press_event', mouse_down)
 (app.fig.canvas).mpl_connect('button_release_event', mouse_up)
@@ -2646,6 +2746,8 @@ def handle_close(event):
 (app.fig.canvas).mpl_connect('axes_enter_event', axes_enter)
 (app.fig.canvas).mpl_connect('axes_leave_event', axes_leave)
 cid_close = (app.fig.canvas).mpl_connect('close_event', handle_close)
+(app.fig.canvas).mpl_connect('motion_notify_event', mouse_motion)
+(app.fig.canvas).mpl_connect('scroll_event', scroll_cb)
 # NOTE: axes limit changed event is connected first time in resize_widgets
 
 app.pos_txt = app.fig.text(0.5, 0.9,
@@ -2653,19 +2755,13 @@ app.pos_txt = app.fig.text(0.5, 0.9,
         color='w', ha='center', fontsize=14)
 
 if app.segm_npy_done[app.p] is not None:
-    ia.edge_mode = not app.is_pc
     app.use_unet = app.is_pc
     param = load_param_from_folder(app)
-    if not app.is_pc:
-        switch_segm_mode_button(True)
     if not app.use_unet:
         switch_use_unet_button(False)
     app.update_ALLplots(ia)
 else:
-    ia.edge_mode = not app.is_pc
     app.use_unet = app.is_pc
-    if not app.is_pc:
-        switch_segm_mode_button(True)
     if not app.use_unet:
         switch_use_unet_button(False)
     analyse_img(img)
