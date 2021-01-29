@@ -18,14 +18,13 @@ from skimage.measure import label, regionprops
 from skimage.draw import circle, line
 import scipy.ndimage as nd
 from tkinter import filedialog as fd
-from tkinter.filedialog import folder_dialog, file_dialog
 from tkinter import Tk, messagebox, simpledialog
 from Yeast_ACDC_MyWidgets import Slider, Button, RadioButtons, MyRadioButtons
-from Yeast_ACDC import (separate_overlapping, text_label_centroid,
+from Yeast_ACDC_FUNCTIONS import (separate_overlapping, text_label_centroid,
         apply_hyst_local_threshold, align_frames, del_min_area_obj,
         load_shifts, cells_tracking, fig_text, sep_overlap_manual_seeds,
         merge_objs, delete_objs, select_slice_toAlign, z_proj_max,
-        twobuttonsmessagebox, select_exp_folder)
+        twobuttonsmessagebox, select_exp_folder, folder_dialog, file_dialog)
 
 def line_mother_bud(cca_df, frame_i, rp, ax):
     IDs = [obj.label for obj in rp]
@@ -217,6 +216,7 @@ else:
 #Initial variables
 frame_text = None
 num_frames = len(segm_npy)-1
+ol_img = None
 
 #Determine initial values for z-proj sliders
 if V3D:
@@ -437,7 +437,7 @@ def overlay_cb(event):
                     align_ol = False
                 else:
                     align_ol = True
-            elif ext == '.tif':
+            elif ext == '.tif' or ext == '.tif':
                 align_ol = True
                 ol_frames = io.imread(ol_path)
             else:
@@ -494,7 +494,14 @@ def update_overlay_cb(event):
                               ol_alpha=alpha_slider.val)
         ax[0].imshow(overlay)
         ax[0].axis('off')
-    fig.canvas.draw_idle()
+        fig.canvas.draw_idle()
+    else:
+        messagebox.showwarning('Overlay not active', 'Brightness slider, '
+            'alpha slider and the vertical color picker all control the '
+            'overlay appearance.\n To use them you first need to press on the'
+            '"Overlay" button and choose an image to overlay '
+            '(typically a fluorescent signal)')
+
 
 def rgb_cmap_cb(event):
     global ol_RGB_val

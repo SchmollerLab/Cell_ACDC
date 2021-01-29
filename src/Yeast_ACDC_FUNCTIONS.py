@@ -2507,15 +2507,12 @@ class cc_stage_df_frame0:
         check_buds_S = [ccs=='S' and rel_ship=='bud' and not numc==0
                         for ccs, rel_ship, numc
                         in zip(cc_stage, relationship, num_cycles)]
-        check_mother_S = [ccs=='S' and rel_ship=='mother' and not numc>=1
-                         for ccs, rel_ship, numc
-                         in zip(cc_stage, relationship, num_cycles)]
-        check_buds_G1 = [ccs=='G1' and rel_ship=='bud' and not numc==1
-                         for ccs, rel_ship, numc
-                         in zip(cc_stage, relationship, num_cycles)]
-        check_mother_G1 = [ccs=='G1' and rel_ship=='mother' and not numc>=2
-                         for ccs, rel_ship, numc
-                         in zip(cc_stage, relationship, num_cycles)]
+        check_mothers = [rel_ship=='mother' and not numc>=1
+                         for rel_ship, numc
+                         in zip(relationship, num_cycles)]
+        check_buds_G1 = [ccs=='G1' and rel_ship=='bud'
+                         for ccs, rel_ship
+                         in zip(cc_stage, relationship)]
         if any(check_rel):
             messagebox.showerror('Cell ID == Relative\'s ID', 'Some cells are '
                     'mother or bud of itself. Make sure that the Relative\'s ID'
@@ -2524,18 +2521,14 @@ class cc_stage_df_frame0:
             messagebox.showerror('Bud in S not in 0 num. cycles', 'Some buds '
                 'in S phase do not have 0 as num. cycles!\n'
                 'Buds in S phase must have 0 as "# of cycles"')
-        elif any(check_mother_S):
-            messagebox.showerror('Mother in S not in >=1 num. cycles',
-                'Some mother cells in S phase do not have >=1 as "# of cycles"!\n'
-                'Mothers in S phase must have >1 as "# of cycles"')
+        elif any(check_mothers):
+            messagebox.showerror('Mother not in >=1 num. cycles',
+                'Some mother cells do not have >=1 as "# of cycles"!\n'
+                'Mothers MUST have >1 as "# of cycles"')
         elif any(check_buds_G1):
-            messagebox.showerror('Bud in G1 not in 1 num. cycles',
-                'Some buds in G1 phase do not 1 as "# of cycles"!\n'
-                'Buds in G1 phase must have 1 as "# of cycles"')
-        elif any(check_mother_G1):
-            messagebox.showerror('Mother in G1 not in >=2 num. cycles',
-                'Some mother cells in G1 phase do not have >=2 as "# of cycles"!\n'
-                'Mothers in G1 phase must have >=2 as "# of cycles"')
+            messagebox.showerror('Buds in G1!',
+                'Some buds are in G1 phase!\n'
+                'Buds MUST be in S phase')
         else:
             df = pd.DataFrame({
                                 'Cell cycle stage': cc_stage,

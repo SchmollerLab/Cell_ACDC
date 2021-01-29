@@ -9,7 +9,6 @@ import cv2
 import matplotlib
 import matplotlib.pyplot as plt
 from copy import deepcopy
-
 from matplotlib.patches import Rectangle
 from matplotlib.backend_bases import NavigationToolbar2
 from pyglet.canvas import Display
@@ -66,7 +65,7 @@ def update_plots(ax, rp, img, segm_npy_frame, cca_df, vmin, vmax, frame_i, fig,
     text_label_centroid(rp, ax[1], 12,
                         'semibold', 'center', 'center', cca_df,
                         apply=True, display_ccStage='IDs',
-                        color='r')
+                        color='k')
     ax[1].imshow(segm_npy_frame, vmin=vmin, vmax=vmax)
     ax[1].axis('off')
     line_mother_bud(cca_df, frame_i, rp, ax[1])
@@ -174,6 +173,7 @@ def manual_division(ID_press, cca_df, prev_cca_df, frame_i, verbose=False):
         cca_df.at[ID_press, 'Relationship'] = 'mother'
         cca_df.at[ID_press, 'Cell cycle stage'] = 'G1'
         cca_df.at[rel_ID_press, 'Cell cycle stage'] = 'G1'
+        cca_df.at[rel_ID_press, 'Relationship'] = 'mother'
         cca_df.at[ID_press, '# of cycles'] = prev_num_cycle_ID+1
         cca_df.at[rel_ID_press, '# of cycles'] = prev_num_cycle_rel_ID+1
         cca_df.at[ID_press, 'Division_frame_i'] = frame_i
@@ -287,6 +287,10 @@ for i, filename in enumerate(listdir_parent):
         cca_found = True
         cca_path = f'{parent_path}/{filename}'
         cca_df_csv = pd.read_csv(cca_path, index_col=['frame_i', 'Cell_ID'])
+        buds_in_G1 = cca_df_csv[(cca_df_csv['Cell cycle stage']=='G1') &
+                                (cca_df_csv['Relationship']=='bud')]
+        if not buds_in_G1.empty:
+            cca_df_csv.loc[buds_in_G1.index, 'Relationship'] = 'mother'
         grouped = cca_df_csv.groupby('frame_i')
         cca_df_li = [df.loc[frame_i] for frame_i, df in grouped]
         last_analyzed_frame_i = len(cca_df_li)-1
@@ -540,19 +544,17 @@ def next_frame(event):
             new_cca_df = new_cca_df.filter(items=current_IDs, axis=0)
             # Check if we are viewing a previously analysed frame or a new frame
             # and if we modified a previously analysed frame
-            print(viewing_prev, modified_prev, frame_i)
             if not viewing_prev:
                 # we are on a frame that was never analysed
                 cca_df = new_cca_df
-            elif modified_prev:
-                print(modified_IDs)
-                # we modified a previously analysed frame
-                # reinsert what was manually modified
-                new_idx = ~new_cca_df.index.isin(modified_IDs)
-                prev_idx = ~cca_df.index.isin(modified_IDs)
-                new_cca_df.loc[new_idx] = cca_df.loc[prev_idx]
-                cca_df = new_cca_df
-                modified_prev = False
+            # elif modified_prev:
+            #     # we modified a previously analysed frame
+            #     # reinsert what was manually modified
+            #     new_idx = ~new_cca_df.index.isin(modified_IDs)
+            #     prev_idx = ~cca_df.index.isin(modified_IDs)
+            #     new_cca_df.loc[new_idx] = cca_df.loc[prev_idx]
+            #     cca_df = new_cca_df
+            #     modified_prev = False
             else:
                 # we are on a frame that was already analysed and
                 # we didn't modify it
@@ -697,13 +699,13 @@ def overlay_cb(event):
                     align_ol = False
                 else:
                     align_ol = True
-            elif ext == '.tif':
+            elif ext == '.tif' or ext == '.tiff':
                 align_ol = True
                 ol_frames = io.imread(ol_path)
             else:
                 messagebox.showerror('File Format not supported!',
                     f'File format {ext} is not supported!\n'
-                    'Choose either .tif or .npy files.')
+                    'Choose either .tif/.tiff or .npy files.')
             if align_ol:
                 loaded_shifts, shifts_found = load_shifts(images_path)
                 if shifts_found:
@@ -757,7 +759,13 @@ def update_overlay_cb(event):
         ax[0].imshow(overlay)
         ax[0].axis('off')
         set_lims(ax, ax_limits)
-    fig.canvas.draw_idle()
+        fig.canvas.draw_idle()
+    else:
+        messagebox.showwarning('Overlay not active', 'Brightness slider, '
+            'alpha slider and the vertical color picker all control the '
+            'overlay appearance.\n To use them you first need to press on the'
+            '"Overlay" button and choose an image to overlay '
+            '(typically a fluorescent signal)')
 
 def rgb_cmap_cb(event):
     global ol_RGB_val
@@ -884,40 +892,89 @@ def mouse_up(event):
         xu = int(event.xdata)
         bud_ID = segm_npy_frame[yd,xd]
         moth_ID = segm_npy_frame[yu,xu]
-        prev_df = cca_df_li[frame_i-1]
-        prev_mothID = cca_df.at[bud_ID, 'Relative\'s ID']
-        modified_IDs.extend([bud_ID, moth_ID])
-        if prev_mothID != -1:
-            cca_df.loc[prev_mothID] = prev_df.loc[prev_mothID]
-        else:
-            cca_df.at[moth_ID, '# of cycles'] = 1
-        cca_df.at[bud_ID, 'Relative\'s ID'] = moth_ID
-        cca_df.at[moth_ID, 'Relative\'s ID'] = bud_ID
-        cca_df.at[moth_ID, 'Cell cycle stage'] = 'S'
-        cca_df.at[moth_ID, 'Relationship'] = 'mother'
-        emerg_frame_i = cca_df.at[bud_ID, 'Emerg_frame_i']
-        if emerg_frame_i != frame_i:
-            i = frame_i
-            while emerg_frame_i != i:
-                i -=1
-                df = cca_df_li[i]
-                emerg_frame_i = df.at[bud_ID, 'Emerg_frame_i']
-                prev_df = cca_df_li[i-1]
-                df.loc[prev_mothID] = prev_df.loc[prev_mothID]
-                df.at[bud_ID, 'Relative\'s ID'] = moth_ID
-                df.at[moth_ID, 'Relative\'s ID'] = bud_ID
-                df.at[moth_ID, 'Cell cycle stage'] = 'S'
-                df.at[moth_ID, 'Relationship'] = 'mother'
-                cca_df_li[i] = df.copy()
-        frame_text = update_plots(ax, rp_cells_labels_separate, img,
-                                  segm_npy_frame, cca_df, vmin, vmax, frame_i,
-                                  fig, frame_text, frameTXT_y, num_frames,
-                                  ax_limits, cells_slideshow, ol_img=ol_img,
-                                  do_overlay=do_overlay,
-                                  ol_RGB_val=ol_RGB_val,
-                                  ol_brightness=brightness_slider.val,
-                                  ol_alpha=alpha_slider.val)
-        cca_df_li[frame_i] = cca_df.copy()
+        if bud_ID == 0 or moth_ID == 0:
+            action = 'Clicked' if bud_ID==0 else 'Released'
+            messagebox.showerror(f'{action} on the background!',
+                f'You {action} on the background!')
+        bud_relationship = cca_df.at[bud_ID, 'Relationship']
+        moth_relationship = cca_df.at[moth_ID, 'Relationship']
+        moth_ccs = cca_df.at[moth_ID, 'Cell cycle stage']
+        valid_selection = True
+        if bud_relationship != 'bud':
+            messagebox.showerror('Not a bud!', 'You clicked on a cell '
+                'that is not a bud!\n To correct bud assignment you have to '
+                'click on the bud and release on the correct mother!\n'
+                'If the operation was successful the orange/red line should '
+                'move and connect the bud the newly assigned mother.')
+            valid_selection = False
+        if moth_relationship != 'mother':
+            messagebox.showerror('Not a mother!', 'You released on a cell '
+                'that is not a mother!\n To correct bud assignment you have to '
+                'click on the bud and release on a mother cell!\n'
+                'If the operation was successful the orange/red line should '
+                'move and connect the bud the newly assigned mother.')
+            valid_selection = False
+        if moth_ccs != 'G1':
+            messagebox.showwarning('Mother not in G1!', 'You released '
+                'on a cell that is not in G1!\n The bud can only be assigned '
+                'to a cell in G1.\n\n If you still believe that '
+                f'cell ID {moth_ID} is the correct mother remember to also '
+                'assign its current bud to the right mother.\n'
+                'You will have to do the operation three times.')
+        if valid_selection:
+            emerg_frame_i = cca_df.at[bud_ID, 'Emerg_frame_i']
+            df_before_emerg = cca_df_li[emerg_frame_i-1]
+            wrong_mothID = cca_df.at[bud_ID, 'Relative\'s ID']
+            modified_IDs.extend([bud_ID, moth_ID])
+            if wrong_mothID != -1:
+                cca_df.loc[wrong_mothID] = df_before_emerg.loc[wrong_mothID]
+            else:
+                cca_df.at[moth_ID, '# of cycles'] = 1
+            cca_df.at[bud_ID, 'Relative\'s ID'] = moth_ID
+            cca_df.at[moth_ID, 'Relative\'s ID'] = bud_ID
+            cca_df.at[moth_ID, 'Cell cycle stage'] = 'S'
+            cca_df.at[moth_ID, 'Relationship'] = 'mother'
+            # Correct all previous frames where the bud was assigned to
+            # the wrong mother
+            if emerg_frame_i != frame_i:
+                i = frame_i
+                while emerg_frame_i != i:
+                    i -=1
+                    df = cca_df_li[i]
+                    df.loc[wrong_mothID] = df_before_emerg.loc[wrong_mothID]
+                    df.at[bud_ID, 'Relative\'s ID'] = moth_ID
+                    df.at[moth_ID, 'Relative\'s ID'] = bud_ID
+                    df.at[moth_ID, 'Cell cycle stage'] = 'S'
+                    df.at[moth_ID, 'Relationship'] = 'mother'
+                    cca_df_li[i] = df.copy()
+            # Correct all future frames cell cycle analysis table if present
+            i = frame_i+1
+            if i < num_frames:
+                relationship_i = cca_df_li[i].at[bud_ID, 'Relationship']
+                print(relationship_i)
+                while relationship_i == 'bud':
+                    if i >= num_frames:
+                        break
+                    elif cca_df_li[i] is not None:
+                        cca_df_li[i].loc[wrong_mothID] = df_before_emerg.loc[
+                                                                   wrong_mothID]
+                        cca_df_li[i].at[bud_ID, 'Relative\'s ID'] = moth_ID
+                        cca_df_li[i].at[moth_ID, 'Relative\'s ID'] = bud_ID
+                        cca_df_li[i].at[moth_ID, 'Cell cycle stage'] = 'S'
+                        cca_df_li[i].at[moth_ID, 'Relationship'] = 'mother'
+                        i += 1
+                        relationship_i = cca_df_li[i].at[bud_ID, 'Relationship']
+                    else:
+                        break
+            frame_text = update_plots(ax, rp_cells_labels_separate, img,
+                                      segm_npy_frame, cca_df, vmin, vmax, frame_i,
+                                      fig, frame_text, frameTXT_y, num_frames,
+                                      ax_limits, cells_slideshow, ol_img=ol_img,
+                                      do_overlay=do_overlay,
+                                      ol_RGB_val=ol_RGB_val,
+                                      ol_brightness=brightness_slider.val,
+                                      ol_alpha=alpha_slider.val)
+            cca_df_li[frame_i] = cca_df.copy()
 
 def key_up(event):
     global assign_bud

@@ -88,7 +88,7 @@ class load_data:
         self.path = path
         self.parent_path = os.path.dirname(path)
         self.filename, self.ext = os.path.splitext(os.path.basename(path))
-        if self.ext == '.tif':
+        if self.ext == '.tif' or self.ext == '.tiff':
             tif_path, phc_tif_found = self.substring_path(path,
                                                          'phase_contr.tif',
                                                           self.parent_path)
@@ -157,7 +157,9 @@ class load_data:
         for filename in os.listdir(parent_path):
             if substring == "phase_contr.tif":
                 is_match = (filename.find(substring) != -1 or
-                            filename.find("phase_contrast.tif") != -1)
+                            filename.find("phase_contrast.tif") != -1 or
+                            filename.find("phase_contrast.tiff") != -1or
+                            filename.find("phase_contr.tiff") != -1)
             else:
                 is_match = filename.find(substring) != -1
             if is_match:
@@ -1973,7 +1975,7 @@ def overlay_cb(event):
                     align_ol = False
                 else:
                     align_ol = True
-            elif ext == '.tif':
+            elif ext == '.tif' or ext == '.tiff':
                 align_ol = True
                 app.ol_frames = io.imread(ol_path)
             else:
@@ -2012,8 +2014,15 @@ def update_overlay_cb(event):
         fig, ax = app.fig, app.ax
         app.update_IMGplot(ia, ia.img, app.ax[0])
         app.set_lims()
-    fig.canvas.draw_idle()
-    app.connect_axes_cb()
+        fig.canvas.draw_idle()
+        app.connect_axes_cb()
+    else:
+        tk.messagebox.showwarning('Overlay not active', 'Brightness slider, '
+            'alpha slider and the vertical color picker all control the '
+            'overlay appearance.\n To use them you first need to press on the'
+            '"Overlay" button and choose an image to overlay '
+            '(typically a fluorescent signal)')
+
 
 def rgb_cmap_cb(event):
     global ol_RGB_val
