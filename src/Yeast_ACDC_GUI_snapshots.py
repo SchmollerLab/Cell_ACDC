@@ -37,7 +37,7 @@ from Yeast_ACDC_FUNCTIONS import (auto_select_slice, separate_overlapping,
                        CellInt_slideshow, twobuttonsmessagebox,
                        single_entry_messagebox, beyond_listdir_pos,
                        select_exp_folder, expand_labels, tk_breakpoint,
-                       folder_dialog, dark_mode, win_size)
+                       folder_dialog, dark_mode, win_size, imshow_tk)
 
 script_dirname = os.path.dirname(os.path.realpath(__file__))
 unet_path = f'{script_dirname}/YeaZ-unet/unet/'
@@ -112,6 +112,13 @@ GUI Mouse Events: - Apply lower local threshold with RIGHT-click drawing on
                     on "Release frozen segment"
                   - Delete all IDs inside a freely drawn rectangle: draw a
                     rectangle with the WHEEL-click on the segmented image
+                  - Zoom-in: *ctrl + scroll* - the amount of zoom is
+                    proportional to the speed of scrolling. You can adjust
+                    the sensitivity by changing the "sensitivity" variable.
+                    By default it is set to 6.
+                  - Select label: *alt + left-click* on a label to select it.
+                    Selection is needed to apply brush mode only to that label.
+                    If the cell is properly selected....
 """
 
 class load_data:
@@ -350,8 +357,6 @@ class app_GUI:
         self.saved_cc_stages = [None]*len(directories)
         self.slices_used = [None]*len(directories)
         self.saved_slices_used = [None]*len(directories)
-        self.brush_mode_on = False
-        self.eraser_on = False
         self.is_pc = twobuttonsmessagebox('Img mode', 'Select imaging mode',
                                          'Phase contrast', 'Bright-field'
                                          ).button_left
@@ -458,6 +463,11 @@ class app_GUI:
         self.do_approx = False
         self.zoom_on = False
         self.scroll_zoom = False
+        self.select_label_on = False
+        self.brush_mode_on = False
+        self.eraser_on = False
+        self.selected_label = None
+        self.set_labRGB_colors()
         print('Total number of Positions = {}'.format(len(self.phc)))
         self.bp = tk_breakpoint()
         self.init_attr()
@@ -565,14 +575,15 @@ class app_GUI:
         overlay = (np.clip(overlay, 0, 1)*255).astype(np.uint8)
         return overlay
 
-    def update_IMGplot(self, ia, img, ax_img):
-        ax_img.imshow(img)
+    def update_ax0_plot(self, ia, img, ax0, draw=True):
+        ax0.clear()
+        ax0.imshow(img)
         for cont in ia.contours:
             x = cont[:,1]
             y = cont[:,0]
             x = np.append(x, x[0])
             y = np.append(y, y[0])
-            ax_img.plot(x, y, c='r')
+            ax0.plot(x, y, c='r')
         if ia.manual_mask is not None:
             mask_lab = label(ia.manual_mask)
             mask_rp = regionprops(mask_lab)
@@ -583,50 +594,32 @@ class app_GUI:
                 y = cont[:,0]
                 x = np.append(x, x[0])
                 y = np.append(y, y[0])
-                ax_img.plot(x, y, c='r')
+                ax0.plot(x, y, c='r')
                 yc, xc = obj.centroid
-                ax_img.scatter(xc, yc, s=72, c='r', marker='x')
+                ax0.scatter(xc, yc, s=72, c='r', marker='x')
         try:
-            text_label_centroid(ia.rp, ax_img, 12, 'semibold', 'center', 'center',
+            text_label_centroid(ia.rp, ax0, 12, 'semibold', 'center', 'center',
                                 cc_stage_frame=ia.cc_stage_df,
                                 display_ccStage=self.display_ccStage, color='r',
                                 clear=True)
         except:
             traceback.print_exc()
-        ax_img.axis('off')
+        ax0.axis('off')
+        if draw:
+            self.fig.canvas.draw_idle()
 
     def update_ALLplots(self, ia):
         fig, ax = self.fig, self.ax
         img = ia.img
         edge = ia.edge
         lab = ia.lab
-        for a in ax:
-            a.clear()
-        self.update_IMGplot(ia, img, ax[0])
-        if self.brush_mode_on:
-            ax1_img = self.get_labels_overlay(lab, ia.img, bg_label=0)
-        else:
-            ax1_img = lab
-        ax[1].imshow(ax1_img)
-        text_label_centroid(ia.rp, ax[1], 12, 'semibold', 'center', 'center')
-        self.set_lims()
-        ax[2].imshow(edge)
-        for cont in ia.contours:
-            x = cont[:,1]
-            y = cont[:,0]
-            x = np.append(x, x[0])
-            y = np.append(y, y[0])
-            ax[2].plot(x, y, c='silver', alpha=0.5)
-        xx, yy = ia.contour_plot
-        ax[2].scatter(xx, yy, s=1.5, c='r')
-        # print('Drawing contour time = {0:6f}'.format(time()-t0))
-        for a in ax:
-            a.axis('off')
+        rp = ia.rp
+        self.update_ax0_plot(ia, img, ax[0])
+        self.update_ax1_plot(lab, rp, ia, draw=False)
+        self.update_ax2_plot(ia, draw=False)
         fig.canvas.draw_idle()
 
-    def update_ax2_plot(self, ia, thresh=None):
-        if thresh is not None:
-            ia.thresh = thresh
+    def update_ax2_plot(self, ia, draw=True):
         ax = self.ax
         ax[2].clear()
         ax[2].imshow(ia.edge)
@@ -640,7 +633,12 @@ class app_GUI:
         ax[2].scatter(xx, yy, s=1.5, c='r')
         # print('Drawing contour time = {0:6f}'.format(time()-t0))
         ax[2].axis('off')
-        self.fig.canvas.draw_idle()
+        if draw:
+            self.fig.canvas.draw_idle()
+
+    def set_labRGB_colors(self):
+        gradient = np.linspace(0, 1, 256)
+        self.labRGB_colors = [matplotlib.cm.viridis(i) for i in gradient]
 
     def get_labels_overlay(self, lab, img, bg_label=0):
         overlay = skimage.color.label2rgb(lab, image=img, bg_label=bg_label)
@@ -651,16 +649,19 @@ class app_GUI:
         ia.cc_stage_df = ia.init_cc_stage_df(rp)
         ia.cc_stage_df = ia.assign_bud(ia.cc_stage_df, rp)
         ia.lab = lab
+        labRGB = skimage.color.label2rgb(lab, colors=self.labRGB_colors,
+                                              bg_label=0, alpha=1)
+        imshow_tk(labRGB)
         if self.brush_mode_on:
+
             ax1_img = self.get_labels_overlay(lab, ia.img, bg_label=0)
         else:
             ax1_img = lab
         ax = self.ax
-        ax[0].clear()
-        self.update_IMGplot(ia, ia.img, ax[0])
         ax[1].clear()
         ax[1].imshow(ax1_img)
-        text_label_centroid(ia.rp, ax[1], 12, 'semibold', 'center', 'center')
+        text_label_centroid(ia.rp, ax[1], 12, 'semibold', 'center', 'center',
+                            selected_label=self.selected_label)
         ax[1].axis('off')
         self.set_lims()
         if draw:
@@ -1922,7 +1923,7 @@ def man_clos_cb(event):
 def view_slice(event):
     img = phc[app.p, int(view_slices_sl.val)]
     app.ax[0].clear()
-    app.update_IMGplot(ia, img, app.ax[0])
+    app.update_ax0_plot(ia, img, app.ax[0])
     app.fig.canvas.draw_idle()
 
 def repeat_segmentation_cb(event):
@@ -2195,6 +2196,8 @@ def key_down(event):
         app.brush_size -= 1
     elif key == 'control':
         app.scroll_zoom = True
+    elif key == 'alt':
+        app.select_label_on = True
 
 def key_up(event):
     key = event.key
@@ -2208,6 +2211,8 @@ def key_up(event):
         app.do_approx = False
     elif key == 'control':
         app.scroll_zoom = False
+    elif key == 'alt':
+        app.select_label_on = False
 
 def mouse_down(event):
     right_click = event.button == 3
@@ -2234,7 +2239,7 @@ def mouse_down(event):
         app.ax[2].relim()
         app.fig.canvas.draw_idle()
     # Manual correction: replace cell with hull contour
-    if left_click and ax1_click and event.dblclick:
+    if left_click and ax1_click and event.dblclick and not app.select_label_on:
         ID = ia.lab[yd, xd]
         if ID != 0:
             if app.is_undo or app.is_redo:
@@ -2257,6 +2262,13 @@ def mouse_down(event):
             app.update_ax1_plot(ia.lab, ia.rp, ia)
             ia.modified = True
             app.store_state(ia)
+    # Select label
+    if left_click and ax1_click and not event.dblclick and app.select_label_on:
+        ID = ia.lab[yd, xd]
+        app.selected_label = ID
+        text_label_centroid(ia.rp, app.ax[1], 12, 'semibold', 'center', 'center',
+                            selected_label=ID)
+        app.fig.canvas.draw_idle()
     # Zoom out to home view
     if right_click and event.dblclick and not_ax:
         for a, axes in enumerate(app.ax):

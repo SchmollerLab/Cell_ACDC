@@ -24,7 +24,7 @@ from skimage.exposure import histogram
 import matplotlib.pyplot as plt
 from Yeast_ACDC_MyWidgets import Slider, Button, RadioButtons
 from matplotlib.lines import Line2D
-from matplotlib.patches import Rectangle
+from matplotlib.patches import Rectangle, Circle
 from natsort import natsorted
 from ast import literal_eval
 import ctypes
@@ -196,7 +196,7 @@ class tk_breakpoint:
                                      column=0, sticky=tk.N,
                                      columnspan=2, pady=4)
 
-            tk.mainloop()
+            root.mainloop()
 
     def continue_button(self):
         self.next_i=True
@@ -401,7 +401,8 @@ def update_plots(regionprops_cells_labels_separate, cells_labels_separate,
 def text_label_centroid(regionprops_label_img, ax, size, weight,
                         ha, va, cc_stage_frame=None, display_ccStage=None,
                         color='k',clear=False, apply=True, red_buds=None,
-                        new_IDs=[], display_IDs_cont='IDs and contours'):
+                        new_IDs=[], display_IDs_cont='IDs and contours',
+                        selected_IDs=None):
     if apply:
         if clear:
             for t in ax.texts:
@@ -447,12 +448,27 @@ def text_label_centroid(regionprops_label_img, ax, size, weight,
                     elif new_IDs:
                         color = 'r' if ID in new_IDs else 'k'
                 try:
+                    if selected_IDs is not None:
+                        if ID in selected_IDs:
+                            alpha = 1
+                        else:
+                            alpha = 0.3
+                    else:
+                        alpha = 1
                     ax.text(int(x), int(y), txt, fontsize=new_size,
                             fontweight=new_weight, horizontalalignment=ha,
-                            verticalalignment=va, color=color)
+                            verticalalignment=va, color=color, alpha=alpha)
+                    # if selected_IDs is not None:
+                    #     for selected_ID in selected_IDs:
+                    #         if selected_ID == ID:
+                    #             circle_ID = Circle((int(x), int(y)), radius=15,
+                    #                                fill=False, color='r', lw=2)
+                    #             ax.add_patch(circle_ID)
+                    # else:
+                    #     ax.patches = []
                 except:
                     traceback.print_exc()
-        if display_IDs_cont is not None and display_ccStage is None:
+        elif display_IDs_cont is not None:
             for region in regionprops_label_img:
                 y, x = region.centroid
                 ID = region.label
@@ -465,9 +481,23 @@ def text_label_centroid(regionprops_label_img, ax, size, weight,
                     elif new_IDs:
                         color = 'r' if ID in new_IDs else 'k'
                     try:
+                        if selected_IDs is not None:
+                            if ID in selected_IDs:
+                                alpha = 1
+                            else:
+                                alpha = 0.3
+                        else:
+                            alpha = 1
                         ax.text(int(x), int(y), txt, fontsize=new_size,
                                 fontweight=new_weight, horizontalalignment=ha,
                                 verticalalignment=va, color=color)
+                        # if selected_IDs is not None:
+                        #     for selected_ID in selected_IDs:
+                        #         if selected_ID == ID:
+                        #             circle_ID = Circle((int(x), int(y)),
+                        #                                radius=15, fill=False,
+                        #                                color='r', lw=2)
+                        #             ax.add_patch(circle_ID)
                     except:
                         traceback.print_exc()
                 else:
@@ -2320,7 +2350,7 @@ class tk_breakpoint:
                                      column=0,
                                      columnspan=2)
 
-            tk.mainloop()
+            root.mainloop()
 
     def continue_button(self):
         self.next_i=True
@@ -2988,7 +3018,7 @@ class fix_pos_n_mismatch:
                   width=25).grid(row=4,
                                  column=2, padx=4)
         root.protocol("WM_DELETE_WINDOW", self.on_closing)
-        tk.mainloop()
+        root.mainloop()
 
     def on_closing(self):
         self.root.quit()
@@ -3044,7 +3074,7 @@ class threebuttonsmessagebox:
                                  column=0,
                                  columnspan=2)
 
-        tk.mainloop()
+        root.mainloop()
 
     def append_button(self):
         self.append=True
@@ -3086,7 +3116,7 @@ class twobuttonsmessagebox:
                                  pady=16, padx=16, sticky=tk.E)
         root.protocol("WM_DELETE_WINDOW", self.on_closing)
         root.eval('tk::PlaceWindow . center')
-        tk.mainloop()
+        root.mainloop()
 
     def on_closing(self):
         self.root.quit()
@@ -3219,8 +3249,7 @@ class select_exp_folder:
         if len(values) > 1:
             root.mainloop()
         else:
-            root.quit()
-            root.destroy()
+            self._close()
         try:
             val = pos_n_sv.get()
             idx = list(self.values).index(val)

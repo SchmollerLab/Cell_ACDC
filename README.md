@@ -15,7 +15,9 @@ here come the instructions for doing so
 - Go to next frame: *&rarr;* or click on "Next frame" button on the GUI
 - Go to previous frame: *&larr;* or click on "Prev. frame" button on the GUI
 
-- Quick zoom-in: *left-click* on the left image or right image (double click with left button on centre image has a different function (see below)). Double-click to quickly zoom-in on the clicked area.
+- Zoom-in: *ctrl + scroll* - the amount of zoom is proportional to the speed of scrolling. You can adjust the sensitivity by changing the "sensitivity" variable. By default it is set to 6.
+
+- Quick FIXED zoom-in: *left-click* on the left image or right image (double click with left button on centre image has a different function (see below)). Double-click to quickly zoom-in on the clicked area.
 
 - Quick zoom-out to original view: *right-click* double-click anywhere outside of images.
 
@@ -37,5 +39,8 @@ here come the instructions for doing so
 e.g. [(1,3), (5, 6)] label ID 1 will become 3 and label ID 5 will become 6.
 
 
-### 4) Run the script YeaSTaC_GUI_CellCycleAnalysis.py for performing cell cycle analysis
-here come the instructions for doing so
+### 4) Run the script YeaSTaC_GUI_CellCycleAnalysis.py for performing cell lineage annotation
+
+- Select labels: *left-click* on any image. Double-click on any label's ID to select it (left or right image it doesn't matter). Up to two labels can be selected. Press "escape" to deselect all labels.
+
+- Correct bud assignment: *m* key. After selecting a mother-bud pair press "m" key. If successful the line connecting mother-bud pairs should move to the newly assigned pair for all the relevant frames.
