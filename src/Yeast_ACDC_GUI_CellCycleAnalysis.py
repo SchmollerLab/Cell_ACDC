@@ -46,7 +46,7 @@ class app_MyGlobals:
         self.manually_assigned_bud_IDs = []
         self.scroll_zoom = False
 
-def set_lims(ax):
+def set_lims(ax, app):
     for a, axes in enumerate(ax):
         axes.set_xlim(*app.ax_limits[a][0])
         axes.set_ylim(*app.ax_limits[a][1])
@@ -1050,7 +1050,7 @@ def mouse_down(event):
         connect_axes_cb(ax)
     if right_click and not ax_click and event.dblclick:
         app.ax_limits = deepcopy(app.home_ax_limits)
-        set_lims(ax)
+        set_lims(ax, app)
         fig.canvas.draw_idle()
         connect_axes_cb(ax)
     # Annotate division
