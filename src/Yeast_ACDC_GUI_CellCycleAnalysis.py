@@ -95,12 +95,13 @@ def update_ax1_plot(ax1, app, cca_df, rp, lab, frame_i, draw_mb_line=True):
         line_mother_bud(cca_df, frame_i, rp, ax1)
 
 def update_ax0_plot(ax0, app, cca_df, rp, img, frame_i, do_overlay,
-                    draw_mb_line=True,):
+                    draw_mb_line=True):
     ax0.clear()
+    display_ccStage = 'Only stage' if frame_i != 0 else 'IDs'
     text_label_centroid(rp, ax0, 10,
                         'semibold', 'center', 'center', cca_df,
                         color='r', clear=True, apply=True,
-                        display_ccStage='Only stage',
+                        display_ccStage=display_ccStage,
                         selected_IDs=app.selected_IDs)
     if do_overlay:
         overlay = get_overlay(img, ol_img, ol_RGB_val=ol_RGB_val,
@@ -173,6 +174,7 @@ def auto_assign_bud(lab, new_IDs, old_IDs, cca_df, prev_cca_df, frame_i):
     # Mother and bud IDs are determined as the two objects (old and new) that
     # have the smallest euclidean distance between all pairs of new-old points
     # of the new and old objects' contours. Note that mother has to be in G1
+    force_bud_assignment = False
     new_IDs_cont = find_contours(lab, new_IDs, group=True)[0]
     # Remove cells in 'S' phase
     IDs_S = cca_df[cca_df['Cell cycle stage']=='S'].index
@@ -181,37 +183,44 @@ def auto_assign_bud(lab, new_IDs, old_IDs, cca_df, prev_cca_df, frame_i):
     lab_G1[mask_S] = 0
     IDs_G1 = cca_df[cca_df['Cell cycle stage']=='G1'].index.to_list()
     # Find contours of all cells in G1
-    old_IDs_cont = find_contours(lab_G1, IDs_G1, concatenate=True)[0]
-    IDs_old_cont = np.asarray([lab_G1[y,x] for y,x in old_IDs_cont])
+    moth_G1_cont = find_contours(lab_G1, IDs_G1, group=True)[0]
     bud_IDs_not_assigned = []
-    for n, new_ID_cont in enumerate(new_IDs_cont):
-        moth_ID = 0
+    assigned_mothers = []
+    not_assigned_mothers = IDs_G1.copy()
+    moth_ID = 0
+    iterable = enumerate(zip(new_IDs_cont, new_IDs))
+    for n, (new_ID_cont, bud_ID) in iterable:
         moth_found = False
-        bud_ID = lab[new_ID_cont[0,0], new_ID_cont[0,1]]
         cca_df.loc[bud_ID] = ['S', 0, -1, 'bud', frame_i, -1, False]
-        all_others_IDs_cont = old_IDs_cont.copy()
-        IDs_all_others = IDs_old_cont.copy()
-        all_others_IDs_cont = all_others_IDs_cont[IDs_all_others != moth_ID]
-        IDs_all_others = IDs_all_others[IDs_all_others != moth_ID]
-        new_ID_point, old_ID_point = nearest_point_2Dyx(new_ID_cont,
-                                                        all_others_IDs_cont)
-        moth_ID = lab[old_ID_point[0], old_ID_point[1]]
-        moth_cc_stage = cca_df.at[moth_ID, 'Cell cycle stage']
-        if moth_cc_stage == 'G1':
+        # Keep only not assigned mothers in computation
+        not_assigned_moth_idx = [IDs_G1.index(ID) for ID in not_assigned_mothers]
+        all_others_cont = [moth_G1_cont[i] for i in not_assigned_moth_idx]
+        if not_assigned_mothers:
+            all_others_cont = np.concatenate(all_others_cont, axis=0)
+            new_ID_point, nearest_point = nearest_point_2Dyx(new_ID_cont,
+                                                             all_others_cont)
+            moth_ID = lab[nearest_point[0], nearest_point[1]]
+            moth_cc_stage = cca_df.at[moth_ID, 'Cell cycle stage']
             moth_cc_num = prev_cca_df.at[moth_ID, '# of cycles']
             cca_df.at[bud_ID, 'Relative\'s ID'] = moth_ID
             cca_df.at[moth_ID, '# of cycles'] = moth_cc_num
             cca_df.at[moth_ID, 'Relative\'s ID'] = bud_ID
             cca_df.at[moth_ID, 'Relationship'] = 'mother'
             cca_df.at[moth_ID, 'Cell cycle stage'] = 'S'
+            assigned_mothers.append(moth_ID)
+            not_assigned_mothers.remove(moth_ID)
         else:
             bud_IDs_not_assigned.append(bud_ID)
     if bud_IDs_not_assigned:
-        warning_txt = ('Bud IDs {} were not assigned because there are no cells'
-                      ' in G1 left'.format(bud_IDs_not_assigned))
+        warning_txt = (f'Bud IDs {bud_IDs_not_assigned} were not '
+                        'assigned because there are no cells in G1 left.')
+        force_bud_assignment = messagebox.askyesno('No cells in G1 left!',
+                            f'{warning_txt}\n'
+                            'Do you want to force the bud assignment '
+                            'to mother cells in S?')
     else:
         warning_txt = ''
-    return cca_df, warning_txt
+    return cca_df, force_bud_assignment, bud_IDs_not_assigned
 
 def auto_reassign_bud(new_IDs_to_reassign, cca_df, new_cca_df, frame_i):
     for new_ID in new_IDs_to_reassign:
@@ -723,10 +732,21 @@ def next_frame(event):
             if new_IDs and not viewing_prev:
                 # Since the current frame was never analysed and
                 # there are new IDs in current frame compute the new cca_df
-                cca_df, warn = auto_assign_bud(lab, new_IDs,
-                                                   prev_IDs, cca_df.copy(),
-                                                   cca_df_li[frame_i-1],
-                                                   frame_i)
+                (cca_df, force_bud_assignment,
+                bud_IDs_not_assigned) = auto_assign_bud(lab, new_IDs, prev_IDs,
+                                            cca_df.copy(), cca_df_li[frame_i-1],
+                                            frame_i)
+                if force_bud_assignment:
+                    # 1. Determine which mothers in S phase are the closest mothers
+                    # 2. Annotate division for these mothers one frame
+                    #    before the current one in order to "free" some mother cells
+                    # 3. Assign the buds to the now free mothers
+                    messagebox.showwarning('Feature pending', 'Sorry, the '
+                        'requested feature is not implemented yet.\n'
+                        'For now we suggest you go back one frame and annotate '
+                        'division for some cells in order to have free mother '
+                        'cells in G1 that can be used as mothers for buds '
+                        f'{bud_IDs_not_assigned}')
             if viewing_prev and app.manually_assigned_mother_IDs:
                 # Check if there are new IDs that were previously assigned
                 # to a mother that was manually assigned to a different bud.
@@ -737,10 +757,22 @@ def next_frame(event):
                                         cca_df.at[new_ID, 'Relative\'s ID']
                                        not in app.manually_assigned_bud_IDs]
                 if new_IDs_to_reassign:
-                    new_cca_df, warn = auto_assign_bud(lab, new_IDs_to_reassign,
-                                                       prev_IDs, cca_df.copy(),
-                                                       cca_df_li[frame_i-1],
-                                                       frame_i)
+                    (new_cca_df, force_bud_assignment,
+                    bud_IDs_not_assigned) = auto_assign_bud( lab,
+                                             new_IDs_to_reassign, prev_IDs,
+                                             cca_df.copy(), cca_df_li[frame_i-1],
+                                             frame_i)
+                    if force_bud_assignment:
+                        # 1. Determine which mothers in S phase are the closest mothers
+                        # 2. Annotate division for these mothers one frame
+                        #    before the current one in order to "free" some mother cells
+                        # 3. Assign the buds to the now free mothers
+                        messagebox.showwarning('Feature pending', 'Sorry, the '
+                            'requested feature is not implemented yet.\n'
+                            'For now we suggest you go back one frame and annotate '
+                            'division for some cells in order to have free mother '
+                            'cells in G1 that can be used as mothers for buds '
+                            f'{bud_IDs_not_assigned}')
                     cca_df = auto_reassign_bud(new_IDs_to_reassign,
                                                cca_df.copy(), new_cca_df,
                                                frame_i)
