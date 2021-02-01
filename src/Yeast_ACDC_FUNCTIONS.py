@@ -407,6 +407,10 @@ def text_label_centroid(regionprops_label_img, ax, size, weight,
         if clear:
             for t in ax.texts:
                 t.set_visible(False)
+                try:
+                    t.remove()
+                except:
+                    pass
         new_size = size
         new_weight = weight
         if display_ccStage is not None:
@@ -3279,18 +3283,20 @@ class select_exp_folder:
         values = []
         for pos in pos_foldernames:
             last_tracked_i_found = False
-            images_path = f'{exp_path}/{pos}/Images'
-            filenames = os.listdir(images_path)
-            for filename in filenames:
-                if filename.find('_last_tracked_i.txt') != -1:
-                    last_tracked_i_found = True
-                    last_tracked_i_path = f'{images_path}/{filename}'
-                    with open(last_tracked_i_path, 'r') as txt:
-                        last_tracked_i = int(txt.read())
-            if last_tracked_i_found:
-                values.append(f'{pos} (Last tracked frame: {last_tracked_i})')
-            else:
-                values.append(pos)
+            pos_path = f'{exp_path}/{pos}'
+            if os.path.isdir(pos_path):
+                images_path = f'{exp_path}/{pos}/Images'
+                filenames = os.listdir(images_path)
+                for filename in filenames:
+                    if filename.find('_last_tracked_i.txt') != -1:
+                        last_tracked_i_found = True
+                        last_tracked_i_path = f'{images_path}/{filename}'
+                        with open(last_tracked_i_path, 'r') as txt:
+                            last_tracked_i = int(txt.read())
+                if last_tracked_i_found:
+                    values.append(f'{pos} (Last tracked frame: {last_tracked_i})')
+                else:
+                    values.append(pos)
         self.values = values
         return values
 
@@ -3300,19 +3306,23 @@ class select_exp_folder:
         values = []
         for pos in pos_foldernames:
             cc_stage_found = False
-            images_path = f'{exp_path}/{pos}/Images'
-            filenames = os.listdir(images_path)
-            for filename in filenames:
-                if filename.find('cc_stage.csv') != -1:
-                    cc_stage_found = True
-                    cc_stage_path = f'{images_path}/{filename}'
-                    cca_df = pd.read_csv(cc_stage_path,
-                                         index_col=['frame_i', 'Cell_ID'])
-                    last_analyzed_frame_i = cca_df.index.get_level_values(0).max()
-            if cc_stage_found:
-                values.append(f'{pos} (Last analyzed frame: {last_analyzed_frame_i})')
-            else:
-                values.append(pos)
+            pos_path = f'{exp_path}/{pos}'
+            if os.path.isdir(pos_path):
+                images_path = f'{exp_path}/{pos}/Images'
+                filenames = os.listdir(images_path)
+                for filename in filenames:
+                    if filename.find('cc_stage.csv') != -1:
+                        cc_stage_found = True
+                        cc_stage_path = f'{images_path}/{filename}'
+                        cca_df = pd.read_csv(cc_stage_path,
+                                             index_col=['frame_i', 'Cell_ID'])
+                        last_analyzed_frame_i = (cca_df.index.
+                                                      get_level_values(0).max())
+                if cc_stage_found:
+                    values.append(f'{pos} (Last analyzed frame: '
+                                  f'{last_analyzed_frame_i})')
+                else:
+                    values.append(pos)
         self.values = values
         return values
 
