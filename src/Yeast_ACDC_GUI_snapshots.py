@@ -86,9 +86,9 @@ GUI Mouse Events: - Apply lower local threshold with RIGHT-click drawing on
                   - Restore original view (no zoom) with right double click
                     anywhere outside axis
                   - Use hull contour with left double click on Cell ID on label
-                  - Approx hull contour with left double click on ID with hull
+                  - Approx hull contour with *a + left double click* on ID
                   - To remove objects from phase contrast image that do not
-                    have to be considered part of the background you can freely
+                    have to be considered paart of the background you can freely
                     draw around it. First, press the key 'd' to activate
                     the objects's removal mode. Then, with the LEFT button of
                     the mouse draw around any object on the LEFT image.
@@ -112,22 +112,23 @@ GUI Mouse Events: - Apply lower local threshold with RIGHT-click drawing on
                     on "Release frozen segment"
                   - Delete all IDs inside a freely drawn rectangle: draw a
                     rectangle with the WHEEL-click on the segmented image
-                  - Zoom-in: *ctrl + scroll* - the amount of zoom is
+                  - Zoom-in: *shift + scroll* - the amount of zoom is
                     proportional to the speed of scrolling. You can adjust
                     the sensitivity by changing the "sensitivity" variable.
                     By default it is set to 6.
-                  - Select labels: *alt+left-click* on any image. Click
+                  - Select labels: *ctrl+left-click* on any image. Click
                     any label's ID to select it (left or right image it doesn't
                     matter). Up to two labels can be selected.
                     Press "escape" to deselect all labels.
-                  - Activate brush-mode: *p* key or click on "Brush mode" button
+                  - Activate brush-mode: *e* key or click on "Brush mode" button
                     to toggle the brush mode on or off
                   - With brush mode ON you can toggle eraser on or off with 'x'
                     key. Change the brush size with "up/down" arrow keys.
                     To freely paint/erase use the left button on the IDs.
                     If you have selected IDs you will paint/erase only the
-                    selected IDs. If you dont's have any selected ID you will
-                    paint a new label and erase any label touched by the eraser.
+                    first ID of the selected IDs. If you don't have any
+                    selected ID you will paint a new label and erase any label
+                    touched by the eraser.
 """
 
 class load_data:
@@ -349,10 +350,6 @@ class num_pos_toSegm_tk:
 """Classes"""
 class app_GUI:
     def __init__(self, TIFFs_path):
-        Phc = []
-        pos_paths = []
-        basenames = []
-        slices = []
         directories = natsorted(os.listdir(TIFFs_path))
         self.pos_foldernames = directories
         TIFFs_parent_path = os.path.dirname(TIFFs_path)
@@ -370,64 +367,10 @@ class app_GUI:
                                          'Phase contrast', 'Bright-field'
                                          ).button_left
         print('Loading all images...')
-        for i, d in enumerate(directories):
-            pos_path = '{}/{}/Images'.format(TIFFs_path, d)
-            pos_paths.append(pos_path)
-            filenames = os.listdir(pos_path)
-            p_found = False
-            slice_found = False
-            for j, p in enumerate(filenames):
-                temp_pIDX = p.find('_phase_contr.tif')
-                if temp_pIDX != -1:
-                    p_idx = temp_pIDX
-                    k = j
-                    p_found = True
-                elif p.find('slice_segm.txt') != -1:
-                    slIDX = j
-                    slice_found = True
-                    slice_path = '{}/{}'.format(pos_path, filenames[slIDX])
-                    with open(slice_path, 'r') as slice_txt:
-                        slice = slice_txt.read()
-                        slice = int(slice)
-                    self.slices_used[i] = slice
-                    self.saved_slices_used[i] = slice
-                elif p.find('_segm.npy') != -1:
-                    segm_npy_path = '{}/{}'.format(pos_path, p)
-                    self.segm_npy_done[i] = np.load(segm_npy_path)
-                    self.orig_segm_npy[i] = self.segm_npy_done[i].copy()
-                elif p.find('_mask.npy') != -1:
-                    mask_npy_path = '{}/{}'.format(pos_path, p)
-                    self.masks[i] = np.load(mask_npy_path)
-                elif p.find('_cc_stage.csv') != -1:
-                    cc_stage_path = '{}/{}'.format(pos_path, p)
-                    cc_stage_df = pd.read_csv(cc_stage_path, index_col=['Cell_ID'])
-                    self.cc_stages[i] = cc_stage_df.copy()
-                    self.saved_cc_stages[i] = cc_stage_df.copy()
-            if p_found:
-                Phc_path = '{}/{}'.format(pos_path, filenames[k])
-                data_pos = load_data(Phc_path)
-                Phc.append(data_pos.img_data)
-                base_name = p[0:p_idx]
-                basenames.append(base_name)
-            else:
-                tk.messagebox.showerror('File not found!', 'The script could not'
-                    f' find the "..._phase_contr.tif" file in {d} folder.\n'
-                    'To fix this error you need to make sure that every Position_n'
-                    ' folder contains a file that ends in "phase_contr.tif".\n'
-                    'To do so you probably have to run the Fiji script again'
-                    ' and make sure that the "channels" variable contains the value\n'
-                    ' "phase_contr" along with the other channels.')
-                raise FileNotFoundError('phase_contr.tif file not found in '
-                                        f'{d} folder')
-                Phc.append(np.zeros((600,600), int))
-            if slice_found:
-                slice_path = '{}/{}'.format(pos_path, filenames[slIDX])
-                with open(slice_path, 'r') as slice_txt:
-                    slice = slice_txt.read()
-                    slice = int(slice)
-                slices.append(slice)
-            else:
-                slices.append(-1)
+
+        data_pos, Phc, pos_paths, basenames, slices = self.get_allPos_paths(
+                                                                    directories)
+
         phc_li = [pos.shape for pos in Phc]
         counter = Counter(phc_li)
         phc_shapes = counter.keys()
@@ -481,6 +424,74 @@ class app_GUI:
         print('Total number of Positions = {}'.format(len(self.phc)))
         self.bp = tk_breakpoint()
         self.init_attr()
+
+    def get_allPos_paths(self, directories):
+        Phc = []
+        pos_paths = []
+        basenames = []
+        slices = []
+        for i, d in enumerate(directories):
+            pos_path = '{}/{}/Images'.format(TIFFs_path, d)
+            if os.path.isdir(pos_path):
+                pos_paths.append(pos_path)
+                filenames = os.listdir(pos_path)
+                p_found = False
+                slice_found = False
+                for j, p in enumerate(filenames):
+                    temp_pIDX = p.find('_phase_contr.tif')
+                    if temp_pIDX != -1:
+                        p_idx = temp_pIDX
+                        k = j
+                        p_found = True
+                    elif p.find('slice_segm.txt') != -1:
+                        slIDX = j
+                        slice_found = True
+                        slice_path = '{}/{}'.format(pos_path, filenames[slIDX])
+                        with open(slice_path, 'r') as slice_txt:
+                            slice = slice_txt.read()
+                            slice = int(slice)
+                        self.slices_used[i] = slice
+                        self.saved_slices_used[i] = slice
+                    elif p.find('_segm.npy') != -1:
+                        segm_npy_path = '{}/{}'.format(pos_path, p)
+                        self.segm_npy_done[i] = np.load(segm_npy_path)
+                        self.orig_segm_npy[i] = self.segm_npy_done[i].copy()
+                    elif p.find('_mask.npy') != -1:
+                        mask_npy_path = '{}/{}'.format(pos_path, p)
+                        self.masks[i] = np.load(mask_npy_path)
+                    elif p.find('_cc_stage.csv') != -1:
+                        cc_stage_path = '{}/{}'.format(pos_path, p)
+                        cc_stage_df = pd.read_csv(cc_stage_path,
+                                                  index_col=['Cell_ID'])
+                        self.cc_stages[i] = cc_stage_df.copy()
+                        self.saved_cc_stages[i] = cc_stage_df.copy()
+                if p_found:
+                    Phc_path = '{}/{}'.format(pos_path, filenames[k])
+                    data_pos = load_data(Phc_path)
+                    Phc.append(data_pos.img_data)
+                    base_name = p[0:p_idx]
+                    basenames.append(base_name)
+                else:
+                    tk.messagebox.showerror('File not found!',
+                        'The script could not find the "..._phase_contr.tif" '
+                        f'file in {d} folder.\n To fix this error you need '
+                        'to make sure that every Position_n folder contains '
+                        'a file that ends in "phase_contr.tif".\n'
+                        'To do so you probably have to run the Fiji script again'
+                        ' and make sure that the "channels" variable contains '
+                        'the value "phase_contr" along with the other channels.')
+                    raise FileNotFoundError('phase_contr.tif file not found in '
+                                            f'{d} folder')
+                    Phc.append(np.zeros((600,600), int))
+                if slice_found:
+                    slice_path = '{}/{}'.format(pos_path, filenames[slIDX])
+                    with open(slice_path, 'r') as slice_txt:
+                        slice = slice_txt.read()
+                        slice = int(slice)
+                    slices.append(slice)
+                else:
+                    slices.append(-1)
+        return data_pos, Phc, pos_paths, basenames, slices
 
     def preprocess_img_data(self, img):
         # print('Preprocessing image...')
@@ -585,7 +596,8 @@ class app_GUI:
         overlay = (np.clip(overlay, 0, 1)*255).astype(np.uint8)
         return overlay
 
-    def update_ax0_plot(self, ia, img, ax0, draw=True):
+    def update_ax0_plot(self, ia, img, draw=True):
+        ax0 = self.ax[0]
         ax0.clear()
         ax0.imshow(img)
         for cont in ia.contours:
@@ -624,7 +636,7 @@ class app_GUI:
         edge = ia.edge
         lab = ia.lab
         rp = ia.rp
-        self.update_ax0_plot(ia, img, ax[0])
+        self.update_ax0_plot(ia, img)
         self.update_ax1_plot(lab, rp, ia, draw=False)
         self.update_ax2_plot(ia, draw=False)
         fig.canvas.draw_idle()
@@ -724,6 +736,7 @@ class app_GUI:
                                    shape=ia.lab.shape)
         self.brush_mask[rr, cc] = True
         erased_IDs = np.unique(ia.lab[self.brush_mask])
+        erased_IDs = [ID for ID in erased_IDs if ID!=0]
         # Check that we don't erase non selected IDs
         if self.selected_IDs is not None:
             # Check if erased_IDs contains non-selected IDs
@@ -732,6 +745,7 @@ class app_GUI:
             if non_selected_brushed_IDs:
                 for non_selected_ID in non_selected_brushed_IDs:
                     self.brush_mask[ia.lab==non_selected_ID] = False
+        # Apply either eraser or painter
         if self.eraser_on:
             ia.lab[self.brush_mask] = 0
         else:
@@ -1065,7 +1079,8 @@ class img_analysis:
         if concat:
             all_contours = np.zeros((0,2), dtype=int)
             for contour in contours:
-                contours_2D_yx = np.fliplr(np.reshape(contour, (contour.shape[0],2)))
+                contours_2D_yx = np.fliplr(np.reshape(contour,
+                                                     (contour.shape[0],2)))
                 all_contours = np.concatenate((all_contours, contours_2D_yx))
         elif group:
             # Return a list of n arrays for n objects. Each array has i rows of
@@ -1083,7 +1098,6 @@ class img_analysis:
             all_contours = [np.fliplr(np.reshape(contour,
                             (contour.shape[0],2))) for contour in contours]
         return all_contours
-
 
     def thresholding(self, edge, lowT, highT):
         self.lowT = lowT
@@ -1753,6 +1767,7 @@ def update_segm(val):
     thresh = ia.thresholding(ia.edge, s_peak_dist.val, s_exclude_bord.val)
     ia.repeat_manual_func(thresh)
     lab, rp = ia.segmentation(ia.thresh)
+    app.update_ax0_plot(ia, ia.img)
     app.update_ax2_plot(ia, ia.thresh)
     app.update_ax1_plot(lab, rp, ia)
 
@@ -1872,6 +1887,7 @@ def apply_morph_cells(event):
     ia.rp = regionprops(ia.lab)
     IDs = [obj.label for obj in ia.rp]
     ia.contours = ia.find_contours(ia.lab, IDs, group=True)
+    app.update_ax0_plot(ia, ia.img)
     app.update_ax1_plot(ia.lab, ia.rp, ia)
     app.store_state(ia)
 
@@ -1916,16 +1932,16 @@ def brush_mode_cb(event):
 
 def brush_mode_button(value):
     if value:
-        brush_mode.color = button_true_color
-        brush_mode.hovercolor = button_true_color
-        brush_mode.label._text = 'Brush mode ON'
-        brush_mode.ax.set_facecolor(button_true_color)
+        brush_mode_b.color = button_true_color
+        brush_mode_b.hovercolor = button_true_color
+        brush_mode_b.label._text = 'Brush mode ON'
+        brush_mode_b.ax.set_facecolor(button_true_color)
         (app.fig.canvas).draw_idle()
     else:
-        brush_mode.color = axcolor
-        brush_mode.hovercolor = hover_color
-        brush_mode.label._text = 'Brush mode OFF'
-        brush_mode.ax.set_facecolor(axcolor)
+        brush_mode_b.color = axcolor
+        brush_mode_b.hovercolor = hover_color
+        brush_mode_b.label._text = 'Brush mode OFF'
+        brush_mode_b.ax.set_facecolor(axcolor)
         (app.fig.canvas).draw_idle()
 
 def switch_use_unet_button(value):
@@ -2000,7 +2016,7 @@ def man_clos_cb(event):
 def view_slice(event):
     img = phc[app.p, int(view_slices_sl.val)]
     app.ax[0].clear()
-    app.update_ax0_plot(ia, img, app.ax[0])
+    app.update_ax0_plot(ia, img)
     app.fig.canvas.draw_idle()
 
 def repeat_segmentation_cb(event):
@@ -2123,6 +2139,7 @@ def keep_release_current_lab_cb(event):
         keep_current_lab_b.label._text = 'Freeze segmentation'
         keep_current_lab_b.ax.set_facecolor(axcolor)
         (app.fig.canvas).draw_idle()
+        app.update_ax0_plot(ia, ia.img)
         app.update_ax2_plot(ia)
         app.update_ax1_plot(ia.lab, ia.rp, ia)
         app.is_lab_frozen = False
@@ -2235,7 +2252,7 @@ def key_down(event):
         print(f'Current dataframe:\n {ia.cc_stage_df}')
         if param[app.p] is not None:
             print(f'Stored dataframe:\n {param[app.p].cc_stage_df}')
-        plt.imshow_tk(ia.pred)
+        print(app.ax_limits)
     elif key == 'b':
         ia.sep_bud = True
     elif key == 'm':
@@ -2274,13 +2291,16 @@ def key_down(event):
     elif key == 'down' and app.brush_mode_on:
         app.brush_size -= 1
         app.draw_brush_circle_cursor(ia, event.x, event.y)
-    elif key == 'control':
+    elif key == 'shift':
         app.scroll_zoom = True
-    elif key == 'alt':
+    elif key == 'control':
         app.select_ID_on = True
     elif event.key == 'escape':
         app.selected_IDs = None
-        UPDATE PLOT STUPID
+        app.update_ax0_plot(ia, ia.img)
+        app.update_ax1_plot(ia.lab, ia.rp, ia)
+    elif event.key == 'e':
+        brush_mode_cb(None)
 
 
 def key_up(event):
@@ -2293,9 +2313,9 @@ def key_up(event):
         app.do_cut = False
     elif key == 'a':
         app.do_approx = False
-    elif key == 'control':
+    elif key == 'shift':
         app.scroll_zoom = False
-    elif key == 'alt':
+    elif key == 'control':
         app.select_ID_on = False
 
 def mouse_down(event):
@@ -2343,6 +2363,7 @@ def mouse_down(event):
             IDs = [obj.label for obj in ia.rp]
             ia.contours = ia.find_contours(ia.lab, IDs, group=True)
             ia.reset_auto_edge_img(ia.contours)
+            app.update_ax0_plot(ia, ia.img)
             app.update_ax2_plot(ia)
             app.update_ax1_plot(ia.lab, ia.rp, ia)
             ia.modified = True
@@ -2416,6 +2437,7 @@ def mouse_down(event):
             IDs = [obj.label for obj in ia.rp]
             ia.contours = ia.find_contours(ia.lab, IDs, group=True)
             ia.reset_auto_edge_img(ia.contours)
+            app.update_ax0_plot(ia, ia.img)
             app.update_ax1_plot(ia.lab, rp, ia)
             app.update_ax2_plot(ia)
             app.store_state(ia)
@@ -2444,6 +2466,7 @@ def mouse_down(event):
             IDs = [obj.label for obj in ia.rp]
             ia.contours = ia.find_contours(ia.lab, IDs, group=True)
             ia.reset_auto_edge_img(ia.contours)
+            app.update_ax0_plot(ia, ia.img)
             app.update_ax1_plot(ia.lab, ia.rp, ia)
             app.update_ax2_plot(ia)
             app.store_state(ia)
@@ -2470,6 +2493,7 @@ def mouse_down(event):
         contour_img[yy, xx] = True
         ia.auto_edge_img = binary_fill_holes(contour_img)
         lab, rp = ia.separate_overlap(label(ia.auto_edge_img))
+        app.update_ax0_plot(ia, ia.img)
         app.update_ax2_plot(ia)
         app.update_ax1_plot(lab, rp, ia)
         app.store_state(ia)
@@ -2497,6 +2521,7 @@ def mouse_down(event):
             IDs = [obj.label for obj in ia.rp]
             ia.contours = ia.find_contours(ia.lab, IDs, group=True)
             ia.reset_auto_edge_img(ia.contours)
+            app.update_ax0_plot(ia, ia.img)
             app.update_ax2_plot(ia)
             app.update_ax1_plot(ia.lab, ia.rp, ia)
             app.store_state(ia)
@@ -2577,6 +2602,7 @@ def mouse_up(event):
         lab[lab>0] += ia.lab.max() + 1
         lab_mask = ia.lab>0
         lab[lab_mask] = ia.lab[lab_mask]
+        app.update_ax0_plot(ia, ia.img)
         app.update_ax1_plot(ia.lab, ia.rp, ia)
         app.store_state(ia)
     # Manual correction: add manually drawn contour
@@ -2590,6 +2616,7 @@ def mouse_up(event):
         ia.rp = regionprops(ia.lab)
         IDs = [obj.label for obj in ia.rp]
         ia.contours = ia.find_contours(ia.lab, IDs, group=True)
+        app.update_ax0_plot(ia, ia.img)
         app.update_ax1_plot(ia.lab, ia.rp, ia)
         # ia.auto_edge_img = np.zeros_like(ia.auto_edge_img)
         app.store_state(ia)
@@ -2602,7 +2629,7 @@ def mouse_up(event):
         ia.reset_auto_edge_img(ia.contours)
         ia.cc_stage_df = ia.init_cc_stage_df(ia.rp)
         ia.cc_stage_df = ia.assign_bud(ia.cc_stage_df, ia.rp)
-        app.update_ax0_plot(ia, ia.img, app.ax[0])
+        app.update_ax0_plot(ia, ia.img)
         app.update_ax1_plot(ia.lab, ia.rp, ia)
         app.store_state(ia)
     # Close freely drawn contour and add to mask points inside contour
@@ -2685,6 +2712,7 @@ def mouse_up(event):
         ia.rp = regionprops(ia.lab)
         IDs = [obj.label for obj in ia.rp]
         ia.contours = ia.find_contours(ia.lab, IDs, group=True)
+        app.update_ax0_plot(ia, ia.img)
         app.update_ax1_plot(ia.lab, ia.rp, ia)
         app.update_ax2_plot(ia)
         app.store_state(ia)
@@ -2708,6 +2736,7 @@ def mouse_up(event):
         ia.rp = regionprops(ia.lab)
         IDs = [obj.label for obj in ia.rp]
         ia.contours = ia.find_contours(ia.lab, IDs, group=True)
+        app.update_ax0_plot(ia, ia.img)
         app.update_ax1_plot(ia.lab, ia.rp, ia)
         app.update_ax2_plot(ia)
         app.store_state(ia)
@@ -2737,10 +2766,10 @@ def mouse_up(event):
             df.at[mothID, 'Relative\'s ID'] = budID
             df.at[mothID, 'Relationship'] = 'mother'
             df.at[budID, 'Relationship'] = 'bud'
-            text_label_centroid(ia.rp, app.ax[0], 12, 'semibold', 'center', 'center',
-                                cc_stage_frame=ia.cc_stage_df,
-                                display_ccStage=app.display_ccStage, color='r',
-                                clear=True)
+            text_label_centroid(ia.rp, app.ax[0], 12, 'semibold', 'center',
+                                'center', cc_stage_frame=ia.cc_stage_df,
+                                display_ccStage=app.display_ccStage,
+                                color='r', clear=True)
             app.fig.canvas.draw_idle()
             app.store_state(ia)
             app.key_mode = ''
@@ -2767,10 +2796,10 @@ def mouse_up(event):
                 df.at[mothID, 'Relative\'s ID'] = 0
                 df.at[mothID, 'Relationship'] = 'mother'
                 df.at[budID, 'Relationship'] = 'mother'
-                text_label_centroid(ia.rp, app.ax[0], 12, 'semibold', 'center', 'center',
-                                    cc_stage_frame=ia.cc_stage_df,
-                                    display_ccStage=app.display_ccStage, color='r',
-                                    clear=True)
+                text_label_centroid(ia.rp, app.ax[0], 12, 'semibold', 'center',
+                                    'center', cc_stage_frame=ia.cc_stage_df,
+                                    display_ccStage=app.display_ccStage,
+                                    color='r', clear=True)
                 app.fig.canvas.draw_idle()
                 app.store_state(ia)
             else:
@@ -2847,6 +2876,7 @@ def scroll_cb(event):
         event.inaxes.set_xlim((new_xl, new_xr))
         event.inaxes.set_ylim((new_yb, new_yt))
         app.fig.canvas.draw_idle()
+        app.connect_axes_cb()
         t0 = t1
 
 

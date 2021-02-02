@@ -95,7 +95,8 @@ def update_ax1_plot(ax1, app, cca_df, rp, lab, frame_i, draw_mb_line=True):
         line_mother_bud(cca_df, frame_i, rp, ax1)
 
 def update_ax0_plot(ax0, app, cca_df, rp, img, frame_i, do_overlay,
-                    draw_mb_line=True):
+                    draw_mb_line=True, ol_brightness=4, ol_alpha=0.5,
+                    ol_RGB_val=[0,1,1]):
     ax0.clear()
     display_ccStage = 'Only stage' if frame_i != 0 else 'IDs'
     text_label_centroid(rp, ax0, 10,
@@ -117,7 +118,9 @@ def update_plots(ax, rp, img, lab, cca_df, vmin, vmax, frame_i, fig,
                  frame_text, frameTXT_y, num_frames, app,
                  cells_slideshow, do_overlay=False, ol_img=None,
                  ol_RGB_val=[1,1,0], ol_brightness=4, ol_alpha=0.5):
-    update_ax0_plot(ax[0], app, cca_df, rp, img, frame_i, do_overlay)
+    update_ax0_plot(ax[0], app, cca_df, rp, img, frame_i, do_overlay,
+                    ol_brightness=ol_brightness,
+                    ol_RGB_val=ol_RGB_val, ol_alpha=ol_alpha)
     update_ax1_plot(ax[1], app, cca_df, rp, lab, frame_i)
     fig_text(fig, '', y=0.92, size=16, color='r')
     frame_text = fig_text(fig, 'Current frame = {}/{}'.format(frame_i,num_frames),
@@ -754,8 +757,7 @@ def next_frame(event):
                 new_IDs_to_reassign = [new_ID for new_ID in new_IDs
                                      if cca_df.at[new_ID, 'Relative\'s ID']
                                        in app.manually_assigned_mother_IDs and
-                                        cca_df.at[new_ID, 'Relative\'s ID']
-                                       not in app.manually_assigned_bud_IDs]
+                                    new_ID not in app.manually_assigned_bud_IDs]
                 if new_IDs_to_reassign:
                     (new_cca_df, force_bud_assignment,
                     bud_IDs_not_assigned) = auto_assign_bud( lab,
@@ -1045,7 +1047,9 @@ def key_down(event):
                                           ol_alpha=alpha_slider.val)
     elif event.key == 'escape':
         app.selected_IDs = None
-        update_ax0_plot(ax[0], app, cca_df, rp, img, frame_i, do_overlay)
+        update_ax0_plot(ax[0], app, cca_df, rp, img, frame_i, do_overlay,
+                        ol_brightness=brightness_slider.val,
+                        ol_RGB_val=ol_RGB_val, ol_alpha=alpha_slider.val)
         update_ax1_plot(ax[1], app, cca_df, rp, lab, frame_i)
         set_lims(ax, app)
         fig.canvas.draw_idle()
@@ -1112,7 +1116,9 @@ def mouse_down(event):
                 app.selected_IDs.append(clicked_ID)
             else:
                 app.selected_IDs = [clicked_ID]
-            update_ax0_plot(ax[0], app, cca_df, rp, img, frame_i, do_overlay)
+            update_ax0_plot(ax[0], app, cca_df, rp, img, frame_i, do_overlay,
+                            ol_brightness=brightness_slider.val,
+                            ol_RGB_val=ol_RGB_val, ol_alpha=alpha_slider.val)
             update_ax1_plot(ax[1], app, cca_df, rp, lab, frame_i)
             set_lims(ax, app)
             fig.canvas.draw_idle()
