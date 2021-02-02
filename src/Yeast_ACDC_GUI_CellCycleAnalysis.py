@@ -42,8 +42,6 @@ class app_MyGlobals:
         self.selected_IDs = None
         self.labelRGB_colors = None
         self.select_IDs_on = False
-        self.manually_assigned_mother_IDs = []
-        self.manually_assigned_bud_IDs = []
         self.scroll_zoom = False
 
 def set_lims(ax, app):
@@ -227,12 +225,12 @@ def auto_assign_bud(lab, new_IDs, old_IDs, cca_df, prev_cca_df, frame_i):
 
 def auto_reassign_bud(new_IDs_to_reassign, cca_df, new_cca_df, frame_i):
     for new_ID in new_IDs_to_reassign:
+        # Correct cca_df for the flagged bud
         cca_df.loc[new_ID] = new_cca_df.loc[new_ID]
+        # Assign the best estimated mother to the flagged bud
         new_moth_ID = new_cca_df.at[new_ID, 'Relative\'s ID']
         cca_df.loc[new_moth_ID] = new_cca_df.loc[new_moth_ID]
-        # Correct all future frames where the buds to reassign
-        # are assigned to a mother that was manually assigned
-        # to a different bud.
+        # Correct all future frames of the flagged bud
         i = frame_i+1
         if cca_df_li[i] is not None and i < num_frames:
             relationship_i = cca_df_li[i].at[new_ID, 'Relationship']
@@ -254,6 +252,7 @@ def manual_division(ID_press, cca_df, prev_cca_df, frame_i,
     rel_ID_press = cca_df.at[ID_press, 'Relative\'s ID']
     cc_stage_ID = cca_df.at[ID_press, 'Cell cycle stage']
     num_cycle_ID = cca_df.at[ID_press, '# of cycles']
+    cancel_annotation = False
     if cc_stage_ID == 'S' and num_cycle_ID == 0:
         prev_num_cycle_ID = prev_cca_df.at[ID_press, '# of cycles']
         prev_num_cycle_rel_ID = prev_cca_df.at[rel_ID_press, '# of cycles']
@@ -270,7 +269,7 @@ def manual_division(ID_press, cca_df, prev_cca_df, frame_i,
             cca_df.at[ID_press, 'Division_frame_i'] = division_frame_i
             cca_df.at[rel_ID_press, 'Division_frame_i'] = division_frame_i
     # undo manual division
-    elif cc_stage_ID == 'G1' and num_cycle_ID == 1:
+    elif cc_stage_ID == 'G1':
         prev_num_cycle_ID = cca_df.at[ID_press, '# of cycles']
         prev_num_cycle_rel_ID = cca_df.at[rel_ID_press, '# of cycles']
         cca_df.at[ID_press, 'Relationship'] = 'bud'
@@ -281,21 +280,27 @@ def manual_division(ID_press, cca_df, prev_cca_df, frame_i,
         cca_df.at[ID_press, 'Division_frame_i'] = -1
         cca_df.at[rel_ID_press, 'Division_frame_i'] = -1
     else:
-        messagebox.showwarning('Not a bud!',
-        f'You clicked on cell ID {ID_press} which is not a bud.\n'
-        'Make sure to click on a cell that has either \'S-0\' (to assign division) '
-        'or \'G1-1\' (to undo division) writing on it.')
+        cancel_annotation = True
     if verbose:
         print(cca_df)
-    return cca_df, rel_ID_press
+        if cancel_annotation:
+            messagebox.showwarning('Not a bud or a cell in G1!',
+                f'You clicked on cell ID {ID_press} which is not a bud or '
+                'a cell in G1.\n You can annotate divsion only by clicking '
+                'on the bud that divided, and you can undo the annotation only '
+                'by clicking on a cell in G1.')
+    return cca_df, rel_ID_press, cancel_annotation
 
 def annotate_division(y, x, cca_df, cca_df_li, lab, frame_i, num_frames):
     cell_ID = lab[y,x]
     prev_cca_df = cca_df_li[frame_i-1]
-    cca_df, rel_ID = manual_division(cell_ID, cca_df, prev_cca_df, frame_i,
-                                     verbose=True)
+    cca_df, rel_ID, cancel_annotation = manual_division(cell_ID, cca_df,
+                                                        prev_cca_df, frame_i,
+                                                        verbose=True)
     cca_df_li[frame_i] = cca_df.copy()
     cc_stage = cca_df.at[cell_ID, 'Cell cycle stage']
+    if cancel_annotation:
+        return cca_df
     # Correct all future frames cell cycle analysis table if present
     i = frame_i+1
     if i < num_frames and cca_df_li[i] is not None:
@@ -356,19 +361,44 @@ def correct_bud_assignment(bud_ID, moth_ID, cca_df, cca_df_li, frame_i):
     cca_df.at[moth_ID, 'Cell cycle stage'] = 'S'
     cca_df.at[moth_ID, 'Relationship'] = 'mother'
     # Correct all previous frames where the bud was assigned to
-    # the wrong mother
+    # the wrong mother and flag eventual buds that this mother might have had
+    # Flagged buds will be then reassigned to another mother
+    flagged_frames_i = []
     if emerg_frame_i != frame_i:
         i = frame_i
         while emerg_frame_i != i:
             i -=1
             df = cca_df_li[i]
+            # Restore the status of the wrongly assigned mother to the status
+            # it had before the corrected bud emerged
             df.loc[wrong_mothID] = df_before_emerg.loc[wrong_mothID]
+            # Check if the new mother had any bud assigned to it between now
+            # and when the corrected bud emerged
+            if df.at[moth_ID, 'Cell cycle stage'] == 'S':
+                flag_bud_ID = df.at[moth_ID, 'Relative\'s ID']
+                df.at[flag_bud_ID, 'Relative\'s ID'] = -2
+                flagged_frames_i.append(i)
             df.at[bud_ID, 'Relative\'s ID'] = moth_ID
             df.at[moth_ID, 'Relative\'s ID'] = bud_ID
             df.at[moth_ID, 'Cell cycle stage'] = 'S'
             df.at[moth_ID, 'Relationship'] = 'mother'
             cca_df_li[i] = df.copy()
-    # Correct all future frames cell cycle analysis table if present
+    if flagged_frames_i:
+        messagebox.showwarning('Flagged buds!', 'You manually assigned '
+            f'bud ID {bud_ID} to mother ID {moth_ID} and that is fine.\n'
+            f'All the past frames in which bud ID {bud_ID} was wrongly '
+            f'assigned to cell ID {wrong_mothID} have been corrected.\n'
+            f'However in frames {flagged_frames_i} the mother ID {moth_ID} '
+            f'already had buds assigned to it. Since a mother cell cannot have '
+            'more than one bud assigned to it per cell cycle, these buds '
+            'have been flagged.\n Flagged buds will be reassigned to another '
+            'mother ONLY if you visit those frames again. '
+            'Therefore REMEMBER (I would do it NOW) to go back to '
+            f'at least frame {flagged_frames_i[-1]-1} and check that '
+            'flagged buds get reassigned to another mother.')
+    # Correct all future frames cell cycle analysis table if present and flag
+    # eventual buds that this mother had assigned in the future frames.
+    # Flagged buds will be then reassigned to another mother
     i = frame_i+1
     if i < num_frames and cca_df_li[i] is not None:
         relationship_i = cca_df_li[i].at[bud_ID, 'Relationship']
@@ -376,12 +406,16 @@ def correct_bud_assignment(bud_ID, moth_ID, cca_df, cca_df_li, frame_i):
             if i >= num_frames:
                 break
             else:
-                cca_df_li[i].loc[wrong_mothID] = df_before_emerg.loc[
-                                                           wrong_mothID]
-                cca_df_li[i].at[bud_ID, 'Relative\'s ID'] = moth_ID
-                cca_df_li[i].at[moth_ID, 'Relative\'s ID'] = bud_ID
-                cca_df_li[i].at[moth_ID, 'Cell cycle stage'] = 'S'
-                cca_df_li[i].at[moth_ID, 'Relationship'] = 'mother'
+                df = cca_df_li[i]
+                df.loc[wrong_mothID] = df_before_emerg.loc[wrong_mothID]
+                if df.at[moth_ID, 'Cell cycle stage'] == 'S':
+                    flag_bud_ID = df.at[moth_ID, 'Relative\'s ID']
+                    df.at[flag_bud_ID, 'Relative\'s ID'] = -2
+                df.at[bud_ID, 'Relative\'s ID'] = moth_ID
+                df.at[moth_ID, 'Relative\'s ID'] = bud_ID
+                df.at[moth_ID, 'Cell cycle stage'] = 'S'
+                df.at[moth_ID, 'Relationship'] = 'mother'
+                df = df.copy()
                 i += 1
                 if cca_df_li[i] is not None:
                     relationship_i = cca_df_li[i].at[bud_ID, 'Relationship']
@@ -512,7 +546,7 @@ if not cca_found:
 else:
     cca_df_not_analyzed_li = [None]*(num_frames-last_analyzed_frame_i)
     cca_df_li.extend(cca_df_not_analyzed_li)
-viewing_prev = False
+already_analysed = False
 frame_i = 0
 if last_analyzed_frame_i is not None:
     frame_i = int(single_entry_messagebox(
@@ -520,7 +554,7 @@ if last_analyzed_frame_i is not None:
                             'Start analysing from:',
                input_txt=f'{last_analyzed_frame_i}',
                toplevel=False).entry_txt)
-    viewing_prev = frame_i <= last_analyzed_frame_i
+    already_analysed = cca_df_li[frame_i] is not None
 
 #Convert to grayscale if needed and initialize variables
 if len(phc_aligned_npy.shape) == expected_shape:
@@ -680,7 +714,7 @@ ax_rgb.axis('off')
 #Create event for next and previous frame
 def next_frame(event):
     global frame_i, frame_text, rp,\
-           lab, cca_df, cca_df_li, viewing_prev,\
+           lab, cca_df, cca_df_li, already_analysed,\
            img, ol_img
     if frame_i < num_frames:
         cancel = False
@@ -709,13 +743,13 @@ def next_frame(event):
             # Go to next frame
             frame_i += 1
             # Check if next frame was already analysed
-            if not isinstance(cca_df_li[frame_i], pd.DataFrame):
+            if cca_df_li[frame_i] is None:
                 # Current frame was not analysed
-                viewing_prev = False
+                already_analysed = False
             else:
                 # Current frame was already analysed before. Load the table
                 cca_df = cca_df_li[frame_i].copy()
-                viewing_prev = True
+                already_analysed = True
             if V3D:
                 img = phc_aligned_npy[frame_i, slices[frame_i]]
                 if do_overlay:
@@ -732,7 +766,7 @@ def next_frame(event):
             current_IDs = [obj.label for obj in rp]
             new_IDs = [ID for ID in current_IDs if ID not in prev_IDs]
             warn = ''
-            if new_IDs and not viewing_prev:
+            if new_IDs and not already_analysed:
                 # Since the current frame was never analysed and
                 # there are new IDs in current frame compute the new cca_df
                 (cca_df, force_bud_assignment,
@@ -750,14 +784,11 @@ def next_frame(event):
                         'division for some cells in order to have free mother '
                         'cells in G1 that can be used as mothers for buds '
                         f'{bud_IDs_not_assigned}')
-            if viewing_prev and app.manually_assigned_mother_IDs:
-                # Check if there are new IDs that were previously assigned
-                # to a mother that was manually assigned to a different bud.
-                # Bud assignment for these buds has to be repeated
-                new_IDs_to_reassign = [new_ID for new_ID in new_IDs
-                                     if cca_df.at[new_ID, 'Relative\'s ID']
-                                       in app.manually_assigned_mother_IDs and
-                                    new_ID not in app.manually_assigned_bud_IDs]
+            elif already_analysed:
+                # Check if there are flagged buds. See "correct_bud_assignment"
+                # for more detail
+                new_IDs_to_reassign = [ID for ID in cca_df.index
+                                       if cca_df.at[ID, 'Relative\'s ID'] == -2]
                 if new_IDs_to_reassign:
                     (new_cca_df, force_bud_assignment,
                     bud_IDs_not_assigned) = auto_assign_bud( lab,
@@ -796,11 +827,10 @@ def next_frame(event):
 
 def prev_frame(event):
     global frame_i, frame_text, rp,\
-           lab, cca_df, viewing_prev, img, cca_df_li, ol_img
+           lab, cca_df, img, cca_df_li, ol_img
     if frame_i == num_frames:
         cca_df_li[frame_i] = cca_df.copy()
     if frame_i-1 >= 0:
-        viewing_prev = True
         frame_i -= 1
         cca_df = cca_df_li[frame_i].copy()
         if V3D:
@@ -866,17 +896,21 @@ def help_cb(event):
 def slideshow_cb(event):
     global cells_slideshow
     rps = [regionprops(lab) for lab in segm_npy]
-    if not ShowWindow_from_title('Cell intensity image slideshow').window_found:
-        if V3D:
-            cells_slideshow = CellInt_slideshow(phc_aligned_npy,
-                                                init_slice, num_frames+1,
-                                                frame_i, cca_df_li, rps, False)
-            cells_slideshow.run()
-        else:
-            cells_slideshow = CellInt_slideshow_2D(phc_aligned_npy,
-                                                   num_frames+1, frame_i,
-                                                   cca_df_li, rps, False)
-            cells_slideshow.run()
+    try:
+        if not ShowWindow_from_title('Cell intensity image slideshow').window_found:
+            if V3D:
+                cells_slideshow = CellInt_slideshow(phc_aligned_npy,
+                                                    init_slice, num_frames+1,
+                                                    frame_i, cca_df_li, rps, False)
+                cells_slideshow.run()
+            else:
+                cells_slideshow = CellInt_slideshow_2D(phc_aligned_npy,
+                                                       num_frames+1, frame_i,
+                                                       cca_df_li, rps, False,
+                                                       app.ax_limits)
+                cells_slideshow.run()
+    except:
+        traceback.print_exc()
 
 
 def save_cb(event):
@@ -1010,8 +1044,8 @@ def key_down(event):
         prev_frame(None)
     elif event.key == 'ctrl+p':
         print(cca_df)
-        print(app.ax_limits)
-        print(app.home_ax_limits)
+        # print(app.ax_limits)
+        # print(app.home_ax_limits)
     elif event.key == 'm':
         if len(app.selected_IDs) == 2:
             ID1, ID2 = app.selected_IDs
@@ -1033,8 +1067,6 @@ def key_down(event):
             if valid_selection:
                 cca_df = correct_bud_assignment(bud_ID, moth_ID, cca_df,
                                                 cca_df_li, frame_i)
-                app.manually_assigned_mother_IDs.append(moth_ID)
-                app.manually_assigned_bud_IDs.append(bud_ID)
                 cca_df_li[frame_i] = cca_df.copy()
                 frame_text = update_plots(ax, rp, img,
                                           lab, cca_df, vmin, vmax, frame_i,

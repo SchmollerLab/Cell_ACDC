@@ -2770,9 +2770,10 @@ class CellInt_slideshow:
 
 class CellInt_slideshow_2D:
     def __init__(self, frames, num_frames, frame_i, CCAdfs, rps,
-                 cell_cycle_analysis):
+                 cell_cycle_analysis, ax_limits=None):
         self.frames = frames
         self.frame_i = frame_i
+        self.ax_limits = ax_limits[0]
         fig = plt.Figure()
         ax = fig.add_subplot()
         fig.subplots_adjust(bottom=0.2)
@@ -2816,6 +2817,23 @@ class CellInt_slideshow_2D:
     def resize(self, event):
         pass
 
+    def set_lims(self):
+        if self.ax_limits is not None:
+            self.ax.set_xlim(*self.ax_limits[0])
+            self.ax.set_ylim(*self.ax_limits[1])
+
+    def on_xlim_changed(self, axes):
+        xlim = self.ax.get_xlim()
+        self.ax_limits[0] = xlim
+
+    def on_ylim_changed(self, axes):
+        ylim = self.ax.get_ylim()
+        self.ax_limits[1] = ylim
+
+    def connect_axes_cb(self):
+        self.cidx = self.ax.callbacks.connect('xlim_changed', self.on_xlim_changed)
+        self.cidy = self.ax.callbacks.connect('ylim_changed', self.on_ylim_changed)
+
     def update_img(self, val):
         num_frames = self.num_frames
         frame_i = int(val)
@@ -2827,6 +2845,8 @@ class CellInt_slideshow_2D:
         self.ax.axis('off')
         self.ax.set_title('Current frame: {}/{}'.format(frame_i, num_frames))
         self.update_txt(rp, CCAdf)
+        self.set_lims()
+        self.connect_axes_cb()
         self.inlay.canvas.draw_idle()
 
     def update_txt(self, rp, CCAdf):
