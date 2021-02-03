@@ -1,6 +1,6 @@
 numpy==1.19.5
 pandas==1.2.1
-opencv==4.5.1.48
+opencv-python==4.5.1.48
 scikit-image==0.17.2
 tensorflow==2.4.1
 natsort==7.1.1

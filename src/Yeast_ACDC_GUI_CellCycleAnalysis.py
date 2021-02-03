@@ -26,7 +26,7 @@ from skimage.draw import circle, line
 import scipy.ndimage as nd
 from tkinter import Tk, messagebox, simpledialog, Toplevel
 from Yeast_ACDC_MyWidgets import Slider, Button, RadioButtons, TextBox
-from Yeast_ACDC_FUNCTIONS import (separate_overlapping, text_label_centroid,
+from Yeast_ACDC_FUNCTIONS import (separate_overlapping,
         apply_hyst_local_threshold, align_frames_3D, del_min_area_obj,
         load_shifts, cells_tracking, fig_text, sep_overlap_manual_seeds,
         merge_objs, delete_objs, select_slice_toAlign, cc_stage_df_frame0,
@@ -38,11 +38,118 @@ from Yeast_ACDC_FUNCTIONS import (separate_overlapping, text_label_centroid,
 class app_MyGlobals:
     # In future enhancement instead of declaring globals inside each event
     # function we should use attributes of this class
-    def __init__(self):
+    def __init__(self, fig):
         self.selected_IDs = None
         self.labelRGB_colors = None
         self.select_IDs_on = False
         self.scroll_zoom = False
+        self.fig_message_txt = fig.text(0.5, 0.94, '', color='0.9',
+                                        ha='center', fontsize=16,
+                                        fontweight='semibold')
+
+    def text_label_centroid(self, rp, cca_df, frame_i, ax0=None, ax1=None):
+        if ax0 is not None:
+            # Remove any pre-existing text
+            for t in ax0.texts:
+                t.set_visible(False)
+                try:
+                    t.remove()
+                except:
+                    pass
+        if ax1 is not None:
+            # Remove any pre-existing text
+            for t in ax1.texts:
+                t.set_visible(False)
+                try:
+                    t.remove()
+                except:
+                    pass
+        # Get cells in G1, mothers in S, buds in S and new buds
+        G1_IDs = cca_df[cca_df['Cell cycle stage'] == 'G1'].index.to_list()
+        S_moth_IDs = cca_df[(cca_df['Cell cycle stage'] == 'S') &
+                            (cca_df['Relationship'] == 'mother') &
+                            (cca_df['Emerg_frame_i'] != frame_i)
+                                                          ].index.to_list()
+        S_buds_IDs = cca_df[(cca_df['Cell cycle stage'] == 'S') &
+                            (cca_df['Relationship'] == 'bud') &
+                            (cca_df['Emerg_frame_i'] != frame_i)
+                                                          ].index.to_list()
+        new_IDs = cca_df[cca_df['Emerg_frame_i'] == frame_i].index.to_list()
+        for obj in rp:
+            ID = obj.label
+            y, x = obj.centroid
+            cca_ID = cca_df.loc[ID]
+            ccs = cca_ID['Cell cycle stage']
+            numc = cca_ID['# of cycles']
+            numc = 'ND' if numc==-1 else numc
+            ax0_txt = f'{ccs}-{numc}'
+            ax1_txt = f'{ID}'
+            if ID in G1_IDs:
+                c_ax0 = '0.6'
+                c_ax1 = '0.1'
+                alpha = 0.7
+                w = 'normal'
+            elif ID in S_moth_IDs:
+                c_ax0 = '0.8'
+                c_ax1 = 'k'
+                alpha = 1
+                w = 'normal'
+            elif ID in S_buds_IDs:
+                c_ax0 = 'r'
+                c_ax1 = 'r'
+                alpha = 1
+                w = 'normal'
+            elif ID in new_IDs:
+                c_ax0 = 'r'
+                c_ax1 = 'r'
+                alpha = 1
+                w = 'semibold'
+            if ax0 is not None:
+                ax0.text(int(x), int(y), ax0_txt, fontsize=10,
+                        fontweight=w, horizontalalignment='center',
+                        verticalalignment='center', color=c_ax0, alpha=alpha)
+            if ax1 is not None:
+                ax1.text(int(x), int(y), ax1_txt, fontsize=10,
+                        fontweight=w, horizontalalignment='center',
+                        verticalalignment='center', color=c_ax1, alpha=alpha)
+
+    def plot_line_mother_bud(self, cca_df, frame_i, rp, ax):
+        rel_IDs_not_existing = [[], []]
+        for obj in rp:
+            ID = obj.label
+            cca_df_ID = cca_df.loc[ID]
+            ccs = cca_df_ID['Cell cycle stage']
+            rel_ID_not_existing = False
+            if ccs == 'S':
+                relationship = cca_df_ID['Relationship']
+                rel_ID = cca_df_ID['Relative\'s ID']
+                # Check that the relative's ID of the relative of current ID
+                # is the same (mother and bud are respectively assigned to
+                # same bud and mother).
+                if rel_ID in cca_df.index:
+                    rel_rel_ID = cca_df.at[rel_ID, 'Relative\'s ID']
+                    if rel_rel_ID == ID:
+                        if relationship == 'bud':
+                            bud_y, bud_x = obj.centroid
+                            moth_y, moth_x = rp[IDs.index(rel_ID)].centroid
+                            if cca_df_ID['Emerg_frame_i'] == frame_i:
+                                c = 'r'
+                                lw = 3
+                            else:
+                                c = 'orange'
+                                lw = 0.7
+                            ax.plot([bud_x, moth_x], [bud_y, moth_y],
+                                    color=c, ls='--', lw=lw,
+                                    dash_capstyle='round')
+                elif relationship == 'mother':
+                    rel_IDs_not_existing[0].append(ID)
+                    rel_IDs_not_existing[1].append(rel_ID)
+        if any(rel_IDs_not_existing):
+            messagebox.showerror('Mothers assigned to non-existing IDs!',
+                f'These mother cells {rel_IDs_not_existing[0]} have these '
+                f'buds assigned {rel_IDs_not_existing[1]} which do not '
+                'exist!')
+
 
 def set_lims(ax, app):
     for a, axes in enumerate(ax):
@@ -69,10 +176,7 @@ def get_labelRGB_colors(max_ID):
 
 def update_ax1_plot(ax1, app, cca_df, rp, lab, frame_i, draw_mb_line=True):
     ax1.clear()
-    text_label_centroid(rp, ax1, 12,
-                        'semibold', 'center', 'center', cca_df,
-                        apply=True, display_ccStage='IDs',
-                        color='k')
+    app.text_label_centroid(rp, cca_df, frame_i, ax1=ax1)
     if app.selected_IDs is not None:
         labelRGB = skimage.color.label2rgb(lab, colors=app.labelRGB_colors,
                                                 bg_label=-1)
@@ -90,18 +194,14 @@ def update_ax1_plot(ax1, app, cca_df, rp, lab, frame_i, draw_mb_line=True):
     ax1.imshow(labelRGB)
     ax1.axis('off')
     if draw_mb_line:
-        line_mother_bud(cca_df, frame_i, rp, ax1)
+        app.plot_line_mother_bud(cca_df, frame_i, rp, ax1)
 
 def update_ax0_plot(ax0, app, cca_df, rp, img, frame_i, do_overlay,
                     draw_mb_line=True, ol_brightness=4, ol_alpha=0.5,
                     ol_RGB_val=[0,1,1]):
     ax0.clear()
     display_ccStage = 'Only stage' if frame_i != 0 else 'IDs'
-    text_label_centroid(rp, ax0, 10,
-                        'semibold', 'center', 'center', cca_df,
-                        color='r', clear=True, apply=True,
-                        display_ccStage=display_ccStage,
-                        selected_IDs=app.selected_IDs)
+    app.text_label_centroid(rp, cca_df, frame_i, ax0=ax0)
     if do_overlay:
         overlay = get_overlay(img, ol_img, ol_RGB_val=ol_RGB_val,
                               ol_brightness=ol_brightness, ol_alpha=ol_alpha)
@@ -110,7 +210,7 @@ def update_ax0_plot(ax0, app, cca_df, rp, img, frame_i, do_overlay,
         ax0.imshow(img)
     ax0.axis('off')
     if draw_mb_line:
-        line_mother_bud(cca_df, frame_i, rp, ax0)
+        app.plot_line_mother_bud(cca_df, frame_i, rp, ax0)
 
 def update_plots(ax, rp, img, lab, cca_df, vmin, vmax, frame_i, fig,
                  frame_text, frameTXT_y, num_frames, app,
@@ -282,18 +382,22 @@ def manual_division(ID_press, cca_df, prev_cca_df, frame_i,
     else:
         cancel_annotation = True
     if verbose:
+        print(f'Cell cycle analysis table for frame {frame_i}:')
         print(cca_df)
+        print('------------------------------')
         if cancel_annotation:
             messagebox.showwarning('Not a bud or a cell in G1!',
                 f'You clicked on cell ID {ID_press} which is not a bud or '
                 'a cell in G1.\n You can annotate divsion only by clicking '
-                'on the bud that divided, and you can undo the annotation only '
+                'on the bud that divided, and you can undo tihe annotation only '
                 'by clicking on a cell in G1.')
     return cca_df, rel_ID_press, cancel_annotation
 
-def annotate_division(y, x, cca_df, cca_df_li, lab, frame_i, num_frames):
+def annotate_division(y, x, cca_df, cca_df_li, lab, frame_i, num_frames,
+                      debug=False):
+    print('Annotating division...')
     cell_ID = lab[y,x]
-    prev_cca_df = cca_df_li[frame_i-1]
+    prev_cca_df = cca_df_li[frame_i-1].copy()
     cca_df, rel_ID, cancel_annotation = manual_division(cell_ID, cca_df,
                                                         prev_cca_df, frame_i,
                                                         verbose=True)
@@ -309,35 +413,56 @@ def annotate_division(y, x, cca_df, cca_df_li, lab, frame_i, num_frames):
             if i >= num_frames:
                 break
             else:
-                cca_df, _, _ = manual_division(cell_ID, cca_df_li[i],
+                if debug:
+                    print(f'Future frame {i} dataframe:')
+                cca_df_i, _, _ = manual_division(cell_ID, cca_df_li[i].copy(),
                                                  prev_cca_df, i,
-                                                 division_frame_i=frame_i)
-                cca_df_li[i] = cca_df.copy()
+                                                 division_frame_i=frame_i,
+                                                 verbose=debug)
+                if debug:
+                    print(cc_stage_i, cc_stage)
+                    print('------------------------------')
+                    bp.pausehere()
+                cca_df_li[i] = cca_df_i.copy()
                 i += 1
                 if cca_df_li[i] is not None:
                     cc_stage_i = cca_df_li[i].at[cell_ID, 'Cell cycle stage']
                 else:
                     break
 
+    if debug:
+        print(f'Cell cycle analysis table for frame {frame_i-1}:')
+        print(prev_cca_df)
+        print('------------------------------')
+
     # Correct all past frames
     i = frame_i-1
-    if i > 0 and cca_df_li[i-1].at[cell_ID, 'Cell cycle stage']=='G1':
+    if i > 0 and cca_df_li[i].at[cell_ID, 'Cell cycle stage']=='G1':
         cc_stage_i = cca_df_li[i].at[cell_ID, 'Cell cycle stage']
         while cc_stage_i != cc_stage:
             if i <= 0:
                 break
             elif cca_df_li[i] is not None:
-                cca_df, _ = manual_division(cell_ID, cca_df_li[i], prev_cca_df,
-                                            i, division_frame_i=frame_i)
-                # print(cca_df)
-                cca_df_li[i] = cca_df.copy()
+                if debug:
+                    print(f'Past frame {i} dataframe:')
+                cca_df_i, _, _ = manual_division(cell_ID, cca_df_li[i].copy(),
+                                            prev_cca_df,
+                                            i, division_frame_i=frame_i,
+                                            verbose=debug)
+                if debug:
+                    print(i, cc_stage_i, cc_stage)
+                    print('------------------------------')
+                    bp.pausehere()
+                cca_df_li[i] = cca_df_i.copy()
                 i -= 1
                 cc_stage_i = cca_df_li[i].at[cell_ID, 'Cell cycle stage']
             else:
                 break
-    return cca_df
+    print('Division annotated!')
+    return cca_df_li[frame_i]
 
 def correct_bud_assignment(bud_ID, moth_ID, cca_df, cca_df_li, frame_i):
+    print('Correcting bud assignment...')
     if bud_ID == 0 or moth_ID == 0:
         action = 'Clicked' if bud_ID==0 else 'Released'
         messagebox.showerror(f'{action} on the background!',
@@ -422,34 +547,8 @@ def correct_bud_assignment(bud_ID, moth_ID, cca_df, cca_df_li, frame_i):
                     relationship_i = cca_df_li[i].at[bud_ID, 'Relationship']
                 else:
                     break
+    print('Done!')
     return cca_df
-
-
-def line_mother_bud(cca_df, frame_i, rp, ax):
-    IDs = [obj.label for obj in rp]
-    bud_IDs_S_frame_i = cca_df.loc[(cca_df['Cell cycle stage'] == 'S') &
-                                   (cca_df['Relationship'] == 'bud')]
-    for bud_ID, row in bud_IDs_S_frame_i.iterrows():
-        emerg_frame_i = row['Emerg_frame_i']
-        moth_ID = row['Relative\'s ID']
-        if moth_ID > 0:
-            if moth_ID in IDs:
-                moth_y, moth_x = rp[IDs.index(moth_ID)].centroid
-            else:
-                print(f'WARNING: Mother cell with ID {moth_ID}'
-                              f' disappeared from frame {frame_i}')
-            if bud_ID in IDs:
-                bud_y, bud_x = rp[IDs.index(bud_ID)].centroid
-                if emerg_frame_i == frame_i:
-                    ax.plot([bud_x, moth_x], [bud_y, moth_y],
-                            color='r', ls='--', lw = 3, dash_capstyle='round')
-                else:
-                    ax.plot([bud_x, moth_x], [bud_y, moth_y],
-                            color='orange', ls='--', lw = 0.7,
-                            dash_capstyle='round')
-            else:
-                print(f'WARNING: Bud with ID {bud_ID}'
-                                 f' disappeared from frame {frame_i}')
 
 matplotlib.use("TkAgg")
 
@@ -536,7 +635,8 @@ if last_tracked_i_found:
 vmin = 0
 vmax = segm_npy.max()
 
-V3D = twobuttonsmessagebox('Image shape', 'Are images 3D or 2D?', '3D', '2D').button_left
+V3D = twobuttonsmessagebox('Image shape', 'Are images 3D or 2D?',
+                                                      '3D', '2D').button_left
 expected_shape = 4 if V3D else 3
 
 #Initial variables
@@ -615,10 +715,7 @@ else:
     num_slices = 0
     init_slice = 0
 
-# Initialize app
-app = app_MyGlobals()
-max_ID = segm_npy.max()
-app.labelRGB_colors = get_labelRGB_colors(max_ID)
+
 
 #Create image plot
 cells_slideshow = None
@@ -632,13 +729,19 @@ buttons_left = frameTXT_x-buttons_width
 pltBottom = 0.2
 ol_img = None
 fig, ax = plt.subplots(1, 2, figsize=[13.66, 7.68])
+
+# Initialize app
+app = app_MyGlobals(fig)
+max_ID = segm_npy.max()
+app.labelRGB_colors = get_labelRGB_colors(max_ID)
+
 plt.subplots_adjust(left=sliders_left, bottom=pltBottom)
 update_ax0_plot(ax[0], app, cca_df, rp, img, frame_i, do_overlay,
                 draw_mb_line=False)
 update_ax1_plot(ax[1], app, cca_df, rp, lab, frame_i, draw_mb_line=False)
 if cca_found:
-    line_mother_bud(cca_df, frame_i, rp, ax[1])
-    line_mother_bud(cca_df, frame_i, rp, ax[0])
+    app.plot_line_mother_bud(cca_df, frame_i, rp, ax[1])
+    app.plot_line_mother_bud(cca_df, frame_i, rp, ax[0])
 frame_text = fig_text(fig, 'Current frame = {}/{}'.format(frame_i,num_frames),
                       y=frameTXT_y, x=frameTXT_x, color='w', size=14,
                       clear_all=False, clear_text_ref=True, text_ref=frame_text)
@@ -787,10 +890,11 @@ def next_frame(event):
                         f'{bud_IDs_not_assigned}')
             elif already_analysed:
                 # Check if there are flagged buds. See "correct_bud_assignment"
-                # for more detail
-                new_IDs_to_reassign = [ID for ID in cca_df.index
-                                       if cca_df.at[ID, 'Relative\'s ID'] == -2]
+                # for more details
+                new_IDs_to_reassign = cca_df[cca_df['Relative\'s ID'] == -2
+                                                               ].index.to_list()
                 if new_IDs_to_reassign:
+                    print(f'Flagged buds: {new_IDs_to_reassign}')
                     (new_cca_df, force_bud_assignment,
                     bud_IDs_not_assigned) = auto_assign_bud( lab,
                                              new_IDs_to_reassign, prev_IDs,
@@ -823,6 +927,7 @@ def next_frame(event):
     elif frame_i+1 > num_frames:
         cca_df_li[frame_i] = cca_df.copy()
         print('You reached the last frame')
+    app.fig_message_txt._text = ''
     connect_axes_cb(ax)
 
 
@@ -854,6 +959,7 @@ def prev_frame(event):
                                   ol_alpha=alpha_slider.val)
     else:
         print('You reached the first frame')
+    app.fig_message_txt._text = ''
     connect_axes_cb(ax)
 
 def handle_close(event):
@@ -916,7 +1022,9 @@ def slideshow_cb(event):
 
 def save_cb(event):
     print('Saving cell cycle analysis data...')
-    if frame_i == num_frames:
+    save_current = messagebox.askyesno('Save current frame?', 'Do you want to '
+        f'save the cell cycle analysis table for the current frame {frame_i}?')
+    if frame_i == num_frames or save_current:
         cca_df_li[frame_i] = cca_df.copy()
     keys = [i for i, df in enumerate(cca_df_li) if isinstance(df, pd.DataFrame)]
     df_li = [df for df in cca_df_li if isinstance(df, pd.DataFrame)]
@@ -984,10 +1092,7 @@ def overlay_cb(event):
             else:
                 ol_img = ol_frames[frame_i]
             ax[0].clear()
-            text_label_centroid(rp, ax[0], 10,
-                                'semibold', 'center', 'center', cca_df,
-                                color='r', clear=True, apply=True,
-                                display_ccStage=display_ccStage)
+            app.text_label_centroid(rp, cca_df, frame_i, ax0=ax[0])
             overlay = get_overlay(img, ol_img, ol_RGB_val=ol_RGB_val,
                                   ol_brightness=brightness_slider.val,
                                   ol_alpha=alpha_slider.val)
@@ -1004,10 +1109,7 @@ def update_overlay_cb(event):
         else:
             ol_img = ol_frames[frame_i]
         ax[0].clear()
-        text_label_centroid(rp, ax[0], 10,
-                            'semibold', 'center', 'center', cca_df,
-                            color='r', clear=True, apply=True,
-                            display_ccStage=display_ccStage)
+        app.text_label_centroid(rp, cca_df, frame_i, ax0=ax[0])
         overlay = get_overlay(img, ol_img, ol_RGB_val=ol_RGB_val,
                               ol_brightness=brightness_slider.val,
                               ol_alpha=alpha_slider.val)
@@ -1044,7 +1146,13 @@ def key_down(event):
     elif event.key == 'left':
         prev_frame(None)
     elif event.key == 'ctrl+p':
+        print(f'Cell cycle analysis table for frame {frame_i}')
         print(cca_df)
+        print('------------------------------')
+        flagged_buds = cca_df[cca_df['Relative\'s ID'] == -2
+                                                       ].index.to_list()
+        print(f'Flagged buds: {flagged_buds}')
+        print('------------------------------')
         # print(app.ax_limits)
         # print(app.home_ax_limits)
     elif event.key == 'm':
@@ -1293,7 +1401,6 @@ def connect_axes_cb(ax):
 
 home = NavigationToolbar2.home
 def new_home(self, *args, **kwargs):
-    print('test')
     try:
         app.ax_limits = deepcopy(app.home_ax_limits)
     except:
