@@ -309,8 +309,9 @@ def annotate_division(y, x, cca_df, cca_df_li, lab, frame_i, num_frames):
             if i >= num_frames:
                 break
             else:
-                cca_df, _ = manual_division(cell_ID, cca_df_li[i], prev_cca_df,
-                                            i, division_frame_i=frame_i)
+                cca_df, _, _ = manual_division(cell_ID, cca_df_li[i],
+                                                 prev_cca_df, i,
+                                                 division_frame_i=frame_i)
                 cca_df_li[i] = cca_df.copy()
                 i += 1
                 if cca_df_li[i] is not None:
