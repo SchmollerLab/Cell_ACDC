@@ -114,7 +114,6 @@ class app_MyGlobals:
                         verticalalignment='center', color=c_ax1, alpha=alpha)
 
     def plot_line_mother_bud(self, cca_df, frame_i, rp, ax):
-        rel_IDs_not_existing = [[], []]
         for obj in rp:
             ID = obj.label
             cca_df_ID = cca_df.loc[ID]
@@ -141,15 +140,6 @@ class app_MyGlobals:
                             ax.plot([bud_x, moth_x], [bud_y, moth_y],
                                     color=c, ls='--', lw=lw,
                                     dash_capstyle='round')
-                elif relationship == 'mother':
-                    rel_IDs_not_existing[0].append(ID)
-                    rel_IDs_not_existing[1].append(rel_ID)
-        if any(rel_IDs_not_existing):
-            messagebox.showerror('Mothers assigned to non-existing IDs!',
-                f'These mother cells {rel_IDs_not_existing[0]} have these '
-                f'buds assigned {rel_IDs_not_existing[1]} which do not '
-                'exist!')
-
 
 def set_lims(ax, app):
     for a, axes in enumerate(ax):
@@ -459,6 +449,7 @@ def annotate_division(y, x, cca_df, cca_df_li, lab, frame_i, num_frames,
             else:
                 break
     print('Division annotated!')
+    print('------------------------------')
     return cca_df_li[frame_i]
 
 def correct_bud_assignment(bud_ID, moth_ID, cca_df, cca_df_li, frame_i):
@@ -547,7 +538,8 @@ def correct_bud_assignment(bud_ID, moth_ID, cca_df, cca_df_li, frame_i):
                     relationship_i = cca_df_li[i].at[bud_ID, 'Relationship']
                 else:
                     break
-    print('Done!')
+    print('Bud assignment correction done!')
+    print('------------------------------')
     return cca_df
 
 matplotlib.use("TkAgg")
@@ -915,7 +907,28 @@ def next_frame(event):
                                                cca_df.copy(), new_cca_df,
                                                frame_i)
             # Drop cells that disappeared in current frame
+            dropped_IDs = [ID for ID in cca_df.index if ID not in current_IDs]
+            rel_IDs_s = cca_df['Relative\'s ID']
+            rel_IDs_not_existing = [ID for ID in rel_IDs_s.values
+                                                     if ID not in current_IDs]
             cca_df = cca_df.filter(items=current_IDs, axis=0)
+            if dropped_IDs:
+                messagebox.showwarning('Dropped IDs', 'The cell cycle analysis '
+                    f'table contains these IDs {dropped_IDs} which are not '
+                    'present in the segmentaion!\n\n This is most likely caused '
+                    'by wrong tracking or a cell that was present in previous '
+                    'frame and now disappeared. These cells were dropped from '
+                    'the cell cycle analysis table, so if you are fine that '
+                    'these cells have disappeared you can continue.')
+            if rel_IDs_not_existing:
+                IDs_with_not_existing_relIDs = cca_df[rel_IDs_s.isin(
+                                                          rel_IDs_not_existing)
+                                                          ].index.to_list()
+                messagebox.showerror('Cells with non existing relative\'s IDs!',
+                    f'These cells {rel_IDs_not_existing} have been assigned to '
+                    f'cells IDs {IDs_with_not_existing_relIDs} which do not '
+                    'exist! There is not a single possible reason for this, '
+                    'so we suggest you report the issue!')
             frame_text = update_plots(ax, rp, img,
                                       lab, cca_df, vmin, vmax, frame_i,
                                       fig, frame_text, frameTXT_y, num_frames,
