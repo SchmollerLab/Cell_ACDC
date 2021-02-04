@@ -2783,7 +2783,7 @@ class CellInt_slideshow_2D:
         sl_left = 0.5 - (sl_width/2)
         ax_sl = fig.add_subplot(position=[sl_left, 0.12, sl_width, 0.04],
                                 facecolor='0.1')
-        sl = Slider(ax_sl, 'Frame', -1, num_frames-1,
+        sl = Slider(ax_sl, 'Frame', -1, num_frames+1,
                                     valinit=0,
                                     valstep=1,
                                     color='0.2',
@@ -2813,7 +2813,6 @@ class CellInt_slideshow_2D:
         self.inlay.root.focus_force()
         self.inlay.root.mainloop()
 
-
     def resize(self, event):
         pass
 
@@ -2837,17 +2836,20 @@ class CellInt_slideshow_2D:
     def update_img(self, val):
         num_frames = self.num_frames
         frame_i = int(val)
-        rp = self.rps[frame_i]
-        CCAdf = self.CCAdfs[frame_i]
-        img = self.frames[frame_i]
-        self.ax.clear()
-        self.ax.imshow(img)
-        self.ax.axis('off')
-        self.ax.set_title('Current frame: {}/{}'.format(frame_i, num_frames))
-        self.update_txt(rp, CCAdf)
-        self.set_lims()
-        self.connect_axes_cb()
-        self.inlay.canvas.draw_idle()
+        if frame_i < num_frames:
+            rp = self.rps[frame_i]
+            CCAdf = self.CCAdfs[frame_i]
+            img = self.frames[frame_i]
+            self.ax.clear()
+            self.ax.imshow(img)
+            self.ax.axis('off')
+            self.ax.set_title('Current frame: {}/{}'.format(frame_i, num_frames))
+            self.update_txt(rp, CCAdf)
+            self.set_lims()
+            self.connect_axes_cb()
+            self.inlay.canvas.draw_idle()
+        else:
+            self.sl.set_val(self.frame_i, silent=True)
 
     def update_txt(self, rp, CCAdf):
         for t in self.ax.texts:

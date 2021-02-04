@@ -104,6 +104,11 @@ class app_MyGlobals:
                 c_ax1 = 'r'
                 alpha = 1
                 w = 'semibold'
+            if self.selected_IDs is not None:
+                if ID in self.selected_IDs:
+                    alpha = 1
+                else:
+                    alpha = 0.3
             if ax0 is not None:
                 ax0.text(int(x), int(y), ax0_txt, fontsize=10,
                         fontweight=w, horizontalalignment='center',
