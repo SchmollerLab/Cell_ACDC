@@ -1361,7 +1361,7 @@ class img_analysis:
         ia.contour_plot = [[], []]
         ia.modified = False
 
-matplotlib.use("TkAgg")
+matplotlib.use("TKAgg")
 
 matplotlib.rcParams['keymap.back'] = ['q', 'backspace', 'MouseButton.BACK']
 matplotlib.rcParams['keymap.forward'] = ['v', 'MouseButton.FORWARD']

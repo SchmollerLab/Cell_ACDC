@@ -82,7 +82,7 @@ class app_MyGlobals:
             ccs = cca_ID['Cell cycle stage']
             numc = cca_ID['# of cycles']
             numc = 'ND' if numc==-1 else numc
-            ax0_txt = f'{ccs}-{numc}'
+            ax0_txt = f'{ccs}-{numc}' if frame_i !=0 else f'{ID}'
             ax1_txt = f'{ID}'
             if ID in G1_IDs:
                 c_ax0 = '0.6'
@@ -118,7 +118,7 @@ class app_MyGlobals:
                         fontweight=w, horizontalalignment='center',
                         verticalalignment='center', color=c_ax1, alpha=alpha)
 
-    def plot_line_mother_bud(self, cca_df, frame_i, rp, ax):
+    def plot_line_mother_bud(self, cca_df, frame_i, rp, ax, IDs):
         for obj in rp:
             ID = obj.label
             cca_df_ID = cca_df.loc[ID]
@@ -135,7 +135,12 @@ class app_MyGlobals:
                     if rel_rel_ID == ID:
                         if relationship == 'bud':
                             bud_y, bud_x = obj.centroid
-                            moth_y, moth_x = rp[IDs.index(rel_ID)].centroid
+                            try:
+                                moth_y, moth_x = rp[IDs.index(rel_ID)].centroid
+                            except:
+                                print(IDs)
+                                print(rel_ID)
+                                bp.pausehere()
                             if cca_df_ID['Emerg_frame_i'] == frame_i:
                                 c = 'r'
                                 lw = 3
@@ -189,7 +194,8 @@ def update_ax1_plot(ax1, app, cca_df, rp, lab, frame_i, draw_mb_line=True):
     ax1.imshow(labelRGB)
     ax1.axis('off')
     if draw_mb_line:
-        app.plot_line_mother_bud(cca_df, frame_i, rp, ax1)
+        IDs = [obj.label for obj in rp]
+        app.plot_line_mother_bud(cca_df, frame_i, rp, ax1, IDs)
 
 def update_ax0_plot(ax0, app, cca_df, rp, img, frame_i, do_overlay,
                     draw_mb_line=True, ol_brightness=4, ol_alpha=0.5,
@@ -205,7 +211,8 @@ def update_ax0_plot(ax0, app, cca_df, rp, img, frame_i, do_overlay,
         ax0.imshow(img)
     ax0.axis('off')
     if draw_mb_line:
-        app.plot_line_mother_bud(cca_df, frame_i, rp, ax0)
+        IDs = [obj.label for obj in rp]
+        app.plot_line_mother_bud(cca_df, frame_i, rp, ax0, IDs)
 
 def update_plots(ax, rp, img, lab, cca_df, vmin, vmax, frame_i, fig,
                  frame_text, frameTXT_y, num_frames, app,
@@ -547,7 +554,7 @@ def correct_bud_assignment(bud_ID, moth_ID, cca_df, cca_df_li, frame_i):
     print('------------------------------')
     return cca_df
 
-matplotlib.use("TkAgg")
+matplotlib.use("TKAgg")
 
 matplotlib.rcParams['keymap.back'] = ['q', 'backspace', 'MouseButton.BACK']
 matplotlib.rcParams['keymap.forward'] = ['v', 'MouseButton.FORWARD']
@@ -731,14 +738,13 @@ fig, ax = plt.subplots(1, 2, figsize=[13.66, 7.68])
 app = app_MyGlobals(fig)
 max_ID = segm_npy.max()
 app.labelRGB_colors = get_labelRGB_colors(max_ID)
-
 plt.subplots_adjust(left=sliders_left, bottom=pltBottom)
 update_ax0_plot(ax[0], app, cca_df, rp, img, frame_i, do_overlay,
                 draw_mb_line=False)
 update_ax1_plot(ax[1], app, cca_df, rp, lab, frame_i, draw_mb_line=False)
 if cca_found:
-    app.plot_line_mother_bud(cca_df, frame_i, rp, ax[1])
-    app.plot_line_mother_bud(cca_df, frame_i, rp, ax[0])
+    app.plot_line_mother_bud(cca_df, frame_i, rp, ax[1], IDs)
+    app.plot_line_mother_bud(cca_df, frame_i, rp, ax[0], IDs)
 frame_text = fig_text(fig, 'Current frame = {}/{}'.format(frame_i,num_frames),
                       y=frameTXT_y, x=frameTXT_x, color='w', size=14,
                       clear_all=False, clear_text_ref=True, text_ref=frame_text)
@@ -915,7 +921,7 @@ def next_frame(event):
             dropped_IDs = [ID for ID in cca_df.index if ID not in current_IDs]
             rel_IDs_s = cca_df['Relative\'s ID']
             rel_IDs_not_existing = [ID for ID in rel_IDs_s.values
-                                                     if ID not in current_IDs]
+                                    if ID not in current_IDs and ID != -1]
             cca_df = cca_df.filter(items=current_IDs, axis=0)
             if dropped_IDs:
                 messagebox.showwarning('Dropped IDs', 'The cell cycle analysis '
@@ -930,8 +936,8 @@ def next_frame(event):
                                                           rel_IDs_not_existing)
                                                           ].index.to_list()
                 messagebox.showerror('Cells with non existing relative\'s IDs!',
-                    f'These cells {rel_IDs_not_existing} have been assigned to '
-                    f'cells IDs {IDs_with_not_existing_relIDs} which do not '
+                    f'These cells {IDs_with_not_existing_relIDs} have been assigned to '
+                    f'cells IDs {rel_IDs_not_existing} which do not '
                     'exist! There is not a single possible reason for this, '
                     'so we suggest you report the issue!')
             frame_text = update_plots(ax, rp, img,

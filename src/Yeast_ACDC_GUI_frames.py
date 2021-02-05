@@ -1213,7 +1213,7 @@ class img_analysis:
         self.lab = lab
         self.rp = rp
 
-matplotlib.use("TkAgg")
+matplotlib.use("TKAgg")
 
 matplotlib.rcParams['keymap.back'] = ['q', 'backspace', 'MouseButton.BACK']
 matplotlib.rcParams['keymap.forward'] = ['v', 'MouseButton.FORWARD']
@@ -2911,6 +2911,7 @@ def scroll_cb(event):
         step_right = (xr-xc)/(X/2)*step
         step_bottom = (yb-yc)/(Y/2)*step
         step_top = (yc-yt)/(Y/2)*step
+        print(step_left, step_right)
         new_xl = xl+step_left
         new_xr = xr-step_right
         new_yb = yb-step_bottom
