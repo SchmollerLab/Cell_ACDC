@@ -27,8 +27,11 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle, Circle
 from natsort import natsorted
 from ast import literal_eval
-import ctypes
-from ctypes import wintypes
+try:
+    import ctypes
+    from ctypes import wintypes
+except:
+    pass
 from tkinter import ttk
 from datetime import datetime
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
