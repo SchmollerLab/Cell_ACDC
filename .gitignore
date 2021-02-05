@@ -1,8 +1,10 @@
+# Custom ignores
 prep_data_for_deepcell.ipynb
 .idea/
 data/*
 __pycache__/
 *.pyc
+setup_acdc.docx
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
