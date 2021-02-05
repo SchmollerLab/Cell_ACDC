@@ -658,15 +658,13 @@ class app_GUI:
         if draw:
             self.fig.canvas.draw_idle()
 
-    def set_labRGB_colors(self, start_c=128, max_ID=10):
+    def set_labRGB_colors(self, start_c=64, max_ID=10):
         # Generate a colormap as sparse as possible given the max ID.
-        gradient = np.linspace(64, 255, max_ID, dtype=int)
+        gradient = np.linspace(start_c, 255, max_ID, dtype=int)
         labelRGB_colors = np.asarray([plt.cm.viridis(i) for i in gradient])
         # Randomly shuffle the colormap to minimize the possibility for two closeby
         # ID of having a similar color.
         np.random.shuffle(labelRGB_colors)
-        # Insert dark gray color for the background
-        labelRGB_colors[0] = np.asarray([0.1, 0.1, 0.1, 1])
         self.labRGB_colors = labelRGB_colors
 
     def get_labels_overlay(self, labRGB, img, bg_label=0):
@@ -683,7 +681,7 @@ class app_GUI:
         ia.cc_stage_df = ia.assign_bud(ia.cc_stage_df, rp)
         ia.lab = lab
         labRGB = skimage.color.label2rgb(lab, colors=self.labRGB_colors,
-                                              bg_label=-1, alpha=1)
+                                             bg_label=0, bg_color=(0.1,0.1,0.1))
         if self.selected_IDs is not None:
             labRGB_opaque = 0.1*labRGB
             bg_mask = lab==0
@@ -2589,6 +2587,7 @@ def mouse_up(event):
     ax2_click = event.inaxes == app.ax[2]
     left_ax1_click = left_click and ax1_click
     event_x, event_y = event.x, event.y
+    is_brush_on = app.brush_mode_on and not app.zoom_on
     if event.xdata is not None:
         xu = int(round(event.xdata))
         yu = int(round(event.ydata))
@@ -2620,7 +2619,8 @@ def mouse_up(event):
         app.update_ax1_plot(ia.lab, ia.rp, ia)
         # ia.auto_edge_img = np.zeros_like(ia.auto_edge_img)
         app.store_state(ia)
-    if left_ax1_click and not app.select_ID_on and app.brush_mode_on:
+    # Freely paint/erase with the brush tool
+    if left_ax1_click and not app.select_ID_on and is_brush_on:
         app.apply_brush_motion(event.x, event.y, ia)
         # RELABEL LAB because eraser can split object in two
         ia.rp = regionprops(ia.lab)
