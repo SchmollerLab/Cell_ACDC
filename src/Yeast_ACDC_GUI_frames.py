@@ -2891,7 +2891,10 @@ def scroll_cb(event):
     # Scroll zoom (activated with 'control')
     if event.inaxes and app.scroll_zoom:
         t1 = time()
-        rate = 1/(t1-t0)
+        try:
+            rate = 1/(t1-t0)
+        except:
+            rate = 1
         step = event.step*sensitivity
         step_rate = abs(step*rate)
         # Adjust zoom factor by scrolling rate
