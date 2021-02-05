@@ -397,11 +397,10 @@ class app_GUI:
                 if self.ax_limits[a][1]:
                     axes.set_ylim(*self.ax_limits[a][1])
 
-    def update_ax0_plot(self, ia, img, ax_img=None, clear=False):
+    def update_ax0_plot(self, ia, img, ax_img=None):
         if ax_img is None:
             ax_img = self.ax[0]
-        if clear:
-            ax_img.clear()
+        ax_img.clear()
         if self.do_overlay:
             ol_img = self.get_img(self.ol_frames, self.frame_i, self.num_slices,
                                   slice=app.s)
@@ -440,8 +439,6 @@ class app_GUI:
         edge = ia.edge
         lab = ia.lab
         rp = ia.rp
-        for a in ax:
-            a.clear()
         self.update_ax0_plot(ia, img, ax[0])
         self.update_ax1_plot(lab, rp, ia, draw=False)
         if self.display_IDs_cont != 'Disable':
@@ -2116,7 +2113,7 @@ def overlay_cb(event):
                         f'\"..._align_shift.npy\" file not found!\n'
                         'Overlay images cannot be aligned to the cells image.')
                     raise FileNotFoundError('Shifts file not found!')
-    app.update_ax0_plot(ia, ia.img, app.ax[0], clear=True)
+    app.update_ax0_plot(ia, ia.img, app.ax[0])
     app.set_lims()
     fig.canvas.draw_idle()
     app.connect_axes_cb()
