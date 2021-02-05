@@ -452,6 +452,7 @@ class app_GUI:
                 y = np.append(y, y[0])
                 ax[2].plot(x, y, c='silver', alpha=0.5)
         self.update_ax2_plot(ia, draw=False)
+        self.fig.canvas.draw_idle()
 
     def update_ax2_plot(self, ia, draw=True):
         ax = self.ax
