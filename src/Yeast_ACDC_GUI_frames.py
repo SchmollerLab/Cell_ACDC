@@ -2874,7 +2874,7 @@ def figure_enter(event):
         show_cell_int = ShowWindow_from_title('Cell intensity image slideshow')
         cell_int_open = show_cell_int.window_found
     except:
-        traceback.print_exc()
+        # traceback.print_exc()
         cell_int_open = False
         pass
     if cell_int_open:
