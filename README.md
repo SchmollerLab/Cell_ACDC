@@ -10,7 +10,9 @@ Don't copy data and stick to the folder structure created by the scripts.
 here come the instructions for doing so
 
 ### 2) Run YeaZ segmentation and tracking
-here come the instructions for doing so
+
+First of all, download the weights for the neural network from [here](https://drive.google.com/file/d/1CO7uF-werl9y8s3Fel0cVjRHCdXRf2Ly/view?usp=sharing) and put them in the folder "model".
+
 ### 3) Run the script YeaSTac_GUI_frames.py for correcting segmentation and tracking
 
 #### Navigation and zooming operations:
