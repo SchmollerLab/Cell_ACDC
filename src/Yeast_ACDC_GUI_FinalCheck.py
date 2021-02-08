@@ -43,10 +43,11 @@ def line_mother_bud(cca_df, frame_i, rp, ax):
                 ax.plot([bud_x, moth_x], [bud_y, moth_y],
                         color='orange', ls=':', lw = 0.8, dash_capstyle='round')
 
-def build_cmap(under_vmin_c='0.1'):
-    vals = np.linspace(0,1,256)
+def build_cmap(under_vmin_c='0.1', max_ID=100):
+    n = max_ID if max_ID<256 else 256
+    vals = np.linspace(0,1,n)
     np.random.shuffle(vals)
-    my_cmap = plt.cm.colors.ListedColormap(plt.cm.hsv(vals))
+    my_cmap = plt.cm.colors.ListedColormap(plt.cm.viridis(vals))
     my_cmap.set_under(under_vmin_c)
     return my_cmap
 
@@ -233,7 +234,7 @@ buttons_height = 0.03
 frameTXT_y = 0.15
 frameTXT_x = 0.6
 buttons_left =frameTXT_x-buttons_width
-my_cmap = build_cmap()
+my_cmap = build_cmap(max_ID=segm_npy.max())
 fig, ax = plt.subplots(1, 2)
 plt.subplots_adjust(left=sliders_left, bottom=0.25)
 ax[0].imshow(img)

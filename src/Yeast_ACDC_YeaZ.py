@@ -319,7 +319,9 @@ elif num_slices > 1:
 start = 0
 if num_frames > 1:
     start, stop = num_frames_toSegm_tk(num_frames, last_segm_i=last_segm_i,
-                                                   toplevel=True).frange
+                                                   toplevel=True,
+                                                   allow_not_0_start=False
+                                                   ).frange
     filenames = os.listdir(parent_path)
     for filename in filenames:
         if filename.find('_last_tracked_i.txt') != -1:
@@ -379,8 +381,12 @@ t_end = time()
 # for simplicity, pad image back to original shape before saving
 # TODO: save only ROI and ROI borders, to save disk space
 if ROI_coords is not None:
-    tracked_stack = np.pad(tracked_stack, ((0, 0), (y_start, r - y_end), (x_start, c - x_end)))
-    frames = np.pad(frames, ((0, 0), (y_start, r - y_end), (x_start, c - x_end)))
+    tracked_stack = np.pad(tracked_stack, ((0, 0),
+                                           (y_start, r - y_end),
+                                           (x_start, c - x_end)),
+                                           mode='constant')
+    frames = np.pad(frames, ((0, 0), (y_start, r - y_end), (x_start, c - x_end)),
+                                           mode='constant')
 
 #save Segmentation results
 if save_segm:

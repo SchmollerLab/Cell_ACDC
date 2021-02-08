@@ -46,11 +46,12 @@ pd.set_option('display.expand_frame_repr', False)
 
 class num_frames_toSegm_tk:
     def __init__(self, tot_frames, last_segm_i=None, last_tracked_i=-1,
-                 toplevel=False):
+                 toplevel=False, allow_not_0_start=True):
         if toplevel:
             root = tk.Toplevel()
         else:
             root = tk.Tk()
+        self.allow_not_0_start = allow_not_0_start
         self.root = root
         self.tot_frames = tot_frames
         self.root.title('Number of frames to segment')
@@ -113,22 +114,28 @@ class num_frames_toSegm_tk:
         root.mainloop()
 
     def set_all(self, name=None, index=None, mode=None):
-        start_frame_str = self.start_frame.get()
-        if start_frame_str:
-            startf = int(start_frame_str)
-            rightRange = self.tot_frames - startf
-            self.num_frames.delete(0, END)
-            self.num_frames.insert(0, '{}'.format(rightRange))
-
-    def check_max(self, name=None, index=None, mode=None):
-        num_frames_str = self.num_frames.get()
-        start_frame_str = self.start_frame.get()
-        if num_frames_str and start_frame_str:
-            startf = int(start_frame_str)
-            if startf + int(num_frames_str) > self.tot_frames:
+        if self.allow_not_0_start:
+            start_frame_str = self.start_frame.get()
+            if start_frame_str:
+                startf = int(start_frame_str)
                 rightRange = self.tot_frames - startf
                 self.num_frames.delete(0, END)
                 self.num_frames.insert(0, '{}'.format(rightRange))
+
+    def check_max(self, name=None, index=None, mode=None):
+        if self.allow_not_0_start:
+            num_frames_str = self.num_frames.get()
+            start_frame_str = self.start_frame.get()
+            if num_frames_str and start_frame_str:
+                startf = int(start_frame_str)
+                if startf + int(num_frames_str) > self.tot_frames:
+                    rightRange = self.tot_frames - startf
+                    self.num_frames.delete(0, END)
+                    self.num_frames.insert(0, '{}'.format(rightRange))
+        else:
+            self.start_frame.delete(0, END)
+            self.start_frame.insert(0, '{}'.format(0))
+
 
     def ok(self, event=None):
         num_frames_str = self.num_frames.get()
@@ -2776,7 +2783,10 @@ class CellInt_slideshow_2D:
                  cell_cycle_analysis, ax_limits=None):
         self.frames = frames
         self.frame_i = frame_i
-        self.ax_limits = ax_limits[0]
+        if ax_limits is not None:
+            self.ax_limits = ax_limits[0]
+        else:
+            self.ax_limits = None
         fig = plt.Figure()
         ax = fig.add_subplot()
         fig.subplots_adjust(bottom=0.2)

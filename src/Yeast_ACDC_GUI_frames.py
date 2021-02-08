@@ -82,6 +82,9 @@ GUI Mouse Events: - Auto contour with RIGHT-click on edge img: click on the
                     press 'c' and draw with RIGHT-click on edge where you want to
                     cell to be splitted
                   - Press 'ctrl+z' for undo and 'ctrl+y' for redo
+                  - Press 'a' + WHEEL-click on left image to delete ID and keep
+                    deleting that ID after tracking. Cancel operation from now on
+                    by double click with WHEEL-button on background of centre image
 """
 
 class load_data:
@@ -152,6 +155,7 @@ class load_data:
         self.align_shifts_path = f'{base_path}_align_shift.npy'
         self.segm_npy_path = f'{base_path}_segm.npy'
         self.last_tracked_i_path = f'{base_path}_last_tracked_i.txt'
+        self.segm_metadata_csv_path = f'{base_path}_segm_metadata.csv'
 
     def substring_path(self, path, substring, parent_path):
         substring_found = False
@@ -248,6 +252,14 @@ class app_GUI:
         filenames = os.listdir(parent_path)
         self.parent_path = parent_path
         self.last_tracked_i = -1
+        empty_int_s = pd.Series([], dtype='uint32')
+        empty_bool_s = pd.Series([], dtype='bool')
+        self.segm_metadata_df = pd.DataFrame({'frame_i': empty_int_s,
+                                             'Cell_ID': empty_int_s,
+                                             'Is_dead_cell': empty_bool_s,
+                                             'centroid_x_dead': [],
+                                             'centroid_y_dead': []}
+                                             ).set_index(['frame_i', 'Cell_ID'])
         segm_npy_found = False
         for j, filename in enumerate(filenames):
             if filename.find('_segm.npy') != -1:
@@ -265,20 +277,27 @@ class app_GUI:
                 self.orig_segm_npy[:len(segm_npy)] = deepcopy(list(segm_npy))
             elif filename.find('_cc_stage.csv') != -1:
                 cc_stage_path = f'{parent_path}/{filename}'
-                cca_df = pd.read_csv(cc_stage_path, index_col=['frame_i', 'Cell_ID'])
-                cca_df_li = [df.loc[frame_i] for frame_i, df in cca_df.groupby(level=0)]
+                cca_df = pd.read_csv(cc_stage_path,
+                                     index_col=['frame_i', 'Cell_ID'])
+                cca_df_li = [df.loc[frame_i] for frame_i, df
+                                             in cca_df.groupby(level=0)]
                 self.cc_stages[:len(cca_df_li)] = cca_df_li
             elif filename.find('_last_tracked_i.txt') != -1:
                 last_tracked_i_path = f'{parent_path}/{filename}'
                 with open(last_tracked_i_path, 'r') as txt:
                     self.last_tracked_i = int(txt.read())
+            elif filename.find('_segm_metadata.csv') != -1:
+                segm_metadata_path = f'{parent_path}/{filename}'
+                segm_metadata_df = pd.read_csv(segm_metadata_path,
+                                     index_col=['frame_i', 'Cell_ID'])
+                self.segm_metadata_df = segm_metadata_df
         frames = data.img_data
         if not segm_npy_found:
             print('WARNING: No pre-computed segmentation file found!')
-        self.last_segm_i = data.SizeT
+        self.last_segm_i = len(segm_npy)-1# data.SizeT
         for frame_i, elem in enumerate(self.segm_npy_done):
             if elem is None:
-                self.last_segm_i = frame_i
+                self.last_segm_i = frame_i-1
                 break
         start, _ = num_frames_toSegm_tk(data.SizeT,
                                   last_segm_i=self.last_segm_i,
@@ -317,6 +336,7 @@ class app_GUI:
         self.brush_mode_on = False
         self.eraser_on = False
         self.selected_IDs = None
+        self.permanent_delID_on = False
         self.set_labRGB_colors(max_ID=segm_npy.max()+1)
         self.init_attr()
 
@@ -498,15 +518,23 @@ class app_GUI:
         ia.lab = lab
         labRGB = skimage.color.label2rgb(lab, colors=self.labRGB_colors,
                                              bg_label=0, bg_color=(0.1,0.1,0.1))
+        # Gray out selected cells
         if self.selected_IDs is not None:
-            labRGB_opaque = 0.1*labRGB
-            bg_mask = lab==0
-            labRGB_opaque[bg_mask] = labRGB[bg_mask]
-            mask_selected_IDs = np.zeros(lab.shape, bool)
+            lab_mask = lab>0
+            labRGB_opaque = labRGB.copy()
+            labRGB_opaque[lab_mask] = 0.1*labRGB[lab_mask]
             for ID in self.selected_IDs:
-                mask_selected_IDs[lab==ID] = True
-            labRGB_opaque[mask_selected_IDs] = labRGB[mask_selected_IDs]
+                mask_selected_ID = lab==ID
+                labRGB_opaque[mask_selected_ID] = labRGB[mask_selected_ID]
             labRGB = labRGB_opaque
+        # Gray out deleted IDs
+        if self.frame_i in ia.segm_metadata_df.index.get_level_values(0):
+            df_frame_i = ia.segm_metadata_df.loc[self.frame_i]
+            df_frame_i_del = df_frame_i[df_frame_i['Is_dead_cell']]
+            del_IDs = df_frame_i_del.index
+            for del_ID in del_IDs:
+                mask_del_ID = lab==del_ID
+                labRGB[mask_del_ID] = labRGB[mask_del_ID]*0.1
         if self.brush_mode_on:
             ax1_img = self.get_labels_overlay(labRGB, ia.img, bg_label=0)
         else:
@@ -528,6 +556,24 @@ class app_GUI:
                 ROI_delete_patch = Rectangle((x_start, y_start), rect_w, rect_h,
                                                 fill=False, color='r')
                 ax[1].add_patch(ROI_delete_patch)
+        if self.frame_i in ia.segm_metadata_df.index.get_level_values(0):
+            df_frame_i = ia.segm_metadata_df.loc[self.frame_i]
+            df_frame_i_del = df_frame_i[df_frame_i['Is_dead_cell']]
+            del_IDs = df_frame_i_del.index
+            xx = df_frame_i_del['centroid_x_dead']
+            yy = df_frame_i_del['centroid_y_dead']
+            IDs = [obj.label for obj in ia.rp]
+            X_xx, X_yy = [], []
+            for ID, x, y in zip(del_IDs, xx, yy):
+                ID_idx = IDs.index(ID)
+                yc, xc = ia.rp[ID_idx].centroid
+                ia.segm_metadata_df.at[(self.frame_i, ID),
+                                       'centroid_x_dead'] = xc
+                ia.segm_metadata_df.at[(self.frame_i, ID),
+                                       'centroid_y_dead'] = yc
+                X_xx.append(xc)
+                X_yy.append(yc)
+            ax[1].scatter(X_xx, X_yy, marker='x', color='r', s=48)
         if draw:
             if draw_brush_circle:
                 self.draw_brush_circle_cursor(ia, event_x, event_y)
@@ -623,9 +669,11 @@ class app_GUI:
         if self.auto_save:
             segm_npy_path = app.data.segm_npy_path
             slice_path = app.data.slice_used_segm_path
+            segm_metadata_csv_path = app.data.segm_metadata_csv_path
             segm_npy_li = [obj for obj in app.segm_npy_done if obj is not None]
             segm_npy = np.asarray(segm_npy_li)
             if segm_npy.dtype != object:
+                ia.segm_metadata_df.to_csv(segm_metadata_csv_path)
                 np.save(segm_npy_path, segm_npy, allow_pickle=False)
                 with open(app.data.last_tracked_i_path, 'w+') as txt:
                     txt.write(str(app.last_segm_i))
@@ -694,6 +742,22 @@ class img_analysis:
         self.sep_bud = False
         self.set_moth = False
         self.contour_plot = [[],[]]
+
+    def add_segm_metadata(self, frame_i, add_next=True):
+        deleted_IDs = self.segm_metadata_df[
+                          self.segm_metadata_df['Is_dead_cell']
+                          ].index.get_level_values(1)
+        for obj in self.rp:
+            y, x = obj.centroid
+            ID = obj.label
+            if ID not in deleted_IDs:
+                self.segm_metadata_df.at[(frame_i, ID), 'Is_dead_cell'] = False
+                self.segm_metadata_df.at[(frame_i, ID), 'centroid_x_dead'] = x
+                self.segm_metadata_df.at[(frame_i, ID), 'centroid_y_dead'] = y
+        # Add metadata to next frame
+        if add_next:
+            for ID in deleted_IDs:
+                self.segm_metadata_df.at[(frame_i+1, ID), 'Is_dead_cell'] = True
 
     def nearest_nonzero(self, a, y, x):
         r, c = np.nonzero(a)
@@ -1299,6 +1363,7 @@ img = app.get_img(frames, app.frame_i, num_slices, slice=app.s)
 """Initialize image analysis class"""
 param = [None]*num_frames
 ia = img_analysis(img)
+ia.segm_metadata_df = app.segm_metadata_df.copy()
 ia.do_tracking = app.last_tracked_i < app.frame_i
 
 """Widgets' axes as [left, bottom, width, height]"""
@@ -1473,12 +1538,43 @@ def set_param_from_folder(num_frames, app):
         img = app.get_img(app.img_data, i, app.num_slices,
                           slice=app.s)
         ia = img_analysis(img)
-        ia.init_attr(img)
         ia.lab = app.orig_segm_npy[i]
         ia.rp = regionprops(ia.lab)
         ia.cc_stage_df = ia.init_cc_stage_df(ia.rp)
         param[i] = ia
+    for i in range(app.last_segm_i+1, num_frames):
+        img = app.get_img(app.img_data, i, app.num_slices,
+                          slice=app.s)
+        ia = img_analysis(img)
+        ia.img = img
+        ia.lab = np.zeros(img.shape, int)
+        ia.rp = regionprops(ia.lab)
+        param[i] = ia
     return param
+
+def init_img_analysis(app):
+    img = app.get_img(app.img_data, app.frame_i, app.num_slices,
+                      slice=app.s)
+    ia = img_analysis(img)
+    ia.cc_stage_df = None
+    ia.lab = np.zeros(img.shape, int)
+    ia.rp = regionprops(ia.lab)
+    ia.img = img
+    ia.edge = ia.edge_detector(ia.img)
+    ia.contour_plot = [[], []]
+    ia.auto_edge_img = np.zeros(ia.img.shape, bool)
+    app.frame_txt._text = f'Current frame = {app.frame_i}/{num_frames-1}'
+    ia.modified = False
+    IDs = [obj.label for obj in ia.rp]
+    ia.contours = ia.find_contours(ia.lab, IDs, group=True)
+    ia.enlarg_first_call = True
+    ia.reduce_first_call = True
+    ia.segm_metadata_df = app.segm_metadata_df.copy()
+    ia.edge_mode = True
+    switch_segm_mode_button(True)
+    man_clos_cb(None)
+    param = store_param(ia)
+    return ia, param
 
 def load_param_from_folder(app):
     global ia
@@ -1526,6 +1622,7 @@ def next_f(event):
         'Are you sure you want to proceed with next frame?',
         "warning", "yesno") == 'yes'
     if proceed:
+        ia.add_segm_metadata(app.frame_i, add_next=app.frame_i<num_frames)
         if app.last_tracked_i < app.frame_i+1:
             ia.do_tracking = False
             tracking_state_cb(None)
@@ -1543,7 +1640,8 @@ def next_f(event):
             ia.slice_used = app.s
             param = store_param(ia)
             app.save_all()
-        # Next frame was already segmented in a previous session. Load data from HDD
+        # Next frame was already segmented in a previous session.
+        # Load data from HDD
         elif app.segm_npy_done[app.frame_i+1] is not None:
             prev_ia = param[app.frame_i]
             param = store_param(ia)
@@ -1582,18 +1680,17 @@ def next_f(event):
             app.save_all()
             ia.modified = True
         # Next frame was never segmented
-        elif app.frame_i+1 < num_frames and app.frame_i+1 > app.last_segm_i:
+        elif app.frame_i < num_frames and app.frame_i+1 > app.last_segm_i:
             app.last_segm_i = app.frame_i
             ia.slice_used = app.s
             param = store_param(ia)
             app.save_all()
             app.frame_i += 1
+            ia, param = init_img_analysis(app)
             app.init_attr()
-            img = app.get_img(app.frames, app.frame_i,
-                              app.num_slices, slice=app.s)
-            ia.init_attr(img)
             app.frame_txt._text = f'Current frame = {app.frame_i}/{num_frames-1}'
-            analyse_img(img)
+            app.update_ALLplots(ia)
+            # analyse_img(img)
         # Next frame was already segmented within this session. Load data
         elif app.frame_i+1 <= app.last_segm_i:
             param = store_param(ia)
@@ -1814,6 +1911,7 @@ def save_cb(event):
     if app.num_slices > 1:
         ia.slice_used = app.s
     if save_current:
+        ia.add_segm_metadata(app.frame_i, add_next=False)
         app.last_segm_i = app.frame_i
         app.segm_npy_done[app.frame_i] = ia.lab.copy()
     else:
@@ -2253,10 +2351,15 @@ def key_down(event):
         else:
             prev_f(None)
     elif key == 'ctrl+p':
-        print(ia.cc_stage_df)
-        print(app.ax_limits)
-        print(app.orig_ax_limits)
-        print(app.frame_i_done)
+        print('Segmentation metadata:')
+        if app.frame_i in ia.segm_metadata_df.index.get_level_values(0):
+            print(ia.segm_metadata_df.loc[app.frame_i])
+        else:
+            print(ia.segm_metadata_df)
+        print('----------------------------------------')
+        # print(app.ax_limits)
+        # print(app.orig_ax_limits)
+        # print(app.frame_i_done)
     elif key == 'b':
         ia.sep_bud = True
     elif key == 'm':
@@ -2303,6 +2406,8 @@ def key_down(event):
         brush_mode_cb(None)
     elif key == 'control':
         app.select_ID_on = True
+    elif key == 'a':
+        app.permanent_delID_on = True
 
 def key_up(event):
     key = event.key
@@ -2320,6 +2425,8 @@ def key_up(event):
         brush_mode_cb(None)
     elif key == 'control':
         app.select_ID_on = False
+    elif key == 'a':
+        app.permanent_delID_on = False
 
 def mouse_down(event):
     right_click = event.button == 3
@@ -2332,6 +2439,12 @@ def mouse_down(event):
     left_ax1_click = left_click and ax1_click
     not_ax = not ax_click
     is_brush_on = app.brush_mode_on and not app.zoom_on
+    is_delete_ID = (wheel_click and ax1_click
+                    and not app.draw_ROI_delete and not event.dblclick
+                    and not app.permanent_delID_on)
+    is_permanent_delID = (wheel_click and ax1_click
+                    and not app.draw_ROI_delete and not event.dblclick
+                    and app.permanent_delID_on)
     app.connect_axes_cb()
     if event.xdata:
         xd = int(round(event.xdata))
@@ -2388,7 +2501,7 @@ def mouse_down(event):
         app.update_ax0_plot(ia, ia.img)
         app.update_ax1_plot(ia.lab, ia.rp, ia, draw=False)
         app.fig.canvas.draw_idle()
-    # Freely paint/erase with the brush tool
+    # Freely paint/erase with the brush tool mouse_down
     if left_ax1_click and not app.select_ID_on and is_brush_on:
         if app.is_undo or app.is_redo:
             app.store_state(ia)
@@ -2516,7 +2629,7 @@ def mouse_down(event):
         app.xdrc = xd
         app.ydrc = yd
     # Manual correction: delete ID
-    elif wheel_click and ax1_click and not app.draw_ROI_delete and not event.dblclick:
+    elif is_delete_ID:
         if app.is_undo or app.is_redo:
             app.store_state(ia)
         prev_ia = param[app.frame_i-1]
@@ -2542,6 +2655,20 @@ def mouse_down(event):
                                                         mouse_motion)
         app.xdwc_ax1 = xd
         app.ydwc_ax1 = yd
+    # Store ID info into Is_dead_cell of segm_metadata_df dataframe
+    elif is_permanent_delID:
+        if app.is_undo or app.is_redo:
+            app.store_state(ia)
+        prev_ia = param[app.frame_i-1]
+        ID = ia.lab[yd, xd]
+        # Store deleted ID info into segm_metadata_df dataframe
+        ia.segm_metadata_df.at[(app.frame_i, ID), 'Is_dead_cell'] = True
+        app.update_ax0_plot(ia, ia.img)
+        app.update_ax1_plot(ia.lab, ia.rp, ia)
+        app.update_ax2_plot(ia)
+        ia.modified = True
+        app.store_state(ia)
+        app.update_cells_slideshow(ia)
     # Manual correction: Delete contour pixel
     elif wheel_click and ax2_click and ia.edge_mode:
         if app.is_undo or app.is_redo:
@@ -2566,6 +2693,7 @@ def mouse_down(event):
     elif wheel_click and ax1_click and event.dblclick:
         app.ax[1].patches = []
         app.ROI_delete_coords = []
+        app.permanent_delIDs_li = []
         app.fig.canvas.draw_idle()
     # Manual correction: enforce automatic bud separation
     elif right_click and ax1_click and event.dblclick:
@@ -2608,7 +2736,7 @@ def mouse_motion(event):
     ax1_click = event.inaxes == app.ax[1]
     ax2_click = event.inaxes == app.ax[2]
     event_x, event_y = event.x, event.y
-    brush_circle_on = (app.brush_mode_on and ax1_click and not app.zoom_on)
+    brush_circle_on = app.brush_mode_on and ax1_click
     is_brush_on = app.brush_mode_on and not app.zoom_on
     if event.xdata:
         xdr = int(round(event.xdata))
@@ -2622,7 +2750,7 @@ def mouse_motion(event):
         ia.locT_img[line(r0, c0, r1, c1)] = True
         app.xdrrc = xdr
         app.ydrrc = ydr
-    # Freely paint/erase with the brush tool
+    # Freely paint/erase with the brush tool mouse_motion
     elif left_click and not app.select_ID_on and is_brush_on:
         app.apply_brush_motion(event.x, event.y, ia)
     elif right_click and ax2_click and ia.clos_mode == 'Manual closing':
@@ -2688,7 +2816,7 @@ def mouse_up(event):
         app.update_ax1_plot(ia.lab, ia.rp, ia)
         ia.modified = True
         app.store_state(ia)
-    # Freely paint/erase labels
+    # Freely paint/erase labels mouse_motion
     if left_ax1_click and not app.select_ID_on and is_brush_on:
         app.apply_brush_motion(event.x, event.y, ia)
         # RELABEL LAB because eraser can split object in two
@@ -2696,11 +2824,12 @@ def mouse_up(event):
         IDs = [obj.label for obj in ia.rp]
         ia.contours = ia.find_contours(ia.lab, IDs, group=True)
         ia.reset_auto_edge_img(ia.contours)
-        ia.cc_stage_df = ia.init_cc_stage_df(ia.rp)
-        ia.cc_stage_df = ia.assign_bud(ia.cc_stage_df, ia.rp)
+        tracking_routine(app, ia)
         app.update_ax0_plot(ia, ia.img)
         app.update_ax1_plot(ia.lab, ia.rp, ia)
+        ia.modified = True
         app.store_state(ia)
+        app.update_cells_slideshow(ia)
     # Manual correction: add manually drawn contour
     elif right_click and ax2_click and ia.edge_mode and ia.clos_mode == 'Manual closing':
         if app.is_undo or app.is_redo:
@@ -2825,6 +2954,8 @@ def axes_enter(event):
 
 def axes_leave(event):
     app.key_mode = ''
+    app.ax[1].patches = []
+    app.fig.canvas.draw_idle()
     if event.inaxes == app.ax[2] and ia.clos_mode == 'Manual closing':
         try:
             app.mng.window.configure(cursor='arrow')
@@ -2911,7 +3042,6 @@ def scroll_cb(event):
         step_right = (xr-xc)/(X/2)*step
         step_bottom = (yb-yc)/(Y/2)*step
         step_top = (yc-yt)/(Y/2)*step
-        print(step_left, step_right)
         new_xl = xl+step_left
         new_xr = xr-step_right
         new_yb = yb-step_bottom
@@ -2948,6 +3078,8 @@ app.frame_txt = app.fig.text(0.5, 0.15,
 app.warn_txt = app.fig.text(0.5, 0.9, '', color='orangered', ha='center',
                                             fontsize=16)
 
+
+
 param = set_param_from_folder(num_frames, app)
 
 if app.segm_npy_done[app.frame_i] is not None:
@@ -2958,6 +3090,7 @@ else:
     ia.edge_mode = True
     switch_segm_mode_button(True)
     analyse_img(img)
+
 man_clos_cb(None)
 app.set_orig_lims()
 app.store_state(ia)

@@ -43,6 +43,8 @@ here come the instructions for doing so
 - Change label ID: *middle-click* on left image. Click on a label and write the new label ID in the pop-up window. You can change multiple labels at once by writing a list of tuples:
 e.g. [(1,3), (5, 6)] label ID 1 will become 3 and label ID 5 will become 6.
 
+- Store dead cell info: *a + middle-click* on centre image. Click with the scrolling wheel button on an ID in the centre image while keeping *a* pressed. If successful the clicked ID should be grayed-out and there should be a red 'x' to demarcate that the cell is annotated as dead.
+
 
 ### 4) Run the script YeaSTaC_GUI_CellCycleAnalysis.py for performing cell lineage annotation
 
