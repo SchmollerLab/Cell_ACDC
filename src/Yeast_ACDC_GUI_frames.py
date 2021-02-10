@@ -744,9 +744,17 @@ class img_analysis:
         self.contour_plot = [[],[]]
 
     def add_segm_metadata(self, frame_i, add_next=True):
-        deleted_IDs = self.segm_metadata_df[
-                          self.segm_metadata_df['Is_dead_cell']
-                          ].index.get_level_values(1)
+        # Get a list of deleted cells IDs
+        if frame_i in self.segm_metadata_df.index.get_level_values(0):
+            segm_metadata_frame_i = self.segm_metadata_df.loc[frame_i]
+            deleted_IDs = segm_metadata_frame_i[
+                            segm_metadata_frame_i['Is_dead_cell']
+                                               ].index.get_level_values(0)
+        else:
+            deleted_IDs = []
+        # Add metadata of non-deleted cells to current frame_i dataframe
+        # Here we can add any single cell info, like volume or
+        # total fluorescent intensity etc.
         for obj in self.rp:
             y, x = obj.centroid
             ID = obj.label
@@ -754,7 +762,7 @@ class img_analysis:
                 self.segm_metadata_df.at[(frame_i, ID), 'Is_dead_cell'] = False
                 self.segm_metadata_df.at[(frame_i, ID), 'centroid_x_dead'] = x
                 self.segm_metadata_df.at[(frame_i, ID), 'centroid_y_dead'] = y
-        # Add metadata to next frame
+        # Add deleted cells info to next frame dataframe
         if add_next:
             for ID in deleted_IDs:
                 self.segm_metadata_df.at[(frame_i+1, ID), 'Is_dead_cell'] = True

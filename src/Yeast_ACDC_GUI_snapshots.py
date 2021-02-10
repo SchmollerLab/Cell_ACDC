@@ -37,7 +37,8 @@ from Yeast_ACDC_FUNCTIONS import (auto_select_slice, separate_overlapping,
                        CellInt_slideshow, twobuttonsmessagebox,
                        single_entry_messagebox, beyond_listdir_pos,
                        select_exp_folder, expand_labels, tk_breakpoint,
-                       folder_dialog, dark_mode, win_size, imshow_tk)
+                       folder_dialog, dark_mode, win_size, imshow_tk,
+                       my_paint_app)
 
 script_dirname = os.path.dirname(os.path.realpath(__file__))
 unet_path = f'{script_dirname}/YeaZ-unet/unet/'
@@ -420,6 +421,7 @@ class app_GUI:
         self.brush_mode_on = False
         self.eraser_on = False
         self.selected_IDs = None
+        self.draw_ROI_delete = False
         self.set_labRGB_colors()
         print('Total number of Positions = {}'.format(len(self.phc)))
         self.bp = tk_breakpoint()
@@ -625,7 +627,8 @@ class app_GUI:
                                 display_ccStage=self.display_ccStage, color='r',
                                 clear=True)
         except:
-            traceback.print_exc()
+            pass
+            # traceback.print_exc()
         ax0.axis('off')
         if draw:
             self.fig.canvas.draw_idle()
@@ -1619,6 +1622,7 @@ def next_f(event):
     app.reset_view = True
     app.brush_mode_on = False
     brush_mode_button(False)
+    app.selected_IDs = None
     if app.segm_npy_done[app.p] is not None:
         param = store_param(ia)
         store_app_param(ia)
@@ -1919,6 +1923,7 @@ def brush_mode_cb(event):
         (app.fig.canvas).draw_idle()
         app.brush_mode_on = False
         app.update_ax1_plot(ia.lab, ia.rp, ia)
+        app.fig.canvas.mpl_disconnect(app.cid_brush)
     else:
         brush_mode_b.color = button_true_color
         brush_mode_b.hovercolor = button_true_color
@@ -1927,6 +1932,8 @@ def brush_mode_cb(event):
         app.brush_mode_on = True
         app.brush_size = 1
         app.update_ax1_plot(ia.lab, ia.rp, ia)
+        app.cid_brush = (app.fig.canvas).mpl_connect('motion_notify_event',
+                                                     mouse_motion)
 
 def brush_mode_button(value):
     if value:
@@ -2316,6 +2323,23 @@ def key_up(event):
     elif key == 'control':
         app.select_ID_on = False
 
+def get_zoomID_lims(rp, ID):
+    all_IDs = [obj.label for obj in rp]
+    obj_rp = rp[all_IDs.index(ID)]
+    min_row, min_col, max_row, max_col = obj_rp.bbox
+    obj_bbox_h = max_row - min_row
+    obj_bbox_w = max_col - min_col
+    side_len = max([obj_bbox_h, obj_bbox_w])
+    obj_bbox_cy = min_row + obj_bbox_h/2
+    obj_bbox_cx = min_col + obj_bbox_w/2
+    obj_bottom = int(obj_bbox_cy - side_len/2)
+    obj_left = int(obj_bbox_cx - side_len/2)
+    obj_top = obj_bottom + side_len
+    obj_right = obj_left + side_len
+    xlims = (obj_left-5, obj_right+5)
+    ylims = (obj_top+5, obj_bottom-5)
+    return xlims, ylims
+
 def mouse_down(event):
     right_click = event.button == 3
     left_click = event.button == 1
@@ -2381,10 +2405,13 @@ def mouse_down(event):
                             cc_stage_frame=ia.cc_stage_df,
                             display_ccStage=app.display_ccStage, color='r',
                             clear=True, selected_IDs=app.selected_IDs)
+        zoomID_xlims, zoomID_ylims = get_zoomID_lims(ia.rp, clicked_ID)
+        app.ax_limits[1][0] = zoomID_xlims
+        app.ax_limits[1][1] = zoomID_ylims
         app.update_ax1_plot(ia.lab, ia.rp, ia, draw=False)
         app.fig.canvas.draw_idle()
     # Freely paint/erase with the brush tool
-    if left_ax1_click and not app.select_ID_on and app.brush_mode_on:
+    if left_ax1_click and not app.select_ID_on and app.brush_mode_on and not app.zoom_on:
         if app.is_undo or app.is_redo:
             app.store_state(ia)
         app.new_ID = ia.lab.max()+1
@@ -2415,20 +2442,23 @@ def mouse_down(event):
     # Manual correction: separate emerging bud
     elif right_click and ax1_click and ia.sep_bud and not event.dblclick:
         ID = ia.lab[yd, xd]
-        meb = manual_emerg_bud(ia.lab, ID, ia.rp, del_small_obj=True)
+        ia.rp = regionprops(ia.lab)
+        paint_out = my_paint_app(ia.lab, ID, ia.rp, del_small_obj=True,
+                                 overlay_img=ia.img)
         ia.sep_bud = False
-        if not meb.cancel:
+        if not paint_out.cancel:
             if app.is_undo or app.is_redo:
                 app.store_state(ia)
-            meb_lab = remove_small_objects(meb.sep_bud_label,
+            paint_out_lab = remove_small_objects(paint_out.sep_bud_label,
                                              min_size=20,
                                              connectivity=2)
-            ia.lab[meb_lab != 0] = meb_lab[meb_lab != 0]
-            ia.lab[meb.small_obj_mask] = 0
-            for y, x in meb.coords_delete:
+            ia.lab[paint_out_lab != 0] = paint_out_lab[paint_out_lab != 0]
+            ia.lab[paint_out.small_obj_mask] = 0
+            ia.lab[paint_out.eraser_mask] = 0
+            for y, x in paint_out.coords_delete:
                 del_ID = ia.lab[y, x]
                 ia.lab[ia.lab == del_ID] = 0
-            # ia.lab[meb.rr, meb.cc] = 0  # separate bud with 0s
+            # ia.lab[paint_out.rr, paint_out.cc] = 0  # separate bud with 0s
             ia.lab = app.relabel_and_fill_lab(ia.lab)
             rp = regionprops(ia.lab)
             ia.rp = rp
@@ -2499,7 +2529,7 @@ def mouse_down(event):
     # of amounts from fluorescent signal
     elif left_click and ax0_click and ia.draw_bg_mask_on and not app.brush_mode_on:
         cid0_lc = app.fig.canvas.mpl_connect('motion_notify_event', mouse_motion)
-        app.cid0_lc = cid0_lc
+        app.cid0_lc = cid0_lcb
         app.xdlc_0 = xd
         app.ydlc_0 = yd
         app.xdlc = xd
@@ -2534,7 +2564,7 @@ def mouse_motion(event):
     ax2_motion = event.inaxes == app.ax[2]
     event_x, event_y = event.x, event.y
     brush_circle_on = (not ia.draw_bg_mask_on and app.brush_mode_on
-                       and ax1_motion and not app.zoom_on)
+                       and ax1_motion)
     if event.xdata:
         xdr = int(round(event.xdata))
         ydr = int(round(event.ydata))
@@ -2555,7 +2585,7 @@ def mouse_motion(event):
             app.fig.canvas.draw_idle()
             app.manual_count = 0
     # Freely paint/erase with the brush tool
-    elif left_motion and not app.select_ID_on and app.brush_mode_on:
+    elif left_motion and not app.select_ID_on and app.brush_mode_on and not app.zoom_on:
         app.apply_brush_motion(event.x, event.y, ia)
     # Draw rectangular ROI to delete all objects inside the rectangle
     elif wheel_motion and app.draw_ROI_delete:
@@ -2608,7 +2638,8 @@ def mouse_up(event):
     if right_click and ax2_click and ia.clos_mode == 'Manual closing':
         if app.is_undo or app.is_redo:
             app.store_state(ia)
-        app.fig.canvas.mpl_disconnect(app.cid2_rc)
+        if not app.brush_mode_on:
+            app.fig.canvas.mpl_disconnect(app.cid2_rc)
         IDs = [obj.label for obj in ia.rp]
         lab, rp = ia.close_manual_cont()
         ia.lab = lab
@@ -2720,7 +2751,8 @@ def mouse_up(event):
     elif wheel_click and ax1_click and app.draw_ROI_delete:
         if app.is_undo or app.is_redo:
             app.store_state(ia)
-        app.fig.canvas.mpl_disconnect(app.cid_ROI_delete)
+        if not app.brush_mode_on:
+            app.fig.canvas.mpl_disconnect(app.cid_ROI_delete)
         app.draw_ROI_delete = False
         event_x, event_y = event.x, event.y
         ax = app.ax[1]
@@ -2769,7 +2801,7 @@ def mouse_up(event):
             text_label_centroid(ia.rp, app.ax[0], 12, 'semibold', 'center',
                                 'center', cc_stage_frame=ia.cc_stage_df,
                                 display_ccStage=app.display_ccStage,
-                                color='r', clear=True)
+                                color='r', clear=True, display_IDs_cont=None)
             app.fig.canvas.draw_idle()
             app.store_state(ia)
             app.key_mode = ''
@@ -2891,7 +2923,7 @@ def scroll_cb(event):
 (app.fig.canvas).mpl_connect('axes_enter_event', axes_enter)
 (app.fig.canvas).mpl_connect('axes_leave_event', axes_leave)
 cid_close = (app.fig.canvas).mpl_connect('close_event', handle_close)
-(app.fig.canvas).mpl_connect('motion_notify_event', mouse_motion)
+# (app.fig.canvas).mpl_connect('motion_notify_event', mouse_motion)
 (app.fig.canvas).mpl_connect('scroll_event', scroll_cb)
 # NOTE: axes limit changed event is connected first time in resize_widgets
 
