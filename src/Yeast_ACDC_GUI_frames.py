@@ -503,14 +503,10 @@ class app_GUI:
             df_frame_i_del = df_frame_i[df_frame_i['Is_dead_cell']]
             del_IDs = df_frame_i_del.index
             if not del_IDs.empty:
-                labRGB_colors = self.imshow_cmap.colors.copy()
+                labRGB_colors = my_cmap.colors.copy()
                 for del_ID in del_IDs:
                     labRGB_colors[del_ID, :3] = self.labRGB_colors[del_ID, :3]*0.1
                 my_cmap = plt.cm.colors.ListedColormap(labRGB_colors)
-            else:
-                my_cmap = self.imshow_cmap
-        else:
-            my_cmap = self.imshow_cmap
         return my_cmap
 
     def update_ALLplots(self, ia):
@@ -577,6 +573,7 @@ class app_GUI:
         # ia.cc_stage_df = ia.assign_bud(ia.cc_stage_df, rp)
         ia.lab = lab
         max_ID = lab.max()
+        print(self.selected_IDs)
         my_cmap = self.update_imshow_cmap(ia, max_ID,
                                           selected_IDs=self.selected_IDs)
         ax = self.ax
@@ -2613,8 +2610,6 @@ def mouse_down(event):
             axes.set_xlim(*ia.home_ax_limits[a][0])
             axes.set_ylim(*ia.home_ax_limits[a][1])
         app.fig.canvas.draw_idle()
-    if ax_click:
-        ia.modified = True
     if right_click and ax2_click and not ia.edge_mode:
         cid2_rc = app.fig.canvas.mpl_connect('motion_notify_event', mouse_motion)
         app.cid2_rc = cid2_rc
