@@ -2133,6 +2133,7 @@ def keep_release_current_lab_cb(event):
         IDs = [obj.label for obj in ia.rp]
         ia.contours = ia.find_contours(ia.lab, IDs, group=True)
         ia.reset_auto_edge_img(ia.contours)
+        ia.reset_ccstage_df_cb(None)
         ia.edge = ia.frozen_edge.copy()
         ia.img = ia.frozen_img.copy()
         ia.contour_plot = [[], []]
@@ -2454,7 +2455,8 @@ def mouse_down(event):
                                              connectivity=2)
             ia.lab[paint_out_lab != 0] = paint_out_lab[paint_out_lab != 0]
             ia.lab[paint_out.small_obj_mask] = 0
-            ia.lab[paint_out.eraser_mask] = 0
+            # Apply eraser mask only to clicked ID
+            ia.lab[np.logical_and(paint_out.eraser_mask, ia.lab==ID)] = 0
             for y, x in paint_out.coords_delete:
                 del_ID = ia.lab[y, x]
                 ia.lab[ia.lab == del_ID] = 0
@@ -2494,6 +2496,7 @@ def mouse_down(event):
             IDs = [obj.label for obj in ia.rp]
             ia.contours = ia.find_contours(ia.lab, IDs, group=True)
             ia.reset_auto_edge_img(ia.contours)
+            ia.reset_ccstage_df_cb(None)
             app.update_ax0_plot(ia, ia.img)
             app.update_ax1_plot(ia.lab, ia.rp, ia)
             app.update_ax2_plot(ia)
@@ -2646,6 +2649,8 @@ def mouse_up(event):
         ia.rp = regionprops(ia.lab)
         IDs = [obj.label for obj in ia.rp]
         ia.contours = ia.find_contours(ia.lab, IDs, group=True)
+        ia.reset_auto_edge_img(ia.contours)
+        ia.reset_ccstage_df_cb(None)
         app.update_ax0_plot(ia, ia.img)
         app.update_ax1_plot(ia.lab, ia.rp, ia)
         # ia.auto_edge_img = np.zeros_like(ia.auto_edge_img)
@@ -2768,6 +2773,8 @@ def mouse_up(event):
         ia.rp = regionprops(ia.lab)
         IDs = [obj.label for obj in ia.rp]
         ia.contours = ia.find_contours(ia.lab, IDs, group=True)
+        ia.reset_auto_edge_img(ia.contours)
+        ia.reset_ccstage_df_cb(None)
         app.update_ax0_plot(ia, ia.img)
         app.update_ax1_plot(ia.lab, ia.rp, ia)
         app.update_ax2_plot(ia)

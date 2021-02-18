@@ -239,7 +239,7 @@ def init_cc_stage_df(all_cells_ids, init_cca_df=None):
         cc_stage = ['S' for ID in all_cells_ids]
         num_cycles = [-1]*len(all_cells_ids)
         relationship = ['mother' for ID in all_cells_ids]
-        related_to = [0]*len(all_cells_ids)
+        related_to = [-1]*len(all_cells_ids)
         discard = np.zeros(len(all_cells_ids), bool)
         df = pd.DataFrame({'Cell cycle stage': cc_stage,
                            '# of cycles': num_cycles,

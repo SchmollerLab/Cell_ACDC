@@ -19,7 +19,8 @@ from skimage.segmentation import watershed
 from skimage.filters import (apply_hysteresis_threshold, gaussian, sobel)
 from skimage.feature import peak_local_max
 from skimage.registration import phase_cross_correlation
-from skimage.draw import disk, circle_perimeter, line, line_aa, bezier_curve
+from skimage.draw import (disk, circle_perimeter, line, line_aa, bezier_curve,
+                          polygon)
 from skimage.exposure import histogram
 from skimage.color import gray2rgb, label2rgb
 import matplotlib.pyplot as plt
@@ -36,7 +37,8 @@ except:
     pass
 from tkinter import ttk
 from datetime import datetime
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg,
+                                               NavigationToolbar2Tk)
 from pyglet.canvas import Display
 
 
@@ -2551,17 +2553,29 @@ class cc_stage_df_frame0:
         related_to = [int(var.get()) for var in self.related_to_list]
         relationship = [var.get() for var in self.relationship_list]
         check_rel = [ID == rel for ID, rel in zip(self.cell_IDs, related_to)]
+        # Buds in S phase must have 0 as number of cycles
         check_buds_S = [ccs=='S' and rel_ship=='bud' and not numc==0
                         for ccs, rel_ship, numc
                         in zip(cc_stage, relationship, num_cycles)]
+        # Mother cells must have at least 1 as number of cycles
         check_mothers = [rel_ship=='mother' and not numc>=1
                          for rel_ship, numc
                          in zip(relationship, num_cycles)]
+        # Buds cannot be in G1
         check_buds_G1 = [ccs=='G1' and rel_ship=='bud'
                          for ccs, rel_ship
                          in zip(cc_stage, relationship)]
+        # The number of cells in S phase must be half mothers and half buds
+        num_moth_S = len([0 for ccs, rel_ship in zip(cc_stage, relationship)
+                            if ccs=='S' and rel_ship=='mother'])
+        num_bud_S = len([0 for ccs, rel_ship in zip(cc_stage, relationship)
+                            if ccs=='S' and rel_ship=='bud'])
+        # Cells in S phase cannot have -1 as relative's ID
+        check_relID_S = [ccs=='S' and relID==-1
+                         for ccs, relID
+                         in zip(cc_stage, related_to)]
         if any(check_rel):
-            messagebox.showerror('Cell ID == Relative\'s ID', 'Some cells are '
+            messagebox.showerror('Cell ID = Relative\'s ID', 'Some cells are '
                     'mother or bud of itself. Make sure that the Relative\'s ID'
                     ' is different from the Cell ID!')
         elif any(check_buds_S):
@@ -2571,11 +2585,20 @@ class cc_stage_df_frame0:
         elif any(check_mothers):
             messagebox.showerror('Mother not in >=1 num. cycles',
                 'Some mother cells do not have >=1 as "# of cycles"!\n'
-                'Mothers MUST have >1 as "# of cycles"')
+                'Mothers MUST have >1 "# of cycles"')
         elif any(check_buds_G1):
             messagebox.showerror('Buds in G1!',
                 'Some buds are in G1 phase!\n'
                 'Buds MUST be in S phase')
+        elif num_moth_S != num_bud_S:
+            messagebox.showerror('Number of mothers-buds mismatch!',
+                f'There are {num_moth_S} mother cells in "S" phase,\n'
+                f'but there are {num_bud_S} bud cells.\n'
+                'The number of mothers and buds in "S" phase must be equal!')
+        elif any(check_relID_S):
+            messagebox.showerror('Relative\'s ID of cells in S = -1',
+                'Some cells are in "S" phase but have -1 has Relative\'s ID!\n'
+                'Cells in "S" phase must have an existing ID as Relative\'s ID!')
         else:
             df = pd.DataFrame({
                                 'Cell cycle stage': cc_stage,
@@ -3721,6 +3744,13 @@ class my_paint_app:
         self.overlay_B = Button(self.ax_overlay_B, 'Overlay',
                             canvas=sub_win.canvas,
                             color='0.1', hovercolor='0.25', presscolor='0.35')
+        self.brightness_sl = Slider(ax_slice, 'Brightness', 5, app.num_slices,
+                            valinit=app.s,
+                            valstep=1,
+                            color=slider_color,
+                            init_val_line_color=hover_color,
+                            valfmt='%1.0f',
+                            orientation='vertical')
         """Connect to events"""
         (sub_win.canvas).mpl_connect('button_press_event', self.mouse_down)
         (sub_win.canvas).mpl_connect('button_release_event', self.mouse_up)
@@ -3844,20 +3874,56 @@ class my_paint_app:
 
         elif event.inaxes == self.ax and event.button == 1:
             (self.sub_win.canvas).mpl_disconnect(self.cid_brush_circle)
+            self.xb, self.yb = self.ax_transData_and_coerce(self.ax, event.x,
+                                                                     event.y,
+                                                        self.label_img.shape)
             self.cid_brush = (self.sub_win.canvas).mpl_connect(
                                                      'motion_notify_event',
                                                           self.apply_brush)
 
+    def get_poly_brush(self, yxc1, yxc2, r):
+        # see https://en.wikipedia.org/wiki/Tangent_lines_to_circles
+        R = r
+        y1, x1 = yxc1
+        y2, x2 = yxc2
+        arcsin_den = np.sqrt((x2-x1)**2+(y2-y1)**2)
+        arctan_den = (x2-x1)
+        if arcsin_den!=0 and arctan_den!=0:
+            beta = np.arcsin((R-r)/arcsin_den)
+            gamma = -np.arctan((y2-y1)/arctan_den)
+            alpha = gamma-beta
+            x3 = x1 + r*np.sin(alpha)
+            y3 = y1 + r*np.cos(alpha)
+            x4 = x2 + R*np.sin(alpha)
+            y4 = y2 + R*np.cos(alpha)
+
+            alpha = gamma+beta
+            x5 = x1 - r*np.sin(alpha)
+            y5 = y1 - r*np.cos(alpha)
+            x6 = x2 - R*np.sin(alpha)
+            y6 = y2 - R*np.cos(alpha)
+
+            rr_poly, cc_poly = polygon([y3, y4, y6, y5], [x3, x4, x6, x5])
+        else:
+            rr_poly, cc_poly = [], []
+        return rr_poly, cc_poly
+
     def apply_brush(self, event):
         x, y = self.ax_transData_and_coerce(self.ax, event.x, event.y,
                                                     self.label_img.shape)
+
         rr, cc = disk((y, x), radius=self.brush_size,
                               shape=self.label_img.shape)
+        rr_poly, cc_poly = self.get_poly_brush((self.yb, self.xb), (y, x),
+                                                self.brush_size)
+        self.xb, self.yb = x, y
         if self.eraser_on:
-            self.sep_bud_label[rr, cc] = 0
             self.eraser_mask[rr, cc] = True
+            self.eraser_mask[rr_poly, cc_poly] = True
+            self.sep_bud_label[self.eraser_mask] = 0
         else:
             self.sep_bud_label[rr, cc] = self.ID_moth
+            self.sep_bud_label[rr_poly, cc_poly] = self.ID_moth
         self.update_img(None)
         c = 'r' if self.eraser_on else 'g'
         self.brush_circle = matplotlib.patches.Circle((x, y),

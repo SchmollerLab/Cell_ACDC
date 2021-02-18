@@ -337,7 +337,9 @@ class app_GUI:
         self.eraser_on = False
         self.selected_IDs = None
         self.permanent_delID_on = False
-        self.set_labRGB_colors(max_ID=segm_npy.max()+1)
+        self.cells_slideshow = None
+        self.max_ID = segm_npy.max()
+        self.set_imshow_cmap(max_ID=self.max_ID)
         self.init_attr()
 
     def store_state(self, ia):
@@ -444,14 +446,74 @@ class app_GUI:
                             clear=True, selected_IDs=self.selected_IDs)
         ax_img.axis('off')
 
-    def set_labRGB_colors(self, start_c=128, max_ID=100):
+    def set_labRGB_colors(self, max_num_cells=100):
+        """DEPRECATED"""
         # Generate a colormap as sparse as possible given the max ID.
-        gradient = np.linspace(1, 255, max_ID, dtype=int)
-        labelRGB_colors = np.asarray([plt.cm.viridis(i) for i in gradient])
+        gradient = np.linspace(1, 255, max_num_cells, dtype=int)
+        labelRGB_colors = plt.cm.viridis(gradient)
         # Randomly shuffle the colormap to minimize the possibility for two closeby
         # ID of having a similar color.
         np.random.shuffle(labelRGB_colors)
         self.labRGB_colors = labelRGB_colors
+
+    def set_imshow_cmap(self, max_ID=100):
+        # Generate a colormap as sparse as possible given the max ID.
+        # NOTE: if max_ID > 256 then some colors will be recycled
+        # TODO: append multiple cmaps for more than 256 colors
+        n = max_ID
+        vals = np.linspace(0,1,n)
+        np.random.shuffle(vals)
+        labRGB_colors = plt.cm.viridis(vals)
+        # Insert background color
+        labRGB_colors = np.insert(labRGB_colors, 0, [0.1, 0.1, 0.1, 1], axis=0)
+        self.labRGB_colors = labRGB_colors
+        # Build cmap
+        my_cmap = plt.cm.colors.ListedColormap(labRGB_colors)
+        self.imshow_cmap = my_cmap
+
+    def update_imshow_cmap(self, ia, max_ID, selected_IDs=None):
+        # Append new colors from a different cmap to allow for the new max_ID
+        if max_ID > self.max_ID:
+            additional_Ncolors = max_ID - self.max_ID
+            vals = np.linspace(0,1,additional_Ncolors)
+            np.random.shuffle(vals)
+            additional_RGB_colors = plt.cm.cool(vals)
+            # Append additional colors to existing colormap
+            self.labRGB_colors = np.append(self.labRGB_colors,
+                                           additional_RGB_colors,
+                                           axis=0)
+            my_cmap = plt.cm.colors.ListedColormap(self.labRGB_colors)
+            self.imshow_cmap = my_cmap
+            self.max_ID = max_ID
+        else:
+            # Max ID is still the same. Keep previous cmap
+            my_cmap = self.imshow_cmap
+        # Gray out non selected IDs
+        if selected_IDs is not None:
+            RGBs_opaque = self.imshow_cmap.colors.copy()
+            RGBs_opaque[1:, :3] = self.labRGB_colors[1:, :3]*0.1
+            for ID in selected_IDs:
+                RGBs_opaque[ID] = self.labRGB_colors[ID]
+            my_cmap = plt.cm.colors.ListedColormap(RGBs_opaque)
+        else:
+            my_cmap = self.imshow_cmap
+        # Gray out deleted cells
+        if self.frame_i in ia.segm_metadata_df.index.get_level_values(0):
+            df_frame_i = ia.segm_metadata_df.loc[self.frame_i]
+            df_frame_i_del = df_frame_i[df_frame_i['Is_dead_cell']]
+            del_IDs = df_frame_i_del.index
+            if not del_IDs.empty:
+                labRGB_colors = self.imshow_cmap.colors.copy()
+                for del_ID in del_IDs:
+                    labRGB_colors[del_ID, :3] = self.labRGB_colors[del_ID, :3]*0.1
+                my_cmap = plt.cm.colors.ListedColormap(labRGB_colors)
+            else:
+                my_cmap = self.imshow_cmap
+        else:
+            my_cmap = self.imshow_cmap
+        return my_cmap
+
+
 
     def update_ALLplots(self, ia):
         fig, ax = self.fig, self.ax
@@ -516,32 +578,36 @@ class app_GUI:
         # ia.cc_stage_df = ia.init_cc_stage_df(rp)
         # ia.cc_stage_df = ia.assign_bud(ia.cc_stage_df, rp)
         ia.lab = lab
-        labRGB = skimage.color.label2rgb(lab, colors=self.labRGB_colors,
-                                             bg_label=0, bg_color=(0.1,0.1,0.1))
-        # Gray out selected cells
-        if self.selected_IDs is not None:
-            lab_mask = lab>0
-            labRGB_opaque = labRGB.copy()
-            labRGB_opaque[lab_mask] = 0.1*labRGB[lab_mask]
-            for ID in self.selected_IDs:
-                mask_selected_ID = lab==ID
-                labRGB_opaque[mask_selected_ID] = labRGB[mask_selected_ID]
-            labRGB = labRGB_opaque
-        # Gray out deleted IDs
-        if self.frame_i in ia.segm_metadata_df.index.get_level_values(0):
-            df_frame_i = ia.segm_metadata_df.loc[self.frame_i]
-            df_frame_i_del = df_frame_i[df_frame_i['Is_dead_cell']]
-            del_IDs = df_frame_i_del.index
-            for del_ID in del_IDs:
-                mask_del_ID = lab==del_ID
-                labRGB[mask_del_ID] = labRGB[mask_del_ID]*0.1
-        if self.brush_mode_on:
-            ax1_img = self.get_labels_overlay(labRGB, ia.img, bg_label=0)
-        else:
-            ax1_img = labRGB
+        max_ID = lab.max()
+        my_cmap = self.update_imshow_cmap(ia, max_ID,
+                                          selected_IDs=self.selected_IDs)
         ax = self.ax
         ax[1].clear()
-        ax[1].imshow(ax1_img)
+        # Gray out selected cells
+        # if self.selected_IDs is not None:
+        #     lab_mask = lab>0
+        #     labRGB_opaque = labRGB.copy()
+        #     labRGB_opaque[lab_mask] = 0.1*labRGB[lab_mask]
+        #     for ID in self.selected_IDs:
+        #         mask_selected_ID = lab==ID
+        #         labRGB_opaque[mask_selected_ID] = labRGB[mask_selected_ID]
+        #     labRGB = labRGB_opaque
+        # # Gray out deleted IDs
+        # if self.frame_i in ia.segm_metadata_df.index.get_level_values(0):
+        #     df_frame_i = ia.segm_metadata_df.loc[self.frame_i]
+        #     df_frame_i_del = df_frame_i[df_frame_i['Is_dead_cell']]
+        #     del_IDs = df_frame_i_del.index
+        #     for del_ID in del_IDs:
+        #         mask_del_ID = lab==del_ID
+        #         labRGB[mask_del_ID] = labRGB[mask_del_ID]*0.1
+        if self.brush_mode_on:
+            labRGB = skimage.color.label2rgb(lab, colors=my_cmap.colors,
+                                             bg_label=0,
+                                             bg_color=(0.1,0.1,0.1))
+            ax1_img = self.get_labels_overlay(labRGB, ia.img, bg_label=0)
+            ax[1].imshow(ax1_img)
+        else:
+            ax[1].imshow(lab, vmin=0, vmax=self.max_ID, cmap=my_cmap)
         text_label_centroid(ia.rp, ax[1], 10, 'semibold', 'center', 'center',
                             new_IDs=ia.new_IDs,
                             display_IDs_cont='IDs and contours',
@@ -657,13 +723,11 @@ class app_GUI:
         return rgb_cmap_array, x_rgb, picked_rgb_marker
 
     def update_cells_slideshow(self, ia):
-        try:
+        if self.cells_slideshow is not None:
             self.cells_slideshow.rps[self.frame_i] = regionprops(ia.lab)
             self.cells_slideshow.new_IDs = ia.new_IDs
             self.cells_slideshow.lost_IDs = ia.lost_IDs
             self.cells_slideshow.sl.set_val(app.frame_i)
-        except:
-            pass
 
     def save_all(self):
         if self.auto_save:
@@ -1153,6 +1217,12 @@ class img_analysis:
 
 
     def tracking(self, prev_ia, apply=True):
+        if not self.do_tracking or not apply:
+            prev_IDs = [obj.label for obj in prev_ia.rp]
+            curr_IDs = [obj.label for obj in self.rp]
+            warn_txt = self.check_prev_IDs_lost_new(prev_IDs, curr_IDs)
+            return self.lab, warn_txt
+        print('Tracking...')
         IDs_prev = [obj.label for obj in prev_ia.rp]
         IDs_prev.sort()
         IDs_curr_untracked = [obj.label for obj in self.rp]
@@ -1237,13 +1307,7 @@ class img_analysis:
         if new_tracked_IDs_2:
             self.new_IDs = new_tracked_IDs_2
             warn_txt = f'{warn_txt}\n\nNew cells IDs in current frame: {new_tracked_IDs_2}'
-        if self.do_tracking and apply:
-            return tracked_lab, warn_txt
-        elif not apply:
-            return self.lab, warn_txt
-        else:
-            warn_txt = ia.check_prev_IDs_lost_new(IDs_prev, IDs_curr_untracked)
-            return self.lab, warn_txt
+        return tracked_lab, warn_txt
         # self.bp.pausehere()
 
     def np_replace_values(self, arr, old_values, tracked_values):
@@ -1631,6 +1695,7 @@ def next_f(event):
         "warning", "yesno") == 'yes'
     if proceed:
         ia.add_segm_metadata(app.frame_i, add_next=app.frame_i<num_frames)
+        # Switch tracking on if the next frame was never tracked
         if app.last_tracked_i < app.frame_i+1:
             ia.do_tracking = False
             tracking_state_cb(None)
@@ -1648,7 +1713,7 @@ def next_f(event):
             ia.slice_used = app.s
             param = store_param(ia)
             app.save_all()
-        # Next frame was already segmented in a previous session.
+        # Next frame was already segmented (most likely by YeaZ).
         # Load data from HDD
         elif app.segm_npy_done[app.frame_i+1] is not None:
             prev_ia = param[app.frame_i]
@@ -1789,7 +1854,7 @@ def frames_slideshow_cb(event):
             if i >= 0 and j < len(param):
                 if param[j] is not None:
                     rps[i] = param[j].rp
-                    CCAdfs[i] = param[j].cc_stage_df
+                    CCAdfs[i] = None#param[j].cc_stage_df
                 j += 1
             elif i < 0:
                 rps[i] = regionprops(app.segm_npy_done[i])
@@ -1804,12 +1869,14 @@ def frames_slideshow_cb(event):
             app.cells_slideshow.new_IDs = ia.new_IDs
             app.cells_slideshow.lost_IDs = ia.lost_IDs
             app.cells_slideshow.run()
+            app.cells_slideshow = None
         else:
             app.cells_slideshow = CellInt_slideshow_2D(app.frames,
                                                        num_frames,
                                                        app.frame_i,
                                                        CCAdfs, rps, False)
             app.cells_slideshow.run()
+            app.cells_slideshow = None
 
 def undo_del_t_cb(event):
     del ia.del_yx_thresh[-1]
