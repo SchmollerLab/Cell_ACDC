@@ -513,8 +513,6 @@ class app_GUI:
             my_cmap = self.imshow_cmap
         return my_cmap
 
-
-
     def update_ALLplots(self, ia):
         fig, ax = self.fig, self.ax
         img = ia.img
@@ -1307,6 +1305,7 @@ class img_analysis:
         if new_tracked_IDs_2:
             self.new_IDs = new_tracked_IDs_2
             warn_txt = f'{warn_txt}\n\nNew cells IDs in current frame: {new_tracked_IDs_2}'
+        self.modified = True
         return tracked_lab, warn_txt
         # self.bp.pausehere()
 
@@ -1686,6 +1685,8 @@ def store_app_param(ia):
 def next_f(event):
     global param, ia, param
     proceed = True
+    if ia.modified:
+        app.last_tracked_i = app.frame_i
     if 'lost' in app.warn_txt._text:
         s = app.warn_txt._text
         lost_IDs = s[s.find('['):s.find(']')+1]
@@ -1751,7 +1752,6 @@ def next_f(event):
             # store_app_param(ia)
             app.update_ALLplots(ia)
             app.save_all()
-            ia.modified = True
         # Next frame was never segmented
         elif app.frame_i < num_frames and app.frame_i+1 > app.last_segm_i:
             app.last_segm_i = app.frame_i
@@ -1763,6 +1763,7 @@ def next_f(event):
             app.init_attr()
             app.frame_txt._text = f'Current frame = {app.frame_i}/{num_frames-1}'
             app.update_ALLplots(ia)
+            ia.modified = True
             # analyse_img(img)
         # Next frame was already segmented within this session. Load data
         elif app.frame_i+1 <= app.last_segm_i:
@@ -1786,6 +1787,10 @@ def next_f(event):
 def prev_f(event):
     global ia, param
     app.reset_view = False
+    # Switch tracking OFF if the prev frame was already tracked
+    if app.frame_i-1 <= app.frame_i_done:
+        ia.do_tracking = True
+        tracking_state_cb(None)
     if app.segm_npy_done[app.frame_i] is not None and ia.modified:
         param = store_param(ia)
         store_app_param(ia)
