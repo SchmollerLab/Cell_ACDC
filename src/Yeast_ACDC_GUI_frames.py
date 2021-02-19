@@ -156,6 +156,7 @@ class load_data:
         self.segm_npy_path = f'{base_path}_segm.npy'
         self.last_tracked_i_path = f'{base_path}_last_tracked_i.txt'
         self.segm_metadata_csv_path = f'{base_path}_segm_metadata.csv'
+        self.benchmarking_df_csv_path = f'{base_path}_benchmarking.csv'
 
     def substring_path(self, path, substring, parent_path):
         substring_found = False
@@ -341,6 +342,11 @@ class app_GUI:
         self.max_ID = segm_npy.max()
         self.set_imshow_cmap(max_ID=self.max_ID)
         self.init_attr()
+        # Benchmarking data
+        self.exec_times = []
+        self.bench_frames = []
+        self.actions = []
+        self.bench_num_cells = []
 
     def store_state(self, ia):
         if self.is_undo or self.is_redo:
@@ -573,28 +579,10 @@ class app_GUI:
         # ia.cc_stage_df = ia.assign_bud(ia.cc_stage_df, rp)
         ia.lab = lab
         max_ID = lab.max()
-        print(self.selected_IDs)
         my_cmap = self.update_imshow_cmap(ia, max_ID,
                                           selected_IDs=self.selected_IDs)
         ax = self.ax
         ax[1].clear()
-        # Gray out selected cells
-        # if self.selected_IDs is not None:
-        #     lab_mask = lab>0
-        #     labRGB_opaque = labRGB.copy()
-        #     labRGB_opaque[lab_mask] = 0.1*labRGB[lab_mask]
-        #     for ID in self.selected_IDs:
-        #         mask_selected_ID = lab==ID
-        #         labRGB_opaque[mask_selected_ID] = labRGB[mask_selected_ID]
-        #     labRGB = labRGB_opaque
-        # # Gray out deleted IDs
-        # if self.frame_i in ia.segm_metadata_df.index.get_level_values(0):
-        #     df_frame_i = ia.segm_metadata_df.loc[self.frame_i]
-        #     df_frame_i_del = df_frame_i[df_frame_i['Is_dead_cell']]
-        #     del_IDs = df_frame_i_del.index
-        #     for del_ID in del_IDs:
-        #         mask_del_ID = lab==del_ID
-        #         labRGB[mask_del_ID] = labRGB[mask_del_ID]*0.1
         if self.brush_mode_on:
             labRGB = skimage.color.label2rgb(lab, colors=my_cmap.colors,
                                              bg_label=0,
@@ -761,6 +749,19 @@ class app_GUI:
         else:
             y_coerced = int(round(y)) if return_int else y
         return x_coerced, y_coerced
+
+    def append_benchmarking_data(self, t0, t1, action, ia):
+        self.exec_times.append(t1-t0)
+        self.bench_frames.append(self.frame_i)
+        self.actions.append(action)
+        self.bench_num_cells.append(len(ia.rp))
+
+    def save_benchmarking_data(self):
+        df = pd.DataFrame({'Action': self.actions,
+                           'frame_i': self.bench_frames,
+                           'Num_cells': self.bench_num_cells,
+                           'Execution_time_seconds': self.exec_times})
+        df.to_csv(self.data.benchmarking_df_csv_path)
 
 
 class img_analysis:
@@ -1681,6 +1682,7 @@ def store_app_param(ia):
 """Widgets' functions"""
 def next_f(event):
     global param, ia, param
+    t0 = time()
     proceed = True
     if ia.modified:
         app.last_tracked_i = app.frame_i
@@ -1780,9 +1782,13 @@ def next_f(event):
         app.set_orig_lims()
         app.prev_states = []
         app.store_state(ia)
+        t1 = time()
+        # print(f'Execution time = {t1-t0:.3f} s')
+        # app.append_benchmarking_data(t0, t1, 'Next', ia)
 
 def prev_f(event):
     global ia, param
+    t0 = time()
     app.reset_view = False
     # Switch tracking OFF if the prev frame was already tracked
     if app.frame_i-1 <= app.frame_i_done:
@@ -1814,6 +1820,9 @@ def prev_f(event):
     app.connect_axes_cb()
     app.set_orig_lims()
     app.update_cells_slideshow(ia)
+    t1 = time()
+    # print(f'Execution time = {t1-t0:.3f} s')
+    app.append_benchmarking_data(t0, t1, 'Prev', ia)
 
 def update_segm(val):
     ia.locTval = s_lowT.val - s_locT.val
@@ -2413,6 +2422,9 @@ def resize_widgets(event):
 def key_down(event):
     global ia
     key = event.key
+    if not key.islower():
+        tk.messagebox.showwarning('Caps Lock is ON', 'Caps Lock is ON. '
+                                  'Commands do NOT work with Caps Lock ON.')
     if key == 'right':
         if app.key_mode == 'Z-slice' and app.num_slices>1:
             s_slice.set_val(s_slice.val+1)
@@ -3052,6 +3064,7 @@ def on_ylim_changed(axes):
     app.reset_view = False
 
 def handle_close(event):
+    # app.save_benchmarking_data()
     try:
         app.cells_slideshow.close()
     except:
