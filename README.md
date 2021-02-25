@@ -1,5 +1,5 @@
 # Yeast cell segmentation, tracking and cell lineage analysis
-Python scripts for yeast cells segmentation, tracking and cell lineage analysis
+Python neural network (YeaZ) and set of GUIs for yeast cells segmentation, tracking and cell lineage analysis
 
 ## NOTE on Folder structure
 

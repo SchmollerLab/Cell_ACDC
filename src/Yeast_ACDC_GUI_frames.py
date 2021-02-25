@@ -425,7 +425,7 @@ class app_GUI:
                 if self.ax_limits[a][1]:
                     axes.set_ylim(*self.ax_limits[a][1])
 
-    def update_ax0_plot(self, ia, img, ax_img=None):
+    def update_ax0_plot(self, ia, img, ax_img=None, draw_ax2_contours=False):
         if ax_img is None:
             ax_img = self.ax[0]
         ax_img.clear()
@@ -446,6 +446,8 @@ class app_GUI:
                 x = np.append(x, x[0])
                 y = np.append(y, y[0])
                 ax_img.plot(x, y, c='r', alpha=0.5, lw=1)
+                if draw_ax2_contours:
+                    self.ax[2].plot(x, y, c='silver', alpha=0.5)
         text_label_centroid(ia.rp, ax_img, 12, 'semibold', 'center', 'center',
                             cc_stage_frame=ia.cc_stage_df,
                             display_IDs_cont=self.display_IDs_cont, color='r',
@@ -521,27 +523,23 @@ class app_GUI:
         edge = ia.edge
         lab = ia.lab
         rp = ia.rp
-        self.update_ax0_plot(ia, img, ax[0])
+        self.ax[2].clear()
+        self.update_ax0_plot(ia, img, ax[0], draw_ax2_contours=True)
         self.update_ax1_plot(lab, rp, ia, draw=False)
-        if self.display_IDs_cont != 'Disable':
+        self.update_ax2_plot(ia, draw=False, update_contours=False, clear=False)
+        self.fig.canvas.draw_idle()
+
+    def update_ax2_plot(self, ia, draw=True, update_contours=True, clear=False):
+        ax = self.ax
+        if clear:
+            ax[2].clear()
+        if self.display_IDs_cont != 'Disable' and update_contours:
             for cont in ia.contours:
                 x = cont[:,1]
                 y = cont[:,0]
                 x = np.append(x, x[0])
                 y = np.append(y, y[0])
                 ax[2].plot(x, y, c='silver', alpha=0.5)
-        self.update_ax2_plot(ia, draw=False)
-        self.fig.canvas.draw_idle()
-
-    def update_ax2_plot(self, ia, draw=True):
-        ax = self.ax
-        ax[2].clear()
-        for cont in ia.contours:
-            x = cont[:,1]
-            y = cont[:,0]
-            x = np.append(x, x[0])
-            y = np.append(y, y[0])
-            ax[2].plot(x, y, c='silver', alpha=0.5)
         if ia.edge_mode:
             ax[2].imshow(ia.edge)
             # for cont in ia.li_yx_dir_coords:
@@ -605,6 +603,7 @@ class app_GUI:
                 ROI_delete_patch = Rectangle((x_start, y_start), rect_w, rect_h,
                                                 fill=False, color='r')
                 ax[1].add_patch(ROI_delete_patch)
+        # Draw 'X' on dead cells
         if self.frame_i in ia.segm_metadata_df.index.get_level_values(0):
             df_frame_i = ia.segm_metadata_df.loc[self.frame_i]
             df_frame_i_del = df_frame_i[df_frame_i['Is_dead_cell']]
@@ -1218,7 +1217,7 @@ class img_analysis:
             curr_IDs = [obj.label for obj in self.rp]
             warn_txt = self.check_prev_IDs_lost_new(prev_IDs, curr_IDs)
             return self.lab, warn_txt
-        print('Tracking...')
+        print(f'Tracking frame {self.frame_i}...')
         IDs_prev = [obj.label for obj in prev_ia.rp]
         IDs_prev.sort()
         IDs_curr_untracked = [obj.label for obj in self.rp]
@@ -1304,6 +1303,8 @@ class img_analysis:
             self.new_IDs = new_tracked_IDs_2
             warn_txt = f'{warn_txt}\n\nNew cells IDs in current frame: {new_tracked_IDs_2}'
         self.modified = True
+        print(f'Tracking frame {self.frame_i} done!')
+        print('------------------------------------')
         return tracked_lab, warn_txt
         # self.bp.pausehere()
 
@@ -1784,7 +1785,7 @@ def next_f(event):
         app.store_state(ia)
         t1 = time()
         # print(f'Execution time = {t1-t0:.3f} s')
-        # app.append_benchmarking_data(t0, t1, 'Next', ia)
+        app.append_benchmarking_data(t0, t1, 'Next', ia)
 
 def prev_f(event):
     global ia, param
@@ -1829,9 +1830,9 @@ def update_segm(val):
     thresh = ia.thresholding(ia.edge, s_lowT.val, s_highT.val)
     ia.repeat_manual_func(thresh)
     lab, rp = ia.segmentation(ia.thresh)
-    app.update_ax0_plot(ia, ia.img)
-    app.update_ax2_plot(ia, ia.thresh)
-    app.update_ax1_plot(lab, rp, ia)
+    ia.lab = lab
+    ia.rp = rp
+    app.update_ALLplots(ia)
 
 def plus_locT_cb(event):
     current_valmax = s_locT.valmax
@@ -2610,9 +2611,7 @@ def mouse_down(event):
             ia.rp = regionprops(ia.lab)
             IDs = [obj.label for obj in ia.rp]
             ia.contours = ia.find_contours(ia.lab, IDs, group=True)
-            app.update_ax0_plot(ia, ia.img)
-            app.update_ax2_plot(ia)
-            app.update_ax1_plot(ia.lab, ia.rp, ia)
+            app.update_ALLplots(ia)
             ia.modified = True
             app.store_state(ia)
     # Zoom out to home view
@@ -2644,10 +2643,8 @@ def mouse_down(event):
             ia.del_yx_thresh.append((yd, xd))
             ia.li_manual_func.append('Del. yx thresh')
             ia.thresh[lab_thresh == ID] = 0
-            lab, rp = ia.segmentation(ia.thresh)
-            app.update_ax0_plot(ia, ia.img)
-            app.update_ax2_plot(ia, ia.thresh)
-            app.update_ax1_plot(lab, rp, ia)
+            ia.lab, ia.rp = ia.segmentation(ia.thresh)
+            app.update_ALLplots(ia)
             ia.modified = True
     elif right_click and ax1_click and not ia.sep_bud and not ia.set_moth and not event.dblclick:
         ia.merge_yx[0] = yd
@@ -2674,9 +2671,7 @@ def mouse_down(event):
             ia.contours = ia.find_contours(ia.lab, IDs, group=True)
             ia.rp = rp
             tracking_routine(app, ia)
-            app.update_ax0_plot(ia, ia.img)
-            app.update_ax1_plot(ia.lab, ia.rp, ia)
-            app.update_ax2_plot(ia)
+            app.update_ALLplots(ia)
             ia.modified = True
             app.store_state(ia)
             app.update_cells_slideshow(ia)
@@ -2730,9 +2725,7 @@ def mouse_down(event):
             curr_IDs = [obj.label for obj in ia.rp]
             warn_txt = ia.check_prev_IDs_lost_new(prev_IDs, curr_IDs)
             app.warn_txt._text = warn_txt
-        app.update_ax0_plot(ia, ia.img)
-        app.update_ax1_plot(ia.lab, ia.rp, ia)
-        app.update_ax2_plot(ia)
+        app.update_ALLplots(ia)
         ia.modified = True
         app.store_state(ia)
         app.update_cells_slideshow(ia)
@@ -2750,9 +2743,7 @@ def mouse_down(event):
         ID = ia.lab[yd, xd]
         # Store deleted ID info into segm_metadata_df dataframe
         ia.segm_metadata_df.at[(app.frame_i, ID), 'Is_dead_cell'] = True
-        app.update_ax0_plot(ia, ia.img)
-        app.update_ax1_plot(ia.lab, ia.rp, ia)
-        app.update_ax2_plot(ia)
+        app.update_ALLplots(ia)
         ia.modified = True
         app.store_state(ia)
         app.update_cells_slideshow(ia)
@@ -2772,9 +2763,7 @@ def mouse_down(event):
         contour_img[yy, xx] = True
         ia.auto_edge_img = binary_fill_holes(contour_img)
         lab, rp = ia.separate_overlap(label(ia.auto_edge_img))
-        app.update_ax0_plot(ia, ia.img)
-        app.update_ax2_plot(ia)
-        app.update_ax1_plot(lab, rp, ia)
+        app.update_ALLplots(ia)
         ia.modified = True
         app.store_state(ia)
     elif wheel_click and ax1_click and event.dblclick:
@@ -2800,9 +2789,7 @@ def mouse_down(event):
                 app.warn_txt._text = warn_txt
                 ia.lab = tracked_lab.copy()
                 ia.rp = regionprops(tracked_lab)
-            app.update_ax0_plot(ia, ia.img)
-            app.update_ax2_plot(ia)
-            app.update_ax1_plot(ia.lab, ia.rp, ia)
+            app.update_ALLplots(ia)
             app.store_state(ia)
             app.update_cells_slideshow(ia)
     # Change RGB color of the overlay
@@ -3024,9 +3011,7 @@ def mouse_up(event):
             curr_IDs = [obj.label for obj in ia.rp]
             warn_txt = ia.check_prev_IDs_lost_new(prev_IDs, curr_IDs)
             app.warn_txt._text = warn_txt
-        app.update_ax0_plot(ia, ia.img)
-        app.update_ax1_plot(ia.lab, ia.rp, ia)
-        app.update_ax2_plot(ia)
+        app.update_ALLplots(ia)
         app.draw_ROI_delete = False
         app.store_state(ia)
 
@@ -3064,7 +3049,7 @@ def on_ylim_changed(axes):
     app.reset_view = False
 
 def handle_close(event):
-    # app.save_benchmarking_data()
+    app.save_benchmarking_data()
     try:
         app.cells_slideshow.close()
     except:
