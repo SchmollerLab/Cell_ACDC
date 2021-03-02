@@ -31,8 +31,9 @@ from skimage.exposure import equalize_adapthist, rescale_intensity
 from skimage.segmentation import relabel_sequential
 from scipy.ndimage.morphology import binary_fill_holes, distance_transform_edt
 from tifffile import TiffFile
-from Yeast_ACDC_MyWidgets import Slider, Button, MyRadioButtons, TextBox
-from Yeast_ACDC_FUNCTIONS import (auto_select_slice, separate_overlapping,
+from MyWidgets import Slider, Button, MyRadioButtons, TextBox
+from myutils import download_model
+from FUNCTIONS import (auto_select_slice, separate_overlapping,
                        text_label_centroid, tk_breakpoint, manual_emerg_bud,
                        CellInt_slideshow, twobuttonsmessagebox,
                        single_entry_messagebox, beyond_listdir_pos,
@@ -45,7 +46,7 @@ unet_path = f'{script_dirname}/YeaZ-unet/unet/'
 
 #append all the paths where the modules are stored. Such that this script
 #looks into all of these folders when importing modules.
-sys.path.append(unet_path)
+# sys.path.append(unet_path)
 
 """
 NOTE for implementing a NEW manual feature:
@@ -406,7 +407,8 @@ class app_GUI:
         self.display_ccStage = 'Only stage'
         self.p = start
         self.reset_view = False
-        self.use_unet = True
+        self.use_YeaZ = True
+        self.use_cellpose = False
         self.manual_verts = []
         self.prev_states = []
         self.already_approx_IDs = []
@@ -1337,13 +1339,20 @@ class img_analysis:
         img = equalize_adapthist(img)
         img = img*1.0
         print('Neural network is thinking...')
-        if app.is_pc:
+        if app.use_YeaZ:
             pred = nn.prediction(img, is_pc=True)
-        else:
-            pred = nn.prediction(edge, is_pc=True)
-        self.pred = pred
-        thresh = nn.threshold(pred)
-        lab = segment.segment(thresh, pred, min_distance=5).astype(int)
+            self.pred = pred
+            thresh = nn.threshold(pred)
+            lab = segment.segment(thresh, pred, min_distance=5).astype(int)
+        elif app.use_cellpose:
+            lab, flows, _, _ = app.cp_model.eval(img, channels=[0,0],
+                                                       diameter=60,
+                                                       invert=False,
+                                                       net_avg=True,
+                                                       augment=False,
+                                                       resample=False,
+                                                       do_3D=False,
+                                                       progress=None)
         lab = remove_small_objects(lab, min_size=20, connectivity=2)
         stop_t = time()
         print('Neural network execution time: {0:.3f}'.format(stop_t-start_t))
@@ -1400,8 +1409,18 @@ num_pos = len(phc)
 
 """Load neural network if needed"""
 if app.is_pc:
+    print('Importing YeaZ model...')
     import neural_network as nn
     from segment import segment
+    download_model('YeaZ')
+else:
+    print('Initializing cellpose models...')
+    from acdc_cellpose import models
+    download_model('cellpose')
+    device, gpu = models.assign_device(True, False)
+    app.cp_model = models.Cellpose(gpu=gpu, device=device,
+                                   model_type='cyto', torch=True)
+
 
 """Customize toolbar behaviour and initialize plots"""
 home = NavigationToolbar2.home
@@ -1452,7 +1471,7 @@ ax_prev = plt.axes([0.67, 0.2, 0.05, 0.03])
 # ax_locT = plt.axes([0.8, 0.2, 0.05, 0.03])
 ax_enlarge_cells = plt.axes([0.9, 0.2, 0.05, 0.03])
 ax_reduce_cells = plt.axes([0.6, 0.8, 0.05, 0.05])
-ax_use_unet = plt.axes([0.4, 0.8, 0.05, 0.05])
+ax_use_YeaZ = plt.axes([0.4, 0.8, 0.05, 0.05])
 ax_man_clos = plt.axes([0.7, 0.8, 0.05, 0.05])
 ax_brush_mode_b = plt.axes([0.03, 0.8, 0.05, 0.05])
 ax_keep_current_lab = plt.axes([0.012, 0.8, 0.05, 0.05])
@@ -1466,6 +1485,7 @@ ax_reload_segm = plt.axes([0.007, 0.080, 0.008945, 0.05])
 ax_reset_ccstage_df = plt.axes([0.007, 0.09512, 0.4581, 0.05])
 ax_segment_z = plt.axes([0.007, 0.09512, 0.158744, 0.05])
 ax_show_in_expl = plt.axes([0.007, 0.09512, 0.49864, 0.05])
+ax_use_cellpose = plt.axes([0.007, 0.151651, 0.49864, 0.05])
 
 
 """Widgets"""
@@ -1506,8 +1526,11 @@ enlarge_cells = Button(ax_enlarge_cells, 'Enlarge cells',
 reduce_cells = Button(ax_reduce_cells, 'Reduce cells',
                      color=axcolor, hovercolor=hover_color,
                      presscolor=presscolor)
-use_unet = Button(ax_use_unet, 'Neural network ACTIVE',
+use_YeaZ = Button(ax_use_YeaZ, 'YeaZ ACTIVE',
                      color=button_true_color, hovercolor=button_true_color,
+                     presscolor=presscolor)
+use_cellpose = Button(ax_use_cellpose, 'Segment with cellpose',
+                     color=axcolor, hovercolor=hover_color,
                      presscolor=presscolor)
 man_clos = Button(ax_man_clos, 'Switch to manual closing',
                      color=axcolor, hovercolor=hover_color,
@@ -1566,7 +1589,7 @@ app.view_slices_sl = view_slices_sl
 """Functions"""
 def analyse_img(img):
     print('Thinking...')
-    if app.use_unet:
+    if app.use_YeaZ or app.use_cellpose:
         ia.unet_segmentation(img, app, ia)
     else:
         ia.full_IAroutine(img, app, ia)
@@ -1949,18 +1972,32 @@ def brush_mode_button(value):
         brush_mode_b.ax.set_facecolor(axcolor)
         (app.fig.canvas).draw_idle()
 
-def switch_use_unet_button(value):
+def switch_use_cellpose_button(value):
     if value:
-        use_unet.color = button_true_color
-        use_unet.hovercolor = button_true_color
-        use_unet.label._text = 'Neural network ACTIVE'
-        use_unet.ax.set_facecolor(button_true_color)
+        use_cellpose.color = button_true_color
+        use_cellpose.hovercolor = button_true_color
+        use_cellpose.label._text = 'cellpose ACTIVE'
+        use_cellpose.ax.set_facecolor(button_true_color)
         (app.fig.canvas).draw_idle()
     else:
-        use_unet.color = axcolor
-        use_unet.hovercolor = hover_color
-        use_unet.label._text = 'Use neural network'
-        use_unet.ax.set_facecolor(axcolor)
+        use_cellpose.color = axcolor
+        use_cellpose.hovercolor = hover_color
+        use_cellpose.label._text = 'Segment with cellpose'
+        use_cellpose.ax.set_facecolor(axcolor)
+        (app.fig.canvas).draw_idle()
+
+def switch_use_YeaZ_button(value):
+    if value:
+        use_YeaZ.color = button_true_color
+        use_YeaZ.hovercolor = button_true_color
+        use_YeaZ.label._text = 'YeaZ ACTIVE'
+        use_YeaZ.ax.set_facecolor(button_true_color)
+        (app.fig.canvas).draw_idle()
+    else:
+        use_YeaZ.color = axcolor
+        use_YeaZ.hovercolor = hover_color
+        use_YeaZ.label._text = 'Segment with YeaZ'
+        use_YeaZ.ax.set_facecolor(axcolor)
         (app.fig.canvas).draw_idle()
 
 
@@ -2047,25 +2084,38 @@ def update_peaks_bord(val):
                            exclude_border=ia.exclude_border)
     app.ax[2].plot(peaks[:,1], peaks[:,0], 'r.')
 
-def use_unet_cb(event):
+def use_YeaZ_cb(event):
     global nn, segment
-    if app.use_unet:
-        use_unet.color = axcolor
-        use_unet.hovercolor = hover_color
-        use_unet.label._text = 'Use neural network'
-        use_unet.ax.set_facecolor(axcolor)
-        (app.fig.canvas).draw_idle()
-        app.use_unet = False
+    if app.use_YeaZ:
+        switch_use_YeaZ_button(False)
+        app.use_YeaZ = False
         analyse_img(ia.img)
     else:
+        print('Importing YeaZ model...')
         from YeaZ.unet import neural_network as nn
         from YeaZ.unet import segment
-        use_unet.color = button_true_color
-        use_unet.hovercolor = button_true_color
-        use_unet.label._text = 'Neural network ACTIVE'
-        use_unet.ax.set_facecolor(button_true_color)
-        (app.fig.canvas).draw_idle()
-        app.use_unet = True
+        switch_use_YeaZ_button(True)
+        switch_use_cellpose_button(False)
+        app.use_cellpose = False
+        app.use_YeaZ = True
+        analyse_img(ia.img)
+
+def use_cellpose_cb(event):
+    global models
+    if app.use_cellpose:
+        switch_use_cellpose_button(False)
+        app.use_cellpose = False
+        analyse_img(ia.img)
+    else:
+        print('Initializing cellpose model...')
+        from acdc_cellpose import models
+        device, gpu = models.assign_device(True, False)
+        app.cp_model = models.Cellpose(gpu=gpu, device=device,
+                                       model_type='cyto', torch=True)
+        switch_use_cellpose_button(True)
+        switch_use_YeaZ_button(False)
+        app.use_YeaZ = False
+        app.use_cellpose = True
         analyse_img(ia.img)
 
 def draw_bg_mask_on_cb(event):
@@ -2124,7 +2174,7 @@ def keep_release_current_lab_cb(event):
         lab_mask = ia.frozen_lab > 0
         # Add frozen segmentation on top of the new one
         ia.lab[lab_mask] = ia.frozen_lab[lab_mask]+max_ID
-        ia.lab = app.relabel_and_fill_lab(ia.lab)
+        # ia.lab = app.relabel_and_fill_lab(ia.lab)
         # Update all the attributes of the new segmentation
         ia.rp = regionprops(ia.lab)
         ia.cc_stage_df = ia.init_cc_stage_df(ia.rp)
@@ -2133,7 +2183,7 @@ def keep_release_current_lab_cb(event):
         IDs = [obj.label for obj in ia.rp]
         ia.contours = ia.find_contours(ia.lab, IDs, group=True)
         ia.reset_auto_edge_img(ia.contours)
-        ia.reset_ccstage_df_cb(None)
+        reset_ccstage_df_cb(None)
         ia.edge = ia.frozen_edge.copy()
         ia.img = ia.frozen_img.copy()
         ia.contour_plot = [[], []]
@@ -2178,7 +2228,7 @@ enlarge_cells.on_clicked(apply_morph_cells)
 morhp_ids_tb.on_submit(morph_IDs_on_submit)
 # s_locT.on_changed(locT_cb)
 
-use_unet.on_clicked(use_unet_cb)
+use_YeaZ.on_clicked(use_YeaZ_cb)
 # undo_del_t.on_clicked(undo_del_t_cb)
 man_clos.on_clicked(man_clos_cb)
 brush_mode_b.on_clicked(brush_mode_cb)
@@ -2190,6 +2240,7 @@ reset_ccstage_df_b.on_clicked(reset_ccstage_df_cb)
 keep_current_lab_b.on_clicked(keep_release_current_lab_cb)
 segment_this_z_b.on_clicked(segment_this_z_cb)
 show_in_expl_b.on_clicked(show_in_expl_cb)
+use_cellpose.on_clicked(use_cellpose_cb)
 
 """Canvas events functions"""
 def resize_widgets(event):
@@ -2210,7 +2261,9 @@ def resize_widgets(event):
     ax_enlarge_cells.set_position([a1_c+(spF/11), ax1_b-(spF/11)-wH, bW, wH])
     _, ax_enl_b, ax_enl_r, _ = ax_enlarge_cells.get_position().get_points().flatten()
     ax_morph_IDs.set_position([ax_enl_r-bW, ax_enl_b-(spF/9)-wH, bW, wH])
-    ax_use_unet.set_position([ax1_l, ax1_t+(spF/3), bW, wH])
+    ax_use_YeaZ.set_position([ax1_l, ax1_t+(spF/3), bW, wH])
+    _, _, _, ax_use_YeaZ_t = ax_use_YeaZ.get_position().get_points().flatten()
+    ax_use_cellpose.set_position([ax1_l, ax_use_YeaZ_t+(spF/5), bW, wH])
     ax_man_clos.set_position([ax2_l, ax2_t+(spF/3), bW, wH])
     ax_keep_current_lab.set_position([ax1_r-bW, ax1_t+(spF/3), bW, wH])
     udtL, udtb, udtR, udtT = ax_man_clos.get_position().get_points().flatten()
@@ -2381,7 +2434,7 @@ def mouse_down(event):
                 approx_lab = app.approx_contour(labels_onlyID, method='hull')
                 app.already_approx_IDs.append(ID)
             ia.lab[approx_lab>0] = ID
-            ia.lab = app.relabel_and_fill_lab(ia.lab)
+            # ia.lab = app.relabel_and_fill_lab(ia.lab)
             ia.rp = regionprops(ia.lab)
             IDs = [obj.label for obj in ia.rp]
             ia.contours = ia.find_contours(ia.lab, IDs, group=True)
@@ -2461,7 +2514,7 @@ def mouse_down(event):
                 del_ID = ia.lab[y, x]
                 ia.lab[ia.lab == del_ID] = 0
             # ia.lab[paint_out.rr, paint_out.cc] = 0  # separate bud with 0s
-            ia.lab = app.relabel_and_fill_lab(ia.lab)
+            # ia.lab = app.relabel_and_fill_lab(ia.lab)
             rp = regionprops(ia.lab)
             ia.rp = rp
             IDs = [obj.label for obj in ia.rp]
@@ -2471,6 +2524,7 @@ def mouse_down(event):
             app.update_ax1_plot(ia.lab, rp, ia)
             app.update_ax2_plot(ia)
             app.store_state(ia)
+    # Assign mother in S without a segmented bud
     elif wheel_click and ax0_click:
         mothID = ia.lab[yd, xd]
         df = ia.cc_stage_df
@@ -2491,12 +2545,12 @@ def mouse_down(event):
         ID = ia.lab[yd, xd]
         if ID != 0:
             ia.lab[ia.lab == ID] = 0
-            ia.lab = app.relabel_and_fill_lab(ia.lab)
+            # ia.lab = app.relabel_and_fill_lab(ia.lab)
             ia.rp = regionprops(ia.lab)
             IDs = [obj.label for obj in ia.rp]
             ia.contours = ia.find_contours(ia.lab, IDs, group=True)
             ia.reset_auto_edge_img(ia.contours)
-            ia.reset_ccstage_df_cb(None)
+            reset_ccstage_df_cb(None)
             app.update_ax0_plot(ia, ia.img)
             app.update_ax1_plot(ia.lab, ia.rp, ia)
             app.update_ax2_plot(ia)
@@ -2649,8 +2703,8 @@ def mouse_up(event):
         ia.rp = regionprops(ia.lab)
         IDs = [obj.label for obj in ia.rp]
         ia.contours = ia.find_contours(ia.lab, IDs, group=True)
-        ia.reset_auto_edge_img(ia.contours)
-        ia.reset_ccstage_df_cb(None)
+        # ia.reset_auto_edge_img(ia.contours)
+        reset_ccstage_df_cb(None)
         app.update_ax0_plot(ia, ia.img)
         app.update_ax1_plot(ia.lab, ia.rp, ia)
         # ia.auto_edge_img = np.zeros_like(ia.auto_edge_img)
@@ -2769,12 +2823,12 @@ def mouse_up(event):
         IDs_delete = np.unique(lab_ROI)
         for ID in IDs_delete:
             ia.lab[ia.lab==ID] = 0
-        ia.lab = app.relabel_and_fill_lab(ia.lab)
+        # ia.lab = app.relabel_and_fill_lab(ia.lab)
         ia.rp = regionprops(ia.lab)
         IDs = [obj.label for obj in ia.rp]
         ia.contours = ia.find_contours(ia.lab, IDs, group=True)
         ia.reset_auto_edge_img(ia.contours)
-        ia.reset_ccstage_df_cb(None)
+        reset_ccstage_df_cb(None)
         app.update_ax0_plot(ia, ia.img)
         app.update_ax1_plot(ia.lab, ia.rp, ia)
         app.update_ax2_plot(ia)
@@ -2827,13 +2881,13 @@ def mouse_up(event):
             bud_ccstage = df.at[budID, 'Cell cycle stage']
             bud_ccnum = df.at[budID, '# of cycles']
             if bud_ccstage == 'S' and bud_ccnum == 0:
-                mothID = df.at[budID, 'Relative\'s ID']
+                stored_mothID = df.at[budID, 'Relative\'s ID']
                 df.at[budID, 'Cell cycle stage'] = 'G1'
-                df.at[mothID, 'Cell cycle stage'] = 'G1'
+                df.at[stored_mothID, 'Cell cycle stage'] = 'G1'
                 df.at[budID, '# of cycles'] = -1
                 df.at[budID, 'Relative\'s ID'] = 0
-                df.at[mothID, 'Relative\'s ID'] = 0
-                df.at[mothID, 'Relationship'] = 'mother'
+                df.at[stored_mothID, 'Relative\'s ID'] = 0
+                df.at[stored_mothID, 'Relationship'] = 'mother'
                 df.at[budID, 'Relationship'] = 'mother'
                 text_label_centroid(ia.rp, app.ax[0], 12, 'semibold', 'center',
                                     'center', cc_stage_frame=ia.cc_stage_df,
@@ -2934,20 +2988,23 @@ cid_close = (app.fig.canvas).mpl_connect('close_event', handle_close)
 (app.fig.canvas).mpl_connect('scroll_event', scroll_cb)
 # NOTE: axes limit changed event is connected first time in resize_widgets
 
-app.pos_txt = app.fig.text(0.5, 0.9,
-        f'Current position = {app.p+1}/{num_pos}   ({app.pos_foldernames[app.p]})',
+app.pos_txt = app.fig.text(0.5, 0.93,
+        f'Current position = {app.p+1}/{num_pos}  ({app.pos_foldernames[app.p]})',
         color='w', ha='center', fontsize=14)
 
+# Use Yeaz for Phase contrast and cellpose for bright field
+app.use_YeaZ = app.is_pc
+app.use_cellpose = not app.is_pc
+if not app.use_YeaZ:
+    switch_use_YeaZ_button(False)
+if app.use_cellpose:
+    switch_use_cellpose_button(True)
+
+# Check if segmentation was already performed and saved. Otherwise segment
 if app.segm_npy_done[app.p] is not None:
-    app.use_unet = app.is_pc
     param = load_param_from_folder(app)
-    if not app.use_unet:
-        switch_use_unet_button(False)
     app.update_ALLplots(ia)
 else:
-    app.use_unet = app.is_pc
-    if not app.use_unet:
-        switch_use_unet_button(False)
     analyse_img(img)
 man_clos_cb(None)
 app.set_orig_lims()

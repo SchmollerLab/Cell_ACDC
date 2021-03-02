@@ -24,7 +24,7 @@ from skimage.draw import (disk, circle_perimeter, line, line_aa, bezier_curve,
 from skimage.exposure import histogram
 from skimage.color import gray2rgb, label2rgb
 import matplotlib.pyplot as plt
-from Yeast_ACDC_MyWidgets import Slider, Button, RadioButtons
+from MyWidgets import Slider, Button, RadioButtons
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle, Circle, PathPatch
 import matplotlib.path as mpath

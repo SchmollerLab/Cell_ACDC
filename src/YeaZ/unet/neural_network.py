@@ -15,7 +15,7 @@ import skimage.transform as trans
 def determine_path_weights():
     script_dirname = os.path.dirname(os.path.realpath(__file__))
     main_path = os.path.dirname(os.path.dirname(os.path.dirname(script_dirname)))
-    model_path = os.path.join(main_path, 'model')
+    model_path = os.path.join(main_path, 'models', 'YeaZ_model')
 
     if getattr(sys, 'frozen', False):
         path_weights  = os.path.join(sys._MEIPASS, 'unet/')

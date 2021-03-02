@@ -28,7 +28,7 @@ from skimage.measure import label, regionprops
 from skimage.morphology import remove_small_objects, convex_hull_image
 from skimage.draw import line, line_aa
 from scipy.ndimage.morphology import binary_fill_holes, distance_transform_edt
-from segm_FUNCTIONS_v4 import (auto_select_slice, manual_emerg_bud,
+from FUNCTIONS import (auto_select_slice, manual_emerg_bud,
                        separate_overlapping, text_label_centroid, tk_breakpoint,
                        manual_emerg_bud, CellInt_slideshow, beyond_listdir_pos,
                        select_exp_folder)
@@ -368,6 +368,28 @@ def key_down(event):
         app.sub_V_dict_li = []
         app.sub_V_other_tifs_dict_li = []
 
+def get_rect_patch(img_shape, x, y):
+    img_h, img_w = app.img.shape
+    square_halfsize = 150
+    left = x - square_halfsize
+    bottom = y - square_halfsize
+    rect_size = square_halfsize*2
+    # Ensure that square stays within img boundaries
+    right = x + square_halfsize
+    if right >= img_w:
+        left = img_w - rect_size - 1
+    top = y + square_halfsize
+    if top >= img_h:
+        bottom = img_h - rect_size - 1
+    if left < 0:
+        left = 0
+    if bottom < 0:
+        bottom = 0
+    # Draw square
+    rect_patch = Rectangle((left, bottom), rect_size, rect_size,
+                        color='r', ls='--', fill=False)
+    return rect_patch, bottom, left, rect_size
+
 def mouse_down(event):
     right_click = event.button == 3
     ax_click = event.inaxes == app.ax
@@ -376,31 +398,15 @@ def mouse_down(event):
         xd = int(round(event.xdata))
         yd = int(round(event.ydata))
     if right_click and ax_click:
-        square_halfsize = 150
-        left = xd - square_halfsize
-        bottom = yd - square_halfsize
-        square_size = square_halfsize*2
-        # Ensure that square stays within img boundaries
-        right = xd + square_halfsize
-        if right >= img_w:
-            left = img_w - square_size - 1
-        top = yd + square_halfsize
-        if top >= img_h:
-            bottom = img_h - square_size - 1
-        if left < 0:
-            left = 0
-        if bottom < 0:
-            bottom = 0
-        # Draw square
-        square = Rectangle((left, bottom), square_size, square_size,
-                            color='r', ls='--', fill=False)
-        app.ax.add_patch(square)
+        rect_patch, bottom, left, rect_size = get_rect_patch(app.img.shape,
+                                                                    xd, yd)
+        app.ax.add_patch(rect_patch)
         app.ax.text(xd, yd, 'X', size=28, c='r', ha='center', va='center')
         app.fig.canvas.draw_idle()
         # Append sub img data for saving later
         app.counter += 1
         V = app.all_phc_img_li[app.p]
-        sub_V = V[:, bottom:bottom+square_size, left:left+square_size]
+        sub_V = V[:, bottom:bottom+rect_size, left:left+rect_size]
         folder_name = f'{app.directories[app.p]}-{app.counter}'
         file_name = f'{app.basenames[app.p]}-{app.counter}_phase_contr.tif'
         print(f'New file name: {file_name}')
@@ -410,14 +416,29 @@ def mouse_down(event):
         # Index also the other channels .tif files in the folder
         for tif_dict in app.all_others_tifs_li_dict[app.p]:
             tif_data = tif_dict['tif_data']
-            sub_tif_data = tif_data[:, bottom:bottom+square_size,
-                                       left:left+square_size]
+            sub_tif_data = tif_data[:, bottom:bottom+rect_size,
+                                       left:left+rect_size]
             tif_basename = tif_dict['tif_basename']
             tif_channelname = tif_dict['tif_channelname']
             file_name = f'{tif_basename}-{app.counter}_{tif_channelname}'
             app.sub_V_other_tifs_dict_li.append({'folder_name': folder_name,
                                                  'file_name': file_name,
                                                  'V_data': sub_tif_data})
+
+rect_patch_motion = Rectangle((1, 1), 1, 1, color='r', ls='--', fill=False)
+def mouse_motion(event):
+    global rect_patch_motion
+    if event.inaxes == app.ax:
+        xd = int(round(event.xdata))
+        yd = int(round(event.ydata))
+        rect_patch_motion.set_visible(False)
+        try:
+            rect_patch_motion.remove()
+        except:
+            pass
+        rect_patch_motion, _, _, _ = get_rect_patch(app.img.shape, xd, yd)
+        app.ax.add_patch(rect_patch_motion)
+        app.fig.canvas.draw_idle()
 
 
 
@@ -453,6 +474,7 @@ def handle_close(event):
 """Connect to canvas events"""
 (app.fig.canvas).mpl_connect('key_press_event', key_down)
 (app.fig.canvas).mpl_connect('button_press_event', mouse_down)
+(app.fig.canvas).mpl_connect('motion_notify_event', mouse_motion)
 (app.fig.canvas).mpl_connect('resize_event', resize_widgets)
 (app.fig.canvas).mpl_connect('axes_enter_event', axes_enter)
 (app.fig.canvas).mpl_connect('axes_leave_event', axes_leave)
