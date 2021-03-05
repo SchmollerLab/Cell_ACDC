@@ -137,6 +137,45 @@ class load_data:
                 self.SizeT, self.SizeZ = self.dimensions_entry_widget()
         else:
             self.SizeT, self.SizeZ = self.dimensions_entry_widget()
+        data_T, data_Z = self.img_data.shape[:2]
+        if self.SizeZ > 1:
+            if data_Z != self.SizeZ:
+                root = tk.Tk()
+                root.withdraw()
+                tk.messagebox.showwarning('Shape mismatch!',
+                    'The metadata of the .tif file says that there should be '
+                    f'{self.SizeZ} z-slices. However the shape of the data is '
+                    f'{self.img_data.shape}!\n\n'
+                    'The order of the data dimensions for 3D datasets '
+                    'has to be TZYX where T is the number of frames, Z the '
+                    'number of slices, and YX the shape of the image.\n\n'
+                    'In your case it looks like you either have a single 3D image'
+                    ' (no frames), or you have 2D data over time.\n'
+                    'In the first case, you should not use this script but the '
+                    '"gui_snapshots.py" script. For the second case the '
+                    'software will now try to ignore the number '
+                    'of slices and it will suppose that your data is 2D.')
+                self.SizeZ = 1
+                root.quit()
+                root.destroy()
+            if data_T != self.SizeT:
+                root = tk.Tk()
+                root.withdraw()
+                tk.messagebox.showwarning('Shape mismatch!',
+                    'The metadata of the .tif file says that there should be '
+                    f'{self.SizeT} frame. However the shape of the data is '
+                    f'{self.img_data.shape}!\n\n'
+                    'The order of the data dimensions has to be TZYX for '
+                    '3D images over time and TYX for 2D images, '
+                    'where T is the number of frames, Z the '
+                    'number of slices, and YX the shape of the image.\n\n'
+                    'In your case it looks like your data contains less/more '
+                    'frames than expected.\n\n'
+                    f'The software will now try to run with {data_T} '
+                    'number of frames.')
+                self.SizeT = data_T
+                root.quit()
+                root.destroy()
         self.build_paths(self.filename, self.parent_path)
 
     def build_paths(self, filename, parent_path):
@@ -466,8 +505,6 @@ class app_GUI:
 
     def set_imshow_cmap(self, max_ID=100):
         # Generate a colormap as sparse as possible given the max ID.
-        # NOTE: if max_ID > 256 then some colors will be recycled
-        # TODO: append multiple cmaps for more than 256 colors
         n = max_ID
         vals = np.linspace(0,1,n)
         np.random.shuffle(vals)
@@ -1217,7 +1254,7 @@ class img_analysis:
             curr_IDs = [obj.label for obj in self.rp]
             warn_txt = self.check_prev_IDs_lost_new(prev_IDs, curr_IDs)
             return self.lab, warn_txt
-        print(f'Tracking frame {self.frame_i}...')
+        print(f'Tracking frame {app.frame_i}...')
         IDs_prev = [obj.label for obj in prev_ia.rp]
         IDs_prev.sort()
         IDs_curr_untracked = [obj.label for obj in self.rp]
@@ -1303,7 +1340,7 @@ class img_analysis:
             self.new_IDs = new_tracked_IDs_2
             warn_txt = f'{warn_txt}\n\nNew cells IDs in current frame: {new_tracked_IDs_2}'
         self.modified = True
-        print(f'Tracking frame {self.frame_i} done!')
+        print(f'Tracking frame {app.frame_i} done!')
         print('------------------------------------')
         return tracked_lab, warn_txt
         # self.bp.pausehere()
@@ -1435,6 +1472,7 @@ param = [None]*num_frames
 ia = img_analysis(img)
 ia.segm_metadata_df = app.segm_metadata_df.copy()
 ia.do_tracking = app.last_tracked_i < app.frame_i
+
 
 """Widgets' axes as [left, bottom, width, height]"""
 ax_slice = plt.axes([0.1, 0.3, 0.8, 0.03])

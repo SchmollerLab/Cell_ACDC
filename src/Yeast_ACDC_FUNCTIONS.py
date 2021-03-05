@@ -3340,6 +3340,8 @@ class select_exp_folder:
 
     def get_values_segmGUI(self, exp_path):
         pos_foldernames = natsorted(os.listdir(exp_path))
+        pos_foldernames = [pos for pos in pos_foldernames
+                               if re.match('Position_(\d+)', pos)]
         self.pos_foldernames = pos_foldernames
         values = []
         for pos in pos_foldernames:
@@ -3363,6 +3365,8 @@ class select_exp_folder:
 
     def get_values_cca(self, exp_path):
         pos_foldernames = natsorted(os.listdir(exp_path))
+        pos_foldernames = [pos for pos in pos_foldernames
+                               if re.match('Position_(\d+)', pos)]
         self.pos_foldernames = pos_foldernames
         values = []
         for pos in pos_foldernames:
