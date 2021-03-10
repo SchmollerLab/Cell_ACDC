@@ -317,8 +317,6 @@ elif num_slices > 1:
                               'frame_i': range(num_frames)})
     df_slices.set_index('frame_i', inplace=True)
     df_slices.to_csv(df_slices_path)
-    print(df_slices)
-    exit()
 
 start = 0
 if num_frames > 1:

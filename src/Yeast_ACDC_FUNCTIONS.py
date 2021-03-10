@@ -1598,7 +1598,7 @@ class select_slice_toAlign:
         self.activate_ROI = activate_ROI
         self.num_frames = num_frames
         self.slice = init_slice
-        self.slice_start = init_slice
+        # self.slice_start = init_slice
         self.slice_end = None
         self.abort = True
         self.key_mode = False
@@ -1645,26 +1645,27 @@ class select_slice_toAlign:
         (self.sl).on_changed(self.update_slice)
         (self.frame_sl).on_changed(self.update_frame)
         self.ax_ok = self.fig.add_subplot(
-                                position=[ok_left, 0.04, ok_width, 0.05])
+                                position=[ok_left+0.01, 0.04, ok_width, 0.05])
         self.ok_b = Button(self.ax_ok, 'Happy with that', canvas=sub_win.canvas,
-                                color='0.1',
+                                color='0.2',
                                 hovercolor='0.25',
                                 presscolor='0.35')
         self.ax_start = self.fig.add_subplot(
                                 position=[ok_left-ok_width, 0.04,
                                           ok_width, 0.05])
-        self.start_b = Button(self.ax_start, 'First frame',
-                                canvas=sub_win.canvas,
-                                color='0.4',
-                                hovercolor='0.4',
-                                presscolor='0.4')
-        self.is_start_frame = True
-        self.ax_end = self.fig.add_subplot(
-                                position=[ok_left+ok_width, 0.04, ok_width, 0.05])
-        self.end_b = Button(self.ax_end, 'Last frame',
+        self.start_b = Button(self.ax_start, 'Use this slice\nfor FIRST frame',
                                 canvas=sub_win.canvas,
                                 color='0.1',
-                                hovercolor='0.4',
+                                hovercolor='0.25',
+                                presscolor='0.35')
+        self.is_start_frame = True
+        self.ax_end = self.fig.add_subplot(
+                                position=[ok_left+ok_width+0.02,
+                                          0.04, ok_width, 0.05])
+        self.end_b = Button(self.ax_end, 'Use this slice\nfor LAST frame',
+                                canvas=sub_win.canvas,
+                                color='0.1',
+                                hovercolor='0.25',
                                 presscolor='0.35')
         if help_button:
             self.ax_help_b = self.fig.add_subplot(
@@ -1672,14 +1673,14 @@ class select_slice_toAlign:
             self.help_b = Button(self.ax_help_b, 'Help',
                                     canvas=sub_win.canvas,
                                     color='0.1',
-                                    hovercolor='0.4',
+                                    hovercolor='0.25',
                                     presscolor='0.35')
         self.ax_manual = self.fig.add_subplot(
                                 position=[1,2,1,1])
         self.manual_b = Button(self.ax_manual, 'Use this slice\nfor this frame',
                                 canvas=sub_win.canvas,
                                 color='0.1',
-                                hovercolor='0.4',
+                                hovercolor='0.25',
                                 presscolor='0.35')
         self.manual_frames = []
         self.manual_slices = []
@@ -1747,18 +1748,17 @@ class select_slice_toAlign:
     def help_cb(self, event):
         tk.messagebox.showinfo('Slice selector info', 'You have three options '
         'to select slices:\n\n'
-        '1. A single slice for all frames: with "First frame" button selected '
-        'select a slice on any frame\n\n'
-        '2. One slice for first frame and one for last frame: with '
-        '"First frame" button selected select the slice for the first frame '
-        'then toggle "Last frame" button, '
-        'go to your intended last frame (doesn\'t necessarily need to be the '
-        'actual last frame) and select the slice for the last frame.\n'
+        '1. A single slice for all frames: navigate to the first frame, '
+        'select a slice and then press "Use this slice for FIRST frame"\n\n'
+        '2. One slice for first frame and one for last frame: navigate '
+        'to your last frame (doesn\'t necessarily need to be the '
+        'actual last frame), select the slice for the last frame and then press '
+        '"Use this slice for LAST frame".\n'
         'The software will then interpolate linearly to determine the slice '
         'for the frames in between first and last.\n\n'
         '3. A different slice for any frame: navigate to the frame, select '
         'a slice and press "Use this slice for this frame" button '
-        '(ctrl+z) to undo selection.\n\n'
+        '(press ctrl+z to undo selection).\n\n'
         'When you are happy with your selection press "Happy with that". '
         'A summary will pop-up to make sure you made the right choice.')
 
@@ -1851,33 +1851,34 @@ class select_slice_toAlign:
         self.update_img(img)
 
     def show_start(self, event):
-        if not self.is_start_frame:
-            self.start_b.color = '0.4'
-            self.end_b.color = '0.1'
-            self.start_b.ax.set_facecolor('0.4')
-            self.end_b.ax.set_facecolor('0.1')
-            self.is_start_frame = True
-            self.fig.canvas.draw_idle()
+        # if not self.is_start_frame:
+        #     self.start_b.color = '0.4'
+        #     self.end_b.color = '0.1'
+        #     self.start_b.ax.set_facecolor('0.4')
+        #     self.end_b.ax.set_facecolor('0.1')
+        #     self.is_start_frame = True
+        #     self.fig.canvas.draw_idle()
         self.data = self.V_start
         self.current = 'start'
-        img = self.data[self.slice]
-        self.frame_sl.set_val(0, silent=True)
-        self.update_img(img)
+        self.slice_start = self.slice
+        # img = self.data[self.slice]
+        # self.frame_sl.set_val(0, silent=True)
+        # self.update_img(img)
 
     def show_end(self, event):
-        if self.is_start_frame:
-            self.start_b.color = '0.1'
-            self.end_b.color = '0.4'
-            self.start_b.ax.set_facecolor('0.1')
-            self.end_b.ax.set_facecolor('0.4')
-            self.is_start_frame = False
-            self.fig.canvas.draw_idle()
+        # if self.is_start_frame:
+        #     self.start_b.color = '0.1'
+        #     self.end_b.color = '0.4'
+        #     self.start_b.ax.set_facecolor('0.1')
+        #     self.end_b.ax.set_facecolor('0.4')
+        #     self.is_start_frame = False
+        #     self.fig.canvas.draw_idle()
         self.data = self.V_end
         self.current = 'end'
-        # self.slice_end = self.slice
-        img = self.data[self.slice]
-        self.frame_sl.set_val(self.num_frames-1, silent=True)
-        self.update_img(img)
+        self.slice_end = self.slice
+        # img = self.data[self.slice]
+        # self.frame_sl.set_val(self.num_frames-1, silent=True)
+        # self.update_img(img)
 
     def set_key_mode_enter(self, event):
         if event.inaxes == self.ax_frame_sl:
