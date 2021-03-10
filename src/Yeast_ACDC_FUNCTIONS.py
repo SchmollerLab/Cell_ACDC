@@ -125,20 +125,21 @@ class num_frames_toSegm_tk:
                 rightRange = self.tot_frames - startf
                 self.num_frames.delete(0, END)
                 self.num_frames.insert(0, '{}'.format(rightRange))
-
-    def check_max(self, name=None, index=None, mode=None):
-        if self.allow_not_0_start:
-            num_frames_str = self.num_frames.get()
-            start_frame_str = self.start_frame.get()
-            if num_frames_str and start_frame_str:
-                startf = int(start_frame_str)
-                if startf + int(num_frames_str) > self.tot_frames:
-                    rightRange = self.tot_frames - startf
-                    self.num_frames.delete(0, END)
-                    self.num_frames.insert(0, '{}'.format(rightRange))
         else:
             self.start_frame.delete(0, END)
             self.start_frame.insert(0, '{}'.format(0))
+            self.num_frames.delete(0, END)
+            self.num_frames.insert(0, f'{self.tot_frames}')
+
+    def check_max(self, name=None, index=None, mode=None):
+        num_frames_str = self.num_frames.get()
+        start_frame_str = self.start_frame.get()
+        if num_frames_str and start_frame_str:
+            startf = int(start_frame_str)
+            if startf + int(num_frames_str) > self.tot_frames:
+                rightRange = self.tot_frames - startf
+                self.num_frames.delete(0, END)
+                self.num_frames.insert(0, '{}'.format(rightRange))
 
 
     def ok(self, event=None):
@@ -1592,12 +1593,13 @@ def delete_objs(frame_i, cells_labels_separate, num_cells_separate=None,
 class select_slice_toAlign:
     def __init__(self, frames, num_frames, init_slice=0, activate_ROI=False,
                  slice_used_for='segmentation',
-                 title='Select slices for alignment'):
+                 tk_win_title='Select slices for alignment',
+                 help_button=True):
         self.activate_ROI = activate_ROI
         self.num_frames = num_frames
         self.slice = init_slice
         self.slice_start = init_slice
-        self.slice_end = 0
+        self.slice_end = None
         self.abort = True
         self.key_mode = False
         self.frames = frames
@@ -1609,7 +1611,7 @@ class select_slice_toAlign:
         self.ax = self.fig.add_subplot()
         img = self.V_start[init_slice]
         self.fig.subplots_adjust(bottom=0.20)
-        sl_width = 0.6
+        sl_width = 0.65
         sl_left = 0.5 - (sl_width/2)
         ok_width = 0.13
         ok_left = 0.5 - (ok_width/2)
@@ -1618,7 +1620,7 @@ class select_slice_toAlign:
         self.fig_title = f'Select slice for {slice_used_for}'
         (self.ax).set_title(self.fig_title)
         """Embed plt window into a tkinter window"""
-        sub_win = embed_tk(title, [1024,768,400,150], self.fig)
+        sub_win = embed_tk(tk_win_title, [1024,768,400,150], self.fig)
         # [left, bottom, width, height]
         self.ax_sl = self.fig.add_subplot(
                                 position=[sl_left, 0.15, sl_width, 0.03],
@@ -1649,7 +1651,8 @@ class select_slice_toAlign:
                                 hovercolor='0.25',
                                 presscolor='0.35')
         self.ax_start = self.fig.add_subplot(
-                                position=[ok_left-ok_width, 0.04, ok_width, 0.05])
+                                position=[ok_left-ok_width, 0.04,
+                                          ok_width, 0.05])
         self.start_b = Button(self.ax_start, 'First frame',
                                 canvas=sub_win.canvas,
                                 color='0.4',
@@ -1663,13 +1666,33 @@ class select_slice_toAlign:
                                 color='0.1',
                                 hovercolor='0.4',
                                 presscolor='0.35')
+        if help_button:
+            self.ax_help_b = self.fig.add_subplot(
+                                    position=[1,1,1,1])
+            self.help_b = Button(self.ax_help_b, 'Help',
+                                    canvas=sub_win.canvas,
+                                    color='0.1',
+                                    hovercolor='0.4',
+                                    presscolor='0.35')
+        self.ax_manual = self.fig.add_subplot(
+                                position=[1,2,1,1])
+        self.manual_b = Button(self.ax_manual, 'Use this slice\nfor this frame',
+                                canvas=sub_win.canvas,
+                                color='0.1',
+                                hovercolor='0.4',
+                                presscolor='0.35')
+        self.manual_frames = []
+        self.manual_slices = []
+        (self.manual_b).on_clicked(self.set_manual)
         (self.ok_b).on_clicked(self.ok)
         (self.start_b).on_clicked(self.show_start)
         (self.end_b).on_clicked(self.show_end)
+        (self.help_b).on_clicked(self.help_cb)
         (sub_win.root).protocol("WM_DELETE_WINDOW", self.abort_exec)
         (sub_win.canvas).mpl_connect('key_press_event', self.set_slvalue)
         (sub_win.canvas).mpl_connect('axes_enter_event', self.set_key_mode_enter)
         (sub_win.canvas).mpl_connect('axes_leave_event', self.set_key_mode_leave)
+        (sub_win.canvas).mpl_connect('resize_event', self.resize_widgets)
         self.ROI_coords = None
         if activate_ROI:
             self.orig_frames = frames.copy()
@@ -1680,6 +1703,70 @@ class select_slice_toAlign:
         sub_win.root.focus_force()
         sub_win.root.after_idle(sub_win.root.attributes,'-topmost',False)
         sub_win.root.mainloop()
+
+    def set_manual(self, event):
+        frame_i = int(self.frame_sl.val)
+        slice = int(self.sl.val)
+        if frame_i in self.manual_frames:
+            idx = self.manual_frames.index(frame_i)
+            self.manual_slices[idx] = slice
+            img = self.frames[frame_i, slice]
+            self.update_img(img)
+        else:
+            self.manual_frames.append(frame_i)
+            self.manual_slices.append(slice)
+            y = self.frames.shape[2]
+            self.ax.text(10, y-28, f'Slice num. {slice} manually selected!',
+                         c='r', fontsize=12)
+            self.fig.canvas.draw_idle()
+
+    def update_img(self, img, update_sl=True):
+        self.ax.clear()
+        (self.ax).set_title(self.fig_title)
+        if self.manual_slices:
+            if int(self.frame_sl.val) in self.manual_frames:
+                y = img.shape[0]
+                idx = self.manual_frames.index(int(self.frame_sl.val))
+                slice = self.manual_slices[idx]
+                if update_sl:
+                    self.sl.set_val(slice, silent=True)
+                self.ax.text(10, y-28, f'Slice num. {slice} manually selected!',
+                             c='r', fontsize=12)
+        if self.ROI_coords is not None:
+            self.ax.add_patch(self.ROI_rect_patch)
+            y_start, y_end, x_start, x_end = self.ROI_coords
+            r, c = img.shape
+            rows = [*range(y_start), *range(y_end, r)]
+            col = [*range(x_start), *range(x_end, c)]
+            img[rows] = 0
+            img[:, col] = 0
+        self.ax.imshow(img)
+        self.ax.axis('off')
+        self.fig.canvas.draw_idle()
+
+    def help_cb(self, event):
+        tk.messagebox.showinfo('Slice selector info', 'You have three options '
+        'to select slices:\n\n'
+        '1. A single slice for all frames: with "First frame" button selected '
+        'select a slice on any frame\n\n'
+        '2. One slice for first frame and one for last frame: with '
+        '"First frame" button selected select the slice for the first frame '
+        'then toggle "Last frame" button, '
+        'go to your intended last frame (doesn\'t necessarily need to be the '
+        'actual last frame) and select the slice for the last frame.\n'
+        'The software will then interpolate linearly to determine the slice '
+        'for the frames in between first and last.\n\n'
+        '3. A different slice for any frame: navigate to the frame, select '
+        'a slice and press "Use this slice for this frame" button '
+        '(ctrl+z) to undo selection.\n\n'
+        'When you are happy with your selection press "Happy with that". '
+        'A summary will pop-up to make sure you made the right choice.')
+
+    def resize_widgets(self, event):
+        # [left, bottom, width, height]
+        sl_ax_l, _, sl_ax_r, _ = self.ax_frame_sl.get_position().get_points().flatten()
+        self.ax_help_b.set_position([sl_ax_r-0.06, 0.04, 0.06, 0.05])
+        self.ax_manual.set_position([sl_ax_l, 0.04, 0.12, 0.05])
 
     def ax_transData_and_coerce(self, ax, event_x, event_y):
         x, y = ax.transData.inverted().transform((event_x, event_y))
@@ -1761,8 +1848,7 @@ class select_slice_toAlign:
     def update_frame(self, event):
         frame_i = int(self.frame_sl.val)
         img = self.frames[frame_i, self.slice]
-        self.ax.imshow(img)
-        self.fig.canvas.draw_idle()
+        self.update_img(img)
 
     def show_start(self, event):
         if not self.is_start_frame:
@@ -1776,8 +1862,7 @@ class select_slice_toAlign:
         self.current = 'start'
         img = self.data[self.slice]
         self.frame_sl.set_val(0, silent=True)
-        self.ax.imshow(img)
-        self.fig.canvas.draw_idle()
+        self.update_img(img)
 
     def show_end(self, event):
         if self.is_start_frame:
@@ -1789,11 +1874,10 @@ class select_slice_toAlign:
             self.fig.canvas.draw_idle()
         self.data = self.V_end
         self.current = 'end'
-        self.slice_end = self.slice
+        # self.slice_end = self.slice
         img = self.data[self.slice]
         self.frame_sl.set_val(self.num_frames-1, silent=True)
-        self.ax.imshow(img)
-        self.fig.canvas.draw_idle()
+        self.update_img(img)
 
     def set_key_mode_enter(self, event):
         if event.inaxes == self.ax_frame_sl:
@@ -1809,43 +1893,63 @@ class select_slice_toAlign:
                 self.frame_sl.set_val(self.frame_sl.val - 1)
             else:
                 self.sl.set_val(self.sl.val - 1)
-        if event.key == 'right':
+        elif event.key == 'right':
             if self.key_mode:
                 self.frame_sl.set_val(self.frame_sl.val + 1)
             else:
                 self.sl.set_val(self.sl.val + 1)
-        if event.key == 'enter':
+        elif event.key == 'enter':
             self.ok(None)
+        elif event.key == 'ctrl+z':
+            self.manual_frames = []
+            self.manual_slices = []
+            frame_i = int(self.frame_sl.val)
+            slice = int(self.sl.val)
+            img = self.frames[frame_i, self.slice]
+            self.update_img(img)
 
     def update_slice(self, val):
         self.slice = int(val)
         if self.current == 'start':
-            self.slice_start = self.slice
+            if self.slice_start == 0:
+                self.slice_start = self.slice
         else:
-            self.slice_end = self.slice
+            if self.slice_end is None:
+                self.slice_end = self.slice
         frame_i = int(self.frame_sl.val)
         img = self.frames[frame_i, self.slice]
-        self.ax.imshow(img)
-        self.fig.canvas.draw_idle()
+        self.update_img(img, update_sl=False)
 
     def ok(self, event):
         close_without_slice_end = True
-        if self.slice_end == 0:
+        if self.slice_end is None:
             close_without_slice_end = messagebox.askyesno('Close without slice_end',
                           'You didn\'t set any slice number for the last frame.\n'
                           f'Do you want to use the same slice ({self.slice_start}) '
                           'of the first frame?',
                           master=self.sub_win.root)
+            self.slice_end = self.slice_start
         m = (self.slice_end - self.slice_start)/(self.num_frames - 1)
         q = self.slice_start
         self.slices = [round(m*x + q) for x in range(self.num_frames)]
+        for frame_i, s in zip(self.manual_frames, self.manual_slices):
+            self.slices[frame_i] = s
         close_without_ROI = True
-        if self.activate_ROI and self.ROI_coords is None:
+        if self.activate_ROI and self.ROI_coords is None and close_without_slice_end:
             close_without_ROI = messagebox.askyesno('Close without ROI',
                           'You didn\'t draw any region of interest.\n'
                           'Are you sure you want to segment the entire frame?',
                           master=self.sub_win.root)
-        if close_without_ROI and close_without_slice_end:
+        if self.activate_ROI and close_without_ROI and close_without_slice_end:
+            manual_selection = [f'frame {i}, slice {s}'
+                                for i, s
+                                in zip(self.manual_frames, self.manual_slices)]
+            go_ahead = tk.messagebox.askyesno('Slice selector summary',
+            f'Slice selected for first frame: {self.slice_start}\n\n'
+            f'Slice selected for last frame: {self.slice_end}\n\n'
+            f'Manually selected slices: {manual_selection}\n\n'
+            'Do you want to continue?')
+        if close_without_ROI and close_without_slice_end and go_ahead:
             plt.close(self.fig)
             self.sub_win.root.quit()
             self.sub_win.root.destroy()

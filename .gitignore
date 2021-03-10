@@ -2,6 +2,8 @@
 prep_data_for_deepcell.ipynb
 .idea/
 data/*
+tests/*
+
 __pycache__/
 *.pyc
 setup_acdc.docx

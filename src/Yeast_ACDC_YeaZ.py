@@ -291,7 +291,6 @@ elif num_slices > 1:
     if os.path.exists(data.slice_used_segm_path):
         df_slices = pd.read_csv(data.slice_used_segm_path)
         slices = df_slices['Slice used for segmentation'].to_list()
-        print(df_slices)
     else:
         slices = [0]
     if num_frames == 1:
@@ -305,9 +304,12 @@ elif num_slices > 1:
         print('Loading slice selector GUI...')
         select_slice = select_slice_toAlign(frames, num_frames,
                     init_slice=slices[0],
-                    slice_used_for='segmentation and apply ROI if needed',
+                    slice_used_for='segmentation and apply ROI if needed.\n'
+                        'Click "help" button for additional info '
+                        'on how to select slices',
                     activate_ROI=True,
-                    title='Select slices to use for segmentation')
+                    tk_win_title='Select slices to use for segmentation',
+                    help_button=True)
         ROI_coords =  select_slice.ROI_coords
         slices = select_slice.slices
         df_slices_path = data.slice_used_segm_path
@@ -315,6 +317,8 @@ elif num_slices > 1:
                               'frame_i': range(num_frames)})
     df_slices.set_index('frame_i', inplace=True)
     df_slices.to_csv(df_slices_path)
+    print(df_slices)
+    exit()
 
 start = 0
 if num_frames > 1:
@@ -347,6 +351,7 @@ root.destroy()
 is_pc = twobuttonsmessagebox('Img mode', 'Select imaging mode',
                              'Phase contrast', 'Bright-field').button_left
 
+# Index the selected frames
 if num_frames > 1:
     frames = frames[start:stop]
 
@@ -358,8 +363,10 @@ if ROI_coords is not None:
         ROI_img = frames[0][y_start:y_end, x_start:x_end]
     print(f'ROI image data shape = {ROI_img.shape}')
 
+# Index the selected slices
 if num_slices > 1:
-    frames = frames[:, slices[start:stop]]
+    frames = frames[range(start, stop), slices[start:stop]]
+
 r, c = frames.shape[-2], frames.shape[-1]
 if ROI_coords is not None:
     y_start, y_end, x_start, x_end = ROI_coords
@@ -369,14 +376,19 @@ frames = np.array([equalize_adapthist(f) for f in frames])
 frames = frames.astype(float)
 path_weights = nn.determine_path_weights()
 print('Running UNet for Segmentation:')
-pred_stack = nn.batch_prediction(frames, is_pc=is_pc, path_weights=path_weights, batch_size=1)
-print('thresholding prediction...')
+pred_stack = nn.batch_prediction(frames, is_pc=is_pc, path_weights=path_weights,
+                                         batch_size=1)
+print('Thresholding prediction...')
 thresh_stack = nn.threshold(pred_stack)
-print('performing watershed for splitting cells...')
-lab_stack = segment.segment_stack(thresh_stack, pred_stack, min_distance=10).astype(int)
-print('performing tracking by hungarian algorithm...')
+print('Performing watershed for splitting cells...')
+lab_stack = segment.segment_stack(thresh_stack, pred_stack,
+                                  min_distance=10).astype(int)
+print('Performing tracking by hungarian algorithm...')
 tracked_stack = tracking.correspondence_stack(lab_stack).astype(int)
 t_end = time()
+
+plt.imshow(lab_stack[0])
+plt.show()
 
 # for simplicity, pad image back to original shape before saving
 # TODO: save only ROI and ROI borders, to save disk space
