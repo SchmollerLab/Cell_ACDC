@@ -32,7 +32,8 @@ def get_file_id(model_name, id=None):
         file_size = None
     return file_id, file_size
 
-def download_from_gdrive(id, destination, file_size=None):
+def download_from_gdrive(id, destination, file_size=None,
+                         model_name='cellpose'):
     URL = "https://docs.google.com/uc?export=download"
 
     session = requests.Session()
@@ -43,7 +44,8 @@ def download_from_gdrive(id, destination, file_size=None):
     if token:
         params = { 'id' : id, 'confirm' : token }
         response = session.get(URL, params = params, stream = True)
-    save_response_content(response, destination, file_size=file_size)
+    save_response_content(response, destination,
+                          file_size=file_size, model_name=model_name)
 
 def get_confirm_token(response):
     for key, value in response.cookies.items():
@@ -51,8 +53,9 @@ def get_confirm_token(response):
             return value
     return None
 
-def save_response_content(response, destination, file_size=None):
-    print(f'Downloading cellpose models to: {os.path.dirname(destination)}')
+def save_response_content(response, destination, file_size=None,
+                          model_name=model_name):
+    print(f'Downloading {model_name} models to: {os.path.dirname(destination)}')
     CHUNK_SIZE = 32768
     temp_folder = pathlib.Path.home().joinpath('.cp_temp')
     if not os.path.exists(temp_folder):
@@ -79,7 +82,8 @@ def download_model(model_name):
     if not model_folder_exists:
         file_id, file_size = get_file_id(model_name)
         # Download zip file
-        download_from_gdrive(file_id, models_zip_path, file_size=file_size)
+        download_from_gdrive(file_id, models_zip_path,
+                             file_size=file_size, model_name=model_name)
         # Extract zip file
         extract_to_path = os.path.dirname(models_zip_path)
         extract_zip(models_zip_path, extract_to_path)

@@ -1391,7 +1391,7 @@ class img_analysis:
         img = img*1.0
         print('Neural network is thinking...')
         if app.use_YeaZ:
-            pred = nn.prediction(img, is_pc=True)
+            pred = nn.prediction(img, is_pc=True, path_weights=app.path_weights)
             self.pred = pred
             thresh = nn.threshold(pred)
             lab = segment.segment(thresh, pred, min_distance=5).astype(int)
@@ -1468,6 +1468,7 @@ if app.is_pc:
     print('Importing YeaZ model...')
     from YeaZ.unet import neural_network as nn
     from YeaZ.unet import segment
+    app.path_weights = nn.determine_path_weights()
     download_model('YeaZ')
 else:
     print('Initializing cellpose models...')
@@ -2153,6 +2154,7 @@ def use_YeaZ_cb(event):
         switch_use_cellpose_button(False)
         from YeaZ.unet import neural_network as nn
         from YeaZ.unet import segment
+        app.path_weights = nn.determine_path_weights()
         app.use_cellpose = False
         app.use_YeaZ = True
         analyse_img(ia.img)
