@@ -1466,8 +1466,8 @@ num_pos = len(phc)
 """Load neural network if needed"""
 if app.is_pc:
     print('Importing YeaZ model...')
-    import neural_network as nn
-    from segment import segment
+    from YeaZ.unet import neural_network as nn
+    from YeaZ.unet import segment
     download_model('YeaZ')
 else:
     print('Initializing cellpose models...')
