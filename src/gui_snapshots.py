@@ -2567,8 +2567,8 @@ def mouse_down(event):
     elif right_click and ax1_click and ia.sep_bud and not event.dblclick:
         ID = ia.lab[yd, xd]
         ia.rp = regionprops(ia.lab)
-        np.save(os.path.join(app.main_path, 'tests', 'test_img.npy'), ia.img)
-        np.save(os.path.join(app.main_path, 'tests', 'test_lab.npy'), ia.lab)
+        # np.save(os.path.join(app.main_path, 'tests', 'test_img.npy'), ia.img)
+        # np.save(os.path.join(app.main_path, 'tests', 'test_lab.npy'), ia.lab)
         paint_out = my_paint_app(ia.lab, ID, ia.rp, del_small_obj=True,
                                  overlay_img=ia.img)
         ia.sep_bud = False
