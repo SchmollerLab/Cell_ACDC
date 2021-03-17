@@ -25,8 +25,8 @@ from skimage.measure import label, regionprops
 from skimage.draw import circle, line
 import scipy.ndimage as nd
 from tkinter import Tk, messagebox, simpledialog, Toplevel
-from Yeast_ACDC_MyWidgets import Slider, Button, RadioButtons, TextBox
-from Yeast_ACDC_FUNCTIONS import (separate_overlapping,
+from MyWidgets import Slider, Button, RadioButtons, TextBox
+from lib import (separate_overlapping,
         apply_hyst_local_threshold, align_frames_3D, del_min_area_obj,
         load_shifts, cells_tracking, fig_text, sep_overlap_manual_seeds,
         merge_objs, delete_objs, select_slice_toAlign, cc_stage_df_frame0,

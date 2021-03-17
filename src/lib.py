@@ -21,7 +21,7 @@ from skimage.feature import peak_local_max
 from skimage.registration import phase_cross_correlation
 from skimage.draw import (disk, circle_perimeter, line, line_aa, bezier_curve,
                           polygon)
-from skimage.exposure import histogram
+from skimage.exposure import histogram, equalize_adapthist
 from skimage.color import gray2rgb, label2rgb
 import matplotlib.pyplot as plt
 from MyWidgets import Slider, Button, RadioButtons
@@ -125,20 +125,22 @@ class num_frames_toSegm_tk:
                 rightRange = self.tot_frames - startf
                 self.num_frames.delete(0, END)
                 self.num_frames.insert(0, '{}'.format(rightRange))
-
-    def check_max(self, name=None, index=None, mode=None):
-        if self.allow_not_0_start:
-            num_frames_str = self.num_frames.get()
-            start_frame_str = self.start_frame.get()
-            if num_frames_str and start_frame_str:
-                startf = int(start_frame_str)
-                if startf + int(num_frames_str) > self.tot_frames:
-                    rightRange = self.tot_frames - startf
-                    self.num_frames.delete(0, END)
-                    self.num_frames.insert(0, '{}'.format(rightRange))
         else:
             self.start_frame.delete(0, END)
             self.start_frame.insert(0, '{}'.format(0))
+            self.num_frames.delete(0, END)
+            self.num_frames.insert(0, f'{self.tot_frames}')
+
+    def check_max(self, name=None, index=None, mode=None):
+        num_frames_str = self.num_frames.get()
+        start_frame_str = self.start_frame.get()
+        if num_frames_str and start_frame_str:
+            startf = int(start_frame_str)
+            if startf + int(num_frames_str) > self.tot_frames:
+                rightRange = self.tot_frames - startf
+                self.num_frames.delete(0, END)
+                self.num_frames.insert(0, '{}'.format(rightRange))
+
 
 
     def ok(self, event=None):
@@ -3340,6 +3342,8 @@ class select_exp_folder:
 
     def get_values_segmGUI(self, exp_path):
         pos_foldernames = natsorted(os.listdir(exp_path))
+        pos_foldernames = [pos for pos in pos_foldernames
+                               if re.match('Position_(\d+)', pos)]
         self.pos_foldernames = pos_foldernames
         values = []
         for pos in pos_foldernames:
@@ -3363,6 +3367,8 @@ class select_exp_folder:
 
     def get_values_cca(self, exp_path):
         pos_foldernames = natsorted(os.listdir(exp_path))
+        pos_foldernames = [pos for pos in pos_foldernames
+                               if re.match('Position_(\d+)', pos)]
         self.pos_foldernames = pos_foldernames
         values = []
         for pos in pos_foldernames:
@@ -3681,7 +3687,7 @@ class my_paint_app:
         self.ID_moth = ID
         self.label_img = label_img
         self.coords_delete = []
-        self.overlay_img = overlay_img
+        self.overlay_img = equalize_adapthist(overlay_img)
         self.num_cells = 1
         """Build image containing only selected ID obj"""
         only_ID_img = np.zeros_like(label_img)
@@ -3698,8 +3704,9 @@ class my_paint_app:
         obj_left = int(obj_bbox_cx - side_len/2)
         obj_top = obj_bottom + side_len
         obj_right = obj_left + side_len
-        self.xlims = (obj_left-5, obj_right+5)
-        self.ylims = (obj_top+5, obj_bottom-5)
+        self.bw = 10
+        self.xlims = (obj_left-bw, obj_right+self.bw)
+        self.ylims = (obj_top+bw, obj_bottom-self.bw)
         self.only_ID_img = only_ID_img
         self.sep_bud_label = only_ID_img.copy()
         self.eraser_mask = np.zeros(self.label_img.shape, bool)
@@ -3710,8 +3717,8 @@ class my_paint_app:
         self.ax = self.fig.add_subplot()
         self.fig.subplots_adjust(bottom=0.25)
         (self.ax).imshow(self.only_ID_img)
-        (self.ax).set_xlim(obj_left-5, obj_right+5)
-        (self.ax).set_ylim(obj_top+5, obj_bottom-5)
+        (self.ax).set_xlim(*self.xlims)
+        (self.ax).set_ylim(self.ylims)
         (self.ax).axis('off')
         (self.fig).suptitle('Draw a curve with the right button to separate cell.\n'
                             'Delete object with mouse wheel button\n'
@@ -3739,17 +3746,32 @@ class my_paint_app:
         """Create buttons"""
         self.ax_ok_B = self.fig.add_subplot(position=[0.2, 0.2, 0.1, 0.03])
         self.ax_overlay_B = self.fig.add_subplot(position=[0.8, 0.2, 0.1, 0.03])
+        self.alpha_overlay_sl_ax = self.fig.add_subplot(
+                                                 position=[0.7, 0.2, 0.1, 0.03])
+        self.brightness_overlay_sl_ax = self.fig.add_subplot(
+                                                 position=[0.6, 0.2, 0.1, 0.03])
         self.ok_B = Button(self.ax_ok_B, 'Happy\nwith that', canvas=sub_win.canvas,
                             color='0.1', hovercolor='0.25', presscolor='0.35')
         self.overlay_B = Button(self.ax_overlay_B, 'Overlay',
                             canvas=sub_win.canvas,
                             color='0.1', hovercolor='0.25', presscolor='0.35')
-        self.brightness_sl = Slider(ax_slice, 'Brightness', 5, app.num_slices,
-                            valinit=app.s,
-                            valstep=1,
-                            color=slider_color,
-                            init_val_line_color=hover_color,
-                            valfmt='%1.0f',
+        self.alpha_overlay_sl = Slider(self.alpha_overlay_sl_ax,
+                           'alpha', -0.1, 1.1,
+                            canvas=sub_win.canvas,
+                            valinit=0.3,
+                            valstep=0.01,
+                            color='0.2',
+                            init_val_line_color='0.25',
+                            valfmt='%1.2f',
+                            orientation='vertical')
+        self.brightness_overlay_sl = Slider(self.brightness_overlay_sl_ax,
+                           'brightness', 0, 2,
+                            canvas=sub_win.canvas,
+                            valinit=1,
+                            valstep=0.01,
+                            color='0.2',
+                            init_val_line_color='0.25',
+                            valfmt='%1.2f',
                             orientation='vertical')
         """Connect to events"""
         (sub_win.canvas).mpl_connect('button_press_event', self.mouse_down)
@@ -3762,6 +3784,8 @@ class my_paint_app:
         (sub_win.root).protocol("WM_DELETE_WINDOW", self.abort_exec)
         self.overlay_B.on_clicked(self.toggle_overlay)
         self.ok_B.on_clicked(self.ok)
+        self.alpha_overlay_sl.on_changed(self.update_img)
+        self.brightness_overlay_sl.on_changed(self.update_img)
         self.sub_win = sub_win
         self.clicks_count = 0
         self.brush_size = 2
@@ -3775,6 +3799,12 @@ class my_paint_app:
 
     def toggle_overlay(self, event):
         self.overlay_on = not self.overlay_on
+        if self.overlay_on:
+            self.alpha_overlay_sl_ax.set_visible(True)
+            self.brightness_overlay_sl_ax.set_visible(True)
+        else:
+            self.alpha_overlay_sl_ax.set_visible(False)
+            self.brightness_overlay_sl_ax.set_visible(False)
         self.update_img(None)
 
     def set_labRGB_colors(self):
@@ -3810,8 +3840,19 @@ class my_paint_app:
                                    B_w, B_h])
         self.ax_overlay_B.set_position([self.ax_left, self.ax_bottom-B_h-0.01,
                                    B_w*2, B_h])
+        self.alpha_overlay_sl_ax.set_position([self.ax_right+0.05,
+                                               self.ax_bottom,
+                                               B_w/3,
+                                               self.ax_top-self.ax_bottom])
+        self.brightness_overlay_sl_ax.set_position([
+                                               self.ax_right+0.05+B_w/3+0.05,
+                                               self.ax_bottom,
+                                               B_w/3,
+                                               self.ax_top-self.ax_bottom])
         if self.overlay_img is None:
             self.ax_overlay_B.set_visible(False)
+        self.alpha_overlay_sl_ax.set_visible(False)
+        self.brightness_overlay_sl_ax.set_visible(False)
 
     def update_img(self, event):
         lab = self.sep_bud_label.copy()
@@ -3825,10 +3866,14 @@ class my_paint_app:
         if not self.overlay_on:
             img = lab
         else:
-            img = label2rgb(lab,image=self.overlay_img,
-                                       bg_label=0,
-                                       bg_color=(0.1,0.1,0.1),
-                                       colors=self.labRGB_colors)
+            brightness = self.brightness_overlay_sl.val
+            img = label2rgb(lab,image=self.overlay_img*brightness,
+                                bg_label=0,
+                                bg_color=(0.1,0.1,0.1),
+                                colors=self.labRGB_colors,
+                                alpha=self.alpha_overlay_sl.val
+                                )
+            img = np.clip(img, 0, 1)
         self.ax.clear()
         self.ax.imshow(img)
         self.ax.set_xlim(*self.xlims)
@@ -3877,6 +3922,7 @@ class my_paint_app:
             self.xb, self.yb = self.ax_transData_and_coerce(self.ax, event.x,
                                                                      event.y,
                                                         self.label_img.shape)
+            self.apply_brush(event)
             self.cid_brush = (self.sub_win.canvas).mpl_connect(
                                                      'motion_notify_event',
                                                           self.apply_brush)
@@ -3909,29 +3955,32 @@ class my_paint_app:
         return rr_poly, cc_poly
 
     def apply_brush(self, event):
-        x, y = self.ax_transData_and_coerce(self.ax, event.x, event.y,
-                                                    self.label_img.shape)
+        if event.button == 1:
+            x, y = self.ax_transData_and_coerce(self.ax, event.x, event.y,
+                                                        self.label_img.shape)
 
-        rr, cc = disk((y, x), radius=self.brush_size,
-                              shape=self.label_img.shape)
-        rr_poly, cc_poly = self.get_poly_brush((self.yb, self.xb), (y, x),
-                                                self.brush_size)
-        self.xb, self.yb = x, y
-        if self.eraser_on:
-            self.eraser_mask[rr, cc] = True
-            self.eraser_mask[rr_poly, cc_poly] = True
-            self.sep_bud_label[self.eraser_mask] = 0
-        else:
-            self.sep_bud_label[rr, cc] = self.ID_moth
-            self.sep_bud_label[rr_poly, cc_poly] = self.ID_moth
-        self.update_img(None)
-        c = 'r' if self.eraser_on else 'g'
-        self.brush_circle = matplotlib.patches.Circle((x, y),
-                                radius=self.brush_size,
-                                fill=False,
-                                color=c, lw=2)
-        (self.ax).add_patch(self.brush_circle)
-        (self.sub_win.canvas).draw_idle()
+            rr, cc = disk((y, x), radius=self.brush_size,
+                                  shape=self.label_img.shape)
+            rr_poly, cc_poly = self.get_poly_brush((self.yb, self.xb), (y, x),
+                                                    self.brush_size)
+            self.xb, self.yb = x, y
+            if self.eraser_on:
+                self.eraser_mask[rr, cc] = True
+                self.eraser_mask[rr_poly, cc_poly] = True
+                self.sep_bud_label[self.eraser_mask] = 0
+            else:
+                self.sep_bud_label[rr, cc] = self.ID_moth
+                self.sep_bud_label[rr_poly, cc_poly] = self.ID_moth
+                self.eraser_mask[rr, cc] = False
+                self.eraser_mask[rr_poly, cc_poly] = False
+            self.update_img(None)
+            c = 'r' if self.eraser_on else 'g'
+            self.brush_circle = matplotlib.patches.Circle((x, y),
+                                    radius=self.brush_size,
+                                    fill=False,
+                                    color=c, lw=2)
+            (self.ax).add_patch(self.brush_circle)
+            (self.sub_win.canvas).draw_idle()
 
 
     def draw_line(self, event):
@@ -3973,13 +4022,13 @@ class my_paint_app:
         if x < xmin:
             x_coerced = 0
         elif x > xmax:
-            x_coerced = xmax
+            x_coerced = xmax-1
         else:
             x_coerced = int(round(x)) if return_int else x
         if y < ymin:
             y_coerced = 0
         elif y > ymax:
-            y_coerced = ymax
+            y_coerced = ymax-1
         else:
             y_coerced = int(round(y)) if return_int else y
         return x_coerced, y_coerced

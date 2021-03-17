@@ -11,14 +11,14 @@ import cv2
 import numpy as np
 import pandas as pd
 import matplotlib as mpl
+from datetime import datetime
 from math import atan2
 import matplotlib.pyplot as plt
-from matplotlib.widgets import Slider, Button, MyRadioButtons
+from MyWidgets import Slider, Button, MyRadioButtons
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle, Circle
-from tkinter import tk_breakpoint, E, S, W, END
+from tkinter import E, S, W, END
 import tkinter as tk
-from tkinter.filedialog import folder_dialog
 from tifffile.tifffile import TiffWriter, TiffFile
 from skimage import io
 from skimage.feature import peak_local_max
@@ -28,10 +28,189 @@ from skimage.measure import label, regionprops
 from skimage.morphology import remove_small_objects, convex_hull_image
 from skimage.draw import line, line_aa
 from scipy.ndimage.morphology import binary_fill_holes, distance_transform_edt
-from FUNCTIONS import (auto_select_slice, manual_emerg_bud,
-                       separate_overlapping, text_label_centroid, tk_breakpoint,
-                       manual_emerg_bud, CellInt_slideshow, beyond_listdir_pos,
-                       select_exp_folder)
+from lib import (auto_select_slice, manual_emerg_bud, folder_dialog, dark_mode,
+                 win_size, separate_overlapping, text_label_centroid,
+                 tk_breakpoint, manual_emerg_bud, CellInt_slideshow,
+                 select_exp_folder)
+
+class beyond_listdir_pos:
+    def __init__(self, folder_path):
+        self.bp = tk_breakpoint()
+        self.folder_path = folder_path
+        self.TIFFs_path = []
+        self.count_recursions = 0
+        # self.walk_directories(folder_path)
+        self.listdir_recursion(folder_path)
+        if not self.TIFFs_path:
+            raise FileNotFoundError(f'Path {folder_path} is not valid!')
+        self.all_exp_info = self.count_segmented_pos()
+
+    def listdir_recursion(self, folder_path):
+        if os.path.isdir(folder_path):
+            listdir_folder = natsorted(os.listdir(folder_path))
+            contains_pos_folders = any([name.find('Position_')!=-1
+                                        for name in listdir_folder])
+            if not contains_pos_folders:
+                contains_TIFFs = any([name=='TIFFs' for name in listdir_folder])
+                contains_CZIs = any([name=='CZIs' for name in listdir_folder])
+                contains_czis_files = any([name.find('.czi')!=-1
+                                           for name in listdir_folder])
+                if contains_TIFFs:
+                    self.TIFFs_path.append(f'{folder_path}/TIFFs')
+                elif contains_CZIs:
+                    self.TIFFs_path.append(f'{folder_path}')
+                elif not contains_CZIs and contains_czis_files:
+                    self.TIFFs_path.append(f'{folder_path}/CZIs')
+                else:
+                    for name in listdir_folder:
+                        subfolder_path = f'{folder_path}/{name}'
+                        self.listdir_recursion(subfolder_path)
+            else:
+                self.TIFFs_path.append(folder_path)
+
+    def walk_directories(self, folder_path):
+        for root, dirs, files in os.walk(folder_path, topdown=True):
+            # Avoid scanning TIFFs and CZIs folder
+            dirs[:] = [d for d in dirs if d not in ['TIFFs', 'CZIs', 'Original_TIFFs']]
+            contains_czis_files = any([name.find('.czi')!=-1 for name in files])
+            print(root)
+            print(dirs, files)
+            self.bp.pausehere()
+            for dirname in dirs:
+                path = f'{root}/{dirname}'
+                listdir_folder = natsorted(os.listdir(path))
+                if dirname == 'TIFFs':
+                    self.TIFFs_path.append(path)
+                    print(self.TIFFs_path)
+                    break
+
+    def get_rel_path(self, path):
+        rel_path = ''
+        parent_path = path
+        count = 0
+        while parent_path != self.folder_path or count==10:
+            if count > 0:
+                rel_path = f'{os.path.basename(parent_path)}/{rel_path}'
+            parent_path = os.path.dirname(parent_path)
+            count += 1
+        rel_path = f'.../{rel_path}'
+        return rel_path
+
+    def count_segmented_pos(self):
+        all_exp_info = []
+        for path in self.TIFFs_path:
+            foldername = os.path.basename(path)
+            if foldername == 'TIFFs':
+                pos_foldernames = os.listdir(path)
+                num_pos = len(pos_foldernames)
+                if num_pos == 0:
+                    root = tk.Tk()
+                    root.withdraw()
+                    delete_empty_TIFFs = messagebox.askyesno(
+                    'Folder will be deleted!',
+                    f'WARNING: The folder\n\n {path}\n\n'
+                    'does not contain any file!\n'
+                    'It will be DELETED!\n'
+                    'Are you sure you want to continue?\n\n')
+                    root.quit()
+                    root.destroy()
+                    if delete_empty_TIFFs:
+                        os.rmdir(path)
+                    rel_path = self.get_rel_path(path)
+                    exp_info = f'{rel_path} (FIJI macro not executed!)'
+                else:
+                    rel_path = self.get_rel_path(path)
+                    pos_ok = False
+                    while not pos_ok:
+                        num_segm_pos = 0
+                        pos_paths_multi_segm = []
+                        tmtimes = []
+                        for pos_foldername in pos_foldernames:
+                            images_path = f'{path}/{pos_foldername}/Images'
+                            filenames = os.listdir(images_path)
+                            if re.match('Position_(\d+)-(\d+)', pos_foldername):
+                                ROI_done = True
+                            else:
+                                ROI_done = False
+                            count = 0
+                            m = re.findall('Position_(\d+)', pos_foldername)
+                            mismatch_paths = []
+                            pos_n = int(m[0])
+                            is_mismatch = False
+                            for filename in filenames:
+                                m = re.findall('_s(\d+)_', filename)
+                                if not m:
+                                    m = re.findall('_s(\d+)-', filename)
+                                s_n = int(m[0])
+                                if s_n == pos_n:
+                                    if filename.find('segm.npy') != -1:
+                                        file_path = f'{images_path}/{filename}'
+                                        tmtime = os.path.getmtime(file_path)
+                                        tmtimes.append(tmtime)
+                                        num_segm_pos += 1
+                                        count += 1
+                                        if count > 1:
+                                            pos_paths_multi_segm.append(
+                                                                    images_path)
+                                else:
+                                    is_mismatch = True
+                                    file_path = f'{images_path}/{filename}'
+                                    mismatch_paths.append(file_path)
+                            if is_mismatch:
+                                fix = fix_pos_n_mismatch(
+                                      title='Filename mismatch!',
+                                      message='The following position contains '
+                                      'files that do not belong to the '
+                                      f'Position_n folder:\n\n {images_path}',
+                                      path=images_path)
+                                if not fix.ignore:
+                                    paths_print = ',\n\n'.join(mismatch_paths)
+                                    root = tk.Tk()
+                                    root.withdraw()
+                                    do_it = messagebox.askyesno(
+                                    'Files will be deleted!',
+                                    'WARNING: The files below will be DELETED!\n'
+                                    'Are you sure you want to continue?\n\n'
+                                    f'{paths_print}')
+                                    root.quit()
+                                    root.destroy()
+                                    if do_it:
+                                        for mismatch_path in mismatch_paths:
+                                            os.remove(mismatch_path)
+                                    pos_ok = False
+                                else:
+                                    pos_ok = True
+                            else:
+                                pos_ok = True
+                if num_segm_pos < num_pos:
+                    if ROI_done:
+                        exp_info = (f'{rel_path} (splitROI DONE!)')
+                    else:
+                        exp_info = (f'{rel_path} (splitROI NOT done!)')
+                    if num_segm_pos != 0:
+                        exp_info = (f'{exp_info[:-1]}, N. of segmented pos: '
+                                    f'{num_segm_pos})')
+                    else:
+                        exp_info = (f'{exp_info[:-1]}, '
+                                     'NONE of the pos have been segmented)')
+
+                elif num_segm_pos == num_pos:
+                    if num_pos != 0:
+                        tmtime = max(tmtimes)
+                        modified_on = (datetime.utcfromtimestamp(tmtime)
+                                               .strftime('%Y/%m/%d'))
+                        exp_info = f'{rel_path} (All pos segmented - {modified_on})'
+                elif num_segm_pos > num_pos:
+                    print('Position_n folders that contain multiple segm.npy files:\n'
+                          f'{pos_paths_multi_segm}')
+                    exp_info = f'{rel_path} (WARNING: multiple "segm.npy" files found!)'
+                else:
+                    exp_info = rel_path
+            else:
+                rel_path = self.get_rel_path(path)
+                exp_info = f'{rel_path} (FIJI macro not executed!)'
+            all_exp_info.append(exp_info)
+        return all_exp_info
 
 class num_pos_toSegm_tk:
     def __init__(self, tot_frames, last_segm_i=None):
@@ -132,7 +311,7 @@ class num_pos_toSegm_tk:
         exit('Execution aborted by the user')
 
 """Classes"""
-class init_App:
+class app_gui:
     def __init__(self, TIFFs_path):
         phc_img_li = []
         self.images_pos_paths = []
@@ -194,6 +373,7 @@ class init_App:
         self.sub_V_dict_li_li = [None]*len(directories)
         self.sub_V_other_tifs_dict_li_li = [None]*len(directories)
         self.key_mode = ''
+        self.square_halfsize = 100
         print(f'Total number of Positions = {len(phc_img_li)}')
 
     def init_plt_GUI(self):
@@ -207,7 +387,8 @@ class init_App:
         app.img = self.all_phc_img_li[self.p][self.s]
         ax.clear()
         ax.imshow(app.img)
-        ax.set_title('Right-click on a cell to save it as a separate file\n\n'
+        ax.set_title('Right-click on a cell to save it as a separate file\n'
+                     'ctrl+up to increase square size\n\n'
                      f'{self.directories[self.p]}')
         ax.axis('off')
         fig.canvas.draw_idle()
@@ -222,12 +403,17 @@ class init_App:
     def save_sub_img(self, TIFFs_path, p, sub_V_dict_li, sub_V_other_tifs_dict_li):
         orig_TIFFs_path = f'{self.TIFFs_parent_path}/Original_TIFFs'
         orig_TIFFs_pos_path = (f'{orig_TIFFs_path}/{self.directories[p]}/Images')
-        if sub_V_dict_li:
-            shutil.move(self.images_pos_paths[p], orig_TIFFs_pos_path)
-            shutil.rmtree(self.pos_paths[p])
+        # if sub_V_dict_li:
+        #     # shutil.move(self.images_pos_paths[p], orig_TIFFs_pos_path)
+        #     # shutil.rmtree(self.pos_paths[p])
         for sub_V_dict in sub_V_dict_li:
             folder_name = sub_V_dict['folder_name']
-            sub_V = sub_V_dict['V_data']
+            pos_i = sub_V_dict['pos_i']
+            V = app.all_phc_img_li[pos_i]
+            xd = sub_V_dict['xd']
+            yd = sub_V_dict['yd']
+            _, bottom, left, rect_size = get_rect_patch(app.img.shape, xd, yd)
+            sub_V = V[:, bottom:bottom+rect_size, left:left+rect_size]
             file_name = sub_V_dict['file_name']
             new_folder_path = f'{TIFFs_path}/{folder_name}/Images'
             if not os.path.exists(new_folder_path):
@@ -236,7 +422,11 @@ class init_App:
             self.imagej_tiffwriter(new_path, sub_V)
         for sub_V_other_tifs_dict in sub_V_other_tifs_dict_li:
             folder_name = sub_V_other_tifs_dict['folder_name']
-            sub_V = sub_V_other_tifs_dict['V_data']
+            xd = sub_V_other_tifs_dict['xd']
+            yd = sub_V_other_tifs_dict['yd']
+            V = sub_V_other_tifs_dict['orig_tif_data']
+            _, bottom, left, rect_size = get_rect_patch(app.img.shape, xd, yd)
+            sub_V = V[:, bottom:bottom+rect_size, left:left+rect_size]
             file_name = sub_V_other_tifs_dict['file_name']
             new_folder_path = f'{TIFFs_path}/{folder_name}/Images'
             new_path = f'{new_folder_path}/{file_name}'
@@ -244,6 +434,9 @@ class init_App:
 
     def save_all_ROI(self, TIFFs_path, sub_V_dict_li_li,
                            sub_V_other_tifs_dict_li_li):
+        orig_TIFFs_path = os.path.join(self.TIFFs_parent_path, 'Original_TIFFs')
+        if not os.path.exists(orig_TIFFs_path):
+            shutil.move(TIFFs_path, orig_TIFFs_path)
         _zip = zip(range(self.p+1), sub_V_dict_li_li, sub_V_other_tifs_dict_li_li)
         for p, sub_V_dict_li, sub_V_other_tifs_dict_li in _zip:
             print(f'Saving image {p+1}/{self.p+1}...')
@@ -253,7 +446,7 @@ class init_App:
 
 
 """Initialize app GUI parameters"""
-plt.dark()
+dark_mode()
 axcolor = '0.1'
 slider_color = '0.2'
 hover_color = '0.25'
@@ -275,7 +468,7 @@ TIFFs_path = select_widget.run_widget(beyond_listdir_pos.all_exp_info,
                          showinexplorer_button=True)
 
 """Load data"""
-app = init_App(TIFFs_path)
+app = app_gui(TIFFs_path)
 app.init_plt_GUI()
 app.update_plot()
 num_pos = len(app.directories)
@@ -314,8 +507,9 @@ def next_pos(event):
             app.save_all_ROI(TIFFs_path, app.sub_V_dict_li_li,
                                          app.sub_V_other_tifs_dict_li_li)
             print('Saved!')
-            close = tk.messagebox.askyesno('Close?', 'Positions saved!.\n'
-                                   'Do you want to close?')
+            # close = tk.messagebox.askyesno('Close?', 'Positions saved!.\n'
+            #                        'Do you want to close?')
+            close = True
             if close:
                 plt.close()
         print('You reached the last position!')
@@ -367,10 +561,13 @@ def key_down(event):
         app.ROIimg_li = []
         app.sub_V_dict_li = []
         app.sub_V_other_tifs_dict_li = []
+    elif key == 'ctrl+up':
+        app.square_halfsize += 5
+        mouse_motion(event)
 
 def get_rect_patch(img_shape, x, y):
     img_h, img_w = app.img.shape
-    square_halfsize = 150
+    square_halfsize = app.square_halfsize
     left = x - square_halfsize
     bottom = y - square_halfsize
     rect_size = square_halfsize*2
@@ -406,24 +603,28 @@ def mouse_down(event):
         # Append sub img data for saving later
         app.counter += 1
         V = app.all_phc_img_li[app.p]
-        sub_V = V[:, bottom:bottom+rect_size, left:left+rect_size]
+        # sub_V = V[:, bottom:bottom+rect_size, left:left+rect_size]
         folder_name = f'{app.directories[app.p]}-{app.counter}'
         file_name = f'{app.basenames[app.p]}-{app.counter}_phase_contr.tif'
         print(f'New file name: {file_name}')
         app.sub_V_dict_li.append({'folder_name': folder_name,
                                   'file_name': file_name,
-                                  'V_data': sub_V})
+                                  'pos_i': app.p,
+                                  'xd': xd,
+                                  'yd': yd})
         # Index also the other channels .tif files in the folder
         for tif_dict in app.all_others_tifs_li_dict[app.p]:
             tif_data = tif_dict['tif_data']
-            sub_tif_data = tif_data[:, bottom:bottom+rect_size,
-                                       left:left+rect_size]
+            # sub_tif_data = tif_data[:, bottom:bottom+rect_size,
+            #                            left:left+rect_size]
             tif_basename = tif_dict['tif_basename']
             tif_channelname = tif_dict['tif_channelname']
             file_name = f'{tif_basename}-{app.counter}_{tif_channelname}'
             app.sub_V_other_tifs_dict_li.append({'folder_name': folder_name,
                                                  'file_name': file_name,
-                                                 'V_data': sub_tif_data})
+                                                 'orig_tif_data': tif_data,
+                                                 'xd': xd,
+                                                 'yd': yd})
 
 rect_patch_motion = Rectangle((1, 1), 1, 1, color='r', ls='--', fill=False)
 def mouse_motion(event):
@@ -439,9 +640,6 @@ def mouse_motion(event):
         rect_patch_motion, _, _, _ = get_rect_patch(app.img.shape, xd, yd)
         app.ax.add_patch(rect_patch_motion)
         app.fig.canvas.draw_idle()
-
-
-
 
 def resize_widgets(event):
     # [left, bottom, width, height]
@@ -481,6 +679,9 @@ def handle_close(event):
 cid_close = (app.fig.canvas).mpl_connect('close_event', handle_close)
 
 """Final settings and start GUI"""
-plt.win_size(w=0.5, h= 0.8, swap_screen=False)
+try:
+    win_size(w=0.5, h= 0.8, swap_screen=False)
+except:
+    pass
 app.fig.canvas.set_window_title(f'Cell segmentation split ROI - GUI - {app.exp_name}')
 plt.show()

@@ -29,15 +29,15 @@ from skimage.draw import line, line_aa
 from skimage.color import gray2rgb
 from scipy.ndimage.morphology import binary_fill_holes, distance_transform_edt
 from tifffile import TiffFile
-from Yeast_ACDC_MyWidgets import (Slider, Button, RadioButtons, TextBox,
+from MyWidgets import (Slider, Button, RadioButtons, TextBox,
                        MyRadioButtons)
-from Yeast_ACDC_FUNCTIONS import (auto_select_slice, manual_emerg_bud,
-                       separate_overlapping, text_label_centroid, tk_breakpoint,
-                       CellInt_slideshow, num_frames_toSegm_tk, newID_app,
-                       CellInt_slideshow_2D, ShowWindow_from_title,
-                       select_exp_folder, align_frames_3D, align_frames_2D,
-                       load_shifts, tk_breakpoint, folder_dialog, file_dialog,
-                       win_size, imshow_tk)
+from lib import (auto_select_slice, manual_emerg_bud,
+                 separate_overlapping, text_label_centroid, tk_breakpoint,
+                 CellInt_slideshow, num_frames_toSegm_tk, newID_app,
+                 CellInt_slideshow_2D, ShowWindow_from_title,
+                 select_exp_folder, align_frames_3D, align_frames_2D,
+                 load_shifts, tk_breakpoint, folder_dialog, file_dialog,
+                 win_size, imshow_tk)
 
 # Import YeaZ module
 #script_dirname = os.path.dirname(os.path.realpath(__file__))
@@ -137,6 +137,45 @@ class load_data:
                 self.SizeT, self.SizeZ = self.dimensions_entry_widget()
         else:
             self.SizeT, self.SizeZ = self.dimensions_entry_widget()
+        data_T, data_Z = self.img_data.shape[:2]
+        if self.SizeZ > 1:
+            if data_Z != self.SizeZ:
+                root = tk.Tk()
+                root.withdraw()
+                tk.messagebox.showwarning('Shape mismatch!',
+                    'The metadata of the .tif file says that there should be '
+                    f'{self.SizeZ} z-slices. However the shape of the data is '
+                    f'{self.img_data.shape}!\n\n'
+                    'The order of the data dimensions for 3D datasets '
+                    'has to be TZYX where T is the number of frames, Z the '
+                    'number of slices, and YX the shape of the image.\n\n'
+                    'In your case it looks like you either have a single 3D image'
+                    ' (no frames), or you have 2D data over time.\n'
+                    'In the first case, you should not use this script but the '
+                    '"gui_snapshots.py" script. For the second case the '
+                    'software will now try to ignore the number '
+                    'of slices and it will suppose that your data is 2D.')
+                self.SizeZ = 1
+                root.quit()
+                root.destroy()
+            if data_T != self.SizeT:
+                root = tk.Tk()
+                root.withdraw()
+                tk.messagebox.showwarning('Shape mismatch!',
+                    'The metadata of the .tif file says that there should be '
+                    f'{self.SizeT} frame. However the shape of the data is '
+                    f'{self.img_data.shape}!\n\n'
+                    'The order of the data dimensions has to be TZYX for '
+                    '3D images over time and TYX for 2D images, '
+                    'where T is the number of frames, Z the '
+                    'number of slices, and YX the shape of the image.\n\n'
+                    'In your case it looks like your data contains less/more '
+                    'frames than expected.\n\n'
+                    f'The software will now try to run with {data_T} '
+                    'number of frames.')
+                self.SizeT = data_T
+                root.quit()
+                root.destroy()
         self.build_paths(self.filename, self.parent_path)
 
     def build_paths(self, filename, parent_path):
@@ -317,7 +356,7 @@ class app_GUI:
         self.frames = data.img_data
         self.auto_save = False
         self.frame_i_done = -1
-        print('Total number of Positions = {}'.format(len(self.frames)))
+        print('Total number of frames = {}'.format(len(self.frames)))
         self.bp = tk_breakpoint()
         self.data = data
         self.unet_first_call = True
@@ -1217,7 +1256,7 @@ class img_analysis:
             curr_IDs = [obj.label for obj in self.rp]
             warn_txt = self.check_prev_IDs_lost_new(prev_IDs, curr_IDs)
             return self.lab, warn_txt
-        print(f'Tracking frame {self.frame_i}...')
+        print(f'Tracking frame {app.frame_i}...')
         IDs_prev = [obj.label for obj in prev_ia.rp]
         IDs_prev.sort()
         IDs_curr_untracked = [obj.label for obj in self.rp]
@@ -1303,7 +1342,7 @@ class img_analysis:
             self.new_IDs = new_tracked_IDs_2
             warn_txt = f'{warn_txt}\n\nNew cells IDs in current frame: {new_tracked_IDs_2}'
         self.modified = True
-        print(f'Tracking frame {self.frame_i} done!')
+        print(f'Tracking frame {app.frame_i} done!')
         print('------------------------------------')
         return tracked_lab, warn_txt
         # self.bp.pausehere()
@@ -3169,5 +3208,6 @@ app.set_orig_lims()
 app.store_state(ia)
 
 # win_size(swap_screen=False)
-app.fig.canvas.set_window_title(f'Cell segmentation GUI - {app.exp_name}\\{app.pos_foldername}')
+app.fig.canvas.set_window_title('Cell segmentation GUI - '
+                                f'{app.exp_name}\\{app.pos_foldername}')
 plt.show()

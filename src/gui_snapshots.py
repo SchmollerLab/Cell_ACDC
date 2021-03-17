@@ -33,7 +33,7 @@ from scipy.ndimage.morphology import binary_fill_holes, distance_transform_edt
 from tifffile import TiffFile
 from MyWidgets import Slider, Button, MyRadioButtons, TextBox
 from myutils import download_model
-from FUNCTIONS import (auto_select_slice, separate_overlapping,
+from lib import (auto_select_slice, separate_overlapping,
                        text_label_centroid, tk_breakpoint, manual_emerg_bud,
                        CellInt_slideshow, twobuttonsmessagebox,
                        single_entry_messagebox, beyond_listdir_pos,
@@ -79,7 +79,7 @@ GUI Mouse Events: - Apply lower local threshold with RIGHT-click drawing on
                   - Press 'ctrl+p' to print the cc_stage dataframe
                   - Manually separate bud with 'b' plus RIGHT-click on label
                     img
-                  - Set which cell is mother cell (without assigning the bud)
+                  - Assign a as mother cell (without assigning the bud) in 'S'
                     with WHEEL-click on intensity img.
                   - Delete cell ID from label image with WHEEL-click on label
                   - Delete contour pixel with WHEEL-click on contour image:
@@ -89,6 +89,7 @@ GUI Mouse Events: - Apply lower local threshold with RIGHT-click drawing on
                     anywhere outside axis
                   - Use hull contour with left double click on Cell ID on label
                   - Approx hull contour with *a + left double click* on ID
+                  - Smooth contours with *alt + left double click* on ID
                   - To remove objects from phase contrast image that do not
                     have to be considered paart of the background you can freely
                     draw around it. First, press the key 'd' to activate
@@ -352,6 +353,8 @@ class num_pos_toSegm_tk:
 """Classes"""
 class app_GUI:
     def __init__(self, TIFFs_path):
+        script_dirname = os.path.dirname(os.path.realpath(__file__))
+        self.main_path = os.path.dirname(script_dirname)
         directories = natsorted(os.listdir(TIFFs_path))
         self.pos_foldernames = directories
         TIFFs_parent_path = os.path.dirname(TIFFs_path)
@@ -424,6 +427,7 @@ class app_GUI:
         self.eraser_on = False
         self.selected_IDs = None
         self.draw_ROI_delete = False
+        self.do_smooth_cont = False
         self.set_labRGB_colors()
         print('Total number of Positions = {}'.format(len(self.phc)))
         self.bp = tk_breakpoint()
@@ -575,8 +579,9 @@ class app_GUI:
         if method == 'hull':
             approx_lab = convex_hull_image(lab_ID)
         elif method == 'approx':
+            contours = find_contours(lab_ID, 0)
             approx_lab = np.zeros_like(lab_ID)
-            for contour in find_contours(lab_ID, 0):
+            for contour in contours:
                 coords = approximate_polygon(contour, tolerance=3.5)
                 r, c = subdivide_polygon(coords, degree=3).transpose()
                 rr, cc = polygon(r, c)
@@ -858,6 +863,12 @@ class img_analysis:
         self.frozen_lab = None
         y, x = img.shape
         self.home_ax_limits = [[(-0.5, x-0.5), (y-0.5, -0.5)] for _ in range(3)]
+        borders_mask = np.ones(img.shape, bool)
+        borders_slicer_w = 5
+        slice_vals = slice(borders_slicer_w, -borders_slicer_w)
+        valid_area_slicer = tuple([slice_vals]*img.ndim)
+        borders_mask[valid_area_slicer] = False
+        self.borders_mask = borders_mask
         self.init_attr(img)
 
     def init_attr(self, img):
@@ -1183,6 +1194,18 @@ class img_analysis:
         else:
             return df
 
+    def store_bud_assign_infodict(self, x0, y0, y1, x1, xc=0, yc=0):
+        if self.prev_bud_assignment_info is None:
+            self.prev_bud_assignment_info = [{
+                                         'bud_coords': (y0, x0),
+                                         'moth_coords': (y1, x1),
+                                         'stored_moth_coords': (yc, xc)}]
+        else:
+            self.prev_bud_assignment_info.append({
+                                         'bud_coords': (y0, x0),
+                                         'moth_coords': (y1, x1),
+                                         'stored_moth_coords': (yc, xc)})
+
     def assign_bud(self, cc_stage_df, rp):
         if self.prev_bud_assignment_info is None:
             # If there are only two cells automatically assign bud to mother
@@ -1221,13 +1244,14 @@ class img_analysis:
                     bud_ccstage = cc_stage_df.at[budID, 'Cell cycle stage']
                     bud_ccnum = cc_stage_df.at[budID, '# of cycles']
                     if bud_ccstage == 'S' and bud_ccnum == 0:
-                        mothID = cc_stage_df.at[budID, 'Relative\'s ID']
+                        yc, xc = assign_click_coords['stored_moth_coords']
+                        stored_mothID = self.lab[int(round(yc)), int(round(xc))]
                         cc_stage_df.at[budID, 'Cell cycle stage'] = 'G1'
-                        cc_stage_df.at[mothID, 'Cell cycle stage'] = 'G1'
+                        cc_stage_df.at[stored_mothID, 'Cell cycle stage'] = 'G1'
                         cc_stage_df.at[budID, '# of cycles'] = -1
                         cc_stage_df.at[budID, 'Relative\'s ID'] = 0
-                        cc_stage_df.at[mothID, 'Relative\'s ID'] = 0
-                        cc_stage_df.at[mothID, 'Relationship'] = 'mother'
+                        cc_stage_df.at[stored_mothID, 'Relative\'s ID'] = 0
+                        cc_stage_df.at[stored_mothID, 'Relationship'] = 'mother'
                         cc_stage_df.at[budID, 'Relationship'] = 'mother'
         return cc_stage_df
 
@@ -1327,15 +1351,42 @@ class img_analysis:
         # lab = np.zeros(thresh.shape, int)
         # rp = regionprops(lab)
         self.cc_stage_df = self.init_cc_stage_df(rp)
-        self.cc_stage_df = ia.assign_bud(self.cc_stage_df, rp)
+        self.cc_stage_df = self.assign_bud(self.cc_stage_df, rp)
         self.lab, _, _ = relabel_sequential(lab)
         self.rp = rp
+
+    def smooth_contours(self, lab, radius=2):
+        sigma = 2*radius + 1
+        IDs = [obj.label for obj in regionprops(lab)]
+        contours = self.find_contours(lab, IDs, group=True)
+        smooth_lab = np.zeros_like(lab)
+        for ID, cont in zip(IDs, contours):
+            x = cont[:,1]
+            y = cont[:,0]
+            x = np.append(x, x[0:sigma])
+            y = np.append(y, y[0:sigma])
+            x = np.round(gaussian(x, sigma=sigma,
+                                     preserve_range=True)).astype(int)
+            y = np.round(gaussian(y, sigma=sigma,
+                                     preserve_range=True)).astype(int)
+            temp_mask = np.zeros(lab.shape, bool)
+            temp_mask[y, x] = True
+            temp_mask = binary_fill_holes(temp_mask)
+            smooth_lab[temp_mask] = ID
+        return smooth_lab
+
+    def remove_borders_obj(self, lab):
+        borders_IDs = np.unique(lab[self.borders_mask])
+        for ID in borders_IDs:
+            lab[lab==ID] = 0
+        return lab
 
     def unet_segmentation(self, img, app, ia):
         edge = self.edge_detector(img)
         self.img = img
         self.edge = edge
         start_t = time()
+        img = gaussian(img, sigma=1)
         img = equalize_adapthist(img)
         img = img*1.0
         print('Neural network is thinking...')
@@ -1354,24 +1405,29 @@ class img_analysis:
                                                        do_3D=False,
                                                        progress=None)
         lab = remove_small_objects(lab, min_size=20, connectivity=2)
+        lab = self.remove_borders_obj(lab)
+        lab = self.smooth_contours(lab, radius=2)
         stop_t = time()
         print('Neural network execution time: {0:.3f}'.format(stop_t-start_t))
         self.lab, _, _ = relabel_sequential(lab)
-        self.rp = regionprops(lab)
+        self.rp = regionprops(self.lab)
         self.cc_stage_df = self.init_cc_stage_df(self.rp)
         self.cc_stage_df = self.assign_bud(self.cc_stage_df, self.rp)
         IDs = [obj.label for obj in self.rp]
-        ia.contours = self.find_contours(ia.lab, IDs, group=True)
-        ia.auto_edge_img = np.zeros(ia.img.shape, bool)
-        for cont in ia.contours:
+        self.contours = self.find_contours(self.lab, IDs, group=True)
+        self.auto_edge_img = np.zeros(self.img.shape, bool)
+        self.contour_plot = [[], []]
+        for cont in self.contours:
             x = cont[:,1]
             y = cont[:,0]
             x = np.append(x, x[0])
             y = np.append(y, y[0])
-            ia.auto_edge_img[y, x] = True
-        ia.manual_mask = np.zeros(img.shape, bool)
-        ia.contour_plot = [[], []]
-        ia.modified = False
+            self.auto_edge_img[y, x] = True
+            self.contour_plot[0].extend(x)
+            self.contour_plot[1].extend(y)
+        self.manual_mask = np.zeros(img.shape, bool)
+        self.modified = False
+        # np.save(os.path.join(app.main_path, 'tests', 'test_lab.npy'), ia.lab)
 
 matplotlib.use("TKAgg")
 
@@ -1538,7 +1594,7 @@ man_clos = Button(ax_man_clos, 'Switch to manual closing',
 brush_mode_b = Button(ax_brush_mode_b, 'Brush mode OFF',
                      color=axcolor, hovercolor=hover_color,
                      presscolor=presscolor)
-keep_current_lab_b = Button(ax_keep_current_lab, 'Freeze segmentation',
+freeze_release_current_lab_b = Button(ax_keep_current_lab, 'Freeze segmentation',
                      color=axcolor, hovercolor=hover_color,
                      presscolor=presscolor)
 radio_b_ccStage = MyRadioButtons(ax_ccstage_radio,
@@ -1685,6 +1741,7 @@ def next_f(event):
         app.pos_txt._text = (f'Current position = {app.p+1}/{num_pos}   '
                              f'({app.pos_foldernames[app.p]})')
         analyse_img(img)
+        ia.slice_used = app.s
     # Next frame was already segmented within this session. Load data
     elif app.p+1 and param[app.p+1] is not None:
         param = store_param(ia)
@@ -1696,8 +1753,8 @@ def next_f(event):
         app.update_ALLplots(ia)
     if ia.clos_mode == 'Auto closing':
         man_clos_cb(None)
-    s_slice.set_val(app.s, silent=True)
-    view_slices_sl.set_val(app.s, silent=True)
+    s_slice.set_val(ia.slice_used, silent=True)
+    view_slices_sl.set_val(ia.slice_used, silent=True)
     app.fig.canvas.draw_idle()
     app.connect_axes_cb()
     app.set_orig_lims()
@@ -1714,7 +1771,7 @@ def prev_f(event):
     if app.segm_npy_done[app.p] is not None and ia.modified:
         param = store_param(ia)
         store_app_param(ia)
-    # Next frame was already segmented in a previous session. Load data from HDD
+    # Prev frame was already segmented in a previous session. Load data from HDD
     if app.segm_npy_done[app.p-1] is not None and app.p-1 >= 0:
         app.p -= 1
         param = load_param_from_folder(app)
@@ -1733,8 +1790,8 @@ def prev_f(event):
             app.p = p
             param = load_param_from_folder(app)
             app.update_ALLplots(ia)
-    s_slice.set_val(app.s, silent=True)
-    view_slices_sl.set_val(app.s, silent=True)
+    s_slice.set_val(ia.slice_used, silent=True)
+    view_slices_sl.set_val(ia.slice_used, silent=True)
     app.prev_states = []
     app.connect_axes_cb()
     app.set_orig_lims()
@@ -2092,10 +2149,10 @@ def use_YeaZ_cb(event):
         analyse_img(ia.img)
     else:
         print('Importing YeaZ model...')
-        from YeaZ.unet import neural_network as nn
-        from YeaZ.unet import segment
         switch_use_YeaZ_button(True)
         switch_use_cellpose_button(False)
+        from YeaZ.unet import neural_network as nn
+        from YeaZ.unet import segment
         app.use_cellpose = False
         app.use_YeaZ = True
         analyse_img(ia.img)
@@ -2108,12 +2165,12 @@ def use_cellpose_cb(event):
         analyse_img(ia.img)
     else:
         print('Initializing cellpose model...')
+        switch_use_cellpose_button(True)
+        switch_use_YeaZ_button(False)
         from acdc_cellpose import models
         device, gpu = models.assign_device(True, False)
         app.cp_model = models.Cellpose(gpu=gpu, device=device,
                                        model_type='cyto', torch=True)
-        switch_use_cellpose_button(True)
-        switch_use_YeaZ_button(False)
         app.use_YeaZ = False
         app.use_cellpose = True
         analyse_img(ia.img)
@@ -2153,7 +2210,7 @@ def reset_ccstage_df_cb(event):
     app.update_ALLplots(ia)
     app.store_state(ia)
 
-def keep_release_current_lab_cb(event):
+def freeze_release_current_lab_cb(event):
     if app.is_undo or app.is_redo:
         app.store_state(ia)
     if not app.is_lab_frozen and event.button == 1:
@@ -2162,10 +2219,10 @@ def keep_release_current_lab_cb(event):
         ia.frozen_edge = ia.edge.copy()
         ia.frozen_img = ia.img.copy()
         ia.frozen_prev_bud_assignment_info = deepcopy(ia.prev_bud_assignment_info)
-        keep_current_lab_b.color = button_true_color
-        keep_current_lab_b.hovercolor = button_true_color
-        keep_current_lab_b.label._text = 'Release frozen segment.'
-        keep_current_lab_b.ax.set_facecolor(button_true_color)
+        freeze_release_current_lab_b.color = button_true_color
+        freeze_release_current_lab_b.hovercolor = button_true_color
+        freeze_release_current_lab_b.label._text = 'Release frozen segment.'
+        freeze_release_current_lab_b.ax.set_facecolor(button_true_color)
         (app.fig.canvas).draw_idle()
         app.is_lab_frozen = True
     elif event.button == 1:
@@ -2174,7 +2231,7 @@ def keep_release_current_lab_cb(event):
         lab_mask = ia.frozen_lab > 0
         # Add frozen segmentation on top of the new one
         ia.lab[lab_mask] = ia.frozen_lab[lab_mask]+max_ID
-        # ia.lab = app.relabel_and_fill_lab(ia.lab)
+        ia.lab = app.relabel_and_fill_lab(ia.lab)
         # Update all the attributes of the new segmentation
         ia.rp = regionprops(ia.lab)
         ia.cc_stage_df = ia.init_cc_stage_df(ia.rp)
@@ -2190,20 +2247,21 @@ def keep_release_current_lab_cb(event):
         app.s = app.frozen_s
         app.view_slices_sl.set_val(float(app.frozen_s), silent=True)
         s_slice.set_val(float(app.frozen_s), silent=True)
-        keep_current_lab_b.color = axcolor
-        keep_current_lab_b.hovercolor = hover_color
-        keep_current_lab_b.label._text = 'Freeze segmentation'
-        keep_current_lab_b.ax.set_facecolor(axcolor)
+        freeze_release_current_lab_b.color = axcolor
+        freeze_release_current_lab_b.hovercolor = hover_color
+        freeze_release_current_lab_b.label._text = 'Freeze segmentation'
+        freeze_release_current_lab_b.ax.set_facecolor(axcolor)
         (app.fig.canvas).draw_idle()
         app.update_ax0_plot(ia, ia.img)
         app.update_ax2_plot(ia)
         app.update_ax1_plot(ia.lab, ia.rp, ia)
         app.is_lab_frozen = False
+        ia.slice_used = app.s
     elif event.button != 1:
-        keep_current_lab_b.color = axcolor
-        keep_current_lab_b.hovercolor = hover_color
-        keep_current_lab_b.label._text = 'Freeze segmentation'
-        keep_current_lab_b.ax.set_facecolor(axcolor)
+        freeze_release_current_lab_b.color = axcolor
+        freeze_release_current_lab_b.hovercolor = hover_color
+        freeze_release_current_lab_b.label._text = 'Freeze segmentation'
+        freeze_release_current_lab_b.ax.set_facecolor(axcolor)
         (app.fig.canvas).draw_idle()
         app.is_lab_frozen = False
     app.store_state(ia)
@@ -2237,7 +2295,7 @@ s_slice.on_changed(s_slice_cb)
 save_b.on_clicked(save_cb)
 view_slices_sl.on_changed(view_slice)
 reset_ccstage_df_b.on_clicked(reset_ccstage_df_cb)
-keep_current_lab_b.on_clicked(keep_release_current_lab_cb)
+freeze_release_current_lab_b.on_clicked(freeze_release_current_lab_cb)
 segment_this_z_b.on_clicked(segment_this_z_cb)
 show_in_expl_b.on_clicked(show_in_expl_cb)
 use_cellpose.on_clicked(use_cellpose_cb)
@@ -2340,6 +2398,8 @@ def key_down(event):
         app.do_cut = True
     elif key == 'a':
         app.do_approx = True
+    elif key == 'alt':
+        app.do_smooth_cont = True
     elif key == 'x' and app.brush_mode_on:
         # Switch eraser mode on or off
         app.eraser_on = not app.eraser_on
@@ -2356,6 +2416,7 @@ def key_down(event):
         app.select_ID_on = True
     elif event.key == 'escape':
         app.selected_IDs = None
+        morhp_ids_tb.text_disp._text = 'All'
         app.update_ax0_plot(ia, ia.img)
         app.update_ax1_plot(ia.lab, ia.rp, ia)
     elif event.key == 'e':
@@ -2376,6 +2437,8 @@ def key_up(event):
         app.scroll_zoom = False
     elif key == 'control':
         app.select_ID_on = False
+    elif key == 'alt':
+        app.do_smooth_cont = False
 
 def get_zoomID_lims(rp, ID):
     all_IDs = [obj.label for obj in rp]
@@ -2430,6 +2493,9 @@ def mouse_down(event):
             if app.do_approx:
                 ia.lab[ia.lab==ID] = 0
                 approx_lab = app.approx_contour(labels_onlyID, method='approx')
+            elif app.do_smooth_cont:
+                approx_lab = ia.smooth_contours(labels_onlyID.astype(np.uint8),
+                                                radius=2)
             else:
                 approx_lab = app.approx_contour(labels_onlyID, method='hull')
                 app.already_approx_IDs.append(ID)
@@ -2444,7 +2510,7 @@ def mouse_down(event):
             app.update_ax1_plot(ia.lab, ia.rp, ia)
             ia.modified = True
             app.store_state(ia)
-    # Select label with alt+left_click on labels or phase contrast
+    # Select label with control+left_click on labels or phase contrast
     if left_click and ax1_click and not event.dblclick and app.select_ID_on:
         clicked_ID = ia.lab[yd, xd]
         if clicked_ID != 0:
@@ -2455,6 +2521,8 @@ def mouse_down(event):
                 app.selected_IDs.append(clicked_ID)
             else:
                 app.selected_IDs = [clicked_ID]
+            s = ','.join([str(ID) for ID in app.selected_IDs])
+            morhp_ids_tb.text_disp._text = s
         text_label_centroid(ia.rp, app.ax[0], 12, 'semibold', 'center', 'center',
                             cc_stage_frame=ia.cc_stage_df,
                             display_ccStage=app.display_ccStage, color='r',
@@ -2497,15 +2565,18 @@ def mouse_down(event):
     elif right_click and ax1_click and ia.sep_bud and not event.dblclick:
         ID = ia.lab[yd, xd]
         ia.rp = regionprops(ia.lab)
+        np.save(os.path.join(app.main_path, 'tests', 'test_img.npy'), ia.img)
+        np.save(os.path.join(app.main_path, 'tests', 'test_lab.npy'), ia.lab)
         paint_out = my_paint_app(ia.lab, ID, ia.rp, del_small_obj=True,
                                  overlay_img=ia.img)
         ia.sep_bud = False
         if not paint_out.cancel:
             if app.is_undo or app.is_redo:
                 app.store_state(ia)
-            paint_out_lab = remove_small_objects(paint_out.sep_bud_label,
-                                             min_size=20,
-                                             connectivity=2)
+            paint_out_lab = remove_small_objects(
+                                         paint_out.sep_bud_label.astype(int),
+                                         min_size=20,
+                                         connectivity=2)
             ia.lab[paint_out_lab != 0] = paint_out_lab[paint_out_lab != 0]
             ia.lab[paint_out.small_obj_mask] = 0
             # Apply eraser mask only to clicked ID
@@ -2514,7 +2585,7 @@ def mouse_down(event):
                 del_ID = ia.lab[y, x]
                 ia.lab[ia.lab == del_ID] = 0
             # ia.lab[paint_out.rr, paint_out.cc] = 0  # separate bud with 0s
-            # ia.lab = app.relabel_and_fill_lab(ia.lab)
+            ia.lab = app.relabel_and_fill_lab(ia.lab)
             rp = regionprops(ia.lab)
             ia.rp = rp
             IDs = [obj.label for obj in ia.rp]
@@ -2843,14 +2914,8 @@ def mouse_up(event):
         elif mothID != budID:
             if app.is_undo or app.is_redo:
                 app.store_state(ia)
-            if ia.prev_bud_assignment_info is None:
-                ia.prev_bud_assignment_info = [{
-                                             'bud_coords': (app.ydrc, app.xdrc),
-                                             'moth_coords': (yu, xu)}]
-            else:
-                ia.prev_bud_assignment_info.append({
-                                             'bud_coords': (app.ydrc, app.xdrc),
-                                             'moth_coords': (yu, xu)})
+            x0, y0 = app.xdrc, app.ydrc
+            ia.store_bud_assign_infodict(x0, y0, yu, xu)
             df = ia.cc_stage_df
             df.at[budID, 'Cell cycle stage'] = 'S'
             df.at[mothID, 'Cell cycle stage'] = 'S'
@@ -2869,19 +2934,15 @@ def mouse_up(event):
         elif mothID == budID:
             if app.is_undo or app.is_redo:
                 app.store_state(ia)
-            if ia.prev_bud_assignment_info is None:
-                ia.prev_bud_assignment_info = [{
-                                             'bud_coords': (app.ydrc, app.xdrc),
-                                             'moth_coords': (yu, xu)}]
-            else:
-                ia.prev_bud_assignment_info.append({
-                                             'bud_coords': (app.ydrc, app.xdrc),
-                                             'moth_coords': (yu, xu)})
             df = ia.cc_stage_df
             bud_ccstage = df.at[budID, 'Cell cycle stage']
             bud_ccnum = df.at[budID, '# of cycles']
             if bud_ccstage == 'S' and bud_ccnum == 0:
+                x0, y0 = app.xdrc, app.ydrc
+                IDs = [obj.label for obj in ia.rp]
                 stored_mothID = df.at[budID, 'Relative\'s ID']
+                yc, xc = ia.rp[IDs.index(stored_mothID)].centroid
+                ia.store_bud_assign_infodict(x0, y0, yu, xu, xc=xc, yc=yc)
                 df.at[budID, 'Cell cycle stage'] = 'G1'
                 df.at[stored_mothID, 'Cell cycle stage'] = 'G1'
                 df.at[budID, '# of cycles'] = -1
@@ -3012,7 +3073,7 @@ app.store_state(ia)
 
 win_title = f'{app.exp_parent_foldername}/{app.exp_name}'
 try:
-    win_size(swap_screen=True)
+    win_size(swap_screen=False)
 except:
     pass
 app.fig.canvas.set_window_title(f'Cell segmentation GUI - {win_title}')

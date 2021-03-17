@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 from time import time
 from tifffile import TiffFile
 from tkinter import messagebox
-from Yeast_ACDC_FUNCTIONS import (load_shifts, select_slice_toAlign, align_frames_3D,
+from lib import (load_shifts, select_slice_toAlign, align_frames_3D,
                    align_frames_2D, single_entry_messagebox, twobuttonsmessagebox,
                    auto_select_slice, num_frames_toSegm_tk, draw_ROI_2D_frames,
                    text_label_centroid, file_dialog, win_size, dark_mode)
@@ -347,6 +347,7 @@ root.destroy()
 is_pc = twobuttonsmessagebox('Img mode', 'Select imaging mode',
                              'Phase contrast', 'Bright-field').button_left
 
+# Index the selected frames
 if num_frames > 1:
     frames = frames[start:stop]
 
@@ -358,8 +359,11 @@ if ROI_coords is not None:
         ROI_img = frames[0][y_start:y_end, x_start:x_end]
     print(f'ROI image data shape = {ROI_img.shape}')
 
+# Index the selected slices
 if num_slices > 1:
-    frames = frames[:, slices[start:stop]]
+    frames = frames[range(start, stop), slices[start:stop]]
+
+
 r, c = frames.shape[-2], frames.shape[-1]
 if ROI_coords is not None:
     y_start, y_end, x_start, x_end = ROI_coords

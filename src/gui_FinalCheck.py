@@ -19,8 +19,8 @@ from skimage.draw import circle, line
 import scipy.ndimage as nd
 from tkinter import filedialog as fd
 from tkinter import Tk, messagebox, simpledialog
-from Yeast_ACDC_MyWidgets import Slider, Button, RadioButtons, MyRadioButtons
-from Yeast_ACDC_FUNCTIONS import (separate_overlapping, text_label_centroid,
+from MyWidgets import Slider, Button, RadioButtons, MyRadioButtons
+from lib import (separate_overlapping, text_label_centroid,
         apply_hyst_local_threshold, align_frames, del_min_area_obj,
         load_shifts, cells_tracking, fig_text, sep_overlap_manual_seeds,
         merge_objs, delete_objs, select_slice_toAlign, z_proj_max,
@@ -44,26 +44,31 @@ def line_mother_bud(cca_df, frame_i, rp, ax):
                         color='orange', ls=':', lw = 0.8, dash_capstyle='round')
 
 def build_cmap(under_vmin_c='0.1', max_ID=100):
-    n = max_ID if max_ID<256 else 256
+    n = max_ID
     vals = np.linspace(0,1,n)
     np.random.shuffle(vals)
-    my_cmap = plt.cm.colors.ListedColormap(plt.cm.viridis(vals))
-    my_cmap.set_under(under_vmin_c)
+    labRGB_colors = plt.cm.viridis(vals)
+    # Insert background color
+    labRGB_colors = np.insert(labRGB_colors, 0, [0.1, 0.1, 0.1, 1], axis=0)
+    # Build cmap
+    my_cmap = plt.cm.colors.ListedColormap(labRGB_colors)
     return my_cmap
 
 def get_overlay(img, ol_img, ol_RGB_val=[1,1,0], ol_brightness=4, ol_alpha=0.5):
     img_rgb = gray2rgb(img_as_float(img))
     ol_img_rgb = gray2rgb(img_as_float(ol_img))*ol_RGB_val
     overlay = (img_rgb*(1.0 - ol_alpha) + ol_img_rgb*ol_alpha)*ol_brightness
+    overlay = np.clip(overlay, 0, 1)
     return overlay
 
 def update_plots(ax, rp, img, segm_npy_frame, cca_df, vmin, vmax, frame_i, fig,
                  frame_text, frameTXT_y, num_frames, display_ccStage,
                  cmap=None, do_overlay=False, ol_img=None,
-                 ol_RGB_val=[1,1,0], ol_brightness=4, ol_alpha=0.5):
+                 ol_RGB_val=[1,1,0], ol_brightness=4, ol_alpha=0.5,
+                 contours_on=True):
     ax[0].clear()
     text_label_centroid(rp, ax[0], 12,
-                        'semibold', 'center', 'center', cca_df,
+                        'normal', 'center', 'center', cca_df,
                         color='r', clear=True, apply=True,
                         display_ccStage=display_ccStage)
     if do_overlay:
@@ -72,12 +77,21 @@ def update_plots(ax, rp, img, segm_npy_frame, cca_df, vmin, vmax, frame_i, fig,
         ax[0].imshow(overlay)
     else:
         ax[0].imshow(img)
+    if contours_on:
+        IDs = [obj.label for obj in rp]
+        contours = find_contours(segm_npy_frame, IDs, group=True)
+        for cont in contours:
+            x = cont[:,1]
+            y = cont[:,0]
+            x = np.append(x, x[0])
+            y = np.append(y, y[0])
+            ax[0].plot(x, y, c='r', alpha=0.7, lw=1.2)
     ax[0].axis('off')
     ax[1].clear()
     text_label_centroid(rp, ax[1], 12,
                         'semibold', 'center', 'center', cca_df,
                         apply=True, display_ccStage='IDs')
-    ax[1].imshow(segm_npy_frame, vmin=1, vmax=vmax, cmap=cmap)
+    ax[1].imshow(segm_npy_frame, vmin=0, vmax=vmax, cmap=cmap)
     ax[1].axis('off')
     if cca_df is not None:
         try:
@@ -87,11 +101,50 @@ def update_plots(ax, rp, img, segm_npy_frame, cca_df, vmin, vmax, frame_i, fig,
         except:
             ax[1].set_title('Cell cycle not analyzed for this frame')
     fig_text(fig, '', y=0.92, size=16, color='r')
-    frame_text = fig_text(fig, 'Current frame = {}/{}'.format(frame_i,num_frames),
+    frame_text = fig_text(fig, 'Current frame = {}/{}'.format(frame_i, num_frames),
                           y=frameTXT_y, x=0.6, color='w', size=14,
                           clear_all=False, clear_text_ref=True, text_ref=frame_text)
     fig.canvas.draw_idle()
     return frame_text
+
+def find_contours(label_img, cells_ids, group=False, concat=False,
+                  return_hull=False):
+    contours = []
+    for id in cells_ids:
+        label_only_cells_ids_img = np.zeros_like(label_img)
+        label_only_cells_ids_img[label_img == id] = id
+        uint8_img = (label_only_cells_ids_img > 0).astype(np.uint8)
+        cont, hierarchy = cv2.findContours(uint8_img,cv2.RETR_LIST,
+                                           cv2.CHAIN_APPROX_NONE)
+        cnt_len_li = [len(cnt) for cnt in cont]
+        max_len_idx = cnt_len_li.index(max(cnt_len_li))
+        cnt = cont[max_len_idx]
+        if return_hull:
+            hull = cv2.convexHull(cnt,returnPoints = True)
+            contours.append(hull)
+        else:
+            contours.append(cnt)
+    if concat:
+        all_contours = np.zeros((0,2), dtype=int)
+        for contour in contours:
+            contours_2D_yx = np.fliplr(np.reshape(contour, (contour.shape[0],2)))
+            all_contours = np.concatenate((all_contours, contours_2D_yx))
+    elif group:
+        # Return a list of n arrays for n objects. Each array has i rows of
+        # [y,x] coords for each ith pixel in the nth object's contour
+        all_contours = [[] for _ in range(len(cells_ids))]
+        for c in contours:
+            c2Dyx = np.fliplr(np.reshape(c, (c.shape[0],2)))
+            for y,x in c2Dyx:
+                ID = label_img[y, x]
+                idx = list(cells_ids).index(ID)
+                all_contours[idx].append([y,x])
+        all_contours = [np.asarray(li) for li in all_contours]
+        IDs = [label_img[c[0,0],c[0,1]] for c in all_contours]
+    else:
+        all_contours = [np.fliplr(np.reshape(contour,
+                        (contour.shape[0],2))) for contour in contours]
+    return all_contours
 
 plt.ioff()
 plt.style.use('dark_background')
@@ -177,7 +230,9 @@ if ccs_df_found:
         cca_df = cc_stage_dfs.loc[frame_i]
     else:
         cca_df = []
-if len(phc_aligned_npy.shape) == expected_shape:
+else:
+    cca_df = []
+if phc_aligned_npy.ndim == expected_shape:
     V = phc_aligned_npy[frame_i]
     segm_npy_frame = segm_npy[frame_i]
 else:
@@ -204,9 +259,11 @@ if V3D:
         slices = select_slice_toAlign(V).slices
 
     init_slice = slices[0]
+else:
+    slices = []
 
 #Perform z-projection if needed and calculate regionprops
-rp_cells_labels_separate = regionprops(segm_npy_frame)
+rp = regionprops(segm_npy_frame)
 
 #Initialize plots
 if V3D:
@@ -238,12 +295,21 @@ my_cmap = build_cmap(max_ID=segm_npy.max())
 fig, ax = plt.subplots(1, 2)
 plt.subplots_adjust(left=sliders_left, bottom=0.25)
 ax[0].imshow(img)
-text_label_centroid(rp_cells_labels_separate, ax[0], 12,
-                    'semibold', 'center', 'center', color='r',
+text_label_centroid(rp, ax[0], 12,
+                    'normal', 'center', 'center', color='r',
                     clear=True, apply=True)
 ax[0].axis('off')
-ax[1].imshow(segm_npy_frame, vmin=1, vmax=vmax, cmap=my_cmap)
-text_label_centroid(rp_cells_labels_separate, ax[1], 12,
+IDs = [obj.label for obj in rp]
+contours = find_contours(segm_npy_frame, IDs, group=True)
+for cont in contours:
+    x = cont[:,1]
+    y = cont[:,0]
+    x = np.append(x, x[0])
+    y = np.append(y, y[0])
+    ax[0].plot(x, y, c='r', alpha=0.7, lw=1.2)
+
+ax[1].imshow(segm_npy_frame, vmin=0, vmax=vmax, cmap=my_cmap)
+text_label_centroid(rp, ax[1], 12,
                     'semibold', 'center', 'center',
                     apply=True)
 ax[1].axis('off')
@@ -274,9 +340,11 @@ ax_rgb = plt.axes([0.1, 0.69, 0.25, 0.2])
 
 #Create buttons
 prev_button = Button(ax_prev_button, 'Prev. frame',
-                     color=axcolor, hovercolor=hover_color)
+                     color=axcolor, hovercolor=hover_color,
+                     presscolor=presscolor)
 next_button = Button(ax_next_button, 'Next frame',
-                     color=axcolor, hovercolor=hover_color)
+                     color=axcolor, hovercolor=hover_color,
+                     presscolor=presscolor)
 radio_buttons = MyRadioButtons(ax_radio,
                               ('Display Cells\' IDs',
                               'Display Cell Cycle stage',
@@ -287,7 +355,7 @@ radio_buttons = MyRadioButtons(ax_radio,
                               size = 59,
                               circ_p_color = button_true_color)
 overlay_b = Button(ax_overlay, 'Overlay', color=axcolor,
-                hovercolor=hover_color, presscolor=presscolor)
+                   hovercolor=hover_color, presscolor=presscolor)
 brightness_slider = Slider(ax_bright_sl, 'Brightness', -1, 30,
                     valinit=4,
                     valstep=1,
@@ -324,26 +392,31 @@ ax_rgb.axis('off')
 def handle_close(evt):
     root.quit()
 
+def get_img(phc_aligned_npy, frame_i, slices):
+    ol_img = None
+    if V3D:
+        img = phc_aligned_npy[frame_i, slices[frame_i]]
+        if do_overlay:
+            ol_img = ol_frames[frame_i, slices[frame_i]]
+    else:
+        img = phc_aligned_npy[frame_i]
+        if do_overlay:
+            ol_img = ol_frames[frame_i]
+    return img, ol_img
+
 #Create event for next and previous frame
 def next_frame(event):
-    global frame_i, frame_text, cca_df, rp_cells_labels_separate, ol_img
+    global frame_i, frame_text, cca_df, rp, ol_img
     if frame_i < num_frames:
         frame_i += 1
         if frame_i in cca_analysed_frames:
             cca_df = cc_stage_dfs.loc[frame_i]
         else:
             cca_df = []
-        if V3D:
-            img = phc_aligned_npy[frame_i, slices[frame_i]]
-            if do_overlay:
-                ol_img = ol_frames[frame_i, slices[frame_i]]
-        else:
-            img = phc_aligned_npy[frame_i]
-            if do_overlay:
-                ol_img = ol_frames[frame_i]
+        img, ol_img = get_img(phc_aligned_npy, frame_i, slices)
         segm_npy_frame = segm_npy[frame_i]
-        rp_cells_labels_separate = regionprops(segm_npy_frame)
-        frame_text = update_plots(ax, rp_cells_labels_separate, img,
+        rp = regionprops(segm_npy_frame)
+        frame_text = update_plots(ax, rp, img,
                                   segm_npy_frame, cca_df, vmin, vmax, frame_i,
                                   fig, frame_text, frameTXT_y, num_frames,
                                   display_ccStage, cmap=my_cmap,
@@ -357,7 +430,7 @@ def next_frame(event):
         next_frame(None)
 
 def prev_frame(event):
-    global frame_i, frame_text, cca_df, rp_cells_labels_separate, ol_img
+    global frame_i, frame_text, cca_df, rp, ol_img
     if frame_i > 0:
         frame_i -= 1
         if ccs_df_found:
@@ -374,8 +447,8 @@ def prev_frame(event):
             if do_overlay:
                 ol_img = ol_frames[frame_i]
         segm_npy_frame = segm_npy[frame_i]
-        rp_cells_labels_separate = regionprops(segm_npy_frame)
-        frame_text = update_plots(ax, rp_cells_labels_separate, img,
+        rp = regionprops(segm_npy_frame)
+        frame_text = update_plots(ax, rp, img,
                                   segm_npy_frame, cca_df, vmin, vmax, frame_i,
                                   fig, frame_text, frameTXT_y, num_frames,
                                   display_ccStage, cmap=my_cmap,
@@ -404,13 +477,13 @@ def radio_b_cb(label):
         display_ccStage = 'All info'
     else:
         display_ccStage = 'Only stage'
-    text_label_centroid(rp_cells_labels_separate, ax[0], 12,
+    text_label_centroid(rp, ax[0], 12,
                         'semibold', 'center', 'center', cca_df,
                         display_ccStage=display_ccStage, color='r', clear=True)
     (fig.canvas).draw_idle()
 
 def overlay_cb(event):
-    global ol_frames, do_overlay
+    global ol_frames, do_overlay, frame_i
     if do_overlay:
         overlay_b.color = axcolor
         overlay_b.hovercolor = hover_color
@@ -463,12 +536,9 @@ def overlay_cb(event):
                         f'\"..._align_shift.npy\" file not found!\n'
                         'Overlay images cannot be aligned to the cells image.')
                     raise FileNotFoundError('Shifts file not found!')
-            if V3D:
-                ol_img = ol_frames[frame_i, slices[frame_i]]
-            else:
-                ol_img = ol_frames[frame_i]
+            img, ol_img = get_img(phc_aligned_npy, frame_i, slices)
             ax[0].clear()
-            text_label_centroid(rp_cells_labels_separate, ax[0], 10,
+            text_label_centroid(rp, ax[0], 10,
                                 'semibold', 'center', 'center', cca_df,
                                 color='r', clear=True, apply=True,
                                 display_ccStage=display_ccStage)
@@ -480,13 +550,11 @@ def overlay_cb(event):
             fig.canvas.draw_idle()
 
 def update_overlay_cb(event):
+    global frame_i, ol_img
     if do_overlay:
-        if V3D:
-            ol_img = ol_frames[frame_i, slices[frame_i]]
-        else:
-            ol_img = ol_frames[frame_i]
+        img, ol_img = get_img(phc_aligned_npy, frame_i, slices)
         ax[0].clear()
-        text_label_centroid(rp_cells_labels_separate, ax[0], 10,
+        text_label_centroid(rp, ax[0], 10,
                             'semibold', 'center', 'center', cca_df,
                             color='r', clear=True, apply=True,
                             display_ccStage=display_ccStage)

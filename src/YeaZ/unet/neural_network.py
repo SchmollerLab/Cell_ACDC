@@ -112,7 +112,9 @@ def batch_prediction(im_stack, is_pc, path_weights, batch_size=1):
         path = os.path.join(path_weights, 'unet_weights_BF_batchsize_25_Nepochs_100_SJR_0_1.hdf5')
 
     if not os.path.exists(path):
-        raise ValueError('Path does not exist')
+        raise ValueError('Weights file not found! Download them from the link '
+             f'below and place them into {path_weights}.\n'
+              '            Link: https://drive.google.com/file/d/1CO7uF-werl9y8s3Fel0cVjRHCdXRf2Ly/view?usp=sharing')
 
     model.load_weights(path)
 
