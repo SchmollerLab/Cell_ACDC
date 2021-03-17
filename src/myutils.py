@@ -54,7 +54,7 @@ def get_confirm_token(response):
     return None
 
 def save_response_content(response, destination, file_size=None,
-                          model_name=model_name):
+                          model_name='cellpose'):
     print(f'Downloading {model_name} models to: {os.path.dirname(destination)}')
     CHUNK_SIZE = 32768
     temp_folder = pathlib.Path.home().joinpath('.cp_temp')
