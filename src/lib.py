@@ -3705,8 +3705,8 @@ class my_paint_app:
         obj_top = obj_bottom + side_len
         obj_right = obj_left + side_len
         self.bw = 10
-        self.xlims = (obj_left-bw, obj_right+self.bw)
-        self.ylims = (obj_top+bw, obj_bottom-self.bw)
+        self.xlims = (obj_left-self.bw, obj_right+self.bw)
+        self.ylims = (obj_top+self.bw, obj_bottom-self.bw)
         self.only_ID_img = only_ID_img
         self.sep_bud_label = only_ID_img.copy()
         self.eraser_mask = np.zeros(self.label_img.shape, bool)
