@@ -6,6 +6,7 @@ import shutil
 from tqdm import tqdm
 import requests
 import zipfile
+from lib import twobuttonsmessagebox
 
 def get_model_path(model_foldername):
     script_dirname = os.path.dirname(os.path.realpath(__file__))
@@ -77,9 +78,28 @@ def extract_zip(zip_path, extract_to_path):
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
         zip_ref.extractall(extract_to_path)
 
+def check_v1_model_path():
+    script_dirname = os.path.dirname(os.path.realpath(__file__))
+    main_path = os.path.dirname(script_dirname)
+    v1_model_path = os.path.join(main_path, 'model')
+    print(v1_model_path)
+    if os.path.exists(v1_model_path):
+        delete = twobuttonsmessagebox('Delete v1 model folder?',
+            'The script detected a "./model" folder.\n\n This is most likely from '
+            'Yeast_ACDC v1.\n\nThis version will automatically download\n the '
+            'neural network models required into "/.models" folder.\n'
+            'The "./model" is not required anymore and we suggest deleting it,\n'
+            'however you can keep it if you want.\n\n '
+            'Do you want to delete it or keep it?',
+            'Delete', 'Keep', fs=10,
+        ).button_left
+        if delete:
+            shutil.rmtree(v1_model_path)
+
 def download_model(model_name):
     models_zip_path, model_folder_exists = get_model_path(f'{model_name}_model')
     if not model_folder_exists:
+        check_v1_model_path()
         file_id, file_size = get_file_id(model_name)
         # Download zip file
         download_from_gdrive(file_id, models_zip_path,

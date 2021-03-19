@@ -15,7 +15,8 @@ from tkinter import messagebox
 from lib import (load_shifts, select_slice_toAlign, align_frames_3D,
                    align_frames_2D, single_entry_messagebox, twobuttonsmessagebox,
                    auto_select_slice, num_frames_toSegm_tk, draw_ROI_2D_frames,
-                   text_label_centroid, file_dialog, win_size, dark_mode)
+                   text_label_centroid, file_dialog, win_size, dark_mode,
+                   folder_dialog)
 
 script_dirname = os.path.dirname(os.path.realpath(__file__))
 unet_path = f'{script_dirname}/YeaZ-unet/unet/'
@@ -63,6 +64,7 @@ class load_data:
                      input_txt=filename,
                      toplevel=False).entry_txt
         base_path = f'{parent_path}/{basename}'
+        self.base_path = base_path
         self.slice_used_align_path = f'{base_path}_slice_used_alignment.csv'
         self.slice_used_segm_path = f'{base_path}_slice_segm.csv'
         self.align_npy_path = f'{base_path}_phc_aligned.npy'
@@ -189,11 +191,56 @@ dark_mode()
 root = tk.Tk()
 root.withdraw()
 
-path = file_dialog(title='Select phase contrast or bright-field .tif/.npy file')
+single_file = twobuttonsmessagebox('Selection mode',
+                          'Do you want to select a single '
+                          'file\n or a folder containing the Position_n folders?',
+                          'Single file', 'Folder').button_left
+
+if single_file:
+    path = file_dialog(
+                 title='Select phase contrast or bright-field.tif/.npy file')
+else:
+    path = folder_dialog(
+                 title='Select folder containing Position_n folders')
 
 print('Loading data...')
-data = load_data(path)
-data.build_paths(data.filename, data.parent_path)
+pos_foldernames = []
+if os.path.isdir(path):
+    listdir = os.listdir(path)
+    pos_foldernames = [p for p in listdir if os.path.isdir(os.path.join(path, p))
+                                          and p.find('Position_')!=-1]
+    if not pos_foldernames:
+        raise FileNotFoundError('Not a valid path! The selected path has to '
+        'contain "Position_n" folders!')
+
+"""Check that valid path was selected. For multiple Position_n folders
+each position data will be trated as a single frame."""
+if pos_foldernames:
+    segm_npy_paths = []
+    img_data = []
+    SizeT = 0
+    for pos in pos_foldernames:
+        images_path = os.path.join(path, pos, 'Images')
+        phc_filefound = False
+        for f in os.listdir(images_path):
+            if f.find('phase_contr.tif')!=-1:
+                data = load_data(os.path.join(images_path, f))
+                data.build_paths(data.filename, data.parent_path)
+                segm_npy_paths.append(data.segm_npy_path)
+                img_data.append(data.img_data)
+                SizeT += 1
+                break
+    data.img_data = np.array(img_data)
+    data.SizeT = SizeT
+elif os.path.isfile(path):
+    _, ext = os.path.splitext(os.path.basename(path))
+    if not ext == '.tif' or not ext == 'npy':
+        raise NameError(f'Not supported file extension: {ext}')
+    data = load_data(path)
+    data.build_paths(data.filename, data.parent_path)
+
+do_tracking = tk.messagebox.askyesno('Track cells?', 'Do you want to track\n'
+                                     'the cells?')
 
 num_frames = data.SizeT if data.SizeT in list(data.img_data.shape) else 1
 num_slices = data.SizeZ if data.SizeZ in list(data.img_data.shape) else 1
@@ -203,7 +250,7 @@ print(f'Number of frames = {num_frames}')
 print(f'Number of slices in each z-stack = {num_slices}')
 
 """Align frames if needed"""
-if num_frames > 1 and data.ext == '.tif':
+if num_frames > 1 and data.ext == '.tif' and do_tracking:
     align = messagebox.askyesno('Align frames?', 'Do you want to align frames?',
                                 master=root)
     if align:
@@ -291,7 +338,7 @@ elif num_slices > 1:
     if os.path.exists(data.slice_used_segm_path):
         df_slices = pd.read_csv(data.slice_used_segm_path)
         slices = df_slices['Slice used for segmentation'].to_list()
-        print(df_slices)
+        # print(df_slices)
     else:
         slices = [0]
     if num_frames == 1:
@@ -317,7 +364,8 @@ elif num_slices > 1:
     df_slices.to_csv(df_slices_path)
 
 start = 0
-if num_frames > 1:
+stop = num_frames
+if num_frames > 1 and do_tracking:
     start, stop = num_frames_toSegm_tk(num_frames, last_segm_i=last_segm_i,
                                                    toplevel=True,
                                                    allow_not_0_start=False
@@ -347,6 +395,7 @@ root.destroy()
 is_pc = twobuttonsmessagebox('Img mode', 'Select imaging mode',
                              'Phase contrast', 'Bright-field').button_left
 
+
 # Index the selected frames
 if num_frames > 1:
     frames = frames[start:stop]
@@ -362,7 +411,6 @@ if ROI_coords is not None:
 # Index the selected slices
 if num_slices > 1:
     frames = frames[range(start, stop), slices[start:stop]]
-
 
 r, c = frames.shape[-2], frames.shape[-1]
 if ROI_coords is not None:
@@ -380,9 +428,17 @@ thresh_stack = nn.threshold(pred_stack)
 print('performing watershed for splitting cells...')
 lab_stack = segment.segment_stack(thresh_stack, pred_stack,
                                   min_distance=10).astype(int)
-print('performing tracking by hungarian algorithm...')
-tracked_stack = tracking.correspondence_stack(lab_stack).astype(int)
+if do_tracking:
+    print('performing tracking by hungarian algorithm...')
+    tracked_stack = tracking.correspondence_stack(lab_stack).astype(int)
+else:
+    tracked_stack = lab_stack
 t_end = time()
+
+print('done!')
+print('************************')
+
+print('Viewing results...')
 
 # for simplicity, pad image back to original shape before saving
 # TODO: save only ROI and ROI borders, to save disk space
@@ -396,36 +452,71 @@ if ROI_coords is not None:
 
 #save Segmentation results
 if save_segm:
-    np.save(data.segm_npy_path, tracked_stack)
+    if single_file:
+        np.save(data.segm_npy_path, tracked_stack)
+    else:
+        for path, segm in zip(segm_npy_paths, tracked_stack):
+            np.save(path, segm)
 
-# plot last frame for qualitative evaluation
-test_mask = tracked_stack[-1]
-test_img = frames[-1]
-rp = regionprops(test_mask)
-IDs = [obj.label for obj in rp]
-contours = find_contours(test_mask, IDs, group=True)
+
+# View results
+
 
 
 fig, ax = plt.subplots(1, 2)
 
-ax[0].imshow(test_img)
-ax[1].imshow(test_mask)
-text_label_centroid(rp, ax[0], 12, 'semibold', 'center', 'center',
-                    color='r', clear=True)
-text_label_centroid(rp, ax[1], 12, 'semibold', 'center', 'center',
-                    clear=True)
-for cont in contours:
-    x = cont[:,1]
-    y = cont[:,0]
-    x = np.append(x, x[0])
-    y = np.append(y, y[0])
-    ax[0].plot(x, y, c='r')
+def update_plots(idx):
+    for a in ax:
+        a.clear()
+    lab = tracked_stack[idx]
+    img = frames[idx]
+    rp = regionprops(lab)
+    IDs = [obj.label for obj in rp]
+    contours = find_contours(lab, IDs, group=True)
+    ax[0].imshow(img)
+    ax[1].imshow(lab)
+    text_label_centroid(rp, ax[0], 12, 'semibold', 'center', 'center',
+                        color='r', clear=True)
+    text_label_centroid(rp, ax[1], 12, 'semibold', 'center', 'center',
+                        clear=True)
+    for cont in contours:
+        x = cont[:,1]
+        y = cont[:,0]
+        x = np.append(x, x[0])
+        y = np.append(y, y[0])
+        ax[0].plot(x, y, c='r')
+    for a in ax:
+        a.axis('off')
+    idx_txt._text = f'Current index = {idx}/{len(tracked_stack)-1}'
+    fig.canvas.draw_idle()
 
-for a in ax:
-    a.axis('off')
+idx = 0
+idx_txt = fig.text(0.5, 0.15, f'Current index = {idx}/{len(tracked_stack)-1}',
+                   color='w', ha='center', fontsize=14)
+update_plots(idx)
 
-fig.suptitle(f'Segment&Track overall execution time = {t_end-t0: .3f} s', y=0.9,
+if do_tracking:
+    title = 'Segment&Track'
+else:
+    title = 'Segmentation'
+
+fig.suptitle(f'{title} overall execution time = {t_end-t0: .3f} s', y=0.9,
              size=18)
+
+
+def key_down(event):
+    global idx
+    if event.key == 'right' and idx < len(tracked_stack)-1:
+        idx += 1
+        update_plots(idx)
+    elif event.key == 'left' and idx > 0:
+        idx -= 1
+        update_plots(idx)
+
+
+fig.canvas.mpl_connect('key_press_event', key_down)
 
 #win_size()
 plt.show()
+
+print('************************')

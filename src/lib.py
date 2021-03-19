@@ -1838,6 +1838,7 @@ class select_slice_toAlign:
                           f'Do you want to use the same slice ({self.slice_start}) '
                           'of the first frame?',
                           master=self.sub_win.root)
+            self.slice_end = self.slice_start
         m = (self.slice_end - self.slice_start)/(self.num_frames - 1)
         q = self.slice_start
         self.slices = [round(m*x + q) for x in range(self.num_frames)]
@@ -3158,7 +3159,7 @@ class threebuttonsmessagebox:
 class twobuttonsmessagebox:
     '''Geometry: "WidthxHeight+Left+Top" '''
     def __init__(self, title, message, button_1_text, button_2_text,
-                 geometry="+800+400"):
+                 geometry="+800+400", fs=11):
         self.button_left=False
         root = tk.Tk()
         self.root = root
@@ -3167,20 +3168,20 @@ class twobuttonsmessagebox:
         root.geometry(geometry)
         tk.Label(root,
                  text=message,
-                 font=(None, 11)).grid(row=0, column=0, columnspan=2, pady=4,
+                 font=(None, fs)).grid(row=0, column=0, columnspan=2, pady=4,
                                        padx=4)
 
         tk.Button(root,
                   text=button_1_text,
                   command=self.button_left_cb).grid(row=4,
                                  column=0,
-                                 pady=16, padx=16, sticky=tk.W)
+                                 pady=16, padx=16, sticky=tk.E)
 
         tk.Button(root,
                   text=button_2_text,
                   command=self.button_right_cb).grid(row=4,
                                  column=1,
-                                 pady=16, padx=16, sticky=tk.E)
+                                 pady=16, padx=16, sticky=tk.W)
         root.protocol("WM_DELETE_WINDOW", self.on_closing)
         root.eval('tk::PlaceWindow . center')
         root.mainloop()
