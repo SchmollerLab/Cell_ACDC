@@ -356,7 +356,7 @@ class app_GUI:
         self.frames = data.img_data
         self.auto_save = False
         self.frame_i_done = -1
-        print('Total number of Positions = {}'.format(len(self.frames)))
+        print('Total number of frames = {}'.format(len(self.frames)))
         self.bp = tk_breakpoint()
         self.data = data
         self.unet_first_call = True
@@ -1734,8 +1734,9 @@ def next_f(event):
         "warning", "yesno") == 'yes'
     if proceed:
         ia.add_segm_metadata(app.frame_i, add_next=app.frame_i<num_frames)
-        # Switch tracking on if the next frame was never tracked
+        # Switch tracking ON if the next frame was never tracked
         if app.last_tracked_i < app.frame_i+1:
+            app.last_tracked_i = app.frame_i
             ia.do_tracking = False
             tracking_state_cb(None)
         app.reset_view = False
@@ -2030,17 +2031,19 @@ def s_slice_cb(val):
 
 def save_cb(event):
     global ia, param
-    save_current = tk.messagebox.askyesno('Save current position',
-                    'Do you want to save currently displayed position?')
+    if app.frame_i >= app.last_tracked_i:
+        save_current = tk.messagebox.askyesno('Save current position',
+                        'Do you want to save currently displayed position?')
+    else:
+        save_current = False
     print('Saving...')
     if app.num_slices > 1:
         ia.slice_used = app.s
     if save_current:
+        app.last_tracked_i = app.frame_i
         ia.add_segm_metadata(app.frame_i, add_next=False)
-        app.last_segm_i = app.frame_i
         app.segm_npy_done[app.frame_i] = ia.lab.copy()
     else:
-        app.last_segm_i = app.frame_i-1
         if app.num_slices > 1:
             ia.slice_used = app.s
     app.auto_save = True
