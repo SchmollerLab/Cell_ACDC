@@ -5,6 +5,7 @@ import cv2
 from skimage import io
 from skimage.exposure import equalize_adapthist
 from skimage.measure import label, regionprops
+from skimage.morphology import remove_small_objects
 import numpy as np
 import pandas as pd
 import tkinter as tk
@@ -428,6 +429,7 @@ thresh_stack = nn.threshold(pred_stack)
 print('performing watershed for splitting cells...')
 lab_stack = segment.segment_stack(thresh_stack, pred_stack,
                                   min_distance=10).astype(int)
+lab_stack = remove_small_objects(lab_stack, min_size=5)
 if do_tracking:
     print('performing tracking by hungarian algorithm...')
     tracked_stack = tracking.correspondence_stack(lab_stack).astype(int)
@@ -436,9 +438,6 @@ else:
 t_end = time()
 
 print('done!')
-print('************************')
-
-print('Viewing results...')
 
 # for simplicity, pad image back to original shape before saving
 # TODO: save only ROI and ROI borders, to save disk space
@@ -452,17 +451,19 @@ if ROI_coords is not None:
 
 #save Segmentation results
 if save_segm:
+    print('')
+    print('Saving...')
     if single_file:
         np.save(data.segm_npy_path, tracked_stack)
     else:
         for path, segm in zip(segm_npy_paths, tracked_stack):
             np.save(path, segm)
 
+print('')
+print('************************')
+print('Viewing results...')
 
 # View results
-
-
-
 fig, ax = plt.subplots(1, 2)
 
 def update_plots(idx):
@@ -519,4 +520,5 @@ fig.canvas.mpl_connect('key_press_event', key_down)
 #win_size()
 plt.show()
 
+print('')
 print('************************')

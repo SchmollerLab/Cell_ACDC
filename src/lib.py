@@ -12,6 +12,7 @@ from scipy.stats import entropy
 from scipy.optimize import curve_fit
 from scipy.ndimage import distance_transform_edt
 from skimage import io
+from skimage.util import dtype_limits
 from skimage.measure import label, regionprops, find_contours
 from skimage.morphology import erosion, remove_small_objects
 from skimage.morphology import disk as morph_disk
@@ -229,6 +230,59 @@ class tk_breakpoint:
         exit('Execution aborted by the user')
         root.quit()
         root.destroy()
+
+def is_low_contrast(image, fraction_threshold=0.05, lower_percentile=1,
+                    upper_percentile=99, method='linear'):
+    """Determine if an image is low contrast.
+
+    Parameters
+    ----------
+    image : array-like
+        The image under test.
+    fraction_threshold : float, optional
+        The low contrast fraction threshold. An image is considered low-
+        contrast when its range of brightness spans less than this
+        fraction of its data type's full range. [1]_
+    lower_percentile : float, optional
+        Disregard values below this percentile when computing image contrast.
+    upper_percentile : float, optional
+        Disregard values above this percentile when computing image contrast.
+    method : str, optional
+        The contrast determination method.  Right now the only available
+        option is "linear".
+
+    Returns
+    -------
+    out : bool
+        True when the image is determined to be low contrast.
+
+    References
+    ----------
+    .. [1] https://scikit-image.org/docs/dev/user_guide/data_types.html
+
+    Examples
+    --------
+    >>> image = np.linspace(0, 0.04, 100)
+    >>> is_low_contrast(image)
+    True
+    >>> image[-1] = 1
+    >>> is_low_contrast(image)
+    True
+    >>> is_low_contrast(image, upper_percentile=100)
+    False
+    """
+    image = np.asanyarray(image)
+    if image.ndim == 3:
+        if image.shape[2] == 4:
+            image = rgba2rgb(image)
+        if image.shape[2] == 3:
+            image = rgb2gray(image)
+
+    dlimits = dtype_limits(image, clip_negative=False)
+    limits = np.percentile(image, [lower_percentile, upper_percentile])
+    ratio = (limits[1] - limits[0]) / (dlimits[1] - dlimits[0])
+
+    return ratio, ratio < fraction_threshold
 
 # Z projection by max intensity
 def z_proj_max(z_stacks, dtype=None):
@@ -1994,11 +2048,17 @@ class auto_select_slice:
 
     def auto_slice(self, frame_V):
         # https://stackoverflow.com/questions/6646371/detect-which-image-is-sharper
-        means = []
+        # means = []
+        constrasts = []
+        x = np.arange(len(frame_V))
+        weights = (x-len(frame_V)/2)**2
+        weights = ((-weights)+weights.max())/weights.max()
         for i, img in enumerate(frame_V):
             edge = sobel(img)
-            means.append(np.mean(edge))
-        slice = means.index(max(means))
+            contrast, is_low = is_low_contrast(edge)
+            constrasts.append(contrast*weights[i])
+            # means.append(np.mean(edge))
+        slice = constrasts.index(max(constrasts))
         print('Best slice = {}'.format(slice))
         return slice
 
@@ -3291,20 +3351,22 @@ class select_exp_folder:
         ttk.Label(root, text = label_txt,
                   font = (None, 10)).grid(column=0, row=0, padx=10, pady=10)
 
-        # Combobox
-        pos_n_sv = tk.StringVar()
-        self.pos_n_sv = pos_n_sv
-        self.values = values
-        pos_b_combob = ttk.Combobox(root, textvariable=pos_n_sv, width=width)
-        pos_b_combob['values'] = values
-        pos_b_combob.grid(column=1, row=0, padx=10)
-        pos_b_combob.current(current)
-
-
         # Ok button
         ok_b = ttk.Button(root, text='Ok!', comman=self._close)
         ok_b.grid(column=0, row=1, pady=10, sticky=tk.E)
+        self.ok_b = ok_b
 
+        self.root = root
+
+        # Combobox
+        pos_n_sv = tk.StringVar()
+        self.pos_n_sv = pos_n_sv
+        self.pos_n_sv.trace_add("write", self._check_fiji_macro)
+        self.values = values
+        pos_b_combob = ttk.Combobox(root, textvariable=pos_n_sv, width=width)
+        pos_b_combob['values'] = values
+        pos_b_combob.grid(column=1, row=0, padx=10, columnspan=2)
+        pos_b_combob.current(current)
 
         # Show in explorer button
         if showinexplorer_button:
@@ -3313,7 +3375,6 @@ class select_exp_folder:
             show_expl_button.grid(column=1, row=1, pady=10)
 
         root.protocol("WM_DELETE_WINDOW", self.on_closing)
-        self.root = root
         if len(values) > 1:
             root.mainloop()
         else:
@@ -3330,6 +3391,21 @@ class select_exp_folder:
                 return path
             except:
                 return pos_n_sv.get()
+
+    def _check_fiji_macro(self, name=None, index=None, mode=None):
+        path_info = self.pos_n_sv.get()
+        if path_info.find('FIJI macro not executed') != -1:
+            self.ok_b.configure(text='Exit', comman=self.on_closing)
+            more_info = ttk.Button(self.root, text='More info',
+                                          comman=self._more_info)
+            more_info.grid(column=2, row=1, pady=10)
+
+    def _more_info(self):
+        tk.messagebox.showwarning(title='FIJI Macro not executed',
+            message='The script could not find the "Position_n folders"!\n\n'
+            'This is most likely because you did not run the Fiji macro\n'
+            'that creates the correct folder structure expected by the GUI loader.\n\n'
+            'See the section "Preparing your data" on the GitHub repo for more info.' )
 
     def open_path_explorer(self):
         if self.full_paths is None:
@@ -3399,6 +3475,8 @@ class select_exp_folder:
         self.root.destroy()
 
     def on_closing(self):
+        self.root.quit()
+        self.root.destroy()
         exit('Execution aborted by the user')
 
 class beyond_listdir_pos:
