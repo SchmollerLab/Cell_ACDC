@@ -113,12 +113,18 @@ def batch_prediction(im_stack, is_pc, path_weights, batch_size=1):
 
     if not os.path.exists(path):
         raise ValueError('Weights file not found! Download them from the link '
+<<<<<<< HEAD
              f'below and place them into {path_weights}.\n'
               '            Link: https://drive.google.com/file/d/1CO7uF-werl9y8s3Fel0cVjRHCdXRf2Ly/view?usp=sharing')
+=======
+            f'below and place them into {path_weights}. Link:\n'
+            'https://drive.google.com/file/d/1CO7uF-werl9y8s3Fel0cVjRHCdXRf2Ly/view?usp=sharing')
+>>>>>>> 673c8634e7df859525a726f21d4f388027cd6de7
 
     model.load_weights(path)
 
-    results = model.predict(im_stack_padded[:, :, :, np.newaxis], batch_size=1, verbose=1)
+    results = model.predict(im_stack_padded[:, :, :, np.newaxis], batch_size=1,
+                                                                  verbose=1)
 
     res = results[:, :, :, 0]
     return res[:, :nrow, :ncol]

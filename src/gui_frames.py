@@ -505,8 +505,6 @@ class app_GUI:
 
     def set_imshow_cmap(self, max_ID=100):
         # Generate a colormap as sparse as possible given the max ID.
-        # NOTE: if max_ID > 256 then some colors will be recycled
-        # TODO: append multiple cmaps for more than 256 colors
         n = max_ID
         vals = np.linspace(0,1,n)
         np.random.shuffle(vals)
@@ -1475,6 +1473,7 @@ ia = img_analysis(img)
 ia.segm_metadata_df = app.segm_metadata_df.copy()
 ia.do_tracking = app.last_tracked_i < app.frame_i
 
+
 """Widgets' axes as [left, bottom, width, height]"""
 ax_slice = plt.axes([0.1, 0.3, 0.8, 0.03])
 # ax_lowT = plt.axes([0.1, 0.2, 0.6, 0.03])
@@ -1735,8 +1734,9 @@ def next_f(event):
         "warning", "yesno") == 'yes'
     if proceed:
         ia.add_segm_metadata(app.frame_i, add_next=app.frame_i<num_frames)
-        # Switch tracking on if the next frame was never tracked
+        # Switch tracking ON if the next frame was never tracked
         if app.last_tracked_i < app.frame_i+1:
+            app.last_tracked_i = app.frame_i
             ia.do_tracking = False
             tracking_state_cb(None)
         app.reset_view = False
@@ -2031,17 +2031,19 @@ def s_slice_cb(val):
 
 def save_cb(event):
     global ia, param
-    save_current = tk.messagebox.askyesno('Save current position',
-                    'Do you want to save currently displayed position?')
+    if app.frame_i >= app.last_tracked_i:
+        save_current = tk.messagebox.askyesno('Save current position',
+                        'Do you want to save currently displayed position?')
+    else:
+        save_current = False
     print('Saving...')
     if app.num_slices > 1:
         ia.slice_used = app.s
     if save_current:
+        app.last_tracked_i = app.frame_i
         ia.add_segm_metadata(app.frame_i, add_next=False)
-        app.last_segm_i = app.frame_i
         app.segm_npy_done[app.frame_i] = ia.lab.copy()
     else:
-        app.last_segm_i = app.frame_i-1
         if app.num_slices > 1:
             ia.slice_used = app.s
     app.auto_save = True
