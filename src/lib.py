@@ -141,10 +141,6 @@ class num_frames_toSegm_tk:
                 rightRange = self.tot_frames - startf
                 self.num_frames.delete(0, END)
                 self.num_frames.insert(0, '{}'.format(rightRange))
-<<<<<<< HEAD:src/lib.py
-
-=======
->>>>>>> 673c8634e7df859525a726f21d4f388027cd6de7:src/Yeast_ACDC_FUNCTIONS.py
 
 
     def ok(self, event=None):
