@@ -438,19 +438,6 @@ else:
     tracked_stack = lab_stack
 t_end = time()
 
-print('done!')
-print('Thresholding prediction...')
-thresh_stack = nn.threshold(pred_stack)
-print('Performing watershed for splitting cells...')
-lab_stack = segment.segment_stack(thresh_stack, pred_stack,
-                                  min_distance=10).astype(int)
-print('Performing tracking by hungarian algorithm...')
-tracked_stack = tracking.correspondence_stack(lab_stack).astype(int)
-t_end = time()
-
-plt.imshow(lab_stack[0])
-plt.show()
-
 # for simplicity, pad image back to original shape before saving
 # TODO: save only ROI and ROI borders, to save disk space
 if ROI_coords is not None:
