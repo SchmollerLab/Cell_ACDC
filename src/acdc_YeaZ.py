@@ -235,7 +235,7 @@ if pos_foldernames:
     data.SizeT = SizeT
 elif os.path.isfile(path):
     _, ext = os.path.splitext(os.path.basename(path))
-    if not ext == '.tif' or not ext == 'npy':
+    if not ext == '.tif' and not ext == 'npy':
         raise NameError(f'Not supported file extension: {ext}')
     data = load_data(path)
     data.build_paths(data.filename, data.parent_path)
