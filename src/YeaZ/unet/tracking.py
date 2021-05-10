@@ -3,6 +3,7 @@ import pandas as pd
 from munkres import Munkres
 from sklearn.preprocessing import scale
 from sklearn.metrics.pairwise import euclidean_distances
+from tqdm import tqdm
 
 
 def correspondence(prev, curr):
@@ -10,11 +11,11 @@ def correspondence(prev, curr):
     source: YeaZ
     Corrects correspondence between previous and current mask, returns current
     mask with corrected cell values. New cells are given the unique identifier
-    starting at max(prev)+1. 
-    
+    starting at max(prev)+1.
+
     This is done by embedding every cell into a feature space consisting of
-    the center of mass and the area. The pairwise euclidean distance is 
-    calculated between the cells of the previous and current frame. This is 
+    the center of mass and the area. The pairwise euclidean distance is
+    calculated between the cells of the previous and current frame. This is
     then used as a cost for the bipartite matching problem which is in turn
     solved by the Hungarian algorithm as implemented in the munkres package.
     """
@@ -26,21 +27,21 @@ def correspondence(prev, curr):
         if val == -1:
             val = newcell
             newcell += 1
-        
+
         new[curr==key] = val
-        
+
     return new
 
 
 def correspondence_stack(stack):
     """
     source: YeaZ
-    corrects correspondence of a stack of segmented and labeled masks, by 
+    corrects correspondence of a stack of segmented and labeled masks, by
     fitting the hungarian iteratively on the stack
     """
     corrected_stack = np.empty(stack.shape)
     corrected_stack[0] = stack[0]
-    for idx in range(len(stack)):
+    for idx in tqdm(range(len(stack)), unit=' frames'):
         try:
             curr = stack[idx+1]
             prev = corrected_stack[idx]
@@ -53,24 +54,24 @@ def correspondence_stack(stack):
 def hungarian_align(m1, m2):
     """
     source: YeaZ
-    Aligns the cells using the hungarian algorithm using the euclidean distance as 
-    cost. 
-    Returns dictionary of cells in m2 to cells in m1. If a cell is new, the dictionary 
+    Aligns the cells using the hungarian algorithm using the euclidean distance as
+    cost.
+    Returns dictionary of cells in m2 to cells in m1. If a cell is new, the dictionary
     value is -1.
     """
     dist, ix1, ix2 = cell_distance(m1, m2)
-    
-    # If dist couldn't be calculated, return dictionary from cells to themselves 
+
+    # If dist couldn't be calculated, return dictionary from cells to themselves
     if dist is None:
         unique_m2 = np.unique(m2)
         return dict(zip(unique_m2, unique_m2))
-    
+
     solver = Munkres()
     indexes = solver.compute(make_square(dist))
-    
+
     # Create dictionary of cell indicies
     d = dict([(ix2.get(i2, -1), ix1.get(i1, -1)) for i1, i2 in indexes])
-    d.pop(-1, None)  
+    d.pop(-1, None)
     return d
 
 
@@ -81,29 +82,29 @@ def cell_to_features(im, c, nsamples=None, time=None):
     """
     coord = np.argwhere(im==c)
     area = coord.shape[0]
-    
+
     if nsamples is not None:
         samples = np.random.choice(area, min(nsamples, area), replace=False)
         sampled = coord[samples,:]
     else:
         sampled = coord
-    
+
     com = sampled.mean(axis=0)
-    
+
     return {'cell': c,
             'time': time,
             'sqrtarea': np.sqrt(area),
             'area': area,
             'com_x': com[0],
             'com_y': com[1]}
-    
-    
+
+
 def cell_distance(m1, m2, weight_com=3):
     """
     source: YeaZ
     Gives distance matrix between cells in first and second frame, by embedding
     all cells into the feature space. Currently uses center of mass and area
-    as features, with center of mass weighted with factor weight_com (to 
+    as features, with center of mass weighted with factor weight_com (to
     make it more important).
     """
     # Modify to compute use more computed features
@@ -116,18 +117,18 @@ def cell_distance(m1, m2, weight_com=3):
             cells.remove(0)
         features = [cell_to_features(m, c, time=t) for c in cells]
         return pd.DataFrame(features), dict(enumerate(cells))
-    
+
     # Create df, rescale
     feat1, ix_to_cell1 = get_features(m1, 1)
     feat2, ix_to_cell2 = get_features(m2, 2)
-    
+
     # Check if one of matrices doesn't contain cells
     if len(feat1)==0 or len(feat2)==0:
         return None, None, None
-    
+
     df = pd.concat((feat1, feat2))
     df[cols] = scale(df[cols])
-    
+
     # give more importance to center of mass
     df[['com_x', 'com_y']] = df[['com_x', 'com_y']] * weight_com
 
@@ -137,8 +138,8 @@ def cell_distance(m1, m2, weight_com=3):
         df.loc[df['time']==2][cols]
     )
     return dist, ix_to_cell1, ix_to_cell2
-    
-    
+
+
 def zero_pad(m, shape):
     """
     source: YeaZ
@@ -162,5 +163,3 @@ def make_square(m):
         return zero_pad(m, (r,r))
     else:
         return zero_pad(m, (c,c))
-
-    
