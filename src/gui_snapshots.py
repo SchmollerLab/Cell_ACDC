@@ -361,7 +361,9 @@ class app_GUI:
     def __init__(self, TIFFs_path):
         script_dirname = os.path.dirname(os.path.realpath(__file__))
         self.main_path = os.path.dirname(script_dirname)
-        directories = natsorted(os.listdir(TIFFs_path))
+        directories = natsorted([p for p in os.listdir(TIFFs_path)
+                     if os.path.isdir(os.path.join(TIFFs_path, p))
+                     and p.find('Position_') != -1])
         self.pos_foldernames = directories
         TIFFs_parent_path = os.path.dirname(TIFFs_path)
         exp_folder_parent_path = os.path.dirname(TIFFs_parent_path)
@@ -2261,6 +2263,7 @@ def reset_ccstage_df_cb(event):
     if app.is_undo or app.is_redo:
         app.store_state(ia)
     rp = regionprops(ia.lab)
+    ia.prev_cc_stage_df = None
     ia.cc_stage_df = ia.init_cc_stage_df(rp)
     ia.cc_stage_df = ia.assign_bud(ia.cc_stage_df, rp)
     app.update_ALLplots(ia)

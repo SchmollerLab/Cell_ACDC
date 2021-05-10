@@ -83,8 +83,9 @@ GUI Mouse Events: - Auto contour with RIGHT-click on edge img: click on the
                     cell to be splitted
                   - Press 'ctrl+z' for undo and 'ctrl+y' for redo
                   - Press 'a' + WHEEL-click on left image to delete ID and keep
-                    deleting that ID after tracking. Cancel operation from now on
-                    by double click with WHEEL-button on background of centre image
+                    deleting that ID after tracking (e.g. dead cell that you
+                    want to keep). Cancel operation from now on by double click
+                    with WHEEL-button on background of centre image
 """
 
 class load_data:

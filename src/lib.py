@@ -3649,7 +3649,9 @@ class beyond_listdir_pos:
         for path in self.TIFFs_path:
             foldername = os.path.basename(path)
             if foldername == 'TIFFs':
-                pos_foldernames = os.listdir(path)
+                pos_foldernames = natsorted([p for p in os.listdir(path)
+                             if os.path.isdir(os.path.join(path, p))
+                             and p.find('Position_') != -1])
                 num_pos = len(pos_foldernames)
                 if num_pos == 0:
                     root = tk.Tk()

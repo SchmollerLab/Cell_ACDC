@@ -339,10 +339,6 @@ elif num_slices > 1:
     if os.path.exists(data.slice_used_segm_path):
         df_slices = pd.read_csv(data.slice_used_segm_path)
         slices = df_slices['Slice used for segmentation'].to_list()
-<<<<<<< HEAD:src/acdc_YeaZ.py
-        # print(df_slices)
-=======
->>>>>>> 673c8634e7df859525a726f21d4f388027cd6de7:src/Yeast_ACDC_YeaZ.py
     else:
         slices = [0]
     if num_frames == 1:
@@ -402,10 +398,6 @@ root.destroy()
 is_pc = twobuttonsmessagebox('Img mode', 'Select imaging mode',
                              'Phase contrast', 'Bright-field').button_left
 
-<<<<<<< HEAD:src/acdc_YeaZ.py
-
-=======
->>>>>>> 673c8634e7df859525a726f21d4f388027cd6de7:src/Yeast_ACDC_YeaZ.py
 # Index the selected frames
 if num_frames > 1:
     frames = frames[start:stop]
@@ -433,7 +425,6 @@ path_weights = nn.determine_path_weights()
 print('Running UNet for Segmentation:')
 pred_stack = nn.batch_prediction(frames, is_pc=is_pc, path_weights=path_weights,
                                          batch_size=1)
-<<<<<<< HEAD:src/acdc_YeaZ.py
 print('thresholding prediction...')
 thresh_stack = nn.threshold(pred_stack)
 print('performing watershed for splitting cells...')
@@ -448,7 +439,6 @@ else:
 t_end = time()
 
 print('done!')
-=======
 print('Thresholding prediction...')
 thresh_stack = nn.threshold(pred_stack)
 print('Performing watershed for splitting cells...')
@@ -460,7 +450,6 @@ t_end = time()
 
 plt.imshow(lab_stack[0])
 plt.show()
->>>>>>> 673c8634e7df859525a726f21d4f388027cd6de7:src/Yeast_ACDC_YeaZ.py
 
 # for simplicity, pad image back to original shape before saving
 # TODO: save only ROI and ROI borders, to save disk space
