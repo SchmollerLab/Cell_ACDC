@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 from time import time
 from tifffile import TiffFile
 from tkinter import messagebox
+from myutils import download_model
 from lib import (load_shifts, select_slice_toAlign, align_frames_3D,
                    align_frames_2D, single_entry_messagebox, twobuttonsmessagebox,
                    auto_select_slice, num_frames_toSegm_tk, draw_ROI_2D_frames,
@@ -29,6 +30,8 @@ unet_path = f'{script_dirname}/YeaZ-unet/unet/'
 from YeaZ.unet import neural_network as nn
 from YeaZ.unet import segment
 from YeaZ.unet import tracking
+download_model('YeaZ')
+
 
 class load_data:
     def __init__(self, path):
