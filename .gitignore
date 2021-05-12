@@ -3,6 +3,13 @@ prep_data_for_deepcell.ipynb
 .idea/
 data/*
 tests/*
+# Ignore models folder but keep the folder with placeholder.txt dummy file
+models/*
+!models/placeholder.txt
+# Hide placeholder.txt dummy file (probably works only on Linux)
+!models/.placeholder.txt
+
+
 
 __pycache__/
 *.pyc
