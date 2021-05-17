@@ -464,8 +464,17 @@ if ROI_coords is not None:
     y_start, y_end, x_start, x_end = ROI_coords
     if num_slices > 1:
         ROI_img = frames[0, slices[start]][y_start:y_end, x_start:x_end]
+        if prev_last_tracked_frame is not None:
+            ROI_last_tracked_frame = (
+                prev_last_tracked_frame[0, slices[start]]
+                                       [y_start:y_end, x_start:x_end]
+            )
     else:
         ROI_img = frames[0][y_start:y_end, x_start:x_end]
+        if prev_last_tracked_frame is not None:
+            ROI_last_tracked_frame = (
+                prev_last_tracked_frame[0][y_start:y_end, x_start:x_end]
+            )
     print(f'ROI image data shape = {ROI_img.shape}')
 
 print('')
@@ -493,7 +502,7 @@ if do_tracking:
     print('performing tracking by hungarian algorithm...')
     if prev_last_tracked_frame is not None:
         print(lab_stack.shape)
-        lab_stack = np.insert(lab_stack, 0, prev_last_tracked_frame, axis=0)
+        lab_stack = np.insert(lab_stack, 0, ROI_last_tracked_frame, axis=0)
         print(lab_stack.shape)
     tracked_stack = tracking.correspondence_stack(lab_stack).astype(np.uint16)
     if prev_last_tracked_frame is not None:
