@@ -3363,7 +3363,8 @@ class twobuttonsmessagebox:
         self.root.destroy()
 
 class single_entry_messagebox:
-    def __init__(self, *, entry_label='Entry 1', input_txt='', toplevel=True):
+    def __init__(self, *, title='Entry', entry_label='Entry 1', input_txt='',
+                 toplevel=True):
         if toplevel:
             root = tk.Toplevel()
         else:
@@ -3371,6 +3372,7 @@ class single_entry_messagebox:
         root.lift()
         root.attributes("-topmost", True)
         root.geometry("+800+400")
+        root.title(title)
         self._root = root
         tk.Label(root, text=entry_label, font=(None, 10)).grid(row=0)
         e = tk.Entry(root, justify='center', width=40)
