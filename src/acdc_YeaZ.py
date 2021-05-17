@@ -47,6 +47,9 @@ class load_data:
             self.tif_path = tif_path
             img_data = np.load(path)
         self.img_data = img_data
+        tif_filename = os.path.basename(self.tif_path)
+        basename_idx = tif_filename.find(f'_phase_contr.tif')
+        self.basename = tif_filename[0:basename_idx]
         self.info, self.metadata_found = self.metadata(self.tif_path)
         if self.metadata_found:
             try:
@@ -207,6 +210,8 @@ else:
     path = folder_dialog(
                  title='Select folder containing Position_n folders')
 
+print('-------------------------')
+print('')
 print('Loading data...')
 pos_foldernames = []
 if os.path.isdir(path):
@@ -243,15 +248,22 @@ elif os.path.isfile(path):
     data = load_data(path)
     data.build_paths(data.filename, data.parent_path)
 
+print(f'Image file {path} loaded.')
+print('')
+
 do_tracking = tk.messagebox.askyesno('Track cells?', 'Do you want to track\n'
                                      'the cells?')
 
-num_frames = data.SizeT if data.SizeT in list(data.img_data.shape) else 1
 num_slices = data.SizeZ if data.SizeZ in list(data.img_data.shape) else 1
+if num_slices > 1:
+    num_frames = data.img_data.shape[0] if data.img_data.ndim > 3 else 1
+else:
+    num_frames = data.img_data.shape[0] if data.img_data.ndim > 2 else 1
 
 print(f'Image data shape = {data.img_data.shape}')
 print(f'Number of frames = {num_frames}')
 print(f'Number of slices in each z-stack = {num_slices}')
+print('')
 
 """Align frames if needed"""
 if num_frames > 1 and data.ext == '.tif' and do_tracking:
@@ -290,20 +302,22 @@ else:
     frames = data.img_data
 
 """Check if segmentation was already performed"""
+print('')
 print('Checking if segmentation was already performed...')
 parent_path = os.path.dirname(path)
 filenames = os.listdir(parent_path)
 last_segm_i = None
-for filename in filenames:
-    if filename.find('segm.npy') != -1:
-        segm_npy_path = f'{parent_path}/{filename}'
-        print('Loading segmentation file...')
-        segm_npy = np.load(segm_npy_path)
-        last_segm_i = len(segm_npy)-1
-        segm_npy_found = True
-        break
-    else:
-        segm_npy_found = False
+basename = data.basename
+segm_filename = f'{basename}_segm.npy'
+if segm_filename in filenames:
+    segm_npy_path = f'{parent_path}/{filename}'
+    print('Loading segmentation file...')
+    segm_npy = np.load(segm_npy_path).astype(np.uint16)
+    last_segm_i = len(segm_npy)-1
+    segm_npy_found = True
+else:
+    print('No previous segmentation file found.')
+    segm_npy_found = False
 
 """Check img data shape and reshape if needed"""
 print('Checking img data shape and reshaping if needed...')
@@ -321,19 +335,19 @@ if num_slices == 1:
                         slice_used_for='segmentation and apply ROI if needed',
                         activate_ROI=True).ROI_coords
     if not segm_npy_found:
-        segm_npy = np.zeros(frames.shape, int)
+        segm_npy = np.zeros(frames.shape, np.uint16)
 elif num_slices > 1:
     if num_frames > 1:
         # 3D frames
         _, z, y, x = frames.shape
         if not segm_npy_found:
-            segm_npy = np.zeros((num_frames, y, x), int)
+            segm_npy = np.zeros((num_frames, y, x), np.uint16)
     else:
         # 3D snapshot (no alignment required)
         z, y, x = data.img_data.shape
         frames = np.reshape(data.img_data, (1,z,y,x))
         if not segm_npy_found:
-            segm_npy = np.zeros((1, y, x), int)
+            segm_npy = np.zeros((1, y, x), np.uint16)
     if os.path.exists(data.slice_used_align_path):
         df_slices = pd.read_csv(data.slice_used_align_path)
         slices = df_slices['Slice used for alignment'].to_list()
@@ -388,7 +402,7 @@ if num_frames > 1 and do_tracking:
 if len(segm_npy) != len(frames) and num_frames > 1:
     # Since there is a mismatch between segm_npy shape and frames shape
     # we pad with zeros
-    empty_segm_npy = np.zeros(frames.shape, int)
+    empty_segm_npy = np.zeros(frames.shape, np.uint16)
     empty_segm_npy[:len(segm_npy)] = segm_npy
     segm_npy = empty_segm_npy
 
@@ -413,6 +427,7 @@ if ROI_coords is not None:
         ROI_img = frames[0][y_start:y_end, x_start:x_end]
     print(f'ROI image data shape = {ROI_img.shape}')
 
+print('')
 # Index the selected slices
 if num_slices > 1:
     frames = frames[range(start, stop), slices[start:stop]]
@@ -432,11 +447,11 @@ print('thresholding prediction...')
 thresh_stack = nn.threshold(pred_stack)
 print('performing watershed for splitting cells...')
 lab_stack = segment.segment_stack(thresh_stack, pred_stack,
-                                  min_distance=10).astype(int)
+                                  min_distance=10).astype(np.uint16)
 lab_stack = remove_small_objects(lab_stack, min_size=5)
 if do_tracking:
     print('performing tracking by hungarian algorithm...')
-    tracked_stack = tracking.correspondence_stack(lab_stack).astype(int)
+    tracked_stack = tracking.correspondence_stack(lab_stack).astype(np.uint16)
 else:
     tracked_stack = lab_stack
 t_end = time()
