@@ -243,7 +243,7 @@ if pos_foldernames:
     data.SizeT = SizeT
 elif os.path.isfile(path):
     _, ext = os.path.splitext(os.path.basename(path))
-    if not ext == '.tif' and not ext == 'npy':
+    if not ext == '.tif' and not ext == '.npy':
         raise NameError(f'Not supported file extension: {ext}')
     data = load_data(path)
     data.build_paths(data.filename, data.parent_path)
@@ -265,6 +265,65 @@ print(f'Number of frames = {num_frames}')
 print(f'Number of slices in each z-stack = {num_slices}')
 print('')
 
+"""Check if the file is a split"""
+s = data.filename[:2]
+m = re.findall('(0[1-9]|1[1-9])', s)
+concat_splits = False
+is_split = False
+if m:
+    is_split = True
+    split_num = m[0]
+    concat_splits = messagebox.askyesno('Concatenate splits?',
+                             'It appears you loaded a split file.\n'
+                             'If true, do you want to concatenate the splits?',
+                             master=root)
+
+prev_last_tracked_frame = None
+if int(split_num) > 1 and concat_splits:
+    prev_split = int(split_num)-1
+    prev_last_tracked_frame_name = f'{prev_split:02d}_last_tracked_frame.npy'
+    prev_last_tracked_frame_path = os.path.join(
+        data.parent_path, prev_last_tracked_frame_name
+    )
+    if os.path.exists(prev_last_tracked_frame_path):
+        prev_last_tracked_frame = np.load(prev_last_tracked_frame_path)
+
+
+
+"""Check if segmentation was already performed"""
+print('')
+print('Checking if segmentation was already performed...')
+parent_path = os.path.dirname(path)
+filenames = os.listdir(parent_path)
+last_segm_i = None
+basename = data.basename
+segm_filename = f'{basename}_segm.npy'
+if segm_filename in filenames:
+    segm_npy_path = f'{parent_path}/{segm_filename}'
+    print('Loading segmentation file...')
+    segm_npy = np.load(segm_npy_path).astype(np.uint16)
+    last_segm_i = len(segm_npy)-1
+    segm_npy_found = True
+else:
+    print('No previous segmentation file found.')
+    segm_npy_found = False
+
+
+"""Pre-align frames if needed if concat_splits"""
+if concat_splits:
+    prev_split = int(split_num)-1
+    prev_split_basename = f'{prev_split:02d}_{basename[3:]}'
+    shifts, shifts_found = load_shifts(data.parent_path,
+                                       basename=prev_split_basename)
+    shifts = [shifts[-1] for _ in range(len(data.img_data))]
+    if shifts_found:
+        align_func = align_frames_3D if num_slices>1 else align_frames_2D
+        if shifts_found:
+            aligned_frames, shifts = align_func(data.img_data, slices=None,
+                                                register=False,
+                                                user_shifts=shifts)
+
+
 """Align frames if needed"""
 if num_frames > 1 and data.ext == '.tif' and do_tracking:
     align = messagebox.askyesno('Align frames?', 'Do you want to align frames?',
@@ -272,7 +331,8 @@ if num_frames > 1 and data.ext == '.tif' and do_tracking:
     if align:
         frames = data.img_data
         print('Aligning frames...')
-        loaded_shifts, shifts_found = load_shifts(data.parent_path)
+        loaded_shifts, shifts_found = load_shifts(data.parent_path,
+                                                  basename=basename)
         if not shifts_found and num_slices > 1:
             slices = select_slice_toAlign(frames, num_frames,
                                           slice_used_for='alignment').slices
@@ -300,24 +360,6 @@ if num_frames > 1 and data.ext == '.tif' and do_tracking:
         frames = data.img_data
 else:
     frames = data.img_data
-
-"""Check if segmentation was already performed"""
-print('')
-print('Checking if segmentation was already performed...')
-parent_path = os.path.dirname(path)
-filenames = os.listdir(parent_path)
-last_segm_i = None
-basename = data.basename
-segm_filename = f'{basename}_segm.npy'
-if segm_filename in filenames:
-    segm_npy_path = f'{parent_path}/{filename}'
-    print('Loading segmentation file...')
-    segm_npy = np.load(segm_npy_path).astype(np.uint16)
-    last_segm_i = len(segm_npy)-1
-    segm_npy_found = True
-else:
-    print('No previous segmentation file found.')
-    segm_npy_found = False
 
 """Check img data shape and reshape if needed"""
 print('Checking img data shape and reshaping if needed...')
@@ -398,8 +440,7 @@ if num_frames > 1 and do_tracking:
                 txt.write(f'{start-1}')
             break
 
-
-if len(segm_npy) != len(frames) and num_frames > 1:
+if len(segm_npy) < len(frames) and num_frames > 1:
     # Since there is a mismatch between segm_npy shape and frames shape
     # we pad with zeros
     empty_segm_npy = np.zeros(frames.shape, np.uint16)
@@ -438,7 +479,6 @@ if ROI_coords is not None:
     frames = frames[:, y_start:y_end, x_start:x_end]
 t0 = time()
 frames = np.array([equalize_adapthist(f) for f in frames])
-frames = frames.astype(float)
 path_weights = nn.determine_path_weights()
 print('Running UNet for Segmentation:')
 pred_stack = nn.batch_prediction(frames, is_pc=is_pc, path_weights=path_weights,
@@ -451,7 +491,15 @@ lab_stack = segment.segment_stack(thresh_stack, pred_stack,
 lab_stack = remove_small_objects(lab_stack, min_size=5)
 if do_tracking:
     print('performing tracking by hungarian algorithm...')
+    if prev_last_tracked_frame is not None:
+        print(lab_stack.shape)
+        lab_stack = np.insert(lab_stack, 0, prev_last_tracked_frame, axis=0)
+        print(lab_stack.shape)
     tracked_stack = tracking.correspondence_stack(lab_stack).astype(np.uint16)
+    if prev_last_tracked_frame is not None:
+        print(prev_last_tracked_frame.shape)
+        tracked_stack = tracked_stack[1:]
+        print(prev_last_tracked_frame.shape)
 else:
     tracked_stack = lab_stack
 t_end = time()
@@ -472,6 +520,12 @@ if save_segm:
     print('Saving...')
     if single_file:
         np.save(data.segm_npy_path, tracked_stack)
+        if concat_splits:
+            last_tracked_frame_path = os.path.join(
+                data.parent_path,
+                f'{split_num}_last_tracked_frame.npy'
+            )
+            np.save(last_tracked_frame_path, tracked_stack[-1])
     else:
         for path, segm in zip(segm_npy_paths, tracked_stack):
             np.save(path, segm)
