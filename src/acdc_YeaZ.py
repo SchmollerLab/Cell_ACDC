@@ -270,6 +270,7 @@ s = data.filename[:2]
 m = re.findall('(0[1-9]|1[1-9])', s)
 concat_splits = False
 is_split = False
+split_num = 0
 if m:
     is_split = True
     split_num = m[0]
@@ -466,14 +467,14 @@ if ROI_coords is not None:
         ROI_img = frames[0, slices[start]][y_start:y_end, x_start:x_end]
         if prev_last_tracked_frame is not None:
             ROI_last_tracked_frame = (
-                prev_last_tracked_frame[0, slices[start]]
+                prev_last_tracked_frame[slices[start]]
                                        [y_start:y_end, x_start:x_end]
             )
     else:
         ROI_img = frames[0][y_start:y_end, x_start:x_end]
         if prev_last_tracked_frame is not None:
             ROI_last_tracked_frame = (
-                prev_last_tracked_frame[0][y_start:y_end, x_start:x_end]
+                prev_last_tracked_frame[y_start:y_end, x_start:x_end]
             )
     print(f'ROI image data shape = {ROI_img.shape}')
 
@@ -501,14 +502,10 @@ lab_stack = remove_small_objects(lab_stack, min_size=5)
 if do_tracking:
     print('performing tracking by hungarian algorithm...')
     if prev_last_tracked_frame is not None:
-        print(lab_stack.shape)
         lab_stack = np.insert(lab_stack, 0, ROI_last_tracked_frame, axis=0)
-        print(lab_stack.shape)
     tracked_stack = tracking.correspondence_stack(lab_stack).astype(np.uint16)
     if prev_last_tracked_frame is not None:
-        print(prev_last_tracked_frame.shape)
         tracked_stack = tracked_stack[1:]
-        print(prev_last_tracked_frame.shape)
 else:
     tracked_stack = lab_stack
 t_end = time()

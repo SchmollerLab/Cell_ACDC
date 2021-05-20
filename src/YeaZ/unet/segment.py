@@ -45,7 +45,8 @@ def segment_stack(th, pred, min_distance=10, topology=None):
     apply method segment on a stack of images, given a stack of thresholded
     images th and a stack of raw predictions pred
     """
-    seg_stack = [segment(th_single, pred[idx], min_distance, topology) for idx, th_single in enumerate(th)]
+    seg_stack = [segment(th_single, pred[idx], min_distance, topology)
+                 for idx, th_single in enumerate(th)]
     return np.array(seg_stack)
 
 
