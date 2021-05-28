@@ -31,12 +31,13 @@ from scipy.ndimage.morphology import binary_fill_holes, distance_transform_edt
 from tifffile import TiffFile
 from MyWidgets import (Slider, Button, RadioButtons, TextBox,
                        MyRadioButtons)
+import load, prompts
 from lib import (auto_select_slice, manual_emerg_bud,
-                 separate_overlapping, text_label_centroid, tk_breakpoint,
+                 separate_overlapping, text_label_centroid,
                  CellInt_slideshow, num_frames_toSegm_tk, newID_app,
                  CellInt_slideshow_2D, ShowWindow_from_title,
-                 select_exp_folder, align_frames_3D, align_frames_2D,
-                 load_shifts, tk_breakpoint, folder_dialog, file_dialog,
+                 align_frames_3D, align_frames_2D, load_shifts,
+                 tk_breakpoint, folder_dialog, file_dialog,
                  win_size, imshow_tk)
 
 # Import YeaZ module
@@ -89,15 +90,15 @@ GUI Mouse Events: - Auto contour with RIGHT-click on edge img: click on the
 """
 
 class load_data:
-    def __init__(self, path):
+    def __init__(self, path, user_ch_name):
         self.path = path
         self.parent_path = os.path.dirname(path)
         self.filename, self.ext = os.path.splitext(os.path.basename(path))
         if self.ext == '.tif' or self.ext == '.tiff':
-            tif_path, phc_tif_found = self.substring_path(path,
+            tif_path, img_tif_found = self.substring_path(path,
                                                          'phase_contr.tif',
                                                           self.parent_path)
-            if phc_tif_found:
+            if img_tif_found:
                 self.tif_path = tif_path
                 img_data = io.imread(path)
             else:
@@ -108,17 +109,17 @@ class load_data:
                 '\"phase_contrast.tif\"')
                 raise FileNotFoundError
         elif self.ext == '.npy':
-            if path.find('_phc_aligned.npy') == -1:
+            if path.find(f'_{user_ch_name}_aligned.npy') == -1:
                 filename = os.path.basename(path)
                 tk.messagebox.showerror('Wrong file selected!',
                 f'You selected a file called {filename} which is not a valid '
                 'phase contrast image file. Select the file that ends with '
-                '\"phc_aligned.npy\" or the .tif phase contrast file')
+                f'"{user_ch_name}_aligned.npy" or the .tif phase contrast file')
                 raise FileNotFoundError
-            tif_path, phc_tif_found = self.substring_path(path,
+            tif_path, img_tif_found = self.substring_path(path,
                                                          'phase_contr.tif',
                                                           self.parent_path)
-            if phc_tif_found:
+            if img_tif_found:
                 self.tif_path = tif_path
                 img_data = np.load(path)
             else:
@@ -177,9 +178,9 @@ class load_data:
                 self.SizeT = data_T
                 root.quit()
                 root.destroy()
-        self.build_paths(self.filename, self.parent_path)
+        self.build_paths(self.filename, self.parent_path, user_ch_name)
 
-    def build_paths(self, filename, parent_path):
+    def build_paths(self, filename, parent_path, user_ch_name):
         match = re.search('s(\d+)_', filename)
         if match is not None:
             basename = filename[:match.span()[1]-1]
@@ -191,7 +192,8 @@ class load_data:
         base_path = f'{parent_path}/{basename}'
         self.slice_used_align_path = f'{base_path}_slice_used_alignment.csv'
         self.slice_used_segm_path = f'{base_path}_slice_segm.csv'
-        self.align_npy_path = f'{base_path}_phc_aligned.npy'
+        self.align_npy_path = f'{base_path}_{user_ch_name}_aligned.npy'
+        self.align_old_path = f'{base_path}_phc_aligned.npy'
         self.align_shifts_path = f'{base_path}_align_shift.npy'
         self.segm_npy_path = f'{base_path}_segm.npy'
         self.last_tracked_i_path = f'{base_path}_last_tracked_i.txt'
@@ -275,8 +277,8 @@ class load_data:
 
 """Classes"""
 class app_GUI:
-    def __init__(self, img_path):
-        data = load_data(img_path)
+    def __init__(self, img_path, user_ch_name):
+        data = load_data(img_path, user_ch_name)
         self.segm_npy_done = [None]*data.SizeT
         self.orig_segm_npy = [None]*data.SizeT
         self.cc_stages = [None]*data.SizeT
@@ -1414,24 +1416,59 @@ bW = 0.1  # buttons width
 exp_path = folder_dialog(
                  title='Select experiment folder containing Position_n folders')
 
+# ADD POSSIBILITY TO LOAD POSITION FOLDER DIRECTLY
 
-select_folder = select_exp_folder()
+ch_name_selector = prompts.select_channel_name()
+
+select_folder = load.select_exp_folder()
 values = select_folder.get_values_segmGUI(exp_path)
 pos_foldername = select_folder.run_widget(values)
 images_path = f'{exp_path}/{pos_foldername}/Images'
-phc_aligned_found = False
+
+ch_name_not_found_msg = (
+    'The script could not identify the channel name.\n\n'
+    'The file to be segmented MUST have a name like\n'
+    '"<basename>_<channel_name>.tif" e.g. "196_s16_phase_contrast.tif"\n'
+    'where "196_s16" is the basename and "phase_contrast"'
+    'is the channel name\n\n'
+    'Please write here the channel name to be used for automatic loading'
+)
+
+filenames = os.listdir(images_path)
+if ch_name_selector.is_first_call:
+    ch_names, warn = ch_name_selector.get_available_channels(filenames)
+    ch_name_selector.prompt(ch_names)
+    if warn:
+        user_ch_name = prompts.single_entry_messagebox(
+            title='Channel name not found',
+            entry_label=ch_name_not_found_msg,
+            input_txt='phase_contrast',
+            toplevel=False
+        ).entry_txt
+    else:
+        user_ch_name = ch_name_selector.channel_name
+
+img_aligned_found = False
 for filename in os.listdir(images_path):
-    if filename.find('_phc_aligned.npy') != -1:
+    if filename.find(f'_phc_aligned.npy') != -1:
         img_path = f'{images_path}/{filename}'
-        phc_aligned_found = True
-if not phc_aligned_found:
-    raise FileNotFoundError('Phase contrast aligned image file not found!')
+        new_filename = filename.replace('_phc_aligned.npy',
+                                        f'_{user_ch_name}_aligned.npy')
+        dst = f'{images_path}/{new_filename}'
+        os.rename(img_path, dst)
+        filename = new_filename
+    if filename.find(f'_{user_ch_name}_aligned.npy') != -1:
+        img_path = f'{images_path}/{filename}'
+        img_aligned_found = True
+if not img_aligned_found:
+    raise FileNotFoundError('Aligned frames file not found. '
+     'You need to run the segmentation script first.')
 
 print(f'Loading {img_path}...')
 # img_path = file_dialog(title = "Select phase contrast or bright-field image file")
 
 """Load data"""
-app = app_GUI(img_path)
+app = app_GUI(img_path, user_ch_name)
 frames = app.data.img_data
 num_frames = app.data.SizeT
 num_slices = app.num_slices

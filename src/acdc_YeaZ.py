@@ -14,11 +14,12 @@ from time import time
 from tifffile import TiffFile
 from tkinter import messagebox
 from myutils import download_model
+from natsort import natsorted
 from lib import (load_shifts, select_slice_toAlign, align_frames_3D,
-                   align_frames_2D, single_entry_messagebox, twobuttonsmessagebox,
-                   auto_select_slice, num_frames_toSegm_tk, draw_ROI_2D_frames,
-                   text_label_centroid, file_dialog, win_size, dark_mode,
-                   folder_dialog)
+               align_frames_2D, single_entry_messagebox, twobuttonsmessagebox,
+               auto_select_slice, num_frames_toSegm_tk, draw_ROI_2D_frames,
+               text_label_centroid, file_dialog, win_size, dark_mode,
+               folder_dialog)
 
 script_dirname = os.path.dirname(os.path.realpath(__file__))
 unet_path = f'{script_dirname}/YeaZ-unet/unet/'
@@ -32,9 +33,10 @@ from YeaZ.unet import segment
 from YeaZ.unet import tracking
 download_model('YeaZ')
 
+import prompts, load
 
 class load_data:
-    def __init__(self, path):
+    def __init__(self, path, user_ch_name):
         self.path = path
         self.parent_path = os.path.dirname(path)
         self.filename, self.ext = os.path.splitext(os.path.basename(path))
@@ -42,13 +44,13 @@ class load_data:
             self.tif_path = path
             img_data = io.imread(path)
         elif self.ext == '.npy':
-            tif_path = self.substring_path(path, 'phase_contr.tif',
+            tif_path = self.substring_path(path, f'{user_ch_name}.tif',
                                            self.parent_path)[0]
             self.tif_path = tif_path
             img_data = np.load(path)
         self.img_data = img_data
         tif_filename = os.path.basename(self.tif_path)
-        basename_idx = tif_filename.find(f'_phase_contr.tif')
+        basename_idx = tif_filename.find(f'{user_ch_name}.tif')
         self.basename = tif_filename[0:basename_idx]
         self.info, self.metadata_found = self.metadata(self.tif_path)
         if self.metadata_found:
@@ -61,7 +63,7 @@ class load_data:
         else:
             self.SizeT, self.SizeZ = 1, 1
 
-    def build_paths(self, filename, parent_path):
+    def build_paths(self, filename, parent_path, user_ch_name):
         match = re.search('s(\d+)_', filename)
         if match is not None:
             basename = filename[:match.span()[1]-1]
@@ -74,7 +76,8 @@ class load_data:
         self.base_path = base_path
         self.slice_used_align_path = f'{base_path}_slice_used_alignment.csv'
         self.slice_used_segm_path = f'{base_path}_slice_segm.csv'
-        self.align_npy_path = f'{base_path}_phc_aligned.npy'
+        self.align_npy_path = f'{base_path}_{user_ch_name}_aligned.npy'
+        self.align_old_path = f'{base_path}_phc_aligned.npy'
         self.align_shifts_path = f'{base_path}_align_shift.npy'
         self.segm_npy_backup_path = f'{base_path}_segm_YeaZ.npy'
         self.segm_npy_path = f'{base_path}_segm.npy'
@@ -155,376 +158,427 @@ class load_data:
         root.destroy()
         return SizeT, SizeZ
 
-def find_contours(label_img, cells_ids, group=False, concat=False,
-                  return_hull=False):
-    contours = []
-    for id in cells_ids:
-        label_only_cells_ids_img = np.zeros_like(label_img)
-        label_only_cells_ids_img[label_img == id] = id
-        uint8_img = (label_only_cells_ids_img > 0).astype(np.uint8)
-        cont, hierarchy = cv2.findContours(uint8_img,cv2.RETR_LIST,
-                                           cv2.CHAIN_APPROX_NONE)
-        cnt = cont[0]
-        if return_hull:
-            hull = cv2.convexHull(cnt,returnPoints = True)
-            contours.append(hull)
-        else:
-            contours.append(cnt)
-    if concat:
-        all_contours = np.zeros((0,2), dtype=int)
-        for contour in contours:
-            contours_2D_yx = np.fliplr(np.reshape(contour, (contour.shape[0],2)))
-            all_contours = np.concatenate((all_contours, contours_2D_yx))
-    elif group:
-        # Return a list of n arrays for n objects. Each array has i rows of
-        # [y,x] coords for each ith pixel in the nth object's contour
-        all_contours = [[] for _ in range(len(cells_ids))]
-        for c in contours:
-            c2Dyx = np.fliplr(np.reshape(c, (c.shape[0],2)))
-            for y,x in c2Dyx:
-                ID = label_img[y, x]
-                idx = list(cells_ids).index(ID)
-                all_contours[idx].append([y,x])
-        all_contours = [np.asarray(li) for li in all_contours]
-        IDs = [label_img[c[0,0],c[0,1]] for c in all_contours]
-    else:
-        all_contours = [np.fliplr(np.reshape(contour,
-                        (contour.shape[0],2))) for contour in contours]
-    return all_contours
-
-
 dark_mode()
 
 root = tk.Tk()
 root.withdraw()
 
-single_file = twobuttonsmessagebox('Selection mode',
-                          'Do you want to select a single '
-                          'file\n or a folder containing the Position_n folders?',
-                          'Single file', 'Folder').button_left
+selected_path = prompts.folder_dialog(title=
+    'Select folder with multiple experiments, the TIFFs folder or '
+    'a specific Position_n folder')
 
-if single_file:
-    path = file_dialog(
-                 title='Select phase contrast or bright-field.tif/.npy file')
-else:
-    path = folder_dialog(
-                 title='Select folder containing Position_n folders')
+if not selected_path:
+    exit('Execution aborted.')
 
-print('-------------------------')
-print('')
-print('Loading data...')
-pos_foldernames = []
-if os.path.isdir(path):
-    listdir = os.listdir(path)
-    pos_foldernames = [p for p in listdir if os.path.isdir(os.path.join(path, p))
-                                          and p.find('Position_')!=-1]
-    if not pos_foldernames:
-        raise FileNotFoundError('Not a valid path! The selected path has to '
-        'contain "Position_n" folders!')
+selector = load.select_exp_folder()
 
-"""Check that valid path was selected. For multiple Position_n folders
-each position data will be trated as a single frame."""
-if pos_foldernames:
-    segm_npy_paths = []
-    img_data = []
-    SizeT = 0
-    for pos in pos_foldernames:
-        images_path = os.path.join(path, pos, 'Images')
-        phc_filefound = False
-        for f in os.listdir(images_path):
-            if f.find('phase_contr.tif')!=-1:
-                data = load_data(os.path.join(images_path, f))
-                data.build_paths(data.filename, data.parent_path)
-                segm_npy_paths.append(data.segm_npy_path)
-                img_data.append(data.img_data)
-                SizeT += 1
-                break
-    data.img_data = np.array(img_data)
-    data.SizeT = SizeT
-elif os.path.isfile(path):
-    _, ext = os.path.splitext(os.path.basename(path))
-    if not ext == '.tif' and not ext == '.npy':
-        raise NameError(f'Not supported file extension: {ext}')
-    data = load_data(path)
-    data.build_paths(data.filename, data.parent_path)
+(main_paths, prompts_pos_to_analyse, run_num,
+is_pos_path, is_TIFFs_path) = load.get_main_paths(selected_path, 'v1')
 
-print(f'Image file {path} loaded.')
-print('')
+ch_name_selector = prompts.select_channel_name()
+
+is_pc = twobuttonsmessagebox('Img mode', 'Select imaging mode',
+                             'Phase contrast', 'Bright-field').button_left
 
 do_tracking = tk.messagebox.askyesno('Track cells?', 'Do you want to track\n'
                                      'the cells?')
-
-num_slices = data.SizeZ if data.SizeZ in list(data.img_data.shape) else 1
-if num_slices > 1:
-    num_frames = data.img_data.shape[0] if data.img_data.ndim > 3 else 1
-else:
-    num_frames = data.img_data.shape[0] if data.img_data.ndim > 2 else 1
-
-print(f'Image data shape = {data.img_data.shape}')
-print(f'Number of frames = {num_frames}')
-print(f'Number of slices in each z-stack = {num_slices}')
-print('')
-
-"""Check if the file is a split"""
-s = data.filename[:2]
-m = re.findall('(0[1-9]|1[1-9])', s)
-concat_splits = False
-is_split = False
-split_num = 0
-if m:
-    is_split = True
-    split_num = m[0]
-    concat_splits = messagebox.askyesno('Concatenate splits?',
-                             'It appears you loaded a split file.\n'
-                             'If true, do you want to concatenate the splits?',
-                             master=root)
-
-prev_last_tracked_frame = None
-if int(split_num) > 1 and concat_splits:
-    prev_split = int(split_num)-1
-    prev_last_tracked_frame_name = f'{prev_split:02d}_last_tracked_frame.npy'
-    prev_last_tracked_frame_path = os.path.join(
-        data.parent_path, prev_last_tracked_frame_name
-    )
-    if os.path.exists(prev_last_tracked_frame_path):
-        prev_last_tracked_frame = np.load(prev_last_tracked_frame_path)
-
-
-
-"""Check if segmentation was already performed"""
-print('')
-print('Checking if segmentation was already performed...')
-parent_path = os.path.dirname(path)
-filenames = os.listdir(parent_path)
-last_segm_i = None
-basename = data.basename
-segm_filename = f'{basename}_segm.npy'
-if segm_filename in filenames:
-    segm_npy_path = f'{parent_path}/{segm_filename}'
-    print('Loading segmentation file...')
-    segm_npy = np.load(segm_npy_path).astype(np.uint16)
-    last_segm_i = len(segm_npy)-1
-    segm_npy_found = True
-else:
-    print('No previous segmentation file found.')
-    segm_npy_found = False
-
-
-"""Pre-align frames if needed if concat_splits"""
-if concat_splits:
-    prev_split = int(split_num)-1
-    prev_split_basename = f'{prev_split:02d}_{basename[3:]}'
-    shifts, shifts_found = load_shifts(data.parent_path,
-                                       basename=prev_split_basename)
-    shifts = [shifts[-1] for _ in range(len(data.img_data))]
-    if shifts_found:
-        align_func = align_frames_3D if num_slices>1 else align_frames_2D
-        if shifts_found:
-            aligned_frames, shifts = align_func(data.img_data, slices=None,
-                                                register=False,
-                                                user_shifts=shifts)
-
-
-"""Align frames if needed"""
-if num_frames > 1 and data.ext == '.tif' and do_tracking:
-    align = messagebox.askyesno('Align frames?', 'Do you want to align frames?',
-                                master=root)
-    if align:
-        frames = data.img_data
-        print('Aligning frames...')
-        loaded_shifts, shifts_found = load_shifts(data.parent_path,
-                                                  basename=basename)
-        if not shifts_found and num_slices > 1:
-            slices = select_slice_toAlign(frames, num_frames,
-                                          slice_used_for='alignment').slices
-            df_slices = pd.DataFrame({'Slice used for alignment': slices,
-                                      'frame_i': range(num_frames)})
-            df_slices.set_index('frame_i', inplace=True)
-            df_slices.to_csv(data.slice_used_align_path)
-        else:
-            slices=None
-        align_func = align_frames_3D if num_slices>1 else align_frames_2D
-        aligned_frames, shifts = align_func(frames, slices=slices,
-                                          register=not shifts_found,
-                                          user_shifts=loaded_shifts)
-        print('Frames aligned!')
-        save_align = messagebox.askyesno('Save aligned frames?',
-                                         'Do you want to save aligned frames?',
-                                         master=root)
-        if save_align:
-            print('Saving aligned frames...')
-            np.save(data.align_npy_path, aligned_frames, allow_pickle=False)
-            np.save(data.align_shifts_path, shifts, allow_pickle=False)
-            print('Aligned frames saved!')
-        frames = aligned_frames
-    else:
-        frames = data.img_data
-else:
-    frames = data.img_data
-
-"""Check img data shape and reshape if needed"""
-print('Checking img data shape and reshaping if needed...')
-ROI_coords = None
-if num_slices == 1:
-    slices = None
-    if num_frames > 1:
-        # 2D frames
-        pass
-    else:
-        # 2D snapshot (no alignment required)
-        y, x = data.img_data.shape
-        frames = np.reshape(data.img_data, (1,y,x))
-    ROI_coords = draw_ROI_2D_frames(frames, num_frames,
-                        slice_used_for='segmentation and apply ROI if needed',
-                        activate_ROI=True).ROI_coords
-    if not segm_npy_found:
-        segm_npy = np.zeros(frames.shape, np.uint16)
-elif num_slices > 1:
-    if num_frames > 1:
-        # 3D frames
-        _, z, y, x = frames.shape
-        if not segm_npy_found:
-            segm_npy = np.zeros((num_frames, y, x), np.uint16)
-    else:
-        # 3D snapshot (no alignment required)
-        z, y, x = data.img_data.shape
-        frames = np.reshape(data.img_data, (1,z,y,x))
-        if not segm_npy_found:
-            segm_npy = np.zeros((1, y, x), np.uint16)
-    if os.path.exists(data.slice_used_align_path):
-        df_slices = pd.read_csv(data.slice_used_align_path)
-        slices = df_slices['Slice used for alignment'].to_list()
-    else:
-        slices = [0]
-    if os.path.exists(data.slice_used_segm_path):
-        df_slices = pd.read_csv(data.slice_used_segm_path)
-        slices = df_slices['Slice used for segmentation'].to_list()
-    else:
-        slices = [0]
-    if num_frames == 1:
-        select_slice = auto_select_slice(data.img_data, init_slice=0,
-                    slice_used_for='segmentation and apply ROI if needed',
-                    activate_ROI=True)
-        ROI_coords =  select_slice.ROI_coords
-        slices = [select_slice.slice]
-        df_slices_path = data.slice_used_segm_path
-    else:
-        print('Loading slice selector GUI...')
-        select_slice = select_slice_toAlign(frames, num_frames,
-                    init_slice=slices[0],
-                    slice_used_for='segmentation and apply ROI if needed.\n'
-                        'Click "help" button for additional info '
-                        'on how to select slices',
-                    activate_ROI=True,
-                    tk_win_title='Select slices to use for segmentation',
-                    help_button=True)
-        ROI_coords =  select_slice.ROI_coords
-        slices = select_slice.slices
-        df_slices_path = data.slice_used_segm_path
-    df_slices = pd.DataFrame({'Slice used for segmentation': slices,
-                              'frame_i': range(num_frames)})
-    df_slices.set_index('frame_i', inplace=True)
-    df_slices.to_csv(df_slices_path)
-
-start = 0
-stop = num_frames
-if num_frames > 1 and do_tracking:
-    start, stop = num_frames_toSegm_tk(num_frames, last_segm_i=last_segm_i,
-                                                   toplevel=True,
-                                                   allow_not_0_start=False
-                                                   ).frange
-    filenames = os.listdir(parent_path)
-    for filename in filenames:
-        if filename.find('_last_tracked_i.txt') != -1:
-            last_tracked_i_path = f'{parent_path}/{filename}'
-            with open(last_tracked_i_path, 'w') as txt:
-                txt.write(f'{start-1}')
-            break
-
-if len(segm_npy) < len(frames) and num_frames > 1:
-    # Since there is a mismatch between segm_npy shape and frames shape
-    # we pad with zeros
-    empty_segm_npy = np.zeros(frames.shape, np.uint16)
-    empty_segm_npy[:len(segm_npy)] = segm_npy
-    segm_npy = empty_segm_npy
 
 save_segm = messagebox.askyesno('Save segmentation?',
                                  'Do you want to save segmentation?',
                                  master=root)
 
+
+ch_name_not_found_msg = (
+    'The script could not identify the channel name.\n\n'
+    'The file to be segmented MUST have a name like\n'
+    '"<basename>_<channel_name>.tif" e.g. "196_s16_phase_contrast.tif"\n'
+    'where "196_s16" is the basename and "phase_contrast"'
+    'is the channel name\n\n'
+    'Please write here the channel name to be used for automatic loading'
+)
+
+all_ROIs = []
+all_franges = []
+all_paths = []
+all_slices = []
+for exp_idx, main_path in enumerate(main_paths):
+
+    dirname = os.path.basename(main_path)
+
+    if dirname == 'TIFFs':
+        TIFFs_path = main_path
+        print('')
+        print('##################################################')
+        print('')
+        print(f'Analysing experiment: {os.path.dirname(main_path)}')
+        pos_foldernames = [f for f in natsorted(os.listdir(main_path))
+                               if os.path.isdir(f'{main_path}/{f}')
+                               and f.find('Position_')!=-1]
+
+        paths = []
+        NONsegm_pos_foldernames = pos_foldernames.copy()
+        segm_pos_foldernames = []
+        for i, d in enumerate(pos_foldernames):
+            images_path = f'{main_path}/{d}/Images'
+            filenames = os.listdir(images_path)
+            if ch_name_selector.is_first_call:
+                ch_names, warn = ch_name_selector.get_available_channels(filenames)
+                ch_name_selector.prompt(ch_names, toplevel=True)
+                if warn:
+                    user_ch_name = prompts.single_entry_messagebox(
+                        title='Channel name not found',
+                        entry_label=ch_name_not_found_msg,
+                        input_txt='phase_contrast'
+                    ).entry_txt
+                else:
+                    user_ch_name = ch_name_selector.channel_name
+            img_ch_aligned_found = False
+            tif_found = False
+            for j, f in enumerate(filenames):
+                if f.find(f'{user_ch_name}_aligned.npy') != -1:
+                    img_ch_aligned_found = True
+                    aligned_i = j
+                elif f.find(f'{user_ch_name}.tif') != -1:
+                    tif_i = j
+                    tif_found = True
+                elif f.find('_segm.npy') != -1:
+                    NONsegm_pos_foldernames.remove(d)
+                    segm_pos_foldernames.append(d)
+            if img_ch_aligned_found:
+                img_ch_path = os.path.join(images_path, filenames[aligned_i])
+            elif tif_found:
+                img_ch_path = os.path.join(images_path, filenames[tif_i])
+            else:
+                raise FileNotFoundError('File not found. '
+                f'The script could not find a file ending with "{user_ch_name}.tif"')
+            paths.append(img_ch_path)
+
+        if exp_idx == 0:
+            if prompts_pos_to_analyse:
+                pos_selector = prompts.select_pos_to_segm()
+                pos_selector.prompt(NONsegm_pos_foldernames,
+                                    segm_pos_foldernames,
+                                    toplevel=True)
+                pos_to_segm = pos_selector.pos_to_segm
+                paths = [paths[pos_foldernames.index(pos)]
+                         for pos in pos_to_segm]
+
+    elif is_pos_path:
+        TIFFs_path = os.path.dirname(main_path)
+        pos_path = main_path
+        images_path = f'{pos_path}/Images'
+        filenames = os.listdir(images_path)
+        if ch_name_selector.is_first_call:
+            ch_names, warn = ch_name_selector.get_available_channels(filenames)
+            ch_name_selector.prompt(ch_names, toplevel=True)
+            if warn:
+                user_ch_name = prompts.single_entry_messagebox(
+                    title='Channel name not found',
+                    entry_label=ch_name_not_found_msg,
+                    input_txt='phase_contrast'
+                )
+            else:
+                user_ch_name = ch_name_selector.channel_name
+        img_ch_aligned_found = False
+        tif_found = False
+        for j, f in enumerate(filenames):
+            if f.find(f'{user_ch_name}_aligned.npy') != -1:
+                img_ch_aligned_found = True
+                aligned_i = j
+            elif f.find(f'{user_ch_name}.tif') != -1:
+                tif_i = j
+                tif_found = True
+        if img_ch_aligned_found:
+            img_ch_path = os.path.join(images_path, filenames[aligned_i])
+        elif tif_found:
+            img_ch_path = os.path.join(images_path, filenames[tif_i])
+        else:
+            raise FileNotFoundError('File not found. '
+            f'The script could not find a file ending with "{user_ch_name}.tif"')
+        paths = [img_ch_path]
+    else:
+        raise FileNotFoundError(f'The path {main_path} is not a valid path!')
+
+    """Iterate Position folders"""
+    num_pos_total = len(paths)
+    for pos_idx, path in enumerate(paths):
+
+        print('-------------------------')
+        print('')
+        print('Loading data...')
+
+        data = load_data(path, user_ch_name)
+        data.build_paths(data.filename, data.parent_path, user_ch_name)
+
+        parent_path = data.parent_path
+        basename = data.basename
+
+        print(f'Image file {path} loaded.')
+        print('')
+
+        num_slices = data.SizeZ if data.SizeZ in list(data.img_data.shape) else 1
+        if num_slices > 1:
+            num_frames = data.img_data.shape[0] if data.img_data.ndim > 3 else 1
+        else:
+            num_frames = data.img_data.shape[0] if data.img_data.ndim > 2 else 1
+
+        print(f'Image data shape = {data.img_data.shape}')
+        print(f'Number of frames = {num_frames}')
+        print(f'Number of slices in each z-stack = {num_slices}')
+        print('')
+
+        """Check if the file is a split"""
+        s = data.filename[:3]
+        m = re.findall('(0[1-9]|1[1-9])_', s)
+        concat_splits = False
+        is_split = False
+        split_num = 0
+        if m:
+            is_split = True
+            split_num = m[0]
+            if exp_idx == 0 and pos_idx == 0:
+                concat_splits = messagebox.askyesno('Concatenate splits?',
+                             'It appears you loaded a split file with '
+                             f'split number {split_num}.\n'
+                             'If true, do you want to concatenate the splits?',
+                             master=root)
+
+        prev_last_tracked_frame = None
+        if int(split_num) > 1 and concat_splits:
+            prev_split = int(split_num)-1
+            prev_last_tracked_frame_name = f'{prev_split:02d}_last_tracked_frame.npy'
+            prev_last_tracked_frame_path = os.path.join(
+                data.parent_path, prev_last_tracked_frame_name
+            )
+            if os.path.exists(prev_last_tracked_frame_path):
+                prev_last_tracked_frame = np.load(prev_last_tracked_frame_path)
+
+
+        """Pre-align frames if needed if concat_splits"""
+        if concat_splits:
+            prev_split = int(split_num)-1
+            prev_split_basename = f'{prev_split:02d}_{basename[3:]}'
+            shifts, shifts_found = load_shifts(data.parent_path,
+                                               basename=prev_split_basename)
+            shifts = [shifts[-1] for _ in range(len(data.img_data))]
+            if shifts_found:
+                align_func = align_frames_3D if num_slices>1 else align_frames_2D
+                if shifts_found:
+                    aligned_frames, shifts = align_func(data.img_data,
+                                                        slices=None,
+                                                        register=False,
+                                                        user_shifts=shifts)
+
+
+        """Align frames if needed"""
+        align = not img_ch_aligned_found
+        if num_frames > 1 and data.ext == '.tif' and do_tracking:
+            if align:
+                frames = data.img_data
+                print('Aligning frames...')
+                loaded_shifts, shifts_found = load_shifts(data.parent_path,
+                                                          basename=basename)
+                if not shifts_found and num_slices > 1:
+                    slices = select_slice_toAlign(frames, num_frames,
+                                                  slice_used_for='alignment'
+                                                  ).slices
+                    df_slices = pd.DataFrame({'Slice used for alignment': slices,
+                                              'frame_i': range(num_frames)})
+                    df_slices.set_index('frame_i', inplace=True)
+                    df_slices.to_csv(data.slice_used_align_path)
+                else:
+                    slices=None
+                align_func = align_frames_3D if num_slices>1 else align_frames_2D
+                if shifts_found:
+                    print('NOTE: Aligning with saved shifts')
+                aligned_frames, shifts = align_func(frames, slices=slices,
+                                                  register=not shifts_found,
+                                                  user_shifts=loaded_shifts)
+                print('Frames aligned!')
+                if save_segm:
+                    print('Saving aligned frames...')
+                    if os.path.exists(data.align_old_path):
+                        os.remove(data.align_old_path)
+                    np.save(data.align_npy_path, aligned_frames,
+                            allow_pickle=False)
+                    np.save(data.align_shifts_path, shifts, allow_pickle=False)
+                    print('Aligned frames saved!')
+                frames = aligned_frames
+            else:
+                frames = data.img_data
+        else:
+            frames = data.img_data
+
+        """Check img data shape and reshape if needed"""
+        print('Checking img data shape and reshaping if needed...')
+        ROI_coords = None
+        if num_slices == 1:
+            slices = None
+            if num_frames > 1:
+                # 2D frames
+                pass
+            else:
+                # 2D snapshot (no alignment required)
+                y, x = data.img_data.shape
+                frames = np.reshape(data.img_data, (1,y,x))
+            ROI_coords = draw_ROI_2D_frames(frames, num_frames,
+                                slice_used_for='segmentation and apply ROI if needed',
+                                activate_ROI=True).ROI_coords
+        elif num_slices > 1:
+            if os.path.exists(data.slice_used_align_path):
+                df_slices = pd.read_csv(data.slice_used_align_path)
+                slices = df_slices['Slice used for alignment'].to_list()
+            else:
+                slices = [0]
+            if os.path.exists(data.slice_used_segm_path):
+                df_slices = pd.read_csv(data.slice_used_segm_path)
+                slices = df_slices['Slice used for segmentation'].to_list()
+            else:
+                slices = [0]
+            if num_frames == 1:
+                select_slice = auto_select_slice(data.img_data, init_slice=0,
+                            slice_used_for='segmentation and apply ROI if needed',
+                            activate_ROI=True)
+                ROI_coords =  select_slice.ROI_coords
+                slices = [select_slice.slice]
+                df_slices_path = data.slice_used_segm_path
+            else:
+                print('Loading slice selector GUI...')
+                select_slice = select_slice_toAlign(frames, num_frames,
+                            init_slice=slices[0],
+                            slice_used_for='segmentation and apply ROI if needed.\n'
+                                'Click "help" button for additional info '
+                                'on how to select slices',
+                            activate_ROI=True,
+                            tk_win_title='Select slices to use for segmentation',
+                            help_button=True)
+                ROI_coords =  select_slice.ROI_coords
+                slices = select_slice.slices
+                df_slices_path = data.slice_used_segm_path
+            df_slices = pd.DataFrame({'Slice used for segmentation': slices,
+                                      'frame_i': range(num_frames)})
+            df_slices.set_index('frame_i', inplace=True)
+            df_slices.to_csv(df_slices_path)
+
+        start = 0
+        stop = num_frames
+        last_segm_i = None
+        if num_frames > 1 and do_tracking:
+            start, stop = num_frames_toSegm_tk(num_frames,
+                                               last_segm_i=last_segm_i,
+                                               toplevel=True,
+                                               allow_not_0_start=False
+                                                           ).frange
+            filenames = os.listdir(parent_path)
+            for filename in filenames:
+                if filename.find('_last_tracked_i.txt') != -1:
+                    last_tracked_i_path = f'{parent_path}/{filename}'
+                    with open(last_tracked_i_path, 'w') as txt:
+                        txt.write(f'{start-1}')
+                    break
+
+        all_ROIs.append(ROI_coords)
+        all_franges.append((start, stop))
+        all_paths.append(path)
+        all_slices.append(slices)
+
+        print('Parameters successfully initilised!')
+
 root.destroy()
 
-is_pc = twobuttonsmessagebox('Img mode', 'Select imaging mode',
-                             'Phase contrast', 'Bright-field').button_left
-
-# Index the selected frames
-if num_frames > 1:
-    frames = frames[start:stop]
-
-if ROI_coords is not None:
-    y_start, y_end, x_start, x_end = ROI_coords
-    if num_slices > 1:
-        ROI_img = frames[0, slices[start]][y_start:y_end, x_start:x_end]
-        if prev_last_tracked_frame is not None:
-            ROI_last_tracked_frame = (
-                prev_last_tracked_frame[slices[start]]
-                                       [y_start:y_end, x_start:x_end]
-            )
-    else:
-        ROI_img = frames[0][y_start:y_end, x_start:x_end]
-        if prev_last_tracked_frame is not None:
-            ROI_last_tracked_frame = (
-                prev_last_tracked_frame[y_start:y_end, x_start:x_end]
-            )
-    print(f'ROI image data shape = {ROI_img.shape}')
-
-print('')
-# Index the selected slices
-if num_slices > 1:
-    frames = frames[range(start, stop), slices[start:stop]]
-
-r, c = frames.shape[-2], frames.shape[-1]
-if ROI_coords is not None:
-    y_start, y_end, x_start, x_end = ROI_coords
-    frames = frames[:, y_start:y_end, x_start:x_end]
 t0 = time()
-frames = np.array([equalize_adapthist(f) for f in frames])
-path_weights = nn.determine_path_weights()
-print('Running UNet for Segmentation:')
-pred_stack = nn.batch_prediction(frames, is_pc=is_pc, path_weights=path_weights,
-                                         batch_size=1)
-print('thresholding prediction...')
-thresh_stack = nn.threshold(pred_stack)
-print('performing watershed for splitting cells...')
-lab_stack = segment.segment_stack(thresh_stack, pred_stack,
-                                  min_distance=10).astype(np.uint16)
-lab_stack = remove_small_objects(lab_stack, min_size=5)
-if do_tracking:
-    print('performing tracking by hungarian algorithm...')
-    if prev_last_tracked_frame is not None:
-        lab_stack = np.insert(lab_stack, 0, ROI_last_tracked_frame, axis=0)
-    tracked_stack = tracking.correspondence_stack(lab_stack).astype(np.uint16)
-    if prev_last_tracked_frame is not None:
-        tracked_stack = tracked_stack[1:]
-else:
-    tracked_stack = lab_stack
-t_end = time()
 
-# for simplicity, pad image back to original shape before saving
-# TODO: save only ROI and ROI borders, to save disk space
-if ROI_coords is not None:
-    tracked_stack = np.pad(tracked_stack, ((0, 0),
-                                           (y_start, r - y_end),
-                                           (x_start, c - x_end)),
-                                           mode='constant')
-    frames = np.pad(frames, ((0, 0), (y_start, r - y_end), (x_start, c - x_end)),
-                                           mode='constant')
+inputs = zip(all_paths, all_franges, all_ROIs, all_slices)
+tot_img = len(all_paths)
+for img_idx, (path, frange, ROI_coords, slices) in enumerate(inputs):
 
-#save Segmentation results
-if save_segm:
+    print('==============================')
     print('')
-    print('Saving...')
-    if single_file:
+    print(f'Segmenting image number {img_idx+1}/{tot_img}')
+    print(f'Image file: {path}')
+
+    data = load_data(path, user_ch_name)
+    data.build_paths(data.filename, data.parent_path, user_ch_name)
+
+    parent_path = data.parent_path
+    basename = data.basename
+
+    num_slices = data.SizeZ if data.SizeZ in list(data.img_data.shape) else 1
+    if num_slices > 1:
+        num_frames = data.img_data.shape[0] if data.img_data.ndim > 3 else 1
+    else:
+        num_frames = data.img_data.shape[0] if data.img_data.ndim > 2 else 1
+
+    frames = data.img_data
+
+    # Index the selected frames
+    if num_frames > 1:
+        frames = frames[start:stop]
+
+    if ROI_coords is not None:
+        y_start, y_end, x_start, x_end = ROI_coords
+        if num_slices > 1:
+            ROI_img = frames[0, slices[start]][y_start:y_end, x_start:x_end]
+            if prev_last_tracked_frame is not None:
+                ROI_last_tracked_frame = (
+                    prev_last_tracked_frame[slices[start]]
+                                           [y_start:y_end, x_start:x_end]
+                )
+        else:
+            ROI_img = frames[0][y_start:y_end, x_start:x_end]
+            if prev_last_tracked_frame is not None:
+                ROI_last_tracked_frame = (
+                    prev_last_tracked_frame[y_start:y_end, x_start:x_end]
+                )
+        print(f'ROI image data shape = {ROI_img.shape}')
+
+    print('')
+    # Index the selected slices
+    if num_slices > 1:
+        frames = frames[range(start, stop), slices[start:stop]]
+
+    r, c = frames.shape[-2], frames.shape[-1]
+    if ROI_coords is not None:
+        y_start, y_end, x_start, x_end = ROI_coords
+        frames = frames[:, y_start:y_end, x_start:x_end]
+
+    frames = np.array([equalize_adapthist(f) for f in frames])
+    path_weights = nn.determine_path_weights()
+    print('Running UNet for Segmentation:')
+    pred_stack = nn.batch_prediction(frames, is_pc=is_pc,
+                                     path_weights=path_weights,
+                                     batch_size=1)
+    print('thresholding prediction...')
+    thresh_stack = nn.threshold(pred_stack)
+    print('performing watershed for splitting cells...')
+    lab_stack = segment.segment_stack(thresh_stack, pred_stack,
+                                      min_distance=10).astype(np.uint16)
+    lab_stack = remove_small_objects(lab_stack, min_size=5)
+    if do_tracking:
+        print('performing tracking by hungarian algorithm...')
+        if prev_last_tracked_frame is not None:
+            lab_stack = np.insert(lab_stack, 0, ROI_last_tracked_frame, axis=0)
+        tracked_stack = tracking.correspondence_stack(lab_stack).astype(np.uint16)
+        if prev_last_tracked_frame is not None:
+            tracked_stack = tracked_stack[1:]
+    else:
+        tracked_stack = lab_stack
+
+    # for simplicity, pad image back to original shape before saving
+    # TODO: save only ROI and ROI borders, to save disk space
+    if ROI_coords is not None:
+        tracked_stack = np.pad(tracked_stack, ((0, 0),
+                                               (y_start, r - y_end),
+                                               (x_start, c - x_end)),
+                                               mode='constant')
+        frames = np.pad(frames, ((0, 0), (y_start, r - y_end),
+                                         (x_start, c - x_end)),
+                                               mode='constant')
+
+    #save Segmentation results
+    if save_segm:
+        print('')
+        print('Saving...')
         np.save(data.segm_npy_path, tracked_stack)
         if concat_splits:
             last_tracked_frame_path = os.path.join(
@@ -532,70 +586,22 @@ if save_segm:
                 f'{split_num}_last_tracked_frame.npy'
             )
             np.save(last_tracked_frame_path, tracked_stack[-1])
-    else:
-        for path, segm in zip(segm_npy_paths, tracked_stack):
-            np.save(path, segm)
+
+t_end = time()
 
 print('')
 print('************************')
-print('Viewing results...')
+print('Viewing results of the last segmented image...')
+print(f'Viewing: {path}')
 
 # View results
-fig, ax = plt.subplots(1, 2)
+vis = apps.visualize_Unet_results(tracked_stack, frames, do_tracking, t_end-t0)
 
-def update_plots(idx):
-    for a in ax:
-        a.clear()
-    lab = tracked_stack[idx]
-    img = frames[idx]
-    rp = regionprops(lab)
-    IDs = [obj.label for obj in rp]
-    contours = find_contours(lab, IDs, group=True)
-    ax[0].imshow(img)
-    ax[1].imshow(lab)
-    text_label_centroid(rp, ax[0], 12, 'semibold', 'center', 'center',
-                        color='r', clear=True)
-    text_label_centroid(rp, ax[1], 12, 'semibold', 'center', 'center',
-                        clear=True)
-    for cont in contours:
-        x = cont[:,1]
-        y = cont[:,0]
-        x = np.append(x, x[0])
-        y = np.append(y, y[0])
-        ax[0].plot(x, y, c='r')
-    for a in ax:
-        a.axis('off')
-    idx_txt._text = f'Current index = {idx}/{len(tracked_stack)-1}'
-    fig.canvas.draw_idle()
+vis.fig.canvas.mpl_connect('key_press_event', vis.key_down)
+vis.fig.canvas.mpl_connect('key_release_event', vis.key_up)
 
-idx = 0
-idx_txt = fig.text(0.5, 0.15, f'Current index = {idx}/{len(tracked_stack)-1}',
-                   color='w', ha='center', fontsize=14)
-update_plots(idx)
-
-if do_tracking:
-    title = 'Segment&Track'
-else:
-    title = 'Segmentation'
-
-fig.suptitle(f'{title} overall execution time = {t_end-t0: .3f} s', y=0.9,
-             size=18)
-
-
-def key_down(event):
-    global idx
-    if event.key == 'right' and idx < len(tracked_stack)-1:
-        idx += 1
-        update_plots(idx)
-    elif event.key == 'left' and idx > 0:
-        idx -= 1
-        update_plots(idx)
-
-
-fig.canvas.mpl_connect('key_press_event', key_down)
-
-#win_size()
 plt.show()
 
 print('')
+print('Application closed')
 print('************************')

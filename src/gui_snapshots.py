@@ -33,11 +33,11 @@ from scipy.ndimage.morphology import binary_fill_holes, distance_transform_edt
 from tifffile import TiffFile
 from MyWidgets import Slider, Button, MyRadioButtons, TextBox
 from myutils import download_model
+import load
 from lib import (auto_select_slice, separate_overlapping,
                        text_label_centroid, tk_breakpoint, manual_emerg_bud,
                        CellInt_slideshow, twobuttonsmessagebox,
-                       single_entry_messagebox, beyond_listdir_pos,
-                       select_exp_folder, expand_labels, tk_breakpoint,
+                       single_entry_messagebox, expand_labels, tk_breakpoint,
                        folder_dialog, dark_mode, win_size, imshow_tk,
                        my_paint_app)
 
@@ -1498,12 +1498,12 @@ bW = 0.1  # buttons width
 
 # Folder dialog
 selected_path = folder_dialog(title = "Select folder containing valid experiments")
-beyond_listdir_pos = beyond_listdir_pos(selected_path)
-select_widget = select_exp_folder()
-TIFFs_path = select_widget.run_widget(beyond_listdir_pos.all_exp_info,
+beyond_listdir = load.beyond_listdir_pos(selected_path)
+select_widget = load.select_exp_folder()
+TIFFs_path = select_widget.run_widget(beyond_listdir.all_exp_info,
                          title='Select experiment to segment',
                          label_txt='Select experiment to segment',
-                         full_paths=beyond_listdir_pos.TIFFs_path,
+                         full_paths=beyond_listdir.TIFFs_path,
                          showinexplorer_button=True)
 
 """Load data"""
