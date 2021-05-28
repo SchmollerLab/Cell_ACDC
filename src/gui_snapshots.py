@@ -3214,5 +3214,5 @@ try:
     win_size(swap_screen=False)
 except:
     pass
-app.fig.canvas.set_window_title(f'Cell segmentation GUI - {win_title}')
+app.fig.canvas.manager.set_window_title(f'Cell segmentation GUI - {win_title}')
 plt.show()

@@ -28,10 +28,10 @@ unet_path = f'{script_dirname}/YeaZ-unet/unet/'
 #looks into all of these folders when importing modules.
 #sys.path.append(unet_path)
 # Beno edit: this should be "src"
-from YeaZ.unet import neural_network as nn
-from YeaZ.unet import segment
-from YeaZ.unet import tracking
-download_model('YeaZ')
+# from YeaZ.unet import neural_network as nn
+# from YeaZ.unet import segment
+# from YeaZ.unet import tracking
+# download_model('YeaZ')
 
 import prompts, load
 
@@ -172,7 +172,7 @@ if not selected_path:
 
 selector = load.select_exp_folder()
 
-(main_paths, prompts_pos_to_analyse, run_num,
+(main_paths, prompts_pos_to_analyse, run_num, tot,
 is_pos_path, is_TIFFs_path) = load.get_main_paths(selected_path, 'v1')
 
 ch_name_selector = prompts.select_channel_name()
@@ -211,14 +211,12 @@ for exp_idx, main_path in enumerate(main_paths):
         print('##################################################')
         print('')
         print(f'Analysing experiment: {os.path.dirname(main_path)}')
-        pos_foldernames = [f for f in natsorted(os.listdir(main_path))
+        folders_main_path = [f for f in natsorted(os.listdir(main_path))
                                if os.path.isdir(f'{main_path}/{f}')
                                and f.find('Position_')!=-1]
 
         paths = []
-        NONsegm_pos_foldernames = pos_foldernames.copy()
-        segm_pos_foldernames = []
-        for i, d in enumerate(pos_foldernames):
+        for i, d in enumerate(folders_main_path):
             images_path = f'{main_path}/{d}/Images'
             filenames = os.listdir(images_path)
             if ch_name_selector.is_first_call:
@@ -241,9 +239,6 @@ for exp_idx, main_path in enumerate(main_paths):
                 elif f.find(f'{user_ch_name}.tif') != -1:
                     tif_i = j
                     tif_found = True
-                elif f.find('_segm.npy') != -1:
-                    NONsegm_pos_foldernames.remove(d)
-                    segm_pos_foldernames.append(d)
             if img_ch_aligned_found:
                 img_ch_path = os.path.join(images_path, filenames[aligned_i])
             elif tif_found:
@@ -253,15 +248,11 @@ for exp_idx, main_path in enumerate(main_paths):
                 f'The script could not find a file ending with "{user_ch_name}.tif"')
             paths.append(img_ch_path)
 
+        ps, pe = 0, len(paths)
         if exp_idx == 0:
             if prompts_pos_to_analyse:
-                pos_selector = prompts.select_pos_to_segm()
-                pos_selector.prompt(NONsegm_pos_foldernames,
-                                    segm_pos_foldernames,
-                                    toplevel=True)
-                pos_to_segm = pos_selector.pos_to_segm
-                paths = [paths[pos_foldernames.index(pos)]
-                         for pos in pos_to_segm]
+                ps, pe = prompts.num_pos_toSegm_tk(len(paths),
+                                                    toplevel=True).frange
 
     elif is_pos_path:
         TIFFs_path = os.path.dirname(main_path)
@@ -276,7 +267,7 @@ for exp_idx, main_path in enumerate(main_paths):
                     title='Channel name not found',
                     entry_label=ch_name_not_found_msg,
                     input_txt='phase_contrast'
-                )
+                ).entry_txt
             else:
                 user_ch_name = ch_name_selector.channel_name
         img_ch_aligned_found = False
@@ -296,12 +287,14 @@ for exp_idx, main_path in enumerate(main_paths):
             raise FileNotFoundError('File not found. '
             f'The script could not find a file ending with "{user_ch_name}.tif"')
         paths = [img_ch_path]
+        ps, pe = 0, len(paths)
     else:
         raise FileNotFoundError(f'The path {main_path} is not a valid path!')
 
     """Iterate Position folders"""
-    num_pos_total = len(paths)
-    for pos_idx, path in enumerate(paths):
+    print(paths)
+    num_pos_total = len(paths[ps:pe])
+    for pos_idx, path in enumerate(paths[ps:pe]):
 
         print('-------------------------')
         print('')
@@ -310,8 +303,8 @@ for exp_idx, main_path in enumerate(main_paths):
         data = load_data(path, user_ch_name)
         data.build_paths(data.filename, data.parent_path, user_ch_name)
 
-        parent_path = data.parent_path
         basename = data.basename
+        parent_path = data.parent_path
 
         print(f'Image file {path} loaded.')
         print('')
@@ -369,9 +362,9 @@ for exp_idx, main_path in enumerate(main_paths):
                                                         register=False,
                                                         user_shifts=shifts)
 
+        align = not img_ch_aligned_found
 
         """Align frames if needed"""
-        align = not img_ch_aligned_found
         if num_frames > 1 and data.ext == '.tif' and do_tracking:
             if align:
                 frames = data.img_data
@@ -482,26 +475,25 @@ for exp_idx, main_path in enumerate(main_paths):
         all_paths.append(path)
         all_slices.append(slices)
 
-        print('Parameters successfully initilised!')
-
 root.destroy()
+
+print(all_ROIs)
+print(all_franges)
+print(all_paths)
+print(all_slices)
+
+exit()
 
 t0 = time()
 
 inputs = zip(all_paths, all_franges, all_ROIs, all_slices)
-tot_img = len(all_paths)
-for img_idx, (path, frange, ROI_coords, slices) in enumerate(inputs):
-
-    print('==============================')
-    print('')
-    print(f'Segmenting image number {img_idx+1}/{tot_img}')
-    print(f'Image file: {path}')
+for path, frange, ROI_coords, slices in inputs:
 
     data = load_data(path, user_ch_name)
     data.build_paths(data.filename, data.parent_path, user_ch_name)
 
-    parent_path = data.parent_path
     basename = data.basename
+    parent_path = data.parent_path
 
     num_slices = data.SizeZ if data.SizeZ in list(data.img_data.shape) else 1
     if num_slices > 1:
@@ -579,29 +571,98 @@ for img_idx, (path, frange, ROI_coords, slices) in enumerate(inputs):
     if save_segm:
         print('')
         print('Saving...')
-        np.save(data.segm_npy_path, tracked_stack)
-        if concat_splits:
-            last_tracked_frame_path = os.path.join(
-                data.parent_path,
-                f'{split_num}_last_tracked_frame.npy'
-            )
-            np.save(last_tracked_frame_path, tracked_stack[-1])
+        if single_file:
+            np.save(data.segm_npy_path, tracked_stack)
+            if concat_splits:
+                last_tracked_frame_path = os.path.join(
+                    data.parent_path,
+                    f'{split_num}_last_tracked_frame.npy'
+                )
+                np.save(last_tracked_frame_path, tracked_stack[-1])
+        else:
+            for path, segm in zip(segm_npy_paths, tracked_stack):
+                np.save(path, segm)
 
 t_end = time()
 
 print('')
 print('************************')
-print('Viewing results of the last segmented image...')
-print(f'Viewing: {path}')
+print('Viewing results...')
 
 # View results
-vis = apps.visualize_Unet_results(tracked_stack, frames, do_tracking, t_end-t0)
+fig, ax = plt.subplots(1, 2)
 
-vis.fig.canvas.mpl_connect('key_press_event', vis.key_down)
-vis.fig.canvas.mpl_connect('key_release_event', vis.key_up)
+def update_plots(idx):
+    t0 = time()
+    for a in ax:
+        a.clear()
+    t1 = time()
+    # print(f'Clear axis execution time = {t1-t0:.4f}')
+    t0 = time()
+    lab = tracked_stack[idx]
+    img = frames[idx]
+    rp = regionprops(lab)
+    IDs = [obj.label for obj in rp]
+    contours, hierarchy = cv2.findContours((lab>0).astype(np.uint8),
+                                           cv2.RETR_EXTERNAL,
+                                           cv2.CHAIN_APPROX_SIMPLE)
+    t1 = time()
+    # print(f'Regionprops and find contours = {t1-t0:.4f}')
+    t0 = time()
+    ax[0].imshow(img)
+    ax[1].imshow(lab)
+    text_label_centroid(rp, ax[0], 12, 'semibold', 'center', 'center',
+                        color='r', clear=True)
+    text_label_centroid(rp, ax[1], 12, 'semibold', 'center', 'center',
+                        clear=True)
+    t1 = time()
+    # print(f'Imshow and text centroid = {t1-t0:.4f}')
+    t0 = time()
+    for cont in contours:
+        cont = np.vstack((cont, cont[0]))
+        ax.plot(cont[:,0], cont[:,1], c='r')
+    t1 = time()
+    # print(f'Plotting contours = {t1-t0:.4f}')
+    for a in ax:
+        a.axis('off')
+    idx_txt._text = f'Current index = {idx}/{len(tracked_stack)-1}'
+    fig.canvas.draw_idle()
 
+idx = 0
+idx_txt = fig.text(0.5, 0.15, f'Current index = {idx}/{len(tracked_stack)-1}',
+                   color='w', ha='center', fontsize=14)
+update_plots(idx)
+
+if do_tracking:
+    title = 'Segment&Track'
+else:
+    title = 'Segmentation'
+
+fig.suptitle(f'{title} overall execution time = {t_end-t0: .3f} s', y=0.9,
+             size=18)
+
+
+def key_down(event):
+    global idx
+    if event.key == 'right' and idx < len(tracked_stack)-1:
+        idx += 1
+        idx_txt._text = f'Current index = {idx}/{len(tracked_stack)-1}'
+        fig.canvas.draw_idle()
+    elif event.key == 'left' and idx > 0:
+        idx -= 1
+        idx_txt._text = f'Current index = {idx}/{len(tracked_stack)-1}'
+        fig.canvas.draw_idle()
+
+def key_down(event):
+    if event.key == 'right' and idx < len(tracked_stack)-1:
+        update_plots(idx)
+    elif event.key == 'left' and idx > 0:
+        update_plots(idx)
+
+fig.canvas.mpl_connect('key_press_event', key_down)
+
+#win_size()
 plt.show()
 
 print('')
-print('Application closed')
 print('************************')

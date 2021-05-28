@@ -26,13 +26,14 @@ from skimage.draw import circle, line
 import scipy.ndimage as nd
 from tkinter import Tk, messagebox, simpledialog, Toplevel
 from MyWidgets import Slider, Button, RadioButtons, TextBox
+import prompts, load
 from lib import (separate_overlapping,
         apply_hyst_local_threshold, align_frames_3D, del_min_area_obj,
         load_shifts, cells_tracking, fig_text, sep_overlap_manual_seeds,
         merge_objs, delete_objs, select_slice_toAlign, cc_stage_df_frame0,
         find_contours, twobuttonsmessagebox, single_entry_messagebox,
         twobuttonsmessagebox, CellInt_slideshow, CellInt_slideshow_2D,
-        ShowWindow_from_title, select_exp_folder, align_frames_2D, folder_dialog,
+        ShowWindow_from_title, align_frames_2D, folder_dialog,
         file_dialog, tk_breakpoint, imshow_tk)
 
 class app_MyGlobals:
@@ -581,7 +582,7 @@ if os.path.basename(exp_path) == 'Images':
 elif os.path.basename(exp_path).find('Position_') != -1:
     images_path = f'{exp_path}/Images'
 else:
-    select_folder = select_exp_folder()
+    select_folder = load.select_exp_folder()
     values = select_folder.get_values_cca(exp_path)
     pos_foldername = select_folder.run_widget(values)
     images_path = f'{exp_path}/{pos_foldername}/Images'
@@ -601,18 +602,50 @@ for filename in os.listdir(images_path):
 if not segm_npy_found:
     raise FileNotFoundError('Phase contrast aligned image file not found!')
 
+# Prompt for channel name
+ch_name_not_found_msg = (
+    'The script could not identify the channel name.\n\n'
+    'The file to be segmented MUST have a name like\n'
+    '"<basename>_<channel_name>.tif" e.g. "196_s16_phase_contrast.tif"\n'
+    'where "196_s16" is the basename and "phase_contrast"'
+    'is the channel name\n\n'
+    'Please write here the channel name to be used for automatic loading'
+)
+
+ch_name_selector = prompts.select_channel_name()
+filenames = os.listdir(images_path)
+if ch_name_selector.is_first_call:
+    ch_names, warn = ch_name_selector.get_available_channels(filenames)
+    ch_name_selector.prompt(ch_names)
+    if warn:
+        user_ch_name = prompts.single_entry_messagebox(
+            title='Channel name not found',
+            entry_label=ch_name_not_found_msg,
+            input_txt='phase_contrast',
+            toplevel=False
+        ).entry_txt
+    else:
+        user_ch_name = ch_name_selector.channel_name
+
 #Load files
 parent_path = os.path.dirname(fd_segm_npy)
 segm_npy_filename = os.path.basename(fd_segm_npy)
 segm_npy_filename_noEXT, segm_npy_filename_extension = os.path.splitext(fd_segm_npy)
 listdir_parent = os.listdir(parent_path)
-phc_found = False
+img_aligned_found = False
 cca_found = False
 last_analyzed_frame_i = None
 for i, filename in enumerate(listdir_parent):
-    if filename.find('phc_aligned.npy')>0:
-        phc_found = True
-        phc_i = i
+    if filename.find(f'_phc_aligned.npy') != -1:
+        img_path = f'{images_path}/{filename}'
+        new_filename = filename.replace('_phc_aligned.npy',
+                                        f'_{user_ch_name}_aligned.npy')
+        dst = f'{images_path}/{new_filename}'
+        os.rename(img_path, dst)
+        filename = new_filename
+    if filename.find(f'_{user_ch_name}_aligned.npy') != -1:
+        img_aligned_found = True
+        img_aligned_i = i
     elif filename.find('cc_stage.csv') != -1:
         cca_found = True
         cca_path = f'{parent_path}/{filename}'
@@ -624,17 +657,19 @@ for i, filename in enumerate(listdir_parent):
         grouped = cca_df_csv.groupby('frame_i')
         cca_df_li = [df.loc[frame_i] for frame_i, df in grouped]
         last_analyzed_frame_i = len(cca_df_li)-1
-if not phc_found:
-    raise FileNotFoundError('Aligned phase contrast (.._phc_aligned.npy) file not found')
-phc_aligned_npy_path = parent_path + '/' + listdir_parent[phc_i]
+if not img_aligned_found:
+    raise FileNotFoundError('Aligned phase contrast '
+                   f'(.._{user_ch_name}_aligned.npy) file not found')
+
+img_aligned_path = os.path.join(parent_path, listdir_parent[img_aligned_i])
 
 # load image(s) into a 3D array (voxels) where pages are the single Z-stacks.
 segm_npy = np.load(fd_segm_npy)
-phc_aligned_npy = np.load(phc_aligned_npy_path)
+img_aligned = np.load(img_aligned_path)
 
 if last_tracked_i_found:
     segm_npy = segm_npy[:last_tracked_i+1]
-    phc_aligned_npy = phc_aligned_npy[:last_tracked_i+1]
+    img_aligned = img_aligned[:last_tracked_i+1]
 
 vmin = 0
 vmax = segm_npy.max()
@@ -662,11 +697,11 @@ if last_analyzed_frame_i is not None:
     already_analysed = cca_df_li[frame_i] is not None
 
 #Convert to grayscale if needed and initialize variables
-if len(phc_aligned_npy.shape) == expected_shape:
-    V = phc_aligned_npy[frame_i]
+if len(img_aligned.shape) == expected_shape:
+    V = img_aligned[frame_i]
     lab = segm_npy[frame_i]
 else:
-    V = phc_aligned_npy
+    V = img_aligned
     lab = segm_npy[0]
 try:
     V = cv2.cvtColor(V, cv2.COLOR_BGR2GRAY) #try to convert to grayscale if originally RGB (it would give an error if you try to convert a grayscale to grayscale :D)
@@ -858,11 +893,11 @@ def next_frame(event):
                 cca_df = cca_df_li[frame_i].copy()
                 already_analysed = True
             if V3D:
-                img = phc_aligned_npy[frame_i, slices[frame_i]]
+                img = img_aligned[frame_i, slices[frame_i]]
                 if do_overlay:
                     ol_img = ol_frames[frame_i, slices[frame_i]]
             else:
-                img = phc_aligned_npy[frame_i]
+                img = img_aligned[frame_i]
                 if do_overlay:
                     ol_img = ol_frames[frame_i]
             lab = segm_npy[frame_i]
@@ -964,11 +999,11 @@ def prev_frame(event):
         frame_i -= 1
         cca_df = cca_df_li[frame_i].copy()
         if V3D:
-            img = phc_aligned_npy[frame_i, slices[frame_i]]
+            img = img_aligned[frame_i, slices[frame_i]]
             if do_overlay:
                 ol_img = ol_frames[frame_i, slices[frame_i]]
         else:
-            img = phc_aligned_npy[frame_i]
+            img = img_aligned[frame_i]
             if do_overlay:
                 ol_img = ol_frames[frame_i]
         lab = segm_npy[frame_i]
@@ -1030,12 +1065,12 @@ def slideshow_cb(event):
     try:
         if not ShowWindow_from_title('Cell intensity image slideshow').window_found:
             if V3D:
-                cells_slideshow = CellInt_slideshow(phc_aligned_npy,
+                cells_slideshow = CellInt_slideshow(img_aligned,
                                                     init_slice, num_frames+1,
                                                     frame_i, cca_df_li, rps, False)
                 cells_slideshow.run()
             else:
-                cells_slideshow = CellInt_slideshow_2D(phc_aligned_npy,
+                cells_slideshow = CellInt_slideshow_2D(img_aligned,
                                                        num_frames+1, frame_i,
                                                        cca_df_li, rps, False,
                                                        app.ax_limits)
@@ -1469,5 +1504,5 @@ else:
                                  #with string "widthxheight+x+y"
 
 pos_foldername = os.path.basename(os.path.dirname(parent_path))
-fig.canvas.set_window_title('Cell cycle analysis - {}'.format(pos_foldername))
+fig.canvas.manager.set_window_title('Cell cycle analysis - {}'.format(pos_foldername))
 plt.show()

@@ -3248,6 +3248,6 @@ app.set_orig_lims()
 app.store_state(ia)
 
 # win_size(swap_screen=False)
-app.fig.canvas.set_window_title('Cell segmentation GUI - '
+app.fig.canvas.manager.set_window_title('Cell segmentation GUI - '
                                 f'{app.exp_name}\\{app.pos_foldername}')
 plt.show()
