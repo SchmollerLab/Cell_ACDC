@@ -1,5 +1,5 @@
 # Custom ignores
-prep_data_for_deepcell.ipynb
+testing.ipynb
 .idea/
 data/*
 tests/*

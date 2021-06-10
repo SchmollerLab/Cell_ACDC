@@ -674,14 +674,13 @@ def align_frames_2D(data, slices=None, register=True, user_shifts=None):
 # Load shifts from Position_n_folder
 def load_shifts(parent_path, basename=None):
     shifts_found = False
+    shifts = None
     if basename is None:
         for filename in os.listdir(parent_path):
             if filename.find('align_shift.npy')>0:
                 shifts_found = True
-                shifts_path = parent_path + '/' + filename
+                shifts_path = os.path.join(parent_path, filename)
                 shifts = np.load(shifts_path)
-            else:
-                shifts = None
     else:
         align_shift_fn = f'{basename}_align_shift.npy'
         if align_shift_fn in os.listdir(parent_path):

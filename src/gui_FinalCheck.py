@@ -25,6 +25,9 @@ from lib import (separate_overlapping, text_label_centroid,
         load_shifts, cells_tracking, fig_text, sep_overlap_manual_seeds,
         merge_objs, delete_objs, select_slice_toAlign, z_proj_max,
         twobuttonsmessagebox, select_exp_folder, folder_dialog, file_dialog)
+        
+import matplotlib
+matplotlib.use('TkAgg')
 
 def line_mother_bud(cca_df, frame_i, rp, ax):
     IDs = [obj.label for obj in rp]

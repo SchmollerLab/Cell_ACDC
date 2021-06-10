@@ -1,5 +1,5 @@
 //Channels names//Channels names
-channels = newArray("phase_contr", "mCitrine", "mNeptune");
+channels = newArray("phase_contr", "mCitrine");
 
 //File dialog and open
 id = File.openDialog("Select a czi file");
@@ -25,7 +25,8 @@ File.makeDirectory(MIA);
 
 //open each series by splitting channels and saving them separately into .tif files
 S = 1; //start from S series (from 1)
-End = seriesCount; //S for 1 for loop iteration, seriesCount for all series
+//End = seriesCount; //S for 1 for loop iteration, seriesCount for all series (manually inserted max pos here)
+End = 8
 print("Number of positions: "+seriesCount);
 for (s=S-1; s<End; s++) { //for loop for iterating through the series
 	seriesNum = s+1;
