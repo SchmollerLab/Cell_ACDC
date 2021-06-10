@@ -31,12 +31,13 @@ from scipy.ndimage.morphology import binary_fill_holes, distance_transform_edt
 from tifffile import TiffFile
 from MyWidgets import (Slider, Button, RadioButtons, TextBox,
                        MyRadioButtons)
+import load, prompts
 from lib import (auto_select_slice, manual_emerg_bud,
-                 separate_overlapping, text_label_centroid, tk_breakpoint,
+                 separate_overlapping, text_label_centroid,
                  CellInt_slideshow, num_frames_toSegm_tk, newID_app,
                  CellInt_slideshow_2D, ShowWindow_from_title,
-                 select_exp_folder, align_frames_3D, align_frames_2D,
-                 load_shifts, tk_breakpoint, folder_dialog, file_dialog,
+                 align_frames_3D, align_frames_2D, load_shifts,
+                 tk_breakpoint, folder_dialog, file_dialog,
                  win_size, imshow_tk)
 
 # Import YeaZ module
@@ -89,36 +90,36 @@ GUI Mouse Events: - Auto contour with RIGHT-click on edge img: click on the
 """
 
 class load_data:
-    def __init__(self, path):
+    def __init__(self, path, user_ch_name):
         self.path = path
         self.parent_path = os.path.dirname(path)
         self.filename, self.ext = os.path.splitext(os.path.basename(path))
         if self.ext == '.tif' or self.ext == '.tiff':
-            tif_path, phc_tif_found = self.substring_path(path,
-                                                         'phase_contr.tif',
+            tif_path, img_tif_found = self.substring_path(path,
+                                                         f'{user_ch_name}.tif',
                                                           self.parent_path)
-            if phc_tif_found:
+            if img_tif_found:
                 self.tif_path = tif_path
                 img_data = io.imread(path)
             else:
-                tk.messagebox.showerror('Phase contrast file not found!',
-                'Phase contrast .tif file not found in the selected path\n'
+                tk.messagebox.showerror(
+                f'Selected {user_ch_name} file not found!',
+                f'{user_ch_name} .tif file not found in the selected path\n'
                 f'{self.parent_path}!\n Make sure that the folder contains '
-                'a file that ends with either \"phase_contr.tif\" or '
-                '\"phase_contrast.tif\"')
+                f'a file that ends with either "{user_ch_name}"')
                 raise FileNotFoundError
         elif self.ext == '.npy':
-            if path.find('_phc_aligned.npy') == -1:
+            if path.find(f'_{user_ch_name}_aligned.npy') == -1:
                 filename = os.path.basename(path)
                 tk.messagebox.showerror('Wrong file selected!',
                 f'You selected a file called {filename} which is not a valid '
                 'phase contrast image file. Select the file that ends with '
-                '\"phc_aligned.npy\" or the .tif phase contrast file')
+                f'"{user_ch_name}_aligned.npy" or the .tif phase contrast file')
                 raise FileNotFoundError
-            tif_path, phc_tif_found = self.substring_path(path,
+            tif_path, img_tif_found = self.substring_path(path,
                                                          'phase_contr.tif',
                                                           self.parent_path)
-            if phc_tif_found:
+            if img_tif_found:
                 self.tif_path = tif_path
                 img_data = np.load(path)
             else:
@@ -177,9 +178,9 @@ class load_data:
                 self.SizeT = data_T
                 root.quit()
                 root.destroy()
-        self.build_paths(self.filename, self.parent_path)
+        self.build_paths(self.filename, self.parent_path, user_ch_name)
 
-    def build_paths(self, filename, parent_path):
+    def build_paths(self, filename, parent_path, user_ch_name):
         match = re.search('s(\d+)_', filename)
         if match is not None:
             basename = filename[:match.span()[1]-1]
@@ -191,7 +192,8 @@ class load_data:
         base_path = f'{parent_path}/{basename}'
         self.slice_used_align_path = f'{base_path}_slice_used_alignment.csv'
         self.slice_used_segm_path = f'{base_path}_slice_segm.csv'
-        self.align_npy_path = f'{base_path}_phc_aligned.npy'
+        self.align_npy_path = f'{base_path}_{user_ch_name}_aligned.npy'
+        self.align_old_path = f'{base_path}_phc_aligned.npy'
         self.align_shifts_path = f'{base_path}_align_shift.npy'
         self.segm_npy_path = f'{base_path}_segm.npy'
         self.last_tracked_i_path = f'{base_path}_last_tracked_i.txt'
@@ -275,8 +277,8 @@ class load_data:
 
 """Classes"""
 class app_GUI:
-    def __init__(self, img_path):
-        data = load_data(img_path)
+    def __init__(self, img_path, user_ch_name):
+        data = load_data(img_path, user_ch_name)
         self.segm_npy_done = [None]*data.SizeT
         self.orig_segm_npy = [None]*data.SizeT
         self.cc_stages = [None]*data.SizeT
@@ -602,7 +604,9 @@ class app_GUI:
             self.fig.canvas.draw_idle()
 
     def get_labels_overlay(self, labRGB, img, bg_label=0):
-        img_rgb = skimage.color.gray2rgb(skimage.img_as_float(img))
+        img_rgb = skimage.color.gray2rgb(
+                        skimage.img_as_float(equalize_adapthist(img))
+        )
         overlay = (img_rgb*(1.0 - 0.3) + labRGB*0.3)*1
         overlay = np.clip(overlay, 0, 1)
         # overlay = skimage.color.label2rgb(lab, image=img, bg_label=bg_label)
@@ -691,6 +695,7 @@ class app_GUI:
         rr, cc = skimage.draw.disk((y_mot, x_mot), radius=self.brush_size,
                                    shape=ia.lab.shape)
         self.brush_mask[rr, cc] = True
+        self.brush_mask[ia.lab==0] = False
         erased_IDs = np.unique(ia.lab[self.brush_mask])
         erased_IDs = [ID for ID in erased_IDs if ID!=0]
         # Check that we don't erase non selected IDs
@@ -759,6 +764,7 @@ class app_GUI:
             if segm_npy.dtype != object:
                 ia.segm_metadata_df.to_csv(segm_metadata_csv_path)
                 np.save(segm_npy_path, segm_npy, allow_pickle=False)
+                import pdb; pdb.set_trace()
                 with open(app.data.last_tracked_i_path, 'w+') as txt:
                     txt.write(str(app.last_segm_i))
             else:
@@ -1255,6 +1261,9 @@ class img_analysis:
             curr_IDs = [obj.label for obj in self.rp]
             warn_txt = self.check_prev_IDs_lost_new(prev_IDs, curr_IDs)
             return self.lab, warn_txt
+        sys.stdout.write("\x1b[1A\x1b[2K")
+        sys.stdout.write("\x1b[1A\x1b[2K")
+        sys.stdout.write("\x1b[1A\x1b[2K")
         print(f'Tracking frame {app.frame_i}...')
         IDs_prev = [obj.label for obj in prev_ia.rp]
         IDs_prev.sort()
@@ -1412,26 +1421,61 @@ bW = 0.1  # buttons width
 
 # Folder dialog
 exp_path = folder_dialog(
-                 title='Select experiment folder containing Position_n folders')
+                title='Select experiment folder containing Position_n folders')
 
+# ADD POSSIBILITY TO LOAD POSITION FOLDER DIRECTLY
 
-select_folder = select_exp_folder()
+ch_name_selector = prompts.select_channel_name()
+
+select_folder = load.select_exp_folder()
 values = select_folder.get_values_segmGUI(exp_path)
 pos_foldername = select_folder.run_widget(values)
 images_path = f'{exp_path}/{pos_foldername}/Images'
-phc_aligned_found = False
+
+ch_name_not_found_msg = (
+    'The script could not identify the channel name.\n\n'
+    'The file to be segmented MUST have a name like\n'
+    '"<basename>_<channel_name>.tif" e.g. "196_s16_phase_contrast.tif"\n'
+    'where "196_s16" is the basename and "phase_contrast"'
+    'is the channel name\n\n'
+    'Please write here the channel name to be used for automatic loading'
+)
+
+filenames = os.listdir(images_path)
+if ch_name_selector.is_first_call:
+    ch_names, warn = ch_name_selector.get_available_channels(filenames)
+    ch_name_selector.prompt(ch_names)
+    if warn:
+        user_ch_name = prompts.single_entry_messagebox(
+            title='Channel name not found',
+            entry_label=ch_name_not_found_msg,
+            input_txt='phase_contrast',
+            toplevel=False
+        ).entry_txt
+    else:
+        user_ch_name = ch_name_selector.channel_name
+
+img_aligned_found = False
 for filename in os.listdir(images_path):
-    if filename.find('_phc_aligned.npy') != -1:
+    if filename.find(f'_phc_aligned.npy') != -1:
         img_path = f'{images_path}/{filename}'
-        phc_aligned_found = True
-if not phc_aligned_found:
-    raise FileNotFoundError('Phase contrast aligned image file not found!')
+        new_filename = filename.replace('_phc_aligned.npy',
+                                        f'_{user_ch_name}_aligned.npy')
+        dst = f'{images_path}/{new_filename}'
+        os.rename(img_path, dst)
+        filename = new_filename
+    if filename.find(f'_{user_ch_name}_aligned.npy') != -1:
+        img_path = f'{images_path}/{filename}'
+        img_aligned_found = True
+if not img_aligned_found:
+    raise FileNotFoundError('Aligned frames file not found. '
+     'You need to run the segmentation script first.')
 
 print(f'Loading {img_path}...')
 # img_path = file_dialog(title = "Select phase contrast or bright-field image file")
 
 """Load data"""
-app = app_GUI(img_path)
+app = app_GUI(img_path, user_ch_name)
 frames = app.data.img_data
 num_frames = app.data.SizeT
 num_slices = app.num_slices
@@ -1824,6 +1868,7 @@ def next_f(event):
         app.prev_states = []
         app.store_state(ia)
         t1 = time()
+        print(app.last_tracked_i)
         # print(f'Execution time = {t1-t0:.3f} s')
         app.append_benchmarking_data(t0, t1, 'Next', ia)
 
@@ -2474,14 +2519,22 @@ def key_down(event):
         elif app.key_mode == 'view_slice' and app.num_slices>1:
             view_slices_sl.set_val(view_slices_sl.val+1)
         else:
-            next_f(None)
+            if app.frame_i+1 < num_frames:
+                app.frame_i += 1
+                app.frame_txt._text = (
+                          f'Current frame = {app.frame_i}/{num_frames-1}')
+                app.fig.canvas.draw_idle()
     elif key == 'left':
         if app.key_mode == 'Z-slice' and app.num_slices>1:
             s_slice.set_val(s_slice.val-1)
         elif app.key_mode == 'view_slice' and app.num_slices>1:
             view_slices_sl.set_val(view_slices_sl.val-1)
         else:
-            prev_f(None)
+            if app.frame_i > 0:
+                app.frame_i -= 1
+                app.frame_txt._text = (
+                          f'Current frame = {app.frame_i}/{num_frames-1}')
+                app.fig.canvas.draw_idle()
     elif key == 'ctrl+p':
         print('Segmentation metadata:')
         if app.frame_i in ia.segm_metadata_df.index.get_level_values(0):
@@ -2543,7 +2596,13 @@ def key_down(event):
 
 def key_up(event):
     key = event.key
-    if key == 'b':
+    if key == 'right' and app.key_mode == '':
+        app.frame_i -= 1
+        next_f(None)
+    elif key == 'left' and app.key_mode == '':
+        app.frame_i += 1
+        prev_f(None)
+    elif key == 'b':
         ia.sep_bud = False
     elif key == 'm':
         ia.set_moth = False
@@ -3211,6 +3270,8 @@ app.set_orig_lims()
 app.store_state(ia)
 
 # win_size(swap_screen=False)
-app.fig.canvas.set_window_title('Cell segmentation GUI - '
+app.fig.canvas.manager.set_window_title('Cell segmentation GUI - '
                                 f'{app.exp_name}\\{app.pos_foldername}')
+
+print('\n\n')
 plt.show()

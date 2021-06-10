@@ -33,11 +33,11 @@ from scipy.ndimage.morphology import binary_fill_holes, distance_transform_edt
 from tifffile import TiffFile
 from MyWidgets import Slider, Button, MyRadioButtons, TextBox
 from myutils import download_model
+import load, prompts
 from lib import (auto_select_slice, separate_overlapping,
                        text_label_centroid, tk_breakpoint, manual_emerg_bud,
                        CellInt_slideshow, twobuttonsmessagebox,
-                       single_entry_messagebox, beyond_listdir_pos,
-                       select_exp_folder, expand_labels, tk_breakpoint,
+                       single_entry_messagebox, expand_labels, tk_breakpoint,
                        folder_dialog, dark_mode, win_size, imshow_tk,
                        my_paint_app)
 
@@ -141,7 +141,7 @@ GUI Mouse Events: - Apply lower local threshold with RIGHT-click drawing on
 """
 
 class load_data:
-    def __init__(self, path):
+    def __init__(self, path, user_ch_name):
         self.path = path
         self.parent_path = os.path.dirname(path)
         self.filename, self.ext = os.path.splitext(os.path.basename(path))
@@ -149,7 +149,7 @@ class load_data:
             self.tif_path = path
             img_data = io.imread(path)
         elif self.ext == '.npy':
-            tif_path, _ = self.substring_path(path, 'phase_contr.tif',
+            tif_path, _ = self.substring_path(path, f'{user_ch_name}.tif',
                                            self.parent_path)
             self.tif_path = tif_path
             img_data = np.load(path)
@@ -364,6 +364,32 @@ class app_GUI:
         directories = natsorted([p for p in os.listdir(TIFFs_path)
                      if os.path.isdir(os.path.join(TIFFs_path, p))
                      and p.find('Position_') != -1])
+
+        ch_name_not_found_msg = (
+            'The script could not identify the channel name.\n\n'
+            'The file to be segmented MUST have a name like\n'
+            '"<basename>_<channel_name>.tif" e.g. "196_s16_phase_contrast.tif"\n'
+            'where "196_s16" is the basename and "phase_contrast"'
+            'is the channel name\n\n'
+            'Please write here the channel name to be used for automatic loading'
+        )
+        ch_name_selector = prompts.select_channel_name()
+        images_path = os.path.join(TIFFs_path, directories[0], 'Images')
+        filenames = os.listdir(images_path)
+        if ch_name_selector.is_first_call:
+            ch_names, warn = ch_name_selector.get_available_channels(filenames)
+            ch_name_selector.prompt(ch_names)
+            if warn:
+                user_ch_name = prompts.single_entry_messagebox(
+                    title='Channel name not found',
+                    entry_label=ch_name_not_found_msg,
+                    input_txt='phase_contrast',
+                    toplevel=False
+                ).entry_txt
+            else:
+                user_ch_name = ch_name_selector.channel_name
+
+        self.user_ch_name = user_ch_name
         self.pos_foldernames = directories
         TIFFs_parent_path = os.path.dirname(TIFFs_path)
         exp_folder_parent_path = os.path.dirname(TIFFs_parent_path)
@@ -444,6 +470,7 @@ class app_GUI:
         self.init_attr()
 
     def get_allPos_paths(self, directories):
+        user_ch_name = self.user_ch_name
         Phc = []
         pos_paths = []
         basenames = []
@@ -456,7 +483,7 @@ class app_GUI:
                 p_found = False
                 slice_found = False
                 for j, p in enumerate(filenames):
-                    temp_pIDX = p.find('_phase_contr.tif')
+                    temp_pIDX = p.find(f'_{user_ch_name}.tif')
                     if temp_pIDX != -1:
                         p_idx = temp_pIDX
                         k = j
@@ -485,21 +512,21 @@ class app_GUI:
                         self.saved_cc_stages[i] = cc_stage_df.copy()
                 if p_found:
                     Phc_path = '{}/{}'.format(pos_path, filenames[k])
-                    data_pos = load_data(Phc_path)
+                    data_pos = load_data(Phc_path, user_ch_name)
                     Phc.append(data_pos.img_data)
                     base_name = p[0:p_idx]
                     basenames.append(base_name)
                 else:
                     tk.messagebox.showerror('File not found!',
-                        'The script could not find the "..._phase_contr.tif" '
+                        f'The script could not find the "..._{user_ch_name}.tif" '
                         f'file in {d} folder.\n To fix this error you need '
                         'to make sure that every Position_n folder contains '
-                        'a file that ends in "phase_contr.tif".\n'
+                        f'a file that ends in "{user_ch_name}.tif".\n'
                         'To do so you probably have to run the Fiji script again'
                         ' and make sure that the "channels" variable contains '
-                        'the value "phase_contr" along with the other channels.')
-                    raise FileNotFoundError('phase_contr.tif file not found in '
-                                            f'{d} folder')
+                        f'the value "{user_ch_name}" along with the other channels.')
+                    raise FileNotFoundError(f'File not found. '
+                            f'{user_ch_name}.tif file not found in {d} folder')
                     Phc.append(np.zeros((600,600), int))
                 if slice_found:
                     slice_path = '{}/{}'.format(pos_path, filenames[slIDX])
@@ -533,9 +560,12 @@ class app_GUI:
 
     def init_attr(self):
         # Local threshold polygon attributes
-        # self.s = auto_select_slice(self.phc[self.p], init_slice=self.init_s).slice
         if self.slices[self.p] == -1:
-            self.s = auto_select_slice(self.phc[self.p], init_slice=0).slice
+            selector = auto_select_slice(self.phc[self.p], init_slice=0)
+            if selector.is_max_proj:
+                self.s = None
+            else:
+                self.s = selector.slice
         else:
             self.s = self.slices[self.p]
         self.cid2_rc = None  # cid for right click on ax2 (thresh)
@@ -1498,12 +1528,12 @@ bW = 0.1  # buttons width
 
 # Folder dialog
 selected_path = folder_dialog(title = "Select folder containing valid experiments")
-beyond_listdir_pos = beyond_listdir_pos(selected_path)
-select_widget = select_exp_folder()
-TIFFs_path = select_widget.run_widget(beyond_listdir_pos.all_exp_info,
+beyond_listdir = load.beyond_listdir_pos(selected_path)
+select_widget = load.select_exp_folder()
+TIFFs_path = select_widget.run_widget(beyond_listdir.all_exp_info,
                          title='Select experiment to segment',
                          label_txt='Select experiment to segment',
-                         full_paths=beyond_listdir_pos.TIFFs_path,
+                         full_paths=beyond_listdir.TIFFs_path,
                          showinexplorer_button=True)
 
 """Load data"""
@@ -1558,9 +1588,13 @@ def my_zoom(self, *args):
 NavigationToolbar2.zoom = my_zoom
 
 app.init_plots()
-sharp_img = app.preprocess_img_data(phc[app.p, app.s])
-phc[app.p, app.s] = sharp_img
-img = phc[app.p, app.s]
+if app.s is None:
+    sharp_img = app.preprocess_img_data(phc[app.p].max(axis=0))
+    img = app.phc[app.p].max(axis=0)
+else:
+    sharp_img = app.preprocess_img_data(phc[app.p, app.s])
+    phc[app.p, app.s] = sharp_img
+    img = phc[app.p, app.s]
 
 
 """Initialize image analysis class"""
@@ -1594,8 +1628,12 @@ ax_use_cellpose = plt.axes([0.007, 0.151651, 0.49864, 0.05])
 
 
 """Widgets"""
+if app.s is None:
+    init_z = app.num_slices/2
+else:
+    init_z = app.s
 s_slice = Slider(ax_slice, 'Z-slice', 5, app.num_slices,
-                    valinit=app.s,
+                    valinit=init_z,
                     valstep=1,
                     color=slider_color,
                     init_val_line_color=hover_color,
@@ -1668,7 +1706,7 @@ save_b = Button(ax_save, 'Save and close',
                  color=axcolor, hovercolor=hover_color,
                  presscolor=presscolor)
 view_slices_sl = Slider(ax_view_slices, 'View slice', 0, phc.shape[1],
-                    valinit=app.s,
+                    valinit=init_z,
                     valstep=1,
                     orientation='horizontal',
                     color=slider_color,
@@ -2176,10 +2214,17 @@ def view_slice(event):
     app.fig.canvas.draw_idle()
 
 def repeat_segmentation_cb(event):
-    app.s = auto_select_slice(app.phc[app.p], init_slice=0).slice
-    view_slices_sl.val = float(app.s)
-    s_slice.val = float(app.s)
-    img = app.phc[app.p, app.s]
+    selector = auto_select_slice(app.phc[app.p], init_slice=0)
+    if selector.is_max_proj:
+        app.s = None
+    else:
+        app.s = selector.slice
+    if app.s is None:
+        img = app.phc[app.p].max(axis=0)
+    else:
+        view_slices_sl.val = float(app.s)
+        s_slice.val = float(app.s)
+        img = app.phc[app.p, app.s]
     ia.init_attr(img)
     analyse_img(img)
     ia.modified = True
@@ -2804,7 +2849,10 @@ def mouse_down(event):
         y0 = y0 if y0>0 else 0
         x1 = x1 if x1<img_w else img_w-1
         y1 = y1 if y1<img_h else img_h-1
-        img = phc[app.p, int(view_slices_sl.val)]
+        if app.s is None:
+            img = phc[app.p].max(axis=0)
+        else:
+            img = phc[app.p, int(view_slices_sl.val)]
         img_ROI = img[y0:y1, x0:x1]
         # Run unet segmentation and put the result back into original lab
         labROI = ia.unet_segmROI(img_ROI, app)
@@ -3214,5 +3262,5 @@ try:
     win_size(swap_screen=False)
 except:
     pass
-app.fig.canvas.set_window_title(f'Cell segmentation GUI - {win_title}')
+app.fig.canvas.manager.set_window_title(f'Cell segmentation GUI - {win_title}')
 plt.show()

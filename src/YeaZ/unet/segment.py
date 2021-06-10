@@ -2,8 +2,8 @@ from scipy import ndimage as ndi
 from skimage.feature import peak_local_max
 from skimage.morphology import dilation
 from skimage.segmentation import watershed
-from skimage.filters import gaussian
 from skimage.measure import label
+from tqdm import tqdm
 
 import numpy as np
 
@@ -46,7 +46,8 @@ def segment_stack(th, pred, min_distance=10, topology=None):
     images th and a stack of raw predictions pred
     """
     seg_stack = [segment(th_single, pred[idx], min_distance, topology)
-                 for idx, th_single in enumerate(th)]
+                 for idx, th_single
+                 in enumerate(tqdm(th, unit=' frame', ncols=100))]
     return np.array(seg_stack)
 
 

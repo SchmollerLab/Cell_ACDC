@@ -41,7 +41,7 @@ def correspondence_stack(stack):
     """
     corrected_stack = np.empty(stack.shape)
     corrected_stack[0] = stack[0]
-    for idx in tqdm(range(len(stack)), unit=' frames'):
+    for idx in tqdm(range(len(stack)), unit=' frames', ncols=100):
         try:
             curr = stack[idx+1]
             prev = corrected_stack[idx]

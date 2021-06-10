@@ -3,6 +3,7 @@ testing.ipynb
 .idea/
 data/*
 tests/*
+screenshots/*
 # Ignore models folder but keep the folder with placeholder.txt dummy file
 models/*
 !models/placeholder.txt
