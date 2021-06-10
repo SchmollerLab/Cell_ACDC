@@ -15,6 +15,201 @@ from natsort import natsorted
 import skimage.measure
 import prompts, apps
 
+class load_frames_data:
+    def __init__(self, path, user_ch_name, load_segm_data=True):
+        self.path = path
+        self.images_path = os.path.dirname(path)
+        self.filename, self.ext = os.path.splitext(os.path.basename(path))
+        if self.ext == '.tif' or self.ext == '.tiff':
+            tif_path, img_tif_found = self.substring_path(path,
+                                                         f'{user_ch_name}.tif',
+                                                          self.images_path)
+            if img_tif_found:
+                self.tif_path = tif_path
+                img_data = io.imread(path)
+            else:
+                tk.messagebox.showerror(
+                f'Selected {user_ch_name} file not found!',
+                f'{user_ch_name} .tif file not found in the selected path\n'
+                f'{self.images_path}!\n Make sure that the folder contains '
+                f'a file that ends with either "{user_ch_name}"')
+                raise FileNotFoundError
+        elif self.ext == '.npy':
+            if path.find(f'_{user_ch_name}_aligned.npy') == -1:
+                filename = os.path.basename(path)
+                tk.messagebox.showerror('Wrong file selected!',
+                f'You selected a file called {filename} which is not a valid '
+                'phase contrast image file. Select the file that ends with '
+                f'"{user_ch_name}_aligned.npy" or the .tif phase contrast file')
+                raise FileNotFoundError
+            tif_path, img_tif_found = self.substring_path(
+                                                  path, f'{user_ch_name}.tif',
+                                                  self.images_path)
+            if img_tif_found:
+                self.tif_path = tif_path
+                img_data = np.load(path)
+            else:
+                tk.messagebox.showerror('Phase contrast file not found!',
+                'Phase contrast .tif file not found in the selected path\n'
+                f'{self.images_path}!\n Make sure that the folder contains '
+                'a file that ends with either \"phase_contr.tif\" or '
+                '\"phase_contrast.tif\"')
+                raise FileNotFoundError
+        self.img_data = img_data
+        self.info, self.metadata_found = self.metadata(self.tif_path)
+        if self.metadata_found:
+            try:
+                self.SizeT, self.SizeZ = self.data_dimensions(self.info)
+            except:
+                print(exc_info())
+                self.SizeT, self.SizeZ = self.dimensions_entry_widget()
+        else:
+            self.SizeT, self.SizeZ = self.dimensions_entry_widget()
+        data_T, data_Z = self.img_data.shape[:2]
+        if self.SizeZ > 1:
+            if data_Z != self.SizeZ:
+                root = tk.Tk()
+                root.withdraw()
+                tk.messagebox.showwarning('Shape mismatch!',
+                    'The metadata of the .tif file says that there should be '
+                    f'{self.SizeZ} z-slices. However the shape of the data is '
+                    f'{self.img_data.shape}!\n\n'
+                    'The order of the data dimensions for 3D datasets '
+                    'has to be TZYX where T is the number of frames, Z the '
+                    'number of slices, and YX the shape of the image.\n\n'
+                    'In your case it looks like you either have a single 3D image'
+                    ' (no frames), or you have 2D data over time.\n'
+                    'In the first case, you should not use this script but the '
+                    '"gui_snapshots.py" script. For the second case the '
+                    'software will now try to ignore the number '
+                    'of slices and it will suppose that your data is 2D.')
+                self.SizeZ = 1
+                root.quit()
+                root.destroy()
+            if data_T != self.SizeT:
+                root = tk.Tk()
+                root.withdraw()
+                tk.messagebox.showwarning('Shape mismatch!',
+                    'The metadata of the .tif file says that there should be '
+                    f'{self.SizeT} frame. However the shape of the data is '
+                    f'{self.img_data.shape}!\n\n'
+                    'The order of the data dimensions has to be TZYX for '
+                    '3D images over time and TYX for 2D images, '
+                    'where T is the number of frames, Z the '
+                    'number of slices, and YX the shape of the image.\n\n'
+                    'In your case it looks like your data contains less/more '
+                    'frames than expected.\n\n'
+                    f'The software will now try to run with {data_T} '
+                    'number of frames.')
+                self.SizeT = data_T
+                root.quit()
+                root.destroy()
+        self.segm_data = None
+        if load_segm_data:
+            segm_npy_path, segm_npy_found = self.substring_path(
+                                           path, 'segm.npy', self.images_path)
+            if segm_npy_found:
+                segm_data = np.load(segm_npy_path)
+                self.segm_data = segm_data
+            else:
+                Y, X = self.img_data.shape[-2:]
+                self.segm_data = np.zeros((self.SizeT, Y, X), int)
+        self.build_paths(self.filename, self.images_path, user_ch_name)
+
+    def build_paths(self, filename, images_path, user_ch_name):
+        match = re.search('s(\d+)_', filename)
+        if match is not None:
+            basename = filename[:match.span()[1]-1]
+        else:
+            basename = single_entry_messagebox(
+                     entry_label='Write a common basename for all output files',
+                     input_txt=filename,
+                     toplevel=False).entry_txt
+        base_path = f'{images_path}/{basename}'
+        self.slice_used_align_path = f'{base_path}_slice_used_alignment.csv'
+        self.slice_used_segm_path = f'{base_path}_slice_segm.csv'
+        self.align_npy_path = f'{base_path}_{user_ch_name}_aligned.npy'
+        self.align_old_path = f'{base_path}_phc_aligned.npy'
+        self.align_shifts_path = f'{base_path}_align_shift.npy'
+        self.segm_npy_path = f'{base_path}_segm.npy'
+        self.last_tracked_i_path = f'{base_path}_last_tracked_i.txt'
+        self.segm_metadata_csv_path = f'{base_path}_segm_metadata.csv'
+        self.benchmarking_df_csv_path = f'{base_path}_benchmarking.csv'
+
+    def substring_path(self, path, substring, images_path):
+        substring_found = False
+        for filename in os.listdir(images_path):
+            if substring == "phase_contr.tif":
+                is_match = (filename.find(substring) != -1 or
+                            filename.find("phase_contrast.tif") != -1 or
+                            filename.find("phase_contrast.tiff") != -1 or
+                            filename.find("phase_contr.tiff") != -1)
+            else:
+                is_match = filename.find(substring) != -1
+            if is_match:
+                substring_found = True
+                break
+        substring_path = f'{images_path}/{filename}'
+        return substring_path, substring_found
+
+
+    def metadata(self, tif_path):
+        with TiffFile(tif_path) as tif:
+            self.metadata = tif.imagej_metadata
+        try:
+            metadata_found = True
+            info = self.metadata['Info']
+        except KeyError:
+            metadata_found = False
+            info = []
+        return info, metadata_found
+
+    def data_dimensions(self, info):
+        SizeT = int(re.findall('SizeT = (\d+)', info)[0])
+        SizeZ = int(re.findall('SizeZ = (\d+)', info)[0])
+        return SizeT, SizeZ
+
+    def dimensions_entry_widget(self):
+        root = tk.Tk()
+        root.geometry("+800+400")
+        tk.Label(root,
+                 text="Data dimensions not found in metadata.\n"
+                      "Provide the following sizes.",
+                 font=(None, 12)).grid(row=0, column=0, columnspan=2, pady=4)
+        tk.Label(root,
+                 text="Number of frames (SizeT)",
+                 font=(None, 10)).grid(row=1, pady=4)
+        tk.Label(root,
+                 text="Number of slices (SizeZ)",
+                 font=(None, 10)).grid(row=2, pady=4, padx=8)
+
+        root.protocol("WM_DELETE_WINDOW", exit)
+
+        SizeT_entry = tk.Entry(root, justify='center')
+        SizeZ_entry = tk.Entry(root, justify='center')
+
+        # Default texts in entry text box
+        SizeT_entry.insert(0, '1')
+        SizeZ_entry.insert(0, '1')
+
+        SizeT_entry.grid(row=1, column=1, padx=8)
+        SizeZ_entry.grid(row=2, column=1, padx=8)
+
+        tk.Button(root,
+                  text='OK',
+                  command=root.quit,
+                  width=10).grid(row=3,
+                                 column=0,
+                                 pady=16,
+                                 columnspan=2)
+        SizeT_entry.focus()
+
+        tk.mainloop()
+
+        SizeT = int(SizeT_entry.get())
+        SizeZ = int(SizeZ_entry.get())
+        root.destroy()
+        return SizeT, SizeZ
 
 class fix_pos_n_mismatch:
     '''Geometry: "WidthxHeight+Left+Top" '''
@@ -125,12 +320,12 @@ class beyond_listdir_pos:
 
     def get_rel_path(self, path):
         rel_path = ''
-        parent_path = path
+        images_path = path
         count = 0
-        while parent_path != self.folder_path or count==10:
+        while images_path != self.folder_path or count==10:
             if count > 0:
-                rel_path = f'{os.path.basename(parent_path)}/{rel_path}'
-            parent_path = os.path.dirname(parent_path)
+                rel_path = f'{os.path.basename(images_path)}/{rel_path}'
+            images_path = os.path.dirname(images_path)
             count += 1
         rel_path = f'.../{rel_path}'
         return rel_path

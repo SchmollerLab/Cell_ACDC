@@ -634,9 +634,13 @@ class select_channel_name:
 
 def check_img_shape_vs_metadata(img_shape, num_frames, SizeT, SizeZ):
     msg = ''
-    if num_frames > 1:
+    if num_frames > 1 and len(img_shape) > 3:
         data_T, data_Z = img_shape[:2]
         ndim_msg = 'Data is expected to be 4D with TZYX order'
+    elif num_frames > 1 and len(img_shape) > 2:
+        data_T, data_Z = img_shape[0], 1
+        expected_data_ndim = 3
+        ndim_msg = 'Data is expected to be 3D with ZYX order'
     else:
         data_T, data_Z = 1, img_shape[0]
         expected_data_ndim = 3
@@ -646,13 +650,21 @@ def check_img_shape_vs_metadata(img_shape, num_frames, SizeT, SizeZ):
         f'(i.e. {data_T} frames), but the metadata of the '
         f'.tif file says that there should be {SizeT} frames.\n\n'
         f'Process cannot continue.')
-        tk.messagebox.showerror('Shape mismatch!', msg)
+        root = tk.Tk()
+        root.withdraw()
+        tk.messagebox.showerror('Shape mismatch!', msg, master=root)
+        root.quit()
+        root.destroy()
     if data_Z != SizeZ:
         msg = (f'{ndim_msg}.\nData shape is {img_shape} '
         f'(i.e. {data_Z} z-slices), but the metadata of the '
         f'.tif file says that there should be {SizeZ} z-slices.\n\n'
         f'Process cannot continue.')
-        tk.messagebox.showerror('Shape mismatch!', msg)
+        root = tk.Tk()
+        root.withdraw()
+        tk.messagebox.showerror('Shape mismatch!', msg, master=root)
+        root.quit()
+        root.destroy()
     return msg.replace('\n', ' ')
 
 class single_entry_messagebox:

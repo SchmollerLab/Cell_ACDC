@@ -477,13 +477,6 @@ for exp_idx, main_path in enumerate(main_paths):
 
 root.destroy()
 
-print(all_ROIs)
-print(all_franges)
-print(all_paths)
-print(all_slices)
-
-exit()
-
 t0 = time()
 
 inputs = zip(all_paths, all_franges, all_ROIs, all_slices)

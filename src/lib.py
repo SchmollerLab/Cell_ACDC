@@ -2030,6 +2030,7 @@ class auto_select_slice:
         init_slice = self.auto_slice(frame_V)
         self.slice = init_slice
         self.abort = True
+        self.is_max_proj = False
         self.data = frame_V
         self.fig = plt.Figure()
         self.ax = self.fig.add_subplot()
@@ -2038,7 +2039,7 @@ class auto_select_slice:
         sl_left = 0.5 - (sl_width/2)
         ok_width = 0.13
         ok_left = 0.5 - (ok_width/2)
-        (self.ax).imshow(frame_V[init_slice])
+        self.ax_ims = (self.ax).imshow(frame_V[init_slice])
         (self.ax).axis('off')
         (self.ax).set_title(f'Select slice for {slice_used_for}')
         """Embed plt window into a tkinter window"""
@@ -2054,6 +2055,18 @@ class auto_select_slice:
                                 init_val_line_color='0.3',
                                 valfmt='%1.0f')
         (self.sl).on_changed(self.update_slice)
+        max_l = sl_left+sl_width+0.008
+        max_b = 0.12
+        self.ax_max_proj = self.fig.add_subplot(
+                            position=[max_l, max_b, 0.05, 0.04],
+                            facecolor='0.1')
+        self.max_proj_b =  Button(self.ax_max_proj, 'Max',
+                                canvas=sub_win.canvas,
+                                color='0.2',
+                                hovercolor='0.25',
+                                presscolor='0.35')
+        self.max_proj_b.on_clicked(self.max_proj_cb)
+
         self.ax_ok = self.fig.add_subplot(
                                 position=[ok_left, 0.05, ok_width, 0.05],
                                 facecolor='0.1')
@@ -2074,6 +2087,12 @@ class auto_select_slice:
         sub_win.root.focus_force()
         #sub_win.root.after_idle(sub_win.root.attributes,'-topmost',False)
         sub_win.root.mainloop()
+
+    def max_proj_cb(self, event):
+        self.is_max_proj = True
+        img = self.data.max(axis=0)
+        self.ax_ims.set_data(img)
+        self.fig.canvas.draw_idle()
 
     def ax_transData_and_coerce(self, ax, event_x, event_y):
         x, y = ax.transData.inverted().transform((event_x, event_y))
@@ -2151,9 +2170,9 @@ class auto_select_slice:
         self.sub_win.canvas.draw_idle()
 
 
-
     def resize_widgets(self, event):
         # [left, bottom, width, height]
+
         pass
 
     def auto_slice(self, frame_V):
@@ -2181,6 +2200,7 @@ class auto_select_slice:
             self.ok(None)
 
     def update_slice(self, val):
+        self.is_max_proj = False
         self.slice = int(val)
         img = self.data[int(val)]
         self.ax.imshow(img)
