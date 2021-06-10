@@ -513,10 +513,12 @@ class single_combobox_widget:
         exit('Execution aborted by the user')
 
 class select_channel_name:
-    def __init__(self, which_channel=None):
+    def __init__(self, which_channel=None, allow_abort=True):
         self.is_first_call = True
         self.which_channel = which_channel
         self.last_sel_channel = self._load_last_selection()
+        self.was_aborted = False
+        self.allow_abort = allow_abort
 
     def get_available_channels(self, filenames):
         channel_names = []
@@ -628,9 +630,11 @@ class select_channel_name:
         self.root.destroy()
 
     def _abort(self):
+        self.was_aborted = True
         self.root.quit()
         self.root.destroy()
-        exit('Execution aborted by the user')
+        if self.allow_abort:
+            exit('Execution aborted by the user')
 
 def check_img_shape_vs_metadata(img_shape, num_frames, SizeT, SizeZ):
     msg = ''

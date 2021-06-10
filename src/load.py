@@ -450,7 +450,7 @@ class select_exp_folder:
                    title='Select Position folder',
                    label_txt="Select \'Position_n\' folder to analyze:",
                    showinexplorer_button=False,
-                   full_paths=None,
+                   full_paths=None, allow_abort=True,
                    toplevel=False):
         if toplevel:
             root = tk.Toplevel()
@@ -462,6 +462,8 @@ class select_exp_folder:
         root.lift()
         root.attributes("-topmost", True)
         self.full_paths=full_paths
+        self.was_aborted = False
+        self.allow_abort = allow_abort
         # Label
         ttk.Label(root, text = label_txt,
                   font = (None, 10)).grid(column=0, row=0, padx=10, pady=10)
@@ -590,9 +592,11 @@ class select_exp_folder:
         self.root.destroy()
 
     def on_closing(self):
+        self.was_aborted = True
         self.root.quit()
         self.root.destroy()
-        exit('Execution aborted by the user')
+        if self.allow_abort:
+            exit('Execution aborted by the user')
 
 
 def get_main_paths(selected_path, vNUM):

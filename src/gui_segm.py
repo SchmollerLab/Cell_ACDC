@@ -49,16 +49,16 @@ class Window(QMainWindow):
         self.setWindowTitle("Yeast ACDC - Segm&Track")
         self.setGeometry(100, 100, 1366, 768)
 
-        self._createActions()
-        self._createMenuBar()
-        self._createToolBars()
+        self.gui_createActions()
+        self.gui_createMenuBar()
+        self.gui_createToolBars()
 
-        self._connectActions()
-        self._createStatusBar()
+        self.gui_connectActions()
+        self.gui_createStatusBar()
 
-        self._createGraphics()
+        self.gui_createGraphics()
 
-        self._createImg1Widgets()
+        self.gui_createImg1Widgets()
 
         mainContainer = QtGui.QWidget()
         self.setCentralWidget(mainContainer)
@@ -69,7 +69,7 @@ class Window(QMainWindow):
 
         mainContainer.setLayout(mainLayout)
 
-    def _createImg1Widgets(self):
+    def gui_createImg1Widgets(self):
         self.zSlice_scrollBar_img1 = QScrollBar(Qt.Horizontal)
         self.img1_Widglayout = QtGui.QGridLayout()
         self.zSlice_scrollBar_img1.setFixedHeight(20)
@@ -84,7 +84,7 @@ class Window(QMainWindow):
         self.img1_Widglayout.setContentsMargins(100, 0, 0, 0)
 
 
-    def _createGraphics(self):
+    def gui_createGraphics(self):
         self.graphLayout = pg.GraphicsLayoutWidget()
 
         # Left plot
@@ -126,11 +126,11 @@ class Window(QMainWindow):
         self.frameLabel.setText(' ')
         self.graphLayout.addItem(self.frameLabel, row=2, col=0, colspan=3)
 
-    def _connectGraphicsEvents(self):
-        self.img1.hoverEvent = self.hoverEventImg1
-        self.img2.hoverEvent = self.hoverEventImg2
+    def gui_connectGraphicsEvents(self):
+        self.img1.hoverEvent = self.gui_hoverEventImg1
+        self.img2.hoverEvent = self.gui_hoverEventImg2
 
-    def hoverEventImg1(self, event):
+    def gui_hoverEventImg1(self, event):
         try:
             x, y = event.pos()
             xdata, ydata = int(round(x)), int(round(y))
@@ -144,7 +144,7 @@ class Window(QMainWindow):
         except:
             self.wcLabel.setText(f'')
 
-    def hoverEventImg2(self, event):
+    def gui_hoverEventImg2(self, event):
         try:
             x, y = event.pos()
             xdata, ydata = int(round(x)), int(round(y))
@@ -158,7 +158,7 @@ class Window(QMainWindow):
         except:
             self.wcLabel.setText(f'')
 
-    def _createMenuBar(self):
+    def gui_createMenuBar(self):
         menuBar = self.menuBar()
         # File menu
         fileMenu = QMenu("&File", self)
@@ -184,7 +184,7 @@ class Window(QMainWindow):
         helpMenu.addAction(self.helpContentAction)
         helpMenu.addAction(self.aboutAction)
 
-    def _createToolBars(self):
+    def gui_createToolBars(self):
         # File toolbar
         fileToolBar = self.addToolBar("File")
         fileToolBar.setMovable(False)
@@ -199,7 +199,7 @@ class Window(QMainWindow):
         self.disableTrackingCheckBox = QCheckBox("Disable tracking")
         editToolBar.addWidget(self.disableTrackingCheckBox)
 
-    def _createStatusBar(self):
+    def gui_createStatusBar(self):
         self.statusbar = self.statusBar()
         # Temporary message
         self.statusbar.showMessage("Ready", 3000)
@@ -207,7 +207,7 @@ class Window(QMainWindow):
         self.wcLabel = QLabel(f"")
         self.statusbar.addPermanentWidget(self.wcLabel)
 
-    def _createActions(self):
+    def gui_createActions(self):
         # File actions
         self.newAction = QAction(self)
         self.newAction.setText("&New")
@@ -237,7 +237,7 @@ class Window(QMainWindow):
         self.helpContentAction = QAction("&Help Content...", self)
         self.aboutAction = QAction("&About...", self)
 
-    def _connectActions(self):
+    def gui_connectActions(self):
         # Connect File actions
         self.newAction.triggered.connect(self.newFile)
         self.openAction.triggered.connect(self.openFile)
@@ -250,12 +250,20 @@ class Window(QMainWindow):
         self.openRecentMenu.aboutToShow.connect(self.populateOpenRecent)
 
 
-    def _connectEditActions(self):
+    def gui_connectEditActions(self):
         self.prevAction.triggered.connect(self.prev_cb)
         self.nextAction.triggered.connect(self.next_cb)
         self.repeatSegmActionYeaZ.triggered.connect(self.repeatSegmYeaZ)
         self.repeatSegmActionCellpose.triggered.connect(self.repeatSegmCellpose)
         self.disableTrackingCheckBox.toggled.connect(self.disableTracking)
+
+    def keyPressEvent(self, ev):
+        if ev.key() == Qt.Key_Control:
+            pass
+        elif ev.key() == Qt.Key_Right:
+            self.next_cb()
+        elif ev.key() == Qt.Key_Left:
+            self.prev_cb()
 
     def disableTracking(self):
         self.is_tracking_enabled = False
@@ -269,7 +277,15 @@ class Window(QMainWindow):
 
     def next_cb(self):
         if self.frame_i < self.num_frames-1:
+            # Store data for current frame
+            self.store_data()
+            # Go to next frame
             self.frame_i += 1
+            self.get_data()
+            if self.is_tracking_enabled:
+                self.tracking()
+            else:
+                self.checkIDs_LostNew()
             self.updateALLimg()
         else:
             print('You reached the last frame!')
@@ -277,17 +293,14 @@ class Window(QMainWindow):
     def prev_cb(self):
         if self.frame_i > 0:
             self.frame_i -= 1
+            self.get_data()
+            if self.is_tracking_enabled:
+                self.tracking()
+            else:
+                self.checkIDs_LostNew()
             self.updateALLimg()
         else:
             print('You reached the first frame!')
-
-    def keyPressEvent(self, ev):
-        if ev.key() == Qt.Key_Control:
-            pass
-        elif ev.key() == Qt.Key_Right:
-            self.next_cb()
-        elif ev.key() == Qt.Key_Left:
-            self.prev_cb()
 
     def init_frames_data(self, frames_path, user_ch_name):
         data = load.load_frames_data(frames_path, user_ch_name)
@@ -305,8 +318,17 @@ class Window(QMainWindow):
         self.updateALLimg()
 
     def init_attr(self, max_ID=10):
+        self.allData_li = [
+                            {
+                             'regionprops': [],
+                             'labels': None
+                             }
+                            for i in range(self.num_frames)
+        ]
         self.frame_i = 0
         self.is_tracking_enabled = True
+        self.manual_newID_coords = []
+        self.get_data()
 
         # Colormap
         cmap = pg.colormap.get('viridis', source='matplotlib')
@@ -322,14 +344,26 @@ class Window(QMainWindow):
         self.plot1_items = []
         self.plot2_items = []
 
+    def store_data(self):
+        self.allData_li[self.frame_i]['regionprops'] = self.rp
+        self.allData_li[self.frame_i]['labels'] = self.lab
+
+    def get_data(self):
+        # If stored labes is None then it is the first time we visit this frame
+        if self.allData_li[self.frame_i]['labels'] is None:
+            self.lab = self.data.segm_data[self.frame_i].copy()
+            self.rp = skimage.measure.regionprops(self.lab)
+        else:
+            self.lab = self.allData_li[self.frame_i]['labels'].copy()
+            self.rp = skimage.measure.regionprops(self.lab)
+
 
     def updateALLimg(self):
         self.frameLabel.setText(
                  f'Current frame = {self.frame_i+1}/{self.num_frames}')
         img = self.data.img_data[self.frame_i]
-        lab = self.data.segm_data[self.frame_i]
+        lab = self.lab
         lut = self.lut[:lab.max()+1]
-        self.rp = skimage.measure.regionprops(lab)
 
         self.img1.setImage(img)
         self.img2.setImage(lab)
@@ -380,6 +414,124 @@ class Window(QMainWindow):
 
             self.plot1_items.append(cont_plot)
 
+    def checkIDs_LostNew(self):
+        if self.frame_i == 0:
+            return
+        prev_rp = self.allData_li[self.frame_i-1]['regionprops']
+        prev_IDs = [obj.label for obj in prev_rp]
+        curr_IDs = [obj.label for obj in self.rp]
+        lost_IDs = [ID for ID in prev_IDs if ID not in curr_IDs]
+        new_IDs = [ID for ID in curr_IDs if ID not in prev_IDs]
+        warn_txt = ''
+        if lost_IDs:
+            warn_txt = f'Cells IDs lost in current frame: {lost_IDs}\n'
+            color = 'r'
+        if new_IDs:
+            warn_txt = f'{warn_txt}New cells IDs in current frame: {new_IDs}'
+            color = 'r'
+        if not warn_txt:
+            warn_txt = 'Looking good!\n'
+            color = 'w'
+        self.titleLabel.setText(warn_txt, color=color)
+
+
+    def tracking(self):
+        if self.frame_i == 0:
+            return
+        prev_rp = self.allData_li[self.frame_i-1]['regionprops']
+        prev_lab = self.allData_li[self.frame_i-1]['labels']
+        IDs_prev = []
+        IDs_curr_untracked = [obj.label for obj in self.rp]
+        IoA_matrix = np.zeros((len(self.rp), len(prev_rp)))
+
+        # For each ID in previous frame get IoA with all current IDs
+        for j, obj_prev in enumerate(prev_rp):
+            ID_prev = obj_prev.label
+            A_IDprev = obj_prev.area
+            IDs_prev.append(ID_prev)
+            mask_ID_prev = prev_lab==ID_prev
+            intersect_IDs, intersects = np.unique(self.lab[mask_ID_prev],
+                                                  return_counts=True)
+            for intersect_ID, I in zip(intersect_IDs, intersects):
+                if intersect_ID != 0:
+                    i = IDs_curr_untracked.index(intersect_ID)
+                    IoA = I/A_IDprev
+                    IoA_matrix[i, j] = IoA
+
+        # Determine max IoA between IDs and assign tracked ID if IoA > 0.4
+        max_IoA_col_idx = IoA_matrix.argmax(axis=1)
+        unique_col_idx, counts = np.unique(max_IoA_col_idx, return_counts=True)
+        counts_dict = dict(zip(unique_col_idx, counts))
+        tracked_IDs = []
+        old_IDs = []
+        for i, j in enumerate(max_IoA_col_idx):
+            max_IoU = IoA_matrix[i,j]
+            count = counts_dict[j]
+            if max_IoU > 0.4:
+                tracked_ID = IDs_prev[j]
+                if count == 1:
+                    old_ID = IDs_curr_untracked[i]
+                elif count > 1:
+                    old_ID_idx = IoA_matrix[:,j].argmax()
+                    old_ID = IDs_curr_untracked[old_ID_idx]
+                tracked_IDs.append(tracked_ID)
+                old_IDs.append(old_ID)
+
+        # Replace untracked IDs with tracked IDs and new IDs with increasing num
+        new_untracked_IDs = [ID for ID in IDs_curr_untracked if ID not in old_IDs]
+        tracked_lab = self.lab.copy()
+        if new_untracked_IDs:
+            max_ID = max(IDs_curr_untracked)
+            new_tracked_IDs = [max_ID*(i+2) for i in range(len(new_untracked_IDs))]
+            tracked_lab = self.np_replace_values(tracked_lab, new_untracked_IDs,
+                                                 new_tracked_IDs)
+        if tracked_IDs:
+            tracked_lab = self.np_replace_values(tracked_lab, old_IDs, tracked_IDs)
+        if new_untracked_IDs:
+            max_ID = max(IDs_prev)
+            new_tracked_IDs_2 = [max_ID+i+1 for i in range(len(new_untracked_IDs))]
+            tracked_lab = self.np_replace_values(tracked_lab, new_tracked_IDs,
+                                                 new_tracked_IDs_2)
+
+        curr_IDs = [obj.label for obj in skimage.measure.regionprops(tracked_lab)]
+        lost_IDs = [ID for ID in IDs_prev if ID not in curr_IDs]
+        new_tracked_IDs_2 = [ID for ID in curr_IDs if ID not in IDs_prev]
+        self.lost_IDs = lost_IDs
+        self.new_IDs = new_tracked_IDs_2
+        # print(f'Cells IDs lost in current frame: {lost_IDs}')
+        # print(f'Untracked new IDs in current frame: {new_untracked_IDs}')
+        warn_txt = ''
+        if lost_IDs:
+            warn_txt = f'Cells IDs lost in current frame: {lost_IDs}'
+            color = 'r'
+        if new_tracked_IDs_2:
+            self.new_IDs = new_tracked_IDs_2
+            warn_txt = f'{warn_txt}\n\nNew cells IDs in current frame: {new_tracked_IDs_2}'
+            color = 'r'
+        if not warn_txt:
+            warn_txt = 'Looking good!'
+            color = 'w'
+        self.titleLabel.setText(warn_txt, color=color)
+
+    def np_replace_values(self, arr, old_values, tracked_values):
+        # See method_jdehesa https://stackoverflow.com/questions/45735230/how-to-replace-a-list-of-values-in-a-numpy-array
+        old_values = np.asarray(old_values)
+        tracked_values = np.asarray(tracked_values)
+        n_min, n_max = arr.min(), arr.max()
+        replacer = np.arange(n_min, n_max + 1)
+        # Mask replacements out of range
+        mask = (old_values >= n_min) & (old_values <= n_max)
+        replacer[old_values[mask] - n_min] = tracked_values[mask]
+        arr = replacer[arr - n_min]
+        return arr
+
+
+    def undo_change_future_frames(self):
+        for i in range(self.frame_i, self.num_frames):
+            self.allData_li[i] = {
+                                     'regionprops': [],
+                                     'labels': None
+             }
 
     # Slots
     def newFile(self):
@@ -390,11 +542,20 @@ class Window(QMainWindow):
         exp_path = prompts.folder_dialog(
                 title='Select experiment folder containing Position_n folders')
 
-        ch_name_selector = prompts.select_channel_name()
+        if exp_path == '':
+            self.titleLabel.setText('File --> Open to start the process')
+            return
+
+        ch_name_selector = prompts.select_channel_name(allow_abort=False)
 
         select_folder = load.select_exp_folder()
         values = select_folder.get_values_segmGUI(exp_path)
-        pos_foldername = select_folder.run_widget(values)
+        pos_foldername = select_folder.run_widget(values, allow_abort=False)
+
+        if select_folder.was_aborted:
+            self.titleLabel.setText('File --> Open to start the process')
+            return
+
         images_path = f'{exp_path}/{pos_foldername}/Images'
 
         ch_name_not_found_msg = (
@@ -410,6 +571,9 @@ class Window(QMainWindow):
         if ch_name_selector.is_first_call:
             ch_names, warn = ch_name_selector.get_available_channels(filenames)
             ch_name_selector.prompt(ch_names)
+            if ch_name_selector.was_aborted:
+                self.titleLabel.setText('File --> Open to start the process')
+                return
             if warn:
                 user_ch_name = prompts.single_entry_messagebox(
                     title='Channel name not found',
@@ -441,11 +605,11 @@ class Window(QMainWindow):
         self.init_frames_data(img_path, user_ch_name)
 
         # Connect events at the end of loading data process
-        self._connectGraphicsEvents()
-        self._connectEditActions()
+        self.gui_connectGraphicsEvents()
+        self.gui_connectEditActions()
 
         self.titleLabel.setText(
-                   'Data successfully loaded. Right arrow to go to next frame')
+                'Data successfully loaded. Right/Left arrow to navigate frames')
 
     def saveFile(self):
         pass
