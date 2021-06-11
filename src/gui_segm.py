@@ -36,7 +36,7 @@ import pyqtgraph as pg
 import qrc_resources
 
 # Custom modules
-import load, prompts
+import load, prompts, apps
 from QtDarkMode import breeze_resources
 
 # Interpret image data as row-major instead of col-major
@@ -165,13 +165,15 @@ class Window(QMainWindow):
 
     def gui_mousePressEventImg2(self, event):
         left_click = event.button() == Qt.MouseButton.LeftButton
-        # Paint new IDs with brush and left click on the right image
+        mid_click = event.button() == Qt.MouseButton.MidButton
+        # Draw new IDs with brush and left click on the right image
         if left_click and self.eraserButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(round(x)), int(round(y))
-            lab = self.lab
-            Y, X = lab.shape
+            Y, X = self.lab.shape
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
+                # Store undo state before modifying stuff
+                self.storeUndoRedoStates()
                 self.isMouseDragImg2 = True
                 # Keep a global mask to compute which IDs got erased
                 self.erasedIDs = []
@@ -179,9 +181,22 @@ class Window(QMainWindow):
                 mask = skimage.morphology.disk(brushSize, dtype=np.bool)
                 ymin, xmin = ydata-brushSize, xdata-brushSize
                 ymax, xmax = ydata+brushSize+1, xdata+brushSize+1
-                self.erasedIDs.extend(lab[ymin:ymax, xmin:xmax][mask])
-                lab[ymin:ymax, xmin:xmax][mask] = 0
+                self.erasedIDs.extend(self.lab[ymin:ymax, xmin:xmax][mask])
+                self.lab[ymin:ymax, xmin:xmax][mask] = 0
+                self.tracking()
                 self.img2.updateImage()
+        # Delete ID with middle click
+        elif mid_click:
+            # Store undo state before modifying stuff
+            self.storeUndoRedoStates()
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(round(x)), int(round(y))
+            delID = self.lab[ydata, xdata]
+            self.lab[self.lab==delID] = 0
+            self.img2.updateImage()
+            self.update_IDsContours([], erasedIDs=[delID])
+
+
 
     def gui_mouseDragEventImg2(self, event):
         if self.isMouseDragImg2:
@@ -196,9 +211,10 @@ class Window(QMainWindow):
             self.img2.updateImage()
 
     def gui_mouseReleaseEventImg2(self, event):
-        self.isMouseDragImg2 = False
-        erasedIDs = np.unique(self.erasedIDs)
-        self.update_IDsContours(newIDs=[], erasedIDs=erasedIDs)
+        if self.isMouseDragImg2:
+            self.isMouseDragImg2 = False
+            erasedIDs = np.unique(self.erasedIDs)
+            self.update_IDsContours([], erasedIDs=erasedIDs)
 
 
     def gui_mouseReleaseEventImg1(self, event):
@@ -208,6 +224,8 @@ class Window(QMainWindow):
         left_click = event.button() == Qt.MouseButton.LeftButton
         # Paint new IDs with brush and left click on the right image
         if left_click and self.brushButton.isChecked():
+            # Store undo state before modifying stuff
+            self.storeUndoRedoStates()
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(round(x)), int(round(y))
             lab = self.lab
@@ -224,7 +242,7 @@ class Window(QMainWindow):
                 lut = self.lut[:self.brushID+1]
                 self.img2.setLookupTable(lut)
 
-                self.update_IDsContours(newIDs=[self.brushID])
+                self.update_IDsContours([self.brushID])
                 self.brushID += 1
 
     def gui_mouseDragEventImg1(self, event):
@@ -328,6 +346,13 @@ class Window(QMainWindow):
         # fileToolBar.addAction(self.newAction)
         fileToolBar.addAction(self.openAction)
         fileToolBar.addAction(self.saveAction)
+        fileToolBar.addAction(self.undoAction)
+        fileToolBar.addAction(self.redoAction)
+
+        self.undoAction.setEnabled(False)
+        self.redoAction.setEnabled(False)
+
+
         # Edit toolbar
         editToolBar = QToolBar("Edit", self)
         self.addToolBar(editToolBar)
@@ -376,10 +401,14 @@ class Window(QMainWindow):
         self.openAction = QAction(QIcon(":file-open.svg"), "&Open...", self)
         self.saveAction = QAction(QIcon(":file-save.svg"), "&Save", self)
         self.exitAction = QAction("&Exit", self)
+        self.undoAction = QAction(QIcon(":undo.svg"), "Undo (Ctrl+Z)", self)
+        self.redoAction = QAction(QIcon(":redo.svg"), "Redo (Ctrl+Y)", self)
         # String-based key sequences
         self.newAction.setShortcut("Ctrl+N")
         self.openAction.setShortcut("Ctrl+O")
         self.saveAction.setShortcut("Ctrl+S")
+        self.undoAction.setShortcut("Ctrl+Z")
+        self.redoAction.setShortcut("Ctrl+Y")
         # Help tips
         newTip = "Create a new file"
         self.newAction.setStatusTip(newTip)
@@ -406,6 +435,10 @@ class Window(QMainWindow):
         self.openAction.triggered.connect(self.openFile)
         self.saveAction.triggered.connect(self.saveFile)
         self.exitAction.triggered.connect(self.close)
+
+        self.undoAction.triggered.connect(self.undo)
+        self.redoAction.triggered.connect(self.redo)
+
         # Connect Help actions
         self.helpContentAction.triggered.connect(self.helpContent)
         self.aboutAction.triggered.connect(self.about)
@@ -469,12 +502,12 @@ class Window(QMainWindow):
     def keyPressEvent(self, ev):
         isBrushActive = (self.brushButton.isChecked()
                       or self.eraserButton.isChecked())
-        if ev.key() == Qt.Key_Control:
-            pass
-        elif ev.key() == Qt.Key_Up and isBrushActive:
+        if ev.key() == Qt.Key_Up and isBrushActive:
             self.brushSizeSpinbox.setValue(self.brushSizeSpinbox.value()+1)
         elif ev.key() == Qt.Key_Down and isBrushActive:
             self.brushSizeSpinbox.setValue(self.brushSizeSpinbox.value()-1)
+        # elif ev.key() == Qt.Key_Plus:
+        #     self.storeUndoRedoStates()
         # elif ev.key() == Qt.Key_Right:
         #     self.next_cb()
         # elif ev.key() == Qt.Key_Left:
@@ -482,8 +515,45 @@ class Window(QMainWindow):
         # elif ev.text() == 'b':
         #     self.BrushEraser_cb(ev)
 
+    def storeUndoRedoStates(self):
+        # Restart count from the most recent state (index 0)
+        # NOTE: index 0 is most recent state before doing last change
+        self.UndoCount = 0
+        self.undoAction.setEnabled(True)
+        self.UndoRedoStates.insert(0, {'labels': self.lab.copy()})
+        # Keep only 5 Undo/Redo states
+        if len(self.UndoRedoStates) > 5:
+            self.UndoRedoStates.pop(-1)
+
+    def undo(self):
+        self.lab = self.UndoRedoStates[self.UndoCount]['labels']
+        self.update_data()
+        self.updateALLimg()
+        if self.UndoCount < len(self.UndoRedoStates)-1:
+            self.UndoCount += 1
+            # Since we have undone then it is possible to redo
+            self.redoAction.setEnabled(True)
+        else:
+            # We have undone all available states
+            self.undoAction.setEnabled(False)
+
+
+    def redo(self):
+        self.lab = self.UndoRedoStates[self.UndoCount]['labels']
+        self.rp = skimage.measure.regionprops(self.lab)
+        self.updateALLimg()
+        if self.UndoCount > 0:
+            self.UndoCount -= 1
+            # Since we have redone then it is possible to undo
+            self.undoAction.setEnabled(True)
+        else:
+            # We have redone all available states
+            self.redoAction.setEnabled(False)
+
+
+
     def disableTracking(self):
-        self.is_tracking_enabled = False
+        pass
 
 
     def repeatSegmYeaZ(self):
@@ -500,10 +570,7 @@ class Window(QMainWindow):
             # Go to next frame
             self.frame_i += 1
             self.get_data()
-            if self.is_tracking_enabled:
-                self.tracking()
-            else:
-                self.checkIDs_LostNew()
+            self.tracking()
             self.updateALLimg()
         else:
             print('You reached the last frame!')
@@ -514,10 +581,7 @@ class Window(QMainWindow):
         if self.frame_i > 0:
             self.frame_i -= 1
             self.get_data()
-            if self.is_tracking_enabled:
-                self.tracking()
-            else:
-                self.checkIDs_LostNew()
+            self.tracking()
             self.updateALLimg()
         else:
             print('You reached the first frame!')
@@ -539,6 +603,7 @@ class Window(QMainWindow):
         self.updateALLimg()
 
     def init_attr(self, max_ID=10):
+        self.isMouseDragImg2 = False
         self.allData_li = [
                             {
                              'regionprops': [],
@@ -547,7 +612,6 @@ class Window(QMainWindow):
                             for i in range(self.num_frames)
         ]
         self.frame_i = 0
-        self.is_tracking_enabled = True
         self.manual_newID_coords = []
         self.get_data()
 
@@ -570,6 +634,8 @@ class Window(QMainWindow):
         self.allData_li[self.frame_i]['labels'] = self.lab
 
     def get_data(self):
+        self.UndoRedoStates = []
+        self.UndoCount = 0
         # If stored labes is None then it is the first time we visit this frame
         if self.allData_li[self.frame_i]['labels'] is None:
             self.lab = self.data.segm_data[self.frame_i].copy()
@@ -606,7 +672,12 @@ class Window(QMainWindow):
                                            cv2.RETR_EXTERNAL,
                                            cv2.CHAIN_APPROX_SIMPLE)
         min_y, min_x, _, _ = obj.bbox
-        cont = np.squeeze(contours[0], axis=1)
+        try:
+            cont = np.squeeze(contours[0], axis=1)
+        except:
+            from PyQt5.QtCore import pyqtRemoveInputHook
+            pyqtRemoveInputHook()
+            import pdb; pdb.set_trace()
         cont = np.vstack((cont, cont[0]))
         cont += [min_x, min_y]
         cont_plot = self.plot1.plot(cont[:,0], cont[:,1], pen=self.cpen)
@@ -618,32 +689,32 @@ class Window(QMainWindow):
     def update_data(self):
         self.rp = skimage.measure.regionprops(self.lab)
 
-    def update_IDsContours(self, newIDs=[], erasedIDs=[]):
+    def update_IDsContours(self, newIDs, erasedIDs=[]):
         prev_IDs = [obj.label for obj in self.rp]
 
         # Remove contours and ID label for erased IDs
         for erasedID in erasedIDs:
             if erasedID in prev_IDs:
                 erased_idx = prev_IDs.index(erasedID)
-                self.plot1.removeItem(self.plot1_items[erased_idx][0])
-                self.plot1.removeItem(self.plot1_items[erased_idx][1])
-                self.plot2.removeItem(self.plot2_items[erased_idx])
-                self.plot1_items.pop(erased_idx)
-                self.plot2_items.pop(erased_idx)
+                if self.plot1_items[erased_idx] is not None:
+                    self.plot1.removeItem(self.plot1_items[erased_idx][0])
+                    self.plot1.removeItem(self.plot1_items[erased_idx][1])
+                if self.plot2_items[erased_idx] is not None:
+                    self.plot2.removeItem(self.plot2_items[erased_idx])
                 newIDs.append(erasedID)
-
-        self.plot1_items.extend([None]*len(newIDs))
-        self.plot2_items.extend([None]*len(newIDs))
 
         self.update_data()
         if newIDs:
             for i, obj in enumerate(self.rp):
                 ID = obj.label
                 if ID in newIDs:
-                    # Draw new objects
+                    self.plot1_items.insert(i, None)
+                    self.plot2_items.insert(i, None)
+                    # Draw ID labels and contours of new objects
                     self.drawID_and_Contour(i, obj)
                 else:
-                    # Keep item from objects already existing before drawing new IDs
+                    # Keep items (IDs and contours) from objects
+                    # already existing before drawing new IDs
                     prev_idx = prev_IDs.index(ID)
                     self.plot1_items[i] = self.plot1_items[prev_idx]
                     self.plot2_items[i] = self.plot2_items[prev_idx]
@@ -661,9 +732,11 @@ class Window(QMainWindow):
         self.img2.setLookupTable(lut)
 
         # Remove previous IDs texts and contours
-        for IDlabel, cont in self.plot1_items:
-            self.plot1.removeItem(IDlabel)
-            self.plot1.removeItem(cont)
+        for _item in self.plot1_items:
+            if _item is not None:
+                IDlabel, cont = _item
+                self.plot1.removeItem(IDlabel)
+                self.plot1.removeItem(cont)
 
         for _item in self.plot2_items:
             self.plot2.removeItem(_item)
@@ -673,6 +746,8 @@ class Window(QMainWindow):
         # Annotate cell ID and draw contours
         for i, obj in enumerate(self.rp):
             self.drawID_and_Contour(i, obj)
+
+        self.brushID = lab.max()+1
 
     def checkIDs_LostNew(self):
         if self.frame_i == 0:
@@ -697,6 +772,9 @@ class Window(QMainWindow):
 
     def tracking(self):
         if self.frame_i == 0:
+            return
+        if self.disableTrackingCheckBox.isChecked():
+            self.checkIDs_LostNew()
             return
         prev_rp = self.allData_li[self.frame_i-1]['regionprops']
         prev_lab = self.allData_li[self.frame_i-1]['labels']

@@ -13,5 +13,7 @@
     <file alias="brush.svg">resources/brush.svg</file>
     <file alias="eraser.png">resources/eraser.png</file>
     <file alias="brush-cursor.png">resources/brush-cursor.png</file>
+    <file alias="undo.svg">resources/undo.svg</file>
+    <file alias="redo.svg">resources/redo.svg</file>
 </qresource>
 </RCC>
