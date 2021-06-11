@@ -11,19 +11,22 @@
 import sys
 import os
 import re
+import traceback
 from functools import partial
 
 import cv2
 import numpy as np
 import pandas as pd
 import skimage.measure
+import skimage.morphology
 
 from PyQt5.QtCore import Qt, QFile, QTextStream
-from PyQt5.QtGui import QIcon, QKeySequence
+from PyQt5.QtGui import QIcon, QKeySequence, QCursor
 from PyQt5.QtWidgets import (
     QAction, QApplication, QLabel,
     QMainWindow, QMenu, QToolBar,
-    QGroupBox, QScrollBar, QCheckBox
+    QGroupBox, QScrollBar, QCheckBox,
+    QToolButton, QSpinBox
 )
 
 from pyqtgraph.Qt import QtGui
@@ -43,9 +46,10 @@ np.random.seed(1568)
 class Window(QMainWindow):
     """Main Window."""
 
-    def __init__(self, parent=None):
+    def __init__(self, app, parent=None):
         """Initializer."""
         super().__init__(parent)
+        self.app = app
         self.setWindowTitle("Yeast ACDC - Segm&Track")
         self.setGeometry(100, 100, 1366, 768)
 
@@ -59,6 +63,8 @@ class Window(QMainWindow):
         self.gui_createGraphics()
 
         self.gui_createImg1Widgets()
+
+        self.setEnabledToolbarButton(enabled=False)
 
         mainContainer = QtGui.QWidget()
         self.setCentralWidget(mainContainer)
@@ -112,9 +118,29 @@ class Window(QMainWindow):
         self.plot2.hideAxis('left')
         self.graphLayout.addItem(self.plot2, row=1, col=2)
 
+
         # Right image
         self.img2 = pg.ImageItem(np.zeros((512,512)))
         self.plot2.addItem(self.img2)
+
+        # Brush Eraser circle img1
+        self.brushCircle = pg.ScatterPlotItem()
+        self.brushCircle.setData([], [], symbol='o', pxMode=False,
+                                 brush=None,
+                                 pen=pg.mkPen(width=2))
+        self.plot1.addItem(self.brushCircle)
+
+        # Eraser circle img2
+        self.EraserCircle = pg.ScatterPlotItem()
+        self.EraserCircle.setData([], [], symbol='o', pxMode=False,
+                                 brush=None,
+                                 pen=pg.mkPen(width=2, color='r'))
+        self.plot2.addItem(self.EraserCircle)
+
+        # Experimental: brush cursors
+        self.eraserCursor = QCursor(QIcon(":eraser.png").pixmap(30, 30))
+        brushCursorPixmap = QIcon(":brush-cursor.png").pixmap(32, 32)
+        self.brushCursor = QCursor(brushCursorPixmap, 16, 16)
 
         # Title
         self.titleLabel = pg.LabelItem(justify='center', color='w', size='14pt')
@@ -129,8 +155,83 @@ class Window(QMainWindow):
     def gui_connectGraphicsEvents(self):
         self.img1.hoverEvent = self.gui_hoverEventImg1
         self.img2.hoverEvent = self.gui_hoverEventImg2
+        self.img1.mousePressEvent = self.gui_mousePressEventImg1
+        self.img1.mouseMoveEvent = self.gui_mouseDragEventImg1
+        self.img1.mouseReleaseEvent = self.gui_mouseReleaseEventImg1
+        self.img2.mousePressEvent = self.gui_mousePressEventImg2
+        self.img2.mouseMoveEvent = self.gui_mouseDragEventImg2
+        self.img2.mouseReleaseEvent = self.gui_mouseReleaseEventImg2
+        # self.graphLayout.mouseReleaseEvent = self.gui_mouseReleaseEvent
+
+    def gui_mousePressEventImg2(self, event):
+        left_click = event.button() == Qt.MouseButton.LeftButton
+        # Paint new IDs with brush and left click on the right image
+        if left_click and self.eraserButton.isChecked():
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(round(x)), int(round(y))
+            lab = self.lab
+            Y, X = lab.shape
+            if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
+                self.isMouseDragImg2 = True
+                # Keep a global mask to compute which IDs got erased
+                self.erasedIDs = []
+                brushSize = self.brushSizeSpinbox.value()
+                mask = skimage.morphology.disk(brushSize, dtype=np.bool)
+                ymin, xmin = ydata-brushSize, xdata-brushSize
+                ymax, xmax = ydata+brushSize+1, xdata+brushSize+1
+                self.erasedIDs.extend(lab[ymin:ymax, xmin:xmax][mask])
+                lab[ymin:ymax, xmin:xmax][mask] = 0
+                self.img2.updateImage()
+
+    def gui_mouseDragEventImg2(self, event):
+        if self.isMouseDragImg2:
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(round(x)), int(round(y))
+            brushSize = self.brushSizeSpinbox.value()
+            mask = skimage.morphology.disk(brushSize, dtype=np.bool)
+            ymin, xmin = ydata-brushSize, xdata-brushSize
+            ymax, xmax = ydata+brushSize+1, xdata+brushSize+1
+            self.erasedIDs.extend(self.lab[ymin:ymax, xmin:xmax][mask])
+            self.lab[ymin:ymax, xmin:xmax][mask] = 0
+            self.img2.updateImage()
+
+    def gui_mouseReleaseEventImg2(self, event):
+        self.isMouseDragImg2 = False
+        erasedIDs = np.unique(self.erasedIDs)
+        self.update_IDsContours(newIDs=[], erasedIDs=erasedIDs)
+
+
+    def gui_mouseReleaseEventImg1(self, event):
+        pass
+
+    def gui_mousePressEventImg1(self, event):
+        left_click = event.button() == Qt.MouseButton.LeftButton
+        # Paint new IDs with brush and left click on the right image
+        if left_click and self.brushButton.isChecked():
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(round(x)), int(round(y))
+            lab = self.lab
+            Y, X = lab.shape
+            brushSize = self.brushSizeSpinbox.value()
+            if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
+                mask = skimage.morphology.disk(brushSize, dtype=np.bool)
+                ymin, xmin = ydata-brushSize, xdata-brushSize
+                ymax, xmax = ydata+brushSize+1, xdata+brushSize+1
+                lab[ymin:ymax, xmin:xmax][mask] = self.brushID
+                self.img2.setImage()
+
+                # Update colors to include a new color for the new ID
+                lut = self.lut[:self.brushID+1]
+                self.img2.setLookupTable(lut)
+
+                self.update_IDsContours(newIDs=[self.brushID])
+                self.brushID += 1
+
+    def gui_mouseDragEventImg1(self, event):
+        pass
 
     def gui_hoverEventImg1(self, event):
+        # Update x, y, value label bottom right
         try:
             x, y = event.pos()
             xdata, ydata = int(round(x)), int(round(y))
@@ -144,7 +245,26 @@ class Window(QMainWindow):
         except:
             self.wcLabel.setText(f'')
 
+        # Draw Brush circle
+        drawCircle = self.brushButton.isChecked() and not event.isExit()
+        try:
+            if drawCircle:
+                x, y = event.pos()
+                xdata, ydata = int(round(x)), int(round(y))
+                _img = self.img2.image
+                Y, X = _img.shape
+                if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
+                    size = self.brushSizeSpinbox.value()*2
+                    self.brushCircle.setData([x], [y],
+                                                   size=size)
+            else:
+                self.brushCircle.setData([], [])
+        except:
+            traceback.print_exc()
+            self.brushCircle.setData([], [])
+
     def gui_hoverEventImg2(self, event):
+        # Update x, y, value label bottom right
         try:
             x, y = event.pos()
             xdata, ydata = int(round(x)), int(round(y))
@@ -157,6 +277,23 @@ class Window(QMainWindow):
                 self.wcLabel.setText(f'')
         except:
             self.wcLabel.setText(f'')
+
+        # Draw eraser circle
+        drawCircle = self.eraserButton.isChecked() and not event.isExit()
+        try:
+            if drawCircle:
+                x, y = event.pos()
+                xdata, ydata = int(round(x)), int(round(y))
+                _img = self.img2.image
+                Y, X = _img.shape
+                if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
+                    size = self.brushSizeSpinbox.value()*2
+                    self.EraserCircle.setData([x], [y], size=size)
+            else:
+                self.EraserCircle.setData([], [])
+        except:
+            self.EraserCircle.setData([], [])
+
 
     def gui_createMenuBar(self):
         menuBar = self.menuBar()
@@ -196,8 +333,32 @@ class Window(QMainWindow):
         self.addToolBar(editToolBar)
         editToolBar.addAction(self.prevAction)
         editToolBar.addAction(self.nextAction)
+
+        self.brushButton = QToolButton(self)
+        self.brushButton.setIcon(QIcon(":brush.svg"))
+        self.brushButton.setCheckable(True)
+        self.brushButton.setShortcut('b')
+        self.brushButton.setToolTip('Paint (b)')
+        editToolBar.addWidget(self.brushButton)
+
+        self.eraserButton = QToolButton(self)
+        self.eraserButton.setIcon(QIcon(":eraser.png"))
+        self.eraserButton.setCheckable(True)
+        self.eraserButton.setShortcut('x')
+        self.eraserButton.setToolTip('Erase (x)')
+        editToolBar.addWidget(self.eraserButton)
+
         self.disableTrackingCheckBox = QCheckBox("Disable tracking")
+        self.disableTrackingCheckBox.setLayoutDirection(Qt.RightToLeft)
         editToolBar.addWidget(self.disableTrackingCheckBox)
+
+        self.brushSizeSpinbox = QSpinBox()
+        self.brushSizeSpinbox.setValue(3)
+        self.brushSizeLabel = QLabel('   Size: ')
+        editToolBar.addWidget(self.brushSizeLabel)
+        editToolBar.addWidget(self.brushSizeSpinbox)
+
+        self.editToolBar = editToolBar
 
     def gui_createStatusBar(self):
         self.statusbar = self.statusBar()
@@ -229,6 +390,8 @@ class Window(QMainWindow):
         self.repeatSegmActionCellpose = QAction("Cellpose", self)
         self.prevAction = QAction(QIcon(":arrow-left.svg"), "Previous frame", self)
         self.nextAction = QAction(QIcon(":arrow-right.svg"), "Next Frame", self)
+        self.prevAction.setShortcut("left")
+        self.nextAction.setShortcut("right")
         # Standard key sequence
         # self.copyAction.setShortcut(QKeySequence.Copy)
         # self.pasteAction.setShortcut(QKeySequence.Paste)
@@ -249,21 +412,75 @@ class Window(QMainWindow):
         # Connect Open Recent to dynamically populate it
         self.openRecentMenu.aboutToShow.connect(self.populateOpenRecent)
 
-
     def gui_connectEditActions(self):
+        self.setEnabledToolbarButton(enabled=True)
         self.prevAction.triggered.connect(self.prev_cb)
         self.nextAction.triggered.connect(self.next_cb)
         self.repeatSegmActionYeaZ.triggered.connect(self.repeatSegmYeaZ)
         self.repeatSegmActionCellpose.triggered.connect(self.repeatSegmCellpose)
         self.disableTrackingCheckBox.toggled.connect(self.disableTracking)
+        self.brushButton.toggled.connect(self.Brush_cb)
+        self.eraserButton.toggled.connect(self.Eraser_cb)
+        # Brush/Eraser size action
+        self.brushSizeSpinbox.valueChanged.connect(self.brushSize_cb)
+
+    def setEnabledToolbarButton(self, enabled=False):
+        self.saveAction.setEnabled(enabled)
+        self.editToolBar.setEnabled(enabled)
+        self.enableSizeSpinbox(False)
+
+    def enableSizeSpinbox(self, enabled):
+        self.brushSizeLabel.setEnabled(enabled)
+        self.brushSizeSpinbox.setEnabled(enabled)
+
+    def brushSize_cb(self):
+        self.EraserCircle.setSize(self.brushSizeSpinbox.value()*2)
+        self.brushCircle.setSize(self.brushSizeSpinbox.value()*2)
+
+
+    def Brush_cb(self, event):
+        if self.eraserButton.isChecked():
+            self.eraserButton.toggled.disconnect()
+            self.eraserButton.setChecked(False)
+            self.eraserButton.toggled.connect(self.Eraser_cb)
+        if not self.brushButton.isChecked():
+            self.brushCircle.setData([], [])
+            self.enableSizeSpinbox(False)
+            # self.app.restoreOverrideCursor()
+        else:
+            self.brushID = self.img2.image.max()+1
+            self.enableSizeSpinbox(True)
+            # self.app.setOverrideCursor(self.brushCursor)
+
+    def Eraser_cb(self, event):
+        if self.brushButton.isChecked():
+            self.brushButton.toggled.disconnect()
+            self.brushButton.setChecked(False)
+            self.brushButton.toggled.connect(self.Brush_cb)
+        if not self.eraserButton.isChecked():
+            self.brushCircle.setData([], [])
+            self.brushButton.setChecked(False)
+            self.enableSizeSpinbox(False)
+            # self.app.restoreOverrideCursor()
+        else:
+            self.enableSizeSpinbox(True)
+            # self.app.setOverrideCursor(self.brushCursor)
 
     def keyPressEvent(self, ev):
+        isBrushActive = (self.brushButton.isChecked()
+                      or self.eraserButton.isChecked())
         if ev.key() == Qt.Key_Control:
             pass
-        elif ev.key() == Qt.Key_Right:
-            self.next_cb()
-        elif ev.key() == Qt.Key_Left:
-            self.prev_cb()
+        elif ev.key() == Qt.Key_Up and isBrushActive:
+            self.brushSizeSpinbox.setValue(self.brushSizeSpinbox.value()+1)
+        elif ev.key() == Qt.Key_Down and isBrushActive:
+            self.brushSizeSpinbox.setValue(self.brushSizeSpinbox.value()-1)
+        # elif ev.key() == Qt.Key_Right:
+        #     self.next_cb()
+        # elif ev.key() == Qt.Key_Left:
+        #     self.prev_cb()
+        # elif ev.text() == 'b':
+        #     self.BrushEraser_cb(ev)
 
     def disableTracking(self):
         self.is_tracking_enabled = False
@@ -276,6 +493,7 @@ class Window(QMainWindow):
         self.which_model = 'Cellpose'
 
     def next_cb(self):
+        self.app.setOverrideCursor(Qt.WaitCursor)
         if self.frame_i < self.num_frames-1:
             # Store data for current frame
             self.store_data()
@@ -289,8 +507,10 @@ class Window(QMainWindow):
             self.updateALLimg()
         else:
             print('You reached the last frame!')
+        self.app.restoreOverrideCursor()
 
     def prev_cb(self):
+        self.app.setOverrideCursor(Qt.WaitCursor)
         if self.frame_i > 0:
             self.frame_i -= 1
             self.get_data()
@@ -301,6 +521,7 @@ class Window(QMainWindow):
             self.updateALLimg()
         else:
             print('You reached the first frame!')
+        self.app.restoreOverrideCursor()
 
     def init_frames_data(self, frames_path, user_ch_name):
         data = load.load_frames_data(frames_path, user_ch_name)
@@ -357,6 +578,76 @@ class Window(QMainWindow):
             self.lab = self.allData_li[self.frame_i]['labels'].copy()
             self.rp = skimage.measure.regionprops(self.lab)
 
+    def drawID_and_Contour(self, i, obj):
+        y, x = obj.centroid
+        _IDlabel1 = pg.LabelItem(
+                text=f'{obj.label}',
+                color='FA0000',
+                bold=True,
+                size='10pt'
+        )
+        w, h = _IDlabel1.rect().right(), _IDlabel1.rect().bottom()
+        _IDlabel1.setPos(x-w/2, y-h/2)
+        self.plot1.addItem(_IDlabel1)
+
+        _IDlabel2 = pg.LabelItem(
+                text=f'{obj.label}',
+                color='FA0000',
+                bold=True,
+                size='10pt'
+        )
+        w, h = _IDlabel2.rect().right(), _IDlabel2.rect().bottom()
+        _IDlabel2.setPos(x-w/2, y-h/2)
+        self.plot2.addItem(_IDlabel2)
+        self.plot2_items[i] = _IDlabel2
+
+        contours, hierarchy = cv2.findContours(
+                                           obj.image.astype(np.uint8),
+                                           cv2.RETR_EXTERNAL,
+                                           cv2.CHAIN_APPROX_SIMPLE)
+        min_y, min_x, _, _ = obj.bbox
+        cont = np.squeeze(contours[0], axis=1)
+        cont = np.vstack((cont, cont[0]))
+        cont += [min_x, min_y]
+        cont_plot = self.plot1.plot(cont[:,0], cont[:,1], pen=self.cpen)
+
+        self.plot1_items[i] = (_IDlabel1, cont_plot)
+
+
+
+    def update_data(self):
+        self.rp = skimage.measure.regionprops(self.lab)
+
+    def update_IDsContours(self, newIDs=[], erasedIDs=[]):
+        prev_IDs = [obj.label for obj in self.rp]
+
+        # Remove contours and ID label for erased IDs
+        for erasedID in erasedIDs:
+            if erasedID in prev_IDs:
+                erased_idx = prev_IDs.index(erasedID)
+                self.plot1.removeItem(self.plot1_items[erased_idx][0])
+                self.plot1.removeItem(self.plot1_items[erased_idx][1])
+                self.plot2.removeItem(self.plot2_items[erased_idx])
+                self.plot1_items.pop(erased_idx)
+                self.plot2_items.pop(erased_idx)
+                newIDs.append(erasedID)
+
+        self.plot1_items.extend([None]*len(newIDs))
+        self.plot2_items.extend([None]*len(newIDs))
+
+        self.update_data()
+        if newIDs:
+            for i, obj in enumerate(self.rp):
+                ID = obj.label
+                if ID in newIDs:
+                    # Draw new objects
+                    self.drawID_and_Contour(i, obj)
+                else:
+                    # Keep item from objects already existing before drawing new IDs
+                    prev_idx = prev_IDs.index(ID)
+                    self.plot1_items[i] = self.plot1_items[prev_idx]
+                    self.plot2_items[i] = self.plot2_items[prev_idx]
+
 
     def updateALLimg(self):
         self.frameLabel.setText(
@@ -369,50 +660,19 @@ class Window(QMainWindow):
         self.img2.setImage(lab)
         self.img2.setLookupTable(lut)
 
-        for _item in self.plot1_items:
-            self.plot1.removeItem(_item)
+        # Remove previous IDs texts and contours
+        for IDlabel, cont in self.plot1_items:
+            self.plot1.removeItem(IDlabel)
+            self.plot1.removeItem(cont)
 
         for _item in self.plot2_items:
             self.plot2.removeItem(_item)
 
-        self.plot1_items = []
-        self.plot2_items = []
+        self.plot1_items = [None]*len(self.rp)
+        self.plot2_items = [None]*len(self.rp)
         # Annotate cell ID and draw contours
         for i, obj in enumerate(self.rp):
-            y, x = obj.centroid
-            _IDlabel = pg.LabelItem(
-                    text=f'{obj.label}',
-                    color='FA0000',
-                    bold=True,
-                    size='10pt'
-            )
-            w, h = _IDlabel.rect().right(), _IDlabel.rect().bottom()
-            _IDlabel.setPos(x-w/2, y-h/2)
-            self.plot1.addItem(_IDlabel)
-            self.plot1_items.append(_IDlabel)
-
-            _IDlabel = pg.LabelItem(
-                    text=f'{obj.label}',
-                    color='FA0000',
-                    bold=True,
-                    size='10pt'
-            )
-            w, h = _IDlabel.rect().right(), _IDlabel.rect().bottom()
-            _IDlabel.setPos(x-w/2, y-h/2)
-            self.plot2.addItem(_IDlabel)
-            self.plot2_items.append(_IDlabel)
-
-            contours, hierarchy = cv2.findContours(
-                                               obj.image.astype(np.uint8),
-                                               cv2.RETR_EXTERNAL,
-                                               cv2.CHAIN_APPROX_SIMPLE)
-            min_y, min_x, _, _ = obj.bbox
-            cont = np.squeeze(contours[0], axis=1)
-            cont = np.vstack((cont, cont[0]))
-            cont += [min_x, min_y]
-            cont_plot = self.plot1.plot(cont[:,0], cont[:,1], pen=self.cpen)
-
-            self.plot1_items.append(cont_plot)
+            self.drawID_and_Contour(i, obj)
 
     def checkIDs_LostNew(self):
         if self.frame_i == 0:
@@ -502,14 +762,14 @@ class Window(QMainWindow):
         # print(f'Untracked new IDs in current frame: {new_untracked_IDs}')
         warn_txt = ''
         if lost_IDs:
-            warn_txt = f'Cells IDs lost in current frame: {lost_IDs}'
+            warn_txt = f'Cells IDs lost in current frame: {lost_IDs}\n'
             color = 'r'
         if new_tracked_IDs_2:
             self.new_IDs = new_tracked_IDs_2
-            warn_txt = f'{warn_txt}\n\nNew cells IDs in current frame: {new_tracked_IDs_2}'
+            warn_txt = f'{warn_txt}New cells IDs in current frame: {new_tracked_IDs_2}'
             color = 'r'
         if not warn_txt:
-            warn_txt = 'Looking good!'
+            warn_txt = 'Looking good!\n'
             color = 'w'
         self.titleLabel.setText(warn_txt, color=color)
 
@@ -653,9 +913,10 @@ if __name__ == "__main__":
     file = QFile(":/dark.qss")
     file.open(QFile.ReadOnly | QFile.Text)
     stream = QTextStream(file)
+    # app.setOverrideCursor(Qt.WaitCursor)
     # app.setStyleSheet(stream.readAll())
     # Create and show the main window
-    win = Window()
+    win = Window(app)
     win.show()
     # Apply style
     app.setStyle(QtGui.QStyleFactory.create('Fusion'))
