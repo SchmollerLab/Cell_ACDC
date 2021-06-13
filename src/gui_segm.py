@@ -19,8 +19,9 @@ import numpy as np
 import pandas as pd
 import skimage.measure
 import skimage.morphology
+import skimage.draw
 
-from PyQt5.QtCore import Qt, QFile, QTextStream
+from PyQt5.QtCore import Qt, QFile, QTextStream, QSize
 from PyQt5.QtGui import QIcon, QKeySequence, QCursor
 from PyQt5.QtWidgets import (
     QAction, QApplication, QLabel,
@@ -36,12 +37,17 @@ import pyqtgraph as pg
 import qrc_resources
 
 # Custom modules
-import load, prompts, apps
+import load, prompts, apps, core
 from QtDarkMode import breeze_resources
 
 # Interpret image data as row-major instead of col-major
 pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
 np.random.seed(1568)
+
+def qt_debug_trace():
+    from PyQt5.QtCore import pyqtRemoveInputHook
+    pyqtRemoveInputHook()
+    import pdb; pdb.set_trace()
 
 class Window(QMainWindow):
     """Main Window."""
@@ -166,6 +172,7 @@ class Window(QMainWindow):
     def gui_mousePressEventImg2(self, event):
         left_click = event.button() == Qt.MouseButton.LeftButton
         mid_click = event.button() == Qt.MouseButton.MidButton
+        right_click = event.button() == Qt.MouseButton.RightButton
         # Draw new IDs with brush and left click on the right image
         if left_click and self.eraserButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
@@ -185,6 +192,7 @@ class Window(QMainWindow):
                 self.lab[ymin:ymax, xmin:xmax][mask] = 0
                 self.tracking()
                 self.img2.updateImage()
+
         # Delete ID with middle click
         elif mid_click:
             # Store undo state before modifying stuff
@@ -196,9 +204,65 @@ class Window(QMainWindow):
             self.img2.updateImage()
             self.update_IDsContours([], erasedIDs=[delID])
 
+        # Separate bud
+        elif right_click and self.separateBudButton.isChecked():
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(round(x)), int(round(y))
+            ID = self.lab[ydata, xdata]
+            if ID == 0:
+                self.separateBudButton.setChecked(False)
+                return
+            # Store undo state before modifying stuff
+            self.storeUndoRedoStates()
+            max_ID = self.lab.max()
+            self.lab, success = self.auto_separate_bud_ID(
+                                         ID, self.lab, self.rp,
+                                         max_ID, enforce=True)
+            if not success:
+                paint_out = core.my_paint_app(
+                                self.lab, ID, self.rp, del_small_obj=True,
+                                overlay_img=self.img2.image)
+                if paint_out.cancel:
+                    self.separateBudButton.setChecked(False)
+                    return
+                paint_out_lab = paint_out.sep_bud_label
+                self.lab[paint_out_lab!=0] = paint_out_lab[paint_out_lab!=0]
+                self.lab[paint_out.small_obj_mask] = 0
+                # Apply eraser mask only to clicked ID
+                eraser_mask = np.logical_and(paint_out.eraser_mask, self.lab==ID)
+                self.lab[eraser_mask] = 0
+                for yy, xx in paint_out.coords_delete:
+                    del_ID = self.lab[yy, xx]
+                    self.lab[self.lab == del_ID] = 0
+            self.tracking()
+
+            # Update colors if the max ID changed, otherwise update only img
+            if self.lab.max()+1 > len(self.img2.lut):
+                self.img2.setImage(self.lab)
+                lut = self.lut[:self.lab.max()+1]
+                self.img2.setLookupTable(lut)
+            else:
+                self.img2.updateImage()
+
+            self.update_IDsContours([], erasedIDs=[ID], auto_newIDs=True)
+            self.separateBudButton.setChecked(False)
+
+        # Merge IDs
+        elif right_click:
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(round(x)), int(round(y))
+            ID = self.lab[ydata, xdata]
+            if ID == 0:
+                return
+            # Store undo state before modifying stuff
+            self.storeUndoRedoStates()
+            self.firstID = ID
+            self.do_merge = True
+
 
 
     def gui_mouseDragEventImg2(self, event):
+        # Eraser dragging mouse --> keep erasing
         if self.isMouseDragImg2:
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(round(x)), int(round(y))
@@ -215,12 +279,27 @@ class Window(QMainWindow):
             self.isMouseDragImg2 = False
             erasedIDs = np.unique(self.erasedIDs)
             self.update_IDsContours([], erasedIDs=erasedIDs)
+        # Merge IDs
+        if self.do_merge:
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(round(x)), int(round(y))
+            ID = self.lab[ydata, xdata]
+            if ID == 0:
+                self.do_merge = False
+                return
+            self.lab[self.lab==ID] = self.firstID
+            self.img2.updateImage()
+            self.update_IDsContours([], erasedIDs=[ID, self.firstID])
+            self.do_merge = False
 
 
     def gui_mouseReleaseEventImg1(self, event):
         pass
 
+
+
     def gui_mousePressEventImg1(self, event):
+        right_click = event.button() == Qt.MouseButton.RightButton
         left_click = event.button() == Qt.MouseButton.LeftButton
         # Paint new IDs with brush and left click on the right image
         if left_click and self.brushButton.isChecked():
@@ -340,8 +419,11 @@ class Window(QMainWindow):
         helpMenu.addAction(self.aboutAction)
 
     def gui_createToolBars(self):
+        toolbarSize = 34
+
         # File toolbar
         fileToolBar = self.addToolBar("File")
+        fileToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         fileToolBar.setMovable(False)
         # fileToolBar.addAction(self.newAction)
         fileToolBar.addAction(self.openAction)
@@ -355,6 +437,8 @@ class Window(QMainWindow):
 
         # Edit toolbar
         editToolBar = QToolBar("Edit", self)
+        # editToolBar.setFixedHeight(72)
+        editToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         self.addToolBar(editToolBar)
         editToolBar.addAction(self.prevAction)
         editToolBar.addAction(self.nextAction)
@@ -372,6 +456,13 @@ class Window(QMainWindow):
         self.eraserButton.setShortcut('x')
         self.eraserButton.setToolTip('Erase (x)')
         editToolBar.addWidget(self.eraserButton)
+
+        self.separateBudButton = QToolButton(self)
+        self.separateBudButton.setIcon(QIcon(":separate-bud.svg"))
+        self.separateBudButton.setCheckable(True)
+        self.separateBudButton.setShortcut('s')
+        self.separateBudButton.setToolTip('Separate bud (S + right-click)')
+        editToolBar.addWidget(self.separateBudButton)
 
         self.disableTrackingCheckBox = QCheckBox("Disable tracking")
         self.disableTrackingCheckBox.setLayoutDirection(Qt.RightToLeft)
@@ -465,6 +556,71 @@ class Window(QMainWindow):
     def enableSizeSpinbox(self, enabled):
         self.brushSizeLabel.setEnabled(enabled)
         self.brushSizeSpinbox.setEnabled(enabled)
+
+    def nearest_nonzero(self, a, y, x):
+        r, c = np.nonzero(a)
+        dist = ((r - y)**2 + (c - x)**2)
+        min_idx = dist.argmin()
+        return a[r[min_idx], c[min_idx]]
+
+    def convexity_defects(self, img, eps_percent):
+        img = img.astype(np.uint8)
+        contours, hierarchy = cv2.findContours(img,2,1)
+        cnt = contours[0]
+        cnt = cv2.approxPolyDP(cnt,eps_percent*cv2.arcLength(cnt,True),True) # see https://www.programcreek.com/python/example/89457/cv22.convexityDefects
+        hull = cv2.convexHull(cnt,returnPoints = False) # see https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_contours/py_contours_more_functions/py_contours_more_functions.html
+        defects = cv2.convexityDefects(cnt,hull) # see https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_contours/py_contours_more_functions/py_contours_more_functions.html
+        return cnt, defects
+
+    def auto_separate_bud_ID(self, ID, lab, rp, max_ID, max_i=1,
+                             enforce=False, eps_percent=0.01):
+        lab_ID_bool = lab == ID
+        cnt, defects = self.convexity_defects(lab_ID_bool, eps_percent)
+        success = False
+        if defects is not None:
+            if len(defects) == 2:
+                if not enforce:
+                    # Yeaz watershed separation. To be tested
+                    dist_watshed = segment(lab_ID_bool, None, merge=False)
+                    num_obj_watshed = len(np.unique(dist_watshed))
+                else:
+                    num_obj_watshed = 0
+                # Separate only if it was a separation also with watershed method
+                if num_obj_watshed > 2 or enforce:
+                    defects_points = [0]*len(defects)
+                    for i, defect in enumerate(defects):
+                        s,e,f,d = defect[0]
+                        x,y = tuple(cnt[f][0])
+                        defects_points[i] = (y,x)
+                    (r0, c0), (r1, c1) = defects_points
+                    rr, cc, _ = skimage.draw.line_aa(r0, c0, r1, c1)
+                    sep_bud_img = np.copy(lab_ID_bool)
+                    sep_bud_img[rr, cc] = False
+                    sep_bud_label = skimage.measure.label(
+                                               sep_bud_img, connectivity=2)
+                    rp_sep = skimage.measure.regionprops(sep_bud_label)
+                    IDs_sep = [obj.label for obj in rp_sep]
+                    areas = [obj.area for obj in rp_sep]
+                    # curr_ID_bud = IDs_sep[areas.index(min(areas))]
+                    # curr_ID_moth = IDs_sep[areas.index(max(areas))]
+                    orig_sblab = np.copy(sep_bud_label)
+                    # sep_bud_label = np.zeros_like(sep_bud_label)
+                    # sep_bud_label[orig_sblab==curr_ID_moth] = ID
+                    # sep_bud_label[orig_sblab==curr_ID_bud] = max(IDs)+max_i
+                    sep_bud_label *= (max_ID+max_i)
+                    temp_sep_bud_lab = sep_bud_label.copy()
+                    for r, c in zip(rr, cc):
+                        if lab_ID_bool[r, c]:
+                            nearest_ID = self.nearest_nonzero(
+                                                    sep_bud_label, r, c)
+                            temp_sep_bud_lab[r,c] = nearest_ID
+                    sep_bud_label = temp_sep_bud_lab
+                    sep_bud_label_mask = sep_bud_label != 0
+                    # plt.imshow_tk(sep_bud_label, dots_coords=np.asarray(defects_points))
+                    lab[sep_bud_label_mask] = sep_bud_label[sep_bud_label_mask]
+                    max_i += 1
+                    success = True
+        return lab, success
 
     def brushSize_cb(self):
         self.EraserCircle.setSize(self.brushSizeSpinbox.value()*2)
@@ -603,6 +759,7 @@ class Window(QMainWindow):
         self.updateALLimg()
 
     def init_attr(self, max_ID=10):
+        self.do_merge = False
         self.isMouseDragImg2 = False
         self.allData_li = [
                             {
@@ -675,9 +832,7 @@ class Window(QMainWindow):
         try:
             cont = np.squeeze(contours[0], axis=1)
         except:
-            from PyQt5.QtCore import pyqtRemoveInputHook
-            pyqtRemoveInputHook()
-            import pdb; pdb.set_trace()
+            qt_debug_trace()
         cont = np.vstack((cont, cont[0]))
         cont += [min_x, min_y]
         cont_plot = self.plot1.plot(cont[:,0], cont[:,1], pen=self.cpen)
@@ -689,7 +844,27 @@ class Window(QMainWindow):
     def update_data(self):
         self.rp = skimage.measure.regionprops(self.lab)
 
-    def update_IDsContours(self, newIDs, erasedIDs=[]):
+    def update_IDsContours(self, newIDs, erasedIDs=[], auto_newIDs=False):
+        """Function to draw labels text and contours of specific IDs.
+        It should speed up things because we draw only few IDs usually.
+
+        Parameters
+        ----------
+        newIDs : list
+            List of new IDs. New IDs are any new object added to the labels,
+            such as newly painted ID or separated bud. If you only modified
+            an ID it is NOT a new ID.
+        erasedIDs : list
+            List of IDs that needs to be RE-drawn. An erased ID will be first
+            removed and then RE-drawn with the new label and contour
+        auto_newIDs : bool
+            If True it automatically determines which are new IDs.
+
+        Returns
+        -------
+        None.
+
+        """
         prev_IDs = [obj.label for obj in self.rp]
 
         # Remove contours and ID label for erased IDs
@@ -704,6 +879,12 @@ class Window(QMainWindow):
                 newIDs.append(erasedID)
 
         self.update_data()
+
+        # Auto-determine new IDs
+        if auto_newIDs:
+            curr_IDs = [obj.label for obj in self.rp]
+            newIDs.extend([ID for ID in curr_IDs if ID not in prev_IDs])
+
         if newIDs:
             for i, obj in enumerate(self.rp):
                 ID = obj.label
@@ -770,7 +951,7 @@ class Window(QMainWindow):
         self.titleLabel.setText(warn_txt, color=color)
 
 
-    def tracking(self):
+    def tracking(self, onlyIDs=[]):
         if self.frame_i == 0:
             return
         if self.disableTrackingCheckBox.isChecked():

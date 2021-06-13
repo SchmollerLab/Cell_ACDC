@@ -870,12 +870,6 @@ class img_analysis:
             for ID in deleted_IDs:
                 self.segm_metadata_df.at[(frame_i+1, ID), 'Is_dead_cell'] = True
 
-    def nearest_nonzero(self, a, y, x):
-        r, c = np.nonzero(a)
-        dist = ((r - y)**2 + (c - x)**2)
-        min_idx = dist.argmin()
-        return r[min_idx], c[min_idx]
-
     def get_dir_coords(self, alfa_dir, yd, xd, shape, connectivity=1):
         h, w = shape
         y_above = yd+1 if yd+1 < h else yd
