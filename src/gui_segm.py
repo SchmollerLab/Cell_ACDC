@@ -49,13 +49,14 @@ def qt_debug_trace():
     pyqtRemoveInputHook()
     import pdb; pdb.set_trace()
 
-class Window(QMainWindow):
+class Yeast_ACDC_GUI(QMainWindow):
     """Main Window."""
 
     def __init__(self, app, parent=None):
         """Initializer."""
         super().__init__(parent)
         self.app = app
+        self.slideshowWin = None
         self.setWindowTitle("Yeast ACDC - Segm&Track")
         self.setGeometry(100, 100, 1366, 768)
 
@@ -80,6 +81,15 @@ class Window(QMainWindow):
         mainLayout.addLayout(self.img1_Widglayout, 1, 0)
 
         mainContainer.setLayout(mainLayout)
+
+    def leaveEvent(self, event):
+        if self.slideshowWin is not None:
+            self.slideshowWin.setFocus(True)
+            self.slideshowWin.activateWindow()
+
+    def enterEvent(self, event):
+        self.setFocus(True)
+        self.activateWindow()
 
     def gui_createImg1Widgets(self):
         self.zSlice_scrollBar_img1 = QScrollBar(Qt.Horizontal)
@@ -173,7 +183,8 @@ class Window(QMainWindow):
         left_click = event.button() == Qt.MouseButton.LeftButton
         mid_click = event.button() == Qt.MouseButton.MidButton
         right_click = event.button() == Qt.MouseButton.RightButton
-        # Draw new IDs with brush and left click on the right image
+        # Erase with brush and left click on the right image
+        # NOTE: contours, IDs and rp will be updated on mouseReleaseEvent
         if left_click and self.eraserButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(round(x)), int(round(y))
@@ -218,6 +229,8 @@ class Window(QMainWindow):
             self.lab, success = self.auto_separate_bud_ID(
                                          ID, self.lab, self.rp,
                                          max_ID, enforce=True)
+
+            # If automatic bud separation was not successfull call manual one
             if not success:
                 paint_out = core.my_paint_app(
                                 self.lab, ID, self.rp, del_small_obj=True,
@@ -234,17 +247,20 @@ class Window(QMainWindow):
                 for yy, xx in paint_out.coords_delete:
                     del_ID = self.lab[yy, xx]
                     self.lab[self.lab == del_ID] = 0
+
+            # Repeat tracking
             self.tracking()
 
             # Update colors if the max ID changed, otherwise update only img
             if self.lab.max()+1 > len(self.img2.lut):
                 self.img2.setImage(self.lab)
-                lut = self.lut[:self.lab.max()+1]
-                self.img2.setLookupTable(lut)
+                self.updateLookuptable()
             else:
                 self.img2.updateImage()
 
             self.update_IDsContours([], erasedIDs=[ID], auto_newIDs=True)
+
+            # Uncheck separate bud button
             self.separateBudButton.setChecked(False)
 
         # Merge IDs
@@ -258,6 +274,48 @@ class Window(QMainWindow):
             self.storeUndoRedoStates()
             self.firstID = ID
             self.do_merge = True
+
+        # Edit ID
+        if right_click and self.editID_Button.isChecked():
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(round(x)), int(round(y))
+            ID = self.lab[ydata, xdata]
+            if ID == 0:
+                self.editID_Button.setChecked(False)
+                return
+
+            editID = apps.editID_widget(old_ID=ID)
+            if editID.cancel:
+                self.editID_Button.setChecked(False)
+                return
+
+            prev_IDs = [obj.label for obj in self.rp]
+            for old_ID, new_ID in editID.new_ID:
+                if new_ID in prev_IDs:
+                    tempID = self.lab.max() + 1
+                    self.lab[self.lab == old_ID] = tempID
+                    self.lab[self.lab == new_ID] = old_ID
+                    self.lab[self.lab == tempID] = new_ID
+                else:
+                    self.lab[self.lab == old_ID] = new_ID
+
+                self.checkIDs_LostNew()
+
+                # Update regionprops and IDs labels on image
+                old_ID_idx = prev_IDs.index(old_ID)
+                self.rp[old_ID_idx].label = new_ID
+
+                self.plot1.removeItem(self.plot1_items[old_ID_idx][0])
+                self.plot2.removeItem(self.plot2_items[old_ID_idx])
+
+                obj = self.rp[old_ID_idx]
+                self.drawID_and_Contour(old_ID_idx, obj, drawContours=False)
+
+                # set labels image and lut to update color of new IDs
+                self.updateLookuptable()
+                self.img2.setImage(self.lab)
+
+            self.editID_Button.setChecked(False)
 
 
 
@@ -318,8 +376,7 @@ class Window(QMainWindow):
                 self.img2.setImage()
 
                 # Update colors to include a new color for the new ID
-                lut = self.lut[:self.brushID+1]
-                self.img2.setLookupTable(lut)
+                self.updateLookuptable()
 
                 self.update_IDsContours([self.brushID])
                 self.brushID += 1
@@ -443,6 +500,13 @@ class Window(QMainWindow):
         editToolBar.addAction(self.prevAction)
         editToolBar.addAction(self.nextAction)
 
+        self.slideshowButton = QToolButton(self)
+        self.slideshowButton.setIcon(QIcon(":eye-plus.svg"))
+        self.slideshowButton.setCheckable(True)
+        self.slideshowButton.setShortcut('Ctrl+W')
+        self.slideshowButton.setToolTip('Open slideshow (Ctrl+W)')
+        editToolBar.addWidget(self.slideshowButton)
+
         self.brushButton = QToolButton(self)
         self.brushButton.setIcon(QIcon(":brush.svg"))
         self.brushButton.setCheckable(True)
@@ -456,6 +520,13 @@ class Window(QMainWindow):
         self.eraserButton.setShortcut('x')
         self.eraserButton.setToolTip('Erase (x)')
         editToolBar.addWidget(self.eraserButton)
+
+        self.editID_Button = QToolButton(self)
+        self.editID_Button.setIcon(QIcon(":edit-id.svg"))
+        self.editID_Button.setCheckable(True)
+        self.editID_Button.setShortcut('n')
+        self.editID_Button.setToolTip('Edit ID (N + right-click)')
+        editToolBar.addWidget(self.editID_Button)
 
         self.separateBudButton = QToolButton(self)
         self.separateBudButton.setIcon(QIcon(":separate-bud.svg"))
@@ -490,7 +561,8 @@ class Window(QMainWindow):
         self.newAction.setText("&New")
         self.newAction.setIcon(QIcon(":file-new.svg"))
         self.openAction = QAction(QIcon(":file-open.svg"), "&Open...", self)
-        self.saveAction = QAction(QIcon(":file-save.svg"), "&Save", self)
+        self.saveAction = QAction(QIcon(":file-save.svg"),
+                                  "&Save (Ctrl+S)", self)
         self.exitAction = QAction("&Exit", self)
         self.undoAction = QAction(QIcon(":undo.svg"), "Undo (Ctrl+Z)", self)
         self.redoAction = QAction(QIcon(":redo.svg"), "Redo (Ctrl+Y)", self)
@@ -508,8 +580,10 @@ class Window(QMainWindow):
         # Edit actions
         self.repeatSegmActionYeaZ = QAction("YeaZ", self)
         self.repeatSegmActionCellpose = QAction("Cellpose", self)
-        self.prevAction = QAction(QIcon(":arrow-left.svg"), "Previous frame", self)
-        self.nextAction = QAction(QIcon(":arrow-right.svg"), "Next Frame", self)
+        self.prevAction = QAction(QIcon(":arrow-left.svg"),
+                                        "Previous frame", self)
+        self.nextAction = QAction(QIcon(":arrow-right.svg"),
+                                  "Next Frame", self)
         self.prevAction.setShortcut("left")
         self.nextAction.setShortcut("right")
         # Standard key sequence
@@ -540,6 +614,7 @@ class Window(QMainWindow):
         self.setEnabledToolbarButton(enabled=True)
         self.prevAction.triggered.connect(self.prev_cb)
         self.nextAction.triggered.connect(self.next_cb)
+        self.slideshowButton.toggled.connect(self.launchSlideshow)
         self.repeatSegmActionYeaZ.triggered.connect(self.repeatSegmYeaZ)
         self.repeatSegmActionCellpose.triggered.connect(self.repeatSegmCellpose)
         self.disableTrackingCheckBox.toggled.connect(self.disableTracking)
@@ -556,6 +631,15 @@ class Window(QMainWindow):
     def enableSizeSpinbox(self, enabled):
         self.brushSizeLabel.setEnabled(enabled)
         self.brushSizeSpinbox.setEnabled(enabled)
+
+    def launchSlideshow(self):
+        if self.slideshowButton.isChecked():
+            self.slideshowWin = apps.CellsSlideshow_GUI(
+                                   button_toUncheck=self.slideshowButton)
+            self.slideshowWin.loadData(self.data.img_data)
+            self.slideshowWin.show()
+        else:
+            self.slideshowWin = None
 
     def nearest_nonzero(self, a, y, x):
         r, c = np.nonzero(a)
@@ -730,6 +814,9 @@ class Window(QMainWindow):
             self.updateALLimg()
         else:
             print('You reached the last frame!')
+        if self.slideshowWin is not None:
+            self.slideshowWin.frame_i = self.frame_i
+            self.slideshowWin.update_img()
         self.app.restoreOverrideCursor()
 
     def prev_cb(self):
@@ -741,6 +828,9 @@ class Window(QMainWindow):
             self.updateALLimg()
         else:
             print('You reached the first frame!')
+        if self.slideshowWin is not None:
+            self.slideshowWin.frame_i = self.frame_i
+            self.slideshowWin.update_img()
         self.app.restoreOverrideCursor()
 
     def init_frames_data(self, frames_path, user_ch_name):
@@ -801,7 +891,7 @@ class Window(QMainWindow):
             self.lab = self.allData_li[self.frame_i]['labels'].copy()
             self.rp = skimage.measure.regionprops(self.lab)
 
-    def drawID_and_Contour(self, i, obj):
+    def drawID_and_Contour(self, i, obj, drawContours=True):
         y, x = obj.centroid
         _IDlabel1 = pg.LabelItem(
                 text=f'{obj.label}',
@@ -824,6 +914,10 @@ class Window(QMainWindow):
         self.plot2.addItem(_IDlabel2)
         self.plot2_items[i] = _IDlabel2
 
+        if not drawContours:
+            self.plot1_items[i] = (self.plot1_items[i][0], _IDlabel1)
+            return
+
         contours, hierarchy = cv2.findContours(
                                            obj.image.astype(np.uint8),
                                            cv2.RETR_EXTERNAL,
@@ -838,8 +932,6 @@ class Window(QMainWindow):
         cont_plot = self.plot1.plot(cont[:,0], cont[:,1], pen=self.cpen)
 
         self.plot1_items[i] = (_IDlabel1, cont_plot)
-
-
 
     def update_data(self):
         self.rp = skimage.measure.regionprops(self.lab)
@@ -900,17 +992,20 @@ class Window(QMainWindow):
                     self.plot1_items[i] = self.plot1_items[prev_idx]
                     self.plot2_items[i] = self.plot2_items[prev_idx]
 
+    def updateLookuptable(self):
+        lut = self.lut[:self.lab.max()+1]
+        self.img2.setLookupTable(lut)
+
 
     def updateALLimg(self):
         self.frameLabel.setText(
                  f'Current frame = {self.frame_i+1}/{self.num_frames}')
         img = self.data.img_data[self.frame_i]
         lab = self.lab
-        lut = self.lut[:lab.max()+1]
 
         self.img1.setImage(img)
         self.img2.setImage(lab)
-        self.img2.setLookupTable(lut)
+        self.updateLookuptable()
 
         # Remove previous IDs texts and contours
         for _item in self.plot1_items:
@@ -1131,7 +1226,9 @@ class Window(QMainWindow):
                 'Data successfully loaded. Right/Left arrow to navigate frames')
 
     def saveFile(self):
-        pass
+        print(self.data.segm_npy_path)
+        print(self.data.slice_used_segm_path)
+        print(self.data.segm_metadata_csv_path)
 
     def copyContent(self):
         pass
@@ -1164,6 +1261,9 @@ class Window(QMainWindow):
     def openRecentFile(self, filename):
         pass
 
+    def closeEvent(self, event):
+        if self.slideshowWin is not None:
+            self.slideshowWin.close()
 
 if __name__ == "__main__":
     # Create the application
@@ -1175,7 +1275,7 @@ if __name__ == "__main__":
     # app.setOverrideCursor(Qt.WaitCursor)
     # app.setStyleSheet(stream.readAll())
     # Create and show the main window
-    win = Window(app)
+    win = Yeast_ACDC_GUI(app)
     win.show()
     # Apply style
     app.setStyle(QtGui.QStyleFactory.create('Fusion'))

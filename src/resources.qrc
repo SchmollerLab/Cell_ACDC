@@ -10,11 +10,15 @@
     <file alias="help-content.svg">resources/help-content.svg</file>
     <file alias="arrow-left.svg">resources/arrow-left.svg</file>
     <file alias="arrow-right.svg">resources/arrow-right.svg</file>
+    <file alias="arrow-up.svg">resources/arrow-up.svg</file>
+    <file alias="arrow-down.svg">resources/arrow-down.svg</file>
     <file alias="brush.svg">resources/brush.svg</file>
     <file alias="eraser.png">resources/eraser.png</file>
     <file alias="brush-cursor.png">resources/brush-cursor.png</file>
     <file alias="undo.svg">resources/undo.svg</file>
     <file alias="redo.svg">resources/redo.svg</file>
     <file alias="separate-bud.svg">resources/separate-bud.svg</file>
+    <file alias="edit-id.svg">resources/edit-id.svg</file>
+    <file alias="eye-plus.svg">resources/eye-plus.svg</file>
 </qresource>
 </RCC>

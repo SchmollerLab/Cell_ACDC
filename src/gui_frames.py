@@ -764,7 +764,6 @@ class app_GUI:
             if segm_npy.dtype != object:
                 ia.segm_metadata_df.to_csv(segm_metadata_csv_path)
                 np.save(segm_npy_path, segm_npy, allow_pickle=False)
-                import pdb; pdb.set_trace()
                 with open(app.data.last_tracked_i_path, 'w+') as txt:
                     txt.write(str(app.last_segm_i))
             else:

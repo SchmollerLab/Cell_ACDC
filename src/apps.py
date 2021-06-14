@@ -1,3 +1,4 @@
+import sys
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
@@ -14,8 +15,11 @@ from pyglet.canvas import Display
 from skimage.color import gray2rgba, label2rgb
 from skimage.exposure import equalize_adapthist
 from skimage import img_as_float
-from skimage.filters import (threshold_otsu, threshold_yen, threshold_isodata,
-            threshold_li, threshold_mean, threshold_triangle, threshold_minimum)
+from skimage.filters import (
+    threshold_otsu, threshold_yen, threshold_isodata,
+    threshold_li, threshold_mean, threshold_triangle,
+    threshold_minimum
+)
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
@@ -24,83 +28,288 @@ from time import time
 from lib import text_label_centroid
 import matplotlib.ticker as ticker
 
-class visualize_Unet_results:
-    def __init__(self, tracked_stack, frames, do_tracking, exec_time):
-        self.tracked_stack = tracked_stack
+import pyqtgraph as pg
+from pyqtgraph.Qt import QtGui
+from PyQt5.QtGui import QIcon
+from PyQt5.QtCore import Qt, QSize
+from PyQt5.QtWidgets import (
+    QAction, QApplication, QMainWindow, QMenu, QLabel, QToolBar,
+    QScrollBar
+)
+
+import qrc_resources
+
+class CellsSlideshow_GUI(QMainWindow):
+    """Main Window."""
+
+    def __init__(self, parent=None, button_toUncheck=None):
+        self.button_toUncheck = button_toUncheck
+        """Initializer."""
+        super().__init__(parent)
+        self.setWindowTitle("Yeast ACDC - Segm&Track")
+        self.setGeometry(100, 300, 850, 768)
+
+        self.gui_createActions()
+        self.gui_createMenuBar()
+        self.gui_createToolBars()
+
+        self.gui_connectActions()
+        self.gui_createStatusBar()
+
+        self.gui_createGraphics()
+
+        self.gui_connectImgActions()
+
+        self.gui_createImgWidgets()
+
+        mainContainer = QtGui.QWidget()
+        self.setCentralWidget(mainContainer)
+
+        mainLayout = QtGui.QGridLayout()
+        mainLayout.addWidget(self.graphLayout, 0, 0, 1, 1)
+        mainLayout.addLayout(self.img_Widglayout, 1, 0)
+
+        mainContainer.setLayout(mainLayout)
+
+    def gui_createActions(self):
+        # File actions
+        self.exitAction = QAction("&Exit", self)
+
+        # Toolbar actions
+        self.prevAction = QAction(QIcon(":arrow-left.svg"),
+                                        "Previous frame", self)
+        self.nextAction = QAction(QIcon(":arrow-right.svg"),
+                                        "Next Frame", self)
+        self.jumpForwardAction = QAction(QIcon(":arrow-up.svg"),
+                                        "Jump to 10 frames ahead", self)
+        self.jumpBackwardAction = QAction(QIcon(":arrow-down.svg"),
+                                        "Jump to 10 frames back", self)
+        self.prevAction.setShortcut("left")
+        self.nextAction.setShortcut("right")
+        self.jumpForwardAction.setShortcut("up")
+        self.jumpBackwardAction.setShortcut("down")
+
+    def gui_createMenuBar(self):
+        menuBar = self.menuBar()
+        # File menu
+        fileMenu = QMenu("&File", self)
+        menuBar.addMenu(fileMenu)
+        # fileMenu.addAction(self.newAction)
+        fileMenu.addAction(self.exitAction)
+
+    def gui_createToolBars(self):
+        toolbarSize = 30
+
+        editToolBar = QToolBar("Edit", self)
+        editToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
+        self.addToolBar(editToolBar)
+
+        editToolBar.addAction(self.prevAction)
+        editToolBar.addAction(self.nextAction)
+        editToolBar.addAction(self.jumpBackwardAction)
+        editToolBar.addAction(self.jumpForwardAction)
+
+    def gui_connectActions(self):
+        self.exitAction.triggered.connect(self.close)
+        self.prevAction.triggered.connect(self.prev_frame)
+        self.nextAction.triggered.connect(self.next_frame)
+        self.jumpForwardAction.triggered.connect(self.skip10ahead_frames)
+        self.jumpBackwardAction.triggered.connect(self.skip10back_frames)
+
+    def gui_createStatusBar(self):
+        self.statusbar = self.statusBar()
+        # Temporary message
+        self.statusbar.showMessage("Ready", 3000)
+        # Permanent widget
+        self.wcLabel = QLabel(f"")
+        self.statusbar.addPermanentWidget(self.wcLabel)
+
+    def gui_createGraphics(self):
+        self.graphLayout = pg.GraphicsLayoutWidget()
+
+        # Plot Item container for image
+        self.Plot = pg.PlotItem()
+        self.Plot.invertY(True)
+        self.Plot.setAspectLocked(True)
+        self.Plot.hideAxis('bottom')
+        self.Plot.hideAxis('left')
+        self.graphLayout.addItem(self.Plot, row=1, col=1)
+
+        # Image Item
+        self.img = pg.ImageItem(np.zeros((512,512)))
+        self.Plot.addItem(self.img)
+
+        #Image histogram
+        hist = pg.HistogramLUTItem()
+        hist.setImageItem(self.img)
+        self.graphLayout.addItem(hist, row=1, col=0)
+
+        # Current frame text
+        self.frameLabel = pg.LabelItem(justify='center', color='w', size='14pt')
+        self.frameLabel.setText(' ')
+        self.graphLayout.addItem(self.frameLabel, row=2, col=0, colspan=2)
+
+    def gui_connectImgActions(self):
+        self.img.hoverEvent = self.gui_hoverEventImg
+
+    def gui_createImgWidgets(self):
+        self.zSlice_scrollBar_img = QScrollBar(Qt.Horizontal)
+        self.img_Widglayout = QtGui.QGridLayout()
+        self.zSlice_scrollBar_img.setFixedHeight(20)
+        self.zSlice_scrollBar_img.setDisabled(True)
+        _z_label = QLabel('z-slice  ')
+        _font = QtGui.QFont()
+        _font.setPointSize(10)
+        _z_label.setFont(_font)
+        self.img_Widglayout.addWidget(_z_label, 0, 0, alignment=Qt.AlignCenter)
+        self.img_Widglayout.addWidget(self.zSlice_scrollBar_img, 0, 1, 2, 20)
+
+        self.img_Widglayout.setContentsMargins(100, 0, 50, 0)
+
+    def gui_hoverEventImg(self, event):
+        # Update x, y, value label bottom right
+        try:
+            x, y = event.pos()
+            xdata, ydata = int(round(x)), int(round(y))
+            _img = self.img.image
+            Y, X = _img.shape
+            if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
+                val = _img[ydata, xdata]
+                self.wcLabel.setText(f'(x={x:.2f}, y={y:.2f}, value={val:.2f})')
+            else:
+                self.wcLabel.setText(f'')
+        except:
+            self.wcLabel.setText(f'')
+
+    def loadData(self, frames, frame_i=0):
         self.frames = frames
-        self.fig, self.ax = plt.subplots(1, 2)
-        self.idx = 0
-        self.idx_txt = self.fig.text(0.5, 0.15,
-                           f'Current index = {self.idx}/{len(tracked_stack)-1}',
-                           color='0.9', ha='center', fontsize=14)
-        if do_tracking:
-            title = 'Segment&Track'
+        self.num_frames = len(frames)
+        self.frame_i = frame_i
+        self.update_img()
+
+    def next_frame(self):
+        if self.frame_i < self.num_frames-1:
+            self.frame_i += 1
         else:
-            title = 'Segmentation'
+            self.frame_i = 0
+        self.update_img()
 
-        self.fig.suptitle(f'{title} overall execution time = {exec_time: .3f} s',
-                     y=0.9, size=18)
-        self.update_plots()
+    def prev_frame(self):
+        if self.frame_i > 0:
+            self.frame_i -= 1
+        else:
+            self.frame_i = self.num_frames-1
+        self.update_img()
 
-    def update_plots(self):
-        tracked_stack = self.tracked_stack
-        frames = self.frames
-        fig, ax = self.fig, self.ax
-        idx_txt = self.idx_txt
-        idx = self.idx
-        t0 = time()
-        for a in ax:
-            a.clear()
-        t1 = time()
-        # print(f'Clear axis execution time = {t1-t0:.4f}')
-        t0 = time()
-        lab = tracked_stack[idx]
-        img = frames[idx]
-        rp = regionprops(lab)
-        IDs = [obj.label for obj in rp]
-        contours, hierarchy = cv2.findContours((lab>0).astype(np.uint8),
-                                               cv2.RETR_EXTERNAL,
-                                               cv2.CHAIN_APPROX_SIMPLE)
-        t1 = time()
-        # print(f'Regionprops and find contours = {t1-t0:.4f}')
-        t0 = time()
-        ax[0].imshow(img)
-        ax[1].imshow(lab)
-        text_label_centroid(rp, ax[0], 12, 'semibold', 'center', 'center',
-                            color='r', clear=True)
-        text_label_centroid(rp, ax[1], 12, 'semibold', 'center', 'center',
-                            clear=True)
-        t1 = time()
-        # print(f'Imshow and text centroid = {t1-t0:.4f}')
-        t0 = time()
-        for cont in contours:
-            cont = np.squeeze(cont, axis=1)
-            cont = np.vstack((cont, cont[0]))
-            ax[0].plot(cont[:,0], cont[:,1], c='r')
-        t1 = time()
-        # print(f'Plotting contours = {t1-t0:.4f}')
-        for a in ax:
-            a.axis('off')
-        idx_txt._text = f'Current index = {self.idx}/{len(tracked_stack)-1}'
-        fig.canvas.draw_idle()
+    def skip10ahead_frames(self):
+        if self.frame_i < self.num_frames-10:
+            self.frame_i += 10
+        else:
+            self.frame_i = 0
+        self.update_img()
 
-    def key_down(self, event):
-        num_frames = len(self.tracked_stack)
-        if event.key == 'right' and self.idx < num_frames-1:
-            self.idx += 1
-            self.idx_txt._text = f'Current index = {self.idx}/{num_frames-1}'
-            self.fig.canvas.draw_idle()
-        elif event.key == 'left' and self.idx > 0:
-            self.idx -= 1
-            self.idx_txt._text = f'Current index = {self.idx}/{num_frames-1}'
-            self.fig.canvas.draw_idle()
+    def skip10back_frames(self):
+        if self.frame_i > 9:
+            self.frame_i -= 10
+        else:
+            self.frame_i = self.num_frames-1
+        self.update_img()
 
-    def key_up(self, event):
-        num_frames = len(self.tracked_stack)
-        if event.key == 'right' and self.idx < num_frames-1:
-            self.update_plots()
-        elif event.key == 'left' and self.idx > 0:
-            self.update_plots()
+
+    def update_img(self):
+        self.frameLabel.setText(
+                 f'Current frame = {self.frame_i+1}/{self.num_frames}')
+        self.img.setImage(self.frames[self.frame_i])
+
+    def closeEvent(self, event):
+        if self.button_toUncheck is not None:
+            self.button_toUncheck.setChecked(False)
+
+
+
+
+class editID_widget:
+    def __init__(self, old_ID=None, second_button=False):
+        self.old_ID = old_ID
+        self.cancel = False
+        root = tk.Tk()
+        root.lift()
+        root.attributes("-topmost", True)
+        root.geometry("+800+400")
+        self._root = root
+        if old_ID is not None:
+            label_txt = f'ID = {old_ID} will be replaced\n with new ID'
+        else:
+            label_txt = 'New ID'
+        tk.Label(root, text=label_txt, font=(None, 10)).grid(row=0, columnspan=2)
+        ID_strvar = tk.StringVar()
+        ID = tk.Entry(root, justify='center', textvariable=ID_strvar)
+        ID_strvar.trace_add("write", self._close_brackets)
+        ID.grid(row=1, padx=16, pady=4, columnspan=2)
+        ID.focus_force()
+        if second_button:
+            self.ok_for_all_butt = tk.Button(root, command=self._ok_for_all_cb,
+                            text='Ok for all next frames',state=tk.DISABLED)
+            self.ok_for_all_butt.grid(row=2, pady=4, column=1, padx=4)
+            self.ok_butt = tk.Button(root, command=self._quit, text='Ok!',
+                                           width=10)
+            self.ok_butt.grid(row=2, pady=4, column=0, padx=4)
+        else:
+            self.ok_butt = tk.Button(root, command=self._quit, text='Ok!',
+                                           width=10)
+            self.ok_butt.grid(row=2, pady=4, padx=4, columnspan=2)
+        tk.Label(root, text='NOTE:\n You can write a list of tuples:\n'
+                            '[(old ID, new ID), ...]', font=(None, 10)
+                            ).grid(row=3, pady=4, columnspan=2)
+        root.bind('<Return>', self._quit)
+        root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        self.entry = ID
+        root.mainloop()
+
+    def _close_brackets(self, name=None, index=None, mode=None):
+        txt = self.entry.get()
+        input_idx = self.entry.index(tk.INSERT)
+        input_txt = txt[input_idx-1:input_idx]
+        if input_txt == '(':
+            self.entry.insert(tk.INSERT, ')')
+            self.entry.icursor(self.entry.index(tk.INSERT)-1)
+        elif input_txt == '[':
+            self.entry.insert(tk.INSERT, ']')
+            self.entry.icursor(self.entry.index(tk.INSERT)-1)
+        try:
+            int(self.entry.get())
+            self.ok_for_all_butt['state'] = tk.NORMAL
+        except:
+            try:
+                self.ok_for_all_butt['state'] = tk.DISABLED
+            except:
+                pass
+
+    def _ok_for_all_cb(self, event=None):
+        self.ok_for_all = True
+        txt = self.entry.get()
+        if txt.find('[') != -1:
+            self.new_ID = literal_eval(txt)
+        else:
+            self.new_ID = int(self.entry.get())
+        self._root.quit()
+        self._root.destroy()
+
+    def _quit(self, event=None):
+        self.ok_for_all = False
+        txt = self.entry.get()
+        if txt.find('[') != -1:
+            self.new_ID = literal_eval(txt)
+        else:
+            self.new_ID = [(self.old_ID, int(self.entry.get()))]
+        self._root.quit()
+        self._root.destroy()
+
+    def on_closing(self):
+        self.cancel = True
+        self._root.quit()
+        self._root.destroy()
+        # exit('Execution aborted by the user')
 
 
 
@@ -435,4 +644,9 @@ class win_size:
                 pass
 
 if __name__ == '__main__':
-    imshow_tk(np.random.randint(0,255, size=(500,500)))
+    # Create the application
+    app = QApplication(sys.argv)
+    win = CellsSlideshow_GUI()
+    win.show()
+    win.loadData(np.random.randint(0,255, size=(200, 512,512)))
+    sys.exit(app.exec_())

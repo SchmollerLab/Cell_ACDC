@@ -1,0 +1,28 @@
+<?xml version="1.0" ?>
+<svg
+  id="Layer_1"
+  style="enable-background:new 0 0 34 34;"
+  version="1.1"
+  viewBox="0 0 34 34"
+  xml:space="preserve"
+  xmlns="http://www.w3.org/2000/svg"
+  xmlns:xlink="http://www.w3.org/1999/xlink">
+  <defs id="defs3051">
+    <style type="text/css" id="current-color-scheme">
+      .ColorScheme-Text {
+        color:#4d4d4d;
+      }
+      </style>
+  </defs>
+  <path
+    style="fill:currentColor;fill-opacity:1;stroke:none"
+    d="M24,13.328V24H6V10h10.672l6-6H6C4.895,4,4,4.895,4,6v18c0,1.105,0.895,2,2,2h18c1.105,0,2-0.895,2-2V11.329L24,13.328z"
+    class="ColorScheme-Text"/>
+    <g>
+      <path
+        d="M28.957,5.543l0.525-0.525c0.69-0.69,0.69-1.81,0-2.5s-1.81-0.69-2.5,0l-0.525,0.525L28.957,5.543z"/>
+  </g><g>
+  <polygon
+    points="25.043,4.457 14.475,15.025 14,18 16.975,17.525 27.543,6.957  "/>
+  </g>
+</svg>
