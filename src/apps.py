@@ -47,7 +47,7 @@ class CellsSlideshow_GUI(QMainWindow):
         """Initializer."""
         super().__init__(parent)
         self.setWindowTitle("Yeast ACDC - Segm&Track")
-        self.setGeometry(100, 300, 850, 768)
+        self.setGeometry(800, 400, 850, 768)
 
         self.gui_createActions()
         self.gui_createMenuBar()

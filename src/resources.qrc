@@ -20,5 +20,7 @@
     <file alias="separate-bud.svg">resources/separate-bud.svg</file>
     <file alias="edit-id.svg">resources/edit-id.svg</file>
     <file alias="eye-plus.svg">resources/eye-plus.svg</file>
+    <file alias="folder-open.svg">resources/folder-open.svg</file>
+    <file alias="drawer.svg">resources/drawer.svg</file>
 </qresource>
 </RCC>

@@ -114,6 +114,15 @@ class load_frames_data:
             else:
                 Y, X = self.img_data.shape[-2:]
                 self.segm_data = np.zeros((self.SizeT, Y, X), int)
+        # Load last tracked frame
+        last_tracked_i_path, last_tracked_i_found = self.substring_path(
+                                              path, 'last_tracked_i.txt',
+                                              self.images_path)
+        if last_tracked_i_found:
+            with open(last_tracked_i_path, 'r') as txt:
+                self.last_tracked_i = int(txt.read())
+        else:
+            self.last_tracked_i = None
         self.build_paths(self.filename, self.images_path, user_ch_name)
 
     def build_paths(self, filename, images_path, user_ch_name):
