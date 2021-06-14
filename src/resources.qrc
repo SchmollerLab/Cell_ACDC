@@ -22,5 +22,7 @@
     <file alias="eye-plus.svg">resources/eye-plus.svg</file>
     <file alias="folder-open.svg">resources/folder-open.svg</file>
     <file alias="drawer.svg">resources/drawer.svg</file>
+    <file alias="reload.svg">resources/reload.svg</file>
+    <file alias="repeat-tracking.svg">resources/repeat-tracking.svg</file>
 </qresource>
 </RCC>

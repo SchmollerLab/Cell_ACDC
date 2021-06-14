@@ -314,10 +314,11 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.rp[old_ID_idx].label = new_ID
 
                 self.plot1.removeItem(self.plot1_items[old_ID_idx][0])
+                self.plot1.removeItem(self.plot1_items[old_ID_idx][1])
                 self.plot2.removeItem(self.plot2_items[old_ID_idx])
 
                 obj = self.rp[old_ID_idx]
-                self.drawID_and_Contour(old_ID_idx, obj, drawContours=False)
+                self.drawID_and_Contour(old_ID_idx, obj)
 
                 # set labels image and lut to update color of new IDs
                 self.updateLookuptable()
@@ -403,7 +404,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 newIDs = [self.lab[ydata, xdata]]
 
                 # Update colors to include a new color for the new ID
-                self.img2.setImage()
+                self.img2.setImage(self.lab)
                 self.updateLookuptable()
 
                 # Update contours
@@ -421,6 +422,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         pass
 
     def gui_hoverEventImg1(self, event):
+        self.hoverEventImg1 = event
         # Update x, y, value label bottom right
         try:
             x, y = event.pos()
@@ -454,6 +456,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.brushCircle.setData([], [])
 
     def gui_hoverEventImg2(self, event):
+        self.hoverEventImg2 = event
         # Update x, y, value label bottom right
         try:
             x, y = event.pos()
@@ -522,6 +525,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         fileToolBar.addAction(self.openAction)
         fileToolBar.addAction(self.saveAction)
         fileToolBar.addAction(self.showInExplorerAction)
+        fileToolBar.addAction(self.reloadAction)
         fileToolBar.addAction(self.undoAction)
         fileToolBar.addAction(self.redoAction)
 
@@ -580,6 +584,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.separateBudButton.setToolTip('Separate bud (S + right-click)')
         editToolBar.addWidget(self.separateBudButton)
 
+        editToolBar.addAction(self.repeatTrackingAction)
+
         self.disableTrackingCheckBox = QCheckBox("Disable tracking")
         self.disableTrackingCheckBox.setLayoutDirection(Qt.RightToLeft)
         editToolBar.addWidget(self.disableTrackingCheckBox)
@@ -626,6 +632,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.openAction = QAction(QIcon(":folder-open.svg"), "&Open...", self)
         self.saveAction = QAction(QIcon(":file-save.svg"),
                                   "&Save (Ctrl+S)", self)
+        self.reloadAction = QAction(QIcon(":reload.svg"),
+                                          "Reload segmentation file", self)
         self.showInExplorerAction = QAction(QIcon(":drawer.svg"),
                                     "&Show in Explorer/Finder", self)
         self.exitAction = QAction("&Exit", self)
@@ -651,6 +659,9 @@ class Yeast_ACDC_GUI(QMainWindow):
                                   "Next Frame", self)
         self.prevAction.setShortcut("left")
         self.nextAction.setShortcut("right")
+        self.repeatTrackingAction = QAction(
+            QIcon(":repeat-tracking.svg"), "Repeat tracking", self
+        )
         # Standard key sequence
         # self.copyAction.setShortcut(QKeySequence.Copy)
         # self.pasteAction.setShortcut(QKeySequence.Paste)
@@ -680,10 +691,12 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.setEnabledToolbarButton(enabled=True)
         self.prevAction.triggered.connect(self.prev_cb)
         self.nextAction.triggered.connect(self.next_cb)
+        self.reloadAction.triggered.connect(self.reload_cb)
         self.slideshowButton.toggled.connect(self.launchSlideshow)
         self.repeatSegmActionYeaZ.triggered.connect(self.repeatSegmYeaZ)
         self.repeatSegmActionCellpose.triggered.connect(self.repeatSegmCellpose)
         self.disableTrackingCheckBox.toggled.connect(self.disableTracking)
+        self.repeatTrackingAction.triggered.connect(self.repeatTracking)
         self.brushButton.toggled.connect(self.Brush_cb)
         self.eraserButton.toggled.connect(self.Eraser_cb)
         # Brush/Eraser size action
@@ -693,6 +706,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
     def setEnabledToolbarButton(self, enabled=False):
         self.showInExplorerAction.setEnabled(enabled)
+        self.reloadAction.setEnabled(enabled)
         self.saveAction.setEnabled(enabled)
         self.editToolBar.setEnabled(enabled)
         self.navigateToolBar.setEnabled(enabled)
@@ -703,8 +717,16 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.brushSizeLabel.setEnabled(enabled)
         self.brushSizeSpinbox.setEnabled(enabled)
 
+    def reload_cb(self):
+        self.app.setOverrideCursor(Qt.WaitCursor)
+        # Store undo state before modifying stuff
+        self.storeUndoRedoStates()
+        self.lab = np.load(self.data.segm_npy_path)[self.frame_i]
+        self.update_data()
+        self.updateALLimg()
+        self.app.restoreOverrideCursor()
+
     def changeMode(self, mode):
-        print(mode)
         if mode == 'Segmentation and Tracking':
             self.setEnabledToolbarButton(enabled=True)
             self.disableTrackingCheckBox.setChecked(False)
@@ -808,6 +830,10 @@ class Yeast_ACDC_GUI(QMainWindow):
             else:
                 self.brushID += 1
             self.enableSizeSpinbox(True)
+            try:
+                self.gui_hoverEventImg1(self.hoverEventImg1)
+            except:
+                pass
             # self.app.setOverrideCursor(self.brushCursor)
 
     def Eraser_cb(self, event):
@@ -880,6 +906,9 @@ class Yeast_ACDC_GUI(QMainWindow):
     def disableTracking(self):
         pass
 
+    def repeatTracking(self):
+        self.tracking(enforce=True)
+        self.updateALLimg()
 
     def repeatSegmYeaZ(self):
         self.which_model = 'YeaZ'
@@ -1075,7 +1104,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                     self.plot1.removeItem(self.plot1_items[erased_idx][1])
                 if self.plot2_items[erased_idx] is not None:
                     self.plot2.removeItem(self.plot2_items[erased_idx])
-                self.drawID_and_Contour(erased_idx, self.rp[erased_idx])
+                if erased_idx < len(self.rp):
+                    self.drawID_and_Contour(erased_idx, self.rp[erased_idx])
 
         if newIDs:
             for i, obj in enumerate(self.rp):
@@ -1142,10 +1172,15 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.titleLabel.setText(warn_txt, color=color)
 
 
-    def tracking(self, onlyIDs=[]):
+    def tracking(self, onlyIDs=[], enforce=False):
         if self.frame_i == 0:
             return
-        if self.disableTrackingCheckBox.isChecked():
+        # Track only frames that were visited for the first time
+        do_tracking = (
+                (self.allData_li[self.frame_i]['labels'] is None)
+                or enforce
+        )
+        if self.disableTrackingCheckBox.isChecked() and not do_tracking:
             self.checkIDs_LostNew()
             return
         prev_lab = self.allData_li[self.frame_i-1]['labels']

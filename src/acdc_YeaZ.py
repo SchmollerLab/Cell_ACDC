@@ -28,10 +28,10 @@ unet_path = f'{script_dirname}/YeaZ-unet/unet/'
 #looks into all of these folders when importing modules.
 #sys.path.append(unet_path)
 # Beno edit: this should be "src"
-# from YeaZ.unet import neural_network as nn
-# from YeaZ.unet import segment
-# from YeaZ.unet import tracking
-# download_model('YeaZ')
+from YeaZ.unet import neural_network as nn
+from YeaZ.unet import segment
+from YeaZ.unet import tracking
+download_model('YeaZ')
 
 import prompts, load
 
