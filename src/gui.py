@@ -32,7 +32,7 @@ from PyQt5.QtWidgets import (
     QAction, QApplication, QLabel, QPushButton,
     QMainWindow, QMenu, QToolBar, QGroupBox,
     QScrollBar, QCheckBox, QToolButton, QSpinBox,
-    QComboBox
+    QComboBox, QDial
 )
 
 from pyqtgraph.Qt import QtGui
@@ -100,17 +100,41 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.activateWindow()
 
     def gui_createImg1Widgets(self):
+        # z-slice scrollbar
         self.zSlice_scrollBar_img1 = QScrollBar(Qt.Horizontal)
         self.img1_Widglayout = QtGui.QGridLayout()
         self.zSlice_scrollBar_img1.setFixedHeight(20)
         self.zSlice_scrollBar_img1.setDisabled(True)
-        _z_label = QLabel('z-slice')
+        _z_label = QLabel('z-slice  ')
         _font = QtGui.QFont()
         _font.setPointSize(10)
         _z_label.setFont(_font)
-        self.img1_Widglayout.addWidget(_z_label, 0, 0, alignment=Qt.AlignCenter)
+        self.img1_Widglayout.addWidget(_z_label, 0, 0, alignment=Qt.AlignRight)
         self.img1_Widglayout.addWidget(self.zSlice_scrollBar_img1, 0, 1, 1, 10)
 
+        # Fluorescent overlay alpha
+        alphaScrollBar_label = QLabel('Overlay alpha  ')
+        alphaScrollBar_label.setFont(_font)
+        alphaScrollBar = QScrollBar(Qt.Horizontal)
+        alphaScrollBar.setFixedHeight(20)
+        alphaScrollBar.setMinimum(0)
+        alphaScrollBar.setMaximum(20)
+        alphaScrollBar.setValue(10)
+        alphaScrollBar.setToolTip(
+            'Control the alpha value of the overlay.\n'
+            'alpha=0 results in NO overlay,\n'
+            'alpha=1 results in only fluorescent data visible'
+        )
+        alphaScrollBar.setDisabled(True)
+        self.alphaScrollBar = alphaScrollBar
+        self.img1_Widglayout.addWidget(
+            alphaScrollBar_label, 1, 0
+        )
+        self.img1_Widglayout.addWidget(
+            alphaScrollBar, 1, 1, 1, 10
+        )
+
+        # Left, top, right, bottom
         self.img1_Widglayout.setContentsMargins(100, 0, 0, 0)
 
 
@@ -342,8 +366,10 @@ class Yeast_ACDC_GUI(QMainWindow):
                     # Clear labels IDs of the swapped IDs
                     old_ID_idx = prev_IDs.index(old_ID)
                     new_ID_idx = prev_IDs.index(new_ID)
-                    self.plot2.removeItem(self.plot2_items[old_ID_idx][0])
-                    self.plot2.removeItem(self.plot2_items[new_ID_idx][0])
+                    self.plot1.removeItem(self.plot1_items[old_ID_idx][0])
+                    self.plot1.removeItem(self.plot1_items[new_ID_idx][0])
+                    self.plot2.removeItem(self.plot2_items[old_ID_idx])
+                    self.plot2.removeItem(self.plot2_items[new_ID_idx])
                     self.drawID_and_Contour(
                         old_ID_idx, self.rp[old_ID_idx],
                         drawContours=False
@@ -352,15 +378,32 @@ class Yeast_ACDC_GUI(QMainWindow):
                         new_ID_idx, self.rp[new_ID_idx],
                         drawContours=False
                     )
+
+                    # Append information for replicating the edit in tracking
+                    # List of tuples (y, x, replacing ID)
+                    obj = self.rp[old_ID_idx]
+                    y, x = obj.centroid
+                    self.editID_info.append((y, x, new_ID))
+                    obj = self.rp[new_ID_idx]
+                    y, x = obj.centroid
+                    self.editID_info.append((y, x, old_ID))
                 else:
                     self.lab[self.lab == old_ID] = new_ID
                     # Clear labels IDs of the swapped IDs
                     old_ID_idx = prev_IDs.index(old_ID)
-                    self.plot2.removeItem(self.plot2_items[old_ID_idx][0])
+                    self.plot1.removeItem(self.plot1_items[old_ID_idx][0])
+                    self.plot2.removeItem(self.plot2_items[old_ID_idx])
+                    self.rp[old_ID_idx].label = new_ID
                     self.drawID_and_Contour(
                         old_ID_idx, self.rp[old_ID_idx],
                         drawContours=False
                     )
+                    # Append information for replicating the edit in tracking
+                    # List of tuples (y, x, replacing ID)
+                    obj = self.rp[old_ID_idx]
+                    y, x = obj.centroid
+                    self.editID_info.append((y, x, new_ID))
+
 
             # Update rps
             self.update_rp()
@@ -536,13 +579,22 @@ class Yeast_ACDC_GUI(QMainWindow):
             x, y = event.pos()
             xdata, ydata = int(round(x)), int(round(y))
             _img = self.img1.image
-            Y, X = _img.shape
+            Y, X = _img.shape[:2]
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                 val = _img[ydata, xdata]
-                self.wcLabel.setText(f'(x={x:.2f}, y={y:.2f}, value={val:.2f})')
+                try:
+                    self.wcLabel.setText(
+                            f'(x={x:.2f}, y={y:.2f}, value={val:.2f})'
+                    )
+                except:
+                    val = [v for v in val]
+                    self.wcLabel.setText(
+                            f'(x={x:.2f}, y={y:.2f}, value={val})'
+                    )
             else:
                 self.wcLabel.setText(f'')
         except:
+            traceback.print_exc()
             self.wcLabel.setText(f'')
 
         # Draw Brush circle
@@ -652,6 +704,13 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.overlayButton.setCheckable(True)
         self.overlayButton.setToolTip('Overlay fluorescent image')
         navigateToolBar.addWidget(self.overlayButton)
+
+        # fluorescent image color widget
+        self.colorButton = pg.ColorButton(self, color=(230,230,230))
+        self.colorButton.setFixedHeight(32)
+        self.colorButton.setDisabled(True)
+        self.colorButton.setToolTip('Fluorescent image color')
+        navigateToolBar.addWidget(self.colorButton)
 
         self.navigateToolBar = navigateToolBar
 
@@ -844,6 +903,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Mode
         self.modeComboBox.activated[str].connect(self.changeMode)
         self.equalizeHistPushButton.clicked.connect(self.equalizeHist)
+        self.colorButton.sigColorChanging.connect(self.updateOverlay)
+        self.alphaScrollBar.valueChanged.connect(self.updateOverlay)
 
     def setEnabledToolbarButton(self, enabled=False):
         self.showInExplorerAction.setEnabled(enabled)
@@ -881,7 +942,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         if self.slideshowButton.isChecked():
             self.slideshowWin = apps.CellsSlideshow_GUI(
                                    button_toUncheck=self.slideshowButton)
-            self.slideshowWin.loadData(self.data.img_data)
+            self.slideshowWin.loadData(self.data.img_data, frame_i=self.frame_i)
             self.slideshowWin.show()
         else:
             self.slideshowWin = None
@@ -1112,7 +1173,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.app.setOverrideCursor(Qt.WaitCursor)
         if self.frame_i < self.num_frames-1:
             # Store data for current frame
-            self.store_data()
+            self.store_data(debug=True)
             # Go to next frame
             self.frame_i += 1
             self.get_data()
@@ -1211,9 +1272,13 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.plot1_items = []
         self.plot2_items = []
 
-    def store_data(self):
+    def store_data(self, debug=False):
         self.allData_li[self.frame_i]['regionprops'] = self.rp.copy()
         self.allData_li[self.frame_i]['labels'] = self.lab.copy()
+
+        if debug:
+            pass
+            # apps.imshow_tk(self.lab)
 
         # Store dynamic metadata
         is_cell_dead_li = [False]*len(self.rp)
@@ -1241,6 +1306,7 @@ class Yeast_ACDC_GUI(QMainWindow):
     def get_data(self):
         self.UndoRedoStates = []
         self.UndoCount = 0
+        self.editID_info = []
         # If stored labes is None then it is the first time we visit this frame
         if self.allData_li[self.frame_i]['labels'] is None:
             # Requested frame was never visited before. Load from HDD
@@ -1292,7 +1358,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.plot2_items[i] = _IDlabel2
 
         if not drawContours:
-            self.plot1_items[i] = (self.plot1_items[i][0], _IDlabel1)
+            self.plot1_items[i] = (_IDlabel1, self.plot1_items[i][1])
             return
 
         contours, hierarchy = cv2.findContours(
@@ -1464,22 +1530,33 @@ class Yeast_ACDC_GUI(QMainWindow):
                     )
                     return
 
+            self.colorButton.setColor((255,255,0))
+
             cells_img = self.data.img_data[self.frame_i]
             fluo_img = self.data.ol_frames[self.frame_i]
             img = self.get_overlay(fluo_img, cells_img)
-            apps.imshow_tk(img)
+            self.img1.setImage(img)
 
             print('Done.')
+            self.alphaScrollBar.setDisabled(False)
+            self.colorButton.setDisabled(False)
             self.app.restoreOverrideCursor()
 
-    def get_overlay(self, img, ol_img, ol_RGB_val=[1,1,0],
-                    ol_brightness=4, ol_alpha=0.5):
+    def get_overlay(self, img, ol_img, ol_brightness=4):
+        ol_RGB_val = [v/255 for v in self.colorButton.color().getRgb()[:3]]
+        ol_alpha = self.alphaScrollBar.value()/20
         img_rgb = gray2rgb(img_as_float(img))*ol_RGB_val
         ol_img_rgb = gray2rgb(img_as_float(ol_img))
         overlay = (ol_img_rgb*(1.0 - ol_alpha)+img_rgb*ol_alpha)*ol_brightness
         overlay = overlay/overlay.max()
         overlay = (np.clip(overlay, 0, 1)*255).astype(np.uint8)
         return overlay
+
+    def updateOverlay(self, button):
+        cells_img = self.data.img_data[self.frame_i]
+        fluo_img = self.data.ol_frames[self.frame_i]
+        img = self.get_overlay(fluo_img, cells_img)
+        self.img1.setImage(img)
 
     def updateALLimg(self):
         self.frameLabel.setText(
@@ -1488,8 +1565,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         if self.overlayButton.isChecked():
             cells_img = self.data.img_data[self.frame_i]
             fluo_img = self.data.ol_frames[self.frame_i]
-            img = self.get_overlay(cells_img, fluo_img)
-            apps.imshow_tk(img)
+            img = self.get_overlay(fluo_img, cells_img)
         else:
             img = self.data.img_data[self.frame_i]
 
@@ -1561,7 +1637,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 (self.allData_li[self.frame_i]['labels'] is None)
                 or enforce
         )
-        if self.disableTrackingCheckBox.isChecked() and not do_tracking:
+        if self.disableTrackingCheckBox.isChecked() or not do_tracking:
             self.checkIDs_LostNew()
             return
         prev_lab = self.allData_li[self.frame_i-1]['labels']
@@ -1606,8 +1682,9 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Replace untracked IDs with tracked IDs and new IDs with increasing num
         new_untracked_IDs = [ID for ID in IDs_curr_untracked if ID not in old_IDs]
         tracked_lab = self.lab
+        new_tracked_IDs_2 = []
         if new_untracked_IDs:
-            # Relabel new untracked IDs with big number to makes sure they are unique
+            # Relabel new untracked IDs with big number to make sure they are unique
             max_ID = max(IDs_curr_untracked)
             new_tracked_IDs = [max_ID*(i+2) for i in range(len(new_untracked_IDs))]
             tracked_lab = self.np_replace_values(tracked_lab, new_untracked_IDs,
@@ -1621,6 +1698,18 @@ class Yeast_ACDC_GUI(QMainWindow):
             new_tracked_IDs_2 = [max_ID+i+1 for i in range(len(new_untracked_IDs))]
             tracked_lab = self.np_replace_values(tracked_lab, new_tracked_IDs,
                                                  new_tracked_IDs_2)
+
+        allIDs = tracked_IDs.extend(new_tracked_IDs_2)
+        # Correct tracking with manually changed IDs
+        for y, x, new_ID in self.editID_info:
+            old_ID = self.lab[y, x]
+            if new_ID in allIDs:
+                tempID = self.lab.max() + 1
+                self.lab[self.lab == old_ID] = tempID
+                self.lab[self.lab == new_ID] = old_ID
+                self.lab[self.lab == tempID] = new_ID
+            else:
+                self.lab[self.lab == old_ID] = new_ID
 
         # Update labels, regionprops and determine new and lost IDs
         self.lab = tracked_lab
@@ -1836,7 +1925,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             np.save(segm_npy_path, segm_npy)
             # Save last tracked frame
             with open(last_tracked_i_path, 'w+') as txt:
-                txt.write(str(frame_i-1))
+                txt.write(str(frame_i))
 
             print('--------------')
             print(f'Saved data until frame number {frame_i}')
