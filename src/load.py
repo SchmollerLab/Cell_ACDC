@@ -16,10 +16,14 @@ import skimage.measure
 import prompts, apps
 
 class load_frames_data:
-    def __init__(self, path, user_ch_name, load_segm_data=True):
+    def __init__(self, path, user_ch_name, load_segm_data=True,
+                 load_segm_metadata=True):
         self.path = path
         self.images_path = os.path.dirname(path)
-        self.filename, self.ext = os.path.splitext(os.path.basename(path))
+        filename_ext = os.path.basename(path)
+        self.filename, self.ext = os.path.splitext(filename_ext)
+        basename_idx = filename_ext.find(f'_{user_ch_name}')
+        self.basename = filename_ext[0:basename_idx]
         if self.ext == '.tif' or self.ext == '.tiff':
             tif_path, img_tif_found = self.substring_path(path,
                                                          f'{user_ch_name}.tif',
@@ -57,14 +61,32 @@ class load_frames_data:
                 raise FileNotFoundError
         self.img_data = img_data
         self.info, self.metadata_found = self.metadata(self.tif_path)
+        prompt_user = False
         if self.metadata_found:
             try:
                 self.SizeT, self.SizeZ = self.data_dimensions(self.info)
             except:
-                print(exc_info())
-                self.SizeT, self.SizeZ = self.dimensions_entry_widget()
+                self.SizeT, self.SizeZ = 1, 1
+                print(traceback.print_exc())
+                prompt_user = True
+            try:
+                self.zyx_vox_dim = self.zyx_vox_dim()
+            except:
+                self.zyx_vox_dim = [0.5, 0.01, 0.01]
+                print(traceback.print_exc())
+                prompt_user = True
+            if prompt_user:
+                (self.SizeT, self.SizeZ,
+                self.zyx_vox_dim) = self.dimensions_entry_widget(
+                    SizeT=self.SizeT, SizeZ=self.SizeZ,
+                    zyx_vox_dim=self.zyx_vox_dim
+                )
         else:
-            self.SizeT, self.SizeZ = self.dimensions_entry_widget()
+            (self.SizeT, self.SizeZ,
+            self.zyx_vox_dim) = self.dimensions_entry_widget(
+                SizeT=self.SizeT, SizeZ=self.SizeZ,
+                zyx_vox_dim=self.zyx_vox_dim
+            )
         data_T, data_Z = self.img_data.shape[:2]
         if self.SizeZ > 1:
             if data_Z != self.SizeZ:
@@ -123,17 +145,65 @@ class load_frames_data:
                 self.last_tracked_i = int(txt.read())
         else:
             self.last_tracked_i = None
+
+        self.segm_metadata_df = None
+        # Load segmentation metadata
+        if load_segm_metadata:
+            segm_metadata_path, segm_metadata_found = self.substring_path(
+                                              path, '_segm_metadata.csv',
+                                              self.images_path)
+            if segm_metadata_found:
+                segm_metadata_df = pd.read_csv(
+                    segm_metadata_path, index_col=['frame_i', 'Cell_ID']
+                )
+
+                # Keep compatibility with older versions of segm_metadata_df
+                if 'Is_dead_cell' in segm_metadata_df.columns:
+                    segm_metadata_df.rename(
+                        columns={'Is_dead_cell': 'is_cell_dead',
+                                 'centroid_x_dead': 'x_centroid',
+                                 'centroid_y_dead': 'y_centroid'},
+                        inplace=True
+                    )
+                    segm_metadata_df['is_cell_excluded'] = False
+
+                self.segm_metadata_df = segm_metadata_df
+
         self.build_paths(self.filename, self.images_path, user_ch_name)
 
+    def zyx_vox_dim(self):
+        info = self.info
+        try:
+            scalint_str = "Scaling|Distance|Value #"
+            len_scalin_str = len(scalint_str) + len("1 = ")
+            px_x_start_i = info.find(scalint_str + "1 = ") + len_scalin_str
+            px_x_end_i = info[px_x_start_i:].find("\n") + px_x_start_i
+            px_x = float(info[px_x_start_i:px_x_end_i])*1E6 #convert m to µm
+            px_y_start_i = info.find(scalint_str + "2 = ") + len_scalin_str
+            px_y_end_i = info[px_y_start_i:].find("\n") + px_y_start_i
+            px_y = float(info[px_y_start_i:px_y_end_i])*1E6
+            try:
+                px_z_start_i = info.find(scalint_str + "3 = ") + len_scalin_str
+                px_z_end_i = info[px_z_start_i:].find("\n") + px_z_start_i
+                px_z = float(info[px_z_start_i:px_z_end_i])*1E6
+            except:
+                px_z = 1
+        except:
+            x_res_match = re.findall('XResolution = ([0-9]*[.]?[0-9]+)', info)
+            px_x = 1/float(x_res_match[0])
+            y_res_match = re.findall('YResolution = ([0-9]*[.]?[0-9]+)', info)
+            px_y = 1/float(y_res_match[0])
+            try:
+                z_spac_match = re.findall('Spacing = ([0-9]*[.]?[0-9]+)', info)
+                px_z = float(z_spac_match[0])
+            except:
+                px_z = 1
+        return [px_z, px_y, px_x]
+
+
+
     def build_paths(self, filename, images_path, user_ch_name):
-        match = re.search('s(\d+)_', filename)
-        if match is not None:
-            basename = filename[:match.span()[1]-1]
-        else:
-            basename = single_entry_messagebox(
-                     entry_label='Write a common basename for all output files',
-                     input_txt=filename,
-                     toplevel=False).entry_txt
+        basename = self.basename
         base_path = f'{images_path}/{basename}'
         self.slice_used_align_path = f'{base_path}_slice_used_alignment.csv'
         self.slice_used_segm_path = f'{base_path}_slice_segm.csv'
@@ -178,7 +248,8 @@ class load_frames_data:
         SizeZ = int(re.findall('SizeZ = (\d+)', info)[0])
         return SizeT, SizeZ
 
-    def dimensions_entry_widget(self):
+    def dimensions_entry_widget(self, SizeZ=1, SizeT=1,
+                                      zyx_vox_dim=[0.5,0.1,0.1]):
         root = tk.Tk()
         root.geometry("+800+400")
         tk.Label(root,
@@ -191,23 +262,29 @@ class load_frames_data:
         tk.Label(root,
                  text="Number of slices (SizeZ)",
                  font=(None, 10)).grid(row=2, pady=4, padx=8)
+        tk.Label(root,
+                 text="ZYX voxel size (um/pxl)",
+                 font=(None, 10)).grid(row=3, pady=4, padx=8)
 
         root.protocol("WM_DELETE_WINDOW", exit)
 
         SizeT_entry = tk.Entry(root, justify='center')
         SizeZ_entry = tk.Entry(root, justify='center')
+        zyx_vox_dim_entry = tk.Entry(root, justify='center')
 
         # Default texts in entry text box
-        SizeT_entry.insert(0, '1')
-        SizeZ_entry.insert(0, '1')
+        SizeT_entry.insert(0, f'{SizeT}')
+        SizeZ_entry.insert(0, f'{SizeZ}')
+        zyx_vox_dim_entry.insert(0, f'{zyx_vox_dim}')
 
         SizeT_entry.grid(row=1, column=1, padx=8)
         SizeZ_entry.grid(row=2, column=1, padx=8)
+        zyx_vox_dim_entry.grid(row=3, column=1, padx=8)
 
         tk.Button(root,
                   text='OK',
                   command=root.quit,
-                  width=10).grid(row=3,
+                  width=10).grid(row=4,
                                  column=0,
                                  pady=16,
                                  columnspan=2)
@@ -217,8 +294,12 @@ class load_frames_data:
 
         SizeT = int(SizeT_entry.get())
         SizeZ = int(SizeZ_entry.get())
+        re_float = '([0-9]*[.]?[0-9]+)'
+        s = zyx_vox_dim_entry.get()
+        m = re.findall(f'{re_float}, {re_float}, {re_float}', s)
+        zyx_vox_dim = [float(f) for f in m[0]]
         root.destroy()
-        return SizeT, SizeZ
+        return SizeT, SizeZ, zyx_vox_dim
 
 class fix_pos_n_mismatch:
     '''Geometry: "WidthxHeight+Left+Top" '''
@@ -639,3 +720,23 @@ def get_main_paths(selected_path, vNUM):
     run_num = None
     return (main_paths, prompts_pos_to_analyse, run_num, is_pos_path,
             is_TIFFs_path)
+
+
+def load_shifts(parent_path, basename=None):
+    shifts_found = False
+    shifts = None
+    if basename is None:
+        for filename in os.listdir(parent_path):
+            if filename.find('align_shift.npy')>0:
+                shifts_found = True
+                shifts_path = os.path.join(parent_path, filename)
+                shifts = np.load(shifts_path)
+    else:
+        align_shift_fn = f'{basename}_align_shift.npy'
+        if align_shift_fn in os.listdir(parent_path):
+            shifts_found = True
+            shifts_path = os.path.join(parent_path, align_shift_fn)
+            shifts = np.load(shifts_path)
+        else:
+            shifts = None
+    return shifts, shifts_found

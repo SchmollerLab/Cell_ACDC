@@ -24,5 +24,9 @@
     <file alias="drawer.svg">resources/drawer.svg</file>
     <file alias="reload.svg">resources/reload.svg</file>
     <file alias="repeat-tracking.svg">resources/repeat-tracking.svg</file>
+    <file alias="bin.svg">resources/bin.svg</file>
+    <file alias="rip.svg">resources/rip.svg</file>
+    <file alias="merge-IDs.svg">resources/merge-IDs.svg</file>
+    <file alias="overlay.svg">resources/overlay.svg</file>
 </qresource>
 </RCC>

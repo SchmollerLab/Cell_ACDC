@@ -2359,6 +2359,7 @@ def overlay_cb(event):
                     f'File format {ext} is not supported!\n'
                     'Choose either .tif or .npy files.')
             if align_ol:
+                images_path = app.parent_path
                 loaded_shifts, shifts_found = load_shifts(images_path)
                 if shifts_found:
                     print('Aligning overlay image frames...')
@@ -2375,7 +2376,7 @@ def overlay_cb(event):
                     app.ol_frames = aligned_frames
                 else:
                     messagebox.showerror('Shifts file not found!',
-                        f'\"..._align_shift.npy\" file not found!\n'
+                        '\"..._align_shift.npy\" file not found!\n'
                         'Overlay images cannot be aligned to the cells image.')
                     raise FileNotFoundError('Shifts file not found!')
     app.update_ax0_plot(ia, ia.img, app.ax[0])
