@@ -171,8 +171,7 @@ if not selected_path:
     exit('Execution aborted.')
 
 selector = load.select_exp_folder()
-
-(main_paths, prompts_pos_to_analyse, run_num, tot,
+(main_paths, prompts_pos_to_analyse, run_num,
 is_pos_path, is_TIFFs_path) = load.get_main_paths(selected_path, 'v1')
 
 ch_name_selector = prompts.select_channel_name()
@@ -564,17 +563,13 @@ for path, frange, ROI_coords, slices in inputs:
     if save_segm:
         print('')
         print('Saving...')
-        if single_file:
-            np.save(data.segm_npy_path, tracked_stack)
-            if concat_splits:
-                last_tracked_frame_path = os.path.join(
-                    data.parent_path,
-                    f'{split_num}_last_tracked_frame.npy'
-                )
-                np.save(last_tracked_frame_path, tracked_stack[-1])
-        else:
-            for path, segm in zip(segm_npy_paths, tracked_stack):
-                np.save(path, segm)
+        np.save(data.segm_npy_path, tracked_stack)
+        if concat_splits:
+            last_tracked_frame_path = os.path.join(
+                data.parent_path,
+                f'{split_num}_last_tracked_frame.npy'
+            )
+            np.save(last_tracked_frame_path, tracked_stack[-1])
 
 t_end = time()
 
