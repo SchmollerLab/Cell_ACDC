@@ -297,7 +297,8 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         # Title
         self.titleLabel = pg.LabelItem(justify='center', color='w', size='14pt')
-        self.titleLabel.setText('File --> Open to start the process')
+        self.titleLabel.setText(
+            'File --> Open or Open recent to start the process')
         self.graphLayout.addItem(self.titleLabel, row=0, col=1, colspan=2)
 
         # Current frame text
@@ -381,8 +382,6 @@ class Yeast_ACDC_GUI(QMainWindow):
             max_ID = self.lab.max()
 
             if not self.enforceSeparation:
-                # Get a mask of the object prior separation to later determine
-                # the ID of the new seaprated object
                 self.lab, success = self.auto_separate_bud_ID(
                                              ID, self.lab, self.rp,
                                              max_ID, enforce=True)
@@ -391,7 +390,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
             # If automatic bud separation was not successfull call manual one
             if not success:
-                paint_out = core.my_paint_app(
+                paint_out = apps.my_paint_app(
                                 self.lab, ID, self.rp, del_small_obj=True,
                                 overlay_img=self.img1.image)
                 if paint_out.cancel:
@@ -1982,16 +1981,21 @@ class Yeast_ACDC_GUI(QMainWindow):
     def newFile(self):
         pass
 
-    def openFile(self):
-        self.titleLabel.setText('Loading data...')
-        exp_path = prompts.folder_dialog(
+    def openFile(self, checked=False, exp_path=None):
+        if exp_path is None:
+            exp_path = prompts.folder_dialog(
                 title='Select experiment folder containing Position_n folders')
 
+        self.titleLabel.setText('Loading data...')
+
         if exp_path == '':
-            self.titleLabel.setText('File --> Open to start the process')
+            self.titleLabel.setText(
+                'File --> Open or Open recent to start the process')
             return
 
-        ch_name_selector = prompts.select_channel_name(allow_abort=False)
+        ch_name_selector = prompts.select_channel_name(
+            which_channel='segm', allow_abort=False
+        )
 
         select_folder = load.select_exp_folder()
         values = select_folder.get_values_segmGUI(exp_path)
@@ -2011,7 +2015,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         pos_foldername = select_folder.run_widget(values, allow_abort=False)
 
         if select_folder.was_aborted:
-            self.titleLabel.setText('File --> Open to start the process')
+            self.titleLabel.setText(
+                'File --> Open or Open recent to start the process')
             return
 
         images_path = f'{exp_path}/{pos_foldername}/Images'
@@ -2032,7 +2037,8 @@ class Yeast_ACDC_GUI(QMainWindow):
             ch_names, warn = ch_name_selector.get_available_channels(filenames)
             ch_name_selector.prompt(ch_names)
             if ch_name_selector.was_aborted:
-                self.titleLabel.setText('File --> Open to start the process')
+                self.titleLabel.setText(
+                    'File --> Open or Open recent to start the process')
                 return
             if warn:
                 user_ch_name = prompts.single_entry_messagebox(
@@ -2074,7 +2080,28 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.titleLabel.setText(
                 'Data successfully loaded. Right/Left arrow to navigate frames')
 
+        self.addToRecentPaths(exp_path)
         self.app.setOverrideCursor(Qt.ArrowCursor)
+
+    def addToRecentPaths(self, exp_path):
+        src_path = os.path.dirname(os.path.realpath(__file__))
+        recentPaths_path = os.path.join(
+            src_path, 'temp', 'recentPaths.csv'
+        )
+        if os.path.exists(recentPaths_path):
+            df = pd.read_csv(recentPaths_path, index_col='index')
+            recentPaths = df['path'].to_list()
+            if exp_path not in recentPaths:
+                recentPaths.insert(0, exp_path)
+            # Keep max 20 recent paths
+            if len(recentPaths) > 20:
+                recentPaths.pop(-1)
+        else:
+            recentPaths = [exp_path]
+        df = pd.DataFrame({'path': recentPaths})
+        df.index.name = 'index'
+        df.to_csv(recentPaths_path)
+
 
     def showInExplorer(self):
         systems = {
@@ -2197,20 +2224,30 @@ class Yeast_ACDC_GUI(QMainWindow):
         pass
 
     def populateOpenRecent(self):
-        # Step 1. Remove the old options from the menu
+        # Step 0. Remove the old options from the menu
         self.openRecentMenu.clear()
+        # Step 1. Read recent Paths
+        src_path = os.path.dirname(os.path.realpath(__file__))
+        recentPaths_path = os.path.join(
+            src_path, 'temp', 'recentPaths.csv'
+        )
+        if os.path.exists(recentPaths_path):
+            df = pd.read_csv(recentPaths_path, index_col='index')
+            recentPaths = df['path'].to_list()
+        else:
+            recentPaths = []
         # Step 2. Dynamically create the actions
         actions = []
-        filenames = [f"File-{n}" for n in range(5)]
-        for filename in filenames:
-            action = QAction(filename, self)
-            action.triggered.connect(partial(self.openRecentFile, filename))
+        for path in recentPaths:
+            action = QAction(path, self)
+            action.triggered.connect(partial(self.openRecentFile, path))
             actions.append(action)
         # Step 3. Add the actions to the menu
         self.openRecentMenu.addActions(actions)
 
-    def openRecentFile(self, filename):
-        pass
+    def openRecentFile(self, path):
+        print(path)
+        self.openFile(exp_path=path)
 
     def closeEvent(self, event):
         if self.slideshowWin is not None:

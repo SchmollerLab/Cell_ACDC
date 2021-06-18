@@ -67,26 +67,21 @@ class load_frames_data:
                 self.SizeT, self.SizeZ = self.data_dimensions(self.info)
             except:
                 self.SizeT, self.SizeZ = 1, 1
-                print(traceback.print_exc())
-                prompt_user = True
             try:
                 self.zyx_vox_dim = self.zyx_vox_dim()
+                zyx_vox_dim_found = True
             except:
                 self.zyx_vox_dim = [0.5, 0.01, 0.01]
-                print(traceback.print_exc())
-                prompt_user = True
-            if prompt_user:
-                (self.SizeT, self.SizeZ,
-                self.zyx_vox_dim) = self.dimensions_entry_widget(
-                    SizeT=self.SizeT, SizeZ=self.SizeZ,
-                    zyx_vox_dim=self.zyx_vox_dim
-                )
-        else:
+                zyx_vox_dim_found = False
             (self.SizeT, self.SizeZ,
             self.zyx_vox_dim) = self.dimensions_entry_widget(
                 SizeT=self.SizeT, SizeZ=self.SizeZ,
-                zyx_vox_dim=self.zyx_vox_dim
+                zyx_vox_dim=self.zyx_vox_dim,
+                zyx_vox_dim_found=zyx_vox_dim_found
             )
+        else:
+            (self.SizeT, self.SizeZ,
+            self.zyx_vox_dim) = self.dimensions_entry_widget()
         data_T, data_Z = self.img_data.shape[:2]
         if self.SizeZ > 1:
             if data_Z != self.SizeZ:
@@ -249,21 +244,34 @@ class load_frames_data:
         return SizeT, SizeZ
 
     def dimensions_entry_widget(self, SizeZ=1, SizeT=1,
-                                      zyx_vox_dim=[0.5,0.1,0.1]):
+                                zyx_vox_dim=[0.5,0.1,0.1],
+                                zyx_vox_dim_found=False):
+        src_path = os.path.dirname(os.path.realpath(__file__))
+        last_entries_csv_path = os.path.join(
+            src_path, 'temp', 'last_entries_metadata.csv'
+        )
+        if os.path.exists(last_entries_csv_path) and not zyx_vox_dim_found:
+            df = pd.read_csv(last_entries_csv_path, index_col='Description')
+            zyx_vox_dim = df.at['zyx_vox_dim', 'values']
+
         root = tk.Tk()
         root.geometry("+800+400")
+        root.title('Provide metadata')
         tk.Label(root,
-                 text="Data dimensions not found in metadata.\n"
-                      "Provide the following sizes.",
+                 anchor='w',
+                 text="Provide the following constants:",
                  font=(None, 12)).grid(row=0, column=0, columnspan=2, pady=4)
         tk.Label(root,
+                 anchor='w',
                  text="Number of frames (SizeT)",
                  font=(None, 10)).grid(row=1, pady=4)
         tk.Label(root,
+                 anchor='w',
                  text="Number of slices (SizeZ)",
                  font=(None, 10)).grid(row=2, pady=4, padx=8)
         tk.Label(root,
-                 text="ZYX voxel size (um/pxl)",
+                 anchor='w',
+                 text="Z, Y, X voxel size (um/pxl)\n""For 2D images leave Z to 1",
                  font=(None, 10)).grid(row=3, pady=4, padx=8)
 
         # root.protocol("WM_DELETE_WINDOW", exit)
@@ -290,7 +298,9 @@ class load_frames_data:
                                  columnspan=2)
         SizeT_entry.focus()
 
-        tk.mainloop()
+        root.protocol("WM_DELETE_WINDOW", self.do_nothing)
+
+        root.mainloop()
 
         SizeT = int(SizeT_entry.get())
         SizeZ = int(SizeZ_entry.get())
@@ -299,7 +309,18 @@ class load_frames_data:
         m = re.findall(f'{re_float}, {re_float}, {re_float}', s)
         zyx_vox_dim = [float(f) for f in m[0]]
         root.destroy()
+
+        # Save values to load them again at the next session
+        df = pd.DataFrame(
+            {'Description': ['SizeT', 'SizeZ', 'zyx_vox_dim'],
+             'values': [SizeT, SizeZ, zyx_vox_dim]}
+        ).set_index('Description')
+        df.to_csv(last_entries_csv_path)
+
         return SizeT, SizeZ, zyx_vox_dim
+
+    def do_nothing(self):
+        pass
 
 class fix_pos_n_mismatch:
     '''Geometry: "WidthxHeight+Left+Top" '''
