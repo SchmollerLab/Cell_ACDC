@@ -21,6 +21,9 @@ from lib import (load_shifts, select_slice_toAlign, align_frames_3D,
                text_label_centroid, file_dialog, win_size, dark_mode,
                folder_dialog)
 
+import apps
+
+
 script_dirname = os.path.dirname(os.path.realpath(__file__))
 unet_path = f'{script_dirname}/YeaZ-unet/unet/'
 
@@ -185,7 +188,6 @@ do_tracking = tk.messagebox.askyesno('Track cells?', 'Do you want to track\n'
 save_segm = messagebox.askyesno('Save segmentation?',
                                  'Do you want to save segmentation?',
                                  master=root)
-
 
 ch_name_not_found_msg = (
     'The script could not identify the channel name.\n\n'
@@ -395,7 +397,9 @@ for exp_idx, main_path in enumerate(main_paths):
                             allow_pickle=False)
                     np.save(data.align_shifts_path, shifts, allow_pickle=False)
                     print('Aligned frames saved!')
+
                 frames = aligned_frames
+
             else:
                 frames = data.img_data
         else:
@@ -411,8 +415,8 @@ for exp_idx, main_path in enumerate(main_paths):
                 pass
             else:
                 # 2D snapshot (no alignment required)
-                y, x = data.img_data.shape
-                frames = np.reshape(data.img_data, (1,y,x))
+                y, x = frames.shape
+                frames = np.reshape(frames, (1,y,x))
             ROI_coords = draw_ROI_2D_frames(frames, num_frames,
                                 slice_used_for='segmentation and apply ROI if needed',
                                 activate_ROI=True).ROI_coords
@@ -428,7 +432,7 @@ for exp_idx, main_path in enumerate(main_paths):
             else:
                 slices = [0]
             if num_frames == 1:
-                select_slice = auto_select_slice(data.img_data, init_slice=0,
+                select_slice = auto_select_slice(frames, init_slice=0,
                             slice_used_for='segmentation and apply ROI if needed',
                             activate_ROI=True)
                 ROI_coords =  select_slice.ROI_coords
@@ -591,9 +595,7 @@ def update_plots(idx):
     img = frames[idx]
     rp = regionprops(lab)
     IDs = [obj.label for obj in rp]
-    contours, hierarchy = cv2.findContours((lab>0).astype(np.uint8),
-                                           cv2.RETR_EXTERNAL,
-                                           cv2.CHAIN_APPROX_SIMPLE)
+
     t1 = time()
     # print(f'Regionprops and find contours = {t1-t0:.4f}')
     t0 = time()
@@ -603,17 +605,18 @@ def update_plots(idx):
                         color='r', clear=True)
     text_label_centroid(rp, ax[1], 12, 'semibold', 'center', 'center',
                         clear=True)
-    t1 = time()
-    # print(f'Imshow and text centroid = {t1-t0:.4f}')
-    t0 = time()
-    for cont in contours:
+    for obj in rp:
+        contours, hierarchy = cv2.findContours(obj.image.astype(np.uint8),
+                                               cv2.RETR_EXTERNAL,
+                                               cv2.CHAIN_APPROX_SIMPLE)
+        min_y, min_x, _, _ = obj.bbox
+        cont = np.squeeze(contours[0], axis=1)
         cont = np.vstack((cont, cont[0]))
-        ax.plot(cont[:,0], cont[:,1], c='r')
-    t1 = time()
+        cont += [min_x, min_y]
+        ax[0].plot(cont[:,0], cont[:,1], c='r')
     # print(f'Plotting contours = {t1-t0:.4f}')
     for a in ax:
         a.axis('off')
-    idx_txt._text = f'Current index = {idx}/{len(tracked_stack)-1}'
     fig.canvas.draw_idle()
 
 idx = 0
@@ -635,16 +638,10 @@ def key_down(event):
     if event.key == 'right' and idx < len(tracked_stack)-1:
         idx += 1
         idx_txt._text = f'Current index = {idx}/{len(tracked_stack)-1}'
-        fig.canvas.draw_idle()
+        update_plots(idx)
     elif event.key == 'left' and idx > 0:
         idx -= 1
         idx_txt._text = f'Current index = {idx}/{len(tracked_stack)-1}'
-        fig.canvas.draw_idle()
-
-def key_down(event):
-    if event.key == 'right' and idx < len(tracked_stack)-1:
-        update_plots(idx)
-    elif event.key == 'left' and idx > 0:
         update_plots(idx)
 
 fig.canvas.mpl_connect('key_press_event', key_down)

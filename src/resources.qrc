@@ -28,5 +28,6 @@
     <file alias="rip.svg">resources/rip.svg</file>
     <file alias="merge-IDs.svg">resources/merge-IDs.svg</file>
     <file alias="overlay.svg">resources/overlay.svg</file>
+    <file alias="assign-motherbud.svg">resources/assign-motherbud.svg</file>
 </qresource>
 </RCC>

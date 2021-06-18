@@ -4,6 +4,8 @@ import skimage.measure
 import skimage.morphology
 import skimage.exposure
 import skimage.draw
+import skimage.registration
+import skimage.color
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
@@ -22,7 +24,9 @@ def align_frames_3D(data, slices=None, register=True, user_shifts=None):
             curr_frame_img = frame_V[slice]
             prev_frame_img = data_aligned[frame_i-1, slice] #previously aligned frame, slice
             if register==True:
-                shifts = phase_cross_correlation(prev_frame_img, curr_frame_img)[0]
+                shifts = skimage.registration.phase_cross_correlation(
+                    prev_frame_img, curr_frame_img
+                    )[0]
             else:
                 shifts = user_shifts[frame_i]
             shifts = shifts.astype(int)
@@ -45,7 +49,9 @@ def align_frames_2D(data, slices=None, register=True, user_shifts=None):
             curr_frame_img = frame_V
             prev_frame_img = data_aligned[frame_i-1] #previously aligned frame, slice
             if register==True:
-                shifts = phase_cross_correlation(prev_frame_img, curr_frame_img)[0]
+                shifts = skimage.registration.phase_cross_correlation(
+                    prev_frame_img, curr_frame_img
+                    )[0]
             else:
                 shifts = user_shifts[frame_i]
             shifts = shifts.astype(int)
@@ -252,7 +258,8 @@ class my_paint_app:
             img = lab
         else:
             brightness = self.brightness_overlay_sl.val
-            img = label2rgb(lab,image=self.overlay_img*brightness,
+            img = skimage.color.label2rgb(
+                                lab,image=self.overlay_img*brightness,
                                 bg_label=0,
                                 bg_color=(0.1,0.1,0.1),
                                 colors=self.labRGB_colors,
@@ -340,7 +347,8 @@ class my_paint_app:
             x6 = x2 - R*np.sin(alpha)
             y6 = y2 - R*np.cos(alpha)
 
-            rr_poly, cc_poly = polygon([y3, y4, y6, y5], [x3, x4, x6, x5])
+            rr_poly, cc_poly = skimage.draw.polygon([y3, y4, y6, y5],
+                                                    [x3, x4, x6, x5])
         else:
             rr_poly, cc_poly = [], []
         return rr_poly, cc_poly
@@ -350,8 +358,8 @@ class my_paint_app:
             x, y = self.ax_transData_and_coerce(self.ax, event.x, event.y,
                                                         self.label_img.shape)
 
-            rr, cc = disk((y, x), radius=self.brush_size,
-                                  shape=self.label_img.shape)
+            rr, cc = skimage.draw.disk((y, x), radius=self.brush_size,
+                                               shape=self.label_img.shape)
             rr_poly, cc_poly = self.get_poly_brush((self.yb, self.xb), (y, x),
                                                     self.brush_size)
             self.xb, self.yb = x, y
@@ -528,7 +536,7 @@ class my_paint_app:
         (self.sub_win.canvas).draw_idle()
 
     def ok(self, event):
-        plt.close(self.fig)
+        # plt.close(self.fig)
         self.sub_win.root.quit()
         self.sub_win.root.destroy()
 

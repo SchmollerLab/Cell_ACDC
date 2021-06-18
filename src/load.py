@@ -266,7 +266,7 @@ class load_frames_data:
                  text="ZYX voxel size (um/pxl)",
                  font=(None, 10)).grid(row=3, pady=4, padx=8)
 
-        root.protocol("WM_DELETE_WINDOW", exit)
+        # root.protocol("WM_DELETE_WINDOW", exit)
 
         SizeT_entry = tk.Entry(root, justify='center')
         SizeZ_entry = tk.Entry(root, justify='center')
@@ -717,6 +717,10 @@ def get_main_paths(selected_path, vNUM):
         prompts_pos_to_analyse = False
         main_paths = [selected_path]
         pos_path = selected_path
+    else:
+        raise FileNotFoundError('Invalid path.'
+        f'The selected path {selected_path} is neither a specific position folder '
+        'nor the TIFFs folder.')
     run_num = None
     return (main_paths, prompts_pos_to_analyse, run_num, is_pos_path,
             is_TIFFs_path)

@@ -42,12 +42,12 @@ import qrc_resources
 class CellsSlideshow_GUI(QMainWindow):
     """Main Window."""
 
-    def __init__(self, parent=None, button_toUncheck=None):
+    def __init__(self, parent=None, button_toUncheck=None, Left=50, Top=50):
         self.button_toUncheck = button_toUncheck
         """Initializer."""
         super().__init__(parent)
         self.setWindowTitle("Yeast ACDC - Segm&Track")
-        self.setGeometry(800, 400, 850, 768)
+        self.setGeometry(Left, Top, 850, 800)
 
         self.gui_createActions()
         self.gui_createMenuBar()

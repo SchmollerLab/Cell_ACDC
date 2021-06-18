@@ -26,7 +26,9 @@ def segment(th, pred, min_distance=10, topology=None, merge=True, q=0.75):
     elif callable(topology):
         topology = topology(dtr)
 
-    m = peak_local_max(-topology, min_distance, indices=False)
+    peak_idx = peak_local_max(-topology, min_distance)
+    m = np.zeros_like(th)
+    m[tuple(peak_idx.T)] = True
 
     # Uncomment to start with cross for every pixel instead of single pixel
     m_lab = label(m) #comment this
