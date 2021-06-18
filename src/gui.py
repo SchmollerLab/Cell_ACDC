@@ -2057,8 +2057,10 @@ class Yeast_ACDC_GUI(QMainWindow):
                 img_path = f'{images_path}/{filename}'
                 img_aligned_found = True
         if not img_aligned_found:
-            raise FileNotFoundError('Aligned frames file not found. '
-             'You need to run the segmentation script first.')
+            err_msg = ('Aligned frames file not found. '
+                       'You need to run the segmentation script first.')
+            self.titleLabel.setText(err_msg)
+            raise FileNotFoundError(err_msg)
 
         self.app.setOverrideCursor(Qt.WaitCursor)
         print(f'Loading {img_path}...')
