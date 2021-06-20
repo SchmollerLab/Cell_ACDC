@@ -524,6 +524,7 @@ class select_channel_name:
         channel_names = []
         basename = filenames[0]
         for file in filenames:
+            # Determine the basename based on intersection of all .tif
             _, ext = os.path.splitext(file)
             if ext == '.tif':
                 sm = difflib.SequenceMatcher(None, file, basename)
@@ -537,6 +538,7 @@ class select_channel_name:
                 channel_name = filename.split(basename)[-1]
                 channel_names.append(channel_name)
                 if channel_name == filename:
+                    # Warn the an intersection could not be found
                     warn.append(True)
         warn = any(warn)
         return channel_names, warn

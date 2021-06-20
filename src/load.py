@@ -39,7 +39,7 @@ class load_frames_data:
                 f'a file that ends with either "{user_ch_name}"')
                 raise FileNotFoundError
         elif self.ext == '.npy':
-            if path.find(f'_{user_ch_name}_aligned.npy') == -1:
+            if path.find(f'{user_ch_name}_aligned.npy') == -1:
                 filename = os.path.basename(path)
                 tk.messagebox.showerror('Wrong file selected!',
                 f'You selected a file called {filename} which is not a valid '
@@ -233,7 +233,7 @@ class load_frames_data:
         try:
             metadata_found = True
             info = self.metadata['Info']
-        except KeyError:
+        except:
             metadata_found = False
             info = []
         return info, metadata_found
@@ -711,12 +711,14 @@ class select_exp_folder:
 
 
 def get_main_paths(selected_path, vNUM):
-    selector = select_exp_folder()
     is_pos_path = os.path.basename(selected_path).find('Position_') != -1
-    is_TIFFs_path = os.path.basename(selected_path).find('TIFFs') != -1
+    is_TIFFs_path = any([f.find('Position_')!=-1
+                         and os.path.isdir(f'{selected_path}/{f}')
+                         for f in os.listdir(selected_path)])
     multi_run_msg = ('Multiple runs detected!\n\n'
                      'Select which run number you want to analyse.')
     if not is_pos_path and not is_TIFFs_path:
+        selector = select_exp_folder()
         beyond_listdir = beyond_listdir_pos(selected_path)
         main_paths = selector.run_widget(beyond_listdir.all_exp_info,
                              title='Select experiment to segment',

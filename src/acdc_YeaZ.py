@@ -66,15 +66,17 @@ class load_data:
         else:
             self.SizeT, self.SizeZ = 1, 1
 
-    def build_paths(self, filename, parent_path, user_ch_name):
-        match = re.search('s(\d+)_', filename)
-        if match is not None:
-            basename = filename[:match.span()[1]-1]
-        else:
-            basename = single_entry_messagebox(
+    def build_paths(self, filename, parent_path, user_ch_name, basename=None):
+        if basename is None:
+            match = re.search('s(\d+)_', filename)
+            if match is not None:
+                basename = filename[:match.span()[1]-1]
+            else:
+                basename = single_entry_messagebox(
                      entry_label='Write a common basename for all output files',
                      input_txt=filename,
                      toplevel=False).entry_txt
+        self.basename = basename
         base_path = f'{parent_path}/{basename}'
         self.base_path = base_path
         self.slice_used_align_path = f'{base_path}_slice_used_alignment.csv'
@@ -191,8 +193,8 @@ save_segm = messagebox.askyesno('Save segmentation?',
 
 ch_name_not_found_msg = (
     'The script could not identify the channel name.\n\n'
-    'The file to be segmented MUST have a name like\n'
-    '"<basename>_<channel_name>.tif" e.g. "196_s16_phase_contrast.tif"\n'
+    'For automatic loading the file to be segmented MUST have a name like\n'
+    '"<name>_s<num>_<channel_name>.tif" e.g. "196_s16_phase_contrast.tif"\n'
     'where "196_s16" is the basename and "phase_contrast"'
     'is the channel name\n\n'
     'Please write here the channel name to be used for automatic loading'
@@ -202,11 +204,15 @@ all_ROIs = []
 all_franges = []
 all_paths = []
 all_slices = []
+all_basenames = []
 for exp_idx, main_path in enumerate(main_paths):
 
     dirname = os.path.basename(main_path)
+    is_TIFFs_path = any([f.find('Position_')!=-1
+                         and os.path.isdir(f'{main_path}/{f}')
+                         for f in os.listdir(main_path)])
 
-    if dirname == 'TIFFs':
+    if is_TIFFs_path:
         TIFFs_path = main_path
         print('')
         print('##################################################')
@@ -227,7 +233,7 @@ for exp_idx, main_path in enumerate(main_paths):
                     user_ch_name = prompts.single_entry_messagebox(
                         title='Channel name not found',
                         entry_label=ch_name_not_found_msg,
-                        input_txt='phase_contrast'
+                        input_txt=ch_name_selector.channel_name
                     ).entry_txt
                 else:
                     user_ch_name = ch_name_selector.channel_name
@@ -242,12 +248,14 @@ for exp_idx, main_path in enumerate(main_paths):
                     tif_found = True
             if img_ch_aligned_found:
                 img_ch_path = os.path.join(images_path, filenames[aligned_i])
+                paths.append(img_ch_path)
             elif tif_found:
                 img_ch_path = os.path.join(images_path, filenames[tif_i])
+                paths.append(img_ch_path)
             else:
-                raise FileNotFoundError('File not found. '
-                f'The script could not find a file ending with "{user_ch_name}.tif"')
-            paths.append(img_ch_path)
+                print('File not found. '
+                'The script could not find a file ending with '
+                f'"{user_ch_name}.tif". Skipping {d}')
 
         ps, pe = 0, len(paths)
         if exp_idx == 0:
@@ -293,7 +301,6 @@ for exp_idx, main_path in enumerate(main_paths):
         raise FileNotFoundError(f'The path {main_path} is not a valid path!')
 
     """Iterate Position folders"""
-    print(paths)
     num_pos_total = len(paths[ps:pe])
     for pos_idx, path in enumerate(paths[ps:pe]):
 
@@ -367,6 +374,7 @@ for exp_idx, main_path in enumerate(main_paths):
 
         """Align frames if needed"""
         if num_frames > 1 and data.ext == '.tif' and do_tracking:
+            # 2D or 3D frames over time
             if align:
                 frames = data.img_data
                 print('Aligning frames...')
@@ -401,9 +409,15 @@ for exp_idx, main_path in enumerate(main_paths):
                 frames = aligned_frames
 
             else:
+                # Aligned data already found
                 frames = data.img_data
         else:
+            # No frames --> save placeholders for aligned data
             frames = data.img_data
+            if save_segm:
+                np.save(data.align_npy_path, frames, allow_pickle=False)
+                shifts = np.array([[0,0]])
+                np.save(data.align_shifts_path, shifts, allow_pickle=False)
 
         """Check img data shape and reshape if needed"""
         print('Checking img data shape and reshaping if needed...')
@@ -477,16 +491,19 @@ for exp_idx, main_path in enumerate(main_paths):
         all_franges.append((start, stop))
         all_paths.append(path)
         all_slices.append(slices)
+        all_basenames.append(data.basename)
 
 root.destroy()
 
 t0 = time()
 
-inputs = zip(all_paths, all_franges, all_ROIs, all_slices)
-for path, frange, ROI_coords, slices in inputs:
+inputs = zip(all_paths, all_franges, all_ROIs, all_slices, all_basenames)
+for path, frange, ROI_coords, slices, basename in inputs:
 
     data = load_data(path, user_ch_name)
-    data.build_paths(data.filename, data.parent_path, user_ch_name)
+    data.build_paths(
+        data.filename, data.parent_path, user_ch_name, basename=basename
+    )
 
     basename = data.basename
     parent_path = data.parent_path
@@ -530,19 +547,32 @@ for path, frange, ROI_coords, slices in inputs:
         y_start, y_end, x_start, x_end = ROI_coords
         frames = frames[:, y_start:y_end, x_start:x_end]
 
-    frames = np.array([equalize_adapthist(f) for f in frames])
+    if num_frames > 1:
+        frames = np.array([equalize_adapthist(f) for f in frames])
+    else:
+        # Single 2D image
+        frames = equalize_adapthist(frames)
+
     path_weights = nn.determine_path_weights()
     print('Running UNet for Segmentation:')
-    pred_stack = nn.batch_prediction(frames, is_pc=is_pc,
-                                     path_weights=path_weights,
-                                     batch_size=1)
+    if num_frames > 1:
+        pred_stack = nn.batch_prediction(frames, is_pc=is_pc,
+                                         path_weights=path_weights,
+                                         batch_size=1)
+    else:
+        pred_stack = nn.prediction(frames, is_pc=is_pc,
+                                   path_weights=path_weights)
     print('thresholding prediction...')
     thresh_stack = nn.threshold(pred_stack)
+
     print('performing watershed for splitting cells...')
-    lab_stack = segment.segment_stack(thresh_stack, pred_stack,
-                                      min_distance=10).astype(np.uint16)
+    if num_frames > 1:
+        lab_stack = segment.segment_stack(thresh_stack, pred_stack,
+                                          min_distance=10).astype(np.uint16)
+    else:
+        lab_stack = segment.segment(thresh_stack, pred_stack).astype(np.uint16)
     lab_stack = remove_small_objects(lab_stack, min_size=5)
-    if do_tracking:
+    if do_tracking and num_frames > 1:
         print('performing tracking by hungarian algorithm...')
         if prev_last_tracked_frame is not None:
             lab_stack = np.insert(lab_stack, 0, ROI_last_tracked_frame, axis=0)
@@ -555,13 +585,12 @@ for path, frange, ROI_coords, slices in inputs:
     # for simplicity, pad image back to original shape before saving
     # TODO: save only ROI and ROI borders, to save disk space
     if ROI_coords is not None:
-        tracked_stack = np.pad(tracked_stack, ((0, 0),
-                                               (y_start, r - y_end),
-                                               (x_start, c - x_end)),
-                                               mode='constant')
-        frames = np.pad(frames, ((0, 0), (y_start, r - y_end),
-                                         (x_start, c - x_end)),
-                                               mode='constant')
+        if num_frames > 1:
+            pad_info = ((0, 0), (y_start, r - y_end), (x_start, c - x_end))
+        else:
+            pad_info = ((y_start, r - y_end), (x_start, c - x_end))
+        tracked_stack = np.pad(tracked_stack, pad_info, mode='constant')
+        frames = np.pad(frames, pad_info,  mode='constant')
 
     #save Segmentation results
     if save_segm:
@@ -591,8 +620,12 @@ def update_plots(idx):
     t1 = time()
     # print(f'Clear axis execution time = {t1-t0:.4f}')
     t0 = time()
-    lab = tracked_stack[idx]
-    img = frames[idx]
+    if num_frames > 1:
+        lab = tracked_stack[idx]
+        img = frames[idx]
+    else:
+        lab = tracked_stack
+        img = frames
     rp = regionprops(lab)
     IDs = [obj.label for obj in rp]
 

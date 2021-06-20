@@ -223,16 +223,16 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.graphLayout = pg.GraphicsLayoutWidget()
 
         # Left plot
-        self.plot1 = pg.PlotItem()
-        self.plot1.invertY(True)
-        self.plot1.setAspectLocked(True)
-        self.plot1.hideAxis('bottom')
-        self.plot1.hideAxis('left')
-        self.graphLayout.addItem(self.plot1, row=1, col=1)
+        self.ax1 = pg.PlotItem()
+        self.ax1.invertY(True)
+        self.ax1.setAspectLocked(True)
+        self.ax1.hideAxis('bottom')
+        self.ax1.hideAxis('left')
+        self.graphLayout.addItem(self.ax1, row=1, col=1)
 
         # Left image
         self.img1 = pg.ImageItem(np.zeros((512,512)))
-        self.plot1.addItem(self.img1)
+        self.ax1.addItem(self.img1)
 
         # Left image histogram
         hist = pg.HistogramLUTItem()
@@ -249,31 +249,31 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.equalizeHistPushButton = equalizeHistPushButton
 
         # Right plot
-        self.plot2 = pg.PlotItem()
-        self.plot2.setAspectLocked(True)
-        self.plot2.invertY(True)
-        self.plot2.hideAxis('bottom')
-        self.plot2.hideAxis('left')
-        self.graphLayout.addItem(self.plot2, row=1, col=2)
+        self.ax2 = pg.PlotItem()
+        self.ax2.setAspectLocked(True)
+        self.ax2.invertY(True)
+        self.ax2.hideAxis('bottom')
+        self.ax2.hideAxis('left')
+        self.graphLayout.addItem(self.ax2, row=1, col=2)
 
 
         # Right image
         self.img2 = pg.ImageItem(np.zeros((512,512)))
-        self.plot2.addItem(self.img2)
+        self.ax2.addItem(self.img2)
 
         # Brush Eraser circle img1
         self.brushCircle = pg.ScatterPlotItem()
         self.brushCircle.setData([], [], symbol='o', pxMode=False,
                                  brush=pg.mkBrush((255,255,255,50)),
                                  pen=pg.mkPen(width=2))
-        self.plot1.addItem(self.brushCircle)
+        self.ax1.addItem(self.brushCircle)
 
         # Eraser circle img2
         self.EraserCircle = pg.ScatterPlotItem()
         self.EraserCircle.setData([], [], symbol='o', pxMode=False,
                                  brush=None,
                                  pen=pg.mkPen(width=2, color='r'))
-        self.plot2.addItem(self.EraserCircle)
+        self.ax2.addItem(self.EraserCircle)
 
         # Experimental: brush cursors
         self.eraserCursor = QCursor(QIcon(":eraser.png").pixmap(30, 30))
@@ -286,13 +286,13 @@ class Yeast_ACDC_GUI(QMainWindow):
                                  [], [], symbol='t', pxMode=False,
                                  brush=pg.mkBrush((255,0,0,50)), size=15,
                                  pen=pg.mkPen(width=3, color='r'))
-        self.plot2.addItem(self.binnedIDs_ScatterPlot)
+        self.ax2.addItem(self.binnedIDs_ScatterPlot)
         self.ripIDs_ScatterPlot = pg.ScatterPlotItem()
         self.ripIDs_ScatterPlot.setData(
                                  [], [], symbol='x', pxMode=False,
                                  brush=pg.mkBrush((255,0,0,50)), size=15,
                                  pen=pg.mkPen(width=2, color='r'))
-        self.plot2.addItem(self.ripIDs_ScatterPlot)
+        self.ax2.addItem(self.ripIDs_ScatterPlot)
 
 
         # Title
@@ -458,10 +458,10 @@ class Yeast_ACDC_GUI(QMainWindow):
                     # Clear labels IDs of the swapped IDs
                     old_ID_idx = prev_IDs.index(old_ID)
                     new_ID_idx = prev_IDs.index(new_ID)
-                    self.plot1.removeItem(self.plot1_items[old_ID_idx][0])
-                    self.plot1.removeItem(self.plot1_items[new_ID_idx][0])
-                    self.plot2.removeItem(self.plot2_items[old_ID_idx])
-                    self.plot2.removeItem(self.plot2_items[new_ID_idx])
+                    self.ax1.removeItem(self.plot1_items[old_ID_idx][0])
+                    self.ax1.removeItem(self.plot1_items[new_ID_idx][0])
+                    self.ax2.removeItem(self.plot2_items[old_ID_idx])
+                    self.ax2.removeItem(self.plot2_items[new_ID_idx])
                     self.drawID_and_Contour(
                         old_ID_idx, self.rp[old_ID_idx],
                         drawContours=False
@@ -485,8 +485,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                     self.lab[self.lab == old_ID] = new_ID
                     # Clear labels IDs of the swapped IDs
                     old_ID_idx = prev_IDs.index(old_ID)
-                    self.plot1.removeItem(self.plot1_items[old_ID_idx][0])
-                    self.plot2.removeItem(self.plot2_items[old_ID_idx])
+                    self.ax1.removeItem(self.plot1_items[old_ID_idx][0])
+                    self.ax2.removeItem(self.plot2_items[old_ID_idx])
                     self.rp[old_ID_idx].label = new_ID
                     self.drawID_and_Contour(
                         old_ID_idx, self.rp[old_ID_idx],
@@ -1173,6 +1173,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
 
     def Brush_cb(self, event):
+        # Toggle eraser Button OFF
         if self.eraserButton.isChecked():
             self.eraserButton.toggled.disconnect()
             self.eraserButton.setChecked(False)
@@ -1244,6 +1245,22 @@ class Yeast_ACDC_GUI(QMainWindow):
         for button in self.checkableButtons:
             button.setChecked(False)
 
+    def addCurrentState(self):
+        self.UndoRedoStates[self.frame_i].insert(
+                           0, {'labels': self.lab.copy(),
+                               'editID_info': self.editID_info.copy(),
+                               'binnedIDs':self.binnedIDs.copy(),
+                               'ripIDs':self.ripIDs.copy()}
+        )
+
+    def getCurrentState(self):
+        i = self.frame_i
+        c = self.UndoCount
+        self.lab = self.UndoRedoStates[i][c]['labels'].copy()
+        self.editID_info = self.UndoRedoStates[i][c]['editID_info'].copy()
+        self.binnedIDs = self.UndoRedoStates[i][c]['binnedIDs'].copy()
+        self.ripIDs = self.UndoRedoStates[i][c]['ripIDs'].copy()
+
     def storeUndoRedoStates(self):
         # Since we modified current frame all future frames that were already
         # visited are not valid anymore. Undo changes there
@@ -1253,9 +1270,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         # NOTE: index 0 is most recent state before doing last change
         self.UndoCount = 0
         self.undoAction.setEnabled(True)
-        self.UndoRedoStates[self.frame_i].insert(
-                                   0, {'labels': self.lab.copy(),
-                                       'editID_info': self.editID_info.copy()})
+        self.addCurrentState()
         # Keep only 5 Undo/Redo states
         if len(self.UndoRedoStates[self.frame_i]) > 5:
             self.UndoRedoStates[self.frame_i].pop(-1)
@@ -1263,9 +1278,7 @@ class Yeast_ACDC_GUI(QMainWindow):
     def undo(self):
         if self.UndoCount == 0:
             # Store current state to enable redoing it
-            self.UndoRedoStates[self.frame_i].insert(
-                                   0, {'labels': self.lab.copy(),
-                                       'editID_info': self.editID_info.copy()})
+            self.addCurrentState()
 
         # Get previously stored state
         if self.UndoCount < len(self.UndoRedoStates[self.frame_i])-1:
@@ -1274,10 +1287,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.redoAction.setEnabled(True)
 
             # Restore state
-            i = self.frame_i
-            c = self.UndoCount
-            self.lab = self.UndoRedoStates[i][c]['labels']
-            self.editID_info = self.UndoRedoStates[i][c]['editID_info']
+            self.getCurrentState()
             self.update_rp()
             self.checkIDs_LostNew()
             self.updateALLimg()
@@ -1296,10 +1306,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.undoAction.setEnabled(True)
 
             # Restore state
-            i = self.frame_i
-            c = self.UndoCount
-            self.lab = self.UndoRedoStates[i][c]['labels']
-            self.editID_info = self.UndoRedoStates[i][c]['editID_info']
+            self.getCurrentState()
             self.update_rp()
             self.checkIDs_LostNew()
             self.updateALLimg()
@@ -1384,7 +1391,9 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.tracking()
             self.updateALLimg()
         else:
-            print('You reached the last segmented frame!')
+            msg = 'You reached the last segmented frame!'
+            print(msg)
+            self.titleLabel.setText(msg)
         if self.slideshowWin is not None:
             self.slideshowWin.frame_i = self.frame_i
             self.slideshowWin.update_img()
@@ -1399,7 +1408,9 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.tracking()
             self.updateALLimg()
         else:
-            print('You reached the first frame!')
+            msg = 'You reached the first frame!'
+            print(msg)
+            self.titleLabel.setText(msg)
         if self.slideshowWin is not None:
             self.slideshowWin.frame_i = self.frame_i
             self.slideshowWin.update_img()
@@ -1407,6 +1418,10 @@ class Yeast_ACDC_GUI(QMainWindow):
 
     def init_frames_data(self, frames_path, user_ch_name):
         data = load.load_frames_data(frames_path, user_ch_name)
+        # Allow single 2D/3D image
+        if data.SizeT < 2:
+            data.img_data = np.array([data.img_data])
+            data.segm_data = np.array([data.segm_data])
         img_shape = data.img_data.shape
         self.num_frames = len(data.img_data)
         self.num_segm_frames = len(data.segm_data)
@@ -1423,12 +1438,16 @@ class Yeast_ACDC_GUI(QMainWindow):
     def clearMyItems(self):
         try:
             # Remove previous IDs texts and contours
+            self.clearPlotTimes = []
             for IDlabel, cont in self.plot1_items:
-                self.plot1.removeItem(IDlabel)
-                self.plot1.removeItem(cont)
+                self.ax1.removeItem(IDlabel)
+                t0 = time.time()
+                self.ax1.removeItem(cont)
+                t1 = time.time()
+                self.clearPlotTimes.append(t1-t0)
 
             for _item in self.plot2_items:
-                self.plot2.removeItem(_item)
+                self.ax2.removeItem(_item)
         except AttributeError:
             pass
 
@@ -1586,7 +1605,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         )
         w, h = _IDlabel2.rect().right(), _IDlabel2.rect().bottom()
         _IDlabel2.setPos(x-w/2, y-h/2)
-        self.plot2.addItem(_IDlabel2)
+        self.ax2.addItem(_IDlabel2)
         self.plot2_items[i] = _IDlabel2
 
         if IDs_and_cont or onlyIDs:
@@ -1598,7 +1617,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             )
             w, h = _IDlabel1.rect().right(), _IDlabel1.rect().bottom()
             _IDlabel1.setPos(x-w/2, y-h/2)
-            self.plot1.addItem(_IDlabel1)
+            self.ax1.addItem(_IDlabel1)
             self.plot1_items[i][0] = _IDlabel1
 
         if not drawContours:
@@ -1606,6 +1625,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             return
 
         if IDs_and_cont or onlyCont:
+            t0 = time.time()
             contours, hierarchy = cv2.findContours(
                                            obj.image.astype(np.uint8),
                                            cv2.RETR_EXTERNAL,
@@ -1614,9 +1634,16 @@ class Yeast_ACDC_GUI(QMainWindow):
             cont = np.squeeze(contours[0], axis=1)
             cont = np.vstack((cont, cont[0]))
             cont += [min_x, min_y]
-            cont_plot = self.plot1.plot(cont[:,0], cont[:,1], pen=self.cpen)
+            t1 = time.time()
+            computingContoursTime = t1-t0
+            self.computingContoursTimes.append(computingContoursTime)
 
+            t0 = time.time()
+            cont_plot = self.ax1.plot(cont[:,0], cont[:,1], pen=self.cpen)
             self.plot1_items[i][1] = cont_plot
+            t1 = time.time()
+            drawingContoursTime = t1-t0
+            self.drawingContoursTime.append(drawingContoursTime)
 
     def update_rp(self):
         # Update rp for current self.lab (e.g. after any change)
@@ -1650,10 +1677,10 @@ class Yeast_ACDC_GUI(QMainWindow):
             if erasedID in prev_IDs:
                 erased_idx = prev_IDs.index(erasedID)
                 if self.plot1_items[erased_idx] is not None:
-                    self.plot1.removeItem(self.plot1_items[erased_idx][0])
-                    self.plot1.removeItem(self.plot1_items[erased_idx][1])
+                    self.ax1.removeItem(self.plot1_items[erased_idx][0])
+                    self.ax1.removeItem(self.plot1_items[erased_idx][1])
                 if self.plot2_items[erased_idx] is not None:
-                    self.plot2.removeItem(self.plot2_items[erased_idx])
+                    self.ax2.removeItem(self.plot2_items[erased_idx])
 
         if len(newIDs)>0:
             for i, obj in enumerate(self.rp):
@@ -1823,9 +1850,15 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         self.clearMyItems()
 
+        self.computingContoursTimes = []
+        self.drawingContoursTime = []
         # Annotate cell ID and draw contours
         for i, obj in enumerate(self.rp):
             self.drawID_and_Contour(i, obj)
+
+        print(f'Clearing contours = {np.sum(self.clearPlotTimes):.3f} s')
+        print(f'Computing contours = {np.sum(self.computingContoursTimes):.3f} s')
+        print(f'Drawing contours = {np.sum(self.drawingContoursTime):.3f} s')
 
         # Update annotated IDs (e.g. dead cells)
         self.update_rp_metadata()
@@ -2025,8 +2058,8 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         ch_name_not_found_msg = (
             'The script could not identify the channel name.\n\n'
-            'The file to be segmented MUST have a name like\n'
-            '"<basename>_<channel_name>.tif" e.g. "196_s16_phase_contrast.tif"\n'
+            'For automatic loading the file to be segmented MUST have a name like\n'
+            '"<name>_s<num>_<channel_name>.tif" e.g. "196_s16_phase_contrast.tif"\n'
             'where "196_s16" is the basename and "phase_contrast"'
             'is the channel name\n\n'
             'Please write here the channel name to be used for automatic loading'
@@ -2044,7 +2077,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 user_ch_name = prompts.single_entry_messagebox(
                     title='Channel name not found',
                     entry_label=ch_name_not_found_msg,
-                    input_txt='phase_contrast',
+                    input_txt=ch_name_selector.channel_name,
                     toplevel=False
                 ).entry_txt
             else:
@@ -2054,12 +2087,12 @@ class Yeast_ACDC_GUI(QMainWindow):
         for filename in os.listdir(images_path):
             if filename.find(f'_phc_aligned.npy') != -1:
                 img_path = f'{images_path}/{filename}'
-                new_filename = filename.replace('_phc_aligned.npy',
-                                                f'_{user_ch_name}_aligned.npy')
+                new_filename = filename.replace('phc_aligned.npy',
+                                                f'{user_ch_name}_aligned.npy')
                 dst = f'{images_path}/{new_filename}'
                 os.rename(img_path, dst)
                 filename = new_filename
-            if filename.find(f'_{user_ch_name}_aligned.npy') != -1:
+            if filename.find(f'{user_ch_name}_aligned.npy') != -1:
                 img_path = f'{images_path}/{filename}'
                 img_aligned_found = True
         if not img_aligned_found:

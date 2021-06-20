@@ -10,6 +10,12 @@ models/*
 # Hide placeholder.txt dummy file (probably works only on Linux)
 !models/.placeholder.txt
 
+# Ignore temp folder but keep the folder with placeholder.txt dummy file
+src/temp/*
+!src/temp/placeholder.txt
+# Hide placeholder.txt dummy file (probably works only on Linux)
+!src/temp/.placeholder.txt
+
 
 
 __pycache__/
