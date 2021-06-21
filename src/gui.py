@@ -306,6 +306,45 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.frameLabel.setText(' ')
         self.graphLayout.addItem(self.frameLabel, row=2, col=1, colspan=2)
 
+    def gui_createGraphicsItems(self):
+        maxID = self.data.segm_data.max()
+
+        # Contour pen
+        self.cpen = pg.mkPen(color='r', width=2)
+
+        # Create enough PlotDataItems and LabelItems to draw contours and IDs
+        numItems = maxID+10
+        self.ax1_ContoursCurves = []
+        self.ax1_LabelItemsIDs = []
+        self.ax2_LabelItemsIDs = []
+        for i in range(numItems):
+            # Contours on ax1
+            ContCurve = pg.PlotDataItem(pen=self.cpen)
+            self.ax1_ContoursCurves.append(ContCurve)
+            self.ax1.addItem(ContCurve)
+
+            # LabelItems on ax1
+            ax1_IDlabel = pg.LabelItem(
+                    text='',
+                    color='FA0000',
+                    bold=True,
+                    size='10pt'
+            )
+            self.ax1_LabelItemsIDs.append(ax1_IDlabel)
+            self.ax1.addItem(ax1_IDlabel)
+
+            # LabelItems on ax2
+            ax2_IDlabel = pg.LabelItem(
+                    text='',
+                    color='FA0000',
+                    bold=True,
+                    size='10pt'
+            )
+            self.ax2_LabelItemsIDs.append(ax2_IDlabel)
+            self.ax2.addItem(ax2_IDlabel)
+
+
+
     def gui_connectGraphicsEvents(self):
         self.img1.hoverEvent = self.gui_hoverEventImg1
         self.img2.hoverEvent = self.gui_hoverEventImg2
@@ -325,7 +364,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         dragImg = (
             (left_click and not self.eraserButton.isChecked()) or
-            (left_click or self.isAltDown)
+            (left_click and self.isAltDown)
         )
 
         # Enable dragging of the image window like pyqtgraph original code
@@ -334,7 +373,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Erase with brush and left click on the right image
         # NOTE: contours, IDs and rp will be updated
         # on gui_mouseReleaseEventImg2
-        if left_click and self.eraserButton.isChecked() and not self.isAltDown:
+        if left_click and self.eraserButton.isChecked() and not dragImg:
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(round(x)), int(round(y))
             Y, X = self.lab.shape
@@ -366,7 +405,12 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.update_rp()
 
             self.img2.updateImage()
-            self.update_IDsContours(prev_IDs, erasedIDs=[delID])
+
+            # Remove contour and LabelItem of deleted ID
+            self.ax1_ContoursCurves[delID-1].setData([], [])
+            self.ax1_LabelItemsIDs[delID-1].setText('')
+            self.ax2_LabelItemsIDs[delID-1].setText('')
+
             self.checkIDs_LostNew()
 
         # Separate bud
@@ -440,7 +484,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                 # self.editID_Button.setChecked(False)
                 return
 
-            editID = apps.editID_widget(old_ID=ID)
+            editID = apps.editID_QWidget(ID)
+            editID.exec_()
             if editID.cancel:
                 self.editID_Button.setChecked(False)
                 return
@@ -448,7 +493,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             # Store undo state before modifying stuff
             self.storeUndoRedoStates()
             prev_IDs = [obj.label for obj in self.rp]
-            for old_ID, new_ID in editID.new_ID:
+            for old_ID, new_ID in editID.how:
                 if new_ID in prev_IDs:
                     tempID = self.lab.max() + 1
                     self.lab[self.lab == old_ID] = tempID
@@ -456,12 +501,14 @@ class Yeast_ACDC_GUI(QMainWindow):
                     self.lab[self.lab == tempID] = new_ID
 
                     # Clear labels IDs of the swapped IDs
+                    self.ax2_LabelItemsIDs[old_ID-1].setText('')
+                    self.ax1_LabelItemsIDs[old_ID-1].setText('')
+                    self.ax2_LabelItemsIDs[new_ID-1].setText('')
+                    self.ax1_LabelItemsIDs[new_ID-1].setText('')
+
+
                     old_ID_idx = prev_IDs.index(old_ID)
                     new_ID_idx = prev_IDs.index(new_ID)
-                    self.ax1.removeItem(self.plot1_items[old_ID_idx][0])
-                    self.ax1.removeItem(self.plot1_items[new_ID_idx][0])
-                    self.ax2.removeItem(self.plot2_items[old_ID_idx])
-                    self.ax2.removeItem(self.plot2_items[new_ID_idx])
                     self.drawID_and_Contour(
                         old_ID_idx, self.rp[old_ID_idx],
                         drawContours=False
@@ -484,9 +531,10 @@ class Yeast_ACDC_GUI(QMainWindow):
                 else:
                     self.lab[self.lab == old_ID] = new_ID
                     # Clear labels IDs of the swapped IDs
+                    self.ax2_LabelItemsIDs[old_ID-1].setText('')
+                    self.ax1_LabelItemsIDs[old_ID-1].setText('')
+
                     old_ID_idx = prev_IDs.index(old_ID)
-                    self.ax1.removeItem(self.plot1_items[old_ID_idx][0])
-                    self.ax2.removeItem(self.plot2_items[old_ID_idx])
                     self.rp[old_ID_idx].label = new_ID
                     self.drawID_and_Contour(
                         old_ID_idx, self.rp[old_ID_idx],
@@ -586,7 +634,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.update_rp()
 
             self.update_IDsContours(
-                prev_IDs, erasedIDs=erasedIDs, newIDs=erasedIDs
+                prev_IDs, newIDs=erasedIDs
             )
 
         # Merge IDs
@@ -612,7 +660,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             newID = self.lab[mergedID_mask][0]
             self.img2.updateImage()
             self.update_IDsContours(
-                prev_IDs, erasedIDs=[ID, self.firstID], newIDs=[newID]
+                prev_IDs, newIDs=[newID]
             )
             self.mergeIDsButton.setChecked(False)
 
@@ -626,15 +674,15 @@ class Yeast_ACDC_GUI(QMainWindow):
         left_click = event.button() == Qt.MouseButton.LeftButton
 
         dragImg = (
-            (left_click and not self.eraserButton.isChecked()) or
-            (left_click or self.isAltDown)
+            (left_click and not self.brushButton.isChecked()) or
+            (left_click and self.isAltDown)
         )
 
         # Enable dragging of the image window like pyqtgraph original code
         if dragImg:
             pg.ImageItem.mousePressEvent(self.img1, event)
         # Paint new IDs with brush and left click on the right image
-        if left_click and self.brushButton.isChecked() and not self.isAltDown:
+        if left_click and self.brushButton.isChecked() and not dragImg:
             # Store undo state before modifying stuff
             self.storeUndoRedoStates()
             x, y = event.pos().x(), event.pos().y()
@@ -1050,6 +1098,31 @@ class Yeast_ACDC_GUI(QMainWindow):
 
     def drawIDsContComboBox_cb(self, idx):
         self.updateALLimg()
+        how = self.drawIDsContComboBox.currentText()
+        onlyIDs = how == 'Draw only IDs'
+        nothing = how == 'Draw nothing'
+        onlyCont = how == 'Draw only contours'
+
+        t0 = time.time()
+        # Clear contours if requested (draw nothing or only IDs)
+        if onlyIDs or nothing:
+            for curveID in self.ax1_ContoursCurves:
+                curveID.setData([], [])
+            t1 = time.time()
+
+            print(f'Clearing contours = {t1-t0:.3f}')
+
+        t0 = time.time()
+        # Clear LabelItems IDs if requested (draw nothing or only contours)
+        allLabelItems = zip(self.ax1_LabelItemsIDs,
+                            self.ax2_LabelItemsIDs)
+        if onlyCont or nothing:
+            for _IDlabel1, _IDlabel2 in allLabelItems:
+                _IDlabel1.setText('')
+                _IDlabel2.setText('')
+            t1 = time.time()
+
+            print(f'Clearing labels = {t1-t0:.3f}')
 
     def setEnabledToolbarButton(self, enabled=False):
         self.showInExplorerAction.setEnabled(enabled)
@@ -1146,13 +1219,13 @@ class Yeast_ACDC_GUI(QMainWindow):
                     rp_sep = skimage.measure.regionprops(sep_bud_label)
                     IDs_sep = [obj.label for obj in rp_sep]
                     areas = [obj.area for obj in rp_sep]
-                    # curr_ID_bud = IDs_sep[areas.index(min(areas))]
-                    # curr_ID_moth = IDs_sep[areas.index(max(areas))]
+                    curr_ID_bud = IDs_sep[areas.index(min(areas))]
+                    curr_ID_moth = IDs_sep[areas.index(max(areas))]
                     orig_sblab = np.copy(sep_bud_label)
                     # sep_bud_label = np.zeros_like(sep_bud_label)
-                    # sep_bud_label[orig_sblab==curr_ID_moth] = ID
-                    # sep_bud_label[orig_sblab==curr_ID_bud] = max(IDs)+max_i
-                    sep_bud_label *= (max_ID+max_i)
+                    sep_bud_label[orig_sblab==curr_ID_moth] = ID
+                    sep_bud_label[orig_sblab==curr_ID_bud] = max_ID+max_i
+                    # sep_bud_label *= (max_ID+max_i)
                     temp_sep_bud_lab = sep_bud_label.copy()
                     for r, c in zip(rr, cc):
                         if lab_ID_bool[r, c]:
@@ -1433,29 +1506,33 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         self.data = data
 
+        self.gui_createGraphicsItems()
+
         self.init_attr(max_ID=data.segm_data.max())
 
-    def clearMyItems(self):
-        try:
-            # Remove previous IDs texts and contours
-            self.clearPlotTimes = []
-            for IDlabel, cont in self.plot1_items:
-                self.ax1.removeItem(IDlabel)
-                t0 = time.time()
-                self.ax1.removeItem(cont)
-                t1 = time.time()
-                self.clearPlotTimes.append(t1-t0)
+    def clear_prevItems(self):
+        # Clear data from those items that have data and are not present in
+        # current rp
+        IDs = [obj.label for obj in self.rp]
+        allItems = zip(self.ax1_ContoursCurves,
+                       self.ax1_LabelItemsIDs,
+                       self.ax2_LabelItemsIDs)
+        for idx, (ContCurve, _IDlabel1, _IDlabel2) in enumerate(allItems):
+            ID = idx+1
 
-            for _item in self.plot2_items:
-                self.ax2.removeItem(_item)
-        except AttributeError:
-            pass
+            if ContCurve.getData()[0] is not None and ID not in IDs:
+                # Contour is present but ID is not --> clear
+                ContCurve.setData([], [])
 
-        try:
-            self.plot1_items = [[None, None] for _ in range(len(self.rp))]
-            self.plot2_items = [None]*len(self.rp)
-        except AttributeError:
-            pass
+            if _IDlabel1.text != '' and ID not in IDs:
+                # Text is present but ID is not --> clear
+                _IDlabel1.setText('')
+
+            if _IDlabel2.text != '' and ID not in IDs:
+                # Text is present but ID is not --> clear
+                _IDlabel2.setText('')
+
+
 
     def init_attr(self, max_ID=10):
         self.enforceSeparation = False
@@ -1470,11 +1547,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Insert background color
         self.lut = np.insert(self.lut, 0, [25, 25, 25], axis=0)
 
-        # Contour pen
-        self.cpen = pg.mkPen(color='r', width=2)
-
         # Plots items
-        self.clearMyItems()
         self.is_first_call_YeaZ = True
         self.is_first_call_cellpose = True
         self.data_loaded = True
@@ -1596,34 +1669,59 @@ class Yeast_ACDC_GUI(QMainWindow):
         onlyIDs = how == 'Draw only IDs'
         onlyCont = how == 'Draw only contours'
 
+        # Draw LabelItems for IDs on ax2
         y, x = obj.centroid
-        _IDlabel2 = pg.LabelItem(
-                text=f'{obj.label}',
-                color='FA0000',
-                bold=True,
-                size='10pt'
-        )
+        t0 = time.time()
+        idx = obj.label-1
+        if not idx < len(self.ax2_LabelItemsIDs):
+            # Create addition LabelItems for the current ID
+            missingLen = idx-len(self.ax2_LabelItemsIDs)+1
+            for i in range(missingLen):
+                _IDlabel2 = pg.LabelItem(
+                        text='',
+                        color='FA0000',
+                        bold=True,
+                        size='10pt'
+                )
+                self.ax2_LabelItemsIDs.append(_IDlabel2)
+                self.ax2.addItem(_IDlabel2)
+
+        _IDlabel2 = self.ax2_LabelItemsIDs[obj.label-1]
+        _IDlabel2.setText(f'{obj.label}')
         w, h = _IDlabel2.rect().right(), _IDlabel2.rect().bottom()
         _IDlabel2.setPos(x-w/2, y-h/2)
-        self.ax2.addItem(_IDlabel2)
-        self.plot2_items[i] = _IDlabel2
 
+        # Draw LabelItems for IDs on ax1 if requested
         if IDs_and_cont or onlyIDs:
-            _IDlabel1 = pg.LabelItem(
-                    text=f'{obj.label}',
-                    color='FA0000',
-                    bold=True,
-                    size='10pt'
-            )
+            # Draw LabelItems for IDs on ax2
+            y, x = obj.centroid
+            t0 = time.time()
+            idx = obj.label-1
+            if not idx < len(self.ax1_LabelItemsIDs):
+                # Create addition LabelItems ax1_LabelItemsIDs the current ID
+                missingLen = idx-len(self.ax1_LabelItemsIDs)+1
+                for i in range(missingLen):
+                    _IDlabel1 = pg.LabelItem(
+                            text='',
+                            color='FA0000',
+                            bold=True,
+                            size='10pt'
+                    )
+                    self.ax1_LabelItemsIDs.append(_IDlabel1)
+                    self.ax1.addItem(_IDlabel1)
+
+            _IDlabel1 = self.ax1_LabelItemsIDs[obj.label-1]
+            _IDlabel1.setText(f'{obj.label}')
             w, h = _IDlabel1.rect().right(), _IDlabel1.rect().bottom()
             _IDlabel1.setPos(x-w/2, y-h/2)
-            self.ax1.addItem(_IDlabel1)
-            self.plot1_items[i][0] = _IDlabel1
+
+        t1 = time.time()
+        self.drawingLabelsTimes.append(t1-t0)
 
         if not drawContours:
-            self.plot1_items[i] = (_IDlabel1, self.plot1_items[i][1])
             return
 
+        # Draw contours on ax1 if requested
         if IDs_and_cont or onlyCont:
             t0 = time.time()
             contours, hierarchy = cv2.findContours(
@@ -1639,19 +1737,27 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.computingContoursTimes.append(computingContoursTime)
 
             t0 = time.time()
-            cont_plot = self.ax1.plot(cont[:,0], cont[:,1], pen=self.cpen)
-            self.plot1_items[i][1] = cont_plot
+            idx = obj.label-1
+            if not idx < len(self.ax1_ContoursCurves):
+                # Create addition PlotDataItems for the current ID
+                missingLen = idx-len(self.ax1_ContoursCurves)+1
+                for i in range(missingLen):
+                    curve = pg.PlotDataItem(pen=self.cpen)
+                    self.ax1_ContoursCurves.append(curve)
+                    self.ax1.addItem(curve)
+
+            curveID = self.ax1_ContoursCurves[idx]
+            curveID.setData(cont[:,0], cont[:,1])
             t1 = time.time()
-            drawingContoursTime = t1-t0
-            self.drawingContoursTime.append(drawingContoursTime)
+            drawingContoursTimes = t1-t0
+            self.drawingContoursTimes.append(drawingContoursTimes)
 
     def update_rp(self):
         # Update rp for current self.lab (e.g. after any change)
         self.rp = skimage.measure.regionprops(self.lab)
         self.update_rp_metadata()
 
-    def update_IDsContours(self, prev_IDs, erasedIDs=[],
-                           newIDs=[]):
+    def update_IDsContours(self, prev_IDs, newIDs=[]):
         """Function to draw labels text and contours of specific IDs.
         It should speed up things because we draw only few IDs usually.
 
@@ -1660,9 +1766,6 @@ class Yeast_ACDC_GUI(QMainWindow):
         prev_IDs : list
             List of IDs before the change (e.g. before erasing ID or painting
             a new one etc.)
-        erasedIDs : list
-            List of IDs that needs to be RE-drawn. An erased ID will be first
-            removed and then RE-drawn with the new label and contour
         newIDs : bool
             List of new IDs that are present after a change.
 
@@ -1672,24 +1775,22 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         """
 
-        # Remove contours and ID label for erased IDs
-        for erasedID in erasedIDs:
-            if erasedID in prev_IDs:
-                erased_idx = prev_IDs.index(erasedID)
-                if self.plot1_items[erased_idx] is not None:
-                    self.ax1.removeItem(self.plot1_items[erased_idx][0])
-                    self.ax1.removeItem(self.plot1_items[erased_idx][1])
-                if self.plot2_items[erased_idx] is not None:
-                    self.ax2.removeItem(self.plot2_items[erased_idx])
-
+        # Draw label and contours of the new IDs
         if len(newIDs)>0:
             for i, obj in enumerate(self.rp):
                 ID = obj.label
                 if ID in newIDs:
-                    self.plot1_items.insert(i, [None, None])
-                    self.plot2_items.insert(i, None)
                     # Draw ID labels and contours of new objects
                     self.drawID_and_Contour(i, obj)
+
+        # Clear contours and LabelItems of IDs that are in prev_IDs
+        # but not in current IDs
+        currentIDs = [obj.label for obj in self.rp]
+        for prevID in prev_IDs:
+            if prevID not in currentIDs:
+                self.ax1_ContoursCurves[prevID-1].setData([], [])
+                self.ax1_LabelItemsIDs[prevID-1].setText('')
+                self.ax2_LabelItemsIDs[prevID-1].setText('')
 
     def updateLookuptable(self):
         lut = self.lut[:self.lab.max()+1].copy()
@@ -1713,7 +1814,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 if draw:
                     y, x = obj.centroid
                     # Gray out ID label on image
-                    LabelID = self.plot2_items[i]
+                    LabelID = self.ax2_LabelItemsIDs[ID-1]
                     LabelID.setText(f'{ID}', color=(150, 0, 0))
                     binnedIDs_xx.append(x)
                     binnedIDs_yy.append(y)
@@ -1726,7 +1827,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 if draw:
                     # Gray out ID label on image
                     y, x = obj.centroid
-                    LabelID = self.plot2_items[i]
+                    LabelID = self.ax2_LabelItemsIDs[ID-1]
                     LabelID.setText(f'{ID}', color=(150, 0, 0))
                     ripIDs_xx.append(x)
                     ripIDs_yy.append(y)
@@ -1848,17 +1949,19 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.img2.setImage(lab)
         self.updateLookuptable()
 
-        self.clearMyItems()
+        self.clear_prevItems()
 
         self.computingContoursTimes = []
-        self.drawingContoursTime = []
+        self.drawingLabelsTimes = []
+        self.drawingContoursTimes = []
         # Annotate cell ID and draw contours
         for i, obj in enumerate(self.rp):
             self.drawID_and_Contour(i, obj)
 
-        print(f'Clearing contours = {np.sum(self.clearPlotTimes):.3f} s')
+        print('------------------------------------')
+        print(f'Drawing labels = {np.sum(self.drawingLabelsTimes):.3f} s')
         print(f'Computing contours = {np.sum(self.computingContoursTimes):.3f} s')
-        print(f'Drawing contours = {np.sum(self.drawingContoursTime):.3f} s')
+        print(f'Drawing contours = {np.sum(self.drawingContoursTimes):.3f} s')
 
         # Update annotated IDs (e.g. dead cells)
         self.update_rp_metadata()

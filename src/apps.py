@@ -1,4 +1,5 @@
 import sys
+import re
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
@@ -42,7 +43,8 @@ from PyQt5.QtGui import QIcon
 from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtWidgets import (
     QAction, QApplication, QMainWindow, QMenu, QLabel, QToolBar,
-    QScrollBar
+    QScrollBar, QWidget, QVBoxLayout, QLineEdit, QPushButton,
+    QHBoxLayout, QDialog
 )
 
 import qrc_resources
@@ -714,6 +716,125 @@ class CellsSlideshow_GUI(QMainWindow):
         if self.button_toUncheck is not None:
             self.button_toUncheck.setChecked(False)
 
+class editID_QWidget(QDialog):
+    def __init__(self, clickedID):
+        self.clickedID = clickedID
+        self.cancel = True
+        self.how = None
+
+        super().__init__()
+        self.setWindowTitle("Edit ID")
+        mainLayout = QVBoxLayout()
+
+        VBoxLayout = QVBoxLayout()
+        msg = QLabel(f'Replace ID {clickedID} with:')
+        _font = QtGui.QFont()
+        _font.setPointSize(10)
+        msg.setFont(_font)
+        msg.setStyleSheet("padding:0px 0px 3px 0px;")
+        VBoxLayout.addWidget(msg, alignment=Qt.AlignCenter)
+
+        ID_QLineEdit = QLineEdit()
+        ID_QLineEdit.setFont(_font)
+        ID_QLineEdit.setAlignment(Qt.AlignCenter)
+        self.ID_QLineEdit = ID_QLineEdit
+        VBoxLayout.addWidget(ID_QLineEdit)
+
+        note = QLabel(
+            'NOTE: To replace multiple IDs at once\n'
+            'write "(old ID, new ID), (old ID, new ID)" etc.'
+        )
+        note.setFont(_font)
+        note.setAlignment(Qt.AlignCenter)
+        # padding: top, left, bottom, right
+        note.setStyleSheet("padding:10px 0px 0px 0px;")
+        VBoxLayout.addWidget(note, alignment=Qt.AlignCenter)
+        mainLayout.addLayout(VBoxLayout)
+
+        HBoxLayout = QHBoxLayout()
+        okButton = QPushButton('Ok')
+        okButton.setShortcut(Qt.Key_Enter)
+        HBoxLayout.addWidget(okButton, alignment=Qt.AlignRight)
+
+        cancelButton = QPushButton('Cancel')
+        # cancelButton.setShortcut(Qt.Key_Escape)
+        HBoxLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
+        HBoxLayout.setContentsMargins(0, 10, 0, 0)
+
+        mainLayout.addLayout(HBoxLayout)
+
+        self.setLayout(mainLayout)
+
+        # Connect events
+        self.prevText = ''
+        ID_QLineEdit.textChanged[str].connect(self.ID_LineEdit_cb)
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.cancel_cb)
+
+        self.setModal(True)
+
+    def ID_LineEdit_cb(self, text):
+        # Get inserted char
+        idx = self.ID_QLineEdit.cursorPosition()
+        newChar = text[idx-1]
+
+        # Do nothing if user is deleting text
+        if idx == 0 or len(text)<len(self.prevText):
+            self.prevText = text
+            return
+
+        # Do not allow chars except for "(", ")", "int", ","
+        m = re.search(r'\(|\)|\d|,', newChar)
+        if m is None:
+            self.prevText = text
+            text = text.replace(newChar, '')
+            self.ID_QLineEdit.setText(text)
+            return
+
+        # Automatically close ( bracket
+        if newChar == '(':
+            text += ')'
+            self.ID_QLineEdit.setText(text)
+        self.prevText = text
+
+    def ok_cb(self, event):
+        self.cancel = False
+        txt = self.ID_QLineEdit.text()
+        valid = False
+
+        # Check validity of inserted text
+        try:
+            ID = int(txt)
+            how = [(self.clickedID, ID)]
+            valid = True
+        except ValueError:
+            pattern = '\((\d+),\s*(\d+)\)'
+            fa = re.findall(pattern, txt)
+            if fa:
+                how = [(int(g[0]), int(g[1])) for g in fa]
+                valid = True
+            else:
+                valid = False
+
+        if valid:
+            self.how = how
+            self.close()
+        else:
+            err_msg = (
+                'You entered invalid text. Valid text is either a single integer'
+                f' ID that will be used to replace ID {self.clickedID} '
+                'or a list of elements enclosed in parenthesis separated by a comma\n'
+                'such as (5, 10), (8, 27) to replace ID 5 with ID 10 and ID 8 with ID 27'
+            )
+            msg = QtGui.QMessageBox()
+            msg.critical(
+                self, 'Invalid entry', err_msg, msg.Ok
+            )
+
+    def cancel_cb(self, event):
+        self.cancel = True
+        self.close()
+
 
 
 
@@ -1134,8 +1255,9 @@ class win_size:
 
 if __name__ == '__main__':
     # Create the application
-    app = QApplication(sys.argv)
-    win = CellsSlideshow_GUI()
+    # app = QApplication(sys.argv)
+    win = editID_QWidget(14)
     win.show()
-    win.loadData(np.random.randint(0,255, size=(200, 512,512)))
+    app.setStyle(QtGui.QStyleFactory.create('Fusion'))
+    # win.loadData(np.random.randint(0,255, size=(200, 512,512)))
     sys.exit(app.exec_())
