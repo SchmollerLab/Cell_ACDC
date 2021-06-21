@@ -397,27 +397,22 @@ for exp_idx, main_path in enumerate(main_paths):
                                                   register=not shifts_found,
                                                   user_shifts=loaded_shifts)
                 print('Frames aligned!')
-                if save_segm:
-                    print('Saving aligned frames...')
-                    if os.path.exists(data.align_old_path):
-                        os.remove(data.align_old_path)
-                    np.save(data.align_npy_path, aligned_frames,
-                            allow_pickle=False)
-                    np.save(data.align_shifts_path, shifts, allow_pickle=False)
-                    print('Aligned frames saved!')
-
+                if os.path.exists(data.align_old_path):
+                    os.remove(data.align_old_path)
+                np.save(data.align_npy_path, aligned_frames,
+                        allow_pickle=False)
+                np.save(data.align_shifts_path, shifts, allow_pickle=False)
+                path = data.align_npy_path
                 frames = aligned_frames
-
             else:
-                # Aligned data already found
+                # Aligned file found and already loaded
                 frames = data.img_data
         else:
-            # No frames --> save placeholders for aligned data
+            # Simple 2D image
             frames = data.img_data
-            if save_segm:
-                np.save(data.align_npy_path, frames, allow_pickle=False)
-                shifts = np.array([[0,0]])
-                np.save(data.align_shifts_path, shifts, allow_pickle=False)
+            np.save(data.align_npy_path, frames, allow_pickle=False)
+            shifts = np.array([[0,0]])
+            np.save(data.align_shifts_path, shifts, allow_pickle=False)
 
         """Check img data shape and reshape if needed"""
         print('Checking img data shape and reshaping if needed...')
@@ -431,7 +426,8 @@ for exp_idx, main_path in enumerate(main_paths):
                 # 2D snapshot (no alignment required)
                 y, x = frames.shape
                 frames = np.reshape(frames, (1,y,x))
-            ROI_coords = draw_ROI_2D_frames(frames, num_frames,
+            ROI_coords = draw_ROI_2D_frames(
+                                frames, num_frames,
                                 slice_used_for='segmentation and apply ROI if needed',
                                 activate_ROI=True).ROI_coords
         elif num_slices > 1:

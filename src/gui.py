@@ -510,11 +510,11 @@ class Yeast_ACDC_GUI(QMainWindow):
                     old_ID_idx = prev_IDs.index(old_ID)
                     new_ID_idx = prev_IDs.index(new_ID)
                     self.drawID_and_Contour(
-                        old_ID_idx, self.rp[old_ID_idx],
+                        self.rp[old_ID_idx],
                         drawContours=False
                     )
                     self.drawID_and_Contour(
-                        new_ID_idx, self.rp[new_ID_idx],
+                        self.rp[new_ID_idx],
                         drawContours=False
                     )
 
@@ -537,7 +537,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                     old_ID_idx = prev_IDs.index(old_ID)
                     self.rp[old_ID_idx].label = new_ID
                     self.drawID_and_Contour(
-                        old_ID_idx, self.rp[old_ID_idx],
+                        self.rp[old_ID_idx],
                         drawContours=False
                     )
                     # Append information for replicating the edit in tracking
@@ -784,7 +784,9 @@ class Yeast_ACDC_GUI(QMainWindow):
             Y, X = _img.shape
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                 val = _img[ydata, xdata]
-                self.wcLabel.setText(f'(x={x:.2f}, y={y:.2f}, value={val:.0f})')
+                self.wcLabel.setText(
+                    f'(x={x:.2f}, y={y:.2f}, value={val:.0f}, max={_img.max()})'
+                )
             else:
                 self.app.setOverrideCursor(Qt.ArrowCursor)
                 self.wcLabel.setText(f'')
@@ -1532,8 +1534,6 @@ class Yeast_ACDC_GUI(QMainWindow):
                 # Text is present but ID is not --> clear
                 _IDlabel2.setText('')
 
-
-
     def init_attr(self, max_ID=10):
         self.enforceSeparation = False
         self.isAltDown = False
@@ -1541,8 +1541,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.UndoRedoStates = [[] for _ in range(self.num_frames)]
 
         # Colormap
-        cmap = pg.colormap.get('viridis', source='matplotlib')
-        self.lut = cmap.getLookupTable(0,1, max_ID)
+        self.cmap = pg.colormap.get('viridis', source='matplotlib')
+        self.lut = self.cmap.getLookupTable(0,1, max_ID+10)
         np.random.shuffle(self.lut)
         # Insert background color
         self.lut = np.insert(self.lut, 0, [25, 25, 25], axis=0)
@@ -1663,7 +1663,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             ripIDs_df = df[df['is_cell_dead']]
             self.ripIDs = set(ripIDs_df.index)
 
-    def drawID_and_Contour(self, i, obj, drawContours=True):
+    def drawID_and_Contour(self, obj, drawContours=True):
         how = self.drawIDsContComboBox.currentText()
         IDs_and_cont = how == 'Draw IDs and contours'
         onlyIDs = how == 'Draw only IDs'
@@ -1781,7 +1781,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 ID = obj.label
                 if ID in newIDs:
                     # Draw ID labels and contours of new objects
-                    self.drawID_and_Contour(i, obj)
+                    self.drawID_and_Contour(obj)
 
         # Clear contours and LabelItems of IDs that are in prev_IDs
         # but not in current IDs
@@ -1793,7 +1793,18 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.ax2_LabelItemsIDs[prevID-1].setText('')
 
     def updateLookuptable(self):
-        lut = self.lut[:self.lab.max()+1].copy()
+        lenNewLut = self.lab.max()+1
+        # Recycle colors for IDs > than original max ID
+        if lenNewLut > len(self.lut):
+            numNewColors = lenNewLut-len(self.lut)
+            _lut = np.zeros((lenNewLut, 3), np.uint8)
+            _lut[:len(self.lut)] = self.lut
+            randomIdx = np.random.randint(0,len(self.lut),size=numNewColors)
+            for i, idx in enumerate(randomIdx):
+                rgb = self.lut[idx]
+                _lut[len(self.lut)+i] = rgb
+        lut = self.lut[:lenNewLut].copy()
+        print(len(lut))
         for ID in self.binnedIDs:
             lut[ID] = lut[ID]*0.2
         for ID in self.ripIDs:
@@ -1934,7 +1945,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
     def updateALLimg(self):
         self.frameLabel.setText(
-                 f'Current frame = {self.frame_i+1}/{self.num_frames}')
+                 f'Current frame = {self.frame_i+1}/{self.num_segm_frames}')
 
         if self.overlayButton.isChecked():
             cells_img = self.data.img_data[self.frame_i]
@@ -1956,7 +1967,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.drawingContoursTimes = []
         # Annotate cell ID and draw contours
         for i, obj in enumerate(self.rp):
-            self.drawID_and_Contour(i, obj)
+            self.drawID_and_Contour(obj)
 
         print('------------------------------------')
         print(f'Drawing labels = {np.sum(self.drawingLabelsTimes):.3f} s')
