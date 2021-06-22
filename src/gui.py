@@ -33,7 +33,7 @@ from PyQt5.QtWidgets import (
     QAction, QApplication, QLabel, QPushButton,
     QMainWindow, QMenu, QToolBar, QGroupBox,
     QScrollBar, QCheckBox, QToolButton, QSpinBox,
-    QComboBox, QDial
+    QComboBox, QDial, QButtonGroup
 )
 
 from pyqtgraph.Qt import QtGui
@@ -90,6 +90,10 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.setGeometry(mainWinLeft, mainWinTop, mainWinWidth, mainWinHeight)
 
         self.checkableButtons = []
+
+        # Buttons added to QButtonGroup will be mutually exclusive
+        self.checkableQButtonsGroup = QButtonGroup(self)
+        self.checkableQButtonsGroup.setExclusive(False)
 
         self.gui_createActions()
         self.gui_createMenuBar()
@@ -461,7 +465,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.checkIDs_LostNew()
 
         # Separate bud
-        elif right_click and self.separateBudButton.isChecked():
+        elif (right_click or left_click) and self.separateBudButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(round(x)), int(round(y))
             ID = self.lab[ydata, xdata]
@@ -472,7 +476,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.storeUndoRedoStates()
             max_ID = self.lab.max()
 
-            if not self.enforceSeparation:
+            if right_click:
                 self.lab, success = self.auto_separate_bud_ID(
                                              ID, self.lab, self.rp,
                                              max_ID, enforce=True)
@@ -1009,12 +1013,20 @@ class Yeast_ACDC_GUI(QMainWindow):
         navigateToolBar.addAction(self.prevAction)
         navigateToolBar.addAction(self.nextAction)
 
+        self.slideshowButton = QToolButton(self)
+        self.slideshowButton.setIcon(QIcon(":eye-plus.svg"))
+        self.slideshowButton.setCheckable(True)
+        self.slideshowButton.setShortcut('Ctrl+W')
+        self.slideshowButton.setToolTip('Open slideshow (Ctrl+W)')
+        navigateToolBar.addWidget(self.slideshowButton)
+
         self.overlayButton = QToolButton(self)
         self.overlayButton.setIcon(QIcon(":overlay.svg"))
         self.overlayButton.setCheckable(True)
         self.overlayButton.setToolTip('Overlay fluorescent image')
         navigateToolBar.addWidget(self.overlayButton)
         self.checkableButtons.append(self.overlayButton)
+        self.checkableQButtonsGroup.addButton(self.overlayButton)
 
         # fluorescent image color widget
         self.colorButton = pg.ColorButton(self, color=(230,230,230))
@@ -1035,6 +1047,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         )
         navigateToolBar.addWidget(self.assignMothBudButton)
         self.checkableButtons.append(self.assignMothBudButton)
+        self.checkableQButtonsGroup.addButton(self.assignMothBudButton)
+
 
         self.navigateToolBar = navigateToolBar
 
@@ -1045,14 +1059,6 @@ class Yeast_ACDC_GUI(QMainWindow):
         # editToolBar.setFixedHeight(72)
         editToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         self.addToolBar(editToolBar)
-
-        self.slideshowButton = QToolButton(self)
-        self.slideshowButton.setIcon(QIcon(":eye-plus.svg"))
-        self.slideshowButton.setCheckable(True)
-        self.slideshowButton.setShortcut('Ctrl+W')
-        self.slideshowButton.setToolTip('Open slideshow (Ctrl+W)')
-        editToolBar.addWidget(self.slideshowButton)
-        self.checkableButtons.append(self.slideshowButton)
 
         self.brushButton = QToolButton(self)
         self.brushButton.setIcon(QIcon(":brush.svg"))
@@ -1077,6 +1083,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.editID_Button.setToolTip('Edit ID (N + right-click)')
         editToolBar.addWidget(self.editID_Button)
         self.checkableButtons.append(self.editID_Button)
+        self.checkableQButtonsGroup.addButton(self.editID_Button)
 
         self.separateBudButton = QToolButton(self)
         self.separateBudButton.setIcon(QIcon(":separate-bud.svg"))
@@ -1088,6 +1095,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         )
         editToolBar.addWidget(self.separateBudButton)
         self.checkableButtons.append(self.separateBudButton)
+        self.checkableQButtonsGroup.addButton(self.separateBudButton)
 
         self.mergeIDsButton = QToolButton(self)
         self.mergeIDsButton.setIcon(QIcon(":merge-IDs.svg"))
@@ -1096,6 +1104,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.mergeIDsButton.setToolTip('Merge IDs (S + right-click)')
         editToolBar.addWidget(self.mergeIDsButton)
         self.checkableButtons.append(self.mergeIDsButton)
+        self.checkableQButtonsGroup.addButton(self.mergeIDsButton)
 
         self.binCellButton = QToolButton(self)
         self.binCellButton.setIcon(QIcon(":bin.svg"))
@@ -1106,6 +1115,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.binCellButton.setShortcut("r")
         editToolBar.addWidget(self.binCellButton)
         self.checkableButtons.append(self.binCellButton)
+        self.checkableQButtonsGroup.addButton(self.binCellButton)
 
         self.ripCellButton = QToolButton(self)
         self.ripCellButton.setIcon(QIcon(":rip.svg"))
@@ -1116,6 +1126,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.ripCellButton.setShortcut("d")
         editToolBar.addWidget(self.ripCellButton)
         self.checkableButtons.append(self.ripCellButton)
+        self.checkableQButtonsGroup.addButton(self.ripCellButton)
 
         editToolBar.addAction(self.repeatTrackingAction)
 
@@ -1220,6 +1231,14 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Connect Open Recent to dynamically populate it
         self.openRecentMenu.aboutToShow.connect(self.populateOpenRecent)
 
+        self.checkableQButtonsGroup.buttonClicked.connect(self.uncheckQButton)
+
+    def uncheckQButton(self, button):
+        # Manual exclusive where we allow to uncheck all buttons
+        for b in self.checkableQButtonsGroup.buttons():
+            if b != button:
+                b.setChecked(False)
+
     def gui_connectEditActions(self):
         self.setEnabledToolbarButton(enabled=True)
         self.prevAction.triggered.connect(self.prev_cb)
@@ -1321,6 +1340,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.slideshowWin.loadData(self.data.img_data, frame_i=self.frame_i)
             self.slideshowWin.show()
         else:
+            self.slideshowWin.close()
             self.slideshowWin = None
 
     def nearest_nonzero(self, a, y, x):
@@ -1451,8 +1471,6 @@ class Yeast_ACDC_GUI(QMainWindow):
         elif ev.key() == Qt.Key_Alt:
             self.app.setOverrideCursor(Qt.SizeAllCursor)
             self.isAltDown = True
-        elif ev.key() == Qt.Key_S:
-            self.enforceSeparation = True
         # elif ev.key() == Qt.Key_Right:
         #     self.next_cb()
         # elif ev.key() == Qt.Key_Left:
@@ -1464,8 +1482,6 @@ class Yeast_ACDC_GUI(QMainWindow):
         if ev.key() == Qt.Key_Alt:
             self.app.setOverrideCursor(Qt.ArrowCursor)
             self.isAltDown = False
-        elif ev.key() == Qt.Key_S:
-            self.enforceSeparation = False
 
     def setUncheckedAllButtons(self):
         for button in self.checkableButtons:
@@ -2541,15 +2557,19 @@ class Yeast_ACDC_GUI(QMainWindow):
                     df_li.append(df)
                     keys.append(i)
 
-            all_frames_metadata_df = pd.concat(
-                df_li, keys=keys, names=['frame_i', 'Cell_ID']
-            )
+            try:
+                all_frames_metadata_df = pd.concat(
+                    df_li, keys=keys, names=['frame_i', 'Cell_ID']
+                )
 
-            # Save segmentation metadata
-            all_frames_metadata_df.to_csv(segm_metadata_csv_path)
+                # Save segmentation metadata
+                all_frames_metadata_df.to_csv(segm_metadata_csv_path)
+            except:
+                pass
 
             # Save segmentation file
             np.save(segm_npy_path, segm_npy)
+
             # Save last tracked frame
             with open(last_tracked_i_path, 'w+') as txt:
                 txt.write(str(frame_i))
