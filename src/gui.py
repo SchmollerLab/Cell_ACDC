@@ -273,12 +273,12 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.img2 = pg.ImageItem(np.zeros((512,512)))
         self.ax2.addItem(self.img2)
 
-        # Brush Eraser circle img1
-        self.brushCircle = pg.ScatterPlotItem()
-        self.brushCircle.setData([], [], symbol='o', pxMode=False,
+        # Brush circle img1
+        self.ax1_BrushCircle = pg.ScatterPlotItem()
+        self.ax1_BrushCircle.setData([], [], symbol='o', pxMode=False,
                                  brush=pg.mkBrush((255,255,255,50)),
                                  pen=pg.mkPen(width=2))
-        self.ax1.addItem(self.brushCircle)
+        self.ax1.addItem(self.ax1_BrushCircle)
 
         # Eraser circle img2
         self.EraserCircle = pg.ScatterPlotItem()
@@ -286,6 +286,14 @@ class Yeast_ACDC_GUI(QMainWindow):
                                  brush=None,
                                  pen=pg.mkPen(width=2, color='r'))
         self.ax2.addItem(self.EraserCircle)
+
+        # Brush circle img2
+        self.ax2_BrushCircle = pg.ScatterPlotItem()
+        self.ax2_BrushCircle.setData([], [], symbol='o', pxMode=False,
+                                 brush=pg.mkBrush((255,255,255,50)),
+                                 pen=pg.mkPen(width=2))
+        self.ax2.addItem(self.ax2_BrushCircle)
+
 
         # Experimental: brush cursors
         self.eraserCursor = QCursor(QIcon(":eraser.png").pixmap(30, 30))
@@ -373,9 +381,12 @@ class Yeast_ACDC_GUI(QMainWindow):
         left_click = event.button() == Qt.MouseButton.LeftButton
         mid_click = event.button() == Qt.MouseButton.MidButton
         right_click = event.button() == Qt.MouseButton.RightButton
+        eraserON = self.eraserButton.isChecked()
+        brushON = self.brushButton.isChecked()
 
+        # Drag image if neither brush or eraser are On or Alt is pressed
         dragImg = (
-            (left_click and not self.eraserButton.isChecked()) or
+            (left_click and not eraserON and not brushON) or
             (left_click and self.isAltDown)
         )
 
@@ -392,6 +403,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                 # Store undo state before modifying stuff
                 self.storeUndoRedoStates()
+                self.yPressAx2, self.xPressAx2 = y, x
                 self.isMouseDragImg2 = True
                 # Keep a global mask to compute which IDs got erased
                 self.erasedIDs = []
@@ -401,6 +413,29 @@ class Yeast_ACDC_GUI(QMainWindow):
                 ymax, xmax = ydata+brushSize+1, xdata+brushSize+1
                 self.erasedIDs.extend(self.lab[ymin:ymax, xmin:xmax][mask])
                 self.lab[ymin:ymax, xmin:xmax][mask] = 0
+                self.img2.updateImage()
+
+        # Paint with brush and left click on the right image
+        # NOTE: contours, IDs and rp will be updated
+        # on gui_mouseReleaseEventImg2
+        elif left_click and self.brushButton.isChecked() and not dragImg:
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(round(x)), int(round(y))
+            Y, X = self.lab.shape
+            if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
+                # Store undo state before modifying stuff
+                self.storeUndoRedoStates()
+                self.yPressAx2, self.xPressAx2 = y, x
+
+                self.isMouseDragImg2 = True
+
+                brushSize = self.brushSizeSpinbox.value()
+                mask = skimage.morphology.disk(brushSize, dtype=np.bool)
+                ymin, xmin = ydata-brushSize, xdata-brushSize
+                ymax, xmax = ydata+brushSize+1, xdata+brushSize+1
+                maskedLab = self.lab[ymin:ymax, xmin:xmax][mask]
+                self.ax2_brushID = [ID for ID in np.unique(maskedLab) if ID!=0]
+                self.lab[ymin:ymax, xmin:xmax][mask] = self.ax2_brushID[0]
                 self.img2.updateImage()
 
         # Delete entire ID (set to 0)
@@ -630,24 +665,73 @@ class Yeast_ACDC_GUI(QMainWindow):
 
             self.ripCellButton.setChecked(False)
 
+    def getPolygonBrush(self, yxc2):
+        # see https://en.wikipedia.org/wiki/Tangent_lines_to_circles
+        y1, x1 = self.yPressAx2, self.xPressAx2
+        y2, x2 = yxc2
+        R = self.brushSizeSpinbox.value()
+        r = R
+
+        arcsin_den = np.sqrt((x2-x1)**2+(y2-y1)**2)
+        arctan_den = (x2-x1)
+        if arcsin_den!=0 and arctan_den!=0:
+            beta = np.arcsin((R-r)/arcsin_den)
+            gamma = -np.arctan((y2-y1)/arctan_den)
+            alpha = gamma-beta
+            x3 = x1 + r*np.sin(alpha)
+            y3 = y1 + r*np.cos(alpha)
+            x4 = x2 + R*np.sin(alpha)
+            y4 = y2 + R*np.cos(alpha)
+
+            alpha = gamma+beta
+            x5 = x1 - r*np.sin(alpha)
+            y5 = y1 - r*np.cos(alpha)
+            x6 = x2 - R*np.sin(alpha)
+            y6 = y2 - R*np.cos(alpha)
+
+            rr_poly, cc_poly = skimage.draw.polygon([y3, y4, y6, y5],
+                                                    [x3, x4, x6, x5])
+        else:
+            rr_poly, cc_poly = [], []
+
+        self.yPressAx2, self.xPressAx2 = y2, x2
+        return rr_poly, cc_poly
+
+
 
 
     def gui_mouseDragEventImg2(self, event):
         # Eraser dragging mouse --> keep erasing
-        if self.isMouseDragImg2:
+        if self.isMouseDragImg2 and self.eraserButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(round(x)), int(round(y))
             brushSize = self.brushSizeSpinbox.value()
             mask = skimage.morphology.disk(brushSize, dtype=np.bool)
+            rrPoly, ccPoly = self.getPolygonBrush((y, x))
             ymin, xmin = ydata-brushSize, xdata-brushSize
             ymax, xmax = ydata+brushSize+1, xdata+brushSize+1
             self.erasedIDs.extend(self.lab[ymin:ymax, xmin:xmax][mask])
+            self.erasedIDs.extend(self.lab[rrPoly, ccPoly])
             self.lab[ymin:ymax, xmin:xmax][mask] = 0
+            self.lab[rrPoly, ccPoly] = 0
+            self.img2.updateImage()
+
+        # Brush paint dragging mouse --> keep painting
+        if self.isMouseDragImg2 and self.brushButton.isChecked():
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(round(x)), int(round(y))
+            brushSize = self.brushSizeSpinbox.value()
+            mask = skimage.morphology.disk(brushSize, dtype=np.bool)
+            rrPoly, ccPoly = self.getPolygonBrush((y, x))
+            ymin, xmin = ydata-brushSize, xdata-brushSize
+            ymax, xmax = ydata+brushSize+1, xdata+brushSize+1
+            self.lab[ymin:ymax, xmin:xmax][mask] = self.ax2_brushID
+            self.lab[rrPoly, ccPoly] = self.ax2_brushID
             self.img2.updateImage()
 
     def gui_mouseReleaseEventImg2(self, event):
         # Eraser mouse release --> update IDs and contours
-        if self.isMouseDragImg2:
+        if self.isMouseDragImg2 and self.eraserButton.isChecked():
             self.isMouseDragImg2 = False
             erasedIDs = np.unique(self.erasedIDs)
 
@@ -659,8 +743,20 @@ class Yeast_ACDC_GUI(QMainWindow):
                 prev_IDs, newIDs=erasedIDs
             )
 
+        # Brush mouse release --> update IDs and contours
+        elif self.isMouseDragImg2 and self.brushButton.isChecked():
+            self.isMouseDragImg2 = False
+
+            # Update data (rp, etc)
+            prev_IDs = [obj.label for obj in self.rp]
+            self.update_rp()
+
+            self.update_IDsContours(
+                prev_IDs, newIDs=self.ax2_brushID
+            )
+
         # Merge IDs
-        if self.mergeIDsButton.isChecked():
+        elif self.mergeIDsButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(round(x)), int(round(y))
             ID = self.lab[ydata, xdata]
@@ -718,6 +814,10 @@ class Yeast_ACDC_GUI(QMainWindow):
                 mask = skimage.morphology.disk(brushSize, dtype=np.bool)
                 ymin, xmin = ydata-brushSize, xdata-brushSize
                 ymax, xmax = ydata+brushSize+1, xdata+brushSize+1
+
+                # Draw new objects below existing ones
+                localLab = lab[ymin:ymax, xmin:xmax]
+                mask[localLab!=0] = False
                 lab[ymin:ymax, xmin:xmax][mask] = self.brushID
 
                 # Update data (rp, etc)
@@ -792,13 +892,13 @@ class Yeast_ACDC_GUI(QMainWindow):
                 Y, X = _img.shape
                 if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                     size = self.brushSizeSpinbox.value()*2
-                    self.brushCircle.setData([x], [y],
+                    self.ax1_BrushCircle.setData([x], [y],
                                                    size=size)
             else:
-                self.brushCircle.setData([], [])
+                self.ax1_BrushCircle.setData([], [])
         except:
             # traceback.print_exc()
-            self.brushCircle.setData([], [])
+            self.ax1_BrushCircle.setData([], [])
 
     def gui_hoverEventImg2(self, event):
         if self.isAltDown:
@@ -838,6 +938,24 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.EraserCircle.setData([], [])
         except:
             self.EraserCircle.setData([], [])
+
+        # Draw Brush circle
+        drawCircle = self.brushButton.isChecked() and not event.isExit()
+        try:
+            if drawCircle:
+                x, y = event.pos()
+                xdata, ydata = int(round(x)), int(round(y))
+                _img = self.img2.image
+                Y, X = _img.shape
+                if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
+                    size = self.brushSizeSpinbox.value()*2
+                    self.ax2_BrushCircle.setData([x], [y],
+                                                   size=size)
+            else:
+                self.ax2_BrushCircle.setData([], [])
+        except:
+            # traceback.print_exc()
+            self.ax2_BrushCircle.setData([], [])
 
 
     def gui_createMenuBar(self):
@@ -1006,7 +1124,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         editToolBar.addWidget(self.disableTrackingCheckBox)
 
         self.brushSizeSpinbox = QSpinBox()
-        self.brushSizeSpinbox.setValue(3)
+        self.brushSizeSpinbox.setValue(4)
         self.brushSizeLabel = QLabel('   Size: ')
         self.brushSizeLabel.setBuddy(self.brushSizeSpinbox)
         editToolBar.addWidget(self.brushSizeLabel)
@@ -1272,7 +1390,8 @@ class Yeast_ACDC_GUI(QMainWindow):
 
     def brushSize_cb(self):
         self.EraserCircle.setSize(self.brushSizeSpinbox.value()*2)
-        self.brushCircle.setSize(self.brushSizeSpinbox.value()*2)
+        self.ax1_BrushCircle.setSize(self.brushSizeSpinbox.value()*2)
+        self.ax2_BrushCircle.setSize(self.brushSizeSpinbox.value()*2)
 
 
     def Brush_cb(self, event):
@@ -1282,7 +1401,8 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.eraserButton.setChecked(False)
             self.eraserButton.toggled.connect(self.Eraser_cb)
         if not self.brushButton.isChecked():
-            self.brushCircle.setData([], [])
+            self.ax1_BrushCircle.setData([], [])
+            self.ax2_BrushCircle.setData([], [])
             self.enableSizeSpinbox(False)
             # self.app.setOverrideCursor(Qt.ArrowCursor)
         else:
@@ -1310,7 +1430,8 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.brushButton.setChecked(False)
             self.brushButton.toggled.connect(self.Brush_cb)
         if not self.eraserButton.isChecked():
-            self.brushCircle.setData([], [])
+            self.ax1_BrushCircle.setData([], [])
+            self.ax2_BrushCircle.setData([], [])
             self.brushButton.setChecked(False)
             self.enableSizeSpinbox(False)
             # self.app.setOverrideCursor(Qt.ArrowCursor)
