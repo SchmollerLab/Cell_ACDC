@@ -808,7 +808,8 @@ class YeaZ_ParamsDialog(QDialog):
 
 
 class editID_QWidget(QDialog):
-    def __init__(self, clickedID):
+    def __init__(self, clickedID, IDs):
+        self.IDs = IDs
         self.clickedID = clickedID
         self.cancel = True
         self.how = None
@@ -897,7 +898,22 @@ class editID_QWidget(QDialog):
         try:
             ID = int(txt)
             how = [(self.clickedID, ID)]
-            valid = True
+            if ID in self.IDs:
+                warn_msg = (
+                    f'ID {ID} is already existing. If you continue ID {ID} '
+                    f'will be swapped with ID {self.clickedID}\n\n'
+                    'Do you want to continue?'
+                )
+                msg = QtGui.QMessageBox()
+                do_swap = msg.warning(
+                    self, 'Invalid entry', warn_msg, msg.Yes | msg.Cancel
+                )
+                if do_swap == msg.Yes:
+                    valid = True
+                else:
+                    return
+            else:
+                valid = True
         except ValueError:
             pattern = '\((\d+),\s*(\d+)\)'
             fa = re.findall(pattern, txt)

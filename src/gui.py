@@ -501,7 +501,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                 return
 
             self.disableAutoActivateViewerWindow = True
-            editID = apps.editID_QWidget(ID)
+            prev_IDs = [obj.label for obj in self.rp]
+            editID = apps.editID_QWidget(ID, prev_IDs)
             editID.exec_()
             if editID.cancel:
                 self.disableAutoActivateViewerWindow = False
@@ -510,7 +511,6 @@ class Yeast_ACDC_GUI(QMainWindow):
 
             # Store undo state before modifying stuff
             self.storeUndoRedoStates()
-            prev_IDs = [obj.label for obj in self.rp]
             for old_ID, new_ID in editID.how:
                 if new_ID in prev_IDs:
                     tempID = self.lab.max() + 1
@@ -527,6 +527,8 @@ class Yeast_ACDC_GUI(QMainWindow):
 
                     old_ID_idx = prev_IDs.index(old_ID)
                     new_ID_idx = prev_IDs.index(new_ID)
+                    self.rp[old_ID_idx].label = new_ID
+                    self.rp[new_ID_idx].label = old_ID
                     self.drawID_and_Contour(
                         self.rp[old_ID_idx],
                         drawContours=False
@@ -686,7 +688,9 @@ class Yeast_ACDC_GUI(QMainWindow):
 
 
     def gui_mouseReleaseEventImg1(self, event):
-        pass
+        if self.mergeIDsButton.isChecked():
+            # Allow right-click actions on both images
+            self.gui_mouseReleaseEventImg2(event)
 
     def gui_mousePressEventImg1(self, event):
         mode = str(self.modeComboBox.currentText())
@@ -738,6 +742,10 @@ class Yeast_ACDC_GUI(QMainWindow):
                     self.brushID = self.lab.max()+1
                 else:
                     self.brushID += 1
+
+        elif right_click:
+            # Allow right-click actions on both images
+            self.gui_mousePressEventImg2(event)
 
         elif left_click and mode == 'Cell cycle analysis':
             pass
@@ -1418,7 +1426,30 @@ class Yeast_ACDC_GUI(QMainWindow):
         pass
 
     def repeatTracking(self):
-        self.tracking(enforce=True)
+        self.tracking(enforce=True, DoManualEdit=False)
+        if self.editID_info:
+            editIDinfo = [
+                f'Replace ID {self.lab[y,x]} with {newID}'
+                for y, x, newID in self.editID_info
+            ]
+            msg = QtGui.QMessageBox()
+            msg.setIcon(msg.Information)
+            msg.setText("You required to repeat tracking but there are "
+                        "the following manually editied IDs:\n\n"
+                        f"{editIDinfo}\n\n"
+                        "Do you want to keep these edits or ignore them?")
+            keepManualEditButton = QPushButton('Keep manually edited IDs')
+            msg.addButton(keepManualEditButton, msg.YesRole)
+            msg.addButton(QPushButton('Ignore'), msg.NoRole)
+            msg.exec_()
+            if msg.clickedButton() == keepManualEditButton:
+                allIDs = [obj.label for obj in self.rp]
+                self.ManuallyEditTracking(self.lab, allIDs)
+                self.update_rp()
+                self.checkIDs_LostNew()
+            else:
+                self.editID_info = []
+
         self.updateALLimg()
 
     def repeatSegmYeaZ(self):
@@ -1437,7 +1468,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         pred = self.nn.prediction(img, is_pc=True,
                                   path_weights=self.path_weights)
         thresh = self.nn.threshold(pred)
-        lab = segment.segment(thresh, pred, min_distance=5).astype(int)
+        lab = self.segment.segment(thresh, pred, min_distance=5).astype(int)
         self.is_first_call_YeaZ = False
         self.lab = lab
         self.update_rp()
@@ -2052,7 +2083,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.titleLabel.setText(htmlTxt)
 
 
-    def tracking(self, onlyIDs=[], enforce=False):
+    def tracking(self, onlyIDs=[], enforce=False, DoManualEdit=True):
         if self.frame_i == 0:
             return
         # Track only frames that were visited for the first time
@@ -2124,6 +2155,17 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         allIDs = tracked_IDs.copy()
         tracked_IDs.extend(new_tracked_IDs_2)
+
+        if DoManualEdit:
+            # Correct tracking with manually changed IDs
+            self.ManuallyEditTracking(tracked_lab, allIDs)
+
+        # Update labels, regionprops and determine new and lost IDs
+        self.lab = tracked_lab
+        self.update_rp()
+        self.checkIDs_LostNew()
+
+    def ManuallyEditTracking(self, tracked_lab, allIDs):
         # Correct tracking with manually changed IDs
         for y, x, new_ID in self.editID_info:
             old_ID = tracked_lab[y, x]
@@ -2134,11 +2176,6 @@ class Yeast_ACDC_GUI(QMainWindow):
                 tracked_lab[tracked_lab == tempID] = new_ID
             else:
                 tracked_lab[tracked_lab == old_ID] = new_ID
-
-        # Update labels, regionprops and determine new and lost IDs
-        self.lab = tracked_lab
-        self.update_rp()
-        self.checkIDs_LostNew()
 
     def np_replace_values(self, arr, old_values, tracked_values):
         # See method_jdehesa https://stackoverflow.com/questions/45735230/how-to-replace-a-list-of-values-in-a-numpy-array
