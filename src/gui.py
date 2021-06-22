@@ -135,7 +135,13 @@ class Yeast_ACDC_GUI(QMainWindow):
                 (slideshowWinLeft < mainWinRight)
             )
 
-            if self.data_loaded and not overlap:
+            autoActivate = (
+                self.data_loaded and not
+                overlap and not
+                self.disableAutoActivateViewerWindow
+            )
+
+            if autoActivate:
                 self.slideshowWin.setFocus(True)
                 self.slideshowWin.activateWindow()
 
@@ -161,7 +167,13 @@ class Yeast_ACDC_GUI(QMainWindow):
                 (slideshowWinLeft < mainWinRight)
             )
 
-            if self.data_loaded and not overlap:
+            autoActivate = (
+                self.data_loaded and not
+                overlap and not
+                self.disableAutoActivateViewerWindow
+            )
+
+            if autoActivate:
                 self.setFocus(True)
                 self.activateWindow()
 
@@ -434,10 +446,12 @@ class Yeast_ACDC_GUI(QMainWindow):
 
             # If automatic bud separation was not successfull call manual one
             if not success:
+                self.disableAutoActivateViewerWindow = True
                 paint_out = apps.my_paint_app(
                                 self.lab, ID, self.rp, del_small_obj=True,
                                 overlay_img=self.img1.image)
                 if paint_out.cancel:
+                    self.disableAutoActivateViewerWindow = False
                     self.separateBudButton.setChecked(False)
                     return
                 paint_out_lab = paint_out.sep_bud_label
@@ -449,6 +463,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                 for yy, xx in paint_out.coords_delete:
                     del_ID = self.lab[yy, xx]
                     self.lab[self.lab == del_ID] = 0
+
+                self.disableAutoActivateViewerWindow = False
 
             # Update data (rp, etc)
             prev_IDs = [obj.label for obj in self.rp]
@@ -484,9 +500,11 @@ class Yeast_ACDC_GUI(QMainWindow):
                 # self.editID_Button.setChecked(False)
                 return
 
+            self.disableAutoActivateViewerWindow = True
             editID = apps.editID_QWidget(ID)
             editID.exec_()
             if editID.cancel:
+                self.disableAutoActivateViewerWindow = False
                 self.editID_Button.setChecked(False)
                 return
 
@@ -559,6 +577,8 @@ class Yeast_ACDC_GUI(QMainWindow):
 
             self.img2.setImage(self.lab)
             self.editID_Button.setChecked(False)
+
+            self.disableAutoActivateViewerWindow = True
 
         # Annotate cell as removed from the analysis
         elif right_click and self.binCellButton.isChecked():
@@ -1270,6 +1290,8 @@ class Yeast_ACDC_GUI(QMainWindow):
             # self.app.setOverrideCursor(self.brushCursor)
 
     def equalizeHist(self):
+        # Store undo state before modifying stuff
+        self.storeUndoRedoStates()
         img = skimage.exposure.equalize_adapthist(self.img1.image)
         self.img1.setImage(img)
 
@@ -1322,7 +1344,8 @@ class Yeast_ACDC_GUI(QMainWindow):
 
     def addCurrentState(self):
         self.UndoRedoStates[self.frame_i].insert(
-                           0, {'labels': self.lab.copy(),
+                           0, {'image': self.img1.image.copy(),
+                               'labels': self.lab.copy(),
                                'editID_info': self.editID_info.copy(),
                                'binnedIDs':self.binnedIDs.copy(),
                                'ripIDs':self.ripIDs.copy()}
@@ -1331,6 +1354,7 @@ class Yeast_ACDC_GUI(QMainWindow):
     def getCurrentState(self):
         i = self.frame_i
         c = self.UndoCount
+        self.cells_img = self.UndoRedoStates[i][c]['image'].copy()
         self.lab = self.UndoRedoStates[i][c]['labels'].copy()
         self.editID_info = self.UndoRedoStates[i][c]['editID_info'].copy()
         self.binnedIDs = self.UndoRedoStates[i][c]['binnedIDs'].copy()
@@ -1365,7 +1389,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.getCurrentState()
             self.update_rp()
             self.checkIDs_LostNew()
-            self.updateALLimg()
+            self.updateALLimg(image=self.cells_img)
 
         if not self.UndoCount < len(self.UndoRedoStates[self.frame_i])-1:
             # We have undone all available states
@@ -1384,7 +1408,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.getCurrentState()
             self.update_rp()
             self.checkIDs_LostNew()
-            self.updateALLimg()
+            self.updateALLimg(image=self.cells_img)
 
         if not self.UndoCount > 0:
             # We have redone all available states
@@ -1535,6 +1559,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 _IDlabel2.setText('')
 
     def init_attr(self, max_ID=10):
+        self.disableAutoActivateViewerWindow = False
         self.enforceSeparation = False
         self.isAltDown = False
         self.manual_newID_coords = []
@@ -1593,6 +1618,13 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.frame_i = 0
             self.get_data()
             self.updateALLimg()
+
+        # Link Y and X axis of both plots to scroll zoom and pan together
+        self.ax2.vb.setYLink(self.ax1.vb)
+        self.ax2.vb.setXLink(self.ax1.vb)
+
+        self.ax2.vb.autoRange()
+        self.ax1.vb.autoRange()
 
     def store_data(self, debug=False):
         self.allData_li[self.frame_i]['regionprops'] = self.rp.copy()
@@ -1794,17 +1826,20 @@ class Yeast_ACDC_GUI(QMainWindow):
 
     def updateLookuptable(self):
         lenNewLut = self.lab.max()+1
-        # Recycle colors for IDs > than original max ID
+        # Build a new lut to include IDs > than original len of lut
         if lenNewLut > len(self.lut):
             numNewColors = lenNewLut-len(self.lut)
+            # Index original lut
             _lut = np.zeros((lenNewLut, 3), np.uint8)
             _lut[:len(self.lut)] = self.lut
+            # Pick random colors and append them at the end to recycle them
             randomIdx = np.random.randint(0,len(self.lut),size=numNewColors)
             for i, idx in enumerate(randomIdx):
                 rgb = self.lut[idx]
                 _lut[len(self.lut)+i] = rgb
+            self.lut = _lut
+
         lut = self.lut[:lenNewLut].copy()
-        print(len(lut))
         for ID in self.binnedIDs:
             lut[ID] = lut[ID]*0.2
         for ID in self.ripIDs:
@@ -1943,16 +1978,21 @@ class Yeast_ACDC_GUI(QMainWindow):
         img = self.get_overlay(fluo_img, cells_img)
         self.img1.setImage(img)
 
-    def updateALLimg(self):
+    def updateALLimg(self, image=None):
         self.frameLabel.setText(
                  f'Current frame = {self.frame_i+1}/{self.num_segm_frames}')
+
+        if image is None:
+            cells_img = self.data.img_data[self.frame_i].copy()
+        else:
+            cells_img = image
 
         if self.overlayButton.isChecked():
             cells_img = self.data.img_data[self.frame_i]
             fluo_img = self.data.ol_frames[self.frame_i]
             img = self.get_overlay(fluo_img, cells_img)
         else:
-            img = self.data.img_data[self.frame_i]
+            img = cells_img
 
         lab = self.lab
 
@@ -2129,9 +2169,17 @@ class Yeast_ACDC_GUI(QMainWindow):
         pass
 
     def openFile(self, checked=False, exp_path=None):
+        if self.slideshowWin is not None:
+            self.slideshowWin.close()
+
         if exp_path is None:
             exp_path = prompts.folder_dialog(
-                title='Select experiment folder containing Position_n folders')
+                title='Select experiment folder containing Position_n folders'
+                      'or specific Position_n folder')
+
+        is_pos_folder = False
+        if exp_path.find('Position_') != -1:
+            is_pos_folder = True
 
         self.titleLabel.setText('Loading data...')
 
@@ -2144,27 +2192,33 @@ class Yeast_ACDC_GUI(QMainWindow):
             which_channel='segm', allow_abort=False
         )
 
-        select_folder = load.select_exp_folder()
-        values = select_folder.get_values_segmGUI(exp_path)
+        if not is_pos_folder:
+            select_folder = load.select_exp_folder()
+            values = select_folder.get_values_segmGUI(exp_path)
+            if not values:
+                txt = (
+                    'The selected folder:\n\n '
+                    f'{exp_path}\n\n'
+                    'is not a valid folder. '
+                    'Select a folder that contains the Position_n folders'
+                )
+                msg = QtGui.QMessageBox()
+                msg.critical(
+                    self, 'Incompatible folder', txt, msg.Ok
+                )
+                return
 
-        if not values:
-            txt = (
-                'The selected folder:\n\n '
-                f'{exp_path}\n\n'
-                'is not a valid folder. Select a folder that contains the Position_n folders'
-            )
-            msg = QtGui.QMessageBox()
-            msg.critical(
-                self, 'Incompatible folder', txt, msg.Ok
-            )
-            return
+            pos_foldername = select_folder.run_widget(values, allow_abort=False)
 
-        pos_foldername = select_folder.run_widget(values, allow_abort=False)
+            if select_folder.was_aborted:
+                self.titleLabel.setText(
+                    'File --> Open or Open recent to start the process')
+                return
 
-        if select_folder.was_aborted:
-            self.titleLabel.setText(
-                'File --> Open or Open recent to start the process')
-            return
+        else:
+            pos_foldername = os.path.basename(exp_path)
+            exp_path = os.path.dirname(exp_path)
+
 
         images_path = f'{exp_path}/{pos_foldername}/Images'
 
@@ -2393,7 +2447,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.openRecentMenu.addActions(actions)
 
     def openRecentFile(self, path):
-        print(path)
+        print(f'Opening recent folder: {path}')
         self.openFile(exp_path=path)
 
     def closeEvent(self, event):

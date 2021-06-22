@@ -191,6 +191,13 @@ save_segm = messagebox.askyesno('Save segmentation?',
                                  'Do you want to save segmentation?',
                                  master=root)
 
+params = apps.YeaZ_Params()
+if params.cancel:
+    exit('Execution aborted by the user')
+
+thresh_val = params.threshVal
+min_distance = params.minDist
+
 ch_name_not_found_msg = (
     'The script could not identify the channel name.\n\n'
     'For automatic loading the file to be segmented MUST have a name like\n'
@@ -559,14 +566,17 @@ for path, frange, ROI_coords, slices, basename in inputs:
         pred_stack = nn.prediction(frames, is_pc=is_pc,
                                    path_weights=path_weights)
     print('thresholding prediction...')
-    thresh_stack = nn.threshold(pred_stack)
+    thresh_stack = nn.threshold(pred_stack, th=thresh_val)
 
     print('performing watershed for splitting cells...')
     if num_frames > 1:
         lab_stack = segment.segment_stack(thresh_stack, pred_stack,
-                                          min_distance=10).astype(np.uint16)
+                                          min_distance=min_distance
+                                          ).astype(np.uint16)
     else:
-        lab_stack = segment.segment(thresh_stack, pred_stack).astype(np.uint16)
+        lab_stack = segment.segment(thresh_stack, pred_stack,
+                                    min_distance=min_distance
+                                    ).astype(np.uint16)
     lab_stack = remove_small_objects(lab_stack, min_size=5)
     if do_tracking and num_frames > 1:
         print('performing tracking by hungarian algorithm...')

@@ -1,5 +1,8 @@
 //Channels names
-channels = newArray("mNeon","mKate","phase_contr");
+//channels = newArray("mNeon","mKate","phase_contr");
+channels = newArray("AlexaFluor","phase_contr","DAPI","Cy3");
+
+macro_path = File.directory();
 
 //File dialog and open
 id = File.openDialog("Select a czi file");
@@ -12,16 +15,19 @@ Ext.setId(id);
 
 //Get file information
 Ext.getSeriesCount(seriesCount);
-name = File.getName(id);
+name = File.getNameWithoutExtension(id);
 print("Number of series in "+name+" is: "+seriesCount);
 
-//Create MIA folder
+//Create folder
 path = File.getParent(id);
 wpath= replace(path, "/", "\\");
 exec("cmd /c C:\\Windows\\explorer.exe \""+ wpath +"\"");
-folder = File.getName(path)+"/TIFFs/s";
-MIA = path+"/MIA_"+name
+// folder = File.getNameWithoutExtension(path)+"/TIFFs/s";
+MIA = path+"/MIA_"+name;
 File.makeDirectory(MIA);
+TIFFs = MIA+"/TIFFs";
+folder = TIFFs;
+File.makeDirectory(folder);
 
 //open each series by splitting channels and saving them separately into .tif files
 S = 1; //start from S series (from 1)
@@ -36,7 +42,7 @@ for (s=S-1; s<End; s++) { //for loop for iterating through the series
 	Ext.getSizeC(sizeC); //Gets the number of channels in the current series.
 	//Ext.getSizeZ(sizeZ); //Gets the number of focal planes in the current series.
 	print("Saving s="+seriesNum+"/"+End+"..."); //Display message
-	pos_path = MIA+"/Position_"+seriesNum;
+	pos_path = folder+"/Position_"+seriesNum;
 	File.makeDirectory(pos_path);
 	images_path = pos_path+"/Images";
 	File.makeDirectory(images_path);
@@ -49,7 +55,7 @@ for (s=S-1; s<End; s++) { //for loop for iterating through the series
 		selectWindow(name+".czi - "+name+".czi #"+nss(seriesNum, seriesCount)+" - C="+c);
 		saveAs("Tiff", scTif);
 	}
-	close_all_macro_path = "C:/MyPrograms/Fiji/MyMacros/CloseAllWindows.ijm";
+	close_all_macro_path = macro_path+"CloseAllWindows.ijm";
 	runMacro(close_all_macro_path,true);
 	print("Saved!");
 }

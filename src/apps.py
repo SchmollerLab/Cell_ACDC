@@ -44,7 +44,7 @@ from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtWidgets import (
     QAction, QApplication, QMainWindow, QMenu, QLabel, QToolBar,
     QScrollBar, QWidget, QVBoxLayout, QLineEdit, QPushButton,
-    QHBoxLayout, QDialog
+    QHBoxLayout, QDialog, QFormLayout
 )
 
 import qrc_resources
@@ -716,6 +716,97 @@ class CellsSlideshow_GUI(QMainWindow):
         if self.button_toUncheck is not None:
             self.button_toUncheck.setChecked(False)
 
+class YeaZ_ParamsDialog(QDialog):
+    def __init__(self):
+        self.cancel = True
+        super().__init__()
+        self.setWindowTitle("YeaZ parameters")
+
+        mainLayout = QVBoxLayout()
+
+        formLayout = QFormLayout()
+        formLayout.addRow("Threshold value:", QLineEdit())
+        formLayout.addRow("Minimum distance:", QLineEdit())
+
+        threshVal_QLineEdit = formLayout.itemAt(0, 1).widget()
+        threshVal_QLineEdit.setText('None')
+        threshVal_QLineEdit.setAlignment(Qt.AlignCenter)
+        self.threshVal_QLineEdit = threshVal_QLineEdit
+
+        minDist_QLineEdit = formLayout.itemAt(1, 1).widget()
+        minDist_QLineEdit.setText('10')
+        minDist_QLineEdit.setAlignment(Qt.AlignCenter)
+        self.minDist_QLineEdit = minDist_QLineEdit
+
+        HBoxLayout = QHBoxLayout()
+        okButton = QPushButton('Ok')
+        okButton.setShortcut(Qt.Key_Enter)
+        HBoxLayout.addWidget(okButton, alignment=Qt.AlignRight)
+
+        cancelButton = QPushButton('Cancel')
+        # cancelButton.setShortcut(Qt.Key_Escape)
+        HBoxLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
+        HBoxLayout.setContentsMargins(0, 10, 0, 0)
+
+        mainLayout.addLayout(formLayout)
+        mainLayout.addLayout(HBoxLayout)
+
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.cancel_cb)
+
+        self.setLayout(mainLayout)
+        self.setModal(True)
+
+    def ok_cb(self, event):
+        self.cancel = False
+        valid_threshVal = False
+        valid_minDist = False
+        threshTxt = self.threshVal_QLineEdit.text()
+        minDistTxt = self.minDist_QLineEdit.text()
+        try:
+            self.threshVal = float(threshTxt)
+            if self.threshVal > 0 and self.threshVal < 1:
+                valid_threshVal = True
+            else:
+                valid_threshVal = False
+        except:
+            if threshTxt == 'None':
+                self.threshVal = None
+                valid_threshVal = True
+            else:
+                valid_threshVal = False
+        if not valid_threshVal:
+            err_msg = (
+                'Threshold value is not valid. '
+                'Enter a floating point from 0 to 1 or "None"'
+            )
+            msg = QtGui.QMessageBox()
+            msg.critical(
+                self, 'Invalid threshold value', err_msg, msg.Ok
+            )
+            return
+        else:
+            try:
+                self.minDist = int(minDistTxt)
+                valid_minDist = True
+            except:
+                valid_minDist = False
+        if not valid_minDist:
+            err_msg = (
+                'Minimum distance is not valid. Enter an integer'
+            )
+            msg = QtGui.QMessageBox()
+            msg.critical(
+                self, 'Invalid minimum distance', err_msg, msg.Ok
+            )
+            return
+        self.close()
+
+    def cancel_cb(self, event):
+        self.cancel = True
+        self.close()
+
+
 class editID_QWidget(QDialog):
     def __init__(self, clickedID):
         self.clickedID = clickedID
@@ -835,7 +926,13 @@ class editID_QWidget(QDialog):
         self.cancel = True
         self.close()
 
-
+def YeaZ_Params():
+    app = QApplication(sys.argv)
+    params = YeaZ_ParamsDialog()
+    params.show()
+    app.setStyle(QtGui.QStyleFactory.create('Fusion'))
+    app.exec_()
+    return params
 
 
 class editID_widget:
@@ -1255,9 +1352,10 @@ class win_size:
 
 if __name__ == '__main__':
     # Create the application
-    # app = QApplication(sys.argv)
-    win = editID_QWidget(14)
+    app = QApplication(sys.argv)
+    win = YeaZ_ParamsDialog()
     win.show()
     app.setStyle(QtGui.QStyleFactory.create('Fusion'))
     # win.loadData(np.random.randint(0,255, size=(200, 512,512)))
-    sys.exit(app.exec_())
+    app.exec_()
+    print(win.cancel)
