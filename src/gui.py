@@ -186,13 +186,25 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         # Toggle contours/ID combobox
         row = 0
+        self.drawIDsContComboBoxSegmItems = ['Draw IDs and contours',
+                                             'Draw only IDs',
+                                             'Draw only contours',
+                                             'Draw nothing']
+        self.drawIDsContComboBoxCcaItems = ['Draw only cell cycle info',
+                                            'Draw cell cycle info and contours',
+                                            'Draw IDs and contours',
+                                            'Draw only IDs',
+                                            'Draw only contours',
+                                            'Draw nothing']
         self.drawIDsContComboBox = QComboBox()
-        self.drawIDsContComboBox.addItems(['Draw IDs and contours',
-                                           'Draw only IDs',
-                                           'Draw only contours',
-                                           'Draw nothing'])
-        self.img1_Widglayout.addWidget(self.drawIDsContComboBox, row, 3, 1, 4,
-                                       alignment=Qt.AlignCenter)
+        self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
+        # Always adjust combobox width to largest item
+        self.drawIDsContComboBox.setSizeAdjustPolicy(
+                    self.drawIDsContComboBox.AdjustToContents)
+
+        self.img1_Widglayout.addWidget(
+                self.drawIDsContComboBox, row, 1, 1, 10,
+                alignment=Qt.AlignCenter)
 
         # z-slice scrollbar
         row += 1
@@ -336,9 +348,17 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Contour pen
         self.cpen = pg.mkPen(color='r', width=2)
 
+        # New bud-mother line pen
+        self.NewBudMoth_Pen = pg.mkPen(color='r', width=3, style=Qt.DashLine)
+
+        # Old bud-mother line pen
+        self.OldBudMoth_Pen = pg.mkPen(color=(255,165,0), width=2,
+                                       style=Qt.DashLine)
+
         # Create enough PlotDataItems and LabelItems to draw contours and IDs
         numItems = maxID+10
         self.ax1_ContoursCurves = []
+        self.ax1_BudMothLines = []
         self.ax1_LabelItemsIDs = []
         self.ax2_LabelItemsIDs = []
         for i in range(numItems):
@@ -346,6 +366,11 @@ class Yeast_ACDC_GUI(QMainWindow):
             ContCurve = pg.PlotDataItem(pen=self.cpen)
             self.ax1_ContoursCurves.append(ContCurve)
             self.ax1.addItem(ContCurve)
+
+            # Contours on ax1
+            BudMothLine = pg.PlotDataItem()
+            self.ax1_BudMothLines.append(BudMothLine)
+            self.ax1.addItem(BudMothLine)
 
             # LabelItems on ax1
             ax1_IDlabel = pg.LabelItem(
@@ -382,6 +407,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
 
     def gui_mousePressEventImg2(self, event):
+        mode = str(self.modeComboBox.currentText())
         left_click = event.button() == Qt.MouseButton.LeftButton
         mid_click = event.button() == Qt.MouseButton.MidButton
         right_click = event.button() == Qt.MouseButton.RightButton
@@ -397,6 +423,10 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Enable dragging of the image window like pyqtgraph original code
         if dragImg:
             pg.ImageItem.mousePressEvent(self.img2, event)
+
+        if mode == 'Viewer':
+            return
+
         # Erase with brush and left click on the right image
         # NOTE: contours, IDs and rp will be updated
         # on gui_mouseReleaseEventImg2
@@ -443,7 +473,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.img2.updateImage()
 
         # Delete entire ID (set to 0)
-        elif mid_click:
+        elif mid_click and mode == 'Segmentation and tracking':
             # Store undo state before modifying stuff
             self.storeUndoRedoStates()
             x, y = event.pos().x(), event.pos().y()
@@ -705,6 +735,10 @@ class Yeast_ACDC_GUI(QMainWindow):
 
 
     def gui_mouseDragEventImg2(self, event):
+        mode = str(self.modeComboBox.currentText())
+        if mode == 'Viewer':
+            return
+
         # Eraser dragging mouse --> keep erasing
         if self.isMouseDragImg2 and self.eraserButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
@@ -734,6 +768,11 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.img2.updateImage()
 
     def gui_mouseReleaseEventImg2(self, event):
+        mode = str(self.modeComboBox.currentText())
+        if mode == 'Viewer':
+            return
+
+
         # Eraser mouse release --> update IDs and contours
         if self.isMouseDragImg2 and self.eraserButton.isChecked():
             self.isMouseDragImg2 = False
@@ -788,12 +827,52 @@ class Yeast_ACDC_GUI(QMainWindow):
 
 
     def gui_mouseReleaseEventImg1(self, event):
+        mode = str(self.modeComboBox.currentText())
+        if mode == 'Viewer':
+            return
+
         if self.mergeIDsButton.isChecked():
             # Allow right-click actions on both images
             self.gui_mouseReleaseEventImg2(event)
 
+        # Assign mother to bud
+        elif self.assignMothBudButton.isChecked() and self.clickedOnBud:
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(round(x)), int(round(y))
+            ID = self.lab[ydata, xdata]
+            if ID == 0:
+                return
+
+            relationship = self.cca_df.at[ID, 'relationship']
+            ccs = self.cca_df.at[ID, 'cell_cycle_stage']
+
+            if relationship == 'bud':
+                txt = (f'You clicked on ID {ID} which is a BUD.\n'
+                       'To assign a bud to a cell start by clicking on a bud '
+                       'and release on a cell in G1')
+                msg = QtGui.QMessageBox()
+                msg.critical(
+                    self, 'Released on a bud', txt, msg.Ok
+                )
+                return
+
+            elif ccs != 'G1':
+                txt = (f'You clicked on a cell (ID={ID}) which is NOT in G1.\n'
+                       'To assign a bud to a cell start by clicking on a bud '
+                       'and release on a cell in G1')
+                msg = QtGui.QMessageBox()
+                msg.critical(
+                    self, 'Released on a cell NOT in G1', txt, msg.Ok
+                )
+                return
+
+            self.xClickMoth, self.yClickMoth = xdata, ydata
+            self.assignMothBud()
+            self.assignMothBudButton.setChecked(False)
+
     def gui_mousePressEventImg1(self, event):
         mode = str(self.modeComboBox.currentText())
+        is_cca_on = mode == 'Cell cycle analysis'
         right_click = event.button() == Qt.MouseButton.RightButton
         left_click = event.button() == Qt.MouseButton.LeftButton
 
@@ -805,7 +884,11 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Enable dragging of the image window like pyqtgraph original code
         if dragImg:
             pg.ImageItem.mousePressEvent(self.img1, event)
-        # Paint new IDs with brush and left click on the right image
+
+        if mode == 'Viewer':
+            return
+
+        # Paint new IDs with brush and left click on the left image
         if left_click and self.brushButton.isChecked() and not dragImg:
             # Store undo state before modifying stuff
             self.storeUndoRedoStates()
@@ -820,9 +903,10 @@ class Yeast_ACDC_GUI(QMainWindow):
                 ymax, xmax = ydata+brushSize+1, xdata+brushSize+1
 
                 # Draw new objects below existing ones
-                localLab = lab[ymin:ymax, xmin:xmax]
+                localLab = self.lab[ymin:ymax, xmin:xmax]
                 mask[localLab!=0] = False
-                lab[ymin:ymax, xmin:xmax][mask] = self.brushID
+                self.lab[ymin:ymax, xmin:xmax][mask] = self.brushID
+
 
                 # Update data (rp, etc)
                 prev_IDs = [obj.label for obj in self.rp]
@@ -830,8 +914,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
                 # Repeat tracking
                 self.tracking()
-
-                newIDs = [self.lab[ydata, xdata]]
+                newIDs = [self.lab[ymin:ymax, xmin:xmax][mask][0]]
 
                 # Update colors to include a new color for the new ID
                 self.img2.setImage(self.lab)
@@ -847,16 +930,170 @@ class Yeast_ACDC_GUI(QMainWindow):
                 else:
                     self.brushID += 1
 
-        elif right_click:
+        elif right_click and mode == 'Segmentation and tracking':
             # Allow right-click actions on both images
             self.gui_mousePressEventImg2(event)
 
-        elif left_click and mode == 'Cell cycle analysis':
-            pass
+        elif right_click and is_cca_on and not self.assignMothBudButton.isChecked():
+            if self.cca_df is None:
+                return
+
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(round(x)), int(round(y))
+            ID = self.lab[ydata, xdata]
+            if ID == 0:
+                return
+
+            # Annotate or undo division
+            self.manualCellCycleAnnotation(ID)
+
+        elif right_click and self.assignMothBudButton.isChecked():
+            self.clickedOnBud = False
+            if self.cca_df is None:
+                return
+
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(round(x)), int(round(y))
+            ID = self.lab[ydata, xdata]
+            if ID == 0:
+                return
+
+            relationship = self.cca_df.at[ID, 'relationship']
+            if relationship != 'bud':
+                txt = (f'You clicked on ID {ID} which is NOT a bud.\n'
+                       'To assign a bud to a cell start by clicking on a bud '
+                       'and release on a cell in G1')
+                msg = QtGui.QMessageBox()
+                msg.critical(
+                    self, 'Not a bud', txt, msg.Ok
+                )
+                return
+            self.clickedOnBud = True
+            self.xClickBud, self.yClickBud = xdata, ydata
+
+    def annotateDivision(self, cca_df, ID, relID, ccs, ccs_relID):
+        # Correct as follows:
+        # If S then correct to G1 and +1 on generation number
+        store = False
+        if ccs == 'S':
+            cca_df.at[ID, 'cell_cycle_stage'] = 'G1'
+            cca_df.at[ID, 'generation_num'] += 1
+            store = True
+        if ccs_relID == 'S':
+            cca_df.at[relID, 'cell_cycle_stage'] = 'G1'
+            cca_df.at[relID, 'generation_num'] += 1
+            store = True
+        return store
+
+    def undoDivisionAnnotation(self, cca_df, ID, relID, ccs, ccs_relID):
+        # Correct as follows:
+        # If G1 then correct to S and -1 on generation number
+        store = False
+        if ccs == 'G1':
+            cca_df.at[ID, 'cell_cycle_stage'] = 'S'
+            cca_df.at[ID, 'generation_num'] -= 1
+            store = True
+        if ccs_relID == 'G1':
+            cca_df.at[relID, 'cell_cycle_stage'] = 'S'
+            cca_df.at[relID, 'generation_num'] -= 1
+            store = True
+        return store
+
+    def manualCellCycleAnnotation(self, ID):
+        """
+        This function is used for both annotating division or undoing the
+        annotation. It can be called on any frame.
+
+        If we annotate division (right click on a cell in S) then it will
+        check if there are future frames to correct.
+        Frames to correct are those frames where both the mother and the bud
+        are annotated as S phase cells.
+        In this case we assign all those frames to G1 and +1 generation number
+
+        If we undo the annotation (right click on a cell in G1) then it will
+        correct both past and future annotated frames (if present).
+        Frames to correct are those frames where both the mother and the bud
+        are annotated as G1 phase cells.
+        In this case we assign all those frames to G1 and -1 generation number
+        """
+        ccs = self.cca_df.at[ID, 'cell_cycle_stage']
+        relID = self.cca_df.at[ID, 'relative_ID']
+        ccs_relID = self.cca_df.at[relID, 'cell_cycle_stage']
+        if ccs == 'S':
+            store = self.annotateDivision(
+                                    self.cca_df, ID, relID, ccs, ccs_relID)
+            if store:
+                self.store_cca_df()
+        else:
+            store = self.undoDivisionAnnotation(
+                                    self.cca_df, ID, relID, ccs, ccs_relID)
+            if store:
+                self.store_cca_df()
+
+        # Correct current frame
+        obj_idx = self.IDs.index(ID)
+        relObj_idx = self.IDs.index(relID)
+        rp_ID = self.rp[obj_idx]
+        rp_relID = self.rp[relObj_idx]
+
+        # Update cell cycle info LabelItems
+        self.drawID_and_Contour(rp_ID, drawContours=False)
+        self.drawID_and_Contour(rp_relID, drawContours=False)
+
+
+        # Correct future frames
+        for i in range(self.frame_i+1, self.num_segm_frames):
+            cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
+            if cca_df_i is None:
+                # ith frame was not visited yet
+                break
+            else:
+                ccs = cca_df_i.at[ID, 'cell_cycle_stage']
+                relID = cca_df_i.at[ID, 'relative_ID']
+                ccs_relID = cca_df_i.at[relID, 'cell_cycle_stage']
+                if ccs == 'S':
+                    store = self.annotateDivision(
+                                        cca_df_i, ID, relID, ccs, ccs_relID)
+                    if store:
+                        self.store_cca_df(cca_df=cca_df_i)
+                else:
+                    store = self.undoDivisionAnnotation(
+                                        self.cca_df, ID, relID, ccs, ccs_relID)
+                    if store:
+                        self.store_cca_df()
+
+
+        # Correct past frames
+        for i in range(self.frame_i-1, 0, -1):
+            cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
+            ccs = cca_df_i.at[ID, 'cell_cycle_stage']
+            relID = cca_df_i.at[ID, 'relative_ID']
+            ccs_relID = cca_df_i.at[relID, 'cell_cycle_stage']
+            if ccs == 'S':
+                # We correct only those frames in which the ID was in 'S'
+                break
+            else:
+                store = self.undoDivisionAnnotation(
+                                       cca_df_i, ID, relID, ccs, ccs_relID)
+                if store:
+                    self.store_cca_df(cca_df=cca_df_i)
+
+
+
+    def assignMothBud(self):
+        budID = self.lab[self.yClickBud, self.xClickBud]
+        mothID = self.lab[self.yClickMoth, self.xClickMoth]
+        # Correct future frames
+        pass
+
+        # Correct past frames
+        pass
 
 
     def gui_mouseDragEventImg1(self, event):
-        pass
+        mode = str(self.modeComboBox.currentText())
+        if mode == 'Viewer':
+            return
 
     def gui_hoverEventImg1(self, event):
         if self.isAltDown:
@@ -870,9 +1107,13 @@ class Yeast_ACDC_GUI(QMainWindow):
             Y, X = _img.shape[:2]
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                 val = _img[ydata, xdata]
+                maxVal = _img.max()
+                ID = self.lab[ydata, xdata]
+                maxID = self.lab.max()
                 try:
                     self.wcLabel.setText(
-                            f'(x={x:.2f}, y={y:.2f}, value={val:.2f})'
+                        f'(x={x:.2f}, y={y:.2f}, value={val:.2f}, '
+                        f'max={maxVal:.2f}, ID={ID}, max_ID={maxID})'
                     )
                 except:
                     val = [v for v in val]
@@ -1269,10 +1510,12 @@ class Yeast_ACDC_GUI(QMainWindow):
         onlyIDs = how == 'Draw only IDs'
         nothing = how == 'Draw nothing'
         onlyCont = how == 'Draw only contours'
+        only_ccaInfo = how == 'Draw only cell cycle info'
+        ccaInfo_and_cont = how == 'Draw cell cycle info and contours'
 
         t0 = time.time()
-        # Clear contours if requested (draw nothing or only IDs)
-        if onlyIDs or nothing:
+        # Clear contours if requested
+        if how.find('contours') == -1 or nothing:
             for curveID in self.ax1_ContoursCurves:
                 curveID.setData([], [])
             t1 = time.time()
@@ -1280,13 +1523,11 @@ class Yeast_ACDC_GUI(QMainWindow):
             print(f'Clearing contours = {t1-t0:.3f}')
 
         t0 = time.time()
+
         # Clear LabelItems IDs if requested (draw nothing or only contours)
-        allLabelItems = zip(self.ax1_LabelItemsIDs,
-                            self.ax2_LabelItemsIDs)
         if onlyCont or nothing:
-            for _IDlabel1, _IDlabel2 in allLabelItems:
+            for _IDlabel1 in self.ax1_LabelItemsIDs:
                 _IDlabel1.setText('')
-                _IDlabel2.setText('')
             t1 = time.time()
 
             print(f'Clearing labels = {t1-t0:.3f}')
@@ -1320,16 +1561,34 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.setEnabledToolbarButton(enabled=True)
             self.disableTrackingCheckBox.setChecked(False)
             self.assignMothBudButton.setDisabled(True)
-        else:
-            if mode == 'Cell cycle analysis':
+            self.drawIDsContComboBox.clear()
+            self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
+            for BudMothLine in self.ax1_BudMothLines:
+                BudMothLine.setData([], [])
+        elif mode == 'Cell cycle analysis':
+            proceed = self.init_cca()
+            if proceed:
+                self.setEnabledToolbarButton(enabled=False)
+                self.navigateToolBar.setEnabled(True)
+                self.modeToolBar.setEnabled(True)
+                self.disableTrackingCheckBox.setChecked(True)
                 self.assignMothBudButton.setDisabled(False)
-            if mode == 'Viewer':
-                self.undoAction.setDisabled(True)
-                self.redoAction.setDisabled(True)
+                self.drawIDsContComboBox.clear()
+                self.drawIDsContComboBox.addItems(
+                                        self.drawIDsContComboBoxCcaItems)
+
+        elif mode == 'Viewer':
             self.setEnabledToolbarButton(enabled=False)
             self.navigateToolBar.setEnabled(True)
             self.modeToolBar.setEnabled(True)
             self.disableTrackingCheckBox.setChecked(True)
+            self.undoAction.setDisabled(True)
+            self.redoAction.setDisabled(True)
+            currentMode = self.drawIDsContComboBox.currentText()
+            self.drawIDsContComboBox.clear()
+            self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxCcaItems)
+            self.drawIDsContComboBox.setCurrentText(currentMode)
+
 
     def launchSlideshow(self):
         if self.slideshowButton.isChecked():
@@ -1351,7 +1610,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
     def convexity_defects(self, img, eps_percent):
         img = img.astype(np.uint8)
-        contours, hierarchy = cv2.findContours(img,2,1)
+        contours, _ = cv2.findContours(img,2,1)
         cnt = contours[0]
         cnt = cv2.approxPolyDP(cnt,eps_percent*cv2.arcLength(cnt,True),True) # see https://www.programcreek.com/python/example/89457/cv22.convexityDefects
         hull = cv2.convexHull(cnt,returnPoints = False) # see https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_contours/py_contours_more_functions/py_contours_more_functions.html
@@ -1420,6 +1679,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.eraserButton.toggled.disconnect()
             self.eraserButton.setChecked(False)
             self.eraserButton.toggled.connect(self.Eraser_cb)
+
         if not self.brushButton.isChecked():
             self.ax1_BrushCircle.setData([], [])
             self.ax2_BrushCircle.setData([], [])
@@ -1471,8 +1731,12 @@ class Yeast_ACDC_GUI(QMainWindow):
         elif ev.key() == Qt.Key_Alt:
             self.app.setOverrideCursor(Qt.SizeAllCursor)
             self.isAltDown = True
-        # elif ev.key() == Qt.Key_Right:
-        #     self.next_cb()
+        elif ev.modifiers() == Qt.ControlModifier:
+            if ev.key() == Qt.Key_P:
+                print('------------------------')
+                print('Cell cycle analysis table:')
+                print(self.cca_df)
+                print('------------------------')
         # elif ev.key() == Qt.Key_Left:
         #     self.prev_cb()
         # elif ev.text() == 'b':
@@ -1648,6 +1912,13 @@ class Yeast_ACDC_GUI(QMainWindow):
         print('=================')
 
     def next_cb(self):
+        mode = str(self.modeComboBox.currentText())
+        if self.frame_i <= 0 and mode == 'Cell cycle analysis':
+            IDs = [obj.label for obj in self.rp]
+            init_cca_df_frame0 = apps.cca_df_frame0(IDs, self.cca_df)
+            if init_cca_df_frame0.cancel:
+                return
+            self.cca_df = init_cca_df_frame0.df
         self.app.setOverrideCursor(Qt.WaitCursor)
         if self.frame_i < self.num_segm_frames-1:
             # Store data for current frame
@@ -1656,6 +1927,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.frame_i += 1
             self.get_data()
             self.tracking()
+            self.auto_cca_df()
             self.updateALLimg()
         else:
             msg = 'You reached the last segmented frame!'
@@ -1710,8 +1982,10 @@ class Yeast_ACDC_GUI(QMainWindow):
         IDs = [obj.label for obj in self.rp]
         allItems = zip(self.ax1_ContoursCurves,
                        self.ax1_LabelItemsIDs,
-                       self.ax2_LabelItemsIDs)
-        for idx, (ContCurve, _IDlabel1, _IDlabel2) in enumerate(allItems):
+                       self.ax2_LabelItemsIDs,
+                       self.ax1_BudMothLines)
+        for idx, items_ID in enumerate(allItems):
+            ContCurve, _IDlabel1, _IDlabel2, BudMothLine = items_ID
             ID = idx+1
 
             if ContCurve.getData()[0] is not None and ID not in IDs:
@@ -1725,6 +1999,10 @@ class Yeast_ACDC_GUI(QMainWindow):
             if _IDlabel2.text != '' and ID not in IDs:
                 # Text is present but ID is not --> clear
                 _IDlabel2.setText('')
+
+            if BudMothLine.getData()[0] is not None and ID not in IDs:
+                # Contour is present but ID is not --> clear
+                BudMothLine.setData([], [])
 
     def init_attr(self, max_ID=10):
         self.disableAutoActivateViewerWindow = False
@@ -1758,9 +2036,20 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.brushID = 0
         self.binnedIDs = set()
         self.ripIDs = set()
+        self.cca_df = None
         if self.data.last_tracked_i is not None:
             self.app.setOverrideCursor(Qt.ArrowCursor)
             last_tracked_num = self.data.last_tracked_i+1
+            # Load previous session data
+            for i in range(self.data.last_tracked_i):
+                self.frame_i = i
+                self.get_data()
+                self.update_rp_metadata(draw=False)
+                self.store_data()
+                self.binnedIDs = set()
+                self.ripIDs = set()
+
+            # Ask whether to resume from last frame
             msg = QtGui.QMessageBox()
             start_from_last_tracked_i = msg.question(
                 self, 'Start from last session?',
@@ -1769,14 +2058,9 @@ class Yeast_ACDC_GUI(QMainWindow):
                 f'Do you want to resume from frame {last_tracked_num}?',
                 msg.Yes | msg.No
             )
+
             if start_from_last_tracked_i == msg.Yes:
-                for i in range(self.data.last_tracked_i):
-                    self.frame_i = i
-                    self.get_data()
-                    self.update_rp_metadata(draw=False)
-                    self.store_data()
-                    self.binnedIDs = set()
-                    self.ripIDs = set()
+                self.frame_i = self.data.last_tracked_i-1
                 self.next_cb()
             else:
                 self.frame_i = 0
@@ -1795,6 +2079,14 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.ax1.vb.autoRange()
 
     def store_data(self, debug=False):
+        if self.frame_i < 0:
+            # In some cases we set frame_i = -1 and then call next_cb
+            # to visualize frame 0. In that case we don't store data
+            # for frame_i = -1
+            return
+
+        mode = str(self.modeComboBox.currentText())
+
         self.allData_li[self.frame_i]['regionprops'] = self.rp.copy()
         self.allData_li[self.frame_i]['labels'] = self.lab.copy()
 
@@ -1821,9 +2113,101 @@ class Yeast_ACDC_GUI(QMainWindow):
                         'is_cell_dead': is_cell_dead_li,
                         'is_cell_excluded': is_cell_excluded_li,
                         'x_centroid': xx_centroid,
-                        'y_centroid': yy_centroid,
+                        'y_centroid': yy_centroid
             }
         ).set_index('Cell_ID')
+
+        self.store_cca_df()
+
+    def nearest_point_2Dyx(self, points, all_others):
+        """
+        Given 2D array of [y, x] coordinates points and all_others return the
+        [y, x] coordinates of the two points (one from points and one from all_others)
+        that have the absolute minimum distance
+        """
+        # Compute 3D array where each ith row of each kth page is the element-wise
+        # difference between kth row of points and ith row in all_others array.
+        # (i.e. diff[k,i] = points[k] - all_others[i])
+        diff = points[:, np.newaxis] - all_others
+        # Compute 2D array of distances where
+        # dist[i, j] = euclidean dist (points[i],all_others[j])
+        dist = np.linalg.norm(diff, axis=2)
+        # Compute i, j indexes of the absolute minimum distance
+        i, j = np.unravel_index(dist.argmin(), dist.shape)
+        nearest_point = all_others[j]
+        point = points[i]
+        return point, nearest_point
+
+    def auto_cca_df(self):
+        """
+        Mother and bud IDs are determined as the two objects (old and new) that
+        have the smallest euclidean distance between all pairs of new-old points
+        of the new and old objects' contours. Note that mother has to be in G1
+        """
+        # If cca_df for current frame is None it means we never annotated it
+        # and we automatically infer annotation
+        if self.cca_df is None:
+            df = self.allData_li[self.frame_i-1]['segm_metadata_df']
+            if df is not None:
+                if 'cell_cycle_stage' in df.columns:
+                    self.cca_df = df[['cell_cycle_stage',
+                                      'generation_num',
+                                      'relative_ID',
+                                      'relationship',
+                                      'emerg_frame_i',
+                                      'division_frame_i']].copy()
+
+                    # If there are no new IDs we are done
+                    if not self.new_IDs:
+                        return
+
+                    # Calculate contour of all old IDs in G1 (potential mothers)
+                    oldIDs_contours = []
+                    for obj in self.rp:
+                        ID = obj.label
+                        if ID in self.old_IDs:
+                            ccs = self.cca_df.at[ID, 'cell_cycle_stage']
+                            if ccs == 'G1':
+                                cont = self.get_objContours(obj)
+                                oldIDs_contours.append(cont)
+                    oldIDs_contours = np.concatenate(oldIDs_contours, axis=0)
+
+                    # For each new ID calculate nearest old ID contour
+                    for obj in self.rp:
+                        ID = obj.label
+                        if ID in self.new_IDs:
+                            new_ID_cont = self.get_objContours(obj)
+                            _, nearest_xy = self.nearest_point_2Dyx(
+                                                new_ID_cont, oldIDs_contours)
+                            mothID = self.lab[nearest_xy[1], nearest_xy[0]]
+                            self.cca_df.at[mothID, 'relative_ID'] = ID
+                            self.cca_df.at[mothID, 'cell_cycle_stage'] = 'S'
+
+                            self.cca_df.loc[ID] = {
+                                'cell_cycle_stage': 'S',
+                                'generation_num': 0,
+                                'relative_ID': mothID,
+                                'relationship': 'bud',
+                                'emerg_frame_i': self.frame_i,
+                                'division_frame_i': -1
+                            }
+
+
+    def get_objContours(self, obj):
+        contours, _ = cv2.findContours(
+                               obj.image.astype(np.uint8),
+                               cv2.RETR_EXTERNAL,
+                               cv2.CHAIN_APPROX_NONE
+        )
+        min_y, min_x, _, _ = obj.bbox
+        cont = np.squeeze(contours[0], axis=1)
+        cont = np.vstack((cont, cont[0]))
+        cont += [min_x, min_y]
+        return cont
+
+
+
+
 
     def get_data(self):
         if self.frame_i > 2:
@@ -1836,7 +2220,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.undoAction.setDisabled(True)
         self.UndoCount = 0
         self.editID_info = []
-        # If stored labes is None then it is the first time we visit this frame
+        # If stored labels is None then it is the first time we visit this frame
         if self.allData_li[self.frame_i]['labels'] is None:
             # Requested frame was never visited before. Load from HDD
             self.lab = self.data.segm_data[self.frame_i].copy()
@@ -1853,6 +2237,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                     ripIDs_df = df[df['is_cell_dead']]
                     ripIDs = set(ripIDs_df.index).union(self.ripIDs)
                     self.ripIDs = ripIDs
+            self.get_cca_df()
         else:
             # Requested frame was already visited. Load from RAM.
             self.lab = self.allData_li[self.frame_i]['labels'].copy()
@@ -1862,19 +2247,149 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.binnedIDs = set(binnedIDs_df.index)
             ripIDs_df = df[df['is_cell_dead']]
             self.ripIDs = set(ripIDs_df.index)
+            self.get_cca_df()
+
+    def init_cca(self):
+        proceed = True
+        if self.cca_df is None:
+            last_cca_frame_i = 0
+        else:
+            last_cca_frame_i = 0
+            # Determine last annotated frame index
+            for i, dict_frame_i in enumerate(self.allData_li):
+                df = dict_frame_i['segm_metadata_df']
+                if df is not None:
+                    if 'cell_cycle_stage' not in df.columns:
+                        last_cca_frame_i = i-1
+                        break
+
+        if self.frame_i != last_cca_frame_i:
+            # Prompt user to go to last annotated frame
+            msg = QtGui.QMessageBox()
+            goTo_last_annotated_frame_i = msg.warning(
+                self, 'Go to last annotated frame?',
+                f'The last annotated frame is frame {last_cca_frame_i+1}.\n'
+                'The cell cycle analysis will restart from that frame.\n'
+                'Do you want to proceed?',
+                msg.Yes | msg.Cancel
+            )
+            if goTo_last_annotated_frame_i == msg.Yes:
+                self.last_cca_frame_i = last_cca_frame_i
+                self.frame_i = last_cca_frame_i
+                self.get_data()
+                self.updateALLimg()
+            else:
+                print('Cell cycle analysis aborted.')
+                proceed = False
+                return
+        else:
+            self.last_cca_frame_i = last_cca_frame_i
+
+        if self.cca_df is None:
+            IDs = [obj.label for obj in self.rp]
+            cc_stage = ['G1' for ID in IDs]
+            num_cycles = [-1]*len(IDs)
+            relationship = ['mother' for ID in IDs]
+            related_to = [-1]*len(IDs)
+            self.cca_df = pd.DataFrame({
+                               'cell_cycle_stage': cc_stage,
+                               'generation_num': num_cycles,
+                               'relative_ID': IDs,
+                               'relationship': relationship,
+                               'emerg_frame_i': num_cycles,
+                               'division_frame_i': num_cycles},
+                                index=IDs)
+            self.cca_df.index.name = 'Cell_ID'
+        else:
+            self.get_cca_df()
+        return proceed
+
+    def get_cca_df(self, frame_i=None, return_df=False):
+        # cca_df is None unless the metadata contains cell cycle annotations
+        # NOTE: cell cycle annotations are either from the current session
+        # or loaded from HDD in "init_attr" with a .question to the user
+        cca_df = None
+        i = self.frame_i if frame_i is None else frame_i
+        df = self.allData_li[i]['segm_metadata_df']
+        if df is not None:
+            if 'cell_cycle_stage' in df.columns:
+                cca_df = df[['cell_cycle_stage',
+                             'generation_num',
+                             'relative_ID',
+                             'relationship',
+                             'emerg_frame_i',
+                             'division_frame_i']].copy()
+        if return_df:
+            return cca_df
+        else:
+            self.cca_df = cca_df
+
+    def store_cca_df(self, cca_df=None):
+        if cca_df is None:
+            cca_df = self.cca_df
+
+        if cca_df is not None:
+            segm_df = self.allData_li[self.frame_i]['segm_metadata_df']
+            df = segm_df.join(cca_df, how='outer')
+            self.allData_li[self.frame_i]['segm_metadata_df'] = df.copy()
+            print(self.allData_li[self.frame_i]['segm_metadata_df'])
+
+
+    def ax1_setTextID(self, obj, how):
+        # Draw ID label on ax1 image depending on how
+        LabelItemID = self.ax1_LabelItemsIDs[obj.label-1]
+        ID = obj.label
+        df = self.cca_df
+        if df is None or how.find('cell cycle') == -1:
+            LabelItemID.setText(f'{ID}')
+        else:
+            df_ID = df.loc[ID]
+            ccs = df_ID['cell_cycle_stage']
+            relationship = df_ID['relationship']
+            generation_num = df_ID['generation_num']
+            generation_num = 'ND' if generation_num==-1 else generation_num
+            emerg_frame_i = df_ID['emerg_frame_i']
+            is_bud = relationship == 'bud'
+            is_moth = relationship == 'mother'
+            emerged_now = emerg_frame_i == self.frame_i
+            txt = f'{ccs}-{generation_num}' if self.frame_i !=0 else f'{ID}'
+            if ccs == 'G1':
+                c = 0.6
+                alpha = 0.7
+                color = (255*c, 255*c, 255*c, 255*alpha)
+                bold = False
+            elif ccs == 'S' and is_moth and not emerged_now:
+                color = 0.8
+                bold = False
+            elif ccs == 'S' and is_bud and not emerged_now:
+                color = 'r'
+                bold = False
+            elif ccs == 'S' and is_bud and emerged_now:
+                color = 'r'
+                bold = True
+            LabelItemID.setText(txt, color=color, bold=bold, size='10pt')
+
+        # Center LabelItem at centroid
+        y, x = obj.centroid
+        w, h = LabelItemID.rect().right(), LabelItemID.rect().bottom()
+        LabelItemID.setPos(x-w/2, y-h/2)
+
 
     def drawID_and_Contour(self, obj, drawContours=True):
         how = self.drawIDsContComboBox.currentText()
         IDs_and_cont = how == 'Draw IDs and contours'
         onlyIDs = how == 'Draw only IDs'
+        nothing = how == 'Draw nothing'
         onlyCont = how == 'Draw only contours'
+        only_ccaInfo = how == 'Draw only cell cycle info'
+        ccaInfo_and_cont = how == 'Draw cell cycle info and contours'
 
         # Draw LabelItems for IDs on ax2
         y, x = obj.centroid
         t0 = time.time()
         idx = obj.label-1
         if not idx < len(self.ax2_LabelItemsIDs):
-            # Create addition LabelItems for the current ID
+            # Create additional missing LabelItems for the current ID
             missingLen = idx-len(self.ax2_LabelItemsIDs)+1
             for i in range(missingLen):
                 _IDlabel2 = pg.LabelItem(
@@ -1892,46 +2407,53 @@ class Yeast_ACDC_GUI(QMainWindow):
         _IDlabel2.setPos(x-w/2, y-h/2)
 
         # Draw LabelItems for IDs on ax1 if requested
-        if IDs_and_cont or onlyIDs:
+        if IDs_and_cont or onlyIDs or only_ccaInfo or ccaInfo_and_cont:
             # Draw LabelItems for IDs on ax2
-            y, x = obj.centroid
             t0 = time.time()
             idx = obj.label-1
             if not idx < len(self.ax1_LabelItemsIDs):
                 # Create addition LabelItems ax1_LabelItemsIDs the current ID
                 missingLen = idx-len(self.ax1_LabelItemsIDs)+1
                 for i in range(missingLen):
-                    _IDlabel1 = pg.LabelItem(
-                            text='',
-                            color='FA0000',
-                            bold=True,
-                            size='10pt'
-                    )
+                    _IDlabel1 = pg.LabelItem()
                     self.ax1_LabelItemsIDs.append(_IDlabel1)
                     self.ax1.addItem(_IDlabel1)
 
-            _IDlabel1 = self.ax1_LabelItemsIDs[obj.label-1]
-            _IDlabel1.setText(f'{obj.label}')
-            w, h = _IDlabel1.rect().right(), _IDlabel1.rect().bottom()
-            _IDlabel1.setPos(x-w/2, y-h/2)
+            self.ax1_setTextID(obj, how)
 
         t1 = time.time()
         self.drawingLabelsTimes.append(t1-t0)
+
+        # Draw line connecting mother and buds
+        mode = self.modeComboBox.currentText()
+        if mode != 'Segmentation and tracking' and self.cca_df is not None:
+            ID = obj.label
+            BudMothLine = self.ax1_BudMothLines[ID-1]
+            cca_df_ID = self.cca_df.loc[ID]
+            ccs_ID = cca_df_ID['cell_cycle_stage']
+            relationship = cca_df_ID['relationship']
+            if ccs_ID == 'S' and relationship=='bud':
+                emerg_frame_i = cca_df_ID['emerg_frame_i']
+                if emerg_frame_i == self.frame_i:
+                    pen = self.NewBudMoth_Pen
+                else:
+                    pen = self.OldBudMoth_Pen
+                relative_ID = cca_df_ID['relative_ID']
+                relative_rp_idx = self.IDs.index(relative_ID)
+                relative_ID_obj = self.rp[relative_rp_idx]
+                y1, x1 = obj.centroid
+                y2, x2 = relative_ID_obj.centroid
+                BudMothLine.setData([x1, x2], [y1, y2], pen=pen)
+            else:
+                BudMothLine.setData([], [])
 
         if not drawContours:
             return
 
         # Draw contours on ax1 if requested
-        if IDs_and_cont or onlyCont:
+        if IDs_and_cont or onlyCont or ccaInfo_and_cont:
             t0 = time.time()
-            contours, hierarchy = cv2.findContours(
-                                           obj.image.astype(np.uint8),
-                                           cv2.RETR_EXTERNAL,
-                                           cv2.CHAIN_APPROX_SIMPLE)
-            min_y, min_x, _, _ = obj.bbox
-            cont = np.squeeze(contours[0], axis=1)
-            cont = np.vstack((cont, cont[0]))
-            cont += [min_x, min_y]
+            cont = self.get_objContours(obj)
             t1 = time.time()
             computingContoursTime = t1-t0
             self.computingContoursTimes.append(computingContoursTime)
@@ -1951,6 +2473,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             t1 = time.time()
             drawingContoursTimes = t1-t0
             self.drawingContoursTimes.append(drawingContoursTimes)
+
 
     def update_rp(self):
         # Update rp for current self.lab (e.g. after any change)
@@ -2047,6 +2570,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                     ripIDs_yy.append(y)
             else:
                 obj.dead = False
+
+            # set cell cycle info
 
         if draw:
             # Draw markers to annotated IDs
@@ -2195,6 +2720,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         curr_IDs = [obj.label for obj in self.rp]
         lost_IDs = [ID for ID in prev_IDs if ID not in curr_IDs]
         new_IDs = [ID for ID in curr_IDs if ID not in prev_IDs]
+        self.old_IDs = prev_IDs
+        self.IDs = curr_IDs
         warn_txt = ''
         htmlTxt = ''
         if lost_IDs:
@@ -2564,18 +3091,21 @@ class Yeast_ACDC_GUI(QMainWindow):
 
                 # Save segmentation metadata
                 all_frames_metadata_df.to_csv(segm_metadata_csv_path)
+                self.data.segm_metadata_df = all_frames_metadata_df
             except:
+                traceback.print_exc()
                 pass
 
             # Save segmentation file
             np.save(segm_npy_path, segm_npy)
+            self.data.segm_data = segm_npy
 
             # Save last tracked frame
             with open(last_tracked_i_path, 'w+') as txt:
                 txt.write(str(frame_i))
 
             print('--------------')
-            print(f'Saved data until frame number {frame_i}')
+            print(f'Saved data until frame number {frame_i+1}')
             print('--------------')
 
             self.app.setOverrideCursor(Qt.ArrowCursor)

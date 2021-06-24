@@ -951,89 +951,239 @@ def YeaZ_Params():
     return params
 
 
-class editID_widget:
-    def __init__(self, old_ID=None, second_button=False):
-        self.old_ID = old_ID
+class cca_df_frame0:
+    """Display a tkinter window where the user initializes values of
+    the cca_df for frame 0.
+
+    Parameters
+    ----------
+    cells_IDs : list or ndarray of int
+        List of cells IDs.
+
+    Attributes
+    ----------
+    cell_IDs : list or ndarray of int
+        List of cells IDs.
+    root : class 'tkinter.Tk'
+        tkinter.Tk root window
+    """
+    def __init__(self, cells_IDs, cca_df):
         self.cancel = False
+        self.df = None
+        """Options and labels"""
+        cc_stage_opt = ['S/G2/M', 'G1']
+        if len(cells_IDs) == 1:
+            related_to_opt = [-1]
+        else:
+            related_to_opt = [str(ID) for ID in cells_IDs]
+            related_to_opt.insert(0, -1)
+        relationship_opt = ['mother', 'bud']
+        self.cell_IDs = cells_IDs
+        self.cca_df = cca_df
+
+        """Root window"""
         root = tk.Tk()
         root.lift()
         root.attributes("-topmost", True)
-        root.geometry("+800+400")
-        self._root = root
-        if old_ID is not None:
-            label_txt = f'ID = {old_ID} will be replaced\n with new ID'
-        else:
-            label_txt = 'New ID'
-        tk.Label(root, text=label_txt, font=(None, 10)).grid(row=0, columnspan=2)
-        ID_strvar = tk.StringVar()
-        ID = tk.Entry(root, justify='center', textvariable=ID_strvar)
-        ID_strvar.trace_add("write", self._close_brackets)
-        ID.grid(row=1, padx=16, pady=4, columnspan=2)
-        ID.focus_force()
-        if second_button:
-            self.ok_for_all_butt = tk.Button(root, command=self._ok_for_all_cb,
-                            text='Ok for all next frames',state=tk.DISABLED)
-            self.ok_for_all_butt.grid(row=2, pady=4, column=1, padx=4)
-            self.ok_butt = tk.Button(root, command=self._quit, text='Ok!',
-                                           width=10)
-            self.ok_butt.grid(row=2, pady=4, column=0, padx=4)
-        else:
-            self.ok_butt = tk.Button(root, command=self._quit, text='Ok!',
-                                           width=10)
-            self.ok_butt.grid(row=2, pady=4, padx=4, columnspan=2)
-        tk.Label(root, text='NOTE:\n You can write a list of tuples:\n'
-                            '[(old ID, new ID), ...]', font=(None, 10)
-                            ).grid(row=3, pady=4, columnspan=2)
-        root.bind('<Return>', self._quit)
-        root.protocol("WM_DELETE_WINDOW", self.on_closing)
-        self.entry = ID
-        root.mainloop()
+        root.title('Initialize cell cycle table')
+        root.geometry('+600+500')
+        self.root = root
 
-    def _close_brackets(self, name=None, index=None, mode=None):
-        txt = self.entry.get()
-        input_idx = self.entry.index(tk.INSERT)
-        input_txt = txt[input_idx-1:input_idx]
-        if input_txt == '(':
-            self.entry.insert(tk.INSERT, ')')
-            self.entry.icursor(self.entry.index(tk.INSERT)-1)
-        elif input_txt == '[':
-            self.entry.insert(tk.INSERT, ']')
-            self.entry.icursor(self.entry.index(tk.INSERT)-1)
-        try:
-            int(self.entry.get())
-            self.ok_for_all_butt['state'] = tk.NORMAL
-        except:
-            try:
-                self.ok_for_all_butt['state'] = tk.DISABLED
-            except:
-                pass
+        """Cells IDs label column"""
+        col = 0
+        cells_IDs_colTitl = tk.Label(root,
+                                  text='Cell ID',
+                                  font=(None, 11))
+        cells_IDs_colTitl.grid(row=0, column=col, pady=4, padx=4)
+        for row, ID in enumerate(cells_IDs):
+            cells_IDs_label = tk.Label(root,
+                                      text=str(ID),
+                                      font=(None, 10))
+            cells_IDs_label.grid(row=row+1, column=col, pady=4, padx=8)
 
-    def _ok_for_all_cb(self, event=None):
-        self.ok_for_all = True
-        txt = self.entry.get()
-        if txt.find('[') != -1:
-            self.new_ID = literal_eval(txt)
-        else:
-            self.new_ID = int(self.entry.get())
-        self._root.quit()
-        self._root.destroy()
+        """cell_cycle_stage column"""
+        col = 1
+        cc_stage_colTitl = tk.Label(root,
+                                  text='Cell cycle stage',
+                                  font=(None, 11))
+        cc_stage_colTitl.grid(row=0, column=col, pady=4, padx=4)
+        self.cc_stage_list = []
+        init_ccs = cca_df.loc[cells_IDs]['cell_cycle_stage'].to_list()
+        for row, ID in enumerate(cells_IDs):
+            cc_stage_var = tk.StringVar(root)
+            cc_stage_val = init_ccs.copy()[row]
+            if cc_stage_val == 'S':
+                cc_stage_val = 'S/G2/M'
+            cc_stage_var.set(cc_stage_val) # default value
+            cc_stage = tk.OptionMenu(root, cc_stage_var, *cc_stage_opt)
+            cc_stage.grid(row=row+1, column=col, pady=4, padx=4)
+            self.cc_stage_list.append(cc_stage_var)
 
-    def _quit(self, event=None):
-        self.ok_for_all = False
-        txt = self.entry.get()
-        if txt.find('[') != -1:
-            self.new_ID = literal_eval(txt)
-        else:
-            self.new_ID = [(self.old_ID, int(self.entry.get()))]
-        self._root.quit()
-        self._root.destroy()
+        """generation_num column"""
+        col = 2
+        num_cycles_colTitl = tk.Label(root,
+                                  text='Generation number',
+                                  font=(None, 11))
+        num_cycles_colTitl.grid(row=0, column=col, pady=4, padx=4)
+        self.num_cycles_list = []
+        init_num_cycles = cca_df.loc[cells_IDs]['generation_num'].to_list()
+        for row, ID in enumerate(cells_IDs):
+            num_cycles = tk.Entry(root, width=10, justify='center')
+            gen_num = init_num_cycles[row]
+            if gen_num == -1:
+                num_cycles.insert(0, '2')
+            else:
+                num_cycles.insert(0, f'{gen_num}')
+            num_cycles.grid(row=row+1, column=col, pady=4, padx=4)
+            self.num_cycles_list.append(num_cycles)
 
-    def on_closing(self):
+        """Relative's ID column"""
+        col = 3
+        related_to_colTitl = tk.Label(root,
+                                  text='Relative\'s ID',
+                                  font=(None, 11))
+        related_to_colTitl.grid(row=0, column=col, pady=4, padx=4)
+        self.related_to_list = []
+        self.relto_varNames = []
+        IDs = cells_IDs.copy() if len(cells_IDs) > 1 else [-1]
+        init_rel_ID = cca_df.loc[cells_IDs]['relative_ID'].to_list()
+        for row, ID in enumerate(IDs):
+            related_to_var = tk.StringVar(root, name='rel_to_{}'.format(ID))
+            temp_cb = related_to_var.trace('w', self.store_varName)
+            related_to_var.set(str(init_rel_ID[row])) # default value
+            related_to_var.trace_vdelete('w', temp_cb)
+            related_to_var.trace('w', self.update_relID)
+            related_to = tk.OptionMenu(root, related_to_var, *related_to_opt)
+            related_to.grid(row=row+1, column=col, pady=4, padx=4)
+            self.related_to_list.append(related_to_var)
+
+        """Relationship column"""
+        col = 4
+        relationship_colTitl = tk.Label(root,
+                                        text='Relationship',
+                                        font=(None, 11))
+        relationship_colTitl.grid(row=0, column=col, pady=4, padx=4)
+        self.relationship_list = []
+        init_relationship = cca_df.loc[cells_IDs]['relationship'].to_list()
+        for row, ID in enumerate(cells_IDs):
+            relationship_var = tk.StringVar(root)
+            relationship_var.set(str(init_relationship[row])) # default value
+            relationship_var.trace('w', self.changeNumCycle)
+            relationship = tk.OptionMenu(root, relationship_var,
+                                         *relationship_opt)
+            relationship.grid(row=row+1, column=col, pady=4, padx=4)
+            self.relationship_list.append(relationship_var)
+
+        """OK button"""
+        col = 2
+        ok_b = tk.Button(root, text='OK!', width=10,
+                         command=self.return_df)
+        ok_b.grid(row=len(cells_IDs)+1, column=col, pady=8)
+
+        self.root.protocol("WM_DELETE_WINDOW", self.handle_close)
+        self.root.focus_force()
+        self.root.mainloop()
+
+    def store_varName(self, *args):
+        self.relto_varNames.append(args[0])
+
+    def update_relID(self, *args):
+        var_name = args[0]
+        idxID_var = self.relto_varNames.index(var_name)
+        ID_var = self.cell_IDs[idxID_var]
+        relID = int(self.root.getvar(name=var_name))
+        if relID in self.cell_IDs:
+            idxID = list(self.cell_IDs).index(relID)
+            self.related_to_list[idxID].set(str(ID_var))
+
+    def changeNumCycle(self, *args):
+        relationships = [var.get() for var in self.relationship_list]
+        idx_bud = [i for i, var in zip(range(len(relationships)), relationships)
+                            if var == 'bud']
+        for i in idx_bud:
+            self.num_cycles_list[i].delete(0, 'end')
+            self.num_cycles_list[i].insert(0, '0')
+        idx_moth = [i for i, var in zip(range(len(relationships)), relationships)
+                            if var == 'mother']
+        for i in idx_moth:
+            self.num_cycles_list[i].delete(0, 'end')
+            self.num_cycles_list[i].insert(0, '2')
+
+    def handle_close(self):
         self.cancel = True
-        self._root.quit()
-        self._root.destroy()
+        self.root.quit()
+        self.root.destroy()
         # exit('Execution aborted by the user')
 
+    def return_df(self):
+        cc_stage = [var.get() for var in self.cc_stage_list]
+        cc_stage = [val if val=='G1' else 'S' for val in cc_stage]
+        num_cycles = [int(var.get()) for var in self.num_cycles_list]
+        related_to = [int(var.get()) for var in self.related_to_list]
+        relationship = [var.get() for var in self.relationship_list]
+        check_rel = [ID == rel for ID, rel in zip(self.cell_IDs, related_to)]
+        # Buds in S phase must have 0 as number of cycles
+        check_buds_S = [ccs=='S' and rel_ship=='bud' and not numc==0
+                        for ccs, rel_ship, numc
+                        in zip(cc_stage, relationship, num_cycles)]
+        # Mother cells must have at least 1 as number of cycles
+        check_mothers = [rel_ship=='mother' and not numc>=1
+                         for rel_ship, numc
+                         in zip(relationship, num_cycles)]
+        # Buds cannot be in G1
+        check_buds_G1 = [ccs=='G1' and rel_ship=='bud'
+                         for ccs, rel_ship
+                         in zip(cc_stage, relationship)]
+        # The number of cells in S phase must be half mothers and half buds
+        num_moth_S = len([0 for ccs, rel_ship in zip(cc_stage, relationship)
+                            if ccs=='S' and rel_ship=='mother'])
+        num_bud_S = len([0 for ccs, rel_ship in zip(cc_stage, relationship)
+                            if ccs=='S' and rel_ship=='bud'])
+        # Cells in S phase cannot have -1 as relative's ID
+        check_relID_S = [ccs=='S' and relID==-1
+                         for ccs, relID
+                         in zip(cc_stage, related_to)]
+        if any(check_rel):
+            tk.messagebox.showerror('Cell ID = Relative\'s ID', 'Some cells are '
+                    'mother or bud of itself. Make sure that the Relative\'s ID'
+                    ' is different from the Cell ID!')
+        elif any(check_buds_S):
+            tk.messagebox.showerror('Bud in S/G2/M not in 0 Generation number',
+                'Some buds '
+                'in S phase do not have 0 as Generation number!\n'
+                'Buds in S phase must have 0 as "Generation number"')
+        elif any(check_mothers):
+            tk.messagebox.showerror('Mother not in >=1 Generation number',
+                'Some mother cells do not have >=1 as "Generation number"!\n'
+                'Mothers MUST have >1 "Generation number"')
+        elif any(check_buds_G1):
+            tk.messagebox.showerror('Buds in G1!',
+                'Some buds are in G1 phase!\n'
+                'Buds MUST be in S/G2/M phase')
+        elif num_moth_S != num_bud_S:
+            tk.messagebox.showerror('Number of mothers-buds mismatch!',
+                f'There are {num_moth_S} mother cells in "S/G2/M" phase,\n'
+                f'but there are {num_bud_S} bud cells.\n'
+                'The number of mothers and buds in "S/G2/M" phase must be equal!')
+        elif any(check_relID_S):
+            tk.messagebox.showerror('Relative\'s ID of cells in S/G2/M = -1',
+                'Some cells are in "S/G2/M" phase but have -1 has Relative\'s ID!\n'
+                'Cells in "S/G2/M" phase must have an existing ID as Relative\'s ID!')
+        else:
+            df = pd.DataFrame({
+                                'cell_cycle_stage': cc_stage,
+                                'generation_num': num_cycles,
+                                'relative_ID': related_to,
+                                'relationship': relationship,
+                                'emerg_frame_i': [-1]*len(cc_stage),
+                                'division_frame_i': [-1]*len(cc_stage)},
+                                index=self.cell_IDs)
+            df.index.name = 'Cell_ID'
+            df = pd.concat([df, self.cca_df], axis=1)
+            df = df.loc[:,~df.columns.duplicated()]
+            self.df = df
+            self.root.quit()
+            self.root.destroy()
 
 
 class tk_breakpoint:

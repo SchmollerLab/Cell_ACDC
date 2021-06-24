@@ -304,7 +304,6 @@ def auto_assign_bud(lab, new_IDs, old_IDs, cca_df, prev_cca_df, frame_i):
             new_ID_point, nearest_point = nearest_point_2Dyx(new_ID_cont,
                                                              all_others_cont)
             moth_ID = lab[nearest_point[0], nearest_point[1]]
-            moth_cc_stage = cca_df.at[moth_ID, 'Cell cycle stage']
             moth_cc_num = prev_cca_df.at[moth_ID, '# of cycles']
             cca_df.at[bud_ID, 'Relative\'s ID'] = moth_ID
             cca_df.at[moth_ID, '# of cycles'] = moth_cc_num
