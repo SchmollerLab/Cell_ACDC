@@ -207,7 +207,7 @@ class load_frames_data:
         self.align_shifts_path = f'{base_path}_align_shift.npy'
         self.segm_npy_path = f'{base_path}_segm.npy'
         self.last_tracked_i_path = f'{base_path}_last_tracked_i.txt'
-        self.segm_metadata_csv_path = f'{base_path}_segm_metadata.csv'
+        self.acdc_output_csv_path = f'{base_path}_acdc_output.csv'
         self.benchmarking_df_csv_path = f'{base_path}_benchmarking.csv'
 
     def substring_path(self, path, substring, images_path):

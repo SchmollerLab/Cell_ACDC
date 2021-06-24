@@ -971,17 +971,19 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.clickedOnBud = True
             self.xClickBud, self.yClickBud = xdata, ydata
 
-    def annotateDivision(self, cca_df, ID, relID, ccs, ccs_relID):
+    def annotateDivision(self, division_i ,cca_df, ID, relID, ccs, ccs_relID):
         # Correct as follows:
         # If S then correct to G1 and +1 on generation number
         store = False
         if ccs == 'S':
             cca_df.at[ID, 'cell_cycle_stage'] = 'G1'
             cca_df.at[ID, 'generation_num'] += 1
+            cca_df.at[ID, 'division_frame_i'] = division_i
             store = True
         if ccs_relID == 'S':
             cca_df.at[relID, 'cell_cycle_stage'] = 'G1'
             cca_df.at[relID, 'generation_num'] += 1
+            cca_df.at[relID, 'division_frame_i'] = division_i
             store = True
         return store
 
@@ -992,10 +994,12 @@ class Yeast_ACDC_GUI(QMainWindow):
         if ccs == 'G1':
             cca_df.at[ID, 'cell_cycle_stage'] = 'S'
             cca_df.at[ID, 'generation_num'] -= 1
+            cca_df.at[ID, 'division_frame_i'] = -1
             store = True
         if ccs_relID == 'G1':
             cca_df.at[relID, 'cell_cycle_stage'] = 'S'
             cca_df.at[relID, 'generation_num'] -= 1
+            cca_df.at[relID, 'division_frame_i'] = -1
             store = True
         return store
 
@@ -1016,6 +1020,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         are annotated as G1 phase cells.
         In this case we assign all those frames to G1 and -1 generation number
         """
+        # Correct current frame
         ccs = self.cca_df.at[ID, 'cell_cycle_stage']
         relID = self.cca_df.at[ID, 'relative_ID']
         ccs_relID = self.cca_df.at[relID, 'cell_cycle_stage']
@@ -1030,7 +1035,6 @@ class Yeast_ACDC_GUI(QMainWindow):
             if store:
                 self.store_cca_df()
 
-        # Correct current frame
         obj_idx = self.IDs.index(ID)
         relObj_idx = self.IDs.index(relID)
         rp_ID = self.rp[obj_idx]
@@ -1055,13 +1059,12 @@ class Yeast_ACDC_GUI(QMainWindow):
                     store = self.annotateDivision(
                                         cca_df_i, ID, relID, ccs, ccs_relID)
                     if store:
-                        self.store_cca_df(cca_df=cca_df_i)
+                        self.store_cca_df(frame_i=i, cca_df=cca_df_i)
                 else:
                     store = self.undoDivisionAnnotation(
-                                        self.cca_df, ID, relID, ccs, ccs_relID)
+                                        cca_df_i, ID, relID, ccs, ccs_relID)
                     if store:
-                        self.store_cca_df()
-
+                        self.store_cca_df(frame_i=i, cca_df=cca_df_i)
 
         # Correct past frames
         for i in range(self.frame_i-1, 0, -1):
@@ -1076,18 +1079,181 @@ class Yeast_ACDC_GUI(QMainWindow):
                 store = self.undoDivisionAnnotation(
                                        cca_df_i, ID, relID, ccs, ccs_relID)
                 if store:
-                    self.store_cca_df(cca_df=cca_df_i)
+                    self.store_cca_df(frame_i=i, cca_df=cca_df_i)
 
+    def checkMothEligibility(self, budID, new_mothID):
+        """Check the new mother is in G1 for the entire life of the bud"""
+
+        eligible = True
+
+        # Check future frames
+        for i in range(self.frame_i, self.num_segm_frames):
+            cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
+            if cca_df_i is None:
+                # ith frame was not visited yet
+                return eligible
+
+            is_still_bud = cca_df_i.at[budID, 'relationship'] == 'bud'
+            if not is_still_bud:
+                # Bud life ended
+                return eligible
+            ccs = cca_df_i.at[new_mothID, 'cell_cycle_stage']
+            if ccs != 'G1':
+                err_msg = (
+                    f'The requested cell in G1 (ID={new_mothID}) at future frame {i+1} '
+                    'has a bud assigned to it, therefore it cannot be '
+                    f'assigned as the mother of bud ID {budID}.\n'
+                    f'You can assign a cell as the mother of bud ID {budID} '
+                    'only if this cell is in G1 for the entire life of the bud.\n\n'
+                    'One possible solution is to click on "cancel", go to '
+                    f'frame {i+1} and  assign the bud of cell {new_mothID} '
+                    'to another cell.\n'
+                    f'A second solution is to assign bud ID {budID} to cell '
+                    f'{new_mothID} anyway by clicking "Yes". However to ensure correctness of '
+                    'future assignments the system will delete any cell cycle '
+                    f'information from frame {i+1} to the end. Therefore, you '
+                    'will have to visit those frames again.\n\n'
+                    'The deletion of cell cycle information CANNOT BE UNDONE! '
+                    'However, if you do not save no cell cycle information '
+                    'saved on the hard drive will be removed.\n\n'
+                    'Apply assignment or cancel process?')
+                msg = QtGui.QMessageBox()
+                enforce_assignment = msg.warning(
+                   self, 'Cell not eligible', err_msg, msg.Apply | msg.Cancel
+                )
+                if enforce_assignment == msg.Cancel:
+                    eligible = False
+                else:
+                    self.del_future_cca_df(i)
+                return eligible
+
+        # Check past frames
+        for i in range(self.frame_i-1, 0, -1):
+            # Get cca_df for ith frame from allData_li
+            cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
+
+            is_bud_existing = budID in cca_df_i.index
+            if not is_bud_existing:
+                # Bud was not emerged yet
+                return eligible
+
+            ccs = cca_df_i.at[new_mothID, 'cell_cycle_stage']
+            if ccs != 'G1':
+                err_msg = (
+                    f'The requested cell in G1 (ID={new_mothID}) at past frame {i+1} '
+                    'has a bud assigned to it, therefore it cannot be '
+                    f'assigned as mother of bud ID {budID}.\n'
+                    f'You can assign a cell as the mother of bud ID {budID} '
+                    'only if this cell is in G1 for the entire life of the bud.\n'
+                    f'One possible solution is to first go to frame {i+1} and '
+                    f'assign the bud of cell {new_mothID} to another cell.')
+                msg = QtGui.QMessageBox()
+                msg.critical(
+                   self, 'Cell not eligible', err_msg, msg.Ok
+                )
+                eligible = False
+                return eligible
+
+    def getStatusMothBeforeBudding(self, budID, curr_mothID):
+        # Get status of the current mother before it had budID assigned to it
+        for i in range(self.frame_i-1, 0, -1):
+            # Get cca_df for ith frame from allData_li
+            cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
+
+            is_bud_existing = budID in cca_df_i.index
+            if not is_bud_existing:
+                # Bud was not emerged yet
+                return cca_df_i.loc[curr_mothID]
 
 
     def assignMothBud(self):
+        """
+        This function is used for correcting automatic mother-bud assignment.
+
+        It can be called at any frame of the bud life.
+
+        There are three cells involved: bud, current mother, new mother.
+
+        Eligibility:
+            - User clicked first on a bud (checked at click time)
+            - User released mouse button on a cell in G1 (checked at release time)
+            - The new mother MUST be in G1 for all the frames of the bud life
+              --> if not warn
+
+        Result:
+            - The bud only changes relative ID to the new mother
+            - The new mother changes relative ID and stage to 'S'
+            - The old mother changes its entire status to the status it had
+              before being assigned to the clicked bud
+        """
         budID = self.lab[self.yClickBud, self.xClickBud]
-        mothID = self.lab[self.yClickMoth, self.xClickMoth]
+        new_mothID = self.lab[self.yClickMoth, self.xClickMoth]
+        curr_mothID = self.cca_df.at[budID, 'relative_ID']
+
+        eligible = self.checkMothEligibility(budID, new_mothID)
+        if not eligible:
+            return
+
+        curr_moth_cca = self.getStatusMothBeforeBudding(budID, curr_mothID)
+
+        # Correct current frames and update LabelItems
+        self.cca_df.at[budID, 'relative_ID'] = new_mothID
+
+        self.cca_df.at[new_mothID, 'relative_ID'] = budID
+        self.cca_df.at[new_mothID, 'cell_cycle_stage'] = 'S'
+
+        self.cca_df.loc[curr_mothID] = curr_moth_cca
+
+        bud_obj_idx = self.IDs.index(budID)
+        new_moth_obj_idx = self.IDs.index(new_mothID)
+        curr_moth_obj_idx = self.IDs.index(curr_mothID)
+        rp_budID = self.rp[bud_obj_idx]
+        rp_new_mothID = self.rp[new_moth_obj_idx]
+        rp_curr_mothID = self.rp[curr_moth_obj_idx]
+
+        self.drawID_and_Contour(rp_budID, drawContours=False)
+        self.drawID_and_Contour(rp_new_mothID, drawContours=False)
+        self.drawID_and_Contour(rp_curr_mothID, drawContours=False)
+
         # Correct future frames
-        pass
+        for i in range(self.frame_i+1, self.num_segm_frames):
+            # Get cca_df for ith frame from allData_li
+            cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
+
+            if cca_df_i is None:
+                # ith frame was not visited yet
+                break
+
+            cca_df_i.at[budID, 'relative_ID'] = new_mothID
+
+            cca_df_i.at[new_mothID, 'relative_ID'] = budID
+            cca_df_i.at[new_mothID, 'cell_cycle_stage'] = 'S'
+
+            cca_df_i.loc[curr_mothID] = curr_moth_cca
+
+            self.store_cca_df(frame_i=i, cca_df=cca_df_i)
+
+
 
         # Correct past frames
-        pass
+        for i in range(self.frame_i-1, 0, -1):
+            # Get cca_df for ith frame from allData_li
+            cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
+
+            is_bud_existing = budID in cca_df_i.index
+            if not is_bud_existing:
+                # Bud was not emerged yet
+                break
+
+            cca_df_i.at[budID, 'relative_ID'] = new_mothID
+
+            cca_df_i.at[new_mothID, 'relative_ID'] = budID
+            cca_df_i.at[new_mothID, 'cell_cycle_stage'] = 'S'
+
+            cca_df_i.loc[curr_mothID] = curr_moth_cca
+
+            self.store_cca_df(frame_i=i, cca_df=cca_df_i)
+
 
 
     def gui_mouseDragEventImg1(self, event):
@@ -1925,7 +2091,10 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.store_data(debug=False)
             # Go to next frame
             self.frame_i += 1
-            self.get_data()
+            proceed = self.get_data()
+            if not proceed:
+                self.frame_i -= 1
+                return
             self.tracking()
             self.auto_cca_df()
             self.updateALLimg()
@@ -2192,6 +2361,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                                 'division_frame_i': -1
                             }
 
+                    self.store_cca_df()
+
 
     def get_objContours(self, obj):
         contours, _ = cv2.findContours(
@@ -2205,11 +2376,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         cont += [min_x, min_y]
         return cont
 
-
-
-
-
     def get_data(self):
+        proceed = True
         if self.frame_i > 2:
             # Remove undo states from 2 frames back to avoid memory issues
             self.UndoRedoStates[self.frame_i-2] = []
@@ -2222,6 +2390,22 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.editID_info = []
         # If stored labels is None then it is the first time we visit this frame
         if self.allData_li[self.frame_i]['labels'] is None:
+            if str(self.modeComboBox.currentText()) == 'Cell cycle analysis':
+                # Warn that we are visiting a frame that was never segm-checked
+                # on cell cycle analysis mode
+                msg = QtGui.QMessageBox()
+                warn_cca = msg.critical(
+                    self, 'Never checked segmentation on requested frame',
+                    'Segmentation and tracking was never checked from '
+                    f'frame {self.frame_i+1} onward.\n To ensure correct cell '
+                    'cell cycle analysis we recommend to first visit frames '
+                    f'{self.frame_i+1}-end with "Segmentation and tracking mode."'
+                    'However you can decide to continue with cell cycle analysis '
+                    'anyway\n\n.'
+                    'Do you want to proceed?',
+                    msg.Ok
+                )
+                return proceed
             # Requested frame was never visited before. Load from HDD
             self.lab = self.data.segm_data[self.frame_i].copy()
             self.rp = skimage.measure.regionprops(self.lab)
@@ -2249,7 +2433,22 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.ripIDs = set(ripIDs_df.index)
             self.get_cca_df()
 
+        return proceed
+
     def init_cca(self):
+        if self.data.last_tracked_i is None:
+            txt = (
+                'On this dataset you never checked that the segmentation '
+                'and tracking are correct.\n'
+                'You first have to check (and eventually correct) some frames'
+                'in "Segmentation and tracking" mode before proceeding '
+                'with cell cycle analysis.')
+            msg = QtGui.QMessageBox()
+            msg.critical(
+                self, 'Tracking check not performed', txt, msg.Ok
+            )
+            return
+
         proceed = True
         if self.cca_df is None:
             last_cca_frame_i = 0
@@ -2304,6 +2503,26 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.get_cca_df()
         return proceed
 
+    def del_future_cca_df(self, from_frame_i):
+        for i in range(from_frame_i, self.num_segm_frames):
+            df = self.allData_li[i]['segm_metadata_df']
+            if df is None:
+                # No more saved info to delete
+                return
+
+            if 'cell_cycle_stage' not in df.columns:
+                # No cell cycle info present
+                continue
+
+            cca_colNames = ['cell_cycle_stage', 'generation_num',
+                            'relative_ID', 'relationship',
+                            'emerg_frame_i', 'division_frame_i']
+            df.drop(cca_colNames, axis=1, inplace=True)
+
+
+
+
+
     def get_cca_df(self, frame_i=None, return_df=False):
         # cca_df is None unless the metadata contains cell cycle annotations
         # NOTE: cell cycle annotations are either from the current session
@@ -2324,15 +2543,27 @@ class Yeast_ACDC_GUI(QMainWindow):
         else:
             self.cca_df = cca_df
 
-    def store_cca_df(self, cca_df=None):
+    def store_cca_df(self, frame_i=None, cca_df=None):
+        i = self.frame_i if frame_i is None else frame_i
+
         if cca_df is None:
             cca_df = self.cca_df
 
         if cca_df is not None:
-            segm_df = self.allData_li[self.frame_i]['segm_metadata_df']
-            df = segm_df.join(cca_df, how='outer')
-            self.allData_li[self.frame_i]['segm_metadata_df'] = df.copy()
-            print(self.allData_li[self.frame_i]['segm_metadata_df'])
+            segm_df = self.allData_li[i]['segm_metadata_df']
+            if 'cell_cycle_stage' in segm_df.columns:
+                # Cell cycle info already present --> overwrite with new
+                df = segm_df
+                df[['cell_cycle_stage',
+                    'generation_num',
+                    'relative_ID',
+                    'relationship',
+                    'emerg_frame_i',
+                    'division_frame_i']] = cca_df
+            else:
+                df = segm_df.join(cca_df, how='outer')
+            self.allData_li[i]['segm_metadata_df'] = df.copy()
+            # print(self.allData_li[self.frame_i]['segm_metadata_df'])
 
 
     def ax1_setTextID(self, obj, how):
@@ -2870,6 +3101,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         pass
 
     def openFile(self, checked=False, exp_path=None):
+        self.modeComboBox.setCurrentIndex(0)
+
         if self.slideshowWin is not None:
             self.slideshowWin.close()
 
@@ -3049,7 +3282,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.app.setOverrideCursor(Qt.WaitCursor)
         try:
             segm_npy_path = self.data.segm_npy_path
-            segm_metadata_csv_path = self.data.segm_metadata_csv_path
+            acdc_output_csv_path = self.data.acdc_output_csv_path
             last_tracked_i_path = self.data.last_tracked_i_path
             segm_npy = np.copy(self.data.segm_data)
             segm_npy[self.frame_i] = self.lab
@@ -3090,7 +3323,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 )
 
                 # Save segmentation metadata
-                all_frames_metadata_df.to_csv(segm_metadata_csv_path)
+                all_frames_metadata_df.to_csv(acdc_output_csv_path)
                 self.data.segm_metadata_df = all_frames_metadata_df
             except:
                 traceback.print_exc()
