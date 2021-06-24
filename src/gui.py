@@ -345,6 +345,8 @@ class Yeast_ACDC_GUI(QMainWindow):
     def gui_createGraphicsItems(self):
         maxID = self.data.segm_data.max()
 
+
+
         # Contour pen
         self.cpen = pg.mkPen(color='r', width=2)
 
@@ -354,6 +356,10 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Old bud-mother line pen
         self.OldBudMoth_Pen = pg.mkPen(color=(255,165,0), width=2,
                                        style=Qt.DashLine)
+
+        # Temporary line item connecting bud to new mother
+        self.BudMothTempLine = pg.PlotDataItem(pen=self.NewBudMoth_Pen)
+        self.ax1.addItem(self.BudMothTempLine)
 
         # Create enough PlotDataItems and LabelItems to draw contours and IDs
         numItems = maxID+10
@@ -869,6 +875,8 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.xClickMoth, self.yClickMoth = xdata, ydata
             self.assignMothBud()
             self.assignMothBudButton.setChecked(False)
+            self.draw_MothBudTempLine = False
+            self.BudMothTempLine.setData([], [])
 
     def gui_mousePressEventImg1(self, event):
         mode = str(self.modeComboBox.currentText())
@@ -970,6 +978,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 return
             self.clickedOnBud = True
             self.xClickBud, self.yClickBud = xdata, ydata
+            self.draw_MothBudTempLine = True
 
     def annotateDivision(self, division_i ,cca_df, ID, relID, ccs, ccs_relID):
         # Correct as follows:
@@ -1310,6 +1319,24 @@ class Yeast_ACDC_GUI(QMainWindow):
         except:
             # traceback.print_exc()
             self.ax1_BrushCircle.setData([], [])
+
+        if self.draw_MothBudTempLine:
+            try:
+                x, y = event.pos()
+                y2, x2 = y, x
+                xdata, ydata = int(round(x)), int(round(y))
+                y1, x1 = self.yClickBud, self.xClickBud
+                ID = self.lab[ydata, xdata]
+                if ID == 0:
+                    self.BudMothTempLine.setData([x1, x2], [y1, y2])
+                else:
+                    obj_idx = self.IDs.index(ID)
+                    obj = self.rp[obj_idx]
+                    y2, x2 = obj.centroid
+                    self.BudMothTempLine.setData([x1, x2], [y1, y2])
+            except:
+                traceback.print_exc()
+                self.BudMothTempLine.setData([], [])
 
     def gui_hoverEventImg2(self, event):
         if self.isAltDown:
@@ -1914,6 +1941,11 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.isAltDown = False
 
     def setUncheckedAllButtons(self):
+        self.draw_MothBudTempLine = False
+        try:
+            self.BudMothTempLine.setData([], [])
+        except:
+            pass
         for button in self.checkableButtons:
             button.setChecked(False)
 
@@ -2174,6 +2206,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 BudMothLine.setData([], [])
 
     def init_attr(self, max_ID=10):
+        self.draw_MothBudTempLine = False
         self.disableAutoActivateViewerWindow = False
         self.enforceSeparation = False
         self.isAltDown = False
