@@ -6,7 +6,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""Yeast ACDC GUI for correcting segmentation and tracking errors"""
+"""Yeast ACDC GUI for correcting Segmentation and Tracking errors"""
 
 import sys
 import os
@@ -345,10 +345,9 @@ class Yeast_ACDC_GUI(QMainWindow):
     def gui_createGraphicsItems(self):
         maxID = self.data.segm_data.max()
 
-
-
-        # Contour pen
-        self.cpen = pg.mkPen(color='r', width=2)
+        # Contour pens
+        self.oldIDs_cpen = pg.mkPen(color=(200, 0, 0, 255*0.5), width=2)
+        self.newIDs_cpen = pg.mkPen(color='r', width=3)
 
         # New bud-mother line pen
         self.NewBudMoth_Pen = pg.mkPen(color='r', width=3, style=Qt.DashLine)
@@ -361,6 +360,14 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.BudMothTempLine = pg.PlotDataItem(pen=self.NewBudMoth_Pen)
         self.ax1.addItem(self.BudMothTempLine)
 
+        # Red/green border rect item
+        self.GreenLinePen = pg.mkPen(color='g', width=2)
+        self.RedLinePen = pg.mkPen(color='r', width=2)
+        self.ax1BorderLine = pg.PlotDataItem()
+        self.ax1.addItem(self.ax1BorderLine)
+        self.ax2BorderLine = pg.PlotDataItem(pen=pg.mkPen(color='r', width=2))
+        self.ax2.addItem(self.ax2BorderLine)
+
         # Create enough PlotDataItems and LabelItems to draw contours and IDs
         numItems = maxID+10
         self.ax1_ContoursCurves = []
@@ -369,7 +376,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.ax2_LabelItemsIDs = []
         for i in range(numItems):
             # Contours on ax1
-            ContCurve = pg.PlotDataItem(pen=self.cpen)
+            ContCurve = pg.PlotDataItem()
             self.ax1_ContoursCurves.append(ContCurve)
             self.ax1.addItem(ContCurve)
 
@@ -379,22 +386,12 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.ax1.addItem(BudMothLine)
 
             # LabelItems on ax1
-            ax1_IDlabel = pg.LabelItem(
-                    text='',
-                    color='FA0000',
-                    bold=True,
-                    size='10pt'
-            )
+            ax1_IDlabel = pg.LabelItem()
             self.ax1_LabelItemsIDs.append(ax1_IDlabel)
             self.ax1.addItem(ax1_IDlabel)
 
             # LabelItems on ax2
-            ax2_IDlabel = pg.LabelItem(
-                    text='',
-                    color='FA0000',
-                    bold=True,
-                    size='10pt'
-            )
+            ax2_IDlabel = pg.LabelItem()
             self.ax2_LabelItemsIDs.append(ax2_IDlabel)
             self.ax2.addItem(ax2_IDlabel)
 
@@ -419,6 +416,9 @@ class Yeast_ACDC_GUI(QMainWindow):
         right_click = event.button() == Qt.MouseButton.RightButton
         eraserON = self.eraserButton.isChecked()
         brushON = self.brushButton.isChecked()
+
+        print(mode)
+        print(mid_click)
 
         # Drag image if neither brush or eraser are On or Alt is pressed
         dragImg = (
@@ -479,7 +479,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.img2.updateImage()
 
         # Delete entire ID (set to 0)
-        elif mid_click and mode == 'Segmentation and tracking':
+        elif mid_click and mode == 'Segmentation and Tracking':
             # Store undo state before modifying stuff
             self.storeUndoRedoStates()
             x, y = event.pos().x(), event.pos().y()
@@ -938,7 +938,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 else:
                     self.brushID += 1
 
-        elif right_click and mode == 'Segmentation and tracking':
+        elif right_click and mode == 'Segmentation and Tracking':
             # Allow right-click actions on both images
             self.gui_mousePressEventImg2(event)
 
@@ -1772,6 +1772,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             proceed = self.init_cca()
             if proceed:
                 self.setEnabledToolbarButton(enabled=False)
+                self.showInExplorerAction.setEnabled(True)
                 self.navigateToolBar.setEnabled(True)
                 self.modeToolBar.setEnabled(True)
                 self.disableTrackingCheckBox.setChecked(True)
@@ -1782,6 +1783,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         elif mode == 'Viewer':
             self.setEnabledToolbarButton(enabled=False)
+            self.showInExplorerAction.setEnabled(True)
             self.navigateToolBar.setEnabled(True)
             self.modeToolBar.setEnabled(True)
             self.disableTrackingCheckBox.setChecked(True)
@@ -2129,21 +2131,34 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.cca_df = init_cca_df_frame0.df
         self.app.setOverrideCursor(Qt.WaitCursor)
         if self.frame_i < self.num_segm_frames-1:
+            if 'lost' in self.titleLabel.text:
+                msg = QtGui.QMessageBox()
+                warn_msg = (
+                    'Current frame (compared to previous frame) '
+                    'has lost the following cells:\n\n'
+                    f'{self.lost_IDs}\n\n'
+                    'Are you sure you want to continue?'
+                )
+                proceed_with_lost = msg.warning(
+                   self, 'Lost cells!', warn_msg, msg.Yes | msg.No
+                )
+                if proceed_with_lost == msg.No:
+                    return
             # Store data for current frame
             self.store_data(debug=False)
             # Go to next frame
             self.frame_i += 1
-            proceed = self.get_data()
-            if not proceed:
+            proceed_cca, never_visited = self.get_data()
+            if not proceed_cca:
                 self.frame_i -= 1
                 return
             self.tracking()
             self.auto_cca_df()
-            self.updateALLimg()
+            self.updateALLimg(never_visited=never_visited)
         else:
             msg = 'You reached the last segmented frame!'
             print(msg)
-            self.titleLabel.setText(msg)
+            self.titleLabel.setText(msg, color='w')
         if self.slideshowWin is not None:
             self.slideshowWin.frame_i = self.frame_i
             self.slideshowWin.update_img()
@@ -2154,13 +2169,13 @@ class Yeast_ACDC_GUI(QMainWindow):
         if self.frame_i > 0:
             self.store_data()
             self.frame_i -= 1
-            self.get_data()
+            _, never_visited = self.get_data()
             self.tracking()
-            self.updateALLimg()
+            self.updateALLimg(never_visited=never_visited)
         else:
             msg = 'You reached the first frame!'
             print(msg)
-            self.titleLabel.setText(msg)
+            self.titleLabel.setText(msg, color='w')
         if self.slideshowWin is not None:
             self.slideshowWin.frame_i = self.frame_i
             self.slideshowWin.update_img()
@@ -2221,6 +2236,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.enforceSeparation = False
         self.isAltDown = False
         self.manual_newID_coords = []
+        self.new_IDs = []
         self.UndoRedoStates = [[] for _ in range(self.num_frames)]
 
         # Colormap
@@ -2420,7 +2436,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         return cont
 
     def get_data(self):
-        proceed = True
+        proceed_cca = True
         if self.frame_i > 2:
             # Remove undo states from 2 frames back to avoid memory issues
             self.UndoRedoStates[self.frame_i-2] = []
@@ -2433,22 +2449,24 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.editID_info = []
         # If stored labels is None then it is the first time we visit this frame
         if self.allData_li[self.frame_i]['labels'] is None:
+            never_visited = True
             if str(self.modeComboBox.currentText()) == 'Cell cycle analysis':
                 # Warn that we are visiting a frame that was never segm-checked
                 # on cell cycle analysis mode
                 msg = QtGui.QMessageBox()
                 warn_cca = msg.critical(
                     self, 'Never checked segmentation on requested frame',
-                    'Segmentation and tracking was never checked from '
+                    'Segmentation and Tracking was never checked from '
                     f'frame {self.frame_i+1} onward.\n To ensure correct cell '
                     'cell cycle analysis we recommend to first visit frames '
-                    f'{self.frame_i+1}-end with "Segmentation and tracking mode."'
+                    f'{self.frame_i+1}-end with "Segmentation and Tracking mode."'
                     'However you can decide to continue with cell cycle analysis '
                     'anyway\n\n.'
                     'Do you want to proceed?',
                     msg.Ok
                 )
-                return proceed
+                proceed_cca = False
+                return proceed_cca, never_visited
             # Requested frame was never visited before. Load from HDD
             self.lab = self.data.segm_data[self.frame_i].copy()
             self.rp = skimage.measure.regionprops(self.lab)
@@ -2467,6 +2485,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.get_cca_df()
         else:
             # Requested frame was already visited. Load from RAM.
+            never_visited = False
             self.lab = self.allData_li[self.frame_i]['labels'].copy()
             self.rp = skimage.measure.regionprops(self.lab)
             df = self.allData_li[self.frame_i]['segm_metadata_df']
@@ -2476,7 +2495,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.ripIDs = set(ripIDs_df.index)
             self.get_cca_df()
 
-        return proceed
+        return proceed_cca, never_visited
 
     def init_cca(self):
         if self.data.last_tracked_i is None:
@@ -2484,7 +2503,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 'On this dataset you never checked that the segmentation '
                 'and tracking are correct.\n'
                 'You first have to check (and eventually correct) some frames'
-                'in "Segmentation and tracking" mode before proceeding '
+                'in "Segmentation and Tracking" mode before proceeding '
                 'with cell cycle analysis.')
             msg = QtGui.QMessageBox()
             msg.critical(
@@ -2615,7 +2634,13 @@ class Yeast_ACDC_GUI(QMainWindow):
         ID = obj.label
         df = self.cca_df
         if df is None or how.find('cell cycle') == -1:
-            LabelItemID.setText(f'{ID}')
+            txt = f'{ID}'
+            if ID in self.new_IDs:
+                color = 'r'
+                bold = True
+            else:
+                color = 'w'
+                bold = False
         else:
             df_ID = df.loc[ID]
             ccs = df_ID['cell_cycle_stage']
@@ -2641,7 +2666,28 @@ class Yeast_ACDC_GUI(QMainWindow):
             elif ccs == 'S' and is_bud and emerged_now:
                 color = 'r'
                 bold = True
-            LabelItemID.setText(txt, color=color, bold=bold, size='10pt')
+
+        LabelItemID.setText(txt, color=color, bold=bold, size='10pt')
+
+        # Center LabelItem at centroid
+        y, x = obj.centroid
+        w, h = LabelItemID.rect().right(), LabelItemID.rect().bottom()
+        LabelItemID.setPos(x-w/2, y-h/2)
+
+    def ax2_setTextID(self, obj, how):
+        # Draw ID label on ax1 image depending on how
+        LabelItemID = self.ax2_LabelItemsIDs[obj.label-1]
+        ID = obj.label
+        df = self.cca_df
+        txt = f'{ID}'
+        if ID in self.new_IDs:
+            color = 'r'
+            bold = True
+        else:
+            color = (230, 0, 0, 255*0.5)
+            bold = False
+
+        LabelItemID.setText(txt, color=color, bold=bold, size='10pt')
 
         # Center LabelItem at centroid
         y, x = obj.centroid
@@ -2666,19 +2712,11 @@ class Yeast_ACDC_GUI(QMainWindow):
             # Create additional missing LabelItems for the current ID
             missingLen = idx-len(self.ax2_LabelItemsIDs)+1
             for i in range(missingLen):
-                _IDlabel2 = pg.LabelItem(
-                        text='',
-                        color='FA0000',
-                        bold=True,
-                        size='10pt'
-                )
+                _IDlabel2 = pg.LabelItem()
                 self.ax2_LabelItemsIDs.append(_IDlabel2)
                 self.ax2.addItem(_IDlabel2)
 
-        _IDlabel2 = self.ax2_LabelItemsIDs[obj.label-1]
-        _IDlabel2.setText(f'{obj.label}')
-        w, h = _IDlabel2.rect().right(), _IDlabel2.rect().bottom()
-        _IDlabel2.setPos(x-w/2, y-h/2)
+        self.ax2_setTextID(obj, how)
 
         # Draw LabelItems for IDs on ax1 if requested
         if IDs_and_cont or onlyIDs or only_ccaInfo or ccaInfo_and_cont:
@@ -2700,7 +2738,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         # Draw line connecting mother and buds
         mode = self.modeComboBox.currentText()
-        if mode != 'Segmentation and tracking' and self.cca_df is not None:
+        if mode != 'Segmentation and Tracking' and self.cca_df is not None:
             ID = obj.label
             BudMothLine = self.ax1_BudMothLines[ID-1]
             cca_df_ID = self.cca_df.loc[ID]
@@ -2726,6 +2764,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         # Draw contours on ax1 if requested
         if IDs_and_cont or onlyCont or ccaInfo_and_cont:
+            ID = obj.label
             t0 = time.time()
             cont = self.get_objContours(obj)
             t1 = time.time()
@@ -2733,17 +2772,18 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.computingContoursTimes.append(computingContoursTime)
 
             t0 = time.time()
-            idx = obj.label-1
+            idx = ID-1
             if not idx < len(self.ax1_ContoursCurves):
                 # Create addition PlotDataItems for the current ID
                 missingLen = idx-len(self.ax1_ContoursCurves)+1
                 for i in range(missingLen):
-                    curve = pg.PlotDataItem(pen=self.cpen)
+                    curve = pg.PlotDataItem()
                     self.ax1_ContoursCurves.append(curve)
                     self.ax1.addItem(curve)
 
             curveID = self.ax1_ContoursCurves[idx]
-            curveID.setData(cont[:,0], cont[:,1])
+            pen = self.newIDs_cpen if ID in self.new_IDs else self.oldIDs_cpen
+            curveID.setData(cont[:,0], cont[:,1], pen=pen)
             t1 = time.time()
             drawingContoursTimes = t1-t0
             self.drawingContoursTimes.append(drawingContoursTimes)
@@ -2974,7 +3014,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         img = self.get_overlay(fluo_img, cells_img)
         self.img1.setImage(img)
 
-    def updateALLimg(self, image=None):
+    def updateALLimg(self, image=None, never_visited=True):
         self.frameLabel.setText(
                  f'Current frame = {self.frame_i+1}/{self.num_segm_frames}')
 
@@ -2997,6 +3037,15 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.updateLookuptable()
 
         self.clear_prevItems()
+
+        # # Red or green border depending if visited or not
+        # pen = self.RedLinePen if never_visited else self.GreenLinePen
+        # Y, X = img.shape
+        # off = 2 # rect offset
+        # xxRect = [-off, -off, X+off, X+off, -off]
+        # yyRect = [-off, Y+off, Y+off, -off, -off]
+        # self.ax1BorderLine.setData(xxRect, yyRect, pen=pen)
+        # self.ax2BorderLine.setData(xxRect, yyRect, pen=pen)
 
         self.computingContoursTimes = []
         self.drawingLabelsTimes = []
@@ -3061,6 +3110,10 @@ class Yeast_ACDC_GUI(QMainWindow):
         if self.disableTrackingCheckBox.isChecked() or not do_tracking:
             self.checkIDs_LostNew()
             return
+
+        # Store undo state before modifying stuff
+        self.storeUndoRedoStates()
+
         prev_lab = self.allData_li[self.frame_i-1]['labels']
         prev_rp = self.allData_li[self.frame_i-1]['regionprops']
         IDs_prev = []
@@ -3193,11 +3246,12 @@ class Yeast_ACDC_GUI(QMainWindow):
         else:
             is_images_folder = False
 
-        self.titleLabel.setText('Loading data...')
+        self.titleLabel.setText('Loading data...', color='w')
 
         if exp_path == '':
             self.titleLabel.setText(
-                'File --> Open or Open recent to start the process')
+                'File --> Open or Open recent to start the process',
+                color='w')
             return
 
         ch_name_selector = prompts.select_channel_name(
@@ -3226,7 +3280,8 @@ class Yeast_ACDC_GUI(QMainWindow):
 
             if select_folder.was_aborted:
                 self.titleLabel.setText(
-                    'File --> Open or Open recent to start the process')
+                    'File --> Open or Open recent to start the process',
+                    color='w')
                 return
 
         elif is_pos_folder:
@@ -3254,7 +3309,8 @@ class Yeast_ACDC_GUI(QMainWindow):
             ch_name_selector.prompt(ch_names)
             if ch_name_selector.was_aborted:
                 self.titleLabel.setText(
-                    'File --> Open or Open recent to start the process')
+                    'File --> Open or Open recent to start the process',
+                    color='w')
                 return
             if warn:
                 user_ch_name = prompts.single_entry_messagebox(
@@ -3281,7 +3337,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         if not img_aligned_found:
             err_msg = ('Aligned frames file not found. '
                        'You need to run the segmentation script first.')
-            self.titleLabel.setText(err_msg)
+            self.titleLabel.setText(err_msg, color='r')
             raise FileNotFoundError(err_msg)
 
         self.app.setOverrideCursor(Qt.WaitCursor)
@@ -3290,6 +3346,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.init_frames_data(img_path, user_ch_name)
 
         # Ask whether to load fluorescent images
+        self.app.setOverrideCursor(Qt.ArrowCursor)
         msg = QtGui.QMessageBox()
         load_fluo = msg.question(
             self, 'Load fluorescent images?',
@@ -3306,19 +3363,19 @@ class Yeast_ACDC_GUI(QMainWindow):
             fluo_paths = prompts.multi_files_dialog(
                 title='Select one or multiple fluorescent images')
 
+            self.app.setOverrideCursor(Qt.WaitCursor)
             for fluo_path in fluo_paths:
                 filename = os.path.basename(fluo_path)
                 fluo_data = self.load_fluo_data(fluo_path)
                 self.data.fluo_data_dict[filename] = fluo_data
-
-            self.app.setOverrideCursor(Qt.ArrowCursor)
 
         # Connect events at the end of loading data process
         self.gui_connectGraphicsEvents()
         self.gui_connectEditActions()
 
         self.titleLabel.setText(
-                'Data successfully loaded. Right/Left arrow to navigate frames')
+            'Data successfully loaded. Right/Left arrow to navigate frames',
+            color='w')
 
         self.addToRecentPaths(exp_path)
         self.app.setOverrideCursor(Qt.ArrowCursor)
