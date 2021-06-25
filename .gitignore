@@ -1,5 +1,6 @@
 # Custom ignores
-testing.ipynb
+notebooks/testing.ipynb
+notebooks/.ipynb_checkpoints
 .idea/
 data/*
 tests/*
