@@ -146,7 +146,7 @@ class load_frames_data:
         # Load segmentation metadata
         if load_segm_metadata:
             segm_metadata_path, segm_metadata_found = self.substring_path(
-                                              path, '_segm_metadata.csv',
+                                              path, '_acdc_output.csv',
                                               self.images_path)
             if segm_metadata_found:
                 segm_metadata_df = pd.read_csv(

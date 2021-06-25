@@ -986,13 +986,17 @@ class Yeast_ACDC_GUI(QMainWindow):
         store = False
         if ccs == 'S':
             cca_df.at[ID, 'cell_cycle_stage'] = 'G1'
+            gen_num_clickedID = cca_df.at[ID, 'generation_num']
             cca_df.at[ID, 'generation_num'] += 1
             cca_df.at[ID, 'division_frame_i'] = self.frame_i
-            store = True
-        if ccs_relID == 'S':
             cca_df.at[relID, 'cell_cycle_stage'] = 'G1'
+            gen_num_relID = cca_df.at[relID, 'generation_num']
             cca_df.at[relID, 'generation_num'] += 1
             cca_df.at[relID, 'division_frame_i'] = self.frame_i
+            if gen_num_clickedID < gen_num_relID:
+                cca_df.at[ID, 'relationship'] = 'mother'
+            else:
+                cca_df.at[relID, 'relationship'] = 'mother'
             store = True
         return store
 
@@ -1002,13 +1006,17 @@ class Yeast_ACDC_GUI(QMainWindow):
         store = False
         if ccs == 'G1':
             cca_df.at[ID, 'cell_cycle_stage'] = 'S'
+            gen_num_clickedID = cca_df.at[ID, 'generation_num']
             cca_df.at[ID, 'generation_num'] -= 1
             cca_df.at[ID, 'division_frame_i'] = -1
-            store = True
-        if ccs_relID == 'G1':
             cca_df.at[relID, 'cell_cycle_stage'] = 'S'
+            gen_num_relID = cca_df.at[relID, 'generation_num']
             cca_df.at[relID, 'generation_num'] -= 1
             cca_df.at[relID, 'division_frame_i'] = -1
+            if gen_num_clickedID < gen_num_relID:
+                cca_df.at[ID, 'relationship'] = 'bud'
+            else:
+                cca_df.at[relID, 'relationship'] = 'bud'
             store = True
         return store
 
@@ -1021,13 +1029,15 @@ class Yeast_ACDC_GUI(QMainWindow):
         check if there are future frames to correct.
         Frames to correct are those frames where both the mother and the bud
         are annotated as S phase cells.
-        In this case we assign all those frames to G1 and +1 generation number
+        In this case we assign all those frames to G1, relationship to mother,
+        and +1 generation number
 
         If we undo the annotation (right click on a cell in G1) then it will
         correct both past and future annotated frames (if present).
         Frames to correct are those frames where both the mother and the bud
         are annotated as G1 phase cells.
-        In this case we assign all those frames to G1 and -1 generation number
+        In this case we assign all those frames to G1, relationship back to
+        bud, and -1 generation number
         """
         # Correct current frame
         ccs = self.cca_df.at[ID, 'cell_cycle_stage']
