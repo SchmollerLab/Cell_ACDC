@@ -3212,6 +3212,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
             select_folder.run_widget(values, allow_abort=False)
             pos_foldername = select_folder.selected_pos[0]
+            images_path = f'{exp_path}/{pos_foldername}/Images'
 
             if select_folder.was_aborted:
                 self.titleLabel.setText(
