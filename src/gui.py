@@ -980,19 +980,19 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.xClickBud, self.yClickBud = xdata, ydata
             self.draw_MothBudTempLine = True
 
-    def annotateDivision(self, division_i ,cca_df, ID, relID, ccs, ccs_relID):
+    def annotateDivision(self, cca_df, ID, relID, ccs, ccs_relID):
         # Correct as follows:
         # If S then correct to G1 and +1 on generation number
         store = False
         if ccs == 'S':
             cca_df.at[ID, 'cell_cycle_stage'] = 'G1'
             cca_df.at[ID, 'generation_num'] += 1
-            cca_df.at[ID, 'division_frame_i'] = division_i
+            cca_df.at[ID, 'division_frame_i'] = self.frame_i
             store = True
         if ccs_relID == 'S':
             cca_df.at[relID, 'cell_cycle_stage'] = 'G1'
             cca_df.at[relID, 'generation_num'] += 1
-            cca_df.at[relID, 'division_frame_i'] = division_i
+            cca_df.at[relID, 'division_frame_i'] = self.frame_i
             store = True
         return store
 
@@ -2842,66 +2842,95 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.binnedIDs_ScatterPlot.setData(binnedIDs_xx, binnedIDs_yy)
             self.ripIDs_ScatterPlot.setData(ripIDs_xx, ripIDs_yy)
 
-    def overlay_cb(self):
-        if self.overlayButton.isChecked():
-            ol_path = prompts.file_dialog(
-                                  title='Select image file to overlay',
-                                  initialdir=self.data.images_path)
-            if not ol_path:
-                return
-
-            self.app.setOverrideCursor(Qt.WaitCursor)
-            # Load overlay frames and align if needed
-            filename = os.path.basename(ol_path)
-            filename_noEXT, ext = os.path.splitext(filename)
-
-            print('Loading fluorescent image data...')
-            if ext == '.npy':
-                self.data.ol_frames = np.load(ol_path)
-                if filename.find('aligned') != -1:
-                    align_ol = False
-                else:
-                    align_ol = True
-            elif ext == '.tif' or ext == '.tiff':
+    def load_fluo_data(self, fluo_path):
+        print('Loading fluorescent image data...')
+        self.app.setOverrideCursor(Qt.WaitCursor)
+        # Load overlay frames and align if needed
+        filename = os.path.basename(fluo_path)
+        filename_noEXT, ext = os.path.splitext(filename)
+        if ext == '.npy':
+            fluo_data = np.load(fluo_path)
+            if filename.find('aligned') != -1:
+                align_ol = False
+            else:
                 align_ol = True
-                self.data.ol_frames = skimage.io.imread(ol_path)
+        elif ext == '.tif' or ext == '.tiff':
+            align_ol = True
+            fluo_data = skimage.io.imread(fluo_path)
+        else:
+            self.app.setOverrideCursor(Qt.ArrowCursor)
+            txt = (f'File format {ext} is not supported!\n'
+                    'Choose either .tif or .npy files.')
+            msg = QtGui.QMessageBox()
+            msg.critical(
+                self, 'File not supported', txt, msg.Ok
+            )
+            return None
+
+        if align_ol:
+            print('Aligning fluorescent image data...')
+            images_path = self.data.images_path
+            loaded_shifts, shifts_found = load.load_shifts(images_path)
+            if shifts_found:
+                is_3D = self.data.SizeZ > 1
+                align_func = (core.align_frames_3D if is_3D
+                              else core.align_frames_2D)
+                aligned_frames, shifts = align_func(
+                                          fluo_data,
+                                          slices=None,
+                                          register=False,
+                                          user_shifts=loaded_shifts
+                )
+                aligned_filename = f'{filename_noEXT}_aligned.npy'
+                aligned_path = f'{images_path}/{aligned_filename}'
+                np.save(aligned_path, aligned_frames, allow_pickle=False)
+                fluo_data = aligned_frames
             else:
                 self.app.setOverrideCursor(Qt.ArrowCursor)
-                txt = (f'File format {ext} is not supported!\n'
-                        'Choose either .tif or .npy files.')
+                align_path = f'{images_path}/..._align_shift.npy'
+                txt = (f'File containing alignment shifts not found!'
+                       f'Looking for:\n\n"{align_path}"\n\n'
+                       'Overlay images cannot be aligned to the cells image.\n'
+                       'Run the segmentation script again to align the cells image.')
                 msg = QtGui.QMessageBox()
                 msg.critical(
-                    self, 'File not supported', txt, msg.Ok
+                    self, 'Shifts file not found!', txt, msg.Ok
                 )
-                return
+                return None
 
-            if align_ol:
-                print('Aligning fluorescent image data...')
-                images_path = self.data.images_path
-                loaded_shifts, shifts_found = load.load_shifts(images_path)
-                if shifts_found:
-                    is_3D = self.data.SizeZ > 1
-                    align_func = (core.align_frames_3D if is_3D
-                                  else core.align_frames_2D)
-                    aligned_frames, shifts = align_func(
-                                              self.data.ol_frames,
-                                              slices=None,
-                                              register=False,
-                                              user_shifts=loaded_shifts
-                    )
-                    aligned_filename = f'{filename_noEXT}_aligned.npy'
-                    aligned_path = f'{images_path}/{aligned_filename}'
-                    np.save(aligned_path, aligned_frames, allow_pickle=False)
-                    self.data.ol_frames = aligned_frames
+        return fluo_data
+
+    def overlay_cb(self):
+        if self.overlayButton.isChecked():
+            prompt = True
+
+            # Check if there is already loaded data
+            if self.data.fluo_data_dict:
+                items = self.data.fluo_data_dict.keys()
+                selectFluo = QDialogListbox(
+                    'Select fluorescent image(s) to overlay',
+                    'Select fluorescent image(s) to overlay\n'
+                    'You can select one or more images',
+                    items
+                )
+                selectFluo.show()
+                if selectFluo.cancel:
+                    prompt = True
                 else:
-                    self.app.setOverrideCursor(Qt.ArrowCursor)
-                    txt = ('\"..._align_shift.npy\" file not found!\n'
-                           'Overlay images cannot be aligned to the cells image.')
-                    msg = QtGui.QMessageBox()
-                    msg.critical(
-                        self, 'Shifts file not found!', txt, msg.Ok
-                    )
+                    prompt = False
+                    for key in selectFluo.selectedItemsText:
+                        ol_data = self.data.fluo_data_dict[key]
+
+            if prompt:
+                ol_path = prompts.file_dialog(
+                                      title='Select image file to overlay',
+                                      initialdir=self.data.images_path)
+                if not ol_path:
                     return
+
+                ol_data = self.load_fluo(ol_path)
+
+            self.data.ol_frames = ol_data
 
             self.colorButton.setColor((255,255,0))
 
@@ -3144,9 +3173,15 @@ class Yeast_ACDC_GUI(QMainWindow):
                 title='Select experiment folder containing Position_n folders'
                       'or specific Position_n folder')
 
-        is_pos_folder = False
-        if exp_path.find('Position_') != -1:
+        if os.path.basename(exp_path).find('Position_') != -1:
             is_pos_folder = True
+        else:
+            is_pos_folder = False
+
+        if os.path.basename(exp_path).find('Images') != -1:
+            is_images_folder = True
+        else:
+            is_images_folder = False
 
         self.titleLabel.setText('Loading data...')
 
@@ -3159,7 +3194,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             which_channel='segm', allow_abort=False
         )
 
-        if not is_pos_folder:
+        if not is_pos_folder and not is_images_folder:
             select_folder = load.select_exp_folder()
             values = select_folder.get_values_segmGUI(exp_path)
             if not values:
@@ -3175,19 +3210,21 @@ class Yeast_ACDC_GUI(QMainWindow):
                 )
                 return
 
-            pos_foldername = select_folder.run_widget(values, allow_abort=False)
+            select_folder.run_widget(values, allow_abort=False)
+            pos_foldername = select_folder.selected_pos[0]
 
             if select_folder.was_aborted:
                 self.titleLabel.setText(
                     'File --> Open or Open recent to start the process')
                 return
 
-        else:
+        elif is_pos_folder:
             pos_foldername = os.path.basename(exp_path)
             exp_path = os.path.dirname(exp_path)
+            images_path = f'{exp_path}/{pos_foldername}/Images'
 
-
-        images_path = f'{exp_path}/{pos_foldername}/Images'
+        elif is_images_folder:
+            images_path = exp_path
 
         self.images_path = images_path
 
@@ -3240,6 +3277,30 @@ class Yeast_ACDC_GUI(QMainWindow):
         print(f'Loading {img_path}...')
 
         self.init_frames_data(img_path, user_ch_name)
+
+        # Ask whether to load fluorescent images
+        msg = QtGui.QMessageBox()
+        load_fluo = msg.question(
+            self, 'Load fluorescent images?',
+            'Do you also want to load fluorescent images? You can load as '
+            'many channels as you want.\n\n'
+            'If you load fluorescent images then the software will calcualte '
+            'metrics for each loaded fluorescent channel such as min, max, mean, '
+            'quantiles, etc. for each segmented object.\n\n'
+            'NOTE: You can always load them later with '
+            'File --> Load fluorescent images',
+            msg.Yes | msg.No
+        )
+        if load_fluo == msg.Yes:
+            fluo_paths = prompts.multi_files_dialog(
+                title='Select one or multiple fluorescent images')
+
+            for fluo_path in fluo_paths:
+                filename = os.path.basename(fluo_path)
+                fluo_data = self.load_fluo_data(fluo_path)
+                self.data.fluo_data_dict[filename] = fluo_data
+
+            self.app.setOverrideCursor(Qt.ArrowCursor)
 
         # Connect events at the end of loading data process
         self.gui_connectGraphicsEvents()

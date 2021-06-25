@@ -24,6 +24,17 @@ def file_dialog(toplevel=False, **options):
     root.destroy()
     return path
 
+def multi_files_dialog(toplevel=False, **options):
+    #Prompt the user to select the image file
+    if toplevel:
+        root = tk.Toplevel()
+    else:
+        root = tk.Tk()
+        root.withdraw()
+    files = tk.filedialog.askopenfilenames(**options)
+    root.destroy()
+    return files
+
 def folder_dialog(toplevel=False, **options):
     #Prompt the user to select the image file
     if toplevel:

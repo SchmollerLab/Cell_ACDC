@@ -44,7 +44,7 @@ from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtWidgets import (
     QAction, QApplication, QMainWindow, QMenu, QLabel, QToolBar,
     QScrollBar, QWidget, QVBoxLayout, QLineEdit, QPushButton,
-    QHBoxLayout, QDialog, QFormLayout
+    QHBoxLayout, QDialog, QFormLayout, QListWidget, QAbstractItemView
 )
 
 import qrc_resources
@@ -530,6 +530,62 @@ class my_paint_app:
         self.sub_win.root.quit()
         self.sub_win.root.destroy()
 
+class QDialogListbox(QDialog):
+    def __init__(self, title, text, items):
+        self.cancel = True
+        super().__init__()
+        self.setWindowTitle(title)
+
+        mainLayout = QVBoxLayout()
+        topLayout = QVBoxLayout()
+        bottomLayout = QHBoxLayout()
+
+        label = QLabel(text)
+        _font = QtGui.QFont()
+        _font.setPointSize(10)
+        label.setFont(_font)
+        # padding: top, left, bottom, right
+        label.setStyleSheet("padding:0px 0px 3px 0px;")
+        topLayout.addWidget(label, alignment=Qt.AlignCenter)
+
+        listBox = QListWidget()
+        listBox.addItems(items)
+        listBox.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.listBox = listBox
+        topLayout.addWidget(listBox)
+
+        okButton = QPushButton('Ok')
+        okButton.setShortcut(Qt.Key_Enter)
+        bottomLayout.addWidget(okButton, alignment=Qt.AlignRight)
+
+        cancelButton = QPushButton('Browse')
+        # cancelButton.setShortcut(Qt.Key_Escape)
+        bottomLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
+        bottomLayout.setContentsMargins(0, 10, 0, 0)
+
+        mainLayout.addLayout(topLayout)
+        mainLayout.addLayout(bottomLayout)
+        self.setLayout(mainLayout)
+
+        # Connect events
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.cancel_cb)
+
+        self.setModal(True)
+
+    def ok_cb(self, event):
+        self.cancel = False
+        selectedItems = self.listBox.selectedItems()
+        self.selectedItemsText = [item.text() for item in selectedItems]
+        self.close()
+
+    def cancel_cb(self, event):
+        self.cancel = True
+        self.selectedItemsText = None
+        self.close()
+
+
+
 class CellsSlideshow_GUI(QMainWindow):
     """Main Window."""
 
@@ -823,6 +879,7 @@ class editID_QWidget(QDialog):
         _font = QtGui.QFont()
         _font.setPointSize(10)
         msg.setFont(_font)
+        # padding: top, left, bottom, right
         msg.setStyleSheet("padding:0px 0px 3px 0px;")
         VBoxLayout.addWidget(msg, alignment=Qt.AlignCenter)
 
@@ -1519,9 +1576,9 @@ class win_size:
 if __name__ == '__main__':
     # Create the application
     app = QApplication(sys.argv)
-    win = YeaZ_ParamsDialog()
+    win = QDialogListbox('test', 'Select bla bla', ['file1', 'file2', 'file3'])
     win.show()
     app.setStyle(QtGui.QStyleFactory.create('Fusion'))
     # win.loadData(np.random.randint(0,255, size=(200, 512,512)))
     app.exec_()
-    print(win.cancel)
+    print(win.selectedItemsText)

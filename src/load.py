@@ -19,6 +19,7 @@ class load_frames_data:
     def __init__(self, path, user_ch_name, load_segm_data=True,
                  load_segm_metadata=True):
         self.path = path
+        self.fluo_data_dict = {}
         self.images_path = os.path.dirname(path)
         filename_ext = os.path.basename(path)
         self.filename, self.ext = os.path.splitext(filename_ext)
@@ -584,6 +585,12 @@ class select_exp_folder:
         ok_b.grid(column=0, row=1, pady=10, sticky=tk.E)
         self.ok_b = ok_b
 
+        # All button
+        if len(values) > 1:
+            all_b = ttk.Button(root, text='All positions', comman=self._all_cb)
+            all_b.grid(column=1, row=1, pady=10)
+            self.all_b = all_b
+
         self.root = root
 
         # Combobox
@@ -600,25 +607,10 @@ class select_exp_folder:
         if showinexplorer_button:
             show_expl_button = ttk.Button(root, text='Show in explorer',
                                           comman=self.open_path_explorer)
-            show_expl_button.grid(column=1, row=1, pady=10)
+            show_expl_button.grid(column=2, row=1, pady=10)
 
         root.protocol("WM_DELETE_WINDOW", self.on_closing)
-        if len(values) > 1:
-            root.mainloop()
-        else:
-            self._close()
-        try:
-            val = pos_n_sv.get()
-            idx = list(self.values).index(val)
-            return self.pos_foldernames[idx]
-        except:
-            try:
-                sv_txt = self.pos_n_sv.get()
-                sv_idx = self.values.index(sv_txt)
-                path = self.full_paths[sv_idx]
-                return path
-            except:
-                return pos_n_sv.get()
+        root.mainloop()
 
     def _check_fiji_macro(self, name=None, index=None, mode=None):
         path_info = self.pos_n_sv.get()
@@ -634,6 +626,11 @@ class select_exp_folder:
             'This is most likely because you did not run the Fiji macro\n'
             'that creates the correct folder structure expected by the GUI loader.\n\n'
             'See the section "Preparing your data" on the GitHub repo for more info.' )
+
+    def _all_cb(self):
+        self.selected_pos = self.pos_foldernames
+        self.root.quit()
+        self.root.destroy()
 
     def open_path_explorer(self):
         if self.full_paths is None:
@@ -699,10 +696,14 @@ class select_exp_folder:
         return values
 
     def _close(self):
+        val = self.pos_n_sv.get()
+        idx = list(self.values).index(val)
+        self.selected_pos = [self.pos_foldernames[idx]]
         self.root.quit()
         self.root.destroy()
 
     def on_closing(self):
+        self.selected_pos = [None]
         self.was_aborted = True
         self.root.quit()
         self.root.destroy()
