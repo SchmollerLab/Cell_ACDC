@@ -1083,7 +1083,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             relationship = self.cca_df.at[ID, 'relationship']
             ccs = self.cca_df.at[ID, 'cell_cycle_stage']
 
-            if relationship == 'bud':
+            if relationship == 'bud' and self.frame_i > 0:
                 txt = (f'You clicked on ID {ID} which is a BUD.\n'
                        'To assign a bud to a cell start by clicking on a bud '
                        'and release on a cell in G1')
@@ -1093,7 +1093,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 )
                 return
 
-            elif ccs != 'G1':
+            elif ccs != 'G1' and self.frame_i > 0:
                 txt = (f'You clicked on a cell (ID={ID}) which is NOT in G1.\n'
                        'To assign a bud to a cell start by clicking on a bud '
                        'and release on a cell in G1')
@@ -1219,7 +1219,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                     ID = budID_prompt.EntryID
 
             relationship = self.cca_df.at[ID, 'relationship']
-            if relationship != 'bud':
+            if relationship != 'bud' and self.frame_i > 0:
                 txt = (f'You clicked on ID {ID} which is NOT a bud.\n'
                        'To assign a bud to a cell start by clicking on a bud '
                        'and release on a cell in G1')
@@ -1463,6 +1463,24 @@ class Yeast_ACDC_GUI(QMainWindow):
         """
         budID = self.lab[self.yClickBud, self.xClickBud]
         new_mothID = self.lab[self.yClickMoth, self.xClickMoth]
+
+        # Allow partial initialization of cca_df with mouse
+        if self.frame_i == 0:
+            self.cca_df.at[budID, 'relationship'] = 'bud'
+            self.cca_df.at[budID, 'generation_num'] = 0
+            self.cca_df.at[budID, 'relative_ID'] = new_mothID
+            self.cca_df.at[budID, 'cell_cycle_stage'] = 'S'
+            self.cca_df.at[new_mothID, 'relative_ID'] = budID
+            self.cca_df.at[new_mothID, 'generation_num'] = 2
+            self.cca_df.at[new_mothID, 'cell_cycle_stage'] = 'S'
+            bud_obj_idx = self.IDs.index(budID)
+            new_moth_obj_idx = self.IDs.index(new_mothID)
+            rp_budID = self.rp[bud_obj_idx]
+            rp_new_mothID = self.rp[new_moth_obj_idx]
+            self.drawID_and_Contour(rp_budID, drawContours=False)
+            self.drawID_and_Contour(rp_new_mothID, drawContours=False)
+            return
+
         curr_mothID = self.cca_df.at[budID, 'relative_ID']
 
         eligible = self.checkMothEligibility(budID, new_mothID)
@@ -2490,6 +2508,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 )
                 if proceed_with_lost == msg.No:
                     return
+            # Attempt cca on next frame
             # Store data for current frame
             self.store_data(debug=False)
             # Go to next frame
@@ -2658,10 +2677,12 @@ class Yeast_ACDC_GUI(QMainWindow):
             else:
                 self.frame_i = 0
                 self.get_data()
+                self.IDs = [obj.label for obj in self.rp]
                 self.updateALLimg()
         else:
             self.frame_i = 0
             self.get_data()
+            self.IDs = [obj.label for obj in self.rp]
             self.updateALLimg()
 
         # Link Y and X axis of both plots to scroll zoom and pan together
@@ -3031,7 +3052,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             is_bud = relationship == 'bud'
             is_moth = relationship == 'mother'
             emerged_now = emerg_frame_i == self.frame_i
-            txt = f'{ccs}-{generation_num}' if self.frame_i !=0 else f'{ID}'
+            txt = f'{ccs}-{generation_num}'
             if ccs == 'G1':
                 c = 0.6
                 alpha = 0.7
