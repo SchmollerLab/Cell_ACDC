@@ -44,7 +44,8 @@ from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtWidgets import (
     QAction, QApplication, QMainWindow, QMenu, QLabel, QToolBar,
     QScrollBar, QWidget, QVBoxLayout, QLineEdit, QPushButton,
-    QHBoxLayout, QDialog, QFormLayout, QListWidget, QAbstractItemView
+    QHBoxLayout, QDialog, QFormLayout, QListWidget, QAbstractItemView,
+    QButtonGroup, QCheckBox
 )
 
 import qrc_resources
@@ -585,6 +586,162 @@ class QDialogListbox(QDialog):
         self.close()
 
 
+class FutureFramesAction_QDialog(QDialog):
+    def __init__(self, frame_i, last_tracked_i, change_txt):
+        self.cancel = True
+        self.last_tracked_i = last_tracked_i
+        super().__init__()
+        self.setWindowTitle('Future frames action?')
+
+        mainLayout = QVBoxLayout()
+        txtLayout = QVBoxLayout()
+        doNotShowLayout = QVBoxLayout()
+        buttonsLayout = QVBoxLayout()
+
+        txt = (
+            'You already visited/checked future frames '
+            f'{frame_i+1}-{last_tracked_i}.\n\n'
+            f'The requested "{change_txt}" change might result in\n'
+            'NON-correct segmentation/tracking for those frames.\n'
+        )
+
+        txtLabel = QLabel(txt)
+        _font = QtGui.QFont()
+        _font.setPointSize(10)
+        _font.setBold(True)
+        txtLabel.setFont(_font)
+        txtLabel.setAlignment(Qt.AlignCenter)
+        # padding: top, left, bottom, right
+        txtLabel.setStyleSheet("padding:0px 0px 3px 0px;")
+        txtLayout.addWidget(txtLabel, alignment=Qt.AlignCenter)
+
+        infoTxt = (
+           f'  Choose one of the following options:\n\n'
+           f'      1.  Apply the "{change_txt}" only to this frame and re-initialize\n'
+            '          the future frames to the segmentation file present\n'
+            '          on the hard drive.\n'
+            '      2.  Apply only to this frame and keep the future frames as they are.\n'
+            '      3.  Apply the change to ALL visited/checked future frames.\n'
+            '      4.  Apply the change to a specific range of future frames.\n'
+
+        )
+
+
+        infotxtLabel = QLabel(infoTxt)
+        _font = QtGui.QFont()
+        _font.setPointSize(10)
+        infotxtLabel.setFont(_font)
+        # padding: top, left, bottom, right
+        infotxtLabel.setStyleSheet("padding:0px 0px 3px 0px;")
+        txtLayout.addWidget(infotxtLabel, alignment=Qt.AlignCenter)
+
+        noteTxt = (
+            'NOTE: Only changes applied to current frame can be undone.\n'
+            '      Changes applied to future frames CANNOT be UNDONE!\n'
+        )
+
+        noteTxtLabel = QLabel(noteTxt)
+        _font = QtGui.QFont()
+        _font.setPointSize(10)
+        _font.setBold(True)
+        noteTxtLabel.setFont(_font)
+        # padding: top, left, bottom, right
+        noteTxtLabel.setStyleSheet("padding:0px 0px 3px 0px;")
+        txtLayout.addWidget(noteTxtLabel, alignment=Qt.AlignCenter)
+
+        # Do not show this message again checkbox
+        doNotShowCheckbox = QCheckBox(
+            'Remember my choice and do not show this message again')
+        doNotShowLayout.addWidget(doNotShowCheckbox)
+        doNotShowLayout.setContentsMargins(50, 0, 0, 10)
+        self.doNotShowCheckbox = doNotShowCheckbox
+
+        apply_and_reinit_b = QPushButton(
+                    'Apply only to this frame and re-initialize future frames')
+        apply_and_reinit_b.setFixedWidth(320)
+        self.apply_and_reinit_b = apply_and_reinit_b
+        buttonsLayout.addWidget(apply_and_reinit_b, alignment=Qt.AlignCenter)
+
+        apply_and_NOTreinit_b = QPushButton(
+                    'Apply only to this frame and keep future frames as they are')
+        apply_and_NOTreinit_b.setFixedWidth(320)
+        self.apply_and_NOTreinit_b = apply_and_NOTreinit_b
+        buttonsLayout.addWidget(apply_and_NOTreinit_b, alignment=Qt.AlignCenter)
+
+        apply_to_all_b = QPushButton(
+                    'Apply to all future frames')
+        apply_to_all_b.setFixedWidth(320)
+        self.apply_to_all_b = apply_to_all_b
+        buttonsLayout.addWidget(apply_to_all_b, alignment=Qt.AlignCenter)
+
+        apply_to_range_b = QPushButton(
+                    'Apply only to a range of future frames')
+        apply_to_range_b.setFixedWidth(320)
+        self.apply_to_range_b = apply_to_range_b
+        buttonsLayout.addWidget(apply_to_range_b, alignment=Qt.AlignCenter)
+
+        # buttonsLayout.setContentsMargins(50, 0, 0, 0)
+
+        self.formLayout = QFormLayout()
+        self.OkRangeLayout = QVBoxLayout()
+        self.OkRangeButton = QPushButton('Ok')
+        self.OkRangeLayout.addWidget(self.OkRangeButton)
+
+        ButtonsGroup = QButtonGroup(self)
+        ButtonsGroup.addButton(apply_and_reinit_b)
+        ButtonsGroup.addButton(apply_and_NOTreinit_b)
+        ButtonsGroup.addButton(apply_to_all_b)
+        ButtonsGroup.addButton(apply_to_range_b)
+        ButtonsGroup.addButton(self.OkRangeButton)
+
+        mainLayout.addLayout(txtLayout)
+        mainLayout.addLayout(doNotShowLayout)
+        mainLayout.addLayout(buttonsLayout)
+        mainLayout.addLayout(self.formLayout)
+        self.mainLayout = mainLayout
+        self.setLayout(mainLayout)
+
+        # Connect events
+        ButtonsGroup.buttonClicked.connect(self.buttonClicked)
+
+        self.setModal(True)
+
+    def buttonClicked(self, button):
+        if button == self.apply_and_reinit_b:
+            self.decision = 'apply_and_reinit'
+            self.endFrame_i = None
+            self.close()
+        elif button == self.apply_and_NOTreinit_b:
+            self.decision = 'apply_and_NOTreinit'
+            self.endFrame_i = None
+            self.close()
+        elif button == self.apply_to_all_b:
+            self.decision = 'apply_to_all'
+            self.endFrame_i = self.last_tracked_i
+            self.close()
+        elif button == self.apply_to_range_b:
+            endFrame_LineEntry = QLineEdit()
+            self.formLayout.addRow('Apply until frame: ',
+                                   endFrame_LineEntry)
+            endFrame_LineEntry.setText(f'{self.last_tracked_i}')
+            endFrame_LineEntry.setAlignment(Qt.AlignCenter)
+            #endFrame_LineEntry.setFixedWidth(100)
+            self.formLayout.setContentsMargins(100, 10, 100, 0)
+
+            self.mainLayout.addLayout(self.OkRangeLayout)
+            self.OkRangeLayout.setContentsMargins(150, 0, 150, 0)
+
+            self.endRangeFrame_i = int(endFrame_LineEntry.text())
+        elif button == self.OkRangeButton:
+            self.decision = 'apply_to_range'
+            self.endFrame_i = self.endRangeFrame_i
+            self.close()
+
+
+
+
+
+
 
 class CellsSlideshow_GUI(QMainWindow):
     """Main Window."""
@@ -856,6 +1013,84 @@ class YeaZ_ParamsDialog(QDialog):
                 self, 'Invalid minimum distance', err_msg, msg.Ok
             )
             return
+        self.close()
+
+    def cancel_cb(self, event):
+        self.cancel = True
+        self.close()
+
+class QLineEditDialog(QDialog):
+    def __init__(self, title='Entry messagebox', msg='Entry value'):
+        self.cancel = True
+
+        super().__init__()
+        self.setWindowTitle(title)
+
+        # Layouts
+        mainLayout = QVBoxLayout()
+        LineEditLayout = QVBoxLayout()
+        buttonsLayout = QHBoxLayout()
+
+        # Widgets
+        msg = QLabel(msg)
+        _font = QtGui.QFont()
+        _font.setPointSize(10)
+        msg.setFont(_font)
+        msg.setAlignment(Qt.AlignCenter)
+        # padding: top, left, bottom, right
+        msg.setStyleSheet("padding:0px 0px 3px 0px;")
+
+        ID_QLineEdit = QLineEdit()
+        ID_QLineEdit.setFont(_font)
+        ID_QLineEdit.setAlignment(Qt.AlignCenter)
+        self.ID_QLineEdit = ID_QLineEdit
+
+        okButton = QPushButton('Ok')
+        okButton.setShortcut(Qt.Key_Enter)
+
+        cancelButton = QPushButton('Cancel')
+
+        # Events
+        ID_QLineEdit.textChanged[str].connect(self.ID_LineEdit_cb)
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.cancel_cb)
+
+        # Contents margins
+        buttonsLayout.setContentsMargins(0,10,0,0)
+
+        # Add widgets to layouts
+        LineEditLayout.addWidget(msg, alignment=Qt.AlignCenter)
+        LineEditLayout.addWidget(ID_QLineEdit, alignment=Qt.AlignCenter)
+        buttonsLayout.addWidget(okButton)
+        buttonsLayout.addWidget(cancelButton)
+
+        # Add layouts
+        mainLayout.addLayout(LineEditLayout)
+        mainLayout.addLayout(buttonsLayout)
+
+        self.setLayout(mainLayout)
+
+        self.setModal(True)
+
+    def ID_LineEdit_cb(self, text):
+        # Get inserted char
+        idx = self.ID_QLineEdit.cursorPosition()
+        if idx == 0:
+            return
+
+        newChar = text[idx-1]
+
+        # Allow only integers
+        try:
+            int(newChar)
+        except:
+            text = text.replace(newChar, '')
+            self.ID_QLineEdit.setText(text)
+            return
+
+    def ok_cb(self, event):
+        self.cancel = False
+        self.EntryID = int(self.ID_QLineEdit.text())
         self.close()
 
     def cancel_cb(self, event):
@@ -1576,9 +1811,17 @@ class win_size:
 if __name__ == '__main__':
     # Create the application
     app = QApplication(sys.argv)
-    win = QDialogListbox('test', 'Select bla bla', ['file1', 'file2', 'file3'])
+    # win = FutureFramesAction_QDialog(15, 20, 'Edit ID')
+    win = QLineEditDialog(
+        title='Enter ID to delete',
+        msg='You clicked on the background.\n'
+             'Enter here ID that you want to delete'
+    )
     win.show()
     app.setStyle(QtGui.QStyleFactory.create('Fusion'))
-    # win.loadData(np.random.randint(0,255, size=(200, 512,512)))
     app.exec_()
-    print(win.selectedItemsText)
+    if win.cancel:
+        exit()
+    else:
+        delID = win.EntryID
+        print(delID)

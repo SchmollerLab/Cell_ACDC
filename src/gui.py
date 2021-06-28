@@ -417,9 +417,6 @@ class Yeast_ACDC_GUI(QMainWindow):
         eraserON = self.eraserButton.isChecked()
         brushON = self.brushButton.isChecked()
 
-        print(mode)
-        print(mid_click)
-
         # Drag image if neither brush or eraser are On or Alt is pressed
         dragImg = (
             (left_click and not eraserON and not brushON) or
@@ -442,7 +439,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             Y, X = self.lab.shape
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                 # Store undo state before modifying stuff
-                self.storeUndoRedoStates()
+                self.storeUndoRedoStates(False)
                 self.yPressAx2, self.xPressAx2 = y, x
                 self.isMouseDragImg2 = True
                 # Keep a global mask to compute which IDs got erased
@@ -464,7 +461,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             Y, X = self.lab.shape
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                 # Store undo state before modifying stuff
-                self.storeUndoRedoStates()
+                self.storeUndoRedoStates(False)
                 self.yPressAx2, self.xPressAx2 = y, x
 
                 self.isMouseDragImg2 = True
@@ -480,11 +477,63 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         # Delete entire ID (set to 0)
         elif mid_click and mode == 'Segmentation and Tracking':
-            # Store undo state before modifying stuff
-            self.storeUndoRedoStates()
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(round(x)), int(round(y))
             delID = self.lab[ydata, xdata]
+            if delID == 0:
+                delID_prompt = apps.QLineEditDialog(
+                    title='Clicked on background',
+                    msg='You clicked on the background.\n'
+                         'Enter here ID that you want to delete'
+                )
+                delID_prompt.show()
+                if delID_prompt.cancel:
+                    return
+                else:
+                    delID = delID_prompt.EntryID
+
+            # Ask to propagate change to all future visited frames
+            (UndoFutFrames, applyFutFrames, endFrame_i,
+            doNotShowAgain) = self.propagateChange(
+                                    delID, 'Delete cell ID',
+                                    self.doNotShowAgain_DelID,
+                                    self.UndoFutFrames_DelID,
+                                    self.applyFutFrames_DelID)
+
+            self.doNotShowAgain_DelID = doNotShowAgain
+            self.UndoFutFrames_DelID = UndoFutFrames
+            self.applyFutFrames_DelID = applyFutFrames
+
+            self.current_frame_i = self.frame_i
+
+            # Apply Edit ID to future frames if requested
+            if applyFutFrames:
+                # Store current data before going to future frames
+                self.store_data()
+                for i in range(self.frame_i+1, endFrame_i):
+                    lab = self.allData_li[i]['labels']
+                    if lab is None:
+                        break
+
+                    lab[lab==delID] = 0
+
+                    # Store change
+                    self.allData_li[i]['labels'] = lab.copy()
+                    # Get the rest of the stored metadata based on the new lab
+                    self.frame_i = i
+                    self.get_data()
+                    self.update_rp_metadata(draw=False)
+                    self.store_data()
+
+            # Back to current frame
+            if applyFutFrames:
+                self.frame_i = self.current_frame_i
+                self.get_data()
+                self.update_rp_metadata(draw=False)
+
+
+            # Store undo state before modifying stuff
+            self.storeUndoRedoStates(UndoFutFrames)
             self.lab[self.lab==delID] = 0
 
             # Update data (rp, etc)
@@ -506,10 +555,21 @@ class Yeast_ACDC_GUI(QMainWindow):
             xdata, ydata = int(round(x)), int(round(y))
             ID = self.lab[ydata, xdata]
             if ID == 0:
-                # self.separateBudButton.setChecked(False)
-                return
+                sepID_prompt = apps.QLineEditDialog(
+                    title='Clicked on background',
+                    msg='You clicked on the background.\n'
+                         'Enter here ID that you want to split'
+                )
+                sepID_prompt.show()
+                if sepID_prompt.cancel:
+                    return
+                else:
+                    ID = sepID_prompt.EntryID
+
+
+
             # Store undo state before modifying stuff
-            self.storeUndoRedoStates()
+            self.storeUndoRedoStates(False)
             max_ID = self.lab.max()
 
             if right_click:
@@ -560,10 +620,19 @@ class Yeast_ACDC_GUI(QMainWindow):
             xdata, ydata = int(round(x)), int(round(y))
             ID = self.lab[ydata, xdata]
             if ID == 0:
-                # self.mergeIDsButton.setChecked(False)
-                return
+                mergeID_prompt = apps.QLineEditDialog(
+                    title='Clicked on background',
+                    msg='You clicked on the background.\n'
+                         'Enter here first ID that you want to merge'
+                )
+                mergeID_prompt.show()
+                if mergeID_prompt.cancel:
+                    return
+                else:
+                    ID = mergeID_prompt.EntryID
+
             # Store undo state before modifying stuff
-            self.storeUndoRedoStates()
+            self.storeUndoRedoStates(False)
             self.firstID = ID
 
         # Edit ID
@@ -572,8 +641,16 @@ class Yeast_ACDC_GUI(QMainWindow):
             xdata, ydata = int(round(x)), int(round(y))
             ID = self.lab[ydata, xdata]
             if ID == 0:
-                # self.editID_Button.setChecked(False)
-                return
+                editID_prompt = apps.QLineEditDialog(
+                    title='Clicked on background',
+                    msg='You clicked on the background.\n'
+                         'Enter here ID that you want to replace with a new one'
+                )
+                editID_prompt.show()
+                if editID_prompt.cancel:
+                    return
+                else:
+                    ID = editID_prompt.EntryID
 
             self.disableAutoActivateViewerWindow = True
             prev_IDs = [obj.label for obj in self.rp]
@@ -584,8 +661,55 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.editID_Button.setChecked(False)
                 return
 
+            # Ask to propagate change to all future visited frames
+            (UndoFutFrames, applyFutFrames, endFrame_i,
+            doNotShowAgain) = self.propagateChange(
+                                    ID, 'Edit ID',
+                                    self.doNotShowAgain_EditID,
+                                    self.UndoFutFrames_EditID,
+                                    self.applyFutFrames_EditID)
+
+            self.doNotShowAgain_EditID = doNotShowAgain
+            self.UndoFutFrames_EditID = UndoFutFrames
+            self.applyFutFrames_EditID = applyFutFrames
+
+            self.current_frame_i = self.frame_i
+
+            # Apply Edit ID to future frames if requested
+            if applyFutFrames:
+                # Store current data before going to future frames
+                self.store_data()
+                for i in range(self.frame_i+1, endFrame_i):
+                    lab = self.allData_li[i]['labels']
+                    if lab is None:
+                        break
+
+                    for old_ID, new_ID in editID.how:
+                        if new_ID in prev_IDs:
+                            tempID = self.lab.max() + 1
+                            lab[lab == old_ID] = tempID
+                            lab[lab == new_ID] = old_ID
+                            lab[lab == tempID] = new_ID
+                    else:
+                        lab[lab == old_ID] = new_ID
+
+                    # Store change
+                    self.allData_li[i]['labels'] = lab.copy()
+                    # Get the rest of the stored metadata based on the new lab
+                    self.frame_i = i
+                    self.get_data()
+                    self.update_rp_metadata(draw=False)
+                    self.store_data()
+
+            # Back to current frame
+            if applyFutFrames:
+                self.frame_i = self.current_frame_i
+                self.get_data()
+                self.update_rp_metadata(draw=False)
+
             # Store undo state before modifying stuff
-            self.storeUndoRedoStates()
+            self.storeUndoRedoStates(UndoFutFrames)
+
             for old_ID, new_ID in editID.how:
                 if new_ID in prev_IDs:
                     tempID = self.lab.max() + 1
@@ -663,11 +787,53 @@ class Yeast_ACDC_GUI(QMainWindow):
             xdata, ydata = int(round(x)), int(round(y))
             ID = self.lab[ydata, xdata]
             if ID == 0:
-                # self.binCellButton.setChecked(False)
-                return
+                binID_prompt = apps.QLineEditDialog(
+                    title='Clicked on background',
+                    msg='You clicked on the background.\n'
+                         'Enter ID that you want to remove from the analysis'
+                )
+                binID_prompt.show()
+                if binID_prompt.cancel:
+                    return
+                else:
+                    ID = binID_prompt.EntryID
+
+            # Ask to propagate change to all future visited frames
+            (UndoFutFrames, applyFutFrames, endFrame_i,
+            doNotShowAgain) = self.propagateChange(
+                                    ID, 'Exclude cell from analysis',
+                                    self.doNotShowAgain_BinID,
+                                    self.UndoFutFrames_BinID,
+                                    self.applyFutFrames_BinID)
+
+            self.doNotShowAgain_BinID = doNotShowAgain
+            self.UndoFutFrames_BinID = UndoFutFrames
+            self.applyFutFrames_BinID = applyFutFrames
+
+            self.current_frame_i = self.frame_i
+
+            # Apply Edit ID to future frames if requested
+            if applyFutFrames:
+                # Store current data before going to future frames
+                self.store_data()
+                for i in range(self.frame_i+1, endFrame_i):
+                    self.frame_i = i
+                    self.get_data()
+                    if ID in self.binnedIDs:
+                        self.binnedIDs.remove(ID)
+                    else:
+                        self.binnedIDs.add(ID)
+                    self.update_rp_metadata(draw=False)
+                    self.store_data()
+
+            # Back to current frame
+            if applyFutFrames:
+                self.frame_i = self.current_frame_i
+                self.get_data()
+                self.update_rp_metadata(draw=False)
 
             # Store undo state before modifying stuff
-            self.storeUndoRedoStates()
+            self.storeUndoRedoStates(UndoFutFrames)
 
             if ID in self.binnedIDs:
                 self.binnedIDs.remove(ID)
@@ -687,11 +853,53 @@ class Yeast_ACDC_GUI(QMainWindow):
             xdata, ydata = int(round(x)), int(round(y))
             ID = self.lab[ydata, xdata]
             if ID == 0:
-                # self.ripCellButton.setChecked(False)
-                return
+                ripID_prompt = apps.QLineEditDialog(
+                    title='Clicked on background',
+                    msg='You clicked on the background.\n'
+                         'Enter ID that you want to annotate as dead'
+                )
+                ripID_prompt.show()
+                if ripID_prompt.cancel:
+                    return
+                else:
+                    ID = ripID_prompt.EntryID
+
+            # Ask to propagate change to all future visited frames
+            (UndoFutFrames, applyFutFrames, endFrame_i,
+            doNotShowAgain) = self.propagateChange(
+                                    ID, 'Annotate cell as dead',
+                                    self.doNotShowAgain_RipID,
+                                    self.UndoFutFrames_RipID,
+                                    self.applyFutFrames_RipID)
+
+            self.doNotShowAgain_RipID = doNotShowAgain
+            self.UndoFutFrames_RipID = UndoFutFrames
+            self.applyFutFrames_RipID = applyFutFrames
+
+            self.current_frame_i = self.frame_i
+
+            # Apply Edit ID to future frames if requested
+            if applyFutFrames:
+                # Store current data before going to future frames
+                self.store_data()
+                for i in range(self.frame_i+1, endFrame_i):
+                    self.frame_i = i
+                    self.get_data()
+                    if ID in self.ripIDs:
+                        self.ripIDs.remove(ID)
+                    else:
+                        self.ripIDs.add(ID)
+                    self.update_rp_metadata(draw=False)
+                    self.store_data()
+
+            # Back to current frame
+            if applyFutFrames:
+                self.frame_i = self.current_frame_i
+                self.get_data()
+                self.update_rp_metadata(draw=False)
 
             # Store undo state before modifying stuff
-            self.storeUndoRedoStates()
+            self.storeUndoRedoStates(UndoFutFrames)
 
             if ID in self.ripIDs:
                 self.ripIDs.remove(ID)
@@ -784,6 +992,8 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.isMouseDragImg2 = False
             erasedIDs = np.unique(self.erasedIDs)
 
+            self.img2.setImage(self.lab)
+
             # Update data (rp, etc)
             prev_IDs = [obj.label for obj in self.rp]
             self.update_rp()
@@ -795,6 +1005,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Brush mouse release --> update IDs and contours
         elif self.isMouseDragImg2 and self.brushButton.isChecked():
             self.isMouseDragImg2 = False
+
+            self.img2.setImage(self.lab)
 
             # Update data (rp, etc)
             prev_IDs = [obj.label for obj in self.rp]
@@ -810,8 +1022,18 @@ class Yeast_ACDC_GUI(QMainWindow):
             xdata, ydata = int(round(x)), int(round(y))
             ID = self.lab[ydata, xdata]
             if ID == 0:
-                # self.mergeIDsButton.setChecked(False)
-                return
+                mergeID_prompt = apps.QLineEditDialog(
+                    title='Clicked on background',
+                    msg='You clicked on the background.\n'
+                         'Enter ID that you want to merge with ID '
+                         f'{self.firstID}'
+                )
+                mergeID_prompt.show()
+                if mergeID_prompt.cancel:
+                    return
+                else:
+                    ID = mergeID_prompt.EntryID
+
             self.lab[self.lab==ID] = self.firstID
 
             # Mask to keep track of which ID needs redrawing of the contours
@@ -847,7 +1069,16 @@ class Yeast_ACDC_GUI(QMainWindow):
             xdata, ydata = int(round(x)), int(round(y))
             ID = self.lab[ydata, xdata]
             if ID == 0:
-                return
+                mothID_prompt = apps.QLineEditDialog(
+                    title='Clicked on background',
+                    msg='You clicked on the background.\n'
+                         'Enter ID that you want to annotate as mother cell'
+                )
+                mothID_prompt.show()
+                if mothID_prompt.cancel:
+                    return
+                else:
+                    ID = mothID_prompt.EntryID
 
             relationship = self.cca_df.at[ID, 'relationship']
             ccs = self.cca_df.at[ID, 'cell_cycle_stage']
@@ -883,6 +1114,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         is_cca_on = mode == 'Cell cycle analysis'
         right_click = event.button() == Qt.MouseButton.RightButton
         left_click = event.button() == Qt.MouseButton.LeftButton
+        mid_click = event.button() == Qt.MouseButton.MidButton
 
         dragImg = (
             (left_click and not self.brushButton.isChecked()) or
@@ -899,7 +1131,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Paint new IDs with brush and left click on the left image
         if left_click and self.brushButton.isChecked() and not dragImg:
             # Store undo state before modifying stuff
-            self.storeUndoRedoStates()
+            self.storeUndoRedoStates(False)
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(round(x)), int(round(y))
             lab = self.lab
@@ -921,7 +1153,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.update_rp()
 
                 # Repeat tracking
-                self.tracking()
+                self.tracking(enforce=True)
                 newIDs = [self.lab[ymin:ymax, xmin:xmax][mask][0]]
 
                 # Update colors to include a new color for the new ID
@@ -938,8 +1170,9 @@ class Yeast_ACDC_GUI(QMainWindow):
                 else:
                     self.brushID += 1
 
+
+        # Allow right-click actions on both images
         elif right_click and mode == 'Segmentation and Tracking':
-            # Allow right-click actions on both images
             self.gui_mousePressEventImg2(event)
 
         elif right_click and is_cca_on and not self.assignMothBudButton.isChecked():
@@ -950,11 +1183,21 @@ class Yeast_ACDC_GUI(QMainWindow):
             xdata, ydata = int(round(x)), int(round(y))
             ID = self.lab[ydata, xdata]
             if ID == 0:
-                return
+                divID_prompt = apps.QLineEditDialog(
+                    title='Clicked on background',
+                    msg='You clicked on the background.\n'
+                         'Enter ID that you want to annotate as divided'
+                )
+                divID_prompt.show()
+                if divID_prompt.cancel:
+                    return
+                else:
+                    ID = divID_prompt.EntryID
 
             # Annotate or undo division
             self.manualCellCycleAnnotation(ID)
 
+        # Assign bud to mother (mouse down on bud)
         elif right_click and self.assignMothBudButton.isChecked():
             self.clickedOnBud = False
             if self.cca_df is None:
@@ -964,7 +1207,16 @@ class Yeast_ACDC_GUI(QMainWindow):
             xdata, ydata = int(round(x)), int(round(y))
             ID = self.lab[ydata, xdata]
             if ID == 0:
-                return
+                budID_prompt = apps.QLineEditDialog(
+                    title='Clicked on background',
+                    msg='You clicked on the background.\n'
+                         'Enter ID of a bud you want to correct mother assignment'
+                )
+                budID_prompt.show()
+                if budID_prompt.cancel:
+                    return
+                else:
+                    ID = budID_prompt.EntryID
 
             relationship = self.cca_df.at[ID, 'relationship']
             if relationship != 'bud':
@@ -979,6 +1231,10 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.clickedOnBud = True
             self.xClickBud, self.yClickBud = xdata, ydata
             self.draw_MothBudTempLine = True
+
+        # Allow mid-click actions on both images
+        elif mid_click and mode == 'Segmentation and Tracking':
+            self.gui_mousePressEventImg2(event)
 
     def annotateDivision(self, cca_df, ID, relID, ccs, ccs_relID):
         # Correct as follows:
@@ -1692,7 +1948,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.slideshowButton.toggled.connect(self.launchSlideshow)
         self.repeatSegmActionYeaZ.triggered.connect(self.repeatSegmYeaZ)
         self.repeatSegmActionCellpose.triggered.connect(self.repeatSegmCellpose)
-        self.disableTrackingCheckBox.toggled.connect(self.disableTracking)
+        self.disableTrackingCheckBox.clicked.connect(self.disableTracking)
         self.repeatTrackingAction.triggered.connect(self.repeatTracking)
         self.brushButton.toggled.connect(self.Brush_cb)
         self.eraserButton.toggled.connect(self.Eraser_cb)
@@ -1753,7 +2009,7 @@ class Yeast_ACDC_GUI(QMainWindow):
     def reload_cb(self):
         self.app.setOverrideCursor(Qt.WaitCursor)
         # Store undo state before modifying stuff
-        self.storeUndoRedoStates()
+        self.storeUndoRedoStates(False)
         self.lab = np.load(self.data.segm_npy_path)[self.frame_i]
         self.update_rp()
         self.updateALLimg()
@@ -1904,7 +2160,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
     def equalizeHist(self):
         # Store undo state before modifying stuff
-        self.storeUndoRedoStates()
+        self.storeUndoRedoStates(False)
         img = skimage.exposure.equalize_adapthist(self.img1.image)
         self.img1.setImage(img)
 
@@ -1942,8 +2198,9 @@ class Yeast_ACDC_GUI(QMainWindow):
                 print('Cell cycle analysis table:')
                 print(self.cca_df)
                 print('------------------------')
-        # elif ev.key() == Qt.Key_Left:
-        #     self.prev_cb()
+        elif ev.key() == Qt.Key_Plus:
+            print('Programmatically disabled')
+            self.disableTrackingCheckBox.setChecked(True)
         # elif ev.text() == 'b':
         #     self.BrushEraser_cb(ev)
 
@@ -1960,6 +2217,60 @@ class Yeast_ACDC_GUI(QMainWindow):
             pass
         for button in self.checkableButtons:
             button.setChecked(False)
+
+    def propagateChange(self, modID, modTxt, doNotShow, UndoFutFrames,
+                        applyFutFrames):
+        """
+        This function determines whether there are already visited future frames
+        that contains "modID". If so, it triggers a pop-up asking the user
+        what to do (propagate change to future frames o not)
+        """
+
+        areFutureIDs_affected = []
+        # Get number of future frames already visited and checked if future
+        # frames has an ID affected by the change
+        for i in range(self.frame_i+1, self.num_segm_frames):
+            if self.allData_li[i]['labels'] is None:
+                break
+            else:
+                futureIDs = np.unique(self.allData_li[i]['labels'])
+                if modID in futureIDs:
+                    areFutureIDs_affected.append(True)
+
+        if i == self.frame_i+1:
+            # No future frames to propagate the change to
+            return False, False, None, doNotShow
+
+        if not areFutureIDs_affected:
+            # There are future frames but they are not affected by the change
+            return UndoFutFrames, applyFutFrames, None, doNotShow
+
+        # Ask what to do unless the user has previously checked doNotShowAgain
+        if doNotShow:
+            endFrame_i = i
+        else:
+            ffa = apps.FutureFramesAction_QDialog(self.frame_i+2, i+1, modTxt)
+            ffa.exec_()
+            decision = ffa.decision
+            endFrame_i = ffa.endFrame_i
+            doNotShowAgain = ffa.doNotShowCheckbox.isChecked()
+
+            if decision == 'apply_and_reinit':
+                UndoFutFrames = True
+                applyFutFrames = False
+            elif decision == 'apply_and_NOTreinit':
+                UndoFutFrames = False
+                applyFutFrames = False
+            elif decision == 'apply_to_all':
+                UndoFutFrames = False
+                applyFutFrames = True
+            elif decision == 'apply_to_range':
+                UndoFutFrames = False
+                applyFutFrames = True
+
+        return UndoFutFrames, applyFutFrames, endFrame_i, doNotShowAgain
+
+
 
     def addCurrentState(self):
         self.UndoRedoStates[self.frame_i].insert(
@@ -1979,10 +2290,12 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.binnedIDs = self.UndoRedoStates[i][c]['binnedIDs'].copy()
         self.ripIDs = self.UndoRedoStates[i][c]['ripIDs'].copy()
 
-    def storeUndoRedoStates(self):
-        # Since we modified current frame all future frames that were already
-        # visited are not valid anymore. Undo changes there
-        self.undo_changes_future_frames()
+    def storeUndoRedoStates(self, UndoFutFrames):
+
+        if UndoFutFrames:
+            # Since we modified current frame all future frames that were already
+            # visited are not valid anymore. Undo changes there
+            self.undo_changes_future_frames()
 
         # Restart count from the most recent state (index 0)
         # NOTE: index 0 is most recent state before doing last change
@@ -2034,6 +2347,39 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.redoAction.setEnabled(False)
 
     def disableTracking(self):
+        # Event called ONLY if the user click on Disable tracking
+        # NOT called if setChecked is called. This allows to keep track
+        # of the user choice. This way user con enforce tracking
+        # NOTE: I know two booleans doing the same thing is overkill
+        # but the code is more readable when we actually need them
+        if self.disableTrackingCheckBox.isChecked():
+            self.UserEnforced_DisabledTracking = True
+            self.UserEnforced_Tracking = False
+        else:
+            warn_txt = (
+
+            'You requested to explicitly ENABLE tracking. This will '
+            'overwrite the default behaviour of not tracking already '
+            'visited/checked frames.\n '
+            'On all future frames that you will visit tracking '
+            'will be automatically performed unless you explicitly '
+            'disable tracking by clicking "Disable tracking" again.\n\n'
+            'If you need to repeat tracking ONLY on the current frame you '
+            'can use the "Repeat tracking" button on the toolbar instead.\n\n'
+            'Are you sure you want to proceed with ENABLING tracking from now on?'
+
+            )
+            msg = QtGui.QMessageBox()
+            enforce_Tracking = msg.warning(
+               self, 'Disable tracking?', warn_txt, msg.Yes | msg.No
+            )
+            if enforce_Tracking == msg.No:
+                self.disableTrackingCheckBox.setChecked(True)
+                return
+
+            self.repeatTracking()
+            self.UserEnforced_DisabledTracking = False
+            self.UserEnforced_Tracking = True
         pass
 
     def repeatTracking(self):
@@ -2045,7 +2391,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             ]
             msg = QtGui.QMessageBox()
             msg.setIcon(msg.Information)
-            msg.setText("You required to repeat tracking but there are "
+            msg.setText("You requested to repeat tracking but there are "
                         "the following manually editied IDs:\n\n"
                         f"{editIDinfo}\n\n"
                         "Do you want to keep these edits or ignore them?")
@@ -2152,7 +2498,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             if not proceed_cca:
                 self.frame_i -= 1
                 return
-            self.tracking()
+            self.tracking(storeUndo=True)
             self.auto_cca_df()
             self.updateALLimg(never_visited=never_visited)
         else:
@@ -2231,11 +2577,30 @@ class Yeast_ACDC_GUI(QMainWindow):
                 BudMothLine.setData([], [])
 
     def init_attr(self, max_ID=10):
+        # Decision on what to do with changes to future frames attr
+        self.doNotShowAgain_EditID = False
+        self.UndoFutFrames_EditID = False
+        self.applyFutFrames_EditID = False
+
+        self.doNotShowAgain_RipID = False
+        self.UndoFutFrames_RipID = False
+        self.applyFutFrames_RipID = False
+
+        self.doNotShowAgain_DelID = False
+        self.UndoFutFrames_DelID = False
+        self.applyFutFrames_DelID = False
+
+        self.doNotShowAgain_BinID = False
+        self.UndoFutFrames_BinID = False
+        self.applyFutFrames_BinID = False
+
+
         self.draw_MothBudTempLine = False
         self.disableAutoActivateViewerWindow = False
         self.enforceSeparation = False
         self.isAltDown = False
-        self.manual_newID_coords = []
+        self.UserEnforced_DisabledTracking = False
+        self.UserEnforced_Tracking = False
         self.new_IDs = []
         self.UndoRedoStates = [[] for _ in range(self.num_frames)]
 
@@ -2328,12 +2693,21 @@ class Yeast_ACDC_GUI(QMainWindow):
         IDs = [0]*len(self.rp)
         xx_centroid = [0]*len(self.rp)
         yy_centroid = [0]*len(self.rp)
+        editIDclicked_x = [np.nan]*len(self.rp)
+        editIDclicked_y = [np.nan]*len(self.rp)
+        editIDnewID = [-1]*len(self.rp)
+        editedIDs = [newID for _, _, newID in self.editID_info]
         for i, obj in enumerate(self.rp):
             is_cell_dead_li[i] = obj.dead
             is_cell_excluded_li[i] = obj.excluded
             IDs[i] = obj.label
             xx_centroid[i] = obj.centroid[1]
             yy_centroid[i] = obj.centroid[0]
+            if obj.label in editedIDs:
+                y, x, new_ID = self.editID_info[editedIDs.index(obj.label)]
+                editIDclicked_x[i] = x
+                editIDclicked_y[i] = y
+                editIDnewID[i] = new_ID
 
         self.allData_li[self.frame_i]['segm_metadata_df'] = pd.DataFrame(
             {
@@ -2341,7 +2715,10 @@ class Yeast_ACDC_GUI(QMainWindow):
                         'is_cell_dead': is_cell_dead_li,
                         'is_cell_excluded': is_cell_excluded_li,
                         'x_centroid': xx_centroid,
-                        'y_centroid': yy_centroid
+                        'y_centroid': yy_centroid,
+                        'editIDclicked_x': editIDclicked_x,
+                        'editIDclicked_y': editIDclicked_y,
+                        'editIDnewID': editIDnewID
             }
         ).set_index('Cell_ID')
 
@@ -2446,9 +2823,9 @@ class Yeast_ACDC_GUI(QMainWindow):
             else:
                 self.undoAction.setDisabled(True)
         self.UndoCount = 0
-        self.editID_info = []
         # If stored labels is None then it is the first time we visit this frame
         if self.allData_li[self.frame_i]['labels'] is None:
+            self.editID_info = []
             never_visited = True
             if str(self.modeComboBox.currentText()) == 'Cell cycle analysis':
                 # Warn that we are visiting a frame that was never segm-checked
@@ -2458,11 +2835,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                     self, 'Never checked segmentation on requested frame',
                     'Segmentation and Tracking was never checked from '
                     f'frame {self.frame_i+1} onward.\n To ensure correct cell '
-                    'cell cycle analysis we recommend to first visit frames '
-                    f'{self.frame_i+1}-end with "Segmentation and Tracking mode."'
-                    'However you can decide to continue with cell cycle analysis '
-                    'anyway\n\n.'
-                    'Do you want to proceed?',
+                    'cell cycle analysis you have to first visit frames '
+                    f'{self.frame_i+1}-end with "Segmentation and Tracking" mode.',
                     msg.Ok
                 )
                 proceed_cca = False
@@ -2474,7 +2848,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 frames = self.data.segm_metadata_df.index.get_level_values(0)
                 if self.frame_i in frames:
                     # Since there was already segmentation metadata from
-                    # previous analysis add it to current metadata
+                    # previous closed session add it to current metadata
                     df = self.data.segm_metadata_df.loc[self.frame_i]
                     binnedIDs_df = df[df['is_cell_excluded']]
                     binnedIDs = set(binnedIDs_df.index).union(self.binnedIDs)
@@ -2493,6 +2867,12 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.binnedIDs = set(binnedIDs_df.index)
             ripIDs_df = df[df['is_cell_dead']]
             self.ripIDs = set(ripIDs_df.index)
+            editIDclicked_x = df['editIDclicked_x'].to_list()
+            editIDclicked_y = df['editIDclicked_y'].to_list()
+            editIDnewID = df['editIDnewID'].to_list()
+            _zip = zip(editIDclicked_y, editIDclicked_x, editIDnewID)
+            self.editID_info = [(y,x,newID) for y,x,newID in _zip if newID!=-1]
+            print(self.editID_info)
             self.get_cca_df()
 
         return proceed_cca, never_visited
@@ -3054,10 +3434,10 @@ class Yeast_ACDC_GUI(QMainWindow):
         for i, obj in enumerate(self.rp):
             self.drawID_and_Contour(obj)
 
-        print('------------------------------------')
-        print(f'Drawing labels = {np.sum(self.drawingLabelsTimes):.3f} s')
-        print(f'Computing contours = {np.sum(self.computingContoursTimes):.3f} s')
-        print(f'Drawing contours = {np.sum(self.drawingContoursTimes):.3f} s')
+        # print('------------------------------------')
+        # print(f'Drawing labels = {np.sum(self.drawingLabelsTimes):.3f} s')
+        # print(f'Computing contours = {np.sum(self.computingContoursTimes):.3f} s')
+        # print(f'Drawing contours = {np.sum(self.drawingContoursTimes):.3f} s')
 
         # Update annotated IDs (e.g. dead cells)
         self.update_rp_metadata()
@@ -3099,20 +3479,53 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.titleLabel.setText(htmlTxt)
 
 
-    def tracking(self, onlyIDs=[], enforce=False, DoManualEdit=True):
+    def tracking(self, onlyIDs=[], enforce=False, DoManualEdit=True,
+                 storeUndo=False):
         if self.frame_i == 0:
             return
-        # Track only frames that were visited for the first time
-        do_tracking = (
-                (self.allData_li[self.frame_i]['labels'] is None)
-                or enforce
-        )
-        if self.disableTrackingCheckBox.isChecked() or not do_tracking:
+
+        # Disable tracking for already visited frames unless the user
+        # specifically clicked on Disable Tracking checkbox
+        if self.allData_li[self.frame_i]['labels'] is not None:
+            self.disableTrackingCheckBox.setChecked(True)
+        else:
+            self.disableTrackingCheckBox.setChecked(False)
+
+        """
+        Track only frames that were NEVER visited or the user
+        specifically requested to track:
+            - Never visited --> NOT self.disableTrackingCheckBox.isChecked()
+            - User requested --> self.UserEnforced_Tracking
+                             --> clicked on repeat tracking (enforce=True)
+        """
+
+        if enforce or self.UserEnforced_Tracking:
+            # Tracking enforced by the user
+            do_tracking = True
+        elif self.UserEnforced_DisabledTracking:
+            # Tracking specifically DISABLED by the user
+            do_tracking = False
+        elif self.disableTrackingCheckBox.isChecked():
+            # User did not choose what to do --> tracking disabled for
+            # visited frames and enabled for never visited frames
+            do_tracking = False
+        else:
+            do_tracking = True
+
+        if not do_tracking:
+            print('-------------')
+            print(f'Frame {self.frame_i+1} NOT tracked')
+            print('-------------')
             self.checkIDs_LostNew()
             return
 
-        # Store undo state before modifying stuff
-        self.storeUndoRedoStates()
+        print('-------------')
+        print(f'Frame {self.frame_i+1} tracked')
+        print('-------------')
+
+        if storeUndo:
+            # Store undo state before modifying stuff
+            self.storeUndoRedoStates(False)
 
         prev_lab = self.allData_li[self.frame_i-1]['labels']
         prev_rp = self.allData_li[self.frame_i-1]['regionprops']
