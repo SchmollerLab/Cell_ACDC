@@ -1619,7 +1619,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                     y2, x2 = obj.centroid
                     self.BudMothTempLine.setData([x1, x2], [y1, y2])
             except:
-                traceback.print_exc()
+                # traceback.print_exc()
                 self.BudMothTempLine.setData([], [])
 
     def gui_hoverEventImg2(self, event):
@@ -2487,12 +2487,6 @@ class Yeast_ACDC_GUI(QMainWindow):
 
     def next_cb(self):
         mode = str(self.modeComboBox.currentText())
-        if self.frame_i <= 0 and mode == 'Cell cycle analysis':
-            IDs = [obj.label for obj in self.rp]
-            init_cca_df_frame0 = apps.cca_df_frame0(IDs, self.cca_df)
-            if init_cca_df_frame0.cancel:
-                return
-            self.cca_df = init_cca_df_frame0.df
         self.app.setOverrideCursor(Qt.WaitCursor)
         if self.frame_i < self.num_segm_frames-1:
             if 'lost' in self.titleLabel.text:
@@ -2508,7 +2502,37 @@ class Yeast_ACDC_GUI(QMainWindow):
                 )
                 if proceed_with_lost == msg.No:
                     return
+
+            if self.frame_i <= 0 and mode == 'Cell cycle analysis':
+                IDs = [obj.label for obj in self.rp]
+                init_cca_df_frame0 = apps.cca_df_frame0(IDs, self.cca_df)
+                if init_cca_df_frame0.cancel:
+                    return
+                self.cca_df = init_cca_df_frame0.df
+                self.store_cca_df()
+
             # Attempt cca on next frame
+            self.frame_i += 1
+            try:
+                self.auto_cca_df()
+            except:
+                traceback.print_exc()
+                msg = QtGui.QMessageBox()
+                warn_cca = msg.critical(
+                    self, 'Failed cell cycle analysis',
+                    f'Cell cycle analysis for frame {self.frame_i+1} failed!\n\n'
+                    'This is most likely because the next frame has '
+                    'segmentation or tracking errors.\n\n'
+                    'Switch to "Segmentation and Tracking" mode and '
+                    'check/correct next frame,\n'
+                    'before attempting cell cycle analysis again.\n\n'
+                    'NOTE: See console for details on the error occured.',
+                    msg.Ok
+                )
+                self.frame_i -= 1
+                return
+            self.frame_i -= 1
+
             # Store data for current frame
             self.store_data(debug=False)
             # Go to next frame
@@ -2770,6 +2794,11 @@ class Yeast_ACDC_GUI(QMainWindow):
         have the smallest euclidean distance between all pairs of new-old points
         of the new and old objects' contours. Note that mother has to be in G1
         """
+        # Skip cca if not the right mode
+        mode = str(self.modeComboBox.currentText())
+        if mode.find('Cell cycle') == -1:
+            return
+
         # If cca_df for current frame is None it means we never annotated it
         # and we automatically infer annotation
         if self.cca_df is None:
@@ -2796,6 +2825,25 @@ class Yeast_ACDC_GUI(QMainWindow):
                             if ccs == 'G1':
                                 cont = self.get_objContours(obj)
                                 oldIDs_contours.append(cont)
+
+                    numCellsG1 = len(oldIDs_contours)
+                    numNewCells = len(self.new_IDs)
+                    # Check if there are enough cells in G1
+                    if numCellsG1 < numNewCells:
+                        msg = QtGui.QMessageBox()
+                        warn_cca = msg.critical(
+                            self, 'No cells in G1!',
+                            f'In the next frame {numNewCells} new buds will '
+                            'emerge.\n'
+                            f'However there are only {numCellsG1} cells '
+                            'in G1 available.\n\n'
+                            'Switch to "Segmentation and Tracking" mode '
+                            'and check/correct next frame,\n'
+                            'before attempting cell cycle analysis again',
+                            msg.Ok
+                        )
+                        return
+
                     oldIDs_contours = np.concatenate(oldIDs_contours, axis=0)
 
                     # For each new ID calculate nearest old ID contour
@@ -2893,7 +2941,6 @@ class Yeast_ACDC_GUI(QMainWindow):
             editIDnewID = df['editIDnewID'].to_list()
             _zip = zip(editIDclicked_y, editIDclicked_x, editIDnewID)
             self.editID_info = [(y,x,newID) for y,x,newID in _zip if newID!=-1]
-            print(self.editID_info)
             self.get_cca_df()
 
         return proceed_cca, never_visited
@@ -3543,6 +3590,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         print('-------------')
         print(f'Frame {self.frame_i+1} tracked')
         print('-------------')
+
 
         if storeUndo:
             # Store undo state before modifying stuff
