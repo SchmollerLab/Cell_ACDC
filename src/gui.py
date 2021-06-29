@@ -3493,7 +3493,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             # Check if there is already loaded data
             if self.data.fluo_data_dict:
                 items = self.data.fluo_data_dict.keys()
-                selectFluo = QDialogListbox(
+                selectFluo = apps.QDialogListbox(
                     'Select fluorescent image(s) to overlay',
                     'Select fluorescent image(s) to overlay\n'
                     'You can select one or more images',
@@ -3933,10 +3933,13 @@ class Yeast_ACDC_GUI(QMainWindow):
             fluo_paths = prompts.multi_files_dialog(
                 title='Select one or multiple fluorescent images')
 
+            self.app.setOverrideCursor(Qt.WaitCursor)
             for fluo_path in fluo_paths:
                 filename = os.path.basename(fluo_path)
                 fluo_data = self.load_fluo_data(fluo_path)
                 self.data.fluo_data_dict[filename] = fluo_data
+            print('Done')
+            self.app.restoreOverrideCursor()
 
         # Connect events at the end of loading data process
         self.gui_connectGraphicsEvents()
@@ -4122,7 +4125,7 @@ class Yeast_ACDC_GUI(QMainWindow):
     def closeEvent(self, event):
         if self.slideshowWin is not None:
             self.slideshowWin.close()
-        if self.editToolBar.isEnabled():
+        if self.saveAction.isEnabled():
             msg = QtGui.QMessageBox()
             msg.closeEvent = self.saveMsgCloseEvent
             save = msg.question(
