@@ -2067,6 +2067,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             if proceed:
                 self.setEnabledToolbarButton(enabled=False)
                 self.showInExplorerAction.setEnabled(True)
+                self.saveAction.setEnabled(True)
                 self.navigateToolBar.setEnabled(True)
                 self.modeToolBar.setEnabled(True)
                 self.disableTrackingCheckBox.setChecked(True)
@@ -2686,6 +2687,16 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.binnedIDs = set()
         self.ripIDs = set()
         self.cca_df = None
+        self.cca_df_colnames = ['cell_cycle_stage',
+                                'generation_num',
+                                'relative_ID',
+                                'relationship',
+                                'emerg_frame_i',
+                                'division_frame_i']
+        self.cca_df_int_cols = ['generation_num',
+                                'relative_ID',
+                                'emerg_frame_i',
+                                'division_frame_i']
         if self.data.last_tracked_i is not None:
             last_tracked_num = self.data.last_tracked_i+1
             # Load previous session data
@@ -2859,12 +2870,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             proceed = False
             return notEnoughG1Cells, proceed
 
-        self.cca_df = df[['cell_cycle_stage',
-                          'generation_num',
-                          'relative_ID',
-                          'relationship',
-                          'emerg_frame_i',
-                          'division_frame_i']].copy()
+        self.cca_df = df[self.cca_df_colnames].copy()
 
         # If there are no new IDs we are done
         if not self.new_IDs:
@@ -2986,13 +2992,24 @@ class Yeast_ACDC_GUI(QMainWindow):
                 if self.frame_i in frames:
                     # Since there was already segmentation metadata from
                     # previous closed session add it to current metadata
-                    df = self.data.segm_metadata_df.loc[self.frame_i]
+                    df = self.data.segm_metadata_df.loc[self.frame_i].copy()
                     binnedIDs_df = df[df['is_cell_excluded']]
                     binnedIDs = set(binnedIDs_df.index).union(self.binnedIDs)
                     self.binnedIDs = binnedIDs
                     ripIDs_df = df[df['is_cell_dead']]
                     ripIDs = set(ripIDs_df.index).union(self.ripIDs)
                     self.ripIDs = ripIDs
+                    # Load cca df into current metadata
+                    if 'cell_cycle_stage' in df.columns:
+                        if any(df['cell_cycle_stage'].isna()):
+                            df = df.drop(labels=self.cca_df_colnames, axis=1)
+                        else:
+                            # Convert to ints since there were NaN
+                            cols = self.cca_df_int_cols
+                            df[cols] = df[cols].astype(int)
+                    i = self.frame_i
+                    self.allData_li[i]['segm_metadata_df'] = df.copy()
+
             self.get_cca_df()
         else:
             # Requested frame was already visited. Load from RAM.
@@ -3029,19 +3046,16 @@ class Yeast_ACDC_GUI(QMainWindow):
             return
 
         proceed = True
-        if self.cca_df is None:
-            last_cca_frame_i = 0
-        else:
-            last_cca_frame_i = 0
-            # Determine last annotated frame index
-            for i, dict_frame_i in enumerate(self.allData_li):
-                df = dict_frame_i['segm_metadata_df']
-                if df is not None:
-                    if 'cell_cycle_stage' not in df.columns:
-                        last_cca_frame_i = i-1
-                        break
+        last_cca_frame_i = 0
+        # Determine last annotated frame index
+        for i, dict_frame_i in enumerate(self.allData_li):
+            df = dict_frame_i['segm_metadata_df']
+            if df is not None:
+                if 'cell_cycle_stage' not in df.columns:
+                    last_cca_frame_i = i-1
+                    break
 
-        if self.frame_i != last_cca_frame_i:
+        if self.frame_i > last_cca_frame_i:
             # Prompt user to go to last annotated frame
             msg = QtGui.QMessageBox()
             goTo_last_annotated_frame_i = msg.warning(
@@ -3060,8 +3074,26 @@ class Yeast_ACDC_GUI(QMainWindow):
                 print('Cell cycle analysis aborted.')
                 proceed = False
                 return
-        else:
-            self.last_cca_frame_i = last_cca_frame_i
+        elif self.frame_i < last_cca_frame_i:
+            # Prompt user to go to last annotated frame
+            msg = QtGui.QMessageBox()
+            goTo_last_annotated_frame_i = msg.warning(
+                self, 'Go to last annotated frame?',
+                f'The last annotated frame is frame {last_cca_frame_i+1}.\n'
+                'Do you want to restart cell cycle analysis from frame '
+                f'{last_cca_frame_i+1}?',
+                msg.Yes | msg.No | msg.Cancel
+            )
+            if goTo_last_annotated_frame_i == msg.Yes:
+                self.last_cca_frame_i = last_cca_frame_i
+                self.frame_i = last_cca_frame_i
+                self.get_data()
+                self.updateALLimg()
+            elif goTo_last_annotated_frame_i == msg.Cancel:
+                print('Cell cycle analysis aborted.')
+                proceed = False
+                return
+        self.last_cca_frame_i = last_cca_frame_i
 
         if self.cca_df is None:
             IDs = [obj.label for obj in self.rp]
@@ -3093,10 +3125,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 # No cell cycle info present
                 continue
 
-            cca_colNames = ['cell_cycle_stage', 'generation_num',
-                            'relative_ID', 'relationship',
-                            'emerg_frame_i', 'division_frame_i']
-            df.drop(cca_colNames, axis=1, inplace=True)
+            df.drop(self.cca_df_colnames, axis=1, inplace=True)
 
 
 
@@ -3111,12 +3140,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         df = self.allData_li[i]['segm_metadata_df']
         if df is not None:
             if 'cell_cycle_stage' in df.columns:
-                cca_df = df[['cell_cycle_stage',
-                             'generation_num',
-                             'relative_ID',
-                             'relationship',
-                             'emerg_frame_i',
-                             'division_frame_i']].copy()
+                cca_df = df[self.cca_df_colnames].copy()
         if return_df:
             return cca_df
         else:
@@ -3133,12 +3157,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             if 'cell_cycle_stage' in segm_df.columns:
                 # Cell cycle info already present --> overwrite with new
                 df = segm_df
-                df[['cell_cycle_stage',
-                    'generation_num',
-                    'relative_ID',
-                    'relationship',
-                    'emerg_frame_i',
-                    'division_frame_i']] = cca_df
+                df[self.cca_df_colnames] = cca_df
             else:
                 df = segm_df.join(cca_df, how='outer')
             self.allData_li[i]['segm_metadata_df'] = df.copy()
@@ -3987,6 +4006,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
 
     def saveFile(self):
+        self.app.setOverrideCursor(Qt.WaitCursor)
         try:
             segm_npy_path = self.data.segm_npy_path
             acdc_output_csv_path = self.data.acdc_output_csv_path
@@ -4049,6 +4069,8 @@ class Yeast_ACDC_GUI(QMainWindow):
             print('--------------')
         except:
             traceback.print_exc()
+        finally:
+            self.app.restoreOverrideCursor()
 
 
 
