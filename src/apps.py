@@ -587,8 +587,8 @@ class QDialogListbox(QDialog):
 
 
 class FutureFramesAction_QDialog(QDialog):
-    def __init__(self, frame_i, last_tracked_i, change_txt):
-        self.cancel = True
+    def __init__(self, frame_i, last_tracked_i, change_txt, applyTrackingB=False):
+        self.decision = None
         self.last_tracked_i = last_tracked_i
         super().__init__()
         self.setWindowTitle('Future frames action?')
@@ -668,6 +668,14 @@ class FutureFramesAction_QDialog(QDialog):
         self.apply_and_NOTreinit_b = apply_and_NOTreinit_b
         buttonsLayout.addWidget(apply_and_NOTreinit_b, alignment=Qt.AlignCenter)
 
+        self.applyTrackingButton = None
+        if applyTrackingB:
+            applyTrackingButton = QPushButton(
+                        'Repeat ONLY tracking for all future frames')
+            applyTrackingButton.setFixedWidth(320)
+            self.applyTrackingButton = applyTrackingButton
+            buttonsLayout.addWidget(applyTrackingButton, alignment=Qt.AlignCenter)
+
         apply_to_all_b = QPushButton(
                     'Apply to all future frames')
         apply_to_all_b.setFixedWidth(320)
@@ -690,6 +698,7 @@ class FutureFramesAction_QDialog(QDialog):
         ButtonsGroup = QButtonGroup(self)
         ButtonsGroup.addButton(apply_and_reinit_b)
         ButtonsGroup.addButton(apply_and_NOTreinit_b)
+        ButtonsGroup.addButton(applyTrackingButton)
         ButtonsGroup.addButton(apply_to_all_b)
         ButtonsGroup.addButton(apply_to_range_b)
         ButtonsGroup.addButton(self.OkRangeButton)
@@ -719,6 +728,10 @@ class FutureFramesAction_QDialog(QDialog):
             self.decision = 'apply_to_all'
             self.endFrame_i = self.last_tracked_i
             self.close()
+        elif button == self.applyTrackingButton:
+            self.decision = 'only_tracking'
+            self.endFrame_i = self.last_tracked_i
+            self.close()
         elif button == self.apply_to_range_b:
             endFrame_LineEntry = QLineEdit()
             self.formLayout.addRow('Apply until frame: ',
@@ -738,6 +751,21 @@ class FutureFramesAction_QDialog(QDialog):
             self.close()
 
 
+class nonModalTempQMessage(QWidget):
+    def __init__(self, msg='Doing stuff...'):
+        super().__init__()
+
+        layout = QVBoxLayout()
+
+        msgLabel = QLabel(msg)
+        _font = QtGui.QFont()
+        _font.setPointSize(10)
+        _font.setBold(True)
+        msgLabel.setFont(_font)
+        msgLabel.setAlignment(Qt.AlignCenter)
+        layout.addWidget(msgLabel, alignment=Qt.AlignCenter)
+
+        self.setLayout(layout)
 
 
 
@@ -1263,7 +1291,7 @@ class cca_df_frame0:
         self.cancel = False
         self.df = None
         """Options and labels"""
-        cc_stage_opt = ['S/G2/M', 'G1']
+        cc_stage_opt = ['G1', 'S/G2/M']
         if len(cells_IDs) == 1:
             related_to_opt = [-1]
         else:
@@ -1395,6 +1423,8 @@ class cca_df_frame0:
         for i in idx_bud:
             self.num_cycles_list[i].delete(0, 'end')
             self.num_cycles_list[i].insert(0, '0')
+            self.cc_stage_list[i].set('S/G2/M')
+
         idx_moth = [i for i, var in zip(range(len(relationships)), relationships)
                             if var == 'mother']
         for i in idx_moth:
@@ -1811,17 +1841,7 @@ class win_size:
 if __name__ == '__main__':
     # Create the application
     app = QApplication(sys.argv)
-    # win = FutureFramesAction_QDialog(15, 20, 'Edit ID')
-    win = QLineEditDialog(
-        title='Enter ID to delete',
-        msg='You clicked on the background.\n'
-             'Enter here ID that you want to delete'
-    )
+    win = FutureFramesAction_QDialog(15, 20, 'Edit ID', applyTrackingB=True)
+    # win = nonModalTempQMessage()
     win.show()
-    app.setStyle(QtGui.QStyleFactory.create('Fusion'))
     app.exec_()
-    if win.cancel:
-        exit()
-    else:
-        delID = win.EntryID
-        print(delID)
