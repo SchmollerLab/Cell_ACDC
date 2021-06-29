@@ -2234,9 +2234,21 @@ class Yeast_ACDC_GUI(QMainWindow):
                 df = self.allData_li[self.frame_i]['segm_metadata_df']
                 if 'cell_cycle_stage' in df.columns:
                     cca_df = df[self.cca_df_colnames]
+                    print(cca_df)
+                    cca_df = cca_df.merge(self.cca_df, how='outer',
+                                          left_index=True, right_index=True)
+                    cca_df = cca_df.reindex(sorted(cca_df.columns), axis=1)
+                    num_cols = len(cca_df.columns)
+                    for j in range(0,num_cols,2):
+                        df_j_x = cca_df.iloc[:,j]
+                        df_j_y = cca_df.iloc[:,j+1]
+                        if any(df_j_x!=df_j_y):
+                            print('------------------------')
+                            print('DIFFERENCES:')
+                            print(cca_df.iloc[:,j:j+2])
                 else:
                     cca_df = None
-                print(cca_df)
+                    print(cca_df)
                 print('========================')
         # elif ev.key() == Qt.Key_Plus:
         #     print('Programmatically disabled')
