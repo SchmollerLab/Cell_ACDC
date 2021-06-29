@@ -17,6 +17,8 @@ src/temp/*
 # Hide placeholder.txt dummy file (probably works only on Linux)
 !src/temp/.placeholder.txt
 
+# Ignore deprecated file
+src/deprecated
 
 
 __pycache__/

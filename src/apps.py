@@ -735,7 +735,6 @@ class FutureFramesAction_QDialog(QDialog):
                                    endFrame_LineEntry)
             endFrame_LineEntry.setText(f'{self.last_tracked_i}')
             endFrame_LineEntry.setAlignment(Qt.AlignCenter)
-            #endFrame_LineEntry.setFixedWidth(100)
             self.formLayout.setContentsMargins(100, 10, 100, 0)
 
             self.mainLayout.addLayout(self.OkRangeLayout)

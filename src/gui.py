@@ -18,6 +18,7 @@ from functools import partial
 import cv2
 import numpy as np
 import pandas as pd
+import scipy.optimize
 import skimage.io
 import skimage.measure
 import skimage.morphology
@@ -486,7 +487,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                     msg='You clicked on the background.\n'
                          'Enter here ID that you want to delete'
                 )
-                delID_prompt.show()
+                delID_prompt.exec_()
                 if delID_prompt.cancel:
                     return
                 else:
@@ -563,7 +564,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                     msg='You clicked on the background.\n'
                          'Enter here ID that you want to split'
                 )
-                sepID_prompt.show()
+                sepID_prompt.exec_()
                 if sepID_prompt.cancel:
                     return
                 else:
@@ -628,7 +629,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                     msg='You clicked on the background.\n'
                          'Enter here first ID that you want to merge'
                 )
-                mergeID_prompt.show()
+                mergeID_prompt.exec_()
                 if mergeID_prompt.cancel:
                     return
                 else:
@@ -649,11 +650,14 @@ class Yeast_ACDC_GUI(QMainWindow):
                     msg='You clicked on the background.\n'
                          'Enter here ID that you want to replace with a new one'
                 )
-                editID_prompt.show()
+                editID_prompt.exec_()
                 if editID_prompt.cancel:
                     return
                 else:
                     ID = editID_prompt.EntryID
+                    obj_idx = self.IDs.index(ID)
+                    y, x = self.rp[obj_idx].centroid
+                    xdata, ydata = int(round(x)), int(round(y))
 
             self.disableAutoActivateViewerWindow = True
             prev_IDs = [obj.label for obj in self.rp]
@@ -735,9 +739,6 @@ class Yeast_ACDC_GUI(QMainWindow):
                     y, x = int(round(y)), int(round(x))
                     self.editID_info.append((y, x, new_ID))
 
-
-            print(self.editID_info)
-
             # Update rps
             self.update_rp()
 
@@ -788,8 +789,6 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.update_rp_metadata(draw=False)
                 self.app.restoreOverrideCursor()
 
-                print(self.editID_info)
-
 
         # Annotate cell as removed from the analysis
         elif right_click and self.binCellButton.isChecked():
@@ -802,7 +801,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to remove from the analysis'
                 )
-                binID_prompt.show()
+                binID_prompt.exec_()
                 if binID_prompt.cancel:
                     return
                 else:
@@ -871,7 +870,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to annotate as dead'
                 )
-                ripID_prompt.show()
+                ripID_prompt.exec_()
                 if ripID_prompt.cancel:
                     return
                 else:
@@ -1043,7 +1042,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                          'Enter ID that you want to merge with ID '
                          f'{self.firstID}'
                 )
-                mergeID_prompt.show()
+                mergeID_prompt.exec_()
                 if mergeID_prompt.cancel:
                     return
                 else:
@@ -1089,11 +1088,14 @@ class Yeast_ACDC_GUI(QMainWindow):
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to annotate as mother cell'
                 )
-                mothID_prompt.show()
+                mothID_prompt.exec_()
                 if mothID_prompt.cancel:
                     return
                 else:
                     ID = mothID_prompt.EntryID
+                    obj_idx = self.IDs.index(ID)
+                    y, x = self.rp[obj_idx].centroid
+                    xdata, ydata = int(round(x)), int(round(y))
 
             relationship = self.cca_df.at[ID, 'relationship']
             ccs = self.cca_df.at[ID, 'cell_cycle_stage']
@@ -1205,11 +1207,14 @@ class Yeast_ACDC_GUI(QMainWindow):
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to annotate as divided'
                 )
-                divID_prompt.show()
+                divID_prompt.exec_()
                 if divID_prompt.cancel:
                     return
                 else:
                     ID = divID_prompt.EntryID
+                    obj_idx = self.IDs.index(ID)
+                    y, x = self.rp[obj_idx].centroid
+                    xdata, ydata = int(round(x)), int(round(y))
 
             # Annotate or undo division
             self.manualCellCycleAnnotation(ID)
@@ -1229,11 +1234,15 @@ class Yeast_ACDC_GUI(QMainWindow):
                     msg='You clicked on the background.\n'
                          'Enter ID of a bud you want to correct mother assignment'
                 )
-                budID_prompt.show()
+                budID_prompt.exec_()
                 if budID_prompt.cancel:
                     return
                 else:
                     ID = budID_prompt.EntryID
+
+            obj_idx = self.IDs.index(ID)
+            y, x = self.rp[obj_idx].centroid
+            xdata, ydata = int(round(x)), int(round(y))
 
             relationship = self.cca_df.at[ID, 'relationship']
             if relationship != 'bud' and self.frame_i > 0:
@@ -1481,8 +1490,11 @@ class Yeast_ACDC_GUI(QMainWindow):
         budID = self.lab[self.yClickBud, self.xClickBud]
         new_mothID = self.lab[self.yClickMoth, self.xClickMoth]
 
+        if budID == new_mothID:
+            return
+
         # Allow partial initialization of cca_df with mouse
-        if self.frame_i == 0:
+        if self.frame_i == 0 and budID!=new_mothID:
             self.cca_df.at[budID, 'relationship'] = 'bud'
             self.cca_df.at[budID, 'generation_num'] = 0
             self.cca_df.at[budID, 'relative_ID'] = new_mothID
@@ -2224,7 +2236,14 @@ class Yeast_ACDC_GUI(QMainWindow):
         #     print('Programmatically disabled')
         #     self.disableTrackingCheckBox.setChecked(True)
         elif ev.key() == Qt.Key_H:
-            print('H')
+            lab_mask = (self.lab>0).astype(np.uint8)
+            rp = skimage.measure.regionprops(lab_mask)
+            obj = rp[0]
+            min_row, min_col, max_row, max_col = obj.bbox
+            xRange = min_col-10, max_col+10
+            yRange = max_row+10, min_row-10
+            self.ax1.setRange(xRange=xRange, yRange=yRange)
+
         # elif ev.text() == 'b':
         #     self.BrushEraser_cb(ev)
 
@@ -2534,8 +2553,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.update_rp_metadata(draw=False)
                 return
             self.tracking(storeUndo=True)
-            notEnoughG1Cells = self.attempt_auto_cca()
-            if notEnoughG1Cells:
+            notEnoughG1Cells, proceed = self.attempt_auto_cca()
+            if notEnoughG1Cells or not proceed:
                 self.frame_i -= 1
                 self.get_data()
                 self.update_rp_metadata(draw=False)
@@ -2779,15 +2798,13 @@ class Yeast_ACDC_GUI(QMainWindow):
         i, j = np.unravel_index(dist.argmin(), dist.shape)
         nearest_point = all_others[j]
         point = points[i]
-        min_dist_to_allOthers = dist[i]
-        return min_dist_to_allOthers, nearest_point
+        min_dist = dist.min()
+        return min_dist, nearest_point
 
     def attempt_auto_cca(self):
         doNotProceed = False
         try:
-            doNotProceed = self.auto_cca_df()
-            if doNotProceed:
-                return doNotProceed
+            notEnoughG1Cells, proceed = self.autoCca_df()
         except:
             traceback.print_exc()
             msg = QtGui.QMessageBox()
@@ -2802,7 +2819,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 'NOTE: See console for details on the error occured.',
                 msg.Ok
             )
-            return True
+        return notEnoughG1Cells, proceed
 
     def autoCca_df(self):
         """
@@ -2827,6 +2844,18 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Make sure that this is a visited frame
         df = self.allData_li[self.frame_i-1]['segm_metadata_df']
         if df is None or 'cell_cycle_stage' not in df.columns:
+            msg = QtGui.QMessageBox()
+            warn_cca = msg.critical(
+                self, 'Next frame NEVER visited',
+                'Next frame was never visited in "Segmentation and Tracking"'
+                'mode.\n You cannot perform cell cycle analysis on frames'
+                'where segmentation and/or tracking errors were not'
+                'checked/corrected.\n\n'
+                'Switch to "Segmentation and Tracking" mode '
+                'and check/correct next frame,\n'
+                'before attempting cell cycle analysis again',
+                msg.Ok
+            )
             proceed = False
             return notEnoughG1Cells, proceed
 
@@ -2864,129 +2893,48 @@ class Yeast_ACDC_GUI(QMainWindow):
             proceed = False
             return notEnoughG1Cells, proceed
 
-        # Calculate cost matrix
-        cost = np.zeros((numNewCells, numCellsG1))
+        # Compute new IDs contours
+        newIDs_contours = []
         for obj in self.rp:
             ID = obj.label
             if ID in self.new_IDs:
                 cont = self.get_objContours(obj)
+                newIDs_contours.append(cont)
 
-
-    def auto_cca_df(self):
-        """
-        Mother and bud IDs are determined as the two objects (old and new) that
-        have the smallest euclidean distance between all pairs of new-old points
-        of the new and old objects' contours. Note that mother has to be in G1
-        """
-        notEnoughG1Cells = False
-
-        # Skip cca if not the right mode
-        mode = str(self.modeComboBox.currentText())
-        if mode.find('Cell cycle') == -1:
-            return notEnoughG1Cells
-
-        # Use stored cca_df and do not modify it with automatic stuff
-        if self.cca_df is not None:
-            return notEnoughG1Cells
-
-        # Make sure that this is a visited frame
-        df = self.allData_li[self.frame_i-1]['segm_metadata_df']
-        if df is None:
-            return notEnoughG1Cells
-
-        if 'cell_cycle_stage' in df.columns:
-            self.cca_df = df[['cell_cycle_stage',
-                              'generation_num',
-                              'relative_ID',
-                              'relationship',
-                              'emerg_frame_i',
-                              'division_frame_i']].copy()
-
-            # If there are no new IDs we are done
-            if not self.new_IDs:
-                return notEnoughG1Cells
-
-            # Calculate contour of all old IDs in G1 (potential mothers)
-            oldIDs_contours = []
-            IDsCellsG1 = []
-            for obj in self.rp:
-                ID = obj.label
-                if ID in self.old_IDs:
-                    ccs = self.cca_df.at[ID, 'cell_cycle_stage']
-                    if ccs == 'G1':
-                        cont = self.get_objContours(obj)
-                        oldIDs_contours.append(cont)
-                        IDsCellsG1.append(ID)
-
-            numCellsG1 = len(oldIDs_contours)
-            numNewCells = len(self.new_IDs)
-            # Check if there are enough cells in G1
-            if numCellsG1 < numNewCells:
-                msg = QtGui.QMessageBox()
-                warn_cca = msg.critical(
-                    self, 'No cells in G1!',
-                    f'In the next frame {numNewCells} new buds will '
-                    'emerge.\n'
-                    f'However there are only {numCellsG1} cells '
-                    'in G1 available.\n\n'
-                    'Switch to "Segmentation and Tracking" mode '
-                    'and check/correct next frame,\n'
-                    'before attempting cell cycle analysis again',
-                    msg.Ok
-                )
-                notEnoughG1Cells = True
-                return notEnoughG1Cells
-
-            oldIDs_contours = np.concatenate(oldIDs_contours, axis=0)
-
-            # For each new ID calculate nearest old ID contour
-            nearest_matrix = np.zeros((numNewCells, numCellsG1))
-            for obj in self.rp:
-                ID = obj.label
-                if ID in self.new_IDs:
-                    new_ID_cont = self.get_objContours(obj)
+        # Compute cost matrix
+        cost = np.zeros((numCellsG1, numNewCells))
+        for obj in self.rp:
+            ID = obj.label
+            if ID in IDsCellsG1:
+                cont = self.get_objContours(obj)
+                i = IDsCellsG1.index(ID)
+                for j, newID_cont in enumerate(newIDs_contours):
                     min_dist, nearest_xy = self.nearest_point_2Dyx(
-                                        new_ID_cont, oldIDs_contours)
-                    i = self.new_IDs.index(ID)
-                    mothID = self.lab[nearest_xy[1], nearest_xy[0]]
-                    nearest_matrix[i] = min_dist
-                    self.cca_df.at[mothID, 'relative_ID'] = ID
-                    self.cca_df.at[mothID, 'cell_cycle_stage'] = 'S'
+                                                         cont, newID_cont)
+                    cost[i, j] = min_dist
 
-                    self.cca_df.loc[ID] = {
-                        'cell_cycle_stage': 'S',
-                        'generation_num': 0,
-                        'relative_ID': mothID,
-                        'relationship': 'bud',
-                        'emerg_frame_i': self.frame_i,
-                        'division_frame_i': -1
-                    }
+        # Run hungarian (munkres) assignment algorithm
+        row_idx, col_idx = scipy.optimize.linear_sum_assignment(cost)
 
-            print(self.new_IDs)
-            print(IDsCellsG1)
-            print(nearest_matrix)
-            BudMothIDs = []
-            # Iterate each row and determine if the column corresponding
-            # to the min in the row has a lower minumum value
-            for i in range(len(nearest_matrix)):
-                j_min = nearest_matrix[i].argmin()
-                row_val_min = nearest_matrix[i, j_min]
-                min_col = nearest_matrix[:, j_min]
-                i_min = min_col.argmin()
-                col_val_min = min_col[i_min]
-                mothID = IDsCellsG1[j_min]
-                if row_val_min<col_val_min:
-                    budID = self.new_IDs[i]
-                else:
-                    budID = self.new_IDs[i_min]
-                nearest_matrix[:,j_min] = np.inf
-                BudMothIDs.append((budID, mothID))
+        # Assign buds to mothers
+        for i, j in zip(row_idx, col_idx):
+            mothID = IDsCellsG1[i]
+            budID = self.new_IDs[j]
+            self.cca_df.at[mothID, 'relative_ID'] = ID
+            self.cca_df.at[mothID, 'cell_cycle_stage'] = 'S'
 
-            print(BudMothIDs)
+            self.cca_df.loc[budID] = {
+                'cell_cycle_stage': 'S',
+                'generation_num': 0,
+                'relative_ID': mothID,
+                'relationship': 'bud',
+                'emerg_frame_i': self.frame_i,
+                'division_frame_i': -1
+            }
 
-            self.store_cca_df()
-
-        return notEnoughG1Cells
+        self.store_cca_df()
+        proceed = True
+        return notEnoughG1Cells, proceed
 
 
     def get_objContours(self, obj):
