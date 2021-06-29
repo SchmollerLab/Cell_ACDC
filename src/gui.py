@@ -1328,13 +1328,11 @@ class Yeast_ACDC_GUI(QMainWindow):
         if ccs == 'S':
             store = self.annotateDivision(
                                     self.cca_df, ID, relID, ccs, ccs_relID)
-            if store:
-                self.store_cca_df()
+            self.store_cca_df()
         else:
             store = self.undoDivisionAnnotation(
                                     self.cca_df, ID, relID, ccs, ccs_relID)
-            if store:
-                self.store_cca_df()
+            self.store_cca_df()
 
         obj_idx = self.IDs.index(ID)
         relObj_idx = self.IDs.index(relID)
@@ -1359,13 +1357,11 @@ class Yeast_ACDC_GUI(QMainWindow):
                 if ccs == 'S':
                     store = self.annotateDivision(
                                         cca_df_i, ID, relID, ccs, ccs_relID)
-                    if store:
-                        self.store_cca_df(frame_i=i, cca_df=cca_df_i)
+                    self.store_cca_df(frame_i=i, cca_df=cca_df_i)
                 else:
                     store = self.undoDivisionAnnotation(
                                         cca_df_i, ID, relID, ccs, ccs_relID)
-                    if store:
-                        self.store_cca_df(frame_i=i, cca_df=cca_df_i)
+                    self.store_cca_df(frame_i=i, cca_df=cca_df_i)
 
         # Correct past frames
         for i in range(self.frame_i-1, 0, -1):
@@ -1379,8 +1375,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             else:
                 store = self.undoDivisionAnnotation(
                                        cca_df_i, ID, relID, ccs, ccs_relID)
-                if store:
-                    self.store_cca_df(frame_i=i, cca_df=cca_df_i)
+                self.store_cca_df(frame_i=i, cca_df=cca_df_i)
 
     def checkMothEligibility(self, budID, new_mothID):
         """Check the new mother is in G1 for the entire life of the bud"""
@@ -1536,6 +1531,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.drawID_and_Contour(rp_budID, drawContours=False)
         self.drawID_and_Contour(rp_new_mothID, drawContours=False)
         self.drawID_and_Contour(rp_curr_mothID, drawContours=False)
+
+        self.store_cca_df()
 
         # Correct future frames
         for i in range(self.frame_i+1, self.num_segm_frames):
@@ -2229,10 +2226,18 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.isAltDown = True
         elif ev.modifiers() == Qt.ControlModifier:
             if ev.key() == Qt.Key_P:
-                print('------------------------')
-                print('Cell cycle analysis table:')
+                print('========================')
+                print('CURRENT Cell cycle analysis table:')
                 print(self.cca_df)
                 print('------------------------')
+                print(f'STORED Cell cycle analysis table for frame {self.frame_i+1}:')
+                df = self.allData_li[self.frame_i]['segm_metadata_df']
+                if 'cell_cycle_stage' in df.columns:
+                    cca_df = df[self.cca_df_colnames]
+                else:
+                    cca_df = None
+                print(cca_df)
+                print('========================')
         # elif ev.key() == Qt.Key_Plus:
         #     print('Programmatically disabled')
         #     self.disableTrackingCheckBox.setChecked(True)
@@ -2661,6 +2666,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.new_IDs = []
         self.UndoRedoStates = [[] for _ in range(self.num_frames)]
 
+        self.clickedOnBud = False
+
         # Colormap
         self.cmap = pg.colormap.get('viridis', source='matplotlib')
         self.lut = self.cmap.getLookupTable(0,1, max_ID+10)
@@ -2875,6 +2882,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         # If there are no new IDs we are done
         if not self.new_IDs:
             proceed = True
+            self.store_cca_df()
             return notEnoughG1Cells, proceed
 
         # Check if there are enough cells in G1
@@ -2921,6 +2929,14 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         # Run hungarian (munkres) assignment algorithm
         row_idx, col_idx = scipy.optimize.linear_sum_assignment(cost)
+
+        print(f'Auto cca df info for frame {self.frame_i+1}:')
+
+        print('Cost matrix')
+        print(cost)
+
+        print('')
+        print(f'IDs of cells in G1: {IDsCellsG1}')
 
         # Assign buds to mothers
         for i, j in zip(row_idx, col_idx):
@@ -3130,10 +3146,6 @@ class Yeast_ACDC_GUI(QMainWindow):
 
             df.drop(self.cca_df_colnames, axis=1, inplace=True)
 
-
-
-
-
     def get_cca_df(self, frame_i=None, return_df=False):
         # cca_df is None unless the metadata contains cell cycle annotations
         # NOTE: cell cycle annotations are either from the current session
@@ -3151,11 +3163,12 @@ class Yeast_ACDC_GUI(QMainWindow):
 
     def store_cca_df(self, frame_i=None, cca_df=None):
         i = self.frame_i if frame_i is None else frame_i
-
-        if cca_df is None:
-            cca_df = self.cca_df
+        cca_df = self.cca_df if cca_df is None else cca_df
 
         if cca_df is not None:
+            print('-------------')
+            print(f'cca_df for frame {i+1} stored')
+            print('-------------')
             segm_df = self.allData_li[i]['segm_metadata_df']
             if 'cell_cycle_stage' in segm_df.columns:
                 # Cell cycle info already present --> overwrite with new
@@ -3669,15 +3682,15 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         if not do_tracking:
             self.disableTrackingCheckBox.setChecked(True)
-            print('-------------')
-            print(f'Frame {self.frame_i+1} NOT tracked')
-            print('-------------')
+            # print('-------------')
+            # print(f'Frame {self.frame_i+1} NOT tracked')
+            # print('-------------')
             self.checkIDs_LostNew()
             return
 
-        print('-------------')
-        print(f'Frame {self.frame_i+1} tracked')
-        print('-------------')
+        # print('-------------')
+        # print(f'Frame {self.frame_i+1} tracked')
+        # print('-------------')
         self.disableTrackingCheckBox.setChecked(False)
 
 
