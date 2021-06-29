@@ -4129,7 +4129,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             msg = QtGui.QMessageBox()
             msg.closeEvent = self.saveMsgCloseEvent
             save = msg.question(
-                self, 'Save?', 'Do you want to save segmentation data?',
+                self, 'Save?', 'Do you want to save?',
                 msg.Yes | msg.No | msg.Cancel
             )
             if save == msg.Yes:
