@@ -3055,6 +3055,9 @@ class Yeast_ACDC_GUI(QMainWindow):
                     last_cca_frame_i = i-1
                     break
 
+        if last_cca_frame_i < 0:
+            last_cca_frame_i = 0
+
         if self.frame_i > last_cca_frame_i:
             # Prompt user to go to last annotated frame
             msg = QtGui.QMessageBox()
