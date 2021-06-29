@@ -543,7 +543,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             prev_IDs = [obj.label for obj in self.rp]
             self.update_rp()
 
-            self.img2.updateImage()
+            self.img2.setImage(self.lab)
 
             # Remove contour and LabelItem of deleted ID
             self.ax1_ContoursCurves[delID-1].setData([], [])
@@ -710,11 +710,11 @@ class Yeast_ACDC_GUI(QMainWindow):
                     # List of tuples (y, x, replacing ID)
                     obj = self.rp[old_ID_idx]
                     y, x = obj.centroid
-                    y, x = int(round(x)), int(round(y))
+                    y, x = int(round(y)), int(round(x))
                     self.editID_info.append((y, x, new_ID))
                     obj = self.rp[new_ID_idx]
                     y, x = obj.centroid
-                    y, x = int(round(x)), int(round(y))
+                    y, x = int(round(y)), int(round(x))
                     self.editID_info.append((y, x, old_ID))
                 else:
                     self.lab[self.lab == old_ID] = new_ID
@@ -732,9 +732,11 @@ class Yeast_ACDC_GUI(QMainWindow):
                     # List of tuples (y, x, replacing ID)
                     obj = self.rp[old_ID_idx]
                     y, x = obj.centroid
-                    y, x = int(round(x)), int(round(y))
+                    y, x = int(round(y)), int(round(x))
                     self.editID_info.append((y, x, new_ID))
 
+
+            print(self.editID_info)
 
             # Update rps
             self.update_rp()
@@ -785,6 +787,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.get_data()
                 self.update_rp_metadata(draw=False)
                 self.app.restoreOverrideCursor()
+
+                print(self.editID_info)
 
 
         # Annotate cell as removed from the analysis
@@ -1145,10 +1149,16 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.storeUndoRedoStates(False)
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(round(x)), int(round(y))
-            lab = self.lab
-            Y, X = lab.shape
+            Y, X = self.lab.shape
             brushSize = self.brushSizeSpinbox.value()
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
+                # Update brush ID. Take care of disappearing cells to remember
+                # to not use their IDs anymore in the future
+                if self.lab.max()+1 > self.brushID:
+                    self.brushID = self.lab.max()+1
+                else:
+                    self.brushID += 1
+
                 mask = skimage.morphology.disk(brushSize, dtype=np.bool)
                 ymin, xmin = ydata-brushSize, xdata-brushSize
                 ymax, xmax = ydata+brushSize+1, xdata+brushSize+1
@@ -1157,7 +1167,6 @@ class Yeast_ACDC_GUI(QMainWindow):
                 localLab = self.lab[ymin:ymax, xmin:xmax]
                 mask[localLab!=0] = False
                 self.lab[ymin:ymax, xmin:xmax][mask] = self.brushID
-
 
                 # Update data (rp, etc)
                 prev_IDs = [obj.label for obj in self.rp]
@@ -1173,13 +1182,6 @@ class Yeast_ACDC_GUI(QMainWindow):
 
                 # Update contours
                 self.update_IDsContours(prev_IDs, newIDs=newIDs)
-
-                # Update brush ID. Take care of disappearing cells to remember
-                # to not use their IDs anymore in the future
-                if self.lab.max()+1 > self.brushID:
-                    self.brushID = self.lab.max()+1
-                else:
-                    self.brushID += 1
 
 
         # Allow right-click actions on both images
@@ -2737,12 +2739,12 @@ class Yeast_ACDC_GUI(QMainWindow):
             is_cell_dead_li[i] = obj.dead
             is_cell_excluded_li[i] = obj.excluded
             IDs[i] = obj.label
-            xx_centroid[i] = obj.centroid[1]
-            yy_centroid[i] = obj.centroid[0]
+            xx_centroid[i] = int(round(obj.centroid[1]))
+            yy_centroid[i] = int(round(obj.centroid[0]))
             if obj.label in editedIDs:
                 y, x, new_ID = self.editID_info[editedIDs.index(obj.label)]
-                editIDclicked_x[i] = x
-                editIDclicked_y[i] = y
+                editIDclicked_x[i] = int(round(x))
+                editIDclicked_y[i] = int(round(y))
                 editIDnewID[i] = new_ID
 
         self.allData_li[self.frame_i]['segm_metadata_df'] = pd.DataFrame(
@@ -2810,12 +2812,64 @@ class Yeast_ACDC_GUI(QMainWindow):
         Then we minimize the cost of assigning each bud to a mother, and finally
         we write the assignment info into cca_df
         """
+        proceed = True
+        notEnoughG1Cells = False
+
         # Skip cca if not the right mode
         mode = str(self.modeComboBox.currentText())
         if mode.find('Cell cycle') == -1:
-            return False, True
+            return notEnoughG1Cells, proceed
 
-        notEnoughG1Cells = False
+        # Use stored cca_df and do not modify it with automatic stuff
+        if self.cca_df is not None:
+            return notEnoughG1Cells, proceed
+
+        # Make sure that this is a visited frame
+        df = self.allData_li[self.frame_i-1]['segm_metadata_df']
+        if df is None or 'cell_cycle_stage' not in df.columns:
+            proceed = False
+            return notEnoughG1Cells, proceed
+
+        self.cca_df = df[['cell_cycle_stage',
+                          'generation_num',
+                          'relative_ID',
+                          'relationship',
+                          'emerg_frame_i',
+                          'division_frame_i']].copy()
+
+        # If there are no new IDs we are done
+        if not self.new_IDs:
+            proceed = True
+            return notEnoughG1Cells, proceed
+
+        # Check if there are enough cells in G1
+        df_G1 = self.cca_df[self.cca_df['cell_cycle_stage']=='G1']
+        IDsCellsG1 = list(df_G1.index)
+        numCellsG1 = len(df_G1)
+        numNewCells = len(self.new_IDs)
+        if numCellsG1 < numNewCells:
+            msg = QtGui.QMessageBox()
+            warn_cca = msg.critical(
+                self, 'No cells in G1!',
+                f'In the next frame {numNewCells} new buds will '
+                'emerge.\n'
+                f'However there are only {numCellsG1} cells '
+                'in G1 available.\n\n'
+                'Switch to "Segmentation and Tracking" mode '
+                'and check/correct next frame,\n'
+                'before attempting cell cycle analysis again',
+                msg.Ok
+            )
+            notEnoughG1Cells = True
+            proceed = False
+            return notEnoughG1Cells, proceed
+
+        # Calculate cost matrix
+        cost = np.zeros((numNewCells, numCellsG1))
+        for obj in self.rp:
+            ID = obj.label
+            if ID in self.new_IDs:
+                cont = self.get_objContours(obj)
 
 
     def auto_cca_df(self):
@@ -3006,7 +3060,8 @@ class Yeast_ACDC_GUI(QMainWindow):
             editIDclicked_y = df['editIDclicked_y'].to_list()
             editIDnewID = df['editIDnewID'].to_list()
             _zip = zip(editIDclicked_y, editIDclicked_x, editIDnewID)
-            self.editID_info = [(y,x,newID) for y,x,newID in _zip if newID!=-1]
+            self.editID_info = [
+                (int(y),int(x),newID) for y,x,newID in _zip if newID!=-1]
             self.get_cca_df()
 
         return proceed_cca, never_visited
@@ -3685,12 +3740,13 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         # Determine max IoA between IDs and assign tracked ID if IoA > 0.4
         max_IoA_col_idx = IoA_matrix.argmax(axis=1)
-        _, counts = np.unique(max_IoA_col_idx, return_counts=True)
+        unique_col_idx, counts = np.unique(max_IoA_col_idx, return_counts=True)
+        counts_dict = dict(zip(unique_col_idx, counts))
         tracked_IDs = []
         old_IDs = []
         for i, j in enumerate(max_IoA_col_idx):
             max_IoU = IoA_matrix[i,j]
-            count = counts[j]
+            count = counts_dict[j]
             if max_IoU > 0.4:
                 tracked_ID = IDs_prev[j]
                 if count == 1:
@@ -3721,12 +3777,11 @@ class Yeast_ACDC_GUI(QMainWindow):
             tracked_lab = self.np_replace_values(tracked_lab, new_tracked_IDs,
                                                  new_tracked_IDs_2)
 
-        allIDs = tracked_IDs.copy()
-        tracked_IDs.extend(new_tracked_IDs_2)
-
         if DoManualEdit:
             # Correct tracking with manually changed IDs
-            self.ManuallyEditTracking(tracked_lab, allIDs)
+            rp = skimage.measure.regionprops(tracked_lab)
+            IDs = [obj.label for obj in rp]
+            self.ManuallyEditTracking(tracked_lab, IDs)
 
         # Update labels, regionprops and determine new and lost IDs
         self.lab = tracked_lab
@@ -3738,7 +3793,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         for y, x, new_ID in self.editID_info:
             old_ID = tracked_lab[y, x]
             if new_ID in allIDs:
-                tempID = tracked_lab + 1
+                tempID = tracked_lab.max() + 1
                 tracked_lab[tracked_lab == old_ID] = tempID
                 tracked_lab[tracked_lab == new_ID] = old_ID
                 tracked_lab[tracked_lab == tempID] = new_ID

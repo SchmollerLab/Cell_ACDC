@@ -45,7 +45,7 @@ from PyQt5.QtWidgets import (
     QAction, QApplication, QMainWindow, QMenu, QLabel, QToolBar,
     QScrollBar, QWidget, QVBoxLayout, QLineEdit, QPushButton,
     QHBoxLayout, QDialog, QFormLayout, QListWidget, QAbstractItemView,
-    QButtonGroup, QCheckBox
+    QButtonGroup, QCheckBox, QSizePolicy
 )
 
 import qrc_resources
@@ -658,37 +658,33 @@ class FutureFramesAction_QDialog(QDialog):
 
         apply_and_reinit_b = QPushButton(
                     'Apply only to this frame and re-initialize future frames')
-        apply_and_reinit_b.setFixedWidth(320)
+
         self.apply_and_reinit_b = apply_and_reinit_b
-        buttonsLayout.addWidget(apply_and_reinit_b, alignment=Qt.AlignCenter)
+        buttonsLayout.addWidget(apply_and_reinit_b)
 
         apply_and_NOTreinit_b = QPushButton(
-                    'Apply only to this frame and keep future frames as they are')
-        apply_and_NOTreinit_b.setFixedWidth(320)
+                'Apply only to this frame and keep future frames as they are')
         self.apply_and_NOTreinit_b = apply_and_NOTreinit_b
-        buttonsLayout.addWidget(apply_and_NOTreinit_b, alignment=Qt.AlignCenter)
+        buttonsLayout.addWidget(apply_and_NOTreinit_b)
 
         self.applyTrackingButton = None
         if applyTrackingB:
             applyTrackingButton = QPushButton(
                         'Repeat ONLY tracking for all future frames')
-            applyTrackingButton.setFixedWidth(320)
             self.applyTrackingButton = applyTrackingButton
-            buttonsLayout.addWidget(applyTrackingButton, alignment=Qt.AlignCenter)
+            buttonsLayout.addWidget(applyTrackingButton)
 
         apply_to_all_b = QPushButton(
                     'Apply to all future frames')
-        apply_to_all_b.setFixedWidth(320)
         self.apply_to_all_b = apply_to_all_b
-        buttonsLayout.addWidget(apply_to_all_b, alignment=Qt.AlignCenter)
+        buttonsLayout.addWidget(apply_to_all_b)
 
         apply_to_range_b = QPushButton(
                     'Apply only to a range of future frames')
-        apply_to_range_b.setFixedWidth(320)
         self.apply_to_range_b = apply_to_range_b
-        buttonsLayout.addWidget(apply_to_range_b, alignment=Qt.AlignCenter)
+        buttonsLayout.addWidget(apply_to_range_b)
 
-        # buttonsLayout.setContentsMargins(50, 0, 0, 0)
+        buttonsLayout.setContentsMargins(20, 0, 20, 0)
 
         self.formLayout = QFormLayout()
         self.OkRangeLayout = QVBoxLayout()
@@ -698,7 +694,8 @@ class FutureFramesAction_QDialog(QDialog):
         ButtonsGroup = QButtonGroup(self)
         ButtonsGroup.addButton(apply_and_reinit_b)
         ButtonsGroup.addButton(apply_and_NOTreinit_b)
-        ButtonsGroup.addButton(applyTrackingButton)
+        if applyTrackingB:
+            ButtonsGroup.addButton(applyTrackingButton)
         ButtonsGroup.addButton(apply_to_all_b)
         ButtonsGroup.addButton(apply_to_range_b)
         ButtonsGroup.addButton(self.OkRangeButton)
