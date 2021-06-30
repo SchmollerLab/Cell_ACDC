@@ -418,11 +418,12 @@ class Yeast_ACDC_GUI(QMainWindow):
         right_click = event.button() == Qt.MouseButton.RightButton
         eraserON = self.eraserButton.isChecked()
         brushON = self.brushButton.isChecked()
+        separateON = self.separateBudButton.isChecked()
 
         # Drag image if neither brush or eraser are On or Alt is pressed
         dragImg = (
-            (left_click and not eraserON and not brushON) or
-            (left_click and self.isAltDown)
+            (left_click and not eraserON and not brushON and not separateON)
+            or (left_click and self.isAltDown)
         )
 
         # Enable dragging of the image window like pyqtgraph original code
@@ -432,10 +433,17 @@ class Yeast_ACDC_GUI(QMainWindow):
         if mode == 'Viewer':
             return
 
+        # Left-click is used for brush, eraser and separate bud
+        # Brush and eraser are mutually exclusive but we want to keep the eraser
+        # or brush ON and disable them temporarily to allow left-click with
+        # separate ON
+        canErase = eraserON and not separateON and not dragImg
+        canBrush = brushON and not separateON and not dragImg
+
         # Erase with brush and left click on the right image
         # NOTE: contours, IDs and rp will be updated
         # on gui_mouseReleaseEventImg2
-        if left_click and self.eraserButton.isChecked() and not dragImg:
+        if left_click and canErase:
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(round(x)), int(round(y))
             Y, X = self.lab.shape
@@ -457,7 +465,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Paint with brush and left click on the right image
         # NOTE: contours, IDs and rp will be updated
         # on gui_mouseReleaseEventImg2
-        elif left_click and self.brushButton.isChecked() and not dragImg:
+        elif left_click and canBrush:
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(round(x)), int(round(y))
             Y, X = self.lab.shape
@@ -1828,8 +1836,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.separateBudButton.setCheckable(True)
         self.separateBudButton.setShortcut('s')
         self.separateBudButton.setToolTip(
-            'Separate bud (S + right-click)\n'
-            'Keep "S" pressed down to enforce manual separation'
+            'Attempt automatic bud separation with right-click (S + right-click)\n'
+            'of enforce manual separation with left-click (S + left-click)'
         )
         editToolBar.addWidget(self.separateBudButton)
         self.checkableButtons.append(self.separateBudButton)
@@ -2081,7 +2089,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.app.setOverrideCursor(Qt.WaitCursor)
         # Store undo state before modifying stuff
         self.storeUndoRedoStates(False)
-        self.lab = np.load(self.data.segm_npy_path)[self.frame_i]
+        self.lab = np.load(self.data.segm_npy_path)[self.frame_i].copy()
         self.update_rp()
         self.updateALLimg()
         self.app.restoreOverrideCursor()
@@ -2717,7 +2725,6 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         self.draw_MothBudTempLine = False
         self.disableAutoActivateViewerWindow = False
-        self.enforceSeparation = False
         self.isAltDown = False
         self.UserEnforced_DisabledTracking = False
         self.UserEnforced_Tracking = False
