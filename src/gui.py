@@ -3105,6 +3105,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 (int(y),int(x),newID) for y,x,newID in _zip if newID!=-1]
             self.get_cca_df()
 
+        self.IDs = [obj.label for obj in self.rp]
         return proceed_cca, never_visited
 
     def init_cca(self):
@@ -3122,17 +3123,17 @@ class Yeast_ACDC_GUI(QMainWindow):
             return
 
         proceed = True
-        last_cca_frame_i = 0
+        i = 1
         # Determine last annotated frame index
         for i, dict_frame_i in enumerate(self.allData_li):
             df = dict_frame_i['segm_metadata_df']
-            if df is not None:
+            if df is None:
+                break
+            else:
                 if 'cell_cycle_stage' not in df.columns:
-                    last_cca_frame_i = i-1
                     break
 
-        if last_cca_frame_i < 0:
-            last_cca_frame_i = 0
+        last_cca_frame_i = i-1
 
         if self.frame_i > last_cca_frame_i:
             # Prompt user to go to last annotated frame
