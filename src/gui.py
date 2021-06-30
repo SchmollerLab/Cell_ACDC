@@ -2261,6 +2261,9 @@ class Yeast_ACDC_GUI(QMainWindow):
         elif ev.key() == Qt.Key_Alt:
             self.app.setOverrideCursor(Qt.SizeAllCursor)
             self.isAltDown = True
+        elif ev.key() == Qt.Key_L:
+            self.lab = skimage.segmentation.relabel_sequential(self.lab)[0]
+            self.updateALLimg()
         elif ev.modifiers() == Qt.ControlModifier:
             if ev.key() == Qt.Key_P:
                 print('========================')
@@ -3733,7 +3736,6 @@ class Yeast_ACDC_GUI(QMainWindow):
                  storeUndo=False, prev_lab=None, prev_rp=None,
                  return_lab=False):
         if self.frame_i == 0:
-            self.lab = skimage.segmentation.relabel_sequential(self.lab)
             return
 
         # Disable tracking for already visited frames
