@@ -602,13 +602,13 @@ for path, frange, ROI_coords, slices, basename in inputs:
     if save_segm:
         print('')
         print('Saving...')
-        np.save(data.segm_npy_path, tracked_stack)
+        np.savez(data.segm_npy_path, tracked_stack)
         if concat_splits:
             last_tracked_frame_path = os.path.join(
                 data.parent_path,
                 f'{split_num}_last_tracked_frame.npy'
             )
-            np.save(last_tracked_frame_path, tracked_stack[-1])
+            np.savez(last_tracked_frame_path, tracked_stack[-1])
 
 t_end = time()
 

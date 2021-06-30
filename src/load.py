@@ -125,7 +125,7 @@ class load_frames_data:
         self.segm_data = None
         if load_segm_data:
             segm_npy_path, segm_npy_found = self.substring_path(
-                                           path, 'segm.npy', self.images_path)
+                                           path, 'segm.np', self.images_path)
             self.segm_npy_found = segm_npy_found
             if segm_npy_found:
                 segm_data = np.load(segm_npy_path)
@@ -207,7 +207,7 @@ class load_frames_data:
         self.align_npy_path = f'{base_path}_{user_ch_name}_aligned.npy'
         self.align_old_path = f'{base_path}_phc_aligned.npy'
         self.align_shifts_path = f'{base_path}_align_shift.npy'
-        self.segm_npy_path = f'{base_path}_segm.npy'
+        self.segm_npy_path = f'{base_path}_segm.np'
         self.last_tracked_i_path = f'{base_path}_last_tracked_i.txt'
         self.acdc_output_csv_path = f'{base_path}_acdc_output.csv'
         self.benchmarking_df_csv_path = f'{base_path}_benchmarking.csv'
@@ -490,7 +490,7 @@ class beyond_listdir_pos:
                                     continue
                                 s_n = int(m[0])
                                 if s_n == pos_n:
-                                    if filename.find('segm.npy') != -1:
+                                    if filename.find('segm.np') != -1:
                                         file_path = f'{images_path}/{filename}'
                                         tmtime = os.path.getmtime(file_path)
                                         tmtimes.append(tmtime)
@@ -547,9 +547,9 @@ class beyond_listdir_pos:
                                                .strftime('%Y/%m/%d'))
                         exp_info = f'{rel_path} (All pos segmented - {modified_on})'
                 elif num_segm_pos > num_pos:
-                    print('Position_n folders that contain multiple segm.npy files:\n'
+                    print('Position_n folders that contain multiple segm.np files:\n'
                           f'{pos_paths_multi_segm}')
-                    exp_info = f'{rel_path} (WARNING: multiple "segm.npy" files found!)'
+                    exp_info = f'{rel_path} (WARNING: multiple "segm.np" files found!)'
                 else:
                     exp_info = rel_path
             else:

@@ -1328,13 +1328,17 @@ class cca_df_frame0:
                                   font=(None, 11))
         cc_stage_colTitl.grid(row=0, column=col, pady=4, padx=4)
         self.cc_stage_list = []
+        self.cc_stage_varNames = []
         init_ccs = cca_df.loc[cells_IDs]['cell_cycle_stage'].to_list()
         for row, ID in enumerate(cells_IDs):
-            cc_stage_var = tk.StringVar(root)
+            cc_stage_varName = f'cc_stage_{ID}'
+            cc_stage_var = tk.StringVar(root, None, cc_stage_varName)
+            self.cc_stage_varNames.append(cc_stage_varName)
             cc_stage_val = init_ccs.copy()[row]
             if cc_stage_val == 'S':
                 cc_stage_val = 'S/G2/M'
             cc_stage_var.set(cc_stage_val) # default value
+            cc_stage_var.trace('w', self.updateRelationship)
             cc_stage = tk.OptionMenu(root, cc_stage_var, *cc_stage_opt)
             cc_stage.grid(row=row+1, column=col, pady=4, padx=4)
             self.cc_stage_list.append(cc_stage_var)
@@ -1369,7 +1373,7 @@ class cca_df_frame0:
         init_rel_ID = cca_df.loc[cells_IDs]['relative_ID'].to_list()
         for row, ID in enumerate(IDs):
             related_to_var = tk.StringVar(root, name='rel_to_{}'.format(ID))
-            temp_cb = related_to_var.trace('w', self.store_varName)
+            temp_cb = related_to_var.trace('w', self.store_relTo_varName)
             related_to_var.set(str(init_rel_ID[row])) # default value
             related_to_var.trace_vdelete('w', temp_cb)
             related_to_var.trace('w', self.update_relID)
@@ -1404,8 +1408,16 @@ class cca_df_frame0:
         self.root.focus_force()
         self.root.mainloop()
 
-    def store_varName(self, *args):
+    def store_relTo_varName(self, *args):
         self.relto_varNames.append(args[0])
+
+    def updateRelationship(self, *args):
+        var_name = args[0]
+        var_txt = self.root.getvar(name=var_name)
+        idxID_var = self.cc_stage_varNames.index(var_name)
+        if var_txt == 'G1':
+            self.relationship_list[idxID_var].set('mother')
+
 
     def update_relID(self, *args):
         var_name = args[0]

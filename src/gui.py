@@ -1452,10 +1452,14 @@ class Yeast_ACDC_GUI(QMainWindow):
                 return eligible
 
     def getStatusMothBeforeBudding(self, budID, curr_mothID):
+        print(self.frame_i)
         # Get status of the current mother before it had budID assigned to it
-        for i in range(self.frame_i-1, 0, -1):
+        for i in range(self.frame_i-1, -1, -1):
+            print(i)
             # Get cca_df for ith frame from allData_li
             cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
+
+            print(cca_df_i)
 
             is_bud_existing = budID in cca_df_i.index
             if not is_bud_existing:
@@ -2263,6 +2267,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.isAltDown = True
         elif ev.key() == Qt.Key_L:
             self.lab = skimage.segmentation.relabel_sequential(self.lab)[0]
+            self.update_rp()
             self.updateALLimg()
         elif ev.modifiers() == Qt.ControlModifier:
             if ev.key() == Qt.Key_P:
@@ -3542,7 +3547,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 )
                 aligned_filename = f'{filename_noEXT}_aligned.npy'
                 aligned_path = f'{images_path}/{aligned_filename}'
-                np.save(aligned_path, aligned_frames, allow_pickle=False)
+                np.savez(aligned_path, aligned_frames)
                 fluo_data = aligned_frames
             else:
                 align_path = f'{images_path}/..._align_shift.npy'
@@ -4161,7 +4166,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 pass
 
             # Save segmentation file
-            np.save(segm_npy_path, segm_npy)
+            np.savez(segm_npy_path, segm_npy)
             self.data.segm_data = segm_npy
 
             # Save last tracked frame
