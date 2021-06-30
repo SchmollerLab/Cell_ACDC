@@ -1365,7 +1365,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                     self.store_cca_df(frame_i=i, cca_df=cca_df_i)
 
         # Correct past frames
-        for i in range(self.frame_i-1, 0, -1):
+        for i in range(self.frame_i-1, -1, -1):
             cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
             ccs = cca_df_i.at[ID, 'cell_cycle_stage']
             relID = cca_df_i.at[ID, 'relative_ID']
@@ -1425,7 +1425,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 return eligible
 
         # Check past frames
-        for i in range(self.frame_i-1, 0, -1):
+        for i in range(self.frame_i-1, -1, -1):
             # Get cca_df for ith frame from allData_li
             cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
 
@@ -1556,7 +1556,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
 
         # Correct past frames
-        for i in range(self.frame_i-1, 0, -1):
+        for i in range(self.frame_i-1, -1, -1):
             # Get cca_df for ith frame from allData_li
             cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
 
