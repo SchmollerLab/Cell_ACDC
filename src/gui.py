@@ -1452,14 +1452,10 @@ class Yeast_ACDC_GUI(QMainWindow):
                 return eligible
 
     def getStatusMothBeforeBudding(self, budID, curr_mothID):
-        print(self.frame_i)
         # Get status of the current mother before it had budID assigned to it
         for i in range(self.frame_i-1, -1, -1):
-            print(i)
             # Get cca_df for ith frame from allData_li
             cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
-
-            print(cca_df_i)
 
             is_bud_existing = budID in cca_df_i.index
             if not is_bud_existing:
