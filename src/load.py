@@ -124,11 +124,11 @@ class load_frames_data:
                 root.destroy()
         self.segm_data = None
         if load_segm_data:
-            segm_npy_path, segm_npy_found = self.substring_path(
+            segm_npz_path, segm_npy_found = self.substring_path(
                                            path, 'segm.np', self.images_path)
             self.segm_npy_found = segm_npy_found
             if segm_npy_found:
-                segm_data = np.load(segm_npy_path)
+                segm_data = np.load(segm_npz_path)
                 self.segm_data = segm_data
             else:
                 Y, X = self.img_data.shape[-2:]
@@ -143,28 +143,28 @@ class load_frames_data:
         else:
             self.last_tracked_i = None
 
-        self.segm_metadata_df = None
+        self.acdc_df = None
         # Load segmentation metadata
         if load_segm_metadata:
             segm_metadata_path, segm_metadata_found = self.substring_path(
                                               path, '_acdc_output.csv',
                                               self.images_path)
             if segm_metadata_found:
-                segm_metadata_df = pd.read_csv(
+                acdc_df = pd.read_csv(
                     segm_metadata_path, index_col=['frame_i', 'Cell_ID']
                 )
 
-                # Keep compatibility with older versions of segm_metadata_df
-                if 'Is_dead_cell' in segm_metadata_df.columns:
-                    segm_metadata_df.rename(
+                # Keep compatibility with older versions of acdc_df
+                if 'Is_dead_cell' in acdc_df.columns:
+                    acdc_df.rename(
                         columns={'Is_dead_cell': 'is_cell_dead',
                                  'centroid_x_dead': 'x_centroid',
                                  'centroid_y_dead': 'y_centroid'},
                         inplace=True
                     )
-                    segm_metadata_df['is_cell_excluded'] = False
+                    acdc_df['is_cell_excluded'] = False
 
-                self.segm_metadata_df = segm_metadata_df
+                self.acdc_df = acdc_df
 
         self.build_paths(self.filename, self.images_path, user_ch_name)
 
@@ -204,10 +204,10 @@ class load_frames_data:
         base_path = f'{images_path}/{basename}'
         self.slice_used_align_path = f'{base_path}_slice_used_alignment.csv'
         self.slice_used_segm_path = f'{base_path}_slice_segm.csv'
-        self.align_npy_path = f'{base_path}_{user_ch_name}_aligned.npy'
+        self.align_npz_path = f'{base_path}_{user_ch_name}_aligned.npz'
         self.align_old_path = f'{base_path}_phc_aligned.npy'
         self.align_shifts_path = f'{base_path}_align_shift.npy'
-        self.segm_npy_path = f'{base_path}_segm.np'
+        self.segm_npz_path = f'{base_path}_segm.npz'
         self.last_tracked_i_path = f'{base_path}_last_tracked_i.txt'
         self.acdc_output_csv_path = f'{base_path}_acdc_output.csv'
         self.benchmarking_df_csv_path = f'{base_path}_benchmarking.csv'

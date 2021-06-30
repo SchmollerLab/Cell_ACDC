@@ -81,12 +81,12 @@ class load_data:
         self.base_path = base_path
         self.slice_used_align_path = f'{base_path}_slice_used_alignment.csv'
         self.slice_used_segm_path = f'{base_path}_slice_segm.csv'
-        self.align_npy_path = f'{base_path}_{user_ch_name}_aligned.npy'
+        self.align_npz_path = f'{base_path}_{user_ch_name}_aligned.npz'
         self.align_old_path = f'{base_path}_phc_aligned.npy'
         self.align_shifts_path = f'{base_path}_align_shift.npy'
-        self.segm_npy_backup_path = f'{base_path}_segm_YeaZ.npy'
-        self.segm_npy_path = f'{base_path}_segm.npy'
-        self.pred_npy_path = f'{base_path}_pred.npy'
+        self.segm_npy_backup_path = f'{base_path}_segm_YeaZ.npz'
+        self.segm_npz_path = f'{base_path}_segm.npz'
+        self.pred_npz_path = f'{base_path}_pred.npz'
 
     def substring_path(self, path, substring, parent_path):
         substring_found = False
@@ -406,10 +406,10 @@ for exp_idx, main_path in enumerate(main_paths):
                 print('Frames aligned!')
                 if os.path.exists(data.align_old_path):
                     os.remove(data.align_old_path)
-                np.save(data.align_npy_path, aligned_frames,
+                np.save(data.align_npz_path, aligned_frames,
                         allow_pickle=False)
                 np.save(data.align_shifts_path, shifts, allow_pickle=False)
-                path = data.align_npy_path
+                path = data.align_npz_path
                 frames = aligned_frames
             else:
                 # Aligned file found and already loaded
@@ -417,7 +417,7 @@ for exp_idx, main_path in enumerate(main_paths):
         else:
             # Simple 2D image
             frames = data.img_data
-            np.save(data.align_npy_path, frames, allow_pickle=False)
+            np.save(data.align_npz_path, frames, allow_pickle=False)
             shifts = np.array([[0,0]])
             np.save(data.align_shifts_path, shifts, allow_pickle=False)
 
@@ -602,13 +602,13 @@ for path, frange, ROI_coords, slices, basename in inputs:
     if save_segm:
         print('')
         print('Saving...')
-        np.savez(data.segm_npy_path, tracked_stack)
+        np.savez_compressed(data.segm_npz_path, tracked_stack)
         if concat_splits:
             last_tracked_frame_path = os.path.join(
                 data.parent_path,
-                f'{split_num}_last_tracked_frame.npy'
+                f'{split_num}_last_tracked_frame.npz'
             )
-            np.savez(last_tracked_frame_path, tracked_stack[-1])
+            np.savez_compressed(last_tracked_frame_path, tracked_stack[-1])
 
 t_end = time()
 

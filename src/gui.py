@@ -14,6 +14,7 @@ import re
 import traceback
 import time
 from functools import partial
+from tqdm import tqdm
 
 import cv2
 import numpy as np
@@ -797,7 +798,6 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.get_data()
                 self.update_rp_metadata(draw=False)
                 self.app.restoreOverrideCursor()
-
 
         # Annotate cell as removed from the analysis
         elif right_click and self.binCellButton.isChecked():
@@ -1768,7 +1768,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.overlayButton = QToolButton(self)
         self.overlayButton.setIcon(QIcon(":overlay.svg"))
         self.overlayButton.setCheckable(True)
-        self.overlayButton.setToolTip('Overlay fluorescent image')
+        self.overlayButton.setToolTip('Overlay fluorescent image\n'
+        'NOTE: Green background if you successfully loaded fluorescent data')
         navigateToolBar.addWidget(self.overlayButton)
         self.checkableButtons.append(self.overlayButton)
         self.checkableQButtonsGroup.addButton(self.overlayButton)
@@ -1867,7 +1868,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.ripCellButton.setIcon(QIcon(":rip.svg"))
         self.ripCellButton.setCheckable(True)
         self.ripCellButton.setToolTip(
-           "Annotate cell as dead (D + right-click)"
+           "Annotate cell as dead (D + right-click)\n"
+           "NOTE that you can also completely delete a cell with scrolling wheel click on the ID"
         )
         self.ripCellButton.setShortcut("d")
         editToolBar.addWidget(self.ripCellButton)
@@ -2019,7 +2021,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             filename = os.path.basename(fluo_path)
             fluo_data = self.load_fluo_data(fluo_path)
             self.data.fluo_data_dict[filename] = fluo_data
-        print('Done')
+        self.overlayButton.setStyleSheet('background-color: #A7FAC7')
         self.app.restoreOverrideCursor()
 
 
@@ -2089,7 +2091,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.app.setOverrideCursor(Qt.WaitCursor)
         # Store undo state before modifying stuff
         self.storeUndoRedoStates(False)
-        self.lab = np.load(self.data.segm_npy_path)[self.frame_i].copy()
+        self.lab = np.load(self.data.segm_npz_path)[self.frame_i].copy()
         self.update_rp()
         self.updateALLimg()
         self.app.restoreOverrideCursor()
@@ -2280,7 +2282,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 print(self.cca_df)
                 print('------------------------')
                 print(f'STORED Cell cycle analysis table for frame {self.frame_i+1}:')
-                df = self.allData_li[self.frame_i]['segm_metadata_df']
+                df = self.allData_li[self.frame_i]['acdc_df']
                 if 'cell_cycle_stage' in df.columns:
                     cca_df = df[self.cca_df_colnames]
                     print(cca_df)
@@ -2653,7 +2655,7 @@ class Yeast_ACDC_GUI(QMainWindow):
     def init_frames_data(self, frames_path, user_ch_name):
         data = load.load_frames_data(frames_path, user_ch_name)
         if not data.segm_npy_found:
-            err_msg = ('Segmentation mask file ("..._segm.npy") not found. '
+            err_msg = ('Segmentation mask file ("..._segm.npz") not found. '
                        'You need to run the segmentation script first.')
             self.titleLabel.setText(err_msg, color='r')
             raise FileNotFoundError(err_msg)
@@ -2752,7 +2754,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 {
                  'regionprops': [],
                  'labels': None,
-                 'segm_metadata_df': None
+                 'acdc_df': None
                  }
                 for i in range(self.num_frames)
         ]
@@ -2851,7 +2853,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 editIDclicked_y[i] = int(round(y))
                 editIDnewID[i] = new_ID
 
-        self.allData_li[self.frame_i]['segm_metadata_df'] = pd.DataFrame(
+        self.allData_li[self.frame_i]['acdc_df'] = pd.DataFrame(
             {
                         'Cell_ID': IDs,
                         'is_cell_dead': is_cell_dead_li,
@@ -2927,7 +2929,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             return notEnoughG1Cells, proceed
 
         # Make sure that this is a visited frame
-        df = self.allData_li[self.frame_i-1]['segm_metadata_df']
+        df = self.allData_li[self.frame_i-1]['acdc_df']
         if df is None or 'cell_cycle_stage' not in df.columns:
             msg = QtGui.QMessageBox()
             warn_cca = msg.critical(
@@ -3041,8 +3043,8 @@ class Yeast_ACDC_GUI(QMainWindow):
     def get_data(self):
         proceed_cca = True
         if self.frame_i > 2:
-            # Remove undo states from 2 frames back to avoid memory issues
-            self.UndoRedoStates[self.frame_i-2] = []
+            # Remove undo states from 4 frames back to avoid memory issues
+            self.UndoRedoStates[self.frame_i-4] = []
             # Check if current frame contains undo states (not empty list)
             if self.UndoRedoStates[self.frame_i]:
                 self.undoAction.setDisabled(False)
@@ -3070,12 +3072,12 @@ class Yeast_ACDC_GUI(QMainWindow):
             # Requested frame was never visited before. Load from HDD
             self.lab = self.data.segm_data[self.frame_i].copy()
             self.rp = skimage.measure.regionprops(self.lab)
-            if self.data.segm_metadata_df is not None:
-                frames = self.data.segm_metadata_df.index.get_level_values(0)
+            if self.data.acdc_df is not None:
+                frames = self.data.acdc_df.index.get_level_values(0)
                 if self.frame_i in frames:
                     # Since there was already segmentation metadata from
                     # previous closed session add it to current metadata
-                    df = self.data.segm_metadata_df.loc[self.frame_i].copy()
+                    df = self.data.acdc_df.loc[self.frame_i].copy()
                     binnedIDs_df = df[df['is_cell_excluded']]
                     binnedIDs = set(binnedIDs_df.index).union(self.binnedIDs)
                     self.binnedIDs = binnedIDs
@@ -3091,7 +3093,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                             cols = self.cca_df_int_cols
                             df[cols] = df[cols].astype(int)
                     i = self.frame_i
-                    self.allData_li[i]['segm_metadata_df'] = df.copy()
+                    self.allData_li[i]['acdc_df'] = df.copy()
 
             self.get_cca_df()
         else:
@@ -3099,7 +3101,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             never_visited = False
             self.lab = self.allData_li[self.frame_i]['labels'].copy()
             self.rp = skimage.measure.regionprops(self.lab)
-            df = self.allData_li[self.frame_i]['segm_metadata_df']
+            df = self.allData_li[self.frame_i]['acdc_df']
             binnedIDs_df = df[df['is_cell_excluded']]
             self.binnedIDs = set(binnedIDs_df.index)
             ripIDs_df = df[df['is_cell_dead']]
@@ -3133,7 +3135,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         i = 1
         # Determine last annotated frame index
         for i, dict_frame_i in enumerate(self.allData_li):
-            df = dict_frame_i['segm_metadata_df']
+            df = dict_frame_i['acdc_df']
             if df is None:
                 break
             else:
@@ -3203,7 +3205,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
     def del_future_cca_df(self, from_frame_i):
         for i in range(from_frame_i, self.num_segm_frames):
-            df = self.allData_li[i]['segm_metadata_df']
+            df = self.allData_li[i]['acdc_df']
             if df is None:
                 # No more saved info to delete
                 return
@@ -3220,7 +3222,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         # or loaded from HDD in "init_attr" with a .question to the user
         cca_df = None
         i = self.frame_i if frame_i is None else frame_i
-        df = self.allData_li[i]['segm_metadata_df']
+        df = self.allData_li[i]['acdc_df']
         if df is not None:
             if 'cell_cycle_stage' in df.columns:
                 cca_df = df[self.cca_df_colnames].copy()
@@ -3237,15 +3239,15 @@ class Yeast_ACDC_GUI(QMainWindow):
             print('-------------')
             print(f'cca_df for frame {i+1} stored')
             print('-------------')
-            segm_df = self.allData_li[i]['segm_metadata_df']
+            segm_df = self.allData_li[i]['acdc_df']
             if 'cell_cycle_stage' in segm_df.columns:
                 # Cell cycle info already present --> overwrite with new
                 df = segm_df
                 df[self.cca_df_colnames] = cca_df
             else:
                 df = segm_df.join(cca_df, how='outer')
-            self.allData_li[i]['segm_metadata_df'] = df.copy()
-            # print(self.allData_li[self.frame_i]['segm_metadata_df'])
+            self.allData_li[i]['acdc_df'] = df.copy()
+            # print(self.allData_li[self.frame_i]['acdc_df'])
 
 
     def ax1_setTextID(self, obj, how):
@@ -3517,7 +3519,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Load overlay frames and align if needed
         filename = os.path.basename(fluo_path)
         filename_noEXT, ext = os.path.splitext(filename)
-        if ext == '.npy':
+        if ext == '.npy' or ext == '.npz':
             fluo_data = np.load(fluo_path)
             if filename.find('aligned') != -1:
                 align_ol = False
@@ -3528,7 +3530,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             fluo_data = skimage.io.imread(fluo_path)
         else:
             txt = (f'File format {ext} is not supported!\n'
-                    'Choose either .tif or .npy files.')
+                    'Choose either .tif or .npz files.')
             msg = QtGui.QMessageBox()
             msg.critical(
                 self, 'File not supported', txt, msg.Ok
@@ -3549,9 +3551,9 @@ class Yeast_ACDC_GUI(QMainWindow):
                                           register=False,
                                           user_shifts=loaded_shifts
                 )
-                aligned_filename = f'{filename_noEXT}_aligned.npy'
+                aligned_filename = f'{filename_noEXT}_aligned.npz'
                 aligned_path = f'{images_path}/{aligned_filename}'
-                np.savez(aligned_path, aligned_frames)
+                np.savez_compressed(aligned_path, aligned_frames)
                 fluo_data = aligned_frames
             else:
                 align_path = f'{images_path}/..._align_shift.npy'
@@ -3611,6 +3613,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                     self.data.fluo_data_dict[filename] = fluo_data
                     ol_data[filename] = fluo_data
                     ol_colors[filename] = self.overlayRGBs[i]
+                self.overlayButton.setStyleSheet('background-color: #A7FAC7')
                 self.app.restoreOverrideCursor()
 
             self.ol_data = ol_data
@@ -3898,7 +3901,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.allData_li[i] = {
                                      'regionprops': [],
                                      'labels': None,
-                                     'segm_metadata_df': None
+                                     'acdc_df': None
              }
 
     # Slots
@@ -4011,7 +4014,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 dst = f'{images_path}/{new_filename}'
                 os.rename(img_path, dst)
                 filename = new_filename
-            if filename.find(f'{user_ch_name}_aligned.npy') != -1:
+            if filename.find(f'{user_ch_name}_aligned.np') != -1:
                 img_path = f'{images_path}/{filename}'
                 img_aligned_found = True
         if not img_aligned_found:
@@ -4045,7 +4048,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 filename = os.path.basename(fluo_path)
                 fluo_data = self.load_fluo_data(fluo_path)
                 self.data.fluo_data_dict[filename] = fluo_data
-            print('Done')
+            self.overlayButton.setStyleSheet('background-color: #A7FAC7')
             self.app.restoreOverrideCursor()
 
         # Connect events at the end of loading data process
@@ -4087,8 +4090,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         systems.get(os.name, os.startfile)(self.images_path)
 
-    def add_static_metadata_df(self, df, rp):
-        # ADD HERE FLUORESCENT METRICS and segmentation ...
+    def add_static_metadata_df(self, df, rp, frame_i, lab):
         # Add metrics that can be calculated at the end of the process
         # such as cell volume, cell area etc.
         zyx_vox_dim =self.data.zyx_vox_dim
@@ -4100,6 +4102,19 @@ class Yeast_ACDC_GUI(QMainWindow):
         IDs_area_pxl = [0]*len(rp)
         IDs_vol_fl = [0]*len(rp)
         IDs_area_um2 = [0]*len(rp)
+        fluo_keys = list(self.data.fluo_data_dict.keys())
+        numFluoChannels = len(fluo_keys)
+        fluo_means = np.zeros((len(rp), numFluoChannels))
+        fluo_medians = np.zeros((len(rp), numFluoChannels))
+        fluo_mins = np.zeros((len(rp), numFluoChannels))
+        fluo_maxs = np.zeros((len(rp), numFluoChannels))
+        fluo_sums = np.zeros((len(rp), numFluoChannels))
+        fluo_q25s = np.zeros((len(rp), numFluoChannels))
+        fluo_q75s = np.zeros((len(rp), numFluoChannels))
+        fluo_q5s = np.zeros((len(rp), numFluoChannels))
+        fluo_q95s = np.zeros((len(rp), numFluoChannels))
+        fluo_amounts = np.zeros((len(rp), numFluoChannels))
+        outCellsMask = self.lab==0
         for i, obj in enumerate(rp):
             rotate_ID_img = skimage.transform.rotate(
                 obj.image.astype(np.uint8), -(obj.orientation*180/np.pi),
@@ -4111,28 +4126,57 @@ class Yeast_ACDC_GUI(QMainWindow):
             IDs_area_pxl[i] = obj.area
             IDs_vol_fl[i] = vol_vox*vox_to_fl
             IDs_area_um2[i] = obj.area*yx_pxl_to_um2
+            # Calc metrics for each fluo channel
+            for j, key in enumerate(fluo_keys):
+                fluo_data = self.data.fluo_data_dict[key][self.frame_i]
+                fluo_data_ID = fluo_data[obj.slice][obj.image]
+                fluo_backgr = np.median(fluo_data[outCellsMask])
+                fluo_mean = fluo_data_ID.mean()
+                fluo_amount = (fluo_mean-fluo_backgr)*obj.area
+                fluo_means[i,j] = fluo_mean
+                fluo_medians[i,j] = np.median(fluo_data_ID)
+                fluo_mins[i,j] = fluo_data_ID.min()
+                fluo_maxs[i,j] = fluo_data_ID.max()
+                fluo_sums[i,j] = fluo_data_ID.sum()
+                fluo_q25s[i,j] = np.quantile(fluo_data_ID, q=0.25)
+                fluo_q75s[i,j] = np.quantile(fluo_data_ID, q=0.75)
+                fluo_q5s[i,j] = np.quantile(fluo_data_ID, q=0.05)
+                fluo_q95s[i,j] = np.quantile(fluo_data_ID, q=0.95)
+                fluo_amounts[i,j] = fluo_amount
 
         df['cell_area_pxl'] = IDs_area_pxl
         df['cell_vol_vox'] = IDs_vol_vox
         df['cell_area_um2'] = IDs_area_um2
         df['cell_vol_fl'] = IDs_vol_fl
+        df[[f'{f}_mean' for f in fluo_keys]] = fluo_means
+        df[[f'{f}_median' for f in fluo_keys]] = fluo_medians
+        df[[f'{f}_min' for f in fluo_keys]] = fluo_mins
+        df[[f'{f}_max' for f in fluo_keys]] = fluo_maxs
+        df[[f'{f}_sum' for f in fluo_keys]] = fluo_sums
+        df[[f'{f}_q25' for f in fluo_keys]] = fluo_q25s
+        df[[f'{f}_q75' for f in fluo_keys]] = fluo_q75s
+        df[[f'{f}_q05' for f in fluo_keys]] = fluo_q5s
+        df[[f'{f}_q95' for f in fluo_keys]] = fluo_q95s
+        df[[f'{f}_amount' for f in fluo_keys]] = fluo_amounts
 
 
     def saveFile(self):
         self.app.setOverrideCursor(Qt.WaitCursor)
         try:
-            segm_npy_path = self.data.segm_npy_path
+            segm_npz_path = self.data.segm_npz_path
             acdc_output_csv_path = self.data.acdc_output_csv_path
             last_tracked_i_path = self.data.last_tracked_i_path
             segm_npy = np.copy(self.data.segm_data)
             segm_npy[self.frame_i] = self.lab
-            segm_metadata_df_li = [None]*self.num_frames
+            acdc_df_li = [None]*self.num_frames
 
-            # Create list of dataframes from segm_metadata_df on HDD
-            if self.data.segm_metadata_df is not None:
-                for frame_i, df in self.data.segm_metadata_df.groupby(level=0):
-                    segm_metadata_df_li[frame_i] = df.loc[frame_i]
+            # Create list of dataframes from acdc_df on HDD
+            if self.data.acdc_df is not None:
+                for frame_i, df in self.data.acdc_df.groupby(level=0):
+                    acdc_df_li[frame_i] = df.loc[frame_i]
 
+            print('Preparing data for saving...')
+            pbar = tqdm(total=len(self.allData_li), unit=' frames', ncols=100)
             for frame_i, data_dict in enumerate(self.allData_li):
                 # Build segm_npy
                 lab = data_dict['labels']
@@ -4141,22 +4185,28 @@ class Yeast_ACDC_GUI(QMainWindow):
                 else:
                     break
 
-                segm_metadata_df = data_dict['segm_metadata_df']
+                acdc_df = data_dict['acdc_df']
 
-                # Build segm_metadata_df and index it in each frame_i
-                if segm_metadata_df is not None:
+                # Build acdc_df and index it in each frame_i
+                if acdc_df is not None:
                     rp = data_dict['regionprops']
-                    self.add_static_metadata_df(segm_metadata_df, rp)
-                    segm_metadata_df_li[frame_i] = segm_metadata_df
+                    self.add_static_metadata_df(acdc_df, rp, frame_i, lab)
+                    acdc_df_li[frame_i] = acdc_df
+
+                pbar.update()
+
+            pbar.update(pbar.total-pbar.n)
+            pbar.close()
 
             # Remove None and concat dataframe
             keys = []
             df_li = []
-            for i, df in enumerate(segm_metadata_df_li):
+            for i, df in enumerate(acdc_df_li):
                 if df is not None:
                     df_li.append(df)
                     keys.append(i)
 
+            print('Saving data...')
             try:
                 all_frames_metadata_df = pd.concat(
                     df_li, keys=keys, names=['frame_i', 'Cell_ID']
@@ -4164,13 +4214,13 @@ class Yeast_ACDC_GUI(QMainWindow):
 
                 # Save segmentation metadata
                 all_frames_metadata_df.to_csv(acdc_output_csv_path)
-                self.data.segm_metadata_df = all_frames_metadata_df
+                self.data.acdc_df = all_frames_metadata_df
             except:
                 traceback.print_exc()
                 pass
 
             # Save segmentation file
-            np.savez(segm_npy_path, segm_npy)
+            np.savez_compressed(segm_npz_path, segm_npy)
             self.data.segm_data = segm_npy
 
             # Save last tracked frame
