@@ -126,6 +126,7 @@ class load_frames_data:
         if load_segm_data:
             segm_npy_path, segm_npy_found = self.substring_path(
                                            path, 'segm.npy', self.images_path)
+            self.segm_npy_found = segm_npy_found
             if segm_npy_found:
                 segm_data = np.load(segm_npy_path)
                 self.segm_data = segm_data

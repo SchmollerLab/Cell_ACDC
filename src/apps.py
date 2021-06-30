@@ -532,7 +532,7 @@ class my_paint_app:
         self.sub_win.root.destroy()
 
 class QDialogListbox(QDialog):
-    def __init__(self, title, text, items):
+    def __init__(self, title, text, items, multiSelection=True):
         self.cancel = True
         super().__init__()
         self.setWindowTitle(title)
@@ -551,7 +551,11 @@ class QDialogListbox(QDialog):
 
         listBox = QListWidget()
         listBox.addItems(items)
-        listBox.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        if multiSelection:
+            listBox.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        else:
+            listBox.setSelectionMode(QAbstractItemView.SingleSelection)
+        listBox.setCurrentRow(0)
         self.listBox = listBox
         topLayout.addWidget(listBox)
 

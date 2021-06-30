@@ -25,6 +25,7 @@ import skimage.morphology
 import skimage.draw
 import skimage.exposure
 import skimage.transform
+import skimage.segmentation
 from skimage import img_as_float
 from skimage.color import gray2rgb
 
@@ -44,7 +45,7 @@ import pyqtgraph as pg
 import qrc_resources
 
 # Custom modules
-import load, prompts, apps, core
+import load, prompts, apps, core, myutils
 from myutils import download_model
 from QtDarkMode import breeze_resources
 
@@ -228,8 +229,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         alphaScrollBar = QScrollBar(Qt.Horizontal)
         alphaScrollBar.setFixedHeight(20)
         alphaScrollBar.setMinimum(0)
-        alphaScrollBar.setMaximum(20)
-        alphaScrollBar.setValue(10)
+        alphaScrollBar.setMaximum(40)
+        alphaScrollBar.setValue(20)
         alphaScrollBar.setToolTip(
             'Control the alpha value of the overlay.\n'
             'alpha=0 results in NO overlay,\n'
@@ -1707,6 +1708,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Open Recent submenu
         self.openRecentMenu = fileMenu.addMenu("Open Recent")
         fileMenu.addAction(self.saveAction)
+        fileMenu.addAction(self.loadFluoAction)
         # Separator
         fileMenu.addSeparator()
         fileMenu.addAction(self.exitAction)
@@ -1765,6 +1767,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         # fluorescent image color widget
         self.colorButton = pg.ColorButton(self, color=(230,230,230))
+        self.colorButton.mousePressEvent = self.mousePressColorButton
         self.colorButton.setFixedHeight(32)
         self.colorButton.setDisabled(True)
         self.colorButton.setToolTip('Fluorescent image color')
@@ -1911,6 +1914,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.openAction = QAction(QIcon(":folder-open.svg"), "&Open...", self)
         self.saveAction = QAction(QIcon(":file-save.svg"),
                                   "&Save (Ctrl+S)", self)
+        self.loadFluoAction = QAction("Load fluorescent images", self)
         self.reloadAction = QAction(QIcon(":reload.svg"),
                                           "Reload segmentation file", self)
         self.showInExplorerAction = QAction(QIcon(":drawer.svg"),
@@ -1979,6 +1983,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.prevAction.triggered.connect(self.prev_cb)
         self.nextAction.triggered.connect(self.next_cb)
         self.overlayButton.toggled.connect(self.overlay_cb)
+        self.loadFluoAction.triggered.connect(self.loadFluo_cb)
         self.reloadAction.triggered.connect(self.reload_cb)
         self.slideshowButton.toggled.connect(self.launchSlideshow)
         self.repeatSegmActionYeaZ.triggered.connect(self.repeatSegmYeaZ)
@@ -1992,11 +1997,23 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Mode
         self.modeComboBox.activated[str].connect(self.changeMode)
         self.equalizeHistPushButton.clicked.connect(self.equalizeHist)
-        self.colorButton.sigColorChanging.connect(self.updateOverlay)
+        self.colorButton.sigColorChanging.connect(self.updateOlColors)
         self.alphaScrollBar.valueChanged.connect(self.updateOverlay)
         # Drawing mode
         self.drawIDsContComboBox.currentIndexChanged.connect(
                                                 self.drawIDsContComboBox_cb)
+    def loadFluo_cb(self, event):
+        fluo_paths = prompts.multi_files_dialog(
+            title='Select one or multiple fluorescent images')
+
+        self.app.setOverrideCursor(Qt.WaitCursor)
+        for fluo_path in fluo_paths:
+            filename = os.path.basename(fluo_path)
+            fluo_data = self.load_fluo_data(fluo_path)
+            self.data.fluo_data_dict[filename] = fluo_data
+        print('Done')
+        self.app.restoreOverrideCursor()
+
 
     def drawIDsContComboBox_cb(self, idx):
         self.updateALLimg()
@@ -2026,10 +2043,29 @@ class Yeast_ACDC_GUI(QMainWindow):
 
             print(f'Clearing labels = {t1-t0:.3f}')
 
+    def mousePressColorButton(self, event):
+        items = list(self.data.fluo_data_dict.keys())
+        if len(items)>1:
+            selectFluo = apps.QDialogListbox(
+                'Select image',
+                'Select which fluorescent image you want to update the color of\n',
+                items, multiSelection=False
+            )
+            selectFluo.exec_()
+            keys = selectFluo.selectedItemsText
+        key = items[0]
+        if selectFluo.cancel or not keys:
+            return
+        else:
+            self._key = keys[0]
+            self.colorButton.selectColor()
+
+
     def setEnabledToolbarButton(self, enabled=False):
         self.showInExplorerAction.setEnabled(enabled)
         self.reloadAction.setEnabled(enabled)
         self.saveAction.setEnabled(enabled)
+        self.loadFluoAction.setEnabled(enabled)
         self.editToolBar.setEnabled(enabled)
         self.navigateToolBar.setEnabled(enabled)
         self.modeToolBar.setEnabled(enabled)
@@ -2065,6 +2101,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.setEnabledToolbarButton(enabled=False)
                 self.showInExplorerAction.setEnabled(True)
                 self.saveAction.setEnabled(True)
+                self.loadFluoAction.setEnabled(True)
                 self.navigateToolBar.setEnabled(True)
                 self.modeToolBar.setEnabled(True)
                 self.disableTrackingCheckBox.setChecked(True)
@@ -2603,6 +2640,11 @@ class Yeast_ACDC_GUI(QMainWindow):
 
     def init_frames_data(self, frames_path, user_ch_name):
         data = load.load_frames_data(frames_path, user_ch_name)
+        if not data.segm_npy_found:
+            err_msg = ('Segmentation mask file ("..._segm.npy") not found. '
+                       'You need to run the segmentation script first.')
+            self.titleLabel.setText(err_msg, color='r')
+            raise FileNotFoundError(err_msg)
         # Allow single 2D/3D image
         if data.SizeT < 2:
             data.img_data = np.array([data.img_data])
@@ -2681,7 +2723,9 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.clickedOnBud = False
 
         # Colormap
-        self.cmap = pg.colormap.get('viridis', source='matplotlib')
+        self.setOverlayColors()
+        self.cmap = myutils.getFromMatplotlib('viridis')
+        # self.cmap = pg.colormap.get('viridis', source='matplotlib')
         self.lut = self.cmap.getLookupTable(0,1, max_ID+10)
         np.random.shuffle(self.lut)
         # Insert background color
@@ -3108,7 +3152,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         elif self.frame_i < last_cca_frame_i:
             # Prompt user to go to last annotated frame
             msg = QtGui.QMessageBox()
-            goTo_last_annotated_frame_i = msg.warning(
+            goTo_last_annotated_frame_i = msg.question(
                 self, 'Go to last annotated frame?',
                 f'The last annotated frame is frame {last_cca_frame_i+1}.\n'
                 'Do you want to restart cell cycle analysis from frame '
@@ -3511,6 +3555,12 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         return fluo_data
 
+    def setOverlayColors(self):
+        self.overlayRGBs = [(255, 255, 0),
+                            (252, 72, 254),
+                            (49, 222, 134),
+                            (22, 108, 27)]
+
     def overlay_cb(self):
         if self.overlayButton.isChecked():
             prompt = True
@@ -3524,54 +3574,76 @@ class Yeast_ACDC_GUI(QMainWindow):
                     'You can select one or more images',
                     items
                 )
-                selectFluo.show()
-                if selectFluo.cancel:
+                selectFluo.exec_()
+                keys = selectFluo.selectedItemsText
+                if selectFluo.cancel or not keys:
                     prompt = True
                 else:
                     prompt = False
-                    for key in selectFluo.selectedItemsText:
-                        ol_data = self.data.fluo_data_dict[key]
-
+                    ol_data = {key:self.data.fluo_data_dict[key] for key in keys}
+                    ol_colors = {key:self.overlayRGBs[i] for i, key in enumerate(keys)}
             if prompt:
-                ol_path = prompts.file_dialog(
-                                      title='Select image file to overlay',
-                                      initialdir=self.data.images_path)
-                if not ol_path:
+                ol_paths = prompts.multi_files_dialog(
+                      title='Select one or multiple image files to overlay',
+                      initialdir=self.data.images_path
+                )
+                if not ol_paths:
                     return
 
-                ol_data = self.load_fluo(ol_path)
+                self.app.setOverrideCursor(Qt.WaitCursor)
+                ol_data = {}
+                ol_colors = {}
+                for i, ol_path in enumerate(ol_paths):
+                    filename = os.path.basename(ol_path)
+                    fluo_data = self.load_fluo_data(fluo_path)
+                    self.data.fluo_data_dict[filename] = fluo_data
+                    ol_data[filename] = fluo_data
+                    ol_colors[filename] = self.overlayRGBs[i]
+                self.app.restoreOverrideCursor()
 
-            self.data.ol_frames = ol_data
+            self.ol_data = ol_data
+            self.ol_colors = ol_colors
 
             self.colorButton.setColor((255,255,0))
 
-            cells_img = self.data.img_data[self.frame_i]
-            fluo_img = self.data.ol_frames[self.frame_i]
-            img = self.get_overlay(fluo_img, cells_img)
+            img = self.get_overlay()
             self.img1.setImage(img)
 
             print('Done.')
             self.alphaScrollBar.setDisabled(False)
             self.colorButton.setDisabled(False)
-
         else:
             img = self.data.img_data[self.frame_i]
             self.img1.setImage(img)
 
-    def get_overlay(self, img, ol_img, ol_brightness=4):
-        ol_RGB_val = [v/255 for v in self.colorButton.color().getRgb()[:3]]
-        ol_alpha = self.alphaScrollBar.value()/20
-        img_rgb = gray2rgb(img_as_float(img))*ol_RGB_val
-        ol_img_rgb = gray2rgb(img_as_float(ol_img))
-        overlay = (ol_img_rgb*(1.0 - ol_alpha)+img_rgb*ol_alpha)*ol_brightness
+    def get_overlay(self):
+        keys = list(self.ol_data.keys())
+        gray_img_rgb = gray2rgb(img_as_float(self.data.img_data[self.frame_i]))
+        ol_img = self.ol_data[keys[0]][self.frame_i]
+        color = self.ol_colors[keys[0]]
+        overlay = self._overlay(gray_img_rgb, ol_img, color)
+        # Add additional overlays
+        for key in keys[1:]:
+            ol_img = self.ol_data[key][self.frame_i]
+            color = self.ol_colors[key]
+            overlay = self._overlay(overlay, ol_img, color)
+        return overlay
+
+    def _overlay(self, gray_img_rgb, ol_img, color, ol_brightness=4):
+        ol_RGB_val = [v/255 for v in color]
+        ol_alpha = self.alphaScrollBar.value()/self.alphaScrollBar.maximum()
+        ol_img_rgb = gray2rgb(img_as_float(ol_img))*ol_RGB_val
+        overlay = (gray_img_rgb*(1.0 - ol_alpha)+ol_img_rgb*ol_alpha)*ol_brightness
         overlay = overlay/overlay.max()
         overlay = (np.clip(overlay, 0, 1)*255).astype(np.uint8)
         return overlay
 
+    def updateOlColors(self, button):
+        self.ol_colors[self._key] = self.colorButton.color().getRgb()[:3]
+        self.updateOverlay(self, button)
+
     def updateOverlay(self, button):
-        cells_img = self.data.img_data[self.frame_i]
-        fluo_img = self.data.ol_frames[self.frame_i]
-        img = self.get_overlay(fluo_img, cells_img)
+        img = self.get_overlay()
         self.img1.setImage(img)
 
     def updateALLimg(self, image=None, never_visited=True):
@@ -3584,9 +3656,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             cells_img = image
 
         if self.overlayButton.isChecked():
-            cells_img = self.data.img_data[self.frame_i]
-            fluo_img = self.data.ol_frames[self.frame_i]
-            img = self.get_overlay(fluo_img, cells_img)
+            img = self.get_overlay()
         else:
             img = cells_img
 
@@ -3663,6 +3733,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                  storeUndo=False, prev_lab=None, prev_rp=None,
                  return_lab=False):
         if self.frame_i == 0:
+            self.lab = skimage.segmentation.relabel_sequential(self.lab)
             return
 
         # Disable tracking for already visited frames
