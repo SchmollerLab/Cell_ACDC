@@ -2,6 +2,7 @@
 notebooks/testing.ipynb
 notebooks/.ipynb_checkpoints
 .idea/
+env/*
 data/*
 tests/*
 screenshots/*
