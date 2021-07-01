@@ -300,11 +300,11 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.ax1.addItem(self.ax1_BrushCircle)
 
         # Eraser circle img2
-        self.EraserCircle = pg.ScatterPlotItem()
-        self.EraserCircle.setData([], [], symbol='o', pxMode=False,
+        self.ax2_EraserCircle = pg.ScatterPlotItem()
+        self.ax2_EraserCircle.setData([], [], symbol='o', pxMode=False,
                                  brush=None,
                                  pen=pg.mkPen(width=2, color='r'))
-        self.ax2.addItem(self.EraserCircle)
+        self.ax2.addItem(self.ax2_EraserCircle)
 
         # Brush circle img2
         self.ax2_BrushCircle = pg.ScatterPlotItem()
@@ -482,9 +482,18 @@ class Yeast_ACDC_GUI(QMainWindow):
                 ymin, xmin = ydata-brushSize, xdata-brushSize
                 ymax, xmax = ydata+brushSize+1, xdata+brushSize+1
                 maskedLab = self.lab[ymin:ymax, xmin:xmax][mask]
-                self.ax2_brushID = [ID for ID in np.unique(maskedLab) if ID!=0]
-                self.lab[ymin:ymax, xmin:xmax][mask] = self.ax2_brushID[0]
-                self.img2.updateImage()
+                IDs, counts = np.unique(maskedLab, return_counts=True)
+                brushCircleIDs = [ID for ID in IDs if ID!=0]
+                _c = [count for ID, count in zip(IDs, counts) if ID!=0]
+                max_c = max(_c)
+                max_idx = _c.index(max_c)
+                self.ax2BrushID = brushCircleIDs[max_idx]
+                localLab = self.lab[ymin:ymax, xmin:xmax]
+                localMask = np.logical_and(localLab!=0,
+                                           localLab!=self.ax2BrushID)
+                mask1 = np.logical_and(mask, ~localMask)
+                localLab[mask1] = self.ax2BrushID
+                self.img2.setImage(self.lab)
 
         # Delete entire ID (set to 0)
         elif mid_click and mode == 'Segmentation and Tracking':
@@ -1000,8 +1009,8 @@ class Yeast_ACDC_GUI(QMainWindow):
             rrPoly, ccPoly = self.getPolygonBrush((y, x))
             ymin, xmin = ydata-brushSize, xdata-brushSize
             ymax, xmax = ydata+brushSize+1, xdata+brushSize+1
-            self.lab[ymin:ymax, xmin:xmax][mask] = self.ax2_brushID
-            self.lab[rrPoly, ccPoly] = self.ax2_brushID
+            self.lab[ymin:ymax, xmin:xmax][mask] = self.ax2BrushID
+            self.lab[rrPoly, ccPoly] = self.ax2BrushID
             self.img2.updateImage()
 
     def gui_mouseReleaseEventImg2(self, event):
@@ -1036,7 +1045,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.update_rp()
 
             self.update_IDsContours(
-                prev_IDs, newIDs=self.ax2_brushID
+                prev_IDs, newIDs=[self.ax2BrushID]
             )
 
         # Merge IDs
@@ -1681,11 +1690,11 @@ class Yeast_ACDC_GUI(QMainWindow):
                 Y, X = _img.shape
                 if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                     size = self.brushSizeSpinbox.value()*2
-                    self.EraserCircle.setData([x], [y], size=size)
+                    self.ax2_EraserCircle.setData([x], [y], size=size)
             else:
-                self.EraserCircle.setData([], [])
+                self.ax2_EraserCircle.setData([], [])
         except:
-            self.EraserCircle.setData([], [])
+            self.ax2_EraserCircle.setData([], [])
 
         # Draw Brush circle
         drawCircle = self.brushButton.isChecked() and not event.isExit()
@@ -1697,13 +1706,15 @@ class Yeast_ACDC_GUI(QMainWindow):
                 Y, X = _img.shape
                 if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                     size = self.brushSizeSpinbox.value()*2
-                    self.ax2_BrushCircle.setData([x], [y],
-                                                   size=size)
+                    self.ax2_BrushCircle.setData([x], [y], size=size)
+                    self.ax1_BrushCircle.setData([x], [y], size=size)
             else:
                 self.ax2_BrushCircle.setData([], [])
+                self.ax1_BrushCircle.setData([], [])
         except:
             # traceback.print_exc()
             self.ax2_BrushCircle.setData([], [])
+            self.ax1_BrushCircle.setData([], [])
 
 
     def gui_createMenuBar(self):
@@ -2018,7 +2029,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         self.app.setOverrideCursor(Qt.WaitCursor)
         for fluo_path in fluo_paths:
-            filename = os.path.basename(fluo_path)
+            filename, _ = os.path.splitext(os.path.basename(fluo_path))
             fluo_data = self.load_fluo_data(fluo_path)
             self.data.fluo_data_dict[filename] = fluo_data
         self.overlayButton.setStyleSheet('background-color: #A7FAC7')
@@ -2091,7 +2102,12 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.app.setOverrideCursor(Qt.WaitCursor)
         # Store undo state before modifying stuff
         self.storeUndoRedoStates(False)
-        self.lab = np.load(self.data.segm_npz_path)[self.frame_i].copy()
+        labData = np.load(self.data.segm_npz_path)[self.frame_i].copy()
+        # Keep compatibility with .npy and .npz files
+        try:
+            self.lab = labData['arr_0']
+        except:
+            self.lab = labData
         self.update_rp()
         self.updateALLimg()
         self.app.restoreOverrideCursor()
@@ -2212,7 +2228,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         return lab, success
 
     def brushSize_cb(self):
-        self.EraserCircle.setSize(self.brushSizeSpinbox.value()*2)
+        self.ax2_EraserCircle.setSize(self.brushSizeSpinbox.value()*2)
         self.ax1_BrushCircle.setSize(self.brushSizeSpinbox.value()*2)
         self.ax2_BrushCircle.setSize(self.brushSizeSpinbox.value()*2)
 
@@ -3521,6 +3537,10 @@ class Yeast_ACDC_GUI(QMainWindow):
         filename_noEXT, ext = os.path.splitext(filename)
         if ext == '.npy' or ext == '.npz':
             fluo_data = np.load(fluo_path)
+            try:
+                fluo_data = fluo_data['arr_0']
+            except:
+                fluo_data = fluo_data
             if filename.find('aligned') != -1:
                 align_ol = False
             else:
@@ -3553,6 +3573,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 )
                 aligned_filename = f'{filename_noEXT}_aligned.npz'
                 aligned_path = f'{images_path}/{aligned_filename}'
+                print('Saving fluorescent image data...')
                 np.savez_compressed(aligned_path, aligned_frames)
                 fluo_data = aligned_frames
             else:
@@ -3608,7 +3629,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 ol_data = {}
                 ol_colors = {}
                 for i, ol_path in enumerate(ol_paths):
-                    filename = os.path.basename(ol_path)
+                    filename, _ = os.path.splitext(os.path.basename(ol_path))
                     fluo_data = self.load_fluo_data(fluo_path)
                     self.data.fluo_data_dict[filename] = fluo_data
                     ol_data[filename] = fluo_data
@@ -4045,7 +4066,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
             self.app.setOverrideCursor(Qt.WaitCursor)
             for fluo_path in fluo_paths:
-                filename = os.path.basename(fluo_path)
+                filename, _ = os.path.splitext(os.path.basename(fluo_path))
                 fluo_data = self.load_fluo_data(fluo_path)
                 self.data.fluo_data_dict[filename] = fluo_data
             self.overlayButton.setStyleSheet('background-color: #A7FAC7')
@@ -4090,7 +4111,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         systems.get(os.name, os.startfile)(self.images_path)
 
-    def add_static_metadata_df(self, df, rp, frame_i, lab):
+    def addMetrics_acdc_df(self, df, rp, frame_i, lab):
         # Add metrics that can be calculated at the end of the process
         # such as cell volume, cell area etc.
         zyx_vox_dim =self.data.zyx_vox_dim
@@ -4148,16 +4169,16 @@ class Yeast_ACDC_GUI(QMainWindow):
         df['cell_vol_vox'] = IDs_vol_vox
         df['cell_area_um2'] = IDs_area_um2
         df['cell_vol_fl'] = IDs_vol_fl
-        df[[f'{f}_mean' for f in fluo_keys]] = fluo_means
-        df[[f'{f}_median' for f in fluo_keys]] = fluo_medians
-        df[[f'{f}_min' for f in fluo_keys]] = fluo_mins
-        df[[f'{f}_max' for f in fluo_keys]] = fluo_maxs
-        df[[f'{f}_sum' for f in fluo_keys]] = fluo_sums
-        df[[f'{f}_q25' for f in fluo_keys]] = fluo_q25s
-        df[[f'{f}_q75' for f in fluo_keys]] = fluo_q75s
-        df[[f'{f}_q05' for f in fluo_keys]] = fluo_q5s
-        df[[f'{f}_q95' for f in fluo_keys]] = fluo_q95s
-        df[[f'{f}_amount' for f in fluo_keys]] = fluo_amounts
+        df[[f'{f}_mean' for f in fluo_keys]] = pd.DataFrame(data=fluo_means)
+        df[[f'{f}_median' for f in fluo_keys]] = pd.DataFrame(data=fluo_medians)
+        df[[f'{f}_min' for f in fluo_keys]] = pd.DataFrame(data=fluo_mins)
+        df[[f'{f}_max' for f in fluo_keys]] = pd.DataFrame(data=fluo_maxs)
+        df[[f'{f}_sum' for f in fluo_keys]] = pd.DataFrame(data=fluo_sums)
+        df[[f'{f}_q25' for f in fluo_keys]] = pd.DataFrame(data=fluo_q25s)
+        df[[f'{f}_q75' for f in fluo_keys]] = pd.DataFrame(data=fluo_q75s)
+        df[[f'{f}_q05' for f in fluo_keys]] = pd.DataFrame(data=fluo_q5s)
+        df[[f'{f}_q95' for f in fluo_keys]] = pd.DataFrame(data=fluo_q95s)
+        df[[f'{f}_amount' for f in fluo_keys]] = pd.DataFrame(data=fluo_amounts)
 
 
     def saveFile(self):
@@ -4187,10 +4208,10 @@ class Yeast_ACDC_GUI(QMainWindow):
 
                 acdc_df = data_dict['acdc_df']
 
-                # Build acdc_df and index it in each frame_i
+                # Build acdc_df and index it in each frame_i of acdc_df_li
                 if acdc_df is not None:
                     rp = data_dict['regionprops']
-                    self.add_static_metadata_df(acdc_df, rp, frame_i, lab)
+                    self.addMetrics_acdc_df(acdc_df, rp, frame_i, lab)
                     acdc_df_li[frame_i] = acdc_df
 
                 pbar.update()

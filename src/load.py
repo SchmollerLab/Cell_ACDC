@@ -53,6 +53,10 @@ class load_frames_data:
             if img_tif_found:
                 self.tif_path = tif_path
                 img_data = np.load(path)
+                try:
+                    img_data = img_data['arr_0']
+                except:
+                    img_data = img_data
             else:
                 tk.messagebox.showerror('Phase contrast file not found!',
                 'Phase contrast .tif file not found in the selected path\n'
@@ -129,7 +133,10 @@ class load_frames_data:
             self.segm_npy_found = segm_npy_found
             if segm_npy_found:
                 segm_data = np.load(segm_npz_path)
-                self.segm_data = segm_data
+                try:
+                    self.segm_data = segm_data['arr_0']
+                except:
+                    self.segm_data = segm_data
             else:
                 Y, X = self.img_data.shape[-2:]
                 self.segm_data = np.zeros((self.SizeT, Y, X), int)
