@@ -406,8 +406,7 @@ for exp_idx, main_path in enumerate(main_paths):
                 print('Frames aligned!')
                 if os.path.exists(data.align_old_path):
                     os.remove(data.align_old_path)
-                np.save(data.align_npz_path, aligned_frames,
-                        allow_pickle=False)
+                np.savez_compressed(data.align_npz_path, aligned_frames)
                 np.save(data.align_shifts_path, shifts, allow_pickle=False)
                 path = data.align_npz_path
                 frames = aligned_frames
@@ -417,7 +416,7 @@ for exp_idx, main_path in enumerate(main_paths):
         else:
             # Simple 2D image
             frames = data.img_data
-            np.save(data.align_npz_path, frames, allow_pickle=False)
+            np.savez_compressed(data.align_npz_path, frames)
             shifts = np.array([[0,0]])
             np.save(data.align_shifts_path, shifts, allow_pickle=False)
 
