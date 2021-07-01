@@ -46,11 +46,15 @@ class load_data:
         if self.ext == '.tif' or self.ext == '.png' or self.ext == '.jpg':
             self.tif_path = path
             img_data = io.imread(path)
-        elif self.ext == '.npy':
+        elif self.ext == '.npy' or self.ext == '.npz':
             tif_path = self.substring_path(path, f'{user_ch_name}.tif',
                                            self.parent_path)[0]
             self.tif_path = tif_path
             img_data = np.load(path)
+            try:
+                img_data = img_data['arr_0']
+            except:
+                img_data = img_data
         self.img_data = img_data
         tif_filename = os.path.basename(self.tif_path)
         basename_idx = tif_filename.find(f'{user_ch_name}.tif')
