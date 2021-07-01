@@ -597,9 +597,8 @@ class select_channel_name:
             row += 1
 
         tk.Label(root,
-                 text='Select channel name to analyse:',
-                 font=(None, 11)).grid(row=row, column=0, pady=(10,0),
-                                                        padx=10)
+                 text='Select channel name to analyse:'
+                 ).grid(row=row, column=0, pady=(10,0), padx=10)
 
         ch_name_var = tk.StringVar()
         w = max([len(s) for s in channel_names])+4
