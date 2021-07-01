@@ -676,10 +676,15 @@ class FutureFramesAction_QDialog(QDialog):
             '          on the hard drive.\n'
             '      2.  Apply only to this frame and keep the future frames as they are.\n'
             '      3.  Apply the change to ALL visited/checked future frames.\n'
-            '      4.  Apply the change to a specific range of future frames.\n'
+            # '      4.  Apply the change to a specific range of future frames.\n'
 
         )
 
+        if applyTrackingB:
+            infoTxt = (
+                f'{infoTxt}'
+                '4. Repeat ONLY tracking for all future frames'
+            )
 
         infotxtLabel = QLabel(infoTxt)
         _font = QtGui.QFont()
@@ -721,6 +726,11 @@ class FutureFramesAction_QDialog(QDialog):
         self.apply_and_NOTreinit_b = apply_and_NOTreinit_b
         buttonsLayout.addWidget(apply_and_NOTreinit_b)
 
+        apply_to_all_b = QPushButton(
+                    'Apply to all future frames')
+        self.apply_to_all_b = apply_to_all_b
+        buttonsLayout.addWidget(apply_to_all_b)
+
         self.applyTrackingButton = None
         if applyTrackingB:
             applyTrackingButton = QPushButton(
@@ -728,15 +738,10 @@ class FutureFramesAction_QDialog(QDialog):
             self.applyTrackingButton = applyTrackingButton
             buttonsLayout.addWidget(applyTrackingButton)
 
-        apply_to_all_b = QPushButton(
-                    'Apply to all future frames')
-        self.apply_to_all_b = apply_to_all_b
-        buttonsLayout.addWidget(apply_to_all_b)
-
         apply_to_range_b = QPushButton(
                     'Apply only to a range of future frames')
         self.apply_to_range_b = apply_to_range_b
-        buttonsLayout.addWidget(apply_to_range_b)
+        # buttonsLayout.addWidget(apply_to_range_b)
 
         buttonsLayout.setContentsMargins(20, 0, 20, 0)
 
@@ -1238,6 +1243,9 @@ class editID_QWidget(QDialog):
     def ID_LineEdit_cb(self, text):
         # Get inserted char
         idx = self.ID_QLineEdit.cursorPosition()
+        if idx == 0:
+            return
+            
         newChar = text[idx-1]
 
         # Do nothing if user is deleting text

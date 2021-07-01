@@ -496,13 +496,16 @@ class Yeast_ACDC_GUI(QMainWindow):
                 IDs, counts = np.unique(maskedLab, return_counts=True)
                 brushCircleIDs = [ID for ID in IDs if ID!=0]
 
-                if not brushCircleIDs:
-                    return
+                if brushCircleIDs:
+                    _c = [count for ID, count in zip(IDs, counts) if ID!=0]
+                    max_c = max(_c)
+                    max_idx = _c.index(max_c)
+                    self.ax2BrushID = brushCircleIDs[max_idx]
+                    self.isNewID = False
+                else:
+                    self.ax2BrushID = self.lab.max()+1
+                    self.isNewID = True
 
-                _c = [count for ID, count in zip(IDs, counts) if ID!=0]
-                max_c = max(_c)
-                max_idx = _c.index(max_c)
-                self.ax2BrushID = brushCircleIDs[max_idx]
                 self.isMouseDragImg2 = True
                 localLab = self.lab[ymin:ymax, xmin:xmax]
                 localMask = np.logical_and(localLab!=0,
@@ -510,6 +513,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                 mask1 = np.logical_and(mask, ~localMask)
                 localLab[mask1] = self.ax2BrushID
                 self.img2.setImage(self.lab)
+                self.updateLookuptable()
+
 
         # Delete entire ID (set to 0)
         elif mid_click and mode == 'Segmentation and Tracking':
@@ -1046,9 +1051,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             prev_IDs = [obj.label for obj in self.rp]
             self.update_rp()
 
-            self.update_IDsContours(
-                prev_IDs, newIDs=erasedIDs
-            )
+            self.updateALLimg()
 
         # Brush mouse release --> update IDs and contours
         elif self.isMouseDragImg2 and self.brushButton.isChecked():
@@ -1060,9 +1063,10 @@ class Yeast_ACDC_GUI(QMainWindow):
             prev_IDs = [obj.label for obj in self.rp]
             self.update_rp()
 
-            self.update_IDsContours(
-                prev_IDs, newIDs=[self.ax2BrushID]
-            )
+            if self.isNewID:
+                self.tracking(enforce=True)
+
+            self.updateALLimg()
 
         # Merge IDs
         elif self.mergeIDsButton.isChecked():
@@ -1213,11 +1217,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 newIDs = [self.lab[ymin:ymax, xmin:xmax][mask][0]]
 
                 # Update colors to include a new color for the new ID
-                self.img2.setImage(self.lab)
-                self.updateLookuptable()
-
-                # Update contours
-                self.update_IDsContours(prev_IDs, newIDs=newIDs)
+                self.updateALLimg()
 
 
         # Allow right-click actions on both images
@@ -1691,9 +1691,12 @@ class Yeast_ACDC_GUI(QMainWindow):
                     f'(x={x:.2f}, y={y:.2f}, value={val:.0f}, max={_img.max()})'
                 )
             else:
+                if self.eraserButton.isChecked() or self.brushButton.isChecked():
+                    self.gui_mouseReleaseEventImg2(event)
                 self.wcLabel.setText(f'')
         except:
-            # traceback.print_exc()
+            if self.eraserButton.isChecked() or self.brushButton.isChecked():
+                self.gui_mouseReleaseEventImg2(event)
             self.wcLabel.setText(f'')
 
         # Draw eraser circle
@@ -2787,6 +2790,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
     def init_attr(self, max_ID=10):
         # Decision on what to do with changes to future frames attr
+        self.isNewID = False
         self.doNotShowAgain_EditID = False
         self.UndoFutFrames_EditID = False
         self.applyFutFrames_EditID = False
@@ -4334,7 +4338,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 txt.write(str(frame_i-1))
 
             print('--------------')
-            print(f'Saved data until frame number {frame_i+1}')
+            print(f'Saved data until frame number {frame_i}')
             print('--------------')
         except:
             traceback.print_exc()
