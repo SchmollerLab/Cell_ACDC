@@ -488,9 +488,6 @@ class Yeast_ACDC_GUI(QMainWindow):
                 # Store undo state before modifying stuff
                 self.storeUndoRedoStates(False)
                 self.yPressAx2, self.xPressAx2 = y, x
-
-                self.isMouseDragImg2 = True
-
                 brushSize = self.brushSizeSpinbox.value()
                 mask = skimage.morphology.disk(brushSize, dtype=np.bool)
                 ymin, xmin = ydata-brushSize, xdata-brushSize
@@ -498,10 +495,15 @@ class Yeast_ACDC_GUI(QMainWindow):
                 maskedLab = self.lab[ymin:ymax, xmin:xmax][mask]
                 IDs, counts = np.unique(maskedLab, return_counts=True)
                 brushCircleIDs = [ID for ID in IDs if ID!=0]
+
+                if not brushCircleIDs:
+                    return
+
                 _c = [count for ID, count in zip(IDs, counts) if ID!=0]
                 max_c = max(_c)
                 max_idx = _c.index(max_c)
                 self.ax2BrushID = brushCircleIDs[max_idx]
+                self.isMouseDragImg2 = True
                 localLab = self.lab[ymin:ymax, xmin:xmax]
                 localMask = np.logical_and(localLab!=0,
                                            localLab!=self.ax2BrushID)

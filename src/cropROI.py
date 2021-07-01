@@ -13,6 +13,8 @@ from PyQt5.QtWidgets import (
 from pyqtgraph.Qt import QtGui
 import pyqtgraph as pg
 
+class cropROI_GUI(QMainWindow):
+    pass
 
 if __name__ == "__main__":
     # Create the application
