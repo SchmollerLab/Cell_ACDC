@@ -13,10 +13,15 @@ from datetime import datetime
 from tifffile import TiffFile
 from natsort import natsorted
 import skimage.measure
+from PyQt5 import QtGui
+from PyQt5.QtWidgets import (
+    QApplication
+)
 import prompts, apps
 
 class load_frames_data:
-    def __init__(self, path, user_ch_name, load_segm_data=True,
+    def __init__(self, path, user_ch_name, parentQWidget=None,
+                 load_segm_data=True,
                  load_segm_metadata=True):
         self.path = path
         self.fluo_data_dict = {}
@@ -33,20 +38,49 @@ class load_frames_data:
                 self.tif_path = tif_path
                 img_data = io.imread(path)
             else:
-                tk.messagebox.showerror(
-                f'Selected {user_ch_name} file not found!',
-                f'{user_ch_name} .tif file not found in the selected path\n'
-                f'{self.images_path}!\n Make sure that the folder contains '
-                f'a file that ends with either "{user_ch_name}"')
-                raise FileNotFoundError
-        elif self.ext == '.npy':
-            if path.find(f'{user_ch_name}_aligned.npy') == -1:
+                err_title = f'Selected {user_ch_name} file not found!'
+                err_msg = (
+                    f'{user_ch_name} .tif file not found in the selected path\n'
+                    f'{self.images_path}!\n Make sure that the folder contains '
+                    f'a file that ends with either "{user_ch_name}"'
+                )
+                if parentQWidget is None:
+                    app = QApplication([])
+                    msgBox = QtGui.QMessageBox()
+                    msgBox.setWindowTitle(err_title)
+                    msgBox.setText(err_msg)
+                    msgBox.setIcon(msgBox.Critical)
+                    msgBox.setModal(True)
+                    msgBox.show()
+                    app.exec_()
+                    raise FileNotFoundError(err_title)
+                else:
+                    msg = QtGui.QMessageBox()
+                    msg.critical(parentQWidget, err_title, err_msg, msg.Ok)
+                    return None
+        elif self.ext == '.npy' or self.ext == '.npz':
+            if path.find(f'{user_ch_name}_aligned.np') == -1:
                 filename = os.path.basename(path)
-                tk.messagebox.showerror('Wrong file selected!',
-                f'You selected a file called {filename} which is not a valid '
-                'phase contrast image file. Select the file that ends with '
-                f'"{user_ch_name}_aligned.npy" or the .tif phase contrast file')
-                raise FileNotFoundError
+                err_title = 'Wrong file selected!'
+                err_msg = (
+                    f'You selected a file called {filename} which is not a valid '
+                    'phase contrast image file. Select the file that ends with '
+                    f'"{user_ch_name}_aligned.npz" or the .tif phase contrast file'
+                )
+                if parentQWidget is None:
+                    app = QApplication([])
+                    msgBox = QtGui.QMessageBox()
+                    msgBox.setWindowTitle(err_title)
+                    msgBox.setText(err_msg)
+                    msgBox.setIcon(msgBox.Critical)
+                    msgBox.setModal(True)
+                    msgBox.show()
+                    app.exec_()
+                    raise FileNotFoundError(err_title)
+                else:
+                    msg = QtGui.QMessageBox()
+                    msg.critical(parentQWidget, err_title, err_msg, msg.Ok)
+                    return None
             tif_path, img_tif_found = self.substring_path(
                                                   path, f'{user_ch_name}.tif',
                                                   self.images_path)
@@ -58,12 +92,27 @@ class load_frames_data:
                 except:
                     img_data = img_data
             else:
-                tk.messagebox.showerror('Phase contrast file not found!',
-                'Phase contrast .tif file not found in the selected path\n'
-                f'{self.images_path}!\n Make sure that the folder contains '
-                'a file that ends with either \"phase_contr.tif\" or '
-                '\"phase_contrast.tif\"')
-                raise FileNotFoundError
+                err_title = 'Phase contrast file not found!'
+                err_msg = (
+                    'Phase contrast .tif file not found in the selected path\n'
+                    f'{self.images_path}!\n Make sure that the folder contains '
+                    'a file that ends with either \"phase_contr.tif\" or '
+                    '\"phase_contrast.tif\"'
+                )
+                if parentQWidget is None:
+                    app = QApplication([])
+                    msgBox = QtGui.QMessageBox()
+                    msgBox.setWindowTitle(err_title)
+                    msgBox.setText(err_msg)
+                    msgBox.setIcon(msgBox.Critical)
+                    msgBox.setModal(True)
+                    msgBox.show()
+                    app.exec_()
+                    raise FileNotFoundError(err_title)
+                else:
+                    msg = QtGui.QMessageBox()
+                    msg.critical(parentQWidget, err_title, err_msg, msg.Ok)
+                    return None
         self.img_data = img_data
         self.info, self.metadata_found = self.metadata(self.tif_path)
         prompt_user = False
@@ -652,8 +701,9 @@ class select_exp_folder:
 
     def get_values_segmGUI(self, exp_path):
         pos_foldernames = natsorted(os.listdir(exp_path))
-        pos_foldernames = [pos for pos in pos_foldernames
-                               if re.match('Position_(\d+)', pos)]
+        pos_foldernames = [f for f in pos_foldernames
+                           if f.find('Position_')!=-1
+                           and os.path.isdir(f'{exp_path}/{f}')]
         self.pos_foldernames = pos_foldernames
         values = []
         for pos in pos_foldernames:

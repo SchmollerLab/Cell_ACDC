@@ -2669,12 +2669,18 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.slideshowWin.update_img()
 
     def init_frames_data(self, frames_path, user_ch_name):
-        data = load.load_frames_data(frames_path, user_ch_name)
+        data = load.load_frames_data(frames_path, user_ch_name,
+                                     parentQWidget=self)
+        if data is None:
+            self.titleLabel.setText(
+                'File --> Open or Open recent to start the process',
+                color='w')
+            return
         if not data.segm_npy_found:
             err_msg = ('Segmentation mask file ("..._segm.npz") not found. '
                        'You need to run the segmentation script first.')
             self.titleLabel.setText(err_msg, color='r')
-            raise FileNotFoundError(err_msg)
+            return
         # Allow single 2D/3D image
         if data.SizeT < 2:
             data.img_data = np.array([data.img_data])
@@ -3148,7 +3154,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             return
 
         proceed = True
-        i = 1
+        i = 0
         # Determine last annotated frame index
         for i, dict_frame_i in enumerate(self.allData_li):
             df = dict_frame_i['acdc_df']
@@ -3158,7 +3164,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 if 'cell_cycle_stage' not in df.columns:
                     break
 
-        last_cca_frame_i = i-1
+        last_cca_frame_i = i-1 if i>0 else 0
 
         if self.frame_i > last_cca_frame_i:
             # Prompt user to go to last annotated frame
@@ -4033,7 +4039,10 @@ class Yeast_ACDC_GUI(QMainWindow):
                 new_filename = filename.replace('phc_aligned.npy',
                                                 f'{user_ch_name}_aligned.npy')
                 dst = f'{images_path}/{new_filename}'
-                os.rename(img_path, dst)
+                if os.path.exists(dst):
+                    os.remove(img_path)
+                else:
+                    os.rename(img_path, dst)
                 filename = new_filename
             if filename.find(f'{user_ch_name}_aligned.np') != -1:
                 img_path = f'{images_path}/{filename}'

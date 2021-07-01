@@ -45,7 +45,7 @@ from PyQt5.QtWidgets import (
     QAction, QApplication, QMainWindow, QMenu, QLabel, QToolBar,
     QScrollBar, QWidget, QVBoxLayout, QLineEdit, QPushButton,
     QHBoxLayout, QDialog, QFormLayout, QListWidget, QAbstractItemView,
-    QButtonGroup, QCheckBox, QSizePolicy
+    QButtonGroup, QCheckBox, QSizePolicy, QComboBox
 )
 
 import qrc_resources
@@ -530,6 +530,39 @@ class my_paint_app:
         plt.close(self.fig)
         self.sub_win.root.quit()
         self.sub_win.root.destroy()
+
+class QDialogCombobox(QDialog):
+    def __init__(self, title, channel_names, informativeText,
+                 CbLabel='Select value:  ', parent=None):
+        self.cancel = True
+        super().__init__(parent)
+        self.setWindowTitle(title)
+
+        mainLayout = QVBoxLayout()
+        topLayout = QHBoxLayout()
+        bottomLayout = QHBoxLayout()
+
+        label = QLabel(CbLabel)
+        topLayout.addWidget(label)
+
+        combobox = QComboBox()
+        combobox.addItems(channel_names)
+        topLayout.addWidget(combobox)
+
+        okButton = QPushButton('Ok')
+        okButton.setShortcut(Qt.Key_Enter)
+        bottomLayout.addWidget(okButton, alignment=Qt.AlignRight)
+
+        cancelButton = QPushButton('Browse')
+        bottomLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
+        bottomLayout.setContentsMargins(0, 10, 0, 0)
+
+        mainLayout.addLayout(topLayout)
+        mainLayout.addLayout(bottomLayout)
+        self.setLayout(mainLayout)
+
+        self.setModal(True)
+
 
 class QDialogListbox(QDialog):
     def __init__(self, title, text, items, multiSelection=True):
@@ -1853,7 +1886,9 @@ class win_size:
 if __name__ == '__main__':
     # Create the application
     app = QApplication(sys.argv)
-    win = FutureFramesAction_QDialog(15, 20, 'Edit ID', applyTrackingB=True)
+    win = QDialogCombobox('Test', ['phase_contrast', 'mCitrine'],
+                          '',
+                          CbLabel='Select value:  ', parent=None)
     # win = nonModalTempQMessage()
     win.show()
     app.exec_()

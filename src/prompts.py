@@ -577,6 +577,19 @@ class select_channel_name:
             with open(txt_path, 'w') as txt:
                 txt.write(selection)
 
+    def QtPrompt(self, channel_names, informativeText='', parent=None):
+        win = QDialogCombobox('Select channel name',
+                              channel_names,
+                              informativeText,
+                              parent=None)
+        if parent is None:
+            app = QApplication([])
+            win.show()
+            app.exec_()
+        else:
+            win.exec_()
+
+
 
     def prompt(self, channel_names, message=None, toplevel=False):
         if toplevel:
