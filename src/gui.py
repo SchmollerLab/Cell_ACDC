@@ -36,7 +36,7 @@ from PyQt5.QtWidgets import (
     QAction, QApplication, QLabel, QPushButton,
     QMainWindow, QMenu, QToolBar, QGroupBox,
     QScrollBar, QCheckBox, QToolButton, QSpinBox,
-    QComboBox, QDial, QButtonGroup
+    QComboBox, QDial, QButtonGroup, QActionGroup
 )
 
 from pyqtgraph.Qt import QtGui
@@ -1753,6 +1753,18 @@ class Yeast_ACDC_GUI(QMainWindow):
         repeatSegmMenu = editMenu.addMenu("Repeat segmentation")
         repeatSegmMenu.addAction(self.repeatSegmActionYeaZ)
         repeatSegmMenu.addAction(self.repeatSegmActionCellpose)
+        # Font size
+        self.fontSize = '10pt'
+        self.fontSizeMenu = editMenu.addMenu("Font size")
+        fontActionGroup = QActionGroup(self)
+        for i in range(2,25):
+            action = QAction(self)
+            action.setText(f'{i}')
+            action.setCheckable(True)
+            if i == 10:
+                action.setChecked(True)
+            fontActionGroup.addAction(action)
+            action = self.fontSizeMenu.addAction(action)
         # Help menu
         helpMenu = menuBar.addMenu(QIcon(":help-content.svg"), "&Help")
         helpMenu.addAction(self.helpContentAction)
@@ -2015,6 +2027,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
     def gui_connectEditActions(self):
         self.setEnabledToolbarButton(enabled=True)
+        self.fontSizeMenu.triggered.connect(self.changeFontSize)
         self.prevAction.triggered.connect(self.prev_cb)
         self.nextAction.triggered.connect(self.next_cb)
         self.overlayButton.toggled.connect(self.overlay_cb)
@@ -2037,6 +2050,34 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Drawing mode
         self.drawIDsContComboBox.currentIndexChanged.connect(
                                                 self.drawIDsContComboBox_cb)
+
+    def changeFontSize(self, action):
+        self.fontSize = f'{action.text()}pt'
+        try:
+            LIs = zip(self.ax1_LabelItemsIDs, self.ax2_LabelItemsIDs)
+            for ax1_LI, ax2_LI in LIs:
+                x1, y1 = ax1_LI.pos().x(), ax1_LI.pos().y()
+                if x1>0:
+                    w, h = ax1_LI.rect().right(), ax1_LI.rect().bottom()
+                    xc, yc = x1+w/2, y1+h/2
+                ax1_LI.setAttr('size', self.fontSize)
+                ax1_LI.setText(ax1_LI.text)
+                if x1>0:
+                    w, h = ax1_LI.rect().right(), ax1_LI.rect().bottom()
+                    ax1_LI.setPos(xc-w/2, yc-h/2)
+                x2, y2 = ax2_LI.pos().x(), ax2_LI.pos().y()
+                if x2>0:
+                    w, h = ax2_LI.rect().right(), ax2_LI.rect().bottom()
+                    xc, yc = x2+w/2, y2+h/2
+                ax2_LI.setAttr('size', self.fontSize)
+                ax2_LI.setText(ax2_LI.text)
+                if x2>0:
+                    w, h = ax2_LI.rect().right(), ax2_LI.rect().bottom()
+                    ax2_LI.setPos(xc-w/2, yc-h/2)
+        except:
+            traceback.print_exc()
+            pass
+
     def loadFluo_cb(self, event):
         fluo_paths = prompts.multi_files_dialog(
             title='Select one or multiple fluorescent images')
@@ -2619,7 +2660,7 @@ class Yeast_ACDC_GUI(QMainWindow):
     def next_cb(self):
         mode = str(self.modeComboBox.currentText())
         if self.frame_i < self.num_segm_frames-1:
-            if 'lost' in self.titleLabel.text:
+            if 'lost' in self.titleLabel.text and mode != 'Viewer':
                 msg = QtGui.QMessageBox()
                 warn_msg = (
                     'Current frame (compared to previous frame) '
@@ -3325,7 +3366,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 color = 'r'
                 bold = True
 
-        LabelItemID.setText(txt, color=color, bold=bold, size='10pt')
+        LabelItemID.setText(txt, color=color, bold=bold, size=self.fontSize)
 
         # Center LabelItem at centroid
         y, x = obj.centroid
@@ -3345,7 +3386,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             color = (230, 0, 0, 255*0.5)
             bold = False
 
-        LabelItemID.setText(txt, color=color, bold=bold, size='10pt')
+        LabelItemID.setText(txt, color=color, bold=bold, size=self.fontSize)
 
         # Center LabelItem at centroid
         y, x = obj.centroid
