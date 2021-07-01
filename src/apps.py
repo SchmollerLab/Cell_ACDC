@@ -535,6 +535,7 @@ class QDialogCombobox(QDialog):
     def __init__(self, title, channel_names, informativeText,
                  CbLabel='Select value:  ', parent=None):
         self.cancel = True
+        self.selectedItemText = ''
         super().__init__(parent)
         self.setWindowTitle(title)
 
@@ -542,18 +543,24 @@ class QDialogCombobox(QDialog):
         topLayout = QHBoxLayout()
         bottomLayout = QHBoxLayout()
 
+        if informativeText:
+            infoLabel = QLabel(informativeText)
+            mainLayout.addWidget(infoLabel, alignment=Qt.AlignCenter)
+
         label = QLabel(CbLabel)
         topLayout.addWidget(label)
 
         combobox = QComboBox()
         combobox.addItems(channel_names)
+        self.ComboBox = combobox
         topLayout.addWidget(combobox)
+        topLayout.setContentsMargins(0, 10, 0, 0)
 
         okButton = QPushButton('Ok')
         okButton.setShortcut(Qt.Key_Enter)
         bottomLayout.addWidget(okButton, alignment=Qt.AlignRight)
 
-        cancelButton = QPushButton('Browse')
+        cancelButton = QPushButton('Cancel')
         bottomLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
         bottomLayout.setContentsMargins(0, 10, 0, 0)
 
@@ -562,6 +569,16 @@ class QDialogCombobox(QDialog):
         self.setLayout(mainLayout)
 
         self.setModal(True)
+
+        # Connect events
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.close)
+
+
+    def ok_cb(self, event):
+        self.cancel = False
+        self.selectedItemText = self.ComboBox.currentText()
+        self.close()
 
 
 class QDialogListbox(QDialog):

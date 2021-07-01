@@ -13,6 +13,12 @@ from skimage.measure import regionprops
 from skimage import img_as_float
 from natsort import natsorted
 
+from PyQt5.QtWidgets import (
+    QApplication
+)
+
+import apps
+
 def file_dialog(toplevel=False, **options):
     #Prompt the user to select the image file
     if toplevel:
@@ -578,17 +584,30 @@ class select_channel_name:
                 txt.write(selection)
 
     def QtPrompt(self, channel_names, informativeText='', parent=None):
-        win = QDialogCombobox('Select channel name',
-                              channel_names,
-                              informativeText,
-                              parent=None)
         if parent is None:
             app = QApplication([])
+            win = apps.QDialogCombobox(
+                                  'Select channel name',
+                                  channel_names,
+                                  informativeText,
+                                  CbLabel='Select channel name:  ',
+                                  parent=None)
             win.show()
             app.exec_()
+            if self.allow_abort and win.cancel:
+                self._abort()
         else:
+            win = apps.QDialogCombobox(
+                                  'Select channel name',
+                                  channel_names,
+                                  informativeText,
+                                  CbLabel='Select channel name:  ',
+                                  parent=None)
             win.exec_()
 
+        self.channel_name = win.selectedItemText
+        self._saved_last_selection(self.channel_name)
+        self.is_first_call = False
 
 
     def prompt(self, channel_names, message=None, toplevel=False):
@@ -632,32 +651,37 @@ class select_channel_name:
 
         row += 1
         tk.Button(root, text='Ok', width=20,
-                        command=self._close).grid(row=row, column=0,
+                        command=self._tk_close).grid(row=row, column=0,
                                                   columnspan=2,
                                                   pady=10, padx=10)
 
 
 
-        root.protocol("WM_DELETE_WINDOW", self._abort)
+        root.protocol("WM_DELETE_WINDOW", self._tk_abort)
         self.ch_name_var = ch_name_var
         self.root = root
 
         root.mainloop()
 
-    def _test(self, name=None, index=None, mode=None):
-        pass
-
-    def _close(self):
+    def _tk_close(self):
+        self.was_aborted = False
         self.channel_name = self.ch_name_var.get()
-        self._saved_last_selection(self.channel_name)
-        self.is_first_call = False
         self.root.quit()
         self.root.destroy()
 
-    def _abort(self):
+
+    def _tk_abort(self):
         self.was_aborted = True
         self.root.quit()
         self.root.destroy()
+        if self.allow_abort:
+            exit('Execution aborted by the user')
+
+    def _test(self, name=None, index=None, mode=None):
+        pass
+
+    def _abort(self):
+        self.was_aborted = True
         if self.allow_abort:
             exit('Execution aborted by the user')
 

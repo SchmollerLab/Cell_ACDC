@@ -320,18 +320,32 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.brushCursor = QCursor(brushCursorPixmap, 16, 16)
 
         # Annotated metadata markers (ScatterPlotItem)
-        self.binnedIDs_ScatterPlot = pg.ScatterPlotItem()
-        self.binnedIDs_ScatterPlot.setData(
+        self.ax2_binnedIDs_ScatterPlot = pg.ScatterPlotItem()
+        self.ax2_binnedIDs_ScatterPlot.setData(
                                  [], [], symbol='t', pxMode=False,
                                  brush=pg.mkBrush((255,0,0,50)), size=15,
                                  pen=pg.mkPen(width=3, color='r'))
-        self.ax2.addItem(self.binnedIDs_ScatterPlot)
-        self.ripIDs_ScatterPlot = pg.ScatterPlotItem()
-        self.ripIDs_ScatterPlot.setData(
+        self.ax2.addItem(self.ax2_binnedIDs_ScatterPlot)
+        self.ax2_ripIDs_ScatterPlot = pg.ScatterPlotItem()
+        self.ax2_ripIDs_ScatterPlot.setData(
                                  [], [], symbol='x', pxMode=False,
                                  brush=pg.mkBrush((255,0,0,50)), size=15,
                                  pen=pg.mkPen(width=2, color='r'))
-        self.ax2.addItem(self.ripIDs_ScatterPlot)
+        self.ax2.addItem(self.ax2_ripIDs_ScatterPlot)
+
+        self.ax1_binnedIDs_ScatterPlot = pg.ScatterPlotItem()
+        self.ax1_binnedIDs_ScatterPlot.setData(
+                                 [], [], symbol='t', pxMode=False,
+                                 brush=pg.mkBrush((255,0,0,50)), size=15,
+                                 pen=pg.mkPen(width=3, color='r'))
+        self.ax1.addItem(self.ax1_binnedIDs_ScatterPlot)
+        self.ax1_ripIDs_ScatterPlot = pg.ScatterPlotItem()
+        self.ax1_ripIDs_ScatterPlot.setData(
+                                 [], [], symbol='x', pxMode=False,
+                                 brush=pg.mkBrush((255,0,0,50)), size=15,
+                                 pen=pg.mkPen(width=2, color='r'))
+        self.ax1.addItem(self.ax1_ripIDs_ScatterPlot)
+
 
 
         # Title
@@ -3533,8 +3547,10 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         if draw:
             # Draw markers to annotated IDs
-            self.binnedIDs_ScatterPlot.setData(binnedIDs_xx, binnedIDs_yy)
-            self.ripIDs_ScatterPlot.setData(ripIDs_xx, ripIDs_yy)
+            self.ax2_binnedIDs_ScatterPlot.setData(binnedIDs_xx, binnedIDs_yy)
+            self.ax2_ripIDs_ScatterPlot.setData(ripIDs_xx, ripIDs_yy)
+            self.ax1_binnedIDs_ScatterPlot.setData(binnedIDs_xx, binnedIDs_yy)
+            self.ax1_ripIDs_ScatterPlot.setData(ripIDs_xx, ripIDs_yy)
 
     def load_fluo_data(self, fluo_path):
         print('Loading fluorescent image data...')
@@ -4016,7 +4032,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         filenames = os.listdir(images_path)
         if ch_name_selector.is_first_call:
             ch_names, warn = ch_name_selector.get_available_channels(filenames)
-            ch_name_selector.prompt(ch_names)
+            ch_name_selector.QtPrompt(ch_names, parent=self)
             if ch_name_selector.was_aborted:
                 self.titleLabel.setText(
                     'File --> Open or Open recent to start the process',
@@ -4245,6 +4261,22 @@ class Yeast_ACDC_GUI(QMainWindow):
                 # Save segmentation metadata
                 all_frames_metadata_df.to_csv(acdc_output_csv_path)
                 self.data.acdc_df = all_frames_metadata_df
+            except PermissionError:
+                msg = QtGui.QMessageBox()
+                warn_cca = msg.critical(
+                    self, 'Permission denied',
+                    f'The below file is open in another app (Excel maybe?).\n\n'
+                    f'{acdc_output_csv_path}\n\n'
+                    'Close file and then press "Ok".',
+                    msg.Ok
+                )
+                all_frames_metadata_df = pd.concat(
+                    df_li, keys=keys, names=['frame_i', 'Cell_ID']
+                )
+
+                # Save segmentation metadata
+                all_frames_metadata_df.to_csv(acdc_output_csv_path)
+                self.data.acdc_df = all_frames_metadata_df
             except:
                 traceback.print_exc()
                 pass
@@ -4255,7 +4287,8 @@ class Yeast_ACDC_GUI(QMainWindow):
 
             # Save last tracked frame
             with open(last_tracked_i_path, 'w+') as txt:
-                txt.write(str(frame_i))
+                last_tracked_i = frame_i-1 if frame_i>0 else 0
+                txt.write(str(frame_i-1))
 
             print('--------------')
             print(f'Saved data until frame number {frame_i+1}')
