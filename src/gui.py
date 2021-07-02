@@ -2134,12 +2134,14 @@ class Yeast_ACDC_GUI(QMainWindow):
             )
             selectFluo.exec_()
             keys = selectFluo.selectedItemsText
-        key = items[0]
-        if selectFluo.cancel or not keys:
-            return
+            key = items[0]
+            if selectFluo.cancel or not keys:
+                return
+            else:
+                self._key = keys[0]
         else:
-            self._key = keys[0]
-            self.colorButton.selectColor()
+            self._key = items[0]
+        self.colorButton.selectColor()
 
 
     def setEnabledToolbarButton(self, enabled=False):
@@ -3692,20 +3694,27 @@ class Yeast_ACDC_GUI(QMainWindow):
             # Check if there is already loaded data
             if self.data.fluo_data_dict:
                 items = self.data.fluo_data_dict.keys()
-                selectFluo = apps.QDialogListbox(
-                    'Select fluorescent image(s) to overlay',
-                    'Select fluorescent image(s) to overlay\n'
-                    'You can select one or more images',
-                    items
-                )
-                selectFluo.exec_()
-                keys = selectFluo.selectedItemsText
-                if selectFluo.cancel or not keys:
-                    prompt = True
+                if len(items)>1:
+                    selectFluo = apps.QDialogListbox(
+                        'Select fluorescent image(s) to overlay',
+                        'Select fluorescent image(s) to overlay\n'
+                        'You can select one or more images',
+                        items
+                    )
+                    selectFluo.exec_()
+                    keys = selectFluo.selectedItemsText
+                    if selectFluo.cancel or not keys:
+                        prompt = True
+                    else:
+                        prompt = False
                 else:
                     prompt = False
-                    ol_data = {key:self.data.fluo_data_dict[key] for key in keys}
-                    ol_colors = {key:self.overlayRGBs[i] for i, key in enumerate(keys)}
+                    keys = items
+                ol_data = {key:self.data.fluo_data_dict[key]
+                           for key in keys}
+                ol_colors = {key:self.overlayRGBs[i]
+                             for i, key in enumerate(keys)}
+
             if prompt:
                 ol_paths = prompts.multi_files_dialog(
                       title='Select one or multiple image files to overlay',
@@ -3719,7 +3728,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 ol_colors = {}
                 for i, ol_path in enumerate(ol_paths):
                     filename, _ = os.path.splitext(os.path.basename(ol_path))
-                    fluo_data = self.load_fluo_data(fluo_path)
+                    fluo_data = self.load_fluo_data(ol_path)
                     self.data.fluo_data_dict[filename] = fluo_data
                     ol_data[filename] = fluo_data
                     ol_colors[filename] = self.overlayRGBs[i]
@@ -3765,7 +3774,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
     def updateOlColors(self, button):
         self.ol_colors[self._key] = self.colorButton.color().getRgb()[:3]
-        self.updateOverlay(self, button)
+        self.updateOverlay(button)
 
     def updateOverlay(self, button):
         img = self.get_overlay()
