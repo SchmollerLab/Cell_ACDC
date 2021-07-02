@@ -2420,6 +2420,10 @@ class Yeast_ACDC_GUI(QMainWindow):
         that contains "modID". If so, it triggers a pop-up asking the user
         what to do (propagate change to future frames o not)
         """
+        # Do not check the future for the last frame
+        if self.frame_i+1 == self.num_segm_frames:
+            # No future frames to propagate the change to
+            return False, False, None, doNotShow
 
         areFutureIDs_affected = []
         # Get number of future frames already visited and checked if future
