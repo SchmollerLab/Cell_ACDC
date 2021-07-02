@@ -1245,7 +1245,7 @@ class editID_QWidget(QDialog):
         idx = self.ID_QLineEdit.cursorPosition()
         if idx == 0:
             return
-            
+
         newChar = text[idx-1]
 
         # Do nothing if user is deleting text
@@ -1353,7 +1353,7 @@ class cca_df_frame0:
         if len(cells_IDs) == 1:
             related_to_opt = [-1]
         else:
-            related_to_opt = [str(ID) for ID in cells_IDs]
+            related_to_opt = ['-1']
             related_to_opt.insert(0, -1)
         relationship_opt = ['mother', 'bud']
         self.cell_IDs = cells_IDs

@@ -2181,6 +2181,8 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
             for BudMothLine in self.ax1_BudMothLines:
                 BudMothLine.setData([], [])
+            if self.cca_df is not None:
+                self.store_cca_df()
         elif mode == 'Cell cycle analysis':
             proceed = self.init_cca()
             if proceed:
@@ -2195,6 +2197,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.drawIDsContComboBox.clear()
                 self.drawIDsContComboBox.addItems(
                                         self.drawIDsContComboBoxCcaItems)
+
 
         elif mode == 'Viewer':
             self.setEnabledToolbarButton(enabled=False)
@@ -3227,6 +3230,12 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         last_cca_frame_i = i-1 if i>0 else 0
 
+        if last_cca_frame_i == 0:
+            # Remove undoable actions from segmentation mode
+            self.UndoRedoStates[0] = []
+            self.undoAction.setEnabled(False)
+            self.redoAction.setEnabled(False)
+
         if self.frame_i > last_cca_frame_i:
             # Prompt user to go to last annotated frame
             msg = QtGui.QMessageBox()
@@ -3238,12 +3247,16 @@ class Yeast_ACDC_GUI(QMainWindow):
                 msg.Yes | msg.Cancel
             )
             if goTo_last_annotated_frame_i == msg.Yes:
+                msg = 'Looking good!'
                 self.last_cca_frame_i = last_cca_frame_i
                 self.frame_i = last_cca_frame_i
+                self.titleLabel.setText(msg, color='w')
                 self.get_data()
                 self.updateALLimg()
             else:
-                print('Cell cycle analysis aborted.')
+                msg = 'Cell cycle analysis aborted.'
+                print(msg)
+                self.titleLabel.setText(msg, color='w')
                 proceed = False
                 return
         elif self.frame_i < last_cca_frame_i:
@@ -3257,12 +3270,16 @@ class Yeast_ACDC_GUI(QMainWindow):
                 msg.Yes | msg.No | msg.Cancel
             )
             if goTo_last_annotated_frame_i == msg.Yes:
+                msg = 'Looking good!'
+                self.titleLabel.setText(msg, color='w')
                 self.last_cca_frame_i = last_cca_frame_i
                 self.frame_i = last_cca_frame_i
                 self.get_data()
                 self.updateALLimg()
             elif goTo_last_annotated_frame_i == msg.Cancel:
-                print('Cell cycle analysis aborted.')
+                msg = 'Cell cycle analysis aborted.'
+                print(msg)
+                self.titleLabel.setText(msg, color='w')
                 proceed = False
                 return
         self.last_cca_frame_i = last_cca_frame_i
@@ -3276,12 +3293,15 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.cca_df = pd.DataFrame({
                                'cell_cycle_stage': cc_stage,
                                'generation_num': num_cycles,
-                               'relative_ID': IDs,
+                               'relative_ID': related_to,
                                'relationship': relationship,
                                'emerg_frame_i': num_cycles,
                                'division_frame_i': num_cycles},
                                 index=IDs)
             self.cca_df.index.name = 'Cell_ID'
+            msg = 'Cell cycle analysis initiliazed!'
+            print(msg)
+            self.titleLabel.setText(msg, color='w')
         else:
             self.get_cca_df()
         return proceed
@@ -4009,6 +4029,12 @@ class Yeast_ACDC_GUI(QMainWindow):
                 title='Select experiment folder containing Position_n folders'
                       'or specific Position_n folder')
 
+        if exp_path == '':
+            self.titleLabel.setText(
+                'File --> Open or Open recent to start the process',
+                color='w')
+            return
+
         if os.path.basename(exp_path).find('Position_') != -1:
             is_pos_folder = True
         else:
@@ -4021,11 +4047,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         self.titleLabel.setText('Loading data...', color='w')
 
-        if exp_path == '':
-            self.titleLabel.setText(
-                'File --> Open or Open recent to start the process',
-                color='w')
-            return
+
 
         ch_name_selector = prompts.select_channel_name(
             which_channel='segm', allow_abort=False
@@ -4045,6 +4067,9 @@ class Yeast_ACDC_GUI(QMainWindow):
                 msg.critical(
                     self, 'Incompatible folder', txt, msg.Ok
                 )
+                self.titleLabel.setText(
+                    'File --> Open or Open recent to start the process',
+                    color='w')
                 return
 
             select_folder.run_widget(values, allow_abort=False)
@@ -4090,8 +4115,13 @@ class Yeast_ACDC_GUI(QMainWindow):
                     title='Channel name not found',
                     entry_label=ch_name_not_found_msg,
                     input_txt=ch_name_selector.channel_name,
-                    toplevel=False
+                    toplevel=False, allow_abort=False
                 ).entry_txt
+                if user_ch_name.was_aborted:
+                    self.titleLabel.setText(
+                        'File --> Open or Open recent to start the process',
+                        color='w')
+                    return
             else:
                 user_ch_name = ch_name_selector.channel_name
 
@@ -4111,9 +4141,11 @@ class Yeast_ACDC_GUI(QMainWindow):
                 img_path = f'{images_path}/{filename}'
                 img_aligned_found = True
         if not img_aligned_found:
-            err_msg = ('Aligned frames file not found. '
-                       'You need to run the segmentation script first.')
-            self.titleLabel.setText(err_msg, color='r')
+            err_msg = ('<font color="red">Aligned frames file for channel </font>'
+                       f'<font color=rgb(255,204,0)><b>{user_ch_name}</b></font> '
+                       '<font color="red">not found. '
+                       'You need to run the segmentation script first.</font>')
+            self.titleLabel.setText(err_msg)
             raise FileNotFoundError(err_msg)
         print(f'Loading {img_path}...')
 

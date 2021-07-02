@@ -558,6 +558,15 @@ class select_channel_name:
                     # Warn the an intersection could not be found
                     warn.append(True)
         warn = any(warn)
+        if self.which_channel is not None:
+            # Search for "phase" and put that channel first on the list
+            if self.which_channel == 'segm':
+                is_phase_contr_li = [c.lower().find('phase')!=-1
+                                     for c in channel_names]
+                if any(is_phase_contr_li):
+                    idx = is_phase_contr_li.index(True)
+                    channel_names[0], channel_names[idx] = (
+                                      channel_names[idx], channel_names[0])
         return channel_names, warn
 
     def _load_last_selection(self):
@@ -722,11 +731,13 @@ def check_img_shape_vs_metadata(img_shape, num_frames, SizeT, SizeZ):
 
 class single_entry_messagebox:
     def __init__(self, title='Entry', entry_label='Entry 1', input_txt='',
-                       toplevel=True):
+                       toplevel=True, allow_abort=True):
         if toplevel:
             root = tk.Toplevel()
         else:
             root = tk.Tk()
+        self.was_aborted = False
+        self.allow_abort = allow_abort
         root.lift()
         root.title(title)
         root.attributes("-topmost", True)
@@ -749,7 +760,10 @@ class single_entry_messagebox:
     def on_closing(self):
         self._root.quit()
         self._root.destroy()
-        exit('Execution aborted by the user')
+        if self.allow_abort:
+            exit('Execution aborted by the user')
+        else:
+            self.was_aborted = True
 
     def _quit(self, event=None):
         self.entry_txt = self.e.get()
