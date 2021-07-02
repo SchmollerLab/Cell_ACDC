@@ -2350,9 +2350,9 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.brushSizeSpinbox.setValue(self.brushSizeSpinbox.value()-1)
         elif ev.key() == Qt.Key_Escape:
             self.setUncheckedAllButtons()
-        elif ev.key() == Qt.Key_Alt:
-            self.app.setOverrideCursor(Qt.SizeAllCursor)
-            self.isAltDown = True
+        # elif ev.key() == Qt.Key_Alt:
+        #     self.app.setOverrideCursor(Qt.SizeAllCursor)
+        #     self.isAltDown = True
         elif ev.key() == Qt.Key_L:
             self.lab = skimage.segmentation.relabel_sequential(self.lab)[0]
             self.update_rp()
@@ -2399,9 +2399,10 @@ class Yeast_ACDC_GUI(QMainWindow):
         #     self.BrushEraser_cb(ev)
 
     def keyReleaseEvent(self, ev):
-        if ev.key() == Qt.Key_Alt:
-            self.isAltDown = False
-            self.app.restoreOverrideCursor()
+        pass
+        # if ev.key() == Qt.Key_Alt:
+        #     self.isAltDown = False
+        #     self.app.restoreOverrideCursor()
 
     def setUncheckedAllButtons(self):
         self.draw_MothBudTempLine = False
@@ -4297,13 +4298,32 @@ class Yeast_ACDC_GUI(QMainWindow):
 
 
     def saveFile(self):
+        for frame_i, data_dict in enumerate(self.allData_li):
+            # Build segm_npy
+            lab = data_dict['labels']
+            if lab is None:
+                # Since we are currently visualising a frame that is not
+                # stored yet ask the user to save it or not
+                if frame_i == self.frame_i:
+                    txt = (
+                    f'Do you also want to save current frame {self.frame_i+1}?'
+                    )
+                    msg = QtGui.QMessageBox()
+                    save_current = msg.question(
+                        self, 'Save current frame?', txt,
+                        msg.Yes | msg.No | msg.Cancel
+                    )
+                    if save_current == msg.Yes:
+                        self.store_data()
+                    elif save_current == msg.Cancel:
+                        return
+                break
         self.app.setOverrideCursor(Qt.WaitCursor)
         try:
             segm_npz_path = self.data.segm_npz_path
             acdc_output_csv_path = self.data.acdc_output_csv_path
             last_tracked_i_path = self.data.last_tracked_i_path
             segm_npy = np.copy(self.data.segm_data)
-            segm_npy[self.frame_i] = self.lab
             acdc_df_li = [None]*self.num_frames
 
             # Create list of dataframes from acdc_df on HDD
