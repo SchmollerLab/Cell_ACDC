@@ -261,8 +261,11 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.ax1.hideAxis('left')
         self.graphLayout.addItem(self.ax1, row=1, col=1)
 
+        # Blank image
+        self.blank = np.zeros((256,256), np.uint8)
+
         # Left image
-        self.img1 = pg.ImageItem(np.zeros((512,512)))
+        self.img1 = pg.ImageItem(self.blank)
         self.ax1.addItem(self.img1)
 
         # Left image histogram
@@ -289,7 +292,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
 
         # Right image
-        self.img2 = pg.ImageItem(np.zeros((512,512)))
+        self.img2 = pg.ImageItem(self.blank)
         self.ax2.addItem(self.img2)
 
         # Brush circle img1
@@ -1120,6 +1123,9 @@ class Yeast_ACDC_GUI(QMainWindow):
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(round(x)), int(round(y))
             ID = self.lab[ydata, xdata]
+            if ID == self.lab[self.yClickBud, self.xClickBud]:
+                return
+
             if ID == 0:
                 mothID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
@@ -1161,7 +1167,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.xClickMoth, self.yClickMoth = xdata, ydata
             self.assignMothBud()
             self.assignMothBudButton.setChecked(False)
-            self.draw_MothBudTempLine = False
+            self.clickedOnBud = False
             self.BudMothTempLine.setData([], [])
 
     def gui_mousePressEventImg1(self, event):
@@ -1255,7 +1261,12 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         # Assign bud to mother (mouse down on bud)
         elif right_click and self.assignMothBudButton.isChecked():
-            self.clickedOnBud = False
+            if self.clickedOnBud:
+                # NOTE: self.clickedOnBud is set to False when assigning a mother
+                # is successfull in mouse release event
+                # We still have to click on a mother
+                return
+
             if self.cca_df is None:
                 return
 
@@ -1288,9 +1299,9 @@ class Yeast_ACDC_GUI(QMainWindow):
                     self, 'Not a bud', txt, msg.Ok
                 )
                 return
+
             self.clickedOnBud = True
             self.xClickBud, self.yClickBud = xdata, ydata
-            self.draw_MothBudTempLine = True
 
         # Allow mid-click actions on both images
         elif mid_click and mode == 'Segmentation and Tracking':
@@ -1659,7 +1670,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             # traceback.print_exc()
             self.ax1_BrushCircle.setData([], [])
 
-        if self.draw_MothBudTempLine:
+        if self.assignMothBudButton.isChecked() and self.clickedOnBud:
             try:
                 x, y = event.pos()
                 y2, x2 = y, x
@@ -2113,7 +2124,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 curveID.setData([], [])
             t1 = time.time()
 
-            print(f'Clearing contours = {t1-t0:.3f}')
+            # print(f'Clearing contours = {t1-t0:.3f}')
 
         t0 = time.time()
 
@@ -2123,7 +2134,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 _IDlabel1.setText('')
             t1 = time.time()
 
-            print(f'Clearing labels = {t1-t0:.3f}')
+            # print(f'Clearing labels = {t1-t0:.3f}')
 
     def mousePressColorButton(self, event):
         items = list(self.data.fluo_data_dict.keys())
@@ -2818,8 +2829,6 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.UndoFutFrames_BinID = False
         self.applyFutFrames_BinID = False
 
-
-        self.draw_MothBudTempLine = False
         self.disableAutoActivateViewerWindow = False
         self.isAltDown = False
         self.UserEnforced_DisabledTracking = False
@@ -4029,11 +4038,39 @@ class Yeast_ACDC_GUI(QMainWindow):
                                      'acdc_df': None
              }
 
+    def removeAllItems(self):
+        self.img1.setImage(self.blank)
+        self.img2.setImage(self.blank)
+        self.img2.setLookupTable(np.zeros((1,3)), np.uint8)
+        try:
+            allItems = zip(self.ax1_ContoursCurves,
+                           self.ax1_LabelItemsIDs,
+                           self.ax2_LabelItemsIDs,
+                           self.ax1_BudMothLines)
+            for idx, items_ID in enumerate(allItems):
+                ContCurve, _IDlabel1, _IDlabel2, BudMothLine = items_ID
+                self.ax1.removeItem(ContCurve)
+                self.ax1.removeItem(_IDlabel1)
+                self.ax1.removeItem(BudMothLine)
+                self.ax2.removeItem(_IDlabel2)
+            self.ax1_ContoursCurves = []
+            self.ax1_BudMothLines = []
+            self.ax1_LabelItemsIDs = []
+            self.ax2_LabelItemsIDs = []
+        except:
+            # traceback.print_exc()
+            pass
+
+
     # Slots
     def newFile(self):
         pass
 
     def openFile(self, checked=False, exp_path=None):
+        # Remove all items from a previous session if open is pressed again
+        self.removeAllItems()
+
+        self.openAction.setEnabled(False)
         self.modeComboBox.setCurrentIndex(0)
 
         if self.slideshowWin is not None:
@@ -4045,6 +4082,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                       'or specific Position_n folder')
 
         if exp_path == '':
+            self.openAction.setEnabled(True)
             self.titleLabel.setText(
                 'File --> Open or Open recent to start the process',
                 color='w')
@@ -4085,6 +4123,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.titleLabel.setText(
                     'File --> Open or Open recent to start the process',
                     color='w')
+                self.openAction.setEnabled(True)
                 return
 
             select_folder.run_widget(values, allow_abort=False)
@@ -4095,6 +4134,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.titleLabel.setText(
                     'File --> Open or Open recent to start the process',
                     color='w')
+                self.openAction.setEnabled(True)
                 return
 
         elif is_pos_folder:
@@ -4124,6 +4164,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.titleLabel.setText(
                     'File --> Open or Open recent to start the process',
                     color='w')
+                self.openAction.setEnabled(True)
                 return
             if warn:
                 user_ch_name = prompts.single_entry_messagebox(
@@ -4136,6 +4177,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                     self.titleLabel.setText(
                         'File --> Open or Open recent to start the process',
                         color='w')
+                    self.openAction.setEnabled(True)
                     return
             else:
                 user_ch_name = ch_name_selector.channel_name
@@ -4161,6 +4203,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                        '<font color="red">not found. '
                        'You need to run the segmentation script first.</font>')
             self.titleLabel.setText(err_msg)
+            self.openAction.setEnabled(True)
             raise FileNotFoundError(err_msg)
         print(f'Loading {img_path}...')
 
@@ -4199,6 +4242,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.titleLabel.setText(
             'Data successfully loaded. Right/Left arrow to navigate frames',
             color='w')
+
+        self.openAction.setEnabled(True)
 
         self.addToRecentPaths(exp_path)
 

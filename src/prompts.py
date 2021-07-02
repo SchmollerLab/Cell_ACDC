@@ -605,6 +605,8 @@ class select_channel_name:
             app.exec_()
             if self.allow_abort and win.cancel:
                 self._abort()
+            elif win.cancel:
+                self.was_aborted = True
         else:
             win = apps.QDialogCombobox(
                                   'Select channel name',
@@ -613,6 +615,8 @@ class select_channel_name:
                                   CbLabel='Select channel name:  ',
                                   parent=None)
             win.exec_()
+            if win.cancel:
+                self.was_aborted = True
 
         self.channel_name = win.selectedItemText
         self._saved_last_selection(self.channel_name)
