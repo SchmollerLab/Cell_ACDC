@@ -1813,8 +1813,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.overlayButton.setToolTip('Overlay fluorescent image\n'
         'NOTE: Green background if you successfully loaded fluorescent data')
         navigateToolBar.addWidget(self.overlayButton)
-        self.checkableButtons.append(self.overlayButton)
-        self.checkableQButtonsGroup.addButton(self.overlayButton)
+        # self.checkableButtons.append(self.overlayButton)
+        # self.checkableQButtonsGroup.addButton(self.overlayButton)
 
         # fluorescent image color widget
         self.colorButton = pg.ColorButton(self, color=(230,230,230))
@@ -2085,7 +2085,8 @@ class Yeast_ACDC_GUI(QMainWindow):
 
     def loadFluo_cb(self, event):
         fluo_paths = prompts.multi_files_dialog(
-            title='Select one or multiple fluorescent images')
+            title='Select one or multiple fluorescent images',
+            initialdir=self.images_path)
 
         self.app.setOverrideCursor(Qt.WaitCursor)
         for fluo_path in fluo_paths:
@@ -4175,7 +4176,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         )
         if load_fluo == msg.Yes:
             fluo_paths = prompts.multi_files_dialog(
-                title='Select one or multiple fluorescent images')
+                title='Select one or multiple fluorescent images',
+                initialdir=images_path)
 
             self.app.setOverrideCursor(Qt.WaitCursor)
             for fluo_path in fluo_paths:
