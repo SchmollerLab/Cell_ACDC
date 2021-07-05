@@ -1419,7 +1419,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 return cca_df_ID
 
     def setHistoryKnowledge(self, ID, cca_df):
-        is_history_known = self.cca_df.at[ID, 'is_history_known']
+        is_history_known = cca_df.at[ID, 'is_history_known']
         if is_history_known:
             cca_df.at[ID, 'is_history_known'] = False
             cca_df.at[ID, 'cell_cycle_stage'] = 'G1'
@@ -1482,7 +1482,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 # For some reason ID disappeared from this frame
                 continue
             else:
-                self.setHistoryKnowledge(ID, self.cca_df)
+                self.setHistoryKnowledge(ID, cca_df_i)
                 relID = cca_df_i.at[ID, 'relative_ID']
                 if relID in IDs:
                     self.cca_df.loc[relID] = relID_cca
@@ -1497,14 +1497,11 @@ class Yeast_ACDC_GUI(QMainWindow):
                 break
 
             IDs = cca_df_i.index
-            print(i)
-            print(ID)
-            print(IDs)
             if ID not in IDs:
                 # we reached frame where ID was not existing yet
                 break
             else:
-                self.setHistoryKnowledge(ID, self.cca_df)
+                self.setHistoryKnowledge(ID, cca_df_i)
                 relID = cca_df_i.at[ID, 'relative_ID']
                 if relID in IDs:
                     self.cca_df.loc[relID] = relID_cca
@@ -3013,12 +3010,8 @@ class Yeast_ACDC_GUI(QMainWindow):
 
             # Store data for current frame
             self.store_data(debug=False)
-            print('----------')
-            print(self.frame_i)
             # Go to next frame
             self.frame_i += 1
-            print(self.frame_i)
-            print('----------')
             proceed_cca, never_visited = self.get_data()
             if not proceed_cca:
                 self.frame_i -= 1
