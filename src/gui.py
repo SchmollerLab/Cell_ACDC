@@ -1338,7 +1338,9 @@ class Yeast_ACDC_GUI(QMainWindow):
             xdata, ydata = int(round(x)), int(round(y))
 
             relationship = self.cca_df.at[ID, 'relationship']
-            if relationship != 'bud' and self.frame_i > 0:
+            is_history_known = self.cca_df.at[ID, 'is_history_known']
+            self.clickedOnHistoryKnown = is_history_known
+            if relationship != 'bud' and self.frame_i > 0 and is_history_known:
                 txt = (f'You clicked on ID {ID} which is NOT a bud.\n'
                        'To assign a bud to a cell start by clicking on a bud '
                        'and release on a cell in G1')
@@ -3508,6 +3510,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                     # Load cca df into current metadata
                     if 'cell_cycle_stage' in df.columns:
                         if any(df['cell_cycle_stage'].isna()):
+                            if 'is_history_known' not in df.columns:
+                                df['is_history_known'] = True
                             df = df.drop(labels=self.cca_df_colnames, axis=1)
                         else:
                             # Convert to ints since there were NaN
@@ -3665,6 +3669,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         df = self.allData_li[i]['acdc_df']
         if df is not None:
             if 'cell_cycle_stage' in df.columns:
+                if 'is_history_known' not in df.columns:
+                    df['is_history_known'] = True
                 cca_df = df[self.cca_df_colnames].copy()
         if return_df:
             return cca_df

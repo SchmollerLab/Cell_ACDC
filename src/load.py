@@ -313,8 +313,11 @@ class load_frames_data:
         )
         if os.path.exists(last_entries_csv_path) and not zyx_vox_dim_found:
             df = pd.read_csv(last_entries_csv_path, index_col='Description')
-            z, y, x = df.at[['z_voxSize', 'y_voxSize', 'x_voxSize'], 'values']
-            zyx_vox_dim = (z, y, x)
+            if 'z_voxSize' in df.index:
+                z = df.at['z_voxSize', 'values']
+                y = df.at['y_voxSize', 'values']
+                x = df.at['x_voxSize', 'values']
+                zyx_vox_dim = (z, y, x)
 
         if parent is None:
             app = QApplication([])
@@ -326,6 +329,18 @@ class load_frames_data:
             win = apps.QDialogInputsForm(SizeT, SizeZ, zyx_vox_dim, parent=parent)
             win.exec_()
         self.cancel = win.cancel
+
+        # Save values to load them again at the next session
+        df = pd.DataFrame(
+            {'Description': ['SizeT', 'SizeZ',
+                             'z_voxSize', 'y_voxSize', 'x_voxSize'],
+             'values': [SizeT, SizeZ,
+                        win.zyx_vox_dim[0],
+                        win.zyx_vox_dim[1],
+                        win.zyx_vox_dim[2]]}
+        ).set_index('Description')
+        df.to_csv(last_entries_csv_path)
+
         return win.SizeT, win.SizeZ, win.zyx_vox_dim
 
 
