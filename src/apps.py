@@ -639,6 +639,107 @@ class QDialogListbox(QDialog):
         self.selectedItemsText = None
         self.close()
 
+class QDialogInputsForm(QDialog):
+    def __init__(self, SizeT, SizeZ, zyx_vox_dim, parent=None):
+        self.cancel = True
+        super().__init__(parent)
+        self.setWindowTitle('ACDC inputs')
+
+        mainLayout = QVBoxLayout()
+        formLayout = QFormLayout()
+        buttonsLayout = QHBoxLayout()
+
+        formLayout.addRow('Number of frames (SizeT)', QLineEdit())
+        formLayout.addRow('Number of z-slices (SizeZ)', QLineEdit())
+        formLayout.addRow('Z, Y, X voxel size (um/pxl)\n'
+                          'For 2D images leave Z to 1', QLineEdit())
+
+        self.SizeT_entry = formLayout.itemAt(0, 1).widget()
+        self.SizeT_entry.setText(f'{SizeT}')
+        self.SizeT_entry.setAlignment(Qt.AlignCenter)
+
+        self.SizeZ_entry = formLayout.itemAt(1, 1).widget()
+        self.SizeZ_entry.setText(f'{SizeZ}')
+        self.SizeZ_entry.setAlignment(Qt.AlignCenter)
+
+        self.zyx_vox_dim_entry = formLayout.itemAt(2, 1).widget()
+        self.zyx_vox_dim_entry.setText(', '.join([str(v) for v in zyx_vox_dim]))
+        self.zyx_vox_dim_entry.setAlignment(Qt.AlignCenter)
+
+        okButton = QPushButton('Ok')
+        okButton.setShortcut(Qt.Key_Enter)
+
+        cancelButton = QPushButton('Cancel')
+
+        buttonsLayout.addWidget(okButton, alignment=Qt.AlignRight)
+        buttonsLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
+        buttonsLayout.setContentsMargins(0, 10, 0, 0)
+
+        mainLayout.addLayout(formLayout)
+        mainLayout.addLayout(buttonsLayout)
+
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.cancel_cb)
+
+        self.setLayout(mainLayout)
+        self.setModal(True)
+
+    def ok_cb(self, event):
+        self.cancel = False
+        try:
+            SizeT = int(self.SizeT_entry.text())
+            if SizeT < 1:
+                raise
+        except:
+            err_msg = (
+                'Number of frames (SizeT) value is not valid.\n'
+                'Enter an integer greater or equal to 1. Enter 1 if '
+                'you do not have frames.'
+            )
+            msg = QtGui.QMessageBox()
+            msg.critical(
+                self, 'Invalid SizeT value', err_msg, msg.Ok
+            )
+            return
+        try:
+            SizeZ = int(self.SizeZ_entry.text())
+            if SizeZ < 1:
+                raise
+        except:
+            err_msg = (
+                'Number of z-slices (SizeZ) value is not valid.\n'
+                'Enter an integer greater or equal to 1. Enter 1 for '
+                'for 2D images.'
+            )
+            msg = QtGui.QMessageBox()
+            msg.critical(
+                self, 'Invalid SizeZ value', err_msg, msg.Ok
+            )
+            return
+        try:
+            s = self.zyx_vox_dim_entry.text()
+            m = re.findall('(\d*.*\d+),\s*(\d*.*\d+),\s*(\d*.*\d+)', s)[0]
+            zyx_vox_dim = [float(v) for v in m]
+        except:
+            err_msg = (
+                'Z, Y, X voxel size values are not valid.\n'
+                'Enter three numbers (decimal or integers) greater than 0 '
+                'separated by a comma. Leave Z to 1 for 2D images.'
+            )
+            msg = QtGui.QMessageBox()
+            msg.critical(
+                self, 'Invalid SizeT value', err_msg, msg.Ok
+            )
+            return
+        self.SizeT = SizeT
+        self.SizeZ = SizeZ
+        self.zyx_vox_dim = zyx_vox_dim
+        self.close()
+
+    def cancel_cb(self, event):
+        self.cancel = True
+        self.close()
+
 
 class FutureFramesAction_QDialog(QDialog):
     def __init__(self, frame_i, last_tracked_i, change_txt, applyTrackingB=False):
@@ -1568,7 +1669,8 @@ class cca_df_frame0:
                                 'relative_ID': related_to,
                                 'relationship': relationship,
                                 'emerg_frame_i': [-1]*len(cc_stage),
-                                'division_frame_i': [-1]*len(cc_stage)},
+                                'division_frame_i': [-1]*len(cc_stage),
+                                'is_history_known': [False]*len(cc_stage)},
                                 index=self.cell_IDs)
             df.index.name = 'Cell_ID'
             df = pd.concat([df, self.cca_df], axis=1)
@@ -1911,9 +2013,7 @@ class win_size:
 if __name__ == '__main__':
     # Create the application
     app = QApplication(sys.argv)
-    win = QDialogCombobox('Test', ['phase_contrast', 'mCitrine'],
-                          '',
-                          CbLabel='Select value:  ', parent=None)
-    # win = nonModalTempQMessage()
+    win = QDialogInputsForm(201, 1, [0.15, 0.01, 0.01], parent=None)
+    app.setStyle(QtGui.QStyleFactory.create('Fusion'))
     win.show()
     app.exec_()

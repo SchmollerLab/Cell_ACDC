@@ -613,7 +613,7 @@ class select_channel_name:
                                   channel_names,
                                   informativeText,
                                   CbLabel='Select channel name:  ',
-                                  parent=None)
+                                  parent=parent)
             win.exec_()
             if win.cancel:
                 self.was_aborted = True

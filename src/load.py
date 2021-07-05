@@ -128,14 +128,15 @@ class load_frames_data:
                 self.zyx_vox_dim = [0.5, 0.01, 0.01]
                 zyx_vox_dim_found = False
             (self.SizeT, self.SizeZ,
-            self.zyx_vox_dim) = self.dimensions_entry_widget(
+            self.zyx_vox_dim) = self.inputsWidget(
                 SizeT=self.SizeT, SizeZ=self.SizeZ,
                 zyx_vox_dim=self.zyx_vox_dim,
-                zyx_vox_dim_found=zyx_vox_dim_found
+                zyx_vox_dim_found=zyx_vox_dim_found,
+                parent=parentQWidget
             )
         else:
             (self.SizeT, self.SizeZ,
-            self.zyx_vox_dim) = self.dimensions_entry_widget()
+            self.zyx_vox_dim) = self.inputsWidget(parent=parentQWidget)
         data_T, data_Z = self.img_data.shape[:2]
         if self.SizeZ > 1:
             if data_Z != self.SizeZ:
@@ -303,6 +304,30 @@ class load_frames_data:
         SizeT = int(re.findall('SizeT = (\d+)', info)[0])
         SizeZ = int(re.findall('SizeZ = (\d+)', info)[0])
         return SizeT, SizeZ
+
+    def inputsWidget(self, parent=None, SizeZ=1, SizeT=1,
+                     zyx_vox_dim=[0.5,0.1,0.1], zyx_vox_dim_found=False):
+        src_path = os.path.dirname(os.path.realpath(__file__))
+        last_entries_csv_path = os.path.join(
+            src_path, 'temp', 'last_entries_metadata.csv'
+        )
+        if os.path.exists(last_entries_csv_path) and not zyx_vox_dim_found:
+            df = pd.read_csv(last_entries_csv_path, index_col='Description')
+            z, y, x = df.at[['z_voxSize', 'y_voxSize', 'x_voxSize'], 'values']
+            zyx_vox_dim = (z, y, x)
+
+        if parent is None:
+            app = QApplication([])
+            win = apps.QDialogInputsForm(SizeT, SizeZ, zyx_vox_dim)
+            win.show()
+            app.setStyle(QtGui.QStyleFactory.create('Fusion'))
+            app.exec_()
+        else:
+            win = apps.QDialogInputsForm(SizeT, SizeZ, zyx_vox_dim, parent=parent)
+            win.exec_()
+        self.cancel = win.cancel
+        return win.SizeT, win.SizeZ, win.zyx_vox_dim
+
 
     def dimensions_entry_widget(self, SizeZ=1, SizeT=1,
                                 zyx_vox_dim=[0.5,0.1,0.1],
