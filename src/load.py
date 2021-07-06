@@ -20,9 +20,12 @@ from PyQt5.QtWidgets import (
 import prompts, apps
 
 class load_frames_data:
-    def __init__(self, path, user_ch_name, parentQWidget=None,
+    def __init__(self, path, user_ch_name,
+                 parentQWidget=None,
                  load_segm_data=True,
-                 load_segm_metadata=True):
+                 load_segm_metadata=True,
+                 load_zyx_voxSize=True,
+                 load_fluo=False):
         self.path = path
         self.fluo_data_dict = {}
         self.images_path = os.path.dirname(path)
@@ -121,11 +124,15 @@ class load_frames_data:
                 self.SizeT, self.SizeZ = self.data_dimensions(self.info)
             except:
                 self.SizeT, self.SizeZ = 1, 1
-            try:
-                self.zyx_vox_dim = self.zyx_vox_dim()
-                zyx_vox_dim_found = True
-            except:
-                self.zyx_vox_dim = [0.5, 0.01, 0.01]
+            if load_zyx_voxSize:
+                try:
+                    self.zyx_vox_dim = self.zyx_vox_dim()
+                    zyx_vox_dim_found = True
+                except:
+                    self.zyx_vox_dim = [0.5, 0.01, 0.01]
+                    zyx_vox_dim_found = False
+            else:
+                self.zyx_vox_dim = None
                 zyx_vox_dim_found = False
             (self.SizeT, self.SizeZ,
             self.zyx_vox_dim) = self.inputsWidget(
@@ -226,6 +233,13 @@ class load_frames_data:
 
                 self.acdc_df = acdc_df
 
+        if load_fluo:
+            fluo_tifs = []
+            for filename in os.listdir(self.images_path):
+                m = re.match(f'{self.basename}_.*\.tif', filename)
+                if m is not None:
+                    pass
+
         self.build_paths(self.filename, self.images_path, user_ch_name)
 
     def zyx_vox_dim(self):
@@ -307,17 +321,18 @@ class load_frames_data:
 
     def inputsWidget(self, parent=None, SizeZ=1, SizeT=1,
                      zyx_vox_dim=[0.5,0.1,0.1], zyx_vox_dim_found=False):
-        src_path = os.path.dirname(os.path.realpath(__file__))
-        last_entries_csv_path = os.path.join(
-            src_path, 'temp', 'last_entries_metadata.csv'
-        )
-        if os.path.exists(last_entries_csv_path) and not zyx_vox_dim_found:
-            df = pd.read_csv(last_entries_csv_path, index_col='Description')
-            if 'z_voxSize' in df.index:
-                z = df.at['z_voxSize', 'values']
-                y = df.at['y_voxSize', 'values']
-                x = df.at['x_voxSize', 'values']
-                zyx_vox_dim = (z, y, x)
+        if zyx_vox_dim is not None:
+            src_path = os.path.dirname(os.path.realpath(__file__))
+            last_entries_csv_path = os.path.join(
+                src_path, 'temp', 'last_entries_metadata.csv'
+            )
+            if os.path.exists(last_entries_csv_path) and not zyx_vox_dim_found:
+                df = pd.read_csv(last_entries_csv_path, index_col='Description')
+                if 'z_voxSize' in df.index:
+                    z = df.at['z_voxSize', 'values']
+                    y = df.at['y_voxSize', 'values']
+                    x = df.at['x_voxSize', 'values']
+                    zyx_vox_dim = (z, y, x)
 
         if parent is None:
             app = QApplication([])
@@ -339,7 +354,8 @@ class load_frames_data:
                         win.zyx_vox_dim[1],
                         win.zyx_vox_dim[2]]}
         ).set_index('Description')
-        df.to_csv(last_entries_csv_path)
+        if zyx_vox_dim is not None:
+            df.to_csv(last_entries_csv_path)
 
         return win.SizeT, win.SizeZ, win.zyx_vox_dim
 

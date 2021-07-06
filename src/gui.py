@@ -3170,7 +3170,6 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.data = data
 
         self.gui_createGraphicsItems()
-
         self.init_attr(max_ID=data.segm_data.max())
 
     def clear_prevItems(self):
@@ -3648,7 +3647,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                            'division_frame_i': num_cycles,
                            'is_history_known': is_history_known},
                             index=IDs)
-        self.cca_df.index.name = 'Cell_ID'
+        cca_df.index.name = 'Cell_ID'
         return cca_df
 
 

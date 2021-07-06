@@ -642,6 +642,7 @@ class QDialogListbox(QDialog):
 class QDialogInputsForm(QDialog):
     def __init__(self, SizeT, SizeZ, zyx_vox_dim, parent=None):
         self.cancel = True
+        self.zyx_vox_dim = zyx_vox_dim
         super().__init__(parent)
         self.setWindowTitle('ACDC inputs')
 
@@ -651,8 +652,9 @@ class QDialogInputsForm(QDialog):
 
         formLayout.addRow('Number of frames (SizeT)', QLineEdit())
         formLayout.addRow('Number of z-slices (SizeZ)', QLineEdit())
-        formLayout.addRow('Z, Y, X voxel size (um/pxl)\n'
-                          'For 2D images leave Z to 1', QLineEdit())
+        if zyx_vox_dim is not None:
+            formLayout.addRow('Z, Y, X voxel size (um/pxl)\n'
+                              'For 2D images leave Z to 1', QLineEdit())
 
         self.SizeT_entry = formLayout.itemAt(0, 1).widget()
         self.SizeT_entry.setText(f'{SizeT}')
@@ -662,9 +664,10 @@ class QDialogInputsForm(QDialog):
         self.SizeZ_entry.setText(f'{SizeZ}')
         self.SizeZ_entry.setAlignment(Qt.AlignCenter)
 
-        self.zyx_vox_dim_entry = formLayout.itemAt(2, 1).widget()
-        self.zyx_vox_dim_entry.setText(', '.join([str(v) for v in zyx_vox_dim]))
-        self.zyx_vox_dim_entry.setAlignment(Qt.AlignCenter)
+        if zyx_vox_dim is not None:
+            self.zyx_vox_dim_entry = formLayout.itemAt(2, 1).widget()
+            self.zyx_vox_dim_entry.setText(', '.join([str(v) for v in zyx_vox_dim]))
+            self.zyx_vox_dim_entry.setAlignment(Qt.AlignCenter)
 
         okButton = QPushButton('Ok')
         okButton.setShortcut(Qt.Key_Enter)
@@ -716,21 +719,24 @@ class QDialogInputsForm(QDialog):
                 self, 'Invalid SizeZ value', err_msg, msg.Ok
             )
             return
-        try:
-            s = self.zyx_vox_dim_entry.text()
-            m = re.findall('(\d*.*\d+),\s*(\d*.*\d+),\s*(\d*.*\d+)', s)[0]
-            zyx_vox_dim = [float(v) for v in m]
-        except:
-            err_msg = (
-                'Z, Y, X voxel size values are not valid.\n'
-                'Enter three numbers (decimal or integers) greater than 0 '
-                'separated by a comma. Leave Z to 1 for 2D images.'
-            )
-            msg = QtGui.QMessageBox()
-            msg.critical(
-                self, 'Invalid SizeT value', err_msg, msg.Ok
-            )
-            return
+        if self.zyx_vox_dim is not None:
+            try:
+                s = self.zyx_vox_dim_entry.text()
+                m = re.findall('(\d*.*\d+),\s*(\d*.*\d+),\s*(\d*.*\d+)', s)[0]
+                zyx_vox_dim = [float(v) for v in m]
+            except:
+                err_msg = (
+                    'Z, Y, X voxel size values are not valid.\n'
+                    'Enter three numbers (decimal or integers) greater than 0 '
+                    'separated by a comma. Leave Z to 1 for 2D images.'
+                )
+                msg = QtGui.QMessageBox()
+                msg.critical(
+                    self, 'Invalid SizeT value', err_msg, msg.Ok
+                )
+                return
+        else:
+            zyx_vox_dim = [1,1,1]
         self.SizeT = SizeT
         self.SizeZ = SizeZ
         self.zyx_vox_dim = zyx_vox_dim
