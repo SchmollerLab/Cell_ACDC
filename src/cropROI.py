@@ -275,17 +275,18 @@ class cropROI_GUI(QMainWindow):
             print('Cropped data shape: ', croppedData.shape)
             with TiffFile(self.data.tif_path) as tif:
                 metadata = tif.imagej_metadata
-            self.imagej_tiffwriter(self.data.tif_path, croppedData, metadata)
             for tif in self.data.tif_paths:
                 print('Saving: ', tif)
                 _tif_data = skimage.io.imread(tif)[:, y0:y0+h, x0:x0+w]
                 self.imagej_tiffwriter(tif, _tif_data, metadata)
             for npz in self.npz_paths:
+                print('Saving: ', npz)
                 npz_data = np.load(npz)['arr_0'][:, y0:y0+h, x0:x0+w]
                 np.savez_compressed(npz, npz_data)
             if self.data.segm_data is not None:
+                print('Saving: ', npz)
                 croppedSegm = self.data.segm_data[:, y0:y0+h, x0:x0+w]
-                np.savez_compressed(npz, croppedSegm)
+                np.savez_compressed(self.data.segm_npz_path, croppedSegm)
             if self.data.acdc_df is not None:
                 df = self.data.acdc_df
                 df['x_centroid'] -= x0
