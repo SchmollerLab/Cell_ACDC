@@ -1,8 +1,11 @@
 import os
 import sys
+import re
 import numpy as np
+import skimage.io
+from tifffile.tifffile import TiffWriter, TiffFile
 
-from PyQt5.QtCore import Qt, QFile, QTextStream, QSize
+from PyQt5.QtCore import Qt, QFile, QTextStream, QSize, QRect, QRectF
 from PyQt5.QtGui import QIcon, QKeySequence, QCursor
 from PyQt5.QtWidgets import (
     QAction, QApplication, QLabel, QPushButton,
@@ -18,8 +21,9 @@ import pyqtgraph as pg
 import qrc_resources
 
 # Custom modules
-import load, prompts, apps
+import load, prompts, apps, core
 
+pg.setConfigOptions(imageAxisOrder='row-major')
 
 class cropROI_GUI(QMainWindow):
     def __init__(self, parent=None):
@@ -67,6 +71,7 @@ class cropROI_GUI(QMainWindow):
         self.nextAction.setShortcut("right")
         self.jumpForwardAction.setShortcut("up")
         self.jumpBackwardAction.setShortcut("down")
+        self.okAction = QAction(QIcon(":applyCrop.svg"), "crop!", self)
 
     def gui_createMenuBar(self):
         menuBar = self.menuBar()
@@ -86,8 +91,9 @@ class cropROI_GUI(QMainWindow):
         fileToolBar.setMovable(False)
 
         fileToolBar.addAction(self.openAction)
+        fileToolBar.addAction(self.okAction)
 
-        navigateToolbar = QToolBar("Edit", self)
+        navigateToolbar = QToolBar("Navigate", self)
         navigateToolbar.setIconSize(QSize(toolbarSize, toolbarSize))
         self.addToolBar(navigateToolbar)
 
@@ -96,6 +102,15 @@ class cropROI_GUI(QMainWindow):
         navigateToolbar.addAction(self.jumpBackwardAction)
         navigateToolbar.addAction(self.jumpForwardAction)
 
+        self.ROIshapeComboBox = QComboBox()
+        self.ROIshapeComboBox.addItems(['256x256'])
+        ROIshapeLabel = QLabel('   ROI standard shape: ')
+        ROIshapeLabel.setBuddy(self.ROIshapeComboBox)
+        navigateToolbar.addWidget(ROIshapeLabel)
+        navigateToolbar.addWidget(self.ROIshapeComboBox)
+
+        self.ROIshapeLabel = QLabel('   Current ROI shape: 256 x 256')
+        navigateToolbar.addWidget(self.ROIshapeLabel)
 
     def gui_connectActions(self):
         self.openAction.triggered.connect(self.openFile)
@@ -104,6 +119,7 @@ class cropROI_GUI(QMainWindow):
         self.nextAction.triggered.connect(self.next_frame)
         self.jumpForwardAction.triggered.connect(self.skip10ahead_frames)
         self.jumpBackwardAction.triggered.connect(self.skip10back_frames)
+        self.okAction.triggered.connect(self.crop_and_save)
 
     def gui_createStatusBar(self):
         self.statusbar = self.statusBar()
@@ -245,13 +261,53 @@ class cropROI_GUI(QMainWindow):
         self.frame_i = self.frame_i_scrollBar_img.value()-1
         self.update_img()
 
+
+    def crop_and_save(self):
+        msg = QtGui.QMessageBox()
+        save_current = msg.question(
+            self, 'Save data?', 'Do you want to save?',
+            msg.Yes | msg.No
+        )
+        if msg.Yes:
+            print('Saving data...')
+            x0, y0 = [int(round(c)) for c in self.roi.pos()]
+            w, h = [int(round(c)) for c in self.roi.size()]
+            croppedData = self.data.img_data[:, y0:y0+h, x0:x0+w]
+            print('Cropped data shape: ', croppedData.shape)
+            print('Saving: ', self.data.tif_path)
+            with TiffFile(self.data.tif_path) as tif:
+                metadata = tif.imagej_metadata
+            self.imagej_tiffwriter(self.data.tif_path, croppedData, metadata)
+            for tif in self.data.tif_paths:
+                print('Saving: ', tif)
+                _tif_data = skimage.io.imread(tif)[:, y0:y0+h, x0:x0+w]
+                self.imagej_tiffwriter(tif, _tif_data, metadata)
+            for npz in self.npz_paths:
+                _data = np.load(npz)['arr_0'][:, y0:y0+h, x0:x0+w]
+                print('Saving: ', npz)
+                np.savez_compressed(npz, _data)
+            if self.data.segm_data is not None:
+                croppedSegm = self.data.segm_data[:, y0:y0+h, x0:x0+w]
+                print('Saving: ', self.data.segm_npz_path)
+                np.savez_compressed(npz, croppedSegm)
+
+            print('Done.')
+            self.titleLabel.setText('Saved!', color='w')
+
+    def imagej_tiffwriter(self, new_path, data, metadata):
+        with TiffWriter(new_path, imagej=True) as new_tif:
+            Z, Y, X = data.shape
+            data.shape = 1, Z, 1, Y, X, 1  # imageJ format should always have TZCYXS data shape
+            new_tif.save(data, metadata=metadata)
+
     def init_frames_data(self, frames_path, user_ch_name):
         data = load.load_frames_data(frames_path, user_ch_name,
                                      parentQWidget=self,
                                      load_segm_data=True,
                                      load_segm_metadata=False,
                                      load_zyx_voxSize=False,
-                                     load_fluo=False)
+                                     load_all_imgData=True,
+                                     load_shifts=True)
         if data is None:
             self.titleLabel.setText(
                 'File --> Open or Open recent to start the process',
@@ -273,6 +329,126 @@ class cropROI_GUI(QMainWindow):
         self.data = data
 
         self.init_attr()
+        self.npy_to_npz()
+        self.alignData(user_ch_name)
+
+        self.addROIrect()
+
+    def setStandardRoiShape(self, text):
+        _, Y, X = self.data.img_data.shape
+        m = re.findall('(\d+)x(\d+)', text)
+        w, h = int(m[0][0]), int(m[0][1])
+        xc, yc = int(round(X/2)), int(round(Y/2))
+        yl, xl = int(round(xc-w/2)), int(round(yc-h/2))
+        self.roi.setPos([xl, yl])
+        self.roi.setSize([w, h])
+
+    def addROIrect(self):
+        _, Y, X = self.data.img_data.shape
+
+        max_size = round(int(np.log2(min([Y, X])/16)))
+        items = [f'{16*(2**i)}x{16*(2**i)}' for i in range(1, max_size+1)]
+        items.append(f'{X}x{Y}')
+        self.ROIshapeComboBox.clear()
+        self.ROIshapeComboBox.addItems(items)
+        if len(items) > 3:
+            self.ROIshapeComboBox.setCurrentText(items[3])
+        else:
+            self.ROIshapeComboBox.setCurrentText(items[-1])
+        try:
+            self.ROIshapeComboBox.currentTextChanged.disconnect()
+        except:
+            self.ROIshapeComboBox.currentTextChanged.connect(
+                                                      self.setStandardRoiShape)
+
+        if len(items) > 3:
+            w, h = 256, 256
+        else:
+            w, h = X, Y
+        xc, yc = int(round(X/2)), int(round(Y/2))
+        yl, xl = int(round(xc-w/2)), int(round(yc-h/2))
+
+        # Add ROI Rectangle
+        roi = pg.ROI([xl, yl], [w, h],
+                     rotatable=False,
+                     removable=False,
+                     pen=pg.mkPen(color='r'),
+                     maxBounds=QRectF(QRect(0,0,X,Y)))
+        ## handles scaling horizontally around center
+        roi.addScaleHandle([1, 0.5], [0.5, 0.5])
+        roi.addScaleHandle([0, 0.5], [0.5, 0.5])
+
+        ## handles scaling vertically from opposite edge
+        roi.addScaleHandle([0.5, 0], [0.5, 0.5])
+        roi.addScaleHandle([0.5, 1], [0.5, 0.5])
+
+        ## handles scaling both vertically and horizontally
+        roi.addScaleHandle([1, 1], [0, 0])
+        roi.addScaleHandle([0, 0], [1, 1])
+
+        self.roi = roi
+        self.roi.sigRegionChanged.connect(self.updateCurrentRoiShape)
+
+        self.ax1.addItem(roi)
+
+    def updateCurrentRoiShape(self, event):
+        w, h = [int(round(c)) for c in self.roi.size()]
+        self.ROIshapeLabel.setText(f'   Current ROI shape: {w} x {h}')
+
+    def alignData(self, user_ch_name):
+        print('Aligning data if needed...')
+        _zip = zip(self.data.tif_paths, self.data.npz_paths)
+        for tif, npz in _zip:
+            # Align based on user_ch_name
+            if npz is None and tif.find(user_ch_name) != -1:
+                tif_data = skimage.io.imread(tif)
+                align_func = (core.align_frames_3D if self.data.SizeZ>1
+                              else core.align_frames_2D)
+                aligned_frames, shifts = align_func(
+                                          tif_data,
+                                          slices=None,
+                                          user_shifts=self.data.loaded_shifts
+                )
+                self.data.loaded_shifts = aligned_frames
+                _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
+                np.savez_compressed(_npz, aligned_frames)
+                np.save(self.data.align_shifts_path, shifts)
+                self.data.img_data = aligned_frames
+
+        _zip = zip(self.data.tif_paths, self.data.npz_paths)
+        for i, (tif, npz) in enumerate(_zip):
+            # Align the other channels
+            if npz is None and tif.find(user_ch_name) == -1:
+                tif_data = skimage.io.imread(tif)
+                align_func = (core.align_frames_3D if self.data.SizeZ>1
+                              else core.align_frames_2D)
+                aligned_frames, shifts = align_func(
+                                          tif_data,
+                                          slices=None,
+                                          user_shifts=self.data.loaded_shifts
+                )
+                _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
+                np.savez_compressed(_npz, aligned_frames)
+                self.npz_paths[i] = _npz
+        print('Done.')
+
+    def npy_to_npz(self):
+        print('Converting .npy to .npz if needed...')
+        self.npz_paths = self.data.npz_paths.copy()
+        _zip = zip(self.data.npy_paths, self.data.npz_paths)
+        for i, (npy, npz) in enumerate(_zip):
+            if npz is None and npy is None:
+                continue
+            elif npy is not None and npz is None:
+                _data = np.load(npy)
+                _npz = f'{os.path.splitext(npy)[0]}.npz'
+                np.savez_compressed(_npz, _data)
+                os.remove(npy)
+                self.npz_paths[i] = _npz
+            elif npy is not None and npz is not None:
+                os.remove(npy)
+        print('Done.')
+
 
     def openFile(self, checked=False, exp_path=None):
         # Remove all items from a previous session if open is pressed again
@@ -402,14 +578,8 @@ class cropROI_GUI(QMainWindow):
             if filename.find(f'{user_ch_name}_aligned.np') != -1:
                 img_path = f'{images_path}/{filename}'
                 img_aligned_found = True
-        if not img_aligned_found:
-            err_msg = ('<font color="red">Aligned frames file for channel </font>'
-                       f'<font color=rgb(255,204,0)><b>{user_ch_name}</b></font> '
-                       '<font color="red">not found. '
-                       'You need to run the segmentation script first.</font>')
-            self.titleLabel.setText(err_msg)
-            self.openAction.setEnabled(True)
-            raise FileNotFoundError(err_msg)
+            elif filename.find(f'{user_ch_name}.tif') != -1:
+                img_path = f'{images_path}/{filename}'
         print(f'Loading {img_path}...')
 
         self.init_frames_data(img_path, user_ch_name)

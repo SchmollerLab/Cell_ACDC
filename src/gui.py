@@ -1837,7 +1837,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 break
 
             IDs = cca_df_i.index
-            if ID not in IDs:
+            if budID not in IDs or new_mothID not in IDs:
                 # For some reason ID disappeared from this frame
                 continue
 
@@ -4611,10 +4611,9 @@ class Yeast_ACDC_GUI(QMainWindow):
                 img_path = f'{images_path}/{filename}'
                 img_aligned_found = True
         if not img_aligned_found:
-            err_msg = ('<font color="red">Aligned frames file for channel </font>'
-                       f'<font color=rgb(255,204,0)><b>{user_ch_name}</b></font> '
-                       '<font color="red">not found. '
-                       'You need to run the segmentation script first.</font>')
+            err_msg = ('Aligned frames file for channel '
+                       f'{user_ch_name} not found. '
+                       'You need to run the segmentation script first.')
             self.titleLabel.setText(err_msg)
             self.openAction.setEnabled(True)
             raise FileNotFoundError(err_msg)

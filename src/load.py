@@ -25,7 +25,8 @@ class load_frames_data:
                  load_segm_data=True,
                  load_segm_metadata=True,
                  load_zyx_voxSize=True,
-                 load_fluo=False):
+                 load_all_imgData=False,
+                 load_shifts=False):
         self.path = path
         self.fluo_data_dict = {}
         self.images_path = os.path.dirname(path)
@@ -233,12 +234,48 @@ class load_frames_data:
 
                 self.acdc_df = acdc_df
 
-        if load_fluo:
-            fluo_tifs = []
+        if load_all_imgData:
+            tif_paths = []
+            npy_paths = []
+            npz_paths = []
             for filename in os.listdir(self.images_path):
+                file_path = os.path.join(self.images_path, filename)
+                f, ext = os.path.splitext(filename)
                 m = re.match(f'{self.basename}_.*\.tif', filename)
                 if m is not None:
-                    pass
+                    tif_paths.append(file_path)
+                    # Search for npy fluo data
+                    npy = f'{f}_aligned.npy'
+                    npz = f'{f}_aligned.npz'
+                    npy_found = False
+                    npz_found = False
+                    for name in os.listdir(self.images_path):
+                        _path = os.path.join(self.images_path, name)
+                        if name == npy:
+                            npy_paths.append(_path)
+                            npy_found = True
+                        if name == npz:
+                            npz_paths.append(_path)
+                            npz_found = True
+                    if not npy_found:
+                        npy_paths.append(None)
+                    if not npz_found:
+                        npz_paths.append(None)
+            self.tif_paths = tif_paths
+            self.npy_paths = npy_paths
+            self.npz_paths = npz_paths
+        else:
+            self.tif_paths = []
+            self.npy_paths = []
+            self.npz_paths = []
+
+        self.loaded_shifts = None
+        if load_shifts:
+            for filename in os.listdir(self.images_path):
+                file_path = os.path.join(self.images_path, filename)
+                if filename.find('align_shift.npy') != -1:
+                    self.loaded_shifts = np.load(file_path)
+                    break
 
         self.build_paths(self.filename, self.images_path, user_ch_name)
 
@@ -270,8 +307,6 @@ class load_frames_data:
             except:
                 px_z = 1
         return [px_z, px_y, px_x]
-
-
 
     def build_paths(self, filename, images_path, user_ch_name):
         basename = self.basename

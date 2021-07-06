@@ -23,7 +23,7 @@ def align_frames_3D(data, slices=None, register=True, user_shifts=None):
         if frame_i != 0:  # skip first frame
             curr_frame_img = frame_V[slice]
             prev_frame_img = data_aligned[frame_i-1, slice] #previously aligned frame, slice
-            if register==True:
+            if user_shifts is None:
                 shifts = skimage.registration.phase_cross_correlation(
                     prev_frame_img, curr_frame_img
                     )[0]
@@ -48,7 +48,7 @@ def align_frames_2D(data, slices=None, register=True, user_shifts=None):
         if frame_i != 0:  # skip first frame
             curr_frame_img = frame_V
             prev_frame_img = data_aligned[frame_i-1] #previously aligned frame, slice
-            if register==True:
+            if user_shifts is None:
                 shifts = skimage.registration.phase_cross_correlation(
                     prev_frame_img, curr_frame_img
                     )[0]
