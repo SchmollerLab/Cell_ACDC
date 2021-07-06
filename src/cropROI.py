@@ -274,30 +274,37 @@ class cropROI_GUI(QMainWindow):
             croppedData = self.data.img_data[:, y0:y0+h, x0:x0+w]
             apps.imshow_tk(croppedData[-1])
             print('Cropped data shape: ', croppedData.shape)
-            # print('Saving: ', self.data.tif_path)
             with TiffFile(self.data.tif_path) as tif:
                 metadata = tif.imagej_metadata
-            # self.imagej_tiffwriter(self.data.tif_path, croppedData, metadata)
+            self.imagej_tiffwriter(self.data.tif_path, croppedData, metadata)
             for tif in self.data.tif_paths:
                 print('Saving: ', tif)
                 _tif_data = skimage.io.imread(tif)[:, y0:y0+h, x0:x0+w]
-                # self.imagej_tiffwriter(tif, _tif_data, metadata)
+                self.imagej_tiffwriter(tif, _tif_data, metadata)
             for npz in self.npz_paths:
                 npz_data = np.load(npz)['arr_0'][:, y0:y0+h, x0:x0+w]
-                print('Saving: ', npz)
-                print(npz_data.dtype)
-                print(npz_data.shape)
-                print(npz_data.max())
-                apps.imshow_tk(npz_data[-1])
-                # np.savez_compressed(npz, _data)
+                np.savez_compressed(npz, _data)
             if self.data.segm_data is not None:
                 croppedSegm = self.data.segm_data[:, y0:y0+h, x0:x0+w]
-                print('Saving: ', self.data.segm_npz_path)
-                print(croppedSegm.dtype)
-                print(croppedSegm.shape)
-                print(croppedSegm.max())
-                apps.imshow_tk(croppedSegm[-1])
-                # np.savez_compressed(npz, croppedSegm)
+                np.savez_compressed(npz, croppedSegm)
+            if self.data.acdc_df is not None:
+                df = self.data.acdc_df
+                df['x_centroid'] -= x0
+                df['y_centroid'] -= y0
+                df['editIDclicked_x'] -= x0
+                df['editIDclicked_y'] -= y0
+                try:
+                    df.to_csv(self.data.acdc_output_csv_path)
+                except PermissionError:
+                    msg = QtGui.QMessageBox()
+                    warn_cca = msg.critical(
+                        self, 'Permission denied',
+                        f'The below file is open in another app (Excel maybe?).\n\n'
+                        f'{self.data.acdc_output_csv_path}\n\n'
+                        'Close file and then press "Ok".',
+                        msg.Ok
+                    )
+                    df.to_csv(self.data.acdc_output_csv_path)
 
             print('Done.')
             self.titleLabel.setText('Saved!', color='w')

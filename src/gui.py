@@ -2141,6 +2141,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.checkableQButtonsGroup.addButton(self.setIsHistoryKnownButton)
 
         navigateToolBar.addAction(self.reInitCcaAction)
+        navigateToolBar.addAction(self.repeatBudAssignAction)
         self.navigateToolBar = navigateToolBar
 
 
@@ -2307,7 +2308,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.helpContentAction = QAction("&Help Content...", self)
         self.aboutAction = QAction("&About...", self)
 
-        # Set is_history_known button
+
         self.reInitCcaAction = QAction(self)
         self.reInitCcaAction.setIcon(QIcon(":reinitCca.svg"))
         # self.reInitCcaAction.setShortcut('u')
@@ -2316,6 +2317,14 @@ class Yeast_ACDC_GUI(QMainWindow):
             'Reinitialize cell cycle annotations table from this frame onward.\n'
             'NOTE: This will erase all the already annotated future frames information\n'
             '(from the current session not the saved information)'
+        )
+
+        self.repeatBudAssignAction = QAction(self)
+        self.repeatBudAssignAction.setIcon(QIcon(":repeatAssign-motherbud.svg"))
+        # self.reInitCcaAction.setShortcut('u')
+        self.repeatBudAssignAction.setDisabled(True)
+        self.repeatBudAssignAction.setToolTip(
+            'Repeat automatic bud assignment for current frame'
         )
 
         self.manuallyEditCcaAction = QAction(
@@ -2363,6 +2372,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.brushButton.toggled.connect(self.Brush_cb)
         self.eraserButton.toggled.connect(self.Eraser_cb)
         self.reInitCcaAction.triggered.connect(self.reInitCcca)
+        self.repeatBudAssignAction.triggered.connect(self.repeatAutoBudAssign)
         self.manuallyEditCcaAction.triggered.connect(self.manualEditCca)
         # Brush/Eraser size action
         self.brushSizeSpinbox.valueChanged.connect(self.brushSize_cb)
@@ -2432,6 +2442,9 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.cca_df = self.getBaseCca_df()
             self.del_future_cca_df(self.frame_i)
             self.updateALLimg()
+
+    def repeatAutoBudAssign(self):
+        pass
 
     def manualEditCca(self):
         editCcaWidget = apps.cca_df_frame0(self.IDs, self.cca_df, warn=False)
@@ -2536,6 +2549,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.assignBudMothButton.setDisabled(True)
             self.setIsHistoryKnownButton.setDisabled(True)
             self.reInitCcaAction.setDisabled(True)
+            self.repeatBudAssignAction.setDisabled(True)
             self.drawIDsContComboBox.clear()
             self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
             try:
@@ -2562,6 +2576,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.assignBudMothButton.setDisabled(False)
                 self.setIsHistoryKnownButton.setDisabled(False)
                 self.reInitCcaAction.setDisabled(False)
+                self.repeatBudAssignAction.setDisabled(False)
                 try:
                     self.undoAction.triggered.disconnect()
                     self.redoAction.triggered.disconnect()
