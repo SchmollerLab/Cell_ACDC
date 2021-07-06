@@ -23,7 +23,7 @@ class load_frames_data:
     def __init__(self, path, user_ch_name,
                  parentQWidget=None,
                  load_segm_data=True,
-                 load_segm_metadata=True,
+                 load_acdc_df=True,
                  load_zyx_voxSize=True,
                  load_all_imgData=False,
                  load_shifts=False):
@@ -213,7 +213,7 @@ class load_frames_data:
 
         self.acdc_df = None
         # Load segmentation metadata
-        if load_segm_metadata:
+        if load_acdc_df:
             segm_metadata_path, segm_metadata_found = self.substring_path(
                                               path, '_acdc_output.csv',
                                               self.images_path)

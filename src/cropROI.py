@@ -261,7 +261,6 @@ class cropROI_GUI(QMainWindow):
         self.frame_i = self.frame_i_scrollBar_img.value()-1
         self.update_img()
 
-
     def crop_and_save(self):
         msg = QtGui.QMessageBox()
         save_current = msg.question(
@@ -273,23 +272,32 @@ class cropROI_GUI(QMainWindow):
             x0, y0 = [int(round(c)) for c in self.roi.pos()]
             w, h = [int(round(c)) for c in self.roi.size()]
             croppedData = self.data.img_data[:, y0:y0+h, x0:x0+w]
+            apps.imshow_tk(croppedData[-1])
             print('Cropped data shape: ', croppedData.shape)
-            print('Saving: ', self.data.tif_path)
+            # print('Saving: ', self.data.tif_path)
             with TiffFile(self.data.tif_path) as tif:
                 metadata = tif.imagej_metadata
-            self.imagej_tiffwriter(self.data.tif_path, croppedData, metadata)
+            # self.imagej_tiffwriter(self.data.tif_path, croppedData, metadata)
             for tif in self.data.tif_paths:
                 print('Saving: ', tif)
                 _tif_data = skimage.io.imread(tif)[:, y0:y0+h, x0:x0+w]
-                self.imagej_tiffwriter(tif, _tif_data, metadata)
+                # self.imagej_tiffwriter(tif, _tif_data, metadata)
             for npz in self.npz_paths:
-                _data = np.load(npz)['arr_0'][:, y0:y0+h, x0:x0+w]
+                npz_data = np.load(npz)['arr_0'][:, y0:y0+h, x0:x0+w]
                 print('Saving: ', npz)
-                np.savez_compressed(npz, _data)
+                print(npz_data.dtype)
+                print(npz_data.shape)
+                print(npz_data.max())
+                apps.imshow_tk(npz_data[-1])
+                # np.savez_compressed(npz, _data)
             if self.data.segm_data is not None:
                 croppedSegm = self.data.segm_data[:, y0:y0+h, x0:x0+w]
                 print('Saving: ', self.data.segm_npz_path)
-                np.savez_compressed(npz, croppedSegm)
+                print(croppedSegm.dtype)
+                print(croppedSegm.shape)
+                print(croppedSegm.max())
+                apps.imshow_tk(croppedSegm[-1])
+                # np.savez_compressed(npz, croppedSegm)
 
             print('Done.')
             self.titleLabel.setText('Saved!', color='w')
@@ -304,7 +312,7 @@ class cropROI_GUI(QMainWindow):
         data = load.load_frames_data(frames_path, user_ch_name,
                                      parentQWidget=self,
                                      load_segm_data=True,
-                                     load_segm_metadata=False,
+                                     load_acdc_df=True,
                                      load_zyx_voxSize=False,
                                      load_all_imgData=True,
                                      load_shifts=True)
