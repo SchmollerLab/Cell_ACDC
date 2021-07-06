@@ -272,7 +272,6 @@ class cropROI_GUI(QMainWindow):
             x0, y0 = [int(round(c)) for c in self.roi.pos()]
             w, h = [int(round(c)) for c in self.roi.size()]
             croppedData = self.data.img_data[:, y0:y0+h, x0:x0+w]
-            apps.imshow_tk(croppedData[-1])
             print('Cropped data shape: ', croppedData.shape)
             with TiffFile(self.data.tif_path) as tif:
                 metadata = tif.imagej_metadata

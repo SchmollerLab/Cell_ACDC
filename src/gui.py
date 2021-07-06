@@ -3441,8 +3441,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             return notEnoughG1Cells, proceed
 
         # Make sure that this is a visited frame
-        df = self.allData_li[self.frame_i-1]['acdc_df']
-        if df is None or 'cell_cycle_stage' not in df.columns:
+        if self.allData_li[self.frame_i]['labels'] is None:
             msg = QtGui.QMessageBox()
             warn_cca = msg.critical(
                 self, 'Next frame NEVER visited',
@@ -3458,6 +3457,8 @@ class Yeast_ACDC_GUI(QMainWindow):
             proceed = False
             return notEnoughG1Cells, proceed
 
+        # Get previous dataframe
+        df = self.allData_li[self.frame_i-1]['acdc_df']
         self.cca_df = df[self.cca_df_colnames].copy()
 
         # If there are no new IDs we are done
