@@ -283,7 +283,7 @@ class cropROI_GUI(QMainWindow):
                 self.imagej_tiffwriter(tif, _tif_data, metadata)
             for npz in self.npz_paths:
                 npz_data = np.load(npz)['arr_0'][:, y0:y0+h, x0:x0+w]
-                np.savez_compressed(npz, _data)
+                np.savez_compressed(npz, npz_data)
             if self.data.segm_data is not None:
                 croppedSegm = self.data.segm_data[:, y0:y0+h, x0:x0+w]
                 np.savez_compressed(npz, croppedSegm)
