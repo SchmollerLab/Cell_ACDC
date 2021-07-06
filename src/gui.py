@@ -13,6 +13,7 @@ import os
 import re
 import traceback
 import time
+import datetime
 from functools import partial
 from tqdm import tqdm
 
@@ -199,6 +200,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                                              'Draw nothing']
         self.drawIDsContComboBoxCcaItems = ['Draw only cell cycle info',
                                             'Draw cell cycle info and contours',
+                                            'Draw only mother-bud lines',
                                             'Draw IDs and contours',
                                             'Draw only IDs',
                                             'Draw only contours',
@@ -1147,8 +1149,10 @@ class Yeast_ACDC_GUI(QMainWindow):
 
             relationship = self.cca_df.at[ID, 'relationship']
             ccs = self.cca_df.at[ID, 'cell_cycle_stage']
-
-            if relationship == 'bud' and self.frame_i > 0:
+            is_history_known = self.cca_df.at[ID, 'is_history_known']
+            # We allow assiging a cell in G1 as mother only on first frame
+            # OR if the history is unknown
+            if relationship == 'bud' and self.frame_i > 0 and is_history_known:
                 txt = (f'You clicked on ID {ID} which is a BUD.\n'
                        'To assign a bud to a cell start by clicking on a bud '
                        'and release on a cell in G1')
@@ -1205,6 +1209,22 @@ class Yeast_ACDC_GUI(QMainWindow):
                             xdata, ydata
                         )
 
+            elif is_history_known and not self.clickedOnHistoryKnown:
+                budID = self.lab[ydata, xdata]
+                # Allow assigning an unknown cell ONLY to another unknown cell
+                txt = (
+                    f'You started by clicking on cell ID {budID} which has '
+                    'UNKNOWN history, but you then clicked/released on '
+                    f'cell ID {ID} which has KNOWN history.\n\n'
+                    'Only two cells with UNKNOWN history can be assigned as '
+                    'relative of each other.')
+                msg = QtGui.QMessageBox()
+                msg.critical(
+                    self, 'Released on a cell with KNOWN history', txt, msg.Ok
+                )
+                return
+
+            self.clickedOnHistoryKnown = is_history_known
             self.xClickMoth, self.yClickMoth = xdata, ydata
             self.assignBudMoth()
             self.assignBudMothButton.setChecked(False)
@@ -1340,6 +1360,8 @@ class Yeast_ACDC_GUI(QMainWindow):
             relationship = self.cca_df.at[ID, 'relationship']
             is_history_known = self.cca_df.at[ID, 'is_history_known']
             self.clickedOnHistoryKnown = is_history_known
+            # We allow assiging a cell in G1 as bud only on first frame
+            # OR if the history is unknown
             if relationship != 'bud' and self.frame_i > 0 and is_history_known:
                 txt = (f'You clicked on ID {ID} which is NOT a bud.\n'
                        'To assign a bud to a cell start by clicking on a bud '
@@ -1445,6 +1467,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         """
 
         is_history_known = self.cca_df.at[ID, 'is_history_known']
+        relID = self.cca_df.at[ID, 'relative_ID']
+        relID_cca = self.getStatus_RelID_BeforeEmergence(ID, relID)
 
         if is_history_known:
             # Save status of ID when emerged to allow undoing
@@ -1455,11 +1479,9 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         self.setHistoryKnowledge(ID, self.cca_df)
 
-        relID = self.cca_df.at[ID, 'relative_ID']
         if relID in self.IDs:
             # If the cell with unknown history has a relative ID assigned to it
             # we set the cca of it to the status it had BEFORE the assignment
-            relID_cca = self.getStatus_RelID_BeforeAssignment(ID, relID)
             self.cca_df.loc[relID] = relID_cca
 
         # Update cell cycle info LabelItems
@@ -1484,8 +1506,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                 # For some reason ID disappeared from this frame
                 continue
             else:
-                self.setHistoryKnowledge(ID, cca_df_i)
                 relID = cca_df_i.at[ID, 'relative_ID']
+                self.setHistoryKnowledge(ID, cca_df_i)
                 if relID in IDs:
                     self.cca_df.loc[relID] = relID_cca
                 self.store_cca_df(frame_i=i, cca_df=cca_df_i)
@@ -1503,8 +1525,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                 # we reached frame where ID was not existing yet
                 break
             else:
-                self.setHistoryKnowledge(ID, cca_df_i)
                 relID = cca_df_i.at[ID, 'relative_ID']
+                self.setHistoryKnowledge(ID, cca_df_i)
                 if relID in IDs:
                     self.cca_df.loc[relID] = relID_cca
                 self.store_cca_df(frame_i=i, cca_df=cca_df_i)
@@ -1714,7 +1736,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 eligible = False
                 return eligible
 
-    def getStatus_RelID_BeforeAssignment(self, budID, curr_mothID):
+    def getStatus_RelID_BeforeEmergence(self, budID, curr_mothID):
         # Get status of the current mother before it had budID assigned to it
         for i in range(self.frame_i-1, -1, -1):
             # Get cca_df for ith frame from allData_li
@@ -1776,15 +1798,22 @@ class Yeast_ACDC_GUI(QMainWindow):
         if not eligible:
             return
 
-        curr_moth_cca = self.getStatus_RelID_BeforeAssignment(budID, curr_mothID)
+        curr_moth_cca = self.getStatus_RelID_BeforeEmergence(budID, curr_mothID)
 
         # Correct current frames and update LabelItems
         self.cca_df.at[budID, 'relative_ID'] = new_mothID
+        self.cca_df.at[budID, 'generation_num'] = 0
+        self.cca_df.at[budID, 'relative_ID'] = new_mothID
+        self.cca_df.at[budID, 'relationship'] = 'bud'
 
         self.cca_df.at[new_mothID, 'relative_ID'] = budID
         self.cca_df.at[new_mothID, 'cell_cycle_stage'] = 'S'
+        self.cca_df.at[new_mothID, 'relationship'] = 'mother'
 
-        self.cca_df.loc[curr_mothID] = curr_moth_cca
+        if curr_mothID in self.cca_df.index:
+            # Cells with UNKNOWN history has relative's ID = -1
+            # which is not an existing cell
+            self.cca_df.loc[curr_mothID] = curr_moth_cca
 
         bud_obj_idx = self.IDs.index(budID)
         new_moth_obj_idx = self.IDs.index(new_mothID)
@@ -1820,16 +1849,22 @@ class Yeast_ACDC_GUI(QMainWindow):
                 break
 
             cca_df_i.at[budID, 'relative_ID'] = new_mothID
+            cca_df_i.at[budID, 'generation_num'] = 0
+            cca_df_i.at[budID, 'relative_ID'] = new_mothID
+            cca_df_i.at[budID, 'relationship'] = 'bud'
 
             newMoth_bud_ccs = cca_df_i.at[new_mothID, 'cell_cycle_stage']
-
             if newMoth_bud_ccs == 'G1':
                 # Assign bud to new mother only if the new mother is in G1
                 # This can happen if the bud already has a G1 annotated
                 cca_df_i.at[new_mothID, 'relative_ID'] = budID
                 cca_df_i.at[new_mothID, 'cell_cycle_stage'] = 'S'
+                cca_df_i.at[new_mothID, 'relationship'] = 'mother'
 
-            cca_df_i.loc[curr_mothID] = curr_moth_cca
+            if curr_mothID in cca_df_i.index:
+                # Cells with UNKNOWN history has relative's ID = -1
+                # which is not an existing cell
+                cca_df_i.loc[curr_mothID] = curr_moth_cca
 
             self.store_cca_df(frame_i=i, cca_df=cca_df_i)
 
@@ -1844,14 +1879,20 @@ class Yeast_ACDC_GUI(QMainWindow):
                 break
 
             cca_df_i.at[budID, 'relative_ID'] = new_mothID
+            cca_df_i.at[budID, 'generation_num'] = 0
+            cca_df_i.at[budID, 'relative_ID'] = new_mothID
+            cca_df_i.at[budID, 'relationship'] = 'bud'
 
             cca_df_i.at[new_mothID, 'relative_ID'] = budID
             cca_df_i.at[new_mothID, 'cell_cycle_stage'] = 'S'
+            cca_df_i.at[new_mothID, 'relationship'] = 'mother'
 
-            cca_df_i.loc[curr_mothID] = curr_moth_cca
+            if curr_mothID in cca_df_i.index:
+                # Cells with UNKNOWN history has relative's ID = -1
+                # which is not an existing cell
+                cca_df_i.loc[curr_mothID] = curr_moth_cca
 
             self.store_cca_df(frame_i=i, cca_df=cca_df_i)
-
 
     def gui_mouseDragEventImg1(self, event):
         mode = str(self.modeComboBox.currentText())
@@ -2014,6 +2055,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                 action.setChecked(True)
             fontActionGroup.addAction(action)
             action = self.fontSizeMenu.addAction(action)
+        # Manually edit cca menu
+        editMenu.addAction(self.manuallyEditCcaAction)
         # Help menu
         helpMenu = menuBar.addMenu(QIcon(":help-content.svg"), "&Help")
         helpMenu.addAction(self.helpContentAction)
@@ -2097,7 +2140,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.checkableButtons.append(self.setIsHistoryKnownButton)
         self.checkableQButtonsGroup.addButton(self.setIsHistoryKnownButton)
 
-
+        navigateToolBar.addAction(self.reInitCcaAction)
         self.navigateToolBar = navigateToolBar
 
 
@@ -2264,6 +2307,20 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.helpContentAction = QAction("&Help Content...", self)
         self.aboutAction = QAction("&About...", self)
 
+        # Set is_history_known button
+        self.reInitCcaAction = QAction(self)
+        self.reInitCcaAction.setIcon(QIcon(":reinitCca.svg"))
+        # self.reInitCcaAction.setShortcut('u')
+        self.reInitCcaAction.setDisabled(True)
+        self.reInitCcaAction.setToolTip(
+            'Reinitialize cell cycle annotations table from this frame onward.\n'
+            'NOTE: This will erase all the already annotated future frames information\n'
+            '(from the current session not the saved information)'
+        )
+
+        self.manuallyEditCcaAction = QAction(
+                                'Manually modify cell cycle annotations', self)
+
     def gui_connectActions(self):
         # Connect File actions
         self.newAction.triggered.connect(self.newFile)
@@ -2305,6 +2362,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.repeatTrackingAction.triggered.connect(self.repeatTracking)
         self.brushButton.toggled.connect(self.Brush_cb)
         self.eraserButton.toggled.connect(self.Eraser_cb)
+        self.reInitCcaAction.triggered.connect(self.reInitCcca)
+        self.manuallyEditCcaAction.triggered.connect(self.manualEditCca)
         # Brush/Eraser size action
         self.brushSizeSpinbox.valueChanged.connect(self.brushSize_cb)
         # Mode
@@ -2357,6 +2416,30 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.overlayButton.setStyleSheet('background-color: #A7FAC7')
         self.app.restoreOverrideCursor()
 
+    def reInitCcca(self):
+        txt = (
+            'If you decide to continue ALL cell cycle annotations from this '
+            'frame to the end will be erased from current session '
+            '(saved data is not touched of course)\n\n'
+            'To annotate future frames again you will have to revisit them.\n\n'
+            'Do you want to continue?'
+        )
+        msg = QtGui.QMessageBox()
+        reinit = msg.warning(
+           self, 'Cell not eligible', txt, msg.Yes | msg.Cancel
+        )
+        if reinit == msg.Yes:
+            self.cca_df = self.getBaseCca_df()
+            self.del_future_cca_df(self.frame_i)
+            self.updateALLimg()
+
+    def manualEditCca(self):
+        editCcaWidget = apps.cca_df_frame0(self.IDs, self.cca_df, warn=False)
+        if editCcaWidget.cancel:
+            return
+        self.cca_df = editCcaWidget.df
+        self.updateALLimg()
+
 
     def drawIDsContComboBox_cb(self, idx):
         self.updateALLimg()
@@ -2366,6 +2449,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         onlyCont = how == 'Draw only contours'
         only_ccaInfo = how == 'Draw only cell cycle info'
         ccaInfo_and_cont = how == 'Draw cell cycle info and contours'
+        onlyMothBudLines = how == 'Draw only mother-bud lines'
 
         t0 = time.time()
         # Clear contours if requested
@@ -2379,12 +2463,16 @@ class Yeast_ACDC_GUI(QMainWindow):
         t0 = time.time()
 
         # Clear LabelItems IDs if requested (draw nothing or only contours)
-        if onlyCont or nothing:
+        if onlyCont or nothing or onlyMothBudLines:
             for _IDlabel1 in self.ax1_LabelItemsIDs:
                 _IDlabel1.setText('')
             t1 = time.time()
 
-            # print(f'Clearing labels = {t1-t0:.3f}')
+        # Clear mother-bud lines if Requested
+        drawLines = only_ccaInfo or ccaInfo_and_cont or onlyMothBudLines
+        if not drawLines:
+            for BudMothLine in self.ax1_BudMothLines:
+                BudMothLine.setData([], [])
 
     def mousePressColorButton(self, event):
         items = list(self.data.fluo_data_dict.keys())
@@ -2447,6 +2535,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.disableTrackingCheckBox.setChecked(False)
             self.assignBudMothButton.setDisabled(True)
             self.setIsHistoryKnownButton.setDisabled(True)
+            self.reInitCcaAction.setDisabled(True)
             self.drawIDsContComboBox.clear()
             self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
             try:
@@ -2472,6 +2561,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.disableTrackingCheckBox.setChecked(True)
                 self.assignBudMothButton.setDisabled(False)
                 self.setIsHistoryKnownButton.setDisabled(False)
+                self.reInitCcaAction.setDisabled(False)
                 try:
                     self.undoAction.triggered.disconnect()
                     self.redoAction.triggered.disconnect()
@@ -2739,11 +2829,11 @@ class Yeast_ACDC_GUI(QMainWindow):
                     self.frame_i+1, i, modTxt, applyTrackingB=applyTrackingB)
             ffa.exec_()
             decision = ffa.decision
-            endFrame_i = ffa.endFrame_i
-            doNotShowAgain = ffa.doNotShowCheckbox.isChecked()
-
             if decision is None:
                 return None, None, None, doNotShow
+
+            endFrame_i = ffa.endFrame_i
+            doNotShowAgain = ffa.doNotShowCheckbox.isChecked()
 
             self.onlyTracking = False
             if decision == 'apply_and_reinit':
@@ -3542,6 +3632,26 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.IDs = [obj.label for obj in self.rp]
         return proceed_cca, never_visited
 
+    def getBaseCca_df(self):
+        IDs = [obj.label for obj in self.rp]
+        cc_stage = ['G1' for ID in IDs]
+        num_cycles = [-1]*len(IDs)
+        relationship = ['mother' for ID in IDs]
+        related_to = [-1]*len(IDs)
+        is_history_known = [False]*len(IDs)
+        cca_df = pd.DataFrame({
+                           'cell_cycle_stage': cc_stage,
+                           'generation_num': num_cycles,
+                           'relative_ID': related_to,
+                           'relationship': relationship,
+                           'emerg_frame_i': num_cycles,
+                           'division_frame_i': num_cycles,
+                           'is_history_known': is_history_known},
+                            index=IDs)
+        self.cca_df.index.name = 'Cell_ID'
+        return cca_df
+
+
     def init_cca(self):
         if self.data.last_tracked_i is None:
             txt = (
@@ -3624,22 +3734,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.last_cca_frame_i = last_cca_frame_i
 
         if self.cca_df is None:
-            IDs = [obj.label for obj in self.rp]
-            cc_stage = ['G1' for ID in IDs]
-            num_cycles = [-1]*len(IDs)
-            relationship = ['mother' for ID in IDs]
-            related_to = [-1]*len(IDs)
-            is_history_known = [False]*len(IDs)
-            self.cca_df = pd.DataFrame({
-                               'cell_cycle_stage': cc_stage,
-                               'generation_num': num_cycles,
-                               'relative_ID': related_to,
-                               'relationship': relationship,
-                               'emerg_frame_i': num_cycles,
-                               'division_frame_i': num_cycles,
-                               'is_history_known': is_history_known},
-                                index=IDs)
-            self.cca_df.index.name = 'Cell_ID'
+            self.cca_df = self.getBaseCca_df()
             msg = 'Cell cycle analysis initiliazed!'
             print(msg)
             self.titleLabel.setText(msg, color='w')
@@ -3775,6 +3870,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         onlyCont = how == 'Draw only contours'
         only_ccaInfo = how == 'Draw only cell cycle info'
         ccaInfo_and_cont = how == 'Draw cell cycle info and contours'
+        onlyMothBudLines = how == 'Draw only mother-bud lines'
 
         # Draw LabelItems for IDs on ax2
         y, x = obj.centroid
@@ -3809,8 +3905,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.drawingLabelsTimes.append(t1-t0)
 
         # Draw line connecting mother and buds
-        mode = self.modeComboBox.currentText()
-        if mode != 'Segmentation and Tracking' and self.cca_df is not None:
+        drawLines = only_ccaInfo or ccaInfo_and_cont or onlyMothBudLines
+        if drawLines and self.cca_df is not None:
             ID = obj.label
             BudMothLine = self.ax1_BudMothLines[ID-1]
             cca_df_ID = self.cca_df.loc[ID]
@@ -4574,14 +4670,24 @@ class Yeast_ACDC_GUI(QMainWindow):
         if os.path.exists(recentPaths_path):
             df = pd.read_csv(recentPaths_path, index_col='index')
             recentPaths = df['path'].to_list()
-            if exp_path not in recentPaths:
-                recentPaths.insert(0, exp_path)
+            if 'opened_last_on' in df.columns:
+                openedOn = df['opened_last_on'].to_list()
+            else:
+                openedOn = [np.nan]*len(recentPaths)
+            if exp_path in recentPaths:
+                pop_idx = recentPaths.index(exp_path)
+                recentPaths.pop(pop_idx)
+                openedOn.pop(pop_idx)
+            recentPaths.insert(0, exp_path)
+            openedOn.insert(0, datetime.datetime.now())
             # Keep max 20 recent paths
             if len(recentPaths) > 20:
                 recentPaths.pop(-1)
+                openedOn.pop(-1)
         else:
             recentPaths = [exp_path]
-        df = pd.DataFrame({'path': recentPaths})
+        df = pd.DataFrame({'path': recentPaths,
+                           'opened_last_on': openedOn})
         df.index.name = 'index'
         df.to_csv(recentPaths_path)
 
@@ -4804,6 +4910,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         )
         if os.path.exists(recentPaths_path):
             df = pd.read_csv(recentPaths_path, index_col='index')
+            if 'opened_last_on' in df.columns:
+                df = df.sort_values('opened_last_on', ascending=False)
             recentPaths = df['path'].to_list()
         else:
             recentPaths = []

@@ -1446,7 +1446,7 @@ class cca_df_frame0:
     root : class 'tkinter.Tk'
         tkinter.Tk root window
     """
-    def __init__(self, cells_IDs, cca_df):
+    def __init__(self, cells_IDs, cca_df, warn=True):
         self.cancel = False
         self.df = None
         """Options and labels"""
@@ -1660,7 +1660,7 @@ class cca_df_frame0:
                 'The number of mothers and buds in "S/G2/M" phase must be equal!')
         elif any(check_relID_S):
             tk.messagebox.showerror('Relative\'s ID of cells in S/G2/M = -1',
-                'Some cells are in "S/G2/M" phase but have -1 has Relative\'s ID!\n'
+                'Some cells are in "S/G2/M" phase but have -1 as Relative\'s ID!\n'
                 'Cells in "S/G2/M" phase must have an existing ID as Relative\'s ID!')
         else:
             df = pd.DataFrame({

@@ -11,6 +11,7 @@ models/*
 !models/placeholder.txt
 # Hide placeholder.txt dummy file (probably works only on Linux)
 !models/.placeholder.txt
+src/lastCommit.txt
 
 # Ignore temp folder but keep the folder with placeholder.txt dummy file
 src/temp/*
