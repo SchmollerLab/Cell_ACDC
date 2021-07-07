@@ -3,6 +3,7 @@ from skimage.measure import label, regionprops, regionprops_table
 import pandas as pd
 from tifffile import imread
 import os
+import glob
 
 
 def _auto_rescale_intensity(img, perc=0.01, clip_min=False):
@@ -45,39 +46,47 @@ def load_files(file_dir, channels):
     Function to load files of all given channels and the corresponding segmentation masks.
     Check first if aligned files are available and use them if so.
     """
-    file_list = os.listdir(file_dir)
-    no_of_aligned_files = sum(['aligned' in f for f in file_list])
+    no_of_aligned_files = len(glob.glob(f'{file_dir}\*aligned*'))
+    channel_files = []
     if no_of_aligned_files == len(channels):
-        channel_files = []
         for channel in channels:
-            for f in file_list:
-                if f'{channel}_aligned' in f:
-                    # assume aligned files to be .npy
-                    channel_files.append(np.load(os.path.join(file_dir,f)))
-                    break
+            try:
+                ch_aligned_path = glob.glob(f'{file_dir}\*{channel}_aligned.npz*')[0]
+                channel_files.append(np.load(ch_aligned_path)['arr_0'])
+            except IndexError:
+                ch_aligned_path = glob.glob(f'{file_dir}\*{channel}_aligned.npy*')[0]
+                channel_files.append(np.load(ch_aligned_path))
     elif no_of_aligned_files == 0:
-        channel_files = []
         for channel in channels:
-            for f in file_list:
-                if channel in f:
-                    # assume non-aligned files to be .tif
-                    channel_files.append(imread(os.path.join(file_dir,f)))
-                    break
+            ch_not_aligned_path = glob.glob(f'{file_dir}\*{channel}*')[0]
+            channel_files.append(imread(ch_not_aligned_path))
     else:
         print('Make sure that you have aligned files either for all channels or for none of them')
         raise FileNotFoundError
+    
     # append segmentation file
-    for f in file_list:
-        if '_segm' in f:
-            # assume aligned files to be .npy
-            channel_files.append(np.load(os.path.join(file_dir,f)))
-            break
-    # append cc-data at the end
-    for f in file_list:
-        if 'cc_stage' in f:
-            # assume aligned files to be .npy
-            channel_files.append(pd.read_csv(os.path.join(file_dir,f)))
-            break
+    try:
+        segm_file_path = glob.glob(f'{file_dir}\*_segm.npy')[0]
+        # assume segmentation mask to be .npy
+        channel_files.append(np.load(segm_file_path))
+    except IndexError:
+        segm_file_path = glob.glob(f'{file_dir}\*_segm.npz')[0]
+        channel_files.append(np.load(segm_file_path)['arr_0'])
+    # append cc-data
+    try:
+        cc_stage_path = glob.glob(f'{file_dir}\*acdc_output*')[0]
+    except IndexError:
+        cc_stage_path = glob.glob(f'{file_dir}\*cc_stage*')[0]
+    # assume cell cycle output of ACDC to be .csv
+    channel_files.append(pd.read_csv(cc_stage_path))
+    
+    # append cc-properties if available, else append None
+    if len(glob.glob(f'{file_dir}\*_downstream*')) > 0:
+        cc_props_path = glob.glob(f'{file_dir}\*_downstream*')[0]
+        # assume calculated cc properties to be .csv
+        channel_files.append(pd.read_csv(cc_props_path))
+    else:
+        channel_files.append(None)
     return tuple(channel_files)
 
 
@@ -127,17 +136,19 @@ def calculate_flu_signal(seg_mask, channel_data, channels, cc_data):
     """
     max_frame = cc_data.frame_i.max()
     df = pd.DataFrame(columns=['frame_i', 'Cell_ID'])
-    for cell_id in cc_data.Cell_ID.unique():
+    bg_index = (seg_mask[:max_frame+1]==0).astype(int)
+    bg_medians = [np.median(ch_array[:max_frame+1]*bg_index, axis=(1,2)) for ch_array in channel_data]
+    for cell_id in tqdm(cc_data.Cell_ID.unique()):
         temp_df = pd.DataFrame(columns=['frame_i', 'Cell_ID'])
         times = range(max_frame+1)
         temp_df['frame_i'] = times; temp_df['Cell_ID'] = cell_id
-        index_array = (seg_mask[:max_frame+1] == cell_id).astype(int)
-        for c_idx, c_array in enumerate(channel_data):
-            signal = np.sum(index_array*c_array[:max_frame+1], axis=(1,2))
-            temp_df[f'{channels[c_idx]}_signal'] = signal
-            c_array_scaled = _auto_rescale_intensity(c_array)
-            signal_scaled = np.sum(index_array*c_array_scaled[:max_frame+1], axis=(1,2))
-            temp_df[f'{channels[c_idx]}_signal_scaled'] = signal_scaled
+        index_array = (seg_mask[:max_frame+1] == cell_id)
+        channel_data_cut = [c_arr[:max_frame+1] for c_arr in channel_data]
+        for c_idx, c_array in enumerate(channel_data_cut):
+            cell_signal = c_array*index_array
+            mean_signal = np.sum(cell_signal, axis=(1,2))/np.sum(cell_signal!=0, axis=(1,2))
+            corrected_signal = mean_signal-bg_medians[c_idx]
+            temp_df[f'{channels[c_idx]}_corrected_mean_signal'] = corrected_signal
         df = df.append(temp_df, ignore_index=True)
     signal_indices = np.array(['signal' in col for col in df.columns])
     keep_rows = df.loc[:,signal_indices].sum(axis=1)>0
