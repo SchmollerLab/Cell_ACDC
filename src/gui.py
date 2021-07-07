@@ -659,7 +659,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.update_rp()
 
             # Repeat tracking
-            self.tracking()
+            self.tracking(enforce=True)
 
             # Update all images
             self.updateALLimg()
@@ -1268,10 +1268,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                 # Update brush ID. Take care of disappearing cells to remember
                 # to not use their IDs anymore in the future
-                if self.lab.max()+1 > self.brushID:
-                    self.brushID = self.lab.max()+1
-                else:
-                    self.brushID += 1
+                self.setBrushID()
 
                 mask = skimage.morphology.disk(brushSize, dtype=np.bool)
                 ymin, xmin = ydata-brushSize, xdata-brushSize
@@ -2635,6 +2632,15 @@ class Yeast_ACDC_GUI(QMainWindow):
     def auto_separate_bud_ID(self, ID, lab, rp, max_ID, max_i=1,
                              enforce=False, eps_percent=0.01):
         lab_ID_bool = lab == ID
+        # First try separating by labelling
+        lab_ID = lab_ID_bool.astype(int)
+        rp_ID = skimage.measure.regionprops(lab_ID)
+        setRp = self.separateByLabelling(lab_ID, rp_ID, maxID=lab.max())
+        if setRp:
+            success = True
+            lab[lab_ID_bool] = lab_ID[lab_ID_bool]
+            return lab, success
+
         cnt, defects = self.convexity_defects(lab_ID_bool, eps_percent)
         success = False
         if defects is not None:
@@ -2700,11 +2706,22 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.ax2_BrushCircle.setData([], [])
             self.enableSizeSpinbox(False)
         else:
-            if self.img2.image.max()+1 > self.brushID:
-                self.brushID = self.img2.image.max()+1
-            else:
-                self.brushID += 1
+            self.setBrushID()
             self.enableSizeSpinbox(True)
+
+    def setBrushID(self):
+        # Make sure that the brushed ID is always a new one based on
+        # already visited frames
+        newID = 1
+        for storedData in self.allData_li:
+            lab = storedData['labels']
+            if lab is not None:
+                _max = lab.max()
+                if _max > newID:
+                    newID = _max
+            else:
+                break
+        self.brushID = newID+1
 
     def equalizeHist(self):
         # Store undo state before modifying stuff
@@ -3103,6 +3120,20 @@ class Yeast_ACDC_GUI(QMainWindow):
                 )
                 if proceed_with_lost == msg.No:
                     return
+            if 'multiple' in self.titleLabel.text and mode != 'Viewer':
+                msg = QtGui.QMessageBox()
+                warn_msg = (
+                    'Current frame contains cells with MULTIPLE contours '
+                    '(see title message above the images)!\n\n'
+                    'This is potentially an issue indicating that two distant cells '
+                    'have been merged.\n\n'
+                    'Are you sure you want to continue?'
+                )
+                proceed_with_multi = msg.warning(
+                   self, 'Multiple contours detected!', warn_msg, msg.Yes | msg.No
+                )
+                if proceed_with_multi == msg.No:
+                    return
 
             if self.frame_i <= 0 and mode == 'Cell cycle analysis':
                 IDs = [obj.label for obj in self.rp]
@@ -3273,6 +3304,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.brushID = 0
         self.binnedIDs = set()
         self.ripIDs = set()
+        self.multiContIDs = set()
         self.cca_df = None
         self.cca_df_colnames = ['cell_cycle_stage',
                                 'generation_num',
@@ -3564,6 +3596,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         )
         min_y, min_x, _, _ = obj.bbox
         cont = np.squeeze(contours[0], axis=1)
+        if len(contours)>1:
+            self.multiContIDs.add(obj.label)
         cont = np.vstack((cont, cont[0]))
         cont += [min_x, min_y]
         return cont
@@ -4013,6 +4047,26 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.ax1_LabelItemsIDs[prevID-1].setText('')
                 self.ax2_LabelItemsIDs[prevID-1].setText('')
 
+        self.checkIDsMultiContour()
+
+    def checkIDsMultiContour(self):
+        txt = self.titleLabel.text
+        if 'Looking' not in txt or 'Data' not in txt:
+            warn_txt = self.titleLabel.text
+            htmlTxt = (
+                f'<font color="red">{warn_txt}</font>'
+            )
+        else:
+            htmlTxt = f'<font color="white">{self.titleLabel.text}</font>'
+        if self.multiContIDs:
+            warn_txt = f'Cells IDs with multiple contours: {self.multiContIDs}'
+            color = 'red'
+            htmlTxt = (
+                f'<font color="red">{warn_txt}</font>, {htmlTxt}'
+            )
+            self.multiContIDs = set()
+        self.titleLabel.setText(htmlTxt)
+
     def updateLookuptable(self):
         lenNewLut = self.lab.max()+1
         # Build a new lut to include IDs > than original len of lut
@@ -4283,7 +4337,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Update annotated IDs (e.g. dead cells)
         self.update_rp_metadata()
 
-        self.brushID = lab.max()+1
+        self.checkIDsMultiContour()
 
     def checkIDs_LostNew(self):
         if self.frame_i == 0:
@@ -4303,6 +4357,12 @@ class Yeast_ACDC_GUI(QMainWindow):
             htmlTxt = (
                 f'<font color="red">{warn_txt}</font>'
             )
+        if self.multiContIDs:
+            warn_txt = f'Cells IDs with multiple contours: {self.multiContIDs}'
+            color = 'red'
+            htmlTxt = (
+                f'{htmlTxt}, <font color="red">{warn_txt}</font>'
+            )
         if new_IDs:
             warn_txt = f'New cells IDs in current frame: {new_IDs}'
             color = 'r'
@@ -4318,12 +4378,32 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.lost_IDs = lost_IDs
         self.new_IDs = new_IDs
         self.titleLabel.setText(htmlTxt)
+        self.multiContIDs = set()
+
+    def separateByLabelling(self, lab, rp, maxID=None):
+        """
+        Label each single object in self.lab and if the result is more than
+        one object then we insert the separated object into self.lab
+        """
+        setRp = False
+        for obj in rp:
+            lab_obj = skimage.measure.label(obj.image)
+            rp_lab_obj = skimage.measure.regionprops(lab_obj)
+            if len(rp_lab_obj)>1:
+                if maxID is None:
+                    lab_obj += lab.max()
+                else:
+                    lab_obj += maxID
+                lab[obj.slice][obj.image] = lab_obj[obj.image]
+                setRp = True
+        return setRp
 
 
     def tracking(self, onlyIDs=[], enforce=False, DoManualEdit=True,
                  storeUndo=False, prev_lab=None, prev_rp=None,
                  return_lab=False):
         if self.frame_i == 0:
+            self.checkIDs_LostNew()
             return
 
         # Disable tracking for already visited frames
@@ -4361,15 +4441,17 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.checkIDs_LostNew()
             return
 
-        # print('-------------')
-        # print(f'Frame {self.frame_i+1} tracked')
-        # print('-------------')
+        """Tracking starts here"""
         self.disableTrackingCheckBox.setChecked(False)
-
 
         if storeUndo:
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(False)
+
+        # First separate by labelling
+        setRp = self.separateByLabelling(self.lab, self.rp)
+        if setRp:
+            self.update_rp()
 
         if prev_lab is None:
             prev_lab = self.allData_li[self.frame_i-1]['labels']
