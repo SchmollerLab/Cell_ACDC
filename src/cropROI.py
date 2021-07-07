@@ -307,7 +307,7 @@ class cropROI_GUI(QMainWindow):
                     df.to_csv(self.data.acdc_output_csv_path)
 
             print('Done.')
-            self.titleLabel.setText('Saved!', color='w')
+            self.titleLabel.setText('Saved! You can close the program.', color='w')
 
     def imagej_tiffwriter(self, new_path, data, metadata):
         with TiffWriter(new_path, imagej=True) as new_tif:
@@ -413,7 +413,7 @@ class cropROI_GUI(QMainWindow):
     def alignData(self, user_ch_name):
         print('Aligning data if needed...')
         _zip = zip(self.data.tif_paths, self.data.npz_paths)
-        for tif, npz in _zip:
+        for i, (tif, npz) in enumerate(_zip):
             # Align based on user_ch_name
             if npz is None and tif.find(user_ch_name) != -1:
                 print('Aligning: ', tif)
@@ -426,12 +426,13 @@ class cropROI_GUI(QMainWindow):
                                           user_shifts=self.data.loaded_shifts,
                                           pbar=True
                 )
-                self.data.loaded_shifts = aligned_frames
+                self.data.loaded_shifts = shifts
                 _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
                 print('Saving: ', _npz)
                 np.savez_compressed(_npz, aligned_frames)
                 np.save(self.data.align_shifts_path, shifts)
                 self.data.img_data = aligned_frames
+                self.npz_paths[i] = _npz
 
         _zip = zip(self.data.tif_paths, self.data.npz_paths)
         for i, (tif, npz) in enumerate(_zip):

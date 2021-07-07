@@ -35,6 +35,16 @@ def align_frames_3D(data, slices=None, register=True,
             shifts = shifts.astype(int)
             aligned_frame_V = np.copy(frame_V)
             aligned_frame_V = np.roll(aligned_frame_V, tuple(shifts), axis=(1,2))
+            # Pad rolled sides with 0s
+            y, x = shifts
+            if y>0:
+                aligned_frame_V[:, :y] = 0
+            else:
+                aligned_frame_V[:, y:] = 0
+            if x>0:
+                aligned_frame_V[:, :, :x] = 0
+            else:
+                aligned_frame_V[:, :, x:] = 0
             data_aligned[frame_i] = aligned_frame_V
             registered_shifts[frame_i] = shifts
             # fig, ax = plt.subplots(1, 2)
@@ -61,6 +71,15 @@ def align_frames_2D(data, slices=None, register=True,
             shifts = shifts.astype(int)
             aligned_frame_V = np.copy(frame_V)
             aligned_frame_V = np.roll(aligned_frame_V, tuple(shifts), axis=(0,1))
+            y, x = shifts
+            if y>0:
+                aligned_frame_V[:y] = 0
+            else:
+                aligned_frame_V[y:] = 0
+            if x>0:
+                aligned_frame_V[:, :x] = 0
+            else:
+                aligned_frame_V[:, x:] = 0
             data_aligned[frame_i] = aligned_frame_V
             registered_shifts[frame_i] = shifts
             # fig, ax = plt.subplots(1, 2)
