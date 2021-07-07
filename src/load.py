@@ -385,9 +385,9 @@ class load_frames_data:
             {'Description': ['SizeT', 'SizeZ',
                              'z_voxSize', 'y_voxSize', 'x_voxSize'],
              'values': [SizeT, SizeZ,
-                        win.zyx_vox_dim[0],
-                        win.zyx_vox_dim[1],
-                        win.zyx_vox_dim[2]]}
+                        round(win.zyx_vox_dim[0], 4),
+                        round(win.zyx_vox_dim[1], 4),
+                        round(win.zyx_vox_dim[2], 4)]}
         ).set_index('Description')
         if zyx_vox_dim is not None:
             df.to_csv(last_entries_csv_path)

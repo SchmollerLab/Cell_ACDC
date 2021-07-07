@@ -277,16 +277,17 @@ class cropROI_GUI(QMainWindow):
                 metadata = tif.imagej_metadata
             _zip = zip(self.data.tif_paths, self.npz_paths)
             for tif, npz in _zip:
-                print('Saving: ', tif)
                 npz_data = np.load(npz)['arr_0'][:, y0:y0+h, x0:x0+w]
-                self.imagej_tiffwriter(tif, npz_data, metadata)
                 print('Saving: ', npz)
                 np.savez_compressed(npz, npz_data)
+                print('Saving: ', tif)
+                self.imagej_tiffwriter(tif, npz_data, metadata)
             if self.data.segm_data is not None:
-                print('Saving: ', npz)
+                print('Saving: ', self.data.segm_npz_path)
                 croppedSegm = self.data.segm_data[:, y0:y0+h, x0:x0+w]
                 np.savez_compressed(self.data.segm_npz_path, croppedSegm)
             if self.data.acdc_df is not None:
+                print('Saving: ', self.data.acdc_output_csv_path)
                 df = self.data.acdc_df
                 df['x_centroid'] -= x0
                 df['y_centroid'] -= y0
@@ -415,16 +416,19 @@ class cropROI_GUI(QMainWindow):
         for tif, npz in _zip:
             # Align based on user_ch_name
             if npz is None and tif.find(user_ch_name) != -1:
+                print('Aligning: ', tif)
                 tif_data = skimage.io.imread(tif)
                 align_func = (core.align_frames_3D if self.data.SizeZ>1
                               else core.align_frames_2D)
                 aligned_frames, shifts = align_func(
                                           tif_data,
                                           slices=None,
-                                          user_shifts=self.data.loaded_shifts
+                                          user_shifts=self.data.loaded_shifts,
+                                          pbar=True
                 )
                 self.data.loaded_shifts = aligned_frames
                 _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
+                print('Saving: ', _npz)
                 np.savez_compressed(_npz, aligned_frames)
                 np.save(self.data.align_shifts_path, shifts)
                 self.data.img_data = aligned_frames

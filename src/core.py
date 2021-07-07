@@ -11,11 +11,14 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle, Circle, PathPatch, Path
 
+from tqdm import tqdm
+
 # Custom modules
 from MyWidgets import Slider, Button, RadioButtons
 import apps
 
-def align_frames_3D(data, slices=None, register=True, user_shifts=None):
+def align_frames_3D(data, slices=None, register=True,
+                          user_shifts=None, pbar=False):
     registered_shifts = np.zeros((len(data),2), int)
     data_aligned = np.copy(data)
     for frame_i, frame_V in enumerate(data):
@@ -41,7 +44,8 @@ def align_frames_3D(data, slices=None, register=True, user_shifts=None):
     return data_aligned, registered_shifts
 
 
-def align_frames_2D(data, slices=None, register=True, user_shifts=None):
+def align_frames_2D(data, slices=None, register=True,
+                          user_shifts=None, pbar=False):
     registered_shifts = np.zeros((len(data),2), int)
     data_aligned = np.copy(data)
     for frame_i, frame_V in enumerate(data):

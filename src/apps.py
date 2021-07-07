@@ -2019,7 +2019,7 @@ class win_size:
 if __name__ == '__main__':
     # Create the application
     app = QApplication(sys.argv)
-    win = QDialogInputsForm(201, 1, [0.15, 0.01, 0.01], parent=None)
+    win = QDialogListbox('test', 'Select which position you want to analyse', ['Position_1', 'Position_2', 'Position_3'])
     app.setStyle(QtGui.QStyleFactory.create('Fusion'))
     win.show()
     app.exec_()
