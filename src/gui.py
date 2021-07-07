@@ -374,6 +374,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Contour pens
         self.oldIDs_cpen = pg.mkPen(color=(200, 0, 0, 255*0.5), width=2)
         self.newIDs_cpen = pg.mkPen(color='r', width=3)
+        self.lostIDs_cpen = pg.mkPen(color='y', width=5)
 
         # New bud-mother line pen
         self.NewBudMoth_Pen = pg.mkPen(color='r', width=3, style=Qt.DashLine)
@@ -397,6 +398,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Create enough PlotDataItems and LabelItems to draw contours and IDs
         numItems = maxID+10
         self.ax1_ContoursCurves = []
+        self.ax2_ContoursCurves = []
         self.ax1_BudMothLines = []
         self.ax1_LabelItemsIDs = []
         self.ax2_LabelItemsIDs = []
@@ -406,7 +408,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.ax1_ContoursCurves.append(ContCurve)
             self.ax1.addItem(ContCurve)
 
-            # Contours on ax1
+            # Bud mother line on ax1
             BudMothLine = pg.PlotDataItem()
             self.ax1_BudMothLines.append(BudMothLine)
             self.ax1.addItem(BudMothLine)
@@ -420,6 +422,11 @@ class Yeast_ACDC_GUI(QMainWindow):
             ax2_IDlabel = pg.LabelItem()
             self.ax2_LabelItemsIDs.append(ax2_IDlabel)
             self.ax2.addItem(ax2_IDlabel)
+
+            # Contours on ax2
+            ContCurve = pg.PlotDataItem()
+            self.ax2_ContoursCurves.append(ContCurve)
+            self.ax2.addItem(ContCurve)
 
 
 
@@ -556,7 +563,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
             self.current_frame_i = self.frame_i
 
-            # Apply Edit ID to future frames if requested
+            # Apply Delete ID to future frames if requested
             if applyFutFrames:
                 self.app.setOverrideCursor(Qt.WaitCursor)
                 # Store current data before going to future frames
@@ -601,6 +608,8 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.ax2_LabelItemsIDs[delID-1].setText('')
 
             self.checkIDs_LostNew()
+            self.highlightLostNew()
+            self.checkIDsMultiContour()
 
         # Separate bud
         elif (right_click or left_click) and self.separateBudButton.isChecked():
@@ -752,7 +761,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                     self.rp[new_ID_idx].label = old_ID
                     self.drawID_and_Contour(
                         self.rp[old_ID_idx],
-                        drawContours=False
+                        drawContours=True
                     )
                     self.drawID_and_Contour(
                         self.rp[new_ID_idx],
@@ -779,7 +788,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                     self.rp[old_ID_idx].label = new_ID
                     self.drawID_and_Contour(
                         self.rp[old_ID_idx],
-                        drawContours=False
+                        drawContours=True
                     )
                     # Append information for replicating the edit in tracking
                     # List of tuples (y, x, replacing ID)
@@ -793,6 +802,8 @@ class Yeast_ACDC_GUI(QMainWindow):
 
             # Since we manually changed an ID we don't want to repeat tracking
             self.checkIDs_LostNew()
+            self.highlightLostNew()
+            self.checkIDsMultiContour()
 
             # Update colors for the edited IDs
             self.updateLookuptable()
@@ -2138,7 +2149,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.checkableQButtonsGroup.addButton(self.setIsHistoryKnownButton)
 
         navigateToolBar.addAction(self.reInitCcaAction)
-        navigateToolBar.addAction(self.repeatBudAssignAction)
+        navigateToolBar.addAction(self.repeatAutoCcaAction)
         self.navigateToolBar = navigateToolBar
 
 
@@ -2316,11 +2327,11 @@ class Yeast_ACDC_GUI(QMainWindow):
             '(from the current session not the saved information)'
         )
 
-        self.repeatBudAssignAction = QAction(self)
-        self.repeatBudAssignAction.setIcon(QIcon(":repeatAssign-motherbud.svg"))
+        self.repeatAutoCcaAction = QAction(self)
+        self.repeatAutoCcaAction.setIcon(QIcon(":repeatAssign-motherbud.svg"))
         # self.reInitCcaAction.setShortcut('u')
-        self.repeatBudAssignAction.setDisabled(True)
-        self.repeatBudAssignAction.setToolTip(
+        self.repeatAutoCcaAction.setDisabled(True)
+        self.repeatAutoCcaAction.setToolTip(
             'Repeat automatic bud assignment for current frame'
         )
 
@@ -2369,7 +2380,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.brushButton.toggled.connect(self.Brush_cb)
         self.eraserButton.toggled.connect(self.Eraser_cb)
         self.reInitCcaAction.triggered.connect(self.reInitCcca)
-        self.repeatBudAssignAction.triggered.connect(self.repeatAutoBudAssign)
+        self.repeatAutoCcaAction.triggered.connect(self.repeatAutoCca)
         self.manuallyEditCcaAction.triggered.connect(self.manualEditCca)
         # Brush/Eraser size action
         self.brushSizeSpinbox.valueChanged.connect(self.brushSize_cb)
@@ -2440,7 +2451,9 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.del_future_cca_df(self.frame_i)
             self.updateALLimg()
 
-    def repeatAutoBudAssign(self):
+    def repeatAutoCca(self):
+        ASK whether to erase future cell cycle annotations before attempting
+        cca
         pass
 
     def manualEditCca(self):
@@ -2546,7 +2559,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.assignBudMothButton.setDisabled(True)
             self.setIsHistoryKnownButton.setDisabled(True)
             self.reInitCcaAction.setDisabled(True)
-            self.repeatBudAssignAction.setDisabled(True)
+            self.repeatAutoCcaAction.setDisabled(True)
             self.drawIDsContComboBox.clear()
             self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
             try:
@@ -2573,7 +2586,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.assignBudMothButton.setDisabled(False)
                 self.setIsHistoryKnownButton.setDisabled(False)
                 self.reInitCcaAction.setDisabled(False)
-                self.repeatBudAssignAction.setDisabled(False)
+                self.repeatAutoCcaAction.setDisabled(False)
                 try:
                     self.undoAction.triggered.disconnect()
                     self.redoAction.triggered.disconnect()
@@ -2800,6 +2813,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         #     self.BrushEraser_cb(ev)
 
     def keyReleaseEvent(self, ev):
+        if ev.key() == Qt.Key_Left or ev.key() == Qt.Key_Right:
+            return
         if ev.isAutoRepeat():
             msg = QtGui.QMessageBox()
             msg.critical(
@@ -3041,6 +3056,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.ManuallyEditTracking(self.lab, allIDs)
                 self.update_rp()
                 self.checkIDs_LostNew()
+                self.highlightLostNew()
+                self.checkIDsMultiContour()
             else:
                 self.editID_info = []
 
@@ -3165,6 +3182,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                 return
             self.updateALLimg(never_visited=never_visited)
         else:
+            # Store data for current frame
+            self.store_data()
             msg = 'You reached the last segmented frame!'
             print(msg)
             self.titleLabel.setText(msg, color='w')
@@ -3270,6 +3289,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.UserEnforced_DisabledTracking = False
         self.UserEnforced_Tracking = False
         self.new_IDs = []
+        self.lost_IDs = []
         self.UndoRedoStates = [[] for _ in range(self.num_frames)]
 
         self.clickedOnBud = False
@@ -3297,6 +3317,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                  }
                 for i in range(self.num_frames)
         ]
+
+        print(len(self.allData_li))
 
         self.ccaStatus_whenEmerged = {}
 
@@ -3372,8 +3394,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.allData_li[self.frame_i]['labels'] = self.lab.copy()
 
         if debug:
-            pass
-            # apps.imshow_tk(self.lab)
+            print(self.frame_i)
+            apps.imshow_tk(self.lab, additional_imgs=[self.allData_li[self.frame_i]['labels']])
 
         # Store dynamic metadata
         is_cell_dead_li = [False]*len(self.rp)
@@ -3438,6 +3460,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             notEnoughG1Cells, proceed = self.autoCca_df()
         except:
             traceback.print_exc()
+            self.highlightNewIDs_ccaFailed()
             msg = QtGui.QMessageBox()
             warn_cca = msg.critical(
                 self, 'Failed cell cycle analysis',
@@ -3505,6 +3528,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         numCellsG1 = len(df_G1)
         numNewCells = len(self.new_IDs)
         if numCellsG1 < numNewCells:
+            self.highlightNewIDs_ccaFailed()
             msg = QtGui.QMessageBox()
             warn_cca = msg.warning(
                 self, 'No cells in G1!',
@@ -3803,6 +3827,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 continue
 
             df.drop(self.cca_df_colnames, axis=1, inplace=True)
+            self.allData_li[i]['acdc_df'] = df
 
     def get_cca_df(self, frame_i=None, return_df=False):
         # cca_df is None unless the metadata contains cell cycle annotations
@@ -4047,6 +4072,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.ax1_LabelItemsIDs[prevID-1].setText('')
                 self.ax2_LabelItemsIDs[prevID-1].setText('')
 
+        self.highlightLostNew()
         self.checkIDsMultiContour()
 
     def checkIDsMultiContour(self):
@@ -4337,7 +4363,40 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Update annotated IDs (e.g. dead cells)
         self.update_rp_metadata()
 
+        self.highlightLostNew()
         self.checkIDsMultiContour()
+
+    def highlightNewIDs_ccaFailed(self):
+        for obj in self.rp:
+            if obj.label in self.new_IDs:
+                # self.ax2_setTextID(obj, 'Draw IDs and contours')
+                self.ax1_setTextID(obj, 'Draw IDs and contours')
+                cont = self.get_objContours(obj)
+                curveID = self.ax1_ContoursCurves[obj.label-1]
+                curveID.setData(cont[:,0], cont[:,1], pen=self.newIDs_cpen)
+
+
+    def highlightLostNew(self):
+        for ContCurve in self.ax2_ContoursCurves:
+            ContCurve.setData([], [])
+        img = self.img1.image
+        for obj in self.rp:
+            ID = obj.label
+            if ID in self.new_IDs:
+                ContCurve = self.ax2_ContoursCurves[ID-1]
+                cont = self.get_objContours(obj)
+                ContCurve.setData(cont[:,0], cont[:,1], pen=self.newIDs_cpen)
+
+        if self.lost_IDs:
+            # Get the rp from previous frame
+            rp = self.allData_li[self.frame_i-1]['regionprops']
+            for obj in rp:
+                ID = obj.label
+                if ID in self.lost_IDs:
+                    ContCurve = self.ax1_ContoursCurves[ID-1]
+                    cont = self.get_objContours(obj)
+                    ContCurve.setData(cont[:,0], cont[:,1], pen=self.lostIDs_cpen)
+
 
     def checkIDs_LostNew(self):
         if self.frame_i == 0:
@@ -4872,22 +4931,25 @@ class Yeast_ACDC_GUI(QMainWindow):
             # Build segm_npy
             lab = data_dict['labels']
             if lab is None:
-                # Since we are currently visualising a frame that is not
-                # stored yet ask the user to save it or not
-                if frame_i == self.frame_i:
-                    txt = (
-                    f'Do you also want to save current frame {self.frame_i+1}?'
-                    )
-                    msg = QtGui.QMessageBox()
-                    save_current = msg.question(
-                        self, 'Save current frame?', txt,
-                        msg.Yes | msg.No | msg.Cancel
-                    )
-                    if save_current == msg.Yes:
-                        self.store_data()
-                    elif save_current == msg.Cancel:
-                        return
                 break
+        if frame_i>0:
+            # Ask to save last visited frame or not
+            txt = (
+            f'Do you also want to save last visited frame {frame_i+1}?'
+            )
+            msg = QtGui.QMessageBox()
+            save_current = msg.question(
+                self, 'Save current frame?', txt,
+                msg.Yes | msg.No | msg.Cancel
+            )
+            if save_current == msg.Yes:
+                if self.frame_i != frame_i:
+                    self.frame_i = frame_i
+                    self.get_data()
+                    self.update_rp_metadata(draw=False)
+                self.store_data(debug=True)
+            elif save_current == msg.Cancel:
+                return
         self.app.setOverrideCursor(Qt.WaitCursor)
         try:
             segm_npz_path = self.data.segm_npz_path
@@ -4966,12 +5028,18 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.data.segm_data = segm_npy
 
             # Save last tracked frame
+            if frame_i == 0:
+                last_tracked_i = 0
+            elif frame_i < self.num_segm_frames-1:
+                last_tracked_i = frame_i-1
+            else:
+                # All frames segmented
+                last_tracked_i = frame_i
             with open(last_tracked_i_path, 'w+') as txt:
-                last_tracked_i = frame_i-1 if frame_i>0 else 0
-                txt.write(str(frame_i-1))
+                txt.write(str(last_tracked_i))
 
             print('--------------')
-            print(f'Saved data until frame number {frame_i}')
+            print(f'Saved data until frame number {last_tracked_i+1}')
             print('--------------')
         except:
             traceback.print_exc()
