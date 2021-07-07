@@ -2452,8 +2452,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.updateALLimg()
 
     def repeatAutoCca(self):
-        ASK whether to erase future cell cycle annotations before attempting
-        cca
+        #ASK whether to erase future cell cycle annotations before attempting cca
         pass
 
     def manualEditCca(self):
