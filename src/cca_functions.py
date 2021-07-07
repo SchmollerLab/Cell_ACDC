@@ -67,12 +67,12 @@ def load_files(file_dir, channels):
     
     # append segmentation file
     try:
+        segm_file_path = glob.glob(f'{file_dir}\*_segm.npz')[0]
+        channel_files.append(np.load(segm_file_path)['arr_0'])
+    except IndexError:
         segm_file_path = glob.glob(f'{file_dir}\*_segm.npy')[0]
         # assume segmentation mask to be .npy
         channel_files.append(np.load(segm_file_path))
-    except IndexError:
-        segm_file_path = glob.glob(f'{file_dir}\*_segm.npz')[0]
-        channel_files.append(np.load(segm_file_path)['arr_0'])
     # append cc-data
     try:
         cc_stage_path = glob.glob(f'{file_dir}\*acdc_output*')[0]
