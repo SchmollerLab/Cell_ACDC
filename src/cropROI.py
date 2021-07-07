@@ -275,13 +275,12 @@ class cropROI_GUI(QMainWindow):
             print('Cropped data shape: ', croppedData.shape)
             with TiffFile(self.data.tif_path) as tif:
                 metadata = tif.imagej_metadata
-            for tif in self.data.tif_paths:
+            _zip = zip(self.data.tif_paths, self.npz_paths)
+            for tif, npz in _zip:
                 print('Saving: ', tif)
-                _tif_data = skimage.io.imread(tif)[:, y0:y0+h, x0:x0+w]
-                self.imagej_tiffwriter(tif, _tif_data, metadata)
-            for npz in self.npz_paths:
-                print('Saving: ', npz)
                 npz_data = np.load(npz)['arr_0'][:, y0:y0+h, x0:x0+w]
+                self.imagej_tiffwriter(tif, npz_data, metadata)
+                print('Saving: ', npz)
                 np.savez_compressed(npz, npz_data)
             if self.data.segm_data is not None:
                 print('Saving: ', npz)
@@ -591,10 +590,15 @@ class cropROI_GUI(QMainWindow):
                     os.rename(img_path, dst)
                 filename = new_filename
             if filename.find(f'{user_ch_name}_aligned.np') != -1:
-                img_path = f'{images_path}/{filename}'
+                img_path_aligned = f'{images_path}/{filename}'
                 img_aligned_found = True
             elif filename.find(f'{user_ch_name}.tif') != -1:
-                img_path = f'{images_path}/{filename}'
+                img_path_tif = f'{images_path}/{filename}'
+
+        if img_aligned_found:
+            img_path = img_path_aligned
+        else:
+            img_path = img_path_tif
         print(f'Loading {img_path}...')
 
         self.init_frames_data(img_path, user_ch_name)
