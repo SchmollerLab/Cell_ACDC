@@ -4,6 +4,7 @@ import pandas as pd
 from tifffile import imread
 import os
 import glob
+from tqdm import tqdm
 
 
 def _auto_rescale_intensity(img, perc=0.01, clip_min=False):
@@ -103,7 +104,7 @@ def calculate_rp_df(input_sequence, label_input=False):
     props = ('label', 'area', 'convex_area', 'filled_area','major_axis_length',
              'minor_axis_length', 'orientation', 'perimeter', 'centroid', 'solidity')
     rename_dict = {'label':'Cell_ID', 'centroid-0':'centroid_y', 'centroid-1':'centroid_x'}
-    for t, img in enumerate(labeled_video):
+    for t, img in enumerate(tqdm(labeled_video)):
         # build time-dependent dataframes for further use (later for cca)
         if img.max() > 0:
             t_rp = pd.DataFrame(regionprops_table(img.astype(int), properties=props)).rename(columns=rename_dict)
@@ -146,7 +147,9 @@ def calculate_flu_signal(seg_mask, channel_data, channels, cc_data):
         channel_data_cut = [c_arr[:max_frame+1] for c_arr in channel_data]
         for c_idx, c_array in enumerate(channel_data_cut):
             cell_signal = c_array*index_array
-            mean_signal = np.sum(cell_signal, axis=(1,2))/np.sum(cell_signal!=0, axis=(1,2))
+            summed = np.sum(cell_signal, axis=(1,2))
+            count = np.sum(cell_signal!=0, axis=(1,2))
+            mean_signal = np.divide(summed, count, where=count!=0)
             corrected_signal = mean_signal-bg_medians[c_idx]
             temp_df[f'{channels[c_idx]}_corrected_mean_signal'] = corrected_signal
         df = df.append(temp_df, ignore_index=True)
