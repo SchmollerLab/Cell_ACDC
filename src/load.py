@@ -786,12 +786,17 @@ class select_exp_folder:
     def open_path_explorer(self):
         if self.full_paths is None:
             path = self.pos_n_sv.get()
-            subprocess.Popen('explorer "{}"'.format(os.path.normpath(path)))
         else:
             sv_txt = self.pos_n_sv.get()
             sv_idx = self.values.index(sv_txt)
             path = self.full_paths[sv_idx]
-            subprocess.Popen('explorer "{}"'.format(os.path.normpath(path)))
+        systems = {
+            'nt': os.startfile,
+            'posix': lambda foldername: os.system('xdg-open "%s"' % foldername),
+            'os2': lambda foldername: os.system('open "%s"' % foldername)
+             }
+
+        systems.get(os.name, os.startfile)(path)
 
     def get_values_segmGUI(self, exp_path):
         pos_foldernames = natsorted(os.listdir(exp_path))
@@ -850,7 +855,10 @@ class select_exp_folder:
     def _close(self):
         val = self.pos_n_sv.get()
         idx = list(self.values).index(val)
-        self.selected_pos = [self.pos_foldernames[idx]]
+        if self.full_paths is None:
+            self.selected_pos = [self.pos_foldernames[idx]]
+        else:
+            self.TIFFs_path = self.full_paths[idx]
         self.root.quit()
         self.root.destroy()
 
