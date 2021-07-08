@@ -467,7 +467,7 @@ class num_frames_toQuant:
 
     def set_foreground_window(self):
         self.root.lift()
-        self.# root.attributes("-topmost", True)
+        # self.root.attributes("-topmost", True)
         self.root.focus_force()
 
 class single_combobox_widget:
