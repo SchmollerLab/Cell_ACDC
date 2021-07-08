@@ -69,7 +69,7 @@ class select_pos_to_segm:
         root.title('Select positions')
         root.geometry('+800+400')
         root.lift()
-        root.attributes("-topmost", True)
+        # root.attributes("-topmost", True)
 
         tk.Label(root, text='Select positions to segment.\n\n'
                  'Hold down "Ctrl" for multiple selections,\n'
@@ -194,7 +194,7 @@ class scan_run_nums:
         else:
             root = tk.Tk()
         root.lift()
-        root.attributes("-topmost", True)
+        # root.attributes("-topmost", True)
         root.title('Multiple runs detected')
         root.geometry("+800+400")
         # tk.Label(root,
@@ -272,7 +272,7 @@ class fourbuttonsmessagebox:
             root = tk.Tk()
         self.root = root
         root.lift()
-        root.attributes("-topmost", True)
+        # root.attributes("-topmost", True)
         root.title(title)
         root.geometry(geometry)
         tk.Label(root,
@@ -375,7 +375,7 @@ class num_frames_toQuant:
         self.root.title('Number of frames to segment')
         root.geometry('+800+400')
         root.lift()
-        root.attributes("-topmost", True)
+        # root.attributes("-topmost", True)
         # root.focus_force()
         tk.Label(root,
                  text="How many frames do you want to analyse?",
@@ -467,7 +467,7 @@ class num_frames_toQuant:
 
     def set_foreground_window(self):
         self.root.lift()
-        self.root.attributes("-topmost", True)
+        self.# root.attributes("-topmost", True)
         self.root.focus_force()
 
 class single_combobox_widget:
@@ -482,7 +482,7 @@ class single_combobox_widget:
         else:
             root = tk.Tk()
         root.lift()
-        root.attributes("-topmost", True)
+        # root.attributes("-topmost", True)
         root.title(title)
         root.geometry("+800+400")
         row = 0
@@ -629,7 +629,7 @@ class select_channel_name:
         else:
             root = tk.Tk()
         root.lift()
-        root.attributes("-topmost", True)
+        # root.attributes("-topmost", True)
         root.title('Select channel name')
         root.geometry("+800+400")
         row = 0
@@ -744,7 +744,7 @@ class single_entry_messagebox:
         self.allow_abort = allow_abort
         root.lift()
         root.title(title)
-        root.attributes("-topmost", True)
+        # root.attributes("-topmost", True)
         root.geometry("+800+400")
         self._root = root
         tk.Label(root, text=entry_label, font=(None, 10)).grid(row=0, padx=8)
@@ -785,7 +785,7 @@ class dual_entry_messagebox:
             root = tk.Tk()
         root.lift()
         root.title(title)
-        root.attributes("-topmost", True)
+        # root.attributes("-topmost", True)
         root.geometry("+800+400")
         self._root = root
         tk.Label(root, text=entry_label, font=(None, 10)).grid(row=0, padx=8)
@@ -841,7 +841,7 @@ class num_pos_toSegm_tk:
         self.root = root
         self.tot_frames = tot_frames
         root.geometry('+800+400')
-        root.attributes("-topmost", True)
+        # root.attributes("-topmost", True)
         tk.Label(root,
                  text="How many positions do you want to segment?",
                  font=(None, 12)).grid(row=0, column=0, columnspan=3)

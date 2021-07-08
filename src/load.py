@@ -484,7 +484,7 @@ class fix_pos_n_mismatch:
         root = tk.Tk()
         self.root = root
         root.lift()
-        root.attributes("-topmost", True)
+        # root.attributes("-topmost", True)
         root.title(title)
         # root.geometry(geometry)
         tk.Label(root,
@@ -723,7 +723,7 @@ class select_exp_folder:
         root.geometry('+800+400')
         root.title(title)
         root.lift()
-        root.attributes("-topmost", True)
+        # root.attributes("-topmost", True)
         self.full_paths=full_paths
         self.was_aborted = False
         self.allow_abort = allow_abort
