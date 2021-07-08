@@ -34,6 +34,7 @@ from tifffile import TiffFile
 from MyWidgets import Slider, Button, MyRadioButtons, TextBox
 from myutils import download_model
 import load, prompts
+from pyqtgraph.Qt import QtGui
 from lib import (auto_select_slice, separate_overlapping,
                        text_label_centroid, tk_breakpoint, manual_emerg_bud,
                        CellInt_slideshow, twobuttonsmessagebox,
@@ -1526,15 +1527,16 @@ wH = 0.03  # widgets' height
 slW = 0.6  # sliders width
 bW = 0.1  # buttons width
 
-# Folder dialog
 selected_path = folder_dialog(title = "Select folder containing valid experiments")
 beyond_listdir = load.beyond_listdir_pos(selected_path)
 select_widget = load.select_exp_folder()
-TIFFs_path = select_widget.run_widget(beyond_listdir.all_exp_info,
+select_widget.run_widget(beyond_listdir.all_exp_info,
                          title='Select experiment to segment',
                          label_txt='Select experiment to segment',
                          full_paths=beyond_listdir.TIFFs_path,
                          showinexplorer_button=True)
+
+TIFFs_path = select_widget.TIFFs_path
 
 """Load data"""
 app = app_GUI(TIFFs_path)
