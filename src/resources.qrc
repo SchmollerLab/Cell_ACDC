@@ -33,5 +33,6 @@
     <file alias="reinitCca.svg">resources/reinitCca.svg</file>
     <file alias="applyCrop.svg">resources/applyCrop.svg</file>
     <file alias="repeatAssign-motherbud.svg">resources/repeatAssign-motherbud.svg</file>
+    <file alias="start.svg">resources/start.svg</file>
 </qresource>
 </RCC>

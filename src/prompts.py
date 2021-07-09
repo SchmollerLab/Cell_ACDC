@@ -555,7 +555,7 @@ class select_channel_name:
                 channel_name = filename.split(basename)[-1]
                 channel_names.append(channel_name)
                 if channel_name == filename:
-                    # Warn the an intersection could not be found
+                    # Warn that an intersection could not be found
                     warn.append(True)
         warn = any(warn)
         if self.which_channel is not None:

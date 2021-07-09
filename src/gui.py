@@ -16,11 +16,13 @@ import time
 import datetime
 from functools import partial
 from tqdm import tqdm
+import threading, time
 
 import cv2
 import numpy as np
 import pandas as pd
 import scipy.optimize
+import skimage
 import skimage.io
 import skimage.measure
 import skimage.morphology
@@ -29,9 +31,9 @@ import skimage.exposure
 import skimage.transform
 import skimage.segmentation
 from skimage import img_as_float
-from skimage.color import gray2rgb
+from skimage.color import gray2rgb, gray2rgba
 
-from PyQt5.QtCore import Qt, QFile, QTextStream, QSize, QEvent
+from PyQt5.QtCore import Qt, QFile, QTextStream, QSize, QEvent, QPoint
 from PyQt5.QtGui import QIcon, QKeySequence, QCursor, QKeyEvent
 from PyQt5.QtWidgets import (
     QAction, QApplication, QLabel, QPushButton,
@@ -286,6 +288,8 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         # Left image histogram
         self.hist = pg.HistogramLUTItem()
+        # Disable histogram default context Menu event
+        self.hist.vb.raiseContextMenu = lambda x: None
         self.graphLayout.addItem(self.hist, row=1, col=0)
 
         # Title
@@ -307,6 +311,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Left image
         self.img1 = pg.ImageItem(self.blank)
         self.ax1.addItem(self.img1)
+        # self.hist.sigLookupTableChanged.connect(self.adjustContrastOverlay)
         self.hist.setImageItem(self.img1)
 
         # Right image
@@ -374,7 +379,10 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Contour pens
         self.oldIDs_cpen = pg.mkPen(color=(200, 0, 0, 255*0.5), width=2)
         self.newIDs_cpen = pg.mkPen(color='r', width=3)
-        self.lostIDs_cpen = pg.mkPen(color='y', width=5)
+        self.lostIDs_cpen = pg.mkPen(color=(245, 184, 0, 100), width=4)
+
+        # Lost ID question mark text color
+        self.lostIDs_qMcolor = (245, 184, 0)
 
         # New bud-mother line pen
         self.NewBudMoth_Pen = pg.mkPen(color='r', width=3, style=Qt.DashLine)
@@ -428,8 +436,6 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.ax2_ContoursCurves.append(ContCurve)
             self.ax2.addItem(ContCurve)
 
-
-
     def gui_connectGraphicsEvents(self):
         self.img1.hoverEvent = self.gui_hoverEventImg1
         self.img2.hoverEvent = self.gui_hoverEventImg2
@@ -439,7 +445,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.img2.mousePressEvent = self.gui_mousePressEventImg2
         self.img2.mouseMoveEvent = self.gui_mouseDragEventImg2
         self.img2.mouseReleaseEvent = self.gui_mouseReleaseEventImg2
-        # self.graphLayout.mouseReleaseEvent = self.gui_mouseReleaseEvent
+        self.hist.vb.contextMenuEvent = self.gui_raiseContextMenuLUT
 
 
     def gui_mousePressEventImg2(self, event):
@@ -1446,7 +1452,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                     'relationship': 'bud',
                     'emerg_frame_i': i+1,
                     'division_frame_i': -1,
-                    'is_history_known': True
+                    'is_history_known': True,
+                    'corrected_assignment': False
                 })
                 return cca_df_ID
 
@@ -1647,7 +1654,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                     self.store_cca_df(frame_i=i, cca_df=cca_df_i)
                 else:
                     if ccs == 'S':
-                        # Cell is in S in the future again so stop undoing
+                        # Cell is in S in the future again so stop undoing (break)
                         # also leave a 1 frame duration G1 to avoid a continuous
                         # S phase
                         self.annotateDivision(cca_df_i, ID, relID, ccs_relID)
@@ -1813,6 +1820,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.cca_df.at[budID, 'generation_num'] = 0
         self.cca_df.at[budID, 'relative_ID'] = new_mothID
         self.cca_df.at[budID, 'relationship'] = 'bud'
+        self.cca_df.at[budID, 'corrected_assignment'] = True
 
         self.cca_df.at[new_mothID, 'relative_ID'] = budID
         self.cca_df.at[new_mothID, 'cell_cycle_stage'] = 'S'
@@ -1833,6 +1841,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.drawID_and_Contour(rp_budID, drawContours=False)
         self.drawID_and_Contour(rp_new_mothID, drawContours=False)
         self.drawID_and_Contour(rp_curr_mothID, drawContours=False)
+
+        self.checkMultiBudMOth(draw=True)
 
         self.store_cca_df()
 
@@ -2069,6 +2079,13 @@ class Yeast_ACDC_GUI(QMainWindow):
         helpMenu = menuBar.addMenu(QIcon(":help-content.svg"), "&Help")
         helpMenu.addAction(self.helpContentAction)
         helpMenu.addAction(self.aboutAction)
+
+    def gui_raiseContextMenuLUT(self, event):
+        self.LUTmenu = QMenu(self)
+        self.LUTmenu.addAction(self.userChNameAction)
+        for action in self.fluoDataChNameActions:
+            self.LUTmenu.addAction(action)
+        self.LUTmenu.exec(event.screenPos())
 
     def gui_createToolBars(self):
         toolbarSize = 34
@@ -2338,6 +2355,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.manuallyEditCcaAction = QAction(
                                 'Manually modify cell cycle annotations', self)
 
+
+
     def gui_connectActions(self):
         # Connect File actions
         self.newAction.triggered.connect(self.newFile)
@@ -2447,19 +2466,83 @@ class Yeast_ACDC_GUI(QMainWindow):
            self, 'Cell not eligible', txt, msg.Yes | msg.Cancel
         )
         if reinit == msg.Yes:
-            self.cca_df = self.getBaseCca_df()
-            self.del_future_cca_df(self.frame_i)
-            self.updateALLimg()
+            # Go to previous frame without storing and then back to current
+            if self.frame_i > 0:
+                self.frame_i -= 1
+                self.get_data()
+                self.update_rp_metadata(draw=False)
+                self.del_future_cca_df(self.frame_i)
+                self.next_cb()
+            else:
+                self.cca_df = self.getBaseCca_df()
+                self.del_future_cca_df(self.frame_i)
+                self.updateALLimg()
 
     def repeatAutoCca(self):
-        #ASK whether to erase future cell cycle annotations before attempting cca
-        pass
+        # Do not allow automatic bud assignment if there are future
+        # frames that already contain anotations
+        next_df = self.allData_li[self.frame_i+1]['acdc_df']
+        if next_df is not None:
+            if 'cell_cycle_stage' in next_df.columns:
+                msg = QtGui.QMessageBox()
+                warn_cca = msg.critical(
+                    self, 'Future visited frames detected!',
+                    'Automatic bud assignment CANNOT be performed becasue '
+                    'there are future frames that already contain cell cycle '
+                    'annotations. The behaviour in this case cannot be predicted.\n\n'
+                    'We suggest assigning the bud manually OR use the '
+                    '"Renitialize cell cycle annotations" button which properly '
+                    'reinitialize future frames.',
+                    msg.Ok
+                )
+                return
+
+        correctedAssignIDs = (
+                self.cca_df[self.cca_df['corrected_assignment']].index)
+        NeverCorrectedAssignIDs = [ID for ID in self.new_IDs
+                                   if ID not in correctedAssignIDs]
+
+        # Store cca_df temporarily if attempt_auto_cca fails
+        self.cca_df_beforeRepeat = self.cca_df.copy()
+
+        if not all(NeverCorrectedAssignIDs):
+            notEnoughG1Cells, proceed = self.attempt_auto_cca()
+            if notEnoughG1Cells or not proceed:
+                self.cca_df = self.cca_df_beforeRepeat
+            else:
+                self.updateALLimg()
+            return
+
+        msg = QtGui.QMessageBox()
+        msg.setIcon(msg.Question)
+        msg.setText(
+            'Do you want to automatically assign buds to mother cells for '
+            'ALL the new cells in this frame (excluding cells with unknown history) '
+            'OR only the cells where you never clicked on?'
+        )
+        msg.setDetailedText(
+            f'New cells that you never touched:\n\n{NeverCorrectedAssignIDs}')
+        enforceAllButton = QPushButton('ALL new cells')
+        b = QPushButton('Only cells that I never corrected assignment')
+        msg.addButton(b, msg.YesRole)
+        msg.addButton(enforceAllButton, msg.NoRole)
+        msg.exec_()
+        if msg.clickedButton() == enforceAllButton:
+            notEnoughG1Cells, proceed = self.attempt_auto_cca(enforceAll=True)
+        else:
+            notEnoughG1Cells, proceed = self.attempt_auto_cca()
+        if notEnoughG1Cells or not proceed:
+            self.cca_df = self.cca_df_beforeRepeat
+        else:
+            self.updateALLimg()
+
 
     def manualEditCca(self):
         editCcaWidget = apps.cca_df_frame0(self.IDs, self.cca_df, warn=False)
         if editCcaWidget.cancel:
             return
         self.cca_df = editCcaWidget.df
+        self.checkMultiBudMOth()
         self.updateALLimg()
 
 
@@ -2796,9 +2879,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                     cca_df = None
                     print(cca_df)
                 print('========================')
-        # elif ev.key() == Qt.Key_Plus:
-        #     print('Programmatically disabled')
-        #     self.disableTrackingCheckBox.setChecked(True)
+        elif ev.key() == Qt.Key_Plus:
+            self.blinkMultiBudMoth_cb()
         elif ev.key() == Qt.Key_H:
             lab_mask = (self.lab>0).astype(np.uint8)
             rp = skimage.measure.regionprops(lab_mask)
@@ -2939,22 +3021,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
     def UndoCca(self):
         if self.frame_i == 0:
-            IDs = [obj.label for obj in self.rp]
-            cc_stage = ['G1' for ID in IDs]
-            num_cycles = [-1]*len(IDs)
-            relationship = ['mother' for ID in IDs]
-            related_to = [-1]*len(IDs)
-            is_history_known = [False]*len(IDs)
-            self.cca_df = pd.DataFrame({
-                               'cell_cycle_stage': cc_stage,
-                               'generation_num': num_cycles,
-                               'relative_ID': related_to,
-                               'relationship': relationship,
-                               'emerg_frame_i': num_cycles,
-                               'division_frame_i': num_cycles,
-                               'is_history_known': is_history_known},
-                                index=IDs)
-            self.cca_df.index.name = 'Cell_ID'
+            self.cca_df = self.getBaseCca_df()
             self.del_future_cca_df(0)
             self.undoAction.setEnabled(False)
             self.updateALLimg()
@@ -3213,7 +3280,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 'File --> Open or Open recent to start the process',
                 color='w')
             return
-        if not data.segm_npy_found:
+        if not data.segm_found:
             err_msg = ('Segmentation mask file ("..._segm.npz") not found. '
                        'You need to run the segmentation script first.')
             self.titleLabel.setText(err_msg, color='r')
@@ -3264,8 +3331,18 @@ class Yeast_ACDC_GUI(QMainWindow):
                 # Contour is present but ID is not --> clear
                 BudMothLine.setData([], [])
 
+    def addFluoChNameContextMenuAction(self, ch_name):
+        action = QAction(self)
+        action.setText(ch_name)
+        action.setCheckable(True)
+        self.chNamesQActionGroup.addAction(action)
+        action.setChecked(True)
+        self.fluoDataChNameActions.append(action)
+
     def init_attr(self, max_ID=10):
         # Decision on what to do with changes to future frames attr
+        self.fluoDataChNameActions = []
+        self.manualContrastKey = self.data.filename
         self.isNewID = False
         self.doNotShowAgain_EditID = False
         self.UndoFutFrames_EditID = False
@@ -3289,9 +3366,11 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.UserEnforced_Tracking = False
         self.new_IDs = []
         self.lost_IDs = []
+        self.multiBud_mothIDs = [2]
         self.UndoRedoStates = [[] for _ in range(self.num_frames)]
 
         self.clickedOnBud = False
+        self.blinkBold = False
 
         # Colormap
         self.setOverlayColors()
@@ -3314,10 +3393,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                  'labels': None,
                  'acdc_df': None
                  }
-                for i in range(self.num_frames)
+                for i in range(self.num_segm_frames)
         ]
-
-        print(len(self.allData_li))
 
         self.ccaStatus_whenEmerged = {}
 
@@ -3333,7 +3410,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                                 'relationship',
                                 'emerg_frame_i',
                                 'division_frame_i',
-                                'is_history_known']
+                                'is_history_known',
+                                'corrected_assignment']
         self.cca_df_int_cols = ['generation_num',
                                 'relative_ID',
                                 'emerg_frame_i',
@@ -3380,6 +3458,11 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.ax2.vb.autoRange()
         self.ax1.vb.autoRange()
 
+    def unstore_data(self):
+        self.allData_li[self.frame_i] ={'regionprops': [],
+                                         'labels': None,
+                                         'acdc_df': None}
+
     def store_data(self, debug=False):
         if self.frame_i < 0:
             # In some cases we set frame_i = -1 and then call next_cb
@@ -3393,8 +3476,9 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.allData_li[self.frame_i]['labels'] = self.lab.copy()
 
         if debug:
-            print(self.frame_i)
-            apps.imshow_tk(self.lab, additional_imgs=[self.allData_li[self.frame_i]['labels']])
+            pass
+            # print(self.frame_i)
+            # apps.imshow_tk(self.lab, additional_imgs=[self.allData_li[self.frame_i]['labels']])
 
         # Store dynamic metadata
         is_cell_dead_li = [False]*len(self.rp)
@@ -3453,10 +3537,52 @@ class Yeast_ACDC_GUI(QMainWindow):
         min_dist = dist.min()
         return min_dist, nearest_point
 
-    def attempt_auto_cca(self):
+    def checkMultiBudMOth(self, draw=False):
+        mode = str(self.modeComboBox.currentText())
+        if mode.find('Cell cycle') == -1:
+            self.multiBud_mothIDs = []
+            return
+
+        cca_df_S = self.cca_df[self.cca_df['cell_cycle_stage'] == 'S']
+        cca_df_S_bud = cca_df_S[cca_df_S['relationship'] == 'bud']
+        relIDs_of_S_bud = cca_df_S_bud['relative_ID']
+        duplicated_relIDs_mask = relIDs_of_S_bud.duplicated(keep=False)
+        duplicated_cca_df_S = cca_df_S_bud[duplicated_relIDs_mask]
+        multiBud_mothIDs = duplicated_cca_df_S['relative_ID'].unique()
+        self.multiBud_mothIDs = multiBud_mothIDs
+        multiBudInfo = []
+        for multiBud_ID in multiBud_mothIDs:
+            duplicatedBuds_df = cca_df_S_bud[
+                                    cca_df_S_bud['relative_ID'] == multiBud_ID]
+            duplicatedBudIDs = duplicatedBuds_df.index.to_list()
+            info = f'Mother ID {multiBud_ID} has bud IDs {duplicatedBudIDs}'
+            multiBudInfo.append(info)
+        if multiBudInfo:
+            multiBudInfo_format = '\n'.join(multiBudInfo)
+            self.MultiBudMoth_msg = QtGui.QMessageBox()
+            self.MultiBudMoth_msg.setWindowTitle(
+                                  'Mother with multiple buds assigned to it!')
+            self.MultiBudMoth_msg.setText(multiBudInfo_format)
+            self.MultiBudMoth_msg.setIcon(self.MultiBudMoth_msg.Warning)
+            self.MultiBudMoth_msg.setDefaultButton(self.MultiBudMoth_msg.Ok)
+            self.MultiBudMoth_msg.show()
+        if draw:
+            self.highlightmultiBudMoth()
+
+
+
+    def attempt_auto_cca(self, enforceAll=False):
         doNotProceed = False
         try:
-            notEnoughG1Cells, proceed = self.autoCca_df()
+            notEnoughG1Cells, proceed = self.autoCca_df(enforceAll=enforceAll)
+            if self.cca_df is None:
+                return notEnoughG1Cells, proceed
+            mode = str(self.modeComboBox.currentText())
+            if mode.find('Cell cycle') == -1:
+                return notEnoughG1Cells, proceed
+            if self.cca_df.isna().any(axis=None):
+                raise ValueError('Cell cycle analysis table contains NaNs')
+            self.checkMultiBudMOth()
         except:
             traceback.print_exc()
             self.highlightNewIDs_ccaFailed()
@@ -3474,7 +3600,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             )
         return notEnoughG1Cells, proceed
 
-    def autoCca_df(self):
+    def autoCca_df(self, enforceAll=False):
         """
         Assign each bud to a mother with scipy linear sum assignment
         (Hungarian or Munkres algorithm). First we build a cost matrix where
@@ -3490,9 +3616,6 @@ class Yeast_ACDC_GUI(QMainWindow):
         if mode.find('Cell cycle') == -1:
             return notEnoughG1Cells, proceed
 
-        # Use stored cca_df and do not modify it with automatic stuff
-        if self.cca_df is not None:
-            return notEnoughG1Cells, proceed
 
         # Make sure that this is a visited frame
         if self.allData_li[self.frame_i]['labels'] is None:
@@ -3510,6 +3633,27 @@ class Yeast_ACDC_GUI(QMainWindow):
             )
             proceed = False
             return notEnoughG1Cells, proceed
+
+        # For the last visited frame we perform assignment again only on
+        # IDs where we didn't manually correct assignment
+        lastVisited = False
+        curr_df = self.allData_li[self.frame_i]['acdc_df']
+        if curr_df is not None:
+            if 'cell_cycle_stage' in curr_df.columns and not enforceAll:
+                self.new_IDs = [ID for ID in self.new_IDs
+                                if curr_df.at[ID, 'is_history_known']
+                                and curr_df.at[ID, 'cell_cycle_stage'] == 'S']
+                lastVisited = True
+
+        # Use stored cca_df and do not modify it with automatic stuff
+        if self.cca_df is not None and not enforceAll and not lastVisited:
+            return notEnoughG1Cells, proceed
+
+        # Keep only correctedAssignIDs if requested
+        if lastVisited and not enforceAll:
+            correctedAssignIDs = curr_df[curr_df['corrected_assignment']].index
+            self.new_IDs = [ID for ID in self.new_IDs
+                            if ID not in correctedAssignIDs]
 
         # Get previous dataframe
         df = self.allData_li[self.frame_i-1]['acdc_df']
@@ -3557,7 +3701,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                         'relationship': 'mother',
                         'emerg_frame_i': -1,
                         'division_frame_i': -1,
-                        'is_history_known': False
+                        'is_history_known': False,
+                        'corrected_assignment': False
                     }
                     cca_df_ID = self.getStatusKnownHistoryBud(ID)
                     self.ccaStatus_whenEmerged[ID] = cca_df_ID
@@ -3603,7 +3748,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                 'relationship': 'bud',
                 'emerg_frame_i': self.frame_i,
                 'division_frame_i': -1,
-                'is_history_known': True
+                'is_history_known': True,
+                'corrected_assignment': False
             }
 
         self.store_cca_df()
@@ -3674,6 +3820,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                         if any(df['cell_cycle_stage'].isna()):
                             if 'is_history_known' not in df.columns:
                                 df['is_history_known'] = True
+                            if 'corrected_assignment' not in df.columns:
+                                df['corrected_assignment'] = False
                             df = df.drop(labels=self.cca_df_colnames, axis=1)
                         else:
                             # Convert to ints since there were NaN
@@ -3711,6 +3859,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         relationship = ['mother' for ID in IDs]
         related_to = [-1]*len(IDs)
         is_history_known = [False]*len(IDs)
+        corrected_assignment = [False]*len(IDs)
         cca_df = pd.DataFrame({
                            'cell_cycle_stage': cc_stage,
                            'generation_num': num_cycles,
@@ -3718,7 +3867,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                            'relationship': relationship,
                            'emerg_frame_i': num_cycles,
                            'division_frame_i': num_cycles,
-                           'is_history_known': is_history_known},
+                           'is_history_known': is_history_known,
+                           'corrected_assignment': corrected_assignment},
                             index=IDs)
         cca_df.index.name = 'Cell_ID'
         return cca_df
@@ -3839,6 +3989,8 @@ class Yeast_ACDC_GUI(QMainWindow):
             if 'cell_cycle_stage' in df.columns:
                 if 'is_history_known' not in df.columns:
                     df['is_history_known'] = True
+                if 'corrected_assignment' not in df.columns:
+                    df['corrected_assignment'] = True
                 cca_df = df[self.cca_df_colnames].copy()
         if return_df:
             return cca_df
@@ -3850,9 +4002,6 @@ class Yeast_ACDC_GUI(QMainWindow):
         cca_df = self.cca_df if cca_df is None else cca_df
 
         if cca_df is not None:
-            print('-------------')
-            print(f'cca_df for frame {i+1} stored')
-            print('-------------')
             segm_df = self.allData_li[i]['acdc_df']
             if 'cell_cycle_stage' in segm_df.columns:
                 # Cell cycle info already present --> overwrite with new
@@ -4073,6 +4222,13 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         self.highlightLostNew()
         self.checkIDsMultiContour()
+        self.highlightmultiBudMoth()
+
+    def highlightmultiBudMoth(self):
+        for ID in self.multiBud_mothIDs:
+            LabelItemID = self.ax1_LabelItemsIDs[ID-1]
+            txt = LabelItemID
+            LabelItemID.setText(f'{txt} !!', color=self.lostIDs_qMcolor)
 
     def checkIDsMultiContour(self):
         txt = self.titleLabel.text
@@ -4214,6 +4370,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                     self, 'Shifts file not found!', txt, msg.Ok
                 )
                 return None
+        fluo_data = skimage.img_as_float(fluo_data)
 
         return fluo_data
 
@@ -4250,7 +4407,10 @@ class Yeast_ACDC_GUI(QMainWindow):
                            for key in keys}
                 ol_colors = {key:self.overlayRGBs[i]
                              for i, key in enumerate(keys)}
-
+                for key in keys:
+                    fluoChName = key.split(self.data.basename)[-1][1:]
+                    self.addFluoChNameContextMenuAction(fluoChName)
+                self.manualContrastKey = key
             if prompt:
                 ol_paths = prompts.multi_files_dialog(
                       title='Select one or multiple image files to overlay',
@@ -4268,7 +4428,10 @@ class Yeast_ACDC_GUI(QMainWindow):
                     self.data.fluo_data_dict[filename] = fluo_data
                     ol_data[filename] = fluo_data
                     ol_colors[filename] = self.overlayRGBs[i]
+                    fluoChName = filename.split(self.data.basename)[-1][1:]
+                    self.addFluoChNameContextMenuAction(fluoChName)
                 self.overlayButton.setStyleSheet('background-color: #A7FAC7')
+                self.manualContrastKey = filename
                 self.app.restoreOverrideCursor()
 
             self.ol_data = ol_data
@@ -4276,34 +4439,69 @@ class Yeast_ACDC_GUI(QMainWindow):
 
             self.colorButton.setColor((255,255,0))
 
-            img = self.get_overlay()
-            self.img1.setImage(img)
+            self.get_overlay(setImg=True)
+            self.hist.sigLookupTableChanged.connect(self.get_overlay)
+            self.hist.imageItem = lambda: None
 
             print('Done.')
             self.alphaScrollBar.setDisabled(False)
             self.colorButton.setDisabled(False)
         else:
             img = self.data.img_data[self.frame_i]
-            self.img1.setImage(img)
+            self.hist.sigLookupTableChanged.disconnect()
+            self.hist.setImageItem(self.img1)
 
-    def get_overlay(self):
+    def adjustBrightness(self, img, key):
+        # NOTE: key is the file name
+        # self.manualContrastKey is selected with right click on the LUT histo
+        # in the function setManualContrastKey
+        if key == self.manualContrastKey:
+            img = img/img.max()
+            lut = self.hist.getLookupTable(img=img)
+            lutLen = len(lut)
+            grayLut = lut[:, 0]/255
+            maxIntensityLen = len(grayLut[grayLut==1])
+            minIntensityLen = len(grayLut[grayLut==0])
+            ratioMaxSaturatedLevels = 1-maxIntensityLen/lutLen
+            ratioMinSaturatedLevels = minIntensityLen/lutLen
+            in_range = (ratioMinSaturatedLevels, ratioMaxSaturatedLevels)
+            rescaled_img = skimage.exposure.rescale_intensity(
+                                            img, in_range=in_range)
+        else:
+            rescaled_img = img/img.max()
+        return rescaled_img
+
+    def get_overlay(self, setImg=True):
         keys = list(self.ol_data.keys())
-        gray_img_rgb = gray2rgb(img_as_float(self.data.img_data[self.frame_i]))
+
+        # Cells channel (e.g. phase_contrast)
+        img = self.data.img_data[self.frame_i]
+        img = self.adjustBrightness(img, self.data.filename)
+        gray_img_rgb = gray2rgb(img)
+
+        # First fluo channel
         ol_img = self.ol_data[keys[0]][self.frame_i]
+        ol_img = self.adjustBrightness(ol_img, keys[0])
         color = self.ol_colors[keys[0]]
         overlay = self._overlay(gray_img_rgb, ol_img, color)
+
         # Add additional overlays
         for key in keys[1:]:
             ol_img = self.ol_data[key][self.frame_i]
+            self.adjustBrightness(ol_img, key)
             color = self.ol_colors[key]
             overlay = self._overlay(overlay, ol_img, color)
-        return overlay
+        if setImg:
+            self.img1.setImage(overlay)
+        else:
+            return overlay
 
-    def _overlay(self, gray_img_rgb, ol_img, color, ol_brightness=4):
+    def _overlay(self, gray_img_rgb, ol_img, color):
         ol_RGB_val = [v/255 for v in color]
         ol_alpha = self.alphaScrollBar.value()/self.alphaScrollBar.maximum()
-        ol_img_rgb = gray2rgb(img_as_float(ol_img))*ol_RGB_val
-        overlay = (gray_img_rgb*(1.0 - ol_alpha)+ol_img_rgb*ol_alpha)*ol_brightness
+        ol_norm_img = ol_img/ol_img.max()
+        ol_img_rgb = gray2rgb(ol_norm_img)*ol_RGB_val
+        overlay = (gray_img_rgb*(1.0 - ol_alpha)+ol_img_rgb*ol_alpha)
         overlay = overlay/overlay.max()
         overlay = (np.clip(overlay, 0, 1)*255).astype(np.uint8)
         return overlay
@@ -4313,8 +4511,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.updateOverlay(button)
 
     def updateOverlay(self, button):
-        img = self.get_overlay()
-        self.img1.setImage(img)
+        self.get_overlay(setImg=True)
 
     def updateALLimg(self, image=None, never_visited=True):
         self.frameLabel.setText(
@@ -4326,7 +4523,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             cells_img = image
 
         if self.overlayButton.isChecked():
-            img = self.get_overlay()
+            img = self.get_overlay(setImg=False)
         else:
             img = cells_img
 
@@ -4365,6 +4562,12 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.highlightLostNew()
         self.checkIDsMultiContour()
 
+    def cancelBlinking(self):
+        self.stopBlinking = True
+
+
+
+
     def highlightNewIDs_ccaFailed(self):
         for obj in self.rp:
             if obj.label in self.new_IDs:
@@ -4395,6 +4598,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                     ContCurve = self.ax1_ContoursCurves[ID-1]
                     cont = self.get_objContours(obj)
                     ContCurve.setData(cont[:,0], cont[:,1], pen=self.lostIDs_cpen)
+                    LabelItemID = self.ax1_LabelItemsIDs[ID-1]
+                    LabelItemID.setText('?', color=self.lostIDs_qMcolor)
 
 
     def checkIDs_LostNew(self):
@@ -4624,6 +4829,41 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.ax1.clear()
         self.ax2.clear()
         self.frameLabel.setText(' ')
+        try:
+            self.chNamesQActionGroup.removeAction(self.userChNameAction)
+        except:
+            pass
+        try:
+            for action in self.fluoDataChNameActions:
+                self.chNamesQActionGroup.removeAction(action)
+        except:
+            pass
+        try:
+            self.overlayButton.setChecked(False)
+        except:
+            pass
+
+    def create_chNamesQActionGroup(self, user_ch_name):
+        # LUT histogram channel name context menu actions
+        self.chNamesQActionGroup = QActionGroup(self)
+        self.userChNameAction = QAction(self)
+        self.userChNameAction.setCheckable(True)
+        self.userChNameAction.setText(user_ch_name)
+        self.userChNameAction.setChecked(True)
+        self.chNamesQActionGroup.addAction(self.userChNameAction)
+        self.chNamesQActionGroup.triggered.connect(self.setManualContrastKey)
+
+    def setManualContrastKey(self, action):
+        try:
+            keys = list(self.ol_data.keys())
+        except:
+            keys = []
+        keys.append(self.data.filename)
+        checkedText = action.text()
+        for key in keys:
+            if key.find(checkedText) != -1:
+                break
+        self.manualContrastKey = key
 
 
     # Slots
@@ -4776,6 +5016,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         print(f'Loading {img_path}...')
 
         self.init_frames_data(img_path, user_ch_name)
+        self.create_chNamesQActionGroup(user_ch_name)
 
         # Ask whether to load fluorescent images
         msg = QtGui.QMessageBox()
@@ -4926,6 +5167,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
 
     def saveFile(self):
+        frame_i = 0
         for frame_i, data_dict in enumerate(self.allData_li):
             # Build segm_npy
             lab = data_dict['labels']
@@ -4941,12 +5183,17 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self, 'Save current frame?', txt,
                 msg.Yes | msg.No | msg.Cancel
             )
+            if self.frame_i != frame_i:
+                # Go to that last frame if we are not on it
+                self.frame_i = frame_i
+                self.get_data()
+                self.update_rp_metadata(draw=False)
             if save_current == msg.Yes:
-                if self.frame_i != frame_i:
-                    self.frame_i = frame_i
-                    self.get_data()
-                    self.update_rp_metadata(draw=False)
-                self.store_data(debug=True)
+                last_tracked_i = frame_i
+                self.store_data()
+            elif save_current == msg.No:
+                last_tracked_i = frame_i-1
+                self.unstore_data()
             elif save_current == msg.Cancel:
                 return
         self.app.setOverrideCursor(Qt.WaitCursor)
@@ -5026,14 +5273,6 @@ class Yeast_ACDC_GUI(QMainWindow):
             np.savez_compressed(segm_npz_path, segm_npy)
             self.data.segm_data = segm_npy
 
-            # Save last tracked frame
-            if frame_i == 0:
-                last_tracked_i = 0
-            elif frame_i < self.num_segm_frames-1:
-                last_tracked_i = frame_i-1
-            else:
-                # All frames segmented
-                last_tracked_i = frame_i
             with open(last_tracked_i_path, 'w+') as txt:
                 txt.write(str(last_tracked_i))
 

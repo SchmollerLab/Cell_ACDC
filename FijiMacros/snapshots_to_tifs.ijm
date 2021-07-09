@@ -15,12 +15,12 @@ sEnd = ids.length //1 for just first file and ids.length for all files in the fo
 
 // If .czi files are not in a CZIs subfolder create the folder and move files there
 if (czi_folder_name != "CZIs") {
-	czi_folder_new = czi_folder + "CZIs\\";
+	czi_folder_new = czi_folder + "CZIs";
 	File.makeDirectory(czi_folder_new);
 
 	for (s = 0; s < sEnd; s++) {
 		id = czi_folder + ids[s];
-		new_id = czi_folder_new + ids[s];
+		new_id = czi_folder_new + "/" + ids[s];
 		File.rename(id,new_id);
 	}
 	czi_folder = czi_folder_new;
@@ -29,7 +29,14 @@ if (czi_folder_name != "CZIs") {
 //Create TIFFs folder
 path = File.getParent(czi_folder);
 wpath= replace(path, "/", "\\");
-exec("cmd /c C:\\Windows\\explorer.exe \""+ wpath +"\"");
+osInfo = getInfo("os.name");
+if (WindowsIdx != -1)
+ {
+	exec("cmd /c C:\\Windows\\explorer.exe \""+ wpath +"\"");
+} else {
+	exec("open " + path);
+}
+
 TIFFs = path+"/TIFFs";
 File.makeDirectory(TIFFs);
 
@@ -43,7 +50,7 @@ for (s = 0; s < sEnd; s++) {
 	Ext.setId(id);
 	
 	//Get file name
-	name = File.getName(id);
+	nameWithExt = File.getName(id);
 	
 //	//Open czi files with Bio-Formats Importer
 	seriesNum = s+1;
@@ -62,7 +69,7 @@ for (s = 0; s < sEnd; s++) {
 	for (c=C; c<CEnd; c++) { //for loop for iterating through the channels
 		print("    Saving channel="+c+1+"/"+CEnd+"..."); //Display message
 		scTif = images_path+"/"+name+"_s"+nss(seriesNum, 11)+"_"+channels[c]+".tif";		
-		selectWindow(name+".czi - C="+c);
+		selectWindow(nameWithExt+" - C="+c);
 		saveAs("Tiff", scTif);
 	}
 	print("Saved!");

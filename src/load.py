@@ -12,6 +12,7 @@ import skimage.filters
 from datetime import datetime
 from tifffile import TiffFile
 from natsort import natsorted
+import skimage
 import skimage.measure
 from PyQt5 import QtGui
 from PyQt5.QtWidgets import (
@@ -117,7 +118,7 @@ class load_frames_data:
                     msg = QtGui.QMessageBox()
                     msg.critical(parentQWidget, err_title, err_msg, msg.Ok)
                     return None
-        self.img_data = img_data
+        self.img_data = skimage.img_as_float(img_data)
         self.info, self.metadata_found = self.metadata(self.tif_path)
         prompt_user = False
         if self.metadata_found:
@@ -186,13 +187,13 @@ class load_frames_data:
                 root.destroy()
         self.segm_data = None
         if load_segm_data:
-            segm_npz_path, segm_npy_found = self.substring_path(
+            segm_npz_path, segm_found = self.substring_path(
                                            path, 'segm.npz', self.images_path)
-            if not segm_npy_found:
-                segm_npz_path, segm_npy_found = self.substring_path(
+            if not segm_found:
+                segm_npz_path, segm_found = self.substring_path(
                                            path, 'segm.npy', self.images_path)
-            self.segm_npy_found = segm_npy_found
-            if segm_npy_found:
+            self.segm_found = segm_found
+            if segm_found:
                 segm_data = np.load(segm_npz_path)
                 try:
                     self.segm_data = segm_data['arr_0']

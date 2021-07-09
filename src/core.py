@@ -39,11 +39,11 @@ def align_frames_3D(data, slices=None, register=True,
             y, x = shifts
             if y>0:
                 aligned_frame_V[:, :y] = 0
-            else:
+            elif y<0:
                 aligned_frame_V[:, y:] = 0
             if x>0:
                 aligned_frame_V[:, :, :x] = 0
-            else:
+            elif x<0:
                 aligned_frame_V[:, :, x:] = 0
             data_aligned[frame_i] = aligned_frame_V
             registered_shifts[frame_i] = shifts
@@ -74,11 +74,11 @@ def align_frames_2D(data, slices=None, register=True,
             y, x = shifts
             if y>0:
                 aligned_frame_V[:y] = 0
-            else:
+            elif y<0:
                 aligned_frame_V[y:] = 0
             if x>0:
                 aligned_frame_V[:, :x] = 0
-            else:
+            elif x<0:
                 aligned_frame_V[:, x:] = 0
             data_aligned[frame_i] = aligned_frame_V
             registered_shifts[frame_i] = shifts

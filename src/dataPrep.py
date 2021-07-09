@@ -25,7 +25,7 @@ import load, prompts, apps, core
 
 pg.setConfigOptions(imageAxisOrder='row-major')
 
-class cropROI_GUI(QMainWindow):
+class dataPrep(QMainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Yeast ACDC - crop ROIs")
@@ -71,7 +71,10 @@ class cropROI_GUI(QMainWindow):
         self.nextAction.setShortcut("right")
         self.jumpForwardAction.setShortcut("up")
         self.jumpBackwardAction.setShortcut("down")
-        self.okAction = QAction(QIcon(":applyCrop.svg"), "crop!", self)
+        self.okAction = QAction(QIcon(":applyCrop.svg"), "Crop!", self)
+        self.okAction.setEnabled(False)
+        self.startAction = QAction(QIcon(":start.svg"), "Start process!", self)
+        self.startAction.setEnabled(False)
 
     def gui_createMenuBar(self):
         menuBar = self.menuBar()
@@ -91,6 +94,7 @@ class cropROI_GUI(QMainWindow):
         fileToolBar.setMovable(False)
 
         fileToolBar.addAction(self.openAction)
+        fileToolBar.addAction(self.startAction)
         fileToolBar.addAction(self.okAction)
 
         navigateToolbar = QToolBar("Navigate", self)
@@ -120,6 +124,7 @@ class cropROI_GUI(QMainWindow):
         self.jumpForwardAction.triggered.connect(self.skip10ahead_frames)
         self.jumpBackwardAction.triggered.connect(self.skip10back_frames)
         self.okAction.triggered.connect(self.crop_and_save)
+        self.startAction.triggered.connect(self.prepData)
 
     def gui_createStatusBar(self):
         self.statusbar = self.statusBar()
@@ -335,6 +340,7 @@ class cropROI_GUI(QMainWindow):
             data.segm_data = np.array([data.segm_data])
         img_shape = data.img_data.shape
         self.num_frames = len(data.img_data)
+        self.user_ch_name = user_ch_name
         SizeT = data.SizeT
         SizeZ = data.SizeZ
         print(f'Data shape = {img_shape}')
@@ -342,12 +348,16 @@ class cropROI_GUI(QMainWindow):
         print(f'Number of z-slices per frame = {SizeZ}')
 
         self.data = data
-
         self.init_attr()
-        self.npy_to_npz()
-        self.alignData(user_ch_name)
 
+    def prepData(self, event):
+        self.npy_to_npz()
+        self.alignData(self.user_ch_name)
         self.addROIrect()
+        self.okAction.setEnabled(True)
+        self.titleLabel.setText(
+            'Data successfully prepped. You can now crop the images or close the program',
+            color='w')
 
     def setStandardRoiShape(self, text):
         _, Y, X = self.data.img_data.shape
@@ -616,12 +626,13 @@ class cropROI_GUI(QMainWindow):
             color='w')
 
         self.openAction.setEnabled(True)
+        self.startAction.setEnabled(True)
         self.update_img()
 
 if __name__ == "__main__":
     # Create the application
     app = QApplication(sys.argv)
-    win = cropROI_GUI()
+    win = dataPrep()
     win.show()
     # Apply style
     app.setStyle(QtGui.QStyleFactory.create('Fusion'))
