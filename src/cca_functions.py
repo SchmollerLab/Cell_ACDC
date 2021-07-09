@@ -6,6 +6,33 @@ import os
 import glob
 from tqdm import tqdm
 
+import prompts
+import apps
+from pyqtgraph.Qt import QtGui
+from PyQt5.QtWidgets import QApplication
+from PyQt5 import QtCore
+import sys
+
+
+def configuration_dialog():
+    continue_selection = True
+    data_dirs = []
+    positions = []
+    while continue_selection:
+        data_dir = prompts.folder_dialog(title='Select folder containing Position_n folders')
+        available_pos = sorted(os.listdir(data_dir))
+        app = QtCore.QCoreApplication.instance()
+        if app is None:
+            app = QApplication(sys.argv)
+        win = apps.QDialogListbox('test', 'Select which position you want to analyse', available_pos)
+        app.setStyle(QtGui.QStyleFactory.create('Fusion'))
+        win.show()
+        app.exec_()
+        pos = win.selectedItemsText
+        data_dirs.append(data_dir)
+        positions.append(pos)
+        continue_selection = prompts.askyesno(message= 'Do you wish to select another file?')
+    return data_dirs, positions
 
 def _auto_rescale_intensity(img, perc=0.01, clip_min=False):
     """
