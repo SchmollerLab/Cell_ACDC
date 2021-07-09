@@ -613,7 +613,7 @@ class QDialogListbox(QDialog):
         okButton.setShortcut(Qt.Key_Enter)
         bottomLayout.addWidget(okButton, alignment=Qt.AlignRight)
 
-        cancelButton = QPushButton('Browse')
+        cancelButton = QPushButton('Cancel')
         # cancelButton.setShortcut(Qt.Key_Escape)
         bottomLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
         bottomLayout.setContentsMargins(0, 10, 0, 0)
