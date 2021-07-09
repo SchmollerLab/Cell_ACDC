@@ -4448,6 +4448,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.colorButton.setDisabled(False)
         else:
             img = self.data.img_data[self.frame_i]
+            self.img1.setImage(img)
             self.hist.sigLookupTableChanged.disconnect()
             self.hist.setImageItem(self.img1)
 
