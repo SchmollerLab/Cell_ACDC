@@ -936,8 +936,10 @@ class nonModalTempQMessage(QWidget):
 class CellsSlideshow_GUI(QMainWindow):
     """Main Window."""
 
-    def __init__(self, parent=None, button_toUncheck=None, Left=50, Top=50):
+    def __init__(self, parent=None, button_toUncheck=None, Left=50, Top=50,
+                 is_bw_inverted=False):
         self.button_toUncheck = button_toUncheck
+        self.is_bw_inverted = is_bw_inverted
         """Initializer."""
         super().__init__(parent)
         self.setWindowTitle("Yeast ACDC - Segm&Track")
@@ -1113,7 +1115,11 @@ class CellsSlideshow_GUI(QMainWindow):
     def update_img(self):
         self.frameLabel.setText(
                  f'Current frame = {self.frame_i+1}/{self.num_frames}')
-        self.img.setImage(self.frames[self.frame_i])
+        img = self.frames[self.frame_i].copy()
+        self.is_bw_inverted
+        if self.is_bw_inverted:
+            img = -img+img.max()
+        self.img.setImage(img)
 
     def closeEvent(self, event):
         if self.button_toUncheck is not None:

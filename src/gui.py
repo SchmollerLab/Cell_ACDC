@@ -70,7 +70,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         """Initializer."""
         super().__init__(parent)
         self.loadLastSessionSettings()
-        
+
         self.app = app
         self.num_screens = len(app.screens())
 
@@ -1522,6 +1522,8 @@ class Yeast_ACDC_GUI(QMainWindow):
             rp_relID = self.rp[relObj_idx]
             self.drawID_and_Contour(rp_relID, drawContours=False)
 
+        self.store_cca_df()
+
         # Correct future frames
         for i in range(self.frame_i+1, self.num_segm_frames):
             cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
@@ -1826,7 +1828,9 @@ class Yeast_ACDC_GUI(QMainWindow):
         if not eligible:
             return
 
-        curr_moth_cca = self.getStatus_RelID_BeforeEmergence(budID, curr_mothID)
+        if curr_mothID in self.cca_df.index:
+            curr_moth_cca = self.getStatus_RelID_BeforeEmergence(
+                                                         budID, curr_mothID)
 
         # Correct current frames and update LabelItems
         self.cca_df.at[budID, 'relative_ID'] = new_mothID
@@ -1834,6 +1838,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.cca_df.at[budID, 'relative_ID'] = new_mothID
         self.cca_df.at[budID, 'relationship'] = 'bud'
         self.cca_df.at[budID, 'corrected_assignment'] = True
+        self.cca_df.at[budID, 'cell_cycle_stage'] = 'S'
 
         self.cca_df.at[new_mothID, 'relative_ID'] = budID
         self.cca_df.at[new_mothID, 'cell_cycle_stage'] = 'S'
@@ -1846,14 +1851,18 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         bud_obj_idx = self.IDs.index(budID)
         new_moth_obj_idx = self.IDs.index(new_mothID)
-        curr_moth_obj_idx = self.IDs.index(curr_mothID)
+        if curr_mothID in self.cca_df.index:
+            curr_moth_obj_idx = self.IDs.index(curr_mothID)
         rp_budID = self.rp[bud_obj_idx]
         rp_new_mothID = self.rp[new_moth_obj_idx]
-        rp_curr_mothID = self.rp[curr_moth_obj_idx]
+
 
         self.drawID_and_Contour(rp_budID, drawContours=False)
         self.drawID_and_Contour(rp_new_mothID, drawContours=False)
-        self.drawID_and_Contour(rp_curr_mothID, drawContours=False)
+
+        if curr_mothID in self.cca_df.index:
+            rp_curr_mothID = self.rp[curr_moth_obj_idx]
+            self.drawID_and_Contour(rp_curr_mothID, drawContours=False)
 
         self.checkMultiBudMOth(draw=True)
 
@@ -1883,6 +1892,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             cca_df_i.at[budID, 'generation_num'] = 0
             cca_df_i.at[budID, 'relative_ID'] = new_mothID
             cca_df_i.at[budID, 'relationship'] = 'bud'
+            cca_df_i.at[budID, 'cell_cycle_stage'] = 'S'
 
             newMoth_bud_ccs = cca_df_i.at[new_mothID, 'cell_cycle_stage']
             if newMoth_bud_ccs == 'G1':
@@ -1913,6 +1923,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             cca_df_i.at[budID, 'generation_num'] = 0
             cca_df_i.at[budID, 'relative_ID'] = new_mothID
             cca_df_i.at[budID, 'relationship'] = 'bud'
+            cca_df_i.at[budID, 'cell_cycle_stage'] = 'S'
 
             cca_df_i.at[new_mothID, 'relative_ID'] = budID
             cca_df_i.at[new_mothID, 'cell_cycle_stage'] = 'S'
@@ -2370,8 +2381,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                                 'Manually modify cell cycle annotations', self)
         self.invertBwAction = QAction('Invert black/white', self)
         self.invertBwAction.setCheckable(True)
-        checked = self.df_settings.at['is_bw_inverted', 'value']
-        self.invertBwAction.setChecked(True)
+        checked = bool(self.df_settings.at['is_bw_inverted', 'value'])
+        self.invertBwAction.setChecked(checked)
 
 
 
@@ -2434,6 +2445,9 @@ class Yeast_ACDC_GUI(QMainWindow):
 
     def invertBw(self, checked):
         self.updateALLimg()
+        if self.slideshowWin is not None:
+            self.slideshowWin.is_bw_inverted = checked
+            self.slideshowWin.update_img()
         self.df_settings.at['is_bw_inverted', 'value'] = checked
         src_path = os.path.dirname(os.path.realpath(__file__))
         temp_path = os.path.join(src_path, 'temp')
@@ -2727,9 +2741,10 @@ class Yeast_ACDC_GUI(QMainWindow):
     def launchSlideshow(self):
         if self.slideshowButton.isChecked():
             self.slideshowWin = apps.CellsSlideshow_GUI(
-                                   button_toUncheck=self.slideshowButton,
-                                   Left=self.slideshowWinLeft,
-                                   Top=self.slideshowWinTop)
+                               button_toUncheck=self.slideshowButton,
+                               Left=self.slideshowWinLeft,
+                               Top=self.slideshowWinTop,
+                               is_bw_inverted=self.invertBwAction.isChecked())
             self.slideshowWin.loadData(self.data.img_data, frame_i=self.frame_i)
             self.slideshowWin.show()
         else:
@@ -3661,30 +3676,52 @@ class Yeast_ACDC_GUI(QMainWindow):
             proceed = False
             return notEnoughG1Cells, proceed
 
-        # For the last visited frame we perform assignment again only on
-        # IDs where we didn't manually correct assignment
+        # Determine if this is the last visited frame for repeating
+        # bud assignment on non manually corrected_assignment buds.
+        # The idea is that the user could have assigned division on a cell
+        # by going previous and we want to check if this cell could be a
+        # "better" mother for those non manually corrected buds
         lastVisited = False
         curr_df = self.allData_li[self.frame_i]['acdc_df']
         if curr_df is not None:
             if 'cell_cycle_stage' in curr_df.columns and not enforceAll:
-                self.new_IDs = [ID for ID in self.new_IDs
-                                if curr_df.at[ID, 'is_history_known']
-                                and curr_df.at[ID, 'cell_cycle_stage'] == 'S']
+                new_IDs = [ID for ID in self.new_IDs
+                           if curr_df.at[ID, 'is_history_known']
+                           and curr_df.at[ID, 'cell_cycle_stage'] == 'S']
                 lastVisited = True
 
         # Use stored cca_df and do not modify it with automatic stuff
         if self.cca_df is not None and not enforceAll and not lastVisited:
             return notEnoughG1Cells, proceed
 
-        # Keep only correctedAssignIDs if requested
-        if lastVisited and not enforceAll:
-            correctedAssignIDs = curr_df[curr_df['corrected_assignment']].index
-            self.new_IDs = [ID for ID in self.new_IDs
-                            if ID not in correctedAssignIDs]
-
         # Get previous dataframe
         df = self.allData_li[self.frame_i-1]['acdc_df']
-        self.cca_df = df[self.cca_df_colnames].copy()
+        prev_cca_df = df[self.cca_df_colnames].copy()
+
+        # For those IDs that we don't repeat auto cca we copy
+        # what we already have stored
+        if lastVisited:
+            for ID in self.new_IDs:
+                if ID not in new_IDs:
+                    prev_cca_df.loc[ID] = curr_df.loc[ID]
+            self.new_IDs = new_IDs
+
+        # Keep only correctedAssignIDs if requested
+        # For the last visited frame we perform assignment again only on
+        # IDs where we didn't manually correct assignment
+        if lastVisited and not enforceAll:
+            correctedAssignIDs = curr_df[curr_df['corrected_assignment']].index
+            new_IDs = [ID for ID in self.new_IDs
+                       if ID not in correctedAssignIDs]
+            # For those IDs that we don't repeat auto cca we copy
+            # what we already have stored
+            for ID in self.new_IDs:
+                if ID not in new_IDs:
+                    prev_cca_df.loc[ID] = curr_df.loc[ID]
+            self.new_IDs = new_IDs
+
+        # Set current cca_df equal to previous and proceed with assigning new IDs
+        self.cca_df = prev_cca_df
 
         # If there are no new IDs we are done
         if not self.new_IDs:
@@ -3848,7 +3885,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                             if 'is_history_known' not in df.columns:
                                 df['is_history_known'] = True
                             if 'corrected_assignment' not in df.columns:
-                                df['corrected_assignment'] = False
+                                df['corrected_assignment'] = True
                             df = df.drop(labels=self.cca_df_colnames, axis=1)
                         else:
                             # Convert to ints since there were NaN
@@ -4017,6 +4054,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 if 'is_history_known' not in df.columns:
                     df['is_history_known'] = True
                 if 'corrected_assignment' not in df.columns:
+                    # Compatibility with those acdc_df analysed with prev vers.
                     df['corrected_assignment'] = True
                 cca_df = df[self.cca_df_colnames].copy()
         if return_df:
