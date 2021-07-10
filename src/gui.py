@@ -69,6 +69,8 @@ class Yeast_ACDC_GUI(QMainWindow):
     def __init__(self, app, parent=None):
         """Initializer."""
         super().__init__(parent)
+        self.loadLastSessionSettings()
+        
         self.app = app
         self.num_screens = len(app.screens())
 
@@ -126,6 +128,17 @@ class Yeast_ACDC_GUI(QMainWindow):
         mainContainer.setLayout(mainLayout)
 
         self.isEditActionsConnected = False
+
+    def loadLastSessionSettings(self):
+        src_path = os.path.dirname(os.path.realpath(__file__))
+        temp_path = os.path.join(src_path, 'temp')
+        csv_path = os.path.join(temp_path, 'settings.csv')
+        if os.path.exists(csv_path):
+            self.df_settings = pd.read_csv(csv_path, index_col='setting')
+        else:
+            self.df_settings = pd.DataFrame({'setting': ['is_bw_inverted'],
+                                             'value': [False]}
+                                           ).set_index('setting')
 
     def leaveEvent(self, event):
         if self.slideshowWin is not None:
@@ -2075,6 +2088,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             action = self.fontSizeMenu.addAction(action)
         # Manually edit cca menu
         editMenu.addAction(self.manuallyEditCcaAction)
+        editMenu.addAction(self.invertBwAction)
         # Help menu
         helpMenu = menuBar.addMenu(QIcon(":help-content.svg"), "&Help")
         helpMenu.addAction(self.helpContentAction)
@@ -2354,6 +2368,10 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         self.manuallyEditCcaAction = QAction(
                                 'Manually modify cell cycle annotations', self)
+        self.invertBwAction = QAction('Invert black/white', self)
+        self.invertBwAction.setCheckable(True)
+        checked = self.df_settings.at['is_bw_inverted', 'value']
+        self.invertBwAction.setChecked(True)
 
 
 
@@ -2401,6 +2419,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.reInitCcaAction.triggered.connect(self.reInitCcca)
         self.repeatAutoCcaAction.triggered.connect(self.repeatAutoCca)
         self.manuallyEditCcaAction.triggered.connect(self.manualEditCca)
+        self.invertBwAction.toggled.connect(self.invertBw)
         # Brush/Eraser size action
         self.brushSizeSpinbox.valueChanged.connect(self.brushSize_cb)
         # Mode
@@ -2412,6 +2431,14 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Drawing mode
         self.drawIDsContComboBox.currentIndexChanged.connect(
                                                 self.drawIDsContComboBox_cb)
+
+    def invertBw(self, checked):
+        self.updateALLimg()
+        self.df_settings.at['is_bw_inverted', 'value'] = checked
+        src_path = os.path.dirname(os.path.realpath(__file__))
+        temp_path = os.path.join(src_path, 'temp')
+        csv_path = os.path.join(temp_path, 'settings.csv')
+        self.df_settings.to_csv(csv_path)
 
     def changeFontSize(self, action):
         self.fontSize = f'{action.text()}pt'
@@ -4024,7 +4051,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 color = 'r'
                 bold = True
             else:
-                color = 'w'
+                color = 'w' if not self.invertBwAction.isChecked() else 'k'
                 bold = False
         else:
             df_ID = df.loc[ID]
@@ -4039,12 +4066,12 @@ class Yeast_ACDC_GUI(QMainWindow):
             emerged_now = emerg_frame_i == self.frame_i
             txt = f'{ccs}-{generation_num}'
             if ccs == 'G1':
-                c = 0.6
+                c = 0.6 if not self.invertBwAction.isChecked() else 1-0.6
                 alpha = 0.7
                 color = (255*c, 255*c, 255*c, 255*alpha)
                 bold = False
             elif ccs == 'S' and is_moth and not emerged_now:
-                color = 0.8
+                color = 0.8 if not self.invertBwAction.isChecked() else 1-0.8
                 bold = False
             elif ccs == 'S' and is_bud and not emerged_now:
                 color = 'r'
@@ -4478,6 +4505,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Cells channel (e.g. phase_contrast)
         img = self.data.img_data[self.frame_i]
         img = self.adjustBrightness(img, self.data.filename)
+        if self.invertBwAction.isChecked():
+            img = -img+img.max()
         gray_img_rgb = gray2rgb(img)
 
         # First fluo channel
@@ -4522,6 +4551,10 @@ class Yeast_ACDC_GUI(QMainWindow):
             cells_img = self.data.img_data[self.frame_i].copy()
         else:
             cells_img = image
+        cells_img = cells_img/cells_img.max()
+
+        if self.invertBwAction.isChecked():
+            cells_img = -cells_img+cells_img.max()
 
         if self.overlayButton.isChecked():
             img = self.get_overlay(setImg=False)
