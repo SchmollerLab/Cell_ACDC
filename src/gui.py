@@ -5153,6 +5153,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 openedOn.pop(-1)
         else:
             recentPaths = [exp_path]
+            openedOn = [datetime.datetime.now()]
         df = pd.DataFrame({'path': recentPaths,
                            'opened_last_on': openedOn})
         df.index.name = 'index'

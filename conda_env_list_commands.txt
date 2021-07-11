@@ -2,21 +2,20 @@ conda update conda
 conda clean --all
 conda create --name spotmax python=3.8.5
 conda activate spotmax
-conda install -c conda-forge pyqt
-conda install -c conda-forge pyqtgraph
+
+conda install matplotlib=3.1.2
+conda install scikit-image=0.17.2
+pip install PyQt5
+pip install pyqtgraph
+conda install tensorflow
 conda install pandas
 conda install pytables
-conda install -c conda-forge opencv
-conda install matplotlib==3.1.2
 conda install tqdm
 conda install natsort
-conda install scipy
-conda install scikit-image
-conda install -c conda-forge pyglet
-conda install seaborn
+pip install pyglet
 conda install numba
-conda install requests
-conda install -c conda-forge tensorflow
-conda install -c conda-forge munkres
-conda install scikit-learn
 conda install -c pytorch pytorch
+conda install seaborn
+conda install scikit-learn
+pip install opencv-python-headless
+pip install munkres
