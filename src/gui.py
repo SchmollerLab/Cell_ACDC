@@ -1496,7 +1496,8 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         is_history_known = self.cca_df.at[ID, 'is_history_known']
         relID = self.cca_df.at[ID, 'relative_ID']
-        relID_cca = self.getStatus_RelID_BeforeEmergence(ID, relID)
+        if relID in self.cca_df.index:
+            relID_cca = self.getStatus_RelID_BeforeEmergence(ID, relID)
 
         if is_history_known:
             # Save status of ID when emerged to allow undoing
@@ -1507,7 +1508,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         self.setHistoryKnowledge(ID, self.cca_df)
 
-        if relID in self.IDs:
+        if relID in self.cca_df.index:
             # If the cell with unknown history has a relative ID assigned to it
             # we set the cca of it to the status it had BEFORE the assignment
             self.cca_df.loc[relID] = relID_cca
