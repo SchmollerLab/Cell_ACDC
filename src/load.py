@@ -15,6 +15,7 @@ from natsort import natsorted
 import skimage
 import skimage.measure
 from PyQt5 import QtGui
+from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
     QApplication
 )
@@ -27,7 +28,9 @@ class load_frames_data:
                  load_acdc_df=True,
                  load_zyx_voxSize=True,
                  load_all_imgData=False,
-                 load_shifts=False):
+                 load_shifts=False,
+                 loadSegmInfo=True,
+                 first_call=True):
         self.path = path
         self.fluo_data_dict = {}
         self.images_path = os.path.dirname(path)
@@ -50,14 +53,6 @@ class load_frames_data:
                     f'a file that ends with either "{user_ch_name}"'
                 )
                 if parentQWidget is None:
-                    app = QApplication([])
-                    msgBox = QtGui.QMessageBox()
-                    msgBox.setWindowTitle(err_title)
-                    msgBox.setText(err_msg)
-                    msgBox.setIcon(msgBox.Critical)
-                    msgBox.setModal(True)
-                    msgBox.show()
-                    app.exec_()
                     raise FileNotFoundError(err_title)
                 else:
                     msg = QtGui.QMessageBox()
@@ -73,14 +68,6 @@ class load_frames_data:
                     f'"{user_ch_name}_aligned.npz" or the .tif phase contrast file'
                 )
                 if parentQWidget is None:
-                    app = QApplication([])
-                    msgBox = QtGui.QMessageBox()
-                    msgBox.setWindowTitle(err_title)
-                    msgBox.setText(err_msg)
-                    msgBox.setIcon(msgBox.Critical)
-                    msgBox.setModal(True)
-                    msgBox.show()
-                    app.exec_()
                     raise FileNotFoundError(err_title)
                 else:
                     msg = QtGui.QMessageBox()
@@ -105,14 +92,6 @@ class load_frames_data:
                     '\"phase_contrast.tif\"'
                 )
                 if parentQWidget is None:
-                    app = QApplication([])
-                    msgBox = QtGui.QMessageBox()
-                    msgBox.setWindowTitle(err_title)
-                    msgBox.setText(err_msg)
-                    msgBox.setIcon(msgBox.Critical)
-                    msgBox.setModal(True)
-                    msgBox.show()
-                    app.exec_()
                     raise FileNotFoundError(err_title)
                 else:
                     msg = QtGui.QMessageBox()
@@ -136,13 +115,14 @@ class load_frames_data:
             else:
                 self.zyx_vox_dim = None
                 zyx_vox_dim_found = False
-            (self.SizeT, self.SizeZ,
-            self.zyx_vox_dim) = self.inputsWidget(
-                SizeT=self.SizeT, SizeZ=self.SizeZ,
-                zyx_vox_dim=self.zyx_vox_dim,
-                zyx_vox_dim_found=zyx_vox_dim_found,
-                parent=parentQWidget
-            )
+            if first_call:
+                (self.SizeT, self.SizeZ,
+                self.zyx_vox_dim) = self.inputsWidget(
+                    SizeT=self.SizeT, SizeZ=self.SizeZ,
+                    zyx_vox_dim=self.zyx_vox_dim,
+                    zyx_vox_dim_found=zyx_vox_dim_found,
+                    parent=parentQWidget
+                )
         else:
             (self.SizeT, self.SizeZ,
             self.zyx_vox_dim) = self.inputsWidget(parent=parentQWidget)
@@ -186,12 +166,14 @@ class load_frames_data:
                 root.quit()
                 root.destroy()
         self.segm_data = None
+        self.segm_npy_path = None
         if load_segm_data:
             segm_npz_path, segm_found = self.substring_path(
                                            path, 'segm.npz', self.images_path)
             if not segm_found:
                 segm_npz_path, segm_found = self.substring_path(
                                            path, 'segm.npy', self.images_path)
+                self.segm_npy_path = segm_npz_path
             self.segm_found = segm_found
             if segm_found:
                 segm_data = np.load(segm_npz_path)
@@ -270,6 +252,15 @@ class load_frames_data:
             self.npy_paths = []
             self.npz_paths = []
 
+        self.segmInfo_df = None
+        if loadSegmInfo:
+            SegmInfo_path, SegmInfo_found = self.substring_path(
+                                              path, '_segmInfo.csv',
+                                              self.images_path)
+            if SegmInfo_found:
+                self.segmInfo_df = pd.read_csv(SegmInfo_path,
+                                               index_col='frame_i')
+
         self.loaded_shifts = None
         if load_shifts:
             for filename in os.listdir(self.images_path):
@@ -320,7 +311,7 @@ class load_frames_data:
         self.segm_npz_path = f'{base_path}_segm.npz'
         self.last_tracked_i_path = f'{base_path}_last_tracked_i.txt'
         self.acdc_output_csv_path = f'{base_path}_acdc_output.csv'
-        self.benchmarking_df_csv_path = f'{base_path}_benchmarking.csv'
+        self.segmInfo_df_csv_path = f'{base_path}_segmInfo.csv'
 
     def substring_path(self, path, substring, images_path):
         substring_found = False
@@ -370,18 +361,11 @@ class load_frames_data:
                     x = df.at['x_voxSize', 'values']
                     zyx_vox_dim = (round(z, 4), round(y, 4), round(x, 4))
 
-        if parent is None:
-            app = QApplication([])
-            win = apps.QDialogInputsForm(SizeT, SizeZ, zyx_vox_dim)
-            win.show()
-            app.setStyle(QtGui.QStyleFactory.create('Fusion'))
-            app.exec_()
-        else:
-            font = QtGui.QFont()
-            font.setPointSize(10)
-            win = apps.QDialogInputsForm(SizeT, SizeZ, zyx_vox_dim, parent=parent)
-            win.setFont(font)
-            win.exec_()
+        font = QtGui.QFont()
+        font.setPointSize(10)
+        win = apps.QDialogInputsForm(SizeT, SizeZ, zyx_vox_dim, parent=parent)
+        win.setFont(font)
+        win.exec_()
         self.cancel = win.cancel
 
         # Save values to load them again at the next session
@@ -718,15 +702,21 @@ class select_exp_folder:
                        title='Select Position folder',
                        CbLabel="Select \'Position_n\' folder to analyze:",
                        showinexplorer_button=False,
-                       full_paths=None, allow_abort=True):
+                       full_paths=None, allow_abort=True,
+                       show=False):
         font = QtGui.QFont()
         font.setPointSize(10)
-        win = apps.QDialogCombobox(title, values, '',
-                                   CbLabel=CbLabel, parent=parentQWidget)
+        win = apps.QtSelectPos(title, values, '',
+                               CbLabel=CbLabel, parent=parentQWidget)
         win.setFont(font)
+        toFront = win.windowState() & ~Qt.WindowMinimized | Qt.WindowActive
+        win.setWindowState(toFront)
+        win.activateWindow()
         win.exec_()
         self.was_aborted = win.cancel
-        self.selected_pos = [self.pos_foldernames[win.selectedItemIdx]]
+        if not win.cancel:
+            self.selected_pos = [self.pos_foldernames[idx]
+                                 for idx in win.selectedItemsIdx]
 
     def run_widget(self, values, current=0,
                    title='Select Position folder',

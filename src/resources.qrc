@@ -34,5 +34,8 @@
     <file alias="applyCrop.svg">resources/applyCrop.svg</file>
     <file alias="repeatAssign-motherbud.svg">resources/repeatAssign-motherbud.svg</file>
     <file alias="start.svg">resources/start.svg</file>
+    <file alias="interp.svg">resources/interp.svg</file>
+    <file alias="zback.svg">resources/zback.svg</file>
+    <file alias="zforw.svg">resources/zforw.svg</file>
 </qresource>
 </RCC>

@@ -2,6 +2,8 @@ import os
 import sys
 import re
 import numpy as np
+import pandas as pd
+import scipy.interpolate
 import skimage.io
 from tifffile.tifffile import TiffWriter, TiffFile
 
@@ -28,7 +30,7 @@ pg.setConfigOptions(imageAxisOrder='row-major')
 class dataPrep(QMainWindow):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Yeast ACDC - crop ROIs")
+        self.setWindowTitle("Yeast ACDC - data prep")
         self.setGeometry(100, 50, 850, 800)
 
         self.gui_createActions()
@@ -71,6 +73,22 @@ class dataPrep(QMainWindow):
         self.nextAction.setShortcut("right")
         self.jumpForwardAction.setShortcut("up")
         self.jumpBackwardAction.setShortcut("down")
+
+        self.ZbackAction = QAction(QIcon(":zback.svg"),
+                                "Use same z-slice from first frame to here",
+                                self)
+        self.ZbackAction.setEnabled(False)
+        self.ZforwAction = QAction(QIcon(":zforw.svg"),
+                                "Use same z-slice from here to last frame",
+                                self)
+        self.ZforwAction.setEnabled(False)
+
+        self.interpAction = QAction(QIcon(":interp.svg"),
+                                "Interpolate z-slice from first slice to here",
+                                self)
+        self.interpAction.setEnabled(False)
+
+
         self.okAction = QAction(QIcon(":applyCrop.svg"), "Crop!", self)
         self.okAction.setEnabled(False)
         self.startAction = QAction(QIcon(":start.svg"), "Start process!", self)
@@ -106,6 +124,11 @@ class dataPrep(QMainWindow):
         navigateToolbar.addAction(self.jumpBackwardAction)
         navigateToolbar.addAction(self.jumpForwardAction)
 
+        navigateToolbar.addAction(self.ZbackAction)
+        navigateToolbar.addAction(self.ZforwAction)
+        navigateToolbar.addAction(self.interpAction)
+
+
         self.ROIshapeComboBox = QComboBox()
         self.ROIshapeComboBox.addItems(['256x256'])
         ROIshapeLabel = QLabel('   ROI standard shape: ')
@@ -123,8 +146,11 @@ class dataPrep(QMainWindow):
         self.nextAction.triggered.connect(self.next_frame)
         self.jumpForwardAction.triggered.connect(self.skip10ahead_frames)
         self.jumpBackwardAction.triggered.connect(self.skip10back_frames)
-        self.okAction.triggered.connect(self.crop_and_save)
+        self.okAction.triggered.connect(self.save)
         self.startAction.triggered.connect(self.prepData)
+        self.interpAction.triggered.connect(self.interp_z)
+        self.ZbackAction.triggered.connect(self.useSameZ_fromHereBack)
+        self.ZforwAction.triggered.connect(self.useSameZ_fromHereForw)
 
     def gui_createStatusBar(self):
         self.statusbar = self.statusBar()
@@ -193,6 +219,7 @@ class dataPrep(QMainWindow):
         self.zSlice_scrollBar_img.setDisabled(True)
         _z_label = QLabel('z-slice  ')
         _z_label.setFont(_font)
+        self.z_label = _z_label
 
         self.img_Widglayout.addWidget(_t_label, 0, 0, alignment=Qt.AlignCenter)
         self.img_Widglayout.addWidget(self.frame_i_scrollBar_img, 0, 1, 1, 20)
@@ -222,7 +249,7 @@ class dataPrep(QMainWindow):
             self.frame_i += 1
         else:
             self.frame_i = 0
-        self.frame_i_scrollBar_img.setValue(self.frame_i)
+        self.frame_i_scrollBar_img.setValue(self.frame_i+1)
         self.update_img()
 
     def prev_frame(self):
@@ -230,7 +257,7 @@ class dataPrep(QMainWindow):
             self.frame_i -= 1
         else:
             self.frame_i = self.num_frames-1
-        self.frame_i_scrollBar_img.setValue(self.frame_i)
+        self.frame_i_scrollBar_img.setValue(self.frame_i+1)
         self.update_img()
 
     def skip10ahead_frames(self):
@@ -250,9 +277,17 @@ class dataPrep(QMainWindow):
     def update_img(self):
         self.frameLabel.setText(
                  f'Current frame = {self.frame_i+1}/{self.num_frames}')
-        self.img.setImage(self.data.img_data[self.frame_i])
+        img = self.data.img_data[self.frame_i].copy()
+        if self.data.SizeZ > 1:
+            z = self.data.segmInfo_df.at[self.frame_i, 'z_slice_used_dataPrep']
+            self.zSlice_scrollBar_img.setSliderPosition(z)
+            self.z_label.setText(f'z-slice  {z}/{self.data.SizeZ}')
+            img = img[z]
+        img = img/img.max()
+        self.img.setImage(img)
 
     def init_attr(self):
+
         self.frame_i = 0
 
         self.frame_i_scrollBar_img.setEnabled(True)
@@ -262,11 +297,20 @@ class dataPrep(QMainWindow):
 
         self.frame_i_scrollBar_img.sliderMoved.connect(self.t_scrollbarMoved)
 
-    def t_scrollbarMoved(self):
-        self.frame_i = self.frame_i_scrollBar_img.value()-1
+    def t_scrollbarMoved(self, t):
+        self.frame_i = t-1
         self.update_img()
 
-    def crop_and_save(self):
+    def crop(self, data):
+        x0, y0 = [int(round(c)) for c in self.roi.pos()]
+        w, h = [int(round(c)) for c in self.roi.size()]
+        if data.ndim == 4:
+            croppedData = data[:, :, y0:y0+h, x0:x0+w]
+        elif data.ndim == 3:
+            croppedData = data[:, y0:y0+h, x0:x0+w]
+        return croppedData
+
+    def save(self):
         msg = QtGui.QMessageBox()
         save_current = msg.question(
             self, 'Save data?', 'Do you want to save?',
@@ -274,23 +318,39 @@ class dataPrep(QMainWindow):
         )
         if msg.Yes:
             print('Saving data...')
-            x0, y0 = [int(round(c)) for c in self.roi.pos()]
-            w, h = [int(round(c)) for c in self.roi.size()]
-            croppedData = self.data.img_data[:, y0:y0+h, x0:x0+w]
+
+            if self.data.SizeZ > 1:
+                # Save segmInfo
+                self.data.segmInfo_df.to_csv(self.data.segmInfo_df_csv_path)
+
+            # Get crop shape and print it
+            data = self.data.img_data
+            croppedData = self.crop(data)
             print('Cropped data shape: ', croppedData.shape)
+
+            # Get metadata from tif
             with TiffFile(self.data.tif_path) as tif:
                 metadata = tif.imagej_metadata
+
+
+            # Save channels (npz AND tif)
             _zip = zip(self.data.tif_paths, self.npz_paths)
             for tif, npz in _zip:
-                npz_data = np.load(npz)['arr_0'][:, y0:y0+h, x0:x0+w]
+                data = np.load(npz)['arr_0']
+                npz_data = self.crop(data)
                 print('Saving: ', npz)
                 np.savez_compressed(npz, npz_data)
                 print('Saving: ', tif)
                 self.imagej_tiffwriter(tif, npz_data, metadata)
+
+            # Save segm.npz
             if self.data.segm_data is not None:
                 print('Saving: ', self.data.segm_npz_path)
-                croppedSegm = self.data.segm_data[:, y0:y0+h, x0:x0+w]
+                data = self.data.segm_data
+                croppedSegm = self.crop(data)
                 np.savez_compressed(self.data.segm_npz_path, croppedSegm)
+
+            # Correct acdc_df if present and save
             if self.data.acdc_df is not None:
                 print('Saving: ', self.data.acdc_output_csv_path)
                 df = self.data.acdc_df
@@ -316,8 +376,12 @@ class dataPrep(QMainWindow):
 
     def imagej_tiffwriter(self, new_path, data, metadata):
         with TiffWriter(new_path, imagej=True) as new_tif:
-            Z, Y, X = data.shape
-            data.shape = 1, Z, 1, Y, X, 1  # imageJ format should always have TZCYXS data shape
+            if self.data.SizeZ > 1:
+                T, Z, Y, X = data.shape
+            else:
+                T, Y, X = data.shape
+                Z = 1
+            data.shape = T, Z, 1, Y, X, 1  # imageJ format should always have TZCYXS data shape
             new_tif.save(data, metadata=metadata)
 
     def init_frames_data(self, frames_path, user_ch_name):
@@ -327,7 +391,8 @@ class dataPrep(QMainWindow):
                                      load_acdc_df=True,
                                      load_zyx_voxSize=False,
                                      load_all_imgData=True,
-                                     load_shifts=True)
+                                     load_shifts=True,
+                                     loadSegmInfo=True)
         if data is None:
             self.titleLabel.setText(
                 'File --> Open or Open recent to start the process',
@@ -348,9 +413,52 @@ class dataPrep(QMainWindow):
         print(f'Number of z-slices per frame = {SizeZ}')
 
         self.data = data
+        self.init_segmInfo_df()
         self.init_attr()
 
+    def init_segmInfo_df(self):
+        if self.data.segmInfo_df is None and self.data.SizeZ > 1:
+            mid_slice = int(self.data.SizeZ/2)
+            self.data.segmInfo_df = pd.DataFrame(
+                {'frame_i': range(self.num_frames),
+                 'z_slice_used_dataPrep': [mid_slice]*self.num_frames}
+            ).set_index('frame_i')
+        if self.data.SizeZ > 1:
+            self.zSlice_scrollBar_img.setDisabled(False)
+            self.zSlice_scrollBar_img.setMaximum(self.data.SizeZ)
+            try:
+                self.zSlice_scrollBar_img.sliderMoved.disconnect()
+            except:
+                pass
+            self.zSlice_scrollBar_img.sliderMoved.connect(self.update_z_slice)
+            self.interpAction.setEnabled(True)
+            self.ZbackAction.setEnabled(True)
+            self.ZforwAction.setEnabled(True)
+
+    def update_z_slice(self, z):
+        self.data.segmInfo_df.at[self.frame_i, 'z_slice_used_dataPrep'] = z
+        self.update_img()
+
+    def useSameZ_fromHereBack(self, event):
+        z = self.data.segmInfo_df.at[self.frame_i, 'z_slice_used_dataPrep']
+        self.data.segmInfo_df.loc[:self.frame_i-1, 'z_slice_used_dataPrep'] = z
+
+    def useSameZ_fromHereForw(self, event):
+        z = self.data.segmInfo_df.at[self.frame_i, 'z_slice_used_dataPrep']
+        self.data.segmInfo_df.loc[self.frame_i:, 'z_slice_used_dataPrep'] = z
+
+    def interp_z(self, event):
+        x0, z0 = 0, self.data.segmInfo_df.at[0, 'z_slice_used_dataPrep']
+        x1 = self.frame_i
+        z1 = self.data.segmInfo_df.at[x1, 'z_slice_used_dataPrep']
+        f = scipy.interpolate.interp1d([x0, x1], [z0, z1])
+        xx = np.arange(0, self.frame_i)
+        zz = np.round(f(xx)).astype(int)
+        self.data.segmInfo_df.loc[:self.frame_i-1, 'z_slice_used_dataPrep'] = zz
+
+
     def prepData(self, event):
+        self.data.segmInfo_df.to_csv(self.data.segmInfo_df_csv_path)
         self.npy_to_npz()
         self.alignData(self.user_ch_name)
         self.addROIrect()
@@ -369,7 +477,7 @@ class dataPrep(QMainWindow):
         self.roi.setSize([w, h])
 
     def addROIrect(self):
-        _, Y, X = self.data.img_data.shape
+        Y, X = self.img.image.shape
 
         max_size = round(int(np.log2(min([Y, X])/16)))
         items = [f'{16*(2**i)}x{16*(2**i)}' for i in range(1, max_size+1)]
@@ -400,12 +508,12 @@ class dataPrep(QMainWindow):
                      pen=pg.mkPen(color='r'),
                      maxBounds=QRectF(QRect(0,0,X,Y)))
         ## handles scaling horizontally around center
-        roi.addScaleHandle([1, 0.5], [0.5, 0.5])
-        roi.addScaleHandle([0, 0.5], [0.5, 0.5])
+        roi.addScaleHandle([1, 0.5], [0, 0.5])
+        roi.addScaleHandle([0, 0.5], [1, 0.5])
 
         ## handles scaling vertically from opposite edge
-        roi.addScaleHandle([0.5, 0], [0.5, 0.5])
-        roi.addScaleHandle([0.5, 1], [0.5, 0.5])
+        roi.addScaleHandle([0.5, 0], [0.5, 1])
+        roi.addScaleHandle([0.5, 1], [0.5, 0])
 
         ## handles scaling both vertically and horizontally
         roi.addScaleHandle([1, 1], [0, 0])
@@ -423,16 +531,24 @@ class dataPrep(QMainWindow):
     def alignData(self, user_ch_name):
         print('Aligning data if needed...')
         _zip = zip(self.data.tif_paths, self.data.npz_paths)
+        aligned = False
         for i, (tif, npz) in enumerate(_zip):
+            doAlign = npz is None or self.data.loaded_shifts is None
+
             # Align based on user_ch_name
-            if npz is None and tif.find(user_ch_name) != -1:
+            if doAlign and tif.find(user_ch_name) != -1:
+                aligned = True
                 print('Aligning: ', tif)
                 tif_data = skimage.io.imread(tif)
-                align_func = (core.align_frames_3D if self.data.SizeZ>1
-                              else core.align_frames_2D)
+                if self.data.SizeZ>1:
+                    align_func = core.align_frames_3D
+                    zz = self.data.segmInfo_df['z_slice_used_dataPrep'].to_list()
+                else:
+                    align_func = core.align_frames_2D
+                    zz = None
                 aligned_frames, shifts = align_func(
                                           tif_data,
-                                          slices=None,
+                                          slices=zz,
                                           user_shifts=self.data.loaded_shifts,
                                           pbar=True
                 )
@@ -446,17 +562,24 @@ class dataPrep(QMainWindow):
 
         _zip = zip(self.data.tif_paths, self.data.npz_paths)
         for i, (tif, npz) in enumerate(_zip):
+            doAlign = npz is None or aligned
             # Align the other channels
-            if npz is None and tif.find(user_ch_name) == -1:
+            if doAlign and tif.find(user_ch_name) == -1:
+                print('Aligning: ', tif)
                 tif_data = skimage.io.imread(tif)
-                align_func = (core.align_frames_3D if self.data.SizeZ>1
-                              else core.align_frames_2D)
+                if self.data.SizeZ>1:
+                    align_func = core.align_frames_3D
+                    zz = self.data.segmInfo_df['z_slice_used_dataPrep'].to_list()
+                else:
+                    align_func = core.align_frames_2D
+                    zz = None
                 aligned_frames, shifts = align_func(
                                           tif_data,
-                                          slices=None,
+                                          slices=zz,
                                           user_shifts=self.data.loaded_shifts
                 )
                 _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
+                print('Saving: ', _npz)
                 np.savez_compressed(_npz, aligned_frames)
                 self.npz_paths[i] = _npz
         print('Done.')
@@ -469,6 +592,7 @@ class dataPrep(QMainWindow):
             if npz is None and npy is None:
                 continue
             elif npy is not None and npz is None:
+                print('Converting: ', npy)
                 _data = np.load(npy)
                 _npz = f'{os.path.splitext(npy)[0]}.npz'
                 np.savez_compressed(_npz, _data)
@@ -476,6 +600,11 @@ class dataPrep(QMainWindow):
                 self.npz_paths[i] = _npz
             elif npy is not None and npz is not None:
                 os.remove(npy)
+        # Convert segm.npy to segm.npz
+        if self.data.segm_npy_path is not None:
+            print('Converting: ', self.data.segm_npy_path)
+            np.savez_compressed(self.data.segm_npz_path, self.data.segm_data)
+            os.remove(self.data.segm_npy_path)
         print('Done.')
 
 

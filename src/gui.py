@@ -2116,6 +2116,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             action = self.fontSizeMenu.addAction(action)
         # Manually edit cca menu
         editMenu.addAction(self.manuallyEditCcaAction)
+        editMenu.addAction(self.enableSmartTrackAction)
         editMenu.addAction(self.invertBwAction)
         # Help menu
         helpMenu = menuBar.addMenu(QIcon(":help-content.svg"), "&Help")
@@ -2401,6 +2402,11 @@ class Yeast_ACDC_GUI(QMainWindow):
         checked = bool(self.df_settings.at['is_bw_inverted', 'value'])
         self.invertBwAction.setChecked(checked)
 
+        self.enableSmartTrackAction = QAction(
+            'Smart handling of enabling/disabling tracking', self)
+        self.enableSmartTrackAction.setChecked(True)
+        self.enableSmartTrackAction.setCheckable(True)
+
 
 
     def gui_connectActions(self):
@@ -2448,6 +2454,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.repeatAutoCcaAction.triggered.connect(self.repeatAutoCca)
         self.manuallyEditCcaAction.triggered.connect(self.manualEditCca)
         self.invertBwAction.toggled.connect(self.invertBw)
+        self.enableSmartTrackAction.toggled.connect(self.enableSmartTrack)
         # Brush/Eraser size action
         self.brushSizeSpinbox.valueChanged.connect(self.brushSize_cb)
         # Mode
@@ -2459,6 +2466,25 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Drawing mode
         self.drawIDsContComboBox.currentIndexChanged.connect(
                                                 self.drawIDsContComboBox_cb)
+
+    def enableSmartTrack(self, checked):
+        # Disable tracking for already visited frames
+        if self.allData_li[self.frame_i]['labels'] is not None:
+            self.disableTrackingCheckBox.setChecked(True)
+        else:
+            self.disableTrackingCheckBox.setChecked(False)
+
+        if checked:
+            self.UserEnforced_DisabledTracking = False
+            self.UserEnforced_Tracking = False
+        else:
+            if self.disableTrackingCheckBox.isChecked():
+                self.UserEnforced_DisabledTracking = True
+                self.UserEnforced_Tracking = False
+            else:
+                self.UserEnforced_DisabledTracking = False
+                self.UserEnforced_Tracking = True
+
 
     def invertBw(self, checked):
         self.updateALLimg()
@@ -2677,12 +2703,12 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.app.setOverrideCursor(Qt.WaitCursor)
         # Store undo state before modifying stuff
         self.storeUndoRedoStates(False)
-        labData = np.load(self.data.segm_npz_path)[self.frame_i].copy()
+        labData = np.load(self.data.segm_npz_path).copy()
         # Keep compatibility with .npy and .npz files
         try:
-            self.lab = labData['arr_0']
+            self.lab = labData['arr_0'][self.frame_i]
         except:
-            self.lab = labData
+            self.lab = labData[self.frame_i]
         self.update_rp()
         self.updateALLimg()
         self.app.restoreOverrideCursor()
@@ -3131,6 +3157,11 @@ class Yeast_ACDC_GUI(QMainWindow):
         # of the user choice. This way user con enforce tracking
         # NOTE: I know two booleans doing the same thing is overkill
         # but the code is more readable when we actually need them
+
+        # Turn off smart tracking
+        self.enableSmartTrackAction.toggled.disconnect()
+        self.enableSmartTrackAction.setChecked(False)
+        self.enableSmartTrackAction.toggled.connect(self.enableSmartTrack)
         if self.disableTrackingCheckBox.isChecked():
             self.UserEnforced_DisabledTracking = True
             self.UserEnforced_Tracking = False
@@ -3143,6 +3174,8 @@ class Yeast_ACDC_GUI(QMainWindow):
             'On all future frames that you will visit tracking '
             'will be automatically performed unless you explicitly '
             'disable tracking by clicking "Disable tracking" again.\n\n'
+            'To reactive smart handling of enabling/disabling tracking '
+            'go to Edit --> Smart handling of enabling/disabling tracking.\n\n'
             'If you need to repeat tracking ONLY on the current frame you '
             'can use the "Repeat tracking" button on the toolbar instead.\n\n'
             'Are you sure you want to proceed with ENABLING tracking from now on?'

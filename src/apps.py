@@ -24,11 +24,6 @@ from pyglet.canvas import Display
 from skimage.color import gray2rgba, label2rgb
 from skimage.exposure import equalize_adapthist
 from skimage import img_as_float
-from skimage.filters import (
-    threshold_otsu, threshold_yen, threshold_isodata,
-    threshold_li, threshold_mean, threshold_triangle,
-    threshold_minimum
-)
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
@@ -49,6 +44,8 @@ from PyQt5.QtWidgets import (
 )
 
 import qrc_resources
+
+pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
 
 class my_paint_app:
     def __init__(self, label_img, ID, rp, eps_percent=0.01, del_small_obj=False,
@@ -932,9 +929,6 @@ class nonModalTempQMessage(QWidget):
         self.setLayout(layout)
 
 
-
-
-
 class CellsSlideshow_GUI(QMainWindow):
     """Main Window."""
 
@@ -1218,7 +1212,8 @@ class YeaZ_ParamsDialog(QDialog):
         self.close()
 
 class QLineEditDialog(QDialog):
-    def __init__(self, title='Entry messagebox', msg='Entry value'):
+    def __init__(self, title='Entry messagebox', msg='Entry value',
+                       defaultTxt=''):
         self.cancel = True
 
         super().__init__()
@@ -1241,6 +1236,7 @@ class QLineEditDialog(QDialog):
         ID_QLineEdit = QLineEdit()
         ID_QLineEdit.setFont(_font)
         ID_QLineEdit.setAlignment(Qt.AlignCenter)
+        ID_QLineEdit.setText(defaultTxt)
         self.ID_QLineEdit = ID_QLineEdit
 
         okButton = QPushButton('Ok')
@@ -2024,10 +2020,99 @@ class win_size:
             except:
                 pass
 
+class QtSelectPos(QDialog):
+    def __init__(self, title, items, informativeText,
+                 CbLabel='Select value:  ', parent=None):
+        self.cancel = True
+        self.selectedItemsText = ''
+        self.selectedItemsIdx = None
+        self.items = items
+        super().__init__(parent)
+        self.setWindowTitle(title)
+
+        mainLayout = QVBoxLayout()
+        topLayout = QHBoxLayout()
+        self.topLayout = topLayout
+        bottomLayout = QHBoxLayout()
+
+        if informativeText:
+            infoLabel = QLabel(informativeText)
+            mainLayout.addWidget(infoLabel, alignment=Qt.AlignCenter)
+
+        label = QLabel(CbLabel)
+        topLayout.addWidget(label)
+
+        combobox = QComboBox()
+        combobox.addItems(items)
+        self.ComboBox = combobox
+        topLayout.addWidget(combobox)
+        topLayout.setContentsMargins(0, 10, 0, 0)
+
+        okButton = QPushButton('Ok')
+        okButton.setShortcut(Qt.Key_Enter)
+        bottomLayout.addWidget(okButton, alignment=Qt.AlignRight)
+
+        cancelButton = QPushButton('Cancel')
+        bottomLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
+
+        multiPosButton = QPushButton('Multiple selection')
+        multiPosButton.setCheckable(True)
+        self.multiPosButton = multiPosButton
+        bottomLayout.addWidget(multiPosButton, alignment=Qt.AlignLeft)
+
+        listBox = QListWidget()
+        listBox.addItems(items)
+        listBox.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        listBox.setCurrentRow(0)
+        self.ListBox = listBox
+
+        bottomLayout.setContentsMargins(0, 10, 0, 0)
+
+        mainLayout.addLayout(topLayout)
+        mainLayout.addLayout(bottomLayout)
+        self.setLayout(mainLayout)
+
+        self.setModal(True)
+
+        # Connect events
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.close)
+        multiPosButton.toggled.connect(self.toggleMultiSelection)
+
+    def toggleMultiSelection(self, checked):
+        if checked:
+            self.multiPosButton.setText('Single selection')
+            self.topLayout.removeWidget(self.ComboBox)
+            self.topLayout.addWidget(self.ListBox)
+        else:
+            self.multiPosButton.setText('Multiple selection')
+            self.topLayout.removeWidget(self.ListBox)
+            self.topLayout.addWidget(self.ComboBox)
+
+    def ok_cb(self, event):
+        self.cancel = False
+        if self.multiPosButton.isChecked():
+            selectedItems = self.ListBox.selectedItems()
+            self.selectedItemsText = [item.text() for item in selectedItems]
+            self.selectedItemsIdx = [self.items.index(txt)
+                                     for txt in self.selectedItemsText]
+        else:
+            self.selectedItemsText = [self.ComboBox.currentText()]
+            self.selectedItemsIdx = [self.ComboBox.currentIndex()]
+        self.close()
+
 if __name__ == '__main__':
     # Create the application
     app = QApplication(sys.argv)
-    win = QDialogListbox('test', 'Select which position you want to analyse', ['Position_1', 'Position_2', 'Position_3'])
+    title='Select Position folder'
+    CbLabel="Select \'Position_n\' folder to analyze:"
+    win = QtSelectPos(title, ['Position_1 (last_tracked_i=10)',
+                              'Position_2', 'Position_3'],
+                      '', CbLabel=CbLabel, parent=None)
+    font = QtGui.QFont()
+    font.setPointSize(10)
+    win.setFont(font)
     app.setStyle(QtGui.QStyleFactory.create('Fusion'))
     win.show()
     app.exec_()
+    print(win.selectedItemsIdx)
