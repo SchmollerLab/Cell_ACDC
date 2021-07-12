@@ -97,6 +97,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.data_loaded = False
         self.setWindowTitle("Yeast ACDC - Segm&Track")
         self.setGeometry(mainWinLeft, mainWinTop, mainWinWidth, mainWinHeight)
+        self.setWindowIcon(QIcon(":assign-motherbud.svg"))
 
         self.checkableButtons = []
 
@@ -1776,7 +1777,22 @@ class Yeast_ACDC_GUI(QMainWindow):
             is_bud_existing = budID in cca_df_i.index
             if not is_bud_existing:
                 # Bud was not emerged yet
-                return cca_df_i.loc[curr_mothID]
+                if curr_mothID in cca_df_i.index:
+                    return cca_df_i.loc[curr_mothID]
+                else:
+                    # The bud emerged together with the mother because
+                    # they appeared together from outside of the fov
+                    # and they were trated as new IDs bud in S0
+                    return pd.Series({
+                        'cell_cycle_stage': 'S',
+                        'generation_num': 0,
+                        'relative_ID': -1,
+                        'relationship': 'bud',
+                        'emerg_frame_i': i+1,
+                        'division_frame_i': -1,
+                        'is_history_known': True,
+                        'corrected_assignment': False
+                    })
 
 
     def assignBudMoth(self):
@@ -3686,40 +3702,36 @@ class Yeast_ACDC_GUI(QMainWindow):
         curr_df = self.allData_li[self.frame_i]['acdc_df']
         if curr_df is not None:
             if 'cell_cycle_stage' in curr_df.columns and not enforceAll:
-                new_IDs = [ID for ID in self.new_IDs
-                           if curr_df.at[ID, 'is_history_known']
-                           and curr_df.at[ID, 'cell_cycle_stage'] == 'S']
+                self.new_IDs = [ID for ID in self.new_IDs
+                                if curr_df.at[ID, 'is_history_known']
+                                and curr_df.at[ID, 'cell_cycle_stage'] == 'S']
                 lastVisited = True
+                COPY NEW IDS THAT WE DONT repeat into prev_cca_df WITH their
+                relative
 
         # Use stored cca_df and do not modify it with automatic stuff
         if self.cca_df is not None and not enforceAll and not lastVisited:
             return notEnoughG1Cells, proceed
 
         # Get previous dataframe
-        df = self.allData_li[self.frame_i-1]['acdc_df']
-        prev_cca_df = df[self.cca_df_colnames].copy()
-
-        # For those IDs that we don't repeat auto cca we copy
-        # what we already have stored
-        if lastVisited:
-            for ID in self.new_IDs:
-                if ID not in new_IDs:
-                    prev_cca_df.loc[ID] = curr_df.loc[ID]
-            self.new_IDs = new_IDs
+        if self.cca_df is None:
+            df = self.allData_li[self.frame_i-1]['acdc_df']
+            prev_cca_df = df[self.cca_df_colnames].copy()
+        else:
+            prev_cca_df = curr_df[self.cca_df_colnames].copy()
 
         # Keep only correctedAssignIDs if requested
         # For the last visited frame we perform assignment again only on
         # IDs where we didn't manually correct assignment
         if lastVisited and not enforceAll:
             correctedAssignIDs = curr_df[curr_df['corrected_assignment']].index
-            new_IDs = [ID for ID in self.new_IDs
-                       if ID not in correctedAssignIDs]
-            # For those IDs that we don't repeat auto cca we copy
-            # what we already have stored
-            for ID in self.new_IDs:
-                if ID not in new_IDs:
-                    prev_cca_df.loc[ID] = curr_df.loc[ID]
-            self.new_IDs = new_IDs
+            self.new_IDs = [ID for ID in self.new_IDs
+                            if ID not in correctedAssignIDs]
+            # COPY NEW IDS THAT WE DONT repeat into prev_cca_df WITH their
+            # relative
+            #
+            # COPY CELLS IN G1 FROM curr_df into prev_cca_df because
+            # we need to keep division info
 
         # Set current cca_df equal to previous and proceed with assigning new IDs
         self.cca_df = prev_cca_df
@@ -3759,7 +3771,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 proceed = True
                 # Annotate the new IDs with unknown history
                 for ID in self.new_IDs:
-                    self.cca_df.loc[ID] = {
+                    self.cca_df.loc[ID] = pd.Series({
                         'cell_cycle_stage': 'G1',
                         'generation_num': 2,
                         'relative_ID': -1,
@@ -3768,7 +3780,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                         'division_frame_i': -1,
                         'is_history_known': False,
                         'corrected_assignment': False
-                    }
+                    })
                     cca_df_ID = self.getStatusKnownHistoryBud(ID)
                     self.ccaStatus_whenEmerged[ID] = cca_df_ID
             else:
@@ -3806,7 +3818,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.cca_df.at[mothID, 'relative_ID'] = ID
             self.cca_df.at[mothID, 'cell_cycle_stage'] = 'S'
 
-            self.cca_df.loc[budID] = {
+            self.cca_df.loc[budID] = pd.Series({
                 'cell_cycle_stage': 'S',
                 'generation_num': 0,
                 'relative_ID': mothID,
@@ -3815,7 +3827,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 'division_frame_i': -1,
                 'is_history_known': True,
                 'corrected_assignment': False
-            }
+            })
 
         self.store_cca_df()
         proceed = True
@@ -4117,6 +4129,9 @@ class Yeast_ACDC_GUI(QMainWindow):
                 bold = False
             elif ccs == 'S' and is_bud and emerged_now:
                 color = 'r'
+                bold = True
+            elif is_moth and emerged_now:
+                c = 0.6 if not self.invertBwAction.isChecked() else 1-0.6
                 bold = True
 
             if not is_history_known:
