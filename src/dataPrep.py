@@ -569,7 +569,7 @@ class dataPrep(QMainWindow):
         filenames = os.listdir(images_path)
         if ch_name_selector.is_first_call:
             ch_names, warn = ch_name_selector.get_available_channels(filenames)
-            ch_name_selector.QtPrompt(ch_names, parent=self)
+            ch_name_selector.QtPrompt(self, ch_names)
             if ch_name_selector.was_aborted:
                 self.titleLabel.setText(
                     'File --> Open or Open recent to start the process',
