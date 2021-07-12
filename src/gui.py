@@ -2703,13 +2703,16 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.app.setOverrideCursor(Qt.WaitCursor)
         # Store undo state before modifying stuff
         self.storeUndoRedoStates(False)
-        labData = np.load(self.data.segm_npz_path).copy()
+        labData = np.load(self.data.segm_npz_path)
         # Keep compatibility with .npy and .npz files
         try:
-            self.lab = labData['arr_0'][self.frame_i]
+            lab = labData['arr_0'][self.frame_i]
         except:
-            self.lab = labData[self.frame_i]
-        self.update_rp()
+            lab = labData[self.frame_i]
+        self.data.segm_data[self.frame_i] = lab.copy()
+        self.get_data()
+        self.update_rp_metadata(draw=False)
+        self.tracking()
         self.updateALLimg()
         self.app.restoreOverrideCursor()
 
@@ -3170,7 +3173,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
             'You requested to explicitly ENABLE tracking. This will '
             'overwrite the default behaviour of not tracking already '
-            'visited/checked frames.\n '
+            'visited/checked frames.\n\n'
             'On all future frames that you will visit tracking '
             'will be automatically performed unless you explicitly '
             'disable tracking by clicking "Disable tracking" again.\n\n'
