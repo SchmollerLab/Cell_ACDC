@@ -3706,19 +3706,10 @@ class Yeast_ACDC_GUI(QMainWindow):
                                 if curr_df.at[ID, 'is_history_known']
                                 and curr_df.at[ID, 'cell_cycle_stage'] == 'S']
                 lastVisited = True
-                COPY NEW IDS THAT WE DONT repeat into prev_cca_df WITH their
-                relative
 
         # Use stored cca_df and do not modify it with automatic stuff
         if self.cca_df is not None and not enforceAll and not lastVisited:
             return notEnoughG1Cells, proceed
-
-        # Get previous dataframe
-        if self.cca_df is None:
-            df = self.allData_li[self.frame_i-1]['acdc_df']
-            prev_cca_df = df[self.cca_df_colnames].copy()
-        else:
-            prev_cca_df = curr_df[self.cca_df_colnames].copy()
 
         # Keep only correctedAssignIDs if requested
         # For the last visited frame we perform assignment again only on
@@ -3727,14 +3718,14 @@ class Yeast_ACDC_GUI(QMainWindow):
             correctedAssignIDs = curr_df[curr_df['corrected_assignment']].index
             self.new_IDs = [ID for ID in self.new_IDs
                             if ID not in correctedAssignIDs]
-            # COPY NEW IDS THAT WE DONT repeat into prev_cca_df WITH their
-            # relative
-            #
-            # COPY CELLS IN G1 FROM curr_df into prev_cca_df because
-            # we need to keep division info
 
-        # Set current cca_df equal to previous and proceed with assigning new IDs
-        self.cca_df = prev_cca_df
+        # Get previous dataframe
+        acdc_df = self.allData_li[self.frame_i-1]['acdc_df']
+        prev_cca_df = acdc_df[self.cca_df_colnames].copy()
+        if self.cca_df is None:
+            self.cca_df = prev_cca_df
+        else:
+            self.cca_df = curr_df[self.cca_df_colnames].copy()
 
         # If there are no new IDs we are done
         if not self.new_IDs:
@@ -3743,9 +3734,18 @@ class Yeast_ACDC_GUI(QMainWindow):
             return notEnoughG1Cells, proceed
 
         # Check if there are enough cells in G1
-        df_G1 = self.cca_df[self.cca_df['cell_cycle_stage']=='G1']
-        IDsCellsG1 = list(df_G1.index)
-        numCellsG1 = len(df_G1)
+        prev_df_G1 = prev_cca_df[prev_cca_df['cell_cycle_stage']=='G1']
+        IDsCellsG1 = set(prev_df_G1.index)
+        if lastVisited or enforceAll:
+            # If we are repeating auto cca for last visited frame
+            # or the user requested repetition then we also add the cells
+            # in G1 that we already now at current frame
+            df_G1 = self.cca_df[self.cca_df['cell_cycle_stage']=='G1']
+            IDsCellsG1.update(df_G1.index)
+
+        IDsCellsG1 = list(IDsCellsG1)
+
+        numCellsG1 = len(IDsCellsG1)
         numNewCells = len(self.new_IDs)
         if numCellsG1 < numNewCells:
             self.highlightNewIDs_ccaFailed()
@@ -5023,16 +5023,16 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.openAction.setEnabled(True)
                 return
 
-            select_folder.run_widget(values, allow_abort=False)
-            pos_foldername = select_folder.selected_pos[0]
-            images_path = f'{exp_path}/{pos_foldername}/Images'
-
+            select_folder.QtPrompt(self, values, allow_abort=False)
             if select_folder.was_aborted:
                 self.titleLabel.setText(
                     'File --> Open or Open recent to start the process',
                     color='w')
                 self.openAction.setEnabled(True)
                 return
+
+            pos_foldername = select_folder.selected_pos[0]
+            images_path = f'{exp_path}/{pos_foldername}/Images'
 
         elif is_pos_folder:
             pos_foldername = os.path.basename(exp_path)
@@ -5056,7 +5056,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         filenames = os.listdir(images_path)
         if ch_name_selector.is_first_call:
             ch_names, warn = ch_name_selector.get_available_channels(filenames)
-            ch_name_selector.QtPrompt(ch_names, parent=self)
+            ch_name_selector.QtPrompt(self, ch_names)
             if ch_name_selector.was_aborted:
                 self.titleLabel.setText(
                     'File --> Open or Open recent to start the process',

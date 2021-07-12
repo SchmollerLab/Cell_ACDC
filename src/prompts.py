@@ -12,7 +12,7 @@ from skimage.color import label2rgb, gray2rgb
 from skimage.measure import regionprops
 from skimage import img_as_float
 from natsort import natsorted
-
+from PyQt5 import QtGui
 from PyQt5.QtWidgets import (
     QApplication
 )
@@ -592,31 +592,19 @@ class select_channel_name:
             with open(txt_path, 'w') as txt:
                 txt.write(selection)
 
-    def QtPrompt(self, channel_names, informativeText='', parent=None):
-        if parent is None:
-            app = QApplication([])
-            win = apps.QDialogCombobox(
-                                  'Select channel name',
-                                  channel_names,
-                                  informativeText,
-                                  CbLabel='Select channel name:  ',
-                                  parent=None)
-            win.show()
-            app.exec_()
-            if self.allow_abort and win.cancel:
-                self._abort()
-            elif win.cancel:
-                self.was_aborted = True
-        else:
-            win = apps.QDialogCombobox(
-                                  'Select channel name',
-                                  channel_names,
-                                  informativeText,
-                                  CbLabel='Select channel name:  ',
-                                  parent=parent)
-            win.exec_()
-            if win.cancel:
-                self.was_aborted = True
+    def QtPrompt(self, parent, channel_names, informativeText=''):
+        font = QtGui.QFont()
+        font.setPointSize(10)
+        win = apps.QDialogCombobox(
+                              'Select channel name',
+                              channel_names,
+                              informativeText,
+                              CbLabel='Select channel name:  ',
+                              parent=parent)
+        win.setFont(font)
+        win.exec_()
+        if win.cancel:
+            self.was_aborted = True
 
         self.channel_name = win.selectedItemText
         self._saved_last_selection(self.channel_name)

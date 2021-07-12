@@ -368,7 +368,7 @@ class load_frames_data:
                     z = df.at['z_voxSize', 'values']
                     y = df.at['y_voxSize', 'values']
                     x = df.at['x_voxSize', 'values']
-                    zyx_vox_dim = (z, y, x)
+                    zyx_vox_dim = (round(z, 4), round(y, 4), round(x, 4))
 
         if parent is None:
             app = QApplication([])
@@ -377,7 +377,10 @@ class load_frames_data:
             app.setStyle(QtGui.QStyleFactory.create('Fusion'))
             app.exec_()
         else:
+            font = QtGui.QFont()
+            font.setPointSize(10)
             win = apps.QDialogInputsForm(SizeT, SizeZ, zyx_vox_dim, parent=parent)
+            win.setFont(font)
             win.exec_()
         self.cancel = win.cancel
 
@@ -710,6 +713,21 @@ class beyond_listdir_pos:
         return all_exp_info
 
 class select_exp_folder:
+    def QtPrompt(self, parentQWidget, values,
+                       current=0,
+                       title='Select Position folder',
+                       CbLabel="Select \'Position_n\' folder to analyze:",
+                       showinexplorer_button=False,
+                       full_paths=None, allow_abort=True):
+        font = QtGui.QFont()
+        font.setPointSize(10)
+        win = apps.QDialogCombobox(title, values, '',
+                                   CbLabel=CbLabel, parent=parentQWidget)
+        win.setFont(font)
+        win.exec_()
+        self.was_aborted = win.cancel
+        self.selected_pos = [self.pos_foldernames[win.selectedItemIdx]]
+
     def run_widget(self, values, current=0,
                    title='Select Position folder',
                    label_txt="Select \'Position_n\' folder to analyze:",

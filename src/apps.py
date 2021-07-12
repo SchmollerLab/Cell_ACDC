@@ -532,10 +532,11 @@ class my_paint_app:
         self.sub_win.root.destroy()
 
 class QDialogCombobox(QDialog):
-    def __init__(self, title, channel_names, informativeText,
+    def __init__(self, title, ComboBoxItems, informativeText,
                  CbLabel='Select value:  ', parent=None):
         self.cancel = True
         self.selectedItemText = ''
+        self.selectedItemIdx = None
         super().__init__(parent)
         self.setWindowTitle(title)
 
@@ -551,7 +552,7 @@ class QDialogCombobox(QDialog):
         topLayout.addWidget(label)
 
         combobox = QComboBox()
-        combobox.addItems(channel_names)
+        combobox.addItems(ComboBoxItems)
         self.ComboBox = combobox
         topLayout.addWidget(combobox)
         topLayout.setContentsMargins(0, 10, 0, 0)
@@ -578,6 +579,7 @@ class QDialogCombobox(QDialog):
     def ok_cb(self, event):
         self.cancel = False
         self.selectedItemText = self.ComboBox.currentText()
+        self.selectedItemIdx = self.ComboBox.currentIndex()
         self.close()
 
 
