@@ -30,6 +30,7 @@ if (czi_folder_name != "CZIs") {
 path = File.getParent(czi_folder);
 wpath= replace(path, "/", "\\");
 osInfo = getInfo("os.name");
+WindowsIdx = indexOf(osInfo, "Windows");
 if (WindowsIdx != -1)
  {
 	exec("cmd /c C:\\Windows\\explorer.exe \""+ wpath +"\"");
@@ -76,10 +77,6 @@ for (s = 0; s < sEnd; s++) {
 }
 
 print("All done!");
-
-macro_path = File.directory();
-close_all_macro_path = macro_path+"CloseAllWindows.ijm";
-runMacro(close_all_macro_path,true);
 
 function nss(n, numPos){
 	ss = "";
