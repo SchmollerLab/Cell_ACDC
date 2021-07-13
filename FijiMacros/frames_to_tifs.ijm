@@ -15,7 +15,7 @@ Ext.setId(id);
 
 //Get file information
 Ext.getSeriesCount(seriesCount);
-name = File.getNameWithoutExtension(id);
+name = File.getName(id);
 print("Number of series in "+name+" is: "+seriesCount);
 
 //Create folder
