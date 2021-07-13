@@ -359,11 +359,12 @@ class load_frames_data:
                     z = df.at['z_voxSize', 'values']
                     y = df.at['y_voxSize', 'values']
                     x = df.at['x_voxSize', 'values']
-                    zyx_vox_dim = (round(z, 4), round(y, 4), round(x, 4))
+                    zyx_vox_dim = (z, y, x)
 
         font = QtGui.QFont()
         font.setPointSize(10)
-        win = apps.QDialogInputsForm(SizeT, SizeZ, zyx_vox_dim, parent=parent)
+        win = apps.QDialogInputsForm(SizeT, SizeZ, zyx_vox_dim,
+                                     parent=parent, font=font)
         win.setFont(font)
         win.exec_()
         self.cancel = win.cancel

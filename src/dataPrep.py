@@ -214,9 +214,9 @@ class dataPrep(QMainWindow):
         _t_label.setFont(_font)
 
 
-        self.zSlice_scrollBar_img = QScrollBar(Qt.Horizontal)
-        self.zSlice_scrollBar_img.setFixedHeight(20)
-        self.zSlice_scrollBar_img.setDisabled(True)
+        self.zSlice_scrollBar = QScrollBar(Qt.Horizontal)
+        self.zSlice_scrollBar.setFixedHeight(20)
+        self.zSlice_scrollBar.setDisabled(True)
         _z_label = QLabel('z-slice  ')
         _z_label.setFont(_font)
         self.z_label = _z_label
@@ -225,7 +225,7 @@ class dataPrep(QMainWindow):
         self.img_Widglayout.addWidget(self.frame_i_scrollBar_img, 0, 1, 1, 20)
 
         self.img_Widglayout.addWidget(_z_label, 1, 0, alignment=Qt.AlignCenter)
-        self.img_Widglayout.addWidget(self.zSlice_scrollBar_img, 1, 1, 1, 20)
+        self.img_Widglayout.addWidget(self.zSlice_scrollBar, 1, 1, 1, 20)
 
         self.img_Widglayout.setContentsMargins(100, 0, 50, 0)
 
@@ -280,7 +280,7 @@ class dataPrep(QMainWindow):
         img = self.data.img_data[self.frame_i].copy()
         if self.data.SizeZ > 1:
             z = self.data.segmInfo_df.at[self.frame_i, 'z_slice_used_dataPrep']
-            self.zSlice_scrollBar_img.setSliderPosition(z)
+            self.zSlice_scrollBar.setSliderPosition(z)
             self.z_label.setText(f'z-slice  {z}/{self.data.SizeZ}')
             img = img[z]
         img = img/img.max()
@@ -424,13 +424,13 @@ class dataPrep(QMainWindow):
                  'z_slice_used_dataPrep': [mid_slice]*self.num_frames}
             ).set_index('frame_i')
         if self.data.SizeZ > 1:
-            self.zSlice_scrollBar_img.setDisabled(False)
-            self.zSlice_scrollBar_img.setMaximum(self.data.SizeZ)
+            self.zSlice_scrollBar.setDisabled(False)
+            self.zSlice_scrollBar.setMaximum(self.data.SizeZ)
             try:
-                self.zSlice_scrollBar_img.sliderMoved.disconnect()
+                self.zSlice_scrollBar.sliderMoved.disconnect()
             except:
                 pass
-            self.zSlice_scrollBar_img.sliderMoved.connect(self.update_z_slice)
+            self.zSlice_scrollBar.sliderMoved.connect(self.update_z_slice)
             self.interpAction.setEnabled(True)
             self.ZbackAction.setEnabled(True)
             self.ZforwAction.setEnabled(True)
@@ -582,6 +582,16 @@ class dataPrep(QMainWindow):
                 print('Saving: ', _npz)
                 np.savez_compressed(_npz, aligned_frames)
                 self.npz_paths[i] = _npz
+        # Align segmentation data accordingly
+        if self.data.segm_data is not None and aligned:
+            print('Aligning: ', self.data.segm_npz_path)
+            self.data.segm_data, shifts = core.align_frames_2D(
+                                         self.data.segm_data,
+                                         slices=None,
+                                         user_shifts=self.data.loaded_shifts
+            )
+            print('Saving: ', self.data.segm_npz_path)
+            np.savez_compressed(self.data.segm_npz_path, self.data.segm_data)
         print('Done.')
 
     def npy_to_npz(self):

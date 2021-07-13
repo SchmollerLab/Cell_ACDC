@@ -174,7 +174,7 @@ for images_path in images_paths:
                   f'_segmInfo.csv file not found. Skipping this position.')
             continue
         else:
-            zz = data.segmInfo_df.loc['z_slice_used_dataPrep'].to_list()
+            zz = data.segmInfo_df['z_slice_used_dataPrep'].to_list()
 
     if first_call:
         # Ask stop frame

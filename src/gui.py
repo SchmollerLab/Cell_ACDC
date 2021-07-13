@@ -233,17 +233,18 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         # z-slice scrollbar
         row += 1
-        self.zSlice_scrollBar_img1 = QScrollBar(Qt.Horizontal)
-        self.zSlice_scrollBar_img1.setFixedHeight(20)
-        self.zSlice_scrollBar_img1.setDisabled(True)
+        self.zSlice_scrollBar = QScrollBar(Qt.Horizontal)
+        self.zSlice_scrollBar.setFixedHeight(20)
+        self.zSlice_scrollBar.setDisabled(True)
         _z_label = QLabel('z-slice  ')
         _font = QtGui.QFont()
         _font.setPointSize(10)
         _z_label.setFont(_font)
+        self.z_label = _z_label
         self.img1_Widglayout.addWidget(
                 _z_label, row, 0, alignment=Qt.AlignRight)
         self.img1_Widglayout.addWidget(
-                self.zSlice_scrollBar_img1, row, 1, 1, 10)
+                self.zSlice_scrollBar, row, 1, 1, 10)
 
         # Fluorescent overlay alpha
         row += 2
@@ -2115,6 +2116,8 @@ class Yeast_ACDC_GUI(QMainWindow):
             fontActionGroup.addAction(action)
             action = self.fontSizeMenu.addAction(action)
         # Manually edit cca menu
+        filtersMenu = editMenu.addMenu("Filters")
+        filtersMenu.addAction(self.gaussBlurAction)
         editMenu.addAction(self.manuallyEditCcaAction)
         editMenu.addAction(self.enableSmartTrackAction)
         editMenu.addAction(self.invertBwAction)
@@ -2407,6 +2410,9 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.enableSmartTrackAction.setChecked(True)
         self.enableSmartTrackAction.setCheckable(True)
 
+        self.gaussBlurAction = QAction('Gaussian blur...', self)
+        self.gaussBlurAction.setCheckable(True)
+
 
 
     def gui_connectActions(self):
@@ -2466,6 +2472,24 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Drawing mode
         self.drawIDsContComboBox.currentIndexChanged.connect(
                                                 self.drawIDsContComboBox_cb)
+        self.gaussBlurAction.toggled.connect(self.gaussBlur)
+
+    def gaussBlur(self, checked):
+        if checked:
+            font = QtGui.QFont()
+            font.setPointSize(10)
+            self.gaussWin = apps.gaussBlurDialog(self)
+            self.gaussWin.setFont(font)
+            self.gaussWin.show()
+        else:
+            self.gaussWin.close()
+            self.gaussWin = None
+
+
+    def setData(self, data):
+        if self.data.SizeZ > 1:
+            pass
+
 
     def enableSmartTrack(self, checked):
         # Disable tracking for already visited frames
@@ -2532,8 +2556,9 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.app.setOverrideCursor(Qt.WaitCursor)
         for fluo_path in fluo_paths:
             filename, _ = os.path.splitext(os.path.basename(fluo_path))
-            fluo_data = self.load_fluo_data(fluo_path)
+            fluo_data, ol_data_2D = self.load_fluo_data(fluo_path)
             self.data.fluo_data_dict[filename] = fluo_data
+            self.ol_data_dict[filename] = ol_data_2D
         self.overlayButton.setStyleSheet('background-color: #A7FAC7')
         self.app.restoreOverrideCursor()
 
@@ -2673,7 +2698,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             )
             selectFluo.exec_()
             keys = selectFluo.selectedItemsText
-            key = items[0]
+            key = keys[0]
             if selectFluo.cancel or not keys:
                 return
             else:
@@ -3085,7 +3110,7 @@ class Yeast_ACDC_GUI(QMainWindow):
     def getCurrentState(self):
         i = self.frame_i
         c = self.UndoCount
-        self.cells_img = self.UndoRedoStates[i][c]['image'].copy()
+        self.ax1Image = self.UndoRedoStates[i][c]['image'].copy()
         self.lab = self.UndoRedoStates[i][c]['labels'].copy()
         self.editID_info = self.UndoRedoStates[i][c]['editID_info'].copy()
         self.binnedIDs = self.UndoRedoStates[i][c]['binnedIDs'].copy()
@@ -3129,7 +3154,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.getCurrentState()
             self.update_rp()
             self.checkIDs_LostNew()
-            self.updateALLimg(image=self.cells_img)
+            self.updateALLimg(image=self.ax1Image)
 
         if not self.UndoCount < len(self.UndoRedoStates[self.frame_i])-1:
             # We have undone all available states
@@ -3148,7 +3173,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.getCurrentState()
             self.update_rp()
             self.checkIDs_LostNew()
-            self.updateALLimg(image=self.cells_img)
+            self.updateALLimg(image=self.ax1Image)
 
         if not self.UndoCount > 0:
             # We have redone all available states
@@ -3242,8 +3267,10 @@ class Yeast_ACDC_GUI(QMainWindow):
         thresh = self.nn.threshold(pred)
         lab = self.segment.segment(thresh, pred, min_distance=5).astype(int)
         self.is_first_call_YeaZ = False
-        self.lab = lab
-        self.update_rp()
+        self.data.segmInfo_df.at[self.frame_i, 'resegmented_in_gui'] = True
+        self.data.segm_data[self.frame_i] = lab.copy()
+        self.get_data()
+        self.update_rp_metadata(draw=False)
         self.tracking()
         self.updateALLimg()
         t1 = time.time()
@@ -3273,8 +3300,10 @@ class Yeast_ACDC_GUI(QMainWindow):
                                                    do_3D=False,
                                                    progress=None)
         self.is_first_call_cellpose = False
-        self.lab = lab
-        self.update_rp()
+        self.data.segmInfo_df.at[self.frame_i, 'resegmented_in_gui'] = True
+        self.data.segm_data[self.frame_i] = lab.copy()
+        self.get_data()
+        self.update_rp_metadata(draw=False)
         self.tracking()
         self.updateALLimg()
         t1 = time.time()
@@ -3396,7 +3425,32 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.data = data
 
         self.gui_createGraphicsItems()
+        self.init_segmInfo_df()
         self.init_attr(max_ID=data.segm_data.max())
+
+    def init_segmInfo_df(self):
+        if self.data.segmInfo_df is None and self.data.SizeZ > 1:
+            self.openAction.setEnabled(True)
+            self.titleLabel.setText(
+                '..._segmInfo.csv file not found. You need to run "dataPrep.py script first"',
+                color='w')
+            return
+        if self.data.SizeZ > 1:
+            self.data.segmInfo_df['z_slice_used_gui'] = (
+                            self.data.segmInfo_df['z_slice_used_dataPrep']
+            )
+            self.data.segmInfo_df['resegmented_in_gui'] = False
+            self.zSlice_scrollBar.setDisabled(False)
+            self.zSlice_scrollBar.setMaximum(self.data.SizeZ)
+            try:
+                self.zSlice_scrollBar.sliderMoved.disconnect()
+            except:
+                pass
+            self.zSlice_scrollBar.sliderMoved.connect(self.update_z_slice)
+
+    def update_z_slice(self, z):
+        self.data.segmInfo_df.at[self.frame_i, 'z_slice_used_gui'] = z
+        self.updateALLimg(only_ax1=True)
 
     def clear_prevItems(self):
         # Clear data from those items that have data and are not present in
@@ -3427,12 +3481,14 @@ class Yeast_ACDC_GUI(QMainWindow):
                 BudMothLine.setData([], [])
 
     def addFluoChNameContextMenuAction(self, ch_name):
-        action = QAction(self)
-        action.setText(ch_name)
-        action.setCheckable(True)
-        self.chNamesQActionGroup.addAction(action)
-        action.setChecked(True)
-        self.fluoDataChNameActions.append(action)
+        allTexts = [action.text() for action in self.chNamesQActionGroup.actions()]
+        if ch_name not in allTexts:
+            action = QAction(self)
+            action.setText(ch_name)
+            action.setCheckable(True)
+            self.chNamesQActionGroup.addAction(action)
+            action.setChecked(True)
+            self.fluoDataChNameActions.append(action)
 
     def init_attr(self, max_ID=10):
         # Decision on what to do with changes to future frames attr
@@ -3466,6 +3522,8 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         self.clickedOnBud = False
         self.blinkBold = False
+        self.ol_data_dict = {}
+        self.gaussWin = None
 
         # Colormap
         self.setOverlayColors()
@@ -3660,7 +3718,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.MultiBudMoth_msg.setText(multiBudInfo_format)
             self.MultiBudMoth_msg.setIcon(self.MultiBudMoth_msg.Warning)
             self.MultiBudMoth_msg.setDefaultButton(self.MultiBudMoth_msg.Ok)
-            self.MultiBudMoth_msg.show()
+            self.MultiBudMoth_msg.exec_()
         if draw:
             self.highlightmultiBudMoth()
 
@@ -3736,12 +3794,18 @@ class Yeast_ACDC_GUI(QMainWindow):
         # "better" mother for those non manually corrected buds
         lastVisited = False
         curr_df = self.allData_li[self.frame_i]['acdc_df']
+        next_df = self.allData_li[self.frame_i+1]['acdc_df']
         if curr_df is not None:
             if 'cell_cycle_stage' in curr_df.columns and not enforceAll:
                 self.new_IDs = [ID for ID in self.new_IDs
                                 if curr_df.at[ID, 'is_history_known']
                                 and curr_df.at[ID, 'cell_cycle_stage'] == 'S']
-                lastVisited = True
+                if next_df is None:
+                    lastVisited = True
+                else:
+                    if 'cell_cycle_stage' not in next_df.columns:
+                        lastVisited = True
+                        
 
         # Use stored cca_df and do not modify it with automatic stuff
         if self.cca_df is not None and not enforceAll and not lastVisited:
@@ -3769,13 +3833,14 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.store_cca_df()
             return notEnoughG1Cells, proceed
 
-        # Check if there are enough cells in G1
+        # Get cells in G1 (exclude dead) and check if there are enough cells in G1
         prev_df_G1 = prev_cca_df[prev_cca_df['cell_cycle_stage']=='G1']
+        prev_df_G1 = prev_df_G1[~acdc_df.loc[prev_df_G1.index]['is_cell_dead']]
         IDsCellsG1 = set(prev_df_G1.index)
         if lastVisited or enforceAll:
             # If we are repeating auto cca for last visited frame
             # or the user requested repetition then we also add the cells
-            # in G1 that we already now at current frame
+            # in G1 that we already know at current frame
             df_G1 = self.cca_df[self.cca_df['cell_cycle_stage']=='G1']
             IDsCellsG1.update(df_G1.index)
 
@@ -4488,8 +4553,12 @@ class Yeast_ACDC_GUI(QMainWindow):
                 )
                 return None
         fluo_data = skimage.img_as_float(fluo_data)
+        if self.data.SizeZ > 1:
+            ol_data = fluo_data.max(axis=1)
+        else:
+            ol_data = fluo_data.copy()
 
-        return fluo_data
+        return fluo_data, ol_data
 
     def setOverlayColors(self):
         self.overlayRGBs = [(255, 255, 0),
@@ -4509,7 +4578,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                         'Select fluorescent image(s) to overlay',
                         'Select fluorescent image(s) to overlay\n'
                         'You can select one or more images',
-                        items
+                        items, cancelText='Browse'
                     )
                     selectFluo.exec_()
                     keys = selectFluo.selectedItemsText
@@ -4520,14 +4589,16 @@ class Yeast_ACDC_GUI(QMainWindow):
                 else:
                     prompt = False
                     keys = items
-                ol_data = {key:self.data.fluo_data_dict[key]
-                           for key in keys}
+
+                ol_data = {key:self.ol_data_dict[key]
+                           for i, key in enumerate(keys)}
                 ol_colors = {key:self.overlayRGBs[i]
                              for i, key in enumerate(keys)}
                 for key in keys:
                     fluoChName = key.split(self.data.basename)[-1][1:]
                     self.addFluoChNameContextMenuAction(fluoChName)
                 self.manualContrastKey = key
+
             if prompt:
                 ol_paths = prompts.multi_files_dialog(
                       title='Select one or multiple image files to overlay',
@@ -4541,9 +4612,10 @@ class Yeast_ACDC_GUI(QMainWindow):
                 ol_colors = {}
                 for i, ol_path in enumerate(ol_paths):
                     filename, _ = os.path.splitext(os.path.basename(ol_path))
-                    fluo_data = self.load_fluo_data(ol_path)
+                    fluo_data, ol_data_2D = self.load_fluo_data(ol_path)
                     self.data.fluo_data_dict[filename] = fluo_data
-                    ol_data[filename] = fluo_data
+                    self.ol_data_dict[filename] = ol_data_2D
+                    ol_data[filename] = ol_data_2D
                     ol_colors[filename] = self.overlayRGBs[i]
                     fluoChName = filename.split(self.data.basename)[-1][1:]
                     self.addFluoChNameContextMenuAction(fluoChName)
@@ -4564,7 +4636,9 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.alphaScrollBar.setDisabled(False)
             self.colorButton.setDisabled(False)
         else:
-            img = self.data.img_data[self.frame_i]
+            self.create_chNamesQActionGroup(self.user_ch_name)
+            self.fluoDataChNameActions = []
+            img = self.getImage()
             self.img1.setImage(img)
             self.hist.sigLookupTableChanged.disconnect()
             self.hist.setImageItem(self.img1)
@@ -4589,25 +4663,32 @@ class Yeast_ACDC_GUI(QMainWindow):
             rescaled_img = img/img.max()
         return rescaled_img
 
-    def get_overlay(self, setImg=True):
+    def getOlImg(self, key):
+        ol_img = self.ol_data[key][self.frame_i].copy()
+        return ol_img
+
+    def get_overlay(self, LUTItem=None, cells_img=None, setImg=True):
         keys = list(self.ol_data.keys())
 
         # Cells channel (e.g. phase_contrast)
-        img = self.data.img_data[self.frame_i]
-        img = self.adjustBrightness(img, self.data.filename)
-        if self.invertBwAction.isChecked():
-            img = -img+img.max()
+        if cells_img is None:
+            cells_img = self.getImage()
+            if self.invertBwAction.isChecked():
+                img = -img+img.max()
+
+        img = self.adjustBrightness(cells_img, self.data.filename)
         gray_img_rgb = gray2rgb(img)
 
         # First fluo channel
-        ol_img = self.ol_data[keys[0]][self.frame_i]
+        ol_img = self.getOlImg(keys[0])
+
         ol_img = self.adjustBrightness(ol_img, keys[0])
         color = self.ol_colors[keys[0]]
         overlay = self._overlay(gray_img_rgb, ol_img, color)
 
         # Add additional overlays
         for key in keys[1:]:
-            ol_img = self.ol_data[key][self.frame_i]
+            ol_img = self.getOlImg(key)
             self.adjustBrightness(ol_img, key)
             color = self.ol_colors[key]
             overlay = self._overlay(overlay, ol_img, color)
@@ -4633,27 +4714,44 @@ class Yeast_ACDC_GUI(QMainWindow):
     def updateOverlay(self, button):
         self.get_overlay(setImg=True)
 
-    def updateALLimg(self, image=None, never_visited=True):
+    def getImage(self):
+        if self.data.SizeZ > 1:
+            z = self.data.segmInfo_df.at[self.frame_i, 'z_slice_used_gui']
+            self.zSlice_scrollBar.setSliderPosition(z)
+            self.z_label.setText(f'z-slice  {z}/{self.data.SizeZ}')
+            cells_img = self.data.img_data[self.frame_i][z].copy()
+        else:
+            cells_img = self.data.img_data[self.frame_i].copy()
+        return cells_img
+
+    def updateALLimg(self, image=None, never_visited=True,
+                     only_ax1=False, updateBlur=True):
         self.frameLabel.setText(
                  f'Current frame = {self.frame_i+1}/{self.num_segm_frames}')
 
         if image is None:
-            cells_img = self.data.img_data[self.frame_i].copy()
+            cells_img = self.getImage()
+            cells_img = cells_img/cells_img.max()
+            if self.invertBwAction.isChecked():
+                cells_img = -cells_img+cells_img.max()
+            if self.overlayButton.isChecked():
+                img = self.get_overlay(cells_img, setImg=False)
+            else:
+                img = cells_img
         else:
-            cells_img = image
-        cells_img = cells_img/cells_img.max()
-
-        if self.invertBwAction.isChecked():
-            cells_img = -cells_img+cells_img.max()
-
-        if self.overlayButton.isChecked():
-            img = self.get_overlay(setImg=False)
-        else:
-            img = cells_img
-
-        lab = self.lab
+            img = image
 
         self.img1.setImage(img)
+
+        if self.gaussWin is not None and updateBlur:
+            self.gaussWin.storeData()
+            self.gaussWin.getData()
+            self.gaussWin.apply()
+
+        if only_ax1:
+            return
+
+        lab = self.lab
         self.img2.setImage(lab)
         self.updateLookuptable()
 
@@ -5142,6 +5240,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.init_frames_data(img_path, user_ch_name)
         self.create_chNamesQActionGroup(user_ch_name)
 
+        self.user_ch_name = user_ch_name
+
         # Ask whether to load fluorescent images
         msg = QtGui.QMessageBox()
         load_fluo = msg.question(
@@ -5163,8 +5263,9 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.app.setOverrideCursor(Qt.WaitCursor)
             for fluo_path in fluo_paths:
                 filename, _ = os.path.splitext(os.path.basename(fluo_path))
-                fluo_data = self.load_fluo_data(fluo_path)
+                fluo_data, ol_data_2D = self.load_fluo_data(fluo_path)
                 self.data.fluo_data_dict[filename] = fluo_data
+                self.ol_data_dict[filename] = ol_data_2D
             self.overlayButton.setStyleSheet('background-color: #A7FAC7')
             self.app.restoreOverrideCursor()
 

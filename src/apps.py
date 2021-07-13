@@ -11,6 +11,7 @@ import traceback
 from collections import OrderedDict
 from MyWidgets import Slider, Button, MyRadioButtons
 from skimage.measure import label, regionprops
+import skimage.filters
 import skimage.measure
 import skimage.morphology
 import skimage.exposure
@@ -34,13 +35,13 @@ import matplotlib.ticker as ticker
 
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui
-from PyQt5.QtGui import QIcon
+from PyQt5.QtGui import QIcon, QFontMetrics
 from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtWidgets import (
     QAction, QApplication, QMainWindow, QMenu, QLabel, QToolBar,
     QScrollBar, QWidget, QVBoxLayout, QLineEdit, QPushButton,
     QHBoxLayout, QDialog, QFormLayout, QListWidget, QAbstractItemView,
-    QButtonGroup, QCheckBox, QSizePolicy, QComboBox
+    QButtonGroup, QCheckBox, QSizePolicy, QComboBox, QSlider
 )
 
 import qrc_resources
@@ -581,7 +582,8 @@ class QDialogCombobox(QDialog):
 
 
 class QDialogListbox(QDialog):
-    def __init__(self, title, text, items, multiSelection=True):
+    def __init__(self, title, text, items, cancelText='Cancel',
+                 multiSelection=True):
         self.cancel = True
         super().__init__()
         self.setWindowTitle(title)
@@ -612,7 +614,7 @@ class QDialogListbox(QDialog):
         okButton.setShortcut(Qt.Key_Enter)
         bottomLayout.addWidget(okButton, alignment=Qt.AlignRight)
 
-        cancelButton = QPushButton('Cancel')
+        cancelButton = QPushButton(cancelText)
         # cancelButton.setShortcut(Qt.Key_Escape)
         bottomLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
         bottomLayout.setContentsMargins(0, 10, 0, 0)
@@ -639,7 +641,7 @@ class QDialogListbox(QDialog):
         self.close()
 
 class QDialogInputsForm(QDialog):
-    def __init__(self, SizeT, SizeZ, zyx_vox_dim, parent=None):
+    def __init__(self, SizeT, SizeZ, zyx_vox_dim, parent=None, font=None):
         self.cancel = True
         self.zyx_vox_dim = zyx_vox_dim
         super().__init__(parent)
@@ -656,17 +658,29 @@ class QDialogInputsForm(QDialog):
                               'For 2D images leave Z to 1', QLineEdit())
 
         self.SizeT_entry = formLayout.itemAt(0, 1).widget()
-        self.SizeT_entry.setText(f'{SizeT}')
+        txt = f'{SizeT}'
+        self.SizeT_entry.setText(txt)
         self.SizeT_entry.setAlignment(Qt.AlignCenter)
 
         self.SizeZ_entry = formLayout.itemAt(1, 1).widget()
-        self.SizeZ_entry.setText(f'{SizeZ}')
+        txt = f'{SizeZ}'
+        self.SizeZ_entry.setText(txt)
         self.SizeZ_entry.setAlignment(Qt.AlignCenter)
 
         if zyx_vox_dim is not None:
             self.zyx_vox_dim_entry = formLayout.itemAt(2, 1).widget()
-            self.zyx_vox_dim_entry.setText(', '.join([str(v) for v in zyx_vox_dim]))
+            txt = ', '.join([str(v) for v in zyx_vox_dim])
+            self.zyx_vox_dim_entry.setText(txt)
             self.zyx_vox_dim_entry.setAlignment(Qt.AlignCenter)
+            if font is not None:
+                # Scale to largest content
+                fm = QFontMetrics(font)
+                w = fm.width(txt)+10
+                self.SizeT_entry.setFixedWidth(w)
+                self.SizeZ_entry.setFixedWidth(w)
+                self.zyx_vox_dim_entry.setFixedWidth(w)
+
+        self.adjustSize()
 
         okButton = QPushButton('Ok')
         okButton.setShortcut(Qt.Key_Enter)
@@ -744,6 +758,139 @@ class QDialogInputsForm(QDialog):
     def cancel_cb(self, event):
         self.cancel = True
         self.close()
+
+class gaussBlurDialog(QDialog):
+    def __init__(self, mainWindow):
+        super().__init__()
+        self.cancel = True
+        self.mainWindow = mainWindow
+
+        items = [mainWindow.data.filename]
+        try:
+            items.extend(list(mainWindow.ol_data_dict.keys()))
+        except:
+            pass
+
+        self.keys = items
+
+        self.setWindowTitle('Gaussian blur sigma')
+
+        mainLayout = QVBoxLayout()
+        formLayout = QFormLayout()
+        buttonsLayout = QHBoxLayout()
+
+        self.channelsComboBox = QComboBox()
+        self.channelsComboBox.addItems(items)
+        mainLayout.addWidget(self.channelsComboBox)
+
+        formLayout.addRow('Gaussian filter sigma:  ', QLineEdit())
+        formLayout.setContentsMargins(0, 10, 0, 10)
+
+        self.sigma_entry = formLayout.itemAt(0, 1).widget()
+        self.sigma_entry.setAlignment(Qt.AlignCenter)
+
+        self.sigmaSlider = QSlider(Qt.Horizontal)
+        self.sigmaSlider.setMinimum(1)
+        self.sigmaSlider.setMaximum(100)
+        self.sigmaSlider.setValue(20)
+        self.sigma = 1.0
+        self.sigmaSlider.setTickPosition(QSlider.TicksBelow)
+        self.sigmaSlider.setTickInterval(10)
+
+        okButton = QPushButton('Ok')
+        okButton.setShortcut(Qt.Key_Enter)
+
+        cancelButton = QPushButton('Cancel')
+
+        buttonsLayout.addWidget(okButton, alignment=Qt.AlignRight)
+        buttonsLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
+        buttonsLayout.setContentsMargins(0, 10, 0, 0)
+
+        mainLayout.addLayout(formLayout)
+        mainLayout.addWidget(self.sigmaSlider)
+        mainLayout.addLayout(buttonsLayout)
+
+        self.sigmaSlider.sliderMoved.connect(self.sigmaSliderMoved)
+        self.channelsComboBox.currentTextChanged.connect(self.updateChannel)
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.cancel_cb)
+
+        self.setLayout(mainLayout)
+
+        self.storeData()
+        self.getData()
+        self.apply()
+
+    def storeData(self):
+        self.raw_fluo_dict = {}
+        for key in self.keys:
+            if key.find(self.mainWindow.user_ch_name) != -1:
+                self.raw_img = self.mainWindow.getImage().copy()
+            else:
+                fluo_img = self.mainWindow.getOlImg(key)
+                self.raw_fluo_dict[key] = fluo_img.copy()
+
+    def updateChannel(self, key):
+        self.getData()
+        self.apply()
+
+    def getData(self):
+        key = self.channelsComboBox.currentText()
+        if key.find(self.mainWindow.user_ch_name) != -1:
+            img = self.mainWindow.getImage()
+            data = self.mainWindow.data.img_data
+        else:
+            img = self.mainWindow.getOlImg(key)
+            data = self.mainWindow.ol_data[key]
+
+        self.img = img
+        self.frame_i = self.mainWindow.frame_i
+        self.data = data
+
+    def apply(self):
+        blurred = skimage.filters.gaussian(self.img, sigma=self.sigma)
+        self.data[self.frame_i] = blurred
+        self.mainWindow.updateALLimg(only_ax1=True, updateBlur=False)
+
+    def sigmaSliderMoved(self, intVal):
+        self.sigma = intVal/20
+        self.sigma_entry.setText(f'{self.sigma}')
+        self.apply()
+
+
+    def ok_cb(self, event):
+        self.cancel = False
+        msg = QtGui.QMessageBox()
+        apply = msg.question(
+            self, 'Apply to all frames?',
+            'Apply to all {self.num_segm_frames} frames (NOT undoable)?',
+            msg.Yes | msg.No | msg.Cancel)
+        if apply == msg.Yes:
+            data_copy = self.data.copy()
+            for i, img in enumerate(data_copy):
+                img = skimage.filters.gaussian(self.img, sigma=self.sigma)
+                self.data[self.frame_i] = img
+            self.close()
+        elif apply == msg.No:
+            self.close()
+        elif apply == msg.Cancel:
+            return
+
+    def cancel_cb(self, event):
+        self.cancel = True
+        self.close()
+
+    def closeEvent(self, event):
+        if self.cancel:
+            for key in self.keys:
+                if key.find(self.mainWindow.user_ch_name) != -1:
+                    self.mainWindow.data.img_data[self.frame_i] = self.raw_img
+                else:
+                    self.mainWindow.ol_data = self.raw_fluo_dict[key]
+                pass
+            self.mainWindow.updateALLimg(only_ax1=True, updateBlur=False)
+
+
 
 
 class FutureFramesAction_QDialog(QDialog):
@@ -2104,13 +2251,15 @@ class QtSelectPos(QDialog):
 if __name__ == '__main__':
     # Create the application
     app = QApplication(sys.argv)
-    title='Select Position folder'
-    CbLabel="Select \'Position_n\' folder to analyze:"
-    win = QtSelectPos(title, ['Position_1 (last_tracked_i=10)',
-                              'Position_2', 'Position_3'],
-                      '', CbLabel=CbLabel, parent=None)
+
+    # title='Select Position folder'
+    # CbLabel="Select \'Position_n\' folder to analyze:"
+    # win = QtSelectPos(title, ['Position_1 (last_tracked_i=10)',
+    #                           'Position_2', 'Position_3'],
+    #                   '', CbLabel=CbLabel, parent=None)
     font = QtGui.QFont()
     font.setPointSize(10)
+    win = gaussBlurDialog(['mNeon', 'phase'])
     win.setFont(font)
     app.setStyle(QtGui.QStyleFactory.create('Fusion'))
     win.show()
