@@ -173,7 +173,8 @@ class load_frames_data:
             if not segm_found:
                 segm_npz_path, segm_found = self.substring_path(
                                            path, 'segm.npy', self.images_path)
-                self.segm_npy_path = segm_npz_path
+                if segm_found:
+                    self.segm_npy_path = segm_npz_path
             self.segm_found = segm_found
             if segm_found:
                 segm_data = np.load(segm_npz_path)

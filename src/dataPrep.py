@@ -458,9 +458,9 @@ class dataPrep(QMainWindow):
 
 
     def prepData(self, event):
-        self.data.segmInfo_df.to_csv(self.data.segmInfo_df_csv_path)
         self.npy_to_npz()
         self.alignData(self.user_ch_name)
+        self.data.segmInfo_df.to_csv(self.data.segmInfo_df_csv_path)
         self.addROIrect()
         self.okAction.setEnabled(True)
         self.titleLabel.setText(
@@ -583,7 +583,7 @@ class dataPrep(QMainWindow):
                 np.savez_compressed(_npz, aligned_frames)
                 self.npz_paths[i] = _npz
         # Align segmentation data accordingly
-        if self.data.segm_data is not None and aligned:
+        if self.data.segm_found and aligned:
             print('Aligning: ', self.data.segm_npz_path)
             self.data.segm_data, shifts = core.align_frames_2D(
                                          self.data.segm_data,

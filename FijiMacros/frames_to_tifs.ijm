@@ -1,6 +1,6 @@
 //Channels names
 //channels = newArray("mNeon","mKate","phase_contr");
-channels = newArray("AlexaFluor","phase_contr","DAPI","Cy3");
+channels = newArray("phase_contr","mCitrine");
 
 macro_path = File.directory();
 
@@ -21,13 +21,17 @@ print("Number of series in "+name+" is: "+seriesCount);
 //Create folder
 path = File.getParent(id);
 wpath= replace(path, "/", "\\");
-exec("cmd /c C:\\Windows\\explorer.exe \""+ wpath +"\"");
-// folder = File.getNameWithoutExtension(path)+"/TIFFs/s";
-MIA = path+"/MIA_"+name;
+osInfo = getInfo("os.name");
+WindowsIdx = indexOf(osInfo, "Windows");
+if (WindowsIdx != -1)
+{
+	exec("cmd /c C:\\Windows\\explorer.exe \""+ wpath +"\"");
+} else {
+	exec("open " + path);
+}
+folder = path+"/TIFFs";
+MIA = folder;
 File.makeDirectory(MIA);
-TIFFs = MIA+"/TIFFs";
-folder = TIFFs;
-File.makeDirectory(folder);
 
 //open each series by splitting channels and saving them separately into .tif files
 S = 1; //start from S series (from 1)
@@ -37,6 +41,8 @@ for (s=S-1; s<End; s++) { //for loop for iterating through the series
 	seriesNum = s+1;
 	run("Bio-Formats Importer", "open=["+id+"] color_mode=Default rois_import=[ROI manager] split_channels view=Hyperstack stack_order=XYCZT use_virtual_stack series_"+seriesNum);
 	//run("Bio-Formats Importer", "open=["+id+"] color_mode=Default rois_import=[ROI manager] split_focal split_timepoints view=Hyperstack stack_order=XYCZT use_virtual_stack series_"+(s+1));
+	nameWithExt = File.getName(id);
+
 	name = File.nameWithoutExtension;	
 	Ext.setSeries(s); //Sets the current series within the active dataset.
 	Ext.getSizeC(sizeC); //Gets the number of channels in the current series.
@@ -50,14 +56,12 @@ for (s=S-1; s<End; s++) { //for loop for iterating through the series
 	CEnd = sizeC;
 	
 	for (c=C; c<CEnd; c++) { //for loop for iterating through the channels
+		selectImage(1);
 		print("    Saving channel="+c+1+"/"+CEnd+"..."); //Display message
 		scTif = images_path+"/"+name+"_s"+nss(seriesNum, seriesCount)+"_"+channels[c]+".tif";		
-		selectWindow(name+".czi - "+name+".czi #"+nss(seriesNum, seriesCount)+" - C="+c);
 		saveAs("Tiff", scTif);
+		close();
 	}
-	close_all_macro_path = macro_path+"CloseAllWindows.ijm";
-	runMacro(close_all_macro_path,true);
-	print("Saved!");
 }
 print("Conversion to TIFFs finished!");
 

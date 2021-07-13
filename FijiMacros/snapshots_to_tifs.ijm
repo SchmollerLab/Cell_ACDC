@@ -1,12 +1,12 @@
 //Channels names
-//channels = newArray("mNeon","mKate","phase_contr");
-channels = newArray("AlexaFluor","phase_contr","DAPI","Cy3");
+channels = newArray("mNeon","mKate","phase_contr");
+// channels = newArray("AlexaFluor","phase_contr","DAPI","Cy3");
 
 setBatchMode(true); //when setBatchMode is set to true imageJ does not display the images. This speeds up the process by 20x.
 run("Bio-Formats Macro Extensions");
 
 //Dialog folder and get file list
-czi_folder = getDirectory("Choose folder containing multiple CZI files")
+czi_folder = getDirectory("Choose folder containing multiple microscopy files")
 czi_folder_name = File.getName(czi_folder);
 ids = getFileList(czi_folder);
 Array.sort(ids);
@@ -14,8 +14,8 @@ Array.sort(ids);
 sEnd = ids.length //1 for just first file and ids.length for all files in the folder
 
 // If .czi files are not in a CZIs subfolder create the folder and move files there
-if (czi_folder_name != "CZIs") {
-	czi_folder_new = czi_folder + "CZIs";
+if (czi_folder_name != "Raw_data") {
+	czi_folder_new = czi_folder + "Raw_data";
 	File.makeDirectory(czi_folder_new);
 
 	for (s = 0; s < sEnd; s++) {
@@ -70,8 +70,9 @@ for (s = 0; s < sEnd; s++) {
 	for (c=C; c<CEnd; c++) { //for loop for iterating through the channels
 		print("    Saving channel="+c+1+"/"+CEnd+"..."); //Display message
 		scTif = images_path+"/"+name+"_s"+nss(seriesNum, 11)+"_"+channels[c]+".tif";		
-		selectWindow(nameWithExt+" - C="+c);
+		selectImage(1);
 		saveAs("Tiff", scTif);
+		close();
 	}
 	print("Saved!");
 }
