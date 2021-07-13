@@ -4064,15 +4064,16 @@ class Yeast_ACDC_GUI(QMainWindow):
             txt = (
                 'On this dataset either you never checked that the segmentation '
                 'and tracking are correct or you did not save yet.\n\n'
-                'If you already visited some frames with "Segmentation and tracking"'
-                'mode save data before switching to "Cell cycle analysis mode.\n\n"'
-                'Otherwise you first have to check (and eventually correct) some frames'
+                'If you already visited some frames with "Segmentation and tracking" '
+                'mode save data before switching to "Cell cycle analysis mode".\n\n'
+                'Otherwise you first have to check (and eventually correct) some frames '
                 'in "Segmentation and Tracking" mode before proceeding '
                 'with cell cycle analysis.')
             msg = QtGui.QMessageBox()
             msg.critical(
                 self, 'Tracking check not performed', txt, msg.Ok
             )
+            self.modeComboBox.setCurrentIndex(0)
             return
 
         proceed = True
@@ -5402,6 +5403,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
 
     def saveFile(self):
+        current_frame_i = self.frame_i
         frame_i = 0
         for frame_i, data_dict in enumerate(self.allData_li):
             # Build segm_npy
@@ -5513,6 +5515,11 @@ class Yeast_ACDC_GUI(QMainWindow):
 
             self.data.last_tracked_i = last_tracked_i
 
+            # Go back to current frame
+            self.frame_i = current_frame_i
+            self.get_data()
+            self.update_rp_metadata(draw=False)
+
             print('--------------')
             print(f'Saved data until frame number {last_tracked_i+1}')
             print('--------------')
@@ -5520,9 +5527,6 @@ class Yeast_ACDC_GUI(QMainWindow):
             traceback.print_exc()
         finally:
             self.app.restoreOverrideCursor()
-
-
-
 
     def copyContent(self):
         pass

@@ -434,7 +434,7 @@ class my_paint_app:
         sep_bud_label_0 = skimage.measure.label(self.sep_bud_img, connectivity=1)
         sep_bud_label = skimage.morphology.remove_small_objects(
                                              sep_bud_label_0,
-                                             min_size=20,
+                                             min_size=3,
                                              connectivity=2)
         small_obj_mask = np.logical_xor(sep_bud_label_0>0,
                                         sep_bud_label>0)
