@@ -1982,9 +1982,11 @@ class Yeast_ACDC_GUI(QMainWindow):
                             f'(x={x:.2f}, y={y:.2f}, value={val})'
                     )
             else:
+                self.clickedOnBud = False
                 self.BudMothTempLine.setData([], [])
                 self.wcLabel.setText(f'')
         except:
+            self.clickedOnBud = False
             self.BudMothTempLine.setData([], [])
             self.wcLabel.setText(f'')
 
