@@ -3739,18 +3739,20 @@ class Yeast_ACDC_GUI(QMainWindow):
         except:
             traceback.print_exc()
             self.highlightNewIDs_ccaFailed()
-            msg = QtGui.QMessageBox()
-            warn_cca = msg.critical(
-                self, 'Failed cell cycle analysis',
+            msg = QtGui.QMessageBox(self)
+            msg.setIcon(msg.Critical)
+            msg.setWindowTitle('Failed cell cycle analysis')
+            msg.setDefaultButton(msg.Ok)
+            msg.setText(
                 f'Cell cycle analysis for frame {self.frame_i+1} failed!\n\n'
-                'This is most likely because the next frame has '
+                'This could be because the next frame has '
                 'segmentation or tracking errors.\n\n'
                 'Switch to "Segmentation and Tracking" mode and '
                 'check/correct next frame,\n'
                 'before attempting cell cycle analysis again.\n\n'
-                'NOTE: See console for details on the error occured.',
-                msg.Ok
-            )
+                'See details below about the error occured.')
+            msg.setDetailedText(traceback.format_exc())
+            msg.exec_()
         return notEnoughG1Cells, proceed
 
     def autoCca_df(self, enforceAll=False):
@@ -3932,6 +3934,9 @@ class Yeast_ACDC_GUI(QMainWindow):
                 'corrected_assignment': False
             })
 
+        # Keep only existing IDs
+        self.cca_df = self.cca_df.loc[self.IDs]
+
         self.store_cca_df()
         proceed = True
         return notEnoughG1Cells, proceed
@@ -4057,9 +4062,11 @@ class Yeast_ACDC_GUI(QMainWindow):
     def init_cca(self):
         if self.data.last_tracked_i is None:
             txt = (
-                'On this dataset you never checked that the segmentation '
-                'and tracking are correct.\n'
-                'You first have to check (and eventually correct) some frames'
+                'On this dataset either you never checked that the segmentation '
+                'and tracking are correct or you did not save yet.\n\n'
+                'If you already visited some frames with "Segmentation and tracking"'
+                'mode save data before switching to "Cell cycle analysis mode.\n\n"'
+                'Otherwise you first have to check (and eventually correct) some frames'
                 'in "Segmentation and Tracking" mode before proceeding '
                 'with cell cycle analysis.')
             msg = QtGui.QMessageBox()
@@ -5503,6 +5510,8 @@ class Yeast_ACDC_GUI(QMainWindow):
 
             with open(last_tracked_i_path, 'w+') as txt:
                 txt.write(str(last_tracked_i))
+
+            self.data.last_tracked_i = last_tracked_i
 
             print('--------------')
             print(f'Saved data until frame number {last_tracked_i+1}')
