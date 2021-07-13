@@ -394,6 +394,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Contour pens
         self.oldIDs_cpen = pg.mkPen(color=(200, 0, 0, 255*0.5), width=2)
         self.newIDs_cpen = pg.mkPen(color='r', width=3)
+        self.tempNewIDs_cpen = pg.mkPen(color='g', width=3)
         self.lostIDs_cpen = pg.mkPen(color=(245, 184, 0, 100), width=4)
 
         # Lost ID question mark text color
@@ -1539,10 +1540,9 @@ class Yeast_ACDC_GUI(QMainWindow):
                 # For some reason ID disappeared from this frame
                 continue
             else:
-                relID = cca_df_i.at[ID, 'relative_ID']
                 self.setHistoryKnowledge(ID, cca_df_i)
                 if relID in IDs:
-                    self.cca_df.loc[relID] = relID_cca
+                    cca_df_i.loc[relID] = relID_cca
                 self.store_cca_df(frame_i=i, cca_df=cca_df_i)
 
 
@@ -1561,7 +1561,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 relID = cca_df_i.at[ID, 'relative_ID']
                 self.setHistoryKnowledge(ID, cca_df_i)
                 if relID in IDs:
-                    self.cca_df.loc[relID] = relID_cca
+                    cca_df_i.loc[relID] = relID_cca
                 self.store_cca_df(frame_i=i, cca_df=cca_df_i)
 
 
@@ -1982,8 +1982,10 @@ class Yeast_ACDC_GUI(QMainWindow):
                             f'(x={x:.2f}, y={y:.2f}, value={val})'
                     )
             else:
+                self.BudMothTempLine.setData([], [])
                 self.wcLabel.setText(f'')
         except:
+            self.BudMothTempLine.setData([], [])
             self.wcLabel.setText(f'')
 
         # Draw Brush circle
@@ -3920,7 +3922,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         for i, j in zip(row_idx, col_idx):
             mothID = IDsCellsG1[i]
             budID = self.new_IDs[j]
-            self.cca_df.at[mothID, 'relative_ID'] = ID
+            self.cca_df.at[mothID, 'relative_ID'] = budID
             self.cca_df.at[mothID, 'cell_cycle_stage'] = 'S'
 
             self.cca_df.loc[budID] = pd.Series({
@@ -4807,7 +4809,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.ax1_setTextID(obj, 'Draw IDs and contours')
                 cont = self.get_objContours(obj)
                 curveID = self.ax1_ContoursCurves[obj.label-1]
-                curveID.setData(cont[:,0], cont[:,1], pen=self.newIDs_cpen)
+                curveID.setData(cont[:,0], cont[:,1], pen=self.tempNewIDs_cpen)
 
 
     def highlightLostNew(self):
