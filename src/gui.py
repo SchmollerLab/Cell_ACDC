@@ -3794,18 +3794,20 @@ class Yeast_ACDC_GUI(QMainWindow):
         # "better" mother for those non manually corrected buds
         lastVisited = False
         curr_df = self.allData_li[self.frame_i]['acdc_df']
-        next_df = self.allData_li[self.frame_i+1]['acdc_df']
         if curr_df is not None:
             if 'cell_cycle_stage' in curr_df.columns and not enforceAll:
                 self.new_IDs = [ID for ID in self.new_IDs
                                 if curr_df.at[ID, 'is_history_known']
                                 and curr_df.at[ID, 'cell_cycle_stage'] == 'S']
-                if next_df is None:
-                    lastVisited = True
-                else:
-                    if 'cell_cycle_stage' not in next_df.columns:
+                if self.frame_i+1 < self.num_segm_frames:
+                    next_df = self.allData_li[self.frame_i+1]['acdc_df']
+                    if next_df is None:
                         lastVisited = True
-                        
+                    else:
+                        if 'cell_cycle_stage' not in next_df.columns:
+                            lastVisited = True
+                else:
+                    lastVisited = True
 
         # Use stored cca_df and do not modify it with automatic stuff
         if self.cca_df is not None and not enforceAll and not lastVisited:
