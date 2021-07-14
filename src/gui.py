@@ -3435,7 +3435,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         thresh = self.nn.threshold(pred)
         lab = self.segment.segment(thresh, pred, min_distance=5).astype(int)
         self.is_first_call_YeaZ = False
-        self.data.segmInfo_df.at[self.frame_i, 'resegmented_in_gui'] = True
+        if self.data.segmInfo_df is not None and self.data.SizeZ>1:
+            self.data.segmInfo_df.at[self.frame_i, 'resegmented_in_gui'] = True
         self.data.segm_data[self.frame_i] = lab.copy()
         self.get_data()
         self.update_rp_metadata(draw=False)
@@ -3458,7 +3459,6 @@ class Yeast_ACDC_GUI(QMainWindow):
                                             model_type='cyto', torch=True)
 
         img = skimage.exposure.equalize_adapthist(self.img1.image)
-        apps.imshow_tk(img)
         lab, flows, _, _ = self.cp_model.eval(img, channels=[0,0],
                                                    diameter=60,
                                                    invert=False,
@@ -3468,7 +3468,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                                                    do_3D=False,
                                                    progress=None)
         self.is_first_call_cellpose = False
-        self.data.segmInfo_df.at[self.frame_i, 'resegmented_in_gui'] = True
+        if self.data.segmInfo_df is not None and self.data.SizeZ>1:
+            self.data.segmInfo_df.at[self.frame_i, 'resegmented_in_gui'] = True
         self.data.segm_data[self.frame_i] = lab.copy()
         self.get_data()
         self.update_rp_metadata(draw=False)
@@ -3783,9 +3784,12 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.ax1.vb.autoRange()
 
     def unstore_data(self):
-        self.allData_li[self.frame_i] ={'regionprops': [],
-                                         'labels': None,
-                                         'acdc_df': None}
+        self.allData_li[self.frame_i] = {
+            'regionprops': [],
+            'labels': None,
+            'acdc_df': None,
+            'delROIs_info': {'rois': [], 'delMasks': [], 'delIDsROI': []}
+        }
 
     def store_data(self, debug=False):
         if self.frame_i < 0:
@@ -5232,9 +5236,10 @@ class Yeast_ACDC_GUI(QMainWindow):
                 break
 
             self.allData_li[i] = {
-                                     'regionprops': [],
-                                     'labels': None,
-                                     'acdc_df': None
+                 'regionprops': [],
+                 'labels': None,
+                 'acdc_df': None,
+                 'delROIs_info': {'rois': [], 'delMasks': [], 'delIDsROI': []}
              }
 
     def removeAllItems(self):
