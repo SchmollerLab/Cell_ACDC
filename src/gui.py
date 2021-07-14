@@ -3157,6 +3157,17 @@ class Yeast_ACDC_GUI(QMainWindow):
             xRange = min_col-10, max_col+10
             yRange = max_row+10, min_row-10
             self.ax1.setRange(xRange=xRange, yRange=yRange)
+        elif ev.key() == Qt.Key_Space:
+            how = self.drawIDsContComboBox.currentText()
+            if how.find('nothing') == -1:
+                self.drawIDsContComboBox.setCurrentText('Draw nothing')
+                self.prev_how = how
+            else:
+                try:
+                    self.drawIDsContComboBox.setCurrentText(self.prev_how)
+                except:
+                    # traceback.print_exc()
+                    pass
 
         # elif ev.text() == 'b':
         #     self.BrushEraser_cb(ev)
