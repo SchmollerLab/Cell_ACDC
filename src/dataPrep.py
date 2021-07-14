@@ -460,7 +460,8 @@ class dataPrep(QMainWindow):
     def prepData(self, event):
         self.npy_to_npz()
         self.alignData(self.user_ch_name)
-        self.data.segmInfo_df.to_csv(self.data.segmInfo_df_csv_path)
+        if self.data.SizeZ>1:
+            self.data.segmInfo_df.to_csv(self.data.segmInfo_df_csv_path)
         self.addROIrect()
         self.okAction.setEnabled(True)
         self.titleLabel.setText(
