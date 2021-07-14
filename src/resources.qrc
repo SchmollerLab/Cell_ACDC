@@ -37,5 +37,6 @@
     <file alias="interp.svg">resources/interp.svg</file>
     <file alias="zback.svg">resources/zback.svg</file>
     <file alias="zforw.svg">resources/zforw.svg</file>
+    <file alias="addDelRoi.svg">resources/addDelRoi.svg</file>
 </qresource>
 </RCC>

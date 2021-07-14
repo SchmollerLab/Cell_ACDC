@@ -33,7 +33,7 @@ import skimage.segmentation
 from skimage import img_as_float
 from skimage.color import gray2rgb, gray2rgba
 
-from PyQt5.QtCore import Qt, QFile, QTextStream, QSize, QEvent, QPoint
+from PyQt5.QtCore import Qt, QFile, QTextStream, QSize, QRect, QRectF
 from PyQt5.QtGui import QIcon, QKeySequence, QCursor, QKeyEvent
 from PyQt5.QtWidgets import (
     QAction, QApplication, QLabel, QPushButton,
@@ -463,6 +463,23 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.img2.mouseReleaseEvent = self.gui_mouseReleaseEventImg2
         self.hist.vb.contextMenuEvent = self.gui_raiseContextMenuLUT
 
+    def removeAlldelROIs(self):
+        delROIs_info = self.allData_li[self.frame_i]['delROIs_info']
+        rois = delROIs_info['rois'].copy()
+        for roi in delROIs_info['rois']:
+            self.ax2.removeItem(roi)
+
+    def removeROI(self, event):
+        self.roi_to_del.setPos(0, 0)
+        self.roi_to_del.setSize(0, 0)
+        self.restoreDelROIlab(self.roi_to_del)
+        delROIs_info = self.allData_li[self.frame_i]['delROIs_info']
+        idx = delROIs_info['rois'].index(self.roi_to_del)
+        delROIs_info['rois'].pop(idx)
+        delROIs_info['delMasks'].pop(idx)
+        delROIs_info['delIDsROI'].pop(idx)
+        self.ax2.removeItem(self.roi_to_del)
+        self.setImageImg2()
 
     def gui_mousePressEventImg2(self, event):
         mode = str(self.modeComboBox.currentText())
@@ -485,6 +502,29 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         if mode == 'Viewer':
             return
+
+        # Check if right click on ROI
+        x, y = event.pos().x(), event.pos().y()
+        delROIs = self.allData_li[self.frame_i]['delROIs_info']['rois'].copy()
+        for r, roi in enumerate(delROIs):
+            x0, y0 = [int(round(c)) for c in roi.pos()]
+            w, h = [int(round(c)) for c in roi.size()]
+            x1, y1 = x0+w, y0+h
+            clickedOnROI = (
+                x>=x0 and x<=x1 and y>=y0 and y<=y1
+            )
+            raiseContextMenuRoi = right_click and clickedOnROI
+            if raiseContextMenuRoi:
+                self.roi_to_del = roi
+                self.roiContextMenu = QMenu(self)
+                separator = QAction(self)
+                separator.setSeparator(True)
+                self.roiContextMenu.addAction(separator)
+                action = QAction('Remove ROI')
+                action.triggered.connect(self.removeROI)
+                self.roiContextMenu.addAction(action)
+                self.roiContextMenu.exec_(event.screenPos())
+                return
 
         # Left-click is used for brush, eraser and separate bud
         # Brush and eraser are mutually exclusive but we want to keep the eraser
@@ -550,7 +590,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                                            localLab!=self.ax2BrushID)
                 mask1 = np.logical_and(mask, ~localMask)
                 localLab[mask1] = self.ax2BrushID
-                self.img2.setImage(self.lab)
+                self.setImageImg2()
                 self.updateLookuptable()
 
 
@@ -622,7 +662,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             prev_IDs = [obj.label for obj in self.rp]
             self.update_rp()
 
-            self.img2.setImage(self.lab)
+            self.setImageImg2()
 
             # Remove contour and LabelItem of deleted ID
             self.ax1_ContoursCurves[delID-1].setData([], [])
@@ -694,9 +734,11 @@ class Yeast_ACDC_GUI(QMainWindow):
 
             # Update all images
             self.updateALLimg()
+            self.store_data()
 
             # Uncheck separate bud button
             self.separateBudButton.setChecked(False)
+
 
         # Merge IDs
         elif right_click and self.mergeIDsButton.isChecked():
@@ -830,7 +872,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             # Update colors for the edited IDs
             self.updateLookuptable()
 
-            self.img2.setImage(self.lab)
+            self.setImageImg2()
             self.editID_Button.setChecked(False)
 
             self.disableAutoActivateViewerWindow = True
@@ -1005,8 +1047,10 @@ class Yeast_ACDC_GUI(QMainWindow):
 
             # Gray out dead ID
             self.updateLookuptable()
+            self.store_data()
 
             self.ripCellButton.setChecked(False)
+
 
     def getPolygonBrush(self, yxc2):
         # see https://en.wikipedia.org/wiki/Tangent_lines_to_circles
@@ -1087,7 +1131,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.isMouseDragImg2 = False
             erasedIDs = np.unique(self.erasedIDs)
 
-            self.img2.setImage(self.lab)
+            self.setImageImg2()
 
             # Update data (rp, etc)
             prev_IDs = [obj.label for obj in self.rp]
@@ -1099,7 +1143,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         elif self.isMouseDragImg2 and self.brushButton.isChecked():
             self.isMouseDragImg2 = False
 
-            self.img2.setImage(self.lab)
+            self.setImageImg2()
 
             # Update data (rp, etc)
             prev_IDs = [obj.label for obj in self.rp]
@@ -1146,6 +1190,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 prev_IDs, newIDs=[newID]
             )
             self.mergeIDsButton.setChecked(False)
+            self.store_data()
 
 
     def gui_mouseReleaseEventImg1(self, event):
@@ -2296,6 +2341,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.checkableButtons.append(self.ripCellButton)
         self.checkableQButtonsGroup.addButton(self.ripCellButton)
 
+        editToolBar.addAction(self.addDelRoiAction)
+
         editToolBar.addAction(self.repeatTrackingAction)
 
         self.disableTrackingCheckBox = QCheckBox("Disable tracking")
@@ -2417,6 +2464,15 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.gaussBlurAction = QAction('Gaussian blur...', self)
         self.gaussBlurAction.setCheckable(True)
 
+        self.addDelRoiAction = QAction(self)
+        self.addDelRoiAction.setIcon(QIcon(":addDelRoi.svg"))
+        self.addDelRoiAction.setToolTip(
+            'Add resizable rectangle. Every ID touched by the rectangle will be '
+            'automaticaly deleted.\n '
+            'Moving the rectangle will restore deleted IDs if they are not '
+            'touched by it anymore.\n'
+            'To delete rectangle right-click on it --> remove.')
+
 
 
     def gui_connectActions(self):
@@ -2477,6 +2533,100 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.drawIDsContComboBox.currentIndexChanged.connect(
                                                 self.drawIDsContComboBox_cb)
         self.gaussBlurAction.toggled.connect(self.gaussBlur)
+        self.addDelRoiAction.triggered.connect(self.addDelROI)
+
+    def addDelROI(self, event):
+        xRange, yRange = self.ax2.viewRange()
+        Y, X = self.img2.image.shape
+        w, h = 32, 32
+        xl, yb = abs(xRange[0]), abs(yRange[0])
+        roi = pg.ROI([xl, yb], [w, h],
+                     rotatable=False,
+                     removable=True,
+                     pen=pg.mkPen(color='r'),
+                     maxBounds=QRectF(QRect(0,0,X,Y)))
+
+        ## handles scaling horizontally around center
+        roi.addScaleHandle([1, 0.5], [0, 0.5])
+        roi.addScaleHandle([0, 0.5], [1, 0.5])
+
+        ## handles scaling vertically from opposite edge
+        roi.addScaleHandle([0.5, 0], [0.5, 1])
+        roi.addScaleHandle([0.5, 1], [0.5, 0])
+
+        ## handles scaling both vertically and horizontally
+        roi.addScaleHandle([1, 1], [0, 0])
+        roi.addScaleHandle([0, 0], [1, 1])
+        roi.addScaleHandle([0, 1], [1, 0])
+        roi.addScaleHandle([1, 0], [0, 1])
+
+        roi.sigRegionChanged.connect(self.ROImoving)
+        roi.sigRegionChangeFinished.connect(self.ROImovingFinished)
+
+        for i in range(self.frame_i, self.num_segm_frames):
+            delROIs_info = self.allData_li[i]['delROIs_info']
+            delROIs_info['rois'].append(roi)
+            delROIs_info['delMasks'].append(np.zeros_like(self.lab))
+            delROIs_info['delIDsROI'].append(set())
+        self.ax2.addItem(roi)
+
+    def ROImoving(self, roi):
+        roi.setPen(color=(255,255,0))
+        # First bring back IDs if the ROI moved away
+        self.restoreDelROIlab(roi)
+        self.setImageImg2()
+
+    def ROImovingFinished(self, roi):
+        roi.setPen(color='r')
+        self.update_rp()
+        self.updateALLimg()
+
+    def restoreDelROIlab(self, roi):
+        x0, y0 = [int(round(c)) for c in roi.pos()]
+        w, h = [int(round(c)) for c in roi.size()]
+        delROIs_info = self.allData_li[self.frame_i]['delROIs_info']
+        idx = delROIs_info['rois'].index(roi)
+        delMask = delROIs_info['delMasks'][idx]
+        delIDs = delROIs_info['delIDsROI'][idx]
+        ROImask = np.zeros(self.img2.image.shape, bool)
+        ROImask[y0:y0+h, x0:x0+w] = True
+        overlapROIdelIDs = np.unique(delMask[ROImask])
+        for ID in delIDs:
+            if ID >0 and ID not in overlapROIdelIDs:
+                self.lab[delMask==ID] = ID
+                delMask[delMask==ID] = 0
+
+
+    def getDelROIlab(self):
+        DelROIlab = self.lab
+        # Iterate rois and delete IDs
+        for roi in self.allData_li[self.frame_i]['delROIs_info']['rois']:
+            ROImask = np.zeros(self.img2.image.shape, bool)
+            delROIs_info = self.allData_li[self.frame_i]['delROIs_info']
+            idx = delROIs_info['rois'].index(roi)
+            delObjROImask = delROIs_info['delMasks'][idx]
+            delIDsROI = delROIs_info['delIDsROI'][idx]
+            x0, y0 = [int(round(c)) for c in roi.pos()]
+            w, h = [int(round(c)) for c in roi.size()]
+            ROImask[y0:y0+h, x0:x0+w] = True
+            delIDs = np.unique(self.lab[ROImask])
+            delIDsROI.update(delIDs)
+            _DelROIlab = self.lab.copy()
+            for obj in self.rp:
+                ID = obj.label
+                if ID in delIDs:
+                    delObjROImask[self.lab==ID] = ID
+                    _DelROIlab[self.lab==ID] = 0
+                    # LabelItemID = self.ax2_LabelItemsIDs[ID-1]
+                    # LabelItemID.setText('')
+                    # LabelItemID = self.ax1_LabelItemsIDs[ID-1]
+                    # LabelItemID.setText('')
+            DelROIlab[_DelROIlab == 0] = 0
+            # Keep a mask of deleted IDs to bring them back when roi moves
+            delROIs_info['delMasks'][idx] = delObjROImask
+            delROIs_info['delIDsROI'][idx] = delIDsROI
+        return DelROIlab
+
 
     def gaussBlur(self, checked):
         if checked:
@@ -3159,6 +3309,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.update_rp()
             self.checkIDs_LostNew()
             self.updateALLimg(image=self.ax1Image)
+            self.store_data()
 
         if not self.UndoCount < len(self.UndoRedoStates[self.frame_i])-1:
             # We have undone all available states
@@ -3178,6 +3329,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.update_rp()
             self.checkIDs_LostNew()
             self.updateALLimg(image=self.ax1Image)
+            self.store_data()
 
         if not self.UndoCount > 0:
             # We have redone all available states
@@ -3359,6 +3511,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
             # Store data for current frame
             self.store_data(debug=False)
+            # self.removeAlldelROIs()
             # Go to next frame
             self.frame_i += 1
             proceed_cca, never_visited = self.get_data()
@@ -3388,6 +3541,7 @@ class Yeast_ACDC_GUI(QMainWindow):
     def prev_cb(self):
         if self.frame_i > 0:
             self.store_data()
+            self.removeAlldelROIs()
             self.frame_i -= 1
             _, never_visited = self.get_data()
             self.tracking()
@@ -3548,7 +3702,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                 {
                  'regionprops': [],
                  'labels': None,
-                 'acdc_df': None
+                 'acdc_df': None,
+                 'delROIs_info': {'rois': [], 'delMasks': [], 'delIDsROI': []}
                  }
                 for i in range(self.num_segm_frames)
         ]
@@ -4259,8 +4414,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         w, h = LabelItemID.rect().right(), LabelItemID.rect().bottom()
         LabelItemID.setPos(x-w/2, y-h/2)
 
-    def ax2_setTextID(self, obj, how):
-        # Draw ID label on ax1 image depending on how
+    def ax2_setTextID(self, obj):
+        # Draw ID label on ax1 image
         LabelItemID = self.ax2_LabelItemsIDs[obj.label-1]
         ID = obj.label
         df = self.cca_df
@@ -4302,7 +4457,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.ax2_LabelItemsIDs.append(_IDlabel2)
                 self.ax2.addItem(_IDlabel2)
 
-        self.ax2_setTextID(obj, how)
+        self.ax2_setTextID(obj)
 
         # Draw LabelItems for IDs on ax1 if requested
         if IDs_and_cont or onlyIDs or only_ccaInfo or ccaInfo_and_cont:
@@ -4379,6 +4534,7 @@ class Yeast_ACDC_GUI(QMainWindow):
     def update_rp(self, draw=True):
         # Update rp for current self.lab (e.g. after any change)
         self.rp = skimage.measure.regionprops(self.lab)
+        self.IDs = [obj.label for obj in self.rp]
         self.update_rp_metadata()
 
     def update_IDsContours(self, prev_IDs, newIDs=[]):
@@ -4738,6 +4894,19 @@ class Yeast_ACDC_GUI(QMainWindow):
             cells_img = self.data.img_data[self.frame_i].copy()
         return cells_img
 
+    def setImageImg2(self):
+        DelROIlab = self.getDelROIlab()
+        self.DelROIlab = DelROIlab
+        self.img2.setImage(DelROIlab)
+        self.updateLookuptable()
+
+    def addExistingDelROIs(self):
+        delROIs_info = self.allData_li[self.frame_i]['delROIs_info']
+        for roi in delROIs_info['rois']:
+            if roi in self.ax2.items:
+                continue
+            self.ax2.addItem(roi)
+
     def updateALLimg(self, image=None, never_visited=True,
                      only_ax1=False, updateBlur=True):
         self.frameLabel.setText(
@@ -4766,19 +4935,13 @@ class Yeast_ACDC_GUI(QMainWindow):
             return
 
         lab = self.lab
-        self.img2.setImage(lab)
-        self.updateLookuptable()
 
         self.clear_prevItems()
+        self.addExistingDelROIs()
 
-        # # Red or green border depending if visited or not
-        # pen = self.RedLinePen if never_visited else self.GreenLinePen
-        # Y, X = img.shape
-        # off = 2 # rect offset
-        # xxRect = [-off, -off, X+off, X+off, -off]
-        # yyRect = [-off, Y+off, Y+off, -off, -off]
-        # self.ax1BorderLine.setData(xxRect, yyRect, pen=pen)
-        # self.ax2BorderLine.setData(xxRect, yyRect, pen=pen)
+        self.setImageImg2()
+        self.update_rp()
+
 
         self.computingContoursTimes = []
         self.drawingLabelsTimes = []
@@ -4787,22 +4950,21 @@ class Yeast_ACDC_GUI(QMainWindow):
         for i, obj in enumerate(self.rp):
             self.drawID_and_Contour(obj)
 
+
+
         # print('------------------------------------')
         # print(f'Drawing labels = {np.sum(self.drawingLabelsTimes):.3f} s')
         # print(f'Computing contours = {np.sum(self.computingContoursTimes):.3f} s')
         # print(f'Drawing contours = {np.sum(self.drawingContoursTimes):.3f} s')
 
         # Update annotated IDs (e.g. dead cells)
-        self.update_rp_metadata()
+        self.update_rp_metadata(draw=True)
 
         self.highlightLostNew()
         self.checkIDsMultiContour()
 
     def cancelBlinking(self):
         self.stopBlinking = True
-
-
-
 
     def highlightNewIDs_ccaFailed(self):
         for obj in self.rp:
@@ -5051,7 +5213,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
 
     def undo_changes_future_frames(self):
-        for i in range(self.frame_i, self.num_frames):
+        for i in range(self.frame_i+1, self.num_frames):
             if self.allData_li[i]['labels'] is None:
                 break
 
@@ -5413,6 +5575,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             # Build segm_npy
             lab = data_dict['labels']
             if lab is None:
+                frame_i -= 1
                 break
         if frame_i>0:
             # Ask to save last visited frame or not
@@ -5435,6 +5598,11 @@ class Yeast_ACDC_GUI(QMainWindow):
             elif save_current == msg.No:
                 last_tracked_i = frame_i-1
                 self.unstore_data()
+                current_frame_i = last_tracked_i
+                self.frame_i = last_tracked_i
+                self.get_data()
+                self.update_rp_metadata(draw=False)
+                self.updateALLimg()
             elif save_current == msg.Cancel:
                 return
         self.app.setOverrideCursor(Qt.WaitCursor)

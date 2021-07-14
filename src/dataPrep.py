@@ -344,7 +344,7 @@ class dataPrep(QMainWindow):
                 self.imagej_tiffwriter(tif, npz_data, metadata)
 
             # Save segm.npz
-            if self.data.segm_data is not None:
+            if self.data.segm_found is not None:
                 print('Saving: ', self.data.segm_npz_path)
                 data = self.data.segm_data
                 croppedSegm = self.crop(data)
