@@ -470,16 +470,14 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.ax2.removeItem(roi)
 
     def removeROI(self, event):
-        self.roi_to_del.setPos(0, 0)
-        self.roi_to_del.setSize(0, 0)
-        self.restoreDelROIlab(self.roi_to_del)
+        self.restoreDelROIlab(self.roi_to_del, enforce=True)
         delROIs_info = self.allData_li[self.frame_i]['delROIs_info']
         idx = delROIs_info['rois'].index(self.roi_to_del)
         delROIs_info['rois'].pop(idx)
         delROIs_info['delMasks'].pop(idx)
         delROIs_info['delIDsROI'].pop(idx)
         self.ax2.removeItem(self.roi_to_del)
-        self.setImageImg2()
+        self.updateALLimg()
 
     def gui_mousePressEventImg2(self, event):
         mode = str(self.modeComboBox.currentText())
@@ -2581,7 +2579,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.update_rp()
         self.updateALLimg()
 
-    def restoreDelROIlab(self, roi):
+    def restoreDelROIlab(self, roi, enforce=True):
         x0, y0 = [int(round(c)) for c in roi.pos()]
         w, h = [int(round(c)) for c in roi.size()]
         delROIs_info = self.allData_li[self.frame_i]['delROIs_info']
@@ -2592,7 +2590,10 @@ class Yeast_ACDC_GUI(QMainWindow):
         ROImask[y0:y0+h, x0:x0+w] = True
         overlapROIdelIDs = np.unique(delMask[ROImask])
         for ID in delIDs:
-            if ID >0 and ID not in overlapROIdelIDs:
+            if ID>0 and ID not in overlapROIdelIDs and not enforce:
+                self.lab[delMask==ID] = ID
+                delMask[delMask==ID] = 0
+            elif ID>0 and enforce:
                 self.lab[delMask==ID] = ID
                 delMask[delMask==ID] = 0
 
@@ -4941,6 +4942,8 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         self.setImageImg2()
         self.update_rp()
+
+        self.checkIDs_LostNew()
 
 
         self.computingContoursTimes = []
