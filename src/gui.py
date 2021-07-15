@@ -463,20 +463,44 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.img2.mouseReleaseEvent = self.gui_mouseReleaseEventImg2
         self.hist.vb.contextMenuEvent = self.gui_raiseContextMenuLUT
 
-    def removeAlldelROIs(self):
+    def removeAlldelROIsCurrentFrame(self):
         delROIs_info = self.allData_li[self.frame_i]['delROIs_info']
         rois = delROIs_info['rois'].copy()
         for roi in delROIs_info['rois']:
             self.ax2.removeItem(roi)
 
+        # Collect garbage ROIs:
+        for item in self.ax2.items:
+            if isinstance(item, pg.ROI):
+                self.ax2.removeItem(item)
+
     def removeROI(self, event):
-        self.restoreDelROIlab(self.roi_to_del, enforce=True)
-        delROIs_info = self.allData_li[self.frame_i]['delROIs_info']
-        idx = delROIs_info['rois'].index(self.roi_to_del)
-        delROIs_info['rois'].pop(idx)
-        delROIs_info['delMasks'].pop(idx)
-        delROIs_info['delIDsROI'].pop(idx)
+        current_frame_i = self.frame_i
+        self.store_data()
+        for i in range(self.frame_i, self.num_segm_frames):
+            delROIs_info = self.allData_li[i]['delROIs_info']
+            if self.roi_to_del in delROIs_info['rois']:
+                self.frame_i = i
+                idx = delROIs_info['rois'].index(self.roi_to_del)
+                # Restore deleted IDs from already visited frames
+                if self.allData_li[i]['labels'] is not None:
+                    if len(delROIs_info['delIDsROI'][idx]) > 1:
+                        self.lab = self.allData_li[i]['labels']
+                        self.restoreDelROIlab(self.roi_to_del, enforce=True)
+                        self.allData_li[i]['labels'] = self.lab
+                        self.get_data()
+                        self.update_rp_metadata(draw=False)
+                        self.store_data()
+                delROIs_info['rois'].pop(idx)
+                delROIs_info['delMasks'].pop(idx)
+                delROIs_info['delIDsROI'].pop(idx)
+
+        # Back to current frame
+        self.frame_i = current_frame_i
+        self.lab = self.allData_li[self.frame_i]['labels']
         self.ax2.removeItem(self.roi_to_del)
+        self.get_data()
+        self.update_rp_metadata(draw=False)
         self.updateALLimg()
 
     def gui_mousePressEventImg2(self, event):
@@ -616,6 +640,9 @@ class Yeast_ACDC_GUI(QMainWindow):
                                     self.doNotShowAgain_DelID,
                                     self.UndoFutFrames_DelID,
                                     self.applyFutFrames_DelID)
+
+            if UndoFutFrames is None:
+                return
 
             self.doNotShowAgain_DelID = doNotShowAgain
             self.UndoFutFrames_DelID = UndoFutFrames
@@ -936,6 +963,9 @@ class Yeast_ACDC_GUI(QMainWindow):
                                     self.UndoFutFrames_BinID,
                                     self.applyFutFrames_BinID)
 
+            if UndoFutFrames is None:
+                return
+
             self.doNotShowAgain_BinID = doNotShowAgain
             self.UndoFutFrames_BinID = UndoFutFrames
             self.applyFutFrames_BinID = applyFutFrames
@@ -1004,6 +1034,9 @@ class Yeast_ACDC_GUI(QMainWindow):
                                     self.doNotShowAgain_RipID,
                                     self.UndoFutFrames_RipID,
                                     self.applyFutFrames_RipID)
+
+            if UndoFutFrames is None:
+                return
 
             self.doNotShowAgain_RipID = doNotShowAgain
             self.UndoFutFrames_RipID = UndoFutFrames
@@ -2602,6 +2635,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         DelROIlab = self.lab
         # Iterate rois and delete IDs
         for roi in self.allData_li[self.frame_i]['delROIs_info']['rois']:
+            if roi not in self.ax2.items:
+                continue
             ROImask = np.zeros(self.img2.image.shape, bool)
             delROIs_info = self.allData_li[self.frame_i]['delROIs_info']
             idx = delROIs_info['rois'].index(roi)
@@ -2904,6 +2939,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         mode = self.modeComboBox.itemText(idx)
         if mode == 'Segmentation and Tracking':
             self.setEnabledToolbarButton(enabled=True)
+            self.addExistingDelROIs()
             self.disableTrackingCheckBox.setChecked(False)
             self.assignBudMothButton.setDisabled(True)
             self.setIsHistoryKnownButton.setDisabled(True)
@@ -2926,6 +2962,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             proceed = self.init_cca()
             if proceed:
                 self.setEnabledToolbarButton(enabled=False)
+                self.removeAlldelROIsCurrentFrame()
                 self.showInExplorerAction.setEnabled(True)
                 self.saveAction.setEnabled(True)
                 self.loadFluoAction.setEnabled(True)
@@ -2947,6 +2984,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                                         self.drawIDsContComboBoxCcaItems)
         elif mode == 'Viewer':
             self.setEnabledToolbarButton(enabled=False)
+            self.removeAlldelROIsCurrentFrame()
             self.showInExplorerAction.setEnabled(True)
             self.navigateToolBar.setEnabled(True)
             self.modeToolBar.setEnabled(True)
@@ -3236,6 +3274,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                     self.frame_i+1, i, modTxt, applyTrackingB=applyTrackingB)
             ffa.exec_()
             decision = ffa.decision
+
+
             if decision is None:
                 return None, None, None, doNotShow
 
@@ -3524,9 +3564,9 @@ class Yeast_ACDC_GUI(QMainWindow):
 
             # Store data for current frame
             self.store_data(debug=False)
-            # self.removeAlldelROIs()
             # Go to next frame
             self.frame_i += 1
+            self.removeAlldelROIsCurrentFrame()
             proceed_cca, never_visited = self.get_data()
             if not proceed_cca:
                 self.frame_i -= 1
@@ -3554,7 +3594,7 @@ class Yeast_ACDC_GUI(QMainWindow):
     def prev_cb(self):
         if self.frame_i > 0:
             self.store_data()
-            self.removeAlldelROIs()
+            self.removeAlldelROIsCurrentFrame()
             self.frame_i -= 1
             _, never_visited = self.get_data()
             self.tracking()
@@ -4911,8 +4951,12 @@ class Yeast_ACDC_GUI(QMainWindow):
         return cells_img
 
     def setImageImg2(self):
-        DelROIlab = self.getDelROIlab()
-        self.DelROIlab = DelROIlab
+        mode = str(self.modeComboBox.currentText())
+        if mode == 'Segmentation and Tracking':
+            self.addExistingDelROIs()
+            DelROIlab = self.getDelROIlab()
+        else:
+            DelROIlab = self.lab
         self.img2.setImage(DelROIlab)
         self.updateLookuptable()
 
@@ -4953,7 +4997,6 @@ class Yeast_ACDC_GUI(QMainWindow):
         lab = self.lab
 
         self.clear_prevItems()
-        self.addExistingDelROIs()
 
         self.setImageImg2()
         self.update_rp()
