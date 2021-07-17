@@ -1611,7 +1611,7 @@ class cca_df_frame0:
         if len(cells_IDs) == 1:
             related_to_opt = [-1]
         else:
-            related_to_opt = ['-1']
+            related_to_opt = list(cells_IDs)
             related_to_opt.insert(0, -1)
         relationship_opt = ['mother', 'bud']
         self.cell_IDs = cells_IDs

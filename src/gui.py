@@ -40,7 +40,7 @@ from PyQt5.QtWidgets import (
     QMainWindow, QMenu, QToolBar, QGroupBox,
     QScrollBar, QCheckBox, QToolButton, QSpinBox,
     QComboBox, QDial, QButtonGroup, QActionGroup,
-    QShortcut
+    QShortcut, QFileDialog
 )
 
 from pyqtgraph.Qt import QtGui
@@ -5346,9 +5346,12 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.slideshowWin.close()
 
         if exp_path is None:
-            exp_path = prompts.folder_dialog(
-                title='Select experiment folder containing Position_n folders'
+            exp_path = QFileDialog.getExistingDirectory(
+                self, 'Select experiment folder containing Position_n folders'
                       'or specific Position_n folder')
+            # exp_path = prompts.folder_dialog(
+            #     title='Select experiment folder containing Position_n folders'
+            #           'or specific Position_n folder')
 
         if exp_path == '':
             self.openAction.setEnabled(True)
