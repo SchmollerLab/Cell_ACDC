@@ -1358,6 +1358,93 @@ class YeaZ_ParamsDialog(QDialog):
         self.cancel = True
         self.close()
 
+class ccaTableWidget(QDialog):
+    def __init__(self, cca_df):
+        self.cancel = True
+
+        super().__init__()
+        self.setWindowTitle("Edit cell cycle annotations")
+
+        # Layouts
+        mainLayout = QVBoxLayout()
+        tableColsLayout = QHBoxLayout()
+        IDsLayout = QVBoxLayout()
+        ccsLayout = QVBoxLayout()
+        genNumLayout = QVBoxLayout()
+        relIDLayout = QVBoxLayout()
+        relationshipLayout = QVBoxLayout()
+        historyKnownLayout = QVBoxLayout()
+        buttonsLayout = QHBoxLayout()
+
+        # Header labels
+        IDsLabel = QLabel('Cell ID')
+        IDsLabel.setAlignment(Qt.AlignCenter)
+        IDsLayout.addWidget(IDsLabel)
+
+        ccsLabel = QLabel('Cell cycle stage')
+        ccsLabel.setAlignment(Qt.AlignCenter)
+        ccsLayout.addWidget(ccsLabel)
+
+        genNumLabel = QLabel('Generation number')
+        genNumLabel.setAlignment(Qt.AlignCenter)
+        genNumLayout.addWidget(genNumLabel)
+
+        relIDLabel = QLabel('Relative ID')
+        relIDLabel.setAlignment(Qt.AlignCenter)
+        relIDLayout.addWidget(relIDLabel)
+
+        relationshipLabel = QLabel('Relationship')
+        relationshipLabel.setAlignment(Qt.AlignCenter)
+        relationshipLayout.addWidget(relationshipLabel)
+
+        historyKnownLabel = QLabel('Is history known?')
+        historyKnownLabel.setAlignment(Qt.AlignCenter)
+        historyKnownLayout.addWidget(historyKnownLabel)
+
+        # Add buttons
+        okButton = QPushButton('Ok')
+        okButton.setShortcut(Qt.Key_Enter)
+
+        cancelButton = QPushButton('Cancel')
+        buttonsLayout.addWidget(okButton)
+        buttonsLayout.addWidget(cancelButton)
+
+        # Add layouts
+        tableColsLayout.addLayout(IDsLayout)
+        tableColsLayout.addLayout(ccsLayout)
+        tableColsLayout.addLayout(genNumLayout)
+        tableColsLayout.addLayout(relIDLayout)
+        tableColsLayout.addLayout(relationshipLayout)
+        tableColsLayout.addLayout(historyKnownLayout)
+        mainLayout.addLayout(tableColsLayout)
+        mainLayout.addLayout(buttonsLayout)
+
+        # Populate table Layout
+        IDs = cca_df.index
+        for ID in IDs:
+            IDlabel = QLabel(f'{ID}')
+            IDlabel.setAlignment(Qt.AlignCenter)
+            IDsLayout.addWidget(IDlabel)
+
+        # Contents margins
+        buttonsLayout.setContentsMargins(150, 10, 150, 0)
+
+        self.setLayout(mainLayout)
+
+        # Connect to events
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.cancel_cb)
+
+        self.setModal(True)
+
+    def ok_cb(self, checked):
+        self.cancel = False
+        self.close()
+
+    def cancel_cb(self, checked):
+        self.cancel = True
+        self.close()
+
 class QLineEditDialog(QDialog):
     def __init__(self, title='Entry messagebox', msg='Entry value',
                        defaultTxt=''):
@@ -2259,9 +2346,9 @@ if __name__ == '__main__':
     #                   '', CbLabel=CbLabel, parent=None)
     font = QtGui.QFont()
     font.setPointSize(10)
-    win = gaussBlurDialog(['mNeon', 'phase'])
+    win = ccaTableWidget()
     win.setFont(font)
     app.setStyle(QtGui.QStyleFactory.create('Fusion'))
     win.show()
     app.exec_()
-    print(win.selectedItemsIdx)
+    # print(win.selectedItemsIdx)

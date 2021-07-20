@@ -27,7 +27,6 @@ __pycache__/
 *.pyc
 setup_acdc.docx
 setup_acdc.pdf
-tests/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
