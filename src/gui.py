@@ -2739,9 +2739,10 @@ class Yeast_ACDC_GUI(QMainWindow):
             pass
 
     def loadFluo_cb(self, event):
-        fluo_paths = prompts.multi_files_dialog(
-            title='Select one or multiple fluorescent images',
-            initialdir=self.images_path)
+        fluo_paths = QFileDialog.getOpenFileNames(
+            self, 'Select one or multiple fluorescent images',
+            self.images_path
+        )[0]
 
         self.app.setOverrideCursor(Qt.WaitCursor)
         for fluo_path in fluo_paths:
@@ -2995,6 +2996,8 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.drawIDsContComboBox.clear()
             self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxCcaItems)
             self.drawIDsContComboBox.setCurrentText(currentMode)
+            for BudMothLine in self.ax1_BudMothLines:
+                BudMothLine.setData([], [])
             try:
                 self.undoAction.triggered.disconnect()
                 self.redoAction.triggered.disconnect()
@@ -4503,31 +4506,14 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         # Draw LabelItems for IDs on ax2
         y, x = obj.centroid
-        t0 = time.time()
         idx = obj.label-1
-        if not idx < len(self.ax2_LabelItemsIDs):
-            # Create additional missing LabelItems for the current ID
-            missingLen = idx-len(self.ax2_LabelItemsIDs)+1
-            for i in range(missingLen):
-                _IDlabel2 = pg.LabelItem()
-                self.ax2_LabelItemsIDs.append(_IDlabel2)
-                self.ax2.addItem(_IDlabel2)
-
+        t0 = time.time()
         self.ax2_setTextID(obj)
 
         # Draw LabelItems for IDs on ax1 if requested
         if IDs_and_cont or onlyIDs or only_ccaInfo or ccaInfo_and_cont:
             # Draw LabelItems for IDs on ax2
             t0 = time.time()
-            idx = obj.label-1
-            if not idx < len(self.ax1_LabelItemsIDs):
-                # Create addition LabelItems ax1_LabelItemsIDs the current ID
-                missingLen = idx-len(self.ax1_LabelItemsIDs)+1
-                for i in range(missingLen):
-                    _IDlabel1 = pg.LabelItem()
-                    self.ax1_LabelItemsIDs.append(_IDlabel1)
-                    self.ax1.addItem(_IDlabel1)
-
             self.ax1_setTextID(obj, how)
 
         t1 = time.time()
@@ -4570,15 +4556,6 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.computingContoursTimes.append(computingContoursTime)
 
             t0 = time.time()
-            idx = ID-1
-            if not idx < len(self.ax1_ContoursCurves):
-                # Create addition PlotDataItems for the current ID
-                missingLen = idx-len(self.ax1_ContoursCurves)+1
-                for i in range(missingLen):
-                    curve = pg.PlotDataItem()
-                    self.ax1_ContoursCurves.append(curve)
-                    self.ax1.addItem(curve)
-
             curveID = self.ax1_ContoursCurves[idx]
             pen = self.newIDs_cpen if ID in self.new_IDs else self.oldIDs_cpen
             curveID.setData(cont[:,0], cont[:,1], pen=pen)
@@ -4967,6 +4944,38 @@ class Yeast_ACDC_GUI(QMainWindow):
                 continue
             self.ax2.addItem(roi)
 
+    def addNewItems(self):
+        # Add new Items if there are not enough
+        maxID = self.lab.max()
+        idx = maxID-1
+        if idx >= len(self.ax1_ContoursCurves):
+            missingLen = idx-len(self.ax1_ContoursCurves)+10
+            for i in range(missingLen):
+                # Contours on ax1
+                ContCurve = pg.PlotDataItem()
+                self.ax1_ContoursCurves.append(ContCurve)
+                self.ax1.addItem(ContCurve)
+
+                # Bud mother line on ax1
+                BudMothLine = pg.PlotDataItem()
+                self.ax1_BudMothLines.append(BudMothLine)
+                self.ax1.addItem(BudMothLine)
+
+                # LabelItems on ax1
+                ax1_IDlabel = pg.LabelItem()
+                self.ax1_LabelItemsIDs.append(ax1_IDlabel)
+                self.ax1.addItem(ax1_IDlabel)
+
+                # LabelItems on ax2
+                ax2_IDlabel = pg.LabelItem()
+                self.ax2_LabelItemsIDs.append(ax2_IDlabel)
+                self.ax2.addItem(ax2_IDlabel)
+
+                # Contours on ax2
+                ContCurve = pg.PlotDataItem()
+                self.ax2_ContoursCurves.append(ContCurve)
+                self.ax2.addItem(ContCurve)
+
     def updateALLimg(self, image=None, never_visited=True,
                      only_ax1=False, updateBlur=True):
         self.frameLabel.setText(
@@ -4996,6 +5005,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         lab = self.lab
 
+        self.addNewItems()
         self.clear_prevItems()
 
         self.setImageImg2()
@@ -5331,197 +5341,213 @@ class Yeast_ACDC_GUI(QMainWindow):
         pass
 
     def openFile(self, checked=False, exp_path=None):
-        # Remove all items from a previous session if open is pressed again
-        self.removeAllItems()
-        self.gui_addPlotItems()
-
-        self.openAction.setEnabled(False)
         try:
-            self.modeComboBox.activated[str].disconnect()
-        except:
-            pass
-        self.modeComboBox.setCurrentIndex(0)
+            # Remove all items from a previous session if open is pressed again
+            self.removeAllItems()
+            self.gui_addPlotItems()
 
-        if self.slideshowWin is not None:
-            self.slideshowWin.close()
+            self.openAction.setEnabled(False)
+            try:
+                self.modeComboBox.activated[str].disconnect()
+            except:
+                pass
+            self.modeComboBox.setCurrentIndex(0)
 
-        if exp_path is None:
-            exp_path = QFileDialog.getExistingDirectory(
-                self, 'Select experiment folder containing Position_n folders'
-                      'or specific Position_n folder')
-            # exp_path = prompts.folder_dialog(
-            #     title='Select experiment folder containing Position_n folders'
-            #           'or specific Position_n folder')
+            if self.slideshowWin is not None:
+                self.slideshowWin.close()
 
-        if exp_path == '':
-            self.openAction.setEnabled(True)
-            self.titleLabel.setText(
-                'File --> Open or Open recent to start the process',
-                color='w')
-            return
+            if exp_path is None:
+                self.getMostRecentPath()
+                exp_path = QFileDialog.getExistingDirectory(
+                    self, 'Select experiment folder containing Position_n folders'
+                          'or specific Position_n folder', self.MostRecentPath)
+                # exp_path = prompts.folder_dialog(
+                #     title='Select experiment folder containing Position_n folders'
+                #           'or specific Position_n folder')
 
-        if os.path.basename(exp_path).find('Position_') != -1:
-            is_pos_folder = True
-        else:
-            is_pos_folder = False
-
-        if os.path.basename(exp_path).find('Images') != -1:
-            is_images_folder = True
-        else:
-            is_images_folder = False
-
-        self.titleLabel.setText('Loading data...', color='w')
-
-
-
-        ch_name_selector = prompts.select_channel_name(
-            which_channel='segm', allow_abort=False
-        )
-
-        if not is_pos_folder and not is_images_folder:
-            select_folder = load.select_exp_folder()
-            values = select_folder.get_values_segmGUI(exp_path)
-            if not values:
-                txt = (
-                    'The selected folder:\n\n '
-                    f'{exp_path}\n\n'
-                    'is not a valid folder. '
-                    'Select a folder that contains the Position_n folders'
-                )
-                msg = QtGui.QMessageBox()
-                msg.critical(
-                    self, 'Incompatible folder', txt, msg.Ok
-                )
+            if exp_path == '':
+                self.openAction.setEnabled(True)
                 self.titleLabel.setText(
                     'File --> Open or Open recent to start the process',
                     color='w')
-                self.openAction.setEnabled(True)
                 return
 
-            select_folder.QtPrompt(self, values, allow_abort=False)
-            if select_folder.was_aborted:
-                self.titleLabel.setText(
-                    'File --> Open or Open recent to start the process',
-                    color='w')
-                self.openAction.setEnabled(True)
-                return
+            if os.path.basename(exp_path).find('Position_') != -1:
+                is_pos_folder = True
+            else:
+                is_pos_folder = False
 
-            pos_foldername = select_folder.selected_pos[0]
-            images_path = f'{exp_path}/{pos_foldername}/Images'
+            if os.path.basename(exp_path).find('Images') != -1:
+                is_images_folder = True
+            else:
+                is_images_folder = False
 
-        elif is_pos_folder:
-            pos_foldername = os.path.basename(exp_path)
-            exp_path = os.path.dirname(exp_path)
-            images_path = f'{exp_path}/{pos_foldername}/Images'
+            self.titleLabel.setText('Loading data...', color='w')
 
-        elif is_images_folder:
-            images_path = exp_path
 
-        self.images_path = images_path
 
-        ch_name_not_found_msg = (
-            'The script could not identify the channel name.\n\n'
-            'For automatic loading the file to be segmented MUST have a name like\n'
-            '"<name>_s<num>_<channel_name>.tif" e.g. "196_s16_phase_contrast.tif"\n'
-            'where "196_s16" is the basename and "phase_contrast"'
-            'is the channel name\n\n'
-            'Please write here the channel name to be used for automatic loading'
-        )
+            ch_name_selector = prompts.select_channel_name(
+                which_channel='segm', allow_abort=False
+            )
 
-        filenames = os.listdir(images_path)
-        if ch_name_selector.is_first_call:
-            ch_names, warn = ch_name_selector.get_available_channels(filenames)
-            ch_name_selector.QtPrompt(self, ch_names)
-            if ch_name_selector.was_aborted:
-                self.titleLabel.setText(
-                    'File --> Open or Open recent to start the process',
-                    color='w')
-                self.openAction.setEnabled(True)
-                return
-            if warn:
-                user_ch_name = prompts.single_entry_messagebox(
-                    title='Channel name not found',
-                    entry_label=ch_name_not_found_msg,
-                    input_txt=ch_name_selector.channel_name,
-                    toplevel=False, allow_abort=False
-                ).entry_txt
-                if user_ch_name.was_aborted:
+            if not is_pos_folder and not is_images_folder:
+                select_folder = load.select_exp_folder()
+                values = select_folder.get_values_segmGUI(exp_path)
+                if not values:
+                    txt = (
+                        'The selected folder:\n\n '
+                        f'{exp_path}\n\n'
+                        'is not a valid folder. '
+                        'Select a folder that contains the Position_n folders'
+                    )
+                    msg = QtGui.QMessageBox()
+                    msg.critical(
+                        self, 'Incompatible folder', txt, msg.Ok
+                    )
                     self.titleLabel.setText(
                         'File --> Open or Open recent to start the process',
                         color='w')
                     self.openAction.setEnabled(True)
                     return
-            else:
-                user_ch_name = ch_name_selector.channel_name
 
-        img_aligned_found = False
-        for filename in os.listdir(images_path):
-            if filename.find(f'_phc_aligned.npy') != -1:
-                img_path = f'{images_path}/{filename}'
-                new_filename = filename.replace('phc_aligned.npy',
-                                                f'{user_ch_name}_aligned.npy')
-                dst = f'{images_path}/{new_filename}'
-                if os.path.exists(dst):
-                    os.remove(img_path)
+                select_folder.QtPrompt(self, values, allow_abort=False)
+                if select_folder.was_aborted:
+                    self.titleLabel.setText(
+                        'File --> Open or Open recent to start the process',
+                        color='w')
+                    self.openAction.setEnabled(True)
+                    return
+
+                pos_foldername = select_folder.selected_pos[0]
+                images_path = f'{exp_path}/{pos_foldername}/Images'
+
+            elif is_pos_folder:
+                pos_foldername = os.path.basename(exp_path)
+                exp_path = os.path.dirname(exp_path)
+                images_path = f'{exp_path}/{pos_foldername}/Images'
+
+            elif is_images_folder:
+                images_path = exp_path
+
+            self.images_path = images_path
+
+            ch_name_not_found_msg = (
+                'The script could not identify the channel name.\n\n'
+                'For automatic loading the file to be segmented MUST have a name like\n'
+                '"<name>_s<num>_<channel_name>.tif" e.g. "196_s16_phase_contrast.tif"\n'
+                'where "196_s16" is the basename and "phase_contrast"'
+                'is the channel name\n\n'
+                'Please write here the channel name to be used for automatic loading'
+            )
+
+            filenames = os.listdir(images_path)
+            if ch_name_selector.is_first_call:
+                ch_names, warn = ch_name_selector.get_available_channels(filenames)
+                ch_name_selector.QtPrompt(self, ch_names)
+                if ch_name_selector.was_aborted:
+                    self.titleLabel.setText(
+                        'File --> Open or Open recent to start the process',
+                        color='w')
+                    self.openAction.setEnabled(True)
+                    return
+                if warn:
+                    user_ch_name = prompts.single_entry_messagebox(
+                        title='Channel name not found',
+                        entry_label=ch_name_not_found_msg,
+                        input_txt=ch_name_selector.channel_name,
+                        toplevel=False, allow_abort=False
+                    ).entry_txt
+                    if user_ch_name.was_aborted:
+                        self.titleLabel.setText(
+                            'File --> Open or Open recent to start the process',
+                            color='w')
+                        self.openAction.setEnabled(True)
+                        return
                 else:
-                    os.rename(img_path, dst)
-                filename = new_filename
-            if filename.find(f'{user_ch_name}_aligned.np') != -1:
-                img_path = f'{images_path}/{filename}'
-                img_aligned_found = True
-        if not img_aligned_found:
-            err_msg = ('Aligned frames file for channel '
-                       f'{user_ch_name} not found. '
-                       'You need to run the segmentation script first.')
-            self.titleLabel.setText(err_msg)
+                    user_ch_name = ch_name_selector.channel_name
+
+            img_aligned_found = False
+            for filename in os.listdir(images_path):
+                if filename.find(f'_phc_aligned.npy') != -1:
+                    img_path = f'{images_path}/{filename}'
+                    new_filename = filename.replace('phc_aligned.npy',
+                                                    f'{user_ch_name}_aligned.npy')
+                    dst = f'{images_path}/{new_filename}'
+                    if os.path.exists(dst):
+                        os.remove(img_path)
+                    else:
+                        os.rename(img_path, dst)
+                    filename = new_filename
+                if filename.find(f'{user_ch_name}_aligned.np') != -1:
+                    img_path = f'{images_path}/{filename}'
+                    img_aligned_found = True
+            if not img_aligned_found:
+                err_msg = ('Aligned frames file for channel '
+                           f'{user_ch_name} not found. '
+                           'You need to run the segmentation script first.')
+                self.titleLabel.setText(err_msg)
+                self.openAction.setEnabled(True)
+                raise FileNotFoundError(err_msg)
+            print(f'Loading {img_path}...')
+
+            self.init_frames_data(img_path, user_ch_name)
+            self.create_chNamesQActionGroup(user_ch_name)
+
+            self.user_ch_name = user_ch_name
+
+            # Ask whether to load fluorescent images
+            msg = QtGui.QMessageBox()
+            load_fluo = msg.question(
+                self, 'Load fluorescent images?',
+                'Do you also want to load fluorescent images? You can load as '
+                'many channels as you want.\n\n'
+                'If you load fluorescent images then the software will calcualte '
+                'metrics for each loaded fluorescent channel such as min, max, mean, '
+                'quantiles, etc. for each segmented object.\n\n'
+                'NOTE: You can always load them later with '
+                'File --> Load fluorescent images',
+                msg.Yes | msg.No
+            )
+            if load_fluo == msg.Yes:
+                fluo_paths = QFileDialog.getOpenFileNames(
+                    self, 'Select one or multiple fluorescent images',
+                    images_path,
+                    'Aligned channels (*npz *npy);; Tif channels(*tiff *tif)'
+                    ';;All Files (*)'
+                )[0]
+
+                self.app.setOverrideCursor(Qt.WaitCursor)
+                for fluo_path in fluo_paths:
+                    filename, _ = os.path.splitext(os.path.basename(fluo_path))
+                    fluo_data, ol_data_2D = self.load_fluo_data(fluo_path)
+                    self.data.fluo_data_dict[filename] = fluo_data
+                    self.ol_data_dict[filename] = ol_data_2D
+                self.overlayButton.setStyleSheet('background-color: #A7FAC7')
+                self.app.restoreOverrideCursor()
+
+            # Connect events at the end of loading data process
+            self.gui_connectGraphicsEvents()
+            if not self.isEditActionsConnected:
+                self.gui_connectEditActions()
+
+            self.titleLabel.setText(
+                'Data successfully loaded. Right/Left arrow to navigate frames',
+                color='w')
+
             self.openAction.setEnabled(True)
-            raise FileNotFoundError(err_msg)
-        print(f'Loading {img_path}...')
 
-        self.init_frames_data(img_path, user_ch_name)
-        self.create_chNamesQActionGroup(user_ch_name)
-
-        self.user_ch_name = user_ch_name
-
-        # Ask whether to load fluorescent images
-        msg = QtGui.QMessageBox()
-        load_fluo = msg.question(
-            self, 'Load fluorescent images?',
-            'Do you also want to load fluorescent images? You can load as '
-            'many channels as you want.\n\n'
-            'If you load fluorescent images then the software will calcualte '
-            'metrics for each loaded fluorescent channel such as min, max, mean, '
-            'quantiles, etc. for each segmented object.\n\n'
-            'NOTE: You can always load them later with '
-            'File --> Load fluorescent images',
-            msg.Yes | msg.No
-        )
-        if load_fluo == msg.Yes:
-            fluo_paths = prompts.multi_files_dialog(
-                title='Select one or multiple fluorescent images',
-                initialdir=images_path)
-
-            self.app.setOverrideCursor(Qt.WaitCursor)
-            for fluo_path in fluo_paths:
-                filename, _ = os.path.splitext(os.path.basename(fluo_path))
-                fluo_data, ol_data_2D = self.load_fluo_data(fluo_path)
-                self.data.fluo_data_dict[filename] = fluo_data
-                self.ol_data_dict[filename] = ol_data_2D
-            self.overlayButton.setStyleSheet('background-color: #A7FAC7')
-            self.app.restoreOverrideCursor()
-
-        # Connect events at the end of loading data process
-        self.gui_connectGraphicsEvents()
-        if not self.isEditActionsConnected:
-            self.gui_connectEditActions()
-
-        self.titleLabel.setText(
-            'Data successfully loaded. Right/Left arrow to navigate frames',
-            color='w')
-
-        self.openAction.setEnabled(True)
-
-        self.addToRecentPaths(exp_path)
+            self.addToRecentPaths(exp_path)
+        except:
+            traceback.print_exc()
+            err_msg = 'Error occured. See terminal/console for details'
+            self.titleLabel.setText(
+                'Error occured. See terminal/console for details',
+                color='r')
+            msg = QtGui.QMessageBox()
+            msg.critical(
+                self, 'Error!', err_msg, msg.Ok
+            )
+            self.openAction.setEnabled(True)
 
     def addToRecentPaths(self, exp_path):
         src_path = os.path.dirname(os.path.realpath(__file__))
@@ -5803,6 +5829,19 @@ class Yeast_ACDC_GUI(QMainWindow):
             actions.append(action)
         # Step 3. Add the actions to the menu
         self.openRecentMenu.addActions(actions)
+
+    def getMostRecentPath(self):
+        src_path = os.path.dirname(os.path.realpath(__file__))
+        recentPaths_path = os.path.join(
+            src_path, 'temp', 'recentPaths.csv'
+        )
+        if os.path.exists(recentPaths_path):
+            df = pd.read_csv(recentPaths_path, index_col='index')
+            if 'opened_last_on' in df.columns:
+                df = df.sort_values('opened_last_on', ascending=False)
+            self.MostRecentPath = df.iloc[0]['path']
+        else:
+            self.MostRecentPath = ''
 
     def openRecentFile(self, path):
         print(f'Opening recent folder: {path}')

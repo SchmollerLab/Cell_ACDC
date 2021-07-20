@@ -104,7 +104,7 @@ class load_frames_data:
             try:
                 self.SizeT, self.SizeZ = self.data_dimensions(self.info)
             except:
-                self.SizeT, self.SizeZ = 1, 1
+                self.SizeT, self.SizeZ = len(self.img_data), 1
             if load_zyx_voxSize:
                 try:
                     self.zyx_vox_dim = self.zyx_vox_dim()
@@ -125,7 +125,8 @@ class load_frames_data:
                 )
         else:
             (self.SizeT, self.SizeZ,
-            self.zyx_vox_dim) = self.inputsWidget(parent=parentQWidget)
+            self.zyx_vox_dim) = self.inputsWidget(SizeT=len(self.img_data),
+                                                  parent=parentQWidget)
         data_T, data_Z = self.img_data.shape[:2]
         if self.SizeZ > 1:
             if data_Z != self.SizeZ:

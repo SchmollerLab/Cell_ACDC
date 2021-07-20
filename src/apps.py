@@ -46,6 +46,7 @@ from PyQt5.QtWidgets import (
 
 import qrc_resources
 
+
 pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
 
 class my_paint_app:
@@ -1426,6 +1427,14 @@ class ccaTableWidget(QDialog):
             IDlabel.setAlignment(Qt.AlignCenter)
             IDsLayout.addWidget(IDlabel)
 
+            ccsComboBox = QComboBox()
+            ccsComboBox.addItems(['G1', 'S/G2/M'])
+            ccsLayout.addWidget(ccsComboBox)
+            # genNumLayout
+            # relIDLayout
+            # relationshipLayout
+            # historyKnownLayout
+
         # Contents margins
         buttonsLayout.setContentsMargins(150, 10, 150, 0)
 
@@ -2346,7 +2355,25 @@ if __name__ == '__main__':
     #                   '', CbLabel=CbLabel, parent=None)
     font = QtGui.QFont()
     font.setPointSize(10)
-    win = ccaTableWidget()
+    IDs = list(range(1,11))
+    cc_stage = ['G1' for ID in IDs]
+    num_cycles = [-1]*len(IDs)
+    relationship = ['mother' for ID in IDs]
+    related_to = [-1]*len(IDs)
+    is_history_known = [False]*len(IDs)
+    corrected_assignment = [False]*len(IDs)
+    cca_df = pd.DataFrame({
+                       'cell_cycle_stage': cc_stage,
+                       'generation_num': num_cycles,
+                       'relative_ID': related_to,
+                       'relationship': relationship,
+                       'emerg_frame_i': num_cycles,
+                       'division_frame_i': num_cycles,
+                       'is_history_known': is_history_known,
+                       'corrected_assignment': corrected_assignment},
+                        index=IDs)
+    cca_df.index.name = 'Cell_ID'
+    win = ccaTableWidget(cca_df)
     win.setFont(font)
     app.setStyle(QtGui.QStyleFactory.create('Fusion'))
     win.show()
