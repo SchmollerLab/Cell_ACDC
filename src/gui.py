@@ -489,7 +489,6 @@ class Yeast_ACDC_GUI(QMainWindow):
                         self.restoreDelROIlab(self.roi_to_del, enforce=True)
                         self.allData_li[i]['labels'] = self.lab
                         self.get_data()
-                        self.update_rp_metadata(draw=False)
                         self.store_data()
                 delROIs_info['rois'].pop(idx)
                 delROIs_info['delMasks'].pop(idx)
@@ -500,7 +499,6 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.lab = self.allData_li[self.frame_i]['labels']
         self.ax2.removeItem(self.roi_to_del)
         self.get_data()
-        self.update_rp_metadata(draw=False)
         self.updateALLimg()
 
     def gui_mousePressEventImg2(self, event):
@@ -667,7 +665,6 @@ class Yeast_ACDC_GUI(QMainWindow):
                     # Get the rest of the stored metadata based on the new lab
                     self.frame_i = i
                     self.get_data()
-                    self.update_rp_metadata(draw=False)
                     self.store_data()
 
                 self.app.restoreOverrideCursor()
@@ -676,7 +673,6 @@ class Yeast_ACDC_GUI(QMainWindow):
             if applyFutFrames:
                 self.frame_i = self.current_frame_i
                 self.get_data()
-                self.update_rp_metadata(draw=False)
 
 
             # Store undo state before modifying stuff
@@ -917,7 +913,6 @@ class Yeast_ACDC_GUI(QMainWindow):
                 for i in range(self.frame_i+1, endFrame_i):
                     self.frame_i = i
                     self.get_data()
-                    self.update_rp_metadata(draw=False)
                     if self.onlyTracking:
                         self.tracking(enforce=True)
                     else:
@@ -935,7 +930,6 @@ class Yeast_ACDC_GUI(QMainWindow):
                 # Back to current frame
                 self.frame_i = self.current_frame_i
                 self.get_data()
-                self.update_rp_metadata(draw=False)
                 self.app.restoreOverrideCursor()
 
         # Annotate cell as removed from the analysis
@@ -993,7 +987,6 @@ class Yeast_ACDC_GUI(QMainWindow):
             if applyFutFrames:
                 self.frame_i = self.current_frame_i
                 self.get_data()
-                self.update_rp_metadata(draw=False)
 
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(UndoFutFrames)
@@ -1064,7 +1057,6 @@ class Yeast_ACDC_GUI(QMainWindow):
             if applyFutFrames:
                 self.frame_i = self.current_frame_i
                 self.get_data()
-                self.update_rp_metadata(draw=False)
 
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(UndoFutFrames)
@@ -2770,7 +2762,6 @@ class Yeast_ACDC_GUI(QMainWindow):
             if self.frame_i > 0:
                 self.frame_i -= 1
                 self.get_data()
-                self.update_rp_metadata(draw=False)
                 self.del_future_cca_df(self.frame_i)
                 self.next_cb()
             else:
@@ -2927,7 +2918,6 @@ class Yeast_ACDC_GUI(QMainWindow):
             lab = labData[self.frame_i]
         self.data.segm_data[self.frame_i] = lab.copy()
         self.get_data()
-        self.update_rp_metadata(draw=False)
         self.tracking()
         self.updateALLimg()
         self.app.restoreOverrideCursor()
@@ -2939,6 +2929,7 @@ class Yeast_ACDC_GUI(QMainWindow):
     def changeMode(self, idx):
         mode = self.modeComboBox.itemText(idx)
         if mode == 'Segmentation and Tracking':
+            self.initSegmTrackMode()
             self.setEnabledToolbarButton(enabled=True)
             self.addExistingDelROIs()
             self.disableTrackingCheckBox.setChecked(False)
@@ -3482,7 +3473,6 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.data.segmInfo_df.at[self.frame_i, 'resegmented_in_gui'] = True
         self.data.segm_data[self.frame_i] = lab.copy()
         self.get_data()
-        self.update_rp_metadata(draw=False)
         self.tracking()
         self.updateALLimg()
         t1 = time.time()
@@ -3515,7 +3505,6 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.data.segmInfo_df.at[self.frame_i, 'resegmented_in_gui'] = True
         self.data.segm_data[self.frame_i] = lab.copy()
         self.get_data()
-        self.update_rp_metadata(draw=False)
         self.tracking()
         self.updateALLimg()
         t1 = time.time()
@@ -3574,14 +3563,12 @@ class Yeast_ACDC_GUI(QMainWindow):
             if not proceed_cca:
                 self.frame_i -= 1
                 self.get_data()
-                self.update_rp_metadata(draw=False)
                 return
             self.tracking(storeUndo=True)
             notEnoughG1Cells, proceed = self.attempt_auto_cca()
             if notEnoughG1Cells or not proceed:
                 self.frame_i -= 1
                 self.get_data()
-                self.update_rp_metadata(draw=False)
                 return
             self.updateALLimg(never_visited=never_visited)
         else:
@@ -3756,7 +3743,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         self.allData_li = [
                 {
-                 'regionprops': [],
+                 'regionprops': None,
                  'labels': None,
                  'acdc_df': None,
                  'delROIs_info': {'rois': [], 'delMasks': [], 'delIDsROI': []}
@@ -3790,7 +3777,6 @@ class Yeast_ACDC_GUI(QMainWindow):
             for i in range(self.data.last_tracked_i):
                 self.frame_i = i
                 self.get_data()
-                self.update_rp_metadata(draw=False)
                 self.store_data()
                 self.binnedIDs = set()
                 self.ripIDs = set()
@@ -3843,8 +3829,11 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         mode = str(self.modeComboBox.currentText())
 
+
+
         self.allData_li[self.frame_i]['regionprops'] = self.rp.copy()
-        self.allData_li[self.frame_i]['labels'] = self.lab.copy()
+        if mode != 'Viewer':
+            self.allData_li[self.frame_i]['labels'] = self.lab.copy()
 
         if debug:
             pass
@@ -4252,6 +4241,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 (int(y),int(x),newID) for y,x,newID in _zip if newID!=-1]
             self.get_cca_df()
 
+        self.update_rp_metadata(draw=False)
         self.IDs = [obj.label for obj in self.rp]
         return proceed_cca, never_visited
 
@@ -4275,6 +4265,42 @@ class Yeast_ACDC_GUI(QMainWindow):
                             index=IDs)
         cca_df.index.name = 'Cell_ID'
         return cca_df
+
+    def initSegmTrackMode(self):
+        last_tracked_i = 0
+        for frame_i, data_dict in enumerate(self.allData_li):
+            # Build segm_npy
+            lab = data_dict['labels']
+            if lab is None:
+                last_tracked_i = frame_i-1
+                break
+        if self.frame_i > last_tracked_i:
+            # Prompt user to go to last tracked frame
+            msg = QtGui.QMessageBox()
+            msg.setIcon(msg.Warning)
+            msg.setWindowTitle('Go to last visited frame?')
+            msg.setText(
+                f'The last visited frame in "Segmentation and Tracking mode" '
+                f'is frame {last_tracked_i+1}.\n\n'
+                f'We recommend to resume from that frame.\n\n'
+                'How do you want to proceed?'
+            )
+            goToButton = QPushButton(
+                f'Resume from frame {last_tracked_i+1} (RECOMMENDED)'
+            )
+            stayButton = QPushButton(
+                f'Stay on current frame {self.frame_i+1}'
+            )
+            msg.addButton(goToButton, msg.YesRole)
+            msg.addButton(stayButton, msg.NoRole)
+            msg.exec_()
+            if msg.clickedButton() == goToButton:
+                self.frame_i = last_tracked_i
+                self.get_data()
+                self.updateALLimg()
+            else:
+                return
+
 
 
     def init_cca(self):
@@ -4334,6 +4360,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 msg = 'Cell cycle analysis aborted.'
                 print(msg)
                 self.titleLabel.setText(msg, color='w')
+                self.modeComboBox.setCurrentText('Viewer')
                 proceed = False
                 return
         elif self.frame_i < last_cca_frame_i:
@@ -4648,11 +4675,15 @@ class Yeast_ACDC_GUI(QMainWindow):
                 _lut[len(self.lut)+i] = rgb
             self.lut = _lut
 
-        lut = self.lut[:lenNewLut].copy()
-        for ID in self.binnedIDs:
-            lut[ID] = lut[ID]*0.2
-        for ID in self.ripIDs:
-            lut[ID] = lut[ID]*0.2
+        try:
+            lut = self.lut[:lenNewLut].copy()
+            for ID in self.binnedIDs:
+                lut[ID] = lut[ID]*0.2
+            for ID in self.ripIDs:
+                lut[ID] = lut[ID]*0.2
+        except:
+            print('WARNING: Tracking is WRONG.')
+            pass
         self.img2.setLookupTable(lut)
 
     def update_rp_metadata(self, draw=True):
@@ -4835,7 +4866,6 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.hist.sigLookupTableChanged.connect(self.get_overlay)
             self.hist.imageItem = lambda: None
 
-            print('Done.')
             self.alphaScrollBar.setDisabled(False)
             self.colorButton.setDisabled(False)
         else:
@@ -4877,7 +4907,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         if cells_img is None:
             cells_img = self.getImage()
             if self.invertBwAction.isChecked():
-                img = -img+img.max()
+                cells_img = -cells_img+cells_img.max()
 
         img = self.adjustBrightness(cells_img, self.data.filename)
         gray_img_rgb = gray2rgb(img)
@@ -5022,7 +5052,6 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.drawID_and_Contour(obj)
 
 
-
         # print('------------------------------------')
         # print(f'Drawing labels = {np.sum(self.drawingLabelsTimes):.3f} s')
         # print(f'Computing contours = {np.sum(self.computingContoursTimes):.3f} s')
@@ -5079,12 +5108,19 @@ class Yeast_ACDC_GUI(QMainWindow):
         curr_IDs = [obj.label for obj in self.rp]
         lost_IDs = [ID for ID in prev_IDs if ID not in curr_IDs]
         new_IDs = [ID for ID in curr_IDs if ID not in prev_IDs]
+        self.lost_IDs = lost_IDs
+        self.new_IDs = new_IDs
         self.old_IDs = prev_IDs
         self.IDs = curr_IDs
         warn_txt = ''
         htmlTxt = ''
         if lost_IDs:
-            warn_txt = f'Cells IDs lost in current frame: {lost_IDs}'
+            lost_IDs_format = lost_IDs.copy()
+            if len(lost_IDs) + len(new_IDs) > 20 and len(lost_IDs)>10:
+                del lost_IDs_format[5:-5]
+                lost_IDs_format.insert(5, "...")
+                lost_IDs_format = f"[{', '.join(map(str, lost_IDs_format))}]"
+            warn_txt = f'Cells IDs lost in current frame: {lost_IDs_format}'
             color = 'red'
             htmlTxt = (
                 f'<font color="red">{warn_txt}</font>'
@@ -5096,7 +5132,12 @@ class Yeast_ACDC_GUI(QMainWindow):
                 f'{htmlTxt}, <font color="red">{warn_txt}</font>'
             )
         if new_IDs:
-            warn_txt = f'New cells IDs in current frame: {new_IDs}'
+            new_IDs_format = new_IDs.copy()
+            if len(lost_IDs) + len(new_IDs) > 20 and len(new_IDs)>10:
+                del new_IDs_format[5:-5]
+                new_IDs_format.insert(5, "...")
+                new_IDs_format = f"[{', '.join(map(str, new_IDs_format))}]"
+            warn_txt = f'New cells IDs in current frame: {new_IDs_format}'
             color = 'r'
             htmlTxt = (
                 f'{htmlTxt}, <font color="green">{warn_txt}</font>'
@@ -5107,8 +5148,6 @@ class Yeast_ACDC_GUI(QMainWindow):
             htmlTxt = (
                 f'<font color="white">{warn_txt}</font>'
             )
-        self.lost_IDs = lost_IDs
-        self.new_IDs = new_IDs
         self.titleLabel.setText(htmlTxt)
         self.multiContIDs = set()
 
@@ -5134,7 +5173,9 @@ class Yeast_ACDC_GUI(QMainWindow):
     def tracking(self, onlyIDs=[], enforce=False, DoManualEdit=True,
                  storeUndo=False, prev_lab=None, prev_rp=None,
                  return_lab=False):
-        if self.frame_i == 0:
+
+        mode = str(self.modeComboBox.currentText())
+        if self.frame_i == 0 or mode.find('Tracking') == -1:
             self.checkIDs_LostNew()
             return
 
@@ -5682,7 +5723,6 @@ class Yeast_ACDC_GUI(QMainWindow):
                 # Go to that last frame if we are not on it
                 self.frame_i = frame_i
                 self.get_data()
-                self.update_rp_metadata(draw=False)
             if save_current == msg.Yes:
                 last_tracked_i = frame_i
                 self.store_data()
@@ -5692,7 +5732,6 @@ class Yeast_ACDC_GUI(QMainWindow):
                 current_frame_i = last_tracked_i
                 self.frame_i = last_tracked_i
                 self.get_data()
-                self.update_rp_metadata(draw=False)
                 self.updateALLimg()
             elif save_current == msg.Cancel:
                 return
@@ -5781,7 +5820,6 @@ class Yeast_ACDC_GUI(QMainWindow):
             # Go back to current frame
             self.frame_i = current_frame_i
             self.get_data()
-            self.update_rp_metadata(draw=False)
 
             print('--------------')
             print(f'Saved data until frame number {last_tracked_i+1}')
