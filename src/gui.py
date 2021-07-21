@@ -2984,16 +2984,22 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.removeAlldelROIsCurrentFrame()
             self.showInExplorerAction.setEnabled(True)
             self.navigateToolBar.setEnabled(True)
+            self.saveAction.setEnabled(True)
+            self.loadFluoAction.setEnabled(True)
             self.modeToolBar.setEnabled(True)
             self.disableTrackingCheckBox.setChecked(True)
             self.undoAction.setDisabled(True)
             self.redoAction.setDisabled(True)
+            self.assignBudMothButton.setDisabled(True)
+            self.setIsHistoryKnownButton.setDisabled(True)
+            self.reInitCcaAction.setDisabled(True)
+            self.repeatAutoCcaAction.setDisabled(True)
             currentMode = self.drawIDsContComboBox.currentText()
             self.drawIDsContComboBox.clear()
             self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxCcaItems)
             self.drawIDsContComboBox.setCurrentText(currentMode)
-            for BudMothLine in self.ax1_BudMothLines:
-                BudMothLine.setData([], [])
+            # for BudMothLine in self.ax1_BudMothLines:
+            #     BudMothLine.setData([], [])
             try:
                 self.undoAction.triggered.disconnect()
                 self.redoAction.triggered.disconnect()
@@ -4136,6 +4142,15 @@ class Yeast_ACDC_GUI(QMainWindow):
         for i, j in zip(row_idx, col_idx):
             mothID = IDsCellsG1[i]
             budID = self.new_IDs[j]
+
+            # If we are repeating assignment for the bud then we also have to
+            # correct the possibily wrong mother first
+            if budID in self.cca_df.index:
+                relID = self.cca_df.at[budID, 'relative_ID']
+                if relID in prev_cca_df.index:
+                    self.cca_df.loc[relID] = prev_cca_df.loc[relID]
+
+
             self.cca_df.at[mothID, 'relative_ID'] = budID
             self.cca_df.at[mothID, 'cell_cycle_stage'] = 'S'
 
@@ -4149,6 +4164,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 'is_history_known': True,
                 'corrected_assignment': False
             })
+
 
         # Keep only existing IDs
         self.cca_df = self.cca_df.loc[self.IDs]
