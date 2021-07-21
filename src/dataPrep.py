@@ -1,6 +1,7 @@
 import os
 import sys
 import re
+import time
 import numpy as np
 import pandas as pd
 import scipy.interpolate
@@ -344,7 +345,7 @@ class dataPrep(QMainWindow):
                 self.imagej_tiffwriter(tif, npz_data, metadata)
 
             # Save segm.npz
-            if self.data.segm_found is not None:
+            if self.data.segm_found:
                 print('Saving: ', self.data.segm_npz_path)
                 data = self.data.segm_data
                 croppedSegm = self.crop(data)
@@ -458,6 +459,7 @@ class dataPrep(QMainWindow):
 
 
     def prepData(self, event):
+        self.startAction.setDisabled(True)
         self.npy_to_npz()
         self.alignData(self.user_ch_name)
         if self.data.SizeZ>1:
@@ -508,6 +510,9 @@ class dataPrep(QMainWindow):
                      removable=False,
                      pen=pg.mkPen(color='r'),
                      maxBounds=QRectF(QRect(0,0,X,Y)))
+
+        roi.handleSize = 7
+
         ## handles scaling horizontally around center
         roi.addScaleHandle([1, 0.5], [0, 0.5])
         roi.addScaleHandle([0, 0.5], [1, 0.5])
@@ -520,12 +525,14 @@ class dataPrep(QMainWindow):
         roi.addScaleHandle([1, 1], [0, 0])
         roi.addScaleHandle([0, 0], [1, 1])
 
-        roi.handleSize = 7
-
         self.roi = roi
         self.roi.sigRegionChanged.connect(self.updateCurrentRoiShape)
+        self.roi.sigRegionChangeFinished.connect(self.ROImovingFinished)
 
         self.ax1.addItem(roi)
+
+    def ROImovingFinished(self, roi):
+        roi.setPen(color='r')
 
     def updateCurrentRoiShape(self, roi):
         roi.setPen(color=(255,255,0))
@@ -533,6 +540,10 @@ class dataPrep(QMainWindow):
         self.ROIshapeLabel.setText(f'   Current ROI shape: {w} x {h}')
 
     def alignData(self, user_ch_name):
+        # Get metadata from tif
+        with TiffFile(self.data.tif_path) as tif:
+            metadata = tif.imagej_metadata
+
         print('Aligning data if needed...')
         _zip = zip(self.data.tif_paths, self.data.npz_paths)
         aligned = False
@@ -564,11 +575,16 @@ class dataPrep(QMainWindow):
                 self.data.img_data = aligned_frames
                 self.npz_paths[i] = _npz
 
+                print('Saving: ', tif)
+                self.imagej_tiffwriter(tif, aligned_frames, metadata)
+
         _zip = zip(self.data.tif_paths, self.data.npz_paths)
         for i, (tif, npz) in enumerate(_zip):
             doAlign = npz is None or aligned
             # Align the other channels
             if doAlign and tif.find(user_ch_name) == -1:
+                if self.data.loaded_shifts is None:
+                    return
                 print('Aligning: ', tif)
                 tif_data = skimage.io.imread(tif)
                 if self.data.SizeZ>1:
@@ -586,8 +602,14 @@ class dataPrep(QMainWindow):
                 print('Saving: ', _npz)
                 np.savez_compressed(_npz, aligned_frames)
                 self.npz_paths[i] = _npz
+
+                print('Saving: ', tif)
+                self.imagej_tiffwriter(tif, aligned_frames, metadata)
+
         # Align segmentation data accordingly
         if self.data.segm_found and aligned:
+            if self.data.loaded_shifts is None:
+                return
             print('Aligning: ', self.data.segm_npz_path)
             self.data.segm_data, shifts = core.align_frames_2D(
                                          self.data.segm_data,
@@ -596,6 +618,7 @@ class dataPrep(QMainWindow):
             )
             print('Saving: ', self.data.segm_npz_path)
             np.savez_compressed(self.data.segm_npz_path, self.data.segm_data)
+        self.update_img()
         print('Done.')
 
     def npy_to_npz(self):

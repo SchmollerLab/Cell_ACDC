@@ -1084,6 +1084,7 @@ class CellsSlideshow_GUI(QMainWindow):
                  is_bw_inverted=False):
         self.button_toUncheck = button_toUncheck
         self.is_bw_inverted = is_bw_inverted
+        self.parent = parent
         """Initializer."""
         super().__init__(parent)
         self.setWindowTitle("Yeast ACDC - Segm&Track")
@@ -1193,18 +1194,39 @@ class CellsSlideshow_GUI(QMainWindow):
         self.img.hoverEvent = self.gui_hoverEventImg
 
     def gui_createImgWidgets(self):
-        self.zSlice_scrollBar_img = QScrollBar(Qt.Horizontal)
         self.img_Widglayout = QtGui.QGridLayout()
+
+        # Frames scrollbar
+        self.frames_scrollBar = QScrollBar(Qt.Horizontal)
+        self.frames_scrollBar.setFixedHeight(20)
+        self.frames_scrollBar.setMinimum(1)
+        self.frames_scrollBar.setMaximum(self.parent.num_segm_frames)
+        t_label = QLabel('frame  ')
+        _font = QtGui.QFont()
+        _font.setPointSize(10)
+        t_label.setFont(_font)
+        self.img_Widglayout.addWidget(
+                t_label, 0, 0, alignment=Qt.AlignRight)
+        self.img_Widglayout.addWidget(
+                self.frames_scrollBar, 0, 1, 1, 20)
+        self.frames_scrollBar.sliderMoved.connect(self.framesScrollBarMoved)
+
+        # z-slice scrollbar
+        self.zSlice_scrollBar_img = QScrollBar(Qt.Horizontal)
         self.zSlice_scrollBar_img.setFixedHeight(20)
         self.zSlice_scrollBar_img.setDisabled(True)
         _z_label = QLabel('z-slice  ')
         _font = QtGui.QFont()
         _font.setPointSize(10)
         _z_label.setFont(_font)
-        self.img_Widglayout.addWidget(_z_label, 0, 0, alignment=Qt.AlignCenter)
-        self.img_Widglayout.addWidget(self.zSlice_scrollBar_img, 0, 1, 2, 20)
+        self.img_Widglayout.addWidget(_z_label, 1, 0, alignment=Qt.AlignCenter)
+        self.img_Widglayout.addWidget(self.zSlice_scrollBar_img, 1, 1, 1, 20)
 
         self.img_Widglayout.setContentsMargins(100, 0, 50, 0)
+
+    def framesScrollBarMoved(self, frame_n):
+        self.frame_i = frame_n-1
+        self.update_img()
 
     def gui_hoverEventImg(self, event):
         # Update x, y, value label bottom right
@@ -1259,11 +1281,9 @@ class CellsSlideshow_GUI(QMainWindow):
     def update_img(self):
         self.frameLabel.setText(
                  f'Current frame = {self.frame_i+1}/{self.num_frames}')
-        img = self.frames[self.frame_i].copy()
-        self.is_bw_inverted
-        if self.is_bw_inverted:
-            img = -img+img.max()
+        img = self.parent.getImage(frame_i=self.frame_i)
         self.img.setImage(img)
+        self.frames_scrollBar.setSliderPosition(self.frame_i+1)
 
     def closeEvent(self, event):
         if self.button_toUncheck is not None:

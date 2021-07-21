@@ -231,6 +231,22 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.drawIDsContComboBox, row, 1, 1, 10,
                 alignment=Qt.AlignCenter)
 
+        # Frames scrollbar
+        row += 1
+        self.frames_scrollBar = QScrollBar(Qt.Horizontal)
+        self.frames_scrollBar.setFixedHeight(20)
+        self.frames_scrollBar.setDisabled(True)
+        self.frames_scrollBar.setMinimum(1)
+        self.frames_scrollBar.setMaximum(1)
+        t_label = QLabel('frame  ')
+        _font = QtGui.QFont()
+        _font.setPointSize(10)
+        t_label.setFont(_font)
+        self.img1_Widglayout.addWidget(
+                t_label, row, 0, alignment=Qt.AlignRight)
+        self.img1_Widglayout.addWidget(
+                self.frames_scrollBar, row, 1, 1, 10)
+
         # z-slice scrollbar
         row += 1
         self.zSlice_scrollBar = QScrollBar(Qt.Horizontal)
@@ -2241,7 +2257,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.overlayButton.setIcon(QIcon(":overlay.svg"))
         self.overlayButton.setCheckable(True)
         self.overlayButton.setToolTip('Overlay fluorescent image\n'
-        'NOTE: Green background if you successfully loaded fluorescent data')
+        'NOTE: Button has a green background if you successfully loaded fluorescent data')
         navigateToolBar.addWidget(self.overlayButton)
         # self.checkableButtons.append(self.overlayButton)
         # self.checkableQButtonsGroup.addButton(self.overlayButton)
@@ -2261,8 +2277,10 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.assignBudMothButton.setShortcut('m')
         self.assignBudMothButton.setDisabled(True)
         self.assignBudMothButton.setToolTip(
-            'Assign bud to the mother cell.\n'
-            'Active only in "Cell cycle analysis" mode (M + right-click)'
+            'Toggle "Assign bud to mother cell" mode ON/OFF\n\n'
+            'ACTION: press with right button on bud and release on mother '
+            '(right-click drag-and-drop)\n\n'
+            'SHORTCUT: "M" key'
         )
         navigateToolBar.addWidget(self.assignBudMothButton)
         self.checkableButtons.append(self.assignBudMothButton)
@@ -2275,9 +2293,10 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.setIsHistoryKnownButton.setShortcut('u')
         self.setIsHistoryKnownButton.setDisabled(True)
         self.setIsHistoryKnownButton.setToolTip(
-            'Annotate that a cell has an unknown history. Press button then LEFT-click on the cell\n'
-            'e.g. cells in the first frame of cells appearing from outside the view\n'
-            '(shortcut: "U")'
+            'Toggle "Annotate that a cell has an unknown history" mode ON/OFF\n\n'
+            'EXAMPLE: useful for cells appearing from outside of the field of view\n\n'
+            'ACTION: left-click on cell\n\n'
+            'SHORTCUT: "U" key'
         )
         navigateToolBar.addWidget(self.setIsHistoryKnownButton)
         self.checkableButtons.append(self.setIsHistoryKnownButton)
@@ -2299,7 +2318,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.brushButton.setIcon(QIcon(":brush.svg"))
         self.brushButton.setCheckable(True)
         self.brushButton.setShortcut('b')
-        self.brushButton.setToolTip('Paint (b)')
+        self.brushButton.setToolTip('Paint\n\nSHORTCUT: "B" key')
         editToolBar.addWidget(self.brushButton)
         self.checkableButtons.append(self.brushButton)
 
@@ -2307,7 +2326,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.eraserButton.setIcon(QIcon(":eraser.png"))
         self.eraserButton.setCheckable(True)
         self.eraserButton.setShortcut('x')
-        self.eraserButton.setToolTip('Erase (x)')
+        self.eraserButton.setToolTip('Erase\n\nSHORTCUT: "X" key')
         editToolBar.addWidget(self.eraserButton)
         self.checkableButtons.append(self.eraserButton)
 
@@ -2315,7 +2334,11 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.editID_Button.setIcon(QIcon(":edit-id.svg"))
         self.editID_Button.setCheckable(True)
         self.editID_Button.setShortcut('n')
-        self.editID_Button.setToolTip('Edit ID (N + right-click)')
+        self.editID_Button.setToolTip(
+            'Toggle "Edit ID" mode ON/OFF\n\n'
+            'EXAMPLE: manually change ID of a cell\n\n'
+            'ACTION: right-click on cell\n\n'
+            'SHORTCUT: "N" key')
         editToolBar.addWidget(self.editID_Button)
         self.checkableButtons.append(self.editID_Button)
         self.checkableQButtonsGroup.addButton(self.editID_Button)
@@ -2325,8 +2348,10 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.separateBudButton.setCheckable(True)
         self.separateBudButton.setShortcut('s')
         self.separateBudButton.setToolTip(
-            'Attempt automatic bud separation with right-click (S + right-click)\n'
-            'of enforce manual separation with left-click (S + left-click)'
+            'Toggle "Automatic/manual separation" mode ON/OFF\n\n'
+            'EXAMPLE: separate mother-bud fused together\n\n'
+            'ACTION: right-click for automatic and left-click for manual\n\n'
+            'SHORTCUT: "S" key'
         )
         editToolBar.addWidget(self.separateBudButton)
         self.checkableButtons.append(self.separateBudButton)
@@ -2336,7 +2361,12 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.mergeIDsButton.setIcon(QIcon(":merge-IDs.svg"))
         self.mergeIDsButton.setCheckable(True)
         self.mergeIDsButton.setShortcut('m')
-        self.mergeIDsButton.setToolTip('Merge IDs (S + right-click)')
+        self.mergeIDsButton.setToolTip(
+            'Toggle "Merge IDs" mode ON/OFF\n\n'
+            'EXAMPLE: merge/fuse two cells together\n\n'
+            'ACTION: right-click\n\n'
+            'SHORTCUT: "M" key'
+        )
         editToolBar.addWidget(self.mergeIDsButton)
         self.checkableButtons.append(self.mergeIDsButton)
         self.checkableQButtonsGroup.addButton(self.mergeIDsButton)
@@ -2345,7 +2375,11 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.binCellButton.setIcon(QIcon(":bin.svg"))
         self.binCellButton.setCheckable(True)
         self.binCellButton.setToolTip(
-           "Annotate cell as 'Removed from analysis' (R + right-click)"
+            'Toggle "Annotate cell as removed from analysis" mode ON/OFF\n\n'
+            'EXAMPLE: annotate that a cell is removed from downstream analysis.\n'
+            '"is_cell_excluded" set to True in acdc_output.csv table\n\n'
+            'ACTION: right-click\n\n'
+            'SHORTCUT: "R" key'
         )
         self.binCellButton.setShortcut("r")
         editToolBar.addWidget(self.binCellButton)
@@ -2356,8 +2390,11 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.ripCellButton.setIcon(QIcon(":rip.svg"))
         self.ripCellButton.setCheckable(True)
         self.ripCellButton.setToolTip(
-           "Annotate cell as dead (D + right-click)\n"
-           "NOTE that you can also completely delete a cell with scrolling wheel click on the ID"
+            'Toggle "Annotate cell as dead" mode ON/OFF\n\n'
+            'EXAMPLE: annotate that a cell is dead.\n'
+            '"is_cell_dead" set to True in acdc_output.csv table\n\n'
+            'ACTION: right-click\n\n'
+            'SHORTCUT: "D" key'
         )
         self.ripCellButton.setShortcut("d")
         editToolBar.addWidget(self.ripCellButton)
@@ -2998,8 +3035,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.drawIDsContComboBox.clear()
             self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxCcaItems)
             self.drawIDsContComboBox.setCurrentText(currentMode)
-            # for BudMothLine in self.ax1_BudMothLines:
-            #     BudMothLine.setData([], [])
+            self.frames_scrollBar.setMaximum(self.num_segm_frames)
             try:
                 self.undoAction.triggered.disconnect()
                 self.redoAction.triggered.disconnect()
@@ -3010,6 +3046,7 @@ class Yeast_ACDC_GUI(QMainWindow):
     def launchSlideshow(self):
         if self.slideshowButton.isChecked():
             self.slideshowWin = apps.CellsSlideshow_GUI(
+                               parent=self,
                                button_toUncheck=self.slideshowButton,
                                Left=self.slideshowWinLeft,
                                Top=self.slideshowWinTop,
@@ -3304,7 +3341,6 @@ class Yeast_ACDC_GUI(QMainWindow):
                 UndoFutFrames = False
                 applyFutFrames = True
                 self.onlyTracking = True
-
         return UndoFutFrames, applyFutFrames, endFrame_i, doNotShowAgain
 
 
@@ -3582,15 +3618,23 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.get_data()
                 return
             self.updateALLimg(never_visited=never_visited)
+            self.setFramesScrollbarMaximum()
         else:
             # Store data for current frame
             self.store_data()
             msg = 'You reached the last segmented frame!'
             print(msg)
             self.titleLabel.setText(msg, color='w')
-        if self.slideshowWin is not None:
-            self.slideshowWin.frame_i = self.frame_i
-            self.slideshowWin.update_img()
+
+    def setFramesScrollbarMaximum(self):
+        mode = str(self.modeComboBox.currentText())
+        if mode == 'Segmentation and Tracking':
+            if self.data.last_tracked_i is not None:
+                if self.frame_i > self.data.last_tracked_i:
+                    self.frames_scrollBar.setMaximum(self.frame_i+1)
+        elif mode == 'Cell cycle analysis':
+            if self.frame_i > self.last_cca_frame_i:
+                self.frames_scrollBar.setMaximum(self.frame_i+1)
 
     def prev_cb(self):
         if self.frame_i > 0:
@@ -3604,9 +3648,6 @@ class Yeast_ACDC_GUI(QMainWindow):
             msg = 'You reached the first frame!'
             print(msg)
             self.titleLabel.setText(msg, color='w')
-        if self.slideshowWin is not None:
-            self.slideshowWin.frame_i = self.frame_i
-            self.slideshowWin.update_img()
 
     def init_frames_data(self, frames_path, user_ch_name):
         data = load.load_frames_data(frames_path, user_ch_name,
@@ -3616,12 +3657,12 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.titleLabel.setText(
                 'File --> Open or Open recent to start the process',
                 color='w')
-            return
+            return False
         if not data.segm_found:
             err_msg = ('Segmentation mask file ("..._segm.npz") not found. '
                        'You need to run the segmentation script first.')
             self.titleLabel.setText(err_msg, color='r')
-            return
+            return False
         # Allow single 2D/3D image
         if data.SizeT < 2:
             data.img_data = np.array([data.img_data])
@@ -3640,6 +3681,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.gui_createGraphicsItems()
         self.init_segmInfo_df()
         self.init_attr(max_ID=data.segm_data.max())
+
+        return True
 
     def init_segmInfo_df(self):
         if self.data.segmInfo_df is None and self.data.SizeZ > 1:
@@ -3665,6 +3708,18 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.data.segmInfo_df.at[self.frame_i, 'z_slice_used_gui'] = z
         self.updateALLimg(only_ax1=True)
 
+    def clearAllItems(self):
+        allItems = zip(self.ax1_ContoursCurves,
+                       self.ax1_LabelItemsIDs,
+                       self.ax2_LabelItemsIDs,
+                       self.ax1_BudMothLines)
+        for idx, items_ID in enumerate(allItems):
+            ContCurve, _IDlabel1, _IDlabel2, BudMothLine = items_ID
+            ContCurve.setData([], [])
+            _IDlabel1.setText ('')
+            _IDlabel2.setText('')
+            BudMothLine.setData([], [])
+
     def clear_prevItems(self):
         # Clear data from those items that have data and are not present in
         # current rp
@@ -3683,13 +3738,18 @@ class Yeast_ACDC_GUI(QMainWindow):
 
             if _IDlabel1.text != '' and ID not in IDs:
                 # Text is present but ID is not --> clear
-                _IDlabel1.setText('')
+                _IDlabel1.setText ('')
 
             if _IDlabel2.text != '' and ID not in IDs:
                 # Text is present but ID is not --> clear
                 _IDlabel2.setText('')
 
-            if BudMothLine.getData()[0] is not None and ID not in IDs:
+            clearLines = (
+                (BudMothLine.getData()[0] is not None and ID not in IDs)
+                or self.cca_df is None
+            )
+
+            if clearLines:
                 # Contour is present but ID is not --> clear
                 BudMothLine.setData([], [])
 
@@ -3826,6 +3886,37 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         self.ax2.vb.autoRange()
         self.ax1.vb.autoRange()
+
+        self.frames_scrollBar.setDisabled(False)
+        self.frames_scrollBar.setMinimum(1)
+        if self.data.last_tracked_i is not None:
+            self.frames_scrollBar.setMaximum(self.data.last_tracked_i+1)
+        try:
+            self.frames_scrollBar.sliderMoved.disconnect()
+            self.frames_scrollBar.sliderReleased.disconnect()
+        except:
+            pass
+        self.frames_scrollBar.sliderMoved.connect(self.framesScrollBarMoved)
+        self.frames_scrollBar.sliderReleased.connect(self.framesScrollBarReleased)
+
+    def framesScrollBarMoved(self, frame_n):
+        self.frame_i = frame_n-1
+        if self.allData_li[self.frame_i]['labels'] is None:
+            self.lab = self.data.segm_data[self.frame_i]
+        else:
+            self.lab = self.allData_li[self.frame_i]['labels']
+        cells_img = self.getImage()
+        self.clearAllItems()
+        self.frameLabel.setText(
+                 f'Current frame = {self.frame_i+1}/{self.num_segm_frames}')
+        self.img1.setImage(cells_img)
+        self.img2.setImage(self.lab)
+        self.updateLookuptable()
+
+    def framesScrollBarReleased(self):
+        self.frame_i = self.frames_scrollBar.sliderPosition()-1
+        self.get_data()
+        self.updateALLimg()
 
     def unstore_data(self):
         self.allData_li[self.frame_i] = {
@@ -4324,6 +4415,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             if lab is None:
                 last_tracked_i = frame_i-1
                 break
+        self.frames_scrollBar.setMaximum(last_tracked_i+1)
         if self.frame_i > last_tracked_i:
             # Prompt user to go to last tracked frame
             msg = QtGui.QMessageBox()
@@ -4437,6 +4529,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                 proceed = False
                 return
         self.last_cca_frame_i = last_cca_frame_i
+
+        self.frames_scrollBar.setMaximum(last_cca_frame_i+1)
 
         if self.cca_df is None:
             self.cca_df = self.getBaseCca_df()
@@ -4997,14 +5091,16 @@ class Yeast_ACDC_GUI(QMainWindow):
     def updateOverlay(self, button):
         self.get_overlay(setImg=True)
 
-    def getImage(self):
+    def getImage(self, frame_i=None):
+        if frame_i is None:
+            frame_i = self.frame_i
         if self.data.SizeZ > 1:
-            z = self.data.segmInfo_df.at[self.frame_i, 'z_slice_used_gui']
+            z = self.data.segmInfo_df.at[frame_i, 'z_slice_used_gui']
             self.zSlice_scrollBar.setSliderPosition(z)
             self.z_label.setText(f'z-slice  {z}/{self.data.SizeZ}')
-            cells_img = self.data.img_data[self.frame_i][z].copy()
+            cells_img = self.data.img_data[frame_i][z].copy()
         else:
-            cells_img = self.data.img_data[self.frame_i].copy()
+            cells_img = self.data.img_data[frame_i].copy()
         return cells_img
 
     def setImageImg2(self):
@@ -5080,6 +5176,10 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.gaussWin.getData()
             self.gaussWin.apply()
 
+        if self.slideshowWin is not None:
+            self.slideshowWin.frame_i = self.frame_i
+            self.slideshowWin.update_img()
+
         if only_ax1:
             return
 
@@ -5113,6 +5213,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.highlightLostNew()
         self.checkIDsMultiContour()
 
+        self.frames_scrollBar.setSliderPosition(self.frame_i+1)
+
     def cancelBlinking(self):
         self.stopBlinking = True
 
@@ -5129,6 +5231,10 @@ class Yeast_ACDC_GUI(QMainWindow):
     def highlightLostNew(self):
         for ContCurve in self.ax2_ContoursCurves:
             ContCurve.setData([], [])
+
+        if self.frame_i == 0:
+            return
+
         img = self.img1.image
         for obj in self.rp:
             ID = obj.label
@@ -5152,7 +5258,14 @@ class Yeast_ACDC_GUI(QMainWindow):
 
     def checkIDs_LostNew(self):
         if self.frame_i == 0:
+            self.lost_IDs = []
+            self.new_IDs = []
+            self.old_IDs = []
+            self.IDs = [obj.label for obj in self.rp]
+            self.multiContIDs = set()
+            self.titleLabel.setText('Looking good!', color='w')
             return
+
         prev_rp = self.allData_li[self.frame_i-1]['regionprops']
         prev_IDs = [obj.label for obj in prev_rp]
         curr_IDs = [obj.label for obj in self.rp]
@@ -5375,6 +5488,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
 
     def undo_changes_future_frames(self):
+        self.frames_scrollBar.setMaximum(self.frame_i+1)
         for i in range(self.frame_i+1, self.num_frames):
             if self.allData_li[i]['labels'] is None:
                 break
@@ -5579,9 +5693,13 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.titleLabel.setText(err_msg)
                 self.openAction.setEnabled(True)
                 raise FileNotFoundError(err_msg)
+                return
             print(f'Loading {img_path}...')
 
-            self.init_frames_data(img_path, user_ch_name)
+            proceed = self.init_frames_data(img_path, user_ch_name)
+            if not proceed:
+                return
+
             self.create_chNamesQActionGroup(user_ch_name)
 
             self.user_ch_name = user_ch_name
