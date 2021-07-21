@@ -30,7 +30,8 @@ class load_frames_data:
                  load_all_imgData=False,
                  load_shifts=False,
                  loadSegmInfo=True,
-                 first_call=True):
+                 first_call=True,
+                 load_delROIsInfo=False):
         self.path = path
         self.fluo_data_dict = {}
         self.images_path = os.path.dirname(path)
@@ -271,6 +272,14 @@ class load_frames_data:
                     self.loaded_shifts = np.load(file_path)
                     break
 
+        self.delROIsInfo_npz = None
+        if load_delROIsInfo:
+            delROIsInfo_path, delROIsInfo_found = self.substring_path(
+                                              path, 'delROIsInfo.npz',
+                                              self.images_path)
+            if delROIsInfo_found:
+                self.delROIsInfo_npz = np.load(delROIsInfo_path)
+
         self.build_paths(self.filename, self.images_path, user_ch_name)
 
     def zyx_vox_dim(self):
@@ -314,6 +323,7 @@ class load_frames_data:
         self.last_tracked_i_path = f'{base_path}_last_tracked_i.txt'
         self.acdc_output_csv_path = f'{base_path}_acdc_output.csv'
         self.segmInfo_df_csv_path = f'{base_path}_segmInfo.csv'
+        self.delROIs_info_path = f'{base_path}_delROIsInfo.npz'
 
     def substring_path(self, path, substring, images_path):
         substring_found = False

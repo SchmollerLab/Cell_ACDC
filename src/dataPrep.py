@@ -520,12 +520,15 @@ class dataPrep(QMainWindow):
         roi.addScaleHandle([1, 1], [0, 0])
         roi.addScaleHandle([0, 0], [1, 1])
 
+        roi.handleSize = 7
+
         self.roi = roi
         self.roi.sigRegionChanged.connect(self.updateCurrentRoiShape)
 
         self.ax1.addItem(roi)
 
-    def updateCurrentRoiShape(self, event):
+    def updateCurrentRoiShape(self, roi):
+        roi.setPen(color=(255,255,0))
         w, h = [int(round(c)) for c in self.roi.size()]
         self.ROIshapeLabel.setText(f'   Current ROI shape: {w} x {h}')
 

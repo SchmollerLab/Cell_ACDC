@@ -2559,15 +2559,26 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.addDelRoiAction.triggered.connect(self.addDelROI)
 
     def addDelROI(self, event):
-        xRange, yRange = self.ax2.viewRange()
-        Y, X = self.img2.image.shape
-        w, h = 32, 32
-        xl, yb = abs(xRange[0]), abs(yRange[0])
+        roi = self.getDelROI()
+        for i in range(self.frame_i, self.num_segm_frames):
+            delROIs_info = self.allData_li[i]['delROIs_info']
+            delROIs_info['rois'].append(roi)
+            delROIs_info['delMasks'].append(np.zeros_like(self.lab))
+            delROIs_info['delIDsROI'].append(set())
+        self.ax2.addItem(roi)
+
+    def getDelROI(self, xl=None, yb=None, w=32, h=32):
+        if xl is None:
+            xRange, yRange = self.ax2.viewRange()
+            xl, yb = abs(xRange[0]), abs(yRange[0])
+        Y, X = self.lab.shape
         roi = pg.ROI([xl, yb], [w, h],
                      rotatable=False,
                      removable=True,
                      pen=pg.mkPen(color='r'),
                      maxBounds=QRectF(QRect(0,0,X,Y)))
+
+        roi.handleSize = 7
 
         ## handles scaling horizontally around center
         roi.addScaleHandle([1, 0.5], [0, 0.5])
@@ -2585,13 +2596,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         roi.sigRegionChanged.connect(self.ROImoving)
         roi.sigRegionChangeFinished.connect(self.ROImovingFinished)
-
-        for i in range(self.frame_i, self.num_segm_frames):
-            delROIs_info = self.allData_li[i]['delROIs_info']
-            delROIs_info['rois'].append(roi)
-            delROIs_info['delMasks'].append(np.zeros_like(self.lab))
-            delROIs_info['delIDsROI'].append(set())
-        self.ax2.addItem(roi)
+        return roi
 
     def ROImoving(self, roi):
         roi.setPen(color=(255,255,0))
@@ -2629,7 +2634,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         for roi in self.allData_li[self.frame_i]['delROIs_info']['rois']:
             if roi not in self.ax2.items:
                 continue
-            ROImask = np.zeros(self.img2.image.shape, bool)
+            ROImask = np.zeros(self.lab.shape, bool)
             delROIs_info = self.allData_li[self.frame_i]['delROIs_info']
             idx = delROIs_info['rois'].index(roi)
             delObjROImask = delROIs_info['delMasks'][idx]
@@ -3599,7 +3604,8 @@ class Yeast_ACDC_GUI(QMainWindow):
 
     def init_frames_data(self, frames_path, user_ch_name):
         data = load.load_frames_data(frames_path, user_ch_name,
-                                     parentQWidget=self)
+                                     parentQWidget=self,
+                                     load_delROIsInfo=True)
         if data is None:
             self.titleLabel.setText(
                 'File --> Open or Open recent to start the process',
@@ -3774,10 +3780,13 @@ class Yeast_ACDC_GUI(QMainWindow):
         if self.data.last_tracked_i is not None:
             last_tracked_num = self.data.last_tracked_i+1
             # Load previous session data
-            for i in range(self.data.last_tracked_i):
+            # Keep track of which ROIs have already been added in previous frame
+            delROIshapes = [[] for _ in range(self.num_segm_frames)]
+            for i in range(last_tracked_num):
                 self.frame_i = i
                 self.get_data()
                 self.store_data()
+                self.load_delROIs_info(delROIshapes)
                 self.binnedIDs = set()
                 self.ripIDs = set()
 
@@ -4221,7 +4230,6 @@ class Yeast_ACDC_GUI(QMainWindow):
                             df[cols] = df[cols].astype(int)
                     i = self.frame_i
                     self.allData_li[i]['acdc_df'] = df.copy()
-
             self.get_cca_df()
         else:
             # Requested frame was already visited. Load from RAM.
@@ -4244,6 +4252,32 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.update_rp_metadata(draw=False)
         self.IDs = [obj.label for obj in self.rp]
         return proceed_cca, never_visited
+
+    def load_delROIs_info(self, delROIshapes):
+        delROIsInfo_npz = self.data.delROIsInfo_npz
+        if delROIsInfo_npz is not None:
+            for file in self.data.delROIsInfo_npz.files:
+                if file.startswith(f'{self.frame_i}_'):
+                    delROIs_info = self.allData_li[self.frame_i]['delROIs_info']
+                    if file.startswith(f'{self.frame_i}_delMask'):
+                        delMask = delROIsInfo_npz[file]
+                        delROIs_info['delMasks'].append(delMask)
+                    elif file.startswith(f'{self.frame_i}_delIDs'):
+                        delIDsROI = set(delROIsInfo_npz[file])
+                        delROIs_info['delIDsROI'].append(delIDsROI)
+                    elif file.startswith(f'{self.frame_i}_roi'):
+                        Y, X = self.lab.shape
+                        x0, y0, w, h = delROIsInfo_npz[file]
+                        addROI = (
+                            self.frame_i==0 or
+                            [x0, y0, w, h] not in delROIshapes[self.frame_i]
+                        )
+                        if addROI:
+                            roi = self.getDelROI(xl=x0, yb=y0, w=w, h=h)
+                            for i in range(self.frame_i, self.num_segm_frames):
+                                delROIs_info_i = self.allData_li[i]['delROIs_info']
+                                delROIs_info_i['rois'].append(roi)
+                                delROIshapes[i].append([x0, y0, w, h])
 
     def getBaseCca_df(self):
         IDs = [obj.label for obj in self.rp]
@@ -5741,6 +5775,8 @@ class Yeast_ACDC_GUI(QMainWindow):
             acdc_output_csv_path = self.data.acdc_output_csv_path
             last_tracked_i_path = self.data.last_tracked_i_path
             segm_npy = np.copy(self.data.segm_data)
+            npz_delROIs_info = {}
+            delROIs_info_path = self.data.delROIs_info_path
             acdc_df_li = [None]*self.num_frames
 
             # Create list of dataframes from acdc_df on HDD
@@ -5759,6 +5795,23 @@ class Yeast_ACDC_GUI(QMainWindow):
                     break
 
                 acdc_df = data_dict['acdc_df']
+
+                # Save del ROIs
+                delROIs_info = self.allData_li[frame_i]['delROIs_info']
+                rois = delROIs_info['rois']
+                n = len(rois)
+                delMasks = delROIs_info['delMasks']
+                delIDsROI = delROIs_info['delIDsROI']
+                _zip = zip(rois, delMasks, delIDsROI)
+                for r, (roi, delMask, delIDs) in enumerate(_zip):
+                    npz_delROIs_info[f'{frame_i}_delMask_{r}_{n}'] = delMask
+                    delIDsROI_arr = np.array(list(delIDs))
+                    npz_delROIs_info[f'{frame_i}_delIDs_{r}_{n}'] = delIDsROI_arr
+                    x0, y0 = [int(round(c)) for c in roi.pos()]
+                    w, h = [int(round(c)) for c in roi.size()]
+                    roi_arr = np.array([x0, y0, w, h], dtype=np.uint16)
+                    npz_delROIs_info[f'{frame_i}_roi_{r}_{n}'] = roi_arr
+
 
                 # Build acdc_df and index it in each frame_i of acdc_df_li
                 if acdc_df is not None:
@@ -5780,6 +5833,10 @@ class Yeast_ACDC_GUI(QMainWindow):
                     keys.append(i)
 
             print('Saving data...')
+            try:
+                np.savez_compressed(delROIs_info_path, **npz_delROIs_info)
+            except:
+                traceback.print_exc()
             try:
                 all_frames_metadata_df = pd.concat(
                     df_li, keys=keys, names=['frame_i', 'Cell_ID']
