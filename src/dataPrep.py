@@ -318,6 +318,7 @@ class dataPrep(QMainWindow):
             msg.Yes | msg.No
         )
         if msg.Yes:
+            self.okAction.setDisabled(True)
             print('Saving data...')
 
             if self.data.SizeZ > 1:
@@ -328,6 +329,18 @@ class dataPrep(QMainWindow):
             data = self.data.img_data
             croppedData = self.crop(data)
             print('Cropped data shape: ', croppedData.shape)
+
+            x0, y0 = [int(round(c)) for c in self.roi.pos()]
+            w, h = [int(round(c)) for c in self.roi.size()]
+            print(f'Saving crop ROI coords: x_left = {x0}, x_right = {x0+w}, '
+                  f'y_top = {y0}, y_bottom = {y0+h}\n'
+                  f'to {self.data.cropROI_coords_path}')
+
+            with open(self.data.cropROI_coords_path, 'w') as csv:
+                csv.write(f'x_left,{x0}\n'
+                          f'x_right,{x0+w}\n'
+                          f'y_top,{y0}\n'
+                          f'y_bottom,{y0+h}')
 
             # Get metadata from tif
             with TiffFile(self.data.tif_path) as tif:
@@ -373,7 +386,9 @@ class dataPrep(QMainWindow):
                     df.to_csv(self.data.acdc_output_csv_path)
 
             print('Done.')
-            self.titleLabel.setText('Saved! You can close the program.', color='w')
+            self.titleLabel.setText(
+                'Saved! You can close the program or load another position.',
+                color='g')
 
     def imagej_tiffwriter(self, new_path, data, metadata):
         with TiffWriter(new_path, imagej=True) as new_tif:

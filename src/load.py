@@ -324,6 +324,7 @@ class load_frames_data:
         self.acdc_output_csv_path = f'{base_path}_acdc_output.csv'
         self.segmInfo_df_csv_path = f'{base_path}_segmInfo.csv'
         self.delROIs_info_path = f'{base_path}_delROIsInfo.npz'
+        self.cropROI_coords_path = f'{base_path}_cropROI_coords.csv'
 
     def substring_path(self, path, substring, images_path):
         substring_found = False

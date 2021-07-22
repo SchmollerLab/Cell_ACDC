@@ -22,6 +22,7 @@ import cv2
 import numpy as np
 import pandas as pd
 import scipy.optimize
+import scipy.interpolate
 import skimage
 import skimage.io
 import skimage.measure
@@ -528,7 +529,8 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         # Drag image if neither brush or eraser are On or Alt is pressed
         dragImg = (
-            (left_click and not eraserON and not brushON and not separateON)
+            (left_click and not eraserON and not
+            brushON and not separateON)
             or (left_click and self.isAltDown)
         )
 
@@ -562,12 +564,13 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.roiContextMenu.exec_(event.screenPos())
                 return
 
-        # Left-click is used for brush, eraser and separate bud
+        # Left-click is used for brush, eraser, separate bud and curvature tool
         # Brush and eraser are mutually exclusive but we want to keep the eraser
         # or brush ON and disable them temporarily to allow left-click with
         # separate ON
         canErase = eraserON and not separateON and not dragImg
         canBrush = brushON and not separateON and not dragImg
+
 
         # Erase with brush and left click on the right image
         # NOTE: contours, IDs and rp will be updated
@@ -1355,10 +1358,11 @@ class Yeast_ACDC_GUI(QMainWindow):
         left_click = event.button() == Qt.MouseButton.LeftButton
         mid_click = event.button() == Qt.MouseButton.MidButton
         brushON = self.brushButton.isChecked()
+        curvToolON = self.curvToolButton.isChecked()
         histON = self.setIsHistoryKnownButton.isChecked()
 
         dragImg = (
-            (left_click and not brushON and not histON) or
+            (left_click and not brushON and not histON and not curvToolON) or
             (left_click and self.isAltDown)
         )
 
@@ -1366,6 +1370,9 @@ class Yeast_ACDC_GUI(QMainWindow):
             not self.assignBudMothButton.isChecked() and
             not self.setIsHistoryKnownButton.isChecked()
         )
+
+        canCurv = curvToolON and not brushON and not dragImg
+        canBrush = brushON and not curvToolON and not dragImg
 
         # Enable dragging of the image window like pyqtgraph original code
         if dragImg:
@@ -1375,7 +1382,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             return
 
         # Paint new IDs with brush and left click on the left image
-        if left_click and self.brushButton.isChecked() and not dragImg:
+        if left_click and canBrush:
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(False)
             x, y = event.pos().x(), event.pos().y()
@@ -1407,6 +1414,40 @@ class Yeast_ACDC_GUI(QMainWindow):
                 # Update colors to include a new color for the new ID
                 self.updateALLimg()
 
+        elif left_click and canCurv:
+            x, y = event.pos().x(), event.pos().y()
+            Y, X = self.lab.shape
+            clickOnImg = x >= 0 and x < X and y >= 0 and y < Y
+            if not clickOnImg:
+                return
+
+            # Check if user clicked on starting anchor again --> close spline
+            closeSpline = False
+            clickedAnchors = self.curvAnchors.pointsAt(event.pos())
+            xxA, yyA = self.curvAnchors.getData()
+            if len(xxA)>0:
+                if len(xxA) == 1:
+                    self.curvHoverON = True
+                x0, y0 = xxA[0], yyA[0]
+                if len(clickedAnchors)>0:
+                    xA_clicked, yA_clicked = clickedAnchors[0].pos()
+                    if x0==xA_clicked and y0==yA_clicked:
+                        x = x0
+                        y = y0
+                        closeSpline = True
+
+            # Add anchors
+            self.curvAnchors.addPoints([x], [y])
+            try:
+                xx, yy = self.curvHoverPlotItem.getData()
+                self.curvPlotItem.setData(xx, yy)
+                if closeSpline:
+                    self.curvHoverON = False
+                    self.splineToObj()
+                    self.curvTool_cb(True)
+            except:
+                # traceback.print_exc()
+                pass
 
         # Allow right-click actions on both images
         elif right_click and mode == 'Segmentation and Tracking':
@@ -2110,6 +2151,46 @@ class Yeast_ACDC_GUI(QMainWindow):
                 # traceback.print_exc()
                 self.BudMothTempLine.setData([], [])
 
+        # Temporarily draw spline curve
+        # see https://stackoverflow.com/questions/33962717/interpolating-a-closed-curve-using-scipy
+        if self.curvToolButton.isChecked() and self.curvHoverON:
+            try:
+                x, y = event.pos()
+                xx, yy = self.curvAnchors.getData()
+                hoverAnchors = self.curvAnchors.pointsAt(event.pos())
+                per=False
+                # If we are hovering the starting point we generate
+                # a closed spline
+                if len(xx) >= 2:
+                    if len(hoverAnchors)>0:
+                        xA_hover, yA_hover = hoverAnchors[0].pos()
+                        if xx[0]==xA_hover and yy[0]==yA_hover:
+                            per=True
+                    if per:
+                        # Append start coords and close spline
+                        xx = np.r_[xx, xx[0]]
+                        yy = np.r_[yy, yy[0]]
+                        xi, yi = self.getSpline(xx, yy, per=per)
+                        # self.curvPlotItem.setData([], [])
+                    else:
+                        # Append mouse coords
+                        xx = np.r_[xx, x]
+                        yy = np.r_[yy, y]
+                        xi, yi = self.getSpline(xx, yy, per=per)
+                    self.curvHoverPlotItem.setData(xi, yi)
+            except:
+                pass
+                # traceback.print_exc()
+
+    def getSpline(self, xx, yy, resolutionSpace=None, per=False):
+        if resolutionSpace is None:
+            resolutionSpace = self.hoverLinSpace
+        k = 2 if len(xx) == 3 else 3
+        tck, u = scipy.interpolate.splprep(
+                    [xx, yy], s=0, k=k, per=per)
+        xi, yi = scipy.interpolate.splev(resolutionSpace, tck)
+        return xi, yi
+
     def gui_hoverEventImg2(self, event):
         self.hoverEventImg2 = event
         # Update x, y, value label bottom right
@@ -2329,6 +2410,14 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.eraserButton.setToolTip('Erase\n\nSHORTCUT: "X" key')
         editToolBar.addWidget(self.eraserButton)
         self.checkableButtons.append(self.eraserButton)
+
+        self.curvToolButton = QToolButton(self)
+        self.curvToolButton.setIcon(QIcon(":curvature-tool.svg"))
+        self.curvToolButton.setCheckable(True)
+        self.curvToolButton.setShortcut('c')
+        self.curvToolButton.setToolTip('Curvature tool\n\nSHORTCUT: "C" key')
+        editToolBar.addWidget(self.curvToolButton)
+        self.checkableButtons.append(self.curvToolButton)
 
         self.editID_Button = QToolButton(self)
         self.editID_Button.setIcon(QIcon(":edit-id.svg"))
@@ -2576,6 +2665,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.repeatTrackingAction.triggered.connect(self.repeatTracking)
         self.brushButton.toggled.connect(self.Brush_cb)
         self.eraserButton.toggled.connect(self.Eraser_cb)
+        self.curvToolButton.toggled.connect(self.curvTool_cb)
         self.reInitCcaAction.triggered.connect(self.reInitCcca)
         self.repeatAutoCcaAction.triggered.connect(self.repeatAutoCca)
         self.manuallyEditCcaAction.triggered.connect(self.manualEditCca)
@@ -3138,19 +3228,20 @@ class Yeast_ACDC_GUI(QMainWindow):
 
 
     def Brush_cb(self, checked):
-        # Toggle eraser Button OFF
         if checked:
+            self.setBrushID()
+            self.enableSizeSpinbox(True)
             self.eraserButton.toggled.disconnect()
+            self.curvToolButton.toggled.disconnect()
             self.eraserButton.setChecked(False)
+            self.curvToolButton.setChecked(False)
             self.eraserButton.toggled.connect(self.Eraser_cb)
-
-        if not checked:
+            self.curvToolButton.toggled.connect(self.curvTool_cb)
+        else:
             self.ax1_BrushCircle.setData([], [])
             self.ax2_BrushCircle.setData([], [])
             self.enableSizeSpinbox(False)
-        else:
-            self.setBrushID()
-            self.enableSizeSpinbox(True)
+
 
     def setBrushID(self):
         # Make sure that the brushed ID is always a new one based on
@@ -3172,18 +3263,48 @@ class Yeast_ACDC_GUI(QMainWindow):
         img = skimage.exposure.equalize_adapthist(self.img1.image)
         self.img1.setImage(img)
 
-    def Eraser_cb(self, event):
-        if self.brushButton.isChecked():
+    def curvTool_cb(self, checked):
+        if checked:
+            self.eraserButton.toggled.disconnect()
             self.brushButton.toggled.disconnect()
+            self.eraserButton.setChecked(False)
             self.brushButton.setChecked(False)
+            self.eraserButton.toggled.connect(self.Eraser_cb)
             self.brushButton.toggled.connect(self.Brush_cb)
-        if not self.eraserButton.isChecked():
+            self.hoverLinSpace = np.linspace(0, 1, 1000)
+            self.curvPlotItem = pg.PlotDataItem(pen=self.newIDs_cpen)
+            self.curvHoverPlotItem = pg.PlotDataItem(pen=self.oldIDs_cpen)
+            self.curvAnchors = pg.ScatterPlotItem(
+                symbol='o', size=9,
+                brush=pg.mkBrush((255,0,0,50)),
+                pen=pg.mkPen((255,0,0), width=2),
+                hoverable=True, hoverPen=pg.mkPen((255,0,0), width=3),
+                hoverBrush=pg.mkBrush((255,0,0))
+            )
+            self.ax1.addItem(self.curvAnchors)
+            self.ax1.addItem(self.curvPlotItem)
+            self.ax1.addItem(self.curvHoverPlotItem)
+            self.curvHoverON = True
+            self.curvPlotItems.append(self.curvPlotItem)
+            self.curvAnchorsItems.append(self.curvAnchors)
+            self.curvHoverItems.append(self.curvHoverPlotItem)
+        else:
+            self.curvHoverON = False
+            self.clearCurvItems()
+
+    def Eraser_cb(self, checked):
+        if checked:
+            self.brushButton.toggled.disconnect()
+            self.curvToolButton.toggled.disconnect()
+            self.brushButton.setChecked(False)
+            self.curvToolButton.setChecked(False)
+            self.brushButton.toggled.connect(self.Brush_cb)
+            self.curvToolButton.toggled.connect(self.curvTool_cb)
+            self.enableSizeSpinbox(True)
+        else:
             self.ax1_BrushCircle.setData([], [])
             self.ax2_BrushCircle.setData([], [])
-            self.brushButton.setChecked(False)
             self.enableSizeSpinbox(False)
-        else:
-            self.enableSizeSpinbox(True)
 
     def keyPressEvent(self, ev):
         isBrushActive = (self.brushButton.isChecked()
@@ -3228,7 +3349,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                     print(cca_df)
                 print('========================')
         elif ev.key() == Qt.Key_Plus:
-            self.blinkMultiBudMoth_cb()
+            minTick = self.hist.gradient.getTick(0)
+            self.hist.gradient.setTickValue(minTick, 0.5)
         elif ev.key() == Qt.Key_H:
             lab_mask = (self.lab>0).astype(np.uint8)
             rp = skimage.measure.regionprops(lab_mask)
@@ -3721,6 +3843,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             BudMothLine.setData([], [])
 
     def clear_prevItems(self):
+        self.clearCurvItems()
         # Clear data from those items that have data and are not present in
         # current rp
         IDs = [obj.label for obj in self.rp]
@@ -3753,6 +3876,35 @@ class Yeast_ACDC_GUI(QMainWindow):
                 # Contour is present but ID is not --> clear
                 BudMothLine.setData([], [])
 
+    def clearCurvItems(self):
+        curvItems = zip(self.curvPlotItems,
+                        self.curvAnchorsItems,
+                        self.curvHoverItems)
+        for plotItem, curvAnchors, hoverItem in curvItems:
+            plotItem.setData([], [])
+            curvAnchors.setData([], [])
+            self.ax1.removeItem(plotItem)
+            self.ax1.removeItem(curvAnchors)
+            self.ax1.removeItem(hoverItem)
+
+        self.curvPlotItems = []
+        self.curvAnchorsItems = []
+        self.curvHoverItems = []
+
+    def splineToObj(self):
+        # Store undo state before modifying stuff
+        self.storeUndoRedoStates(False)
+        xxA, yyA = self.curvAnchors.getData()
+        rr, cc = skimage.draw.polygon(xxA, yyA)
+        lS = np.linspace(0,1,len(rr))
+        xxS, yyS = self.getSpline(xxA, yyA, per=True, resolutionSpace=lS)
+
+        self.setBrushID()
+        rr, cc = skimage.draw.polygon(yyS, xxS)
+        self.lab[rr, cc] = self.brushID
+        self.updateALLimg()
+
+
     def addFluoChNameContextMenuAction(self, ch_name):
         allTexts = [action.text() for action in self.chNamesQActionGroup.actions()]
         if ch_name not in allTexts:
@@ -3764,10 +3916,16 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.fluoDataChNameActions.append(action)
 
     def init_attr(self, max_ID=10):
-        # Decision on what to do with changes to future frames attr
+        self.curvPlotItems = []
+        self.curvAnchorsItems = []
+        self.curvHoverItems = []
+        self.curvHoverON = False
+
         self.fluoDataChNameActions = []
         self.manualContrastKey = self.data.filename
         self.isNewID = False
+
+        # Decision on what to do with changes to future frames attr
         self.doNotShowAgain_EditID = False
         self.UndoFutFrames_EditID = False
         self.applyFutFrames_EditID = False
@@ -3791,7 +3949,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.new_IDs = []
         self.lost_IDs = []
         self.multiBud_mothIDs = [2]
-        self.UndoRedoStates = [[] for _ in range(self.num_frames)]
+        self.UndoRedoStates = [[] for _ in range(self.num_segm_frames)]
 
         self.clickedOnBud = False
         self.blinkBold = False
@@ -3818,10 +3976,13 @@ class Yeast_ACDC_GUI(QMainWindow):
                  'regionprops': None,
                  'labels': None,
                  'acdc_df': None,
-                 'delROIs_info': {'rois': [], 'delMasks': [], 'delIDsROI': []}
+                 'delROIs_info': {'rois': [], 'delMasks': [], 'delIDsROI': []},
+                 'histoLevels': {}
                  }
                 for i in range(self.num_segm_frames)
         ]
+
+        print(len(self.allData_li))
 
         self.ccaStatus_whenEmerged = {}
 
@@ -3923,7 +4084,8 @@ class Yeast_ACDC_GUI(QMainWindow):
             'regionprops': [],
             'labels': None,
             'acdc_df': None,
-            'delROIs_info': {'rois': [], 'delMasks': [], 'delIDsROI': []}
+            'delROIs_info': {'rois': [], 'delMasks': [], 'delIDsROI': []},
+            'histoLevels': {}
         }
 
     def store_data(self, debug=False):
@@ -5007,7 +5169,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.colorButton.setColor((255,255,0))
 
             self.get_overlay(setImg=True)
-            self.hist.sigLookupTableChanged.connect(self.get_overlay)
+            self.hist.sigLookupTableChanged.connect(self.histLUT_cb)
             self.hist.imageItem = lambda: None
 
             self.alphaScrollBar.setDisabled(False)
@@ -5020,31 +5182,36 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.hist.sigLookupTableChanged.disconnect()
             self.hist.setImageItem(self.img1)
 
+    def histLUT_cb(self, LUTItem):
+        # Store the histogram levels that the user is manually changing
+        # i.e. moving the gradient slider ticks up and down
+        # Store them from current frame to the end
+        for i in range(self.frame_i, self.num_segm_frames):
+            histoLevels = self.allData_li[i]['histoLevels']
+            min = self.hist.gradient.listTicks()[0][1]
+            max = self.hist.gradient.listTicks()[1][1]
+            histoLevels[self.manualContrastKey] = (min, max)
+        self.get_overlay()
+
     def adjustBrightness(self, img, key):
-        # NOTE: key is the file name
-        # self.manualContrastKey is selected with right click on the LUT histo
-        # in the function setManualContrastKey
-        if key == self.manualContrastKey:
-            img = img/img.max()
-            lut = self.hist.getLookupTable(img=img)
-            lutLen = len(lut)
-            grayLut = lut[:, 0]/255
-            maxIntensityLen = len(grayLut[grayLut==1])
-            minIntensityLen = len(grayLut[grayLut==0])
-            ratioMaxSaturatedLevels = 1-maxIntensityLen/lutLen
-            ratioMinSaturatedLevels = minIntensityLen/lutLen
-            in_range = (ratioMinSaturatedLevels, ratioMaxSaturatedLevels)
-            rescaled_img = skimage.exposure.rescale_intensity(
-                                            img, in_range=in_range)
-        else:
-            rescaled_img = img/img.max()
+        # Asjut contrast/brightness of all the overalid images using stored
+        # levels. The levels are stored in histLUT_cb function which is
+        # called when the user changes the gradient slider levels
+        histoLevels = self.allData_li[self.frame_i]['histoLevels']
+        rescaled_img = img/img.max()
+        for name in histoLevels:
+            min, max = histoLevels[name]
+            if name == key:
+                in_range = (min, max)
+                rescaled_img = skimage.exposure.rescale_intensity(
+                                            rescaled_img, in_range=in_range)
         return rescaled_img
 
     def getOlImg(self, key):
         ol_img = self.ol_data[key][self.frame_i].copy()
         return ol_img
 
-    def get_overlay(self, LUTItem=None, cells_img=None, setImg=True):
+    def get_overlay(self, cells_img=None, setImg=True):
         keys = list(self.ol_data.keys())
 
         # Cells channel (e.g. phase_contrast)
@@ -5152,10 +5319,29 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.ax2_ContoursCurves.append(ContCurve)
                 self.ax2.addItem(ContCurve)
 
+    def setHistoLevels(self):
+        # Set the gradient slider ticks positions which are
+        # stored into self.manualContrastKey when the user moves the ticks
+        # which in turns calls histLUT_cb function (connected only for overlay)
+        histoLevels = self.allData_li[self.frame_i]['histoLevels']
+        if self.manualContrastKey in histoLevels:
+            min, max = histoLevels[self.manualContrastKey]
+            minTick = self.hist.gradient.getTick(0)
+            maxTick = self.hist.gradient.getTick(1)
+            self.hist.gradient.setTickValue(minTick, min)
+            self.hist.gradient.setTickValue(maxTick, max)
+        elif self.overlayButton.isChecked():
+            minTick = self.hist.gradient.getTick(0)
+            maxTick = self.hist.gradient.getTick(1)
+            self.hist.gradient.setTickValue(minTick, 0)
+            self.hist.gradient.setTickValue(maxTick, 1)
+
     def updateALLimg(self, image=None, never_visited=True,
                      only_ax1=False, updateBlur=True):
         self.frameLabel.setText(
                  f'Current frame = {self.frame_i+1}/{self.num_segm_frames}')
+
+        self.setHistoLevels()
 
         if image is None:
             cells_img = self.getImage()
@@ -5489,7 +5675,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
     def undo_changes_future_frames(self):
         self.frames_scrollBar.setMaximum(self.frame_i+1)
-        for i in range(self.frame_i+1, self.num_frames):
+        for i in range(self.frame_i+1, self.num_segm_frames):
             if self.allData_li[i]['labels'] is None:
                 break
 
@@ -5497,7 +5683,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                  'regionprops': [],
                  'labels': None,
                  'acdc_df': None,
-                 'delROIs_info': {'rois': [], 'delMasks': [], 'delIDsROI': []}
+                 'delROIs_info': {'rois': [], 'delMasks': [], 'delIDsROI': []},
+                 'histoLevels': {}
              }
 
     def removeAllItems(self):
@@ -5539,7 +5726,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             if key.find(checkedText) != -1:
                 break
         self.manualContrastKey = key
-
+        self.setHistoLevels()
 
     # Slots
     def newFile(self):
@@ -5911,7 +6098,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             segm_npy = np.copy(self.data.segm_data)
             npz_delROIs_info = {}
             delROIs_info_path = self.data.delROIs_info_path
-            acdc_df_li = [None]*self.num_frames
+            acdc_df_li = [None]*self.num_segm_frames
 
             # Create list of dataframes from acdc_df on HDD
             if self.data.acdc_df is not None:

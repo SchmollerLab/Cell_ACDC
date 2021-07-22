@@ -44,7 +44,7 @@ File.makeDirectory(TIFFs);
 
 
 for (s = 0; s < sEnd; s++) {
-	id = czi_folder + ids[s];
+	id = czi_folder + "/" + ids[s];
 	print(id);
 	
 	// Initialize file
