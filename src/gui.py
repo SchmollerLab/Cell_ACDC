@@ -2961,10 +2961,11 @@ class Yeast_ACDC_GUI(QMainWindow):
 
 
     def manualEditCca(self):
-        editCcaWidget = apps.cca_df_frame0(self.IDs, self.cca_df, warn=False)
+        editCcaWidget = apps.ccaTableWidget(self.cca_df)
+        editCcaWidget.exec_()
         if editCcaWidget.cancel:
             return
-        self.cca_df = editCcaWidget.df
+        self.cca_df = editCcaWidget.cca_df
         self.checkMultiBudMOth()
         self.updateALLimg()
 
@@ -3714,13 +3715,14 @@ class Yeast_ACDC_GUI(QMainWindow):
 
             if self.frame_i <= 0 and mode == 'Cell cycle analysis':
                 IDs = [obj.label for obj in self.rp]
-                init_cca_df_frame0 = apps.cca_df_frame0(IDs, self.cca_df)
-                if init_cca_df_frame0.cancel:
+                editCcaWidget = apps.ccaTableWidget(self.cca_df)
+                editCcaWidget.exec_()
+                if editCcaWidget.cancel:
                     return
                 if self.cca_df is not None:
-                    if not self.cca_df.equals(init_cca_df_frame0.df):
+                    if not self.cca_df.equals(editCcaWidget.cca_df):
                         self.del_future_cca_df(0)
-                self.cca_df = init_cca_df_frame0.df
+                self.cca_df = editCcaWidget.cca_df
                 self.store_cca_df()
 
             # Store data for current frame
@@ -3981,8 +3983,6 @@ class Yeast_ACDC_GUI(QMainWindow):
                  }
                 for i in range(self.num_segm_frames)
         ]
-
-        print(len(self.allData_li))
 
         self.ccaStatus_whenEmerged = {}
 
@@ -4577,6 +4577,9 @@ class Yeast_ACDC_GUI(QMainWindow):
             if lab is None:
                 last_tracked_i = frame_i-1
                 break
+            else:
+                last_tracked_i = self.num_segm_frames-1
+
         self.frames_scrollBar.setMaximum(last_tracked_i+1)
         if self.frame_i > last_tracked_i:
             # Prompt user to go to last tracked frame

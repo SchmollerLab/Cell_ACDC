@@ -41,7 +41,8 @@ from PyQt5.QtWidgets import (
     QAction, QApplication, QMainWindow, QMenu, QLabel, QToolBar,
     QScrollBar, QWidget, QVBoxLayout, QLineEdit, QPushButton,
     QHBoxLayout, QDialog, QFormLayout, QListWidget, QAbstractItemView,
-    QButtonGroup, QCheckBox, QSizePolicy, QComboBox, QSlider
+    QButtonGroup, QCheckBox, QSizePolicy, QComboBox, QSlider, QGridLayout,
+    QSpinBox
 )
 
 import qrc_resources
@@ -1381,46 +1382,63 @@ class YeaZ_ParamsDialog(QDialog):
 
 class ccaTableWidget(QDialog):
     def __init__(self, cca_df):
+        self.inputCca_df = cca_df
         self.cancel = True
+        self.cca_df = None
 
         super().__init__()
         self.setWindowTitle("Edit cell cycle annotations")
 
         # Layouts
         mainLayout = QVBoxLayout()
-        tableColsLayout = QHBoxLayout()
-        IDsLayout = QVBoxLayout()
-        ccsLayout = QVBoxLayout()
-        genNumLayout = QVBoxLayout()
-        relIDLayout = QVBoxLayout()
-        relationshipLayout = QVBoxLayout()
-        historyKnownLayout = QVBoxLayout()
+        tableLayout = QGridLayout()
         buttonsLayout = QHBoxLayout()
 
         # Header labels
+        col = 0
+        row = 0
         IDsLabel = QLabel('Cell ID')
-        IDsLabel.setAlignment(Qt.AlignCenter)
-        IDsLayout.addWidget(IDsLabel)
+        AC = Qt.AlignCenter
+        IDsLabel.setAlignment(AC)
+        tableLayout.addWidget(IDsLabel, 0, col, alignment=AC)
 
+        col += 1
         ccsLabel = QLabel('Cell cycle stage')
         ccsLabel.setAlignment(Qt.AlignCenter)
-        ccsLayout.addWidget(ccsLabel)
+        tableLayout.addWidget(ccsLabel, 0, col, alignment=AC)
 
+        col += 1
         genNumLabel = QLabel('Generation number')
         genNumLabel.setAlignment(Qt.AlignCenter)
-        genNumLayout.addWidget(genNumLabel)
+        tableLayout.addWidget(genNumLabel, 0, col, alignment=AC)
+        genNumColWidth = genNumLabel.sizeHint().width()
 
+        col += 1
         relIDLabel = QLabel('Relative ID')
         relIDLabel.setAlignment(Qt.AlignCenter)
-        relIDLayout.addWidget(relIDLabel)
+        tableLayout.addWidget(relIDLabel, 0, col, alignment=AC)
 
+        col += 1
         relationshipLabel = QLabel('Relationship')
         relationshipLabel.setAlignment(Qt.AlignCenter)
-        relationshipLayout.addWidget(relationshipLabel)
+        tableLayout.addWidget(relationshipLabel, 0, col, alignment=AC)
 
+        col += 1
+        emergFrameLabel = QLabel('Emerging frame num.')
+        emergFrameLabel.setAlignment(Qt.AlignCenter)
+        tableLayout.addWidget(emergFrameLabel, 0, col, alignment=AC)
+
+        col += 1
+        divitionFrameLabel = QLabel('Division frame num.')
+        divitionFrameLabel.setAlignment(Qt.AlignCenter)
+        tableLayout.addWidget(divitionFrameLabel, 0, col, alignment=AC)
+
+        col += 1
         historyKnownLabel = QLabel('Is history known?')
         historyKnownLabel.setAlignment(Qt.AlignCenter)
-        historyKnownLayout.addWidget(historyKnownLabel)
+        tableLayout.addWidget(historyKnownLabel, 0, col, alignment=AC)
+
+        tableLayout.setHorizontalSpacing(20)
 
         # Add buttons
         okButton = QPushButton('Ok')
@@ -1431,32 +1449,105 @@ class ccaTableWidget(QDialog):
         buttonsLayout.addWidget(cancelButton)
 
         # Add layouts
-        tableColsLayout.addLayout(IDsLayout)
-        tableColsLayout.addLayout(ccsLayout)
-        tableColsLayout.addLayout(genNumLayout)
-        tableColsLayout.addLayout(relIDLayout)
-        tableColsLayout.addLayout(relationshipLayout)
-        tableColsLayout.addLayout(historyKnownLayout)
-        mainLayout.addLayout(tableColsLayout)
+        mainLayout.addLayout(tableLayout)
         mainLayout.addLayout(buttonsLayout)
 
         # Populate table Layout
         IDs = cca_df.index
-        for ID in IDs:
+        self.IDs = IDs.to_list()
+        relIDsOptions = [str(ID) for ID in IDs]
+        relIDsOptions.insert(0, '-1')
+        self.IDlabels = []
+        self.ccsComboBoxes = []
+        self.genNumSpinBoxes = []
+        self.relIDComboBoxes = []
+        self.relationshipComboBoxes = []
+        self.emergFrameSpinBoxes = []
+        self.divisFrameSpinBoxes = []
+        self.emergFrameSpinPrevValues = []
+        self.divisFrameSpinPrevValues = []
+        self.historyKnownCheckBoxes = []
+        for row, ID in enumerate(IDs):
+            col = 0
             IDlabel = QLabel(f'{ID}')
             IDlabel.setAlignment(Qt.AlignCenter)
-            IDsLayout.addWidget(IDlabel)
+            tableLayout.addWidget(IDlabel, row+1, col, alignment=AC)
+            self.IDlabels.append(IDlabel)
 
+            col += 1
             ccsComboBox = QComboBox()
             ccsComboBox.addItems(['G1', 'S/G2/M'])
-            ccsLayout.addWidget(ccsComboBox)
-            # genNumLayout
-            # relIDLayout
-            # relationshipLayout
-            # historyKnownLayout
+            ccsValue = cca_df.at[ID, 'cell_cycle_stage']
+            if ccsValue == 'S':
+                ccsValue = 'S/G2/M'
+            ccsComboBox.setCurrentText(ccsValue)
+            tableLayout.addWidget(ccsComboBox, row+1, col, alignment=AC)
+            self.ccsComboBoxes.append(ccsComboBox)
+
+            col += 1
+            genNumSpinBox = QSpinBox()
+            genNumSpinBox.setValue(2)
+            genNumSpinBox.setAlignment(Qt.AlignCenter)
+            genNumSpinBox.setFixedWidth(int(genNumColWidth*2/3))
+            genNumSpinBox.setValue(cca_df.at[ID, 'generation_num'])
+            tableLayout.addWidget(genNumSpinBox, row+1, col, alignment=AC)
+            self.genNumSpinBoxes.append(genNumSpinBox)
+
+            col += 1
+            relIDComboBox = QComboBox()
+            relIDComboBox.addItems(relIDsOptions)
+            relIDComboBox.setCurrentText(str(cca_df.at[ID, 'relative_ID']))
+            tableLayout.addWidget(relIDComboBox, row+1, col)
+            self.relIDComboBoxes.append(relIDComboBox)
+            relIDComboBox.currentIndexChanged.connect(self.setRelID)
+
+
+            col += 1
+            relationshipComboBox = QComboBox()
+            relationshipComboBox.addItems(['mother', 'bud'])
+            relationshipComboBox.setCurrentText(cca_df.at[ID, 'relationship'])
+            tableLayout.addWidget(relationshipComboBox, row+1, col)
+            self.relationshipComboBoxes.append(relationshipComboBox)
+            relationshipComboBox.currentIndexChanged.connect(
+                                                self.relationshipChanged_cb)
+
+            col += 1
+            emergFrameSpinBox = QSpinBox()
+            emergFrameSpinBox.setMinimum(-1)
+            emergFrameSpinBox.setValue(-1)
+            emergFrameSpinBox.setAlignment(Qt.AlignCenter)
+            emergFrameSpinBox.setFixedWidth(int(genNumColWidth*2/3))
+            emergFrame_i = cca_df.at[ID, 'emerg_frame_i']
+            val = emergFrame_i+1 if emergFrame_i>=0 else -1
+            emergFrameSpinBox.setValue(val)
+            tableLayout.addWidget(emergFrameSpinBox, row+1, col, alignment=AC)
+            self.emergFrameSpinBoxes.append(emergFrameSpinBox)
+            self.emergFrameSpinPrevValues.append(emergFrameSpinBox.value())
+            emergFrameSpinBox.valueChanged.connect(self.skip0emergFrame)
+
+
+            col += 1
+            divisFrameSpinBox = QSpinBox()
+            divisFrameSpinBox.setMinimum(-1)
+            divisFrameSpinBox.setValue(-1)
+            divisFrameSpinBox.setAlignment(Qt.AlignCenter)
+            divisFrameSpinBox.setFixedWidth(int(genNumColWidth*2/3))
+            divisFrame_i = cca_df.at[ID, 'division_frame_i']
+            val = divisFrame_i+1 if divisFrame_i>=0 else -1
+            divisFrameSpinBox.setValue(val)
+            tableLayout.addWidget(divisFrameSpinBox, row+1, col, alignment=AC)
+            self.divisFrameSpinBoxes.append(divisFrameSpinBox)
+            self.divisFrameSpinPrevValues.append(divisFrameSpinBox.value())
+            emergFrameSpinBox.valueChanged.connect(self.skip0divisFrame)
+
+            col += 1
+            HistoryCheckBox = QCheckBox()
+            HistoryCheckBox.setChecked(bool(cca_df.at[ID, 'is_history_known']))
+            tableLayout.addWidget(HistoryCheckBox, row+1, col, alignment=AC)
+            self.historyKnownCheckBoxes.append(HistoryCheckBox)
 
         # Contents margins
-        buttonsLayout.setContentsMargins(150, 10, 150, 0)
+        buttonsLayout.setContentsMargins(200, 15, 200, 15)
 
         self.setLayout(mainLayout)
 
@@ -1466,7 +1557,139 @@ class ccaTableWidget(QDialog):
 
         self.setModal(True)
 
+    def setRelID(self, itemIndex):
+        idx = self.relIDComboBoxes.index(self.sender())
+        relID = self.sender().currentText()
+        IDofRelID = self.IDs[idx]
+        relIDidx = self.IDs.index(int(relID))
+        relIDComboBox = self.relIDComboBoxes[relIDidx]
+        relIDComboBox.setCurrentText(str(IDofRelID))
+
+    def skip0emergFrame(self, value):
+        idx = self.emergFrameSpinBoxes.index(self.sender())
+        prevVal = self.emergFrameSpinPrevValues[idx]
+        if value == 0 and value > prevVal:
+            self.sender().setValue(1)
+            self.emergFrameSpinPrevValues[idx] = 1
+        elif value == 0 and value < prevVal:
+            self.sender().setValue(-1)
+            self.emergFrameSpinPrevValues[idx] = -1
+
+    def skip0divisFrame(self, value):
+        idx = self.divisFrameSpinBoxes.index(self.sender())
+        prevVal = self.divisFrameSpinPrevValues[idx]
+        if value == 0 and value > prevVal:
+            self.sender().setValue(1)
+            self.divisFrameSpinPrevValues[idx] = 1
+        elif value == 0 and value < prevVal:
+            self.sender().setValue(-1)
+            self.divisFrameSpinPrevValues[idx] = -1
+
+    def relationshipChanged_cb(self, itemIndex):
+        idx = self.relationshipComboBoxes.index(self.sender())
+        ccs = self.sender().currentText()
+        if ccs == 'bud':
+            self.ccsComboBoxes[idx].setCurrentText('S/G2/M')
+            self.genNumSpinBoxes[idx].setValue(0)
+
+    def getCca_df(self):
+        ccsValues = [var.currentText() for var in self.ccsComboBoxes]
+        ccsValues = [val if val=='G1' else 'S' for val in ccsValues]
+        genNumValues = [var.value() for var in self.genNumSpinBoxes]
+        relIDValues = [int(var.currentText()) for var in self.relIDComboBoxes]
+        relatValues = [var.currentText() for var in self.relationshipComboBoxes]
+        emergFrameValues = [var.value() for var in self.emergFrameSpinBoxes]
+        divisFrameValues = [var.value() for var in self.divisFrameSpinBoxes]
+        historyValues = [var.isChecked() for var in self.historyKnownCheckBoxes]
+        check_rel = [ID == relID for ID, relID in zip(self.IDs, relIDValues)]
+        # Buds in S phase must have 0 as number of cycles
+        check_buds_S = [ccs=='S' and rel_ship=='bud' and not numc==0
+                        for ccs, rel_ship, numc
+                        in zip(ccsValues, relatValues, genNumValues)]
+        # Mother cells must have at least 1 as number of cycles if history known
+        check_mothers = [rel_ship=='mother' and not numc>=1
+                         if is_history_known else False
+                         for rel_ship, numc, is_history_known
+                         in zip(relatValues, genNumValues, historyValues)]
+        # Buds cannot be in G1
+        check_buds_G1 = [ccs=='G1' and rel_ship=='bud'
+                         for ccs, rel_ship
+                         in zip(ccsValues, relatValues)]
+        # The number of cells in S phase must be half mothers and half buds
+        num_moth_S = len([0 for ccs, rel_ship in zip(ccsValues, relatValues)
+                            if ccs=='S' and rel_ship=='mother'])
+        num_bud_S = len([0 for ccs, rel_ship in zip(ccsValues, relatValues)
+                            if ccs=='S' and rel_ship=='bud'])
+        # Cells in S phase cannot have -1 as relative's ID
+        check_relID_S = [ccs=='S' and relID==-1
+                         for ccs, relID
+                         in zip(ccsValues, relIDValues)]
+        if any(check_rel):
+            QtGui.QMessageBox().critical(self,
+                    'Cell ID = Relative\'s ID', 'Some cells are '
+                    'mother or bud of itself. Make sure that the Relative\'s ID'
+                    ' is different from the Cell ID!',
+                    QtGui.QMessageBox.Ok)
+            return None
+        elif any(check_buds_S):
+            QtGui.QMessageBox().critical(self,
+                'Bud in S/G2/M not in 0 Generation number',
+                'Some buds '
+                'in S phase do not have 0 as Generation number!\n'
+                'Buds in S phase must have 0 as "Generation number"',
+                QtGui.QMessageBox.Ok)
+            return None
+        elif any(check_mothers):
+            QtGui.QMessageBox().critical(self,
+                'Mother not in >=1 Generation number',
+                'Some mother cells do not have >=1 as "Generation number"!\n'
+                'Mothers MUST have >1 "Generation number"',
+                QtGui.QMessageBox.Ok)
+            return None
+        elif any(check_buds_G1):
+            QtGui.QMessageBox().critical(self,
+                'Buds in G1!',
+                'Some buds are in G1 phase!\n'
+                'Buds MUST be in S/G2/M phase',
+                QtGui.QMessageBox.Ok)
+            return None
+        elif num_moth_S != num_bud_S:
+            QtGui.QMessageBox().critical(self,
+                'Number of mothers-buds mismatch!',
+                f'There are {num_moth_S} mother cells in "S/G2/M" phase,'
+                f'but there are {num_bud_S} bud cells.\n\n'
+                'The number of mothers and buds in "S/G2/M" '
+                'phase must be equal!',
+                QtGui.QMessageBox.Ok)
+            return None
+        elif any(check_relID_S):
+            QtGui.QMessageBox().critical(self,
+                'Relative\'s ID of cells in S/G2/M = -1',
+                'Some cells are in "S/G2/M" phase but have -1 as Relative\'s ID!\n'
+                'Cells in "S/G2/M" phase must have an existing '
+                'ID as Relative\'s ID!',
+                QtGui.QMessageBox.Ok)
+            return None
+        else:
+            corrected_assignment = self.inputCca_df['corrected_assignment']
+            cca_df = pd.DataFrame({
+                                'cell_cycle_stage': ccsValues,
+                                'generation_num': genNumValues,
+                                'relative_ID': relIDValues,
+                                'relationship': relatValues,
+                                'emerg_frame_i': emergFrameValues,
+                                'division_frame_i': divisFrameValues,
+                                'is_history_known': historyValues,
+                                'corrected_assignment': corrected_assignment},
+                                index=self.IDs)
+            cca_df.index.name = 'Cell_ID'
+            return cca_df
+
     def ok_cb(self, checked):
+        cca_df = self.getCca_df()
+        if cca_df is None:
+            return
+        self.cca_df = cca_df
         self.cancel = False
         self.close()
 
@@ -2398,4 +2621,4 @@ if __name__ == '__main__':
     app.setStyle(QtGui.QStyleFactory.create('Fusion'))
     win.show()
     app.exec_()
-    # print(win.selectedItemsIdx)
+    print(win.cca_df)
