@@ -1598,8 +1598,10 @@ class ccaTableWidget(QDialog):
         genNumValues = [var.value() for var in self.genNumSpinBoxes]
         relIDValues = [int(var.currentText()) for var in self.relIDComboBoxes]
         relatValues = [var.currentText() for var in self.relationshipComboBoxes]
-        emergFrameValues = [var.value() for var in self.emergFrameSpinBoxes]
-        divisFrameValues = [var.value() for var in self.divisFrameSpinBoxes]
+        emergFrameValues = [var.value()-1 if var.value()>0 else -1
+                            for var in self.emergFrameSpinBoxes]
+        divisFrameValues = [var.value()-1 if var.value()>0 else -1
+                            for var in self.divisFrameSpinBoxes]
         historyValues = [var.isChecked() for var in self.historyKnownCheckBoxes]
         check_rel = [ID == relID for ID, relID in zip(self.IDs, relIDValues)]
         # Buds in S phase must have 0 as number of cycles
