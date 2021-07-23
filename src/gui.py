@@ -2621,13 +2621,13 @@ class Yeast_ACDC_GUI(QMainWindow):
             '(from the current session not the saved information)'
         )
 
-        self.repeatAutoCcaAction = QAction(self)
-        self.repeatAutoCcaAction.setIcon(QIcon(":repeatAssign-motherbud.svg"))
+        # self.repeatAutoCcaAction = QAction(self)
+        # self.repeatAutoCcaAction.setIcon(QIcon(":repeatAssign-motherbud.svg"))
         # self.reInitCcaAction.setShortcut('u')
-        self.repeatAutoCcaAction.setDisabled(True)
-        self.repeatAutoCcaAction.setToolTip(
-            'Repeat automatic bud assignment for current frame'
-        )
+        # self.repeatAutoCcaAction.setDisabled(True)
+        # self.repeatAutoCcaAction.setToolTip(
+        #     'Repeat automatic bud assignment for current frame'
+        # )
 
         self.manuallyEditCcaAction = QAction(
                                 'Manually modify cell cycle annotations', self)

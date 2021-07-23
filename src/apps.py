@@ -22,9 +22,6 @@ from matplotlib.ticker import FormatStrFormatter
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg,
                                                NavigationToolbar2Tk)
 from pyglet.canvas import Display
-from skimage.color import gray2rgba, label2rgb
-from skimage.exposure import equalize_adapthist
-from skimage import img_as_float
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
@@ -42,7 +39,7 @@ from PyQt5.QtWidgets import (
     QScrollBar, QWidget, QVBoxLayout, QLineEdit, QPushButton,
     QHBoxLayout, QDialog, QFormLayout, QListWidget, QAbstractItemView,
     QButtonGroup, QCheckBox, QSizePolicy, QComboBox, QSlider, QGridLayout,
-    QSpinBox
+    QSpinBox, QToolButton
 )
 
 import qrc_resources
@@ -2589,6 +2586,144 @@ class QtSelectPos(QDialog):
             self.selectedItemsIdx = [self.ComboBox.currentIndex()]
         self.close()
 
+class manualSeparateGui(QMainWindow):
+    def __init__(self, lab, ID, img, color=[255, 0, 0], parent=None):
+        super().__init__(parent)
+        self.cancel = True
+        self.parent = parent
+        self.lab = lab
+        self.img = img
+        self.color = color
+        self.lut = np.zeros((lab.max()+1, 3), int)
+        self.lut[0] = [25,25,25]
+        self.lut[ID] = color
+        self.setWindowTitle("Yeast ACDC - Segm&Track")
+        # self.setGeometry(Left, Top, 850, 800)
+
+        self.gui_createActions()
+        self.gui_createMenuBar()
+        self.gui_createToolBars()
+
+        self.gui_connectActions()
+        self.gui_createStatusBar()
+
+        self.gui_createGraphics()
+        self.gui_connectImgActions()
+
+        self.gui_createImgWidgets()
+
+        mainContainer = QtGui.QWidget()
+        self.setCentralWidget(mainContainer)
+
+        mainLayout = QtGui.QGridLayout()
+        mainLayout.addWidget(self.graphLayout, 0, 0, 1, 1)
+        mainLayout.addLayout(self.img_Widglayout, 1, 0)
+
+        mainContainer.setLayout(mainLayout)
+
+    def gui_createActions(self):
+        # File actions
+        self.exitAction = QAction("&Exit", self)
+
+    def gui_createMenuBar(self):
+        menuBar = self.menuBar()
+        # File menu
+        fileMenu = QMenu("&File", self)
+        menuBar.addMenu(fileMenu)
+        # fileMenu.addAction(self.newAction)
+        fileMenu.addAction(self.exitAction)
+
+    def gui_createToolBars(self):
+        toolbarSize = 30
+
+        editToolBar = QToolBar("Edit", self)
+        editToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
+        self.addToolBar(editToolBar)
+
+        # self.brushButton = QToolButton(self)
+        # self.brushButton.setIcon(QIcon(":brush.svg"))
+        # self.brushButton.setCheckable(True)
+        # self.brushButton.setShortcut('b')
+        # self.brushButton.setToolTip('Paint\n\nSHORTCUT: "B" key')
+        # editToolBar.addWidget(self.brushButton)
+
+        # self.eraserButton = QToolButton(self)
+        # self.eraserButton.setIcon(QIcon(":eraser.png"))
+        # self.eraserButton.setCheckable(True)
+        # self.eraserButton.setShortcut('x')
+        # self.eraserButton.setToolTip('Erase\n\nSHORTCUT: "X" key')
+        # editToolBar.addWidget(self.eraserButton)
+
+        # self.curvToolButton = QToolButton(self)
+        # self.curvToolButton.setIcon(QIcon(":curvature-tool.svg"))
+        # self.curvToolButton.setCheckable(True)
+        # self.curvToolButton.setShortcut('c')
+        # self.curvToolButton.setToolTip('Curvature tool\n\nSHORTCUT: "C" key')
+        # editToolBar.addWidget(self.curvToolButton)
+
+        self.overlayButton = QToolButton(self)
+        self.overlayButton.setIcon(QIcon(":overlay.svg"))
+        self.overlayButton.setCheckable(True)
+        self.overlayButton.setToolTip('Overlay cells image')
+        editToolBar.addWidget(self.overlayButton)
+
+    def gui_connectActions(self):
+        self.exitAction.triggered.connect(self.close)
+
+    def gui_createStatusBar(self):
+        self.statusbar = self.statusBar()
+        # Temporary message
+        self.statusbar.showMessage("Ready", 3000)
+        # Permanent widget
+        self.wcLabel = QLabel(f"")
+        self.statusbar.addPermanentWidget(self.wcLabel)
+
+    def gui_createGraphics(self):
+        self.graphLayout = pg.GraphicsLayoutWidget()
+
+        # Plot Item container for image
+        self.Plot = pg.PlotItem()
+        self.Plot.invertY(True)
+        self.Plot.setAspectLocked(True)
+        self.Plot.hideAxis('bottom')
+        self.Plot.hideAxis('left')
+        self.graphLayout.addItem(self.Plot, row=1, col=1)
+
+        # Image Item
+        self.imgItem = pg.ImageItem(np.zeros((512,512)))
+        self.imgItem.setImage(self.lab)
+        self.Plot.addItem(self.imgItem)
+
+        #Image histogram
+        hist = pg.HistogramLUTItem()
+        # hist.setImageItem(self.imgItem)
+        self.graphLayout.addItem(hist, row=1, col=0)
+
+        # Lookup table
+        self.imgItem.setLookupTable(self.lut)
+
+    def gui_createImgWidgets(self):
+        self.img_Widglayout = QtGui.QGridLayout()
+        self.img_Widglayout.setContentsMargins(100, 0, 50, 0)
+
+    def gui_connectImgActions(self):
+        self.imgItem.hoverEvent = self.gui_hoverEventImg
+
+    def gui_hoverEventImg(self, event):
+        # Update x, y, value label bottom right
+        try:
+            x, y = event.pos()
+            xdata, ydata = int(round(x)), int(round(y))
+            _img = self.lab
+            Y, X = _img.shape
+            if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
+                val = _img[ydata, xdata]
+                self.wcLabel.setText(f'(x={x:.2f}, y={y:.2f}, ID={val:.0f})')
+            else:
+                self.wcLabel.setText(f'')
+        except:
+            self.wcLabel.setText(f'')
+
 if __name__ == '__main__':
     # Create the application
     app = QApplication(sys.argv)
@@ -2618,9 +2753,15 @@ if __name__ == '__main__':
                        'corrected_assignment': corrected_assignment},
                         index=IDs)
     cca_df.index.name = 'Cell_ID'
-    win = ccaTableWidget(cca_df)
-    win.setFont(font)
+    # win = ccaTableWidget(cca_df)
+    lab = np.zeros((1024, 1024), np.uint16)
+    rr, cc = skimage.draw.disk((512, 512), 50)
+    ID = 11
+    lab[rr, cc] = 11
+    img = np.zeros((1024, 1024))
+    win = manualSeparateGui(lab, ID, img)
+    # win.setFont(font)
     app.setStyle(QtGui.QStyleFactory.create('Fusion'))
     win.show()
     app.exec_()
-    print(win.cca_df)
+    # print(win.cca_df)
