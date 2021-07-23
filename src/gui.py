@@ -365,10 +365,12 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.ax2.addItem(self.ax2_EraserCircle)
 
         # Brush circle img2
+        self.ax2_BrushCirclePen = pg.mkPen(width=2)
+        self.ax2_BrushCircleBrush = pg.mkBrush((255,255,255,50))
         self.ax2_BrushCircle = pg.ScatterPlotItem()
         self.ax2_BrushCircle.setData([], [], symbol='o', pxMode=False,
-                                 brush=pg.mkBrush((255,255,255,50)),
-                                 pen=pg.mkPen(width=2))
+                                 brush=self.ax2_BrushCircleBrush,
+                                 pen=self.ax2_BrushCirclePen)
         self.ax2.addItem(self.ax2_BrushCircle)
 
 
@@ -609,18 +611,22 @@ class Yeast_ACDC_GUI(QMainWindow):
                 mask = skimage.morphology.disk(brushSize, dtype=np.bool)
                 ymin, xmin = ydata-brushSize, xdata-brushSize
                 ymax, xmax = ydata+brushSize+1, xdata+brushSize+1
-                maskedLab = self.lab[ymin:ymax, xmin:xmax][mask]
-                IDs, counts = np.unique(maskedLab, return_counts=True)
-                brushCircleIDs = [ID for ID in IDs if ID!=0]
+                # maskedLab = self.lab[ymin:ymax, xmin:xmax][mask]
+                # IDs, counts = np.unique(maskedLab, return_counts=True)
+                # brushCircleIDs = [ID for ID in IDs if ID!=0]
+                ID = self.lab[ydata, xdata]
 
-                if brushCircleIDs:
-                    _c = [count for ID, count in zip(IDs, counts) if ID!=0]
-                    max_c = max(_c)
-                    max_idx = _c.index(max_c)
-                    self.ax2BrushID = brushCircleIDs[max_idx]
+                # if brushCircleIDs:
+                if ID > 0:
+                    # _c = [count for ID, count in zip(IDs, counts) if ID!=0]
+                    # max_c = max(_c)
+                    # max_idx = _c.index(max_c)
+                    # self.ax2BrushID = brushCircleIDs[max_idx]
+                    self.ax2BrushID = ID
                     self.isNewID = False
                 else:
-                    self.ax2BrushID = self.lab.max()+1
+                    self.setBrushID()
+                    self.ax2BrushID = self.brushID
                     self.isNewID = True
 
                 self.isMouseDragImg2 = True
@@ -702,6 +708,8 @@ class Yeast_ACDC_GUI(QMainWindow):
             prev_IDs = [obj.label for obj in self.rp]
             self.update_rp()
 
+            self.warnEditingWithCca_df('Delete cell ID')
+
             self.setImageImg2()
 
             # Remove contour and LabelItem of deleted ID
@@ -774,6 +782,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
             # Update all images
             self.updateALLimg()
+            self.warnEditingWithCca_df('Separate IDs')
             self.store_data()
 
             # Uncheck separate bud button
@@ -911,6 +920,8 @@ class Yeast_ACDC_GUI(QMainWindow):
 
             # Update colors for the edited IDs
             self.updateLookuptable()
+
+            self.warnEditingWithCca_df('Edit ID')
 
             self.setImageImg2()
             self.editID_Button.setChecked(False)
@@ -1091,6 +1102,8 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.updateLookuptable()
             self.store_data()
 
+            self.warnEditingWithCca_df('Annotate ID as dead')
+
             self.ripCellButton.setChecked(False)
 
 
@@ -1233,6 +1246,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             )
             self.mergeIDsButton.setChecked(False)
             self.store_data()
+            self.warnEditingWithCca_df('Merge IDs')
 
 
     def gui_mouseReleaseEventImg1(self, event):
@@ -1409,7 +1423,10 @@ class Yeast_ACDC_GUI(QMainWindow):
 
                 # Repeat tracking
                 self.tracking(enforce=True)
+
                 newIDs = [self.lab[ymin:ymax, xmin:xmax][mask][0]]
+
+                self.warnEditingWithCca_df('Add new ID with brush tool')
 
                 # Update colors to include a new color for the new ID
                 self.updateALLimg()
@@ -1441,13 +1458,18 @@ class Yeast_ACDC_GUI(QMainWindow):
             try:
                 xx, yy = self.curvHoverPlotItem.getData()
                 self.curvPlotItem.setData(xx, yy)
-                if closeSpline:
-                    self.curvHoverON = False
-                    self.splineToObj()
-                    self.curvTool_cb(True)
             except:
                 # traceback.print_exc()
                 pass
+
+            if closeSpline:
+                self.curvHoverON = False
+                self.splineToObj()
+                self.update_rp()
+                self.tracking(enforce=True)
+                self.updateALLimg()
+                self.warnEditingWithCca_df('Add new ID with curvature tool')
+                self.curvTool_cb(True)
 
         # Allow right-click actions on both images
         elif right_click and mode == 'Segmentation and Tracking':
@@ -1864,7 +1886,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 if enforce_assignment == msg.Cancel:
                     eligible = False
                 else:
-                    self.del_future_cca_df(i)
+                    self.remove_future_cca_df(i)
                 return eligible
 
         # Check past frames
@@ -2241,11 +2263,20 @@ class Yeast_ACDC_GUI(QMainWindow):
                     size = self.brushSizeSpinbox.value()*2
                     self.ax2_BrushCircle.setData([x], [y], size=size)
                     self.ax1_BrushCircle.setData([x], [y], size=size)
+                    hoverID = self.lab[ydata, xdata]
+                    if hoverID == 0:
+                        self.ax2_BrushCircle.setBrush(self.ax2_BrushCircleBrush)
+                        self.ax2_BrushCircle.setPen(self.ax2_BrushCirclePen)
+                    else:
+                        rgb = self.img2.lut[hoverID]
+                        rgbPen = rgb*1.2
+                        self.ax2_BrushCircle.setBrush(*rgb, 100)
+                        self.ax2_BrushCircle.setPen(*rgbPen, width=2)
             else:
                 self.ax2_BrushCircle.setData([], [])
                 self.ax1_BrushCircle.setData([], [])
         except:
-            # traceback.print_exc()
+            traceback.print_exc()
             self.ax2_BrushCircle.setData([], [])
             self.ax1_BrushCircle.setData([], [])
 
@@ -2384,7 +2415,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.checkableQButtonsGroup.addButton(self.setIsHistoryKnownButton)
 
         navigateToolBar.addAction(self.reInitCcaAction)
-        navigateToolBar.addAction(self.repeatAutoCcaAction)
+        # navigateToolBar.addAction(self.repeatAutoCcaAction)
         self.navigateToolBar = navigateToolBar
 
 
@@ -2667,7 +2698,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.eraserButton.toggled.connect(self.Eraser_cb)
         self.curvToolButton.toggled.connect(self.curvTool_cb)
         self.reInitCcaAction.triggered.connect(self.reInitCcca)
-        self.repeatAutoCcaAction.triggered.connect(self.repeatAutoCca)
+        # self.repeatAutoCcaAction.triggered.connect(self.repeatAutoCca)
         self.manuallyEditCcaAction.triggered.connect(self.manualEditCca)
         self.invertBwAction.toggled.connect(self.invertBw)
         self.enableSmartTrackAction.toggled.connect(self.enableSmartTrack)
@@ -2684,8 +2715,10 @@ class Yeast_ACDC_GUI(QMainWindow):
                                                 self.drawIDsContComboBox_cb)
         self.gaussBlurAction.toggled.connect(self.gaussBlur)
         self.addDelRoiAction.triggered.connect(self.addDelROI)
+        self.hist.sigLookupTableChanged.connect(self.histLUT_cb)
 
     def addDelROI(self, event):
+        self.warnEditingWithCca_df('Delete IDs using ROI')
         roi = self.getDelROI()
         for i in range(self.frame_i, self.num_segm_frames):
             delROIs_info = self.allData_li[i]['delROIs_info']
@@ -2757,6 +2790,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
     def getDelROIlab(self):
         DelROIlab = self.lab
+        allDelIDs = set()
         # Iterate rois and delete IDs
         for roi in self.allData_li[self.frame_i]['delROIs_info']['rois']:
             if roi not in self.ax2.items:
@@ -2771,6 +2805,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             ROImask[y0:y0+h, x0:x0+w] = True
             delIDs = np.unique(self.lab[ROImask])
             delIDsROI.update(delIDs)
+            allDelIDs.update(delIDs)
             _DelROIlab = self.lab.copy()
             for obj in self.rp:
                 ID = obj.label
@@ -2785,7 +2820,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             # Keep a mask of deleted IDs to bring them back when roi moves
             delROIs_info['delMasks'][idx] = delObjROImask
             delROIs_info['delIDsROI'][idx] = delIDsROI
-        return DelROIlab
+        return allDelIDs, DelROIlab
 
 
     def gaussBlur(self, checked):
@@ -2834,6 +2869,12 @@ class Yeast_ACDC_GUI(QMainWindow):
         temp_path = os.path.join(src_path, 'temp')
         csv_path = os.path.join(temp_path, 'settings.csv')
         self.df_settings.to_csv(csv_path)
+        if checked:
+            self.ax2_BrushCirclePen = pg.mkPen((0,0,0), width=2)
+            self.ax2_BrushCircleBrush = pg.mkBrush((0,0,0,50))
+        else:
+            self.ax2_BrushCirclePen = pg.mkPen(width=2)
+            self.ax2_BrushCircleBrush = pg.mkBrush((255,255,255,50))
 
     def changeFontSize(self, action):
         self.fontSize = f'{action.text()}pt'
@@ -2894,11 +2935,11 @@ class Yeast_ACDC_GUI(QMainWindow):
             if self.frame_i > 0:
                 self.frame_i -= 1
                 self.get_data()
-                self.del_future_cca_df(self.frame_i)
+                self.remove_future_cca_df(self.frame_i)
                 self.next_cb()
             else:
                 self.cca_df = self.getBaseCca_df()
-                self.del_future_cca_df(self.frame_i)
+                self.remove_future_cca_df(self.frame_i)
                 self.updateALLimg()
 
     def repeatAutoCca(self):
@@ -3247,7 +3288,7 @@ class Yeast_ACDC_GUI(QMainWindow):
     def setBrushID(self):
         # Make sure that the brushed ID is always a new one based on
         # already visited frames
-        newID = 1
+        newID = self.lab.max()
         for storedData in self.allData_li:
             lab = storedData['labels']
             if lab is not None:
@@ -3505,7 +3546,7 @@ class Yeast_ACDC_GUI(QMainWindow):
     def UndoCca(self):
         if self.frame_i == 0:
             self.cca_df = self.getBaseCca_df()
-            self.del_future_cca_df(0)
+            self.remove_future_cca_df(0)
             self.undoAction.setEnabled(False)
             self.updateALLimg()
 
@@ -3593,6 +3634,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.UserEnforced_Tracking = True
 
     def repeatTracking(self):
+        prev_lab = self.lab.copy()
         self.tracking(enforce=True, DoManualEdit=False)
         if self.editID_info:
             editIDinfo = [
@@ -3602,7 +3644,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             msg = QtGui.QMessageBox()
             msg.setIcon(msg.Information)
             msg.setText("You requested to repeat tracking but there are "
-                        "the following manually editied IDs:\n\n"
+                        "the following manually edited IDs:\n\n"
                         f"{editIDinfo}\n\n"
                         "Do you want to keep these edits or ignore them?")
             keepManualEditButton = QPushButton('Keep manually edited IDs')
@@ -3618,8 +3660,9 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.checkIDsMultiContour()
             else:
                 self.editID_info = []
-
         self.updateALLimg()
+        if np.any(self.lab != prev_lab):
+            self.warnEditingWithCca_df('Repeat tracking')
 
     def repeatSegmYeaZ(self):
         t0 = time.time()
@@ -3721,7 +3764,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                     return
                 if self.cca_df is not None:
                     if not self.cca_df.equals(editCcaWidget.cca_df):
-                        self.del_future_cca_df(0)
+                        self.remove_future_cca_df(0)
                 self.cca_df = editCcaWidget.cca_df
                 self.store_cca_df()
 
@@ -3902,9 +3945,11 @@ class Yeast_ACDC_GUI(QMainWindow):
         xxS, yyS = self.getSpline(xxA, yyA, per=True, resolutionSpace=lS)
 
         self.setBrushID()
+        newIDMask = np.zeros(self.lab.shape, bool)
         rr, cc = skimage.draw.polygon(yyS, xxS)
-        self.lab[rr, cc] = self.brushID
-        self.updateALLimg()
+        newIDMask[rr, cc] = True
+        newIDMask[self.lab!=0] = False
+        self.lab[newIDMask] = self.brushID
 
 
     def addFluoChNameContextMenuAction(self, ch_name):
@@ -4333,7 +4378,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             warn_cca = msg.warning(
                 self, 'No cells in G1!',
                 f'In the next frame {numNewCells} new cells will '
-                'appear. '
+                'appear (GREEN contour objects, left image).\n\n'
                 f'However there are only {numCellsG1} cells '
                 'in G1 available.\n\n'
                 'You can either cancel the operation and "free" a cell '
@@ -4341,7 +4386,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 'If you continue the new cell will be annotated as a cell in G1 '
                 'with unknown history.\n\n'
                 'If you are not sure, before clicking "Yes" or "Cancel", you can '
-                'preview (red overlaid object, left image) '
+                'preview (green contour objects, left image) '
                 'where the new cells will appear.\n\n'
                 'Do you want to continue?\n',
                 msg.Yes | msg.Cancel
@@ -4551,7 +4596,7 @@ class Yeast_ACDC_GUI(QMainWindow):
     def getBaseCca_df(self):
         IDs = [obj.label for obj in self.rp]
         cc_stage = ['G1' for ID in IDs]
-        num_cycles = [-1]*len(IDs)
+        num_cycles = [2]*len(IDs)
         relationship = ['mother' for ID in IDs]
         related_to = [-1]*len(IDs)
         is_history_known = [False]*len(IDs)
@@ -4693,6 +4738,9 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.titleLabel.setText(msg, color='w')
                 proceed = False
                 return
+        else:
+            self.get_data()
+
         self.last_cca_frame_i = last_cca_frame_i
 
         self.frames_scrollBar.setMaximum(last_cca_frame_i+1)
@@ -4706,7 +4754,9 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.get_cca_df()
         return proceed
 
-    def del_future_cca_df(self, from_frame_i):
+    def remove_future_cca_df(self, from_frame_i):
+        self.last_cca_frame_i = self.frame_i
+        self.setFramesScrollbarMaximum()
         for i in range(from_frame_i, self.num_segm_frames):
             df = self.allData_li[i]['acdc_df']
             if df is None:
@@ -5049,13 +5099,19 @@ class Yeast_ACDC_GUI(QMainWindow):
                 fluo_data = fluo_data['arr_0']
             except:
                 fluo_data = fluo_data
-            if filename.find('aligned') != -1:
-                align_ol = False
-            else:
-                align_ol = True
         elif ext == '.tif' or ext == '.tiff':
-            align_ol = True
-            fluo_data = skimage.io.imread(fluo_path)
+            aligned_filename = f'{filename}_aligned.npz'
+            aligned_path = os.path.join(self.data.images_path, aligned_filename)
+            if os.path.exists(aligned_path):
+                fluo_data = np.load(fluo_path)['arr_0']
+            else:
+                txt = (f'File "{aligned_filename}" not found!\n\n'
+                       'You need to run "dataPrep.py" script to create it.')
+                msg = QtGui.QMessageBox()
+                msg.critical(
+                    self, 'Aligned file not found!', txt, msg.Ok
+                )
+                return None
         else:
             txt = (f'File format {ext} is not supported!\n'
                     'Choose either .tif or .npz files.')
@@ -5065,36 +5121,6 @@ class Yeast_ACDC_GUI(QMainWindow):
             )
             return None
 
-        if align_ol:
-            print('Aligning fluorescent image data...')
-            images_path = self.data.images_path
-            loaded_shifts, shifts_found = load.load_shifts(images_path)
-            if shifts_found:
-                is_3D = self.data.SizeZ > 1
-                align_func = (core.align_frames_3D if is_3D
-                              else core.align_frames_2D)
-                aligned_frames, shifts = align_func(
-                                          fluo_data,
-                                          slices=None,
-                                          register=False,
-                                          user_shifts=loaded_shifts
-                )
-                aligned_filename = f'{filename_noEXT}_aligned.npz'
-                aligned_path = f'{images_path}/{aligned_filename}'
-                print('Saving fluorescent image data...')
-                np.savez_compressed(aligned_path, aligned_frames)
-                fluo_data = aligned_frames
-            else:
-                align_path = f'{images_path}/..._align_shift.npy'
-                txt = (f'File containing alignment shifts not found!'
-                       f'Looking for:\n\n"{align_path}"\n\n'
-                       'Overlay images cannot be aligned to the cells image.\n'
-                       'Run the segmentation script again to align the cells image.')
-                msg = QtGui.QMessageBox()
-                msg.critical(
-                    self, 'Shifts file not found!', txt, msg.Ok
-                )
-                return None
         fluo_data = skimage.img_as_float(fluo_data)
         if self.data.SizeZ > 1:
             ol_data = fluo_data.max(axis=1)
@@ -5166,13 +5192,13 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.manualContrastKey = filename
                 self.app.restoreOverrideCursor()
 
+            self.setHistoLevels()
             self.ol_data = ol_data
             self.ol_colors = ol_colors
 
             self.colorButton.setColor((255,255,0))
 
             self.get_overlay(setImg=True)
-            self.hist.sigLookupTableChanged.connect(self.histLUT_cb)
             self.hist.imageItem = lambda: None
 
             self.alphaScrollBar.setDisabled(False)
@@ -5180,21 +5206,29 @@ class Yeast_ACDC_GUI(QMainWindow):
         else:
             self.create_chNamesQActionGroup(self.user_ch_name)
             self.fluoDataChNameActions = []
+            self.setHistoLevels()
             img = self.getImage()
             self.img1.setImage(img)
-            self.hist.sigLookupTableChanged.disconnect()
             self.hist.setImageItem(self.img1)
 
     def histLUT_cb(self, LUTItem):
         # Store the histogram levels that the user is manually changing
         # i.e. moving the gradient slider ticks up and down
-        # Store them from current frame to the end
-        for i in range(self.frame_i, self.num_segm_frames):
-            histoLevels = self.allData_li[i]['histoLevels']
-            min = self.hist.gradient.listTicks()[0][1]
-            max = self.hist.gradient.listTicks()[1][1]
-            histoLevels[self.manualContrastKey] = (min, max)
-        self.get_overlay()
+        # Store them for all frames
+        isOverlayON = self.overlayButton.isChecked()
+        if isOverlayON:
+            for i in range(0, self.num_segm_frames):
+                histoLevels = self.allData_li[i]['histoLevels']
+                min = self.hist.gradient.listTicks()[0][1]
+                max = self.hist.gradient.listTicks()[1][1]
+                histoLevels[self.manualContrastKey] = (min, max)
+            self.get_overlay()
+        else:
+            for i in range(0, self.num_segm_frames):
+                histoLevels = self.allData_li[i]['histoLevels']
+                min = self.hist.gradient.listTicks()[0][1]
+                max = self.hist.gradient.listTicks()[1][1]
+                histoLevels[f'{self.user_ch_name}_overlayOFF'] = (min, max)
 
     def adjustBrightness(self, img, key):
         # Asjut contrast/brightness of all the overalid images using stored
@@ -5277,11 +5311,38 @@ class Yeast_ACDC_GUI(QMainWindow):
         mode = str(self.modeComboBox.currentText())
         if mode == 'Segmentation and Tracking':
             self.addExistingDelROIs()
-            DelROIlab = self.getDelROIlab()
+            allDelIDs, DelROIlab = self.getDelROIlab()
         else:
             DelROIlab = self.lab
         self.img2.setImage(DelROIlab)
         self.updateLookuptable()
+
+    def warnEditingWithCca_df(self, editTxt):
+        # Function used to warn that the user is editing in "Segmentation and
+        # Tracking" mode a frame that contains cca annotations.
+        # Ask whether to remove annotations from all future frames
+        acdc_df = self.allData_li[self.frame_i]['acdc_df']
+        if acdc_df is None:
+            return
+        else:
+            if 'cell_cycle_stage' not in acdc_df.columns:
+                return
+        msg = QtGui.QMessageBox()
+        msg.setIcon(msg.Warning)
+        msg.setWindowTitle('Edited frame!')
+        msg.setText(
+            'You modified a frame that has cell cycle annotations.\n\n'
+            f'The change "{editTxt}" most likely makes the annotations wrong.\n\n'
+            'If you really want to apply this change we reccommend to remove\n'
+            'ALL cell cycle annotations from current frame to the end.\n\n'
+            'What should I do?'
+        )
+        yes = QPushButton('Remove annotations from future frames (RECOMMENDED)')
+        msg.addButton(yes, msg.YesRole)
+        msg.addButton(QPushButton('Do not remove annotations'), msg.NoRole)
+        msg.exec_()
+        if msg.clickedButton() == yes:
+            self.remove_future_cca_df(self.frame_i)
 
     def addExistingDelROIs(self):
         delROIs_info = self.allData_li[self.frame_i]['delROIs_info']
@@ -5326,18 +5387,22 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Set the gradient slider ticks positions which are
         # stored into self.manualContrastKey when the user moves the ticks
         # which in turns calls histLUT_cb function (connected only for overlay)
+        overlayOFF_key = f'{self.user_ch_name}_overlayOFF'
+        isOverlayON = self.overlayButton.isChecked()
         histoLevels = self.allData_li[self.frame_i]['histoLevels']
-        if self.manualContrastKey in histoLevels:
+        if self.manualContrastKey in histoLevels and isOverlayON:
             min, max = histoLevels[self.manualContrastKey]
-            minTick = self.hist.gradient.getTick(0)
-            maxTick = self.hist.gradient.getTick(1)
-            self.hist.gradient.setTickValue(minTick, min)
-            self.hist.gradient.setTickValue(maxTick, max)
-        elif self.overlayButton.isChecked():
-            minTick = self.hist.gradient.getTick(0)
-            maxTick = self.hist.gradient.getTick(1)
-            self.hist.gradient.setTickValue(minTick, 0)
-            self.hist.gradient.setTickValue(maxTick, 1)
+        elif isOverlayON:
+            min, max = 0, 1
+        elif not isOverlayON and overlayOFF_key in histoLevels:
+            min, max = histoLevels[overlayOFF_key]
+        elif not isOverlayON and overlayOFF_key not in histoLevels:
+            min, max = 0, 1
+
+        minTick = self.hist.gradient.getTick(0)
+        maxTick = self.hist.gradient.getTick(1)
+        self.hist.gradient.setTickValue(minTick, min)
+        self.hist.gradient.setTickValue(maxTick, max)
 
     def updateALLimg(self, image=None, never_visited=True,
                      only_ax1=False, updateBlur=True):
@@ -5525,7 +5590,6 @@ class Yeast_ACDC_GUI(QMainWindow):
     def tracking(self, onlyIDs=[], enforce=False, DoManualEdit=True,
                  storeUndo=False, prev_lab=None, prev_rp=None,
                  return_lab=False):
-
         mode = str(self.modeComboBox.currentText())
         if self.frame_i == 0 or mode.find('Tracking') == -1:
             self.checkIDs_LostNew()
@@ -5677,7 +5741,8 @@ class Yeast_ACDC_GUI(QMainWindow):
 
 
     def undo_changes_future_frames(self):
-        self.frames_scrollBar.setMaximum(self.frame_i+1)
+        self.data.last_tracked_i = self.frame_i
+        self.setFramesScrollbarMaximum()
         for i in range(self.frame_i+1, self.num_segm_frames):
             if self.allData_li[i]['labels'] is None:
                 break
@@ -5885,14 +5950,13 @@ class Yeast_ACDC_GUI(QMainWindow):
                 raise FileNotFoundError(err_msg)
                 return
             print(f'Loading {img_path}...')
+            self.user_ch_name = user_ch_name
 
             proceed = self.init_frames_data(img_path, user_ch_name)
             if not proceed:
                 return
 
             self.create_chNamesQActionGroup(user_ch_name)
-
-            self.user_ch_name = user_ch_name
 
             # Ask whether to load fluorescent images
             msg = QtGui.QMessageBox()

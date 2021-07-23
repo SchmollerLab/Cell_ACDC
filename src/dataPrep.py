@@ -2,6 +2,9 @@ import os
 import sys
 import re
 import time
+import datetime
+import tempfile
+import shutil
 import numpy as np
 import pandas as pd
 import scipy.interpolate
@@ -14,7 +17,7 @@ from PyQt5.QtWidgets import (
     QAction, QApplication, QLabel, QPushButton,
     QMainWindow, QMenu, QToolBar, QGroupBox,
     QScrollBar, QCheckBox, QToolButton, QSpinBox,
-    QComboBox, QDial, QButtonGroup
+    QComboBox, QDial, QButtonGroup, QFileDialog
 )
 
 from pyqtgraph.Qt import QtGui
@@ -320,6 +323,9 @@ class dataPrep(QMainWindow):
         if msg.Yes:
             self.okAction.setDisabled(True)
             print('Saving data...')
+            self.titleLabel.setText(
+                'Saving data... (check progress in the terminal)',
+                color='w')
 
             if self.data.SizeZ > 1:
                 # Save segmInfo
@@ -353,16 +359,22 @@ class dataPrep(QMainWindow):
                 data = np.load(npz)['arr_0']
                 npz_data = self.crop(data)
                 print('Saving: ', npz)
-                np.savez_compressed(npz, npz_data)
+                temp_npz = self.getTempfilePath(npz)
+                np.savez_compressed(temp_npz, npz_data)
+                self.moveTempFile(temp_npz, npz)
                 print('Saving: ', tif)
-                self.imagej_tiffwriter(tif, npz_data, metadata)
+                temp_tif = self.getTempfilePath(tif)
+                self.imagej_tiffwriter(temp_tif, npz_data, metadata)
+                self.moveTempFile(temp_tif, tif)
 
             # Save segm.npz
             if self.data.segm_found:
                 print('Saving: ', self.data.segm_npz_path)
                 data = self.data.segm_data
                 croppedSegm = self.crop(data)
-                np.savez_compressed(self.data.segm_npz_path, croppedSegm)
+                temp_npz = self.getTempfilePath(self.data.segm_npz_path)
+                np.savez_compressed(temp_npz, croppedSegm)
+                self.moveTempFile(temp_npz, self.data.segm_npz_path)
 
             # Correct acdc_df if present and save
             if self.data.acdc_df is not None:
@@ -475,14 +487,45 @@ class dataPrep(QMainWindow):
 
     def prepData(self, event):
         self.startAction.setDisabled(True)
+        nonTifFound = (
+            any([npz is not None for npz in self.data.npz_paths]) or
+            any([npy is not None for npy in self.data.npy_paths]) or
+            self.data.segm_found
+        )
+        if nonTifFound:
+            imagesPath = self.data.images_path
+            zipPath = f'{os.path.splitext(imagesPath)[0]}.zip'
+            msg = QtGui.QMessageBox()
+            archive = msg.warning(
+               self, 'NON-Tif data detected!',
+               'Additional NON-tif files detected.\n\n'
+               'The requested experiment folder already contains .npy or .npz files '
+               'most likely from previous analysis runs.\n\n'
+               'To avoid data losses I will now zip the "Images" folder.\n\n'
+               'If everything looks fine after prepping the data, you can manually '
+               'delete the zip archive.\n\n'
+               'Zip archive location:\n\n'
+               f'{zipPath}',
+               msg.Ok | msg.Cancel
+            )
+            if archive == msg.Cancel:
+                self.startAction.setDisabled(False)
+                self.titleLabel.setText(
+                    'Process aborted. Press "start" button to start again.',
+                    color='w')
+            print(f'Zipping Images folder: {zipPath}')
+            shutil.make_archive(imagesPath, 'zip', imagesPath)
         self.npy_to_npz()
         self.alignData(self.user_ch_name)
+        self.update_img()
+        print('Done.')
         if self.data.SizeZ>1:
             self.data.segmInfo_df.to_csv(self.data.segmInfo_df_csv_path)
         self.addROIrect()
         self.okAction.setEnabled(True)
         self.titleLabel.setText(
-            'Data successfully prepped. You can now crop the images or close the program',
+            'Data successfully prepped. You can now crop the images or '
+            'close the program',
             color='w')
 
     def setStandardRoiShape(self, text):
@@ -555,11 +598,77 @@ class dataPrep(QMainWindow):
         self.ROIshapeLabel.setText(f'   Current ROI shape: {w} x {h}')
 
     def alignData(self, user_ch_name):
+        """
+        Alignemnt routine. Alignemnt is based on the data contained in the
+        .tif file of the channel selected by the user (e.g. "phase_contr").
+        Next, using the shifts calculated when aligning the channel selected
+        by the user, it will align all the other channels, always starting from
+        the data contained in the .tif files.
+
+        In the end, aligned data will be saved to both the .tif file and a
+        "_aligned.npz" file. The shifts will be saved to "align_shift.npy" file.
+
+        Alignemnt is performed only if needed:
+
+        1. If the "_aligned.npz" file does NOT exist AND the "align_shift.npy"
+        file does NOT exist then alignment is performed with the function
+        skimage.registration.phase_cross_correlation
+
+        2. If the "_aligned.npz" file does NOT exist AND the "align_shift.npy"
+        file does exist then alignment is performed with the saved shifts
+
+        3. If the "_aligned.npz" file does exist AND the "align_shift.npy"
+        file does NOT exist then alignment is performed AGAIN with the function
+        skimage.registration.phase_cross_correlation
+
+        4. If the "_aligned.npz" file does exist AND the "align_shift.npy"
+        file does exist no alignment is needed.
+
+        NOTE on the segmentation mask. If the system detects a "_segm.npz" file
+        AND alignmnet was performed, we need to be careful with aligning the
+        segm file. Segmentation files were most likely already aligned
+        (although this cannot be detected) so aligning them again will probably
+        misAlign them. It is responsibility of the user to choose wisely.
+        However, if alignment is performed AGAIN, the system will zip the
+        "Images" folder first to avoid data losses or corruption.
+
+        In general, it should be fine performing alignment again if the user
+        deletes the "align_shift.npy" file ONLY if also the .tif files are
+        already aligned. If the .tif files are not aligned and we need to
+        perform alignment again then the segmentation mask is invalid. In this
+        case we should align starting from "_aligned.npz" file but it is
+        not implemented yet.
+        """
+
         # Get metadata from tif
         with TiffFile(self.data.tif_path) as tif:
             metadata = tif.imagej_metadata
 
         print('Aligning data if needed...')
+        self.titleLabel.setText(
+            'Aligning data if needed... (check progress in terminal)',
+            color='w')
+        align = True
+        if self.data.loaded_shifts is None:
+            msg = QtGui.QMessageBox()
+            alignAnswer = msg.question(
+                self, 'Align frames?',
+                f'Do you want to align ALL channels based on "{user_ch_name}" '
+                'channel?\n\n'
+                'NOTE that also the .tif files will contain aligned data and\n'
+                f'a "..._{user_ch_name}_aligned.npz" file will be created \n'
+                'anyway because of compatibility reasons.\n'
+                'If you do not align it will contain '
+                'NON-aligned data.\n\n'
+                'If you do not have a specific reason for NOT align we reccommend '
+                'aligning.',
+                msg.Yes | msg.No
+            )
+            if alignAnswer == msg.No:
+                align = False
+                # Create 0, 0 shifts to perform 0 alignment
+                self.data.loaded_shifts = np.zeros((self.num_frames,2), int)
+
         _zip = zip(self.data.tif_paths, self.data.npz_paths)
         aligned = False
         for i, (tif, npz) in enumerate(_zip):
@@ -568,8 +677,15 @@ class dataPrep(QMainWindow):
             # Align based on user_ch_name
             if doAlign and tif.find(user_ch_name) != -1:
                 aligned = True
-                print('Aligning: ', tif)
+                if align:
+                    print('Aligning: ', tif)
                 tif_data = skimage.io.imread(tif)
+                numFramesWith0s = self.detectTifAlignment(tif_data)
+                proceed = self.warnTifAligned(numFramesWith0s, tif)
+                if not proceed:
+                    break
+
+                # Alignment routine
                 if self.data.SizeZ>1:
                     align_func = core.align_frames_3D
                     zz = self.data.segmInfo_df['z_slice_used_dataPrep'].to_list()
@@ -585,13 +701,17 @@ class dataPrep(QMainWindow):
                 self.data.loaded_shifts = shifts
                 _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
                 print('Saving: ', _npz)
-                np.savez_compressed(_npz, aligned_frames)
+                temp_npz = self.getTempfilePath(_npz)
+                np.savez_compressed(temp_npz, aligned_frames)
+                self.moveTempFile(temp_npz, _npz)
                 np.save(self.data.align_shifts_path, shifts)
-                self.data.img_data = aligned_frames
                 self.npz_paths[i] = _npz
 
                 print('Saving: ', tif)
-                self.imagej_tiffwriter(tif, aligned_frames, metadata)
+                temp_tif = self.getTempfilePath(tif)
+                self.imagej_tiffwriter(temp_tif, aligned_frames, metadata)
+                self.moveTempFile(temp_tif, tif)
+                self.data.img_data = skimage.io.imread(tif)
 
         _zip = zip(self.data.tif_paths, self.data.npz_paths)
         for i, (tif, npz) in enumerate(_zip):
@@ -599,9 +719,12 @@ class dataPrep(QMainWindow):
             # Align the other channels
             if doAlign and tif.find(user_ch_name) == -1:
                 if self.data.loaded_shifts is None:
-                    return
-                print('Aligning: ', tif)
+                    break
+                if align:
+                    print('Aligning: ', tif)
                 tif_data = skimage.io.imread(tif)
+
+                # Alignment routine
                 if self.data.SizeZ>1:
                     align_func = core.align_frames_3D
                     zz = self.data.segmInfo_df['z_slice_used_dataPrep'].to_list()
@@ -615,29 +738,88 @@ class dataPrep(QMainWindow):
                 )
                 _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
                 print('Saving: ', _npz)
-                np.savez_compressed(_npz, aligned_frames)
+                temp_npz = self.getTempfilePath(_npz)
+                np.savez_compressed(temp_npz, aligned_frames)
+                self.moveTempFile(temp_npz, _npz)
                 self.npz_paths[i] = _npz
 
                 print('Saving: ', tif)
-                self.imagej_tiffwriter(tif, aligned_frames, metadata)
+                temp_tif = self.getTempfilePath(tif)
+                self.imagej_tiffwriter(temp_tif, aligned_frames, metadata)
+                self.moveTempFile(temp_tif, tif)
 
         # Align segmentation data accordingly
         if self.data.segm_found and aligned:
             if self.data.loaded_shifts is None:
                 return
-            print('Aligning: ', self.data.segm_npz_path)
-            self.data.segm_data, shifts = core.align_frames_2D(
-                                         self.data.segm_data,
-                                         slices=None,
-                                         user_shifts=self.data.loaded_shifts
+            msg = QtGui.QMessageBox()
+            alignAnswer = msg.question(
+                self, 'Align segmentation data?',
+                'The system found an existing segmentation mask.\n\n'
+                'Do you need to align that too?',
+                msg.Yes | msg.No
             )
-            print('Saving: ', self.data.segm_npz_path)
-            np.savez_compressed(self.data.segm_npz_path, self.data.segm_data)
-        self.update_img()
-        print('Done.')
+            if alignAnswer == msg.Yes:
+                print('Aligning: ', self.data.segm_npz_path)
+                self.data.segm_data, shifts = core.align_frames_2D(
+                                             self.data.segm_data,
+                                             slices=None,
+                                             user_shifts=self.data.loaded_shifts
+                )
+                print('Saving: ', self.data.segm_npz_path)
+                temp_npz = self.getTempfilePath(self.data.segm_npz_path)
+                np.savez_compressed(temp_npz, self.data.segm_data)
+                self.moveTempFile(temp_npz, self.data.segm_npz_path)
+
+
+    def detectTifAlignment(self, tif_data):
+        numFramesWith0s = 0
+        if self.data.SizeT == 1:
+            tif_data = [tif_data]
+        for img in tif_data:
+            if self.data.SizeZ > 1:
+                firtsCol = img[:, :, 0]
+                lastCol = img[:, : -1]
+                firstRow = img[:, 0]
+                lastRow = img[:, -1]
+            else:
+                firtsCol = img[:, 0]
+                lastCol = img[: -1]
+                firstRow = img[0]
+                lastRow = img[-1]
+            someZeros = (
+                not np.any(firstRow) or not np.any(firtsCol)
+                or not np.any(lastRow) or not np.any(lastCol)
+            )
+            if someZeros:
+                numFramesWith0s += 1
+        return numFramesWith0s
+
+    def warnTifAligned(self, numFramesWith0s, tifPath):
+        proceed = True
+        if numFramesWith0s>0 and self.data.loaded_shifts is not None:
+            msg = QtGui.QMessageBox()
+            proceedAnswer = msg.warning(
+               self, 'Tif data ALREADY aligned!',
+               'The system detected that the .tif file contains ALREADY '
+               'aligned data.\n\n'
+               'Using the found "align_shifts.npy" file to align would result '
+               'in misalignemnt of the data.\n\n'
+               'Therefore, the alignment routine will re-calculate the shifts '
+               'and it will NOT use the saved shifts.\n\n'
+               'Do you want to continue?',
+               msg.Yes | msg.Cancel
+            )
+            if proceedAnswer == msg.Cancel:
+                proceed = False
+        return proceed
+
 
     def npy_to_npz(self):
         print('Converting .npy to .npz if needed...')
+        self.titleLabel.setText(
+            'Converting .npy to .npz if needed... (check progress in terminal)',
+            color='w')
         self.npz_paths = self.data.npz_paths.copy()
         _zip = zip(self.data.npy_paths, self.data.npz_paths)
         for i, (npy, npz) in enumerate(_zip):
@@ -647,7 +829,9 @@ class dataPrep(QMainWindow):
                 print('Converting: ', npy)
                 _data = np.load(npy)
                 _npz = f'{os.path.splitext(npy)[0]}.npz'
-                np.savez_compressed(_npz, _data)
+                temp_npz = self.getTempfilePath(_npz)
+                np.savez_compressed(temp_npz, _data)
+                self.moveTempFile(temp_npz, _npz)
                 os.remove(npy)
                 self.npz_paths[i] = _npz
             elif npy is not None and npz is not None:
@@ -655,9 +839,66 @@ class dataPrep(QMainWindow):
         # Convert segm.npy to segm.npz
         if self.data.segm_npy_path is not None:
             print('Converting: ', self.data.segm_npy_path)
-            np.savez_compressed(self.data.segm_npz_path, self.data.segm_data)
+            temp_npz = self.getTempfilePath(self.data.segm_npz_path)
+            np.savez_compressed(temp_npz, self.data.segm_data)
+            self.moveTempFile(temp_npz, self.data.segm_npz_path)
             os.remove(self.data.segm_npy_path)
         print('Done.')
+
+    def getTempfilePath(self, path):
+        temp_dirpath = tempfile.mkdtemp()
+        filename = os.path.basename(path)
+        tempFilePath = os.path.join(temp_dirpath, filename)
+        return tempFilePath
+
+    def moveTempFile(self, src, dst):
+        print('Moving temp file: ', src)
+        tempDir = os.path.dirname(src)
+        shutil.move(src, dst)
+        shutil.rmtree(tempDir)
+
+    def getMostRecentPath(self):
+        src_path = os.path.dirname(os.path.realpath(__file__))
+        recentPaths_path = os.path.join(
+            src_path, 'temp', 'recentPaths.csv'
+        )
+        if os.path.exists(recentPaths_path):
+            df = pd.read_csv(recentPaths_path, index_col='index')
+            if 'opened_last_on' in df.columns:
+                df = df.sort_values('opened_last_on', ascending=False)
+            self.MostRecentPath = df.iloc[0]['path']
+        else:
+            self.MostRecentPath = ''
+
+    def addToRecentPaths(self, exp_path):
+        src_path = os.path.dirname(os.path.realpath(__file__))
+        recentPaths_path = os.path.join(
+            src_path, 'temp', 'recentPaths.csv'
+        )
+        if os.path.exists(recentPaths_path):
+            df = pd.read_csv(recentPaths_path, index_col='index')
+            recentPaths = df['path'].to_list()
+            if 'opened_last_on' in df.columns:
+                openedOn = df['opened_last_on'].to_list()
+            else:
+                openedOn = [np.nan]*len(recentPaths)
+            if exp_path in recentPaths:
+                pop_idx = recentPaths.index(exp_path)
+                recentPaths.pop(pop_idx)
+                openedOn.pop(pop_idx)
+            recentPaths.insert(0, exp_path)
+            openedOn.insert(0, datetime.datetime.now())
+            # Keep max 20 recent paths
+            if len(recentPaths) > 20:
+                recentPaths.pop(-1)
+                openedOn.pop(-1)
+        else:
+            recentPaths = [exp_path]
+            openedOn = [datetime.datetime.now()]
+        df = pd.DataFrame({'path': recentPaths,
+                           'opened_last_on': openedOn})
+        df.index.name = 'index'
+        df.to_csv(recentPaths_path)
 
 
     def openFile(self, checked=False, exp_path=None):
@@ -668,9 +909,11 @@ class dataPrep(QMainWindow):
         self.openAction.setEnabled(False)
 
         if exp_path is None:
-            exp_path = prompts.folder_dialog(
-                title='Select experiment folder containing Position_n folders'
-                      'or specific Position_n folder')
+            self.getMostRecentPath()
+            exp_path = QFileDialog.getExistingDirectory(
+                self, 'Select experiment folder containing Position_n folders'
+                      'or specific Position_n folder', self.MostRecentPath)
+            self.addToRecentPaths(exp_path)
 
         if exp_path == '':
             self.openAction.setEnabled(True)
@@ -717,7 +960,14 @@ class dataPrep(QMainWindow):
                 self.openAction.setEnabled(True)
                 return
 
-            select_folder.run_widget(values, allow_abort=False)
+            select_folder.QtPrompt(self, values, allow_abort=False)
+            if select_folder.was_aborted:
+                self.titleLabel.setText(
+                    'File --> Open or Open recent to start the process',
+                    color='w')
+                self.openAction.setEnabled(True)
+                return
+
             pos_foldername = select_folder.selected_pos[0]
             images_path = f'{exp_path}/{pos_foldername}/Images'
 
