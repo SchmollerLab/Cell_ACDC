@@ -3069,7 +3069,16 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.reloadAction.setEnabled(enabled)
         self.saveAction.setEnabled(enabled)
         self.loadFluoAction.setEnabled(enabled)
-        self.editToolBar.setEnabled(enabled)
+        mode = self.modeComboBox.currentText()
+        ccaON = mode == 'Cell cycle analysis'
+        for action in self.editToolBar.actions():
+            button = self.editToolBar.widgetForAction(action)
+            # Keep binCellButton active in cca mode
+            if button==self.binCellButton and not enabled and ccaON:
+                button.setEnabled(True)
+            else:
+                button.setEnabled(enabled)
+        # self.editToolBar.setEnabled(enabled)
         self.navigateToolBar.setEnabled(enabled)
         self.modeToolBar.setEnabled(enabled)
         self.enableSizeSpinbox(False)
@@ -4599,6 +4608,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         num_cycles = [2]*len(IDs)
         relationship = ['mother' for ID in IDs]
         related_to = [-1]*len(IDs)
+        emerg_frame_i = [-1]*len(IDs)
+        division_frame_i = [-1]*len(IDs)
         is_history_known = [False]*len(IDs)
         corrected_assignment = [False]*len(IDs)
         cca_df = pd.DataFrame({
@@ -4606,8 +4617,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                            'generation_num': num_cycles,
                            'relative_ID': related_to,
                            'relationship': relationship,
-                           'emerg_frame_i': num_cycles,
-                           'division_frame_i': num_cycles,
+                           'emerg_frame_i': emerg_frame_i,
+                           'division_frame_i': division_frame_i,
                            'is_history_known': is_history_known,
                            'corrected_assignment': corrected_assignment},
                             index=IDs)
