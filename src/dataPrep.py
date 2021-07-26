@@ -867,10 +867,14 @@ class dataPrep(QMainWindow):
             if 'opened_last_on' in df.columns:
                 df = df.sort_values('opened_last_on', ascending=False)
             self.MostRecentPath = df.iloc[0]['path']
+            if not isinstance(self.MostRecentPath, str):
+                self.MostRecentPath = ''
         else:
             self.MostRecentPath = ''
 
     def addToRecentPaths(self, exp_path):
+        if not os.path.exists(exp_path):
+            return
         src_path = os.path.dirname(os.path.realpath(__file__))
         recentPaths_path = os.path.join(
             src_path, 'temp', 'recentPaths.csv'
@@ -910,6 +914,7 @@ class dataPrep(QMainWindow):
 
         if exp_path is None:
             self.getMostRecentPath()
+            print(self.MostRecentPath)
             exp_path = QFileDialog.getExistingDirectory(
                 self, 'Select experiment folder containing Position_n folders'
                       'or specific Position_n folder', self.MostRecentPath)

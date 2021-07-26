@@ -6028,6 +6028,8 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.openAction.setEnabled(True)
 
     def addToRecentPaths(self, exp_path):
+        if not os.path.exists(exp_path):
+            return
         src_path = os.path.dirname(os.path.realpath(__file__))
         recentPaths_path = os.path.join(
             src_path, 'temp', 'recentPaths.csv'
@@ -6338,6 +6340,8 @@ class Yeast_ACDC_GUI(QMainWindow):
             if 'opened_last_on' in df.columns:
                 df = df.sort_values('opened_last_on', ascending=False)
             self.MostRecentPath = df.iloc[0]['path']
+            if not isinstance(self.MostRecentPath, str):
+                self.MostRecentPath = ''
         else:
             self.MostRecentPath = ''
 
