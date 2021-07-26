@@ -4012,6 +4012,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.clickedOnBud = False
         self.blinkBold = False
         self.ol_data_dict = {}
+        self.ol_data = None
         self.gaussWin = None
 
         # Colormap
@@ -5235,7 +5236,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                 min = self.hist.gradient.listTicks()[0][1]
                 max = self.hist.gradient.listTicks()[1][1]
                 histoLevels[self.manualContrastKey] = (min, max)
-            self.get_overlay()
+            if self.ol_data is not None:
+                self.get_overlay()
         else:
             for i in range(0, self.num_segm_frames):
                 histoLevels = self.allData_li[i]['histoLevels']

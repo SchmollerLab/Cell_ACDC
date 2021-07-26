@@ -537,7 +537,34 @@ class select_channel_name:
         self.was_aborted = False
         self.allow_abort = allow_abort
 
+    def checkDataIntegrity(self, filenames):
+        char = filenames[0][:2]
+        startWithSameChar = all([f.startswith(char) for f in filenames])
+        if not startWithSameChar:
+            msg = QtGui.QMessageBox()
+            msg.warning(
+               None, 'Data structure compromised',
+               'The system detected files inside the "Images" folder '
+               'that do not start with the same, common basename.\n\n'
+               'To ensure correct loading of the relevant data, the folder "Images" '
+               'inside each Position folder should contain only files that start '
+               'with the same, common basename.\n\n'
+               'For example the following filenames:\n\n'
+               'F014_s01_phase_contr.tif\n'
+               'F014_s01_mCitrine.tif\n\n'
+               'are named correctly since they all start with the '
+               'the common basename "F014_s01_". After the common basename you '
+               'can write whatever text you want. In the example above, "phase_contr" '
+               'and "mCitrine" are the channel names.\n\n'
+               'We reccomend using the provided Fiji/ImageJ macro to create the right '
+               'data structure.\n\n'
+               'Data loading may still be successfull, so the system will '
+               'still try to load data now.',
+               msg.Ok
+            )
+
     def get_available_channels(self, filenames):
+        self.checkDataIntegrity(filenames)
         channel_names = []
         basename = filenames[0]
         for file in filenames:
