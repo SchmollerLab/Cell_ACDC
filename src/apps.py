@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle, Circle, PathPatch, Path
 import numpy as np
+import scipy.interpolate
 import tkinter as tk
 import cv2
 import traceback
@@ -41,6 +42,8 @@ from PyQt5.QtWidgets import (
     QButtonGroup, QCheckBox, QSizePolicy, QComboBox, QSlider, QGridLayout,
     QSpinBox, QToolButton
 )
+
+import myutils
 
 import qrc_resources
 
@@ -405,13 +408,13 @@ class my_paint_app:
         elif x > xmax:
             x_coerced = xmax-1
         else:
-            x_coerced = int(round(x)) if return_int else x
+            x_coerced = int(x) if return_int else x
         if y < ymin:
             y_coerced = 0
         elif y > ymax:
             y_coerced = ymax-1
         else:
-            y_coerced = int(round(y)) if return_int else y
+            y_coerced = int(y) if return_int else y
         return x_coerced, y_coerced
 
 
@@ -1092,7 +1095,6 @@ class CellsSlideshow_GUI(QMainWindow):
         self.gui_createMenuBar()
         self.gui_createToolBars()
 
-        self.gui_connectActions()
         self.gui_createStatusBar()
 
         self.gui_createGraphics()
@@ -1100,6 +1102,7 @@ class CellsSlideshow_GUI(QMainWindow):
         self.gui_connectImgActions()
 
         self.gui_createImgWidgets()
+        self.gui_connectActions()
 
         mainContainer = QtGui.QWidget()
         self.setCentralWidget(mainContainer)
@@ -1180,6 +1183,7 @@ class CellsSlideshow_GUI(QMainWindow):
 
         #Image histogram
         hist = pg.HistogramLUTItem()
+        self.hist = hist
         hist.setImageItem(self.img)
         self.graphLayout.addItem(hist, row=1, col=0)
 
@@ -1230,7 +1234,7 @@ class CellsSlideshow_GUI(QMainWindow):
         # Update x, y, value label bottom right
         try:
             x, y = event.pos()
-            xdata, ydata = int(round(x)), int(round(y))
+            xdata, ydata = int(x), int(y)
             _img = self.img.image
             Y, X = _img.shape
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
@@ -2587,16 +2591,25 @@ class QtSelectPos(QDialog):
         self.close()
 
 class manualSeparateGui(QMainWindow):
-    def __init__(self, lab, ID, img, color=[255, 0, 0], parent=None):
-        super().__init__(parent)
+    def __init__(self, lab, ID, img, fontSize='12pt',
+                 IDcolor=[255, 255, 0], parent=None,
+                 loop=None):
+        super().__init__()
+        self.loop = loop
         self.cancel = True
         self.parent = parent
-        self.lab = lab
-        self.img = img
-        self.color = color
-        self.lut = np.zeros((lab.max()+1, 3), int)
-        self.lut[0] = [25,25,25]
-        self.lut[ID] = color
+        self.lab = lab.copy()
+        self.lab[lab!=ID] = 0
+        self.ID = ID
+        self.img = skimage.exposure.equalize_adapthist(img)
+        self.IDcolor = IDcolor
+        self.countClicks = 0
+        self.prevLabs = []
+        self.prevAllCutsCoords = []
+        self.labelItemsIDs = []
+        self.undoIdx = 0
+        self.fontSize = fontSize
+        self.AllCutsCoords = []
         self.setWindowTitle("Yeast ACDC - Segm&Track")
         # self.setGeometry(Left, Top, 850, 800)
 
@@ -2604,13 +2617,16 @@ class manualSeparateGui(QMainWindow):
         self.gui_createMenuBar()
         self.gui_createToolBars()
 
-        self.gui_connectActions()
         self.gui_createStatusBar()
 
         self.gui_createGraphics()
         self.gui_connectImgActions()
 
         self.gui_createImgWidgets()
+        self.gui_connectActions()
+
+        self.updateImg()
+        self.zoomToObj()
 
         mainContainer = QtGui.QWidget()
         self.setCentralWidget(mainContainer)
@@ -2621,16 +2637,46 @@ class manualSeparateGui(QMainWindow):
 
         mainContainer.setLayout(mainLayout)
 
+        self.setWindowModality(Qt.WindowModal)
+
+    def centerWindow(self):
+        parent = self.parent
+        if parent is not None:
+            # Center the window on main window
+            mainWinGeometry = parent.frameGeometry()
+            mainWinLeft = mainWinGeometry.left()
+            mainWinTop = mainWinGeometry.top()
+            mainWinWidth = mainWinGeometry.width()
+            mainWinHeight = mainWinGeometry.height()
+            mainWinCenterX = int(mainWinLeft + mainWinWidth/2)
+            mainWinCenterY = int(mainWinTop + mainWinHeight/2)
+            winGeometry = self.frameGeometry()
+            winWidth = winGeometry.width()
+            winHeight = winGeometry.height()
+            winLeft = int(mainWinCenterX - winWidth/2)
+            winRight = int(mainWinCenterY - winHeight/2)
+            self.move(winLeft, winRight)
+
     def gui_createActions(self):
         # File actions
         self.exitAction = QAction("&Exit", self)
+        self.helpAction = QAction('Help', self)
+        self.undoAction = QAction(QIcon(":undo.svg"), "Undo (Ctrl+Z)", self)
+        self.undoAction.setEnabled(False)
+        self.undoAction.setShortcut("Ctrl+Z")
+
+        self.okAction = QAction(QIcon(":applyCrop.svg"), "Happy with that", self)
+        self.cancelAction = QAction(QIcon(":cancel.svg"), "Cancel", self)
 
     def gui_createMenuBar(self):
         menuBar = self.menuBar()
+        style = "QMenuBar::item:selected { background: white; }"
+        menuBar.setStyleSheet(style)
         # File menu
         fileMenu = QMenu("&File", self)
         menuBar.addMenu(fileMenu)
-        # fileMenu.addAction(self.newAction)
+
+        menuBar.addAction(self.helpAction)
         fileMenu.addAction(self.exitAction)
 
     def gui_createToolBars(self):
@@ -2640,26 +2686,10 @@ class manualSeparateGui(QMainWindow):
         editToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         self.addToolBar(editToolBar)
 
-        # self.brushButton = QToolButton(self)
-        # self.brushButton.setIcon(QIcon(":brush.svg"))
-        # self.brushButton.setCheckable(True)
-        # self.brushButton.setShortcut('b')
-        # self.brushButton.setToolTip('Paint\n\nSHORTCUT: "B" key')
-        # editToolBar.addWidget(self.brushButton)
+        editToolBar.addAction(self.okAction)
+        editToolBar.addAction(self.cancelAction)
 
-        # self.eraserButton = QToolButton(self)
-        # self.eraserButton.setIcon(QIcon(":eraser.png"))
-        # self.eraserButton.setCheckable(True)
-        # self.eraserButton.setShortcut('x')
-        # self.eraserButton.setToolTip('Erase\n\nSHORTCUT: "X" key')
-        # editToolBar.addWidget(self.eraserButton)
-
-        # self.curvToolButton = QToolButton(self)
-        # self.curvToolButton.setIcon(QIcon(":curvature-tool.svg"))
-        # self.curvToolButton.setCheckable(True)
-        # self.curvToolButton.setShortcut('c')
-        # self.curvToolButton.setToolTip('Curvature tool\n\nSHORTCUT: "C" key')
-        # editToolBar.addWidget(self.curvToolButton)
+        editToolBar.addAction(self.undoAction)
 
         self.overlayButton = QToolButton(self)
         self.overlayButton.setIcon(QIcon(":overlay.svg"))
@@ -2669,6 +2699,12 @@ class manualSeparateGui(QMainWindow):
 
     def gui_connectActions(self):
         self.exitAction.triggered.connect(self.close)
+        self.helpAction.triggered.connect(self.help)
+        self.okAction.triggered.connect(self.ok_cb)
+        self.cancelAction.triggered.connect(self.close)
+        self.undoAction.triggered.connect(self.undo)
+        self.overlayButton.toggled.connect(self.toggleOverlay)
+        self.hist.sigLookupTableChanged.connect(self.histLUT_cb)
 
     def gui_createStatusBar(self):
         self.statusbar = self.statusBar()
@@ -2682,38 +2718,74 @@ class manualSeparateGui(QMainWindow):
         self.graphLayout = pg.GraphicsLayoutWidget()
 
         # Plot Item container for image
-        self.Plot = pg.PlotItem()
-        self.Plot.invertY(True)
-        self.Plot.setAspectLocked(True)
-        self.Plot.hideAxis('bottom')
-        self.Plot.hideAxis('left')
-        self.graphLayout.addItem(self.Plot, row=1, col=1)
+        self.ax = pg.PlotItem()
+        self.ax.invertY(True)
+        self.ax.setAspectLocked(True)
+        self.ax.hideAxis('bottom')
+        self.ax.hideAxis('left')
+        self.graphLayout.addItem(self.ax, row=1, col=1)
 
         # Image Item
         self.imgItem = pg.ImageItem(np.zeros((512,512)))
-        self.imgItem.setImage(self.lab)
-        self.Plot.addItem(self.imgItem)
+        self.ax.addItem(self.imgItem)
 
         #Image histogram
-        hist = pg.HistogramLUTItem()
-        # hist.setImageItem(self.imgItem)
-        self.graphLayout.addItem(hist, row=1, col=0)
+        self.hist = pg.HistogramLUTItem()
 
-        # Lookup table
-        self.imgItem.setLookupTable(self.lut)
+        # Curvature items
+        self.hoverLinSpace = np.linspace(0, 1, 1000)
+        self.hoverLinePen = pg.mkPen(color=(200, 0, 0, 255*0.5),
+                                     width=2, style=Qt.DashLine)
+        self.hoverCurvePen = pg.mkPen(color=(200, 0, 0, 255*0.5), width=3)
+        self.lineHoverPlotItem = pg.PlotDataItem(pen=self.hoverLinePen)
+        self.curvHoverPlotItem = pg.PlotDataItem(pen=self.hoverCurvePen)
+        self.curvAnchors = pg.ScatterPlotItem(
+            symbol='o', size=9,
+            brush=pg.mkBrush((255,0,0,50)),
+            pen=pg.mkPen((255,0,0), width=2),
+            hoverable=True, hoverPen=pg.mkPen((255,0,0), width=3),
+            hoverBrush=pg.mkBrush((255,0,0))
+        )
+        self.ax.addItem(self.curvAnchors)
+        self.ax.addItem(self.curvHoverPlotItem)
+        self.ax.addItem(self.lineHoverPlotItem)
 
     def gui_createImgWidgets(self):
         self.img_Widglayout = QtGui.QGridLayout()
-        self.img_Widglayout.setContentsMargins(100, 0, 50, 0)
+        self.img_Widglayout.setContentsMargins(50, 0, 50, 0)
+
+        alphaScrollBar_label = QLabel('Overlay alpha  ')
+        alphaScrollBar = QScrollBar(Qt.Horizontal)
+        alphaScrollBar.setFixedHeight(20)
+        alphaScrollBar.setMinimum(0)
+        alphaScrollBar.setMaximum(40)
+        alphaScrollBar.setValue(12)
+        alphaScrollBar.setToolTip(
+            'Control the alpha value of the overlay.\n'
+            'alpha=0 results in NO overlay,\n'
+            'alpha=1 results in only labels visible'
+        )
+        alphaScrollBar.sliderMoved.connect(self.alphaScrollBarMoved)
+        self.alphaScrollBar = alphaScrollBar
+        self.alphaScrollBar_label = alphaScrollBar_label
+        self.img_Widglayout.addWidget(
+            alphaScrollBar_label, 0, 0, alignment=Qt.AlignCenter
+        )
+        self.img_Widglayout.addWidget(alphaScrollBar, 0, 1, 1, 20)
+        self.alphaScrollBar.hide()
+        self.alphaScrollBar_label.hide()
 
     def gui_connectImgActions(self):
         self.imgItem.hoverEvent = self.gui_hoverEventImg
+        self.imgItem.mousePressEvent = self.gui_mousePressEventImg
+        self.imgItem.mouseMoveEvent = self.gui_mouseDragEventImg
+        self.imgItem.mouseReleaseEvent = self.gui_mouseReleaseEventImg
 
     def gui_hoverEventImg(self, event):
         # Update x, y, value label bottom right
         try:
             x, y = event.pos()
-            xdata, ydata = int(round(x)), int(round(y))
+            xdata, ydata = int(x), int(y)
             _img = self.lab
             Y, X = _img.shape
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
@@ -2723,6 +2795,261 @@ class manualSeparateGui(QMainWindow):
                 self.wcLabel.setText(f'')
         except:
             self.wcLabel.setText(f'')
+
+        try:
+            if not event.isExit():
+                x, y = event.pos()
+                if self.countClicks == 1:
+                    self.lineHoverPlotItem.setData([self.x0, x], [self.y0, y])
+                elif self.countClicks == 2:
+                    xx = [self.x0, x, self.x1]
+                    yy = [self.y0, y, self.y1]
+                    xi, yi = self.getSpline(xx, yy)
+                    self.curvHoverPlotItem.setData(xi, yi)
+                elif self.countClicks == 0:
+                    self.curvHoverPlotItem.setData([], [])
+                    self.lineHoverPlotItem.setData([], [])
+                    self.curvAnchors.setData([], [])
+        except:
+            traceback.print_exc()
+            pass
+
+    def getSpline(self, xx, yy):
+        tck, u = scipy.interpolate.splprep([xx, yy], s=0, k=2)
+        xi, yi = scipy.interpolate.splev(self.hoverLinSpace, tck)
+        return xi, yi
+
+
+    def gui_mousePressEventImg(self, event):
+        right_click = event.button() == Qt.MouseButton.RightButton
+        left_click = event.button() == Qt.MouseButton.LeftButton
+
+        dragImg = (left_click)
+
+        if dragImg:
+            pg.ImageItem.mousePressEvent(self.imgItem, event)
+
+        if right_click and self.countClicks == 0:
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(x), int(y)
+            self.x0, self.y0 = xdata, ydata
+            self.curvAnchors.addPoints([xdata], [ydata])
+            self.countClicks = 1
+        elif right_click and self.countClicks == 1:
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(x), int(y)
+            self.x1, self.y1 = xdata, ydata
+            self.curvAnchors.addPoints([xdata], [ydata])
+            self.countClicks = 2
+        elif right_click and self.countClicks == 2:
+            self.storeUndoState()
+            self.countClicks = 0
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(x), int(y)
+            xx = [self.x0, xdata, self.x1]
+            yy = [self.y0, ydata, self.y1]
+            xi, yi = self.getSpline(xx, yy)
+            yy, xx = np.round(yi).astype(int), np.round(xi).astype(int)
+            xxCurve, yyCurve = [], []
+            for i, (r0, c0) in enumerate(zip(yy, xx)):
+                if i == len(yy)-1:
+                    break
+                r1 = yy[i+1]
+                c1 = xx[i+1]
+                rr, cc, _ = skimage.draw.line_aa(r0, c0, r1, c1)
+                # rr, cc = skimage.draw.line(r0, c0, r1, c1)
+                nonzeroMask = self.lab[rr, cc]>0
+                xxCurve.extend(cc[nonzeroMask])
+                yyCurve.extend(rr[nonzeroMask])
+            self.AllCutsCoords.append((yyCurve, xxCurve))
+            for rr, cc in self.AllCutsCoords:
+                self.lab[rr, cc] = 0
+            self.updateLabels()
+
+
+    def histLUT_cb(self, LUTitem):
+        if self.overlayButton.isChecked():
+            overlay = self.getOverlay()
+            self.imgItem.setImage(overlay)
+
+    def updateImg(self):
+        self.updateLookuptable()
+        rp = skimage.measure.regionprops(self.lab)
+        self.rp = rp
+
+        if self.overlayButton.isChecked():
+            overlay = self.getOverlay()
+            self.imgItem.setImage(overlay)
+        else:
+            self.imgItem.setImage(self.lab)
+
+        # Draw ID on centroid of each label
+        for labelItemID in self.labelItemsIDs:
+            self.ax.removeItem(labelItemID)
+        self.labelItemsIDs = []
+        for obj in rp:
+            labelItemID = pg.LabelItem()
+            labelItemID.setText(f'{obj.label}', color='r', size=self.fontSize)
+            y, x = obj.centroid
+            w, h = labelItemID.rect().right(), labelItemID.rect().bottom()
+            labelItemID.setPos(x-w/2, y-h/2)
+            self.labelItemsIDs.append(labelItemID)
+            self.ax.addItem(labelItemID)
+
+    def zoomToObj(self):
+        # Zoom to object
+        lab_mask = (self.lab>0).astype(np.uint8)
+        rp = skimage.measure.regionprops(lab_mask)
+        obj = rp[0]
+        min_row, min_col, max_row, max_col = obj.bbox
+        xRange = min_col-10, max_col+10
+        yRange = max_row+10, min_row-10
+        self.ax.setRange(xRange=xRange, yRange=yRange)
+
+    def storeUndoState(self):
+        self.prevLabs.append(self.lab.copy())
+        self.prevAllCutsCoords.append(self.AllCutsCoords.copy())
+        self.undoIdx += 1
+        self.undoAction.setEnabled(True)
+
+    def undo(self):
+        self.undoIdx -= 1
+        self.lab = self.prevLabs[self.undoIdx]
+        self.AllCutsCoords = self.prevAllCutsCoords[self.undoIdx]
+        self.updateImg()
+        if self.undoIdx == 0:
+            self.undoAction.setEnabled(False)
+            self.prevLabs = []
+            self.prevAllCutsCoords = []
+
+
+    def updateLabels(self):
+        self.lab = skimage.measure.label(self.lab, connectivity=1)
+
+        # Relabel largest object with original ID
+        rp = skimage.measure.regionprops(self.lab)
+        areas = [obj.area for obj in rp]
+        IDs = [obj.label for obj in rp]
+        maxAreaIdx = areas.index(max(areas))
+        maxAreaID = IDs[maxAreaIdx]
+        if self.ID not in self.lab:
+            self.lab[self.lab==maxAreaID] = self.ID
+
+        if self.parent is not None:
+            self.parent.setBrushID()
+        # Use parent window setBrushID function for all other IDs
+        for i, obj in enumerate(rp):
+            if self.parent is None:
+                break
+            if i == maxAreaIdx:
+                continue
+            self.parent.brushID += 1
+            self.lab[obj.slice][obj.image] = self.parent.brushID
+
+
+        # Replace 0s on the cutting curve with IDs
+        self.cutLab = self.lab.copy()
+        for rr, cc in self.AllCutsCoords:
+            for y, x in zip(rr, cc):
+                top_row = self.cutLab[y+1, x-1:x+2]
+                bot_row = self.cutLab[y-1, x-1:x+1]
+                left_col = self.cutLab[y-1, x-1]
+                right_col = self.cutLab[y:y+2, x+1]
+                allNeigh = list(top_row)
+                allNeigh.extend(bot_row)
+                allNeigh.append(left_col)
+                allNeigh.extend(right_col)
+                newID = max(allNeigh)
+                self.lab[y,x] = newID
+
+        self.rp = skimage.measure.regionprops(self.lab)
+        self.updateImg()
+
+    def updateLookuptable(self):
+        # Lookup table
+        self.cmap = myutils.getFromMatplotlib('viridis')
+        self.lut = self.cmap.getLookupTable(0,1,self.lab.max()+1)
+        self.lut[0] = [25,25,25]
+        self.lut[self.ID] = self.IDcolor
+        if self.overlayButton.isChecked():
+            self.imgItem.setLookupTable(None)
+        else:
+            self.imgItem.setLookupTable(self.lut)
+
+    def keyPressEvent(self, ev):
+        if ev.key() == Qt.Key_Escape:
+            self.countClicks = 0
+            self.curvHoverPlotItem.setData([], [])
+            self.lineHoverPlotItem.setData([], [])
+            self.curvAnchors.setData([], [])
+
+    def getOverlay(self):
+        # Rescale intensity based on hist ticks values
+        min = self.hist.gradient.listTicks()[0][1]
+        max = self.hist.gradient.listTicks()[1][1]
+        img = skimage.exposure.rescale_intensity(
+                                      self.img, in_range=(min, max))
+        alpha = self.alphaScrollBar.value()/self.alphaScrollBar.maximum()
+
+        # Convert img and lab to RGBs
+        rgb_shape = (self.lab.shape[0], self.lab.shape[1], 3)
+        labRGB = np.zeros(rgb_shape)
+        labRGB[self.lab>0] = [1, 1, 1]
+        imgRGB = skimage.color.gray2rgb(img)
+        overlay = imgRGB*(1.0-alpha) + labRGB*alpha
+
+        # Color eaach label
+        for obj in self.rp:
+            rgb = self.lut[obj.label]/255
+            overlay[obj.slice][obj.image] *= rgb
+
+        # Convert (0,1) to (0,255)
+        overlay = (np.clip(overlay, 0, 1)*255).astype(np.uint8)
+        return overlay
+
+
+    def gui_mouseDragEventImg(self, event):
+        pass
+
+    def gui_mouseReleaseEventImg(self, event):
+        pass
+
+    def alphaScrollBarMoved(self, alpha_int):
+        overlay = self.getOverlay()
+        self.imgItem.setImage(overlay)
+
+    def toggleOverlay(self, checked):
+        if checked:
+            self.graphLayout.addItem(self.hist, row=1, col=0)
+            self.alphaScrollBar.show()
+            self.alphaScrollBar_label.show()
+        else:
+            self.graphLayout.removeItem(self.hist)
+            self.alphaScrollBar.hide()
+            self.alphaScrollBar_label.hide()
+        self.updateImg()
+
+    def help(self):
+        msg = QtGui.QMessageBox()
+        msg.information(self, 'Help',
+            'Separate object along a curved line.\n\n'
+            'To draw a curved line you will need 3 right-clicks:\n\n'
+            '1. Right-click outside of the object --> a line appears.\n'
+            '2. Right-click to end the line and a curve going through the '
+            'mouse cursor will appear.\n'
+            '3. Once you are happy with the cutting curve right-click again '
+            'and the object will be separated along the curve.\n\n'
+            'Note that you can separate as many times as you want.\n\n'
+            'Once happy click on the green tick on top-right or '
+            'cancel the process with the "X" button')
+
+    def ok_cb(self, checked):
+        self.cancel = False
+        self.close()
+
+    def closeEvent(self, event):
+        if self.loop is not None:
+            self.loop.exit()
 
 if __name__ == '__main__':
     # Create the application
@@ -2754,12 +3081,9 @@ if __name__ == '__main__':
                         index=IDs)
     cca_df.index.name = 'Cell_ID'
     # win = ccaTableWidget(cca_df)
-    lab = np.zeros((1024, 1024), np.uint16)
-    rr, cc = skimage.draw.disk((512, 512), 50)
-    ID = 11
-    lab[rr, cc] = 11
-    img = np.zeros((1024, 1024))
-    win = manualSeparateGui(lab, ID, img)
+    lab = np.load(r"G:\My Drive\1_MIA_Data\Test_data\Test_Qt_GUI\Position_5\Images\F016_s05_segm.npz")['arr_0'][0]
+    img = np.load(r"G:\My Drive\1_MIA_Data\Test_data\Test_Qt_GUI\Position_5\Images\F016_s05_phase_contr_aligned.npz")['arr_0'][0]
+    win = manualSeparateGui(lab, 2, img)
     # win.setFont(font)
     app.setStyle(QtGui.QStyleFactory.create('Fusion'))
     win.show()

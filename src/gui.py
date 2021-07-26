@@ -34,7 +34,9 @@ import skimage.segmentation
 from skimage import img_as_float
 from skimage.color import gray2rgb, gray2rgba
 
-from PyQt5.QtCore import Qt, QFile, QTextStream, QSize, QRect, QRectF
+from PyQt5.QtCore import (
+    Qt, QFile, QTextStream, QSize, QRect, QRectF, QEventLoop
+)
 from PyQt5.QtGui import QIcon, QKeySequence, QCursor, QKeyEvent
 from PyQt5.QtWidgets import (
     QAction, QApplication, QLabel, QPushButton,
@@ -547,8 +549,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         x, y = event.pos().x(), event.pos().y()
         delROIs = self.allData_li[self.frame_i]['delROIs_info']['rois'].copy()
         for r, roi in enumerate(delROIs):
-            x0, y0 = [int(round(c)) for c in roi.pos()]
-            w, h = [int(round(c)) for c in roi.size()]
+            x0, y0 = [int(c) for c in roi.pos()]
+            w, h = [int(c) for c in roi.size()]
             x1, y1 = x0+w, y0+h
             clickedOnROI = (
                 x>=x0 and x<=x1 and y>=y0 and y<=y1
@@ -579,7 +581,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         # on gui_mouseReleaseEventImg2
         if left_click and canErase:
             x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(round(x)), int(round(y))
+            xdata, ydata = int(x), int(y)
             Y, X = self.lab.shape
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                 # Store undo state before modifying stuff
@@ -601,7 +603,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         # on gui_mouseReleaseEventImg2
         elif left_click and canBrush:
             x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(round(x)), int(round(y))
+            xdata, ydata = int(x), int(y)
             Y, X = self.lab.shape
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                 # Store undo state before modifying stuff
@@ -642,7 +644,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Delete entire ID (set to 0)
         elif mid_click and mode == 'Segmentation and Tracking':
             x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(round(x)), int(round(y))
+            xdata, ydata = int(x), int(y)
             delID = self.lab[ydata, xdata]
             if delID == 0:
                 delID_prompt = apps.QLineEditDialog(
@@ -724,7 +726,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Separate bud
         elif (right_click or left_click) and self.separateBudButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(round(x)), int(round(y))
+            xdata, ydata = int(x), int(y)
             ID = self.lab[ydata, xdata]
             if ID == 0:
                 sepID_prompt = apps.QLineEditDialog(
@@ -754,23 +756,21 @@ class Yeast_ACDC_GUI(QMainWindow):
             # If automatic bud separation was not successfull call manual one
             if not success:
                 self.disableAutoActivateViewerWindow = True
-                paint_out = apps.my_paint_app(
-                                self.lab, ID, self.rp, del_small_obj=True,
-                                overlay_img=self.img1.image)
-                if paint_out.cancel:
+                manualSep = apps.manualSeparateGui(
+                                self.lab, ID, self.img1.image,
+                                fontSize=self.fontSize,
+                                IDcolor=self.img2.lut[ID],
+                                parent=self)
+                manualSep.show()
+                manualSep.centerWindow()
+                loop = QEventLoop(self)
+                manualSep.loop = loop
+                loop.exec_()
+                if manualSep.cancel:
                     self.disableAutoActivateViewerWindow = False
                     self.separateBudButton.setChecked(False)
                     return
-                paint_out_lab = paint_out.sep_bud_label
-                self.lab[paint_out_lab!=0] = paint_out_lab[paint_out_lab!=0]
-                self.lab[paint_out.small_obj_mask] = 0
-                # Apply eraser mask only to clicked ID
-                eraser_mask = np.logical_and(paint_out.eraser_mask, self.lab==ID)
-                self.lab[eraser_mask] = 0
-                for yy, xx in paint_out.coords_delete:
-                    del_ID = self.lab[yy, xx]
-                    self.lab[self.lab == del_ID] = 0
-
+                self.lab[manualSep.lab!=0] = manualSep.lab[manualSep.lab!=0]
                 self.disableAutoActivateViewerWindow = False
 
             # Update data (rp, etc)
@@ -792,7 +792,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Merge IDs
         elif right_click and self.mergeIDsButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(round(x)), int(round(y))
+            xdata, ydata = int(x), int(y)
             ID = self.lab[ydata, xdata]
             if ID == 0:
                 mergeID_prompt = apps.QLineEditDialog(
@@ -813,7 +813,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Edit ID
         elif right_click and self.editID_Button.isChecked():
             x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(round(x)), int(round(y))
+            xdata, ydata = int(x), int(y)
             ID = self.lab[ydata, xdata]
             if ID == 0:
                 editID_prompt = apps.QLineEditDialog(
@@ -828,7 +828,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                     ID = editID_prompt.EntryID
                     obj_idx = self.IDs.index(ID)
                     y, x = self.rp[obj_idx].centroid
-                    xdata, ydata = int(round(x)), int(round(y))
+                    xdata, ydata = int(x), int(y)
 
             self.disableAutoActivateViewerWindow = True
             prev_IDs = [obj.label for obj in self.rp]
@@ -885,11 +885,11 @@ class Yeast_ACDC_GUI(QMainWindow):
                     # List of tuples (y, x, replacing ID)
                     obj = self.rp[old_ID_idx]
                     y, x = obj.centroid
-                    y, x = int(round(y)), int(round(x))
+                    y, x = int(y), int(x)
                     self.editID_info.append((y, x, new_ID))
                     obj = self.rp[new_ID_idx]
                     y, x = obj.centroid
-                    y, x = int(round(y)), int(round(x))
+                    y, x = int(y), int(x)
                     self.editID_info.append((y, x, old_ID))
                 else:
                     self.lab[self.lab == old_ID] = new_ID
@@ -907,7 +907,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                     # List of tuples (y, x, replacing ID)
                     obj = self.rp[old_ID_idx]
                     y, x = obj.centroid
-                    y, x = int(round(y)), int(round(x))
+                    y, x = int(y), int(x)
                     self.editID_info.append((y, x, new_ID))
 
             # Update rps
@@ -965,7 +965,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Annotate cell as removed from the analysis
         elif right_click and self.binCellButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(round(x)), int(round(y))
+            xdata, ydata = int(x), int(y)
             ID = self.lab[ydata, xdata]
             if ID == 0:
                 binID_prompt = apps.QLineEditDialog(
@@ -1036,7 +1036,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Annotate cell as dead
         elif right_click and self.ripCellButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(round(x)), int(round(y))
+            xdata, ydata = int(x), int(y)
             ID = self.lab[ydata, xdata]
             if ID == 0:
                 ripID_prompt = apps.QLineEditDialog(
@@ -1150,7 +1150,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Eraser dragging mouse --> keep erasing
         if self.isMouseDragImg2 and self.eraserButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(round(x)), int(round(y))
+            xdata, ydata = int(x), int(y)
             brushSize = self.brushSizeSpinbox.value()
             mask = skimage.morphology.disk(brushSize, dtype=np.bool)
             rrPoly, ccPoly = self.getPolygonBrush((y, x))
@@ -1165,7 +1165,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Brush paint dragging mouse --> keep painting
         if self.isMouseDragImg2 and self.brushButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(round(x)), int(round(y))
+            xdata, ydata = int(x), int(y)
             brushSize = self.brushSizeSpinbox.value()
             mask = skimage.morphology.disk(brushSize, dtype=np.bool)
             rrPoly, ccPoly = self.getPolygonBrush((y, x))
@@ -1212,7 +1212,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Merge IDs
         elif self.mergeIDsButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(round(x)), int(round(y))
+            xdata, ydata = int(x), int(y)
             ID = self.lab[ydata, xdata]
             if ID == 0:
                 mergeID_prompt = apps.QLineEditDialog(
@@ -1261,7 +1261,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Assign mother to bud
         elif self.assignBudMothButton.isChecked() and self.clickedOnBud:
             x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(round(x)), int(round(y))
+            xdata, ydata = int(x), int(y)
             ID = self.lab[ydata, xdata]
             if ID == self.lab[self.yClickBud, self.xClickBud]:
                 return
@@ -1279,7 +1279,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                     ID = mothID_prompt.EntryID
                     obj_idx = self.IDs.index(ID)
                     y, x = self.rp[obj_idx].centroid
-                    xdata, ydata = int(round(x)), int(round(y))
+                    xdata, ydata = int(x), int(y)
 
             relationship = self.cca_df.at[ID, 'relationship']
             ccs = self.cca_df.at[ID, 'cell_cycle_stage']
@@ -1400,7 +1400,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(False)
             x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(round(x)), int(round(y))
+            xdata, ydata = int(x), int(y)
             Y, X = self.lab.shape
             brushSize = self.brushSizeSpinbox.value()
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
@@ -1484,7 +1484,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 return
 
             x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(round(x)), int(round(y))
+            xdata, ydata = int(x), int(y)
             ID = self.lab[ydata, xdata]
             if ID == 0:
                 divID_prompt = apps.QLineEditDialog(
@@ -1499,7 +1499,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                     ID = divID_prompt.EntryID
                     obj_idx = self.IDs.index(ID)
                     y, x = self.rp[obj_idx].centroid
-                    xdata, ydata = int(round(x)), int(round(y))
+                    xdata, ydata = int(x), int(y)
 
             # Annotate or undo division
             self.manualCellCycleAnnotation(ID)
@@ -1516,7 +1516,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 return
 
             x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(round(x)), int(round(y))
+            xdata, ydata = int(x), int(y)
             ID = self.lab[ydata, xdata]
             if ID == 0:
                 budID_prompt = apps.QLineEditDialog(
@@ -1532,7 +1532,7 @@ class Yeast_ACDC_GUI(QMainWindow):
 
             obj_idx = self.IDs.index(ID)
             y, x = self.rp[obj_idx].centroid
-            xdata, ydata = int(round(x)), int(round(y))
+            xdata, ydata = int(x), int(y)
 
             relationship = self.cca_df.at[ID, 'relationship']
             is_history_known = self.cca_df.at[ID, 'is_history_known']
@@ -1558,7 +1558,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 return
 
             x, y = event.pos().x(), event.pos().y()
-            xdata, ydata = int(round(x)), int(round(y))
+            xdata, ydata = int(x), int(y)
             ID = self.lab[ydata, xdata]
             if ID == 0:
                 unknownID_prompt = apps.QLineEditDialog(
@@ -1574,7 +1574,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                     ID = unknownID_prompt.EntryID
                     obj_idx = self.IDs.index(ID)
                     y, x = self.rp[obj_idx].centroid
-                    xdata, ydata = int(round(x)), int(round(y))
+                    xdata, ydata = int(x), int(y)
 
             self.annotateIsHistoryKnown(ID)
             self.setIsHistoryKnownButton.setChecked(False)
@@ -2110,7 +2110,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Update x, y, value label bottom right
         try:
             x, y = event.pos()
-            xdata, ydata = int(round(x)), int(round(y))
+            xdata, ydata = int(x), int(y)
             _img = self.img1.image
             Y, X = _img.shape[:2]
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
@@ -2142,7 +2142,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         try:
             if drawCircle:
                 x, y = event.pos()
-                xdata, ydata = int(round(x)), int(round(y))
+                xdata, ydata = int(x), int(y)
                 _img = self.img2.image
                 Y, X = _img.shape
                 if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
@@ -2159,7 +2159,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             try:
                 x, y = event.pos()
                 y2, x2 = y, x
-                xdata, ydata = int(round(x)), int(round(y))
+                xdata, ydata = int(x), int(y)
                 y1, x1 = self.yClickBud, self.xClickBud
                 ID = self.lab[ydata, xdata]
                 if ID == 0:
@@ -2218,7 +2218,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Update x, y, value label bottom right
         try:
             x, y = event.pos()
-            xdata, ydata = int(round(x)), int(round(y))
+            xdata, ydata = int(x), int(y)
             _img = self.img2.image
             Y, X = _img.shape
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
@@ -2240,7 +2240,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         try:
             if drawCircle:
                 x, y = event.pos()
-                xdata, ydata = int(round(x)), int(round(y))
+                xdata, ydata = int(x), int(y)
                 _img = self.img2.image
                 Y, X = _img.shape
                 if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
@@ -2256,7 +2256,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         try:
             if drawCircle:
                 x, y = event.pos()
-                xdata, ydata = int(round(x)), int(round(y))
+                xdata, ydata = int(x), int(y)
                 _img = self.img2.image
                 Y, X = _img.shape
                 if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
@@ -2770,8 +2770,8 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.updateALLimg()
 
     def restoreDelROIlab(self, roi, enforce=True):
-        x0, y0 = [int(round(c)) for c in roi.pos()]
-        w, h = [int(round(c)) for c in roi.size()]
+        x0, y0 = [int(c) for c in roi.pos()]
+        w, h = [int(c) for c in roi.size()]
         delROIs_info = self.allData_li[self.frame_i]['delROIs_info']
         idx = delROIs_info['rois'].index(roi)
         delMask = delROIs_info['delMasks'][idx]
@@ -2800,8 +2800,8 @@ class Yeast_ACDC_GUI(QMainWindow):
             idx = delROIs_info['rois'].index(roi)
             delObjROImask = delROIs_info['delMasks'][idx]
             delIDsROI = delROIs_info['delIDsROI'][idx]
-            x0, y0 = [int(round(c)) for c in roi.pos()]
-            w, h = [int(round(c)) for c in roi.size()]
+            x0, y0 = [int(c) for c in roi.pos()]
+            w, h = [int(c) for c in roi.size()]
             ROImask[y0:y0+h, x0:x0+w] = True
             delIDs = np.unique(self.lab[ROImask])
             delIDsROI.update(delIDs)
@@ -3948,6 +3948,8 @@ class Yeast_ACDC_GUI(QMainWindow):
     def splineToObj(self):
         # Store undo state before modifying stuff
         self.storeUndoRedoStates(False)
+
+        # Estimate good resolution for the curve
         xxA, yyA = self.curvAnchors.getData()
         rr, cc = skimage.draw.polygon(xxA, yyA)
         lS = np.linspace(0,1,len(rr))
@@ -4176,12 +4178,12 @@ class Yeast_ACDC_GUI(QMainWindow):
             is_cell_dead_li[i] = obj.dead
             is_cell_excluded_li[i] = obj.excluded
             IDs[i] = obj.label
-            xx_centroid[i] = int(round(obj.centroid[1]))
-            yy_centroid[i] = int(round(obj.centroid[0]))
+            xx_centroid[i] = int(obj.centroid[1])
+            yy_centroid[i] = int(obj.centroid[0])
             if obj.label in editedIDs:
                 y, x, new_ID = self.editID_info[editedIDs.index(obj.label)]
-                editIDclicked_x[i] = int(round(x))
-                editIDclicked_y[i] = int(round(y))
+                editIDclicked_x[i] = int(x)
+                editIDclicked_y[i] = int(y)
                 editIDnewID[i] = new_ID
 
         self.allData_li[self.frame_i]['acdc_df'] = pd.DataFrame(
@@ -5222,7 +5224,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.img1.setImage(img)
             self.hist.setImageItem(self.img1)
 
-    def histLUT_cb(self, LUTItem):
+    def histLUT_cb(self, LUTitem):
         # Store the histogram levels that the user is manually changing
         # i.e. moving the gradient slider ticks up and down
         # Store them for all frames
@@ -6206,8 +6208,8 @@ class Yeast_ACDC_GUI(QMainWindow):
                     npz_delROIs_info[f'{frame_i}_delMask_{r}_{n}'] = delMask
                     delIDsROI_arr = np.array(list(delIDs))
                     npz_delROIs_info[f'{frame_i}_delIDs_{r}_{n}'] = delIDsROI_arr
-                    x0, y0 = [int(round(c)) for c in roi.pos()]
-                    w, h = [int(round(c)) for c in roi.size()]
+                    x0, y0 = [int(c) for c in roi.pos()]
+                    w, h = [int(c) for c in roi.size()]
                     roi_arr = np.array([x0, y0, w, h], dtype=np.uint16)
                     npz_delROIs_info[f'{frame_i}_roi_{r}_{n}'] = roi_arr
 
