@@ -3119,7 +3119,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.assignBudMothButton.setDisabled(True)
             self.setIsHistoryKnownButton.setDisabled(True)
             self.reInitCcaAction.setDisabled(True)
-            self.repeatAutoCcaAction.setDisabled(True)
+            # self.repeatAutoCcaAction.setDisabled(True)
             self.drawIDsContComboBox.clear()
             self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
             try:
@@ -3147,7 +3147,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.assignBudMothButton.setDisabled(False)
                 self.setIsHistoryKnownButton.setDisabled(False)
                 self.reInitCcaAction.setDisabled(False)
-                self.repeatAutoCcaAction.setDisabled(False)
+                # self.repeatAutoCcaAction.setDisabled(False)
                 try:
                     self.undoAction.triggered.disconnect()
                     self.redoAction.triggered.disconnect()
@@ -3171,7 +3171,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.assignBudMothButton.setDisabled(True)
             self.setIsHistoryKnownButton.setDisabled(True)
             self.reInitCcaAction.setDisabled(True)
-            self.repeatAutoCcaAction.setDisabled(True)
+            # self.repeatAutoCcaAction.setDisabled(True)
             currentMode = self.drawIDsContComboBox.currentText()
             self.drawIDsContComboBox.clear()
             self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxCcaItems)
