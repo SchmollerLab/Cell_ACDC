@@ -96,7 +96,7 @@ function extract_digits(a) {
 		digits = "";
 		len = lengthOf(str);
 		for (j = 0; j < len; j++) {
-			ch = str.substring(j, j+1);
+			ch = substring(str, j, j+1);
 			num = parseInt(ch);
 			if(!isNaN(parseInt(ch)))
 				digits += ch;
