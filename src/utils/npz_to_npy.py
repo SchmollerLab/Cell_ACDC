@@ -2,7 +2,7 @@ import os
 import sys
 import numpy as np
 
-src_path = os.path.dirname(os.path.dirname(os.path.normpath(__file__)))
+src_path = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 sys.path.append(src_path)
 
 import prompts
