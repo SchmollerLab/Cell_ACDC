@@ -9,7 +9,8 @@ run("Bio-Formats Macro Extensions");
 czi_folder = getDirectory("Choose folder containing multiple microscopy files")
 czi_folder_name = File.getName(czi_folder);
 ids = getFileList(czi_folder);
-Array.sort(ids);
+natural_order = extract_digits(ids);
+Array.sort(natural_order, ids);
 
 sEnd = ids.length //1 for just first file and ids.length for all files in the folder
 
@@ -86,4 +87,20 @@ function nss(n, numPos){
 	else
 		ss = ""+n;
 	return ss;
+}
+
+function extract_digits(a) {
+	arr2 = newArray; //return array containing digits
+	for (i = 0; i < a.length; i++) {
+		str = a[i];
+		digits = "";
+		for (j = 0; j < str.length; j++) {
+			ch = str.substring(j, j+1);
+			num = parseInt(ch);
+			if(!isNaN(parseInt(ch)))
+				digits += ch;
+		}
+		arr2 = Array.concat(arr2, parseInt(digits));
+	}
+	return arr2;
 }

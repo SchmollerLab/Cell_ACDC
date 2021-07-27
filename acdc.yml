@@ -24,3 +24,4 @@ dependencies:
   - pytorch
   - munkres
   - scikit-learn
+  - jupyterlab
