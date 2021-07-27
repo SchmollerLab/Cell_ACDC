@@ -31,7 +31,7 @@ def configuration_dialog():
         pos = win.selectedItemsText
         data_dirs.append(data_dir)
         positions.append(pos)
-        continue_selection = prompts.askyesno(message= 'Do you wish to select another file?')
+        continue_selection = prompts.askyesno(message= 'Do you wish to select another file?', title= 'Selection of further files')
     return data_dirs, positions
 
 def _auto_rescale_intensity(img, perc=0.01, clip_min=False):
@@ -76,21 +76,23 @@ def load_files(file_dir, channels):
     """
     no_of_aligned_files = len(glob.glob(f'{file_dir}\*aligned*'))
     channel_files = []
-    if no_of_aligned_files == len(channels):
+    if no_of_aligned_files > 0:
         for channel in channels:
             try:
                 ch_aligned_path = glob.glob(f'{file_dir}\*{channel}_aligned.npz*')[0]
                 channel_files.append(np.load(ch_aligned_path)['arr_0'])
             except IndexError:
-                ch_aligned_path = glob.glob(f'{file_dir}\*{channel}_aligned.npy*')[0]
-                channel_files.append(np.load(ch_aligned_path))
-    elif no_of_aligned_files == 0:
+                try:
+                    ch_aligned_path = glob.glob(f'{file_dir}\*{channel}_aligned.npy*')[0]
+                    channel_files.append(np.load(ch_aligned_path))
+                except IndexError:
+                    print(f'Could not find an aligned file for channel {channel}')
+                    print(f'Please make sure that an aligned file exists for this position or exclude it from analysis')
+                    raise
+    else:
         for channel in channels:
             ch_not_aligned_path = glob.glob(f'{file_dir}\*{channel}*')[0]
             channel_files.append(imread(ch_not_aligned_path))
-    else:
-        print('Make sure that you have aligned files either for all channels or for none of them')
-        raise FileNotFoundError
     
     # append segmentation file
     try:
