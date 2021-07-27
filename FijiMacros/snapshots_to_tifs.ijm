@@ -94,7 +94,8 @@ function extract_digits(a) {
 	for (i = 0; i < a.length; i++) {
 		str = a[i];
 		digits = "";
-		for (j = 0; j < str.length; j++) {
+		len = lengthOf(str);
+		for (j = 0; j < len; j++) {
 			ch = str.substring(j, j+1);
 			num = parseInt(ch);
 			if(!isNaN(parseInt(ch)))
