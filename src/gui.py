@@ -14,6 +14,7 @@ import re
 import traceback
 import time
 import datetime
+import uuid
 from functools import partial
 from tqdm import tqdm
 import threading, time
@@ -97,6 +98,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             self.slideshowWinTop = int(screen1.size().height()/2 - 800/2)
 
         self.slideshowWin = None
+        self.ccaTableWin = None
         self.data_loaded = False
         self.setWindowTitle("Yeast ACDC - Segm&Track")
         self.setGeometry(mainWinLeft, mainWinTop, mainWinWidth, mainWinHeight)
@@ -1656,6 +1658,10 @@ class Yeast_ACDC_GUI(QMainWindow):
                 return
             self.ccaStatus_whenEmerged[ID] = statusID_whenEmerged
 
+        # Store cca_df for undo action
+        undoId = uuid.uuid4()
+        self.storeUndoRedoCca(self.frame_i, self.cca_df, undoId)
+
         self.setHistoryKnowledge(ID, self.cca_df)
 
         if relID in self.cca_df.index:
@@ -1682,6 +1688,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 # ith frame was not visited yet
                 break
 
+            self.storeUndoRedoCca(i, cca_df_i, undoId)
             IDs = cca_df_i.index
             if ID not in IDs:
                 # For some reason ID disappeared from this frame
@@ -1700,6 +1707,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 # ith frame was not visited yet
                 break
 
+            self.storeUndoRedoCca(i, cca_df_i, undoId)
             IDs = cca_df_i.index
             if ID not in IDs:
                 # we reached frame where ID was not existing yet
@@ -1769,6 +1777,10 @@ class Yeast_ACDC_GUI(QMainWindow):
         In this case we assign all those frames to G1, relationship back to
         bud, and -1 generation number
         """
+        # Store cca_df for undo action
+        undoId = uuid.uuid4()
+        self.storeUndoRedoCca(self.frame_i, self.cca_df, undoId)
+
         # Correct current frame
         clicked_ccs = self.cca_df.at[ID, 'cell_cycle_stage']
         relID = self.cca_df.at[ID, 'relative_ID']
@@ -1803,6 +1815,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 # ith frame was not visited yet
                 break
 
+            self.storeUndoRedoCca(i, cca_df_i, undoId)
             IDs = cca_df_i.index
             if ID not in IDs:
                 # For some reason ID disappeared from this frame
@@ -1831,6 +1844,8 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         # Correct past frames
         for i in range(self.frame_i-1, -1, -1):
+            self.storeUndoRedoCca(i, cca_df_i, undoId)
+
             cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
             ccs = cca_df_i.at[ID, 'cell_cycle_stage']
             relID = cca_df_i.at[ID, 'relative_ID']
@@ -1971,7 +1986,9 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         # Allow partial initialization of cca_df with mouse
         if self.frame_i == 0 and budID != new_mothID:
-            self.undoAction.setEnabled(True)
+            # Store cca_df for undo action
+            undoId = uuid.uuid4()
+            self.storeUndoRedoCca(0, self.cca_df, undoId)
             self.cca_df.at[budID, 'relationship'] = 'bud'
             self.cca_df.at[budID, 'generation_num'] = 0
             self.cca_df.at[budID, 'relative_ID'] = new_mothID
@@ -1997,6 +2014,9 @@ class Yeast_ACDC_GUI(QMainWindow):
             curr_moth_cca = self.getStatus_RelID_BeforeEmergence(
                                                          budID, curr_mothID)
 
+        # Store cca_df for undo action
+        undoId = uuid.uuid4()
+        self.storeUndoRedoCca(self.frame_i, self.cca_df, undoId)
         # Correct current frames and update LabelItems
         self.cca_df.at[budID, 'relative_ID'] = new_mothID
         self.cca_df.at[budID, 'generation_num'] = 0
@@ -2046,6 +2066,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 # For some reason ID disappeared from this frame
                 continue
 
+            self.storeUndoRedoCca(i, cca_df_i, undoId)
             bud_relationship = cca_df_i.at[budID, 'relationship']
             bud_ccs = cca_df_i.at[budID, 'cell_cycle_stage']
 
@@ -2084,6 +2105,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                 # Bud was not emerged yet
                 break
 
+            self.storeUndoRedoCca(i, cca_df_i, undoId)
             cca_df_i.at[budID, 'relative_ID'] = new_mothID
             cca_df_i.at[budID, 'generation_num'] = 0
             cca_df_i.at[budID, 'relative_ID'] = new_mothID
@@ -3399,9 +3421,19 @@ class Yeast_ACDC_GUI(QMainWindow):
                     cca_df = None
                     print(cca_df)
                 print('========================')
+                df = self.cca_df.reset_index()
+                if self.ccaTableWin is None:
+                    self.ccaTableWin = apps.pdDataFrameWidget(df, parent=self)
+                    self.ccaTableWin.show()
+                    self.ccaTableWin.setGeometryWindow()
+                else:
+                    self.ccaTableWin.setFocus(True)
+                    self.ccaTableWin.activateWindow()
+                    self.ccaTableWin.updateTable(self.cca_df)
         elif ev.key() == Qt.Key_Plus:
-            minTick = self.hist.gradient.getTick(0)
-            self.hist.gradient.setTickValue(minTick, 0.5)
+            pass
+            # minTick = self.hist.gradient.getTick(0)
+            # self.hist.gradient.setTickValue(minTick, 0.5)
         elif ev.key() == Qt.Key_H:
             lab_mask = (self.lab>0).astype(np.uint8)
             rp = skimage.measure.regionprops(lab_mask)
@@ -3516,7 +3548,10 @@ class Yeast_ACDC_GUI(QMainWindow):
                 self.onlyTracking = True
         return UndoFutFrames, applyFutFrames, endFrame_i, doNotShowAgain
 
-
+    def addCcaState(self, frame_i, cca_df, undoId):
+        self.UndoRedoCcaStates[frame_i].insert(0,
+                                     {'id': undoId,
+                                      'cca_df': cca_df.copy()})
 
     def addCurrentState(self):
         self.UndoRedoStates[self.frame_i].insert(
@@ -3552,12 +3587,68 @@ class Yeast_ACDC_GUI(QMainWindow):
         if len(self.UndoRedoStates[self.frame_i]) > 5:
             self.UndoRedoStates[self.frame_i].pop(-1)
 
+    def storeUndoRedoCca(self, frame_i, cca_df, undoId):
+        """
+        Store current cca_df along with a unique id to know which cca_df needs
+        to be restored
+        """
+
+        # Restart count from the most recent state (index 0)
+        # NOTE: index 0 is most recent state before doing last change
+        self.UndoCcaCount = 0
+        self.undoAction.setEnabled(True)
+
+        self.addCcaState(frame_i, cca_df, undoId)
+
+        # Keep only 10 Undo/Redo states
+        if len(self.UndoRedoCcaStates[frame_i]) > 10:
+            self.UndoRedoCcaStates[frame_i].pop(-1)
+
     def UndoCca(self):
-        if self.frame_i == 0:
-            self.cca_df = self.getBaseCca_df()
-            self.remove_future_cca_df(0)
+        # Undo current ccaState
+        storeState = False
+        if self.UndoCount == 0:
+            undoId = uuid.uuid4()
+            self.addCcaState(self.frame_i, self.cca_df, undoId)
+            storeState = True
+
+        # Get previously stored state
+        self.UndoCount += 1
+        currentCcaStates = self.UndoRedoCcaStates[self.frame_i]
+        prevCcaState = currentCcaStates[self.UndoCount]
+        self.cca_df = prevCcaState['cca_df']
+        self.store_cca_df()
+        self.updateALLimg()
+
+        # Check if we have undone all states
+        if len(currentCcaStates) > self.UndoCount:
+            # There are no states left to undo for current frame_i
             self.undoAction.setEnabled(False)
-            self.updateALLimg()
+
+        # Undo all past and future frames that has a last status inserted
+        # when modyfing current frame
+        prevStateId = prevCcaState['id']
+        for frame_i in range(0, self.num_segm_frames):
+            if storeState:
+                cca_df_i = self.get_cca_df(frame_i=frame_i, return_df=True)
+                if cca_df_i is None:
+                    break
+                # Store current state to enable redoing it
+                self.addCcaState(frame_i, cca_df_i, undoId)
+
+            CcaStates_i = self.UndoRedoCcaStates[frame_i]
+            if len(CcaStates_i) <= self.UndoCount:
+                # There are no states to undo for frame_i
+                continue
+
+            CcaState_i = CcaStates_i[self.UndoCount]
+            id_i = CcaState_i['id']
+            if id_i != prevStateId:
+                # The id of the state in frame_i is different from current frame
+                continue
+
+            cca_df_i = CcaState_i['cca_df']
+            self.store_cca_df(frame_i=frame_i, cca_df=cca_df_i)
 
     def undo(self):
         if self.UndoCount == 0:
@@ -3885,6 +3976,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.updateALLimg(only_ax1=True)
 
     def clearAllItems(self):
+        self.clearCurvItems()
         allItems = zip(self.ax1_ContoursCurves,
                        self.ax1_LabelItemsIDs,
                        self.ax2_LabelItemsIDs,
@@ -3895,40 +3987,6 @@ class Yeast_ACDC_GUI(QMainWindow):
             _IDlabel1.setText ('')
             _IDlabel2.setText('')
             BudMothLine.setData([], [])
-
-    def clear_prevItems(self):
-        self.clearCurvItems()
-        # Clear data from those items that have data and are not present in
-        # current rp
-        IDs = [obj.label for obj in self.rp]
-        allItems = zip(self.ax1_ContoursCurves,
-                       self.ax1_LabelItemsIDs,
-                       self.ax2_LabelItemsIDs,
-                       self.ax1_BudMothLines)
-        for idx, items_ID in enumerate(allItems):
-            ContCurve, _IDlabel1, _IDlabel2, BudMothLine = items_ID
-            ID = idx+1
-
-            if ContCurve.getData()[0] is not None and ID not in IDs:
-                # Contour is present but ID is not --> clear
-                ContCurve.setData([], [])
-
-            if _IDlabel1.text != '' and ID not in IDs:
-                # Text is present but ID is not --> clear
-                _IDlabel1.setText ('')
-
-            if _IDlabel2.text != '' and ID not in IDs:
-                # Text is present but ID is not --> clear
-                _IDlabel2.setText('')
-
-            clearLines = (
-                (BudMothLine.getData()[0] is not None and ID not in IDs)
-                or self.cca_df is None
-            )
-
-            if clearLines:
-                # Contour is present but ID is not --> clear
-                BudMothLine.setData([], [])
 
     def clearCurvItems(self):
         curvItems = zip(self.curvPlotItems,
@@ -4008,6 +4066,7 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.lost_IDs = []
         self.multiBud_mothIDs = [2]
         self.UndoRedoStates = [[] for _ in range(self.num_segm_frames)]
+        self.UndoRedoCcaStates = [[] for _ in range(self.num_segm_frames)]
 
         self.clickedOnBud = False
         self.blinkBold = False
@@ -4806,7 +4865,10 @@ class Yeast_ACDC_GUI(QMainWindow):
 
     def store_cca_df(self, frame_i=None, cca_df=None):
         i = self.frame_i if frame_i is None else frame_i
-        cca_df = self.cca_df if cca_df is None else cca_df
+        if cca_df is None:
+            cca_df = self.cca_df
+            if self.ccaTableWin is not None:
+                self.ccaTableWin.updateTable(self.cca_df)
 
         if cca_df is not None:
             segm_df = self.allData_li[i]['acdc_df']
@@ -5455,13 +5517,12 @@ class Yeast_ACDC_GUI(QMainWindow):
         lab = self.lab
 
         self.addNewItems()
-        self.clear_prevItems()
+        self.clearAllItems()
 
         self.setImageImg2()
         self.update_rp()
 
         self.checkIDs_LostNew()
-
 
         self.computingContoursTimes = []
         self.drawingLabelsTimes = []
@@ -5830,6 +5891,9 @@ class Yeast_ACDC_GUI(QMainWindow):
 
             if self.slideshowWin is not None:
                 self.slideshowWin.close()
+
+            if self.ccaTableWin is not None:
+                self.ccaTableWin.close()
 
             if exp_path is None:
                 self.getMostRecentPath()
@@ -6352,6 +6416,8 @@ class Yeast_ACDC_GUI(QMainWindow):
     def closeEvent(self, event):
         if self.slideshowWin is not None:
             self.slideshowWin.close()
+        if self.ccaTableWin is not None:
+            self.ccaTableWin.close()
         if self.saveAction.isEnabled():
             msg = QtGui.QMessageBox()
             msg.closeEvent = self.saveMsgCloseEvent

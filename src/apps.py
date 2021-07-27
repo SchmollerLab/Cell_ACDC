@@ -33,6 +33,7 @@ import matplotlib.ticker as ticker
 
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui
+from PyQt5 import QtCore
 from PyQt5.QtGui import QIcon, QFontMetrics
 from PyQt5.QtCore import Qt, QSize
 from PyQt5.QtWidgets import (
@@ -40,7 +41,7 @@ from PyQt5.QtWidgets import (
     QScrollBar, QWidget, QVBoxLayout, QLineEdit, QPushButton,
     QHBoxLayout, QDialog, QFormLayout, QListWidget, QAbstractItemView,
     QButtonGroup, QCheckBox, QSizePolicy, QComboBox, QSlider, QGridLayout,
-    QSpinBox, QToolButton
+    QSpinBox, QToolButton, QTableView
 )
 
 import myutils
@@ -3051,6 +3052,128 @@ class manualSeparateGui(QMainWindow):
         if self.loop is not None:
             self.loop.exit()
 
+class DataFrameModel(QtCore.QAbstractTableModel):
+    # https://stackoverflow.com/questions/44603119/how-to-display-a-pandas-data-frame-with-pyqt5-pyside2
+    DtypeRole = QtCore.Qt.UserRole + 1000
+    ValueRole = QtCore.Qt.UserRole + 1001
+
+    def __init__(self, df=pd.DataFrame(), parent=None):
+        super(DataFrameModel, self).__init__(parent)
+        self._dataframe = df
+
+    def setDataFrame(self, dataframe):
+        self.beginResetModel()
+        self._dataframe = dataframe.copy()
+        self.endResetModel()
+
+    def dataFrame(self):
+        return self._dataframe
+
+    dataFrame = QtCore.pyqtProperty(pd.DataFrame, fget=dataFrame,
+                                    fset=setDataFrame)
+
+    @QtCore.pyqtSlot(int, QtCore.Qt.Orientation, result=str)
+    def headerData(self, section: int,
+                   orientation: QtCore.Qt.Orientation,
+                   role: int = QtCore.Qt.DisplayRole):
+        if role == QtCore.Qt.DisplayRole:
+            if orientation == QtCore.Qt.Horizontal:
+                return self._dataframe.columns[section]
+            else:
+                return str(self._dataframe.index[section])
+        return QtCore.QVariant()
+
+    def rowCount(self, parent=QtCore.QModelIndex()):
+        if parent.isValid():
+            return 0
+        return len(self._dataframe.index)
+
+    def columnCount(self, parent=QtCore.QModelIndex()):
+        if parent.isValid():
+            return 0
+        return self._dataframe.columns.size
+
+    def data(self, index, role=QtCore.Qt.DisplayRole):
+        if not index.isValid() or not (0 <= index.row() < self.rowCount() \
+            and 0 <= index.column() < self.columnCount()):
+            return QtCore.QVariant()
+        row = self._dataframe.index[index.row()]
+        col = self._dataframe.columns[index.column()]
+        dt = self._dataframe[col].dtype
+
+        if role == Qt.TextAlignmentRole:
+            return Qt.AlignCenter
+
+        val = self._dataframe.iloc[row][col]
+        if role == QtCore.Qt.DisplayRole:
+            return str(val)
+        elif role == DataFrameModel.ValueRole:
+            return val
+        if role == DataFrameModel.DtypeRole:
+            return dt
+        return QtCore.QVariant()
+
+    def roleNames(self):
+        roles = {
+            QtCore.Qt.DisplayRole: b'display',
+            DataFrameModel.DtypeRole: b'dtype',
+            DataFrameModel.ValueRole: b'value'
+        }
+        return roles
+
+class pdDataFrameWidget(QMainWindow):
+    def __init__(self, df, parent=None):
+        super().__init__(parent)
+        self.parent = parent
+        self.setWindowTitle('Cell cycle annotations')
+
+        mainContainer = QtGui.QWidget()
+        self.setCentralWidget(mainContainer)
+
+        layout = QVBoxLayout()
+
+        self.tableView = QTableView(self)
+        layout.addWidget(self.tableView)
+        model = DataFrameModel(df)
+        self.tableView.setModel(model)
+        for i in range(len(df.columns)):
+            self.tableView.resizeColumnToContents(i)
+        # layout.addWidget(QPushButton('Ok', self))
+        mainContainer.setLayout(layout)
+
+    def updateTable(self, df):
+        model = DataFrameModel(df)
+        self.tableView.setModel(model)
+        for i in range(len(df.columns)):
+            self.tableView.resizeColumnToContents(i)
+
+    def setGeometryWindow(self, maxWidth=1024):
+        width = self.tableView.verticalHeader().width() + 4
+        for j in range(self.tableView.model().columnCount()):
+            width += self.tableView.columnWidth(j) + 4
+        height = self.tableView.horizontalHeader().height() + 4
+        h = height + (self.tableView.rowHeight(0) + 4)*10
+        w = width if width<maxWidth else maxWidth
+        self.setGeometry(100, 100, w, h)
+
+        # Center window
+        parent = self.parent
+        if parent is not None:
+            # Center the window on main window
+            mainWinGeometry = parent.frameGeometry()
+            mainWinLeft = mainWinGeometry.left()
+            mainWinTop = mainWinGeometry.top()
+            mainWinWidth = mainWinGeometry.width()
+            mainWinHeight = mainWinGeometry.height()
+            mainWinCenterX = int(mainWinLeft + mainWinWidth/2)
+            mainWinCenterY = int(mainWinTop + mainWinHeight/2)
+            winGeometry = self.frameGeometry()
+            winWidth = winGeometry.width()
+            winHeight = winGeometry.height()
+            winLeft = int(mainWinCenterX - winWidth/2)
+            winRight = int(mainWinCenterY - winHeight/2)
+            self.move(winLeft, winRight)
+
 if __name__ == '__main__':
     # Create the application
     app = QApplication(sys.argv)
@@ -3080,12 +3203,18 @@ if __name__ == '__main__':
                        'corrected_assignment': corrected_assignment},
                         index=IDs)
     cca_df.index.name = 'Cell_ID'
+
+    df = cca_df.reset_index()
+
+    win = pdDataFrameWidget(df)
+
     # win = ccaTableWidget(cca_df)
-    lab = np.load(r"G:\My Drive\1_MIA_Data\Test_data\Test_Qt_GUI\Position_5\Images\F016_s05_segm.npz")['arr_0'][0]
-    img = np.load(r"G:\My Drive\1_MIA_Data\Test_data\Test_Qt_GUI\Position_5\Images\F016_s05_phase_contr_aligned.npz")['arr_0'][0]
-    win = manualSeparateGui(lab, 2, img)
-    # win.setFont(font)
+    # lab = np.load(r"G:\My Drive\1_MIA_Data\Test_data\Test_Qt_GUI\Position_5\Images\F016_s05_segm.npz")['arr_0'][0]
+    # img = np.load(r"G:\My Drive\1_MIA_Data\Test_data\Test_Qt_GUI\Position_5\Images\F016_s05_phase_contr_aligned.npz")['arr_0'][0]
+    # win = manualSeparateGui(lab, 2, img)
+    win.setFont(font)
     app.setStyle(QtGui.QStyleFactory.create('Fusion'))
     win.show()
+    win.setGeometryWindow()
     app.exec_()
     # print(win.cca_df)
