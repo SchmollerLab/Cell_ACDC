@@ -12,6 +12,7 @@ from pyqtgraph.Qt import QtGui
 from PyQt5.QtWidgets import QApplication
 from PyQt5 import QtCore
 import sys
+import difflib
 
 
 def configuration_dialog():
@@ -33,6 +34,72 @@ def configuration_dialog():
         positions.append(pos)
         continue_selection = prompts.askyesno(message= 'Do you wish to select another file?', title= 'Selection of further files')
     return data_dirs, positions
+    
+def find_available_channels(filenames):
+    ch_name_selector = prompts.select_channel_name()
+    ch_names, warn = ch_name_selector.get_available_channels(filenames)
+    return ch_names, warn
+    
+def calculate_downstream_data(file_names, image_folders, positions, channels):
+    no_of_channels = len(channels)    
+    overall_df = pd.DataFrame()
+    for file_idx, file in enumerate(file_names):
+        for pos_idx, pos_dir in enumerate(image_folders[file_idx]):
+            channel_data = ('placeholder')*no_of_channels
+            print(f'Load files for {file}, {positions[file_idx][pos_idx]}...')
+            *channel_data, seg_mask, cc_data, cc_props = _load_files(pos_dir, channels)
+            print(f'Number of cells in position: {len(cc_data.Cell_ID.unique())}')
+            print(f'Number of annotated frames in position: {cc_data.frame_i.max()+1}')
+            cc_data = _rename_columns(cc_data)
+            max_frame = cc_data.frame_i.max()
+            if cc_props is not None:
+                print('Cell Cycle property data already existing, loaded from disk...')
+                overall_df = overall_df.append(cc_props).reset_index(drop=True)
+            else:
+                print(f'Calculate regionprops on each frame based on Segmentation...')
+                rp_df = _calculate_rp_df(seg_mask[:max_frame+1])
+                print(f'Calculate mean signal strength for every channel and cell...')
+                flu_signal_df = _calculate_flu_signal(seg_mask, channel_data, channels, cc_data)
+                temp_df = cc_data.merge(rp_df, on=['frame_i', 'Cell_ID'], how='left')
+                temp_df = temp_df.merge(flu_signal_df, on=['frame_i', 'Cell_ID'], how='left')
+                temp_df['max_frame_pos'] = cc_data.frame_i.max()
+                temp_df['file'] = file
+                temp_df['selection_subset'] = file_idx
+                temp_df['position'] = positions[file_idx][pos_idx]
+                temp_df['directory'] = pos_dir
+                    # calculate amount of corrected signal by multiplying mean with area
+                for channel in channels:
+                    temp_df[f'{channel}_corrected_signal_amount'] = temp_df[f'{channel}_corrected_mean_signal'] *\
+                    temp_df['area']
+                # calculate area of daughter cell where applicable
+                temp_df['daughter_area'] = 0
+                daughter_areas = temp_df.merge(
+                    temp_df, how='left', 
+                    left_on=['relative_ID', 'frame_i', 'position', 'file'],
+                    right_on=['Cell_ID', 'frame_i', 'position', 'file']
+                )['area_y']
+                daughter_indices= np.logical_and(~daughter_areas.isna(),temp_df['relationship']=='mother')
+                temp_df.loc[daughter_indices,'daughter_area'] = daughter_areas[daughter_indices]
+                print('Saving calculated data for next time...')
+                files_in_curr_dir = os.listdir(pos_dir)
+                common_prefix = _determine_common_prefix(files_in_curr_dir)
+                save_path = os.path.join(pos_dir, f'{common_prefix}cca_properties_downstream.csv')
+                temp_df.to_csv(save_path, index=False)    
+                overall_df = overall_df.append(temp_df).reset_index(drop=True)
+    return overall_df
+    
+    
+def _determine_common_prefix(filenames):
+    basename = filenames[0]
+    for file in filenames:
+        # Determine the basename based on intersection of all .tif
+        _, ext = os.path.splitext(file)
+        sm = difflib.SequenceMatcher(None, file, basename)
+        i, j, k = sm.find_longest_match(0, len(file),
+                                        0, len(basename))
+        basename = file[i:i+k]
+    return basename
+
 
 def _auto_rescale_intensity(img, perc=0.01, clip_min=False):
     """
@@ -69,7 +136,7 @@ def _auto_rescale_intensity(img, perc=0.01, clip_min=False):
     return scaled_img
 
 
-def load_files(file_dir, channels):
+def _load_files(file_dir, channels):
     """
     Function to load files of all given channels and the corresponding segmentation masks.
     Check first if aligned files are available and use them if so.
@@ -122,7 +189,7 @@ def load_files(file_dir, channels):
 
 
 
-def calculate_rp_df(input_sequence, label_input=False):
+def _calculate_rp_df(input_sequence, label_input=False):
     if label_input:
         #generate labeled video only when input is not labeled yet
         labeled_video = label(input_sequence)
@@ -157,7 +224,7 @@ def calculate_rp_df(input_sequence, label_input=False):
     return merged_df
 
 
-def calculate_flu_signal(seg_mask, channel_data, channels, cc_data):
+def _calculate_flu_signal(seg_mask, channel_data, channels, cc_data):
     """
     function to calculate sum and scaled sum of fluorescence signal per frame and cell.
     channel_data is a tuple of (t,y,x) arrays, one for each channel.
@@ -189,7 +256,7 @@ def calculate_flu_signal(seg_mask, channel_data, channels, cc_data):
     return df
 
 
-def rename_columns(cc_data):
+def _rename_columns(cc_data):
     rename_dict = {
         'Cell cycle stage': 'cell_cycle_stage',
         '# of cycles': 'generation_num',
