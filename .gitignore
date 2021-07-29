@@ -20,7 +20,7 @@ src/temp/*
 !src/temp/.placeholder.txt
 
 # Ignore deprecated file
-src/deprecated
+src/deprecated.py
 
 
 __pycache__/

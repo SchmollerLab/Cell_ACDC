@@ -77,6 +77,7 @@ class dataPrep(QMainWindow):
         self.nextAction.setShortcut("right")
         self.jumpForwardAction.setShortcut("up")
         self.jumpBackwardAction.setShortcut("down")
+        self.openAction.setShortcut("Ctrl+O")
 
         self.ZbackAction = QAction(QIcon(":zback.svg"),
                                 "Use same z-slice from first frame to here",
@@ -146,10 +147,10 @@ class dataPrep(QMainWindow):
     def gui_connectActions(self):
         self.openAction.triggered.connect(self.openFile)
         self.exitAction.triggered.connect(self.close)
-        self.prevAction.triggered.connect(self.prev_frame)
-        self.nextAction.triggered.connect(self.next_frame)
-        self.jumpForwardAction.triggered.connect(self.skip10ahead_frames)
-        self.jumpBackwardAction.triggered.connect(self.skip10back_frames)
+        self.prevAction.triggered.connect(self.prev_cb)
+        self.nextAction.triggered.connect(self.next_cb)
+        self.jumpForwardAction.triggered.connect(self.skip10ahead_cb)
+        self.jumpBackwardAction.triggered.connect(self.skip10back_cb)
         self.okAction.triggered.connect(self.save)
         self.startAction.triggered.connect(self.prepData)
         self.interpAction.triggered.connect(self.interp_z)
@@ -248,6 +249,58 @@ class dataPrep(QMainWindow):
         except:
             self.wcLabel.setText(f'')
 
+    def next_cb(self, checked):
+        if self.num_pos > 1:
+            self.next_pos()
+        else:
+            self.next_frame()
+
+    def prev_cb(self, checked):
+        if self.num_pos > 1:
+            self.prev_pos()
+        else:
+            self.prev_frame()
+
+    def skip10ahead_cb(self, checked):
+        if self.num_pos > 1:
+            self.skip10ahead_pos()
+        else:
+            self.skip10ahead_frame()
+
+    def skip10back_cb(self, checked):
+        if self.num_pos > 1:
+            self.skip10back_pos()
+        else:
+            self.skip10back_frame()
+
+    def next_pos(self):
+        if self.pos_i < self.num_pos-1:
+            self.pos_i += 1
+        else:
+            self.pos_i = 0
+        self.update_img()
+
+    def prev_pos(self):
+        if self.pos_i > 0:
+            self.pos_i -= 1
+        else:
+            self.pos_i = self.num_pos-1
+        self.update_img()
+
+    def skip10ahead_pos(self):
+        if self.pos_i < self.num_pos-10:
+            self.pos_i += 10
+        else:
+            self.pos_i = 0
+        self.update_img()
+
+    def skip10back_pos(self):
+        if self.pos_i > 9:
+            self.pos_i -= 10
+        else:
+            self.pos_i = self.num_pos-1
+        self.update_img()
+
     def next_frame(self):
         if self.frame_i < self.num_frames-1:
             self.frame_i += 1
@@ -278,28 +331,45 @@ class dataPrep(QMainWindow):
             self.frame_i = self.num_frames-1
         self.update_img()
 
+    def updateFramePosLabel(self):
+        if self.num_pos > 1:
+            self.frameLabel.setText(
+                     f'Current position = {self.pos_i+1}/{self.num_pos} '
+                     f'({PosData.pos_foldername})')
+        else:
+            self.frameLabel.setText(
+                     f'Current frame = {self.frame_i+1}/{self.num_frames}')
+
+    def getImage(self):
+        PosData = self.data[self.pos_i]
+        img = PosData.img_data[self.frame_i].copy()
+        return img
+
     def update_img(self):
-        self.frameLabel.setText(
-                 f'Current frame = {self.frame_i+1}/{self.num_frames}')
-        img = self.data.img_data[self.frame_i].copy()
-        if self.data.SizeZ > 1:
-            z = self.data.segmInfo_df.at[self.frame_i, 'z_slice_used_dataPrep']
+        self.updateFramePosLabel()
+        PosData = self.data[self.pos_i]
+        img = self.getImage()
+        if PosData.SizeZ > 1:
+            z = PosData.segmInfo_df.at[self.frame_i,
+                                             'z_slice_used_dataPrep']
             self.zSlice_scrollBar.setSliderPosition(z)
-            self.z_label.setText(f'z-slice  {z}/{self.data.SizeZ}')
+            self.z_label.setText(f'z-slice  {z}/{PosData.SizeZ}')
             img = img[z]
         img = img/img.max()
         self.img.setImage(img)
 
     def init_attr(self):
-
+        self.pos_i = 0
         self.frame_i = 0
 
-        self.frame_i_scrollBar_img.setEnabled(True)
-        self.frame_i_scrollBar_img.setMinimum(1)
-        self.frame_i_scrollBar_img.setMaximum(self.num_frames)
-        self.frame_i_scrollBar_img.setValue(1)
-
-        self.frame_i_scrollBar_img.sliderMoved.connect(self.t_scrollbarMoved)
+        if self.num_pos > 1:
+            self.frame_i_scrollBar_img.setEnabled(False)
+        else:
+            self.frame_i_scrollBar_img.setEnabled(True)
+            self.frame_i_scrollBar_img.setMinimum(1)
+            self.frame_i_scrollBar_img.setMaximum(self.num_frames)
+            self.frame_i_scrollBar_img.setValue(1)
+            self.frame_i_scrollBar_img.sliderMoved.connect(self.t_scrollbarMoved)
 
     def t_scrollbarMoved(self, t):
         self.frame_i = t-1
@@ -316,23 +386,26 @@ class dataPrep(QMainWindow):
 
     def save(self):
         msg = QtGui.QMessageBox()
-        save_current = msg.question(
+        doSave = msg.question(
             self, 'Save data?', 'Do you want to save?',
             msg.Yes | msg.No
         )
-        if msg.Yes:
+        if doSave == msg.No:
+            return
+
+        for PosData in self.data:
             self.okAction.setDisabled(True)
             print('Saving data...')
             self.titleLabel.setText(
                 'Saving data... (check progress in the terminal)',
                 color='w')
 
-            if self.data.SizeZ > 1:
+            if PosData.SizeZ > 1:
                 # Save segmInfo
-                self.data.segmInfo_df.to_csv(self.data.segmInfo_df_csv_path)
+                PosData.segmInfo_df.to_csv(PosData.segmInfo_df_csv_path)
 
             # Get crop shape and print it
-            data = self.data.img_data
+            data = PosData.img_data
             croppedData = self.crop(data)
             print('Cropped data shape: ', croppedData.shape)
 
@@ -340,21 +413,21 @@ class dataPrep(QMainWindow):
             w, h = [int(round(c)) for c in self.roi.size()]
             print(f'Saving crop ROI coords: x_left = {x0}, x_right = {x0+w}, '
                   f'y_top = {y0}, y_bottom = {y0+h}\n'
-                  f'to {self.data.cropROI_coords_path}')
+                  f'to {PosData.cropROI_coords_path}')
 
-            with open(self.data.cropROI_coords_path, 'w') as csv:
+            with open(PosData.cropROI_coords_path, 'w') as csv:
                 csv.write(f'x_left,{x0}\n'
                           f'x_right,{x0+w}\n'
                           f'y_top,{y0}\n'
                           f'y_bottom,{y0+h}')
 
             # Get metadata from tif
-            with TiffFile(self.data.tif_path) as tif:
+            with TiffFile(PosData.tif_path) as tif:
                 metadata = tif.imagej_metadata
 
 
             # Save channels (npz AND tif)
-            _zip = zip(self.data.tif_paths, self.npz_paths)
+            _zip = zip(PosData.tif_paths, PosData.all_npz_paths)
             for tif, npz in _zip:
                 data = np.load(npz)['arr_0']
                 npz_data = self.crop(data)
@@ -364,163 +437,219 @@ class dataPrep(QMainWindow):
                 self.moveTempFile(temp_npz, npz)
                 print('Saving: ', tif)
                 temp_tif = self.getTempfilePath(tif)
-                self.imagej_tiffwriter(temp_tif, npz_data, metadata)
+                self.imagej_tiffwriter(temp_tif, npz_data,
+                                       metadata, PosData)
                 self.moveTempFile(temp_tif, tif)
 
             # Save segm.npz
-            if self.data.segm_found:
-                print('Saving: ', self.data.segm_npz_path)
-                data = self.data.segm_data
+            if PosData.segm_found:
+                print('Saving: ', PosData.segm_npz_path)
+                data = PosData.segm_data
                 croppedSegm = self.crop(data)
-                temp_npz = self.getTempfilePath(self.data.segm_npz_path)
+                temp_npz = self.getTempfilePath(PosData.segm_npz_path)
                 np.savez_compressed(temp_npz, croppedSegm)
-                self.moveTempFile(temp_npz, self.data.segm_npz_path)
+                self.moveTempFile(temp_npz, PosData.segm_npz_path)
 
             # Correct acdc_df if present and save
-            if self.data.acdc_df is not None:
-                print('Saving: ', self.data.acdc_output_csv_path)
-                df = self.data.acdc_df
+            if PosData.acdc_df is not None:
+                print('Saving: ', PosData.acdc_output_csv_path)
+                df = PosData.acdc_df
                 df['x_centroid'] -= x0
                 df['y_centroid'] -= y0
                 df['editIDclicked_x'] -= x0
                 df['editIDclicked_y'] -= y0
                 try:
-                    df.to_csv(self.data.acdc_output_csv_path)
+                    df.to_csv(PosData.acdc_output_csv_path)
                 except PermissionError:
                     msg = QtGui.QMessageBox()
                     warn_cca = msg.critical(
                         self, 'Permission denied',
                         f'The below file is open in another app (Excel maybe?).\n\n'
-                        f'{self.data.acdc_output_csv_path}\n\n'
+                        f'{PosData.acdc_output_csv_path}\n\n'
                         'Close file and then press "Ok".',
                         msg.Ok
                     )
-                    df.to_csv(self.data.acdc_output_csv_path)
+                    df.to_csv(PosData.acdc_output_csv_path)
 
-            print('Done.')
-            self.titleLabel.setText(
-                'Saved! You can close the program or load another position.',
-                color='g')
+            print(f'{PosData.pos_foldername} saved!')
+            print(f'--------------------------------')
+            print('')
+        self.titleLabel.setText(
+            'Saved! You can close the program or load another position.',
+            color='g')
 
-    def imagej_tiffwriter(self, new_path, data, metadata):
+    def imagej_tiffwriter(self, new_path, data, metadata, PosData):
         with TiffWriter(new_path, imagej=True) as new_tif:
-            if self.data.SizeZ > 1:
+            if PosData.SizeZ > 1 and PosData.SizeT > 1:
+                # 3D data over time
                 T, Z, Y, X = data.shape
-            else:
+            elif PosData.SizeZ == 1 and PosData.SizeT > 1:
+                # 2D data over time
                 T, Y, X = data.shape
                 Z = 1
+            elif PosData.SizeZ > 1 and PosData.SizeT == 1:
+                # Single 3D data
+                Z, Y, X = data.shape
+                T = 1
+            elif PosData.SizeZ == 1 and PosData.SizeT == 1:
+                # Single 2D data
+                Y, X = data.shape
+                T, Z = 1, 1
             data.shape = T, Z, 1, Y, X, 1  # imageJ format should always have TZCYXS data shape
             new_tif.save(data, metadata=metadata)
 
-    def init_frames_data(self, frames_path, user_ch_name):
-        data = load.load_frames_data(frames_path, user_ch_name,
-                                     parentQWidget=self,
-                                     load_segm_data=True,
-                                     load_acdc_df=True,
-                                     load_zyx_voxSize=False,
-                                     load_all_imgData=True,
-                                     load_shifts=True,
-                                     loadSegmInfo=True)
-        if data is None:
-            self.titleLabel.setText(
-                'File --> Open or Open recent to start the process',
-                color='w')
-            return
+    def init_data(self, user_ch_file_paths, user_ch_name):
+        # Iterate pos and load_data
+        data = []
+        for f, file_path in enumerate(user_ch_file_paths):
+            PosData = load.load_frames_data(
+                                         file_path, user_ch_name,
+                                         parentQWidget=self,
+                                         load_segm_data=True,
+                                         load_acdc_df=True,
+                                         load_zyx_voxSize=False,
+                                         load_all_imgData=True,
+                                         load_shifts=True,
+                                         loadSegmInfo=True,
+                                         first_call=f==0)
+            if PosData is None:
+                self.titleLabel.setText(
+                    'File --> Open or Open recent to start the process',
+                    color='w')
+                return False
 
-        # Allow single 2D/3D image
-        if data.SizeT < 2:
-            data.img_data = np.array([data.img_data])
-            data.segm_data = np.array([data.segm_data])
-        img_shape = data.img_data.shape
-        self.num_frames = len(data.img_data)
-        self.user_ch_name = user_ch_name
-        SizeT = data.SizeT
-        SizeZ = data.SizeZ
-        print(f'Data shape = {img_shape}')
-        print(f'Number of frames = {SizeT}')
-        print(f'Number of z-slices per frame = {SizeZ}')
+            # Allow single 2D/3D image
+            if PosData.SizeT < 2:
+                PosData.img_data = np.array([PosData.img_data])
+                PosData.segm_data = np.array([PosData.segm_data])
+            img_shape = PosData.img_data.shape
+            self.num_frames = PosData.SizeT
+            self.user_ch_name = user_ch_name
+            SizeT = PosData.SizeT
+            SizeZ = PosData.SizeZ
+            if f==0:
+                print(f'Data shape = {img_shape}')
+                print(f'Number of frames = {SizeT}')
+                print(f'Number of z-slices per frame = {SizeZ}')
+            data.append(PosData)
+
+            if SizeT>1 and self.num_pos>1:
+                path = os.path.normpath(file_path)
+                path_li = path.split(os.sep)
+                rel_path = f'.../{"/".join(path_li[-3:])}'
+                msg = QtGui.QMessageBox()
+                msg.critical(
+                    self, 'Multiple Pos loading not allowed.',
+                    f'The file {rel_path} has multiple frames over time.\n\n'
+                    'Loading multiple positions that contain frames over time '
+                    'is not allowed.\n\n'
+                    'To analyse frames over time load one position at the time',
+                    msg.Ok
+                )
+                self.titleLabel.setText(
+                    'File --> Open or Open recent to start the process',
+                    color='w')
+                return False
 
         self.data = data
         self.init_segmInfo_df()
         self.init_attr()
 
+        return True
+
     def init_segmInfo_df(self):
-        if self.data.segmInfo_df is None and self.data.SizeZ > 1:
-            mid_slice = int(self.data.SizeZ/2)
-            self.data.segmInfo_df = pd.DataFrame(
-                {'frame_i': range(self.num_frames),
-                 'z_slice_used_dataPrep': [mid_slice]*self.num_frames}
-            ).set_index('frame_i')
-        if self.data.SizeZ > 1:
+        for PosData in self.data:
+            if PosData.segmInfo_df is None and PosData.SizeZ > 1:
+                mid_slice = int(PosData.SizeZ/2)
+                PosData.segmInfo_df = pd.DataFrame(
+                    {'frame_i': range(self.num_frames),
+                     'z_slice_used_dataPrep': [mid_slice]*self.num_frames}
+                ).set_index('frame_i')
+
+        if self.data[0].SizeZ > 1:
             self.zSlice_scrollBar.setDisabled(False)
-            self.zSlice_scrollBar.setMaximum(self.data.SizeZ)
+            self.zSlice_scrollBar.setMaximum(PosData.SizeZ)
             try:
                 self.zSlice_scrollBar.sliderMoved.disconnect()
             except:
                 pass
             self.zSlice_scrollBar.sliderMoved.connect(self.update_z_slice)
-            self.interpAction.setEnabled(True)
-            self.ZbackAction.setEnabled(True)
-            self.ZforwAction.setEnabled(True)
+            if self.data[0].SizeT > 1:
+                self.interpAction.setEnabled(True)
+                self.ZbackAction.setEnabled(True)
+                self.ZforwAction.setEnabled(True)
 
     def update_z_slice(self, z):
-        self.data.segmInfo_df.at[self.frame_i, 'z_slice_used_dataPrep'] = z
+        PosData = self.data[self.pos_i]
+        PosData.segmInfo_df.at[self.frame_i, 'z_slice_used_dataPrep'] = z
         self.update_img()
 
     def useSameZ_fromHereBack(self, event):
-        z = self.data.segmInfo_df.at[self.frame_i, 'z_slice_used_dataPrep']
-        self.data.segmInfo_df.loc[:self.frame_i-1, 'z_slice_used_dataPrep'] = z
+        PosData = self.data[self.pos_i]
+        z = PosData.segmInfo_df.at[self.frame_i, 'z_slice_used_dataPrep']
+        PosData.segmInfo_df.loc[:self.frame_i-1,
+                                      'z_slice_used_dataPrep'] = z
 
     def useSameZ_fromHereForw(self, event):
-        z = self.data.segmInfo_df.at[self.frame_i, 'z_slice_used_dataPrep']
-        self.data.segmInfo_df.loc[self.frame_i:, 'z_slice_used_dataPrep'] = z
+        PosData = self.data[self.pos_i]
+        z = PosData.segmInfo_df.at[self.frame_i, 'z_slice_used_dataPrep']
+        PosData.segmInfo_df.loc[self.frame_i:,
+                                      'z_slice_used_dataPrep'] = z
 
     def interp_z(self, event):
-        x0, z0 = 0, self.data.segmInfo_df.at[0, 'z_slice_used_dataPrep']
+        PosData = self.data[self.pos_i]
+        x0, z0 = 0, PosData.segmInfo_df.at[0, 'z_slice_used_dataPrep']
         x1 = self.frame_i
-        z1 = self.data.segmInfo_df.at[x1, 'z_slice_used_dataPrep']
+        z1 = PosData.segmInfo_df.at[x1, 'z_slice_used_dataPrep']
         f = scipy.interpolate.interp1d([x0, x1], [z0, z1])
         xx = np.arange(0, self.frame_i)
         zz = np.round(f(xx)).astype(int)
-        self.data.segmInfo_df.loc[:self.frame_i-1, 'z_slice_used_dataPrep'] = zz
+        PosData.segmInfo_df.loc[:self.frame_i-1,
+                                      'z_slice_used_dataPrep'] = zz
 
 
     def prepData(self, event):
-        self.startAction.setDisabled(True)
-        nonTifFound = (
-            any([npz is not None for npz in self.data.npz_paths]) or
-            any([npy is not None for npy in self.data.npy_paths]) or
-            self.data.segm_found
-        )
-        if nonTifFound:
-            imagesPath = self.data.images_path
-            zipPath = f'{os.path.splitext(imagesPath)[0]}.zip'
-            msg = QtGui.QMessageBox()
-            archive = msg.warning(
-               self, 'NON-Tif data detected!',
-               'Additional NON-tif files detected.\n\n'
-               'The requested experiment folder already contains .npy or .npz files '
-               'most likely from previous analysis runs.\n\n'
-               'To avoid data losses I will now zip the "Images" folder.\n\n'
-               'If everything looks fine after prepping the data, you can manually '
-               'delete the zip archive.\n\n'
-               'Zip archive location:\n\n'
-               f'{zipPath}',
-               msg.Ok | msg.Cancel
+        doZip = True
+        for p, PosData in enumerate(self.data):
+            self.startAction.setDisabled(True)
+            nonTifFound = (
+                any([npz is not None for npz in PosData.npz_paths]) or
+                any([npy is not None for npy in PosData.npy_paths]) or
+                PosData.segm_found
             )
-            if archive == msg.Cancel:
-                self.startAction.setDisabled(False)
-                self.titleLabel.setText(
-                    'Process aborted. Press "start" button to start again.',
-                    color='w')
-            print(f'Zipping Images folder: {zipPath}')
-            shutil.make_archive(imagesPath, 'zip', imagesPath)
-        self.npy_to_npz()
-        self.alignData(self.user_ch_name)
+            if nonTifFound and p==0:
+                imagesPath = PosData.images_path
+                zipPath = f'{os.path.splitext(imagesPath)[0]}.zip'
+                msg = QtGui.QMessageBox()
+                archive = msg.warning(
+                   self, 'NON-Tif data detected!',
+                   'Additional NON-tif files detected.\n\n'
+                   'The requested experiment folder already contains .npy '
+                   'or .npz files '
+                   'most likely from previous analysis runs.\n\n'
+                   'To avoid data losses we reccomend zipping the "Images" folder.\n\n'
+                   'If everything looks fine after prepping the data, '
+                   'you can manually '
+                   'delete the zip archive.\n\n'
+                   'Do you want to automatically zip now?\n\n'
+                   'PS: Zip archive location:\n\n'
+                   f'{zipPath}',
+                   msg.Yes | msg.No
+                )
+                if archive == msg.No:
+                    doZip = False
+                else:
+                    doZip = True
+            if doZip:
+                print(f'Zipping Images folder: {zipPath}')
+                shutil.make_archive(imagesPath, 'zip', imagesPath)
+            self.npy_to_npz(PosData)
+            self.alignData(self.user_ch_name, PosData)
+            if PosData.SizeZ>1:
+                PosData.segmInfo_df.to_csv(PosData.segmInfo_df_csv_path)
+
         self.update_img()
         print('Done.')
-        if self.data.SizeZ>1:
-            self.data.segmInfo_df.to_csv(self.data.segmInfo_df_csv_path)
         self.addROIrect()
         self.okAction.setEnabled(True)
         self.titleLabel.setText(
@@ -529,7 +658,8 @@ class dataPrep(QMainWindow):
             color='w')
 
     def setStandardRoiShape(self, text):
-        _, Y, X = self.data.img_data.shape
+        PosData = self.data[self.pos_i]
+        _, Y, X = PosData.img_data.shape
         m = re.findall('(\d+)x(\d+)', text)
         w, h = int(m[0][0]), int(m[0][1])
         xc, yc = int(round(X/2)), int(round(Y/2))
@@ -597,8 +727,11 @@ class dataPrep(QMainWindow):
         w, h = [int(round(c)) for c in self.roi.size()]
         self.ROIshapeLabel.setText(f'   Current ROI shape: {w} x {h}')
 
-    def alignData(self, user_ch_name):
+    def alignData(self, user_ch_name, PosData):
         """
+        NOTE: if self.num_pos > 1 then we simply save a ".._aligned.npz"
+        file without alignment
+
         Alignemnt routine. Alignemnt is based on the data contained in the
         .tif file of the channel selected by the user (e.g. "phase_contr").
         Next, using the shifts calculated when aligning the channel selected
@@ -641,7 +774,7 @@ class dataPrep(QMainWindow):
         """
 
         # Get metadata from tif
-        with TiffFile(self.data.tif_path) as tif:
+        with TiffFile(PosData.tif_path) as tif:
             metadata = tif.imagej_metadata
 
         print('Aligning data if needed...')
@@ -649,7 +782,7 @@ class dataPrep(QMainWindow):
             'Aligning data if needed... (check progress in terminal)',
             color='w')
         align = True
-        if self.data.loaded_shifts is None:
+        if PosData.loaded_shifts is None and PosData.SizeT > 1:
             msg = QtGui.QMessageBox()
             alignAnswer = msg.question(
                 self, 'Align frames?',
@@ -667,12 +800,16 @@ class dataPrep(QMainWindow):
             if alignAnswer == msg.No:
                 align = False
                 # Create 0, 0 shifts to perform 0 alignment
-                self.data.loaded_shifts = np.zeros((self.num_frames,2), int)
+                PosData.loaded_shifts = np.zeros((self.num_frames,2), int)
+        elif PosData.loaded_shifts is None and PosData.SizeT == 1:
+            align = False
+            # Create 0, 0 shifts to perform 0 alignment
+            PosData.loaded_shifts = np.zeros((self.num_frames,2), int)
 
-        _zip = zip(self.data.tif_paths, self.data.npz_paths)
+        _zip = zip(PosData.tif_paths, PosData.npz_paths)
         aligned = False
         for i, (tif, npz) in enumerate(_zip):
-            doAlign = npz is None or self.data.loaded_shifts is None
+            doAlign = npz is None or PosData.loaded_shifts is None
 
             # Align based on user_ch_name
             if doAlign and tif.find(user_ch_name) != -1:
@@ -680,77 +817,85 @@ class dataPrep(QMainWindow):
                 if align:
                     print('Aligning: ', tif)
                 tif_data = skimage.io.imread(tif)
-                numFramesWith0s = self.detectTifAlignment(tif_data)
-                proceed = self.warnTifAligned(numFramesWith0s, tif)
+                numFramesWith0s = self.detectTifAlignment(tif_data, PosData)
+                proceed = self.warnTifAligned(numFramesWith0s, tif, PosData)
                 if not proceed:
                     break
 
                 # Alignment routine
-                if self.data.SizeZ>1:
+                if PosData.SizeZ>1:
                     align_func = core.align_frames_3D
-                    zz = self.data.segmInfo_df['z_slice_used_dataPrep'].to_list()
+                    zz = PosData.segmInfo_df['z_slice_used_dataPrep'].to_list()
                 else:
                     align_func = core.align_frames_2D
                     zz = None
-                aligned_frames, shifts = align_func(
-                                          tif_data,
-                                          slices=zz,
-                                          user_shifts=self.data.loaded_shifts,
-                                          pbar=True
-                )
-                self.data.loaded_shifts = shifts
+                if align:
+                    aligned_frames, shifts = align_func(
+                                              tif_data,
+                                              slices=zz,
+                                              user_shifts=PosData.loaded_shifts,
+                                              pbar=True
+                    )
+                    PosData.loaded_shifts = shifts
+                else:
+                    aligned_frames = tif_data.copy()
                 _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
                 print('Saving: ', _npz)
                 temp_npz = self.getTempfilePath(_npz)
                 np.savez_compressed(temp_npz, aligned_frames)
                 self.moveTempFile(temp_npz, _npz)
-                np.save(self.data.align_shifts_path, shifts)
-                self.npz_paths[i] = _npz
+                np.save(PosData.align_shifts_path, PosData.loaded_shifts)
+                PosData.all_npz_paths[i] = _npz
 
                 print('Saving: ', tif)
                 temp_tif = self.getTempfilePath(tif)
-                self.imagej_tiffwriter(temp_tif, aligned_frames, metadata)
+                self.imagej_tiffwriter(temp_tif, aligned_frames,
+                                       metadata, PosData)
                 self.moveTempFile(temp_tif, tif)
-                self.data.img_data = skimage.io.imread(tif)
+                PosData.img_data = skimage.io.imread(tif)
 
-        _zip = zip(self.data.tif_paths, self.data.npz_paths)
+        _zip = zip(PosData.tif_paths, PosData.npz_paths)
         for i, (tif, npz) in enumerate(_zip):
             doAlign = npz is None or aligned
             # Align the other channels
             if doAlign and tif.find(user_ch_name) == -1:
-                if self.data.loaded_shifts is None:
+                if PosData.loaded_shifts is None:
                     break
                 if align:
                     print('Aligning: ', tif)
                 tif_data = skimage.io.imread(tif)
 
                 # Alignment routine
-                if self.data.SizeZ>1:
+                if PosData.SizeZ>1:
                     align_func = core.align_frames_3D
-                    zz = self.data.segmInfo_df['z_slice_used_dataPrep'].to_list()
+                    zz = PosData.segmInfo_df['z_slice_used_dataPrep'].to_list()
                 else:
                     align_func = core.align_frames_2D
                     zz = None
-                aligned_frames, shifts = align_func(
+
+                if align:
+                    aligned_frames, shifts = align_func(
                                           tif_data,
                                           slices=zz,
-                                          user_shifts=self.data.loaded_shifts
-                )
+                                          user_shifts=PosData.loaded_shifts)
+                else:
+                    aligned_frames = tif_data.copy()
                 _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
                 print('Saving: ', _npz)
                 temp_npz = self.getTempfilePath(_npz)
                 np.savez_compressed(temp_npz, aligned_frames)
                 self.moveTempFile(temp_npz, _npz)
-                self.npz_paths[i] = _npz
+                PosData.all_npz_paths[i] = _npz
 
                 print('Saving: ', tif)
                 temp_tif = self.getTempfilePath(tif)
-                self.imagej_tiffwriter(temp_tif, aligned_frames, metadata)
+                self.imagej_tiffwriter(temp_tif, aligned_frames,
+                                       metadata, PosData)
                 self.moveTempFile(temp_tif, tif)
 
         # Align segmentation data accordingly
-        if self.data.segm_found and aligned:
-            if self.data.loaded_shifts is None:
+        if PosData.segm_found and aligned:
+            if PosData.loaded_shifts is None:
                 return
             msg = QtGui.QMessageBox()
             alignAnswer = msg.question(
@@ -760,24 +905,24 @@ class dataPrep(QMainWindow):
                 msg.Yes | msg.No
             )
             if alignAnswer == msg.Yes:
-                print('Aligning: ', self.data.segm_npz_path)
-                self.data.segm_data, shifts = core.align_frames_2D(
-                                             self.data.segm_data,
+                print('Aligning: ', PosData.segm_npz_path)
+                PosData.segm_data, shifts = core.align_frames_2D(
+                                             PosData.segm_data,
                                              slices=None,
-                                             user_shifts=self.data.loaded_shifts
+                                             user_shifts=PosData.loaded_shifts
                 )
-                print('Saving: ', self.data.segm_npz_path)
-                temp_npz = self.getTempfilePath(self.data.segm_npz_path)
-                np.savez_compressed(temp_npz, self.data.segm_data)
-                self.moveTempFile(temp_npz, self.data.segm_npz_path)
+                print('Saving: ', PosData.segm_npz_path)
+                temp_npz = self.getTempfilePath(PosData.segm_npz_path)
+                np.savez_compressed(temp_npz, PosData.segm_data)
+                self.moveTempFile(temp_npz, PosData.segm_npz_path)
 
 
-    def detectTifAlignment(self, tif_data):
+    def detectTifAlignment(self, tif_data, PosData):
         numFramesWith0s = 0
-        if self.data.SizeT == 1:
+        if PosData.SizeT == 1:
             tif_data = [tif_data]
         for img in tif_data:
-            if self.data.SizeZ > 1:
+            if PosData.SizeZ > 1:
                 firtsCol = img[:, :, 0]
                 lastCol = img[:, : -1]
                 firstRow = img[:, 0]
@@ -795,9 +940,9 @@ class dataPrep(QMainWindow):
                 numFramesWith0s += 1
         return numFramesWith0s
 
-    def warnTifAligned(self, numFramesWith0s, tifPath):
+    def warnTifAligned(self, numFramesWith0s, tifPath, PosData):
         proceed = True
-        if numFramesWith0s>0 and self.data.loaded_shifts is not None:
+        if numFramesWith0s>0 and PosData.loaded_shifts is not None:
             msg = QtGui.QMessageBox()
             proceedAnswer = msg.warning(
                self, 'Tif data ALREADY aligned!',
@@ -815,13 +960,13 @@ class dataPrep(QMainWindow):
         return proceed
 
 
-    def npy_to_npz(self):
+    def npy_to_npz(self, PosData):
         print('Converting .npy to .npz if needed...')
         self.titleLabel.setText(
             'Converting .npy to .npz if needed... (check progress in terminal)',
             color='w')
-        self.npz_paths = self.data.npz_paths.copy()
-        _zip = zip(self.data.npy_paths, self.data.npz_paths)
+        PosData.all_npz_paths = PosData.npz_paths.copy()
+        _zip = zip(PosData.npy_paths, PosData.npz_paths)
         for i, (npy, npz) in enumerate(_zip):
             if npz is None and npy is None:
                 continue
@@ -833,16 +978,16 @@ class dataPrep(QMainWindow):
                 np.savez_compressed(temp_npz, _data)
                 self.moveTempFile(temp_npz, _npz)
                 os.remove(npy)
-                self.npz_paths[i] = _npz
+                PosData.all_npz_paths[i] = _npz
             elif npy is not None and npz is not None:
                 os.remove(npy)
         # Convert segm.npy to segm.npz
-        if self.data.segm_npy_path is not None:
-            print('Converting: ', self.data.segm_npy_path)
-            temp_npz = self.getTempfilePath(self.data.segm_npz_path)
-            np.savez_compressed(temp_npz, self.data.segm_data)
-            self.moveTempFile(temp_npz, self.data.segm_npz_path)
-            os.remove(self.data.segm_npy_path)
+        if PosData.segm_npy_path is not None:
+            print('Converting: ', PosData.segm_npy_path)
+            temp_npz = self.getTempfilePath(PosData.segm_npz_path)
+            np.savez_compressed(temp_npz, PosData.segm_data)
+            self.moveTempFile(temp_npz, PosData.segm_npz_path)
+            os.remove(PosData.segm_npy_path)
         print('Done.')
 
     def getTempfilePath(self, path):
@@ -938,6 +1083,7 @@ class dataPrep(QMainWindow):
             is_images_folder = False
 
         self.titleLabel.setText('Loading data...', color='w')
+        self.setWindowTitle(f'Yeast_ACDC - Data Prep. - "{exp_path}"')
 
 
 
@@ -973,8 +1119,9 @@ class dataPrep(QMainWindow):
                 self.openAction.setEnabled(True)
                 return
 
-            pos_foldername = select_folder.selected_pos[0]
-            images_path = f'{exp_path}/{pos_foldername}/Images'
+            images_paths = []
+            for pos in select_folder.selected_pos:
+                images_paths.append(os.path.join(exp_path, pos, 'Images'))
 
             if select_folder.was_aborted:
                 self.titleLabel.setText(
@@ -986,13 +1133,15 @@ class dataPrep(QMainWindow):
         elif is_pos_folder:
             pos_foldername = os.path.basename(exp_path)
             exp_path = os.path.dirname(exp_path)
-            images_path = f'{exp_path}/{pos_foldername}/Images'
+            images_paths = [os.path.join(exp_path, pos, 'Images')]
 
         elif is_images_folder:
-            images_path = exp_path
+            images_paths = [exp_path]
 
-        self.images_path = images_path
+        self.images_paths = images_paths
 
+        # Get info from first position selected
+        images_path = self.images_paths[0]
         ch_name_not_found_msg = (
             'The script could not identify the channel name.\n\n'
             'For automatic loading the file to be segmented MUST have a name like\n'
@@ -1028,31 +1177,39 @@ class dataPrep(QMainWindow):
             else:
                 user_ch_name = ch_name_selector.channel_name
 
-        img_aligned_found = False
-        for filename in os.listdir(images_path):
-            if filename.find(f'_phc_aligned.npy') != -1:
-                img_path = f'{images_path}/{filename}'
-                new_filename = filename.replace('phc_aligned.npy',
+        user_ch_file_paths = []
+        for images_path in self.images_paths:
+            img_aligned_found = False
+            for filename in os.listdir(images_path):
+                if filename.find(f'_phc_aligned.npy') != -1:
+                    img_path = f'{images_path}/{filename}'
+                    new_filename = filename.replace('phc_aligned.npy',
                                                 f'{user_ch_name}_aligned.npy')
-                dst = f'{images_path}/{new_filename}'
-                if os.path.exists(dst):
-                    os.remove(img_path)
-                else:
-                    os.rename(img_path, dst)
-                filename = new_filename
-            if filename.find(f'{user_ch_name}_aligned.np') != -1:
-                img_path_aligned = f'{images_path}/{filename}'
-                img_aligned_found = True
-            elif filename.find(f'{user_ch_name}.tif') != -1:
-                img_path_tif = f'{images_path}/{filename}'
+                    dst = f'{images_path}/{new_filename}'
+                    if os.path.exists(dst):
+                        os.remove(img_path)
+                    else:
+                        os.rename(img_path, dst)
+                    filename = new_filename
+                if filename.find(f'{user_ch_name}_aligned.np') != -1:
+                    img_path_aligned = f'{images_path}/{filename}'
+                    img_aligned_found = True
+                elif filename.find(f'{user_ch_name}.tif') != -1:
+                    img_path_tif = f'{images_path}/{filename}'
 
-        if img_aligned_found:
-            img_path = img_path_aligned
-        else:
-            img_path = img_path_tif
-        print(f'Loading {img_path}...')
+            if img_aligned_found:
+                img_path = img_path_aligned
+            else:
+                img_path = img_path_tif
+            user_ch_file_paths.append(img_path)
+            print(f'Loading {img_path}...')
 
-        self.init_frames_data(img_path, user_ch_name)
+        self.num_pos = len(user_ch_file_paths)
+        proceed = self.init_data(user_ch_file_paths, user_ch_name)
+
+        if not proceed:
+            self.openAction.setEnabled(True)
+            return
 
         # Connect events at the end of loading data process
         self.gui_connectGraphicsEvents()

@@ -6,6 +6,8 @@ import skimage.exposure
 import skimage.draw
 import skimage.registration
 import skimage.color
+import skimage.filters
+import scipy.ndimage.morphology
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
@@ -87,3 +89,34 @@ def align_frames_2D(data, slices=None, register=True,
             # ax[1].imshow(z_proj_max(aligned_frame_V))
             # plt.show()
     return data_aligned, registered_shifts
+
+def get_objContours(obj):
+    contours, _ = cv2.findContours(
+                           obj.image.astype(np.uint8),
+                           cv2.RETR_EXTERNAL,
+                           cv2.CHAIN_APPROX_NONE
+    )
+    min_y, min_x, _, _ = obj.bbox
+    cont = np.squeeze(contours[0], axis=1)
+    cont = np.vstack((cont, cont[0]))
+    cont += [min_x, min_y]
+    return cont
+
+def smooth_contours(lab, radius=2):
+    sigma = 2*radius + 1
+    smooth_lab = np.zeros_like(lab)
+    for obj in skimage.measure.regionprops(lab):
+        cont = get_objContours(obj)
+        x = cont[:,0]
+        y = cont[:,1]
+        x = np.append(x, x[0:sigma])
+        y = np.append(y, y[0:sigma])
+        x = np.round(skimage.filters.gaussian(x, sigma=sigma,
+                                              preserve_range=True)).astype(int)
+        y = np.round(skimage.filters.gaussian(y, sigma=sigma,
+                                              preserve_range=True)).astype(int)
+        temp_mask = np.zeros(lab.shape, bool)
+        temp_mask[y, x] = True
+        temp_mask = scipy.ndimage.morphology.binary_fill_holes(temp_mask)
+        smooth_lab[temp_mask] = obj.label
+    return smooth_lab
