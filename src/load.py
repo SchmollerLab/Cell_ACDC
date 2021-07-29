@@ -35,6 +35,11 @@ class load_frames_data:
         self.path = path
         self.fluo_data_dict = {}
         self.images_path = os.path.dirname(path)
+        self.pos_path = os.path.dirname(self.images_path)
+        self.pos_foldername = os.path.basename(self.pos_path)
+        path_li = os.path.normpath(path).split(os.sep)
+        self.relPath = f'.../{"/".join(path_li[-3:])}'
+        self.load_zyx_voxSize = load_zyx_voxSize
         filename_ext = os.path.basename(path)
         self.filename, self.ext = os.path.splitext(filename_ext)
         basename_idx = filename_ext.find(f'_{user_ch_name}')
@@ -124,49 +129,21 @@ class load_frames_data:
                     zyx_vox_dim_found=zyx_vox_dim_found,
                     parent=parentQWidget
                 )
+            else:
+                (self.SizeT, self.SizeZ,
+                self.zyx_vox_dim) = self.loadInputs(load_zyx_voxSize)
+                if not load_zyx_voxSize:
+                    self.zyx_vox_dim = None
         else:
-            (self.SizeT, self.SizeZ,
-            self.zyx_vox_dim) = self.inputsWidget(SizeT=len(self.img_data),
-                                                  parent=parentQWidget)
-        data_T, data_Z = self.img_data.shape[:2]
-        if self.SizeZ > 1:
-            if data_Z != self.SizeZ:
-                root = tk.Tk()
-                root.withdraw()
-                tk.messagebox.showwarning('Shape mismatch!',
-                    'The metadata of the .tif file says that there should be '
-                    f'{self.SizeZ} z-slices. However the shape of the data is '
-                    f'{self.img_data.shape}!\n\n'
-                    'The order of the data dimensions for 3D datasets '
-                    'has to be TZYX where T is the number of frames, Z the '
-                    'number of slices, and YX the shape of the image.\n\n'
-                    'In your case it looks like you either have a single 3D image'
-                    ' (no frames), or you have 2D data over time.\n'
-                    'In the first case, you should not use this script but the '
-                    '"gui_snapshots.py" script. For the second case the '
-                    'software will now try to ignore the number '
-                    'of slices and it will suppose that your data is 2D.')
-                self.SizeZ = 1
-                root.quit()
-                root.destroy()
-            if data_T != self.SizeT:
-                root = tk.Tk()
-                root.withdraw()
-                tk.messagebox.showwarning('Shape mismatch!',
-                    'The metadata of the .tif file says that there should be '
-                    f'{self.SizeT} frame. However the shape of the data is '
-                    f'{self.img_data.shape}!\n\n'
-                    'The order of the data dimensions has to be TZYX for '
-                    '3D images over time and TYX for 2D images, '
-                    'where T is the number of frames, Z the '
-                    'number of slices, and YX the shape of the image.\n\n'
-                    'In your case it looks like your data contains less/more '
-                    'frames than expected.\n\n'
-                    f'The software will now try to run with {data_T} '
-                    'number of frames.')
-                self.SizeT = data_T
-                root.quit()
-                root.destroy()
+            if first_call:
+                (self.SizeT, self.SizeZ,
+                self.zyx_vox_dim) = self.inputsWidget(SizeT=len(self.img_data),
+                                                      parent=parentQWidget)
+            else:
+                (self.SizeT, self.SizeZ,
+                self.zyx_vox_dim) = self.loadInputs(load_zyx_voxSize)
+                if not load_zyx_voxSize:
+                    self.zyx_vox_dim = None
         self.segm_data = None
         self.segm_npy_path = None
         if load_segm_data:
@@ -192,8 +169,11 @@ class load_frames_data:
                                               path, 'last_tracked_i.txt',
                                               self.images_path)
         if last_tracked_i_found:
-            with open(last_tracked_i_path, 'r') as txt:
-                self.last_tracked_i = int(txt.read())
+            try:
+                with open(last_tracked_i_path, 'r') as txt:
+                    self.last_tracked_i = int(txt.read())
+            except:
+                self.last_tracked_i = None
         else:
             self.last_tracked_i = None
 
@@ -282,6 +262,26 @@ class load_frames_data:
 
         self.build_paths(self.filename, self.images_path, user_ch_name)
 
+    def loadInputs(self, load_zyx_voxSize: bool):
+        src_path = os.path.dirname(os.path.realpath(__file__))
+        last_entries_csv_path = os.path.join(
+            src_path, 'temp', 'last_entries_metadata.csv'
+        )
+        if os.path.exists(last_entries_csv_path):
+            df = pd.read_csv(last_entries_csv_path, index_col='Description')
+            if 'z_voxSize' in df.index and load_zyx_voxSize:
+                z = df.at['z_voxSize', 'values']
+                y = df.at['y_voxSize', 'values']
+                x = df.at['x_voxSize', 'values']
+                zyx_vox_dim = (z, y, x)
+            else:
+                zyx_vox_dim = None
+            SizeT = int(df.at['SizeT', 'values'])
+            SizeZ = int(df.at['SizeZ', 'values'])
+        else:
+            raise FileNotFoundError(f'File not found: {last_entries_csv_path}')
+        return SizeT, SizeZ, zyx_vox_dim
+
     def zyx_vox_dim(self):
         info = self.info
         try:
@@ -360,19 +360,21 @@ class load_frames_data:
         return SizeT, SizeZ
 
     def inputsWidget(self, parent=None, SizeZ=1, SizeT=1,
-                     zyx_vox_dim=[0.5,0.1,0.1], zyx_vox_dim_found=False):
+                     zyx_vox_dim=None, zyx_vox_dim_found=False):
+        zyx_vox_found = False
+        src_path = os.path.dirname(os.path.realpath(__file__))
+        last_entries_csv_path = os.path.join(
+            src_path, 'temp', 'last_entries_metadata.csv'
+        )
         if zyx_vox_dim is not None:
-            src_path = os.path.dirname(os.path.realpath(__file__))
-            last_entries_csv_path = os.path.join(
-                src_path, 'temp', 'last_entries_metadata.csv'
-            )
             if os.path.exists(last_entries_csv_path) and not zyx_vox_dim_found:
                 df = pd.read_csv(last_entries_csv_path, index_col='Description')
                 if 'z_voxSize' in df.index:
                     z = df.at['z_voxSize', 'values']
                     y = df.at['y_voxSize', 'values']
                     x = df.at['x_voxSize', 'values']
-                    zyx_vox_dim = (z, y, x)
+                    zyx_vox_dim = [z, y, x]
+                    zyx_vox_found = True
 
         font = QtGui.QFont()
         font.setPointSize(10)
@@ -382,17 +384,22 @@ class load_frames_data:
         win.exec_()
         self.cancel = win.cancel
 
+        if win.zyx_vox_dim is None:
+            if zyx_vox_found:
+                win.zyx_vox_dim = zyx_vox_dim
+            else:
+                win.zyx_vox_dim = [1,1,1]
+
         # Save values to load them again at the next session
         df = pd.DataFrame(
             {'Description': ['SizeT', 'SizeZ',
                              'z_voxSize', 'y_voxSize', 'x_voxSize'],
-             'values': [SizeT, SizeZ,
-                        round(win.zyx_vox_dim[0], 4),
-                        round(win.zyx_vox_dim[1], 4),
-                        round(win.zyx_vox_dim[2], 4)]}
+             'values': [win.SizeT, win.SizeZ,
+                        round(win.zyx_vox_dim[0], 6),
+                        round(win.zyx_vox_dim[1], 6),
+                        round(win.zyx_vox_dim[2], 6)]}
         ).set_index('Description')
-        if zyx_vox_dim is not None:
-            df.to_csv(last_entries_csv_path)
+        df.to_csv(last_entries_csv_path)
 
         return win.SizeT, win.SizeZ, win.zyx_vox_dim
 
@@ -720,8 +727,9 @@ class select_exp_folder:
                        show=False):
         font = QtGui.QFont()
         font.setPointSize(10)
-        win = apps.QtSelectPos(title, values, '',
-                               CbLabel=CbLabel, parent=parentQWidget)
+        win = apps.QtSelectItems(title, values, '',
+                               CbLabel=CbLabel,
+                               parent=parentQWidget)
         win.setFont(font)
         toFront = win.windowState() & ~Qt.WindowMinimized | Qt.WindowActive
         win.setWindowState(toFront)
@@ -838,10 +846,13 @@ class select_exp_folder:
                     if filename.find('_last_tracked_i.txt') != -1:
                         last_tracked_i_found = True
                         last_tracked_i_path = f'{images_path}/{filename}'
-                        with open(last_tracked_i_path, 'r') as txt:
-                            last_tracked_i = int(txt.read())
+                        try:
+                            with open(last_tracked_i_path, 'r') as txt:
+                                last_tracked_i = int(txt.read())
+                        except:
+                            last_tracked_i_found = False
                 if last_tracked_i_found:
-                    values.append(f'{pos} (Last tracked frame: {last_tracked_i})')
+                    values.append(f'{pos} (Last tracked frame: {last_tracked_i+1})')
                 else:
                     values.append(pos)
         self.values = values

@@ -1437,13 +1437,15 @@ class img_analysis:
             lab = segment.segment(thresh, pred, min_distance=5).astype(int)
         elif app.use_cellpose:
             lab, flows, _, _ = app.cp_model.eval(img, channels=[0,0],
-                                                       diameter=60,
-                                                       invert=False,
-                                                       net_avg=True,
-                                                       augment=False,
-                                                       resample=False,
-                                                       do_3D=False,
-                                                       progress=None)
+                                                      diameter=60,
+                                                      invert=False,
+                                                      net_avg=True,
+                                                      augment=False,
+                                                      resample=False,
+                                                      do_3D=False,
+                                                      progress=None,
+                                                      flow_threshold=0.4,
+                                                      cellprob_threshold=0.0)
         lab = remove_small_objects(lab, min_size=20, connectivity=2)
         # remove objects touching the borders
         borders_mask = np.ones(img.shape, bool)

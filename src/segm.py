@@ -10,13 +10,14 @@ import pandas as pd
 import skimage.exposure
 import skimage.morphology
 
+from tqdm import tqdm
+
 from PyQt5.QtWidgets import QApplication, QPushButton
 from PyQt5.QtCore import Qt
 from PyQt5 import QtGui
 
 # Custom modules
-import prompts, load, myutils, apps
-myutils.download_model('YeaZ')
+import prompts, load, myutils, apps, core
 
 exp_path = prompts.folder_dialog(
                 title='Select experiment folder containing Position_n folders'
@@ -60,6 +61,8 @@ if msg.clickedButton() == yeazButton:
     yeazParams = apps.YeaZ_ParamsDialog()
     yeazParams.setFont(font)
     yeazParams.exec_()
+    if yeazParams.cancel:
+        exit('Execution aborted by the user.')
     thresh_val = yeazParams.threshVal
     min_distance = yeazParams.minDist
     # YeaZ modules
@@ -67,9 +70,27 @@ if msg.clickedButton() == yeazButton:
     from YeaZ.unet import neural_network as nn
     from YeaZ.unet import segment
     from YeaZ.unet import tracking
+    myutils.download_model('YeaZ')
+    path_weights = nn.determine_path_weights()
 elif msg.clickedButton() == cellposeButton:
     model = 'cellpose'
-    exit('Cellpose model not implemented yet.')
+    cellposeParams = apps.cellpose_ParamsDialog()
+    cellposeParams.setFont(font)
+    cellposeParams.exec_()
+    if cellposeParams.cancel:
+        exit('Execution aborted by the user.')
+    diameter = cellposeParams.diameter
+    if diameter==0:
+        diameter=None
+    flow_threshold = cellposeParams.flow_threshold
+    cellprob_threshold = cellposeParams.cellprob_threshold
+    # Cellpose modules
+    print('Importing cellpose...')
+    from acdc_cellpose import models
+    myutils.download_model('cellpose')
+    device, gpu = models.assign_device(True, False)
+    cp_model = models.Cellpose(gpu=gpu, device=device,
+                               model_type='cyto', torch=True)
 
 ch_name_selector = prompts.select_channel_name(
                             which_channel='segm', allow_abort=True
@@ -129,7 +150,8 @@ ch_name_not_found_msg = (
 )
 
 first_call = True
-for images_path in images_paths:
+for images_path in tqdm(images_paths, unit=' Position', ncols=100):
+    print('')
     print(f'Processing {images_path}')
     filenames = os.listdir(images_path)
     if ch_name_selector.is_first_call:
@@ -176,7 +198,7 @@ for images_path in images_paths:
         else:
             zz = data.segmInfo_df['z_slice_used_dataPrep'].to_list()
 
-    if first_call:
+    if first_call and data.SizeT > 1:
         # Ask stop frame
         win = apps.QLineEditDialog(
             title='Stop frame',
@@ -215,22 +237,36 @@ for images_path in images_paths:
 
     """Segmentation routine"""
     t0 = time.time()
-    path_weights = nn.determine_path_weights()
-    print('Running UNet for Segmentation:')
+    print(f'Segmenting with {model}:')
     if data.SizeT > 1:
         if model == 'yeaz':
             pred_stack = nn.batch_prediction(img_data, is_pc=True,
                                              path_weights=path_weights,
                                              batch_size=1)
         elif model == 'cellpose':
-            exit('Cellpose model not implemented yet.')
+            lab_stack = np.array(img_data.shape, np.uint16)
+            for t, img in enumerate(img_data):
+                lab, flows, _, _ = cp_model.eval(
+                                        img,
+                                        channels=[0,0],
+                                        diameter=diameter,
+                                        flow_threshold=flow_threshold,
+                                        cellprob_threshold=cellprob_threshold)
+                # lab = core.smooth_contours(lab, radius=2)
+                lab_stack[t] = lab
+
     else:
         if model == 'yeaz':
             pred_stack = nn.prediction(img_data, is_pc=True,
                                        path_weights=path_weights)
         elif model == 'cellpose':
-            exit('Cellpose model not implemented yet.')
-
+            lab_stack, flows, _, _ = cp_model.eval(
+                                        img_data,
+                                        channels=[0,0],
+                                        diameter=diameter,
+                                        flow_threshold=flow_threshold,
+                                        cellprob_threshold=cellprob_threshold)
+            # lab_stack = core.smooth_contours(lab_stack, radius=2)
     if model == 'yeaz':
         print('Thresholding prediction...')
         thresh_stack = nn.threshold(pred_stack, th=thresh_val)
@@ -240,23 +276,18 @@ for images_path in images_paths:
             lab_stack = segment.segment_stack(thresh_stack, pred_stack,
                                               min_distance=min_distance
                                               ).astype(np.uint16)
-        elif model == 'cellpose':
-            exit('Cellpose model not implemented yet.')
     else:
         if model == 'yeaz':
             lab_stack = segment.segment(thresh_stack, pred_stack,
                                         min_distance=min_distance
                                         ).astype(np.uint16)
-        elif model == 'cellpose':
-            exit('Cellpose model not implemented yet.')
 
     lab_stack = skimage.morphology.remove_small_objects(lab_stack, min_size=5)
 
     if data.SizeT > 1:
         print('Tracking cells...')
         # NOTE: We use yeaz tracking also for cellpose
-        tracked_stack = tracking.correspondence_stack(
-                                            lab_stack).astype(np.uint16)
+        tracked_stack = tracking.correspondence_stack(lab_stack).astype(np.uint16)
     else:
         tracked_stack = lab_stack
 

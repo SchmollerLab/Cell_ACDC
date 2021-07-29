@@ -1,3 +1,5 @@
+requires("1.52u");
+
 //Channels names
 channels = newArray("mNeon","mKate","phase_contr");
 // channels = newArray("AlexaFluor","phase_contr","DAPI","Cy3");

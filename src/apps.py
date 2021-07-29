@@ -41,7 +41,7 @@ from PyQt5.QtWidgets import (
     QScrollBar, QWidget, QVBoxLayout, QLineEdit, QPushButton,
     QHBoxLayout, QDialog, QFormLayout, QListWidget, QAbstractItemView,
     QButtonGroup, QCheckBox, QSizePolicy, QComboBox, QSlider, QGridLayout,
-    QSpinBox, QToolButton, QTableView
+    QSpinBox, QToolButton, QTableView, QTextBrowser
 )
 
 import myutils
@@ -752,7 +752,7 @@ class QDialogInputsForm(QDialog):
                 )
                 return
         else:
-            zyx_vox_dim = [1,1,1]
+            zyx_vox_dim = None
         self.SizeT = SizeT
         self.SizeZ = SizeZ
         self.zyx_vox_dim = zyx_vox_dim
@@ -838,13 +838,14 @@ class gaussBlurDialog(QDialog):
         self.apply()
 
     def getData(self):
+        PosData = self.mainWindow.data[self.mainWindow.pos_i]
         key = self.channelsComboBox.currentText()
         if key.find(self.mainWindow.user_ch_name) != -1:
             img = self.mainWindow.getImage()
-            data = self.mainWindow.data.img_data
+            data = PosData.img_data
         else:
             img = self.mainWindow.getOlImg(key)
-            data = self.mainWindow.ol_data[key]
+            data = PosData.ol_data[key]
 
         self.img = img
         self.frame_i = self.mainWindow.frame_i
@@ -859,7 +860,6 @@ class gaussBlurDialog(QDialog):
         self.sigma = intVal/20
         self.sigma_entry.setText(f'{self.sigma}')
         self.apply()
-
 
     def ok_cb(self, event):
         self.cancel = False
@@ -894,7 +894,181 @@ class gaussBlurDialog(QDialog):
             self.mainWindow.updateALLimg(only_ax1=True, updateBlur=False)
 
 
+class edgeDetectionDialog(QDialog):
+    def __init__(self, mainWindow):
+        super().__init__()
+        self.cancel = True
+        self.mainWindow = mainWindow
 
+        if mainWindow is not None:
+            items = [mainWindow.data.filename]
+        else:
+            items = ['test']
+        try:
+            items.extend(list(mainWindow.ol_data_dict.keys()))
+        except:
+            pass
+
+        self.keys = items
+
+        self.setWindowTitle('Edge detection')
+
+        mainLayout = QVBoxLayout()
+        paramsLayout = QGridLayout()
+        buttonsLayout = QHBoxLayout()
+
+
+        channelCBLabel = QLabel('Channel:')
+        mainLayout.addWidget(channelCBLabel)
+        self.channelsComboBox = QComboBox()
+        self.channelsComboBox.addItems(items)
+        mainLayout.addWidget(self.channelsComboBox)
+
+        row = 0
+        sigmaQSLabel = QLabel('Blur:')
+        paramsLayout.addWidget(sigmaQSLabel, row, 0)
+        row += 1
+        self.sigmaValLabel = QLabel('1.00')
+        paramsLayout.addWidget(self.sigmaValLabel, row, 1)
+        self.sigmaSlider = QSlider(Qt.Horizontal)
+        self.sigmaSlider.setMinimum(1)
+        self.sigmaSlider.setMaximum(100)
+        self.sigmaSlider.setValue(20)
+        self.sigma = 1.0
+        self.sigmaSlider.setTickPosition(QSlider.TicksBelow)
+        self.sigmaSlider.setTickInterval(10)
+        paramsLayout.addWidget(self.sigmaSlider, row, 0)
+
+        row += 1
+        sharpQSLabel = QLabel('Sharpen:')
+        # padding: top, left, bottom, right
+        sharpQSLabel.setStyleSheet("font-size:10pt; padding:5px 0px 0px 0px;")
+        paramsLayout.addWidget(sharpQSLabel, row, 0)
+        row += 1
+        self.sharpValLabel = QLabel('5.00')
+        paramsLayout.addWidget(self.sharpValLabel, row, 1)
+        self.sharpSlider = QSlider(Qt.Horizontal)
+        self.sharpSlider.setMinimum(1)
+        self.sharpSlider.setMaximum(100)
+        self.sharpSlider.setValue(50)
+        self.radius = 5.0
+        self.sharpSlider.setTickPosition(QSlider.TicksBelow)
+        self.sharpSlider.setTickInterval(10)
+        paramsLayout.addWidget(self.sharpSlider, row, 0)
+
+        okButton = QPushButton('Ok')
+        okButton.setShortcut(Qt.Key_Enter)
+
+        cancelButton = QPushButton('Cancel')
+
+        buttonsLayout.addWidget(okButton, alignment=Qt.AlignRight)
+        buttonsLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
+
+        paramsLayout.setContentsMargins(0, 10, 0, 0)
+        buttonsLayout.setContentsMargins(0, 10, 0, 0)
+
+        mainLayout.addLayout(paramsLayout)
+        mainLayout.addLayout(buttonsLayout)
+
+        self.sigmaSlider.sliderMoved.connect(self.sigmaSliderMoved)
+        self.sharpSlider.sliderMoved.connect(self.sharpSliderMoved)
+        self.channelsComboBox.currentTextChanged.connect(self.updateChannel)
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.cancel_cb)
+
+        self.setLayout(mainLayout)
+
+        self.storeData()
+        self.getData()
+        self.apply()
+
+    def setSize(self):
+        x = self.pos().x()
+        y = self.pos().y()
+        h = self.size().height()
+        self.setGeometry(x, y, 300, h)
+
+    def storeData(self):
+        self.raw_fluo_dict = {}
+        for key in self.keys:
+            if key.find(self.mainWindow.user_ch_name) != -1:
+                self.raw_img = self.mainWindow.getImage().copy()
+            else:
+                fluo_img = self.mainWindow.getOlImg(key)
+                self.raw_fluo_dict[key] = fluo_img.copy()
+
+    def updateChannel(self, key):
+        self.getData()
+        self.apply()
+
+    def getData(self):
+        key = self.channelsComboBox.currentText()
+        if key.find(self.mainWindow.user_ch_name) != -1:
+            img = self.mainWindow.getImage()
+            data = self.mainWindow.data.img_data
+        else:
+            img = self.mainWindow.getOlImg(key)
+            data = self.mainWindow.ol_data[key]
+
+        self.img = skimage.exposure.equalize_adapthist(img)
+        self.detectEdges()
+        self.frame_i = self.mainWindow.frame_i
+        self.data = data
+
+    def detectEdges(self):
+        self.edge = skimage.filters.sobel(self.img)
+
+    def apply(self):
+        edge = self.edge.copy()
+        # Blur
+        edge = gauss(edge, sigma=self.sigma)
+        # Sharpen
+        edge = edge - gauss(edge, sigma=self.radius)
+        self.data[self.frame_i] = edge
+        self.mainWindow.updateALLimg(only_ax1=True, updateBlur=False)
+
+    def sigmaSliderMoved(self, intVal):
+        self.sigma = intVal/20
+        self.sigmaValLabel.setText(f'{self.sigma:.2f}')
+        self.apply()
+
+    def sharpSliderMoved(self, intVal):
+        self.radius = 10 - intVal/10
+        self.sharpValLabel.setText(f'{self.radius:.2f}')
+        self.apply()
+
+
+    def ok_cb(self, event):
+        self.cancel = False
+        msg = QtGui.QMessageBox()
+        apply = msg.question(
+            self, 'Apply to all frames?',
+            'Apply to all {self.num_segm_frames} frames (NOT undoable)?',
+            msg.Yes | msg.No | msg.Cancel)
+        if apply == msg.Yes:
+            data_copy = self.data.copy()
+            for i, img in enumerate(data_copy):
+                img = skimage.filters.gaussian(self.img, sigma=self.sigma)
+                self.data[self.frame_i] = img
+            self.close()
+        elif apply == msg.No:
+            self.close()
+        elif apply == msg.Cancel:
+            return
+
+    def cancel_cb(self, event):
+        self.cancel = True
+        self.close()
+
+    def closeEvent(self, event):
+        if self.cancel:
+            for key in self.keys:
+                if key.find(self.mainWindow.user_ch_name) != -1:
+                    self.mainWindow.data.img_data[self.frame_i] = self.raw_img
+                else:
+                    self.mainWindow.ol_data = self.raw_fluo_dict[key]
+                pass
+            self.mainWindow.updateALLimg(only_ax1=True, updateBlur=False)
 
 class FutureFramesAction_QDialog(QDialog):
     def __init__(self, frame_i, last_tracked_i, change_txt, applyTrackingB=False):
@@ -946,7 +1120,7 @@ class FutureFramesAction_QDialog(QDialog):
         _font = QtGui.QFont()
         _font.setPointSize(10)
         infotxtLabel.setFont(_font)
-        # padding: top, left, bottom, right
+
         infotxtLabel.setStyleSheet("padding:0px 0px 3px 0px;")
         txtLayout.addWidget(infotxtLabel, alignment=Qt.AlignCenter)
 
@@ -1291,6 +1465,105 @@ class CellsSlideshow_GUI(QMainWindow):
     def closeEvent(self, event):
         if self.button_toUncheck is not None:
             self.button_toUncheck.setChecked(False)
+
+class cellpose_ParamsDialog(QDialog):
+    def __init__(self):
+        self.cancel = True
+        super().__init__()
+        self.setWindowTitle("Cellpose parameters")
+
+        mainLayout = QVBoxLayout()
+        entriesLayout = QGridLayout()
+
+        row = 0
+        diameterLabel = QLabel('Diameter of cell (pixels):')
+        diameterEntry = QSpinBox()
+        diameterEntry.setValue(0)
+        diameterEntry.setAlignment(Qt.AlignCenter)
+        entriesLayout.addWidget(diameterLabel, row, 0)
+        row += 1
+        entriesLayout.addWidget(diameterEntry, row, 0, 1, 2)
+        self.diameterEntry = diameterEntry
+
+        row += 1
+        flowThreshLabel = QLabel('Flow threshold: ')
+        flowThreshSlider = QSlider(Qt.Horizontal)
+        flowThreshSlider.setMinimum(0)
+        flowThreshSlider.setMaximum(10)
+        flowThreshSlider.setValue(4)
+        entriesLayout.addWidget(flowThreshLabel, row, 0)
+        row += 1
+        entriesLayout.addWidget(flowThreshSlider, row, 0)
+        self.flowThreshLabelValue = QLabel('0.4')
+        entriesLayout.addWidget(self.flowThreshLabelValue, row, 1)
+        self.flowThreshSlider = flowThreshSlider
+        self.flowThreshSlider.sliderMoved.connect(self.updateFlowThreshVal)
+
+        row += 1
+        cellProbThreshLabel = QLabel('Cell probability threshold: ')
+        cellProbThreshSlider = QSlider(Qt.Horizontal)
+        cellProbThreshSlider.setMinimum(-6)
+        cellProbThreshSlider.setMaximum(6)
+        cellProbThreshSlider.setValue(0)
+        entriesLayout.addWidget(cellProbThreshLabel, row, 0)
+        row += 1
+        entriesLayout.addWidget(cellProbThreshSlider, row, 0)
+        self.cellProbThreshLabelValue = QLabel('0')
+        entriesLayout.addWidget(self.cellProbThreshLabelValue, row, 1)
+        self.cellProbThreshSlider = cellProbThreshSlider
+        self.cellProbThreshSlider.sliderMoved.connect(self.updateCellProbVal)
+
+        # Parameters link label
+        row += 1
+        url = 'https://colab.research.google.com/github/MouseLand/cellpose/blob/master/notebooks/Cellpose_2D_v0_1.ipynb#scrollTo=Rr0UozRm42CA'
+        htmlTxt = f'<a href=\"{url}">here</a>'
+        seeHereLabel = QLabel()
+        seeHereLabel.setText(f'See {htmlTxt} for details on the parameters')
+        seeHereLabel.setTextFormat(Qt.RichText)
+        seeHereLabel.setTextInteractionFlags(Qt.TextBrowserInteraction)
+        seeHereLabel.setOpenExternalLinks(True)
+        font = QtGui.QFont()
+        font.setPointSize(10)
+        seeHereLabel.setFont(font)
+        seeHereLabel.setStyleSheet("padding:10px 0px 0px 0px;")
+        entriesLayout.addWidget(seeHereLabel, row, 0, 1, 2)
+
+        HBoxLayout = QHBoxLayout()
+        okButton = QPushButton('Ok')
+        okButton.setShortcut(Qt.Key_Enter)
+        HBoxLayout.addWidget(okButton, alignment=Qt.AlignRight)
+
+        cancelButton = QPushButton('Cancel')
+        # cancelButton.setShortcut(Qt.Key_Escape)
+        HBoxLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
+        HBoxLayout.setContentsMargins(0, 10, 0, 0)
+
+        mainLayout.addLayout(entriesLayout)
+        mainLayout.addLayout(HBoxLayout)
+
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.cancel_cb)
+
+        self.setLayout(mainLayout)
+        self.setModal(True)
+
+    def updateFlowThreshVal(self, valInt):
+        val = valInt/10
+        self.flowThreshLabelValue.setText(str(val))
+
+    def updateCellProbVal(self, valInt):
+        self.cellProbThreshLabelValue.setText(str(valInt))
+
+    def ok_cb(self, event):
+        self.cancel = False
+        self.diameter = self.diameterEntry.value()
+        self.flow_threshold = self.flowThreshSlider.value()/10
+        self.cellprob_threshold = self.cellProbThreshSlider.value()
+        self.close()
+
+    def cancel_cb(self, event):
+        self.cancel = True
+        self.close()
 
 class YeaZ_ParamsDialog(QDialog):
     def __init__(self):
@@ -2510,7 +2783,7 @@ class win_size:
             except:
                 pass
 
-class QtSelectPos(QDialog):
+class QtSelectItems(QDialog):
     def __init__(self, title, items, informativeText,
                  CbLabel='Select value:  ', parent=None):
         self.cancel = True
@@ -2554,6 +2827,8 @@ class QtSelectPos(QDialog):
         listBox.addItems(items)
         listBox.setSelectionMode(QAbstractItemView.ExtendedSelection)
         listBox.setCurrentRow(0)
+        topLayout.addWidget(listBox)
+        listBox.hide()
         self.ListBox = listBox
 
         bottomLayout.setContentsMargins(0, 10, 0, 0)
@@ -2572,12 +2847,20 @@ class QtSelectPos(QDialog):
     def toggleMultiSelection(self, checked):
         if checked:
             self.multiPosButton.setText('Single selection')
-            self.topLayout.removeWidget(self.ComboBox)
-            self.topLayout.addWidget(self.ListBox)
+            self.ComboBox.hide()
+            self.ListBox.show()
+            # Show 10 items
+            n = self.ListBox.count()
+            if n > 10:
+                h = sum([self.ListBox.sizeHintForRow(i) for i in range(10)])
+            else:
+                h = sum([self.ListBox.sizeHintForRow(i) for i in range(n)])
+            self.ListBox.setFixedHeight(h+5)
         else:
             self.multiPosButton.setText('Multiple selection')
-            self.topLayout.removeWidget(self.ListBox)
-            self.topLayout.addWidget(self.ComboBox)
+            self.ListBox.hide()
+            self.ComboBox.show()
+
 
     def ok_cb(self, event):
         self.cancel = False
@@ -3185,36 +3468,36 @@ class pdDataFrameWidget(QMainWindow):
 if __name__ == '__main__':
     # Create the application
     app = QApplication(sys.argv)
-
-    # title='Select Position folder'
-    # CbLabel="Select \'Position_n\' folder to analyze:"
-    # win = QtSelectPos(title, ['Position_1 (last_tracked_i=10)',
-    #                           'Position_2', 'Position_3'],
-    #                   '', CbLabel=CbLabel, parent=None)
     font = QtGui.QFont()
     font.setPointSize(10)
-    IDs = list(range(1,11))
-    cc_stage = ['G1' for ID in IDs]
-    num_cycles = [-1]*len(IDs)
-    relationship = ['mother' for ID in IDs]
-    related_to = [-1]*len(IDs)
-    is_history_known = [False]*len(IDs)
-    corrected_assignment = [False]*len(IDs)
-    cca_df = pd.DataFrame({
-                       'cell_cycle_stage': cc_stage,
-                       'generation_num': num_cycles,
-                       'relative_ID': related_to,
-                       'relationship': relationship,
-                       'emerg_frame_i': num_cycles,
-                       'division_frame_i': num_cycles,
-                       'is_history_known': is_history_known,
-                       'corrected_assignment': corrected_assignment},
-                        index=IDs)
-    cca_df.index.name = 'Cell_ID'
-
-    df = cca_df.reset_index()
-
-    win = pdDataFrameWidget(df)
+    # title='Select channel name'
+    # CbLabel='Select channel name:  '
+    # informativeText = ''
+    # win = QtSelectItems(title, ['mNeon', 'mKate'],
+    #                     informativeText, CbLabel=CbLabel, parent=None)
+    win = edgeDetectionDialog(None)
+    # IDs = list(range(1,11))
+    # cc_stage = ['G1' for ID in IDs]
+    # num_cycles = [-1]*len(IDs)
+    # relationship = ['mother' for ID in IDs]
+    # related_to = [-1]*len(IDs)
+    # is_history_known = [False]*len(IDs)
+    # corrected_assignment = [False]*len(IDs)
+    # cca_df = pd.DataFrame({
+    #                    'cell_cycle_stage': cc_stage,
+    #                    'generation_num': num_cycles,
+    #                    'relative_ID': related_to,
+    #                    'relationship': relationship,
+    #                    'emerg_frame_i': num_cycles,
+    #                    'division_frame_i': num_cycles,
+    #                    'is_history_known': is_history_known,
+    #                    'corrected_assignment': corrected_assignment},
+    #                     index=IDs)
+    # cca_df.index.name = 'Cell_ID'
+    #
+    # df = cca_df.reset_index()
+    #
+    # win = pdDataFrameWidget(df)
 
     # win = ccaTableWidget(cca_df)
     # lab = np.load(r"G:\My Drive\1_MIA_Data\Test_data\Test_Qt_GUI\Position_5\Images\F016_s05_segm.npz")['arr_0'][0]
@@ -3223,6 +3506,7 @@ if __name__ == '__main__':
     win.setFont(font)
     app.setStyle(QtGui.QStyleFactory.create('Fusion'))
     win.show()
-    win.setGeometryWindow()
+    win.setSize()
+    # win.setGeometryWindow()
     app.exec_()
-    # print(win.cca_df)
+    # print(win.diameter, win.flow_threshold, win.cellprob_threshold)
