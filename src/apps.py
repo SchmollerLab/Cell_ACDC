@@ -2983,6 +2983,8 @@ class manualSeparateGui(QMainWindow):
             self.curvHoverPlotItem.setData([], [])
             self.lineHoverPlotItem.setData([], [])
             self.curvAnchors.setData([], [])
+        elif ev.key() == Qt.Key_Enter or ev.key() == Qt.Key_Return:
+            self.ok_cb()
 
     def getOverlay(self):
         # Rescale intensity based on hist ticks values
@@ -3142,6 +3144,9 @@ class pdDataFrameWidget(QMainWindow):
         mainContainer.setLayout(layout)
 
     def updateTable(self, df):
+        if df is None:
+            df = self.parent.getBaseCca_df()
+        df = df.reset_index()
         model = DataFrameModel(df)
         self.tableView.setModel(model)
         for i in range(len(df.columns)):
@@ -3173,6 +3178,9 @@ class pdDataFrameWidget(QMainWindow):
             winLeft = int(mainWinCenterX - winWidth/2)
             winRight = int(mainWinCenterY - winHeight/2)
             self.move(winLeft, winRight)
+
+    def closeEvent(self, event):
+        self.parent.ccaTableWin = None
 
 if __name__ == '__main__':
     # Create the application

@@ -1681,6 +1681,9 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         self.store_cca_df()
 
+        if self.ccaTableWin is not None:
+            self.ccaTableWin.updateTable(self.cca_df)
+
         # Correct future frames
         for i in range(self.frame_i+1, self.num_segm_frames):
             cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
@@ -1806,6 +1809,9 @@ class Yeast_ACDC_GUI(QMainWindow):
         # Update cell cycle info LabelItems
         self.drawID_and_Contour(rp_ID, drawContours=False)
         self.drawID_and_Contour(rp_relID, drawContours=False)
+
+        if self.ccaTableWin is not None:
+            self.ccaTableWin.updateTable(self.cca_df)
 
 
         # Correct future frames
@@ -2052,6 +2058,9 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.checkMultiBudMOth(draw=True)
 
         self.store_cca_df()
+
+        if self.ccaTableWin is not None:
+            self.ccaTableWin.updateTable(self.cca_df)
 
         # Correct future frames
         for i in range(self.frame_i+1, self.num_segm_frames):
@@ -3435,6 +3444,7 @@ class Yeast_ACDC_GUI(QMainWindow):
             # minTick = self.hist.gradient.getTick(0)
             # self.hist.gradient.setTickValue(minTick, 0.5)
         elif ev.key() == Qt.Key_H:
+            print(self.ccaTableWin)
             lab_mask = (self.lab>0).astype(np.uint8)
             rp = skimage.measure.regionprops(lab_mask)
             obj = rp[0]
@@ -3978,12 +3988,16 @@ class Yeast_ACDC_GUI(QMainWindow):
     def clearAllItems(self):
         self.clearCurvItems()
         allItems = zip(self.ax1_ContoursCurves,
+                       self.ax2_ContoursCurves,
                        self.ax1_LabelItemsIDs,
                        self.ax2_LabelItemsIDs,
                        self.ax1_BudMothLines)
         for idx, items_ID in enumerate(allItems):
-            ContCurve, _IDlabel1, _IDlabel2, BudMothLine = items_ID
-            ContCurve.setData([], [])
+            (ax1ContCurve, ax2ContCurve,
+            _IDlabel1, _IDlabel2,
+            BudMothLine) = items_ID
+            ax1ContCurve.setData([], [])
+            ax2ContCurve.setData([], [])
             _IDlabel1.setText ('')
             _IDlabel2.setText('')
             BudMothLine.setData([], [])
@@ -4867,8 +4881,6 @@ class Yeast_ACDC_GUI(QMainWindow):
         i = self.frame_i if frame_i is None else frame_i
         if cca_df is None:
             cca_df = self.cca_df
-            if self.ccaTableWin is not None:
-                self.ccaTableWin.updateTable(self.cca_df)
 
         if cca_df is not None:
             segm_df = self.allData_li[i]['acdc_df']
@@ -5024,7 +5036,6 @@ class Yeast_ACDC_GUI(QMainWindow):
             t1 = time.time()
             drawingContoursTimes = t1-t0
             self.drawingContoursTimes.append(drawingContoursTimes)
-
 
     def update_rp(self, draw=True):
         # Update rp for current self.lab (e.g. after any change)
@@ -5544,6 +5555,9 @@ class Yeast_ACDC_GUI(QMainWindow):
         self.checkIDsMultiContour()
 
         self.frames_scrollBar.setSliderPosition(self.frame_i+1)
+
+        if self.ccaTableWin is not None:
+            self.ccaTableWin.updateTable(self.cca_df)
 
     def cancelBlinking(self):
         self.stopBlinking = True
@@ -6437,6 +6451,11 @@ class Yeast_ACDC_GUI(QMainWindow):
         print('closed')
 
 if __name__ == "__main__":
+    # Handle high resolution displays:
+    if hasattr(Qt, 'AA_EnableHighDpiScaling'):
+        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
+        QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     # Create the application
     app = QApplication(sys.argv)
     # Apply dark mode

@@ -74,6 +74,7 @@ class dataPrep(QMainWindow):
         self.jumpBackwardAction = QAction(QIcon(":arrow-down.svg"),
                                         "Jump to 10 frames back", self)
         self.prevAction.setShortcut("left")
+        self.openAction.setShortcut("Ctrl+O")
         self.nextAction.setShortcut("right")
         self.jumpForwardAction.setShortcut("up")
         self.jumpBackwardAction.setShortcut("down")
