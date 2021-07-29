@@ -154,13 +154,18 @@ def _load_files(file_dir, channels):
                     channel_files.append(np.load(ch_aligned_path))
                 except IndexError:
                     print(f'Could not find an aligned file for channel {channel}')
-                    print(f'Please make sure that an aligned file exists for this position or exclude it from analysis')
-                    raise
+                    print(f'Resulting data will not contain fluorescent data for this channel')
+                    channel_files.append(None)
     else:
         for channel in channels:
-            ch_not_aligned_path = glob.glob(f'{file_dir}\*{channel}*')[0]
-            channel_files.append(imread(ch_not_aligned_path))
-    
+            try:
+                ch_not_aligned_path = glob.glob(f'{file_dir}\*{channel}*')[0]
+                channel_files.append(imread(ch_not_aligned_path))
+            except IndexError:
+                print(f'Could not find an aligned file for channel {channel}')
+                print(f'Resulting data will not contain fluorescent data for this channel')
+                channel_files.append(None)
+                
     # append segmentation file
     try:
         segm_file_path = glob.glob(f'{file_dir}\*_segm.npz')[0]
@@ -234,20 +239,23 @@ def _calculate_flu_signal(seg_mask, channel_data, channels, cc_data):
     max_frame = cc_data.frame_i.max()
     df = pd.DataFrame(columns=['frame_i', 'Cell_ID'])
     bg_index = (seg_mask[:max_frame+1]==0).astype(int)
-    bg_medians = [np.median(ch_array[:max_frame+1]*bg_index, axis=(1,2)) for ch_array in channel_data]
+    bg_medians = [np.median(ch_array[:max_frame+1]*bg_index, axis=(1,2)) if ch_array is not None else None for ch_array in channel_data]
     for cell_id in tqdm(cc_data.Cell_ID.unique()):
         temp_df = pd.DataFrame(columns=['frame_i', 'Cell_ID'])
         times = range(max_frame+1)
         temp_df['frame_i'] = times; temp_df['Cell_ID'] = cell_id
         index_array = (seg_mask[:max_frame+1] == cell_id)
-        channel_data_cut = [c_arr[:max_frame+1] for c_arr in channel_data]
+        channel_data_cut = [c_arr[:max_frame+1] if c_arr is not None else None for c_arr in channel_data]
         for c_idx, c_array in enumerate(channel_data_cut):
-            cell_signal = c_array*index_array
-            summed = np.sum(cell_signal, axis=(1,2))
-            count = np.sum(cell_signal!=0, axis=(1,2))
-            mean_signal = np.divide(summed, count, where=count!=0)
-            corrected_signal = mean_signal-bg_medians[c_idx]
-            temp_df[f'{channels[c_idx]}_corrected_mean_signal'] = corrected_signal
+            if c_array is not None:
+                cell_signal = c_array*index_array
+                summed = np.sum(cell_signal, axis=(1,2))
+                count = np.sum(cell_signal!=0, axis=(1,2))
+                mean_signal = np.divide(summed, count, where=count!=0)
+                corrected_signal = mean_signal-bg_medians[c_idx]
+                temp_df[f'{channels[c_idx]}_corrected_mean_signal'] = corrected_signal
+            else:
+                temp_df[f'{channels[c_idx]}_corrected_mean_signal'] = 0
         df = df.append(temp_df, ignore_index=True)
     signal_indices = np.array(['signal' in col for col in df.columns])
     keep_rows = df.loc[:,signal_indices].sum(axis=1)>0
