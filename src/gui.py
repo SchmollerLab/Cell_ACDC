@@ -1850,9 +1850,8 @@ class Yeast_ACDC_GUI(QMainWindow):
 
         # Correct past frames
         for i in range(self.frame_i-1, -1, -1):
-            self.storeUndoRedoCca(i, cca_df_i, undoId)
-
             cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
+            self.storeUndoRedoCca(i, cca_df_i, undoId)
             ccs = cca_df_i.at[ID, 'cell_cycle_stage']
             relID = cca_df_i.at[ID, 'relative_ID']
             ccs_relID = cca_df_i.at[relID, 'cell_cycle_stage']
@@ -2300,7 +2299,7 @@ class Yeast_ACDC_GUI(QMainWindow):
                         self.ax2_BrushCircle.setPen(self.ax2_BrushCirclePen)
                     else:
                         rgb = self.img2.lut[hoverID]
-                        rgbPen = rgb*1.2
+                        rgbPen = rgbPen = np.clip(rgb*1.2, 0, 255)
                         self.ax2_BrushCircle.setBrush(*rgb, 100)
                         self.ax2_BrushCircle.setPen(*rgbPen, width=2)
             else:
