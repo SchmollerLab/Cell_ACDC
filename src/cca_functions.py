@@ -40,7 +40,13 @@ def find_available_channels(filenames):
     ch_names, warn = ch_name_selector.get_available_channels(filenames)
     return ch_names, warn
     
-def calculate_downstream_data(file_names, image_folders, positions, channels):
+def calculate_downstream_data(
+    file_names,
+    image_folders, 
+    positions, 
+    channels, 
+    force_recalculation=False
+):
     no_of_channels = len(channels)    
     overall_df = pd.DataFrame()
     for file_idx, file in enumerate(file_names):
@@ -52,7 +58,7 @@ def calculate_downstream_data(file_names, image_folders, positions, channels):
             print(f'Number of annotated frames in position: {cc_data.frame_i.max()+1}')
             cc_data = _rename_columns(cc_data)
             max_frame = cc_data.frame_i.max()
-            if cc_props is not None:
+            if cc_props is not None and force_recalculation==False:
                 print('Cell Cycle property data already existing, loaded from disk...')
                 overall_df = overall_df.append(cc_props).reset_index(drop=True)
             else:
@@ -69,17 +75,19 @@ def calculate_downstream_data(file_names, image_folders, positions, channels):
                 temp_df['directory'] = pos_dir
                     # calculate amount of corrected signal by multiplying mean with area
                 for channel in channels:
-                    temp_df[f'{channel}_corrected_signal_amount'] = temp_df[f'{channel}_corrected_mean_signal'] *\
+                    temp_df[f'{channel}_corrected_amount'] = temp_df[f'{channel}_corrected_mean'] *\
                     temp_df['area']
+                    temp_df[f'{channel}_corrected_concentration'] = temp_df[f'{channel}_corrected_amount']/\
+                    temp_df['cell_vol_fl']
                 # calculate area of daughter cell where applicable
-                temp_df['daughter_area'] = 0
-                daughter_areas = temp_df.merge(
+                temp_df['daughter_area'] = 0; temp_df['daughter_volume'] = 0
+                daughter_data = temp_df.merge(
                     temp_df, how='left', 
                     left_on=['relative_ID', 'frame_i', 'position', 'file'],
                     right_on=['Cell_ID', 'frame_i', 'position', 'file']
-                )['area_y']
-                daughter_indices= np.logical_and(~daughter_areas.isna(),temp_df['relationship']=='mother')
-                temp_df.loc[daughter_indices,'daughter_area'] = daughter_areas[daughter_indices]
+                )[['area_y', 'cell_vol_fl_y']]
+                temp_df[['daughter_area', 'daughter_volume']] = daughter_data
+                temp_df.loc[temp_df.relationship=='bud', ['daughter_area', 'daughter_volume']] = 0
                 print('Saving calculated data for next time...')
                 files_in_curr_dir = os.listdir(pos_dir)
                 common_prefix = _determine_common_prefix(files_in_curr_dir)
@@ -253,12 +261,12 @@ def _calculate_flu_signal(seg_mask, channel_data, channels, cc_data):
                 count = np.sum(cell_signal!=0, axis=(1,2))
                 mean_signal = np.divide(summed, count, where=count!=0)
                 corrected_signal = mean_signal-bg_medians[c_idx]
-                temp_df[f'{channels[c_idx]}_corrected_mean_signal'] = corrected_signal
+                temp_df[f'{channels[c_idx]}_corrected_mean'] = np.clip(corrected_signal, 0, np.inf)
             else:
-                temp_df[f'{channels[c_idx]}_corrected_mean_signal'] = 0
+                temp_df[f'{channels[c_idx]}_corrected_mean'] = -1
         df = df.append(temp_df, ignore_index=True)
     signal_indices = np.array(['signal' in col for col in df.columns])
-    keep_rows = df.loc[:,signal_indices].sum(axis=1)>0
+    keep_rows = df.loc[:,signal_indices].sum(axis=1) >= 0
     df = df[keep_rows]
     df = df.sort_values(['frame_i', 'Cell_ID']).reset_index(drop=True)
     return df
