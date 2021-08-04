@@ -1530,15 +1530,30 @@ slW = 0.6  # sliders width
 bW = 0.1  # buttons width
 
 selected_path = folder_dialog(title = "Select folder containing valid experiments")
-beyond_listdir = load.beyond_listdir_pos(selected_path)
-select_widget = load.select_exp_folder()
-select_widget.run_widget(beyond_listdir.all_exp_info,
+if os.path.basename(selected_path).find('Position_') != -1:
+    is_pos_folder = True
+else:
+    is_pos_folder = False
+
+if os.path.basename(selected_path).find('Images') != -1:
+    is_images_folder = True
+else:
+    is_images_folder = False
+
+if not is_pos_folder and not is_images_folder:
+    beyond_listdir = load.beyond_listdir_pos(selected_path)
+    select_widget = load.select_exp_folder()
+    select_widget.run_widget(beyond_listdir.all_exp_info,
                          title='Select experiment to segment',
                          label_txt='Select experiment to segment',
                          full_paths=beyond_listdir.TIFFs_path,
                          showinexplorer_button=True)
 
-TIFFs_path = select_widget.TIFFs_path
+    TIFFs_path = select_widget.TIFFs_path
+elif is_pos_folder:
+    TIFFs_path = os.path.dirname(selected_path)
+elif is_images_folder:
+    TIFFs_path = os.path.dirname(os.path.dirname(selected_path))
 
 """Load data"""
 app = app_GUI(TIFFs_path)

@@ -80,6 +80,10 @@ class dataPrep(QMainWindow):
         self.jumpBackwardAction.setShortcut("down")
         self.openAction.setShortcut("Ctrl+O")
 
+        toolTip = "Add ROI where to calculate background intensity"
+        self.addBkrgRoiActon = QAction(QIcon(":bkgrRoi.svg"), toolTip, self)
+        self.addBkrgRoiActon.setDisabled(True)
+
         self.ZbackAction = QAction(QIcon(":zback.svg"),
                                 "Use same z-slice from first frame to here",
                                 self)
@@ -130,6 +134,8 @@ class dataPrep(QMainWindow):
         navigateToolbar.addAction(self.jumpBackwardAction)
         navigateToolbar.addAction(self.jumpForwardAction)
 
+        navigateToolbar.addAction(self.addBkrgRoiActon)
+
         navigateToolbar.addAction(self.ZbackAction)
         navigateToolbar.addAction(self.ZforwAction)
         navigateToolbar.addAction(self.interpAction)
@@ -152,6 +158,7 @@ class dataPrep(QMainWindow):
         self.nextAction.triggered.connect(self.next_cb)
         self.jumpForwardAction.triggered.connect(self.skip10ahead_cb)
         self.jumpBackwardAction.triggered.connect(self.skip10back_cb)
+        self.addBkrgRoiActon.triggered.connect(self.addBkgrRoi)
         self.okAction.triggered.connect(self.save)
         self.startAction.triggered.connect(self.prepData)
         self.interpAction.triggered.connect(self.interp_z)
@@ -198,14 +205,13 @@ class dataPrep(QMainWindow):
         self.ax1.addItem(self.img)
         self.hist.setImageItem(self.img)
 
-        self.gui_connectGraphicsEvents()
-
     def removeAllItems(self):
         self.ax1.clear()
         self.frameLabel.setText(' ')
 
     def gui_connectGraphicsEvents(self):
         self.img.hoverEvent = self.gui_hoverEventImg
+        self.img.mousePressEvent = self.gui_mousePressEventImg
 
     def gui_createImgWidgets(self):
         self.img_Widglayout = QtGui.QGridLayout()
@@ -227,13 +233,22 @@ class dataPrep(QMainWindow):
         _z_label.setFont(_font)
         self.z_label = _z_label
 
+        self.zProjComboBox = QComboBox()
+        self.zProjComboBox.addItems(['single z-slice',
+                                     'max z-projection',
+                                     'mean z-projection',
+                                     'median z-proj.'])
+        self.zProjComboBox.setDisabled(True)
+
         self.img_Widglayout.addWidget(_t_label, 0, 0, alignment=Qt.AlignCenter)
-        self.img_Widglayout.addWidget(self.frame_i_scrollBar_img, 0, 1, 1, 20)
+        self.img_Widglayout.addWidget(self.frame_i_scrollBar_img, 0, 1, 1, 30)
 
         self.img_Widglayout.addWidget(_z_label, 1, 0, alignment=Qt.AlignCenter)
-        self.img_Widglayout.addWidget(self.zSlice_scrollBar, 1, 1, 1, 20)
+        self.img_Widglayout.addWidget(self.zSlice_scrollBar, 1, 1, 1, 30)
 
-        self.img_Widglayout.setContentsMargins(100, 0, 50, 0)
+        self.img_Widglayout.addWidget(self.zProjComboBox, 1, 31, 1, 1)
+
+        self.img_Widglayout.setContentsMargins(100, 0, 20, 0)
 
     def gui_hoverEventImg(self, event):
         # Update x, y, value label bottom right
@@ -341,28 +356,34 @@ class dataPrep(QMainWindow):
             self.frameLabel.setText(
                      f'Current frame = {self.frame_i+1}/{self.num_frames}')
 
-    def getImage(self):
-        PosData = self.data[self.pos_i]
-        img = PosData.img_data[self.frame_i].copy()
+    def getImage(self, PosData, frames, frame_i):
+        img = frames[frame_i].copy()
+        if PosData.SizeZ > 1:
+            z = PosData.segmInfo_df.at[frame_i,
+                                       'z_slice_used_dataPrep']
+            zProjHow = PosData.segmInfo_df.at[frame_i,
+                                              'which_z_proj']
+            if zProjHow == 'single z-slice':
+                self.zSlice_scrollBar.setSliderPosition(z)
+                self.z_label.setText(f'z-slice  {z}/{PosData.SizeZ}')
+                img = img[z]
+            elif zProjHow == 'max z-projection':
+                img = img.max(axis=0)
+            elif zProjHow == 'mean z-projection':
+                img = img.mean(axis=0)
+            elif zProjHow == 'median z-proj.':
+                img = np.median(img, axis=0)
         return img
 
     def update_img(self):
         self.updateFramePosLabel()
         PosData = self.data[self.pos_i]
-        img = self.getImage()
-        if PosData.SizeZ > 1:
-            z = PosData.segmInfo_df.at[self.frame_i,
-                                             'z_slice_used_dataPrep']
-            self.zSlice_scrollBar.setSliderPosition(z)
-            self.z_label.setText(f'z-slice  {z}/{PosData.SizeZ}')
-            img = img[z]
+        img = self.getImage(PosData, PosData.img_data, self.frame_i)
         img = img/img.max()
         self.img.setImage(img)
 
     def init_attr(self):
-        self.pos_i = 0
-        self.frame_i = 0
-
+        self.bkgrROIs = []
         if self.num_pos > 1:
             self.frame_i_scrollBar_img.setEnabled(False)
         else:
@@ -377,13 +398,121 @@ class dataPrep(QMainWindow):
         self.update_img()
 
     def crop(self, data):
-        x0, y0 = [int(round(c)) for c in self.roi.pos()]
-        w, h = [int(round(c)) for c in self.roi.size()]
+        x0, y0 = [int(round(c)) for c in self.cropROI.pos()]
+        w, h = [int(round(c)) for c in self.cropROI.size()]
         if data.ndim == 4:
             croppedData = data[:, :, y0:y0+h, x0:x0+w]
         elif data.ndim == 3:
             croppedData = data[:, y0:y0+h, x0:x0+w]
         return croppedData
+
+    def saveBkgrValues(self, PosData):
+        if not self.bkgrROIs:
+            return
+
+
+        self.bkgrMask = np.zeros(self.img.image.shape, bool)
+        for roi in self.bkgrROIs:
+            xl, yl = [int(round(c)) for c in roi.pos()]
+            w, h = [int(round(c)) for c in roi.size()]
+            self.bkgrMask[xl:xl+w, yl:yl+h] = True
+
+        channel_names = []
+        frame_idxs = []
+        bkgr_medians = []
+        bkgr_means = []
+        bkgr_q05s = []
+        bkgr_q25s = []
+        bkgr_q75s = []
+        bkgr_q95s = []
+        bkgr_stds = []
+        bkgr_sampleSizes = []
+        for tif_path in PosData.tif_paths:
+            frames = skimage.io.imread(tif_path)
+            if PosData.SizeT < 2:
+                frames = [frames]
+            filename = os.path.basename(tif_path)
+            filename_noEXT, _ = os.path.splitext(filename)
+            channel_name = filename_noEXT[len(PosData.basename)+1:]
+            for frame_i in range(len(frames)):
+                img = self.getImage(PosData, frames, frame_i)
+                channel_names.append(channel_name)
+                frame_idxs.append(frame_i)
+                bkgrMask = self.bkgrMask.copy()
+                # Remove from background mask those padded 0s from alignment
+                bkgrMask[img == 0] = False
+                bkgr_vals = img[self.bkgrMask]
+                bkgr_medians.append(np.median(bkgr_vals))
+                bkgr_means.append(np.mean(bkgr_vals))
+                bkgr_stds.append(np.std(bkgr_vals))
+                bkgr_q05s.append(np.quantile(bkgr_vals, q=0.05))
+                bkgr_q25s.append(np.quantile(bkgr_vals, q=0.25))
+                bkgr_q75s.append(np.quantile(bkgr_vals, q=0.75))
+                bkgr_q95s.append(np.quantile(bkgr_vals, q=0.95))
+                bkgr_sampleSizes.append(len(bkgr_vals))
+        df = pd.DataFrame({
+                'channel_name': channel_names,
+                'frame_i': frame_idxs,
+                'bkgr_median': bkgr_medians,
+                'bkgr_mean': bkgr_means,
+                'bkgr_std': bkgr_stds,
+                'bkgr_q05': bkgr_q05s,
+                'bkgr_q25': bkgr_q25s,
+                'bkgr_q75': bkgr_q75s,
+                'bkgr_q95': bkgr_q95s,
+                'bkgr_sampleSize': bkgr_sampleSizes
+        })
+        df.to_csv(PosData.dataPrepBkgrValues_path, index=False)
+
+    def removeROI(self, event):
+        self.bkgrROIs.remove(self.roi_to_del)
+        self.ax1.removeItem(self.roi_to_del.label)
+        self.ax1.removeItem(self.roi_to_del)
+
+    def gui_mousePressEventImg(self, event):
+        PosData = self.data[self.pos_i]
+        right_click = event.button() == Qt.MouseButton.RightButton
+        left_click = event.button() == Qt.MouseButton.LeftButton
+
+        x, y = event.pos().x(), event.pos().y()
+
+        # Check if right click on ROI
+        for r, roi in enumerate(self.bkgrROIs):
+            handleSize = 7
+            x0, y0 = [int(c) for c in roi.pos()]
+            w, h = [int(c) for c in roi.size()]
+            x1, y1 = x0+w, y0+h
+            clickedOnROI = (
+                x>=x0-handleSize and x<=x1+handleSize
+                and y>=y0-handleSize and y<=y1+handleSize
+            )
+            raiseContextMenuRoi = right_click and clickedOnROI
+            dragRoi = left_click and clickedOnROI
+            if raiseContextMenuRoi:
+                self.roi_to_del = roi
+                self.roiContextMenu = QMenu(self)
+                separator = QAction(self)
+                separator.setSeparator(True)
+                self.roiContextMenu.addAction(separator)
+                action = QAction('Remove ROI')
+                action.triggered.connect(self.removeROI)
+                self.roiContextMenu.addAction(action)
+                self.roiContextMenu.exec_(event.screenPos())
+            elif dragRoi:
+                event.ignore()
+                return
+
+        x0, y0 = [int(c) for c in self.cropROI.pos()]
+        w, h = [int(c) for c in self.cropROI.size()]
+        x1, y1 = x0+w, y0+h
+        clickedOnROI = (
+            x>=x0-handleSize and x<=x1+handleSize
+            and y>=y0-handleSize and y<=y1+handleSize
+        )
+        dragRoi = left_click and clickedOnROI
+        if dragRoi:
+            event.ignore()
+            return
 
     def save(self):
         msg = QtGui.QMessageBox()
@@ -401,6 +530,8 @@ class dataPrep(QMainWindow):
                 'Saving data... (check progress in the terminal)',
                 color='w')
 
+            self.saveBkgrValues(PosData)
+
             if PosData.SizeZ > 1:
                 # Save segmInfo
                 PosData.segmInfo_df.to_csv(PosData.segmInfo_df_csv_path)
@@ -410,13 +541,13 @@ class dataPrep(QMainWindow):
             croppedData = self.crop(data)
             print('Cropped data shape: ', croppedData.shape)
 
-            x0, y0 = [int(round(c)) for c in self.roi.pos()]
-            w, h = [int(round(c)) for c in self.roi.size()]
+            x0, y0 = [int(round(c)) for c in self.cropROI.pos()]
+            w, h = [int(round(c)) for c in self.cropROI.size()]
             print(f'Saving crop ROI coords: x_left = {x0}, x_right = {x0+w}, '
                   f'y_top = {y0}, y_bottom = {y0+h}\n'
-                  f'to {PosData.cropROI_coords_path}')
+                  f'to {PosData.dataPrepROIs_coords_path}')
 
-            with open(PosData.cropROI_coords_path, 'w') as csv:
+            with open(PosData.dataPrepROIs_coords_path, 'w') as csv:
                 csv.write(f'x_left,{x0}\n'
                           f'x_right,{x0+w}\n'
                           f'y_top,{y0}\n'
@@ -559,43 +690,70 @@ class dataPrep(QMainWindow):
         return True
 
     def init_segmInfo_df(self):
+        self.pos_i = 0
+        self.frame_i = 0
         for PosData in self.data:
             if PosData.segmInfo_df is None and PosData.SizeZ > 1:
                 mid_slice = int(PosData.SizeZ/2)
                 PosData.segmInfo_df = pd.DataFrame(
                     {'frame_i': range(self.num_frames),
-                     'z_slice_used_dataPrep': [mid_slice]*self.num_frames}
+                     'z_slice_used_dataPrep': [mid_slice]*self.num_frames,
+                     'which_z_proj': ['single z-slice']*self.num_frames}
                 ).set_index('frame_i')
 
         if self.data[0].SizeZ > 1:
             self.zSlice_scrollBar.setDisabled(False)
-            self.zSlice_scrollBar.setMaximum(PosData.SizeZ)
+            self.zProjComboBox.setDisabled(False)
+            self.zSlice_scrollBar.setMaximum(PosData.SizeZ-1)
             try:
                 self.zSlice_scrollBar.sliderMoved.disconnect()
+                self.zProjComboBox.currentTextChanged.disconnect()
             except:
                 pass
             self.zSlice_scrollBar.sliderMoved.connect(self.update_z_slice)
+            self.zProjComboBox.currentTextChanged.connect(self.updateZproj)
             if self.data[0].SizeT > 1:
                 self.interpAction.setEnabled(True)
                 self.ZbackAction.setEnabled(True)
                 self.ZforwAction.setEnabled(True)
+            how = PosData.segmInfo_df.at[self.frame_i, 'which_z_proj']
+            self.zProjComboBox.setCurrentText(how)
 
     def update_z_slice(self, z):
+        if self.zProjComboBox.currentText() == 'single z-slice':
+            PosData = self.data[self.pos_i]
+            PosData.segmInfo_df.at[self.frame_i, 'z_slice_used_dataPrep'] = z
+            self.update_img()
+
+    def updateZproj(self, how):
         PosData = self.data[self.pos_i]
-        PosData.segmInfo_df.at[self.frame_i, 'z_slice_used_dataPrep'] = z
-        self.update_img()
+        PosData.segmInfo_df.at[self.frame_i, 'which_z_proj'] = how
+        if how == 'single z-slice':
+            self.zSlice_scrollBar.setDisabled(False)
+            self.z_label.setStyleSheet('color: black')
+            self.update_z_slice(self.zSlice_scrollBar.sliderPosition())
+        else:
+            self.zSlice_scrollBar.setDisabled(True)
+            self.z_label.setStyleSheet('color: gray')
+            self.update_img()
 
     def useSameZ_fromHereBack(self, event):
+        how = self.zProjComboBox.currentText()
         PosData = self.data[self.pos_i]
         z = PosData.segmInfo_df.at[self.frame_i, 'z_slice_used_dataPrep']
         PosData.segmInfo_df.loc[:self.frame_i-1,
                                       'z_slice_used_dataPrep'] = z
+        PosData.segmInfo_df.loc[:self.frame_i-1,
+                                      'zProjHow'] = how
 
     def useSameZ_fromHereForw(self, event):
+        how = self.zProjComboBox.currentText()
         PosData = self.data[self.pos_i]
         z = PosData.segmInfo_df.at[self.frame_i, 'z_slice_used_dataPrep']
         PosData.segmInfo_df.loc[self.frame_i:,
                                       'z_slice_used_dataPrep'] = z
+        PosData.segmInfo_df.loc[:self.frame_i-1,
+                                      'zProjHow'] = how
 
     def interp_z(self, event):
         PosData = self.data[self.pos_i]
@@ -607,6 +765,8 @@ class dataPrep(QMainWindow):
         zz = np.round(f(xx)).astype(int)
         PosData.segmInfo_df.loc[:self.frame_i-1,
                                       'z_slice_used_dataPrep'] = zz
+        PosData.segmInfo_df.loc[:self.frame_i-1,
+                                      'zProjHow'] = 'single z-slice'
 
 
     def prepData(self, event):
@@ -637,13 +797,9 @@ class dataPrep(QMainWindow):
                    f'{zipPath}',
                    msg.Yes | msg.No
                 )
-                if archive == msg.No:
-                    doZip = False
-                else:
-                    doZip = True
-            if doZip:
-                print(f'Zipping Images folder: {zipPath}')
-                shutil.make_archive(imagesPath, 'zip', imagesPath)
+                if archive == msg.Yes:
+                    print(f'Zipping Images folder: {zipPath}')
+                    shutil.make_archive(imagesPath, 'zip', imagesPath)
             self.npy_to_npz(PosData)
             self.alignData(self.user_ch_name, PosData)
             if PosData.SizeZ>1:
@@ -651,7 +807,7 @@ class dataPrep(QMainWindow):
 
         self.update_img()
         print('Done.')
-        self.addROIrect()
+        self.addROIs()
         self.okAction.setEnabled(True)
         self.titleLabel.setText(
             'Data successfully prepped. You can now crop the images or '
@@ -665,10 +821,10 @@ class dataPrep(QMainWindow):
         w, h = int(m[0][0]), int(m[0][1])
         xc, yc = int(round(X/2)), int(round(Y/2))
         yl, xl = int(round(xc-w/2)), int(round(yc-h/2))
-        self.roi.setPos([xl, yl])
-        self.roi.setSize([w, h])
+        self.cropROI.setPos([xl, yl])
+        self.cropROI.setSize([w, h])
 
-    def addROIrect(self):
+    def addROIs(self):
         Y, X = self.img.image.shape
 
         max_size = round(int(np.log2(min([Y, X])/16)))
@@ -693,39 +849,107 @@ class dataPrep(QMainWindow):
         xc, yc = int(round(X/2)), int(round(Y/2))
         yl, xl = int(round(xc-w/2)), int(round(yc-h/2))
 
-        # Add ROI Rectangle
-        roi = pg.ROI([xl, yl], [w, h],
+        # Add crop ROI Rectangle
+        cropROI = pg.ROI([xl, yl], [w, h],
                      rotatable=False,
                      removable=False,
                      pen=pg.mkPen(color='r'),
                      maxBounds=QRectF(QRect(0,0,X,Y)))
 
-        roi.handleSize = 7
+        cropROI.handleSize = 7
+        cropROI.label = pg.LabelItem('Crop ROI', color='r', size='12pt')
+        hLabel = cropROI.label.rect().bottom()
+        cropROI.label.setPos(xl, yl-hLabel)
 
         ## handles scaling horizontally around center
-        roi.addScaleHandle([1, 0.5], [0, 0.5])
-        roi.addScaleHandle([0, 0.5], [1, 0.5])
+        cropROI.addScaleHandle([1, 0.5], [0, 0.5])
+        cropROI.addScaleHandle([0, 0.5], [1, 0.5])
 
         ## handles scaling vertically from opposite edge
-        roi.addScaleHandle([0.5, 0], [0.5, 1])
-        roi.addScaleHandle([0.5, 1], [0.5, 0])
+        cropROI.addScaleHandle([0.5, 0], [0.5, 1])
+        cropROI.addScaleHandle([0.5, 1], [0.5, 0])
 
         ## handles scaling both vertically and horizontally
-        roi.addScaleHandle([1, 1], [0, 0])
-        roi.addScaleHandle([0, 0], [1, 1])
+        cropROI.addScaleHandle([1, 1], [0, 0])
+        cropROI.addScaleHandle([0, 0], [1, 1])
 
-        self.roi = roi
-        self.roi.sigRegionChanged.connect(self.updateCurrentRoiShape)
-        self.roi.sigRegionChangeFinished.connect(self.ROImovingFinished)
+        self.cropROI = cropROI
+        self.cropROI.sigRegionChanged.connect(self.updateCurrentRoiShape)
+        self.cropROI.sigRegionChangeFinished.connect(self.ROImovingFinished)
 
-        self.ax1.addItem(roi)
+        self.ax1.addItem(cropROI)
+        self.ax1.addItem(cropROI.label)
+
+        self.addBkrgRoiActon.setDisabled(False)
+        self.bkgrROIs = []
+        self.addBkgrRoi()
+
+    def addBkgrRoi(self, checked=False):
+        # Add bkgr ROI Rectangle
+        Y, X = self.img.image.shape
+        xRange, yRange = self.ax1.viewRange()
+        xl, yl = abs(xRange[0]), abs(yRange[0])
+        w, h = int(X/8), int(Y/8)
+        bkgrROI = pg.ROI([xl, yl], [w, h],
+                     rotatable=False,
+                     removable=False,
+                     pen=pg.mkPen(color=(150,150,150)),
+                     maxBounds=QRectF(QRect(0,0,X,Y)))
+
+        bkgrROI.handleSize = 7
+        bkgrROI.label = pg.LabelItem('Bkgr. ROI', color=(150,150,150),
+                                                       size='12pt')
+        hLabel = bkgrROI.label.rect().bottom()
+        bkgrROI.label.setPos(xl, yl-hLabel)
+
+        ## handles scaling horizontally around center
+        bkgrROI.addScaleHandle([1, 0.5], [0, 0.5])
+        bkgrROI.addScaleHandle([0, 0.5], [1, 0.5])
+
+        ## handles scaling vertically from opposite edge
+        bkgrROI.addScaleHandle([0.5, 0], [0.5, 1])
+        bkgrROI.addScaleHandle([0.5, 1], [0.5, 0])
+
+        ## handles scaling both vertically and horizontally
+        bkgrROI.addScaleHandle([1, 1], [0, 0])
+        bkgrROI.addScaleHandle([0, 0], [1, 1])
+        bkgrROI.addScaleHandle([1, 0], [0, 1])
+        bkgrROI.addScaleHandle([0, 1], [1, 0])
+
+        self.bkgrROI = bkgrROI
+        self.bkgrROI.sigRegionChanged.connect(self.bkgrROIMoving)
+        self.bkgrROI.sigRegionChangeFinished.connect(self.bkgrROImovingFinished)
+
+        self.ax1.addItem(bkgrROI)
+        self.ax1.addItem(bkgrROI.label)
+
+        self.bkgrROIs.append(self.bkgrROI)
+
+    def bkgrROIMoving(self, roi):
+        txt = roi.label.text
+        roi.setPen(color=(255,255,0))
+        roi.label.setText(txt, color=(255,255,0), size='12pt')
+        xl, yl = [int(round(c)) for c in roi.pos()]
+        hLabel = roi.label.rect().bottom()
+        roi.label.setPos(xl, yl-hLabel)
+
+    def bkgrROImovingFinished(self, roi):
+        txt = roi.label.text
+        roi.setPen(color=(150,150,150))
+        roi.label.setText(txt, color=(150,150,150), size='12pt')
 
     def ROImovingFinished(self, roi):
+        txt = roi.label.text
         roi.setPen(color='r')
+        roi.label.setText(txt, color='r', size='12pt')
 
     def updateCurrentRoiShape(self, roi):
         roi.setPen(color=(255,255,0))
-        w, h = [int(round(c)) for c in self.roi.size()]
+        roi.label.setText('Crop ROI', color=(255,255,0), size='12pt')
+        xl, yl = [int(round(c)) for c in roi.pos()]
+        hLabel = roi.label.rect().bottom()
+        roi.label.setPos(xl, yl-hLabel)
+        w, h = [int(round(c)) for c in roi.size()]
         self.ROIshapeLabel.setText(f'   Current ROI shape: {w} x {h}')
 
     def alignData(self, user_ch_name, PosData):
@@ -802,7 +1026,7 @@ class dataPrep(QMainWindow):
                 align = False
                 # Create 0, 0 shifts to perform 0 alignment
                 PosData.loaded_shifts = np.zeros((self.num_frames,2), int)
-        elif PosData.loaded_shifts is None and PosData.SizeT == 1:
+        elif PosData.SizeT == 1:
             align = False
             # Create 0, 0 shifts to perform 0 alignment
             PosData.loaded_shifts = np.zeros((self.num_frames,2), int)
@@ -840,6 +1064,7 @@ class dataPrep(QMainWindow):
                     PosData.loaded_shifts = shifts
                 else:
                     aligned_frames = tif_data.copy()
+                print(tif_data.shape)
                 _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
                 print('Saving: ', _npz)
                 temp_npz = self.getTempfilePath(_npz)
@@ -853,7 +1078,10 @@ class dataPrep(QMainWindow):
                 self.imagej_tiffwriter(temp_tif, aligned_frames,
                                        metadata, PosData)
                 self.moveTempFile(temp_tif, tif)
-                PosData.img_data = skimage.io.imread(tif)
+                if PosData.SizeT < 2:
+                    PosData.img_data = np.array([skimage.io.imread(tif)])
+                else:
+                    PosData.img_data = skimage.io.imread(tif)
 
         _zip = zip(PosData.tif_paths, PosData.npz_paths)
         for i, (tif, npz) in enumerate(_zip):
@@ -873,7 +1101,6 @@ class dataPrep(QMainWindow):
                 else:
                     align_func = core.align_frames_2D
                     zz = None
-
                 if align:
                     aligned_frames, shifts = align_func(
                                           tif_data,
@@ -1060,7 +1287,6 @@ class dataPrep(QMainWindow):
 
         if exp_path is None:
             self.getMostRecentPath()
-            print(self.MostRecentPath)
             exp_path = QFileDialog.getExistingDirectory(
                 self, 'Select experiment folder containing Position_n folders'
                       'or specific Position_n folder', self.MostRecentPath)
@@ -1134,7 +1360,7 @@ class dataPrep(QMainWindow):
         elif is_pos_folder:
             pos_foldername = os.path.basename(exp_path)
             exp_path = os.path.dirname(exp_path)
-            images_paths = [os.path.join(exp_path, pos, 'Images')]
+            images_paths = [os.path.join(exp_path, pos_foldername, 'Images')]
 
         elif is_images_folder:
             images_paths = [exp_path]
@@ -1224,6 +1450,11 @@ class dataPrep(QMainWindow):
         self.update_img()
 
 if __name__ == "__main__":
+    # Handle high resolution displays:
+    if hasattr(Qt, 'AA_EnableHighDpiScaling'):
+        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
+        QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     # Create the application
     app = QApplication(sys.argv)
     win = dataPrep()
