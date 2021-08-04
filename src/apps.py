@@ -41,7 +41,7 @@ from PyQt5.QtWidgets import (
     QScrollBar, QWidget, QVBoxLayout, QLineEdit, QPushButton,
     QHBoxLayout, QDialog, QFormLayout, QListWidget, QAbstractItemView,
     QButtonGroup, QCheckBox, QSizePolicy, QComboBox, QSlider, QGridLayout,
-    QSpinBox, QToolButton, QTableView, QTextBrowser
+    QSpinBox, QToolButton, QTableView, QTextBrowser, QDoubleSpinBox
 )
 
 import myutils
@@ -50,487 +50,6 @@ import qrc_resources
 
 
 pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
-
-class my_paint_app:
-    def __init__(self, label_img, ID, rp, eps_percent=0.01, del_small_obj=False,
-                 overlay_img=None):
-        # matplolib dark mode
-        plt.style.use('dark_background')
-        plt.rc('axes', edgecolor='0.1')
-
-        """Initialize attributes"""
-        self.cancel = False
-        self.ID_bud = label_img.max() + 1
-        self.ID_moth = ID
-        self.label_img = label_img
-        self.coords_delete = []
-        self.overlay_img = skimage.exposure.equalize_adapthist(overlay_img)
-        self.num_cells = 1
-        """Build image containing only selected ID obj"""
-        only_ID_img = np.zeros_like(label_img)
-        only_ID_img[label_img == ID] = ID
-        all_IDs = [obj.label for obj in rp]
-        obj_rp = rp[all_IDs.index(ID)]
-        min_row, min_col, max_row, max_col = obj_rp.bbox
-        obj_bbox_h = max_row - min_row
-        obj_bbox_w = max_col - min_col
-        side_len = max([obj_bbox_h, obj_bbox_w])
-        obj_bbox_cy = min_row + obj_bbox_h/2
-        obj_bbox_cx = min_col + obj_bbox_w/2
-        obj_bottom = int(obj_bbox_cy - side_len/2)
-        obj_left = int(obj_bbox_cx - side_len/2)
-        obj_top = obj_bottom + side_len
-        obj_right = obj_left + side_len
-        self.bw = 10
-        self.xlims = (obj_left-self.bw, obj_right+self.bw)
-        self.ylims = (obj_top+self.bw, obj_bottom-self.bw)
-        self.only_ID_img = only_ID_img
-        self.sep_bud_label = only_ID_img.copy()
-        self.eraser_mask = np.zeros(self.label_img.shape, bool)
-        self.small_obj_mask = np.zeros(only_ID_img.shape, bool)
-
-        """generate image plot and connect to events"""
-        self.fig = plt.Figure()
-        self.ax = self.fig.add_subplot()
-        self.fig.subplots_adjust(bottom=0.25)
-        (self.ax).imshow(self.only_ID_img)
-        (self.ax).set_xlim(*self.xlims)
-        (self.ax).set_ylim(self.ylims)
-        (self.ax).axis('off')
-        (self.fig).suptitle('Draw a curve with the right button to separate cell.\n'
-                            'Delete object with mouse wheel button\n'
-                            'Erase with mouse left button', y=0.95)
-
-        """Find convexity defects"""
-        try:
-            cnt, defects = self.convexity_defects(
-                                              self.only_ID_img.astype(np.uint8),
-                                              eps_percent)
-        except:
-            defects = None
-        if defects is not None:
-            defects_points = [0]*len(defects)
-            for i, defect in enumerate(defects):
-                s,e,f,d = defect[0]
-                x,y = tuple(cnt[f][0])
-                defects_points[i] = (y,x)
-                self.ax.plot(x,y,'r.')
-
-        """Embed plt window into a tkinter window"""
-        sub_win = embed_tk('Mother-bud zoom', [1024,768,400,150], self.fig)
-
-
-        """Create buttons"""
-        self.ax_ok_B = self.fig.add_subplot(position=[0.2, 0.2, 0.1, 0.03])
-        self.ax_overlay_B = self.fig.add_subplot(position=[0.8, 0.2, 0.1, 0.03])
-        self.alpha_overlay_sl_ax = self.fig.add_subplot(
-                                                 position=[0.7, 0.2, 0.1, 0.03])
-        self.brightness_overlay_sl_ax = self.fig.add_subplot(
-                                                 position=[0.6, 0.2, 0.1, 0.03])
-        self.ok_B = Button(self.ax_ok_B, 'Happy\nwith that', canvas=sub_win.canvas,
-                            color='0.1', hovercolor='0.25', presscolor='0.35')
-        self.overlay_B = Button(self.ax_overlay_B, 'Overlay',
-                            canvas=sub_win.canvas,
-                            color='0.1', hovercolor='0.25', presscolor='0.35')
-        self.alpha_overlay_sl = Slider(self.alpha_overlay_sl_ax,
-                           'alpha', -0.1, 1.1,
-                            canvas=sub_win.canvas,
-                            valinit=0.3,
-                            valstep=0.01,
-                            color='0.2',
-                            init_val_line_color='0.25',
-                            valfmt='%1.2f',
-                            orientation='vertical')
-        self.brightness_overlay_sl = Slider(self.brightness_overlay_sl_ax,
-                           'brightness', 0, 2,
-                            canvas=sub_win.canvas,
-                            valinit=1,
-                            valstep=0.01,
-                            color='0.2',
-                            init_val_line_color='0.25',
-                            valfmt='%1.2f',
-                            orientation='vertical')
-        """Connect to events"""
-        (sub_win.canvas).mpl_connect('button_press_event', self.mouse_down)
-        (sub_win.canvas).mpl_connect('button_release_event', self.mouse_up)
-        self.cid_brush_circle = (sub_win.canvas).mpl_connect(
-                                                    'motion_notify_event',
-                                                    self.draw_brush_circle)
-        (sub_win.canvas).mpl_connect('key_press_event', self.key_down)
-        (sub_win.canvas).mpl_connect('resize_event', self.resize)
-        (sub_win.root).protocol("WM_DELETE_WINDOW", self.abort_exec)
-        self.overlay_B.on_clicked(self.toggle_overlay)
-        self.ok_B.on_clicked(self.ok)
-        self.alpha_overlay_sl.on_changed(self.update_img)
-        self.brightness_overlay_sl.on_changed(self.update_img)
-        self.sub_win = sub_win
-        self.clicks_count = 0
-        self.brush_size = 2
-        self.eraser_on = True
-        self.overlay_on = False
-        self.set_labRGB_colors()
-        sub_win.root.wm_attributes('-topmost',True)
-        sub_win.root.focus_force()
-        sub_win.root.after_idle(sub_win.root.attributes,'-topmost',False)
-        sub_win.root.mainloop()
-
-    def toggle_overlay(self, event):
-        self.overlay_on = not self.overlay_on
-        if self.overlay_on:
-            self.alpha_overlay_sl_ax.set_visible(True)
-            self.brightness_overlay_sl_ax.set_visible(True)
-        else:
-            self.alpha_overlay_sl_ax.set_visible(False)
-            self.brightness_overlay_sl_ax.set_visible(False)
-        self.update_img(None)
-
-    def set_labRGB_colors(self):
-        # Generate a colormap as sparse as possible given the max ID.
-        gradient = np.linspace(255, 0, self.num_cells, dtype=int)
-        labelRGB_colors = np.asarray([plt.cm.viridis(i) for i in gradient])
-        self.labRGB_colors = labelRGB_colors
-
-    def key_down(self, event):
-        key = event.key
-        if key == 'enter':
-            self.ok(None)
-        elif key == 'ctrl+z':
-            self.undo(None)
-        elif key == 'up':
-            self.brush_size += 1
-            self.draw_brush_circle(event)
-        elif key == 'down':
-            self.brush_size -= 1
-            self.draw_brush_circle(event)
-        elif key == 'x':
-            # Switch eraser mode on or off
-            self.eraser_on = not self.eraser_on
-            self.draw_brush_circle(event)
-
-    def resize(self, event):
-        # [left, bottom, width, height]
-        (self.ax_left, self.ax_bottom,
-        self.ax_right, self.ax_top) = self.ax.get_position().get_points().flatten()
-        B_h = 0.08
-        B_w = 0.1
-        self.ax_ok_B.set_position([self.ax_right-B_w, self.ax_bottom-B_h-0.01,
-                                   B_w, B_h])
-        self.ax_overlay_B.set_position([self.ax_left, self.ax_bottom-B_h-0.01,
-                                   B_w*2, B_h])
-        self.alpha_overlay_sl_ax.set_position([self.ax_right+0.05,
-                                               self.ax_bottom,
-                                               B_w/3,
-                                               self.ax_top-self.ax_bottom])
-        self.brightness_overlay_sl_ax.set_position([
-                                               self.ax_right+0.05+B_w/3+0.05,
-                                               self.ax_bottom,
-                                               B_w/3,
-                                               self.ax_top-self.ax_bottom])
-        if self.overlay_img is None:
-            self.ax_overlay_B.set_visible(False)
-        self.alpha_overlay_sl_ax.set_visible(False)
-        self.brightness_overlay_sl_ax.set_visible(False)
-
-    def update_img(self, event):
-        lab = self.sep_bud_label.copy()
-        for y, x in self.coords_delete:
-            del_ID = self.sep_bud_label[y, x]
-            lab[lab == del_ID] = 0
-        rp = skimage.measure.regionprops(lab)
-        num_cells = len(rp)
-        if self.num_cells != num_cells:
-            self.set_labRGB_colors()
-        if not self.overlay_on:
-            img = lab
-        else:
-            brightness = self.brightness_overlay_sl.val
-            img = skimage.color.label2rgb(
-                                lab,image=self.overlay_img*brightness,
-                                bg_label=0,
-                                bg_color=(0.1,0.1,0.1),
-                                colors=self.labRGB_colors,
-                                alpha=self.alpha_overlay_sl.val
-                                )
-            img = np.clip(img, 0, 1)
-        self.ax.clear()
-        self.ax.imshow(img)
-        self.ax.set_xlim(*self.xlims)
-        self.ax.set_ylim(*self.ylims)
-        self.ax.axis('off')
-        for t in self.ax.texts:
-            t.set_visible(False)
-        for obj in rp:
-            y, x = obj.centroid
-            txt = f'{obj.label}'
-            self.ax.text(
-                    int(x), int(y), txt, fontsize=18,
-                    fontweight='semibold', horizontalalignment='center',
-                    verticalalignment='center', color='k', alpha=1)
-        (self.sub_win.canvas).draw_idle()
-
-    def mouse_down(self, event):
-        if event.inaxes == self.ax and event.button == 3:
-            x = int(event.xdata)
-            y = int(event.ydata)
-            if self.clicks_count == 0:
-                self.x0 = x
-                self.y0 = y
-                self.cid_line = (self.sub_win.canvas).mpl_connect(
-                                                         'motion_notify_event',
-                                                                self.draw_line)
-                self.pltLine = Line2D([self.x0, self.x0], [self.y0, self.y0])
-                self.clicks_count = 1
-            elif self.clicks_count == 1:
-                self.x1 = x
-                self.y1 = y
-                (self.sub_win.canvas).mpl_disconnect(self.cid_line)
-                self.cid_bezier = (self.sub_win.canvas).mpl_connect(
-                                                         'motion_notify_event',
-                                                              self.draw_bezier)
-                self.clicks_count = 2
-            elif self.clicks_count == 2:
-                self.x2 = x
-                self.y2 = y
-                (self.sub_win.canvas).mpl_disconnect(self.cid_bezier)
-                self.separate_cb()
-                self.clicks_count = 0
-
-        elif event.inaxes == self.ax and event.button == 2:
-            xp = int(event.xdata)
-            yp = int(event.ydata)
-            self.coords_delete.append((yp, xp))
-            self.update_img(None)
-
-        elif event.inaxes == self.ax and event.button == 1:
-            (self.sub_win.canvas).mpl_disconnect(self.cid_brush_circle)
-            self.xb, self.yb = self.ax_transData_and_coerce(self.ax, event.x,
-                                                                     event.y,
-                                                        self.label_img.shape)
-            self.apply_brush(event)
-            self.cid_brush = (self.sub_win.canvas).mpl_connect(
-                                                     'motion_notify_event',
-                                                          self.apply_brush)
-
-    def get_poly_brush(self, yxc1, yxc2, r):
-        # see https://en.wikipedia.org/wiki/Tangent_lines_to_circles
-        R = r
-        y1, x1 = yxc1
-        y2, x2 = yxc2
-        arcsin_den = np.sqrt((x2-x1)**2+(y2-y1)**2)
-        arctan_den = (x2-x1)
-        if arcsin_den!=0 and arctan_den!=0:
-            beta = np.arcsin((R-r)/arcsin_den)
-            gamma = -np.arctan((y2-y1)/arctan_den)
-            alpha = gamma-beta
-            x3 = x1 + r*np.sin(alpha)
-            y3 = y1 + r*np.cos(alpha)
-            x4 = x2 + R*np.sin(alpha)
-            y4 = y2 + R*np.cos(alpha)
-
-            alpha = gamma+beta
-            x5 = x1 - r*np.sin(alpha)
-            y5 = y1 - r*np.cos(alpha)
-            x6 = x2 - R*np.sin(alpha)
-            y6 = y2 - R*np.cos(alpha)
-
-            rr_poly, cc_poly = skimage.draw.polygon([y3, y4, y6, y5],
-                                                    [x3, x4, x6, x5])
-        else:
-            rr_poly, cc_poly = [], []
-        return rr_poly, cc_poly
-
-    def apply_brush(self, event):
-        if event.button == 1:
-            x, y = self.ax_transData_and_coerce(self.ax, event.x, event.y,
-                                                        self.label_img.shape)
-
-            rr, cc = skimage.draw.disk((y, x), radius=self.brush_size,
-                                               shape=self.label_img.shape)
-            rr_poly, cc_poly = self.get_poly_brush((self.yb, self.xb), (y, x),
-                                                    self.brush_size)
-            self.xb, self.yb = x, y
-            if self.eraser_on:
-                self.eraser_mask[rr, cc] = True
-                self.eraser_mask[rr_poly, cc_poly] = True
-                self.sep_bud_label[self.eraser_mask] = 0
-            else:
-                self.sep_bud_label[rr, cc] = self.ID_moth
-                self.sep_bud_label[rr_poly, cc_poly] = self.ID_moth
-                self.eraser_mask[rr, cc] = False
-                self.eraser_mask[rr_poly, cc_poly] = False
-            self.update_img(None)
-            c = 'r' if self.eraser_on else 'g'
-            self.brush_circle = matplotlib.patches.Circle((x, y),
-                                    radius=self.brush_size,
-                                    fill=False,
-                                    color=c, lw=2)
-            (self.ax).add_patch(self.brush_circle)
-            (self.sub_win.canvas).draw_idle()
-
-
-    def draw_line(self, event):
-        if event.inaxes == self.ax:
-            self.yd = int(event.ydata)
-            self.xd = int(event.xdata)
-            self.pltLine.set_visible(False)
-            self.pltLine = Line2D([self.x0, self.xd], [self.y0, self.yd],
-                                   color='r', ls='--')
-            self.ax.add_line(self.pltLine)
-            (self.sub_win.canvas).draw_idle()
-
-    def draw_bezier(self, event):
-        self.xd, self.yd = self.ax_transData_and_coerce(self.ax, event.x,
-                                                                 event.y,
-                                                    self.label_img.shape)
-        try:
-            self.plt_bezier.set_visible(False)
-        except:
-            pass
-        p0 = (self.x0, self.y0)
-        p1 = (self.xd, self.yd)
-        p2 = (self.x1, self.y1)
-        self.plt_bezier = PathPatch(
-                                 Path([p0, p1, p2],
-                                      [Path.MOVETO,
-                                       Path.CURVE3,
-                                       Path.CURVE3]),
-                                     fc="none", transform=self.ax.transData,
-                                     color='r')
-        self.ax.add_patch(self.plt_bezier)
-        (self.sub_win.canvas).draw_idle()
-
-    def ax_transData_and_coerce(self, ax, event_x, event_y, img_shape,
-                                return_int=True):
-        x, y = ax.transData.inverted().transform((event_x, event_y))
-        ymax, xmax = img_shape
-        xmin, ymin = 0, 0
-        if x < xmin:
-            x_coerced = 0
-        elif x > xmax:
-            x_coerced = xmax-1
-        else:
-            x_coerced = int(x) if return_int else x
-        if y < ymin:
-            y_coerced = 0
-        elif y > ymax:
-            y_coerced = ymax-1
-        else:
-            y_coerced = int(y) if return_int else y
-        return x_coerced, y_coerced
-
-
-
-    def nearest_nonzero(self, a, y, x):
-        r, c = np.nonzero(a)
-        dist = ((r - y)**2 + (c - x)**2)
-        min_idx = dist.argmin()
-        return a[r[min_idx], c[min_idx]]
-
-    def separate_cb(self):
-        c0, r0 = (self.x0, self.y0)
-        c1, r1 = (self.x2, self.y2)
-        c2, r2 = (self.x1, self.y1)
-        rr, cc = skimage.draw.bezier_curve(r0, c0, r1, c1, r2, c2, 1)
-        sep_bud_img = np.copy(self.sep_bud_label)
-        sep_bud_img[rr, cc] = 0
-        self.sep_bud_img = sep_bud_img
-        sep_bud_label_0 = skimage.measure.label(self.sep_bud_img, connectivity=1)
-        sep_bud_label = skimage.morphology.remove_small_objects(
-                                             sep_bud_label_0,
-                                             min_size=3,
-                                             connectivity=2)
-        small_obj_mask = np.logical_xor(sep_bud_label_0>0,
-                                        sep_bud_label>0)
-        self.small_obj_mask = np.logical_or(small_obj_mask,
-                                            self.small_obj_mask)
-        rp_sep = skimage.measure.regionprops(sep_bud_label)
-        IDs = [obj.label for obj in rp_sep]
-        max_ID = self.ID_bud+len(IDs)
-        sep_bud_label[sep_bud_label>0] = sep_bud_label[sep_bud_label>0]+max_ID
-        rp_sep = skimage.measure.regionprops(sep_bud_label)
-        IDs = [obj.label for obj in rp_sep]
-        areas = [obj.area for obj in rp_sep]
-        curr_ID_bud = IDs[areas.index(min(areas))]
-        curr_ID_moth = IDs[areas.index(max(areas))]
-        sep_bud_label[sep_bud_label==curr_ID_moth] = self.ID_moth
-        # sep_bud_label = np.zeros_like(sep_bud_label)
-        sep_bud_label[sep_bud_label==curr_ID_bud] = self.ID_bud+len(IDs)-2
-        temp_sep_bud_lab = sep_bud_label.copy()
-        self.rr = []
-        self.cc = []
-        self.val = []
-        for r, c in zip(rr, cc):
-            if self.only_ID_img[r, c] != 0:
-                ID = self.nearest_nonzero(sep_bud_label, r, c)
-                temp_sep_bud_lab[r,c] = ID
-                self.rr.append(r)
-                self.cc.append(c)
-                self.val.append(ID)
-        self.sep_bud_label = temp_sep_bud_lab
-        self.update_img(None)
-
-    def mouse_up(self, event):
-        try:
-            (self.sub_win.canvas).mpl_disconnect(self.cid_brush)
-            self.cid_brush_circle = (self.sub_win.canvas).mpl_connect(
-                                                        'motion_notify_event',
-                                                        self.draw_brush_circle)
-        except:
-            pass
-
-    def draw_brush_circle(self, event):
-        if event.inaxes == self.ax:
-            x, y = self.ax_transData_and_coerce(self.ax, event.x, event.y,
-                                                        self.label_img.shape)
-            try:
-                self.brush_circle.set_visible(False)
-            except:
-                pass
-            c = 'r' if self.eraser_on else 'g'
-            self.brush_circle = matplotlib.patches.Circle((x, y),
-                                    radius=self.brush_size,
-                                    fill=False,
-                                    color=c, lw=2)
-            self.ax.add_patch(self.brush_circle)
-            (self.sub_win.canvas).draw_idle()
-
-    def convexity_defects(self, img, eps_percent):
-        contours, hierarchy = cv2.findContours(img,2,1)
-        cnt = contours[0]
-        cnt = cv2.approxPolyDP(cnt,eps_percent*cv2.arcLength(cnt,True),True) # see https://www.programcreek.com/python/example/89457/cv22.convexityDefects
-        hull = cv2.convexHull(cnt,returnPoints = False) # see https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_contours/py_contours_more_functions/py_contours_more_functions.html
-        defects = cv2.convexityDefects(cnt,hull) # see https://opencv-python-tutroals.readthedocs.io/en/latest/py_tutorials/py_imgproc/py_contours/py_contours_more_functions/py_contours_more_functions.html
-        return cnt, defects
-
-    def undo(self, event):
-        self.coords_delete = []
-        sep_bud_img = np.copy(self.only_ID_img)
-        self.sep_bud_img = sep_bud_img
-        self.sep_bud_label = np.copy(self.only_ID_img)
-        self.small_obj_mask = np.zeros(self.only_ID_img.shape, bool)
-        self.eraser_mask = np.zeros(self.label_img.shape, bool)
-        self.overlay_on = False
-        rp = skimage.measure.regionprops(sep_bud_img)
-        self.ax.clear()
-        self.ax.imshow(self.sep_bud_img)
-        (self.ax).set_xlim(*self.xlims)
-        (self.ax).set_ylim(*self.ylims)
-        text_label_centroid(rp, self.ax, 18, 'semibold', 'center',
-                            'center', None, display_ccStage=False,
-                            color='k', clear=True)
-        self.ax.axis('off')
-        (self.sub_win.canvas).draw_idle()
-
-    def ok(self, event):
-        # plt.close(self.fig)
-        self.sub_win.root.quit()
-        self.sub_win.root.destroy()
-
-    def abort_exec(self):
-        self.cancel = True
-        plt.close(self.fig)
-        self.sub_win.root.quit()
-        self.sub_win.root.destroy()
 
 class QDialogCombobox(QDialog):
     def __init__(self, title, ComboBoxItems, informativeText,
@@ -586,9 +105,9 @@ class QDialogCombobox(QDialog):
 
 class QDialogListbox(QDialog):
     def __init__(self, title, text, items, cancelText='Cancel',
-                 multiSelection=True):
+                 multiSelection=True, parent=None):
         self.cancel = True
-        super().__init__()
+        super().__init__(parent)
         self.setWindowTitle(title)
 
         mainLayout = QVBoxLayout()
@@ -762,15 +281,112 @@ class QDialogInputsForm(QDialog):
         self.cancel = True
         self.close()
 
+class QDialogAcdcInputs(QDialog):
+    def __init__(self, SizeT, SizeZ, zyx_vox_dim, parent=None, font=None):
+        self.cancel = True
+        self.zyx_vox_dim = zyx_vox_dim
+        super().__init__(parent)
+        self.setWindowTitle('ACDC inputs')
+
+        mainLayout = QVBoxLayout()
+        gridLayout = QGridLayout()
+        formLayout = QFormLayout()
+        buttonsLayout = QHBoxLayout()
+
+        row = 0
+        gridLayout.addWidget(QLabel('Number of frames (SizeT)'), row, 0)
+        self.SizeT_SpinBox = QSpinBox()
+        self.SizeT_SpinBox.setMinimum(1)
+        self.SizeT_SpinBox.setMaximum(2147483647)
+        self.SizeT_SpinBox.setValue(SizeT)
+        self.SizeT_SpinBox.setAlignment(Qt.AlignCenter)
+        gridLayout.addWidget(self.SizeT_SpinBox, row, 1)
+
+        row += 1
+        gridLayout.addWidget(QLabel('Number of z-slices (SizeZ)'), row, 0)
+        self.SizeZ_SpinBox = QSpinBox()
+        self.SizeZ_SpinBox.setMinimum(1)
+        self.SizeZ_SpinBox.setMaximum(2147483647)
+        self.SizeZ_SpinBox.setValue(SizeZ)
+        self.SizeZ_SpinBox.setAlignment(Qt.AlignCenter)
+        gridLayout.addWidget(self.SizeZ_SpinBox, row, 1)
+
+        if zyx_vox_dim is not None:
+            formLayout.addRow('Z, Y, X voxel size (um/pxl)\n'
+                              'For 2D images leave Z to 1', QLineEdit())
+            self.zyx_vox_dim_entry = formLayout.itemAt(0, 1).widget()
+            txt = ', '.join([str(v) for v in zyx_vox_dim])
+            self.zyx_vox_dim_entry.setText(txt)
+            self.zyx_vox_dim_entry.setAlignment(Qt.AlignCenter)
+            if font is not None:
+                # Scale to largest content
+                fm = QFontMetrics(font)
+                w = fm.width(txt)+10
+                self.SizeT_SpinBox.setFixedWidth(w)
+                self.SizeZ_SpinBox.setFixedWidth(w)
+                self.zyx_vox_dim_entry.setFixedWidth(w)
+
+        self.adjustSize()
+
+        okButton = QPushButton('Ok')
+        okButton.setShortcut(Qt.Key_Enter)
+
+        cancelButton = QPushButton('Cancel')
+
+        buttonsLayout.addWidget(okButton, alignment=Qt.AlignRight)
+        buttonsLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
+        buttonsLayout.setContentsMargins(0, 10, 0, 0)
+
+        gridLayout.setColumnMinimumWidth(1, 100)
+        mainLayout.addLayout(gridLayout)
+        mainLayout.addLayout(formLayout)
+        mainLayout.addLayout(buttonsLayout)
+
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.cancel_cb)
+
+        self.setLayout(mainLayout)
+        self.setModal(True)
+
+    def ok_cb(self, event):
+        self.cancel = False
+        if self.zyx_vox_dim is not None:
+            try:
+                s = self.zyx_vox_dim_entry.text()
+                m = re.findall('(\d*.*\d+),\s*(\d*.*\d+),\s*(\d*.*\d+)', s)[0]
+                zyx_vox_dim = [float(v) for v in m]
+            except:
+                err_msg = (
+                    'Z, Y, X voxel size values are not valid.\n'
+                    'Enter three numbers (decimal or integers) greater than 0 '
+                    'separated by a comma. Leave Z to 1 for 2D images.'
+                )
+                msg = QtGui.QMessageBox()
+                msg.critical(
+                    self, 'Invalid SizeT value', err_msg, msg.Ok
+                )
+                return
+        else:
+            zyx_vox_dim = None
+        self.SizeT = self.SizeT_SpinBox.value()
+        self.SizeZ = self.SizeZ_SpinBox.value()
+        self.zyx_vox_dim = zyx_vox_dim
+        self.close()
+
+    def cancel_cb(self, event):
+        self.cancel = True
+        self.close()
+
 class gaussBlurDialog(QDialog):
     def __init__(self, mainWindow):
-        super().__init__()
+        super().__init__(mainWindow)
         self.cancel = True
         self.mainWindow = mainWindow
 
-        items = [mainWindow.data.filename]
+        PosData = mainWindow.data[mainWindow.pos_i]
+        items = [PosData.filename]
         try:
-            items.extend(list(mainWindow.ol_data_dict.keys()))
+            items.extend(list(PosData.ol_data_dict.keys()))
         except:
             pass
 
@@ -784,21 +400,30 @@ class gaussBlurDialog(QDialog):
 
         self.channelsComboBox = QComboBox()
         self.channelsComboBox.addItems(items)
+        self.channelsComboBox.setCurrentText(PosData.manualContrastKey)
         mainLayout.addWidget(self.channelsComboBox)
 
-        formLayout.addRow('Gaussian filter sigma:  ', QLineEdit())
+        self.sigmaQDSB = QDoubleSpinBox()
+        self.sigmaQDSB.setAlignment(Qt.AlignCenter)
+        self.sigmaQDSB.setSingleStep(0.5)
+        self.sigmaQDSB.setValue(1.0)
+        formLayout.addRow('Gaussian filter sigma:  ', self.sigmaQDSB)
         formLayout.setContentsMargins(0, 10, 0, 10)
 
-        self.sigma_entry = formLayout.itemAt(0, 1).widget()
-        self.sigma_entry.setAlignment(Qt.AlignCenter)
-
         self.sigmaSlider = QSlider(Qt.Horizontal)
-        self.sigmaSlider.setMinimum(1)
+        self.sigmaSlider.setMinimum(0)
         self.sigmaSlider.setMaximum(100)
         self.sigmaSlider.setValue(20)
         self.sigma = 1.0
         self.sigmaSlider.setTickPosition(QSlider.TicksBelow)
         self.sigmaSlider.setTickInterval(10)
+
+        self.PreviewCheckBox = QCheckBox("Preview")
+        self.PreviewCheckBox.setChecked(True)
+
+        mainLayout.addLayout(formLayout)
+        mainLayout.addWidget(self.sigmaSlider)
+        mainLayout.addWidget(self.PreviewCheckBox)
 
         okButton = QPushButton('Ok')
         okButton.setShortcut(Qt.Key_Enter)
@@ -809,11 +434,11 @@ class gaussBlurDialog(QDialog):
         buttonsLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
         buttonsLayout.setContentsMargins(0, 10, 0, 0)
 
-        mainLayout.addLayout(formLayout)
-        mainLayout.addWidget(self.sigmaSlider)
         mainLayout.addLayout(buttonsLayout)
 
+        self.PreviewCheckBox.clicked.connect(self.preview_cb)
         self.sigmaSlider.sliderMoved.connect(self.sigmaSliderMoved)
+        self.sigmaQDSB.valueChanged.connect(self.sigmaQDSB_valueChanged)
         self.channelsComboBox.currentTextChanged.connect(self.updateChannel)
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.cancel_cb)
@@ -824,11 +449,20 @@ class gaussBlurDialog(QDialog):
         self.getData()
         self.apply()
 
+    def preview_cb(self, checked):
+        if not checked:
+            self.restoreNonFiltered()
+            self.mainWindow.updateALLimg(only_ax1=True, updateSharp=False)
+        else:
+            self.getData()
+            self.apply()
+
     def storeData(self):
+        PosData = self.mainWindow.data[self.mainWindow.pos_i]
         self.raw_fluo_dict = {}
         for key in self.keys:
             if key.find(self.mainWindow.user_ch_name) != -1:
-                self.raw_img = self.mainWindow.getImage().copy()
+                self.raw_img = PosData.img_data[PosData.frame_i].copy()
             else:
                 fluo_img = self.mainWindow.getOlImg(key)
                 self.raw_fluo_dict[key] = fluo_img.copy()
@@ -848,64 +482,99 @@ class gaussBlurDialog(QDialog):
             data = PosData.ol_data[key]
 
         self.img = img
-        self.frame_i = self.mainWindow.frame_i
-        self.data = data
+        self.frame_i = PosData.frame_i
+        self.num_segm_frames = PosData.num_segm_frames
+        self.imgData = data
+
+    def setImg(self, blurred):
+        PosData = self.mainWindow.data[self.mainWindow.pos_i]
+        key = self.channelsComboBox.currentText()
+        if PosData.SizeZ > 1:
+            if key == PosData.filename:
+                z = self.mainWindow.zSlice_scrollBar.sliderPosition()
+                self.imgData[self.frame_i][z] = blurred
+            else:
+                self.imgData[self.frame_i] = blurred
+        else:
+            self.imgData[self.frame_i]= blurred
 
     def apply(self):
-        blurred = skimage.filters.gaussian(self.img, sigma=self.sigma)
-        self.data[self.frame_i] = blurred
+        if self.PreviewCheckBox.isChecked():
+            blurred = skimage.filters.gaussian(self.img, sigma=self.sigma)
+            self.setImg(blurred)
         self.mainWindow.updateALLimg(only_ax1=True, updateBlur=False)
+
+    def sigmaQDSB_valueChanged(self, val):
+        self.sigma = val
+        self.sigmaSlider.sliderMoved.disconnect()
+        self.sigmaSlider.setSliderPosition(int(val*20))
+        self.sigmaSlider.sliderMoved.connect(self.sigmaSliderMoved)
+        self.apply()
 
     def sigmaSliderMoved(self, intVal):
         self.sigma = intVal/20
-        self.sigma_entry.setText(f'{self.sigma}')
+        self.sigmaQDSB.valueChanged.disconnect()
+        self.sigmaQDSB.setValue(self.sigma)
+        self.sigmaQDSB.valueChanged.connect(self.sigmaSliderMoved)
         self.apply()
 
     def ok_cb(self, event):
+        PosData = self.mainWindow.data[self.mainWindow.pos_i]
         self.cancel = False
-        msg = QtGui.QMessageBox()
-        apply = msg.question(
-            self, 'Apply to all frames?',
-            'Apply to all {self.num_segm_frames} frames (NOT undoable)?',
-            msg.Yes | msg.No | msg.Cancel)
-        if apply == msg.Yes:
-            data_copy = self.data.copy()
-            for i, img in enumerate(data_copy):
-                img = skimage.filters.gaussian(self.img, sigma=self.sigma)
-                self.data[self.frame_i] = img
+        if PosData.SizeT > 1:
+            msg = QtGui.QMessageBox()
+            apply = msg.question(
+                self, 'Apply to all frames?',
+                f'Apply to all {self.num_segm_frames} frames (NOT undoable)?',
+                msg.Yes | msg.No | msg.Cancel)
+            if apply == msg.Yes:
+                data_copy = self.imgData.copy()
+                for i, img in enumerate(data_copy):
+                    img = skimage.filters.gaussian(self.img, sigma=self.sigma)
+                    self.setImg(img)
+                self.close()
+            elif apply == msg.No:
+                self.close()
+            elif apply == msg.Cancel:
+                return
+        else:
             self.close()
-        elif apply == msg.No:
-            self.close()
-        elif apply == msg.Cancel:
-            return
 
     def cancel_cb(self, event):
         self.cancel = True
         self.close()
 
-    def closeEvent(self, event):
-        if self.cancel:
-            for key in self.keys:
-                if key.find(self.mainWindow.user_ch_name) != -1:
-                    self.mainWindow.data.img_data[self.frame_i] = self.raw_img
+    def restoreNonFiltered(self):
+        PosData = self.mainWindow.data[self.mainWindow.pos_i]
+        for key in self.keys:
+            if PosData.SizeZ > 1:
+                if key == PosData.filename:
+                    PosData.img_data[self.frame_i] = self.raw_img
                 else:
-                    self.mainWindow.ol_data = self.raw_fluo_dict[key]
-                pass
-            self.mainWindow.updateALLimg(only_ax1=True, updateBlur=False)
+                    PosData.ol_data[self.frame_i] = self.raw_fluo_dict[key]
+            else:
+                PosData.img_data[self.frame_i]= self.raw_img
 
+    def closeEvent(self, event):
+        self.mainWindow.gaussBlurAction.setChecked(False)
+        if self.cancel:
+            self.restoreNonFiltered()
+            self.mainWindow.updateALLimg(only_ax1=True, updateBlur=False)
 
 class edgeDetectionDialog(QDialog):
     def __init__(self, mainWindow):
-        super().__init__()
+        super().__init__(mainWindow)
         self.cancel = True
         self.mainWindow = mainWindow
 
         if mainWindow is not None:
-            items = [mainWindow.data.filename]
+            PosData = self.mainWindow.data[self.mainWindow.pos_i]
+            items = [PosData.filename]
         else:
             items = ['test']
         try:
-            items.extend(list(mainWindow.ol_data_dict.keys()))
+            PosData = self.mainWindow.data[self.mainWindow.pos_i]
+            items.extend(list(PosData.ol_data_dict.keys()))
         except:
             pass
 
@@ -922,6 +591,8 @@ class edgeDetectionDialog(QDialog):
         mainLayout.addWidget(channelCBLabel)
         self.channelsComboBox = QComboBox()
         self.channelsComboBox.addItems(items)
+        if mainWindow is not None:
+            self.channelsComboBox.setCurrentText(PosData.manualContrastKey)
         mainLayout.addWidget(self.channelsComboBox)
 
         row = 0
@@ -956,6 +627,12 @@ class edgeDetectionDialog(QDialog):
         self.sharpSlider.setTickInterval(10)
         paramsLayout.addWidget(self.sharpSlider, row, 0)
 
+        row += 1
+        self.PreviewCheckBox = QCheckBox("Preview")
+        self.PreviewCheckBox.setChecked(True)
+        paramsLayout.addWidget(self.PreviewCheckBox, row, 0, 1, 2,
+                               alignment=Qt.AlignCenter)
+
         okButton = QPushButton('Ok')
         okButton.setShortcut(Qt.Key_Enter)
 
@@ -970,6 +647,7 @@ class edgeDetectionDialog(QDialog):
         mainLayout.addLayout(paramsLayout)
         mainLayout.addLayout(buttonsLayout)
 
+        self.PreviewCheckBox.clicked.connect(self.preview_cb)
         self.sigmaSlider.sliderMoved.connect(self.sigmaSliderMoved)
         self.sharpSlider.sliderMoved.connect(self.sharpSliderMoved)
         self.channelsComboBox.currentTextChanged.connect(self.updateChannel)
@@ -988,11 +666,31 @@ class edgeDetectionDialog(QDialog):
         h = self.size().height()
         self.setGeometry(x, y, 300, h)
 
+    def restoreNonFiltered(self):
+        PosData = self.mainWindow.data[self.mainWindow.pos_i]
+        for key in self.keys:
+            if PosData.SizeZ > 1:
+                if key == PosData.filename:
+                    PosData.img_data[self.frame_i] = self.raw_img
+                else:
+                    PosData.ol_data[self.frame_i] = self.raw_fluo_dict[key]
+            else:
+                PosData.img_data[self.frame_i]= self.raw_img
+
+    def preview_cb(self, checked):
+        if not checked:
+            self.restoreNonFiltered()
+            self.mainWindow.updateALLimg(only_ax1=True, updateSharp=False)
+        else:
+            self.getData()
+            self.apply()
+
     def storeData(self):
         self.raw_fluo_dict = {}
+        PosData = self.mainWindow.data[self.mainWindow.pos_i]
         for key in self.keys:
             if key.find(self.mainWindow.user_ch_name) != -1:
-                self.raw_img = self.mainWindow.getImage().copy()
+                self.raw_img = PosData.img_data[PosData.frame_i].copy()
             else:
                 fluo_img = self.mainWindow.getOlImg(key)
                 self.raw_fluo_dict[key] = fluo_img.copy()
@@ -1001,31 +699,46 @@ class edgeDetectionDialog(QDialog):
         self.getData()
         self.apply()
 
+    def setImg(self, edge):
+        PosData = self.mainWindow.data[self.mainWindow.pos_i]
+        key = self.channelsComboBox.currentText()
+        if PosData.SizeZ > 1:
+            if key == PosData.filename:
+                z = self.mainWindow.zSlice_scrollBar.sliderPosition()
+                self.imgData[self.frame_i][z] = edge
+            else:
+                self.imgData[self.frame_i] = edge
+        else:
+            self.imgData[self.frame_i]= edge
+
     def getData(self):
         key = self.channelsComboBox.currentText()
+        PosData = self.mainWindow.data[self.mainWindow.pos_i]
         if key.find(self.mainWindow.user_ch_name) != -1:
             img = self.mainWindow.getImage()
-            data = self.mainWindow.data.img_data
+            data = PosData.img_data
         else:
             img = self.mainWindow.getOlImg(key)
-            data = self.mainWindow.ol_data[key]
+            data = PosData.ol_data[key]
 
-        self.img = skimage.exposure.equalize_adapthist(img)
-        self.detectEdges()
-        self.frame_i = self.mainWindow.frame_i
-        self.data = data
+        if self.PreviewCheckBox.isChecked():
+            self.img = skimage.exposure.equalize_adapthist(img)
+            self.detectEdges()
+        self.frame_i = PosData.frame_i
+        self.imgData = data
 
     def detectEdges(self):
         self.edge = skimage.filters.sobel(self.img)
 
     def apply(self):
-        edge = self.edge.copy()
-        # Blur
-        edge = gauss(edge, sigma=self.sigma)
-        # Sharpen
-        edge = edge - gauss(edge, sigma=self.radius)
-        self.data[self.frame_i] = edge
-        self.mainWindow.updateALLimg(only_ax1=True, updateBlur=False)
+        if self.PreviewCheckBox.isChecked():
+            edge = self.edge.copy()
+            # Blur
+            edge = skimage.filters.gaussian(edge, sigma=self.sigma)
+            # Sharpen
+            edge = edge - skimage.filters.gaussian(edge, sigma=self.radius)
+            self.setImg(edge)
+        self.mainWindow.updateALLimg(only_ax1=True, updateSharp=False)
 
     def sigmaSliderMoved(self, intVal):
         self.sigma = intVal/20
@@ -1034,47 +747,243 @@ class edgeDetectionDialog(QDialog):
 
     def sharpSliderMoved(self, intVal):
         self.radius = 10 - intVal/10
-        self.sharpValLabel.setText(f'{self.radius:.2f}')
+        if self.radius < 0.15:
+            self.radius = 0.15
+        self.sharpValLabel.setText(f'{intVal/10:.2f}')
         self.apply()
 
-
     def ok_cb(self, event):
+        PosData = self.mainWindow.data[self.mainWindow.pos_i]
         self.cancel = False
-        msg = QtGui.QMessageBox()
-        apply = msg.question(
-            self, 'Apply to all frames?',
-            'Apply to all {self.num_segm_frames} frames (NOT undoable)?',
-            msg.Yes | msg.No | msg.Cancel)
-        if apply == msg.Yes:
-            data_copy = self.data.copy()
-            for i, img in enumerate(data_copy):
-                img = skimage.filters.gaussian(self.img, sigma=self.sigma)
-                self.data[self.frame_i] = img
+        if PosData.SizeT > 1:
+            msg = QtGui.QMessageBox()
+            apply = msg.question(
+                self, 'Apply to all frames?',
+                f'Apply to all {self.num_segm_frames} frames (NOT undoable)?',
+                msg.Yes | msg.No | msg.Cancel)
+            if apply == msg.Yes:
+                data_copy = self.imgData.copy()
+                for i, img in enumerate(data_copy):
+                    img = skimage.filters.gaussian(self.img, sigma=self.sigma)
+                    self.setImg(img)
+                self.close()
+            elif apply == msg.No:
+                self.close()
+            elif apply == msg.Cancel:
+                return
+        else:
             self.close()
-        elif apply == msg.No:
-            self.close()
-        elif apply == msg.Cancel:
-            return
 
     def cancel_cb(self, event):
         self.cancel = True
         self.close()
 
     def closeEvent(self, event):
+        self.mainWindow.edgeDetectorAction.setChecked(False)
         if self.cancel:
-            for key in self.keys:
-                if key.find(self.mainWindow.user_ch_name) != -1:
-                    self.mainWindow.data.img_data[self.frame_i] = self.raw_img
+            self.restoreNonFiltered()
+            self.mainWindow.updateALLimg(only_ax1=True, updateSharp=False)
+
+
+class entropyFilterDialog(QDialog):
+    def __init__(self, mainWindow):
+        super().__init__(mainWindow)
+        self.cancel = True
+        self.mainWindow = mainWindow
+
+        if mainWindow is not None:
+            PosData = self.mainWindow.data[self.mainWindow.pos_i]
+            items = [PosData.filename]
+        else:
+            items = ['test']
+        try:
+            PosData = self.mainWindow.data[self.mainWindow.pos_i]
+            items.extend(list(PosData.ol_data_dict.keys()))
+        except:
+            pass
+
+        self.keys = items
+
+        self.setWindowTitle('Edge detection')
+
+        mainLayout = QVBoxLayout()
+        paramsLayout = QGridLayout()
+        buttonsLayout = QHBoxLayout()
+
+
+        channelCBLabel = QLabel('Channel:')
+        mainLayout.addWidget(channelCBLabel)
+        self.channelsComboBox = QComboBox()
+        self.channelsComboBox.addItems(items)
+        if mainWindow is not None:
+            self.channelsComboBox.setCurrentText(PosData.manualContrastKey)
+        mainLayout.addWidget(self.channelsComboBox)
+
+        row = 0
+        sigmaQSLabel = QLabel('Blur:')
+        paramsLayout.addWidget(sigmaQSLabel, row, 0)
+        row += 1
+        self.radiusValLabel = QLabel('10')
+        paramsLayout.addWidget(self.radiusValLabel, row, 1)
+        self.radiusSlider = QSlider(Qt.Horizontal)
+        self.radiusSlider.setMinimum(1)
+        self.radiusSlider.setMaximum(100)
+        self.radiusSlider.setValue(10)
+        self.radiusSlider.setTickPosition(QSlider.TicksBelow)
+        self.radiusSlider.setTickInterval(10)
+        paramsLayout.addWidget(self.radiusSlider, row, 0)
+
+        row += 1
+        self.PreviewCheckBox = QCheckBox("Preview")
+        self.PreviewCheckBox.setChecked(True)
+        paramsLayout.addWidget(self.PreviewCheckBox, row, 0, 1, 2,
+                               alignment=Qt.AlignCenter)
+
+        okButton = QPushButton('Ok')
+        okButton.setShortcut(Qt.Key_Enter)
+
+        cancelButton = QPushButton('Cancel')
+
+        buttonsLayout.addWidget(okButton, alignment=Qt.AlignRight)
+        buttonsLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
+
+        paramsLayout.setContentsMargins(0, 10, 0, 0)
+        buttonsLayout.setContentsMargins(0, 10, 0, 0)
+
+        mainLayout.addLayout(paramsLayout)
+        mainLayout.addLayout(buttonsLayout)
+
+        self.PreviewCheckBox.clicked.connect(self.preview_cb)
+        self.radiusSlider.sliderMoved.connect(self.radiusSliderMoved)
+        self.channelsComboBox.currentTextChanged.connect(self.updateChannel)
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.cancel_cb)
+
+        self.setLayout(mainLayout)
+
+        self.storeData()
+        self.getData()
+        self.apply()
+
+    def setSize(self):
+        x = self.pos().x()
+        y = self.pos().y()
+        h = self.size().height()
+        self.setGeometry(x, y, 300, h)
+
+    def restoreNonFiltered(self):
+        PosData = self.mainWindow.data[self.mainWindow.pos_i]
+        for key in self.keys:
+            if PosData.SizeZ > 1:
+                if key == PosData.filename:
+                    PosData.img_data[self.frame_i] = self.raw_img
                 else:
-                    self.mainWindow.ol_data = self.raw_fluo_dict[key]
-                pass
-            self.mainWindow.updateALLimg(only_ax1=True, updateBlur=False)
+                    PosData.ol_data[self.frame_i] = self.raw_fluo_dict[key]
+            else:
+                PosData.img_data[self.frame_i]= self.raw_img
+
+    def preview_cb(self, checked):
+        if not checked:
+            self.restoreNonFiltered()
+            self.mainWindow.updateALLimg(only_ax1=True, updateSharp=False)
+        else:
+            self.getData()
+            self.apply()
+
+    def storeData(self):
+        self.raw_fluo_dict = {}
+        PosData = self.mainWindow.data[self.mainWindow.pos_i]
+        for key in self.keys:
+            if key.find(self.mainWindow.user_ch_name) != -1:
+                self.raw_img = PosData.img_data[PosData.frame_i].copy()
+            else:
+                fluo_img = self.mainWindow.getOlImg(key)
+                self.raw_fluo_dict[key] = fluo_img.copy()
+
+    def updateChannel(self, key):
+        self.getData()
+        self.apply()
+
+    def setImg(self, edge):
+        PosData = self.mainWindow.data[self.mainWindow.pos_i]
+        key = self.channelsComboBox.currentText()
+        if PosData.SizeZ > 1:
+            if key == PosData.filename:
+                z = self.mainWindow.zSlice_scrollBar.sliderPosition()
+                self.imgData[self.frame_i][z] = edge
+            else:
+                self.imgData[self.frame_i] = edge
+        else:
+            self.imgData[self.frame_i]= edge
+
+    def getData(self):
+        key = self.channelsComboBox.currentText()
+        PosData = self.mainWindow.data[self.mainWindow.pos_i]
+        if key.find(self.mainWindow.user_ch_name) != -1:
+            img = self.mainWindow.getImage()
+            data = PosData.img_data
+        else:
+            img = self.mainWindow.getOlImg(key)
+            data = PosData.ol_data[key]
+        self.img = skimage.img_as_ubyte(img)
+        if self.PreviewCheckBox.isChecked():
+            self.entropyFilter()
+        self.frame_i = PosData.frame_i
+        self.imgData = data
+
+    def entropyFilter(self):
+        radius = self.radiusSlider.sliderPosition()
+        selem = skimage.morphology.disk(radius)
+        self.entropyImg = skimage.filters.rank.entropy(self.img, selem)
+
+    def apply(self):
+        if self.PreviewCheckBox.isChecked():
+            self.entropyFilter()
+            self.setImg(self.entropyImg)
+        self.mainWindow.updateALLimg(only_ax1=True, updateSharp=False)
+
+    def radiusSliderMoved(self, intVal):
+        self.radiusValLabel.setText(f'{intVal}')
+        self.apply()
+
+    def ok_cb(self, event):
+        PosData = self.mainWindow.data[self.mainWindow.pos_i]
+        self.cancel = False
+        if PosData.SizeT > 1:
+            msg = QtGui.QMessageBox()
+            apply = msg.question(
+                self, 'Apply to all frames?',
+                f'Apply to all {self.num_segm_frames} frames (NOT undoable)?',
+                msg.Yes | msg.No | msg.Cancel)
+            if apply == msg.Yes:
+                data_copy = self.imgData.copy()
+                for i, img in enumerate(data_copy):
+                    img = skimage.filters.gaussian(self.img, sigma=self.sigma)
+                    self.setImg(img)
+                self.close()
+            elif apply == msg.No:
+                self.close()
+            elif apply == msg.Cancel:
+                return
+        else:
+            self.close()
+
+    def cancel_cb(self, event):
+        self.cancel = True
+        self.close()
+
+    def closeEvent(self, event):
+        self.mainWindow.entropyFilterAction.setChecked(False)
+        if self.cancel:
+            self.restoreNonFiltered()
+            self.mainWindow.updateALLimg(only_ax1=True, updateSharp=False)
 
 class FutureFramesAction_QDialog(QDialog):
-    def __init__(self, frame_i, last_tracked_i, change_txt, applyTrackingB=False):
+    def __init__(self, frame_i, last_tracked_i, change_txt,
+                 applyTrackingB=False, parent=None):
         self.decision = None
         self.last_tracked_i = last_tracked_i
-        super().__init__()
+        super().__init__(parent)
         self.setWindowTitle('Future frames action?')
 
         mainLayout = QVBoxLayout()
@@ -1237,8 +1146,8 @@ class FutureFramesAction_QDialog(QDialog):
 
 
 class nonModalTempQMessage(QWidget):
-    def __init__(self, msg='Doing stuff...'):
-        super().__init__()
+    def __init__(self, msg='Doing stuff...', parent=None):
+        super().__init__(parent)
 
         layout = QVBoxLayout()
 
@@ -1256,10 +1165,8 @@ class nonModalTempQMessage(QWidget):
 class CellsSlideshow_GUI(QMainWindow):
     """Main Window."""
 
-    def __init__(self, parent=None, button_toUncheck=None, Left=50, Top=50,
-                 is_bw_inverted=False):
+    def __init__(self, parent=None, button_toUncheck=None, Left=50, Top=50):
         self.button_toUncheck = button_toUncheck
-        self.is_bw_inverted = is_bw_inverted
         self.parent = parent
         """Initializer."""
         super().__init__(parent)
@@ -1371,13 +1278,14 @@ class CellsSlideshow_GUI(QMainWindow):
         self.img.hoverEvent = self.gui_hoverEventImg
 
     def gui_createImgWidgets(self):
+        PosData = self.parent.data[self.parent.pos_i]
         self.img_Widglayout = QtGui.QGridLayout()
 
         # Frames scrollbar
         self.frames_scrollBar = QScrollBar(Qt.Horizontal)
         self.frames_scrollBar.setFixedHeight(20)
         self.frames_scrollBar.setMinimum(1)
-        self.frames_scrollBar.setMaximum(self.parent.num_segm_frames)
+        self.frames_scrollBar.setMaximum(PosData.num_segm_frames)
         t_label = QLabel('frame  ')
         _font = QtGui.QFont()
         _font.setPointSize(10)
@@ -1467,9 +1375,9 @@ class CellsSlideshow_GUI(QMainWindow):
             self.button_toUncheck.setChecked(False)
 
 class cellpose_ParamsDialog(QDialog):
-    def __init__(self):
+    def __init__(self, parent=None):
         self.cancel = True
-        super().__init__()
+        super().__init__(parent)
         self.setWindowTitle("Cellpose parameters")
 
         mainLayout = QVBoxLayout()
@@ -1566,9 +1474,9 @@ class cellpose_ParamsDialog(QDialog):
         self.close()
 
 class YeaZ_ParamsDialog(QDialog):
-    def __init__(self):
+    def __init__(self, parent=None):
         self.cancel = True
-        super().__init__()
+        super().__init__(parent)
         self.setWindowTitle("YeaZ parameters")
 
         mainLayout = QVBoxLayout()
@@ -1656,12 +1564,12 @@ class YeaZ_ParamsDialog(QDialog):
         self.close()
 
 class ccaTableWidget(QDialog):
-    def __init__(self, cca_df):
+    def __init__(self, cca_df, parent=None):
         self.inputCca_df = cca_df
         self.cancel = True
         self.cca_df = None
 
-        super().__init__()
+        super().__init__(parent)
         self.setWindowTitle("Edit cell cycle annotations")
 
         # Layouts
@@ -1976,10 +1884,10 @@ class ccaTableWidget(QDialog):
 
 class QLineEditDialog(QDialog):
     def __init__(self, title='Entry messagebox', msg='Entry value',
-                       defaultTxt=''):
+                       defaultTxt='', parent=None):
         self.cancel = True
 
-        super().__init__()
+        super().__init__(parent)
         self.setWindowTitle(title)
 
         # Layouts
@@ -2056,13 +1964,13 @@ class QLineEditDialog(QDialog):
 
 
 class editID_QWidget(QDialog):
-    def __init__(self, clickedID, IDs):
+    def __init__(self, clickedID, IDs, parent=None):
         self.IDs = IDs
         self.clickedID = clickedID
         self.cancel = True
         self.how = None
 
-        super().__init__()
+        super().__init__(parent)
         self.setWindowTitle("Edit ID")
         mainLayout = QVBoxLayout()
 
@@ -2201,256 +2109,6 @@ def YeaZ_Params():
     app.setStyle(QtGui.QStyleFactory.create('Fusion'))
     app.exec_()
     return params
-
-
-class cca_df_frame0:
-    """Display a tkinter window where the user initializes values of
-    the cca_df for frame 0.
-
-    Parameters
-    ----------
-    cells_IDs : list or ndarray of int
-        List of cells IDs.
-
-    Attributes
-    ----------
-    cell_IDs : list or ndarray of int
-        List of cells IDs.
-    root : class 'tkinter.Tk'
-        tkinter.Tk root window
-    """
-    def __init__(self, cells_IDs, cca_df, warn=True):
-        self.cancel = False
-        self.df = None
-        """Options and labels"""
-        cc_stage_opt = ['G1', 'S/G2/M']
-        if len(cells_IDs) == 1:
-            related_to_opt = [-1]
-        else:
-            related_to_opt = list(cells_IDs)
-            related_to_opt.insert(0, -1)
-        relationship_opt = ['mother', 'bud']
-        self.cell_IDs = cells_IDs
-        self.cca_df = cca_df
-
-        """Root window"""
-        root = tk.Tk()
-        root.lift()
-        root.attributes("-topmost", True)
-        root.title('Initialize cell cycle table')
-        root.geometry('+600+500')
-        self.root = root
-
-        """Cells IDs label column"""
-        col = 0
-        cells_IDs_colTitl = tk.Label(root,
-                                  text='Cell ID',
-                                  font=(None, 11))
-        cells_IDs_colTitl.grid(row=0, column=col, pady=4, padx=4)
-        for row, ID in enumerate(cells_IDs):
-            cells_IDs_label = tk.Label(root,
-                                      text=str(ID),
-                                      font=(None, 10))
-            cells_IDs_label.grid(row=row+1, column=col, pady=4, padx=8)
-
-        """cell_cycle_stage column"""
-        col = 1
-        cc_stage_colTitl = tk.Label(root,
-                                  text='Cell cycle stage',
-                                  font=(None, 11))
-        cc_stage_colTitl.grid(row=0, column=col, pady=4, padx=4)
-        self.cc_stage_list = []
-        self.cc_stage_varNames = []
-        init_ccs = cca_df.loc[cells_IDs]['cell_cycle_stage'].to_list()
-        for row, ID in enumerate(cells_IDs):
-            cc_stage_varName = f'cc_stage_{ID}'
-            cc_stage_var = tk.StringVar(root, None, cc_stage_varName)
-            self.cc_stage_varNames.append(cc_stage_varName)
-            cc_stage_val = init_ccs.copy()[row]
-            if cc_stage_val == 'S':
-                cc_stage_val = 'S/G2/M'
-            cc_stage_var.set(cc_stage_val) # default value
-            cc_stage_var.trace('w', self.updateRelationship)
-            cc_stage = tk.OptionMenu(root, cc_stage_var, *cc_stage_opt)
-            cc_stage.grid(row=row+1, column=col, pady=4, padx=4)
-            self.cc_stage_list.append(cc_stage_var)
-
-        """generation_num column"""
-        col = 2
-        num_cycles_colTitl = tk.Label(root,
-                                  text='Generation number',
-                                  font=(None, 11))
-        num_cycles_colTitl.grid(row=0, column=col, pady=4, padx=4)
-        self.num_cycles_list = []
-        init_num_cycles = cca_df.loc[cells_IDs]['generation_num'].to_list()
-        for row, ID in enumerate(cells_IDs):
-            num_cycles = tk.Entry(root, width=10, justify='center')
-            gen_num = init_num_cycles[row]
-            if gen_num == -1:
-                num_cycles.insert(0, '2')
-            else:
-                num_cycles.insert(0, f'{gen_num}')
-            num_cycles.grid(row=row+1, column=col, pady=4, padx=4)
-            self.num_cycles_list.append(num_cycles)
-
-        """Relative's ID column"""
-        col = 3
-        related_to_colTitl = tk.Label(root,
-                                  text='Relative\'s ID',
-                                  font=(None, 11))
-        related_to_colTitl.grid(row=0, column=col, pady=4, padx=4)
-        self.related_to_list = []
-        self.relto_varNames = []
-        IDs = cells_IDs.copy() if len(cells_IDs) > 1 else [-1]
-        init_rel_ID = cca_df.loc[cells_IDs]['relative_ID'].to_list()
-        for row, ID in enumerate(IDs):
-            related_to_var = tk.StringVar(root, name='rel_to_{}'.format(ID))
-            temp_cb = related_to_var.trace('w', self.store_relTo_varName)
-            related_to_var.set(str(init_rel_ID[row])) # default value
-            related_to_var.trace_vdelete('w', temp_cb)
-            related_to_var.trace('w', self.update_relID)
-            related_to = tk.OptionMenu(root, related_to_var, *related_to_opt)
-            related_to.grid(row=row+1, column=col, pady=4, padx=4)
-            self.related_to_list.append(related_to_var)
-
-        """Relationship column"""
-        col = 4
-        relationship_colTitl = tk.Label(root,
-                                        text='Relationship',
-                                        font=(None, 11))
-        relationship_colTitl.grid(row=0, column=col, pady=4, padx=4)
-        self.relationship_list = []
-        init_relationship = cca_df.loc[cells_IDs]['relationship'].to_list()
-        for row, ID in enumerate(cells_IDs):
-            relationship_var = tk.StringVar(root)
-            relationship_var.set(str(init_relationship[row])) # default value
-            relationship_var.trace('w', self.changeNumCycle)
-            relationship = tk.OptionMenu(root, relationship_var,
-                                         *relationship_opt)
-            relationship.grid(row=row+1, column=col, pady=4, padx=4)
-            self.relationship_list.append(relationship_var)
-
-        """OK button"""
-        col = 2
-        ok_b = tk.Button(root, text='OK!', width=10,
-                         command=self.return_df)
-        ok_b.grid(row=len(cells_IDs)+1, column=col, pady=8)
-
-        self.root.protocol("WM_DELETE_WINDOW", self.handle_close)
-        self.root.focus_force()
-        self.root.mainloop()
-
-    def store_relTo_varName(self, *args):
-        self.relto_varNames.append(args[0])
-
-    def updateRelationship(self, *args):
-        var_name = args[0]
-        var_txt = self.root.getvar(name=var_name)
-        idxID_var = self.cc_stage_varNames.index(var_name)
-        if var_txt == 'G1':
-            self.relationship_list[idxID_var].set('mother')
-
-
-    def update_relID(self, *args):
-        var_name = args[0]
-        idxID_var = self.relto_varNames.index(var_name)
-        ID_var = self.cell_IDs[idxID_var]
-        relID = int(self.root.getvar(name=var_name))
-        if relID in self.cell_IDs:
-            idxID = list(self.cell_IDs).index(relID)
-            self.related_to_list[idxID].set(str(ID_var))
-
-    def changeNumCycle(self, *args):
-        relationships = [var.get() for var in self.relationship_list]
-        idx_bud = [i for i, var in zip(range(len(relationships)), relationships)
-                            if var == 'bud']
-        for i in idx_bud:
-            self.num_cycles_list[i].delete(0, 'end')
-            self.num_cycles_list[i].insert(0, '0')
-            self.cc_stage_list[i].set('S/G2/M')
-
-        idx_moth = [i for i, var in zip(range(len(relationships)), relationships)
-                            if var == 'mother']
-        for i in idx_moth:
-            self.num_cycles_list[i].delete(0, 'end')
-            self.num_cycles_list[i].insert(0, '2')
-
-    def handle_close(self):
-        self.cancel = True
-        self.root.quit()
-        self.root.destroy()
-        # exit('Execution aborted by the user')
-
-    def return_df(self):
-        cc_stage = [var.get() for var in self.cc_stage_list]
-        cc_stage = [val if val=='G1' else 'S' for val in cc_stage]
-        num_cycles = [int(var.get()) for var in self.num_cycles_list]
-        related_to = [int(var.get()) for var in self.related_to_list]
-        relationship = [var.get() for var in self.relationship_list]
-        check_rel = [ID == rel for ID, rel in zip(self.cell_IDs, related_to)]
-        # Buds in S phase must have 0 as number of cycles
-        check_buds_S = [ccs=='S' and rel_ship=='bud' and not numc==0
-                        for ccs, rel_ship, numc
-                        in zip(cc_stage, relationship, num_cycles)]
-        # Mother cells must have at least 1 as number of cycles
-        check_mothers = [rel_ship=='mother' and not numc>=1
-                         for rel_ship, numc
-                         in zip(relationship, num_cycles)]
-        # Buds cannot be in G1
-        check_buds_G1 = [ccs=='G1' and rel_ship=='bud'
-                         for ccs, rel_ship
-                         in zip(cc_stage, relationship)]
-        # The number of cells in S phase must be half mothers and half buds
-        num_moth_S = len([0 for ccs, rel_ship in zip(cc_stage, relationship)
-                            if ccs=='S' and rel_ship=='mother'])
-        num_bud_S = len([0 for ccs, rel_ship in zip(cc_stage, relationship)
-                            if ccs=='S' and rel_ship=='bud'])
-        # Cells in S phase cannot have -1 as relative's ID
-        check_relID_S = [ccs=='S' and relID==-1
-                         for ccs, relID
-                         in zip(cc_stage, related_to)]
-        if any(check_rel):
-            tk.messagebox.showerror('Cell ID = Relative\'s ID', 'Some cells are '
-                    'mother or bud of itself. Make sure that the Relative\'s ID'
-                    ' is different from the Cell ID!')
-        elif any(check_buds_S):
-            tk.messagebox.showerror('Bud in S/G2/M not in 0 Generation number',
-                'Some buds '
-                'in S phase do not have 0 as Generation number!\n'
-                'Buds in S phase must have 0 as "Generation number"')
-        elif any(check_mothers):
-            tk.messagebox.showerror('Mother not in >=1 Generation number',
-                'Some mother cells do not have >=1 as "Generation number"!\n'
-                'Mothers MUST have >1 "Generation number"')
-        elif any(check_buds_G1):
-            tk.messagebox.showerror('Buds in G1!',
-                'Some buds are in G1 phase!\n'
-                'Buds MUST be in S/G2/M phase')
-        elif num_moth_S != num_bud_S:
-            tk.messagebox.showerror('Number of mothers-buds mismatch!',
-                f'There are {num_moth_S} mother cells in "S/G2/M" phase,\n'
-                f'but there are {num_bud_S} bud cells.\n'
-                'The number of mothers and buds in "S/G2/M" phase must be equal!')
-        elif any(check_relID_S):
-            tk.messagebox.showerror('Relative\'s ID of cells in S/G2/M = -1',
-                'Some cells are in "S/G2/M" phase but have -1 as Relative\'s ID!\n'
-                'Cells in "S/G2/M" phase must have an existing ID as Relative\'s ID!')
-        else:
-            df = pd.DataFrame({
-                                'cell_cycle_stage': cc_stage,
-                                'generation_num': num_cycles,
-                                'relative_ID': related_to,
-                                'relationship': relationship,
-                                'emerg_frame_i': [-1]*len(cc_stage),
-                                'division_frame_i': [-1]*len(cc_stage),
-                                'is_history_known': [False]*len(cc_stage)},
-                                index=self.cell_IDs)
-            df.index.name = 'Cell_ID'
-            df = pd.concat([df, self.cca_df], axis=1)
-            df = df.loc[:,~df.columns.duplicated()]
-            self.df = df
-            self.root.quit()
-            self.root.destroy()
 
 
 class tk_breakpoint:
@@ -2878,7 +2536,7 @@ class manualSeparateGui(QMainWindow):
     def __init__(self, lab, ID, img, fontSize='12pt',
                  IDcolor=[255, 255, 0], parent=None,
                  loop=None):
-        super().__init__()
+        super().__init__(parent)
         self.loop = loop
         self.cancel = True
         self.parent = parent
@@ -3227,8 +2885,9 @@ class manualSeparateGui(QMainWindow):
                 break
             if i == maxAreaIdx:
                 continue
-            self.parent.brushID += 1
-            self.lab[obj.slice][obj.image] = self.parent.brushID
+            PosData = self.parent.data[self.parent.pos_i]
+            PosData.brushID += 1
+            self.lab[obj.slice][obj.image] = PosData.brushID
 
 
         # Replace 0s on the cutting curve with IDs
@@ -3476,6 +3135,7 @@ if __name__ == '__main__':
     # win = QtSelectItems(title, ['mNeon', 'mKate'],
     #                     informativeText, CbLabel=CbLabel, parent=None)
     win = edgeDetectionDialog(None)
+    # win = QDialogAcdcInputs(1, 143, None)
     # IDs = list(range(1,11))
     # cc_stage = ['G1' for ID in IDs]
     # num_cycles = [-1]*len(IDs)
@@ -3506,7 +3166,7 @@ if __name__ == '__main__':
     win.setFont(font)
     app.setStyle(QtGui.QStyleFactory.create('Fusion'))
     win.show()
-    win.setSize()
+    # win.setSize()
     # win.setGeometryWindow()
     app.exec_()
-    # print(win.diameter, win.flow_threshold, win.cellprob_threshold)
+    print(win.SizeT, win.SizeZ, win.zyx_vox_dim)

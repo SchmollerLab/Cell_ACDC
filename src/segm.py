@@ -218,7 +218,19 @@ for images_path in tqdm(images_paths, unit=' Position', ncols=100):
     if data.SizeT > 1:
         if data.SizeZ > 1:
             # 3D data over time
-            img_data = data.img_data[range(stop_i), zz[:stop_i]]
+            img_data = data.img_data[:stop_i]
+            for i, z_info in enumerate(data.segmInfo_df[:stop_i].itertuples()):
+                z = z_info.z_slice_used_dataPrep
+                zProjHow = z_info.which_z_proj
+                img = img_data[i]
+                if zProjHow == 'single z-slice':
+                    img_data[i] = img[z]
+                elif zProjHow == 'max z-projection':
+                    img_data[i] = img.max(axis=0)
+                elif zProjHow == 'mean z-projection':
+                    img_data[i] = img.mean(axis=0)
+                elif zProjHow == 'median z-proj.':
+                    img_data[i] = np.median(img, axis=0)
         else:
             # 2D data over time
             img_data = data.img_data[:stop_i]
@@ -227,13 +239,23 @@ for images_path in tqdm(images_paths, unit=' Position', ncols=100):
     else:
         if data.SizeZ > 1:
             # Single 3D image
-            img_data = skimage.exposure.equalize_adapthist(data.img_data[zz[0]])
+            z_info = data.segmInfo_df.iloc[0]
+            z = z_info.z_slice_used_dataPrep
+            zProjHow = z_info.which_z_proj
+            if zProjHow == 'single z-slice':
+                img_data = data.img_data[z]
+            elif zProjHow == 'max z-projection':
+                img_data = data.img_data.max(axis=0)
+            elif zProjHow == 'mean z-projection':
+                img_data = data.img_data.mean(axis=0)
+            elif zProjHow == 'median z-proj.':
+                img_data = np.median(data.img_data, axis=0)
+            img_data = skimage.exposure.equalize_adapthist(img_data)
         else:
             # Single 2D image
             img_data = skimage.exposure.equalize_adapthist(img_data)
 
     print(f'Image shape = {img_data.shape}')
-
 
     """Segmentation routine"""
     t0 = time.time()
@@ -300,6 +322,6 @@ for images_path in tqdm(images_paths, unit=' Position', ncols=100):
 
     exec_time = t_end-t0
     exec_time_min = exec_time/60
-    exec_time_delta = datetime.timedelta(seconds=exec_time)
+    exec_time_delta = datetime.timedelta(seconds=round(exec_time))
     print(f'{images_path} successfully segmented in {exec_time_delta} HH:mm:ss')
     print('-----------------------------')

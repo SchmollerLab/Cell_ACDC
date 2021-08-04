@@ -324,7 +324,8 @@ class load_frames_data:
         self.acdc_output_csv_path = f'{base_path}_acdc_output.csv'
         self.segmInfo_df_csv_path = f'{base_path}_segmInfo.csv'
         self.delROIs_info_path = f'{base_path}_delROIsInfo.npz'
-        self.cropROI_coords_path = f'{base_path}_cropROI_coords.csv'
+        self.dataPrepROIs_coords_path = f'{base_path}_dataPrepROIs_coords.csv'
+        self.dataPrepBkgrValues_path = f'{base_path}_dataPrep_bkgrValues.csv'
 
     def substring_path(self, path, substring, images_path):
         substring_found = False
@@ -378,7 +379,7 @@ class load_frames_data:
 
         font = QtGui.QFont()
         font.setPointSize(10)
-        win = apps.QDialogInputsForm(SizeT, SizeZ, zyx_vox_dim,
+        win = apps.QDialogAcdcInputs(SizeT, SizeZ, zyx_vox_dim,
                                      parent=parent, font=font)
         win.setFont(font)
         win.exec_()

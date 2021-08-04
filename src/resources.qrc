@@ -40,5 +40,6 @@
     <file alias="addDelRoi.svg">resources/addDelRoi.svg</file>
     <file alias="curvature-tool.svg">resources/curvature-tool.svg</file>
     <file alias="cancel.svg">resources/cancel.svg</file>
+    <file alias="bkgrRoi.svg">resources/bkgrRoi.svg</file>
 </qresource>
 </RCC>
