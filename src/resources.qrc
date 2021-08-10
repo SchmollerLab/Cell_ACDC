@@ -41,5 +41,6 @@
     <file alias="curvature-tool.svg">resources/curvature-tool.svg</file>
     <file alias="cancel.svg">resources/cancel.svg</file>
     <file alias="bkgrRoi.svg">resources/bkgrRoi.svg</file>
+    <file alias="hull.svg">resources/hull.svg</file>
 </qresource>
 </RCC>

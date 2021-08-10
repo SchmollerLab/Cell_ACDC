@@ -103,47 +103,65 @@ class load_frames_data:
                     msg = QtGui.QMessageBox()
                     msg.critical(parentQWidget, err_title, err_msg, msg.Ok)
                     return None
-        self.img_data = skimage.img_as_float(img_data)
-        self.info, self.metadata_found = self.metadata(self.tif_path)
-        prompt_user = False
-        if self.metadata_found:
-            try:
-                self.SizeT, self.SizeZ = self.data_dimensions(self.info)
-            except:
-                self.SizeT, self.SizeZ = len(self.img_data), 1
-            if load_zyx_voxSize:
-                try:
-                    self.zyx_vox_dim = self.zyx_vox_dim()
-                    zyx_vox_dim_found = True
-                except:
-                    self.zyx_vox_dim = [0.5, 0.01, 0.01]
-                    zyx_vox_dim_found = False
-            else:
+        self.img_data = img_data
+        self.finterval = None
+
+        # Search for saved metadata
+        csv_path, savedMetadataFound = self.substring_path(
+                                              path, '_metadata.csv',
+                                              self.images_path)
+        if savedMetadataFound:
+            (self.SizeT, self.SizeZ,
+            self.zyx_vox_dim,
+            self.finterval) = self.loadLastInputs(load_zyx_voxSize,
+                                                  csv_path=csv_path)
+            if not load_zyx_voxSize:
                 self.zyx_vox_dim = None
-                zyx_vox_dim_found = False
-            if first_call:
-                (self.SizeT, self.SizeZ,
-                self.zyx_vox_dim) = self.inputsWidget(
-                    SizeT=self.SizeT, SizeZ=self.SizeZ,
-                    zyx_vox_dim=self.zyx_vox_dim,
-                    zyx_vox_dim_found=zyx_vox_dim_found,
-                    parent=parentQWidget
-                )
-            else:
-                (self.SizeT, self.SizeZ,
-                self.zyx_vox_dim) = self.loadInputs(load_zyx_voxSize)
-                if not load_zyx_voxSize:
-                    self.zyx_vox_dim = None
         else:
-            if first_call:
-                (self.SizeT, self.SizeZ,
-                self.zyx_vox_dim) = self.inputsWidget(SizeT=len(self.img_data),
-                                                      parent=parentQWidget)
-            else:
-                (self.SizeT, self.SizeZ,
-                self.zyx_vox_dim) = self.loadInputs(load_zyx_voxSize)
-                if not load_zyx_voxSize:
+            self.info, self.metadata_found = self.metadata(self.tif_path)
+            prompt_user = False
+            if self.metadata_found:
+                try:
+                    self.SizeT, self.SizeZ = self.data_dimensions(self.info)
+                except:
+                    self.SizeT, self.SizeZ = len(self.img_data), 1
+                if load_zyx_voxSize:
+                    try:
+                        self.zyx_vox_dim = self.zyx_vox_dim()
+                        zyx_vox_dim_found = True
+                    except:
+                        self.zyx_vox_dim = [0.5, 0.01, 0.01]
+                        zyx_vox_dim_found = False
+                else:
                     self.zyx_vox_dim = None
+                    zyx_vox_dim_found = False
+                if first_call:
+                    (self.SizeT, self.SizeZ,
+                    self.zyx_vox_dim) = self.inputsWidget(
+                        SizeT=self.SizeT, SizeZ=self.SizeZ,
+                        zyx_vox_dim=self.zyx_vox_dim,
+                        zyx_vox_dim_found=zyx_vox_dim_found,
+                        parent=parentQWidget, finterval=self.finterval
+                    )
+                else:
+                    (self.SizeT, self.SizeZ,
+                    self.zyx_vox_dim,
+                    self.finterval) = self.loadLastInputs(load_zyx_voxSize)
+                    if not load_zyx_voxSize:
+                        self.zyx_vox_dim = None
+            else:
+                if first_call:
+                    (self.SizeT, self.SizeZ,
+                    self.zyx_vox_dim) = self.inputsWidget(
+                                                     SizeT=len(self.img_data),
+                                                     parent=parentQWidget)
+                else:
+                    (self.SizeT, self.SizeZ,
+                    self.zyx_vox_dim,
+                    self.finterval) = self.loadLastInputs(load_zyx_voxSize)
+                    if not load_zyx_voxSize:
+                        self.zyx_vox_dim = None
+
         self.segm_data = None
         self.segm_npy_path = None
         if load_segm_data:
@@ -163,7 +181,10 @@ class load_frames_data:
                     self.segm_data = segm_data
             else:
                 Y, X = self.img_data.shape[-2:]
-                self.segm_data = np.zeros((self.SizeT, Y, X), int)
+                if self.SizeT > 1:
+                    self.segm_data = np.zeros((self.SizeT, Y, X), int)
+                else:
+                    self.segm_data = np.zeros((Y, X), int)
         # Load last tracked frame
         last_tracked_i_path, last_tracked_i_found = self.substring_path(
                                               path, 'last_tracked_i.txt',
@@ -261,12 +282,44 @@ class load_frames_data:
                 self.delROIsInfo_npz = np.load(delROIsInfo_path)
 
         self.build_paths(self.filename, self.images_path, user_ch_name)
+        self.saveMetadata()
 
-    def loadInputs(self, load_zyx_voxSize: bool):
-        src_path = os.path.dirname(os.path.realpath(__file__))
-        last_entries_csv_path = os.path.join(
-            src_path, 'temp', 'last_entries_metadata.csv'
-        )
+    def saveMetadata(self):
+        indexNames = [
+            'SizeT', 'SizeZ', 'finterval',
+            'z_voxSize', 'y_voxSize', 'x_voxSize'
+        ]
+        if self.zyx_vox_dim is None:
+            z, y, x = 1.0, 1.0, 1.0
+        else:
+            z, y, x = self.zyx_vox_dim
+
+        values = [
+            self.SizeT, self.SizeZ, self.finterval,
+            round(z, 6), round(y, 6), round(x, 6),
+        ]
+
+        df = pd.DataFrame(
+            {'Description': indexNames,
+             'values': values}
+        ).set_index('Description')
+
+        if self.zyx_vox_dim is None:
+            df.drop(['z_voxSize', 'y_voxSize', 'x_voxSize'], inplace=True)
+        if self.finterval is None:
+            df.drop('finterval', inplace=True)
+
+        df.to_csv(self.metadata_csv_path)
+
+    def loadLastInputs(self, load_zyx_voxSize: bool, csv_path=None):
+        if csv_path is None:
+            src_path = os.path.dirname(os.path.realpath(__file__))
+            last_entries_csv_path = os.path.join(
+                src_path, 'temp', 'last_entries_metadata.csv'
+            )
+        else:
+            last_entries_csv_path = csv_path
+
         if os.path.exists(last_entries_csv_path):
             df = pd.read_csv(last_entries_csv_path, index_col='Description')
             if 'z_voxSize' in df.index and load_zyx_voxSize:
@@ -276,11 +329,15 @@ class load_frames_data:
                 zyx_vox_dim = (z, y, x)
             else:
                 zyx_vox_dim = None
+            if 'finterval' in df.index:
+                finterval = float(df.at['finterval', 'values'])
+            else:
+                finterval = None
             SizeT = int(df.at['SizeT', 'values'])
             SizeZ = int(df.at['SizeZ', 'values'])
         else:
             raise FileNotFoundError(f'File not found: {last_entries_csv_path}')
-        return SizeT, SizeZ, zyx_vox_dim
+        return SizeT, SizeZ, zyx_vox_dim, finterval
 
     def zyx_vox_dim(self):
         info = self.info
@@ -326,6 +383,7 @@ class load_frames_data:
         self.delROIs_info_path = f'{base_path}_delROIsInfo.npz'
         self.dataPrepROIs_coords_path = f'{base_path}_dataPrepROIs_coords.csv'
         self.dataPrepBkgrValues_path = f'{base_path}_dataPrep_bkgrValues.csv'
+        self.metadata_csv_path = f'{base_path}_metadata.csv'
 
     def substring_path(self, path, substring, images_path):
         substring_found = False
@@ -348,6 +406,10 @@ class load_frames_data:
         with TiffFile(tif_path) as tif:
             self.metadata = tif.imagej_metadata
         try:
+            self.finterval = metadata['finterval']
+        except:
+            self.finterval = None
+        try:
             metadata_found = True
             info = self.metadata['Info']
         except:
@@ -361,7 +423,8 @@ class load_frames_data:
         return SizeT, SizeZ
 
     def inputsWidget(self, parent=None, SizeZ=1, SizeT=1,
-                     zyx_vox_dim=None, zyx_vox_dim_found=False):
+                     zyx_vox_dim=None, zyx_vox_dim_found=False,
+                     finterval=None):
         zyx_vox_found = False
         src_path = os.path.dirname(os.path.realpath(__file__))
         last_entries_csv_path = os.path.join(
@@ -379,9 +442,11 @@ class load_frames_data:
 
         font = QtGui.QFont()
         font.setPointSize(10)
-        win = apps.QDialogAcdcInputs(SizeT, SizeZ, zyx_vox_dim,
+        win = apps.QDialogAcdcInputs(SizeT, SizeZ, zyx_vox_dim, finterval,
                                      parent=parent, font=font)
         win.setFont(font)
+        win.show()
+        win.setWidths(font=font)
         win.exec_()
         self.cancel = win.cancel
 
@@ -391,98 +456,23 @@ class load_frames_data:
             else:
                 win.zyx_vox_dim = [1,1,1]
 
+        if win.finterval is None:
+            win.finterval = 0.0
+
         # Save values to load them again at the next session
         df = pd.DataFrame(
             {'Description': ['SizeT', 'SizeZ',
-                             'z_voxSize', 'y_voxSize', 'x_voxSize'],
+                             'z_voxSize', 'y_voxSize', 'x_voxSize',
+                             'finterval'],
              'values': [win.SizeT, win.SizeZ,
                         round(win.zyx_vox_dim[0], 6),
                         round(win.zyx_vox_dim[1], 6),
-                        round(win.zyx_vox_dim[2], 6)]}
+                        round(win.zyx_vox_dim[2], 6),
+                        win.finterval]}
         ).set_index('Description')
         df.to_csv(last_entries_csv_path)
 
         return win.SizeT, win.SizeZ, win.zyx_vox_dim
-
-
-    def dimensions_entry_widget(self, SizeZ=1, SizeT=1,
-                                zyx_vox_dim=[0.5,0.1,0.1],
-                                zyx_vox_dim_found=False):
-        src_path = os.path.dirname(os.path.realpath(__file__))
-        last_entries_csv_path = os.path.join(
-            src_path, 'temp', 'last_entries_metadata.csv'
-        )
-        if os.path.exists(last_entries_csv_path) and not zyx_vox_dim_found:
-            df = pd.read_csv(last_entries_csv_path, index_col='Description')
-            zyx_vox_dim = df.at['zyx_vox_dim', 'values']
-
-        root = tk.Tk()
-        root.geometry("+800+400")
-        root.title('Provide metadata')
-        tk.Label(root,
-                 anchor='w',
-                 text="Provide the following constants:",
-                 font=(None, 12)).grid(row=0, column=0, columnspan=2, pady=4)
-        tk.Label(root,
-                 anchor='w',
-                 text="Number of frames (SizeT)",
-                 font=(None, 10)).grid(row=1, pady=4)
-        tk.Label(root,
-                 anchor='w',
-                 text="Number of slices (SizeZ)",
-                 font=(None, 10)).grid(row=2, pady=4, padx=8)
-        tk.Label(root,
-                 anchor='w',
-                 text="Z, Y, X voxel size (um/pxl)\n""For 2D images leave Z to 1",
-                 font=(None, 10)).grid(row=3, pady=4, padx=8)
-
-        # root.protocol("WM_DELETE_WINDOW", exit)
-
-        SizeT_entry = tk.Entry(root, justify='center')
-        SizeZ_entry = tk.Entry(root, justify='center')
-        zyx_vox_dim_entry = tk.Entry(root, justify='center')
-
-        # Default texts in entry text box
-        SizeT_entry.insert(0, f'{SizeT}')
-        SizeZ_entry.insert(0, f'{SizeZ}')
-        zyx_vox_dim_entry.insert(0, f'{zyx_vox_dim}')
-
-        SizeT_entry.grid(row=1, column=1, padx=8)
-        SizeZ_entry.grid(row=2, column=1, padx=8)
-        zyx_vox_dim_entry.grid(row=3, column=1, padx=8)
-
-        tk.Button(root,
-                  text='OK',
-                  command=root.quit,
-                  width=10).grid(row=4,
-                                 column=0,
-                                 pady=16,
-                                 columnspan=2)
-        SizeT_entry.focus()
-
-        root.protocol("WM_DELETE_WINDOW", self.do_nothing)
-
-        root.mainloop()
-
-        SizeT = int(SizeT_entry.get())
-        SizeZ = int(SizeZ_entry.get())
-        re_float = '([0-9]*[.]?[0-9]+)'
-        s = zyx_vox_dim_entry.get()
-        m = re.findall(f'{re_float}, {re_float}, {re_float}', s)
-        zyx_vox_dim = [float(f) for f in m[0]]
-        root.destroy()
-
-        # Save values to load them again at the next session
-        df = pd.DataFrame(
-            {'Description': ['SizeT', 'SizeZ', 'zyx_vox_dim'],
-             'values': [SizeT, SizeZ, zyx_vox_dim]}
-        ).set_index('Description')
-        df.to_csv(last_entries_csv_path)
-
-        return SizeT, SizeZ, zyx_vox_dim
-
-    def do_nothing(self):
-        pass
 
 class fix_pos_n_mismatch:
     '''Geometry: "WidthxHeight+Left+Top" '''

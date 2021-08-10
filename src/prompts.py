@@ -6,6 +6,7 @@ import difflib
 import numpy as np
 import pandas as pd
 import tkinter as tk
+import sys
 from tkinter import ttk
 from ast import literal_eval
 from skimage.color import label2rgb, gray2rgb
@@ -14,10 +15,48 @@ from skimage import img_as_float
 from natsort import natsorted
 from PyQt5 import QtGui
 from PyQt5.QtWidgets import (
-    QApplication
+    QApplication, QPushButton, QHBoxLayout, QLabel, QSizePolicy
+)
+from PyQt5.QtCore import (
+    Qt
 )
 
 import apps
+
+class RichTextPushButton(QPushButton):
+    def __init__(self, parent=None, text=None):
+        if parent is not None:
+            super().__init__(parent)
+        else:
+            super().__init__()
+        self.__lbl = QLabel(self)
+        if text is not None:
+            self.__lbl.setText(text)
+        self.__lyt = QHBoxLayout()
+        self.__lyt.setContentsMargins(5, 0, 0, 0)
+        self.__lyt.setSpacing(0)
+        self.setLayout(self.__lyt)
+        self.__lbl.setAttribute(Qt.WA_TranslucentBackground)
+        self.__lbl.setAttribute(Qt.WA_TransparentForMouseEvents)
+        self.__lbl.setSizePolicy(
+            QSizePolicy.Expanding,
+            QSizePolicy.Expanding,
+        )
+        self.__lbl.setTextFormat(Qt.RichText)
+        self.__lyt.addWidget(self.__lbl)
+        return
+
+    def setText(self, text):
+        self.__lbl.setText(text)
+        self.updateGeometry()
+        return
+
+    def sizeHint(self):
+        s = QPushButton.sizeHint(self)
+        w = self.__lbl.sizeHint()
+        s.setWidth(w.width()+10)
+        s.setHeight(w.height()+8)
+        return s
 
 def file_dialog(toplevel=False, **options):
     #Prompt the user to select the image file
@@ -163,6 +202,29 @@ class select_pos_to_segm:
         self.root.destroy()
         exit('Execution aborted by the user.')
 
+def askWhichSegmModel(parent=None):
+    msg = QtGui.QMessageBox(parent)
+    toFront = msg.windowState() & ~Qt.WindowMinimized | Qt.WindowActive
+    msg.setWindowState(toFront)
+    msg.setWindowTitle('Select model')
+    font = QtGui.QFont()
+    font.setPointSize(10)
+    msg.setFont(font)
+    msg.activateWindow()
+    msg.setIcon(msg.Question)
+    msg.setText('Which model do you want to use for segmentation?')
+    yeazButton = RichTextPushButton(
+        text='YeaZ (<b>Yeast cells</b> - Phase contrast)')
+    cellposeButton = RichTextPushButton(
+        text='Cellpose (all other cells types, e.g. <b>mammalian</b>)')
+    msg.addButton(yeazButton, msg.YesRole)
+    msg.addButton(cellposeButton, msg.YesRole)
+    msg.exec_()
+    if msg.clickedButton() == yeazButton:
+        model = 'yeaz'
+    elif msg.clickedButton() == cellposeButton:
+        model = 'cellpose'
+    return model
 
 
 class scan_run_nums:
@@ -627,7 +689,8 @@ class select_channel_name:
                               channel_names,
                               informativeText,
                               CbLabel='Select channel name:  ',
-                              parent=parent)
+                              parent=parent,
+                              defaultChannelName=self.last_sel_channel)
         win.setFont(font)
         win.exec_()
         if win.cancel:
@@ -943,5 +1006,7 @@ class num_pos_toSegm_tk:
 
 
 if __name__ == '__main__':
-    num_frames_prompt = num_frames_toQuant()
-    num_frames_prompt.prompt(100, last_segm_i=100, last_tracked_i=85)
+    app = QApplication(sys.argv)
+    app.setStyle(QtGui.QStyleFactory.create('Fusion'))
+    model = askWhichSegmModel()
+    print(model)

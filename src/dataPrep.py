@@ -11,8 +11,13 @@ import scipy.interpolate
 import skimage.io
 from tifffile.tifffile import TiffWriter, TiffFile
 
-from PyQt5.QtCore import Qt, QFile, QTextStream, QSize, QRect, QRectF
-from PyQt5.QtGui import QIcon, QKeySequence, QCursor
+from PyQt5.QtCore import (
+    Qt, QFile, QTextStream, QSize, QRect, QRectF, QObject, QThread, pyqtSignal
+)
+from PyQt5.QtGui import (
+    QIcon, QKeySequence, QCursor, QTextBlockFormat,
+    QTextCursor
+)
 from PyQt5.QtWidgets import (
     QAction, QApplication, QLabel, QPushButton,
     QMainWindow, QMenu, QToolBar, QGroupBox,
@@ -29,13 +34,38 @@ import qrc_resources
 # Custom modules
 import load, prompts, apps, core
 
+if os.name == 'nt':
+    try:
+        # Set taskbar icon in windows
+        import ctypes
+        myappid = 'schmollerlab.yeastacdc.pyqt.v1' # arbitrary string
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+    except:
+        pass
+
 pg.setConfigOptions(imageAxisOrder='row-major')
 
-class dataPrep(QMainWindow):
-    def __init__(self, parent=None):
+class toCsvWorker(QObject):
+    finished = pyqtSignal()
+    progress = pyqtSignal(int)
+
+    def setData(self, data):
+        self.data = data
+
+    def run(self):
+        for PosData in self.data:
+            PosData.segmInfo_df.to_csv(PosData.segmInfo_df_csv_path)
+        self.finished.emit()
+
+class dataPrepWin(QMainWindow):
+    def __init__(self, parent=None, buttonToRestore=None):
         super().__init__(parent)
+
+        self.buttonToRestore = buttonToRestore
+
         self.setWindowTitle("Yeast ACDC - data prep")
         self.setGeometry(100, 50, 850, 800)
+        self.setWindowIcon(QIcon(":assign-motherbud.svg"))
 
         self.gui_createActions()
         self.gui_createMenuBar()
@@ -49,6 +79,9 @@ class dataPrep(QMainWindow):
         self.gui_createImgWidgets()
         self.num_frames = 0
         self.frame_i = 0
+        self.loop = None
+        self.titleText = None
+        self.cropROI = None
 
         mainContainer = QtGui.QWidget()
         self.setCentralWidget(mainContainer)
@@ -63,6 +96,9 @@ class dataPrep(QMainWindow):
         # File actions
         self.openAction = QAction(QIcon(":folder-open.svg"), "&Open...", self)
         self.exitAction = QAction("&Exit", self)
+        self.showInExplorerAction = QAction(QIcon(":drawer.svg"),
+                                    "&Show in Explorer/Finder", self)
+        self.showInExplorerAction.setDisabled(True)
 
         # Toolbar actions
         self.prevAction = QAction(QIcon(":arrow-left.svg"),
@@ -118,15 +154,16 @@ class dataPrep(QMainWindow):
 
         # File toolbar
         fileToolBar = self.addToolBar("File")
-        fileToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
+        # fileToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         fileToolBar.setMovable(False)
 
         fileToolBar.addAction(self.openAction)
+        fileToolBar.addAction(self.showInExplorerAction)
         fileToolBar.addAction(self.startAction)
         fileToolBar.addAction(self.okAction)
 
         navigateToolbar = QToolBar("Navigate", self)
-        navigateToolbar.setIconSize(QSize(toolbarSize, toolbarSize))
+        # navigateToolbar.setIconSize(QSize(toolbarSize, toolbarSize))
         self.addToolBar(navigateToolbar)
 
         navigateToolbar.addAction(self.prevAction)
@@ -156,6 +193,7 @@ class dataPrep(QMainWindow):
         self.exitAction.triggered.connect(self.close)
         self.prevAction.triggered.connect(self.prev_cb)
         self.nextAction.triggered.connect(self.next_cb)
+        self.showInExplorerAction.triggered.connect(self.showInExplorer)
         self.jumpForwardAction.triggered.connect(self.skip10ahead_cb)
         self.jumpBackwardAction.triggered.connect(self.skip10back_cb)
         self.addBkrgRoiActon.triggered.connect(self.addBkgrRoi)
@@ -265,6 +303,19 @@ class dataPrep(QMainWindow):
         except:
             self.wcLabel.setText(f'')
 
+    def showInExplorer(self):
+        try:
+            PosData = self.data[self.pos_i]
+            systems = {
+                'nt': os.startfile,
+                'posix': lambda foldername: os.system('xdg-open "%s"' % foldername),
+                'os2': lambda foldername: os.system('open "%s"' % foldername)
+                 }
+
+            systems.get(os.name, os.startfile)(PosData.images_path)
+        except AttributeError:
+            pass
+
     def next_cb(self, checked):
         if self.num_pos > 1:
             self.next_pos()
@@ -348,6 +399,7 @@ class dataPrep(QMainWindow):
         self.update_img()
 
     def updateFramePosLabel(self):
+        PosData = self.data[self.pos_i]
         if self.num_pos > 1:
             self.frameLabel.setText(
                      f'Current position = {self.pos_i+1}/{self.num_pos} '
@@ -363,6 +415,13 @@ class dataPrep(QMainWindow):
                                        'z_slice_used_dataPrep']
             zProjHow = PosData.segmInfo_df.at[frame_i,
                                               'which_z_proj']
+            try:
+                self.zProjComboBox.currentTextChanged.disconnect()
+            except TypeError:
+                pass
+            self.zProjComboBox.setCurrentText(zProjHow)
+            self.zProjComboBox.currentTextChanged.connect(self.updateZproj)
+
             if zProjHow == 'single z-slice':
                 self.zSlice_scrollBar.setSliderPosition(z)
                 self.z_label.setText(f'z-slice  {z}/{PosData.SizeZ}')
@@ -409,7 +468,6 @@ class dataPrep(QMainWindow):
     def saveBkgrValues(self, PosData):
         if not self.bkgrROIs:
             return
-
 
         self.bkgrMask = np.zeros(self.img.image.shape, bool)
         for roi in self.bkgrROIs:
@@ -474,6 +532,9 @@ class dataPrep(QMainWindow):
         right_click = event.button() == Qt.MouseButton.RightButton
         left_click = event.button() == Qt.MouseButton.LeftButton
 
+        if left_click:
+            pg.ImageItem.mousePressEvent(self.img, event)
+
         x, y = event.pos().x(), event.pos().y()
 
         # Check if right click on ROI
@@ -502,17 +563,18 @@ class dataPrep(QMainWindow):
                 event.ignore()
                 return
 
-        x0, y0 = [int(c) for c in self.cropROI.pos()]
-        w, h = [int(c) for c in self.cropROI.size()]
-        x1, y1 = x0+w, y0+h
-        clickedOnROI = (
-            x>=x0-handleSize and x<=x1+handleSize
-            and y>=y0-handleSize and y<=y1+handleSize
-        )
-        dragRoi = left_click and clickedOnROI
-        if dragRoi:
-            event.ignore()
-            return
+        if self.cropROI is not None:
+            x0, y0 = [int(c) for c in self.cropROI.pos()]
+            w, h = [int(c) for c in self.cropROI.size()]
+            x1, y1 = x0+w, y0+h
+            clickedOnROI = (
+                x>=x0-handleSize and x<=x1+handleSize
+                and y>=y0-handleSize and y<=y1+handleSize
+            )
+            dragRoi = left_click and clickedOnROI
+            if dragRoi:
+                event.ignore()
+                return
 
     def save(self):
         msg = QtGui.QMessageBox()
@@ -561,12 +623,19 @@ class dataPrep(QMainWindow):
             # Save channels (npz AND tif)
             _zip = zip(PosData.tif_paths, PosData.all_npz_paths)
             for tif, npz in _zip:
-                data = np.load(npz)['arr_0']
+                if self.align:
+                    data = np.load(npz)['arr_0']
+                else:
+                    data = skimage.io.imread(tif)
+
                 npz_data = self.crop(data)
-                print('Saving: ', npz)
-                temp_npz = self.getTempfilePath(npz)
-                np.savez_compressed(temp_npz, npz_data)
-                self.moveTempFile(temp_npz, npz)
+
+                if self.align:
+                    print('Saving: ', npz)
+                    temp_npz = self.getTempfilePath(npz)
+                    np.savez_compressed(temp_npz, npz_data)
+                    self.moveTempFile(temp_npz, npz)
+
                 print('Saving: ', tif)
                 temp_tif = self.getTempfilePath(tif)
                 self.imagej_tiffwriter(temp_tif, npz_data,
@@ -574,7 +643,7 @@ class dataPrep(QMainWindow):
                 self.moveTempFile(temp_tif, tif)
 
             # Save segm.npz
-            if PosData.segm_found:
+            if PosData.segm_found and self.segmAligned:
                 print('Saving: ', PosData.segm_npz_path)
                 data = PosData.segm_data
                 croppedSegm = self.crop(data)
@@ -634,7 +703,8 @@ class dataPrep(QMainWindow):
         # Iterate pos and load_data
         data = []
         for f, file_path in enumerate(user_ch_file_paths):
-            PosData = load.load_frames_data(
+            try:
+                PosData = load.load_frames_data(
                                          file_path, user_ch_name,
                                          parentQWidget=self,
                                          load_segm_data=True,
@@ -644,6 +714,12 @@ class dataPrep(QMainWindow):
                                          load_shifts=True,
                                          loadSegmInfo=True,
                                          first_call=f==0)
+            except AttributeError:
+                self.titleLabel.setText(
+                    'File --> Open or Open recent to start the process',
+                    color='w')
+                return False
+
             if PosData is None:
                 self.titleLabel.setText(
                     'File --> Open or Open recent to start the process',
@@ -700,8 +776,10 @@ class dataPrep(QMainWindow):
                      'z_slice_used_dataPrep': [mid_slice]*self.num_frames,
                      'which_z_proj': ['single z-slice']*self.num_frames}
                 ).set_index('frame_i')
+                PosData.segmInfo_df.to_csv(PosData.segmInfo_df_csv_path)
 
-        if self.data[0].SizeZ > 1:
+        PosData = self.data[0]
+        if PosData.SizeZ > 1:
             self.zSlice_scrollBar.setDisabled(False)
             self.zProjComboBox.setDisabled(False)
             self.zSlice_scrollBar.setMaximum(PosData.SizeZ-1)
@@ -712,7 +790,7 @@ class dataPrep(QMainWindow):
                 pass
             self.zSlice_scrollBar.sliderMoved.connect(self.update_z_slice)
             self.zProjComboBox.currentTextChanged.connect(self.updateZproj)
-            if self.data[0].SizeT > 1:
+            if PosData.SizeT > 1:
                 self.interpAction.setEnabled(True)
                 self.ZbackAction.setEnabled(True)
                 self.ZforwAction.setEnabled(True)
@@ -724,10 +802,12 @@ class dataPrep(QMainWindow):
             PosData = self.data[self.pos_i]
             PosData.segmInfo_df.at[self.frame_i, 'z_slice_used_dataPrep'] = z
             self.update_img()
+            PosData.segmInfo_df.to_csv(PosData.segmInfo_df_csv_path)
 
     def updateZproj(self, how):
         PosData = self.data[self.pos_i]
-        PosData.segmInfo_df.at[self.frame_i, 'which_z_proj'] = how
+        for frame_i in range(self.frame_i, PosData.SizeT):
+            PosData.segmInfo_df.at[frame_i, 'which_z_proj'] = how
         if how == 'single z-slice':
             self.zSlice_scrollBar.setDisabled(False)
             self.z_label.setStyleSheet('color: black')
@@ -736,6 +816,24 @@ class dataPrep(QMainWindow):
             self.zSlice_scrollBar.setDisabled(True)
             self.z_label.setStyleSheet('color: gray')
             self.update_img()
+
+        # Apply same z-proj to future pos
+        if PosData.SizeT == 1:
+            for PosData in self.data[self.pos_i+1:]:
+                PosData.segmInfo_df.at[0, 'which_z_proj'] = how
+
+        # Launch a separate thread to save to csv and keep gui responsive
+        self.thread = QThread()
+        self.worker = toCsvWorker()
+        self.worker.setData(self.data)
+        self.worker.moveToThread(self.thread)
+        self.thread.started.connect(self.worker.run)
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.thread.finished.connect(self.thread.deleteLater)
+        self.thread.start()
+
+
 
     def useSameZ_fromHereBack(self, event):
         how = self.zProjComboBox.currentText()
@@ -770,6 +868,9 @@ class dataPrep(QMainWindow):
 
 
     def prepData(self, event):
+        self.titleLabel.setText(
+            'Prepping data... (check progress in the terminal)',
+            color='w')
         doZip = True
         for p, PosData in enumerate(self.data):
             self.startAction.setDisabled(True)
@@ -816,7 +917,7 @@ class dataPrep(QMainWindow):
 
     def setStandardRoiShape(self, text):
         PosData = self.data[self.pos_i]
-        _, Y, X = PosData.img_data.shape
+        Y, X = PosData.img_data.shape[-2:]
         m = re.findall('(\d+)x(\d+)', text)
         w, h = int(m[0][0]), int(m[0][1])
         xc, yc = int(round(X/2)), int(round(Y/2))
@@ -966,7 +1067,7 @@ class dataPrep(QMainWindow):
         In the end, aligned data will be saved to both the .tif file and a
         "_aligned.npz" file. The shifts will be saved to "align_shift.npy" file.
 
-        Alignemnt is performed only if needed:
+        Alignemnt is performed only if needed and requested by the user:
 
         1. If the "_aligned.npz" file does NOT exist AND the "align_shift.npy"
         file does NOT exist then alignment is performed with the function
@@ -1002,10 +1103,6 @@ class dataPrep(QMainWindow):
         with TiffFile(PosData.tif_path) as tif:
             metadata = tif.imagej_metadata
 
-        print('Aligning data if needed...')
-        self.titleLabel.setText(
-            'Aligning data if needed... (check progress in terminal)',
-            color='w')
         align = True
         if PosData.loaded_shifts is None and PosData.SizeT > 1:
             msg = QtGui.QMessageBox()
@@ -1013,12 +1110,7 @@ class dataPrep(QMainWindow):
                 self, 'Align frames?',
                 f'Do you want to align ALL channels based on "{user_ch_name}" '
                 'channel?\n\n'
-                'NOTE that also the .tif files will contain aligned data and\n'
-                f'a "..._{user_ch_name}_aligned.npz" file will be created \n'
-                'anyway because of compatibility reasons.\n'
-                'If you do not align it will contain '
-                'NON-aligned data.\n\n'
-                'If you do not have a specific reason for NOT align we reccommend '
+                'If you don\'t know what to choose, we reccommend '
                 'aligning.',
                 msg.Yes | msg.No
             )
@@ -1030,6 +1122,14 @@ class dataPrep(QMainWindow):
             align = False
             # Create 0, 0 shifts to perform 0 alignment
             PosData.loaded_shifts = np.zeros((self.num_frames,2), int)
+
+        self.align = align
+
+        if align:
+            print('Aligning data...')
+            self.titleLabel.setText(
+                'Aligning data...(check progress in terminal)',
+                color='w')
 
         _zip = zip(PosData.tif_paths, PosData.npz_paths)
         aligned = False
@@ -1065,19 +1165,20 @@ class dataPrep(QMainWindow):
                 else:
                     aligned_frames = tif_data.copy()
                 print(tif_data.shape)
-                _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
-                print('Saving: ', _npz)
-                temp_npz = self.getTempfilePath(_npz)
-                np.savez_compressed(temp_npz, aligned_frames)
-                self.moveTempFile(temp_npz, _npz)
-                np.save(PosData.align_shifts_path, PosData.loaded_shifts)
-                PosData.all_npz_paths[i] = _npz
+                if align:
+                    _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
+                    print('Saving: ', _npz)
+                    temp_npz = self.getTempfilePath(_npz)
+                    np.savez_compressed(temp_npz, aligned_frames)
+                    self.moveTempFile(temp_npz, _npz)
+                    np.save(PosData.align_shifts_path, PosData.loaded_shifts)
+                    PosData.all_npz_paths[i] = _npz
 
-                print('Saving: ', tif)
-                temp_tif = self.getTempfilePath(tif)
-                self.imagej_tiffwriter(temp_tif, aligned_frames,
-                                       metadata, PosData)
-                self.moveTempFile(temp_tif, tif)
+                    print('Saving: ', tif)
+                    temp_tif = self.getTempfilePath(tif)
+                    self.imagej_tiffwriter(temp_tif, aligned_frames,
+                                           metadata, PosData)
+                    self.moveTempFile(temp_tif, tif)
                 if PosData.SizeT < 2:
                     PosData.img_data = np.array([skimage.io.imread(tif)])
                 else:
@@ -1109,21 +1210,23 @@ class dataPrep(QMainWindow):
                 else:
                     aligned_frames = tif_data.copy()
                 _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
-                print('Saving: ', _npz)
-                temp_npz = self.getTempfilePath(_npz)
-                np.savez_compressed(temp_npz, aligned_frames)
-                self.moveTempFile(temp_npz, _npz)
-                PosData.all_npz_paths[i] = _npz
+                if align:
+                    print('Saving: ', _npz)
+                    temp_npz = self.getTempfilePath(_npz)
+                    np.savez_compressed(temp_npz, aligned_frames)
+                    self.moveTempFile(temp_npz, _npz)
+                    PosData.all_npz_paths[i] = _npz
 
-                print('Saving: ', tif)
-                temp_tif = self.getTempfilePath(tif)
-                self.imagej_tiffwriter(temp_tif, aligned_frames,
-                                       metadata, PosData)
-                self.moveTempFile(temp_tif, tif)
+                    print('Saving: ', tif)
+                    temp_tif = self.getTempfilePath(tif)
+                    self.imagej_tiffwriter(temp_tif, aligned_frames,
+                                           metadata, PosData)
+                    self.moveTempFile(temp_tif, tif)
 
         # Align segmentation data accordingly
+        self.segmAligned = False
         if PosData.segm_found and aligned:
-            if PosData.loaded_shifts is None:
+            if PosData.loaded_shifts is None or not align:
                 return
             msg = QtGui.QMessageBox()
             alignAnswer = msg.question(
@@ -1133,6 +1236,7 @@ class dataPrep(QMainWindow):
                 msg.Yes | msg.No
             )
             if alignAnswer == msg.Yes:
+                self.segmAligned = True
                 print('Aligning: ', PosData.segm_npz_path)
                 PosData.segm_data, shifts = core.align_frames_2D(
                                              PosData.segm_data,
@@ -1189,10 +1293,6 @@ class dataPrep(QMainWindow):
 
 
     def npy_to_npz(self, PosData):
-        print('Converting .npy to .npz if needed...')
-        self.titleLabel.setText(
-            'Converting .npy to .npz if needed... (check progress in terminal)',
-            color='w')
         PosData.all_npz_paths = PosData.npz_paths.copy()
         _zip = zip(PosData.npy_paths, PosData.npz_paths)
         for i, (npy, npz) in enumerate(_zip):
@@ -1200,6 +1300,9 @@ class dataPrep(QMainWindow):
                 continue
             elif npy is not None and npz is None:
                 print('Converting: ', npy)
+                self.titleLabel.setText(
+                    'Converting .npy to .npz... (check progress in terminal)',
+                    color='w')
                 _data = np.load(npy)
                 _npz = f'{os.path.splitext(npy)[0]}.npz'
                 temp_npz = self.getTempfilePath(_npz)
@@ -1277,18 +1380,50 @@ class dataPrep(QMainWindow):
         df.index.name = 'index'
         df.to_csv(recentPaths_path)
 
+    def loadFiles(self, exp_path, user_ch_file_paths, user_ch_name):
+        self.titleLabel.setText('Loading data...', color='w')
+        self.setWindowTitle(f'Yeast_ACDC - Data Prep. - "{exp_path}"')
 
-    def openFile(self, checked=False, exp_path=None):
+        self.num_pos = len(user_ch_file_paths)
+        proceed = self.init_data(user_ch_file_paths, user_ch_name)
+
+        if not proceed:
+            self.openAction.setEnabled(True)
+            return
+
+        # Connect events at the end of loading data process
+        self.gui_connectGraphicsEvents()
+
+        if self.titleText is None:
+            self.titleLabel.setText(
+                'Data successfully loaded. '
+                'Press "START" button (top-left) to start prepping your data.',
+                color='w')
+        else:
+            self.titleLabel.setText(
+                self.titleText,
+                color='w')
+
+        self.openAction.setEnabled(True)
+        self.startAction.setEnabled(True)
+        self.showInExplorerAction.setEnabled(True)
+        self.update_img()
+
+    def initLoading(self):
         # Remove all items from a previous session if open is pressed again
         self.removeAllItems()
         self.gui_addPlotItems()
 
+        self.setCenterAlignmentTitle()
         self.openAction.setEnabled(False)
+
+    def openFile(self, checked=False, exp_path=None):
+        self.initLoading()
 
         if exp_path is None:
             self.getMostRecentPath()
             exp_path = QFileDialog.getExistingDirectory(
-                self, 'Select experiment folder containing Position_n folders'
+                self, 'Select experiment folder containing Position_n folders '
                       'or specific Position_n folder', self.MostRecentPath)
             self.addToRecentPaths(exp_path)
 
@@ -1311,8 +1446,7 @@ class dataPrep(QMainWindow):
 
         self.titleLabel.setText('Loading data...', color='w')
         self.setWindowTitle(f'Yeast_ACDC - Data Prep. - "{exp_path}"')
-
-
+        self.setCenterAlignmentTitle()
 
         ch_name_selector = prompts.select_channel_name(
             which_channel='segm', allow_abort=False
@@ -1431,23 +1565,28 @@ class dataPrep(QMainWindow):
             user_ch_file_paths.append(img_path)
             print(f'Loading {img_path}...')
 
-        self.num_pos = len(user_ch_file_paths)
-        proceed = self.init_data(user_ch_file_paths, user_ch_name)
+        self.loadFiles(exp_path, user_ch_file_paths, user_ch_name)
+        self.setCenterAlignmentTitle()
 
-        if not proceed:
-            self.openAction.setEnabled(True)
-            return
+    def setCenterAlignmentTitle(self):
+        self.titleLabel.item.setTextWidth(self.img.width())
+        fmt = QTextBlockFormat()
+        fmt.setAlignment(Qt.AlignHCenter)
+        cursor = self.titleLabel.item.textCursor()
+        cursor.select(QTextCursor.Document)
+        cursor.mergeBlockFormat(fmt)
+        cursor.clearSelection()
+        self.titleLabel.item.setTextCursor(cursor)
 
-        # Connect events at the end of loading data process
-        self.gui_connectGraphicsEvents()
+    def closeEvent(self, event):
+        if self.buttonToRestore is not None:
+            button, color, text = self.buttonToRestore
+            button.setText(text)
+            button.setStyleSheet(
+                f'QPushButton {{background-color: {color};}}')
 
-        self.titleLabel.setText(
-            'Data successfully loaded. Right/Left arrow to navigate frames',
-            color='w')
-
-        self.openAction.setEnabled(True)
-        self.startAction.setEnabled(True)
-        self.update_img()
+        if self.loop is not None:
+            self.loop.exit()
 
 if __name__ == "__main__":
     # Handle high resolution displays:
@@ -1457,7 +1596,7 @@ if __name__ == "__main__":
         QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     # Create the application
     app = QApplication(sys.argv)
-    win = dataPrep()
+    win = dataPrepWin()
     win.show()
     # Apply style
     app.setStyle(QtGui.QStyleFactory.create('Fusion'))

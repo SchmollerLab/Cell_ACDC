@@ -19,6 +19,7 @@ import skimage.exposure
 import skimage.draw
 import skimage.registration
 import skimage.color
+import skimage.segmentation
 from matplotlib.ticker import FormatStrFormatter
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg,
                                                NavigationToolbar2Tk)
@@ -27,7 +28,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 import math
-from time import time
+import time
 from lib import text_label_centroid
 import matplotlib.ticker as ticker
 
@@ -53,7 +54,8 @@ pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
 
 class QDialogCombobox(QDialog):
     def __init__(self, title, ComboBoxItems, informativeText,
-                 CbLabel='Select value:  ', parent=None):
+                 CbLabel='Select value:  ', parent=None,
+                 defaultChannelName=None):
         self.cancel = True
         self.selectedItemText = ''
         self.selectedItemIdx = None
@@ -73,6 +75,8 @@ class QDialogCombobox(QDialog):
 
         combobox = QComboBox()
         combobox.addItems(ComboBoxItems)
+        if defaultChannelName is not None and defaultChannelName in ComboBoxItems:
+            combobox.setCurrentText(defaultChannelName)
         self.ComboBox = combobox
         topLayout.addWidget(combobox)
         topLayout.setContentsMargins(0, 10, 0, 0)
@@ -282,7 +286,8 @@ class QDialogInputsForm(QDialog):
         self.close()
 
 class QDialogAcdcInputs(QDialog):
-    def __init__(self, SizeT, SizeZ, zyx_vox_dim, parent=None, font=None):
+    def __init__(self, SizeT, SizeZ, zyx_vox_dim, finterval,
+                 parent=None, font=None):
         self.cancel = True
         self.zyx_vox_dim = zyx_vox_dim
         super().__init__(parent)
@@ -300,6 +305,7 @@ class QDialogAcdcInputs(QDialog):
         self.SizeT_SpinBox.setMaximum(2147483647)
         self.SizeT_SpinBox.setValue(SizeT)
         self.SizeT_SpinBox.setAlignment(Qt.AlignCenter)
+        self.SizeT_SpinBox.valueChanged.connect(self.fintervalShowHide)
         gridLayout.addWidget(self.SizeT_SpinBox, row, 1)
 
         row += 1
@@ -311,6 +317,21 @@ class QDialogAcdcInputs(QDialog):
         self.SizeZ_SpinBox.setAlignment(Qt.AlignCenter)
         gridLayout.addWidget(self.SizeZ_SpinBox, row, 1)
 
+        row += 1
+        self.fintervalLabel = QLabel('Frame interval (s)')
+        gridLayout.addWidget(self.fintervalLabel, row, 0)
+        self.fintervalSpinBox = QDoubleSpinBox()
+        self.fintervalSpinBox.setMaximum(2147483647.0)
+        if finterval is None:
+            finterval = 180.0
+        self.fintervalSpinBox.setValue(finterval)
+        self.fintervalSpinBox.setAlignment(Qt.AlignCenter)
+        gridLayout.addWidget(self.fintervalSpinBox, row, 1)
+
+        if SizeT:
+            self.fintervalSpinBox.hide()
+            self.fintervalLabel.hide()
+
         if zyx_vox_dim is not None:
             formLayout.addRow('Z, Y, X voxel size (um/pxl)\n'
                               'For 2D images leave Z to 1', QLineEdit())
@@ -318,13 +339,6 @@ class QDialogAcdcInputs(QDialog):
             txt = ', '.join([str(v) for v in zyx_vox_dim])
             self.zyx_vox_dim_entry.setText(txt)
             self.zyx_vox_dim_entry.setAlignment(Qt.AlignCenter)
-            if font is not None:
-                # Scale to largest content
-                fm = QFontMetrics(font)
-                w = fm.width(txt)+10
-                self.SizeT_SpinBox.setFixedWidth(w)
-                self.SizeZ_SpinBox.setFixedWidth(w)
-                self.zyx_vox_dim_entry.setFixedWidth(w)
 
         self.adjustSize()
 
@@ -348,6 +362,14 @@ class QDialogAcdcInputs(QDialog):
         self.setLayout(mainLayout)
         self.setModal(True)
 
+    def fintervalShowHide(self, val):
+        if val > 1:
+            self.fintervalSpinBox.show()
+            self.fintervalLabel.show()
+        else:
+            self.fintervalSpinBox.hide()
+            self.fintervalLabel.hide()
+
     def ok_cb(self, event):
         self.cancel = False
         if self.zyx_vox_dim is not None:
@@ -370,12 +392,29 @@ class QDialogAcdcInputs(QDialog):
             zyx_vox_dim = None
         self.SizeT = self.SizeT_SpinBox.value()
         self.SizeZ = self.SizeZ_SpinBox.value()
+        self.finterval = self.fintervalSpinBox.value()
         self.zyx_vox_dim = zyx_vox_dim
         self.close()
 
     def cancel_cb(self, event):
         self.cancel = True
         self.close()
+
+    def setWidths(self, font=None):
+        if self.zyx_vox_dim is None:
+            return
+        if font is None:
+            return
+
+        # Scale to largest content
+        fm = QFontMetrics(font)
+        w = fm.width(self.zyx_vox_dim_entry.text())+10
+        if w < self.SizeT_SpinBox.geometry().width():
+            return
+
+        self.SizeT_SpinBox.setFixedWidth(w)
+        self.SizeZ_SpinBox.setFixedWidth(w)
+        self.zyx_vox_dim_entry.setFixedWidth(w)
 
 class gaussBlurDialog(QDialog):
     def __init__(self, mainWindow):
@@ -425,13 +464,10 @@ class gaussBlurDialog(QDialog):
         mainLayout.addWidget(self.sigmaSlider)
         mainLayout.addWidget(self.PreviewCheckBox)
 
-        okButton = QPushButton('Ok')
-        okButton.setShortcut(Qt.Key_Enter)
 
-        cancelButton = QPushButton('Cancel')
+        closeButton = QPushButton('Close')
 
-        buttonsLayout.addWidget(okButton, alignment=Qt.AlignRight)
-        buttonsLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
+        buttonsLayout.addWidget(closeButton, alignment=Qt.AlignCenter)
         buttonsLayout.setContentsMargins(0, 10, 0, 0)
 
         mainLayout.addLayout(buttonsLayout)
@@ -439,14 +475,11 @@ class gaussBlurDialog(QDialog):
         self.PreviewCheckBox.clicked.connect(self.preview_cb)
         self.sigmaSlider.sliderMoved.connect(self.sigmaSliderMoved)
         self.sigmaQDSB.valueChanged.connect(self.sigmaQDSB_valueChanged)
-        self.channelsComboBox.currentTextChanged.connect(self.updateChannel)
-        okButton.clicked.connect(self.ok_cb)
-        cancelButton.clicked.connect(self.cancel_cb)
+        self.channelsComboBox.currentTextChanged.connect(self.apply)
+        closeButton.clicked.connect(self.close)
 
         self.setLayout(mainLayout)
 
-        self.storeData()
-        self.getData()
         self.apply()
 
     def preview_cb(self, checked):
@@ -456,20 +489,6 @@ class gaussBlurDialog(QDialog):
         else:
             self.getData()
             self.apply()
-
-    def storeData(self):
-        PosData = self.mainWindow.data[self.mainWindow.pos_i]
-        self.raw_fluo_dict = {}
-        for key in self.keys:
-            if key.find(self.mainWindow.user_ch_name) != -1:
-                self.raw_img = PosData.img_data[PosData.frame_i].copy()
-            else:
-                fluo_img = self.mainWindow.getOlImg(key)
-                self.raw_fluo_dict[key] = fluo_img.copy()
-
-    def updateChannel(self, key):
-        self.getData()
-        self.apply()
 
     def getData(self):
         PosData = self.mainWindow.data[self.mainWindow.pos_i]
@@ -486,23 +505,22 @@ class gaussBlurDialog(QDialog):
         self.num_segm_frames = PosData.num_segm_frames
         self.imgData = data
 
-    def setImg(self, blurred):
-        PosData = self.mainWindow.data[self.mainWindow.pos_i]
-        key = self.channelsComboBox.currentText()
-        if PosData.SizeZ > 1:
-            if key == PosData.filename:
-                z = self.mainWindow.zSlice_scrollBar.sliderPosition()
-                self.imgData[self.frame_i][z] = blurred
-            else:
-                self.imgData[self.frame_i] = blurred
-        else:
-            self.imgData[self.frame_i]= blurred
+    def getFilteredImg(self):
+        img = skimage.filters.gaussian(self.img, sigma=self.sigma)
+        if self.mainWindow.overlayButton.isChecked():
+            key = self.channelsComboBox.currentText()
+            img = self.mainWindow.getOverlayImg(fluoData=(img, key),
+                                                setImg=False)
+        img = self.mainWindow.normalizeIntensities(img)
+        return img
 
     def apply(self):
+        self.getData()
+        img = self.getFilteredImg()
         if self.PreviewCheckBox.isChecked():
-            blurred = skimage.filters.gaussian(self.img, sigma=self.sigma)
-            self.setImg(blurred)
-        self.mainWindow.updateALLimg(only_ax1=True, updateBlur=False)
+            self.mainWindow.img1.setImage(img)
+            h = self.mainWindow.img1.getHistogram()
+            self.mainWindow.hist.plot.setData(*h)
 
     def sigmaQDSB_valueChanged(self, val):
         self.sigma = val
@@ -518,48 +536,9 @@ class gaussBlurDialog(QDialog):
         self.sigmaQDSB.valueChanged.connect(self.sigmaSliderMoved)
         self.apply()
 
-    def ok_cb(self, event):
-        PosData = self.mainWindow.data[self.mainWindow.pos_i]
-        self.cancel = False
-        if PosData.SizeT > 1:
-            msg = QtGui.QMessageBox()
-            apply = msg.question(
-                self, 'Apply to all frames?',
-                f'Apply to all {self.num_segm_frames} frames (NOT undoable)?',
-                msg.Yes | msg.No | msg.Cancel)
-            if apply == msg.Yes:
-                data_copy = self.imgData.copy()
-                for i, img in enumerate(data_copy):
-                    img = skimage.filters.gaussian(self.img, sigma=self.sigma)
-                    self.setImg(img)
-                self.close()
-            elif apply == msg.No:
-                self.close()
-            elif apply == msg.Cancel:
-                return
-        else:
-            self.close()
-
-    def cancel_cb(self, event):
-        self.cancel = True
-        self.close()
-
-    def restoreNonFiltered(self):
-        PosData = self.mainWindow.data[self.mainWindow.pos_i]
-        for key in self.keys:
-            if PosData.SizeZ > 1:
-                if key == PosData.filename:
-                    PosData.img_data[self.frame_i] = self.raw_img
-                else:
-                    PosData.ol_data[self.frame_i] = self.raw_fluo_dict[key]
-            else:
-                PosData.img_data[self.frame_i]= self.raw_img
-
     def closeEvent(self, event):
         self.mainWindow.gaussBlurAction.setChecked(False)
-        if self.cancel:
-            self.restoreNonFiltered()
-            self.mainWindow.updateALLimg(only_ax1=True, updateBlur=False)
+        self.mainWindow.updateALLimg(only_ax1=True, updateFilters=False)
 
 class edgeDetectionDialog(QDialog):
     def __init__(self, mainWindow):
@@ -593,6 +572,8 @@ class edgeDetectionDialog(QDialog):
         self.channelsComboBox.addItems(items)
         if mainWindow is not None:
             self.channelsComboBox.setCurrentText(PosData.manualContrastKey)
+        if not self.mainWindow.overlayButton.isChecked():
+            self.channelsComboBox.setCurrentIndex(0)
         mainLayout.addWidget(self.channelsComboBox)
 
         row = 0
@@ -633,13 +614,10 @@ class edgeDetectionDialog(QDialog):
         paramsLayout.addWidget(self.PreviewCheckBox, row, 0, 1, 2,
                                alignment=Qt.AlignCenter)
 
-        okButton = QPushButton('Ok')
-        okButton.setShortcut(Qt.Key_Enter)
 
-        cancelButton = QPushButton('Cancel')
+        closeButton = QPushButton('Close')
 
-        buttonsLayout.addWidget(okButton, alignment=Qt.AlignRight)
-        buttonsLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
+        buttonsLayout.addWidget(closeButton, alignment=Qt.AlignCenter)
 
         paramsLayout.setContentsMargins(0, 10, 0, 0)
         buttonsLayout.setContentsMargins(0, 10, 0, 0)
@@ -650,14 +628,10 @@ class edgeDetectionDialog(QDialog):
         self.PreviewCheckBox.clicked.connect(self.preview_cb)
         self.sigmaSlider.sliderMoved.connect(self.sigmaSliderMoved)
         self.sharpSlider.sliderMoved.connect(self.sharpSliderMoved)
-        self.channelsComboBox.currentTextChanged.connect(self.updateChannel)
-        okButton.clicked.connect(self.ok_cb)
-        cancelButton.clicked.connect(self.cancel_cb)
+        self.channelsComboBox.currentTextChanged.connect(self.apply)
+        closeButton.clicked.connect(self.close)
 
         self.setLayout(mainLayout)
-
-        self.storeData()
-        self.getData()
         self.apply()
 
     def setSize(self):
@@ -665,17 +639,6 @@ class edgeDetectionDialog(QDialog):
         y = self.pos().y()
         h = self.size().height()
         self.setGeometry(x, y, 300, h)
-
-    def restoreNonFiltered(self):
-        PosData = self.mainWindow.data[self.mainWindow.pos_i]
-        for key in self.keys:
-            if PosData.SizeZ > 1:
-                if key == PosData.filename:
-                    PosData.img_data[self.frame_i] = self.raw_img
-                else:
-                    PosData.ol_data[self.frame_i] = self.raw_fluo_dict[key]
-            else:
-                PosData.img_data[self.frame_i]= self.raw_img
 
     def preview_cb(self, checked):
         if not checked:
@@ -685,40 +648,14 @@ class edgeDetectionDialog(QDialog):
             self.getData()
             self.apply()
 
-    def storeData(self):
-        self.raw_fluo_dict = {}
-        PosData = self.mainWindow.data[self.mainWindow.pos_i]
-        for key in self.keys:
-            if key.find(self.mainWindow.user_ch_name) != -1:
-                self.raw_img = PosData.img_data[PosData.frame_i].copy()
-            else:
-                fluo_img = self.mainWindow.getOlImg(key)
-                self.raw_fluo_dict[key] = fluo_img.copy()
-
-    def updateChannel(self, key):
-        self.getData()
-        self.apply()
-
-    def setImg(self, edge):
-        PosData = self.mainWindow.data[self.mainWindow.pos_i]
-        key = self.channelsComboBox.currentText()
-        if PosData.SizeZ > 1:
-            if key == PosData.filename:
-                z = self.mainWindow.zSlice_scrollBar.sliderPosition()
-                self.imgData[self.frame_i][z] = edge
-            else:
-                self.imgData[self.frame_i] = edge
-        else:
-            self.imgData[self.frame_i]= edge
-
     def getData(self):
         key = self.channelsComboBox.currentText()
         PosData = self.mainWindow.data[self.mainWindow.pos_i]
         if key.find(self.mainWindow.user_ch_name) != -1:
-            img = self.mainWindow.getImage()
+            img = self.mainWindow.getImage(normalizeIntens=False)
             data = PosData.img_data
         else:
-            img = self.mainWindow.getOlImg(key)
+            img = self.mainWindow.getOlImg(key, normalizeIntens=False)
             data = PosData.ol_data[key]
 
         if self.PreviewCheckBox.isChecked():
@@ -730,15 +667,27 @@ class edgeDetectionDialog(QDialog):
     def detectEdges(self):
         self.edge = skimage.filters.sobel(self.img)
 
+    def getFilteredImg(self):
+        img = self.edge.copy()
+        # Blur
+        img = skimage.filters.gaussian(img, sigma=self.sigma)
+        # Sharpen
+        img = img - skimage.filters.gaussian(img, sigma=self.radius)
+        if self.mainWindow.overlayButton.isChecked():
+            key = self.channelsComboBox.currentText()
+            img = self.mainWindow.getOverlayImg(fluoData=(img, key),
+                                                setImg=False)
+        img = self.mainWindow.normalizeIntensities(img)
+        return img
+
+
     def apply(self):
+        self.getData()
+        img = self.getFilteredImg()
         if self.PreviewCheckBox.isChecked():
-            edge = self.edge.copy()
-            # Blur
-            edge = skimage.filters.gaussian(edge, sigma=self.sigma)
-            # Sharpen
-            edge = edge - skimage.filters.gaussian(edge, sigma=self.radius)
-            self.setImg(edge)
-        self.mainWindow.updateALLimg(only_ax1=True, updateSharp=False)
+            self.mainWindow.img1.setImage(img)
+            h = self.mainWindow.img1.getHistogram()
+            self.mainWindow.hist.plot.setData(*h)
 
     def sigmaSliderMoved(self, intVal):
         self.sigma = intVal/20
@@ -752,37 +701,9 @@ class edgeDetectionDialog(QDialog):
         self.sharpValLabel.setText(f'{intVal/10:.2f}')
         self.apply()
 
-    def ok_cb(self, event):
-        PosData = self.mainWindow.data[self.mainWindow.pos_i]
-        self.cancel = False
-        if PosData.SizeT > 1:
-            msg = QtGui.QMessageBox()
-            apply = msg.question(
-                self, 'Apply to all frames?',
-                f'Apply to all {self.num_segm_frames} frames (NOT undoable)?',
-                msg.Yes | msg.No | msg.Cancel)
-            if apply == msg.Yes:
-                data_copy = self.imgData.copy()
-                for i, img in enumerate(data_copy):
-                    img = skimage.filters.gaussian(self.img, sigma=self.sigma)
-                    self.setImg(img)
-                self.close()
-            elif apply == msg.No:
-                self.close()
-            elif apply == msg.Cancel:
-                return
-        else:
-            self.close()
-
-    def cancel_cb(self, event):
-        self.cancel = True
-        self.close()
-
     def closeEvent(self, event):
         self.mainWindow.edgeDetectorAction.setChecked(False)
-        if self.cancel:
-            self.restoreNonFiltered()
-            self.mainWindow.updateALLimg(only_ax1=True, updateSharp=False)
+        self.mainWindow.updateALLimg(only_ax1=True, updateFilters=False)
 
 
 class entropyFilterDialog(QDialog):
@@ -820,7 +741,7 @@ class entropyFilterDialog(QDialog):
         mainLayout.addWidget(self.channelsComboBox)
 
         row = 0
-        sigmaQSLabel = QLabel('Blur:')
+        sigmaQSLabel = QLabel('Radius: ')
         paramsLayout.addWidget(sigmaQSLabel, row, 0)
         row += 1
         self.radiusValLabel = QLabel('10')
@@ -839,13 +760,9 @@ class entropyFilterDialog(QDialog):
         paramsLayout.addWidget(self.PreviewCheckBox, row, 0, 1, 2,
                                alignment=Qt.AlignCenter)
 
-        okButton = QPushButton('Ok')
-        okButton.setShortcut(Qt.Key_Enter)
+        closeButton = QPushButton('Close')
 
-        cancelButton = QPushButton('Cancel')
-
-        buttonsLayout.addWidget(okButton, alignment=Qt.AlignRight)
-        buttonsLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
+        buttonsLayout.addWidget(closeButton, alignment=Qt.AlignCenter)
 
         paramsLayout.setContentsMargins(0, 10, 0, 0)
         buttonsLayout.setContentsMargins(0, 10, 0, 0)
@@ -855,14 +772,11 @@ class entropyFilterDialog(QDialog):
 
         self.PreviewCheckBox.clicked.connect(self.preview_cb)
         self.radiusSlider.sliderMoved.connect(self.radiusSliderMoved)
-        self.channelsComboBox.currentTextChanged.connect(self.updateChannel)
-        okButton.clicked.connect(self.ok_cb)
-        cancelButton.clicked.connect(self.cancel_cb)
+        self.channelsComboBox.currentTextChanged.connect(self.apply)
+        closeButton.clicked.connect(self.close)
 
         self.setLayout(mainLayout)
 
-        self.storeData()
-        self.getData()
         self.apply()
 
     def setSize(self):
@@ -871,17 +785,6 @@ class entropyFilterDialog(QDialog):
         h = self.size().height()
         self.setGeometry(x, y, 300, h)
 
-    def restoreNonFiltered(self):
-        PosData = self.mainWindow.data[self.mainWindow.pos_i]
-        for key in self.keys:
-            if PosData.SizeZ > 1:
-                if key == PosData.filename:
-                    PosData.img_data[self.frame_i] = self.raw_img
-                else:
-                    PosData.ol_data[self.frame_i] = self.raw_fluo_dict[key]
-            else:
-                PosData.img_data[self.frame_i]= self.raw_img
-
     def preview_cb(self, checked):
         if not checked:
             self.restoreNonFiltered()
@@ -889,32 +792,6 @@ class entropyFilterDialog(QDialog):
         else:
             self.getData()
             self.apply()
-
-    def storeData(self):
-        self.raw_fluo_dict = {}
-        PosData = self.mainWindow.data[self.mainWindow.pos_i]
-        for key in self.keys:
-            if key.find(self.mainWindow.user_ch_name) != -1:
-                self.raw_img = PosData.img_data[PosData.frame_i].copy()
-            else:
-                fluo_img = self.mainWindow.getOlImg(key)
-                self.raw_fluo_dict[key] = fluo_img.copy()
-
-    def updateChannel(self, key):
-        self.getData()
-        self.apply()
-
-    def setImg(self, edge):
-        PosData = self.mainWindow.data[self.mainWindow.pos_i]
-        key = self.channelsComboBox.currentText()
-        if PosData.SizeZ > 1:
-            if key == PosData.filename:
-                z = self.mainWindow.zSlice_scrollBar.sliderPosition()
-                self.imgData[self.frame_i][z] = edge
-            else:
-                self.imgData[self.frame_i] = edge
-        else:
-            self.imgData[self.frame_i]= edge
 
     def getData(self):
         key = self.channelsComboBox.currentText()
@@ -926,57 +803,189 @@ class entropyFilterDialog(QDialog):
             img = self.mainWindow.getOlImg(key)
             data = PosData.ol_data[key]
         self.img = skimage.img_as_ubyte(img)
-        if self.PreviewCheckBox.isChecked():
-            self.entropyFilter()
         self.frame_i = PosData.frame_i
         self.imgData = data
 
-    def entropyFilter(self):
+    def getFilteredImg(self):
         radius = self.radiusSlider.sliderPosition()
         selem = skimage.morphology.disk(radius)
-        self.entropyImg = skimage.filters.rank.entropy(self.img, selem)
+        entropyImg = skimage.filters.rank.entropy(self.img, selem)
+        if self.mainWindow.overlayButton.isChecked():
+            key = self.channelsComboBox.currentText()
+            img = self.mainWindow.getOverlayImg(fluoData=(entropyImg, key),
+                                                setImg=False)
+        img = self.mainWindow.normalizeIntensities(entropyImg)
+        return img
 
     def apply(self):
+        self.getData()
+        img = self.getFilteredImg()
         if self.PreviewCheckBox.isChecked():
-            self.entropyFilter()
-            self.setImg(self.entropyImg)
-        self.mainWindow.updateALLimg(only_ax1=True, updateSharp=False)
+            self.mainWindow.img1.setImage(img)
+            h = self.mainWindow.img1.getHistogram()
+            self.mainWindow.hist.plot.setData(*h)
 
     def radiusSliderMoved(self, intVal):
         self.radiusValLabel.setText(f'{intVal}')
         self.apply()
 
-    def ok_cb(self, event):
-        PosData = self.mainWindow.data[self.mainWindow.pos_i]
-        self.cancel = False
-        if PosData.SizeT > 1:
-            msg = QtGui.QMessageBox()
-            apply = msg.question(
-                self, 'Apply to all frames?',
-                f'Apply to all {self.num_segm_frames} frames (NOT undoable)?',
-                msg.Yes | msg.No | msg.Cancel)
-            if apply == msg.Yes:
-                data_copy = self.imgData.copy()
-                for i, img in enumerate(data_copy):
-                    img = skimage.filters.gaussian(self.img, sigma=self.sigma)
-                    self.setImg(img)
-                self.close()
-            elif apply == msg.No:
-                self.close()
-            elif apply == msg.Cancel:
-                return
-        else:
-            self.close()
-
-    def cancel_cb(self, event):
-        self.cancel = True
-        self.close()
-
     def closeEvent(self, event):
         self.mainWindow.entropyFilterAction.setChecked(False)
-        if self.cancel:
-            self.restoreNonFiltered()
-            self.mainWindow.updateALLimg(only_ax1=True, updateSharp=False)
+        self.mainWindow.updateALLimg(only_ax1=True, updateFilters=False)
+
+class randomWalkerDialog(QDialog):
+    def __init__(self, mainWindow):
+        super().__init__(mainWindow)
+        self.cancel = True
+        self.mainWindow = mainWindow
+
+        if mainWindow is not None:
+            PosData = self.mainWindow.data[self.mainWindow.pos_i]
+            items = [PosData.filename]
+        else:
+            items = ['test']
+        try:
+            PosData = self.mainWindow.data[self.mainWindow.pos_i]
+            items.extend(list(PosData.ol_data_dict.keys()))
+        except:
+            pass
+
+        self.keys = items
+
+        self.setWindowTitle('Edge detection')
+
+        mainLayout = QVBoxLayout()
+        paramsLayout = QGridLayout()
+        buttonsLayout = QHBoxLayout()
+
+
+        row = 0
+        paramsLayout.addWidget(QLabel('Background threshold:'), row, 0)
+        row += 1
+        self.bkgrThreshValLabel = QLabel('0.05')
+        paramsLayout.addWidget(self.bkgrThreshValLabel, row, 1)
+        self.bkgrThreshSlider = QSlider(Qt.Horizontal)
+        self.bkgrThreshSlider.setMinimum(1)
+        self.bkgrThreshSlider.setMaximum(100)
+        self.bkgrThreshSlider.setValue(5)
+        self.bkgrThreshSlider.setTickPosition(QSlider.TicksBelow)
+        self.bkgrThreshSlider.setTickInterval(10)
+        paramsLayout.addWidget(self.bkgrThreshSlider, row, 0)
+
+        row += 1
+        foregrQSLabel = QLabel('Foreground threshold:')
+        # padding: top, left, bottom, right
+        foregrQSLabel.setStyleSheet("font-size:10pt; padding:5px 0px 0px 0px;")
+        paramsLayout.addWidget(foregrQSLabel, row, 0)
+        row += 1
+        self.foregrThreshValLabel = QLabel('5.00')
+        paramsLayout.addWidget(self.foregrThreshValLabel, row, 1)
+        self.foregrThreshSlider = QSlider(Qt.Horizontal)
+        self.foregrThreshSlider.setMinimum(1)
+        self.foregrThreshSlider.setMaximum(100)
+        self.foregrThreshSlider.setValue(95)
+        self.foregrThreshSlider.setTickPosition(QSlider.TicksBelow)
+        self.foregrThreshSlider.setTickInterval(10)
+        paramsLayout.addWidget(self.foregrThreshSlider, row, 0)
+
+        # Parameters link label
+        row += 1
+        url1 = 'https://scikit-image.org/docs/dev/auto_examples/segmentation/plot_random_walker_segmentation.html'
+        url2 = 'https://scikit-image.org/docs/dev/api/skimage.segmentation.html#skimage.segmentation.random_walker'
+        htmlTxt1 = f'<a href=\"{url1}">here</a>'
+        htmlTxt2 = f'<a href=\"{url2}">here</a>'
+        seeHereLabel = QLabel()
+        seeHereLabel.setText(f'See {htmlTxt1} and {htmlTxt2} for details '
+                              'about Random walker segmentation.')
+        seeHereLabel.setTextFormat(Qt.RichText)
+        seeHereLabel.setTextInteractionFlags(Qt.TextBrowserInteraction)
+        seeHereLabel.setOpenExternalLinks(True)
+        font = QtGui.QFont()
+        font.setPointSize(10)
+        seeHereLabel.setFont(font)
+        seeHereLabel.setStyleSheet("padding:10px 0px 0px 0px;")
+        paramsLayout.addWidget(seeHereLabel, row, 0, 1, 2)
+
+        computeButton = QPushButton('Compute segmentation')
+        closeButton = QPushButton('Close')
+
+        buttonsLayout.addWidget(computeButton, alignment=Qt.AlignRight)
+        buttonsLayout.addWidget(closeButton, alignment=Qt.AlignLeft)
+
+        paramsLayout.setContentsMargins(0, 10, 0, 0)
+        buttonsLayout.setContentsMargins(0, 10, 0, 0)
+
+        mainLayout.addLayout(paramsLayout)
+        mainLayout.addLayout(buttonsLayout)
+
+        self.bkgrThreshSlider.sliderMoved.connect(self.bkgrSliderMoved)
+        self.foregrThreshSlider.sliderMoved.connect(self.foregrSliderMoved)
+        computeButton.clicked.connect(self.computeSegm)
+        closeButton.clicked.connect(self.close)
+
+        self.setLayout(mainLayout)
+        self.plotMarkers()
+
+    def setSize(self):
+        x = self.pos().x()
+        y = self.pos().y()
+        h = self.size().height()
+        w = self.size().width()
+        if w < 400:
+            w = 400
+        self.setGeometry(x, y, w, h)
+
+    def plotMarkers(self):
+        bkgrThresh = self.bkgrThreshSlider.sliderPosition()/100
+        foregrThresh = self.foregrThreshSlider.sliderPosition()/100
+        img = self.mainWindow.img1.image
+        self.markers = np.zeros(img.shape, np.uint8)
+        imgRange = img.max() - img.min()
+        min = img.min() + imgRange*bkgrThresh
+        max = img.min() + imgRange*foregrThresh
+        self.markers[img < min] = 1
+        self.markers[img > max] = 2
+        yyBkgr, xxBkgr = np.nonzero(self.markers == 1)
+        yyForegr, xxForegr = np.nonzero(self.markers == 2)
+        self.mainWindow.RWbkgrScatterItem.setData(xxBkgr, yyBkgr)
+        self.mainWindow.RWforegrScatterItem.setData(xxForegr, yyForegr)
+
+    def computeSegm(self):
+        self.mainWindow.titleLabel.setText(
+            'Randomly walking around... ', color='w')
+        time.sleep(0.05)
+        img = self.mainWindow.img1.image
+        img = skimage.img_as_float(img)
+        img = skimage.exposure.rescale_intensity(self.mainWindow.img1.image)
+        t0 = time.time()
+        lab = skimage.segmentation.random_walker(img, self.markers,
+                                                      mode='bf')
+        t1 = time.time()
+        skimage.morphology.remove_small_objects(lab, min_size=5,
+                                                in_place=True)
+        PosData = self.mainWindow.data[self.mainWindow.pos_i]
+        PosData.lab = lab
+        self.mainWindow.update_rp()
+        self.mainWindow.tracking(enforce=True)
+        self.mainWindow.updateALLimg()
+        self.mainWindow.warnEditingWithCca_df('Random Walker segmentation')
+        txt = f'Done. Segmentation computed in {t1-t0:.3f} s'
+        print('-----------------')
+        print(txt)
+        print('=================')
+        self.mainWindow.titleLabel.setText(txt, color='g')
+
+    def bkgrSliderMoved(self, intVal):
+        self.bkgrThreshValLabel.setText(f'{intVal/100:.2f}')
+        self.plotMarkers()
+
+    def foregrSliderMoved(self, intVal):
+        self.foregrThreshValLabel.setText(f'{intVal/100:.2f}')
+        self.plotMarkers()
+
+    def closeEvent(self, event):
+        self.mainWindow.ax1.removeItem(self.mainWindow.RWbkgrScatterItem)
+        self.mainWindow.ax1.removeItem(self.mainWindow.RWforegrScatterItem)
 
 class FutureFramesAction_QDialog(QDialog):
     def __init__(self, frame_i, last_tracked_i, change_txt,
@@ -1379,6 +1388,9 @@ class cellpose_ParamsDialog(QDialog):
         self.cancel = True
         super().__init__(parent)
         self.setWindowTitle("Cellpose parameters")
+        if parent is None:
+            self.setWindowIcon(QIcon(":assign-motherbud.svg"))
+
 
         mainLayout = QVBoxLayout()
         entriesLayout = QGridLayout()
@@ -1478,6 +1490,8 @@ class YeaZ_ParamsDialog(QDialog):
         self.cancel = True
         super().__init__(parent)
         self.setWindowTitle("YeaZ parameters")
+        if parent is None:
+            self.setWindowIcon(QIcon(":assign-motherbud.svg"))
 
         mainLayout = QVBoxLayout()
 
@@ -2585,14 +2599,14 @@ class manualSeparateGui(QMainWindow):
         parent = self.parent
         if parent is not None:
             # Center the window on main window
-            mainWinGeometry = parent.frameGeometry()
+            mainWinGeometry = parent.geometry()
             mainWinLeft = mainWinGeometry.left()
             mainWinTop = mainWinGeometry.top()
             mainWinWidth = mainWinGeometry.width()
             mainWinHeight = mainWinGeometry.height()
             mainWinCenterX = int(mainWinLeft + mainWinWidth/2)
             mainWinCenterY = int(mainWinTop + mainWinHeight/2)
-            winGeometry = self.frameGeometry()
+            winGeometry = self.geometry()
             winWidth = winGeometry.width()
             winHeight = winGeometry.height()
             winLeft = int(mainWinCenterX - winWidth/2)
@@ -3107,14 +3121,14 @@ class pdDataFrameWidget(QMainWindow):
         parent = self.parent
         if parent is not None:
             # Center the window on main window
-            mainWinGeometry = parent.frameGeometry()
+            mainWinGeometry = parent.geometry()
             mainWinLeft = mainWinGeometry.left()
             mainWinTop = mainWinGeometry.top()
             mainWinWidth = mainWinGeometry.width()
             mainWinHeight = mainWinGeometry.height()
             mainWinCenterX = int(mainWinLeft + mainWinWidth/2)
             mainWinCenterY = int(mainWinTop + mainWinHeight/2)
-            winGeometry = self.frameGeometry()
+            winGeometry = self.geometry()
             winWidth = winGeometry.width()
             winHeight = winGeometry.height()
             winLeft = int(mainWinCenterX - winWidth/2)
@@ -3134,8 +3148,8 @@ if __name__ == '__main__':
     # informativeText = ''
     # win = QtSelectItems(title, ['mNeon', 'mKate'],
     #                     informativeText, CbLabel=CbLabel, parent=None)
-    win = edgeDetectionDialog(None)
-    # win = QDialogAcdcInputs(1, 143, None)
+    # win = edgeDetectionDialog(None)
+    win = QDialogAcdcInputs(1, 143, [1,1,1], 180.0)
     # IDs = list(range(1,11))
     # cc_stage = ['G1' for ID in IDs]
     # num_cycles = [-1]*len(IDs)
@@ -3166,7 +3180,8 @@ if __name__ == '__main__':
     win.setFont(font)
     app.setStyle(QtGui.QStyleFactory.create('Fusion'))
     win.show()
+    win.setWidths(font=font)
     # win.setSize()
     # win.setGeometryWindow()
-    app.exec_()
+    win.exec_()
     print(win.SizeT, win.SizeZ, win.zyx_vox_dim)
