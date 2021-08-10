@@ -415,7 +415,18 @@ class guiWin(QMainWindow):
         self.eraserButton = QToolButton(self)
         self.eraserButton.setIcon(QIcon(":eraser.png"))
         self.eraserButton.setCheckable(True)
-        self.eraserButton.setToolTip('Erase\n\nSHORTCUT: "X" key')
+        self.eraserButton.setToolTip(
+            'Erase segmentation labels with a circular eraser.\n'
+            'Increase eraser size with UP/DOWN arrows on the keyboard.\n\n'
+            'Default behaviour:\n\n'
+            '   - Starting to erase from the background (cursor is a red circle)\n '
+            '     will erase any labels you hover above.\n'
+            '   - Starting to erase from a specific label will erase only that label\n'
+            '     (cursor is a circle with the color of the label).'
+            '   - To enforce erasing all labels no matter where you start from '
+            '     double-press "X" key. If double-press is successfull, '
+            '     then eraser button is red and eraser cursor always red.\n\n'
+            'SHORTCUT: "X" key')
         editToolBar.addWidget(self.eraserButton)
         self.checkableButtons.append(self.eraserButton)
 
@@ -5109,7 +5120,8 @@ class guiWin(QMainWindow):
                 PosData = load.load_frames_data(file_path, user_ch_name,
                                                 parentQWidget=self,
                                                 load_delROIsInfo=True,
-                                                first_call=f==0)
+                                                first_call=f==0,
+                                                loadDataPrepBkgrVals=True)
                 skipPos, abort = self.checkDataIntegrity(PosData, numPos)
             except AttributeError:
                 skipPos = False
@@ -6715,14 +6727,17 @@ class guiWin(QMainWindow):
                     prompt = False
                     keys = items
 
-                ol_data = {key:PosData.ol_data_dict[key]
-                           for i, key in enumerate(keys)}
-                ol_colors = {key:self.overlayRGBs[i]
-                             for i, key in enumerate(keys)}
-                for key in keys:
-                    fluoChName = key.split(PosData.basename)[-1][1:]
-                    self.addFluoChNameContextMenuAction(fluoChName)
-                PosData.manualContrastKey = key
+                for PosData in self.data:
+                    ol_data = {key:PosData.ol_data_dict[key]
+                               for i, key in enumerate(keys)}
+                    ol_colors = {key:self.overlayRGBs[i]
+                                 for i, key in enumerate(keys)}
+                    for key in keys:
+                        fluoChName = key.split(PosData.basename)[-1][1:]
+                        self.addFluoChNameContextMenuAction(fluoChName)
+                    PosData.manualContrastKey = key
+                    PosData.ol_data = ol_data
+                    PosData.ol_colors = ol_colors
 
             if prompt:
                 # extensions = self.getFileExtensions(PosData.images_path)
@@ -7897,7 +7912,8 @@ class guiWin(QMainWindow):
             recentPaths = [exp_path]
             openedOn = [datetime.datetime.now()]
         df = pd.DataFrame({'path': recentPaths,
-                           'opened_last_on': openedOn})
+                           'opened_last_on': pd.Series(openedOn,
+                                                       dtype='datetime64[ns]')})
         df.index.name = 'index'
         df.to_csv(recentPaths_path)
 
@@ -7911,8 +7927,7 @@ class guiWin(QMainWindow):
 
         systems.get(os.name, os.startfile)(PosData.images_path)
 
-    def addMetrics_acdc_df(self, df, rp, frame_i, lab):
-        PosData = self.data[self.pos_i]
+    def addMetrics_acdc_df(self, df, rp, frame_i, lab, PosData):
         # Add metrics that can be calculated at the end of the process
         # such as cell volume, cell area etc.
         zyx_vox_dim = PosData.zyx_vox_dim
@@ -7920,24 +7935,29 @@ class guiWin(QMainWindow):
         # Calc volume
         vox_to_fl = zyx_vox_dim[1]*(zyx_vox_dim[2]**2)
         yx_pxl_to_um2 = zyx_vox_dim[1]*zyx_vox_dim[2]
-        IDs_vol_vox = [0]*len(rp)
-        IDs_area_pxl = [0]*len(rp)
-        IDs_vol_fl = [0]*len(rp)
-        IDs_area_um2 = [0]*len(rp)
+        numCells = len(rp)
+        IDs = [0]*numCells
+        IDs_vol_vox = [0]*numCells
+        IDs_area_pxl = [0]*numCells
+        IDs_vol_fl = [0]*numCells
+        IDs_area_um2 = [0]*numCells
         fluo_keys = list(PosData.fluo_data_dict.keys())
         numFluoChannels = len(fluo_keys)
-        fluo_means = np.zeros((len(rp), numFluoChannels))
-        fluo_medians = np.zeros((len(rp), numFluoChannels))
-        fluo_mins = np.zeros((len(rp), numFluoChannels))
-        fluo_maxs = np.zeros((len(rp), numFluoChannels))
-        fluo_sums = np.zeros((len(rp), numFluoChannels))
-        fluo_q25s = np.zeros((len(rp), numFluoChannels))
-        fluo_q75s = np.zeros((len(rp), numFluoChannels))
-        fluo_q5s = np.zeros((len(rp), numFluoChannels))
-        fluo_q95s = np.zeros((len(rp), numFluoChannels))
-        fluo_amounts = np.zeros((len(rp), numFluoChannels))
+        chNames = PosData.loadedChNames
+        fluo_means = np.zeros((numCells, numFluoChannels))
+        fluo_medians = np.zeros((numCells, numFluoChannels))
+        fluo_mins = np.zeros((numCells, numFluoChannels))
+        fluo_maxs = np.zeros((numCells, numFluoChannels))
+        fluo_sums = np.zeros((numCells, numFluoChannels))
+        fluo_q25s = np.zeros((numCells, numFluoChannels))
+        fluo_q75s = np.zeros((numCells, numFluoChannels))
+        fluo_q5s = np.zeros((numCells, numFluoChannels))
+        fluo_q95s = np.zeros((numCells, numFluoChannels))
+        fluo_amounts = np.zeros((numCells, numFluoChannels))
+        fluo_amounts_bkgrVals = np.zeros((numCells, numFluoChannels))
         outCellsMask = PosData.lab==0
         for i, obj in enumerate(rp):
+            IDs[i] = obj.label
             rotate_ID_img = skimage.transform.rotate(
                 obj.image.astype(np.uint8), -(obj.orientation*180/np.pi),
                 resize=True, order=3, preserve_range=True
@@ -7956,6 +7976,15 @@ class guiWin(QMainWindow):
                 fluo_backgr = np.median(fluo_data[backgrMask])
                 fluo_mean = fluo_data_ID.mean()
                 fluo_amount = (fluo_mean-fluo_backgr)*obj.area
+
+                dataPrep_bkgrVal = self.getDataPrepBkgrVal(
+                                            PosData.bkgrValues_df,
+                                            PosData.bkgrValues_chNames,
+                                            frame_i, j)
+                if dataPrep_bkgrVal is not None:
+                    amount = (fluo_mean-dataPrep_bkgrVal)*obj.area
+                    fluo_amounts_bkgrVals[i,j] = amount
+
                 fluo_means[i,j] = fluo_mean
                 fluo_medians[i,j] = np.median(fluo_data_ID)
                 fluo_mins[i,j] = fluo_data_ID.min()
@@ -7967,20 +7996,68 @@ class guiWin(QMainWindow):
                 fluo_q95s[i,j] = np.quantile(fluo_data_ID, q=0.95)
                 fluo_amounts[i,j] = fluo_amount
 
-        df['cell_area_pxl'] = IDs_area_pxl
-        df['cell_vol_vox'] = IDs_vol_vox
-        df['cell_area_um2'] = IDs_area_um2
-        df['cell_vol_fl'] = IDs_vol_fl
-        df[[f'{f}_mean' for f in fluo_keys]] = pd.DataFrame(data=fluo_means)
-        df[[f'{f}_median' for f in fluo_keys]] = pd.DataFrame(data=fluo_medians)
-        df[[f'{f}_min' for f in fluo_keys]] = pd.DataFrame(data=fluo_mins)
-        df[[f'{f}_max' for f in fluo_keys]] = pd.DataFrame(data=fluo_maxs)
-        df[[f'{f}_sum' for f in fluo_keys]] = pd.DataFrame(data=fluo_sums)
-        df[[f'{f}_q25' for f in fluo_keys]] = pd.DataFrame(data=fluo_q25s)
-        df[[f'{f}_q75' for f in fluo_keys]] = pd.DataFrame(data=fluo_q75s)
-        df[[f'{f}_q05' for f in fluo_keys]] = pd.DataFrame(data=fluo_q5s)
-        df[[f'{f}_q95' for f in fluo_keys]] = pd.DataFrame(data=fluo_q95s)
-        df[[f'{f}_amount' for f in fluo_keys]] = pd.DataFrame(data=fluo_amounts)
+        df['cell_area_pxl'] = pd.Series(data=IDs_area_pxl, index=IDs)
+        df['cell_vol_vox'] = pd.Series(data=IDs_vol_vox, index=IDs)
+        df['cell_area_um2'] = pd.Series(data=IDs_area_um2, index=IDs)
+        df['cell_vol_fl'] = pd.Series(data=IDs_vol_fl, index=IDs)
+        df[[f'{ch}_mean' for ch in chNames]] = pd.DataFrame(
+                                                    data=fluo_means, index=IDs)
+        df[[f'{ch}_median' for ch in chNames]] = pd.DataFrame(
+                                                    data=fluo_medians, index=IDs)
+        df[[f'{ch}_min' for ch in chNames]] = pd.DataFrame(
+                                                    data=fluo_mins, index=IDs)
+        df[[f'{ch}_max' for ch in chNames]] = pd.DataFrame(
+                                                    data=fluo_maxs, index=IDs)
+        df[[f'{ch}_sum' for ch in chNames]] = pd.DataFrame(
+                                                    data=fluo_sums, index=IDs)
+        df[[f'{ch}_q25' for ch in chNames]] = pd.DataFrame(
+                                                    data=fluo_q25s, index=IDs)
+        df[[f'{ch}_q75' for ch in chNames]] = pd.DataFrame(
+                                                    data=fluo_q75s, index=IDs)
+        df[[f'{ch}_q05' for ch in chNames]] = pd.DataFrame(
+                                                    data=fluo_q5s, index=IDs)
+        df[[f'{ch}_q95' for ch in chNames]] = pd.DataFrame(
+                                                    data=fluo_q95s, index=IDs)
+        df[[f'{ch}_amount_autoBkgr' for ch in chNames]] = pd.DataFrame(
+                                                    data=fluo_amounts,
+                                                    index=IDs)
+        df[[f'{ch}_amount_dataPrepBkgr' for ch in chNames]] = pd.DataFrame(
+                                                    data=fluo_amounts_bkgrVals,
+                                                    index=IDs)
+
+    def getChNames(self, PosData):
+        fluo_keys = list(PosData.fluo_data_dict.keys())
+
+        loadedChNames = []
+        for key in fluo_keys:
+            chName = key[len(PosData.basename):]
+            if chName.find('_aligned') != -1:
+                idx = chName.find('_aligned')
+                chName = f'gui{chName[:idx]}'
+            loadedChNames.append(chName)
+
+        PosData.loadedChNames = loadedChNames
+
+
+        if PosData.bkgrValues_df is None:
+            PosData.bkgrValues_chNames = None
+            return
+
+        bkgrValues_chNames = []
+        for fluoKey in fluo_keys:
+            chName = [chName for chName in PosData.bkgrValues_chNames
+                      if fluoKey.find(chName)!=-1][0]
+            bkgrValues_chNames.append(chName)
+
+        PosData.bkgrValues_chNames = bkgrValues_chNames
+
+
+    def getDataPrepBkgrVal(self, bkgrValues_df, bkgrValues_chNames, frame_i, j):
+        if bkgrValues_df is None:
+            return None
+
+        idx = (bkgrValues_chNames[j], frame_i)
+        return bkgrValues_df.at[idx, 'bkgr_median']
 
     def saveFile(self):
         for p, PosData in enumerate(self.data):
@@ -8029,6 +8106,11 @@ class guiWin(QMainWindow):
                 delROIs_info_path = PosData.delROIs_info_path
                 acdc_df_li = [None]*PosData.num_segm_frames
 
+                # Add segmented channel data for calc metrics
+                PosData.fluo_data_dict[PosData.filename] = PosData.img_data
+
+                self.getChNames(PosData)
+
                 # Create list of dataframes from acdc_df on HDD
                 if PosData.acdc_df is not None:
                     for frame_i, df in PosData.acdc_df.groupby(level=0):
@@ -8069,7 +8151,9 @@ class guiWin(QMainWindow):
                     # Build acdc_df and index it in each frame_i of acdc_df_li
                     if acdc_df is not None:
                         rp = data_dict['regionprops']
-                        self.addMetrics_acdc_df(acdc_df, rp, frame_i, lab)
+                        self.addMetrics_acdc_df(
+                                    acdc_df, rp, frame_i, lab, PosData
+                        )
                         acdc_df_li[frame_i] = acdc_df
 
                     pbar.update()
@@ -8083,7 +8167,7 @@ class guiWin(QMainWindow):
                 for i, df in enumerate(acdc_df_li):
                     if df is not None:
                         df_li.append(df)
-                        keys.append(i)
+                        keys.append((i, PosData.finterval*i))
 
                 print('Saving data...')
                 try:
@@ -8107,7 +8191,8 @@ class guiWin(QMainWindow):
 
                 try:
                     all_frames_metadata_df = pd.concat(
-                        df_li, keys=keys, names=['frame_i', 'Cell_ID']
+                        df_li, keys=keys,
+                        names=['frame_i', 'time_seconds', 'Cell_ID']
                     )
 
                     # Save segmentation metadata
@@ -8213,12 +8298,6 @@ class guiWin(QMainWindow):
         self.openFile(exp_path=path)
 
     def closeEvent(self, event):
-        if self.buttonToRestore is not None:
-            button, color, text = self.buttonToRestore
-            button.setText(text)
-            button.setStyleSheet(
-                f'QPushButton {{background-color: {color};}}')
-
         self.saveWindowGeometry()
         if self.slideshowWin is not None:
             self.slideshowWin.close()
@@ -8239,12 +8318,23 @@ class guiWin(QMainWindow):
             else:
                 event.ignore()
 
+        if self.buttonToRestore is not None and event.isAccepted():
+            button, color, text = self.buttonToRestore
+            button.setText(text)
+            button.setStyleSheet(
+                f'QPushButton {{background-color: {color};}}')
+
     def saveWindowGeometry(self):
         left = self.geometry().left()
         top = self.geometry().top()
         width = self.geometry().width()
         height = self.geometry().height()
-        screenName = '/'.join(self.screen().name().split('\\'))
+        try:
+            screenName = '/'.join(self.screen().name().split('\\'))
+        except AttributeError:
+            screenName = 'None'
+            print('WARNING: could not retrieve screen name.'
+                  'Please update to PyQt5 version >= 5.14')
         self.df_settings.at['geometry_left', 'value'] = left
         self.df_settings.at['geometry_top', 'value'] = top
         self.df_settings.at['geometry_width', 'value'] = width

@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import scipy.interpolate
 import skimage.io
+from functools import partial
 from tifffile.tifffile import TiffWriter, TiffFile
 
 from PyQt5.QtCore import (
@@ -146,7 +147,8 @@ class dataPrepWin(QMainWindow):
         fileMenu = QMenu("&File", self)
         menuBar.addMenu(fileMenu)
         fileMenu.addAction(self.openAction)
-        # fileMenu.addAction(self.newAction)
+        # Open Recent submenu
+        self.openRecentMenu = fileMenu.addMenu("Open Recent")
         fileMenu.addAction(self.exitAction)
 
     def gui_createToolBars(self):
@@ -190,6 +192,8 @@ class dataPrepWin(QMainWindow):
 
     def gui_connectActions(self):
         self.openAction.triggered.connect(self.openFile)
+        # Connect Open Recent to dynamically populate it
+        self.openRecentMenu.aboutToShow.connect(self.populateOpenRecent)
         self.exitAction.triggered.connect(self.close)
         self.prevAction.triggered.connect(self.prev_cb)
         self.nextAction.triggered.connect(self.next_cb)
@@ -1376,9 +1380,34 @@ class dataPrepWin(QMainWindow):
             recentPaths = [exp_path]
             openedOn = [datetime.datetime.now()]
         df = pd.DataFrame({'path': recentPaths,
-                           'opened_last_on': openedOn})
+                           'opened_last_on': pd.Series(openedOn,
+                                                       dtype='datetime64[ns]')})
         df.index.name = 'index'
         df.to_csv(recentPaths_path)
+
+    def populateOpenRecent(self):
+        # Step 0. Remove the old options from the menu
+        self.openRecentMenu.clear()
+        # Step 1. Read recent Paths
+        src_path = os.path.dirname(os.path.realpath(__file__))
+        recentPaths_path = os.path.join(
+            src_path, 'temp', 'recentPaths.csv'
+        )
+        if os.path.exists(recentPaths_path):
+            df = pd.read_csv(recentPaths_path, index_col='index')
+            if 'opened_last_on' in df.columns:
+                df = df.sort_values('opened_last_on', ascending=False)
+            recentPaths = df['path'].to_list()
+        else:
+            recentPaths = []
+        # Step 2. Dynamically create the actions
+        actions = []
+        for path in recentPaths:
+            action = QAction(path, self)
+            action.triggered.connect(partial(self.openRecentFile, path))
+            actions.append(action)
+        # Step 3. Add the actions to the menu
+        self.openRecentMenu.addActions(actions)
 
     def loadFiles(self, exp_path, user_ch_file_paths, user_ch_name):
         self.titleLabel.setText('Loading data...', color='w')
@@ -1416,6 +1445,10 @@ class dataPrepWin(QMainWindow):
 
         self.setCenterAlignmentTitle()
         self.openAction.setEnabled(False)
+
+    def openRecentFile(self, path):
+        print(f'Opening recent folder: {path}')
+        self.openFile(exp_path=path)
 
     def openFile(self, checked=False, exp_path=None):
         self.initLoading()
