@@ -21,18 +21,24 @@ def configuration_dialog():
     positions = []
     while continue_selection:
         data_dir = prompts.folder_dialog(title='Select folder containing Position_n folders')
-        available_pos = sorted(os.listdir(data_dir))
-        app = QtCore.QCoreApplication.instance()
-        if app is None:
-            app = QApplication(sys.argv)
-        win = apps.QDialogListbox('test', 'Select which position you want to analyse', available_pos)
-        app.setStyle(QtGui.QStyleFactory.create('Fusion'))
-        win.show()
-        app.exec_()
-        pos = win.selectedItemsText
-        data_dirs.append(data_dir)
-        positions.append(pos)
-        continue_selection = prompts.askyesno(message= 'Do you wish to select another file?', title= 'Selection of further files')
+        if data_dir != '':
+            available_pos = sorted(os.listdir(data_dir))
+            app = QtCore.QCoreApplication.instance()
+            if app is None:
+                app = QApplication(sys.argv)
+            win = apps.QDialogListbox('Position Selection', 'Select which position you want to analyse', available_pos)
+            app.setStyle(QtGui.QStyleFactory.create('Fusion'))
+            win.show()
+            app.exec_()
+            pos = win.selectedItemsText
+            data_dirs.append(data_dir)
+            positions.append(pos)
+            continue_selection = prompts.askyesno(message= 'Do you wish to select another file?', title= 'Selection of further files')
+        else:
+            continue_selection = False
+    if len(data_dirs) == 0:
+        print("No positions selected!")
+        raise IndexError
     return data_dirs, positions
     
 def find_available_channels(filenames):
@@ -68,26 +74,17 @@ def calculate_downstream_data(
                 flu_signal_df = _calculate_flu_signal(seg_mask, channel_data, channels, cc_data)
                 temp_df = cc_data.merge(rp_df, on=['frame_i', 'Cell_ID'], how='left')
                 temp_df = temp_df.merge(flu_signal_df, on=['frame_i', 'Cell_ID'], how='left')
-                temp_df['max_frame_pos'] = cc_data.frame_i.max()
-                temp_df['file'] = file
-                temp_df['selection_subset'] = file_idx
-                temp_df['position'] = positions[file_idx][pos_idx]
-                temp_df['directory'] = pos_dir
-                    # calculate amount of corrected signal by multiplying mean with area
+                # calculate amount of corrected signal by multiplying mean with area
                 for channel in channels:
                     temp_df[f'{channel}_corrected_amount'] = temp_df[f'{channel}_corrected_mean'] *\
                     temp_df['area']
                     temp_df[f'{channel}_corrected_concentration'] = temp_df[f'{channel}_corrected_amount']/\
                     temp_df['cell_vol_fl']
-                # calculate area of daughter cell where applicable
-                temp_df['daughter_area'] = 0; temp_df['daughter_volume'] = 0
-                daughter_data = temp_df.merge(
-                    temp_df, how='left', 
-                    left_on=['relative_ID', 'frame_i', 'position', 'file'],
-                    right_on=['Cell_ID', 'frame_i', 'position', 'file']
-                )[['area_y', 'cell_vol_fl_y']]
-                temp_df[['daughter_area', 'daughter_volume']] = daughter_data
-                temp_df.loc[temp_df.relationship=='bud', ['daughter_area', 'daughter_volume']] = 0
+                temp_df['max_frame_pos'] = cc_data.frame_i.max()
+                temp_df['file'] = file
+                temp_df['selection_subset'] = file_idx
+                temp_df['position'] = positions[file_idx][pos_idx]
+                temp_df['directory'] = pos_dir
                 print('Saving calculated data for next time...')
                 files_in_curr_dir = os.listdir(pos_dir)
                 common_prefix = _determine_common_prefix(files_in_curr_dir)
@@ -170,7 +167,7 @@ def _load_files(file_dir, channels):
                 ch_not_aligned_path = glob.glob(f'{file_dir}\*{channel}*')[0]
                 channel_files.append(imread(ch_not_aligned_path))
             except IndexError:
-                print(f'Could not find an aligned file for channel {channel}')
+                print(f'Could not find any file for channel {channel}')
                 print(f'Resulting data will not contain fluorescent data for this channel')
                 channel_files.append(None)
                 
@@ -246,8 +243,14 @@ def _calculate_flu_signal(seg_mask, channel_data, channels, cc_data):
     """
     max_frame = cc_data.frame_i.max()
     df = pd.DataFrame(columns=['frame_i', 'Cell_ID'])
-    bg_index = (seg_mask[:max_frame+1]==0).astype(int)
-    bg_medians = [np.median(ch_array[:max_frame+1]*bg_index, axis=(1,2)) if ch_array is not None else None for ch_array in channel_data]
+    bg_medians = []
+    for ch_idx, ch_array in enumerate(channel_data):
+        if ch_array is None:
+            bg_medians.append(None)
+        else:
+            bg_index = np.logical_and(seg_mask[:max_frame+1]==0, ch_array[:max_frame+1]!=0)
+            ch_medians = [np.median(ch_array[t][bg_index[t]]) for t in range(max_frame+1)]
+            bg_medians.append(ch_medians)
     for cell_id in tqdm(cc_data.Cell_ID.unique()):
         temp_df = pd.DataFrame(columns=['frame_i', 'Cell_ID'])
         times = range(max_frame+1)
@@ -260,13 +263,13 @@ def _calculate_flu_signal(seg_mask, channel_data, channels, cc_data):
                 summed = np.sum(cell_signal, axis=(1,2))
                 count = np.sum(cell_signal!=0, axis=(1,2))
                 mean_signal = np.divide(summed, count, where=count!=0)
-                corrected_signal = mean_signal-bg_medians[c_idx]
+                corrected_signal = mean_signal - np.array(bg_medians[c_idx])
                 temp_df[f'{channels[c_idx]}_corrected_mean'] = np.clip(corrected_signal, 0, np.inf)
             else:
-                temp_df[f'{channels[c_idx]}_corrected_mean'] = -1
+                temp_df[f'{channels[c_idx]}_corrected_mean'] = 0
         df = df.append(temp_df, ignore_index=True)
-    signal_indices = np.array(['signal' in col for col in df.columns])
-    keep_rows = df.loc[:,signal_indices].sum(axis=1) >= 0
+    signal_indices = np.array(['_corrected_mean' in col for col in df.columns])
+    keep_rows = df.loc[:,signal_indices].sum(axis=1) > 0
     df = df[keep_rows]
     df = df.sort_values(['frame_i', 'Cell_ID']).reset_index(drop=True)
     return df

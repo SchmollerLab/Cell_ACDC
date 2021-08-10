@@ -1,4 +1,5 @@
 # Custom ignores
+figures
 notebooks/testing.ipynb
 notebooks/.ipynb_checkpoints
 .idea/
