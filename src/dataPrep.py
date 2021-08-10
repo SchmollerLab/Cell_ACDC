@@ -541,9 +541,10 @@ class dataPrepWin(QMainWindow):
 
         x, y = event.pos().x(), event.pos().y()
 
+        handleSize = 7
+
         # Check if right click on ROI
         for r, roi in enumerate(self.bkgrROIs):
-            handleSize = 7
             x0, y0 = [int(c) for c in roi.pos()]
             w, h = [int(c) for c in roi.size()]
             x1, y1 = x0+w, y0+h
