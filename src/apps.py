@@ -328,7 +328,7 @@ class QDialogAcdcInputs(QDialog):
         self.fintervalSpinBox.setAlignment(Qt.AlignCenter)
         gridLayout.addWidget(self.fintervalSpinBox, row, 1)
 
-        if SizeT:
+        if SizeT == 1:
             self.fintervalSpinBox.hide()
             self.fintervalLabel.hide()
 

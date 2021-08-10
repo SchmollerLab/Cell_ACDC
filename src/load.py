@@ -31,7 +31,8 @@ class load_frames_data:
                  load_shifts=False,
                  loadSegmInfo=True,
                  first_call=True,
-                 load_delROIsInfo=False):
+                 load_delROIsInfo=False,
+                 loadDataPrepBkgrVals=False):
         self.path = path
         self.fluo_data_dict = {}
         self.images_path = os.path.dirname(path)
@@ -106,19 +107,39 @@ class load_frames_data:
         self.img_data = img_data
         self.finterval = None
 
+        self.info, self.metadata_found = self.metadata(self.tif_path)
+
         # Search for saved metadata
         csv_path, savedMetadataFound = self.substring_path(
                                               path, '_metadata.csv',
                                               self.images_path)
         if savedMetadataFound:
+            zyx_vox_dim_found = True
             (self.SizeT, self.SizeZ,
             self.zyx_vox_dim,
             self.finterval) = self.loadLastInputs(load_zyx_voxSize,
                                                   csv_path=csv_path)
+            if self.finterval is None:
+                self.finterval = self.tifMetadata_finterval
             if not load_zyx_voxSize:
                 self.zyx_vox_dim = None
+                zyx_vox_dim_found = False
+            elif self.zyx_vox_dim is None:
+                try:
+                    self.zyx_vox_dim = self.zyx_vox_dim()
+                    zyx_vox_dim_found = True
+                except:
+                    self.zyx_vox_dim = [0.5, 0.01, 0.01]
+                    zyx_vox_dim_found = False
+            if first_call:
+                (self.SizeT, self.SizeZ,
+                self.zyx_vox_dim, self.finterval) = self.inputsWidget(
+                    SizeT=self.SizeT, SizeZ=self.SizeZ,
+                    zyx_vox_dim=self.zyx_vox_dim,
+                    zyx_vox_dim_found=zyx_vox_dim_found,
+                    parent=parentQWidget, finterval=self.finterval
+                )
         else:
-            self.info, self.metadata_found = self.metadata(self.tif_path)
             prompt_user = False
             if self.metadata_found:
                 try:
@@ -137,7 +158,7 @@ class load_frames_data:
                     zyx_vox_dim_found = False
                 if first_call:
                     (self.SizeT, self.SizeZ,
-                    self.zyx_vox_dim) = self.inputsWidget(
+                    self.zyx_vox_dim, self.finterval) = self.inputsWidget(
                         SizeT=self.SizeT, SizeZ=self.SizeZ,
                         zyx_vox_dim=self.zyx_vox_dim,
                         zyx_vox_dim_found=zyx_vox_dim_found,
@@ -152,7 +173,7 @@ class load_frames_data:
             else:
                 if first_call:
                     (self.SizeT, self.SizeZ,
-                    self.zyx_vox_dim) = self.inputsWidget(
+                    self.zyx_vox_dim, self.finterval) = self.inputsWidget(
                                                      SizeT=len(self.img_data),
                                                      parent=parentQWidget)
                 else:
@@ -281,6 +302,17 @@ class load_frames_data:
             if delROIsInfo_found:
                 self.delROIsInfo_npz = np.load(delROIsInfo_path)
 
+        self.bkgrValues_df = None
+        if loadDataPrepBkgrVals:
+            bkgrValues_path, bkgrValues_found = self.substring_path(
+                                              path, 'dataPrep_bkgrValues.csv',
+                                              self.images_path)
+            if bkgrValues_found:
+                bkgrValues_df = pd.read_csv(bkgrValues_path)
+                self.bkgrValues_chNames = bkgrValues_df['channel_name'].unique()
+                self.bkgrValues_df = bkgrValues_df.set_index(
+                                                ['channel_name', 'frame_i'])
+
         self.build_paths(self.filename, self.images_path, user_ch_name)
         self.saveMetadata()
 
@@ -329,6 +361,7 @@ class load_frames_data:
                 zyx_vox_dim = (z, y, x)
             else:
                 zyx_vox_dim = None
+
             if 'finterval' in df.index:
                 finterval = float(df.at['finterval', 'values'])
             else:
@@ -407,8 +440,10 @@ class load_frames_data:
             self.metadata = tif.imagej_metadata
         try:
             self.finterval = metadata['finterval']
+            self.tifMetadata_finterval = metadata['finterval']
         except:
             self.finterval = None
+            self.tifMetadata_finterval = None
         try:
             metadata_found = True
             info = self.metadata['Info']
@@ -472,7 +507,7 @@ class load_frames_data:
         ).set_index('Description')
         df.to_csv(last_entries_csv_path)
 
-        return win.SizeT, win.SizeZ, win.zyx_vox_dim
+        return win.SizeT, win.SizeZ, win.zyx_vox_dim, win.finterval
 
 class fix_pos_n_mismatch:
     '''Geometry: "WidthxHeight+Left+Top" '''
