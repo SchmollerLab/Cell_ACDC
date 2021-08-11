@@ -2382,8 +2382,6 @@ class guiWin(QMainWindow):
                 else:
                     self.imgRGB = gray2rgb(img)
 
-                self.brushOverlay = self.imgRGB.copy()
-
                 self.setTempImg1Brush(ymin, ymax, xmin, xmax, mask)
 
         elif left_click and canErase:
@@ -7065,12 +7063,12 @@ class guiWin(QMainWindow):
     def setTempImg1Brush(self, ymin, ymax, xmin, xmax, mask):
         PosData = self.data[self.pos_i]
         brushIDmask = PosData.lab==PosData.brushID
+        brushOverlay = self.imgRGB.copy()
         alpha = 0.3
-        overlay = self.imgRGB[brushIDmask]*(1.0-alpha) + self.whiteRGB*alpha
-        overlay *= self.brushColor
-        self.brushOverlay[brushIDmask] = overlay
-        self.brushOverlay = (self.brushOverlay*255).astype(np.uint8)
-        self.img1.setImage(self.brushOverlay)
+        overlay = self.imgRGB[brushIDmask]*(1.0-alpha) + self.brushColor*alpha
+        brushOverlay[brushIDmask] = overlay
+        brushOverlay = (brushOverlay*255).astype(np.uint8)
+        self.img1.setImage(brushOverlay)
         return overlay
 
     def warnEditingWithCca_df(self, editTxt):
