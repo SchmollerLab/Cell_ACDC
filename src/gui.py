@@ -869,7 +869,7 @@ class guiWin(QMainWindow):
         alphaScrollBar.setDisabled(True)
         self.alphaScrollBar = alphaScrollBar
         self.img1_Widglayout.addWidget(
-            alphaScrollBar_label, row, 0
+            alphaScrollBar_label, row, 0, alignment=Qt.AlignRight
         )
         self.img1_Widglayout.addWidget(
             alphaScrollBar, row, 1, 1, 10
@@ -2373,13 +2373,16 @@ class guiWin(QMainWindow):
                 self.brushColor = self.img2.lut[PosData.brushID]/255
 
                 rgb_shape = (PosData.lab.shape[0], PosData.lab.shape[1], 3)
-                self.labRGB = np.zeros(rgb_shape)
+                self.whiteRGB = np.array([1.0,1.0,1.0])
+
                 img = self.img1.image.copy()
                 img = img/img.max()
                 if self.overlayButton.isChecked():
                     self.imgRGB = img/img.max()
                 else:
                     self.imgRGB = gray2rgb(img)
+
+                self.brushOverlay = self.imgRGB.copy()
 
                 self.setTempImg1Brush(ymin, ymax, xmin, xmax, mask)
 
@@ -5534,7 +5537,6 @@ class guiWin(QMainWindow):
             PosData.ol_data_dict = {}
             PosData.ol_data = None
 
-
             # Colormap
             PosData.lut = self.cmap.getLookupTable(0,1, max_ID+10)
             np.random.shuffle(PosData.lut)
@@ -6739,8 +6741,10 @@ class guiWin(QMainWindow):
         PosData = self.data[self.pos_i]
         if checked:
             prompt = True
+            if PosData.ol_data is not None:
+                prompt = False
             # Check if there is already loaded data
-            if PosData.fluo_data_dict:
+            elif PosData.fluo_data_dict and PosData.ol_data is None:
                 items = PosData.fluo_data_dict.keys()
                 if len(items)>1:
                     selectFluo = apps.QDialogListbox(
@@ -6865,20 +6869,18 @@ class guiWin(QMainWindow):
         # Store them for all frames
         PosData = self.data[self.pos_i]
         isOverlayON = self.overlayButton.isChecked()
+        min = self.hist.gradient.listTicks()[0][1]
+        max = self.hist.gradient.listTicks()[1][1]
         if isOverlayON:
             for i in range(0, PosData.num_segm_frames):
                 histoLevels = PosData.allData_li[i]['histoLevels']
-                min = self.hist.gradient.listTicks()[0][1]
-                max = self.hist.gradient.listTicks()[1][1]
                 histoLevels[PosData.manualContrastKey] = (min, max)
             if PosData.ol_data is not None:
-                self.getOverlayImg()
+                self.getOverlayImg(setImg=True)
         else:
             cellsKey = f'{self.user_ch_name}_overlayOFF'
             for i in range(0, PosData.num_segm_frames):
                 histoLevels = PosData.allData_li[i]['histoLevels']
-                min = self.hist.gradient.listTicks()[0][1]
-                max = self.hist.gradient.listTicks()[1][1]
                 histoLevels[cellsKey] = (min, max)
             img = self.getImage()
             img = self.adjustBrightness(img, cellsKey)
@@ -6919,14 +6921,16 @@ class guiWin(QMainWindow):
         histoLevels = PosData.allData_li[PosData.frame_i]['histoLevels']
         rescaled_img = img
         for name in histoLevels:
+            if name != key:
+                continue
+
             minPerc, maxPerc = histoLevels[name]
             if minPerc == 0 and maxPerc == 1:
-                return img
-
-            imgRange = img.max()-img.min()
-            min = img.min() + imgRange*minPerc
-            max = img.min() + imgRange*maxPerc
-            if name == key:
+                rescaled_img = img
+            else:
+                imgRange = img.max()-img.min()
+                min = img.min() + imgRange*minPerc
+                max = img.min() + imgRange*maxPerc
                 in_range = (min, max)
                 rescaled_img = func(rescaled_img,
                                     in_range=in_range)
@@ -7062,11 +7066,11 @@ class guiWin(QMainWindow):
         PosData = self.data[self.pos_i]
         brushIDmask = PosData.lab==PosData.brushID
         alpha = 0.3
-        self.labRGB[brushIDmask] = [1, 1, 1]
-        overlay = self.imgRGB*(1.0-alpha) + self.labRGB*alpha
-        overlay[brushIDmask] *= self.brushColor
-        overlay = (np.clip(overlay, 0, 1)*255).astype(np.uint8)
-        self.img1.setImage(overlay)
+        overlay = self.imgRGB[brushIDmask]*(1.0-alpha) + self.whiteRGB*alpha
+        overlay *= self.brushColor
+        self.brushOverlay[brushIDmask] = overlay
+        self.brushOverlay = (self.brushOverlay*255).astype(np.uint8)
+        self.img1.setImage(self.brushOverlay)
         return overlay
 
     def warnEditingWithCca_df(self, editTxt):
@@ -8205,9 +8209,6 @@ class guiWin(QMainWindow):
                                     acdc_df, rp, frame_i, lab, PosData
                         )
                         acdc_df_li[frame_i] = acdc_df
-
-
-
                     pbar.update()
 
                 PosData.fluo_data_dict.pop(PosData.filename)
