@@ -222,7 +222,7 @@ class segmWin(QMainWindow):
         )
 
         user_ch_file_paths = []
-        for images_path in tqdm(images_paths, unit=' Position', ncols=100):
+        for images_path in images_paths:
             print('')
             print(f'Processing {images_path}')
             filenames = os.listdir(images_path)
@@ -261,10 +261,8 @@ class segmWin(QMainWindow):
 
             user_ch_file_paths.append(img_path)
 
-        print(user_ch_file_paths)
-
         first_call = True
-        for img_path in user_ch_file_paths:
+        for img_path in tqdm(user_ch_file_paths, unit=' Position', ncols=100):
             data = load.load_frames_data(img_path, user_ch_name,
                                          load_segm_data=False,
                                          load_acdc_df=False,
@@ -354,10 +352,12 @@ class segmWin(QMainWindow):
                         img_data = data.img_data.mean(axis=0)
                     elif zProjHow == 'median z-proj.':
                         img_data = np.median(data.img_data, axis=0)
-                    img_data = skimage.exposure.equalize_adapthist(img_data/img_data.max())
+                    img_data = skimage.exposure.equalize_adapthist(
+                                                    img_data/img_data.max())
                 else:
                     # Single 2D image
-                    img_data = skimage.exposure.equalize_adapthist(img_data/img_data.max())
+                    img_data = skimage.exposure.equalize_adapthist(
+                                                    img_data/img_data.max())
 
             print(f'Image shape = {img_data.shape}')
 
@@ -373,11 +373,12 @@ class segmWin(QMainWindow):
                     lab_stack = np.array(img_data.shape, np.uint16)
                     for t, img in enumerate(img_data):
                         lab, flows, _, _ = cp_model.eval(
-                                                img,
-                                                channels=[0,0],
-                                                diameter=diameter,
-                                                flow_threshold=flow_threshold,
-                                                cellprob_threshold=cellprob_threshold)
+                                        img,
+                                        channels=[0,0],
+                                        diameter=diameter,
+                                        flow_threshold=flow_threshold,
+                                        cellprob_threshold=cellprob_threshold
+                        )
                         # lab = core.smooth_contours(lab, radius=2)
                         lab_stack[t] = lab
 
@@ -387,11 +388,12 @@ class segmWin(QMainWindow):
                                                path_weights=path_weights)
                 elif model == 'cellpose':
                     lab_stack, flows, _, _ = cp_model.eval(
-                                                img_data,
-                                                channels=[0,0],
-                                                diameter=diameter,
-                                                flow_threshold=flow_threshold,
-                                                cellprob_threshold=cellprob_threshold)
+                                        img_data,
+                                        channels=[0,0],
+                                        diameter=diameter,
+                                        flow_threshold=flow_threshold,
+                                        cellprob_threshold=cellprob_threshold
+                    )
                     # lab_stack = core.smooth_contours(lab_stack, radius=2)
             if model == 'yeaz':
                 print('Thresholding prediction...')
@@ -432,6 +434,8 @@ class segmWin(QMainWindow):
 
         self.processFinished = True
         self.close()
+        if self.allowExit:
+            exit('Segmentation task ended.')
 
     def doAbort(self):
         msg = QtGui.QMessageBox()

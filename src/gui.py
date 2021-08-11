@@ -264,7 +264,8 @@ class guiWin(QMainWindow):
                 self.fontSizeAction = action
             fontActionGroup.addAction(action)
             action = self.fontSizeMenu.addAction(action)
-        editMenu.addAction(self.editOverlayColor)
+        editMenu.addAction(self.editTextIDsColorAction)
+        editMenu.addAction(self.editOverlayColorAction)
         editMenu.addAction(self.manuallyEditCcaAction)
         editMenu.addAction(self.enableSmartTrackAction)
         editMenu.addAction(self.enableAutoZoomToCellsAction)
@@ -348,6 +349,10 @@ class guiWin(QMainWindow):
         # self.overlayColorButton.mousePressEvent = self.mousePressColorButton
         self.overlayColorButton.setDisabled(True)
         colorsToolBar.addWidget(self.overlayColorButton)
+
+        self.textIDsColorButton = pg.ColorButton(self, color=(255,255,255))
+        colorsToolBar.addWidget(self.textIDsColorButton)
+
         self.addToolBar(colorsToolBar)
         colorsToolBar.setVisible(False)
 
@@ -643,8 +648,11 @@ class guiWin(QMainWindow):
             '(from the current session not the saved information)'
         )
 
-        self.editOverlayColor = QAction('Edit overlay color...', self)
-        self.editOverlayColor.setDisabled(True)
+        self.editTextIDsColorAction = QAction('Edit text on IDs color...', self)
+        self.editTextIDsColorAction.setDisabled(True)
+
+        self.editOverlayColorAction = QAction('Edit overlay color...', self)
+        self.editOverlayColorAction.setDisabled(True)
 
         self.manuallyEditCcaAction = QAction(
                             'Manually modify cell cycle annotations...', self)
@@ -763,8 +771,11 @@ class guiWin(QMainWindow):
         self.modeComboBox.currentIndexChanged.connect(self.changeMode)
         self.modeComboBox.activated.connect(self.clearFocus)
         self.equalizeHistPushButton.clicked.connect(self.equalizeHist)
-        self.editOverlayColor.triggered.connect(self.toggleColorButton)
+        self.editOverlayColorAction.triggered.connect(self.toggleOverlayColorButton)
+        self.editTextIDsColorAction.triggered.connect(self.toggleTextIDsColorButton)
         self.overlayColorButton.sigColorChanging.connect(self.updateOlColors)
+        self.textIDsColorButton.sigColorChanging.connect(self.updateTextIDsColors)
+        self.textIDsColorButton.sigColorChanged.connect(self.saveTextIDsColors)
         self.alphaScrollBar.valueChanged.connect(self.updateOverlay)
         # Drawing mode
         self.drawIDsContComboBox.currentIndexChanged.connect(
@@ -928,9 +939,17 @@ class guiWin(QMainWindow):
         # self.graphLayout.addItem(self.frameLabel, row=2, col=1, colspan=2)
 
     def gui_addPlotItems(self):
-        self.ax1_oldIDcolor = 1.0 # white
-        self.ax1_S_oldCellColor = 0.9
-        self.ax1_G1cellColor = 0.8
+        if 'textIDsColor' in self.df_settings.index:
+            rgbString = self.df_settings.at['textIDsColor', 'value']
+            r, g, b = re.findall('(\d+), (\d+), (\d+)', rgbString)[0]
+            r, g, b = int(r), int(g), int(b)
+            self.ax1_oldIDcolor = (r, g, b)
+            self.ax1_S_oldCellColor = (int(r*0.9), int(r*0.9), int(r*0.9))
+            self.ax1_G1cellColor = (int(r*0.8), int(r*0.8), int(r*0.8), 178)
+        else:
+            self.ax1_oldIDcolor = (255, 255, 255) # white
+            self.ax1_S_oldCellColor = (229, 229, 229)
+            self.ax1_G1cellColor = (204, 204, 204, 178)
 
         # Blank image
         self.blank = np.zeros((256,256), np.uint8)
@@ -1184,7 +1203,7 @@ class guiWin(QMainWindow):
                 self.erasedIDs = []
                 self.erasedID = PosData.lab[ydata, xdata]
                 brushSize = self.brushSizeSpinbox.value()
-                diskMask = skimage.morphology.disk(brushSize, dtype=np.bool)
+                diskMask = skimage.morphology.disk(brushSize, dtype=bool)
                 ymin, xmin = ydata-brushSize, xdata-brushSize
                 ymax, xmax = ydata+brushSize+1, xdata+brushSize+1
 
@@ -1193,14 +1212,15 @@ class guiWin(QMainWindow):
                 mask[ymin:ymax, xmin:xmax][diskMask] = True
 
                 # If user double-pressed 'b' then erase over ALL labels
-                color = self.brushButton.palette().button().color().name()
+                color = self.eraserButton.palette().button().color().name()
                 eraseOnlyOneID = (
-                    not color == self.doublePressKeyButtonColor
+                    color != self.doublePressKeyButtonColor
                     and self.erasedID != 0
                 )
                 if eraseOnlyOneID:
                     mask[PosData.lab!=self.erasedID] = False
 
+                self.eraseOnlyOneID = eraseOnlyOneID
 
                 self.erasedIDs.extend(PosData.lab[mask])
                 PosData.lab[mask] = 0
@@ -1220,7 +1240,7 @@ class guiWin(QMainWindow):
                 self.storeUndoRedoStates(False)
                 self.yPressAx2, self.xPressAx2 = y, x
                 brushSize = self.brushSizeSpinbox.value()
-                mask = skimage.morphology.disk(brushSize, dtype=np.bool)
+                mask = skimage.morphology.disk(brushSize, dtype=bool)
                 ymin, xmin = ydata-brushSize, xdata-brushSize
                 ymax, xmax = ydata+brushSize+1, xdata+brushSize+1
                 ID = PosData.lab[ydata, xdata]
@@ -1777,7 +1797,7 @@ class guiWin(QMainWindow):
             Y, X = PosData.lab.shape
             brushSize = self.brushSizeSpinbox.value()
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
-                diskMask = skimage.morphology.disk(brushSize, dtype=np.bool)
+                diskMask = skimage.morphology.disk(brushSize, dtype=bool)
                 ymin, xmin = ydata-brushSize, xdata-brushSize
                 ymax, xmax = ydata+brushSize+1, xdata+brushSize+1
                 rrPoly, ccPoly = self.getPolygonBrush((y, x))
@@ -1789,8 +1809,13 @@ class guiWin(QMainWindow):
 
                 # If user double-pressed 'b' then draw over the labels
                 color = self.brushButton.palette().button().color().name()
-                if not color == self.doublePressKeyButtonColor:
+                if color != self.doublePressKeyButtonColor:
                     mask[PosData.lab!=0] = False
+                    self.setHoverToolSymbolColor(
+                        xdata, ydata, self.ax2_BrushCirclePen,
+                        (self.ax2_BrushCircle, self.ax1_BrushCircle),
+                        self.brushButton, brush=self.ax2_BrushCircleBrush
+                    )
 
                 # Apply brush mask
                 PosData.lab[mask] = PosData.brushID
@@ -1803,7 +1828,7 @@ class guiWin(QMainWindow):
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             brushSize = self.brushSizeSpinbox.value()
-            diskMask = skimage.morphology.disk(brushSize, dtype=np.bool)
+            diskMask = skimage.morphology.disk(brushSize, dtype=bool)
             rrPoly, ccPoly = self.getPolygonBrush((y, x))
             ymin, xmin = ydata-brushSize, xdata-brushSize
             ymax, xmax = ydata+brushSize+1, xdata+brushSize+1
@@ -1813,18 +1838,13 @@ class guiWin(QMainWindow):
             mask[ymin:ymax, xmin:xmax][diskMask] = True
             mask[rrPoly, ccPoly] = True
 
-            # If user double-pressed 'b' then erase over ALL labels
-            color = self.brushButton.palette().button().color().name()
-            eraseOnlyOneID = (
-                not color == self.doublePressKeyButtonColor
-                and self.erasedID != 0
-            )
-            if eraseOnlyOneID:
+            if self.eraseOnlyOneID:
                 mask[PosData.lab!=self.erasedID] = False
                 self.setHoverToolSymbolColor(
                     xdata, ydata, self.eraserCirclePen,
                     (self.ax2_EraserCircle, self.ax1_EraserCircle),
-                    hoverRGB=self.img2.lut[self.erasedID]
+                    self.eraserButton, hoverRGB=self.img2.lut[self.erasedID],
+                    ID=self.erasedID
                 )
 
 
@@ -1882,7 +1902,7 @@ class guiWin(QMainWindow):
         drawCircle = self.eraserButton.isChecked() and not event.isExit()
         if not event.isExit() and drawCircle:
             x, y = event.pos()
-            self.updateEraserCursor(x, y, useDragEvent=True)
+            self.updateEraserCursor(x, y)
         else:
             self.setHoverToolSymbolData(
                 [], [], (self.ax1_EraserCircle, self.ax2_EraserCircle,
@@ -1974,7 +1994,7 @@ class guiWin(QMainWindow):
         drawCircle = self.eraserButton.isChecked() and not event.isExit()
         if drawCircle and not event.isExit():
             x, y = event.pos()
-            self.updateEraserCursor(x, y, useDragEvent=True)
+            self.updateEraserCursor(x, y)
         else:
             self.setHoverToolSymbolData(
                 [], [], (self.ax1_EraserCircle, self.ax2_EraserCircle,
@@ -2006,7 +2026,7 @@ class guiWin(QMainWindow):
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             brushSize = self.brushSizeSpinbox.value()
-            diskMask = skimage.morphology.disk(brushSize, dtype=np.bool)
+            diskMask = skimage.morphology.disk(brushSize, dtype=bool)
             rrPoly, ccPoly = self.getPolygonBrush((y, x))
             ymin, xmin = ydata-brushSize, xdata-brushSize
             ymax, xmax = ydata+brushSize+1, xdata+brushSize+1
@@ -2016,18 +2036,13 @@ class guiWin(QMainWindow):
             mask[ymin:ymax, xmin:xmax][diskMask] = True
             mask[rrPoly, ccPoly] = True
 
-            # If user double-pressed 'b' then erase over ALL labels
-            color = self.brushButton.palette().button().color().name()
-            eraseOnlyOneID = (
-                not color == self.doublePressKeyButtonColor
-                and self.erasedID != 0
-            )
-            if eraseOnlyOneID:
+            if self.eraseOnlyOneID:
                 mask[PosData.lab!=self.erasedID] = False
                 self.setHoverToolSymbolColor(
                     xdata, ydata, self.eraserCirclePen,
                     (self.ax2_EraserCircle, self.ax1_EraserCircle),
-                    hoverRGB=self.img2.lut[self.erasedID]
+                    self.eraserButton, hoverRGB=self.img2.lut[self.erasedID],
+                    ID=self.erasedID
                 )
 
             self.erasedIDs.extend(PosData.lab[mask])
@@ -2041,7 +2056,7 @@ class guiWin(QMainWindow):
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             brushSize = self.brushSizeSpinbox.value()
-            diskMask = skimage.morphology.disk(brushSize, dtype=np.bool)
+            diskMask = skimage.morphology.disk(brushSize, dtype=bool)
             rrPoly, ccPoly = self.getPolygonBrush((y, x))
             ymin, xmin = ydata-brushSize, xdata-brushSize
             ymax, xmax = ydata+brushSize+1, xdata+brushSize+1
@@ -2053,8 +2068,13 @@ class guiWin(QMainWindow):
 
             # If user double-pressed 'b' then draw over the labels
             color = self.brushButton.palette().button().color().name()
-            if not color == self.doublePressKeyButtonColor:
+            if color != self.doublePressKeyButtonColor:
                 mask[PosData.lab!=0] = False
+                self.setHoverToolSymbolColor(
+                    xdata, ydata, self.ax2_BrushCirclePen,
+                    (self.ax2_BrushCircle, self.ax1_BrushCircle),
+                    self.eraserButton, brush=self.ax2_BrushCircleBrush
+                )
 
             # Apply brush mask
             PosData.lab[mask] = self.ax2BrushID
@@ -2134,7 +2154,7 @@ class guiWin(QMainWindow):
         if mode == 'Viewer':
             return
 
-        if self.mergeIDsButton.isChecked():
+        if mode=='Segmentation and Tracking' or self.isSnapshot:
             # Allow right-click actions on both images
             self.gui_mouseReleaseEventImg2(event)
 
@@ -2334,7 +2354,7 @@ class guiWin(QMainWindow):
             return
 
         # Allow right-click actions on both images
-        if right_click and mode=='Segmentation and Tracking' or self.isSnapshot:
+        if right_click and (mode=='Segmentation and Tracking' or self.isSnapshot):
             self.gui_mousePressEventImg2(event)
 
         # Paint new IDs with brush and left click on the left image
@@ -2361,7 +2381,7 @@ class guiWin(QMainWindow):
 
                 self.yPressAx2, self.xPressAx2 = y, x
 
-                mask = skimage.morphology.disk(brushSize, dtype=np.bool)
+                mask = skimage.morphology.disk(brushSize, dtype=bool)
                 ymin, xmin = ydata-brushSize, xdata-brushSize
                 ymax, xmax = ydata+brushSize+1, xdata+brushSize+1
 
@@ -2400,7 +2420,7 @@ class guiWin(QMainWindow):
                 self.erasedIDs = []
                 self.erasedID = PosData.lab[ydata, xdata]
                 brushSize = self.brushSizeSpinbox.value()
-                diskMask = skimage.morphology.disk(brushSize, dtype=np.bool)
+                diskMask = skimage.morphology.disk(brushSize, dtype=bool)
                 ymin, xmin = ydata-brushSize, xdata-brushSize
                 ymax, xmax = ydata+brushSize+1, xdata+brushSize+1
 
@@ -2409,13 +2429,22 @@ class guiWin(QMainWindow):
                 mask[ymin:ymax, xmin:xmax][diskMask] = True
 
                 # If user double-pressed 'b' then erase over ALL labels
-                color = self.brushButton.palette().button().color().name()
-                if not color == self.doublePressKeyButtonColor:
+                color = self.eraserButton.palette().button().color().name()
+                eraseOnlyOneID = (
+                    color != self.doublePressKeyButtonColor
+                    and self.erasedID != 0
+                )
+
+                self.eraseOnlyOneID = eraseOnlyOneID
+
+                if eraseOnlyOneID:
                     mask[PosData.lab!=self.erasedID] = False
+
 
                 self.erasedIDs.extend(PosData.lab[mask])
 
                 PosData.lab[mask] = 0
+
                 self.erasesedLab = np.zeros_like(PosData.lab)
                 for erasedID in np.unique(self.erasedIDs):
                     if erasedID == 0:
@@ -2643,17 +2672,11 @@ class guiWin(QMainWindow):
             else:
                 item.setData(xx, yy, size=size)
 
-    def setHoverToolSymbolColor(self, xdata, ydata, pen, ScatterItems,
-                                brush=None, useDragEvent=False,
-                                hoverRGB=None):
-        isMouseDrag = (
-            self.isMouseDragImg1 or self.isMouseDragImg2
-        )
-        if useDragEvent and isMouseDrag:
-            return
+    def setHoverToolSymbolColor(self, xdata, ydata, pen, ScatterItems, button,
+                                brush=None, hoverRGB=None, ID=None):
         PosData = self.data[self.pos_i]
-        hoverID = PosData.lab[ydata, xdata]
-        color = self.brushButton.palette().button().color().name()
+        hoverID = PosData.lab[ydata, xdata] if ID is None else ID
+        color = button.palette().button().color().name()
         drawAbove = color == self.doublePressKeyButtonColor
         if hoverID == 0 or drawAbove:
             for item in ScatterItems:
@@ -3647,17 +3670,19 @@ class guiWin(QMainWindow):
         if checked:
             self.ax2_BrushCirclePen = pg.mkPen((0,0,0), width=2)
             self.ax2_BrushCircleBrush = pg.mkBrush((0,0,0,50))
-            self.ax1_oldIDcolor = abs(1-self.ax1_oldIDcolor)
-            self.ax1_G1cellColor = abs(1-self.ax1_G1cellColor)
-            self.ax1_S_oldCellColor = abs(1-self.ax1_S_oldCellColor)
+            self.ax1_oldIDcolor = [255-v for v in self.ax1_oldIDcolor]
+            self.ax1_G1cellColor = [255-v for v in self.ax1_G1cellColor[:3]]
+            self.ax1_G1cellColor.append(178)
+            self.ax1_S_oldCellColor = [255-v for v in self.ax1_S_oldCellColor]
         else:
             self.ax2_BrushCirclePen = pg.mkPen(width=2)
             self.ax2_BrushCircleBrush = pg.mkBrush((255,255,255,50))
-            self.ax1_oldIDcolor = abs(1-self.ax1_oldIDcolor)
-            self.ax1_G1cellColor = abs(1-self.ax1_G1cellColor)
-            self.ax1_S_oldCellColor = abs(1-self.ax1_S_oldCellColor)
+            self.ax1_oldIDcolor = [255-v for v in self.ax1_oldIDcolor]
+            self.ax1_G1cellColor = [255-v for v in self.ax1_G1cellColor[:3]]
+            self.ax1_G1cellColor.append(178)
+            self.ax1_S_oldCellColor = [255-v for v in self.ax1_S_oldCellColor]
 
-        self.updateALLimg(updateLabelItemColor=True)
+        self.updateALLimg(updateLabelItemColor=False)
 
     def saveNormAction(self, action):
         how = action.text()
@@ -4164,12 +4189,16 @@ class guiWin(QMainWindow):
         self.setHoverToolSymbolColor(
             xdata, ydata, self.ax2_BrushCirclePen,
             (self.ax2_BrushCircle, self.ax1_BrushCircle),
-            brush=self.ax2_BrushCircleBrush
+            self.brushButton, brush=self.ax2_BrushCircleBrush
         )
 
 
     def Brush_cb(self, checked):
         if checked:
+            self.setHoverToolSymbolData(
+                [], [], (self.ax1_EraserCircle, self.ax2_EraserCircle,
+                         self.ax1_EraserX, self.ax2_EraserX)
+            )
             self.updateBrushCursor(self.xHoverImg, self.yHoverImg)
             self.setBrushID()
             self.enableSizeSpinbox(True)
@@ -4239,7 +4268,7 @@ class guiWin(QMainWindow):
             self.isRightClickDragImg1 = False
             self.clearCurvItems()
 
-    def updateEraserCursor(self, x, y, useDragEvent=False):
+    def updateEraserCursor(self, x, y):
         if x is None:
             return
 
@@ -4260,14 +4289,23 @@ class guiWin(QMainWindow):
             [x], [y], (self.ax1_EraserX, self.ax2_EraserX),
             size=int(size/2)
         )
-        self.setHoverToolSymbolColor(
-            xdata, ydata, self.eraserCirclePen,
-            (self.ax2_EraserCircle, self.ax1_EraserCircle),
-            useDragEvent=useDragEvent, hoverRGB=None
+
+        isMouseDrag = (
+            self.isMouseDragImg1 or self.isMouseDragImg2
         )
+
+        if not isMouseDrag:
+            self.setHoverToolSymbolColor(
+                xdata, ydata, self.eraserCirclePen,
+                (self.ax2_EraserCircle, self.ax1_EraserCircle),
+                self.eraserButton, hoverRGB=None
+            )
 
     def Eraser_cb(self, checked):
         if checked:
+            self.setHoverToolSymbolData(
+                [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
+            )
             self.updateEraserCursor(self.xHoverImg, self.yHoverImg)
             self.brushButton.toggled.disconnect()
             self.curvToolButton.toggled.disconnect()
@@ -4390,12 +4428,13 @@ class guiWin(QMainWindow):
                     self.setHoverToolSymbolColor(
                         xdata, ydata, self.ax2_BrushCirclePen,
                         (self.ax2_BrushCircle, self.ax1_BrushCircle),
-                        brush=self.ax2_BrushCircleBrush
+                        self.brushButton, brush=self.ax2_BrushCircleBrush
                     )
                 elif ev.key() == Qt.Key_X:
                     self.setHoverToolSymbolColor(
                         xdata, ydata, self.eraserCirclePen,
                         (self.ax2_EraserCircle, self.ax1_EraserCircle),
+                        self.eraserButton
                     )
 
     def doubleKeyTimerCallBack(self):
@@ -4982,7 +5021,7 @@ class guiWin(QMainWindow):
             self.pos_i = 0
         self.removeAlldelROIsCurrentFrame()
         proceed_cca, never_visited = self.get_data()
-        self.updateALLimg(updateFilters=True, updateLabelItemColor=True)
+        self.updateALLimg(updateFilters=True, updateLabelItemColor=False)
         self.zoomToCells()
         self.updateScrollbars()
         self.computeSegm()
@@ -5062,7 +5101,7 @@ class guiWin(QMainWindow):
                 self.get_data()
                 return
             self.updateALLimg(never_visited=never_visited,
-                              updateFilters=True, updateLabelItemColor=True)
+                              updateFilters=True, updateLabelItemColor=False)
             self.updateScrollbars()
             self.computeSegm()
             self.setFramesScrollbarMaximum()
@@ -6389,12 +6428,10 @@ class guiWin(QMainWindow):
             if updateColor:
                 LabelItemID.setText(txt, size=self.fontSize)
             if ccs == 'G1':
-                c = self.ax1_G1cellColor
+                color = self.ax1_G1cellColor
                 if updateColor:
                     c = self.getOptimalLabelItemColor(LabelItemID, c)
                     self.ax1_G1cellColor = c
-                alpha = 0.7
-                color = (255*c, 255*c, 255*c, 255*alpha)
                 bold = False
             elif ccs == 'S' and is_moth and not emerged_now:
                 color = self.ax1_S_oldCellColor
@@ -6834,7 +6871,7 @@ class guiWin(QMainWindow):
 
             self.alphaScrollBar.setDisabled(False)
             self.overlayColorButton.setDisabled(False)
-            self.editOverlayColor.setDisabled(False)
+            self.editOverlayColorAction.setDisabled(False)
             self.alphaScrollBar.show()
             self.alphaScrollBar_label.show()
         else:
@@ -6845,7 +6882,7 @@ class guiWin(QMainWindow):
             self.updateALLimg(only_ax1=True)
             self.alphaScrollBar.setDisabled(True)
             self.overlayColorButton.setDisabled(True)
-            self.editOverlayColor.setDisabled(True)
+            self.editOverlayColorAction.setDisabled(True)
             self.alphaScrollBar.hide()
             self.alphaScrollBar_label.hide()
 
@@ -7008,8 +7045,22 @@ class guiWin(QMainWindow):
         overlay = (np.clip(overlay, 0, 1)*255).astype(np.uint8)
         return overlay
 
-    def toggleColorButton(self, checked=True):
+    def toggleOverlayColorButton(self, checked=True):
         self.mousePressColorButton(None)
+
+    def toggleTextIDsColorButton(self, checked=True):
+        self.textIDsColorButton.selectColor()
+
+    def updateTextIDsColors(self, button):
+        r, g, b = np.array(self.textIDsColorButton.color().getRgb()[:3])
+        self.ax1_oldIDcolor = (r, g, b)
+        self.ax1_S_oldCellColor = (int(r*0.9), int(r*0.9), int(r*0.9))
+        self.ax1_G1cellColor = (int(r*0.8), int(r*0.8), int(r*0.8), 178)
+        self.updateALLimg()
+
+    def saveTextIDsColors(self, button):
+        self.df_settings.at['textIDsColor', 'value'] = self.ax1_oldIDcolor
+        self.df_settings.to_csv(self.settings_csv_path)
 
     def updateOlColors(self, button):
         rgb = self.overlayColorButton.color().getRgb()[:3]
@@ -7197,7 +7248,7 @@ class guiWin(QMainWindow):
         if self.isSnapshot:
             PosData = self.data[self.pos_i]
             self.t_label.setText(
-                     f'Pos. n. {self.pos_i+1}/{self.num_pos}'
+                     f'Pos. n. {self.pos_i+1}/{self.num_pos} '
                      f'({PosData.pos_foldername})')
         else:
             PosData = self.data[0]
@@ -7857,10 +7908,11 @@ class guiWin(QMainWindow):
                 color='w')
 
             self.setFramesSnapshotMode()
-            self.updateALLimg(updateLabelItemColor=True)
+            self.updateALLimg(updateLabelItemColor=False)
             self.updateScrollbars()
             self.fontSizeAction.setChecked(True)
             self.openAction.setEnabled(True)
+            self.editTextIDsColorAction.setDisabled(False)
         except:
             traceback.print_exc()
             err_msg = 'Error occured. See terminal/console for details'
