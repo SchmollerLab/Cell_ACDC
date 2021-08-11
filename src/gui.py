@@ -1268,7 +1268,7 @@ class guiWin(QMainWindow):
             # Ask to propagate change to all future visited frames
             (UndoFutFrames, applyFutFrames, endFrame_i,
             doNotShowAgain) = self.propagateChange(
-                                    delID, 'Delete cell ID',
+                                    delID, 'Delete ID',
                                     PosData.doNotShowAgain_DelID,
                                     PosData.UndoFutFrames_DelID,
                                     PosData.applyFutFrames_DelID)
@@ -1316,7 +1316,7 @@ class guiWin(QMainWindow):
             # Update data (rp, etc)
             self.update_rp()
 
-            self.warnEditingWithCca_df('Delete cell ID')
+            self.warnEditingWithCca_df('Delete ID')
 
             self.setImageImg2()
 
@@ -2072,7 +2072,7 @@ class guiWin(QMainWindow):
             erasedIDs = np.unique(self.erasedIDs)
             for ID in erasedIDs:
                 if ID not in PosData.lab:
-                    self.warnEditingWithCca_df('Delete cell ID with eraser')
+                    self.warnEditingWithCca_df('Delete ID with eraser')
 
             # Update data (rp, etc)
             self.update_rp()
@@ -2159,7 +2159,7 @@ class guiWin(QMainWindow):
             erasedIDs = np.unique(self.erasedIDs)
             for ID in erasedIDs:
                 if ID not in PosData.lab:
-                    self.warnEditingWithCca_df('Delete cell ID with eraser')
+                    self.warnEditingWithCca_df('Delete ID with eraser')
 
             # Update data (rp, etc)
             self.update_rp()
@@ -2243,16 +2243,16 @@ class guiWin(QMainWindow):
                     msg.setText(
                         f'You clicked FIRST on ID {budID} and then on {new_mothID}.\n'
                         f'For me this means that you want ID {budID} to be the '
-                        f'BUD of cell ID {new_mothID}.\n'
-                        f'However cell ID {budID} is bigger than {new_mothID} '
+                        f'BUD of ID {new_mothID}.\n'
+                        f'However ID {budID} is bigger than {new_mothID} '
                         f'so maybe you shoul have clicked FIRST on {new_mothID}?\n\n'
                         'What do you want me to do?'
                     )
                     swapButton = QPushButton(
-                            f'Assign ID {new_mothID} as the bud of cell ID {budID}'
+                            f'Assign ID {new_mothID} as the bud of ID {budID}'
                     )
                     keepButton = QPushButton(
-                            f'Keep ID {budID} as the bud of  cell ID {new_mothID}'
+                            f'Keep ID {budID} as the bud of  ID {new_mothID}'
                     )
                     msg.addButton(swapButton, msg.YesRole)
                     msg.addButton(keepButton, msg.NoRole)
@@ -2268,9 +2268,9 @@ class guiWin(QMainWindow):
                 budID = PosData.lab[ydata, xdata]
                 # Allow assigning an unknown cell ONLY to another unknown cell
                 txt = (
-                    f'You started by clicking on cell ID {budID} which has '
+                    f'You started by clicking on ID {budID} which has '
                     'UNKNOWN history, but you then clicked/released on '
-                    f'cell ID {ID} which has KNOWN history.\n\n'
+                    f'ID {ID} which has KNOWN history.\n\n'
                     'Only two cells with UNKNOWN history can be assigned as '
                     'relative of each other.')
                 msg = QtGui.QMessageBox()
@@ -6581,7 +6581,7 @@ class guiWin(QMainWindow):
         else:
             htmlTxt = f'<font color="white">{self.titleLabel.text}</font>'
         if PosData.multiContIDs:
-            warn_txt = f'Cells IDs with multiple contours: {PosData.multiContIDs}'
+            warn_txt = f'IDs with multiple contours: {PosData.multiContIDs}'
             color = 'red'
             htmlTxt = (
                 f'<font color="red">{warn_txt}</font>, {htmlTxt}'
@@ -7257,7 +7257,7 @@ class guiWin(QMainWindow):
         self.computingContoursTimes = []
         self.drawingLabelsTimes = []
         self.drawingContoursTimes = []
-        # Annotate cell ID and draw contours
+        # Annotate ID and draw contours
         for i, obj in enumerate(PosData.rp):
             updateColor=True if updateLabelItemColor and i==0 else False
             self.drawID_and_Contour(obj, updateColor=updateColor)
@@ -7363,13 +7363,13 @@ class guiWin(QMainWindow):
                 del lost_IDs_format[5:-5]
                 lost_IDs_format.insert(5, "...")
                 lost_IDs_format = f"[{', '.join(map(str, lost_IDs_format))}]"
-            warn_txt = f'Cells IDs lost in current frame: {lost_IDs_format}'
+            warn_txt = f'IDs lost in current frame: {lost_IDs_format}'
             color = 'red'
             htmlTxt = (
                 f'<font color="red">{warn_txt}</font>'
             )
         if PosData.multiContIDs:
-            warn_txt = f'Cells IDs with multiple contours: {PosData.multiContIDs}'
+            warn_txt = f'IDs with multiple contours: {PosData.multiContIDs}'
             color = 'red'
             htmlTxt = (
                 f'{htmlTxt}, <font color="red">{warn_txt}</font>'
@@ -7380,7 +7380,7 @@ class guiWin(QMainWindow):
                 del new_IDs_format[5:-5]
                 new_IDs_format.insert(5, "...")
                 new_IDs_format = f"[{', '.join(map(str, new_IDs_format))}]"
-            warn_txt = f'New cells IDs in current frame: {new_IDs_format}'
+            warn_txt = f'New IDs in current frame: {new_IDs_format}'
             color = 'r'
             htmlTxt = (
                 f'{htmlTxt}, <font color="green">{warn_txt}</font>'
@@ -7821,7 +7821,7 @@ class guiWin(QMainWindow):
                 if not img_aligned_found:
                     err_msg = ('Aligned frames file for channel '
                                f'{user_ch_name} not found. '
-                               'You should to run dataPrep.py and segm.py first.')
+                               'Loading tifs files.')
                     self.titleLabel.setText(err_msg)
                     img_path = tif_path
                 else:
@@ -8206,8 +8206,11 @@ class guiWin(QMainWindow):
                         )
                         acdc_df_li[frame_i] = acdc_df
 
+
+
                     pbar.update()
 
+                PosData.fluo_data_dict.pop(PosData.filename)
                 pbar.update(pbar.total-pbar.n)
                 pbar.close()
 
