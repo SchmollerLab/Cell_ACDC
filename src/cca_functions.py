@@ -40,20 +40,20 @@ def configuration_dialog():
         print("No positions selected!")
         raise IndexError
     return data_dirs, positions
-    
+
 def find_available_channels(filenames):
     ch_name_selector = prompts.select_channel_name()
     ch_names, warn = ch_name_selector.get_available_channels(filenames)
     return ch_names, warn
-    
+
 def calculate_downstream_data(
     file_names,
-    image_folders, 
-    positions, 
-    channels, 
+    image_folders,
+    positions,
+    channels,
     force_recalculation=False
 ):
-    no_of_channels = len(channels)    
+    no_of_channels = len(channels)
     overall_df = pd.DataFrame()
     for file_idx, file in enumerate(file_names):
         for pos_idx, pos_dir in enumerate(image_folders[file_idx]):
@@ -89,11 +89,11 @@ def calculate_downstream_data(
                 files_in_curr_dir = os.listdir(pos_dir)
                 common_prefix = _determine_common_prefix(files_in_curr_dir)
                 save_path = os.path.join(pos_dir, f'{common_prefix}cca_properties_downstream.csv')
-                temp_df.to_csv(save_path, index=False)    
+                temp_df.to_csv(save_path, index=False)
                 overall_df = overall_df.append(temp_df).reset_index(drop=True)
     return overall_df
-    
-    
+
+
 def _determine_common_prefix(filenames):
     basename = filenames[0]
     for file in filenames:
@@ -109,23 +109,23 @@ def _determine_common_prefix(filenames):
 def _auto_rescale_intensity(img, perc=0.01, clip_min=False):
     """
     function to clip outliers to the given percentiles and scale afterwards.
-    
+
     use skimage.exposure.rescale_intensity for clipping all images in the
     given percentiles to the percentile border.
-    
+
     Parameters
     ----------
     img: np.array
         image to eliminate outliers from
     perc: float
-        percentage of pixels which are considered as outliers. 
+        percentage of pixels which are considered as outliers.
         Example: given 0.01, the lowest and highest 1% of pixels are considered
         as outliers and clipped to the 1- and 99-percentile respectively.
-    
+
     Returns
     -------
     scaled_img: np.array
-        image, where outlier pixels are set to 1- and 99-percentiles and which is 
+        image, where outlier pixels are set to 1- and 99-percentiles and which is
         scaled to [0,1] afterwards
     """
     if perc > 0:
@@ -170,7 +170,7 @@ def _load_files(file_dir, channels):
                 print(f'Could not find any file for channel {channel}')
                 print(f'Resulting data will not contain fluorescent data for this channel')
                 channel_files.append(None)
-                
+
     # append segmentation file
     try:
         segm_file_path = glob.glob(f'{file_dir}\*_segm.npz')[0]
@@ -186,7 +186,7 @@ def _load_files(file_dir, channels):
         cc_stage_path = glob.glob(f'{file_dir}\*cc_stage*')[0]
     # assume cell cycle output of ACDC to be .csv
     channel_files.append(pd.read_csv(cc_stage_path))
-    
+
     # append cc-properties if available, else append None
     if len(glob.glob(f'{file_dir}\*_downstream*')) > 0:
         cc_props_path = glob.glob(f'{file_dir}\*_downstream*')[0]
@@ -222,7 +222,7 @@ def _calculate_rp_df(input_sequence, label_input=False):
             t_df = t_df.append(t_rp, ignore_index=True)
     # calculate global features by grouping
     grouped_df = t_df.groupby('Cell_ID').agg(
-        min_t=('frame_i', min), 
+        min_t=('frame_i', min),
         max_t=('frame_i', max),
         lifespan=('frame_i', lambda x: max(x)-min(x)+1)
     ).reset_index()
@@ -237,7 +237,7 @@ def _calculate_rp_df(input_sequence, label_input=False):
 def _calculate_flu_signal(seg_mask, channel_data, channels, cc_data):
     """
     function to calculate sum and scaled sum of fluorescence signal per frame and cell.
-    channel_data is a tuple of (t,y,x) arrays, one for each channel.
+    channel_data is a list-like of TYX arrays, one for each channel.
     channels are the name of the channels in the tuple.
     cc_data the output of acdc.
     """
@@ -285,5 +285,5 @@ def _rename_columns(cc_data):
         'Division_frame_i': 'division_frame_i',
         'Discard': 'is_cell_excluded'
     }
-    cc_data.columns = [rename_dict.get(col, col) for col in cc_data.columns] 
+    cc_data.columns = [rename_dict.get(col, col) for col in cc_data.columns]
     return cc_data

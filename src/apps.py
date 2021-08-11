@@ -9,7 +9,7 @@ import scipy.interpolate
 import tkinter as tk
 import cv2
 import traceback
-from collections import OrderedDict
+from natsort import natsorted
 from MyWidgets import Slider, Button, MyRadioButtons
 from skimage.measure import label, regionprops
 import skimage.filters
@@ -2571,7 +2571,8 @@ class QtSelectItems(QDialog):
         self.cancel = False
         if self.multiPosButton.isChecked():
             selectedItems = self.ListBox.selectedItems()
-            self.selectedItemsText = [item.text() for item in selectedItems]
+            selectedItemsText = [item.text() for item in selectedItems]
+            self.selectedItemsText = natsorted(selectedItemsText)
             self.selectedItemsIdx = [self.items.index(txt)
                                      for txt in self.selectedItemsText]
         else:

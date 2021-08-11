@@ -3741,22 +3741,21 @@ class guiWin(QMainWindow):
             self.z_label.hide()
 
     def reInitCca(self):
-        txt = (
-            'If you decide to continue ALL cell cycle annotations from this '
-            'frame to the end will be erased from current session '
-            '(saved data is not touched of course)\n\n'
-            'To annotate future frames again you will have to revisit them.\n\n'
-            'Do you want to continue?'
-        )
-        msg = QtGui.QMessageBox()
-        reinit = msg.warning(
-           self, 'Cell not eligible', txt, msg.Yes | msg.Cancel
-        )
-        PosData = self.data[self.pos_i]
-        if reinit == msg.Cancel:
-            return
-
         if not self.isSnapshot:
+            txt = (
+                'If you decide to continue ALL cell cycle annotations from this '
+                'frame to the end will be erased from current session '
+                '(saved data is not touched of course)\n\n'
+                'To annotate future frames again you will have to revisit them.\n\n'
+                'Do you want to continue?'
+            )
+            msg = QtGui.QMessageBox()
+            reinit = msg.warning(
+               self, 'Cell not eligible', txt, msg.Yes | msg.Cancel
+            )
+            PosData = self.data[self.pos_i]
+            if reinit == msg.Cancel:
+                return
             # Go to previous frame without storing and then back to current
             if PosData.frame_i > 0:
                 PosData.frame_i -= 1
@@ -4048,6 +4047,7 @@ class guiWin(QMainWindow):
             self.setEnabledSnapshotMode()
 
     def setEnabledSnapshotMode(self):
+        self.manuallyEditCcaAction.setDisabled(False)
         self.SegmActionYeaZ.setDisabled(False)
         self.SegmActionCellpose.setDisabled(False)
         self.SegmActionRW.setDisabled(False)
@@ -8057,7 +8057,7 @@ class guiWin(QMainWindow):
         fluo_q95s = np.zeros((numCells, numFluoChannels))
         fluo_amounts = np.zeros((numCells, numFluoChannels))
         fluo_amounts_bkgrVals = np.zeros((numCells, numFluoChannels))
-        outCellsMask = PosData.lab==0
+        outCellsMask = lab==0
         for i, obj in enumerate(rp):
             IDs[i] = obj.label
             rotate_ID_img = skimage.transform.rotate(
@@ -8072,7 +8072,7 @@ class guiWin(QMainWindow):
             IDs_area_um2[i] = obj.area*yx_pxl_to_um2
             # Calc metrics for each fluo channel
             for j, key in enumerate(fluo_keys):
-                fluo_data = PosData.fluo_data_dict[key][PosData.frame_i]
+                fluo_data = PosData.fluo_data_dict[key][frame_i]
                 if fluo_data.ndim > 2:
                     fluo_data = fluo_data.max(axis=0)
 
