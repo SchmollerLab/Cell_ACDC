@@ -266,6 +266,7 @@ class guiWin(QMainWindow):
         editMenu.addAction(self.editOverlayColor)
         editMenu.addAction(self.manuallyEditCcaAction)
         editMenu.addAction(self.enableSmartTrackAction)
+        editMenu.addAction(self.enableAutoZoomToCellsAction)
 
 
         # Image menu
@@ -610,6 +611,9 @@ class guiWin(QMainWindow):
         self.SegmActionYeaZ = QAction("YeaZ...", self)
         self.SegmActionCellpose = QAction("Cellpose...", self)
         self.SegmActionRW = QAction("Random walker...", self)
+        self.SegmActionYeaZ.setDisabled(True)
+        self.SegmActionCellpose.setDisabled(True)
+        self.SegmActionRW.setDisabled(True)
 
         self.prevAction = QAction(QIcon(":arrow-left.svg"),
                                         "Previous frame", self)
@@ -677,11 +681,16 @@ class guiWin(QMainWindow):
         self.autoSegmAction = QAction(
             'Enable automatic segmentation', self)
         self.autoSegmAction.setCheckable(True)
+        self.autoSegmAction.setDisabled(True)
 
         self.enableSmartTrackAction = QAction(
             'Smart handling of enabling/disabling tracking', self)
         self.enableSmartTrackAction.setCheckable(True)
         self.enableSmartTrackAction.setChecked(True)
+
+        self.enableAutoZoomToCellsAction = QAction(
+            'Automatic zoom to all cells when pressing "Next/Previous"', self)
+        self.enableAutoZoomToCellsAction.setCheckable(True)
 
         self.gaussBlurAction = QAction('Gaussian blur...', self)
         self.gaussBlurAction.setCheckable(True)
@@ -981,12 +990,9 @@ class guiWin(QMainWindow):
                                  pen=self.ax2_BrushCirclePen)
         self.ax2.addItem(self.ax2_BrushCircle)
 
-        # Random walker markers scatter plot brush and pen
-        self.RWbkgrBrush = pg.mkBrush(color=(255,255,0,50))
-        self.RWforegrBrush = pg.mkBrush(color=(124,5,161,50))
-
-        self.RWbkgrPen = pg.mkPen(color=(255,255,0), width=1)
-        self.RWforegrPen = pg.mkPen(color=(124,5,161), width=1)
+        # Random walker markers colors
+        self.RWbkgrColor = (255,255,0)
+        self.RWforegrColor = (124,5,161)
 
 
         # Experimental: brush cursors
@@ -3875,6 +3881,10 @@ class guiWin(QMainWindow):
             button.setEnabled(enabled)
 
     def setEnabledEditToolbarButton(self, enabled=False):
+        self.SegmActionYeaZ.setEnabled(enabled)
+        self.SegmActionCellpose.setEnabled(enabled)
+        self.SegmActionRW.setEnabled(enabled)
+        self.autoSegmAction.setEnabled(enabled)
         self.editToolBar.setVisible(enabled)
         mode = self.modeComboBox.currentText()
         ccaON = mode == 'Cell cycle analysis'
@@ -4011,6 +4021,10 @@ class guiWin(QMainWindow):
             self.setEnabledSnapshotMode()
 
     def setEnabledSnapshotMode(self):
+        self.SegmActionYeaZ.setDisabled(False)
+        self.SegmActionCellpose.setDisabled(False)
+        self.SegmActionRW.setDisabled(False)
+        self.autoSegmAction.setDisabled(False)
         self.ccaToolBar.setVisible(True)
         self.editToolBar.setVisible(True)
         self.modeToolBar.setVisible(False)
@@ -4730,31 +4744,34 @@ class guiWin(QMainWindow):
             self.segmModel = prompts.askWhichSegmModel(self)
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(False)
-            self.computeSegm()
             self.updateALLimg()
+            self.computeSegm()
             self.askSegmParam = False
         else:
             self.segmModel = None
 
     def randomWalkerSegm(self):
-        self.RWbkgrScatterItem = pg.ScatterPlotItem(
-            symbol='o', size=3,
-            brush=self.RWbkgrBrush,
-            pen=self.RWbkgrPen,
-            pxMode=True
-        )
-        self.ax1.addItem(self.RWbkgrScatterItem)
-
-        self.RWforegrScatterItem = pg.ScatterPlotItem(
-            symbol='o', size=3,
-            brush=self.RWforegrBrush,
-            pen=self.RWforegrPen,
-            pxMode=True
-        )
-        self.ax1.addItem(self.RWforegrScatterItem)
+        # self.RWbkgrScatterItem = pg.ScatterPlotItem(
+        #     symbol='o', size=2,
+        #     brush=self.RWbkgrBrush,
+        #     pen=self.RWbkgrPen
+        # )
+        # self.ax1.addItem(self.RWbkgrScatterItem)
+        #
+        # self.RWforegrScatterItem = pg.ScatterPlotItem(
+        #     symbol='o', size=2,
+        #     brush=self.RWforegrBrush,
+        #     pen=self.RWforegrPen
+        # )
+        # self.ax1.addItem(self.RWforegrScatterItem)
 
         font = QtGui.QFont()
         font.setPointSize(10)
+
+        # Store undo state before modifying stuff
+        self.storeUndoRedoStates(False)
+
+        self.segmModel = 'randomWalker'
         self.randomWalkerWin = apps.randomWalkerDialog(self)
         self.randomWalkerWin.setFont(font)
         self.randomWalkerWin.show()
@@ -4916,6 +4933,9 @@ class guiWin(QMainWindow):
             self.curvTool_cb(True)
 
     def zoomToCells(self):
+        if not self.enableAutoZoomToCellsAction.isChecked():
+            return
+
         PosData = self.data[self.pos_i]
         lab_mask = (PosData.lab>0).astype(np.uint8)
         rp = skimage.measure.regionprops(lab_mask)
@@ -4960,10 +4980,10 @@ class guiWin(QMainWindow):
             self.pos_i = 0
         self.removeAlldelROIsCurrentFrame()
         proceed_cca, never_visited = self.get_data()
-        self.computeSegm()
         self.zoomToCells()
         self.updateScrollbars()
         self.updateALLimg(updateFilters=True, updateLabelItemColor=True)
+        self.computeSegm()
 
     def prev_pos(self):
         self.store_data(debug=False)
@@ -5033,7 +5053,6 @@ class guiWin(QMainWindow):
                 PosData.frame_i -= 1
                 self.get_data()
                 return
-            self.computeSegm()
             self.tracking(storeUndo=True)
             notEnoughG1Cells, proceed = self.attempt_auto_cca()
             if notEnoughG1Cells or not proceed:
@@ -5043,6 +5062,7 @@ class guiWin(QMainWindow):
             self.updateScrollbars()
             self.updateALLimg(never_visited=never_visited,
                               updateFilters=True, updateLabelItemColor=True)
+            self.computeSegm()
             self.setFramesScrollbarMaximum()
         else:
             # Store data for current frame
@@ -5415,7 +5435,12 @@ class guiWin(QMainWindow):
             return
 
         if not self.autoSegmAction.isChecked():
-            return
+            if self.segmModel == 'randomWalker':
+                self.randomWalkerWin.getImage()
+                self.randomWalkerWin.plotMarkers()
+                self.randomWalkerWin.computeSegm()
+            else:
+                return
 
         if np.any(PosData.lab):
             # Do not compute segm if there is already a mask
@@ -5577,8 +5602,8 @@ class guiWin(QMainWindow):
     def PosScrollBarReleased(self):
         self.pos_i = self.framesScrollBar.sliderPosition()-1
         proceed_cca, never_visited = self.get_data()
-        self.computeSegm()
         self.updateALLimg(updateFilters=True)
+        self.computeSegm()
 
     def framesScrollBarMoved(self, frame_n):
         PosData = self.data[self.pos_i]
@@ -7971,6 +7996,9 @@ class guiWin(QMainWindow):
             # Calc metrics for each fluo channel
             for j, key in enumerate(fluo_keys):
                 fluo_data = PosData.fluo_data_dict[key][PosData.frame_i]
+                if fluo_data.ndim > 2:
+                    fluo_data = fluo_data.max(axis=0)
+
                 fluo_data_ID = fluo_data[obj.slice][obj.image]
                 backgrMask = np.logical_and(outCellsMask, fluo_data!=0)
                 fluo_backgr = np.median(fluo_data[backgrMask])

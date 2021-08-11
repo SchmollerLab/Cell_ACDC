@@ -852,12 +852,16 @@ class randomWalkerDialog(QDialog):
 
         self.keys = items
 
-        self.setWindowTitle('Edge detection')
+        self.setWindowTitle('Random walker segmentation')
+
+        self.colors = [self.mainWindow.RWbkgrColor,
+                       self.mainWindow.RWforegrColor]
 
         mainLayout = QVBoxLayout()
         paramsLayout = QGridLayout()
         buttonsLayout = QHBoxLayout()
 
+        self.mainWindow.clearAllItems()
 
         row = 0
         paramsLayout.addWidget(QLabel('Background threshold:'), row, 0)
@@ -878,7 +882,7 @@ class randomWalkerDialog(QDialog):
         foregrQSLabel.setStyleSheet("font-size:10pt; padding:5px 0px 0px 0px;")
         paramsLayout.addWidget(foregrQSLabel, row, 0)
         row += 1
-        self.foregrThreshValLabel = QLabel('5.00')
+        self.foregrThreshValLabel = QLabel('0.95')
         paramsLayout.addWidget(self.foregrThreshValLabel, row, 1)
         self.foregrThreshSlider = QSlider(Qt.Horizontal)
         self.foregrThreshSlider.setMinimum(1)
@@ -924,7 +928,14 @@ class randomWalkerDialog(QDialog):
         closeButton.clicked.connect(self.close)
 
         self.setLayout(mainLayout)
+
+        self.getImage()
         self.plotMarkers()
+
+    def getImage(self):
+        img = self.mainWindow.getDisplayedCellsImg()
+        self.img = img/img.max()
+        self.imgRGB = (skimage.color.gray2rgb(self.img)*255).astype(np.uint8)
 
     def setSize(self):
         x = self.pos().x()
@@ -938,28 +949,35 @@ class randomWalkerDialog(QDialog):
     def plotMarkers(self):
         bkgrThresh = self.bkgrThreshSlider.sliderPosition()/100
         foregrThresh = self.foregrThreshSlider.sliderPosition()/100
-        img = self.mainWindow.img1.image
+        img = self.img
         self.markers = np.zeros(img.shape, np.uint8)
         imgRange = img.max() - img.min()
         min = img.min() + imgRange*bkgrThresh
         max = img.min() + imgRange*foregrThresh
         self.markers[img < min] = 1
         self.markers[img > max] = 2
-        yyBkgr, xxBkgr = np.nonzero(self.markers == 1)
-        yyForegr, xxForegr = np.nonzero(self.markers == 2)
-        self.mainWindow.RWbkgrScatterItem.setData(xxBkgr, yyBkgr)
-        self.mainWindow.RWforegrScatterItem.setData(xxForegr, yyForegr)
+
+        imgRGB = self.imgRGB.copy()
+        R, G, B = self.colors[0]
+        imgRGB[:, :, 0][img < min] = R
+        imgRGB[:, :, 1][img < min] = G
+        imgRGB[:, :, 2][img < min] = B
+        R, G, B = self.colors[1]
+        imgRGB[:, :, 0][img > max] = R
+        imgRGB[:, :, 1][img > max] = G
+        imgRGB[:, :, 2][img > max] = B
+
+        self.mainWindow.img1.setImage(imgRGB)
 
     def computeSegm(self):
+        self.mainWindow.storeUndoRedoStates(False)
         self.mainWindow.titleLabel.setText(
             'Randomly walking around... ', color='w')
-        time.sleep(0.05)
-        img = self.mainWindow.img1.image
-        img = skimage.img_as_float(img)
-        img = skimage.exposure.rescale_intensity(self.mainWindow.img1.image)
+        img = self.img
+        img = skimage.exposure.rescale_intensity(img)
         t0 = time.time()
-        lab = skimage.segmentation.random_walker(img, self.markers,
-                                                      mode='bf')
+        lab = skimage.segmentation.random_walker(img, self.markers, mode='bf')
+        lab = skimage.measure.label(lab>1)
         t1 = time.time()
         skimage.morphology.remove_small_objects(lab, min_size=5,
                                                 in_place=True)
@@ -969,11 +987,11 @@ class randomWalkerDialog(QDialog):
         self.mainWindow.tracking(enforce=True)
         self.mainWindow.updateALLimg()
         self.mainWindow.warnEditingWithCca_df('Random Walker segmentation')
-        txt = f'Done. Segmentation computed in {t1-t0:.3f} s'
+        txt = f'Random Walker segmentation computed in {t1-t0:.3f} s'
         print('-----------------')
         print(txt)
         print('=================')
-        self.mainWindow.titleLabel.setText(txt, color='g')
+        # self.mainWindow.titleLabel.setText(txt, color='g')
 
     def bkgrSliderMoved(self, intVal):
         self.bkgrThreshValLabel.setText(f'{intVal/100:.2f}')
@@ -984,8 +1002,8 @@ class randomWalkerDialog(QDialog):
         self.plotMarkers()
 
     def closeEvent(self, event):
-        self.mainWindow.ax1.removeItem(self.mainWindow.RWbkgrScatterItem)
-        self.mainWindow.ax1.removeItem(self.mainWindow.RWforegrScatterItem)
+        self.mainWindow.segmModel = ''
+        self.mainWindow.updateALLimg()
 
 class FutureFramesAction_QDialog(QDialog):
     def __init__(self, frame_i, last_tracked_i, change_txt,
