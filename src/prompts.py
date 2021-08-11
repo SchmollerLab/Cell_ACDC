@@ -681,14 +681,15 @@ class select_channel_name:
             with open(txt_path, 'w') as txt:
                 txt.write(selection)
 
-    def QtPrompt(self, parent, channel_names, informativeText=''):
+    def QtPrompt(self, parent, channel_names, informativeText='',
+                 CbLabel='Select channel name:  '):
         font = QtGui.QFont()
         font.setPointSize(10)
         win = apps.QDialogCombobox(
                               'Select channel name',
                               channel_names,
                               informativeText,
-                              CbLabel='Select channel name:  ',
+                              CbLabel=CbLabel,
                               parent=parent,
                               defaultChannelName=self.last_sel_channel)
         win.setFont(font)

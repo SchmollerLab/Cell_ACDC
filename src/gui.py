@@ -2333,6 +2333,10 @@ class guiWin(QMainWindow):
         if mode == 'Viewer':
             return
 
+        # Allow right-click actions on both images
+        if right_click and mode=='Segmentation and Tracking' or self.isSnapshot:
+            self.gui_mousePressEventImg2(event)
+
         # Paint new IDs with brush and left click on the left image
         if left_click and canBrush:
             # Store undo state before modifying stuff
@@ -2485,10 +2489,6 @@ class guiWin(QMainWindow):
                 self.warnEditingWithCca_df('Add new ID with curvature tool')
                 self.clearCurvItems()
                 self.curvTool_cb(True)
-
-        # Allow right-click actions on both images
-        elif right_click and mode == 'Segmentation and Tracking':
-            self.gui_mousePressEventImg2(event)
 
         # Annotate cell cycle division
         elif right_click and is_cca_on and canAnnotateDivision:
@@ -4982,9 +4982,9 @@ class guiWin(QMainWindow):
             self.pos_i = 0
         self.removeAlldelROIsCurrentFrame()
         proceed_cca, never_visited = self.get_data()
+        self.updateALLimg(updateFilters=True, updateLabelItemColor=True)
         self.zoomToCells()
         self.updateScrollbars()
-        self.updateALLimg(updateFilters=True, updateLabelItemColor=True)
         self.computeSegm()
 
     def prev_pos(self):
@@ -4996,9 +4996,9 @@ class guiWin(QMainWindow):
             self.pos_i = self.num_pos-1
         self.removeAlldelROIsCurrentFrame()
         proceed_cca, never_visited = self.get_data()
+        self.updateALLimg(updateSharp=True, updateBlur=True, updateEntropy=True)
         self.zoomToCells()
         self.updateScrollbars()
-        self.updateALLimg(updateSharp=True, updateBlur=True, updateEntropy=True)
 
     def next_frame(self):
         mode = str(self.modeComboBox.currentText())
@@ -5061,9 +5061,9 @@ class guiWin(QMainWindow):
                 PosData.frame_i -= 1
                 self.get_data()
                 return
-            self.updateScrollbars()
             self.updateALLimg(never_visited=never_visited,
                               updateFilters=True, updateLabelItemColor=True)
+            self.updateScrollbars()
             self.computeSegm()
             self.setFramesScrollbarMaximum()
         else:
@@ -5092,10 +5092,10 @@ class guiWin(QMainWindow):
             PosData.frame_i -= 1
             _, never_visited = self.get_data()
             self.tracking()
-            self.updateScrollbars()
             self.updateALLimg(never_visited=never_visited,
                               updateSharp=True, updateBlur=True,
                               updateEntropy=True)
+            self.updateScrollbars()
         else:
             msg = 'You reached the first frame!'
             print(msg)
@@ -7777,7 +7777,8 @@ class guiWin(QMainWindow):
             if ch_name_selector.is_first_call:
                 ch_names, warn = ch_name_selector.get_available_channels(filenames)
                 self.ch_names = ch_names
-                ch_name_selector.QtPrompt(self, ch_names)
+                ch_name_selector.QtPrompt(
+                    self, ch_names, CbLabel='Select channel name to segment: ')
                 if ch_name_selector.was_aborted:
                     self.titleLabel.setText(
                         'File --> Open or Open recent to start the process',
