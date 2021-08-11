@@ -924,7 +924,7 @@ class randomWalkerDialog(QDialog):
 
         self.bkgrThreshSlider.sliderMoved.connect(self.bkgrSliderMoved)
         self.foregrThreshSlider.sliderMoved.connect(self.foregrSliderMoved)
-        computeButton.clicked.connect(self.computeSegm)
+        computeButton.clicked.connect(self.computeSegmAndPlot)
         closeButton.clicked.connect(self.close)
 
         self.setLayout(mainLayout)
@@ -947,29 +947,35 @@ class randomWalkerDialog(QDialog):
         self.setGeometry(x, y, w, h)
 
     def plotMarkers(self):
+        imgMin, imgMax = self.computeMarkers()
+
+        img = self.img
+
+        imgRGB = self.imgRGB.copy()
+        R, G, B = self.colors[0]
+        imgRGB[:, :, 0][img < imgMin] = R
+        imgRGB[:, :, 1][img < imgMin] = G
+        imgRGB[:, :, 2][img < imgMin] = B
+        R, G, B = self.colors[1]
+        imgRGB[:, :, 0][img > imgMax] = R
+        imgRGB[:, :, 1][img > imgMax] = G
+        imgRGB[:, :, 2][img > imgMax] = B
+
+        self.mainWindow.img1.setImage(imgRGB)
+
+    def computeMarkers(self):
         bkgrThresh = self.bkgrThreshSlider.sliderPosition()/100
         foregrThresh = self.foregrThreshSlider.sliderPosition()/100
         img = self.img
         self.markers = np.zeros(img.shape, np.uint8)
         imgRange = img.max() - img.min()
-        min = img.min() + imgRange*bkgrThresh
-        max = img.min() + imgRange*foregrThresh
-        self.markers[img < min] = 1
-        self.markers[img > max] = 2
+        imgMin = img.min() + imgRange*bkgrThresh
+        imgMax = img.min() + imgRange*foregrThresh
+        self.markers[img < imgMin] = 1
+        self.markers[img > imgMax] = 2
+        return imgMin, imgMax
 
-        imgRGB = self.imgRGB.copy()
-        R, G, B = self.colors[0]
-        imgRGB[:, :, 0][img < min] = R
-        imgRGB[:, :, 1][img < min] = G
-        imgRGB[:, :, 2][img < min] = B
-        R, G, B = self.colors[1]
-        imgRGB[:, :, 0][img > max] = R
-        imgRGB[:, :, 1][img > max] = G
-        imgRGB[:, :, 2][img > max] = B
-
-        self.mainWindow.img1.setImage(imgRGB)
-
-    def computeSegm(self):
+    def computeSegm(self, checked=True):
         self.mainWindow.storeUndoRedoStates(False)
         self.mainWindow.titleLabel.setText(
             'Randomly walking around... ', color='w')
@@ -979,15 +985,24 @@ class randomWalkerDialog(QDialog):
         lab = skimage.segmentation.random_walker(img, self.markers, mode='bf')
         lab = skimage.measure.label(lab>1)
         t1 = time.time()
-        skimage.morphology.remove_small_objects(lab, min_size=5,
-                                                in_place=True)
+        if len(np.unique(lab)) > 2:
+            skimage.morphology.remove_small_objects(lab, min_size=5,
+                                                    in_place=True)
         PosData = self.mainWindow.data[self.mainWindow.pos_i]
         PosData.lab = lab
+        return t1-t0
+
+    def computeSegmAndPlot(self):
+        deltaT = self.computeSegm()
+
+        PosData = self.mainWindow.data[self.mainWindow.pos_i]
+        imshow_tk(self.img, additional_imgs=[PosData.lab])
+
         self.mainWindow.update_rp()
         self.mainWindow.tracking(enforce=True)
         self.mainWindow.updateALLimg()
         self.mainWindow.warnEditingWithCca_df('Random Walker segmentation')
-        txt = f'Random Walker segmentation computed in {t1-t0:.3f} s'
+        txt = f'Random Walker segmentation computed in {deltaT:.3f} s'
         print('-----------------')
         print(txt)
         print('=================')

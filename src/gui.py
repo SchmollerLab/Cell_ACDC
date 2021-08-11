@@ -80,12 +80,13 @@ def qt_debug_trace():
 class guiWin(QMainWindow):
     """Main Window."""
 
-    def __init__(self, app, parent=None, buttonToRestore=None):
+    def __init__(self, app, parent=None, buttonToRestore=None, mainWin=None):
         """Initializer."""
         super().__init__(parent)
         self.loadLastSessionSettings()
 
         self.buttonToRestore = buttonToRestore
+        self.mainWin = mainWin
 
         self.app = app
         self.num_screens = len(app.screens())
@@ -921,10 +922,10 @@ class guiWin(QMainWindow):
             'File --> Open or Open recent to start the process')
         self.graphLayout.addItem(self.titleLabel, row=0, col=1, colspan=2)
 
-        # Current frame text
-        self.frameLabel = pg.LabelItem(justify='center', color='w', size='14pt')
-        self.frameLabel.setText(' ')
-        self.graphLayout.addItem(self.frameLabel, row=2, col=1, colspan=2)
+        # # Current frame text
+        # self.frameLabel = pg.LabelItem(justify='center', color='w', size='14pt')
+        # self.frameLabel.setText(' ')
+        # self.graphLayout.addItem(self.frameLabel, row=2, col=1, colspan=2)
 
     def gui_addPlotItems(self):
         self.ax1_oldIDcolor = 1.0 # white
@@ -5434,17 +5435,23 @@ class guiWin(QMainWindow):
         if mode == 'Viewer' or mode == 'Cell cycle analysis':
             return
 
-        if not self.autoSegmAction.isChecked():
-            if self.segmModel == 'randomWalker':
-                self.randomWalkerWin.getImage()
-                self.randomWalkerWin.plotMarkers()
-                self.randomWalkerWin.computeSegm()
-            else:
-                return
-
         if np.any(PosData.lab):
             # Do not compute segm if there is already a mask
             return
+
+        if not self.autoSegmAction.isChecked():
+            # Compute segmentations that have an open window
+            if self.segmModel == 'randomWalker':
+                self.randomWalkerWin.getImage()
+                self.randomWalkerWin.computeMarkers()
+                self.randomWalkerWin.computeSegm()
+                self.update_rp()
+                self.tracking(enforce=True)
+                self.updateALLimg()
+                self.store_data()
+                self.warnEditingWithCca_df('Random Walker segmentation')
+            else:
+                return
 
         if self.segmModel == 'yeaz':
             self.repeatSegmYeaZ()
@@ -5615,8 +5622,8 @@ class guiWin(QMainWindow):
         cells_img = self.getImage()
         if self.framesScrollBarStartedMoving:
             self.clearAllItems()
-        self.frameLabel.setText(
-                 f'Current frame = {PosData.frame_i+1}/{PosData.num_segm_frames}')
+        self.t_label.setText(
+                 f'frame n. {PosData.frame_i+1}/{PosData.num_segm_frames}')
         self.img1.setImage(cells_img)
         self.img2.setImage(PosData.lab)
         self.updateLookuptable()
@@ -7187,13 +7194,13 @@ class guiWin(QMainWindow):
     def updateFramePosLabel(self):
         if self.isSnapshot:
             PosData = self.data[self.pos_i]
-            self.frameLabel.setText(
-                f'Current position = {self.pos_i+1}/{self.num_pos} '
-                f'({PosData.pos_foldername})')
+            self.t_label.setText(
+                     f'Pos. n. {self.pos_i+1}/{self.num_pos}'
+                     f'({PosData.pos_foldername})')
         else:
             PosData = self.data[0]
-            self.frameLabel.setText(
-                f'Current frame = {PosData.frame_i+1}/{PosData.num_segm_frames}')
+            self.t_label.setText(
+                     f'frame n. {PosData.frame_i+1}/{PosData.num_segm_frames}')
 
     def updateFilters(self, updateBlur=False, updateSharp=False,
                             updateEntropy=False, updateFilters=False):
@@ -7474,8 +7481,10 @@ class guiWin(QMainWindow):
             IDs_curr_untracked = [obj.label for obj in PosData.rp]
             IoA_matrix = np.zeros((len(PosData.rp), len(prev_rp)))
 
+
+
             # For each ID in previous frame get IoA with all current IDs
-            # Each
+            # Rows: IDs in current frame, columns: IDs in previous frame
             for j, obj_prev in enumerate(prev_rp):
                 ID_prev = obj_prev.label
                 A_IDprev = obj_prev.area
@@ -7488,6 +7497,8 @@ class guiWin(QMainWindow):
                         i = IDs_curr_untracked.index(intersect_ID)
                         IoA = I/A_IDprev
                         IoA_matrix[i, j] = IoA
+
+
 
             # Determine max IoA between IDs and assign tracked ID if IoA > 0.4
             max_IoA_col_idx = IoA_matrix.argmax(axis=1)
@@ -7508,25 +7519,36 @@ class guiWin(QMainWindow):
                     tracked_IDs.append(tracked_ID)
                     old_IDs.append(old_ID)
 
+
+            # print(IoA_matrix)
+
             # Replace untracked IDs with tracked IDs and new IDs with increasing num
             new_untracked_IDs = [ID for ID in IDs_curr_untracked if ID not in old_IDs]
             tracked_lab = PosData.lab
             new_tracked_IDs_2 = []
             if new_untracked_IDs:
                 # Relabel new untracked IDs with big number to make sure they are unique
-                max_ID = max(IDs_curr_untracked)
+                allIDs = IDs_curr_untracked.copy()
+                allIDs.extend(tracked_IDs)
+                max_ID = max(allIDs)
                 new_tracked_IDs = [max_ID*(i+2) for i in range(len(new_untracked_IDs))]
                 tracked_lab = self.np_replace_values(tracked_lab, new_untracked_IDs,
                                                      new_tracked_IDs)
+                # print('New objects that get a new big ID: ', new_untracked_IDs)
+                # print('New big IDs for the new objects: ', new_tracked_IDs)
             if tracked_IDs:
                 # Relabel old IDs with respective tracked IDs
                 tracked_lab = self.np_replace_values(tracked_lab, old_IDs, tracked_IDs)
+                # print('Old IDs to be tracked: ', old_IDs)
+                # print('New IDs replacing old IDs: ', tracked_IDs)
             if new_untracked_IDs:
                 # Relabel new untracked IDs sequentially
                 max_ID = max(IDs_prev)
                 new_tracked_IDs_2 = [max_ID+i+1 for i in range(len(new_untracked_IDs))]
                 tracked_lab = self.np_replace_values(tracked_lab, new_tracked_IDs,
                                                      new_tracked_IDs_2)
+                # print('New big IDs for the new objects: ', new_tracked_IDs)
+                # print('New increasing IDs for the previously big IDs: ', new_tracked_IDs_2)
 
             if DoManualEdit:
                 # Correct tracking with manually changed IDs
@@ -7587,7 +7609,6 @@ class guiWin(QMainWindow):
     def removeAllItems(self):
         self.ax1.clear()
         self.ax2.clear()
-        self.frameLabel.setText(' ')
         try:
             self.chNamesQActionGroup.removeAction(self.userChNameAction)
         except:
@@ -7834,6 +7855,7 @@ class guiWin(QMainWindow):
 
             self.setFramesSnapshotMode()
             self.updateALLimg(updateLabelItemColor=True)
+            self.updateScrollbars()
             self.fontSizeAction.setChecked(True)
             self.openAction.setEnabled(True)
         except:
@@ -8351,6 +8373,9 @@ class guiWin(QMainWindow):
             button.setText(text)
             button.setStyleSheet(
                 f'QPushButton {{background-color: {color};}}')
+            toFront = self.windowState() & ~Qt.WindowMinimized | Qt.WindowActive
+            self.mainWin.setWindowState(toFront)
+            self.mainWin.raise_()
 
     def saveWindowGeometry(self):
         left = self.geometry().left()

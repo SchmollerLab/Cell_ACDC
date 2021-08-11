@@ -168,7 +168,8 @@ class mainWin(QMainWindow):
             self.guiButton.setText('GUI is running. Click to restore window.')
             self.guiWin = gui.guiWin(
                 self.app,
-                buttonToRestore=(self.guiButton, defaultColor, defaultText)
+                buttonToRestore=(self.guiButton, defaultColor, defaultText),
+                mainWin=self
             )
             self.guiWin.showAndSetSize()
         else:

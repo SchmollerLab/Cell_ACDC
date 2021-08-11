@@ -34,10 +34,12 @@ if os.name == 'nt':
         pass
 
 class segmWin(QMainWindow):
-    def __init__(self, parent=None, allowExit=False, buttonToRestore=None):
+    def __init__(self, parent=None, allowExit=False,
+                 buttonToRestore=None, mainWin=None):
         self.allowExit = allowExit
         self.processFinished = False
         self.buttonToRestore = buttonToRestore
+        self.mainWin = mainWin
         super().__init__(parent)
         self.setWindowTitle("Yeast ACDC - Segment")
         self.setWindowIcon(QtGui.QIcon(":assign-motherbud.svg"))
@@ -463,6 +465,9 @@ class segmWin(QMainWindow):
             button.setText(text)
             button.setStyleSheet(
                 f'QPushButton {{background-color: {color};}}')
+            toFront = self.windowState() & ~Qt.WindowMinimized | Qt.WindowActive
+            self.mainWin.setWindowState(toFront)
+            self.mainWin.raise_()
 
 
 

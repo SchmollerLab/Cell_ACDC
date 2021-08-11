@@ -59,10 +59,11 @@ class toCsvWorker(QObject):
         self.finished.emit()
 
 class dataPrepWin(QMainWindow):
-    def __init__(self, parent=None, buttonToRestore=None):
+    def __init__(self, parent=None, buttonToRestore=None, mainWin=None):
         super().__init__(parent)
 
         self.buttonToRestore = buttonToRestore
+        self.mainWin = mainWin
 
         self.setWindowTitle("Yeast ACDC - data prep")
         self.setGeometry(100, 50, 850, 800)
@@ -1618,6 +1619,9 @@ class dataPrepWin(QMainWindow):
             button.setText(text)
             button.setStyleSheet(
                 f'QPushButton {{background-color: {color};}}')
+            toFront = self.windowState() & ~Qt.WindowMinimized | Qt.WindowActive
+            self.mainWin.setWindowState(toFront)
+            self.mainWin.raise_()
 
         if self.loop is not None:
             self.loop.exit()
