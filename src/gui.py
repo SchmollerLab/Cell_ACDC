@@ -7058,8 +7058,8 @@ class guiWin(QMainWindow):
     def updateTextIDsColors(self, button):
         r, g, b = np.array(self.textIDsColorButton.color().getRgb()[:3])
         self.ax1_oldIDcolor = (r, g, b)
-        self.ax1_S_oldCellColor = (int(r*0.9), int(r*0.9), int(r*0.9))
-        self.ax1_G1cellColor = (int(r*0.8), int(r*0.8), int(r*0.8), 178)
+        self.ax1_S_oldCellColor = (int(r*0.9), int(g*0.9), int(b*0.9))
+        self.ax1_G1cellColor = (int(r*0.8), int(g*0.8), int(b*0.8), 178)
         self.updateALLimg()
 
     def saveTextIDsColors(self, button):
