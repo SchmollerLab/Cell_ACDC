@@ -8,14 +8,15 @@ import requests
 import zipfile
 import numpy as np
 from pyqtgraph.colormap import ColorMap
-from lib import twobuttonsmessagebox
+import prompts
+from tifffile.tifffile import TiffWriter, TiffFile
 
 __all__ = ['ColorMap']
 _mapCache = {}
 
 def getFromMatplotlib(name):
     """
-    Added to pyqtgraph 0.12 copied/pasted here to allow pyqtgraph <0.12. Link: 
+    Added to pyqtgraph 0.12 copied/pasted here to allow pyqtgraph <0.12. Link:
     https://pyqtgraph.readthedocs.io/en/latest/_modules/pyqtgraph/colormap.html#get
     Generates a ColorMap object from a Matplotlib definition.
     Same as ``colormap.get(name, source='matplotlib')``.
@@ -137,7 +138,7 @@ def check_v1_model_path():
     v1_model_path = os.path.join(main_path, 'model')
     print(v1_model_path)
     if os.path.exists(v1_model_path):
-        delete = twobuttonsmessagebox('Delete v1 model folder?',
+        delete = prompts.twobuttonsmessagebox('Delete v1 model folder?',
             'The script detected a "./model" folder.\n\n This is most likely from '
             'Yeast_ACDC v1.\n\nThis version will automatically download\n the '
             'neural network models required into "/.models" folder.\n'
@@ -162,6 +163,26 @@ def download_model(model_name):
         extract_zip(models_zip_path, extract_to_path)
         # Remove downloaded zip archive
         os.remove(models_zip_path)
+
+def imagej_tiffwriter(new_path, data, metadata, SizeT, ):
+    with TiffWriter(new_path, imagej=True) as new_tif:
+        if SizeZ > 1 and SizeT > 1:
+            # 3D data over time
+            T, Z, Y, X = data.shape
+        elif SizeZ == 1 and SizeT > 1:
+            # 2D data over time
+            T, Y, X = data.shape
+            Z = 1
+        elif SizeZ > 1 and SizeT == 1:
+            # Single 3D data
+            Z, Y, X = data.shape
+            T = 1
+        elif SizeZ == 1 and SizeT == 1:
+            # Single 2D data
+            Y, X = data.shape
+            T, Z = 1, 1
+        data.shape = T, Z, 1, Y, X, 1  # imageJ format should always have TZCYXS data shape
+        new_tif.save(data, metadata=metadata)
 
 if __name__ == '__main__':
     model_name = 'cellpose'

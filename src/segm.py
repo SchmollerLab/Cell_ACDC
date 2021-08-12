@@ -50,15 +50,27 @@ class segmWin(QMainWindow):
         mainLayout = QVBoxLayout()
 
         label = QLabel(
-            'Segmentation routine running...\n'
-            '(check progess in the terminal/console)')
+            'Segmentation routine running...')
 
-        label.setWordWrap(True)
+        label.setStyleSheet("padding:5px 10px 10px 10px;")
         label.setAlignment(Qt.AlignCenter)
         font = QtGui.QFont()
         font.setPointSize(10)
         label.setFont(font)
         mainLayout.addWidget(label)
+
+        informativeText = QLabel(
+            'Follow the instructions in the pop-up windows.\n'
+            'Note that pop-ups might be minimized or behind other open windows.\n\n'
+            'Progess is displayed in the terminal/console.')
+
+        informativeText.setStyleSheet("padding:5px 0px 10px 0px;")
+        # informativeText.setWordWrap(True)
+        informativeText.setAlignment(Qt.AlignLeft)
+        font = QtGui.QFont()
+        font.setPointSize(9)
+        informativeText.setFont(font)
+        mainLayout.addWidget(informativeText)
 
         abortButton = QPushButton('Abort process')
         abortButton.clicked.connect(self.close)
@@ -444,24 +456,13 @@ class segmWin(QMainWindow):
            msg.Yes | msg.No
         )
         if closeAnswer == msg.Yes:
-            if self.buttonToRestore is not None:
-                button, color, text = self.buttonToRestore
-                button.setText(text)
-                button.setStyleSheet(
-                    f'QPushButton {{background-color: {color};}}')
-
             if self.allowExit:
                 exit('Execution aborted by the user')
             else:
                 print('Segmentation routine aborted by the user.')
                 return True
         else:
-            if self.allowExit:
-                self.win = segmWin()
-                self.win.show()
-                self.win.main()
-            else:
-                return False
+            return False
 
     def closeEvent(self, event):
         if self.buttonToRestore is not None:
@@ -472,10 +473,6 @@ class segmWin(QMainWindow):
             toFront = self.windowState() & ~Qt.WindowMinimized | Qt.WindowActive
             self.mainWin.setWindowState(toFront)
             self.mainWin.raise_()
-
-
-
-
 
 
 if __name__ == "__main__":

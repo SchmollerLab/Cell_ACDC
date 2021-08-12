@@ -1170,7 +1170,6 @@ class dataPrepWin(QMainWindow):
                     PosData.loaded_shifts = shifts
                 else:
                     aligned_frames = tif_data.copy()
-                print(tif_data.shape)
                 if align:
                     _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
                     print('Saving: ', _npz)

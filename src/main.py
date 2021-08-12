@@ -128,7 +128,8 @@ class mainWin(QMainWindow):
             self.dataPrepButton.setText('DataPrep is running. '
                                     'Click to restore window.')
             self.dataPrepWin = dataPrep.dataPrepWin(
-                buttonToRestore=(self.dataPrepButton, defaultColor, defaultText)
+                buttonToRestore=(self.dataPrepButton, defaultColor, defaultText),
+                mainWin=self
             )
             self.dataPrepWin.show()
         else:

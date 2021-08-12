@@ -6,6 +6,7 @@ notebooks/.ipynb_checkpoints
 env/*
 data/*
 tests/*
+src/utils/deprecated
 instructions/Screenshots
 # Ignore models folder but keep the folder with placeholder.txt dummy file
 models/*

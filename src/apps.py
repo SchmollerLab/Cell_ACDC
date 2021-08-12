@@ -166,6 +166,54 @@ class QDialogListbox(QDialog):
         self.selectedItemsText = None
         self.close()
 
+class QDialogEntriesWidget(QDialog):
+    def __init__(self, entriesLabels, defaultTxts, winTitle='Input',
+                 parent=None, font=None):
+        self.cancel = True
+        self.entriesTxt = []
+        self.entriesLabels = entriesLabels
+        super().__init__(parent)
+        self.setWindowTitle(winTitle)
+
+        mainLayout = QVBoxLayout()
+        formLayout = QFormLayout()
+        buttonsLayout = QHBoxLayout()
+
+        if font is not None:
+            self.setFont(font)
+
+        for label, txt in zip(entriesLabels, defaultTxts):
+            LE = QLineEdit()
+            LE.setAlignment(Qt.AlignCenter)
+            LE.setText(txt)
+            formLayout.addRow(label, LE)
+
+        okButton = QPushButton('Ok')
+        okButton.setShortcut(Qt.Key_Enter)
+
+        cancelButton = QPushButton('Cancel')
+
+        buttonsLayout.addWidget(okButton, alignment=Qt.AlignRight)
+        buttonsLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
+        buttonsLayout.setContentsMargins(0, 10, 0, 0)
+
+        mainLayout.addLayout(formLayout)
+        mainLayout.addLayout(buttonsLayout)
+
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.close)
+
+        self.formLayout = formLayout
+
+        self.setLayout(mainLayout)
+        self.setModal(True)
+
+    def ok_cb(self, event):
+        self.cancel = False
+        self.entriesTxt = [self.formLayout.itemAt(i, 1).widget().text()
+                           for i in range(len(self.entriesLabels))]
+        self.close()
+
 class QDialogInputsForm(QDialog):
     def __init__(self, SizeT, SizeZ, zyx_vox_dim, parent=None, font=None):
         self.cancel = True
@@ -287,7 +335,7 @@ class QDialogInputsForm(QDialog):
 
 class QDialogAcdcInputs(QDialog):
     def __init__(self, SizeT, SizeZ, zyx_vox_dim, finterval,
-                 parent=None, font=None):
+                 show_finterval=True, parent=None, font=None):
         self.cancel = True
         self.zyx_vox_dim = zyx_vox_dim
         super().__init__(parent)
@@ -328,7 +376,7 @@ class QDialogAcdcInputs(QDialog):
         self.fintervalSpinBox.setAlignment(Qt.AlignCenter)
         gridLayout.addWidget(self.fintervalSpinBox, row, 1)
 
-        if SizeT == 1:
+        if SizeT == 1 or not show_finterval:
             self.fintervalSpinBox.hide()
             self.fintervalLabel.hide()
 
@@ -3183,7 +3231,7 @@ if __name__ == '__main__':
     # win = QtSelectItems(title, ['mNeon', 'mKate'],
     #                     informativeText, CbLabel=CbLabel, parent=None)
     # win = edgeDetectionDialog(None)
-    win = QDialogAcdcInputs(1, 143, [1,1,1], 180.0)
+    win = QDialogEntriesWidget(entriesLabels=['Input 1'])
     # IDs = list(range(1,11))
     # cc_stage = ['G1' for ID in IDs]
     # num_cycles = [-1]*len(IDs)
@@ -3214,7 +3262,7 @@ if __name__ == '__main__':
     win.setFont(font)
     app.setStyle(QtGui.QStyleFactory.create('Fusion'))
     win.show()
-    win.setWidths(font=font)
+    # win.setWidths(font=font)
     # win.setSize()
     # win.setGeometryWindow()
     win.exec_()

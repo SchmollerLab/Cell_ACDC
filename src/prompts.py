@@ -23,6 +23,51 @@ from PyQt5.QtCore import (
 
 import apps
 
+class twobuttonsmessagebox:
+    '''Geometry: "WidthxHeight+Left+Top" '''
+    def __init__(self, title, message, button_1_text, button_2_text,
+                 geometry="+800+400", fs=11):
+        self.button_left=False
+        root = tk.Tk()
+        self.root = root
+        root.attributes("-topmost", True)
+        root.title(title)
+        root.geometry(geometry)
+        tk.Label(root,
+                 text=message,
+                 font=(None, fs)).grid(row=0, column=0, columnspan=2, pady=4,
+                                       padx=4)
+
+        tk.Button(root,
+                  text=button_1_text,
+                  command=self.button_left_cb).grid(row=4,
+                                 column=0,
+                                 pady=16, padx=16, sticky=tk.E)
+
+        tk.Button(root,
+                  text=button_2_text,
+                  command=self.button_right_cb).grid(row=4,
+                                 column=1,
+                                 pady=16, padx=16, sticky=tk.W)
+        root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        root.eval('tk::PlaceWindow . center')
+        root.mainloop()
+
+    def on_closing(self):
+        self.root.quit()
+        self.root.destroy()
+        exit('Execution aborted by the user')
+
+    def button_left_cb(self):
+        self.button_left=True
+        self.root.quit()
+        self.root.destroy()
+
+    def button_right_cb(self):
+        self.root.quit()
+        self.root.destroy()
+
+
 class RichTextPushButton(QPushButton):
     def __init__(self, parent=None, text=None):
         if parent is not None:
@@ -514,22 +559,34 @@ class select_channel_name:
                msg.Ok
             )
 
-    def get_available_channels(self, filenames):
+    def get_available_channels(self, filenames, useExt='.tif'):
         self.checkDataIntegrity(filenames)
         channel_names = []
         basename = filenames[0]
         for file in filenames:
             # Determine the basename based on intersection of all .tif
             _, ext = os.path.splitext(file)
-            if ext == '.tif':
+            if useExt is None:
                 sm = difflib.SequenceMatcher(None, file, basename)
                 i, j, k = sm.find_longest_match(0, len(file),
                                                 0, len(basename))
                 basename = file[i:i+k]
+            elif ext == useExt:
+                sm = difflib.SequenceMatcher(None, file, basename)
+                i, j, k = sm.find_longest_match(0, len(file),
+                                                0, len(basename))
+                basename = file[i:i+k]
+        self.basename = basename
         warn = [False]
         for file in filenames:
             filename, ext = os.path.splitext(file)
-            if ext == '.tif':
+            if useExt is None:
+                channel_name = filename.split(basename)[-1]
+                channel_names.append(channel_name)
+                if channel_name == filename:
+                    # Warn that an intersection could not be found
+                    warn.append(True)
+            elif ext == useExt:
                 channel_name = filename.split(basename)[-1]
                 channel_names.append(channel_name)
                 if channel_name == filename:

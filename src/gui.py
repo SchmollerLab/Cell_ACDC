@@ -3344,6 +3344,7 @@ class guiWin(QMainWindow):
             rp_new_mothID = PosData.rp[new_moth_obj_idx]
             self.drawID_and_Contour(rp_budID, drawContours=False)
             self.drawID_and_Contour(rp_new_mothID, drawContours=False)
+            self.store_cca_df()
             return
 
         curr_mothID = PosData.cca_df.at[budID, 'relative_ID']
@@ -4377,7 +4378,7 @@ class guiWin(QMainWindow):
             # minTick = self.hist.gradient.getTick(0)
             # self.hist.gradient.setTickValue(minTick, 0.5)
         elif ev.key() == Qt.Key_H:
-            self.zoomToCells()
+            self.zoomToCells(enforce=True)
         elif ev.key() == Qt.Key_L:
             self.storeUndoRedoStates(False)
             PosData = self.data[self.pos_i]
@@ -4756,8 +4757,9 @@ class guiWin(QMainWindow):
                 f'Replace ID {PosData.lab[y,x]} with {newID}'
                 for y, x, newID in PosData.editID_info
             ]
-            msg = QtGui.QMessageBox()
-            msg.setIcon(msg.Information)
+            msg = QtGui.QMessageBox(self)
+            msg.setWindowTitle('Repeat tracking mode')
+            msg.setIcon(msg.Question)
             msg.setText("You requested to repeat tracking but there are "
                         "the following manually edited IDs:\n\n"
                         f"{editIDinfo}\n\n"
@@ -4973,8 +4975,8 @@ class guiWin(QMainWindow):
         if self.curvToolButton.isChecked():
             self.curvTool_cb(True)
 
-    def zoomToCells(self):
-        if not self.enableAutoZoomToCellsAction.isChecked():
+    def zoomToCells(self, enforce=False):
+        if not self.enableAutoZoomToCellsAction.isChecked() and not enforce:
             return
 
         PosData = self.data[self.pos_i]
@@ -5685,8 +5687,9 @@ class guiWin(QMainWindow):
             'histoLevels': {}
         }
 
-    def store_data(self, debug=False):
-        PosData = self.data[self.pos_i]
+    def store_data(self, pos_i=None, debug=False):
+        pos_i = self.pos_i if pos_i is None else pos_i
+        PosData = self.data[pos_i]
         if PosData.frame_i < 0:
             # In some cases we set frame_i = -1 and then call next_frame
             # to visualize frame 0. In that case we don't store data
@@ -5741,7 +5744,7 @@ class guiWin(QMainWindow):
             }
         ).set_index('Cell_ID')
 
-        self.store_cca_df()
+        self.store_cca_df(pos_i=pos_i)
 
     def nearest_point_2Dyx(self, points, all_others):
         """
@@ -6372,8 +6375,9 @@ class guiWin(QMainWindow):
         else:
             PosData.cca_df = cca_df
 
-    def store_cca_df(self, frame_i=None, cca_df=None):
-        PosData = self.data[self.pos_i]
+    def store_cca_df(self, pos_i=None, frame_i=None, cca_df=None):
+        pos_i = self.pos_i if pos_i is None else pos_i
+        PosData = self.data[pos_i]
         i = PosData.frame_i if frame_i is None else frame_i
         if cca_df is None:
             cca_df = PosData.cca_df
@@ -8201,7 +8205,10 @@ class guiWin(QMainWindow):
                     self.updateALLimg()
                 elif save_current == msg.Cancel:
                     return
+
             self.app.setOverrideCursor(Qt.WaitCursor)
+            if self.isSnapshot:
+                self.store_data()
             try:
                 segm_npz_path = PosData.segm_npz_path
                 acdc_output_csv_path = PosData.acdc_output_csv_path
@@ -8224,6 +8231,8 @@ class guiWin(QMainWindow):
                 print('Preparing data for saving...')
                 pbar = tqdm(total=len(PosData.allData_li), unit=' frames', ncols=100)
                 for frame_i, data_dict in enumerate(PosData.allData_li):
+                    print('')
+                    print(f'Saving {PosData.relPath}')
                     # Build segm_npy
                     lab = data_dict['labels']
                     if lab is not None:
@@ -8256,10 +8265,17 @@ class guiWin(QMainWindow):
                     # Build acdc_df and index it in each frame_i of acdc_df_li
                     if acdc_df is not None:
                         rp = data_dict['regionprops']
-                        self.addMetrics_acdc_df(
-                                    acdc_df, rp, frame_i, lab, PosData
-                        )
-                        acdc_df_li[frame_i] = acdc_df
+                        try:
+                            self.addMetrics_acdc_df(
+                                        acdc_df, rp, frame_i, lab, PosData
+                            )
+                            acdc_df_li[frame_i] = acdc_df
+                        except Exception:
+                            print('-----------------')
+                            traceback.print_exc()
+                            print('Error on calculating metrics see above...')
+                            print('-----------------')
+                            pass
                     pbar.update()
 
                 PosData.fluo_data_dict.pop(PosData.filename)
@@ -8274,6 +8290,7 @@ class guiWin(QMainWindow):
                         df_li.append(df)
                         keys.append((i, PosData.finterval*i))
 
+                print('')
                 print('Saving data...')
                 try:
                     np.savez_compressed(delROIs_info_path, **npz_delROIs_info)
