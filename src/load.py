@@ -222,13 +222,15 @@ class load_frames_data:
         self.acdc_df = None
         # Load segmentation metadata
         if load_acdc_df:
-            segm_metadata_path, segm_metadata_found = self.substring_path(
+            acdc_df_path, acdc_df_found = self.substring_path(
                                               path, '_acdc_output.csv',
                                               self.images_path)
-            if segm_metadata_found:
+            if acdc_df_found:
                 acdc_df = pd.read_csv(
-                    segm_metadata_path, index_col=['frame_i', 'Cell_ID']
+                    acdc_df_path, index_col=['frame_i', 'Cell_ID']
                 )
+                acdc_df = self.BooleansTo0s1s(acdc_df, acdc_df_path)
+                acdc_df = self.intToBoolean(acdc_df)
 
                 # Keep compatibility with older versions of acdc_df
                 if 'Is_dead_cell' in acdc_df.columns:
@@ -315,6 +317,35 @@ class load_frames_data:
 
         self.build_paths(self.filename, self.images_path, user_ch_name)
         self.saveMetadata()
+
+    @staticmethod
+    def BooleansTo0s1s(acdc_df, csv_path=None, inplace=True):
+        """
+        Function used to convert "FALSE" strings and booleans to 0s and 1s
+        to avoid pandas interpreting as strings or numbers
+        """
+        if not inplace:
+            acdc_df = acdc_df.copy()
+        colsToCast = ['is_cell_dead', 'is_cell_excluded']
+        for col in colsToCast:
+            isInt = pd.api.types.is_integer_dtype(acdc_df[col])
+            isFloat = pd.api.types.is_float_dtype(acdc_df[col])
+            isObject = pd.api.types.is_object_dtype(acdc_df[col])
+            isString = pd.api.types.is_string_dtype(acdc_df[col])
+            isBool = pd.api.types.is_bool_dtype(acdc_df[col])
+            if isFloat or isBool:
+                acdc_df[col] = acdc_df[col].astype(int)
+            elif isString or isObject:
+                acdc_df[col] = (acdc_df[col].str.lower() == 'true').astype(int)
+        if csv_path is not None:
+            acdc_df.to_csv(csv_path)
+        return acdc_df
+
+    def intToBoolean(self, acdc_df):
+        colsToCast = ['is_cell_dead', 'is_cell_excluded']
+        for col in colsToCast:
+            acdc_df[col] = acdc_df[col] > 0
+        return acdc_df
 
     def saveMetadata(self):
         indexNames = [
@@ -750,7 +781,7 @@ class select_exp_folder:
                        CbLabel="Select \'Position_n\' folder to analyze:",
                        showinexplorer_button=False,
                        full_paths=None, allow_abort=True,
-                       show=False):
+                       show=False, toggleMulti=False):
         font = QtGui.QFont()
         font.setPointSize(10)
         win = apps.QtSelectItems(title, values, '',
@@ -760,6 +791,8 @@ class select_exp_folder:
         toFront = win.windowState() & ~Qt.WindowMinimized | Qt.WindowActive
         win.setWindowState(toFront)
         win.activateWindow()
+        if toggleMulti:
+            win.multiPosButton.setChecked(True)
         win.exec_()
         self.was_aborted = win.cancel
         if not win.cancel:

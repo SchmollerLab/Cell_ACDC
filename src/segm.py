@@ -56,6 +56,7 @@ class segmWin(QMainWindow):
         label.setAlignment(Qt.AlignCenter)
         font = QtGui.QFont()
         font.setPointSize(10)
+        font.setBold(True)
         label.setFont(font)
         mainLayout.addWidget(label)
 
@@ -94,11 +95,45 @@ class segmWin(QMainWindow):
         else:
             self.MostRecentPath = ''
 
+    def addToRecentPaths(self, exp_path):
+        if not os.path.exists(exp_path):
+            return
+        src_path = os.path.dirname(os.path.realpath(__file__))
+        recentPaths_path = os.path.join(
+            src_path, 'temp', 'recentPaths.csv'
+        )
+        if os.path.exists(recentPaths_path):
+            df = pd.read_csv(recentPaths_path, index_col='index')
+            recentPaths = df['path'].to_list()
+            if 'opened_last_on' in df.columns:
+                openedOn = df['opened_last_on'].to_list()
+            else:
+                openedOn = [np.nan]*len(recentPaths)
+            if exp_path in recentPaths:
+                pop_idx = recentPaths.index(exp_path)
+                recentPaths.pop(pop_idx)
+                openedOn.pop(pop_idx)
+            recentPaths.insert(0, exp_path)
+            openedOn.insert(0, datetime.datetime.now())
+            # Keep max 20 recent paths
+            if len(recentPaths) > 20:
+                recentPaths.pop(-1)
+                openedOn.pop(-1)
+        else:
+            recentPaths = [exp_path]
+            openedOn = [datetime.datetime.now()]
+        df = pd.DataFrame({'path': recentPaths,
+                           'opened_last_on': pd.Series(openedOn,
+                                                       dtype='datetime64[ns]')})
+        df.index.name = 'index'
+        df.to_csv(recentPaths_path)
+
     def main(self):
         self.getMostRecentPath()
         exp_path = QFileDialog.getExistingDirectory(
             self, 'Select experiment folder containing Position_n folders '
                   'or specific Position_n folder', self.MostRecentPath)
+        self.addToRecentPaths(exp_path)
 
         if exp_path == '':
             abort = self.doAbort()

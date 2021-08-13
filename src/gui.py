@@ -6086,7 +6086,11 @@ class guiWin(QMainWindow):
                     # Since there was already segmentation metadata from
                     # previous closed session add it to current metadata
                     df = PosData.acdc_df.loc[PosData.frame_i].copy()
-                    binnedIDs_df = df[df['is_cell_excluded']]
+                    try:
+                        binnedIDs_df = df[df['is_cell_excluded']]
+                    except Exception as e:
+                        traceback.print_exc()
+                        raise
                     binnedIDs = set(binnedIDs_df.index).union(PosData.binnedIDs)
                     PosData.binnedIDs = binnedIDs
                     ripIDs_df = df[df['is_cell_dead']]
@@ -8105,34 +8109,45 @@ class guiWin(QMainWindow):
                 fluo_q95s[i,j] = np.quantile(fluo_data_ID, q=0.95)
                 fluo_amounts[i,j] = fluo_amount
 
-        df['cell_area_pxl'] = pd.Series(data=IDs_area_pxl, index=IDs)
-        df['cell_vol_vox'] = pd.Series(data=IDs_vol_vox, index=IDs)
-        df['cell_area_um2'] = pd.Series(data=IDs_area_um2, index=IDs)
-        df['cell_vol_fl'] = pd.Series(data=IDs_vol_fl, index=IDs)
+        df['cell_area_pxl'] = pd.Series(data=IDs_area_pxl, index=IDs, dtype=float)
+        df['cell_vol_vox'] = pd.Series(data=IDs_vol_vox, index=IDs, dtype=float)
+        df['cell_area_um2'] = pd.Series(data=IDs_area_um2, index=IDs, dtype=float)
+        df['cell_vol_fl'] = pd.Series(data=IDs_vol_fl, index=IDs, dtype=float)
         df[[f'{ch}_mean' for ch in chNames]] = pd.DataFrame(
-                                                    data=fluo_means, index=IDs)
+                                                    data=fluo_means, index=IDs,
+                                                    dtype=float)
         df[[f'{ch}_median' for ch in chNames]] = pd.DataFrame(
-                                                    data=fluo_medians, index=IDs)
+                                                    data=fluo_medians, index=IDs,
+                                                    dtype=float)
         df[[f'{ch}_min' for ch in chNames]] = pd.DataFrame(
-                                                    data=fluo_mins, index=IDs)
+                                                    data=fluo_mins, index=IDs,
+                                                    dtype=float)
         df[[f'{ch}_max' for ch in chNames]] = pd.DataFrame(
-                                                    data=fluo_maxs, index=IDs)
+                                                    data=fluo_maxs, index=IDs,
+                                                    dtype=float)
         df[[f'{ch}_sum' for ch in chNames]] = pd.DataFrame(
-                                                    data=fluo_sums, index=IDs)
+                                                    data=fluo_sums, index=IDs,
+                                                    dtype=float)
         df[[f'{ch}_q25' for ch in chNames]] = pd.DataFrame(
-                                                    data=fluo_q25s, index=IDs)
+                                                    data=fluo_q25s, index=IDs,
+                                                    dtype=float)
         df[[f'{ch}_q75' for ch in chNames]] = pd.DataFrame(
-                                                    data=fluo_q75s, index=IDs)
+                                                    data=fluo_q75s, index=IDs,
+                                                    dtype=float)
         df[[f'{ch}_q05' for ch in chNames]] = pd.DataFrame(
-                                                    data=fluo_q5s, index=IDs)
+                                                    data=fluo_q5s, index=IDs,
+                                                    dtype=float)
         df[[f'{ch}_q95' for ch in chNames]] = pd.DataFrame(
-                                                    data=fluo_q95s, index=IDs)
+                                                    data=fluo_q95s, index=IDs,
+                                                    dtype=float)
         df[[f'{ch}_amount_autoBkgr' for ch in chNames]] = pd.DataFrame(
                                                     data=fluo_amounts,
-                                                    index=IDs)
+                                                    index=IDs,
+                                                    dtype=float)
         df[[f'{ch}_amount_dataPrepBkgr' for ch in chNames]] = pd.DataFrame(
                                                     data=fluo_amounts_bkgrVals,
-                                                    index=IDs)
+                                                    index=IDs,
+                                                    dtype=float)
 
     def getChNames(self, PosData):
         fluo_keys = list(PosData.fluo_data_dict.keys())
@@ -8228,11 +8243,9 @@ class guiWin(QMainWindow):
                     for frame_i, df in PosData.acdc_df.groupby(level=0):
                         acdc_df_li[frame_i] = df.loc[frame_i]
 
-                print('Preparing data for saving...')
+                print(f'Saving {PosData.relPath}')
                 pbar = tqdm(total=len(PosData.allData_li), unit=' frames', ncols=100)
                 for frame_i, data_dict in enumerate(PosData.allData_li):
-                    print('')
-                    print(f'Saving {PosData.relPath}')
                     # Build segm_npy
                     lab = data_dict['labels']
                     if lab is not None:
@@ -8264,13 +8277,16 @@ class guiWin(QMainWindow):
 
                     # Build acdc_df and index it in each frame_i of acdc_df_li
                     if acdc_df is not None:
+                        acdc_df = load.load_frames_data.BooleansTo0s1s(
+                                    acdc_df, inplace=False
+                        )
                         rp = data_dict['regionprops']
                         try:
                             self.addMetrics_acdc_df(
                                         acdc_df, rp, frame_i, lab, PosData
                             )
                             acdc_df_li[frame_i] = acdc_df
-                        except Exception:
+                        except Exception as e:
                             print('-----------------')
                             traceback.print_exc()
                             print('Error on calculating metrics see above...')
@@ -8354,7 +8370,10 @@ class guiWin(QMainWindow):
                 self.get_data()
 
                 print('--------------')
-                print(f'Saved data until frame number {last_tracked_i+1}')
+                if self.isSnapshot:
+                    print(f'Saved all {len(self.data)} Positions!')
+                else:
+                    print(f'Saved data until frame number {last_tracked_i+1}')
                 print('--------------')
             except:
                 traceback.print_exc()

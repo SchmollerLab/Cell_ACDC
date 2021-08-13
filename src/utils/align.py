@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 
 import skimage.io
+from tifffile.tifffile import TiffWriter, TiffFile
 
 from tqdm import tqdm
 
@@ -59,6 +60,7 @@ class alignWin(QMainWindow):
         label.setAlignment(Qt.AlignCenter)
         font = QtGui.QFont()
         font.setPointSize(10)
+        font.setBold(True)
         label.setFont(font)
         mainLayout.addWidget(label)
 
@@ -101,6 +103,7 @@ class alignWin(QMainWindow):
         exp_path = QFileDialog.getExistingDirectory(
             self, 'Select experiment folder containing Position_n folders '
                   'or specific Position_n folder', self.MostRecentPath)
+        self.addToRecentPaths(exp_path)
 
         if exp_path == '':
             abort = self.doAbort()
@@ -180,7 +183,7 @@ class alignWin(QMainWindow):
         appendedTxt = appendTxts[0]
 
         print('Aligning data...')
-        if len(selectedFilenames) > 1 or len(images_paths) > 1:
+        if len(selectedFilenames) > 1:
             ch_name_selector = prompts.select_channel_name()
             channelNames, abort = ch_name_selector.get_available_channels(
                                             selectedFilenames, useExt=None)
@@ -196,6 +199,7 @@ class alignWin(QMainWindow):
                         continue
                     shifts, shifts_found = load.load_shifts(images_path)
                     if not shifts_found:
+                        print('')
                         print('=============================')
                         print('WARNING: "Align_shift.npy" not found in folder '
                               f'{images_path}. Skipping it')
@@ -204,6 +208,7 @@ class alignWin(QMainWindow):
                     filenames = os.listdir(images_path)
                     chNameFile = [f for f in filenames if f.find(f'{chName}.')!=-1]
                     if not chNameFile:
+                        print('')
                         print('=============================')
                         print(f'WARNING: File ending with "{chName}." not found in folder '
                               f'{images_path}. Skipping it')
@@ -215,19 +220,20 @@ class alignWin(QMainWindow):
                     self.save(alignedData, filePath, appendedTxt)
 
         else:
-            images_path = images_paths[0]
-
-            shifts, shifts_found = load.load_shifts(images_path)
-            if not shifts_found:
-                print('=============================')
-                print('WARNING: "Align_shift.npy" not found in folder '
-                      f'{images_path}. Skipping it')
-                print('=============================')
-            else:
-                filePath = os.path.join(images_path, selectedFilenames[0])
-                alignedData = self.loadAndAlign(
-                                            filePath, shifts, revertAlignment)
-                self.save(alignedData, filePath, appendedTxt)
+            for images_path in tqdm(images_paths, ncols=100):
+                shifts, shifts_found = load.load_shifts(images_path)
+                if not shifts_found:
+                    print('')
+                    print('=============================')
+                    print('WARNING: "Align_shift.npy" not found in folder '
+                          f'{images_path}. Skipping it')
+                    print('=============================')
+                else:
+                    # print(f'Aligning {filePath}...')
+                    filePath = os.path.join(images_path, selectedFilenames[0])
+                    alignedData = self.loadAndAlign(
+                                                filePath, shifts, revertAlignment)
+                    self.save(alignedData, filePath, appendedTxt)
 
         self.close()
         if self.allowExit:
@@ -251,7 +257,7 @@ class alignWin(QMainWindow):
                 SizeT = len(alignedData)
                 SizeZ = 1
             if SizeT != self.prevSizeT or SizeZ != self.prevSizeZ:
-                SizeT, SizeZ = self.askImageSizeZT()
+                SizeT, SizeZ = self.askImageSizeZT(SizeT, SizeZ)
             myutils.imagej_tiffwriter(path, alignedData, metadata, SizeT, SizeZ)
 
     def readSizeTZ(self, info):
@@ -259,7 +265,7 @@ class alignWin(QMainWindow):
         SizeZ = int(re.findall('SizeZ = (\d+)', info)[0])
         return SizeT, SizeZ
 
-    def askImageSizeZT(self):
+    def askImageSizeZT(self, SizeT, SizeZ):
         font = QtGui.QFont()
         font.setPointSize(10)
         win = apps.QDialogAcdcInputs(SizeT, SizeZ, None, None,
@@ -299,7 +305,7 @@ class alignWin(QMainWindow):
             img = data[frame_i]
             axis = tuple(range(img.ndim))[-2:]
             aligned_img = np.roll(img, tuple(shift), axis=axis)
-            alignedData[frame_i] = frame_i
+            alignedData[frame_i] = aligned_img
         return alignedData
 
     def criticalNoCommonBasename(self):
@@ -318,7 +324,7 @@ class alignWin(QMainWindow):
            'the common basename "F014_s01_". After the common basename you '
            'can write whatever text you want. In the example above, "phase_contr" '
            'and "mCitrine" are the channel names.\n\n'
-           'We reccomend using the provided Fiji/ImageJ macro to create the right '
+           'We recommend using the provided Fiji/ImageJ macro to create the right '
            'data structure.\n\n'
            'To apply alignment select only one "Images" folder AND only one file at the time.',
            msg.Ok
@@ -372,6 +378,38 @@ class alignWin(QMainWindow):
         else:
             return True, selectedFilenames
 
+    def addToRecentPaths(self, exp_path):
+        if not os.path.exists(exp_path):
+            return
+        recentPaths_path = os.path.join(
+            src_path, 'temp', 'recentPaths.csv'
+        )
+        if os.path.exists(recentPaths_path):
+            df = pd.read_csv(recentPaths_path, index_col='index')
+            recentPaths = df['path'].to_list()
+            if 'opened_last_on' in df.columns:
+                openedOn = df['opened_last_on'].to_list()
+            else:
+                openedOn = [np.nan]*len(recentPaths)
+            if exp_path in recentPaths:
+                pop_idx = recentPaths.index(exp_path)
+                recentPaths.pop(pop_idx)
+                openedOn.pop(pop_idx)
+            recentPaths.insert(0, exp_path)
+            openedOn.insert(0, datetime.datetime.now())
+            # Keep max 20 recent paths
+            if len(recentPaths) > 20:
+                recentPaths.pop(-1)
+                openedOn.pop(-1)
+        else:
+            recentPaths = [exp_path]
+            openedOn = [datetime.datetime.now()]
+        df = pd.DataFrame({'path': recentPaths,
+                           'opened_last_on': pd.Series(openedOn,
+                                                       dtype='datetime64[ns]')})
+        df.index.name = 'index'
+        df.to_csv(recentPaths_path)
+
     def doAbort(self):
         msg = QtGui.QMessageBox()
         closeAnswer = msg.warning(
@@ -389,7 +427,7 @@ class alignWin(QMainWindow):
 
 
 if __name__ == "__main__":
-    print('Launching segmentation script...')
+    print('Launching alignment script...')
     # Handle high resolution displays:
     if hasattr(Qt, 'AA_EnableHighDpiScaling'):
         QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)

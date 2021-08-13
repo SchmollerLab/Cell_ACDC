@@ -10,6 +10,7 @@ from PyQt5.QtCore import Qt, QProcess, pyqtSignal, pyqtSlot
 from pyqtgraph.Qt import QtGui
 
 import dataPrep, segm, gui
+import utils.concat
 
 import qrc_resources
 
@@ -31,6 +32,7 @@ class mainWin(QMainWindow):
 
         self.createActions()
         self.createMenuBar()
+        self.connectActions()
 
         mainContainer = QtGui.QWidget()
         self.setCentralWidget(mainContainer)
@@ -101,6 +103,13 @@ class mainWin(QMainWindow):
     def createMenuBar(self):
         menuBar = self.menuBar()
 
+        utilsMenu = QMenu("&Utilities", self)
+        utilsMenu.addAction(self.concatAcdcDfsAction)
+        utilsMenu.addAction(self.alignAction)
+        utilsMenu.addAction(self.npzToNpyAction)
+        utilsMenu.addAction(self.npzToTiffAction)
+        menuBar.addMenu(utilsMenu)
+
         helpMenu = QMenu("&Help", self)
         helpMenu.addAction(self.welcomeGuideAction)
         helpMenu.addAction(self.documentationAction)
@@ -111,11 +120,21 @@ class mainWin(QMainWindow):
         menuBar.addMenu(helpMenu)
 
     def createActions(self):
+        self.npzToNpyAction = QAction('Convert .npz file to .npy...')
+        self.npzToTiffAction = QAction('Convert .npz file to .tif...')
+        self.concatAcdcDfsAction = QAction(
+            'Concatenate acdc output tables from multiple Positions...'
+        )
+        self.alignAction = QAction('Revert alignemnt/Align...')
+
         self.welcomeGuideAction = QAction('Welcome Guide')
         self.documentationAction = QAction('Documentation')
         self.aboutAction = QAction('About Yeast_ACDC')
         self.citeAction = QAction('Cite us...')
         self.contributeAction = QAction('Contribute...')
+
+    def connectActions(self):
+        self.concatAcdcDfsAction.triggered.connect(self.launchConcatUtil)
 
     def launchDataPrep(self, checked=False):
         c = self.dataPrepButton.palette().button().color().name()
@@ -177,6 +196,22 @@ class mainWin(QMainWindow):
             toFront = self.windowState() & ~Qt.WindowMinimized | Qt.WindowActive
             self.guiWin.setWindowState(toFront)
             self.guiWin.raise_()
+
+    def launchConcatUtil(self, checked=False):
+        isConcatEnabled = self.concatAcdcDfsAction.isEnabled()
+        if isConcatEnabled:
+            self.concatAcdcDfsAction.setDisabled(True)
+            self.concatWin = utils.concat.concatWin(
+                parent=self,
+                actionToEnable=self.concatAcdcDfsAction,
+                mainWin=self
+            )
+            self.concatWin.show()
+            self.concatWin.main()
+        else:
+            toFront = self.windowState() & ~Qt.WindowMinimized | Qt.WindowActive
+            self.concatWin.setWindowState(toFront)
+            self.concatWin.raise_()
 
 
     def showAndSetSettings(self):

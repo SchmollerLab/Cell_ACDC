@@ -552,7 +552,7 @@ class select_channel_name:
                'the common basename "F014_s01_". After the common basename you '
                'can write whatever text you want. In the example above, "phase_contr" '
                'and "mCitrine" are the channel names.\n\n'
-               'We reccomend using the provided Fiji/ImageJ macro to create the right '
+               'We recommend using the provided Fiji/ImageJ macro to create the right '
                'data structure.\n\n'
                'Data loading may still be successfull, so the system will '
                'still try to load data now.',

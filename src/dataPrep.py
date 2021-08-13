@@ -609,6 +609,13 @@ class dataPrepWin(QMainWindow):
             croppedData = self.crop(data)
             print('Cropped data shape: ', croppedData.shape)
 
+            if croppedData.shape != data.shape:
+                proceed = self.warnCropping(data.shape, croppedData.shape)
+                if not proceed:
+                    self.okAction.setEnabled(True)
+                    prit('Done.')
+                    return
+
             x0, y0 = [int(round(c)) for c in self.cropROI.pos()]
             w, h = [int(round(c)) for c in self.cropROI.size()]
             print(f'Saving crop ROI coords: x_left = {x0}, x_right = {x0+w}, '
@@ -649,7 +656,7 @@ class dataPrepWin(QMainWindow):
                 self.moveTempFile(temp_tif, tif)
 
             # Save segm.npz
-            if PosData.segm_found and self.segmAligned:
+            if PosData.segm_found:
                 print('Saving: ', PosData.segm_npz_path)
                 data = PosData.segm_data
                 croppedSegm = self.crop(data)
@@ -681,9 +688,34 @@ class dataPrepWin(QMainWindow):
             print(f'{PosData.pos_foldername} saved!')
             print(f'--------------------------------')
             print('')
+        self.okAction.setEnabled(True)
         self.titleLabel.setText(
             'Saved! You can close the program or load another position.',
             color='g')
+
+    def warnCropping(self, dataShape, croppedShape):
+        msg = QtGui.QMessageBox(self)
+        msg.setWindowTitle('Crop?')
+        msg.setIcon(msg.Warning)
+        msg.setText(
+            f'You are about to crop data from shape {dataShape} '
+            f'to shape {croppedShape}\n\n'
+            'Saving cropped data cannot be undone.\n\n'
+            'Are you sure you need that?')
+        doCropButton = QPushButton('Yes, crop please.')
+        msg.addButton(doCropButton, msg.NoRole)
+        msg.addButton(QPushButton('No, save without cropping'), msg.YesRole)
+        cancelButton = QPushButton('Cancel')
+        msg.addButton(cancelButton, msg.RejectRole)
+        msg.exec_()
+        if msg.clickedButton() == doCropButton:
+            proceed = True
+        elif msg.clickedButton() == cancelButton:
+            proceed = False
+        else:
+            proceed = False
+        return proceed
+
 
     def imagej_tiffwriter(self, new_path, data, metadata, PosData):
         with TiffWriter(new_path, imagej=True) as new_tif:
