@@ -63,7 +63,7 @@ if os.name == 'nt':
         import ctypes
         myappid = 'schmollerlab.yeastacdc.pyqt.v1' # arbitrary string
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-    except:
+    except Exception as e:
         pass
 
 print('Initializing...')
@@ -1887,7 +1887,7 @@ class guiWin(QMainWindow):
                         f'(x={x:.2f}, y={y:.2f}, value={val:.2f}, '
                         f'max={maxVal:.2f}, ID={ID}, max_ID={maxID})'
                     )
-                except:
+                except Exception as e:
                     val = [v for v in val]
                     self.wcLabel.setText(
                             f'(x={x:.2f}, y={y:.2f}, value={val})'
@@ -2505,7 +2505,7 @@ class guiWin(QMainWindow):
             try:
                 xx, yy = self.curvHoverPlotItem.getData()
                 self.curvPlotItem.setData(xx, yy)
-            except:
+            except Exception as e:
                 # traceback.print_exc()
                 pass
 
@@ -3723,7 +3723,7 @@ class guiWin(QMainWindow):
                 if x2>0:
                     w, h = ax2_LI.rect().right(), ax2_LI.rect().bottom()
                     ax2_LI.setPos(xc-w/2, yc-h/2)
-        except:
+        except Exception as e:
             traceback.print_exc()
             pass
 
@@ -3956,7 +3956,7 @@ class guiWin(QMainWindow):
         # Keep compatibility with .npy and .npz files
         try:
             lab = labData['arr_0'][PosData.frame_i]
-        except:
+        except Exception as e:
             lab = labData[PosData.frame_i]
         PosData.segm_data[PosData.frame_i] = lab.copy()
         self.get_data()
@@ -3986,7 +3986,7 @@ class guiWin(QMainWindow):
             try:
                 self.undoAction.triggered.disconnect()
                 self.redoAction.triggered.disconnect()
-            except:
+            except Exception as e:
                 pass
             self.undoAction.triggered.connect(self.undo)
             self.redoAction.triggered.connect(self.redo)
@@ -4009,7 +4009,7 @@ class guiWin(QMainWindow):
                 try:
                     self.undoAction.triggered.disconnect()
                     self.redoAction.triggered.disconnect()
-                except:
+                except Exception as e:
                     pass
                 self.undoAction.triggered.connect(self.UndoCca)
                 self.drawIDsContComboBox.clear()
@@ -4032,13 +4032,13 @@ class guiWin(QMainWindow):
             try:
                 self.undoAction.triggered.disconnect()
                 self.redoAction.triggered.disconnect()
-            except:
+            except Exception as e:
                 pass
         elif mode == 'Snapshot':
             try:
                 self.undoAction.triggered.disconnect()
                 self.redoAction.triggered.disconnect()
-            except:
+            except Exception as e:
                 pass
             self.undoAction.triggered.connect(self.undo)
             self.redoAction.triggered.connect(self.redo)
@@ -4393,7 +4393,7 @@ class guiWin(QMainWindow):
             else:
                 try:
                     self.drawIDsContComboBox.setCurrentText(self.prev_how)
-                except:
+                except Exception as e:
                     # traceback.print_exc()
                     pass
         elif ev.key() == Qt.Key_B or ev.key() == Qt.Key_X:
@@ -4474,7 +4474,7 @@ class guiWin(QMainWindow):
         self.clickedOnBud = False
         try:
             self.BudMothTempLine.setData([], [])
-        except:
+        except Exception as e:
             pass
         for button in self.checkableButtons:
             button.setChecked(False)
@@ -5263,7 +5263,7 @@ class guiWin(QMainWindow):
                 self.modeComboBox.activated.disconnect()
                 self.modeComboBox.currentIndexChanged.disconnect()
                 self.drawIDsContComboBox.currentIndexChanged.disconnect()
-            except:
+            except Exception as e:
                 pass
                 # traceback.print_exc()
             self.modeComboBox.clear()
@@ -5348,7 +5348,7 @@ class guiWin(QMainWindow):
                     self.zSliceScrollBar.sliderMoved.disconnect()
                     self.zProjComboBox.currentTextChanged.disconnect()
                     self.zProjComboBox.activated.disconnect()
-                except:
+                except Exception as e:
                     pass
                 self.zSliceScrollBar.sliderMoved.connect(self.update_z_slice)
                 self.zProjComboBox.currentTextChanged.connect(self.updateZproj)
@@ -5373,7 +5373,7 @@ class guiWin(QMainWindow):
                 try:
                     self.framesScrollBar.sliderMoved.disconnect()
                     self.framesScrollBar.sliderReleased.disconnect()
-                except:
+                except Exception as e:
                     pass
                 self.t_label.setText('frame n.  ')
                 self.framesScrollBar.sliderMoved.connect(
@@ -5812,7 +5812,7 @@ class guiWin(QMainWindow):
             if PosData.cca_df.isna().any(axis=None):
                 raise ValueError('Cell cycle analysis table contains NaNs')
             self.checkMultiBudMOth()
-        except:
+        except Exception as e:
             traceback.print_exc()
             self.highlightNewIDs_ccaFailed()
             msg = QtGui.QMessageBox(self)
@@ -6656,7 +6656,7 @@ class guiWin(QMainWindow):
                 lut[ID] = lut[ID]*0.2
             for ID in PosData.ripIDs:
                 lut[ID] = lut[ID]*0.2
-        except:
+        except Exception as e:
             print('WARNING: Tracking is WRONG.')
             pass
         self.img2.setLookupTable(lut)
@@ -6734,7 +6734,7 @@ class guiWin(QMainWindow):
             fluo_data = np.load(fluo_path)
             try:
                 fluo_data = fluo_data['arr_0']
-            except:
+            except Exception as e:
                 fluo_data = fluo_data
         elif ext == '.tif' or ext == '.tiff':
             aligned_filename = f'{filename_noEXT}_aligned.npz'
@@ -7672,17 +7672,17 @@ class guiWin(QMainWindow):
         self.ax2.clear()
         try:
             self.chNamesQActionGroup.removeAction(self.userChNameAction)
-        except:
+        except Exception as e:
             pass
         try:
             PosData = self.data[self.pos_i]
             for action in PosData.fluoDataChNameActions:
                 self.chNamesQActionGroup.removeAction(action)
-        except:
+        except Exception as e:
             pass
         try:
             self.overlayButton.setChecked(False)
-        except:
+        except Exception as e:
             pass
 
     def create_chNamesQActionGroup(self, user_ch_name):
@@ -7699,7 +7699,7 @@ class guiWin(QMainWindow):
         PosData = self.data[self.pos_i]
         try:
             keys = list(PosData.ol_data.keys())
-        except:
+        except Exception as e:
             keys = []
         keys.append(PosData.filename)
         checkedText = action.text()
@@ -7921,7 +7921,7 @@ class guiWin(QMainWindow):
             self.fontSizeAction.setChecked(True)
             self.openAction.setEnabled(True)
             self.editTextIDsColorAction.setDisabled(False)
-        except:
+        except Exception as e:
             traceback.print_exc()
             err_msg = 'Error occured. See terminal/console for details'
             self.titleLabel.setText(
@@ -8310,7 +8310,7 @@ class guiWin(QMainWindow):
                 print('Saving data...')
                 try:
                     np.savez_compressed(delROIs_info_path, **npz_delROIs_info)
-                except:
+                except Exception as e:
                     traceback.print_exc()
 
                 if PosData.segmInfo_df is not None:
@@ -8352,7 +8352,7 @@ class guiWin(QMainWindow):
                     # Save segmentation metadata
                     all_frames_metadata_df.to_csv(acdc_output_csv_path)
                     PosData.acdc_df = all_frames_metadata_df
-                except:
+                except Exception as e:
                     traceback.print_exc()
                     pass
 
@@ -8375,7 +8375,7 @@ class guiWin(QMainWindow):
                 else:
                     print(f'Saved data until frame number {last_tracked_i+1}')
                 print('--------------')
-            except:
+            except Exception as e:
                 traceback.print_exc()
             finally:
                 self.app.restoreOverrideCursor()

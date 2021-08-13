@@ -20,7 +20,7 @@ if os.name == 'nt':
         import ctypes
         myappid = 'schmollerlab.yeastacdc.pyqt.v1' # arbitrary string
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-    except:
+    except Exception as e:
         pass
 
 class mainWin(QMainWindow):

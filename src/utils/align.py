@@ -34,7 +34,7 @@ if os.name == 'nt':
         import ctypes
         myappid = 'schmollerlab.yeastacdc.pyqt.v1' # arbitrary string
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-    except:
+    except Exception as e:
         pass
 
 class alignWin(QMainWindow):
@@ -253,7 +253,7 @@ class alignWin(QMainWindow):
             try:
                 info = metadata['Info']
                 SizeT, SizeZ = self.readSizeTZ(info)
-            except:
+            except Exception as e:
                 SizeT = len(alignedData)
                 SizeZ = 1
             if SizeT != self.prevSizeT or SizeZ != self.prevSizeZ:

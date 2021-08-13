@@ -88,7 +88,7 @@ class load_frames_data:
                 img_data = np.load(path)
                 try:
                     img_data = img_data['arr_0']
-                except:
+                except Exception as e:
                     img_data = img_data
             else:
                 err_title = 'Phase contrast file not found!'
@@ -128,7 +128,7 @@ class load_frames_data:
                 try:
                     self.zyx_vox_dim = self.zyx_vox_dim()
                     zyx_vox_dim_found = True
-                except:
+                except Exception as e:
                     self.zyx_vox_dim = [0.5, 0.01, 0.01]
                     zyx_vox_dim_found = False
             if first_call:
@@ -144,13 +144,13 @@ class load_frames_data:
             if self.metadata_found:
                 try:
                     self.SizeT, self.SizeZ = self.data_dimensions(self.info)
-                except:
+                except Exception as e:
                     self.SizeT, self.SizeZ = len(self.img_data), 1
                 if load_zyx_voxSize:
                     try:
                         self.zyx_vox_dim = self.zyx_vox_dim()
                         zyx_vox_dim_found = True
-                    except:
+                    except Exception as e:
                         self.zyx_vox_dim = [0.5, 0.01, 0.01]
                         zyx_vox_dim_found = False
                 else:
@@ -198,7 +198,7 @@ class load_frames_data:
                 segm_data = np.load(segm_npz_path)
                 try:
                     self.segm_data = segm_data['arr_0']
-                except:
+                except Exception as e:
                     self.segm_data = segm_data
             else:
                 Y, X = self.img_data.shape[-2:]
@@ -214,7 +214,7 @@ class load_frames_data:
             try:
                 with open(last_tracked_i_path, 'r') as txt:
                     self.last_tracked_i = int(txt.read())
-            except:
+            except Exception as e:
                 self.last_tracked_i = None
         else:
             self.last_tracked_i = None
@@ -418,9 +418,9 @@ class load_frames_data:
                 px_z_start_i = info.find(scalint_str + "3 = ") + len_scalin_str
                 px_z_end_i = info[px_z_start_i:].find("\n") + px_z_start_i
                 px_z = float(info[px_z_start_i:px_z_end_i])*1E6
-            except:
+            except Exception as e:
                 px_z = 1
-        except:
+        except Exception as e:
             x_res_match = re.findall('XResolution = ([0-9]*[.]?[0-9]+)', info)
             px_x = 1/float(x_res_match[0])
             y_res_match = re.findall('YResolution = ([0-9]*[.]?[0-9]+)', info)
@@ -428,7 +428,7 @@ class load_frames_data:
             try:
                 z_spac_match = re.findall('Spacing = ([0-9]*[.]?[0-9]+)', info)
                 px_z = float(z_spac_match[0])
-            except:
+            except Exception as e:
                 px_z = 1
         return [px_z, px_y, px_x]
 
@@ -472,13 +472,13 @@ class load_frames_data:
         try:
             self.finterval = metadata['finterval']
             self.tifMetadata_finterval = metadata['finterval']
-        except:
+        except Exception as e:
             self.finterval = None
             self.tifMetadata_finterval = None
         try:
             metadata_found = True
             info = self.metadata['Info']
-        except:
+        except Exception as e:
             metadata_found = False
             info = []
         return info, metadata_found
@@ -908,7 +908,7 @@ class select_exp_folder:
                         try:
                             with open(last_tracked_i_path, 'r') as txt:
                                 last_tracked_i = int(txt.read())
-                        except:
+                        except Exception as e:
                             last_tracked_i_found = False
                 if last_tracked_i_found:
                     values.append(f'{pos} (Last tracked frame: {last_tracked_i+1})')

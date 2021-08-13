@@ -280,7 +280,7 @@ class QDialogInputsForm(QDialog):
             SizeT = int(self.SizeT_entry.text())
             if SizeT < 1:
                 raise
-        except:
+        except Exception as e:
             err_msg = (
                 'Number of frames (SizeT) value is not valid.\n'
                 'Enter an integer greater or equal to 1. Enter 1 if '
@@ -295,7 +295,7 @@ class QDialogInputsForm(QDialog):
             SizeZ = int(self.SizeZ_entry.text())
             if SizeZ < 1:
                 raise
-        except:
+        except Exception as e:
             err_msg = (
                 'Number of z-slices (SizeZ) value is not valid.\n'
                 'Enter an integer greater or equal to 1. Enter 1 for '
@@ -311,7 +311,7 @@ class QDialogInputsForm(QDialog):
                 s = self.zyx_vox_dim_entry.text()
                 m = re.findall('(\d*.*\d+),\s*(\d*.*\d+),\s*(\d*.*\d+)', s)[0]
                 zyx_vox_dim = [float(v) for v in m]
-            except:
+            except Exception as e:
                 err_msg = (
                     'Z, Y, X voxel size values are not valid.\n'
                     'Enter three numbers (decimal or integers) greater than 0 '
@@ -425,7 +425,7 @@ class QDialogAcdcInputs(QDialog):
                 s = self.zyx_vox_dim_entry.text()
                 m = re.findall('(\d*.*\d+),\s*(\d*.*\d+),\s*(\d*.*\d+)', s)[0]
                 zyx_vox_dim = [float(v) for v in m]
-            except:
+            except Exception as e:
                 err_msg = (
                     'Z, Y, X voxel size values are not valid.\n'
                     'Enter three numbers (decimal or integers) greater than 0 '
@@ -474,7 +474,7 @@ class gaussBlurDialog(QDialog):
         items = [PosData.filename]
         try:
             items.extend(list(PosData.ol_data_dict.keys()))
-        except:
+        except Exception as e:
             pass
 
         self.keys = items
@@ -602,7 +602,7 @@ class edgeDetectionDialog(QDialog):
         try:
             PosData = self.mainWindow.data[self.mainWindow.pos_i]
             items.extend(list(PosData.ol_data_dict.keys()))
-        except:
+        except Exception as e:
             pass
 
         self.keys = items
@@ -768,7 +768,7 @@ class entropyFilterDialog(QDialog):
         try:
             PosData = self.mainWindow.data[self.mainWindow.pos_i]
             items.extend(list(PosData.ol_data_dict.keys()))
-        except:
+        except Exception as e:
             pass
 
         self.keys = items
@@ -895,7 +895,7 @@ class randomWalkerDialog(QDialog):
         try:
             PosData = self.mainWindow.data[self.mainWindow.pos_i]
             items.extend(list(PosData.ol_data_dict.keys()))
-        except:
+        except Exception as e:
             pass
 
         self.keys = items
@@ -1044,7 +1044,6 @@ class randomWalkerDialog(QDialog):
         deltaT = self.computeSegm()
 
         PosData = self.mainWindow.data[self.mainWindow.pos_i]
-        imshow_tk(self.img, additional_imgs=[PosData.lab])
 
         self.mainWindow.update_rp()
         self.mainWindow.tracking(enforce=True)
@@ -1415,7 +1414,7 @@ class CellsSlideshow_GUI(QMainWindow):
                 self.wcLabel.setText(f'(x={x:.2f}, y={y:.2f}, value={val:.2f})')
             else:
                 self.wcLabel.setText(f'')
-        except:
+        except Exception as e:
             self.wcLabel.setText(f'')
 
     def loadData(self, frames, frame_i=0):
@@ -1621,7 +1620,7 @@ class YeaZ_ParamsDialog(QDialog):
                 valid_threshVal = True
             else:
                 valid_threshVal = False
-        except:
+        except Exception as e:
             if threshTxt == 'None':
                 self.threshVal = None
                 valid_threshVal = True
@@ -1641,7 +1640,7 @@ class YeaZ_ParamsDialog(QDialog):
             try:
                 self.minDist = int(minDistTxt)
                 valid_minDist = True
-            except:
+            except Exception as e:
                 valid_minDist = False
         if not valid_minDist:
             err_msg = (
@@ -2043,7 +2042,7 @@ class QLineEditDialog(QDialog):
         # Allow only integers
         try:
             int(newChar)
-        except:
+        except Exception as e:
             text = text.replace(newChar, '')
             self.ID_QLineEdit.setText(text)
             return
@@ -2529,11 +2528,11 @@ class win_size:
                 geom = "{}x{}+{}+{}".format(displ_w,(displ_h-70),-8, 0)
                 mng.window.wm_geometry(geom) #move GUI window to second monitor
                                              #with string "widthxheight+x+y"
-        except:
+        except Exception as e:
             try:
                 mng = plt.get_current_fig_manager()
                 mng.window.state('zoomed')
-            except:
+            except Exception as e:
                 pass
 
 class QtSelectItems(QDialog):
@@ -2831,7 +2830,7 @@ class manualSeparateGui(QMainWindow):
                 self.wcLabel.setText(f'(x={x:.2f}, y={y:.2f}, ID={val:.0f})')
             else:
                 self.wcLabel.setText(f'')
-        except:
+        except Exception as e:
             self.wcLabel.setText(f'')
 
         try:
@@ -2848,7 +2847,7 @@ class manualSeparateGui(QMainWindow):
                     self.curvHoverPlotItem.setData([], [])
                     self.lineHoverPlotItem.setData([], [])
                     self.curvAnchors.setData([], [])
-        except:
+        except Exception as e:
             traceback.print_exc()
             pass
 

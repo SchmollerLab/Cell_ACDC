@@ -41,7 +41,7 @@ if os.name == 'nt':
         import ctypes
         myappid = 'schmollerlab.yeastacdc.pyqt.v1' # arbitrary string
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-    except:
+    except Exception as e:
         pass
 
 pg.setConfigOptions(imageAxisOrder='row-major')
@@ -305,7 +305,7 @@ class dataPrepWin(QMainWindow):
                 self.wcLabel.setText(f'(x={x:.2f}, y={y:.2f}, value={val:.2f})')
             else:
                 self.wcLabel.setText(f'')
-        except:
+        except Exception as e:
             self.wcLabel.setText(f'')
 
     def showInExplorer(self):
@@ -824,7 +824,7 @@ class dataPrepWin(QMainWindow):
             try:
                 self.zSlice_scrollBar.sliderMoved.disconnect()
                 self.zProjComboBox.currentTextChanged.disconnect()
-            except:
+            except Exception as e:
                 pass
             self.zSlice_scrollBar.sliderMoved.connect(self.update_z_slice)
             self.zProjComboBox.currentTextChanged.connect(self.updateZproj)
@@ -977,7 +977,7 @@ class dataPrepWin(QMainWindow):
             self.ROIshapeComboBox.setCurrentText(items[-1])
         try:
             self.ROIshapeComboBox.currentTextChanged.disconnect()
-        except:
+        except Exception as e:
             self.ROIshapeComboBox.currentTextChanged.connect(
                                                       self.setStandardRoiShape)
 
