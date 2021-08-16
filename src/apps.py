@@ -333,11 +333,14 @@ class QDialogInputsForm(QDialog):
         self.cancel = True
         self.close()
 
-class QDialogAcdcInputs(QDialog):
-    def __init__(self, SizeT, SizeZ, zyx_vox_dim, finterval,
-                 show_finterval=True, parent=None, font=None):
+class QDialogMetadata(QDialog):
+    def __init__(self, SizeT, SizeZ, TimeIncrement,
+                 PhysicalSizeZ, PhysicalSizeY, PhysicalSizeX,
+                 ask_TimeIncrement, ask_PhysicalSizes,
+                 parent=None, font=None):
         self.cancel = True
-        self.zyx_vox_dim = zyx_vox_dim
+        self.ask_TimeIncrement = ask_TimeIncrement
+        self.ask_PhysicalSizes = ask_PhysicalSizes
         super().__init__(parent)
         self.setWindowTitle('ACDC inputs')
 
@@ -353,7 +356,7 @@ class QDialogAcdcInputs(QDialog):
         self.SizeT_SpinBox.setMaximum(2147483647)
         self.SizeT_SpinBox.setValue(SizeT)
         self.SizeT_SpinBox.setAlignment(Qt.AlignCenter)
-        self.SizeT_SpinBox.valueChanged.connect(self.fintervalShowHide)
+        self.SizeT_SpinBox.valueChanged.connect(self.TimeIncrementShowHide)
         gridLayout.addWidget(self.SizeT_SpinBox, row, 1)
 
         row += 1
@@ -363,32 +366,64 @@ class QDialogAcdcInputs(QDialog):
         self.SizeZ_SpinBox.setMaximum(2147483647)
         self.SizeZ_SpinBox.setValue(SizeZ)
         self.SizeZ_SpinBox.setAlignment(Qt.AlignCenter)
+        self.SizeZ_SpinBox.valueChanged.connect(self.PhysicalSizeZShowHide)
         gridLayout.addWidget(self.SizeZ_SpinBox, row, 1)
 
         row += 1
-        self.fintervalLabel = QLabel('Frame interval (s)')
-        gridLayout.addWidget(self.fintervalLabel, row, 0)
-        self.fintervalSpinBox = QDoubleSpinBox()
-        self.fintervalSpinBox.setMaximum(2147483647.0)
-        if finterval is None:
-            finterval = 180.0
-        self.fintervalSpinBox.setValue(finterval)
-        self.fintervalSpinBox.setAlignment(Qt.AlignCenter)
-        gridLayout.addWidget(self.fintervalSpinBox, row, 1)
+        self.TimeIncrementLabel = QLabel('Time interval (s)')
+        gridLayout.addWidget(self.TimeIncrementLabel, row, 0)
+        self.TimeIncrementSpinBox = QDoubleSpinBox()
+        self.TimeIncrementSpinBox.setDecimals(6)
+        self.TimeIncrementSpinBox.setMaximum(2147483647.0)
+        self.TimeIncrementSpinBox.setValue(TimeIncrement)
+        self.TimeIncrementSpinBox.setAlignment(Qt.AlignCenter)
+        gridLayout.addWidget(self.TimeIncrementSpinBox, row, 1)
 
-        if SizeT == 1 or not show_finterval:
-            self.fintervalSpinBox.hide()
-            self.fintervalLabel.hide()
+        if SizeT == 1 or not ask_TimeIncrement:
+            self.TimeIncrementSpinBox.hide()
+            self.TimeIncrementLabel.hide()
 
-        if zyx_vox_dim is not None:
-            formLayout.addRow('Z, Y, X voxel size (um/pxl)\n'
-                              'For 2D images leave Z to 1', QLineEdit())
-            self.zyx_vox_dim_entry = formLayout.itemAt(0, 1).widget()
-            txt = ', '.join([str(v) for v in zyx_vox_dim])
-            self.zyx_vox_dim_entry.setText(txt)
-            self.zyx_vox_dim_entry.setAlignment(Qt.AlignCenter)
+        row += 1
+        self.PhysicalSizeZLabel = QLabel('Physical Size Z (um)')
+        gridLayout.addWidget(self.PhysicalSizeZLabel, row, 0)
+        self.PhysicalSizeZSpinBox = QDoubleSpinBox()
+        self.PhysicalSizeZSpinBox.setDecimals(6)
+        self.PhysicalSizeZSpinBox.setMaximum(2147483647.0)
+        self.PhysicalSizeZSpinBox.setValue(PhysicalSizeZ)
+        self.PhysicalSizeZSpinBox.setAlignment(Qt.AlignCenter)
+        gridLayout.addWidget(self.PhysicalSizeZSpinBox, row, 1)
 
-        self.adjustSize()
+        if SizeZ==1 or not ask_PhysicalSizes:
+            self.PhysicalSizeZSpinBox.hide()
+            self.PhysicalSizeZLabel.hide()
+
+        row += 1
+        self.PhysicalSizeYLabel = QLabel('Physical Size Y (um)')
+        gridLayout.addWidget(self.PhysicalSizeYLabel, row, 0)
+        self.PhysicalSizeYSpinBox = QDoubleSpinBox()
+        self.PhysicalSizeYSpinBox.setDecimals(6)
+        self.PhysicalSizeYSpinBox.setMaximum(2147483647.0)
+        self.PhysicalSizeYSpinBox.setValue(PhysicalSizeY)
+        self.PhysicalSizeYSpinBox.setAlignment(Qt.AlignCenter)
+        gridLayout.addWidget(self.PhysicalSizeYSpinBox, row, 1)
+
+        if not ask_PhysicalSizes:
+            self.PhysicalSizeYSpinBox.hide()
+            self.PhysicalSizeYLabel.hide()
+
+        row += 1
+        self.PhysicalSizeXLabel = QLabel('Physical Size X (um)')
+        gridLayout.addWidget(self.PhysicalSizeXLabel, row, 0)
+        self.PhysicalSizeXSpinBox = QDoubleSpinBox()
+        self.PhysicalSizeXSpinBox.setDecimals(6)
+        self.PhysicalSizeXSpinBox.setMaximum(2147483647.0)
+        self.PhysicalSizeXSpinBox.setValue(PhysicalSizeX)
+        self.PhysicalSizeXSpinBox.setAlignment(Qt.AlignCenter)
+        gridLayout.addWidget(self.PhysicalSizeXSpinBox, row, 1)
+
+        if not ask_PhysicalSizes:
+            self.PhysicalSizeXSpinBox.hide()
+            self.PhysicalSizeXLabel.hide()
 
         okButton = QPushButton('Ok')
         okButton.setShortcut(Qt.Key_Enter)
@@ -410,59 +445,39 @@ class QDialogAcdcInputs(QDialog):
         self.setLayout(mainLayout)
         self.setModal(True)
 
-    def fintervalShowHide(self, val):
+    def PhysicalSizeZShowHide(self, val):
+        if not self.ask_PhysicalSizes:
+            return
         if val > 1:
-            self.fintervalSpinBox.show()
-            self.fintervalLabel.show()
+            self.PhysicalSizeZSpinBox.show()
+            self.PhysicalSizeZLabel.show()
         else:
-            self.fintervalSpinBox.hide()
-            self.fintervalLabel.hide()
+            self.PhysicalSizeZSpinBox.hide()
+            self.PhysicalSizeZLabel.hide()
+
+    def TimeIncrementShowHide(self, val):
+        if not self.ask_TimeIncrement:
+            return
+        if val > 1:
+            self.TimeIncrementSpinBox.show()
+            self.TimeIncrementLabel.show()
+        else:
+            self.TimeIncrementSpinBox.hide()
+            self.TimeIncrementLabel.hide()
 
     def ok_cb(self, event):
         self.cancel = False
-        if self.zyx_vox_dim is not None:
-            try:
-                s = self.zyx_vox_dim_entry.text()
-                m = re.findall('(\d*.*\d+),\s*(\d*.*\d+),\s*(\d*.*\d+)', s)[0]
-                zyx_vox_dim = [float(v) for v in m]
-            except Exception as e:
-                err_msg = (
-                    'Z, Y, X voxel size values are not valid.\n'
-                    'Enter three numbers (decimal or integers) greater than 0 '
-                    'separated by a comma. Leave Z to 1 for 2D images.'
-                )
-                msg = QtGui.QMessageBox()
-                msg.critical(
-                    self, 'Invalid SizeT value', err_msg, msg.Ok
-                )
-                return
-        else:
-            zyx_vox_dim = None
         self.SizeT = self.SizeT_SpinBox.value()
         self.SizeZ = self.SizeZ_SpinBox.value()
-        self.finterval = self.fintervalSpinBox.value()
-        self.zyx_vox_dim = zyx_vox_dim
+        self.TimeIncrement = self.TimeIncrementSpinBox.value()
+        self.PhysicalSizeX = self.PhysicalSizeXSpinBox.value()
+        self.PhysicalSizeY = self.PhysicalSizeYSpinBox.value()
+        self.PhysicalSizeZ = self.PhysicalSizeZSpinBox.value()
         self.close()
 
     def cancel_cb(self, event):
         self.cancel = True
         self.close()
-
-    def setWidths(self, font=None):
-        if self.zyx_vox_dim is None:
-            return
-        if font is None:
-            return
-
-        # Scale to largest content
-        fm = QFontMetrics(font)
-        w = fm.width(self.zyx_vox_dim_entry.text())+10
-        if w < self.SizeT_SpinBox.geometry().width():
-            return
-
-        self.SizeT_SpinBox.setFixedWidth(w)
-        self.SizeZ_SpinBox.setFixedWidth(w)
-        self.zyx_vox_dim_entry.setFixedWidth(w)
 
 class gaussBlurDialog(QDialog):
     def __init__(self, mainWindow):

@@ -277,8 +277,10 @@ class segmWin(QMainWindow):
                 ch_names, warn = ch_name_selector.get_available_channels(filenames)
                 ch_name_selector.QtPrompt(self, ch_names)
                 if ch_name_selector.was_aborted:
-
-                    self.close()
+                    abort = self.doAbort()
+                    if abort:
+                        self.close()
+                        return
 
                 if warn:
                     user_ch_name = prompts.single_entry_messagebox(
@@ -288,8 +290,10 @@ class segmWin(QMainWindow):
                         toplevel=False, allow_abort=False
                     ).entry_txt
                     if user_ch_name.was_aborted:
-
-                        self.close()
+                        abort = self.doAbort()
+                        if abort:
+                            self.close()
+                            return
 
                 else:
                     user_ch_name = ch_name_selector.channel_name
@@ -310,14 +314,35 @@ class segmWin(QMainWindow):
 
         first_call = True
         for img_path in tqdm(user_ch_file_paths, unit=' Position', ncols=100):
-            data = load.load_frames_data(img_path, user_ch_name,
-                                         load_segm_data=False,
-                                         load_acdc_df=False,
-                                         load_zyx_voxSize=False,
-                                         loadSegmInfo=True,
-                                         first_call=first_call,
-                                         parentQWidget=self)
-
+            data = load.loadData(img_path, user_ch_name, QParent=self)
+            data.getBasenameAndChNames(prompts.select_channel_name)
+            data.buildPaths()
+            data.loadImgData()
+            data.loadOtherFiles(
+                               load_segm_data=False,
+                               load_acdc_df=False,
+                               load_shifts=False,
+                               loadSegmInfo=True,
+                               load_delROIsInfo=False,
+                               loadDataPrepBkgrVals=False,
+                               load_last_tracked_i=False,
+                               load_metadata=True
+            )
+            if first_call:
+                proceed = data.askInputMetadata(
+                                            ask_TimeIncrement=False,
+                                            ask_PhysicalSizes=False,
+                                            save=True)
+                self.SizeT = data.SizeT
+                self.SizeZ = data.SizeZ
+                if not proceed:
+                    abort = self.doAbort()
+                    if abort:
+                        self.close()
+                        return
+            else:
+                data.SizeT = self.SizeT
+                data.SizeZ = self.SizeZ
             if data.SizeZ > 1:
                 if data.segmInfo_df is None:
                     print('')
@@ -335,19 +360,27 @@ class segmWin(QMainWindow):
                     loop = QEventLoop(self)
                     dataPrepWin.loop = loop
                     loop.exec_()
-                    data = load.load_frames_data(img_path, user_ch_name,
-                                                 load_segm_data=False,
-                                                 load_acdc_df=False,
-                                                 load_zyx_voxSize=False,
-                                                 loadSegmInfo=True,
-                                                 first_call=False,
-                                                 parentQWidget=self)
+                    data = load.loadData(img_path, user_ch_name, QParent=self)
+                    data.getBasenameAndChNames(prompts.select_channel_name)
+                    data.buildPaths()
+                    data.loadImgData()
+                    data.loadOtherFiles(
+                                       load_segm_data=False,
+                                       load_acdc_df=False,
+                                       load_shifts=False,
+                                       loadSegmInfo=True,
+                                       load_delROIsInfo=False,
+                                       loadDataPrepBkgrVals=False,
+                                       load_last_tracked_i=False,
+                                       load_metadata=True
+                    )
                 else:
                     zz = data.segmInfo_df['z_slice_used_dataPrep'].to_list()
 
             if first_call and data.SizeT > 1:
                 # Ask stop frame
                 win = apps.QLineEditDialog(
+                    parent=self,
                     title='Stop frame',
                     msg='Frame number to stop segmentation?\n '
                         f'(insert number between 1 and {data.SizeT})',
@@ -355,14 +388,16 @@ class segmWin(QMainWindow):
                 win.setFont(font)
                 win.exec_()
                 if win.cancel:
-                    self.close()
+                    abort = self.doAbort()
+                    if abort:
+                        self.close()
+                        return
 
 
                 stop_i = int(win.EntryID)
 
             first_call=False
 
-            print('Preprocessing image(s)...')
             if data.SizeT > 1:
                 if data.SizeZ > 1:
                     # 3D data over time
@@ -410,7 +445,7 @@ class segmWin(QMainWindow):
 
             """Segmentation routine"""
             t0 = time.time()
-            print(f'Segmenting with {model}...')
+            print(f'Segmenting with {model} (Ctrl+C to abort)...')
             if data.SizeT > 1:
                 if model == 'yeaz':
                     pred_stack = nn.batch_prediction(img_data, is_pc=True,

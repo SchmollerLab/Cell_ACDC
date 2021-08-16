@@ -656,7 +656,7 @@ class dataPrepWin(QMainWindow):
                 self.moveTempFile(temp_tif, tif)
 
             # Save segm.npz
-            if PosData.segm_found:
+            if PosData.segmFound:
                 print('Saving: ', PosData.segm_npz_path)
                 data = PosData.segm_data
                 croppedSegm = self.crop(data)
@@ -742,16 +742,38 @@ class dataPrepWin(QMainWindow):
         data = []
         for f, file_path in enumerate(user_ch_file_paths):
             try:
-                PosData = load.load_frames_data(
-                                         file_path, user_ch_name,
-                                         parentQWidget=self,
-                                         load_segm_data=True,
-                                         load_acdc_df=True,
-                                         load_zyx_voxSize=False,
-                                         load_all_imgData=True,
-                                         load_shifts=True,
-                                         loadSegmInfo=True,
-                                         first_call=f==0)
+                PosData = load.loadData(file_path, user_ch_name, QParent=self)
+                PosData.getBasenameAndChNames(prompts.select_channel_name)
+                PosData.buildPaths()
+                PosData.loadImgData()
+                PosData.loadOtherFiles(
+                                   load_segm_data=True,
+                                   load_acdc_df=True,
+                                   load_shifts=True,
+                                   loadSegmInfo=True,
+                                   load_delROIsInfo=False,
+                                   loadDataPrepBkgrVals=False,
+                                   load_last_tracked_i=False,
+                                   load_metadata=True,
+                                   getTifPath=True
+                )
+                PosData.loadAllImgPaths()
+                print(PosData.tif_path)
+                if f==0:
+                    proceed = PosData.askInputMetadata(
+                                                ask_TimeIncrement=False,
+                                                ask_PhysicalSizes=False,
+                                                save=True)
+                    self.SizeT = PosData.SizeT
+                    self.SizeZ = PosData.SizeZ
+                    if not proceed:
+                        self.titleLabel.setText(
+                            'File --> Open or Open recent to start the process',
+                            color='w')
+                        return False
+                else:
+                    PosData.SizeT = self.SizeT
+                    PosData.SizeZ = self.SizeZ
             except AttributeError:
                 self.titleLabel.setText(
                     'File --> Open or Open recent to start the process',
@@ -915,7 +937,7 @@ class dataPrepWin(QMainWindow):
             nonTifFound = (
                 any([npz is not None for npz in PosData.npz_paths]) or
                 any([npy is not None for npy in PosData.npy_paths]) or
-                PosData.segm_found
+                PosData.segmFound
             )
             if nonTifFound and p==0:
                 imagesPath = PosData.images_path
@@ -1262,7 +1284,7 @@ class dataPrepWin(QMainWindow):
 
         # Align segmentation data accordingly
         self.segmAligned = False
-        if PosData.segm_found and aligned:
+        if PosData.segmFound and aligned:
             if PosData.loaded_shifts is None or not align:
                 return
             msg = QtGui.QMessageBox()
@@ -1350,12 +1372,12 @@ class dataPrepWin(QMainWindow):
             elif npy is not None and npz is not None:
                 os.remove(npy)
         # Convert segm.npy to segm.npz
-        if PosData.segm_npy_path is not None:
-            print('Converting: ', PosData.segm_npy_path)
+        if PosData.segm_npz_path is not None:
+            print('Converting: ', PosData.segm_npz_path)
             temp_npz = self.getTempfilePath(PosData.segm_npz_path)
             np.savez_compressed(temp_npz, PosData.segm_data)
             self.moveTempFile(temp_npz, PosData.segm_npz_path)
-            os.remove(PosData.segm_npy_path)
+            os.remove(PosData.segm_npz_path)
         print('Done.')
 
     def getTempfilePath(self, path):

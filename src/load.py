@@ -21,303 +21,260 @@ from PyQt5.QtWidgets import (
 )
 import prompts, apps
 
-class load_frames_data:
-    def __init__(self, path, user_ch_name,
-                 parentQWidget=None,
-                 load_segm_data=True,
-                 load_acdc_df=True,
-                 load_zyx_voxSize=True,
-                 load_all_imgData=False,
-                 load_shifts=False,
-                 loadSegmInfo=True,
-                 first_call=True,
-                 load_delROIsInfo=False,
-                 loadDataPrepBkgrVals=False):
-        self.path = path
-        self.fluo_data_dict = {}
-        self.images_path = os.path.dirname(path)
+class loadData:
+    def __init__(self, imgPath, user_ch_name, QParent=None):
+        self.parent = QParent
+        self.imgPath = imgPath
+        self.user_ch_name = user_ch_name
+        self.images_path = os.path.dirname(imgPath)
         self.pos_path = os.path.dirname(self.images_path)
         self.pos_foldername = os.path.basename(self.pos_path)
-        path_li = os.path.normpath(path).split(os.sep)
+        path_li = os.path.normpath(imgPath).split(os.sep)
         self.relPath = f'.../{"/".join(path_li[-3:])}'
-        self.load_zyx_voxSize = load_zyx_voxSize
-        filename_ext = os.path.basename(path)
+        filename_ext = os.path.basename(imgPath)
         self.filename, self.ext = os.path.splitext(filename_ext)
-        basename_idx = filename_ext.find(f'_{user_ch_name}')
-        self.basename = filename_ext[0:basename_idx]
-        if self.ext == '.tif' or self.ext == '.tiff':
-            tif_path, img_tif_found = self.substring_path(path,
-                                                         f'{user_ch_name}.tif',
-                                                          self.images_path)
-            if img_tif_found:
-                self.tif_path = tif_path
-                img_data = io.imread(path)
-            else:
-                err_title = f'Selected {user_ch_name} file not found!'
-                err_msg = (
-                    f'{user_ch_name} .tif file not found in the selected path\n'
-                    f'{self.images_path}!\n Make sure that the folder contains '
-                    f'a file that ends with either "{user_ch_name}"'
-                )
-                if parentQWidget is None:
-                    raise FileNotFoundError(err_title)
-                else:
-                    msg = QtGui.QMessageBox()
-                    msg.critical(parentQWidget, err_title, err_msg, msg.Ok)
-                    return None
-        elif self.ext == '.npy' or self.ext == '.npz':
-            if path.find(f'{user_ch_name}_aligned.np') == -1:
-                filename = os.path.basename(path)
-                err_title = 'Wrong file selected!'
-                err_msg = (
-                    f'You selected a file called {filename} which is not a valid '
-                    'phase contrast image file. Select the file that ends with '
-                    f'"{user_ch_name}_aligned.npz" or the .tif phase contrast file'
-                )
-                if parentQWidget is None:
-                    raise FileNotFoundError(err_title)
-                else:
-                    msg = QtGui.QMessageBox()
-                    msg.critical(parentQWidget, err_title, err_msg, msg.Ok)
-                    return None
-            tif_path, img_tif_found = self.substring_path(
-                                                  path, f'{user_ch_name}.tif',
-                                                  self.images_path)
-            if img_tif_found:
-                self.tif_path = tif_path
-                img_data = np.load(path)
-                try:
-                    img_data = img_data['arr_0']
-                except Exception as e:
-                    img_data = img_data
-            else:
-                err_title = 'Phase contrast file not found!'
-                err_msg = (
-                    'Phase contrast .tif file not found in the selected path\n'
-                    f'{self.images_path}!\n Make sure that the folder contains '
-                    'a file that ends with either \"phase_contr.tif\" or '
-                    '\"phase_contrast.tif\"'
-                )
-                if parentQWidget is None:
-                    raise FileNotFoundError(err_title)
-                else:
-                    msg = QtGui.QMessageBox()
-                    msg.critical(parentQWidget, err_title, err_msg, msg.Ok)
-                    return None
-        self.img_data = img_data
-        self.finterval = None
 
-        self.info, self.metadata_found = self.metadata(self.tif_path)
+    def getBasenameAndChNames(self, select_channel_name):
+        ls = os.listdir(self.images_path)
+        selector = select_channel_name()
+        self.chNames, _ = selector.get_available_channels(ls)
+        self.basename = selector.basename
 
-        # Search for saved metadata
-        csv_path, savedMetadataFound = self.substring_path(
-                                              path, '_metadata.csv',
-                                              self.images_path)
-        if savedMetadataFound:
-            zyx_vox_dim_found = True
-            (self.SizeT, self.SizeZ,
-            self.zyx_vox_dim,
-            self.finterval) = self.loadLastInputs(load_zyx_voxSize,
-                                                  csv_path=csv_path)
-            if self.finterval is None:
-                self.finterval = self.tifMetadata_finterval
-            if not load_zyx_voxSize:
-                self.zyx_vox_dim = None
-                zyx_vox_dim_found = False
-            elif self.zyx_vox_dim is None:
-                try:
-                    self.zyx_vox_dim = self.zyx_vox_dim()
-                    zyx_vox_dim_found = True
-                except Exception as e:
-                    self.zyx_vox_dim = [0.5, 0.01, 0.01]
-                    zyx_vox_dim_found = False
-            if first_call:
-                (self.SizeT, self.SizeZ,
-                self.zyx_vox_dim, self.finterval) = self.inputsWidget(
-                    SizeT=self.SizeT, SizeZ=self.SizeZ,
-                    zyx_vox_dim=self.zyx_vox_dim,
-                    zyx_vox_dim_found=zyx_vox_dim_found,
-                    parent=parentQWidget, finterval=self.finterval
-                )
+    def loadImgData(self):
+        if self.ext.find('tif') != -1:
+            self.img_data = skimage.io.imread(self.imgPath)
+        elif self.ext == '.npz':
+            self.img_data = np.load(self.imgPath)['arr_0']
+        elif self.ext == '.npy':
+            self.img_data = np.load(self.imgPath)
         else:
-            prompt_user = False
-            if self.metadata_found:
-                try:
-                    self.SizeT, self.SizeZ = self.data_dimensions(self.info)
-                except Exception as e:
-                    self.SizeT, self.SizeZ = len(self.img_data), 1
-                if load_zyx_voxSize:
-                    try:
-                        self.zyx_vox_dim = self.zyx_vox_dim()
-                        zyx_vox_dim_found = True
-                    except Exception as e:
-                        self.zyx_vox_dim = [0.5, 0.01, 0.01]
-                        zyx_vox_dim_found = False
-                else:
-                    self.zyx_vox_dim = None
-                    zyx_vox_dim_found = False
-                if first_call:
-                    (self.SizeT, self.SizeZ,
-                    self.zyx_vox_dim, self.finterval) = self.inputsWidget(
-                        SizeT=self.SizeT, SizeZ=self.SizeZ,
-                        zyx_vox_dim=self.zyx_vox_dim,
-                        zyx_vox_dim_found=zyx_vox_dim_found,
-                        parent=parentQWidget, finterval=self.finterval
-                    )
-                else:
-                    (self.SizeT, self.SizeZ,
-                    self.zyx_vox_dim,
-                    self.finterval) = self.loadLastInputs(load_zyx_voxSize)
-                    if not load_zyx_voxSize:
-                        self.zyx_vox_dim = None
-            else:
-                if first_call:
-                    (self.SizeT, self.SizeZ,
-                    self.zyx_vox_dim, self.finterval) = self.inputsWidget(
-                                                     SizeT=len(self.img_data),
-                                                     parent=parentQWidget)
-                else:
-                    (self.SizeT, self.SizeZ,
-                    self.zyx_vox_dim,
-                    self.finterval) = self.loadLastInputs(load_zyx_voxSize)
-                    if not load_zyx_voxSize:
-                        self.zyx_vox_dim = None
+            self.criticalExtNotValid()
 
-        self.segm_data = None
-        self.segm_npy_path = None
-        if load_segm_data:
-            segm_npz_path, segm_found = self.substring_path(
-                                           path, 'segm.npz', self.images_path)
-            if not segm_found:
-                segm_npz_path, segm_found = self.substring_path(
-                                           path, 'segm.npy', self.images_path)
-                if segm_found:
-                    self.segm_npy_path = segm_npz_path
-            self.segm_found = segm_found
-            if segm_found:
-                segm_data = np.load(segm_npz_path)
+    def loadOtherFiles(self,
+                       load_segm_data=True,
+                       load_acdc_df=False,
+                       load_shifts=False,
+                       loadSegmInfo=False,
+                       load_delROIsInfo=False,
+                       loadDataPrepBkgrVals=False,
+                       load_last_tracked_i=False,
+                       load_metadata=False,
+                       getTifPath=False):
+        self.segmFound = False if load_segm_data else None
+        self.acd_df_found = False if load_acdc_df else None
+        self.shiftsFound = False if load_shifts else None
+        self.segmInfoFound = False if loadSegmInfo else None
+        self.delROIsInfoFound = False if load_delROIsInfo else None
+        self.DataPrepBkgrValsFound = False if loadDataPrepBkgrVals else None
+        self.last_tracked_i_found = False if load_last_tracked_i else None
+        self.metadataFound = False if load_metadata else None
+        self.TifPathFound = False if getTifPath else None
+        ls = os.listdir(self.images_path)
+        for file in ls:
+            filePath = os.path.join(self.images_path, file)
+            if load_segm_data and file.find('_segm.np')!=-1:
+                self.segmFound = True
+                self.segm_npz_path = filePath
                 try:
-                    self.segm_data = segm_data['arr_0']
+                    self.segm_data = np.load(filePath)['arr_0']
                 except Exception as e:
-                    self.segm_data = segm_data
-            else:
-                Y, X = self.img_data.shape[-2:]
-                if self.SizeT > 1:
-                    self.segm_data = np.zeros((self.SizeT, Y, X), int)
-                else:
-                    self.segm_data = np.zeros((Y, X), int)
-        # Load last tracked frame
-        last_tracked_i_path, last_tracked_i_found = self.substring_path(
-                                              path, 'last_tracked_i.txt',
-                                              self.images_path)
-        if last_tracked_i_found:
-            try:
-                with open(last_tracked_i_path, 'r') as txt:
-                    self.last_tracked_i = int(txt.read())
-            except Exception as e:
-                self.last_tracked_i = None
-        else:
-            self.last_tracked_i = None
-
-        self.acdc_df = None
-        # Load segmentation metadata
-        if load_acdc_df:
-            acdc_df_path, acdc_df_found = self.substring_path(
-                                              path, '_acdc_output.csv',
-                                              self.images_path)
-            if acdc_df_found:
+                    self.segm_data = np.load(filePath)
+            elif getTifPath and file.find(f'_{self.user_ch_name}.tif')!=-1:
+                self.tif_path = filePath
+                self.TifPathFound = True
+            elif load_acdc_df and file.endswith('_acdc_output.csv'):
+                self.acd_df_found = True
                 acdc_df = pd.read_csv(
-                    acdc_df_path, index_col=['frame_i', 'Cell_ID']
+                      filePath, index_col=['frame_i', 'Cell_ID']
                 )
-
-                # Keep compatibility with older versions of acdc_df
-                if 'Is_dead_cell' in acdc_df.columns:
-                    acdc_df.rename(
-                        columns={'Is_dead_cell': 'is_cell_dead',
-                                 'centroid_x_dead': 'x_centroid',
-                                 'centroid_y_dead': 'y_centroid'},
-                        inplace=True
-                    )
-                    acdc_df['is_cell_excluded'] = False
-
-                acdc_df = self.BooleansTo0s1s(acdc_df, acdc_df_path)
+                acdc_df = self.BooleansTo0s1s(acdc_df, inplace=True)
                 acdc_df = self.intToBoolean(acdc_df)
-
                 self.acdc_df = acdc_df
-
-        if load_all_imgData:
-            tif_paths = []
-            npy_paths = []
-            npz_paths = []
-            for filename in os.listdir(self.images_path):
-                file_path = os.path.join(self.images_path, filename)
-                f, ext = os.path.splitext(filename)
-                m = re.match(f'{self.basename}_.*\.tif', filename)
-                if m is not None:
-                    tif_paths.append(file_path)
-                    # Search for npy fluo data
-                    npy = f'{f}_aligned.npy'
-                    npz = f'{f}_aligned.npz'
-                    npy_found = False
-                    npz_found = False
-                    for name in os.listdir(self.images_path):
-                        _path = os.path.join(self.images_path, name)
-                        if name == npy:
-                            npy_paths.append(_path)
-                            npy_found = True
-                        if name == npz:
-                            npz_paths.append(_path)
-                            npz_found = True
-                    if not npy_found:
-                        npy_paths.append(None)
-                    if not npz_found:
-                        npz_paths.append(None)
-            self.tif_paths = tif_paths
-            self.npy_paths = npy_paths
-            self.npz_paths = npz_paths
-        else:
-            self.tif_paths = []
-            self.npy_paths = []
-            self.npz_paths = []
-
-        self.segmInfo_df = None
-        if loadSegmInfo:
-            SegmInfo_path, SegmInfo_found = self.substring_path(
-                                              path, '_segmInfo.csv',
-                                              self.images_path)
-            if SegmInfo_found:
-                self.segmInfo_df = pd.read_csv(SegmInfo_path,
+            elif load_shifts and file.endswith('_shifts.npy'):
+                self.shiftsFound = True
+                self.loaded_shifts = np.load(filePath)
+            elif loadSegmInfo and file.endswith('_segmInfo.csv'):
+                self.segmInfoFound = True
+                self.segmInfo_df = pd.read_csv(filePath,
                                                index_col='frame_i')
-
-        self.loaded_shifts = None
-        if load_shifts:
-            for filename in os.listdir(self.images_path):
-                file_path = os.path.join(self.images_path, filename)
-                if filename.find('align_shift.npy') != -1:
-                    self.loaded_shifts = np.load(file_path)
-                    break
-
-        self.delROIsInfo_npz = None
-        if load_delROIsInfo:
-            delROIsInfo_path, delROIsInfo_found = self.substring_path(
-                                              path, 'delROIsInfo.npz',
-                                              self.images_path)
-            if delROIsInfo_found:
-                self.delROIsInfo_npz = np.load(delROIsInfo_path)
-
-        self.bkgrValues_df = None
-        if loadDataPrepBkgrVals:
-            bkgrValues_path, bkgrValues_found = self.substring_path(
-                                              path, 'dataPrep_bkgrValues.csv',
-                                              self.images_path)
-            if bkgrValues_found:
-                bkgrValues_df = pd.read_csv(bkgrValues_path)
+            elif load_delROIsInfo and file.endswith('_delROIsInfo.npz'):
+                self.delROIsInfoFound = True
+                self.delROIsInfo_npz = np.load(filePath)
+            elif loadDataPrepBkgrVals and file.endswith('_dataPrep_bkgrValues.csv'):
+                self.DataPrepBkgrValsFound = True
+                bkgrValues_df = pd.read_csv(filePath)
                 self.bkgrValues_chNames = bkgrValues_df['channel_name'].unique()
                 self.bkgrValues_df = bkgrValues_df.set_index(
                                                 ['channel_name', 'frame_i'])
+            elif load_metadata and file.endswith('_metadata.csv'):
+                self.metadataFound = True
+                self.metadata_df = pd.read_csv(filePath).set_index('Description')
+                self.extractMetadata()
+            elif load_last_tracked_i and file.endswith('_last_tracked_i.txt'):
+                self.last_tracked_i_found = True
+                try:
+                    with open(filePath, 'r') as txt:
+                        self.last_tracked_i = int(txt.read())
+                except Exception as e:
+                    self.last_tracked_i = None
+        self.setNotFoundData()
 
-        self.build_paths(self.filename, self.images_path, user_ch_name)
-        self.saveMetadata()
+    def extractMetadata(self):
+        if 'SizeT' in self.metadata_df.index:
+            self.SizeT = int(self.metadata_df.at['SizeT', 'values'])
+        else:
+            self.SizeT = 1
+
+        if 'SizeZ' in self.metadata_df.index:
+            self.SizeZ = int(self.metadata_df.at['SizeZ', 'values'])
+        else:
+            self.SizeZ = 1
+
+        if 'TimeIncrement' in self.metadata_df.index:
+            self.TimeIncrement = float(
+                self.metadata_df.at['TimeIncrement', 'values']
+            )
+        else:
+            self.TimeIncrement = 1
+
+        if 'PhysicalSizeX' in self.metadata_df.index:
+            self.PhysicalSizeX = float(
+                self.metadata_df.at['PhysicalSizeX', 'values']
+            )
+        else:
+            self.PhysicalSizeX = 1
+
+        if 'PhysicalSizeY' in self.metadata_df.index:
+            self.PhysicalSizeY = float(
+                self.metadata_df.at['PhysicalSizeY', 'values']
+            )
+        else:
+            self.PhysicalSizeY = 1
+
+        if 'PhysicalSizeZ' in self.metadata_df.index:
+            self.PhysicalSizeZ = float(
+                self.metadata_df.at['PhysicalSizeZ', 'values']
+            )
+        else:
+            self.PhysicalSizeZ = 1
+
+    def setNotFoundData(self):
+        if self.metadataFound is not None and not self.metadataFound:
+            self.SizeT, self.SizeZ = 1, 1
+            self.TimeIncrement = 1.0
+            self.PhysicalSizeX = 1.0
+            self.PhysicalSizeY = 1.0
+            self.PhysicalSizeZ = 1.0
+        if self.segmFound is not None and not self.segmFound:
+            self.segm_data = None
+        if self.acd_df_found is not None and not self.acd_df_found:
+            self.acdc_df = None
+        if self.shiftsFound is not None and not self.shiftsFound:
+            self.loaded_shifts = None
+        if self.segmInfoFound is not None and not self.segmInfoFound:
+            self.segmInfo_df = None
+        if self.delROIsInfoFound is not None and not self.delROIsInfoFound:
+            self.delROIsInfo_npz = None
+        if self.DataPrepBkgrValsFound is not None and not self.DataPrepBkgrValsFound:
+            self.bkgrValues_df = None
+        if self.last_tracked_i_found is not None and not self.last_tracked_i_found:
+            self.last_tracked_i = None
+        if self.TifPathFound is not None and not self.TifPathFound:
+            self.tif_path = None
+
+    def buildPaths(self):
+        basename = self.basename
+        base_path = f'{self.images_path}/{basename}'
+        self.slice_used_align_path = f'{base_path}slice_used_alignment.csv'
+        self.slice_used_segm_path = f'{base_path}slice_segm.csv'
+        self.align_npz_path = f'{base_path}{self.user_ch_name}_aligned.npz'
+        self.align_old_path = f'{base_path}phc_aligned.npy'
+        self.align_shifts_path = f'{base_path}align_shift.npy'
+        self.segm_npz_path = f'{base_path}segm.npz'
+        self.last_tracked_i_path = f'{base_path}last_tracked_i.txt'
+        self.acdc_output_csv_path = f'{base_path}acdc_output.csv'
+        self.segmInfo_df_csv_path = f'{base_path}segmInfo.csv'
+        self.delROIs_info_path = f'{base_path}delROIsInfo.npz'
+        self.dataPrepROIs_coords_path = f'{base_path}dataPrepROIs_coords.csv'
+        self.dataPrepBkgrValues_path = f'{base_path}dataPrep_bkgrValues.csv'
+        self.metadata_csv_path = f'{base_path}metadata.csv'
+
+    def setBlankSegmData(self, SizeT, SizeZ, SizeY, SizeX):
+        if self.segmFound is not None and not self.segmFound:
+            if SizeT > 1:
+                self.segm_data = np.zeros((SizeT, Y, X), int)
+            else:
+                self.segm_data = np.zeros((Y, X), int)
+
+    def loadAllImgPaths(self):
+        tif_paths = []
+        npy_paths = []
+        npz_paths = []
+        for filename in os.listdir(self.images_path):
+            file_path = os.path.join(self.images_path, filename)
+            f, ext = os.path.splitext(filename)
+            m = re.match(f'{self.basename}.*\.tif', filename)
+            if m is not None:
+                tif_paths.append(file_path)
+                # Search for npy fluo data
+                npy = f'{f}_aligned.npy'
+                npz = f'{f}_aligned.npz'
+                npy_found = False
+                npz_found = False
+                for name in os.listdir(self.images_path):
+                    _path = os.path.join(self.images_path, name)
+                    if name == npy:
+                        npy_paths.append(_path)
+                        npy_found = True
+                    if name == npz:
+                        npz_paths.append(_path)
+                        npz_found = True
+                if not npy_found:
+                    npy_paths.append(None)
+                if not npz_found:
+                    npz_paths.append(None)
+        self.tif_paths = tif_paths
+        self.npy_paths = npy_paths
+        self.npz_paths = npz_paths
+
+    def askInputMetadata(self,
+                         ask_TimeIncrement=False,
+                         ask_PhysicalSizes=False,
+                         save=False):
+        font = QtGui.QFont()
+        font.setPointSize(10)
+        metadataWin = apps.QDialogMetadata(
+            self.SizeT, self.SizeZ, self.TimeIncrement,
+            self.PhysicalSizeZ, self.PhysicalSizeY, self.PhysicalSizeX,
+            ask_TimeIncrement, ask_PhysicalSizes,
+            parent=self.parent, font=font)
+        metadataWin.setFont(font)
+        metadataWin.exec_()
+        if metadataWin.cancel:
+            return False
+        if save:
+            df = pd.DataFrame({
+                'SizeT': metadataWin.SizeT,
+                'SizeZ': metadataWin.SizeZ,
+                'TimeIncrement': metadataWin.TimeIncrement,
+                'PhysicalSizeZ': metadataWin.PhysicalSizeZ,
+                'PhysicalSizeY': metadataWin.PhysicalSizeY,
+                'PhysicalSizeX': metadataWin.PhysicalSizeX
+            }, index=['values']).T
+            df.index.name = 'Description'
+            df.to_csv(self.metadata_csv_path)
+        self.SizeT = metadataWin.SizeT
+        self.SizeZ = metadataWin.SizeZ
+
+        source = metadataWin if ask_TimeIncrement else self
+        self.TimeIncrement = source.TimeIncrement
+
+        source = metadataWin if ask_PhysicalSizes else self
+        self.PhysicalSizeZ = source.PhysicalSizeZ
+        self.PhysicalSizeY = source.PhysicalSizeY
+        self.PhysicalSizeX = source.PhysicalSizeX
+        return True
+
 
     @staticmethod
     def BooleansTo0s1s(acdc_df, csv_path=None, inplace=True):
@@ -348,198 +305,28 @@ class load_frames_data:
             acdc_df[col] = acdc_df[col] > 0
         return acdc_df
 
-    def saveMetadata(self):
-        indexNames = [
-            'SizeT', 'SizeZ', 'finterval',
-            'z_voxSize', 'y_voxSize', 'x_voxSize'
-        ]
-        if self.zyx_vox_dim is None:
-            z, y, x = 1.0, 1.0, 1.0
-        else:
-            z, y, x = self.zyx_vox_dim
 
-        values = [
-            self.SizeT, self.SizeZ, self.finterval,
-            round(z, 6), round(y, 6), round(x, 6),
-        ]
-
-        df = pd.DataFrame(
-            {'Description': indexNames,
-             'values': values}
-        ).set_index('Description')
-
-        if self.zyx_vox_dim is None:
-            df.drop(['z_voxSize', 'y_voxSize', 'x_voxSize'], inplace=True)
-        if self.finterval is None:
-            df.drop('finterval', inplace=True)
-
-        df.to_csv(self.metadata_csv_path)
-
-    def loadLastInputs(self, load_zyx_voxSize: bool, csv_path=None):
-        if csv_path is None:
-            src_path = os.path.dirname(os.path.realpath(__file__))
-            last_entries_csv_path = os.path.join(
-                src_path, 'temp', 'last_entries_metadata.csv'
-            )
-        else:
-            last_entries_csv_path = csv_path
-
-        if os.path.exists(last_entries_csv_path):
-            df = pd.read_csv(last_entries_csv_path, index_col='Description')
-            if 'z_voxSize' in df.index and load_zyx_voxSize:
-                z = df.at['z_voxSize', 'values']
-                y = df.at['y_voxSize', 'values']
-                x = df.at['x_voxSize', 'values']
-                zyx_vox_dim = (z, y, x)
-            else:
-                zyx_vox_dim = None
-
-            if 'finterval' in df.index:
-                finterval = float(df.at['finterval', 'values'])
-            else:
-                finterval = None
-            SizeT = int(df.at['SizeT', 'values'])
-            SizeZ = int(df.at['SizeZ', 'values'])
-        else:
-            raise FileNotFoundError(f'File not found: {last_entries_csv_path}')
-        return SizeT, SizeZ, zyx_vox_dim, finterval
-
-    def zyx_vox_dim(self):
-        info = self.info
-        try:
-            scalint_str = "Scaling|Distance|Value #"
-            len_scalin_str = len(scalint_str) + len("1 = ")
-            px_x_start_i = info.find(scalint_str + "1 = ") + len_scalin_str
-            px_x_end_i = info[px_x_start_i:].find("\n") + px_x_start_i
-            px_x = float(info[px_x_start_i:px_x_end_i])*1E6 #convert m to µm
-            px_y_start_i = info.find(scalint_str + "2 = ") + len_scalin_str
-            px_y_end_i = info[px_y_start_i:].find("\n") + px_y_start_i
-            px_y = float(info[px_y_start_i:px_y_end_i])*1E6
-            try:
-                px_z_start_i = info.find(scalint_str + "3 = ") + len_scalin_str
-                px_z_end_i = info[px_z_start_i:].find("\n") + px_z_start_i
-                px_z = float(info[px_z_start_i:px_z_end_i])*1E6
-            except Exception as e:
-                px_z = 1
-        except Exception as e:
-            x_res_match = re.findall('XResolution = ([0-9]*[.]?[0-9]+)', info)
-            px_x = 1/float(x_res_match[0])
-            y_res_match = re.findall('YResolution = ([0-9]*[.]?[0-9]+)', info)
-            px_y = 1/float(y_res_match[0])
-            try:
-                z_spac_match = re.findall('Spacing = ([0-9]*[.]?[0-9]+)', info)
-                px_z = float(z_spac_match[0])
-            except Exception as e:
-                px_z = 1
-        return [px_z, px_y, px_x]
-
-    def build_paths(self, filename, images_path, user_ch_name):
-        basename = self.basename
-        base_path = f'{images_path}/{basename}'
-        self.slice_used_align_path = f'{base_path}_slice_used_alignment.csv'
-        self.slice_used_segm_path = f'{base_path}_slice_segm.csv'
-        self.align_npz_path = f'{base_path}_{user_ch_name}_aligned.npz'
-        self.align_old_path = f'{base_path}_phc_aligned.npy'
-        self.align_shifts_path = f'{base_path}_align_shift.npy'
-        self.segm_npz_path = f'{base_path}_segm.npz'
-        self.last_tracked_i_path = f'{base_path}_last_tracked_i.txt'
-        self.acdc_output_csv_path = f'{base_path}_acdc_output.csv'
-        self.segmInfo_df_csv_path = f'{base_path}_segmInfo.csv'
-        self.delROIs_info_path = f'{base_path}_delROIsInfo.npz'
-        self.dataPrepROIs_coords_path = f'{base_path}_dataPrepROIs_coords.csv'
-        self.dataPrepBkgrValues_path = f'{base_path}_dataPrep_bkgrValues.csv'
-        self.metadata_csv_path = f'{base_path}_metadata.csv'
-
-    def substring_path(self, path, substring, images_path):
-        substring_found = False
-        for filename in os.listdir(images_path):
-            if substring == "phase_contr.tif":
-                is_match = (filename.find(substring) != -1 or
-                            filename.find("phase_contrast.tif") != -1 or
-                            filename.find("phase_contrast.tiff") != -1 or
-                            filename.find("phase_contr.tiff") != -1)
-            else:
-                is_match = filename.find(substring) != -1
-            if is_match:
-                substring_found = True
-                break
-        substring_path = f'{images_path}/{filename}'
-        return substring_path, substring_found
-
-
-    def metadata(self, tif_path):
-        with TiffFile(tif_path) as tif:
-            self.metadata = tif.imagej_metadata
-        try:
-            self.finterval = metadata['finterval']
-            self.tifMetadata_finterval = metadata['finterval']
-        except Exception as e:
-            self.finterval = None
-            self.tifMetadata_finterval = None
-        try:
-            metadata_found = True
-            info = self.metadata['Info']
-        except Exception as e:
-            metadata_found = False
-            info = []
-        return info, metadata_found
-
-    def data_dimensions(self, info):
-        SizeT = int(re.findall('SizeT = (\d+)', info)[0])
-        SizeZ = int(re.findall('SizeZ = (\d+)', info)[0])
-        return SizeT, SizeZ
-
-    def inputsWidget(self, parent=None, SizeZ=1, SizeT=1,
-                     zyx_vox_dim=None, zyx_vox_dim_found=False,
-                     finterval=None):
-        zyx_vox_found = False
-        src_path = os.path.dirname(os.path.realpath(__file__))
-        last_entries_csv_path = os.path.join(
-            src_path, 'temp', 'last_entries_metadata.csv'
+    def criticalExtNotValid(self):
+        err_title = f'File extension {self.ext} not valid.'
+        err_msg = (
+            f'The requested file {self.relPath}\n'
+            'has an invalid extension.\n\n'
+            'Valid extensions are .tif, .tiff, .npy or .npz'
         )
-        if zyx_vox_dim is not None:
-            if os.path.exists(last_entries_csv_path) and not zyx_vox_dim_found:
-                df = pd.read_csv(last_entries_csv_path, index_col='Description')
-                if 'z_voxSize' in df.index:
-                    z = df.at['z_voxSize', 'values']
-                    y = df.at['y_voxSize', 'values']
-                    x = df.at['x_voxSize', 'values']
-                    zyx_vox_dim = [z, y, x]
-                    zyx_vox_found = True
+        if self.parent is None:
+            print('-------------------------')
+            print(err_msg)
+            print('-------------------------')
+            raise FileNotFoundError(err_title)
+        else:
+            print('-------------------------')
+            print(err_msg)
+            print('-------------------------')
+            msg = QtGui.QMessageBox()
+            msg.critical(self.parent, err_title, err_msg, msg.Ok)
+            return None
 
-        font = QtGui.QFont()
-        font.setPointSize(10)
-        win = apps.QDialogAcdcInputs(SizeT, SizeZ, zyx_vox_dim, finterval,
-                                     parent=parent, font=font)
-        win.setFont(font)
-        win.show()
-        win.setWidths(font=font)
-        win.exec_()
-        self.cancel = win.cancel
 
-        if win.zyx_vox_dim is None:
-            if zyx_vox_found:
-                win.zyx_vox_dim = zyx_vox_dim
-            else:
-                win.zyx_vox_dim = [1,1,1]
-
-        if win.finterval is None:
-            win.finterval = 0.0
-
-        # Save values to load them again at the next session
-        df = pd.DataFrame(
-            {'Description': ['SizeT', 'SizeZ',
-                             'z_voxSize', 'y_voxSize', 'x_voxSize',
-                             'finterval'],
-             'values': [win.SizeT, win.SizeZ,
-                        round(win.zyx_vox_dim[0], 6),
-                        round(win.zyx_vox_dim[1], 6),
-                        round(win.zyx_vox_dim[2], 6),
-                        win.finterval]}
-        ).set_index('Description')
-        df.to_csv(last_entries_csv_path)
-
-        return win.SizeT, win.SizeZ, win.zyx_vox_dim, win.finterval
 
 class fix_pos_n_mismatch:
     '''Geometry: "WidthxHeight+Left+Top" '''

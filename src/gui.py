@@ -1510,7 +1510,7 @@ class guiWin(QMainWindow):
                                     PosData.applyFutFrames_EditID,
                                     applyTrackingB=True)
 
-            if UndoFutFrames is None or endFrame_i is None:
+            if UndoFutFrames is None:
                 return
 
             # Store undo state before modifying stuff
@@ -5159,7 +5159,7 @@ class guiWin(QMainWindow):
                 self.titleLabel.setText(err_msg, color='r')
                 skipPos = True
         else:
-            if not PosData.segm_found and PosData.SizeT > 1:
+            if not PosData.segmFound and PosData.SizeT > 1:
                 err_msg = ('Segmentation mask file ("..._segm.npz") not found. '
                            'You should to run segmentation script "segm.py" first.')
                 print(err_msg)
@@ -5186,13 +5186,46 @@ class guiWin(QMainWindow):
         numPos = len(user_ch_file_paths)
         for f, file_path in enumerate(user_ch_file_paths):
             try:
-                PosData = load.load_frames_data(file_path, user_ch_name,
-                                                parentQWidget=self,
-                                                load_delROIsInfo=True,
-                                                first_call=f==0,
-                                                loadDataPrepBkgrVals=True)
+                PosData = load.loadData(file_path, user_ch_name, QParent=self)
+                PosData.getBasenameAndChNames(prompts.select_channel_name)
+                PosData.buildPaths()
+                PosData.loadImgData()
+                PosData.loadOtherFiles(
+                                   load_segm_data=True,
+                                   load_acdc_df=True,
+                                   load_shifts=False,
+                                   loadSegmInfo=True,
+                                   load_delROIsInfo=True,
+                                   loadDataPrepBkgrVals=True,
+                                   load_last_tracked_i=True,
+                                   load_metadata=True
+                )
+                if f==0:
+                    proceed = PosData.askInputMetadata(
+                                                ask_TimeIncrement=True,
+                                                ask_PhysicalSizes=True,
+                                                save=True)
+                    self.SizeT = PosData.SizeT
+                    self.SizeZ = PosData.SizeZ
+                    self.TimeIncrement = PosData.TimeIncrement
+                    self.PhysicalSizeZ = PosData.PhysicalSizeZ
+                    self.PhysicalSizeY = PosData.PhysicalSizeY
+                    self.PhysicalSizeX = PosData.PhysicalSizeX
+                    if not proceed:
+                        return False
+                else:
+                    PosData.SizeT = self.SizeT
+                    PosData.SizeZ = self.SizeZ
+                    PosData.TimeIncrement = self.TimeIncrement
+                    PosData.PhysicalSizeZ = self.PhysicalSizeZ
+                    PosData.PhysicalSizeY = self.PhysicalSizeY
+                    PosData.PhysicalSizeX = self.PhysicalSizeX
+                SizeY, SizeX = PosData.img_data.shape[-2:]
+                PosData.setBlankSegmData(PosData.SizeT, PosData.SizeZ,
+                                         SizeY, SizeX)
                 skipPos, abort = self.checkDataIntegrity(PosData, numPos)
             except AttributeError:
+                traceback.print_exc()
                 skipPos = False
                 abort = True
 
@@ -8053,11 +8086,12 @@ class guiWin(QMainWindow):
     def addMetrics_acdc_df(self, df, rp, frame_i, lab, PosData):
         # Add metrics that can be calculated at the end of the process
         # such as cell volume, cell area etc.
-        zyx_vox_dim = PosData.zyx_vox_dim
+        PhysicalSizeY = PosData.PhysicalSizeY
+        PhysicalSizeX = PosData.PhysicalSizeX
 
         # Calc volume
-        vox_to_fl = zyx_vox_dim[1]*(zyx_vox_dim[2]**2)
-        yx_pxl_to_um2 = zyx_vox_dim[1]*zyx_vox_dim[2]
+        vox_to_fl = PhysicalSizeY[1]*(PhysicalSizeX[2]**2)
+        yx_pxl_to_um2 = PhysicalSizeY[1]*PhysicalSizeX[2]
         numCells = len(rp)
         IDs = [0]*numCells
         IDs_vol_vox = [0]*numCells
@@ -8290,7 +8324,7 @@ class guiWin(QMainWindow):
 
                     # Build acdc_df and index it in each frame_i of acdc_df_li
                     if acdc_df is not None:
-                        acdc_df = load.load_frames_data.BooleansTo0s1s(
+                        acdc_df = load.loadData.BooleansTo0s1s(
                                     acdc_df, inplace=False
                         )
                         rp = data_dict['regionprops']
@@ -8317,7 +8351,7 @@ class guiWin(QMainWindow):
                 for i, df in enumerate(acdc_df_li):
                     if df is not None:
                         df_li.append(df)
-                        keys.append((i, PosData.finterval*i))
+                        keys.append((i, PosData.TimeIncrement*i))
 
                 print('')
                 print('Saving data...')

@@ -167,7 +167,8 @@ class mainWin(QMainWindow):
             self.segmButton.setText('Segmentation is running. '
                                     'Check progress in the terminal/console')
             self.segmWin = segm.segmWin(
-                buttonToRestore=(self.segmButton, defaultColor, defaultText)
+                buttonToRestore=(self.segmButton, defaultColor, defaultText),
+                mainWin=self
             )
             self.segmWin.show()
             self.segmWin.main()
