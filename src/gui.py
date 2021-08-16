@@ -8090,8 +8090,8 @@ class guiWin(QMainWindow):
         PhysicalSizeX = PosData.PhysicalSizeX
 
         # Calc volume
-        vox_to_fl = PhysicalSizeY[1]*(PhysicalSizeX[2]**2)
-        yx_pxl_to_um2 = PhysicalSizeY[1]*PhysicalSizeX[2]
+        vox_to_fl = PhysicalSizeY*(PhysicalSizeX**2)
+        yx_pxl_to_um2 = PhysicalSizeY*PhysicalSizeX
         numCells = len(rp)
         IDs = [0]*numCells
         IDs_vol_vox = [0]*numCells
