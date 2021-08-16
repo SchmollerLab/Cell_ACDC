@@ -3,6 +3,10 @@ figures
 notebooks/testing.ipynb
 notebooks/.ipynb_checkpoints
 .idea/
+src/test.py
+src/java
+src/bioformats
+src/javabridge
 env/*
 data/*
 tests/*

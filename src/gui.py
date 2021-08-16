@@ -295,7 +295,7 @@ class guiWin(QMainWindow):
         SegmMenu.addAction(self.autoSegmAction)
 
         # Help menu
-        helpMenu = menuBar.addMenu(QIcon(":help-content.svg"), "&Help")
+        helpMenu = menuBar.addMenu(QIcon(":help-content.svg"), "Help")
         helpMenu.addAction(self.helpContentAction)
         helpMenu.addAction(self.aboutAction)
 
@@ -635,7 +635,7 @@ class guiWin(QMainWindow):
         # self.pasteAction.setShortcut(QKeySequence.Paste)
         # self.cutAction.setShortcut(QKeySequence.Cut)
         # Help actions
-        self.helpContentAction = QAction("&Help Content...", self)
+        self.helpContentAction = QAction("Help Content...", self)
         self.aboutAction = QAction("&About...", self)
 
 
@@ -1510,7 +1510,7 @@ class guiWin(QMainWindow):
                                     PosData.applyFutFrames_EditID,
                                     applyTrackingB=True)
 
-            if UndoFutFrames is None:
+            if UndoFutFrames is None or endFrame_i is None:
                 return
 
             # Store undo state before modifying stuff
@@ -2903,6 +2903,7 @@ class guiWin(QMainWindow):
         pass
 
     def getStatusKnownHistoryBud(self, ID):
+        PosData = self.data[self.pos_i]
         cca_df_ID = None
         for i in range(PosData.frame_i-1, -1, -1):
             cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
@@ -2943,7 +2944,7 @@ class guiWin(QMainWindow):
         When the users saves instead we update the entire staus of the cell
         with unknown history with the function "updateIsHistoryKnown()"
         """
-
+        PosData = self.data[self.pos_i]
         is_history_known = PosData.cca_df.at[ID, 'is_history_known']
         relID = PosData.cca_df.at[ID, 'relative_ID']
         if relID in PosData.cca_df.index:
@@ -3192,6 +3193,7 @@ class guiWin(QMainWindow):
                 self.store_cca_df(frame_i=i, cca_df=cca_df_i)
 
     def checkMothEligibility(self, budID, new_mothID):
+        PosData = self.data[self.pos_i]
         """Check the new mother is in G1 for the entire life of the bud"""
 
         eligible = True
@@ -3219,13 +3221,13 @@ class guiWin(QMainWindow):
                     f'frame {i+1} and  assign the bud of cell {new_mothID} '
                     'to another cell.\n'
                     f'A second solution is to assign bud ID {budID} to cell '
-                    f'{new_mothID} anyway by clicking "Yes". However to ensure correctness of '
+                    f'{new_mothID} anyway by clicking "Apply".'
+                    '\n\nHowever to ensure correctness of '
                     'future assignments the system will delete any cell cycle '
                     f'information from frame {i+1} to the end. Therefore, you '
                     'will have to visit those frames again.\n\n'
                     'The deletion of cell cycle information CANNOT BE UNDONE! '
-                    'However, if you do not save no cell cycle information '
-                    'saved on the hard drive will be removed.\n\n'
+                    'Saved data is not changed of course.\n\n'
                     'Apply assignment or cancel process?')
                 msg = QtGui.QMessageBox()
                 enforce_assignment = msg.warning(
@@ -3265,6 +3267,7 @@ class guiWin(QMainWindow):
                 return eligible
 
     def getStatus_RelID_BeforeEmergence(self, budID, curr_mothID):
+        PosData = self.data[self.pos_i]
         # Get status of the current mother before it had budID assigned to it
         for i in range(PosData.frame_i-1, -1, -1):
             # Get cca_df for ith frame from allData_li
@@ -4397,6 +4400,9 @@ class guiWin(QMainWindow):
                     # traceback.print_exc()
                     pass
         elif ev.key() == Qt.Key_B or ev.key() == Qt.Key_X:
+            mode = self.modeComboBox.currentText()
+            if mode == 'Cell cycle analysis' or mode == 'Viewer':
+                return
             if ev.key() == Qt.Key_B:
                 self.Button = self.brushButton
             else:
@@ -5821,12 +5827,14 @@ class guiWin(QMainWindow):
             msg.setDefaultButton(msg.Ok)
             msg.setText(
                 f'Cell cycle analysis for frame {PosData.frame_i+1} failed!\n\n'
-                'This could be because the next frame has '
-                'segmentation or tracking errors.\n\n'
-                'Switch to "Segmentation and Tracking" mode and '
-                'check/correct next frame,\n'
-                'before attempting cell cycle analysis again.\n\n'
-                'See details below about the error occured.')
+                'This can have multiple reasons:\n\n'
+                '1. Segmentation or tracking errors --> Switch to \n'
+                '   "Segmentation and Tracking" mode and check/correct next frame,\n'
+                '   before attempting cell cycle analysis again.\n\n'
+                '2. Edited a frame in "Segmentation and Tracking" mode\n'
+                '   that already had cell cyce annotations -->\n'
+                '   click on "Reinitialize cell cycle annotations" button,\n'
+                '   and try again.')
             msg.setDetailedText(traceback.format_exc())
             msg.exec_()
         return notEnoughG1Cells, proceed
@@ -6457,7 +6465,11 @@ class guiWin(QMainWindow):
             if not is_history_known:
                 txt = f'{txt}?'
 
-        LabelItemID.setText(txt, color=color, bold=bold, size=self.fontSize)
+        try:
+            LabelItemID.setText(txt, color=color, bold=bold, size=self.fontSize)
+        except UnboundLocalError:
+            pass
+
 
         # Center LabelItem at centroid
         y, x = obj.centroid
@@ -7390,7 +7402,8 @@ class guiWin(QMainWindow):
                         ContCurve.setData(cont[:,0], cont[:,1],
                                           pen=self.lostIDs_cpen)
                     LabelItemID = self.ax1_LabelItemsIDs[ID-1]
-                    LabelItemID.setText('?', color=self.lostIDs_qMcolor)
+                    txt = f'{obj.label}?'
+                    LabelItemID.setText(txt, color=self.lostIDs_qMcolor)
                     # Center LabelItem at centroid
                     y, x = obj.centroid
                     w, h = LabelItemID.rect().right(), LabelItemID.rect().bottom()
@@ -8157,7 +8170,7 @@ class guiWin(QMainWindow):
             chName = key[len(PosData.basename):]
             if chName.find('_aligned') != -1:
                 idx = chName.find('_aligned')
-                chName = f'gui{chName[:idx]}'
+            chName = f'gui{chName[:idx]}'
             loadedChNames.append(chName)
 
         PosData.loadedChNames = loadedChNames

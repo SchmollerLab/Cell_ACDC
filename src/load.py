@@ -229,8 +229,6 @@ class load_frames_data:
                 acdc_df = pd.read_csv(
                     acdc_df_path, index_col=['frame_i', 'Cell_ID']
                 )
-                acdc_df = self.BooleansTo0s1s(acdc_df, acdc_df_path)
-                acdc_df = self.intToBoolean(acdc_df)
 
                 # Keep compatibility with older versions of acdc_df
                 if 'Is_dead_cell' in acdc_df.columns:
@@ -241,6 +239,9 @@ class load_frames_data:
                         inplace=True
                     )
                     acdc_df['is_cell_excluded'] = False
+
+                acdc_df = self.BooleansTo0s1s(acdc_df, acdc_df_path)
+                acdc_df = self.intToBoolean(acdc_df)
 
                 self.acdc_df = acdc_df
 

@@ -175,6 +175,9 @@ class concatWin(QMainWindow):
         txt = (
             f'Done.\n\nFile saved to:\n\n {csv_path}'
         )
+        print('--------------')
+        print(txt)
+        print('==============')
         msg = QtGui.QMessageBox()
         msg.information(
             self, 'Process completed.', txt, msg.Ok
