@@ -1605,6 +1605,9 @@ class guiWin(QMainWindow):
                 self.app.setOverrideCursor(Qt.WaitCursor)
                 # Store data for current frame
                 self.store_data()
+                if endFrame_i is None:
+                    self.app.restoreOverrideCursor()
+                    return
                 for i in range(PosData.frame_i+1, endFrame_i):
                     PosData.frame_i = i
                     self.get_data()
@@ -4190,16 +4193,32 @@ class guiWin(QMainWindow):
         size = self.brushSizeSpinbox.value()*2
 
         ID = PosData.lab[ydata, xdata]
-        if ID != self.ax1BrushHoverID:
+        if ID == 0:
+            prev_lab = PosData.allData_li[PosData.frame_i-1]['labels']
+            if prev_lab is None:
+                return
+            ID = prev_lab[ydata, xdata]
+
+        # Restore ID previously hovered
+        if ID != self.ax1BrushHoverID and not self.isMouseDragImg1:
             if self.ax1BrushHoverID in PosData.IDs:
                 obj_idx = PosData.IDs.index(self.ax1BrushHoverID)
                 obj = PosData.rp[obj_idx]
                 self.drawID_and_Contour(obj)
+            elif self.ax1BrushHoverID in PosData.lost_IDs:
+                prev_rp = PosData.allData_li[PosData.frame_i-1]['regionprops']
+                obj_idx = [obj.label for obj in prev_rp].index(self.ax1BrushHoverID)
+                obj = prev_rp[obj_idx]
+                self.highlightLost_obj(obj)
 
+        # Hide items hover ID
         if ID != 0:
             self.ax1_ContoursCurves[ID-1].setData([], [])
             self.ax1_LabelItemsIDs[ID-1].setText('')
             self.ax1BrushHoverID = ID
+        else:
+            prev_lab = PosData.allData_li[PosData.frame_i-1]['labels']
+            rp = PosData.allData_li[PosData.frame_i-1]['regionprops']
 
 
 
@@ -7461,20 +7480,32 @@ class guiWin(QMainWindow):
             # Get the rp from previous frame
             rp = PosData.allData_li[PosData.frame_i-1]['regionprops']
             for obj in rp:
-                ID = obj.label
-                if ID in PosData.lost_IDs:
-                    ContCurve = self.ax1_ContoursCurves[ID-1]
-                    if IDs_and_cont or onlyCont or ccaInfo_and_cont:
-                        cont = self.getObjContours(obj)
-                        ContCurve.setData(cont[:,0], cont[:,1],
-                                          pen=self.lostIDs_cpen)
-                    LabelItemID = self.ax1_LabelItemsIDs[ID-1]
-                    txt = f'{obj.label}?'
-                    LabelItemID.setText(txt, color=self.lostIDs_qMcolor)
-                    # Center LabelItem at centroid
-                    y, x = obj.centroid
-                    w, h = LabelItemID.rect().right(), LabelItemID.rect().bottom()
-                    LabelItemID.setPos(x-w/2, y-h/2)
+                self.highlightLost_obj(obj)
+
+    def highlightLost_obj(self, obj):
+        PosData = self.data[self.pos_i]
+        how = self.drawIDsContComboBox.currentText()
+        IDs_and_cont = how == 'Draw IDs and contours'
+        onlyIDs = how == 'Draw only IDs'
+        nothing = how == 'Draw nothing'
+        onlyCont = how == 'Draw only contours'
+        only_ccaInfo = how == 'Draw only cell cycle info'
+        ccaInfo_and_cont = how == 'Draw cell cycle info and contours'
+        onlyMothBudLines = how == 'Draw only mother-bud lines'
+        ID = obj.label
+        if ID in PosData.lost_IDs:
+            ContCurve = self.ax1_ContoursCurves[ID-1]
+            if IDs_and_cont or onlyCont or ccaInfo_and_cont:
+                cont = self.getObjContours(obj)
+                ContCurve.setData(cont[:,0], cont[:,1],
+                                  pen=self.lostIDs_cpen)
+            LabelItemID = self.ax1_LabelItemsIDs[ID-1]
+            txt = f'{obj.label}?'
+            LabelItemID.setText(txt, color=self.lostIDs_qMcolor)
+            # Center LabelItem at centroid
+            y, x = obj.centroid
+            w, h = LabelItemID.rect().right(), LabelItemID.rect().bottom()
+            LabelItemID.setPos(x-w/2, y-h/2)
 
     def checkIDs_LostNew(self):
         PosData = self.data[self.pos_i]
@@ -7488,6 +7519,9 @@ class guiWin(QMainWindow):
             return
 
         prev_rp = PosData.allData_li[PosData.frame_i-1]['regionprops']
+        if prev_rp is None:
+            return
+
         prev_IDs = [obj.label for obj in prev_rp]
         curr_IDs = [obj.label for obj in PosData.rp]
         lost_IDs = [ID for ID in prev_IDs if ID not in curr_IDs]
@@ -8265,6 +8299,7 @@ class guiWin(QMainWindow):
         return bkgrValues_df.at[idx, 'bkgr_median']
 
     def saveFile(self):
+        self.store_data()
         for p, PosData in enumerate(self.data):
             current_frame_i = PosData.frame_i
             frame_i = 0
