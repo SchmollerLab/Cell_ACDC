@@ -3732,7 +3732,11 @@ class guiWin(QMainWindow):
                     w, h = ax2_LI.rect().right(), ax2_LI.rect().bottom()
                     ax2_LI.setPos(xc-w/2, yc-h/2)
         except Exception as e:
+            print('')
+            print('====================================')
             traceback.print_exc()
+            print('====================================')
+            print('')
             pass
 
     def enableZstackWidgets(self, enabled):
@@ -4418,6 +4422,8 @@ class guiWin(QMainWindow):
                     cca_df = None
                     print(cca_df)
                 print('========================')
+                if PosData.cca_df is None:
+                    return
                 df = PosData.cca_df.reset_index()
                 if self.ccaTableWin is None:
                     self.ccaTableWin = apps.pdDataFrameWidget(df, parent=self)
@@ -5276,7 +5282,11 @@ class guiWin(QMainWindow):
                                          SizeY, SizeX)
                 skipPos, abort = self.checkDataIntegrity(PosData, numPos)
             except AttributeError:
+                print('')
+                print('====================================')
                 traceback.print_exc()
+                print('====================================')
+                print('')
                 skipPos = False
                 abort = True
 
@@ -5905,7 +5915,11 @@ class guiWin(QMainWindow):
                 raise ValueError('Cell cycle analysis table contains NaNs')
             self.checkMultiBudMOth()
         except Exception as e:
+            print('')
+            print('====================================')
             traceback.print_exc()
+            print('====================================')
+            print('')
             self.highlightNewIDs_ccaFailed()
             msg = QtGui.QMessageBox(self)
             msg.setIcon(msg.Critical)
@@ -6183,7 +6197,11 @@ class guiWin(QMainWindow):
                     try:
                         binnedIDs_df = df[df['is_cell_excluded']]
                     except Exception as e:
+                        print('')
+                        print('====================================')
                         traceback.print_exc()
+                        print('====================================')
+                        print('')
                         raise
                     binnedIDs = set(binnedIDs_df.index).union(PosData.binnedIDs)
                     PosData.binnedIDs = binnedIDs
@@ -6473,6 +6491,14 @@ class guiWin(QMainWindow):
         else:
             PosData.cca_df = cca_df
 
+    def unstore_cca_df(self):
+        PosData = self.data[self.pos_i]
+        acdc_df = PosData.allData_li[i]['acdc_df']
+        for col in self.cca_df_colnames:
+            if col not in acdc_df.columns:
+                continue
+            acdc_df.drop(col, axis=1, inplace=True)
+
     def store_cca_df(self, pos_i=None, frame_i=None, cca_df=None):
         pos_i = self.pos_i if pos_i is None else pos_i
         PosData = self.data[pos_i]
@@ -6483,16 +6509,16 @@ class guiWin(QMainWindow):
                 self.ccaTableWin.updateTable(PosData.cca_df)
 
         if cca_df is not None:
-            segm_df = PosData.allData_li[i]['acdc_df']
-            if segm_df is None:
+            acdc_df = PosData.allData_li[i]['acdc_df']
+            if acdc_df is None:
                 self.store_data()
-                segm_df = PosData.allData_li[i]['acdc_df']
-            if 'cell_cycle_stage' in segm_df.columns:
+                acdc_df = PosData.allData_li[i]['acdc_df']
+            if 'cell_cycle_stage' in acdc_df.columns:
                 # Cell cycle info already present --> overwrite with new
-                df = segm_df
+                df = acdc_df
                 df[self.cca_df_colnames] = cca_df
             else:
-                df = segm_df.join(cca_df, how='left')
+                df = acdc_df.join(cca_df, how='left')
             PosData.allData_li[i]['acdc_df'] = df.copy()
             # print(PosData.allData_li[PosData.frame_i]['acdc_df'])
 
@@ -7262,7 +7288,10 @@ class guiWin(QMainWindow):
         msg.addButton(QPushButton('Do not remove annotations'), msg.NoRole)
         msg.exec_()
         if msg.clickedButton() == yes:
+            PosData.frame_i -= 1
+            self.get_data()
             self.remove_future_cca_df(PosData.frame_i)
+            self.next_frame()
 
     def addExistingDelROIs(self):
         PosData = self.data[self.pos_i]
@@ -8036,7 +8065,11 @@ class guiWin(QMainWindow):
             self.openAction.setEnabled(True)
             self.editTextIDsColorAction.setDisabled(False)
         except Exception as e:
+            print('')
+            print('====================================')
             traceback.print_exc()
+            print('====================================')
+            print('')
             err_msg = 'Error occured. See terminal/console for details'
             self.titleLabel.setText(
                 'Error occured. See terminal/console for details',
@@ -8298,44 +8331,97 @@ class guiWin(QMainWindow):
         idx = (bkgrValues_chNames[j], frame_i)
         return bkgrValues_df.at[idx, 'bkgr_median']
 
+    def askSaveLastVisitedCcaMode(self, p, PosData):
+        current_frame_i = PosData.frame_i
+        frame_i = 0
+        last_tracked_i = 0
+        for frame_i, data_dict in enumerate(PosData.allData_li):
+            # Build segm_npy
+            acdc_df = data_dict['acdc_df']
+            if 'cell_cycle_stage' not in acdc_df.columns:
+                frame_i -= 1
+                break
+        if frame_i>0:
+            # Ask to save last visited frame or not
+            txt = (
+                f'Do you also want to save last visited frame {frame_i+1}?'
+            )
+            msg = QtGui.QMessageBox()
+            save_current = msg.question(
+                self, 'Save current frame?', txt,
+                msg.Yes | msg.No | msg.Cancel
+            )
+            if PosData.frame_i != frame_i:
+                # Get data from last frame if we are not on it
+                PosData.frame_i = frame_i
+                self.get_data()
+            if save_current == msg.Yes:
+                last_tracked_i = frame_i
+                self.store_cca_df()
+            elif save_current == msg.No:
+                last_tracked_i = frame_i-1
+                self.unstore_cca_df()
+                current_frame_i = last_tracked_i
+                PosData.frame_i = last_tracked_i
+                self.get_data()
+                self.updateALLimg()
+            elif save_current == msg.Cancel:
+                return None
+        return last_tracked_i
+
+    def askSaveLastVisitedSegmMode(self, p, PosData):
+        current_frame_i = PosData.frame_i
+        frame_i = 0
+        last_tracked_i = 0
+        for frame_i, data_dict in enumerate(PosData.allData_li):
+            # Build segm_npy
+            lab = data_dict['labels']
+            if lab is None:
+                frame_i -= 1
+                break
+        if frame_i>0:
+            # Ask to save last visited frame or not
+            txt = (
+                f'Do you also want to save last visited frame {frame_i+1}?'
+            )
+            msg = QtGui.QMessageBox()
+            save_current = msg.question(
+                self, 'Save current frame?', txt,
+                msg.Yes | msg.No | msg.Cancel
+            )
+            if PosData.frame_i != frame_i:
+                # Go to that last frame if we are not on it
+                PosData.frame_i = frame_i
+                self.get_data()
+            if save_current == msg.Yes:
+                last_tracked_i = frame_i
+                self.store_data()
+            elif save_current == msg.No:
+                last_tracked_i = frame_i-1
+                self.unstore_data()
+                current_frame_i = last_tracked_i
+                PosData.frame_i = last_tracked_i
+                self.get_data()
+                self.updateALLimg()
+            elif save_current == msg.Cancel:
+                return None
+        return last_tracked_i
+
     def saveFile(self):
         self.store_data()
         for p, PosData in enumerate(self.data):
             current_frame_i = PosData.frame_i
-            frame_i = 0
-            last_tracked_i = 0
-            for frame_i, data_dict in enumerate(PosData.allData_li):
-                # Build segm_npy
-                lab = data_dict['labels']
-                if lab is None:
-                    frame_i -= 1
-                    break
-            if frame_i>0:
-                # Ask to save last visited frame or not
-                txt = (
-                f'Do you also want to save last visited frame {frame_i+1}?'
-                )
-                msg = QtGui.QMessageBox()
-                save_current = msg.question(
-                    self, 'Save current frame?', txt,
-                    msg.Yes | msg.No | msg.Cancel
-                )
-                if PosData.frame_i != frame_i:
-                    # Go to that last frame if we are not on it
-                    PosData.frame_i = frame_i
-                    self.get_data()
-                if save_current == msg.Yes:
-                    last_tracked_i = frame_i
-                    self.store_data()
-                elif save_current == msg.No:
-                    last_tracked_i = frame_i-1
-                    self.unstore_data()
-                    current_frame_i = last_tracked_i
-                    PosData.frame_i = last_tracked_i
-                    self.get_data()
-                    self.updateALLimg()
-                elif save_current == msg.Cancel:
+            mode = self.modeComboBox.currentText()
+            if mode == 'Segmentation and Tracking' or mode == 'Viewer':
+                last_tracked_i = self.askSaveLastVisitedSegmMode(p, PosData)
+                if last_tracked_i is None:
                     return
+            elif mode == 'Cell cycle analysis':
+                last_tracked_i = self.askSaveLastVisitedCcaMode(p, PosData)
+                if last_tracked_i is None:
+                    return
+            elif self.isSnapshot:
+                last_tracked_i = 0
 
             self.app.setOverrideCursor(Qt.WaitCursor)
             if self.isSnapshot:
@@ -8370,6 +8456,7 @@ class guiWin(QMainWindow):
                         else:
                             segm_npy = lab
                     else:
+                        frame_i -= 1
                         break
 
                     acdc_df = data_dict['acdc_df']
@@ -8403,8 +8490,11 @@ class guiWin(QMainWindow):
                             )
                             acdc_df_li[frame_i] = acdc_df
                         except Exception as e:
-                            print('-----------------')
+                            print('')
+                            print('====================================')
                             traceback.print_exc()
+                            print('====================================')
+                            print('')
                             print('Error on calculating metrics see above...')
                             print('-----------------')
                             pass
@@ -8427,7 +8517,11 @@ class guiWin(QMainWindow):
                 try:
                     np.savez_compressed(delROIs_info_path, **npz_delROIs_info)
                 except Exception as e:
+                    print('')
+                    print('====================================')
                     traceback.print_exc()
+                    print('====================================')
+                    print('')
 
                 if PosData.segmInfo_df is not None:
                     try:
@@ -8469,7 +8563,11 @@ class guiWin(QMainWindow):
                     all_frames_metadata_df.to_csv(acdc_output_csv_path)
                     PosData.acdc_df = all_frames_metadata_df
                 except Exception as e:
+                    print('')
+                    print('====================================')
                     traceback.print_exc()
+                    print('====================================')
+                    print('')
                     pass
 
                 # Save segmentation file
@@ -8477,7 +8575,7 @@ class guiWin(QMainWindow):
                 PosData.segm_data = segm_npy
 
                 with open(last_tracked_i_path, 'w+') as txt:
-                    txt.write(str(last_tracked_i))
+                    txt.write(str(frame_i))
 
                 PosData.last_tracked_i = last_tracked_i
 
@@ -8486,13 +8584,21 @@ class guiWin(QMainWindow):
                 self.get_data()
 
                 print('--------------')
-                if self.isSnapshot:
+                if mode == 'Segmentation and Tracking' or mode == 'Viewer':
+                    print(f'Saved data until frame number {frame_i+1}')
+                elif mode == 'Cell cycle analysis':
+                    print(
+                        'Saved cell cycle annotations until frame '
+                        f'number {last_tracked_i+1}')
+                elif self.isSnapshot:
                     print(f'Saved all {len(self.data)} Positions!')
-                else:
-                    print(f'Saved data until frame number {last_tracked_i+1}')
                 print('--------------')
             except Exception as e:
+                print('')
+                print('====================================')
                 traceback.print_exc()
+                print('====================================')
+                print('')
             finally:
                 self.app.restoreOverrideCursor()
 
