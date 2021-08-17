@@ -6493,7 +6493,7 @@ class guiWin(QMainWindow):
 
     def unstore_cca_df(self):
         PosData = self.data[self.pos_i]
-        acdc_df = PosData.allData_li[i]['acdc_df']
+        acdc_df = PosData.allData_li[PosData.frame_i]['acdc_df']
         for col in self.cca_df_colnames:
             if col not in acdc_df.columns:
                 continue
