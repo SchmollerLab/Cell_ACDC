@@ -1126,7 +1126,7 @@ class FutureFramesAction_QDialog(QDialog):
         if applyTrackingB:
             infoTxt = (
                 f'{infoTxt}'
-                '4. Repeat ONLY tracking for all future frames'
+                '4. Repeat ONLY tracking for all future frames (RECOMMENDED)'
             )
 
         infotxtLabel = QLabel(infoTxt)
@@ -1977,6 +1977,8 @@ class ccaTableWidget(QDialog):
                                 'corrected_assignment': corrected_assignment},
                                 index=self.IDs)
             cca_df.index.name = 'Cell_ID'
+            d = dict.fromkeys(cca_df.select_dtypes(np.int64).columns, np.int32)
+            cca_df = cca_df.astype(d)
             return cca_df
 
     def ok_cb(self, checked):

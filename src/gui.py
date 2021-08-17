@@ -6347,6 +6347,7 @@ class guiWin(QMainWindow):
                 PosData.frame_i = last_tracked_i
                 self.get_data()
                 self.updateALLimg()
+                self.updateScrollbars()
             else:
                 return
 
@@ -6404,6 +6405,7 @@ class guiWin(QMainWindow):
                 self.titleLabel.setText(msg, color='w')
                 self.get_data()
                 self.updateALLimg()
+                self.updateScrollbars()
             else:
                 msg = 'Cell cycle analysis aborted.'
                 print(msg)
@@ -6428,6 +6430,7 @@ class guiWin(QMainWindow):
                 PosData.frame_i = last_cca_frame_i
                 self.get_data()
                 self.updateALLimg()
+                self.updateScrollbars()
             elif goTo_last_annotated_frame_i == msg.Cancel:
                 msg = 'Cell cycle analysis aborted.'
                 print(msg)
@@ -7288,6 +7291,7 @@ class guiWin(QMainWindow):
         msg.addButton(QPushButton('Do not remove annotations'), msg.NoRole)
         msg.exec_()
         if msg.clickedButton() == yes:
+            self.store_data()
             PosData.frame_i -= 1
             self.get_data()
             self.remove_future_cca_df(PosData.frame_i)
@@ -8305,7 +8309,7 @@ class guiWin(QMainWindow):
             chName = key[len(PosData.basename):]
             if chName.find('_aligned') != -1:
                 idx = chName.find('_aligned')
-            chName = f'gui{chName[:idx]}'
+            chName = f'gui_{chName[:idx]}'
             loadedChNames.append(chName)
 
         PosData.loadedChNames = loadedChNames
@@ -8338,6 +8342,9 @@ class guiWin(QMainWindow):
         for frame_i, data_dict in enumerate(PosData.allData_li):
             # Build segm_npy
             acdc_df = data_dict['acdc_df']
+            if acdc_df is None:
+                frame_i -= 1
+                break
             if 'cell_cycle_stage' not in acdc_df.columns:
                 frame_i -= 1
                 break
