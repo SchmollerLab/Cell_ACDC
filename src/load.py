@@ -161,7 +161,7 @@ class loadData:
 
     def setNotFoundData(self):
         if self.metadataFound is not None and not self.metadataFound:
-            self.SizeT, self.SizeZ = 1, 1
+            self.SizeT, self.SizeZ = len(self.img_data), 1
             self.TimeIncrement = 1.0
             self.PhysicalSizeX = 1.0
             self.PhysicalSizeY = 1.0

@@ -152,8 +152,8 @@ class mainWin(QMainWindow):
             )
             self.dataPrepWin.show()
         else:
-            toFront = self.windowState() & ~Qt.WindowMinimized | Qt.WindowActive
-            self.dataPrepWin.setWindowState(toFront)
+            self.dataPrepWin.setWindowState(Qt.WindowNoState)
+            self.dataPrepWin.setWindowState(Qt.WindowActive)
             self.dataPrepWin.raise_()
 
     def launchSegm(self, checked=False):
@@ -173,8 +173,8 @@ class mainWin(QMainWindow):
             self.segmWin.show()
             self.segmWin.main()
         else:
-            toFront = self.windowState() & ~Qt.WindowMinimized | Qt.WindowActive
-            self.segmWin.setWindowState(toFront)
+            self.segmWin.setWindowState(Qt.WindowNoState)
+            self.segmWin.setWindowState(Qt.WindowActive)
             self.segmWin.raise_()
 
 
@@ -194,8 +194,8 @@ class mainWin(QMainWindow):
             )
             self.guiWin.showAndSetSize()
         else:
-            toFront = self.windowState() & ~Qt.WindowMinimized | Qt.WindowActive
-            self.guiWin.setWindowState(toFront)
+            self.guiWin.setWindowState(Qt.WindowNoState)
+            self.guiWin.setWindowState(Qt.WindowActive)
             self.guiWin.raise_()
 
     def launchConcatUtil(self, checked=False):
@@ -210,8 +210,8 @@ class mainWin(QMainWindow):
             self.concatWin.show()
             self.concatWin.main()
         else:
-            toFront = self.windowState() & ~Qt.WindowMinimized | Qt.WindowActive
-            self.concatWin.setWindowState(toFront)
+            self.concatWin.setWindowState(Qt.WindowNoState)
+            self.concatWin.setWindowState(Qt.WindowActive)
             self.concatWin.raise_()
 
 

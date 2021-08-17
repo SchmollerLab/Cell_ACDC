@@ -290,6 +290,9 @@ class concatWin(QMainWindow):
     def closeEvent(self, event):
         if self.actionToEnable is not None:
             self.actionToEnable.setDisabled(False)
+            self.mainWin.setWindowState(Qt.WindowNoState)
+            self.mainWin.setWindowState(Qt.WindowActive)
+            self.mainWin.raise_()
 
 
 if __name__ == "__main__":

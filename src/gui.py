@@ -1872,6 +1872,7 @@ class guiWin(QMainWindow):
             self.xHoverImg, self.yHoverImg = event.pos()
         else:
             self.xHoverImg, self.yHoverImg = None, None
+
         if not event.isExit():
             x, y = event.pos()
             xdata, ydata = int(x), int(y)
@@ -1914,6 +1915,7 @@ class guiWin(QMainWindow):
         if not event.isExit() and drawCircle:
             x, y = event.pos()
             self.updateBrushCursor(x, y)
+            self.hideItemsHoverBrush(x, y)
         else:
             self.setHoverToolSymbolData(
                 [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
@@ -4173,6 +4175,36 @@ class guiWin(QMainWindow):
         self.ax2_EraserX.setSize(self.brushSizeSpinbox.value())
         self.ax1_EraserX.setSize(self.brushSizeSpinbox.value())
 
+    def hideItemsHoverBrush(self, x, y):
+        if x is None:
+            return
+
+        xdata, ydata = int(x), int(y)
+        _img = self.img2.image
+        Y, X = _img.shape
+
+        if not (xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y):
+            return
+
+        PosData = self.data[self.pos_i]
+        size = self.brushSizeSpinbox.value()*2
+
+        ID = PosData.lab[ydata, xdata]
+        if ID != self.ax1BrushHoverID:
+            if self.ax1BrushHoverID in PosData.IDs:
+                obj_idx = PosData.IDs.index(self.ax1BrushHoverID)
+                obj = PosData.rp[obj_idx]
+                self.drawID_and_Contour(obj)
+
+        if ID != 0:
+            self.ax1_ContoursCurves[ID-1].setData([], [])
+            self.ax1_LabelItemsIDs[ID-1].setText('')
+            self.ax1BrushHoverID = ID
+
+
+
+
+
     def updateBrushCursor(self, x, y):
         if x is None:
             return
@@ -5556,6 +5588,8 @@ class guiWin(QMainWindow):
 
         self.UserEnforced_DisabledTracking = False
         self.UserEnforced_Tracking = False
+
+        self.ax1BrushHoverID = 0
 
         # Plots items
         self.is_first_call_YeaZ = True
@@ -8511,8 +8545,8 @@ class guiWin(QMainWindow):
             button.setText(text)
             button.setStyleSheet(
                 f'QPushButton {{background-color: {color};}}')
-            toFront = self.windowState() & ~Qt.WindowMinimized | Qt.WindowActive
-            self.mainWin.setWindowState(toFront)
+            self.mainWin.setWindowState(Qt.WindowNoState)
+            self.mainWin.setWindowState(Qt.WindowActive)
             self.mainWin.raise_()
 
     def saveWindowGeometry(self):

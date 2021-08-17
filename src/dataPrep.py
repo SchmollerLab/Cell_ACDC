@@ -1672,8 +1672,8 @@ class dataPrepWin(QMainWindow):
             button.setText(text)
             button.setStyleSheet(
                 f'QPushButton {{background-color: {color};}}')
-            toFront = self.windowState() & ~Qt.WindowMinimized | Qt.WindowActive
-            self.mainWin.setWindowState(toFront)
+            self.mainWin.setWindowState(Qt.WindowNoState)
+            self.mainWin.setWindowState(Qt.WindowActive)
             self.mainWin.raise_()
 
         if self.loop is not None:
