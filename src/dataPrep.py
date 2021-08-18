@@ -269,9 +269,9 @@ class dataPrepWin(QMainWindow):
         _t_label.setFont(_font)
 
 
-        self.zSlice_scrollBar = QScrollBar(Qt.Horizontal)
-        self.zSlice_scrollBar.setFixedHeight(20)
-        self.zSlice_scrollBar.setDisabled(True)
+        self.zSliceScrollBar = QScrollBar(Qt.Horizontal)
+        self.zSliceScrollBar.setFixedHeight(20)
+        self.zSliceScrollBar.setDisabled(True)
         _z_label = QLabel('z-slice  ')
         _z_label.setFont(_font)
         self.z_label = _z_label
@@ -287,7 +287,7 @@ class dataPrepWin(QMainWindow):
         self.img_Widglayout.addWidget(self.frame_i_scrollBar_img, 0, 1, 1, 30)
 
         self.img_Widglayout.addWidget(_z_label, 1, 0, alignment=Qt.AlignCenter)
-        self.img_Widglayout.addWidget(self.zSlice_scrollBar, 1, 1, 1, 30)
+        self.img_Widglayout.addWidget(self.zSliceScrollBar, 1, 1, 1, 30)
 
         self.img_Widglayout.addWidget(self.zProjComboBox, 1, 31, 1, 1)
 
@@ -428,8 +428,8 @@ class dataPrepWin(QMainWindow):
             self.zProjComboBox.currentTextChanged.connect(self.updateZproj)
 
             if zProjHow == 'single z-slice':
-                self.zSlice_scrollBar.setSliderPosition(z)
-                self.z_label.setText(f'z-slice  {z}/{PosData.SizeZ}')
+                self.zSliceScrollBar.setSliderPosition(z)
+                self.z_label.setText(f'z-slice  {z+1}/{PosData.SizeZ}')
                 img = img[z]
             elif zProjHow == 'max z-projection':
                 img = img.max(axis=0)
@@ -445,6 +445,7 @@ class dataPrepWin(QMainWindow):
         img = self.getImage(PosData, PosData.img_data, self.frame_i)
         img = img/img.max()
         self.img.setImage(img)
+        self.zSliceScrollBar.setMaximum(PosData.SizeZ-1)
 
     def init_attr(self):
         self.bkgrROIs = []
@@ -758,7 +759,6 @@ class dataPrepWin(QMainWindow):
                                    getTifPath=True
                 )
                 PosData.loadAllImgPaths()
-                print(PosData.tif_path)
                 if f==0:
                     proceed = PosData.askInputMetadata(
                                                 ask_TimeIncrement=False,
@@ -772,8 +772,12 @@ class dataPrepWin(QMainWindow):
                             color='w')
                         return False
                 else:
-                    PosData.SizeT = self.SizeT
-                    PosData.SizeZ = self.SizeZ
+                    if self.SizeZ > 1:
+                        SizeZ = PosData.img_data.shape[-3]
+                        PosData.SizeZ = SizeZ
+                    else:
+                        PosData.SizeZ = 1
+                    PosData.saveMetadata()
             except AttributeError:
                 self.titleLabel.setText(
                     'File --> Open or Open recent to start the process',
@@ -840,15 +844,15 @@ class dataPrepWin(QMainWindow):
 
         PosData = self.data[0]
         if PosData.SizeZ > 1:
-            self.zSlice_scrollBar.setDisabled(False)
+            self.zSliceScrollBar.setDisabled(False)
             self.zProjComboBox.setDisabled(False)
-            self.zSlice_scrollBar.setMaximum(PosData.SizeZ-1)
+            self.zSliceScrollBar.setMaximum(PosData.SizeZ-1)
             try:
-                self.zSlice_scrollBar.sliderMoved.disconnect()
+                self.zSliceScrollBar.sliderMoved.disconnect()
                 self.zProjComboBox.currentTextChanged.disconnect()
             except Exception as e:
                 pass
-            self.zSlice_scrollBar.sliderMoved.connect(self.update_z_slice)
+            self.zSliceScrollBar.sliderMoved.connect(self.update_z_slice)
             self.zProjComboBox.currentTextChanged.connect(self.updateZproj)
             if PosData.SizeT > 1:
                 self.interpAction.setEnabled(True)
@@ -869,11 +873,11 @@ class dataPrepWin(QMainWindow):
         for frame_i in range(self.frame_i, PosData.SizeT):
             PosData.segmInfo_df.at[frame_i, 'which_z_proj'] = how
         if how == 'single z-slice':
-            self.zSlice_scrollBar.setDisabled(False)
+            self.zSliceScrollBar.setDisabled(False)
             self.z_label.setStyleSheet('color: black')
-            self.update_z_slice(self.zSlice_scrollBar.sliderPosition())
+            self.update_z_slice(self.zSliceScrollBar.sliderPosition())
         else:
-            self.zSlice_scrollBar.setDisabled(True)
+            self.zSliceScrollBar.setDisabled(True)
             self.z_label.setStyleSheet('color: gray')
             self.update_img()
 

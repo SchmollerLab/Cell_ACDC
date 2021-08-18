@@ -342,7 +342,12 @@ class segmWin(QMainWindow):
                         return
             else:
                 data.SizeT = self.SizeT
-                data.SizeZ = self.SizeZ
+                if self.SizeZ > 1:
+                    SizeZ = data.img_data.shape[-3]
+                    data.SizeZ = SizeZ
+                else:
+                    data.SizeZ = 1
+                data.saveMetadata()
             if data.SizeZ > 1:
                 if data.segmInfo_df is None:
                     print('')

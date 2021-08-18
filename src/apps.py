@@ -337,10 +337,11 @@ class QDialogMetadata(QDialog):
     def __init__(self, SizeT, SizeZ, TimeIncrement,
                  PhysicalSizeZ, PhysicalSizeY, PhysicalSizeX,
                  ask_TimeIncrement, ask_PhysicalSizes,
-                 parent=None, font=None):
+                 parent=None, font=None, imgDataShape=None):
         self.cancel = True
         self.ask_TimeIncrement = ask_TimeIncrement
         self.ask_PhysicalSizes = ask_PhysicalSizes
+        self.imgDataShape = imgDataShape
         super().__init__(parent)
         self.setWindowTitle('ACDC inputs')
 
@@ -366,7 +367,7 @@ class QDialogMetadata(QDialog):
         self.SizeZ_SpinBox.setMaximum(2147483647)
         self.SizeZ_SpinBox.setValue(SizeZ)
         self.SizeZ_SpinBox.setAlignment(Qt.AlignCenter)
-        self.SizeZ_SpinBox.valueChanged.connect(self.PhysicalSizeZShowHide)
+        self.SizeZ_SpinBox.valueChanged.connect(self.SizeZvalueChanged)
         gridLayout.addWidget(self.SizeZ_SpinBox, row, 1)
 
         row += 1
@@ -425,6 +426,8 @@ class QDialogMetadata(QDialog):
             self.PhysicalSizeXSpinBox.hide()
             self.PhysicalSizeXLabel.hide()
 
+        self.SizeZvalueChanged(SizeZ)
+
         okButton = QPushButton('Ok')
         okButton.setShortcut(Qt.Key_Enter)
 
@@ -445,7 +448,13 @@ class QDialogMetadata(QDialog):
         self.setLayout(mainLayout)
         self.setModal(True)
 
-    def PhysicalSizeZShowHide(self, val):
+    def SizeZvalueChanged(self, val):
+        if val > 1 and self.imgDataShape is not None:
+            maxSizeZ = self.imgDataShape[-3]
+            self.SizeZ_SpinBox.setMaximum(maxSizeZ)
+        else:
+            self.SizeZ_SpinBox.setMaximum(2147483647)
+
         if not self.ask_PhysicalSizes:
             return
         if val > 1:

@@ -248,22 +248,12 @@ class loadData:
             self.SizeT, self.SizeZ, self.TimeIncrement,
             self.PhysicalSizeZ, self.PhysicalSizeY, self.PhysicalSizeX,
             ask_TimeIncrement, ask_PhysicalSizes,
-            parent=self.parent, font=font)
+            parent=self.parent, font=font, imgDataShape=self.img_data.shape)
         metadataWin.setFont(font)
         metadataWin.exec_()
         if metadataWin.cancel:
             return False
-        if save:
-            df = pd.DataFrame({
-                'SizeT': metadataWin.SizeT,
-                'SizeZ': metadataWin.SizeZ,
-                'TimeIncrement': metadataWin.TimeIncrement,
-                'PhysicalSizeZ': metadataWin.PhysicalSizeZ,
-                'PhysicalSizeY': metadataWin.PhysicalSizeY,
-                'PhysicalSizeX': metadataWin.PhysicalSizeX
-            }, index=['values']).T
-            df.index.name = 'Description'
-            df.to_csv(self.metadata_csv_path)
+
         self.SizeT = metadataWin.SizeT
         self.SizeZ = metadataWin.SizeZ
 
@@ -274,7 +264,22 @@ class loadData:
         self.PhysicalSizeZ = source.PhysicalSizeZ
         self.PhysicalSizeY = source.PhysicalSizeY
         self.PhysicalSizeX = source.PhysicalSizeX
+        if save:
+            self.saveMetadata()
         return True
+
+    def saveMetadata(self):
+        df = pd.DataFrame({
+            'SizeT': self.SizeT,
+            'SizeZ': self.SizeZ,
+            'TimeIncrement': self.TimeIncrement,
+            'PhysicalSizeZ': self.PhysicalSizeZ,
+            'PhysicalSizeY': self.PhysicalSizeY,
+            'PhysicalSizeX': self.PhysicalSizeX
+        }, index=['values']).T
+        df.index.name = 'Description'
+        df.to_csv(self.metadata_csv_path)
+
 
 
     @staticmethod

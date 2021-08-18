@@ -5069,6 +5069,7 @@ class guiWin(QMainWindow):
             self.zSliceScrollBar.setSliderPosition(z)
             how = PosData.segmInfo_df.at[PosData.frame_i, 'which_z_proj_gui']
             self.zProjComboBox.setCurrentText(how)
+            self.zSliceScrollBar.setMaximum(PosData.SizeZ-1)
 
     def updateItemsMousePos(self):
         if self.brushButton.isChecked():
@@ -5272,11 +5273,16 @@ class guiWin(QMainWindow):
                         return False
                 else:
                     PosData.SizeT = self.SizeT
-                    PosData.SizeZ = self.SizeZ
+                    if self.SizeZ > 1:
+                        SizeZ = PosData.img_data.shape[-3]
+                        PosData.SizeZ = SizeZ
+                    else:
+                        PosData.SizeZ = 1
                     PosData.TimeIncrement = self.TimeIncrement
                     PosData.PhysicalSizeZ = self.PhysicalSizeZ
                     PosData.PhysicalSizeY = self.PhysicalSizeY
                     PosData.PhysicalSizeX = self.PhysicalSizeX
+                    PosData.saveMetadata()
                 SizeY, SizeX = PosData.img_data.shape[-2:]
                 PosData.setBlankSegmData(PosData.SizeT, PosData.SizeZ,
                                          SizeY, SizeX)
@@ -5424,6 +5430,7 @@ class guiWin(QMainWindow):
         self.t_label.show()
         self.framesScrollBar.show()
         self.framesScrollBar.setDisabled(False)
+        self.zSliceScrollBar.setMaximum(self.data[0].SizeZ-1)
         for PosData in self.data:
             if PosData.segmInfo_df is None and PosData.SizeZ > 1:
                 mid_slice = int(PosData.SizeZ/2)
@@ -5443,7 +5450,6 @@ class guiWin(QMainWindow):
                                     )
                 PosData.segmInfo_df['resegmented_in_gui'] = False
                 self.enableZstackWidgets(True)
-                self.zSliceScrollBar.setMaximum(PosData.SizeZ-1)
                 try:
                     self.zSliceScrollBar.sliderMoved.disconnect()
                     self.zProjComboBox.currentTextChanged.disconnect()
@@ -7219,7 +7225,7 @@ class guiWin(QMainWindow):
             img = PosData.img_data[frame_i]
             if zProjHow == 'single z-slice':
                 self.zSliceScrollBar.setSliderPosition(z)
-                self.z_label.setText(f'z-slice  {z:02}/{PosData.SizeZ}')
+                self.z_label.setText(f'z-slice  {z+1:02}/{PosData.SizeZ}')
                 cells_img = img[z].copy()
             elif zProjHow == 'max z-projection':
                 cells_img = img.max(axis=0).copy()
@@ -8309,7 +8315,7 @@ class guiWin(QMainWindow):
             chName = key[len(PosData.basename):]
             if chName.find('_aligned') != -1:
                 idx = chName.find('_aligned')
-            chName = f'gui_{chName[:idx]}'
+                chName = f'gui_{chName[:idx]}'
             loadedChNames.append(chName)
 
         PosData.loadedChNames = loadedChNames
