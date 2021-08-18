@@ -4928,6 +4928,7 @@ class guiWin(QMainWindow):
         thresh = self.nn.threshold(pred, th=thresh_val)
         lab = self.segment.segment(thresh, pred,
                                    min_distance=min_distance).astype(int)
+        t1 = time.time()
         self.is_first_call_YeaZ = False
         if PosData.segmInfo_df is not None and PosData.SizeZ>1:
             PosData.segmInfo_df.at[PosData.frame_i, 'resegmented_in_gui'] = True
@@ -4938,7 +4939,6 @@ class guiWin(QMainWindow):
         self.warnEditingWithCca_df('Repeat segmentation with YeaZ')
 
         txt = f'Done. Segmentation computed in {t1-t0:.3f} s'
-        t1 = time.time()
         print('-----------------')
         print(txt)
         print('=================')
