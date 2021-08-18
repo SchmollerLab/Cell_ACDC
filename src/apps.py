@@ -385,7 +385,7 @@ class QDialogMetadata(QDialog):
             self.TimeIncrementLabel.hide()
 
         row += 1
-        self.PhysicalSizeZLabel = QLabel('Physical Size Z (um)')
+        self.PhysicalSizeZLabel = QLabel('Physical Size Z (um/pixel)')
         gridLayout.addWidget(self.PhysicalSizeZLabel, row, 0)
         self.PhysicalSizeZSpinBox = QDoubleSpinBox()
         self.PhysicalSizeZSpinBox.setDecimals(6)
@@ -399,7 +399,7 @@ class QDialogMetadata(QDialog):
             self.PhysicalSizeZLabel.hide()
 
         row += 1
-        self.PhysicalSizeYLabel = QLabel('Physical Size Y (um)')
+        self.PhysicalSizeYLabel = QLabel('Physical Size Y (um/pixel)')
         gridLayout.addWidget(self.PhysicalSizeYLabel, row, 0)
         self.PhysicalSizeYSpinBox = QDoubleSpinBox()
         self.PhysicalSizeYSpinBox.setDecimals(6)
@@ -413,7 +413,7 @@ class QDialogMetadata(QDialog):
             self.PhysicalSizeYLabel.hide()
 
         row += 1
-        self.PhysicalSizeXLabel = QLabel('Physical Size X (um)')
+        self.PhysicalSizeXLabel = QLabel('Physical Size X (um/pixel)')
         gridLayout.addWidget(self.PhysicalSizeXLabel, row, 0)
         self.PhysicalSizeXSpinBox = QDoubleSpinBox()
         self.PhysicalSizeXSpinBox.setDecimals(6)

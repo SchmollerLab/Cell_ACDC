@@ -337,7 +337,9 @@ class guiWin(QMainWindow):
         self.overlayButton.setIcon(QIcon(":overlay.svg"))
         self.overlayButton.setCheckable(True)
         self.overlayButton.setToolTip('Overlay fluorescent image\n'
-        'NOTE: Button has a green background if you successfully loaded fluorescent data')
+        'NOTE: Button has a green background if you successfully loaded fluorescent data\n\n'
+        'If you need to overlay a different channel load (or load it again)\n'
+        'from "File --> Load fluorescent images" menu.')
         navigateToolBar.addWidget(self.overlayButton)
         # self.checkableButtons.append(self.overlayButton)
         # self.checkableQButtonsGroup.addButton(self.overlayButton)
@@ -5355,7 +5357,17 @@ class guiWin(QMainWindow):
         self.gui_createGraphicsItems()
         self.init_segmInfo_df()
         self.initPosAttr(max_ID=PosData.segm_data.max())
+        for PosData in self.data:
+            print('')
+            print('====================')
+            print(f'Before on {PosData.relPath}')
+            print(PosData.ol_data_dict.keys())
         self.initFluoData()
+        for PosData in self.data:
+            print('')
+            print('====================')
+            print(f'After on {PosData.relPath}')
+            print(PosData.ol_data_dict.keys())
         self.framesScrollBar.setSliderPosition(PosData.frame_i+1)
         if PosData.SizeZ > 1:
             how = PosData.segmInfo_df.at[PosData.frame_i, 'which_z_proj_gui']
@@ -6937,33 +6949,37 @@ class guiWin(QMainWindow):
                 prompt = False
             # Check if there is already loaded data
             elif PosData.fluo_data_dict and PosData.ol_data is None:
-                items = PosData.fluo_data_dict.keys()
-                if len(items)>1:
+                ch_names = list(PosData.loadedFluoChannels)
+                if len(ch_names)>1:
                     selectFluo = apps.QDialogListbox(
-                        'Select fluorescent image(s) to overlay',
-                        'Select fluorescent image(s) to overlay\n'
-                        'You can select one or more images',
-                        items, cancelText='Browse', parent=self
+                        'Select channel',
+                        'Select channel names to load:\n',
+                        ch_names, multiSelection=True, parent=self
                     )
                     selectFluo.exec_()
-                    keys = selectFluo.selectedItemsText
-                    if selectFluo.cancel or not keys:
+                    ol_channels = selectFluo.selectedItemsText
+                    if selectFluo.cancel or not ol_channels:
                         prompt = True
                     else:
                         prompt = False
                 else:
                     prompt = False
-                    keys = items
+                    ol_channels = ch_names
 
+                ol_data = {}
+                ol_colors = {}
                 for PosData in self.data:
-                    ol_data = {key:PosData.ol_data_dict[key]
-                               for i, key in enumerate(keys)}
-                    ol_colors = {key:self.overlayRGBs[i]
-                                 for i, key in enumerate(keys)}
-                    for key in keys:
-                        fluoChName = key.split(PosData.basename)[-1][1:]
-                        self.addFluoChNameContextMenuAction(fluoChName)
-                    PosData.manualContrastKey = key
+                    for i, ol_ch in enumerate(ol_channels):
+                        ol_path, filename = self.getPathFromChName(
+                                                            ol_ch, PosData)
+                        if ol_path is None:
+                            self.criticalFluoChannelNotFound(ol_ch, PosData)
+                            self.app.restoreOverrideCursor()
+                            return
+                        ol_data[filename] = PosData.ol_data_dict[filename]
+                        ol_colors[filename] = self.overlayRGBs[i]
+                        self.addFluoChNameContextMenuAction(ol_ch)
+                    PosData.manualContrastKey = filename
                     PosData.ol_data = ol_data
                     PosData.ol_colors = ol_colors
 
@@ -7007,8 +7023,7 @@ class guiWin(QMainWindow):
                         PosData.ol_colors = ol_colors
                         if i!=0:
                             continue
-                        fluoChName = filename.split(PosData.basename)[-1][1:]
-                        self.addFluoChNameContextMenuAction(fluoChName)
+                        self.addFluoChNameContextMenuAction(ol_ch)
                     PosData.manualContrastKey = filename
                     PosData.ol_data = ol_data
 
@@ -8152,6 +8167,7 @@ class guiWin(QMainWindow):
 
         self.app.setOverrideCursor(Qt.WaitCursor)
         for PosData in self.data:
+            PosData.ol_data = None
             for fluo_ch in fluo_channels:
                 fluo_path, filename = self.getPathFromChName(fluo_ch, PosData)
                 if fluo_path is None:
@@ -8162,6 +8178,7 @@ class guiWin(QMainWindow):
                 if fluo_data is None:
                     self.app.restoreOverrideCursor()
                     return
+                PosData.loadedFluoChannels.add(fluo_ch)
                 PosData.fluo_data_dict[filename] = fluo_data
                 PosData.ol_data_dict[filename] = ol_data_2D
         self.app.restoreOverrideCursor()

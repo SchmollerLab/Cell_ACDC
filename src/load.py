@@ -24,6 +24,7 @@ import prompts, apps
 class loadData:
     def __init__(self, imgPath, user_ch_name, QParent=None):
         self.fluo_data_dict = {}
+        self.loadedFluoChannels = set()
         self.parent = QParent
         self.imgPath = imgPath
         self.user_ch_name = user_ch_name
