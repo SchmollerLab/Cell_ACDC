@@ -3086,9 +3086,12 @@ class guiWin(QMainWindow):
         rp_ID = PosData.rp[obj_idx]
         rp_relID = PosData.rp[relObj_idx]
 
+        self.store_cca_df()
+
         # Update cell cycle info LabelItems
         self.drawID_and_Contour(rp_ID, drawContours=False)
         self.drawID_and_Contour(rp_relID, drawContours=False)
+
 
         if self.ccaTableWin is not None:
             self.ccaTableWin.updateTable(PosData.cca_df)
@@ -3331,6 +3334,16 @@ class guiWin(QMainWindow):
             or (self.isSnapshot and budID != new_mothID)
         )
         if singleFrameCca:
+            newMothCcs = PosData.cca_df.at[new_mothID, 'cell_cycle_stage']
+            if not newMothCcs == 'G1':
+                err_msg = (
+                    'You are assigning the bud to a cell that is not in G1!'
+                )
+                msg = QtGui.QMessageBox()
+                msg.critical(
+                   self, 'New mother not in G1!', err_msg, msg.Ok
+                )
+                return
             # Store cca_df for undo action
             undoId = uuid.uuid4()
             self.storeUndoRedoCca(0, PosData.cca_df, undoId)
@@ -3339,6 +3352,9 @@ class guiWin(QMainWindow):
                 PosData.cca_df.at[currentRelID, 'relative_ID'] = -1
                 PosData.cca_df.at[currentRelID, 'generation_num'] = 2
                 PosData.cca_df.at[currentRelID, 'cell_cycle_stage'] = 'G1'
+                currentRelObjIdx = PosData.IDs.index(currentRelID)
+                currentRelObj = PosData.rp[currentRelObjIdx]
+                self.drawID_and_Contour(currentRelObj, drawContours=False)
             PosData.cca_df.at[budID, 'relationship'] = 'bud'
             PosData.cca_df.at[budID, 'generation_num'] = 0
             PosData.cca_df.at[budID, 'relative_ID'] = new_mothID
