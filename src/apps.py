@@ -36,13 +36,14 @@ import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui
 from PyQt5 import QtCore
 from PyQt5.QtGui import QIcon, QFontMetrics
-from PyQt5.QtCore import Qt, QSize
+from PyQt5.QtCore import Qt, QSize, QEvent
 from PyQt5.QtWidgets import (
     QAction, QApplication, QMainWindow, QMenu, QLabel, QToolBar,
     QScrollBar, QWidget, QVBoxLayout, QLineEdit, QPushButton,
     QHBoxLayout, QDialog, QFormLayout, QListWidget, QAbstractItemView,
     QButtonGroup, QCheckBox, QSizePolicy, QComboBox, QSlider, QGridLayout,
-    QSpinBox, QToolButton, QTableView, QTextBrowser, QDoubleSpinBox
+    QSpinBox, QToolButton, QTableView, QTextBrowser, QDoubleSpinBox,
+    QScrollArea, QFrame
 )
 
 import myutils
@@ -1681,7 +1682,7 @@ class YeaZ_ParamsDialog(QDialog):
         self.cancel = True
         self.close()
 
-class ccaTableWidget(QDialog):
+class editCcaTableWidget(QDialog):
     def __init__(self, cca_df, parent=None):
         self.inputCca_df = cca_df
         self.cancel = True
@@ -1694,6 +1695,8 @@ class ccaTableWidget(QDialog):
         mainLayout = QVBoxLayout()
         tableLayout = QGridLayout()
         buttonsLayout = QHBoxLayout()
+        self.scrollArea = QScrollArea()
+        self.viewBox = QWidget()
 
         # Header labels
         col = 0
@@ -1740,6 +1743,7 @@ class ccaTableWidget(QDialog):
         tableLayout.addWidget(historyKnownLabel, 0, col, alignment=AC)
 
         tableLayout.setHorizontalSpacing(20)
+        self.tableLayout = tableLayout
 
         # Add buttons
         okButton = QPushButton('Ok')
@@ -1749,8 +1753,16 @@ class ccaTableWidget(QDialog):
         buttonsLayout.addWidget(okButton)
         buttonsLayout.addWidget(cancelButton)
 
+        # Scroll area properties
+        self.scrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        self.scrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.scrollArea.setFrameStyle(QFrame.NoFrame)
+        self.scrollArea.setWidgetResizable(True)
+
         # Add layouts
-        mainLayout.addLayout(tableLayout)
+        self.viewBox.setLayout(tableLayout)
+        self.scrollArea.setWidget(self.viewBox)
+        mainLayout.addWidget(self.scrollArea)
         mainLayout.addLayout(buttonsLayout)
 
         # Populate table Layout
@@ -1777,6 +1789,8 @@ class ccaTableWidget(QDialog):
 
             col += 1
             ccsComboBox = QComboBox()
+            ccsComboBox.setFocusPolicy(Qt.StrongFocus)
+            ccsComboBox.installEventFilter(self)
             ccsComboBox.addItems(['G1', 'S/G2/M'])
             ccsValue = cca_df.at[ID, 'cell_cycle_stage']
             if ccsValue == 'S':
@@ -1784,9 +1798,12 @@ class ccaTableWidget(QDialog):
             ccsComboBox.setCurrentText(ccsValue)
             tableLayout.addWidget(ccsComboBox, row+1, col, alignment=AC)
             self.ccsComboBoxes.append(ccsComboBox)
+            ccsComboBox.activated.connect(self.clearComboboxFocus)
 
             col += 1
             genNumSpinBox = QSpinBox()
+            genNumSpinBox.setFocusPolicy(Qt.StrongFocus)
+            genNumSpinBox.installEventFilter(self)
             genNumSpinBox.setValue(2)
             genNumSpinBox.setAlignment(Qt.AlignCenter)
             genNumSpinBox.setFixedWidth(int(genNumColWidth*2/3))
@@ -1796,24 +1813,32 @@ class ccaTableWidget(QDialog):
 
             col += 1
             relIDComboBox = QComboBox()
+            relIDComboBox.setFocusPolicy(Qt.StrongFocus)
+            relIDComboBox.installEventFilter(self)
             relIDComboBox.addItems(relIDsOptions)
             relIDComboBox.setCurrentText(str(cca_df.at[ID, 'relative_ID']))
             tableLayout.addWidget(relIDComboBox, row+1, col)
             self.relIDComboBoxes.append(relIDComboBox)
             relIDComboBox.currentIndexChanged.connect(self.setRelID)
+            relIDComboBox.activated.connect(self.clearComboboxFocus)
 
 
             col += 1
             relationshipComboBox = QComboBox()
+            relationshipComboBox.setFocusPolicy(Qt.StrongFocus)
+            relationshipComboBox.installEventFilter(self)
             relationshipComboBox.addItems(['mother', 'bud'])
             relationshipComboBox.setCurrentText(cca_df.at[ID, 'relationship'])
             tableLayout.addWidget(relationshipComboBox, row+1, col)
             self.relationshipComboBoxes.append(relationshipComboBox)
             relationshipComboBox.currentIndexChanged.connect(
                                                 self.relationshipChanged_cb)
+            relationshipComboBox.activated.connect(self.clearComboboxFocus)
 
             col += 1
             emergFrameSpinBox = QSpinBox()
+            emergFrameSpinBox.setFocusPolicy(Qt.StrongFocus)
+            emergFrameSpinBox.installEventFilter(self)
             emergFrameSpinBox.setMinimum(-1)
             emergFrameSpinBox.setValue(-1)
             emergFrameSpinBox.setAlignment(Qt.AlignCenter)
@@ -1829,6 +1854,8 @@ class ccaTableWidget(QDialog):
 
             col += 1
             divisFrameSpinBox = QSpinBox()
+            divisFrameSpinBox.setFocusPolicy(Qt.StrongFocus)
+            divisFrameSpinBox.installEventFilter(self)
             divisFrameSpinBox.setMinimum(-1)
             divisFrameSpinBox.setValue(-1)
             divisFrameSpinBox.setAlignment(Qt.AlignCenter)
@@ -2001,6 +2028,23 @@ class ccaTableWidget(QDialog):
     def cancel_cb(self, checked):
         self.cancel = True
         self.close()
+
+    def showAndSetWidth(self):
+        self.show()
+        w = self.viewBox.minimumSizeHint().width() + 5*self.tableLayout.columnCount()
+        winGeometry = self.geometry()
+        l, t, h = winGeometry.left(), winGeometry.top(), winGeometry.height()
+        self.setGeometry(l, t, w, h)
+
+    def eventFilter(self, object, event):
+        # Disable wheel scroll on widgets to allow scroll only on scrollarea
+        if event.type() == QEvent.Wheel:
+            event.ignore()
+            return True
+        return False
+
+    def clearComboboxFocus(self):
+        self.sender().clearFocus()
 
 class QLineEditDialog(QDialog):
     def __init__(self, title='Entry messagebox', msg='Entry value',
@@ -3256,39 +3300,39 @@ if __name__ == '__main__':
     # win = QtSelectItems(title, ['mNeon', 'mKate'],
     #                     informativeText, CbLabel=CbLabel, parent=None)
     # win = edgeDetectionDialog(None)
-    win = QDialogEntriesWidget(entriesLabels=['Input 1'])
-    # IDs = list(range(1,11))
-    # cc_stage = ['G1' for ID in IDs]
-    # num_cycles = [-1]*len(IDs)
-    # relationship = ['mother' for ID in IDs]
-    # related_to = [-1]*len(IDs)
-    # is_history_known = [False]*len(IDs)
-    # corrected_assignment = [False]*len(IDs)
-    # cca_df = pd.DataFrame({
-    #                    'cell_cycle_stage': cc_stage,
-    #                    'generation_num': num_cycles,
-    #                    'relative_ID': related_to,
-    #                    'relationship': relationship,
-    #                    'emerg_frame_i': num_cycles,
-    #                    'division_frame_i': num_cycles,
-    #                    'is_history_known': is_history_known,
-    #                    'corrected_assignment': corrected_assignment},
-    #                     index=IDs)
-    # cca_df.index.name = 'Cell_ID'
+    # win = QDialogEntriesWidget(entriesLabels=['Input 1'])
+    IDs = list(range(1,40))
+    cc_stage = ['G1' for ID in IDs]
+    num_cycles = [-1]*len(IDs)
+    relationship = ['mother' for ID in IDs]
+    related_to = [-1]*len(IDs)
+    is_history_known = [False]*len(IDs)
+    corrected_assignment = [False]*len(IDs)
+    cca_df = pd.DataFrame({
+                       'cell_cycle_stage': cc_stage,
+                       'generation_num': num_cycles,
+                       'relative_ID': related_to,
+                       'relationship': relationship,
+                       'emerg_frame_i': num_cycles,
+                       'division_frame_i': num_cycles,
+                       'is_history_known': is_history_known,
+                       'corrected_assignment': corrected_assignment},
+                        index=IDs)
+    cca_df.index.name = 'Cell_ID'
     #
     # df = cca_df.reset_index()
     #
     # win = pdDataFrameWidget(df)
 
-    # win = ccaTableWidget(cca_df)
+    win = editCcaTableWidget(cca_df)
     # lab = np.load(r"G:\My Drive\1_MIA_Data\Test_data\Test_Qt_GUI\Position_5\Images\F016_s05_segm.npz")['arr_0'][0]
     # img = np.load(r"G:\My Drive\1_MIA_Data\Test_data\Test_Qt_GUI\Position_5\Images\F016_s05_phase_contr_aligned.npz")['arr_0'][0]
     # win = manualSeparateGui(lab, 2, img)
-    win.setFont(font)
+    # win.setFont(font)
     app.setStyle(QtGui.QStyleFactory.create('Fusion'))
-    win.show()
+    win.showAndSetWidth()
     # win.setWidths(font=font)
     # win.setSize()
     # win.setGeometryWindow()
     win.exec_()
-    print(win.SizeT, win.SizeZ, win.zyx_vox_dim)
+    # print(win.SizeT, win.SizeZ, win.zyx_vox_dim)

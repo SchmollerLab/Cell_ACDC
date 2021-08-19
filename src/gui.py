@@ -771,7 +771,7 @@ class guiWin(QMainWindow):
         self.brushSizeSpinbox.valueChanged.connect(self.brushSize_cb)
         # Mode
         self.modeComboBox.currentIndexChanged.connect(self.changeMode)
-        self.modeComboBox.activated.connect(self.clearFocus)
+        self.modeComboBox.activated.connect(self.clearComboBoxFocus)
         self.equalizeHistPushButton.clicked.connect(self.equalizeHist)
         self.editOverlayColorAction.triggered.connect(self.toggleOverlayColorButton)
         self.editTextIDsColorAction.triggered.connect(self.toggleTextIDsColorButton)
@@ -782,7 +782,7 @@ class guiWin(QMainWindow):
         # Drawing mode
         self.drawIDsContComboBox.currentIndexChanged.connect(
                                                 self.drawIDsContComboBox_cb)
-        self.drawIDsContComboBox.activated.connect(self.clearFocus)
+        self.drawIDsContComboBox.activated.connect(self.clearComboBoxFocus)
         self.gaussBlurAction.toggled.connect(self.gaussBlur)
         self.edgeDetectorAction.toggled.connect(self.edgeDetection)
         self.entropyFilterAction.toggled.connect(self.entropyFilter)
@@ -3862,7 +3862,7 @@ class guiWin(QMainWindow):
 
     def manualEditCca(self):
         PosData = self.data[self.pos_i]
-        editCcaWidget = apps.ccaTableWidget(PosData.cca_df, parent=self)
+        editCcaWidget = apps.editCcaTableWidget(PosData.cca_df, parent=self)
         editCcaWidget.exec_()
         if editCcaWidget.cancel:
             return
@@ -3994,11 +3994,9 @@ class guiWin(QMainWindow):
         self.updateALLimg()
         self.app.restoreOverrideCursor()
 
-    def clearFocus(self, mode):
+    def clearComboBoxFocus(self, mode):
         # Remove focus from modeComboBox to avoid the key_up changes its value
-        self.modeComboBox.clearFocus()
-        self.zProjComboBox.clearFocus()
-        self.drawIDsContComboBox.clearFocus()
+        self.sender().clearFocus()
 
     def changeMode(self, idx):
         PosData = self.data[self.pos_i]
@@ -5158,7 +5156,8 @@ class guiWin(QMainWindow):
 
             if PosData.frame_i <= 0 and mode == 'Cell cycle analysis':
                 IDs = [obj.label for obj in PosData.rp]
-                editCcaWidget = apps.ccaTableWidget(PosData.cca_df, parent=self)
+                editCcaWidget = apps.editCcaTableWidget(PosData.cca_df,
+                                                        parent=self)
                 editCcaWidget.exec_()
                 if editCcaWidget.cancel:
                     return
@@ -5357,17 +5356,7 @@ class guiWin(QMainWindow):
         self.gui_createGraphicsItems()
         self.init_segmInfo_df()
         self.initPosAttr(max_ID=PosData.segm_data.max())
-        for PosData in self.data:
-            print('')
-            print('====================')
-            print(f'Before on {PosData.relPath}')
-            print(PosData.ol_data_dict.keys())
         self.initFluoData()
-        for PosData in self.data:
-            print('')
-            print('====================')
-            print(f'After on {PosData.relPath}')
-            print(PosData.ol_data_dict.keys())
         self.framesScrollBar.setSliderPosition(PosData.frame_i+1)
         if PosData.SizeZ > 1:
             how = PosData.segmInfo_df.at[PosData.frame_i, 'which_z_proj_gui']
@@ -5407,7 +5396,7 @@ class guiWin(QMainWindow):
             self.drawIDsContComboBox.clear()
             self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
             self.modeComboBox.currentIndexChanged.connect(self.changeMode)
-            self.modeComboBox.activated.connect(self.clearFocus)
+            self.modeComboBox.activated.connect(self.clearComboBoxFocus)
             self.drawIDsContComboBox.currentIndexChanged.connect(
                                                     self.drawIDsContComboBox_cb)
             self.modeComboBox.setCurrentText('Viewer')
@@ -5486,7 +5475,7 @@ class guiWin(QMainWindow):
                     pass
                 self.zSliceScrollBar.sliderMoved.connect(self.update_z_slice)
                 self.zProjComboBox.currentTextChanged.connect(self.updateZproj)
-                self.zProjComboBox.activated.connect(self.clearFocus)
+                self.zProjComboBox.activated.connect(self.clearComboBoxFocus)
             if PosData.SizeT == 1:
                 self.t_label.setText('Position n. ')
                 self.framesScrollBar.setMinimum(1)
