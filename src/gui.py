@@ -3863,6 +3863,7 @@ class guiWin(QMainWindow):
     def manualEditCca(self):
         PosData = self.data[self.pos_i]
         editCcaWidget = apps.editCcaTableWidget(PosData.cca_df, parent=self)
+        editCcaWidget.showAndSetWidth()
         editCcaWidget.exec_()
         if editCcaWidget.cancel:
             return
@@ -5158,6 +5159,7 @@ class guiWin(QMainWindow):
                 IDs = [obj.label for obj in PosData.rp]
                 editCcaWidget = apps.editCcaTableWidget(PosData.cca_df,
                                                         parent=self)
+                editCcaWidget.showAndSetWidth()
                 editCcaWidget.exec_()
                 if editCcaWidget.cancel:
                     return

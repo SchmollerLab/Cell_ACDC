@@ -1754,7 +1754,7 @@ class editCcaTableWidget(QDialog):
         buttonsLayout.addWidget(cancelButton)
 
         # Scroll area properties
-        self.scrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOn)
+        self.scrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.scrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.scrollArea.setFrameStyle(QFrame.NoFrame)
         self.scrollArea.setWidgetResizable(True)
@@ -3301,7 +3301,7 @@ if __name__ == '__main__':
     #                     informativeText, CbLabel=CbLabel, parent=None)
     # win = edgeDetectionDialog(None)
     # win = QDialogEntriesWidget(entriesLabels=['Input 1'])
-    IDs = list(range(1,40))
+    IDs = list(range(1,10))
     cc_stage = ['G1' for ID in IDs]
     num_cycles = [-1]*len(IDs)
     relationship = ['mother' for ID in IDs]
