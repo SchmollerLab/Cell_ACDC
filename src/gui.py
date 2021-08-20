@@ -169,27 +169,26 @@ class guiWin(QMainWindow):
                                            ).set_index('setting')
 
     def dragEnterEvent(self, event):
-        if event.mimeData().hasImage:
-            event.accept()
+        file_path = event.mimeData().urls()[0].toLocalFile()
+        if os.path.isdir(file_path):
+            exp_path = file_path
         else:
-            event.ignore()
-
-    def dragMoveEvent(self, event):
-        if event.mimeData().hasImage:
+            exp_path = os.path.dirname(file_path)
+        basename = os.path.basename(exp_path)
+        if basename.find('Position_')!=-1 or basename=='Images':
             event.accept()
         else:
             event.ignore()
 
     def dropEvent(self, event):
-        if event.mimeData().hasImage:
-            event.setDropAction(Qt.CopyAction)
-            file_path = event.mimeData().urls()[0].toLocalFile()
-            basename = os.path.basename(file_path)
-            if os.path.isdir(file_path):
-                exp_path = file_path
-            else:
-                exp_path = os.path.dirname(file_path)
-            self.openFile(exp_path=exp_path)
+        event.setDropAction(Qt.CopyAction)
+        file_path = event.mimeData().urls()[0].toLocalFile()
+        basename = os.path.basename(file_path)
+        if os.path.isdir(file_path):
+            exp_path = file_path
+        else:
+            exp_path = os.path.dirname(file_path)
+        self.openFile(exp_path=exp_path)
 
     # def leaveEvent(self, event):
     #     if self.slideshowWin is not None:
