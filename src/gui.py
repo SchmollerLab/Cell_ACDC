@@ -190,71 +190,71 @@ class guiWin(QMainWindow):
             exp_path = os.path.dirname(file_path)
         self.openFile(exp_path=exp_path)
 
-    # def leaveEvent(self, event):
-    #     if self.slideshowWin is not None:
-    #         PosData = self.data[self.pos_i]
-    #         mainWinGeometry = self.geometry()
-    #         mainWinLeft = mainWinGeometry.left()
-    #         mainWinTop = mainWinGeometry.top()
-    #         mainWinWidth = mainWinGeometry.width()
-    #         mainWinHeight = mainWinGeometry.height()
-    #         mainWinRight = mainWinLeft+mainWinWidth
-    #         mainWinBottom = mainWinTop+mainWinHeight
-    #
-    #         slideshowWinGeometry = self.slideshowWin.geometry()
-    #         slideshowWinLeft = slideshowWinGeometry.left()
-    #         slideshowWinTop = slideshowWinGeometry.top()
-    #         slideshowWinWidth = slideshowWinGeometry.width()
-    #         slideshowWinHeight = slideshowWinGeometry.height()
-    #
-    #         # Determine if overlap
-    #         overlap = (
-    #             (slideshowWinTop < mainWinBottom) and
-    #             (slideshowWinLeft < mainWinRight)
-    #         )
-    #
-    #         autoActivate = (
-    #             self.data_loaded and not
-    #             overlap and not
-    #             PosData.disableAutoActivateViewerWindow
-    #         )
-    #
-    #         if autoActivate:
-    #             self.slideshowWin.setFocus(True)
-    #             self.slideshowWin.activateWindow()
+    def leaveEvent(self, event):
+        if self.slideshowWin is not None:
+            PosData = self.data[self.pos_i]
+            mainWinGeometry = self.geometry()
+            mainWinLeft = mainWinGeometry.left()
+            mainWinTop = mainWinGeometry.top()
+            mainWinWidth = mainWinGeometry.width()
+            mainWinHeight = mainWinGeometry.height()
+            mainWinRight = mainWinLeft+mainWinWidth
+            mainWinBottom = mainWinTop+mainWinHeight
 
-    # def enterEvent(self, event):
-    #     if self.slideshowWin is not None:
-    #         PosData = self.data[self.pos_i]
-    #         mainWinGeometry = self.geometry()
-    #         mainWinLeft = mainWinGeometry.left()
-    #         mainWinTop = mainWinGeometry.top()
-    #         mainWinWidth = mainWinGeometry.width()
-    #         mainWinHeight = mainWinGeometry.height()
-    #         mainWinRight = mainWinLeft+mainWinWidth
-    #         mainWinBottom = mainWinTop+mainWinHeight
-    #
-    #         slideshowWinGeometry = self.slideshowWin.geometry()
-    #         slideshowWinLeft = slideshowWinGeometry.left()
-    #         slideshowWinTop = slideshowWinGeometry.top()
-    #         slideshowWinWidth = slideshowWinGeometry.width()
-    #         slideshowWinHeight = slideshowWinGeometry.height()
-    #
-    #         # Determine if overlap
-    #         overlap = (
-    #             (slideshowWinTop < mainWinBottom) and
-    #             (slideshowWinLeft < mainWinRight)
-    #         )
-    #
-    #         autoActivate = (
-    #             self.data_loaded and not
-    #             overlap and not
-    #             PosData.disableAutoActivateViewerWindow
-    #         )
-    #
-    #         if autoActivate:
-    #             self.setFocus(True)
-    #             self.activateWindow()
+            slideshowWinGeometry = self.slideshowWin.geometry()
+            slideshowWinLeft = slideshowWinGeometry.left()
+            slideshowWinTop = slideshowWinGeometry.top()
+            slideshowWinWidth = slideshowWinGeometry.width()
+            slideshowWinHeight = slideshowWinGeometry.height()
+
+            # Determine if overlap
+            overlap = (
+                (slideshowWinTop < mainWinBottom) and
+                (slideshowWinLeft < mainWinRight)
+            )
+
+            autoActivate = (
+                self.data_loaded and not
+                overlap and not
+                PosData.disableAutoActivateViewerWindow
+            )
+
+            if autoActivate:
+                self.slideshowWin.setFocus(True)
+                self.slideshowWin.activateWindow()
+
+    def enterEvent(self, event):
+        if self.slideshowWin is not None:
+            PosData = self.data[self.pos_i]
+            mainWinGeometry = self.geometry()
+            mainWinLeft = mainWinGeometry.left()
+            mainWinTop = mainWinGeometry.top()
+            mainWinWidth = mainWinGeometry.width()
+            mainWinHeight = mainWinGeometry.height()
+            mainWinRight = mainWinLeft+mainWinWidth
+            mainWinBottom = mainWinTop+mainWinHeight
+
+            slideshowWinGeometry = self.slideshowWin.geometry()
+            slideshowWinLeft = slideshowWinGeometry.left()
+            slideshowWinTop = slideshowWinGeometry.top()
+            slideshowWinWidth = slideshowWinGeometry.width()
+            slideshowWinHeight = slideshowWinGeometry.height()
+
+            # Determine if overlap
+            overlap = (
+                (slideshowWinTop < mainWinBottom) and
+                (slideshowWinLeft < mainWinRight)
+            )
+
+            autoActivate = (
+                self.data_loaded and not
+                overlap and not
+                PosData.disableAutoActivateViewerWindow
+            )
+
+            if autoActivate:
+                self.setFocus(True)
+                self.activateWindow()
 
     def gui_createMenuBar(self):
         menuBar = self.menuBar()
