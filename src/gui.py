@@ -352,7 +352,7 @@ class guiWin(QMainWindow):
         self.overlayColorButton.setDisabled(True)
         colorsToolBar.addWidget(self.overlayColorButton)
 
-        self.textIDsColorButton = pg.ColorButton(self, color=(255,255,255))
+        self.textIDsColorButton = pg.ColorButton(self)
         colorsToolBar.addWidget(self.textIDsColorButton)
 
         self.addToolBar(colorsToolBar)
@@ -580,6 +580,14 @@ class guiWin(QMainWindow):
         self.editToolBar.setVisible(False)
         self.navigateToolBar.setVisible(False)
 
+        # toolbarSize = 58
+        # fileToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
+        # navigateToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
+        # ccaToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
+        # editToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
+        # widgetsToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
+        # modeToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
+
     def gui_createStatusBar(self):
         self.statusbar = self.statusBar()
         # Temporary message
@@ -795,7 +803,10 @@ class guiWin(QMainWindow):
 
         # Toggle contours/ID comboboxf
         row = 0
-        self.drawIDsContComboBoxSegmItems = ['Draw IDs and contours',
+        self.drawIDsContComboBoxSegmItems = ['Draw only cell cycle info',
+                                             'Draw cell cycle info and contours',
+                                             'Draw only mother-bud lines',
+                                             'Draw IDs and contours',
                                              'Draw only IDs',
                                              'Draw only contours',
                                              'Draw nothing']
@@ -943,11 +954,15 @@ class guiWin(QMainWindow):
     def gui_addPlotItems(self):
         if 'textIDsColor' in self.df_settings.index:
             rgbString = self.df_settings.at['textIDsColor', 'value']
-            r, g, b = re.findall('(\d+), (\d+), (\d+)', rgbString)[0]
-            r, g, b = int(r), int(g), int(b)
+            try:
+                r, g, b = re.findall('(\d+), (\d+), (\d+)', rgbString)[0]
+                r, g, b = int(r), int(g), int(b)
+            except TypeError:
+                r, g, b = 255, 255, 255
             self.ax1_oldIDcolor = (r, g, b)
             self.ax1_S_oldCellColor = (int(r*0.9), int(r*0.9), int(r*0.9))
             self.ax1_G1cellColor = (int(r*0.8), int(r*0.8), int(r*0.8), 178)
+            self.textIDsColorButton.setColor((r, g, b))
         else:
             self.ax1_oldIDcolor = (255, 255, 255) # white
             self.ax1_S_oldCellColor = (229, 229, 229)
@@ -7998,18 +8013,11 @@ class guiWin(QMainWindow):
 
             # Get info from first position selected
             images_path = self.images_paths[0]
-            ch_name_not_found_msg = (
-                'The script could not identify the channel name.\n\n'
-                'For automatic loading the file to be segmented MUST have a name like\n'
-                '"<name>_s<num>_<channel_name>.tif" e.g. "196_s16_phase_contrast.tif"\n'
-                'where "196_s16" is the basename and "phase_contrast"'
-                'is the channel name\n\n'
-                'Please write here the channel name to be used for automatic loading'
-            )
-
             filenames = os.listdir(images_path)
             if ch_name_selector.is_first_call:
-                ch_names, warn = ch_name_selector.get_available_channels(filenames)
+                ch_names, basenameNotFound = (
+                    ch_name_selector.get_available_channels(filenames)
+                )
                 self.ch_names = ch_names
                 ch_name_selector.QtPrompt(
                     self, ch_names, CbLabel='Select channel name to segment: ')
@@ -8019,22 +8027,7 @@ class guiWin(QMainWindow):
                         color='w')
                     self.openAction.setEnabled(True)
                     return
-                if warn:
-                    user_ch_name = prompts.single_entry_messagebox(
-                        title='Channel name not found',
-                        entry_label=ch_name_not_found_msg,
-                        input_txt=ch_name_selector.channel_name,
-                        toplevel=False, allow_abort=False
-                    ).entry_txt
-                    if user_ch_name.was_aborted:
-                        self.titleLabel.setText(
-                            'File --> Open or Open recent to start the process',
-                            color='w')
-                        self.openAction.setEnabled(True)
-                        return
-                else:
-                    user_ch_name = ch_name_selector.channel_name
-
+                user_ch_name = ch_name_selector.channel_name
 
             user_ch_file_paths = []
             for images_path in self.images_paths:
@@ -8091,6 +8084,7 @@ class guiWin(QMainWindow):
                 color='w')
 
             self.setFramesSnapshotMode()
+            self.appendPathWindowTitle(user_ch_file_paths)
             self.updateALLimg(updateLabelItemColor=False)
             self.updateScrollbars()
             self.fontSizeAction.setChecked(True)
@@ -8111,6 +8105,13 @@ class guiWin(QMainWindow):
                 self, 'Error!', err_msg, msg.Ok
             )
             self.openAction.setEnabled(True)
+
+    def appendPathWindowTitle(self, user_ch_file_paths):
+        if self.isSnapshot:
+            return
+
+        pos_path = os.path.dirname(os.path.dirname(user_ch_file_paths[0]))
+        self.setWindowTitle(f'Yeast_ACDC - GUI - "{pos_path}"')
 
     def initFluoData(self):
         msg = QtGui.QMessageBox()

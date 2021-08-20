@@ -1595,15 +1595,6 @@ class dataPrepWin(QMainWindow):
 
         # Get info from first position selected
         images_path = self.images_paths[0]
-        ch_name_not_found_msg = (
-            'The script could not identify the channel name.\n\n'
-            'For automatic loading the file to be segmented MUST have a name like\n'
-            '"<name>_s<num>_<channel_name>.tif" e.g. "196_s16_phase_contrast.tif"\n'
-            'where "196_s16" is the basename and "phase_contrast"'
-            'is the channel name\n\n'
-            'Please write here the channel name to be used for automatic loading'
-        )
-
         filenames = os.listdir(images_path)
         if ch_name_selector.is_first_call:
             ch_names, warn = ch_name_selector.get_available_channels(filenames)
@@ -1614,19 +1605,6 @@ class dataPrepWin(QMainWindow):
                     color='w')
                 self.openAction.setEnabled(True)
                 return
-            if warn:
-                user_ch_name = prompts.single_entry_messagebox(
-                    title='Channel name not found',
-                    entry_label=ch_name_not_found_msg,
-                    input_txt=ch_name_selector.channel_name,
-                    toplevel=False, allow_abort=False
-                ).entry_txt
-                if user_ch_name.was_aborted:
-                    self.titleLabel.setText(
-                        'File --> Open or Open recent to start the process',
-                        color='w')
-                    self.openAction.setEnabled(True)
-                    return
             else:
                 user_ch_name = ch_name_selector.channel_name
 

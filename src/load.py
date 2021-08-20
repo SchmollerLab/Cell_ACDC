@@ -162,7 +162,10 @@ class loadData:
 
     def setNotFoundData(self):
         if self.metadataFound is not None and not self.metadataFound:
-            self.SizeT, self.SizeZ = len(self.img_data), 1
+            if self.img_data.ndim > 2:
+                self.SizeT, self.SizeZ = len(self.img_data), 1
+            else:
+                self.SizeT, self.SizeZ = 1, 1
             self.TimeIncrement = 1.0
             self.PhysicalSizeX = 1.0
             self.PhysicalSizeY = 1.0
@@ -202,6 +205,7 @@ class loadData:
         self.metadata_csv_path = f'{base_path}metadata.csv'
 
     def setBlankSegmData(self, SizeT, SizeZ, SizeY, SizeX):
+        Y, X = self.img_data.shape[-2:]
         if self.segmFound is not None and not self.segmFound:
             if SizeT > 1:
                 self.segm_data = np.zeros((SizeT, Y, X), int)

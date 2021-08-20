@@ -1,6 +1,7 @@
 import sys
 import os
 import subprocess
+import re
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QPushButton, QLabel, QAction,
@@ -135,6 +136,26 @@ class mainWin(QMainWindow):
 
     def connectActions(self):
         self.concatAcdcDfsAction.triggered.connect(self.launchConcatUtil)
+        self.npzToNpyAction.triggered.connect(self.launchConvertFormatUtil)
+        self.npzToTiffAction.triggered.connect(self.launchConvertFormatUtil)
+
+    def launchConvertFormatUtil(self, checked=False):
+        m = re.findall('Convert .(\w+) file to .(\w+)...', self.sender().text())
+        from_, to = m[0]
+        isConvertEnabled = self.sender().isEnabled()
+        if isConvertEnabled:
+            self.sender().setDisabled(True)
+            self.convertWin = utils.concat.concatWin(
+                parent=self,
+                actionToEnable=self.concatAcdcDfsAction,
+                mainWin=self, from_=from_, to=to
+            )
+            self.convertWin.show()
+            self.convertWin.main()
+        else:
+            self.convertWin.setWindowState(Qt.WindowNoState)
+            self.convertWin.setWindowState(Qt.WindowActive)
+            self.convertWin.raise_()
 
     def launchDataPrep(self, checked=False):
         c = self.dataPrepButton.palette().button().color().name()

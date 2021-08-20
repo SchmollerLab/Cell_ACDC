@@ -37,15 +37,18 @@ if os.name == 'nt':
     except Exception as e:
         pass
 
-class alignWin(QMainWindow):
+class convertFileFormatWin(QMainWindow):
     def __init__(self, parent=None, allowExit=False,
-                 buttonToRestore=None, mainWin=None):
+                 actionToEnable=None, mainWin=None,
+                 from_='npz', to='npy'):
+        self.from_ = from_
+        self.to = to
         self.allowExit = allowExit
         self.processFinished = False
-        self.buttonToRestore = buttonToRestore
+        self.actionToEnable = actionToEnable
         self.mainWin = mainWin
         super().__init__(parent)
-        self.setWindowTitle("Yeast ACDC - Align")
+        self.setWindowTitle(f"Yeast ACDC - Convert .{from_} file to .{to}")
         self.setWindowIcon(QtGui.QIcon(":assign-motherbud.svg"))
 
         mainContainer = QtGui.QWidget()
@@ -54,7 +57,7 @@ class alignWin(QMainWindow):
         mainLayout = QVBoxLayout()
 
         label = QLabel(
-            'Alignment routine running...')
+            f'Converting .{from_} to .{to} routine running...')
 
         label.setStyleSheet("padding:5px 10px 10px 10px;")
         label.setAlignment(Qt.AlignCenter)
@@ -111,7 +114,9 @@ class alignWin(QMainWindow):
                 self.close()
                 return
 
-        self.setWindowTitle(f'Yeast_ACDC - Align - "{exp_path}"')
+        self.setWindowTitle(
+            f'Yeast_ACDC - Convert .{self.from_} to .{self.to} - "{exp_path}"'
+        )
 
         if os.path.basename(exp_path).find('Position_') != -1:
             is_pos_folder = True
@@ -164,14 +169,12 @@ class alignWin(QMainWindow):
             images_paths = [exp_path]
 
         proceed, selectedFilenames = self.selectFiles(
-                images_paths[0], filterExt=['npz', 'npy', 'tif'])
+                images_paths[0], filterExt=[f'{self.from_}'])
         if not proceed:
             abort = self.doAbort()
             if abort:
                 self.close()
                 return
-
-        revertAlignment = self.askAlignmentMode()
 
         abort, appendTxts = self.askTxtAppend()
         if abort:
@@ -182,7 +185,7 @@ class alignWin(QMainWindow):
 
         appendedTxt = appendTxts[0]
 
-        print('Aligning data...')
+        print(f'Converting .{self.from_} to .{self.to} started...')
         if len(selectedFilenames) > 1:
             ch_name_selector = prompts.select_channel_name()
             channelNames, abort = ch_name_selector.get_available_channels(
@@ -192,19 +195,8 @@ class alignWin(QMainWindow):
                 self.close()
                 return
 
-            self.prevSizeT, self.prevSizeZ = 1, 1
             for images_path in tqdm(images_paths, ncols=100):
                 for chName in channelNames:
-                    if chName.find('align_shift.npy') != -1:
-                        continue
-                    shifts, shifts_found = load.load_shifts(images_path)
-                    if not shifts_found:
-                        print('')
-                        print('=============================')
-                        print('WARNING: "Align_shift.npy" not found in folder '
-                              f'{images_path}. Skipping it')
-                        print('=============================')
-                        continue
                     filenames = os.listdir(images_path)
                     chNameFile = [f for f in filenames if f.find(f'{chName}.')!=-1]
                     if not chNameFile:
@@ -213,100 +205,49 @@ class alignWin(QMainWindow):
                         print(f'WARNING: File ending with "{chName}." not found in folder '
                               f'{images_path}. Skipping it')
                         continue
-
-                    filePath = os.path.join(images_path, chNameFile[0])
-                    alignedData = self.loadAndAlign(
-                                            filePath, shifts, revertAlignment)
-                    self.save(alignedData, filePath, appendedTxt)
-
+                    self.convert(images_path, chNameFile[0], appendedTxt,
+                                 from_=self.from_, to=self.to)
         else:
             for images_path in tqdm(images_paths, ncols=100):
-                shifts, shifts_found = load.load_shifts(images_path)
-                if not shifts_found:
-                    print('')
-                    print('=============================')
-                    print('WARNING: "Align_shift.npy" not found in folder '
-                          f'{images_path}. Skipping it')
-                    print('=============================')
-                    continue
-                # print(f'Aligning {filePath}...')
-                filePath = os.path.join(images_path, selectedFilenames[0])
-                alignedData = self.loadAndAlign(
-                                            filePath, shifts, revertAlignment)
-                self.save(alignedData, filePath, appendedTxt)
-
+                self.convert(images_path, selectedFilenames[0], appendedTxt,
+                             from_=self.from_, to=self.to)
         self.close()
         if self.allowExit:
             exit('Done.')
+
+    def convert(self, images_path, filename, appendedTxt,
+                from_='npz', to='npy'):
+        filePath = os.path.join(images_path, filename)
+        if self.from_ == 'npz':
+            data = np.load(filePath)['arr_0']
+        filename, ext = os.path.splitext(filename)
+        if appendedTxt:
+            newFilename = f'{filename}_{appendedTxt}.{self.to}'
+        else:
+            newFilename = f'{filename}.{self.to}'
+        newPath = os.path.join(images_path, newFilename)
+        if self.to == 'npy':
+            np.save(newPath, data)
+        print(f'New file saved to {newPath}')
+
 
     def save(self, alignedData, filePath, appendedTxt, first_call=True):
         dir = os.path.dirname(filePath)
         filename, ext = os.path.splitext(os.path.basename(filePath))
         path = os.path.join(dir, f'{filename}_{appendedTxt}{ext}')
-        if ext == '.npz':
-            np.savez_compressed(path, alignedData)
-        elif ext == '.npy':
-            np.save(path, alignedData)
-        elif ext == '.tif':
-            with TiffFile(filePath) as tif:
-                metadata = tif.imagej_metadata
-            try:
-                info = metadata['Info']
-                SizeT, SizeZ = self.readSizeTZ(info)
-            except Exception as e:
-                SizeT = len(alignedData)
-                SizeZ = 1
-            if SizeT != self.prevSizeT or SizeZ != self.prevSizeZ:
-                SizeT, SizeZ = self.askImageSizeZT(SizeT, SizeZ)
-            myutils.imagej_tiffwriter(path, alignedData, metadata, SizeT, SizeZ)
-
-    def readSizeTZ(self, info):
-        SizeT = int(re.findall('SizeT = (\d+)', info)[0])
-        SizeZ = int(re.findall('SizeZ = (\d+)', info)[0])
-        return SizeT, SizeZ
-
-    def askImageSizeZT(self, SizeT, SizeZ):
-        font = QtGui.QFont()
-        font.setPointSize(10)
-        win = apps.QDialogAcdcInputs(SizeT, SizeZ, None, None,
-                                     show_finterval=False,
-                                     parent=self, font=font)
-        win.setFont(font)
-        win.show()
-        win.setWidths(font=font)
-        win.exec_()
-        return win.SizeT, win.SizeZ
+        pass
 
     def askTxtAppend(self):
         font = QtGui.QFont()
         font.setPointSize(10)
         self.win = apps.QDialogEntriesWidget(
             winTitle='Appended name',
-            entriesLabels=['Type a name to append at the end of each aligned file:'],
-            defaultTxts=['realigned'],
+            entriesLabels=['Type a name to append at the end of each .npy file:'],
+            defaultTxts=[''],
             parent=self, font=font
         )
         self.win.exec_()
         return self.win.cancel, self.win.entriesTxt
-
-    def loadAndAlign(self, filePath, shifts, revertAlignment):
-        filename = os.path.basename(filePath)
-        _, ext = os.path.splitext(filename)
-        if ext == '.npz':
-            data = np.load(filePath)['arr_0']
-        elif ext == '.npy':
-            data = np.load(filePath)
-        elif ext == '.tif':
-            data = skimage.io.imread(filePath)
-        if revertAlignment:
-            shifts = -shifts
-        alignedData = np.zeros_like(data)
-        for frame_i, shift in enumerate(shifts):
-            img = data[frame_i]
-            axis = tuple(range(img.ndim))[-2:]
-            aligned_img = np.roll(img, tuple(shift), axis=axis)
-            alignedData[frame_i] = aligned_img
-        return alignedData
 
     def criticalNoCommonBasename(self):
         msg = QtGui.QMessageBox()
@@ -331,23 +272,6 @@ class alignWin(QMainWindow):
         )
 
 
-    def askAlignmentMode(self):
-        msg = QtGui.QMessageBox(self)
-        msg.setWindowTitle('Alignment mode')
-        msg.setIcon(msg.Question)
-        msg.setText(
-            "Do you want to revert a previously applied alignment or repeat alignment?")
-        revertButton = QPushButton('Revert alignment')
-        msg.addButton(revertButton, msg.YesRole)
-        msg.addButton(QPushButton('Repeat alignment'), msg.NoRole)
-        msg.exec_()
-        if msg.clickedButton() == revertButton:
-            revertAlignment = True
-            return revertAlignment
-        else:
-            revertAlignment = False
-            return revertAlignment
-
     def selectFiles(self, images_path, filterExt=None):
         files = os.listdir(images_path)
         if filterExt is not None:
@@ -362,9 +286,9 @@ class alignWin(QMainWindow):
 
         selectFilesWidget = apps.QDialogListbox(
             'Select files',
-            'Select to which files you want to apply alignment\n\n'
+            'Select  files you want to convert to .npy\n\n'
             'NOTE: if you selected multiple Position folders I will try \n'
-            'to apply alignment to all the selected files in each Position folder',
+            'to convert all selected files in each Position folder',
             items, multiSelection=True, parent=self
         )
         selectFilesWidget.exec_()
@@ -425,9 +349,16 @@ class alignWin(QMainWindow):
         else:
             return False
 
+    def closeEvent(self, event):
+        if self.actionToEnable is not None:
+            self.actionToEnable.setDisabled(False)
+            self.mainWin.setWindowState(Qt.WindowNoState)
+            self.mainWin.setWindowState(Qt.WindowActive)
+            self.mainWin.raise_()
+
 
 if __name__ == "__main__":
-    print('Launching alignment script...')
+    print('Launching conversion script...')
     # Handle high resolution displays:
     if hasattr(Qt, 'AA_EnableHighDpiScaling'):
         QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
@@ -436,7 +367,7 @@ if __name__ == "__main__":
     # Create the application
     app = QApplication(sys.argv)
     app.setStyle(QtGui.QStyleFactory.create('Fusion'))
-    win = alignWin(allowExit=True)
+    win = convertFileFormatWin(allowExit=True)
     win.show()
     print('Done. If window asking to select a folder is not visible, it is '
           'behind some other open window.')

@@ -258,16 +258,6 @@ class segmWin(QMainWindow):
                 self.close()
                 return
 
-
-        ch_name_not_found_msg = (
-            'The script could not identify the channel name.\n\n'
-            'For automatic loading the file to be segmented MUST have a name like\n'
-            '"<name>_s<num>_<channel_name>.tif" e.g. "196_s16_phase_contrast.tif"\n'
-            'where "196_s16" is the basename and "phase_contrast"'
-            'is the channel name\n\n'
-            'Please write here the channel name to be used for automatic loading'
-        )
-
         user_ch_file_paths = []
         for images_path in images_paths:
             print('')
@@ -281,20 +271,6 @@ class segmWin(QMainWindow):
                     if abort:
                         self.close()
                         return
-
-                if warn:
-                    user_ch_name = prompts.single_entry_messagebox(
-                        title='Channel name not found',
-                        entry_label=ch_name_not_found_msg,
-                        input_txt=ch_name_selector.channel_name,
-                        toplevel=False, allow_abort=False
-                    ).entry_txt
-                    if user_ch_name.was_aborted:
-                        abort = self.doAbort()
-                        if abort:
-                            self.close()
-                            return
-
                 else:
                     user_ch_name = ch_name_selector.channel_name
 

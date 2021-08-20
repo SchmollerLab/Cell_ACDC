@@ -577,7 +577,7 @@ class select_channel_name:
                                                 0, len(basename))
                 basename = file[i:i+k]
         self.basename = basename
-        warn = [False]
+        basenameNotFound = [False]
         for file in filenames:
             filename, ext = os.path.splitext(file)
             if useExt is None:
@@ -585,14 +585,16 @@ class select_channel_name:
                 channel_names.append(channel_name)
                 if channel_name == filename:
                     # Warn that an intersection could not be found
-                    warn.append(True)
+                    basenameNotFound.append(True)
             elif ext == useExt:
                 channel_name = filename.split(basename)[-1]
                 channel_names.append(channel_name)
                 if channel_name == filename:
                     # Warn that an intersection could not be found
-                    warn.append(True)
-        warn = any(warn)
+                    basenameNotFound.append(True)
+        if any(basenameNotFound):
+            filenameNOext, _ = os.path.splitext(basename)
+            self.basename = f'{filenameNOext}_'
         if self.which_channel is not None:
             # Search for "phase" and put that channel first on the list
             if self.which_channel == 'segm':
@@ -602,7 +604,7 @@ class select_channel_name:
                     idx = is_phase_contr_li.index(True)
                     channel_names[0], channel_names[idx] = (
                                       channel_names[idx], channel_names[0])
-        return channel_names, warn
+        return channel_names, any(basenameNotFound)
 
     def _load_last_selection(self):
         last_sel_channel = None
@@ -642,7 +644,6 @@ class select_channel_name:
         win.exec_()
         if win.cancel:
             self.was_aborted = True
-
         self.channel_name = win.selectedItemText
         self._saved_last_selection(self.channel_name)
         self.is_first_call = False
