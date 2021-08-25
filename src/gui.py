@@ -4488,8 +4488,16 @@ class guiWin(QMainWindow):
                     self.ccaTableWin.setFocus(True)
                     self.ccaTableWin.activateWindow()
                     self.ccaTableWin.updateTable(PosData.cca_df)
-        elif ev.key() == Qt.Key_Plus:
+        elif ev.key() == Qt.Key_T:
             pass
+            # PosData1 = self.data[0]
+            # PosData2 = self.data[1]
+            # print(PosData1.fluo_data_dict.keys())
+            # print(PosData2.fluo_data_dict.keys())
+            # key1 = list(PosData1.fluo_data_dict.keys())[0]
+            # key2 = list(PosData2.fluo_data_dict.keys())[0]
+            # apps.imshow_tk(PosData1.fluo_data_dict[key1],
+            #                additional_imgs=[PosData2.fluo_data_dict[key2]])
             # minTick = self.hist.gradient.getTick(0)
             # self.hist.gradient.setTickValue(minTick, 0.5)
         elif ev.key() == Qt.Key_H:
@@ -6995,9 +7003,9 @@ class guiWin(QMainWindow):
                     prompt = False
                     ol_channels = ch_names
 
-                ol_data = {}
-                ol_colors = {}
                 for PosData in self.data:
+                    ol_data = {}
+                    ol_colors = {}
                     for i, ol_ch in enumerate(ol_channels):
                         ol_path, filename = self.getPathFromChName(
                                                             ol_ch, PosData)
@@ -7005,7 +7013,7 @@ class guiWin(QMainWindow):
                             self.criticalFluoChannelNotFound(ol_ch, PosData)
                             self.app.restoreOverrideCursor()
                             return
-                        ol_data[filename] = PosData.ol_data_dict[filename]
+                        ol_data[filename] = PosData.ol_data_dict[filename].copy()
                         ol_colors[filename] = self.overlayRGBs[i]
                         self.addFluoChNameContextMenuAction(ol_ch)
                     PosData.manualContrastKey = filename
