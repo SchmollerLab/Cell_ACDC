@@ -215,125 +215,6 @@ class QDialogEntriesWidget(QDialog):
                            for i in range(len(self.entriesLabels))]
         self.close()
 
-class QDialogInputsForm(QDialog):
-    def __init__(self, SizeT, SizeZ, zyx_vox_dim, parent=None, font=None):
-        self.cancel = True
-        self.zyx_vox_dim = zyx_vox_dim
-        super().__init__(parent)
-        self.setWindowTitle('Image properties')
-
-        mainLayout = QVBoxLayout()
-        formLayout = QFormLayout()
-        buttonsLayout = QHBoxLayout()
-
-        formLayout.addRow('Number of frames (SizeT)', QLineEdit())
-        formLayout.addRow('Number of z-slices (SizeZ)', QLineEdit())
-        if zyx_vox_dim is not None:
-            formLayout.addRow('Z, Y, X voxel size (um/pxl)\n'
-                              'For 2D images leave Z to 1', QLineEdit())
-
-        self.SizeT_entry = formLayout.itemAt(0, 1).widget()
-        txt = f'{SizeT}'
-        self.SizeT_entry.setText(txt)
-        self.SizeT_entry.setAlignment(Qt.AlignCenter)
-
-        self.SizeZ_entry = formLayout.itemAt(1, 1).widget()
-        txt = f'{SizeZ}'
-        self.SizeZ_entry.setText(txt)
-        self.SizeZ_entry.setAlignment(Qt.AlignCenter)
-
-        if zyx_vox_dim is not None:
-            self.zyx_vox_dim_entry = formLayout.itemAt(2, 1).widget()
-            txt = ', '.join([str(v) for v in zyx_vox_dim])
-            self.zyx_vox_dim_entry.setText(txt)
-            self.zyx_vox_dim_entry.setAlignment(Qt.AlignCenter)
-            if font is not None:
-                # Scale to largest content
-                fm = QFontMetrics(font)
-                w = fm.width(txt)+10
-                self.SizeT_entry.setFixedWidth(w)
-                self.SizeZ_entry.setFixedWidth(w)
-                self.zyx_vox_dim_entry.setFixedWidth(w)
-
-        self.adjustSize()
-
-        okButton = QPushButton('Ok')
-        okButton.setShortcut(Qt.Key_Enter)
-
-        cancelButton = QPushButton('Cancel')
-
-        buttonsLayout.addWidget(okButton, alignment=Qt.AlignRight)
-        buttonsLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
-        buttonsLayout.setContentsMargins(0, 10, 0, 0)
-
-        mainLayout.addLayout(formLayout)
-        mainLayout.addLayout(buttonsLayout)
-
-        okButton.clicked.connect(self.ok_cb)
-        cancelButton.clicked.connect(self.cancel_cb)
-
-        self.setLayout(mainLayout)
-        self.setModal(True)
-
-    def ok_cb(self, event):
-        self.cancel = False
-        try:
-            SizeT = int(self.SizeT_entry.text())
-            if SizeT < 1:
-                raise
-        except Exception as e:
-            err_msg = (
-                'Number of frames (SizeT) value is not valid.\n'
-                'Enter an integer greater or equal to 1. Enter 1 if '
-                'you do not have frames.'
-            )
-            msg = QtGui.QMessageBox()
-            msg.critical(
-                self, 'Invalid SizeT value', err_msg, msg.Ok
-            )
-            return
-        try:
-            SizeZ = int(self.SizeZ_entry.text())
-            if SizeZ < 1:
-                raise
-        except Exception as e:
-            err_msg = (
-                'Number of z-slices (SizeZ) value is not valid.\n'
-                'Enter an integer greater or equal to 1. Enter 1 for '
-                'for 2D images.'
-            )
-            msg = QtGui.QMessageBox()
-            msg.critical(
-                self, 'Invalid SizeZ value', err_msg, msg.Ok
-            )
-            return
-        if self.zyx_vox_dim is not None:
-            try:
-                s = self.zyx_vox_dim_entry.text()
-                m = re.findall('(\d*.*\d+),\s*(\d*.*\d+),\s*(\d*.*\d+)', s)[0]
-                zyx_vox_dim = [float(v) for v in m]
-            except Exception as e:
-                err_msg = (
-                    'Z, Y, X voxel size values are not valid.\n'
-                    'Enter three numbers (decimal or integers) greater than 0 '
-                    'separated by a comma. Leave Z to 1 for 2D images.'
-                )
-                msg = QtGui.QMessageBox()
-                msg.critical(
-                    self, 'Invalid SizeT value', err_msg, msg.Ok
-                )
-                return
-        else:
-            zyx_vox_dim = None
-        self.SizeT = SizeT
-        self.SizeZ = SizeZ
-        self.zyx_vox_dim = zyx_vox_dim
-        self.close()
-
-    def cancel_cb(self, event):
-        self.cancel = True
-        self.close()
-
 class QDialogMetadata(QDialog):
     def __init__(self, SizeT, SizeZ, TimeIncrement,
                  PhysicalSizeZ, PhysicalSizeY, PhysicalSizeX,
@@ -2631,7 +2512,7 @@ class QtSelectItems(QDialog):
         label = QLabel(CbLabel)
         topLayout.addWidget(label)
 
-        combobox = QComboBox()
+        combobox = QComboBox(self)
         combobox.addItems(items)
         self.ComboBox = combobox
         topLayout.addWidget(combobox)
@@ -2686,6 +2567,9 @@ class QtSelectItems(QDialog):
             self.multiPosButton.setText('Multiple selection')
             self.ListBox.hide()
             self.ComboBox.show()
+            self.ComboBox.setCurrentIndex(0)
+            self.ComboBox.setFocusPolicy(Qt.StrongFocus)
+            self.ComboBox.setFocus(True)
 
 
     def ok_cb(self, event):

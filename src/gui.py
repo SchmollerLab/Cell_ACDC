@@ -1985,8 +1985,11 @@ class guiWin(QMainWindow):
                 maxID = PosData.lab.max()
                 if _img.ndim > 2:
                     val = [v for v in val]
+                    value = f'{val}'
+                else:
+                    value = f'{val:.2f}'
                 txt = (
-                    f'x={x:.2f}, y={y:.2f}, value={val:.2f}, '
+                    f'x={x:.2f}, y={y:.2f}, value={value}, '
                     f'max={maxVal:.2f}, ID={ID}, max_ID={maxID}'
                 )
                 xx, yy = self.ax1_rulerPlotItem.getData()
