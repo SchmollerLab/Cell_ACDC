@@ -13,7 +13,7 @@ from skimage.color import label2rgb, gray2rgb
 from skimage.measure import regionprops
 from skimage import img_as_float
 from natsort import natsorted
-from PyQt5 import QtGui
+from pyqtgraph.Qt import QtGui
 from PyQt5.QtWidgets import (
     QApplication, QPushButton, QHBoxLayout, QLabel, QSizePolicy
 )
@@ -540,11 +540,11 @@ class select_channel_name:
             msg = QtGui.QMessageBox()
             msg.warning(
                None, 'Data structure compromised',
-               'The system detected files inside the "Images" folder '
+               'The system detected files inside the folder '
                'that do not start with the same, common basename.\n\n'
-               'To ensure correct loading of the relevant data, the folder "Images" '
-               'inside each Position folder should contain only files that start '
-               'with the same, common basename.\n\n'
+               'To ensure correct loading of the data, the folder where '
+               'the file(s) is/are should either contain a single image file or'
+               'only files that start with the same, common basename.\n\n'
                'For example the following filenames:\n\n'
                'F014_s01_phase_contr.tif\n'
                'F014_s01_mCitrine.tif\n\n'
@@ -558,10 +558,12 @@ class select_channel_name:
                'still try to load data now.',
                msg.Ok
             )
+            return False
+        return True
 
     def get_available_channels(self, filenames, useExt='.tif'):
-        self.checkDataIntegrity(filenames)
         channel_names = []
+        isBasenamePresent = self.checkDataIntegrity(filenames)
         basename = filenames[0]
         for file in filenames:
             # Determine the basename based on intersection of all .tif

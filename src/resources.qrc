@@ -42,5 +42,13 @@
     <file alias="cancel.svg">resources/cancel.svg</file>
     <file alias="bkgrRoi.svg">resources/bkgrRoi.svg</file>
     <file alias="hull.svg">resources/hull.svg</file>
+    <file alias="image.svg">resources/image.svg</file>
+    <file alias="home.svg">resources/home.svg</file>
+    <file alias="quickStart.svg">resources/quickStart.svg</file>
+    <file alias="cog.svg">resources/cog.svg</file>
+    <file alias="book.svg">resources/book.svg</file>
+    <file alias="ruler.svg">resources/ruler.svg</file>
+    <file alias="contribute.svg">resources/contribute.svg</file>
+    <file alias="wizard.svg">resources/wizard.svg</file>
 </qresource>
 </RCC>

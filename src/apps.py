@@ -220,7 +220,7 @@ class QDialogInputsForm(QDialog):
         self.cancel = True
         self.zyx_vox_dim = zyx_vox_dim
         super().__init__(parent)
-        self.setWindowTitle('ACDC inputs')
+        self.setWindowTitle('Image properties')
 
         mainLayout = QVBoxLayout()
         formLayout = QFormLayout()
@@ -337,14 +337,14 @@ class QDialogInputsForm(QDialog):
 class QDialogMetadata(QDialog):
     def __init__(self, SizeT, SizeZ, TimeIncrement,
                  PhysicalSizeZ, PhysicalSizeY, PhysicalSizeX,
-                 ask_TimeIncrement, ask_PhysicalSizes,
+                 ask_SizeT, ask_TimeIncrement, ask_PhysicalSizes,
                  parent=None, font=None, imgDataShape=None):
         self.cancel = True
         self.ask_TimeIncrement = ask_TimeIncrement
         self.ask_PhysicalSizes = ask_PhysicalSizes
         self.imgDataShape = imgDataShape
         super().__init__(parent)
-        self.setWindowTitle('ACDC inputs')
+        self.setWindowTitle('Image properties')
 
         mainLayout = QVBoxLayout()
         gridLayout = QGridLayout()
@@ -356,7 +356,11 @@ class QDialogMetadata(QDialog):
         self.SizeT_SpinBox = QSpinBox()
         self.SizeT_SpinBox.setMinimum(1)
         self.SizeT_SpinBox.setMaximum(2147483647)
-        self.SizeT_SpinBox.setValue(SizeT)
+        if ask_SizeT:
+            self.SizeT_SpinBox.setValue(SizeT)
+        else:
+            self.SizeT_SpinBox.setValue(1)
+            self.SizeT_SpinBox.setDisabled(True)
         self.SizeT_SpinBox.setAlignment(Qt.AlignCenter)
         self.SizeT_SpinBox.valueChanged.connect(self.TimeIncrementShowHide)
         gridLayout.addWidget(self.SizeT_SpinBox, row, 1)

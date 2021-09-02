@@ -43,14 +43,16 @@ class loadData:
         self.basename = selector.basename
 
     def loadImgData(self):
-        if self.ext.find('tif') != -1:
-            self.img_data = skimage.io.imread(self.imgPath)
-        elif self.ext == '.npz':
+        if self.ext == '.npz':
             self.img_data = np.load(self.imgPath)['arr_0']
         elif self.ext == '.npy':
             self.img_data = np.load(self.imgPath)
         else:
-            self.criticalExtNotValid()
+            try:
+                self.img_data = skimage.io.imread(self.imgPath)
+            except Exception as e:
+                trackeback.print_exc()
+                self.criticalExtNotValid()
 
     def loadOtherFiles(self,
                        load_segm_data=True,
@@ -74,17 +76,17 @@ class loadData:
         ls = os.listdir(self.images_path)
         for file in ls:
             filePath = os.path.join(self.images_path, file)
-            if load_segm_data and file.find('_segm.np')!=-1:
+            if load_segm_data and file.find('segm.np')!=-1:
                 self.segmFound = True
                 self.segm_npz_path = filePath
                 try:
                     self.segm_data = np.load(filePath)['arr_0']
                 except Exception as e:
                     self.segm_data = np.load(filePath)
-            elif getTifPath and file.find(f'_{self.user_ch_name}.tif')!=-1:
+            elif getTifPath and file.find(f'{self.user_ch_name}.tif')!=-1:
                 self.tif_path = filePath
                 self.TifPathFound = True
-            elif load_acdc_df and file.endswith('_acdc_output.csv'):
+            elif load_acdc_df and file.endswith('acdc_output.csv'):
                 self.acd_df_found = True
                 acdc_df = pd.read_csv(
                       filePath, index_col=['frame_i', 'Cell_ID']
@@ -92,27 +94,27 @@ class loadData:
                 acdc_df = self.BooleansTo0s1s(acdc_df, inplace=True)
                 acdc_df = self.intToBoolean(acdc_df)
                 self.acdc_df = acdc_df
-            elif load_shifts and file.endswith('_shifts.npy'):
+            elif load_shifts and file.endswith('shifts.npy'):
                 self.shiftsFound = True
                 self.loaded_shifts = np.load(filePath)
-            elif loadSegmInfo and file.endswith('_segmInfo.csv'):
+            elif loadSegmInfo and file.endswith('segmInfo.csv'):
                 self.segmInfoFound = True
                 self.segmInfo_df = pd.read_csv(filePath,
                                                index_col='frame_i')
-            elif load_delROIsInfo and file.endswith('_delROIsInfo.npz'):
+            elif load_delROIsInfo and file.endswith('delROIsInfo.npz'):
                 self.delROIsInfoFound = True
                 self.delROIsInfo_npz = np.load(filePath)
-            elif loadDataPrepBkgrVals and file.endswith('_dataPrep_bkgrValues.csv'):
+            elif loadDataPrepBkgrVals and file.endswith('dataPrep_bkgrValues.csv'):
                 self.DataPrepBkgrValsFound = True
                 bkgrValues_df = pd.read_csv(filePath)
                 self.bkgrValues_chNames = bkgrValues_df['channel_name'].unique()
                 self.bkgrValues_df = bkgrValues_df.set_index(
                                                 ['channel_name', 'frame_i'])
-            elif load_metadata and file.endswith('_metadata.csv'):
+            elif load_metadata and file.endswith('metadata.csv'):
                 self.metadataFound = True
                 self.metadata_df = pd.read_csv(filePath).set_index('Description')
                 self.extractMetadata()
-            elif load_last_tracked_i and file.endswith('_last_tracked_i.txt'):
+            elif load_last_tracked_i and file.endswith('last_tracked_i.txt'):
                 self.last_tracked_i_found = True
                 try:
                     with open(filePath, 'r') as txt:
@@ -163,7 +165,10 @@ class loadData:
     def setNotFoundData(self):
         if self.metadataFound is not None and not self.metadataFound:
             if self.img_data.ndim > 2:
-                self.SizeT, self.SizeZ = len(self.img_data), 1
+                if len(self.img_data) > 49:
+                    self.SizeT, self.SizeZ = len(self.img_data), 1
+                else:
+                    self.SizeT, self.SizeZ = 1, len(self.img_data)
             else:
                 self.SizeT, self.SizeZ = 1, 1
             self.TimeIncrement = 1.0
@@ -188,7 +193,10 @@ class loadData:
             self.tif_path = None
 
     def buildPaths(self):
-        basename = self.basename
+        if self.basename.endswith('_'):
+            basename = self.basename
+        else:
+            basename = f'{self.basename}_'
         base_path = f'{self.images_path}/{basename}'
         self.slice_used_align_path = f'{base_path}slice_used_alignment.csv'
         self.slice_used_segm_path = f'{base_path}slice_segm.csv'
@@ -244,6 +252,7 @@ class loadData:
         self.npz_paths = npz_paths
 
     def askInputMetadata(self,
+                         ask_SizeT=False,
                          ask_TimeIncrement=False,
                          ask_PhysicalSizes=False,
                          save=False):
@@ -252,7 +261,7 @@ class loadData:
         metadataWin = apps.QDialogMetadata(
             self.SizeT, self.SizeZ, self.TimeIncrement,
             self.PhysicalSizeZ, self.PhysicalSizeY, self.PhysicalSizeX,
-            ask_TimeIncrement, ask_PhysicalSizes,
+            ask_SizeT, ask_TimeIncrement, ask_PhysicalSizes,
             parent=self.parent, font=font, imgDataShape=self.img_data.shape)
         metadataWin.setFont(font)
         metadataWin.exec_()

@@ -306,6 +306,7 @@ class segmWin(QMainWindow):
             )
             if first_call:
                 proceed = data.askInputMetadata(
+                                            ask_SizeT=True,
                                             ask_TimeIncrement=False,
                                             ask_PhysicalSizes=False,
                                             save=True)

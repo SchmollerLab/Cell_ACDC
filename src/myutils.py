@@ -164,7 +164,7 @@ def download_model(model_name):
         # Remove downloaded zip archive
         os.remove(models_zip_path)
 
-def imagej_tiffwriter(new_path, data, metadata, SizeT, ):
+def imagej_tiffwriter(new_path, data, metadata, SizeT, SizeZ):
     with TiffWriter(new_path, imagej=True) as new_tif:
         if SizeZ > 1 and SizeT > 1:
             # 3D data over time
