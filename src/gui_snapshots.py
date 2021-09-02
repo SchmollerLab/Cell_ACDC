@@ -3112,12 +3112,24 @@ def mouse_up(event):
         if mothID == 0 or budID == 0:
             print('WARNING: You clicked (or released) on background! '
                   'No cell cycle stage can be assigned to background!')
-        elif mothID != budID:
+            return
+
+        df = ia.cc_stage_df
+        ccsMoth = df.at[mothID, 'Cell cycle stage']
+        if ccsMoth == 'S' and mothID != budID:
+            budID = df.at[mothID, 'Relative\'s ID']
+            tk.messagebox.showwarning('Mother cell already has a bud!',
+                f'Cell ID {mothID} already has bud {budID} assigned to it!\n\n'
+                'To assign a different bud you first have to undo the assignment, '
+                f'by right-clicking on the assigned bud {budID}'
+            )
+            return
+
+        if mothID != budID:
             if app.is_undo or app.is_redo:
                 app.store_state(ia)
             x0, y0 = app.xdrc, app.ydrc
             ia.store_bud_assign_infodict(x0, y0, yu, xu)
-            df = ia.cc_stage_df
             df.at[budID, 'Cell cycle stage'] = 'S'
             df.at[mothID, 'Cell cycle stage'] = 'S'
             df.at[budID, '# of cycles'] = 0
