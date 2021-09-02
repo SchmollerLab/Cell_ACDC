@@ -20,6 +20,7 @@ from tqdm import tqdm
 import threading, time
 
 import cv2
+import math
 import numpy as np
 import pandas as pd
 import scipy.optimize
@@ -77,6 +78,14 @@ def qt_debug_trace():
     pyqtRemoveInputHook()
     import pdb; pdb.set_trace()
 
+def exception_handler(func):
+    def inner_function(*args, **kwargs):
+        try:
+            func(*args, **kwargs)
+        except Exception as e:
+            args[0].logger.exception(e)
+    return inner_function
+
 class guiWin(QMainWindow):
     """Main Window."""
 
@@ -114,6 +123,7 @@ class guiWin(QMainWindow):
         self.setAcceptDrops(True)
 
         self.checkableButtons = []
+        self.LeftClickButtons = []
 
         self.isSnapshot = False
         self.pos_i = 0
@@ -154,6 +164,8 @@ class guiWin(QMainWindow):
         self.settings_csv_path = csv_path
         if os.path.exists(csv_path):
             self.df_settings = pd.read_csv(csv_path, index_col='setting')
+            if 'is_bw_inverted' not in self.df_settings.index:
+                self.df_settings.at['is_bw_inverted', 'value'] = 'False'
             if 'fontSize' not in self.df_settings.index:
                 self.df_settings.at['fontSize', 'value'] = '10pt'
             if 'overlayColor' not in self.df_settings.index:
@@ -163,7 +175,7 @@ class guiWin(QMainWindow):
                 self.df_settings.at['how_normIntensities', 'value'] = raw
         else:
             idx = ['is_bw_inverted', 'fontSize', 'overlayColor', 'how_normIntensities']
-            values = [False, '10pt', '255-255-0', 'raw']
+            values = ['False', '10pt', '255-255-0', 'raw']
             self.df_settings = pd.DataFrame({'setting': idx,
                                              'value': values}
                                            ).set_index('setting')
@@ -172,13 +184,12 @@ class guiWin(QMainWindow):
         file_path = event.mimeData().urls()[0].toLocalFile()
         if os.path.isdir(file_path):
             exp_path = file_path
+            if basename.find('Position_')!=-1 or basename=='Images':
+                event.accept()
+            else:
+                event.ignore()
         else:
-            exp_path = os.path.dirname(file_path)
-        basename = os.path.basename(exp_path)
-        if basename.find('Position_')!=-1 or basename=='Images':
             event.accept()
-        else:
-            event.ignore()
 
     def dropEvent(self, event):
         event.setDropAction(Qt.CopyAction)
@@ -186,9 +197,10 @@ class guiWin(QMainWindow):
         basename = os.path.basename(file_path)
         if os.path.isdir(file_path):
             exp_path = file_path
+            self.openFolder(exp_path=exp_path)
         else:
-            exp_path = os.path.dirname(file_path)
-        self.openFile(exp_path=exp_path)
+            self.openFile(file_path=file_path)
+
 
     def leaveEvent(self, event):
         if self.slideshowWin is not None:
@@ -263,6 +275,7 @@ class guiWin(QMainWindow):
         menuBar.addMenu(fileMenu)
         # fileMenu.addAction(self.newAction)
         fileMenu.addAction(self.openAction)
+        fileMenu.addAction(self.openFileAction)
         # Open Recent submenu
         self.openRecentMenu = fileMenu.addMenu("Open Recent")
         fileMenu.addAction(self.saveAction)
@@ -297,6 +310,7 @@ class guiWin(QMainWindow):
         # Image menu
         ImageMenu = menuBar.addMenu("&Image")
         ImageMenu.addSeparator()
+        ImageMenu.addAction(self.imgPropertiesAction)
         filtersMenu = ImageMenu.addMenu("Filters")
         filtersMenu.addAction(self.gaussBlurAction)
         filtersMenu.addAction(self.edgeDetectorAction)
@@ -366,6 +380,17 @@ class guiWin(QMainWindow):
         navigateToolBar.addWidget(self.overlayButton)
         # self.checkableButtons.append(self.overlayButton)
         # self.checkableQButtonsGroup.addButton(self.overlayButton)
+
+        self.rulerButton = QToolButton(self)
+        self.rulerButton.setIcon(QIcon(":ruler.svg"))
+        self.rulerButton.setCheckable(True)
+        self.rulerButton.setToolTip(
+            'Measure straight line. '
+            'Length is displayed on the bottom-right corner.'
+        )
+        navigateToolBar.addWidget(self.rulerButton)
+        self.checkableButtons.append(self.rulerButton)
+        self.LeftClickButtons.append(self.rulerButton)
 
         # fluorescent image color widget
         colorsToolBar = QToolBar("Colors", self)
@@ -443,6 +468,7 @@ class guiWin(QMainWindow):
             'SHORTCUT: "B" key')
         editToolBar.addWidget(self.brushButton)
         self.checkableButtons.append(self.brushButton)
+        self.LeftClickButtons.append(self.brushButton)
 
         self.eraserButton = QToolButton(self)
         self.eraserButton.setIcon(QIcon(":eraser.png"))
@@ -461,6 +487,7 @@ class guiWin(QMainWindow):
             'SHORTCUT: "X" key')
         editToolBar.addWidget(self.eraserButton)
         self.checkableButtons.append(self.eraserButton)
+        self.LeftClickButtons.append(self.eraserButton)
 
         self.curvToolButton = QToolButton(self)
         self.curvToolButton.setIcon(QIcon(":curvature-tool.svg"))
@@ -472,6 +499,7 @@ class guiWin(QMainWindow):
             'right button for drawing auto-contour\n\n'
             'SHORTCUT: "C" key')
         editToolBar.addWidget(self.curvToolButton)
+        self.LeftClickButtons.append(self.curvToolButton)
         # self.checkableButtons.append(self.curvToolButton)
 
         self.hullContToolButton = QToolButton(self)
@@ -624,7 +652,8 @@ class guiWin(QMainWindow):
         self.newAction = QAction(self)
         self.newAction.setText("&New")
         self.newAction.setIcon(QIcon(":file-new.svg"))
-        self.openAction = QAction(QIcon(":folder-open.svg"), "&Open...", self)
+        self.openAction = QAction(QIcon(":folder-open.svg"), "&Open folder...", self)
+        self.openFileAction = QAction(QIcon(":image.svg"),"&Open image file...", self)
         self.saveAction = QAction(QIcon(":file-save.svg"),
                                   "&Save (Ctrl+S)", self)
         self.loadFluoAction = QAction("Load fluorescent images", self)
@@ -660,6 +689,7 @@ class guiWin(QMainWindow):
                                   "Next Frame", self)
         self.prevAction.setShortcut("left")
         self.nextAction.setShortcut("right")
+
         self.repeatTrackingAction = QAction(
             QIcon(":repeat-tracking.svg"), "Repeat tracking", self
         )
@@ -737,6 +767,9 @@ class guiWin(QMainWindow):
         self.gaussBlurAction = QAction('Gaussian blur...', self)
         self.gaussBlurAction.setCheckable(True)
 
+        self.imgPropertiesAction = QAction('Properties...', self)
+        self.imgPropertiesAction.setDisabled(True)
+
         self.edgeDetectorAction = QAction('Edge detection...', self)
         self.edgeDetectorAction.setCheckable(True)
 
@@ -755,7 +788,8 @@ class guiWin(QMainWindow):
     def gui_connectActions(self):
         # Connect File actions
         self.newAction.triggered.connect(self.newFile)
-        self.openAction.triggered.connect(self.openFile)
+        self.openAction.triggered.connect(self.openFolder)
+        self.openFileAction.triggered.connect(self.openFile)
         self.saveAction.triggered.connect(self.saveFile)
         self.showInExplorerAction.triggered.connect(self.showInExplorer)
         self.exitAction.triggered.connect(self.close)
@@ -781,6 +815,7 @@ class guiWin(QMainWindow):
         self.prevAction.triggered.connect(self.prev_cb)
         self.nextAction.triggered.connect(self.next_cb)
         self.overlayButton.toggled.connect(self.overlay_cb)
+        self.rulerButton.toggled.connect(self.ruler_cb)
         self.loadFluoAction.triggered.connect(self.loadFluo_cb)
         self.reloadAction.triggered.connect(self.reload_cb)
         self.slideshowButton.toggled.connect(self.launchSlideshow)
@@ -820,6 +855,7 @@ class guiWin(QMainWindow):
         self.addDelRoiAction.triggered.connect(self.addDelROI)
         self.hist.sigLookupTableChanged.connect(self.histLUT_cb)
         self.normalizeQActionGroup.triggered.connect(self.saveNormAction)
+        self.imgPropertiesAction.triggered.connect(self.editImgProperties)
 
     def gui_createImg1Widgets(self):
         self.img1_Widglayout = QtGui.QGridLayout()
@@ -1086,6 +1122,17 @@ class guiWin(QMainWindow):
                                  brush=pg.mkBrush((255,0,0,50)), size=15,
                                  pen=pg.mkPen(width=2, color='r'))
         self.ax1.addItem(self.ax1_ripIDs_ScatterPlot)
+
+        # Ruler plotItem and scatterItem
+        rulerPen = pg.mkPen(color='r', style=Qt.DashLine, width=2)
+        self.ax1_rulerPlotItem = pg.PlotDataItem(pen=rulerPen)
+        self.ax1_rulerAnchorsItem = pg.ScatterPlotItem(
+            symbol='o', size=9,
+            brush=pg.mkBrush((255,0,0,50)),
+            pen=pg.mkPen((255,0,0), width=2)
+        )
+        self.ax1.addItem(self.ax1_rulerPlotItem)
+        self.ax1.addItem(self.ax1_rulerAnchorsItem)
 
     def gui_createGraphicsItems(self):
         # Contour pens
@@ -1916,6 +1963,16 @@ class guiWin(QMainWindow):
         else:
             self.xHoverImg, self.yHoverImg = None, None
 
+        drawRulerLine = (
+            self.rulerButton.isChecked() and self.rulerHoverON
+            and not event.isExit()
+        )
+        if drawRulerLine:
+            x, y = event.pos()
+            xdata, ydata = int(x), int(y)
+            xxRA, yyRA = self.ax1_rulerAnchorsItem.getData()
+            self.ax1_rulerPlotItem.setData([xxRA[0], xdata], [yyRA[0], ydata])
+
         if not event.isExit():
             x, y = event.pos()
             xdata, ydata = int(x), int(y)
@@ -1926,17 +1983,21 @@ class guiWin(QMainWindow):
                 maxVal = _img.max()
                 ID = PosData.lab[ydata, xdata]
                 maxID = PosData.lab.max()
-                try:
-                    self.wcLabel.setText(
-                        f'(x={x:.2f}, y={y:.2f}, value={val:.2f}, '
-                        f'max={maxVal:.2f}, ID={ID}, max_ID={maxID})'
-                    )
-                except Exception as e:
+                if _img.ndim > 2:
                     val = [v for v in val]
-                    self.wcLabel.setText(
-                            f'(x={x:.2f}, y={y:.2f}, value={val})'
-                            f'max={maxVal:.2f}, ID={ID}, max_ID={maxID})'
+                txt = (
+                    f'x={x:.2f}, y={y:.2f}, value={val:.2f}, '
+                    f'max={maxVal:.2f}, ID={ID}, max_ID={maxID}'
+                )
+                xx, yy = self.ax1_rulerPlotItem.getData()
+                if xx is not None:
+                    lenPxl = math.sqrt((xx[0]-xx[1])**2 + (yy[0]-yy[1])**2)
+                    pxlToUm = self.data[self.pos_i].PhysicalSizeX
+                    lenTxt = (
+                        f'length={lenPxl:.2f} pxl ({lenPxl*pxlToUm:.2f} um)'
                     )
+                    txt = f'{txt}, {lenTxt}'
+                self.wcLabel.setText(txt)
             else:
                 self.clickedOnBud = False
                 self.BudMothTempLine.setData([], [])
@@ -2362,26 +2423,28 @@ class guiWin(QMainWindow):
         curvToolON = self.curvToolButton.isChecked()
         histON = self.setIsHistoryKnownButton.isChecked()
         eraserON = self.eraserButton.isChecked()
+        rulerON = self.rulerButton.isChecked()
 
         dragImgLeft = (
             left_click and not brushON and not histON
-            and not curvToolON and not eraserON
+            and not curvToolON and not eraserON and not rulerON
         )
 
         dragImgMiddle = mid_click
 
-        # Left click in snapshot mode is for spline tool
+        # Right click in snapshot mode is for spline tool
         canAnnotateDivision = (
              not self.assignBudMothButton.isChecked()
-             and not self.setIsHistoryKnownButton.isChecked()
              and not (self.isSnapshot and self.curvToolButton.isChecked())
         )
 
         canCurv = (curvToolON and not self.assignBudMothButton.isChecked()
                    and not brushON and not dragImgLeft and not eraserON)
-        canBrush = (brushON and not curvToolON
+        canBrush = (brushON and not curvToolON and not rulerON
                     and not dragImgLeft and not eraserON)
-        canErase = (eraserON and not curvToolON
+        canErase = (eraserON and not curvToolON and not rulerON
+                    and not dragImgLeft and not brushON)
+        canRuler = (rulerON and not curvToolON and not brushON
                     and not dragImgLeft and not brushON)
 
         # Enable dragging of the image window like pyqtgraph original code
@@ -2504,6 +2567,18 @@ class guiWin(QMainWindow):
 
                 self.img2.updateImage()
                 self.isMouseDragImg1 = True
+
+        elif left_click and canRuler:
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(x), int(y)
+            if not self.rulerHoverON:
+                self.ax1_rulerAnchorsItem.setData([xdata], [ydata])
+                self.rulerHoverON = True
+            else:
+                self.rulerHoverON = False
+                xxRA, yyRA = self.ax1_rulerAnchorsItem.getData()
+                self.ax1_rulerPlotItem.setData([xxRA[0], x], [yyRA[0], y])
+                self.ax1_rulerAnchorsItem.setData([xxRA[0], x], [yyRA[0], y])
 
         elif right_click and canCurv:
             # Draw manually assisted auto contour
@@ -2696,6 +2771,16 @@ class guiWin(QMainWindow):
             gray = 1.055*(C_linear)**(1/2.4) - 0.055
         return gray
 
+    def ruler_cb(self, checked):
+        if checked:
+            self.disconnectLeftClickButtons()
+            self.uncheckLeftClickButtons(self.sender())
+            self.connectLeftClickButtons()
+        else:
+            self.rulerHoverON = False
+            self.ax1_rulerPlotItem.setData([], [])
+            self.ax1_rulerAnchorsItem.setData([], [])
+
     def getOptimalLabelItemColor(self, LabelItemID, desiredGray):
         img = self.img1.image
         img = img/img.max()
@@ -2709,6 +2794,13 @@ class guiWin(QMainWindow):
         optimalGray = self.getDistantGray(desiredGray, bkgrGray)
         return optimalGray
 
+    def editImgProperties(self, checked=True):
+        PosData = self.data[self.pos_i]
+        PosData.askInputMetadata(
+                                ask_TimeIncrement=True,
+                                ask_PhysicalSizes=True,
+                                save=True
+        )
 
     def setHoverToolSymbolData(self, xx, yy, ScatterItems, size=None):
         for item in ScatterItems:
@@ -3730,7 +3822,7 @@ class guiWin(QMainWindow):
         if self.slideshowWin is not None:
             self.slideshowWin.is_bw_inverted = checked
             self.slideshowWin.update_img()
-        self.df_settings.at['is_bw_inverted', 'value'] = checked
+        self.df_settings.at['is_bw_inverted', 'value'] = str(checked)
         self.df_settings.to_csv(self.settings_csv_path)
         if checked:
             self.ax2_BrushCirclePen = pg.mkPen((0,0,0), width=2)
@@ -4229,6 +4321,23 @@ class guiWin(QMainWindow):
                     success = True
         return lab, success
 
+    def disconnectLeftClickButtons(self):
+        self.brushButton.toggled.disconnect()
+        self.curvToolButton.toggled.disconnect()
+        self.rulerButton.toggled.disconnect()
+        self.eraserButton.toggled.disconnect()
+
+    def uncheckLeftClickButtons(self, sender):
+        for button in self.LeftClickButtons:
+            if button != sender:
+                button.setChecked(False)
+
+    def connectLeftClickButtons(self):
+        self.brushButton.toggled.connect(self.Brush_cb)
+        self.curvToolButton.toggled.connect(self.curvTool_cb)
+        self.rulerButton.toggled.connect(self.ruler_cb)
+        self.eraserButton.toggled.connect(self.Eraser_cb)
+
     def brushSize_cb(self):
         self.ax2_EraserCircle.setSize(self.brushSizeSpinbox.value()*2)
         self.ax1_BrushCircle.setSize(self.brushSizeSpinbox.value()*2)
@@ -4316,14 +4425,11 @@ class guiWin(QMainWindow):
             self.updateBrushCursor(self.xHoverImg, self.yHoverImg)
             self.setBrushID()
             self.enableSizeSpinbox(True)
-            self.eraserButton.toggled.disconnect()
-            self.curvToolButton.toggled.disconnect()
-            self.eraserButton.setChecked(False)
+            self.disconnectLeftClickButtons()
+            self.uncheckLeftClickButtons(self.sender())
             c = self.defaultToolBarButtonColor
             self.eraserButton.setStyleSheet(f'background-color: {c}')
-            self.curvToolButton.setChecked(False)
-            self.eraserButton.toggled.connect(self.Eraser_cb)
-            self.curvToolButton.toggled.connect(self.curvTool_cb)
+            self.connectLeftClickButtons()
         else:
             self.setHoverToolSymbolData(
                 [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
@@ -4354,12 +4460,9 @@ class guiWin(QMainWindow):
     def curvTool_cb(self, checked):
         PosData = self.data[self.pos_i]
         if checked:
-            self.eraserButton.toggled.disconnect()
-            self.brushButton.toggled.disconnect()
-            self.eraserButton.setChecked(False)
-            self.brushButton.setChecked(False)
-            self.eraserButton.toggled.connect(self.Eraser_cb)
-            self.brushButton.toggled.connect(self.Brush_cb)
+            self.disconnectLeftClickButtons()
+            self.uncheckLeftClickButtons(self.sender())
+            self.connectLeftClickButtons()
             self.hoverLinSpace = np.linspace(0, 1, 1000)
             self.curvPlotItem = pg.PlotDataItem(pen=self.newIDs_cpen)
             self.curvHoverPlotItem = pg.PlotDataItem(pen=self.oldIDs_cpen)
@@ -4421,14 +4524,11 @@ class guiWin(QMainWindow):
                 [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
             )
             self.updateEraserCursor(self.xHoverImg, self.yHoverImg)
-            self.brushButton.toggled.disconnect()
-            self.curvToolButton.toggled.disconnect()
-            self.brushButton.setChecked(False)
+            self.disconnectLeftClickButtons()
+            self.uncheckLeftClickButtons(self.sender())
             c = self.defaultToolBarButtonColor
             self.brushButton.setStyleSheet(f'background-color: {c}')
-            self.curvToolButton.setChecked(False)
-            self.brushButton.toggled.connect(self.Brush_cb)
-            self.curvToolButton.toggled.connect(self.curvTool_cb)
+            self.connectLeftClickButtons()
             self.enableSizeSpinbox(True)
         else:
             self.setHoverToolSymbolData(
@@ -4597,6 +4697,7 @@ class guiWin(QMainWindow):
         for button in self.checkableButtons:
             button.setChecked(False)
         self.splineHoverON = False
+        self.rulerHoverON = False
         self.isRightClickDragImg1 = False
         self.clearCurvItems(removeItems=False)
 
@@ -5317,17 +5418,19 @@ class guiWin(QMainWindow):
                 )
                 if f==0:
                     proceed = PosData.askInputMetadata(
+                                                ask_SizeT=self.num_pos==1,
                                                 ask_TimeIncrement=True,
                                                 ask_PhysicalSizes=True,
                                                 save=True)
+                    if not proceed:
+                        return False
                     self.SizeT = PosData.SizeT
                     self.SizeZ = PosData.SizeZ
                     self.TimeIncrement = PosData.TimeIncrement
                     self.PhysicalSizeZ = PosData.PhysicalSizeZ
                     self.PhysicalSizeY = PosData.PhysicalSizeY
                     self.PhysicalSizeX = PosData.PhysicalSizeX
-                    if not proceed:
-                        return False
+
                 else:
                     PosData.SizeT = self.SizeT
                     if self.SizeZ > 1:
@@ -5670,6 +5773,7 @@ class guiWin(QMainWindow):
         self.cmap = myutils.getFromMatplotlib('viridis')
 
         self.splineHoverON = False
+        self.rulerHoverON = False
         self.autoContourHoverON = False
         self.framesScrollBarStartedMoving = True
 
@@ -6995,9 +7099,9 @@ class guiWin(QMainWindow):
                     prompt = False
                     ol_channels = ch_names
 
-                ol_data = {}
-                ol_colors = {}
                 for PosData in self.data:
+                    ol_data = {}
+                    ol_colors = {}
                     for i, ol_ch in enumerate(ol_channels):
                         ol_path, filename = self.getPathFromChName(
                                                             ol_ch, PosData)
@@ -7934,7 +8038,44 @@ class guiWin(QMainWindow):
     def newFile(self):
         pass
 
-    def openFile(self, checked=False, exp_path=None):
+    def openFile(self, checked=False, file_path=None):
+        """
+        Function used for loading an image file directly.
+        """
+        if file_path is None:
+            self.getMostRecentPath()
+            file_path = QFileDialog.getOpenFileName(
+                self, 'Select image file', self.MostRecentPath,
+                "Images (*.png *.tif *.tiff *.jpg *.jpeg);;All Files (*)")[0]
+            if file_path == '':
+                return
+        dirpath = os.path.dirname(file_path)
+        dirname = os.path.basename(dirpath)
+        if dirname != 'Images':
+            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+            acdc_folder = f'{timestamp}_acdc'
+            exp_path = os.path.join(dirpath, acdc_folder, 'Images')
+            os.makedirs(exp_path)
+
+        filename, ext = os.path.splitext(os.path.basename(file_path))
+        if ext == '.tif':
+            self.openFolder(exp_path=exp_path, isImageFile=True)
+        else:
+            print('Copying file to .tif format...')
+            data = load.loadData(file_path, '')
+            data.loadImgData()
+            img = data.img_data
+            if img.ndim == 3 and (img.shape[-1] == 3 or img.shape[-1] == 4):
+                print('Converting RGB image to grayscale...')
+                data.img_data = skimage.color.rgb2gray(data.img_data)
+                data.img_data = skimage.img_as_ubyte(data.img_data)
+            tif_path = os.path.join(exp_path, f'{filename}.tif')
+            myutils.imagej_tiffwriter(
+                tif_path, data.img_data, {}, 1, 1
+            )
+            self.openFolder(exp_path=exp_path, isImageFile=True)
+
+    def openFolder(self, checked=False, exp_path=None, isImageFile=False):
         try:
             # Remove all items from a previous session if open is pressed again
             self.removeAllItems()
@@ -7985,7 +8126,7 @@ class guiWin(QMainWindow):
                 which_channel='segm', allow_abort=False
             )
 
-            if not is_pos_folder and not is_images_folder:
+            if not is_pos_folder and not is_images_folder and not isImageFile:
                 select_folder = load.select_exp_folder()
                 values = select_folder.get_values_segmGUI(exp_path)
                 if not values:
@@ -8032,6 +8173,9 @@ class guiWin(QMainWindow):
             elif is_images_folder:
                 images_paths = [exp_path]
 
+            elif isImageFile:
+                images_paths = [exp_path]
+
             self.images_paths = images_paths
 
             # Get info from first position selected
@@ -8042,17 +8186,28 @@ class guiWin(QMainWindow):
                     ch_name_selector.get_available_channels(filenames)
                 )
                 self.ch_names = ch_names
-                ch_name_selector.QtPrompt(
-                    self, ch_names, CbLabel='Select channel name to segment: ')
-                if ch_name_selector.was_aborted:
+                if len(ch_names) > 1:
+                    CbLabel='Select channel name to segment: '
+                    ch_name_selector.QtPrompt(
+                        self, ch_names, CbLabel=CbLabel)
+                    if ch_name_selector.was_aborted:
+                        self.titleLabel.setText(
+                            'File --> Open or Open recent to start the process',
+                            color='w')
+                        self.openAction.setEnabled(True)
+                        return
+                    user_ch_name = ch_name_selector.channel_name
+                elif len(ch_names) == 1:
+                    user_ch_name = ch_names[0]
+                elif not ch_names:
                     self.titleLabel.setText(
                         'File --> Open or Open recent to start the process',
                         color='w')
                     self.openAction.setEnabled(True)
                     return
-                user_ch_name = ch_name_selector.channel_name
 
             user_ch_file_paths = []
+            img_path = None
             for images_path in self.images_paths:
                 img_aligned_found = False
                 for filename in os.listdir(images_path):
@@ -8083,7 +8238,16 @@ class guiWin(QMainWindow):
 
                 user_ch_file_paths.append(img_path)
 
-                print(f'Loading {img_path}...')
+            if img_path is None:
+                self.titleLabel.setText(
+                    'File --> Open or Open recent to start the process',
+                    color='w')
+                self.openAction.setEnabled(True)
+                self.criticalImgPathNotFound()
+                return
+
+            print(f'Loading {img_path}...')
+
 
             self.user_ch_name = user_ch_name
 
@@ -8113,6 +8277,7 @@ class guiWin(QMainWindow):
             self.fontSizeAction.setChecked(True)
             self.openAction.setEnabled(True)
             self.editTextIDsColorAction.setDisabled(False)
+            self.imgPropertiesAction.setEnabled(True)
         except Exception as e:
             print('')
             print('====================================')
@@ -8719,7 +8884,7 @@ class guiWin(QMainWindow):
 
     def openRecentFile(self, path):
         print(f'Opening recent folder: {path}')
-        self.openFile(exp_path=path)
+        self.openFolder(exp_path=path)
 
     def closeEvent(self, event):
         self.saveWindowGeometry()
