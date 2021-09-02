@@ -3120,7 +3120,7 @@ def mouse_up(event):
             budID = df.at[mothID, 'Relative\'s ID']
             tk.messagebox.showwarning('Mother cell already has a bud!',
                 f'Cell ID {mothID} already has bud {budID} assigned to it!\n\n'
-                'To assign a different bud you first have to undo the assignment, '
+                'To assign a different bud you first have to undo the assignment '
                 f'by right-clicking on the assigned bud {budID}'
             )
             return
