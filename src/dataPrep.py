@@ -783,6 +783,10 @@ class dataPrepWin(QMainWindow):
                         PosData.SizeZ = SizeZ
                     else:
                         PosData.SizeZ = 1
+                    if self.SizeT > 1:
+                        PosData.SizeT = self.SizeT
+                    else:
+                        PosData.SizeT = 1
                     PosData.saveMetadata()
             except AttributeError:
                 self.titleLabel.setText(
