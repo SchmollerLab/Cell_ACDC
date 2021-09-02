@@ -761,6 +761,7 @@ class dataPrepWin(QMainWindow):
                 PosData.loadAllImgPaths()
                 if f==0:
                     proceed = PosData.askInputMetadata(
+                                                ask_SizeT=self.num_pos==1,
                                                 ask_TimeIncrement=False,
                                                 ask_PhysicalSizes=False,
                                                 save=True)
@@ -772,7 +773,12 @@ class dataPrepWin(QMainWindow):
                             color='w')
                         return False
                 else:
+                    PosData.SizeT = self.SizeT
                     if self.SizeZ > 1:
+                        # In case we know we are loading single 3D z-stacks
+                        # we alwways use the third dimensins as SizeZ because
+                        # SizeZ in some positions might be different than
+                        # first loaded pos
                         SizeZ = PosData.img_data.shape[-3]
                         PosData.SizeZ = SizeZ
                     else:
