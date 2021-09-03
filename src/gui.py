@@ -2876,7 +2876,7 @@ class guiWin(QMainWindow):
         PosData = self.data[self.pos_i]
         current_frame_i = PosData.frame_i
         self.store_data()
-        for i in range(PosData.frame_i, PosData.num_segm_frames):
+        for i in range(PosData.frame_i, PosData.segmSizeT):
             delROIs_info = PosData.allData_li[i]['delROIs_info']
             if self.roi_to_del in delROIs_info['rois']:
                 PosData.frame_i = i
@@ -3124,7 +3124,7 @@ class guiWin(QMainWindow):
             self.ccaTableWin.updateTable(PosData.cca_df)
 
         # Correct future frames
-        for i in range(PosData.frame_i+1, PosData.num_segm_frames):
+        for i in range(PosData.frame_i+1, PosData.segmSizeT):
             cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
             if cca_df_i is None:
                 # ith frame was not visited yet
@@ -3287,7 +3287,7 @@ class guiWin(QMainWindow):
 
 
         # Correct future frames
-        for i in range(PosData.frame_i+1, PosData.num_segm_frames):
+        for i in range(PosData.frame_i+1, PosData.segmSizeT):
             cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
             if cca_df_i is None:
                 # ith frame was not visited yet
@@ -3342,7 +3342,7 @@ class guiWin(QMainWindow):
         eligible = True
 
         # Check future frames
-        for i in range(PosData.frame_i, PosData.num_segm_frames):
+        for i in range(PosData.frame_i, PosData.segmSizeT):
             cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
             if cca_df_i is None:
                 # ith frame was not visited yet
@@ -3559,7 +3559,7 @@ class guiWin(QMainWindow):
             self.ccaTableWin.updateTable(PosData.cca_df)
 
         # Correct future frames
-        for i in range(PosData.frame_i+1, PosData.num_segm_frames):
+        for i in range(PosData.frame_i+1, PosData.segmSizeT):
             # Get cca_df for ith frame from allData_li
             cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
             if cca_df_i is None:
@@ -3661,7 +3661,7 @@ class guiWin(QMainWindow):
         PosData = self.data[self.pos_i]
         self.warnEditingWithCca_df('Delete IDs using ROI')
         roi = self.getDelROI()
-        for i in range(PosData.frame_i, PosData.num_segm_frames):
+        for i in range(PosData.frame_i, PosData.segmSizeT):
             delROIs_info = PosData.allData_li[i]['delROIs_info']
             delROIs_info['rois'].append(roi)
             delROIs_info['delMasks'].append(np.zeros_like(PosData.lab))
@@ -4190,7 +4190,7 @@ class guiWin(QMainWindow):
             self.drawIDsContComboBox.clear()
             self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxCcaItems)
             self.drawIDsContComboBox.setCurrentText(currentMode)
-            self.framesScrollBar.setMaximum(PosData.num_segm_frames)
+            self.framesScrollBar.setMaximum(PosData.segmSizeT)
             try:
                 self.undoAction.triggered.disconnect()
                 self.redoAction.triggered.disconnect()
@@ -4244,7 +4244,7 @@ class guiWin(QMainWindow):
                                button_toUncheck=self.slideshowButton,
                                Left=self.slideshowWinLeft,
                                Top=self.slideshowWinTop)
-            self.slideshowWin.loadData(PosData.img_data, frame_i=PosData.frame_i)
+            self.slideshowWin.update_img()
             self.slideshowWin.show()
         else:
             self.slideshowWin.close()
@@ -4721,14 +4721,14 @@ class guiWin(QMainWindow):
         """
         PosData = self.data[self.pos_i]
         # Do not check the future for the last frame
-        if PosData.frame_i+1 == PosData.num_segm_frames:
+        if PosData.frame_i+1 == PosData.segmSizeT:
             # No future frames to propagate the change to
             return False, False, None, doNotShow
 
         areFutureIDs_affected = []
         # Get number of future frames already visited and checked if future
         # frames has an ID affected by the change
-        for i in range(PosData.frame_i+1, PosData.num_segm_frames):
+        for i in range(PosData.frame_i+1, PosData.segmSizeT):
             if PosData.allData_li[i]['labels'] is None:
                 break
             else:
@@ -4871,7 +4871,7 @@ class guiWin(QMainWindow):
         # Undo all past and future frames that has a last status inserted
         # when modyfing current frame
         prevStateId = prevCcaState['id']
-        for frame_i in range(0, PosData.num_segm_frames):
+        for frame_i in range(0, PosData.segmSizeT):
             if storeState:
                 cca_df_i = self.get_cca_df(frame_i=frame_i, return_df=True)
                 if cca_df_i is None:
@@ -5276,7 +5276,7 @@ class guiWin(QMainWindow):
         mode = str(self.modeComboBox.currentText())
         isSegmMode =  mode == 'Segmentation and Tracking'
         PosData = self.data[self.pos_i]
-        if PosData.frame_i < PosData.num_segm_frames-1:
+        if PosData.frame_i < PosData.segmSizeT-1:
             if 'lost' in self.titleLabel.text and isSegmMode:
                 msg = QtGui.QMessageBox()
                 warn_msg = (
@@ -5482,7 +5482,7 @@ class guiWin(QMainWindow):
                 PosData.img_data = np.array([PosData.img_data])
                 PosData.segm_data = np.array([PosData.segm_data])
             img_shape = PosData.img_data.shape
-            PosData.num_segm_frames = len(PosData.segm_data)
+            PosData.segmSizeT = len(PosData.segm_data)
             SizeT = PosData.SizeT
             SizeZ = PosData.SizeZ
             if f==0:
@@ -5850,8 +5850,8 @@ class guiWin(QMainWindow):
             PosData.new_IDs = []
             PosData.lost_IDs = []
             PosData.multiBud_mothIDs = [2]
-            PosData.UndoRedoStates = [[] for _ in range(PosData.num_segm_frames)]
-            PosData.UndoRedoCcaStates = [[] for _ in range(PosData.num_segm_frames)]
+            PosData.UndoRedoStates = [[] for _ in range(PosData.segmSizeT)]
+            PosData.UndoRedoCcaStates = [[] for _ in range(PosData.segmSizeT)]
 
             PosData.ol_data_dict = {}
             PosData.ol_data = None
@@ -5870,7 +5870,7 @@ class guiWin(QMainWindow):
                      'delROIs_info': {'rois': [], 'delMasks': [], 'delIDsROI': []},
                      'histoLevels': {}
                      }
-                    for i in range(PosData.num_segm_frames)
+                    for i in range(PosData.segmSizeT)
             ]
 
             PosData.ccaStatus_whenEmerged = {}
@@ -5885,7 +5885,7 @@ class guiWin(QMainWindow):
                 last_tracked_num = PosData.last_tracked_i+1
                 # Load previous session data
                 # Keep track of which ROIs have already been added in previous frame
-                delROIshapes = [[] for _ in range(PosData.num_segm_frames)]
+                delROIshapes = [[] for _ in range(PosData.segmSizeT)]
                 for i in range(last_tracked_num):
                     PosData.frame_i = i
                     self.get_data()
@@ -5944,7 +5944,7 @@ class guiWin(QMainWindow):
         if self.framesScrollBarStartedMoving:
             self.clearAllItems()
         self.t_label.setText(
-                 f'frame n. {PosData.frame_i+1}/{PosData.num_segm_frames}')
+                 f'frame n. {PosData.frame_i+1}/{PosData.segmSizeT}')
         self.img1.setImage(cells_img)
         self.img2.setImage(PosData.lab)
         self.updateLookuptable()
@@ -6165,7 +6165,7 @@ class guiWin(QMainWindow):
                 PosData.new_IDs = [ID for ID in PosData.new_IDs
                                 if curr_df.at[ID, 'is_history_known']
                                 and curr_df.at[ID, 'cell_cycle_stage'] == 'S']
-                if PosData.frame_i+1 < PosData.num_segm_frames:
+                if PosData.frame_i+1 < PosData.segmSizeT:
                     next_df = PosData.allData_li[PosData.frame_i+1]['acdc_df']
                     if next_df is None:
                         lastVisited = True
@@ -6445,7 +6445,7 @@ class guiWin(QMainWindow):
                         )
                         if addROI:
                             roi = self.getDelROI(xl=x0, yb=y0, w=w, h=h)
-                            for i in range(PosData.frame_i, PosData.num_segm_frames):
+                            for i in range(PosData.frame_i, PosData.segmSizeT):
                                 delROIs_info_i = PosData.allData_li[i]['delROIs_info']
                                 delROIs_info_i['rois'].append(roi)
                                 delROIshapes[i].append([x0, y0, w, h])
@@ -6498,7 +6498,7 @@ class guiWin(QMainWindow):
                 last_tracked_i = frame_i-1
                 break
             else:
-                last_tracked_i = PosData.num_segm_frames-1
+                last_tracked_i = PosData.segmSizeT-1
 
         self.framesScrollBar.setMaximum(last_tracked_i+1)
         if PosData.frame_i > last_tracked_i:
@@ -6635,7 +6635,7 @@ class guiWin(QMainWindow):
         PosData = self.data[self.pos_i]
         self.last_cca_frame_i = PosData.frame_i
         self.setFramesScrollbarMaximum()
-        for i in range(from_frame_i, PosData.num_segm_frames):
+        for i in range(from_frame_i, PosData.segmSizeT):
             df = PosData.allData_li[i]['acdc_df']
             if df is None:
                 # No more saved info to delete
@@ -7223,14 +7223,14 @@ class guiWin(QMainWindow):
         min = self.hist.gradient.listTicks()[0][1]
         max = self.hist.gradient.listTicks()[1][1]
         if isOverlayON:
-            for i in range(0, PosData.num_segm_frames):
+            for i in range(0, PosData.segmSizeT):
                 histoLevels = PosData.allData_li[i]['histoLevels']
                 histoLevels[PosData.manualContrastKey] = (min, max)
             if PosData.ol_data is not None:
                 self.getOverlayImg(setImg=True)
         else:
             cellsKey = f'{self.user_ch_name}_overlayOFF'
-            for i in range(0, PosData.num_segm_frames):
+            for i in range(0, PosData.segmSizeT):
                 histoLevels = PosData.allData_li[i]['histoLevels']
                 histoLevels[cellsKey] = (min, max)
             img = self.getImage()
@@ -7492,7 +7492,7 @@ class guiWin(QMainWindow):
         HDDmaxID = max([PosData.segm_data.max() for PosData in self.data])
         STOREDmaxID = max([PosData.allData_li[i]['labels'].max()
                            for PosData in self.data
-                           for i in range(0, PosData.num_segm_frames)
+                           for i in range(0, PosData.segmSizeT)
                            if PosData.allData_li[i]['labels'] is not None])
         currentMaxID = PosData.lab.max()
         maxID = max([currentMaxID, STOREDmaxID, currentMaxID])
@@ -7573,7 +7573,7 @@ class guiWin(QMainWindow):
         else:
             PosData = self.data[0]
             self.t_label.setText(
-                     f'frame n. {PosData.frame_i+1}/{PosData.num_segm_frames}')
+                     f'frame n. {PosData.frame_i+1}/{PosData.segmSizeT}')
 
     def updateFilters(self, updateBlur=False, updateSharp=False,
                             updateEntropy=False, updateFilters=False):
@@ -7983,7 +7983,7 @@ class guiWin(QMainWindow):
         PosData = self.data[self.pos_i]
         PosData.last_tracked_i = PosData.frame_i
         self.setFramesScrollbarMaximum()
-        for i in range(PosData.frame_i+1, PosData.num_segm_frames):
+        for i in range(PosData.frame_i+1, PosData.segmSizeT):
             if PosData.allData_li[i]['labels'] is None:
                 break
 
@@ -8670,7 +8670,7 @@ class guiWin(QMainWindow):
                 segm_npy = np.copy(PosData.segm_data)
                 npz_delROIs_info = {}
                 delROIs_info_path = PosData.delROIs_info_path
-                acdc_df_li = [None]*PosData.num_segm_frames
+                acdc_df_li = [None]*PosData.segmSizeT
 
                 # Add segmented channel data for calc metrics
                 PosData.fluo_data_dict[PosData.filename] = PosData.img_data

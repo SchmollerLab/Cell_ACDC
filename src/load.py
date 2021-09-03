@@ -51,7 +51,7 @@ class loadData:
             try:
                 self.img_data = skimage.io.imread(self.imgPath)
             except Exception as e:
-                trackeback.print_exc()
+                traceback.print_exc()
                 self.criticalExtNotValid()
 
     def loadOtherFiles(self,
@@ -162,6 +162,13 @@ class loadData:
         else:
             self.PhysicalSizeZ = 1
 
+        if 'segmSizeT' in self.metadata_df.index:
+             self.segmSizeT = int(
+                 self.metadata_df.at['segmSizeT', 'values']
+             )
+        else:
+            self.segmSizeT = self.SizeT
+
     def setNotFoundData(self):
         if self.metadataFound is not None and not self.metadataFound:
             if self.img_data.ndim > 2:
@@ -175,6 +182,7 @@ class loadData:
             self.PhysicalSizeX = 1.0
             self.PhysicalSizeY = 1.0
             self.PhysicalSizeZ = 1.0
+            self.segmSizeT = self.SizeT
         if self.segmFound is not None and not self.segmFound:
             self.segm_data = None
         if self.acd_df_found is not None and not self.acd_df_found:
@@ -289,7 +297,8 @@ class loadData:
             'TimeIncrement': self.TimeIncrement,
             'PhysicalSizeZ': self.PhysicalSizeZ,
             'PhysicalSizeY': self.PhysicalSizeY,
-            'PhysicalSizeX': self.PhysicalSizeX
+            'PhysicalSizeX': self.PhysicalSizeX,
+            'segmSizeT': self.segmSizeT
         }, index=['values']).T
         df.index.name = 'Description'
         df.to_csv(self.metadata_csv_path)

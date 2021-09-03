@@ -361,23 +361,22 @@ class segmWin(QMainWindow):
 
             if first_call and data.SizeT > 1:
                 # Ask stop frame
-                win = apps.QLineEditDialog(
-                    parent=self,
-                    title='Stop frame',
-                    msg='Frame number to stop segmentation?\n '
-                        f'(insert number between 1 and {data.SizeT})',
-                    defaultTxt=str(data.SizeT))
-                win.setFont(font)
+                win = apps.askStopFrameSegm(user_ch_file_paths,
+                                            user_ch_name, parent=self)
+                win.showAndSetFont(font)
                 win.exec_()
                 if win.cancel:
                     abort = self.doAbort()
                     if abort:
                         self.close()
                         return
+                # Load metadata again since segmSizeT could have been
+                # modified by askStopFrameSegm
+                data.loadOtherFiles(load_segm_data=False, load_metadata=True)
 
-
-                stop_i = int(win.EntryID)
-
+            # Note that stop_i is not used when SizeT == 1 so it does not matter
+            # which value it has in that case
+            stop_i = data.segmSizeT
             first_call=False
 
             if data.SizeT > 1:
@@ -465,6 +464,7 @@ class segmWin(QMainWindow):
 
             if data.SizeT > 1:
                 if model == 'yeaz':
+                    print('Labelling predictions...')
                     lab_stack = segment.segment_stack(thresh_stack, pred_stack,
                                                       min_distance=min_distance
                                                       ).astype(np.uint16)

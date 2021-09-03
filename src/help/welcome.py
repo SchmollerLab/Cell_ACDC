@@ -29,18 +29,22 @@ if os.name == 'nt':
 
 class welcomeWin(QWidget):
     def __init__(self, parent=None):
+        self.parent = parent
         super().__init__(parent)
         self.setWindowTitle('Welcome')
         self.setWindowIcon(QIcon(":assign-motherbud.svg"))
-
-        self.createLayout()
-
-
-
         self.loadSettings()
+
+        self.itemsDict = {}
+
+        # Initialize Permanent items
+        self.mainLayout = QGridLayout()
         self.addListBox()
-        self.addWelcomePage()
         self.addShowGuideCheckbox()
+
+        # Create all pages of the guide as one frame for each page
+        self.addWelcomePage()
+
         self.setStyleSheet(
             "QListWidget::item:hover {background-color:#E6E6E6;}"
             "QListWidget::item:selected {background-color:#CFEB9B;}"
@@ -48,13 +52,7 @@ class welcomeWin(QWidget):
             # "QTextEdit {background-color:#e8e8e8;}"
         )
 
-        # self.mainLayout.setHorizontalSpacing(0)
         self.setLayout(self.mainLayout)
-
-    def createLayout(self):
-        self.mainLayout = QGridLayout()
-        self.numRows = 3
-        self.numCols = 5
 
     def loadSettings(self):
         temp_path = os.path.join(src_path, 'temp')
@@ -76,28 +74,40 @@ class welcomeWin(QWidget):
 
         listBox.setFrameStyle(QFrame.NoFrame)
 
-        welcomeItem = QListWidgetItem(QIcon(':home.svg'), 'Welcome')
-        listBox.addItem(welcomeItem)
+        self.welcomeItem = QListWidgetItem(QIcon(':home.svg'), 'Welcome')
+        listBox.addItem(self.welcomeItem)
 
-        quickStartItem = QListWidgetItem(QIcon(':quickStart.svg'), 'Quick Start')
-        listBox.addItem(quickStartItem)
+        self.quickStartItem = QListWidgetItem(QIcon(':quickStart.svg'), 'Quick Start')
+        listBox.addItem(self.quickStartItem)
 
-        settingsItem = QListWidgetItem(QIcon(':cog.svg'), 'Settings')
-        listBox.addItem(settingsItem)
+        self.settingsItem = QListWidgetItem(QIcon(':cog.svg'), 'Settings')
+        listBox.addItem(self.settingsItem)
 
-        manualItem = QListWidgetItem(QIcon(':book.svg'), 'User Manual')
-        listBox.addItem(manualItem)
+        self.manualItem = QListWidgetItem(QIcon(':book.svg'), 'User Manual')
+        listBox.addItem(self.manualItem)
 
-        manualItem = QListWidgetItem(QIcon(':contribute.svg'), 'Contribute')
-        listBox.addItem(manualItem)
+        self.contributeItem = QListWidgetItem(QIcon(':contribute.svg'), 'Contribute')
+        listBox.addItem(self.contributeItem)
         listBox.setSpacing(3)
 
-        listBox.setCurrentItem(welcomeItem)
+        listBox.setCurrentItem(self.welcomeItem)
+
         self.listBox = listBox
-        self.mainLayout.addWidget(listBox, 0, 0, self.numRows-1, 1)
+        self.mainLayout.addWidget(listBox, 0, 0)
+
+        listBox.currentTextChanged.connect(self.listItemChanged)
+
+    def listItemChanged(self, itemText):
+        for key, value in self.itemsDict.items():
+            if key == itemText:
+                value.show()
+            else:
+                value.hide()
+
 
     def addWelcomePage(self):
-        self.welcomePageWidgets = []
+        self.welcomeFrame = QFrame(self)
+        welcomeLayout = QGridLayout()
 
         welcomeTextWidget = QLabel()
 
@@ -145,29 +155,33 @@ class welcomeWin(QWidget):
 
         # welcomeTextWidget.setHtml(htmlTxt)
         welcomeTextWidget.setText(htmlTxt)
-        self.welcomePageWidgets.append(welcomeTextWidget)
-        self.welcomeTextWidget = welcomeTextWidget
 
-        self.mainLayout.addWidget(welcomeTextWidget, 0, 1,
-                                  self.numRows-2, self.numCols-1,
-                                  alignment=Qt.AlignTop)
+        welcomeLayout.addWidget(welcomeTextWidget, 0, 0, 1, 4,
+                                alignment=Qt.AlignTop)
 
-        startWizardButton = QPushButton('  Launch Wizard')
+        startWizardButton = QPushButton(' Launch Wizard')
         startWizardButton.setIcon(QIcon(':wizard.svg'))
 
-        self.mainLayout.addWidget(startWizardButton, 1, 1)
+        welcomeLayout.addWidget(startWizardButton, 1, 0)
 
+        startWizardButton = QPushButton(' Test segmentation with single image')
+        startWizardButton.setIcon(QIcon(':image.svg'))
+        startWizardButton.clicked.connect(self.openGUIsingleImage)
 
+        welcomeLayout.addWidget(startWizardButton, 1, 1)
+
+        self.welcomeFrame.setLayout(welcomeLayout)
+        self.mainLayout.addWidget(self.welcomeFrame, 0, 1)
+        self.itemsDict[self.welcomeItem.text()] = self.welcomeFrame
 
     def addShowGuideCheckbox(self):
         checkBox = QCheckBox('Show Welcome Guide when opening Yeast-ACDC')
         checked = self.df_settings.at['showWelcomeGuide', 'value'] == 'True'
         checkBox.setChecked(checked)
+        self.mainLayout.addWidget(checkBox, 1, 1, alignment=Qt.AlignRight)
 
-        colSpan = self.numCols
-        self.mainLayout.addWidget(checkBox, self.numRows-1, 0,
-                                  1, self.numCols,
-                                  alignment=Qt.AlignRight)
+    def openGUIsingleImage(self):
+        pass
 
     def showAndSetSize(self):
         self.show()

@@ -1,3 +1,4 @@
+import os
 import sys
 import re
 import matplotlib
@@ -20,7 +21,6 @@ import skimage.draw
 import skimage.registration
 import skimage.color
 import skimage.segmentation
-from matplotlib.ticker import FormatStrFormatter
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg,
                                                NavigationToolbar2Tk)
 from pyglet.canvas import Display
@@ -29,8 +29,6 @@ import seaborn as sns
 import pandas as pd
 import math
 import time
-from lib import text_label_centroid
-import matplotlib.ticker as ticker
 
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui
@@ -46,7 +44,7 @@ from PyQt5.QtWidgets import (
     QScrollArea, QFrame
 )
 
-import myutils
+import myutils, load, prompts
 
 import qrc_resources
 
@@ -460,7 +458,7 @@ class gaussBlurDialog(QDialog):
 
         self.img = img
         self.frame_i = PosData.frame_i
-        self.num_segm_frames = PosData.num_segm_frames
+        self.segmSizeT = PosData.segmSizeT
         self.imgData = data
 
     def getFilteredImg(self):
@@ -1164,12 +1162,14 @@ class nonModalTempQMessage(QWidget):
 class CellsSlideshow_GUI(QMainWindow):
     """Main Window."""
 
-    def __init__(self, parent=None, button_toUncheck=None, Left=50, Top=50):
+    def __init__(self, parent=None, PosData=None, button_toUncheck=None,
+                       Left=50, Top=50, spinBox=None):
         self.button_toUncheck = button_toUncheck
         self.parent = parent
+        self.PosData = PosData
+        self.spinBox = spinBox
         """Initializer."""
         super().__init__(parent)
-        self.setWindowTitle("Yeast ACDC - Segm&Track")
         self.setGeometry(Left, Top, 850, 800)
 
         self.gui_createActions()
@@ -1193,6 +1193,13 @@ class CellsSlideshow_GUI(QMainWindow):
         mainLayout.addLayout(self.img_Widglayout, 1, 0)
 
         mainContainer.setLayout(mainLayout)
+
+        if PosData is None:
+            PosData = self.parent.data[self.parent.pos_i]
+
+        self.frame_i = PosData.frame_i
+        self.num_frames = PosData.SizeT
+        self.setWindowTitle(f"Yeast ACDC - {PosData.relPath}")
 
     def gui_createActions(self):
         # File actions
@@ -1277,14 +1284,17 @@ class CellsSlideshow_GUI(QMainWindow):
         self.img.hoverEvent = self.gui_hoverEventImg
 
     def gui_createImgWidgets(self):
-        PosData = self.parent.data[self.parent.pos_i]
+        if self.PosData is None:
+            PosData = self.parent.data[self.parent.pos_i]
+        else:
+            PosData = self.PosData
         self.img_Widglayout = QtGui.QGridLayout()
 
         # Frames scrollbar
-        self.frames_scrollBar = QScrollBar(Qt.Horizontal)
-        self.frames_scrollBar.setFixedHeight(20)
-        self.frames_scrollBar.setMinimum(1)
-        self.frames_scrollBar.setMaximum(PosData.num_segm_frames)
+        self.framesScrollBar = QScrollBar(Qt.Horizontal)
+        self.framesScrollBar.setFixedHeight(20)
+        self.framesScrollBar.setMinimum(1)
+        self.framesScrollBar.setMaximum(PosData.SizeT)
         t_label = QLabel('frame  ')
         _font = QtGui.QFont()
         _font.setPointSize(10)
@@ -1292,24 +1302,29 @@ class CellsSlideshow_GUI(QMainWindow):
         self.img_Widglayout.addWidget(
                 t_label, 0, 0, alignment=Qt.AlignRight)
         self.img_Widglayout.addWidget(
-                self.frames_scrollBar, 0, 1, 1, 20)
-        self.frames_scrollBar.sliderMoved.connect(self.framesScrollBarMoved)
+                self.framesScrollBar, 0, 1, 1, 20)
+        self.framesScrollBar.sliderMoved.connect(self.framesScrollBarMoved)
 
         # z-slice scrollbar
-        self.zSlice_scrollBar_img = QScrollBar(Qt.Horizontal)
-        self.zSlice_scrollBar_img.setFixedHeight(20)
-        self.zSlice_scrollBar_img.setDisabled(True)
+        self.zSliceScrollBar = QScrollBar(Qt.Horizontal)
+        self.zSliceScrollBar.setFixedHeight(20)
+        self.zSliceScrollBar.setDisabled(True)
         _z_label = QLabel('z-slice  ')
         _font = QtGui.QFont()
         _font.setPointSize(10)
         _z_label.setFont(_font)
+        self.z_label = _z_label
         self.img_Widglayout.addWidget(_z_label, 1, 0, alignment=Qt.AlignCenter)
-        self.img_Widglayout.addWidget(self.zSlice_scrollBar_img, 1, 1, 1, 20)
+        self.img_Widglayout.addWidget(self.zSliceScrollBar, 1, 1, 1, 20)
 
         self.img_Widglayout.setContentsMargins(100, 0, 50, 0)
 
+        self.zSliceScrollBar.sliderMoved.connect(self.update_z_slice)
+
     def framesScrollBarMoved(self, frame_n):
         self.frame_i = frame_n-1
+        if self.spinBox is not None:
+            self.spinBox.setValue(frame_n)
         self.update_img()
 
     def gui_hoverEventImg(self, event):
@@ -1326,12 +1341,6 @@ class CellsSlideshow_GUI(QMainWindow):
                 self.wcLabel.setText(f'')
         except Exception as e:
             self.wcLabel.setText(f'')
-
-    def loadData(self, frames, frame_i=0):
-        self.frames = frames
-        self.num_frames = len(frames)
-        self.frame_i = frame_i
-        self.update_img()
 
     def next_frame(self):
         if self.frame_i < self.num_frames-1:
@@ -1361,13 +1370,45 @@ class CellsSlideshow_GUI(QMainWindow):
             self.frame_i = self.num_frames-1
         self.update_img()
 
+    def update_z_slice(self, z):
+        if self.PosData is None:
+            PosData = self.parent.data[self.parent.pos_i]
+        else:
+            PosData = self.PosData
+            PosData.segmInfo_df.at[PosData.frame_i, 'z_slice_used_gui'] = z
+        self.update_img()
+
+    def getImage(self):
+        PosData = self.PosData
+        frame_i = self.frame_i
+        if PosData.SizeZ > 1:
+            z = PosData.segmInfo_df.at[frame_i, 'z_slice_used_gui']
+            zProjHow = PosData.segmInfo_df.at[frame_i, 'which_z_proj_gui']
+            img = PosData.img_data[frame_i]
+            if zProjHow == 'single z-slice':
+                self.zSliceScrollBar.setSliderPosition(z)
+                self.z_label.setText(f'z-slice  {z+1:02}/{PosData.SizeZ}')
+                img = img[z].copy()
+            elif zProjHow == 'max z-projection':
+                img = img.max(axis=0).copy()
+            elif zProjHow == 'mean z-projection':
+                img = img.mean(axis=0).copy()
+            elif zProjHow == 'median z-proj.':
+                img = np.median(img, axis=0).copy()
+        else:
+            img = PosData.img_data[frame_i].copy()
+        return img
+
 
     def update_img(self):
         self.frameLabel.setText(
                  f'Current frame = {self.frame_i+1}/{self.num_frames}')
-        img = self.parent.getImage(frame_i=self.frame_i)
+        if self.parent is None:
+            img = self.getImage()
+        else:
+            img = self.parent.getImage(frame_i=self.frame_i)
         self.img.setImage(img)
-        self.frames_scrollBar.setSliderPosition(self.frame_i+1)
+        self.framesScrollBar.setSliderPosition(self.frame_i+1)
 
     def closeEvent(self, event):
         if self.button_toUncheck is not None:
@@ -1930,6 +1971,119 @@ class editCcaTableWidget(QDialog):
 
     def clearComboboxFocus(self):
         self.sender().clearFocus()
+
+class askStopFrameSegm(QDialog):
+    def __init__(self, user_ch_file_paths, user_ch_name, parent=None):
+        self.parent = parent
+        self.cancel = True
+
+        super().__init__(parent)
+        self.setWindowTitle('Enter stop frame')
+
+        mainLayout = QVBoxLayout()
+        formLayout = QFormLayout()
+        buttonsLayout = QHBoxLayout()
+
+        # Message
+        infoTxt = (
+        """
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <style>
+        p.big {
+            line-height: 1.2;
+        }
+        </style>
+        </head>
+        <body>
+        <p class="big">
+            Enter a <b>stop frame number</b> when to stop<br>
+            segmentation for each Position loaded:
+        </p>
+        </body>
+        </html>
+        """
+        )
+        infoLabel = QLabel(infoTxt, self)
+        _font = QtGui.QFont()
+        _font.setPointSize(10)
+        infoLabel.setFont(_font)
+        infoLabel.setAlignment(Qt.AlignCenter)
+        # padding: top, left, bottom, right
+        infoLabel.setStyleSheet("padding:0px 0px 8px 0px;")
+
+        self.dataDict = {}
+
+        # Form layout widget
+        for img_path in user_ch_file_paths:
+            pos_foldername = os.path.basename(
+                os.path.dirname(
+                    os.path.dirname(img_path)
+                )
+            )
+            spinBox = QSpinBox()
+            PosData = load.loadData(img_path, user_ch_name, QParent=parent)
+            PosData.getBasenameAndChNames(prompts.select_channel_name)
+            PosData.buildPaths()
+            PosData.loadImgData()
+            PosData.loadOtherFiles(load_segm_data=False, load_metadata=True)
+            spinBox.setMaximum(PosData.SizeT)
+            spinBox.setValue(PosData.segmSizeT)
+            spinBox.setAlignment(Qt.AlignCenter)
+            visualizeButton = QPushButton('Visualize')
+            visualizeButton.clicked.connect(self.visualize_cb)
+            formLabel = QLabel(f'{pos_foldername}  ')
+            layout = QHBoxLayout()
+            layout.addWidget(formLabel, alignment=Qt.AlignRight)
+            layout.addWidget(spinBox)
+            layout.addWidget(visualizeButton)
+            self.dataDict[visualizeButton] = (spinBox, PosData)
+            formLayout.addRow(layout)
+
+        self.formLayout = formLayout
+        mainLayout.addWidget(infoLabel, alignment=Qt.AlignCenter)
+        mainLayout.addLayout(formLayout)
+
+        okButton = QPushButton('Ok')
+        okButton.setShortcut(Qt.Key_Enter)
+
+        cancelButton = QPushButton('Cancel')
+
+        buttonsLayout.addWidget(okButton, alignment=Qt.AlignRight)
+        buttonsLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
+        buttonsLayout.setContentsMargins(0, 10, 0, 0)
+
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.close)
+
+        mainLayout.addLayout(buttonsLayout)
+
+        self.setLayout(mainLayout)
+
+        # self.setModal(True)
+
+    def saveSegmSizeT(self):
+        for spinBox, PosData in self.dataDict.values():
+            PosData.segmSizeT = spinBox.value()
+            PosData.saveMetadata()
+
+    def ok_cb(self, event):
+        self.cancel = False
+        self.saveSegmSizeT()
+        self.close()
+
+    def visualize_cb(self, checked=True):
+        spinBox, PosData = self.dataDict[self.sender()]
+        PosData.frame_i = spinBox.value()-1
+        self.slideshowWin = CellsSlideshow_GUI(PosData=PosData,
+                                               spinBox=spinBox)
+        self.slideshowWin.update_img()
+        self.slideshowWin.show()
+
+    def showAndSetFont(self, font):
+        self.show()
+        self.setFont(font)
 
 class QLineEditDialog(QDialog):
     def __init__(self, title='Entry messagebox', msg='Entry value',
@@ -3211,14 +3365,19 @@ if __name__ == '__main__':
     # df = cca_df.reset_index()
     #
     # win = pdDataFrameWidget(df)
-
-    win = editCcaTableWidget(cca_df)
+    user_ch_file_paths = [
+        r"G:\My Drive\1_MIA_Data\Beno\test_QtGui\testGuiOnlyTifs\TIFFs\Position_1\Images\19-03-2021_KCY050_SCGE_s02_phase_contr.tif",
+        r"G:\My Drive\1_MIA_Data\Beno\test_QtGui\testGuiOnlyTifs\TIFFs\Position_2\Images\19-03-2021_KCY050_SCGE_s02_phase_contr.tif"
+    ]
+    user_ch_name = 'phase_contr'
+    win = askStopFrameSegm(user_ch_file_paths, user_ch_name)
     # lab = np.load(r"G:\My Drive\1_MIA_Data\Test_data\Test_Qt_GUI\Position_5\Images\F016_s05_segm.npz")['arr_0'][0]
     # img = np.load(r"G:\My Drive\1_MIA_Data\Test_data\Test_Qt_GUI\Position_5\Images\F016_s05_phase_contr_aligned.npz")['arr_0'][0]
     # win = manualSeparateGui(lab, 2, img)
     # win.setFont(font)
     app.setStyle(QtGui.QStyleFactory.create('Fusion'))
-    win.showAndSetWidth()
+    # win.showAndSetWidth()
+    win.showAndSetFont(font)
     # win.setWidths(font=font)
     # win.setSize()
     # win.setGeometryWindow()
