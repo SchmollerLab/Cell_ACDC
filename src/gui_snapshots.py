@@ -422,7 +422,9 @@ class app_GUI:
             wrong_shape_pos_li = [os.path.basename(
                                     os.path.dirname(pos_paths[i])) for i in idx]
             tk.messagebox.showerror('Wrong image shape',
-                          f'Positions {wrong_shape_pos_li} have non consistent shape'
+                          f'The most common is {common_shape}, but these Positions\n\n'
+                          f'{wrong_shape_pos_li}\n\n'
+                          f'have non consistent shape\n\n'
                           f'(non consistent shapes: {c_li})')
             exit()
         phc = np.asarray(Phc)

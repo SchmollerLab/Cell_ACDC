@@ -1494,7 +1494,7 @@ class dataPrepWin(QMainWindow):
 
         if self.titleText is None:
             self.titleLabel.setText(
-                'Data successfully loaded. '
+                'Data successfully loaded.<br>'
                 'Press "START" button (top-left) to start prepping your data.',
                 color='w')
         else:

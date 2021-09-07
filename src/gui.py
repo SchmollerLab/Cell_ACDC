@@ -2270,7 +2270,7 @@ class guiWin(QMainWindow):
         if self.isRightClickDragImg1 and self.curvToolButton.isChecked():
             self.isRightClickDragImg1 = False
             try:
-                self.splineToObj(xxA=self.xxA_autoCont, yyA=self.yyA_autoCont)
+                self.splineToObj()
                 self.update_rp()
                 self.tracking(enforce=True)
                 self.updateALLimg()
@@ -5723,12 +5723,7 @@ class guiWin(QMainWindow):
         # Store undo state before modifying stuff
         self.storeUndoRedoStates(False)
 
-        # Estimate good resolution for the curve
-        if xxA is None:
-            xxA, yyA = self.curvAnchors.getData()
-        rr, cc = skimage.draw.polygon(yyA, xxA)
-        lS = np.linspace(0,1,len(rr))
-        xxS, yyS = self.getSpline(xxA, yyA, per=True, resolutionSpace=lS)
+        xxS, yyS = self.curvPlotItem.getData()
 
         self.setBrushID()
         newIDMask = np.zeros(PosData.lab.shape, bool)
@@ -8067,6 +8062,8 @@ class guiWin(QMainWindow):
             acdc_folder = f'{timestamp}_acdc'
             exp_path = os.path.join(dirpath, acdc_folder, 'Images')
             os.makedirs(exp_path)
+        else:
+            exp_path = dirpath
 
         filename, ext = os.path.splitext(os.path.basename(file_path))
         if ext == '.tif':

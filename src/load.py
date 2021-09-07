@@ -232,10 +232,11 @@ class loadData:
         tif_paths = []
         npy_paths = []
         npz_paths = []
+        basename = self.basename[0:-1]
         for filename in os.listdir(self.images_path):
             file_path = os.path.join(self.images_path, filename)
             f, ext = os.path.splitext(filename)
-            m = re.match(f'{self.basename}.*\.tif', filename)
+            m = re.match(f'{basename}.*\.tif', filename)
             if m is not None:
                 tif_paths.append(file_path)
                 # Search for npy fluo data

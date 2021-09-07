@@ -3,6 +3,8 @@ import os
 import subprocess
 import re
 
+import pandas as pd
+
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QPushButton, QLabel, QAction,
     QMenu
@@ -12,6 +14,7 @@ from pyqtgraph.Qt import QtGui
 
 import dataPrep, segm, gui
 import utils.concat
+import help.welcome
 
 import qrc_resources
 
@@ -27,6 +30,7 @@ if os.name == 'nt':
 class mainWin(QMainWindow):
     def __init__(self, app, parent=None):
         self.app = app
+        self.welcomeGuide = None
         super().__init__(parent)
         self.setWindowTitle("Yeast ACDC")
         self.setWindowIcon(QtGui.QIcon(":assign-motherbud.svg"))
@@ -46,6 +50,7 @@ class mainWin(QMainWindow):
         font = QtGui.QFont()
         font.setPointSize(14)
         font.setBold(True)
+        font.setFamily('Ubuntu')
         welcomeLabel.setFont(font)
         # padding: top, left, bottom, right
         welcomeLabel.setStyleSheet("padding:0px 0px 5px 0px;")
@@ -59,6 +64,7 @@ class mainWin(QMainWindow):
         label.setAlignment(Qt.AlignCenter)
         font = QtGui.QFont()
         font.setPointSize(11)
+        font.setFamily('Ubuntu')
         label.setFont(font)
         # padding: top, left, bottom, right
         label.setStyleSheet("padding:0px 0px 10px 0px;")
@@ -92,6 +98,36 @@ class mainWin(QMainWindow):
         mainLayout.addWidget(closeButton)
 
         mainContainer.setLayout(mainLayout)
+
+    def launchWelcomeGuide(self, checked=False):
+        src_path = os.path.dirname(os.path.realpath(__file__))
+        temp_path = os.path.join(src_path, 'temp')
+        csv_path = os.path.join(temp_path, 'settings.csv')
+        self.settings_csv_path = csv_path
+        if not os.path.exists(csv_path):
+            idx = ['showWelcomeGuide']
+            values = ['True']
+            self.df_settings = pd.DataFrame({'setting': idx,
+                                             'value': values}
+                                           ).set_index('setting')
+            self.df_settings.to_csv(csv_path)
+
+        self.df_settings = pd.read_csv(csv_path, index_col='setting')
+        if 'showWelcomeGuide' not in self.df_settings.index:
+            self.df_settings.at['showWelcomeGuide', 'value'] = 'True'
+            self.df_settings.to_csv(csv_path)
+
+        show = (
+            self.df_settings.at['showWelcomeGuide', 'value'] == 'True'
+            or self.sender() is not None
+        )
+        if not show:
+            return
+
+        self.welcomeGuide = help.welcome.welcomeWin(mainWin=self)
+        self.welcomeGuide.showAndSetSize()
+
+
 
     def setColorsAndText(self):
         self.moduleLaunchedColor = '#ead935'
@@ -138,6 +174,7 @@ class mainWin(QMainWindow):
         self.concatAcdcDfsAction.triggered.connect(self.launchConcatUtil)
         self.npzToNpyAction.triggered.connect(self.launchConvertFormatUtil)
         self.npzToTiffAction.triggered.connect(self.launchConvertFormatUtil)
+        self.welcomeGuideAction.triggered.connect(self.launchWelcomeGuide)
 
     def launchConvertFormatUtil(self, checked=False):
         m = re.findall('Convert .(\w+) file to .(\w+)...', self.sender().text())
@@ -244,6 +281,10 @@ class mainWin(QMainWindow):
         self.guiButton.setMinimumHeight(h*2)
         self.setColorsAndText()
 
+    def closeEvent(self, event):
+        if self.welcomeGuide is not None:
+            self.welcomeGuide.close()
+
 if __name__ == "__main__":
     print('Launching application...')
     # Handle high resolution displays:
@@ -256,6 +297,7 @@ if __name__ == "__main__":
     app.setStyle(QtGui.QStyleFactory.create('Fusion'))
     win = mainWin(app)
     win.showAndSetSettings()
+    win.launchWelcomeGuide()
     print('Done. If application is not visible, it is probably minimized '
           'or behind some other open window.')
     sys.exit(app.exec_())
