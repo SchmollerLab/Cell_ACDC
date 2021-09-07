@@ -563,6 +563,7 @@ class select_channel_name:
 
     def get_available_channels(self, filenames, useExt='.tif'):
         channel_names = []
+        self.basenameNotFound = False
         isBasenamePresent = self.checkDataIntegrity(filenames)
         basename = filenames[0]
         for file in filenames:
@@ -595,6 +596,7 @@ class select_channel_name:
                     # Warn that an intersection could not be found
                     basenameNotFound.append(True)
         if any(basenameNotFound):
+            self.basenameNotFound = True
             filenameNOext, _ = os.path.splitext(basename)
             self.basename = f'{filenameNOext}_'
         if self.which_channel is not None:

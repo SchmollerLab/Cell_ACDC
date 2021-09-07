@@ -273,20 +273,39 @@ class segmWin(QMainWindow):
                         return
                 else:
                     user_ch_name = ch_name_selector.channel_name
+                    if ch_name_selector.basenameNotFound:
+                        reverse_ch_name = user_ch_name[::-1]
+                        idx = reverse_ch_name.find('_')
+                        user_ch_name = user_ch_name[-idx:]
 
             aligned_npz_found = False
+            tif_found = False
             for filename in filenames:
                 if filename.find(f'{user_ch_name}_aligned.npz') != -1:
                     img_path = os.path.join(images_path, filename)
                     aligned_npz_found = True
                 elif filename.find(f'{user_ch_name}.tif') != -1:
                     img_path = os.path.join(images_path, filename)
+                    tif_found = True
 
-            if not aligned_npz_found:
-                print(f'WARNING: The folder {images_path} does not contain the file '
+            if not aligned_npz_found and not tif_found:
+                print('')
+                print('-------------------------------------------------------')
+                print(f'WARNING: The folder {images_path}\n does not contain the file '
+                      f'{user_ch_name}_aligned.npz\n or the file {user_ch_name}.tif. '
+                      'Skipping it.')
+                print('-------------------------------------------------------')
+                print('')
+            elif not aligned_npz_found and tif_found:
+                print('')
+                print('-------------------------------------------------------')
+                print(f'WARNING: The folder {images_path}\n does not contain the file '
                       f'{user_ch_name}_aligned.npz. Segmenting .tif data.')
-
-            user_ch_file_paths.append(img_path)
+                print('-------------------------------------------------------')
+                print('')
+                user_ch_file_paths.append(img_path)
+            elif aligned_npz_found:
+                user_ch_file_paths.append(img_path)
 
         first_call = True
         for img_path in tqdm(user_ch_file_paths, unit=' Position', ncols=100):
