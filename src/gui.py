@@ -3317,6 +3317,10 @@ class guiWin(QMainWindow):
         # Correct past frames
         for i in range(PosData.frame_i-1, -1, -1):
             cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
+            if ID not in cca_df_i.index or relID not in cca_df_i.index:
+                # Bud did not exist at frame_i = i
+                break
+
             self.storeUndoRedoCca(i, cca_df_i, undoId)
             ccs = cca_df_i.at[ID, 'cell_cycle_stage']
             relID = cca_df_i.at[ID, 'relative_ID']
@@ -5334,6 +5338,7 @@ class guiWin(QMainWindow):
             self.updateScrollbars()
             self.computeSegm()
             self.setFramesScrollbarMaximum()
+            self.zoomToCells()
         else:
             # Store data for current frame
             self.store_data()
@@ -5364,6 +5369,7 @@ class guiWin(QMainWindow):
                               updateSharp=True, updateBlur=True,
                               updateEntropy=True)
             self.updateScrollbars()
+            self.zoomToCells()
         else:
             msg = 'You reached the first frame!'
             print(msg)
@@ -7808,8 +7814,9 @@ class guiWin(QMainWindow):
                 return
 
             # Disable tracking for already visited frames
-            if PosData.allData_li[PosData.frame_i+1]['labels'] is not None:
-                self.disableTrackingCheckBox.setChecked(True)
+            if PosData.frame_i+1 < len(PosData.allData_li):
+                if PosData.allData_li[PosData.frame_i+1]['labels'] is not None:
+                    self.disableTrackingCheckBox.setChecked(True)
             else:
                 self.disableTrackingCheckBox.setChecked(False)
 
@@ -8592,8 +8599,6 @@ class guiWin(QMainWindow):
 
         try:
             idx = (bkgrValues_chNames[j], frame_i)
-            print(idx)
-            print(bkgrValues_df.index[0])
             bkgr_median = bkgrValues_df.at[idx, 'bkgr_median']
         except Exception as e:
             return None
