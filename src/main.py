@@ -182,7 +182,7 @@ class mainWin(QMainWindow):
         isConvertEnabled = self.sender().isEnabled()
         if isConvertEnabled:
             self.sender().setDisabled(True)
-            self.convertWin = utils.concat.concatWin(
+            self.convertWin = utils.convert.convertFileFormatWin(
                 parent=self,
                 actionToEnable=self.concatAcdcDfsAction,
                 mainWin=self, from_=from_, to=to

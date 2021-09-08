@@ -653,7 +653,7 @@ class guiWin(QMainWindow):
         self.newAction.setText("&New")
         self.newAction.setIcon(QIcon(":file-new.svg"))
         self.openAction = QAction(QIcon(":folder-open.svg"), "&Open folder...", self)
-        self.openFileAction = QAction(QIcon(":image.svg"),"&Open image file...", self)
+        self.openFileAction = QAction(QIcon(":image.svg"),"&Open image/video file...", self)
         self.saveAction = QAction(QIcon(":file-save.svg"),
                                   "&Save (Ctrl+S)", self)
         self.loadFluoAction = QAction("Load fluorescent images", self)
@@ -862,10 +862,10 @@ class guiWin(QMainWindow):
 
         # Toggle contours/ID comboboxf
         row = 0
-        self.drawIDsContComboBoxSegmItems = ['Draw only cell cycle info',
+        self.drawIDsContComboBoxSegmItems = ['Draw IDs and contours',
+                                             'Draw only cell cycle info',
                                              'Draw cell cycle info and contours',
                                              'Draw only mother-bud lines',
-                                             'Draw IDs and contours',
                                              'Draw only IDs',
                                              'Draw only contours',
                                              'Draw nothing']
@@ -1531,8 +1531,7 @@ class guiWin(QMainWindow):
                 PosData.lab[obj.slice][localHull] = ID
 
                 self.update_rp()
-                self.drawID_and_Contour(PosData.rp[obj_idx])
-                self.setImageImg2()
+                self.updateALLimg()
 
                 self.hullContToolButton.setChecked(False)
 
@@ -2242,17 +2241,12 @@ class guiWin(QMainWindow):
             mergedID_mask = PosData.lab==self.firstID
 
             # Update data (rp, etc)
-            prev_IDs = [obj.label for obj in PosData.rp]
             self.update_rp()
 
             # Repeat tracking
-            self.tracking()
+            self.tracking(enforce=True)
 
-            newID = PosData.lab[mergedID_mask][0]
-            self.img2.updateImage()
-            self.update_IDsContours(
-                prev_IDs, newIDs=[newID]
-            )
+            self.updateALLimg()
             self.mergeIDsButton.setChecked(False)
             self.store_data()
             self.warnEditingWithCca_df('Merge IDs')
@@ -5885,7 +5879,7 @@ class guiWin(QMainWindow):
                     PosData.frame_i = i
                     self.get_data()
                     self.store_data()
-                    self.load_delROIs_info(delROIshapes)
+                    # self.load_delROIs_info(delROIshapes, last_tracked_num)
                     PosData.binnedIDs = set()
                     PosData.ripIDs = set()
 
@@ -6418,32 +6412,35 @@ class guiWin(QMainWindow):
         PosData.IDs = [obj.label for obj in PosData.rp]
         return proceed_cca, never_visited
 
-    def load_delROIs_info(self, delROIshapes):
+    def load_delROIs_info(self, delROIshapes, last_tracked_num):
         PosData = self.data[self.pos_i]
         delROIsInfo_npz = PosData.delROIsInfo_npz
-        if delROIsInfo_npz is not None:
-            for file in PosData.delROIsInfo_npz.files:
-                if file.startswith(f'{PosData.frame_i}_'):
-                    delROIs_info = PosData.allData_li[PosData.frame_i]['delROIs_info']
-                    if file.startswith(f'{PosData.frame_i}_delMask'):
-                        delMask = delROIsInfo_npz[file]
-                        delROIs_info['delMasks'].append(delMask)
-                    elif file.startswith(f'{PosData.frame_i}_delIDs'):
-                        delIDsROI = set(delROIsInfo_npz[file])
-                        delROIs_info['delIDsROI'].append(delIDsROI)
-                    elif file.startswith(f'{PosData.frame_i}_roi'):
-                        Y, X = PosData.lab.shape
-                        x0, y0, w, h = delROIsInfo_npz[file]
-                        addROI = (
-                            PosData.frame_i==0 or
-                            [x0, y0, w, h] not in delROIshapes[PosData.frame_i]
-                        )
-                        if addROI:
-                            roi = self.getDelROI(xl=x0, yb=y0, w=w, h=h)
-                            for i in range(PosData.frame_i, PosData.segmSizeT):
-                                delROIs_info_i = PosData.allData_li[i]['delROIs_info']
-                                delROIs_info_i['rois'].append(roi)
-                                delROIshapes[i].append([x0, y0, w, h])
+        if delROIsInfo_npz is None:
+            return
+        for file in PosData.delROIsInfo_npz.files:
+            if not file.startswith(f'{PosData.frame_i}_'):
+                continue
+
+            delROIs_info = PosData.allData_li[PosData.frame_i]['delROIs_info']
+            if file.startswith(f'{PosData.frame_i}_delMask'):
+                delMask = delROIsInfo_npz[file]
+                delROIs_info['delMasks'].append(delMask)
+            elif file.startswith(f'{PosData.frame_i}_delIDs'):
+                delIDsROI = set(delROIsInfo_npz[file])
+                delROIs_info['delIDsROI'].append(delIDsROI)
+            elif file.startswith(f'{PosData.frame_i}_roi'):
+                Y, X = PosData.lab.shape
+                x0, y0, w, h = delROIsInfo_npz[file]
+                addROI = (
+                    PosData.frame_i==0 or
+                    [x0, y0, w, h] not in delROIshapes[PosData.frame_i]
+                )
+                if addROI:
+                    roi = self.getDelROI(xl=x0, yb=y0, w=w, h=h)
+                    for i in range(PosData.frame_i, last_tracked_num):
+                        delROIs_info_i = PosData.allData_li[i]['delROIs_info']
+                        delROIs_info_i['rois'].append(roi)
+                        delROIshapes[i].append([x0, y0, w, h])
 
     def addIDBaseCca_df(self, ID):
         PosData = self.data[self.pos_i]
@@ -7811,7 +7808,7 @@ class guiWin(QMainWindow):
                 return
 
             # Disable tracking for already visited frames
-            if PosData.allData_li[PosData.frame_i]['labels'] is not None:
+            if PosData.allData_li[PosData.frame_i+1]['labels'] is not None:
                 self.disableTrackingCheckBox.setChecked(True)
             else:
                 self.disableTrackingCheckBox.setChecked(False)
@@ -8052,7 +8049,8 @@ class guiWin(QMainWindow):
             self.getMostRecentPath()
             file_path = QFileDialog.getOpenFileName(
                 self, 'Select image file', self.MostRecentPath,
-                "Images (*.png *.tif *.tiff *.jpg *.jpeg);;All Files (*)")[0]
+                "Images/Videos (*.png *.tif *.tiff *.jpg *.jpeg *.mov *.avi *.mp4)"
+                ";;All Files (*)")[0]
             if file_path == '':
                 return
         dirpath = os.path.dirname(file_path)
@@ -8078,10 +8076,39 @@ class guiWin(QMainWindow):
                 data.img_data = skimage.color.rgb2gray(data.img_data)
                 data.img_data = skimage.img_as_ubyte(data.img_data)
             tif_path = os.path.join(exp_path, f'{filename}.tif')
+            if data.img_data.ndim == 3:
+                SizeT = data.img_data.shape[0]
+                SizeZ = 1
+            elif data.img_data.ndim == 4:
+                SizeT = data.img_data.shape[0]
+                SizeZ = data.img_data.shape[1]
+            else:
+                SizeT = 1
+                SizeZ = 1
+            is_imageJ_dtype = (
+                data.img_data.dtype == np.uint8
+                or data.img_data.dtype == np.uint16
+                or data.img_data.dtype == np.float32
+            )
+            if not is_imageJ_dtype:
+                data.img_data = skimage.img_as_ubyte(data.img_data)
+
             myutils.imagej_tiffwriter(
-                tif_path, data.img_data, {}, 1, 1
+                tif_path, data.img_data, {}, SizeT, SizeZ
             )
             self.openFolder(exp_path=exp_path, isImageFile=True)
+
+    def criticalNoTifFound(self, images_path):
+        err_title = f'No .tif files found in folder.'
+        err_msg = (
+            f'The folder "{images_path}" does not contain .tif files.\n\n'
+            'Only .tif files can be loaded with "Open Folder" button.\n\n'
+            'Try with "File --> Open image/video file.." and directly select '
+            'the file you want to load.'
+        )
+        msg = QtGui.QMessageBox()
+        msg.critical(self, err_title, err_msg, msg.Ok)
+        return
 
     def openFolder(self, checked=False, exp_path=None, isImageFile=False):
         try:
@@ -8212,7 +8239,11 @@ class guiWin(QMainWindow):
                         'File --> Open or Open recent to start the process',
                         color='w')
                     self.openAction.setEnabled(True)
+                    self.criticalNoTifFound(images_path)
                     return
+
+            print(user_ch_name)
+            print(images_paths)
 
             user_ch_file_paths = []
             img_path = None
@@ -8559,8 +8590,15 @@ class guiWin(QMainWindow):
         if bkgrValues_df is None:
             return None
 
-        idx = (bkgrValues_chNames[j], frame_i)
-        return bkgrValues_df.at[idx, 'bkgr_median']
+        try:
+            idx = (bkgrValues_chNames[j], frame_i)
+            print(idx)
+            print(bkgrValues_df.index[0])
+            bkgr_median = bkgrValues_df.at[idx, 'bkgr_median']
+        except Exception as e:
+            return None
+
+        return bkgr_median
 
     def askSaveLastVisitedCcaMode(self, p, PosData):
         current_frame_i = PosData.frame_i
@@ -8729,7 +8767,7 @@ class guiWin(QMainWindow):
                             traceback.print_exc()
                             print('====================================')
                             print('')
-                            print('Error on calculating metrics see above...')
+                            print('Warning: calculating metrics failed see above...')
                             print('-----------------')
                             pass
                     pbar.update()

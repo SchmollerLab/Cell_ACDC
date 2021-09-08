@@ -141,7 +141,7 @@ class segmWin(QMainWindow):
                 self.close()
                 return
 
-        self.setWindowTitle(f'Yeast_ACDC - GUI - "{exp_path}"')
+        self.setWindowTitle(f'Yeast_ACDC - Segment - "{exp_path}"')
 
         if os.path.basename(exp_path).find('Position_') != -1:
             is_pos_folder = True

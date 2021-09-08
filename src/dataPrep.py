@@ -498,6 +498,8 @@ class dataPrepWin(QMainWindow):
             filename = os.path.basename(tif_path)
             filename_noEXT, _ = os.path.splitext(filename)
             channel_name = filename_noEXT[len(PosData.basename)+1:]
+            if not channel_name:
+                channel_name = PosData.basename
             for frame_i in range(len(frames)):
                 img = self.getImage(PosData, frames, frame_i)
                 channel_names.append(channel_name)

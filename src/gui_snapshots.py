@@ -504,9 +504,9 @@ class app_GUI:
                         segm_npy_path = '{}/{}'.format(pos_path, p)
                         self.segm_npy_done[i] = np.load(segm_npy_path)
                         self.orig_segm_npy[i] = self.segm_npy_done[i].copy()
-                    elif p.find('_mask.npy') != -1:
-                        mask_npy_path = '{}/{}'.format(pos_path, p)
-                        self.masks[i] = np.load(mask_npy_path)
+                    # elif p.find('_mask.npy') != -1:
+                    #     mask_npy_path = '{}/{}'.format(pos_path, p)
+                    #     self.masks[i] = np.load(mask_npy_path)
                     elif p.find('_cc_stage.csv') != -1:
                         cc_stage_path = '{}/{}'.format(pos_path, p)
                         cc_stage_df = pd.read_csv(cc_stage_path,
@@ -1479,14 +1479,18 @@ class img_analysis:
             thresh = nn.threshold(pred)
             lab = segment.segment(thresh, pred, min_distance=5).astype(int)
         elif app.use_cellpose:
-            lab, flows, _, _ = app.cp_model.eval(img, channels=[0,0],
-                                                       diameter=60,
-                                                       invert=False,
-                                                       net_avg=True,
-                                                       augment=False,
-                                                       resample=False,
-                                                       do_3D=False,
-                                                       progress=None)
+            lab, flows, _, _ = app.cp_model.eval(
+                img, channels=[0,0],
+                diameter=60,
+                invert=False,
+                net_avg=True,
+                augment=False,
+                resample=False,
+                do_3D=False,
+                progress=None,
+                flow_threshold=0.4,
+                cellprob_threshold=0.0
+            )
         lab = remove_small_objects(lab, min_size=20, connectivity=2)
         lab = self.remove_borders_obj(lab)
         lab = self.smooth_contours(lab, radius=2)

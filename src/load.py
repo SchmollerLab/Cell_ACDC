@@ -2,6 +2,7 @@ import os
 import sys
 import traceback
 import re
+import cv2
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
@@ -50,9 +51,23 @@ class loadData:
         else:
             try:
                 self.img_data = skimage.io.imread(self.imgPath)
+            except ValueError:
+                self.img_data = self._loadVideo(self.imgPath)
             except Exception as e:
                 traceback.print_exc()
                 self.criticalExtNotValid()
+
+    def _loadVideo(self, path):
+        video = cv2.VideoCapture(path)
+        num_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+        for i in range(num_frames):
+            _, frame = video.read()
+            if frame.shape[-1] == 3:
+                frame = skimage.color.rgb2gray(frame)
+            if i == 0:
+                img_data = np.zeros((num_frames, *frame.shape), frame.dtype)
+            img_data[i] = frame
+        return img_data
 
     def loadOtherFiles(self,
                        load_segm_data=True,
