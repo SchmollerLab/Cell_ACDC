@@ -8655,7 +8655,6 @@ class guiWin(QMainWindow):
             'moments_normalized',
             'orientation',
             'perimeter',
-            'perimeter_crofton',
             'solidity'
         )
         rp_table = skimage.measure.regionprops_table(
