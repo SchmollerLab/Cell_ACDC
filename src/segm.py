@@ -196,6 +196,7 @@ class segmWin(QMainWindow):
             # Cellpose modules
             print('Importing cellpose...')
             from acdc_cellpose import models
+            from YeaZ.unet import tracking
             myutils.download_model('cellpose')
             device, gpu = models.assign_device(True, False)
             cp_model = models.Cellpose(gpu=gpu, device=device,
@@ -441,6 +442,7 @@ class segmWin(QMainWindow):
                     img_data = skimage.exposure.equalize_adapthist(
                                                     img_data/img_data.max())
 
+            print('')
             print(f'Image shape = {img_data.shape}')
 
             """Segmentation routine"""
@@ -452,8 +454,8 @@ class segmWin(QMainWindow):
                                                      path_weights=path_weights,
                                                      batch_size=1)
                 elif model == 'cellpose':
-                    lab_stack = np.array(img_data.shape, np.uint16)
-                    for t, img in enumerate(img_data):
+                    lab_stack = np.zeros(img_data.shape, np.uint16)
+                    for t, img in enumerate(tqdm(img_data, ncols=100, unit='frame')):
                         lab, flows, _, _ = cp_model.eval(
                                         img,
                                         channels=[0,0],
