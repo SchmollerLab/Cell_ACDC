@@ -1238,6 +1238,7 @@ class guiWin(QMainWindow):
             pg.ImageItem.mousePressEvent(self.img2, event)
 
         if mode == 'Viewer':
+            self.startBlinkingModeCB()
             return
 
         # Check if right click on ROI
@@ -2460,6 +2461,7 @@ class guiWin(QMainWindow):
             return
 
         if mode == 'Viewer':
+            self.startBlinkingModeCB()
             return
 
         # Allow right-click actions on both images
@@ -4640,7 +4642,7 @@ class guiWin(QMainWindow):
                     self.ccaTableWin.activateWindow()
                     self.ccaTableWin.updateTable(PosData.cca_df)
         elif ev.key() == Qt.Key_T:
-            # self.startBlinking()
+            # self.startBlinkingModeCB()
             pass
             # PosData1 = self.data[0]
             # PosData2 = self.data[1]
@@ -7699,7 +7701,7 @@ class guiWin(QMainWindow):
         if self.ccaTableWin is not None:
             self.ccaTableWin.updateTable(PosData.cca_df)
 
-    def startBlinking(self):
+    def startBlinkingModeCB(self):
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.blinkModeComboBox)
         self.timer.start(100)
