@@ -8644,7 +8644,6 @@ class guiWin(QMainWindow):
             'equivalent_diameter',
             'euler_number',
             'extent',
-            'feret_diameter_max',
             'filled_area',
             'inertia_tensor_eigvals',
             'local_centroid',
