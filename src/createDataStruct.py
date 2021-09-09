@@ -171,23 +171,31 @@ class createDataStructWin(QMainWindow):
         ls = self.checkFileFormat(exp_path)
         if not ls:
             if self.allowExit:
-                exit('Execution aborted by the user')
+                exit('Folder selected does not contain files.')
             else:
                 self.close()
                 return
 
         javabridge.start_vm(class_path=bioformats.JARS)
-
+        metadataError = False
         for filename in ls:
             filePath = os.path.join(exp_path, filename)
-            metadataXML = bioformats.get_omexml_metadata(filePath)
-            metadata = bioformats.OMEXML(metadataXML)
 
-            with bioformats.ImageReader(filePath) as reader:
-                img = reader.read()
-                print(img.shape)
+            try:
+                with bioformats.ImageReader(filePath) as reader:
+                    img = reader.read()
+                    print(img.shape)
+                metadataXML = bioformats.get_omexml_metadata(filePath)
+                metadata = bioformats.OMEXML(metadataXML)
+            except Exception as e:
+                self.criticalBioFormats(
+                    'reading image data or metadata',
+                    traceback.format_exc(), filename
+                )
+                break
 
-            print(metadata.get_image_count())
+            numPos = metadata.get_image_count()
+            for i in range(numPos):
             print(metadata.image().Pixels.SizeZ)
             print(metadata.image().Pixels.SizeT)
             print(metadata.image().Pixels.SizeC)
@@ -228,13 +236,17 @@ class createDataStructWin(QMainWindow):
 
     def checkFileFormat(self, exp_path):
         ls = os.listdir(exp_path)
+        files = [
+            filename for filename in ls
+            if os.path.isfile(os.path.join(exp_path, filename))
+        ]
         all_ext = [
             os.path.splitext(filename)[1] for filename in ls
             if os.path.isfile(os.path.join(exp_path, filename))
         ]
         counter = Counter(all_ext)
         unique_ext = list(counter.keys())
-        is_ext_unique = unique_ext == 1
+        is_ext_unique = len(unique_ext) == 1
         most_common_ext, _ = counter.most_common(1)[0]
         if not is_ext_unique:
             msg = QMessageBox()
@@ -250,12 +262,33 @@ class createDataStructWin(QMainWindow):
             )
             if proceedWithMostCommon == msg.Yes:
                 return [
-                    filename for filename in ls
-                    if os.path.isfile(os.path.join(exp_path, filename))
-                    and os.path.splitext(filename)[1] == most_common_ext
+                    filename for filename in files
+                    if os.path.splitext(filename)[1] == most_common_ext
                 ]
             else:
                 return []
+        else:
+            return files
+
+    def criticalBioFormats(self, actionTxt, tracebackFormat, filename):
+        msg = QMessageBox(self)
+        msg.setIcon(msg.Critical)
+        msg.setWindowTitle('Critical error Bio-Formats')
+        msg.setDefaultButton(msg.Ok)
+
+        _, ext = os.path.splitext(filename)
+        txt = (
+            f'Error while {actionTxt} with Bio-Formats.\n\n'
+            f'This is most likely because the file format {ext} is not supported '
+            'by the Bio-Formats library.\n\n'
+            'Try loading file in Fiji and create the data structure manually.\n\n'
+            'Alternatively, if you are trying to load a video file, you can try'
+            'to open the main GUI and then go to "File --> Open image/video file..."'
+            f'{filename}'
+        )
+        msg.setText(txt)
+        msg.setDetailedText(tracebackFormat)
+        msg.exec_()
 
 
     def doAbort(self):

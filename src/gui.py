@@ -1,7 +1,7 @@
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# AUTHORS OR COPyTop HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
@@ -118,6 +118,8 @@ class guiWin(QMainWindow):
         self.segmModel = None
         self.ccaTableWin = None
         self.data_loaded = False
+        self.flag = True
+        self.countBlinks = 0
         self.setWindowTitle("Yeast ACDC - GUI")
         self.setWindowIcon(QIcon(":assign-motherbud.svg"))
         self.setAcceptDrops(True)
@@ -1289,10 +1291,8 @@ class guiWin(QMainWindow):
                 # Keep a global mask to compute which IDs got erased
                 self.erasedIDs = []
                 self.erasedID = PosData.lab[ydata, xdata]
-                brushSize = self.brushSizeSpinbox.value()
-                diskMask = skimage.morphology.disk(brushSize, dtype=bool)
-                ymin, xmin = ydata-brushSize, xdata-brushSize
-                ymax, xmax = ydata+brushSize+1, xdata+brushSize+1
+
+                ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
                 # Build eraser mask
                 mask = np.zeros(PosData.lab.shape, bool)
@@ -1326,10 +1326,9 @@ class guiWin(QMainWindow):
                 # Store undo state before modifying stuff
                 self.storeUndoRedoStates(False)
                 self.yPressAx2, self.xPressAx2 = y, x
-                brushSize = self.brushSizeSpinbox.value()
-                mask = skimage.morphology.disk(brushSize, dtype=bool)
-                ymin, xmin = ydata-brushSize, xdata-brushSize
-                ymax, xmax = ydata+brushSize+1, xdata+brushSize+1
+
+                ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
+
                 ID = PosData.lab[ydata, xdata]
 
                 # If user double-pressed 'b' then draw over the labels
@@ -1348,10 +1347,11 @@ class guiWin(QMainWindow):
 
                 # Draw new objects
                 localLab = PosData.lab[ymin:ymax, xmin:xmax]
+                mask = diskMask.copy()
                 if drawUnder:
                     mask[localLab!=0] = False
 
-                PosData.lab[ymin:ymax, xmin:xmax][mask] = self.ax2BrushID
+                PosData.lab[ymin:ymax, xmin:xmax][diskMask] = self.ax2BrushID
                 self.setImageImg2()
 
         # Delete entire ID (set to 0)
@@ -1394,7 +1394,7 @@ class guiWin(QMainWindow):
                 self.app.setOverrideCursor(Qt.WaitCursor)
                 # Store current data before going to future frames
                 self.store_data()
-                for i in range(PosData.frame_i+1, endFrame_i):
+                for i in range(PosData.frame_i+1, endFrame_i+1):
                     lab = PosData.allData_li[i]['labels']
                     if lab is None:
                         break
@@ -1414,7 +1414,6 @@ class guiWin(QMainWindow):
             if applyFutFrames:
                 PosData.frame_i = self.current_frame_i
                 self.get_data()
-
 
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(UndoFutFrames)
@@ -1694,7 +1693,7 @@ class guiWin(QMainWindow):
                 if endFrame_i is None:
                     self.app.restoreOverrideCursor()
                     return
-                for i in range(PosData.frame_i+1, endFrame_i):
+                for i in range(PosData.frame_i+1, endFrame_i+1):
                     PosData.frame_i = i
                     self.get_data()
                     if self.onlyTracking:
@@ -1756,7 +1755,7 @@ class guiWin(QMainWindow):
                 self.app.setOverrideCursor(Qt.WaitCursor)
                 # Store current data before going to future frames
                 self.store_data()
-                for i in range(PosData.frame_i+1, endFrame_i):
+                for i in range(PosData.frame_i+1, endFrame_i+1):
                     PosData.frame_i = i
                     self.get_data()
                     if ID in PosData.binnedIDs:
@@ -1828,7 +1827,7 @@ class guiWin(QMainWindow):
                 self.app.setOverrideCursor(Qt.WaitCursor)
                 # Store current data before going to future frames
                 self.store_data()
-                for i in range(PosData.frame_i+1, endFrame_i):
+                for i in range(PosData.frame_i+1, endFrame_i+1):
                     PosData.frame_i = i
                     self.get_data()
                     if ID in PosData.ripIDs:
@@ -1886,10 +1885,9 @@ class guiWin(QMainWindow):
             Y, X = PosData.lab.shape
             brushSize = self.brushSizeSpinbox.value()
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
-                diskMask = skimage.morphology.disk(brushSize, dtype=bool)
-                ymin, xmin = ydata-brushSize, xdata-brushSize
-                ymax, xmax = ydata+brushSize+1, xdata+brushSize+1
-                rrPoly, ccPoly = self.getPolygonBrush((y, x))
+                ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
+
+                rrPoly, ccPoly = self.getPolygonBrush((y, x), Y, X)
 
                 # Build brush mask
                 mask = np.zeros(PosData.lab.shape, bool)
@@ -1914,13 +1912,14 @@ class guiWin(QMainWindow):
         # Eraser dragging mouse --> keep erasing
         elif self.isMouseDragImg1 and self.eraserButton.isChecked():
             PosData = self.data[self.pos_i]
+            Y, X = PosData.lab.shape
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             brushSize = self.brushSizeSpinbox.value()
-            diskMask = skimage.morphology.disk(brushSize, dtype=bool)
-            rrPoly, ccPoly = self.getPolygonBrush((y, x))
-            ymin, xmin = ydata-brushSize, xdata-brushSize
-            ymax, xmax = ydata+brushSize+1, xdata+brushSize+1
+
+            rrPoly, ccPoly = self.getPolygonBrush((y, x), Y, X)
+
+            ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
             # Build eraser mask
             mask = np.zeros(PosData.lab.shape, bool)
@@ -2131,13 +2130,13 @@ class guiWin(QMainWindow):
         # Eraser dragging mouse --> keep erasing
         if self.isMouseDragImg2 and self.eraserButton.isChecked():
             PosData = self.data[self.pos_i]
+            Y, X = PosData.lab.shape
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             brushSize = self.brushSizeSpinbox.value()
-            diskMask = skimage.morphology.disk(brushSize, dtype=bool)
-            rrPoly, ccPoly = self.getPolygonBrush((y, x))
-            ymin, xmin = ydata-brushSize, xdata-brushSize
-            ymax, xmax = ydata+brushSize+1, xdata+brushSize+1
+            rrPoly, ccPoly = self.getPolygonBrush((y, x), Y, X)
+
+            ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
             # Build eraser mask
             mask = np.zeros(PosData.lab.shape, bool)
@@ -2161,13 +2160,13 @@ class guiWin(QMainWindow):
         # Brush paint dragging mouse --> keep painting
         if self.isMouseDragImg2 and self.brushButton.isChecked():
             PosData = self.data[self.pos_i]
+            Y, X = PosData.lab.shape
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             brushSize = self.brushSizeSpinbox.value()
-            diskMask = skimage.morphology.disk(brushSize, dtype=bool)
-            rrPoly, ccPoly = self.getPolygonBrush((y, x))
-            ymin, xmin = ydata-brushSize, xdata-brushSize
-            ymax, xmax = ydata+brushSize+1, xdata+brushSize+1
+            rrPoly, ccPoly = self.getPolygonBrush((y, x), Y, X)
+
+            ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
             # Build brush mask
             mask = np.zeros(PosData.lab.shape, bool)
@@ -2198,13 +2197,15 @@ class guiWin(QMainWindow):
         if self.isMouseDragImg2 and self.eraserButton.isChecked():
             self.isMouseDragImg2 = False
             erasedIDs = np.unique(self.erasedIDs)
-            for ID in erasedIDs:
-                if ID not in PosData.lab:
-                    self.warnEditingWithCca_df('Delete ID with eraser')
 
             # Update data (rp, etc)
             self.update_rp()
             self.updateALLimg()
+
+            for ID in erasedIDs:
+                if ID not in PosData.lab:
+                    self.warnEditingWithCca_df('Delete ID with eraser')
+                    break
 
         # Brush mouse release --> update IDs and contours
         elif self.isMouseDragImg2 and self.brushButton.isChecked():
@@ -2215,6 +2216,7 @@ class guiWin(QMainWindow):
                 self.tracking(enforce=True)
 
             self.updateALLimg()
+            self.warnEditingWithCca_df('Add new ID with brush tool')
 
         # Merge IDs
         elif self.mergeIDsButton.isChecked():
@@ -2280,13 +2282,15 @@ class guiWin(QMainWindow):
         elif self.isMouseDragImg1 and self.eraserButton.isChecked():
             self.isMouseDragImg1 = False
             erasedIDs = np.unique(self.erasedIDs)
-            for ID in erasedIDs:
-                if ID not in PosData.lab:
-                    self.warnEditingWithCca_df('Delete ID with eraser')
 
             # Update data (rp, etc)
             self.update_rp()
             self.updateALLimg()
+
+            for ID in erasedIDs:
+                if ID not in PosData.lab:
+                    self.warnEditingWithCca_df('Delete ID with eraser')
+                    break
 
         elif self.isMouseDragImg1 and self.brushButton.isChecked():
             self.isMouseDragImg1 = False
@@ -2296,10 +2300,10 @@ class guiWin(QMainWindow):
 
             # Repeat tracking
             self.tracking(enforce=True)
-            self.warnEditingWithCca_df('Add new ID with brush tool')
 
             # Update colors to include a new color for the new ID
             self.updateALLimg()
+            self.warnEditingWithCca_df('Add new ID with brush tool')
 
         # Assign mother to bud
         elif self.assignBudMothButton.isChecked() and self.clickedOnBud:
@@ -2459,7 +2463,11 @@ class guiWin(QMainWindow):
             return
 
         # Allow right-click actions on both images
-        if right_click and (mode=='Segmentation and Tracking' or self.isSnapshot):
+        eventOnImg2 = (
+            (right_click)
+            and (mode=='Segmentation and Tracking' or self.isSnapshot)
+        )
+        if eventOnImg2:
             self.gui_mousePressEventImg2(event)
 
         # Paint new IDs with brush and left click on the left image
@@ -2486,14 +2494,13 @@ class guiWin(QMainWindow):
 
                 self.yPressAx2, self.xPressAx2 = y, x
 
-                mask = skimage.morphology.disk(brushSize, dtype=bool)
-                ymin, xmin = ydata-brushSize, xdata-brushSize
-                ymax, xmax = ydata+brushSize+1, xdata+brushSize+1
+                ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
                 self.isMouseDragImg1 = True
 
                 # Draw new objects
                 localLab = PosData.lab[ymin:ymax, xmin:xmax]
+                mask = diskMask.copy()
                 if drawUnder:
                     mask[localLab!=0] = False
 
@@ -2524,10 +2531,8 @@ class guiWin(QMainWindow):
                 # Keep a list of erased IDs got erased
                 self.erasedIDs = []
                 self.erasedID = PosData.lab[ydata, xdata]
-                brushSize = self.brushSizeSpinbox.value()
-                diskMask = skimage.morphology.disk(brushSize, dtype=bool)
-                ymin, xmin = ydata-brushSize, xdata-brushSize
-                ymax, xmax = ydata+brushSize+1, xdata+brushSize+1
+
+                ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
                 # Build eraser mask
                 mask = np.zeros(PosData.lab.shape, bool)
@@ -2894,7 +2899,7 @@ class guiWin(QMainWindow):
         self.get_data()
         self.updateALLimg()
 
-    def getPolygonBrush(self, yxc2):
+    def getPolygonBrush(self, yxc2, Y, X):
         # see https://en.wikipedia.org/wiki/Tangent_lines_to_circles
         y1, x1 = self.yPressAx2, self.xPressAx2
         y2, x2 = yxc2
@@ -2919,7 +2924,8 @@ class guiWin(QMainWindow):
             y6 = y2 - R*np.cos(alpha)
 
             rr_poly, cc_poly = skimage.draw.polygon([y3, y4, y6, y5],
-                                                    [x3, x4, x6, x5])
+                                                    [x3, x4, x6, x5],
+                                                    shape=(Y, X))
         else:
             rr_poly, cc_poly = [], []
 
@@ -4339,13 +4345,14 @@ class guiWin(QMainWindow):
         self.rulerButton.toggled.connect(self.ruler_cb)
         self.eraserButton.toggled.connect(self.Eraser_cb)
 
-    def brushSize_cb(self):
-        self.ax2_EraserCircle.setSize(self.brushSizeSpinbox.value()*2)
-        self.ax1_BrushCircle.setSize(self.brushSizeSpinbox.value()*2)
-        self.ax2_BrushCircle.setSize(self.brushSizeSpinbox.value()*2)
-        self.ax1_EraserCircle.setSize(self.brushSizeSpinbox.value()*2)
-        self.ax2_EraserX.setSize(self.brushSizeSpinbox.value())
-        self.ax1_EraserX.setSize(self.brushSizeSpinbox.value())
+    def brushSize_cb(self, value):
+        self.ax2_EraserCircle.setSize(value*2)
+        self.ax1_BrushCircle.setSize(value*2)
+        self.ax2_BrushCircle.setSize(value*2)
+        self.ax1_EraserCircle.setSize(value*2)
+        self.ax2_EraserX.setSize(value)
+        self.ax1_EraserX.setSize(value)
+        self.setDiskMask()
 
     def hideItemsHoverBrush(self, x, y):
         if x is None:
@@ -4419,13 +4426,15 @@ class guiWin(QMainWindow):
 
     def Brush_cb(self, checked):
         if checked:
+            self.enableSizeSpinbox(True)
+            self.setDiskMask()
             self.setHoverToolSymbolData(
                 [], [], (self.ax1_EraserCircle, self.ax2_EraserCircle,
                          self.ax1_EraserX, self.ax2_EraserX)
             )
             self.updateBrushCursor(self.xHoverImg, self.yHoverImg)
             self.setBrushID()
-            self.enableSizeSpinbox(True)
+
             self.disconnectLeftClickButtons()
             self.uncheckLeftClickButtons(self.sender())
             c = self.defaultToolBarButtonColor
@@ -4436,6 +4445,46 @@ class guiWin(QMainWindow):
                 [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
             )
             self.enableSizeSpinbox(False)
+
+    def setDiskMask(self):
+        brushSize = self.brushSizeSpinbox.value()
+        # diam = brushSize*2
+        # center = (brushSize, brushSize)
+        # diskShape = (diam+1, diam+1)
+        # diskMask = np.zeros(diskShape, bool)
+        # rr, cc = skimage.draw.disk(center, brushSize+1, shape=diskShape)
+        # diskMask[rr, cc] = True
+        self.diskMask = skimage.morphology.disk(brushSize, dtype=bool)
+
+    def getDiskMask(self, xdata, ydata):
+        Y, X = self.img2.image.shape[-2:]
+
+        brushSize = self.brushSizeSpinbox.value()
+        yBottom, xLeft = ydata-brushSize, xdata-brushSize
+        yTop, xRight = ydata+brushSize+1, xdata+brushSize+1
+
+        if xLeft>=0 and yBottom>=0 and xRight<=X and yTop<=Y:
+            return yBottom, xLeft, yTop, xRight, self.diskMask
+
+        elif xLeft<0 and yBottom>=0 and xRight<=X and yTop<=Y:
+            diskMask = self.diskMask.copy()
+            diskMask = diskMask[:, -xLeft:]
+            return yBottom, 0, yTop, xRight, diskMask
+
+        elif xLeft>=0 and yBottom<0 and xRight<=X and yTop<=Y:
+            diskMask = self.diskMask.copy()
+            diskMask = diskMask[-yBottom:]
+            return 0, xLeft, yTop, xRight, diskMask
+
+        elif xLeft>=0 and yBottom>=0 and xRight>X and yTop<=Y:
+            diskMask = self.diskMask.copy()
+            diskMask = diskMask[:, 0:X-xLeft]
+            return yBottom, xLeft, yTop, X, diskMask
+
+        elif xLeft>=0 and yBottom>=0 and xRight<=X and yTop>Y:
+            diskMask = self.diskMask.copy()
+            diskMask = diskMask[0:Y-yBottom]
+            return yBottom, xLeft, Y, xRight, diskMask
 
     def setBrushID(self):
         # Make sure that the brushed ID is always a new one based on
@@ -4521,6 +4570,8 @@ class guiWin(QMainWindow):
 
     def Eraser_cb(self, checked):
         if checked:
+            self.enableSizeSpinbox(True)
+            self.setDiskMask()
             self.setHoverToolSymbolData(
                 [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
             )
@@ -4530,7 +4581,6 @@ class guiWin(QMainWindow):
             c = self.defaultToolBarButtonColor
             self.brushButton.setStyleSheet(f'background-color: {c}')
             self.connectLeftClickButtons()
-            self.enableSizeSpinbox(True)
         else:
             self.setHoverToolSymbolData(
                 [], [], (self.ax1_EraserCircle, self.ax2_EraserCircle,
@@ -4590,6 +4640,7 @@ class guiWin(QMainWindow):
                     self.ccaTableWin.activateWindow()
                     self.ccaTableWin.updateTable(PosData.cca_df)
         elif ev.key() == Qt.Key_T:
+            # self.startBlinking()
             pass
             # PosData1 = self.data[0]
             # PosData2 = self.data[1]
@@ -4728,6 +4779,7 @@ class guiWin(QMainWindow):
         # frames has an ID affected by the change
         for i in range(PosData.frame_i+1, PosData.segmSizeT):
             if PosData.allData_li[i]['labels'] is None:
+                i -= 1
                 break
             else:
                 futureIDs = np.unique(PosData.allData_li[i]['labels'])
@@ -4740,7 +4792,7 @@ class guiWin(QMainWindow):
 
         if not areFutureIDs_affected:
             # There are future frames but they are not affected by the change
-            return UndoFutFrames, applyFutFrames, None, doNotShow
+            return UndoFutFrames, False, None, doNotShow
 
         # Ask what to do unless the user has previously checked doNotShowAgain
         if doNotShow:
@@ -4751,7 +4803,6 @@ class guiWin(QMainWindow):
                     parent=self)
             ffa.exec_()
             decision = ffa.decision
-
 
             if decision is None:
                 return None, None, None, doNotShow
@@ -7648,8 +7699,22 @@ class guiWin(QMainWindow):
         if self.ccaTableWin is not None:
             self.ccaTableWin.updateTable(PosData.cca_df)
 
-    def cancelBlinking(self):
-        self.stopBlinking = True
+    def startBlinking(self):
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.blinkModeComboBox)
+        self.timer.start(100)
+
+    def blinkModeComboBox(self):
+        if self.flag:
+            self.modeComboBox.setStyleSheet('background-color: orange')
+        else:
+            self.modeComboBox.setStyleSheet('background-color: none')
+        self.flag = not self.flag
+        self.countBlinks += 1
+        if self.countBlinks > 10:
+            self.timer.stop()
+            self.countBlinks = 0
+            self.modeComboBox.setStyleSheet('background-color: none')
 
     def highlightNewIDs_ccaFailed(self):
         PosData = self.data[self.pos_i]
@@ -7981,7 +8046,6 @@ class guiWin(QMainWindow):
     def undo_changes_future_frames(self):
         PosData = self.data[self.pos_i]
         PosData.last_tracked_i = PosData.frame_i
-        self.setFramesScrollbarMaximum()
         for i in range(PosData.frame_i+1, PosData.segmSizeT):
             if PosData.allData_li[i]['labels'] is None:
                 break
@@ -7992,7 +8056,8 @@ class guiWin(QMainWindow):
                  'acdc_df': None,
                  'delROIs_info': {'rois': [], 'delMasks': [], 'delIDsROI': []},
                  'histoLevels': {}
-             }
+            }
+        self.setFramesScrollbarMaximum()
 
     def removeAllItems(self):
         self.ax1.clear()
@@ -8110,7 +8175,7 @@ class guiWin(QMainWindow):
         err_msg = (
             f'The folder "{images_path}" does not contain .tif files.\n\n'
             'Only .tif files can be loaded with "Open Folder" button.\n\n'
-            'Try with "File --> Open image/video file.." and directly select '
+            'Try with "File --> Open image/video file..." and directly select '
             'the file you want to load.'
         )
         msg = QtGui.QMessageBox()
@@ -8389,6 +8454,10 @@ class guiWin(QMainWindow):
             ch_names, multiSelection=True, parent=self
         )
         selectFluo.exec_()
+
+        if selectFluo.cancel:
+            return
+
         fluo_channels = selectFluo.selectedItemsText
 
         self.app.setOverrideCursor(Qt.WaitCursor)
@@ -8566,6 +8635,39 @@ class guiWin(QMainWindow):
                                                     index=IDs,
                                                     dtype=float)
 
+        # Join with regionprops_table
+        props = (
+            'label',
+            'bbox',
+            'bbox_area',
+            'eccentricity',
+            'equivalent_diameter',
+            'euler_number',
+            'extent',
+            'feret_diameter_max',
+            'filled_area',
+            'inertia_tensor_eigvals',
+            'local_centroid',
+            'major_axis_length',
+            'minor_axis_length',
+            'moments',
+            'moments_central',
+            'moments_hu',
+            'moments_normalized',
+            'orientation',
+            'perimeter',
+            'perimeter_crofton',
+            'solidity'
+        )
+        rp_table = skimage.measure.regionprops_table(
+            PosData.lab, properties=props
+        )
+        df_rp = pd.DataFrame(rp_table).set_index('label')
+
+        df = df.join(df_rp)
+        return df
+
+
     def getChNames(self, PosData):
         fluo_keys = list(PosData.fluo_data_dict.keys())
 
@@ -8727,6 +8829,7 @@ class guiWin(QMainWindow):
                 for frame_i, data_dict in enumerate(PosData.allData_li):
                     # Build segm_npy
                     lab = data_dict['labels']
+                    PosData.lab = lab
                     if lab is not None:
                         if PosData.SizeT > 1:
                             segm_npy[frame_i] = lab
@@ -8762,7 +8865,7 @@ class guiWin(QMainWindow):
                         )
                         rp = data_dict['regionprops']
                         try:
-                            self.addMetrics_acdc_df(
+                            acdc_df = self.addMetrics_acdc_df(
                                         acdc_df, rp, frame_i, lab, PosData
                             )
                             acdc_df_li[frame_i] = acdc_df
@@ -8789,8 +8892,7 @@ class guiWin(QMainWindow):
                         df_li.append(df)
                         keys.append((i, PosData.TimeIncrement*i))
 
-                print('')
-                print('Saving data...')
+                print('Almost done...')
                 try:
                     np.savez_compressed(delROIs_info_path, **npz_delROIs_info)
                 except Exception as e:
