@@ -1953,6 +1953,18 @@ class cellpose_ParamsDialog(QDialog):
         self.cellProbThreshSlider = cellProbThreshSlider
         self.cellProbThreshSlider.sliderMoved.connect(self.updateCellProbVal)
 
+        row += 1
+        minSizeLabel = QLabel("Remove objects smaller than (area in pixels):")
+        entriesLayout.addWidget(minSizeLabel, row, 0)
+        row += 1
+        minSize_SB = QSpinBox()
+        minSize_SB.setAlignment(Qt.AlignCenter)
+        minSize_SB.setMinimum(1)
+        minSize_SB.setMaximum(2147483647)
+        minSize_SB.setValue(5)
+        entriesLayout.addWidget(minSize_SB, row, 0, 1, 2)
+        self.minSize_SB = minSize_SB
+
         # Parameters link label
         row += 1
         url = 'https://colab.research.google.com/github/MouseLand/cellpose/blob/master/notebooks/Cellpose_2D_v0_1.ipynb#scrollTo=Rr0UozRm42CA'
@@ -1999,6 +2011,7 @@ class cellpose_ParamsDialog(QDialog):
         self.diameter = self.diameterEntry.value()
         self.flow_threshold = self.flowThreshSlider.value()/10
         self.cellprob_threshold = self.cellProbThreshSlider.value()
+        self.minSize = self.minSize_SB.value()
         self.close()
 
     def cancel_cb(self, event):
@@ -2016,18 +2029,32 @@ class YeaZ_ParamsDialog(QDialog):
         mainLayout = QVBoxLayout()
 
         formLayout = QFormLayout()
+        formLayout.setLabelAlignment(Qt.AlignRight)
         formLayout.addRow("Threshold value:", QLineEdit())
-        formLayout.addRow("Minimum distance:", QLineEdit())
+
+        minDist_SB = QSpinBox()
+        minDist_SB.setAlignment(Qt.AlignCenter)
+        minDist_SB.setMinimum(1)
+        minDist_SB.setMaximum(2147483647)
+        minDist_SB.setValue(10)
+        formLayout.addRow("Minimum distance:", minDist_SB)
+        self.minDist_SB = minDist_SB
+
+        minSize_SB = QSpinBox()
+        minSize_SB.setAlignment(Qt.AlignCenter)
+        minSize_SB.setMinimum(1)
+        minSize_SB.setMaximum(2147483647)
+        minSize_SB.setValue(5)
+        formLayout.addRow(
+            "Remove objects smaller than (area in pixels):", minSize_SB
+        )
+        self.minSize_SB = minSize_SB
 
         threshVal_QLineEdit = formLayout.itemAt(0, 1).widget()
         threshVal_QLineEdit.setText('None')
         threshVal_QLineEdit.setAlignment(Qt.AlignCenter)
         self.threshVal_QLineEdit = threshVal_QLineEdit
 
-        minDist_QLineEdit = formLayout.itemAt(1, 1).widget()
-        minDist_QLineEdit.setText('10')
-        minDist_QLineEdit.setAlignment(Qt.AlignCenter)
-        self.minDist_QLineEdit = minDist_QLineEdit
 
         HBoxLayout = QHBoxLayout()
         okButton = QPushButton('Ok')
@@ -2053,7 +2080,8 @@ class YeaZ_ParamsDialog(QDialog):
         valid_threshVal = False
         valid_minDist = False
         threshTxt = self.threshVal_QLineEdit.text()
-        minDistTxt = self.minDist_QLineEdit.text()
+        self.minDist = self.minDist_SB.value()
+        self.minSize = self.minSize_SB.value()
         try:
             self.threshVal = float(threshTxt)
             if self.threshVal > 0 and self.threshVal < 1:
@@ -2074,21 +2102,6 @@ class YeaZ_ParamsDialog(QDialog):
             msg = QtGui.QMessageBox()
             msg.critical(
                 self, 'Invalid threshold value', err_msg, msg.Ok
-            )
-            return
-        else:
-            try:
-                self.minDist = int(minDistTxt)
-                valid_minDist = True
-            except Exception as e:
-                valid_minDist = False
-        if not valid_minDist:
-            err_msg = (
-                'Minimum distance is not valid. Enter an integer'
-            )
-            msg = QtGui.QMessageBox()
-            msg.critical(
-                self, 'Invalid minimum distance', err_msg, msg.Ok
             )
             return
         self.close()
@@ -3854,7 +3867,8 @@ if __name__ == '__main__':
     # df = cca_df.reset_index()
     #
     # win = pdDataFrameWidget(df)
-    win = QDialogMetadataXML(rawDataStruct=1, chNames=[''])
+    # win = QDialogMetadataXML(rawDataStruct=1, chNames=[''])
+    win = cellpose_ParamsDialog()
     # user_ch_file_paths = [
     #     r"G:\My Drive\1_MIA_Data\Beno\test_QtGui\testGuiOnlyTifs\TIFFs\Position_1\Images\19-03-2021_KCY050_SCGE_s02_phase_contr.tif",
     #     r"G:\My Drive\1_MIA_Data\Beno\test_QtGui\testGuiOnlyTifs\TIFFs\Position_2\Images\19-03-2021_KCY050_SCGE_s02_phase_contr.tif"
@@ -3872,5 +3886,5 @@ if __name__ == '__main__':
     # win.setSize()
     # win.setGeometryWindow()
     win.exec_()
-    print(win.chNames)
+    print(win.minDist)
     # print(win.SizeT, win.SizeZ, win.zyx_vox_dim)

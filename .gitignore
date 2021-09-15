@@ -8,6 +8,7 @@ src/test.py
 src/java
 src/bioformats
 src/javabridge
+src/benchmarks
 env/*
 data/*
 tests/*

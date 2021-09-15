@@ -55,6 +55,26 @@ class loadData:
         self.relPath = f'.../{"/".join(path_li[-3:])}'
         filename_ext = os.path.basename(imgPath)
         self.filename, self.ext = os.path.splitext(filename_ext)
+        self.loadLastEntriesMetadata()
+
+    def loadLastEntriesMetadata(self):
+        src_path = os.path.dirname(os.path.realpath(__file__))
+        temp_path = os.path.join(src_path, 'temp')
+        if not os.path.exists(temp_path):
+            return
+        csv_path = os.path.join(temp_path, 'last_entries_metadata.csv')
+        if not os.path.exists(csv_path):
+            self.last_md_df = None
+        else:
+            self.last_md_df = pd.read_csv(csv_path).set_index('Description')
+
+    def saveLastEntriesMetadata(self):
+        src_path = os.path.dirname(os.path.realpath(__file__))
+        temp_path = os.path.join(src_path, 'temp')
+        if not os.path.exists:
+            return
+        csv_path = os.path.join(temp_path, 'last_entries_metadata.csv')
+        self.metadata_df.to_csv(csv_path)
 
     def getBasenameAndChNames(self, select_channel_name):
         ls = os.listdir(self.images_path)
@@ -167,11 +187,15 @@ class loadData:
     def extractMetadata(self):
         if 'SizeT' in self.metadata_df.index:
             self.SizeT = int(self.metadata_df.at['SizeT', 'values'])
+        elif self.last_md_df is not None and 'SizeT' in self.last_md_df.index:
+            self.SizeT = int(self.last_md_df.at['SizeT', 'values'])
         else:
             self.SizeT = 1
 
         if 'SizeZ' in self.metadata_df.index:
             self.SizeZ = int(self.metadata_df.at['SizeZ', 'values'])
+        elif self.last_md_df is not None and 'SizeZ' in self.last_md_df.index:
+            self.SizeZ = int(self.last_md_df.at['SizeZ', 'values'])
         else:
             self.SizeZ = 1
 
@@ -179,6 +203,8 @@ class loadData:
             self.TimeIncrement = float(
                 self.metadata_df.at['TimeIncrement', 'values']
             )
+        elif self.last_md_df is not None and 'TimeIncrement' in self.last_md_df.index:
+            self.TimeIncrement = float(self.last_md_df.at['TimeIncrement', 'values'])
         else:
             self.TimeIncrement = 1
 
@@ -186,6 +212,8 @@ class loadData:
             self.PhysicalSizeX = float(
                 self.metadata_df.at['PhysicalSizeX', 'values']
             )
+        elif self.last_md_df is not None and 'PhysicalSizeX' in self.last_md_df.index:
+            self.PhysicalSizeX = float(self.last_md_df.at['PhysicalSizeX', 'values'])
         else:
             self.PhysicalSizeX = 1
 
@@ -193,6 +221,8 @@ class loadData:
             self.PhysicalSizeY = float(
                 self.metadata_df.at['PhysicalSizeY', 'values']
             )
+        elif self.last_md_df is not None and 'PhysicalSizeY' in self.last_md_df.index:
+            self.PhysicalSizeY = float(self.last_md_df.at['PhysicalSizeY', 'values'])
         else:
             self.PhysicalSizeY = 1
 
@@ -200,6 +230,8 @@ class loadData:
             self.PhysicalSizeZ = float(
                 self.metadata_df.at['PhysicalSizeZ', 'values']
             )
+        elif self.last_md_df is not None and 'PhysicalSizeZ' in self.last_md_df.index:
+            self.PhysicalSizeZ = float(self.last_md_df.at['PhysicalSizeZ', 'values'])
         else:
             self.PhysicalSizeZ = 1
 
@@ -207,24 +239,12 @@ class loadData:
              self.segmSizeT = int(
                  self.metadata_df.at['segmSizeT', 'values']
              )
+        elif self.last_md_df is not None and 'segmSizeT' in self.last_md_df.index:
+            self.segmSizeT = int(self.last_md_df.at['segmSizeT', 'values'])
         else:
             self.segmSizeT = self.SizeT
 
     def setNotFoundData(self):
-        if self.metadataFound is not None and not self.metadataFound:
-            if self.img_data.ndim > 2:
-                if len(self.img_data) > 49:
-                    self.SizeT, self.SizeZ = len(self.img_data), 1
-                else:
-                    self.SizeT, self.SizeZ = 1, len(self.img_data)
-            else:
-                self.SizeT, self.SizeZ = 1, 1
-            self.TimeIncrement = 1.0
-            self.PhysicalSizeX = 1.0
-            self.PhysicalSizeY = 1.0
-            self.PhysicalSizeZ = 1.0
-            self.segmSizeT = self.SizeT
-            self.metadata_df = None
         if self.segmFound is not None and not self.segmFound:
             self.segm_data = None
         if self.acd_df_found is not None and not self.acd_df_found:
@@ -243,6 +263,47 @@ class loadData:
             self.last_tracked_i = None
         if self.TifPathFound is not None and not self.TifPathFound:
             self.tif_path = None
+
+        if self.metadataFound is None:
+            # Loading metadata was not requested
+            return
+
+        if self.metadataFound:
+            return
+
+        if self.img_data.ndim > 2:
+            if len(self.img_data) > 49:
+                self.SizeT, self.SizeZ = len(self.img_data), 1
+            else:
+                self.SizeT, self.SizeZ = 1, len(self.img_data)
+        else:
+            self.SizeT, self.SizeZ = 1, 1
+        self.TimeIncrement = 1.0
+        self.PhysicalSizeX = 1.0
+        self.PhysicalSizeY = 1.0
+        self.PhysicalSizeZ = 1.0
+        self.segmSizeT = self.SizeT
+        self.metadata_df = None
+
+        if self.last_md_df is None:
+            # Last entered values do not exists
+            return
+
+        # Since metadata was not found use the last entries saved in temp folder
+        if 'SizeT' in self.last_md_df.index:
+            self.SizeT = int(self.last_md_df.at['SizeT', 'values'])
+        if 'SizeZ' in self.last_md_df.index:
+            self.SizeZ = int(self.last_md_df.at['SizeZ', 'values'])
+        if 'TimeIncrement' in self.last_md_df.index:
+            self.TimeIncrement = float(self.last_md_df.at['TimeIncrement', 'values'])
+        if 'PhysicalSizeX' in self.last_md_df.index:
+            self.PhysicalSizeX = float(self.last_md_df.at['PhysicalSizeX', 'values'])
+        if 'PhysicalSizeY' in self.last_md_df.index:
+            self.PhysicalSizeY = float(self.last_md_df.at['PhysicalSizeY', 'values'])
+        if 'PhysicalSizeZ' in self.last_md_df.index:
+            self.PhysicalSizeZ = float(self.last_md_df.at['PhysicalSizeZ', 'values'])
+        if 'segmSizeT' in self.last_md_df.index:
+            self.segmSizeT = int(self.last_md_df.at['segmSizeT', 'values'])
 
     def buildPaths(self):
         if self.basename.endswith('_'):
@@ -337,7 +398,7 @@ class loadData:
 
     def saveMetadata(self):
         if self.metadata_df is None:
-            df = pd.DataFrame({
+            self.metadata_df = pd.DataFrame({
                 'SizeT': self.SizeT,
                 'SizeZ': self.SizeZ,
                 'TimeIncrement': self.TimeIncrement,
@@ -346,8 +407,8 @@ class loadData:
                 'PhysicalSizeX': self.PhysicalSizeX,
                 'segmSizeT': self.segmSizeT
             }, index=['values']).T
-            df.index.name = 'Description'
-            df.to_csv(self.metadata_csv_path)
+            self.metadata_df.index.name = 'Description'
+            self.metadata_df.to_csv(self.metadata_csv_path)
         else:
             self.metadata_df.at['SizeT', 'values'] = self.SizeT
             self.metadata_df.at['SizeZ', 'values'] = self.SizeZ
@@ -357,6 +418,7 @@ class loadData:
             self.metadata_df.at['PhysicalSizeX', 'values'] = self.PhysicalSizeX
             self.metadata_df.at['segmSizeT', 'values'] = self.segmSizeT
             self.metadata_df.to_csv(self.metadata_csv_path)
+        self.saveLastEntriesMetadata()
 
     @staticmethod
     def BooleansTo0s1s(acdc_df, csv_path=None, inplace=True):

@@ -171,6 +171,7 @@ class segmWin(QMainWindow):
 
             thresh_val = yeazParams.threshVal
             min_distance = yeazParams.minDist
+            minSize = yeazParams.minSize
             # YeaZ modules
             print('Importing YeaZ...')
             from YeaZ.unet import neural_network as nn
@@ -193,6 +194,7 @@ class segmWin(QMainWindow):
                 diameter=None
             flow_threshold = cellposeParams.flow_threshold
             cellprob_threshold = cellposeParams.cellprob_threshold
+            minSize = cellposeParams.minSize
             # Cellpose modules
             print('Importing cellpose...')
             from acdc_cellpose import models
@@ -561,7 +563,7 @@ class segmWin(QMainWindow):
                                                 ).astype(np.uint16)
 
             lab_stack = skimage.morphology.remove_small_objects(
-                lab_stack, min_size=5
+                lab_stack, min_size=minSize
             )
 
             if data.SizeT > 1:

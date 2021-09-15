@@ -918,9 +918,12 @@ class guiWin(QMainWindow):
         self.t_label.hide()
         self.framesScrollBar.hide()
 
-        # z-slice scrollbar
+        # z-slice scrollbars
         row += 1
         self.zSliceScrollBar = QScrollBar(Qt.Horizontal)
+        sp = self.zSliceScrollBar.sizePolicy()
+        sp.setRetainSizeWhenHidden(True)
+        self.zSliceScrollBar.setSizePolicy(sp)
         _z_label = QLabel('z-slice  ')
         _font = QtGui.QFont()
         _font.setPointSize(10)
@@ -932,12 +935,46 @@ class guiWin(QMainWindow):
                 self.zSliceScrollBar, row, 1, 1, 10)
 
         self.zProjComboBox = QComboBox()
+        sp = self.zProjComboBox.sizePolicy()
+        sp.setRetainSizeWhenHidden(True)
+        self.zProjComboBox.setSizePolicy(sp)
         self.zProjComboBox.addItems(['single z-slice',
                                      'max z-projection',
                                      'mean z-projection',
                                      'median z-proj.'])
 
         self.img1_Widglayout.addWidget(self.zProjComboBox, row, 11, 1, 1)
+
+        row += 1
+        self.zSliceOverlay_SB = QScrollBar(Qt.Horizontal)
+        sp = self.zSliceOverlay_SB.sizePolicy()
+        sp.setRetainSizeWhenHidden(True)
+        self.zSliceOverlay_SB.setSizePolicy(sp)
+        _z_label = QLabel('overlay z-slice  ')
+        _font = QtGui.QFont()
+        _font.setPointSize(10)
+        _z_label.setFont(_font)
+        self.overlay_z_label = _z_label
+        self.img1_Widglayout.addWidget(
+                _z_label, row, 0, alignment=Qt.AlignRight)
+        self.img1_Widglayout.addWidget(
+                self.zSliceOverlay_SB, row, 1, 1, 10)
+
+        self.zProjOverlay_CB = QComboBox()
+        sp = self.zProjOverlay_CB.sizePolicy()
+        sp.setRetainSizeWhenHidden(True)
+        self.zProjOverlay_CB.setSizePolicy(sp)
+        self.zProjOverlay_CB.addItems(['single z-slice',
+                                       'max z-projection',
+                                       'mean z-projection',
+                                       'median z-proj.'])
+        self.zProjOverlay_CB.setCurrentIndex(1)
+        self.img1_Widglayout.addWidget(self.zProjOverlay_CB, row, 11, 1, 1)
+
+        self.zSliceOverlay_SB.setDisabled(True)
+        self.zSliceOverlay_SB.hide()
+        self.overlay_z_label.hide()
+        self.zProjOverlay_CB.hide()
 
         self.enableZstackWidgets(False)
 
@@ -946,6 +983,9 @@ class guiWin(QMainWindow):
         alphaScrollBar_label = QLabel('Overlay alpha  ')
         alphaScrollBar_label.setFont(_font)
         alphaScrollBar = QScrollBar(Qt.Horizontal)
+        sp = alphaScrollBar.sizePolicy()
+        sp.setRetainSizeWhenHidden(True)
+        alphaScrollBar.setSizePolicy(sp)
         alphaScrollBar.setMinimum(0)
         alphaScrollBar.setMaximum(40)
         alphaScrollBar.setValue(20)
@@ -3905,12 +3945,10 @@ class guiWin(QMainWindow):
             self.zProjComboBox.show()
             self.zSliceScrollBar.show()
             self.z_label.show()
-            self.z_label.show()
         else:
             self.zSliceScrollBar.setDisabled(True)
             self.zProjComboBox.hide()
             self.zSliceScrollBar.hide()
-            self.z_label.hide()
             self.z_label.hide()
 
     def reInitCca(self):
@@ -5111,6 +5149,7 @@ class guiWin(QMainWindow):
                 return
             thresh_val = yeazParams.threshVal
             min_distance = yeazParams.minDist
+            minSize = yeazParams.minSize
             self.yeazThreshVal = thresh_val
             self.yeazMinDistance = min_distance
         else:
@@ -5139,6 +5178,7 @@ class guiWin(QMainWindow):
         thresh = self.nn.threshold(pred, th=thresh_val)
         lab = self.segment.segment(thresh, pred,
                                    min_distance=min_distance).astype(int)
+        lab = skimage.morphology.remove_small_objects(lab, min_size=minSize)
         t1 = time.time()
         self.is_first_call_YeaZ = False
         if PosData.segmInfo_df is not None and PosData.SizeZ>1:
@@ -5176,6 +5216,7 @@ class guiWin(QMainWindow):
                 diameter=None
             flow_threshold = cellposeParams.flow_threshold
             cellprob_threshold = cellposeParams.cellprob_threshold
+            minSize = cellposeParams.minSize
             self.cellposeDiameter = diameter
             self.cellposeFlowThreshold = flow_threshold
             self.cellposeProbThreshold = cellprob_threshold
@@ -5208,6 +5249,7 @@ class guiWin(QMainWindow):
                                 flow_threshold=flow_threshold,
                                 cellprob_threshold=cellprob_threshold
         )
+        lab = skimage.morphology.remove_small_objects(lab, min_size=minSize)
         t1 = time.time()
         self.is_first_call_cellpose = False
         if PosData.segmInfo_df is not None and PosData.SizeZ>1:
@@ -5708,6 +5750,18 @@ class guiWin(QMainWindow):
         PosData = self.data[self.pos_i]
         PosData.segmInfo_df.at[PosData.frame_i, 'z_slice_used_gui'] = z
         self.updateALLimg(only_ax1=True)
+
+    def update_overlay_z_slice(self, z):
+        self.getOverlayImg(setImg=True)
+
+    def updateOverlayZproj(self, how):
+        self.getOverlayImg(setImg=True)
+        if how.find('max') != -1:
+            self.overlay_z_label.setStyleSheet('color: gray')
+            self.zSliceOverlay_SB.setDisabled(True)
+        else:
+            self.overlay_z_label.setStyleSheet('color: black')
+            self.zSliceOverlay_SB.setDisabled(False)
 
     def updateZproj(self, how):
         for p, PosData in enumerate(self.data[self.pos_i:]):
@@ -7093,7 +7147,7 @@ class guiWin(QMainWindow):
             else:
                 fluo_data = self.loadNonAlignedFluoChannel(fluo_path)
                 if fluo_data is None:
-                    return None, None
+                    return None
         else:
             txt = (f'File format {ext} is not supported!\n'
                     'Choose either .tif or .npz files.')
@@ -7101,13 +7155,9 @@ class guiWin(QMainWindow):
             msg.critical(
                 self, 'File not supported', txt, msg.Ok
             )
-            return None, None
+            return None
 
-        if PosData.SizeZ > 1:
-            ol_data = fluo_data.max(axis=0)
-        else:
-            ol_data = fluo_data.copy()
-        return fluo_data, ol_data
+        return fluo_data
 
     def setOverlayColors(self):
         self.overlayRGBs = [(255, 255, 0),
@@ -7200,13 +7250,13 @@ class guiWin(QMainWindow):
                             self.criticalFluoChannelNotFound(ol_ch, PosData)
                             self.app.restoreOverrideCursor()
                             return
-                        fluo_data, ol_data_2D = self.load_fluo_data(ol_path)
+                        fluo_data = self.load_fluo_data(ol_path)
                         if fluo_data is None:
                             self.app.restoreOverrideCursor()
                             return
                         PosData.fluo_data_dict[filename] = fluo_data
                         PosData.ol_data_dict[filename] = fluo_data
-                        ol_data[filename] = ol_data_2D
+                        ol_data[filename] = fluo_data.copy()
                         ol_colors[filename] = self.overlayRGBs[i]
                         PosData.ol_colors = ol_colors
                         if i!=0:
@@ -7229,22 +7279,52 @@ class guiWin(QMainWindow):
 
             self.updateALLimg(only_ax1=True)
 
-            self.alphaScrollBar.setDisabled(False)
-            self.overlayColorButton.setDisabled(False)
-            self.editOverlayColorAction.setDisabled(False)
-            self.alphaScrollBar.show()
-            self.alphaScrollBar_label.show()
+            self.enableOverlayWidgets(True)
         else:
             self.UserNormAction.setChecked(True)
             self.create_chNamesQActionGroup(self.user_ch_name)
             PosData.fluoDataChNameActions = []
             self.updateHistogramItem(self.img1)
             self.updateALLimg(only_ax1=True)
+            self.enableOverlayWidgets(False)
+
+    def enableOverlayWidgets(self, enabled):
+        if enabled:
+            PosData = self.data[self.pos_i]
+            self.zSliceOverlay_SB.setMaximum(PosData.SizeZ-1)
+            if self.zProjOverlay_CB.currentText().find('max') != -1:
+                self.overlay_z_label.setStyleSheet('color: gray')
+                self.zSliceOverlay_SB.setDisabled(True)
+            else:
+                z = self.zSliceOverlay_SB.sliderPosition()
+                self.overlay_z_label.setText(f'z-slice  {z+1:02}/{PosData.SizeZ}')
+                self.zSliceOverlay_SB.setDisabled(False)
+                self.overlay_z_label.setStyleSheet('color: black')
+            self.zSliceOverlay_SB.show()
+            self.overlay_z_label.show()
+            self.zProjOverlay_CB.show()
+            self.alphaScrollBar.setDisabled(False)
+            self.overlayColorButton.setDisabled(False)
+            self.editOverlayColorAction.setDisabled(False)
+            self.alphaScrollBar.show()
+            self.alphaScrollBar_label.show()
+            self.zSliceOverlay_SB.sliderMoved.connect(self.update_overlay_z_slice)
+            self.zProjOverlay_CB.currentTextChanged.connect(self.updateOverlayZproj)
+            self.zProjOverlay_CB.activated.connect(self.clearComboBoxFocus)
+        else:
+            self.zSliceOverlay_SB.setDisabled(True)
+            self.zSliceOverlay_SB.hide()
+            self.overlay_z_label.hide()
+            self.zProjOverlay_CB.hide()
             self.alphaScrollBar.setDisabled(True)
             self.overlayColorButton.setDisabled(True)
             self.editOverlayColorAction.setDisabled(True)
             self.alphaScrollBar.hide()
             self.alphaScrollBar_label.hide()
+            self.zSliceOverlay_SB.sliderMoved.disconnect()
+            self.zProjOverlay_CB.currentTextChanged.disconnect()
+            self.zProjOverlay_CB.activated.disconnect()
+
 
     def criticalFluoChannelNotFound(self, fluo_ch, PosData):
         msg = QtGui.QMessageBox()
@@ -7347,6 +7427,18 @@ class guiWin(QMainWindow):
             ol_img = PosData.ol_data[key][PosData.frame_i].copy()
         else:
             ol_img = PosData.ol_data[key].copy()
+        if PosData.SizeZ > 1:
+            zProjHow = self.zProjOverlay_CB.currentText()
+            if zProjHow == 'single z-slice':
+                z = self.zSliceOverlay_SB.sliderPosition()
+                self.overlay_z_label.setText(f'z-slice  {z+1:02}/{PosData.SizeZ}')
+                ol_img = ol_img[z].copy()
+            elif zProjHow == 'max z-projection':
+                ol_img = ol_img.max(axis=0).copy()
+            elif zProjHow == 'mean z-projection':
+                ol_img = ol_img.mean(axis=0).copy()
+            elif zProjHow == 'median z-proj.':
+                ol_img = np.median(ol_img, axis=0).copy()
         if normalizeIntens:
             ol_img = self.normalizeIntensities(ol_img)
         return ol_img
@@ -8468,13 +8560,13 @@ class guiWin(QMainWindow):
                     self.criticalFluoChannelNotFound(fluo_ch, PosData)
                     self.app.restoreOverrideCursor()
                     return
-                fluo_data, ol_data_2D = self.load_fluo_data(fluo_path)
+                fluo_data = self.load_fluo_data(fluo_path)
                 if fluo_data is None:
                     self.app.restoreOverrideCursor()
                     return
                 PosData.loadedFluoChannels.add(fluo_ch)
                 PosData.fluo_data_dict[filename] = fluo_data
-                PosData.ol_data_dict[filename] = ol_data_2D
+                PosData.ol_data_dict[filename] = fluo_data.copy()
         self.app.restoreOverrideCursor()
         self.overlayButton.setStyleSheet('background-color: #A7FAC7')
 
@@ -9121,6 +9213,7 @@ class guiWin(QMainWindow):
         self.framesScrollBar.setFixedHeight(h)
         self.zSliceScrollBar.setFixedHeight(h)
         self.alphaScrollBar.setFixedHeight(h)
+        self.zSliceOverlay_SB.setFixedHeight(h)
 
 if __name__ == "__main__":
     print('Loading application...')
