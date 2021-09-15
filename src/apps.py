@@ -3252,7 +3252,7 @@ class manualSeparateGui(QMainWindow):
         self.lab = lab.copy()
         self.lab[lab!=ID] = 0
         self.ID = ID
-        self.img = skimage.exposure.equalize_adapthist(img)
+        self.img = skimage.exposure.equalize_adapthist(img/img.max())
         self.IDcolor = IDcolor
         self.countClicks = 0
         self.prevLabs = []

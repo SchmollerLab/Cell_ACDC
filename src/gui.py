@@ -4775,7 +4775,7 @@ class guiWin(QMainWindow):
             msg = QtGui.QMessageBox()
             msg.critical(
                 self, 'Release the key!',
-                f'Please, do not keep key {ev.text()} pressed! It confuses me.\n '
+                f'Please, do not keep the key "{ev.text()}" pressed! It confuses me.\n'
                 'You do not need to keep it pressed.\n\n '
                 'Thanks!',
                 msg.Ok
