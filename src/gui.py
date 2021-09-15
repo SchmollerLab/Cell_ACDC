@@ -856,6 +856,9 @@ class guiWin(QMainWindow):
         self.entropyFilterAction.toggled.connect(self.entropyFilter)
         self.addDelRoiAction.triggered.connect(self.addDelROI)
         self.hist.sigLookupTableChanged.connect(self.histLUT_cb)
+        self.hist.gradient.sigGradientChangeFinished.connect(
+            self.histLUTfinished_cb
+        )
         self.normalizeQActionGroup.triggered.connect(self.saveNormAction)
         self.imgPropertiesAction.triggered.connect(self.editImgProperties)
 
@@ -3334,7 +3337,7 @@ class guiWin(QMainWindow):
             relID = cca_df_i.at[ID, 'relative_ID']
             ccs_relID = cca_df_i.at[relID, 'cell_cycle_stage']
             if ccs == 'S':
-                # We correct only those frames in which the ID was in 'S'
+                # We correct only those frames in which the ID was in 'G1'
                 break
             else:
                 store = self.undoDivisionAnnotation(
@@ -4642,18 +4645,8 @@ class guiWin(QMainWindow):
                     self.ccaTableWin.activateWindow()
                     self.ccaTableWin.updateTable(PosData.cca_df)
         elif ev.key() == Qt.Key_T:
-            # self.startBlinkingModeCB()
             pass
-            # PosData1 = self.data[0]
-            # PosData2 = self.data[1]
-            # print(PosData1.fluo_data_dict.keys())
-            # print(PosData2.fluo_data_dict.keys())
-            # key1 = list(PosData1.fluo_data_dict.keys())[0]
-            # key2 = list(PosData2.fluo_data_dict.keys())[0]
-            # apps.imshow_tk(PosData1.fluo_data_dict[key1],
-            #                additional_imgs=[PosData2.fluo_data_dict[key2]])
-            # minTick = self.hist.gradient.getTick(0)
-            # self.hist.gradient.setTickValue(minTick, 0.5)
+            # self.hist.sigLookupTableChanged.disconnect()
         elif ev.key() == Qt.Key_H:
             self.zoomToCells(enforce=True)
         elif ev.key() == Qt.Key_L:
@@ -7266,9 +7259,11 @@ class guiWin(QMainWindow):
         )
 
     def histLUT_cb(self, LUTitem):
+        # Callback function for the histogram sliders moved by the user
         # Store the histogram levels that the user is manually changing
         # i.e. moving the gradient slider ticks up and down
         # Store them for all frames
+
         PosData = self.data[self.pos_i]
         isOverlayON = self.overlayButton.isChecked()
         min = self.hist.gradient.listTicks()[0][1]
@@ -7285,8 +7280,16 @@ class guiWin(QMainWindow):
                 histoLevels = PosData.allData_li[i]['histoLevels']
                 histoLevels[cellsKey] = (min, max)
             img = self.getImage()
+            if self.hist.gradient.isLookupTrivial():
+                self.img1.setLookupTable(None)
+            else:
+                self.img1.setLookupTable(self.hist.getLookupTable(img=img))
+
+    def histLUTfinished_cb(self):
+        if not self.overlayButton.isChecked():
+            cellsKey = f'{self.user_ch_name}_overlayOFF'
+            img = self.getImage()
             img = self.adjustBrightness(img, cellsKey)
-            # self.img1.setImage(img)
             self.updateALLimg(image=img, only_ax1=True, updateFilters=True,
                               updateHistoLevels=False)
 
@@ -7936,8 +7939,6 @@ class guiWin(QMainWindow):
             IDs_curr_untracked = [obj.label for obj in PosData.rp]
             IoA_matrix = np.zeros((len(PosData.rp), len(prev_rp)))
 
-
-
             # For each ID in previous frame get IoA with all current IDs
             # Rows: IDs in current frame, columns: IDs in previous frame
             for j, obj_prev in enumerate(prev_rp):
@@ -8101,7 +8102,14 @@ class guiWin(QMainWindow):
             if key.find(checkedText) != -1:
                 break
         PosData.manualContrastKey = key
-        # self.updateHistogramItem()
+        if not self.overlayButton.isChecked():
+            img = self.getImage()
+            img = self.adjustBrightness(img, key)
+            self.updateALLimg(image=img, only_ax1=True, updateFilters=True,
+                              updateHistoLevels=True)
+        else:
+            self.updateHistogramItem(self.img1)
+            self.getOverlayImg(setImg=True)
 
     def restoreDefaultColors(self):
         try:
@@ -8295,6 +8303,13 @@ class guiWin(QMainWindow):
                     ch_name_selector.get_available_channels(filenames)
                 )
                 self.ch_names = ch_names
+                if not ch_names:
+                    self.titleLabel.setText(
+                        'File --> Open or Open recent to start the process',
+                        color='w')
+                    self.openAction.setEnabled(True)
+                    self.criticalNoTifFound(images_path)
+                    return
                 if len(ch_names) > 1:
                     CbLabel='Select channel name to segment: '
                     ch_name_selector.QtPrompt(
@@ -8305,19 +8320,10 @@ class guiWin(QMainWindow):
                             color='w')
                         self.openAction.setEnabled(True)
                         return
-                    user_ch_name = ch_name_selector.channel_name
-                elif len(ch_names) == 1:
-                    user_ch_name = ch_names[0]
-                elif not ch_names:
-                    self.titleLabel.setText(
-                        'File --> Open or Open recent to start the process',
-                        color='w')
-                    self.openAction.setEnabled(True)
-                    self.criticalNoTifFound(images_path)
-                    return
-
-            print(user_ch_name)
-            print(images_paths)
+                else:
+                    ch_name_selector.channel_name = ch_names[0]
+                ch_name_selector.setUserChannelName()
+                user_ch_name = ch_name_selector.user_ch_name
 
             user_ch_file_paths = []
             img_path = None
@@ -8325,15 +8331,6 @@ class guiWin(QMainWindow):
                 img_aligned_found = False
                 for filename in os.listdir(images_path):
                     img_path = os.path.join(images_path, filename)
-                    if filename.find(f'_phc_aligned.npy') != -1:
-                        new_filename = filename.replace('phc_aligned.npy',
-                                                f'{user_ch_name}_aligned.npy')
-                        dst = f'{images_path}/{new_filename}'
-                        if os.path.exists(dst):
-                            os.remove(img_path)
-                        else:
-                            os.rename(img_path, dst)
-                        filename = new_filename
                     if filename.find(f'{user_ch_name}_aligned.np') != -1:
                         aligned_path = img_path
                         img_aligned_found = True

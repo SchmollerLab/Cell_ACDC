@@ -622,7 +622,7 @@ class select_channel_name:
                     last_sel_channel = txt.read()
         return last_sel_channel
 
-    def _saved_last_selection(self, selection):
+    def _save_last_selection(self, selection):
         ch = self.which_channel
         if self.which_channel is not None:
             _path = os.path.dirname(os.path.realpath(__file__))
@@ -649,8 +649,19 @@ class select_channel_name:
         if win.cancel:
             self.was_aborted = True
         self.channel_name = win.selectedItemText
-        self._saved_last_selection(self.channel_name)
+        self._save_last_selection(self.channel_name)
         self.is_first_call = False
+
+    def setUserChannelName(self):
+        if self.basenameNotFound:
+            reverse_ch_name = self.channel_name[::-1]
+            idx = reverse_ch_name.find('_')
+            if idx != -1:
+                self.user_ch_name = self.channel_name[-idx:]
+            else:
+                self.user_ch_name = self.channel_name[-4:]
+        else:
+            self.user_ch_name = self.channel_name
 
 
     def prompt(self, channel_names, message=None, toplevel=False):

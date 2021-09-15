@@ -22,6 +22,25 @@ from PyQt5.QtWidgets import (
 )
 import prompts, apps
 
+def get_user_ch_paths(images_paths, user_ch_name):
+    user_ch_file_paths = []
+    for images_path in images_paths:
+        img_aligned_found = False
+        for filename in os.listdir(images_path):
+            if filename.find(f'{user_ch_name}_aligned.np') != -1:
+                img_path_aligned = f'{images_path}/{filename}'
+                img_aligned_found = True
+            elif filename.find(f'{user_ch_name}.tif') != -1:
+                img_path_tif = f'{images_path}/{filename}'
+
+        if img_aligned_found:
+            img_path = img_path_aligned
+        else:
+            img_path = img_path_tif
+        user_ch_file_paths.append(img_path)
+        print(f'Loading {img_path}...')
+    return user_ch_file_paths
+
 class loadData:
     def __init__(self, imgPath, user_ch_name, QParent=None):
         self.fluo_data_dict = {}
@@ -78,6 +97,7 @@ class loadData:
                        loadDataPrepBkgrVals=False,
                        load_last_tracked_i=False,
                        load_metadata=False,
+                       load_dataPrep_ROIcoords=False,
                        getTifPath=False):
         self.segmFound = False if load_segm_data else None
         self.acd_df_found = False if load_acdc_df else None
@@ -87,6 +107,7 @@ class loadData:
         self.DataPrepBkgrValsFound = False if loadDataPrepBkgrVals else None
         self.last_tracked_i_found = False if load_last_tracked_i else None
         self.metadataFound = False if load_metadata else None
+        self.dataPrep_ROIcoordsFound = False if load_dataPrep_ROIcoords else None
         self.TifPathFound = False if getTifPath else None
         ls = os.listdir(self.images_path)
         for file in ls:
@@ -125,6 +146,11 @@ class loadData:
                 self.bkgrValues_chNames = bkgrValues_df['channel_name'].unique()
                 self.bkgrValues_df = bkgrValues_df.set_index(
                                                 ['channel_name', 'frame_i'])
+            elif load_dataPrep_ROIcoords and file.endswith('dataPrepROIs_coords.csv'):
+                df = pd.read_csv(filePath, index_col='description')
+                if 'value' in df.columns:
+                    self.dataPrep_ROIcoordsFound = True
+                    self.dataPrep_ROIcoords = df
             elif load_metadata and file.endswith('metadata.csv'):
                 self.metadataFound = True
                 self.metadata_df = pd.read_csv(filePath).set_index('Description')
@@ -198,6 +224,7 @@ class loadData:
             self.PhysicalSizeY = 1.0
             self.PhysicalSizeZ = 1.0
             self.segmSizeT = self.SizeT
+            self.metadata_df = None
         if self.segmFound is not None and not self.segmFound:
             self.segm_data = None
         if self.acd_df_found is not None and not self.acd_df_found:
@@ -210,6 +237,8 @@ class loadData:
             self.delROIsInfo_npz = None
         if self.DataPrepBkgrValsFound is not None and not self.DataPrepBkgrValsFound:
             self.bkgrValues_df = None
+        if self.dataPrep_ROIcoordsFound is not None and not self.dataPrep_ROIcoordsFound:
+            self.dataPrep_ROIcoords = None
         if self.last_tracked_i_found is not None and not self.last_tracked_i_found:
             self.last_tracked_i = None
         if self.TifPathFound is not None and not self.TifPathFound:
@@ -307,19 +336,27 @@ class loadData:
         return True
 
     def saveMetadata(self):
-        df = pd.DataFrame({
-            'SizeT': self.SizeT,
-            'SizeZ': self.SizeZ,
-            'TimeIncrement': self.TimeIncrement,
-            'PhysicalSizeZ': self.PhysicalSizeZ,
-            'PhysicalSizeY': self.PhysicalSizeY,
-            'PhysicalSizeX': self.PhysicalSizeX,
-            'segmSizeT': self.segmSizeT
-        }, index=['values']).T
-        df.index.name = 'Description'
-        df.to_csv(self.metadata_csv_path)
-
-
+        if self.metadata_df is None:
+            df = pd.DataFrame({
+                'SizeT': self.SizeT,
+                'SizeZ': self.SizeZ,
+                'TimeIncrement': self.TimeIncrement,
+                'PhysicalSizeZ': self.PhysicalSizeZ,
+                'PhysicalSizeY': self.PhysicalSizeY,
+                'PhysicalSizeX': self.PhysicalSizeX,
+                'segmSizeT': self.segmSizeT
+            }, index=['values']).T
+            df.index.name = 'Description'
+            df.to_csv(self.metadata_csv_path)
+        else:
+            self.metadata_df.at['SizeT', 'values'] = self.SizeT
+            self.metadata_df.at['SizeZ', 'values'] = self.SizeZ
+            self.metadata_df.at['TimeIncrement', 'values'] = self.TimeIncrement
+            self.metadata_df.at['PhysicalSizeZ', 'values'] = self.PhysicalSizeZ
+            self.metadata_df.at['PhysicalSizeY', 'values'] = self.PhysicalSizeY
+            self.metadata_df.at['PhysicalSizeX', 'values'] = self.PhysicalSizeX
+            self.metadata_df.at['segmSizeT', 'values'] = self.segmSizeT
+            self.metadata_df.to_csv(self.metadata_csv_path)
 
     @staticmethod
     def BooleansTo0s1s(acdc_df, csv_path=None, inplace=True):

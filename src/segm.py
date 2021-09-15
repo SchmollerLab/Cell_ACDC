@@ -266,7 +266,13 @@ class segmWin(QMainWindow):
             filenames = os.listdir(images_path)
             if ch_name_selector.is_first_call:
                 ch_names, warn = ch_name_selector.get_available_channels(filenames)
-                ch_name_selector.QtPrompt(self, ch_names)
+                if not ch_names:
+                    self.criticalNoTifFound(images_path)
+                elif len(ch_names) > 1:
+                    ch_name_selector.QtPrompt(self, ch_names)
+                else:
+                    ch_name_selector.channel_name = ch_names[0]
+                ch_name_selector.setUserChannelName()
                 if ch_name_selector.was_aborted:
                     abort = self.doAbort()
                     if abort:
@@ -274,10 +280,6 @@ class segmWin(QMainWindow):
                         return
                 else:
                     user_ch_name = ch_name_selector.channel_name
-                    if ch_name_selector.basenameNotFound:
-                        reverse_ch_name = user_ch_name[::-1]
-                        idx = reverse_ch_name.find('_')
-                        user_ch_name = user_ch_name[-idx:]
 
             aligned_npz_found = False
             tif_found = False
@@ -309,6 +311,7 @@ class segmWin(QMainWindow):
                 user_ch_file_paths.append(img_path)
 
         first_call = True
+        selectROI = False
         for img_path in tqdm(user_ch_file_paths, unit=' Position', ncols=100):
             data = load.loadData(img_path, user_ch_name, QParent=self)
             data.getBasenameAndChNames(prompts.select_channel_name)
@@ -320,6 +323,7 @@ class segmWin(QMainWindow):
                                load_shifts=False,
                                loadSegmInfo=True,
                                load_delROIsInfo=False,
+                               load_dataPrep_ROIcoords=True,
                                loadDataPrepBkgrVals=False,
                                load_last_tracked_i=False,
                                load_metadata=True
@@ -337,6 +341,25 @@ class segmWin(QMainWindow):
                     if abort:
                         self.close()
                         return
+
+                if data.dataPrep_ROIcoords is None:
+                    # Ask ROI
+                    msg = QtGui.QMessageBox()
+                    msg.setFont(font)
+                    answer = msg.question(self, 'ROI?',
+                        'Do you want to choose to segment only '
+                        'a rectangular region-of-interest (ROI)?',
+                        msg.Yes | msg.No | msg.Cancel
+                    )
+                    if answer == msg.Yes:
+                        selectROI = True
+                    elif answer == msg.No:
+                        selectROI = False
+                    else:
+                        abort = self.doAbort()
+                        if abort:
+                            self.close()
+                            return
             else:
                 data.SizeT = self.SizeT
                 if self.SizeZ > 1:
@@ -345,39 +368,65 @@ class segmWin(QMainWindow):
                 else:
                     data.SizeZ = 1
                 data.saveMetadata()
-            if data.SizeZ > 1:
-                if data.segmInfo_df is None:
+            launchDataPrep = (
+                (data.SizeZ > 1 and data.segmInfo_df is None)
+                or (selectROI and data.dataPrep_ROIcoords is None)
+            )
+            if launchDataPrep:
+                dataPrepWin = dataPrep.dataPrepWin()
+                dataPrepWin.show()
+                if selectROI:
+                    dataPrepWin.titleText = (
+                    """
+                    If you need to crop press the green tick button,<br>
+                    otherwise you can close the window.
+                    """
+                    )
+                else:
                     print('')
                     print(f'WARNING: The image data in {img_path} is 3D but '
                           f'_segmInfo.csv file not found. Launching dataPrep.py...')
-                    dataPrepWin = dataPrep.dataPrepWin()
-                    dataPrepWin.show()
                     dataPrepWin.titleText = (
-                        'Select z-slice (or projection) for each frame/position.'
-                        'Once happy, close the window to continue segmentation process.'
+                    """
+                    Select z-slice (or projection) for each frame/position.<br>
+                    Then, if you want to segment the entire field of view,
+                    close the window.<br>
+                    Otherwise, if you need to select a ROI,
+                    press the "Start" button, draw the ROI<br>
+                    and confirm with the green tick button.
+                    """
                     )
-                    dataPrepWin.initLoading()
-                    dataPrepWin.loadFiles(
-                        exp_path, user_ch_file_paths, user_ch_name)
-                    loop = QEventLoop(self)
-                    dataPrepWin.loop = loop
-                    loop.exec_()
-                    data = load.loadData(img_path, user_ch_name, QParent=self)
-                    data.getBasenameAndChNames(prompts.select_channel_name)
-                    data.buildPaths()
-                    data.loadImgData()
-                    data.loadOtherFiles(
-                                       load_segm_data=False,
-                                       load_acdc_df=False,
-                                       load_shifts=False,
-                                       loadSegmInfo=True,
-                                       load_delROIsInfo=False,
-                                       loadDataPrepBkgrVals=False,
-                                       load_last_tracked_i=False,
-                                       load_metadata=True
-                    )
-                else:
-                    zz = data.segmInfo_df['z_slice_used_dataPrep'].to_list()
+                    autoStart = False
+                dataPrepWin.initLoading()
+                dataPrepWin.loadFiles(
+                    exp_path, user_ch_file_paths, user_ch_name)
+                if data.SizeZ == 1:
+                    dataPrepWin.prepData(None)
+                loop = QEventLoop(self)
+                dataPrepWin.loop = loop
+                loop.exec_()
+                data = load.loadData(img_path, user_ch_name, QParent=self)
+                data.getBasenameAndChNames(prompts.select_channel_name)
+                data.buildPaths()
+                data.loadImgData()
+                data.loadOtherFiles(
+                                   load_segm_data=False,
+                                   load_acdc_df=False,
+                                   load_shifts=False,
+                                   loadSegmInfo=True,
+                                   load_delROIsInfo=False,
+                                   load_dataPrep_ROIcoords=True,
+                                   loadDataPrepBkgrVals=False,
+                                   load_last_tracked_i=False,
+                                   load_metadata=True
+                )
+            elif data.SizeZ > 1:
+                zz = data.segmInfo_df['z_slice_used_dataPrep'].to_list()
+
+            isROIactive = False
+            if data.dataPrep_ROIcoords is not None:
+                isROIactive = data.dataPrep_ROIcoords.at['cropped', 'value'] == 0
+                x0, x1, y0, y1 = data.dataPrep_ROIcoords['value'][:4]
 
             if first_call and data.SizeT > 1:
                 # Ask stop frame
@@ -415,9 +464,17 @@ class segmWin(QMainWindow):
                             img_data[i] = img.mean(axis=0)
                         elif zProjHow == 'median z-proj.':
                             img_data[i] = np.median(img, axis=0)
+                    if isROIactive:
+                        Y, X = img_data.shape[-2:]
+                        img_data = img_data[:, :, y0:y1, x0:x1]
+                        pad_info = ((0, 0), (0, 0), (y0, Y-y1), (x0, X-x1))
                 else:
                     # 2D data over time
                     img_data = data.img_data[:stop_i]
+                    if isROIactive:
+                        Y, X = img_data.shape[-2:]
+                        img_data = img_data[:, y0:y1, x0:x1]
+                        pad_info = ((0, 0), (y0, Y-y1), (x0, X-x1))
                 img_data = [img/img.max() for img in img_data]
                 img_data = np.array([skimage.exposure.equalize_adapthist(img)
                                      for img in img_data])
@@ -437,10 +494,18 @@ class segmWin(QMainWindow):
                         img_data = np.median(data.img_data, axis=0)
                     img_data = skimage.exposure.equalize_adapthist(
                                                     img_data/img_data.max())
+                    if isROIactive:
+                        Y, X = img_data.shape[-2:]
+                        pad_info = ((0, 0), (y0, Y-y1), (x0, X-x1))
+                        img_data = img_data[:, y0:y1, x0:x1]
                 else:
                     # Single 2D image
                     img_data = skimage.exposure.equalize_adapthist(
                                                     img_data/img_data.max())
+                    if isROIactive:
+                        Y, X = img_data.shape[-2:]
+                        pad_info = ((y0, Y-y1), (x0, X-x1))
+                        img_data = img_data[y0:y1, x0:x1]
 
             print('')
             print(f'Image shape = {img_data.shape}')
@@ -495,7 +560,9 @@ class segmWin(QMainWindow):
                                                 min_distance=min_distance
                                                 ).astype(np.uint16)
 
-            lab_stack = skimage.morphology.remove_small_objects(lab_stack, min_size=5)
+            lab_stack = skimage.morphology.remove_small_objects(
+                lab_stack, min_size=5
+            )
 
             if data.SizeT > 1:
                 print('Tracking cells...')
@@ -503,6 +570,9 @@ class segmWin(QMainWindow):
                 tracked_stack = tracking.correspondence_stack(lab_stack).astype(np.uint16)
             else:
                 tracked_stack = lab_stack
+
+            if isROIactive:
+                tracked_stack = np.pad(tracked_stack, pad_info,  mode='constant')
 
             if save:
                 print('')

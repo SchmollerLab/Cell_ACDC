@@ -51,10 +51,489 @@ import qrc_resources
 
 pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
 
+class QDialogMetadataXML(QDialog):
+    def __init__(
+            self, title='Metadata',
+            LensNA=1.0, DimensionOrder='',
+            SizeT=1, SizeZ=1, SizeC=1, SizeS=1,
+            TimeIncrement=180.0, TimeIncrementUnit='s',
+            PhysicalSizeX=1.0, PhysicalSizeY=1.0, PhysicalSizeZ=1.0,
+            PhysicalSizeUnit='μm', chNames=None, emWavelens=None,
+            parent=None, rawDataStruct=None
+        ):
+
+        self.cancel = True
+        self.trust = False
+        self.overWrite = False
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        font = QtGui.QFont()
+        font.setPointSize(10)
+        self.setFont(font)
+
+        mainLayout = QVBoxLayout()
+        entriesLayout = QGridLayout()
+        self.channelNameLayouts = (QVBoxLayout(), QVBoxLayout())
+        self.channelEmWLayouts = (QVBoxLayout(), QVBoxLayout(), QVBoxLayout())
+        buttonsLayout = QGridLayout()
+
+        infoLabel = QLabel()
+        infoTxt = (
+            '<b>Confirm/Edit</b> the <b>metadata</b> below.'
+        )
+        infoLabel.setText(infoTxt)
+        # padding: top, left, bottom, right
+        infoLabel.setStyleSheet("font-size:12pt; padding:0px 0px 5px 0px;")
+        mainLayout.addWidget(infoLabel, alignment=Qt.AlignCenter)
+
+        noteLabel = QLabel()
+        noteLabel.setText(
+            f'NOTE: If you are not sure about some of the entries '
+            'you can try to click "Ok".\n'
+            'If they are wrong you will get '
+            'an error message later when trying to read the data.'
+        )
+        noteLabel.setAlignment(Qt.AlignCenter)
+        mainLayout.addWidget(noteLabel, alignment=Qt.AlignCenter)
+
+        row = 0
+        self.SizeS_SB = QSpinBox()
+        self.SizeS_SB.setAlignment(Qt.AlignCenter)
+        self.SizeS_SB.setMinimum(1)
+        self.SizeS_SB.setMaximum(2147483647)
+        self.SizeS_SB.setValue(SizeS)
+        txt = 'Number of positions (S):  '
+        label = QLabel(txt)
+        entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
+        entriesLayout.addWidget(self.SizeS_SB, row, 1)
+
+        row += 1
+        self.LensNA_DSB = QDoubleSpinBox()
+        self.LensNA_DSB.setAlignment(Qt.AlignCenter)
+        self.LensNA_DSB.setSingleStep(0.1)
+        self.LensNA_DSB.setValue(LensNA)
+        txt = 'Numerical Aperture Objective Lens:  '
+        label = QLabel(txt)
+        entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
+        entriesLayout.addWidget(self.LensNA_DSB, row, 1)
+
+        row += 1
+        self.DimensionOrder_QLE = QLineEdit()
+        self.DimensionOrder_QLE.setAlignment(Qt.AlignCenter)
+        self.DimensionOrder_QLE.setText(DimensionOrder)
+        txt = 'Order of dimensions:  '
+        label = QLabel(txt)
+        entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
+        entriesLayout.addWidget(self.DimensionOrder_QLE, row, 1)
+
+        row += 1
+        self.SizeT_SB = QSpinBox()
+        self.SizeT_SB.setAlignment(Qt.AlignCenter)
+        self.SizeT_SB.setMinimum(1)
+        self.SizeT_SB.setMaximum(2147483647)
+        self.SizeT_SB.setValue(SizeT)
+        txt = 'Number of frames (T):  '
+        label = QLabel(txt)
+        entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
+        entriesLayout.addWidget(self.SizeT_SB, row, 1)
+
+        row += 1
+        self.SizeZ_SB = QSpinBox()
+        self.SizeZ_SB.setAlignment(Qt.AlignCenter)
+        self.SizeZ_SB.setMinimum(1)
+        self.SizeZ_SB.setMaximum(2147483647)
+        self.SizeZ_SB.setValue(SizeZ)
+        txt = 'Number of z-slices in the z-stack (Z):  '
+        label = QLabel(txt)
+        entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
+        entriesLayout.addWidget(self.SizeZ_SB, row, 1)
+        self.SizeZ_SB.valueChanged.connect(self.hideShowPhysicalSizeZ)
+
+        row += 1
+        self.TimeIncrement_DSB = QDoubleSpinBox()
+        self.TimeIncrement_DSB.setAlignment(Qt.AlignCenter)
+        self.TimeIncrement_DSB.setMaximum(2147483647.0)
+        self.TimeIncrement_DSB.setSingleStep(1)
+        self.TimeIncrement_DSB.setDecimals(3)
+        self.TimeIncrement_DSB.setValue(TimeIncrement)
+        txt = 'Frame interval:  '
+        label = QLabel(txt)
+        entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
+        entriesLayout.addWidget(self.TimeIncrement_DSB, row, 1)
+
+        self.TimeIncrementUnit_CB = QComboBox()
+        unitItems = [
+            'ms', 'seconds', 'minutes', 'hours'
+        ]
+        currentTxt = [unit for unit in unitItems
+                      if unit.startswith(TimeIncrementUnit)]
+        self.TimeIncrementUnit_CB.addItems(unitItems)
+        if currentTxt:
+            self.TimeIncrementUnit_CB.setCurrentText(currentTxt[0])
+        entriesLayout.addWidget(self.TimeIncrementUnit_CB, row, 2)
+
+        row += 1
+        self.PhysicalSizeX_DSB = QDoubleSpinBox()
+        self.PhysicalSizeX_DSB.setAlignment(Qt.AlignCenter)
+        self.PhysicalSizeX_DSB.setMaximum(2147483647.0)
+        self.PhysicalSizeX_DSB.setSingleStep(0.001)
+        self.PhysicalSizeX_DSB.setDecimals(7)
+        self.PhysicalSizeX_DSB.setValue(PhysicalSizeX)
+        txt = 'Pixel width:  '
+        label = QLabel(txt)
+        entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
+        entriesLayout.addWidget(self.PhysicalSizeX_DSB, row, 1)
+
+        self.PhysicalSizeUnit_CB = QComboBox()
+        unitItems = [
+            'nm', 'μm', 'mm', 'cm'
+        ]
+        currentTxt = [unit for unit in unitItems
+                      if unit.startswith(PhysicalSizeUnit)]
+        self.PhysicalSizeUnit_CB.addItems(unitItems)
+        if currentTxt:
+            self.PhysicalSizeUnit_CB.setCurrentText(currentTxt[0])
+        entriesLayout.addWidget(self.PhysicalSizeUnit_CB, row, 2)
+        self.PhysicalSizeUnit_CB.currentTextChanged.connect(self.updatePSUnit)
+
+        row += 1
+        self.PhysicalSizeY_DSB = QDoubleSpinBox()
+        self.PhysicalSizeY_DSB.setAlignment(Qt.AlignCenter)
+        self.PhysicalSizeY_DSB.setMaximum(2147483647.0)
+        self.PhysicalSizeY_DSB.setSingleStep(0.001)
+        self.PhysicalSizeY_DSB.setDecimals(7)
+        self.PhysicalSizeY_DSB.setValue(PhysicalSizeY)
+        txt = 'Pixel height:  '
+        label = QLabel(txt)
+        entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
+        entriesLayout.addWidget(self.PhysicalSizeY_DSB, row, 1)
+
+        self.PhysicalSizeYUnit_Label = QLabel()
+        self.PhysicalSizeYUnit_Label.setStyleSheet(
+            'font-size:10pt; padding:5px 0px 2px 0px;'
+        )
+        unit = self.PhysicalSizeUnit_CB.currentText()
+        self.PhysicalSizeYUnit_Label.setText(unit)
+        entriesLayout.addWidget(self.PhysicalSizeYUnit_Label, row, 2)
+
+        row += 1
+        self.PhysicalSizeZ_DSB = QDoubleSpinBox()
+        self.PhysicalSizeZ_DSB.setAlignment(Qt.AlignCenter)
+        self.PhysicalSizeZ_DSB.setMaximum(2147483647.0)
+        self.PhysicalSizeZ_DSB.setSingleStep(0.001)
+        self.PhysicalSizeZ_DSB.setDecimals(7)
+        self.PhysicalSizeZ_DSB.setValue(PhysicalSizeZ)
+        txt = 'Voxel depth:  '
+        self.PSZlabel = QLabel(txt)
+        entriesLayout.addWidget(self.PSZlabel, row, 0, alignment=Qt.AlignRight)
+        entriesLayout.addWidget(self.PhysicalSizeZ_DSB, row, 1)
+
+        self.PhysicalSizeZUnit_Label = QLabel()
+        # padding: top, left, bottom, right
+        self.PhysicalSizeZUnit_Label.setStyleSheet(
+            'font-size:10pt; padding:5px 0px 2px 0px;'
+        )
+        unit = self.PhysicalSizeUnit_CB.currentText()
+        self.PhysicalSizeZUnit_Label.setText(unit)
+        entriesLayout.addWidget(self.PhysicalSizeZUnit_Label, row, 2)
+
+        if SizeZ == 1:
+            self.PSZlabel.hide()
+            self.PhysicalSizeZ_DSB.hide()
+            self.PhysicalSizeZUnit_Label.hide()
+
+        row += 1
+        self.SizeC_SB = QSpinBox()
+        self.SizeC_SB.setAlignment(Qt.AlignCenter)
+        self.SizeC_SB.setMinimum(1)
+        self.SizeC_SB.setMaximum(2147483647)
+        self.SizeC_SB.setValue(SizeC)
+        txt = 'Number of channels:  '
+        label = QLabel(txt)
+        entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
+        entriesLayout.addWidget(self.SizeC_SB, row, 1)
+        self.SizeC_SB.valueChanged.connect(self.addRemoveChannels)
+
+        row += 1
+        for j, layout in enumerate(self.channelNameLayouts):
+            entriesLayout.addLayout(layout, row, j)
+
+        self.chNames_QLEs = []
+        for c in range(SizeC):
+            chName_QLE = QLineEdit()
+            chName_QLE.setStyleSheet(
+                'background: #FEF9C3'
+            )
+            chName_QLE.setAlignment(Qt.AlignCenter)
+            chName_QLE.textChanged.connect(self.checkChNames)
+            if chNames is not None:
+                chName_QLE.setText(chNames[c])
+            else:
+                chName_QLE.setText(f'channel_{c}')
+            txt = f'Channel {c} name:  '
+            label = QLabel(txt)
+            self.channelNameLayouts[0].addWidget(label, alignment=Qt.AlignRight)
+            self.channelNameLayouts[1].addWidget(chName_QLE)
+            self.chNames_QLEs.append(chName_QLE)
+
+        self.checkChNames()
+
+        row += 1
+        for j, layout in enumerate(self.channelEmWLayouts):
+            entriesLayout.addLayout(layout, row, j)
+
+        self.emWavelens_DSBs = []
+        for c in range(SizeC):
+            row += 1
+            emWavelen_DSB = QDoubleSpinBox()
+            emWavelen_DSB.setAlignment(Qt.AlignCenter)
+            emWavelen_DSB.setMaximum(2147483647.0)
+            emWavelen_DSB.setSingleStep(0.001)
+            emWavelen_DSB.setDecimals(2)
+            if emWavelens is not None:
+                emWavelen_DSB.setValue(emWavelens[c])
+            else:
+                emWavelen_DSB.setValue(500.0)
+
+            txt = f'Channel {c} emission wavelength:  '
+            label = QLabel(txt)
+            self.channelEmWLayouts[0].addWidget(label, alignment=Qt.AlignRight)
+            self.channelEmWLayouts[1].addWidget(emWavelen_DSB)
+            self.emWavelens_DSBs.append(emWavelen_DSB)
+
+            unit = QLabel('nm')
+            unit.setStyleSheet('font-size:10pt; padding:5px 0px 2px 0px;')
+            self.channelEmWLayouts[2].addWidget(unit)
+
+        entriesLayout.setContentsMargins(0, 15, 0, 0)
+
+        if rawDataStruct is None or rawDataStruct==0:
+            okButton = QPushButton('Ok')
+        elif rawDataStruct==1:
+            okButton = QPushButton('Load next position')
+        buttonsLayout.addWidget(okButton, 0, 0)
+
+        self.trustButton = None
+        self.overWriteButton = None
+        if rawDataStruct==1:
+            trustButton = QPushButton(
+                'Trust metadata reader\n for all next positions')
+            trustButton.setToolTip(
+                "If you didn't have to manually modify metadata entries\n"
+                "it is very likely that metadata from the metadata reader\n"
+                "will be correct also for all the next positions.\n\n"
+                "Click this button to stop showing this dialog and use\n"
+                "the metadata from the reader "
+                "(except for channel names, I will use the manually entered)"
+            )
+            buttonsLayout.addWidget(trustButton, 1, 0)
+            self.trustButton = trustButton
+
+            overWriteButton = QPushButton(
+                'Use the above metadata\nfor all the next positions')
+            overWriteButton.setToolTip(
+                "If you had to manually modify metadata entries\n"
+                "AND you know they will be the same for all next positions\n"
+                "you can click this button to stop showing this dialog\n"
+                "and use the same metadata for all the next positions."
+            )
+            buttonsLayout.addWidget(overWriteButton, 1, 1)
+            self.overWriteButton = overWriteButton
+
+            trustButton.clicked.connect(self.ok_cb)
+            overWriteButton.clicked.connect(self.ok_cb)
+
+        cancelButton = QPushButton('Cancel')
+        buttonsLayout.addWidget(cancelButton, 0, 1)
+        buttonsLayout.setContentsMargins(0, 10, 0, 0)
+
+        mainLayout.addLayout(entriesLayout)
+        mainLayout.addLayout(buttonsLayout)
+        mainLayout.addStretch(1)
+
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.cancel_cb)
+
+        self.setLayout(mainLayout)
+        self.setModal(True)
+
+    def checkChNames(self, text=''):
+        areChNamesUnique = True
+        for LE in self.chNames_QLEs:
+            s = LE.text()
+            for LE1 in self.chNames_QLEs:
+                if not s or s==LE1.text():
+                    # padding: top right bottom left
+                    LE.setStyleSheet(
+                        'background: #FEF9C3;'
+                        'border-radius: 4px;'
+                        'border: 1.5px solid red;'
+                        'padding: 1px 0px 1px 0px'
+                    )
+                    areChNamesUnique = False
+                else:
+                    LE.setStyleSheet(
+                        'background: #FEF9C3;'
+                    )
+        return areChNamesUnique
+
+    def hideShowPhysicalSizeZ(self, value):
+        if value > 1:
+            self.PSZlabel.show()
+            self.PhysicalSizeZ_DSB.show()
+            self.PhysicalSizeZUnit_Label.show()
+        else:
+            self.PSZlabel.hide()
+            self.PhysicalSizeZ_DSB.hide()
+            self.PhysicalSizeZUnit_Label.hide()
+
+    def updatePSUnit(self, unit):
+        self.PhysicalSizeYUnit_Label.setText(unit)
+        self.PhysicalSizeZUnit_Label.setText(unit)
+
+    def addRemoveChannels(self, value):
+        currentSizeC = len(self.chNames_QLEs)
+        DeltaChannels = abs(value-currentSizeC)
+        if value > currentSizeC:
+            for c in range(currentSizeC, currentSizeC+DeltaChannels):
+                chName_QLE = QLineEdit()
+                chName_QLE.setStyleSheet(
+                    'background: #FEF9C3'
+                )
+                chName_QLE.setAlignment(Qt.AlignCenter)
+                chName_QLE.setText(f'channel_{c}')
+                txt = f'Channel {c} name:  '
+                label = QLabel(txt)
+                self.channelNameLayouts[0].addWidget(label, alignment=Qt.AlignRight)
+                self.channelNameLayouts[1].addWidget(chName_QLE)
+                self.chNames_QLEs.append(chName_QLE)
+
+                emWavelen_DSB = QDoubleSpinBox()
+                emWavelen_DSB.setAlignment(Qt.AlignCenter)
+                emWavelen_DSB.setMaximum(2147483647.0)
+                emWavelen_DSB.setSingleStep(0.001)
+                emWavelen_DSB.setDecimals(2)
+                emWavelen_DSB.setValue(500.0)
+                unit = QLabel('nm')
+                unit.setStyleSheet('font-size:10pt; padding:5px 0px 2px 0px;')
+
+                txt = f'Channel {c} emission wavelength:  '
+                label = QLabel(txt)
+                self.channelEmWLayouts[0].addWidget(label, alignment=Qt.AlignRight)
+                self.channelEmWLayouts[1].addWidget(emWavelen_DSB)
+                self.channelEmWLayouts[2].addWidget(unit)
+                self.emWavelens_DSBs.append(emWavelen_DSB)
+        else:
+            for c in range(currentSizeC, currentSizeC+DeltaChannels):
+                label = self.channelNameLayouts[0].itemAt(c-1).widget()
+                chName_QLE = self.channelNameLayouts[1].itemAt(c-1).widget()
+                self.channelNameLayouts[0].removeWidget(label)
+                self.channelNameLayouts[1].removeWidget(chName_QLE)
+                self.chNames_QLEs.pop(-1)
+
+                label = self.channelEmWLayouts[0].itemAt(c-1).widget()
+                emWavelen_DSB = self.channelEmWLayouts[1].itemAt(c-1).widget()
+                unit = self.channelEmWLayouts[2].itemAt(c-1).widget()
+                self.channelEmWLayouts[0].removeWidget(label)
+                self.channelEmWLayouts[1].removeWidget(emWavelen_DSB)
+                self.channelEmWLayouts[2].removeWidget(unit)
+                self.emWavelens_DSBs.pop(-1)
+
+                self.adjustSize()
+
+    def ok_cb(self, event):
+        DimensionOrder = self.DimensionOrder_QLE.text()
+        m = re.findall('[TZCYXStzcyxs]', DimensionOrder)
+
+        if len(m) != len(DimensionOrder) or not m:
+            err_msg = (
+                f'"{DimensionOrder}" is not a valid order of dimensions.\n\n'
+                f'The letters available are {list("TZCYXS")} without spaces or punctuation.'
+                '(e.g. ZYX)'
+            )
+            msg = QtGui.QMessageBox()
+            msg.critical(
+               self, 'Invalid order of dimensions', err_msg, msg.Ok
+            )
+            return
+
+        areChNamesUnique = self.checkChNames()
+        if not areChNamesUnique:
+            err_msg = (
+                'Channel names cannot be empty or equal to each other.\n\n'
+                'Insert a unique text for each channel name'
+            )
+            msg = QtGui.QMessageBox()
+            msg.critical(
+               self, 'Invalid channel names', err_msg, msg.Ok
+            )
+            return
+
+        self.getValues()
+        self.convertUnits()
+
+        if self.sender() == self.trustButton:
+            self.trust = True
+        elif self.sender() == self.overWriteButton:
+            self.overWrite = True
+
+        self.cancel = False
+        self.close()
+
+    def getValues(self):
+        self.LensNA = self.LensNA_DSB.value()
+        self.DimensionOrder = self.DimensionOrder_QLE.text()
+        self.SizeT = self.SizeT_SB.value()
+        self.SizeZ = self.SizeZ_SB.value()
+        self.SizeC = self.SizeC_SB.value()
+        self.SizeS = self.SizeS_SB.value()
+        self.TimeIncrement = self.TimeIncrement_DSB.value()
+        self.PhysicalSizeX = self.PhysicalSizeX_DSB.value()
+        self.PhysicalSizeY = self.PhysicalSizeY_DSB.value()
+        self.PhysicalSizeZ = self.PhysicalSizeZ_DSB.value()
+        self.chNames = []
+        for LE in self.chNames_QLEs:
+            s = LE.text()
+            s = "".join(c if c.isalnum() or c=='_' or c=='' else '_' for c in s)
+            trim_ = s.endswith('_')
+            while trim_:
+                s = s[:-1]
+                trim_ = s.endswith('_')
+            self.chNames.append(s)
+        self.emWavelens = [DSB.value() for DSB in self.emWavelens_DSBs]
+
+    def convertUnits(self):
+        timeUnit = self.TimeIncrementUnit_CB.currentText()
+        if timeUnit == 'ms':
+            self.TimeIncrement /= 1000
+        elif timeUnit == 'minutes':
+            self.TimeIncrement *= 60
+        elif timeUnit == 'hours':
+            self.TimeIncrement *= 3600
+
+        PhysicalSizeUnit = self.PhysicalSizeUnit_CB.currentText()
+        if timeUnit == 'nm':
+            self.PhysicalSizeX /= 1000
+            self.PhysicalSizeY /= 1000
+            self.PhysicalSizeZ /= 1000
+        elif timeUnit == 'mm':
+            self.PhysicalSizeX *= 1000
+            self.PhysicalSizeY *= 1000
+            self.PhysicalSizeZ *= 1000
+        elif timeUnit == 'cm':
+            self.PhysicalSizeX *= 1e4
+            self.PhysicalSizeY *= 1e4
+            self.PhysicalSizeZ *= 1e4
+
+    def cancel_cb(self, event):
+        self.cancel = True
+        self.close()
+
+
 class QDialogCombobox(QDialog):
     def __init__(self, title, ComboBoxItems, informativeText,
                  CbLabel='Select value:  ', parent=None,
-                 defaultChannelName=None):
+                 defaultChannelName=None, iconPixmap=None):
         self.cancel = True
         self.selectedItemText = ''
         self.selectedItemIdx = None
@@ -62,15 +541,24 @@ class QDialogCombobox(QDialog):
         self.setWindowTitle(title)
 
         mainLayout = QVBoxLayout()
+        infoLayout = QHBoxLayout()
         topLayout = QHBoxLayout()
         bottomLayout = QHBoxLayout()
 
+        if iconPixmap is not None:
+            label = QLabel()
+            # padding: top, left, bottom, right
+            # label.setStyleSheet("padding:5px 0px 10px 0px;")
+            label.setPixmap(iconPixmap)
+            infoLayout.addWidget(label)
+
         if informativeText:
             infoLabel = QLabel(informativeText)
-            mainLayout.addWidget(infoLabel, alignment=Qt.AlignCenter)
+            infoLayout.addWidget(infoLabel, alignment=Qt.AlignCenter)
 
-        label = QLabel(CbLabel)
-        topLayout.addWidget(label)
+        if CbLabel:
+            label = QLabel(CbLabel)
+            topLayout.addWidget(label, alignment=Qt.AlignRight)
 
         combobox = QComboBox()
         combobox.addItems(ComboBoxItems)
@@ -88,6 +576,7 @@ class QDialogCombobox(QDialog):
         bottomLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
         bottomLayout.setContentsMargins(0, 10, 0, 0)
 
+        mainLayout.addLayout(infoLayout)
         mainLayout.addLayout(topLayout)
         mainLayout.addLayout(bottomLayout)
         self.setLayout(mainLayout)
@@ -227,7 +716,7 @@ class QDialogMetadata(QDialog):
 
         mainLayout = QVBoxLayout()
         gridLayout = QGridLayout()
-        formLayout = QFormLayout()
+        # formLayout = QFormLayout()
         buttonsLayout = QHBoxLayout()
 
         row = 0
@@ -258,7 +747,7 @@ class QDialogMetadata(QDialog):
         self.TimeIncrementLabel = QLabel('Time interval (s)')
         gridLayout.addWidget(self.TimeIncrementLabel, row, 0)
         self.TimeIncrementSpinBox = QDoubleSpinBox()
-        self.TimeIncrementSpinBox.setDecimals(6)
+        self.TimeIncrementSpinBox.setDecimals(7)
         self.TimeIncrementSpinBox.setMaximum(2147483647.0)
         self.TimeIncrementSpinBox.setValue(TimeIncrement)
         self.TimeIncrementSpinBox.setAlignment(Qt.AlignCenter)
@@ -272,7 +761,7 @@ class QDialogMetadata(QDialog):
         self.PhysicalSizeZLabel = QLabel('Physical Size Z (um/pixel)')
         gridLayout.addWidget(self.PhysicalSizeZLabel, row, 0)
         self.PhysicalSizeZSpinBox = QDoubleSpinBox()
-        self.PhysicalSizeZSpinBox.setDecimals(6)
+        self.PhysicalSizeZSpinBox.setDecimals(7)
         self.PhysicalSizeZSpinBox.setMaximum(2147483647.0)
         self.PhysicalSizeZSpinBox.setValue(PhysicalSizeZ)
         self.PhysicalSizeZSpinBox.setAlignment(Qt.AlignCenter)
@@ -286,7 +775,7 @@ class QDialogMetadata(QDialog):
         self.PhysicalSizeYLabel = QLabel('Physical Size Y (um/pixel)')
         gridLayout.addWidget(self.PhysicalSizeYLabel, row, 0)
         self.PhysicalSizeYSpinBox = QDoubleSpinBox()
-        self.PhysicalSizeYSpinBox.setDecimals(6)
+        self.PhysicalSizeYSpinBox.setDecimals(7)
         self.PhysicalSizeYSpinBox.setMaximum(2147483647.0)
         self.PhysicalSizeYSpinBox.setValue(PhysicalSizeY)
         self.PhysicalSizeYSpinBox.setAlignment(Qt.AlignCenter)
@@ -300,7 +789,7 @@ class QDialogMetadata(QDialog):
         self.PhysicalSizeXLabel = QLabel('Physical Size X (um/pixel)')
         gridLayout.addWidget(self.PhysicalSizeXLabel, row, 0)
         self.PhysicalSizeXSpinBox = QDoubleSpinBox()
-        self.PhysicalSizeXSpinBox.setDecimals(6)
+        self.PhysicalSizeXSpinBox.setDecimals(7)
         self.PhysicalSizeXSpinBox.setMaximum(2147483647.0)
         self.PhysicalSizeXSpinBox.setValue(PhysicalSizeX)
         self.PhysicalSizeXSpinBox.setAlignment(Qt.AlignCenter)
@@ -323,7 +812,7 @@ class QDialogMetadata(QDialog):
 
         gridLayout.setColumnMinimumWidth(1, 100)
         mainLayout.addLayout(gridLayout)
-        mainLayout.addLayout(formLayout)
+        # mainLayout.addLayout(formLayout)
         mainLayout.addLayout(buttonsLayout)
 
         okButton.clicked.connect(self.ok_cb)
@@ -3365,21 +3854,23 @@ if __name__ == '__main__':
     # df = cca_df.reset_index()
     #
     # win = pdDataFrameWidget(df)
-    user_ch_file_paths = [
-        r"G:\My Drive\1_MIA_Data\Beno\test_QtGui\testGuiOnlyTifs\TIFFs\Position_1\Images\19-03-2021_KCY050_SCGE_s02_phase_contr.tif",
-        r"G:\My Drive\1_MIA_Data\Beno\test_QtGui\testGuiOnlyTifs\TIFFs\Position_2\Images\19-03-2021_KCY050_SCGE_s02_phase_contr.tif"
-    ]
-    user_ch_name = 'phase_contr'
-    win = askStopFrameSegm(user_ch_file_paths, user_ch_name)
+    win = QDialogMetadataXML(rawDataStruct=1, chNames=[''])
+    # user_ch_file_paths = [
+    #     r"G:\My Drive\1_MIA_Data\Beno\test_QtGui\testGuiOnlyTifs\TIFFs\Position_1\Images\19-03-2021_KCY050_SCGE_s02_phase_contr.tif",
+    #     r"G:\My Drive\1_MIA_Data\Beno\test_QtGui\testGuiOnlyTifs\TIFFs\Position_2\Images\19-03-2021_KCY050_SCGE_s02_phase_contr.tif"
+    # ]
+    # user_ch_name = 'phase_contr'
+    # win = askStopFrameSegm(user_ch_file_paths, user_ch_name)
     # lab = np.load(r"G:\My Drive\1_MIA_Data\Test_data\Test_Qt_GUI\Position_5\Images\F016_s05_segm.npz")['arr_0'][0]
     # img = np.load(r"G:\My Drive\1_MIA_Data\Test_data\Test_Qt_GUI\Position_5\Images\F016_s05_phase_contr_aligned.npz")['arr_0'][0]
     # win = manualSeparateGui(lab, 2, img)
     # win.setFont(font)
     app.setStyle(QtGui.QStyleFactory.create('Fusion'))
     # win.showAndSetWidth()
-    win.showAndSetFont(font)
+    # win.showAndSetFont(font)
     # win.setWidths(font=font)
     # win.setSize()
     # win.setGeometryWindow()
     win.exec_()
+    print(win.chNames)
     # print(win.SizeT, win.SizeZ, win.zyx_vox_dim)

@@ -8,6 +8,7 @@ import shutil
 import numpy as np
 import pandas as pd
 import scipy.interpolate
+import skimage
 import skimage.io
 from functools import partial
 from tifffile.tifffile import TiffWriter, TiffFile
@@ -192,7 +193,7 @@ class dataPrepWin(QMainWindow):
         navigateToolbar.addWidget(self.ROIshapeLabel)
 
     def gui_connectActions(self):
-        self.openAction.triggered.connect(self.openFile)
+        self.openAction.triggered.connect(self.openFolder)
         # Connect Open Recent to dynamically populate it
         self.openRecentMenu.aboutToShow.connect(self.populateOpenRecent)
         self.exitAction.triggered.connect(self.close)
@@ -585,14 +586,29 @@ class dataPrepWin(QMainWindow):
                 event.ignore()
                 return
 
+    def saveROIcoords(self, doCrop, PosData):
+        x0, y0 = [int(round(c)) for c in self.cropROI.pos()]
+        w, h = [int(round(c)) for c in self.cropROI.size()]
+        print(f'Saving ROI coords: x_left = {x0}, x_right = {x0+w}, '
+              f'y_top = {y0}, y_bottom = {y0+h}\n'
+              f'to {PosData.dataPrepROIs_coords_path}')
+
+        with open(PosData.dataPrepROIs_coords_path, 'w') as csv:
+            csv.write(f'description,value\n'
+                      f'x_left,{x0}\n'
+                      f'x_right,{x0+w}\n'
+                      f'y_top,{y0}\n'
+                      f'y_bottom,{y0+h}\n'
+                      f'cropped,{int(doCrop)}')
+
     def save(self):
-        msg = QtGui.QMessageBox()
-        doSave = msg.question(
-            self, 'Save data?', 'Do you want to save?',
-            msg.Yes | msg.No
-        )
-        if doSave == msg.No:
-            return
+        # msg = QtGui.QMessageBox()
+        # doSave = msg.question(
+        #     self, 'Save data?', 'Do you want to save?',
+        #     msg.Yes | msg.No
+        # )
+        # if doSave == msg.No:
+        #     return
 
         for PosData in self.data:
             self.okAction.setDisabled(True)
@@ -612,24 +628,16 @@ class dataPrepWin(QMainWindow):
             croppedData = self.crop(data)
             print('Cropped data shape: ', croppedData.shape)
 
+            doCrop = True
             if croppedData.shape != data.shape:
-                proceed = self.warnCropping(data.shape, croppedData.shape)
-                if not proceed:
-                    self.okAction.setEnabled(True)
-                    prit('Done.')
-                    return
+                doCrop = self.askCropping(data.shape, croppedData.shape)
 
-            x0, y0 = [int(round(c)) for c in self.cropROI.pos()]
-            w, h = [int(round(c)) for c in self.cropROI.size()]
-            print(f'Saving crop ROI coords: x_left = {x0}, x_right = {x0+w}, '
-                  f'y_top = {y0}, y_bottom = {y0+h}\n'
-                  f'to {PosData.dataPrepROIs_coords_path}')
+            self.saveROIcoords(doCrop, PosData)
 
-            with open(PosData.dataPrepROIs_coords_path, 'w') as csv:
-                csv.write(f'x_left,{x0}\n'
-                          f'x_right,{x0+w}\n'
-                          f'y_top,{y0}\n'
-                          f'y_bottom,{y0+h}')
+            if not doCrop:
+                self.okAction.setEnabled(True)
+                print('Done.')
+                return
 
             # Get metadata from tif
             with TiffFile(PosData.tif_path) as tif:
@@ -696,7 +704,7 @@ class dataPrepWin(QMainWindow):
             'Saved! You can close the program or load another position.',
             color='g')
 
-    def warnCropping(self, dataShape, croppedShape):
+    def askCropping(self, dataShape, croppedShape):
         msg = QtGui.QMessageBox(self)
         msg.setWindowTitle('Crop?')
         msg.setIcon(msg.Warning)
@@ -704,7 +712,7 @@ class dataPrepWin(QMainWindow):
             f'You are about to crop data from shape {dataShape} '
             f'to shape {croppedShape}\n\n'
             'Saving cropped data cannot be undone.\n\n'
-            'Are you sure you need that?')
+            'Do you want to crop or simply save the ROI coordinates for the segmentation step?')
         doCropButton = QPushButton('Yes, crop please.')
         msg.addButton(doCropButton, msg.NoRole)
         msg.addButton(QPushButton('No, save without cropping'), msg.YesRole)
@@ -721,6 +729,8 @@ class dataPrepWin(QMainWindow):
 
 
     def imagej_tiffwriter(self, new_path, data, metadata, PosData):
+        if data.dtype != np.uint8 or data.dtype != np.uint16:
+            data = skimage.img_as_uint(data)
         with TiffWriter(new_path, imagej=True) as new_tif:
             if PosData.SizeZ > 1 and PosData.SizeT > 1:
                 # 3D data over time
@@ -1019,14 +1029,15 @@ class dataPrepWin(QMainWindow):
             self.ROIshapeComboBox.currentTextChanged.connect(
                                                       self.setStandardRoiShape)
 
-        if len(items) > 3:
+        if len(items) > 4:
             w, h = 256, 256
         else:
             w, h = X, Y
+
         xc, yc = int(round(X/2)), int(round(Y/2))
         yl, xl = int(round(xc-w/2)), int(round(yc-h/2))
 
-        # Add crop ROI Rectangle
+        # Add ROI Rectangle
         cropROI = pg.ROI([xl, yl], [w, h],
                      rotatable=False,
                      removable=False,
@@ -1034,7 +1045,7 @@ class dataPrepWin(QMainWindow):
                      maxBounds=QRectF(QRect(0,0,X,Y)))
 
         cropROI.handleSize = 7
-        cropROI.label = pg.LabelItem('Crop ROI', color='r', size='12pt')
+        cropROI.label = pg.LabelItem('ROI', color='r', size='12pt')
         hLabel = cropROI.label.rect().bottom()
         cropROI.label.setPos(xl, yl-hLabel)
 
@@ -1119,10 +1130,11 @@ class dataPrepWin(QMainWindow):
         txt = roi.label.text
         roi.setPen(color='r')
         roi.label.setText(txt, color='r', size='12pt')
+        self.saveROIcoords(False, self.data[self.pos_i])
 
     def updateCurrentRoiShape(self, roi):
         roi.setPen(color=(255,255,0))
-        roi.label.setText('Crop ROI', color=(255,255,0), size='12pt')
+        roi.label.setText('ROI', color=(255,255,0), size='12pt')
         xl, yl = [int(round(c)) for c in roi.pos()]
         hLabel = roi.label.rect().bottom()
         roi.label.setPos(xl, yl-hLabel)
@@ -1519,9 +1531,9 @@ class dataPrepWin(QMainWindow):
 
     def openRecentFile(self, path):
         print(f'Opening recent folder: {path}')
-        self.openFile(exp_path=path)
+        self.openFolder(exp_path=path)
 
-    def openFile(self, checked=False, exp_path=None):
+    def openFolder(self, checked=False, exp_path=None):
         self.initLoading()
 
         if exp_path is None:
@@ -1610,55 +1622,50 @@ class dataPrepWin(QMainWindow):
         filenames = os.listdir(images_path)
         if ch_name_selector.is_first_call:
             ch_names, warn = ch_name_selector.get_available_channels(filenames)
-            ch_name_selector.QtPrompt(self, ch_names)
+            if not ch_names:
+                self.criticalNoTifFound(images_path)
+            elif len(ch_names) > 1:
+                ch_name_selector.QtPrompt(self, ch_names)
+            else:
+                ch_name_selector.channel_name = ch_names[0]
+            ch_name_selector.setUserChannelName()
             if ch_name_selector.was_aborted:
                 self.titleLabel.setText(
                     'File --> Open or Open recent to start the process',
                     color='w')
                 self.openAction.setEnabled(True)
                 return
-            else:
-                user_ch_name = ch_name_selector.channel_name
+            user_ch_name = ch_name_selector.user_ch_name
 
-        user_ch_file_paths = []
-        for images_path in self.images_paths:
-            img_aligned_found = False
-            for filename in os.listdir(images_path):
-                if filename.find(f'_phc_aligned.npy') != -1:
-                    img_path = f'{images_path}/{filename}'
-                    new_filename = filename.replace('phc_aligned.npy',
-                                                f'{user_ch_name}_aligned.npy')
-                    dst = f'{images_path}/{new_filename}'
-                    if os.path.exists(dst):
-                        os.remove(img_path)
-                    else:
-                        os.rename(img_path, dst)
-                    filename = new_filename
-                if filename.find(f'{user_ch_name}_aligned.np') != -1:
-                    img_path_aligned = f'{images_path}/{filename}'
-                    img_aligned_found = True
-                elif filename.find(f'{user_ch_name}.tif') != -1:
-                    img_path_tif = f'{images_path}/{filename}'
-
-            if img_aligned_found:
-                img_path = img_path_aligned
-            else:
-                img_path = img_path_tif
-            user_ch_file_paths.append(img_path)
-            print(f'Loading {img_path}...')
+        user_ch_file_paths = load.get_user_ch_paths(
+                self.images_paths, user_ch_name
+        )
 
         self.loadFiles(exp_path, user_ch_file_paths, user_ch_name)
         self.setCenterAlignmentTitle()
 
+    def criticalNoTifFound(self, images_path):
+        err_title = f'No .tif files found in folder.'
+        err_msg = (
+            f'The folder "{images_path}" does not contain .tif files.\n\n'
+            'Only .tif files can be loaded with "Open Folder" button.\n\n'
+            'Try with "File --> Open image/video file..." and directly select '
+            'the file you want to load.'
+        )
+        msg = QtGui.QMessageBox()
+        msg.critical(self, err_title, err_msg, msg.Ok)
+        return
+
     def setCenterAlignmentTitle(self):
-        self.titleLabel.item.setTextWidth(self.img.width())
-        fmt = QTextBlockFormat()
-        fmt.setAlignment(Qt.AlignHCenter)
-        cursor = self.titleLabel.item.textCursor()
-        cursor.select(QTextCursor.Document)
-        cursor.mergeBlockFormat(fmt)
-        cursor.clearSelection()
-        self.titleLabel.item.setTextCursor(cursor)
+        pass
+        # self.titleLabel.item.setTextWidth(self.img.width())
+        # fmt = QTextBlockFormat()
+        # fmt.setAlignment(Qt.AlignHCenter)
+        # cursor = self.titleLabel.item.textCursor()
+        # cursor.select(QTextCursor.Document)
+        # cursor.mergeBlockFormat(fmt)
+        # cursor.clearSelection()
+        # self.titleLabel.item.setTextCursor(cursor)
 
     def closeEvent(self, event):
         if self.buttonToRestore is not None:

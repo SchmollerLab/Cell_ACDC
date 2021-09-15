@@ -12,7 +12,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QProcess, pyqtSignal, pyqtSlot
 from pyqtgraph.Qt import QtGui
 
-import dataPrep, segm, gui
+import dataPrep, segm, gui, dataStruct
 import utils.concat
 import help.welcome
 
@@ -70,6 +70,14 @@ class mainWin(QMainWindow):
         label.setStyleSheet("padding:0px 0px 10px 0px;")
         mainLayout.addWidget(label)
 
+        dataStructButton = QPushButton('0. Create data structure from microscopy file(s)...')
+        font = QtGui.QFont()
+        font.setPointSize(11)
+        dataStructButton.setFont(font)
+        dataStructButton.clicked.connect(self.launchDataStruct)
+        self.dataStructButton = dataStructButton
+        mainLayout.addWidget(dataStructButton)
+
         dataPrepButton = QPushButton('1. Launch data prep module...')
         font = QtGui.QFont()
         font.setPointSize(11)
@@ -126,8 +134,6 @@ class mainWin(QMainWindow):
 
         self.welcomeGuide = help.welcome.welcomeWin(mainWin=self)
         self.welcomeGuide.showAndSetSize()
-
-
 
     def setColorsAndText(self):
         self.moduleLaunchedColor = '#ead935'
@@ -193,6 +199,27 @@ class mainWin(QMainWindow):
             self.convertWin.setWindowState(Qt.WindowNoState)
             self.convertWin.setWindowState(Qt.WindowActive)
             self.convertWin.raise_()
+
+    def launchDataStruct(self, checked=False):
+        c = self.dataStructButton.palette().button().color().name()
+        lauchedColor = self.moduleLaunchedColor
+        defaultColor = self.defaultPushButtonColor
+        defaultText = self.defaultTextDataPrepButton
+        if c != self.moduleLaunchedColor:
+            self.dataStructButton.setStyleSheet(
+                f'QPushButton {{background-color: {lauchedColor};}}')
+            self.dataStructButton.setText('DataStruct is running. '
+                                          'Click to restore window.')
+            self.dataStructWin = dataStruct.createDataStructWin(
+                buttonToRestore=(self.dataStructButton, defaultColor, defaultText),
+                mainWin=self
+            )
+            self.dataStructWin.show()
+            self.dataStructWin.main()
+        else:
+            self.dataStructWin.setWindowState(Qt.WindowNoState)
+            self.dataStructWin.setWindowState(Qt.WindowActive)
+            self.dataStructWin.raise_()
 
     def launchDataPrep(self, checked=False):
         c = self.dataPrepButton.palette().button().color().name()
@@ -276,6 +303,7 @@ class mainWin(QMainWindow):
     def showAndSetSettings(self):
         win.show()
         h = self.dataPrepButton.geometry().height()
+        self.dataStructButton.setMinimumHeight(h*2)
         self.dataPrepButton.setMinimumHeight(h*2)
         self.segmButton.setMinimumHeight(h*2)
         self.guiButton.setMinimumHeight(h*2)

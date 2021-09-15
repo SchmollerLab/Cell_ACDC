@@ -51,5 +51,6 @@
     <file alias="contribute.svg">resources/contribute.svg</file>
     <file alias="wizard.svg">resources/wizard.svg</file>
     <file alias="download.svg">resources/download.svg</file>
+    <file alias="warning.svg">resources/warning.svg</file>
 </qresource>
 </RCC>

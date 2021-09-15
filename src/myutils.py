@@ -7,12 +7,66 @@ from tqdm import tqdm
 import requests
 import zipfile
 import numpy as np
+import skimage
+from distutils.dir_util import copy_tree
 from pyqtgraph.colormap import ColorMap
 import prompts
 from tifffile.tifffile import TiffWriter, TiffFile
 
 __all__ = ['ColorMap']
 _mapCache = {}
+
+def download_java():
+    is_linux = sys.platform.startswith('linux')
+    is_mac = sys.platform == 'darwin'
+    is_win = sys.platform.startswith("win")
+    is_win64 = (is_win and (os.environ["PROCESSOR_ARCHITECTURE"] == "AMD64"))
+
+    if is_win64:
+        foldername = 'win64'
+        jre_name = 'jre1.8.0_301'
+        file_id = '19KXlsTwDwR7VZDBu2uWO1M3uIRlrPzLU'
+        file_size = 78397719
+    elif is_mac:
+        foldername = 'macOS'
+        jre_name = 'jre1.8.0_301'
+    elif is_linux:
+        foldername = 'linux'
+        jre_name = 'jre1.8.0_301'
+    elif is_win:
+        foldername = 'win'
+        jre_name = 'jre1.8.0_301'
+
+    src_path = os.path.dirname(os.path.realpath(__file__))
+    java_path = os.path.join(src_path, 'java', foldername)
+    jre_path = os.path.join(java_path, jre_name)
+    zip_dst = os.path.join(java_path, 'java_temp.zip')
+
+    if os.path.exists(jre_path):
+        return
+
+    if not os.path.exists(java_path):
+        os.makedirs(java_path)
+
+    download_from_gdrive(
+        file_id, zip_dst, file_size=file_size, model_name='Java'
+    )
+    exctract_to = java_path
+    extract_zip(zip_dst, exctract_to)
+    # Remove downloaded zip archive
+    os.remove(zip_dst)
+    print('Java downloaded successfully')
+
+def copyRenameJavabridge():
+    src_path = os.path.dirname(os.path.realpath(__file__))
+    major, minor = sys.version_info[:2]
+    if major != 3:
+        raise EnvironmentError(
+            'Only Python 3 is supported, '
+            f'while you have Python {sys.version} installed')
+    javabridge_src = os.path.join(src_path, f'javabridge_cp3{minor}')
+    javabridge_dst = os.path.join(src_path, 'javabridge')
+    copy_tree(javabridge_src, javabridge_dst)
 
 def getFromMatplotlib(name):
     """
@@ -110,14 +164,14 @@ def get_confirm_token(response):
 
 def save_response_content(response, destination, file_size=None,
                           model_name='cellpose'):
-    print(f'Downloading {model_name} models to: {os.path.dirname(destination)}')
+    print(f'Downloading {model_name} to: {os.path.dirname(destination)}')
     CHUNK_SIZE = 32768
     temp_folder = pathlib.Path.home().joinpath('.cp_temp')
     if not os.path.exists(temp_folder):
         os.mkdir(temp_folder)
     temp_dst = os.path.join(temp_folder, os.path.basename(destination))
     pbar = tqdm(total=file_size, unit='B', unit_scale=True,
-                unit_divisor=1024)
+                unit_divisor=1024, ncols=100)
     with open(temp_dst, "wb") as f:
         for chunk in response.iter_content(CHUNK_SIZE):
             if chunk: # filter out keep-alive new chunks
@@ -165,6 +219,8 @@ def download_model(model_name):
         os.remove(models_zip_path)
 
 def imagej_tiffwriter(new_path, data, metadata, SizeT, SizeZ):
+    if data.dtype != np.uint8 or data.dtype != np.uint16:
+        data = skimage.img_as_uint(data)
     with TiffWriter(new_path, imagej=True) as new_tif:
         if SizeZ > 1 and SizeT > 1:
             # 3D data over time
@@ -187,3 +243,5 @@ def imagej_tiffwriter(new_path, data, metadata, SizeT, SizeZ):
 if __name__ == '__main__':
     model_name = 'cellpose'
     download_model(model_name)
+
+    download_java()
