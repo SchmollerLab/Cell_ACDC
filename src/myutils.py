@@ -30,9 +30,11 @@ def download_java():
     elif is_mac:
         foldername = 'macOS'
         jre_name = 'jre1.8.0_301'
+        return
     elif is_linux:
         foldername = 'linux'
         jre_name = 'jre1.8.0_301'
+        return
     elif is_win:
         foldername = 'win'
         jre_name = 'jre1.8.0_301'

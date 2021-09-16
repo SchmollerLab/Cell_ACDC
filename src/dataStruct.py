@@ -23,15 +23,6 @@ from PyQt5 import QtGui
 
 import qrc_resources
 import apps, myutils
-
-myutils.download_java()
-
-try:
-    import javabridge
-except Exception as e:
-    myutils.copyRenameJavabridge()
-
-import javabridge
 import bioformats
 
 if os.name == 'nt':
@@ -838,6 +829,20 @@ class createDataStructWin(QMainWindow):
             self.mainWin.raise_()
 
 if __name__ == "__main__":
+    print('Checking if Java is installed...')
+    myutils.copyRenameJavabridge()
+    try:
+        import javabridge
+    except Exception as e:
+        myutils.download_java()
+
+    try:
+        import javabridge
+    except Exception as e:
+        print('Automatic download of Java failed. Please download the portable '
+        'version of Java SE Runtime Environment and extract it into '
+        '"/Cell_ACDC/src/java/<OS name folder>"')
+
     print('Launching segmentation script...')
     # Handle high resolution displays:
     if hasattr(Qt, 'AA_EnableHighDpiScaling'):
