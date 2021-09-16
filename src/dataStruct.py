@@ -23,7 +23,6 @@ from PyQt5 import QtGui
 
 import qrc_resources
 import apps, myutils
-import bioformats
 
 if os.name == 'nt':
     try:
@@ -829,6 +828,7 @@ class createDataStructWin(QMainWindow):
             self.mainWin.raise_()
 
 if __name__ == "__main__":
+    import bioformats
     print('Checking if Java is installed...')
     myutils.copyRenameJavabridge()
     try:

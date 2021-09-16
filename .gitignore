@@ -6,7 +6,6 @@ notebooks/.ipynb_checkpoints
 test.txt
 src/test.py
 src/java
-src/bioformats
 src/javabridge
 benchmarks/
 env/*
