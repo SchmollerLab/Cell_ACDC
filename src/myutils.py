@@ -66,7 +66,11 @@ def copyRenameJavabridge():
         raise EnvironmentError(
             'Only Python 3 is supported, '
             f'while you have Python {sys.version} installed')
-    javabridge_src = os.path.join(src_path, f'javabridge_cp3{minor}')
+    javabridge_src = os.path.join(
+        src_path,
+        f'javabridge_cp3{minor}',
+        f'_javabridge.cp3{minor}-win_amd64.pyd'
+    )
     javabridge_dst = os.path.join(src_path, 'javabridge')
     copy_tree(javabridge_src, javabridge_dst)
 
