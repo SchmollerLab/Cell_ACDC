@@ -830,7 +830,7 @@ class createDataStructWin(QMainWindow):
 if __name__ == "__main__":
     import bioformats
     print('Checking if Java is installed...')
-    myutils.copyRenameJavabridge()
+    # myutils.copyRenameJavabridge()
     try:
         import javabridge
     except Exception as e:

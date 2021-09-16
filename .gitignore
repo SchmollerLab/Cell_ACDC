@@ -6,7 +6,8 @@ notebooks/.ipynb_checkpoints
 test.txt
 src/test.py
 src/java
-src/javabridge
+src/javabridge_cp37
+src/javabridge_cp38
 benchmarks/
 env/*
 data/*
