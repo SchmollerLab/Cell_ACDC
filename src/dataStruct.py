@@ -839,9 +839,12 @@ if __name__ == "__main__":
     try:
         import javabridge
     except Exception as e:
+        print('===============================================================')
         print('Automatic download of Java failed. Please download the portable '
         'version of Java SE Runtime Environment and extract it into '
         '"/Cell_ACDC/src/java/<OS name folder>"')
+        print('===============================================================')
+        raise FileNotFoundError('Dowload of Java failed. See above for details.')
 
     print('Launching segmentation script...')
     # Handle high resolution displays:
