@@ -658,7 +658,7 @@ class guiWin(QMainWindow):
         self.openFileAction = QAction(QIcon(":image.svg"),"&Open image/video file...", self)
         self.saveAction = QAction(QIcon(":file-save.svg"),
                                   "&Save (Ctrl+S)", self)
-        self.loadFluoAction = QAction("Load fluorescent images", self)
+        self.loadFluoAction = QAction("Load fluorescent images...", self)
         self.reloadAction = QAction(QIcon(":reload.svg"),
                                           "Reload segmentation file", self)
         self.showInExplorerAction = QAction(QIcon(":drawer.svg"),
@@ -5611,7 +5611,7 @@ class guiWin(QMainWindow):
             self.disableTrackingCheckBox.setDisabled(True)
             self.disableTrackingCheckBox.setChecked(True)
             self.repeatTrackingAction.setDisabled(True)
-            print('Setting gui mode to "No frames"...')
+            print('Setting GUI mode to "Snapshots"...')
             self.modeComboBox.clear()
             self.modeComboBox.addItems(['Snapshot'])
             self.modeComboBox.setDisabled(True)
@@ -7128,7 +7128,7 @@ class guiWin(QMainWindow):
         return fluo_data
 
     def load_fluo_data(self, fluo_path):
-        print('Loading fluorescent image data...')
+        print(f'Loading fluorescent image data from "{fluo_path}"...')
         PosData = self.data[self.pos_i]
         # Load overlay frames and align if needed
         filename = os.path.basename(fluo_path)
@@ -7254,6 +7254,11 @@ class guiWin(QMainWindow):
                         if fluo_data is None:
                             self.app.restoreOverrideCursor()
                             return
+
+                        # Allow single 2D/3D image
+                        if PosData.SizeT < 2:
+                            fluo_data = np.array([fluo_data])
+
                         PosData.fluo_data_dict[filename] = fluo_data
                         PosData.ol_data_dict[filename] = fluo_data
                         ol_data[filename] = fluo_data.copy()
@@ -7423,22 +7428,22 @@ class guiWin(QMainWindow):
 
     def getOlImg(self, key, normalizeIntens=True):
         PosData = self.data[self.pos_i]
-        if PosData.SizeT > 1:
-            ol_img = PosData.ol_data[key][PosData.frame_i].copy()
-        else:
-            ol_img = PosData.ol_data[key].copy()
+        img = PosData.ol_data[key][PosData.frame_i]
         if PosData.SizeZ > 1:
             zProjHow = self.zProjOverlay_CB.currentText()
             if zProjHow == 'single z-slice':
                 z = self.zSliceOverlay_SB.sliderPosition()
                 self.overlay_z_label.setText(f'z-slice  {z+1:02}/{PosData.SizeZ}')
-                ol_img = ol_img[z].copy()
+                ol_img = img[z].copy()
             elif zProjHow == 'max z-projection':
-                ol_img = ol_img.max(axis=0).copy()
+                ol_img = img.max(axis=0).copy()
             elif zProjHow == 'mean z-projection':
-                ol_img = ol_img.mean(axis=0).copy()
+                ol_img = img.mean(axis=0).copy()
             elif zProjHow == 'median z-proj.':
-                ol_img = np.median(ol_img, axis=0).copy()
+                ol_img = np.median(img, axis=0).copy()
+        else:
+            ol_img = img.copy()
+
         if normalizeIntens:
             ol_img = self.normalizeIntensities(ol_img)
         return ol_img
@@ -8565,6 +8570,10 @@ class guiWin(QMainWindow):
                     self.app.restoreOverrideCursor()
                     return
                 PosData.loadedFluoChannels.add(fluo_ch)
+
+                if PosData.SizeT < 2:
+                    fluo_data = np.array([fluo_data])
+
                 PosData.fluo_data_dict[filename] = fluo_data
                 PosData.ol_data_dict[filename] = fluo_data.copy()
         self.app.restoreOverrideCursor()
@@ -8614,8 +8623,15 @@ class guiWin(QMainWindow):
         systems.get(os.name, os.startfile)(PosData.images_path)
 
     def addMetrics_acdc_df(self, df, rp, frame_i, lab, PosData):
-        # Add metrics that can be calculated at the end of the process
-        # such as cell volume, cell area etc.
+        """
+        Function used to add metrics to the acdc_df.
+
+        NOTE for 3D data: add the same metrics calculated from 2D data obtained
+        with three different methods:
+            - sum projection
+            - mean projection
+            - z-slice used for segmentation
+        """
         PhysicalSizeY = PosData.PhysicalSizeY
         PhysicalSizeX = PosData.PhysicalSizeX
 
@@ -8623,26 +8639,40 @@ class guiWin(QMainWindow):
         vox_to_fl = PhysicalSizeY*(PhysicalSizeX**2)
         yx_pxl_to_um2 = PhysicalSizeY*PhysicalSizeX
         numCells = len(rp)
+        z_slice = PosData.segmInfo_df.at[frame_i, 'z_slice_used_dataPrep']
+        zz_slices = [z_slice]*numCells
         IDs = [0]*numCells
         IDs_vol_vox = [0]*numCells
         IDs_area_pxl = [0]*numCells
         IDs_vol_fl = [0]*numCells
         IDs_area_um2 = [0]*numCells
+
+        # Initialize fluo metrics arrays
         fluo_keys = list(PosData.fluo_data_dict.keys())
+        fluo_data = PosData.fluo_data_dict[fluo_keys[0]][frame_i]
+        is_3D = fluo_data.ndim == 3
+        how_3Dto2D = ['_maxProj', '_sumProj', '_zSlice'] if is_3D else ['']
+        n = len(how_3Dto2D)
         numFluoChannels = len(fluo_keys)
+
+        print('')
+        print(n)
+        print(numFluoChannels)
+
         chNames = PosData.loadedChNames
-        fluo_means = np.zeros((numCells, numFluoChannels))
-        fluo_medians = np.zeros((numCells, numFluoChannels))
-        fluo_mins = np.zeros((numCells, numFluoChannels))
-        fluo_maxs = np.zeros((numCells, numFluoChannels))
-        fluo_sums = np.zeros((numCells, numFluoChannels))
-        fluo_q25s = np.zeros((numCells, numFluoChannels))
-        fluo_q75s = np.zeros((numCells, numFluoChannels))
-        fluo_q5s = np.zeros((numCells, numFluoChannels))
-        fluo_q95s = np.zeros((numCells, numFluoChannels))
-        fluo_amounts = np.zeros((numCells, numFluoChannels))
-        fluo_amounts_bkgrVals = np.zeros((numCells, numFluoChannels))
+        fluo_means = np.zeros((numCells, numFluoChannels*n))
+        fluo_medians = np.zeros((numCells, numFluoChannels*n))
+        fluo_mins = np.zeros((numCells, numFluoChannels*n))
+        fluo_maxs = np.zeros((numCells, numFluoChannels*n))
+        fluo_sums = np.zeros((numCells, numFluoChannels*n))
+        fluo_q25s = np.zeros((numCells, numFluoChannels*n))
+        fluo_q75s = np.zeros((numCells, numFluoChannels*n))
+        fluo_q5s = np.zeros((numCells, numFluoChannels*n))
+        fluo_q95s = np.zeros((numCells, numFluoChannels*n))
+        fluo_amounts_autoBkgr = np.zeros((numCells, numFluoChannels*n))
+        fluo_amounts_ROIbkgr = np.zeros((numCells, numFluoChannels*n))
         outCellsMask = lab==0
+
         for i, obj in enumerate(rp):
             IDs[i] = obj.label
             rotate_ID_img = skimage.transform.rotate(
@@ -8657,74 +8687,89 @@ class guiWin(QMainWindow):
             IDs_area_um2[i] = obj.area*yx_pxl_to_um2
             # Calc metrics for each fluo channel
             for j, key in enumerate(fluo_keys):
-                fluo_data = PosData.fluo_data_dict[key][frame_i]
-                if fluo_data.ndim > 2:
-                    fluo_data = fluo_data.max(axis=0)
-
-                fluo_data_ID = fluo_data[obj.slice][obj.image]
-                backgrMask = np.logical_and(outCellsMask, fluo_data!=0)
-                fluo_backgr = np.median(fluo_data[backgrMask])
-                fluo_mean = fluo_data_ID.mean()
-                fluo_amount = (fluo_mean-fluo_backgr)*obj.area
-
-                dataPrep_bkgrVal = self.getDataPrepBkgrVal(
+                ROI_bkgrVal = self.getDataPrepBkgrVal(
                                             PosData.bkgrValues_df,
                                             PosData.bkgrValues_chNames,
                                             frame_i, j)
-                if dataPrep_bkgrVal is not None:
-                    amount = (fluo_mean-dataPrep_bkgrVal)*obj.area
-                    fluo_amounts_bkgrVals[i,j] = amount
+                fluo_data = PosData.fluo_data_dict[key][frame_i]
+                fluo_data_projs = []
+                if fluo_data.ndim == 3:
+                    fluo_data_z_maxP = fluo_data.max(axis=0)
+                    fluo_data_z_sumP = fluo_data.sum(axis=0)
+                    fluo_data = fluo_data[z_slice]
 
-                fluo_means[i,j] = fluo_mean
-                fluo_medians[i,j] = np.median(fluo_data_ID)
-                fluo_mins[i,j] = fluo_data_ID.min()
-                fluo_maxs[i,j] = fluo_data_ID.max()
-                fluo_sums[i,j] = fluo_data_ID.sum()
-                fluo_q25s[i,j] = np.quantile(fluo_data_ID, q=0.25)
-                fluo_q75s[i,j] = np.quantile(fluo_data_ID, q=0.75)
-                fluo_q5s[i,j] = np.quantile(fluo_data_ID, q=0.05)
-                fluo_q95s[i,j] = np.quantile(fluo_data_ID, q=0.95)
-                fluo_amounts[i,j] = fluo_amount
+                    # how_3Dto2D = ['_maxProj', '_sumProj', '_zSlice']
+                    fluo_data_projs.append(fluo_data_z_maxP)
+                    fluo_data_projs.append(fluo_data_z_sumP)
+                    fluo_data_projs.append(fluo_data)
+                else:
+                    fluo_data_2D = fluo_data
+                    fluo_data_projs.append(fluo_data_2D)
+
+                for k, fluo_2D in enumerate(fluo_data_projs):
+                    fluo_data_ID = fluo_2D[obj.slice][obj.image]
+                    # fluo_2D is required because when we align we pad with 0s
+                    # instead of np.roll and we don't want to include those
+                    # exact 0s in the backgrMask
+                    backgrMask = np.logical_and(outCellsMask, fluo_2D!=0)
+                    fluo_backgr = np.median(fluo_2D[backgrMask])
+                    fluo_mean = fluo_data_ID.mean()
+                    fluo_amount_autoBkgr = (fluo_mean-fluo_backgr)*obj.area
+
+                    if ROI_bkgrVal is not None:
+                        fluo_amount_ROIbkgr = (fluo_mean-ROI_bkgrVal)*obj.area
+                        fluo_amounts_ROIbkgr[i, j+k] = fluo_amount_ROIbkgr
+
+                    fluo_means[i, j+k] = fluo_mean
+                    fluo_medians[i, j+k] = np.median(fluo_data_ID)
+                    fluo_mins[i, j+k] = fluo_data_ID.min()
+                    fluo_maxs[i, j+k] = fluo_data_ID.max()
+                    fluo_sums[i, j+k] = fluo_data_ID.sum()
+                    fluo_q25s[i, j+k] = np.quantile(fluo_data_ID, q=0.25)
+                    fluo_q75s[i, j+k] = np.quantile(fluo_data_ID, q=0.75)
+                    fluo_q5s[i, j+k] = np.quantile(fluo_data_ID, q=0.05)
+                    fluo_q95s[i, j+k] = np.quantile(fluo_data_ID, q=0.95)
+                    fluo_amounts_autoBkgr[i, j+k] = fluo_amount_autoBkgr
 
         df['cell_area_pxl'] = pd.Series(data=IDs_area_pxl, index=IDs, dtype=float)
         df['cell_vol_vox'] = pd.Series(data=IDs_vol_vox, index=IDs, dtype=float)
         df['cell_area_um2'] = pd.Series(data=IDs_area_um2, index=IDs, dtype=float)
         df['cell_vol_fl'] = pd.Series(data=IDs_vol_fl, index=IDs, dtype=float)
-        df[[f'{ch}_mean' for ch in chNames]] = pd.DataFrame(
-                                                    data=fluo_means, index=IDs,
-                                                    dtype=float)
-        df[[f'{ch}_median' for ch in chNames]] = pd.DataFrame(
-                                                    data=fluo_medians, index=IDs,
-                                                    dtype=float)
-        df[[f'{ch}_min' for ch in chNames]] = pd.DataFrame(
-                                                    data=fluo_mins, index=IDs,
-                                                    dtype=float)
-        df[[f'{ch}_max' for ch in chNames]] = pd.DataFrame(
-                                                    data=fluo_maxs, index=IDs,
-                                                    dtype=float)
-        df[[f'{ch}_sum' for ch in chNames]] = pd.DataFrame(
-                                                    data=fluo_sums, index=IDs,
-                                                    dtype=float)
-        df[[f'{ch}_q25' for ch in chNames]] = pd.DataFrame(
-                                                    data=fluo_q25s, index=IDs,
-                                                    dtype=float)
-        df[[f'{ch}_q75' for ch in chNames]] = pd.DataFrame(
-                                                    data=fluo_q75s, index=IDs,
-                                                    dtype=float)
-        df[[f'{ch}_q05' for ch in chNames]] = pd.DataFrame(
-                                                    data=fluo_q5s, index=IDs,
-                                                    dtype=float)
-        df[[f'{ch}_q95' for ch in chNames]] = pd.DataFrame(
-                                                    data=fluo_q95s, index=IDs,
-                                                    dtype=float)
-        df[[f'{ch}_amount_autoBkgr' for ch in chNames]] = pd.DataFrame(
-                                                    data=fluo_amounts,
-                                                    index=IDs,
-                                                    dtype=float)
-        df[[f'{ch}_amount_dataPrepBkgr' for ch in chNames]] = pd.DataFrame(
-                                                    data=fluo_amounts_bkgrVals,
-                                                    index=IDs,
-                                                    dtype=float)
+
+        df['z_slice_used_segm'] = pd.Series(data=zz_slices, index=IDs, dtype=int)
+
+        cols = [f'{ch}_mean{how}' for ch in chNames for how in how_3Dto2D]
+        df[cols] = pd.DataFrame(data=fluo_means, index=IDs, dtype=float)
+
+        cols = [f'{ch}_sum{how}' for ch in chNames for how in how_3Dto2D]
+        df[cols] = pd.DataFrame(data=fluo_sums, index=IDs, dtype=float)
+
+        cols = [f'{ch}_amount_autoBkgr{how}' for ch in chNames for how in how_3Dto2D]
+        df[cols] = pd.DataFrame(data=fluo_amounts_autoBkgr, index=IDs, dtype=float)
+
+        cols = [f'{ch}_amount_dataPrepBkgr{how}' for ch in chNames for how in how_3Dto2D]
+        df[cols] = pd.DataFrame(data=fluo_amounts_ROIbkgr, index=IDs, dtype=float)
+
+        cols = [f'{ch}_median{how}' for ch in chNames for how in how_3Dto2D]
+        df[cols] = pd.DataFrame(data=fluo_medians, index=IDs, dtype=float)
+
+        cols = [f'{ch}_min{how}' for ch in chNames for how in how_3Dto2D]
+        df[cols] = pd.DataFrame(data=fluo_mins, index=IDs, dtype=float)
+
+        cols = [f'{ch}_max{how}' for ch in chNames for how in how_3Dto2D]
+        df[cols] = pd.DataFrame(data=fluo_maxs, index=IDs, dtype=float)
+
+        cols = [f'{ch}_q25{how}' for ch in chNames for how in how_3Dto2D]
+        df[cols] = pd.DataFrame(data=fluo_q25s, index=IDs, dtype=float)
+
+        cols = [f'{ch}_q75{how}' for ch in chNames for how in how_3Dto2D]
+        df[cols] = pd.DataFrame(data=fluo_q75s, index=IDs, dtype=float)
+
+        cols = [f'{ch}_q05{how}' for ch in chNames for how in how_3Dto2D]
+        df[cols] = pd.DataFrame(data=fluo_q5s, index=IDs, dtype=float)
+
+        cols = [f'{ch}_q95{how}' for ch in chNames for how in how_3Dto2D]
+        df[cols] = pd.DataFrame(data=fluo_q95s, index=IDs, dtype=float)
 
         # Join with regionprops_table
         props = (
@@ -9058,8 +9103,7 @@ class guiWin(QMainWindow):
                     print(
                         'Saved cell cycle annotations until frame '
                         f'number {last_tracked_i+1}')
-                elif self.isSnapshot:
-                    print(f'Saved all {len(self.data)} Positions!')
+
                 print('--------------')
             except Exception as e:
                 print('')
@@ -9069,6 +9113,8 @@ class guiWin(QMainWindow):
                 print('')
             finally:
                 self.app.restoreOverrideCursor()
+        if self.isSnapshot:
+            print(f'Saved all {len(self.data)} Positions!')
 
     def copyContent(self):
         pass

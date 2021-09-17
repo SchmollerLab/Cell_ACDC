@@ -349,16 +349,19 @@ class dataPrepWin(QMainWindow):
     def next_pos(self):
         if self.pos_i < self.num_pos-1:
             self.pos_i += 1
+            self.update_img()
         else:
-            self.pos_i = 0
-        self.update_img()
+            print('You reached last position')
+
 
     def prev_pos(self):
         if self.pos_i > 0:
             self.pos_i -= 1
+            self.update_img()
         else:
-            self.pos_i = self.num_pos-1
-        self.update_img()
+            print('You reached first position')
+            # self.pos_i = self.num_pos-1
+
 
     def skip10ahead_pos(self):
         if self.pos_i < self.num_pos-10:
@@ -995,6 +998,8 @@ class dataPrepWin(QMainWindow):
         self.update_img()
         print('Done.')
         self.addROIs()
+        self.saveROIcoords(False, self.data[self.pos_i])
+        self.saveBkgrValues(self.data[self.pos_i])
         self.okAction.setEnabled(True)
         self.titleLabel.setText(
             'Data successfully prepped. You can now crop the images or '
@@ -1029,13 +1034,16 @@ class dataPrepWin(QMainWindow):
             self.ROIshapeComboBox.currentTextChanged.connect(
                                                       self.setStandardRoiShape)
 
-        if len(items) > 4:
-            w, h = 256, 256
-        else:
-            w, h = X, Y
+        # if len(items) > 4:
+        #     w, h = 256, 256
+        # else:
+        #     w, h = X, Y
+
+        w, h = X, Y
 
         xc, yc = int(round(X/2)), int(round(Y/2))
-        yl, xl = int(round(xc-w/2)), int(round(yc-h/2))
+        # yl, xl = int(round(xc-w/2)), int(round(yc-h/2))
+        yl, xl = 0, 0
 
         # Add ROI Rectangle
         cropROI = pg.ROI([xl, yl], [w, h],
@@ -1125,6 +1133,7 @@ class dataPrepWin(QMainWindow):
         txt = roi.label.text
         roi.setPen(color=(150,150,150))
         roi.label.setText(txt, color=(150,150,150), size='12pt')
+        self.saveBkgrValues(self.data[self.pos_i])
 
     def ROImovingFinished(self, roi):
         txt = roi.label.text
@@ -1399,13 +1408,13 @@ class dataPrepWin(QMainWindow):
                 PosData.all_npz_paths[i] = _npz
             elif npy is not None and npz is not None:
                 os.remove(npy)
-        # Convert segm.npy to segm.npz
-        if PosData.segm_npz_path is not None:
-            print('Converting: ', PosData.segm_npz_path)
-            temp_npz = self.getTempfilePath(PosData.segm_npz_path)
-            np.savez_compressed(temp_npz, PosData.segm_data)
-            self.moveTempFile(temp_npz, PosData.segm_npz_path)
-            os.remove(PosData.segm_npz_path)
+        # # Convert segm.npy to segm.npz
+        # if PosData.segm_npz_path is not None:
+        #     print('Converting: ', PosData.segm_npz_path)
+        #     temp_npz = self.getTempfilePath(PosData.segm_npz_path)
+        #     np.savez_compressed(temp_npz, PosData.segm_data)
+        #     self.moveTempFile(temp_npz, PosData.segm_npz_path)
+        #     os.remove(PosData.segm_npz_path)
         print('Done.')
 
     def getTempfilePath(self, path):

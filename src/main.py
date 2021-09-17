@@ -326,6 +326,7 @@ if __name__ == "__main__":
     win = mainWin(app)
     win.showAndSetSettings()
     win.launchWelcomeGuide()
+    win.welcomeGuide.showPage(win.welcomeGuide.welcomeItem)
     print('Done. If application is not visible, it is probably minimized '
           'or behind some other open window.')
     sys.exit(app.exec_())

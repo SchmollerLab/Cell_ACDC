@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import (
     QApplication, QWidget, QGridLayout, QTextEdit, QPushButton,
     QListWidget, QListWidgetItem, QCheckBox, QFrame, QStyleFactory,
     QLabel, QPushButton, QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator,
-    QScrollArea, QComboBox, QHBoxLayout, QToolButton
+    QScrollArea, QComboBox, QHBoxLayout, QToolButton, QMainWindow
 )
 
 script_path = os.path.dirname(os.path.realpath(__file__))

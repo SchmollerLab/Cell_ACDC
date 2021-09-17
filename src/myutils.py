@@ -22,6 +22,7 @@ def download_java():
     is_win = sys.platform.startswith("win")
     is_win64 = (is_win and (os.environ["PROCESSOR_ARCHITECTURE"] == "AMD64"))
 
+    # https://drive.google.com/drive/u/0/folders/1MxhySsxB1aBrqb31QmLfVpq8z1vDyLbo
     if is_win64:
         foldername = 'win64'
         jre_name = 'jre1.8.0_301'
@@ -33,11 +34,13 @@ def download_java():
         return
     elif is_linux:
         foldername = 'linux'
+        file_id = '13vjFCpqBNp10K-Crl0XFXF8vN17Pi5cm'
         jre_name = 'jre1.8.0_301'
-        return
+        file_size = 92145253
     elif is_win:
         foldername = 'win'
         jre_name = 'jre1.8.0_301'
+        return
 
     src_path = os.path.dirname(os.path.realpath(__file__))
     java_path = os.path.join(src_path, 'java', foldername)
@@ -58,21 +61,6 @@ def download_java():
     # Remove downloaded zip archive
     os.remove(zip_dst)
     print('Java downloaded successfully')
-
-def copyRenameJavabridge():
-    src_path = os.path.dirname(os.path.realpath(__file__))
-    major, minor = sys.version_info[:2]
-    if major != 3:
-        raise EnvironmentError(
-            'Only Python 3 is supported, '
-            f'while you have Python {sys.version} installed')
-    javabridge_src = os.path.join(
-        src_path,
-        f'javabridge_cp3{minor}',
-        f'_javabridge.cp3{minor}-win_amd64.pyd'
-    )
-    javabridge_dst = os.path.join(src_path, 'javabridge')
-    copy_tree(javabridge_src, javabridge_dst)
 
 def getFromMatplotlib(name):
     """
