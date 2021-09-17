@@ -8,6 +8,7 @@ src/test.py
 src/java
 src/javabridge_cp37
 src/javabridge_cp38
+src/javabridge_linux
 benchmarks/
 env/*
 data/*
