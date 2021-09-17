@@ -186,31 +186,33 @@ class convertFileFormatWin(QMainWindow):
         appendedTxt = appendTxts[0]
 
         print(f'Converting .{self.from_} to .{self.to} started...')
-        if len(selectedFilenames) > 1:
+        if len(selectedFilenames) > 1 or len(images_paths) > 1:
             ch_name_selector = prompts.select_channel_name()
-            channelNames, abort = ch_name_selector.get_available_channels(
-                                            selectedFilenames, useExt=None)
+            all_channelNames, abort = ch_name_selector.get_available_channels(
+                    os.listdir(images_paths[0]), useExt=None
+            )
+            channelNames = [ch for ch in all_channelNames
+                                    for file in selectedFilenames
+                                        if file.find(ch)!=-1]
             if abort or not channelNames:
                 self.criticalNoCommonBasename()
                 self.close()
                 return
-
             for images_path in tqdm(images_paths, ncols=100):
                 for chName in channelNames:
                     filenames = os.listdir(images_path)
-                    chNameFile = [f for f in filenames if f.find(f'{chName}.')!=-1]
+                    chNameFile = [f for f in filenames if f.find(f'{chName}.{self.from_}')!=-1]
                     if not chNameFile:
                         print('')
                         print('=============================')
-                        print(f'WARNING: File ending with "{chName}." not found in folder '
+                        print(f'WARNING: File ending with "{chName}.{self.from_}" not found in folder '
                               f'{images_path}. Skipping it')
                         continue
                     self.convert(images_path, chNameFile[0], appendedTxt,
                                  from_=self.from_, to=self.to)
         else:
-            for images_path in tqdm(images_paths, ncols=100):
-                self.convert(images_path, selectedFilenames[0], appendedTxt,
-                             from_=self.from_, to=self.to)
+            self.convert(images_paths[0], selectedFilenames[0], appendedTxt,
+                         from_=self.from_, to=self.to)
         self.close()
         if self.allowExit:
             exit('Done.')
@@ -228,21 +230,22 @@ class convertFileFormatWin(QMainWindow):
         newPath = os.path.join(images_path, newFilename)
         if self.to == 'npy':
             np.save(newPath, data)
-        print(f'New file saved to {newPath}')
+        elif self.to == 'tif':
+            myutils.imagej_tiffwriter(newPath, data, None, 1, 1, imagej=False)
+        print(f'File {filePath} saved to {newPath}')
 
 
     def save(self, alignedData, filePath, appendedTxt, first_call=True):
         dir = os.path.dirname(filePath)
         filename, ext = os.path.splitext(os.path.basename(filePath))
         path = os.path.join(dir, f'{filename}_{appendedTxt}{ext}')
-        pass
 
     def askTxtAppend(self):
         font = QtGui.QFont()
         font.setPointSize(10)
         self.win = apps.QDialogEntriesWidget(
             winTitle='Appended name',
-            entriesLabels=['Type a name to append at the end of each .npy file:'],
+            entriesLabels=[f'Type a name to append at the end of each .{self.to} file:'],
             defaultTxts=[''],
             parent=self, font=font
         )
@@ -286,7 +289,7 @@ class convertFileFormatWin(QMainWindow):
 
         selectFilesWidget = apps.QDialogListbox(
             'Select files',
-            'Select  files you want to convert to .npy\n\n'
+            f'Select the .npz files you want to convert to .{self.to}\n\n'
             'NOTE: if you selected multiple Position folders I will try \n'
             'to convert all selected files in each Position folder',
             items, multiSelection=True, parent=self
@@ -335,19 +338,17 @@ class convertFileFormatWin(QMainWindow):
         df.to_csv(recentPaths_path)
 
     def doAbort(self):
-        msg = QtGui.QMessageBox()
-        closeAnswer = msg.warning(
-           self, 'Abort execution?', 'Do you really want to abort process?',
-           msg.Yes | msg.No
-        )
-        if closeAnswer == msg.Yes:
-            if self.allowExit:
-                exit('Execution aborted by the user')
-            else:
-                print('Segmentation routine aborted by the user.')
-                return True
+        # msg = QtGui.QMessageBox()
+        # closeAnswer = msg.warning(
+        #    self, 'Abort execution?', 'Do you really want to abort process?',
+        #    msg.Yes | msg.No
+        # )
+        # if closeAnswer == msg.Yes:
+        if self.allowExit:
+            exit('Execution aborted by the user')
         else:
-            return False
+            print('Conversion task aborted by the user.')
+            return True
 
     def closeEvent(self, event):
         if self.actionToEnable is not None:

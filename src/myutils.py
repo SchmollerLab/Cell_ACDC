@@ -212,10 +212,14 @@ def download_model(model_name):
         # Remove downloaded zip archive
         os.remove(models_zip_path)
 
-def imagej_tiffwriter(new_path, data, metadata, SizeT, SizeZ):
+def imagej_tiffwriter(new_path, data, metadata, SizeT, SizeZ, imagej=True):
     if data.dtype != np.uint8 or data.dtype != np.uint16:
         data = skimage.img_as_uint(data)
-    with TiffWriter(new_path, imagej=True) as new_tif:
+    with TiffWriter(new_path, imagej=imagej) as new_tif:
+        if not imagej:
+            new_tif.save(data)
+            return
+
         if SizeZ > 1 and SizeT > 1:
             # 3D data over time
             T, Z, Y, X = data.shape

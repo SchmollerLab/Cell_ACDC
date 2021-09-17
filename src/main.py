@@ -14,6 +14,7 @@ from pyqtgraph.Qt import QtGui
 
 import dataPrep, segm, gui, dataStruct
 import utils.concat
+import utils.convert
 import help.welcome
 
 import qrc_resources
@@ -190,7 +191,7 @@ class mainWin(QMainWindow):
             self.sender().setDisabled(True)
             self.convertWin = utils.convert.convertFileFormatWin(
                 parent=self,
-                actionToEnable=self.concatAcdcDfsAction,
+                actionToEnable=self.sender(),
                 mainWin=self, from_=from_, to=to
             )
             self.convertWin.show()
@@ -326,7 +327,10 @@ if __name__ == "__main__":
     win = mainWin(app)
     win.showAndSetSettings()
     win.launchWelcomeGuide()
-    win.welcomeGuide.showPage(win.welcomeGuide.welcomeItem)
+    try:
+        win.welcomeGuide.showPage(win.welcomeGuide.welcomeItem)
+    except AttributeError:
+        pass
     print('Done. If application is not visible, it is probably minimized '
           'or behind some other open window.')
     sys.exit(app.exec_())
