@@ -132,13 +132,10 @@ class loadData:
         ls = os.listdir(self.images_path)
         for file in ls:
             filePath = os.path.join(self.images_path, file)
-            if load_segm_data and file.find('segm.np')!=-1:
+            if load_segm_data and file.find('segm.npz')!=-1:
                 self.segmFound = True
                 self.segm_npz_path = filePath
-                try:
-                    self.segm_data = np.load(filePath)['arr_0']
-                except Exception as e:
-                    self.segm_data = np.load(filePath)
+                self.segm_data = np.load(filePath)['arr_0']
             elif getTifPath and file.find(f'{self.user_ch_name}.tif')!=-1:
                 self.tif_path = filePath
                 self.TifPathFound = True

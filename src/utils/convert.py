@@ -32,7 +32,7 @@ if os.name == 'nt':
     try:
         # Set taskbar icon in windows
         import ctypes
-        myappid = 'schmollerlab.yeastacdc.pyqt.v1' # arbitrary string
+        myappid = 'schmollerlab.cellacdc.pyqt.v1' # arbitrary string
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     except Exception as e:
         pass
@@ -48,7 +48,7 @@ class convertFileFormatWin(QMainWindow):
         self.actionToEnable = actionToEnable
         self.mainWin = mainWin
         super().__init__(parent)
-        self.setWindowTitle(f"Yeast ACDC - Convert .{from_} file to .{to}")
+        self.setWindowTitle(f"Cell-ACDC - Convert .{from_} file to .{to}")
         self.setWindowIcon(QtGui.QIcon(":assign-motherbud.svg"))
 
         mainContainer = QtGui.QWidget()
@@ -115,7 +115,7 @@ class convertFileFormatWin(QMainWindow):
                 return
 
         self.setWindowTitle(
-            f'Yeast_ACDC - Convert .{self.from_} to .{self.to} - "{exp_path}"'
+            f'Cell-ACDC - Convert .{self.from_} to .{self.to} - "{exp_path}"'
         )
 
         if os.path.basename(exp_path).find('Position_') != -1:
@@ -211,8 +211,10 @@ class convertFileFormatWin(QMainWindow):
                     self.convert(images_path, chNameFile[0], appendedTxt,
                                  from_=self.from_, to=self.to)
         else:
-            self.convert(images_paths[0], selectedFilenames[0], appendedTxt,
-                         from_=self.from_, to=self.to)
+            self.convert(
+                images_paths[0], selectedFilenames[0], appendedTxt,
+                from_=self.from_, to=self.to
+            )
         self.close()
         if self.allowExit:
             exit('Done.')

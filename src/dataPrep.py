@@ -40,7 +40,7 @@ if os.name == 'nt':
     try:
         # Set taskbar icon in windows
         import ctypes
-        myappid = 'schmollerlab.yeastacdc.pyqt.v1' # arbitrary string
+        myappid = 'schmollerlab.cellacdc.pyqt.v1' # arbitrary string
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     except Exception as e:
         pass
@@ -66,7 +66,7 @@ class dataPrepWin(QMainWindow):
         self.buttonToRestore = buttonToRestore
         self.mainWin = mainWin
 
-        self.setWindowTitle("Yeast ACDC - data prep")
+        self.setWindowTitle("Cell-ACDC - data prep")
         self.setGeometry(100, 50, 850, 800)
         self.setWindowIcon(QIcon(":assign-motherbud.svg"))
 
@@ -138,7 +138,7 @@ class dataPrepWin(QMainWindow):
         self.interpAction.setEnabled(False)
 
 
-        self.okAction = QAction(QIcon(":applyCrop.svg"), "Crop!", self)
+        self.okAction = QAction(QIcon(":crop.svg"), "Crop and save", self)
         self.okAction.setEnabled(False)
         self.startAction = QAction(QIcon(":start.svg"), "Start process!", self)
         self.startAction.setEnabled(False)
@@ -417,8 +417,11 @@ class dataPrepWin(QMainWindow):
             self.frameLabel.setText(
                      f'Current frame = {self.frame_i+1}/{self.num_frames}')
 
-    def getImage(self, PosData, frames, frame_i):
-        img = frames[frame_i].copy()
+    def getImage(self, PosData, img_data, frame_i):
+        if PosData.SizeT > 1:
+            img = img_data[frame_i].copy()
+        else:
+            img = img_data.copy()
         if PosData.SizeZ > 1:
             z = PosData.segmInfo_df.at[frame_i,
                                        'z_slice_used_dataPrep']
@@ -473,6 +476,8 @@ class dataPrepWin(QMainWindow):
             croppedData = data[:, :, y0:y0+h, x0:x0+w]
         elif data.ndim == 3:
             croppedData = data[:, y0:y0+h, x0:x0+w]
+        elif data.ndim == 2:
+            croppedData = data[y0:y0+h, x0:x0+w]
         return croppedData
 
     def saveBkgrValues(self, PosData):
@@ -497,14 +502,12 @@ class dataPrepWin(QMainWindow):
         bkgr_sampleSizes = []
         for tif_path in PosData.tif_paths:
             frames = skimage.io.imread(tif_path)
-            if PosData.SizeT < 2:
-                frames = [frames]
             filename = os.path.basename(tif_path)
             filename_noEXT, _ = os.path.splitext(filename)
             channel_name = filename_noEXT[len(PosData.basename)+1:]
             if not channel_name:
                 channel_name = PosData.basename
-            for frame_i in range(len(frames)):
+            for frame_i in range(PosData.SizeT):
                 img = self.getImage(PosData, frames, frame_i)
                 channel_names.append(channel_name)
                 frame_idxs.append(frame_i)
@@ -629,18 +632,21 @@ class dataPrepWin(QMainWindow):
             # Get crop shape and print it
             data = PosData.img_data
             croppedData = self.crop(data)
-            print('Cropped data shape: ', croppedData.shape)
+
 
             doCrop = True
             if croppedData.shape != data.shape:
                 doCrop = self.askCropping(data.shape, croppedData.shape)
-
-            self.saveROIcoords(doCrop, PosData)
+            else:
+                doCrop = False
 
             if not doCrop:
                 self.okAction.setEnabled(True)
                 print('Done.')
                 return
+
+            print('Cropped data shape:', croppedData.shape)
+            self.saveROIcoords(doCrop, PosData)
 
             # Get metadata from tif
             with TiffFile(PosData.tif_path) as tif:
@@ -680,6 +686,7 @@ class dataPrepWin(QMainWindow):
 
             # Correct acdc_df if present and save
             if PosData.acdc_df is not None:
+                x0, y0 = [int(round(c)) for c in self.cropROI.pos()]
                 print('Saving: ', PosData.acdc_output_csv_path)
                 df = PosData.acdc_df
                 df['x_centroid'] -= x0
@@ -815,10 +822,6 @@ class dataPrepWin(QMainWindow):
                     color='w')
                 return False
 
-            # Allow single 2D/3D image
-            if PosData.SizeT < 2:
-                PosData.img_data = np.array([PosData.img_data])
-                PosData.segm_data = np.array([PosData.segm_data])
             img_shape = PosData.img_data.shape
             self.num_frames = PosData.SizeT
             self.user_ch_name = user_ch_name
@@ -960,7 +963,7 @@ class dataPrepWin(QMainWindow):
         self.titleLabel.setText(
             'Prepping data... (check progress in the terminal)',
             color='w')
-        doZip = True
+        doZip = False
         for p, PosData in enumerate(self.data):
             self.startAction.setDisabled(True)
             nonTifFound = (
@@ -968,11 +971,11 @@ class dataPrepWin(QMainWindow):
                 any([npy is not None for npy in PosData.npy_paths]) or
                 PosData.segmFound
             )
+            imagesPath = PosData.images_path
+            zipPath = f'{imagesPath}.zip'
             if nonTifFound and p==0:
-                imagesPath = PosData.images_path
-                zipPath = f'{os.path.splitext(imagesPath)[0]}.zip'
                 msg = QtGui.QMessageBox()
-                archive = msg.warning(
+                doZipAnswer = msg.warning(
                    self, 'NON-Tif data detected!',
                    'Additional NON-tif files detected.\n\n'
                    'The requested experiment folder already contains .npy '
@@ -987,9 +990,11 @@ class dataPrepWin(QMainWindow):
                    f'{zipPath}',
                    msg.Yes | msg.No
                 )
-                if archive == msg.Yes:
-                    print(f'Zipping Images folder: {zipPath}')
-                    shutil.make_archive(imagesPath, 'zip', imagesPath)
+                if doZipAnswer == msg.Yes:
+                    doZip = True
+            if doZip:
+                print(f'Zipping Images folder: {zipPath}')
+                shutil.make_archive(imagesPath, 'zip', imagesPath)
             self.npy_to_npz(PosData)
             self.alignData(self.user_ch_name, PosData)
             if PosData.SizeZ>1:
@@ -1275,10 +1280,7 @@ class dataPrepWin(QMainWindow):
                     self.imagej_tiffwriter(temp_tif, aligned_frames,
                                            metadata, PosData)
                     self.moveTempFile(temp_tif, tif)
-                if PosData.SizeT < 2:
-                    PosData.img_data = np.array([skimage.io.imread(tif)])
-                else:
-                    PosData.img_data = skimage.io.imread(tif)
+                PosData.img_data = skimage.io.imread(tif)
 
         _zip = zip(PosData.tif_paths, PosData.npz_paths)
         for i, (tif, npz) in enumerate(_zip):
@@ -1503,7 +1505,7 @@ class dataPrepWin(QMainWindow):
 
     def loadFiles(self, exp_path, user_ch_file_paths, user_ch_name):
         self.titleLabel.setText('Loading data...', color='w')
-        self.setWindowTitle(f'Yeast_ACDC - Data Prep. - "{exp_path}"')
+        self.setWindowTitle(f'Cell-ACDC - Data Prep. - "{exp_path}"')
 
         self.num_pos = len(user_ch_file_paths)
         proceed = self.init_data(user_ch_file_paths, user_ch_name)
@@ -1570,7 +1572,7 @@ class dataPrepWin(QMainWindow):
             is_images_folder = False
 
         self.titleLabel.setText('Loading data...', color='w')
-        self.setWindowTitle(f'Yeast_ACDC - Data Prep. - "{exp_path}"')
+        self.setWindowTitle(f'Cell-ACDC - Data Prep. - "{exp_path}"')
         self.setCenterAlignmentTitle()
 
         ch_name_selector = prompts.select_channel_name(

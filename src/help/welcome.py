@@ -26,7 +26,7 @@ if os.name == 'nt':
     try:
         # Set taskbar icon in windows
         import ctypes
-        myappid = 'schmollerlab.yeastacdc.pyqt.v1' # arbitrary string
+        myappid = 'schmollerlab.cellacdc.pyqt.v1' # arbitrary string
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     except Exception as e:
         pass

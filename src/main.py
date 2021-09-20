@@ -23,7 +23,7 @@ if os.name == 'nt':
     try:
         # Set taskbar icon in windows
         import ctypes
-        myappid = 'schmollerlab.yeastacdc.pyqt.v1' # arbitrary string
+        myappid = 'schmollerlab.cellacdc.pyqt.v1' # arbitrary string
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     except Exception as e:
         pass
@@ -33,7 +33,7 @@ class mainWin(QMainWindow):
         self.app = app
         self.welcomeGuide = None
         super().__init__(parent)
-        self.setWindowTitle("Yeast ACDC")
+        self.setWindowTitle("Cell-ACDC")
         self.setWindowIcon(QtGui.QIcon(":assign-motherbud.svg"))
 
         self.createActions()
@@ -46,7 +46,7 @@ class mainWin(QMainWindow):
         mainLayout = QVBoxLayout()
 
         welcomeLabel = QLabel(
-            'Welcome to Yeast_ACDC!')
+            'Welcome to Cell-ACDC!')
         welcomeLabel.setAlignment(Qt.AlignCenter)
         font = QtGui.QFont()
         font.setPointSize(14)
@@ -173,7 +173,7 @@ class mainWin(QMainWindow):
 
         self.welcomeGuideAction = QAction('Welcome Guide')
         self.documentationAction = QAction('Documentation')
-        self.aboutAction = QAction('About Yeast_ACDC')
+        self.aboutAction = QAction('About Cell-ACDC')
         self.citeAction = QAction('Cite us...')
         self.contributeAction = QAction('Contribute...')
 

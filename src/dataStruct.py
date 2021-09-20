@@ -28,7 +28,7 @@ if os.name == 'nt':
     try:
         # Set taskbar icon in windows
         import ctypes
-        myappid = 'schmollerlab.yeastacdc.pyqt.v1' # arbitrary string
+        myappid = 'schmollerlab.cellacdc.pyqt.v1' # arbitrary string
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     except:
         pass
@@ -431,7 +431,7 @@ class createDataStructWin(QMainWindow):
         self.buttonToRestore = buttonToRestore
         self.mainWin = mainWin
         super().__init__(parent)
-        self.setWindowTitle("Yeast ACDC - From raw microscopy file to tifs")
+        self.setWindowTitle("Cell-ACDC - From raw microscopy file to tifs")
         self.setWindowIcon(QtGui.QIcon(":assign-motherbud.svg"))
 
         mainContainer = QWidget()

@@ -6,7 +6,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""Yeast ACDC GUI for correcting Segmentation and Tracking errors"""
+"""Cell-ACDC GUI for correcting Segmentation and Tracking errors"""
 print('Importing modules...')
 import sys
 import os
@@ -62,7 +62,7 @@ if os.name == 'nt':
     try:
         # Set taskbar icon in windows
         import ctypes
-        myappid = 'schmollerlab.yeastacdc.pyqt.v1' # arbitrary string
+        myappid = 'schmollerlab.cellacdc.pyqt.v1' # arbitrary string
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     except Exception as e:
         pass
@@ -120,7 +120,7 @@ class guiWin(QMainWindow):
         self.data_loaded = False
         self.flag = True
         self.countBlinks = 0
-        self.setWindowTitle("Yeast ACDC - GUI")
+        self.setWindowTitle("Cell-ACDC - GUI")
         self.setWindowIcon(QIcon(":assign-motherbud.svg"))
         self.setAcceptDrops(True)
 
@@ -482,9 +482,9 @@ class guiWin(QMainWindow):
             '   - Starting to erase from the background (cursor is a red circle)\n '
             '     will erase any labels you hover above.\n'
             '   - Starting to erase from a specific label will erase only that label\n'
-            '     (cursor is a circle with the color of the label).'
-            '   - To enforce erasing all labels no matter where you start from '
-            '     double-press "X" key. If double-press is successfull, '
+            '     (cursor is a circle with the color of the label).\n'
+            '   - To enforce erasing all labels no matter where you start from\n'
+            '     double-press "X" key. If double-press is successfull,\n'
             '     then eraser button is red and eraser cursor always red.\n\n'
             'SHORTCUT: "X" key')
         editToolBar.addWidget(self.eraserButton)
@@ -4182,6 +4182,7 @@ class guiWin(QMainWindow):
     def changeMode(self, idx):
         PosData = self.data[self.pos_i]
         mode = self.modeComboBox.itemText(idx)
+        print(mode)
         if mode == 'Segmentation and Tracking':
             self.modeToolBar.setVisible(True)
             self.setEnabledWidgetsToolbar(True)
@@ -5314,9 +5315,8 @@ class guiWin(QMainWindow):
         self.updateItemsMousePos()
         self.updateFramePosLabel()
         PosData = self.data[self.pos_i]
-        if PosData.SizeT > 1:
-            pos = self.pos_i+1 if self.isSnapshot else PosData.frame_i+1
-            self.framesScrollBar.setSliderPosition(pos)
+        pos = self.pos_i+1 if self.isSnapshot else PosData.frame_i+1
+        self.framesScrollBar.setSliderPosition(pos)
         if PosData.SizeZ > 1:
             z = PosData.segmInfo_df.at[PosData.frame_i, 'z_slice_used_gui']
             self.zSliceScrollBar.setSliderPosition(z)
@@ -8289,17 +8289,25 @@ class guiWin(QMainWindow):
         msg.critical(self, err_title, err_msg, msg.Ok)
         return
 
+    def reInitGui(self):
+        self.removeAllItems()
+        self.gui_addPlotItems()
+        self.setUncheckedAllButtons()
+        self.restoreDefaultColors()
+        self.curvToolButton.setChecked(False)
+
+        self.navigateToolBar.hide()
+        self.ccaToolBar.hide()
+        self.editToolBar.hide()
+        self.widgetsToolBar.hide()
+        self.modeToolBar.hide()
+
+
     def openFolder(self, checked=False, exp_path=None, isImageFile=False):
         try:
-            # Remove all items from a previous session if open is pressed again
-            self.removeAllItems()
-            self.gui_addPlotItems()
-            self.setUncheckedAllButtons()
-            self.restoreDefaultColors()
-            self.curvToolButton.setChecked(False)
+            self.reInitGui()
 
             self.openAction.setEnabled(False)
-            self.modeComboBox.setCurrentIndex(0)
 
             if self.slideshowWin is not None:
                 self.slideshowWin.close()
@@ -8333,7 +8341,7 @@ class guiWin(QMainWindow):
                 is_images_folder = False
 
             self.titleLabel.setText('Loading data...', color='w')
-            self.setWindowTitle(f'Yeast_ACDC - GUI - "{exp_path}"')
+            self.setWindowTitle(f'Cell-ACDC - GUI - "{exp_path}"')
 
 
             ch_name_selector = prompts.select_channel_name(
@@ -8464,6 +8472,9 @@ class guiWin(QMainWindow):
             proceed = self.init_data(user_ch_file_paths, user_ch_name)
             if not proceed:
                 self.openAction.setEnabled(True)
+                self.titleLabel.setText(
+                    'File --> Open or Open recent to start the process',
+                    color='w')
                 return
 
             self.create_chNamesQActionGroup(user_ch_name)
@@ -8506,7 +8517,7 @@ class guiWin(QMainWindow):
             return
 
         pos_path = os.path.dirname(os.path.dirname(user_ch_file_paths[0]))
-        self.setWindowTitle(f'Yeast_ACDC - GUI - "{pos_path}"')
+        self.setWindowTitle(f'Cell-ACDC - GUI - "{pos_path}"')
 
     def initFluoData(self):
         msg = QtGui.QMessageBox()

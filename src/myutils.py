@@ -188,7 +188,7 @@ def check_v1_model_path():
     if os.path.exists(v1_model_path):
         delete = prompts.twobuttonsmessagebox('Delete v1 model folder?',
             'The script detected a "./model" folder.\n\n This is most likely from '
-            'Yeast_ACDC v1.\n\nThis version will automatically download\n the '
+            'Cell-ACDC v1.\n\nThis version will automatically download\n the '
             'neural network models required into "/.models" folder.\n'
             'The "./model" is not required anymore and we suggest deleting it,\n'
             'however you can keep it if you want.\n\n '

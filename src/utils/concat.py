@@ -32,7 +32,7 @@ if os.name == 'nt':
     try:
         # Set taskbar icon in windows
         import ctypes
-        myappid = 'schmollerlab.yeastacdc.pyqt.v1' # arbitrary string
+        myappid = 'schmollerlab.cellacdc.pyqt.v1' # arbitrary string
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     except:
         pass
@@ -45,7 +45,7 @@ class concatWin(QMainWindow):
         self.actionToEnable = actionToEnable
         self.mainWin = mainWin
         super().__init__(parent)
-        self.setWindowTitle("Yeast ACDC - Align")
+        self.setWindowTitle("Cell-ACDC - Align")
         self.setWindowIcon(QtGui.QIcon(":assign-motherbud.svg"))
 
         mainContainer = QtGui.QWidget()
@@ -111,7 +111,7 @@ class concatWin(QMainWindow):
                 self.close()
                 return
 
-        self.setWindowTitle(f'Yeast_ACDC - Concat Pos - "{exp_path}"')
+        self.setWindowTitle(f'Cell-ACDC - Concat Pos - "{exp_path}"')
 
         if os.path.basename(exp_path).find('Position_') != -1:
             self.criticalNoPosFoldersFound(exp_path)

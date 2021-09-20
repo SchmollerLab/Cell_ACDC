@@ -1688,7 +1688,7 @@ class CellsSlideshow_GUI(QMainWindow):
 
         self.frame_i = PosData.frame_i
         self.num_frames = PosData.SizeT
-        self.setWindowTitle(f"Yeast ACDC - {PosData.relPath}")
+        self.setWindowTitle(f"Cell-ACDC - {PosData.relPath}")
 
     def gui_createActions(self):
         # File actions
@@ -3261,7 +3261,7 @@ class manualSeparateGui(QMainWindow):
         self.undoIdx = 0
         self.fontSize = fontSize
         self.AllCutsCoords = []
-        self.setWindowTitle("Yeast ACDC - Segm&Track")
+        self.setWindowTitle("Cell-ACDC - Segm&Track")
         # self.setGeometry(Left, Top, 850, 800)
 
         self.gui_createActions()

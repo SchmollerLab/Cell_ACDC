@@ -28,7 +28,7 @@ if os.name == 'nt':
     try:
         # Set taskbar icon in windows
         import ctypes
-        myappid = 'schmollerlab.yeastacdc.pyqt.v1' # arbitrary string
+        myappid = 'schmollerlab.cellacdc.pyqt.v1' # arbitrary string
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
     except:
         pass
@@ -41,7 +41,7 @@ class segmWin(QMainWindow):
         self.buttonToRestore = buttonToRestore
         self.mainWin = mainWin
         super().__init__(parent)
-        self.setWindowTitle("Yeast ACDC - Segment")
+        self.setWindowTitle("Cell-ACDC - Segment")
         self.setWindowIcon(QtGui.QIcon(":assign-motherbud.svg"))
 
         mainContainer = QtGui.QWidget()
@@ -141,7 +141,7 @@ class segmWin(QMainWindow):
                 self.close()
                 return
 
-        self.setWindowTitle(f'Yeast_ACDC - Segment - "{exp_path}"')
+        self.setWindowTitle(f'Cell-ACDC - Segment - "{exp_path}"')
 
         if os.path.basename(exp_path).find('Position_') != -1:
             is_pos_folder = True
