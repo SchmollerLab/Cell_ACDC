@@ -16,7 +16,6 @@ from matplotlib.patches import Rectangle, Circle, PathPatch, Path
 from tqdm import tqdm
 
 # Custom modules
-from MyWidgets import Slider, Button, RadioButtons
 import apps
 
 def align_frames_3D(data, slices=None, register=True,

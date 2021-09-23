@@ -176,20 +176,20 @@ class convertFileFormatWin(QMainWindow):
                 self.close()
                 return
 
-        abort, appendTxts = self.askTxtAppend()
+
+        abort, appendedTxt = self.askTxtAppend(selectedFilenames[0], self.to)
         if abort:
             abort = self.doAbort()
             if abort:
                 self.close()
                 return
 
-        appendedTxt = appendTxts[0]
-
         print(f'Converting .{self.from_} to .{self.to} started...')
         if len(selectedFilenames) > 1 or len(images_paths) > 1:
             ch_name_selector = prompts.select_channel_name()
+            ls = os.listdir(images_paths[0])
             all_channelNames, abort = ch_name_selector.get_available_channels(
-                    os.listdir(images_paths[0]), useExt=None
+                    ls, images_paths[0], useExt=None
             )
             channelNames = [ch for ch in all_channelNames
                                     for file in selectedFilenames
@@ -242,17 +242,14 @@ class convertFileFormatWin(QMainWindow):
         filename, ext = os.path.splitext(os.path.basename(filePath))
         path = os.path.join(dir, f'{filename}_{appendedTxt}{ext}')
 
-    def askTxtAppend(self):
+    def askTxtAppend(self, filename):
         font = QtGui.QFont()
         font.setPointSize(10)
-        self.win = apps.QDialogEntriesWidget(
-            winTitle='Appended name',
-            entriesLabels=[f'Type a name to append at the end of each .{self.to} file:'],
-            defaultTxts=[''],
-            parent=self, font=font
+        self.win = apps.QDialogAppendTextFilename(
+            filename, parent=self, font=font
         )
         self.win.exec_()
-        return self.win.cancel, self.win.entriesTxt
+        return self.win.cancel, self.win.LE.text()
 
     def criticalNoCommonBasename(self):
         msg = QtGui.QMessageBox()

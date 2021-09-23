@@ -10,8 +10,9 @@ import scipy.interpolate
 import tkinter as tk
 import cv2
 import traceback
+from itertools import combinations
 from natsort import natsorted
-from MyWidgets import Slider, Button, MyRadioButtons
+# from MyWidgets import Slider, Button, MyRadioButtons
 from skimage.measure import label, regionprops
 import skimage.filters
 import skimage.measure
@@ -73,7 +74,7 @@ class QDialogMetadataXML(QDialog):
 
         mainLayout = QVBoxLayout()
         entriesLayout = QGridLayout()
-        self.channelNameLayouts = (QVBoxLayout(), QVBoxLayout())
+        self.channelNameLayouts = (QVBoxLayout(), QVBoxLayout(), QVBoxLayout())
         self.channelEmWLayouts = (QVBoxLayout(), QVBoxLayout(), QVBoxLayout())
         buttonsLayout = QGridLayout()
 
@@ -259,6 +260,7 @@ class QDialogMetadataXML(QDialog):
             entriesLayout.addLayout(layout, row, j)
 
         self.chNames_QLEs = []
+        self.saveChannels_QCBs = []
         for c in range(SizeC):
             chName_QLE = QLineEdit()
             chName_QLE.setStyleSheet(
@@ -270,11 +272,19 @@ class QDialogMetadataXML(QDialog):
                 chName_QLE.setText(chNames[c])
             else:
                 chName_QLE.setText(f'channel_{c}')
+
             txt = f'Channel {c} name:  '
             label = QLabel(txt)
+
+            checkBox = QCheckBox('Save this channel')
+            checkBox.setChecked(True)
+            checkBox.stateChanged.connect(self.saveCh_checkBox_cb)
+
             self.channelNameLayouts[0].addWidget(label, alignment=Qt.AlignRight)
             self.channelNameLayouts[1].addWidget(chName_QLE)
+            self.channelNameLayouts[2].addWidget(checkBox)
             self.chNames_QLEs.append(chName_QLE)
+            self.saveChannels_QCBs.append(checkBox)
 
         self.checkChNames()
 
@@ -321,7 +331,7 @@ class QDialogMetadataXML(QDialog):
             trustButton.setToolTip(
                 "If you didn't have to manually modify metadata entries\n"
                 "it is very likely that metadata from the metadata reader\n"
-                "will be correct also for all the next positions.\n\n"
+                "will be correct alsso for all the next positions.\n\n"
                 "Click this button to stop showing this dialog and use\n"
                 "the metadata from the reader "
                 "(except for channel names, I will use the manually entered)"
@@ -357,25 +367,68 @@ class QDialogMetadataXML(QDialog):
         self.setLayout(mainLayout)
         self.setModal(True)
 
+    def saveCh_checkBox_cb(self, state):
+        self.checkChNames()
+        idx = self.saveChannels_QCBs.index(self.sender())
+        LE = self.chNames_QLEs[idx]
+        LE.setDisabled(state==0)
+        label = self.channelNameLayouts[0].itemAt(idx).widget()
+        if state == 0:
+            label.setStyleSheet('color: gray; font-size: 10pt')
+        else:
+            label.setStyleSheet('color: black; font-size: 10pt')
+
+    def setInvalidChName_StyleSheet(self, LE):
+        LE.setStyleSheet(
+            'background: #FEF9C3;'
+            'border-radius: 4px;'
+            'border: 1.5px solid red;'
+            'padding: 1px 0px 1px 0px'
+        )
+
     def checkChNames(self, text=''):
-        areChNamesUnique = True
-        for LE in self.chNames_QLEs:
-            s = LE.text()
-            for LE1 in self.chNames_QLEs:
-                if not s or s==LE1.text():
-                    # padding: top right bottom left
-                    LE.setStyleSheet(
-                        'background: #FEF9C3;'
-                        'border-radius: 4px;'
-                        'border: 1.5px solid red;'
-                        'padding: 1px 0px 1px 0px'
-                    )
-                    areChNamesUnique = False
+        areChNamesValid = True
+        if len(self.chNames_QLEs) == 1:
+            LE1 = self.chNames_QLEs[0]
+            saveCh = self.saveChannels_QCBs[0].isChecked()
+            if not saveCh:
+                LE1.setStyleSheet('background: #FEF9C3;')
+                return areChNamesValid
+
+            s1 = LE1.text()
+            if not s1:
+                self.setInvalidChName_StyleSheet(LE1)
+                areChNamesValid = False
+            else:
+                LE1.setStyleSheet('background: #FEF9C3;')
+            return areChNamesValid
+
+        for LE1, LE2 in combinations(self.chNames_QLEs, 2):
+            s1 = LE1.text()
+            s2 = LE2.text()
+            LE1_idx = self.chNames_QLEs.index(LE1)
+            LE2_idx = self.chNames_QLEs.index(LE2)
+            saveCh1 = self.saveChannels_QCBs[LE1_idx].isChecked()
+            saveCh2 = self.saveChannels_QCBs[LE2_idx].isChecked()
+            if not s1 or not s2 or s1==s2:
+                if not s1 and saveCh1:
+                    self.setInvalidChName_StyleSheet(LE1)
+                    areChNamesValid = False
                 else:
-                    LE.setStyleSheet(
-                        'background: #FEF9C3;'
-                    )
-        return areChNamesUnique
+                    LE1.setStyleSheet('background: #FEF9C3;')
+                if not s2 and saveCh2:
+                    self.setInvalidChName_StyleSheet(LE2)
+                    areChNamesValid = False
+                else:
+                    LE2.setStyleSheet('background: #FEF9C3;')
+                if s1 == s2 and saveCh1 and saveCh2:
+                    self.setInvalidChName_StyleSheet(LE1)
+                    self.setInvalidChName_StyleSheet(LE2)
+                    areChNamesValid = False
+            else:
+                LE1.setStyleSheet('background: #FEF9C3;')
+                LE2.setStyleSheet('background: #FEF9C3;')
+        return areChNamesValid
 
     def hideShowPhysicalSizeZ(self, value):
         if value > 1:
@@ -402,11 +455,21 @@ class QDialogMetadataXML(QDialog):
                 )
                 chName_QLE.setAlignment(Qt.AlignCenter)
                 chName_QLE.setText(f'channel_{c}')
+                chName_QLE.textChanged.connect(self.checkChNames)
+
                 txt = f'Channel {c} name:  '
                 label = QLabel(txt)
+
+                checkBox = QCheckBox('Save this channel')
+                checkBox.setChecked(True)
+                checkBox.stateChanged.connect(self.saveCh_checkBox_cb)
+
                 self.channelNameLayouts[0].addWidget(label, alignment=Qt.AlignRight)
                 self.channelNameLayouts[1].addWidget(chName_QLE)
+                self.channelNameLayouts[2].addWidget(checkBox)
+
                 self.chNames_QLEs.append(chName_QLE)
+                self.saveChannels_QCBs.append(checkBox)
 
                 emWavelen_DSB = QDoubleSpinBox()
                 emWavelen_DSB.setAlignment(Qt.AlignCenter)
@@ -427,9 +490,12 @@ class QDialogMetadataXML(QDialog):
             for c in range(currentSizeC, currentSizeC+DeltaChannels):
                 label = self.channelNameLayouts[0].itemAt(c-1).widget()
                 chName_QLE = self.channelNameLayouts[1].itemAt(c-1).widget()
+                checkBox = self.channelNameLayouts[2].itemAt(c-1).widget()
                 self.channelNameLayouts[0].removeWidget(label)
                 self.channelNameLayouts[1].removeWidget(chName_QLE)
+                self.channelNameLayouts[1].removeWidget(checkBox)
                 self.chNames_QLEs.pop(-1)
+                self.saveChannels_QCBs.pop(-1)
 
                 label = self.channelEmWLayouts[0].itemAt(c-1).widget()
                 emWavelen_DSB = self.channelEmWLayouts[1].itemAt(c-1).widget()
@@ -457,8 +523,8 @@ class QDialogMetadataXML(QDialog):
             )
             return
 
-        areChNamesUnique = self.checkChNames()
-        if not areChNamesUnique:
+        areChNamesValid = self.checkChNames()
+        if not areChNamesValid:
             err_msg = (
                 'Channel names cannot be empty or equal to each other.\n\n'
                 'Insert a unique text for each channel name'
@@ -492,7 +558,8 @@ class QDialogMetadataXML(QDialog):
         self.PhysicalSizeY = self.PhysicalSizeY_DSB.value()
         self.PhysicalSizeZ = self.PhysicalSizeZ_DSB.value()
         self.chNames = []
-        for LE in self.chNames_QLEs:
+        self.saveChannels = []
+        for LE, QCB in zip(self.chNames_QLEs, self.saveChannels_QCBs):
             s = LE.text()
             s = "".join(c if c.isalnum() or c=='_' or c=='' else '_' for c in s)
             trim_ = s.endswith('_')
@@ -500,6 +567,7 @@ class QDialogMetadataXML(QDialog):
                 s = s[:-1]
                 trim_ = s.endswith('_')
             self.chNames.append(s)
+            self.saveChannels.append(QCB.isChecked())
         self.emWavelens = [DSB.value() for DSB in self.emWavelens_DSBs]
 
     def convertUnits(self):
@@ -652,6 +720,74 @@ class QDialogListbox(QDialog):
     def cancel_cb(self, event):
         self.cancel = True
         self.selectedItemsText = None
+        self.close()
+
+class QDialogAppendTextFilename(QDialog):
+    def __init__(self, filename, ext, parent=None, font=None):
+        super().__init__(parent)
+        self.cancel = True
+        filenameNOext, _ = os.path.splitext(filename)
+        self.filenameNOext = filenameNOext
+        self.ext = ext
+
+        self.setWindowTitle('Append text to file name')
+
+        mainLayout = QVBoxLayout()
+        formLayout = QFormLayout()
+        buttonsLayout = QHBoxLayout()
+
+        if font is not None:
+            self.setFont(font)
+
+        self.LE = QLineEdit()
+        self.LE.setAlignment(Qt.AlignCenter)
+        formLayout.addRow('Appended text', self.LE)
+        self.LE.textChanged.connect(self.updateFinalFilename)
+
+        self.finalName_label = QLabel(
+            f'Final file name: "{filenameNOext}_{ext}"'
+        )
+        # padding: top, left, bottom, right
+        self.finalName_label.setStyleSheet(
+            'font-size:10pt; padding:5px 0px 0px 0px;'
+        )
+
+        okButton = QPushButton('Ok')
+        okButton.setShortcut(Qt.Key_Enter)
+
+        cancelButton = QPushButton('Cancel')
+
+        buttonsLayout.addWidget(okButton, alignment=Qt.AlignRight)
+        buttonsLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
+        buttonsLayout.setContentsMargins(0, 10, 0, 0)
+
+        mainLayout.addLayout(formLayout)
+        mainLayout.addWidget(self.finalName_label, alignment=Qt.AlignCenter)
+        mainLayout.addLayout(buttonsLayout)
+
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.close)
+
+        self.formLayout = formLayout
+
+        self.setLayout(mainLayout)
+        self.setModal(True)
+
+    def updateFinalFilename(self, text):
+        finalFilename = f'{self.filenameNOext}_{text}{self.ext}'
+        self.finalName_label.setText(f'Final file name: "{finalFilename}"')
+
+    def ok_cb(self, event):
+        if not self.LE.text():
+            err_msg = (
+                'Appended name cannot be empty!'
+            )
+            msg = QtGui.QMessageBox()
+            msg.critical(
+               self, 'Empty name', err_msg, msg.Ok
+            )
+            return
+        self.cancel = False
         self.close()
 
 class QDialogEntriesWidget(QDialog):
@@ -2531,7 +2667,10 @@ class askStopFrameSegm(QDialog):
             PosData.loadImgData()
             PosData.loadOtherFiles(load_segm_data=False, load_metadata=True)
             spinBox.setMaximum(PosData.SizeT)
-            spinBox.setValue(PosData.segmSizeT)
+            if PosData.segmSizeT == 1:
+                spinBox.setValue(PosData.SizeT)
+            else:
+                spinBox.setValue(PosData.segmSizeT)
             spinBox.setAlignment(Qt.AlignCenter)
             visualizeButton = QPushButton('Visualize')
             visualizeButton.clicked.connect(self.visualize_cb)
@@ -3868,7 +4007,8 @@ if __name__ == '__main__':
     #
     # win = pdDataFrameWidget(df)
     # win = QDialogMetadataXML(rawDataStruct=1, chNames=[''])
-    win = cellpose_ParamsDialog()
+    win = QDialogAppendTextFilename('example.npz')
+    # win = cellpose_ParamsDialog()
     # user_ch_file_paths = [
     #     r"G:\My Drive\1_MIA_Data\Beno\test_QtGui\testGuiOnlyTifs\TIFFs\Position_1\Images\19-03-2021_KCY050_SCGE_s02_phase_contr.tif",
     #     r"G:\My Drive\1_MIA_Data\Beno\test_QtGui\testGuiOnlyTifs\TIFFs\Position_2\Images\19-03-2021_KCY050_SCGE_s02_phase_contr.tif"
@@ -3886,5 +4026,5 @@ if __name__ == '__main__':
     # win.setSize()
     # win.setGeometryWindow()
     win.exec_()
-    print(win.minDist)
+    print(win.chNames, win.saveChannels)
     # print(win.SizeT, win.SizeZ, win.zyx_vox_dim)

@@ -186,7 +186,8 @@ class alignWin(QMainWindow):
         if len(selectedFilenames) > 1:
             ch_name_selector = prompts.select_channel_name()
             channelNames, abort = ch_name_selector.get_available_channels(
-                                            selectedFilenames, useExt=None)
+                selectedFilenames, images_paths[0], useExt=None
+            )
             if abort or not channelNames:
                 self.criticalNoCommonBasename()
                 self.close()
