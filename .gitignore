@@ -5,6 +5,7 @@ notebooks/.ipynb_checkpoints
 .idea/
 test.txt
 src/test.py
+src/deprecated
 src/java
 src/javabridge_cp37
 src/javabridge_cp38
@@ -12,9 +13,13 @@ src/javabridge_linux
 benchmarks/
 env/*
 data/*
+!data/placeholder.txt
+!data/.placeholder.txt
 tests/*
 src/utils/deprecated
 instructions/Screenshots
+UserManual/old
+UserManual/*.docx
 # Ignore models folder but keep the folder with placeholder.txt dummy file
 models/*
 !models/placeholder.txt
@@ -39,11 +44,15 @@ setup_acdc.pdf
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
-*.pyc
+/*.py[cod]
+!src/javabridge/_javabridge.cp37-win_amd64.pyd
+!src/javabridge/_javabridge.cp38-win_amd64.pyd
+
 *$py.class
 
 # C extensions
-*.so
+/*.so
+!src/javabridge/_javabridge.cpython-38-x86_64-linux-gnu.so
 
 # Distribution / packaging
 .Python
