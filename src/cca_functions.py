@@ -42,9 +42,11 @@ def configuration_dialog():
         raise IndexError
     return data_dirs, positions
 
-def find_available_channels(filenames):
+def find_available_channels(filenames, first_pos_dir):
     ch_name_selector = prompts.select_channel_name()
-    ch_names, warn = ch_name_selector.get_available_channels(filenames)
+    ch_names, warn = ch_name_selector.get_available_channels(
+        filenames, first_pos_dir
+    )
     return ch_names, warn
 
 def calculate_downstream_data(

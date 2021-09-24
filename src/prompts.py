@@ -561,7 +561,37 @@ class select_channel_name:
             return False
         return True
 
-    def get_available_channels(self, filenames, useExt='.tif'):
+    def get_available_channels(self, filenames, images_path, useExt='.tif'):
+        # First check if metadata.csv already has the channel names
+        metadata_csv_path = None
+        for file in os.listdir(images_path):
+            if file.endswith('metadata.csv'):
+                metadata_csv_path = os.path.join(images_path, file)
+                break
+
+        chNames_found = False
+        if metadata_csv_path is not None:
+            df = pd.read_csv(metadata_csv_path)
+            channelNamesMask = df.Description.str.contains('channel_\d+_name')
+            channelNames = df[channelNamesMask]['values'].to_list()
+            if channelNames:
+                channel_names = channelNames.copy()
+                basename = None
+                for chName in channelNames:
+                    chSaved = []
+                    for file in filenames:
+                        if file.find(chName) != -1:
+                            chSaved.append(True)
+                            chName_idx = file.find(chName)
+                            basename = file[:chName_idx]
+                    if not any(chSaved):
+                        channel_names.remove(chName)
+
+                if basename is not None:
+                    self.basenameNotFound = False
+                    self.basename = basename
+                    return channel_names, False
+
         channel_names = []
         self.basenameNotFound = False
         isBasenamePresent = self.checkDataIntegrity(filenames)

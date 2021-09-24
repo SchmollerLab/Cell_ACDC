@@ -3,6 +3,7 @@ import sys
 import traceback
 import re
 import cv2
+import json
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
@@ -16,10 +17,11 @@ from natsort import natsorted
 import skimage
 import skimage.measure
 from PyQt5 import QtGui
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QRect, QRectF
 from PyQt5.QtWidgets import (
     QApplication
 )
+import pyqtgraph as pg
 import prompts, apps
 
 def get_user_ch_paths(images_paths, user_ch_name):
@@ -44,6 +46,8 @@ def get_user_ch_paths(images_paths, user_ch_name):
 class loadData:
     def __init__(self, imgPath, user_ch_name, QParent=None):
         self.fluo_data_dict = {}
+        self.fluo_bkgrData_dict = {}
+        self.bkgrROIs = []
         self.loadedFluoChannels = set()
         self.parent = QParent
         self.imgPath = imgPath
@@ -79,7 +83,7 @@ class loadData:
     def getBasenameAndChNames(self, select_channel_name):
         ls = os.listdir(self.images_path)
         selector = select_channel_name()
-        self.chNames, _ = selector.get_available_channels(ls)
+        self.chNames, _ = selector.get_available_channels(ls, self.images_path)
         self.basename = selector.basename
 
     def loadImgData(self):
@@ -114,7 +118,8 @@ class loadData:
                        load_shifts=False,
                        loadSegmInfo=False,
                        load_delROIsInfo=False,
-                       loadDataPrepBkgrVals=False,
+                       loadBkgrData=False,
+                       loadBkgrROIs=False,
                        load_last_tracked_i=False,
                        load_metadata=False,
                        load_dataPrep_ROIcoords=False,
@@ -124,7 +129,8 @@ class loadData:
         self.shiftsFound = False if load_shifts else None
         self.segmInfoFound = False if loadSegmInfo else None
         self.delROIsInfoFound = False if load_delROIsInfo else None
-        self.DataPrepBkgrValsFound = False if loadDataPrepBkgrVals else None
+        self.bkgrDataFound = False if loadBkgrData else None
+        self.bkgrROisFound = False if loadBkgrROIs else None
         self.last_tracked_i_found = False if load_last_tracked_i else None
         self.metadataFound = False if load_metadata else None
         self.dataPrep_ROIcoordsFound = False if load_dataPrep_ROIcoords else None
@@ -147,22 +153,37 @@ class loadData:
                 acdc_df = self.BooleansTo0s1s(acdc_df, inplace=True)
                 acdc_df = self.intToBoolean(acdc_df)
                 self.acdc_df = acdc_df
-            elif load_shifts and file.endswith('shifts.npy'):
+            elif load_shifts and file.endswith('align_shift.npy'):
                 self.shiftsFound = True
                 self.loaded_shifts = np.load(filePath)
             elif loadSegmInfo and file.endswith('segmInfo.csv'):
                 self.segmInfoFound = True
-                self.segmInfo_df = pd.read_csv(filePath,
-                                               index_col='frame_i')
+                df = pd.read_csv(filePath)
+                if 'filename' not in df.columns:
+                    df['filename'] = self.filename
+                self.segmInfo_df = df.set_index(['filename', 'frame_i'])
             elif load_delROIsInfo and file.endswith('delROIsInfo.npz'):
                 self.delROIsInfoFound = True
                 self.delROIsInfo_npz = np.load(filePath)
-            elif loadDataPrepBkgrVals and file.endswith('dataPrep_bkgrValues.csv'):
-                self.DataPrepBkgrValsFound = True
-                bkgrValues_df = pd.read_csv(filePath)
-                self.bkgrValues_chNames = bkgrValues_df['channel_name'].unique()
-                self.bkgrValues_df = bkgrValues_df.set_index(
-                                                ['channel_name', 'frame_i'])
+            elif loadBkgrData and file.endswith(f'{self.filename}_bkgrRoiData.npz'):
+                self.bkgrDataFound = True
+                self.bkgrData = np.load(filePath)
+            elif loadBkgrROIs and file.endswith('dataPrep_bkgrROIs.json'):
+                self.bkgrROisFound = True
+                with open(filePath) as json_fp:
+                    bkgROIs_states = json.load(json_fp)
+
+                for roi_state in bkgROIs_states:
+                    X,Y = self.img_data.shape[-2:]
+                    roi = pg.ROI(
+                        [0, 0], [1, 1],
+                        rotatable=False,
+                        removable=False,
+                        pen=pg.mkPen(color=(150,150,150)),
+                        maxBounds=QRectF(QRect(0,0,X,Y))
+                    )
+                    roi.setState(roi_state)
+                    self.bkgrROIs.append(roi)
             elif load_dataPrep_ROIcoords and file.endswith('dataPrepROIs_coords.csv'):
                 df = pd.read_csv(filePath, index_col='description')
                 if 'value' in df.columns:
@@ -180,6 +201,7 @@ class loadData:
                 except Exception as e:
                     self.last_tracked_i = None
         self.setNotFoundData()
+
 
     def extractMetadata(self):
         if 'SizeT' in self.metadata_df.index:
@@ -252,8 +274,8 @@ class loadData:
             self.segmInfo_df = None
         if self.delROIsInfoFound is not None and not self.delROIsInfoFound:
             self.delROIsInfo_npz = None
-        if self.DataPrepBkgrValsFound is not None and not self.DataPrepBkgrValsFound:
-            self.bkgrValues_df = None
+        if self.bkgrDataFound is not None and not self.bkgrDataFound:
+            self.bkgrData = None
         if self.dataPrep_ROIcoordsFound is not None and not self.dataPrep_ROIcoordsFound:
             self.dataPrep_ROIcoords = None
         if self.last_tracked_i_found is not None and not self.last_tracked_i_found:
@@ -319,7 +341,8 @@ class loadData:
         self.segmInfo_df_csv_path = f'{base_path}segmInfo.csv'
         self.delROIs_info_path = f'{base_path}delROIsInfo.npz'
         self.dataPrepROIs_coords_path = f'{base_path}dataPrepROIs_coords.csv'
-        self.dataPrepBkgrValues_path = f'{base_path}dataPrep_bkgrValues.csv'
+        # self.dataPrepBkgrValues_path = f'{base_path}dataPrep_bkgrValues.csv'
+        self.dataPrepBkgrROis_path = f'{base_path}dataPrep_bkgrROIs.json'
         self.metadata_csv_path = f'{base_path}metadata.csv'
 
     def setBlankSegmData(self, SizeT, SizeZ, SizeY, SizeX):

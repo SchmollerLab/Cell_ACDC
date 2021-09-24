@@ -7,6 +7,7 @@ from tqdm import tqdm
 import requests
 import zipfile
 import numpy as np
+import pandas as pd
 import skimage
 from distutils.dir_util import copy_tree
 from pyqtgraph.colormap import ColorMap
@@ -15,6 +16,20 @@ from tifffile.tifffile import TiffWriter, TiffFile
 
 __all__ = ['ColorMap']
 _mapCache = {}
+
+def getDefault_SegmInfo_df(PosData, filename):
+    mid_slice = int(PosData.SizeZ/2)
+    df = pd.DataFrame({
+        'filename': [filename]*PosData.SizeT,
+        'frame_i': range(PosData.SizeT),
+        'z_slice_used_dataPrep': [mid_slice]*PosData.SizeT,
+        'which_z_proj': ['single z-slice']*PosData.SizeT,
+        'z_slice_used_gui': [mid_slice]*PosData.SizeT,
+        'which_z_proj_gui': ['single z-slice']*PosData.SizeT,
+        'resegmented_in_gui': [False]*PosData.SizeT,
+        'is_from_dataPrep': [False]*PosData.SizeT
+    }).set_index(['filename', 'frame_i'])
+    return df
 
 def download_java():
     is_linux = sys.platform.startswith('linux')

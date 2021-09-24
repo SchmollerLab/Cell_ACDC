@@ -289,6 +289,7 @@ class bioFormatsWorker(QObject):
             self.PhysicalSizeY = self.metadataWin.PhysicalSizeY
             self.PhysicalSizeZ = self.metadataWin.PhysicalSizeZ
             self.chNames = self.metadataWin.chNames
+            self.saveChannels = self.metadataWin.saveChannels
             self.emWavelens = self.metadataWin.emWavelens
 
     def saveToPosFolder(self, p, exp_path, filename, series):
@@ -358,9 +359,12 @@ class bioFormatsWorker(QObject):
         df.to_csv(metadata_csv_path)
 
         with bioformats.ImageReader(rawFilePath) as reader:
-            for c, chName in enumerate(self.chNames):
+            for c, (chName, saveCh) in enumerate(zip(self.chNames, self.saveChannels)):
+                if not saveCh:
+                    continue
+
                 self.progress.emit(
-                    f'  channel {c+1}/{len(self.chNames)} ({chName})'
+                    f'  Saving channel {c+1}/{len(self.chNames)} ({chName})'
                 )
                 imgData_ch = []
                 for t in range(self.SizeT):
@@ -503,6 +507,24 @@ class createDataStructWin(QMainWindow):
         mainLayout.setContentsMargins(20, 0, 20, 20)
         mainContainer.setLayout(mainLayout)
 
+        global bioformats, javabridge
+        import bioformats
+        print('Checking if Java is installed...')
+        try:
+            import javabridge
+        except Exception as e:
+            myutils.download_java()
+
+        try:
+            import javabridge
+        except Exception as e:
+            print('===============================================================')
+            print('Automatic download of Java failed. Please download the portable '
+            'version of Java SE Runtime Environment and extract it into '
+            '"/Cell_ACDC/src/java/<OS name folder>"')
+            print('===============================================================')
+            raise FileNotFoundError('Dowload of Java failed. See above for details.')
+
     def getMostRecentPath(self):
         src_path = os.path.dirname(os.path.realpath(__file__))
         recentPaths_path = os.path.join(
@@ -619,7 +641,6 @@ class createDataStructWin(QMainWindow):
         self.worker.filesExisting.connect(self.askReplacePosFilesFiles)
         self.thread.started.connect(self.worker.run)
         self.thread.start()
-
 
     def taskEnded(self):
         if self.worker.aborted:
@@ -828,24 +849,6 @@ class createDataStructWin(QMainWindow):
             self.mainWin.raise_()
 
 if __name__ == "__main__":
-    import bioformats
-    print('Checking if Java is installed...')
-    # myutils.copyRenameJavabridge()
-    try:
-        import javabridge
-    except Exception as e:
-        myutils.download_java()
-
-    try:
-        import javabridge
-    except Exception as e:
-        print('===============================================================')
-        print('Automatic download of Java failed. Please download the portable '
-        'version of Java SE Runtime Environment and extract it into '
-        '"/Cell_ACDC/src/java/<OS name folder>"')
-        print('===============================================================')
-        raise FileNotFoundError('Dowload of Java failed. See above for details.')
-
     print('Launching segmentation script...')
     # Handle high resolution displays:
     if hasattr(Qt, 'AA_EnableHighDpiScaling'):

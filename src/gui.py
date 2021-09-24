@@ -44,7 +44,8 @@ from PyQt5.QtWidgets import (
     QMainWindow, QMenu, QToolBar, QGroupBox,
     QScrollBar, QCheckBox, QToolButton, QSpinBox,
     QComboBox, QDial, QButtonGroup, QActionGroup,
-    QShortcut, QFileDialog, QDoubleSpinBox
+    QShortcut, QFileDialog, QDoubleSpinBox,
+    QAbstractSlider
 )
 
 from pyqtgraph.Qt import QtGui
@@ -54,7 +55,7 @@ import pyqtgraph as pg
 import qrc_resources
 
 # Custom modules
-import load, prompts, apps, core, myutils
+import load, prompts, apps, core, myutils, dataPrep
 from myutils import download_model
 from QtDarkMode import breeze_resources
 
@@ -792,7 +793,7 @@ class guiWin(QMainWindow):
         self.newAction.triggered.connect(self.newFile)
         self.openAction.triggered.connect(self.openFolder)
         self.openFileAction.triggered.connect(self.openFile)
-        self.saveAction.triggered.connect(self.saveFile)
+        self.saveAction.triggered.connect(self.saveData)
         self.showInExplorerAction.triggered.connect(self.showInExplorer)
         self.exitAction.triggered.connect(self.close)
 
@@ -893,11 +894,11 @@ class guiWin(QMainWindow):
 
         # Frames scrollbar
         row += 1
-        self.framesScrollBar = QScrollBar(Qt.Horizontal)
-        self.framesScrollBar.setDisabled(True)
-        self.framesScrollBar.setMinimum(1)
-        self.framesScrollBar.setMaximum(1)
-        self.framesScrollBar.setToolTip(
+        self.navigateScrollBar = QScrollBar(Qt.Horizontal)
+        self.navigateScrollBar.setDisabled(True)
+        self.navigateScrollBar.setMinimum(1)
+        self.navigateScrollBar.setMaximum(1)
+        self.navigateScrollBar.setToolTip(
             'NOTE: The maximum frame number that can be visualized with this '
             'scrollbar\n'
             'is the last visited frame with the selected mode\n'
@@ -914,9 +915,9 @@ class guiWin(QMainWindow):
         self.img1_Widglayout.addWidget(
                 t_label, row, 0, alignment=Qt.AlignRight)
         self.img1_Widglayout.addWidget(
-                self.framesScrollBar, row, 1, 1, 10)
+                self.navigateScrollBar, row, 1, 1, 10)
         self.t_label.hide()
-        self.framesScrollBar.hide()
+        self.navigateScrollBar.hide()
 
         # z-slice scrollbars
         row += 1
@@ -2409,7 +2410,7 @@ class guiWin(QMainWindow):
                 rp_budID = PosData.rp[bud_obj_idx]
                 rp_new_mothID = PosData.rp[new_moth_obj_idx]
                 if rp_budID.area >= rp_new_mothID.area:
-                    msg = QtGui.QMessageBox()
+                    msg = QtGui.QMessageBox(self)
                     msg.setIcon(msg.Warning)
                     msg.setText(
                         f'You clicked FIRST on ID {budID} and then on {new_mothID}.\n'
@@ -4182,7 +4183,6 @@ class guiWin(QMainWindow):
     def changeMode(self, idx):
         PosData = self.data[self.pos_i]
         mode = self.modeComboBox.itemText(idx)
-        print(mode)
         if mode == 'Segmentation and Tracking':
             self.modeToolBar.setVisible(True)
             self.setEnabledWidgetsToolbar(True)
@@ -4238,7 +4238,7 @@ class guiWin(QMainWindow):
             self.drawIDsContComboBox.clear()
             self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxCcaItems)
             self.drawIDsContComboBox.setCurrentText(currentMode)
-            self.framesScrollBar.setMaximum(PosData.segmSizeT)
+            self.navigateScrollBar.setMaximum(PosData.segmSizeT)
             try:
                 self.undoAction.triggered.disconnect()
                 self.redoAction.triggered.disconnect()
@@ -5183,7 +5183,8 @@ class guiWin(QMainWindow):
         t1 = time.time()
         self.is_first_call_YeaZ = False
         if PosData.segmInfo_df is not None and PosData.SizeZ>1:
-            PosData.segmInfo_df.at[PosData.frame_i, 'resegmented_in_gui'] = True
+            idx = (PosData.filename, PosData.frame_i)
+            PosData.segmInfo_df.at[idx, 'resegmented_in_gui'] = True
         PosData.lab = lab.copy()
         self.update_rp()
         self.tracking(enforce=True)
@@ -5254,7 +5255,8 @@ class guiWin(QMainWindow):
         t1 = time.time()
         self.is_first_call_cellpose = False
         if PosData.segmInfo_df is not None and PosData.SizeZ>1:
-            PosData.segmInfo_df.at[PosData.frame_i, 'resegmented_in_gui'] = True
+            idx = (PosData.filename, PosData.frame_i)
+            PosData.segmInfo_df.at[idx, 'resegmented_in_gui'] = True
         PosData.lab = lab.copy()
         self.update_rp()
         self.tracking(enforce=True)
@@ -5316,11 +5318,12 @@ class guiWin(QMainWindow):
         self.updateFramePosLabel()
         PosData = self.data[self.pos_i]
         pos = self.pos_i+1 if self.isSnapshot else PosData.frame_i+1
-        self.framesScrollBar.setSliderPosition(pos)
+        self.navigateScrollBar.setSliderPosition(pos)
         if PosData.SizeZ > 1:
-            z = PosData.segmInfo_df.at[PosData.frame_i, 'z_slice_used_gui']
+            idx = (PosData.filename, PosData.frame_i)
+            z = PosData.segmInfo_df.at[idx, 'z_slice_used_gui']
             self.zSliceScrollBar.setSliderPosition(z)
-            how = PosData.segmInfo_df.at[PosData.frame_i, 'which_z_proj_gui']
+            how = PosData.segmInfo_df.at[idx, 'which_z_proj_gui']
             self.zProjComboBox.setCurrentText(how)
             self.zSliceScrollBar.setMaximum(PosData.SizeZ-1)
 
@@ -5425,7 +5428,7 @@ class guiWin(QMainWindow):
                               updateFilters=True, updateLabelItemColor=False)
             self.updateScrollbars()
             self.computeSegm()
-            self.setFramesScrollbarMaximum()
+            self.setnavigateScrollBarMaximum()
             self.zoomToCells()
         else:
             # Store data for current frame
@@ -5434,16 +5437,16 @@ class guiWin(QMainWindow):
             print(msg)
             self.titleLabel.setText(msg, color='w')
 
-    def setFramesScrollbarMaximum(self):
+    def setnavigateScrollBarMaximum(self):
         PosData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
         if mode == 'Segmentation and Tracking':
             if PosData.last_tracked_i is not None:
                 if PosData.frame_i > PosData.last_tracked_i:
-                    self.framesScrollBar.setMaximum(PosData.frame_i+1)
+                    self.navigateScrollBar.setMaximum(PosData.frame_i+1)
         elif mode == 'Cell cycle analysis':
             if PosData.frame_i > self.last_cca_frame_i:
-                self.framesScrollBar.setMaximum(PosData.frame_i+1)
+                self.navigateScrollBar.setMaximum(PosData.frame_i+1)
 
     def prev_frame(self):
         PosData = self.data[self.pos_i]
@@ -5511,7 +5514,8 @@ class guiWin(QMainWindow):
                                    load_shifts=False,
                                    loadSegmInfo=True,
                                    load_delROIsInfo=True,
-                                   loadDataPrepBkgrVals=True,
+                                   loadBkgrData=True,
+                                   loadBkgrROIs=True,
                                    load_last_tracked_i=True,
                                    load_metadata=True
                 )
@@ -5599,9 +5603,10 @@ class guiWin(QMainWindow):
         self.init_segmInfo_df()
         self.initPosAttr(max_ID=PosData.segm_data.max())
         self.initFluoData()
-        self.framesScrollBar.setSliderPosition(PosData.frame_i+1)
+        self.navigateScrollBar.setSliderPosition(PosData.frame_i+1)
         if PosData.SizeZ > 1:
-            how = PosData.segmInfo_df.at[PosData.frame_i, 'which_z_proj_gui']
+            idx = (PosData.filename, PosData.frame_i)
+            how = PosData.segmInfo_df.at[idx, 'which_z_proj_gui']
             self.zProjComboBox.setCurrentText(how)
 
         return True
@@ -5687,18 +5692,11 @@ class guiWin(QMainWindow):
 
     def init_segmInfo_df(self):
         self.t_label.show()
-        self.framesScrollBar.show()
-        self.framesScrollBar.setDisabled(False)
+        self.navigateScrollBar.show()
+        self.navigateScrollBar.setDisabled(False)
         self.zSliceScrollBar.setMaximum(self.data[0].SizeZ-1)
         for PosData in self.data:
-            if PosData.segmInfo_df is None and PosData.SizeZ > 1:
-                mid_slice = int(PosData.SizeZ/2)
-                PosData.segmInfo_df = pd.DataFrame(
-                    {'frame_i': range(PosData.SizeT),
-                     'z_slice_used_dataPrep': [mid_slice]*PosData.SizeT,
-                     'which_z_proj': ['single z-slice']*PosData.SizeT}
-                ).set_index('frame_i')
-            if PosData.SizeZ > 1:
+            if PosData.SizeZ > 1 and PosData.segmInfo_df is not None:
                 if 'z_slice_used_gui' not in PosData.segmInfo_df.columns:
                     PosData.segmInfo_df['z_slice_used_gui'] = (
                                     PosData.segmInfo_df['z_slice_used_dataPrep']
@@ -5708,47 +5706,73 @@ class guiWin(QMainWindow):
                                     PosData.segmInfo_df['which_z_proj']
                                     )
                 PosData.segmInfo_df['resegmented_in_gui'] = False
+                PosData.segmInfo_df.to_csv(PosData.segmInfo_df_csv_path)
+
+            NO_segmInfo = (
+                PosData.segmInfo_df is None
+                or PosData.filename not in PosData.segmInfo_df.index
+            )
+            if NO_segmInfo and PosData.SizeZ > 1:
+                filename = PosData.filename
+                df = myutils.getDefault_SegmInfo_df(PosData, filename)
+                if PosData.segmInfo_df is None:
+                    PosData.segmInfo_df = df
+                else:
+                    PosData.segmInfo_df = pd.concat([df, PosData.segmInfo_df])
+                PosData.segmInfo_df.to_csv(PosData.segmInfo_df_csv_path)
+
+
                 self.enableZstackWidgets(True)
                 try:
-                    self.zSliceScrollBar.sliderMoved.disconnect()
+                    self.zSliceScrollBar.valueChanged.disconnect()
                     self.zProjComboBox.currentTextChanged.disconnect()
                     self.zProjComboBox.activated.disconnect()
                 except Exception as e:
                     pass
-                self.zSliceScrollBar.sliderMoved.connect(self.update_z_slice)
+                self.zSliceScrollBar.valueChanged.connect(self.update_z_slice)
                 self.zProjComboBox.currentTextChanged.connect(self.updateZproj)
                 self.zProjComboBox.activated.connect(self.clearComboBoxFocus)
             if PosData.SizeT == 1:
                 self.t_label.setText('Position n. ')
-                self.framesScrollBar.setMinimum(1)
-                self.framesScrollBar.setMaximum(len(self.data))
+                self.navigateScrollBar.setMinimum(1)
+                self.navigateScrollBar.setMaximum(len(self.data))
                 try:
-                    self.framesScrollBar.sliderMoved.disconnect()
-                    self.framesScrollBar.sliderReleased.disconnect()
+                    self.navigateScrollBar.sliderMoved.disconnect()
+                    self.navigateScrollBar.sliderReleased.disconnect()
+                    self.navigateScrollBar.actionTriggered.disconnect()
                 except TypeError:
                     pass
-                self.framesScrollBar.sliderMoved.connect(
+                self.navigateScrollBar.sliderMoved.connect(
                                                   self.PosScrollBarMoved)
-                self.framesScrollBar.sliderReleased.connect(
+                self.navigateScrollBar.sliderReleased.connect(
                                                   self.PosScrollBarReleased)
+                self.navigateScrollBar.actionTriggered.connect(
+                                                  self.PosScrollBarAction)
             else:
-                self.framesScrollBar.setMinimum(1)
+                self.navigateScrollBar.setMinimum(1)
                 if PosData.last_tracked_i is not None:
-                    self.framesScrollBar.setMaximum(PosData.last_tracked_i+1)
+                    self.navigateScrollBar.setMaximum(PosData.last_tracked_i+1)
                 try:
-                    self.framesScrollBar.sliderMoved.disconnect()
-                    self.framesScrollBar.sliderReleased.disconnect()
+                    self.navigateScrollBar.sliderMoved.disconnect()
+                    self.navigateScrollBar.sliderReleased.disconnect()
+                    self.navigateScrollBar.actionTriggered.disconnect()
                 except Exception as e:
                     pass
                 self.t_label.setText('frame n.  ')
-                self.framesScrollBar.sliderMoved.connect(
-                                                  self.framesScrollBarMoved)
-                self.framesScrollBar.sliderReleased.connect(
-                                                  self.framesScrollBarReleased)
+                self.navigateScrollBar.sliderMoved.connect(
+                    self.navigateScrollBarMoved
+                )
+                self.navigateScrollBar.sliderReleased.connect(
+                    self.navigateScrollBarReleased
+                )
+                self.navigateScrollBar.actionTriggered.connect(
+                    self.navigateScrollBarAction
+                )
 
     def update_z_slice(self, z):
         PosData = self.data[self.pos_i]
-        PosData.segmInfo_df.at[PosData.frame_i, 'z_slice_used_gui'] = z
+        idx = (PosData.filename, PosData.frame_i)
+        PosData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
         self.updateALLimg(only_ax1=True)
 
     def update_overlay_z_slice(self, z):
@@ -5765,7 +5789,8 @@ class guiWin(QMainWindow):
 
     def updateZproj(self, how):
         for p, PosData in enumerate(self.data[self.pos_i:]):
-            PosData.segmInfo_df.at[PosData.frame_i, 'which_z_proj_gui'] = how
+            idx = (PosData.filename, PosData.frame_i)
+            PosData.segmInfo_df.at[idx, 'which_z_proj_gui'] = how
         PosData = self.data[self.pos_i]
         if how == 'single z-slice':
             self.zSliceScrollBar.setDisabled(False)
@@ -5881,7 +5906,7 @@ class guiWin(QMainWindow):
         self.splineHoverON = False
         self.rulerHoverON = False
         self.autoContourHoverON = False
-        self.framesScrollBarStartedMoving = True
+        self.navigateScrollBarStartedMoving = True
 
         self.clickedOnBud = False
         self.gaussWin = None
@@ -6017,18 +6042,38 @@ class guiWin(QMainWindow):
         self.ax2.vb.autoRange()
         self.ax1.vb.autoRange()
 
+    def PosScrollBarAction(self, action):
+        if action == QAbstractSlider.SliderSingleStepAdd:
+            self.PosScrollBarReleased()
+        elif action == QAbstractSlider.SliderSingleStepSub:
+            self.PosScrollBarReleased()
+        elif action == QAbstractSlider.SliderPageStepAdd:
+            self.PosScrollBarReleased()
+        elif action == QAbstractSlider.SliderPageStepSub:
+            self.PosScrollBarReleased()
+
     def PosScrollBarMoved(self, pos_n):
         self.pos_i = pos_n-1
         proceed_cca, never_visited = self.get_data()
         self.updateALLimg(updateFilters=False)
 
     def PosScrollBarReleased(self):
-        self.pos_i = self.framesScrollBar.sliderPosition()-1
+        self.pos_i = self.navigateScrollBar.sliderPosition()-1
         proceed_cca, never_visited = self.get_data()
         self.updateALLimg(updateFilters=True)
         self.computeSegm()
 
-    def framesScrollBarMoved(self, frame_n):
+    def navigateScrollBarAction(self, action):
+        if action == QAbstractSlider.SliderSingleStepAdd:
+            self.navigateScrollBarReleased()
+        elif action == QAbstractSlider.SliderSingleStepSub:
+            self.navigateScrollBarReleased()
+        elif action == QAbstractSlider.SliderPageStepAdd:
+            self.navigateScrollBarReleased()
+        elif action == QAbstractSlider.SliderPageStepSub:
+            self.navigateScrollBarReleased()
+
+    def navigateScrollBarMoved(self, frame_n):
         PosData = self.data[self.pos_i]
         PosData.frame_i = frame_n-1
         if PosData.allData_li[PosData.frame_i]['labels'] is None:
@@ -6036,19 +6081,19 @@ class guiWin(QMainWindow):
         else:
             PosData.lab = PosData.allData_li[PosData.frame_i]['labels']
         cells_img = self.getImage()
-        if self.framesScrollBarStartedMoving:
+        if self.navigateScrollBarStartedMoving:
             self.clearAllItems()
         self.t_label.setText(
                  f'frame n. {PosData.frame_i+1}/{PosData.segmSizeT}')
         self.img1.setImage(cells_img)
         self.img2.setImage(PosData.lab)
         self.updateLookuptable()
-        self.framesScrollBarStartedMoving = False
+        self.navigateScrollBarStartedMoving = False
 
-    def framesScrollBarReleased(self):
-        self.framesScrollBarStartedMoving = True
+    def navigateScrollBarReleased(self):
+        self.navigateScrollBarStartedMoving = True
         PosData = self.data[self.pos_i]
-        PosData.frame_i = self.framesScrollBar.sliderPosition()-1
+        PosData.frame_i = self.navigateScrollBar.sliderPosition()-1
         self.get_data()
         self.updateALLimg()
 
@@ -6073,11 +6118,8 @@ class guiWin(QMainWindow):
 
         mode = str(self.modeComboBox.currentText())
 
-
-
         PosData.allData_li[PosData.frame_i]['regionprops'] = PosData.rp.copy()
-        if mode != 'Viewer':
-            PosData.allData_li[PosData.frame_i]['labels'] = PosData.lab.copy()
+        PosData.allData_li[PosData.frame_i]['labels'] = PosData.lab.copy()
 
         if debug:
             pass
@@ -6370,7 +6412,8 @@ class guiWin(QMainWindow):
                 i = IDsCellsG1.index(ID)
                 for j, newID_cont in enumerate(newIDs_contours):
                     min_dist, nearest_xy = self.nearest_point_2Dyx(
-                                                         cont, newID_cont)
+                        cont, newID_cont
+                    )
                     cost[i, j] = min_dist
 
         # Run hungarian (munkres) assignment algorithm
@@ -6598,7 +6641,7 @@ class guiWin(QMainWindow):
             else:
                 last_tracked_i = PosData.segmSizeT-1
 
-        self.framesScrollBar.setMaximum(last_tracked_i+1)
+        self.navigateScrollBar.setMaximum(last_tracked_i+1)
         if PosData.frame_i > last_tracked_i:
             # Prompt user to go to last tracked frame
             msg = QtGui.QMessageBox()
@@ -6718,7 +6761,7 @@ class guiWin(QMainWindow):
 
         self.last_cca_frame_i = last_cca_frame_i
 
-        self.framesScrollBar.setMaximum(last_cca_frame_i+1)
+        self.navigateScrollBar.setMaximum(last_cca_frame_i+1)
 
         if PosData.cca_df is None:
             PosData.cca_df = self.getBaseCca_df()
@@ -6732,7 +6775,7 @@ class guiWin(QMainWindow):
     def remove_future_cca_df(self, from_frame_i):
         PosData = self.data[self.pos_i]
         self.last_cca_frame_i = PosData.frame_i
-        self.setFramesScrollbarMaximum()
+        self.setnavigateScrollBarMaximum()
         for i in range(from_frame_i, PosData.segmSizeT):
             df = PosData.allData_li[i]['acdc_df']
             if df is None:
@@ -7129,6 +7172,7 @@ class guiWin(QMainWindow):
 
     def load_fluo_data(self, fluo_path):
         print(f'Loading fluorescent image data from "{fluo_path}"...')
+        bkgrData = None
         PosData = self.data[self.pos_i]
         # Load overlay frames and align if needed
         filename = os.path.basename(fluo_path)
@@ -7139,15 +7183,36 @@ class guiWin(QMainWindow):
                 fluo_data = fluo_data['arr_0']
             except Exception as e:
                 fluo_data = fluo_data
+
+            # Load background data
+            bkgrData_path = os.path.join(
+                PosData.images_path, f'{filename_noEXT}_bkgrRoiData.npz'
+            )
+            if os.path.exists(bkgrData_path):
+                bkgrData = np.load(bkgrData_path)
         elif ext == '.tif' or ext == '.tiff':
             aligned_filename = f'{filename_noEXT}_aligned.npz'
             aligned_path = os.path.join(PosData.images_path, aligned_filename)
             if os.path.exists(aligned_path):
                 fluo_data = np.load(aligned_path)['arr_0']
+
+                # Load background data
+                bkgrData_path = os.path.join(
+                    PosData.images_path, f'{aligned_filename}_bkgrRoiData.npz'
+                )
+                if os.path.exists(bkgrData_path):
+                    bkgrData = np.load(bkgrData_path)
             else:
                 fluo_data = self.loadNonAlignedFluoChannel(fluo_path)
                 if fluo_data is None:
-                    return None
+                    return None, None
+
+                # Load background data
+                bkgrData_path = os.path.join(
+                    PosData.images_path, f'{filename_noEXT}_bkgrRoiData.npz'
+                )
+                if os.path.exists(bkgrData_path):
+                    bkgrData = np.load(bkgrData_path)
         else:
             txt = (f'File format {ext} is not supported!\n'
                     'Choose either .tif or .npz files.')
@@ -7155,9 +7220,9 @@ class guiWin(QMainWindow):
             msg.critical(
                 self, 'File not supported', txt, msg.Ok
             )
-            return None
+            return None, None
 
-        return fluo_data
+        return fluo_data, bkgrData
 
     def setOverlayColors(self):
         self.overlayRGBs = [(255, 255, 0),
@@ -7180,6 +7245,7 @@ class guiWin(QMainWindow):
         return extensions
 
     def overlay_cb(self, checked):
+        self.UserNormAction, _, _ = self.getCheckNormAction()
         PosData = self.data[self.pos_i]
         if checked:
             prompt = True
@@ -7250,7 +7316,7 @@ class guiWin(QMainWindow):
                             self.criticalFluoChannelNotFound(ol_ch, PosData)
                             self.app.restoreOverrideCursor()
                             return
-                        fluo_data = self.load_fluo_data(ol_path)
+                        fluo_data, bkgrData = self.load_fluo_data(ol_path)
                         if fluo_data is None:
                             self.app.restoreOverrideCursor()
                             return
@@ -7260,6 +7326,7 @@ class guiWin(QMainWindow):
                             fluo_data = np.array([fluo_data])
 
                         PosData.fluo_data_dict[filename] = fluo_data
+                        PosData.fluo_bkgrData_dict[filename] = bkgrData
                         PosData.ol_data_dict[filename] = fluo_data
                         ol_data[filename] = fluo_data.copy()
                         ol_colors[filename] = self.overlayRGBs[i]
@@ -7273,7 +7340,6 @@ class guiWin(QMainWindow):
                 self.app.restoreOverrideCursor()
                 self.overlayButton.setStyleSheet('background-color: #A7FAC7')
 
-            self.UserNormAction, _, _ = self.getCheckNormAction()
             self.normalizeRescale0to1Action.setChecked(True)
             self.hist.imageItem = lambda: None
             self.updateHistogramItem(self.img1)
@@ -7546,11 +7612,20 @@ class guiWin(QMainWindow):
         if frame_i is None:
             frame_i = PosData.frame_i
         if PosData.SizeZ > 1:
-            z = PosData.segmInfo_df.at[frame_i, 'z_slice_used_gui']
-            zProjHow = PosData.segmInfo_df.at[frame_i, 'which_z_proj_gui']
+            idx = (PosData.filename, frame_i)
+            z = PosData.segmInfo_df.at[idx, 'z_slice_used_gui']
+            zProjHow = PosData.segmInfo_df.at[idx, 'which_z_proj_gui']
             img = PosData.img_data[frame_i]
             if zProjHow == 'single z-slice':
+                reconnect = False
+                try:
+                    self.zSliceScrollBar.valueChanged.disconnect()
+                    reconnect = True
+                except TypeError:
+                    pass
                 self.zSliceScrollBar.setSliderPosition(z)
+                if reconnect:
+                    self.zSliceScrollBar.valueChanged.connect(self.update_z_slice)
                 self.z_label.setText(f'z-slice  {z+1:02}/{PosData.SizeZ}')
                 cells_img = img[z].copy()
             elif zProjHow == 'max z-projection':
@@ -8157,7 +8232,7 @@ class guiWin(QMainWindow):
                  'delROIs_info': {'rois': [], 'delMasks': [], 'delIDsROI': []},
                  'histoLevels': {}
             }
-        self.setFramesScrollbarMaximum()
+        self.setnavigateScrollBarMaximum()
 
     def removeAllItems(self):
         self.ax1.clear()
@@ -8405,7 +8480,9 @@ class guiWin(QMainWindow):
             filenames = os.listdir(images_path)
             if ch_name_selector.is_first_call:
                 ch_names, basenameNotFound = (
-                    ch_name_selector.get_available_channels(filenames)
+                    ch_name_selector.get_available_channels(
+                        filenames, images_path
+                    )
                 )
                 self.ch_names = ch_names
                 if not ch_names:
@@ -8492,6 +8569,7 @@ class guiWin(QMainWindow):
             self.appendPathWindowTitle(user_ch_file_paths)
             self.updateALLimg(updateLabelItemColor=False)
             self.updateScrollbars()
+            self.navigateToolBar.show()
             self.fontSizeAction.setChecked(True)
             self.openAction.setEnabled(True)
             self.editTextIDsColorAction.setDisabled(False)
@@ -8576,7 +8654,7 @@ class guiWin(QMainWindow):
                     self.criticalFluoChannelNotFound(fluo_ch, PosData)
                     self.app.restoreOverrideCursor()
                     return
-                fluo_data = self.load_fluo_data(fluo_path)
+                fluo_data, bkgrData = self.load_fluo_data(fluo_path)
                 if fluo_data is None:
                     self.app.restoreOverrideCursor()
                     return
@@ -8586,6 +8664,7 @@ class guiWin(QMainWindow):
                     fluo_data = np.array([fluo_data])
 
                 PosData.fluo_data_dict[filename] = fluo_data
+                PosData.fluo_bkgrData_dict[filename] = bkgrData
                 PosData.ol_data_dict[filename] = fluo_data.copy()
         self.app.restoreOverrideCursor()
         self.overlayButton.setStyleSheet('background-color: #A7FAC7')
@@ -8633,6 +8712,103 @@ class guiWin(QMainWindow):
 
         systems.get(os.name, os.startfile)(PosData.images_path)
 
+    def getChNames(self, PosData):
+        fluo_keys = list(PosData.fluo_data_dict.keys())
+
+        loadedChNames = []
+        for key in fluo_keys:
+            chName = key[len(PosData.basename):]
+            if chName.find('_aligned') != -1:
+                idx = chName.find('_aligned')
+                chName = f'gui_{chName[:idx]}'
+            loadedChNames.append(chName)
+
+        PosData.loadedChNames = loadedChNames
+
+    def zSliceAbsent(self, filename, SizeZ):
+        msg = QtGui.QMessageBox(self)
+        msg.setWindowTitle('z-slice absent')
+        msg.setIcon(msg.Warning)
+        txt = (
+        f"""
+        <p style="font-size:10pt">
+            You loaded the fluorescent file called {filename},<br>
+            however you <b>never selected which z-slice</b> you want to use
+            when calculating metrics (e.g., mean, median, amount...etc.)<br><br>
+            Choose one of following options:
+        <p>
+        """
+        )
+        msg.setText(txt)
+        runDataPrepButton = QPushButton(
+            'Visualize the data now and select a z-slice (RECOMMENDED)'
+        )
+        useSameAsSegmChButton = QPushButton(
+            'Use the same z-slice used for the segmented channel'
+        )
+        useMiddleSliceButton = QPushButton(
+            f'Use the middle z-slice ({int(SizeZ/2)})'
+        )
+        msg.addButton(runDataPrepButton, msg.YesRole)
+        msg.addButton(useSameAsSegmChButton, msg.NoRole)
+        msg.addButton(useMiddleSliceButton, msg.ApplyRole)
+        msg.exec_()
+        if msg.clickedButton() == useMiddleSliceButton:
+            for PosData in self.data:
+                df = self.getDefault_SegmInfo_df(PosData, filename)
+                PosData.segmInfo_df = pd.concat([df, PosData.segmInfo_df])
+                PosData.segmInfo_df.to_csv(PosData.segmInfo_df_csv_path)
+        elif msg.clickedButton() == useSameAsSegmChButton:
+            for PosData in self.data:
+                df = PosData.segmInfo_df.loc[PosData.filename]
+                new_df = self.getDefault_SegmInfo_df(PosData, filename)
+                for z_info in df.itertuples():
+                    frame_i = z_info.Index[1]
+                    zProjHow = z_info.which_z_proj
+                    if zProjHow == 'single z-slice':
+                        refIdx = (PosData.filename, frame_i)
+                        if PosData.segmInfo_df.at[refIdx, 'resegmented_in_gui']:
+                            col = 'z_slice_used_gui'
+                        else:
+                            col = 'z_slice_used_dataPrep'
+                        z_slice = PosData.segmInfo_df.at[refIdx, col]
+                        idx = (filename, frame_i)
+                        new_df.at[idx, 'z_slice_used_dataPrep'] = z_slice
+                        new_df.at[idx, 'z_slice_used_gui'] = z_slice
+                PosData.segmInfo_df = pd.concat([df, PosData.segmInfo_df])
+                PosData.segmInfo_df.to_csv(PosData.segmInfo_df_csv_path)
+        elif msg.clickedButton() == runDataPrepButton:
+            user_ch_file_paths = []
+            for PosData in self.data:
+                if filename.endswith('aligned'):
+                    ext = '.npz'
+                else:
+                    ext = '.tif'
+                user_ch_path = os.path.join(
+                    PosData.images_path, f'{filename}{ext}'
+                )
+                user_ch_name = filename[len(PosData.basename):]
+                user_ch_file_paths.append(user_ch_path)
+                exp_path = os.path.dirname(PosData.pos_path)
+
+            dataPrepWin = dataPrep.dataPrepWin()
+            dataPrepWin.titleText = (
+            """
+            Select z-slice (or projection) for each frame/position.<br>
+            Once happy, close the window.
+            """)
+            dataPrepWin.show()
+            dataPrepWin.initLoading()
+            dataPrepWin.loadFiles(
+                exp_path, user_ch_file_paths, user_ch_name
+            )
+            dataPrepWin.startAction.setDisabled(True)
+
+            loop = QEventLoop(self)
+            dataPrepWin.loop = loop
+            loop.exec_()
+
+
     def addMetrics_acdc_df(self, df, rp, frame_i, lab, PosData):
         """
         Function used to add metrics to the acdc_df.
@@ -8650,8 +8826,6 @@ class guiWin(QMainWindow):
         vox_to_fl = PhysicalSizeY*(PhysicalSizeX**2)
         yx_pxl_to_um2 = PhysicalSizeY*PhysicalSizeX
         numCells = len(rp)
-        z_slice = PosData.segmInfo_df.at[frame_i, 'z_slice_used_dataPrep']
-        zz_slices = [z_slice]*numCells
         IDs = [0]*numCells
         IDs_vol_vox = [0]*numCells
         IDs_area_pxl = [0]*numCells
@@ -8662,13 +8836,9 @@ class guiWin(QMainWindow):
         fluo_keys = list(PosData.fluo_data_dict.keys())
         fluo_data = PosData.fluo_data_dict[fluo_keys[0]][frame_i]
         is_3D = fluo_data.ndim == 3
-        how_3Dto2D = ['_maxProj', '_sumProj', '_zSlice'] if is_3D else ['']
+        how_3Dto2D = ['_maxProj', '_meanProj', '_zSlice'] if is_3D else ['']
         n = len(how_3Dto2D)
         numFluoChannels = len(fluo_keys)
-
-        print('')
-        print(n)
-        print(numFluoChannels)
 
         chNames = PosData.loadedChNames
         fluo_means = np.zeros((numCells, numFluoChannels*n))
@@ -8684,6 +8854,17 @@ class guiWin(QMainWindow):
         fluo_amounts_ROIbkgr = np.zeros((numCells, numFluoChannels*n))
         outCellsMask = lab==0
 
+        # Compute ROI bkgrMask
+        if PosData.bkgrROIs:
+            ROI_bkgrMask = np.zeros(PosData.lab.shape, bool)
+            if PosData.bkgrROIs:
+                for roi in PosData.bkgrROIs:
+                    xl, yl = [int(round(c)) for c in roi.pos()]
+                    w, h = [int(round(c)) for c in roi.size()]
+                    ROI_bkgrMask[yl:yl+h, xl:xl+w] = True
+        else:
+            ROI_bkgrMask = None
+
         for i, obj in enumerate(rp):
             IDs[i] = obj.label
             rotate_ID_img = skimage.transform.rotate(
@@ -8698,24 +8879,64 @@ class guiWin(QMainWindow):
             IDs_area_um2[i] = obj.area*yx_pxl_to_um2
             # Calc metrics for each fluo channel
             for j, key in enumerate(fluo_keys):
-                ROI_bkgrVal = self.getDataPrepBkgrVal(
-                                            PosData.bkgrValues_df,
-                                            PosData.bkgrValues_chNames,
-                                            frame_i, j)
                 fluo_data = PosData.fluo_data_dict[key][frame_i]
+                bkgrArchive = PosData.fluo_bkgrData_dict[key]
                 fluo_data_projs = []
-                if fluo_data.ndim == 3:
+                bkgrData_medians = []
+                if PosData.SizeZ > 1:
+                    idx = (key, frame_i)
+                    try:
+                        if PosData.segmInfo_df.at[idx, 'resegmented_in_gui']:
+                            col = 'z_slice_used_gui'
+                        else:
+                            col = 'z_slice_used_dataPrep'
+                        z_slice = PosData.segmInfo_df.at[idx, col]
+                    except KeyError:
+                        if self.ask_zSlice_absent:
+                            self.app.restoreOverrideCursor()
+                            self.zSliceAbsent(key, PosData.SizeZ)
+                            self.ask_zSlice_absent = False
+                            self.app.setOverrideCursor(Qt.WaitCursor)
+                        df = pd.read_csv(PosData.segmInfo_df_csv_path)
+                        PosData.segmInfo_df = df.set_index(['filename', 'frame_i'])
+                        z_slice = PosData.segmInfo_df.at[idx, col]
+
                     fluo_data_z_maxP = fluo_data.max(axis=0)
-                    fluo_data_z_sumP = fluo_data.sum(axis=0)
+                    fluo_data_z_sumP = fluo_data.mean(axis=0)
                     fluo_data = fluo_data[z_slice]
 
                     # how_3Dto2D = ['_maxProj', '_sumProj', '_zSlice']
                     fluo_data_projs.append(fluo_data_z_maxP)
                     fluo_data_projs.append(fluo_data_z_sumP)
                     fluo_data_projs.append(fluo_data)
+                    if bkgrArchive is not None:
+                        bkgrVals_z_maxP = []
+                        bkgrVals_z_sumP = []
+                        bkgrVals_zSlice = []
+                        for roi_key in bkgrArchive.files:
+                            roiData = bkgrArchive[roi_key]
+                            if PosData.SizeT > 1:
+                                roiData = bkgrArchive[roi_key][frame_i]
+                            roi_z_maxP = roiData.max(axis=0)
+                            roi_z_sumP = roiData.mean(axis=0)
+                            roi_zSlice = roiData[z_slice]
+                            bkgrVals_z_maxP.extend(roi_z_maxP[roi_z_maxP!=0])
+                            bkgrVals_z_sumP.extend(roi_z_sumP[roi_z_sumP!=0])
+                            bkgrVals_zSlice.extend(roi_zSlice[roi_zSlice!=0])
+                        bkgrData_medians.append(np.median(bkgrVals_z_maxP))
+                        bkgrData_medians.append(np.median(bkgrVals_z_sumP))
+                        bkgrData_medians.append(np.median(bkgrVals_zSlice))
                 else:
                     fluo_data_2D = fluo_data
                     fluo_data_projs.append(fluo_data_2D)
+                    if bkgrArchive is not None:
+                        bkgrVals_2D = []
+                        for roi_key in bkgrArchive.files:
+                            roiData = bkgrArchive[roi_key]
+                            if PosData.SizeT > 1:
+                                roiData = bkgrArchive[roi_key][frame_i]
+                            bkgrVals_2D.extend(roiData[roiData!=0])
+                        bkgrData_medians.append(np.median(bkgrVals_2D))
 
                 for k, fluo_2D in enumerate(fluo_data_projs):
                     fluo_data_ID = fluo_2D[obj.slice][obj.image]
@@ -8727,7 +8948,12 @@ class guiWin(QMainWindow):
                     fluo_mean = fluo_data_ID.mean()
                     fluo_amount_autoBkgr = (fluo_mean-fluo_backgr)*obj.area
 
-                    if ROI_bkgrVal is not None:
+                    if ROI_bkgrMask is not None:
+                        ROI_bkgrVal = np.median(fluo_2D[ROI_bkgrMask])
+                        fluo_amount_ROIbkgr = (fluo_mean-ROI_bkgrVal)*obj.area
+                        fluo_amounts_ROIbkgr[i, j+k] = fluo_amount_ROIbkgr
+                    elif bkgrArchive is not None:
+                        ROI_bkgrVal = bkgrData_medians[k]
                         fluo_amount_ROIbkgr = (fluo_mean-ROI_bkgrVal)*obj.area
                         fluo_amounts_ROIbkgr[i, j+k] = fluo_amount_ROIbkgr
 
@@ -8747,7 +8973,7 @@ class guiWin(QMainWindow):
         df['cell_area_um2'] = pd.Series(data=IDs_area_um2, index=IDs, dtype=float)
         df['cell_vol_fl'] = pd.Series(data=IDs_vol_fl, index=IDs, dtype=float)
 
-        df['z_slice_used_segm'] = pd.Series(data=zz_slices, index=IDs, dtype=int)
+        # df['z_slice_used_segm'] = pd.Series(data=zz_slices, index=IDs, dtype=int)
 
         cols = [f'{ch}_mean{how}' for ch in chNames for how in how_3Dto2D]
         df[cols] = pd.DataFrame(data=fluo_means, index=IDs, dtype=float)
@@ -8811,46 +9037,6 @@ class guiWin(QMainWindow):
 
         df = df.join(df_rp)
         return df
-
-
-    def getChNames(self, PosData):
-        fluo_keys = list(PosData.fluo_data_dict.keys())
-
-        loadedChNames = []
-        for key in fluo_keys:
-            chName = key[len(PosData.basename):]
-            if chName.find('_aligned') != -1:
-                idx = chName.find('_aligned')
-                chName = f'gui_{chName[:idx]}'
-            loadedChNames.append(chName)
-
-        PosData.loadedChNames = loadedChNames
-
-
-        if PosData.bkgrValues_df is None:
-            PosData.bkgrValues_chNames = None
-            return
-
-        bkgrValues_chNames = []
-        for fluoKey in fluo_keys:
-            chName = [chName for chName in PosData.bkgrValues_chNames
-                      if fluoKey.find(chName)!=-1][0]
-            bkgrValues_chNames.append(chName)
-
-        PosData.bkgrValues_chNames = bkgrValues_chNames
-
-
-    def getDataPrepBkgrVal(self, bkgrValues_df, bkgrValues_chNames, frame_i, j):
-        if bkgrValues_df is None:
-            return None
-
-        try:
-            idx = (bkgrValues_chNames[j], frame_i)
-            bkgr_median = bkgrValues_df.at[idx, 'bkgr_median']
-        except Exception as e:
-            return None
-
-        return bkgr_median
 
     def askSaveLastVisitedCcaMode(self, p, PosData):
         current_frame_i = PosData.frame_i
@@ -8931,8 +9117,10 @@ class guiWin(QMainWindow):
                 return None
         return last_tracked_i
 
-    def saveFile(self):
+    def saveData(self):
         self.store_data()
+        self.ask_zSlice_absent = True
+        self.titleLabel.setText('Saving data... (check progress in the terminal)', color='w')
         for p, PosData in enumerate(self.data):
             current_frame_i = PosData.frame_i
             mode = self.modeComboBox.currentText()
@@ -8961,6 +9149,7 @@ class guiWin(QMainWindow):
 
                 # Add segmented channel data for calc metrics
                 PosData.fluo_data_dict[PosData.filename] = PosData.img_data
+                PosData.fluo_bkgrData_dict[PosData.filename] = PosData.bkgrData
 
                 self.getChNames(PosData)
 
@@ -9022,10 +9211,16 @@ class guiWin(QMainWindow):
                             print('')
                             print('Warning: calculating metrics failed see above...')
                             print('-----------------')
-                            pass
+                            # msg = QtGui.QMessageBox(self)
+                            # msg.setIcon(msg.Critical)
+                            # msg.setWindowTitle('Error')
+                            # msg.setText(traceback.format_exc())
+                            # msg.setDefaultButton(msg.Ok)
+                            # msg.exec_()
                     pbar.update()
 
                 PosData.fluo_data_dict.pop(PosData.filename)
+                PosData.fluo_bkgrData_dict.pop(PosData.filename)
                 pbar.update(pbar.total-pbar.n)
                 pbar.close()
 
@@ -9062,14 +9257,14 @@ class guiWin(QMainWindow):
                         PosData.segmInfo_df.to_csv(PosData.segmInfo_df_csv_path)
 
                 try:
-                    all_frames_metadata_df = pd.concat(
+                    all_frames_acdc_df = pd.concat(
                         df_li, keys=keys,
                         names=['frame_i', 'time_seconds', 'Cell_ID']
                     )
 
                     # Save segmentation metadata
-                    all_frames_metadata_df.to_csv(acdc_output_csv_path)
-                    PosData.acdc_df = all_frames_metadata_df
+                    all_frames_acdc_df.to_csv(acdc_output_csv_path)
+                    PosData.acdc_df = all_frames_acdc_df
                 except PermissionError:
                     msg = QtGui.QMessageBox()
                     warn_cca = msg.critical(
@@ -9079,20 +9274,19 @@ class guiWin(QMainWindow):
                         'Close file and then press "Ok".',
                         msg.Ok
                     )
-                    all_frames_metadata_df = pd.concat(
+                    all_frames_acdc_df = pd.concat(
                         df_li, keys=keys, names=['frame_i', 'Cell_ID']
                     )
 
                     # Save segmentation metadata
-                    all_frames_metadata_df.to_csv(acdc_output_csv_path)
-                    PosData.acdc_df = all_frames_metadata_df
+                    all_frames_acdc_df.to_csv(acdc_output_csv_path)
+                    PosData.acdc_df = all_frames_acdc_df
                 except Exception as e:
                     print('')
                     print('====================================')
                     traceback.print_exc()
                     print('====================================')
                     print('')
-                    pass
 
                 # Save segmentation file
                 np.savez_compressed(segm_npz_path, segm_npy)
@@ -9107,21 +9301,30 @@ class guiWin(QMainWindow):
                 PosData.frame_i = current_frame_i
                 self.get_data()
 
-                print('--------------')
+
                 if mode == 'Segmentation and Tracking' or mode == 'Viewer':
+                    print('--------------')
                     print(f'Saved data until frame number {frame_i+1}')
+                    print('--------------')
                 elif mode == 'Cell cycle analysis':
+                    print('--------------')
                     print(
                         'Saved cell cycle annotations until frame '
                         f'number {last_tracked_i+1}')
 
-                print('--------------')
+                    print('--------------')
             except Exception as e:
                 print('')
                 print('====================================')
                 traceback.print_exc()
                 print('====================================')
                 print('')
+                # msg = QtGui.QMessageBox(self)
+                # msg.setIcon(msg.Critical)
+                # msg.setWindowTitle('KeyError')
+                # msg.setDefaultButton(msg.Ok)
+                # msg.setText(traceback.format_exc())
+                # msg.exec_()
             finally:
                 self.app.restoreOverrideCursor()
         if self.isSnapshot:
@@ -9199,7 +9402,7 @@ class guiWin(QMainWindow):
                 msg.Yes | msg.No | msg.Cancel
             )
             if save == msg.Yes:
-                self.saveFile()
+                self.saveData()
                 event.accept()
             elif save == msg.No:
                 event.accept()
@@ -9267,7 +9470,7 @@ class guiWin(QMainWindow):
 
         self.storeDefaultAndCustomColors()
         h = self.drawIDsContComboBox.size().height()
-        self.framesScrollBar.setFixedHeight(h)
+        self.navigateScrollBar.setFixedHeight(h)
         self.zSliceScrollBar.setFixedHeight(h)
         self.alphaScrollBar.setFixedHeight(h)
         self.zSliceOverlay_SB.setFixedHeight(h)

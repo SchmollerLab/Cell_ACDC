@@ -267,7 +267,9 @@ class segmWin(QMainWindow):
             print(f'Processing {images_path}')
             filenames = os.listdir(images_path)
             if ch_name_selector.is_first_call:
-                ch_names, warn = ch_name_selector.get_available_channels(filenames)
+                ch_names, warn = (
+                    ch_name_selector.get_available_channels(filenames, images_path)
+                )
                 if not ch_names:
                     self.criticalNoTifFound(images_path)
                 elif len(ch_names) > 1:
@@ -326,7 +328,7 @@ class segmWin(QMainWindow):
                                loadSegmInfo=True,
                                load_delROIsInfo=False,
                                load_dataPrep_ROIcoords=True,
-                               loadDataPrepBkgrVals=False,
+                               loadBkgrData=False,
                                load_last_tracked_i=False,
                                load_metadata=True
             )
@@ -370,10 +372,16 @@ class segmWin(QMainWindow):
                 else:
                     data.SizeZ = 1
                 data.saveMetadata()
-            launchDataPrep = (
-                (data.SizeZ > 1 and data.segmInfo_df is None)
-                or (selectROI and data.dataPrep_ROIcoords is None)
-            )
+
+            launchDataPrep = False
+            if data.SizeZ > 1 and data.segmInfo_df is None:
+                launchDataPrep = True
+            if selectROI:
+                launchDataPrep = True
+            if data.segmInfo_df is not None:
+                if data.filename not in data.segmInfo_df.index:
+                    launchDataPrep = True
+
             if launchDataPrep:
                 dataPrepWin = dataPrep.dataPrepWin()
                 dataPrepWin.show()
@@ -418,12 +426,13 @@ class segmWin(QMainWindow):
                                    loadSegmInfo=True,
                                    load_delROIsInfo=False,
                                    load_dataPrep_ROIcoords=True,
-                                   loadDataPrepBkgrVals=False,
+                                   loadBkgrData=False,
                                    load_last_tracked_i=False,
                                    load_metadata=True
                 )
             elif data.SizeZ > 1:
-                zz = data.segmInfo_df['z_slice_used_dataPrep'].to_list()
+                df = data.segmInfo_df.loc[data.filename]
+                zz = df['z_slice_used_dataPrep'].to_list()
 
             isROIactive = False
             if data.dataPrep_ROIcoords is not None:
@@ -454,7 +463,9 @@ class segmWin(QMainWindow):
                 if data.SizeZ > 1:
                     # 3D data over time
                     img_data = data.img_data[:stop_i]
-                    for i, z_info in enumerate(data.segmInfo_df[:stop_i].itertuples()):
+                    df = data.segmInfo_df.loc[data.filename]
+                    for z_info in df[:stop_i].itertuples():
+                        i = z_info.Index
                         z = z_info.z_slice_used_dataPrep
                         zProjHow = z_info.which_z_proj
                         img = img_data[i]
@@ -483,7 +494,7 @@ class segmWin(QMainWindow):
             else:
                 if data.SizeZ > 1:
                     # Single 3D image
-                    z_info = data.segmInfo_df.iloc[0]
+                    z_info = data.segmInfo_df.loc[data.filename].iloc[0]
                     z = z_info.z_slice_used_dataPrep
                     zProjHow = z_info.which_z_proj
                     if zProjHow == 'single z-slice':
