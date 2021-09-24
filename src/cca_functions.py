@@ -13,6 +13,7 @@ from PyQt5.QtWidgets import QApplication
 from PyQt5 import QtCore
 import sys
 import difflib
+from scipy.stats import binned_statistic
 
 
 def configuration_dialog():
@@ -59,17 +60,22 @@ def calculate_downstream_data(
         for pos_idx, pos_dir in enumerate(image_folders[file_idx]):
             channel_data = ('placeholder')*no_of_channels
             print(f'Load files for {file}, {positions[file_idx][pos_idx]}...')
-            *channel_data, seg_mask, cc_data, cc_props = _load_files(pos_dir, channels)
+            *channel_data, seg_mask, cc_data, metadata, cc_props = _load_files(pos_dir, channels)
             print(f'Number of cells in position: {len(cc_data.Cell_ID.unique())}')
             print(f'Number of annotated frames in position: {cc_data.frame_i.max()+1}')
             cc_data = _rename_columns(cc_data)
-            max_frame = cc_data.frame_i.max()
+            timelapse_data, zstack_data = False, False
+            if int(metadata.loc['SizeT'])>1:
+                timelapse_data=True
+            if int(metadata.loc['SizeZ'])>1:
+                zstack_data=True
             if cc_props is not None and force_recalculation==False:
                 print('Cell Cycle property data already existing, loaded from disk...')
                 overall_df = overall_df.append(cc_props).reset_index(drop=True)
             else:
                 print(f'Calculate regionprops on each frame based on Segmentation...')
-                rp_df = _calculate_rp_df(seg_mask[:max_frame+1])
+                import pdb; pdb.set_trace()
+                rp_df = _calculate_rp_df(seg_mask[:cc_data.frame_i.max()+1])
                 print(f'Calculate mean signal strength for every channel and cell...')
                 flu_signal_df = _calculate_flu_signal(seg_mask, channel_data, channels, cc_data)
                 temp_df = cc_data.merge(rp_df, on=['frame_i', 'Cell_ID'], how='left')
@@ -186,6 +192,14 @@ def _load_files(file_dir, channels):
         cc_stage_path = glob.glob(f'{file_dir}\*cc_stage*')[0]
     # assume cell cycle output of ACDC to be .csv
     channel_files.append(pd.read_csv(cc_stage_path))
+    
+    # append metadata if available, else append None
+    if len(glob.glob(f'{file_dir}\*metadata*')) > 0:
+        metadata_path = glob.glob(f'{file_dir}\*metadata*')[0]
+        # assume calculated metadata to be .csv
+        channel_files.append(pd.read_csv(metadata_path).set_index('Description'))
+    else:
+        channel_files.append(None)
 
     # append cc-properties if available, else append None
     if len(glob.glob(f'{file_dir}\*_downstream*')) > 0:
@@ -287,3 +301,43 @@ def _rename_columns(cc_data):
     }
     cc_data.columns = [rename_dict.get(col, col) for col in cc_data.columns]
     return cc_data
+    
+    
+def binned_mean_stats(x, values, nbins, bins_min_count):
+    """
+    function to calculate binned means and corresponding standard errors for 
+    evenly spaced bins in the data ("x" gets distributed in bins, stats are calculated on "values")
+    """
+    bin_counts, _, _ = binned_statistic(x, values, statistic='count', bins=nbins)
+    bin_means, bin_edges, _ = binned_statistic(x, values, bins=nbins)
+    bin_std, _, _ = binned_statistic(x, values, statistic='std', bins=nbins)
+    bin_standard_errors = bin_std/np.sqrt(bin_counts)
+    bin_width = (bin_edges[1] - bin_edges[0])
+    bin_centers = bin_edges[1:] - bin_width/2
+    x_errorbar = bin_centers[bin_counts>bins_min_count]
+    y_errorbar = bin_means[bin_counts>bins_min_count]
+    err_errorbar = 1.96 * bin_standard_errors[bin_counts>bins_min_count]
+    return x_errorbar, y_errorbar, err_errorbar
+    
+    
+def calculate_effect_size_cohen(data, group1, group2, cat_column='size_category', val_column='FITC_concentration'):
+    assert cat_column in data.columns and val_column in data.columns
+    data_gr1 = data[data[cat_column]==group1]
+    data_gr2 = data[data[cat_column]==group2]
+    n1 = len(data_gr1)
+    n2 = len(data_gr2)
+    s1 = np.var(data_gr1[val_column])
+    s2 = np.var(data_gr2[val_column])
+    cohen_s = np.sqrt(
+        ((n1-1)*s1+(n2-1)*s2) / (n1+n2-2)
+    )
+    effect_size = (np.mean(data_gr1[val_column])- np.mean(data_gr2[val_column])) / cohen_s
+    return effect_size
+
+def calculate_effect_size_glass(data, group1, group2, cat_column='size_category', val_column='FITC_concentration'):
+    assert cat_column in data.columns and val_column in data.columns
+    data_gr1 = data[data[cat_column]==group1]
+    data_gr2 = data[data[cat_column]==group2]
+    glass_s = np.std(data_gr2[val_column])
+    effect_size = (np.mean(data_gr1[val_column])- np.mean(data_gr2[val_column])) / glass_s
+    return effect_size
