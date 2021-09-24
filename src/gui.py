@@ -5694,7 +5694,19 @@ class guiWin(QMainWindow):
         self.t_label.show()
         self.navigateScrollBar.show()
         self.navigateScrollBar.setDisabled(False)
-        self.zSliceScrollBar.setMaximum(self.data[0].SizeZ-1)
+
+        if self.data[0].SizeZ > 1:
+            self.enableZstackWidgets(True)
+            self.zSliceScrollBar.setMaximum(self.data[0].SizeZ-1)
+            try:
+                self.zSliceScrollBar.valueChanged.disconnect()
+                self.zProjComboBox.currentTextChanged.disconnect()
+                self.zProjComboBox.activated.disconnect()
+            except Exception as e:
+                pass
+            self.zSliceScrollBar.valueChanged.connect(self.update_z_slice)
+            self.zProjComboBox.currentTextChanged.connect(self.updateZproj)
+            self.zProjComboBox.activated.connect(self.clearComboBoxFocus)
         for PosData in self.data:
             if PosData.SizeZ > 1 and PosData.segmInfo_df is not None:
                 if 'z_slice_used_gui' not in PosData.segmInfo_df.columns:
@@ -5721,17 +5733,6 @@ class guiWin(QMainWindow):
                     PosData.segmInfo_df = pd.concat([df, PosData.segmInfo_df])
                 PosData.segmInfo_df.to_csv(PosData.segmInfo_df_csv_path)
 
-
-                self.enableZstackWidgets(True)
-                try:
-                    self.zSliceScrollBar.valueChanged.disconnect()
-                    self.zProjComboBox.currentTextChanged.disconnect()
-                    self.zProjComboBox.activated.disconnect()
-                except Exception as e:
-                    pass
-                self.zSliceScrollBar.valueChanged.connect(self.update_z_slice)
-                self.zProjComboBox.currentTextChanged.connect(self.updateZproj)
-                self.zProjComboBox.activated.connect(self.clearComboBoxFocus)
             if PosData.SizeT == 1:
                 self.t_label.setText('Position n. ')
                 self.navigateScrollBar.setMinimum(1)
@@ -8755,13 +8756,13 @@ class guiWin(QMainWindow):
         msg.exec_()
         if msg.clickedButton() == useMiddleSliceButton:
             for PosData in self.data:
-                df = self.getDefault_SegmInfo_df(PosData, filename)
+                df = myutils.getDefault_SegmInfo_df(PosData, filename)
                 PosData.segmInfo_df = pd.concat([df, PosData.segmInfo_df])
                 PosData.segmInfo_df.to_csv(PosData.segmInfo_df_csv_path)
         elif msg.clickedButton() == useSameAsSegmChButton:
             for PosData in self.data:
                 df = PosData.segmInfo_df.loc[PosData.filename]
-                new_df = self.getDefault_SegmInfo_df(PosData, filename)
+                new_df = myutils.getDefault_SegmInfo_df(PosData, filename)
                 for z_info in df.itertuples():
                     frame_i = z_info.Index[1]
                     zProjHow = z_info.which_z_proj
@@ -8865,78 +8866,79 @@ class guiWin(QMainWindow):
         else:
             ROI_bkgrMask = None
 
-        for i, obj in enumerate(rp):
-            IDs[i] = obj.label
-            rotate_ID_img = skimage.transform.rotate(
-                obj.image.astype(np.uint8), -(obj.orientation*180/np.pi),
-                resize=True, order=3, preserve_range=True
-            )
-            radii = np.sum(rotate_ID_img, axis=1)/2
-            vol_vox = np.sum(np.pi*(radii**2))
-            IDs_vol_vox[i] = vol_vox
-            IDs_area_pxl[i] = obj.area
-            IDs_vol_fl[i] = vol_vox*vox_to_fl
-            IDs_area_um2[i] = obj.area*yx_pxl_to_um2
-            # Calc metrics for each fluo channel
-            for j, key in enumerate(fluo_keys):
-                fluo_data = PosData.fluo_data_dict[key][frame_i]
-                bkgrArchive = PosData.fluo_bkgrData_dict[key]
-                fluo_data_projs = []
-                bkgrData_medians = []
-                if PosData.SizeZ > 1:
-                    idx = (key, frame_i)
-                    try:
-                        if PosData.segmInfo_df.at[idx, 'resegmented_in_gui']:
-                            col = 'z_slice_used_gui'
-                        else:
-                            col = 'z_slice_used_dataPrep'
-                        z_slice = PosData.segmInfo_df.at[idx, col]
-                    except KeyError:
-                        if self.ask_zSlice_absent:
-                            self.app.restoreOverrideCursor()
-                            self.zSliceAbsent(key, PosData.SizeZ)
-                            self.ask_zSlice_absent = False
-                            self.app.setOverrideCursor(Qt.WaitCursor)
-                        df = pd.read_csv(PosData.segmInfo_df_csv_path)
-                        PosData.segmInfo_df = df.set_index(['filename', 'frame_i'])
-                        z_slice = PosData.segmInfo_df.at[idx, col]
+        # Calc metrics for each fluo channel
+        for j, key in enumerate(fluo_keys):
+            fluo_data = PosData.fluo_data_dict[key][frame_i]
+            bkgrArchive = PosData.fluo_bkgrData_dict[key]
+            fluo_data_projs = []
+            bkgrData_medians = []
+            if PosData.SizeZ > 1:
+                idx = (key, frame_i)
+                try:
+                    if PosData.segmInfo_df.at[idx, 'resegmented_in_gui']:
+                        col = 'z_slice_used_gui'
+                    else:
+                        col = 'z_slice_used_dataPrep'
+                    z_slice = PosData.segmInfo_df.at[idx, col]
+                except KeyError:
+                    if self.ask_zSlice_absent:
+                        self.app.restoreOverrideCursor()
+                        self.zSliceAbsent(key, PosData.SizeZ)
+                        self.ask_zSlice_absent = False
+                        self.app.setOverrideCursor(Qt.WaitCursor)
+                    df = pd.read_csv(PosData.segmInfo_df_csv_path)
+                    PosData.segmInfo_df = df.set_index(['filename', 'frame_i'])
+                    z_slice = PosData.segmInfo_df.at[idx, col]
 
-                    fluo_data_z_maxP = fluo_data.max(axis=0)
-                    fluo_data_z_sumP = fluo_data.mean(axis=0)
-                    fluo_data = fluo_data[z_slice]
+                fluo_data_z_maxP = fluo_data.max(axis=0)
+                fluo_data_z_sumP = fluo_data.mean(axis=0)
+                fluo_data = fluo_data[z_slice]
 
-                    # how_3Dto2D = ['_maxProj', '_sumProj', '_zSlice']
-                    fluo_data_projs.append(fluo_data_z_maxP)
-                    fluo_data_projs.append(fluo_data_z_sumP)
-                    fluo_data_projs.append(fluo_data)
-                    if bkgrArchive is not None:
-                        bkgrVals_z_maxP = []
-                        bkgrVals_z_sumP = []
-                        bkgrVals_zSlice = []
-                        for roi_key in bkgrArchive.files:
-                            roiData = bkgrArchive[roi_key]
-                            if PosData.SizeT > 1:
-                                roiData = bkgrArchive[roi_key][frame_i]
-                            roi_z_maxP = roiData.max(axis=0)
-                            roi_z_sumP = roiData.mean(axis=0)
-                            roi_zSlice = roiData[z_slice]
-                            bkgrVals_z_maxP.extend(roi_z_maxP[roi_z_maxP!=0])
-                            bkgrVals_z_sumP.extend(roi_z_sumP[roi_z_sumP!=0])
-                            bkgrVals_zSlice.extend(roi_zSlice[roi_zSlice!=0])
-                        bkgrData_medians.append(np.median(bkgrVals_z_maxP))
-                        bkgrData_medians.append(np.median(bkgrVals_z_sumP))
-                        bkgrData_medians.append(np.median(bkgrVals_zSlice))
-                else:
-                    fluo_data_2D = fluo_data
-                    fluo_data_projs.append(fluo_data_2D)
-                    if bkgrArchive is not None:
-                        bkgrVals_2D = []
-                        for roi_key in bkgrArchive.files:
-                            roiData = bkgrArchive[roi_key]
-                            if PosData.SizeT > 1:
-                                roiData = bkgrArchive[roi_key][frame_i]
-                            bkgrVals_2D.extend(roiData[roiData!=0])
-                        bkgrData_medians.append(np.median(bkgrVals_2D))
+                # how_3Dto2D = ['_maxProj', '_sumProj', '_zSlice']
+                fluo_data_projs.append(fluo_data_z_maxP)
+                fluo_data_projs.append(fluo_data_z_sumP)
+                fluo_data_projs.append(fluo_data)
+                if bkgrArchive is not None:
+                    bkgrVals_z_maxP = []
+                    bkgrVals_z_sumP = []
+                    bkgrVals_zSlice = []
+                    for roi_key in bkgrArchive.files:
+                        roiData = bkgrArchive[roi_key]
+                        if PosData.SizeT > 1:
+                            roiData = bkgrArchive[roi_key][frame_i]
+                        roi_z_maxP = roiData.max(axis=0)
+                        roi_z_sumP = roiData.mean(axis=0)
+                        roi_zSlice = roiData[z_slice]
+                        bkgrVals_z_maxP.extend(roi_z_maxP[roi_z_maxP!=0])
+                        bkgrVals_z_sumP.extend(roi_z_sumP[roi_z_sumP!=0])
+                        bkgrVals_zSlice.extend(roi_zSlice[roi_zSlice!=0])
+                    bkgrData_medians.append(np.median(bkgrVals_z_maxP))
+                    bkgrData_medians.append(np.median(bkgrVals_z_sumP))
+                    bkgrData_medians.append(np.median(bkgrVals_zSlice))
+            else:
+                fluo_data_2D = fluo_data
+                fluo_data_projs.append(fluo_data_2D)
+                if bkgrArchive is not None:
+                    bkgrVals_2D = []
+                    for roi_key in bkgrArchive.files:
+                        roiData = bkgrArchive[roi_key]
+                        if PosData.SizeT > 1:
+                            roiData = bkgrArchive[roi_key][frame_i]
+                        bkgrVals_2D.extend(roiData[roiData!=0])
+                    bkgrData_medians.append(np.median(bkgrVals_2D))
+
+            for i, obj in enumerate(rp):
+                IDs[i] = obj.label
+                rotate_ID_img = skimage.transform.rotate(
+                    obj.image.astype(np.uint8), -(obj.orientation*180/np.pi),
+                    resize=True, order=3, preserve_range=True
+                )
+                radii = np.sum(rotate_ID_img, axis=1)/2
+                vol_vox = np.sum(np.pi*(radii**2))
+                IDs_vol_vox[i] = vol_vox
+                IDs_area_pxl[i] = obj.area
+                IDs_vol_fl[i] = vol_vox*vox_to_fl
+                IDs_area_um2[i] = obj.area*yx_pxl_to_um2
 
                 for k, fluo_2D in enumerate(fluo_data_projs):
                     fluo_data_ID = fluo_2D[obj.slice][obj.image]
@@ -9121,6 +9123,23 @@ class guiWin(QMainWindow):
         self.store_data()
         self.ask_zSlice_absent = True
         self.titleLabel.setText('Saving data... (check progress in the terminal)', color='w')
+
+        txt = (
+        """
+        <p style="font-size:9pt">
+            Do you also want to <b>save additional metrics</b>
+            (e.g., mean, amount etc.)?<br><br>
+            NOTE: Saving additional metrics is <b>slower</b>,
+            we reccomend doing it only when you need it.
+        </p>
+        """
+        )
+        msg = QtGui.QMessageBox()
+        save_metrics = msg.question(
+            self, 'Save metrics?', txt,
+            msg.Yes | msg.No | msg.Cancel
+        )
+
         for p, PosData in enumerate(self.data):
             current_frame_i = PosData.frame_i
             mode = self.modeComboBox.currentText()
@@ -9199,9 +9218,10 @@ class guiWin(QMainWindow):
                         )
                         rp = data_dict['regionprops']
                         try:
-                            acdc_df = self.addMetrics_acdc_df(
-                                        acdc_df, rp, frame_i, lab, PosData
-                            )
+                            if save_metrics == msg.Yes:
+                                acdc_df = self.addMetrics_acdc_df(
+                                            acdc_df, rp, frame_i, lab, PosData
+                                )
                             acdc_df_li[frame_i] = acdc_df
                         except Exception as e:
                             print('')
@@ -9234,7 +9254,8 @@ class guiWin(QMainWindow):
 
                 print('Almost done...')
                 try:
-                    np.savez_compressed(delROIs_info_path, **npz_delROIs_info)
+                    # np.savez_compressed(delROIs_info_path, **npz_delROIs_info)
+                    pass
                 except Exception as e:
                     print('')
                     print('====================================')

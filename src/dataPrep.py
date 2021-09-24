@@ -26,7 +26,8 @@ from PyQt5.QtWidgets import (
     QAction, QApplication, QLabel, QPushButton,
     QMainWindow, QMenu, QToolBar, QGroupBox,
     QScrollBar, QCheckBox, QToolButton, QSpinBox,
-    QComboBox, QDial, QButtonGroup, QFileDialog
+    QComboBox, QDial, QButtonGroup, QFileDialog,
+    QAbstractSlider
 )
 
 from pyqtgraph.Qt import QtGui
@@ -265,11 +266,12 @@ class dataPrepWin(QMainWindow):
         _font = QtGui.QFont()
         _font.setPointSize(10)
 
-        self.frame_i_scrollBar_img = QScrollBar(Qt.Horizontal)
-        self.frame_i_scrollBar_img.setFixedHeight(20)
-        self.frame_i_scrollBar_img.setDisabled(True)
-        _t_label = QLabel('frame n.  ')
-        _t_label.setFont(_font)
+        self.navigateScrollbar = QScrollBar(Qt.Horizontal)
+        self.navigateScrollbar.setFixedHeight(20)
+        self.navigateScrollbar.setDisabled(True)
+        navSB_label = QLabel('')
+        navSB_label.setFont(_font)
+        self.navigateSB_label = navSB_label
 
 
         self.zSliceScrollBar = QScrollBar(Qt.Horizontal)
@@ -286,8 +288,8 @@ class dataPrepWin(QMainWindow):
                                      'median z-proj.'])
         self.zProjComboBox.setDisabled(True)
 
-        self.img_Widglayout.addWidget(_t_label, 0, 0, alignment=Qt.AlignCenter)
-        self.img_Widglayout.addWidget(self.frame_i_scrollBar_img, 0, 1, 1, 30)
+        self.img_Widglayout.addWidget(navSB_label, 0, 0, alignment=Qt.AlignCenter)
+        self.img_Widglayout.addWidget(self.navigateScrollbar, 0, 1, 1, 30)
 
         self.img_Widglayout.addWidget(_z_label, 1, 0, alignment=Qt.AlignCenter)
         self.img_Widglayout.addWidget(self.zSliceScrollBar, 1, 1, 1, 30)
@@ -388,7 +390,7 @@ class dataPrepWin(QMainWindow):
             self.frame_i += 1
         else:
             self.frame_i = 0
-        self.frame_i_scrollBar_img.setValue(self.frame_i+1)
+        self.navigateScrollbar.setValue(self.frame_i+1)
         self.update_img()
 
     def prev_frame(self):
@@ -396,7 +398,7 @@ class dataPrepWin(QMainWindow):
             self.frame_i -= 1
         else:
             self.frame_i = self.num_frames-1
-        self.frame_i_scrollBar_img.setValue(self.frame_i+1)
+        self.navigateScrollbar.setValue(self.frame_i+1)
         self.update_img()
 
     def skip10ahead_frames(self):
@@ -413,15 +415,28 @@ class dataPrepWin(QMainWindow):
             self.frame_i = self.num_frames-1
         self.update_img()
 
-    def updateFramePosLabel(self):
+    def updateNavigateItems(self):
         PosData = self.data[self.pos_i]
         if self.num_pos > 1:
             self.frameLabel.setText(
                      f'Current position = {self.pos_i+1}/{self.num_pos} '
                      f'({PosData.pos_foldername})')
+            self.navigateSB_label.setText(f'Pos n. {self.pos_i+1}')
+
+            self.navigateScrollbar.valueChanged.disconnect()
+            self.navigateScrollbar.setValue(self.pos_i+1)
+            self.navigateScrollbar.valueChanged.connect(
+                self.navigateScrollBarMoved
+            )
         else:
             self.frameLabel.setText(
                      f'Current frame = {self.frame_i+1}/{self.num_frames}')
+            self.navigateSB_label.setText(f'frame n. {self.frame_i+1}')
+            self.navigateScrollbar.valueChanged.disconnect()
+            self.navigateScrollbar.setValue(self.frame_i+1)
+            self.navigateScrollbar.valueChanged.connect(
+                self.navigateScrollBarMoved
+            )
 
     def getImage(self, PosData, img_data, frame_i):
         if PosData.SizeT > 1:
@@ -453,7 +468,7 @@ class dataPrepWin(QMainWindow):
         return img
 
     def update_img(self):
-        self.updateFramePosLabel()
+        self.updateNavigateItems()
         PosData = self.data[self.pos_i]
         img = self.getImage(PosData, PosData.img_data, self.frame_i)
         # img = img/img.max()
@@ -475,17 +490,29 @@ class dataPrepWin(QMainWindow):
             self.ax1.removeItem(roi)
 
     def init_attr(self):
-        if self.num_pos > 1:
-            self.frame_i_scrollBar_img.setEnabled(False)
+        PosData = self.data[0]
+        self.navigateScrollbar.setEnabled(True)
+        self.navigateScrollbar.setMinimum(1)
+        if PosData.SizeT > 1:
+            self.navigateScrollbar.setMaximum(PosData.SizeT)
+        elif self.num_pos > 1:
+            self.navigateScrollbar.setMaximum(self.num_pos)
         else:
-            self.frame_i_scrollBar_img.setEnabled(True)
-            self.frame_i_scrollBar_img.setMinimum(1)
-            self.frame_i_scrollBar_img.setMaximum(self.num_frames)
-            self.frame_i_scrollBar_img.setValue(1)
-            self.frame_i_scrollBar_img.sliderMoved.connect(self.t_scrollbarMoved)
+            return
+        self.navigateScrollbar.setValue(1)
+        self.navigateScrollbar.valueChanged.connect(
+            self.navigateScrollBarMoved
+        )
 
-    def t_scrollbarMoved(self, t):
-        self.frame_i = t-1
+    def navigateScrollBarMoved(self, value):
+        PosData = self.data[self.pos_i]
+        if PosData.SizeT > 1:
+            self.frame_i = value-1
+        elif self.num_pos > 1:
+            self.pos_i = value-1
+        else:
+            return
+
         self.update_img()
 
     def crop(self, data):
@@ -951,6 +978,7 @@ class dataPrepWin(QMainWindow):
             df = PosData.segmInfo_df
             idx = (PosData.filename, self.frame_i)
             PosData.segmInfo_df.at[idx, 'z_slice_used_dataPrep'] = z
+            PosData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
             self.update_img()
             PosData.segmInfo_df.to_csv(PosData.segmInfo_df_csv_path)
 
@@ -960,6 +988,7 @@ class dataPrepWin(QMainWindow):
             df = PosData.segmInfo_df
             idx = (PosData.filename, self.frame_i)
             PosData.segmInfo_df.at[idx, 'which_z_proj'] = how
+            PosData.segmInfo_df.at[idx, 'which_z_proj_gui'] = how
         if how == 'single z-slice':
             self.zSliceScrollBar.setDisabled(False)
             self.z_label.setStyleSheet('color: black')
