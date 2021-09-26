@@ -1,12 +1,12 @@
 # <img src="https://github.com/SchmollerLab/Cell_ACDC/blob/main/src/resources/assign-motherbud.svg" width="60" height="60"> Cell-ACDC
 
-A Python GUI-based framework for <b>segmentation</b>, <b>tracking</b> and <b>cell cycle annotations</b> of cell imaging data
+### A Python GUI-based framework for <b>segmentation</b>, <b>tracking</b> and <b>cell cycle annotations</b> of cell imaging data
 
 Written in Python 3.8 by Francesco Padovani and Benedikt Mairhoermann.
 
 Tested on Windows 10 (64 bit), macOS, and Linux Mint 20.1
 
-*NOTE: This readme is not an exhaustive manual. Please find a User Manual [here](https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf).*
+*NOTE: This readme is not an exhaustive manual. Please find a User Manual (including detailed installation instructions)[here](https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf).*
 
 ## Installation using Anaconda
 
@@ -19,7 +19,7 @@ Tested on Windows 10 (64 bit), macOS, and Linux Mint 20.1
 ## Installation using Pip
 
 1. Download the [latest release](https://github.com/SchmollerLab/Cell_ACDC/releases) of Cell-ACDC.
-2. Download and install Python 3.8
+2. Download and install [Python 3.8](https://www.python.org/downloads/)
 3. Unzip the source code, open a terminal and navigate with `cd` command to the Cell-ACDC folder
 4. Upgrade pip with `pip install --updgrade pip`
 5. Create a virtual environment with `python -m venv env`
