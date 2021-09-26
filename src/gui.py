@@ -1941,7 +1941,8 @@ class guiWin(QMainWindow):
 
                 # If user double-pressed 'b' then draw over the labels
                 color = self.brushButton.palette().button().color().name()
-                if color != self.doublePressKeyButtonColor:
+                drawUnder = color != self.doublePressKeyButtonColor
+                if drawUnder:
                     mask[PosData.lab!=0] = False
                     self.setHoverToolSymbolColor(
                         xdata, ydata, self.ax2_BrushCirclePen,
@@ -4736,19 +4737,20 @@ class guiWin(QMainWindow):
                     c = self.doublePressKeyButtonColor
                 self.Button.setStyleSheet(f'background-color: {c}')
                 self.countKeyPress = 0
-                xdata, ydata = int(self.xHoverImg), int(self.yHoverImg)
-                if ev.key() == Qt.Key_B:
-                    self.setHoverToolSymbolColor(
-                        xdata, ydata, self.ax2_BrushCirclePen,
-                        (self.ax2_BrushCircle, self.ax1_BrushCircle),
-                        self.brushButton, brush=self.ax2_BrushCircleBrush
-                    )
-                elif ev.key() == Qt.Key_X:
-                    self.setHoverToolSymbolColor(
-                        xdata, ydata, self.eraserCirclePen,
-                        (self.ax2_EraserCircle, self.ax1_EraserCircle),
-                        self.eraserButton
-                    )
+                if self.xHoverImg is not None:
+                    xdata, ydata = int(self.xHoverImg), int(self.yHoverImg)
+                    if ev.key() == Qt.Key_B:
+                        self.setHoverToolSymbolColor(
+                            xdata, ydata, self.ax2_BrushCirclePen,
+                            (self.ax2_BrushCircle, self.ax1_BrushCircle),
+                            self.brushButton, brush=self.ax2_BrushCircleBrush
+                        )
+                    elif ev.key() == Qt.Key_X:
+                        self.setHoverToolSymbolColor(
+                            xdata, ydata, self.eraserCirclePen,
+                            (self.ax2_EraserCircle, self.ax1_EraserCircle),
+                            self.eraserButton
+                        )
 
     def doubleKeyTimerCallBack(self):
         if self.isKeyDoublePress:
