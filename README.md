@@ -1,4 +1,4 @@
-![logo](https://github.com/SchmollerLab/Cell_ACDC/blob/main/src/resources/assign-motherbud.svg =250x250)
+<img src="https://github.com/SchmollerLab/Cell_ACDC/blob/main/src/resources/assign-motherbud.svg" width="100" height="100">
 
 # Cell-ACDC
 
