@@ -108,7 +108,106 @@ def calculate_downstream_data(
                 save_path = os.path.join(pos_dir, f'{common_prefix}cca_properties_downstream.csv')
                 temp_df.to_csv(save_path, index=False)
                 overall_df = overall_df.append(temp_df).reset_index(drop=True)
+    return overall_df, is_timelapse_data, is_zstack_data
+    
+    
+def calculate_relatives_data(overall_df, channels):
+    # Join on Cell_ID vs. relative_ID to later calculate columns like "daughter growth" or "mother-bud-signal-combined"
+    overall_df_rel = overall_df.copy()
+    overall_df = overall_df.merge(
+        overall_df_rel,
+        how='left',
+        left_on=['frame_i', 'relative_ID', 'max_frame_pos', 'file', 'selection_subset', 'position', 'directory'],
+        right_on=['frame_i', 'Cell_ID', 'max_frame_pos', 'file', 'selection_subset', 'position', 'directory'],
+        suffixes = ('', '_rel')
+    )
+    # for every channel, calculate amount from mother and bud cells combined
+    for ch in channels:
+        try:
+            overall_df[f'{ch}_combined_amount_mother_bud'] = overall_df.apply(
+                lambda x: x.loc[f'{ch}_corrected_amount']+x.loc[f'{ch}_corrected_amount_rel'] if\
+                x.loc['cell_cycle_stage']=='S' and x.loc['relationship'] == 'mother' else\
+                x.loc[f'{ch}_corrected_amount'],
+                axis=1
+            )
+        except KeyError:
+            continue
+    overall_df['combined_mother_bud_volume'] = overall_df.apply(
+        lambda x: x.loc['cell_vol_fl']+x.loc['cell_vol_fl_rel'] if\
+        x.loc['cell_cycle_stage']=='S' and x.loc['relationship'] == 'mother' else\
+        x.loc['cell_vol_fl'],
+        axis=1
+    )
     return overall_df
+    
+    
+def calculate_per_phase_quantities(overall_df, group_cols, channels):
+    # group by group columns, aggregate some other columns
+    phase_grouped = overall_df.sort_values(
+        'frame_i'
+    ).groupby(group_cols).agg(
+        # perform some calculations relating to the whole phase:
+        phase_area_growth=('cell_area_um2', lambda x: x.iloc[-1]-x.iloc[0]),
+        phase_volume_growth=('cell_vol_fl', lambda x: x.iloc[-1]-x.iloc[0]),
+        phase_area_at_beginning=('cell_area_um2', 'first'),
+        phase_volume_at_beginning=('cell_vol_fl', 'first'),
+        phase_volume_at_end=('cell_vol_fl', 'last'),
+        phase_daughter_area_growth=('cell_area_um2_rel', lambda x: x.iloc[-1]-x.iloc[0]),
+        phase_daughter_volume_growth=('cell_vol_fl_rel', lambda x: x.iloc[-1]-x.iloc[0]),
+        phase_length=('frame_i', lambda x: max(x)-min(x)),
+        phase_begin = ('frame_i', 'min'),
+        phase_end = ('frame_i', 'max'),
+        phase_combined_volume_at_end = ('combined_mother_bud_volume','last')
+    ).reset_index()
+    # calculate some quantities in a for loop for all available channels and merge results.
+    phase_grouped_flu = pd.DataFrame(columns=group_cols)
+    for ch in channels:
+        if f'{ch}_corrected_mean' in overall_df.columns:
+            flu_temp = overall_df.sort_values(
+                'frame_i'
+            ).groupby(group_cols).agg({
+                # perform some calculations on flu data:
+                f'{ch}_corrected_amount': 'first',
+                f'{ch}_corrected_mean': 'first',
+                f'{ch}_corrected_concentration': ['first','last'],
+                f'{ch}_combined_amount_mother_bud': ['first','last']
+            }).reset_index()
+            # collapse multiindex into column name with aggregation as suffix
+            flu_temp.columns = ['_'.join(col) if col[1]!='' else col[0] for col in flu_temp.columns.values]
+            # rename columns into meaningful names
+            flu_temp = flu_temp.rename({
+                f'{ch}_corrected_amount_first': f'phase_{ch}_amount_at_beginning',
+                f'{ch}_corrected_mean_first': f'phase_{ch}_mean_at_beginning',
+                f'{ch}_corrected_concentration_first': f'phase_{ch}_concentration_at_beginning',
+                f'{ch}_corrected_concentration_last': f'phase_{ch}_concentration_at_end',
+                f'{ch}_combined_amount_mother_bud_first': f'phase_{ch}_combined_amount_at_beginning',
+                f'{ch}_combined_amount_mother_bud_last': f'phase_{ch}_combined_amount_at_end',
+            }, axis=1)
+            phase_grouped_flu = phase_grouped_flu.merge(flu_temp, how='right', on=group_cols, suffixes=('',''))
+
+    # detect complete cell cycle phases and complete cell cycles
+    temp = np.logical_and(
+        phase_grouped.phase_begin > 0,
+        phase_grouped.phase_end < phase_grouped.max_frame_pos
+    )
+    # this or is for disappearing cells
+    if 'max_t' in overall_df.columns:
+        complete_phase_indices = np.logical_and(
+            temp,
+            phase_grouped.phase_end < phase_grouped.max_t
+        )
+    else:
+        complete_phase_indices = temp
+    phase_grouped['complete_phase'] = complete_phase_indices.astype(int)
+    no_of_compl_phases_per_cycle = phase_grouped.groupby(
+        ['Cell_ID', 'generation_num', 'position', 'file']
+    )['complete_phase'].transform('sum')
+    complete_cycle_indices = no_of_compl_phases_per_cycle == 2
+    phase_grouped['complete_cycle'] = complete_cycle_indices.astype(int)
+    phase_grouped['all_complete'] = (phase_grouped['complete_cycle']+phase_grouped['complete_phase']==2).astype(int)
+    # join phase-grouped data with 
+    phase_grouped = phase_grouped.merge(phase_grouped_flu, how='left', on=group_cols, suffixes=('',''))
+    return phase_grouped
 
 
 def _determine_common_prefix(filenames):
