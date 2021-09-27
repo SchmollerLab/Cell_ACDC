@@ -66,28 +66,35 @@ def calculate_downstream_data(
             print(f'Number of cells in position: {len(cc_data.Cell_ID.unique())}')
             print(f'Number of annotated frames in position: {cc_data.frame_i.max()+1}')
             cc_data = _rename_columns(cc_data)
-            timelapse_data, zstack_data = False, False
+            is_timelapse_data, is_zstack_data = False, False
             if int(metadata.loc['SizeT'])>1:
-                timelapse_data=True
+                is_timelapse_data=True
             if int(metadata.loc['SizeZ'])>1:
-                zstack_data=True
+                is_zstack_data=True
             if cc_props is not None and force_recalculation==False:
                 print('Cell Cycle property data already existing, loaded from disk...')
                 overall_df = overall_df.append(cc_props).reset_index(drop=True)
             else:
                 print(f'Calculate regionprops on each frame based on Segmentation...')
-                import pdb; pdb.set_trace()
-                rp_df = _calculate_rp_df(seg_mask[:cc_data.frame_i.max()+1])
+                rp_df = _calculate_rp_df(seg_mask, is_timelapse_data, is_zstack_data, max_frame=cc_data.frame_i.max()+1)
                 print(f'Calculate mean signal strength for every channel and cell...')
-                flu_signal_df = _calculate_flu_signal(seg_mask, channel_data, channels, cc_data)
+                flu_signal_df = _calculate_flu_signal(
+                    seg_mask,
+                    channel_data,
+                    channels,
+                    cc_data,
+                    is_timelapse_data,
+                    is_zstack_data
+                )
                 temp_df = cc_data.merge(rp_df, on=['frame_i', 'Cell_ID'], how='left')
                 temp_df = temp_df.merge(flu_signal_df, on=['frame_i', 'Cell_ID'], how='left')
                 # calculate amount of corrected signal by multiplying mean with area
-                for channel in channels:
-                    temp_df[f'{channel}_corrected_amount'] = temp_df[f'{channel}_corrected_mean'] *\
-                    temp_df['area']
-                    temp_df[f'{channel}_corrected_concentration'] = temp_df[f'{channel}_corrected_amount']/\
-                    temp_df['cell_vol_fl']
+                if is_timelapse_data:
+                    for channel in channels:
+                        temp_df[f'{channel}_corrected_amount'] = temp_df[f'{channel}_corrected_mean'] *\
+                        temp_df['area']
+                        temp_df[f'{channel}_corrected_concentration'] = temp_df[f'{channel}_corrected_amount']/\
+                        temp_df['cell_vol_fl']
                 temp_df['max_frame_pos'] = cc_data.frame_i.max()
                 temp_df['file'] = file
                 temp_df['selection_subset'] = file_idx
@@ -215,42 +222,55 @@ def _load_files(file_dir, channels):
 
 
 
-def _calculate_rp_df(input_sequence, label_input=False):
+def _calculate_rp_df(seg_mask, is_timelapse_data, is_zstack_data, max_frame=1, label_input=False):
+    """
+    function to calculate regionprops based on a 2D(!) segmentation mask.
+    TODO: insert check if 3D segmentation mask is available and calculate more regionprops.
+    """
     if label_input:
         #generate labeled video only when input is not labeled yet
-        labeled_video = label(input_sequence)
+        labeled_data = label(seg_mask)
     else:
-        labeled_video = input_sequence.copy()
+        labeled_data = seg_mask.copy()
     # calculate rp's for rings
     t_df = pd.DataFrame()
     props = ('label', 'area', 'convex_area', 'filled_area','major_axis_length',
              'minor_axis_length', 'orientation', 'perimeter', 'centroid', 'solidity')
     rename_dict = {'label':'Cell_ID', 'centroid-0':'centroid_y', 'centroid-1':'centroid_x'}
-    for t, img in enumerate(tqdm(labeled_video)):
-        # build time-dependent dataframes for further use (later for cca)
-        if img.max() > 0:
-            t_rp = pd.DataFrame(regionprops_table(img.astype(int), properties=props)).rename(columns=rename_dict)
-            t_rp['frame_i'] = t
-            # determine id's which are falsely merged by 3D-labeling
-            for r_id in t_rp.Cell_ID.unique():
-                bin_label = label((img==r_id).astype(int))
-                t_rp.loc[t_rp['Cell_ID']==r_id, '2d_label_count'] = bin_label.max()
-            t_df = t_df.append(t_rp, ignore_index=True)
-    # calculate global features by grouping
-    grouped_df = t_df.groupby('Cell_ID').agg(
-        min_t=('frame_i', min),
-        max_t=('frame_i', max),
-        lifespan=('frame_i', lambda x: max(x)-min(x)+1)
-    ).reset_index()
-    merged_df = t_df.merge(grouped_df, how='left', on='Cell_ID')
-    # calculate further indicators based on merged data
-    merged_df['age'] = merged_df['frame_i'] - merged_df['min_t'] + 1
-    merged_df['frames_till_gone'] = merged_df['max_t'] - merged_df['frame_i']
-    merged_df['elongation'] = merged_df['major_axis_length']/merged_df['minor_axis_length']
-    return merged_df
+    if is_timelapse_data:
+        for t, img in enumerate(tqdm(labeled_data)):
+            # build time-dependent dataframes for further use (later for cca)
+            if img.max() > 0:
+                t_rp = pd.DataFrame(regionprops_table(img.astype(int), properties=props)).rename(columns=rename_dict)
+                t_rp['frame_i'] = t
+                # determine id's which are falsely merged by 3D-labeling
+                for r_id in t_rp.Cell_ID.unique():
+                    bin_label = label((img==r_id).astype(int))
+                    t_rp.loc[t_rp['Cell_ID']==r_id, '2d_label_count'] = bin_label.max()
+                t_df = t_df.append(t_rp, ignore_index=True)
+        # calculate global features by grouping
+        grouped_df = t_df.groupby('Cell_ID').agg(
+            min_t=('frame_i', min),
+            max_t=('frame_i', max),
+            lifespan=('frame_i', lambda x: max(x)-min(x)+1)
+        ).reset_index()
+        merged_df = t_df.merge(grouped_df, how='left', on='Cell_ID')
+        # calculate further indicators based on merged data
+        merged_df['age'] = merged_df['frame_i'] - merged_df['min_t'] + 1
+        merged_df['frames_till_gone'] = merged_df['max_t'] - merged_df['frame_i']
+        merged_df['elongation'] = merged_df['major_axis_length']/merged_df['minor_axis_length']
+        return merged_df
+    else:
+        rp_df = pd.DataFrame(regionprops_table(labeled_data.astype(int), properties=props)).rename(columns=rename_dict)
+        for r_id in rp_df.Cell_ID.unique():
+            bin_label = label((labeled_data==r_id).astype(int))
+            rp_df.loc[rp_df['Cell_ID']==r_id, '2d_label_count'] = bin_label.max()
+        rp_df['elongation'] = rp_df['major_axis_length']/rp_df['minor_axis_length']
+        rp_df['frame_i'] = 0
+        return rp_df
 
 
-def _calculate_flu_signal(seg_mask, channel_data, channels, cc_data):
+def _calculate_flu_signal(seg_mask, channel_data, channels, cc_data, is_timelapse_data, is_zstack_data):
     """
     function to calculate sum and scaled sum of fluorescence signal per frame and cell.
     channel_data is a list-like of TYX arrays, one for each channel.
@@ -267,27 +287,28 @@ def _calculate_flu_signal(seg_mask, channel_data, channels, cc_data):
             bg_index = np.logical_and(seg_mask[:max_frame+1]==0, ch_array[:max_frame+1]!=0)
             ch_medians = [np.median(ch_array[t][bg_index[t]]) for t in range(max_frame+1)]
             bg_medians.append(ch_medians)
-    for cell_id in tqdm(cc_data.Cell_ID.unique()):
-        temp_df = pd.DataFrame(columns=['frame_i', 'Cell_ID'])
-        times = range(max_frame+1)
-        temp_df['frame_i'] = times; temp_df['Cell_ID'] = cell_id
-        index_array = (seg_mask[:max_frame+1] == cell_id)
-        channel_data_cut = [c_arr[:max_frame+1] if c_arr is not None else None for c_arr in channel_data]
-        for c_idx, c_array in enumerate(channel_data_cut):
-            if c_array is not None:
-                cell_signal = c_array*index_array
-                summed = np.sum(cell_signal, axis=(1,2))
-                count = np.sum(cell_signal!=0, axis=(1,2))
-                mean_signal = np.divide(summed, count, where=count!=0)
-                corrected_signal = mean_signal - np.array(bg_medians[c_idx])
-                temp_df[f'{channels[c_idx]}_corrected_mean'] = np.clip(corrected_signal, 0, np.inf)
-            else:
-                temp_df[f'{channels[c_idx]}_corrected_mean'] = 0
-        df = df.append(temp_df, ignore_index=True)
-    signal_indices = np.array(['_corrected_mean' in col for col in df.columns])
-    keep_rows = df.loc[:,signal_indices].sum(axis=1) > 0
-    df = df[keep_rows]
-    df = df.sort_values(['frame_i', 'Cell_ID']).reset_index(drop=True)
+    if is_timelapse_data:
+        for cell_id in tqdm(cc_data.Cell_ID.unique()):
+            temp_df = pd.DataFrame(columns=['frame_i', 'Cell_ID'])
+            times = range(max_frame+1)
+            temp_df['frame_i'] = times; temp_df['Cell_ID'] = cell_id
+            index_array = (seg_mask[:max_frame+1] == cell_id)
+            channel_data_cut = [c_arr[:max_frame+1] if c_arr is not None else None for c_arr in channel_data]
+            for c_idx, c_array in enumerate(channel_data_cut):
+                if c_array is not None:
+                    cell_signal = c_array*index_array
+                    summed = np.sum(cell_signal, axis=(1,2))
+                    count = np.sum(cell_signal!=0, axis=(1,2))
+                    mean_signal = np.divide(summed, count, where=count!=0)
+                    corrected_signal = mean_signal - np.array(bg_medians[c_idx])
+                    temp_df[f'{channels[c_idx]}_corrected_mean'] = np.clip(corrected_signal, 0, np.inf)
+                else:
+                    temp_df[f'{channels[c_idx]}_corrected_mean'] = 0
+            df = df.append(temp_df, ignore_index=True)
+        signal_indices = np.array(['_corrected_mean' in col for col in df.columns])
+        keep_rows = df.loc[:,signal_indices].sum(axis=1) > 0
+        df = df[keep_rows]
+        df = df.sort_values(['frame_i', 'Cell_ID']).reset_index(drop=True)
     return df
 
 
