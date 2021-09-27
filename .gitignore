@@ -18,8 +18,8 @@ data/*
 tests/*
 src/utils/deprecated
 instructions/Screenshots
-UserManual/old
-UserManual/*.docx
+UserManual/*
+!UserManual/Cell-ACDC_User_Manual.pdf
 # Ignore models folder but keep the folder with placeholder.txt dummy file
 models/*
 !models/placeholder.txt
