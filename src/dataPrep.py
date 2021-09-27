@@ -1,5 +1,6 @@
 import os
 import sys
+import traceback
 import re
 import time
 import datetime
@@ -858,6 +859,8 @@ class dataPrepWin(QMainWindow):
                                    getTifPath=True
                 )
                 PosData.loadAllImgPaths()
+                for bkgrROI in PosData.bkgrROIs:
+                    self.setBkgrROIprops(bkgrROI)
                 if f==0:
                     proceed = PosData.askInputMetadata(
                                                 ask_SizeT=self.num_pos==1,
@@ -888,6 +891,11 @@ class dataPrepWin(QMainWindow):
                         PosData.SizeT = 1
                     PosData.saveMetadata()
             except AttributeError:
+                print('')
+                print('====================================')
+                traceback.print_exc()
+                print('====================================')
+                print('')
                 self.titleLabel.setText(
                     'File --> Open or Open recent to start the process',
                     color='w')
@@ -1621,6 +1629,7 @@ class dataPrepWin(QMainWindow):
         self.setWindowTitle(f'Cell-ACDC - Data Prep. - "{exp_path}"')
 
         self.num_pos = len(user_ch_file_paths)
+
         proceed = self.init_data(user_ch_file_paths, user_ch_name)
 
         if not proceed:

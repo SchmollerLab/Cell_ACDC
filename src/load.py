@@ -416,6 +416,13 @@ class loadData:
             self.saveMetadata()
         return True
 
+    def transferMetadata(self, from_PosData):
+        self.SizeT = from_PosData.SizeT
+        self.SizeZ = from_PosData.SizeZ
+        self.PhysicalSizeZ = from_PosData.PhysicalSizeZ
+        self.PhysicalSizeY = from_PosData.PhysicalSizeY
+        self.PhysicalSizeX = from_PosData.PhysicalSizeX
+
     def saveMetadata(self):
         if self.metadata_df is None:
             self.metadata_df = pd.DataFrame({

@@ -2016,6 +2016,8 @@ class guiWin(QMainWindow):
             x, y = event.pos()
             xdata, ydata = int(x), int(y)
             xxRA, yyRA = self.ax1_rulerAnchorsItem.getData()
+            if self.isCtrlDown:
+                ydata = yyRA[0]
             self.ax1_rulerPlotItem.setData([xxRA[0], xdata], [yyRA[0], ydata])
 
         if not event.isExit():
@@ -2506,7 +2508,7 @@ class guiWin(QMainWindow):
             event.ignore()
             return
 
-        if mode == 'Viewer':
+        if mode == 'Viewer' and not canRuler:
             self.startBlinkingModeCB()
             return
 
@@ -2627,8 +2629,10 @@ class guiWin(QMainWindow):
             else:
                 self.rulerHoverON = False
                 xxRA, yyRA = self.ax1_rulerAnchorsItem.getData()
-                self.ax1_rulerPlotItem.setData([xxRA[0], x], [yyRA[0], y])
-                self.ax1_rulerAnchorsItem.setData([xxRA[0], x], [yyRA[0], y])
+                if self.isCtrlDown:
+                    ydata = yyRA[0]
+                self.ax1_rulerPlotItem.setData([xxRA[0], xdata], [yyRA[0], ydata])
+                self.ax1_rulerAnchorsItem.setData([xxRA[0], xdata], [yyRA[0], ydata])
 
         elif right_click and canCurv:
             # Draw manually assisted auto contour
@@ -2846,11 +2850,24 @@ class guiWin(QMainWindow):
 
     def editImgProperties(self, checked=True):
         PosData = self.data[self.pos_i]
-        PosData.askInputMetadata(
-                                ask_TimeIncrement=True,
-                                ask_PhysicalSizes=True,
-                                save=True
+        changed = PosData.askInputMetadata(
+            ask_SizeT=True,
+            ask_TimeIncrement=True,
+            ask_PhysicalSizes=True,
+            save=True
         )
+        if self.num_pos > 1 and changed:
+            txt = (
+                'Do you want to update metadata for ALL the positions?'
+            )
+            msg = QtGui.QMessageBox(self)
+            saveAllPos = msg.question(
+                self, 'Automatic segmentation?', txt, msg.Yes | msg.No
+            )
+            if saveAllPos == msg.Yes:
+                for _posData in self.data:
+                    _posData.transferMetadata(PosData)
+                    _posData.saveMetadata()
 
     def setHoverToolSymbolData(self, xx, yy, ScatterItems, size=None):
         for item in ScatterItems:
@@ -4643,6 +4660,8 @@ class guiWin(QMainWindow):
                       or self.eraserButton.isChecked())
         if ev.key() == Qt.Key_Up and isBrushActive:
             self.brushSizeSpinbox.setValue(self.brushSizeSpinbox.value()+1)
+        elif ev.key() == Qt.Key_Control:
+            self.isCtrlDown = True
         elif ev.key() == Qt.Key_Down and isBrushActive:
             self.brushSizeSpinbox.setValue(self.brushSizeSpinbox.value()-1)
         elif ev.key() == Qt.Key_Escape:
@@ -4767,11 +4786,14 @@ class guiWin(QMainWindow):
 
 
     def keyReleaseEvent(self, ev):
+        if ev.key() == Qt.Key_Control:
+            self.isCtrlDown = False
         canRepeat = (
             ev.key() == Qt.Key_Left
             or ev.key() == Qt.Key_Right
             or ev.key() == Qt.Key_Up
             or ev.key() == Qt.Key_Down
+            or ev.key() == Qt.Key_Control
         )
         if canRepeat:
             return
@@ -5684,7 +5706,7 @@ class guiWin(QMainWindow):
             f'** Remember that you can automatically segment all {txt} using the\n'
             '    "segm.py" script.'
         )
-        msg = QtGui.QMessageBox()
+        msg = QtGui.QMessageBox(self)
         doSegmAnswer = msg.question(
             self, 'Automatic segmentation?', questionTxt, msg.Yes | msg.No
         )
@@ -5909,6 +5931,7 @@ class guiWin(QMainWindow):
 
         self.splineHoverON = False
         self.rulerHoverON = False
+        self.isCtrlDown = False
         self.autoContourHoverON = False
         self.navigateScrollBarStartedMoving = True
 
@@ -6058,12 +6081,14 @@ class guiWin(QMainWindow):
 
     def PosScrollBarMoved(self, pos_n):
         self.pos_i = pos_n-1
+        self.updateFramePosLabel()
         proceed_cca, never_visited = self.get_data()
         self.updateALLimg(updateFilters=False)
 
     def PosScrollBarReleased(self):
         self.pos_i = self.navigateScrollBar.sliderPosition()-1
         proceed_cca, never_visited = self.get_data()
+        self.updateFramePosLabel()
         self.updateALLimg(updateFilters=True)
         self.computeSegm()
 
@@ -6092,6 +6117,7 @@ class guiWin(QMainWindow):
         self.img1.setImage(cells_img)
         self.img2.setImage(PosData.lab)
         self.updateLookuptable()
+        self.updateFramePosLabel()
         self.navigateScrollBarStartedMoving = False
 
     def navigateScrollBarReleased(self):
@@ -6099,6 +6125,7 @@ class guiWin(QMainWindow):
         PosData = self.data[self.pos_i]
         PosData.frame_i = self.navigateScrollBar.sliderPosition()-1
         self.get_data()
+        self.updateFramePosLabel()
         self.updateALLimg()
 
     def unstore_data(self):
@@ -7881,6 +7908,8 @@ class guiWin(QMainWindow):
             self.ccaTableWin.updateTable(PosData.cca_df)
 
     def startBlinkingModeCB(self):
+        if self.rulerButton.isChecked():
+            return
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.blinkModeComboBox)
         self.timer.start(100)
@@ -8783,15 +8812,10 @@ class guiWin(QMainWindow):
                 PosData.segmInfo_df.to_csv(PosData.segmInfo_df_csv_path)
         elif msg.clickedButton() == runDataPrepButton:
             user_ch_file_paths = []
+            PosData = self.data[self.pos_i]
+            user_ch_name = filename[len(PosData.basename):]
             for PosData in self.data:
-                if filename.endswith('aligned'):
-                    ext = '.npz'
-                else:
-                    ext = '.tif'
-                user_ch_path = os.path.join(
-                    PosData.images_path, f'{filename}{ext}'
-                )
-                user_ch_name = filename[len(PosData.basename):]
+                user_ch_path, _ = self.getPathFromChName(user_ch_name, PosData)
                 user_ch_file_paths.append(user_ch_path)
                 exp_path = os.path.dirname(PosData.pos_path)
 
@@ -8889,6 +8913,7 @@ class guiWin(QMainWindow):
                         self.app.setOverrideCursor(Qt.WaitCursor)
                     df = pd.read_csv(PosData.segmInfo_df_csv_path)
                     PosData.segmInfo_df = df.set_index(['filename', 'frame_i'])
+                    col = 'z_slice_used_dataPrep'
                     z_slice = PosData.segmInfo_df.at[idx, col]
 
                 fluo_data_z_maxP = fluo_data.max(axis=0)
@@ -9338,6 +9363,7 @@ class guiWin(QMainWindow):
                         f'number {last_tracked_i+1}')
 
                     print('--------------')
+                self.titleLabel.setText('Saved!')
             except Exception as e:
                 print('')
                 print('====================================')
