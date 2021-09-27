@@ -3972,6 +3972,83 @@ class pdDataFrameWidget(QMainWindow):
     def closeEvent(self, event):
         self.parent.ccaTableWin = None
 
+class QDialogZsliceAbsent(QDialog):
+    def __init__(self, filename, SizeZ, filenamesWithInfo, parent=None):
+        self.runDataPrep = False
+        self.useMiddleSlice = False
+        self.useSameAsCh = False
+
+        super().__init__(parent)
+        self.setWindowTitle('z-slice info absent!')
+
+        mainLayout = QVBoxLayout()
+        buttonsLayout = QVBoxLayout()
+        comboBoxLayout = QHBoxLayout()
+
+        txt = (
+        f"""
+        <p style="font-size:11pt; text-align: center;">
+            You loaded the fluorescent file called {filename},<br>
+            however you <b>never selected which z-slice</b> you want to use
+            when calculating metrics<br> (e.g., mean, median, amount...etc.)<br><br>
+            Choose one of following options:
+        <p>
+        """
+        )
+        infoLabel = QLabel(txt)
+        mainLayout.addWidget(infoLabel, alignment=Qt.AlignCenter)
+
+        runDataPrepButton = QPushButton(
+            'Visualize the data now and select a z-slice (RECOMMENDED)'
+        )
+        buttonsLayout.addWidget(runDataPrepButton)
+        runDataPrepButton.clicked.connect(self.runDataPrep_cb)
+
+        useMiddleSliceButton = QPushButton(
+            f'Use the middle z-slice ({int(SizeZ/2)})'
+        )
+        buttonsLayout.addWidget(useMiddleSliceButton)
+        useMiddleSliceButton.clicked.connect(self.useMiddleSlice_cb)
+
+        useSameAsChButton = QPushButton(
+            'Use the same z-slice used for the channel: '
+        )
+        useSameAsChButton.clicked.connect(self.useSameAsCh_cb)
+
+        chNameComboBox = QComboBox()
+        chNameComboBox.addItems(filenamesWithInfo)
+        # chNameComboBox.setEditable(True)
+        # chNameComboBox.lineEdit().setAlignment(Qt.AlignCenter)
+        # chNameComboBox.lineEdit().setReadOnly(True)
+        self.chNameComboBox = chNameComboBox
+        comboBoxLayout.addWidget(useSameAsChButton)
+        comboBoxLayout.addWidget(chNameComboBox)
+        buttonsLayout.addLayout(comboBoxLayout)
+        buttonsLayout.setContentsMargins(10, 0, 10, 0)
+
+        mainLayout.addLayout(buttonsLayout)
+
+        self.setLayout(mainLayout)
+
+        font = QtGui.QFont()
+        font.setPointSize(10)
+        self.setFont(font)
+
+        self.setModal(True)
+
+    def useSameAsCh_cb(self, checked):
+        self.useSameAsCh = True
+        self.selectedChannel = self.chNameComboBox.currentText()
+        self.close()
+
+    def useMiddleSlice_cb(self, checked):
+        self.useMiddleSlice = True
+        self.close()
+
+    def runDataPrep_cb(self, checked):
+        self.runDataPrep = True
+        self.close()
+
 if __name__ == '__main__':
     # Create the application
     app = QApplication(sys.argv)
@@ -4007,7 +4084,11 @@ if __name__ == '__main__':
     #
     # win = pdDataFrameWidget(df)
     # win = QDialogMetadataXML(rawDataStruct=1, chNames=[''])
-    win = QDialogAppendTextFilename('example.npz')
+    # win = QDialogAppendTextFilename('example.npz')
+    font = QtGui.QFont()
+    font.setPointSize(10)
+    filenames = ['test1', 'test2']
+    win = QDialogZsliceAbsent('test3', 30, filenames)
     # win = cellpose_ParamsDialog()
     # user_ch_file_paths = [
     #     r"G:\My Drive\1_MIA_Data\Beno\test_QtGui\testGuiOnlyTifs\TIFFs\Position_1\Images\19-03-2021_KCY050_SCGE_s02_phase_contr.tif",
@@ -4018,7 +4099,7 @@ if __name__ == '__main__':
     # lab = np.load(r"G:\My Drive\1_MIA_Data\Test_data\Test_Qt_GUI\Position_5\Images\F016_s05_segm.npz")['arr_0'][0]
     # img = np.load(r"G:\My Drive\1_MIA_Data\Test_data\Test_Qt_GUI\Position_5\Images\F016_s05_phase_contr_aligned.npz")['arr_0'][0]
     # win = manualSeparateGui(lab, 2, img)
-    # win.setFont(font)
+    win.setFont(font)
     app.setStyle(QtGui.QStyleFactory.create('Fusion'))
     # win.showAndSetWidth()
     # win.showAndSetFont(font)

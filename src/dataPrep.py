@@ -89,6 +89,7 @@ class dataPrepWin(QMainWindow):
         self.loop = None
         self.titleText = None
         self.cropROI = None
+        self.metadataAlreadyAsked = False
 
         mainContainer = QtGui.QWidget()
         self.setCentralWidget(mainContainer)
@@ -863,7 +864,7 @@ class dataPrepWin(QMainWindow):
                 PosData.loadAllImgPaths()
                 for bkgrROI in PosData.bkgrROIs:
                     self.setBkgrROIprops(bkgrROI)
-                if f==0:
+                if f==0 and not self.metadataAlreadyAsked:
                     proceed = PosData.askInputMetadata(
                                                 ask_SizeT=self.num_pos==1,
                                                 ask_TimeIncrement=False,

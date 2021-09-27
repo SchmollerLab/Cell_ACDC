@@ -8758,67 +8758,55 @@ class guiWin(QMainWindow):
 
         PosData.loadedChNames = loadedChNames
 
-    def zSliceAbsent(self, filename, SizeZ):
-        msg = QtGui.QMessageBox(self)
-        msg.setWindowTitle('z-slice absent')
-        msg.setIcon(msg.Warning)
-        txt = (
-        f"""
-        <p style="font-size:10pt">
-            You loaded the fluorescent file called {filename},<br>
-            however you <b>never selected which z-slice</b> you want to use
-            when calculating metrics (e.g., mean, median, amount...etc.)<br><br>
-            Choose one of following options:
-        <p>
-        """
-        )
-        msg.setText(txt)
-        runDataPrepButton = QPushButton(
-            'Visualize the data now and select a z-slice (RECOMMENDED)'
-        )
-        useSameAsSegmChButton = QPushButton(
-            'Use the same z-slice used for the segmented channel'
-        )
-        useMiddleSliceButton = QPushButton(
-            f'Use the middle z-slice ({int(SizeZ/2)})'
-        )
-        msg.addButton(runDataPrepButton, msg.YesRole)
-        msg.addButton(useSameAsSegmChButton, msg.NoRole)
-        msg.addButton(useMiddleSliceButton, msg.ApplyRole)
-        msg.exec_()
-        if msg.clickedButton() == useMiddleSliceButton:
+    def zSliceAbsent(self, filename, PosData):
+        SizeZ = PosData.SizeZ
+        chNames = PosData.chNames
+        filenamesPresent = PosData.segmInfo_df.index.get_level_values(0).unique()
+        chNamesPresent = [
+            ch for ch in chNames
+            for file in filenamesPresent
+            if file.find(ch) != -1
+        ]
+        win = apps.QDialogZsliceAbsent(filename, SizeZ, chNamesPresent)
+        win.exec_()
+        if win.useMiddleSlice:
+            user_ch_name = filename[len(PosData.basename):]
             for PosData in self.data:
+                _, filename = self.getPathFromChName(user_ch_name, PosData)
                 df = myutils.getDefault_SegmInfo_df(PosData, filename)
                 PosData.segmInfo_df = pd.concat([df, PosData.segmInfo_df])
                 PosData.segmInfo_df.to_csv(PosData.segmInfo_df_csv_path)
-        elif msg.clickedButton() == useSameAsSegmChButton:
-            for PosData in self.data:
-                df = PosData.segmInfo_df.loc[PosData.filename]
-                new_df = myutils.getDefault_SegmInfo_df(PosData, filename)
-                print(new_df)
-                for z_info in df.itertuples():
-                    frame_i = z_info.Index[1]
+        elif win.useSameAsCh:
+            user_ch_name = filename[len(PosData.basename):]
+            for _PosData in self.data:
+                _, srcFilename = self.getPathFromChName(
+                    win.selectedChannel, _PosData
+                )
+                src_df = _PosData.segmInfo_df.loc[srcFilename].copy()
+                _, dstFilename = self.getPathFromChName(user_ch_name, _PosData)
+                dst_df = myutils.getDefault_SegmInfo_df(_PosData, dstFilename)
+                for z_info in src_df.itertuples():
+                    frame_i = z_info.Index
                     zProjHow = z_info.which_z_proj
                     if zProjHow == 'single z-slice':
-                        refIdx = (PosData.filename, frame_i)
-                        if PosData.segmInfo_df.at[refIdx, 'resegmented_in_gui']:
+                        src_idx = (srcFilename, frame_i)
+                        if _PosData.segmInfo_df.at[src_idx, 'resegmented_in_gui']:
                             col = 'z_slice_used_gui'
                         else:
                             col = 'z_slice_used_dataPrep'
-                        z_slice = PosData.segmInfo_df.at[refIdx, col]
-                        idx = (filename, frame_i)
-                        new_df.at[idx, 'z_slice_used_dataPrep'] = z_slice
-                        new_df.at[idx, 'z_slice_used_gui'] = z_slice
-                PosData.segmInfo_df = pd.concat([df, PosData.segmInfo_df])
-                PosData.segmInfo_df.to_csv(PosData.segmInfo_df_csv_path)
-        elif msg.clickedButton() == runDataPrepButton:
+                        z_slice = _PosData.segmInfo_df.at[src_idx, col]
+                        dst_idx = (dstFilename, frame_i)
+                        dst_df.at[dst_idx, 'z_slice_used_dataPrep'] = z_slice
+                        dst_df.at[dst_idx, 'z_slice_used_gui'] = z_slice
+                _PosData.segmInfo_df = pd.concat([dst_df, _PosData.segmInfo_df])
+                _PosData.segmInfo_df.to_csv(_PosData.segmInfo_df_csv_path)
+        elif win.runDataPrep:
             user_ch_file_paths = []
-            PosData = self.data[self.pos_i]
-            user_ch_name = filename[len(PosData.basename):]
-            for PosData in self.data:
-                user_ch_path, _ = self.getPathFromChName(user_ch_name, PosData)
+            user_ch_name = filename[len(self.data[self.pos_i].basename):]
+            for _PosData in self.data:
+                user_ch_path, _ = self.getPathFromChName(user_ch_name, _PosData)
                 user_ch_file_paths.append(user_ch_path)
-                exp_path = os.path.dirname(PosData.pos_path)
+                exp_path = os.path.dirname(_PosData.pos_path)
 
             dataPrepWin = dataPrep.dataPrepWin()
             dataPrepWin.titleText = (
@@ -8828,6 +8816,9 @@ class guiWin(QMainWindow):
             """)
             dataPrepWin.show()
             dataPrepWin.initLoading()
+            dataPrepWin.SizeT = self.data[0].SizeT
+            dataPrepWin.SizeZ = self.data[0].SizeZ
+            dataPrepWin.metadataAlreadyAsked = True
             dataPrepWin.loadFiles(
                 exp_path, user_ch_file_paths, user_ch_name
             )
@@ -8909,16 +8900,18 @@ class guiWin(QMainWindow):
                 except KeyError:
                     try:
                         # Try to see if the user already selected z-slice in prev pos
-                        df = pd.read_csv(PosData.segmInfo_df_csv_path)
-                        PosData.segmInfo_df = df.set_index(['filename', 'frame_i'])
+                        segmInfo_df = pd.read_csv(PosData.segmInfo_df_csv_path)
+                        index_col = ['filename', 'frame_i']
+                        PosData.segmInfo_df = segmInfo_df.set_index(index_col)
                         col = 'z_slice_used_dataPrep'
                         z_slice = PosData.segmInfo_df.at[idx, col]
                     except KeyError as e:
                         self.app.restoreOverrideCursor()
-                        self.zSliceAbsent(key, PosData.SizeZ)
+                        self.zSliceAbsent(key, PosData)
                         self.app.setOverrideCursor(Qt.WaitCursor)
-                        df = pd.read_csv(PosData.segmInfo_df_csv_path)
-                        PosData.segmInfo_df = df.set_index(['filename', 'frame_i'])
+                        segmInfo_df = pd.read_csv(PosData.segmInfo_df_csv_path)
+                        index_col = ['filename', 'frame_i']
+                        PosData.segmInfo_df = segmInfo_df.set_index(index_col)
                         col = 'z_slice_used_dataPrep'
                         z_slice = PosData.segmInfo_df.at[idx, col]
 
