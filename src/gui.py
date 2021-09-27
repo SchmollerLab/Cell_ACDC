@@ -8826,8 +8826,6 @@ class guiWin(QMainWindow):
         PhysicalSizeY = PosData.PhysicalSizeY
         PhysicalSizeX = PosData.PhysicalSizeX
 
-        # Calc volume
-        vox_to_fl = PhysicalSizeY*(PhysicalSizeX**2)
         yx_pxl_to_um2 = PhysicalSizeY*PhysicalSizeX
         numCells = len(rp)
         IDs = [0]*numCells
@@ -8932,7 +8930,10 @@ class guiWin(QMainWindow):
 
             for i, obj in enumerate(rp):
                 IDs[i] = obj.label
-                vol_vox, vol_fl = calc_rot_vol(obj, vox_to_fl=vox_to_fl)
+                # Calc volume
+                vol_vox, vol_fl = calc_rot_vol(
+                    obj, PhysicalSizeY, PhysicalSizeX
+                )
                 IDs_vol_vox[i] = vol_vox
                 IDs_area_pxl[i] = obj.area
                 IDs_vol_fl[i] = vol_fl
