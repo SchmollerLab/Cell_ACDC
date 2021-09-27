@@ -8795,6 +8795,7 @@ class guiWin(QMainWindow):
             for PosData in self.data:
                 df = PosData.segmInfo_df.loc[PosData.filename]
                 new_df = myutils.getDefault_SegmInfo_df(PosData, filename)
+                print(new_df)
                 for z_info in df.itertuples():
                     frame_i = z_info.Index[1]
                     zProjHow = z_info.which_z_proj
@@ -8906,15 +8907,20 @@ class guiWin(QMainWindow):
                         col = 'z_slice_used_dataPrep'
                     z_slice = PosData.segmInfo_df.at[idx, col]
                 except KeyError:
-                    if self.ask_zSlice_absent:
+                    try:
+                        # Try to see if the user already selected z-slice in prev pos
+                        df = pd.read_csv(PosData.segmInfo_df_csv_path)
+                        PosData.segmInfo_df = df.set_index(['filename', 'frame_i'])
+                        col = 'z_slice_used_dataPrep'
+                        z_slice = PosData.segmInfo_df.at[idx, col]
+                    except KeyError as e:
                         self.app.restoreOverrideCursor()
                         self.zSliceAbsent(key, PosData.SizeZ)
-                        self.ask_zSlice_absent = False
                         self.app.setOverrideCursor(Qt.WaitCursor)
-                    df = pd.read_csv(PosData.segmInfo_df_csv_path)
-                    PosData.segmInfo_df = df.set_index(['filename', 'frame_i'])
-                    col = 'z_slice_used_dataPrep'
-                    z_slice = PosData.segmInfo_df.at[idx, col]
+                        df = pd.read_csv(PosData.segmInfo_df_csv_path)
+                        PosData.segmInfo_df = df.set_index(['filename', 'frame_i'])
+                        col = 'z_slice_used_dataPrep'
+                        z_slice = PosData.segmInfo_df.at[idx, col]
 
                 fluo_data_z_maxP = fluo_data.max(axis=0)
                 fluo_data_z_sumP = fluo_data.mean(axis=0)
@@ -9145,7 +9151,6 @@ class guiWin(QMainWindow):
 
     def saveData(self):
         self.store_data()
-        self.ask_zSlice_absent = True
         self.titleLabel.setText('Saving data... (check progress in the terminal)', color='w')
 
         txt = (

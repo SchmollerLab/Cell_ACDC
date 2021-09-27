@@ -457,7 +457,9 @@ class dataPrepWin(QMainWindow):
             self.zProjComboBox.currentTextChanged.connect(self.updateZproj)
 
             if zProjHow == 'single z-slice':
+                self.zSliceScrollBar.valueChanged.disconnect()
                 self.zSliceScrollBar.setSliderPosition(z)
+                self.zSliceScrollBar.valueChanged.connect(self.update_z_slice)
                 self.z_label.setText(f'z-slice  {z+1}/{PosData.SizeZ}')
                 img = img[z]
             elif zProjHow == 'max z-projection':
@@ -965,11 +967,11 @@ class dataPrepWin(QMainWindow):
             self.zProjComboBox.setDisabled(False)
             self.zSliceScrollBar.setMaximum(PosData.SizeZ-1)
             try:
-                self.zSliceScrollBar.sliderMoved.disconnect()
+                self.zSliceScrollBar.valueChanged.disconnect()
                 self.zProjComboBox.currentTextChanged.disconnect()
             except Exception as e:
                 pass
-            self.zSliceScrollBar.sliderMoved.connect(self.update_z_slice)
+            self.zSliceScrollBar.valueChanged.connect(self.update_z_slice)
             self.zProjComboBox.currentTextChanged.connect(self.updateZproj)
             if PosData.SizeT > 1:
                 self.interpAction.setEnabled(True)
