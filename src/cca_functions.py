@@ -15,6 +15,7 @@ from PyQt5 import QtCore
 import sys
 import difflib
 from scipy.stats import binned_statistic
+import warnings
 
 
 def configuration_dialog():
@@ -50,19 +51,6 @@ def find_available_channels(filenames, first_pos_dir):
     )
     return ch_names, warn
 
-def calc_rot_vol(obj, PhysicalSizeY=1, PhysicalSizeX=1):
-    vox_to_fl = PhysicalSizeY*(PhysicalSizeX**2)
-    rotate_ID_img = skimage.transform.rotate(
-        obj.image.astype(np.uint8), -(obj.orientation*180/np.pi),
-        resize=True, order=3, preserve_range=True
-    )
-    radii = np.sum(rotate_ID_img, axis=1)/2
-    vol_vox = np.sum(np.pi*(radii**2))
-    if vox_to_fl is not None:
-        return vol_vox, vol_vox*vox_to_fl
-    else:
-        return vol_vox, vol_vox
-
 def calculate_downstream_data(
     file_names,
     image_folders,
@@ -90,7 +78,7 @@ def calculate_downstream_data(
                 overall_df = overall_df.append(cc_props).reset_index(drop=True)
             else:
                 print(f'Calculate regionprops on each frame based on Segmentation...')
-                rp_df = _calculate_rp_df(seg_mask, is_timelapse_data, is_zstack_data, max_frame=cc_data.frame_i.max()+1)
+                rp_df = _calculate_rp_df(seg_mask, is_timelapse_data, is_zstack_data, metadata, max_frame=cc_data.frame_i.max()+1)
                 print(f'Calculate mean signal strength for every channel and cell...')
                 flu_signal_df = _calculate_flu_signal(
                     seg_mask,
@@ -236,7 +224,7 @@ def _load_files(file_dir, channels):
 
 
 
-def _calculate_rp_df(seg_mask, is_timelapse_data, is_zstack_data, max_frame=1, label_input=False):
+def _calculate_rp_df(seg_mask, is_timelapse_data, is_zstack_data, metadata, max_frame=1, label_input=False):
     """
     function to calculate regionprops based on a 2D(!) segmentation mask.
     TODO: insert check if 3D segmentation mask is available and calculate more regionprops.
@@ -255,13 +243,25 @@ def _calculate_rp_df(seg_mask, is_timelapse_data, is_zstack_data, max_frame=1, l
         for t, img in enumerate(tqdm(labeled_data)):
             # build time-dependent dataframes for further use (later for cca)
             if img.max() > 0:
-                t_rp = pd.DataFrame(regionprops_table(img.astype(int), properties=props)).rename(columns=rename_dict)
-                t_rp['frame_i'] = t
+                t_rp_df = pd.DataFrame(regionprops_table(img.astype(int), properties=props)).rename(columns=rename_dict)
+                t_rp_df['frame_i'] = t
+                # calculate volumes based on regionprops
+                if metadata is None:
+                    warnings.warn("No metadata available. Volumes are not calculated")
+                    t_rp_df['cell_vol_vox_downstream'] = 0
+                    t_rp_df['cell_vol_fl_downstream'] = 0
+                else:
+                    t_rp = regionprops(img.astype(int))
+                    vol_vox = [_calc_rot_vol(obj, metadata.loc["PhysicalSizeY"], metadata.loc["PhysicalSizeX"])[0] for obj in t_rp]
+                    vol_fl = [_calc_rot_vol(obj, metadata.loc["PhysicalSizeY"], metadata.loc["PhysicalSizeX"])[1] for obj in t_rp]
+                    assert len(t_rp_df) == len(vol_vox)
+                    t_rp_df['cell_vol_vox_downstream'] = vol_vox
+                    t_rp_df['cell_vol_fl_downstream'] = vol_fl
                 # determine id's which are falsely merged by 3D-labeling
-                for r_id in t_rp.Cell_ID.unique():
+                for r_id in t_rp_df.Cell_ID.unique():
                     bin_label = label((img==r_id).astype(int))
-                    t_rp.loc[t_rp['Cell_ID']==r_id, '2d_label_count'] = bin_label.max()
-                t_df = t_df.append(t_rp, ignore_index=True)
+                    t_rp_df.loc[t_rp_df['Cell_ID']==r_id, '2d_label_count'] = bin_label.max()
+                t_df = t_df.append(t_rp_df, ignore_index=True)
         # calculate global features by grouping
         grouped_df = t_df.groupby('Cell_ID').agg(
             min_t=('frame_i', min),
@@ -282,6 +282,20 @@ def _calculate_rp_df(seg_mask, is_timelapse_data, is_zstack_data, max_frame=1, l
         rp_df['elongation'] = rp_df['major_axis_length']/rp_df['minor_axis_length']
         rp_df['frame_i'] = 0
         return rp_df
+        
+
+def _calc_rot_vol(obj, PhysicalSizeY=1, PhysicalSizeX=1):
+    vox_to_fl = PhysicalSizeY*(PhysicalSizeX**2)
+    rotate_ID_img = skimage.transform.rotate(
+        obj.image.astype(np.uint8), -(obj.orientation*180/np.pi),
+        resize=True, order=3, preserve_range=True
+    )
+    radii = np.sum(rotate_ID_img, axis=1)/2
+    vol_vox = np.sum(np.pi*(radii**2))
+    if vox_to_fl is not None:
+        return vol_vox, float(vol_vox*vox_to_fl)
+    else:
+        return vol_vox, vol_vox
 
 
 def _calculate_flu_signal(seg_mask, channel_data, channels, cc_data, is_timelapse_data, is_zstack_data):

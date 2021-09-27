@@ -56,7 +56,7 @@ import qrc_resources
 
 # Custom modules
 import load, prompts, apps, core, myutils, dataPrep
-from cca_functions import calc_rot_vol
+from cca_functions import _calc_rot_vol
 from myutils import download_model
 from QtDarkMode import breeze_resources
 
@@ -8931,7 +8931,7 @@ class guiWin(QMainWindow):
             for i, obj in enumerate(rp):
                 IDs[i] = obj.label
                 # Calc volume
-                vol_vox, vol_fl = calc_rot_vol(
+                vol_vox, vol_fl = _calc_rot_vol(
                     obj, PhysicalSizeY, PhysicalSizeX
                 )
                 IDs_vol_vox[i] = vol_vox
