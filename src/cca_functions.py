@@ -1,5 +1,6 @@
 import numpy as np
 from skimage.measure import label, regionprops, regionprops_table
+import skimage.transform
 import pandas as pd
 from tifffile import imread
 import os
@@ -48,6 +49,18 @@ def find_available_channels(filenames, first_pos_dir):
         filenames, first_pos_dir
     )
     return ch_names, warn
+
+def calc_rot_vol(obj, vox_to_fl=None):
+    rotate_ID_img = skimage.transform.rotate(
+        obj.image.astype(np.uint8), -(obj.orientation*180/np.pi),
+        resize=True, order=3, preserve_range=True
+    )
+    radii = np.sum(rotate_ID_img, axis=1)/2
+    vol_vox = np.sum(np.pi*(radii**2))
+    if vox_to_fl is not None:
+        return vol_vox, vol_vox*vox_to_fl
+    else:
+        return vol_vox, vol_vox
 
 def calculate_downstream_data(
     file_names,
@@ -194,7 +207,7 @@ def _load_files(file_dir, channels):
         cc_stage_path = glob.glob(f'{file_dir}\*cc_stage*')[0]
     # assume cell cycle output of ACDC to be .csv
     channel_files.append(pd.read_csv(cc_stage_path))
-    
+
     # append metadata if available, else append None
     if len(glob.glob(f'{file_dir}\*metadata*')) > 0:
         metadata_path = glob.glob(f'{file_dir}\*metadata*')[0]
@@ -303,11 +316,11 @@ def _rename_columns(cc_data):
     }
     cc_data.columns = [rename_dict.get(col, col) for col in cc_data.columns]
     return cc_data
-    
-    
+
+
 def binned_mean_stats(x, values, nbins, bins_min_count):
     """
-    function to calculate binned means and corresponding standard errors for 
+    function to calculate binned means and corresponding standard errors for
     evenly spaced bins in the data ("x" gets distributed in bins, stats are calculated on "values")
     """
     bin_counts, _, _ = binned_statistic(x, values, statistic='count', bins=nbins)
@@ -320,8 +333,8 @@ def binned_mean_stats(x, values, nbins, bins_min_count):
     y_errorbar = bin_means[bin_counts>bins_min_count]
     err_errorbar = 1.96 * bin_standard_errors[bin_counts>bins_min_count]
     return x_errorbar, y_errorbar, err_errorbar
-    
-    
+
+
 def calculate_effect_size_cohen(data, group1, group2, cat_column='size_category', val_column='FITC_concentration'):
     assert cat_column in data.columns and val_column in data.columns
     data_gr1 = data[data[cat_column]==group1]

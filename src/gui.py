@@ -56,6 +56,7 @@ import qrc_resources
 
 # Custom modules
 import load, prompts, apps, core, myutils, dataPrep
+from cca_functions import calc_rot_vol
 from myutils import download_model
 from QtDarkMode import breeze_resources
 
@@ -8931,15 +8932,10 @@ class guiWin(QMainWindow):
 
             for i, obj in enumerate(rp):
                 IDs[i] = obj.label
-                rotate_ID_img = skimage.transform.rotate(
-                    obj.image.astype(np.uint8), -(obj.orientation*180/np.pi),
-                    resize=True, order=3, preserve_range=True
-                )
-                radii = np.sum(rotate_ID_img, axis=1)/2
-                vol_vox = np.sum(np.pi*(radii**2))
+                vol_vox, vol_fl = calc_rot_vol(obj, vox_to_fl=vox_to_fl)
                 IDs_vol_vox[i] = vol_vox
                 IDs_area_pxl[i] = obj.area
-                IDs_vol_fl[i] = vol_vox*vox_to_fl
+                IDs_vol_fl[i] = vol_fl
                 IDs_area_um2[i] = obj.area*yx_pxl_to_um2
 
                 for k, fluo_2D in enumerate(fluo_data_projs):
@@ -9134,13 +9130,18 @@ class guiWin(QMainWindow):
             NOTE: Saving additional metrics is <b>slower</b>,
             we reccomend doing it only when you need it.
         </p>
-        """
-        )
-        msg = QtGui.QMessageBox()
-        save_metrics = msg.question(
-            self, 'Save metrics?', txt,
-            msg.Yes | msg.No | msg.Cancel
-        )
+        """)
+
+        if not self.isSnapshot:
+            msg = QtGui.QMessageBox()
+            save_metrics_answer = msg.question(
+                self, 'Save metrics?', txt,
+                msg.Yes | msg.No | msg.Cancel
+            )
+            save_metrics = save_metrics_answer == msg.Yes
+        else:
+            save_metrics = True
+
 
         for p, PosData in enumerate(self.data):
             current_frame_i = PosData.frame_i
@@ -9220,7 +9221,7 @@ class guiWin(QMainWindow):
                         )
                         rp = data_dict['regionprops']
                         try:
-                            if save_metrics == msg.Yes:
+                            if save_metrics:
                                 acdc_df = self.addMetrics_acdc_df(
                                             acdc_df, rp, frame_i, lab, PosData
                                 )
