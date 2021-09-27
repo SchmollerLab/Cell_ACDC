@@ -15,6 +15,7 @@ from PyQt5 import QtCore
 import sys
 import difflib
 from scipy.stats import binned_statistic
+import warnings
 
 
 def configuration_dialog():
@@ -50,19 +51,6 @@ def find_available_channels(filenames, first_pos_dir):
     )
     return ch_names, warn
 
-def calc_rot_vol(obj, PhysicalSizeY=1, PhysicalSizeX=1):
-    vox_to_fl = PhysicalSizeY*(PhysicalSizeX**2)
-    rotate_ID_img = skimage.transform.rotate(
-        obj.image.astype(np.uint8), -(obj.orientation*180/np.pi),
-        resize=True, order=3, preserve_range=True
-    )
-    radii = np.sum(rotate_ID_img, axis=1)/2
-    vol_vox = np.sum(np.pi*(radii**2))
-    if vox_to_fl is not None:
-        return vol_vox, vol_vox*vox_to_fl
-    else:
-        return vol_vox, vol_vox
-
 def calculate_downstream_data(
     file_names,
     image_folders,
@@ -90,7 +78,7 @@ def calculate_downstream_data(
                 overall_df = overall_df.append(cc_props).reset_index(drop=True)
             else:
                 print(f'Calculate regionprops on each frame based on Segmentation...')
-                rp_df = _calculate_rp_df(seg_mask, is_timelapse_data, is_zstack_data, max_frame=cc_data.frame_i.max()+1)
+                rp_df = _calculate_rp_df(seg_mask, is_timelapse_data, is_zstack_data, metadata, max_frame=cc_data.frame_i.max()+1)
                 print(f'Calculate mean signal strength for every channel and cell...')
                 flu_signal_df = _calculate_flu_signal(
                     seg_mask,
@@ -120,7 +108,106 @@ def calculate_downstream_data(
                 save_path = os.path.join(pos_dir, f'{common_prefix}cca_properties_downstream.csv')
                 temp_df.to_csv(save_path, index=False)
                 overall_df = overall_df.append(temp_df).reset_index(drop=True)
+    return overall_df, is_timelapse_data, is_zstack_data
+    
+    
+def calculate_relatives_data(overall_df, channels):
+    # Join on Cell_ID vs. relative_ID to later calculate columns like "daughter growth" or "mother-bud-signal-combined"
+    overall_df_rel = overall_df.copy()
+    overall_df = overall_df.merge(
+        overall_df_rel,
+        how='left',
+        left_on=['frame_i', 'relative_ID', 'max_frame_pos', 'file', 'selection_subset', 'position', 'directory'],
+        right_on=['frame_i', 'Cell_ID', 'max_frame_pos', 'file', 'selection_subset', 'position', 'directory'],
+        suffixes = ('', '_rel')
+    )
+    # for every channel, calculate amount from mother and bud cells combined
+    for ch in channels:
+        try:
+            overall_df[f'{ch}_combined_amount_mother_bud'] = overall_df.apply(
+                lambda x: x.loc[f'{ch}_corrected_amount']+x.loc[f'{ch}_corrected_amount_rel'] if\
+                x.loc['cell_cycle_stage']=='S' and x.loc['relationship'] == 'mother' else\
+                x.loc[f'{ch}_corrected_amount'],
+                axis=1
+            )
+        except KeyError:
+            continue
+    overall_df['combined_mother_bud_volume'] = overall_df.apply(
+        lambda x: x.loc['cell_vol_fl']+x.loc['cell_vol_fl_rel'] if\
+        x.loc['cell_cycle_stage']=='S' and x.loc['relationship'] == 'mother' else\
+        x.loc['cell_vol_fl'],
+        axis=1
+    )
     return overall_df
+    
+    
+def calculate_per_phase_quantities(overall_df, group_cols, channels):
+    # group by group columns, aggregate some other columns
+    phase_grouped = overall_df.sort_values(
+        'frame_i'
+    ).groupby(group_cols).agg(
+        # perform some calculations relating to the whole phase:
+        phase_area_growth=('cell_area_um2', lambda x: x.iloc[-1]-x.iloc[0]),
+        phase_volume_growth=('cell_vol_fl', lambda x: x.iloc[-1]-x.iloc[0]),
+        phase_area_at_beginning=('cell_area_um2', 'first'),
+        phase_volume_at_beginning=('cell_vol_fl', 'first'),
+        phase_volume_at_end=('cell_vol_fl', 'last'),
+        phase_daughter_area_growth=('cell_area_um2_rel', lambda x: x.iloc[-1]-x.iloc[0]),
+        phase_daughter_volume_growth=('cell_vol_fl_rel', lambda x: x.iloc[-1]-x.iloc[0]),
+        phase_length=('frame_i', lambda x: max(x)-min(x)),
+        phase_begin = ('frame_i', 'min'),
+        phase_end = ('frame_i', 'max'),
+        phase_combined_volume_at_end = ('combined_mother_bud_volume','last')
+    ).reset_index()
+    # calculate some quantities in a for loop for all available channels and merge results.
+    phase_grouped_flu = pd.DataFrame(columns=group_cols)
+    for ch in channels:
+        if f'{ch}_corrected_mean' in overall_df.columns:
+            flu_temp = overall_df.sort_values(
+                'frame_i'
+            ).groupby(group_cols).agg({
+                # perform some calculations on flu data:
+                f'{ch}_corrected_amount': 'first',
+                f'{ch}_corrected_mean': 'first',
+                f'{ch}_corrected_concentration': ['first','last'],
+                f'{ch}_combined_amount_mother_bud': ['first','last']
+            }).reset_index()
+            # collapse multiindex into column name with aggregation as suffix
+            flu_temp.columns = ['_'.join(col) if col[1]!='' else col[0] for col in flu_temp.columns.values]
+            # rename columns into meaningful names
+            flu_temp = flu_temp.rename({
+                f'{ch}_corrected_amount_first': f'phase_{ch}_amount_at_beginning',
+                f'{ch}_corrected_mean_first': f'phase_{ch}_mean_at_beginning',
+                f'{ch}_corrected_concentration_first': f'phase_{ch}_concentration_at_beginning',
+                f'{ch}_corrected_concentration_last': f'phase_{ch}_concentration_at_end',
+                f'{ch}_combined_amount_mother_bud_first': f'phase_{ch}_combined_amount_at_beginning',
+                f'{ch}_combined_amount_mother_bud_last': f'phase_{ch}_combined_amount_at_end',
+            }, axis=1)
+            phase_grouped_flu = phase_grouped_flu.merge(flu_temp, how='right', on=group_cols, suffixes=('',''))
+
+    # detect complete cell cycle phases and complete cell cycles
+    temp = np.logical_and(
+        phase_grouped.phase_begin > 0,
+        phase_grouped.phase_end < phase_grouped.max_frame_pos
+    )
+    # this or is for disappearing cells
+    if 'max_t' in overall_df.columns:
+        complete_phase_indices = np.logical_and(
+            temp,
+            phase_grouped.phase_end < phase_grouped.max_t
+        )
+    else:
+        complete_phase_indices = temp
+    phase_grouped['complete_phase'] = complete_phase_indices.astype(int)
+    no_of_compl_phases_per_cycle = phase_grouped.groupby(
+        ['Cell_ID', 'generation_num', 'position', 'file']
+    )['complete_phase'].transform('sum')
+    complete_cycle_indices = no_of_compl_phases_per_cycle == 2
+    phase_grouped['complete_cycle'] = complete_cycle_indices.astype(int)
+    phase_grouped['all_complete'] = (phase_grouped['complete_cycle']+phase_grouped['complete_phase']==2).astype(int)
+    # join phase-grouped data with 
+    phase_grouped = phase_grouped.merge(phase_grouped_flu, how='left', on=group_cols, suffixes=('',''))
+    return phase_grouped
 
 
 def _determine_common_prefix(filenames):
@@ -236,7 +323,7 @@ def _load_files(file_dir, channels):
 
 
 
-def _calculate_rp_df(seg_mask, is_timelapse_data, is_zstack_data, max_frame=1, label_input=False):
+def _calculate_rp_df(seg_mask, is_timelapse_data, is_zstack_data, metadata, max_frame=1, label_input=False):
     """
     function to calculate regionprops based on a 2D(!) segmentation mask.
     TODO: insert check if 3D segmentation mask is available and calculate more regionprops.
@@ -255,13 +342,25 @@ def _calculate_rp_df(seg_mask, is_timelapse_data, is_zstack_data, max_frame=1, l
         for t, img in enumerate(tqdm(labeled_data)):
             # build time-dependent dataframes for further use (later for cca)
             if img.max() > 0:
-                t_rp = pd.DataFrame(regionprops_table(img.astype(int), properties=props)).rename(columns=rename_dict)
-                t_rp['frame_i'] = t
+                t_rp_df = pd.DataFrame(regionprops_table(img.astype(int), properties=props)).rename(columns=rename_dict)
+                t_rp_df['frame_i'] = t
+                # calculate volumes based on regionprops
+                if metadata is None:
+                    warnings.warn("No metadata available. Volumes are not calculated")
+                    t_rp_df['cell_vol_vox_downstream'] = 0
+                    t_rp_df['cell_vol_fl_downstream'] = 0
+                else:
+                    t_rp = regionprops(img.astype(int))
+                    vol_vox = [_calc_rot_vol(obj, metadata.loc["PhysicalSizeY"], metadata.loc["PhysicalSizeX"])[0] for obj in t_rp]
+                    vol_fl = [_calc_rot_vol(obj, metadata.loc["PhysicalSizeY"], metadata.loc["PhysicalSizeX"])[1] for obj in t_rp]
+                    assert len(t_rp_df) == len(vol_vox)
+                    t_rp_df['cell_vol_vox_downstream'] = vol_vox
+                    t_rp_df['cell_vol_fl_downstream'] = vol_fl
                 # determine id's which are falsely merged by 3D-labeling
-                for r_id in t_rp.Cell_ID.unique():
+                for r_id in t_rp_df.Cell_ID.unique():
                     bin_label = label((img==r_id).astype(int))
-                    t_rp.loc[t_rp['Cell_ID']==r_id, '2d_label_count'] = bin_label.max()
-                t_df = t_df.append(t_rp, ignore_index=True)
+                    t_rp_df.loc[t_rp_df['Cell_ID']==r_id, '2d_label_count'] = bin_label.max()
+                t_df = t_df.append(t_rp_df, ignore_index=True)
         # calculate global features by grouping
         grouped_df = t_df.groupby('Cell_ID').agg(
             min_t=('frame_i', min),
@@ -282,6 +381,20 @@ def _calculate_rp_df(seg_mask, is_timelapse_data, is_zstack_data, max_frame=1, l
         rp_df['elongation'] = rp_df['major_axis_length']/rp_df['minor_axis_length']
         rp_df['frame_i'] = 0
         return rp_df
+        
+
+def _calc_rot_vol(obj, PhysicalSizeY=1, PhysicalSizeX=1):
+    vox_to_fl = PhysicalSizeY*(PhysicalSizeX**2)
+    rotate_ID_img = skimage.transform.rotate(
+        obj.image.astype(np.uint8), -(obj.orientation*180/np.pi),
+        resize=True, order=3, preserve_range=True
+    )
+    radii = np.sum(rotate_ID_img, axis=1)/2
+    vol_vox = np.sum(np.pi*(radii**2))
+    if vox_to_fl is not None:
+        return vol_vox, float(vol_vox*vox_to_fl)
+    else:
+        return vol_vox, vol_vox
 
 
 def _calculate_flu_signal(seg_mask, channel_data, channels, cc_data, is_timelapse_data, is_zstack_data):
