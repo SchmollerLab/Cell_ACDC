@@ -9,7 +9,7 @@ from PyQt5.QtCore import Qt, QSize, QEvent
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QGridLayout, QTextEdit, QPushButton,
     QListWidget, QListWidgetItem, QCheckBox, QFrame, QStyleFactory,
-    QLabel, QPushButton, QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator,
+    QLabel, QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator,
     QScrollArea, QComboBox, QHBoxLayout, QToolButton, QMainWindow
 )
 
@@ -17,8 +17,7 @@ script_path = os.path.dirname(os.path.realpath(__file__))
 src_path = os.path.dirname(script_path)
 sys.path.append(src_path)
 
-import gui, dataStruct
-from prompts import QPushButton
+import gui, dataStruct, myutils
 
 # NOTE: Enable icons
 import qrc_resources
@@ -227,19 +226,19 @@ class welcomeWin(QWidget):
 
         welcomeLayout.addWidget(testMyImageButton, 1, 1)
 
-        testTimeLapseExample = QPushButton(
+        testTimeLapseButton = QPushButton(
             text='Download and test with a time-lapse example')
-        testTimeLapseExample.setIcon(QIcon(':download.svg'))
-        testTimeLapseExample.clicked.connect(self.openGUItimeLapseExample)
+        testTimeLapseButton.setIcon(QIcon(':download.svg'))
+        testTimeLapseButton.clicked.connect(self.testTimeLapseExample)
 
-        welcomeLayout.addWidget(testTimeLapseExample, 1, 2)
+        welcomeLayout.addWidget(testTimeLapseButton, 1, 2)
 
-        test3DzStackImage = QPushButton(
+        test3DzStackButton = QPushButton(
             text='Download and test with a 3D z-stack example')
-        test3DzStackImage.setIcon(QIcon(':download.svg'))
-        test3DzStackImage.clicked.connect(self.openGUIzStackExample)
+        test3DzStackButton.setIcon(QIcon(':download.svg'))
+        test3DzStackButton.clicked.connect(self.test3DzStacksExample)
 
-        welcomeLayout.addWidget(test3DzStackImage, 1, 3)
+        welcomeLayout.addWidget(test3DzStackButton, 1, 3)
 
         welcomeLayout.setRowStretch(2, 1)
         welcomeLayout.setColumnStretch(5, 1)
@@ -670,17 +669,17 @@ class welcomeWin(QWidget):
         layout.addWidget(testMyImage)
         testMyImage.clicked.connect(self.openGUIsingleImage)
 
-        testTimeLapseExample = QPushButton(
+        testTimeLapseButton = QPushButton(
             text='Download and test with a time-lapse example')
-        testTimeLapseExample.setIcon(QIcon(':download.svg'))
-        layout.addWidget(testTimeLapseExample)
-        testMyImage.clicked.connect(self.openGUItimeLapseExample)
+        testTimeLapseButton.setIcon(QIcon(':download.svg'))
+        layout.addWidget(testTimeLapseButton)
+        testTimeLapseButton.clicked.connect(self.testTimeLapseExample)
 
-        test3DzStackImage = QPushButton(
+        test3DzStackButton = QPushButton(
             text='Download and test with a 3D z-stack example')
-        test3DzStackImage.setIcon(QIcon(':download.svg'))
-        layout.addWidget(test3DzStackImage)
-        test3DzStackImage.clicked.connect(self.openGUIzStackExample)
+        test3DzStackButton.setIcon(QIcon(':download.svg'))
+        layout.addWidget(test3DzStackButton)
+        test3DzStackButton.clicked.connect(self.test3DzStacksExample)
 
         layout.addStretch(1)
 
@@ -756,7 +755,7 @@ class welcomeWin(QWidget):
                 'os2': lambda foldername: os.system('open "%s"' % foldername)
                  }
 
-            main_path = pathlib.Path.cwd()
+            main_path = pathlib.Path(__file__).resolve().parents[2]
             userManual_path = main_path / 'UserManual'
             systems.get(os.name, os.startfile)(userManual_path)
 
@@ -792,6 +791,14 @@ class welcomeWin(QWidget):
         self.dataStructWin.show()
         self.dataStructWin.main()
 
+    def testTimeLapseExample(self, checked=True):
+        exp_path = myutils.download_examples(which='time_lapse_2D')
+        print(exp_path)
+
+    def test3DzStacksExample(self, checked=True):
+        exp_path = myutils.download_examples(which='snapshots_3D')
+
+
     def showAndSetSize(self):
         self.show()
         font = QFont()
@@ -821,12 +828,6 @@ class welcomeWin(QWidget):
         Dw = w - w0
         Dh = 1.5
         self.setGeometry(l-int(Dw/2), int(t-(1-Dh)), w, int(h*Dh))
-
-    def openGUItimeLapseExample(self, checked=False):
-        pass
-
-    def openGUIzStackExample(self, checked=False):
-        pass
 
     def showPage(self, currentItem):
         self.treeSelector.setCurrentItem(currentItem, 0)

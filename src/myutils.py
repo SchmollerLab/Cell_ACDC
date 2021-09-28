@@ -31,23 +31,27 @@ def getDefault_SegmInfo_df(PosData, filename):
     }).set_index(['filename', 'frame_i'])
     return df
 
-def download_examples(which='time-lapse-2D'):
+def download_examples(which='time_lapse_2D'):
     # https://drive.google.com/drive/u/0/folders/1OgUgp_HuYsZlDg_TVWPuhT4OdZXJHbAg
-    if which == 'time-lapse-2D':
+    if which == 'time_lapse_2D':
         foldername = 'TimeLapse_2D'
         file_id = '1NhEyl8WVTsprtAQ9_JAMum--r_2mVkbj'
         file_size = 175010304
-    elif which == 'snapshots-3D':
+    elif which == 'snapshots_3D':
         foldername = 'Multi_3D_zStacks'
         file_id = '1Y1KNmCeT4LrBW7hStcvc0zj-NMsR9u2W'
         file_size = 124822528
     else:
-        return
+        return ''
 
     main_path = pathlib.Path(__file__).resolve().parents[1]
     data_path = main_path / 'data'
     examples_path = data_path / 'examples'
     example_path = examples_path / foldername
+
+    if os.path.exists(example_path):
+        return example_path
+
     zip_dst = os.path.join(examples_path, 'example_temp.zip')
 
     if not os.path.exists(examples_path):
@@ -61,6 +65,7 @@ def download_examples(which='time-lapse-2D'):
     # Remove downloaded zip archive
     os.remove(zip_dst)
     print('Example downloaded successfully')
+    return example_path
 
 def download_java():
     is_linux = sys.platform.startswith('linux')

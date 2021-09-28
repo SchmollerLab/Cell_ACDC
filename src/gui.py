@@ -9405,7 +9405,7 @@ class guiWin(QMainWindow):
             'os2': lambda foldername: os.system('open "%s"' % foldername)
              }
 
-        main_path = pathlib.Path.cwd()
+        main_path = pathlib.Path(__file__).resolve().parents[1]
         userManual_path = main_path / 'UserManual'
         systems.get(os.name, os.startfile)(userManual_path)
 
