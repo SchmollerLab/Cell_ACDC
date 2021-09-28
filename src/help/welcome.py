@@ -1,4 +1,5 @@
 import os, sys
+import pathlib
 
 import pandas as pd
 import numpy as np
@@ -16,7 +17,7 @@ script_path = os.path.dirname(os.path.realpath(__file__))
 src_path = os.path.dirname(script_path)
 sys.path.append(src_path)
 
-import gui
+import gui, dataStruct
 from prompts import QPushButton
 
 # NOTE: Enable icons
@@ -57,6 +58,7 @@ class welcomeWin(QWidget):
         # Create all pages of the guide as one frame for each page
         self.addWelcomePage()
         self.addQuickStartPage()
+        self.addManualPage()
 
         self.setStyleSheet(
             """
@@ -109,24 +111,24 @@ class welcomeWin(QWidget):
         self.quickStartItem.setText(0, 'Quick Start')
         treeSelector.addTopLevelItem(self.quickStartItem)
 
-        self.settingsItem = QTreeWidgetItem(treeSelector)
-        self.settingsItem.setIcon(0, QIcon(':cog.svg'))
-        self.settingsItem.setText(0, 'Settings')
-        treeSelector.addTopLevelItem(self.settingsItem)
+        # self.settingsItem = QTreeWidgetItem(treeSelector)
+        # self.settingsItem.setIcon(0, QIcon(':cog.svg'))
+        # self.settingsItem.setText(0, 'Settings')
+        # treeSelector.addTopLevelItem(self.settingsItem)
 
         self.manualItem = QTreeWidgetItem(treeSelector)
         self.manualItem.setIcon(0, QIcon(':book.svg'))
         self.manualItem.setText(0, 'User Manual')
         treeSelector.addTopLevelItem(self.manualItem)
-        self.manualDataPrepItem = QTreeWidgetItem(self.manualItem)
-        self.manualDataPrepItem.setText(0, '    Data Prep module')
-        self.manualItem.addChild(self.manualDataPrepItem)
-        self.manualSegmItem = QTreeWidgetItem(self.manualItem)
-        self.manualSegmItem.setText(0, '    Segmentation module')
-        self.manualItem.addChild(self.manualDataPrepItem)
-        self.manualGUIItem = QTreeWidgetItem(self.manualItem)
-        self.manualGUIItem.setText(0, '    GUI: segmentation and tracking')
-        self.manualItem.addChild(self.manualDataPrepItem)
+        # self.manualDataPrepItem = QTreeWidgetItem(self.manualItem)
+        # self.manualDataPrepItem.setText(0, '    Data Prep module')
+        # self.manualItem.addChild(self.manualDataPrepItem)
+        # self.manualSegmItem = QTreeWidgetItem(self.manualItem)
+        # self.manualSegmItem.setText(0, '    Segmentation module')
+        # self.manualItem.addChild(self.manualSegmItem)
+        # self.manualGUIItem = QTreeWidgetItem(self.manualItem)
+        # self.manualGUIItem.setText(0, '    GUI: segmentation and tracking')
+        # self.manualItem.addChild(self.manualGUIItem)
 
         self.contributeItem = QTreeWidgetItem(treeSelector)
         self.contributeItem.setIcon(0, QIcon(':contribute.svg'))
@@ -178,21 +180,18 @@ class welcomeWin(QWidget):
         <body>
         <blockquote>
         <p style="font-size:18pt; font-family:ubuntu">
-            <b>Welcome to Yeast-ACDC</b>
+            <b>Welcome to Cell-ACDC</b>
         </p>
         <p style="font-size:12pt; font-family:ubuntu">
             Welcome to your new image analysis tool!
         </p>
         <p style="font-size:12pt; font-family:ubuntu">
-            Yeast-ACDC is open-source software for
+            Cell-ACDC is open-source software for
             <b>segmentation</b>, <b>tracking,</b> and<br>
             <b>cell cycle annotation</b> of microscopy imaging data.
         </p>
         <p style="font-size:12pt; font-family:ubuntu">
-            For more info see our paper here or navigate the menus on the left.
-        </p>
-        <p style="font-size:12pt; font-family:ubuntu">
-            If it is your <b>first time here</b> we reccomend reading the
+            If it is your <b>first time here</b> we recommend reading the
             <a href=\"quickStart">Quick Start guide</a>
             and/or the
             <a href=\"userManual">User Manual</a>.
@@ -218,6 +217,7 @@ class welcomeWin(QWidget):
 
         startWizardButton = QPushButton(' Launch Wizard')
         startWizardButton.setIcon(QIcon(':wizard.svg'))
+        startWizardButton.clicked.connect(self.launchDataStruct)
 
         welcomeLayout.addWidget(startWizardButton, 1, 0)
 
@@ -316,7 +316,7 @@ class welcomeWin(QWidget):
         <body>
         <blockquote>
         <p style="font-size:{fs}pt; font-family:ubuntu">
-            Yeast-ACDC is made of three main modules:
+            Cell-ACDC is made of three main modules:
             <ul>
                 <li>
                     <b>Data Prep</b>: used for selection of z-slice of z-projection,
@@ -358,7 +358,7 @@ class welcomeWin(QWidget):
         <body>
         <blockquote>
         <p style="font-size:{fs}pt; font-family:ubuntu">
-            <b>GUI tips:</b>
+            <b>GUI tips and tricks:</b>
             <ul>
                 <li>
                     Most of the <b>functions</b> are available from the <b>toolbar</b>
@@ -697,6 +697,46 @@ class welcomeWin(QWidget):
         self.mainLayout.addWidget(self.QSscrollArea, 0, 1)
         self.itemsDict[self.quickStartItem.text(0)] = self.QSscrollArea
 
+    def addManualPage(self):
+        self.manualFrame = QFrame(self)
+        manualLayout = QGridLayout()
+
+        manualTextWidget = QLabel()
+
+        htmlTxt = (
+        """
+        <html>
+        <head>
+        <title></title>
+        <style type="text/css">
+        blockquote {
+         margin: 5;
+         padding: 0;
+        }
+        </style>
+        </head>
+        <body>
+        <blockquote>
+        <p style="font-size:12pt; font-family:ubuntu">
+            The User Manual is available at the folder
+            <a href=\"showManualDir">/Cell-ACDC/UserManual</a>
+        </p>
+        </blockquote>
+        </body>
+        </html>
+        """
+        )
+
+        # welcomeTextWidget.setHtml(htmlTxt)
+        manualTextWidget.setText(htmlTxt)
+        manualTextWidget.linkActivated.connect(self.linkActivated_cb)
+
+        manualLayout.addWidget(manualTextWidget, 0, 0, alignment=Qt.AlignTop)
+
+        self.manualFrame.setLayout(manualLayout)
+        self.mainLayout.addWidget(self.manualFrame, 0, 1)
+        self.itemsDict[self.manualItem.text(0)] = self.manualFrame
+
 
     def linkActivated_cb(self, link):
         if link == 'DataPrepMore':
@@ -709,9 +749,19 @@ class welcomeWin(QWidget):
             self.showPage(self.quickStartItem)
         elif link == 'userManual':
             self.showPage(self.manualItem)
+        elif link == 'showManualDir':
+            systems = {
+                'nt': os.startfile,
+                'posix': lambda foldername: os.system('xdg-open "%s"' % foldername),
+                'os2': lambda foldername: os.system('open "%s"' % foldername)
+                 }
+
+            main_path = pathlib.Path.cwd()
+            userManual_path = main_path / 'UserManual'
+            systems.get(os.name, os.startfile)(userManual_path)
 
     def addShowGuideCheckbox(self):
-        checkBox = QCheckBox('Show Welcome Guide when opening Yeast-ACDC')
+        checkBox = QCheckBox('Show Welcome Guide when opening Cell-ACDC')
         checked = self.df_settings.at['showWelcomeGuide', 'value'] == 'True'
         checkBox.setChecked(checked)
         self.mainLayout.addWidget(checkBox, 1, 1, alignment=Qt.AlignRight)
@@ -735,6 +785,12 @@ class welcomeWin(QWidget):
             self.guiWin.showAndSetSize()
             self.guiWin.openFile()
 
+    def launchDataStruct(self, checked=True):
+        self.dataStructWin = dataStruct.createDataStructWin(
+            mainWin=self
+        )
+        self.dataStructWin.show()
+        self.dataStructWin.main()
 
     def showAndSetSize(self):
         self.show()
@@ -748,7 +804,7 @@ class welcomeWin(QWidget):
             currentItem = it.value()
             if currentItem is None:
                 break
-            w += QFontMetrics(currentItem.font(0)).maxWidth()+5
+            w += QFontMetrics(currentItem.font(0)).maxWidth()+15
             # w = QFontMetrics()
             it += 1
         self.treeSelector.setFixedWidth(w)
@@ -786,6 +842,7 @@ if __name__ == '__main__':
     app = QApplication([])
     win = welcomeWin(app=app)
     win.showAndSetSize()
-    win.showPage(win.quickStartItem)
+    win.showPage(win.welcomeItem)
+    # win.showPage(win.quickStartItem)
     app.setStyle(QStyleFactory.create('Fusion'))
     sys.exit(app.exec_())
