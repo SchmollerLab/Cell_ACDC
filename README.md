@@ -6,7 +6,7 @@ Written in Python 3.8 by Francesco Padovani and Benedikt Mairhoermann.
 
 Tested on Windows 10 (64 bit), macOS, and Linux Mint 20.1
 
-*NOTE: This readme is not an exhaustive manual. Please find a User Manual (including detailed installation instructions)[here](https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf).*
+*NOTE: This readme is not an exhaustive manual. Please find a <b>User Manual</b> (including detailed installation instructions) [here](https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf).*
 
 ## Installation using Anaconda
 
