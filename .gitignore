@@ -10,6 +10,7 @@ src/java
 src/javabridge_cp37
 src/javabridge_cp38
 src/javabridge_linux
+instructions/
 benchmarks/
 env/*
 data/*
