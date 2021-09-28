@@ -1081,7 +1081,7 @@ class dataPrepWin(QMainWindow):
                    'The requested experiment folder already contains .npy '
                    'or .npz files '
                    'most likely from previous analysis runs.\n\n'
-                   'To avoid data losses we reccomend zipping the "Images" folder.\n\n'
+                   'To avoid data losses we recommend zipping the "Images" folder.\n\n'
                    'If everything looks fine after prepping the data, '
                    'you can manually '
                    'delete the zip archive.\n\n'

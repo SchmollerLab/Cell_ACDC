@@ -31,6 +31,37 @@ def getDefault_SegmInfo_df(PosData, filename):
     }).set_index(['filename', 'frame_i'])
     return df
 
+def download_examples(which='time-lapse-2D'):
+    # https://drive.google.com/drive/u/0/folders/1OgUgp_HuYsZlDg_TVWPuhT4OdZXJHbAg
+    if which == 'time-lapse-2D':
+        foldername = 'TimeLapse_2D'
+        file_id = '1NhEyl8WVTsprtAQ9_JAMum--r_2mVkbj'
+        file_size = 175010304
+    elif which == 'snapshots-3D':
+        foldername = 'Multi_3D_zStacks'
+        file_id = '1Y1KNmCeT4LrBW7hStcvc0zj-NMsR9u2W'
+        file_size = 124822528
+    else:
+        return
+
+    main_path = pathlib.Path(__file__).resolve().parents[1]
+    data_path = main_path / 'data'
+    examples_path = data_path / 'examples'
+    example_path = examples_path / foldername
+    zip_dst = os.path.join(examples_path, 'example_temp.zip')
+
+    if not os.path.exists(examples_path):
+        os.makedirs(examples_path)
+
+    download_from_gdrive(
+        file_id, zip_dst, file_size=file_size, model_name=foldername
+    )
+    exctract_to = examples_path
+    extract_zip(zip_dst, exctract_to)
+    # Remove downloaded zip archive
+    os.remove(zip_dst)
+    print('Example downloaded successfully')
+
 def download_java():
     is_linux = sys.platform.startswith('linux')
     is_mac = sys.platform == 'darwin'
@@ -46,7 +77,8 @@ def download_java():
     elif is_mac:
         foldername = 'macOS'
         jre_name = 'jre1.8.0_301'
-        return
+        file_id = '1AmTFHouFwOPQlyRJ613sCXS_4uVMnM1-'
+        file_size = 78915584
     elif is_linux:
         foldername = 'linux'
         file_id = '13vjFCpqBNp10K-Crl0XFXF8vN17Pi5cm'
@@ -162,8 +194,9 @@ def download_from_gdrive(id, destination, file_size=None,
     if token:
         params = { 'id' : id, 'confirm' : token }
         response = session.get(URL, params = params, stream = True)
-    save_response_content(response, destination,
-                          file_size=file_size, model_name=model_name)
+    save_response_content(
+        response, destination, file_size=file_size, model_name=model_name
+    )
 
 def get_confirm_token(response):
     for key, value in response.cookies.items():
@@ -257,4 +290,4 @@ if __name__ == '__main__':
     model_name = 'cellpose'
     download_model(model_name)
 
-    download_java()
+    download_examples()

@@ -318,19 +318,20 @@ class bioFormatsWorker(QObject):
         self.saveData(images_path, rawFilePath, filename, p, series)
 
     def saveData(self, images_path, rawFilePath, filename, p, series):
+        s0p = str(p+1).zfill(self.numPosDigits)
         self.progress.emit(
             f'Position {p+1}/{self.numPos}: saving data to {images_path}...'
         )
         filenameNOext, ext = os.path.splitext(filename)
 
         metadataXML_path = os.path.join(
-            images_path, f'{filenameNOext}_metadataXML.txt'
+            images_path, f'{filenameNOext}_s{s0p}_metadataXML.txt'
         )
         with open(metadataXML_path, 'w', encoding="utf-8") as txt:
             txt.write(self.metadataXML)
 
         metadata_csv_path = os.path.join(
-            images_path, f'{filenameNOext}_metadata.csv'
+            images_path, f'{filenameNOext}_s{s0p}_metadata.csv'
         )
         df = pd.DataFrame({
             'LensNA': self.LensNA,
@@ -379,7 +380,7 @@ class bioFormatsWorker(QObject):
                 imgData_ch = np.array(imgData_ch, dtype=imgData.dtype)
                 imgData_ch = np.squeeze(imgData_ch)
                 tifPath = os.path.join(
-                    images_path, f'{filenameNOext}_{chName}.tif'
+                    images_path, f'{filenameNOext}_s{s0p}_{chName}.tif'
                 )
                 myutils.imagej_tiffwriter(
                     tifPath, imgData_ch, {}, self.SizeT, self.SizeZ
@@ -398,6 +399,7 @@ class bioFormatsWorker(QObject):
                         break
                     for p in range(self.SizeS):
                         self.numPos = self.SizeS
+                        self.numPosDigits = len(str(self.numPos))
                         abort = self.saveToPosFolder(p, exp_path, filename, p)
                         if abort:
                             self.aborted = True
@@ -410,6 +412,7 @@ class bioFormatsWorker(QObject):
                         self.aborted = True
                         break
                 self.numPos = len(self.rawFilenames)
+                self.numPosDigits = len(str(self.numPos))
                 abort = self.saveToPosFolder(p, exp_path, filename, 0)
                 if abort:
                     self.aborted = True
@@ -508,15 +511,16 @@ class createDataStructWin(QMainWindow):
         mainContainer.setLayout(mainLayout)
 
         global bioformats, javabridge
-        import bioformats
         print('Checking if Java is installed...')
         try:
             import javabridge
+            import bioformats
         except Exception as e:
             myutils.download_java()
 
         try:
             import javabridge
+            import bioformats
         except Exception as e:
             print('===============================================================')
             print('Automatic download of Java failed. Please download the portable '

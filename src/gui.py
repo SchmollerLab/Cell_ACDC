@@ -10,6 +10,7 @@
 print('Importing modules...')
 import sys
 import os
+import pathlib
 import re
 import traceback
 import time
@@ -59,6 +60,7 @@ import load, prompts, apps, core, myutils, dataPrep
 from cca_functions import _calc_rot_vol
 from myutils import download_model
 from QtDarkMode import breeze_resources
+from help import welcome
 
 if os.name == 'nt':
     try:
@@ -336,9 +338,10 @@ class guiWin(QMainWindow):
         SegmMenu.addAction(self.autoSegmAction)
 
         # Help menu
-        helpMenu = menuBar.addMenu(QIcon(":help-content.svg"), "Help")
-        helpMenu.addAction(self.helpContentAction)
-        helpMenu.addAction(self.aboutAction)
+        helpMenu = menuBar.addMenu("&Help")
+        helpMenu.addAction(self.tipsAction)
+        helpMenu.addAction(self.UserManualAction)
+        # helpMenu.addAction(self.aboutAction)
 
     def gui_createToolBars(self):
         toolbarSize = 34
@@ -702,8 +705,9 @@ class guiWin(QMainWindow):
         # self.pasteAction.setShortcut(QKeySequence.Paste)
         # self.cutAction.setShortcut(QKeySequence.Cut)
         # Help actions
-        self.helpContentAction = QAction("Help Content...", self)
-        self.aboutAction = QAction("&About...", self)
+        self.tipsAction = QAction("Tips and tricks...", self)
+        self.UserManualAction = QAction("User Manual...", self)
+        # self.aboutAction = QAction("&About...", self)
 
 
         self.reInitCcaAction = QAction(self)
@@ -802,8 +806,9 @@ class guiWin(QMainWindow):
         self.redoAction.triggered.connect(self.redo)
 
         # Connect Help actions
-        self.helpContentAction.triggered.connect(self.helpContent)
-        self.aboutAction.triggered.connect(self.about)
+        self.tipsAction.triggered.connect(self.showTipsAndTricks)
+        self.UserManualAction.triggered.connect(self.showUserManual)
+        # self.aboutAction.triggered.connect(self.about)
         # Connect Open Recent to dynamically populate it
         self.openRecentMenu.aboutToShow.connect(self.populateOpenRecent)
 
@@ -9152,7 +9157,7 @@ class guiWin(QMainWindow):
             Do you also want to <b>save additional metrics</b>
             (e.g., mean, amount etc.)?<br><br>
             NOTE: Saving additional metrics is <b>slower</b>,
-            we reccomend doing it only when you need it.
+            we recommend doing it only when you need it.
         </p>
         """)
 
@@ -9388,8 +9393,21 @@ class guiWin(QMainWindow):
     def cutContent(self):
         pass
 
-    def helpContent(self):
-        pass
+    def showTipsAndTricks(self):
+        self.welcomeWin = welcome.welcomeWin(app=app)
+        self.welcomeWin.showAndSetSize()
+        self.welcomeWin.showPage(self.welcomeWin.quickStartItem)
+
+    def showUserManual(self):
+        systems = {
+            'nt': os.startfile,
+            'posix': lambda foldername: os.system('xdg-open "%s"' % foldername),
+            'os2': lambda foldername: os.system('open "%s"' % foldername)
+             }
+
+        main_path = pathlib.Path.cwd()
+        userManual_path = main_path / 'UserManual'
+        systems.get(os.name, os.startfile)(userManual_path)
 
     def about(self):
         pass
