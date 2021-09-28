@@ -5,7 +5,7 @@ import pandas as pd
 import numpy as np
 
 from PyQt5.QtGui import QIcon, QFont, QFontMetrics, QPixmap
-from PyQt5.QtCore import Qt, QSize, QEvent
+from PyQt5.QtCore import Qt, QSize, QEvent, pyqtSignal, QObject, QThread
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QGridLayout, QTextEdit, QPushButton,
     QListWidget, QListWidgetItem, QCheckBox, QFrame, QStyleFactory,
@@ -31,11 +31,23 @@ if os.name == 'nt':
     except Exception as e:
         pass
 
+class downloadWorker(QObject):
+    finished = pyqtSignal()
+
+    def __init__(self, which):
+        QObject.__init__(self)
+        self.which = which
+
+    def run(self):
+        self.exp_path = myutils.download_examples(self.which)
+        self.finished.emit()
+
 class QHLine(QFrame):
     def __init__(self):
         super(QHLine, self).__init__()
         self.setFrameShape(QFrame.HLine)
         self.setFrameShadow(QFrame.Sunken)
+
 
 class welcomeWin(QWidget):
     def __init__(self, parent=None, mainWin=None, app=None):
@@ -220,7 +232,7 @@ class welcomeWin(QWidget):
 
         welcomeLayout.addWidget(startWizardButton, 1, 0)
 
-        testMyImageButton = QPushButton(' Test segmentation with my image')
+        testMyImageButton = QPushButton(' Test segmentation with my image/video')
         testMyImageButton.setIcon(QIcon(':image.svg'))
         testMyImageButton.clicked.connect(self.openGUIsingleImage)
 
@@ -240,7 +252,10 @@ class welcomeWin(QWidget):
 
         welcomeLayout.addWidget(test3DzStackButton, 1, 3)
 
-        welcomeLayout.setRowStretch(2, 1)
+        self.infoTextWidget = QLabel()
+        welcomeLayout.addWidget(self.infoTextWidget, 2, 0, 1, 5)
+
+        welcomeLayout.setRowStretch(3, 1)
         welcomeLayout.setColumnStretch(5, 1)
 
         self.welcomeFrame.setLayout(welcomeLayout)
@@ -664,7 +679,7 @@ class welcomeWin(QWidget):
         row += 1
         layout = QHBoxLayout()
         testMyImage = QPushButton(
-            text='Test with my image')
+            text='Test segmentation with my image/video')
         testMyImage.setIcon(QIcon(':image.svg'))
         layout.addWidget(testMyImage)
         testMyImage.clicked.connect(self.openGUIsingleImage)
@@ -784,6 +799,15 @@ class welcomeWin(QWidget):
             self.guiWin.showAndSetSize()
             self.guiWin.openFile()
 
+    def openGUIfolder(self, exp_path):
+        if self.mainWin is not None:
+            self.mainWin.launchGui()
+            self.mainWin.guiWin.openFolder(exp_path=exp_path)
+        else:
+            self.guiWin = gui.guiWin(self.app)
+            self.guiWin.showAndSetSize()
+            self.guiWin.openFolder(exp_path=exp_path)
+
     def launchDataStruct(self, checked=True):
         self.dataStructWin = dataStruct.createDataStructWin(
             mainWin=self
@@ -792,11 +816,58 @@ class welcomeWin(QWidget):
         self.dataStructWin.main()
 
     def testTimeLapseExample(self, checked=True):
-        exp_path = myutils.download_examples(which='time_lapse_2D')
-        print(exp_path)
+        main_path = pathlib.Path(__file__).resolve().parents[2]
+        data_path = main_path / 'data'
+        examples_path = data_path / 'examples'
+        txt = (
+        f"""
+        <p style="font-size:10pt; font-family:ubuntu">
+            <br><b>Downloading example</b> to {examples_path}...
+            (check progress in terminal/console)
+        </p>
+        """
+        )
+        self.infoTextWidget.setText(txt)
+
+        self.thread = QThread()
+        self.worker = downloadWorker('time_lapse_2D')
+        self.worker.moveToThread(self.thread)
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.worker.finished.connect(self.openGUIexample)
+        self.thread.finished.connect(self.thread.deleteLater)
+
+        self.thread.started.connect(self.worker.run)
+        self.thread.start()
+
+    def openGUIexample(self):
+        self.openGUIfolder(self.worker.exp_path)
+
 
     def test3DzStacksExample(self, checked=True):
-        exp_path = myutils.download_examples(which='snapshots_3D')
+        main_path = pathlib.Path(__file__).resolve().parents[2]
+        data_path = main_path / 'data'
+        examples_path = data_path / 'examples'
+        txt = (
+        f"""
+        <p style="font-size:10pt; font-family:ubuntu">
+            <br><b>Downloading example</b> to {examples_path}...
+            (check progress in terminal/console)
+        </p>
+        """
+        )
+        self.infoTextWidget.setText(txt)
+
+        self.thread = QThread()
+        self.worker = downloadWorker('snapshots_3D')
+        self.worker.moveToThread(self.thread)
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.worker.finished.connect(self.openGUIexample)
+        self.thread.finished.connect(self.thread.deleteLater)
+
+        self.thread.started.connect(self.worker.run)
+        self.thread.start()
 
 
     def showAndSetSize(self):

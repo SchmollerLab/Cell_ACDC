@@ -297,6 +297,7 @@ class loadData:
                 self.SizeT, self.SizeZ = 1, len(self.img_data)
         else:
             self.SizeT, self.SizeZ = 1, 1
+
         self.TimeIncrement = 1.0
         self.PhysicalSizeX = 1.0
         self.PhysicalSizeY = 1.0
@@ -309,10 +310,10 @@ class loadData:
             return
 
         # Since metadata was not found use the last entries saved in temp folder
-        if 'SizeT' in self.last_md_df.index:
-            self.SizeT = int(self.last_md_df.at['SizeT', 'values'])
-        if 'SizeZ' in self.last_md_df.index:
-            self.SizeZ = int(self.last_md_df.at['SizeZ', 'values'])
+        # if 'SizeT' in self.last_md_df.index and self.SizeT == 1:
+        #     self.SizeT = int(self.last_md_df.at['SizeT', 'values'])
+        # if 'SizeZ' in self.last_md_df.index and self.SizeZ == 1:
+        #     self.SizeZ = int(self.last_md_df.at['SizeZ', 'values'])
         if 'TimeIncrement' in self.last_md_df.index:
             self.TimeIncrement = float(self.last_md_df.at['TimeIncrement', 'values'])
         if 'PhysicalSizeX' in self.last_md_df.index:

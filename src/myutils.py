@@ -36,7 +36,7 @@ def download_examples(which='time_lapse_2D'):
     if which == 'time_lapse_2D':
         foldername = 'TimeLapse_2D'
         file_id = '1NhEyl8WVTsprtAQ9_JAMum--r_2mVkbj'
-        file_size = 175010304
+        file_size = 45143552
     elif which == 'snapshots_3D':
         foldername = 'Multi_3D_zStacks'
         file_id = '1Y1KNmCeT4LrBW7hStcvc0zj-NMsR9u2W'

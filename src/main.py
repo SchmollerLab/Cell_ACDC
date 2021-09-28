@@ -135,6 +135,7 @@ class mainWin(QMainWindow):
 
         self.welcomeGuide = help.welcome.welcomeWin(mainWin=self)
         self.welcomeGuide.showAndSetSize()
+        self.welcomeGuide.showPage(self.welcomeGuide.welcomeItem)
 
     def setColorsAndText(self):
         self.moduleLaunchedColor = '#ead935'

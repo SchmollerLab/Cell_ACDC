@@ -336,6 +336,7 @@ class guiWin(QMainWindow):
         SegmMenu.addAction(self.SegmActionCellpose)
         SegmMenu.addAction(self.SegmActionRW)
         SegmMenu.addAction(self.autoSegmAction)
+        SegmMenu.aboutToShow.connect(self.segmMenuOpened)
 
         # Help menu
         helpMenu = menuBar.addMenu("&Help")
@@ -2811,6 +2812,11 @@ class guiWin(QMainWindow):
         # Allow mid-click actions on both images
         elif mid_click:
             self.gui_mousePressEventImg2(event)
+
+    def segmMenuOpened(self):
+        mode = str(self.modeComboBox.currentText())
+        if mode == 'Viewer':
+            self.startBlinkingModeCB()
 
     def getDistantGray(self, desiredGray, bkgrGray):
         isDesiredSimilarToBkgr = (
@@ -5709,7 +5715,7 @@ class guiWin(QMainWindow):
             '* Automatic segmentation can always be turned ON/OFF from the menu\n'
             '  "Edit --> Segmentation --> Enable automatic segmentation"\n\n'
             f'** Remember that you can automatically segment all {txt} using the\n'
-            '    "segm.py" script.'
+            '    segmentation module.'
         )
         msg = QtGui.QMessageBox(self)
         doSegmAnswer = msg.question(
