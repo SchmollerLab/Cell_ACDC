@@ -6710,7 +6710,14 @@ class guiWin(QMainWindow):
                 self.updateALLimg()
                 self.updateScrollbars()
             else:
-                return
+                current_frame_i = PosData.frame_i
+                for i in range(current_frame_i):
+                    PosData.frame_i = i
+                    self.get_data()
+                    self.store_data()
+
+                PosData.frame_i = current_frame_i
+                self.get_data()
 
     def init_cca(self):
         PosData = self.data[self.pos_i]

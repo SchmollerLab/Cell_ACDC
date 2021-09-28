@@ -454,6 +454,9 @@ class segmWin(QMainWindow):
                 # modified by askStopFrameSegm
                 data.loadOtherFiles(load_segm_data=False, load_metadata=True)
 
+            print('')
+            print('Preprocessing images...')
+
             # Note that stop_i is not used when SizeT == 1 so it does not matter
             # which value it has in that case
             stop_i = data.segmSizeT
@@ -462,13 +465,15 @@ class segmWin(QMainWindow):
             if data.SizeT > 1:
                 if data.SizeZ > 1:
                     # 3D data over time
-                    img_data = data.img_data[:stop_i]
+                    img_data_slice = data.img_data[:stop_i]
+                    Y, X = data.img_data.shape[-2:]
+                    img_data = np.zeros((stop_i, Y, X), data.img_data.dtype)
                     df = data.segmInfo_df.loc[data.filename]
                     for z_info in df[:stop_i].itertuples():
                         i = z_info.Index
                         z = z_info.z_slice_used_dataPrep
                         zProjHow = z_info.which_z_proj
-                        img = img_data[i]
+                        img = img_data_slice[i]
                         if zProjHow == 'single z-slice':
                             img_data[i] = img[z]
                         elif zProjHow == 'max z-projection':

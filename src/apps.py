@@ -2000,15 +2000,17 @@ class CellsSlideshow_GUI(QMainWindow):
             PosData = self.parent.data[self.parent.pos_i]
         else:
             PosData = self.PosData
-            PosData.segmInfo_df.at[PosData.frame_i, 'z_slice_used_gui'] = z
+            idx = (PosData.filename, PosData.frame_i)
+            PosData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
         self.update_img()
 
     def getImage(self):
         PosData = self.PosData
         frame_i = self.frame_i
         if PosData.SizeZ > 1:
-            z = PosData.segmInfo_df.at[frame_i, 'z_slice_used_gui']
-            zProjHow = PosData.segmInfo_df.at[frame_i, 'which_z_proj_gui']
+            idx = (PosData.filename, frame_i)
+            z = PosData.segmInfo_df.at[idx, 'z_slice_used_gui']
+            zProjHow = PosData.segmInfo_df.at[idx, 'which_z_proj_gui']
             img = PosData.img_data[frame_i]
             if zProjHow == 'single z-slice':
                 self.zSliceScrollBar.setSliderPosition(z)
@@ -2665,7 +2667,11 @@ class askStopFrameSegm(QDialog):
             PosData.getBasenameAndChNames(prompts.select_channel_name)
             PosData.buildPaths()
             PosData.loadImgData()
-            PosData.loadOtherFiles(load_segm_data=False, load_metadata=True)
+            PosData.loadOtherFiles(
+                load_segm_data=False,
+                load_metadata=True,
+                loadSegmInfo=True,
+                )
             spinBox.setMaximum(PosData.SizeT)
             if PosData.segmSizeT == 1:
                 spinBox.setValue(PosData.SizeT)

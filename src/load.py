@@ -290,11 +290,13 @@ class loadData:
         if self.metadataFound:
             return
 
-        if self.img_data.ndim > 2:
+        if self.img_data.ndim == 3:
             if len(self.img_data) > 49:
                 self.SizeT, self.SizeZ = len(self.img_data), 1
             else:
                 self.SizeT, self.SizeZ = 1, len(self.img_data)
+        elif self.img_data.ndim == 4:
+            self.SizeT, self.SizeZ = self.img_data.shape[:2]
         else:
             self.SizeT, self.SizeZ = 1, 1
 

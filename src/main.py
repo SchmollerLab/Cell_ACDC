@@ -141,6 +141,7 @@ class mainWin(QMainWindow):
         self.moduleLaunchedColor = '#ead935'
         defaultColor = self.guiButton.palette().button().color().name()
         self.defaultPushButtonColor = defaultColor
+        self.defaultTextDataStructButton = self.dataStructButton.text()
         self.defaultTextGuiButton = self.guiButton.text()
         self.defaultTextDataPrepButton = self.dataPrepButton.text()
         self.defaultTextSegmButton = self.segmButton.text()
@@ -206,7 +207,7 @@ class mainWin(QMainWindow):
         c = self.dataStructButton.palette().button().color().name()
         lauchedColor = self.moduleLaunchedColor
         defaultColor = self.defaultPushButtonColor
-        defaultText = self.defaultTextDataPrepButton
+        defaultText = self.defaultTextDataStructButton
         if c != self.moduleLaunchedColor:
             self.dataStructButton.setStyleSheet(
                 f'QPushButton {{background-color: {lauchedColor};}}')
