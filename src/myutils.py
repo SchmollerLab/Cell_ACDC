@@ -31,7 +31,7 @@ def getDefault_SegmInfo_df(PosData, filename):
     }).set_index(['filename', 'frame_i'])
     return df
 
-def download_examples(which='time_lapse_2D'):
+def download_examples(which='time_lapse_2D', progress=None):
     # https://drive.google.com/drive/u/0/folders/1OgUgp_HuYsZlDg_TVWPuhT4OdZXJHbAg
     if which == 'time_lapse_2D':
         foldername = 'TimeLapse_2D'
@@ -58,7 +58,8 @@ def download_examples(which='time_lapse_2D'):
         os.makedirs(examples_path)
 
     download_from_gdrive(
-        file_id, zip_dst, file_size=file_size, model_name=foldername
+        file_id, zip_dst, file_size=file_size, model_name=foldername,
+        progress=progress
     )
     exctract_to = examples_path
     extract_zip(zip_dst, exctract_to)
@@ -188,7 +189,7 @@ def get_file_id(model_name, id=None):
     return file_id, file_size
 
 def download_from_gdrive(id, destination, file_size=None,
-                         model_name='cellpose'):
+                         model_name='cellpose', progress=None):
     URL = "https://docs.google.com/uc?export=download"
 
     session = requests.Session()
@@ -200,7 +201,8 @@ def download_from_gdrive(id, destination, file_size=None,
         params = { 'id' : id, 'confirm' : token }
         response = session.get(URL, params = params, stream = True)
     save_response_content(
-        response, destination, file_size=file_size, model_name=model_name
+        response, destination, file_size=file_size, model_name=model_name,
+        progress=progress
     )
 
 def get_confirm_token(response):
@@ -210,13 +212,15 @@ def get_confirm_token(response):
     return None
 
 def save_response_content(response, destination, file_size=None,
-                          model_name='cellpose'):
+                          model_name='cellpose', progress=None):
     print(f'Downloading {model_name} to: {os.path.dirname(destination)}')
     CHUNK_SIZE = 32768
     temp_folder = pathlib.Path.home().joinpath('.cp_temp')
     if not os.path.exists(temp_folder):
         os.mkdir(temp_folder)
     temp_dst = os.path.join(temp_folder, os.path.basename(destination))
+    if file_size is not None and progress is not None:
+        progress.emit(file_size, -1)
     pbar = tqdm(total=file_size, unit='B', unit_scale=True,
                 unit_divisor=1024, ncols=100)
     with open(temp_dst, "wb") as f:
@@ -224,6 +228,8 @@ def save_response_content(response, destination, file_size=None,
             if chunk: # filter out keep-alive new chunks
                 f.write(chunk)
                 pbar.update(len(chunk))
+                if progress is not None:
+                    progress.emit(-1, len(chunk))
     pbar.close()
     shutil.move(temp_dst, destination)
     shutil.rmtree(temp_folder)

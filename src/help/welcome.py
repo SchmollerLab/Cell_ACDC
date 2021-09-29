@@ -4,13 +4,16 @@ import pathlib
 import pandas as pd
 import numpy as np
 
-from PyQt5.QtGui import QIcon, QFont, QFontMetrics, QPixmap
+from PyQt5.QtGui import (
+    QIcon, QFont, QFontMetrics, QPixmap, QPalette, QColor
+)
 from PyQt5.QtCore import Qt, QSize, QEvent, pyqtSignal, QObject, QThread
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QGridLayout, QTextEdit, QPushButton,
     QListWidget, QListWidgetItem, QCheckBox, QFrame, QStyleFactory,
     QLabel, QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator,
-    QScrollArea, QComboBox, QHBoxLayout, QToolButton, QMainWindow
+    QScrollArea, QComboBox, QHBoxLayout, QToolButton, QMainWindow,
+    QProgressBar
 )
 
 script_path = os.path.dirname(os.path.realpath(__file__))
@@ -33,13 +36,16 @@ if os.name == 'nt':
 
 class downloadWorker(QObject):
     finished = pyqtSignal()
+    progress = pyqtSignal(int, int)
 
     def __init__(self, which):
         QObject.__init__(self)
         self.which = which
 
     def run(self):
-        self.exp_path = myutils.download_examples(self.which)
+        self.exp_path = myutils.download_examples(
+            self.which, progress=self.progress
+        )
         self.finished.emit()
 
 class QHLine(QFrame):
@@ -60,6 +66,7 @@ class welcomeWin(QWidget):
         self.loadSettings()
 
         self.itemsDict = {}
+        self.QPbar = None
 
         # Initialize Permanent items
         self.mainLayout = QGridLayout()
@@ -168,6 +175,7 @@ class welcomeWin(QWidget):
     def addWelcomePage(self):
         self.welcomeFrame = QFrame(self)
         welcomeLayout = QGridLayout()
+        self.welcomeLayout = welcomeLayout
 
         welcomeTextWidget = QLabel()
 
@@ -255,7 +263,7 @@ class welcomeWin(QWidget):
         self.infoTextWidget = QLabel()
         welcomeLayout.addWidget(self.infoTextWidget, 2, 0, 1, 5)
 
-        welcomeLayout.setRowStretch(3, 1)
+        welcomeLayout.setRowStretch(4, 1)
         welcomeLayout.setColumnStretch(5, 1)
 
         self.welcomeFrame.setLayout(welcomeLayout)
@@ -823,15 +831,20 @@ class welcomeWin(QWidget):
         f"""
         <p style="font-size:10pt; font-family:ubuntu">
             <br><b>Downloading example</b> to {examples_path}...
-            (check progress in terminal/console)
         </p>
         """
         )
         self.infoTextWidget.setText(txt)
 
+        if self.QPbar is None:
+            self.QPbar = QProgressBar(self)
+            self.QPbar.setValue(0)
+            self.welcomeLayout.addWidget(self.QPbar, 3, 0, 1, 3)
+
         self.thread = QThread()
         self.worker = downloadWorker('time_lapse_2D')
         self.worker.moveToThread(self.thread)
+        self.worker.progress.connect(self.downloadProgress)
         self.worker.finished.connect(self.thread.quit)
         self.worker.finished.connect(self.worker.deleteLater)
         self.worker.finished.connect(self.openGUIexample)
@@ -840,7 +853,24 @@ class welcomeWin(QWidget):
         self.thread.started.connect(self.worker.run)
         self.thread.start()
 
+    def downloadProgress(self, file_size, len_chunk):
+        if file_size != -1:
+            self.QPbar.setMaximum(file_size)
+        if len_chunk != -1:
+            self.QPbar.setValue(self.QPbar.value()+len_chunk)
+
+
     def openGUIexample(self):
+        txt = (
+        f"""
+        <p style="font-size:10pt; font-family:ubuntu">
+            <br><b>Example downloaded</b> to {self.worker.exp_path}.<br>
+            Opening GUI...
+        </p>
+        """
+        )
+        self.infoTextWidget.setText(txt)
+        self.QPbar.setValue(self.QPbar.maximum())
         self.openGUIfolder(self.worker.exp_path)
 
 
@@ -852,15 +882,25 @@ class welcomeWin(QWidget):
         f"""
         <p style="font-size:10pt; font-family:ubuntu">
             <br><b>Downloading example</b> to {examples_path}...
-            (check progress in terminal/console)
         </p>
         """
         )
         self.infoTextWidget.setText(txt)
 
+        if self.QPbar is None:
+            self.QPbar = QProgressBar(self)
+            self.QPbar.setValue(0)
+            palette = QPalette()
+            palette.setColor(QPalette.Highlight, QColor(207, 235, 155))
+            palette.setColor(QPalette.Text, QColor(0, 0, 0))
+            palette.setColor(QPalette.HighlightedText, QColor(0, 0, 0))
+            self.QPbar.setPalette(palette)
+            self.welcomeLayout.addWidget(self.QPbar, 3, 0, 1, 3)
+
         self.thread = QThread()
         self.worker = downloadWorker('snapshots_3D')
         self.worker.moveToThread(self.thread)
+        self.worker.progress.connect(self.downloadProgress)
         self.worker.finished.connect(self.thread.quit)
         self.worker.finished.connect(self.worker.deleteLater)
         self.worker.finished.connect(self.openGUIexample)

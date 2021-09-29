@@ -5767,6 +5767,8 @@ class guiWin(QMainWindow):
                     PosData.segmInfo_df = df
                 else:
                     PosData.segmInfo_df = pd.concat([df, PosData.segmInfo_df])
+                    unique_idx = ~PosData.segmInfo_df.index.duplicated()
+                    PosData.segmInfo_df = PosData.segmInfo_df[unique_idx]
                 PosData.segmInfo_df.to_csv(PosData.segmInfo_df_csv_path)
 
             if PosData.SizeT == 1:
@@ -6686,7 +6688,7 @@ class guiWin(QMainWindow):
         self.navigateScrollBar.setMaximum(last_tracked_i+1)
         if PosData.frame_i > last_tracked_i:
             # Prompt user to go to last tracked frame
-            msg = QtGui.QMessageBox()
+            msg = QtGui.QMessageBox(self)
             msg.setIcon(msg.Warning)
             msg.setWindowTitle('Go to last visited frame?')
             msg.setText(
@@ -8793,6 +8795,8 @@ class guiWin(QMainWindow):
                 _, filename = self.getPathFromChName(user_ch_name, PosData)
                 df = myutils.getDefault_SegmInfo_df(PosData, filename)
                 PosData.segmInfo_df = pd.concat([df, PosData.segmInfo_df])
+                unique_idx = ~PosData.segmInfo_df.index.duplicated()
+                PosData.segmInfo_df = PosData.segmInfo_df[unique_idx]
                 PosData.segmInfo_df.to_csv(PosData.segmInfo_df_csv_path)
         elif win.useSameAsCh:
             user_ch_name = filename[len(PosData.basename):]
@@ -8817,6 +8821,8 @@ class guiWin(QMainWindow):
                         dst_df.at[dst_idx, 'z_slice_used_dataPrep'] = z_slice
                         dst_df.at[dst_idx, 'z_slice_used_gui'] = z_slice
                 _PosData.segmInfo_df = pd.concat([dst_df, _PosData.segmInfo_df])
+                unique_idx = ~PosData.segmInfo_df.index.duplicated()
+                PosData.segmInfo_df = PosData.segmInfo_df[unique_idx]
                 _PosData.segmInfo_df.to_csv(_PosData.segmInfo_df_csv_path)
         elif win.runDataPrep:
             user_ch_file_paths = []
@@ -9257,7 +9263,7 @@ class guiWin(QMainWindow):
 
 
                     # Build acdc_df and index it in each frame_i of acdc_df_li
-                    if acdc_df is not None:
+                    if acdc_df is not None and np.any(lab):
                         acdc_df = load.loadData.BooleansTo0s1s(
                                     acdc_df, inplace=False
                         )
@@ -9265,7 +9271,7 @@ class guiWin(QMainWindow):
                         try:
                             if save_metrics:
                                 acdc_df = self.addMetrics_acdc_df(
-                                            acdc_df, rp, frame_i, lab, PosData
+                                    acdc_df, rp, frame_i, lab, PosData
                                 )
                             acdc_df_li[frame_i] = acdc_df
                         except Exception as e:
@@ -9276,12 +9282,12 @@ class guiWin(QMainWindow):
                             print('')
                             print('Warning: calculating metrics failed see above...')
                             print('-----------------')
-                            # msg = QtGui.QMessageBox(self)
-                            # msg.setIcon(msg.Critical)
-                            # msg.setWindowTitle('Error')
-                            # msg.setText(traceback.format_exc())
-                            # msg.setDefaultButton(msg.Ok)
-                            # msg.exec_()
+                            msg = QtGui.QMessageBox(self)
+                            msg.setIcon(msg.Critical)
+                            msg.setWindowTitle('Error')
+                            msg.setText(traceback.format_exc())
+                            msg.setDefaultButton(msg.Ok)
+                            msg.exec_()
                     pbar.update()
 
                 PosData.fluo_data_dict.pop(PosData.filename)
@@ -9298,15 +9304,6 @@ class guiWin(QMainWindow):
                         keys.append((i, PosData.TimeIncrement*i))
 
                 print('Almost done...')
-                try:
-                    # np.savez_compressed(delROIs_info_path, **npz_delROIs_info)
-                    pass
-                except Exception as e:
-                    print('')
-                    print('====================================')
-                    traceback.print_exc()
-                    print('====================================')
-                    print('')
 
                 if PosData.segmInfo_df is not None:
                     try:
@@ -9355,7 +9352,7 @@ class guiWin(QMainWindow):
                     print('')
 
                 # Save segmentation file
-                np.savez_compressed(segm_npz_path, segm_npy)
+                np.savez_compressed(segm_npz_path, np.squeeze(segm_npy))
                 PosData.segm_data = segm_npy
 
                 with open(last_tracked_i_path, 'w+') as txt:
@@ -9386,12 +9383,12 @@ class guiWin(QMainWindow):
                 traceback.print_exc()
                 print('====================================')
                 print('')
-                # msg = QtGui.QMessageBox(self)
-                # msg.setIcon(msg.Critical)
-                # msg.setWindowTitle('KeyError')
-                # msg.setDefaultButton(msg.Ok)
-                # msg.setText(traceback.format_exc())
-                # msg.exec_()
+                msg = QtGui.QMessageBox(self)
+                msg.setIcon(msg.Critical)
+                msg.setWindowTitle('KeyError')
+                msg.setDefaultButton(msg.Ok)
+                msg.setText(traceback.format_exc())
+                msg.exec_()
             finally:
                 self.app.restoreOverrideCursor()
         if self.isSnapshot:

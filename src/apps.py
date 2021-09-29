@@ -855,6 +855,15 @@ class QDialogMetadata(QDialog):
         # formLayout = QFormLayout()
         buttonsLayout = QHBoxLayout()
 
+        if imgDataShape is not None:
+            label = QLabel(
+                f"""
+                <p style="font-size:11pt">
+                    <i>Image data shape</i> = <b>{imgDataShape}</b><br>
+                </p>
+                """)
+            mainLayout.addWidget(label, alignment=Qt.AlignCenter)
+
         row = 0
         gridLayout.addWidget(QLabel('Number of frames (SizeT)'), row, 0)
         self.SizeT_SpinBox = QSpinBox()
@@ -987,11 +996,72 @@ class QDialogMetadata(QDialog):
         self.cancel = False
         self.SizeT = self.SizeT_SpinBox.value()
         self.SizeZ = self.SizeZ_SpinBox.value()
+
         self.TimeIncrement = self.TimeIncrementSpinBox.value()
         self.PhysicalSizeX = self.PhysicalSizeXSpinBox.value()
         self.PhysicalSizeY = self.PhysicalSizeYSpinBox.value()
         self.PhysicalSizeZ = self.PhysicalSizeZSpinBox.value()
-        self.close()
+        valid4D = True
+        valid3D = True
+        valid2D = True
+        if self.imgDataShape is None:
+            self.close()
+        elif len(self.imgDataShape) == 4:
+            T, Z, Y, X = self.imgDataShape
+            valid4D = self.SizeT == T and self.SizeZ == Z
+        elif len(self.imgDataShape) == 3:
+            TZ, Y, X = self.imgDataShape
+            valid3D = self.SizeT == TZ or self.SizeZ == TZ
+        elif len(self.imgDataShape) == 2:
+            valid2D = self.SizeT == 1 and self.SizeZ == 1
+        valid = all([valid4D, valid3D, valid2D])
+        if not valid4D:
+            txt = (f"""
+            <p style="font-size:10pt">
+                You loaded <b>4D data</b>, hence the number of frames MUST be <b>{T}</b><br>
+                and the number of z-slices MUST be <b>{Z}</b>.<br><br>
+                What do you want to do?
+            </p>
+            """)
+        if not valid3D:
+            txt = (f"""
+            <p style="font-size:10pt">
+                You loaded <b>3D data</b>, hence either the number of frames is <b>{TZ}</b><br>
+                or the number of z-slices can be <b>{TZ}</b>.<br><br>
+                However, if the number of frames is greater than 1 then the<br>
+                number of z-slices MUST be 1, and vice-versa.<br><br>
+                What do you want to do?
+            </p>
+            """)
+
+        if not valid2D:
+            txt = (f"""
+            <p style="font-size:10pt">
+                You loaded <b>2D data</b>, hence the number of frames MUST be <b>1</b>
+                and the number of z-slices MUST be <b>1</b>.<br><br>
+                What do you want to do?
+            </p>
+            """)
+
+        if valid:
+            self.close()
+            return
+
+        msg = QtGui.QMessageBox(self)
+        msg.setIcon(msg.Warning)
+        msg.setWindowTitle('Invalid entries')
+        msg.setText(txt)
+        continueButton = QPushButton(
+            f'Continue anyway'
+        )
+        cancelButton = QPushButton(
+            f'Let me correct'
+        )
+        msg.addButton(continueButton, msg.YesRole)
+        msg.addButton(cancelButton, msg.NoRole)
+        msg.exec_()
+        if msg.clickedButton() == continueButton:
+            self.close()
 
     def cancel_cb(self, event):
         self.cancel = True
@@ -4011,7 +4081,7 @@ class QDialogZsliceAbsent(QDialog):
         runDataPrepButton.clicked.connect(self.runDataPrep_cb)
 
         useMiddleSliceButton = QPushButton(
-            f'Use the middle z-slice ({int(SizeZ/2)})'
+            f'Use the middle z-slice ({int(SizeZ/2)+1})'
         )
         buttonsLayout.addWidget(useMiddleSliceButton)
         useMiddleSliceButton.clicked.connect(self.useMiddleSlice_cb)
@@ -4094,7 +4164,11 @@ if __name__ == '__main__':
     font = QtGui.QFont()
     font.setPointSize(10)
     filenames = ['test1', 'test2']
-    win = QDialogZsliceAbsent('test3', 30, filenames)
+    # win = QDialogZsliceAbsent('test3', 30, filenames)
+    win = QDialogMetadata(
+        1, 41, 180, 0.5, 0.09, 0.09, True, True, True,
+        font=font, imgDataShape=(31, 350, 350)
+    )
     # win = cellpose_ParamsDialog()
     # user_ch_file_paths = [
     #     r"G:\My Drive\1_MIA_Data\Beno\test_QtGui\testGuiOnlyTifs\TIFFs\Position_1\Images\19-03-2021_KCY050_SCGE_s02_phase_contr.tif",

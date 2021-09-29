@@ -71,7 +71,9 @@ class mainWin(QMainWindow):
         label.setStyleSheet("padding:0px 0px 10px 0px;")
         mainLayout.addWidget(label)
 
-        dataStructButton = QPushButton('0. Create data structure from microscopy file(s)...')
+        dataStructButton = QPushButton(
+            '0. Create data structure from microscopy file(s)...'
+        )
         font = QtGui.QFont()
         font.setPointSize(11)
         dataStructButton.setFont(font)

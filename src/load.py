@@ -142,6 +142,10 @@ class loadData:
                 self.segmFound = True
                 self.segm_npz_path = filePath
                 self.segm_data = np.load(filePath)['arr_0']
+                squeezed_arr = np.squeeze(self.segm_data)
+                if squeezed_arr.shape != self.segm_data.shape:
+                    self.segm_data = squeezed_arr
+                    np.savez_compressed(filePath, squeezed_arr)
             elif getTifPath and file.find(f'{self.user_ch_name}.tif')!=-1:
                 self.tif_path = filePath
                 self.TifPathFound = True
@@ -198,6 +202,10 @@ class loadData:
                 try:
                     with open(filePath, 'r') as txt:
                         self.last_tracked_i = int(txt.read())
+                    if self.last_tracked_i < 0:
+                        self.last_tracked_i = 0
+                        with open(filePath, 'w') as txt:
+                            txt.write(str(self.last_tracked_i))
                 except Exception as e:
                     self.last_tracked_i = None
         self.setNotFoundData()
