@@ -4717,9 +4717,10 @@ class guiWin(QMainWindow):
                     self.ccaTableWin.activateWindow()
                     self.ccaTableWin.updateTable(PosData.cca_df)
         elif ev.key() == Qt.Key_T:
-            PosData = self.data[self.pos_i]
-            print(PosData.allData_li[0]['acdc_df'])
-            # self.hist.sigLookupTableChanged.disconnect()
+            pass
+            # PosData = self.data[self.pos_i]
+            # print(PosData.allData_li[0]['acdc_df'])
+            # # self.hist.sigLookupTableChanged.disconnect()
         elif ev.key() == Qt.Key_H:
             self.zoomToCells(enforce=True)
         elif ev.key() == Qt.Key_L:
