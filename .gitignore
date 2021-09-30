@@ -5,6 +5,7 @@ notebooks/.ipynb_checkpoints
 .idea/
 test.txt
 src/test.py
+src/test1.py
 src/deprecated
 src/java
 src/javabridge_cp37
