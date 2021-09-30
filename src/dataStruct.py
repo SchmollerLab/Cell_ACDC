@@ -67,6 +67,7 @@ class bioFormatsWorker(QObject):
             metadata = bioformats.OMEXML(metadataXML)
             self.metadataXML = metadataXML
         except Exception as e:
+            self.isCriticalError = True
             self.criticalError.emit(
                 'reading image data or metadata',
                 traceback.format_exc(), filename
@@ -389,7 +390,9 @@ class bioFormatsWorker(QObject):
     def run(self):
         exp_path = self.exp_path
         javabridge.start_vm(class_path=bioformats.JARS)
+        self.progress.emit('Java VM already running.')
         self.aborted = False
+        self.isCriticalError = False
         for p, filename in enumerate(self.rawFilenames):
             if self.rawDataStruct == 0:
                 if not self.overWriteMetadata:
@@ -427,12 +430,14 @@ class bioFormatsWorker(QObject):
                 dst = os.path.join(raw_path, filename)
                 shutil.move(rawFilePath, dst)
 
-        javabridge.kill_vm()
         self.finished.emit()
+        javabridge.kill_vm()
 
 class createDataStructWin(QMainWindow):
     def __init__(self, parent=None, allowExit=False,
-                 buttonToRestore=None, mainWin=None):
+                 buttonToRestore=None, mainWin=None,
+                 start_JVM=True):
+        self.start_JVM = start_JVM
         self.allowExit = allowExit
         self.processFinished = False
         self.buttonToRestore = buttonToRestore
@@ -635,6 +640,7 @@ class createDataStructWin(QMainWindow):
             exp_path, ls, self.mutex, self.waitCond, rawDataStruct
         )
         self.worker.moveToThread(self.thread)
+
         self.worker.finished.connect(self.thread.quit)
         self.worker.finished.connect(self.worker.deleteLater)
         self.worker.finished.connect(self.taskEnded)
@@ -644,17 +650,21 @@ class createDataStructWin(QMainWindow):
         self.worker.confirmMetadata.connect(self.askConfirmMetadata)
         self.worker.filesExisting.connect(self.askReplacePosFilesFiles)
         self.thread.started.connect(self.worker.run)
+
         self.thread.start()
 
     def taskEnded(self):
-        if self.worker.aborted:
+        if self.worker.aborted and not self.worker.isCriticalError:
             msg = QMessageBox(self)
             abort = msg.critical(
                self, 'Conversion task aborted.',
                'Conversion task aborted.',
                msg.Close
             )
-        else:
+            self.close()
+            if self.allowExit:
+                exit('Conversion task ended.')
+        elif not self.worker.aborted:
             msg = QMessageBox(self)
             abort = msg.information(
                self, 'Conversion task ended.',
@@ -662,9 +672,9 @@ class createDataStructWin(QMainWindow):
                f'Files saved to "{self.worker.exp_path}"',
                msg.Close
             )
-        self.close()
-        if self.allowExit:
-            exit('Conversion task ended.')
+            self.close()
+            if self.allowExit:
+                exit('Conversion task ended.')
 
     def log(self, text):
         self.logWin.appendPlainText(text)
@@ -793,6 +803,7 @@ class createDataStructWin(QMainWindow):
         msg.setText(txt)
         msg.setDetailedText(tracebackFormat)
         msg.exec_()
+        self.close()
 
     def askConfirmMetadata(
             self, filename, LensNA, DimensionOrder, SizeT, SizeZ, SizeC, SizeS,
@@ -846,11 +857,18 @@ class createDataStructWin(QMainWindow):
         if self.buttonToRestore is not None:
             button, color, text = self.buttonToRestore
             button.setText(text)
+            button.setDisabled(True)
+            button.setToolTip(
+                'Button is disabled because due to an internal limitation '
+                'of the Java Virtual Machine you cannot start another process.\n\n'
+                'To launch another conversion process you need to RESTART Cell-ACDC'
+            )
             button.setStyleSheet(
                 f'QPushButton {{background-color: {color};}}')
             self.mainWin.setWindowState(Qt.WindowNoState)
             self.mainWin.setWindowState(Qt.WindowActive)
             self.mainWin.raise_()
+
 
 if __name__ == "__main__":
     print('Launching segmentation script...')

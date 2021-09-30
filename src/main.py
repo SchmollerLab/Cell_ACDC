@@ -2,6 +2,7 @@ import sys
 import os
 import subprocess
 import re
+import time
 
 import pandas as pd
 
@@ -9,7 +10,7 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QPushButton, QLabel, QAction,
     QMenu
 )
-from PyQt5.QtCore import Qt, QProcess, pyqtSignal, pyqtSlot
+from PyQt5.QtCore import Qt, QProcess, pyqtSignal, pyqtSlot, QTimer
 from pyqtgraph.Qt import QtGui
 
 import dataPrep, segm, gui, dataStruct
@@ -110,6 +111,8 @@ class mainWin(QMainWindow):
 
         mainContainer.setLayout(mainLayout)
 
+        self.start_JVM = True
+
     def launchWelcomeGuide(self, checked=False):
         src_path = os.path.dirname(os.path.realpath(__file__))
         temp_path = os.path.join(src_path, 'temp')
@@ -207,33 +210,44 @@ class mainWin(QMainWindow):
 
     def launchDataStruct(self, checked=False):
         c = self.dataStructButton.palette().button().color().name()
-        lauchedColor = self.moduleLaunchedColor
+        launchedColor = self.moduleLaunchedColor
         defaultColor = self.defaultPushButtonColor
         defaultText = self.defaultTextDataStructButton
-        if c != self.moduleLaunchedColor:
-            self.dataStructButton.setStyleSheet(
-                f'QPushButton {{background-color: {lauchedColor};}}')
-            self.dataStructButton.setText('DataStruct is running. '
-                                          'Click to restore window.')
-            self.dataStructWin = dataStruct.createDataStructWin(
-                buttonToRestore=(self.dataStructButton, defaultColor, defaultText),
-                mainWin=self
-            )
-            self.dataStructWin.show()
-            self.dataStructWin.main()
-        else:
-            self.dataStructWin.setWindowState(Qt.WindowNoState)
-            self.dataStructWin.setWindowState(Qt.WindowActive)
-            self.dataStructWin.raise_()
+
+        print('Launching data structure creation in a separate process...')
+
+        self.dataStructButton.setStyleSheet(
+            f'QPushButton {{background-color: {launchedColor};}}')
+        self.dataStructButton.setText(
+            'Launching in a separate process...')
+        self.dataStructButton.setDisabled(True)
+
+        src_path = os.path.dirname(os.path.realpath(__file__))
+        dataStruct_path = os.path.join(src_path, 'dataStruct.py')
+
+        # Due to javabridge limitation only one 'start_vm' can be called in
+        # each process. To get around with this every data structure conversion
+        # is launched in a separate process
+        subprocess.Popen([sys.executable, dataStruct_path])
+
+        QTimer.singleShot(2000, self.processDataStructLaunched)
+
+    def processDataStructLaunched(self):
+        self.dataStructButton.setStyleSheet(
+            f'QPushButton {{background-color: {self.defaultPushButtonColor};}}')
+        self.dataStructButton.setText(
+            '0. Create data structure from microscopy file(s)...')
+        self.dataStructButton.setDisabled(False)
+
 
     def launchDataPrep(self, checked=False):
         c = self.dataPrepButton.palette().button().color().name()
-        lauchedColor = self.moduleLaunchedColor
+        launchedColor = self.moduleLaunchedColor
         defaultColor = self.defaultPushButtonColor
         defaultText = self.defaultTextDataPrepButton
         if c != self.moduleLaunchedColor:
             self.dataPrepButton.setStyleSheet(
-                f'QPushButton {{background-color: {lauchedColor};}}')
+                f'QPushButton {{background-color: {launchedColor};}}')
             self.dataPrepButton.setText('DataPrep is running. '
                                     'Click to restore window.')
             self.dataPrepWin = dataPrep.dataPrepWin(
@@ -248,12 +262,12 @@ class mainWin(QMainWindow):
 
     def launchSegm(self, checked=False):
         c = self.segmButton.palette().button().color().name()
-        lauchedColor = self.moduleLaunchedColor
+        launchedColor = self.moduleLaunchedColor
         defaultColor = self.defaultPushButtonColor
         defaultText = self.defaultTextSegmButton
         if c != self.moduleLaunchedColor:
             self.segmButton.setStyleSheet(
-                f'QPushButton {{background-color: {lauchedColor};}}')
+                f'QPushButton {{background-color: {launchedColor};}}')
             self.segmButton.setText('Segmentation is running. '
                                     'Check progress in the terminal/console')
             self.segmWin = segm.segmWin(
@@ -270,12 +284,12 @@ class mainWin(QMainWindow):
 
     def launchGui(self, checked=False):
         c = self.guiButton.palette().button().color().name()
-        lauchedColor = self.moduleLaunchedColor
+        launchedColor = self.moduleLaunchedColor
         defaultColor = self.defaultPushButtonColor
         defaultText = self.defaultTextGuiButton
-        if c.lower() != lauchedColor.lower():
+        if c.lower() != launchedColor.lower():
             self.guiButton.setStyleSheet(
-                f'QPushButton {{background-color: {lauchedColor};}}')
+                f'QPushButton {{background-color: {launchedColor};}}')
             self.guiButton.setText('GUI is running. Click to restore window.')
             self.guiWin = gui.guiWin(
                 self.app,
