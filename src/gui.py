@@ -2421,6 +2421,7 @@ class guiWin(QMainWindow):
                 rp_new_mothID = PosData.rp[new_moth_obj_idx]
                 if rp_budID.area >= rp_new_mothID.area:
                     msg = QtGui.QMessageBox(self)
+                    msg.setWindowTitle('Which one is bud?')
                     msg.setIcon(msg.Warning)
                     msg.setText(
                         f'You clicked FIRST on ID {budID} and then on {new_mothID}.\n'
@@ -4716,7 +4717,8 @@ class guiWin(QMainWindow):
                     self.ccaTableWin.activateWindow()
                     self.ccaTableWin.updateTable(PosData.cca_df)
         elif ev.key() == Qt.Key_T:
-            pass
+            PosData = self.data[self.pos_i]
+            print(PosData.allData_li[0]['acdc_df'])
             # self.hist.sigLookupTableChanged.disconnect()
         elif ev.key() == Qt.Key_H:
             self.zoomToCells(enforce=True)
@@ -8882,18 +8884,30 @@ class guiWin(QMainWindow):
         n = len(how_3Dto2D)
         numFluoChannels = len(fluo_keys)
 
-        chNames = PosData.loadedChNames
-        fluo_means = np.zeros((numCells, numFluoChannels*n))
-        fluo_medians = np.zeros((numCells, numFluoChannels*n))
-        fluo_mins = np.zeros((numCells, numFluoChannels*n))
-        fluo_maxs = np.zeros((numCells, numFluoChannels*n))
-        fluo_sums = np.zeros((numCells, numFluoChannels*n))
-        fluo_q25s = np.zeros((numCells, numFluoChannels*n))
-        fluo_q75s = np.zeros((numCells, numFluoChannels*n))
-        fluo_q5s = np.zeros((numCells, numFluoChannels*n))
-        fluo_q95s = np.zeros((numCells, numFluoChannels*n))
-        fluo_amounts_autoBkgr = np.zeros((numCells, numFluoChannels*n))
-        fluo_amounts_ROIbkgr = np.zeros((numCells, numFluoChannels*n))
+        metrics_func = {
+            'mean': lambda arr: arr.mean(),
+            'sum': lambda arr: arr.sum(),
+            'amount_autoBkgr': lambda arr, bkgr, area: (arr.mean()-bkgr)*area,
+            'amount_dataPrepBkgr': lambda arr, bkgr, area: (arr.mean()-bkgr)*area,
+            'median': lambda arr: np.median(arr),
+            'min': lambda arr: arr.min(),
+            'max': lambda arr: arr.max(),
+            'q25': lambda arr: np.quantile(arr, q=0.25),
+            'q75': lambda arr: np.quantile(arr, q=0.75),
+            'q05': lambda arr: np.quantile(arr, q=0.05),
+            'q95': lambda arr: np.quantile(arr, q=0.95)
+        }
+
+        # Dictionary where values is a list of 0s with len=numCells
+        # and key is 'channelName_metrics_how' (e.g. 'GFP_mean_zSlice')
+        list_0s = [0]*numCells
+        metrics_values = {
+            f'{ch}_{metric}{how}':list_0s.copy()
+            for metric in metrics_func.keys()
+            for ch in PosData.loadedChNames
+            for how in how_3Dto2D
+        }
+
         outCellsMask = lab==0
 
         # Compute ROI bkgrMask
@@ -8907,14 +8921,14 @@ class guiWin(QMainWindow):
         else:
             ROI_bkgrMask = None
 
-        # Calc metrics for each fluo channel
-        for j, key in enumerate(fluo_keys):
-            fluo_data = PosData.fluo_data_dict[key][frame_i]
-            bkgrArchive = PosData.fluo_bkgrData_dict[key]
+        # Iteare fluo channels and get 2D data from 3D if needed
+        for chName, filename in zip(PosData.loadedChNames, fluo_keys):
+            fluo_data = PosData.fluo_data_dict[filename][frame_i]
+            bkgrArchive = PosData.fluo_bkgrData_dict[filename]
             fluo_data_projs = []
             bkgrData_medians = []
             if PosData.SizeZ > 1:
-                idx = (key, frame_i)
+                idx = (filename, frame_i)
                 try:
                     if PosData.segmInfo_df.at[idx, 'resegmented_in_gui']:
                         col = 'z_slice_used_gui'
@@ -8931,7 +8945,7 @@ class guiWin(QMainWindow):
                         z_slice = PosData.segmInfo_df.at[idx, col]
                     except KeyError as e:
                         self.app.restoreOverrideCursor()
-                        self.zSliceAbsent(key, PosData)
+                        self.zSliceAbsent(filename, PosData)
                         self.app.setOverrideCursor(Qt.WaitCursor)
                         segmInfo_df = pd.read_csv(PosData.segmInfo_df_csv_path)
                         index_col = ['filename', 'frame_i']
@@ -8941,12 +8955,12 @@ class guiWin(QMainWindow):
 
                 fluo_data_z_maxP = fluo_data.max(axis=0)
                 fluo_data_z_sumP = fluo_data.mean(axis=0)
-                fluo_data = fluo_data[z_slice]
+                fluo_data_zSlice = fluo_data[z_slice]
 
                 # how_3Dto2D = ['_maxProj', '_sumProj', '_zSlice']
                 fluo_data_projs.append(fluo_data_z_maxP)
                 fluo_data_projs.append(fluo_data_z_sumP)
-                fluo_data_projs.append(fluo_data)
+                fluo_data_projs.append(fluo_data_zSlice)
                 if bkgrArchive is not None:
                     bkgrVals_z_maxP = []
                     bkgrVals_z_sumP = []
@@ -8976,6 +8990,7 @@ class guiWin(QMainWindow):
                         bkgrVals_2D.extend(roiData[roiData!=0])
                     bkgrData_medians.append(np.median(bkgrVals_2D))
 
+            # Iterate cells
             for i, obj in enumerate(rp):
                 IDs[i] = obj.label
                 # Calc volume
@@ -8987,75 +9002,45 @@ class guiWin(QMainWindow):
                 IDs_vol_fl[i] = vol_fl
                 IDs_area_um2[i] = obj.area*yx_pxl_to_um2
 
-                for k, fluo_2D in enumerate(fluo_data_projs):
+                # Iterate method of 3D to 2D
+                for how, fluo_2D in zip(how_3Dto2D, fluo_data_projs):
                     fluo_data_ID = fluo_2D[obj.slice][obj.image]
-                    # fluo_2D is required because when we align we pad with 0s
+
+                    # fluo_2D!=0 is required because when we align we pad with 0s
                     # instead of np.roll and we don't want to include those
                     # exact 0s in the backgrMask
                     backgrMask = np.logical_and(outCellsMask, fluo_2D!=0)
                     fluo_backgr = np.median(fluo_2D[backgrMask])
-                    fluo_mean = fluo_data_ID.mean()
-                    fluo_amount_autoBkgr = (fluo_mean-fluo_backgr)*obj.area
 
-                    if ROI_bkgrMask is not None:
-                        ROI_bkgrVal = np.median(fluo_2D[ROI_bkgrMask])
-                        fluo_amount_ROIbkgr = (fluo_mean-ROI_bkgrVal)*obj.area
-                        fluo_amounts_ROIbkgr[i, j+k] = fluo_amount_ROIbkgr
-                    elif bkgrArchive is not None:
-                        ROI_bkgrVal = bkgrData_medians[k]
-                        fluo_amount_ROIbkgr = (fluo_mean-ROI_bkgrVal)*obj.area
-                        fluo_amounts_ROIbkgr[i, j+k] = fluo_amount_ROIbkgr
-
-                    fluo_means[i, j+k] = fluo_mean
-                    fluo_medians[i, j+k] = np.median(fluo_data_ID)
-                    fluo_mins[i, j+k] = fluo_data_ID.min()
-                    fluo_maxs[i, j+k] = fluo_data_ID.max()
-                    fluo_sums[i, j+k] = fluo_data_ID.sum()
-                    fluo_q25s[i, j+k] = np.quantile(fluo_data_ID, q=0.25)
-                    fluo_q75s[i, j+k] = np.quantile(fluo_data_ID, q=0.75)
-                    fluo_q5s[i, j+k] = np.quantile(fluo_data_ID, q=0.05)
-                    fluo_q95s[i, j+k] = np.quantile(fluo_data_ID, q=0.95)
-                    fluo_amounts_autoBkgr[i, j+k] = fluo_amount_autoBkgr
+                    # Calculate metrics for each cell
+                    for func_name, func in metrics_func.items():
+                        key = f'{chName}_{func_name}{how}'
+                        is_ROIbkgr_func = (
+                            func_name == 'amount_dataPrepBkgr' and
+                            (ROI_bkgrMask is not None or bkgrArchive is not None)
+                        )
+                        if func_name == 'amount_autoBkgr':
+                            val = func(fluo_data_ID, fluo_backgr, obj.area)
+                            metrics_values[key][i] = val
+                        elif is_ROIbkgr_func:
+                            if ROI_bkgrMask is not None:
+                                ROI_bkgrVal = np.median(fluo_2D[ROI_bkgrMask])
+                            else:
+                                ROI_bkgrVal = bkgrData_medians[k]
+                            val = func(fluo_data_ID, ROI_bkgrVal, obj.area)
+                            metrics_values[key][i] = val
+                        elif func_name.find('amount') == -1:
+                            val = func(fluo_data_ID)
+                            metrics_values[key][i] = val
 
         df['cell_area_pxl'] = pd.Series(data=IDs_area_pxl, index=IDs, dtype=float)
         df['cell_vol_vox'] = pd.Series(data=IDs_vol_vox, index=IDs, dtype=float)
         df['cell_area_um2'] = pd.Series(data=IDs_area_um2, index=IDs, dtype=float)
         df['cell_vol_fl'] = pd.Series(data=IDs_vol_fl, index=IDs, dtype=float)
 
-        # df['z_slice_used_segm'] = pd.Series(data=zz_slices, index=IDs, dtype=int)
+        df_metrics = pd.DataFrame(metrics_values, index=IDs)
 
-        cols = [f'{ch}_mean{how}' for ch in chNames for how in how_3Dto2D]
-        df[cols] = pd.DataFrame(data=fluo_means, index=IDs, dtype=float)
-
-        cols = [f'{ch}_sum{how}' for ch in chNames for how in how_3Dto2D]
-        df[cols] = pd.DataFrame(data=fluo_sums, index=IDs, dtype=float)
-
-        cols = [f'{ch}_amount_autoBkgr{how}' for ch in chNames for how in how_3Dto2D]
-        df[cols] = pd.DataFrame(data=fluo_amounts_autoBkgr, index=IDs, dtype=float)
-
-        cols = [f'{ch}_amount_dataPrepBkgr{how}' for ch in chNames for how in how_3Dto2D]
-        df[cols] = pd.DataFrame(data=fluo_amounts_ROIbkgr, index=IDs, dtype=float)
-
-        cols = [f'{ch}_median{how}' for ch in chNames for how in how_3Dto2D]
-        df[cols] = pd.DataFrame(data=fluo_medians, index=IDs, dtype=float)
-
-        cols = [f'{ch}_min{how}' for ch in chNames for how in how_3Dto2D]
-        df[cols] = pd.DataFrame(data=fluo_mins, index=IDs, dtype=float)
-
-        cols = [f'{ch}_max{how}' for ch in chNames for how in how_3Dto2D]
-        df[cols] = pd.DataFrame(data=fluo_maxs, index=IDs, dtype=float)
-
-        cols = [f'{ch}_q25{how}' for ch in chNames for how in how_3Dto2D]
-        df[cols] = pd.DataFrame(data=fluo_q25s, index=IDs, dtype=float)
-
-        cols = [f'{ch}_q75{how}' for ch in chNames for how in how_3Dto2D]
-        df[cols] = pd.DataFrame(data=fluo_q75s, index=IDs, dtype=float)
-
-        cols = [f'{ch}_q05{how}' for ch in chNames for how in how_3Dto2D]
-        df[cols] = pd.DataFrame(data=fluo_q5s, index=IDs, dtype=float)
-
-        cols = [f'{ch}_q95{how}' for ch in chNames for how in how_3Dto2D]
-        df[cols] = pd.DataFrame(data=fluo_q95s, index=IDs, dtype=float)
+        df = df.join(df_metrics)
 
         # Join with regionprops_table
         props = (
@@ -9166,32 +9151,81 @@ class guiWin(QMainWindow):
                 return None
         return last_tracked_i
 
+    def askSaveMetrics(self):
+        txt = (
+        """
+        <p style="font-size:10pt">
+            Do you also want to <b>save additional metrics</b>
+            (e.g., cell volume, mean, amount etc.)?<br><br>
+            NOTE: Saving additional metrics is <b>slower</b>,
+            we recommend doing it only when you need it.<br>
+        </p>
+        """)
+
+        msg = QtGui.QMessageBox()
+        save_metrics_answer = msg.question(
+            self, 'Save metrics?', txt,
+            msg.Yes | msg.No | msg.Cancel
+        )
+        save_metrics = save_metrics_answer == msg.Yes
+        return save_metrics
+
+    def askSaveAllPos(self):
+        last_pos = 0
+        ask = False
+        for p, PosData in enumerate(self.data):
+            acdc_df = PosData.allData_li[0]['acdc_df']
+            if acdc_df is None:
+                last_pos = p
+                ask = True
+                break
+
+        if not ask:
+            # All pos have been visited, no reason to ask
+            return True, len(self.data)
+
+        msg = QtGui.QMessageBox(self)
+        msg.setWindowTitle('Save all positions?')
+        msg.setIcon(msg.Question)
+        txt = (
+        f"""
+        <p style="font-size:10pt">
+            Do you want to save <b>ALL positions</b> or <b>only until
+            Position_{last_pos}</b> (last visualized/corrected position)?<br>
+        </p>
+        """)
+        msg.setText(txt)
+        allPosbutton =  QPushButton('Save ALL positions')
+        upToLastButton = QPushButton(f'Save until Position_{last_pos}')
+        msg.addButton(allPosbutton, msg.YesRole)
+        msg.addButton(upToLastButton, msg.NoRole)
+        msg.exec_()
+        return msg.clickedButton() == allPosbutton, last_pos
+
+
     def saveData(self):
         self.store_data()
         self.titleLabel.setText('Saving data... (check progress in the terminal)', color='w')
 
-        txt = (
-        """
-        <p style="font-size:9pt">
-            Do you also want to <b>save additional metrics</b>
-            (e.g., mean, amount etc.)?<br><br>
-            NOTE: Saving additional metrics is <b>slower</b>,
-            we recommend doing it only when you need it.
-        </p>
-        """)
+        save_metrics = self.askSaveMetrics()
 
-        if not self.isSnapshot:
-            msg = QtGui.QMessageBox()
-            save_metrics_answer = msg.question(
-                self, 'Save metrics?', txt,
-                msg.Yes | msg.No | msg.Cancel
-            )
-            save_metrics = save_metrics_answer == msg.Yes
-        else:
-            save_metrics = True
+        last_pos = len(self.data)
+        if self.isSnapshot:
+            save_Allpos, last_pos = self.askSaveAllPos()
+            if save_Allpos:
+                last_pos = len(self.data)
+                current_pos = self.pos_i
+                for p in range(len(self.data)):
+                    self.pos_i = p
+                    self.get_data()
+                    self.store_data()
+
+                # back to current pos
+                self.pos_i = current_pos
+                self.get_data()
 
 
-        for p, PosData in enumerate(self.data):
+        for p, PosData in enumerate(self.data[:last_pos]):
             current_frame_i = PosData.frame_i
             mode = self.modeComboBox.currentText()
             if mode == 'Segmentation and Tracking' or mode == 'Viewer':
@@ -9244,23 +9278,6 @@ class guiWin(QMainWindow):
                         break
 
                     acdc_df = data_dict['acdc_df']
-
-                    # Save del ROIs
-                    delROIs_info = PosData.allData_li[frame_i]['delROIs_info']
-                    rois = delROIs_info['rois']
-                    n = len(rois)
-                    delMasks = delROIs_info['delMasks']
-                    delIDsROI = delROIs_info['delIDsROI']
-                    _zip = zip(rois, delMasks, delIDsROI)
-                    for r, (roi, delMask, delIDs) in enumerate(_zip):
-                        npz_delROIs_info[f'{frame_i}_delMask_{r}_{n}'] = delMask
-                        delIDsROI_arr = np.array(list(delIDs))
-                        npz_delROIs_info[f'{frame_i}_delIDs_{r}_{n}'] = delIDsROI_arr
-                        x0, y0 = [int(c) for c in roi.pos()]
-                        w, h = [int(c) for c in roi.size()]
-                        roi_arr = np.array([x0, y0, w, h], dtype=np.uint16)
-                        npz_delROIs_info[f'{frame_i}_roi_{r}_{n}'] = roi_arr
-
 
                     # Build acdc_df and index it in each frame_i of acdc_df_li
                     if acdc_df is not None and np.any(lab):
@@ -9392,7 +9409,7 @@ class guiWin(QMainWindow):
             finally:
                 self.app.restoreOverrideCursor()
         if self.isSnapshot:
-            print(f'Saved all {len(self.data)} Positions!')
+            print(f'Saved all {p+1} Positions!')
 
     def copyContent(self):
         pass
