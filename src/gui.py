@@ -152,6 +152,8 @@ class guiWin(QMainWindow):
 
         self.gui_createImg1Widgets()
 
+        self.set_metrics_func()
+
         mainContainer = QtGui.QWidget()
         self.setCentralWidget(mainContainer)
 
@@ -8855,6 +8857,41 @@ class guiWin(QMainWindow):
             dataPrepWin.loop = loop
             loop.exec_()
 
+    def set_metrics_func(self):
+        self.metrics_func = {
+            'mean': lambda arr: arr.mean(),
+            'sum': lambda arr: arr.sum(),
+            'amount_autoBkgr': lambda arr, bkgr, area: (arr.mean()-bkgr)*area,
+            'amount_dataPrepBkgr': lambda arr, bkgr, area: (arr.mean()-bkgr)*area,
+            'median': lambda arr: np.median(arr),
+            'min': lambda arr: arr.min(),
+            'max': lambda arr: arr.max(),
+            'q25': lambda arr: np.quantile(arr, q=0.25),
+            'q75': lambda arr: np.quantile(arr, q=0.75),
+            'q05': lambda arr: np.quantile(arr, q=0.05),
+            'q95': lambda arr: np.quantile(arr, q=0.95)
+        }
+
+        self.total_metrics = len(self.metrics_func)
+
+        bkgr_val_names = (
+            'autoBkgr_val_median',
+            'autoBkgr_val_mean',
+            'autoBkgr_val_q75',
+            'autoBkgr_val_q25',
+            'autoBkgr_val_q95',
+            'autoBkgr_val_q05',
+            'dataPrepBkgr_val_median',
+            'dataPrepBkgr_val_mean',
+            'dataPrepBkgr_val_q75',
+            'dataPrepBkgr_val_q25',
+            'dataPrepBkgr_val_q95',
+            'dataPrepBkgr_val_q05',
+        )
+
+        self.all_metrics_names = list(self.metrics_func.keys())
+        self.all_metrics_names.extend(bkgr_val_names)
+
 
     def addMetrics_acdc_df(self, df, rp, frame_i, lab, PosData):
         """
@@ -8871,11 +8908,13 @@ class guiWin(QMainWindow):
 
         yx_pxl_to_um2 = PhysicalSizeY*PhysicalSizeX
         numCells = len(rp)
-        IDs = [0]*numCells
-        IDs_vol_vox = [0]*numCells
-        IDs_area_pxl = [0]*numCells
-        IDs_vol_fl = [0]*numCells
-        IDs_area_um2 = [0]*numCells
+
+        list_0s = [0]*numCells
+        IDs = list_0s.copy()
+        IDs_vol_vox = list_0s.copy()
+        IDs_area_pxl = list_0s.copy()
+        IDs_vol_fl = list_0s.copy()
+        IDs_area_um2 = list_0s.copy()
 
         # Initialize fluo metrics arrays
         fluo_keys = list(PosData.fluo_data_dict.keys())
@@ -8885,29 +8924,25 @@ class guiWin(QMainWindow):
         n = len(how_3Dto2D)
         numFluoChannels = len(fluo_keys)
 
-        metrics_func = {
-            'mean': lambda arr: arr.mean(),
-            'sum': lambda arr: arr.sum(),
-            'amount_autoBkgr': lambda arr, bkgr, area: (arr.mean()-bkgr)*area,
-            'amount_dataPrepBkgr': lambda arr, bkgr, area: (arr.mean()-bkgr)*area,
-            'median': lambda arr: np.median(arr),
-            'min': lambda arr: arr.min(),
-            'max': lambda arr: arr.max(),
-            'q25': lambda arr: np.quantile(arr, q=0.25),
-            'q75': lambda arr: np.quantile(arr, q=0.75),
-            'q05': lambda arr: np.quantile(arr, q=0.05),
-            'q95': lambda arr: np.quantile(arr, q=0.95)
-        }
+        # Defined in function set_metrics_func
+        metrics_func = self.metrics_func
 
         # Dictionary where values is a list of 0s with len=numCells
         # and key is 'channelName_metrics_how' (e.g. 'GFP_mean_zSlice')
-        list_0s = [0]*numCells
         metrics_values = {
-            f'{ch}_{metric}{how}':list_0s.copy()
-            for metric in metrics_func.keys()
-            for ch in PosData.loadedChNames
+            f'{chName}_{metric}{how}':list_0s.copy()
+            for metric in self.all_metrics_names
+            for chName in PosData.loadedChNames
             for how in how_3Dto2D
         }
+
+        tot_iter = (
+            self.total_metrics
+            *len(PosData.loadedChNames)
+            *len(how_3Dto2D)
+            *numCells
+        )
+        pbar = tqdm(total=tot_iter, ncols=100, unit='metric')
 
         outCellsMask = lab==0
 
@@ -8928,6 +8963,11 @@ class guiWin(QMainWindow):
             bkgrArchive = PosData.fluo_bkgrData_dict[filename]
             fluo_data_projs = []
             bkgrData_medians = []
+            bkgrData_means = []
+            bkgrData_q75s = []
+            bkgrData_q25s = []
+            bkgrData_q95s = []
+            bkgrData_q05s = []
             if PosData.SizeZ > 1:
                 idx = (filename, frame_i)
                 try:
@@ -8979,6 +9019,26 @@ class guiWin(QMainWindow):
                     bkgrData_medians.append(np.median(bkgrVals_z_maxP))
                     bkgrData_medians.append(np.median(bkgrVals_z_sumP))
                     bkgrData_medians.append(np.median(bkgrVals_zSlice))
+
+                    bkgrData_means.append(bkgrVals_z_maxP.mean())
+                    bkgrData_means.append(bkgrVals_z_sumP.mean())
+                    bkgrData_means.append(bkgrVals_zSlice.mean())
+
+                    bkgrData_q75s.append(np.quantile(bkgrVals_z_maxP, q=0.75))
+                    bkgrData_q75s.append(np.quantile(bkgrVals_z_sumP, q=0.75))
+                    bkgrData_q75s.append(np.quantile(bkgrVals_zSlice, q=0.75))
+
+                    bkgrData_q25s.append(np.quantile(bkgrVals_z_maxP, q=0.25))
+                    bkgrData_q25s.append(np.quantile(bkgrVals_z_sumP, q=0.25))
+                    bkgrData_q25s.append(np.quantile(bkgrVals_zSlice, q=0.25))
+
+                    bkgrData_q95s.append(np.quantile(bkgrVals_z_maxP, q=0.95))
+                    bkgrData_q95s.append(np.quantile(bkgrVals_z_sumP, q=0.95))
+                    bkgrData_q95s.append(np.quantile(bkgrVals_zSlice, q=0.95))
+
+                    bkgrData_q05s.append(np.quantile(bkgrVals_z_maxP, q=0.05))
+                    bkgrData_q05s.append(np.quantile(bkgrVals_z_sumP, q=0.05))
+                    bkgrData_q05s.append(np.quantile(bkgrVals_zSlice, q=0.05))
             else:
                 fluo_data_2D = fluo_data
                 fluo_data_projs.append(fluo_data_2D)
@@ -8990,6 +9050,11 @@ class guiWin(QMainWindow):
                             roiData = bkgrArchive[roi_key][frame_i]
                         bkgrVals_2D.extend(roiData[roiData!=0])
                     bkgrData_medians.append(np.median(bkgrVals_2D))
+                    bkgrData_means.append(bkgrVals_2D.mean())
+                    bkgrData_q75s.append(np.quantile(bkgrVals_2D, q=0.75))
+                    bkgrData_q25s.append(np.quantile(bkgrVals_2D, q=0.25))
+                    bkgrData_q95s.append(np.quantile(bkgrVals_2D, q=0.95))
+                    bkgrData_q05s.append(np.quantile(bkgrVals_2D, q=0.05))
 
             # Iterate cells
             for i, obj in enumerate(rp):
@@ -9004,14 +9069,34 @@ class guiWin(QMainWindow):
                 IDs_area_um2[i] = obj.area*yx_pxl_to_um2
 
                 # Iterate method of 3D to 2D
-                for how, fluo_2D in zip(how_3Dto2D, fluo_data_projs):
+                how_iterable = enumerate(zip(how_3Dto2D, fluo_data_projs))
+                for k, (how, fluo_2D) in how_iterable:
                     fluo_data_ID = fluo_2D[obj.slice][obj.image]
 
                     # fluo_2D!=0 is required because when we align we pad with 0s
                     # instead of np.roll and we don't want to include those
                     # exact 0s in the backgrMask
                     backgrMask = np.logical_and(outCellsMask, fluo_2D!=0)
-                    fluo_backgr = np.median(fluo_2D[backgrMask])
+                    bkgr_arr = fluo_2D[backgrMask]
+                    fluo_backgr = np.median(bkgr_arr)
+
+                    bkgr_key = f'{chName}_autoBkgr_val_median{how}'
+                    metrics_values[bkgr_key][i] = fluo_backgr
+
+                    bkgr_key = f'{chName}_autoBkgr_val_mean{how}'
+                    metrics_values[bkgr_key][i] = bkgr_arr.mean()
+
+                    bkgr_key = f'{chName}_autoBkgr_val_q75{how}'
+                    metrics_values[bkgr_key][i] = np.quantile(bkgr_arr, q=0.75)
+
+                    bkgr_key = f'{chName}_autoBkgr_val_q25{how}'
+                    metrics_values[bkgr_key][i] = np.quantile(bkgr_arr, q=0.25)
+
+                    bkgr_key = f'{chName}_autoBkgr_val_q95{how}'
+                    metrics_values[bkgr_key][i] = np.quantile(bkgr_arr, q=0.95)
+
+                    bkgr_key = f'{chName}_autoBkgr_val_q05{how}'
+                    metrics_values[bkgr_key][i] = np.quantile(bkgr_arr, q=0.05)
 
                     # Calculate metrics for each cell
                     for func_name, func in metrics_func.items():
@@ -9030,9 +9115,30 @@ class guiWin(QMainWindow):
                                 ROI_bkgrVal = bkgrData_medians[k]
                             val = func(fluo_data_ID, ROI_bkgrVal, obj.area)
                             metrics_values[key][i] = val
+
+                            bkgr_key = f'{chName}_dataPrepBkgr_val_median{how}'
+                            metrics_values[bkgr_key][i] = ROI_bkgrVal
+
+                            bkgr_key = f'{chName}_dataPrepBkgr_val_mean{how}'
+                            metrics_values[bkgr_key][i] = bkgrData_means[k]
+
+                            bkgr_key = f'{chName}_dataPrepBkgr_val_q75{how}'
+                            metrics_values[bkgr_key][i] = bkgrData_q75s[k]
+
+                            bkgr_key = f'{chName}_dataPrepBkgr_val_q25{how}'
+                            metrics_values[bkgr_key][i] = bkgrData_q25s[k]
+
+                            bkgr_key = f'{chName}_dataPrepBkgr_val_q95{how}'
+                            metrics_values[bkgr_key][i] = bkgrData_q95s[k]
+
+                            bkgr_key = f'{chName}_dataPrepBkgr_val_q05{how}'
+                            metrics_values[bkgr_key][i] = bkgrData_q05s[k]
+
                         elif func_name.find('amount') == -1:
                             val = func(fluo_data_ID)
                             metrics_values[key][i] = val
+
+                        pbar.update()
 
         df['cell_area_pxl'] = pd.Series(data=IDs_area_pxl, index=IDs, dtype=float)
         df['cell_vol_vox'] = pd.Series(data=IDs_vol_vox, index=IDs, dtype=float)
@@ -9042,6 +9148,8 @@ class guiWin(QMainWindow):
         df_metrics = pd.DataFrame(metrics_values, index=IDs)
 
         df = df.join(df_metrics)
+
+        pbar.close()
 
         # Join with regionprops_table
         props = (

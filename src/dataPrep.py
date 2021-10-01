@@ -486,12 +486,17 @@ class dataPrepWin(QMainWindow):
             if roi not in self.ax1.items:
                 self.ax1.addItem(roi.label)
                 self.ax1.addItem(roi)
+            roi.sigRegionChanged.connect(self.bkgrROIMoving)
+            roi.sigRegionChangeFinished.connect(self.bkgrROImovingFinished)
 
     def removeBkgrROIs(self):
         PosData = self.data[self.pos_i]
         for roi in PosData.bkgrROIs:
             self.ax1.removeItem(roi.label)
             self.ax1.removeItem(roi)
+
+            roi.sigRegionChanged.disconnect()
+            roi.sigRegionChangeFinished.disconnect()
 
     def init_attr(self):
         PosData = self.data[0]
@@ -1232,8 +1237,8 @@ class dataPrepWin(QMainWindow):
         bkgrROI.addScaleHandle([1, 0], [0, 1])
         bkgrROI.addScaleHandle([0, 1], [1, 0])
 
-        bkgrROI.sigRegionChanged.connect(self.bkgrROIMoving)
-        bkgrROI.sigRegionChangeFinished.connect(self.bkgrROImovingFinished)
+        # bkgrROI.sigRegionChanged.connect(self.bkgrROIMoving)
+        # bkgrROI.sigRegionChangeFinished.connect(self.bkgrROImovingFinished)
 
 
     def addDefaultBkgrROI(self, checked=False):
