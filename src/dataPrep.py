@@ -427,18 +427,15 @@ class dataPrepWin(QMainWindow):
 
             self.navigateScrollbar.valueChanged.disconnect()
             self.navigateScrollbar.setValue(self.pos_i+1)
-            self.navigateScrollbar.valueChanged.connect(
-                self.navigateScrollBarMoved
-            )
         else:
             self.frameLabel.setText(
                      f'Current frame = {self.frame_i+1}/{self.num_frames}')
             self.navigateSB_label.setText(f'frame n. {self.frame_i+1}')
             self.navigateScrollbar.valueChanged.disconnect()
             self.navigateScrollbar.setValue(self.frame_i+1)
-            self.navigateScrollbar.valueChanged.connect(
-                self.navigateScrollBarMoved
-            )
+        self.navigateScrollbar.valueChanged.connect(
+            self.navigateScrollBarMoved
+        )
 
     def getImage(self, PosData, img_data, frame_i):
         if PosData.SizeT > 1:
@@ -481,6 +478,9 @@ class dataPrepWin(QMainWindow):
 
 
     def updateBkgrROIs(self):
+        if self.startAction.isEnabled():
+            return
+
         PosData = self.data[self.pos_i]
         for roi in PosData.bkgrROIs:
             if roi not in self.ax1.items:
@@ -490,13 +490,19 @@ class dataPrepWin(QMainWindow):
             roi.sigRegionChangeFinished.connect(self.bkgrROImovingFinished)
 
     def removeBkgrROIs(self):
+        if self.startAction.isEnabled():
+            return
+
         PosData = self.data[self.pos_i]
         for roi in PosData.bkgrROIs:
             self.ax1.removeItem(roi.label)
             self.ax1.removeItem(roi)
 
-            roi.sigRegionChanged.disconnect()
-            roi.sigRegionChangeFinished.disconnect()
+            try:
+                roi.sigRegionChanged.disconnect()
+                roi.sigRegionChangeFinished.disconnect()
+            except TypeError:
+                pass
 
     def init_attr(self):
         PosData = self.data[0]
@@ -515,6 +521,8 @@ class dataPrepWin(QMainWindow):
 
     def navigateScrollBarMoved(self, value):
         PosData = self.data[self.pos_i]
+        self.removeBkgrROIs()
+
         if PosData.SizeT > 1:
             self.frame_i = value-1
         elif self.num_pos > 1:
@@ -523,6 +531,8 @@ class dataPrepWin(QMainWindow):
             return
 
         self.update_img()
+        self.updateBkgrROIs()
+
 
     def crop(self, data):
         x0, y0 = [int(round(c)) for c in self.cropROI.pos()]
