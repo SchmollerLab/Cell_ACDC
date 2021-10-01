@@ -8438,6 +8438,8 @@ class guiWin(QMainWindow):
         self.widgetsToolBar.hide()
         self.modeToolBar.hide()
 
+        self.modeComboBox.setCurrentText('Viewer')
+
 
     def openFolder(self, checked=False, exp_path=None, isImageFile=False):
         try:
@@ -8905,6 +8907,15 @@ class guiWin(QMainWindow):
             - sum projection
             - mean projection
             - z-slice used for segmentation
+
+        For background data there are three options:
+            1. The user did not select any background ROI in data Prep
+               --> save only autoBkgr which are all the pixels outside cells
+            2. The user selected background ROI but did not crop
+               --> get values from the ROI background in this function
+            3. The user selected background ROI AND cropped
+               --> background values are saved in PosData.fluo_bkgrData_dict
+                   and we calculate metrics from there
         """
         PhysicalSizeY = PosData.PhysicalSizeY
         PhysicalSizeX = PosData.PhysicalSizeX
