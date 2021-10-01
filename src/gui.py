@@ -5804,13 +5804,13 @@ class guiWin(QMainWindow):
                     pass
                 self.t_label.setText('frame n.  ')
                 self.navigateScrollBar.sliderMoved.connect(
-                    self.navigateScrollBarMoved
+                    self.framesScrollBarMoved
                 )
                 self.navigateScrollBar.sliderReleased.connect(
-                    self.navigateScrollBarReleased
+                    self.framesScrollBarReleased
                 )
                 self.navigateScrollBar.actionTriggered.connect(
-                    self.navigateScrollBarAction
+                    self.framesScrollBarAction
                 )
 
     def update_z_slice(self, z):
@@ -6109,18 +6109,19 @@ class guiWin(QMainWindow):
         self.updateFramePosLabel()
         self.updateALLimg(updateFilters=True)
         self.computeSegm()
+        self.zoomToCells()
 
-    def navigateScrollBarAction(self, action):
+    def framesScrollBarAction(self, action):
         if action == QAbstractSlider.SliderSingleStepAdd:
-            self.navigateScrollBarReleased()
+            self.framesScrollBarReleased()
         elif action == QAbstractSlider.SliderSingleStepSub:
-            self.navigateScrollBarReleased()
+            self.framesScrollBarReleased()
         elif action == QAbstractSlider.SliderPageStepAdd:
-            self.navigateScrollBarReleased()
+            self.framesScrollBarReleased()
         elif action == QAbstractSlider.SliderPageStepSub:
-            self.navigateScrollBarReleased()
+            self.framesScrollBarReleased()
 
-    def navigateScrollBarMoved(self, frame_n):
+    def framesScrollBarMoved(self, frame_n):
         PosData = self.data[self.pos_i]
         PosData.frame_i = frame_n-1
         if PosData.allData_li[PosData.frame_i]['labels'] is None:
@@ -6138,13 +6139,15 @@ class guiWin(QMainWindow):
         self.updateFramePosLabel()
         self.navigateScrollBarStartedMoving = False
 
-    def navigateScrollBarReleased(self):
+    def framesScrollBarReleased(self):
         self.navigateScrollBarStartedMoving = True
         PosData = self.data[self.pos_i]
         PosData.frame_i = self.navigateScrollBar.sliderPosition()-1
         self.get_data()
         self.updateFramePosLabel()
         self.updateALLimg()
+        self.computeSegm()
+        self.zoomToCells()
 
     def unstore_data(self):
         PosData = self.data[self.pos_i]
@@ -9110,7 +9113,8 @@ class guiWin(QMainWindow):
                             metrics_values[key][i] = val
                         elif is_ROIbkgr_func:
                             if ROI_bkgrMask is not None:
-                                ROI_bkgrVal = np.median(fluo_2D[ROI_bkgrMask])
+                                ROI_bkgrData = fluo_2D[ROI_bkgrMask]
+                                ROI_bkgrVal = np.median(ROI_bkgrData)
                             else:
                                 ROI_bkgrVal = bkgrData_medians[k]
                             val = func(fluo_data_ID, ROI_bkgrVal, obj.area)
@@ -9120,19 +9124,39 @@ class guiWin(QMainWindow):
                             metrics_values[bkgr_key][i] = ROI_bkgrVal
 
                             bkgr_key = f'{chName}_dataPrepBkgr_val_mean{how}'
-                            metrics_values[bkgr_key][i] = bkgrData_means[k]
+                            if ROI_bkgrMask is None:
+                                bkgr_val = bkgrData_means[k]
+                            else:
+                                bkgr_val = ROI_bkgrData.mean()
+                            metrics_values[bkgr_key][i] = bkgr_val
 
                             bkgr_key = f'{chName}_dataPrepBkgr_val_q75{how}'
-                            metrics_values[bkgr_key][i] = bkgrData_q75s[k]
+                            if ROI_bkgrMask is None:
+                                bkgr_val = bkgrData_q75s[k]
+                            else:
+                                bkgr_val = np.quantile(ROI_bkgrData, q=0.75)
+                            metrics_values[bkgr_key][i] = bkgr_val
 
                             bkgr_key = f'{chName}_dataPrepBkgr_val_q25{how}'
-                            metrics_values[bkgr_key][i] = bkgrData_q25s[k]
+                            if ROI_bkgrMask is None:
+                                bkgr_val = bkgrData_q25s[k]
+                            else:
+                                bkgr_val = np.quantile(ROI_bkgrData, q=0.25)
+                            metrics_values[bkgr_key][i] = bkgr_val
 
                             bkgr_key = f'{chName}_dataPrepBkgr_val_q95{how}'
-                            metrics_values[bkgr_key][i] = bkgrData_q95s[k]
+                            if ROI_bkgrMask is None:
+                                bkgr_val = bkgrData_q95s[k]
+                            else:
+                                bkgr_val = np.quantile(ROI_bkgrData, q=0.95)
+                            metrics_values[bkgr_key][i] = bkgr_val
 
                             bkgr_key = f'{chName}_dataPrepBkgr_val_q05{how}'
-                            metrics_values[bkgr_key][i] = bkgrData_q05s[k]
+                            if ROI_bkgrMask is None:
+                                bkgr_val = bkgrData_q05s[k]
+                            else:
+                                bkgr_val = np.quantile(ROI_bkgrData, q=0.05)
+                            metrics_values[bkgr_key][i] = bkgr_val
 
                         elif func_name.find('amount') == -1:
                             val = func(fluo_data_ID)
