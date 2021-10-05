@@ -602,7 +602,9 @@ class segmWin(QMainWindow):
             exec_time = t_end-t0
             exec_time_min = exec_time/60
             exec_time_delta = datetime.timedelta(seconds=round(exec_time))
-            print(f'{images_path} successfully segmented in {exec_time_delta} HH:mm:ss')
+            print(
+                f'{data.relPath} successfully segmented in '
+                f'{exec_time_delta} HH:mm:ss')
             print('-----------------------------')
 
         self.processFinished = True
