@@ -10,6 +10,7 @@
 print('Importing modules...')
 import sys
 import os
+import shutil
 import pathlib
 import re
 import traceback
@@ -18,7 +19,7 @@ import datetime
 import uuid
 from functools import partial
 from tqdm import tqdm
-import threading, time
+import time
 
 import cv2
 import math
@@ -8643,14 +8644,19 @@ class guiWin(QMainWindow):
             traceback.print_exc()
             print('====================================')
             print('')
-            err_msg = 'Error occured. See terminal/console for details'
             self.titleLabel.setText(
                 'Error occured. See terminal/console for details',
                 color='r')
-            msg = QtGui.QMessageBox()
-            msg.critical(
-                self, 'Error!', err_msg, msg.Ok
+
+            err_msg = (
+                'Error occured. See details below or check the terminal/console'
             )
+            msg = QtGui.QMessageBox(self)
+            msg.setWindowTitle('Error!')
+            msg.setIcon(msg.Critical)
+            msg.setText(err_msg)
+            msg.setDetailedText(traceback.format_exc())
+            msg.exec_()
             self.openAction.setEnabled(True)
 
     def appendPathWindowTitle(self, user_ch_file_paths):
@@ -8956,7 +8962,7 @@ class guiWin(QMainWindow):
             *len(how_3Dto2D)
             *numCells
         )
-        pbar = tqdm(total=tot_iter, ncols=100, unit='metric')
+        pbar = tqdm(total=tot_iter, ncols=100, unit='metric', leave=False)
 
         outCellsMask = lab==0
 
@@ -9349,7 +9355,9 @@ class guiWin(QMainWindow):
 
     def saveData(self):
         self.store_data()
-        self.titleLabel.setText('Saving data... (check progress in the terminal)', color='w')
+        self.titleLabel.setText(
+            'Saving data... (check progress in the terminal)', color='w'
+        )
 
         save_metrics = self.askSaveMetrics()
 
