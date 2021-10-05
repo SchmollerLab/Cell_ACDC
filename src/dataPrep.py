@@ -561,6 +561,8 @@ class dataPrepWin(QMainWindow):
 
         # If we crop we save data from background ROI for each bkgrROI
         for chName in PosData.chNames:
+            alignedFound = False
+            tifFound = False
             for file in os.listdir(PosData.images_path):
                 filePath = os.path.join(PosData.images_path, file)
                 filenameNOext, _ = os.path.splitext(file)
