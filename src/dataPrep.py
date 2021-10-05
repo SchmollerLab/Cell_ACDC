@@ -710,9 +710,8 @@ class dataPrepWin(QMainWindow):
         # if doSave == msg.No:
         #     return
 
+        self.cropAction.setDisabled(True)
         for PosData in self.data:
-            self.cropAction.setDisabled(True)
-
             self.saveBkgrROIs(PosData)
 
             if PosData.SizeZ > 1:
@@ -806,7 +805,7 @@ class dataPrepWin(QMainWindow):
             print(f'{PosData.pos_foldername} saved!')
             print(f'--------------------------------')
             print('')
-        self.cropAction.setEnabled(True)
+        # self.cropAction.setEnabled(True)
         self.titleLabel.setText(
             'Saved! You can close the program or load another position.',
             color='g')
