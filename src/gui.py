@@ -8753,6 +8753,7 @@ class guiWin(QMainWindow):
             else:
                 openedOn = [np.nan]*len(recentPaths)
             if exp_path in recentPaths:
+                print(exp_path)
                 pop_idx = recentPaths.index(exp_path)
                 recentPaths.pop(pop_idx)
                 openedOn.pop(pop_idx)
@@ -9070,7 +9071,7 @@ class guiWin(QMainWindow):
                             roiData = bkgrArchive[roi_key][frame_i]
                         bkgrVals_2D.extend(roiData[roiData!=0])
                     bkgrData_medians.append(np.median(bkgrVals_2D))
-                    bkgrData_means.append(bkgrVals_2D.mean())
+                    bkgrData_means.append(np.mean(bkgrVals_2D))
                     bkgrData_q75s.append(np.quantile(bkgrVals_2D, q=0.75))
                     bkgrData_q25s.append(np.quantile(bkgrVals_2D, q=0.25))
                     bkgrData_q95s.append(np.quantile(bkgrVals_2D, q=0.95))
