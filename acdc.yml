@@ -4,18 +4,17 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.8.5
+  - python=3.8
   - pip
   - pip:
     - PyQt5
     - opencv-python-headless
-  - pyqtgraph=0.12.1
+  - pyqtgraph
   - pandas
   - pytables
-  - matplotlib=3.1.2
   - tqdm
   - natsort
-  - scikit-image=0.18.1
+  - scikit-image=0.18
   - pyglet
   - seaborn
   - numba
