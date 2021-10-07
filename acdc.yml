@@ -9,10 +9,9 @@ dependencies:
   - pip:
     - PyQt5
     - opencv-python-headless
-  - pyqtgraph=0.12.1
+  - pyqtgraph
   - pandas
   - pytables
-  - matplotlib
   - tqdm
   - natsort
   - scikit-image=0.18
