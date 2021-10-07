@@ -1,10 +1,10 @@
 conda update conda
 conda clean --all
-conda create --name spotmax python=3.8.5
-conda activate spotmax
+conda create --name acdc python=3.8
+conda activate acdc
 
-conda install matplotlib=3.1.2
-conda install scikit-image=0.17.2
+conda install matplotlib
+conda install scikit-image=0.18
 pip install PyQt5
 pip install pyqtgraph
 conda install tensorflow
@@ -19,3 +19,6 @@ conda install seaborn
 conda install scikit-learn
 pip install opencv-python-headless
 pip install munkres
+conda install scikit-learn
+conda install boto3
+conda install -c conda-forge jupyterlab

@@ -1,5 +1,6 @@
 import os, sys
 import pathlib
+import webbrowser
 
 import pandas as pd
 import numpy as np
@@ -208,6 +209,10 @@ class welcomeWin(QWidget):
             Cell-ACDC is open-source software for
             <b>segmentation</b>, <b>tracking,</b> and<br>
             <b>cell cycle annotation</b> of microscopy imaging data.
+        </p>
+        <p style="font-size:12pt; font-family:ubuntu">
+            You can check out our <a href=\"paper">pre-print</a>
+            or Twitter <a href=\"tweet">thread</a>.
         </p>
         <p style="font-size:12pt; font-family:ubuntu">
             If it is your <b>first time here</b> we recommend reading the
@@ -763,6 +768,12 @@ class welcomeWin(QWidget):
     def linkActivated_cb(self, link):
         if link == 'DataPrepMore':
             pass
+        elif link == 'paper':
+            url = 'https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2'
+            webbrowser.open(url)
+        elif link == 'tweet':
+            url = 'https://twitter.com/frank_pado/status/1443957038841794561?s=20'
+            webbrowser.open(url)
         elif link == 'segmMore':
             pass
         elif link == 'guiMore':
@@ -823,6 +834,16 @@ class welcomeWin(QWidget):
         self.dataStructWin.show()
         self.dataStructWin.main()
 
+    def addPbar(self):
+        self.QPbar = QProgressBar(self)
+        self.QPbar.setValue(0)
+        palette = QPalette()
+        palette.setColor(QPalette.Highlight, QColor(207, 235, 155))
+        palette.setColor(QPalette.Text, QColor(0, 0, 0))
+        palette.setColor(QPalette.HighlightedText, QColor(0, 0, 0))
+        self.QPbar.setPalette(palette)
+        self.welcomeLayout.addWidget(self.QPbar, 3, 0, 1, 3)
+
     def testTimeLapseExample(self, checked=True):
         main_path = pathlib.Path(__file__).resolve().parents[2]
         data_path = main_path / 'data'
@@ -837,9 +858,7 @@ class welcomeWin(QWidget):
         self.infoTextWidget.setText(txt)
 
         if self.QPbar is None:
-            self.QPbar = QProgressBar(self)
-            self.QPbar.setValue(0)
-            self.welcomeLayout.addWidget(self.QPbar, 3, 0, 1, 3)
+            self.addPbar()
 
         self.thread = QThread()
         self.worker = downloadWorker('time_lapse_2D')
@@ -888,14 +907,7 @@ class welcomeWin(QWidget):
         self.infoTextWidget.setText(txt)
 
         if self.QPbar is None:
-            self.QPbar = QProgressBar(self)
-            self.QPbar.setValue(0)
-            palette = QPalette()
-            palette.setColor(QPalette.Highlight, QColor(207, 235, 155))
-            palette.setColor(QPalette.Text, QColor(0, 0, 0))
-            palette.setColor(QPalette.HighlightedText, QColor(0, 0, 0))
-            self.QPbar.setPalette(palette)
-            self.welcomeLayout.addWidget(self.QPbar, 3, 0, 1, 3)
+            self.addPbar()
 
         self.thread = QThread()
         self.worker = downloadWorker('snapshots_3D')
