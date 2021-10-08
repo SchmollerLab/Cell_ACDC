@@ -14,7 +14,8 @@ from tqdm import tqdm
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QFileDialog,
-    QVBoxLayout, QPushButton, QLabel
+    QVBoxLayout, QPushButton, QLabel, QStyleFactory,
+    QWidget, QMessageBox
 )
 from PyQt5.QtCore import Qt, QEventLoop
 from PyQt5 import QtGui
@@ -44,13 +45,14 @@ class segmWin(QMainWindow):
         self.setWindowTitle("Cell-ACDC - Segment")
         self.setWindowIcon(QtGui.QIcon(":assign-motherbud.svg"))
 
-        mainContainer = QtGui.QWidget()
+        mainContainer = QWidget()
         self.setCentralWidget(mainContainer)
 
         mainLayout = QVBoxLayout()
 
         label = QLabel(
-            'Segmentation routine running...')
+            'Segmentation routine running...'
+        )
 
         label.setStyleSheet("padding:5px 10px 10px 10px;")
         label.setAlignment(Qt.AlignCenter)
@@ -218,7 +220,7 @@ class segmWin(QMainWindow):
                     'is not a valid folder. '
                     'Select a folder that contains the Position_n folders'
                 )
-                msg = QtGui.QMessageBox()
+                msg = QMessageBox()
                 msg.critical(
                     self, 'Incompatible folder', txt, msg.Ok
                 )
@@ -247,7 +249,7 @@ class segmWin(QMainWindow):
             images_paths = [exp_path]
 
         # Ask to save?
-        msg = QtGui.QMessageBox()
+        msg = QMessageBox()
         msg.setFont(font)
         answer = msg.question(self, 'Save?', 'Do you want to save segmentation?',
                               msg.Yes | msg.No | msg.Cancel)
@@ -348,7 +350,7 @@ class segmWin(QMainWindow):
 
                 if data.dataPrep_ROIcoords is None:
                     # Ask ROI
-                    msg = QtGui.QMessageBox()
+                    msg = QMessageBox()
                     msg.setFont(font)
                     answer = msg.question(self, 'ROI?',
                         'Do you want to choose to segment only '
@@ -613,7 +615,7 @@ class segmWin(QMainWindow):
             exit('Segmentation task ended.')
 
     def doAbort(self):
-        msg = QtGui.QMessageBox()
+        msg = QMessageBox()
         closeAnswer = msg.warning(
            self, 'Abort execution?', 'Do you really want to abort process?',
            msg.Yes | msg.No
@@ -647,7 +649,7 @@ if __name__ == "__main__":
         QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     # Create the application
     app = QApplication(sys.argv)
-    app.setStyle(QtGui.QStyleFactory.create('Fusion'))
+    app.setStyle(QStyleFactory.create('Fusion'))
     win = segmWin(allowExit=True)
     win.show()
     print('Done. If window asking to select a folder is not visible, it is '
