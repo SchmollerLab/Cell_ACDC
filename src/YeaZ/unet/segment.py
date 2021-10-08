@@ -41,16 +41,19 @@ def segment(th, pred, min_distance=10, topology=None, merge=True, q=0.75):
         merged = wsh
     return correct_artefacts(merged)
 
-def segment_stack(th, pred, min_distance=10, topology=None):
+def segment_stack(th, pred, min_distance=10, topology=None, signals=None):
     """
     source: YeaZ
     apply method segment on a stack of images, given a stack of thresholded
     images th and a stack of raw predictions pred
     """
-    seg_stack = [segment(th_single, pred[idx], min_distance, topology)
-                 for idx, th_single
-                 in enumerate(tqdm(th, unit=' frame', ncols=100))]
-    return np.array(seg_stack)
+    seg_stack = np.zeros(pred.shape, np.uint16)
+    for idx, (th_single, pred_single) in enumerate(zip(th, pred)):
+        lab = segment(th_single, pred_single, min_distance, topology)
+        seg_stack[idx] = lab
+        if signals is not None:
+            signals.progress.emit('')
+    return seg_stack
 
 
 def correct_artefacts(wsh):

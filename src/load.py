@@ -54,7 +54,9 @@ class loadData:
         self.user_ch_name = user_ch_name
         self.images_path = os.path.dirname(imgPath)
         self.pos_path = os.path.dirname(self.images_path)
+        self.exp_path = os.path.dirname(self.pos_path)
         self.pos_foldername = os.path.basename(self.pos_path)
+        self.cropROI = None
         path_li = os.path.normpath(imgPath).split(os.sep)
         self.relPath = f'.../{"/".join(path_li[-3:])}'
         filename_ext = os.path.basename(imgPath)
@@ -178,7 +180,7 @@ class loadData:
                     bkgROIs_states = json.load(json_fp)
 
                 for roi_state in bkgROIs_states:
-                    X,Y = self.img_data.shape[-2:]
+                    Y, X = self.img_data.shape[-2:]
                     roi = pg.ROI(
                         [0, 0], [1, 1],
                         rotatable=False,
@@ -262,11 +264,16 @@ class loadData:
         else:
             self.PhysicalSizeZ = 1
 
+        load_last_segmSizeT = (
+            self.last_md_df is not None
+            and 'segmSizeT' in self.last_md_df.index
+            and self.SizeT > 1
+        )
         if 'segmSizeT' in self.metadata_df.index:
              self.segmSizeT = int(
                  self.metadata_df.at['segmSizeT', 'values']
              )
-        elif self.last_md_df is not None and 'segmSizeT' in self.last_md_df.index:
+        elif load_last_segmSizeT:
             self.segmSizeT = int(self.last_md_df.at['segmSizeT', 'values'])
         else:
             self.segmSizeT = self.SizeT
@@ -335,6 +342,9 @@ class loadData:
         if 'segmSizeT' in self.last_md_df.index:
             self.segmSizeT = int(self.last_md_df.at['segmSizeT', 'values'])
 
+    def checkMetadata_vs_shape(self):
+        pass
+
     def buildPaths(self):
         if self.basename.endswith('_'):
             basename = self.basename
@@ -351,7 +361,7 @@ class loadData:
         self.acdc_output_csv_path = f'{base_path}acdc_output.csv'
         self.segmInfo_df_csv_path = f'{base_path}segmInfo.csv'
         self.delROIs_info_path = f'{base_path}delROIsInfo.npz'
-        self.dataPrepROIs_coords_path = f'{base_path}dataPrepROIs_coords.csv'
+        self.dataPrepROI_coords_path = f'{base_path}dataPrepROIs_coords.csv'
         # self.dataPrepBkgrValues_path = f'{base_path}dataPrep_bkgrValues.csv'
         self.dataPrepBkgrROis_path = f'{base_path}dataPrep_bkgrROIs.json'
         self.metadata_csv_path = f'{base_path}metadata.csv'
@@ -407,7 +417,8 @@ class loadData:
             self.SizeT, self.SizeZ, self.TimeIncrement,
             self.PhysicalSizeZ, self.PhysicalSizeY, self.PhysicalSizeX,
             ask_SizeT, ask_TimeIncrement, ask_PhysicalSizes,
-            parent=self.parent, font=font, imgDataShape=self.img_data.shape)
+            parent=self.parent, font=font, imgDataShape=self.img_data.shape,
+            PosData=self)
         metadataWin.setFont(font)
         metadataWin.exec_()
         if metadataWin.cancel:
@@ -446,7 +457,6 @@ class loadData:
                 'segmSizeT': self.segmSizeT
             }, index=['values']).T
             self.metadata_df.index.name = 'Description'
-            self.metadata_df.to_csv(self.metadata_csv_path)
         else:
             self.metadata_df.at['SizeT', 'values'] = self.SizeT
             self.metadata_df.at['SizeZ', 'values'] = self.SizeZ
@@ -455,7 +465,19 @@ class loadData:
             self.metadata_df.at['PhysicalSizeY', 'values'] = self.PhysicalSizeY
             self.metadata_df.at['PhysicalSizeX', 'values'] = self.PhysicalSizeX
             self.metadata_df.at['segmSizeT', 'values'] = self.segmSizeT
+        try:
             self.metadata_df.to_csv(self.metadata_csv_path)
+        except PermissionError:
+            msg = QtGui.QMessageBox()
+            warn_cca = msg.critical(
+                self, 'Permission denied',
+                f'The below file is open in another app (Excel maybe?).\n\n'
+                f'{self.metadata_csv_path}\n\n'
+                'Close file and then press "Ok".',
+                msg.Ok
+            )
+            self.metadata_df.to_csv(self.metadata_csv_path)
+
         self.saveLastEntriesMetadata()
 
     @staticmethod

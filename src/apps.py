@@ -137,6 +137,7 @@ class QDialogMetadataXML(QDialog):
         label = QLabel(txt)
         entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         entriesLayout.addWidget(self.SizeT_SB, row, 1)
+        self.SizeT_SB.valueChanged.connect(self.hideShowTimeIncrement)
 
         row += 1
         self.SizeZ_SB = QSpinBox()
@@ -159,6 +160,7 @@ class QDialogMetadataXML(QDialog):
         self.TimeIncrement_DSB.setValue(TimeIncrement)
         txt = 'Frame interval:  '
         label = QLabel(txt)
+        self.TimeIncrement_Label = label
         entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         entriesLayout.addWidget(self.TimeIncrement_DSB, row, 1)
 
@@ -172,6 +174,11 @@ class QDialogMetadataXML(QDialog):
         if currentTxt:
             self.TimeIncrementUnit_CB.setCurrentText(currentTxt[0])
         entriesLayout.addWidget(self.TimeIncrementUnit_CB, row, 2)
+
+        if SizeT == 1:
+            self.TimeIncrement_DSB.hide()
+            self.TimeIncrementUnit_CB.hide()
+            self.TimeIncrement_Label.hide()
 
         row += 1
         self.PhysicalSizeX_DSB = QDoubleSpinBox()
@@ -194,6 +201,8 @@ class QDialogMetadataXML(QDialog):
         self.PhysicalSizeUnit_CB.addItems(unitItems)
         if currentTxt:
             self.PhysicalSizeUnit_CB.setCurrentText(currentTxt[0])
+        else:
+            self.PhysicalSizeUnit_CB.setCurrentText(unitItems[1])
         entriesLayout.addWidget(self.PhysicalSizeUnit_CB, row, 2)
         self.PhysicalSizeUnit_CB.currentTextChanged.connect(self.updatePSUnit)
 
@@ -317,7 +326,7 @@ class QDialogMetadataXML(QDialog):
 
         entriesLayout.setContentsMargins(0, 15, 0, 0)
 
-        if rawDataStruct is None or rawDataStruct==0:
+        if rawDataStruct is None or rawDataStruct!=-1:
             okButton = QPushButton('Ok')
         elif rawDataStruct==1:
             okButton = QPushButton('Load next position')
@@ -429,6 +438,16 @@ class QDialogMetadataXML(QDialog):
                 LE1.setStyleSheet('background: #FEF9C3;')
                 LE2.setStyleSheet('background: #FEF9C3;')
         return areChNamesValid
+
+    def hideShowTimeIncrement(self, value):
+        if value > 1:
+            self.TimeIncrement_DSB.show()
+            self.TimeIncrementUnit_CB.show()
+            self.TimeIncrement_Label.show()
+        else:
+            self.TimeIncrement_DSB.hide()
+            self.TimeIncrementUnit_CB.hide()
+            self.TimeIncrement_Label.hide()
 
     def hideShowPhysicalSizeZ(self, value):
         if value > 1:
@@ -842,18 +861,19 @@ class QDialogMetadata(QDialog):
     def __init__(self, SizeT, SizeZ, TimeIncrement,
                  PhysicalSizeZ, PhysicalSizeY, PhysicalSizeX,
                  ask_SizeT, ask_TimeIncrement, ask_PhysicalSizes,
-                 parent=None, font=None, imgDataShape=None):
+                 parent=None, font=None, imgDataShape=None, PosData=None):
         self.cancel = True
         self.ask_TimeIncrement = ask_TimeIncrement
         self.ask_PhysicalSizes = ask_PhysicalSizes
         self.imgDataShape = imgDataShape
+        self.PosData = PosData
         super().__init__(parent)
         self.setWindowTitle('Image properties')
 
         mainLayout = QVBoxLayout()
         gridLayout = QGridLayout()
         # formLayout = QFormLayout()
-        buttonsLayout = QHBoxLayout()
+        buttonsLayout = QGridLayout()
 
         if imgDataShape is not None:
             label = QLabel(
@@ -865,7 +885,9 @@ class QDialogMetadata(QDialog):
             mainLayout.addWidget(label, alignment=Qt.AlignCenter)
 
         row = 0
-        gridLayout.addWidget(QLabel('Number of frames (SizeT)'), row, 0)
+        gridLayout.addWidget(
+            QLabel('Number of frames (SizeT)'), row, 0, alignment=Qt.AlignRight
+        )
         self.SizeT_SpinBox = QSpinBox()
         self.SizeT_SpinBox.setMinimum(1)
         self.SizeT_SpinBox.setMaximum(2147483647)
@@ -879,7 +901,9 @@ class QDialogMetadata(QDialog):
         gridLayout.addWidget(self.SizeT_SpinBox, row, 1)
 
         row += 1
-        gridLayout.addWidget(QLabel('Number of z-slices (SizeZ)'), row, 0)
+        gridLayout.addWidget(
+            QLabel('Number of z-slices (SizeZ)'), row, 0, alignment=Qt.AlignRight
+        )
         self.SizeZ_SpinBox = QSpinBox()
         self.SizeZ_SpinBox.setMinimum(1)
         self.SizeZ_SpinBox.setMaximum(2147483647)
@@ -890,7 +914,9 @@ class QDialogMetadata(QDialog):
 
         row += 1
         self.TimeIncrementLabel = QLabel('Time interval (s)')
-        gridLayout.addWidget(self.TimeIncrementLabel, row, 0)
+        gridLayout.addWidget(
+            self.TimeIncrementLabel, row, 0, alignment=Qt.AlignRight
+        )
         self.TimeIncrementSpinBox = QDoubleSpinBox()
         self.TimeIncrementSpinBox.setDecimals(7)
         self.TimeIncrementSpinBox.setMaximum(2147483647.0)
@@ -904,7 +930,9 @@ class QDialogMetadata(QDialog):
 
         row += 1
         self.PhysicalSizeZLabel = QLabel('Physical Size Z (um/pixel)')
-        gridLayout.addWidget(self.PhysicalSizeZLabel, row, 0)
+        gridLayout.addWidget(
+            self.PhysicalSizeZLabel, row, 0, alignment=Qt.AlignRight
+        )
         self.PhysicalSizeZSpinBox = QDoubleSpinBox()
         self.PhysicalSizeZSpinBox.setDecimals(7)
         self.PhysicalSizeZSpinBox.setMaximum(2147483647.0)
@@ -918,7 +946,9 @@ class QDialogMetadata(QDialog):
 
         row += 1
         self.PhysicalSizeYLabel = QLabel('Physical Size Y (um/pixel)')
-        gridLayout.addWidget(self.PhysicalSizeYLabel, row, 0)
+        gridLayout.addWidget(
+            self.PhysicalSizeYLabel, row, 0, alignment=Qt.AlignRight
+        )
         self.PhysicalSizeYSpinBox = QDoubleSpinBox()
         self.PhysicalSizeYSpinBox.setDecimals(7)
         self.PhysicalSizeYSpinBox.setMaximum(2147483647.0)
@@ -932,7 +962,9 @@ class QDialogMetadata(QDialog):
 
         row += 1
         self.PhysicalSizeXLabel = QLabel('Physical Size X (um/pixel)')
-        gridLayout.addWidget(self.PhysicalSizeXLabel, row, 0)
+        gridLayout.addWidget(
+            self.PhysicalSizeXLabel, row, 0, alignment=Qt.AlignRight
+        )
         self.PhysicalSizeXSpinBox = QDoubleSpinBox()
         self.PhysicalSizeXSpinBox.setDecimals(7)
         self.PhysicalSizeXSpinBox.setMaximum(2147483647.0)
@@ -946,13 +978,43 @@ class QDialogMetadata(QDialog):
 
         self.SizeZvalueChanged(SizeZ)
 
-        okButton = QPushButton('Ok')
+        okButton = QPushButton('Apply only to this Position')
+        okButton.setToolTip(
+            'Save metadata only for current position'
+        )
         okButton.setShortcut(Qt.Key_Enter)
+        self.okButton = okButton
+
+        if ask_TimeIncrement or ask_PhysicalSizes:
+            okAllButton = QPushButton('Apply to ALL Positions')
+            okAllButton.setToolTip(
+                'Update existing Physical Sizes, Time interval, cell volume (fl), '
+                'cell area (um^2), and time (s) for all the positions '
+                'in the experiment folder.'
+            )
+            self.okAllButton = okAllButton
+
+            selectButton = QPushButton('Select the Positions to be updated')
+            selectButton.setToolTip(
+                'Ask to select positions then update existing Physical Sizes, '
+                'Time interval, cell volume (fl), cell area (um^2), and time (s)'
+                'for selected positions.'
+            )
+            self.selectButton = selectButton
+        else:
+            self.okAllButton = None
+            self.selectButton = None
+            okButton.setText('Ok')
 
         cancelButton = QPushButton('Cancel')
 
-        buttonsLayout.addWidget(okButton, alignment=Qt.AlignRight)
-        buttonsLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
+        buttonsLayout.addWidget(okButton, 0, 0)
+        if ask_TimeIncrement or ask_PhysicalSizes:
+            buttonsLayout.addWidget(okAllButton, 0, 1)
+            buttonsLayout.addWidget(selectButton, 1, 0)
+            buttonsLayout.addWidget(cancelButton, 1, 1)
+        else:
+            buttonsLayout.addWidget(cancelButton, 0, 1)
         buttonsLayout.setContentsMargins(0, 10, 0, 0)
 
         gridLayout.setColumnMinimumWidth(1, 100)
@@ -961,12 +1023,17 @@ class QDialogMetadata(QDialog):
         mainLayout.addLayout(buttonsLayout)
 
         okButton.clicked.connect(self.ok_cb)
+        if ask_TimeIncrement or ask_PhysicalSizes:
+            okAllButton.clicked.connect(self.ok_cb)
+            selectButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.cancel_cb)
 
         self.setLayout(mainLayout)
         self.setModal(True)
 
     def SizeZvalueChanged(self, val):
+        if len(self.imgDataShape) < 3:
+            return
         if val > 1 and self.imgDataShape is not None:
             maxSizeZ = self.imgDataShape[-3]
             self.SizeZ_SpinBox.setMaximum(maxSizeZ)
@@ -1018,16 +1085,16 @@ class QDialogMetadata(QDialog):
         if not valid4D:
             txt = (f"""
             <p style="font-size:10pt">
-                You loaded <b>4D data</b>, hence the number of frames MUST be <b>{T}</b><br>
-                and the number of z-slices MUST be <b>{Z}</b>.<br><br>
+                You loaded <b>4D data</b>, hence the number of frames MUST be
+                <b>{T}</b><br> nd the number of z-slices MUST be <b>{Z}</b>.<br><br>
                 What do you want to do?
             </p>
             """)
         if not valid3D:
             txt = (f"""
             <p style="font-size:10pt">
-                You loaded <b>3D data</b>, hence either the number of frames is <b>{TZ}</b><br>
-                or the number of z-slices can be <b>{TZ}</b>.<br><br>
+                You loaded <b>3D data</b>, hence either the number of frames is
+                <b>{TZ}</b><br> or the number of z-slices can be <b>{TZ}</b>.<br><br>
                 However, if the number of frames is greater than 1 then the<br>
                 number of z-slices MUST be 1, and vice-versa.<br><br>
                 What do you want to do?
@@ -1043,25 +1110,76 @@ class QDialogMetadata(QDialog):
             </p>
             """)
 
-        if valid:
-            self.close()
-            return
+        if not valid:
+            msg = QtGui.QMessageBox(self)
+            msg.setIcon(msg.Warning)
+            msg.setWindowTitle('Invalid entries')
+            msg.setText(txt)
+            continueButton = QPushButton(
+                f'Continue anyway'
+            )
+            cancelButton = QPushButton(
+                f'Let me correct'
+            )
+            msg.addButton(continueButton, msg.YesRole)
+            msg.addButton(cancelButton, msg.NoRole)
+            msg.exec_()
+            if msg.clickedButton() == cancelButton:
+                return
 
-        msg = QtGui.QMessageBox(self)
-        msg.setIcon(msg.Warning)
-        msg.setWindowTitle('Invalid entries')
-        msg.setText(txt)
-        continueButton = QPushButton(
-            f'Continue anyway'
-        )
-        cancelButton = QPushButton(
-            f'Let me correct'
-        )
-        msg.addButton(continueButton, msg.YesRole)
-        msg.addButton(cancelButton, msg.NoRole)
-        msg.exec_()
-        if msg.clickedButton() == continueButton:
-            self.close()
+        if self.PosData is not None and self.sender() != self.okButton:
+            exp_path = self.PosData.exp_path
+            pos_foldernames = natsorted(os.listdir(exp_path))
+            pos_foldernames = [
+                pos for pos in pos_foldernames
+                if pos.find('Position_')!=-1
+                and os.path.isdir(os.path.join(exp_path, pos))
+            ]
+            if self.sender() == self.selectButton:
+                select_folder = load.select_exp_folder()
+                select_folder.pos_foldernames = pos_foldernames
+                select_folder.QtPrompt(
+                    self, pos_foldernames, allow_abort=False, toggleMulti=True
+                )
+                pos_foldernames = select_folder.selected_pos
+            for pos in pos_foldernames:
+                images_path = os.path.join(exp_path, pos, 'Images')
+                ls = os.listdir(images_path)
+                search = [file for file in ls if file.find('metadata.csv')!=-1]
+                metadata_df = None
+                if search:
+                    fileName = search[0]
+                    metadata_csv_path = os.path.join(images_path, fileName)
+                    metadata_df = pd.read_csv(
+                        metadata_csv_path
+                        ).set_index('Description')
+                if metadata_df is not None:
+                    metadata_df.at['TimeIncrement', 'values'] = self.TimeIncrement
+                    metadata_df.at['PhysicalSizeZ', 'values'] = self.PhysicalSizeZ
+                    metadata_df.at['PhysicalSizeY', 'values'] = self.PhysicalSizeY
+                    metadata_df.at['PhysicalSizeX', 'values'] = self.PhysicalSizeX
+                    metadata_df.to_csv(metadata_csv_path)
+
+                search = [file for file in ls if file.find('acdc_output.csv')!=-1]
+                acdc_df = None
+                if search:
+                    fileName = search[0]
+                    acdc_df_path = os.path.join(images_path, fileName)
+                    acdc_df = pd.read_csv(acdc_df_path)
+                    yx_pxl_to_um2 = PhysicalSizeY*PhysicalSizeX
+                    vox_to_fl = PhysicalSizeY*(PhysicalSizeX**2)
+                    if 'cell_vol_fl' not in acdc_df.columns:
+                        continue
+                    acdc_df['cell_vol_fl'] = acdc_df['cell_vol_vox']*vox_to_fl
+                    acdc_df['cell_area_um2'] = acdc_df['cell_area_pxl']*yx_pxl_to_um2
+                    acdc_df['time_seconds'] = acdc_df['frame_i']*self.TimeIncrement
+                    acdc_df.to_csv(acdc_df_path, index=False)
+
+
+        elif self.sender() == self.selectButton:
+            pass
+
+        self.close()
 
     def cancel_cb(self, event):
         self.cancel = True
@@ -2127,6 +2245,7 @@ class cellpose_ParamsDialog(QDialog):
         diameterLabel = QLabel('Diameter of cell (pixels):')
         diameterEntry = QSpinBox()
         diameterEntry.setValue(0)
+        diameterEntry.setMaximum(2147483647)
         diameterEntry.setAlignment(Qt.AlignCenter)
         entriesLayout.addWidget(diameterLabel, row, 0)
         row += 1
@@ -4166,7 +4285,7 @@ if __name__ == '__main__':
     filenames = ['test1', 'test2']
     # win = QDialogZsliceAbsent('test3', 30, filenames)
     win = QDialogMetadata(
-        1, 41, 180, 0.5, 0.09, 0.09, True, True, True,
+        1, 41, 180, 0.5, 0.09, 0.09, False, False, False,
         font=font, imgDataShape=(31, 350, 350)
     )
     # win = cellpose_ParamsDialog()

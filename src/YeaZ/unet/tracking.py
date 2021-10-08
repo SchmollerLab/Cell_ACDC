@@ -33,7 +33,7 @@ def correspondence(prev, curr):
     return new
 
 
-def correspondence_stack(stack):
+def correspondence_stack(stack, signals=None):
     """
     source: YeaZ
     corrects correspondence of a stack of segmented and labeled masks, by
@@ -41,13 +41,15 @@ def correspondence_stack(stack):
     """
     corrected_stack = np.empty(stack.shape)
     corrected_stack[0] = stack[0]
-    for idx in tqdm(range(len(stack)), unit=' frames', ncols=100):
+    for idx in range(len(stack)):
         try:
             curr = stack[idx+1]
             prev = corrected_stack[idx]
         except IndexError:
             continue
         corrected_stack[idx+1] = correspondence(prev, curr)
+        if signals is not None:
+            signals.progress.emit('')
     return corrected_stack
 
 

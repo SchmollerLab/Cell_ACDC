@@ -851,6 +851,7 @@ class guiWin(QMainWindow):
         # Mode
         self.modeComboBox.currentIndexChanged.connect(self.changeMode)
         self.modeComboBox.activated.connect(self.clearComboBoxFocus)
+
         self.equalizeHistPushButton.clicked.connect(self.equalizeHist)
         self.editOverlayColorAction.triggered.connect(self.toggleOverlayColorButton)
         self.editTextIDsColorAction.triggered.connect(self.toggleTextIDsColorButton)
@@ -2324,7 +2325,7 @@ class guiWin(QMainWindow):
         if self.isRightClickDragImg1 and self.curvToolButton.isChecked():
             self.isRightClickDragImg1 = False
             try:
-                self.splineToObj()
+                self.splineToObj(isRightClick=True)
                 self.update_rp()
                 self.tracking(enforce=True)
                 self.updateALLimg()
@@ -2865,24 +2866,12 @@ class guiWin(QMainWindow):
 
     def editImgProperties(self, checked=True):
         PosData = self.data[self.pos_i]
-        changed = PosData.askInputMetadata(
+        PosData.askInputMetadata(
             ask_SizeT=True,
             ask_TimeIncrement=True,
             ask_PhysicalSizes=True,
             save=True
         )
-        if self.num_pos > 1 and changed:
-            txt = (
-                'Do you want to update metadata for ALL the positions?'
-            )
-            msg = QtGui.QMessageBox(self)
-            saveAllPos = msg.question(
-                self, 'Automatic segmentation?', txt, msg.Yes | msg.No
-            )
-            if saveAllPos == msg.Yes:
-                for _posData in self.data:
-                    _posData.transferMetadata(PosData)
-                    _posData.saveMetadata()
 
     def setHoverToolSymbolData(self, xx, yy, ScatterItems, size=None):
         for item in ScatterItems:
@@ -3076,16 +3065,16 @@ class guiWin(QMainWindow):
                 yy = np.r_[yy, y]
                 try:
                     self.curvHoverPlotItem.setData(xx, yy)
+                    self.curvPlotItem.setData(xx, yy)
                 except TypeError:
                     pass
                 self.autoCont_y0, self.autoCont_x0 = y, x
-                self.smoothAutoContWithSpline()
+                # self.smoothAutoContWithSpline()
 
-    def smoothAutoContWithSpline(self):
+    def smoothAutoContWithSpline(self, n=3):
         try:
             xx, yy = self.curvHoverPlotItem.getData()
             # Downsample by taking every nth coord
-            n = 3
             xxA, yyA = xx[::n], yy[::n]
             rr, cc = skimage.draw.polygon(yyA, xxA)
             self.autoContObjMask[rr, cc] = 1
@@ -4213,6 +4202,11 @@ class guiWin(QMainWindow):
     def clearComboBoxFocus(self, mode):
         # Remove focus from modeComboBox to avoid the key_up changes its value
         self.sender().clearFocus()
+        try:
+            self.timer.stop()
+            self.modeComboBox.setStyleSheet('background-color: none')
+        except Exception as e:
+            pass
 
     def changeMode(self, idx):
         PosData = self.data[self.pos_i]
@@ -4577,6 +4571,9 @@ class guiWin(QMainWindow):
                     newID = _max
             else:
                 break
+        for y, x, manual_ID in PosData.editID_info:
+            if manual_ID > newID:
+                newID = manual_ID
         PosData.brushID = newID+1
 
     def equalizeHist(self):
@@ -4727,10 +4724,38 @@ class guiWin(QMainWindow):
         elif ev.key() == Qt.Key_H:
             self.zoomToCells(enforce=True)
         elif ev.key() == Qt.Key_L:
+            mode = str(self.modeComboBox.currentText())
+            if mode == 'Viewer':
+                self.startBlinkingModeCB()
+                return
             self.storeUndoRedoStates(False)
             PosData = self.data[self.pos_i]
-            PosData.lab = skimage.segmentation.relabel_sequential(PosData.lab)[0]
-            self.update_rp()
+            if PosData.SizeT > 1:
+                current_lab = PosData.lab.copy()
+                current_frame_i = PosData.frame_i
+                segm_data = []
+                for frame_i, data_dict in enumerate(PosData.allData_li):
+                    lab = data_dict['labels']
+                    if lab is None:
+                        break
+                    segm_data.append(lab)
+                    if frame_i == current_frame_i:
+                        break
+
+                segm_data = np.array(segm_data)
+                segm_data = skimage.segmentation.relabel_sequential(segm_data)[0]
+                for frame_i, lab in enumerate(segm_data):
+                    PosData.frame_i = frame_i
+                    PosData.lab = lab
+                    self.update_rp()
+                    self.store_data()
+
+                # Go back to current frame
+                PosData.frame_i = current_frame_i
+                self.get_data()
+            else:
+                PosData.lab = skimage.segmentation.relabel_sequential(PosData.lab)[0]
+                self.update_rp()
             self.updateALLimg()
         elif ev.key() == Qt.Key_Space:
             how = self.drawIDsContComboBox.currentText()
@@ -5589,6 +5614,15 @@ class guiWin(QMainWindow):
                     PosData.PhysicalSizeX = self.PhysicalSizeX
                     PosData.saveMetadata()
                 SizeY, SizeX = PosData.img_data.shape[-2:]
+
+                if PosData.SizeZ > 1 and PosData.img_data.ndim < 3:
+                    PosData.SizeZ = 1
+                    PosData.segmInfo_df = None
+                    try:
+                        os.remove(PosData.segmInfo_df_csv_path)
+                    except FileNotFoundError:
+                        pass
+
                 PosData.setBlankSegmData(PosData.SizeT, PosData.SizeZ,
                                          SizeY, SizeX)
                 skipPos, abort = self.checkDataIntegrity(PosData, numPos)
@@ -5888,10 +5922,15 @@ class guiWin(QMainWindow):
             # traceback.print_exc()
             pass
 
-    def splineToObj(self, xxA=None, yyA=None):
+    def splineToObj(self, xxA=None, yyA=None, isRightClick=False):
         PosData = self.data[self.pos_i]
         # Store undo state before modifying stuff
         self.storeUndoRedoStates(False)
+
+        if isRightClick:
+            xxS, yyS = self.curvPlotItem.getData()
+            N = len(xxS)
+            self.smoothAutoContWithSpline(n=int(N*0.15))
 
         xxS, yyS = self.curvPlotItem.getData()
 
@@ -7873,11 +7912,13 @@ class guiWin(QMainWindow):
             self.entropyWin.apply()
 
 
-    def updateALLimg(self, image=None, never_visited=True,
-                     only_ax1=False, updateBlur=False,
-                     updateSharp=False, updateEntropy=False,
-                     updateHistoLevels=True, updateFilters=False,
-                     updateLabelItemColor=False):
+    def updateALLimg(
+            self, image=None, never_visited=True,
+            only_ax1=False, updateBlur=False,
+            updateSharp=False, updateEntropy=False,
+            updateHistoLevels=True, updateFilters=False,
+            updateLabelItemColor=False
+        ):
         PosData = self.data[self.pos_i]
 
         if image is None:
@@ -7937,11 +7978,19 @@ class guiWin(QMainWindow):
             self.ccaTableWin.updateTable(PosData.cca_df)
 
     def startBlinkingModeCB(self):
+        try:
+            self.timer.stop()
+            self.stopBlinkTimer.stop()
+        except Exception as e:
+            pass
         if self.rulerButton.isChecked():
             return
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.blinkModeComboBox)
         self.timer.start(100)
+        self.stopBlinkTimer = QTimer(self)
+        self.stopBlinkTimer.timeout.connect(self.stopBlinkingCB)
+        self.stopBlinkTimer.start(2000)
 
     def blinkModeComboBox(self):
         if self.flag:
@@ -7949,11 +7998,10 @@ class guiWin(QMainWindow):
         else:
             self.modeComboBox.setStyleSheet('background-color: none')
         self.flag = not self.flag
-        self.countBlinks += 1
-        if self.countBlinks > 10:
-            self.timer.stop()
-            self.countBlinks = 0
-            self.modeComboBox.setStyleSheet('background-color: none')
+
+    def stopBlinkingCB(self):
+        self.timer.stop()
+        self.modeComboBox.setStyleSheet('background-color: none')
 
     def highlightNewIDs_ccaFailed(self):
         PosData = self.data[self.pos_i]
@@ -8380,8 +8428,8 @@ class guiWin(QMainWindow):
             exp_path = dirpath
 
         filename, ext = os.path.splitext(os.path.basename(file_path))
-        if ext == '.tif':
-            self.openFolder(exp_path=exp_path, isImageFile=True)
+        if ext == '.tif' or ext == '.npz':
+            self.openFolder(exp_path=exp_path, imageFilePath=file_path)
         else:
             print('Copying file to .tif format...')
             data = load.loadData(file_path, '')
@@ -8412,7 +8460,7 @@ class guiWin(QMainWindow):
             myutils.imagej_tiffwriter(
                 tif_path, data.img_data, {}, SizeT, SizeZ
             )
-            self.openFolder(exp_path=exp_path, isImageFile=True)
+            self.openFolder(exp_path=exp_path, imageFilePath=tif_path)
 
     def criticalNoTifFound(self, images_path):
         err_title = f'No .tif files found in folder.'
@@ -8442,7 +8490,7 @@ class guiWin(QMainWindow):
         self.modeComboBox.setCurrentText('Viewer')
 
 
-    def openFolder(self, checked=False, exp_path=None, isImageFile=False):
+    def openFolder(self, checked=False, exp_path=None, imageFilePath=''):
         try:
             self.reInitGui()
 
@@ -8486,8 +8534,8 @@ class guiWin(QMainWindow):
             ch_name_selector = prompts.select_channel_name(
                 which_channel='segm', allow_abort=False
             )
-
-            if not is_pos_folder and not is_images_folder and not isImageFile:
+            user_ch_name = None
+            if not is_pos_folder and not is_images_folder and not imageFilePath:
                 select_folder = load.select_exp_folder()
                 values = select_folder.get_values_segmGUI(exp_path)
                 if not values:
@@ -8526,15 +8574,26 @@ class guiWin(QMainWindow):
                     self.openAction.setEnabled(True)
                     return
 
-            elif is_pos_folder:
+            elif is_pos_folder and not imageFilePath:
                 pos_foldername = os.path.basename(exp_path)
                 exp_path = os.path.dirname(exp_path)
                 images_paths = [os.path.join(exp_path, pos_foldername, 'Images')]
 
-            elif is_images_folder:
+            elif is_images_folder and not imageFilePath:
                 images_paths = [exp_path]
 
-            elif isImageFile:
+            elif imageFilePath:
+                # images_path = exp_path because called by openFile func
+                filenames = os.listdir(exp_path)
+                ch_names, basenameNotFound = (
+                    ch_name_selector.get_available_channels(
+                        filenames, exp_path)
+                )
+                filename = os.path.basename(imageFilePath)
+                self.ch_names = ch_names
+                user_ch_name = [
+                    chName for chName in ch_names if filename.find(chName)!=-1
+                ][0]
                 images_paths = [exp_path]
 
             self.images_paths = images_paths
@@ -8542,7 +8601,7 @@ class guiWin(QMainWindow):
             # Get info from first position selected
             images_path = self.images_paths[0]
             filenames = os.listdir(images_path)
-            if ch_name_selector.is_first_call:
+            if ch_name_selector.is_first_call and user_ch_name is None:
                 ch_names, basenameNotFound = (
                     ch_name_selector.get_available_channels(
                         filenames, images_path
@@ -8603,7 +8662,6 @@ class guiWin(QMainWindow):
                 return
 
             print(f'Loading {img_path}...')
-
 
             self.user_ch_name = user_ch_name
 
@@ -9563,6 +9621,7 @@ class guiWin(QMainWindow):
                 self.app.restoreOverrideCursor()
         if self.isSnapshot:
             print(f'Saved all {p+1} Positions!')
+            self.titleLabel.setText('Saved!', color='g')
 
     def copyContent(self):
         pass

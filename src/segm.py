@@ -14,9 +14,11 @@ from tqdm import tqdm
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QFileDialog,
-    QVBoxLayout, QPushButton, QLabel
+    QVBoxLayout, QPushButton, QLabel, QProgressBar, QHBoxLayout
 )
-from PyQt5.QtCore import Qt, QEventLoop
+from PyQt5.QtCore import (
+    Qt, QEventLoop, QThreadPool, QRunnable, pyqtSignal,
+    QObject)
 from PyQt5 import QtGui
 
 # Custom modules
@@ -33,6 +35,245 @@ if os.name == 'nt':
     except:
         pass
 
+class segmWorkerSignals(QObject):
+    finished = pyqtSignal(int)
+    progress = pyqtSignal(str)
+
+class segmWorker(QRunnable):
+    def __init__(
+            self,
+            img_path,
+            user_ch_name,
+            SizeT,
+            SizeZ,
+            model,
+            minSize,
+            save
+        ):
+        QRunnable.__init__(self)
+        self.signals = segmWorkerSignals()
+        self.img_path = img_path
+        self.user_ch_name = user_ch_name
+        self.SizeT = SizeT
+        self.SizeZ = SizeZ
+        self.model = model
+        self.minSize = minSize
+        self.save = save
+
+    def set_YeaZ_params(self, path_weights, thresh_val, min_distance):
+        self.path_weights = path_weights
+        self.thresh_val = thresh_val
+        self.min_distance = min_distance
+
+    def set_Cellpose_params(
+            self, cp_model, diameter, flow_threshold, cellprob_threshold
+        ):
+        self.cp_model = cp_model
+        self.diameter = diameter
+        self.flow_threshold = flow_threshold
+        self.cellprob_threshold = cellprob_threshold
+
+    def run(self):
+        img_path = self.img_path
+        user_ch_name = self.user_ch_name
+
+        PosData = load.loadData(img_path, user_ch_name)
+
+        self.signals.progress.emit(f'Loading {PosData.relPath}...')
+
+        PosData.getBasenameAndChNames(prompts.select_channel_name)
+        PosData.buildPaths()
+        PosData.loadImgData()
+        PosData.loadOtherFiles(
+            load_segm_data=False,
+            load_acdc_df=False,
+            load_shifts=False,
+            loadSegmInfo=True,
+            load_delROIsInfo=False,
+            load_dataPrep_ROIcoords=True,
+            loadBkgrData=False,
+            load_last_tracked_i=False,
+            load_metadata=True
+        )
+
+        PosData.SizeT = self.SizeT
+        if self.SizeZ > 1:
+            SizeZ = PosData.img_data.shape[-3]
+            PosData.SizeZ = SizeZ
+        else:
+            PosData.SizeZ = 1
+        PosData.saveMetadata()
+
+        isROIactive = False
+        if PosData.dataPrep_ROIcoords is not None:
+            isROIactive = PosData.dataPrep_ROIcoords.at['cropped', 'value'] == 0
+            x0, x1, y0, y1 = PosData.dataPrep_ROIcoords['value'][:4]
+
+        # Note that stop_i is not used when SizeT == 1 so it does not matter
+        # which value it has in that case
+        stop_i = PosData.segmSizeT
+
+        if PosData.SizeT > 1:
+            if PosData.SizeZ > 1:
+                # 3D data over time
+                img_data_slice = PosData.img_data[:stop_i]
+                Y, X = PosData.img_data.shape[-2:]
+                img_data = np.zeros((stop_i, Y, X), PosData.img_data.dtype)
+                df = PosData.segmInfo_df.loc[PosData.filename]
+                for z_info in df[:stop_i].itertuples():
+                    i = z_info.Index
+                    z = z_info.z_slice_used_dataPrep
+                    zProjHow = z_info.which_z_proj
+                    img = img_data_slice[i]
+                    if zProjHow == 'single z-slice':
+                        img_data[i] = img[z]
+                    elif zProjHow == 'max z-projection':
+                        img_data[i] = img.max(axis=0)
+                    elif zProjHow == 'mean z-projection':
+                        img_data[i] = img.mean(axis=0)
+                    elif zProjHow == 'median z-proj.':
+                        img_data[i] = np.median(img, axis=0)
+                if isROIactive:
+                    Y, X = img_data.shape[-2:]
+                    img_data = img_data[:, :, y0:y1, x0:x1]
+                    pad_info = ((0, 0), (0, 0), (y0, Y-y1), (x0, X-x1))
+            else:
+                # 2D data over time
+                img_data = PosData.img_data[:stop_i]
+                if isROIactive:
+                    Y, X = img_data.shape[-2:]
+                    img_data = img_data[:, y0:y1, x0:x1]
+                    pad_info = ((0, 0), (y0, Y-y1), (x0, X-x1))
+            img_data = [img/img.max() for img in img_data]
+            img_data = np.array([skimage.exposure.equalize_adapthist(img)
+                                 for img in img_data])
+        else:
+            if PosData.SizeZ > 1:
+                # Single 3D image
+                z_info = PosData.segmInfo_df.loc[PosData.filename].iloc[0]
+                z = z_info.z_slice_used_dataPrep
+                zProjHow = z_info.which_z_proj
+                if zProjHow == 'single z-slice':
+                    img_data = PosData.img_data[z]
+                elif zProjHow == 'max z-projection':
+                    img_data = PosData.img_data.max(axis=0)
+                elif zProjHow == 'mean z-projection':
+                    img_data = PosData.img_data.mean(axis=0)
+                elif zProjHow == 'median z-proj.':
+                    img_data = np.median(PosData.img_data, axis=0)
+                img_data = skimage.exposure.equalize_adapthist(
+                                                img_data/img_data.max())
+                if isROIactive:
+                    Y, X = img_data.shape[-2:]
+                    pad_info = ((0, 0), (y0, Y-y1), (x0, X-x1))
+                    img_data = img_data[:, y0:y1, x0:x1]
+            else:
+                # Single 2D image
+                img_data = PosData.img_data/PosData.img_data.max()
+                img_data = skimage.exposure.equalize_adapthist(img_data)
+                if isROIactive:
+                    Y, X = img_data.shape[-2:]
+                    pad_info = ((y0, Y-y1), (x0, X-x1))
+                    img_data = img_data[y0:y1, x0:x1]
+
+        #
+        # self.signals.progress.emit(f'Image shape = {img_data.shape}')
+
+        """Segmentation routine"""
+        self.signals.progress.emit(f'Segmenting with {self.model}...')
+        t0 = time.time()
+        # self.signals.progress.emit(f'Segmenting with {model} (Ctrl+C to abort)...')
+        if PosData.SizeT > 1:
+            if self.model == 'yeaz':
+                pred_stack = nn.batch_prediction(
+                    img_data,
+                    is_pc=True,
+                    path_weights=self.path_weights,
+                    batch_size=1
+                )
+                for _ in range(len(pred_stack)):
+                    self.signals.progress.emit('')
+
+            elif self.model == 'cellpose':
+                lab_stack = np.zeros(img_data.shape, np.uint16)
+                for t, img in enumerate(img_data):
+                    lab, flows, _, _ = self.cp_model.eval(
+                        img,
+                        channels=[0,0],
+                        diameter=self.diameter,
+                        flow_threshold=self.flow_threshold,
+                        cellprob_threshold=self.cellprob_threshold
+                    )
+                    # lab = core.smooth_contours(lab, radius=2)
+                    lab_stack[t] = lab
+                    self.signals.progress.emit('')
+
+        else:
+            if self.model == 'yeaz':
+                pred_stack = nn.prediction(
+                    img_data,
+                    is_pc=True,
+                    path_weights=self.path_weights,
+                    batch_size=1
+                )
+                self.signals.progress.emit('')
+            elif self.model == 'cellpose':
+                lab_stack, flows, _, _ = self.cp_model.eval(
+                    img_data,
+                    channels=[0,0],
+                    diameter=self.diameter,
+                    flow_threshold=self.flow_threshold,
+                    cellprob_threshold=self.cellprob_threshold
+                )
+                self.signals.progress.emit('')
+                # lab_stack = core.smooth_contours(lab_stack, radius=2)
+        if self.model == 'yeaz':
+            # self.signals.progress.emit('Thresholding prediction...')
+            thresh_stack = nn.threshold(pred_stack, th=self.thresh_val)
+
+        if PosData.SizeT > 1:
+            if self.model == 'yeaz':
+                # self.signals.progress.emit('Labelling predictions...')
+                lab_stack = segment.segment_stack(
+                    thresh_stack, pred_stack, min_distance=self.min_distance,
+                    signals=self.signals
+                ).astype(np.uint16)
+            else:
+                self.signals.progress.emit('')
+        else:
+            if self.model == 'yeaz':
+                lab_stack = segment.segment(
+                    thresh_stack, pred_stack, min_distance=self.min_distance
+                ).astype(np.uint16)
+            self.signals.progress.emit('')
+
+        lab_stack = skimage.morphology.remove_small_objects(
+            lab_stack, min_size=self.minSize
+        )
+
+        if PosData.SizeT > 1:
+            # self.signals.progress.emit('Tracking cells...')
+            # NOTE: We use yeaz tracking also for cellpose
+            tracked_stack = tracking.correspondence_stack(
+                lab_stack, signals=self.signals
+            ).astype(np.uint16)
+        else:
+            tracked_stack = lab_stack
+            self.signals.progress.emit('')
+
+        if isROIactive:
+            tracked_stack = np.pad(tracked_stack, pad_info,  mode='constant')
+
+        if self.save:
+            self.signals.progress.emit(f'Saving {PosData.relPath}...')
+            np.savez_compressed(PosData.segm_npz_path, tracked_stack)
+
+        t_end = time.time()
+
+        self.signals.progress.emit(f'{PosData.relPath} segmented!')
+        self.signals.finished.emit(t_end-t0)
+
+
 class segmWin(QMainWindow):
     def __init__(self, parent=None, allowExit=False,
                  buttonToRestore=None, mainWin=None):
@@ -48,6 +289,7 @@ class segmWin(QMainWindow):
         self.setCentralWidget(mainContainer)
 
         mainLayout = QVBoxLayout()
+        self.mainLayout = mainLayout
 
         label = QLabel(
             'Segmentation routine running...')
@@ -62,8 +304,7 @@ class segmWin(QMainWindow):
 
         informativeText = QLabel(
             'Follow the instructions in the pop-up windows.\n'
-            'Note that pop-ups might be minimized or behind other open windows.\n\n'
-            'Progess is displayed in the terminal/console.')
+            'Note that pop-ups might be minimized or behind other open windows.')
 
         informativeText.setStyleSheet("padding:5px 0px 10px 0px;")
         # informativeText.setWordWrap(True)
@@ -72,6 +313,9 @@ class segmWin(QMainWindow):
         font.setPointSize(9)
         informativeText.setFont(font)
         mainLayout.addWidget(informativeText)
+
+        self.progressLabel = QLabel(self)
+        self.mainLayout.addWidget(self.progressLabel)
 
         abortButton = QPushButton('Abort process')
         abortButton.clicked.connect(self.close)
@@ -154,12 +398,13 @@ class segmWin(QMainWindow):
             is_images_folder = False
 
         print('Loading data...')
+        self.progressLabel.setText('Loading data...')
 
         # Ask which model
         font = QtGui.QFont()
         font.setPointSize(10)
-        model = prompts.askWhichSegmModel(parent=self)
-        if model == 'yeaz':
+        self.model = prompts.askWhichSegmModel(parent=self)
+        if self.model == 'yeaz':
             yeazParams = apps.YeaZ_ParamsDialog(parent=self)
             yeazParams.setFont(font)
             yeazParams.exec_()
@@ -169,17 +414,18 @@ class segmWin(QMainWindow):
                     self.close()
                     return
 
-            thresh_val = yeazParams.threshVal
-            min_distance = yeazParams.minDist
-            minSize = yeazParams.minSize
+            self.thresh_val = yeazParams.threshVal
+            self.min_distance = yeazParams.minDist
+            self.minSize = yeazParams.minSize
             # YeaZ modules
             print('Importing YeaZ...')
+            self.progressLabel.setText('Importing YeaZ...')
             from YeaZ.unet import neural_network as nn
             from YeaZ.unet import segment
             from YeaZ.unet import tracking
             myutils.download_model('YeaZ')
-            path_weights = nn.determine_path_weights()
-        elif model == 'cellpose':
+            self.path_weights = nn.determine_path_weights()
+        elif self.model == 'cellpose':
             cellposeParams = apps.cellpose_ParamsDialog(parent=self)
             cellposeParams.setFont(font)
             cellposeParams.exec_()
@@ -189,23 +435,25 @@ class segmWin(QMainWindow):
                     self.close()
                     return
 
-            diameter = cellposeParams.diameter
-            if diameter==0:
-                diameter=None
-            flow_threshold = cellposeParams.flow_threshold
-            cellprob_threshold = cellposeParams.cellprob_threshold
-            minSize = cellposeParams.minSize
+            self.diameter = cellposeParams.diameter
+            if self.diameter==0:
+                self.diameter=None
+            self.flow_threshold = cellposeParams.flow_threshold
+            self.cellprob_threshold = cellposeParams.cellprob_threshold
+            self.minSize = cellposeParams.minSize
             # Cellpose modules
             print('Importing cellpose...')
+            self.progressLabel.setText('Importing cellpose...')
             from acdc_cellpose import models
             from YeaZ.unet import tracking
             myutils.download_model('cellpose')
             device, gpu = models.assign_device(True, False)
-            cp_model = models.Cellpose(gpu=gpu, device=device,
-                                       model_type='cyto', torch=True)
+            self.cp_model = models.Cellpose(
+                gpu=gpu, device=device, model_type='cyto', torch=True
+            )
 
         ch_name_selector = prompts.select_channel_name(
-                                    which_channel='segm', allow_abort=True
+            which_channel='segm', allow_abort=True
         )
 
         if not is_pos_folder and not is_images_folder:
@@ -226,7 +474,9 @@ class segmWin(QMainWindow):
                 return
 
 
-            select_folder.QtPrompt(self, values, allow_abort=False, show=True)
+            select_folder.QtPrompt(
+                self, values, allow_abort=False, show=True, toggleMulti=True
+            )
             if select_folder.was_aborted:
                 abort = self.doAbort()
                 if abort:
@@ -252,9 +502,9 @@ class segmWin(QMainWindow):
         answer = msg.question(self, 'Save?', 'Do you want to save segmentation?',
                               msg.Yes | msg.No | msg.Cancel)
         if answer == msg.Yes:
-            save = True
+            self.save = True
         elif answer == msg.No:
-            save = False
+            self.save = False
         else:
             abort = self.doAbort()
             if abort:
@@ -314,318 +564,259 @@ class segmWin(QMainWindow):
             elif aligned_npz_found:
                 user_ch_file_paths.append(img_path)
 
-        first_call = True
         selectROI = False
-        for img_path in tqdm(user_ch_file_paths, unit=' Position', ncols=100):
-            data = load.loadData(img_path, user_ch_name, QParent=self)
-            data.getBasenameAndChNames(prompts.select_channel_name)
-            data.buildPaths()
-            data.loadImgData()
-            data.loadOtherFiles(
-                               load_segm_data=False,
-                               load_acdc_df=False,
-                               load_shifts=False,
-                               loadSegmInfo=True,
-                               load_delROIsInfo=False,
-                               load_dataPrep_ROIcoords=True,
-                               loadBkgrData=False,
-                               load_last_tracked_i=False,
-                               load_metadata=True
+        # Ask other questions based on first position
+        img_path = user_ch_file_paths[0]
+        PosData = load.loadData(img_path, user_ch_name, QParent=self)
+        PosData.getBasenameAndChNames(prompts.select_channel_name)
+        PosData.buildPaths()
+        PosData.loadImgData()
+        PosData.loadOtherFiles(
+            load_segm_data=False,
+            load_acdc_df=False,
+            load_shifts=False,
+            loadSegmInfo=True,
+            load_delROIsInfo=False,
+            load_dataPrep_ROIcoords=True,
+            loadBkgrData=False,
+            load_last_tracked_i=False,
+            load_metadata=True
+        )
+        proceed = PosData.askInputMetadata(
+                                    ask_SizeT=True,
+                                    ask_TimeIncrement=False,
+                                    ask_PhysicalSizes=False,
+                                    save=True)
+        self.SizeT = PosData.SizeT
+        self.SizeZ = PosData.SizeZ
+        if not proceed:
+            abort = self.doAbort()
+            if abort:
+                self.close()
+                return
+
+        if PosData.dataPrep_ROIcoords is None:
+            # Ask ROI
+            msg = QtGui.QMessageBox()
+            msg.setFont(font)
+            answer = msg.question(self, 'ROI?',
+                'Do you want to choose to segment only '
+                'a rectangular region-of-interest (ROI)?',
+                msg.Yes | msg.No | msg.Cancel
             )
-            if first_call:
-                proceed = data.askInputMetadata(
-                                            ask_SizeT=True,
-                                            ask_TimeIncrement=False,
-                                            ask_PhysicalSizes=False,
-                                            save=True)
-                self.SizeT = data.SizeT
-                self.SizeZ = data.SizeZ
-                if not proceed:
-                    abort = self.doAbort()
-                    if abort:
-                        self.close()
-                        return
-
-                if data.dataPrep_ROIcoords is None:
-                    # Ask ROI
-                    msg = QtGui.QMessageBox()
-                    msg.setFont(font)
-                    answer = msg.question(self, 'ROI?',
-                        'Do you want to choose to segment only '
-                        'a rectangular region-of-interest (ROI)?',
-                        msg.Yes | msg.No | msg.Cancel
-                    )
-                    if answer == msg.Yes:
-                        selectROI = True
-                    elif answer == msg.No:
-                        selectROI = False
-                    else:
-                        abort = self.doAbort()
-                        if abort:
-                            self.close()
-                            return
+            if answer == msg.Yes:
+                selectROI = True
+            elif answer == msg.No:
+                selectROI = False
             else:
-                data.SizeT = self.SizeT
-                if self.SizeZ > 1:
-                    SizeZ = data.img_data.shape[-3]
-                    data.SizeZ = SizeZ
-                else:
-                    data.SizeZ = 1
-                data.saveMetadata()
+                abort = self.doAbort()
+                if abort:
+                    self.close()
+                    return
 
-            launchDataPrep = False
-            if data.SizeZ > 1 and data.segmInfo_df is None:
+        launchDataPrep = False
+        if PosData.SizeZ > 1 and PosData.segmInfo_df is None:
+            launchDataPrep = True
+        if selectROI:
+            launchDataPrep = True
+        if PosData.segmInfo_df is not None:
+            if PosData.filename not in PosData.segmInfo_df.index:
                 launchDataPrep = True
+
+        if launchDataPrep:
+            dataPrepWin = dataPrep.dataPrepWin()
+            dataPrepWin.show()
             if selectROI:
-                launchDataPrep = True
-            if data.segmInfo_df is not None:
-                if data.filename not in data.segmInfo_df.index:
-                    launchDataPrep = True
-
-            if launchDataPrep:
-                dataPrepWin = dataPrep.dataPrepWin()
-                dataPrepWin.show()
-                if selectROI:
-                    dataPrepWin.titleText = (
-                    """
-                    If you need to crop press the green tick button,<br>
-                    otherwise you can close the window.
-                    """
-                    )
-                else:
-                    print('')
-                    print(f'WARNING: The image data in {img_path} is 3D but '
-                          f'_segmInfo.csv file not found. Launching dataPrep.py...')
-                    dataPrepWin.titleText = (
-                    """
-                    Select z-slice (or projection) for each frame/position.<br>
-                    Then, if you want to segment the entire field of view,
-                    close the window.<br>
-                    Otherwise, if you need to select a ROI,
-                    press the "Start" button, draw the ROI<br>
-                    and confirm with the green tick button.
-                    """
-                    )
-                    autoStart = False
-                dataPrepWin.initLoading()
-                dataPrepWin.loadFiles(
-                    exp_path, user_ch_file_paths, user_ch_name)
-                if data.SizeZ == 1:
-                    dataPrepWin.prepData(None)
-                loop = QEventLoop(self)
-                dataPrepWin.loop = loop
-                loop.exec_()
-                data = load.loadData(img_path, user_ch_name, QParent=self)
-                data.getBasenameAndChNames(prompts.select_channel_name)
-                data.buildPaths()
-                data.loadImgData()
-                data.loadOtherFiles(
-                                   load_segm_data=False,
-                                   load_acdc_df=False,
-                                   load_shifts=False,
-                                   loadSegmInfo=True,
-                                   load_delROIsInfo=False,
-                                   load_dataPrep_ROIcoords=True,
-                                   loadBkgrData=False,
-                                   load_last_tracked_i=False,
-                                   load_metadata=True
+                dataPrepWin.titleText = (
+                """
+                If you need to crop press the green tick button,<br>
+                otherwise you can close the window.
+                """
                 )
-            elif data.SizeZ > 1:
-                df = data.segmInfo_df.loc[data.filename]
-                zz = df['z_slice_used_dataPrep'].to_list()
-
-            isROIactive = False
-            if data.dataPrep_ROIcoords is not None:
-                isROIactive = data.dataPrep_ROIcoords.at['cropped', 'value'] == 0
-                x0, x1, y0, y1 = data.dataPrep_ROIcoords['value'][:4]
-
-            if first_call and data.SizeT > 1:
-                # Ask stop frame
-                win = apps.askStopFrameSegm(user_ch_file_paths,
-                                            user_ch_name, parent=self)
-                win.showAndSetFont(font)
-                win.exec_()
-                if win.cancel:
-                    abort = self.doAbort()
-                    if abort:
-                        self.close()
-                        return
-                # Load metadata again since segmSizeT could have been
-                # modified by askStopFrameSegm
-                data.loadOtherFiles(load_segm_data=False, load_metadata=True)
-
-            print('')
-            print('Preprocessing images...')
-
-            # Note that stop_i is not used when SizeT == 1 so it does not matter
-            # which value it has in that case
-            stop_i = data.segmSizeT
-            first_call=False
-
-            if data.SizeT > 1:
-                if data.SizeZ > 1:
-                    # 3D data over time
-                    img_data_slice = data.img_data[:stop_i]
-                    Y, X = data.img_data.shape[-2:]
-                    img_data = np.zeros((stop_i, Y, X), data.img_data.dtype)
-                    df = data.segmInfo_df.loc[data.filename]
-                    for z_info in df[:stop_i].itertuples():
-                        i = z_info.Index
-                        z = z_info.z_slice_used_dataPrep
-                        zProjHow = z_info.which_z_proj
-                        img = img_data_slice[i]
-                        if zProjHow == 'single z-slice':
-                            img_data[i] = img[z]
-                        elif zProjHow == 'max z-projection':
-                            img_data[i] = img.max(axis=0)
-                        elif zProjHow == 'mean z-projection':
-                            img_data[i] = img.mean(axis=0)
-                        elif zProjHow == 'median z-proj.':
-                            img_data[i] = np.median(img, axis=0)
-                    if isROIactive:
-                        Y, X = img_data.shape[-2:]
-                        img_data = img_data[:, :, y0:y1, x0:x1]
-                        pad_info = ((0, 0), (0, 0), (y0, Y-y1), (x0, X-x1))
-                else:
-                    # 2D data over time
-                    img_data = data.img_data[:stop_i]
-                    if isROIactive:
-                        Y, X = img_data.shape[-2:]
-                        img_data = img_data[:, y0:y1, x0:x1]
-                        pad_info = ((0, 0), (y0, Y-y1), (x0, X-x1))
-                img_data = [img/img.max() for img in img_data]
-                img_data = np.array([skimage.exposure.equalize_adapthist(img)
-                                     for img in img_data])
             else:
-                if data.SizeZ > 1:
-                    # Single 3D image
-                    z_info = data.segmInfo_df.loc[data.filename].iloc[0]
-                    z = z_info.z_slice_used_dataPrep
-                    zProjHow = z_info.which_z_proj
-                    if zProjHow == 'single z-slice':
-                        img_data = data.img_data[z]
-                    elif zProjHow == 'max z-projection':
-                        img_data = data.img_data.max(axis=0)
-                    elif zProjHow == 'mean z-projection':
-                        img_data = data.img_data.mean(axis=0)
-                    elif zProjHow == 'median z-proj.':
-                        img_data = np.median(data.img_data, axis=0)
-                    img_data = skimage.exposure.equalize_adapthist(
-                                                    img_data/img_data.max())
-                    if isROIactive:
-                        Y, X = img_data.shape[-2:]
-                        pad_info = ((0, 0), (y0, Y-y1), (x0, X-x1))
-                        img_data = img_data[:, y0:y1, x0:x1]
-                else:
-                    # Single 2D image
-                    img_data = skimage.exposure.equalize_adapthist(
-                                                    img_data/img_data.max())
-                    if isROIactive:
-                        Y, X = img_data.shape[-2:]
-                        pad_info = ((y0, Y-y1), (x0, X-x1))
-                        img_data = img_data[y0:y1, x0:x1]
-
-            print('')
-            print(f'Image shape = {img_data.shape}')
-
-            """Segmentation routine"""
-            t0 = time.time()
-            print(f'Segmenting with {model} (Ctrl+C to abort)...')
-            if data.SizeT > 1:
-                if model == 'yeaz':
-                    pred_stack = nn.batch_prediction(img_data, is_pc=True,
-                                                     path_weights=path_weights,
-                                                     batch_size=1)
-                elif model == 'cellpose':
-                    lab_stack = np.zeros(img_data.shape, np.uint16)
-                    for t, img in enumerate(tqdm(img_data, ncols=100, unit='frame')):
-                        lab, flows, _, _ = cp_model.eval(
-                                        img,
-                                        channels=[0,0],
-                                        diameter=diameter,
-                                        flow_threshold=flow_threshold,
-                                        cellprob_threshold=cellprob_threshold
-                        )
-                        # lab = core.smooth_contours(lab, radius=2)
-                        lab_stack[t] = lab
-
-            else:
-                if model == 'yeaz':
-                    pred_stack = nn.prediction(img_data, is_pc=True,
-                                               path_weights=path_weights)
-                elif model == 'cellpose':
-                    lab_stack, flows, _, _ = cp_model.eval(
-                                        img_data,
-                                        channels=[0,0],
-                                        diameter=diameter,
-                                        flow_threshold=flow_threshold,
-                                        cellprob_threshold=cellprob_threshold
-                    )
-                    # lab_stack = core.smooth_contours(lab_stack, radius=2)
-            if model == 'yeaz':
-                print('Thresholding prediction...')
-                thresh_stack = nn.threshold(pred_stack, th=thresh_val)
-
-            if data.SizeT > 1:
-                if model == 'yeaz':
-                    print('Labelling predictions...')
-                    lab_stack = segment.segment_stack(thresh_stack, pred_stack,
-                                                      min_distance=min_distance
-                                                      ).astype(np.uint16)
-            else:
-                if model == 'yeaz':
-                    lab_stack = segment.segment(thresh_stack, pred_stack,
-                                                min_distance=min_distance
-                                                ).astype(np.uint16)
-
-            lab_stack = skimage.morphology.remove_small_objects(
-                lab_stack, min_size=minSize
-            )
-
-            if data.SizeT > 1:
-                print('Tracking cells...')
-                # NOTE: We use yeaz tracking also for cellpose
-                tracked_stack = tracking.correspondence_stack(lab_stack).astype(np.uint16)
-            else:
-                tracked_stack = lab_stack
-
-            if isROIactive:
-                tracked_stack = np.pad(tracked_stack, pad_info,  mode='constant')
-
-            if save:
                 print('')
-                print('Saving...')
-                np.savez_compressed(data.segm_npz_path, tracked_stack)
+                print(f'WARNING: The image data in {img_path} is 3D but '
+                      f'_segmInfo.csv file not found. Launching dataPrep.py...')
+                dataPrepWin.titleText = (
+                """
+                Select z-slice (or projection) for each frame/position.<br>
+                Then, if you want to segment the entire field of view,
+                close the window.<br>
+                Otherwise, if you need to select a ROI,
+                press the "Start" button, draw the ROI<br>
+                and confirm with the green tick button.
+                """
+                )
+                autoStart = False
+            dataPrepWin.initLoading()
+            dataPrepWin.loadFiles(
+                exp_path, user_ch_file_paths, user_ch_name)
+            if PosData.SizeZ == 1:
+                dataPrepWin.prepData(None)
+            loop = QEventLoop(self)
+            dataPrepWin.loop = loop
+            loop.exec_()
+            PosData = load.loadData(img_path, user_ch_name, QParent=self)
+            PosData.getBasenameAndChNames(prompts.select_channel_name)
+            PosData.buildPaths()
+            PosData.loadImgData()
+            PosData.loadOtherFiles(
+                load_segm_data=False,
+                load_acdc_df=False,
+                load_shifts=False,
+                loadSegmInfo=True,
+                load_delROIsInfo=False,
+                load_dataPrep_ROIcoords=True,
+                loadBkgrData=False,
+                load_last_tracked_i=False,
+                load_metadata=True
+            )
+        elif PosData.SizeZ > 1:
+            df = PosData.segmInfo_df.loc[PosData.filename]
+            zz = df['z_slice_used_dataPrep'].to_list()
 
-            t_end = time.time()
+        isROIactive = False
+        if PosData.dataPrep_ROIcoords is not None:
+            isROIactive = PosData.dataPrep_ROIcoords.at['cropped', 'value'] == 0
+            x0, x1, y0, y1 = PosData.dataPrep_ROIcoords['value'][:4]
 
-            exec_time = t_end-t0
-            exec_time_min = exec_time/60
-            exec_time_delta = datetime.timedelta(seconds=round(exec_time))
-            print(
-                f'{data.relPath} successfully segmented in '
-                f'{exec_time_delta} HH:mm:ss')
-            print('-----------------------------')
+        if PosData.SizeT > 1:
+            # Ask stop frame. The "askStopFrameSegm" will internally load
+            # all the PosData and save segmSizeT which will be used as stop_i
+            win = apps.askStopFrameSegm(user_ch_file_paths,
+                                        user_ch_name, parent=self)
+            win.showAndSetFont(font)
+            win.exec_()
+            if win.cancel:
+                abort = self.doAbort()
+                if abort:
+                    self.close()
+                    return
 
-        self.processFinished = True
-        self.close()
-        if self.allowExit:
-            exit('Segmentation task ended.')
+        print('Starting multiple parallel threads...')
+        pBarLayout = QHBoxLayout()
+        self.progressLabel.setText('Starting multiple parallel threads...')
+        self.QPbar = QProgressBar(self)
+        self.QPbar.setValue(0)
+        palette = QtGui.QPalette()
+        palette.setColor(QtGui.QPalette.Highlight, QtGui.QColor(207, 235, 155))
+        palette.setColor(QtGui.QPalette.Text, QtGui.QColor(0, 0, 0))
+        palette.setColor(QtGui.QPalette.HighlightedText, QtGui.QColor(0, 0, 0))
+        self.QPbar.setPalette(palette)
+        pBarLayout.addWidget(self.QPbar)
+        self.ETA_label = QLabel()
+        self.ETA_label.setText('ETA: ND:ND:ND HH:mm:ss')
+        pBarLayout.addWidget(self.ETA_label)
+        self.mainLayout.insertLayout(3, pBarLayout)
+
+        max = 0
+        for imgPath in user_ch_file_paths:
+            PosData = load.loadData(imgPath, user_ch_name)
+            PosData.loadOtherFiles(
+                load_segm_data=False,
+                load_metadata=True
+            )
+            if PosData.SizeT > 1:
+                max += PosData.segmSizeT
+            else:
+                max += 1
+
+        # pBar will be updated three times per frame of each pos:
+        # 1. After prediction
+        # 2. After prediction --> labels (only YeaZ)
+        # 3. After tracking --> only if SizeT > 1
+        self.QPbar.setMaximum(max*3)
+
+        self.total_exec_time = 0
+        self.time_last_pbar_update = time.time()
+        self.exp_path = exp_path
+        self.user_ch_file_paths = user_ch_file_paths
+        self.user_ch_name = user_ch_name
+
+        self.threadCount = 1 # QThreadPool.globalInstance().maxThreadCount()
+        self.numThreadsRunning = self.threadCount
+        self.threadPool = QThreadPool.globalInstance()
+        self.numPos = len(user_ch_file_paths)
+        self.threadIdx = 0
+        for i in range(self.threadCount):
+            self.threadIdx = i
+            img_path = user_ch_file_paths[i]
+            self.startSegmWorker()
+
+    def startSegmWorker(self):
+        img_path = self.user_ch_file_paths[self.threadIdx]
+        worker = segmWorker(
+            img_path,
+            self.user_ch_name,
+            self.SizeT,
+            self.SizeZ,
+            self.model,
+            self.minSize,
+            self.save
+        )
+        if self.model == 'yeaz':
+            worker.set_YeaZ_params(
+                self.path_weights, self.thresh_val, self.min_distance
+            )
+        elif self.model == 'cellpose':
+            worker.set_Cellpose_params(
+                self.cp_model, self.diameter,
+                self.flow_threshold, self.cellprob_threshold
+            )
+        worker.signals.finished.connect(self.segmWorkerFinished)
+        worker.signals.progress.connect(self.segmWorkerProgress)
+        self.threadPool.start(worker)
+
+    def segmWorkerProgress(self, text):
+        if text:
+            print(text)
+            self.progressLabel.setText(text)
+        else:
+            t = time.time()
+            self.QPbar.setValue(self.QPbar.value()+1)
+            deltaT_step = t - self.time_last_pbar_update
+            steps_left = self.QPbar.maximum()-self.QPbar.value()
+            ETA = datetime.timedelta(seconds=round(deltaT_step*steps_left))
+            self.ETA_label.setText(f'ETA: {ETA} HH:mm:ss')
+            self.time_last_pbar_update = t
+
+
+    def segmWorkerFinished(self, exec_time):
+        self.total_exec_time += exec_time
+        self.threadIdx += 1
+        if self.threadIdx < self.numPos:
+            self.startSegmWorker()
+        else:
+            self.numThreadsRunning -= 1
+            if self.numThreadsRunning == 0:
+                exec_time = round(self.total_exec_time)
+                exec_time_delta = datetime.timedelta(seconds=exec_time)
+                self.progressLabel.setText(
+                    'Segmentation task done.'
+                )
+                msg = QtGui.QMessageBox(self)
+                abort = msg.information(
+                   self, 'Segmentation task ended.',
+                   'Segmentation task ended.\n\n'
+                   f'Total execution time: {exec_time_delta} HH:mm:ss\n\n'
+                   f'Files saved to "{self.exp_path}"',
+                   msg.Close
+                )
+                self.close()
+                if self.allowExit:
+                    exit('Conversion task ended.')
 
     def doAbort(self):
-        msg = QtGui.QMessageBox()
-        closeAnswer = msg.warning(
-           self, 'Abort execution?', 'Do you really want to abort process?',
-           msg.Yes | msg.No
-        )
-        if closeAnswer == msg.Yes:
-            if self.allowExit:
-                exit('Execution aborted by the user')
-            else:
-                print('Segmentation routine aborted by the user.')
-                return True
+        if self.allowExit:
+            exit('Execution aborted by the user')
         else:
-            return False
+            msg = QtGui.QMessageBox()
+            closeAnswer = msg.critical(
+               self, 'Execution aborted',
+               'Segmentation task aborted.',
+               msg.Ok
+            )
+            return True
 
     def closeEvent(self, event):
         if self.buttonToRestore is not None:

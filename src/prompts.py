@@ -592,6 +592,7 @@ class select_channel_name:
                     self.basename = basename
                     return channel_names, False
 
+        # Find basename as intersection of filenames
         channel_names = []
         self.basenameNotFound = False
         isBasenamePresent = self.checkDataIntegrity(filenames)
