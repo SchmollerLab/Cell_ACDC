@@ -159,6 +159,7 @@ class mainWin(QMainWindow):
         utilsMenu.addAction(self.alignAction)
         utilsMenu.addAction(self.npzToNpyAction)
         utilsMenu.addAction(self.npzToTiffAction)
+        utilsMenu.addAction(self.TiffToNpzAction)
         menuBar.addMenu(utilsMenu)
 
         helpMenu = QMenu("&Help", self)
@@ -171,8 +172,9 @@ class mainWin(QMainWindow):
         menuBar.addMenu(helpMenu)
 
     def createActions(self):
-        self.npzToNpyAction = QAction('Convert .npz file to .npy...')
-        self.npzToTiffAction = QAction('Convert .npz file to .tif...')
+        self.npzToNpyAction = QAction('Convert .npz file(s) to .npy...')
+        self.npzToTiffAction = QAction('Convert .npz file(s) to .tif...')
+        self.TiffToNpzAction = QAction('Convert .tif file(s) to _segm.npz...')
         self.concatAcdcDfsAction = QAction(
             'Concatenate acdc output tables from multiple Positions...'
         )
@@ -188,18 +190,20 @@ class mainWin(QMainWindow):
         self.concatAcdcDfsAction.triggered.connect(self.launchConcatUtil)
         self.npzToNpyAction.triggered.connect(self.launchConvertFormatUtil)
         self.npzToTiffAction.triggered.connect(self.launchConvertFormatUtil)
+        self.TiffToNpzAction.triggered.connect(self.launchConvertFormatUtil)
         self.welcomeGuideAction.triggered.connect(self.launchWelcomeGuide)
 
     def launchConvertFormatUtil(self, checked=False):
-        m = re.findall('Convert .(\w+) file to .(\w+)...', self.sender().text())
-        from_, to = m[0]
+        s = self.sender().text()
+        m = re.findall('Convert \.(\w+) file\(s\) to (.*)\.(\w+)...', s)
+        from_, info, to = m[0]
         isConvertEnabled = self.sender().isEnabled()
         if isConvertEnabled:
             self.sender().setDisabled(True)
             self.convertWin = utils.convert.convertFileFormatWin(
                 parent=self,
                 actionToEnable=self.sender(),
-                mainWin=self, from_=from_, to=to
+                mainWin=self, from_=from_, to=to, info=info
             )
             self.convertWin.show()
             self.convertWin.main()

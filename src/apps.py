@@ -662,6 +662,80 @@ class QDialogCombobox(QDialog):
         self.selectedItemIdx = self.ComboBox.currentIndex()
         self.close()
 
+class QDialogMultiSegmNpz(QDialog):
+    def __init__(self, images_ls, parent_path, parent=None):
+        self.cancel = True
+        self.selectedItemText = ''
+        self.selectedItemIdx = None
+        self.removeOthers = False
+        super().__init__(parent)
+
+        informativeText = (f"""
+        <p style="font-size:10pt">
+        The folder<br><br>{parent_path}<br><br>
+        contains <b>multipe segmentation masks!</b><br>
+        </p>
+        """)
+
+        self.setWindowTitle('Multiple segm.npz files detected!')
+
+        mainLayout = QVBoxLayout()
+        infoLayout = QHBoxLayout()
+        buttonsLayout = QHBoxLayout()
+
+        label = QLabel()
+        # padding: top, left, bottom, right
+        # label.setStyleSheet("padding:5px 0px 10px 0px;")
+        label.setPixmap(QtGui.QPixmap(':warning.svg'))
+        infoLayout.addWidget(label)
+
+        infoLabel = QLabel(informativeText)
+        infoLayout.addWidget(infoLabel)
+        infoLayout.addStretch(1)
+        mainLayout.addLayout(infoLayout)
+
+        label = QLabel('Select which segmentation file to load:')
+        combobox = QComboBox()
+        combobox.addItems(images_ls)
+        self.ComboBox = combobox
+        mainLayout.addWidget(label)
+        mainLayout.addWidget(combobox)
+
+        okButton = QPushButton(' Load selected ')
+        okButton.setShortcut(Qt.Key_Enter)
+        buttonsLayout.addWidget(okButton)
+
+        okAndRemoveButton = QPushButton(' Load selected and remove the others ')
+        buttonsLayout.addWidget(okAndRemoveButton)
+
+        cancelButton = QPushButton(' Cancel ')
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.setContentsMargins(0, 10, 0, 10)
+        mainLayout.addLayout(buttonsLayout)
+
+        # self.applyToAll_CB = QCheckBox('Apply to all positions')
+        # mainLayout.addWidget(self.applyToAll_CB, alignment=Qt.AlignLeft)
+
+        self.setLayout(mainLayout)
+
+        self.setModal(True)
+
+        self.okButton = okButton
+        self.okAndRemoveButton = okAndRemoveButton
+
+        # Connect events
+        okButton.clicked.connect(self.ok_cb)
+        okAndRemoveButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.close)
+
+
+    def ok_cb(self, event):
+        self.removeOthers = self.sender() == self.okAndRemoveButton
+        # self.applyToAll = self.applyToAll_CB.isChecked()
+        self.cancel = False
+        self.selectedItemText = self.ComboBox.currentText()
+        self.selectedItemIdx = self.ComboBox.currentIndex()
+        self.close()
 
 class QDialogListbox(QDialog):
     def __init__(self, title, text, items, cancelText='Cancel',
@@ -723,12 +797,15 @@ class QDialogListbox(QDialog):
         self.close()
 
 class QDialogAppendTextFilename(QDialog):
-    def __init__(self, filename, ext, parent=None, font=None):
+    def __init__(
+            self, filename, ext, default_append='', parent=None, font=None
+        ):
         super().__init__(parent)
         self.cancel = True
         filenameNOext, _ = os.path.splitext(filename)
         self.filenameNOext = filenameNOext
         self.ext = ext
+        self.default_append = default_append
 
         self.setWindowTitle('Append text to file name')
 
@@ -745,7 +822,7 @@ class QDialogAppendTextFilename(QDialog):
         self.LE.textChanged.connect(self.updateFinalFilename)
 
         self.finalName_label = QLabel(
-            f'Final file name: "{filenameNOext}_{ext}"'
+            f'Final file name: "{filenameNOext}{default_append}.{ext}"'
         )
         # padding: top, left, bottom, right
         self.finalName_label.setStyleSheet(
@@ -774,7 +851,7 @@ class QDialogAppendTextFilename(QDialog):
         self.setModal(True)
 
     def updateFinalFilename(self, text):
-        finalFilename = f'{self.filenameNOext}_{text}{self.ext}'
+        finalFilename = f'{self.filenameNOext}_{text}{self.default_append}.{self.ext}'
         self.finalName_label.setText(f'Final file name: "{finalFilename}"')
 
     def ok_cb(self, event):
@@ -787,6 +864,7 @@ class QDialogAppendTextFilename(QDialog):
                self, 'Empty name', err_msg, msg.Ok
             )
             return
+        self.appendedTxt = f'{self.LE.text()}{self.default_append}'
         self.cancel = False
         self.close()
 
@@ -4160,15 +4238,16 @@ if __name__ == '__main__':
     #
     # win = pdDataFrameWidget(df)
     # win = QDialogMetadataXML(rawDataStruct=1, chNames=[''])
-    # win = QDialogAppendTextFilename('example.npz')
+    win = QDialogAppendTextFilename('example.npz')
     font = QtGui.QFont()
     font.setPointSize(10)
     filenames = ['test1', 'test2']
     # win = QDialogZsliceAbsent('test3', 30, filenames)
-    win = QDialogMetadata(
-        1, 41, 180, 0.5, 0.09, 0.09, True, True, True,
-        font=font, imgDataShape=(31, 350, 350)
-    )
+    # win = QDialogMultiSegmNpz(['test_segm.npz', 'test1_segm.npz'], 'test_path')
+    # win = QDialogMetadata(
+    #     1, 41, 180, 0.5, 0.09, 0.09, True, True, True,
+    #     font=font, imgDataShape=(31, 350, 350)
+    # )
     # win = cellpose_ParamsDialog()
     # user_ch_file_paths = [
     #     r"G:\My Drive\1_MIA_Data\Beno\test_QtGui\testGuiOnlyTifs\TIFFs\Position_1\Images\19-03-2021_KCY050_SCGE_s02_phase_contr.tif",

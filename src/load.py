@@ -112,18 +112,43 @@ class loadData:
             img_data[i] = frame
         return img_data
 
-    def loadOtherFiles(self,
-                       load_segm_data=True,
-                       load_acdc_df=False,
-                       load_shifts=False,
-                       loadSegmInfo=False,
-                       load_delROIsInfo=False,
-                       loadBkgrData=False,
-                       loadBkgrROIs=False,
-                       load_last_tracked_i=False,
-                       load_metadata=False,
-                       load_dataPrep_ROIcoords=False,
-                       getTifPath=False):
+    def detectMultiSegmNpz(self):
+        ls = os.listdir(self.images_path)
+        segm_files = [file for file in ls if file.endswith('segm.npz')]
+        is_multi_npz = len(segm_files)>1
+        if is_multi_npz:
+            font = QtGui.QFont()
+            font.setPointSize(9)
+            win = apps.QDialogMultiSegmNpz(
+                segm_files, self.pos_path, parent=self.parent
+            )
+            win.setFont(font)
+            win.exec_()
+            if win.removeOthers:
+                for file in segm_files:
+                    if file == win.selectedItemText:
+                        continue
+                    os.remove(os.path.join(self.images_path, file))
+            return win.selectedItemText, win.cancel
+        else:
+            return '', True
+
+    def loadOtherFiles(
+            self,
+            load_segm_data=True,
+            load_acdc_df=False,
+            load_shifts=False,
+            loadSegmInfo=False,
+            load_delROIsInfo=False,
+            loadBkgrData=False,
+            loadBkgrROIs=False,
+            load_last_tracked_i=False,
+            load_metadata=False,
+            load_dataPrep_ROIcoords=False,
+            getTifPath=False,
+            selectedSegmNpz=''
+        ):
+
         self.segmFound = False if load_segm_data else None
         self.acd_df_found = False if load_acdc_df else None
         self.shiftsFound = False if load_shifts else None
@@ -136,9 +161,17 @@ class loadData:
         self.dataPrep_ROIcoordsFound = False if load_dataPrep_ROIcoords else None
         self.TifPathFound = False if getTifPath else None
         ls = os.listdir(self.images_path)
+
+
+
         for file in ls:
             filePath = os.path.join(self.images_path, file)
-            if load_segm_data and file.find('segm.npz')!=-1:
+            if selectedSegmNpz:
+                is_segm_file = file == selectedSegmNpz
+            else:
+                is_segm_file = file.endswith('segm.npz')
+
+            if load_segm_data and is_segm_file:
                 self.segmFound = True
                 self.segm_npz_path = filePath
                 self.segm_data = np.load(filePath)['arr_0']

@@ -65,7 +65,8 @@ class segmWin(QMainWindow):
         informativeText = QLabel(
             'Follow the instructions in the pop-up windows.\n'
             'Note that pop-ups might be minimized or behind other open windows.\n\n'
-            'Progess is displayed in the terminal/console.')
+            'Progess is displayed in the terminal/console.'
+        )
 
         informativeText.setStyleSheet("padding:5px 0px 10px 0px;")
         # informativeText.setWordWrap(True)
