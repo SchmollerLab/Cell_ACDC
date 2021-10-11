@@ -13,9 +13,9 @@ pyglet==1.5.16
 seaborn==0.11.1
 numba==0.53.1
 requests==2.25.1
-tensorflow>=2.3.0
+tensorflow>=2.3.0,<2.6.0
 torch==1.9.0
 munkres==1.1.4
 scikit-learn==0.24.2
 boto3==1.18.20
-jupyterlab
+jupyterlab==3.0.18

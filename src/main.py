@@ -18,7 +18,7 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QPushButton, QLabel, QAction,
     QMenu
 )
-from PyQt5.QtCore import Qt, QProcess, pyqtSignal, pyqtSlot, QTimer
+from PyQt5.QtCore import Qt, QProcess, pyqtSignal, pyqtSlot, QTimer, QSize
 from pyqtgraph.Qt import QtGui
 
 import dataPrep, segm, gui, dataStruct
@@ -54,8 +54,7 @@ class mainWin(QMainWindow):
 
         mainLayout = QVBoxLayout()
 
-        welcomeLabel = QLabel(
-            'Welcome to Cell-ACDC!')
+        welcomeLabel = QLabel('Welcome to Cell-ACDC!')
         welcomeLabel.setAlignment(Qt.AlignCenter)
         font = QtGui.QFont()
         font.setPointSize(14)
@@ -110,7 +109,9 @@ class mainWin(QMainWindow):
         self.guiButton = guiButton
         mainLayout.addWidget(guiButton)
 
-        closeButton = QPushButton('Exit')
+        closeButton = QPushButton(QtGui.QIcon(":exit.png"), '  Exit')
+        self.closeButton = closeButton
+        # closeButton.setIconSize(QSize(24,24))
         font = QtGui.QFont()
         font.setPointSize(10)
         closeButton.setFont(font)
@@ -238,7 +239,7 @@ class mainWin(QMainWindow):
         # is launched in a separate process
         subprocess.Popen([sys.executable, dataStruct_path])
 
-        QTimer.singleShot(2000, self.processDataStructLaunched)
+        QTimer.singleShot(4000, self.processDataStructLaunched)
 
     def processDataStructLaunched(self):
         self.dataStructButton.setStyleSheet(
@@ -334,6 +335,9 @@ class mainWin(QMainWindow):
         self.dataPrepButton.setMinimumHeight(h*2)
         self.segmButton.setMinimumHeight(h*2)
         self.guiButton.setMinimumHeight(h*2)
+        self.closeButton.setMinimumHeight(int(h*1.5))
+        iconWidth = int(self.closeButton.iconSize().width()*1.3)
+        self.closeButton.setIconSize(QSize(iconWidth, iconWidth))
         self.setColorsAndText()
 
     def closeEvent(self, event):

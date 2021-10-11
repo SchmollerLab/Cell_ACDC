@@ -55,17 +55,18 @@ pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
 class QDialogMetadataXML(QDialog):
     def __init__(
             self, title='Metadata',
-            LensNA=1.0, DimensionOrder='',
+            LensNA=1.0, DimensionOrder='', rawFilename='test',
             SizeT=1, SizeZ=1, SizeC=1, SizeS=1,
             TimeIncrement=180.0, TimeIncrementUnit='s',
             PhysicalSizeX=1.0, PhysicalSizeY=1.0, PhysicalSizeZ=1.0,
-            PhysicalSizeUnit='μm', chNames=None, emWavelens=None,
+            PhysicalSizeUnit='μm', ImageName='', chNames=None, emWavelens=None,
             parent=None, rawDataStruct=None
         ):
 
         self.cancel = True
         self.trust = False
         self.overWrite = False
+        self.rawFilename = rawFilename
         super().__init__(parent)
         self.setWindowTitle(title)
         font = QtGui.QFont()
@@ -281,17 +282,27 @@ class QDialogMetadataXML(QDialog):
                 chName_QLE.setText(chNames[c])
             else:
                 chName_QLE.setText(f'channel_{c}')
+                filename = f''
 
             txt = f'Channel {c} name:  '
             label = QLabel(txt)
+
+            filenameDescLabel = QLabel(f'<i>File name for channel {c}:  </i>')
+            filenameLabel = QLabel()
 
             checkBox = QCheckBox('Save this channel')
             checkBox.setChecked(True)
             checkBox.stateChanged.connect(self.saveCh_checkBox_cb)
 
             self.channelNameLayouts[0].addWidget(label, alignment=Qt.AlignRight)
+            self.channelNameLayouts[0].addWidget(
+                filenameDescLabel, alignment=Qt.AlignRight
+            )
             self.channelNameLayouts[1].addWidget(chName_QLE)
+            self.channelNameLayouts[1].addWidget(filenameLabel)
+
             self.channelNameLayouts[2].addWidget(checkBox)
+            self.channelNameLayouts[2].addWidget(QLabel())
             self.chNames_QLEs.append(chName_QLE)
             self.saveChannels_QCBs.append(checkBox)
 
@@ -479,13 +490,22 @@ class QDialogMetadataXML(QDialog):
                 txt = f'Channel {c} name:  '
                 label = QLabel(txt)
 
+                filenameDescLabel = QLabel(f'<i>File name for channel {c}:  </i>')
+                filenameLabel = QLabel()
+
                 checkBox = QCheckBox('Save this channel')
                 checkBox.setChecked(True)
                 checkBox.stateChanged.connect(self.saveCh_checkBox_cb)
 
                 self.channelNameLayouts[0].addWidget(label, alignment=Qt.AlignRight)
+                self.channelNameLayouts[0].addWidget(
+                    filenameDescLabel, alignment=Qt.AlignRight
+                )
                 self.channelNameLayouts[1].addWidget(chName_QLE)
+                self.channelNameLayouts[1].addWidget(filenameLabel)
+
                 self.channelNameLayouts[2].addWidget(checkBox)
+                self.channelNameLayouts[2].addWidget(QLabel())
 
                 self.chNames_QLEs.append(chName_QLE)
                 self.saveChannels_QCBs.append(checkBox)
@@ -507,12 +527,19 @@ class QDialogMetadataXML(QDialog):
                 self.emWavelens_DSBs.append(emWavelen_DSB)
         else:
             for c in range(currentSizeC, currentSizeC+DeltaChannels):
-                label = self.channelNameLayouts[0].itemAt(c-1).widget()
+                label1 = self.channelNameLayouts[0].itemAt(c-1).widget()
+                label2 = self.channelNameLayouts[0].itemAt(c).widget()
                 chName_QLE = self.channelNameLayouts[1].itemAt(c-1).widget()
+                filename_L = self.channelNameLayouts[1].itemAt(c).widget()
                 checkBox = self.channelNameLayouts[2].itemAt(c-1).widget()
-                self.channelNameLayouts[0].removeWidget(label)
+                dummyLabel = self.channelNameLayouts[2].itemAt(c).widget()
+
+                self.channelNameLayouts[0].removeWidget(label1)
+                self.channelNameLayouts[0].removeWidget(label2)
                 self.channelNameLayouts[1].removeWidget(chName_QLE)
-                self.channelNameLayouts[1].removeWidget(checkBox)
+                self.channelNameLayouts[1].removeWidget(filename_L)
+                self.channelNameLayouts[2].removeWidget(checkBox)
+                self.channelNameLayouts[2].removeWidget(dummyLabel)
                 self.chNames_QLEs.pop(-1)
                 self.saveChannels_QCBs.pop(-1)
 
@@ -4278,16 +4305,16 @@ if __name__ == '__main__':
     # df = cca_df.reset_index()
     #
     # win = pdDataFrameWidget(df)
-    # win = QDialogMetadataXML(rawDataStruct=1, chNames=[''])
+    win = QDialogMetadataXML(rawDataStruct=1, chNames=[''])
     # win = QDialogAppendTextFilename('example.npz')
     font = QtGui.QFont()
     font.setPointSize(10)
     filenames = ['test1', 'test2']
     # win = QDialogZsliceAbsent('test3', 30, filenames)
-    win = QDialogMetadata(
-        1, 41, 180, 0.5, 0.09, 0.09, False, False, False,
-        font=font, imgDataShape=(31, 350, 350)
-    )
+    # win = QDialogMetadata(
+    #     1, 41, 180, 0.5, 0.09, 0.09, False, False, False,
+    #     font=font, imgDataShape=(31, 350, 350)
+    # )
     # win = cellpose_ParamsDialog()
     # user_ch_file_paths = [
     #     r"G:\My Drive\1_MIA_Data\Beno\test_QtGui\testGuiOnlyTifs\TIFFs\Position_1\Images\19-03-2021_KCY050_SCGE_s02_phase_contr.tif",

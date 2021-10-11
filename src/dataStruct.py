@@ -221,6 +221,21 @@ class bioFormatsWorker(QObject):
                 '===================================================')
             PhysicalSizeUnit = 'μm'
 
+        try:
+            ImageName = metadata.image().Name
+            PhysicalSizeUnit = Pixels.node.get('PhysicalSizeXUnit')
+            if PhysicalSizeUnit is None:
+                raise
+        except Exception as e:
+            self.progress.emit(
+                '===================================================')
+            self.progress.emit(rawFilePath)
+            self.progress.emit('WARNING: PhysicalSizeUnit not found in metadata.')
+            self.progress.emit(
+                '===================================================')
+            PhysicalSizeUnit = 'μm'
+
+
         if self.rawDataStruct != 2:
             try:
                 chNames = ['name_not_found']*SizeC
@@ -442,7 +457,9 @@ class bioFormatsWorker(QObject):
                     myutils.imagej_tiffwriter(
                         tifPath, imgData_ch, {}, self.SizeT, self.SizeZ
                     )
-            if self.moveOtherFiles:
+            if self.moveOtherFiles or self.copyOtherFiles:
+                # Move the other files present in the folder if they
+                # contain "otherFilename" in the name
                 otherFilename = f'{basename}{p+1}'
                 rawFilePath = set()
                 for f in os.listdir(exp_path):
@@ -452,10 +469,23 @@ class bioFormatsWorker(QObject):
                     isPosFile = f.find(otherFilename)!=-1
                     if isPosFile and notRawFile:
                         rawFilePath.add(os.path.join(exp_path, f))
-                for file in rawFilePath:
-                    filename = os.path.basename(file)
-                    dst = os.path.join(images_path, filename)
-                    shutil.move(file, dst)
+
+                for src in rawFilePath:
+                    # Determine basename, posNum and chName to build
+                    # filename as "basename_s01_chName.ext"
+                    _filename = os.path.basename(src)
+                    m = re.findall(f'{basename}(\d+)_(.+)', _filename)
+                    if not m or len(m[0])!=2:
+                        dst = os.path.join(images_path, _filename)
+                    else:
+                        _chNameWithExt = m[0][1]
+                        _filename = f'{filenameNOext}_s{s0p}_{_chNameWithExt}'
+                        dst = os.path.join(images_path, _filename)
+                    if self.moveOtherFiles:
+                        shutil.move(src, dst)
+                    elif self.copyOtherFiles:
+                        shutil.copy(src, dst)
+
 
     def run(self):
         exp_path = self.exp_path
@@ -782,6 +812,7 @@ class createDataStructWin(QMainWindow):
             self.worker.posNums = self.posNums
             self.worker.chNames = self.chNames
             self.worker.moveOtherFiles = self.moveOtherFiles
+            self.worker.copyOtherFiles = self.copyOtherFiles
 
         self.worker.moveToThread(self.thread)
 
@@ -950,29 +981,45 @@ class createDataStructWin(QMainWindow):
         self.moveOtherFiles = False
         msg = QMessageBox(self)
         msg.setWindowTitle('Action with the other files?')
-        txt = (
-            f'What should I do with the other files (ext: {otherExt}) in the folder?'
-        )
+        txt = (f"""
+        <p style="font-size:10pt">
+            What should I do with the other files (ext: {otherExt})
+            in the folder?<br><br>
+            <i>NOTE: Only the files with the same basename and position number
+            as the raw files will be moved or copied.</i>
+        </p>
+
+        """)
         msg.setIcon(msg.Question)
         msg.setText(txt)
         leaveButton = QPushButton(
                 'Leave them where they are'
         )
         moveButton = QPushButton(
-                'Attempt moving to their Position folder'
+                'Attempt MOVING to their Position folder'
+        )
+        copyButton = QPushButton(
+                'Attempt COPYING to their Position folder'
         )
         cancelButton = QPushButton(
                 'Cancel'
         )
         msg.addButton(leaveButton, msg.YesRole)
         msg.addButton(moveButton, msg.NoRole)
-        msg.addButton(cancelButton, msg.RejectRole)
+        msg.addButton(copyButton, msg.RejectRole)
+        msg.addButton(cancelButton, msg.ApplyRole)
         msg.exec_()
         if msg.clickedButton() == leaveButton:
             self.moveOtherFiles = False
+            self.copyOtherFiles = False
             return files
         elif msg.clickedButton() == moveButton:
             self.moveOtherFiles = True
+            self.copyOtherFiles = False
+            return files
+        elif msg.clickedButton() == copyButton:
+            self.moveOtherFiles = False
+            self.copyOtherFiles = True
             return files
         elif msg.clickedButton() == cancelButton:
             return []

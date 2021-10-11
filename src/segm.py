@@ -14,11 +14,12 @@ from tqdm import tqdm
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QFileDialog,
-    QVBoxLayout, QPushButton, QLabel, QProgressBar, QHBoxLayout
+    QVBoxLayout, QPushButton, QLabel, QProgressBar, QHBoxLayout,
+    QStyleFactory, QWidget, QMessageBox
 )
 from PyQt5.QtCore import (
-    Qt, QEventLoop, QThreadPool, QRunnable, pyqtSignal,
-    QObject)
+    Qt, QEventLoop, QThreadPool, QRunnable, pyqtSignal, QObject
+)
 from PyQt5 import QtGui
 
 # Custom modules
@@ -38,6 +39,7 @@ if os.name == 'nt':
 class segmWorkerSignals(QObject):
     finished = pyqtSignal(int)
     progress = pyqtSignal(str)
+    progressBar = pyqtSignal(int)
 
 class segmWorker(QRunnable):
     def __init__(
@@ -191,8 +193,7 @@ class segmWorker(QRunnable):
                     path_weights=self.path_weights,
                     batch_size=1
                 )
-                for _ in range(len(pred_stack)):
-                    self.signals.progress.emit('')
+                self.signals.progressBar.emit(len(pred_stack))
 
             elif self.model == 'cellpose':
                 lab_stack = np.zeros(img_data.shape, np.uint16)
@@ -206,7 +207,7 @@ class segmWorker(QRunnable):
                     )
                     # lab = core.smooth_contours(lab, radius=2)
                     lab_stack[t] = lab
-                    self.signals.progress.emit('')
+                    self.signals.progressBar.emit(1)
 
         else:
             if self.model == 'yeaz':
@@ -216,7 +217,7 @@ class segmWorker(QRunnable):
                     path_weights=self.path_weights,
                     batch_size=1
                 )
-                self.signals.progress.emit('')
+                self.signals.progressBar.emit(1)
             elif self.model == 'cellpose':
                 lab_stack, flows, _, _ = self.cp_model.eval(
                     img_data,
@@ -225,7 +226,7 @@ class segmWorker(QRunnable):
                     flow_threshold=self.flow_threshold,
                     cellprob_threshold=self.cellprob_threshold
                 )
-                self.signals.progress.emit('')
+                self.signals.progressBar.emit(1)
                 # lab_stack = core.smooth_contours(lab_stack, radius=2)
         if self.model == 'yeaz':
             # self.signals.progress.emit('Thresholding prediction...')
@@ -239,13 +240,13 @@ class segmWorker(QRunnable):
                     signals=self.signals
                 ).astype(np.uint16)
             else:
-                self.signals.progress.emit('')
+                self.signals.progressBar.emit(1)
         else:
             if self.model == 'yeaz':
                 lab_stack = segment.segment(
                     thresh_stack, pred_stack, min_distance=self.min_distance
                 ).astype(np.uint16)
-            self.signals.progress.emit('')
+            self.signals.progressBar.emit(1)
 
         lab_stack = skimage.morphology.remove_small_objects(
             lab_stack, min_size=self.minSize
@@ -259,7 +260,7 @@ class segmWorker(QRunnable):
             ).astype(np.uint16)
         else:
             tracked_stack = lab_stack
-            self.signals.progress.emit('')
+            self.signals.progressBar.emit(1)
 
         if isROIactive:
             tracked_stack = np.pad(tracked_stack, pad_info,  mode='constant')
@@ -285,7 +286,7 @@ class segmWin(QMainWindow):
         self.setWindowTitle("Cell-ACDC - Segment")
         self.setWindowIcon(QtGui.QIcon(":assign-motherbud.svg"))
 
-        mainContainer = QtGui.QWidget()
+        mainContainer = QWidget()
         self.setCentralWidget(mainContainer)
 
         mainLayout = QVBoxLayout()
@@ -303,8 +304,9 @@ class segmWin(QMainWindow):
         mainLayout.addWidget(label)
 
         informativeText = QLabel(
-            'Follow the instructions in the pop-up windows.\n'
-            'Note that pop-ups might be minimized or behind other open windows.')
+            'Follow the instructions in the pop-up windows.<br><br>'
+            'Keep an eye on the terminal/console, in case of any error.<br><br>'
+            '<i>NOTE that pop-ups might be minimized or behind other open windows.</i>')
 
         informativeText.setStyleSheet("padding:5px 0px 10px 0px;")
         # informativeText.setWordWrap(True)
@@ -466,7 +468,7 @@ class segmWin(QMainWindow):
                     'is not a valid folder. '
                     'Select a folder that contains the Position_n folders'
                 )
-                msg = QtGui.QMessageBox()
+                msg = QMessageBox()
                 msg.critical(
                     self, 'Incompatible folder', txt, msg.Ok
                 )
@@ -497,7 +499,7 @@ class segmWin(QMainWindow):
             images_paths = [exp_path]
 
         # Ask to save?
-        msg = QtGui.QMessageBox()
+        msg = QMessageBox()
         msg.setFont(font)
         answer = msg.question(self, 'Save?', 'Do you want to save segmentation?',
                               msg.Yes | msg.No | msg.Cancel)
@@ -597,7 +599,7 @@ class segmWin(QMainWindow):
 
         if PosData.dataPrep_ROIcoords is None:
             # Ask ROI
-            msg = QtGui.QMessageBox()
+            msg = QMessageBox()
             msg.setFont(font)
             answer = msg.question(self, 'ROI?',
                 'Do you want to choose to segment only '
@@ -705,7 +707,7 @@ class segmWin(QMainWindow):
         self.QPbar.setPalette(palette)
         pBarLayout.addWidget(self.QPbar)
         self.ETA_label = QLabel()
-        self.ETA_label.setText('ETA: ND:ND:ND HH:mm:ss')
+        self.ETA_label.setText('ETA: NDh:NDm:NDs')
         pBarLayout.addWidget(self.ETA_label)
         self.mainLayout.insertLayout(3, pBarLayout)
 
@@ -726,6 +728,7 @@ class segmWin(QMainWindow):
         # 2. After prediction --> labels (only YeaZ)
         # 3. After tracking --> only if SizeT > 1
         self.QPbar.setMaximum(max*3)
+        self.exec_time_per_3steps = 0
 
         self.total_exec_time = 0
         self.time_last_pbar_update = time.time()
@@ -765,20 +768,30 @@ class segmWin(QMainWindow):
             )
         worker.signals.finished.connect(self.segmWorkerFinished)
         worker.signals.progress.connect(self.segmWorkerProgress)
+        worker.signals.progressBar.connect(self.segmWorkerProgressBar)
         self.threadPool.start(worker)
 
     def segmWorkerProgress(self, text):
-        if text:
-            print(text)
-            self.progressLabel.setText(text)
-        else:
-            t = time.time()
-            self.QPbar.setValue(self.QPbar.value()+1)
-            deltaT_step = t - self.time_last_pbar_update
-            steps_left = self.QPbar.maximum()-self.QPbar.value()
-            ETA = datetime.timedelta(seconds=round(deltaT_step*steps_left))
-            self.ETA_label.setText(f'ETA: {ETA} HH:mm:ss')
-            self.time_last_pbar_update = t
+        print('-----------------------------------------')
+        print(text)
+        self.progressLabel.setText(text)
+
+
+    def segmWorkerProgressBar(self, step):
+        self.QPbar.setValue(self.QPbar.value()+step)
+        t = time.time()
+        deltaT_step = t - self.time_last_pbar_update
+        steps_left = self.QPbar.maximum()-self.QPbar.value()
+        self.exec_time_per_3steps += deltaT_step
+        if steps_left%3 == 0:
+            seconds = round(self.exec_time_per_3steps*steps_left/3)
+            ETA = datetime.timedelta(seconds=seconds)
+            h, m, s = str(ETA).split(':')
+            ETA = f'{int(h):02}h:{int(m):02}m:{int(s):02}s'
+            self.ETA_label.setText(f'ETA: {ETA}')
+            self.exec_time_per_3steps = 0
+        self.time_last_pbar_update = t
+
 
 
     def segmWorkerFinished(self, exec_time):
@@ -791,14 +804,16 @@ class segmWin(QMainWindow):
             if self.numThreadsRunning == 0:
                 exec_time = round(self.total_exec_time)
                 exec_time_delta = datetime.timedelta(seconds=exec_time)
+                h, m, s = str(exec_time_delta).split(':')
+                exec_time_delta = f'{int(h):02}h:{int(m):02}m:{int(s):02}s'
                 self.progressLabel.setText(
                     'Segmentation task done.'
                 )
-                msg = QtGui.QMessageBox(self)
+                msg = QMessageBox(self)
                 abort = msg.information(
                    self, 'Segmentation task ended.',
                    'Segmentation task ended.\n\n'
-                   f'Total execution time: {exec_time_delta} HH:mm:ss\n\n'
+                   f'Total execution time: {exec_time_delta}\n\n'
                    f'Files saved to "{self.exp_path}"',
                    msg.Close
                 )
@@ -810,7 +825,7 @@ class segmWin(QMainWindow):
         if self.allowExit:
             exit('Execution aborted by the user')
         else:
-            msg = QtGui.QMessageBox()
+            msg = QMessageBox()
             closeAnswer = msg.critical(
                self, 'Execution aborted',
                'Segmentation task aborted.',
@@ -838,7 +853,7 @@ if __name__ == "__main__":
         QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     # Create the application
     app = QApplication(sys.argv)
-    app.setStyle(QtGui.QStyleFactory.create('Fusion'))
+    app.setStyle(QStyleFactory.create('Fusion'))
     win = segmWin(allowExit=True)
     win.show()
     print('Done. If window asking to select a folder is not visible, it is '

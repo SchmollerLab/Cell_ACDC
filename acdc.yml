@@ -19,7 +19,7 @@ dependencies:
   - seaborn
   - numba
   - requests
-  - tensorflow
+  - tensorflow<2.6.0
   - pytorch
   - munkres
   - scikit-learn

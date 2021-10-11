@@ -52,7 +52,7 @@ def segment_stack(th, pred, min_distance=10, topology=None, signals=None):
         lab = segment(th_single, pred_single, min_distance, topology)
         seg_stack[idx] = lab
         if signals is not None:
-            signals.progress.emit('')
+            signals.progressBar.emit(1)
     return seg_stack
 
 

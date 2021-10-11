@@ -49,7 +49,7 @@ def correspondence_stack(stack, signals=None):
             continue
         corrected_stack[idx+1] = correspondence(prev, curr)
         if signals is not None:
-            signals.progress.emit('')
+            signals.progressBar.emit(1)
     return corrected_stack
 
 
