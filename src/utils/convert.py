@@ -364,7 +364,7 @@ class convertFileFormatWin(QMainWindow):
 
         selectFilesWidget = apps.QDialogListbox(
             'Select files',
-            f'Select the .{self.from} files you want to convert to '
+            f'Select the .{self.from_} files you want to convert to '
             f'{self.info}.{self.to}\n\n'
             'NOTE: if you selected multiple Position folders I will try \n'
             'to convert all selected files in each Position folder',
