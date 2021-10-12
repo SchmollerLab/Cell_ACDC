@@ -294,6 +294,9 @@ class QDialogMetadataXML(QDialog):
             checkBox.setChecked(True)
             checkBox.stateChanged.connect(self.saveCh_checkBox_cb)
 
+            addImageName_CB = QCheckBox('Include image name')
+            addImageName_CB.stateChanged.connect(self.saveCh_checkBox_cb)
+
             self.channelNameLayouts[0].addWidget(label, alignment=Qt.AlignRight)
             self.channelNameLayouts[0].addWidget(
                 filenameDescLabel, alignment=Qt.AlignRight
@@ -490,7 +493,9 @@ class QDialogMetadataXML(QDialog):
                 txt = f'Channel {c} name:  '
                 label = QLabel(txt)
 
-                filenameDescLabel = QLabel(f'<i>File name for channel {c}:  </i>')
+                filenameDescLabel = QLabel(
+                    f'<i>File name for channel {c}:  </i>'
+                )
                 filenameLabel = QLabel()
 
                 checkBox = QCheckBox('Save this channel')

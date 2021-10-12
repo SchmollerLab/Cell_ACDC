@@ -147,8 +147,9 @@ class segmWorker(QRunnable):
                     img_data = img_data[:, y0:y1, x0:x1]
                     pad_info = ((0, 0), (y0, Y-y1), (x0, X-x1))
             img_data = [img/img.max() for img in img_data]
-            img_data = np.array([skimage.exposure.equalize_adapthist(img)
-                                 for img in img_data])
+            img_data = np.array(
+                [skimage.exposure.equalize_adapthist(img) for img in img_data]
+            )
         else:
             if PosData.SizeZ > 1:
                 # Single 3D image
