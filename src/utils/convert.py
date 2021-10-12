@@ -364,7 +364,8 @@ class convertFileFormatWin(QMainWindow):
 
         selectFilesWidget = apps.QDialogListbox(
             'Select files',
-            f'Select the .npz files you want to convert to .{self.to}\n\n'
+            f'Select the .{self.from} files you want to convert to '
+            f'{self.info}.{self.to}\n\n'
             'NOTE: if you selected multiple Position folders I will try \n'
             'to convert all selected files in each Position folder',
             items, multiSelection=True, parent=self
