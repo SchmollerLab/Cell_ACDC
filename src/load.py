@@ -131,7 +131,7 @@ class loadData:
                     os.remove(os.path.join(self.images_path, file))
             return win.selectedItemText, win.cancel
         else:
-            return '', True
+            return '', False
 
     def loadOtherFiles(
             self,
