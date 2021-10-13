@@ -66,7 +66,8 @@ class QDialogMetadataXML(QDialog):
         self.cancel = True
         self.trust = False
         self.overWrite = False
-        self.rawFilename = rawFilename
+        self.rawFilename = os.path.splitext(rawFilename)[0]
+        self.ImageName = ImageName
         super().__init__(parent)
         self.setWindowTitle(title)
         font = QtGui.QFont()
@@ -271,6 +272,7 @@ class QDialogMetadataXML(QDialog):
 
         self.chNames_QLEs = []
         self.saveChannels_QCBs = []
+        self.filename_QLabels = []
         for c in range(SizeC):
             chName_QLE = QLineEdit()
             chName_QLE.setStyleSheet(
@@ -287,27 +289,41 @@ class QDialogMetadataXML(QDialog):
             txt = f'Channel {c} name:  '
             label = QLabel(txt)
 
-            filenameDescLabel = QLabel(f'<i>File name for channel {c}:  </i>')
-            filenameLabel = QLabel()
+            filenameDescLabel = QLabel(f'<i>e.g., filename for channel {c}:  </i>')
+
+            chName = chName_QLE.text()
+            chName = self.removeInvalidCharacters(chName)
+            filenameLabel = QLabel(f"""
+                <p style=font-size:8pt>
+                    {self.rawFilename}_{chName}.tif
+                </p>
+            """)
 
             checkBox = QCheckBox('Save this channel')
             checkBox.setChecked(True)
             checkBox.stateChanged.connect(self.saveCh_checkBox_cb)
-
-            addImageName_CB = QCheckBox('Include image name')
-            addImageName_CB.stateChanged.connect(self.saveCh_checkBox_cb)
 
             self.channelNameLayouts[0].addWidget(label, alignment=Qt.AlignRight)
             self.channelNameLayouts[0].addWidget(
                 filenameDescLabel, alignment=Qt.AlignRight
             )
             self.channelNameLayouts[1].addWidget(chName_QLE)
-            self.channelNameLayouts[1].addWidget(filenameLabel)
+            self.channelNameLayouts[1].addWidget(
+                filenameLabel, alignment=Qt.AlignCenter
+            )
 
             self.channelNameLayouts[2].addWidget(checkBox)
-            self.channelNameLayouts[2].addWidget(QLabel())
+            if c == 0:
+                addImageName_QCB = QCheckBox('Include image name')
+                addImageName_QCB.stateChanged.connect(self.addImageName_cb)
+                self.addImageName_QCB = addImageName_QCB
+                self.channelNameLayouts[2].addWidget(addImageName_QCB)
+            else:
+                self.channelNameLayouts[2].addWidget(QLabel())
+
             self.chNames_QLEs.append(chName_QLE)
             self.saveChannels_QCBs.append(checkBox)
+            self.filename_QLabels.append(filenameLabel)
 
         self.checkChNames()
 
@@ -394,12 +410,29 @@ class QDialogMetadataXML(QDialog):
         self.checkChNames()
         idx = self.saveChannels_QCBs.index(self.sender())
         LE = self.chNames_QLEs[idx]
+        idx *= 2
         LE.setDisabled(state==0)
         label = self.channelNameLayouts[0].itemAt(idx).widget()
         if state == 0:
             label.setStyleSheet('color: gray; font-size: 10pt')
         else:
             label.setStyleSheet('color: black; font-size: 10pt')
+
+        label = self.channelNameLayouts[0].itemAt(idx+1).widget()
+        if state == 0:
+            label.setStyleSheet('color: gray; font-size: 10pt')
+        else:
+            label.setStyleSheet('color: black; font-size: 10pt')
+
+        label = self.channelNameLayouts[1].itemAt(idx+1).widget()
+        if state == 0:
+            label.setStyleSheet('color: gray; font-size: 10pt')
+        else:
+            label.setStyleSheet('color: black; font-size: 10pt')
+
+    def addImageName_cb(self, state):
+        for idx in range(self.SizeC_SB.value()):
+            self.updateFilename(idx)
 
     def setInvalidChName_StyleSheet(self, LE):
         LE.setStyleSheet(
@@ -409,7 +442,46 @@ class QDialogMetadataXML(QDialog):
             'padding: 1px 0px 1px 0px'
         )
 
+    def removeInvalidCharacters(self, chName):
+        # Remove invalid charachters
+        chName = "".join(
+            c if c.isalnum() or c=='_' or c=='' else '_' for c in chName
+        )
+        trim_ = chName.endswith('_')
+        while trim_:
+            chName = chName[:-1]
+            trim_ = chName.endswith('_')
+        return chName
+
+    def updateFilename(self, idx):
+        chName = self.chNames_QLEs[idx].text()
+        chName = self.removeInvalidCharacters(chName)
+
+        filenameLabel = self.filename_QLabels[idx]
+        if self.addImageName_QCB.isChecked():
+            self.ImageName = self.removeInvalidCharacters(self.ImageName)
+            filename = (f"""
+                <p style=font-size:8pt>
+                    {self.rawFilename}_{self.ImageName}_{chName}.tif
+                </p>
+            """)
+        else:
+            filename = (f"""
+                <p style=font-size:8pt>
+                    {self.rawFilename}_{chName}.tif
+                </p>
+            """)
+        filenameLabel.setText(filename)
+
     def checkChNames(self, text=''):
+        if self.sender() in self.chNames_QLEs:
+            idx = self.chNames_QLEs.index(self.sender())
+            self.updateFilename(idx)
+        elif self.sender() in self.saveChannels_QCBs:
+            idx = self.saveChannels_QCBs.index(self.sender())
+            self.updateFilename(idx)
+
+
         areChNamesValid = True
         if len(self.chNames_QLEs) == 1:
             LE1 = self.chNames_QLEs[0]
@@ -494,9 +566,15 @@ class QDialogMetadataXML(QDialog):
                 label = QLabel(txt)
 
                 filenameDescLabel = QLabel(
-                    f'<i>File name for channel {c}:  </i>'
+                    f'<i>e.g., filename for channel {c}:  </i>'
                 )
-                filenameLabel = QLabel()
+
+                chName = chName_QLE.text()
+                filenameLabel = QLabel(f"""
+                    <p style=font-size:8pt>
+                        {self.rawFilename}_{chName}.tif
+                    </p>
+                """)
 
                 checkBox = QCheckBox('Save this channel')
                 checkBox.setChecked(True)
@@ -507,13 +585,16 @@ class QDialogMetadataXML(QDialog):
                     filenameDescLabel, alignment=Qt.AlignRight
                 )
                 self.channelNameLayouts[1].addWidget(chName_QLE)
-                self.channelNameLayouts[1].addWidget(filenameLabel)
+                self.channelNameLayouts[1].addWidget(
+                    filenameLabel, alignment=Qt.AlignCenter
+                )
 
                 self.channelNameLayouts[2].addWidget(checkBox)
                 self.channelNameLayouts[2].addWidget(QLabel())
 
                 self.chNames_QLEs.append(chName_QLE)
                 self.saveChannels_QCBs.append(checkBox)
+                self.filename_QLabels.append(filenameLabel)
 
                 emWavelen_DSB = QDoubleSpinBox()
                 emWavelen_DSB.setAlignment(Qt.AlignCenter)
@@ -532,12 +613,13 @@ class QDialogMetadataXML(QDialog):
                 self.emWavelens_DSBs.append(emWavelen_DSB)
         else:
             for c in range(currentSizeC, currentSizeC+DeltaChannels):
-                label1 = self.channelNameLayouts[0].itemAt(c-1).widget()
-                label2 = self.channelNameLayouts[0].itemAt(c).widget()
-                chName_QLE = self.channelNameLayouts[1].itemAt(c-1).widget()
-                filename_L = self.channelNameLayouts[1].itemAt(c).widget()
-                checkBox = self.channelNameLayouts[2].itemAt(c-1).widget()
-                dummyLabel = self.channelNameLayouts[2].itemAt(c).widget()
+                idx = (c-1)*2
+                label1 = self.channelNameLayouts[0].itemAt(idx).widget()
+                label2 = self.channelNameLayouts[0].itemAt(idx+1).widget()
+                chName_QLE = self.channelNameLayouts[1].itemAt(idx).widget()
+                filename_L = self.channelNameLayouts[1].itemAt(idx+1).widget()
+                checkBox = self.channelNameLayouts[2].itemAt(idx).widget()
+                dummyLabel = self.channelNameLayouts[2].itemAt(idx+1).widget()
 
                 self.channelNameLayouts[0].removeWidget(label1)
                 self.channelNameLayouts[0].removeWidget(label2)
@@ -545,8 +627,10 @@ class QDialogMetadataXML(QDialog):
                 self.channelNameLayouts[1].removeWidget(filename_L)
                 self.channelNameLayouts[2].removeWidget(checkBox)
                 self.channelNameLayouts[2].removeWidget(dummyLabel)
+
                 self.chNames_QLEs.pop(-1)
                 self.saveChannels_QCBs.pop(-1)
+                self.filename_QLabels.pop(-1)
 
                 label = self.channelEmWLayouts[0].itemAt(c-1).widget()
                 emWavelen_DSB = self.channelEmWLayouts[1].itemAt(c-1).widget()
@@ -609,6 +693,7 @@ class QDialogMetadataXML(QDialog):
         self.PhysicalSizeY = self.PhysicalSizeY_DSB.value()
         self.PhysicalSizeZ = self.PhysicalSizeZ_DSB.value()
         self.chNames = []
+        self.addImageName = self.addImageName_QCB.isChecked()
         self.saveChannels = []
         for LE, QCB in zip(self.chNames_QLEs, self.saveChannels_QCBs):
             s = LE.text()
@@ -4310,7 +4395,9 @@ if __name__ == '__main__':
     # df = cca_df.reset_index()
     #
     # win = pdDataFrameWidget(df)
-    win = QDialogMetadataXML(rawDataStruct=1, chNames=[''])
+    win = QDialogMetadataXML(
+        rawDataStruct=1, chNames=[''], ImageName='image'
+    )
     # win = QDialogAppendTextFilename('example.npz')
     font = QtGui.QFont()
     font.setPointSize(10)

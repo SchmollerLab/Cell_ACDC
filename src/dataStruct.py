@@ -45,7 +45,7 @@ class bioFormatsWorker(QObject):
     confirmMetadata = pyqtSignal(
         str, float, str, int, int, int, int,
         float, str, float, float, float,
-        str, list, list
+        str, list, list, str
     )
     # aborted = pyqtSignal()
 
@@ -68,6 +68,7 @@ class bioFormatsWorker(QObject):
         try:
             metadataXML = bioformats.get_omexml_metadata(rawFilePath)
             metadata = bioformats.OMEXML(metadataXML)
+            self.metadata = metadata
             self.metadataXML = metadataXML
         except Exception as e:
             self.isCriticalError = True
@@ -223,17 +224,16 @@ class bioFormatsWorker(QObject):
 
         try:
             ImageName = metadata.image().Name
-            PhysicalSizeUnit = Pixels.node.get('PhysicalSizeXUnit')
-            if PhysicalSizeUnit is None:
+            if ImageName is None:
                 raise
         except Exception as e:
             self.progress.emit(
                 '===================================================')
             self.progress.emit(rawFilePath)
-            self.progress.emit('WARNING: PhysicalSizeUnit not found in metadata.')
+            self.progress.emit('WARNING: Image Name not found in metadata.')
             self.progress.emit(
                 '===================================================')
-            PhysicalSizeUnit = 'μm'
+            ImageName = ''
 
 
         if self.rawDataStruct != 2:
@@ -296,7 +296,7 @@ class bioFormatsWorker(QObject):
             self.confirmMetadata.emit(
                 filename, LensNA, DimensionOrder, SizeT, SizeZ, SizeC, SizeS,
                 TimeIncrement, TimeIncrementUnit, PhysicalSizeX, PhysicalSizeY,
-                PhysicalSizeZ, PhysicalSizeUnit, chNames, emWavelens
+                PhysicalSizeZ, PhysicalSizeUnit, chNames, emWavelens, ImageName
             )
             self.waitCond.wait(self.mutex)
             self.mutex.unlock()
@@ -320,6 +320,7 @@ class bioFormatsWorker(QObject):
             self.chNames = self.metadataWin.chNames
             self.saveChannels = self.metadataWin.saveChannels
             self.emWavelens = self.metadataWin.emWavelens
+            self.addImageName = self.metadataWin.addImageName
 
     def saveToPosFolder(self, p, exp_path, filename, series, p_idx=0):
         foldername = os.path.basename(exp_path)
@@ -346,6 +347,30 @@ class bioFormatsWorker(QObject):
 
         self.saveData(images_path, rawFilePath, filename, p, series, p_idx=p_idx)
 
+    def removeInvalidCharacters(self, chName_in):
+        # Remove invalid charachters
+        chName = "".join(
+            c if c.isalnum() or c=='_' or c=='' else '_' for c in chName_in
+        )
+        trim_ = chName.endswith('_')
+        while trim_:
+            chName = chName[:-1]
+            trim_ = chName.endswith('_')
+
+    def getFilename(self, filenameNOext, s0p, appendTxt, series, ext):
+        if self.addImageName:
+            try:
+                ImageName = self.metadata.image(index=series).Name
+                if not isinstance(ImageName, str):
+                    raise
+            except Exception as e:
+                ImageName = ''
+            self.removeInvalidCharacters(ImageName)
+            filename = f'{filenameNOext}_{ImageName}_s{s0p}_{appendTxt}{ext}'
+        else:
+            filename = f'{filenameNOext}_s{s0p}_{appendTxt}{ext}'
+        return filename
+
     def saveData(self, images_path, rawFilePath, filename, p, series, p_idx=0):
         s0p = str(p+1).zfill(self.numPosDigits)
         self.progress.emit(
@@ -354,13 +379,15 @@ class bioFormatsWorker(QObject):
         filenameNOext, ext = os.path.splitext(filename)
 
         metadataXML_path = os.path.join(
-            images_path, f'{filenameNOext}_s{s0p}_metadataXML.txt'
+            images_path,
+            self.getFilename(filenameNOext, s0p, 'metadataXML', series, '.txt')
         )
         with open(metadataXML_path, 'w', encoding="utf-8") as txt:
             txt.write(self.metadataXML)
 
         metadata_csv_path = os.path.join(
-            images_path, f'{filenameNOext}_s{s0p}_metadata.csv'
+            images_path,
+            self.getFilename(filenameNOext, s0p, 'metadata', series, '.csv')
         )
         df = pd.DataFrame({
             'LensNA': self.LensNA,
@@ -411,9 +438,10 @@ class bioFormatsWorker(QObject):
                         imgData_ch.append(imgData_z)
                     imgData_ch = np.array(imgData_ch, dtype=imgData.dtype)
                     imgData_ch = np.squeeze(imgData_ch)
-                    tifPath = os.path.join(
-                        images_path, f'{filenameNOext}_s{s0p}_{chName}.tif'
+                    filename = self.getFilename(
+                        filenameNOext, s0p, chName, series, '.tif'
                     )
+                    tifPath = os.path.join(images_path, filename)
                     myutils.imagej_tiffwriter(
                         tifPath, imgData_ch, {}, self.SizeT, self.SizeZ
                     )
@@ -451,9 +479,10 @@ class bioFormatsWorker(QObject):
                         imgData_ch.append(imgData_z)
                     imgData_ch = np.array(imgData_ch, dtype=imgData.dtype)
                     imgData_ch = np.squeeze(imgData_ch)
-                    tifPath = os.path.join(
-                        images_path, f'{filenameNOext}_s{s0p}_{chName}.tif'
+                    filename = self.getFilename(
+                        filenameNOext, s0p, chName, series, '.tif'
                     )
+                    tifPath = os.path.join(images_path, filename)
                     myutils.imagej_tiffwriter(
                         tifPath, imgData_ch, {}, self.SizeT, self.SizeZ
                     )
@@ -626,7 +655,7 @@ class createDataStructWin(QMainWindow):
         <p style="font-size:10pt; line-height:1.2">
             Follow the instructions in the pop-up windows.<br>
             Note that pop-ups might be minimized or behind other open windows.<br>
-            Progess is displayed in the terminal/console.
+            Keep an eye on the terminal/console in case of any error.
         </p>
         <p style="font-size:10pt; line-height:1.2">
             Progress will be displayed below.
@@ -1139,16 +1168,16 @@ class createDataStructWin(QMainWindow):
     def askConfirmMetadata(
             self, filename, LensNA, DimensionOrder, SizeT, SizeZ, SizeC, SizeS,
             TimeIncrement, TimeIncrementUnit, PhysicalSizeX, PhysicalSizeY,
-            PhysicalSizeZ, PhysicalSizeUnit, chNames, emWavelens
+            PhysicalSizeZ, PhysicalSizeUnit, chNames, emWavelens, ImageName
         ):
         self.metadataWin = apps.QDialogMetadataXML(
-            title=f'Metadata for {filename}',
+            title=f'Metadata for {filename}', rawFilename=filename,
             LensNA=LensNA, DimensionOrder=DimensionOrder,
             SizeT=SizeT, SizeZ=SizeZ, SizeC=SizeC, SizeS=SizeS,
             TimeIncrement=TimeIncrement, TimeIncrementUnit=TimeIncrementUnit,
             PhysicalSizeX=PhysicalSizeX, PhysicalSizeY=PhysicalSizeY,
             PhysicalSizeZ=PhysicalSizeZ, PhysicalSizeUnit=PhysicalSizeUnit,
-            chNames=chNames, emWavelens=emWavelens,
+            ImageName=ImageName, chNames=chNames, emWavelens=emWavelens,
             parent=self, rawDataStruct=self.rawDataStruct
         )
         self.metadataWin.exec_()

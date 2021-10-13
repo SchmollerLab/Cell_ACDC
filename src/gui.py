@@ -1269,7 +1269,7 @@ class guiWin(QMainWindow):
         PosData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
         left_click = event.button() == Qt.MouseButton.LeftButton
-        mid_click = event.button() == Qt.MouseButton.MidButton
+        middle_click = event.button() == Qt.MouseButton.MidButton
         right_click = event.button() == Qt.MouseButton.RightButton
         eraserON = self.eraserButton.isChecked()
         brushON = self.brushButton.isChecked()
@@ -1287,13 +1287,10 @@ class guiWin(QMainWindow):
 
         x, y = event.pos().x(), event.pos().y()
         ID = PosData.lab[int(y), int(x)]
-        dragImgMiddle = mid_click
-
-        if dragImgMiddle:
-            pg.ImageItem.mousePressEvent(self.img2, event)
 
         if mode == 'Viewer':
             self.startBlinkingModeCB()
+            event.ignore()
             return
 
         # Check if right click on ROI
@@ -1411,7 +1408,7 @@ class guiWin(QMainWindow):
                 self.setImageImg2()
 
         # Delete entire ID (set to 0)
-        elif mid_click and canDelete:
+        elif middle_click and canDelete:
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             delID = PosData.lab[ydata, xdata]
@@ -2479,7 +2476,7 @@ class guiWin(QMainWindow):
         is_cca_on = mode == 'Cell cycle analysis' or self.isSnapshot
         right_click = event.button() == Qt.MouseButton.RightButton
         left_click = event.button() == Qt.MouseButton.LeftButton
-        mid_click = event.button() == Qt.MouseButton.MidButton
+        middle_click = event.button() == Qt.MouseButton.MidButton
         brushON = self.brushButton.isChecked()
         curvToolON = self.curvToolButton.isChecked()
         histON = self.setIsHistoryKnownButton.isChecked()
@@ -2491,7 +2488,7 @@ class guiWin(QMainWindow):
             and not curvToolON and not eraserON and not rulerON
         )
 
-        dragImgMiddle = mid_click
+        dragImgMiddle = middle_click
 
         # Right click in snapshot mode is for spline tool
         canAnnotateDivision = (
@@ -2521,6 +2518,7 @@ class guiWin(QMainWindow):
 
         if mode == 'Viewer' and not canRuler:
             self.startBlinkingModeCB()
+            event.ignore()
             return
 
         # Allow right-click actions on both images
@@ -2815,7 +2813,7 @@ class guiWin(QMainWindow):
             self.setIsHistoryKnownButton.setChecked(False)
 
         # Allow mid-click actions on both images
-        elif mid_click:
+        elif middle_click:
             self.gui_mousePressEventImg2(event)
 
     def segmMenuOpened(self):
@@ -4700,7 +4698,9 @@ class guiWin(QMainWindow):
                         if any(df_j_x!=df_j_y):
                             print('------------------------')
                             print('DIFFERENCES:')
-                            print(cca_df.iloc[:,j:j+2])
+                            diff_df = cca_df.iloc[:,j:j+2]
+                            diff_mask = diff_df.iloc[:,0]!=diff_df.iloc[:,1]
+                            print(diff_df[diff_mask])
                 else:
                     cca_df = None
                     print(cca_df)
@@ -6683,8 +6683,12 @@ class guiWin(QMainWindow):
                         delROIs_info_i['rois'].append(roi)
                         delROIshapes[i].append([x0, y0, w, h])
 
-    def addIDBaseCca_df(self, ID):
-        PosData = self.data[self.pos_i]
+    def addIDBaseCca_df(self, PosData, ID):
+        print('ID', ID)
+        if ID <= 0:
+            # When calling update_cca_df_deletedIDs we add relative IDs
+            # but they could be -1 for cells in G1
+            return
         PosData.cca_df.loc[ID] = pd.Series({
             'cell_cycle_stage': 'G1',
             'generation_num': 2,
@@ -6929,19 +6933,18 @@ class guiWin(QMainWindow):
             if self.ccaTableWin is not None:
                 self.ccaTableWin.updateTable(PosData.cca_df)
 
-        if cca_df is not None:
+        acdc_df = PosData.allData_li[i]['acdc_df']
+        if acdc_df is None:
+            self.store_data()
             acdc_df = PosData.allData_li[i]['acdc_df']
-            if acdc_df is None:
-                self.store_data()
-                acdc_df = PosData.allData_li[i]['acdc_df']
-            if 'cell_cycle_stage' in acdc_df.columns:
-                # Cell cycle info already present --> overwrite with new
-                df = acdc_df
-                df[self.cca_df_colnames] = cca_df
-            else:
-                df = acdc_df.join(cca_df, how='left')
-            PosData.allData_li[i]['acdc_df'] = df.copy()
-            # print(PosData.allData_li[PosData.frame_i]['acdc_df'])
+        if 'cell_cycle_stage' in acdc_df.columns:
+            # Cell cycle info already present --> overwrite with new
+            df = acdc_df
+            df[self.cca_df_colnames] = cca_df
+        else:
+            df = acdc_df.join(cca_df, how='left')
+        PosData.allData_li[i]['acdc_df'] = df.copy()
+        # print(PosData.allData_li[PosData.frame_i]['acdc_df'])
 
     def ax1_setTextID(self, obj, how, updateColor=False):
         PosData = self.data[self.pos_i]
@@ -7050,7 +7053,8 @@ class guiWin(QMainWindow):
         if PosData.cca_df is not None and self.isSnapshot:
             if obj.label not in PosData.cca_df.index:
                 self.store_data()
-                self.addIDBaseCca_df(obj.label)
+                self.addIDBaseCca_df(PosData, obj.label)
+                self.store_cca_df()
 
         # Draw LabelItems for IDs on ax1 if requested
         if IDs_and_cont or onlyIDs or only_ccaInfo or ccaInfo_and_cont:
@@ -7763,17 +7767,75 @@ class guiWin(QMainWindow):
         self.img1.setImage(brushOverlay)
         return overlay
 
+    def update_cca_df_deletedIDs(self, PosData, deleted_IDs):
+        relIDs = PosData.cca_df.reindex(deleted_IDs, fill_value=-1)['relative_ID']
+        PosData.cca_df = PosData.cca_df.drop(deleted_IDs, errors='ignore')
+        self.update_cca_df_newIDs(PosData, relIDs)
+
+    def update_cca_df_newIDs(self, PosData, new_IDs):
+        for newID in new_IDs:
+            self.addIDBaseCca_df(PosData, newID)
+
+    def update_cca_df_snapshots(self, editTxt, PosData):
+        cca_df = PosData.cca_df
+        cca_df_IDs = cca_df.index
+        if editTxt == 'Delete ID':
+            deleted_IDs = [ID for ID in cca_df_IDs if ID not in PosData.IDs]
+            self.update_cca_df_deletedIDs(PosData, deleted_IDs)
+
+        elif editTxt == 'Separate IDs':
+            new_IDs = [ID for ID in PosData.IDs if ID not in cca_df_IDs]
+            self.update_cca_df_newIDs(PosData, new_IDs)
+            deleted_IDs = [ID for ID in cca_df_IDs if ID not in PosData.IDs]
+            self.update_cca_df_deletedIDs(PosData, deleted_IDs)
+
+        elif editTxt == 'Edit ID':
+            new_IDs = [ID for ID in PosData.IDs if ID not in cca_df]
+            self.update_cca_df_newIDs(PosData, new_IDs)
+            old_IDs = [ID for ID in cca_df_IDs if ID not in PosData.IDs]
+            self.update_cca_df_deletedIDs(PosData, old_IDs)
+
+        elif editTxt == 'Annotate ID as dead':
+            pass
+
+        elif editTxt == 'Delete ID with eraser':
+            deleted_IDs = [ID for ID in cca_df_IDs if ID not in PosData.IDs]
+            self.update_cca_df_deletedIDs(PosData, deleted_IDs)
+
+        elif editTxt == 'Add new ID with brush tool':
+            pass
+
+        elif editTxt == 'Merge IDs':
+            deleted_IDs = [ID for ID in cca_df_IDs if ID not in PosData.IDs]
+            self.update_cca_df_deletedIDs(PosData, deleted_IDs)
+
+        elif editTxt == 'Add new ID with curvature tool':
+            new_IDs = [ID for ID in PosData.IDs if ID not in cca_df]
+            self.update_cca_df_newIDs(PosData, new_IDs)
+            old_IDs = [ID for ID in cca_df_IDs if ID not in PosData.IDs]
+            self.update_cca_df_deletedIDs(PosData, old_IDs)
+
+        elif editTxt == 'Delete IDs using ROI':
+            deleted_IDs = [ID for ID in cca_df_IDs if ID not in PosData.IDs]
+            self.update_cca_df_deletedIDs(PosData, deleted_IDs)
+
+        elif editTxt == 'Repeat segmentation with YeaZ':
+            self.getBaseCca_df()
+
+        elif editTxt == 'Random Walker segmentation':
+            self.getBaseCca_df()
+
+
     def warnEditingWithCca_df(self, editTxt):
         # Function used to warn that the user is editing in "Segmentation and
         # Tracking" mode a frame that contains cca annotations.
         # Ask whether to remove annotations from all future frames
         PosData = self.data[self.pos_i]
-        if self.isSnapshot:
-            if PosData.cca_df is not None:
-                # For snapshot mode we reinitialize cca_df to base
-                PosData.cca_df = self.getBaseCca_df()
-                self.store_cca_df()
-                self.updateALLimg()
+        if self.isSnapshot and PosData.cca_df is not None:
+            # For snapshot mode we reinitialize cca_df to base
+            self.update_cca_df_snapshots(editTxt, PosData)
+            self.store_data()
+            self.updateALLimg()
             return
 
         acdc_df = PosData.allData_li[PosData.frame_i]['acdc_df']

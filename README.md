@@ -2,7 +2,7 @@
 
 ### A Python GUI-based framework for <b>segmentation</b>, <b>tracking</b> and <b>cell cycle annotations</b> of microscopy data
 
-You can check out out pre-print [here](https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2) and Twitter thread [here](https://twitter.com/frank_pado/status/1443957038841794561?s=20).
+You can check out our pre-print [here](https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2) and Twitter thread [here](https://twitter.com/frank_pado/status/1443957038841794561?s=20).
 
 Written in Python 3.8 by Francesco Padovani and Benedikt Mairhoermann.
 

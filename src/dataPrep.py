@@ -718,7 +718,14 @@ class dataPrepWin(QMainWindow):
         w, h = [int(round(c)) for c in PosData.cropROI.size()]
 
         Y, X = self.img.image.shape
-        if x0==0 and y0==0 and w==X and h==Y:
+        x1, y1 = x0+w, y1+h
+
+        x0 = x0 if x0>0 else 0
+        y0 = y0 if y0>0 else 0
+        w = w if x1<X else X
+        h = h if y1<Y else Y
+
+        if x0<=0 and y0<=0 and w>=X and h>=Y:
             return
 
         print(f'Saving ROI coords: x_left = {x0}, x_right = {x0+w}, '

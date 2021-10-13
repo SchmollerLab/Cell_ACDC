@@ -470,7 +470,7 @@ class loadData:
         except PermissionError:
             msg = QtGui.QMessageBox()
             warn_cca = msg.critical(
-                self, 'Permission denied',
+                self.parent, 'Permission denied',
                 f'The below file is open in another app (Excel maybe?).\n\n'
                 f'{self.metadata_csv_path}\n\n'
                 'Close file and then press "Ok".',
