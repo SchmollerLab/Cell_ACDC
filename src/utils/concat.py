@@ -14,7 +14,8 @@ from tqdm import tqdm
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QFileDialog,
-    QVBoxLayout, QPushButton, QLabel
+    QVBoxLayout, QPushButton, QLabel, QWidget,
+    QMessageBox, QStyleFactory
 )
 from PyQt5.QtCore import Qt, QEventLoop
 from PyQt5 import QtGui
@@ -48,7 +49,7 @@ class concatWin(QMainWindow):
         self.setWindowTitle("Cell-ACDC - Align")
         self.setWindowIcon(QtGui.QIcon(":assign-motherbud.svg"))
 
-        mainContainer = QtGui.QWidget()
+        mainContainer = QWidget()
         self.setCentralWidget(mainContainer)
 
         mainLayout = QVBoxLayout()
@@ -178,14 +179,14 @@ class concatWin(QMainWindow):
         print('--------------')
         print(txt)
         print('==============')
-        msg = QtGui.QMessageBox()
+        msg = QMessageBox()
         msg.information(
             self, 'Process completed.', txt, msg.Ok
         )
 
 
     def askNewOrReplace(self, AllPos_df_folder):
-        msg = QtGui.QMessageBox(self)
+        msg = QMessageBox(self)
         msg.setWindowTitle('Create new files or replace?')
         msg.setIcon(msg.Question)
         msg.setText(
@@ -233,7 +234,7 @@ class concatWin(QMainWindow):
             'is not a valid folder. '
             'Select a folder that contains the Position_n folders'
         )
-        msg = QtGui.QMessageBox()
+        msg = QMessageBox()
         msg.critical(
             self, 'Incompatible folder', txt, msg.Ok
         )
@@ -273,7 +274,7 @@ class concatWin(QMainWindow):
         df.to_csv(recentPaths_path)
 
     def doAbort(self):
-        msg = QtGui.QMessageBox()
+        msg = QMessageBox()
         closeAnswer = msg.warning(
            self, 'Abort execution?', 'Do you really want to abort process?',
            msg.Yes | msg.No
@@ -304,7 +305,7 @@ if __name__ == "__main__":
         QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     # Create the application
     app = QApplication(sys.argv)
-    app.setStyle(QtGui.QStyleFactory.create('Fusion'))
+    app.setStyle(QStyleFactory.create('Fusion'))
     win = concatWin(allowExit=True)
     win.show()
     print('Done. If window asking to select a folder is not visible, it is '
