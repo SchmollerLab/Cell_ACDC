@@ -49,7 +49,7 @@ from PyQt5.QtWidgets import (
     QScrollBar, QCheckBox, QToolButton, QSpinBox,
     QComboBox, QDial, QButtonGroup, QActionGroup,
     QShortcut, QFileDialog, QDoubleSpinBox,
-    QAbstractSlider
+    QAbstractSlider, QMessageBox, QWidget
 )
 
 from pyqtgraph.Qt import QtGui
@@ -96,12 +96,13 @@ def exception_handler(func):
 class saveDataWorker(QObject):
     finished = pyqtSignal()
     progress = pyqtSignal(str)
-    progressBar = pyqtSignal(int, int, int)
+    progressBar = pyqtSignal(int, int, float)
     critical = pyqtSignal(str)
     criticalMetrics = pyqtSignal(str)
     criticalPermissionError = pyqtSignal(str)
     askSaveLastVisitedCcaMode = pyqtSignal(int, object)
     askSaveLastVisitedSegmMode = pyqtSignal(int, object)
+    metricsPbarProgress = pyqtSignal(int, int)
 
     def __init__(self, mainWin):
         QObject.__init__(self)
@@ -126,6 +127,8 @@ class saveDataWorker(QObject):
                 self.askSaveLastVisitedSegmMode.emit(p, PosData)
                 self.waitCond.wait(self.mutex)
                 self.mutex.unlock()
+
+                print('unlocked')
 
                 last_tracked_i = self.mainWin.last_tracked_i
                 if last_tracked_i is None:
@@ -369,7 +372,7 @@ class guiWin(QMainWindow):
 
         self.set_metrics_func()
 
-        mainContainer = QtGui.QWidget()
+        mainContainer = QWidget()
         self.setCentralWidget(mainContainer)
 
         mainLayout = QtGui.QGridLayout()
@@ -2618,7 +2621,7 @@ class guiWin(QMainWindow):
                 txt = (f'You clicked on ID {ID} which is a BUD.\n'
                        'To assign a bud to a cell start by clicking on a bud '
                        'and release on a cell in G1')
-                msg = QtGui.QMessageBox()
+                msg = QMessageBox()
                 msg.critical(
                     self, 'Released on a bud', txt, msg.Ok
                 )
@@ -2628,7 +2631,7 @@ class guiWin(QMainWindow):
                 txt = (f'You clicked on a cell (ID={ID}) which is NOT in G1.\n'
                        'To assign a bud to a cell start by clicking on a bud '
                        'and release on a cell in G1')
-                msg = QtGui.QMessageBox()
+                msg = QMessageBox()
                 msg.critical(
                     self, 'Released on a cell NOT in G1', txt, msg.Ok
                 )
@@ -2645,7 +2648,7 @@ class guiWin(QMainWindow):
                 rp_budID = PosData.rp[bud_obj_idx]
                 rp_new_mothID = PosData.rp[new_moth_obj_idx]
                 if rp_budID.area >= rp_new_mothID.area:
-                    msg = QtGui.QMessageBox(self)
+                    msg = QMessageBox(self)
                     msg.setWindowTitle('Which one is bud?')
                     msg.setIcon(msg.Warning)
                     msg.setText(
@@ -2681,7 +2684,7 @@ class guiWin(QMainWindow):
                     f'ID {ID} which has KNOWN history.\n\n'
                     'Only two cells with UNKNOWN history can be assigned as '
                     'relative of each other.')
-                msg = QtGui.QMessageBox()
+                msg = QMessageBox()
                 msg.critical(
                     self, 'Released on a cell with KNOWN history', txt, msg.Ok
                 )
@@ -2999,7 +3002,7 @@ class guiWin(QMainWindow):
                 txt = (f'You clicked on ID {ID} which is NOT a bud.\n'
                        'To assign a bud to a cell start by clicking on a bud '
                        'and release on a cell in G1')
-                msg = QtGui.QMessageBox()
+                msg = QMessageBox()
                 msg.critical(
                     self, 'Not a bud', txt, msg.Ok
                 )
@@ -3667,7 +3670,7 @@ class guiWin(QMainWindow):
                     'The deletion of cell cycle information CANNOT BE UNDONE! '
                     'Saved data is not changed of course.\n\n'
                     'Apply assignment or cancel process?')
-                msg = QtGui.QMessageBox()
+                msg = QMessageBox()
                 enforce_assignment = msg.warning(
                    self, 'Cell not eligible', err_msg, msg.Apply | msg.Cancel
                 )
@@ -3697,7 +3700,7 @@ class guiWin(QMainWindow):
                     'only if this cell is in G1 for the entire life of the bud.\n'
                     f'One possible solution is to first go to frame {i+1} and '
                     f'assign the bud of cell {new_mothID} to another cell.')
-                msg = QtGui.QMessageBox()
+                msg = QMessageBox()
                 msg.critical(
                    self, 'Cell not eligible', err_msg, msg.Ok
                 )
@@ -3769,7 +3772,7 @@ class guiWin(QMainWindow):
                 err_msg = (
                     'You are assigning the bud to a cell that is not in G1!'
                 )
-                msg = QtGui.QMessageBox()
+                msg = QMessageBox()
                 msg.critical(
                    self, 'New mother not in G1!', err_msg, msg.Ok
                 )
@@ -4206,7 +4209,7 @@ class guiWin(QMainWindow):
                 'To annotate future frames again you will have to revisit them.\n\n'
                 'Do you want to continue?'
             )
-            msg = QtGui.QMessageBox()
+            msg = QMessageBox()
             reinit = msg.warning(
                self, 'Cell not eligible', txt, msg.Yes | msg.Cancel
             )
@@ -4234,7 +4237,7 @@ class guiWin(QMainWindow):
         next_df = PosData.allData_li[PosData.frame_i+1]['acdc_df']
         if next_df is not None:
             if 'cell_cycle_stage' in next_df.columns:
-                msg = QtGui.QMessageBox()
+                msg = QMessageBox()
                 warn_cca = msg.critical(
                     self, 'Future visited frames detected!',
                     'Automatic bud assignment CANNOT be performed becasue '
@@ -4263,7 +4266,7 @@ class guiWin(QMainWindow):
                 self.updateALLimg()
             return
 
-        msg = QtGui.QMessageBox()
+        msg = QMessageBox()
         msg.setIcon(msg.Question)
         msg.setText(
             'Do you want to automatically assign buds to mother cells for '
@@ -5078,7 +5081,7 @@ class guiWin(QMainWindow):
         if canRepeat:
             return
         if ev.isAutoRepeat():
-            msg = QtGui.QMessageBox()
+            msg = QMessageBox()
             msg.critical(
                 self, 'Release the key!',
                 f'Please, do not keep the key "{ev.text()}" pressed! It confuses me.\n'
@@ -5355,7 +5358,7 @@ class guiWin(QMainWindow):
             'Are you sure you want to proceed with ENABLING tracking from now on?'
 
             )
-            msg = QtGui.QMessageBox()
+            msg = QMessageBox()
             enforce_Tracking = msg.warning(
                self, 'Disable tracking?', warn_txt, msg.Yes | msg.No
             )
@@ -5375,7 +5378,7 @@ class guiWin(QMainWindow):
                 f'Replace ID {PosData.lab[y,x]} with {newID}'
                 for y, x, newID in PosData.editID_info
             ]
-            msg = QtGui.QMessageBox(self)
+            msg = QMessageBox(self)
             msg.setWindowTitle('Repeat tracking mode')
             msg.setIcon(msg.Question)
             msg.setText("You requested to repeat tracking but there are "
@@ -5672,7 +5675,7 @@ class guiWin(QMainWindow):
         PosData = self.data[self.pos_i]
         if PosData.frame_i < PosData.segmSizeT-1:
             if 'lost' in self.titleLabel.text and isSegmMode:
-                msg = QtGui.QMessageBox()
+                msg = QMessageBox()
                 warn_msg = (
                     'Current frame (compared to previous frame) '
                     'has lost the following cells:\n\n'
@@ -5685,7 +5688,7 @@ class guiWin(QMainWindow):
                 if proceed_with_lost == msg.No:
                     return
             if 'multiple' in self.titleLabel.text and mode != 'Viewer':
-                msg = QtGui.QMessageBox()
+                msg = QMessageBox()
                 warn_msg = (
                     'Current frame contains cells with MULTIPLE contours '
                     '(see title message above the images)!\n\n'
@@ -5788,7 +5791,7 @@ class guiWin(QMainWindow):
                 print(err_msg)
                 self.titleLabel.setText(err_msg, color='r')
                 skipPos = False
-                msg = QtGui.QMessageBox()
+                msg = QMessageBox()
                 warn_msg = (
                     f'The folder {PosData.pos_foldername} does not contain a '
                     'pre-computed segmentation mask.\n\n'
@@ -5908,7 +5911,7 @@ class guiWin(QMainWindow):
                 'To load data that contains frames over time you have to select '
                 'only ONE position.'
             )
-            msg = QtGui.QMessageBox()
+            msg = QMessageBox()
             msg.critical(
                 self, errTitle, err_msg, msg.Ok
             )
@@ -5999,7 +6002,7 @@ class guiWin(QMainWindow):
             f'** Remember that you can automatically segment all {txt} using the\n'
             '    segmentation module.'
         )
-        msg = QtGui.QMessageBox(self)
+        msg = QMessageBox(self)
         doSegmAnswer = msg.question(
             self, 'Automatic segmentation?', questionTxt, msg.Yes | msg.No
         )
@@ -6343,7 +6346,7 @@ class guiWin(QMainWindow):
 
                 # Ask whether to resume from last frame
                 if last_tracked_num>1:
-                    msg = QtGui.QMessageBox()
+                    msg = QMessageBox()
                     start_from_last_tracked_i = msg.question(
                         self, 'Start from last session?',
                         'The system detected a previous session ended '
@@ -6540,7 +6543,7 @@ class guiWin(QMainWindow):
             multiBudInfo.append(info)
         if multiBudInfo:
             multiBudInfo_format = '\n'.join(multiBudInfo)
-            self.MultiBudMoth_msg = QtGui.QMessageBox()
+            self.MultiBudMoth_msg = QMessageBox()
             self.MultiBudMoth_msg.setWindowTitle(
                                   'Mother with multiple buds assigned to it!')
             self.MultiBudMoth_msg.setText(multiBudInfo_format)
@@ -6570,7 +6573,7 @@ class guiWin(QMainWindow):
             print('====================================')
             print('')
             self.highlightNewIDs_ccaFailed()
-            msg = QtGui.QMessageBox(self)
+            msg = QMessageBox(self)
             msg.setIcon(msg.Critical)
             msg.setWindowTitle('Failed cell cycle analysis')
             msg.setDefaultButton(msg.Ok)
@@ -6609,7 +6612,7 @@ class guiWin(QMainWindow):
 
         # Make sure that this is a visited frame
         if PosData.allData_li[PosData.frame_i]['labels'] is None:
-            msg = QtGui.QMessageBox()
+            msg = QMessageBox()
             warn_cca = msg.critical(
                 self, 'Next frame NEVER visited',
                 'Next frame was never visited in "Segmentation and Tracking"'
@@ -6690,7 +6693,7 @@ class guiWin(QMainWindow):
         numNewCells = len(PosData.new_IDs)
         if numCellsG1 < numNewCells:
             self.highlightNewIDs_ccaFailed()
-            msg = QtGui.QMessageBox()
+            msg = QMessageBox()
             warn_cca = msg.warning(
                 self, 'No cells in G1!',
                 f'In the next frame {numNewCells} new cells will '
@@ -6822,7 +6825,7 @@ class guiWin(QMainWindow):
             if str(self.modeComboBox.currentText()) == 'Cell cycle analysis':
                 # Warn that we are visiting a frame that was never segm-checked
                 # on cell cycle analysis mode
-                msg = QtGui.QMessageBox()
+                msg = QMessageBox()
                 warn_cca = msg.critical(
                     self, 'Never checked segmentation on requested frame',
                     'Segmentation and Tracking was never checked from '
@@ -6981,7 +6984,7 @@ class guiWin(QMainWindow):
         self.navigateScrollBar.setMaximum(last_tracked_i+1)
         if PosData.frame_i > last_tracked_i:
             # Prompt user to go to last tracked frame
-            msg = QtGui.QMessageBox(self)
+            msg = QMessageBox(self)
             msg.setIcon(msg.Warning)
             msg.setWindowTitle('Go to last visited frame?')
             msg.setText(
@@ -7025,7 +7028,7 @@ class guiWin(QMainWindow):
                 'Otherwise you first have to check (and eventually correct) some frames '
                 'in "Segmentation and Tracking" mode before proceeding '
                 'with cell cycle analysis.')
-            msg = QtGui.QMessageBox()
+            msg = QMessageBox()
             msg.critical(
                 self, 'Tracking check not performed', txt, msg.Ok
             )
@@ -7053,7 +7056,7 @@ class guiWin(QMainWindow):
 
         if PosData.frame_i > last_cca_frame_i:
             # Prompt user to go to last annotated frame
-            msg = QtGui.QMessageBox()
+            msg = QMessageBox()
             goTo_last_annotated_frame_i = msg.warning(
                 self, 'Go to last annotated frame?',
                 f'The last annotated frame is frame {last_cca_frame_i+1}.\n'
@@ -7078,7 +7081,7 @@ class guiWin(QMainWindow):
                 return
         elif PosData.frame_i < last_cca_frame_i:
             # Prompt user to go to last annotated frame
-            msg = QtGui.QMessageBox()
+            msg = QMessageBox()
             goTo_last_annotated_frame_i = msg.question(
                 self, 'Go to last annotated frame?',
                 f'The last annotated frame is frame {last_cca_frame_i+1}.\n'
@@ -7500,7 +7503,7 @@ class guiWin(QMainWindow):
         if PosData.filename.find('aligned') != -1:
             filename, _ = os.path.splitext(os.path.basename(fluo_path))
             path = f'.../{PosData.pos_foldername}/Images/{filename}_aligned.npz'
-            msg = QtGui.QMessageBox()
+            msg = QMessageBox()
             msg.critical(
                 self, 'Aligned fluo channel not found!',
                 'Aligned data for fluorescent channel not found!\n\n'
@@ -7560,7 +7563,7 @@ class guiWin(QMainWindow):
         else:
             txt = (f'File format {ext} is not supported!\n'
                     'Choose either .tif or .npz files.')
-            msg = QtGui.QMessageBox()
+            msg = QMessageBox()
             msg.critical(
                 self, 'File not supported', txt, msg.Ok
             )
@@ -7742,7 +7745,7 @@ class guiWin(QMainWindow):
 
 
     def criticalFluoChannelNotFound(self, fluo_ch, PosData):
-        msg = QtGui.QMessageBox()
+        msg = QMessageBox()
         warn_cca = msg.critical(
             self, 'Requested channel data not found!',
             f'The folder {PosData.rel_path} does not contain either one of the '
@@ -8098,7 +8101,7 @@ class guiWin(QMainWindow):
         else:
             if 'cell_cycle_stage' not in acdc_df.columns:
                 return
-        msg = QtGui.QMessageBox()
+        msg = QMessageBox()
         msg.setIcon(msg.Warning)
         msg.setWindowTitle('Edited frame!')
         msg.setText(
@@ -8786,7 +8789,7 @@ class guiWin(QMainWindow):
             'Try with "File --> Open image/video file..." and directly select '
             'the file you want to load.'
         )
-        msg = QtGui.QMessageBox()
+        msg = QMessageBox()
         msg.critical(self, err_title, err_msg, msg.Ok)
         return
 
@@ -8862,7 +8865,7 @@ class guiWin(QMainWindow):
                         'is not a valid folder. '
                         'Select a folder that contains the Position_n folders'
                     )
-                    msg = QtGui.QMessageBox()
+                    msg = QMessageBox()
                     msg.critical(
                         self, 'Incompatible folder', txt, msg.Ok
                     )
@@ -9026,7 +9029,7 @@ class guiWin(QMainWindow):
             err_msg = (
                 'Error occured. See details below or check the terminal/console'
             )
-            msg = QtGui.QMessageBox(self)
+            msg = QMessageBox(self)
             msg.setWindowTitle('Error!')
             msg.setIcon(msg.Critical)
             msg.setText(err_msg)
@@ -9042,7 +9045,7 @@ class guiWin(QMainWindow):
         self.setWindowTitle(f'Cell-ACDC - GUI - "{pos_path}"')
 
     def initFluoData(self):
-        msg = QtGui.QMessageBox()
+        msg = QMessageBox()
         load_fluo = msg.question(
             self, 'Load fluorescent images?',
             'Do you also want to load fluorescent images? You can load as '
@@ -9332,13 +9335,18 @@ class guiWin(QMainWindow):
             for how in how_3Dto2D
         }
 
+
+
         tot_iter = (
             self.total_metrics
             *len(PosData.loadedChNames)
             *len(how_3Dto2D)
             *numCells
         )
-        pbar = tqdm(total=tot_iter, ncols=100, unit='metric', leave=False)
+
+        self.worker.metricsPbarProgress.emit(tot_iter, 0)
+
+        # pbar = tqdm(total=tot_iter, ncols=100, unit='metric', leave=False)
 
         outCellsMask = lab==0
 
@@ -9555,7 +9563,8 @@ class guiWin(QMainWindow):
                             val = func(fluo_data_ID)
                             metrics_values[key][i] = val
 
-                        pbar.update()
+                        # pbar.update()
+                        self.worker.metricsPbarProgress.emit(-1, 1)
 
         df['cell_area_pxl'] = pd.Series(data=IDs_area_pxl, index=IDs, dtype=float)
         df['cell_vol_vox'] = pd.Series(data=IDs_vol_vox, index=IDs, dtype=float)
@@ -9566,7 +9575,7 @@ class guiWin(QMainWindow):
 
         df = df.join(df_metrics)
 
-        pbar.close()
+        # pbar.close()
 
         # Join with regionprops_table
         props = (
@@ -9616,7 +9625,7 @@ class guiWin(QMainWindow):
             txt = (
                 f'Do you also want to save last visited frame {frame_i+1}?'
             )
-            msg = QtGui.QMessageBox()
+            msg = QMessageBox()
             save_current = msg.question(
                 self, 'Save current frame?', txt,
                 msg.Yes | msg.No | msg.Cancel
@@ -9638,6 +9647,7 @@ class guiWin(QMainWindow):
             elif save_current == msg.Cancel:
                 return None
         self.last_tracked_i = last_tracked_i
+        self.waitCond.wakeAll()
 
     def askSaveLastVisitedSegmMode(self, p, PosData):
         current_frame_i = PosData.frame_i
@@ -9654,7 +9664,7 @@ class guiWin(QMainWindow):
             txt = (
                 f'Do you also want to save last visited frame {frame_i+1}?'
             )
-            msg = QtGui.QMessageBox()
+            msg = QMessageBox()
             save_current = msg.question(
                 self, 'Save current frame?', txt,
                 msg.Yes | msg.No | msg.Cancel
@@ -9676,6 +9686,7 @@ class guiWin(QMainWindow):
             elif save_current == msg.Cancel:
                 return None
         self.last_tracked_i = last_tracked_i
+        self.waitCond.wakeAll()
 
     def askSaveMetrics(self):
         txt = (
@@ -9688,7 +9699,7 @@ class guiWin(QMainWindow):
         </p>
         """)
 
-        msg = QtGui.QMessageBox()
+        msg = QMessageBox()
         save_metrics_answer = msg.question(
             self, 'Save metrics?', txt,
             msg.Yes | msg.No | msg.Cancel
@@ -9710,7 +9721,7 @@ class guiWin(QMainWindow):
             # All pos have been visited, no reason to ask
             return True, len(self.data)
 
-        msg = QtGui.QMessageBox(self)
+        msg = QMessageBox(self)
         msg.setWindowTitle('Save all positions?')
         msg.setIcon(msg.Question)
         txt = (
@@ -9736,7 +9747,7 @@ class guiWin(QMainWindow):
         print('')
         print('Warning: calculating metrics failed see above...')
         print('-----------------')
-        msg = QtGui.QMessageBox(self)
+        msg = QMessageBox(self)
         msg.setIcon(msg.Critical)
         msg.setWindowTitle('Error')
         msg.setText(traceback_format)
@@ -9745,7 +9756,7 @@ class guiWin(QMainWindow):
         self.waitCond.wakeAll()
 
     def saveDataPermissionError(self, err_msg):
-        msg = QtGui.QMessageBox()
+        msg = QMessageBox()
         warn_cca = msg.critical(self, 'Permission denied', err_msg, msg.Ok)
         self.waitCond.wakeAll()
 
@@ -9760,7 +9771,7 @@ class guiWin(QMainWindow):
         print('====================================')
         print(traceback_format)
         print('====================================')
-        msg = QtGui.QMessageBox(self)
+        msg = QMessageBox(self)
         msg.setIcon(msg.Critical)
         msg.setWindowTitle('Error')
         msg.setText(traceback_format)
@@ -9768,13 +9779,20 @@ class guiWin(QMainWindow):
         msg.exec_()
         self.waitCond.wakeAll()
 
-    def saveDataUpdatePbar(self, step, max=-1, exec_time=0):
+    def saveDataUpdateMetricsPbar(self, max, step):
+        if max > 0:
+            self.saveWin.metricsQPbar.setMaximum(max)
+        self.saveWin.metricsQPbar.setValue(
+            self.saveWin.metricsQPbar.value()+step
+        )
+
+    def saveDataUpdatePbar(self, step, max=-1, exec_time=0.0):
         if max > 0:
             self.saveWin.QPbar.setMaximum(max)
         else:
             self.saveWin.QPbar.setValue(self.saveWin.QPbar.value()+step)
             steps_left = self.saveWin.QPbar.maximum()-self.saveWin.QPbar.value()
-            seconds = round(exec_time)
+            seconds = round(exec_time*steps_left)
             ETA = datetime.timedelta(seconds=seconds)
             h, m, s = str(ETA).split(':')
             ETA = f'{int(h):02}h:{int(m):02}m:{int(s):02}s'
@@ -9813,7 +9831,9 @@ class guiWin(QMainWindow):
             </p>
         """)
 
-        self.saveWin = apps.QDialogPbar(title='Saving data', infoTxt=infoTxt)
+        self.saveWin = apps.QDialogPbar(
+            parent=self, title='Saving data', infoTxt=infoTxt
+        )
         font = QtGui.QFont()
         font.setPointSize(10)
         self.saveWin.setFont(font)
@@ -9836,6 +9856,7 @@ class guiWin(QMainWindow):
         self.worker.finished.connect(self.saveDataFinished)
         self.worker.progress.connect(self.saveDataProgress)
         self.worker.progressBar.connect(self.saveDataUpdatePbar)
+        self.worker.metricsPbarProgress.connect(self.saveDataUpdateMetricsPbar)
         self.worker.critical.connect(self.saveDataCritical)
         self.worker.criticalMetrics.connect(self.saveMetricsCritical)
         self.worker.criticalPermissionError.connect(self.saveDataPermissionError)
@@ -9936,8 +9957,8 @@ class guiWin(QMainWindow):
             self.slideshowWin.close()
         if self.ccaTableWin is not None:
             self.ccaTableWin.close()
-        if self.saveAction.isEnabled():
-            msg = QtGui.QMessageBox()
+        if self.saveAction.isEnabled() and self.titleLabel.text()!='Saved!':
+            msg = QMessageBox()
             msg.closeEvent = self.saveMsgCloseEvent
             save = msg.question(
                 self, 'Save?', 'Do you want to save?',

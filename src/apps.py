@@ -2235,7 +2235,7 @@ class CellsSlideshow_GUI(QMainWindow):
                 t_label, 0, 0, alignment=Qt.AlignRight)
         self.img_Widglayout.addWidget(
                 self.framesScrollBar, 0, 1, 1, 20)
-        self.framesScrollBar.sliderMoved.connect(self.framesScrollBarMoved)
+        self.framesScrollBar.valueChanged.connect(self.framesScrollBarMoved)
 
         # z-slice scrollbar
         self.zSliceScrollBar = QScrollBar(Qt.Horizontal)
@@ -4374,7 +4374,7 @@ class QDialogPbar(QDialog):
         self.setWindowTitle(title)
 
         mainLayout = QVBoxLayout()
-        pBarLayout = QHBoxLayout()
+        pBarLayout = QGridLayout()
         buttonsLayout = QHBoxLayout()
 
         if infoTxt:
@@ -4390,9 +4390,18 @@ class QDialogPbar(QDialog):
         palette.setColor(QtGui.QPalette.Text, QtGui.QColor(0, 0, 0))
         palette.setColor(QtGui.QPalette.HighlightedText, QtGui.QColor(0, 0, 0))
         self.QPbar.setPalette(palette)
-        pBarLayout.addWidget(self.QPbar)
+        pBarLayout.addWidget(self.QPbar, 0, 0)
         self.ETA_label = QLabel('NDh:NDm:NDs')
-        pBarLayout.addWidget(self.ETA_label)
+        pBarLayout.addWidget(self.ETA_label, 0, 1)
+
+        self.metricsQPbar = QProgressBar(self)
+        self.metricsQPbar.setValue(0)
+        palette = QtGui.QPalette()
+        palette.setColor(QtGui.QPalette.Highlight, QtGui.QColor(207, 235, 155))
+        palette.setColor(QtGui.QPalette.Text, QtGui.QColor(0, 0, 0))
+        palette.setColor(QtGui.QPalette.HighlightedText, QtGui.QColor(0, 0, 0))
+        self.metricsQPbar.setPalette(palette)
+        pBarLayout.addWidget(self.metricsQPbar, 1, 0)
 
         abortButton = QPushButton('   Abort saving   ')
         abortButton.clicked.connect(self.abort)
