@@ -4966,7 +4966,7 @@ class guiWin(QMainWindow):
             self.zoomToCells(enforce=True)
         elif ev.key() == Qt.Key_L:
             mode = str(self.modeComboBox.currentText())
-            if mode == 'Viewer':
+            if mode == 'Viewer' or mode == 'Cell cycle analysis':
                 self.startBlinkingModeCB()
                 return
             self.storeUndoRedoStates(False)
@@ -4984,7 +4984,9 @@ class guiWin(QMainWindow):
                         break
 
                 segm_data = np.array(segm_data)
-                segm_data = skimage.segmentation.relabel_sequential(segm_data)[0]
+                segm_data, fw, inv = skimage.segmentation.relabel_sequential(
+                    segm_data
+                )
                 for frame_i, lab in enumerate(segm_data):
                     PosData.frame_i = frame_i
                     PosData.lab = lab
@@ -4995,7 +4997,17 @@ class guiWin(QMainWindow):
                 PosData.frame_i = current_frame_i
                 self.get_data()
             else:
-                PosData.lab = skimage.segmentation.relabel_sequential(PosData.lab)[0]
+                PosData.lab, fw, inv = skimage.segmentation.relabel_sequential(
+                    PosData.lab
+                )
+                # Update annotations based on relabelling
+                newIDs = inv.in_values
+                oldIDs = inv.out_values
+                relIDs = PosData.cca_df['relative_ID']
+                PosData.cca_df['relative_ID'] = relIDs.replace(oldIDs, newIDs)
+                mapper = dict(zip(oldIDs, newIDs))
+                PosData.cca_df = PosData.cca_df.rename(index=mapper)
+                self.store_data()
                 self.update_rp()
             self.updateALLimg()
         elif ev.key() == Qt.Key_Space:
@@ -5179,12 +5191,19 @@ class guiWin(QMainWindow):
 
     def addCurrentState(self):
         PosData = self.data[self.pos_i]
+        if PosData.cca_df is not None:
+            cca_df = PosData.cca_df.copy()
+        else:
+            cca_df = None
+
         PosData.UndoRedoStates[PosData.frame_i].insert(
-                           0, {'image': self.img1.image.copy(),
-                               'labels': PosData.lab.copy(),
-                               'editID_info': PosData.editID_info.copy(),
-                               'binnedIDs':PosData.binnedIDs.copy(),
-                               'ripIDs':PosData.ripIDs.copy()}
+            0,
+            {'image': self.img1.image.copy(),
+             'labels': PosData.lab.copy(),
+             'editID_info': PosData.editID_info.copy(),
+             'binnedIDs': PosData.binnedIDs.copy(),
+             'ripIDs': PosData.ripIDs.copy(),
+             'cca_df': cca_df}
         )
 
     def getCurrentState(self):
@@ -5196,6 +5215,11 @@ class guiWin(QMainWindow):
         PosData.editID_info = PosData.UndoRedoStates[i][c]['editID_info'].copy()
         PosData.binnedIDs = PosData.UndoRedoStates[i][c]['binnedIDs'].copy()
         PosData.ripIDs = PosData.UndoRedoStates[i][c]['ripIDs'].copy()
+        cca_df = PosData.UndoRedoStates[i][c]['cca_df']
+        if cca_df is not None:
+            PosData.cca_df = PosData.UndoRedoStates[i][c]['cca_df'].copy()
+        else:
+            PosData.cca_df = None
 
     def storeUndoRedoStates(self, UndoFutFrames):
         PosData = self.data[self.pos_i]
