@@ -151,13 +151,17 @@ def askWhichSegmModel(parent=None):
         text='YeaZ (<b>Yeast cells</b> - Phase contrast)')
     cellposeButton = RichTextPushButton(
         text='Cellpose (all other cells types, e.g. <b>mammalian</b>)')
+    cancelButton = QPushButton('  Abort  ')
     msg.addButton(yeazButton, msg.YesRole)
     msg.addButton(cellposeButton, msg.YesRole)
+    msg.addButton(cancelButton, msg.RejectRole)
     msg.exec_()
     if msg.clickedButton() == yeazButton:
         model = 'yeaz'
     elif msg.clickedButton() == cellposeButton:
         model = 'cellpose'
+    elif msg.clickedButton() == cancelButton:
+        model = ''
     return model
 
 

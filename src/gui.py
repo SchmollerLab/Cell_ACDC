@@ -38,7 +38,9 @@ import skimage.segmentation
 from skimage.color import gray2rgb, gray2rgba
 
 from PyQt5.QtCore import (
-    Qt, QFile, QTextStream, QSize, QRect, QRectF, QEventLoop, QTimer, QEvent
+    Qt, QFile, QTextStream, QSize, QRect, QRectF,
+    QEventLoop, QTimer, QEvent, QObject, pyqtSignal,
+    QThread, QMutex, QWaitCondition
 )
 from PyQt5.QtGui import QIcon, QKeySequence, QCursor, QKeyEvent
 from PyQt5.QtWidgets import (
@@ -90,6 +92,218 @@ def exception_handler(func):
         except Exception as e:
             args[0].logger.exception(e)
     return inner_function
+
+class saveDataWorker(QObject):
+    finished = pyqtSignal()
+    progress = pyqtSignal(str)
+    progressBar = pyqtSignal(int, int, int)
+    critical = pyqtSignal(str)
+    criticalMetrics = pyqtSignal(str)
+    criticalPermissionError = pyqtSignal(str)
+    askSaveLastVisitedCcaMode = pyqtSignal(int, object)
+    askSaveLastVisitedSegmMode = pyqtSignal(int, object)
+
+    def __init__(self, mainWin):
+        QObject.__init__(self)
+        self.mainWin = mainWin
+        self.saveWin = mainWin.saveWin
+        self.mutex = mainWin.mutex
+        self.waitCond = mainWin.waitCond
+
+    def run(self):
+        last_pos = self.mainWin.last_pos
+        save_metrics = self.mainWin.save_metrics
+        self.time_last_pbar_update = time.time()
+        for p, PosData in enumerate(self.mainWin.data[:last_pos]):
+            if self.saveWin.aborted:
+                self.finished.emit()
+                return
+
+            current_frame_i = PosData.frame_i
+            mode = self.mainWin.modeComboBox.currentText()
+            if mode == 'Segmentation and Tracking' or mode == 'Viewer':
+                self.mutex.lock()
+                self.askSaveLastVisitedSegmMode.emit(p, PosData)
+                self.waitCond.wait(self.mutex)
+                self.mutex.unlock()
+
+                last_tracked_i = self.mainWin.last_tracked_i
+                if last_tracked_i is None:
+                    return
+            elif mode == 'Cell cycle analysis':
+                self.mutex.lock()
+                self.askSaveLastVisitedCcaMode.emit(p, PosData)
+                self.waitCond.wait(self.mutex)
+                self.mutex.unlock()
+                last_tracked_i = self.mainWin.last_tracked_i
+                if last_tracked_i is None:
+                    return
+            elif self.mainWin.isSnapshot:
+                last_tracked_i = 0
+
+            if p == 0:
+                self.progressBar.emit(0, last_pos*(last_tracked_i+1), 0)
+
+            if self.mainWin.isSnapshot:
+                self.mainWin.store_data()
+            try:
+                segm_npz_path = PosData.segm_npz_path
+                acdc_output_csv_path = PosData.acdc_output_csv_path
+                last_tracked_i_path = PosData.last_tracked_i_path
+                segm_npy = np.copy(PosData.segm_data)
+                npz_delROIs_info = {}
+                delROIs_info_path = PosData.delROIs_info_path
+                acdc_df_li = [None]*PosData.segmSizeT
+
+                # Add segmented channel data for calc metrics
+                PosData.fluo_data_dict[PosData.filename] = PosData.img_data
+                PosData.fluo_bkgrData_dict[PosData.filename] = PosData.bkgrData
+
+                self.mainWin.getChNames(PosData)
+
+                # Create list of dataframes from acdc_df on HDD
+                if PosData.acdc_df is not None:
+                    for frame_i, df in PosData.acdc_df.groupby(level=0):
+                        acdc_df_li[frame_i] = df.loc[frame_i]
+
+                self.progress.emit(f'Saving {PosData.relPath}')
+                for frame_i, data_dict in enumerate(PosData.allData_li):
+                    if self.saveWin.aborted:
+                        self.finished.emit()
+                        return
+
+                    # Build segm_npy
+                    lab = data_dict['labels']
+                    PosData.lab = lab
+                    if lab is not None:
+                        if PosData.SizeT > 1:
+                            segm_npy[frame_i] = lab
+                        else:
+                            segm_npy = lab
+                    else:
+                        frame_i -= 1
+                        break
+
+                    acdc_df = data_dict['acdc_df']
+
+                    # Build acdc_df and index it in each frame_i of acdc_df_li
+                    if acdc_df is not None and np.any(lab):
+                        acdc_df = load.loadData.BooleansTo0s1s(
+                                    acdc_df, inplace=False
+                        )
+                        rp = data_dict['regionprops']
+                        try:
+                            if save_metrics:
+                                acdc_df = self.mainWin.addMetrics_acdc_df(
+                                    acdc_df, rp, frame_i, lab, PosData
+                                )
+                            acdc_df_li[frame_i] = acdc_df
+                        except Exception as e:
+                            self.mutex.lock()
+                            self.criticalMetrics.emit(traceback.format_exc())
+                            self.waitCond.wait(self.mutex)
+                            self.mutex.unlock()
+
+                    t = time.time()
+                    exec_time = t - self.time_last_pbar_update
+                    self.progressBar.emit(1, -1, exec_time)
+                    self.time_last_pbar_update = t
+
+                PosData.fluo_data_dict.pop(PosData.filename)
+                PosData.fluo_bkgrData_dict.pop(PosData.filename)
+
+                # Remove None and concat dataframe
+                keys = []
+                df_li = []
+                for i, df in enumerate(acdc_df_li):
+                    if df is not None:
+                        df_li.append(df)
+                        keys.append((i, PosData.TimeIncrement*i))
+
+                print('Almost done...')
+
+                if PosData.segmInfo_df is not None:
+                    try:
+                        PosData.segmInfo_df.to_csv(PosData.segmInfo_df_csv_path)
+                    except PermissionError:
+                        err_msg = (
+                            'The below file is open in another app '
+                            '(Excel maybe?).\n\n'
+                            f'{PosData.segmInfo_df_csv_path}\n\n'
+                            'Close file and then press "Ok".'
+                        )
+                        self.mutex.lock()
+                        self.criticalPermissionError.emit(err_msg)
+                        self.waitCond.wait(self.mutex)
+                        self.mutex.unlock()
+                        PosData.segmInfo_df.to_csv(PosData.segmInfo_df_csv_path)
+
+                try:
+                    all_frames_acdc_df = pd.concat(
+                        df_li, keys=keys,
+                        names=['frame_i', 'time_seconds', 'Cell_ID']
+                    )
+
+                    # Save segmentation metadata
+                    all_frames_acdc_df.to_csv(acdc_output_csv_path)
+                    PosData.acdc_df = all_frames_acdc_df
+                except PermissionError:
+                    err_msg = (
+                        'The below file is open in another app '
+                        '(Excel maybe?).\n\n'
+                        f'{acdc_output_csv_path}\n\n'
+                        'Close file and then press "Ok".'
+                    )
+                    self.mutex.lock()
+                    self.criticalPermissionError.emit(err_msg)
+                    self.waitCond.wait(self.mutex)
+                    self.mutex.unlock()
+
+                    all_frames_acdc_df = pd.concat(
+                        df_li, keys=keys, names=['frame_i', 'Cell_ID']
+                    )
+
+                    # Save segmentation metadata
+                    all_frames_acdc_df.to_csv(acdc_output_csv_path)
+                    PosData.acdc_df = all_frames_acdc_df
+                except Exception as e:
+                    self.mutex.lock()
+                    self.critical.emit(traceback.format_exc())
+                    self.waitCond.wait(self.mutex)
+                    self.mutex.unlock()
+
+                # Save segmentation file
+                np.savez_compressed(segm_npz_path, np.squeeze(segm_npy))
+                PosData.segm_data = segm_npy
+
+                with open(last_tracked_i_path, 'w+') as txt:
+                    txt.write(str(frame_i))
+
+                PosData.last_tracked_i = last_tracked_i
+
+                # Go back to current frame
+                PosData.frame_i = current_frame_i
+                self.mainWin.get_data()
+
+                if mode == 'Segmentation and Tracking' or mode == 'Viewer':
+                    self.progress.emit(
+                        f'Saved data until frame number {frame_i+1}'
+                    )
+                elif mode == 'Cell cycle analysis':
+                    self.progress.emit(
+                        'Saved cell cycle annotations until frame '
+                        f'number {last_tracked_i+1}'
+                    )
+                # self.progressBar.emit(1)
+            except Exception as e:
+                self.mutex.lock()
+                self.critical.emit(traceback.format_exc())
+                self.waitCond.wait(self.mutex)
+                self.mutex.unlock()
+        if self.mainWin.isSnapshot:
+            self.progress.emit(f'Saved all {p+1} Positions!')
+
+        self.finished.emit()
 
 class guiWin(QMainWindow):
     """Main Window."""
@@ -979,7 +1193,8 @@ class guiWin(QMainWindow):
         self.zProjOverlay_CB.addItems(['single z-slice',
                                        'max z-projection',
                                        'mean z-projection',
-                                       'median z-proj.'])
+                                       'median z-proj.',
+                                       'same as above'])
         self.zProjOverlay_CB.setCurrentIndex(1)
         self.img1_Widglayout.addWidget(self.zProjOverlay_CB, row, 11, 1, 1)
 
@@ -1148,10 +1363,10 @@ class guiWin(QMainWindow):
         self.RWforegrColor = (124,5,161)
 
 
-        # Experimental: brush cursors
-        self.eraserCursor = QCursor(QIcon(":eraser.png").pixmap(30, 30))
-        brushCursorPixmap = QIcon(":brush-cursor.png").pixmap(32, 32)
-        self.brushCursor = QCursor(brushCursorPixmap, 16, 16)
+        # # Experimental: brush cursors
+        # self.eraserCursor = QCursor(QIcon(":eraser.png").pixmap(30, 30))
+        # brushCursorPixmap = QIcon(":brush-cursor.png").pixmap(32, 32)
+        # self.brushCursor = QCursor(brushCursorPixmap, 16, 16)
 
         # Annotated metadata markers (ScatterPlotItem)
         self.ax2_binnedIDs_ScatterPlot = pg.ScatterPlotItem()
@@ -1190,6 +1405,15 @@ class guiWin(QMainWindow):
         )
         self.ax1.addItem(self.ax1_rulerPlotItem)
         self.ax1.addItem(self.ax1_rulerAnchorsItem)
+
+        # Experimental: scatter plot to add a point marker
+        self.ax1_point_ScatterPlot = pg.ScatterPlotItem()
+        self.ax1_point_ScatterPlot.setData(
+            [], [], symbol='o', pxMode=False, size=3,
+            pen=pg.mkPen(width=2, color='r'),
+            brush=pg.mkBrush((255,0,0,50))
+        )
+        self.ax1.addItem(self.ax1_point_ScatterPlot)
 
     def gui_createGraphicsItems(self):
         # Contour pens
@@ -4466,10 +4690,6 @@ class guiWin(QMainWindow):
             prev_lab = PosData.allData_li[PosData.frame_i-1]['labels']
             rp = PosData.allData_li[PosData.frame_i-1]['regionprops']
 
-
-
-
-
     def updateBrushCursor(self, x, y):
         if x is None:
             return
@@ -4492,7 +4712,6 @@ class guiWin(QMainWindow):
             (self.ax2_BrushCircle, self.ax1_BrushCircle),
             self.brushButton, brush=self.ax2_BrushCircleBrush
         )
-
 
     def Brush_cb(self, checked):
         if checked:
@@ -4676,6 +4895,25 @@ class guiWin(QMainWindow):
             self.brushSizeSpinbox.setValue(self.brushSizeSpinbox.value()-1)
         elif ev.key() == Qt.Key_Escape:
             self.setUncheckedAllButtons()
+        elif ev.modifiers() == Qt.AltModifier:
+            if ev.key() == Qt.Key_C:
+                font = QtGui.QFont()
+                font.setPointSize(10)
+                win = apps.QDialogEntriesWidget(
+                    ['Z coord.', 'Y coord.', 'X coord.'], ['0', '0', '0'],
+                    winTitle='Point coordinates',
+                    parent=self, font=font
+                )
+                win.show()
+                win.QLEs[0].setFocus()
+                win.QLEs[0].selectAll()
+                win.exec_()
+                z, y, x = win.entriesTxt
+                z, y, x = int(z), int(y), int(x)
+                PosData = self.data[self.pos_i]
+                if PosData.SizeZ > 1:
+                    self.zSliceScrollBar.setSliderPosition(z)
+                self.ax1_point_ScatterPlot.setData([x], [y])
         elif ev.modifiers() == Qt.ControlModifier:
             if ev.key() == Qt.Key_P:
                 print('========================')
@@ -5859,7 +6097,7 @@ class guiWin(QMainWindow):
 
     def updateOverlayZproj(self, how):
         self.getOverlayImg(setImg=True)
-        if how.find('max') != -1:
+        if how.find('max') != -1 or how == 'same as above':
             self.overlay_z_label.setStyleSheet('color: gray')
             self.zSliceOverlay_SB.setDisabled(True)
         else:
@@ -6684,7 +6922,6 @@ class guiWin(QMainWindow):
                         delROIshapes[i].append([x0, y0, w, h])
 
     def addIDBaseCca_df(self, PosData, ID):
-        print('ID', ID)
         if ID <= 0:
             # When calling update_cca_df_deletedIDs we add relative IDs
             # but they could be -1 for cells in G1
@@ -7482,7 +7719,7 @@ class guiWin(QMainWindow):
             self.editOverlayColorAction.setDisabled(False)
             self.alphaScrollBar.show()
             self.alphaScrollBar_label.show()
-            self.zSliceOverlay_SB.sliderMoved.connect(self.update_overlay_z_slice)
+            self.zSliceOverlay_SB.valueChanged.connect(self.update_overlay_z_slice)
             self.zProjOverlay_CB.currentTextChanged.connect(self.updateOverlayZproj)
             self.zProjOverlay_CB.activated.connect(self.clearComboBoxFocus)
         else:
@@ -7495,7 +7732,7 @@ class guiWin(QMainWindow):
             self.editOverlayColorAction.setDisabled(True)
             self.alphaScrollBar.hide()
             self.alphaScrollBar_label.hide()
-            self.zSliceOverlay_SB.sliderMoved.disconnect()
+            self.zSliceOverlay_SB.valueChanged.disconnect()
             self.zProjOverlay_CB.currentTextChanged.disconnect()
             self.zProjOverlay_CB.activated.disconnect()
 
@@ -7600,8 +7837,20 @@ class guiWin(QMainWindow):
         img = PosData.ol_data[key][PosData.frame_i]
         if PosData.SizeZ > 1:
             zProjHow = self.zProjOverlay_CB.currentText()
+            z = self.zSliceOverlay_SB.sliderPosition()
+            if zProjHow == 'same as above':
+                zProjHow = self.zProjComboBox.currentText()
+                z = self.zSliceScrollBar.sliderPosition()
+                reconnect = False
+                try:
+                    self.zSliceOverlay_SB.valueChanged.disconnect()
+                    reconnect = True
+                except TypeError:
+                    pass
+                self.zSliceOverlay_SB.setSliderPosition(z)
+                if reconnect:
+                    self.zSliceOverlay_SB.valueChanged.connect(self.update_z_slice)
             if zProjHow == 'single z-slice':
-                z = self.zSliceOverlay_SB.sliderPosition()
                 self.overlay_z_label.setText(f'z-slice  {z+1:02}/{PosData.SizeZ}')
                 ol_img = img[z].copy()
             elif zProjHow == 'max z-projection':
@@ -7790,20 +8039,21 @@ class guiWin(QMainWindow):
             self.update_cca_df_deletedIDs(PosData, deleted_IDs)
 
         elif editTxt == 'Edit ID':
-            new_IDs = [ID for ID in PosData.IDs if ID not in cca_df]
+            new_IDs = [ID for ID in PosData.IDs if ID not in cca_df_IDs]
             self.update_cca_df_newIDs(PosData, new_IDs)
             old_IDs = [ID for ID in cca_df_IDs if ID not in PosData.IDs]
             self.update_cca_df_deletedIDs(PosData, old_IDs)
 
         elif editTxt == 'Annotate ID as dead':
-            pass
+            return
 
         elif editTxt == 'Delete ID with eraser':
             deleted_IDs = [ID for ID in cca_df_IDs if ID not in PosData.IDs]
             self.update_cca_df_deletedIDs(PosData, deleted_IDs)
 
         elif editTxt == 'Add new ID with brush tool':
-            pass
+            new_IDs = [ID for ID in PosData.IDs if ID not in cca_df_IDs]
+            self.update_cca_df_newIDs(PosData, new_IDs)
 
         elif editTxt == 'Merge IDs':
             deleted_IDs = [ID for ID in cca_df_IDs if ID not in PosData.IDs]
@@ -8577,6 +8827,7 @@ class guiWin(QMainWindow):
                     color='w')
                 return
 
+            self.exp_path = exp_path
             self.addToRecentPaths(exp_path)
 
             if os.path.basename(exp_path).find('Position_') != -1:
@@ -9382,7 +9633,7 @@ class guiWin(QMainWindow):
                 self.updateALLimg()
             elif save_current == msg.Cancel:
                 return None
-        return last_tracked_i
+        self.last_tracked_i = last_tracked_i
 
     def askSaveLastVisitedSegmMode(self, p, PosData):
         current_frame_i = PosData.frame_i
@@ -9420,7 +9671,7 @@ class guiWin(QMainWindow):
                 self.updateALLimg()
             elif save_current == msg.Cancel:
                 return None
-        return last_tracked_i
+        self.last_tracked_i = last_tracked_i
 
     def askSaveMetrics(self):
         txt = (
@@ -9473,6 +9724,58 @@ class guiWin(QMainWindow):
         msg.exec_()
         return msg.clickedButton() == allPosbutton, last_pos
 
+    def saveMetricsCritical(self, traceback_format):
+        print('')
+        print('====================================')
+        print(traceback_format)
+        print('====================================')
+        print('')
+        print('Warning: calculating metrics failed see above...')
+        print('-----------------')
+        msg = QtGui.QMessageBox(self)
+        msg.setIcon(msg.Critical)
+        msg.setWindowTitle('Error')
+        msg.setText(traceback_format)
+        msg.setDefaultButton(msg.Ok)
+        msg.exec_()
+        self.waitCond.wakeAll()
+
+    def saveDataPermissionError(self, err_msg):
+        msg = QtGui.QMessageBox()
+        warn_cca = msg.critical(self, 'Permission denied', err_msg, msg.Ok)
+        self.waitCond.wakeAll()
+
+    def saveDataProgress(self, text):
+        print('------------------------')
+        print(text)
+        print('------------------------')
+        self.saveWin.progressLabel.setText(text)
+
+    def saveDataCritical(self, traceback_format):
+        print('')
+        print('====================================')
+        print(traceback_format)
+        print('====================================')
+        msg = QtGui.QMessageBox(self)
+        msg.setIcon(msg.Critical)
+        msg.setWindowTitle('Error')
+        msg.setText(traceback_format)
+        msg.setDefaultButton(msg.Ok)
+        msg.exec_()
+        self.waitCond.wakeAll()
+
+    def saveDataUpdatePbar(self, step, max=-1, exec_time=0):
+        if max > 0:
+            self.saveWin.QPbar.setMaximum(max)
+        else:
+            self.saveWin.QPbar.setValue(self.saveWin.QPbar.value()+step)
+            steps_left = self.saveWin.QPbar.maximum()-self.saveWin.QPbar.value()
+            seconds = round(exec_time)
+            ETA = datetime.timedelta(seconds=seconds)
+            h, m, s = str(ETA).split(':')
+            ETA = f'{int(h):02}h:{int(m):02}m:{int(s):02}s'
+            self.saveWin.ETA_label.setText(f'ETA: {ETA}')
+
 
     def saveData(self):
         self.store_data()
@@ -9480,7 +9783,7 @@ class guiWin(QMainWindow):
             'Saving data... (check progress in the terminal)', color='w'
         )
 
-        save_metrics = self.askSaveMetrics()
+        self.save_metrics = self.askSaveMetrics()
 
         last_pos = len(self.data)
         if self.isSnapshot:
@@ -9497,193 +9800,60 @@ class guiWin(QMainWindow):
                 self.pos_i = current_pos
                 self.get_data()
 
+        self.last_pos = last_pos
 
-        for p, PosData in enumerate(self.data[:last_pos]):
-            current_frame_i = PosData.frame_i
-            mode = self.modeComboBox.currentText()
-            if mode == 'Segmentation and Tracking' or mode == 'Viewer':
-                last_tracked_i = self.askSaveLastVisitedSegmMode(p, PosData)
-                if last_tracked_i is None:
-                    return
-            elif mode == 'Cell cycle analysis':
-                last_tracked_i = self.askSaveLastVisitedCcaMode(p, PosData)
-                if last_tracked_i is None:
-                    return
-            elif self.isSnapshot:
-                last_tracked_i = 0
+        infoTxt = (
+        f"""
+            <p style=font-size:10pt>
+                Saving {self.exp_path}...<br>
+            </p>
+        """)
 
-            self.app.setOverrideCursor(Qt.WaitCursor)
-            if self.isSnapshot:
-                self.store_data()
-            try:
-                segm_npz_path = PosData.segm_npz_path
-                acdc_output_csv_path = PosData.acdc_output_csv_path
-                last_tracked_i_path = PosData.last_tracked_i_path
-                segm_npy = np.copy(PosData.segm_data)
-                npz_delROIs_info = {}
-                delROIs_info_path = PosData.delROIs_info_path
-                acdc_df_li = [None]*PosData.segmSizeT
+        self.saveWin = apps.QDialogPbar(title='Saving data', infoTxt=infoTxt)
+        font = QtGui.QFont()
+        font.setPointSize(10)
+        self.saveWin.setFont(font)
+        self.saveWin.progressLabel.setText('Preparing data...')
+        self.saveWin.show()
 
-                # Add segmented channel data for calc metrics
-                PosData.fluo_data_dict[PosData.filename] = PosData.img_data
-                PosData.fluo_bkgrData_dict[PosData.filename] = PosData.bkgrData
+        # Set up separate thread for saving and show progress bar widget
+        self.mutex = QMutex()
+        self.waitCond = QWaitCondition()
+        self.thread = QThread()
+        self.worker = saveDataWorker(self)
 
-                self.getChNames(PosData)
+        self.worker.moveToThread(self.thread)
 
-                # Create list of dataframes from acdc_df on HDD
-                if PosData.acdc_df is not None:
-                    for frame_i, df in PosData.acdc_df.groupby(level=0):
-                        acdc_df_li[frame_i] = df.loc[frame_i]
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.thread.finished.connect(self.thread.deleteLater)
 
-                print(f'Saving {PosData.relPath}')
-                pbar = tqdm(total=len(PosData.allData_li), unit=' frames', ncols=100)
-                for frame_i, data_dict in enumerate(PosData.allData_li):
-                    # Build segm_npy
-                    lab = data_dict['labels']
-                    PosData.lab = lab
-                    if lab is not None:
-                        if PosData.SizeT > 1:
-                            segm_npy[frame_i] = lab
-                        else:
-                            segm_npy = lab
-                    else:
-                        frame_i -= 1
-                        break
+        # Custom signals
+        self.worker.finished.connect(self.saveDataFinished)
+        self.worker.progress.connect(self.saveDataProgress)
+        self.worker.progressBar.connect(self.saveDataUpdatePbar)
+        self.worker.critical.connect(self.saveDataCritical)
+        self.worker.criticalMetrics.connect(self.saveMetricsCritical)
+        self.worker.criticalPermissionError.connect(self.saveDataPermissionError)
+        self.worker.askSaveLastVisitedCcaMode.connect(
+            self.askSaveLastVisitedCcaMode
+        )
+        self.worker.askSaveLastVisitedSegmMode.connect(
+            self.askSaveLastVisitedSegmMode
+        )
 
-                    acdc_df = data_dict['acdc_df']
+        self.thread.started.connect(self.worker.run)
 
-                    # Build acdc_df and index it in each frame_i of acdc_df_li
-                    if acdc_df is not None and np.any(lab):
-                        acdc_df = load.loadData.BooleansTo0s1s(
-                                    acdc_df, inplace=False
-                        )
-                        rp = data_dict['regionprops']
-                        try:
-                            if save_metrics:
-                                acdc_df = self.addMetrics_acdc_df(
-                                    acdc_df, rp, frame_i, lab, PosData
-                                )
-                            acdc_df_li[frame_i] = acdc_df
-                        except Exception as e:
-                            print('')
-                            print('====================================')
-                            traceback.print_exc()
-                            print('====================================')
-                            print('')
-                            print('Warning: calculating metrics failed see above...')
-                            print('-----------------')
-                            msg = QtGui.QMessageBox(self)
-                            msg.setIcon(msg.Critical)
-                            msg.setWindowTitle('Error')
-                            msg.setText(traceback.format_exc())
-                            msg.setDefaultButton(msg.Ok)
-                            msg.exec_()
-                    pbar.update()
-
-                PosData.fluo_data_dict.pop(PosData.filename)
-                PosData.fluo_bkgrData_dict.pop(PosData.filename)
-                pbar.update(pbar.total-pbar.n)
-                pbar.close()
-
-                # Remove None and concat dataframe
-                keys = []
-                df_li = []
-                for i, df in enumerate(acdc_df_li):
-                    if df is not None:
-                        df_li.append(df)
-                        keys.append((i, PosData.TimeIncrement*i))
-
-                print('Almost done...')
-
-                if PosData.segmInfo_df is not None:
-                    try:
-                        PosData.segmInfo_df.to_csv(PosData.segmInfo_df_csv_path)
-                    except PermissionError:
-                        msg = QtGui.QMessageBox()
-                        warn_cca = msg.critical(
-                            self, 'Permission denied',
-                            f'The below file is open in another app (Excel maybe?).\n\n'
-                            f'{PosData.segmInfo_df_csv_path}\n\n'
-                            'Close file and then press "Ok".',
-                            msg.Ok
-                        )
-                        PosData.segmInfo_df.to_csv(PosData.segmInfo_df_csv_path)
-
-                try:
-                    all_frames_acdc_df = pd.concat(
-                        df_li, keys=keys,
-                        names=['frame_i', 'time_seconds', 'Cell_ID']
-                    )
-
-                    # Save segmentation metadata
-                    all_frames_acdc_df.to_csv(acdc_output_csv_path)
-                    PosData.acdc_df = all_frames_acdc_df
-                except PermissionError:
-                    msg = QtGui.QMessageBox()
-                    warn_cca = msg.critical(
-                        self, 'Permission denied',
-                        f'The below file is open in another app (Excel maybe?).\n\n'
-                        f'{acdc_output_csv_path}\n\n'
-                        'Close file and then press "Ok".',
-                        msg.Ok
-                    )
-                    all_frames_acdc_df = pd.concat(
-                        df_li, keys=keys, names=['frame_i', 'Cell_ID']
-                    )
-
-                    # Save segmentation metadata
-                    all_frames_acdc_df.to_csv(acdc_output_csv_path)
-                    PosData.acdc_df = all_frames_acdc_df
-                except Exception as e:
-                    print('')
-                    print('====================================')
-                    traceback.print_exc()
-                    print('====================================')
-                    print('')
-
-                # Save segmentation file
-                np.savez_compressed(segm_npz_path, np.squeeze(segm_npy))
-                PosData.segm_data = segm_npy
-
-                with open(last_tracked_i_path, 'w+') as txt:
-                    txt.write(str(frame_i))
-
-                PosData.last_tracked_i = last_tracked_i
-
-                # Go back to current frame
-                PosData.frame_i = current_frame_i
-                self.get_data()
+        self.thread.start()
 
 
-                if mode == 'Segmentation and Tracking' or mode == 'Viewer':
-                    print('--------------')
-                    print(f'Saved data until frame number {frame_i+1}')
-                    print('--------------')
-                elif mode == 'Cell cycle analysis':
-                    print('--------------')
-                    print(
-                        'Saved cell cycle annotations until frame '
-                        f'number {last_tracked_i+1}')
-
-                    print('--------------')
-                self.titleLabel.setText('Saved!')
-            except Exception as e:
-                print('')
-                print('====================================')
-                traceback.print_exc()
-                print('====================================')
-                print('')
-                msg = QtGui.QMessageBox(self)
-                msg.setIcon(msg.Critical)
-                msg.setWindowTitle('KeyError')
-                msg.setDefaultButton(msg.Ok)
-                msg.setText(traceback.format_exc())
-                msg.exec_()
-            finally:
-                self.app.restoreOverrideCursor()
-        if self.isSnapshot:
-            print(f'Saved all {p+1} Positions!')
-            self.titleLabel.setText('Saved!', color='g')
+    def saveDataFinished(self):
+        if self.saveWin.aborted:
+            self.titleLabel.setText('Saving process cancelled.', color='r')
+        else:
+            self.titleLabel.setText('Saved!')
+        self.saveWin.workerFinished = True
+        self.saveWin.close()
 
     def copyContent(self):
         pass

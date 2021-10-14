@@ -42,7 +42,7 @@ from PyQt5.QtWidgets import (
     QHBoxLayout, QDialog, QFormLayout, QListWidget, QAbstractItemView,
     QButtonGroup, QCheckBox, QSizePolicy, QComboBox, QSlider, QGridLayout,
     QSpinBox, QToolButton, QTableView, QTextBrowser, QDoubleSpinBox,
-    QScrollArea, QFrame
+    QScrollArea, QFrame, QProgressBar
 )
 
 import myutils, load, prompts
@@ -932,6 +932,7 @@ class QDialogEntriesWidget(QDialog):
         self.cancel = True
         self.entriesTxt = []
         self.entriesLabels = entriesLabels
+        self.QLEs = []
         super().__init__(parent)
         self.setWindowTitle(winTitle)
 
@@ -947,6 +948,7 @@ class QDialogEntriesWidget(QDialog):
             LE.setAlignment(Qt.AlignCenter)
             LE.setText(txt)
             formLayout.addRow(label, LE)
+            self.QLEs.append(LE)
 
         okButton = QPushButton('Ok')
         okButton.setShortcut(Qt.Key_Enter)
@@ -3670,13 +3672,13 @@ class QtSelectItems(QDialog):
             else:
                 h = sum([self.ListBox.sizeHintForRow(i) for i in range(n)])
             self.ListBox.setFixedHeight(h+5)
+            self.ListBox.setFocusPolicy(Qt.StrongFocus)
+            self.ListBox.setFocus(True)
+            self.ListBox.setCurrentRow(0)
         else:
             self.multiPosButton.setText('Multiple selection')
             self.ListBox.hide()
             self.ComboBox.show()
-            self.ComboBox.setCurrentIndex(0)
-            self.ComboBox.setFocusPolicy(Qt.StrongFocus)
-            self.ComboBox.setFocus(True)
 
 
     def ok_cb(self, event):
@@ -3966,6 +3968,7 @@ class manualSeparateGui(QMainWindow):
             self.AllCutsCoords.append((yyCurve, xxCurve))
             for rr, cc in self.AllCutsCoords:
                 self.lab[rr, cc] = 0
+            skimage.morphology.remove_small_objects(self.lab, 5, in_place=True)
             self.updateLabels()
 
 
@@ -4361,6 +4364,62 @@ class QDialogZsliceAbsent(QDialog):
         self.runDataPrep = True
         self.close()
 
+class QDialogPbar(QDialog):
+    def __init__(self, title='Progress', infoTxt='', parent=None):
+        self.workerFinished = False
+        self.aborted = False
+        self.clickCount = 0
+        super().__init__(parent)
+
+        self.setWindowTitle(title)
+
+        mainLayout = QVBoxLayout()
+        pBarLayout = QHBoxLayout()
+        buttonsLayout = QHBoxLayout()
+
+        if infoTxt:
+            infoLabel = QLabel(infoTxt)
+            mainLayout.addWidget(infoLabel, alignment=Qt.AlignCenter)
+
+        self.progressLabel = QLabel()
+
+        self.QPbar = QProgressBar(self)
+        self.QPbar.setValue(0)
+        palette = QtGui.QPalette()
+        palette.setColor(QtGui.QPalette.Highlight, QtGui.QColor(207, 235, 155))
+        palette.setColor(QtGui.QPalette.Text, QtGui.QColor(0, 0, 0))
+        palette.setColor(QtGui.QPalette.HighlightedText, QtGui.QColor(0, 0, 0))
+        self.QPbar.setPalette(palette)
+        pBarLayout.addWidget(self.QPbar)
+        self.ETA_label = QLabel('NDh:NDm:NDs')
+        pBarLayout.addWidget(self.ETA_label)
+
+        abortButton = QPushButton('   Abort saving   ')
+        abortButton.clicked.connect(self.abort)
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(abortButton)
+        buttonsLayout.addStretch(1)
+        buttonsLayout.setContentsMargins(0,10,0,5)
+
+        mainLayout.addWidget(self.progressLabel)
+        mainLayout.addLayout(pBarLayout)
+        mainLayout.addLayout(buttonsLayout)
+
+        self.setLayout(mainLayout)
+        self.setModal(True)
+
+    def abort(self):
+        self.clickCount += 1
+        self.aborted = True
+        if self.clickCount > 3:
+            self.workerFinished = True
+            self.close()
+
+    def closeEvent(self, event):
+        if not self.workerFinished:
+            event.ignore()
+
+
 if __name__ == '__main__':
     # Create the application
     app = QApplication(sys.argv)
@@ -4395,9 +4454,16 @@ if __name__ == '__main__':
     # df = cca_df.reset_index()
     #
     # win = pdDataFrameWidget(df)
-    win = QDialogMetadataXML(
-        rawDataStruct=1, chNames=[''], ImageName='image'
-    )
+    # win = QDialogMetadataXML(
+    #     rawDataStruct=1, chNames=[''], ImageName='image'
+    # )
+    infoTxt = (
+    """
+        <p style=font-size:10pt>
+            Saving...<br>
+        </p>
+    """)
+    win = QDialogPbar(infoTxt=infoTxt)
     # win = QDialogAppendTextFilename('example.npz')
     font = QtGui.QFont()
     font.setPointSize(10)
@@ -4418,12 +4484,14 @@ if __name__ == '__main__':
     # img = np.load(r"G:\My Drive\1_MIA_Data\Test_data\Test_Qt_GUI\Position_5\Images\F016_s05_phase_contr_aligned.npz")['arr_0'][0]
     # win = manualSeparateGui(lab, 2, img)
     win.setFont(font)
+    win.progressLabel.setText('Preparing data...')
     app.setStyle(QtGui.QStyleFactory.create('Fusion'))
     # win.showAndSetWidth()
     # win.showAndSetFont(font)
     # win.setWidths(font=font)
     # win.setSize()
     # win.setGeometryWindow()
+    win.show()
     win.exec_()
     print(win.chNames, win.saveChannels)
     # print(win.SizeT, win.SizeZ, win.zyx_vox_dim)

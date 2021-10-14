@@ -291,6 +291,7 @@ class segmWin(QMainWindow):
         self.setCentralWidget(mainContainer)
 
         mainLayout = QVBoxLayout()
+        buttonsLayout = QHBoxLayout()
         self.mainLayout = mainLayout
 
         label = QLabel(
@@ -320,9 +321,12 @@ class segmWin(QMainWindow):
         self.progressLabel = QLabel(self)
         self.mainLayout.addWidget(self.progressLabel)
 
-        abortButton = QPushButton('Abort process')
+        abortButton = QPushButton('    Abort process    ')
         abortButton.clicked.connect(self.close)
-        mainLayout.addWidget(abortButton)
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(abortButton)
+
+        mainLayout.addLayout(buttonsLayout)
 
         mainLayout.setContentsMargins(20, 0, 20, 20)
         mainContainer.setLayout(mainLayout)
@@ -375,6 +379,21 @@ class segmWin(QMainWindow):
         df.index.name = 'index'
         df.to_csv(recentPaths_path)
 
+    def addPbar(self):
+        pBarLayout = QHBoxLayout()
+        self.QPbar = QProgressBar(self)
+        self.QPbar.setValue(0)
+        palette = QtGui.QPalette()
+        palette.setColor(QtGui.QPalette.Highlight, QtGui.QColor(207, 235, 155))
+        palette.setColor(QtGui.QPalette.Text, QtGui.QColor(0, 0, 0))
+        palette.setColor(QtGui.QPalette.HighlightedText, QtGui.QColor(0, 0, 0))
+        self.QPbar.setPalette(palette)
+        pBarLayout.addWidget(self.QPbar)
+        self.ETA_label = QLabel()
+        self.ETA_label.setText('ETA: NDh:NDm:NDs')
+        pBarLayout.addWidget(self.ETA_label)
+        self.mainLayout.insertLayout(3, pBarLayout)
+
     def main(self):
         self.getMostRecentPath()
         exp_path = QFileDialog.getExistingDirectory(
@@ -389,6 +408,8 @@ class segmWin(QMainWindow):
                 return
 
         self.setWindowTitle(f'Cell-ACDC - Segment - "{exp_path}"')
+
+        self.addPbar()
 
         if os.path.basename(exp_path).find('Position_') != -1:
             is_pos_folder = True
@@ -407,6 +428,11 @@ class segmWin(QMainWindow):
         font = QtGui.QFont()
         font.setPointSize(10)
         self.model = prompts.askWhichSegmModel(parent=self)
+        if not self.model:
+            abort = self.doAbort()
+            if abort:
+                self.close()
+                return
         if self.model == 'yeaz':
             yeazParams = apps.YeaZ_ParamsDialog(parent=self)
             yeazParams.setFont(font)
@@ -502,8 +528,10 @@ class segmWin(QMainWindow):
         # Ask to save?
         msg = QMessageBox()
         msg.setFont(font)
-        answer = msg.question(self, 'Save?', 'Do you want to save segmentation?',
-                              msg.Yes | msg.No | msg.Cancel)
+        answer = msg.question(
+            self, 'Save?', 'Do you want to save segmentation?',
+            msg.Yes | msg.No | msg.Cancel
+        )
         if answer == msg.Yes:
             self.save = True
         elif answer == msg.No:
@@ -521,8 +549,9 @@ class segmWin(QMainWindow):
             filenames = os.listdir(images_path)
             if ch_name_selector.is_first_call:
                 ch_names, warn = (
-                    ch_name_selector.get_available_channels(filenames, images_path)
-                )
+                    ch_name_selector.get_available_channels(
+                        filenames, images_path
+                ))
                 if not ch_names:
                     self.criticalNoTifFound(images_path)
                 elif len(ch_names) > 1:
@@ -697,20 +726,7 @@ class segmWin(QMainWindow):
                     return
 
         print('Starting multiple parallel threads...')
-        pBarLayout = QHBoxLayout()
         self.progressLabel.setText('Starting multiple parallel threads...')
-        self.QPbar = QProgressBar(self)
-        self.QPbar.setValue(0)
-        palette = QtGui.QPalette()
-        palette.setColor(QtGui.QPalette.Highlight, QtGui.QColor(207, 235, 155))
-        palette.setColor(QtGui.QPalette.Text, QtGui.QColor(0, 0, 0))
-        palette.setColor(QtGui.QPalette.HighlightedText, QtGui.QColor(0, 0, 0))
-        self.QPbar.setPalette(palette)
-        pBarLayout.addWidget(self.QPbar)
-        self.ETA_label = QLabel()
-        self.ETA_label.setText('ETA: NDh:NDm:NDs')
-        pBarLayout.addWidget(self.ETA_label)
-        self.mainLayout.insertLayout(3, pBarLayout)
 
         max = 0
         for imgPath in user_ch_file_paths:
