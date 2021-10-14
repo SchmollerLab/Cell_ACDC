@@ -9782,6 +9782,7 @@ class guiWin(QMainWindow):
     def saveDataUpdateMetricsPbar(self, max, step):
         if max > 0:
             self.saveWin.metricsQPbar.setMaximum(max)
+            self.saveWin.metricsQPbar.setValue(0)
         self.saveWin.metricsQPbar.setValue(
             self.saveWin.metricsQPbar.value()+step
         )
@@ -9957,7 +9958,7 @@ class guiWin(QMainWindow):
             self.slideshowWin.close()
         if self.ccaTableWin is not None:
             self.ccaTableWin.close()
-        if self.saveAction.isEnabled() and self.titleLabel.text()!='Saved!':
+        if self.saveAction.isEnabled() and self.titleLabel.text != 'Saved!':
             msg = QMessageBox()
             msg.closeEvent = self.saveMsgCloseEvent
             save = msg.question(
