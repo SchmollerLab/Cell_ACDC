@@ -5813,16 +5813,20 @@ class guiWin(QMainWindow):
                 PosData.getBasenameAndChNames(prompts.select_channel_name)
                 PosData.buildPaths()
                 PosData.loadImgData()
+                selectedSegmNpz, cancel = PosData.detectMultiSegmNpz()
+                if cancel:
+                    return False
                 PosData.loadOtherFiles(
-                                   load_segm_data=True,
-                                   load_acdc_df=True,
-                                   load_shifts=False,
-                                   loadSegmInfo=True,
-                                   load_delROIsInfo=True,
-                                   loadBkgrData=True,
-                                   loadBkgrROIs=True,
-                                   load_last_tracked_i=True,
-                                   load_metadata=True
+                    load_segm_data=True,
+                    load_acdc_df=True,
+                    load_shifts=False,
+                    loadSegmInfo=True,
+                    load_delROIsInfo=True,
+                    loadBkgrData=True,
+                    loadBkgrROIs=True,
+                    load_last_tracked_i=True,
+                    load_metadata=True,
+                    selectedSegmNpz=selectedSegmNpz
                 )
                 if f==0:
                     proceed = PosData.askInputMetadata(
