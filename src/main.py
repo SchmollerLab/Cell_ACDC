@@ -241,9 +241,16 @@ class mainWin(QMainWindow):
         # Due to javabridge limitation only one 'start_vm' can be called in
         # each process. To get around with this every data structure conversion
         # is launched in a separate process
-        subprocess.Popen([sys.executable, dataStruct_path])
+        subprocess.Popen(
+            [sys.executable, dataStruct_path],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            shell=True,
+            bufsize=1,
+            encoding='utf-8'
+        )
 
-        QTimer.singleShot(4000, self.processDataStructLaunched)
+        QTimer.singleShot(10000, self.processDataStructLaunched)
 
     def processDataStructLaunched(self):
         self.dataStructButton.setStyleSheet(

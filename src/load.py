@@ -439,11 +439,14 @@ class loadData:
         self.npy_paths = npy_paths
         self.npz_paths = npz_paths
 
-    def askInputMetadata(self,
-                         ask_SizeT=False,
-                         ask_TimeIncrement=False,
-                         ask_PhysicalSizes=False,
-                         save=False):
+    def askInputMetadata(
+            self,
+            ask_SizeT=False,
+            ask_TimeIncrement=False,
+            ask_PhysicalSizes=False,
+            singlePos=False,
+            save=False
+        ):
         font = QtGui.QFont()
         font.setPointSize(10)
         metadataWin = apps.QDialogMetadata(
@@ -451,7 +454,7 @@ class loadData:
             self.PhysicalSizeZ, self.PhysicalSizeY, self.PhysicalSizeX,
             ask_SizeT, ask_TimeIncrement, ask_PhysicalSizes,
             parent=self.parent, font=font, imgDataShape=self.img_data.shape,
-            PosData=self)
+            PosData=self, singlePos=singlePos)
         metadataWin.setFont(font)
         metadataWin.exec_()
         if metadataWin.cancel:

@@ -814,6 +814,7 @@ class guiWin(QMainWindow):
         self.checkableQButtonsGroup.addButton(self.ripCellButton)
 
         editToolBar.addAction(self.addDelRoiAction)
+        editToolBar.addAction(self.delBorderObjAction)
 
         editToolBar.addAction(self.repeatTrackingAction)
 
@@ -1014,6 +1015,13 @@ class guiWin(QMainWindow):
             'touched by it anymore.\n'
             'To delete rectangle right-click on it --> remove.')
 
+        self.delBorderObjAction = QAction(self)
+        self.delBorderObjAction.setIcon(QIcon(":delBorderObj.svg"))
+        self.delBorderObjAction.setToolTip(
+            'Remove segmented objects touching the border of the image'
+        )
+
+
     def gui_connectActions(self):
         # Connect File actions
         self.newAction.triggered.connect(self.newFile)
@@ -1084,6 +1092,7 @@ class guiWin(QMainWindow):
         self.edgeDetectorAction.toggled.connect(self.edgeDetection)
         self.entropyFilterAction.toggled.connect(self.entropyFilter)
         self.addDelRoiAction.triggered.connect(self.addDelROI)
+        self.delBorderObjAction.triggered.connect(self.delBorderObj)
         self.hist.sigLookupTableChanged.connect(self.histLUT_cb)
         self.hist.gradient.sigGradientChangeFinished.connect(
             self.histLUTfinished_cb
@@ -3095,7 +3104,7 @@ class guiWin(QMainWindow):
             ask_SizeT=True,
             ask_TimeIncrement=True,
             ask_PhysicalSizes=True,
-            save=True
+            save=True, singlePos=True
         )
 
     def setHoverToolSymbolData(self, xx, yy, ScatterItems, size=None):
@@ -3954,6 +3963,24 @@ class guiWin(QMainWindow):
         for b in self.checkableQButtonsGroup.buttons():
             if b != button:
                 b.setChecked(False)
+
+    def delBorderObj(self, checked):
+        # Store undo state before modifying stuff
+        self.storeUndoRedoStates(False)
+
+        PosData = self.data[self.pos_i]
+        borderMask = np.zeros(PosData.lab.shape, bool)
+        borderMask[0:2] = True
+        borderMask[-2:] = True
+        borderMask[:, 0:2] = True
+        borderMask[:, -2:] = True
+        borderIDs = np.unique(PosData.lab[borderMask])[1:]
+        nullIDs = [0]*len(borderIDs)
+        PosData.lab = self.np_replace_values(PosData.lab, borderIDs, nullIDs)
+        if PosData.cca_df is not None:
+            PosData.cca_df = PosData.cca_df.drop(index=borderIDs)
+        self.store_data()
+        self.updateALLimg()
 
     def addDelROI(self, event):
         PosData = self.data[self.pos_i]
@@ -5021,6 +5048,18 @@ class guiWin(QMainWindow):
                 except Exception as e:
                     # traceback.print_exc()
                     pass
+            if self.countKeyPress == 0:
+                self.isKeyDoublePress = False
+                self.countKeyPress = 1
+                self.doubleKeyTimeElapsed = False
+                self.Button = None
+                QTimer.singleShot(400, self.doubleKeyTimerCallBack)
+            elif self.countKeyPress == 1 and not self.doubleKeyTimeElapsed:
+                self.isKeyDoublePress = True
+                self.drawIDsContComboBox.setCurrentText(
+                    'Draw cell cycle info and contours'
+                )
+                self.countKeyPress = 0
         elif ev.key() == Qt.Key_B or ev.key() == Qt.Key_X:
             mode = self.modeComboBox.currentText()
             if mode == 'Cell cycle analysis' or mode == 'Viewer':
@@ -5073,6 +5112,9 @@ class guiWin(QMainWindow):
             return
         self.doubleKeyTimeElapsed = True
         self.countKeyPress = 0
+        if self.Button is None:
+            return
+
         isBrushChecked = self.Button.isChecked()
         if isBrushChecked and self.uncheck:
             self.Button.setChecked(False)
@@ -5860,6 +5902,7 @@ class guiWin(QMainWindow):
                                                 ask_SizeT=self.num_pos==1,
                                                 ask_TimeIncrement=True,
                                                 ask_PhysicalSizes=True,
+                                                singlePos=False,
                                                 save=True)
                     if not proceed:
                         return False
@@ -8091,10 +8134,8 @@ class guiWin(QMainWindow):
             self.update_cca_df_deletedIDs(PosData, deleted_IDs)
 
         elif editTxt == 'Add new ID with curvature tool':
-            new_IDs = [ID for ID in PosData.IDs if ID not in cca_df]
+            new_IDs = [ID for ID in PosData.IDs if ID not in cca_df_IDs]
             self.update_cca_df_newIDs(PosData, new_IDs)
-            old_IDs = [ID for ID in cca_df_IDs if ID not in PosData.IDs]
-            self.update_cca_df_deletedIDs(PosData, old_IDs)
 
         elif editTxt == 'Delete IDs using ROI':
             deleted_IDs = [ID for ID in cca_df_IDs if ID not in PosData.IDs]
@@ -9862,6 +9903,8 @@ class guiWin(QMainWindow):
         font = QtGui.QFont()
         font.setPointSize(10)
         self.saveWin.setFont(font)
+        if not self.save_metrics:
+            self.saveWin.metricsQPbar.hide()
         self.saveWin.progressLabel.setText('Preparing data...')
         self.saveWin.show()
 

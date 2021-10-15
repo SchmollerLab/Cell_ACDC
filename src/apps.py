@@ -66,7 +66,8 @@ class QDialogMetadataXML(QDialog):
         self.cancel = True
         self.trust = False
         self.overWrite = False
-        self.rawFilename = os.path.splitext(rawFilename)[0]
+        rawFilename = os.path.splitext(rawFilename)[0]
+        self.rawFilename = self.removeInvalidCharacters(rawFilename)
         self.ImageName = ImageName
         super().__init__(parent)
         self.setWindowTitle(title)
@@ -980,7 +981,8 @@ class QDialogMetadata(QDialog):
     def __init__(self, SizeT, SizeZ, TimeIncrement,
                  PhysicalSizeZ, PhysicalSizeY, PhysicalSizeX,
                  ask_SizeT, ask_TimeIncrement, ask_PhysicalSizes,
-                 parent=None, font=None, imgDataShape=None, PosData=None):
+                 parent=None, font=None, imgDataShape=None, PosData=None,
+                 singlePos=False):
         self.cancel = True
         self.ask_TimeIncrement = ask_TimeIncrement
         self.ask_PhysicalSizes = ask_PhysicalSizes
@@ -1097,9 +1099,13 @@ class QDialogMetadata(QDialog):
 
         self.SizeZvalueChanged(SizeZ)
 
-        okButton = QPushButton('Apply only to this Position')
+        if singlePos:
+            okTxt = 'Apply only to this Position'
+        else:
+            okTxt = 'Ok for loaded Positions'
+        okButton = QPushButton(okTxt)
         okButton.setToolTip(
-            'Save metadata only for current position'
+            'Save metadata only for current positionh'
         )
         okButton.setShortcut(Qt.Key_Enter)
         self.okButton = okButton

@@ -54,5 +54,6 @@
     <file alias="warning.svg">resources/warning.svg</file>
     <file alias="crop.svg">resources/crop.svg</file>
     <file alias="exit.png">resources/exit.png</file>
+    <file alias="delBorderObj.svg">resources/delBorderObj.svg</file>
 </qresource>
 </RCC>
