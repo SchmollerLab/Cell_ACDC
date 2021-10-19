@@ -1732,6 +1732,7 @@ class dataPrepWin(QMainWindow):
         self.startAction.setEnabled(True)
         self.showInExplorerAction.setEnabled(True)
         self.update_img()
+        self.setFontSizeROIlabels()
 
     def initLoading(self):
         # Remove all items from a previous session if open is pressed again
@@ -1858,7 +1859,6 @@ class dataPrepWin(QMainWindow):
 
         self.loadFiles(exp_path, user_ch_file_paths, user_ch_name)
         self.setCenterAlignmentTitle()
-        self.setFontSizeROIlabels()
 
     def setFontSizeROIlabels(self):
         Y, X = self.img.image.shape

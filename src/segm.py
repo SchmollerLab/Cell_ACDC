@@ -443,20 +443,23 @@ class segmWin(QMainWindow):
                 self.close()
                 return
 
+            if len(values)>1:
+                select_folder.QtPrompt(
+                    self, values, allow_abort=False, show=True, toggleMulti=True
+                )
+                if select_folder.was_aborted:
+                    abort = self.doAbort()
+                    if abort:
+                        self.close()
+                        return
+                pos_foldernames = select_folder.selected_pos
+            else:
+                pos_foldernames = select_folder.pos_foldernames
 
-            select_folder.QtPrompt(
-                self, values, allow_abort=False, show=True, toggleMulti=True
-            )
-            if select_folder.was_aborted:
-                abort = self.doAbort()
-                if abort:
-                    self.close()
-                    return
-
-
-            pos_foldernames = select_folder.selected_pos
-            images_paths = [os.path.join(exp_path, pos, 'Images')
-                            for pos in pos_foldernames]
+            images_paths = [
+                os.path.join(exp_path, pos, 'Images')
+                for pos in pos_foldernames
+            ]
 
         elif is_pos_folder:
             pos_foldername = os.path.basename(exp_path)
@@ -568,9 +571,9 @@ class segmWin(QMainWindow):
                 self.close()
                 return
 
+        self.predictCcaState_model = None
         if PosData.SizeT == 1:
             # Ask if I should predict budding
-            self.predictCcaState_model = None
             msg = QMessageBox()
             msg.setFont(font)
             answer = msg.question(
@@ -766,7 +769,9 @@ class segmWin(QMainWindow):
         steps_left = self.QPbar.maximum()-self.QPbar.value()
         self.exec_time_per_2steps += deltaT_step
         if steps_left%2 == 0:
-            seconds = round(self.exec_time_per_2steps*steps_left/2)
+            # Note that the second step (tracking) is usually way faster
+            # So it is fair to divide by 2 to get the actual ETA
+            seconds = round(self.exec_time_per_2steps*steps_left/2)/2
             ETA = datetime.timedelta(seconds=seconds)
             h, m, s = str(ETA).split(':')
             ETA = f'{int(h):02}h:{int(m):02}m:{int(s):02}s'

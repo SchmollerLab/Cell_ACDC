@@ -224,10 +224,12 @@ class loadData:
                     roi.setState(roi_state)
                     self.bkgrROIs.append(roi)
             elif load_dataPrep_ROIcoords and file.endswith('dataPrepROIs_coords.csv'):
-                df = pd.read_csv(filePath, index_col='description')
-                if 'value' in df.columns:
-                    self.dataPrep_ROIcoordsFound = True
-                    self.dataPrep_ROIcoords = df
+                df = pd.read_csv(filePath)
+                if 'description' in df.columns:
+                    df = df.set_index('description')
+                    if 'value' in df.columns:
+                        self.dataPrep_ROIcoordsFound = True
+                        self.dataPrep_ROIcoords = df
             elif load_metadata and file.endswith('metadata.csv'):
                 self.metadataFound = True
                 self.metadata_df = pd.read_csv(filePath).set_index('Description')
