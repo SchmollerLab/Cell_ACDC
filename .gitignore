@@ -28,6 +28,8 @@ models/*
 src/models/cellpose/model/*
 src/models/YeaZ/model/*
 src/models/YeastMate/model/*
+!src/models/YeastMate/model/yeastmate_advanced.yaml
+!src/models/YeastMate/model/yeastmate.yaml
 
 # Hide placeholder.txt dummy file (probably works only on Linux)
 !models/.placeholder.txt

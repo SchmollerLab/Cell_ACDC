@@ -1,0 +1,17 @@
+_BASE_: "./yeastmate_advanced.yaml"
+INPUT_DIR: /home/appuser/input/images  # Set input path with training images.
+OUTPUT_DIR: /home/appuser/output       # Set output path for saved weights.
+MODEL:
+  DEVICE: "cpu"            # 'cpu' for CPU prediction, 'cuda' for GPU prediction
+  ROI_HEADS:
+    NUM_CLASSES: 3          # Number of main classes (e.g. 3 for single cell, zygotes and budding events)
+    NUM_MASK_CLASSES: 6     # Number of possible sub-classes including background (e.g. 6 for background, single cells, zygote-mother/daughter, budding-mother/daughter)
+DATALOADER:
+  NUM_WORKERS: 4            # Number of Dataloader workers. Reduce number if there are CPU/Memory bound crashes, increase for faster speed.
+SOLVER:
+  IMS_PER_BATCH: 2          # Number of images per training batch. Reduce if (GPU) memory is full, increase for faster training speed.    
+  BASE_LR: 0.005            # Learning rate
+  MAX_ITER: 200000          # Maximum of iterations to train. YeastMate usually caps out at ~100,000 iterations, with little improvement after that.
+  CHECKPOINT_PERIOD: 1000   # At which iterations weight checkpoints should be saved
+INPUT:
+  CROP_SIZE: 400   # Set size of training crop

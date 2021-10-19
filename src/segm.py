@@ -389,6 +389,11 @@ class segmWin(QMainWindow):
             parent=self
         )
         win.exec_()
+        if win.cancel:
+            abort = self.doAbort()
+            if abort:
+                self.close()
+                return
         model_name = win.selectedItemsText[0]
         myutils.download_model(model_name)
         self.model_name = model_name
