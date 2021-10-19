@@ -759,7 +759,7 @@ class dataPrepWin(QMainWindow):
 
             # Get crop shape and print it
             data = PosData.img_data
-            croppedData = self.crop(data)
+            croppedData = self.crop(data, PosData)
 
 
             doCrop = True
@@ -796,7 +796,7 @@ class dataPrepWin(QMainWindow):
                 else:
                     data = skimage.io.imread(tif)
 
-                npz_data = self.crop(data)
+                npz_data = self.crop(data, PosData)
 
                 if self.align:
                     print('Saving: ', npz)
@@ -814,7 +814,7 @@ class dataPrepWin(QMainWindow):
             if PosData.segmFound:
                 print('Saving: ', PosData.segm_npz_path)
                 data = PosData.segm_data
-                croppedSegm = self.crop(data)
+                croppedSegm = self.crop(data, PosData)
                 temp_npz = self.getTempfilePath(PosData.segm_npz_path)
                 np.savez_compressed(temp_npz, croppedSegm)
                 self.moveTempFile(temp_npz, PosData.segm_npz_path)
