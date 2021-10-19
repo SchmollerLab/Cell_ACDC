@@ -8,11 +8,6 @@ sys.path.insert(0, yeastmate_path)
 
 # Check missing packages
 try:
-    import pycocotools
-except ModuleNotFoundError:
-    subprocess.run('pip install pycocotools==2.0.2', shell=True)
-
-try:
     import fvcore
 except ModuleNotFoundError:
     subprocess.run('pip install fvcore==0.1.5.post20210924', shell=True)
@@ -28,6 +23,6 @@ except ModuleNotFoundError:
     subprocess.run('pip install torchvision==0.10.0', shell=True)
 
 try:
-    import pycocotools
+    import cloudpickle
 except ModuleNotFoundError:
-    subprocess.run('pip install pycocotools==2.0.2', shell=True)
+    subprocess.run('pip install cloudpickle==2.0.0', shell=True)

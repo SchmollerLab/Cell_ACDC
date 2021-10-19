@@ -13,7 +13,6 @@ dependencies:
     - cloudpickle==2.0.0
     - omegaconf==2.1.1
     - torchvision==0.10.0
-    - pycocotools==2.0.2
   - pyqtgraph
   - pandas
   - pytables
