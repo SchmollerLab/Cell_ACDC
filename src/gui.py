@@ -3062,14 +3062,14 @@ class guiWin(QMainWindow):
         # Center main window and determine location of slideshow window
         # depending on number of screens available
         if self.num_screens > 1:
-            screen1 = app.screens()[0]
-            screen2 = app.screens()[1]
+            screen1 = self.app.screens()[0]
+            screen2 = self.app.screens()[1]
             screen2Center = screen2.size().width()/2
             screen2Left = screen1.size().width()
             self.slideshowWinLeft = int(screen2Left+screen2Center-850/2)
             self.slideshowWinTop = int(screen1.size().height()/2 - 800/2)
         else:
-            screen1 = app.screens()[0]
+            screen1 = self.app.screens()[0]
             self.slideshowWinLeft = int(screen1.size().width()-850)
             self.slideshowWinTop = int(screen1.size().height()/2 - 800/2)
 
