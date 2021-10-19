@@ -576,25 +576,26 @@ class select_channel_name:
         chNames_found = False
         if metadata_csv_path is not None:
             df = pd.read_csv(metadata_csv_path)
-            channelNamesMask = df.Description.str.contains('channel_\d+_name')
-            channelNames = df[channelNamesMask]['values'].to_list()
-            if channelNames:
-                channel_names = channelNames.copy()
-                basename = None
-                for chName in channelNames:
-                    chSaved = []
-                    for file in filenames:
-                        if file.find(chName) != -1:
-                            chSaved.append(True)
-                            chName_idx = file.find(chName)
-                            basename = file[:chName_idx]
-                    if not any(chSaved):
-                        channel_names.remove(chName)
+            if 'Description' in df.columns:
+                channelNamesMask = df.Description.str.contains('channel_\d+_name')
+                channelNames = df[channelNamesMask]['values'].to_list()
+                if channelNames:
+                    channel_names = channelNames.copy()
+                    basename = None
+                    for chName in channelNames:
+                        chSaved = []
+                        for file in filenames:
+                            if file.find(chName) != -1:
+                                chSaved.append(True)
+                                chName_idx = file.find(chName)
+                                basename = file[:chName_idx]
+                        if not any(chSaved):
+                            channel_names.remove(chName)
 
-                if basename is not None:
-                    self.basenameNotFound = False
-                    self.basename = basename
-                    return channel_names, False
+                    if basename is not None:
+                        self.basenameNotFound = False
+                        self.basename = basename
+                        return channel_names, False
 
         # Find basename as intersection of filenames
         channel_names = []

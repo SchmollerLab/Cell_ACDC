@@ -718,7 +718,7 @@ class dataPrepWin(QMainWindow):
         w, h = [int(round(c)) for c in PosData.cropROI.size()]
 
         Y, X = self.img.image.shape
-        x1, y1 = x0+w, y1+h
+        x1, y1 = x0+w, y0+h
 
         x0 = x0 if x0>0 else 0
         y0 = y0 if y0>0 else 0

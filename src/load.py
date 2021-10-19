@@ -234,13 +234,14 @@ class loadData:
                 self.metadataFound = True
                 self.metadata_df = pd.read_csv(filePath).set_index('Description')
                 self.extractMetadata()
-            elif load_last_tracked_i:
-                self.last_tracked_i_found = True
-                try:
-                    self.last_tracked_i = max(self.acdc_df.index.get_level_values(0))
-                except Exception as e:
-                    traceback.print_exc()
-                    self.last_tracked_i = None
+
+        if load_last_tracked_i:
+            self.last_tracked_i_found = True
+            try:
+                self.last_tracked_i = max(self.acdc_df.index.get_level_values(0))
+            except Exception as e:
+                traceback.print_exc()
+                self.last_tracked_i = None
         self.setNotFoundData()
 
 
@@ -932,7 +933,7 @@ class select_exp_folder:
                         last_tracked_i_found = True
                         acdc_df_path = f'{images_path}/{filename}'
                         acd_df = pd.read_csv(acdc_df_path)
-                        last_tracked_i = max(acd_df['frame_i'])-1
+                        last_tracked_i = max(acd_df['frame_i'])
                 if last_tracked_i_found:
                     values.append(f'{pos} (Last tracked frame: {last_tracked_i+1})')
                 else:

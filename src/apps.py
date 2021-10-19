@@ -1302,8 +1302,18 @@ class QDialogMetadata(QDialog):
                     acdc_df['cell_vol_fl'] = acdc_df['cell_vol_vox']*vox_to_fl
                     acdc_df['cell_area_um2'] = acdc_df['cell_area_pxl']*yx_pxl_to_um2
                     acdc_df['time_seconds'] = acdc_df['frame_i']*self.TimeIncrement
-                    acdc_df.to_csv(acdc_df_path, index=False)
-
+                    try:
+                        acdc_df.to_csv(acdc_df_path, index=False)
+                    except PermissionError:
+                        err_msg = (
+                            'The below file is open in another app '
+                            '(Excel maybe?).\n\n'
+                            f'{acdc_df_path}\n\n'
+                            'Close file and then press "Ok".'
+                        )
+                        msg = QtGui.QMessageBox()
+                        msg.critical(self, 'Permission denied', err_msg, msg.Ok)
+                        acdc_df.to_csv(acdc_df_path, index=False)
 
         elif self.sender() == self.selectButton:
             pass

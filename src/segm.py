@@ -651,6 +651,14 @@ class segmWin(QMainWindow):
             loop = QEventLoop(self)
             dataPrepWin.loop = loop
             loop.exec_()
+
+            # If data was aligned then we make sure to load it here
+            user_ch_file_paths = load.get_user_ch_paths(
+                images_paths,
+                user_ch_name
+            )
+            img_path = user_ch_file_paths[0]
+
             PosData = load.loadData(img_path, user_ch_name, QParent=self)
             PosData.getBasenameAndChNames(prompts.select_channel_name)
             PosData.buildPaths()
@@ -771,7 +779,7 @@ class segmWin(QMainWindow):
         if steps_left%2 == 0:
             # Note that the second step (tracking) is usually way faster
             # So it is fair to divide by 2 to get the actual ETA
-            seconds = round(self.exec_time_per_2steps*steps_left/2)/2
+            seconds = round(self.exec_time_per_2steps*steps_left/4)
             ETA = datetime.timedelta(seconds=seconds)
             h, m, s = str(ETA).split(':')
             ETA = f'{int(h):02}h:{int(m):02}m:{int(s):02}s'

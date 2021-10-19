@@ -7278,10 +7278,10 @@ class guiWin(QMainWindow):
             # Cell cycle info already present --> overwrite with new
             df = acdc_df
             df[self.cca_df_colnames] = cca_df
-        else:
+            PosData.allData_li[i]['acdc_df'] = df.copy()
+        elif cca_df is not None:
             df = acdc_df.join(cca_df, how='left')
-        PosData.allData_li[i]['acdc_df'] = df.copy()
-        # print(PosData.allData_li[PosData.frame_i]['acdc_df'])
+            PosData.allData_li[i]['acdc_df'] = df.copy()
 
     def ax1_setTextID(self, obj, how, updateColor=False):
         PosData = self.data[self.pos_i]
@@ -9852,7 +9852,7 @@ class guiWin(QMainWindow):
 
     def saveDataPermissionError(self, err_msg):
         msg = QMessageBox()
-        warn_cca = msg.critical(self, 'Permission denied', err_msg, msg.Ok)
+        msg.critical(self, 'Permission denied', err_msg, msg.Ok)
         self.waitCond.wakeAll()
 
     def saveDataProgress(self, text):
