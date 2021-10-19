@@ -3,6 +3,7 @@ import pathlib
 import sys
 import tempfile
 import shutil
+from collections import namedtuple
 from tqdm import tqdm
 import requests
 import zipfile
@@ -12,10 +13,31 @@ import skimage
 from distutils.dir_util import copy_tree
 from pyqtgraph.colormap import ColorMap
 import prompts
+import inspect
+
 from tifffile.tifffile import TiffWriter, TiffFile
 
 __all__ = ['ColorMap']
 _mapCache = {}
+
+def getModelArgSpec(acdcSegment):
+    ArgSpec = namedtuple('ArgSpec', ['name', 'default', 'type'])
+
+    init_ArgSpec = inspect.getfullargspec(acdcSegment.Model.__init__)
+    init_params = []
+    if len(init_ArgSpec.args)>1:
+        for arg, default in zip(init_ArgSpec.args[1:], init_ArgSpec.defaults):
+            param = ArgSpec(name=arg, default=default, type=type(default))
+            init_params.append(param)
+
+    segment_ArgSpec = inspect.getfullargspec(acdcSegment.Model.segment)
+    segment_params = []
+    if len(segment_ArgSpec.args)>1:
+        iter = zip(segment_ArgSpec.args[2:], segment_ArgSpec.defaults)
+        for arg, default in iter:
+            param = ArgSpec(name=arg, default=default, type=type(default))
+            segment_params.append(param)
+    return init_params, segment_params
 
 def getDefault_SegmInfo_df(PosData, filename):
     mid_slice = int(PosData.SizeZ/2)
@@ -163,10 +185,9 @@ def getFromMatplotlib(name):
         _mapCache[name] = cm
     return cm
 
-def get_model_path(model_foldername):
-    script_dirname = os.path.dirname(os.path.realpath(__file__))
-    main_path = os.path.dirname(script_dirname)
-    model_path = os.path.join(main_path, 'models', model_foldername)
+def get_model_path(model_name):
+    src_path = os.path.dirname(os.path.realpath(__file__))
+    model_path = os.path.join(src_path, 'models', model_name, 'model')
 
     if not os.path.exists(model_path):
         model_folder_exists = False
@@ -183,6 +204,9 @@ def get_file_id(model_name, id=None):
     elif model_name == 'cellpose':
         file_id = '1nfOwE5UtGwKm4zLgPdzDbkJVG7kZL4Yw'
         file_size = 392564736
+    elif model_name == 'YeastMate':
+        file_id = '1wNfxtfIfwm755MdBRy_CXiduiZxXJhep'
+        file_size = 164911104
     else:
         file_id = id
         file_size = None
@@ -258,13 +282,30 @@ def check_v1_model_path():
             shutil.rmtree(v1_model_path)
 
 def download_model(model_name):
-    models_zip_path, model_folder_exists = get_model_path(f'{model_name}_model')
+    # First check if the weights file are already in the models folder
+    src_path = os.path.dirname(os.path.abspath(__file__))
+    main_path = os.path.dirname(src_path)
+    model_path = os.path.join(main_path, 'models', f'{model_name}_model')
+    if os.path.exists(model_path) and os.listdir(model_path):
+        src_model_path = os.path.join(src_path, 'models', model_name)
+        dst = os.path.join(src_model_path, 'model')
+        if not os.path.exists(dst):
+            os.mkdir(dst)
+        for file in os.listdir(model_path):
+            shutil.move(os.path.join(model_path, file), dst)
+        return
+
+    # Download model from google drive
+    models_zip_path, model_folder_exists = get_model_path(model_name)
     if not model_folder_exists:
-        check_v1_model_path()
         file_id, file_size = get_file_id(model_name)
+        if file_id is None:
+            return
         # Download zip file
-        download_from_gdrive(file_id, models_zip_path,
-                             file_size=file_size, model_name=model_name)
+        download_from_gdrive(
+            file_id, models_zip_path,
+            file_size=file_size, model_name=model_name
+        )
         # Extract zip file
         extract_to_path = os.path.dirname(models_zip_path)
         extract_zip(models_zip_path, extract_to_path)
@@ -296,6 +337,11 @@ def imagej_tiffwriter(new_path, data, metadata, SizeT, SizeZ, imagej=True):
             T, Z = 1, 1
         data.shape = T, Z, 1, Y, X, 1  # imageJ format should always have TZCYXS data shape
         new_tif.save(data, metadata=metadata)
+
+def get_list_of_models():
+    src_path = os.path.dirname(os.path.abspath(__file__))
+    models = os.listdir(os.path.join(src_path, 'models'))
+    return models
 
 if __name__ == '__main__':
     model_name = 'cellpose'

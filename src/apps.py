@@ -1,6 +1,7 @@
 import os
 import sys
 import re
+import ast
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
@@ -11,6 +12,7 @@ import tkinter as tk
 import cv2
 import traceback
 from itertools import combinations
+from collections import namedtuple
 from natsort import natsorted
 # from MyWidgets import Slider, Button, MyRadioButtons
 from skimage.measure import label, regionprops
@@ -42,7 +44,7 @@ from PyQt5.QtWidgets import (
     QHBoxLayout, QDialog, QFormLayout, QListWidget, QAbstractItemView,
     QButtonGroup, QCheckBox, QSizePolicy, QComboBox, QSlider, QGridLayout,
     QSpinBox, QToolButton, QTableView, QTextBrowser, QDoubleSpinBox,
-    QScrollArea, QFrame, QProgressBar
+    QScrollArea, QFrame, QProgressBar, QGroupBox, QRadioButton
 )
 
 import myutils, load, prompts
@@ -820,6 +822,7 @@ class QDialogListbox(QDialog):
         topLayout.addWidget(label, alignment=Qt.AlignCenter)
 
         listBox = QListWidget()
+        listBox.setFont(_font)
         listBox.addItems(items)
         if multiSelection:
             listBox.setSelectionMode(QAbstractItemView.ExtendedSelection)
@@ -827,6 +830,7 @@ class QDialogListbox(QDialog):
             listBox.setSelectionMode(QAbstractItemView.SingleSelection)
         listBox.setCurrentRow(0)
         self.listBox = listBox
+        listBox.itemDoubleClicked.connect(self.ok_cb)
         topLayout.addWidget(listBox)
 
         okButton = QPushButton('Ok')
@@ -1291,8 +1295,8 @@ class QDialogMetadata(QDialog):
                     fileName = search[0]
                     acdc_df_path = os.path.join(images_path, fileName)
                     acdc_df = pd.read_csv(acdc_df_path)
-                    yx_pxl_to_um2 = PhysicalSizeY*PhysicalSizeX
-                    vox_to_fl = PhysicalSizeY*(PhysicalSizeX**2)
+                    yx_pxl_to_um2 = self.PhysicalSizeY*self.PhysicalSizeX
+                    vox_to_fl = self.PhysicalSizeY*(self.PhysicalSizeX**2)
                     if 'cell_vol_fl' not in acdc_df.columns:
                         continue
                     acdc_df['cell_vol_fl'] = acdc_df['cell_vol_vox']*vox_to_fl
@@ -4511,6 +4515,166 @@ class QDialogPbar(QDialog):
         if not self.workerFinished:
             event.ignore()
 
+class QDialogModelParams(QDialog):
+    def __init__(
+            self, init_params, segment_params, model_name,
+            url=None, parent=None):
+        self.cancel = True
+        super().__init__(parent)
+
+        self.setWindowTitle(f'{model_name} parameters')
+
+        mainLayout = QVBoxLayout()
+        buttonsLayout = QHBoxLayout()
+
+        initGroupBox, self.init_argsWidgets = self.createGroupParams(
+            init_params,
+            'Parameters for model initialization'
+        )
+
+        segmentGroupBox, self.segment2D_argsWidgets = self.createGroupParams(
+            segment_params,
+            'Parameters for 2D segmentation'
+        )
+
+        okButton = QPushButton(' Ok ')
+        buttonsLayout.addWidget(okButton)
+
+        cancelButton = QPushButton(' Cancel ')
+        buttonsLayout.addWidget(cancelButton)
+
+        buttonsLayout.setContentsMargins(0, 10, 0, 10)
+
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.close)
+
+        mainLayout.addWidget(initGroupBox)
+        mainLayout.addSpacing(15)
+        mainLayout.addStretch(1)
+        mainLayout.addWidget(segmentGroupBox)
+
+        # Add minimum size spinbox whihc is valid for all models
+        sizeGroupBox = QGroupBox('Remove objects that are smaller than')
+        layout = QHBoxLayout()
+        minSizeLabel = QLabel("Minimum area (pixels): ")
+        layout.addWidget(minSizeLabel)
+        minSize_SB = QSpinBox()
+        minSize_SB.setAlignment(Qt.AlignCenter)
+        minSize_SB.setMinimum(1)
+        minSize_SB.setMaximum(2147483647)
+        minSize_SB.setValue(5)
+        layout.addWidget(minSize_SB)
+        self.minSize_SB = minSize_SB
+        sizeGroupBox.setLayout(layout)
+
+        mainLayout.addSpacing(15)
+        mainLayout.addStretch(1)
+        mainLayout.addWidget(sizeGroupBox)
+
+        if url is not None:
+            mainLayout.addWidget(
+                self.createSeeHereLabel(url),
+                alignment=Qt.AlignCenter
+            )
+
+        mainLayout.addLayout(buttonsLayout)
+
+        self.setLayout(mainLayout)
+
+        font = QtGui.QFont()
+        font.setPointSize(10)
+        self.setFont(font)
+
+        self.setModal(True)
+
+    def createGroupParams(self, ArgSpecs_list, groupName):
+        ArgWidget = namedtuple('ArgsWidgets', ['name', 'type', 'widget'])
+        ArgsWidgets_list = []
+        groupBox = QGroupBox(groupName)
+
+        groupBoxLayout = QGridLayout()
+        for row, ArgSpec in enumerate(ArgSpecs_list):
+            var_name = ArgSpec.name.replace('_', ' ').capitalize()
+            label = QLabel(f'{var_name}:  ')
+            groupBoxLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
+            if ArgSpec.type == bool:
+                trueRadioButton = QRadioButton('True')
+                falseRadioButton = QRadioButton('False')
+                if ArgSpec.default:
+                    trueRadioButton.setChecked(True)
+                else:
+                    falseRadioButton.setChecked(True)
+                widget = trueRadioButton
+                groupBoxLayout.addWidget(trueRadioButton, row, 1)
+                groupBoxLayout.addWidget(falseRadioButton, row, 2)
+            elif ArgSpec.type == int:
+                spinBox = QSpinBox()
+                spinBox.setAlignment(Qt.AlignCenter)
+                spinBox.setMaximum(2147483647)
+                spinBox.setValue(ArgSpec.default)
+                widget = spinBox
+                groupBoxLayout.addWidget(spinBox, row, 1, 1, 2)
+            elif ArgSpec.type == float:
+                doubleSpinBox = QDoubleSpinBox()
+                doubleSpinBox.setAlignment(Qt.AlignCenter)
+                doubleSpinBox.setMaximum(2**32)
+                doubleSpinBox.setValue(ArgSpec.default)
+                widget = doubleSpinBox
+                groupBoxLayout.addWidget(doubleSpinBox, row, 1, 1, 2)
+            else:
+                lineEdit = QLineEdit()
+                lineEdit.setText(str(ArgSpec.default))
+                lineEdit.setAlignment(Qt.AlignCenter)
+                widget = lineEdit
+                groupBoxLayout.addWidget(lineEdit, row, 1, 1, 2)
+
+            argsInfo = ArgWidget(
+                name=ArgSpec.name,
+                type=ArgSpec.type,
+                widget=widget,
+            )
+            ArgsWidgets_list.append(argsInfo)
+
+        groupBox.setLayout(groupBoxLayout)
+        return groupBox, ArgsWidgets_list
+
+    def createSeeHereLabel(self, url):
+        htmlTxt = f'<a href=\"{url}">here</a>'
+        seeHereLabel = QLabel()
+        seeHereLabel.setText(f"""
+            <p style="font-size:10pt">
+                See {htmlTxt} for details on the parameters
+            </p>
+        """)
+        seeHereLabel.setTextFormat(Qt.RichText)
+        seeHereLabel.setTextInteractionFlags(Qt.TextBrowserInteraction)
+        seeHereLabel.setOpenExternalLinks(True)
+        seeHereLabel.setStyleSheet("padding:10px 0px 0px 0px;")
+        return seeHereLabel
+
+    def argsWidgets_to_kwargs(self, argsWidgets):
+        kwargs_dict = {}
+        for argWidget in argsWidgets:
+            if argWidget.type == bool:
+                kwargs_dict[argWidget.name] = argWidget.widget.isChecked()
+            elif argWidget.type == int or argWidget.type == float:
+                kwargs_dict[argWidget.name] = argWidget.widget.value()
+            elif argWidget.type == str:
+                kwargs_dict[argWidget.name] = argWidget.widget.text()
+            else:
+                to_type = argWidget.type
+                s = argWidget.widget.text()
+                kwargs_dict[argWidget.name] = eval(s)
+        return kwargs_dict
+
+    def ok_cb(self, checked):
+        self.cancel = False
+        self.init_kwargs = self.argsWidgets_to_kwargs(self.init_argsWidgets)
+        self.segment2D_kwargs = self.argsWidgets_to_kwargs(
+            self.segment2D_argsWidgets
+        )
+        self.minSize = self.minSize_SB.value()
+        self.close()
 
 if __name__ == '__main__':
     # Create the application
@@ -4555,7 +4719,14 @@ if __name__ == '__main__':
             Saving...<br>
         </p>
     """)
-    win = QDialogPbar(infoTxt=infoTxt)
+    ArgSpec = namedtuple('ArgSpec', ['name', 'default', 'type'])
+    init_params = [ArgSpec(name='is_phase_contrast', default=True, type=bool)]
+    segment_params = [
+        ArgSpec(name='thresh_val', default=0.0, type=float),
+        ArgSpec(name='min_distance', default=10, type=int)
+    ]
+    win = QDialogModelParams(init_params, segment_params, 'YeaZ', url='None')
+    # win = QDialogPbar(infoTxt=infoTxt)
     # win = QDialogAppendTextFilename('example.npz')
     font = QtGui.QFont()
     font.setPointSize(10)
@@ -4575,15 +4746,16 @@ if __name__ == '__main__':
     # lab = np.load(r"G:\My Drive\1_MIA_Data\Test_data\Test_Qt_GUI\Position_5\Images\F016_s05_segm.npz")['arr_0'][0]
     # img = np.load(r"G:\My Drive\1_MIA_Data\Test_data\Test_Qt_GUI\Position_5\Images\F016_s05_phase_contr_aligned.npz")['arr_0'][0]
     # win = manualSeparateGui(lab, 2, img)
-    win.setFont(font)
-    win.progressLabel.setText('Preparing data...')
+    # win.setFont(font)
+    # win.progressLabel.setText('Preparing data...')
     app.setStyle(QtGui.QStyleFactory.create('Fusion'))
     # win.showAndSetWidth()
     # win.showAndSetFont(font)
     # win.setWidths(font=font)
     # win.setSize()
     # win.setGeometryWindow()
-    win.show()
+    # win.show()
     win.exec_()
-    print(win.chNames, win.saveChannels)
+    # print(win.chNames, win.saveChannels)
     # print(win.SizeT, win.SizeZ, win.zyx_vox_dim)
+    print(win.segment2D_kwargs)

@@ -17,6 +17,7 @@ import traceback
 import time
 import datetime
 import uuid
+from importlib import import_module
 from functools import partial
 from tqdm import tqdm
 import time
@@ -320,24 +321,9 @@ class guiWin(QMainWindow):
         self.mainWin = mainWin
 
         self.app = app
-        self.num_screens = len(app.screens())
-
-        # Center main window and determine location of slideshow window
-        # depending on number of screens available
-        if self.num_screens > 1:
-            screen1 = app.screens()[0]
-            screen2 = app.screens()[1]
-            screen2Center = screen2.size().width()/2
-            screen2Left = screen1.size().width()
-            self.slideshowWinLeft = int(screen2Left+screen2Center-850/2)
-            self.slideshowWinTop = int(screen1.size().height()/2 - 800/2)
-        else:
-            screen1 = app.screens()[0]
-            self.slideshowWinLeft = int(screen1.size().width()-850)
-            self.slideshowWinTop = int(screen1.size().height()/2 - 800/2)
 
         self.slideshowWin = None
-        self.segmModel = None
+        self.segmModelName = None
         self.ccaTableWin = None
         self.data_loaded = False
         self.flag = True
@@ -552,8 +538,8 @@ class guiWin(QMainWindow):
         # Segment menu
         SegmMenu = menuBar.addMenu("&Segment")
         SegmMenu.addSeparator()
-        SegmMenu.addAction(self.SegmActionYeaZ)
-        SegmMenu.addAction(self.SegmActionCellpose)
+        for action in self.segmActions:
+            SegmMenu.addAction(action)
         SegmMenu.addAction(self.SegmActionRW)
         SegmMenu.addAction(self.autoSegmAction)
         SegmMenu.aboutToShow.connect(self.segmMenuOpened)
@@ -672,6 +658,7 @@ class guiWin(QMainWindow):
         self.checkableButtons.append(self.setIsHistoryKnownButton)
         self.checkableQButtonsGroup.addButton(self.setIsHistoryKnownButton)
 
+        ccaToolBar.addAction(self.assignBudMothAutoAction)
         ccaToolBar.addAction(self.reInitCcaAction)
         ccaToolBar.setVisible(False)
         self.ccaToolBar = ccaToolBar
@@ -905,11 +892,19 @@ class guiWin(QMainWindow):
         self.newAction.setToolTip(newTip)
         self.newAction.setWhatsThis("Create a new and empty text file")
         # Edit actions
-        self.SegmActionYeaZ = QAction("YeaZ...", self)
-        self.SegmActionCellpose = QAction("Cellpose...", self)
+        models = myutils.get_list_of_models()
+        self.segmActions = []
+        self.modelNames = []
+        self.acdcSegment_li = []
+        self.models = []
+        for model_name in models:
+            action = QAction(f"{model_name}...", self)
+            self.segmActions.append(action)
+            self.modelNames.append(model_name)
+            self.models.append(None)
+            self.acdcSegment_li.append(None)
+            action.setDisabled(True)
         self.SegmActionRW = QAction("Random walker...", self)
-        self.SegmActionYeaZ.setDisabled(True)
-        self.SegmActionCellpose.setDisabled(True)
         self.SegmActionRW.setDisabled(True)
 
         self.prevAction = QAction(QIcon(":arrow-left.svg"),
@@ -930,6 +925,14 @@ class guiWin(QMainWindow):
         self.tipsAction = QAction("Tips and tricks...", self)
         self.UserManualAction = QAction("User Manual...", self)
         # self.aboutAction = QAction("&About...", self)
+
+        # Assign mother to bud button
+        self.assignBudMothAutoAction = QAction(self)
+        self.assignBudMothAutoAction.setIcon(QIcon(":autoAssign.svg"))
+        self.assignBudMothAutoAction.setVisible(False)
+        self.assignBudMothAutoAction.setToolTip(
+            'Automatically assign buds to mothers using YeastMate'
+        )
 
 
         self.reInitCcaAction = QAction(self)
@@ -1057,8 +1060,8 @@ class guiWin(QMainWindow):
         self.loadFluoAction.triggered.connect(self.loadFluo_cb)
         self.reloadAction.triggered.connect(self.reload_cb)
         self.slideshowButton.toggled.connect(self.launchSlideshow)
-        self.SegmActionYeaZ.triggered.connect(self.repeatSegmYeaZ)
-        self.SegmActionCellpose.triggered.connect(self.repeatSegmCellpose)
+        for action in self.segmActions:
+            action.triggered.connect(self.repeatSegm)
         self.SegmActionRW.triggered.connect(self.randomWalkerSegm)
         self.autoSegmAction.toggled.connect(self.autoSegm_cb)
         self.disableTrackingCheckBox.clicked.connect(self.disableTracking)
@@ -1067,6 +1070,7 @@ class guiWin(QMainWindow):
         self.eraserButton.toggled.connect(self.Eraser_cb)
         self.curvToolButton.toggled.connect(self.curvTool_cb)
         self.reInitCcaAction.triggered.connect(self.reInitCca)
+        self.assignBudMothAutoAction.triggered.connect(self.autoAssignBud_YeastMate)
         # self.repeatAutoCcaAction.triggered.connect(self.repeatAutoCca)
         self.manuallyEditCcaAction.triggered.connect(self.manualEditCca)
         self.invertBwAction.toggled.connect(self.invertBw)
@@ -3052,6 +3056,23 @@ class guiWin(QMainWindow):
         elif middle_click:
             self.gui_mousePressEventImg2(event)
 
+    def determineSlideshowWinPos(self):
+        self.num_screens = len(self.app.screens())
+
+        # Center main window and determine location of slideshow window
+        # depending on number of screens available
+        if self.num_screens > 1:
+            screen1 = app.screens()[0]
+            screen2 = app.screens()[1]
+            screen2Center = screen2.size().width()/2
+            screen2Left = screen1.size().width()
+            self.slideshowWinLeft = int(screen2Left+screen2Center-850/2)
+            self.slideshowWinTop = int(screen1.size().height()/2 - 800/2)
+        else:
+            screen1 = app.screens()[0]
+            self.slideshowWinLeft = int(screen1.size().width()-850)
+            self.slideshowWinTop = int(screen1.size().height()/2 - 800/2)
+
     def segmMenuOpened(self):
         mode = str(self.modeComboBox.currentText())
         if mode == 'Viewer':
@@ -4254,8 +4275,12 @@ class guiWin(QMainWindow):
                 self.remove_future_cca_df(PosData.frame_i)
                 self.updateALLimg()
         else:
+            # Store undo state before modifying stuff
+            self.storeUndoRedoStates(False)
+
+            PosData = self.data[self.pos_i]
             PosData.cca_df = self.getBaseCca_df()
-            self.store_cca_df()
+            self.store_data()
             self.updateALLimg()
 
     def repeatAutoCca(self):
@@ -4395,8 +4420,8 @@ class guiWin(QMainWindow):
             button.setEnabled(enabled)
 
     def setEnabledEditToolbarButton(self, enabled=False):
-        self.SegmActionYeaZ.setEnabled(enabled)
-        self.SegmActionCellpose.setEnabled(enabled)
+        for action in self.segmActions:
+            action.setEnabled(enabled)
         self.SegmActionRW.setEnabled(enabled)
         self.autoSegmAction.setEnabled(enabled)
         self.editToolBar.setVisible(enabled)
@@ -4538,9 +4563,10 @@ class guiWin(QMainWindow):
             self.setEnabledSnapshotMode()
 
     def setEnabledSnapshotMode(self):
+        PosData = self.data[self.pos_i]
         self.manuallyEditCcaAction.setDisabled(False)
-        self.SegmActionYeaZ.setDisabled(False)
-        self.SegmActionCellpose.setDisabled(False)
+        for action in self.segmActions:
+            action.setDisabled(False)
         self.SegmActionRW.setDisabled(False)
         self.autoSegmAction.setDisabled(False)
         self.ccaToolBar.setVisible(True)
@@ -4552,6 +4578,8 @@ class guiWin(QMainWindow):
                 button.setDisabled(False)
                 action.setVisible(True)
             elif action == self.reInitCcaAction:
+                action.setVisible(True)
+            elif action == self.assignBudMothAutoAction and PosData.SizeT==1:
                 action.setVisible(True)
         for action in self.editToolBar.actions():
             button = self.editToolBar.widgetForAction(action)
@@ -4566,12 +4594,14 @@ class guiWin(QMainWindow):
 
     def launchSlideshow(self):
         PosData = self.data[self.pos_i]
+        self.determineSlideshowWinPos()
         if self.slideshowButton.isChecked():
             self.slideshowWin = apps.CellsSlideshow_GUI(
-                               parent=self,
-                               button_toUncheck=self.slideshowButton,
-                               Left=self.slideshowWinLeft,
-                               Top=self.slideshowWinTop)
+                parent=self,
+                button_toUncheck=self.slideshowButton,
+                Left=self.slideshowWinLeft,
+                Top=self.slideshowWinTop
+            )
             self.slideshowWin.update_img()
             self.slideshowWin.show()
         else:
@@ -5471,14 +5501,25 @@ class guiWin(QMainWindow):
     def autoSegm_cb(self, checked):
         if checked:
             self.askSegmParam = True
-            self.segmModel = prompts.askWhichSegmModel(self)
+            # Ask which model
+            models = myutils.get_list_of_models()
+            win = apps.QDialogListbox(
+                'Select model',
+                'Select model to use for segmentation: ',
+                models,
+                multiSelection=False,
+                parent=self
+            )
+            win.exec_()
+            model_name = win.selectedItemsText[0]
+            self.segmModelName = model_name
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(False)
             self.updateALLimg()
             self.computeSegm()
             self.askSegmParam = False
         else:
-            self.segmModel = None
+            self.segmModelName = None
 
     def randomWalkerSegm(self):
         # self.RWbkgrScatterItem = pg.ScatterPlotItem(
@@ -5501,59 +5542,70 @@ class guiWin(QMainWindow):
         # Store undo state before modifying stuff
         self.storeUndoRedoStates(False)
 
-        self.segmModel = 'randomWalker'
+        self.segmModelName = 'randomWalker'
         self.randomWalkerWin = apps.randomWalkerDialog(self)
         self.randomWalkerWin.setFont(font)
         self.randomWalkerWin.show()
         self.randomWalkerWin.setSize()
 
-    def repeatSegmYeaZ(self):
+    def repeatSegm(self, model_name=''):
+        if self.sender() is not None:
+            idx = self.segmActions.index(self.sender())
+            model_name = self.modelNames[idx]
+        else:
+            idx = self.modelNames.index(model_name)
+
         self.titleLabel.setText(
-            'YeaZ neural network is thinking... '
+            f'{model_name} is thinking... '
             '(check progress in terminal/console)', color='w')
+
         # Store undo state before modifying stuff
         self.storeUndoRedoStates(False)
-        if self.sender() == self.SegmActionYeaZ:
-            self.askSegmParam = True
-
-        if self.askSegmParam:
-            yeazParams = apps.YeaZ_ParamsDialog(parent=self)
-            yeazParams.exec_()
-            if yeazParams.cancel:
-                print('Segmentation aborted.')
-                return
-            thresh_val = yeazParams.threshVal
-            min_distance = yeazParams.minDist
-            minSize = yeazParams.minSize
-            self.yeazThreshVal = thresh_val
-            self.yeazMinDistance = min_distance
-        else:
-            thresh_val = self.yeazThreshVal
-            min_distance = self.yeazMinDistance
 
         t0 = time.time()
         PosData = self.data[self.pos_i]
-        self.which_model = 'YeaZ'
-        if self.is_first_call_YeaZ:
-            print('Importing YeaZ model...')
-            from YeaZ.unet import neural_network as nn
-            from YeaZ.unet import segment
-            self.nn = nn
-            self.segment = segment
-            self.path_weights = nn.determine_path_weights()
-            download_model('YeaZ')
+        # Check if model needs to be imported
+        acdcSegment = self.acdcSegment_li[idx]
+        if acdcSegment is None:
+            acdcSegment = import_module(f'models.{model_name}.acdcSegment')
+            self.acdcSegment_li[idx] = acdcSegment
+
+        # Ask parameters if the user clicked on the action
+        # Otherwise this function is called by "computeSegm" function and
+        # we use loaded parameters
+        if self.sender() is not None:
+            self.segmModelName = model_name
+            # Read all models parameters
+            init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
+            # Prompt user to enter the model parameters
+            try:
+                url = acdcSegment.url_help()
+            except AttributeError:
+                url = None
+
+            win = apps.QDialogModelParams(
+                init_params,
+                segment_params,
+                model_name, url=url)
+            win.exec_()
+            if win.cancel:
+                self.titleLabel.setText('Segmentation aborted.')
+                return
+
+            self.segment2D_kwargs = win.segment2D_kwargs
+            model = acdcSegment.Model(**win.init_kwargs)
+            self.models[idx] = model
+        else:
+            model = self.models[idx]
 
         img = self.getDisplayedCellsImg()
 
         if self.gaussWin is None:
             img = skimage.filters.gaussian(img, sigma=1)
         img = skimage.exposure.equalize_adapthist(skimage.img_as_float(img))
-        pred = self.nn.prediction(img, is_pc=True,
-                                  path_weights=self.path_weights)
-        thresh = self.nn.threshold(pred, th=thresh_val)
-        lab = self.segment.segment(thresh, pred,
-                                   min_distance=min_distance).astype(int)
-        lab = skimage.morphology.remove_small_objects(lab, min_size=minSize)
+
+        lab = model.segment(img, **self.segment2D_kwargs)
+
         t1 = time.time()
         self.is_first_call_YeaZ = False
         if PosData.segmInfo_df is not None and PosData.SizeZ>1:
@@ -5563,80 +5615,7 @@ class guiWin(QMainWindow):
         self.update_rp()
         self.tracking(enforce=True)
         self.updateALLimg()
-        self.warnEditingWithCca_df('Repeat segmentation with YeaZ')
-
-        txt = f'Done. Segmentation computed in {t1-t0:.3f} s'
-        print('-----------------')
-        print(txt)
-        print('=================')
-        self.titleLabel.setText(txt, color='g')
-        self.checkIfAutoSegm()
-
-    def repeatSegmCellpose(self, checked=False):
-        self.titleLabel.setText(
-            'Cellpose neural network is thinking... '
-            '(check progress in terminal/console)', color='w')
-        # Store undo state before modifying stuff
-        self.storeUndoRedoStates(False)
-        if self.sender() == self.SegmActionCellpose:
-            self.askSegmParam = True
-
-        if self.askSegmParam:
-            cellposeParams = apps.cellpose_ParamsDialog(parent=self)
-            cellposeParams.exec_()
-            if cellposeParams.cancel:
-                print('Segmentation aborted.')
-                return
-            diameter = cellposeParams.diameter
-            if diameter==0:
-                diameter=None
-            flow_threshold = cellposeParams.flow_threshold
-            cellprob_threshold = cellposeParams.cellprob_threshold
-            minSize = cellposeParams.minSize
-            self.cellposeDiameter = diameter
-            self.cellposeFlowThreshold = flow_threshold
-            self.cellposeProbThreshold = cellprob_threshold
-        else:
-            diameter = self.cellposeDiameter
-            flow_threshold = self.cellposeFlowThreshold
-            cellprob_threshold = self.cellposeProbThreshold
-
-        t0 = time.time()
-        PosData = self.data[self.pos_i]
-        self.which_model = 'Cellpose'
-        if self.is_first_call_cellpose:
-            print('Initializing cellpose models...')
-            from acdc_cellpose import models
-            download_model('cellpose')
-            device, gpu = models.assign_device(True, False)
-            self.cp_model = models.Cellpose(gpu=gpu, device=device,
-                                            model_type='cyto', torch=True)
-
-        img = self.getDisplayedCellsImg()
-
-        if self.gaussWin is None:
-            img = skimage.filters.gaussian(img, sigma=1)
-        img = img/img.max()
-        img = skimage.exposure.equalize_adapthist(img)
-        lab, flows, _, _ = self.cp_model.eval(
-                                img,
-                                channels=[0,0],
-                                diameter=diameter,
-                                flow_threshold=flow_threshold,
-                                cellprob_threshold=cellprob_threshold
-        )
-        lab = skimage.morphology.remove_small_objects(lab, min_size=minSize)
-        t1 = time.time()
-        self.is_first_call_cellpose = False
-        if PosData.segmInfo_df is not None and PosData.SizeZ>1:
-            idx = (PosData.filename, PosData.frame_i)
-            PosData.segmInfo_df.at[idx, 'resegmented_in_gui'] = True
-        PosData.lab = lab.copy()
-        self.update_rp()
-        self.tracking(enforce=True)
-        self.updateALLimg()
-        self.warnEditingWithCca_df('Repeat segmentation with YeaZ')
-
+        self.warnEditingWithCca_df('Repeat segmentation')
 
         txt = f'Done. Segmentation computed in {t1-t0:.3f} s'
         print('-----------------')
@@ -5651,6 +5630,57 @@ class guiWin(QMainWindow):
         else:
             img = self.img1.image
         return img
+
+    def autoAssignBud_YeastMate(self):
+        model_name = 'YeastMate'
+        idx = self.modelNames.index(model_name)
+
+        self.titleLabel.setText(
+            f'{model_name} is thinking... '
+            '(check progress in terminal/console)', color='w')
+
+        # Store undo state before modifying stuff
+        self.storeUndoRedoStates(False)
+
+        t0 = time.time()
+        PosData = self.data[self.pos_i]
+        # Check if model needs to be imported
+        acdcSegment = self.acdcSegment_li[idx]
+        if acdcSegment is None:
+            acdcSegment = import_module(f'models.{model_name}.acdcSegment')
+            self.acdcSegment_li[idx] = acdcSegment
+
+        # Read all models parameters
+        init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
+        # Prompt user to enter the model parameters
+        try:
+            url = acdcSegment.url_help()
+        except AttributeError:
+            url = None
+
+        win = apps.QDialogModelParams(
+            init_params,
+            segment_params,
+            model_name, url=url)
+        win.exec_()
+        if win.cancel:
+            self.titleLabel.setText('Segmentation aborted.')
+            return
+
+        self.segment2D_kwargs = win.segment2D_kwargs
+        model = acdcSegment.Model(**win.init_kwargs)
+        self.models[idx] = model
+
+        img = self.getDisplayedCellsImg()
+        if self.gaussWin is None:
+            img = skimage.filters.gaussian(img, sigma=1)
+        img = skimage.exposure.equalize_adapthist(skimage.img_as_float(img))
+
+        PosData.cca_df = model.predictCcaState(img, PosData.lab)
+        self.store_data()
+        self.updateALLimg()
+
+        self.titleLabel.setText('Budding event prediction done.', color='g')
 
     def next_cb(self):
         if self.isSnapshot:
@@ -6276,7 +6306,7 @@ class guiWin(QMainWindow):
 
         if not self.autoSegmAction.isChecked():
             # Compute segmentations that have an open window
-            if self.segmModel == 'randomWalker':
+            if self.segmModelName == 'randomWalker':
                 self.randomWalkerWin.getImage()
                 self.randomWalkerWin.computeMarkers()
                 self.randomWalkerWin.computeSegm()
@@ -6288,11 +6318,7 @@ class guiWin(QMainWindow):
             else:
                 return
 
-        if self.segmModel == 'yeaz':
-            self.repeatSegmYeaZ()
-        elif self.segmModel == 'cellpose':
-            self.repeatSegmCellpose()
-
+        self.repeatSegm(model_name=self.segmModelName)
         self.update_rp()
 
     def initGlobalAttr(self):
@@ -8141,11 +8167,11 @@ class guiWin(QMainWindow):
             deleted_IDs = [ID for ID in cca_df_IDs if ID not in PosData.IDs]
             self.update_cca_df_deletedIDs(PosData, deleted_IDs)
 
-        elif editTxt == 'Repeat segmentation with YeaZ':
-            self.getBaseCca_df()
+        elif editTxt == 'Repeat segmentation':
+            PosData.cca_df = self.getBaseCca_df()
 
         elif editTxt == 'Random Walker segmentation':
-            self.getBaseCca_df()
+            PosData.cca_df = self.getBaseCca_df()
 
 
     def warnEditingWithCca_df(self, editTxt):
@@ -8154,10 +8180,12 @@ class guiWin(QMainWindow):
         # Ask whether to remove annotations from all future frames
         PosData = self.data[self.pos_i]
         if self.isSnapshot and PosData.cca_df is not None:
-            # For snapshot mode we reinitialize cca_df to base
+            # For snapshot mode we reinitialize cca_df depending on the edit
+            print(editTxt)
             self.update_cca_df_snapshots(editTxt, PosData)
             self.store_data()
             self.updateALLimg()
+            print(PosData.cca_df)
             return
 
         acdc_df = PosData.allData_li[PosData.frame_i]['acdc_df']
@@ -9110,6 +9138,8 @@ class guiWin(QMainWindow):
         self.setWindowTitle(f'Cell-ACDC - GUI - "{pos_path}"')
 
     def initFluoData(self):
+        if len(self.ch_names) <= 1:
+            return
         msg = QMessageBox()
         load_fluo = msg.question(
             self, 'Load fluorescent images?',

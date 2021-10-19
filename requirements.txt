@@ -19,3 +19,8 @@ munkres==1.1.4
 scikit-learn==0.24.2
 boto3==1.18.20
 jupyterlab==3.0.18
+fvcore==0.1.5.post20210924
+cloudpickle==2.0.0
+omegaconf==2.1.1
+torchvision==0.10.0
+pycocotools==2.0.2

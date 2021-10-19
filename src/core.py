@@ -13,13 +13,16 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle, Circle, PathPatch, Path
 
+import pandas as pd
+
 from tqdm import tqdm
 
 # Custom modules
 import apps
 
-def align_frames_3D(data, slices=None, register=True,
-                          user_shifts=None, pbar=False):
+def align_frames_3D(
+        data, slices=None, register=True,
+        user_shifts=None, pbar=False):
     registered_shifts = np.zeros((len(data),2), int)
     data_aligned = np.copy(data)
     for frame_i, frame_V in enumerate(data):
@@ -119,3 +122,58 @@ def smooth_contours(lab, radius=2):
         temp_mask = scipy.ndimage.morphology.binary_fill_holes(temp_mask)
         smooth_lab[temp_mask] = obj.label
     return smooth_lab
+
+def getBaseCca_df(IDs):
+    cc_stage = ['G1' for ID in IDs]
+    num_cycles = [2]*len(IDs)
+    relationship = ['mother' for ID in IDs]
+    related_to = [-1]*len(IDs)
+    emerg_frame_i = [-1]*len(IDs)
+    division_frame_i = [-1]*len(IDs)
+    is_history_known = [False]*len(IDs)
+    corrected_assignment = [False]*len(IDs)
+    cca_df = pd.DataFrame({
+                       'cell_cycle_stage': cc_stage,
+                       'generation_num': num_cycles,
+                       'relative_ID': related_to,
+                       'relationship': relationship,
+                       'emerg_frame_i': emerg_frame_i,
+                       'division_frame_i': division_frame_i,
+                       'is_history_known': is_history_known,
+                       'corrected_assignment': corrected_assignment},
+                        index=IDs)
+    cca_df.index.name = 'Cell_ID'
+    return cca_df
+
+def cca_df_to_acdc_df(cca_df, rp, acdc_df=None):
+    if acdc_df is None:
+        IDs = []
+        is_cell_dead_li = []
+        is_cell_excluded_li = []
+        xx_centroid = []
+        yy_centroid = []
+        editIDclicked_x = []
+        editIDclicked_y = []
+        editIDnewID = []
+        for obj in rp:
+            IDs.append(obj.label)
+            is_cell_dead_li.append(0)
+            is_cell_excluded_li.append(0)
+            xx_centroid.append(int(obj.centroid[1]))
+            yy_centroid.append(int(obj.centroid[0]))
+            editIDclicked_x.append(np.nan)
+            editIDclicked_y.append(np.nan)
+            editIDnewID.append(-1)
+        acdc_df = pd.DataFrame({
+            'Cell_ID': IDs,
+            'is_cell_dead': is_cell_dead_li,
+            'is_cell_excluded': is_cell_excluded_li,
+            'x_centroid': xx_centroid,
+            'y_centroid': yy_centroid,
+            'editIDclicked_x': editIDclicked_x,
+            'editIDclicked_y': editIDclicked_y,
+            'editIDnewID': editIDnewID
+        }).set_index('Cell_ID')
+
+    acdc_df = acdc_df.join(cca_df, how='left')
+    return acdc_df

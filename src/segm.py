@@ -7,6 +7,8 @@ import datetime
 import numpy as np
 import pandas as pd
 
+from importlib import import_module
+
 import skimage.exposure
 import skimage.morphology
 
@@ -25,6 +27,8 @@ from PyQt5 import QtGui
 # Custom modules
 import prompts, load, myutils, apps, core, dataPrep
 
+from models.YeaZ.unet import tracking
+
 import qrc_resources
 
 if os.name == 'nt':
@@ -37,49 +41,38 @@ if os.name == 'nt':
         pass
 
 class segmWorkerSignals(QObject):
-    finished = pyqtSignal(int)
+    finished = pyqtSignal(float)
     progress = pyqtSignal(str)
     progressBar = pyqtSignal(int)
 
 class segmWorker(QRunnable):
     def __init__(
-            self,
-            img_path,
-            user_ch_name,
-            SizeT,
-            SizeZ,
-            model,
-            minSize,
-            save
+            self, img_path, mainWin
         ):
         QRunnable.__init__(self)
         self.signals = segmWorkerSignals()
         self.img_path = img_path
-        self.user_ch_name = user_ch_name
-        self.SizeT = SizeT
-        self.SizeZ = SizeZ
-        self.model = model
-        self.minSize = minSize
-        self.save = save
-
-    def set_YeaZ_params(self, path_weights, thresh_val, min_distance):
-        self.path_weights = path_weights
-        self.thresh_val = thresh_val
-        self.min_distance = min_distance
-
-    def set_Cellpose_params(
-            self, cp_model, diameter, flow_threshold, cellprob_threshold
-        ):
-        self.cp_model = cp_model
-        self.diameter = diameter
-        self.flow_threshold = flow_threshold
-        self.cellprob_threshold = cellprob_threshold
+        self.user_ch_name = mainWin.user_ch_name
+        self.SizeT = mainWin.SizeT
+        self.SizeZ = mainWin.SizeZ
+        self.model = mainWin.model
+        self.model_name = mainWin.model_name
+        self.minSize = mainWin.minSize
+        self.save = mainWin.save
+        self.segment2D_kwargs = mainWin.segment2D_kwargs
+        self.do_tracking = mainWin.do_tracking
+        self.predictCcaState_model = mainWin.predictCcaState_model
 
     def run(self):
         img_path = self.img_path
         user_ch_name = self.user_ch_name
 
         PosData = load.loadData(img_path, user_ch_name)
+        if self.predictCcaState_model is not None:
+            PosData.loadOtherFiles(
+                load_segm_data=False,
+                load_acdc_df=True
+            )
 
         self.signals.progress.emit(f'Loading {PosData.relPath}...')
 
@@ -146,10 +139,6 @@ class segmWorker(QRunnable):
                     Y, X = img_data.shape[-2:]
                     img_data = img_data[:, y0:y1, x0:x1]
                     pad_info = ((0, 0), (y0, Y-y1), (x0, X-x1))
-            img_data = [img/img.max() for img in img_data]
-            img_data = np.array(
-                [skimage.exposure.equalize_adapthist(img) for img in img_data]
-            )
         else:
             if PosData.SizeZ > 1:
                 # Single 3D image
@@ -164,16 +153,13 @@ class segmWorker(QRunnable):
                     img_data = PosData.img_data.mean(axis=0)
                 elif zProjHow == 'median z-proj.':
                     img_data = np.median(PosData.img_data, axis=0)
-                img_data = skimage.exposure.equalize_adapthist(
-                                                img_data/img_data.max())
                 if isROIactive:
                     Y, X = img_data.shape[-2:]
                     pad_info = ((0, 0), (y0, Y-y1), (x0, X-x1))
                     img_data = img_data[:, y0:y1, x0:x1]
             else:
                 # Single 2D image
-                img_data = PosData.img_data/PosData.img_data.max()
-                img_data = skimage.exposure.equalize_adapthist(img_data)
+                img_data = PosData.img_data
                 if isROIactive:
                     Y, X = img_data.shape[-2:]
                     pad_info = ((y0, Y-y1), (x0, X-x1))
@@ -183,77 +169,40 @@ class segmWorker(QRunnable):
         # self.signals.progress.emit(f'Image shape = {img_data.shape}')
 
         """Segmentation routine"""
-        self.signals.progress.emit(f'Segmenting with {self.model}...')
+        self.signals.progress.emit(f'Segmenting with {self.model_name}...')
         t0 = time.time()
         # self.signals.progress.emit(f'Segmenting with {model} (Ctrl+C to abort)...')
         if PosData.SizeT > 1:
-            if self.model == 'yeaz':
-                pred_stack = nn.batch_prediction(
-                    img_data,
-                    is_pc=True,
-                    path_weights=self.path_weights,
-                    batch_size=1
-                )
-                self.signals.progressBar.emit(len(pred_stack))
-
-            elif self.model == 'cellpose':
-                lab_stack = np.zeros(img_data.shape, np.uint16)
-                for t, img in enumerate(img_data):
-                    lab, flows, _, _ = self.cp_model.eval(
-                        img,
-                        channels=[0,0],
-                        diameter=self.diameter,
-                        flow_threshold=self.flow_threshold,
-                        cellprob_threshold=self.cellprob_threshold
-                    )
-                    # lab = core.smooth_contours(lab, radius=2)
-                    lab_stack[t] = lab
-                    self.signals.progressBar.emit(1)
-
-        else:
-            if self.model == 'yeaz':
-                pred_stack = nn.prediction(
-                    img_data,
-                    is_pc=True,
-                    path_weights=self.path_weights,
-                    batch_size=1
-                )
-                self.signals.progressBar.emit(1)
-            elif self.model == 'cellpose':
-                lab_stack, flows, _, _ = self.cp_model.eval(
-                    img_data,
-                    channels=[0,0],
-                    diameter=self.diameter,
-                    flow_threshold=self.flow_threshold,
-                    cellprob_threshold=self.cellprob_threshold
-                )
-                self.signals.progressBar.emit(1)
-                # lab_stack = core.smooth_contours(lab_stack, radius=2)
-        if self.model == 'yeaz':
-            # self.signals.progress.emit('Thresholding prediction...')
-            thresh_stack = nn.threshold(pred_stack, th=self.thresh_val)
-
-        if PosData.SizeT > 1:
-            if self.model == 'yeaz':
-                # self.signals.progress.emit('Labelling predictions...')
-                lab_stack = segment.segment_stack(
-                    thresh_stack, pred_stack, min_distance=self.min_distance,
-                    signals=self.signals
-                ).astype(np.uint16)
-            else:
+            lab_stack = np.zeros(img_data.shape, np.uint16)
+            for t, img in enumerate(img_data):
+                lab = self.model.segment(img, **self.segment2D_kwargs)
+                lab_stack[t] = lab
                 self.signals.progressBar.emit(1)
         else:
-            if self.model == 'yeaz':
-                lab_stack = segment.segment(
-                    thresh_stack, pred_stack, min_distance=self.min_distance
-                ).astype(np.uint16)
+            lab_stack = self.model.segment(img_data, **self.segment2D_kwargs)
+            if self.predictCcaState_model is not None:
+                cca_df = self.predictCcaState_model.predictCcaState(
+                    img_data, lab_stack
+                )
+                rp = skimage.measure.regionprops(lab_stack)
+                if PosData.acdc_df is not None:
+                    acdc_df = PosData.acdc_df.loc[0]
+                else:
+                    acdc_df = None
+                acdc_df = core.cca_df_to_acdc_df(cca_df, rp, acdc_df=acdc_df)
+
+                # Add frame_i=0 level to index (snapshots)
+                acdc_df = pd.concat([acdc_df], keys=[0], names=['frame_i'])
+                if self.save:
+                    acdc_df.to_csv(PosData.acdc_output_csv_path)
             self.signals.progressBar.emit(1)
+            # lab_stack = core.smooth_contours(lab_stack, radius=2)
 
         lab_stack = skimage.morphology.remove_small_objects(
             lab_stack, min_size=self.minSize
         )
 
-        if PosData.SizeT > 1:
+        if PosData.SizeT > 1 and self.do_tracking:
             # self.signals.progress.emit('Tracking cells...')
             # NOTE: We use yeaz tracking also for cellpose
             tracked_stack = tracking.correspondence_stack(
@@ -261,7 +210,10 @@ class segmWorker(QRunnable):
             ).astype(np.uint16)
         else:
             tracked_stack = lab_stack
-            self.signals.progressBar.emit(1)
+            try:
+                self.signals.progressBar.emit(PosData.segmSizeT)
+            except AttributeError:
+                self.signals.progressBar.emit(1)
 
         if isROIactive:
             tracked_stack = np.pad(tracked_stack, pad_info,  mode='constant')
@@ -332,7 +284,7 @@ class segmWin(QMainWindow):
         mainContainer.setLayout(mainLayout)
 
     def getMostRecentPath(self):
-        src_path = os.path.dirname(os.path.realpath(__file__))
+        src_path = os.path.dirname(os.path.abspath(__file__))
         recentPaths_path = os.path.join(
             src_path, 'temp', 'recentPaths.csv'
         )
@@ -407,6 +359,9 @@ class segmWin(QMainWindow):
                 self.close()
                 return
 
+        font = QtGui.QFont()
+        font.setPointSize(10)
+
         self.setWindowTitle(f'Cell-ACDC - Segment - "{exp_path}"')
 
         self.addPbar()
@@ -425,61 +380,47 @@ class segmWin(QMainWindow):
         self.progressLabel.setText('Loading data...')
 
         # Ask which model
-        font = QtGui.QFont()
-        font.setPointSize(10)
-        self.model = prompts.askWhichSegmModel(parent=self)
-        if not self.model:
+        models = myutils.get_list_of_models()
+        win = apps.QDialogListbox(
+            'Select model',
+            'Select model to use for segmentation: ',
+            models,
+            multiSelection=False,
+            parent=self
+        )
+        win.exec_()
+        model_name = win.selectedItemsText[0]
+        myutils.download_model(model_name)
+        self.model_name = model_name
+        acdcSegment = import_module(f'models.{model_name}.acdcSegment')
+        self.acdcSegment =  acdcSegment
+
+        # Read all models parameters
+        init_params, segment_params = myutils.getModelArgSpec(self.acdcSegment)
+
+        # Prompt user to enter the model parameters
+        try:
+            url = acdcSegment.url_help()
+        except AttributeError:
+            url = None
+
+        win = apps.QDialogModelParams(
+            init_params,
+            segment_params,
+            model_name, url=url)
+        win.exec_()
+
+        if win.cancel:
             abort = self.doAbort()
             if abort:
                 self.close()
                 return
-        if self.model == 'yeaz':
-            yeazParams = apps.YeaZ_ParamsDialog(parent=self)
-            yeazParams.setFont(font)
-            yeazParams.exec_()
-            if yeazParams.cancel:
-                abort = self.doAbort()
-                if abort:
-                    self.close()
-                    return
 
-            self.thresh_val = yeazParams.threshVal
-            self.min_distance = yeazParams.minDist
-            self.minSize = yeazParams.minSize
-            # YeaZ modules
-            print('Importing YeaZ...')
-            self.progressLabel.setText('Importing YeaZ...')
-            from YeaZ.unet import neural_network as nn
-            from YeaZ.unet import segment
-            from YeaZ.unet import tracking
-            myutils.download_model('YeaZ')
-            self.path_weights = nn.determine_path_weights()
-        elif self.model == 'cellpose':
-            cellposeParams = apps.cellpose_ParamsDialog(parent=self)
-            cellposeParams.setFont(font)
-            cellposeParams.exec_()
-            if cellposeParams.cancel:
-                abort = self.doAbort()
-                if abort:
-                    self.close()
-                    return
+        self.segment2D_kwargs = win.segment2D_kwargs
+        self.minSize = win.minSize
 
-            self.diameter = cellposeParams.diameter
-            if self.diameter==0:
-                self.diameter=None
-            self.flow_threshold = cellposeParams.flow_threshold
-            self.cellprob_threshold = cellposeParams.cellprob_threshold
-            self.minSize = cellposeParams.minSize
-            # Cellpose modules
-            print('Importing cellpose...')
-            self.progressLabel.setText('Importing cellpose...')
-            from acdc_cellpose import models
-            from YeaZ.unet import tracking
-            myutils.download_model('cellpose')
-            device, gpu = models.assign_device(True, False)
-            self.cp_model = models.Cellpose(
-                gpu=gpu, device=device, model_type='cyto', torch=True
-            )
+        # Initialize model
+        self.model = acdcSegment.Model(**win.init_kwargs)
 
         ch_name_selector = prompts.select_channel_name(
             which_channel='segm', allow_abort=True
@@ -627,6 +568,25 @@ class segmWin(QMainWindow):
                 self.close()
                 return
 
+        if PosData.SizeT == 1:
+            # Ask if I should predict budding
+            self.predictCcaState_model = None
+            msg = QMessageBox()
+            msg.setFont(font)
+            answer = msg.question(
+                self, 'Predict budding?',
+                'Do you want to automatically predict which cells are budding '
+                '(relevant only to budding yeast cells)?',
+                msg.Yes | msg.No | msg.Cancel
+            )
+            if answer == msg.Yes:
+                self.setPredictBuddingModel()
+            elif answer == msg.Cancel:
+                abort = self.doAbort()
+                if abort:
+                    self.close()
+                    return
+
         if PosData.dataPrep_ROIcoords is None:
             # Ask ROI
             msg = QMessageBox()
@@ -712,6 +672,7 @@ class segmWin(QMainWindow):
             isROIactive = PosData.dataPrep_ROIcoords.at['cropped', 'value'] == 0
             x0, x1, y0, y1 = PosData.dataPrep_ROIcoords['value'][:4]
 
+        self.do_tracking = False
         if PosData.SizeT > 1:
             # Ask stop frame. The "askStopFrameSegm" will internally load
             # all the PosData and save segmSizeT which will be used as stop_i
@@ -720,6 +681,23 @@ class segmWin(QMainWindow):
             win.showAndSetFont(font)
             win.exec_()
             if win.cancel:
+                abort = self.doAbort()
+                if abort:
+                    self.close()
+                    return
+
+            # Ask whether to track the frames
+            msg = QMessageBox()
+            msg.setFont(font)
+            answer = msg.question(
+                self, 'Track?', 'Do you want to track the objects?',
+                msg.Yes | msg.No | msg.Cancel
+            )
+            if answer == msg.Yes:
+                self.do_tracking = True
+            elif answer == msg.No:
+                self.do_tracking = False
+            else:
                 abort = self.doAbort()
                 if abort:
                     self.close()
@@ -740,12 +718,11 @@ class segmWin(QMainWindow):
             else:
                 max += 1
 
-        # pBar will be updated three times per frame of each pos:
-        # 1. After prediction
-        # 2. After prediction --> labels (only YeaZ)
-        # 3. After tracking --> only if SizeT > 1
-        self.QPbar.setMaximum(max*3)
-        self.exec_time_per_3steps = 0
+        # pBar will be updated twice per frame of each pos:
+        # 1. After segmentation
+        # 2. After tracking
+        self.QPbar.setMaximum(max*2)
+        self.exec_time_per_2steps = 0
 
         self.total_exec_time = 0
         self.time_last_pbar_update = time.time()
@@ -763,26 +740,14 @@ class segmWin(QMainWindow):
             img_path = user_ch_file_paths[i]
             self.startSegmWorker()
 
+    def setPredictBuddingModel(self):
+        myutils.download_model('YeastMate')
+        import models.YeastMate.acdcSegment as yeastmate
+        self.predictCcaState_model = yeastmate.Model()
+
     def startSegmWorker(self):
         img_path = self.user_ch_file_paths[self.threadIdx]
-        worker = segmWorker(
-            img_path,
-            self.user_ch_name,
-            self.SizeT,
-            self.SizeZ,
-            self.model,
-            self.minSize,
-            self.save
-        )
-        if self.model == 'yeaz':
-            worker.set_YeaZ_params(
-                self.path_weights, self.thresh_val, self.min_distance
-            )
-        elif self.model == 'cellpose':
-            worker.set_Cellpose_params(
-                self.cp_model, self.diameter,
-                self.flow_threshold, self.cellprob_threshold
-            )
+        worker = segmWorker(img_path, self)
         worker.signals.finished.connect(self.segmWorkerFinished)
         worker.signals.progress.connect(self.segmWorkerProgress)
         worker.signals.progressBar.connect(self.segmWorkerProgressBar)
@@ -799,14 +764,14 @@ class segmWin(QMainWindow):
         t = time.time()
         deltaT_step = t - self.time_last_pbar_update
         steps_left = self.QPbar.maximum()-self.QPbar.value()
-        self.exec_time_per_3steps += deltaT_step
-        if steps_left%3 == 0:
-            seconds = round(self.exec_time_per_3steps*steps_left/3)
+        self.exec_time_per_2steps += deltaT_step
+        if steps_left%2 == 0:
+            seconds = round(self.exec_time_per_2steps*steps_left/2)
             ETA = datetime.timedelta(seconds=seconds)
             h, m, s = str(ETA).split(':')
             ETA = f'{int(h):02}h:{int(m):02}m:{int(s):02}s'
             self.ETA_label.setText(f'ETA: {ETA}')
-            self.exec_time_per_3steps = 0
+            self.exec_time_per_2steps = 0
         self.time_last_pbar_update = t
 
 

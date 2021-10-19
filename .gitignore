@@ -25,6 +25,10 @@ UserManual/*
 # Ignore models folder but keep the folder with placeholder.txt dummy file
 models/*
 !models/placeholder.txt
+src/models/cellpose/model/*
+src/models/YeaZ/model/*
+src/models/YeastMate/model/*
+
 # Hide placeholder.txt dummy file (probably works only on Linux)
 !models/.placeholder.txt
 src/lastCommit.txt

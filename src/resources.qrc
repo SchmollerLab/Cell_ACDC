@@ -55,5 +55,6 @@
     <file alias="crop.svg">resources/crop.svg</file>
     <file alias="exit.png">resources/exit.png</file>
     <file alias="delBorderObj.svg">resources/delBorderObj.svg</file>
+    <file alias="autoAssign.svg">resources/autoAssign.svg</file>
 </qresource>
 </RCC>
