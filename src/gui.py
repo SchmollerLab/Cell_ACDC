@@ -7927,9 +7927,10 @@ class guiWin(QMainWindow):
                 imgRange = img.max()-img.min()
                 min = img.min() + imgRange*minPerc
                 max = img.min() + imgRange*maxPerc
-                in_range = (min, max)
-                rescaled_img = func(rescaled_img,
-                                    in_range=in_range)
+                out_range = (min, max)
+                rescaled_img = func(
+                    rescaled_img, in_range='image', out_range=out_range
+                )
         return rescaled_img
 
     def getOlImg(self, key, normalizeIntens=True):
