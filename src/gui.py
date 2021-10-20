@@ -1298,6 +1298,18 @@ class guiWin(QMainWindow):
         # self.frameLabel.setText(' ')
         # self.graphLayout.addItem(self.frameLabel, row=2, col=1, colspan=2)
 
+    def gui_setLabelsColors(self, r, g, b, custom=False):
+        if custom:
+            self.ax1_oldIDcolor = (r, g, b)
+            self.ax1_S_oldCellColor = (int(r*0.9), int(r*0.9), int(r*0.9))
+            self.ax1_G1cellColor = (int(r*0.8), int(r*0.8), int(r*0.8), 178)
+            self.ax1_divAnnotColor = (int(r*0.9), int(g*0.9), int(b*0.9))
+        else:
+            self.ax1_oldIDcolor = (255, 255, 255) # white
+            self.ax1_S_oldCellColor = (229, 229, 229)
+            self.ax1_G1cellColor = (204, 204, 204, 178)
+            self.ax1_divAnnotColor = (245, 188, 1) # orange
+
     def gui_addPlotItems(self):
         if 'textIDsColor' in self.df_settings.index:
             rgbString = self.df_settings.at['textIDsColor', 'value']
@@ -1306,14 +1318,11 @@ class guiWin(QMainWindow):
                 r, g, b = int(r), int(g), int(b)
             except TypeError:
                 r, g, b = 255, 255, 255
-            self.ax1_oldIDcolor = (r, g, b)
-            self.ax1_S_oldCellColor = (int(r*0.9), int(r*0.9), int(r*0.9))
-            self.ax1_G1cellColor = (int(r*0.8), int(r*0.8), int(r*0.8), 178)
+            self.gui_setLabelsColors(r, g, b)
+            self.gui_setLabelsColors(r,g,b, custom=True)
             self.textIDsColorButton.setColor((r, g, b))
         else:
-            self.ax1_oldIDcolor = (255, 255, 255) # white
-            self.ax1_S_oldCellColor = (229, 229, 229)
-            self.ax1_G1cellColor = (204, 204, 204, 178)
+            self.gui_setLabelsColors(0,0,0, custom=False)
 
         # Blank image
         self.blank = np.zeros((256,256), np.uint8)
@@ -7298,9 +7307,6 @@ class guiWin(QMainWindow):
                 bold = True
             else:
                 color = self.ax1_oldIDcolor
-                if updateColor:
-                    color = self.getOptimalLabelItemColor(LabelItemID, color)
-                    self.ax1_oldIDcolor = color
                 bold = False
         else:
             df_ID = df.loc[ID]
@@ -7313,6 +7319,41 @@ class guiWin(QMainWindow):
             is_bud = relationship == 'bud'
             is_moth = relationship == 'mother'
             emerged_now = emerg_frame_i == PosData.frame_i
+
+            # Check if the cell has already annotated division in the future
+            # to use orange instead of red
+            is_division_annotated = False
+            if ccs == 'S' and is_bud and not self.isSnapshot:
+                for i in range(PosData.frame_i+1, PosData.segmSizeT):
+                    cca_df = self.get_cca_df(frame_i=i, return_df=True)
+                    if cca_df is None:
+                        break
+                    _ccs = cca_df.at[ID, 'cell_cycle_stage']
+                    if _ccs == 'G1':
+                        is_division_annotated = True
+                        break
+
+            mothCell_S = (
+                ccs == 'S'
+                and is_moth
+                and not emerged_now
+                and not is_division_annotated
+            )
+
+            budNotEmergedNow = (
+                ccs == 'S'
+                and is_bud
+                and not emerged_now
+                and not is_division_annotated
+            )
+
+            budEmergedNow = (
+                ccs == 'S'
+                and is_bud
+                and emerged_now
+                and not is_division_annotated
+            )
+
             txt = f'{ccs}-{generation_num}'
             if updateColor:
                 LabelItemID.setText(txt, size=self.fontSize)
@@ -7322,18 +7363,21 @@ class guiWin(QMainWindow):
                     c = self.getOptimalLabelItemColor(LabelItemID, c)
                     self.ax1_G1cellColor = c
                 bold = False
-            elif ccs == 'S' and is_moth and not emerged_now:
+            elif mothCell_S:
                 color = self.ax1_S_oldCellColor
                 if updateColor:
                     c = self.getOptimalLabelItemColor(LabelItemID, c)
                     self.ax1_S_oldCellColor = c
                 bold = False
-            elif ccs == 'S' and is_bud and not emerged_now:
+            elif budNotEmergedNow:
                 color = 'r'
                 bold = False
-            elif ccs == 'S' and is_bud and emerged_now:
+            elif budEmergedNow:
                 color = 'r'
                 bold = True
+            elif is_division_annotated:
+                color = self.ax1_divAnnotColor
+                bold = False
 
             if not is_history_known:
                 txt = f'{txt}?'
@@ -8039,9 +8083,7 @@ class guiWin(QMainWindow):
 
     def updateTextIDsColors(self, button):
         r, g, b = np.array(self.textIDsColorButton.color().getRgb()[:3])
-        self.ax1_oldIDcolor = (r, g, b)
-        self.ax1_S_oldCellColor = (int(r*0.9), int(g*0.9), int(b*0.9))
-        self.ax1_G1cellColor = (int(r*0.8), int(g*0.8), int(b*0.8), 178)
+        self.gui_setLabelsColors(r,g,b, custom=True)
         self.updateALLimg()
 
     def saveTextIDsColors(self, button):

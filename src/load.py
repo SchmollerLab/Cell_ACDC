@@ -230,7 +230,9 @@ class loadData:
                     if 'value' in df.columns:
                         self.dataPrep_ROIcoordsFound = True
                         self.dataPrep_ROIcoords = df
-            elif load_metadata and file.endswith('metadata.csv'):
+            elif (load_metadata and file.endswith('metadata.csv')
+                and not file.endswith('segm_metadata.csv')
+                ):
                 self.metadataFound = True
                 self.metadata_df = pd.read_csv(filePath).set_index('Description')
                 self.extractMetadata()
