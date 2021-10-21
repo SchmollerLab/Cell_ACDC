@@ -198,6 +198,8 @@ class segmWorker(QRunnable):
             self.signals.progressBar.emit(1)
             # lab_stack = core.smooth_contours(lab_stack, radius=2)
 
+        apps.imshow_tk(lab_stack)
+        
         lab_stack = skimage.morphology.remove_small_objects(
             lab_stack, min_size=self.minSize
         )

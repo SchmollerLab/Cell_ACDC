@@ -28,6 +28,8 @@ class Model:
 
         weights_path = os.path.join(model_path, weights_fn)
 
+        print(weights_path)
+
         if not os.path.exists(model_path):
             raise FileNotFoundError(f'Weights file not found in {model_path}')
 
@@ -54,5 +56,7 @@ class Model:
         # remove padding with 0s
         prediction = prediction[0:-row_add, 0:-col_add]
         thresh = neural_network.threshold(prediction, thresh_val=thresh_val)
-        lab = segment.segment(thresh, prediction, min_distance=min_distance)
+        lab = segment.segment(
+            thresh, prediction, min_distance=min_distance
+        ).astype(np.uint16)
         return lab
