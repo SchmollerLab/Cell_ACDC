@@ -8224,11 +8224,9 @@ class guiWin(QMainWindow):
         PosData = self.data[self.pos_i]
         if self.isSnapshot and PosData.cca_df is not None:
             # For snapshot mode we reinitialize cca_df depending on the edit
-            print(editTxt)
             self.update_cca_df_snapshots(editTxt, PosData)
             self.store_data()
             self.updateALLimg()
-            print(PosData.cca_df)
             return
 
         acdc_df = PosData.allData_li[PosData.frame_i]['acdc_df']

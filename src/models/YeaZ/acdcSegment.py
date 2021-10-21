@@ -28,8 +28,6 @@ class Model:
 
         weights_path = os.path.join(model_path, weights_fn)
 
-        print(weights_path)
-
         if not os.path.exists(model_path):
             raise FileNotFoundError(f'Weights file not found in {model_path}')
 
