@@ -18,7 +18,7 @@ from tqdm import tqdm
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QFileDialog,
     QVBoxLayout, QPushButton, QLabel, QProgressBar, QHBoxLayout,
-    QStyleFactory, QWidget, QMessageBox, QPlainTextEdit
+    QStyleFactory, QWidget, QMessageBox, QTextEdit
 )
 from PyQt5.QtCore import (
     Qt, QEventLoop, QThreadPool, QRunnable, pyqtSignal, QObject
@@ -41,28 +41,11 @@ if os.name == 'nt':
     except:
         pass
 
-class QTerminal(QPlainTextEdit):
+class QTerminal(QTextEdit):
     def write(self, message):
-        if not hasattr(self, "flag"):
-            self.flag = False
-        message = message.replace('\r', '').rstrip()
+        message = message.replace('\r ', '')
         if message:
-            if self.flag:
-                self.replace_last_line(message)
-            else:
-                self.appendPlainText(message)
-            self.flag = True
-        else:
-            self.flag = False
-
-    def replace_last_line(self, text):
-        cursor = self.textCursor()
-        cursor.movePosition(QtGui.QTextCursor.End)
-        cursor.select(QtGui.QTextCursor.BlockUnderCursor)
-        cursor.removeSelectedText()
-        cursor.insertBlock()
-        self.setTextCursor(cursor)
-        self.insertPlainText(text)
+            self.setText(message)
 
 class segmWorkerSignals(QObject):
     finished = pyqtSignal(float)

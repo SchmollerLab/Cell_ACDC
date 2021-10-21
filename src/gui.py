@@ -309,6 +309,27 @@ class saveDataWorker(QObject):
 
         self.finished.emit()
 
+class segmWorker(QObject):
+    finished = pyqtSignal(np.ndarray, float)
+
+    def __init__(self, mainWin):
+        QObject.__init__(self)
+        self.mainWin = mainWin
+
+    def run(self):
+        t0 = time.time()
+        img = self.mainWin.getDisplayedCellsImg()
+        lab = self.mainWin.model.segment(img, **self.mainWin.segment2D_kwargs)
+        if len(skimage.measure.regionprops(lab))>1:
+            lab = skimage.morphology.remove_small_objects(
+                lab, min_size=self.mainWin.minSize
+            )
+
+        t1 = time.time()
+        exec_time = t1-t0
+        self.finished.emit(lab, exec_time)
+
+
 class guiWin(QMainWindow):
     """Main Window."""
 
@@ -323,11 +344,9 @@ class guiWin(QMainWindow):
         self.app = app
 
         self.slideshowWin = None
-        self.segmModelName = None
         self.ccaTableWin = None
         self.data_loaded = False
         self.flag = True
-        self.countBlinks = 0
         self.setWindowTitle("Cell-ACDC - GUI")
         self.setWindowIcon(QIcon(":assign-motherbud.svg"))
         self.setAcceptDrops(True)
@@ -5558,20 +5577,17 @@ class guiWin(QMainWindow):
         self.randomWalkerWin.setSize()
 
     def repeatSegm(self, model_name=''):
-        if self.sender() is not None:
+        if not model_name:
             idx = self.segmActions.index(self.sender())
             model_name = self.modelNames[idx]
+            askSegmParams = True
         else:
             idx = self.modelNames.index(model_name)
-
-        self.titleLabel.setText(
-            f'{model_name} is thinking... '
-            '(check progress in terminal/console)', color='w')
+            askSegmParams = self.segment2D_kwargs is None
 
         # Store undo state before modifying stuff
         self.storeUndoRedoStates(False)
 
-        t0 = time.time()
         PosData = self.data[self.pos_i]
         # Check if model needs to be imported
         acdcSegment = self.acdcSegment_li[idx]
@@ -5582,7 +5598,7 @@ class guiWin(QMainWindow):
         # Ask parameters if the user clicked on the action
         # Otherwise this function is called by "computeSegm" function and
         # we use loaded parameters
-        if self.sender() is not None:
+        if askSegmParams:
             self.segmModelName = model_name
             # Read all models parameters
             init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
@@ -5609,25 +5625,39 @@ class guiWin(QMainWindow):
         else:
             model = self.models[idx]
 
-        img = self.getDisplayedCellsImg()
+        self.titleLabel.setText(
+            f'{model_name} is thinking... '
+            '(check progress in terminal/console)', color='w')
 
-        lab = model.segment(img, **self.segment2D_kwargs)
-        lab = skimage.morphology.remove_small_objects(
-            lab, min_size=self.minSize
-        )
+        self.model = model
 
-        t1 = time.time()
-        self.is_first_call_YeaZ = False
+        self.thread = QThread()
+        self.worker = segmWorker(self)
+        self.worker.moveToThread(self.thread)
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.thread.finished.connect(self.thread.deleteLater)
+
+        # Custom signals
+        self.worker.finished.connect(self.segmWorkerFinished)
+
+        self.thread.started.connect(self.worker.run)
+        self.thread.start()
+
+    def segmWorkerFinished(self, lab, exec_time):
+        PosData = self.data[self.pos_i]
+
         if PosData.segmInfo_df is not None and PosData.SizeZ>1:
             idx = (PosData.filename, PosData.frame_i)
             PosData.segmInfo_df.at[idx, 'resegmented_in_gui'] = True
+
         PosData.lab = lab.copy()
         self.update_rp()
         self.tracking(enforce=True)
         self.updateALLimg()
         self.warnEditingWithCca_df('Repeat segmentation')
 
-        txt = f'Done. Segmentation computed in {t1-t0:.3f} s'
+        txt = f'Done. Segmentation computed in {exec_time:.3f} s'
         print('-----------------')
         print(txt)
         print('=================')
@@ -6345,6 +6375,9 @@ class guiWin(QMainWindow):
         self.autoContourHoverON = False
         self.navigateScrollBarStartedMoving = True
 
+        self.segment2D_kwargs = None
+        self.segmModelName = None
+
         self.autoSegmDoNotAskAgain = False
 
         self.clickedOnBud = False
@@ -6358,8 +6391,6 @@ class guiWin(QMainWindow):
         self.ax1BrushHoverID = 0
 
         # Plots items
-        self.is_first_call_YeaZ = True
-        self.is_first_call_cellpose = True
         self.data_loaded = True
         self.isMouseDragImg2 = False
         self.isMouseDragImg1 = False

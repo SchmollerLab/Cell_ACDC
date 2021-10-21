@@ -241,8 +241,8 @@ class loadData:
             self.last_tracked_i_found = True
             try:
                 self.last_tracked_i = max(self.acdc_df.index.get_level_values(0))
-            except Exception as e:
-                traceback.print_exc()
+            except AttributeError as e:
+                # traceback.print_exc()
                 self.last_tracked_i = None
         self.setNotFoundData()
 
