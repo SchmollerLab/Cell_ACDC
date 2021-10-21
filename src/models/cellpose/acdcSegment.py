@@ -4,6 +4,7 @@ import pathlib
 import numpy as np
 
 import skimage.exposure
+import skimage.filters
 
 from . import models
 
@@ -25,7 +26,7 @@ class Model:
                 flow_threshold=0.4,
                 cellprob_threshold=0.0):
         # Preprocess image
-        image = image/image.max()
+        image = skimage.filters.gaussian(image, sigma=1)
         image = skimage.exposure.equalize_adapthist(image)
 
         # Run cellpose eval

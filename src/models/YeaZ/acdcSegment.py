@@ -3,10 +3,32 @@ import os
 import numpy as np
 
 import skimage.exposure
+import skimage.filters
 
 from .unet import model
 from .unet import neural_network
 from .unet import segment
+
+from tensorflow import keras
+
+from tqdm import tqdm
+
+class progressCallback(keras.callbacks.Callback):
+    def __init__(self, signals):
+        self.signals = signals
+
+    def on_predict_begin(self, logs=None):
+        pass
+
+    def on_predict_batch_begin(self, batch, logs=None):
+        pass
+
+    def on_predict_batch_end(self, batch, logs=None):
+        innerPbar_available = self.signals[1]
+        if innerPbar_available:
+            self.signals[0].innerProgressBar.emit(1)
+        else:
+            self.signals[0].progressBar.emit(1)
 
 class Model:
     def __init__(self, is_phase_contrast=True):
@@ -33,10 +55,16 @@ class Model:
 
         self.model.load_weights(weights_path)
 
-    def segment(self, image, thresh_val=0.0, min_distance=10):
-        # Preprocess image
+    def yeaz_preprocess(self, image):
+        image = skimage.filters.gaussian(image, sigma=1)
+        image = skimage.exposure.equalize_adapthist(image)
         image = image/image.max()
         image = skimage.exposure.equalize_adapthist(image)
+        return image
+
+    def segment(self, image, thresh_val=0.0, min_distance=10):
+        # Preprocess image
+        image = self.yeaz_preprocess(image)
 
         if thresh_val == 0:
             thresh_val = None
@@ -49,12 +77,46 @@ class Model:
         padded = np.pad(image, pad_info, 'constant')
         x = padded[np.newaxis,:,:,np.newaxis]
 
-        prediction = self.model.predict(x, batch_size=1)[0,:,:,0]
+        prediction = self.model.predict(x, batch_size=1, verbose=1)[0,:,:,0]
 
         # remove padding with 0s
         prediction = prediction[0:-row_add, 0:-col_add]
         thresh = neural_network.threshold(prediction, thresh_val=thresh_val)
-        lab = segment.segment(
-            thresh, prediction, min_distance=min_distance
-        ).astype(np.uint16)
-        return lab
+        lab = segment.segment(thresh, prediction, min_distance=min_distance)
+        return lab.astype(np.uint16)
+
+    def segment3DT(self, timelapse3D, thresh_val=0.0, min_distance=10, signals=None):
+        signals[0].progress.emit(f'Preprocessing images...')
+        timelapse3D = np.zeros(timelapse3D.shape)
+        for t, image in enumerate(timelapse3D):
+            image = self.yeaz_preprocess(image)
+            timelapse3D[t] = image
+            signals[0].progress_tqdm.emit(1)
+        signals[0].signal_close_tqdm.emit()
+
+        if thresh_val == 0:
+            thresh_val = None
+
+        # pad with zeros such that is divisible by 16
+        (nrow, ncol) = timelapse3D[0].shape
+        row_add = 16-nrow%16
+        col_add = 16-ncol%16
+        pad_info = ((0, 0), (0, row_add), (0, col_add))
+        padded = np.pad(timelapse3D, pad_info, 'constant')
+
+        x = padded[:, :, :, np.newaxis]
+
+        signals[0].progress.emit(f'Segmenting with YeaZ...')
+
+        prediction = self.model.predict(
+            x, batch_size=1, verbose=1, callbacks=[progressCallback(signals)]
+        )[:,:,:,0]
+
+        # remove padding with 0s
+        lab_timelapse = np.zeros(prediction.shape, np.uint16)
+        prediction = prediction[:, 0:-row_add, 0:-col_add]
+        for t, pred in enumerate(prediction):
+            thresh = neural_network.threshold(pred, thresh_val=thresh_val)
+            lab = segment.segment(thresh, pred, min_distance=min_distance)
+            lab_timelapse[t] = lab.astype(np.uint16)
+        return lab_timelapse

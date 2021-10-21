@@ -3,6 +3,7 @@ import pathlib
 import sys
 import tempfile
 import shutil
+import datetime
 from collections import namedtuple
 from tqdm import tqdm
 import requests
@@ -342,6 +343,18 @@ def get_list_of_models():
     src_path = os.path.dirname(os.path.abspath(__file__))
     models = os.listdir(os.path.join(src_path, 'models'))
     return models
+
+def seconds_to_ETA(seconds):
+    ETA = datetime.timedelta(seconds=seconds)
+    ETA_split = str(ETA).split(':')
+    if seconds >= 86400:
+        days, hhmmss = str(ETA).split(',')
+        h, m, s = hhmmss.split(':')
+        ETA = f'{days}, {int(h):02}h:{int(m):02}m:{int(s):02}s'
+    else:
+        h, m, s = str(ETA).split(':')
+        ETA = f'{int(h):02}h:{int(m):02}m:{int(s):02}s'
+    return ETA
 
 if __name__ == '__main__':
     model_name = 'cellpose'
