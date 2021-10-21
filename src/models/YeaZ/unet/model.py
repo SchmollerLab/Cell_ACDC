@@ -10,7 +10,7 @@ from tensorflow import __version__ as tf_version
 tf_version_old = int(tf_version[0]) <= 1
 
 from tensorflow.keras.models import Model
-from tensorflow.keras.layers import (Input, Conv2D, MaxPooling2D, Dropout, 
+from tensorflow.keras.layers import (Input, Conv2D, MaxPooling2D, Dropout,
                                      concatenate, UpSampling2D)
 from tensorflow.keras.optimizers import Adam
 #from tensorflow.keras.callbacks import ModelCheckpoint, LearningRateScheduler
@@ -22,8 +22,8 @@ if tf_version_old:
 else:
     from tensorflow.compat.v1 import ConfigProto
     from tensorflow.compat.v1 import InteractiveSession
-    
-    
+
+
 config = ConfigProto()
 config.gpu_options.allow_growth = True
 session = InteractiveSession(config=config)
@@ -72,7 +72,7 @@ def unet(pretrained_weights = None,input_size = (256,256,1)):
 
     model = Model(inputs = inputs, outputs = conv10)
 
-    model.compile(optimizer = Adam(lr = 1e-4), loss = 'binary_crossentropy', metrics = ['accuracy'])
+    model.compile(optimizer = Adam(learning_rate = 1e-4), loss = 'binary_crossentropy', metrics = ['accuracy'])
 
     if(pretrained_weights):
     	model.load_weights(pretrained_weights)

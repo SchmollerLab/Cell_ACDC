@@ -104,8 +104,6 @@ class Model:
             cca_df.at[budID, 'cell_cycle_stage'] = 'S'
             cca_df.at[budID, 'relationship'] = 'bud'
             cca_df.at[budID, 'generation_num'] = 0
-            print(cca_df.loc[mothID])
-            print(cca_df.loc[budID])
         return cca_df
 
 def url_help():

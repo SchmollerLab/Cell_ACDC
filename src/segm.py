@@ -1,4 +1,5 @@
 import sys
+import inspect
 import os
 import re
 import traceback
@@ -44,6 +45,8 @@ class segmWorkerSignals(QObject):
     finished = pyqtSignal(float)
     progress = pyqtSignal(str)
     progressBar = pyqtSignal(int)
+    innerProgressBar = pyqtSignal(int)
+    resetInnerPbar = pyqtSignal(int)
 
 class segmWorker(QRunnable):
     def __init__(
@@ -62,6 +65,8 @@ class segmWorker(QRunnable):
         self.segment2D_kwargs = mainWin.segment2D_kwargs
         self.do_tracking = mainWin.do_tracking
         self.predictCcaState_model = mainWin.predictCcaState_model
+        self.is_segment3DT_available = mainWin.is_segment3DT_available
+        self.innerPbar_available = mainWin.innerPbar_available
 
     def run(self):
         img_path = self.img_path
@@ -173,11 +178,24 @@ class segmWorker(QRunnable):
         t0 = time.time()
         # self.signals.progress.emit(f'Segmenting with {model} (Ctrl+C to abort)...')
         if PosData.SizeT > 1:
-            lab_stack = np.zeros(img_data.shape, np.uint16)
-            for t, img in enumerate(img_data):
-                lab = self.model.segment(img, **self.segment2D_kwargs)
-                lab_stack[t] = lab
+            if self.innerPbar_available:
+                self.resetInnerPbar.emit(len(img_data))
+
+            if self.is_segment3DT_available:
+                self.segment2D_kwargs['signals'] = (
+                    self.signals, self.innerPbar_available
+                )
+                lab_stack = self.model.segment3DT(img_data, **self.segment2D_kwargs)
                 self.signals.progressBar.emit(1)
+            else:
+                lab_stack = np.zeros(img_data.shape, np.uint16)
+                for t, img in enumerate(img_data):
+                    lab = self.model.segment(img, **self.segment2D_kwargs)
+                    lab_stack[t] = lab
+                    if self.innerPbar_available:
+                        self.signals.progressBar.emit(1)
+                    else:
+                        self.signals.innerProgressBar.emit(1)
         else:
             lab_stack = self.model.segment(img_data, **self.segment2D_kwargs)
             if self.predictCcaState_model is not None:
@@ -211,9 +229,15 @@ class segmWorker(QRunnable):
         else:
             tracked_stack = lab_stack
             try:
-                self.signals.progressBar.emit(PosData.segmSizeT)
+                if self.innerPbar_available:
+                    self.signals.progressBar.emit(PosData.segmSizeT)
+                else:
+                    self.signals.innerProgressBar.emit(PosData.segmSizeT)
             except AttributeError:
-                self.signals.progressBar.emit(1)
+                if self.innerPbar_available:
+                    self.signals.progressBar.emit(1)
+                else:
+                    self.signals.innerProgressBar.emit(1)
 
         if isROIactive:
             tracked_stack = np.pad(tracked_stack, pad_info,  mode='constant')
@@ -331,20 +355,27 @@ class segmWin(QMainWindow):
         df.index.name = 'index'
         df.to_csv(recentPaths_path)
 
-    def addPbar(self):
+    def addPbar(self, add_inner=False):
         pBarLayout = QHBoxLayout()
-        self.QPbar = QProgressBar(self)
-        self.QPbar.setValue(0)
+        QPbar = QProgressBar(self)
+        QPbar.setValue(0)
         palette = QtGui.QPalette()
         palette.setColor(QtGui.QPalette.Highlight, QtGui.QColor(207, 235, 155))
         palette.setColor(QtGui.QPalette.Text, QtGui.QColor(0, 0, 0))
         palette.setColor(QtGui.QPalette.HighlightedText, QtGui.QColor(0, 0, 0))
-        self.QPbar.setPalette(palette)
-        pBarLayout.addWidget(self.QPbar)
-        self.ETA_label = QLabel()
-        self.ETA_label.setText('ETA: NDh:NDm:NDs')
-        pBarLayout.addWidget(self.ETA_label)
-        self.mainLayout.insertLayout(3, pBarLayout)
+        QPbar.setPalette(palette)
+        pBarLayout.addWidget(QPbar)
+        ETA_label = QLabel()
+        ETA_label.setText('ETA: NDh:NDm:NDs')
+        pBarLayout.addWidget(ETA_label)
+        if add_inner:
+            self.innerQPbar = QPbar
+            self.innerETA_label = ETA_label
+            self.mainLayout.insertLayout(4, pBarLayout)
+        else:
+            self.QPbar = QPbar
+            self.ETA_label = ETA_label
+            self.mainLayout.insertLayout(3, pBarLayout)
 
     def main(self):
         self.getMostRecentPath()
@@ -577,6 +608,18 @@ class segmWin(QMainWindow):
                 return
 
         self.predictCcaState_model = None
+
+        self.is_segment3DT_available = False
+        if PosData.SizeT>1:
+            self.is_segment3DT_available = any(
+                [name=='segment3DT' for name in dir(acdcSegment.Model)]
+            )
+
+        self.innerPbar_available = False
+        if len(user_ch_file_paths)>1 and PosData.SizeT>1:
+            self.addPbar(add_inner=True)
+            self.innerPbar_available = True
+
         if PosData.SizeT == 1:
             # Ask if I should predict budding
             msg = QMessageBox()
@@ -734,10 +777,14 @@ class segmWin(QMainWindow):
             else:
                 max += 1
 
-        # pBar will be updated twice per frame of each pos:
+        # pBar will be updated three times per frame of each pos:
         # 1. After segmentation
         # 2. After tracking
-        self.QPbar.setMaximum(max*2)
+        if self.innerPbar_available:
+            self.QPbar.setMaximum(len(user_ch_file_paths))
+        else:
+            self.QPbar.setMaximum(max*2)
+
         self.exec_time_per_2steps = 0
 
         self.total_exec_time = 0
@@ -756,6 +803,10 @@ class segmWin(QMainWindow):
             img_path = user_ch_file_paths[i]
             self.startSegmWorker()
 
+    def reset_innerQPbar(self, num_frames):
+        self.innerQPbar.setValue(0)
+        self.innerQPbar.setMaximum(num_frames)
+
     def setPredictBuddingModel(self):
         myutils.download_model('YeastMate')
         import models.YeastMate.acdcSegment as yeastmate
@@ -767,6 +818,8 @@ class segmWin(QMainWindow):
         worker.signals.finished.connect(self.segmWorkerFinished)
         worker.signals.progress.connect(self.segmWorkerProgress)
         worker.signals.progressBar.connect(self.segmWorkerProgressBar)
+        worker.signals.innerProgressBar.connect(self.segmWorkerInnerProgressBar)
+        worker.signals.resetInnerPbar.connect(self.reset_innerQPbar)
         self.threadPool.start(worker)
 
     def segmWorkerProgress(self, text):
@@ -782,17 +835,18 @@ class segmWin(QMainWindow):
         steps_left = self.QPbar.maximum()-self.QPbar.value()
         self.exec_time_per_2steps += deltaT_step
         if steps_left%2 == 0:
-            # Note that the second step (tracking) is usually way faster
-            # So it is fair to divide by 2 to get the actual ETA
-            seconds = round(self.exec_time_per_2steps*steps_left/4)
-            ETA = datetime.timedelta(seconds=seconds)
-            h, m, s = str(ETA).split(':')
-            ETA = f'{int(h):02}h:{int(m):02}m:{int(s):02}s'
+            groups_3steps_left = steps_left/2
+            # Note that the last step (tracking) is usually way faster
+            # So it is fair to not consider it to get the actual ETA
+            exec_time_per_2steps = self.exec_time_per_2steps/2
+            seconds = round(exec_time_per_2steps*groups_3steps_left)
+            ETA = myutils.seconds_to_ETA(seconds)
             self.ETA_label.setText(f'ETA: {ETA}')
             self.exec_time_per_2steps = 0
         self.time_last_pbar_update = t
 
-
+    def segmWorkerInnerProgressBar(self, step):
+        self.innerQPbar.setValue(self.QPbar.value()+step)
 
     def segmWorkerFinished(self, exec_time):
         self.total_exec_time += exec_time

@@ -9932,9 +9932,7 @@ class guiWin(QMainWindow):
             self.saveWin.QPbar.setValue(self.saveWin.QPbar.value()+step)
             steps_left = self.saveWin.QPbar.maximum()-self.saveWin.QPbar.value()
             seconds = round(exec_time*steps_left)
-            ETA = datetime.timedelta(seconds=seconds)
-            h, m, s = str(ETA).split(':')
-            ETA = f'{int(h):02}h:{int(m):02}m:{int(s):02}s'
+            ETA = myutils.seconds_to_ETA(seconds)
             self.saveWin.ETA_label.setText(f'ETA: {ETA}')
 
 

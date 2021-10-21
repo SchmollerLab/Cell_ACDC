@@ -8,6 +8,25 @@ from .unet import model
 from .unet import neural_network
 from .unet import segment
 
+from tensorflow import keras
+
+class progressCallback(keras.callbacks.Callback):
+    def __init__(self, signals):
+        self.signals = signals
+
+    def on_predict_begin(self, logs=None):
+        pass
+
+    def on_predict_batch_begin(self, batch, logs=None):
+        pass
+
+    def on_predict_batch_end(self, batch, logs=None):
+        innerPbar_available = signals[1]
+        if innerPbar_available:
+            signals[0].innerProgressBar.emit(1)
+        else:
+            signals[0].progressBar.emit(1)
+
 class Model:
     def __init__(self, is_phase_contrast=True):
         # Initialize model
@@ -49,10 +68,37 @@ class Model:
         padded = np.pad(image, pad_info, 'constant')
         x = padded[np.newaxis,:,:,np.newaxis]
 
-        prediction = self.model.predict(x, batch_size=1)[0,:,:,0]
+        prediction = self.model.predict(x, batch_size=1, verbose=1)[0,:,:,0]
 
         # remove padding with 0s
         prediction = prediction[0:-row_add, 0:-col_add]
         thresh = neural_network.threshold(prediction, thresh_val=thresh_val)
         lab = segment.segment(thresh, prediction, min_distance=min_distance)
         return lab
+
+    def segment3DT(self, timelapse3D, thresh_val=0.0, min_distance=10, signals=None):
+        signals[0].progress.emit(f'Preprocessing images...')
+        timelapse3D = np.zeros(timelapse3D.shape)
+        for t, img in enumerate(timelapse3D):
+            timelapse3D[t] = skimage.exposure.equalize_adapthist(img/img.max())
+
+        if thresh_val == 0:
+            thresh_val = None
+
+        # pad with zeros such that is divisible by 16
+        (nrow, ncol) = timelapse3D[0].shape
+        row_add = 16-nrow%16
+        col_add = 16-ncol%16
+        pad_info = ((0, 0), (0, row_add), (0, col_add))
+        padded = np.pad(timelapse3D, pad_info, 'constant')
+
+        x = padded[:, :, :, np.newaxis]
+
+        signals[0].progress.emit(f'Segmenting with YeaZ...')
+
+        prediction = self.model.predict(
+            x, batch_size=1, verbose=1, callbacks=[progressCallback(signals)]
+        )[:,:,:,0]
+
+        # remove padding with 0s
+        prediction = prediction[:, 0:-row_add, 0:-col_add]
