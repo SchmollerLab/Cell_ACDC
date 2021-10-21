@@ -5595,13 +5595,15 @@ class guiWin(QMainWindow):
             win = apps.QDialogModelParams(
                 init_params,
                 segment_params,
-                model_name, url=url)
+                model_name, parent=self,
+                url=url)
             win.exec_()
             if win.cancel:
                 self.titleLabel.setText('Segmentation aborted.')
                 return
 
             self.segment2D_kwargs = win.segment2D_kwargs
+            self.minSize = win.minSize
             model = acdcSegment.Model(**win.init_kwargs)
             self.models[idx] = model
         else:
@@ -5609,11 +5611,10 @@ class guiWin(QMainWindow):
 
         img = self.getDisplayedCellsImg()
 
-        if self.gaussWin is None:
-            img = skimage.filters.gaussian(img, sigma=1)
-        img = skimage.exposure.equalize_adapthist(skimage.img_as_float(img))
-
         lab = model.segment(img, **self.segment2D_kwargs)
+        lab = skimage.morphology.remove_small_objects(
+            lab, min_size=self.minSize
+        )
 
         t1 = time.time()
         self.is_first_call_YeaZ = False
@@ -6082,6 +6083,9 @@ class guiWin(QMainWindow):
         """
         if self.autoSegmAction.isChecked():
             return
+        if self.autoSegmDoNotAskAgain:
+            return
+
         ask = False
         for PosData in self.data:
             if PosData.SizeT > 1:
@@ -6115,6 +6119,7 @@ class guiWin(QMainWindow):
         if doSegmAnswer == msg.Yes:
             self.autoSegmAction.setChecked(True)
         else:
+            self.autoSegmDoNotAskAgain = True
             self.autoSegmAction.setChecked(False)
 
     def init_segmInfo_df(self):
@@ -6339,6 +6344,8 @@ class guiWin(QMainWindow):
         self.isCtrlDown = False
         self.autoContourHoverON = False
         self.navigateScrollBarStartedMoving = True
+
+        self.autoSegmDoNotAskAgain = False
 
         self.clickedOnBud = False
         self.gaussWin = None

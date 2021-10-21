@@ -354,6 +354,7 @@ def seconds_to_ETA(seconds):
     else:
         h, m, s = str(ETA).split(':')
         ETA = f'{int(h):02}h:{int(m):02}m:{int(s):02}s'
+    return ETA
 
 if __name__ == '__main__':
     model_name = 'cellpose'

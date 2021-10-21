@@ -3,12 +3,15 @@ import os
 import numpy as np
 
 import skimage.exposure
+import skimage.filters
 
 from .unet import model
 from .unet import neural_network
 from .unet import segment
 
 from tensorflow import keras
+
+from tqdm import tqdm
 
 class progressCallback(keras.callbacks.Callback):
     def __init__(self, signals):
@@ -21,11 +24,11 @@ class progressCallback(keras.callbacks.Callback):
         pass
 
     def on_predict_batch_end(self, batch, logs=None):
-        innerPbar_available = signals[1]
+        innerPbar_available = self.signals[1]
         if innerPbar_available:
-            signals[0].innerProgressBar.emit(1)
+            self.signals[0].innerProgressBar.emit(1)
         else:
-            signals[0].progressBar.emit(1)
+            self.signals[0].progressBar.emit(1)
 
 class Model:
     def __init__(self, is_phase_contrast=True):
@@ -52,10 +55,16 @@ class Model:
 
         self.model.load_weights(weights_path)
 
-    def segment(self, image, thresh_val=0.0, min_distance=10):
-        # Preprocess image
+    def yeaz_preprocess(self, image):
+        image = skimage.filters.gaussian(image, sigma=1)
+        image = skimage.exposure.equalize_adapthist(image)
         image = image/image.max()
         image = skimage.exposure.equalize_adapthist(image)
+        return image
+
+    def segment(self, image, thresh_val=0.0, min_distance=10):
+        # Preprocess image
+        image = self.yeaz_preprocess(image)
 
         if thresh_val == 0:
             thresh_val = None
@@ -74,13 +83,16 @@ class Model:
         prediction = prediction[0:-row_add, 0:-col_add]
         thresh = neural_network.threshold(prediction, thresh_val=thresh_val)
         lab = segment.segment(thresh, prediction, min_distance=min_distance)
-        return lab
+        return lab.astype(np.uint16)
 
     def segment3DT(self, timelapse3D, thresh_val=0.0, min_distance=10, signals=None):
         signals[0].progress.emit(f'Preprocessing images...')
         timelapse3D = np.zeros(timelapse3D.shape)
-        for t, img in enumerate(timelapse3D):
-            timelapse3D[t] = skimage.exposure.equalize_adapthist(img/img.max())
+        for t, image in enumerate(timelapse3D):
+            image = self.yeaz_preprocess(image)
+            timelapse3D[t] = image
+            signals[0].progress_tqdm.emit(1)
+        signals[0].signal_close_tqdm.emit()
 
         if thresh_val == 0:
             thresh_val = None
@@ -101,4 +113,10 @@ class Model:
         )[:,:,:,0]
 
         # remove padding with 0s
+        lab_timelapse = np.zeros(prediction.shape, np.uint16)
         prediction = prediction[:, 0:-row_add, 0:-col_add]
+        for t, pred in enumerate(prediction):
+            thresh = neural_network.threshold(pred, thresh_val=thresh_val)
+            lab = segment.segment(thresh, pred, min_distance=min_distance)
+            lab_timelapse[t] = lab.astype(np.uint16)
+        return lab_timelapse
