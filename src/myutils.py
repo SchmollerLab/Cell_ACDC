@@ -356,6 +356,18 @@ def seconds_to_ETA(seconds):
         ETA = f'{int(h):02}h:{int(m):02}m:{int(s):02}s'
     return ETA
 
+def uint_to_float(img):
+    if img.max() <= 1:
+        return img
+
+    uint8_max = np.iinfo(np.uint8).max
+    uint16_max = np.iinfo(np.uint16).max
+    if img.max() > uint8_max:
+        img = img/uint16_max
+    else:
+        img = img/uint8_max
+    return img
+
 if __name__ == '__main__':
     model_name = 'cellpose'
     download_model(model_name)

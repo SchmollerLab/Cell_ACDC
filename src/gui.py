@@ -319,6 +319,7 @@ class segmWorker(QObject):
     def run(self):
         t0 = time.time()
         img = self.mainWin.getDisplayedCellsImg()
+        img = myutils.uint_to_float(img)
         lab = self.mainWin.model.segment(img, **self.mainWin.segment2D_kwargs)
         if len(skimage.measure.regionprops(lab))>1:
             lab = skimage.morphology.remove_small_objects(
@@ -1199,10 +1200,12 @@ class guiWin(QMainWindow):
         sp = self.zProjComboBox.sizePolicy()
         sp.setRetainSizeWhenHidden(True)
         self.zProjComboBox.setSizePolicy(sp)
-        self.zProjComboBox.addItems(['single z-slice',
-                                     'max z-projection',
-                                     'mean z-projection',
-                                     'median z-proj.'])
+        self.zProjComboBox.addItems([
+            'single z-slice',
+            'max z-projection',
+            'mean z-projection',
+            'median z-proj.'
+        ])
 
         self.img1_Widglayout.addWidget(self.zProjComboBox, row, 11, 1, 1)
 
@@ -1309,7 +1312,7 @@ class guiWin(QMainWindow):
         # Title
         self.titleLabel = pg.LabelItem(justify='center', color='w', size='14pt')
         self.titleLabel.setText(
-            'File --> Open or Open recent to start the process')
+            'Drag and drop image file or go to File --> Open folder...')
         self.graphLayout.addItem(self.titleLabel, row=0, col=1, colspan=2)
 
         # # Current frame text
@@ -3197,7 +3200,7 @@ class guiWin(QMainWindow):
         if how == 'Do not normalize. Display raw image':
             return img
         elif how == 'Convert to floating point format with values [0, 1]':
-            img = skimage.img_as_float(img)
+            img = myutils.uint_to_float(img)
             return img
         # elif how == 'Rescale to 8-bit unsigned integer format with values [0, 255]':
         #     img = skimage.img_as_float(img)
@@ -8982,6 +8985,23 @@ class guiWin(QMainWindow):
 
 
     def openFolder(self, checked=False, exp_path=None, imageFilePath=''):
+        """Main function to load data.
+
+        Parameters
+        ----------
+        checked : bool
+            kwarg needed because openFolder can be called by openFolderAction.
+        exp_path : string or None
+            Path selected by the user either directly, through openFile,
+            or drag and drop image file.
+        imageFilePath : string
+            Path of the image file that was either drag and dropped or opened
+            from File --> Open image/video file (openFileAction).
+
+        Returns
+        -------
+            None
+        """
         try:
             self.reInitGui()
 
@@ -9002,7 +9022,7 @@ class guiWin(QMainWindow):
             if exp_path == '':
                 self.openAction.setEnabled(True)
                 self.titleLabel.setText(
-                    'File --> Open or Open recent to start the process',
+                    'Drag and drop image file or go to File --> Open folder...',
                     color='w')
                 return
 
@@ -9042,7 +9062,7 @@ class guiWin(QMainWindow):
                         self, 'Incompatible folder', txt, msg.Ok
                     )
                     self.titleLabel.setText(
-                        'File --> Open or Open recent to start the process',
+                        'Drag and drop image file or go to File --> Open folder...',
                         color='w')
                     self.openAction.setEnabled(True)
                     return
@@ -9050,7 +9070,7 @@ class guiWin(QMainWindow):
                 select_folder.QtPrompt(self, values, allow_abort=False)
                 if select_folder.was_aborted:
                     self.titleLabel.setText(
-                        'File --> Open or Open recent to start the process',
+                        'Drag and drop image file or go to File --> Open folder...',
                         color='w')
                     self.openAction.setEnabled(True)
                     return
@@ -9061,7 +9081,7 @@ class guiWin(QMainWindow):
 
                 if select_folder.was_aborted:
                     self.titleLabel.setText(
-                        'File --> Open or Open recent to start the process',
+                        'Drag and drop image file or go to File --> Open folder...',
                         color='w')
                     self.openAction.setEnabled(True)
                     return
@@ -9102,7 +9122,7 @@ class guiWin(QMainWindow):
                 self.ch_names = ch_names
                 if not ch_names:
                     self.titleLabel.setText(
-                        'File --> Open or Open recent to start the process',
+                        'Drag and drop image file or go to File --> Open folder...',
                         color='w')
                     self.openAction.setEnabled(True)
                     self.criticalNoTifFound(images_path)
@@ -9113,7 +9133,7 @@ class guiWin(QMainWindow):
                         self, ch_names, CbLabel=CbLabel)
                     if ch_name_selector.was_aborted:
                         self.titleLabel.setText(
-                            'File --> Open or Open recent to start the process',
+                            'Drag and drop image file or go to File --> Open folder...',
                             color='w')
                         self.openAction.setEnabled(True)
                         return
@@ -9147,7 +9167,7 @@ class guiWin(QMainWindow):
 
             if img_path is None:
                 self.titleLabel.setText(
-                    'File --> Open or Open recent to start the process',
+                    'Drag and drop image file or go to File --> Open folder...',
                     color='w')
                 self.openAction.setEnabled(True)
                 self.criticalImgPathNotFound()
@@ -9164,7 +9184,7 @@ class guiWin(QMainWindow):
             if not proceed:
                 self.openAction.setEnabled(True)
                 self.titleLabel.setText(
-                    'File --> Open or Open recent to start the process',
+                    'Drag and drop image file or go to File --> Open folder...',
                     color='w')
                 return
 
@@ -10134,7 +10154,6 @@ class guiWin(QMainWindow):
             self.ccaTableWin.close()
         if self.saveAction.isEnabled() and self.titleLabel.text != 'Saved!':
             msg = QMessageBox()
-            msg.closeEvent = self.saveMsgCloseEvent
             save = msg.question(
                 self, 'Save?', 'Do you want to save?',
                 msg.Yes | msg.No | msg.Cancel
@@ -10176,9 +10195,6 @@ class guiWin(QMainWindow):
         self.df_settings.at['isMaximised', 'value'] = isMaximised
         self.df_settings.to_csv(self.settings_csv_path)
         # print('Window screen name: ', screenName)
-
-    def saveMsgCloseEvent(self, event):
-        print('closed')
 
     def storeDefaultAndCustomColors(self):
         c = self.overlayButton.palette().button().color().name()
@@ -10222,6 +10238,8 @@ if __name__ == "__main__":
         QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     # Create the application
     app = QApplication(sys.argv)
+    # Apply style
+    app.setStyle(QtGui.QStyleFactory.create('Fusion'))
     # Apply dark mode
     # file = QFile(":/dark.qss")
     # file.open(QFile.ReadOnly | QFile.Text)
@@ -10230,8 +10248,7 @@ if __name__ == "__main__":
     # Create and show the main window
     win = guiWin(app)
     win.showAndSetSize()
-    # Apply style
-    app.setStyle(QtGui.QStyleFactory.create('Fusion'))
+
     # Run the event loop
     print('Lauching application...')
     print('Done. If application GUI is not visible, it is probably minimized, '
