@@ -13,6 +13,8 @@ from tensorflow import keras
 
 from tqdm import tqdm
 
+import apps
+
 class progressCallback(keras.callbacks.Callback):
     def __init__(self, signals):
         self.signals = signals
@@ -55,11 +57,13 @@ class Model:
 
         self.model.load_weights(weights_path)
 
-    def yeaz_preprocess(self, image):
+    def yeaz_preprocess(self, image, tqdm_pbar=None):
         image = skimage.filters.gaussian(image, sigma=1)
         image = skimage.exposure.equalize_adapthist(image)
         image = image/image.max()
         image = skimage.exposure.equalize_adapthist(image)
+        if tqdm_pbar is not None:
+            tqdm_pbar.emit(1)
         return image
 
     def segment(self, image, thresh_val=0.0, min_distance=10):
@@ -89,12 +93,11 @@ class Model:
 
     def segment3DT(self, timelapse3D, thresh_val=0.0, min_distance=10, signals=None):
         signals[0].progress.emit(f'Preprocessing images...')
-        timelapse3D = np.zeros(timelapse3D.shape)
         signals[0].create_tqdm.emit(len(timelapse3D))
-        for t, image in enumerate(timelapse3D):
-            image = self.yeaz_preprocess(image)
-            timelapse3D[t] = image
-            signals[0].progress_tqdm.emit(1)
+        timelapse3D = np.array([
+            self.yeaz_preprocess(image, tqdm_pbar=signals[0].progress_tqdm)
+            for image in timelapse3D
+        ])
         signals[0].signal_close_tqdm.emit()
 
         if thresh_val == 0:

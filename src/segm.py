@@ -180,7 +180,7 @@ class segmWorker(QRunnable):
                     img_data = img_data[y0:y1, x0:x1]
 
         #
-        # self.signals.progress.emit(f'Image shape = {img_data.shape}')
+        print(f'Image shape = {img_data.shape}')
 
         """Segmentation routine"""
         self.signals.progress.emit(f'Segmenting with {self.model_name}...')
@@ -194,7 +194,9 @@ class segmWorker(QRunnable):
                 self.segment2D_kwargs['signals'] = (
                     self.signals, self.innerPbar_available
                 )
-                lab_stack = self.model.segment3DT(img_data, **self.segment2D_kwargs)
+                lab_stack = self.model.segment3DT(
+                    img_data, **self.segment2D_kwargs
+                )
                 self.signals.progressBar.emit(1)
             else:
                 lab_stack = np.zeros(img_data.shape, np.uint16)
@@ -673,7 +675,7 @@ class segmWin(QMainWindow):
             launchDataPrep = True
         if selectROI:
             launchDataPrep = True
-        if PosData.segmInfo_df is not None:
+        if PosData.segmInfo_df is not None and PosData.SizeZ > 1:
             if PosData.filename not in PosData.segmInfo_df.index:
                 launchDataPrep = True
 
@@ -689,8 +691,14 @@ class segmWin(QMainWindow):
                 )
             else:
                 print('')
-                print(f'WARNING: The image data in {img_path} is 3D but '
-                      f'_segmInfo.csv file not found. Launching dataPrep.py...')
+                print(
+                    f'WARNING: The image data in {img_path} is 3D but '
+                    f'_segmInfo.csv file not found. Launching dataPrep.py...'
+                )
+                self.logTerminal.setText(
+                    f'WARNING: The image data in {img_path} is 3D but '
+                    f'_segmInfo.csv file not found. Launching dataPrep.py...'
+                )
                 dataPrepWin.titleText = (
                 """
                 Select z-slice (or projection) for each frame/position.<br>
@@ -830,7 +838,7 @@ class segmWin(QMainWindow):
 
     def create_tqdm_pbar(self, num_frames):
         self.tqdm_pbar = tqdm(
-            total=num_frames, unit=' frames', ncols=50, file=self.logTerminal
+            total=num_frames, unit=' frames', ncols=75, file=self.logTerminal
         )
 
     def update_tqdm_pbar(self, step):
