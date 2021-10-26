@@ -113,8 +113,8 @@ class Model:
         )[:,:,:,0]
 
         # remove padding with 0s
-        lab_timelapse = np.zeros(prediction.shape, np.uint16)
         prediction = prediction[:, 0:-row_add, 0:-col_add]
+        lab_timelapse = np.zeros(prediction.shape, np.uint16)
         for t, pred in enumerate(prediction):
             thresh = neural_network.threshold(pred, thresh_val=thresh_val)
             lab = segment.segment(thresh, pred, min_distance=min_distance)

@@ -825,8 +825,10 @@ class select_exp_folder:
         win.exec_()
         self.was_aborted = win.cancel
         if not win.cancel:
-            self.selected_pos = [self.pos_foldernames[idx]
-                                 for idx in win.selectedItemsIdx]
+            self.selected_pos = [
+                self.pos_foldernames[idx]
+                for idx in win.selectedItemsIdx
+            ]
 
     def run_widget(self, values, current=0,
                    title='Select Position folder',

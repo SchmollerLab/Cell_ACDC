@@ -137,8 +137,17 @@ class welcomeWin(QWidget):
 
         self.manualItem = QTreeWidgetItem(treeSelector)
         self.manualItem.setIcon(0, QIcon(':book.svg'))
-        self.manualItem.setText(0, 'User Manual')
-        treeSelector.addTopLevelItem(self.manualItem)
+        textLabel = QLabel()
+        textLabel.setText("""
+        <p style="font-size:10pt; font-family:ubuntu">
+            User Manual
+        </p>
+        """)
+        # self.manualItem.setText(0, 'User Manual')
+        # treeSelector.addTopLevelItem(self.manualItem)
+        treeSelector.setItemWidget(self.manualItem, 0, textLabel)
+
+
         # self.manualDataPrepItem = QTreeWidgetItem(self.manualItem)
         # self.manualDataPrepItem.setText(0, '    Data Prep module')
         # self.manualItem.addChild(self.manualDataPrepItem)
@@ -940,7 +949,6 @@ class welcomeWin(QWidget):
         self.treeSelector.setFixedWidth(w)
 
         # Resize to remove need for horizontal scroolbar
-
         QSviewBoxWidth = self.QuickStartViewBox.minimumSizeHint().width()
         w = (self.QSscrollArea.pos().x() + QSviewBoxWidth
              + 5*self.QuickStartLayout.columnCount() + 20)
