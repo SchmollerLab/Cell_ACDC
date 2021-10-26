@@ -55,6 +55,7 @@ class segmWorkerSignals(QObject):
     resetInnerPbar = pyqtSignal(int)
     progress_tqdm = pyqtSignal(int)
     signal_close_tqdm = pyqtSignal()
+    create_tqdm = pyqtSignal(int)
 
 class segmWorker(QRunnable):
     def __init__(
@@ -826,6 +827,8 @@ class segmWin(QMainWindow):
     def reset_innerQPbar(self, num_frames):
         self.innerQPbar.setValue(0)
         self.innerQPbar.setMaximum(num_frames)
+
+    def create_tqdm_pbar(self, num_frames):
         self.tqdm_pbar = tqdm(
             total=num_frames, unit=' frames', ncols=50, file=self.logTerminal
         )
@@ -849,6 +852,7 @@ class segmWin(QMainWindow):
         worker.signals.progressBar.connect(self.segmWorkerProgressBar)
         worker.signals.innerProgressBar.connect(self.segmWorkerInnerProgressBar)
         worker.signals.resetInnerPbar.connect(self.reset_innerQPbar)
+        worker.signals.create_tqdm.connect(self.create_tqdm_pbar)
         worker.signals.progress_tqdm.connect(self.update_tqdm_pbar)
         worker.signals.signal_close_tqdm.connect(self.close_tqdm)
         self.threadPool.start(worker)

@@ -81,6 +81,8 @@ class Model:
 
         # remove padding with 0s
         prediction = prediction[0:-row_add, 0:-col_add]
+
+        # Label the cells
         thresh = neural_network.threshold(prediction, thresh_val=thresh_val)
         lab = segment.segment(thresh, prediction, min_distance=min_distance)
         return lab.astype(np.uint16)
@@ -88,6 +90,7 @@ class Model:
     def segment3DT(self, timelapse3D, thresh_val=0.0, min_distance=10, signals=None):
         signals[0].progress.emit(f'Preprocessing images...')
         timelapse3D = np.zeros(timelapse3D.shape)
+        signals[0].create_tqdm.emit(len(timelapse3D))
         for t, image in enumerate(timelapse3D):
             image = self.yeaz_preprocess(image)
             timelapse3D[t] = image
@@ -106,17 +109,22 @@ class Model:
 
         x = padded[:, :, :, np.newaxis]
 
-        signals[0].progress.emit(f'Segmenting with YeaZ...')
+        signals[0].progress.emit(f'Predicting (the future) with YeaZ...')
 
         prediction = self.model.predict(
             x, batch_size=1, verbose=1, callbacks=[progressCallback(signals)]
         )[:,:,:,0]
 
+        signals[0].progress.emit(f'Labelling objects with YeaZ...')
+
         # remove padding with 0s
         prediction = prediction[:, 0:-row_add, 0:-col_add]
         lab_timelapse = np.zeros(prediction.shape, np.uint16)
+        signals[0].create_tqdm.emit(len(prediction))
         for t, pred in enumerate(prediction):
             thresh = neural_network.threshold(pred, thresh_val=thresh_val)
             lab = segment.segment(thresh, pred, min_distance=min_distance)
             lab_timelapse[t] = lab.astype(np.uint16)
+            signals[0].progress_tqdm.emit(1)
+        signals[0].signal_close_tqdm.emit()
         return lab_timelapse
