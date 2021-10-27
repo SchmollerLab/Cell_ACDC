@@ -564,6 +564,11 @@ class guiWin(QMainWindow):
         SegmMenu.addAction(self.autoSegmAction)
         SegmMenu.aboutToShow.connect(self.segmMenuOpened)
 
+        # Settings menu
+        self.settingsMenu = QMenu("Settings", self)
+        menuBar.addMenu(self.settingsMenu)
+        self.settingsMenu.addSeparator()
+
         # Help menu
         helpMenu = menuBar.addMenu("&Help")
         helpMenu.addAction(self.tipsAction)
@@ -669,7 +674,7 @@ class guiWin(QMainWindow):
         self.setIsHistoryKnownButton.setShortcut('u')
         self.setIsHistoryKnownButton.setVisible(False)
         self.setIsHistoryKnownButton.setToolTip(
-            'Toggle "Annotate that a cell has an unknown history" mode ON/OFF\n\n'
+            'Toggle "Annotate unknown history" mode ON/OFF\n\n'
             'EXAMPLE: useful for cells appearing from outside of the field of view\n\n'
             'ACTION: left-click on cell\n\n'
             'SHORTCUT: "U" key'
@@ -742,12 +747,13 @@ class guiWin(QMainWindow):
         self.hullContToolButton.setCheckable(True)
         self.hullContToolButton.setShortcut('f')
         self.hullContToolButton.setToolTip(
-            'Toggle "Hull contour tool" ON/OFF\n\n'
+            'Toggle "Hull contour" ON/OFF\n\n'
             'ACTION: right-click on a cell to replace it with its hull contour.\n'
             'Use it to fill cracks and holes.\n\n'
             'SHORTCUT: "F" key')
         editToolBar.addWidget(self.hullContToolButton)
         self.checkableButtons.append(self.hullContToolButton)
+        self.checkableQButtonsGroup.addButton(self.hullContToolButton)
 
         self.editID_Button = QToolButton(self)
         self.editID_Button.setIcon(QIcon(":edit-id.svg"))
@@ -867,6 +873,8 @@ class guiWin(QMainWindow):
         self.editToolBar.setVisible(False)
         self.navigateToolBar.setVisible(False)
 
+        self.gui_populateToolSettingsMenu()
+
         # toolbarSize = 58
         # fileToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         # navigateToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
@@ -874,6 +882,18 @@ class guiWin(QMainWindow):
         # editToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         # widgetsToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         # modeToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
+
+    def gui_populateToolSettingsMenu(self):
+        for button in self.checkableQButtonsGroup.buttons():
+            toolName = re.findall('Toggle "(.*)"', button.toolTip())[0]
+            menu = self.settingsMenu.addMenu(f'{toolName} tool')
+            action = QAction(button)
+            action.setText('Keep tool active after using it')
+            action.setCheckable(True)
+            if toolName in self.df_settings.index:
+                action.setChecked(True)
+            action.toggled.connect(self.keepToolActiveActionToggled)
+            menu.addAction(action)
 
     def gui_createStatusBar(self):
         self.statusbar = self.statusBar()
@@ -1806,7 +1826,8 @@ class guiWin(QMainWindow):
                 loop.exec_()
                 if manualSep.cancel:
                     PosData.disableAutoActivateViewerWindow = False
-                    self.separateBudButton.setChecked(False)
+                    if not self.separateBudButton.findChild(QAction).isChecked():
+                        self.separateBudButton.setChecked(False)
                     return
                 PosData.lab[manualSep.lab!=0] = manualSep.lab[manualSep.lab!=0]
                 PosData.disableAutoActivateViewerWindow = False
@@ -1823,8 +1844,8 @@ class guiWin(QMainWindow):
             self.warnEditingWithCca_df('Separate IDs')
             self.store_data()
 
-            # Uncheck separate bud button
-            self.separateBudButton.setChecked(False)
+            if not self.separateBudButton.findChild(QAction).isChecked():
+                self.separateBudButton.setChecked(False)
 
         # Replace with Hull Contour
         elif right_click and self.hullContToolButton.isChecked():
@@ -1856,7 +1877,8 @@ class guiWin(QMainWindow):
                 self.update_rp()
                 self.updateALLimg()
 
-                self.hullContToolButton.setChecked(False)
+                if not self.hullContToolButton.findChild(QAction).isChecked():
+                    self.hullContToolButton.setChecked(False)
 
         # Merge IDs
         elif right_click and self.mergeIDsButton.isChecked():
@@ -1907,7 +1929,8 @@ class guiWin(QMainWindow):
             editID.exec_()
             if editID.cancel:
                 PosData.disableAutoActivateViewerWindow = False
-                self.editID_Button.setChecked(False)
+                if not self.editID_Button.findChild(QAction).isChecked():
+                    self.editID_Button.setChecked(False)
                 return
 
             # Ask to propagate change to all future visited frames
@@ -1998,7 +2021,8 @@ class guiWin(QMainWindow):
             self.warnEditingWithCca_df('Edit ID')
 
             self.setImageImg2()
-            self.editID_Button.setChecked(False)
+            if not self.editID_Button.findChild(QAction).isChecked():
+                self.editID_Button.setChecked(False)
 
             PosData.disableAutoActivateViewerWindow = True
 
@@ -2109,7 +2133,8 @@ class guiWin(QMainWindow):
             # Gray out ore restore binned ID
             self.updateLookuptable()
 
-            self.binCellButton.setChecked(False)
+            if not self.binCellButton.findChild(QAction).isChecked():
+                self.binCellButton.setChecked(False)
 
         # Annotate cell as dead
         elif right_click and self.ripCellButton.isChecked():
@@ -2183,7 +2208,8 @@ class guiWin(QMainWindow):
 
             self.warnEditingWithCca_df('Annotate ID as dead')
 
-            self.ripCellButton.setChecked(False)
+            if not self.ripCellButton.findChild(QAction).isChecked():
+                self.ripCellButton.setChecked(False)
 
     def gui_mouseDragEventImg1(self, event):
         PosData = self.data[self.pos_i]
@@ -2576,7 +2602,8 @@ class guiWin(QMainWindow):
             self.tracking(enforce=True)
 
             self.updateALLimg()
-            self.mergeIDsButton.setChecked(False)
+            if not self.mergeIDsButton.findChild(QAction).isChecked():
+                self.mergeIDsButton.setChecked(False)
             self.store_data()
             self.warnEditingWithCca_df('Merge IDs')
 
@@ -2737,7 +2764,10 @@ class guiWin(QMainWindow):
             self.clickedOnHistoryKnown = is_history_known
             self.xClickMoth, self.yClickMoth = xdata, ydata
             self.assignBudMoth()
-            self.assignBudMothButton.setChecked(False)
+
+            if not self.assignBudMothButton.findChild(QAction).isChecked():
+                self.assignBudMothButton.setChecked(False)
+
             self.clickedOnBud = False
             self.BudMothTempLine.setData([], [])
 
@@ -3081,11 +3111,18 @@ class guiWin(QMainWindow):
                     xdata, ydata = int(x), int(y)
 
             self.annotateIsHistoryKnown(ID)
-            self.setIsHistoryKnownButton.setChecked(False)
+            if not self.setIsHistoryKnownButton.findChild(QAction).isChecked():
+                self.setIsHistoryKnownButton.setChecked(False)
 
         # Allow mid-click actions on both images
         elif middle_click:
             self.gui_mousePressEventImg2(event)
+
+    def keepToolActiveActionToggled(self, checked):
+        parentToolButton = self.sender().parentWidget()
+        toolName = re.findall('Toggle "(.*)"', parentToolButton.toolTip())[0]
+        self.df_settings.at[toolName, 'value'] = 'keepActive'
+        self.df_settings.to_csv(self.settings_csv_path)
 
     def determineSlideshowWinPos(self):
         self.num_screens = len(self.app.screens())
@@ -4739,6 +4776,18 @@ class guiWin(QMainWindow):
         self.ax1_EraserX.setSize(value)
         self.setDiskMask()
 
+    def restoreHoveredID(self):
+        PosData = self.data[self.pos_i]
+        if self.ax1BrushHoverID in PosData.IDs:
+            obj_idx = PosData.IDs.index(self.ax1BrushHoverID)
+            obj = PosData.rp[obj_idx]
+            self.drawID_and_Contour(obj)
+        elif self.ax1BrushHoverID in PosData.lost_IDs:
+            prev_rp = PosData.allData_li[PosData.frame_i-1]['regionprops']
+            obj_idx = [obj.label for obj in prev_rp].index(self.ax1BrushHoverID)
+            obj = prev_rp[obj_idx]
+            self.highlightLost_obj(obj)
+
     def hideItemsHoverBrush(self, x, y):
         if x is None:
             return
@@ -4757,20 +4806,13 @@ class guiWin(QMainWindow):
         if ID == 0:
             prev_lab = PosData.allData_li[PosData.frame_i-1]['labels']
             if prev_lab is None:
+                self.restoreHoveredID()
                 return
             ID = prev_lab[ydata, xdata]
 
         # Restore ID previously hovered
         if ID != self.ax1BrushHoverID and not self.isMouseDragImg1:
-            if self.ax1BrushHoverID in PosData.IDs:
-                obj_idx = PosData.IDs.index(self.ax1BrushHoverID)
-                obj = PosData.rp[obj_idx]
-                self.drawID_and_Contour(obj)
-            elif self.ax1BrushHoverID in PosData.lost_IDs:
-                prev_rp = PosData.allData_li[PosData.frame_i-1]['regionprops']
-                obj_idx = [obj.label for obj in prev_rp].index(self.ax1BrushHoverID)
-                obj = prev_rp[obj_idx]
-                self.highlightLost_obj(obj)
+            self.restoreHoveredID()
 
         # Hide items hover ID
         if ID != 0:
