@@ -6621,7 +6621,7 @@ class guiWin(QMainWindow):
         self.navigateScrollBarStartedMoving = True
         PosData = self.data[self.pos_i]
         PosData.frame_i = self.navigateScrollBar.sliderPosition()-1
-        self.get_data()
+        proceed_cca, never_visited = self.get_data()
         self.updateFramePosLabel()
         self.updateALLimg(
             never_visited=never_visited,
