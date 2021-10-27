@@ -5913,11 +5913,14 @@ class guiWin(QMainWindow):
                 PosData.frame_i -= 1
                 self.get_data()
                 return
-            self.updateALLimg(never_visited=never_visited,
-                              updateFilters=True, updateLabelItemColor=False)
+            self.updateALLimg(
+                never_visited=never_visited,
+                updateFilters=True,
+                updateLabelItemColor=False
+            )
+            self.setNavigateScrollBarMaximum()
             self.updateScrollbars()
             self.computeSegm()
-            self.setnavigateScrollBarMaximum()
             self.zoomToCells()
         else:
             # Store data for current frame
@@ -5926,13 +5929,15 @@ class guiWin(QMainWindow):
             print(msg)
             self.titleLabel.setText(msg, color='w')
 
-    def setnavigateScrollBarMaximum(self):
+    def setNavigateScrollBarMaximum(self):
         PosData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
         if mode == 'Segmentation and Tracking':
             if PosData.last_tracked_i is not None:
                 if PosData.frame_i > PosData.last_tracked_i:
                     self.navigateScrollBar.setMaximum(PosData.frame_i+1)
+            else:
+                self.navigateScrollBar.setMaximum(PosData.frame_i+1)
         elif mode == 'Cell cycle analysis':
             if PosData.frame_i > self.last_cca_frame_i:
                 self.navigateScrollBar.setMaximum(PosData.frame_i+1)
@@ -6253,11 +6258,14 @@ class guiWin(QMainWindow):
                 except TypeError:
                     pass
                 self.navigateScrollBar.sliderMoved.connect(
-                                                  self.PosScrollBarMoved)
+                    self.PosScrollBarMoved
+                )
                 self.navigateScrollBar.sliderReleased.connect(
-                                                  self.PosScrollBarReleased)
+                    self.PosScrollBarReleased
+                )
                 self.navigateScrollBar.actionTriggered.connect(
-                                                  self.PosScrollBarAction)
+                    self.PosScrollBarAction
+                )
             else:
                 self.navigateScrollBar.setMinimum(1)
                 if PosData.last_tracked_i is not None:
@@ -6615,7 +6623,12 @@ class guiWin(QMainWindow):
         PosData.frame_i = self.navigateScrollBar.sliderPosition()-1
         self.get_data()
         self.updateFramePosLabel()
-        self.updateALLimg()
+        self.updateALLimg(
+            never_visited=never_visited,
+            updateFilters=True,
+            updateLabelItemColor=False
+        )
+        self.setNavigateScrollBarMaximum()
         self.computeSegm()
         self.zoomToCells()
 
@@ -7307,7 +7320,7 @@ class guiWin(QMainWindow):
     def remove_future_cca_df(self, from_frame_i):
         PosData = self.data[self.pos_i]
         self.last_cca_frame_i = PosData.frame_i
-        self.setnavigateScrollBarMaximum()
+        self.setNavigateScrollBarMaximum()
         for i in range(from_frame_i, PosData.segmSizeT):
             df = PosData.allData_li[i]['acdc_df']
             if df is None:
@@ -8878,7 +8891,7 @@ class guiWin(QMainWindow):
                  'delROIs_info': {'rois': [], 'delMasks': [], 'delIDsROI': []},
                  'histoLevels': {}
             }
-        self.setnavigateScrollBarMaximum()
+        self.setNavigateScrollBarMaximum()
 
     def removeAllItems(self):
         self.ax1.clear()
