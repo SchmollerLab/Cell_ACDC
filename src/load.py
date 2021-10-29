@@ -85,7 +85,7 @@ class loadData:
 
     def getBasenameAndChNames(self):
         ls = os.listdir(self.images_path)
-        selector = select_channel_name()
+        selector = prompts.select_channel_name()
         self.chNames, _ = selector.get_available_channels(ls, self.images_path)
         self.basename = selector.basename
 
