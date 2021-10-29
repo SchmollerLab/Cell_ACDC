@@ -67,6 +67,7 @@ class loadData:
         src_path = os.path.dirname(os.path.realpath(__file__))
         temp_path = os.path.join(src_path, 'temp')
         if not os.path.exists(temp_path):
+            self.last_md_df = None
             return
         csv_path = os.path.join(temp_path, 'last_entries_metadata.csv')
         if not os.path.exists(csv_path):
@@ -82,7 +83,7 @@ class loadData:
         csv_path = os.path.join(temp_path, 'last_entries_metadata.csv')
         self.metadata_df.to_csv(csv_path)
 
-    def getBasenameAndChNames(self, select_channel_name):
+    def getBasenameAndChNames(self):
         ls = os.listdir(self.images_path)
         selector = select_channel_name()
         self.chNames, _ = selector.get_available_channels(ls, self.images_path)
@@ -813,9 +814,9 @@ class select_exp_folder:
                        show=False, toggleMulti=False):
         font = QtGui.QFont()
         font.setPointSize(10)
-        win = apps.QtSelectItems(title, values, '',
-                               CbLabel=CbLabel,
-                               parent=parentQWidget)
+        win = apps.QtSelectItems(
+            title, values, '', CbLabel=CbLabel, parent=parentQWidget
+        )
         win.setFont(font)
         toFront = win.windowState() & ~Qt.WindowMinimized | Qt.WindowActive
         win.setWindowState(toFront)

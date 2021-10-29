@@ -212,7 +212,7 @@ class mainWin(QMainWindow):
             self.convertWin = utils.convert.convertFileFormatWin(
                 parent=self,
                 actionToEnable=self.sender(),
-                mainWin=self, from_=from_, to=to, info=info
+                mainWin=self, from_=from_, to=to
             )
             self.convertWin.show()
             self.convertWin.main()

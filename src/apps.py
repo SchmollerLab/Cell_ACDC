@@ -869,6 +869,8 @@ class QDialogAppendTextFilename(QDialog):
         self.cancel = True
         filenameNOext, _ = os.path.splitext(filename)
         self.filenameNOext = filenameNOext
+        if ext.find('.') == -1:
+            ext = f'.{ext}'
         self.ext = ext
 
         self.setWindowTitle('Append text to file name')
@@ -2992,7 +2994,7 @@ class askStopFrameSegm(QDialog):
             )
             spinBox = QSpinBox()
             PosData = load.loadData(img_path, user_ch_name, QParent=parent)
-            PosData.getBasenameAndChNames(prompts.select_channel_name)
+            PosData.getBasenameAndChNames()
             PosData.buildPaths()
             PosData.loadImgData()
             PosData.loadOtherFiles(

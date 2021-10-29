@@ -14,7 +14,8 @@ from tqdm import tqdm
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QFileDialog,
-    QVBoxLayout, QPushButton, QLabel
+    QVBoxLayout, QPushButton, QLabel, QStyleFactory,
+    QWidget, QMessageBox
 )
 from PyQt5.QtCore import Qt, QEventLoop
 from PyQt5 import QtGui
@@ -51,7 +52,7 @@ class convertFileFormatWin(QMainWindow):
         self.setWindowTitle(f"Cell-ACDC - Convert .{from_} file to .{to}")
         self.setWindowIcon(QtGui.QIcon(":assign-motherbud.svg"))
 
-        mainContainer = QtGui.QWidget()
+        mainContainer = QWidget()
         self.setCentralWidget(mainContainer)
 
         mainLayout = QVBoxLayout()
@@ -140,7 +141,7 @@ class convertFileFormatWin(QMainWindow):
                     'is not a valid folder. '
                     'Select a folder that contains the Position_n folders'
                 )
-                msg = QtGui.QMessageBox()
+                msg = QMessageBox()
                 msg.critical(
                     self, 'Incompatible folder', txt, msg.Ok
                 )
@@ -177,7 +178,7 @@ class convertFileFormatWin(QMainWindow):
                 return
 
 
-        abort, appendedTxt = self.askTxtAppend(selectedFilenames[0], self.to)
+        abort, appendedTxt = self.askTxtAppend(selectedFilenames[0])
         if abort:
             abort = self.doAbort()
             if abort:
@@ -246,13 +247,13 @@ class convertFileFormatWin(QMainWindow):
         font = QtGui.QFont()
         font.setPointSize(10)
         self.win = apps.QDialogAppendTextFilename(
-            filename, parent=self, font=font
+            filename, self.to, parent=self, font=font
         )
         self.win.exec_()
         return self.win.cancel, self.win.LE.text()
 
     def criticalNoCommonBasename(self):
-        msg = QtGui.QMessageBox()
+        msg = QMessageBox()
         msg.critical(
            self, 'Data structure compromised',
            'The system detected files inside the "Images" folder '
@@ -338,7 +339,7 @@ class convertFileFormatWin(QMainWindow):
         df.to_csv(recentPaths_path)
 
     def doAbort(self):
-        # msg = QtGui.QMessageBox()
+        # msg = QMessageBox()
         # closeAnswer = msg.warning(
         #    self, 'Abort execution?', 'Do you really want to abort process?',
         #    msg.Yes | msg.No
@@ -367,7 +368,7 @@ if __name__ == "__main__":
         QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     # Create the application
     app = QApplication(sys.argv)
-    app.setStyle(QtGui.QStyleFactory.create('Fusion'))
+    app.setStyle(QStyleFactory.create('Fusion'))
     win = convertFileFormatWin(allowExit=True)
     win.show()
     print('Done. If window asking to select a folder is not visible, it is '

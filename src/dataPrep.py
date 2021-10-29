@@ -939,7 +939,7 @@ class dataPrepWin(QMainWindow):
         for f, file_path in enumerate(user_ch_file_paths):
             try:
                 PosData = load.loadData(file_path, user_ch_name, QParent=self)
-                PosData.getBasenameAndChNames(prompts.select_channel_name)
+                PosData.getBasenameAndChNames()
                 PosData.buildPaths()
                 PosData.loadImgData()
                 PosData.loadOtherFiles(

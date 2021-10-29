@@ -90,7 +90,7 @@ class segmWorker(QRunnable):
 
         self.signals.progress.emit(f'Loading {PosData.relPath}...')
 
-        PosData.getBasenameAndChNames(prompts.select_channel_name)
+        PosData.getBasenameAndChNames()
         PosData.buildPaths()
         PosData.loadImgData()
         PosData.loadOtherFiles(
@@ -593,7 +593,7 @@ class segmWin(QMainWindow):
         # Ask other questions based on first position
         img_path = user_ch_file_paths[0]
         PosData = load.loadData(img_path, user_ch_name, QParent=self)
-        PosData.getBasenameAndChNames(prompts.select_channel_name)
+        PosData.getBasenameAndChNames()
         PosData.buildPaths()
         PosData.loadImgData()
         PosData.loadOtherFiles(
@@ -727,7 +727,7 @@ class segmWin(QMainWindow):
             img_path = user_ch_file_paths[0]
 
             PosData = load.loadData(img_path, user_ch_name, QParent=self)
-            PosData.getBasenameAndChNames(prompts.select_channel_name)
+            PosData.getBasenameAndChNames()
             PosData.buildPaths()
             PosData.loadImgData()
             PosData.loadOtherFiles(

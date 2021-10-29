@@ -2098,7 +2098,7 @@ class guiWin(QMainWindow):
 
             self.current_frame_i = PosData.frame_i
 
-            # Apply Edit ID to future frames if requested
+            # Apply Exclude cell from analysis to future frames if requested
             if applyFutFrames:
                 self.app.setOverrideCursor(Qt.WaitCursor)
                 # Store current data before going to future frames
@@ -5972,8 +5972,10 @@ class guiWin(QMainWindow):
                 skipPos = True
         else:
             if not PosData.segmFound and PosData.SizeT > 1:
-                err_msg = ('Segmentation mask file ("..._segm.npz") not found. '
-                           'You should to run segmentation script "segm.py" first.')
+                err_msg = (
+                    'Segmentation mask file ("..._segm.npz") not found. '
+                    'You could run segmentation module first.'
+                )
                 print(err_msg)
                 self.titleLabel.setText(err_msg, color='r')
                 skipPos = False
@@ -5999,7 +6001,7 @@ class guiWin(QMainWindow):
         for f, file_path in enumerate(user_ch_file_paths):
             try:
                 PosData = load.loadData(file_path, user_ch_name, QParent=self)
-                PosData.getBasenameAndChNames(prompts.select_channel_name)
+                PosData.getBasenameAndChNames()
                 PosData.buildPaths()
                 PosData.loadImgData()
                 selectedSegmNpz, cancel = PosData.detectMultiSegmNpz()
@@ -6055,8 +6057,9 @@ class guiWin(QMainWindow):
                     except FileNotFoundError:
                         pass
 
-                PosData.setBlankSegmData(PosData.SizeT, PosData.SizeZ,
-                                         SizeY, SizeX)
+                PosData.setBlankSegmData(
+                    PosData.SizeT, PosData.SizeZ, SizeY, SizeX
+                )
                 skipPos, abort = self.checkDataIntegrity(PosData, numPos)
             except AttributeError:
                 print('')
@@ -9219,14 +9222,6 @@ class guiWin(QMainWindow):
                     # raise FileNotFoundError(err_msg)
 
                 user_ch_file_paths.append(img_path)
-
-            if img_path is None:
-                self.titleLabel.setText(
-                    'Drag and drop image file or go to File --> Open folder...',
-                    color='w')
-                self.openAction.setEnabled(True)
-                self.criticalImgPathNotFound()
-                return
 
             print(f'Loading {img_path}...')
 
