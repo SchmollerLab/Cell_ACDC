@@ -117,6 +117,11 @@ class segmWorker(QRunnable):
         if PosData.dataPrep_ROIcoords is not None:
             isROIactive = PosData.dataPrep_ROIcoords.at['cropped', 'value'] == 0
             x0, x1, y0, y1 = PosData.dataPrep_ROIcoords['value'][:4]
+            Y, X = PosData.img_data.shape[-2:]
+            x0 = x0 if x0>0 else 0
+            y0 = y0 if y0>0 else 0
+            x1 = x1 if x1<X else X
+            y1 = y1 if y1<Y else Y
 
         # Note that stop_i is not used when SizeT == 1 so it does not matter
         # which value it has in that case

@@ -28,7 +28,7 @@ from PyQt5.QtWidgets import (
     QMainWindow, QMenu, QToolBar, QGroupBox,
     QScrollBar, QCheckBox, QToolButton, QSpinBox,
     QComboBox, QDial, QButtonGroup, QFileDialog,
-    QAbstractSlider
+    QAbstractSlider, QMessageBox
 )
 
 from pyqtgraph.Qt import QtGui
@@ -722,26 +722,40 @@ class dataPrepWin(QMainWindow):
 
         x0 = x0 if x0>0 else 0
         y0 = y0 if y0>0 else 0
-        w = w if x1<X else X
-        h = h if y1<Y else Y
+        x1 = x1 if x1<X else X
+        y1 = y1 if y1<Y else Y
 
-        if x0<=0 and y0<=0 and w>=X and h>=Y:
+        if x0<=0 and y0<=0 and x1>=X and y1>=Y:
+            # ROI coordinates are the exact image shape. No need to save them
             return
 
-        print(f'Saving ROI coords: x_left = {x0}, x_right = {x0+w}, '
-              f'y_top = {y0}, y_bottom = {y0+h}\n'
-              f'to {PosData.dataPrepROI_coords_path}')
+        print(
+            f'Saving ROI coords: x_left = {x0}, x_right = {x1}, '
+            f'y_top = {y0}, y_bottom = {y1}\n'
+            f'to {PosData.dataPrepROI_coords_path}'
+        )
 
-        with open(PosData.dataPrepROI_coords_path, 'w') as csv:
-            csv.write(f'description,value\n'
-                      f'x_left,{x0}\n'
-                      f'x_right,{x0+w}\n'
-                      f'y_top,{y0}\n'
-                      f'y_bottom,{y0+h}\n'
-                      f'cropped,{int(doCrop)}')
+        csv_data = (
+            f'description,value\n'
+            f'x_left,{x0}\n'
+            f'x_right,{x1}\n'
+            f'y_top,{y0}\n'
+            f'y_bottom,{y1}\n'
+            f'cropped,{int(doCrop)}'
+        )
+
+        try:
+            with open(PosData.dataPrepROI_coords_path, 'w') as csv:
+                csv.write(csv_data)
+        except PermissionError:
+            self.permissionErrorCritical(PosData.dataPrepROI_coords_path)
+            with open(PosData.dataPrepROI_coords_path, 'w') as csv:
+                csv.write(csv_data)
+
+
 
     def crop_cb(self):
-        # msg = QtGui.QMessageBox()
+        # msg = QMessageBox()
         # doSave = msg.question(
         #     self, 'Save data?', 'Do you want to save?',
         #     msg.Yes | msg.No
@@ -831,14 +845,7 @@ class dataPrepWin(QMainWindow):
                 try:
                     df.to_csv(PosData.acdc_output_csv_path)
                 except PermissionError:
-                    msg = QtGui.QMessageBox()
-                    warn_cca = msg.critical(
-                        self, 'Permission denied',
-                        f'The below file is open in another app (Excel maybe?).\n\n'
-                        f'{PosData.acdc_output_csv_path}\n\n'
-                        'Close file and then press "Ok".',
-                        msg.Ok
-                    )
+                    self.permissionErrorCritical(PosData.acdc_output_csv_path)
                     df.to_csv(PosData.acdc_output_csv_path)
 
             print(f'{PosData.pos_foldername} saved!')
@@ -849,8 +856,19 @@ class dataPrepWin(QMainWindow):
             'Saved! You can close the program or load another position.',
             color='g')
 
+    def permissionErrorCritical(self, path):
+        msg = QMessageBox()
+        msg.critical(
+            self, 'Permission denied',
+            f'The below file is open in another app (Excel maybe?).\n\n'
+            f'{path}\n\n'
+            'Close file and then press "Ok".',
+            msg.Ok
+        )
+
+
     def askCropping(self, dataShape, croppedShape):
-        msg = QtGui.QMessageBox(self)
+        msg = QMessageBox(self)
         msg.setWindowTitle('Crop?')
         msg.setIcon(msg.Warning)
         msg.setText(
@@ -1025,7 +1043,7 @@ class dataPrepWin(QMainWindow):
                 path = os.path.normpath(file_path)
                 path_li = path.split(os.sep)
                 rel_path = f'.../{"/".join(path_li[-3:])}'
-                msg = QtGui.QMessageBox()
+                msg = QMessageBox()
                 msg.critical(
                     self, 'Multiple Pos loading not allowed.',
                     f'The file {rel_path} has multiple frames over time.\n\n'
@@ -1174,7 +1192,7 @@ class dataPrepWin(QMainWindow):
             imagesPath = PosData.images_path
             zipPath = f'{imagesPath}.zip'
             if nonTifFound and p==0:
-                msg = QtGui.QMessageBox()
+                msg = QMessageBox()
                 doZipAnswer = msg.warning(
                    self, 'NON-Tif data detected!',
                    'Additional NON-tif files detected.\n\n'
@@ -1405,7 +1423,7 @@ class dataPrepWin(QMainWindow):
 
         align = True
         if PosData.loaded_shifts is None and PosData.SizeT > 1:
-            msg = QtGui.QMessageBox()
+            msg = QMessageBox()
             alignAnswer = msg.question(
                 self, 'Align frames?',
                 f'Do you want to align ALL channels based on "{user_ch_name}" '
@@ -1526,7 +1544,7 @@ class dataPrepWin(QMainWindow):
         if PosData.segmFound and aligned:
             if PosData.loaded_shifts is None or not align:
                 return
-            msg = QtGui.QMessageBox()
+            msg = QMessageBox()
             alignAnswer = msg.question(
                 self, 'Align segmentation data?',
                 'The system found an existing segmentation mask.\n\n'
@@ -1573,7 +1591,7 @@ class dataPrepWin(QMainWindow):
     def warnTifAligned(self, numFramesWith0s, tifPath, PosData):
         proceed = True
         if numFramesWith0s>0 and PosData.loaded_shifts is not None:
-            msg = QtGui.QMessageBox()
+            msg = QMessageBox()
             proceedAnswer = msg.warning(
                self, 'Tif data ALREADY aligned!',
                'The system detected that the .tif file contains ALREADY '
@@ -1792,7 +1810,7 @@ class dataPrepWin(QMainWindow):
                     'is not a valid folder. '
                     'Select a folder that contains the Position_n folders'
                 )
-                msg = QtGui.QMessageBox()
+                msg = QMessageBox()
                 msg.critical(
                     self, 'Incompatible folder', txt, msg.Ok
                 )
@@ -1873,7 +1891,7 @@ class dataPrepWin(QMainWindow):
             'Try with "File --> Open image/video file..." and directly select '
             'the file you want to load.'
         )
-        msg = QtGui.QMessageBox()
+        msg = QMessageBox()
         msg.critical(self, err_title, err_msg, msg.Ok)
         return
 

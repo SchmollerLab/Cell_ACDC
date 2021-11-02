@@ -858,9 +858,9 @@ class guiWin(QMainWindow):
         self.addToolBar(modeToolBar)
 
         self.modeComboBox = QComboBox()
-        self.modeComboBox.addItems(['Segmentation and Tracking',
-                                    'Cell cycle analysis',
-                                    'Viewer'])
+        self.modeComboBox.addItems(
+            ['Segmentation and Tracking', 'Cell cycle analysis', 'Viewer']
+        )
         self.modeComboBoxLabel = QLabel('    Mode: ')
         self.modeComboBoxLabel.setBuddy(self.modeComboBox)
         modeToolBar.addWidget(self.modeComboBoxLabel)
@@ -1585,9 +1585,9 @@ class guiWin(QMainWindow):
             return
 
         # Check if right click on ROI
-        delROIs = (PosData.allData_li[PosData.frame_i]
-                                     ['delROIs_info']
-                                     ['rois'].copy())
+        delROIs = (
+            PosData.allData_li[PosData.frame_i]['delROIs_info']['rois'].copy()
+        )
         for r, roi in enumerate(delROIs):
             x0, y0 = [int(c) for c in roi.pos()]
             w, h = [int(c) for c in roi.size()]
@@ -10251,7 +10251,9 @@ class guiWin(QMainWindow):
         self.defaultToolBarButtonColor = c
         self.doublePressKeyButtonColor = '#fa693b'
 
-    def showAndSetSize(self):
+    def show(self):
+        QMainWindow.show(self)
+
         screenNames = []
         for screen in self.app.screens():
             name = '/'.join(screen.name().split('\\'))
@@ -10264,10 +10266,9 @@ class guiWin(QMainWindow):
             height = int(self.df_settings.at['geometry_height', 'value'])
             screenName = self.df_settings.at['screenName', 'value']
             isMaximised = self.df_settings.at['isMaximised', 'value'] == 'True'
-            if screenName in screenNames and not isMaximised:
-                self.show()
+            if screenName in screenNames:
                 self.setGeometry(left, top, width, height)
-            else:
+            if isMaximised:
                 self.showMaximized()
         else:
             self.showMaximized()
@@ -10297,7 +10298,7 @@ if __name__ == "__main__":
     # app.setStyleShefet(stream.readAll())
     # Create and show the main window
     win = guiWin(app)
-    win.showAndSetSize()
+    win.show()
 
     # Run the event loop
     print('Lauching application...')
