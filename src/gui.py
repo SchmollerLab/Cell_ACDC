@@ -6452,14 +6452,16 @@ class guiWin(QMainWindow):
         self.isMouseDragImg1 = False
         self.isRightClickDragImg1 = False
 
-        self.cca_df_colnames = ['cell_cycle_stage',
-                                'generation_num',
-                                'relative_ID',
-                                'relationship',
-                                'emerg_frame_i',
-                                'division_frame_i',
-                                'is_history_known',
-                                'corrected_assignment']
+        self.cca_df_colnames = [
+            'cell_cycle_stage',
+            'generation_num',
+            'relative_ID',
+            'relationship',
+            'emerg_frame_i',
+            'division_frame_i',
+            'is_history_known',
+            'corrected_assignment'
+        ]
         self.cca_df_int_cols = ['generation_num',
                                 'relative_ID',
                                 'emerg_frame_i',
