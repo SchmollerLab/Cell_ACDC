@@ -233,6 +233,11 @@ class welcomeWin(QWidget):
             Alternatively, you can launch a <b>Wizard</b> that will guide you through the
             <b>conversion</b> of<br> one or more <b>raw microscopy</b> files into the required structure
             or you can test the main GUI
+        </p>
+        <p style="font-size:11pt; font-family:ubuntu; line-height:1.2">
+            <i>Note that if you are looking for the <b>main launcher</b> to launch any
+            of the Cell-ACDC modules you simply need to <b>close this welcome guide</b>.
+            </i>
             <br>
         </p>
         </blockquote>
