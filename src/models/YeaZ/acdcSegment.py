@@ -59,7 +59,7 @@ class Model:
 
     def yeaz_preprocess(self, image, tqdm_pbar=None):
         image = skimage.filters.gaussian(image, sigma=1)
-        image = skimage.exposure.equalize_adapthist(image)
+        # image = skimage.exposure.equalize_adapthist(image)
         image = image/image.max()
         image = skimage.exposure.equalize_adapthist(image)
         if tqdm_pbar is not None:

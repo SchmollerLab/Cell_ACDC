@@ -225,6 +225,8 @@ class convertFileFormatWin(QMainWindow):
         filePath = os.path.join(images_path, filename)
         if self.from_ == 'npz':
             data = np.load(filePath)['arr_0']
+        elif self.from_ == 'npy':
+            data = np.load(filePath)
         filename, ext = os.path.splitext(filename)
         if appendedTxt:
             newFilename = f'{filename}_{appendedTxt}.{self.to}'
@@ -235,6 +237,8 @@ class convertFileFormatWin(QMainWindow):
             np.save(newPath, data)
         elif self.to == 'tif':
             myutils.imagej_tiffwriter(newPath, data, None, 1, 1, imagej=False)
+        elif self.to == 'npz':
+            np.savez_compressed(newPath, data)
         print(f'File {filePath} saved to {newPath}')
 
 

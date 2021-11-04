@@ -129,19 +129,18 @@ class mainWin(QMainWindow):
         self.settings_csv_path = csv_path
         if not os.path.exists(csv_path):
             idx = ['showWelcomeGuide']
-            values = ['True']
+            values = ['Yes']
             self.df_settings = pd.DataFrame({'setting': idx,
                                              'value': values}
                                            ).set_index('setting')
             self.df_settings.to_csv(csv_path)
-
         self.df_settings = pd.read_csv(csv_path, index_col='setting')
         if 'showWelcomeGuide' not in self.df_settings.index:
-            self.df_settings.at['showWelcomeGuide', 'value'] = 'True'
+            self.df_settings.at['showWelcomeGuide', 'value'] = 'Yes'
             self.df_settings.to_csv(csv_path)
 
         show = (
-            self.df_settings.at['showWelcomeGuide', 'value'] == 'True'
+            self.df_settings.at['showWelcomeGuide', 'value'] == 'Yes'
             or self.sender() is not None
         )
         if not show:

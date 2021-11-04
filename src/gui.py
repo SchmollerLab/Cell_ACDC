@@ -321,15 +321,14 @@ class segmWorker(QObject):
         img = self.mainWin.getDisplayedCellsImg()
         img = myutils.uint_to_float(img)
         lab = self.mainWin.model.segment(img, **self.mainWin.segment2D_kwargs)
-        if len(skimage.measure.regionprops(lab))>1:
+        rp = skimage.measure.regionprops(lab)
+        if len(rp)>1:
             lab = skimage.morphology.remove_small_objects(
                 lab, min_size=self.mainWin.minSize
             )
-
         t1 = time.time()
         exec_time = t1-t0
         self.finished.emit(lab, exec_time)
-
 
 class guiWin(QMainWindow):
     """Main Window."""
@@ -397,7 +396,11 @@ class guiWin(QMainWindow):
         if os.path.exists(csv_path):
             self.df_settings = pd.read_csv(csv_path, index_col='setting')
             if 'is_bw_inverted' not in self.df_settings.index:
-                self.df_settings.at['is_bw_inverted', 'value'] = 'False'
+                self.df_settings.at['is_bw_inverted', 'value'] = 'No'
+            else:
+                self.df_settings.loc['is_bw_inverted'] = (
+                    self.df_settings.loc['is_bw_inverted'].astype(str)
+                )
             if 'fontSize' not in self.df_settings.index:
                 self.df_settings.at['fontSize', 'value'] = '10pt'
             if 'overlayColor' not in self.df_settings.index:
@@ -407,10 +410,10 @@ class guiWin(QMainWindow):
                 self.df_settings.at['how_normIntensities', 'value'] = raw
         else:
             idx = ['is_bw_inverted', 'fontSize', 'overlayColor', 'how_normIntensities']
-            values = ['False', '10pt', '255-255-0', 'raw']
-            self.df_settings = pd.DataFrame({'setting': idx,
-                                             'value': values}
-                                           ).set_index('setting')
+            values = ['No', '10pt', '255-255-0', 'raw']
+            self.df_settings = pd.DataFrame({
+                'setting': idx,'value': values}
+            ).set_index('setting')
 
     def dragEnterEvent(self, event):
         file_path = event.mimeData().urls()[0].toLocalFile()
@@ -996,7 +999,7 @@ class guiWin(QMainWindow):
 
         self.invertBwAction = QAction('Invert black/white', self)
         self.invertBwAction.setCheckable(True)
-        checked = self.df_settings.at['is_bw_inverted', 'value'] == 'True'
+        checked = self.df_settings.at['is_bw_inverted', 'value'] == 'Yes'
         self.invertBwAction.setChecked(checked)
 
         self.normalizeRawAction = QAction(
@@ -1343,8 +1346,8 @@ class guiWin(QMainWindow):
     def gui_setLabelsColors(self, r, g, b, custom=False):
         if custom:
             self.ax1_oldIDcolor = (r, g, b)
-            self.ax1_S_oldCellColor = (int(r*0.9), int(r*0.9), int(r*0.9))
-            self.ax1_G1cellColor = (int(r*0.8), int(r*0.8), int(r*0.8), 178)
+            self.ax1_S_oldCellColor = (int(r*0.9), int(r*0.9), int(b*0.9))
+            self.ax1_G1cellColor = (int(r*0.8), int(g*0.8), int(b*0.8), 178)
             self.ax1_divAnnotColor = (int(r*0.9), int(g*0.9), int(b*0.9))
         else:
             self.ax1_oldIDcolor = (255, 255, 255) # white
@@ -5630,6 +5633,8 @@ class guiWin(QMainWindow):
             idx = self.modelNames.index(model_name)
             askSegmParams = self.segment2D_kwargs is None
 
+        myutils.download_model(model_name)
+
         # Store undo state before modifying stuff
         self.storeUndoRedoStates(False)
 
@@ -5637,6 +5642,7 @@ class guiWin(QMainWindow):
         # Check if model needs to be imported
         acdcSegment = self.acdcSegment_li[idx]
         if acdcSegment is None:
+            print(f'Importing {model_name}...')
             acdcSegment = import_module(f'models.{model_name}.acdcSegment')
             self.acdcSegment_li[idx] = acdcSegment
 
@@ -7487,7 +7493,6 @@ class guiWin(QMainWindow):
             LabelItemID.setText(txt, color=color, bold=bold, size=self.fontSize)
         except UnboundLocalError:
             pass
-
 
         # Center LabelItem at centroid
         y, x = obj.centroid
@@ -10244,6 +10249,7 @@ class guiWin(QMainWindow):
         self.df_settings.at['geometry_height', 'value'] = height
         self.df_settings.at['screenName', 'value'] = screenName
         isMaximised = self.windowState() == Qt.WindowMaximized
+        isMaximised = 'Yes' if isMaximised else 'No'
         self.df_settings.at['isMaximised', 'value'] = isMaximised
         self.df_settings.to_csv(self.settings_csv_path)
         # print('Window screen name: ', screenName)
@@ -10256,18 +10262,31 @@ class guiWin(QMainWindow):
     def show(self):
         QMainWindow.show(self)
 
+        self.setWindowState(Qt.WindowNoState)
+        self.setWindowState(Qt.WindowActive)
+        self.raise_()
+
         screenNames = []
         for screen in self.app.screens():
             name = '/'.join(screen.name().split('\\'))
             screenNames.append(name)
 
+        if 'isMaximised' in self.df_settings.index:
+            self.df_settings.loc['isMaximised'] = (
+                self.df_settings.loc['isMaximised'].astype(str)
+            )
+
         if 'geometry_left' in self.df_settings.index:
+            isMaximised = self.df_settings.at['isMaximised', 'value'] == 'Yes'
             left = int(self.df_settings.at['geometry_left', 'value'])
-            top = int(self.df_settings.at['geometry_top', 'value'])+10
-            width = int(self.df_settings.at['geometry_width', 'value'])
-            height = int(self.df_settings.at['geometry_height', 'value'])
             screenName = self.df_settings.at['screenName', 'value']
-            isMaximised = self.df_settings.at['isMaximised', 'value'] == 'True'
+            if isMaximised:
+                g = self.geometry()
+                top, width, height = g.top(), g.width(), g.height()
+            else:
+                top = int(self.df_settings.at['geometry_top', 'value'])+10
+                width = int(self.df_settings.at['geometry_width', 'value'])
+                height = int(self.df_settings.at['geometry_height', 'value'])
             if screenName in screenNames:
                 self.setGeometry(left, top, width, height)
             if isMaximised:

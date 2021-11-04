@@ -105,10 +105,10 @@ class welcomeWin(QWidget):
         if os.path.exists(csv_path):
             self.df_settings = pd.read_csv(csv_path, index_col='setting')
             if 'showWelcomeGuide' not in self.df_settings.index:
-                self.df_settings.at['showWelcomeGuide', 'value'] = 'True'
+                self.df_settings.at['showWelcomeGuide', 'value'] = 'Yes'
         else:
             idx = ['showWelcomeGuide']
-            values = ['True']
+            values = ['Yes']
             self.df_settings = pd.DataFrame({'setting': idx,
                                              'value': values}
                                            ).set_index('setting')
@@ -809,19 +809,25 @@ class welcomeWin(QWidget):
 
     def addShowGuideCheckbox(self):
         checkBox = QCheckBox('Show Welcome Guide when opening Cell-ACDC')
-        checked = self.df_settings.at['showWelcomeGuide', 'value'] == 'True'
+        checked = self.df_settings.at['showWelcomeGuide', 'value'] == 'Yes'
         checkBox.setChecked(checked)
         self.mainLayout.addWidget(checkBox, 1, 1, alignment=Qt.AlignRight)
 
         checkBox.stateChanged.connect(self.showWelcomeGuideCheckBox_cb)
 
     def showWelcomeGuideCheckBox_cb(self, state):
-        self.df_settings.at['showWelcomeGuide', 'value'] = str(state==2)
+        if state == 0:
+            show = 'No'
+        else:
+            show = 'Yes'
+        self.df_settings.loc['showWelcomeGuide'] = (
+            self.df_settings.loc['showWelcomeGuide'].astype(str)
+        )
+        self.df_settings.at['showWelcomeGuide', 'value'] = show
         self.saveSettings()
 
     def saveSettings(self):
         self.df_settings.to_csv(self.df_settings_path)
-
 
     def openGUIsingleImage(self):
         if self.mainWin is not None:
