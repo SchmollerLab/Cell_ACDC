@@ -11,6 +11,7 @@ import os
 import subprocess
 import re
 import time
+import traceback
 
 import pandas as pd
 
@@ -225,6 +226,12 @@ class mainWin(QMainWindow):
         launchedColor = self.moduleLaunchedColor
         defaultColor = self.defaultPushButtonColor
         defaultText = self.defaultTextDataStructButton
+
+        try:
+            win = dataStruct.createDataStructWin(parent=self)
+        except OSError:
+            traceback.print_exc()
+            return
 
         print('Launching data structure creation in a separate process...')
 

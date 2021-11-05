@@ -17,8 +17,8 @@ Array.sort(natural_order, ids);
 sEnd = ids.length //1 for just first file and ids.length for all files in the folder
 
 // If .czi files are not in a CZIs subfolder create the folder and move files there
-if (czi_folder_name != "Raw_data") {
-	czi_folder_new = czi_folder + "Raw_data";
+if (czi_folder_name != "raw_microscopy_files") {
+	czi_folder_new = czi_folder + "raw_microscopy_files";
 	File.makeDirectory(czi_folder_new);
 
 	for (s = 0; s < sEnd; s++) {
@@ -41,7 +41,7 @@ if (WindowsIdx != -1)
 	exec("open " + path);
 }
 
-TIFFs = path+"/TIFFs";
+TIFFs = path;
 File.makeDirectory(TIFFs);
 
 

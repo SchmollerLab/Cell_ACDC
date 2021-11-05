@@ -6,6 +6,7 @@ import traceback
 import time
 import datetime
 import difflib
+import pathlib
 import numpy as np
 import pandas as pd
 from collections import Counter
@@ -606,15 +607,20 @@ class bioFormatsWorker(QObject):
         javabridge.kill_vm()
 
 class createDataStructWin(QMainWindow):
-    def __init__(self, parent=None, allowExit=False,
-                 buttonToRestore=None, mainWin=None,
-                 start_JVM=True):
+    def __init__(
+            self, parent=None, allowExit=False,
+            buttonToRestore=None, mainWin=None,
+            start_JVM=True
+        ):
+        super().__init__(parent)
+        is_win = sys.platform.startswith("win")
+
         self.start_JVM = start_JVM
         self.allowExit = allowExit
         self.processFinished = False
         self.buttonToRestore = buttonToRestore
         self.mainWin = mainWin
-        super().__init__(parent)
+
         self.setWindowTitle("Cell-ACDC - From raw microscopy file to tifs")
         self.setWindowIcon(QtGui.QIcon(":assign-motherbud.svg"))
 
@@ -624,7 +630,8 @@ class createDataStructWin(QMainWindow):
         mainLayout = QVBoxLayout()
 
         label = QLabel(
-            'Creating data structure from raw microscopy file(s)...')
+            'Creating data structure from raw microscopy file(s)...'
+        )
 
         label.setStyleSheet("padding:5px 10px 10px 10px;")
         label.setAlignment(Qt.AlignCenter)
@@ -689,6 +696,13 @@ class createDataStructWin(QMainWindow):
 
         self.mainLayout = mainLayout
 
+        if not is_win:
+            if parent is None:
+                self.show()
+            self.criticalNotWindowsOS()
+            self.close()
+            raise OSError('This module is supported ONLY on Windows OS')
+
         global bioformats, javabridge
         print('Checking if Java is installed...')
         try:
@@ -718,6 +732,63 @@ class createDataStructWin(QMainWindow):
             msg.setDetailedText(traceback.format_exc())
             msg.exec_()
             raise FileNotFoundError('Dowload of Java failed. See above for details.')
+
+    def criticalNotWindowsOS(self):
+        if self.parent() is None:
+            msg = QMessageBox(self)
+        else:
+            msg = QMessageBox(self.parent())
+        msg.setTextFormat(Qt.RichText)
+        msg.setIcon(msg.Critical)
+        msg.setWindowTitle('Not a Windows OS')
+        msg.setStandardButtons(msg.Ok)
+        err_msg = (f"""
+        <p style="font-size:10pt; line-height:1.2">
+            Unfortunately, the module "0. Create data structure from microscopy file(s)"
+            is functional <b>only on Windows OS</b>.<br>
+            We are working on extending support to other Operating Systems.
+            Note that all other modules are functional on
+            macOS, Linux and Windows.<br><br>
+            In the meantine, to create the required data structure,
+            you can use an <b>automated Fiji macro</b> that you can find in the folder
+            <a href=\"fiji">/Cell_ACDC/FijiMacros</a>.<br><br>
+            Check out the <b>instructions</b> on how to use the macros
+            in the section  <b>"Create data structure using Fiji Macros"</b> of the
+            user manual. You find the user manual in the folder
+            <a href=\"manual">/Cell_ACDC/UserManual</a>.
+        </p>
+        """)
+        msg.setText(err_msg)
+        msg_label = msg.findChild(QLabel, "qt_msgbox_label")
+        msg_label.setOpenExternalLinks(False)
+        msg_label.linkActivated.connect(self.on_linkActivated)
+        msg.exec_()
+
+
+
+    def on_linkActivated(self, link):
+        print(link)
+        if link == 'manual':
+            systems = {
+                'nt': os.startfile,
+                'posix': lambda foldername: os.system('xdg-open "%s"' % foldername),
+                'os2': lambda foldername: os.system('open "%s"' % foldername)
+                 }
+
+            main_path = pathlib.Path(__file__).resolve().parents[1]
+            userManual_path = main_path / 'UserManual'
+            systems.get(os.name, os.startfile)(userManual_path)
+        elif link == 'fiji':
+            systems = {
+                'nt': os.startfile,
+                'posix': lambda foldername: os.system('xdg-open "%s"' % foldername),
+                'os2': lambda foldername: os.system('open "%s"' % foldername)
+                 }
+
+            main_path = pathlib.Path(__file__).resolve().parents[1]
+            fijiMacros_path = main_path / 'FijiMacros'
+            systems.get(os.name, os.startfile)(fijiMacros_path)
+
 
     def getMostRecentPath(self):
         src_path = os.path.dirname(os.path.realpath(__file__))
@@ -1240,11 +1311,14 @@ if __name__ == "__main__":
     # Create the application
     app = QApplication(sys.argv)
     app.setStyle(QStyleFactory.create('Fusion'))
-    win = createDataStructWin(allowExit=True)
-    win.show()
-    win.setWindowState(Qt.WindowActive)
-    win.raise_()
-    print('Done. If window asking to select a folder is not visible, it is '
-          'behind some other open window.')
-    win.main()
-    sys.exit(app.exec_())
+    try:
+        win = createDataStructWin(allowExit=True)
+        win.show()
+        win.setWindowState(Qt.WindowActive)
+        win.raise_()
+        print('Done. If window asking to select a folder is not visible, it is '
+              'behind some other open window.')
+        win.main()
+        sys.exit(app.exec_())
+    except OSError:
+        traceback.print_exc()

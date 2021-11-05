@@ -1,11 +1,11 @@
 //Channels names
-//channels = newArray("mNeon","mKate","phase_contr");
+//channels = newArray("mNeon","mKate","BF");
 channels = newArray("phase_contr","mCitrine");
 
 macro_path = File.directory();
 
 //File dialog and open
-id = File.openDialog("Select a czi file");
+id = File.openDialog("Select a microscopy file");
 
 setBatchMode(true); //when setBatchMode is set to true imageJ does not display the images. This speeds up the process by 20x.
 run("Bio-Formats Macro Extensions");
@@ -29,7 +29,7 @@ if (WindowsIdx != -1)
 } else {
 	exec("open " + path);
 }
-folder = path+"/TIFFs";
+folder = path;
 MIA = folder;
 File.makeDirectory(MIA);
 
