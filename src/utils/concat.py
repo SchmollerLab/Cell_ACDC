@@ -208,7 +208,7 @@ class concatWin(QMainWindow):
         keys = []
         df_li = []
         for images_path in tqdm(images_paths, ncols=100):
-            ls = os.listdir(images_path)
+            ls = myutils.listdir(images_path)
             acdc_df_path = [f for f in ls if f.find('acdc_output.csv')!=-1]
             if not acdc_df_path:
                 print('')

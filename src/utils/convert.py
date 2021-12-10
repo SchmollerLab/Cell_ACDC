@@ -188,7 +188,7 @@ class convertFileFormatWin(QMainWindow):
         print(f'Converting .{self.from_} to .{self.to} started...')
         if len(selectedFilenames) > 1 or len(images_paths) > 1:
             ch_name_selector = prompts.select_channel_name()
-            ls = os.listdir(images_paths[0])
+            ls = myutils.listdir(images_paths[0])
             all_channelNames, abort = ch_name_selector.get_available_channels(
                     ls, images_paths[0], useExt=None
             )
@@ -201,7 +201,7 @@ class convertFileFormatWin(QMainWindow):
                 return
             for images_path in tqdm(images_paths, ncols=100):
                 for chName in channelNames:
-                    filenames = os.listdir(images_path)
+                    filenames = myutils.listdir(images_path)
                     chNameFile = [f for f in filenames if f.find(f'{chName}.{self.from_}')!=-1]
                     if not chNameFile:
                         print('')
@@ -280,7 +280,7 @@ class convertFileFormatWin(QMainWindow):
 
 
     def selectFiles(self, images_path, filterExt=None):
-        files = os.listdir(images_path)
+        files = myutils.listdir(images_path)
         if filterExt is not None:
             items = []
             for file in files:

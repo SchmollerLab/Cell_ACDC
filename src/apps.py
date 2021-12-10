@@ -987,13 +987,13 @@ class QDialogMetadata(QDialog):
     def __init__(self, SizeT, SizeZ, TimeIncrement,
                  PhysicalSizeZ, PhysicalSizeY, PhysicalSizeX,
                  ask_SizeT, ask_TimeIncrement, ask_PhysicalSizes,
-                 parent=None, font=None, imgDataShape=None, PosData=None,
+                 parent=None, font=None, imgDataShape=None, posData=None,
                  singlePos=False):
         self.cancel = True
         self.ask_TimeIncrement = ask_TimeIncrement
         self.ask_PhysicalSizes = ask_PhysicalSizes
         self.imgDataShape = imgDataShape
-        self.PosData = PosData
+        self.posData = posData
         super().__init__(parent)
         self.setWindowTitle('Image properties')
 
@@ -1258,9 +1258,9 @@ class QDialogMetadata(QDialog):
             if msg.clickedButton() == cancelButton:
                 return
 
-        if self.PosData is not None and self.sender() != self.okButton:
-            exp_path = self.PosData.exp_path
-            pos_foldernames = natsorted(os.listdir(exp_path))
+        if self.posData is not None and self.sender() != self.okButton:
+            exp_path = self.posData.exp_path
+            pos_foldernames = natsorted(myutils.listdir(exp_path))
             pos_foldernames = [
                 pos for pos in pos_foldernames
                 if pos.find('Position_')!=-1
@@ -1275,7 +1275,7 @@ class QDialogMetadata(QDialog):
                 pos_foldernames = select_folder.selected_pos
             for pos in pos_foldernames:
                 images_path = os.path.join(exp_path, pos, 'Images')
-                ls = os.listdir(images_path)
+                ls = myutils.listdir(images_path)
                 search = [file for file in ls if file.find('metadata.csv')!=-1]
                 metadata_df = None
                 if search:
@@ -1332,10 +1332,10 @@ class gaussBlurDialog(QDialog):
         self.cancel = True
         self.mainWindow = mainWindow
 
-        PosData = mainWindow.data[mainWindow.pos_i]
-        items = [PosData.filename]
+        posData = mainWindow.data[mainWindow.pos_i]
+        items = [posData.filename]
         try:
-            items.extend(list(PosData.ol_data_dict.keys()))
+            items.extend(list(posData.ol_data_dict.keys()))
         except Exception as e:
             pass
 
@@ -1349,7 +1349,7 @@ class gaussBlurDialog(QDialog):
 
         self.channelsComboBox = QComboBox()
         self.channelsComboBox.addItems(items)
-        self.channelsComboBox.setCurrentText(PosData.manualContrastKey)
+        self.channelsComboBox.setCurrentText(posData.manualContrastKey)
         mainLayout.addWidget(self.channelsComboBox)
 
         self.sigmaQDSB = QDoubleSpinBox()
@@ -1401,18 +1401,18 @@ class gaussBlurDialog(QDialog):
             self.apply()
 
     def getData(self):
-        PosData = self.mainWindow.data[self.mainWindow.pos_i]
+        posData = self.mainWindow.data[self.mainWindow.pos_i]
         key = self.channelsComboBox.currentText()
         if key.find(self.mainWindow.user_ch_name) != -1:
             img = self.mainWindow.getImage()
-            data = PosData.img_data
+            data = posData.img_data
         else:
             img = self.mainWindow.getOlImg(key)
-            data = PosData.ol_data[key]
+            data = posData.ol_data[key]
 
         self.img = img
-        self.frame_i = PosData.frame_i
-        self.segmSizeT = PosData.segmSizeT
+        self.frame_i = posData.frame_i
+        self.segmSizeT = posData.segmSizeT
         self.imgData = data
 
     def getFilteredImg(self):
@@ -1457,13 +1457,13 @@ class edgeDetectionDialog(QDialog):
         self.mainWindow = mainWindow
 
         if mainWindow is not None:
-            PosData = self.mainWindow.data[self.mainWindow.pos_i]
-            items = [PosData.filename]
+            posData = self.mainWindow.data[self.mainWindow.pos_i]
+            items = [posData.filename]
         else:
             items = ['test']
         try:
-            PosData = self.mainWindow.data[self.mainWindow.pos_i]
-            items.extend(list(PosData.ol_data_dict.keys()))
+            posData = self.mainWindow.data[self.mainWindow.pos_i]
+            items.extend(list(posData.ol_data_dict.keys()))
         except Exception as e:
             pass
 
@@ -1481,7 +1481,7 @@ class edgeDetectionDialog(QDialog):
         self.channelsComboBox = QComboBox()
         self.channelsComboBox.addItems(items)
         if mainWindow is not None:
-            self.channelsComboBox.setCurrentText(PosData.manualContrastKey)
+            self.channelsComboBox.setCurrentText(posData.manualContrastKey)
         if not self.mainWindow.overlayButton.isChecked():
             self.channelsComboBox.setCurrentIndex(0)
         mainLayout.addWidget(self.channelsComboBox)
@@ -1560,18 +1560,18 @@ class edgeDetectionDialog(QDialog):
 
     def getData(self):
         key = self.channelsComboBox.currentText()
-        PosData = self.mainWindow.data[self.mainWindow.pos_i]
+        posData = self.mainWindow.data[self.mainWindow.pos_i]
         if key.find(self.mainWindow.user_ch_name) != -1:
             img = self.mainWindow.getImage(normalizeIntens=False)
-            data = PosData.img_data
+            data = posData.img_data
         else:
             img = self.mainWindow.getOlImg(key, normalizeIntens=False)
-            data = PosData.ol_data[key]
+            data = posData.ol_data[key]
 
         if self.PreviewCheckBox.isChecked():
             self.img = skimage.exposure.equalize_adapthist(img)
             self.detectEdges()
-        self.frame_i = PosData.frame_i
+        self.frame_i = posData.frame_i
         self.imgData = data
 
     def detectEdges(self):
@@ -1623,13 +1623,13 @@ class entropyFilterDialog(QDialog):
         self.mainWindow = mainWindow
 
         if mainWindow is not None:
-            PosData = self.mainWindow.data[self.mainWindow.pos_i]
-            items = [PosData.filename]
+            posData = self.mainWindow.data[self.mainWindow.pos_i]
+            items = [posData.filename]
         else:
             items = ['test']
         try:
-            PosData = self.mainWindow.data[self.mainWindow.pos_i]
-            items.extend(list(PosData.ol_data_dict.keys()))
+            posData = self.mainWindow.data[self.mainWindow.pos_i]
+            items.extend(list(posData.ol_data_dict.keys()))
         except Exception as e:
             pass
 
@@ -1647,7 +1647,7 @@ class entropyFilterDialog(QDialog):
         self.channelsComboBox = QComboBox()
         self.channelsComboBox.addItems(items)
         if mainWindow is not None:
-            self.channelsComboBox.setCurrentText(PosData.manualContrastKey)
+            self.channelsComboBox.setCurrentText(posData.manualContrastKey)
         mainLayout.addWidget(self.channelsComboBox)
 
         row = 0
@@ -1705,15 +1705,15 @@ class entropyFilterDialog(QDialog):
 
     def getData(self):
         key = self.channelsComboBox.currentText()
-        PosData = self.mainWindow.data[self.mainWindow.pos_i]
+        posData = self.mainWindow.data[self.mainWindow.pos_i]
         if key.find(self.mainWindow.user_ch_name) != -1:
             img = self.mainWindow.getImage()
-            data = PosData.img_data
+            data = posData.img_data
         else:
             img = self.mainWindow.getOlImg(key)
-            data = PosData.ol_data[key]
+            data = posData.ol_data[key]
         self.img = skimage.img_as_ubyte(img)
-        self.frame_i = PosData.frame_i
+        self.frame_i = posData.frame_i
         self.imgData = data
 
     def getFilteredImg(self):
@@ -1750,13 +1750,13 @@ class randomWalkerDialog(QDialog):
         self.mainWindow = mainWindow
 
         if mainWindow is not None:
-            PosData = self.mainWindow.data[self.mainWindow.pos_i]
-            items = [PosData.filename]
+            posData = self.mainWindow.data[self.mainWindow.pos_i]
+            items = [posData.filename]
         else:
             items = ['test']
         try:
-            PosData = self.mainWindow.data[self.mainWindow.pos_i]
-            items.extend(list(PosData.ol_data_dict.keys()))
+            posData = self.mainWindow.data[self.mainWindow.pos_i]
+            items.extend(list(posData.ol_data_dict.keys()))
         except Exception as e:
             pass
 
@@ -1898,14 +1898,14 @@ class randomWalkerDialog(QDialog):
         if len(np.unique(lab)) > 2:
             skimage.morphology.remove_small_objects(lab, min_size=5,
                                                     in_place=True)
-        PosData = self.mainWindow.data[self.mainWindow.pos_i]
-        PosData.lab = lab
+        posData = self.mainWindow.data[self.mainWindow.pos_i]
+        posData.lab = lab
         return t1-t0
 
     def computeSegmAndPlot(self):
         deltaT = self.computeSegm()
 
-        PosData = self.mainWindow.data[self.mainWindow.pos_i]
+        posData = self.mainWindow.data[self.mainWindow.pos_i]
 
         self.mainWindow.update_rp()
         self.mainWindow.tracking(enforce=True)
@@ -2116,11 +2116,11 @@ class nonModalTempQMessage(QWidget):
 class CellsSlideshow_GUI(QMainWindow):
     """Main Window."""
 
-    def __init__(self, parent=None, PosData=None, button_toUncheck=None,
+    def __init__(self, parent=None, posData=None, button_toUncheck=None,
                        Left=50, Top=50, spinBox=None):
         self.button_toUncheck = button_toUncheck
         self.parent = parent
-        self.PosData = PosData
+        self.posData = posData
         self.spinBox = spinBox
         """Initializer."""
         super().__init__(parent)
@@ -2148,12 +2148,12 @@ class CellsSlideshow_GUI(QMainWindow):
 
         mainContainer.setLayout(mainLayout)
 
-        if PosData is None:
-            PosData = self.parent.data[self.parent.pos_i]
+        if posData is None:
+            posData = self.parent.data[self.parent.pos_i]
 
-        self.frame_i = PosData.frame_i
-        self.num_frames = PosData.SizeT
-        self.setWindowTitle(f"Cell-ACDC - {PosData.relPath}")
+        self.frame_i = posData.frame_i
+        self.num_frames = posData.SizeT
+        self.setWindowTitle(f"Cell-ACDC - {posData.relPath}")
 
     def gui_createActions(self):
         # File actions
@@ -2238,17 +2238,17 @@ class CellsSlideshow_GUI(QMainWindow):
         self.img.hoverEvent = self.gui_hoverEventImg
 
     def gui_createImgWidgets(self):
-        if self.PosData is None:
-            PosData = self.parent.data[self.parent.pos_i]
+        if self.posData is None:
+            posData = self.parent.data[self.parent.pos_i]
         else:
-            PosData = self.PosData
+            posData = self.posData
         self.img_Widglayout = QtGui.QGridLayout()
 
         # Frames scrollbar
         self.framesScrollBar = QScrollBar(Qt.Horizontal)
         self.framesScrollBar.setFixedHeight(20)
         self.framesScrollBar.setMinimum(1)
-        self.framesScrollBar.setMaximum(PosData.SizeT)
+        self.framesScrollBar.setMaximum(posData.SizeT)
         t_label = QLabel('frame  ')
         _font = QtGui.QFont()
         _font.setPointSize(10)
@@ -2325,25 +2325,25 @@ class CellsSlideshow_GUI(QMainWindow):
         self.update_img()
 
     def update_z_slice(self, z):
-        if self.PosData is None:
-            PosData = self.parent.data[self.parent.pos_i]
+        if self.posData is None:
+            posData = self.parent.data[self.parent.pos_i]
         else:
-            PosData = self.PosData
-            idx = (PosData.filename, PosData.frame_i)
-            PosData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
+            posData = self.posData
+            idx = (posData.filename, posData.frame_i)
+            posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
         self.update_img()
 
     def getImage(self):
-        PosData = self.PosData
+        posData = self.posData
         frame_i = self.frame_i
-        if PosData.SizeZ > 1:
-            idx = (PosData.filename, frame_i)
-            z = PosData.segmInfo_df.at[idx, 'z_slice_used_gui']
-            zProjHow = PosData.segmInfo_df.at[idx, 'which_z_proj_gui']
-            img = PosData.img_data[frame_i]
+        if posData.SizeZ > 1:
+            idx = (posData.filename, frame_i)
+            z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
+            zProjHow = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
+            img = posData.img_data[frame_i]
             if zProjHow == 'single z-slice':
                 self.zSliceScrollBar.setSliderPosition(z)
-                self.z_label.setText(f'z-slice  {z+1:02}/{PosData.SizeZ}')
+                self.z_label.setText(f'z-slice  {z+1:02}/{posData.SizeZ}')
                 img = img[z].copy()
             elif zProjHow == 'max z-projection':
                 img = img.max(axis=0).copy()
@@ -2352,7 +2352,7 @@ class CellsSlideshow_GUI(QMainWindow):
             elif zProjHow == 'median z-proj.':
                 img = np.median(img, axis=0).copy()
         else:
-            img = PosData.img_data[frame_i].copy()
+            img = posData.img_data[frame_i].copy()
         return img
 
 
@@ -2993,20 +2993,20 @@ class askStopFrameSegm(QDialog):
                 )
             )
             spinBox = QSpinBox()
-            PosData = load.loadData(img_path, user_ch_name, QParent=parent)
-            PosData.getBasenameAndChNames()
-            PosData.buildPaths()
-            PosData.loadImgData()
-            PosData.loadOtherFiles(
+            posData = load.loadData(img_path, user_ch_name, QParent=parent)
+            posData.getBasenameAndChNames()
+            posData.buildPaths()
+            posData.loadImgData()
+            posData.loadOtherFiles(
                 load_segm_data=False,
                 load_metadata=True,
                 loadSegmInfo=True,
                 )
-            spinBox.setMaximum(PosData.SizeT)
-            if PosData.segmSizeT == 1:
-                spinBox.setValue(PosData.SizeT)
+            spinBox.setMaximum(posData.SizeT)
+            if posData.segmSizeT == 1:
+                spinBox.setValue(posData.SizeT)
             else:
-                spinBox.setValue(PosData.segmSizeT)
+                spinBox.setValue(posData.segmSizeT)
             spinBox.setAlignment(Qt.AlignCenter)
             visualizeButton = QPushButton('Visualize')
             visualizeButton.clicked.connect(self.visualize_cb)
@@ -3015,7 +3015,7 @@ class askStopFrameSegm(QDialog):
             layout.addWidget(formLabel, alignment=Qt.AlignRight)
             layout.addWidget(spinBox)
             layout.addWidget(visualizeButton)
-            self.dataDict[visualizeButton] = (spinBox, PosData)
+            self.dataDict[visualizeButton] = (spinBox, posData)
             formLayout.addRow(layout)
 
         self.formLayout = formLayout
@@ -3041,9 +3041,9 @@ class askStopFrameSegm(QDialog):
         # self.setModal(True)
 
     def saveSegmSizeT(self):
-        for spinBox, PosData in self.dataDict.values():
-            PosData.segmSizeT = spinBox.value()
-            PosData.saveMetadata()
+        for spinBox, posData in self.dataDict.values():
+            posData.segmSizeT = spinBox.value()
+            posData.saveMetadata()
 
     def ok_cb(self, event):
         self.cancel = False
@@ -3051,9 +3051,9 @@ class askStopFrameSegm(QDialog):
         self.close()
 
     def visualize_cb(self, checked=True):
-        spinBox, PosData = self.dataDict[self.sender()]
-        PosData.frame_i = spinBox.value()-1
-        self.slideshowWin = CellsSlideshow_GUI(PosData=PosData,
+        spinBox, posData = self.dataDict[self.sender()]
+        posData.frame_i = spinBox.value()-1
+        self.slideshowWin = CellsSlideshow_GUI(posData=posData,
                                                spinBox=spinBox)
         self.slideshowWin.update_img()
         self.slideshowWin.show()
@@ -4070,9 +4070,9 @@ class manualSeparateGui(QMainWindow):
                 break
             if i == maxAreaIdx:
                 continue
-            PosData = self.parent.data[self.parent.pos_i]
-            PosData.brushID += 1
-            self.lab[obj.slice][obj.image] = PosData.brushID
+            posData = self.parent.data[self.parent.pos_i]
+            posData.brushID += 1
+            self.lab[obj.slice][obj.image] = posData.brushID
 
 
         # Replace 0s on the cutting curve with IDs

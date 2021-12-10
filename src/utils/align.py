@@ -206,7 +206,7 @@ class alignWin(QMainWindow):
                               f'{images_path}. Skipping it')
                         print('=============================')
                         continue
-                    filenames = os.listdir(images_path)
+                    filenames = myutils.listdir(images_path)
                     chNameFile = [f for f in filenames if f.find(f'{chName}.')!=-1]
                     if not chNameFile:
                         print('')
@@ -350,7 +350,7 @@ class alignWin(QMainWindow):
             return revertAlignment
 
     def selectFiles(self, images_path, filterExt=None):
-        files = os.listdir(images_path)
+        files = myutils.listdir(images_path)
         if filterExt is not None:
             items = []
             for file in files:

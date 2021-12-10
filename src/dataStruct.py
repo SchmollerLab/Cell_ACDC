@@ -460,7 +460,7 @@ class bioFormatsWorker(QObject):
                 pos_rawFilenames.append(rawFilename)
                 exp_path = os.path.dirname(rawFilePath)
                 rawFilePath = [
-                    os.path.join(exp_path, f) for f in os.listdir(exp_path)
+                    os.path.join(exp_path, f) for f in myutils.listdir(exp_path)
                     if f.find(rawFilename)!=-1
                 ][0]
 
@@ -492,7 +492,7 @@ class bioFormatsWorker(QObject):
                 # contain "otherFilename" in the name
                 otherFilename = f'{basename}{p+1}'
                 rawFilePath = set()
-                for f in os.listdir(exp_path):
+                for f in myutils.listdir(exp_path):
                     notRawFile = all(
                         [f.find(rawName)==-1 for rawName in pos_rawFilenames]
                     )
@@ -1037,7 +1037,7 @@ class createDataStructWin(QMainWindow):
 
     def checkFileFormat(self, exp_path):
         self.moveOtherFiles = False
-        ls = natsorted(os.listdir(exp_path))
+        ls = natsorted(myutils.listdir(exp_path))
         files = [
             filename for filename in ls
             if os.path.isfile(os.path.join(exp_path, filename))

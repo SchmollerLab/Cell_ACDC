@@ -17,6 +17,8 @@ import difflib
 from scipy.stats import binned_statistic
 import warnings
 
+import myutils
+
 
 def configuration_dialog():
     continue_selection = True
@@ -25,7 +27,7 @@ def configuration_dialog():
     while continue_selection:
         data_dir = prompts.folder_dialog(title='Select folder containing Position_n folders')
         if data_dir != '':
-            available_pos = sorted(os.listdir(data_dir))
+            available_pos = sorted(myutils.listdir(data_dir))
             app = QtCore.QCoreApplication.instance()
             if app is None:
                 app = QApplication(sys.argv)
@@ -103,14 +105,14 @@ def calculate_downstream_data(
                 temp_df['position'] = positions[file_idx][pos_idx]
                 temp_df['directory'] = pos_dir
                 print('Saving calculated data for next time...')
-                files_in_curr_dir = os.listdir(pos_dir)
+                files_in_curr_dir = myutils.listdir(pos_dir)
                 common_prefix = _determine_common_prefix(files_in_curr_dir)
                 save_path = os.path.join(pos_dir, f'{common_prefix}cca_properties_downstream.csv')
                 temp_df.to_csv(save_path, index=False)
                 overall_df = overall_df.append(temp_df).reset_index(drop=True)
     return overall_df, is_timelapse_data, is_zstack_data
-    
-    
+
+
 def calculate_relatives_data(overall_df, channels):
     # Join on Cell_ID vs. relative_ID to later calculate columns like "daughter growth" or "mother-bud-signal-combined"
     overall_df_rel = overall_df.copy()
@@ -139,8 +141,8 @@ def calculate_relatives_data(overall_df, channels):
         axis=1
     )
     return overall_df
-    
-    
+
+
 def calculate_per_phase_quantities(overall_df, group_cols, channels):
     # group by group columns, aggregate some other columns
     phase_grouped = overall_df.sort_values(
@@ -205,7 +207,7 @@ def calculate_per_phase_quantities(overall_df, group_cols, channels):
     complete_cycle_indices = no_of_compl_phases_per_cycle == 2
     phase_grouped['complete_cycle'] = complete_cycle_indices.astype(int)
     phase_grouped['all_complete'] = (phase_grouped['complete_cycle']+phase_grouped['complete_phase']==2).astype(int)
-    # join phase-grouped data with 
+    # join phase-grouped data with
     phase_grouped = phase_grouped.merge(phase_grouped_flu, how='left', on=group_cols, suffixes=('',''))
     return phase_grouped
 
@@ -381,7 +383,7 @@ def _calculate_rp_df(seg_mask, is_timelapse_data, is_zstack_data, metadata, max_
         rp_df['elongation'] = rp_df['major_axis_length']/rp_df['minor_axis_length']
         rp_df['frame_i'] = 0
         return rp_df
-        
+
 
 def _calc_rot_vol(obj, PhysicalSizeY=1, PhysicalSizeX=1):
     vox_to_fl = float(PhysicalSizeY)*(float(PhysicalSizeX)**2)

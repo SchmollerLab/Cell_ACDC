@@ -21,7 +21,7 @@ from PyQt5.QtCore import (
     Qt
 )
 
-import apps
+import apps, myutils
 
 class twobuttonsmessagebox:
     '''Geometry: "WidthxHeight+Left+Top" '''
@@ -175,7 +175,7 @@ class scan_run_nums:
         if not os.path.exists(self.spotmax_path):
             self.spotmax_path = os.path.join(pos_path, 'spotMAX_output')
         if os.path.exists(self.spotmax_path):
-            filenames = os.listdir(self.spotmax_path)
+            filenames = myutils.listdir(self.spotmax_path)
             run_nums = [re.findall('(\d+)_(\d)_', f)
                                  for f in filenames]
             run_nums = np.unique(
@@ -565,10 +565,12 @@ class select_channel_name:
             return False
         return True
 
-    def get_available_channels(self, filenames, images_path, useExt='.tif'):
+    def get_available_channels(
+            self, filenames, images_path, useExt='.tif'
+        ):
         # First check if metadata.csv already has the channel names
         metadata_csv_path = None
-        for file in os.listdir(images_path):
+        for file in myutils.listdir(images_path):
             if file.endswith('metadata.csv'):
                 metadata_csv_path = os.path.join(images_path, file)
                 break
@@ -585,9 +587,12 @@ class select_channel_name:
                     for chName in channelNames:
                         chSaved = []
                         for file in filenames:
-                            if file.find(chName) != -1:
+                            _, ext = os.path.splitext(file)
+                            pattern = f'{chName}{ext}'
+                            if file.endswith(pattern):
                                 chSaved.append(True)
-                                chName_idx = file.find(chName)
+                                m = tuple(re.finditer(pattern, file))[-1]
+                                chName_idx = m.start()
                                 basename = file[:chName_idx]
                         if not any(chSaved):
                             channel_names.remove(chName)

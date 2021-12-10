@@ -22,13 +22,13 @@ from PyQt5.QtWidgets import (
     QApplication
 )
 import pyqtgraph as pg
-import prompts, apps
+import prompts, apps, myutils
 
 def get_user_ch_paths(images_paths, user_ch_name):
     user_ch_file_paths = []
     for images_path in images_paths:
         img_aligned_found = False
-        for filename in os.listdir(images_path):
+        for filename in myutils.listdir(images_path):
             if filename.find(f'{user_ch_name}_aligned.np') != -1:
                 img_path_aligned = f'{images_path}/{filename}'
                 img_aligned_found = True
@@ -84,7 +84,7 @@ class loadData:
         self.metadata_df.to_csv(csv_path)
 
     def getBasenameAndChNames(self):
-        ls = os.listdir(self.images_path)
+        ls = myutils.listdir(self.images_path)
         selector = prompts.select_channel_name()
         self.chNames, _ = selector.get_available_channels(ls, self.images_path)
         self.basename = selector.basename
@@ -116,7 +116,7 @@ class loadData:
         return img_data
 
     def detectMultiSegmNpz(self):
-        ls = os.listdir(self.images_path)
+        ls = myutils.listdir(self.images_path)
         segm_files = [file for file in ls if file.endswith('segm.npz')]
         is_multi_npz = len(segm_files)>1
         if is_multi_npz:
@@ -163,7 +163,7 @@ class loadData:
         self.metadataFound = False if load_metadata else None
         self.dataPrep_ROIcoordsFound = False if load_dataPrep_ROIcoords else None
         self.TifPathFound = False if getTifPath else None
-        ls = os.listdir(self.images_path)
+        ls = myutils.listdir(self.images_path)
 
 
 
@@ -414,7 +414,7 @@ class loadData:
         npy_paths = []
         npz_paths = []
         basename = self.basename[0:-1]
-        for filename in os.listdir(self.images_path):
+        for filename in myutils.listdir(self.images_path):
             file_path = os.path.join(self.images_path, filename)
             f, ext = os.path.splitext(filename)
             m = re.match(f'{basename}.*\.tif', filename)
@@ -425,7 +425,7 @@ class loadData:
                 npz = f'{f}_aligned.npz'
                 npy_found = False
                 npz_found = False
-                for name in os.listdir(self.images_path):
+                for name in myutils.listdir(self.images_path):
                     _path = os.path.join(self.images_path, name)
                     if name == npy:
                         npy_paths.append(_path)
@@ -456,7 +456,7 @@ class loadData:
             self.PhysicalSizeZ, self.PhysicalSizeY, self.PhysicalSizeX,
             ask_SizeT, ask_TimeIncrement, ask_PhysicalSizes,
             parent=self.parent, font=font, imgDataShape=self.img_data.shape,
-            PosData=self, singlePos=singlePos)
+            posData=self, singlePos=singlePos)
         metadataWin.setFont(font)
         metadataWin.exec_()
         if metadataWin.cancel:
@@ -476,12 +476,12 @@ class loadData:
             self.saveMetadata()
         return True
 
-    def transferMetadata(self, from_PosData):
-        self.SizeT = from_PosData.SizeT
-        self.SizeZ = from_PosData.SizeZ
-        self.PhysicalSizeZ = from_PosData.PhysicalSizeZ
-        self.PhysicalSizeY = from_PosData.PhysicalSizeY
-        self.PhysicalSizeX = from_PosData.PhysicalSizeX
+    def transferMetadata(self, from_posData):
+        self.SizeT = from_posData.SizeT
+        self.SizeZ = from_posData.SizeZ
+        self.PhysicalSizeZ = from_posData.PhysicalSizeZ
+        self.PhysicalSizeY = from_posData.PhysicalSizeY
+        self.PhysicalSizeX = from_posData.PhysicalSizeX
 
     def saveMetadata(self):
         if self.metadata_df is None:
@@ -640,7 +640,7 @@ class beyond_listdir_pos:
 
     def listdir_recursion(self, folder_path):
         if os.path.isdir(folder_path):
-            listdir_folder = natsorted(os.listdir(folder_path))
+            listdir_folder = natsorted(myutils.listdir(folder_path))
             contains_pos_folders = any([name.find('Position_')!=-1
                                         for name in listdir_folder])
             if not contains_pos_folders:
@@ -671,7 +671,7 @@ class beyond_listdir_pos:
             self.bp.pausehere()
             for dirname in dirs:
                 path = f'{root}/{dirname}'
-                listdir_folder = natsorted(os.listdir(path))
+                listdir_folder = natsorted(myutils.listdir(path))
                 if dirname == 'TIFFs':
                     self.TIFFs_path.append(path)
                     print(self.TIFFs_path)
@@ -694,7 +694,7 @@ class beyond_listdir_pos:
         for path in self.TIFFs_path:
             foldername = os.path.basename(path)
             if foldername == 'TIFFs':
-                pos_foldernames = natsorted([p for p in os.listdir(path)
+                pos_foldernames = natsorted([p for p in myutils.listdir(path)
                              if os.path.isdir(os.path.join(path, p))
                              and p.find('Position_') != -1])
                 num_pos = len(pos_foldernames)
@@ -722,7 +722,7 @@ class beyond_listdir_pos:
                         tmtimes = []
                         for pos_foldername in pos_foldernames:
                             images_path = f'{path}/{pos_foldername}/Images'
-                            filenames = os.listdir(images_path)
+                            filenames = myutils.listdir(images_path)
                             count = 0
                             m = re.findall('Position_(\d+)', pos_foldername)
                             mismatch_paths = []
@@ -921,7 +921,7 @@ class select_exp_folder:
         systems.get(os.name, os.startfile)(path)
 
     def get_values_segmGUI(self, exp_path):
-        pos_foldernames = natsorted(os.listdir(exp_path))
+        pos_foldernames = natsorted(myutils.listdir(exp_path))
         pos_foldernames = [f for f in pos_foldernames
                            if f.find('Position_')!=-1
                            and os.path.isdir(f'{exp_path}/{f}')]
@@ -932,7 +932,7 @@ class select_exp_folder:
             pos_path = f'{exp_path}/{pos}'
             if os.path.isdir(pos_path):
                 images_path = f'{exp_path}/{pos}/Images'
-                filenames = os.listdir(images_path)
+                filenames = myutils.listdir(images_path)
                 for filename in filenames:
                     if filename.find('acdc_output.csv') != -1:
                         last_tracked_i_found = True
@@ -947,7 +947,7 @@ class select_exp_folder:
         return values
 
     def get_values_cca(self, exp_path):
-        pos_foldernames = natsorted(os.listdir(exp_path))
+        pos_foldernames = natsorted(myutils.listdir(exp_path))
         pos_foldernames = [pos for pos in pos_foldernames
                                if re.match('Position_(\d+)', pos)]
         self.pos_foldernames = pos_foldernames
@@ -957,7 +957,7 @@ class select_exp_folder:
             pos_path = f'{exp_path}/{pos}'
             if os.path.isdir(pos_path):
                 images_path = f'{exp_path}/{pos}/Images'
-                filenames = os.listdir(images_path)
+                filenames = myutils.listdir(images_path)
                 for filename in filenames:
                     if filename.find('cc_stage.csv') != -1:
                         cc_stage_found = True
@@ -997,7 +997,7 @@ def get_main_paths(selected_path, vNUM):
     is_pos_path = os.path.basename(selected_path).find('Position_') != -1
     is_TIFFs_path = any([f.find('Position_')!=-1
                          and os.path.isdir(f'{selected_path}/{f}')
-                         for f in os.listdir(selected_path)])
+                         for f in myutils.listdir(selected_path)])
     multi_run_msg = ('Multiple runs detected!\n\n'
                      'Select which run number you want to analyse.')
     if not is_pos_path and not is_TIFFs_path:
@@ -1014,7 +1014,7 @@ def get_main_paths(selected_path, vNUM):
         # The selected path is already the folder containing Position_n folders
         prompts_pos_to_analyse = True
         main_paths = [selected_path]
-        ls_selected_path = os.listdir(selected_path)
+        ls_selected_path = myutils.listdir(selected_path)
         pos_foldername = [p for p in ls_selected_path
                           if p.find('Position_') != -1
                           and os.path.isdir(os.path.join(selected_path, p))][0]
@@ -1036,14 +1036,14 @@ def load_shifts(parent_path, basename=None):
     shifts_found = False
     shifts = None
     if basename is None:
-        for filename in os.listdir(parent_path):
+        for filename in myutils.listdir(parent_path):
             if filename.find('align_shift.npy')>0:
                 shifts_found = True
                 shifts_path = os.path.join(parent_path, filename)
                 shifts = np.load(shifts_path)
     else:
         align_shift_fn = f'{basename}_align_shift.npy'
-        if align_shift_fn in os.listdir(parent_path):
+        if align_shift_fn in myutils.listdir(parent_path):
             shifts_found = True
             shifts_path = os.path.join(parent_path, align_shift_fn)
             shifts = np.load(shifts_path)

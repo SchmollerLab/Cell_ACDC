@@ -21,6 +21,9 @@ from tifffile.tifffile import TiffWriter, TiffFile
 __all__ = ['ColorMap']
 _mapCache = {}
 
+def listdir(path):
+    return [f for f in os.listdir(path) if not f.startswith('.')]
+
 def getModelArgSpec(acdcSegment):
     ArgSpec = namedtuple('ArgSpec', ['name', 'default', 'type'])
 
@@ -40,17 +43,17 @@ def getModelArgSpec(acdcSegment):
             segment_params.append(param)
     return init_params, segment_params
 
-def getDefault_SegmInfo_df(PosData, filename):
-    mid_slice = int(PosData.SizeZ/2)
+def getDefault_SegmInfo_df(posData, filename):
+    mid_slice = int(posData.SizeZ/2)
     df = pd.DataFrame({
-        'filename': [filename]*PosData.SizeT,
-        'frame_i': range(PosData.SizeT),
-        'z_slice_used_dataPrep': [mid_slice]*PosData.SizeT,
-        'which_z_proj': ['single z-slice']*PosData.SizeT,
-        'z_slice_used_gui': [mid_slice]*PosData.SizeT,
-        'which_z_proj_gui': ['single z-slice']*PosData.SizeT,
-        'resegmented_in_gui': [False]*PosData.SizeT,
-        'is_from_dataPrep': [False]*PosData.SizeT
+        'filename': [filename]*posData.SizeT,
+        'frame_i': range(posData.SizeT),
+        'z_slice_used_dataPrep': [mid_slice]*posData.SizeT,
+        'which_z_proj': ['single z-slice']*posData.SizeT,
+        'z_slice_used_gui': [mid_slice]*posData.SizeT,
+        'which_z_proj_gui': ['single z-slice']*posData.SizeT,
+        'resegmented_in_gui': [False]*posData.SizeT,
+        'is_from_dataPrep': [False]*posData.SizeT
     }).set_index(['filename', 'frame_i'])
     return df
 
@@ -287,12 +290,12 @@ def download_model(model_name):
     src_path = os.path.dirname(os.path.abspath(__file__))
     main_path = os.path.dirname(src_path)
     model_path = os.path.join(main_path, 'models', f'{model_name}_model')
-    if os.path.exists(model_path) and os.listdir(model_path):
+    if os.path.exists(model_path) and listdir(model_path):
         src_model_path = os.path.join(src_path, 'models', model_name)
         dst = os.path.join(src_model_path, 'model')
         if not os.path.exists(dst):
             os.mkdir(dst)
-        for file in os.listdir(model_path):
+        for file in listdir(model_path):
             shutil.move(os.path.join(model_path, file), dst)
         return
 
@@ -341,7 +344,7 @@ def imagej_tiffwriter(new_path, data, metadata, SizeT, SizeZ, imagej=True):
 
 def get_list_of_models():
     src_path = os.path.dirname(os.path.abspath(__file__))
-    models = os.listdir(os.path.join(src_path, 'models'))
+    models = listdir(os.path.join(src_path, 'models'))
     return models
 
 def seconds_to_ETA(seconds):

@@ -81,19 +81,19 @@ class segmWorker(QRunnable):
         img_path = self.img_path
         user_ch_name = self.user_ch_name
 
-        PosData = load.loadData(img_path, user_ch_name)
+        posData = load.loadData(img_path, user_ch_name)
         if self.predictCcaState_model is not None:
-            PosData.loadOtherFiles(
+            posData.loadOtherFiles(
                 load_segm_data=False,
                 load_acdc_df=True
             )
 
-        self.signals.progress.emit(f'Loading {PosData.relPath}...')
+        self.signals.progress.emit(f'Loading {posData.relPath}...')
 
-        PosData.getBasenameAndChNames()
-        PosData.buildPaths()
-        PosData.loadImgData()
-        PosData.loadOtherFiles(
+        posData.getBasenameAndChNames()
+        posData.buildPaths()
+        posData.loadImgData()
+        posData.loadOtherFiles(
             load_segm_data=False,
             load_acdc_df=False,
             load_shifts=False,
@@ -105,19 +105,19 @@ class segmWorker(QRunnable):
             load_metadata=True
         )
 
-        PosData.SizeT = self.SizeT
+        posData.SizeT = self.SizeT
         if self.SizeZ > 1:
-            SizeZ = PosData.img_data.shape[-3]
-            PosData.SizeZ = SizeZ
+            SizeZ = posData.img_data.shape[-3]
+            posData.SizeZ = SizeZ
         else:
-            PosData.SizeZ = 1
-        PosData.saveMetadata()
+            posData.SizeZ = 1
+        posData.saveMetadata()
 
         isROIactive = False
-        if PosData.dataPrep_ROIcoords is not None:
-            isROIactive = PosData.dataPrep_ROIcoords.at['cropped', 'value'] == 0
-            x0, x1, y0, y1 = PosData.dataPrep_ROIcoords['value'][:4]
-            Y, X = PosData.img_data.shape[-2:]
+        if posData.dataPrep_ROIcoords is not None:
+            isROIactive = posData.dataPrep_ROIcoords.at['cropped', 'value'] == 0
+            x0, x1, y0, y1 = posData.dataPrep_ROIcoords['value'][:4]
+            Y, X = posData.img_data.shape[-2:]
             x0 = x0 if x0>0 else 0
             y0 = y0 if y0>0 else 0
             x1 = x1 if x1<X else X
@@ -125,15 +125,15 @@ class segmWorker(QRunnable):
 
         # Note that stop_i is not used when SizeT == 1 so it does not matter
         # which value it has in that case
-        stop_i = PosData.segmSizeT
+        stop_i = posData.segmSizeT
 
-        if PosData.SizeT > 1:
-            if PosData.SizeZ > 1:
+        if posData.SizeT > 1:
+            if posData.SizeZ > 1:
                 # 3D data over time
-                img_data_slice = PosData.img_data[:stop_i]
-                Y, X = PosData.img_data.shape[-2:]
-                img_data = np.zeros((stop_i, Y, X), PosData.img_data.dtype)
-                df = PosData.segmInfo_df.loc[PosData.filename]
+                img_data_slice = posData.img_data[:stop_i]
+                Y, X = posData.img_data.shape[-2:]
+                img_data = np.zeros((stop_i, Y, X), posData.img_data.dtype)
+                df = posData.segmInfo_df.loc[posData.filename]
                 for z_info in df[:stop_i].itertuples():
                     i = z_info.Index
                     z = z_info.z_slice_used_dataPrep
@@ -153,32 +153,32 @@ class segmWorker(QRunnable):
                     pad_info = ((0, 0), (0, 0), (y0, Y-y1), (x0, X-x1))
             else:
                 # 2D data over time
-                img_data = PosData.img_data[:stop_i]
+                img_data = posData.img_data[:stop_i]
                 if isROIactive:
                     Y, X = img_data.shape[-2:]
                     img_data = img_data[:, y0:y1, x0:x1]
                     pad_info = ((0, 0), (y0, Y-y1), (x0, X-x1))
         else:
-            if PosData.SizeZ > 1:
+            if posData.SizeZ > 1:
                 # Single 3D image
-                z_info = PosData.segmInfo_df.loc[PosData.filename].iloc[0]
+                z_info = posData.segmInfo_df.loc[posData.filename].iloc[0]
                 z = z_info.z_slice_used_dataPrep
                 zProjHow = z_info.which_z_proj
                 if zProjHow == 'single z-slice':
-                    img_data = PosData.img_data[z]
+                    img_data = posData.img_data[z]
                 elif zProjHow == 'max z-projection':
-                    img_data = PosData.img_data.max(axis=0)
+                    img_data = posData.img_data.max(axis=0)
                 elif zProjHow == 'mean z-projection':
-                    img_data = PosData.img_data.mean(axis=0)
+                    img_data = posData.img_data.mean(axis=0)
                 elif zProjHow == 'median z-proj.':
-                    img_data = np.median(PosData.img_data, axis=0)
+                    img_data = np.median(posData.img_data, axis=0)
                 if isROIactive:
                     Y, X = img_data.shape[-2:]
                     pad_info = ((0, 0), (y0, Y-y1), (x0, X-x1))
                     img_data = img_data[:, y0:y1, x0:x1]
             else:
                 # Single 2D image
-                img_data = PosData.img_data
+                img_data = posData.img_data
                 if isROIactive:
                     Y, X = img_data.shape[-2:]
                     pad_info = ((y0, Y-y1), (x0, X-x1))
@@ -191,7 +191,7 @@ class segmWorker(QRunnable):
         self.signals.progress.emit(f'Segmenting with {self.model_name}...')
         t0 = time.time()
         # self.signals.progress.emit(f'Segmenting with {model} (Ctrl+C to abort)...')
-        if PosData.SizeT > 1:
+        if posData.SizeT > 1:
             if self.innerPbar_available:
                 self.signals.resetInnerPbar.emit(len(img_data))
 
@@ -219,8 +219,8 @@ class segmWorker(QRunnable):
                     img_data, lab_stack
                 )
                 rp = skimage.measure.regionprops(lab_stack)
-                if PosData.acdc_df is not None:
-                    acdc_df = PosData.acdc_df.loc[0]
+                if posData.acdc_df is not None:
+                    acdc_df = posData.acdc_df.loc[0]
                 else:
                     acdc_df = None
                 acdc_df = core.cca_df_to_acdc_df(cca_df, rp, acdc_df=acdc_df)
@@ -228,7 +228,7 @@ class segmWorker(QRunnable):
                 # Add frame_i=0 level to index (snapshots)
                 acdc_df = pd.concat([acdc_df], keys=[0], names=['frame_i'])
                 if self.save:
-                    acdc_df.to_csv(PosData.acdc_output_csv_path)
+                    acdc_df.to_csv(posData.acdc_output_csv_path)
             self.signals.progressBar.emit(1)
             # lab_stack = core.smooth_contours(lab_stack, radius=2)
 
@@ -236,7 +236,7 @@ class segmWorker(QRunnable):
             lab_stack, min_size=self.minSize
         )
 
-        if PosData.SizeT > 1 and self.do_tracking:
+        if posData.SizeT > 1 and self.do_tracking:
             # self.signals.progress.emit('Tracking cells...')
             # NOTE: We use yeaz tracking also for cellpose
             tracked_stack = tracking.correspondence_stack(
@@ -246,9 +246,9 @@ class segmWorker(QRunnable):
             tracked_stack = lab_stack
             try:
                 if self.innerPbar_available:
-                    self.signals.innerProgressBar.emit(PosData.segmSizeT)
+                    self.signals.innerProgressBar.emit(posData.segmSizeT)
                 else:
-                    self.signals.progressBar.emit(PosData.segmSizeT)
+                    self.signals.progressBar.emit(posData.segmSizeT)
             except AttributeError:
                 if self.innerPbar_available:
                     self.signals.innerProgressBar.emit(1)
@@ -259,12 +259,12 @@ class segmWorker(QRunnable):
             tracked_stack = np.pad(tracked_stack, pad_info,  mode='constant')
 
         if self.save:
-            self.signals.progress.emit(f'Saving {PosData.relPath}...')
-            np.savez_compressed(PosData.segm_npz_path, tracked_stack)
+            self.signals.progress.emit(f'Saving {posData.relPath}...')
+            np.savez_compressed(posData.segm_npz_path, tracked_stack)
 
         t_end = time.time()
 
-        self.signals.progress.emit(f'{PosData.relPath} segmented!')
+        self.signals.progress.emit(f'{posData.relPath} segmented!')
         self.signals.finished.emit(t_end-t0)
 
 
@@ -544,7 +544,7 @@ class segmWin(QMainWindow):
         for images_path in images_paths:
             print('')
             print(f'Processing {images_path}')
-            filenames = os.listdir(images_path)
+            filenames = myutils.listdir(images_path)
             if ch_name_selector.is_first_call:
                 ch_names, warn = (
                     ch_name_selector.get_available_channels(
@@ -597,11 +597,11 @@ class segmWin(QMainWindow):
         selectROI = False
         # Ask other questions based on first position
         img_path = user_ch_file_paths[0]
-        PosData = load.loadData(img_path, user_ch_name, QParent=self)
-        PosData.getBasenameAndChNames()
-        PosData.buildPaths()
-        PosData.loadImgData()
-        PosData.loadOtherFiles(
+        posData = load.loadData(img_path, user_ch_name, QParent=self)
+        posData.getBasenameAndChNames()
+        posData.buildPaths()
+        posData.loadImgData()
+        posData.loadOtherFiles(
             load_segm_data=False,
             load_acdc_df=False,
             load_shifts=False,
@@ -612,13 +612,13 @@ class segmWin(QMainWindow):
             load_last_tracked_i=False,
             load_metadata=True
         )
-        proceed = PosData.askInputMetadata(
+        proceed = posData.askInputMetadata(
                                     ask_SizeT=True,
                                     ask_TimeIncrement=False,
                                     ask_PhysicalSizes=False,
                                     save=True)
-        self.SizeT = PosData.SizeT
-        self.SizeZ = PosData.SizeZ
+        self.SizeT = posData.SizeT
+        self.SizeZ = posData.SizeZ
         if not proceed:
             abort = self.doAbort()
             if abort:
@@ -628,17 +628,17 @@ class segmWin(QMainWindow):
         self.predictCcaState_model = None
 
         self.is_segment3DT_available = False
-        if PosData.SizeT>1:
+        if posData.SizeT>1:
             self.is_segment3DT_available = any(
                 [name=='segment3DT' for name in dir(acdcSegment.Model)]
             )
 
         self.innerPbar_available = False
-        if len(user_ch_file_paths)>1 and PosData.SizeT>1:
+        if len(user_ch_file_paths)>1 and posData.SizeT>1:
             self.addPbar(add_inner=True)
             self.innerPbar_available = True
 
-        if PosData.SizeT == 1:
+        if posData.SizeT == 1:
             # Ask if I should predict budding
             msg = QMessageBox()
             msg.setFont(font)
@@ -656,7 +656,7 @@ class segmWin(QMainWindow):
                     self.close()
                     return
 
-        if PosData.dataPrep_ROIcoords is None:
+        if posData.dataPrep_ROIcoords is None:
             # Ask ROI
             msg = QMessageBox()
             msg.setFont(font)
@@ -676,12 +676,12 @@ class segmWin(QMainWindow):
                     return
 
         launchDataPrep = False
-        if PosData.SizeZ > 1 and PosData.segmInfo_df is None:
+        if posData.SizeZ > 1 and posData.segmInfo_df is None:
             launchDataPrep = True
         if selectROI:
             launchDataPrep = True
-        if PosData.segmInfo_df is not None and PosData.SizeZ > 1:
-            if PosData.filename not in PosData.segmInfo_df.index:
+        if posData.segmInfo_df is not None and posData.SizeZ > 1:
+            if posData.filename not in posData.segmInfo_df.index:
                 launchDataPrep = True
 
         if launchDataPrep:
@@ -718,7 +718,7 @@ class segmWin(QMainWindow):
             dataPrepWin.initLoading()
             dataPrepWin.loadFiles(
                 exp_path, user_ch_file_paths, user_ch_name)
-            if PosData.SizeZ == 1:
+            if posData.SizeZ == 1:
                 dataPrepWin.prepData(None)
             loop = QEventLoop(self)
             dataPrepWin.loop = loop
@@ -731,11 +731,11 @@ class segmWin(QMainWindow):
             )
             img_path = user_ch_file_paths[0]
 
-            PosData = load.loadData(img_path, user_ch_name, QParent=self)
-            PosData.getBasenameAndChNames()
-            PosData.buildPaths()
-            PosData.loadImgData()
-            PosData.loadOtherFiles(
+            posData = load.loadData(img_path, user_ch_name, QParent=self)
+            posData.getBasenameAndChNames()
+            posData.buildPaths()
+            posData.loadImgData()
+            posData.loadOtherFiles(
                 load_segm_data=False,
                 load_acdc_df=False,
                 load_shifts=False,
@@ -746,19 +746,19 @@ class segmWin(QMainWindow):
                 load_last_tracked_i=False,
                 load_metadata=True
             )
-        elif PosData.SizeZ > 1:
-            df = PosData.segmInfo_df.loc[PosData.filename]
+        elif posData.SizeZ > 1:
+            df = posData.segmInfo_df.loc[posData.filename]
             zz = df['z_slice_used_dataPrep'].to_list()
 
         isROIactive = False
-        if PosData.dataPrep_ROIcoords is not None:
-            isROIactive = PosData.dataPrep_ROIcoords.at['cropped', 'value'] == 0
-            x0, x1, y0, y1 = PosData.dataPrep_ROIcoords['value'][:4]
+        if posData.dataPrep_ROIcoords is not None:
+            isROIactive = posData.dataPrep_ROIcoords.at['cropped', 'value'] == 0
+            x0, x1, y0, y1 = posData.dataPrep_ROIcoords['value'][:4]
 
         self.do_tracking = False
-        if PosData.SizeT > 1:
+        if posData.SizeT > 1:
             # Ask stop frame. The "askStopFrameSegm" will internally load
-            # all the PosData and save segmSizeT which will be used as stop_i
+            # all the posData and save segmSizeT which will be used as stop_i
             win = apps.askStopFrameSegm(user_ch_file_paths,
                                         user_ch_name, parent=self)
             win.showAndSetFont(font)
@@ -791,13 +791,13 @@ class segmWin(QMainWindow):
 
         max = 0
         for imgPath in user_ch_file_paths:
-            PosData = load.loadData(imgPath, user_ch_name)
-            PosData.loadOtherFiles(
+            posData = load.loadData(imgPath, user_ch_name)
+            posData.loadOtherFiles(
                 load_segm_data=False,
                 load_metadata=True
             )
-            if PosData.SizeT > 1:
-                max += PosData.segmSizeT
+            if posData.SizeT > 1:
+                max += posData.segmSizeT
             else:
                 max += 1
 

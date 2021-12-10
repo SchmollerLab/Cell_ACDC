@@ -4,6 +4,7 @@ from PIL import Image
 import scipy.io as sio
 from nd2reader import ND2Reader
 
+import myutils
 
 ### Helper Functions
 
@@ -15,7 +16,7 @@ def get_metadata_from_nd2(path, drop_z_coords=True):
     ----------
     path: String
         path of the .nd2 file
-    drop_z_coords: bool 
+    drop_z_coords: bool
         Standard True, set to False if convocal data is used
     Returns
     -------
@@ -26,9 +27,9 @@ def get_metadata_from_nd2(path, drop_z_coords=True):
         meta_data = images.metadata
         if drop_z_coords:
             del meta_data['z_coordinates']
-        return meta_data   
-    
-    
+        return meta_data
+
+
 def get_index_from_pos_ch_t(pos, ch, t, meta_data, parse_from_single_pos_file=False):
     """
     function to calculate the ND2Reader index of a particular frame.
@@ -66,7 +67,7 @@ def get_index_from_pos_ch_t(pos, ch, t, meta_data, parse_from_single_pos_file=Fa
     return idx
 
 
-### Data handlers 
+### Data handlers
 
 
 def get_npy_from_nd2(path, positions='all', channels='all', frames='all',\
@@ -104,7 +105,7 @@ def get_npy_from_nd2(path, positions='all', channels='all', frames='all',\
     Returns
     -------
     img_array: np.array
-        numpy array of dimension(pos, ch, t, x, y) containing the image 
+        numpy array of dimension(pos, ch, t, x, y) containing the image
         data of the specified positions, channels and frames.
     """
     # only keep z_coords in case of convocal data
@@ -128,7 +129,7 @@ def get_npy_from_nd2(path, positions='all', channels='all', frames='all',\
     if cut_images==0:
         x_dim, y_dim = meta_data['width'], meta_data['height']
     else:
-        x_dim = meta_data['width'] - 2*cut_images 
+        x_dim = meta_data['width'] - 2*cut_images
         y_dim = meta_data['height'] - 2*cut_images
     img_array_shape = (len(pos_list), len(ch_list), len(t_list), y_dim, x_dim)
     img_array = np.zeros(img_array_shape)
@@ -149,7 +150,7 @@ def get_npy_from_nd2(path, positions='all', channels='all', frames='all',\
                         parser.get_image(img_idx)[cut_images:-cut_images,\
                                                   cut_images:-cut_images]
     return img_array
-       
+
 
 
 def load_series_of_tifs(folder, channel=None):
@@ -162,20 +163,20 @@ def load_series_of_tifs(folder, channel=None):
     folder: str
         path to folder containing the .tif images relative to home dir
     positions: str
-        if given, filter for images containing this string to filter 
+        if given, filter for images containing this string to filter
         for a certain channel.
 
     Returns
     -------
     all_im: np.array
-        numpy array of dim (n_images, shape_images) containing all images 
+        numpy array of dim (n_images, shape_images) containing all images
         of the folder
 
     """
     if channel:
-        files = [f for f in sorted(os.listdir(folder)) if channel in f]
+        files = [f for f in sorted(myutils.listdir(folder)) if channel in f]
     else:
-        files = sorted(os.listdir(folder))
+        files = sorted(myutils.listdir(folder))
     all_im = []
     for f in files:
         im = Image.open(f'{folder}{f}')
@@ -198,7 +199,7 @@ def load_masks_from_matlab(mask_filename, gt_folder):
     Returns
     -------
     all_masks: np.array
-        numpy array of dim (n_frames, shape_masks) containing all masks 
+        numpy array of dim (n_frames, shape_masks) containing all masks
         of the mat file
 
     """

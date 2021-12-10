@@ -16,7 +16,7 @@ app.setStyle(QStyleFactory.create('Fusion'))
 
 
 src_path = os.path.dirname(os.path.abspath(__file__))
-models = os.listdir(os.path.join(src_path, 'models'))
+models = myutils.listdir(os.path.join(src_path, 'models'))
 win = apps.QDialogListbox(
     'Select model',
     'Select model to use for segmentation: ',
