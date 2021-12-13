@@ -460,19 +460,23 @@ class QDialogMetadataXML(QDialog):
     def updateFilename(self, idx):
         chName = self.chNames_QLEs[idx].text()
         chName = self.removeInvalidCharacters(chName)
+        if self.rawDataStruct == 2:
+            rawFilename = f'{self.rawFilename}_s{idx+1}'
+        else:
+            rawFilename = self.rawFilename
 
         filenameLabel = self.filename_QLabels[idx]
         if self.addImageName_QCB.isChecked():
             self.ImageName = self.removeInvalidCharacters(self.ImageName)
             filename = (f"""
                 <p style=font-size:8pt>
-                    {self.rawFilename}_{self.ImageName}_{chName}.tif
+                    {rawFilename}_{self.ImageName}_{chName}.tif
                 </p>
             """)
         else:
             filename = (f"""
                 <p style=font-size:8pt>
-                    {self.rawFilename}_{chName}.tif
+                    {rawFilename}_{chName}.tif
                 </p>
             """)
         filenameLabel.setText(filename)
