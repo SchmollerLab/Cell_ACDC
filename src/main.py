@@ -6,6 +6,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+print('Importing modules')
 import sys
 import os
 import subprocess

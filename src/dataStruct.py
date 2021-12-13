@@ -1037,6 +1037,7 @@ class createDataStructWin(QMainWindow):
 
     def checkFileFormat(self, exp_path):
         self.moveOtherFiles = False
+        self.copyOtherFiles = False
         ls = natsorted(myutils.listdir(exp_path))
         files = [
             filename for filename in ls
@@ -1147,8 +1148,9 @@ class createDataStructWin(QMainWindow):
             # Determine the basename based on intersection of all .tif
             _, ext = os.path.splitext(file)
             sm = difflib.SequenceMatcher(None, file, basename)
-            i, j, k = sm.find_longest_match(0, len(file),
-                                            0, len(basename))
+            i, j, k = sm.find_longest_match(
+                0, len(file), 0, len(basename)
+            )
             basename = file[i:i+k]
         if not basename:
             self.criticalNoFilenamePattern()
