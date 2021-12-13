@@ -8730,7 +8730,9 @@ class guiWin(QMainWindow):
 
     def checkTrackingEnabled(self):
         posData = self.data[self.pos_i]
-        if posData.frame_i <= posData.last_tracked_i:
+        if posData.last_tracked_i is None:
+            self.disableTrackingCheckBox.setChecked(False)
+        elif posData.frame_i <= posData.last_tracked_i:
             self.disableTrackingCheckBox.setChecked(True)
         else:
             self.disableTrackingCheckBox.setChecked(False)
