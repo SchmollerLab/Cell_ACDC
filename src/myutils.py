@@ -1,5 +1,7 @@
 import os
+import re
 import pathlib
+import difflib
 import sys
 import tempfile
 import shutil
@@ -20,6 +22,28 @@ from tifffile.tifffile import TiffWriter, TiffFile
 
 __all__ = ['ColorMap']
 _mapCache = {}
+
+def getBasename(files):
+    basename = files[0]
+    for file in files:
+        # Determine the basename based on intersection of all .tif
+        _, ext = os.path.splitext(file)
+        sm = difflib.SequenceMatcher(None, file, basename)
+        i, j, k = sm.find_longest_match(
+            0, len(file), 0, len(basename)
+        )
+        basename = file[i:i+k]
+    return basename
+
+def findalliter(patter, string):
+    """Function used to return all re.findall objects in string"""
+    m_test = re.findall(f'(\d+)_(.+)', string)
+    m_iter = [m_test]
+    while m_test:
+        m_test = re.findall(f'(\d+)_(.+)', m_test[0][1])
+        m_iter.append(m_test)
+    return m_iter
+
 
 def listdir(path):
     return [f for f in os.listdir(path) if not f.startswith('.')]

@@ -890,8 +890,11 @@ class createDataStructWin(QMainWindow):
         if rawDataStruct == 2:
             proceed = self.attemptSeparateMultiChannel(rawFilenames)
             if not proceed:
-                self.close()
-                return
+                if self.allowExit:
+                    exit('File pattern not valid.')
+                else:
+                    self.close()
+                    return
 
         self.log(
             'Starting a Java Virtual Machine...'
@@ -1143,15 +1146,7 @@ class createDataStructWin(QMainWindow):
             files = [win.selectedItemText]
 
     def attemptSeparateMultiChannel(self, rawFilenames):
-        basename = rawFilenames[0]
-        for file in rawFilenames:
-            # Determine the basename based on intersection of all .tif
-            _, ext = os.path.splitext(file)
-            sm = difflib.SequenceMatcher(None, file, basename)
-            i, j, k = sm.find_longest_match(
-                0, len(file), 0, len(basename)
-            )
-            basename = file[i:i+k]
+        basename = myutils.getBasename(rawFilenames)
         if not basename:
             self.criticalNoFilenamePattern()
             return False
@@ -1162,10 +1157,12 @@ class createDataStructWin(QMainWindow):
         self.posNums = set()
         for file in rawFilenames:
             filename, ext = os.path.splitext(file)
-            m = re.findall(f'{basename}(\d+)_(.+)', filename)
-            if not m or len(m[0])!=2:
+            m_iter = myutils.findalliter(f'(\d+)_(.+)', filename)
+            if len(m_iter) <= 1:
                 self.criticalNoFilenamePattern()
                 return False
+            else:
+                m = m_iter[-2]
 
             try:
                 posNum, chName = int(m[0][0]), m[0][1]
