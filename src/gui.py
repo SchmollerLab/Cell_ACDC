@@ -20,6 +20,7 @@ import uuid
 from importlib import import_module
 from functools import partial
 from tqdm import tqdm
+from pprint import pprint
 import time
 
 import cv2
@@ -4084,7 +4085,9 @@ class guiWin(QMainWindow):
         borderMask[:, -2:] = True
         borderIDs = np.unique(posData.lab[borderMask])[1:]
         nullIDs = [0]*len(borderIDs)
-        posData.lab = self.np_replace_values(posData.lab, borderIDs, nullIDs)
+        core.lab_replace_values(
+            posData.lab, posData.rp, borderIDs, nullIDs
+        )
         if posData.cca_df is not None:
             posData.cca_df = posData.cca_df.drop(index=borderIDs)
         self.store_data()
@@ -4927,12 +4930,15 @@ class guiWin(QMainWindow):
             diskMask = diskMask[0:Y-yBottom]
             return yBottom, xLeft, Y, xRight, diskMask
 
-    def setBrushID(self):
+    def setBrushID(self, useCurrentLab=True):
         # Make sure that the brushed ID is always a new one based on
         # already visited frames
         posData = self.data[self.pos_i]
-        newID = posData.lab.max()
-        for storedData in posData.allData_li:
+        if useCurrentLab:
+            newID = posData.lab.max()
+        else:
+            newID = 1
+        for frame_i, storedData in enumerate(posData.allData_li):
             lab = storedData['labels']
             if lab is not None:
                 _max = lab.max()
@@ -4940,6 +4946,7 @@ class guiWin(QMainWindow):
                     newID = _max
             else:
                 break
+
         for y, x, manual_ID in posData.editID_info:
             if manual_ID > newID:
                 newID = manual_ID
@@ -5579,7 +5586,7 @@ class guiWin(QMainWindow):
             msg.exec_()
             if msg.clickedButton() == keepManualEditButton:
                 allIDs = [obj.label for obj in posData.rp]
-                self.ManuallyEditTracking(posData.lab, allIDs)
+                self.manuallyEditTracking(posData.lab, allIDs)
                 self.update_rp()
                 self.checkIDs_LostNew()
                 self.highlightLostNew()
@@ -6680,13 +6687,11 @@ class guiWin(QMainWindow):
 
         mode = str(self.modeComboBox.currentText())
 
+        if mode == 'Viewer':
+            return
+
         posData.allData_li[posData.frame_i]['regionprops'] = posData.rp.copy()
         posData.allData_li[posData.frame_i]['labels'] = posData.lab.copy()
-
-        if debug:
-            pass
-            # print(posData.frame_i)
-            # apps.imshow_tk(posData.lab, additional_imgs=[posData.allData_li[posData.frame_i]['labels']])
 
         # Store dynamic metadata
         is_cell_dead_li = [False]*len(posData.rp)
@@ -7200,7 +7205,10 @@ class guiWin(QMainWindow):
         for frame_i, data_dict in enumerate(posData.allData_li):
             # Build segm_npy
             lab = data_dict['labels']
-            if lab is None:
+            if lab is None and frame_i == 0:
+                last_tracked_i = 0
+                break
+            elif lab is None:
                 last_tracked_i = frame_i-1
                 break
             else:
@@ -7246,6 +7254,7 @@ class guiWin(QMainWindow):
 
     def init_cca(self):
         posData = self.data[self.pos_i]
+        currentMode = self.modeComboBox.currentText()
         if posData.last_tracked_i is None:
             txt = (
                 'On this dataset either you never checked that the segmentation '
@@ -7259,7 +7268,7 @@ class guiWin(QMainWindow):
             msg.critical(
                 self, 'Tracking check not performed', txt, msg.Ok
             )
-            self.modeComboBox.setCurrentIndex(0)
+            self.modeComboBox.setCurrentText(currentMode)
             return
 
         proceed = True
@@ -7303,7 +7312,7 @@ class guiWin(QMainWindow):
                 msg = 'Cell cycle analysis aborted.'
                 print(msg)
                 self.titleLabel.setText(msg, color='w')
-                self.modeComboBox.setCurrentText('Viewer')
+                self.modeComboBox.setCurrentText(currentMode)
                 proceed = False
                 return
         elif posData.frame_i < last_cca_frame_i:
@@ -7328,6 +7337,7 @@ class guiWin(QMainWindow):
                 msg = 'Cell cycle analysis aborted.'
                 print(msg)
                 self.titleLabel.setText(msg, color='w')
+                self.modeComboBox.setCurrentText(currentMode)
                 proceed = False
                 return
         else:
@@ -8392,10 +8402,15 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         # Add new Items if there are not enough
         HDDmaxID = max([posData.segm_data.max() for posData in self.data])
-        STOREDmaxID = max([posData.allData_li[i]['labels'].max()
-                           for posData in self.data
-                           for i in range(0, posData.segmSizeT)
-                           if posData.allData_li[i]['labels'] is not None])
+        try:
+            STOREDmaxID = max([
+                posData.allData_li[i]['labels'].max() for posData in self.data
+                for i in range(0, posData.segmSizeT)
+                if posData.allData_li[i]['labels'] is not None
+            ])
+        except ValueError as e:
+            STOREDmaxID = 0
+
         currentMaxID = posData.lab.max()
         maxID = max([currentMaxID, STOREDmaxID, currentMaxID])
         idx = maxID-1
@@ -8730,9 +8745,8 @@ class guiWin(QMainWindow):
 
     def checkTrackingEnabled(self):
         posData = self.data[self.pos_i]
-        if posData.last_tracked_i is None:
-            self.disableTrackingCheckBox.setChecked(False)
-        elif posData.frame_i <= posData.last_tracked_i:
+        posData.last_tracked_i = self.navigateScrollBar.maximum()-1
+        if posData.frame_i <= posData.last_tracked_i:
             self.disableTrackingCheckBox.setChecked(True)
         else:
             self.disableTrackingCheckBox.setChecked(False)
@@ -8802,7 +8816,7 @@ class guiWin(QMainWindow):
             if prev_rp is None:
                 prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
             IDs_prev = []
-            IDs_curr_untracked = [obj.label for obj in posData.rp]
+            IDs_curr_untracked = posData.IDs
             IoA_matrix = np.zeros((len(posData.rp), len(prev_rp)))
 
             # For each ID in previous frame get IoA with all current IDs
@@ -8812,19 +8826,20 @@ class guiWin(QMainWindow):
                 A_IDprev = obj_prev.area
                 IDs_prev.append(ID_prev)
                 mask_ID_prev = prev_lab==ID_prev
-                intersect_IDs, intersects = np.unique(posData.lab[mask_ID_prev],
-                                                      return_counts=True)
+                intersect_IDs, intersects = np.unique(
+                    posData.lab[mask_ID_prev], return_counts=True
+                )
                 for intersect_ID, I in zip(intersect_IDs, intersects):
                     if intersect_ID != 0:
                         i = IDs_curr_untracked.index(intersect_ID)
                         IoA = I/A_IDprev
                         IoA_matrix[i, j] = IoA
 
-
-
             # Determine max IoA between IDs and assign tracked ID if IoA > 0.4
             max_IoA_col_idx = IoA_matrix.argmax(axis=1)
-            unique_col_idx, counts = np.unique(max_IoA_col_idx, return_counts=True)
+            unique_col_idx, counts = np.unique(
+                max_IoA_col_idx, return_counts=True
+            )
             counts_dict = dict(zip(unique_col_idx, counts))
             tracked_IDs = []
             old_IDs = []
@@ -8841,56 +8856,41 @@ class guiWin(QMainWindow):
                     tracked_IDs.append(tracked_ID)
                     old_IDs.append(old_ID)
 
-
-            # print(IoA_matrix)
-
-            # Replace untracked IDs with tracked IDs and new IDs with increasing num
-            new_untracked_IDs = [ID for ID in IDs_curr_untracked if ID not in old_IDs]
+            # Compute new IDs that have not been tracked
+            new_untracked_IDs = [
+                ID for ID in IDs_curr_untracked if ID not in old_IDs
+            ]
             tracked_lab = posData.lab
             new_tracked_IDs_2 = []
             if new_untracked_IDs:
-                # Relabel new untracked IDs with big number to make sure they are unique
+                # Compute starting unique ID
+                self.setBrushID(useCurrentLab=False)
+                uniqueID = posData.brushID
+
+                # Relabel new untracked IDs sequentially starting
+                # from uniqueID to make sure they are unique
                 allIDs = IDs_curr_untracked.copy()
                 allIDs.extend(tracked_IDs)
                 max_ID = max(allIDs)
                 new_tracked_IDs = [
-                    max_ID*(i+2) for i in range(len(new_untracked_IDs))
+                    uniqueID+i for i in range(len(new_untracked_IDs))
                 ]
-                tracked_lab = self.np_replace_values(tracked_lab, new_untracked_IDs,
-                                                     new_tracked_IDs)
-                # print('New objects that get a new big ID: ', new_untracked_IDs)
-                # print('New big IDs for the new objects: ', new_tracked_IDs)
+                core.lab_replace_values(
+                    tracked_lab, posData.rp, new_untracked_IDs, new_tracked_IDs
+                )
             if tracked_IDs:
                 # Relabel old IDs with respective tracked IDs
-                tracked_lab = self.np_replace_values(
-                    tracked_lab, old_IDs, tracked_IDs
+                core.lab_replace_values(
+                    tracked_lab, posData.rp, old_IDs, tracked_IDs
                 )
-                # print('Old IDs to be tracked: ', old_IDs)
-                # print('New IDs replacing old IDs: ', tracked_IDs)
-            if new_untracked_IDs:
-                # Relabel new untracked IDs sequentially
-                self.setBrushID()
-                max_ID = posData.brushID
-                new_tracked_IDs_2 = [
-                    max_ID+i+1 for i in range(len(new_untracked_IDs))
-                ]
-                tracked_lab = self.np_replace_values(
-                    tracked_lab, new_tracked_IDs, new_tracked_IDs_2
-                )
-                # print('New big IDs for the new objects: ', new_tracked_IDs)
-                # print(
-                #     'New increasing IDs for the previously big IDs: ',
-                #     new_tracked_IDs_2, f'max ID = {max_ID}'
-                # )
 
             if DoManualEdit:
                 # Correct tracking with manually changed IDs
                 rp = skimage.measure.regionprops(tracked_lab)
                 IDs = [obj.label for obj in rp]
-                self.ManuallyEditTracking(tracked_lab, IDs)
+                self.manuallyEditTracking(tracked_lab, IDs)
         except ValueError:
             tracked_lab = posData.lab
-            pass
 
 
         # Update labels, regionprops and determine new and lost IDs
@@ -8898,7 +8898,7 @@ class guiWin(QMainWindow):
         self.update_rp()
         self.checkIDs_LostNew()
 
-    def ManuallyEditTracking(self, tracked_lab, allIDs):
+    def manuallyEditTracking(self, tracked_lab, allIDs):
         posData = self.data[self.pos_i]
         # Correct tracking with manually changed IDs
         for y, x, new_ID in posData.editID_info:
@@ -8910,18 +8910,6 @@ class guiWin(QMainWindow):
                 tracked_lab[tracked_lab == tempID] = new_ID
             else:
                 tracked_lab[tracked_lab == old_ID] = new_ID
-
-    def np_replace_values(self, arr, old_values, tracked_values):
-        # See method_jdehesa https://stackoverflow.com/questions/45735230/how-to-replace-a-list-of-values-in-a-numpy-array
-        old_values = np.asarray(old_values)
-        tracked_values = np.asarray(tracked_values)
-        n_min, n_max = arr.min(), arr.max()
-        replacer = np.arange(n_min, n_max + 1)
-        # Mask replacements out of range
-        mask = (old_values >= n_min) & (old_values <= n_max)
-        replacer[old_values[mask] - n_min] = tracked_values[mask]
-        arr = replacer[arr - n_min]
-        return arr
 
     def undo_changes_future_frames(self):
         posData = self.data[self.pos_i]
@@ -9934,6 +9922,19 @@ class guiWin(QMainWindow):
                 return None
         self.last_tracked_i = last_tracked_i
         self.waitCond.wakeAll()
+
+    def getLastTrackedFrame(self, posData):
+        last_tracked_i = 0
+        for frame_i, data_dict in enumerate(posData.allData_li):
+            # Build segm_npy
+            lab = data_dict['labels']
+            if lab is None:
+                frame_i -= 1
+                break
+        if frame_i > 0:
+            return frame_i
+        else:
+            return last_tracked_i
 
     def askSaveLastVisitedSegmMode(self, p, posData):
         current_frame_i = posData.frame_i

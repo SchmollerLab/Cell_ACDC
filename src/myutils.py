@@ -46,7 +46,11 @@ def findalliter(patter, string):
 
 
 def listdir(path):
-    return [f for f in os.listdir(path) if not f.startswith('.')]
+    return [
+        f for f in os.listdir(path)
+        if not f.startswith('.')
+        and not f.endswith('.ini')
+    ]
 
 def getModelArgSpec(acdcSegment):
     ArgSpec = namedtuple('ArgSpec', ['name', 'default', 'type'])

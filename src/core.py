@@ -20,6 +20,27 @@ from tqdm import tqdm
 # Custom modules
 import apps
 
+def np_replace_values(arr, old_values, new_values):
+    # See method_jdehesa https://stackoverflow.com/questions/45735230/how-to-replace-a-list-of-values-in-a-numpy-array
+    old_values = np.asarray(old_values)
+    new_values = np.asarray(new_values)
+    n_min, n_max = arr.min(), arr.max()
+    replacer = np.arange(n_min, n_max + 1)
+    # Mask replacements out of range
+    mask = (old_values >= n_min) & (old_values <= n_max)
+    replacer[old_values[mask] - n_min] = new_values[mask]
+    arr = replacer[arr - n_min]
+    return arr
+
+def lab_replace_values(lab, rp, oldIDs, newIDs):
+    for obj in rp:
+        try:
+            idx = oldIDs.index(obj.label)
+        except ValueError:
+            continue
+        lab[obj.slice][obj.image] = newIDs[idx]
+    return lab
+
 def align_frames_3D(
         data, slices=None, register=True,
         user_shifts=None, pbar=False):
