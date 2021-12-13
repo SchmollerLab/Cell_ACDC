@@ -28,6 +28,7 @@ import utils.convert
 import help.welcome
 
 import qrc_resources
+# import pandas as pd
 
 if os.name == 'nt':
     try:
