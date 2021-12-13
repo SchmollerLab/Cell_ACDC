@@ -12,6 +12,7 @@ import pandas as pd
 from collections import Counter
 from tqdm import tqdm
 from natsort import natsorted
+from pprint import pprint
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QFileDialog,
@@ -450,12 +451,12 @@ class bioFormatsWorker(QObject):
         elif self.rawDataStruct == 2:
             iter = enumerate(zip(self.chNames, self.saveChannels))
             pos_rawFilenames = []
+            basename = filename
             for c, (chName, saveCh) in iter:
                 self.progressPbar.emit(1)
                 if not saveCh:
                     continue
 
-                basename = filename
                 rawFilename = f'{basename}{p+1}_{chName}'
                 pos_rawFilenames.append(rawFilename)
                 exp_path = os.path.dirname(rawFilePath)
@@ -580,7 +581,6 @@ class bioFormatsWorker(QObject):
                     return
 
             self.started.emit(self.SizeS*self.SizeC)
-
             self.numPos = self.SizeS
             self.numPosDigits = len(str(self.numPos))
             for p_idx, pos in enumerate(self.posNums):
@@ -1243,6 +1243,8 @@ class createDataStructWin(QMainWindow):
             TimeIncrement, TimeIncrementUnit, PhysicalSizeX, PhysicalSizeY,
             PhysicalSizeZ, PhysicalSizeUnit, chNames, emWavelens, ImageName
         ):
+        if self.rawDataStruct == 2:
+            filename = self.basename
         self.metadataWin = apps.QDialogMetadataXML(
             title=f'Metadata for {filename}', rawFilename=filename,
             LensNA=LensNA, DimensionOrder=DimensionOrder,

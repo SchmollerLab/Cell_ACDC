@@ -71,6 +71,7 @@ class QDialogMetadataXML(QDialog):
         rawFilename = os.path.splitext(rawFilename)[0]
         self.rawFilename = self.removeInvalidCharacters(rawFilename)
         self.ImageName = ImageName
+        self.rawDataStruct = rawDataStruct
         super().__init__(parent)
         self.setWindowTitle(title)
         font = QtGui.QFont()
