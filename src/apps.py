@@ -1144,13 +1144,16 @@ class QDialogMetadata(QDialog):
 
         cancelButton = QPushButton('Cancel')
 
-        buttonsLayout.addWidget(okButton, 0, 0)
+        buttonsLayout.setColumnStretch(0, 1)
+        buttonsLayout.addWidget(okButton, 0, 1)
         if ask_TimeIncrement or ask_PhysicalSizes:
-            buttonsLayout.addWidget(okAllButton, 0, 1)
-            buttonsLayout.addWidget(selectButton, 1, 0)
-            buttonsLayout.addWidget(cancelButton, 1, 1)
+            buttonsLayout.addWidget(okAllButton, 0, 2)
+            buttonsLayout.addWidget(selectButton, 1, 1)
+            buttonsLayout.addWidget(cancelButton, 1, 2)
         else:
-            buttonsLayout.addWidget(cancelButton, 0, 1)
+            buttonsLayout.addWidget(cancelButton, 0, 2)
+        buttonsLayout.setColumnStretch(3, 1)
+
         buttonsLayout.setContentsMargins(0, 10, 0, 0)
 
         gridLayout.setColumnMinimumWidth(1, 100)

@@ -84,6 +84,9 @@ print('Initializing...')
 pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
 np.random.seed(1568)
 
+pd.set_option("display.max_columns", 20)
+pd.set_option('display.expand_frame_repr', False)
+
 def qt_debug_trace():
     from PyQt5.QtCore import pyqtRemoveInputHook
     pyqtRemoveInputHook()
@@ -969,6 +972,8 @@ class guiWin(QMainWindow):
                                   "Next Frame", self)
         self.prevAction.setShortcut("left")
         self.nextAction.setShortcut("right")
+        # self.nextAction.setVisible(False)
+        # self.prevAction.setVisible(False)
 
         self.repeatTrackingAction = QAction(
             QIcon(":repeat-tracking.svg"), "Repeat tracking", self
@@ -3575,7 +3580,7 @@ class guiWin(QMainWindow):
 
     def annotateDivision(self, cca_df, ID, relID, ccs_relID):
         # Correct as follows:
-        # If S then correct to G1 and +1 on generation number
+        # If S then assign to G1 and +1 on generation number
         posData = self.data[self.pos_i]
         store = False
         cca_df.at[ID, 'cell_cycle_stage'] = 'G1'
@@ -3584,7 +3589,7 @@ class guiWin(QMainWindow):
         cca_df.at[ID, 'division_frame_i'] = posData.frame_i
         cca_df.at[relID, 'cell_cycle_stage'] = 'G1'
         gen_num_relID = cca_df.at[relID, 'generation_num']
-        cca_df.at[relID, 'generation_num'] += 1
+        cca_df.at[relID, 'generation_num'] = gen_num_relID+1
         cca_df.at[relID, 'division_frame_i'] = posData.frame_i
         if gen_num_clickedID < gen_num_relID:
             cca_df.at[ID, 'relationship'] = 'mother'
@@ -3967,7 +3972,7 @@ class guiWin(QMainWindow):
             rp_curr_mothID = posData.rp[curr_moth_obj_idx]
             self.drawID_and_Contour(rp_curr_mothID, drawContours=False)
 
-        self.checkMultiBudMOth(draw=True)
+        self.checkMultiBudMoth(draw=True)
 
         self.store_cca_df()
 
@@ -4439,7 +4444,7 @@ class guiWin(QMainWindow):
         if editCcaWidget.cancel:
             return
         posData.cca_df = editCcaWidget.cca_df
-        self.checkMultiBudMOth()
+        self.checkMultiBudMoth()
         self.updateALLimg()
 
     def drawIDsContComboBox_cb(self, idx):
@@ -6561,12 +6566,13 @@ class guiWin(QMainWindow):
             if posData.last_tracked_i is not None:
                 last_tracked_num = posData.last_tracked_i+1
                 # Load previous session data
-                # Keep track of which ROIs have already been added in previous frame
+                # Keep track of which ROIs have already been added
+                # in previous frame
                 delROIshapes = [[] for _ in range(posData.segmSizeT)]
                 for i in range(last_tracked_num):
                     posData.frame_i = i
                     self.get_data()
-                    self.store_data()
+                    self.store_data(enforce=True)
                     # self.load_delROIs_info(delROIshapes, last_tracked_num)
                     posData.binnedIDs = set()
                     posData.ripIDs = set()
@@ -6676,7 +6682,7 @@ class guiWin(QMainWindow):
             'histoLevels': {}
         }
 
-    def store_data(self, pos_i=None, debug=False):
+    def store_data(self, pos_i=None, enforce=True, debug=False):
         pos_i = self.pos_i if pos_i is None else pos_i
         posData = self.data[pos_i]
         if posData.frame_i < 0:
@@ -6687,7 +6693,7 @@ class guiWin(QMainWindow):
 
         mode = str(self.modeComboBox.currentText())
 
-        if mode == 'Viewer':
+        if mode == 'Viewer' and not enforce:
             return
 
         posData.allData_li[posData.frame_i]['regionprops'] = posData.rp.copy()
@@ -6750,7 +6756,7 @@ class guiWin(QMainWindow):
         min_dist = dist.min()
         return min_dist, nearest_point
 
-    def checkMultiBudMOth(self, draw=False):
+    def checkMultiBudMoth(self, draw=False):
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
         if mode.find('Cell cycle') == -1:
@@ -6783,19 +6789,124 @@ class guiWin(QMainWindow):
         if draw:
             self.highlightmultiBudMoth()
 
+    def isCurrentFrameCcaVisited(self):
+        posData = self.data[self.pos_i]
+        curr_df = posData.allData_li[posData.frame_i]['acdc_df']
+        return curr_df is not None and 'cell_cycle_stage' in curr_df.columns
+
+    def warnScellsGone(self, ScellsIDsGone, frame_i):
+        msg = QMessageBox()
+        text = (f"""
+        <p style="font-size:10pt">
+            In the next frame the followning cells' IDs in S/G2/M
+            (highlighted with a yellow contour) <b>will disappear</b>:<br><br>
+            {ScellsIDsGone}<br><br>
+            These cells are either buds or mother whose <b>related IDs will not
+            disappear</b>. This is likely due to cell division happening in
+            previous frame and the divided bud or mother will be
+            washed away.<br><br>
+            If you decide to continue these cells will be <b>automatically
+            annotated as divided at frame number {frame_i+1}</b>.<br><br>
+            Do you want to continue?
+        </p>
+        """)
+        answer = msg.warning(
+           self, 'Cells in "S/G2/M" disappeared!', text,
+           msg.Yes | msg.Cancel
+        )
+        return answer == msg.Yes
+
+    def checkScellsGone(self):
+        """Check if there are cells in S phase whose relative disappear in
+        current frame. Allow user to choose between automatically assign
+        division to these cells or cancel and not visit the frame.
+
+        Returns
+        -------
+        bool
+            False if there are no cells disappeared or the user decided
+            to accept automatic division.
+        """
+        automaticallyDividedIDs = []
+
+        mode = str(self.modeComboBox.currentText())
+        if mode.find('Cell cycle') == -1:
+            # No cell cycle analysis mode --> do nothing
+            return False, automaticallyDividedIDs
+
+        posData = self.data[self.pos_i]
+
+
+        if posData.allData_li[posData.frame_i]['labels'] is None:
+            # Frame never visited/checked in segm mode --> autoCca_df will raise
+            # a critical message
+            return False, automaticallyDividedIDs
+
+        if self.isCurrentFrameCcaVisited():
+            # Frame already visited in cca mode --> do nothing
+            return False, automaticallyDividedIDs
+
+        # Check if there are S cells that either only mother or only
+        # bud disappeared and automatically assign division to it
+        # or abort visiting this frame
+        prev_acdc_df = posData.allData_li[posData.frame_i-1]['acdc_df']
+        prev_cca_df = prev_acdc_df[self.cca_df_colnames].copy()
+
+        ScellsIDsGone = []
+        for ccSeries in prev_cca_df.itertuples():
+            ID = ccSeries.Index
+            ccs = ccSeries.cell_cycle_stage
+            if ccs != 'S':
+                continue
+
+            relID = ccSeries.relative_ID
+            if relID not in posData.IDs and ID in posData.IDs:
+                ScellsIDsGone.append(relID)
+
+        if not ScellsIDsGone:
+            # No cells in S that disappears --> do nothing
+            return False, automaticallyDividedIDs
+
+        prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
+        for obj in prev_rp:
+            if obj.label in ScellsIDsGone:
+                self.highlight_obj(obj)
+
+        self.highlightNewIDs_ccaFailed()
+        proceed = self.warnScellsGone(ScellsIDsGone, posData.frame_i)
+        if not proceed:
+            return True, automaticallyDividedIDs
+
+
+        for IDgone in ScellsIDsGone:
+            relID = prev_cca_df.at[IDgone, 'relative_ID']
+            posData.cca_df.at[relID, 'cell_cycle_stage'] = 'G1'
+            gen_num_relID = posData.cca_df.at[relID, 'generation_num']
+            posData.cca_df.at[relID, 'generation_num'] = gen_num_relID+1
+            posData.cca_df.at[relID, 'division_frame_i'] = posData.frame_i
+            posData.cca_df.at[relID, 'relationship'] = 'mother'
+            automaticallyDividedIDs.append(relID)
+
+        posData.cca_df = posData.cca_df.drop(index=ScellsIDsGone)
+
+        return False, automaticallyDividedIDs
+
+
     def attempt_auto_cca(self, enforceAll=False):
         posData = self.data[self.pos_i]
-        doNotProceed = False
         try:
-            notEnoughG1Cells, proceed = self.autoCca_df(enforceAll=enforceAll)
-            if posData.cca_df is None:
-                return notEnoughG1Cells, proceed
+            notEnoughG1Cells, proceed = self.autoCca_df(
+                enforceAll=enforceAll
+            )
             mode = str(self.modeComboBox.currentText())
-            if mode.find('Cell cycle') == -1:
+            if posData.cca_df is None or mode.find('Cell cycle') == -1:
+                notEnoughG1Cells = False
+                proceed = True
                 return notEnoughG1Cells, proceed
             if posData.cca_df.isna().any(axis=None):
                 raise ValueError('Cell cycle analysis table contains NaNs')
-            self.checkMultiBudMOth()
+            self.checkMultiBudMoth()
+            return notEnoughG1Cells, proceed
         except Exception as e:
             print('')
             print('====================================')
@@ -6819,7 +6930,25 @@ class guiWin(QMainWindow):
                 '   and try again.')
             msg.setDetailedText(traceback.format_exc())
             msg.exec_()
-        return notEnoughG1Cells, proceed
+            return False, False
+
+    def highlightIDs(self, IDs, pen):
+        pass
+
+    def warnFrameNeverVisitedSegmMode(self):
+        msg = QMessageBox()
+        warn_cca = msg.critical(
+            self, 'Next frame NEVER visited',
+            'Next frame was never visited in "Segmentation and Tracking"'
+            'mode.\n You cannot perform cell cycle analysis on frames'
+            'where segmentation and/or tracking errors were not'
+            'checked/corrected.\n\n'
+            'Switch to "Segmentation and Tracking" mode '
+            'and check/correct next frame,\n'
+            'before attempting cell cycle analysis again',
+            msg.Ok
+        )
+        return False
 
     def autoCca_df(self, enforceAll=False):
         """
@@ -6831,6 +6960,7 @@ class guiWin(QMainWindow):
         """
         proceed = True
         notEnoughG1Cells = False
+        ScellsGone = False
 
         posData = self.data[self.pos_i]
 
@@ -6840,21 +6970,9 @@ class guiWin(QMainWindow):
             return notEnoughG1Cells, proceed
 
 
-        # Make sure that this is a visited frame
+        # Make sure that this is a visited frame in segmentation tracking mode
         if posData.allData_li[posData.frame_i]['labels'] is None:
-            msg = QMessageBox()
-            warn_cca = msg.critical(
-                self, 'Next frame NEVER visited',
-                'Next frame was never visited in "Segmentation and Tracking"'
-                'mode.\n You cannot perform cell cycle analysis on frames'
-                'where segmentation and/or tracking errors were not'
-                'checked/corrected.\n\n'
-                'Switch to "Segmentation and Tracking" mode '
-                'and check/correct next frame,\n'
-                'before attempting cell cycle analysis again',
-                msg.Ok
-            )
-            proceed = False
+            proceed = self.warnFrameNeverVisitedSegmMode()
             return notEnoughG1Cells, proceed
 
         # Determine if this is the last visited frame for repeating
@@ -6888,8 +7006,10 @@ class guiWin(QMainWindow):
         # IDs where we didn't manually correct assignment
         if lastVisited and not enforceAll:
             correctedAssignIDs = curr_df[curr_df['corrected_assignment']].index
-            posData.new_IDs = [ID for ID in posData.new_IDs
-                            if ID not in correctedAssignIDs]
+            posData.new_IDs = [
+                ID for ID in posData.new_IDs
+                if ID not in correctedAssignIDs
+            ]
 
         # Get previous dataframe
         acdc_df = posData.allData_li[posData.frame_i-1]['acdc_df']
@@ -6898,6 +7018,13 @@ class guiWin(QMainWindow):
             posData.cca_df = prev_cca_df
         else:
             posData.cca_df = curr_df[self.cca_df_colnames].copy()
+
+        # Check if there are some S cells that disappeared
+        abort, automaticallyDividedIDs = self.checkScellsGone()
+        if abort:
+            notEnoughG1Cells = False
+            proceed = False
+            return notEnoughG1Cells, proceed
 
         # If there are no new IDs we are done
         if not posData.new_IDs:
@@ -6915,6 +7042,10 @@ class guiWin(QMainWindow):
             # at current frame
             df_G1 = posData.cca_df[posData.cca_df['cell_cycle_stage']=='G1']
             IDsCellsG1.update(df_G1.index)
+
+        # Add to cells in G1 those IDs automatically divided in
+        # self.checkScellsGone
+        IDsCellsG1.update(automaticallyDividedIDs)
 
         # remove cells that disappeared
         IDsCellsG1 = [ID for ID in IDsCellsG1 if ID in posData.IDs]
@@ -8629,8 +8760,9 @@ class guiWin(QMainWindow):
                 if ID in posData.new_IDs:
                     ContCurve = self.ax2_ContoursCurves[ID-1]
                     cont = self.getObjContours(obj)
-                    ContCurve.setData(cont[:,0], cont[:,1],
-                                      pen=self.newIDs_cpen)
+                    ContCurve.setData(
+                        cont[:,0], cont[:,1], pen=self.newIDs_cpen
+                    )
 
         if posData.lost_IDs:
             # Get the rp from previous frame
@@ -8638,7 +8770,27 @@ class guiWin(QMainWindow):
             for obj in rp:
                 self.highlightLost_obj(obj)
 
-    def highlightLost_obj(self, obj):
+    def highlight_obj(self, obj, contPen=None, textColor=None):
+        if contPen is None:
+            contPen = self.lostIDs_cpen
+        if textColor is None:
+            textColor = self.lostIDs_qMcolor
+        ID = obj.label
+        ContCurve = self.ax1_ContoursCurves[ID-1]
+        cont = self.getObjContours(obj)
+        ContCurve.setData(
+            cont[:,0], cont[:,1], pen=contPen
+        )
+        LabelItemID = self.ax1_LabelItemsIDs[ID-1]
+        txt = f'{obj.label}?'
+        LabelItemID.setText(txt, color=textColor)
+        # Center LabelItem at centroid
+        y, x = obj.centroid
+        w, h = LabelItemID.rect().right(), LabelItemID.rect().bottom()
+        LabelItemID.setPos(x-w/2, y-h/2)
+
+
+    def highlightLost_obj(self, obj, forceContour=False):
         posData = self.data[self.pos_i]
         how = self.drawIDsContComboBox.currentText()
         IDs_and_cont = how == 'Draw IDs and contours'
@@ -8651,10 +8803,11 @@ class guiWin(QMainWindow):
         ID = obj.label
         if ID in posData.lost_IDs:
             ContCurve = self.ax1_ContoursCurves[ID-1]
-            if IDs_and_cont or onlyCont or ccaInfo_and_cont:
+            if IDs_and_cont or onlyCont or ccaInfo_and_cont or forceContour:
                 cont = self.getObjContours(obj)
-                ContCurve.setData(cont[:,0], cont[:,1],
-                                  pen=self.lostIDs_cpen)
+                ContCurve.setData(
+                    cont[:,0], cont[:,1], pen=self.lostIDs_cpen
+                )
             LabelItemID = self.ax1_LabelItemsIDs[ID-1]
             txt = f'{obj.label}?'
             LabelItemID.setText(txt, color=self.lostIDs_qMcolor)
@@ -9419,9 +9572,10 @@ class guiWin(QMainWindow):
         else:
             recentPaths = [exp_path]
             openedOn = [datetime.datetime.now()]
-        df = pd.DataFrame({'path': recentPaths,
-                           'opened_last_on': pd.Series(openedOn,
-                                                       dtype='datetime64[ns]')})
+        df = pd.DataFrame({
+            'path': recentPaths,
+            'opened_last_on': pd.Series(openedOn, dtype='datetime64[ns]')}
+        )
         df.index.name = 'index'
         df.to_csv(recentPaths_path)
 
