@@ -5157,6 +5157,8 @@ class guiWin(QMainWindow):
                 # Go back to current frame
                 posData.frame_i = current_frame_i
                 self.get_data()
+
+                self.warnEditingWithCca_df('relabelling sequentially')
             else:
                 posData.lab, fw, inv = skimage.segmentation.relabel_sequential(
                     posData.lab
@@ -7594,6 +7596,8 @@ class guiWin(QMainWindow):
                     cca_df = self.get_cca_df(frame_i=i, return_df=True)
                     if cca_df is None:
                         break
+                    if ID not in cca_df:
+                        continue
                     _ccs = cca_df.at[ID, 'cell_cycle_stage']
                     if _ccs == 'G1':
                         is_division_annotated = True
