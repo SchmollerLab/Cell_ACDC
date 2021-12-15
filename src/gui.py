@@ -333,11 +333,12 @@ class segmWorker(QObject):
         img = self.mainWin.getDisplayedCellsImg()
         img = myutils.uint_to_float(img)
         lab = self.mainWin.model.segment(img, **self.mainWin.segment2D_kwargs)
-        rp = skimage.measure.regionprops(lab)
-        if len(rp)>1:
-            lab = skimage.morphology.remove_small_objects(
-                lab, min_size=self.mainWin.minSize
-            )
+        lab = core.remove_artefacts(
+            lab,
+            min_solidity=self.mainWin.minSolidity,
+            min_area=self.mainWin.minSize,
+            max_elongation=self.mainWin.maxElongation
+        )
         t1 = time.time()
         exec_time = t1-t0
         self.finished.emit(lab, exec_time)
@@ -594,6 +595,7 @@ class guiWin(QMainWindow):
         for action in self.segmActions:
             SegmMenu.addAction(action)
         SegmMenu.addAction(self.SegmActionRW)
+        SegmMenu.addAction(self.postProcessSegmAction)
         SegmMenu.addAction(self.autoSegmAction)
         SegmMenu.aboutToShow.connect(self.segmMenuOpened)
 
@@ -1037,6 +1039,12 @@ class guiWin(QMainWindow):
         self.SegmActionRW = QAction("Random walker...", self)
         self.SegmActionRW.setDisabled(True)
 
+        self.postProcessSegmAction = QAction(
+            "Segmentation post-processing...", self
+        )
+        self.postProcessSegmAction.setDisabled(True)
+        self.postProcessSegmAction.setCheckable(True)
+
         self.prevAction = QAction(QIcon(":arrow-left.svg"),
                                         "Previous frame", self)
         self.nextAction = QAction(QIcon(":arrow-right.svg"),
@@ -1195,6 +1203,7 @@ class guiWin(QMainWindow):
         for action in self.segmActions:
             action.triggered.connect(self.repeatSegm)
         self.SegmActionRW.triggered.connect(self.randomWalkerSegm)
+        self.postProcessSegmAction.toggled.connect(self.postProcessSegm)
         self.autoSegmAction.toggled.connect(self.autoSegm_cb)
         self.disableTrackingCheckBox.clicked.connect(self.disableTracking)
         self.repeatTrackingAction.triggered.connect(self.repeatTracking)
@@ -2440,7 +2449,10 @@ class guiWin(QMainWindow):
             flood_mask = skimage.segmentation.flood(
                 self.flood_img, (ydata, xdata), tolerance=tol
             )
-            flood_mask = np.logical_and(flood_mask, posData.lab==0)
+            drawUnderMask = np.logical_or(
+                posData.lab==0, posData.lab==posData.brushID
+            )
+            flood_mask = np.logical_and(flood_mask, drawUnderMask)
 
             self.flood_mask[flood_mask] = True
 
@@ -2449,10 +2461,11 @@ class guiWin(QMainWindow):
                     self.flood_mask
                 )
 
-            yy, xx = np.nonzero(self.flood_mask)
-            self.setTempImg1Brush(
-                yy.min(), yy.max(), xx.min(), xx.max(), self.flood_mask
-            )
+            if np.any(self.flood_mask):
+                yy, xx = np.nonzero(self.flood_mask)
+                self.setTempImg1Brush(
+                    yy.min(), yy.max(), xx.min(), xx.max(), self.flood_mask
+                )
 
     def gui_hoverEventImg1(self, event):
         posData = self.data[self.pos_i]
@@ -3197,8 +3210,8 @@ class guiWin(QMainWindow):
                 # Store undo state before modifying stuff
                 self.storeUndoRedoStates(False)
 
-                self.brushID = posData.lab[ydata, xdata]
-                if self.brushID == 0:
+                posData.brushID = posData.lab[ydata, xdata]
+                if posData.brushID == 0:
                     self.setBrushID()
                     self.updateLookuptable(
                         lenNewLut=posData.lab.max()+posData.brushID+1
@@ -3214,22 +3227,28 @@ class guiWin(QMainWindow):
 
                 # NOTE: flood is on mousedrag or release
                 tol = self.wandToleranceSlider.value()
-                self.flood_img = myutils.to_uint8(self.img1.image)
+                self.flood_img = myutils.to_uint8(self.getDisplayedCellsImg())
                 flood_mask = skimage.segmentation.flood(
                     self.flood_img, (ydata, xdata), tolerance=tol
                 )
-                self.flood_mask = np.logical_and(flood_mask, posData.lab==0)
+                bkgrLabMask = posData.lab==0
+
+                drawUnderMask = np.logical_or(
+                    posData.lab==0, posData.lab==posData.brushID
+                )
+                self.flood_mask = np.logical_and(flood_mask, drawUnderMask)
 
                 if self.wandAutoFillCheckbox.isChecked():
                     self.flood_mask = scipy.ndimage.binary_fill_holes(
                         self.flood_mask
                     )
 
-                yy, xx = np.nonzero(self.flood_mask)
-                self.setTempImg1Brush(
-                    yy.min(), yy.max(), xx.min(), xx.max(),
-                    mask=self.flood_mask
-                )
+                if np.any(self.flood_mask):
+                    yy, xx = np.nonzero(self.flood_mask)
+                    self.setTempImg1Brush(
+                        yy.min(), yy.max(), xx.min(), xx.max(),
+                        mask=self.flood_mask
+                    )
                 self.isMouseDragImg1 = True
 
         # Annotate cell cycle division
@@ -4723,6 +4742,7 @@ class guiWin(QMainWindow):
         for action in self.segmActions:
             action.setEnabled(enabled)
         self.SegmActionRW.setEnabled(enabled)
+        self.postProcessSegmAction.setEnabled(enabled)
         self.autoSegmAction.setEnabled(enabled)
         self.editToolBar.setVisible(enabled)
         mode = self.modeComboBox.currentText()
@@ -4859,7 +4879,8 @@ class guiWin(QMainWindow):
             self.redoAction.triggered.connect(self.redo)
             self.drawIDsContComboBox.clear()
             self.drawIDsContComboBox.addItems(
-                                    self.drawIDsContComboBoxCcaItems)
+                self.drawIDsContComboBoxCcaItems
+            )
             self.setEnabledSnapshotMode()
 
     def setEnabledSnapshotMode(self):
@@ -4868,6 +4889,7 @@ class guiWin(QMainWindow):
         for action in self.segmActions:
             action.setDisabled(False)
         self.SegmActionRW.setDisabled(False)
+        self.postProcessSegmAction.setDisabled(False)
         self.autoSegmAction.setDisabled(False)
         self.ccaToolBar.setVisible(True)
         self.editToolBar.setVisible(True)
@@ -4990,6 +5012,7 @@ class guiWin(QMainWindow):
         for button in self.LeftClickButtons:
             if button != sender:
                 button.setChecked(False)
+        self.wandControlsToolbar.setVisible(False)
 
     def connectLeftClickButtons(self):
         self.brushButton.toggled.connect(self.Brush_cb)
@@ -5010,10 +5033,10 @@ class guiWin(QMainWindow):
     def wand_cb(self, checked):
         posData = self.data[self.pos_i]
         if checked:
-            self.wandControlsToolbar.setVisible(True)
             self.disconnectLeftClickButtons()
             self.uncheckLeftClickButtons(self.sender())
             self.connectLeftClickButtons()
+            self.wandControlsToolbar.setVisible(True)
         else:
             self.wandControlsToolbar.setVisible(False)
 
@@ -5878,6 +5901,14 @@ class guiWin(QMainWindow):
         self.randomWalkerWin.show()
         self.randomWalkerWin.setSize()
 
+    def postProcessSegm(self, checked):
+        if checked:
+            self.postProcessSegmWin = apps.postProcessSegmDialog(self)
+            self.postProcessSegmWin.show()
+        else:
+            self.postProcessSegmWin.cancel_cb()
+            self.postProcessSegmWin = None
+
     def repeatSegm(self, model_name=''):
         if not model_name:
             idx = self.segmActions.index(self.sender())
@@ -5925,6 +5956,9 @@ class guiWin(QMainWindow):
 
             self.segment2D_kwargs = win.segment2D_kwargs
             self.minSize = win.minSize
+            self.minSolidity = win.minSize
+            self.maxElongation = win.maxElongation
+
             model = acdcSegment.Model(**win.init_kwargs)
             self.models[idx] = model
         else:
@@ -8657,7 +8691,7 @@ class guiWin(QMainWindow):
         if mask is None:
             brushIDmask = posData.lab == posData.brushID
         else:
-            brushIDmask = mask
+            brushIDmask = np.logical_or(mask, posData.lab==posData.brushID)
         brushOverlay = self.imgRGB.copy()
         alpha = 0.3
         overlay = self.imgRGB[brushIDmask]*(1.0-alpha) + self.brushColor*alpha

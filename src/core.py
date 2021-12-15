@@ -41,6 +41,31 @@ def lab_replace_values(lab, rp, oldIDs, newIDs):
         lab[obj.slice][obj.image] = newIDs[idx]
     return lab
 
+def remove_artefacts(
+        lab, min_solidity=0.5, min_area=15, max_elongation=3,
+        return_delIDs=False
+    ):
+    """
+    function to remove cells with area<min_area or solidity<min_solidity
+    or elongation>max_elongation
+    """
+    rp = skimage.measure.regionprops(lab.astype(int))
+    delIDs = []
+    for obj in rp:
+        elongation = obj.major_axis_length/obj.minor_axis_length
+        doRemove = (
+            obj.area<min_area
+            or obj.solidity<min_solidity
+            or elongation>max_elongation
+        )
+        if doRemove:
+            lab[obj.slice][obj.image] = 0
+            delIDs.append(obj.label)
+    if return_delIDs:
+        return lab, delIDs
+    else:
+        return lab
+
 def align_frames_3D(
         data, slices=None, register=True,
         user_shifts=None, pbar=False):

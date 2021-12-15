@@ -48,7 +48,7 @@ from PyQt5.QtWidgets import (
     QDockWidget
 )
 
-import myutils, load, prompts, widgets
+import myutils, load, prompts, widgets, core
 
 import qrc_resources
 
@@ -2131,6 +2131,96 @@ class nonModalTempQMessage(QWidget):
 
         self.setLayout(layout)
 
+class postProcessSegmDialog(QDialog):
+    def __init__(self, mainWin):
+        super().__init__(mainWin)
+        self.cancel = True
+        self.mainWin = mainWin
+
+        self.setWindowTitle('Post-processing segmentation parameters')
+
+        mainLayout = QVBoxLayout()
+        buttonsLayout = QHBoxLayout()
+
+        artefactsGroupBox = postProcessSegmParams(
+            'Post-processing parameters'
+        )
+
+        self.minSize_SB = artefactsGroupBox.minSize_SB
+        self.minSolidity_DSB = artefactsGroupBox.minSolidity_DSB
+        self.maxElongation_DSB = artefactsGroupBox.maxElongation_DSB
+
+        self.minSize_SB.valueChanged.connect(self.applyPostProcessing)
+        self.minSolidity_DSB.valueChanged.connect(self.applyPostProcessing)
+        self.maxElongation_DSB.valueChanged.connect(self.applyPostProcessing)
+
+        okButton = QPushButton('Ok')
+        cancelButton = QPushButton('Cancel')
+
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(okButton)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.setContentsMargins(0,10,0,0)
+
+        mainLayout.addWidget(artefactsGroupBox)
+        mainLayout.addLayout(buttonsLayout)
+
+        self.setLayout(mainLayout)
+
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.cancel_cb)
+
+        font = QtGui.QFont()
+        font.setPointSize(10)
+        self.setFont(font)
+
+        self.setposData()
+        self.applyPostProcessing(0)
+
+    def setposData(self):
+        if self.mainWin is None:
+            return
+
+        self.mainWin.storeUndoRedoStates(False)
+        self.posData = self.mainWin.data[self.mainWin.pos_i]
+        self.origLab = self.posData.lab.copy()
+
+    def applyPostProcessing(self, value):
+        if self.mainWin is None:
+            return
+
+        minSize = self.minSize_SB.value()
+        minSolidity = self.minSolidity_DSB.value()
+        maxElongation = self.maxElongation_DSB.value()
+
+        self.mainWin.warnEditingWithCca_df('post-processing segmentation mask')
+
+        self.posData.lab, delIDs = core.remove_artefacts(
+            self.origLab.copy(),
+            min_solidity=minSolidity,
+            min_area=minSize,
+            max_elongation=maxElongation,
+            return_delIDs=True
+        )
+
+        self.mainWin.clearItems_IDs(delIDs)
+        self.mainWin.setImageImg2()
+
+    def ok_cb(self):
+        self.cancel = False
+        self.mainWin.store_data()
+        self.mainWin.updateALLimg()
+        self.close()
+
+    def cancel_cb(self):
+        if self.mainWin is not None:
+            self.posData.lab = self.origLab
+            self.mainWin.updateALLimg()
+        self.close()
+
+    def closeEvent(self, event):
+        if self.mainWin is not None:
+            self.mainWin.postProcessSegmAction.setChecked(False)
 
 class CellsSlideshow_GUI(QMainWindow):
     """Main Window."""
@@ -4591,22 +4681,17 @@ class QDialogModelParams(QDialog):
         mainLayout.addWidget(segmentGroupBox)
 
         # Add minimum size spinbox whihc is valid for all models
-        sizeGroupBox = QGroupBox('Remove objects that are smaller than')
-        layout = QHBoxLayout()
-        minSizeLabel = QLabel("Minimum area (pixels): ")
-        layout.addWidget(minSizeLabel)
-        minSize_SB = QSpinBox()
-        minSize_SB.setAlignment(Qt.AlignCenter)
-        minSize_SB.setMinimum(1)
-        minSize_SB.setMaximum(2147483647)
-        minSize_SB.setValue(5)
-        layout.addWidget(minSize_SB)
-        self.minSize_SB = minSize_SB
-        sizeGroupBox.setLayout(layout)
+        artefactsGroupBox = postProcessSegmParams(
+            'Post-processing segmentation parameters'
+        )
+
+        self.minSize_SB = artefactsGroupBox.minSize_SB
+        self.minSolidity_DSB = artefactsGroupBox.minSolidity_DSB
+        self.maxElongation_DSB = artefactsGroupBox.maxElongation_DSB
 
         mainLayout.addSpacing(15)
         mainLayout.addStretch(1)
-        mainLayout.addWidget(sizeGroupBox)
+        mainLayout.addWidget(artefactsGroupBox)
 
         if url is not None:
             mainLayout.addWidget(
@@ -4711,6 +4796,8 @@ class QDialogModelParams(QDialog):
             self.segment2D_argsWidgets
         )
         self.minSize = self.minSize_SB.value()
+        self.minSolidity = self.minSolidity_DSB.value()
+        self.maxElongation = self.maxElongation_DSB.value()
         self.close()
 
 if __name__ == '__main__':

@@ -70,6 +70,8 @@ class segmWorker(QRunnable):
         self.model = mainWin.model
         self.model_name = mainWin.model_name
         self.minSize = mainWin.minSize
+        self.minSolidity = mainWin.minSolidity
+        self.maxElongation = mainWin.maxElongation
         self.save = mainWin.save
         self.segment2D_kwargs = mainWin.segment2D_kwargs
         self.do_tracking = mainWin.do_tracking
@@ -232,9 +234,21 @@ class segmWorker(QRunnable):
             self.signals.progressBar.emit(1)
             # lab_stack = core.smooth_contours(lab_stack, radius=2)
 
-        lab_stack = skimage.morphology.remove_small_objects(
-            lab_stack, min_size=self.minSize
-        )
+        if posData.SizeT > 1:
+            for t, lab in enumerate(lab_stack):
+                lab_stack[t] = core.remove_artefacts(
+                    lab,
+                    min_solidity=self.minSolidity,
+                    min_area=self.minSize,
+                    max_elongation=self.maxElongation
+                )
+        else:
+            lab_stack = core.remove_artefacts(
+                lab_stack,
+                min_solidity=self.minSolidity,
+                min_area=self.minSize,
+                max_elongation=self.maxElongation
+            )
 
         if posData.SizeT > 1 and self.do_tracking:
             # self.signals.progress.emit('Tracking cells...')
@@ -472,6 +486,8 @@ class segmWin(QMainWindow):
 
         self.segment2D_kwargs = win.segment2D_kwargs
         self.minSize = win.minSize
+        self.minSolidity = win.minSolidity
+        self.maxElongation = win.maxElongation
 
         # Initialize model
         self.model = acdcSegment.Model(**win.init_kwargs)
