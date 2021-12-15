@@ -6672,6 +6672,14 @@ class guiWin(QMainWindow):
             self.z_label.setStyleSheet('color: gray')
             self.updateALLimg(only_ax1=True)
 
+    def clearItems_IDs(self, IDs_to_clear):
+        for ID in IDs_to_clear:
+            self.ax1_ContoursCurves[ID-1].setData([], [])
+            self.ax2_ContoursCurves[ID-1].setData([], [])
+            self.ax1_LabelItemsIDs[ID-1].setText('')
+            self.ax2_LabelItemsIDs[ID-1].setText('')
+            self.ax1_BudMothLines[ID-1].setData([], [])
+
     def clearAllItems(self):
         allItems = zip(
             self.ax1_ContoursCurves,
