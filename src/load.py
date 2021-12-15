@@ -962,10 +962,12 @@ class select_exp_folder:
                     if filename.find('cc_stage.csv') != -1:
                         cc_stage_found = True
                         cc_stage_path = f'{images_path}/{filename}'
-                        cca_df = pd.read_csv(cc_stage_path,
-                                             index_col=['frame_i', 'Cell_ID'])
-                        last_analyzed_frame_i = (cca_df.index.
-                                                      get_level_values(0).max())
+                        cca_df = pd.read_csv(
+                            cc_stage_path, index_col=['frame_i', 'Cell_ID']
+                        )
+                        last_analyzed_frame_i = (
+                            cca_df.index.get_level_values(0).max()
+                        )
                 if cc_stage_found:
                     values.append(f'{pos} (Last analyzed frame: '
                                   f'{last_analyzed_frame_i})')

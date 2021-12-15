@@ -32,6 +32,7 @@ import numpy as np
 import pandas as pd
 import scipy.optimize
 import scipy.interpolate
+import scipy.ndimage
 import skimage
 import skimage.io
 import skimage.measure
@@ -58,7 +59,7 @@ from PyQt5.QtWidgets import (
     QComboBox, QDial, QButtonGroup, QActionGroup,
     QShortcut, QFileDialog, QDoubleSpinBox,
     QAbstractSlider, QMessageBox, QWidget,
-    QDockWidget, QGridLayout
+    QDockWidget, QGridLayout, QSizePolicy
 )
 
 from pyqtgraph.Qt import QtGui
@@ -799,6 +800,19 @@ class guiWin(QMainWindow):
         self.checkableButtons.append(self.hullContToolButton)
         self.checkableQButtonsGroup.addButton(self.hullContToolButton)
 
+        # self.fillHolesToolButton = QToolButton(self)
+        # self.fillHolesToolButton.setIcon(QIcon(":fill_holes.svg"))
+        # self.fillHolesToolButton.setCheckable(True)
+        # self.fillHolesToolButton.setShortcut('f')
+        # self.fillHolesToolButton.setToolTip(
+        #     'Toggle "Hull contour" ON/OFF\n\n'
+        #     'ACTION: right-click on a cell to replace it with its hull contour.\n'
+        #     'Use it to fill cracks and holes.\n\n'
+        #     'SHORTCUT: "F" key')
+        # editToolBar.addWidget(self.fillHolesToolButton)
+        # self.checkableButtons.append(self.fillHolesToolButton)
+        # self.checkableQButtonsGroup.addButton(self.fillHolesToolButton)
+
         self.editID_Button = QToolButton(self)
         self.editID_Button.setIcon(QIcon(":edit-id.svg"))
         self.editID_Button.setCheckable(True)
@@ -940,15 +954,25 @@ class guiWin(QMainWindow):
     def gui_createControlsToolbar(self):
         self.addToolBarBreak()
 
-        self.controlsToolBar = QToolBar("Controls", self)
+        self.wandControlsToolbar = QToolBar("Controls", self)
         self.wandToleranceSlider = widgets.sliderWithSpinBox(
             title='Tolerance', title_loc='in_line')
         self.wandToleranceSlider.setValue(5)
-        self.wandToleranceSlider.layout.setColumnStretch(3, 28)
-        self.controlsToolBar.addWidget(self.wandToleranceSlider)
 
-        self.addToolBar(Qt.TopToolBarArea , self.controlsToolBar)
-        self.controlsToolBar.setVisible(False)
+        self.wandAutoFillCheckbox = QCheckBox('Auto-fill holes')
+
+        col = 3
+        self.wandToleranceSlider.layout.addWidget(
+            self.wandAutoFillCheckbox, 0, col
+        )
+
+        col += 1
+        self.wandToleranceSlider.layout.setColumnStretch(col, 21)
+
+        self.wandControlsToolbar.addWidget(self.wandToleranceSlider)
+
+        self.addToolBar(Qt.TopToolBarArea , self.wandControlsToolbar)
+        self.wandControlsToolbar.setVisible(False)
 
     def gui_populateToolSettingsMenu(self):
         for button in self.checkableQButtonsGroup.buttons():
@@ -2330,7 +2354,7 @@ class guiWin(QMainWindow):
                 # Apply brush mask
                 posData.lab[mask] = posData.brushID
                 self.setImageImg2()
-                self.setTempImg1Brush(ymin, ymax, xmin, xmax, mask)
+                self.setTempImg1Brush(ymin, ymax, xmin, xmax)
 
         # Eraser dragging mouse --> keep erasing
         elif self.isMouseDragImg1 and self.eraserButton.isChecked():
@@ -2378,9 +2402,24 @@ class guiWin(QMainWindow):
 
         # Wand dragging mouse --> keep doing the magic
         elif self.isMouseDragImg1 and self.wandToolButton.isChecked():
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(x), int(y)
             tol = self.wandToleranceSlider.value()
             flood_mask = skimage.segmentation.flood(
                 self.flood_img, (ydata, xdata), tolerance=tol
+            )
+            flood_mask = np.logical_and(flood_mask, posData.lab==0)
+
+            self.flood_mask[flood_mask] = True
+
+            if self.wandAutoFillCheckbox.isChecked():
+                self.flood_mask = scipy.ndimage.binary_fill_holes(
+                    self.flood_mask
+                )
+
+            yy, xx = np.nonzero(self.flood_mask)
+            self.setTempImg1Brush(
+                yy.min(), yy.max(), xx.min(), xx.max(), self.flood_mask
             )
 
     def gui_hoverEventImg1(self, event):
@@ -2749,8 +2788,12 @@ class guiWin(QMainWindow):
             self.updateALLimg()
             self.warnEditingWithCca_df('Add new ID with brush tool')
 
+        # Wand tool release, add new object
         elif self.isMouseDragImg1 and self.wandToolButton.isChecked():
             self.isMouseDragImg1 = False
+
+            posData = self.data[self.pos_i]
+            posData.lab[self.flood_mask] = posData.brushID
 
             # Update data (rp, etc)
             self.update_rp()
@@ -2982,9 +3025,6 @@ class guiWin(QMainWindow):
                 self.setImageImg2()
                 self.brushColor = self.img2.lut[posData.brushID]/255
 
-                rgb_shape = (posData.lab.shape[0], posData.lab.shape[1], 3)
-                self.whiteRGB = np.array([1.0,1.0,1.0])
-
                 img = self.img1.image.copy()
                 img = img/img.max()
                 if self.overlayButton.isChecked():
@@ -2992,7 +3032,7 @@ class guiWin(QMainWindow):
                 else:
                     self.imgRGB = gray2rgb(img)
 
-                self.setTempImg1Brush(ymin, ymax, xmin, xmax, mask)
+                self.setTempImg1Brush(ymin, ymax, xmin, xmax)
 
         elif left_click and canErase:
             x, y = event.pos().x(), event.pos().y()
@@ -3125,10 +3165,39 @@ class guiWin(QMainWindow):
                 # Store undo state before modifying stuff
                 self.storeUndoRedoStates(False)
 
+                self.brushID = posData.lab[ydata, xdata]
+                if self.brushID == 0:
+                    self.setBrushID()
+                    self.updateLookuptable(
+                        lenNewLut=posData.lab.max()+posData.brushID+1
+                    )
+                self.brushColor = self.img2.lut[posData.brushID]/255
+
+                img = self.img1.image.copy()
+                img = img/img.max()
+                if self.overlayButton.isChecked():
+                    self.imgRGB = img/img.max()
+                else:
+                    self.imgRGB = gray2rgb(img)
+
                 # NOTE: flood is on mousedrag or release
+                tol = self.wandToleranceSlider.value()
                 self.flood_img = myutils.to_uint8(self.img1.image)
-                self.flood_mask = np.zeros(self.flood_img.shape, bool)
-                self.yWandPress, self.xWandPress = xdata, ydata
+                flood_mask = skimage.segmentation.flood(
+                    self.flood_img, (ydata, xdata), tolerance=tol
+                )
+                self.flood_mask = np.logical_and(flood_mask, posData.lab==0)
+
+                if self.wandAutoFillCheckbox.isChecked():
+                    self.flood_mask = scipy.ndimage.binary_fill_holes(
+                        self.flood_mask
+                    )
+
+                yy, xx = np.nonzero(self.flood_mask)
+                self.setTempImg1Brush(
+                    yy.min(), yy.max(), xx.min(), xx.max(),
+                    mask=self.flood_mask
+                )
                 self.isMouseDragImg1 = True
 
         # Annotate cell cycle division
@@ -3582,8 +3651,7 @@ class guiWin(QMainWindow):
                     'emerg_frame_i': i+1,
                     'division_frame_i': -1,
                     'is_history_known': True,
-                    'corrected_assignment': False,
-                    'auto_division_accepted': 'no'
+                    'corrected_assignment': False
                 })
                 return cca_df_ID
 
@@ -3959,8 +4027,7 @@ class guiWin(QMainWindow):
                         'emerg_frame_i': i+1,
                         'division_frame_i': -1,
                         'is_history_known': True,
-                        'corrected_assignment': False,
-                        'auto_division_accepted': 'no'
+                        'corrected_assignment': False
                     })
 
     def assignBudMoth(self):
@@ -4911,12 +4978,12 @@ class guiWin(QMainWindow):
     def wand_cb(self, checked):
         posData = self.data[self.pos_i]
         if checked:
-            self.controlsToolBar.setVisible(True)
+            self.wandControlsToolbar.setVisible(True)
             self.disconnectLeftClickButtons()
             self.uncheckLeftClickButtons(self.sender())
             self.connectLeftClickButtons()
         else:
-            self.controlsToolBar.setVisible(False)
+            self.wandControlsToolbar.setVisible(False)
 
     def restoreHoveredID(self):
         posData = self.data[self.pos_i]
@@ -5164,14 +5231,23 @@ class guiWin(QMainWindow):
             posData = self.data[self.pos_i]
         except AttributeError:
             return
-        isBrushActive = (self.brushButton.isChecked()
-                      or self.eraserButton.isChecked())
-        if ev.key() == Qt.Key_Up and isBrushActive:
-            self.brushSizeSpinbox.setValue(self.brushSizeSpinbox.value()+1)
+        isBrushActive = (
+            self.brushButton.isChecked() or self.eraserButton.isChecked()
+        )
+        if ev.key() == Qt.Key_Up:
+            if isBrushActive:
+                self.brushSizeSpinbox.setValue(self.brushSizeSpinbox.value()+1)
+            elif self.wandToolButton.isChecked():
+                val = self.wandToleranceSlider.value()
+                self.wandToleranceSlider.setValue(val+1)
         elif ev.key() == Qt.Key_Control:
             self.isCtrlDown = True
-        elif ev.key() == Qt.Key_Down and isBrushActive:
-            self.brushSizeSpinbox.setValue(self.brushSizeSpinbox.value()-1)
+        elif ev.key() == Qt.Key_Down:
+            if isBrushActive:
+                self.brushSizeSpinbox.setValue(self.brushSizeSpinbox.value()-1)
+            elif self.wandToolButton.isChecked():
+                val = self.wandToleranceSlider.value()
+                self.wandToleranceSlider.setValue(val-1)
         elif ev.key() == Qt.Key_Escape:
             self.setUncheckedAllButtons()
         elif ev.modifiers() == Qt.AltModifier:
@@ -6612,14 +6688,23 @@ class guiWin(QMainWindow):
             'emerg_frame_i',
             'division_frame_i',
             'is_history_known',
-            'corrected_assignment',
-            'auto_division_accepted'
+            'corrected_assignment'
+        ]
+        self.cca_df_dtypes = [
+            str, int, int, str, int, int, bool, bool
+        ]
+        self.cca_df_default_values = [
+            'G1', 2, -1, 'mother', -1, -1, False, False
         ]
         self.cca_df_int_cols = [
             'generation_num',
             'relative_ID',
             'emerg_frame_i',
             'division_frame_i'
+        ]
+        self.cca_df_bool_col = [
+            'is_history_known',
+            'corrected_assignment'
         ]
 
     def initPosAttr(self, max_ID=10):
@@ -6980,7 +7065,6 @@ class guiWin(QMainWindow):
             if ccs != 'S':
                 continue
 
-            already_accepted = ccSeries.auto_division_accepted == 'yes'
             relID = ccSeries.relative_ID
             # Check is relID is gone while ID stays
             if relID not in posData.IDs and ID in posData.IDs:
@@ -7199,8 +7283,7 @@ class guiWin(QMainWindow):
                         'emerg_frame_i': -1,
                         'division_frame_i': -1,
                         'is_history_known': False,
-                        'corrected_assignment': False,
-                        'auto_division_accepted': 'no'
+                        'corrected_assignment': False
                     })
                     cca_df_ID = self.getStatusKnownHistoryBud(ID)
                     posData.ccaStatus_whenEmerged[ID] = cca_df_ID
@@ -7257,8 +7340,7 @@ class guiWin(QMainWindow):
                 'emerg_frame_i': posData.frame_i,
                 'division_frame_i': -1,
                 'is_history_known': True,
-                'corrected_assignment': False,
-                'auto_division_accepted': 'no'
+                'corrected_assignment': False
             })
 
 
@@ -7346,8 +7428,6 @@ class guiWin(QMainWindow):
                                 df['is_history_known'] = True
                             if 'corrected_assignment' not in df.columns:
                                 df['corrected_assignment'] = True
-                            if 'auto_division_accepted' not in df.columns:
-                                df['auto_division_accepted'] = 'no'
                             df = df.drop(labels=self.cca_df_colnames, axis=1)
                         else:
                             # Convert to ints since there were NaN
@@ -7413,16 +7493,19 @@ class guiWin(QMainWindow):
             # When calling update_cca_df_deletedIDs we add relative IDs
             # but they could be -1 for cells in G1
             return
-        posData.cca_df.loc[ID] = pd.Series({
-            'cell_cycle_stage': 'G1',
-            'generation_num': 2,
-            'relative_ID': -1,
-            'relationship': 'mother',
-            'emerg_frame_i': -1,
-            'division_frame_i': -1,
-            'is_history_known': False,
-            'corrected_assignment': False
-        })
+
+        _zip = zip(
+            self.cca_df_colnames,
+            self.cca_df_default_values,
+        )
+        if posData.cca_df.empty:
+            posData.cca_df = pd.DataFrame(
+                {col: val for col, val in _zip},
+                index=[ID]
+            )
+        else:
+            for col, val in _zip:
+                posData.cca_df.at[ID, col] = val
         self.store_cca_df()
 
     def getBaseCca_df(self):
@@ -7444,8 +7527,8 @@ class guiWin(QMainWindow):
             'emerg_frame_i': emerg_frame_i,
             'division_frame_i': division_frame_i,
             'is_history_known': is_history_known,
-            'corrected_assignment': corrected_assignment,
-            'auto_division_accepted': ['no']*len(IDs)},
+            'corrected_assignment': corrected_assignment
+            },
             index=IDs
         )
         cca_df.index.name = 'Cell_ID'
@@ -7640,9 +7723,6 @@ class guiWin(QMainWindow):
                 if 'corrected_assignment' not in df.columns:
                     # Compatibility with those acdc_df analysed with prev vers.
                     df['corrected_assignment'] = True
-                if 'auto_division_accepted' not in df.columns:
-                    # Compatibility with those acdc_df analysed with prev vers.
-                    df['auto_division_accepted'] = 'no'
                 cca_df = df[self.cca_df_colnames].copy()
         if cca_df is None and self.isSnapshot:
             cca_df = self.getBaseCca_df()
@@ -7702,9 +7782,9 @@ class guiWin(QMainWindow):
             df_ID = df.loc[ID]
             ccs = df_ID['cell_cycle_stage']
             relationship = df_ID['relationship']
-            generation_num = df_ID['generation_num']
+            generation_num = int(df_ID['generation_num'])
             generation_num = 'ND' if generation_num==-1 else generation_num
-            emerg_frame_i = df_ID['emerg_frame_i']
+            emerg_frame_i = int(df_ID['emerg_frame_i'])
             is_history_known = df_ID['is_history_known']
             is_bud = relationship == 'bud'
             is_moth = relationship == 'mother'
@@ -7955,9 +8035,10 @@ class guiWin(QMainWindow):
             posData.multiContIDs = set()
         self.titleLabel.setText(htmlTxt)
 
-    def updateLookuptable(self):
+    def updateLookuptable(self, lenNewLut=None):
         posData = self.data[self.pos_i]
-        lenNewLut = posData.lab.max()+1
+        if lenNewLut is None:
+            lenNewLut = posData.lab.max()+1
         # Build a new lut to include IDs > than original len of lut
         if lenNewLut > len(posData.lut):
             numNewColors = lenNewLut-len(posData.lut)
@@ -8539,9 +8620,12 @@ class guiWin(QMainWindow):
         self.img2.setImage(DelROIlab)
         self.updateLookuptable()
 
-    def setTempImg1Brush(self, ymin, ymax, xmin, xmax, mask):
+    def setTempImg1Brush(self, ymin, ymax, xmin, xmax, mask=None):
         posData = self.data[self.pos_i]
-        brushIDmask = posData.lab==posData.brushID
+        if mask is None:
+            brushIDmask = posData.lab == posData.brushID
+        else:
+            brushIDmask = mask
         brushOverlay = self.imgRGB.copy()
         alpha = 0.3
         overlay = self.imgRGB[brushIDmask]*(1.0-alpha) + self.brushColor*alpha
