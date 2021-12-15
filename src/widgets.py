@@ -104,6 +104,20 @@ if __name__ == '__main__':
 
             self.setFocus()
 
+        def keyPressEvent(self, event):
+            if event.key() == Qt.Key_T:
+                screens = app.screens()
+                current_screen = self.screen()
+                num_screens = len(screens)
+                if num_screens > 1:
+                    other_screen = None
+                    for screen in screens:
+                        if screen != current_screen:
+                            other_screen = screen
+                            break
+                    print(f'Current screen geometry = {current_screen.geometry()}')
+                    print(f'Other screen geometry = {other_screen.geometry()}')
+
 
 
     app = QApplication(sys.argv)

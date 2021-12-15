@@ -2376,6 +2376,13 @@ class guiWin(QMainWindow):
                 cont = self.getObjContours(obj)
                 curveID.setData(cont[:,0], cont[:,1], pen=self.oldIDs_cpen)
 
+        # Wand dragging mouse --> keep doing the magic
+        elif self.isMouseDragImg1 and self.wandToolButton.isChecked():
+            tol = self.wandToleranceSlider.value()
+            flood_mask = skimage.segmentation.flood(
+                self.flood_img, (ydata, xdata), tolerance=tol
+            )
+
     def gui_hoverEventImg1(self, event):
         posData = self.data[self.pos_i]
         # Update x, y, value label bottom right
@@ -2745,10 +2752,15 @@ class guiWin(QMainWindow):
         elif self.isMouseDragImg1 and self.wandToolButton.isChecked():
             self.isMouseDragImg1 = False
 
-            tol = self.wandToleranceSlider.value()
-            flood_mask = skimage.segmentation.flood(
-                self.flood_img, (ydata, xdata), tolerance=tol
-            )
+            # Update data (rp, etc)
+            self.update_rp()
+
+            # Repeat tracking
+            self.tracking(enforce=True)
+
+            # Update colors to include a new color for the new ID
+            self.updateALLimg()
+            self.warnEditingWithCca_df('Add new ID with magic-wand')
 
         # Assign mother to bud
         elif self.assignBudMothButton.isChecked() and self.clickedOnBud:
@@ -3115,6 +3127,7 @@ class guiWin(QMainWindow):
 
                 # NOTE: flood is on mousedrag or release
                 self.flood_img = myutils.to_uint8(self.img1.image)
+                self.flood_mask = np.zeros(self.flood_img.shape, bool)
                 self.yWandPress, self.xWandPress = xdata, ydata
                 self.isMouseDragImg1 = True
 
@@ -3240,21 +3253,26 @@ class guiWin(QMainWindow):
         self.df_settings.to_csv(self.settings_csv_path)
 
     def determineSlideshowWinPos(self):
-        self.num_screens = len(self.app.screens())
+        screens = app.screens()
+        self.numScreens = len(screens)
+        winScreen = self.screen()
 
         # Center main window and determine location of slideshow window
         # depending on number of screens available
-        if self.num_screens > 1:
-            screen1 = self.app.screens()[0]
-            screen2 = self.app.screens()[1]
-            screen2Center = screen2.size().width()/2
-            screen2Left = screen1.size().width()
-            self.slideshowWinLeft = int(screen2Left+screen2Center-850/2)
-            self.slideshowWinTop = int(screen1.size().height()/2 - 800/2)
-        else:
-            screen1 = self.app.screens()[0]
-            self.slideshowWinLeft = int(screen1.size().width()-850)
-            self.slideshowWinTop = int(screen1.size().height()/2 - 800/2)
+        if self.numScreens > 1:
+            for screen in screens:
+                if screen != winScreen:
+                    winScreen = screen
+                    break
+
+        winScreenGeom = winScreen.geometry()
+        winScreenCenter = winScreenGeom.center()
+        winScreenCenterX = winScreenCenter.x()
+        winScreenCenterY = winScreenCenter.y()
+        winScreenLeft = winScreenGeom.left()
+        winScreenTop = winScreenGeom.top()
+        self.slideshowWinLeft = winScreenCenterX - int(850/2)
+        self.slideshowWinTop = winScreenCenterY - int(800/2)
 
     def segmMenuOpened(self):
         mode = str(self.modeComboBox.currentText())
@@ -4782,11 +4800,11 @@ class guiWin(QMainWindow):
             self.slideshowWin = apps.CellsSlideshow_GUI(
                 parent=self,
                 button_toUncheck=self.slideshowButton,
-                Left=self.slideshowWinLeft,
-                Top=self.slideshowWinTop
             )
             self.slideshowWin.update_img()
-            self.slideshowWin.show()
+            self.slideshowWin.show(
+                left=self.slideshowWinLeft, top=self.slideshowWinTop
+            )
         else:
             self.slideshowWin.close()
             self.slideshowWin = None
@@ -5216,7 +5234,8 @@ class guiWin(QMainWindow):
                     self.ccaTableWin.activateWindow()
                     self.ccaTableWin.updateTable(posData.cca_df)
         elif ev.key() == Qt.Key_T:
-            pass
+            self.determineSlideshowWinPos()
+            print(self.slideshowWinLeft, self.slideshowWinTop)
             # posData = self.data[self.pos_i]
             # print(posData.allData_li[0]['acdc_df'])
             # # self.hist.sigLookupTableChanged.disconnect()

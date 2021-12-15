@@ -2135,15 +2135,16 @@ class nonModalTempQMessage(QWidget):
 class CellsSlideshow_GUI(QMainWindow):
     """Main Window."""
 
-    def __init__(self, parent=None, posData=None, button_toUncheck=None,
-                       Left=50, Top=50, spinBox=None):
+    def __init__(
+            self, parent=None, posData=None, button_toUncheck=None,
+            spinBox=None
+        ):
         self.button_toUncheck = button_toUncheck
         self.parent = parent
         self.posData = posData
         self.spinBox = spinBox
         """Initializer."""
         super().__init__(parent)
-        self.setGeometry(Left, Top, 850, 800)
 
         self.gui_createActions()
         self.gui_createMenuBar()
@@ -2388,6 +2389,11 @@ class CellsSlideshow_GUI(QMainWindow):
     def closeEvent(self, event):
         if self.button_toUncheck is not None:
             self.button_toUncheck.setChecked(False)
+
+    def show(self, left=None, top=None):
+        QMainWindow.show(self)
+        if left is not None and top is not None:
+            self.setGeometry(left, top, 850, 800)
 
 class cellpose_ParamsDialog(QDialog):
     def __init__(self, parent=None):
