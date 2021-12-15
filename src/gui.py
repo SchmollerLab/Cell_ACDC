@@ -2742,6 +2742,14 @@ class guiWin(QMainWindow):
             self.updateALLimg()
             self.warnEditingWithCca_df('Add new ID with brush tool')
 
+        elif self.isMouseDragImg1 and self.wandToolButton.isChecked():
+            self.isMouseDragImg1 = False
+
+            tol = self.wandToleranceSlider.value()
+            flood_mask = skimage.segmentation.flood(
+                self.flood_img, (ydata, xdata), tolerance=tol
+            )
+
         # Assign mother to bud
         elif self.assignBudMothButton.isChecked() and self.clickedOnBud:
             x, y = event.pos().x(), event.pos().y()
@@ -3104,17 +3112,10 @@ class guiWin(QMainWindow):
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                 # Store undo state before modifying stuff
                 self.storeUndoRedoStates(False)
+
+                # NOTE: flood is on mousedrag or release
                 self.flood_img = myutils.to_uint8(self.img1.image)
-                tol = self.wandToleranceSlider.value()
-                flood_mask = skimage.segmentation.flood(
-                    self.flood_img, (ydata, xdata), tolerance=tol
-                )
-                # print(ydata, xdata)
-                # print(tol, self.flood_img.max(), self.flood_img.dtype)
-                apps.imshow_tk(self.flood_img, additional_imgs=[flood_mask])
-
                 self.yWandPress, self.xWandPress = xdata, ydata
-
                 self.isMouseDragImg1 = True
 
         # Annotate cell cycle division
@@ -3563,7 +3564,8 @@ class guiWin(QMainWindow):
                     'emerg_frame_i': i+1,
                     'division_frame_i': -1,
                     'is_history_known': True,
-                    'corrected_assignment': False
+                    'corrected_assignment': False,
+                    'auto_division_accepted': 'no'
                 })
                 return cca_df_ID
 
@@ -3667,7 +3669,7 @@ class guiWin(QMainWindow):
                     cca_df_i.loc[relID] = relID_cca
                 self.store_cca_df(frame_i=i, cca_df=cca_df_i)
 
-    def annotateDivision(self, cca_df, ID, relID, ccs_relID):
+    def annotateDivision(self, cca_df, ID, relID):
         # Correct as follows:
         # If S then assign to G1 and +1 on generation number
         posData = self.data[self.pos_i]
@@ -3687,7 +3689,7 @@ class guiWin(QMainWindow):
         store = True
         return store
 
-    def undoDivisionAnnotation(self, cca_df, ID, relID, ccs_relID):
+    def undoDivisionAnnotation(self, cca_df, ID, relID):
         # Correct as follows:
         # If G1 then correct to S and -1 on generation number
         store = False
@@ -3771,12 +3773,10 @@ class guiWin(QMainWindow):
 
         ccs_relID = posData.cca_df.at[relID, 'cell_cycle_stage']
         if clicked_ccs == 'S':
-            store = self.annotateDivision(
-                                posData.cca_df, ID, relID, ccs_relID)
+            store = self.annotateDivision(posData.cca_df, ID, relID)
             self.store_cca_df()
         else:
-            store = self.undoDivisionAnnotation(
-                                posData.cca_df, ID, relID, ccs_relID)
+            store = self.undoDivisionAnnotation(posData.cca_df, ID, relID)
             self.store_cca_df()
 
         obj_idx = posData.IDs.index(ID)
@@ -3812,18 +3812,17 @@ class guiWin(QMainWindow):
                     if ccs == 'G1':
                         # Cell is in G1 in the future again so stop annotating
                         break
-                    self.annotateDivision(cca_df_i, ID, relID, ccs_relID)
+                    self.annotateDivision(cca_df_i, ID, relID)
                     self.store_cca_df(frame_i=i, cca_df=cca_df_i)
                 else:
                     if ccs == 'S':
                         # Cell is in S in the future again so stop undoing (break)
                         # also leave a 1 frame duration G1 to avoid a continuous
                         # S phase
-                        self.annotateDivision(cca_df_i, ID, relID, ccs_relID)
+                        self.annotateDivision(cca_df_i, ID, relID)
                         self.store_cca_df(frame_i=i, cca_df=cca_df_i)
                         break
-                    store = self.undoDivisionAnnotation(
-                                        cca_df_i, ID, relID, ccs_relID)
+                    store = self.undoDivisionAnnotation(cca_df_i, ID, relID)
                     self.store_cca_df(frame_i=i, cca_df=cca_df_i)
 
         # Correct past frames
@@ -3841,8 +3840,7 @@ class guiWin(QMainWindow):
                 # We correct only those frames in which the ID was in 'G1'
                 break
             else:
-                store = self.undoDivisionAnnotation(
-                                       cca_df_i, ID, relID, ccs_relID)
+                store = self.undoDivisionAnnotation(cca_df_i, ID, relID)
                 self.store_cca_df(frame_i=i, cca_df=cca_df_i)
 
     def checkMothEligibility(self, budID, new_mothID):
@@ -3943,7 +3941,8 @@ class guiWin(QMainWindow):
                         'emerg_frame_i': i+1,
                         'division_frame_i': -1,
                         'is_history_known': True,
-                        'corrected_assignment': False
+                        'corrected_assignment': False,
+                        'auto_division_accepted': 'no'
                     })
 
     def assignBudMoth(self):
@@ -6594,12 +6593,15 @@ class guiWin(QMainWindow):
             'emerg_frame_i',
             'division_frame_i',
             'is_history_known',
-            'corrected_assignment'
+            'corrected_assignment',
+            'auto_division_accepted'
         ]
-        self.cca_df_int_cols = ['generation_num',
-                                'relative_ID',
-                                'emerg_frame_i',
-                                'division_frame_i']
+        self.cca_df_int_cols = [
+            'generation_num',
+            'relative_ID',
+            'emerg_frame_i',
+            'division_frame_i'
+        ]
 
     def initPosAttr(self, max_ID=10):
         for p, posData in enumerate(self.data):
@@ -6906,7 +6908,7 @@ class guiWin(QMainWindow):
             previous frame and the divided bud or mother will be
             washed away.<br><br>
             If you decide to continue these cells will be <b>automatically
-            annotated as divided at frame number {frame_i+1}</b>.<br><br>
+            annotated as divided at frame number {frame_i}</b>.<br><br>
             Do you want to continue?
         </p>
         """)
@@ -6959,7 +6961,9 @@ class guiWin(QMainWindow):
             if ccs != 'S':
                 continue
 
+            already_accepted = ccSeries.auto_division_accepted == 'yes'
             relID = ccSeries.relative_ID
+            # Check is relID is gone while ID stays
             if relID not in posData.IDs and ID in posData.IDs:
                 ScellsIDsGone.append(relID)
 
@@ -6977,20 +6981,12 @@ class guiWin(QMainWindow):
         if not proceed:
             return True, automaticallyDividedIDs
 
-
         for IDgone in ScellsIDsGone:
             relID = prev_cca_df.at[IDgone, 'relative_ID']
-            posData.cca_df.at[relID, 'cell_cycle_stage'] = 'G1'
-            gen_num_relID = posData.cca_df.at[relID, 'generation_num']
-            posData.cca_df.at[relID, 'generation_num'] = gen_num_relID+1
-            posData.cca_df.at[relID, 'division_frame_i'] = posData.frame_i
-            posData.cca_df.at[relID, 'relationship'] = 'mother'
+            self.annotateDivision(prev_cca_df, IDgone, relID)
             automaticallyDividedIDs.append(relID)
 
-        try:
-            posData.cca_df = posData.cca_df.drop(index=ScellsIDsGone)
-        except KeyError:
-            pass
+        self.store_cca_df(frame_i=posData.frame_i-1, cca_df=prev_cca_df)
 
         return False, automaticallyDividedIDs
 
@@ -7114,20 +7110,21 @@ class guiWin(QMainWindow):
                 if ID not in correctedAssignIDs
             ]
 
-        # Get previous dataframe
-        acdc_df = posData.allData_li[posData.frame_i-1]['acdc_df']
-        prev_cca_df = acdc_df[self.cca_df_colnames].copy()
-        if posData.cca_df is None:
-            posData.cca_df = prev_cca_df
-        else:
-            posData.cca_df = curr_df[self.cca_df_colnames].copy()
-
         # Check if there are some S cells that disappeared
         abort, automaticallyDividedIDs = self.checkScellsGone()
         if abort:
             notEnoughG1Cells = False
             proceed = False
             return notEnoughG1Cells, proceed
+
+        # Get previous dataframe
+        acdc_df = posData.allData_li[posData.frame_i-1]['acdc_df']
+        prev_cca_df = acdc_df[self.cca_df_colnames].copy()
+
+        if posData.cca_df is None:
+            posData.cca_df = prev_cca_df
+        else:
+            posData.cca_df = curr_df[self.cca_df_colnames].copy()
 
         # If there are no new IDs we are done
         if not posData.new_IDs:
@@ -7145,10 +7142,6 @@ class guiWin(QMainWindow):
             # at current frame
             df_G1 = posData.cca_df[posData.cca_df['cell_cycle_stage']=='G1']
             IDsCellsG1.update(df_G1.index)
-
-        # Add to cells in G1 those IDs automatically divided in
-        # self.checkScellsGone
-        IDsCellsG1.update(automaticallyDividedIDs)
 
         # remove cells that disappeared
         IDsCellsG1 = [ID for ID in IDsCellsG1 if ID in posData.IDs]
@@ -7187,7 +7180,8 @@ class guiWin(QMainWindow):
                         'emerg_frame_i': -1,
                         'division_frame_i': -1,
                         'is_history_known': False,
-                        'corrected_assignment': False
+                        'corrected_assignment': False,
+                        'auto_division_accepted': 'no'
                     })
                     cca_df_ID = self.getStatusKnownHistoryBud(ID)
                     posData.ccaStatus_whenEmerged[ID] = cca_df_ID
@@ -7244,7 +7238,8 @@ class guiWin(QMainWindow):
                 'emerg_frame_i': posData.frame_i,
                 'division_frame_i': -1,
                 'is_history_known': True,
-                'corrected_assignment': False
+                'corrected_assignment': False,
+                'auto_division_accepted': 'no'
             })
 
 
@@ -7332,6 +7327,8 @@ class guiWin(QMainWindow):
                                 df['is_history_known'] = True
                             if 'corrected_assignment' not in df.columns:
                                 df['corrected_assignment'] = True
+                            if 'auto_division_accepted' not in df.columns:
+                                df['auto_division_accepted'] = 'no'
                             df = df.drop(labels=self.cca_df_colnames, axis=1)
                         else:
                             # Convert to ints since there were NaN
@@ -7421,15 +7418,17 @@ class guiWin(QMainWindow):
         is_history_known = [False]*len(IDs)
         corrected_assignment = [False]*len(IDs)
         cca_df = pd.DataFrame({
-                           'cell_cycle_stage': cc_stage,
-                           'generation_num': num_cycles,
-                           'relative_ID': related_to,
-                           'relationship': relationship,
-                           'emerg_frame_i': emerg_frame_i,
-                           'division_frame_i': division_frame_i,
-                           'is_history_known': is_history_known,
-                           'corrected_assignment': corrected_assignment},
-                            index=IDs)
+            'cell_cycle_stage': cc_stage,
+            'generation_num': num_cycles,
+            'relative_ID': related_to,
+            'relationship': relationship,
+            'emerg_frame_i': emerg_frame_i,
+            'division_frame_i': division_frame_i,
+            'is_history_known': is_history_known,
+            'corrected_assignment': corrected_assignment,
+            'auto_division_accepted': ['no']*len(IDs)},
+            index=IDs
+        )
         cca_df.index.name = 'Cell_ID'
         return cca_df
 
@@ -7622,6 +7621,9 @@ class guiWin(QMainWindow):
                 if 'corrected_assignment' not in df.columns:
                     # Compatibility with those acdc_df analysed with prev vers.
                     df['corrected_assignment'] = True
+                if 'auto_division_accepted' not in df.columns:
+                    # Compatibility with those acdc_df analysed with prev vers.
+                    df['auto_division_accepted'] = 'no'
                 cca_df = df[self.cca_df_colnames].copy()
         if cca_df is None and self.isSnapshot:
             cca_df = self.getBaseCca_df()
@@ -9414,24 +9416,22 @@ class guiWin(QMainWindow):
                     self.openAction.setEnabled(True)
                     return
 
-                select_folder.QtPrompt(self, values, allow_abort=False)
-                if select_folder.was_aborted:
-                    self.titleLabel.setText(
-                        'Drag and drop image file or go to File --> Open folder...',
-                        color='w')
-                    self.openAction.setEnabled(True)
-                    return
+                if len(values) > 1:
+                    select_folder.QtPrompt(self, values, allow_abort=False)
+                    if select_folder.was_aborted:
+                        self.titleLabel.setText(
+                            'Drag and drop image file or go to '
+                            'File --> Open folder...',
+                            color='w')
+                        self.openAction.setEnabled(True)
+                        return
+                else:
+                    select_folder.was_aborted = False
+                    select_folder.selected_pos = select_folder.pos_foldernames
 
                 images_paths = []
                 for pos in select_folder.selected_pos:
                     images_paths.append(os.path.join(exp_path, pos, 'Images'))
-
-                if select_folder.was_aborted:
-                    self.titleLabel.setText(
-                        'Drag and drop image file or go to File --> Open folder...',
-                        color='w')
-                    self.openAction.setEnabled(True)
-                    return
 
             elif is_pos_folder and not imageFilePath:
                 pos_foldername = os.path.basename(exp_path)
