@@ -6,6 +6,9 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+# TODO:
+# - magic wand dock widget with slider for tolerance
+
 """Cell-ACDC GUI for correcting Segmentation and Tracking errors"""
 print('Importing modules...')
 import sys
@@ -45,7 +48,8 @@ from PyQt5.QtCore import (
     QThread, QMutex, QWaitCondition
 )
 from PyQt5.QtGui import (
-    QIcon, QKeySequence, QCursor, QKeyEvent, QGuiApplication
+    QIcon, QKeySequence, QCursor, QKeyEvent, QGuiApplication,
+    QPixmap
 )
 from PyQt5.QtWidgets import (
     QAction, QApplication, QLabel, QPushButton,
@@ -53,7 +57,8 @@ from PyQt5.QtWidgets import (
     QScrollBar, QCheckBox, QToolButton, QSpinBox,
     QComboBox, QDial, QButtonGroup, QActionGroup,
     QShortcut, QFileDialog, QDoubleSpinBox,
-    QAbstractSlider, QMessageBox, QWidget
+    QAbstractSlider, QMessageBox, QWidget,
+    QDockWidget, QGridLayout
 )
 
 from pyqtgraph.Qt import QtGui
@@ -63,7 +68,7 @@ import pyqtgraph as pg
 import qrc_resources
 
 # Custom modules
-import load, prompts, apps, core, myutils, dataPrep
+import load, prompts, apps, core, myutils, dataPrep, widgets
 from cca_functions import _calc_rot_vol
 from myutils import download_model
 from QtDarkMode import breeze_resources
@@ -369,9 +374,12 @@ class guiWin(QMainWindow):
         self.checkableQButtonsGroup = QButtonGroup(self)
         self.checkableQButtonsGroup.setExclusive(False)
 
+        self.gui_createCursors()
+
         self.gui_createActions()
         self.gui_createMenuBar()
         self.gui_createToolBars()
+        self.gui_createControlsToolbar()
 
         self.gui_connectActions()
         self.gui_createStatusBar()
@@ -386,9 +394,7 @@ class guiWin(QMainWindow):
         mainContainer = QWidget()
         self.setCentralWidget(mainContainer)
 
-        mainLayout = QtGui.QGridLayout()
-        mainLayout.addWidget(self.graphLayout, 0, 0, 1, 2)
-        mainLayout.addLayout(self.img1_Widglayout, 1, 0)
+        mainLayout = self.gui_createGridLayout()
 
         mainContainer.setLayout(mainLayout)
 
@@ -518,6 +524,13 @@ class guiWin(QMainWindow):
         else:
             middle_click = mouseEvent.button() == Qt.MouseButton.MidButton
         return middle_click
+
+    def gui_createCursors(self):
+        pixmap = QPixmap(":wand_cursor.svg")
+        self.wandCursor = QCursor(pixmap, 16, 16)
+
+        pixmap = QPixmap(":curv_cursor.svg")
+        self.curvCursor = QCursor(pixmap, 16, 16)
 
     def gui_createMenuBar(self):
         menuBar = self.menuBar()
@@ -761,6 +774,18 @@ class guiWin(QMainWindow):
         self.LeftClickButtons.append(self.curvToolButton)
         # self.checkableButtons.append(self.curvToolButton)
 
+        self.wandToolButton = QToolButton(self)
+        self.wandToolButton.setIcon(QIcon(":magic_wand.svg"))
+        self.wandToolButton.setCheckable(True)
+        self.wandToolButton.setShortcut('w')
+        self.wandToolButton.setToolTip(
+            'Toggle "Magic wand tool" ON/OFF\n\n'
+            'ACTION: left-click for single selection,\n'
+            'or left-click and then drag for continous selection\n\n'
+            'SHORTCUT: "W" key')
+        editToolBar.addWidget(self.wandToolButton)
+        self.LeftClickButtons.append(self.wandToolButton)
+
         self.hullContToolButton = QToolButton(self)
         self.hullContToolButton.setIcon(QIcon(":hull.svg"))
         self.hullContToolButton.setCheckable(True)
@@ -901,6 +926,29 @@ class guiWin(QMainWindow):
         # editToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         # widgetsToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         # modeToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
+
+    def gui_createGridLayout(self):
+        mainLayout = QGridLayout()
+        row = 0
+        mainLayout.addWidget(self.graphLayout, row, 0, 1, 2)
+
+        row += 1
+        mainLayout.addLayout(self.img1_Widglayout, row, 0)
+
+        return mainLayout
+
+    def gui_createControlsToolbar(self):
+        self.addToolBarBreak()
+
+        self.controlsToolBar = QToolBar("Controls", self)
+        self.wandToleranceSlider = widgets.sliderWithSpinBox(
+            title='Tolerance', title_loc='in_line')
+        self.wandToleranceSlider.setValue(5)
+        self.wandToleranceSlider.layout.setColumnStretch(3, 28)
+        self.controlsToolBar.addWidget(self.wandToleranceSlider)
+
+        self.addToolBar(Qt.TopToolBarArea , self.controlsToolBar)
+        self.controlsToolBar.setVisible(False)
 
     def gui_populateToolSettingsMenu(self):
         for button in self.checkableQButtonsGroup.buttons():
@@ -1130,6 +1178,7 @@ class guiWin(QMainWindow):
         self.brushButton.toggled.connect(self.Brush_cb)
         self.eraserButton.toggled.connect(self.Eraser_cb)
         self.curvToolButton.toggled.connect(self.curvTool_cb)
+        self.wandToolButton.toggled.connect(self.wand_cb)
         self.reInitCcaAction.triggered.connect(self.reInitCca)
         self.assignBudMothAutoAction.triggered.connect(self.autoAssignBud_YeastMate)
         # self.repeatAutoCcaAction.triggered.connect(self.repeatAutoCca)
@@ -2335,6 +2384,17 @@ class guiWin(QMainWindow):
         else:
             self.xHoverImg, self.yHoverImg = None, None
 
+        if event.isExit() and self.app.overrideCursor() is not None:
+            self.app.restoreOverrideCursor()
+
+        setWandCursor = self.wandToolButton.isChecked() and not event.isExit()
+        if setWandCursor and self.app.overrideCursor() is None:
+            self.app.setOverrideCursor(self.wandCursor)
+
+        setCurvCursor = self.curvToolButton.isChecked() and not event.isExit()
+        if setCurvCursor and self.app.overrideCursor() is None:
+            self.app.setOverrideCursor(self.curvCursor)
+
         drawRulerLine = (
             self.rulerButton.isChecked() and self.rulerHoverON
             and not event.isExit()
@@ -2808,10 +2868,12 @@ class guiWin(QMainWindow):
         histON = self.setIsHistoryKnownButton.isChecked()
         eraserON = self.eraserButton.isChecked()
         rulerON = self.rulerButton.isChecked()
+        wandON = self.wandToolButton.isChecked()
 
         dragImgLeft = (
             left_click and not brushON and not histON
             and not curvToolON and not eraserON and not rulerON
+            and not wandON
         )
 
         dragImgMiddle = middle_click
@@ -2822,14 +2884,21 @@ class guiWin(QMainWindow):
              and not (self.isSnapshot and self.curvToolButton.isChecked())
         )
 
-        canCurv = (curvToolON and not self.assignBudMothButton.isChecked()
-                   and not brushON and not dragImgLeft and not eraserON)
-        canBrush = (brushON and not curvToolON and not rulerON
-                    and not dragImgLeft and not eraserON)
-        canErase = (eraserON and not curvToolON and not rulerON
-                    and not dragImgLeft and not brushON)
-        canRuler = (rulerON and not curvToolON and not brushON
-                    and not dragImgLeft and not brushON)
+        canCurv = (
+            curvToolON and not self.assignBudMothButton.isChecked()
+            and not brushON and not dragImgLeft and not eraserON)
+        canBrush = (
+            brushON and not curvToolON and not rulerON
+            and not dragImgLeft and not eraserON and not wandON)
+        canErase = (
+            eraserON and not curvToolON and not rulerON
+            and not dragImgLeft and not brushON and not wandON)
+        canRuler = (
+            rulerON and not curvToolON and not brushON
+            and not dragImgLeft and not brushON and not wandON)
+        canWand = (
+            wandON and not curvToolON and not brushON
+            and not dragImgLeft and not brushON and not rulerON)
 
         # Enable dragging of the image window like pyqtgraph original code
         if dragImgLeft:
@@ -3027,6 +3096,26 @@ class guiWin(QMainWindow):
                 self.warnEditingWithCca_df('Add new ID with curvature tool')
                 self.clearCurvItems()
                 self.curvTool_cb(True)
+
+        elif left_click and canWand:
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(x), int(y)
+            Y, X = posData.lab.shape
+            if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
+                # Store undo state before modifying stuff
+                self.storeUndoRedoStates(False)
+                self.flood_img = myutils.to_uint8(self.img1.image)
+                tol = self.wandToleranceSlider.value()
+                flood_mask = skimage.segmentation.flood(
+                    self.flood_img, (ydata, xdata), tolerance=tol
+                )
+                # print(ydata, xdata)
+                # print(tol, self.flood_img.max(), self.flood_img.dtype)
+                apps.imshow_tk(self.flood_img, additional_imgs=[flood_mask])
+
+                self.yWandPress, self.xWandPress = xdata, ydata
+
+                self.isMouseDragImg1 = True
 
         # Annotate cell cycle division
         elif right_click and is_cca_on and canAnnotateDivision:
@@ -4778,10 +4867,8 @@ class guiWin(QMainWindow):
         return lab, success
 
     def disconnectLeftClickButtons(self):
-        self.brushButton.toggled.disconnect()
-        self.curvToolButton.toggled.disconnect()
-        self.rulerButton.toggled.disconnect()
-        self.eraserButton.toggled.disconnect()
+        for button in self.LeftClickButtons:
+            button.toggled.disconnect()
 
     def uncheckLeftClickButtons(self, sender):
         for button in self.LeftClickButtons:
@@ -4793,6 +4880,7 @@ class guiWin(QMainWindow):
         self.curvToolButton.toggled.connect(self.curvTool_cb)
         self.rulerButton.toggled.connect(self.ruler_cb)
         self.eraserButton.toggled.connect(self.Eraser_cb)
+        self.wandToolButton.toggled.connect(self.wand_cb)
 
     def brushSize_cb(self, value):
         self.ax2_EraserCircle.setSize(value*2)
@@ -4802,6 +4890,16 @@ class guiWin(QMainWindow):
         self.ax2_EraserX.setSize(value)
         self.ax1_EraserX.setSize(value)
         self.setDiskMask()
+
+    def wand_cb(self, checked):
+        posData = self.data[self.pos_i]
+        if checked:
+            self.controlsToolBar.setVisible(True)
+            self.disconnectLeftClickButtons()
+            self.uncheckLeftClickButtons(self.sender())
+            self.connectLeftClickButtons()
+        else:
+            self.controlsToolBar.setVisible(False)
 
     def restoreHoveredID(self):
         posData = self.data[self.pos_i]
@@ -6844,9 +6942,9 @@ class guiWin(QMainWindow):
             # a critical message
             return False, automaticallyDividedIDs
 
-        if self.isCurrentFrameCcaVisited():
-            # Frame already visited in cca mode --> do nothing
-            return False, automaticallyDividedIDs
+        # if self.isCurrentFrameCcaVisited():
+        #     # Frame already visited in cca mode --> do nothing
+        #     return False, automaticallyDividedIDs
 
         # Check if there are S cells that either only mother or only
         # bud disappeared and automatically assign division to it
@@ -6889,7 +6987,10 @@ class guiWin(QMainWindow):
             posData.cca_df.at[relID, 'relationship'] = 'mother'
             automaticallyDividedIDs.append(relID)
 
-        posData.cca_df = posData.cca_df.drop(index=ScellsIDsGone)
+        try:
+            posData.cca_df = posData.cca_df.drop(index=ScellsIDsGone)
+        except KeyError:
+            pass
 
         return False, automaticallyDividedIDs
 

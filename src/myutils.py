@@ -387,6 +387,12 @@ def seconds_to_ETA(seconds):
         ETA = f'{int(h):02}h:{int(m):02}m:{int(s):02}s'
     return ETA
 
+def to_uint8(img):
+    if img.dtype == np.uint8:
+        return img
+    img = np.round(uint_to_float(img)*255).astype(np.uint8)
+    return img
+
 def uint_to_float(img):
     if img.max() <= 1:
         return img

@@ -56,5 +56,8 @@
     <file alias="exit.png">resources/exit.png</file>
     <file alias="delBorderObj.svg">resources/delBorderObj.svg</file>
     <file alias="autoAssign.svg">resources/autoAssign.svg</file>
+    <file alias="magic_wand.svg">resources/magic_wand.svg</file>
+    <file alias="wand_cursor.svg">resources/wand_cursor.svg</file>
+    <file alias="curv_cursor.svg">resources/curv_cursor.svg</file>
 </qresource>
 </RCC>

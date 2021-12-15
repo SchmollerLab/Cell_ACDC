@@ -44,15 +44,26 @@ from PyQt5.QtWidgets import (
     QHBoxLayout, QDialog, QFormLayout, QListWidget, QAbstractItemView,
     QButtonGroup, QCheckBox, QSizePolicy, QComboBox, QSlider, QGridLayout,
     QSpinBox, QToolButton, QTableView, QTextBrowser, QDoubleSpinBox,
-    QScrollArea, QFrame, QProgressBar, QGroupBox, QRadioButton
+    QScrollArea, QFrame, QProgressBar, QGroupBox, QRadioButton,
+    QDockWidget
 )
 
-import myutils, load, prompts
+import myutils, load, prompts, widgets
 
 import qrc_resources
 
 
 pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
+
+class wandToleranceWidget(QFrame):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.slider = widgets.sliderWithSpinBox(title='Tolerance')
+        self.slider.setMaximum(255)
+        self.slider.layout.setColumnStretch(2, 21)
+
+        self.setLayout(self.slider.layout)
 
 class QDialogMetadataXML(QDialog):
     def __init__(
