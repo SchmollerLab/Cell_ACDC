@@ -790,28 +790,27 @@ class guiWin(QMainWindow):
         self.hullContToolButton = QToolButton(self)
         self.hullContToolButton.setIcon(QIcon(":hull.svg"))
         self.hullContToolButton.setCheckable(True)
-        self.hullContToolButton.setShortcut('f')
+        self.hullContToolButton.setShortcut('k')
         self.hullContToolButton.setToolTip(
             'Toggle "Hull contour" ON/OFF\n\n'
             'ACTION: right-click on a cell to replace it with its hull contour.\n'
             'Use it to fill cracks and holes.\n\n'
-            'SHORTCUT: "F" key')
+            'SHORTCUT: "K" key')
         editToolBar.addWidget(self.hullContToolButton)
         self.checkableButtons.append(self.hullContToolButton)
         self.checkableQButtonsGroup.addButton(self.hullContToolButton)
 
-        # self.fillHolesToolButton = QToolButton(self)
-        # self.fillHolesToolButton.setIcon(QIcon(":fill_holes.svg"))
-        # self.fillHolesToolButton.setCheckable(True)
-        # self.fillHolesToolButton.setShortcut('f')
-        # self.fillHolesToolButton.setToolTip(
-        #     'Toggle "Hull contour" ON/OFF\n\n'
-        #     'ACTION: right-click on a cell to replace it with its hull contour.\n'
-        #     'Use it to fill cracks and holes.\n\n'
-        #     'SHORTCUT: "F" key')
-        # editToolBar.addWidget(self.fillHolesToolButton)
-        # self.checkableButtons.append(self.fillHolesToolButton)
-        # self.checkableQButtonsGroup.addButton(self.fillHolesToolButton)
+        self.fillHolesToolButton = QToolButton(self)
+        self.fillHolesToolButton.setIcon(QIcon(":fill_holes.svg"))
+        self.fillHolesToolButton.setCheckable(True)
+        self.fillHolesToolButton.setShortcut('f')
+        self.fillHolesToolButton.setToolTip(
+            'Toggle "Fill holes" ON/OFF\n\n'
+            'ACTION: right-click on a cell to fill holes\n\n'
+            'SHORTCUT: "F" key')
+        editToolBar.addWidget(self.fillHolesToolButton)
+        self.checkableButtons.append(self.fillHolesToolButton)
+        self.checkableQButtonsGroup.addButton(self.fillHolesToolButton)
 
         self.editID_Button = QToolButton(self)
         self.editID_Button.setIcon(QIcon(":edit-id.svg"))
@@ -1943,7 +1942,40 @@ class guiWin(QMainWindow):
             if not self.separateBudButton.findChild(QAction).isChecked():
                 self.separateBudButton.setChecked(False)
 
-        # Replace with Hull Contour
+        # Fill holes
+        elif right_click and self.fillHolesToolButton.isChecked():
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(x), int(y)
+            ID = posData.lab[ydata, xdata]
+            if ID == 0:
+                clickedBkgrID = apps.QLineEditDialog(
+                    title='Clicked on background',
+                    msg='You clicked on the background.\n'
+                         'Enter here the ID that you want to '
+                         'fill the holes of',
+                    parent=self
+                )
+                clickedBkgrID.exec_()
+                if clickedBkgrID.cancel:
+                    return
+                else:
+                    ID = clickedBkgrID.EntryID
+
+            if ID in posData.lab:
+                # Store undo state before modifying stuff
+                self.storeUndoRedoStates(False)
+                obj_idx = posData.IDs.index(ID)
+                obj = posData.rp[obj_idx]
+                localFill = scipy.ndimage.binary_fill_holes(obj.image)
+                posData.lab[obj.slice][localFill] = ID
+
+                self.update_rp()
+                self.updateALLimg()
+
+                if not self.fillHolesToolButton.findChild(QAction).isChecked():
+                    self.fillHolesToolButton.setChecked(False)
+
+        # Hull contour
         elif right_click and self.hullContToolButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
