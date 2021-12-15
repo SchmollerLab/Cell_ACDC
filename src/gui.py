@@ -3980,52 +3980,106 @@ class guiWin(QMainWindow):
                 store = self.undoDivisionAnnotation(cca_df_i, ID, relID)
                 self.store_cca_df(frame_i=i, cca_df=cca_df_i)
 
-    def checkMothEligibility(self, budID, new_mothID):
-        posData = self.data[self.pos_i]
-        """Check the new mother is in G1 for the entire life of the bud"""
+    def warnMotherNotEligible(self, new_mothID, budID, i, why):
+        if why == 'not_G1_in_the_future':
+            err_msg = (f"""
+            <p style="font-size:10pt">
+                The requested cell in G1 (ID={new_mothID})
+                at future frame {i+1} has a bud assigned to it,
+                therefore it cannot be assigned as the mother
+                of bud ID {budID}.<br>
+                You can assign a cell as the mother of bud ID {budID}
+                only if this cell is in G1 for the
+                entire life of the bud.<br><br>
+                One possible solution is to click on "cancel", go to
+                frame {i+1} and  assign the bud of cell {new_mothID}
+                to another cell.\n'
+                A second solution is to assign bud ID {budID} to cell
+                {new_mothID} anyway by clicking "Apply".<br><br>
+                However to ensure correctness of
+                future assignments the system will delete any cell cycle
+                information from frame {i+1} to the end. Therefore, you
+                will have to visit those frames again.<br><br>
+                The deletion of cell cycle information
+                <b>CANNOT BE UNDONE!<\b>
+                Saved data is not changed of course.<br><br>
+                Apply assignment or cancel process?
+            """)
+            msg = QMessageBox()
+            enforce_assignment = msg.warning(
+               self, 'Cell not eligible', err_msg, msg.Apply | msg.Cancel
+            )
+            cancel = enforce_assignment == msg.Cancel
+        elif why == 'not_G1_in_the_past':
+            err_msg = (f"""
+            <p style="font-size:10pt">
+                The requested cell in G1
+                (ID={new_mothID}) at past frame {i+1}
+                has a bud assigned to it, therefore it cannot be
+                assigned as mother of bud ID {budID}.<br>
+                You can assign a cell as the mother of bud ID {budID}
+                only if this cell is in G1 for the entire life of the bud.<br>
+                One possible solution is to first go to frame {i+1} and
+                assign the bud of cell {new_mothID} to another cell.
+            """)
+            msg = QMessageBox()
+            msg.warning(
+               self, 'Cell not eligible', err_msg, msg.Ok
+            )
+            cancel = None
+        elif why == 'single_frame_G1_duration':
+            err_msg = (f"""
+            <p style="font-size:10pt">
+                Assigning bud ID {budID} to cell in G1
+                (ID={new_mothID}) would result in no G1 phase at all between
+                previous cell cycle and current cell cycle.
+                This is very confusing for me, sorry.<br><br>
+                The solution is to remove cell division anotation on cell
+                {new_mothID} (right-click on it on current frame) and then
+                annotate division on any frame before current frame number {i+1}.
+                This will gurantee a G1 duration of cell {new_mothID}
+                of <b>at least 1 frame</b>. Thanks.
+            """)
+            msg = QMessageBox()
+            msg.warning(
+               self, 'Cell not eligible', err_msg, msg.Ok
+            )
+            cancel = None
+        return cancel
 
+    def checkMothEligibility(self, budID, new_mothID):
+        """
+        Check that the new mother is in G1 for the entire life of the bud
+        and that the G1 duration is > than 1 frame
+        """
+        posData = self.data[self.pos_i]
         eligible = True
 
+        G1_duration = 0
         # Check future frames
         for i in range(posData.frame_i, posData.segmSizeT):
             cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
             if cca_df_i is None:
                 # ith frame was not visited yet
-                return eligible
+                break
 
             is_still_bud = cca_df_i.at[budID, 'relationship'] == 'bud'
             if not is_still_bud:
-                # Bud life ended
-                return eligible
+                break
+
             ccs = cca_df_i.at[new_mothID, 'cell_cycle_stage']
             if ccs != 'G1':
-                err_msg = (
-                    f'The requested cell in G1 (ID={new_mothID}) at future frame {i+1} '
-                    'has a bud assigned to it, therefore it cannot be '
-                    f'assigned as the mother of bud ID {budID}.\n'
-                    f'You can assign a cell as the mother of bud ID {budID} '
-                    'only if this cell is in G1 for the entire life of the bud.\n\n'
-                    'One possible solution is to click on "cancel", go to '
-                    f'frame {i+1} and  assign the bud of cell {new_mothID} '
-                    'to another cell.\n'
-                    f'A second solution is to assign bud ID {budID} to cell '
-                    f'{new_mothID} anyway by clicking "Apply".'
-                    '\n\nHowever to ensure correctness of '
-                    'future assignments the system will delete any cell cycle '
-                    f'information from frame {i+1} to the end. Therefore, you '
-                    'will have to visit those frames again.\n\n'
-                    'The deletion of cell cycle information CANNOT BE UNDONE! '
-                    'Saved data is not changed of course.\n\n'
-                    'Apply assignment or cancel process?')
-                msg = QMessageBox()
-                enforce_assignment = msg.warning(
-                   self, 'Cell not eligible', err_msg, msg.Apply | msg.Cancel
+                cancel = self.warnMotherNotEligible(
+                    new_mothID, budID, i, 'not_G1_in_the_future'
                 )
-                if enforce_assignment == msg.Cancel:
+                if cancel or G1_duration == 1:
                     eligible = False
+                    return eligible
                 else:
                     self.remove_future_cca_df(i)
-                return eligible
+                    break
+
+            G1_duration += 1
 
         # Check past frames
         for i in range(posData.frame_i-1, -1, -1):
@@ -4035,24 +4089,26 @@ class guiWin(QMainWindow):
             is_bud_existing = budID in cca_df_i.index
             if not is_bud_existing:
                 # Bud was not emerged yet
-                return eligible
+                break
 
             ccs = cca_df_i.at[new_mothID, 'cell_cycle_stage']
             if ccs != 'G1':
-                err_msg = (
-                    f'The requested cell in G1 (ID={new_mothID}) at past frame {i+1} '
-                    'has a bud assigned to it, therefore it cannot be '
-                    f'assigned as mother of bud ID {budID}.\n'
-                    f'You can assign a cell as the mother of bud ID {budID} '
-                    'only if this cell is in G1 for the entire life of the bud.\n'
-                    f'One possible solution is to first go to frame {i+1} and '
-                    f'assign the bud of cell {new_mothID} to another cell.')
-                msg = QMessageBox()
-                msg.critical(
-                   self, 'Cell not eligible', err_msg, msg.Ok
+                self.warnMotherNotEligible(
+                    new_mothID, budID, i, 'not_G1_in_the_past'
                 )
                 eligible = False
-                return eligible
+                break
+
+            G1_duration += 1
+
+        if G1_duration <= 1:
+            # G1_duration of the mother is single frame --> not eligible
+            eligible = False
+            self.warnMotherNotEligible(
+                new_mothID, budID, posData.frame_i, 'single_frame_G1_duration'
+            )
+
+        return eligible
 
     def getStatus_RelID_BeforeEmergence(self, budID, curr_mothID):
         posData = self.data[self.pos_i]
@@ -6617,11 +6673,13 @@ class guiWin(QMainWindow):
             self.updateALLimg(only_ax1=True)
 
     def clearAllItems(self):
-        allItems = zip(self.ax1_ContoursCurves,
-                       self.ax2_ContoursCurves,
-                       self.ax1_LabelItemsIDs,
-                       self.ax2_LabelItemsIDs,
-                       self.ax1_BudMothLines)
+        allItems = zip(
+            self.ax1_ContoursCurves,
+            self.ax2_ContoursCurves,
+            self.ax1_LabelItemsIDs,
+            self.ax2_LabelItemsIDs,
+            self.ax1_BudMothLines
+        )
         for idx, items_ID in enumerate(allItems):
             (ax1ContCurve, ax2ContCurve,
             _IDlabel1, _IDlabel2,

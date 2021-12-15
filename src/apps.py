@@ -2131,6 +2131,62 @@ class nonModalTempQMessage(QWidget):
 
         self.setLayout(layout)
 
+
+class postProcessSegmParams(QGroupBox):
+    def __init__(self, title, parent=None):
+        QGroupBox.__init__(self, title, parent)
+
+        layout = QGridLayout()
+
+        row = 0
+        label = QLabel("Minimum area (pixels): ")
+        layout.addWidget(label, row, 0, alignment=Qt.AlignRight)
+        minSize_SB = QSpinBox()
+        minSize_SB.setAlignment(Qt.AlignCenter)
+        minSize_SB.setMinimum(1)
+        minSize_SB.setMaximum(2147483647)
+        minSize_SB.setValue(5)
+        layout.addWidget(minSize_SB, row, 1)
+        self.minSize_SB = minSize_SB
+
+        row += 1
+        label = QLabel("Minimum solidity (0-1): ")
+        layout.addWidget(label, row, 0, alignment=Qt.AlignRight)
+        minSolidity_DSB = QDoubleSpinBox()
+        minSolidity_DSB.setToolTip(
+            'Solidity is a measure of convexity. A solidity of 1 means '
+            'that the shape is fully convex.\n As solidity approaches 0 '
+            'the object is more and more concave.\n'
+            'Write 0 for ignoring this parameter.'
+        )
+        minSolidity_DSB.setAlignment(Qt.AlignCenter)
+        minSolidity_DSB.setMinimum(0)
+        minSolidity_DSB.setMaximum(1)
+        minSolidity_DSB.setValue(0.5)
+        minSolidity_DSB.setSingleStep(0.1)
+        layout.addWidget(minSolidity_DSB, row, 1)
+        self.minSolidity_DSB = minSolidity_DSB
+
+        row += 1
+        label = QLabel("Max elongation (1=circle):")
+        layout.addWidget(label, row, 0, alignment=Qt.AlignRight)
+        maxElongation_DSB = QDoubleSpinBox()
+        maxElongation_DSB.setToolTip(
+            'Elongation is the ratio between major and minor axis lengths.\n'
+            'An elongation of 1 is like a circle.\n'
+            'Write 0 for ignoring this parameter.'
+        )
+        maxElongation_DSB.setAlignment(Qt.AlignCenter)
+        maxElongation_DSB.setMinimum(0)
+        maxElongation_DSB.setMaximum(2147483647.0)
+        maxElongation_DSB.setValue(3)
+        maxElongation_DSB.setDecimals(1)
+        maxElongation_DSB.setSingleStep(1.0)
+        layout.addWidget(maxElongation_DSB, row, 1)
+        self.maxElongation_DSB = maxElongation_DSB
+
+        self.setLayout(layout)
+
 class postProcessSegmDialog(QDialog):
     def __init__(self, mainWin):
         super().__init__(mainWin)
