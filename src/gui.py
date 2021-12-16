@@ -71,7 +71,8 @@ import qrc_resources
 # Custom modules
 import load, prompts, apps, core, myutils, dataPrep, widgets
 from cca_functions import _calc_rot_vol
-from myutils import download_model
+from core import numba_max, numba_min
+from myutils import download_model, exec_time
 from QtDarkMode import breeze_resources
 from help import welcome
 
@@ -1619,7 +1620,7 @@ class guiWin(QMainWindow):
         self.ax2.addItem(self.ax2BorderLine)
 
         # Create enough PlotDataItems and LabelItems to draw contours and IDs.
-        maxID = max([posData.segm_data.max() for posData in self.data])
+        maxID = max([numba_max(posData.segm_data) for posData in self.data])
         numItems = maxID+10
         self.ax1_ContoursCurves = []
         self.ax2_ContoursCurves = []
@@ -1910,7 +1911,7 @@ class guiWin(QMainWindow):
 
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(False)
-            max_ID = posData.lab.max()
+            max_ID = numba_max(posData.lab)
 
             if right_click:
                 posData.lab, success = self.auto_separate_bud_ID(
@@ -2092,7 +2093,7 @@ class guiWin(QMainWindow):
 
             for old_ID, new_ID in editID.how:
                 if new_ID in prev_IDs:
-                    tempID = posData.lab.max() + 1
+                    tempID = numba_max(posData.lab) + 1
                     posData.lab[posData.lab == old_ID] = tempID
                     posData.lab[posData.lab == new_ID] = old_ID
                     posData.lab[posData.lab == tempID] = new_ID
@@ -2191,7 +2192,7 @@ class guiWin(QMainWindow):
                     else:
                         for old_ID, new_ID in editID.how:
                             if new_ID in prev_IDs:
-                                tempID = posData.lab.max() + 1
+                                tempID = numba_max(posData.lab) + 1
                                 posData.lab[posData.lab == old_ID] = tempID
                                 posData.lab[posData.lab == new_ID] = old_ID
                                 posData.lab[posData.lab == tempID] = new_ID
@@ -2469,7 +2470,8 @@ class guiWin(QMainWindow):
             if np.any(self.flood_mask):
                 yy, xx = np.nonzero(self.flood_mask)
                 self.setTempImg1Brush(
-                    yy.min(), yy.max(), xx.min(), xx.max(), self.flood_mask
+                    numba_min(yy), numba_max(yy),
+                    numba_min(xx), numba_max(xx), self.flood_mask
                 )
 
     def gui_hoverEventImg1(self, event):
@@ -2510,9 +2512,9 @@ class guiWin(QMainWindow):
             Y, X = _img.shape[:2]
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                 val = _img[ydata, xdata]
-                maxVal = _img.max()
+                maxVal = numba_max(_img)
                 ID = posData.lab[ydata, xdata]
-                maxID = posData.lab.max()
+                maxID = numba_max(posData.lab)
                 if _img.ndim > 2:
                     val = [v for v in val]
                     value = f'{val}'
@@ -2622,7 +2624,7 @@ class guiWin(QMainWindow):
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                 val = _img[ydata, xdata]
                 self.wcLabel.setText(
-                    f'(x={x:.2f}, y={y:.2f}, value={val:.0f}, max={_img.max()})'
+                    f'(x={x:.2f}, y={y:.2f}, value={val:.0f}, max={numba_max(_img)})'
                 )
             else:
                 if self.eraserButton.isChecked() or self.brushButton.isChecked():
@@ -3076,9 +3078,9 @@ class guiWin(QMainWindow):
                 self.brushColor = self.img2.lut[posData.brushID]/255
 
                 img = self.img1.image.copy()
-                img = img/img.max()
+                img = img/numba_max(img)
                 if self.overlayButton.isChecked():
-                    self.imgRGB = img/img.max()
+                    self.imgRGB = img/numba_max(img)
                 else:
                     self.imgRGB = gray2rgb(img)
 
@@ -3219,14 +3221,14 @@ class guiWin(QMainWindow):
                 if posData.brushID == 0:
                     self.setBrushID()
                     self.updateLookuptable(
-                        lenNewLut=posData.lab.max()+posData.brushID+1
+                        lenNewLut=numba_max(posData.lab)+posData.brushID+1
                     )
                 self.brushColor = self.img2.lut[posData.brushID]/255
 
                 img = self.img1.image.copy()
-                img = img/img.max()
+                img = img/numba_max(img)
                 if self.overlayButton.isChecked():
-                    self.imgRGB = img/img.max()
+                    self.imgRGB = img/numba_max(img)
                 else:
                     self.imgRGB = gray2rgb(img)
 
@@ -3251,7 +3253,8 @@ class guiWin(QMainWindow):
                 if np.any(self.flood_mask):
                     yy, xx = np.nonzero(self.flood_mask)
                     self.setTempImg1Brush(
-                        yy.min(), yy.max(), xx.min(), xx.max(),
+                        numba_min(yy), numba_max(yy),
+                        numba_min(xx), numba_max(xx),
                         mask=self.flood_mask
                     )
                 self.isMouseDragImg1 = True
@@ -3434,7 +3437,7 @@ class guiWin(QMainWindow):
 
     def getOptimalLabelItemColor(self, LabelItemID, desiredGray):
         img = self.img1.image
-        img = img/img.max()
+        img = img/numba_max(img)
         w, h = LabelItemID.rect().right(), LabelItemID.rect().bottom()
         x, y = LabelItemID.pos()
         w, h, x, y = int(w), int(h), int(x), int(y)
@@ -3506,8 +3509,9 @@ class guiWin(QMainWindow):
             img = skimage.exposure.rescale_intensity(img)
             return img
         elif how == 'Normalize by max value':
-            img = img/img.max()
+            img = img/numba_max(img)
         return img
+
 
     def removeAlldelROIsCurrentFrame(self):
         posData = self.data[self.pos_i]
@@ -3633,9 +3637,9 @@ class guiWin(QMainWindow):
                 yy, xx = self.get_dir_coords(alfa_dir, y1, x1, edge.shape)
                 a_dir = edge[yy, xx]
                 if self.invertBwAction.isChecked():
-                    min_int = a_dir.min() # if int_val > ta else a_dir.min()
+                    min_int = numba_min(a_dir) # if int_val > ta else numba_min(a_dir)
                 else:
-                    min_int = a_dir.max()
+                    min_int = numba_max(a_dir)
                 min_i = list(a_dir).index(min_int)
                 y, x = yy[min_i], xx[min_i]
                 try:
@@ -5015,7 +5019,7 @@ class guiWin(QMainWindow):
         # First try separating by labelling
         lab_ID = lab_ID_bool.astype(int)
         rp_ID = skimage.measure.regionprops(lab_ID)
-        setRp = self.separateByLabelling(lab_ID, rp_ID, maxID=lab.max())
+        setRp = self.separateByLabelling(lab_ID, rp_ID, maxID=numba_max(lab))
         if setRp:
             success = True
             lab[lab_ID_bool] = lab_ID[lab_ID_bool]
@@ -5241,13 +5245,13 @@ class guiWin(QMainWindow):
         # already visited frames
         posData = self.data[self.pos_i]
         if useCurrentLab:
-            newID = posData.lab.max()
+            newID = numba_max(posData.lab)
         else:
             newID = 1
         for frame_i, storedData in enumerate(posData.allData_li):
             lab = storedData['labels']
             if lab is not None:
-                _max = lab.max()
+                _max = numba_max(lab)
                 if _max > newID:
                     newID = _max
             else:
@@ -5459,6 +5463,7 @@ class guiWin(QMainWindow):
                 segm_data, fw, inv = skimage.segmentation.relabel_sequential(
                     segm_data
                 )
+                self.removeGraphicsItemsIDs(numba_max(segm_data))
                 for frame_i, lab in enumerate(segm_data):
                     posData.frame_i = frame_i
                     posData.lab = lab
@@ -6126,12 +6131,15 @@ class guiWin(QMainWindow):
         self.titleLabel.setText('Budding event prediction done.', color='g')
 
     def next_cb(self):
+        t0 = time.perf_counter()
         if self.isSnapshot:
             self.next_pos()
         else:
             self.next_frame()
         if self.curvToolButton.isChecked():
             self.curvTool_cb(True)
+        t1 = time.perf_counter()
+        print(f'Next exec time {(t1-t0)*1000:.3f} ms')
 
     def prev_cb(self):
         if self.isSnapshot:
@@ -6470,7 +6478,7 @@ class guiWin(QMainWindow):
 
         self.gui_createGraphicsItems()
         self.init_segmInfo_df()
-        self.initPosAttr(max_ID=posData.segm_data.max())
+        self.initPosAttr()
         self.initFluoData()
         self.navigateScrollBar.setSliderPosition(posData.frame_i+1)
         if posData.SizeZ > 1:
@@ -6688,6 +6696,32 @@ class guiWin(QMainWindow):
             self.ax2_LabelItemsIDs[ID-1].setText('')
             self.ax1_BudMothLines[ID-1].setData([], [])
 
+    def removeGraphicsItemsIDs(self, maxID):
+        itemsToRemove = zip(
+            self.ax1_ContoursCurves[maxID:],
+            self.ax2_ContoursCurves[maxID:],
+            self.ax1_LabelItemsIDs[maxID:],
+            self.ax2_LabelItemsIDs[maxID:],
+            self.ax1_BudMothLines[maxID:]
+        )
+        for items in itemsToRemove:
+            (ax1ContCurve, ax2ContCurve,
+            _IDlabel1, _IDlabel2,
+            BudMothLine) = items
+            self.ax1.removeItem(ax1ContCurve)
+            self.ax1.removeItem(_IDlabel1)
+            self.ax1.removeItem(BudMothLine)
+            self.ax2.removeItem(ax2ContCurve)
+            self.ax2.removeItem(_IDlabel2)
+
+        self.ax1_ContoursCurves = self.ax1_ContoursCurves[:maxID]
+        self.ax2_ContoursCurves = self.ax1_ContoursCurves[:maxID]
+        self.ax1_LabelItemsIDs = self.ax1_ContoursCurves[:maxID]
+        self.ax2_LabelItemsIDs = self.ax1_ContoursCurves[:maxID]
+        self.ax1_BudMothLines = self.ax1_ContoursCurves[:maxID]
+
+
+
     def clearAllItems(self):
         allItems = zip(
             self.ax1_ContoursCurves,
@@ -6847,7 +6881,7 @@ class guiWin(QMainWindow):
             'corrected_assignment'
         ]
 
-    def initPosAttr(self, max_ID=10):
+    def initPosAttr(self):
         for p, posData in enumerate(self.data):
             self.pos_i = p
             posData.curvPlotItems = []
@@ -6856,6 +6890,8 @@ class guiWin(QMainWindow):
             posData.fluoDataChNameActions = []
             posData.manualContrastKey = posData.filename
             posData.isNewID = False
+
+            posData.HDDmaxID = numba_max(posData.segm_data)
 
             # Decision on what to do with changes to future frames attr
             posData.doNotShowAgain_EditID = False
@@ -6885,7 +6921,7 @@ class guiWin(QMainWindow):
             posData.ol_data = None
 
             # Colormap
-            posData.lut = self.cmap.getLookupTable(0,1, max_ID+10)
+            posData.lut = self.cmap.getLookupTable(0,1, posData.HDDmaxID+10)
             np.random.shuffle(posData.lut)
             # Insert background color
             posData.lut = np.insert(posData.lut, 0, [25, 25, 25], axis=0)
@@ -7028,6 +7064,7 @@ class guiWin(QMainWindow):
             'histoLevels': {}
         }
 
+
     def store_data(self, pos_i=None, enforce=True, debug=False):
         pos_i = self.pos_i if pos_i is None else pos_i
         posData = self.data[pos_i]
@@ -7067,6 +7104,7 @@ class guiWin(QMainWindow):
                 editIDclicked_y[i] = int(y)
                 editIDnewID[i] = new_ID
 
+        posData.STOREDmaxID = max(IDs)
         posData.allData_li[posData.frame_i]['acdc_df'] = pd.DataFrame(
             {
                         'Cell_ID': IDs,
@@ -7099,7 +7137,7 @@ class guiWin(QMainWindow):
         i, j = np.unravel_index(dist.argmin(), dist.shape)
         nearest_point = all_others[j]
         point = points[i]
-        min_dist = dist.min()
+        min_dist = numba_min(dist)
         return min_dist, nearest_point
 
     def checkMultiBudMoth(self, draw=False):
@@ -7505,6 +7543,7 @@ class guiWin(QMainWindow):
         cont = np.vstack((cont, cont[0]))
         cont += [min_x, min_y]
         return cont
+
 
     def get_data(self, debug=False):
         posData = self.data[self.pos_i]
@@ -8025,6 +8064,7 @@ class guiWin(QMainWindow):
         w, h = LabelItemID.rect().right(), LabelItemID.rect().bottom()
         LabelItemID.setPos(x-w/2, y-h/2)
 
+
     def drawID_and_Contour(self, obj, drawContours=True, updateColor=False):
         posData = self.data[self.pos_i]
         how = self.drawIDsContComboBox.currentText()
@@ -8100,6 +8140,7 @@ class guiWin(QMainWindow):
             t1 = time.time()
             drawingContoursTimes = t1-t0
             self.drawingContoursTimes.append(drawingContoursTimes)
+
 
     def update_rp(self, draw=True):
         posData = self.data[self.pos_i]
@@ -8178,7 +8219,7 @@ class guiWin(QMainWindow):
     def updateLookuptable(self, lenNewLut=None):
         posData = self.data[self.pos_i]
         if lenNewLut is None:
-            lenNewLut = posData.lab.max()+1
+            lenNewLut = numba_max(posData.lab)+1
         # Build a new lut to include IDs > than original len of lut
         if lenNewLut > len(posData.lut):
             numNewColors = lenNewLut-len(posData.lut)
@@ -8202,6 +8243,7 @@ class guiWin(QMainWindow):
             print('WARNING: Tracking is WRONG.')
             pass
         self.img2.setLookupTable(lut)
+
 
     def update_rp_metadata(self, draw=True):
         posData = self.data[self.pos_i]
@@ -8580,9 +8622,9 @@ class guiWin(QMainWindow):
             if minPerc == 0 and maxPerc == 1:
                 rescaled_img = img
             else:
-                imgRange = img.max()-img.min()
-                min = img.min() + imgRange*minPerc
-                max = img.min() + imgRange*maxPerc
+                imgRange = numba_max(img)-numba_min(img)
+                min = numba_min(img) + imgRange*minPerc
+                max = numba_min(img) + imgRange*maxPerc
                 out_range = (min, max)
                 rescaled_img = func(
                     rescaled_img, in_range='image', out_range=out_range
@@ -8680,10 +8722,10 @@ class guiWin(QMainWindow):
     def _overlay(self, gray_img_rgb, ol_img, color):
         ol_RGB_val = [v/255 for v in color]
         ol_alpha = self.alphaScrollBar.value()/self.alphaScrollBar.maximum()
-        ol_norm_img = ol_img/ol_img.max()
+        ol_norm_img = ol_img/numba_max(ol_img)
         ol_img_rgb = gray2rgb(ol_norm_img)*ol_RGB_val
         overlay = (gray_img_rgb*(1.0 - ol_alpha)+ol_img_rgb*ol_alpha)
-        overlay = overlay/overlay.max()
+        overlay = overlay/numba_max(overlay)
         overlay = (np.clip(overlay, 0, 1)*255).astype(np.uint8)
         return overlay
 
@@ -8713,6 +8755,7 @@ class guiWin(QMainWindow):
 
     def updateOverlay(self, button):
         self.getOverlayImg(setImg=True)
+
 
     def getImage(self, frame_i=None, invert=True, normalizeIntens=True):
         posData = self.data[self.pos_i]
@@ -8746,8 +8789,9 @@ class guiWin(QMainWindow):
         if normalizeIntens:
             cells_img = self.normalizeIntensities(cells_img)
         if self.invertBwAction.isChecked() and invert:
-            cells_img = -cells_img+cells_img.max()
+            cells_img = -cells_img+numba_max(cells_img)
         return cells_img
+
 
     def setImageImg2(self):
         posData = self.data[self.pos_i]
@@ -8882,19 +8926,13 @@ class guiWin(QMainWindow):
     def addNewItems(self):
         posData = self.data[self.pos_i]
         # Add new Items if there are not enough
-        HDDmaxID = max([posData.segm_data.max() for posData in self.data])
-        try:
-            STOREDmaxID = max([
-                posData.allData_li[i]['labels'].max() for posData in self.data
-                for i in range(0, posData.segmSizeT)
-                if posData.allData_li[i]['labels'] is not None
-            ])
-        except ValueError as e:
-            STOREDmaxID = 0
+        HDDmaxID = posData.HDDmaxID
+        STOREDmaxID = posData.STOREDmaxID
 
-        currentMaxID = posData.lab.max()
+        currentMaxID = max(posData.IDs)
         maxID = max([currentMaxID, STOREDmaxID, currentMaxID])
         idx = maxID-1
+
         if idx >= len(self.ax1_ContoursCurves):
             missingLen = idx-len(self.ax1_ContoursCurves)+10
             for i in range(missingLen):
@@ -8955,8 +8993,8 @@ class guiWin(QMainWindow):
         maxTick = self.hist.gradient.getTick(1)
         self.hist.gradient.setTickValue(minTick, min)
         self.hist.gradient.setTickValue(maxTick, max)
-        self.hist.setLevels(min=imageItem.image.min(),
-                            max=imageItem.image.max())
+        self.hist.setLevels(min=numba_min(imageItem.image),
+                            max=numba_max(imageItem.image))
         h = imageItem.getHistogram()
         self.hist.plot.setData(*h)
         if connect:
@@ -8973,6 +9011,7 @@ class guiWin(QMainWindow):
             self.t_label.setText(
                      f'frame n. {posData.frame_i+1}/{posData.segmSizeT}')
 
+
     def updateFilters(self, updateBlur=False, updateSharp=False,
                             updateEntropy=False, updateFilters=False):
         if self.gaussWin is not None and (updateBlur or updateFilters):
@@ -8983,7 +9022,6 @@ class guiWin(QMainWindow):
 
         if self.entropyWin is not None and (updateEntropy or updateFilters):
             self.entropyWin.apply()
-
 
     def updateALLimg(
             self, image=None, never_visited=True,
@@ -9166,6 +9204,7 @@ class guiWin(QMainWindow):
             w, h = LabelItemID.rect().right(), LabelItemID.rect().bottom()
             LabelItemID.setPos(x-w/2, y-h/2)
 
+
     def checkIDs_LostNew(self):
         posData = self.data[self.pos_i]
         if posData.frame_i == 0:
@@ -9239,7 +9278,7 @@ class guiWin(QMainWindow):
             rp_lab_obj = skimage.measure.regionprops(lab_obj)
             if len(rp_lab_obj)>1:
                 if maxID is None:
-                    lab_obj += lab.max()
+                    lab_obj += numba_max(lab)
                 else:
                     lab_obj += maxID
                 lab[obj.slice][obj.image] = lab_obj[obj.image]
@@ -9253,6 +9292,7 @@ class guiWin(QMainWindow):
             self.disableTrackingCheckBox.setChecked(True)
         else:
             self.disableTrackingCheckBox.setChecked(False)
+
 
     def tracking(
             self, onlyIDs=[], enforce=False, DoManualEdit=True,
@@ -9407,7 +9447,7 @@ class guiWin(QMainWindow):
         for y, x, new_ID in posData.editID_info:
             old_ID = tracked_lab[y, x]
             if new_ID in allIDs:
-                tempID = tracked_lab.max() + 1
+                tempID = numba_max(tracked_lab) + 1
                 tracked_lab[tracked_lab == old_ID] = tempID
                 tracked_lab[tracked_lab == new_ID] = old_ID
                 tracked_lab[tracked_lab == tempID] = new_ID
@@ -10030,8 +10070,8 @@ class guiWin(QMainWindow):
             'amount_autoBkgr': lambda arr, bkgr, area: (arr.mean()-bkgr)*area,
             'amount_dataPrepBkgr': lambda arr, bkgr, area: (arr.mean()-bkgr)*area,
             'median': lambda arr: np.median(arr),
-            'min': lambda arr: arr.min(),
-            'max': lambda arr: arr.max(),
+            'min': lambda arr: numba_min(arr),
+            'max': lambda arr: numba_max(arr),
             'q25': lambda arr: np.quantile(arr, q=0.25),
             'q75': lambda arr: np.quantile(arr, q=0.75),
             'q05': lambda arr: np.quantile(arr, q=0.05),

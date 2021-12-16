@@ -6,6 +6,8 @@ import sys
 import tempfile
 import shutil
 import datetime
+import time
+from functools import wraps
 from collections import namedtuple
 from tqdm import tqdm
 import requests
@@ -22,6 +24,21 @@ from tifffile.tifffile import TiffWriter, TiffFile
 
 __all__ = ['ColorMap']
 _mapCache = {}
+
+def exec_time(func):
+    @wraps(func)
+    def inner_function(self, *args, **kwargs):
+        t0 = time.perf_counter()
+        if func.__code__.co_argcount==1 and func.__defaults__ is None:
+            result = func(self)
+        elif func.__code__.co_argcount>1 and func.__defaults__ is None:
+            result = func(self, *args)
+        else:
+            result = func(self, *args, **kwargs)
+        t1 = time.perf_counter()
+        print(f'{func.__name__} exec time = {(t1-t0)*1000:.3f} ms')
+        return result
+    return inner_function
 
 def getBasename(files):
     basename = files[0]
