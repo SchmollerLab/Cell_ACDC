@@ -140,9 +140,10 @@ class saveDataWorker(QObject):
                 self.askSaveLastVisitedSegmMode.emit(p, posData)
                 self.waitCond.wait(self.mutex)
                 self.mutex.unlock()
-
-                print('unlocked')
-
+                if self.askSaveLastCancelled:
+                    self.mainWin.saveWin.aborted = True
+                    self.finished.emit()
+                    return
                 last_tracked_i = self.mainWin.last_tracked_i
                 if last_tracked_i is None:
                     return
@@ -151,6 +152,10 @@ class saveDataWorker(QObject):
                 self.askSaveLastVisitedCcaMode.emit(p, posData)
                 self.waitCond.wait(self.mutex)
                 self.mutex.unlock()
+                if self.askSaveLastCancelled:
+                    self.mainWin.saveWin.aborted = True
+                    self.finished.emit()
+                    return
                 last_tracked_i = self.mainWin.last_tracked_i
                 if last_tracked_i is None:
                     return
@@ -10379,6 +10384,7 @@ class guiWin(QMainWindow):
         current_frame_i = posData.frame_i
         frame_i = 0
         last_tracked_i = 0
+        self.worker.askSaveLastCancelled = False
         for frame_i, data_dict in enumerate(posData.allData_li):
             # Build segm_npy
             acdc_df = data_dict['acdc_df']
@@ -10413,7 +10419,7 @@ class guiWin(QMainWindow):
                 self.get_data()
                 self.updateALLimg()
             elif save_current == msg.Cancel:
-                return None
+                self.worker.askSaveLastCancelled = True
         self.last_tracked_i = last_tracked_i
         self.waitCond.wakeAll()
 
@@ -10434,6 +10440,7 @@ class guiWin(QMainWindow):
         current_frame_i = posData.frame_i
         frame_i = 0
         last_tracked_i = 0
+        self.worker.askSaveLastCancelled = False
         for frame_i, data_dict in enumerate(posData.allData_li):
             # Build segm_npy
             lab = data_dict['labels']
@@ -10465,7 +10472,7 @@ class guiWin(QMainWindow):
                 self.get_data()
                 self.updateALLimg()
             elif save_current == msg.Cancel:
-                return None
+                self.worker.askSaveLastCancelled = True
         self.last_tracked_i = last_tracked_i
         self.waitCond.wakeAll()
 
@@ -10479,7 +10486,7 @@ class guiWin(QMainWindow):
             we recommend doing it only when you need it.<br>
         </p>
         """)
-
+        cancel = True
         msg = QMessageBox()
         save_metrics_answer = msg.question(
             self, 'Save metrics?', txt,

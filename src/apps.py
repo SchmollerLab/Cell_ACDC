@@ -4687,6 +4687,9 @@ class QDialogPbar(QDialog):
         self.setLayout(mainLayout)
         self.setModal(True)
 
+    def keyPressEvent(self, event):
+        pass
+
     def abort(self):
         self.clickCount += 1
         self.aborted = True
