@@ -4643,7 +4643,6 @@ class QDialogPbar(QDialog):
 
         mainLayout = QVBoxLayout()
         pBarLayout = QGridLayout()
-        buttonsLayout = QHBoxLayout()
 
         if infoTxt:
             infoLabel = QLabel(infoTxt)
@@ -4673,22 +4672,19 @@ class QDialogPbar(QDialog):
 
         #pBarLayout.setColumnStretch(2, 1)
 
-        abortButton = QPushButton('   Abort saving   ')
-        abortButton.clicked.connect(self.abort)
-        buttonsLayout.addStretch(1)
-        buttonsLayout.addWidget(abortButton)
-        # buttonsLayout.addStretch(1)
-        buttonsLayout.setContentsMargins(0,10,0,5)
-
         mainLayout.addWidget(self.progressLabel)
         mainLayout.addLayout(pBarLayout)
-        mainLayout.addLayout(buttonsLayout)
 
         self.setLayout(mainLayout)
         self.setModal(True)
 
     def keyPressEvent(self, event):
-        pass
+        isCtrlAlt = (QtCore.Qt.ControlModifier | QtCore.Qt.AltModifier)
+        if event.modifiers() == isCtrlAlt:
+            if event.key() == Qt.Key_C:
+                self.workerFinished = True
+                self.close()
+
 
     def abort(self):
         self.clickCount += 1
@@ -4908,8 +4904,8 @@ if __name__ == '__main__':
         ArgSpec(name='thresh_val', default=0.0, type=float),
         ArgSpec(name='min_distance', default=10, type=int)
     ]
-    win = QDialogModelParams(init_params, segment_params, 'YeaZ', url='None')
-    # win = QDialogPbar(infoTxt=infoTxt)
+    # win = QDialogModelParams(init_params, segment_params, 'YeaZ', url='None')
+    win = QDialogPbar(infoTxt=infoTxt)
     # win = QDialogAppendTextFilename('example.npz')
     font = QtGui.QFont()
     font.setPointSize(10)
