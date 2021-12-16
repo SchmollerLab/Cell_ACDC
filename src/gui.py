@@ -4009,6 +4009,7 @@ class guiWin(QMainWindow):
                 <b>CANNOT BE UNDONE!<\b>
                 Saved data is not changed of course.<br><br>
                 Apply assignment or cancel process?
+            </p>
             """)
             msg = QMessageBox()
             enforce_assignment = msg.warning(
@@ -4026,6 +4027,7 @@ class guiWin(QMainWindow):
                 only if this cell is in G1 for the entire life of the bud.<br>
                 One possible solution is to first go to frame {i+1} and
                 assign the bud of cell {new_mothID} to another cell.
+            </p>
             """)
             msg = QMessageBox()
             msg.warning(
@@ -4044,6 +4046,7 @@ class guiWin(QMainWindow):
                 annotate division on any frame before current frame number {i+1}.
                 This will gurantee a G1 duration of cell {new_mothID}
                 of <b>at least 1 frame</b>. Thanks.
+            </p>
             """)
             msg = QMessageBox()
             msg.warning(

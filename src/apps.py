@@ -4679,11 +4679,28 @@ class QDialogPbar(QDialog):
         self.setModal(True)
 
     def keyPressEvent(self, event):
-        isCtrlAlt = (QtCore.Qt.ControlModifier | QtCore.Qt.AltModifier)
-        if event.modifiers() == isCtrlAlt:
-            if event.key() == Qt.Key_C:
+        isCtrlAlt = event.modifiers() == (Qt.ControlModifier | Qt.AltModifier)
+        if isCtrlAlt and event.key() == Qt.Key_C:
+            doAbort = self.askAbort()
+            if doAbort:
+                self.aborted = True
                 self.workerFinished = True
                 self.close()
+
+    def askAbort(self):
+        msg = QMessageBox()
+        txt = ("""
+        <p style="font-size:9pt">
+            Aborting with "Ctrl+Alt+C" is <b>not safe</b>.<br><br>
+            The system status cannot be predicted and
+            it will <b>require a restart</b>.<br><br>
+            Are you sure you want to abort?
+        </p>
+        """)
+        answer = msg.critical(
+            self, 'Are you sure you want to abort?', txt, msg.Yes | msg.No
+        )
+        return answer == msg.Yes
 
 
     def abort(self):
