@@ -986,6 +986,7 @@ if __name__ == "__main__":
     # Create the application
     app = QApplication(sys.argv)
     app.setStyle(QStyleFactory.create('Fusion'))
+    app.setWindowIcon(QIcon(":assign-motherbud.svg"))
     win = segmWin(allowExit=True)
     win.show()
     print('Done. If window asking to select a folder is not visible, it is '

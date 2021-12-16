@@ -10842,6 +10842,7 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     # Apply style
     app.setStyle(QtGui.QStyleFactory.create('Fusion'))
+    app.setWindowIcon(QIcon(":assign-motherbud.svg"))
     # Apply dark mode
     # file = QFile(":/dark.qss")
     # file.open(QFile.ReadOnly | QFile.Text)

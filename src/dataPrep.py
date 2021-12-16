@@ -1927,6 +1927,7 @@ if __name__ == "__main__":
         QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     # Create the application
     app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon(":assign-motherbud.svg"))
     win = dataPrepWin()
     win.show()
     # Apply style

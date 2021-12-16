@@ -1312,6 +1312,7 @@ if __name__ == "__main__":
     # Create the application
     app = QApplication(sys.argv)
     app.setStyle(QStyleFactory.create('Fusion'))
+    app.setWindowIcon(QIcon(":assign-motherbud.svg"))
     try:
         win = createDataStructWin(allowExit=True)
         win.show()
