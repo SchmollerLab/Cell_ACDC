@@ -10486,7 +10486,8 @@ class guiWin(QMainWindow):
             msg.Yes | msg.No | msg.Cancel
         )
         save_metrics = save_metrics_answer == msg.Yes
-        return save_metrics
+        cancel = save_metrics_answer == msg.Cancel
+        return save_metrics, cancel
 
     def askSaveAllPos(self):
         last_pos = 0
@@ -10585,7 +10586,12 @@ class guiWin(QMainWindow):
             'Saving data... (check progress in the terminal)', color='w'
         )
 
-        self.save_metrics = self.askSaveMetrics()
+        self.save_metrics, cancel = self.askSaveMetrics()
+        if cancel:
+            self.titleLabel.setText(
+                'Saving data process cancelled.', color='w'
+            )
+            return
 
         last_pos = len(self.data)
         if self.isSnapshot:
