@@ -3373,7 +3373,7 @@ class guiWin(QMainWindow):
         self.df_settings.to_csv(self.settings_csv_path)
 
     def determineSlideshowWinPos(self):
-        screens = app.screens()
+        screens = self.app.screens()
         self.numScreens = len(screens)
         winScreen = self.screen()
 
