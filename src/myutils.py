@@ -393,6 +393,7 @@ def get_list_of_models():
     return models
 
 def seconds_to_ETA(seconds):
+    seconds = round(seconds)
     ETA = datetime.timedelta(seconds=seconds)
     ETA_split = str(ETA).split(':')
     if seconds >= 86400:

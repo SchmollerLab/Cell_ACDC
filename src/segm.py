@@ -74,7 +74,7 @@ class segmWorker(QRunnable):
         self.minSize = mainWin.minSize
         self.minSolidity = mainWin.minSolidity
         self.maxElongation = mainWin.maxElongation
-        self.applyPostProcessing = mainWin.applyPostProcessing:
+        self.applyPostProcessing = mainWin.applyPostProcessing
         self.save = mainWin.save
         self.segment2D_kwargs = mainWin.segment2D_kwargs
         self.do_tracking = mainWin.do_tracking

@@ -45,7 +45,7 @@ from PyQt5.QtWidgets import (
     QButtonGroup, QCheckBox, QSizePolicy, QComboBox, QSlider, QGridLayout,
     QSpinBox, QToolButton, QTableView, QTextBrowser, QDoubleSpinBox,
     QScrollArea, QFrame, QProgressBar, QGroupBox, QRadioButton,
-    QDockWidget
+    QDockWidget, QMessageBox
 )
 
 import myutils, load, prompts, widgets, core
@@ -671,7 +671,7 @@ class QDialogMetadataXML(QDialog):
                 f'The letters available are {list("TZCYXS")} without spaces or punctuation.'
                 '(e.g. ZYX)'
             )
-            msg = QtGui.QMessageBox()
+            msg = QMessageBox()
             msg.critical(
                self, 'Invalid order of dimensions', err_msg, msg.Ok
             )
@@ -683,7 +683,7 @@ class QDialogMetadataXML(QDialog):
                 'Channel names cannot be empty or equal to each other.\n\n'
                 'Insert a unique text for each channel name'
             )
-            msg = QtGui.QMessageBox()
+            msg = QMessageBox()
             msg.critical(
                self, 'Invalid channel names', err_msg, msg.Ok
             )
@@ -752,6 +752,97 @@ class QDialogMetadataXML(QDialog):
         self.cancel = True
         self.close()
 
+
+class QDialogWorkerProcess(QDialog):
+    def __init__(
+            self, title='Progress', infoTxt='',
+            showInnerPbar=False, pbarDesc='',
+            parent=None
+        ):
+        self.workerFinished = False
+        self.aborted = False
+        self.clickCount = 0
+        super().__init__(parent)
+
+        self.setWindowTitle(title)
+
+        mainLayout = QVBoxLayout()
+        pBarLayout = QGridLayout()
+
+        if infoTxt:
+            infoLabel = QLabel(infoTxt)
+            mainLayout.addWidget(infoLabel, alignment=Qt.AlignCenter)
+
+        self.progressLabel = QLabel(pbarDesc)
+
+        self.mainPbar = widgets.QProgressBarWithETA(self)
+        self.mainPbar.setValue(0)
+        pBarLayout.addWidget(self.mainPbar, 0, 0)
+        pBarLayout.addWidget(self.mainPbar.ETA_label, 0, 1)
+
+        self.innerPbar = widgets.QProgressBarWithETA(self)
+        self.innerPbar.setValue(0)
+        pBarLayout.addWidget(self.innerPbar, 1, 0)
+        pBarLayout.addWidget(self.innerPbar.ETA_label, 1, 1)
+        if showInnerPbar:
+            self.innerPbar.show()
+        else:
+            self.innerPbar.hide()
+
+        self.logConsole = widgets.QLogConsole()
+
+        mainLayout.addWidget(self.progressLabel)
+        mainLayout.addLayout(pBarLayout)
+        mainLayout.addWidget(self.logConsole)
+
+        self.setLayout(mainLayout)
+        self.setModal(True)
+
+    def keyPressEvent(self, event):
+        isCtrlAlt = event.modifiers() == (Qt.ControlModifier | Qt.AltModifier)
+        if isCtrlAlt and event.key() == Qt.Key_C:
+            doAbort = self.askAbort()
+            if doAbort:
+                self.aborted = True
+                self.workerFinished = True
+                self.close()
+
+    def askAbort(self):
+        msg = QMessageBox()
+        txt = ("""
+        <p style="font-size:9pt">
+            Aborting with "Ctrl+Alt+C" is <b>not safe</b>.<br><br>
+            The system status cannot be predicted and
+            it will <b>require a restart</b>.<br><br>
+            Are you sure you want to abort?
+        </p>
+        """)
+        answer = msg.critical(
+            self, 'Are you sure you want to abort?', txt, msg.Yes | msg.No
+        )
+        return answer == msg.Yes
+
+    def closeEvent(self, event):
+        if not self.workerFinished:
+            event.ignore()
+
+    def show(self, app):
+        QDialog.show(self)
+        screen = app.primaryScreen()
+        screenWidth = screen.size().width()
+        screenHeight = screen.size().height()
+        parentGeometry = self.parent().geometry()
+        mainWinLeft, mainWinWidth = parentGeometry.left(), parentGeometry.width()
+        mainWinTop, mainWinHeight = parentGeometry.top(), parentGeometry.height()
+        mainWinCenterX = int(mainWinLeft+mainWinWidth/2)
+        mainWinCenterY = int(mainWinTop+mainWinHeight/2)
+
+        width = int(screenWidth/3)
+        height = int(screenHeight/3)
+        left = int(mainWinCenterX - width/2)
+        top = int(mainWinCenterY - height/2)
+
+        self.setGeometry(left, top, width, height)
 
 class QDialogCombobox(QDialog):
     def __init__(self, title, ComboBoxItems, informativeText,
@@ -941,7 +1032,7 @@ class QDialogAppendTextFilename(QDialog):
             err_msg = (
                 'Appended name cannot be empty!'
             )
-            msg = QtGui.QMessageBox()
+            msg = QMessageBox()
             msg.critical(
                self, 'Empty name', err_msg, msg.Ok
             )
@@ -1261,7 +1352,7 @@ class QDialogMetadata(QDialog):
             """)
 
         if not valid:
-            msg = QtGui.QMessageBox(self)
+            msg = QMessageBox(self)
             msg.setIcon(msg.Warning)
             msg.setWindowTitle('Invalid entries')
             msg.setText(txt)
@@ -1332,7 +1423,7 @@ class QDialogMetadata(QDialog):
                             f'{acdc_df_path}\n\n'
                             'Close file and then press "Ok".'
                         )
-                        msg = QtGui.QMessageBox()
+                        msg = QMessageBox()
                         msg.critical(self, 'Permission denied', err_msg, msg.Ok)
                         acdc_df.to_csv(acdc_df_path, index=False)
 
@@ -2188,13 +2279,14 @@ class postProcessSegmParams(QGroupBox):
         layout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         if useSliders:
             maxElongation_DSB = widgets.sliderWithSpinBox(isFloat=True)
+            maxElongation_DSB.setMinimum(1)
             maxElongation_DSB.setMaximum(100)
             maxElongation_DSB.setValue(3)
             maxElongation_DSB.setSingleStep(0.5)
         else:
             maxElongation_DSB = QDoubleSpinBox()
             maxElongation_DSB.setAlignment(Qt.AlignCenter)
-            maxElongation_DSB.setMinimum(0)
+            maxElongation_DSB.setMinimum(1)
             maxElongation_DSB.setMaximum(2147483647.0)
             maxElongation_DSB.setValue(3)
             maxElongation_DSB.setDecimals(1)
@@ -2781,7 +2873,7 @@ class YeaZ_ParamsDialog(QDialog):
                 'Threshold value is not valid. '
                 'Enter a floating point from 0 to 1 or "None"'
             )
-            msg = QtGui.QMessageBox()
+            msg = QMessageBox()
             msg.critical(
                 self, 'Invalid threshold value', err_msg, msg.Ok
             )
@@ -3065,50 +3157,50 @@ class editCcaTableWidget(QDialog):
                          for ccs, relID
                          in zip(ccsValues, relIDValues)]
         if any(check_rel):
-            QtGui.QMessageBox().critical(self,
+            QMessageBox().critical(self,
                     'Cell ID = Relative\'s ID', 'Some cells are '
                     'mother or bud of itself. Make sure that the Relative\'s ID'
                     ' is different from the Cell ID!',
-                    QtGui.QMessageBox.Ok)
+                    QMessageBox.Ok)
             return None
         elif any(check_buds_S):
-            QtGui.QMessageBox().critical(self,
+            QMessageBox().critical(self,
                 'Bud in S/G2/M not in 0 Generation number',
                 'Some buds '
                 'in S phase do not have 0 as Generation number!\n'
                 'Buds in S phase must have 0 as "Generation number"',
-                QtGui.QMessageBox.Ok)
+                QMessageBox.Ok)
             return None
         elif any(check_mothers):
-            QtGui.QMessageBox().critical(self,
+            QMessageBox().critical(self,
                 'Mother not in >=1 Generation number',
                 'Some mother cells do not have >=1 as "Generation number"!\n'
                 'Mothers MUST have >1 "Generation number"',
-                QtGui.QMessageBox.Ok)
+                QMessageBox.Ok)
             return None
         elif any(check_buds_G1):
-            QtGui.QMessageBox().critical(self,
+            QMessageBox().critical(self,
                 'Buds in G1!',
                 'Some buds are in G1 phase!\n'
                 'Buds MUST be in S/G2/M phase',
-                QtGui.QMessageBox.Ok)
+                QMessageBox.Ok)
             return None
         elif num_moth_S != num_bud_S:
-            QtGui.QMessageBox().critical(self,
+            QMessageBox().critical(self,
                 'Number of mothers-buds mismatch!',
                 f'There are {num_moth_S} mother cells in "S/G2/M" phase,'
                 f'but there are {num_bud_S} bud cells.\n\n'
                 'The number of mothers and buds in "S/G2/M" '
                 'phase must be equal!',
-                QtGui.QMessageBox.Ok)
+                QMessageBox.Ok)
             return None
         elif any(check_relID_S):
-            QtGui.QMessageBox().critical(self,
+            QMessageBox().critical(self,
                 'Relative\'s ID of cells in S/G2/M = -1',
                 'Some cells are in "S/G2/M" phase but have -1 as Relative\'s ID!\n'
                 'Cells in "S/G2/M" phase must have an existing '
                 'ID as Relative\'s ID!',
-                QtGui.QMessageBox.Ok)
+                QMessageBox.Ok)
             return None
         else:
             corrected_assignment = self.inputCca_df['corrected_assignment']
@@ -3277,8 +3369,10 @@ class askStopFrameSegm(QDialog):
         self.setFont(font)
 
 class QLineEditDialog(QDialog):
-    def __init__(self, title='Entry messagebox', msg='Entry value',
-                       defaultTxt='', parent=None):
+    def __init__(
+            self, title='Entry messagebox', msg='Entry value',
+            defaultTxt='', parent=None
+        ):
         self.cancel = True
 
         super().__init__(parent)
@@ -3341,7 +3435,9 @@ class QLineEditDialog(QDialog):
 
         # Allow only integers
         try:
-            int(newChar)
+            val = int(newChar)
+            if val > np.iinfo(np.uint16).max:
+                self.ID_QLineEdit.setText(str(np.iinfo(np.uint16).max))
         except Exception as e:
             text = text.replace(newChar, '')
             self.ID_QLineEdit.setText(text)
@@ -3437,6 +3533,16 @@ class editID_QWidget(QDialog):
             self.ID_QLineEdit.setText(text)
             return
 
+        # Cast integers greater than uint16 machine limit
+        m_iter = re.finditer('\d+', self.ID_QLineEdit.text())
+        for m in m_iter:
+            val = int(m.group())
+            uint16_max = np.iinfo(np.uint16).max
+            if val > uint16_max:
+                text = self.ID_QLineEdit.text()
+                text = f'{text[:m.start()]}{uint16_max}{text[m.end():]}'
+                self.ID_QLineEdit.setText(text)
+
         # Automatically close ( bracket
         if newChar == '(':
             text += ')'
@@ -3458,7 +3564,7 @@ class editID_QWidget(QDialog):
                     f'will be swapped with ID {self.clickedID}\n\n'
                     'Do you want to continue?'
                 )
-                msg = QtGui.QMessageBox()
+                msg = QMessageBox()
                 do_swap = msg.warning(
                     self, 'Invalid entry', warn_msg, msg.Yes | msg.Cancel
                 )
@@ -3487,7 +3593,7 @@ class editID_QWidget(QDialog):
                 'or a list of elements enclosed in parenthesis separated by a comma\n'
                 'such as (5, 10), (8, 27) to replace ID 5 with ID 10 and ID 8 with ID 27'
             )
-            msg = QtGui.QMessageBox()
+            msg = QMessageBox()
             msg.critical(
                 self, 'Invalid entry', err_msg, msg.Ok
             )
@@ -4376,7 +4482,7 @@ class manualSeparateGui(QMainWindow):
         self.updateImg()
 
     def help(self):
-        msg = QtGui.QMessageBox()
+        msg = QMessageBox()
         msg.information(self, 'Help',
             'Separate object along a curved line.\n\n'
             'To draw a curved line you will need 3 right-clicks:\n\n'
@@ -4972,7 +5078,8 @@ if __name__ == '__main__':
     ]
     # win = QDialogModelParams(init_params, segment_params, 'YeaZ', url='None')
     # win = QDialogPbar(infoTxt=infoTxt)
-    win = postProcessSegmDialog()
+    win = editID_QWidget(19, [19, 100, 50])
+    # win = postProcessSegmDialog()
     win.show()
     # win = QDialogAppendTextFilename('example.npz')
     font = QtGui.QFont()

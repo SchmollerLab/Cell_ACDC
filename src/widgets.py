@@ -20,6 +20,55 @@ from PyQt5.QtWidgets import (
     QGroupBox, QAbstractSlider, QDoubleSpinBox
 )
 
+import myutils
+
+class QLogConsole(QTextEdit):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setReadOnly(True)
+        font = QFont()
+        font.setPointSize(9)
+        self.setFont(font)
+
+    def write(self, message):
+        # Method required by tqdm pbar
+        message = message.replace('\r ', '')
+        if message:
+            self.apppendText(message)
+
+
+class QProgressBarWithETA(QProgressBar):
+    def __init__(self, parent=None):
+        self.parent = parent
+        super().__init__(parent)
+
+        palette = QPalette()
+        palette.setColor(QPalette.Highlight, QColor(207, 235, 155))
+        palette.setColor(QPalette.Text, QColor(0, 0, 0))
+        palette.setColor(QPalette.HighlightedText, QColor(0, 0, 0))
+        self.setPalette(palette)
+        self.ETA_label = QLabel('NDh:NDm:NDs')
+        self.last_time_update = time.perf_counter()
+
+    def update(self, step):
+        t = time.perf_counter()
+        self.setValue(self.value()+step)
+        elpased_seconds = (t - self.last_time_update)/step
+        steps_left = self.maximum() - self.value()
+        seconds_left = elpased_seconds*steps_left
+        ETA = myutils.seconds_to_ETA(seconds_left)
+        self.ETA_label.setText(ETA)
+        self.last_time_update = t
+        return ETA
+
+    def show(self):
+        QProgressBar.show(self)
+        self.ETA_label.show()
+
+    def hide(self):
+        QProgressBar.hide(self)
+        self.ETA_label.hide()
+
 class sliderWithSpinBox(QWidget):
     sigValueChange = pyqtSignal(object)
     valueChanged = pyqtSignal(object)

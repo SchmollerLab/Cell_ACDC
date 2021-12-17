@@ -69,7 +69,8 @@ import pyqtgraph as pg
 import qrc_resources
 
 # Custom modules
-import load, prompts, apps, core, myutils, dataPrep, widgets
+import load, prompts, apps
+import core, myutils, dataPrep, widgets
 from cca_functions import _calc_rot_vol
 from core import numba_max, numba_min
 from myutils import download_model, exec_time
@@ -1591,7 +1592,9 @@ class guiWin(QMainWindow):
         )
         self.ax1.addItem(self.ax1_point_ScatterPlot)
 
-    def gui_createAxesItems(self, numItems):
+    def gui_startCreateAxesItemsWorker(self):
+        numItems = numba_max(self.data[self.pos_i].segm_data)
+
         self.ax1_ContoursCurves = []
         self.ax2_ContoursCurves = []
         self.ax1_BudMothLines = []
@@ -1601,27 +1604,36 @@ class guiWin(QMainWindow):
             # Contours on ax1
             ContCurve = pg.PlotDataItem()
             self.ax1_ContoursCurves.append(ContCurve)
-            self.ax1.addItem(ContCurve)
 
             # Bud mother line on ax1
             BudMothLine = pg.PlotDataItem()
             self.ax1_BudMothLines.append(BudMothLine)
-            self.ax1.addItem(BudMothLine)
 
             # LabelItems on ax1
             ax1_IDlabel = pg.LabelItem()
             self.ax1_LabelItemsIDs.append(ax1_IDlabel)
-            self.ax1.addItem(ax1_IDlabel)
 
             # LabelItems on ax2
             ax2_IDlabel = pg.LabelItem()
             self.ax2_LabelItemsIDs.append(ax2_IDlabel)
-            self.ax2.addItem(ax2_IDlabel)
 
             # Contours on ax2
             ContCurve = pg.PlotDataItem()
             self.ax2_ContoursCurves.append(ContCurve)
-            self.ax2.addItem(ContCurve)
+
+        self.creatingAxesItemsFinished()
+
+    def workerProgress(self, text):
+        if self.progressWin is not None:
+            self.progressWin.logConsole.append(text)
+        print(text)
+
+    def workerInitProgressbar(self, totalIter):
+        self.progressWin.mainPbar.setValue(0)
+        self.progressWin.mainPbar.setMaximum(totalIter)
+
+    def workerUpdateProgressbar(self, step):
+        self.progressWin.mainPbar.update(step)
 
     def gui_createGraphicsItems(self):
         # Contour pens
@@ -1653,9 +1665,14 @@ class guiWin(QMainWindow):
         self.ax2.addItem(self.ax2BorderLine)
 
         # Create enough PlotDataItems and LabelItems to draw contours and IDs.
-        maxID = max([numba_max(posData.segm_data) for posData in self.data])
-        numItems = maxID+10
-        self.gui_createAxesItems(numItems)
+        self.progressWin = apps.QDialogWorkerProcess(
+            title='Creating axes items', parent=self,
+            pbarDesc='Creating axes items...'
+        )
+        self.progressWin.show(self.app)
+        self.progressWin.mainPbar.setMaximum(0)
+
+        QTimer.singleShot(50, self.gui_startCreateAxesItemsWorker)
 
     def gui_connectGraphicsEvents(self):
         self.img1.hoverEvent = self.gui_hoverEventImg1
@@ -2096,32 +2113,16 @@ class guiWin(QMainWindow):
             self.storeUndoRedoStates(UndoFutFrames)
 
             for old_ID, new_ID in editID.how:
+                self.addNewItems(new_ID)
+
                 if new_ID in prev_IDs:
                     tempID = numba_max(posData.lab) + 1
                     posData.lab[posData.lab == old_ID] = tempID
                     posData.lab[posData.lab == new_ID] = old_ID
                     posData.lab[posData.lab == tempID] = new_ID
 
-                    # Clear labels IDs of the swapped IDs
-                    self.ax2_LabelItemsIDs[old_ID-1].setText('')
-                    self.ax1_LabelItemsIDs[old_ID-1].setText('')
-                    self.ax2_LabelItemsIDs[new_ID-1].setText('')
-                    self.ax1_LabelItemsIDs[new_ID-1].setText('')
-
-                    self.addNewItems()
-
                     old_ID_idx = prev_IDs.index(old_ID)
                     new_ID_idx = prev_IDs.index(new_ID)
-                    posData.rp[old_ID_idx].label = new_ID
-                    posData.rp[new_ID_idx].label = old_ID
-                    self.drawID_and_Contour(
-                        posData.rp[old_ID_idx],
-                        drawContours=True
-                    )
-                    self.drawID_and_Contour(
-                        posData.rp[new_ID_idx],
-                        drawContours=False
-                    )
 
                     # Append information for replicating the edit in tracking
                     # List of tuples (y, x, replacing ID)
@@ -2135,18 +2136,8 @@ class guiWin(QMainWindow):
                     posData.editID_info.append((y, x, old_ID))
                 else:
                     posData.lab[posData.lab == old_ID] = new_ID
-                    # Clear labels IDs of the swapped IDs
-                    self.ax2_LabelItemsIDs[old_ID-1].setText('')
-                    self.ax1_LabelItemsIDs[old_ID-1].setText('')
+                    old_ID_idx = posData.IDs.index(old_ID)
 
-                    self.addNewItems()
-
-                    old_ID_idx = prev_IDs.index(old_ID)
-                    posData.rp[old_ID_idx].label = new_ID
-                    self.drawID_and_Contour(
-                        posData.rp[old_ID_idx],
-                        drawContours=True
-                    )
                     # Append information for replicating the edit in tracking
                     # List of tuples (y, x, replacing ID)
                     obj = posData.rp[old_ID_idx]
@@ -2167,7 +2158,7 @@ class guiWin(QMainWindow):
 
             self.warnEditingWithCca_df('Edit ID')
 
-            self.setImageImg2()
+            self.updateALLimg()
             if not self.editID_Button.findChild(QAction).isChecked():
                 self.editID_Button.setChecked(False)
 
@@ -4759,6 +4750,8 @@ class guiWin(QMainWindow):
             allCont = zip(self.ax1_ContoursCurves,
                           self.ax2_ContoursCurves)
             for ax1ContCurve, ax2ContCurve in allCont:
+                if ax1ContCurve is None:
+                    continue
                 if ax1ContCurve.getData()[0] is not None:
                     ax1ContCurve.setData([], [])
                 if ax2ContCurve.getData()[0] is not None:
@@ -6145,6 +6138,7 @@ class guiWin(QMainWindow):
 
         self.titleLabel.setText('Budding event prediction done.', color='g')
 
+    @exec_time
     def next_cb(self):
         t0 = time.perf_counter()
         if self.isSnapshot:
@@ -6155,6 +6149,7 @@ class guiWin(QMainWindow):
             self.curvTool_cb(True)
         t1 = time.perf_counter()
 
+    @exec_time
     def prev_cb(self):
         if self.isSnapshot:
             self.prev_pos()
@@ -6489,8 +6484,38 @@ class guiWin(QMainWindow):
             return False
 
         self.data = data
-
         self.gui_createGraphicsItems()
+        return True
+
+    def gui_addCreatedAxesItems(self):
+        allItems = zip(
+            self.ax1_ContoursCurves,
+            self.ax2_ContoursCurves,
+            self.ax1_LabelItemsIDs,
+            self.ax2_LabelItemsIDs,
+            self.ax1_BudMothLines
+        )
+        for items_ID in allItems:
+            (ax1ContCurve, ax2ContCurve,
+            ax1_IDlabel, ax2_IDlabel,
+            BudMothLine) = items_ID
+
+            self.ax1.addItem(ax1ContCurve)
+            self.ax1.addItem(BudMothLine)
+            self.ax1.addItem(ax1_IDlabel)
+
+            self.ax2.addItem(ax2_IDlabel)
+            self.ax2.addItem(ax2ContCurve)
+
+    def creatingAxesItemsFinished(self):
+        self.progressWin.mainPbar.setMaximum(0)
+
+        self.gui_addCreatedAxesItems()
+        self.progressWin.workerFinished = True
+        self.progressWin.close()
+
+        posData = self.data[self.pos_i]
+
         self.init_segmInfo_df()
         self.initPosAttr()
         self.initFluoData()
@@ -6500,7 +6525,25 @@ class guiWin(QMainWindow):
             how = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
             self.zProjComboBox.setCurrentText(how)
 
-        return True
+        self.create_chNamesQActionGroup(self.user_ch_name)
+
+        # Connect events at the end of loading data process
+        self.gui_connectGraphicsEvents()
+        if not self.isEditActionsConnected:
+            self.gui_connectEditActions()
+
+        self.titleLabel.setText(
+            'Data successfully loaded. Right/Left arrow to navigate frames',
+            color='w')
+
+        self.setFramesSnapshotMode()
+        self.updateALLimg(updateLabelItemColor=False)
+        self.updateScrollbars()
+        self.navigateToolBar.show()
+        self.fontSizeAction.setChecked(True)
+        self.openAction.setEnabled(True)
+        self.editTextIDsColorAction.setDisabled(False)
+        self.imgPropertiesAction.setEnabled(True)
 
     def setFramesSnapshotMode(self):
         if self.isSnapshot:
@@ -6704,6 +6747,9 @@ class guiWin(QMainWindow):
 
     def clearItems_IDs(self, IDs_to_clear):
         for ID in IDs_to_clear:
+            if self.ax1_ContoursCurves[ID-1] is None:
+                continue
+
             self.ax1_ContoursCurves[ID-1].setData([], [])
             self.ax2_ContoursCurves[ID-1].setData([], [])
             self.ax1_LabelItemsIDs[ID-1].setText('')
@@ -6722,6 +6768,10 @@ class guiWin(QMainWindow):
             (ax1ContCurve, ax2ContCurve,
             _IDlabel1, _IDlabel2,
             BudMothLine) = items
+
+            if ax1ContCurve is None:
+                continue
+
             self.ax1.removeItem(ax1ContCurve)
             self.ax1.removeItem(_IDlabel1)
             self.ax1.removeItem(BudMothLine)
@@ -6733,8 +6783,6 @@ class guiWin(QMainWindow):
         self.ax1_LabelItemsIDs = self.ax1_ContoursCurves[:maxID]
         self.ax2_LabelItemsIDs = self.ax1_ContoursCurves[:maxID]
         self.ax1_BudMothLines = self.ax1_ContoursCurves[:maxID]
-
-
 
     def clearAllItems(self):
         allItems = zip(
@@ -6748,6 +6796,10 @@ class guiWin(QMainWindow):
             (ax1ContCurve, ax2ContCurve,
             _IDlabel1, _IDlabel2,
             BudMothLine) = items_ID
+
+            if ax1ContCurve is None:
+                continue
+
             if ax1ContCurve.getData()[0] is not None:
                 ax1ContCurve.setData([], [])
             if ax2ContCurve.getData()[0] is not None:
@@ -8940,46 +8992,57 @@ class guiWin(QMainWindow):
                 continue
             self.ax2.addItem(roi)
 
-    def addNewItems(self):
+    def addNewItems(self, newID):
         posData = self.data[self.pos_i]
-        # Add new Items if there are not enough
-        HDDmaxID = posData.HDDmaxID
-        STOREDmaxID = posData.STOREDmaxID
 
-        try:
-            currentMaxID = max(posData.IDs)
-        except ValueError:
-            currentMaxID = 0
-        maxID = max([currentMaxID, STOREDmaxID, currentMaxID])
-        idx = maxID-1
+        create = False
+        start = len(self.ax1_ContoursCurves)
 
-        if idx >= len(self.ax1_ContoursCurves):
-            missingLen = idx-len(self.ax1_ContoursCurves)+10
-            for i in range(missingLen):
-                # Contours on ax1
-                ContCurve = pg.PlotDataItem()
-                self.ax1_ContoursCurves.append(ContCurve)
-                self.ax1.addItem(ContCurve)
+        doCreate = (
+            newID > start
+            or self.ax1_ContoursCurves[newID-1] is None
+        )
 
-                # Bud mother line on ax1
-                BudMothLine = pg.PlotDataItem()
-                self.ax1_BudMothLines.append(BudMothLine)
-                self.ax1.addItem(BudMothLine)
+        if not doCreate:
+            return
 
-                # LabelItems on ax1
-                ax1_IDlabel = pg.LabelItem()
-                self.ax1_LabelItemsIDs.append(ax1_IDlabel)
-                self.ax1.addItem(ax1_IDlabel)
+        # Contours on ax1
+        ax1ContCurve = pg.PlotDataItem()
+        self.ax1.addItem(ax1ContCurve)
 
-                # LabelItems on ax2
-                ax2_IDlabel = pg.LabelItem()
-                self.ax2_LabelItemsIDs.append(ax2_IDlabel)
-                self.ax2.addItem(ax2_IDlabel)
+        # Bud mother line on ax1
+        BudMothLine = pg.PlotDataItem()
+        self.ax1.addItem(BudMothLine)
 
-                # Contours on ax2
-                ContCurve = pg.PlotDataItem()
-                self.ax2_ContoursCurves.append(ContCurve)
-                self.ax2.addItem(ContCurve)
+        # LabelItems on ax1
+        ax1_IDlabel = pg.LabelItem()
+        self.ax1.addItem(ax1_IDlabel)
+
+        # LabelItems on ax2
+        ax2_IDlabel = pg.LabelItem()
+        self.ax2.addItem(ax2_IDlabel)
+
+        # Contours on ax2
+        ax2ContCurve = pg.PlotDataItem()
+        self.ax2.addItem(ax2ContCurve)
+
+        print('==========================')
+        print(f'Items created for new cell ID {newID}')
+        if newID > start:
+            empty = [None]*(newID-start)
+            self.ax1_ContoursCurves.extend(empty)
+            self.ax1_BudMothLines.extend(empty)
+            self.ax1_LabelItemsIDs.extend(empty)
+            self.ax2_LabelItemsIDs.extend(empty)
+            self.ax2_ContoursCurves.extend(empty)
+
+        self.ax1_ContoursCurves[newID-1] = ax1ContCurve
+        self.ax1_BudMothLines[newID-1] = BudMothLine
+        self.ax1_LabelItemsIDs[newID-1] = ax1_IDlabel
+        self.ax2_LabelItemsIDs[newID-1] = ax2_IDlabel
+        self.ax2_ContoursCurves[newID-1] = ax2ContCurve
+
+        print('==========================')
 
     def updateHistogramItem(self, imageItem):
         """
@@ -9043,6 +9106,10 @@ class guiWin(QMainWindow):
         if self.entropyWin is not None and (updateEntropy or updateFilters):
             self.entropyWin.apply()
 
+    def addItemsAllIDs(self, IDs):
+        for ID in IDs:
+            self.addNewItems(ID)
+
     def updateALLimg(
             self, image=None, never_visited=True,
             only_ax1=False, updateBlur=False,
@@ -9069,13 +9136,13 @@ class guiWin(QMainWindow):
             self.updateHistogramItem(self.img1)
 
         if self.slideshowWin is not None:
-            self.slideshowWin.frame_i = posData.frame_i
+            self.slideshowWin.framne_i = posData.frame_i
             self.slideshowWin.update_img()
 
         if only_ax1:
             return
 
-        self.addNewItems()
+        self.addItemsAllIDs(posData.IDs)
         self.clearAllItems()
 
         self.setImageImg2()
@@ -9154,6 +9221,9 @@ class guiWin(QMainWindow):
         onlyMothBudLines = how == 'Draw only mother-bud lines'
 
         for ax2ContCurve in self.ax2_ContoursCurves:
+            if ax2ContCurve is None:
+                continue
+
             if ax2ContCurve.getData()[0] is not None:
                 ax2ContCurve.setData([], [])
 
@@ -9166,9 +9236,12 @@ class guiWin(QMainWindow):
                 if ID in posData.new_IDs:
                     ContCurve = self.ax2_ContoursCurves[ID-1]
                     cont = self.getObjContours(obj)
-                    ContCurve.setData(
-                        cont[:,0], cont[:,1], pen=self.newIDs_cpen
-                    )
+                    try:
+                        ContCurve.setData(
+                            cont[:,0], cont[:,1], pen=self.newIDs_cpen
+                        )
+                    except AttributeError:
+                        print(f'Error with ID {ID}')
 
         if posData.lost_IDs:
             # Get the rp from previous frame
@@ -9814,6 +9887,7 @@ class guiWin(QMainWindow):
                 user_ch_file_paths.append(img_path)
 
             print(f'Loading {img_path}...')
+            self.appendPathWindowTitle(user_ch_file_paths)
 
             self.user_ch_name = user_ch_name
 
@@ -9828,26 +9902,7 @@ class guiWin(QMainWindow):
                     color='w')
                 return
 
-            self.create_chNamesQActionGroup(user_ch_name)
 
-            # Connect events at the end of loading data process
-            self.gui_connectGraphicsEvents()
-            if not self.isEditActionsConnected:
-                self.gui_connectEditActions()
-
-            self.titleLabel.setText(
-                'Data successfully loaded. Right/Left arrow to navigate frames',
-                color='w')
-
-            self.setFramesSnapshotMode()
-            self.appendPathWindowTitle(user_ch_file_paths)
-            self.updateALLimg(updateLabelItemColor=False)
-            self.updateScrollbars()
-            self.navigateToolBar.show()
-            self.fontSizeAction.setChecked(True)
-            self.openAction.setEnabled(True)
-            self.editTextIDsColorAction.setDisabled(False)
-            self.imgPropertiesAction.setEnabled(True)
         except Exception as e:
             print('')
             print('====================================')
