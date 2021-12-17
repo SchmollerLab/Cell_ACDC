@@ -17,19 +17,22 @@ from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QMainWindow, QStyleFactory,
     QLineEdit, QSlider, QSpinBox, QGridLayout, QDockWidget,
     QScrollArea, QSizePolicy, QComboBox, QPushButton, QScrollBar,
-    QGroupBox, QAbstractSlider
+    QGroupBox, QAbstractSlider, QDoubleSpinBox
 )
 
 class sliderWithSpinBox(QWidget):
-    sigValueChange = pyqtSignal(int)
+    sigValueChange = pyqtSignal(object)
+    valueChanged = pyqtSignal(object)
+    editingFinished = pyqtSignal()
 
     def __init__(self, *args, **kwargs):
         QWidget.__init__(self, *args)
 
+
         layout = QGridLayout()
 
         title = kwargs.get('title')
-        row = 1
+        row = 0
         col = 0
         if title is not None:
             titleLabel = QLabel(self)
@@ -44,13 +47,27 @@ class sliderWithSpinBox(QWidget):
                 layout.addWidget(titleLabel, 0, 0, alignment=Qt.AlignLeft)
                 layout.setColumnStretch(0, 0)
 
+        self._normalize = False
+        normalize = kwargs.get('normalize')
+        if normalize is not None:
+            self._normalize = True
+
+        self._isFloat = False
+        isFloat = kwargs.get('isFloat')
+        if isFloat is not None:
+            self._isFloat = True
+
         self.slider = QSlider(Qt.Horizontal, self)
         layout.addWidget(self.slider, row+1, col)
 
-        self.spinBox = QSpinBox(self)
+        if self._normalize or self._isFloat:
+            self.spinBox = QDoubleSpinBox(self)
+        else:
+            self.spinBox = QSpinBox(self)
         self.spinBox.setAlignment(Qt.AlignCenter)
         layout.addWidget(self.spinBox, row+1, col+1)
-        layout.setRowStretch(0, 1)
+        if title is not None:
+            layout.setRowStretch(0, 1)
         layout.setRowStretch(row+1, 1)
         layout.setColumnStretch(col, 6)
         layout.setColumnStretch(col+1, 1)
@@ -58,34 +75,63 @@ class sliderWithSpinBox(QWidget):
         self.layout = layout
 
         self.slider.valueChanged.connect(self.sliderValueChanged)
+        self.slider.sliderReleased.connect(self.onEditingFinished)
         self.spinBox.valueChanged.connect(self.spinboxValueChanged)
+        self.spinBox.editingFinished.connect(self.onEditingFinished)
         self.setLayout(layout)
 
+    def onEditingFinished(self):
+        self.editingFinished.emit()
+
     def setValue(self, value):
-        self.slider.setValue(value)
+        valueInt = value
+        if self._normalize:
+            valueInt = int(value*self.slider.maximum())
+        if self._isFloat:
+            valueInt = int(value)
+            self.spinBox.valueChanged.disconnect()
+            self.spinBox.setValue(value)
+            self.spinBox.valueChanged.connect(self.spinboxValueChanged)
+        self.slider.setValue(valueInt)
 
     def setMaximum(self, max):
         self.slider.setMaximum(max)
-        self.spinBox.setMaximum(max)
+        # self.spinBox.setMaximum(max)
 
     def setMinimum(self, min):
         self.slider.setMinimum(min)
-        self.spinBox.setMinimum(min)
+        # self.spinBox.setMinimum(min)
+
+    def setSingleStep(self, step):
+        self.spinBox.setSingleStep(step)
+
+    def setDecimals(self, decimals):
+        self.spinBox.setDecimals(decimals)
 
     def sliderValueChanged(self, val):
         self.spinBox.valueChanged.disconnect()
-        self.spinBox.setValue(val)
+        if self._normalize:
+            valF = val/self.slider.maximum()
+            self.spinBox.setValue(valF)
+        else:
+            self.spinBox.setValue(val)
         self.spinBox.valueChanged.connect(self.spinboxValueChanged)
-        self.sigValueChange.emit(val)
+        self.sigValueChange.emit(self.value())
+        self.valueChanged.emit(self.value())
 
     def spinboxValueChanged(self, val):
         self.slider.valueChanged.disconnect()
+        if self._normalize:
+            val = int(val*self.slider.maximum())
+        if self._isFloat:
+            val = int(val)
         self.slider.setValue(val)
         self.slider.valueChanged.connect(self.sliderValueChanged)
-        self.sigValueChange.emit(val)
+        self.sigValueChange.emit(self.value())
+        self.valueChanged.emit(self.value())
 
     def value(self):
-        return self.slider.value()
+        return self.spinBox.value()
 
 if __name__ == '__main__':
     class Window(QMainWindow):
@@ -95,14 +141,26 @@ if __name__ == '__main__':
             container = QWidget()
             layout = QVBoxLayout()
 
-            slider = sliderWithSpinBox(title='test slider', title_loc='in_line')
+            slider = sliderWithSpinBox(isFloat=True)
+            slider.setMaximum(10)
+            slider.setValue(3.2)
+            slider.setSingleStep(0.1)
+            slider.valueChanged.connect(self.sliderValueChanged)
+            slider.sliderReleased.connect(self.sliderReleased)
             layout.addWidget(slider)
+            self.slider = slider
 
             # layout.addStretch(1)
             container.setLayout(layout)
             self.setCentralWidget(container)
 
             self.setFocus()
+
+        def sliderValueChanged(self, value):
+            print(value)
+
+        def sliderReleased(self, value):
+            print('released')
 
         def keyPressEvent(self, event):
             if event.key() == Qt.Key_T:
@@ -117,6 +175,8 @@ if __name__ == '__main__':
                             break
                     print(f'Current screen geometry = {current_screen.geometry()}')
                     print(f'Other screen geometry = {other_screen.geometry()}')
+            elif event.key() == Qt.Key_P:
+                print(self.slider.value())
 
 
 

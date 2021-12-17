@@ -339,12 +339,13 @@ class segmWorker(QObject):
         img = self.mainWin.getDisplayedCellsImg()
         img = myutils.uint_to_float(img)
         lab = self.mainWin.model.segment(img, **self.mainWin.segment2D_kwargs)
-        lab = core.remove_artefacts(
-            lab,
-            min_solidity=self.mainWin.minSolidity,
-            min_area=self.mainWin.minSize,
-            max_elongation=self.mainWin.maxElongation
-        )
+        if self.mainWin.applyPostProcessing:
+            lab = core.remove_artefacts(
+                lab,
+                min_solidity=self.mainWin.minSolidity,
+                min_area=self.mainWin.minSize,
+                max_elongation=self.mainWin.maxElongation
+            )
         t1 = time.time()
         exec_time = t1-t0
         self.finished.emit(lab, exec_time)
@@ -6020,13 +6021,15 @@ class guiWin(QMainWindow):
                 url=url)
             win.exec_()
             if win.cancel:
-                self.titleLabel.setText('Segmentation aborted.')
+                print('Segmentation process cancelled.')
+                self.titleLabel.setText('Segmentation process cancelled.')
                 return
 
             self.segment2D_kwargs = win.segment2D_kwargs
             self.minSize = win.minSize
             self.minSolidity = win.minSize
             self.maxElongation = win.maxElongation
+            self.applyPostProcessing = win.applyPostProcessing
 
             model = acdcSegment.Model(**win.init_kwargs)
             self.models[idx] = model
@@ -7104,7 +7107,10 @@ class guiWin(QMainWindow):
                 editIDclicked_y[i] = int(y)
                 editIDnewID[i] = new_ID
 
-        posData.STOREDmaxID = max(IDs)
+        try:
+            posData.STOREDmaxID = max(IDs)
+        except ValueError:
+            posData.STOREDmaxID = 0
         posData.allData_li[posData.frame_i]['acdc_df'] = pd.DataFrame(
             {
                         'Cell_ID': IDs,
@@ -8929,7 +8935,10 @@ class guiWin(QMainWindow):
         HDDmaxID = posData.HDDmaxID
         STOREDmaxID = posData.STOREDmaxID
 
-        currentMaxID = max(posData.IDs)
+        try:
+            currentMaxID = max(posData.IDs)
+        except ValueError:
+            currentMaxID = 0
         maxID = max([currentMaxID, STOREDmaxID, currentMaxID])
         idx = maxID-1
 

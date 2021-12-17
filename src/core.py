@@ -73,7 +73,6 @@ def remove_artefacts(
 
         # NOTE: single pixel horizontal or vertical lines minor_axis_length=0
         minor_axis_length = max(1, obj.minor_axis_length)
-        print(obj.minor_axis_length, minor_axis_length)
         elongation = obj.major_axis_length/minor_axis_length
         if obj.solidity<min_solidity:
             lab[obj.slice][obj.image] = 0

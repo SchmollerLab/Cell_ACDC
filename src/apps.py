@@ -2133,62 +2133,86 @@ class nonModalTempQMessage(QWidget):
 
 
 class postProcessSegmParams(QGroupBox):
-    def __init__(self, title, parent=None):
+    def __init__(self, title, useSliders=False, parent=None, maxSize=None):
         QGroupBox.__init__(self, title, parent)
+        self.useSliders = useSliders
 
         layout = QGridLayout()
 
         row = 0
         label = QLabel("Minimum area (pixels): ")
         layout.addWidget(label, row, 0, alignment=Qt.AlignRight)
-        minSize_SB = QSpinBox()
-        minSize_SB.setAlignment(Qt.AlignCenter)
-        minSize_SB.setMinimum(1)
-        minSize_SB.setMaximum(2147483647)
-        minSize_SB.setValue(5)
+
+        if useSliders:
+            minSize_SB = widgets.sliderWithSpinBox()
+            minSize_SB.setMinimum(1)
+            minSize_SB.setMaximum(200)
+            minSize_SB.setValue(5)
+        else:
+            minSize_SB = QSpinBox()
+            minSize_SB.setAlignment(Qt.AlignCenter)
+            minSize_SB.setMinimum(1)
+            minSize_SB.setMaximum(2147483647)
+            minSize_SB.setValue(5)
+
         layout.addWidget(minSize_SB, row, 1)
         self.minSize_SB = minSize_SB
 
         row += 1
         label = QLabel("Minimum solidity (0-1): ")
         layout.addWidget(label, row, 0, alignment=Qt.AlignRight)
-        minSolidity_DSB = QDoubleSpinBox()
+        if useSliders:
+            minSolidity_DSB = widgets.sliderWithSpinBox(normalize=True)
+            minSolidity_DSB.setMaximum(100)
+            minSolidity_DSB.setValue(0.5)
+        else:
+            minSolidity_DSB = QDoubleSpinBox()
+            minSolidity_DSB.setAlignment(Qt.AlignCenter)
+            minSolidity_DSB.setMinimum(0)
+            minSolidity_DSB.setMaximum(1)
+            minSolidity_DSB.setValue(0.5)
+            minSolidity_DSB.setSingleStep(0.1)
+
         minSolidity_DSB.setToolTip(
             'Solidity is a measure of convexity. A solidity of 1 means '
             'that the shape is fully convex.\n As solidity approaches 0 '
             'the object is more and more concave.\n'
             'Write 0 for ignoring this parameter.'
         )
-        minSolidity_DSB.setAlignment(Qt.AlignCenter)
-        minSolidity_DSB.setMinimum(0)
-        minSolidity_DSB.setMaximum(1)
-        minSolidity_DSB.setValue(0.5)
-        minSolidity_DSB.setSingleStep(0.1)
+
         layout.addWidget(minSolidity_DSB, row, 1)
         self.minSolidity_DSB = minSolidity_DSB
 
         row += 1
         label = QLabel("Max elongation (1=circle):")
         layout.addWidget(label, row, 0, alignment=Qt.AlignRight)
-        maxElongation_DSB = QDoubleSpinBox()
+        if useSliders:
+            maxElongation_DSB = widgets.sliderWithSpinBox(normalize=True)
+            maxElongation_DSB.setMaximum(100)
+            maxElongation_DSB.setValue(3)
+            maxElongation_DSB.setSingleStep(0.5)
+        else:
+            maxElongation_DSB = QDoubleSpinBox()
+            maxElongation_DSB.setAlignment(Qt.AlignCenter)
+            maxElongation_DSB.setMinimum(0)
+            maxElongation_DSB.setMaximum(2147483647.0)
+            maxElongation_DSB.setValue(3)
+            maxElongation_DSB.setDecimals(1)
+            maxElongation_DSB.setSingleStep(1.0)
+
         maxElongation_DSB.setToolTip(
             'Elongation is the ratio between major and minor axis lengths.\n'
             'An elongation of 1 is like a circle.\n'
             'Write 0 for ignoring this parameter.'
         )
-        maxElongation_DSB.setAlignment(Qt.AlignCenter)
-        maxElongation_DSB.setMinimum(0)
-        maxElongation_DSB.setMaximum(2147483647.0)
-        maxElongation_DSB.setValue(3)
-        maxElongation_DSB.setDecimals(1)
-        maxElongation_DSB.setSingleStep(1.0)
+
         layout.addWidget(maxElongation_DSB, row, 1)
         self.maxElongation_DSB = maxElongation_DSB
 
         self.setLayout(layout)
 
 class postProcessSegmDialog(QDialog):
-    def __init__(self, mainWin):
+    def __init__(self, mainWin=None):
         super().__init__(mainWin)
         self.cancel = True
         self.mainWin = mainWin
@@ -2199,7 +2223,7 @@ class postProcessSegmDialog(QDialog):
         buttonsLayout = QHBoxLayout()
 
         artefactsGroupBox = postProcessSegmParams(
-            'Post-processing parameters'
+            'Post-processing parameters', useSliders=True
         )
 
         self.minSize_SB = artefactsGroupBox.minSize_SB
@@ -2209,6 +2233,10 @@ class postProcessSegmDialog(QDialog):
         self.minSize_SB.valueChanged.connect(self.applyPostProcessing)
         self.minSolidity_DSB.valueChanged.connect(self.applyPostProcessing)
         self.maxElongation_DSB.valueChanged.connect(self.applyPostProcessing)
+
+        self.minSize_SB.editingFinished.connect(self.onEditingFinished)
+        self.minSolidity_DSB.editingFinished.connect(self.onEditingFinished)
+        self.maxElongation_DSB.editingFinished.connect(self.onEditingFinished)
 
         okButton = QPushButton('Ok')
         cancelButton = QPushButton('Cancel')
@@ -2230,10 +2258,11 @@ class postProcessSegmDialog(QDialog):
         font.setPointSize(10)
         self.setFont(font)
 
-        self.setposData()
-        self.applyPostProcessing(0)
+        if mainWin is not None:
+            self.setPosData()
+            self.applyPostProcessing(0)
 
-    def setposData(self):
+    def setPosData(self):
         if self.mainWin is None:
             return
 
@@ -2262,17 +2291,29 @@ class postProcessSegmDialog(QDialog):
         self.mainWin.clearItems_IDs(delIDs)
         self.mainWin.setImageImg2()
 
+    def onEditingFinished(self):
+        if self.mainWin is None:
+            return
+            
+        self.mainWin.update_rp()
+        self.mainWin.updateALLimg()
+
     def ok_cb(self):
         self.cancel = False
-        self.mainWin.store_data()
+        self.mainWin.update_rp()
         self.mainWin.updateALLimg()
         self.close()
 
     def cancel_cb(self):
         if self.mainWin is not None:
             self.posData.lab = self.origLab
+            self.mainWin.update_rp()
             self.mainWin.updateALLimg()
         self.close()
+
+    def show(self):
+        QDialog.show(self)
+        self.resize(int(self.width()*1.5), self.height())
 
     def closeEvent(self, event):
         if self.mainWin is not None:
@@ -4758,6 +4799,9 @@ class QDialogModelParams(QDialog):
         artefactsGroupBox = postProcessSegmParams(
             'Post-processing segmentation parameters'
         )
+        artefactsGroupBox.setCheckable(True)
+        artefactsGroupBox.setChecked(True)
+        self.artefactsGroupBox = artefactsGroupBox
 
         self.minSize_SB = artefactsGroupBox.minSize_SB
         self.minSolidity_DSB = artefactsGroupBox.minSolidity_DSB
@@ -4872,6 +4916,7 @@ class QDialogModelParams(QDialog):
         self.minSize = self.minSize_SB.value()
         self.minSolidity = self.minSolidity_DSB.value()
         self.maxElongation = self.maxElongation_DSB.value()
+        self.applyPostProcessing = self.artefactsGroupBox.isChecked()
         self.close()
 
 if __name__ == '__main__':
@@ -4924,7 +4969,9 @@ if __name__ == '__main__':
         ArgSpec(name='min_distance', default=10, type=int)
     ]
     # win = QDialogModelParams(init_params, segment_params, 'YeaZ', url='None')
-    win = QDialogPbar(infoTxt=infoTxt)
+    # win = QDialogPbar(infoTxt=infoTxt)
+    win = postProcessSegmDialog()
+    win.show()
     # win = QDialogAppendTextFilename('example.npz')
     font = QtGui.QFont()
     font.setPointSize(10)
