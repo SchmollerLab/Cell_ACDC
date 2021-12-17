@@ -1591,6 +1591,38 @@ class guiWin(QMainWindow):
         )
         self.ax1.addItem(self.ax1_point_ScatterPlot)
 
+    def gui_createAxesItems(self, numItems):
+        self.ax1_ContoursCurves = []
+        self.ax2_ContoursCurves = []
+        self.ax1_BudMothLines = []
+        self.ax1_LabelItemsIDs = []
+        self.ax2_LabelItemsIDs = []
+        for i in range(numItems):
+            # Contours on ax1
+            ContCurve = pg.PlotDataItem()
+            self.ax1_ContoursCurves.append(ContCurve)
+            self.ax1.addItem(ContCurve)
+
+            # Bud mother line on ax1
+            BudMothLine = pg.PlotDataItem()
+            self.ax1_BudMothLines.append(BudMothLine)
+            self.ax1.addItem(BudMothLine)
+
+            # LabelItems on ax1
+            ax1_IDlabel = pg.LabelItem()
+            self.ax1_LabelItemsIDs.append(ax1_IDlabel)
+            self.ax1.addItem(ax1_IDlabel)
+
+            # LabelItems on ax2
+            ax2_IDlabel = pg.LabelItem()
+            self.ax2_LabelItemsIDs.append(ax2_IDlabel)
+            self.ax2.addItem(ax2_IDlabel)
+
+            # Contours on ax2
+            ContCurve = pg.PlotDataItem()
+            self.ax2_ContoursCurves.append(ContCurve)
+            self.ax2.addItem(ContCurve)
+
     def gui_createGraphicsItems(self):
         # Contour pens
         self.oldIDs_cpen = pg.mkPen(color=(200, 0, 0, 255*0.5), width=2)
@@ -1623,36 +1655,7 @@ class guiWin(QMainWindow):
         # Create enough PlotDataItems and LabelItems to draw contours and IDs.
         maxID = max([numba_max(posData.segm_data) for posData in self.data])
         numItems = maxID+10
-        self.ax1_ContoursCurves = []
-        self.ax2_ContoursCurves = []
-        self.ax1_BudMothLines = []
-        self.ax1_LabelItemsIDs = []
-        self.ax2_LabelItemsIDs = []
-        for i in range(numItems):
-            # Contours on ax1
-            ContCurve = pg.PlotDataItem()
-            self.ax1_ContoursCurves.append(ContCurve)
-            self.ax1.addItem(ContCurve)
-
-            # Bud mother line on ax1
-            BudMothLine = pg.PlotDataItem()
-            self.ax1_BudMothLines.append(BudMothLine)
-            self.ax1.addItem(BudMothLine)
-
-            # LabelItems on ax1
-            ax1_IDlabel = pg.LabelItem()
-            self.ax1_LabelItemsIDs.append(ax1_IDlabel)
-            self.ax1.addItem(ax1_IDlabel)
-
-            # LabelItems on ax2
-            ax2_IDlabel = pg.LabelItem()
-            self.ax2_LabelItemsIDs.append(ax2_IDlabel)
-            self.ax2.addItem(ax2_IDlabel)
-
-            # Contours on ax2
-            ContCurve = pg.PlotDataItem()
-            self.ax2_ContoursCurves.append(ContCurve)
-            self.ax2.addItem(ContCurve)
+        self.gui_createAxesItems(numItems)
 
     def gui_connectGraphicsEvents(self):
         self.img1.hoverEvent = self.gui_hoverEventImg1
@@ -5974,10 +5977,19 @@ class guiWin(QMainWindow):
     def postProcessSegm(self, checked):
         if checked:
             self.postProcessSegmWin = apps.postProcessSegmDialog(self)
+            self.postProcessSegmWin.sigClosed.connect(
+                self.postProcessSegmWinClosed
+            )
             self.postProcessSegmWin.show()
         else:
-            self.postProcessSegmWin.cancel_cb()
+            self.postProcessSegmWin.close()
             self.postProcessSegmWin = None
+
+    def postProcessSegmWinClosed(self):
+        self.postProcessSegmWin = None
+        self.postProcessSegmAction.toggled.disconnect()
+        self.postProcessSegmAction.setChecked(False)
+        self.postProcessSegmAction.toggled.connect(self.postProcessSegm)
 
     def repeatSegm(self, model_name=''):
         if not model_name:
@@ -6142,7 +6154,6 @@ class guiWin(QMainWindow):
         if self.curvToolButton.isChecked():
             self.curvTool_cb(True)
         t1 = time.perf_counter()
-        print(f'Next exec time {(t1-t0)*1000:.3f} ms')
 
     def prev_cb(self):
         if self.isSnapshot:
@@ -8148,7 +8159,7 @@ class guiWin(QMainWindow):
             self.drawingContoursTimes.append(drawingContoursTimes)
 
 
-    def update_rp(self, draw=True):
+    def update_rp(self, draw=True, debug=False):
         posData = self.data[self.pos_i]
         # Update rp for current posData.lab (e.g. after any change)
         posData.rp = skimage.measure.regionprops(posData.lab)
@@ -9037,7 +9048,7 @@ class guiWin(QMainWindow):
             only_ax1=False, updateBlur=False,
             updateSharp=False, updateEntropy=False,
             updateHistoLevels=True, updateFilters=False,
-            updateLabelItemColor=False
+            updateLabelItemColor=False, debug=False
         ):
         posData = self.data[self.pos_i]
 
@@ -9063,8 +9074,6 @@ class guiWin(QMainWindow):
 
         if only_ax1:
             return
-
-        lab = posData.lab
 
         self.addNewItems()
         self.clearAllItems()

@@ -65,6 +65,7 @@ class sliderWithSpinBox(QWidget):
         else:
             self.spinBox = QSpinBox(self)
         self.spinBox.setAlignment(Qt.AlignCenter)
+        self.spinBox.setMaximum(2**31-1)
         layout.addWidget(self.spinBox, row+1, col+1)
         if title is not None:
             layout.setRowStretch(0, 1)

@@ -37,7 +37,7 @@ import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui
 from PyQt5 import QtCore
 from PyQt5.QtGui import QIcon, QFontMetrics
-from PyQt5.QtCore import Qt, QSize, QEvent
+from PyQt5.QtCore import Qt, QSize, QEvent, pyqtSignal
 from PyQt5.QtWidgets import (
     QAction, QApplication, QMainWindow, QMenu, QLabel, QToolBar,
     QScrollBar, QWidget, QVBoxLayout, QLineEdit, QPushButton,
@@ -2187,7 +2187,7 @@ class postProcessSegmParams(QGroupBox):
         label = QLabel("Max elongation (1=circle):")
         layout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         if useSliders:
-            maxElongation_DSB = widgets.sliderWithSpinBox(normalize=True)
+            maxElongation_DSB = widgets.sliderWithSpinBox(isFloat=True)
             maxElongation_DSB.setMaximum(100)
             maxElongation_DSB.setValue(3)
             maxElongation_DSB.setSingleStep(0.5)
@@ -2212,6 +2212,8 @@ class postProcessSegmParams(QGroupBox):
         self.setLayout(layout)
 
 class postProcessSegmDialog(QDialog):
+    sigClosed = pyqtSignal()
+
     def __init__(self, mainWin=None):
         super().__init__(mainWin)
         self.cancel = True
@@ -2294,13 +2296,14 @@ class postProcessSegmDialog(QDialog):
     def onEditingFinished(self):
         if self.mainWin is None:
             return
-            
+
         self.mainWin.update_rp()
         self.mainWin.updateALLimg()
 
     def ok_cb(self):
         self.cancel = False
         self.mainWin.update_rp()
+        self.mainWin.store_data()
         self.mainWin.updateALLimg()
         self.close()
 
@@ -2316,8 +2319,7 @@ class postProcessSegmDialog(QDialog):
         self.resize(int(self.width()*1.5), self.height())
 
     def closeEvent(self, event):
-        if self.mainWin is not None:
-            self.mainWin.postProcessSegmAction.setChecked(False)
+        self.sigClosed.emit()
 
 class CellsSlideshow_GUI(QMainWindow):
     """Main Window."""
