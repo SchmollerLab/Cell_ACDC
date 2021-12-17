@@ -21,7 +21,8 @@ from PyQt5.QtWidgets import (
     QStyleFactory, QWidget, QMessageBox, QTextEdit
 )
 from PyQt5.QtCore import (
-    Qt, QEventLoop, QThreadPool, QRunnable, pyqtSignal, QObject
+    Qt, QEventLoop, QThreadPool, QRunnable, pyqtSignal, QObject,
+    QMutex, QWaitCondition
 )
 from PyQt5 import QtGui
 
@@ -56,6 +57,7 @@ class segmWorkerSignals(QObject):
     progress_tqdm = pyqtSignal(int)
     signal_close_tqdm = pyqtSignal()
     create_tqdm = pyqtSignal(int)
+    debug = pyqtSignal(object)
 
 class segmWorker(QRunnable):
     def __init__(
@@ -78,6 +80,10 @@ class segmWorker(QRunnable):
         self.predictCcaState_model = mainWin.predictCcaState_model
         self.is_segment3DT_available = mainWin.is_segment3DT_available
         self.innerPbar_available = mainWin.innerPbar_available
+
+    def setupPausingItems(self):
+        self.mutex = QMutex()
+        self.waitCond = QWaitCondition()
 
     def run(self):
         img_path = self.img_path
@@ -234,14 +240,17 @@ class segmWorker(QRunnable):
             self.signals.progressBar.emit(1)
             # lab_stack = core.smooth_contours(lab_stack, radius=2)
 
+        np.save('test_segm.npy', lab_stack)
+
         if posData.SizeT > 1:
             for t, lab in enumerate(lab_stack):
-                lab_stack[t] = core.remove_artefacts(
+                lab_cleaned = core.remove_artefacts(
                     lab,
                     min_solidity=self.minSolidity,
                     min_area=self.minSize,
                     max_elongation=self.maxElongation
                 )
+                lab_stack[t] = lab_cleaned
         else:
             lab_stack = core.remove_artefacts(
                 lab_stack,
@@ -884,7 +893,11 @@ class segmWin(QMainWindow):
         worker.signals.create_tqdm.connect(self.create_tqdm_pbar)
         worker.signals.progress_tqdm.connect(self.update_tqdm_pbar)
         worker.signals.signal_close_tqdm.connect(self.close_tqdm)
+        # worker.signals.debug.connect(self.debugSegmWorker)
         self.threadPool.start(worker)
+
+    def debugSegmWorker(self, lab):
+        apps.imshow_tk(lab)
 
     def segmWorkerProgress(self, text):
         print('-----------------------------------------')

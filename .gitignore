@@ -6,6 +6,7 @@ notebooks/.ipynb_checkpoints
 test.txt
 src/test.py
 src/test1.py
+src/test_segm.npy
 src/deprecated
 src/java
 src/javabridge_cp37

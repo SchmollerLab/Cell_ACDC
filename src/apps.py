@@ -3530,9 +3530,11 @@ class tk_breakpoint:
         root.destroy()
 
 class imshow_tk:
-    def __init__(self, img, dots_coords=None, x_idx=1, axis=None,
-                       additional_imgs=[], titles=[], fixed_vrange=False,
-                       run=True):
+    def __init__(
+            self, img, dots_coords=None, x_idx=1, axis=None,
+            additional_imgs=[], titles=[], fixed_vrange=False,
+            run=True
+        ):
         if img.ndim == 3:
             if img.shape[-1] > 4:
                 img = img.max(axis=0)

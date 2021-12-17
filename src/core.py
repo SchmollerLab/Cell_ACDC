@@ -61,15 +61,24 @@ def remove_artefacts(
     rp = skimage.measure.regionprops(lab.astype(int))
     delIDs = []
     for obj in rp:
-        elongation = obj.major_axis_length/obj.minor_axis_length
-        doRemove = (
-            obj.area<min_area
-            or obj.solidity<min_solidity
-            or elongation>max_elongation
-        )
-        if doRemove:
+        if obj.area<min_area:
             lab[obj.slice][obj.image] = 0
             delIDs.append(obj.label)
+            continue
+
+        if obj.solidity<min_solidity:
+            lab[obj.slice][obj.image] = 0
+            delIDs.append(obj.label)
+            continue
+
+        # NOTE: single pixel horizontal or vertical lines minor_axis_length=0
+        minor_axis_length = max(1, obj.minor_axis_length)
+        print(obj.minor_axis_length, minor_axis_length)
+        elongation = obj.major_axis_length/minor_axis_length
+        if obj.solidity<min_solidity:
+            lab[obj.slice][obj.image] = 0
+            delIDs.append(obj.label)
+
     if return_delIDs:
         return lab, delIDs
     else:
