@@ -102,6 +102,17 @@ def qt_debug_trace():
     pyqtRemoveInputHook()
     import pdb; pdb.set_trace()
 
+def worker_exception_handler(func):
+    @wraps(func)
+    def run(self):
+        try:
+            result = func(self)
+        except Exception as error:
+            result = None
+            self.critical.emit(error)
+        return result
+    return run
+
 def exception_handler(func):
     @wraps(func)
     def inner_function(self, *args, **kwargs):
@@ -270,6 +281,7 @@ class saveDataWorker(QObject):
                         keys.append((i, posData.TimeIncrement*i))
 
                 self.progress.emit('Almost done...')
+                self.progressBar.emit(0, 0, 0)
 
                 if posData.segmInfo_df is not None:
                     try:
@@ -356,11 +368,14 @@ class saveDataWorker(QObject):
 
 class segmWorker(QObject):
     finished = pyqtSignal(np.ndarray, float)
+    debug = pyqtSignal(object)
+    critical = pyqtSignal(object)
 
     def __init__(self, mainWin):
         QObject.__init__(self)
         self.mainWin = mainWin
 
+    @worker_exception_handler
     def run(self):
         t0 = time.time()
         img = self.mainWin.getDisplayedCellsImg()
@@ -393,6 +408,7 @@ class guiWin(QMainWindow):
 
         self.app = app
 
+        self.progressWin = None
         self.slideshowWin = None
         self.ccaTableWin = None
         self.data_loaded = False
@@ -1661,6 +1677,8 @@ class guiWin(QMainWindow):
 
     def gui_startCreateAxesItemsWorker(self):
         numItems = numba_max(self.data[self.pos_i].segm_data)
+
+        self.logger.info(f'Creating {numItems} axes items...')
 
         self.ax1_ContoursCurves = []
         self.ax2_ContoursCurves = []
@@ -6098,7 +6116,7 @@ class guiWin(QMainWindow):
 
             self.segment2D_kwargs = win.segment2D_kwargs
             self.minSize = win.minSize
-            self.minSolidity = win.minSize
+            self.minSolidity = win.minSolidity
             self.maxElongation = win.maxElongation
             self.applyPostProcessing = win.applyPostProcessing
 
@@ -6121,10 +6139,20 @@ class guiWin(QMainWindow):
         self.thread.finished.connect(self.thread.deleteLater)
 
         # Custom signals
+        self.worker.critical.connect(self.workerCritical)
         self.worker.finished.connect(self.segmWorkerFinished)
 
         self.thread.started.connect(self.worker.run)
         self.thread.start()
+
+    @exception_handler
+    def workerCritical(self, error):
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+        raise error
+
+    def debugSegmWorker(self, lab):
+        apps.imshow_tk(lab)
 
     def segmWorkerFinished(self, lab, exec_time):
         posData = self.data[self.pos_i]
@@ -10575,6 +10603,7 @@ class guiWin(QMainWindow):
                 current_frame_i = last_tracked_i
                 posData.frame_i = last_tracked_i
                 self.get_data()
+                self.updateScrollbars()
                 self.updateALLimg()
             elif save_current == msg.Cancel:
                 self.worker.askSaveLastCancelled = True
@@ -10628,6 +10657,7 @@ class guiWin(QMainWindow):
                 current_frame_i = last_tracked_i
                 posData.frame_i = last_tracked_i
                 self.get_data()
+                self.updateScrollbars()
                 self.updateALLimg()
             elif save_current == msg.Cancel:
                 self.worker.askSaveLastCancelled = True
@@ -10733,7 +10763,7 @@ class guiWin(QMainWindow):
         )
 
     def saveDataUpdatePbar(self, step, max=-1, exec_time=0.0):
-        if max > 0:
+        if max >= 0:
             self.saveWin.QPbar.setMaximum(max)
         else:
             self.saveWin.QPbar.setValue(self.saveWin.QPbar.value()+step)
