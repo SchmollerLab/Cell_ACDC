@@ -19,6 +19,7 @@ import re
 import traceback
 import time
 import datetime
+import logging
 import uuid
 from importlib import import_module
 from functools import partial
@@ -41,6 +42,7 @@ import skimage.draw
 import skimage.exposure
 import skimage.transform
 import skimage.segmentation
+from functools import wraps
 from skimage.color import gray2rgb, gray2rgba
 
 from PyQt5.QtCore import (
@@ -101,11 +103,35 @@ def qt_debug_trace():
     import pdb; pdb.set_trace()
 
 def exception_handler(func):
-    def inner_function(*args, **kwargs):
+    @wraps(func)
+    def inner_function(self, *args, **kwargs):
         try:
-            func(*args, **kwargs)
+            if func.__code__.co_argcount==1 and func.__defaults__ is None:
+                result = func(self)
+            elif func.__code__.co_argcount>1 and func.__defaults__ is None:
+                result = func(self, *args)
+            else:
+                result = func(self, *args, **kwargs)
         except Exception as e:
-            args[0].logger.exception(e)
+            result = None
+            self.logger.exception(e)
+            msg = QMessageBox(self)
+            msg.setWindowTitle('Critical error')
+            msg.setIcon(msg.Critical)
+            err_msg = (f"""
+            <p style="font-size:10pt">
+                Error in function <b>{func.__name__}</b>.<br><br>
+                More details below or in the terminal/console.<br><br>
+                Note that the error details fro this session are also saved
+                in the file<br>
+                "/Cell_ACDC/logs/{self.log_filename}.log"
+            </p>
+            """)
+            msg.setText(err_msg)
+            msg.setDetailedText(traceback.format_exc())
+            msg.exec_()
+            self.is_error_state = True
+        return result
     return inner_function
 
 class saveDataWorker(QObject):
@@ -243,7 +269,7 @@ class saveDataWorker(QObject):
                         df_li.append(df)
                         keys.append((i, posData.TimeIncrement*i))
 
-                print('Almost done...')
+                self.progress.emit('Almost done...')
 
                 if posData.segmInfo_df is not None:
                     try:
@@ -357,6 +383,9 @@ class guiWin(QMainWindow):
     def __init__(self, app, parent=None, buttonToRestore=None, mainWin=None):
         """Initializer."""
         super().__init__(parent)
+
+        self.is_error_state = False
+        self.setupLogger()
         self.loadLastSessionSettings()
 
         self.buttonToRestore = buttonToRestore
@@ -368,6 +397,7 @@ class guiWin(QMainWindow):
         self.ccaTableWin = None
         self.data_loaded = False
         self.flag = True
+
         self.setWindowTitle("Cell-ACDC - GUI")
         self.setWindowIcon(QIcon(":assign-motherbud.svg"))
         self.setAcceptDrops(True)
@@ -409,6 +439,45 @@ class guiWin(QMainWindow):
         mainContainer.setLayout(mainLayout)
 
         self.isEditActionsConnected = False
+
+    def setupLogger(self, module='gui'):
+        logger = logging.getLogger('spotMAX')
+        logger.setLevel(logging.INFO)
+
+        src_path = os.path.dirname(os.path.abspath(__file__))
+        logs_path = os.path.join(src_path, 'logs')
+        if not os.path.exists(logs_path):
+            os.mkdir(logs_path)
+        else:
+            # Keep 20 most recent logs
+            ls = myutils.listdir(logs_path)
+            if len(ls)>20:
+                ls = [os.path.join(logs_path, f) for f in ls]
+                ls.sort(key=lambda x: os.path.getmtime(x))
+                for file in ls[:-20]:
+                    os.remove(file)
+
+        date_time = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+        log_filename = f'{date_time}_{module}_stdout.log'
+        log_path = os.path.join(logs_path, log_filename)
+        self.log_filename = log_filename
+
+        output_file_handler = logging.FileHandler(log_path, mode='w')
+        stdout_handler = logging.StreamHandler(sys.stdout)
+
+        # Format your logs (optional)
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s:\n'
+            '------------------------\n'
+            '%(message)s\n'
+            '------------------------\n',
+            datefmt='%d-%m-%Y, %H:%M:%S')
+        output_file_handler.setFormatter(formatter)
+
+        logger.addHandler(output_file_handler)
+        logger.addHandler(stdout_handler)
+
+        self.logger = logger
 
     def loadLastSessionSettings(self):
         src_path = os.path.dirname(os.path.realpath(__file__))
@@ -457,7 +526,6 @@ class guiWin(QMainWindow):
             self.openFolder(exp_path=exp_path)
         else:
             self.openFile(file_path=file_path)
-
 
     def leaveEvent(self, event):
         if self.slideshowWin is not None:
@@ -1172,7 +1240,6 @@ class guiWin(QMainWindow):
             'Remove segmented objects touching the border of the image'
         )
 
-
     def gui_connectActions(self):
         # Connect File actions
         self.newAction.triggered.connect(self.newFile)
@@ -1626,7 +1693,7 @@ class guiWin(QMainWindow):
     def workerProgress(self, text):
         if self.progressWin is not None:
             self.progressWin.logConsole.append(text)
-        print(text)
+        self.logger.info(text)
 
     def workerInitProgressbar(self, totalIter):
         self.progressWin.mainPbar.setValue(0)
@@ -1685,6 +1752,7 @@ class guiWin(QMainWindow):
         self.img2.mouseReleaseEvent = self.gui_mouseReleaseEventImg2
         self.hist.vb.contextMenuEvent = self.gui_raiseContextMenuLUT
 
+    @exception_handler
     def gui_mousePressEventImg2(self, event):
         modifiers = QGuiApplication.keyboardModifiers()
         ctrl = modifiers == Qt.ControlModifier
@@ -2349,6 +2417,7 @@ class guiWin(QMainWindow):
             if not self.ripCellButton.findChild(QAction).isChecked():
                 self.ripCellButton.setChecked(False)
 
+    @exception_handler
     def gui_mouseDragEventImg1(self, event):
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
@@ -2655,6 +2724,7 @@ class guiWin(QMainWindow):
             posData.lutmenu.addAction(action)
         posData.lutmenu.exec(event.screenPos())
 
+    @exception_handler
     def gui_mouseDragEventImg2(self, event):
         # Eraser dragging mouse --> keep erasing
         if self.isMouseDragImg2 and self.eraserButton.isChecked():
@@ -2716,6 +2786,7 @@ class guiWin(QMainWindow):
             posData.lab[mask] = self.ax2BrushID
             self.setImageImg2()
 
+    @exception_handler
     def gui_mouseReleaseEventImg2(self, event):
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
@@ -2783,6 +2854,7 @@ class guiWin(QMainWindow):
             self.store_data()
             self.warnEditingWithCca_df('Merge IDs')
 
+    @exception_handler
     def gui_mouseReleaseEventImg1(self, event):
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
@@ -2964,6 +3036,7 @@ class guiWin(QMainWindow):
             self.clickedOnBud = False
             self.BudMothTempLine.setData([], [])
 
+    @exception_handler
     def gui_mousePressEventImg1(self, event):
         modifiers = QGuiApplication.keyboardModifiers()
         ctrl = modifiers == Qt.ControlModifier
@@ -3506,7 +3579,6 @@ class guiWin(QMainWindow):
         elif how == 'Normalize by max value':
             img = img/numba_max(img)
         return img
-
 
     def removeAlldelROIsCurrentFrame(self):
         posData = self.data[self.pos_i]
@@ -4585,38 +4657,31 @@ class guiWin(QMainWindow):
                 action.setChecked(True)
                 break
 
+    @exception_handler
     def changeFontSize(self, action):
         self.fontSize = f'{action.text()}pt'
         self.df_settings.at['fontSize', 'value'] = self.fontSize
         self.df_settings.to_csv(self.settings_csv_path)
-        try:
-            LIs = zip(self.ax1_LabelItemsIDs, self.ax2_LabelItemsIDs)
-            for ax1_LI, ax2_LI in LIs:
-                x1, y1 = ax1_LI.pos().x(), ax1_LI.pos().y()
-                if x1>0:
-                    w, h = ax1_LI.rect().right(), ax1_LI.rect().bottom()
-                    xc, yc = x1+w/2, y1+h/2
-                ax1_LI.setAttr('size', self.fontSize)
-                ax1_LI.setText(ax1_LI.text)
-                if x1>0:
-                    w, h = ax1_LI.rect().right(), ax1_LI.rect().bottom()
-                    ax1_LI.setPos(xc-w/2, yc-h/2)
-                x2, y2 = ax2_LI.pos().x(), ax2_LI.pos().y()
-                if x2>0:
-                    w, h = ax2_LI.rect().right(), ax2_LI.rect().bottom()
-                    xc, yc = x2+w/2, y2+h/2
-                ax2_LI.setAttr('size', self.fontSize)
-                ax2_LI.setText(ax2_LI.text)
-                if x2>0:
-                    w, h = ax2_LI.rect().right(), ax2_LI.rect().bottom()
-                    ax2_LI.setPos(xc-w/2, yc-h/2)
-        except Exception as e:
-            print('')
-            print('====================================')
-            traceback.print_exc()
-            print('====================================')
-            print('')
-            pass
+        LIs = zip(self.ax1_LabelItemsIDs, self.ax2_LabelItemsIDs)
+        for ax1_LI, ax2_LI in LIs:
+            x1, y1 = ax1_LI.pos().x(), ax1_LI.pos().y()
+            if x1>0:
+                w, h = ax1_LI.rect().right(), ax1_LI.rect().bottom()
+                xc, yc = x1+w/2, y1+h/2
+            ax1_LI.setAttr('size', self.fontSize)
+            ax1_LI.setText(ax1_LI.text)
+            if x1>0:
+                w, h = ax1_LI.rect().right(), ax1_LI.rect().bottom()
+                ax1_LI.setPos(xc-w/2, yc-h/2)
+            x2, y2 = ax2_LI.pos().x(), ax2_LI.pos().y()
+            if x2>0:
+                w, h = ax2_LI.rect().right(), ax2_LI.rect().bottom()
+                xc, yc = x2+w/2, y2+h/2
+            ax2_LI.setAttr('size', self.fontSize)
+            ax2_LI.setText(ax2_LI.text)
+            if x2>0:
+                w, h = ax2_LI.rect().right(), ax2_LI.rect().bottom()
+                ax2_LI.setPos(xc-w/2, yc-h/2)
 
     def enableZstackWidgets(self, enabled):
         if enabled:
@@ -4758,7 +4823,7 @@ class guiWin(QMainWindow):
                     ax2ContCurve.setData([], [])
             t1 = time.time()
 
-            # print(f'Clearing contours = {t1-t0:.3f}')
+            # self.logger.info(f'Clearing contours = {t1-t0:.3f}')
 
         t0 = time.time()
 
@@ -5346,6 +5411,7 @@ class guiWin(QMainWindow):
             )
             self.enableSizeSpinbox(False)
 
+    @exception_handler
     def keyPressEvent(self, ev):
         try:
             posData = self.data[self.pos_i]
@@ -5391,15 +5457,15 @@ class guiWin(QMainWindow):
                 self.ax1_point_ScatterPlot.setData([x], [y])
         elif ev.modifiers() == Qt.ControlModifier:
             if ev.key() == Qt.Key_P:
-                print('========================')
-                print('CURRENT Cell cycle analysis table:')
-                print(posData.cca_df)
-                print('------------------------')
-                print(f'STORED Cell cycle analysis table for frame {posData.frame_i+1}:')
+                self.logger.info('========================')
+                self.logger.info('CURRENT Cell cycle analysis table:')
+                self.logger.info(posData.cca_df)
+                self.logger.info('------------------------')
+                self.logger.info(f'STORED Cell cycle analysis table for frame {posData.frame_i+1}:')
                 df = posData.allData_li[posData.frame_i]['acdc_df']
                 if 'cell_cycle_stage' in df.columns:
                     cca_df = df[self.cca_df_colnames]
-                    print(cca_df)
+                    self.logger.info(cca_df)
                     cca_df = cca_df.merge(posData.cca_df, how='outer',
                                           left_index=True, right_index=True,
                                           suffixes=('_STORED', '_CURRENT'))
@@ -5409,15 +5475,15 @@ class guiWin(QMainWindow):
                         df_j_x = cca_df.iloc[:,j]
                         df_j_y = cca_df.iloc[:,j+1]
                         if any(df_j_x!=df_j_y):
-                            print('------------------------')
-                            print('DIFFERENCES:')
+                            self.logger.info('------------------------')
+                            self.logger.info('DIFFERENCES:')
                             diff_df = cca_df.iloc[:,j:j+2]
                             diff_mask = diff_df.iloc[:,0]!=diff_df.iloc[:,1]
-                            print(diff_df[diff_mask])
+                            self.logger.info(diff_df[diff_mask])
                 else:
                     cca_df = None
-                    print(cca_df)
-                print('========================')
+                    self.logger.info(cca_df)
+                self.logger.info('========================')
                 if posData.cca_df is None:
                     return
                 df = posData.cca_df.reset_index()
@@ -5431,9 +5497,9 @@ class guiWin(QMainWindow):
                     self.ccaTableWin.updateTable(posData.cca_df)
         elif ev.key() == Qt.Key_T:
             self.determineSlideshowWinPos()
-            print(self.slideshowWinLeft, self.slideshowWinTop)
+            self.logger.info(self.slideshowWinLeft, self.slideshowWinTop)
             # posData = self.data[self.pos_i]
-            # print(posData.allData_li[0]['acdc_df'])
+            # self.logger.info(posData.allData_li[0]['acdc_df'])
             # # self.hist.sigLookupTableChanged.disconnect()
         elif ev.key() == Qt.Key_H:
             self.zoomToCells(enforce=True)
@@ -6002,7 +6068,7 @@ class guiWin(QMainWindow):
         # Check if model needs to be imported
         acdcSegment = self.acdcSegment_li[idx]
         if acdcSegment is None:
-            print(f'Importing {model_name}...')
+            self.logger.info(f'Importing {model_name}...')
             acdcSegment = import_module(f'models.{model_name}.acdcSegment')
             self.acdcSegment_li[idx] = acdcSegment
 
@@ -6026,7 +6092,7 @@ class guiWin(QMainWindow):
                 url=url)
             win.exec_()
             if win.cancel:
-                print('Segmentation process cancelled.')
+                self.logger.info('Segmentation process cancelled.')
                 self.titleLabel.setText('Segmentation process cancelled.')
                 return
 
@@ -6074,9 +6140,9 @@ class guiWin(QMainWindow):
         self.warnEditingWithCca_df('Repeat segmentation')
 
         txt = f'Done. Segmentation computed in {exec_time:.3f} s'
-        print('-----------------')
-        print(txt)
-        print('=================')
+        self.logger.info('-----------------')
+        self.logger.info(txt)
+        self.logger.info('=================')
         self.titleLabel.setText(txt, color='g')
         self.checkIfAutoSegm()
 
@@ -6138,7 +6204,6 @@ class guiWin(QMainWindow):
 
         self.titleLabel.setText('Budding event prediction done.', color='g')
 
-    @exec_time
     def next_cb(self):
         t0 = time.perf_counter()
         if self.isSnapshot:
@@ -6149,7 +6214,6 @@ class guiWin(QMainWindow):
             self.curvTool_cb(True)
         t1 = time.perf_counter()
 
-    @exec_time
     def prev_cb(self):
         if self.isSnapshot:
             self.prev_pos()
@@ -6203,7 +6267,7 @@ class guiWin(QMainWindow):
         if self.pos_i < self.num_pos-1:
             self.pos_i += 1
         else:
-            print('You reached last position.')
+            self.logger.info('You reached last position.')
             self.pos_i = 0
         self.removeAlldelROIsCurrentFrame()
         proceed_cca, never_visited = self.get_data()
@@ -6217,7 +6281,7 @@ class guiWin(QMainWindow):
         if self.pos_i > 0:
             self.pos_i -= 1
         else:
-            print('You reached first position.')
+            self.logger.info('You reached first position.')
             self.pos_i = self.num_pos-1
         self.removeAlldelROIsCurrentFrame()
         proceed_cca, never_visited = self.get_data()
@@ -6301,7 +6365,7 @@ class guiWin(QMainWindow):
             # Store data for current frame
             self.store_data()
             msg = 'You reached the last segmented frame!'
-            print(msg)
+            self.logger.info(msg)
             self.titleLabel.setText(msg, color='w')
 
     def setNavigateScrollBarMaximum(self):
@@ -6332,7 +6396,7 @@ class guiWin(QMainWindow):
             self.zoomToCells()
         else:
             msg = 'You reached the first frame!'
-            print(msg)
+            self.logger.info(msg)
             self.titleLabel.setText(msg, color='w')
 
     def checkDataIntegrity(self, posData, numPos):
@@ -6342,7 +6406,7 @@ class guiWin(QMainWindow):
             if posData.SizeT > 1:
                 err_msg = (f'{posData.pos_foldername} contains frames over time. '
                            f'Skipping it.')
-                print(err_msg)
+                self.logger.info(err_msg)
                 self.titleLabel.setText(err_msg, color='r')
                 skipPos = True
         else:
@@ -6351,7 +6415,7 @@ class guiWin(QMainWindow):
                     'Segmentation mask file ("..._segm.npz") not found. '
                     'You could run segmentation module first.'
                 )
-                print(err_msg)
+                self.logger.info(err_msg)
                 self.titleLabel.setText(err_msg, color='r')
                 skipPos = False
                 msg = QMessageBox()
@@ -6437,11 +6501,11 @@ class guiWin(QMainWindow):
                 )
                 skipPos, abort = self.checkDataIntegrity(posData, numPos)
             except AttributeError:
-                print('')
-                print('====================================')
+                self.logger.info('')
+                self.logger.info('====================================')
                 traceback.print_exc()
-                print('====================================')
-                print('')
+                self.logger.info('====================================')
+                self.logger.info('')
                 skipPos = False
                 abort = True
 
@@ -6464,9 +6528,9 @@ class guiWin(QMainWindow):
             SizeT = posData.SizeT
             SizeZ = posData.SizeZ
             if f==0:
-                print(f'Data shape = {img_shape}')
-                print(f'Number of frames = {SizeT}')
-                print(f'Number of z-slices per frame = {SizeZ}')
+                self.logger.info(f'Data shape = {img_shape}')
+                self.logger.info(f'Number of frames = {SizeT}')
+                self.logger.info(f'Number of z-slices per frame = {SizeZ}')
             data.append(posData)
 
         if not data:
@@ -6550,7 +6614,7 @@ class guiWin(QMainWindow):
             self.disableTrackingCheckBox.setDisabled(True)
             self.disableTrackingCheckBox.setChecked(True)
             self.repeatTrackingAction.setDisabled(True)
-            print('Setting GUI mode to "Snapshots"...')
+            self.logger.info('Setting GUI mode to "Snapshots"...')
             self.modeComboBox.clear()
             self.modeComboBox.addItems(['Snapshot'])
             self.modeComboBox.setDisabled(True)
@@ -7357,11 +7421,11 @@ class guiWin(QMainWindow):
             self.checkMultiBudMoth()
             return notEnoughG1Cells, proceed
         except Exception as e:
-            print('')
-            print('====================================')
+            self.logger.info('')
+            self.logger.info('====================================')
             traceback.print_exc()
-            print('====================================')
-            print('')
+            self.logger.info('====================================')
+            self.logger.info('')
             self.highlightNewIDs_ccaFailed()
             msg = QMessageBox(self)
             msg.setIcon(msg.Critical)
@@ -7648,7 +7712,7 @@ class guiWin(QMainWindow):
             posData.lab = posData.segm_data[posData.frame_i].copy()
             posData.rp = skimage.measure.regionprops(posData.lab)
             if debug:
-                print(never_visited)
+                self.logger.info(never_visited)
             if posData.acdc_df is not None:
                 frames = posData.acdc_df.index.get_level_values(0)
                 if posData.frame_i in frames:
@@ -7658,11 +7722,11 @@ class guiWin(QMainWindow):
                     try:
                         binnedIDs_df = df[df['is_cell_excluded']]
                     except Exception as e:
-                        print('')
-                        print('====================================')
+                        self.logger.info('')
+                        self.logger.info('====================================')
                         traceback.print_exc()
-                        print('====================================')
-                        print('')
+                        self.logger.info('====================================')
+                        self.logger.info('')
                         raise
                     binnedIDs = set(binnedIDs_df.index).union(posData.binnedIDs)
                     posData.binnedIDs = binnedIDs
@@ -7893,7 +7957,7 @@ class guiWin(QMainWindow):
                 self.updateScrollbars()
             else:
                 msg = 'Cell cycle analysis aborted.'
-                print(msg)
+                self.logger.info(msg)
                 self.titleLabel.setText(msg, color='w')
                 self.modeComboBox.setCurrentText(currentMode)
                 proceed = False
@@ -7918,7 +7982,7 @@ class guiWin(QMainWindow):
                 self.updateScrollbars()
             elif goTo_last_annotated_frame_i == msg.Cancel:
                 msg = 'Cell cycle analysis aborted.'
-                print(msg)
+                self.logger.info(msg)
                 self.titleLabel.setText(msg, color='w')
                 self.modeComboBox.setCurrentText(currentMode)
                 proceed = False
@@ -7933,7 +7997,7 @@ class guiWin(QMainWindow):
         if posData.cca_df is None:
             posData.cca_df = self.getBaseCca_df()
             msg = 'Cell cycle analysis initiliazed!'
-            print(msg)
+            self.logger.info(msg)
             self.titleLabel.setText(msg, color='w')
         else:
             self.get_cca_df()
@@ -8309,7 +8373,7 @@ class guiWin(QMainWindow):
             for ID in posData.ripIDs:
                 lut[ID] = lut[ID]*0.2
         except Exception as e:
-            print('WARNING: Tracking is WRONG.')
+            self.logger.info('WARNING: Tracking is WRONG.')
             pass
         self.img2.setLookupTable(lut)
 
@@ -8378,7 +8442,7 @@ class guiWin(QMainWindow):
         return fluo_data
 
     def load_fluo_data(self, fluo_path):
-        print(f'Loading fluorescent image data from "{fluo_path}"...')
+        self.logger.info(f'Loading fluorescent image data from "{fluo_path}"...')
         bkgrData = None
         posData = self.data[self.pos_i]
         # Load overlay frames and align if needed
@@ -9027,7 +9091,7 @@ class guiWin(QMainWindow):
         self.ax2.addItem(ax2ContCurve)
 
         print('==========================')
-        print(f'Items created for new cell ID {newID}')
+        self.logger.info(f'Items created for new cell ID {newID}')
         if newID > start:
             empty = [None]*(newID-start)
             self.ax1_ContoursCurves.extend(empty)
@@ -9159,10 +9223,10 @@ class guiWin(QMainWindow):
             self.drawID_and_Contour(obj, updateColor=updateColor)
 
 
-        # print('------------------------------------')
-        # print(f'Drawing labels = {np.sum(self.drawingLabelsTimes):.3f} s')
-        # print(f'Computing contours = {np.sum(self.computingContoursTimes):.3f} s')
-        # print(f'Drawing contours = {np.sum(self.drawingContoursTimes):.3f} s')
+        # self.logger.info('------------------------------------')
+        # self.logger.info(f'Drawing labels = {np.sum(self.drawingLabelsTimes):.3f} s')
+        # self.logger.info(f'Computing contours = {np.sum(self.computingContoursTimes):.3f} s')
+        # self.logger.info(f'Drawing contours = {np.sum(self.drawingContoursTimes):.3f} s')
 
         # Update annotated IDs (e.g. dead cells)
         self.update_rp_metadata(draw=True)
@@ -9241,7 +9305,7 @@ class guiWin(QMainWindow):
                             cont[:,0], cont[:,1], pen=self.newIDs_cpen
                         )
                     except AttributeError:
-                        print(f'Error with ID {ID}')
+                        self.logger.info(f'Error with ID {ID}')
 
         if posData.lost_IDs:
             # Get the rp from previous frame
@@ -9427,9 +9491,9 @@ class guiWin(QMainWindow):
 
             if not do_tracking:
                 self.disableTrackingCheckBox.setChecked(True)
-                # print('-------------')
-                # print(f'Frame {posData.frame_i+1} NOT tracked')
-                # print('-------------')
+                # self.logger.info('-------------')
+                # self.logger.info(f'Frame {posData.frame_i+1} NOT tracked')
+                # self.logger.info('-------------')
                 self.checkIDs_LostNew()
                 return
 
@@ -9622,6 +9686,7 @@ class guiWin(QMainWindow):
     def newFile(self):
         pass
 
+    @exception_handler
     def openFile(self, checked=False, file_path=None):
         """
         Function used for loading an image file directly.
@@ -9648,12 +9713,12 @@ class guiWin(QMainWindow):
         if ext == '.tif' or ext == '.npz':
             self.openFolder(exp_path=exp_path, imageFilePath=file_path)
         else:
-            print('Copying file to .tif format...')
+            self.logger.info('Copying file to .tif format...')
             data = load.loadData(file_path, '')
             data.loadImgData()
             img = data.img_data
             if img.ndim == 3 and (img.shape[-1] == 3 or img.shape[-1] == 4):
-                print('Converting RGB image to grayscale...')
+                self.logger.info('Converting RGB image to grayscale...')
                 data.img_data = skimage.color.rgb2gray(data.img_data)
                 data.img_data = skimage.img_as_ubyte(data.img_data)
             tif_path = os.path.join(exp_path, f'{filename}.tif')
@@ -9706,7 +9771,7 @@ class guiWin(QMainWindow):
 
         self.modeComboBox.setCurrentText('Viewer')
 
-
+    @exception_handler
     def openFolder(self, checked=False, exp_path=None, imageFilePath=''):
         """Main function to load data.
 
@@ -9725,204 +9790,182 @@ class guiWin(QMainWindow):
         -------
             None
         """
-        try:
-            self.reInitGui()
 
-            self.openAction.setEnabled(False)
+        self.reInitGui()
 
-            if self.slideshowWin is not None:
-                self.slideshowWin.close()
+        self.openAction.setEnabled(False)
 
-            if self.ccaTableWin is not None:
-                self.ccaTableWin.close()
+        if self.slideshowWin is not None:
+            self.slideshowWin.close()
 
-            if exp_path is None:
-                self.getMostRecentPath()
-                exp_path = QFileDialog.getExistingDirectory(
-                    self, 'Select experiment folder containing Position_n folders '
-                          'or specific Position_n folder', self.MostRecentPath)
+        if self.ccaTableWin is not None:
+            self.ccaTableWin.close()
 
-            if exp_path == '':
-                self.openAction.setEnabled(True)
-                self.titleLabel.setText(
-                    'Drag and drop image file or go to File --> Open folder...',
-                    color='w')
-                return
+        if exp_path is None:
+            self.getMostRecentPath()
+            exp_path = QFileDialog.getExistingDirectory(
+                self, 'Select experiment folder containing Position_n folders '
+                      'or specific Position_n folder', self.MostRecentPath)
 
-            self.exp_path = exp_path
-            self.addToRecentPaths(exp_path)
-
-            if os.path.basename(exp_path).find('Position_') != -1:
-                is_pos_folder = True
-            else:
-                is_pos_folder = False
-
-            if os.path.basename(exp_path).find('Images') != -1:
-                is_images_folder = True
-            else:
-                is_images_folder = False
-
-            self.titleLabel.setText('Loading data...', color='w')
-            self.setWindowTitle(f'Cell-ACDC - GUI - "{exp_path}"')
-
-
-            ch_name_selector = prompts.select_channel_name(
-                which_channel='segm', allow_abort=False
-            )
-            user_ch_name = None
-            if not is_pos_folder and not is_images_folder and not imageFilePath:
-                select_folder = load.select_exp_folder()
-                values = select_folder.get_values_segmGUI(exp_path)
-                if not values:
-                    txt = (
-                        'The selected folder:\n\n '
-                        f'{exp_path}\n\n'
-                        'is not a valid folder. '
-                        'Select a folder that contains the Position_n folders'
-                    )
-                    msg = QMessageBox()
-                    msg.critical(
-                        self, 'Incompatible folder', txt, msg.Ok
-                    )
-                    self.titleLabel.setText(
-                        'Drag and drop image file or go to File --> Open folder...',
-                        color='w')
-                    self.openAction.setEnabled(True)
-                    return
-
-                if len(values) > 1:
-                    select_folder.QtPrompt(self, values, allow_abort=False)
-                    if select_folder.was_aborted:
-                        self.titleLabel.setText(
-                            'Drag and drop image file or go to '
-                            'File --> Open folder...',
-                            color='w')
-                        self.openAction.setEnabled(True)
-                        return
-                else:
-                    select_folder.was_aborted = False
-                    select_folder.selected_pos = select_folder.pos_foldernames
-
-                images_paths = []
-                for pos in select_folder.selected_pos:
-                    images_paths.append(os.path.join(exp_path, pos, 'Images'))
-
-            elif is_pos_folder and not imageFilePath:
-                pos_foldername = os.path.basename(exp_path)
-                exp_path = os.path.dirname(exp_path)
-                images_paths = [os.path.join(exp_path, pos_foldername, 'Images')]
-
-            elif is_images_folder and not imageFilePath:
-                images_paths = [exp_path]
-
-            elif imageFilePath:
-                # images_path = exp_path because called by openFile func
-                filenames = myutils.listdir(exp_path)
-                ch_names, basenameNotFound = (
-                    ch_name_selector.get_available_channels(
-                        filenames, exp_path)
-                )
-                filename = os.path.basename(imageFilePath)
-                self.ch_names = ch_names
-                user_ch_name = [
-                    chName for chName in ch_names if filename.find(chName)!=-1
-                ][0]
-                images_paths = [exp_path]
-
-            self.images_paths = images_paths
-
-            # Get info from first position selected
-            images_path = self.images_paths[0]
-            filenames = myutils.listdir(images_path)
-            if ch_name_selector.is_first_call and user_ch_name is None:
-                ch_names, basenameNotFound = (
-                    ch_name_selector.get_available_channels(
-                        filenames, images_path
-                    )
-                )
-                self.ch_names = ch_names
-                if not ch_names:
-                    self.titleLabel.setText(
-                        'Drag and drop image file or go to File --> Open folder...',
-                        color='w')
-                    self.openAction.setEnabled(True)
-                    self.criticalNoTifFound(images_path)
-                    return
-                if len(ch_names) > 1:
-                    CbLabel='Select channel name to segment: '
-                    ch_name_selector.QtPrompt(
-                        self, ch_names, CbLabel=CbLabel)
-                    if ch_name_selector.was_aborted:
-                        self.titleLabel.setText(
-                            'Drag and drop image file or go to File --> Open folder...',
-                            color='w')
-                        self.openAction.setEnabled(True)
-                        return
-                else:
-                    ch_name_selector.channel_name = ch_names[0]
-                ch_name_selector.setUserChannelName()
-                user_ch_name = ch_name_selector.user_ch_name
-
-            user_ch_file_paths = []
-            img_path = None
-            for images_path in self.images_paths:
-                img_aligned_found = False
-                for filename in myutils.listdir(images_path):
-                    img_path = os.path.join(images_path, filename)
-                    if filename.find(f'{user_ch_name}_aligned.np') != -1:
-                        aligned_path = img_path
-                        img_aligned_found = True
-                    elif filename.find(f'{user_ch_name}.tif') != -1:
-                        tif_path = img_path
-                if not img_aligned_found:
-                    err_msg = ('Aligned frames file for channel '
-                               f'{user_ch_name} not found. '
-                               'Loading tifs files.')
-                    self.titleLabel.setText(err_msg)
-                    img_path = tif_path
-                else:
-                    img_path = aligned_path
-                    # raise FileNotFoundError(err_msg)
-
-                user_ch_file_paths.append(img_path)
-
-            print(f'Loading {img_path}...')
-            self.appendPathWindowTitle(user_ch_file_paths)
-
-            self.user_ch_name = user_ch_name
-
-            self.initGlobalAttr()
-
-            self.num_pos = len(user_ch_file_paths)
-            proceed = self.init_data(user_ch_file_paths, user_ch_name)
-            if not proceed:
-                self.openAction.setEnabled(True)
-                self.titleLabel.setText(
-                    'Drag and drop image file or go to File --> Open folder...',
-                    color='w')
-                return
-
-
-        except Exception as e:
-            print('')
-            print('====================================')
-            traceback.print_exc()
-            print('====================================')
-            print('')
-            self.titleLabel.setText(
-                'Error occured. See terminal/console for details',
-                color='r')
-
-            err_msg = (
-                'Error occured. See details below or check the terminal/console'
-            )
-            msg = QMessageBox(self)
-            msg.setWindowTitle('Error!')
-            msg.setIcon(msg.Critical)
-            msg.setText(err_msg)
-            msg.setDetailedText(traceback.format_exc())
-            msg.exec_()
+        if exp_path == '':
             self.openAction.setEnabled(True)
+            self.titleLabel.setText(
+                'Drag and drop image file or go to File --> Open folder...',
+                color='w')
+            return
+
+        self.exp_path = exp_path
+        self.addToRecentPaths(exp_path)
+
+        if os.path.basename(exp_path).find('Position_') != -1:
+            is_pos_folder = True
+        else:
+            is_pos_folder = False
+
+        if os.path.basename(exp_path).find('Images') != -1:
+            is_images_folder = True
+        else:
+            is_images_folder = False
+
+        self.titleLabel.setText('Loading data...', color='w')
+        self.setWindowTitle(f'Cell-ACDC - GUI - "{exp_path}"')
+
+
+        ch_name_selector = prompts.select_channel_name(
+            which_channel='segm', allow_abort=False
+        )
+        user_ch_name = None
+        if not is_pos_folder and not is_images_folder and not imageFilePath:
+            select_folder = load.select_exp_folder()
+            values = select_folder.get_values_segmGUI(exp_path)
+            if not values:
+                txt = (
+                    'The selected folder:\n\n '
+                    f'{exp_path}\n\n'
+                    'is not a valid folder. '
+                    'Select a folder that contains the Position_n folders'
+                )
+                msg = QMessageBox()
+                msg.critical(
+                    self, 'Incompatible folder', txt, msg.Ok
+                )
+                self.titleLabel.setText(
+                    'Drag and drop image file or go to File --> Open folder...',
+                    color='w')
+                self.openAction.setEnabled(True)
+                return
+
+            if len(values) > 1:
+                select_folder.QtPrompt(self, values, allow_abort=False)
+                if select_folder.was_aborted:
+                    self.titleLabel.setText(
+                        'Drag and drop image file or go to '
+                        'File --> Open folder...',
+                        color='w')
+                    self.openAction.setEnabled(True)
+                    return
+            else:
+                select_folder.was_aborted = False
+                select_folder.selected_pos = select_folder.pos_foldernames
+
+            images_paths = []
+            for pos in select_folder.selected_pos:
+                images_paths.append(os.path.join(exp_path, pos, 'Images'))
+
+        elif is_pos_folder and not imageFilePath:
+            pos_foldername = os.path.basename(exp_path)
+            exp_path = os.path.dirname(exp_path)
+            images_paths = [os.path.join(exp_path, pos_foldername, 'Images')]
+
+        elif is_images_folder and not imageFilePath:
+            images_paths = [exp_path]
+
+        elif imageFilePath:
+            # images_path = exp_path because called by openFile func
+            filenames = myutils.listdir(exp_path)
+            ch_names, basenameNotFound = (
+                ch_name_selector.get_available_channels(
+                    filenames, exp_path)
+            )
+            filename = os.path.basename(imageFilePath)
+            self.ch_names = ch_names
+            user_ch_name = [
+                chName for chName in ch_names if filename.find(chName)!=-1
+            ][0]
+            images_paths = [exp_path]
+
+        self.images_paths = images_paths
+
+        # Get info from first position selected
+        images_path = self.images_paths[0]
+        filenames = myutils.listdir(images_path)
+        if ch_name_selector.is_first_call and user_ch_name is None:
+            ch_names, basenameNotFound = (
+                ch_name_selector.get_available_channels(
+                    filenames, images_path
+                )
+            )
+            self.ch_names = ch_names
+            if not ch_names:
+                self.titleLabel.setText(
+                    'Drag and drop image file or go to File --> Open folder...',
+                    color='w')
+                self.openAction.setEnabled(True)
+                self.criticalNoTifFound(images_path)
+                return
+            if len(ch_names) > 1:
+                CbLabel='Select channel name to segment: '
+                ch_name_selector.QtPrompt(
+                    self, ch_names, CbLabel=CbLabel)
+                if ch_name_selector.was_aborted:
+                    self.titleLabel.setText(
+                        'Drag and drop image file or go to File --> Open folder...',
+                        color='w')
+                    self.openAction.setEnabled(True)
+                    return
+            else:
+                ch_name_selector.channel_name = ch_names[0]
+            ch_name_selector.setUserChannelName()
+            user_ch_name = ch_name_selector.user_ch_name
+
+        user_ch_file_paths = []
+        img_path = None
+        for images_path in self.images_paths:
+            img_aligned_found = False
+            for filename in myutils.listdir(images_path):
+                img_path = os.path.join(images_path, filename)
+                if filename.find(f'{user_ch_name}_aligned.np') != -1:
+                    aligned_path = img_path
+                    img_aligned_found = True
+                elif filename.find(f'{user_ch_name}.tif') != -1:
+                    tif_path = img_path
+            if not img_aligned_found:
+                err_msg = ('Aligned frames file for channel '
+                           f'{user_ch_name} not found. '
+                           'Loading tifs files.')
+                self.titleLabel.setText(err_msg)
+                img_path = tif_path
+            else:
+                img_path = aligned_path
+                # raise FileNotFoundError(err_msg)
+
+            user_ch_file_paths.append(img_path)
+
+        self.logger.info(f'Loading {img_path}...')
+        self.appendPathWindowTitle(user_ch_file_paths)
+
+        self.user_ch_name = user_ch_name
+
+        self.initGlobalAttr()
+
+        self.num_pos = len(user_ch_file_paths)
+        proceed = self.init_data(user_ch_file_paths, user_ch_name)
+        if not proceed:
+            self.openAction.setEnabled(True)
+            self.titleLabel.setText(
+                'Drag and drop image file or go to File --> Open folder...',
+                color='w')
+            return
 
     def appendPathWindowTitle(self, user_ch_file_paths):
         if self.isSnapshot:
@@ -10020,7 +10063,7 @@ class guiWin(QMainWindow):
             else:
                 openedOn = [np.nan]*len(recentPaths)
             if exp_path in recentPaths:
-                print(exp_path)
+                self.logger.info(exp_path)
                 pop_idx = recentPaths.index(exp_path)
                 recentPaths.pop(pop_idx)
                 openedOn.pop(pop_idx)
@@ -10170,7 +10213,6 @@ class guiWin(QMainWindow):
 
         self.all_metrics_names = list(self.metrics_func.keys())
         self.all_metrics_names.extend(bkgr_val_names)
-
 
     def addMetrics_acdc_df(self, df, rp, frame_i, lab, posData):
         """
@@ -10645,13 +10687,13 @@ class guiWin(QMainWindow):
         return msg.clickedButton() == allPosbutton, last_pos
 
     def saveMetricsCritical(self, traceback_format):
-        print('')
-        print('====================================')
-        print(traceback_format)
-        print('====================================')
-        print('')
-        print('Warning: calculating metrics failed see above...')
-        print('-----------------')
+        self.logger.info('')
+        self.logger.info('====================================')
+        self.logger.info(traceback_format)
+        self.logger.info('====================================')
+        self.logger.info('')
+        self.logger.info('Warning: calculating metrics failed see above...')
+        self.logger.info('-----------------')
         msg = QMessageBox(self)
         msg.setIcon(msg.Critical)
         msg.setWindowTitle('Error')
@@ -10666,15 +10708,13 @@ class guiWin(QMainWindow):
         self.waitCond.wakeAll()
 
     def saveDataProgress(self, text):
-        print('------------------------')
-        print(text)
-        print('------------------------')
+        self.logger.info(text)
         self.saveWin.progressLabel.setText(text)
 
     def saveDataCritical(self, traceback_format):
-        print('')
+        self.logger.info('')
         print('====================================')
-        print(traceback_format)
+        self.logger.info(traceback_format)
         print('====================================')
         msg = QMessageBox(self)
         msg.setIcon(msg.Critical)
@@ -10702,7 +10742,7 @@ class guiWin(QMainWindow):
             ETA = myutils.seconds_to_ETA(seconds)
             self.saveWin.ETA_label.setText(f'ETA: {ETA}')
 
-
+    @exception_handler
     def saveData(self):
         self.store_data()
         self.titleLabel.setText(
@@ -10859,7 +10899,7 @@ class guiWin(QMainWindow):
             self.MostRecentPath = ''
 
     def openRecentFile(self, path):
-        print(f'Opening recent folder: {path}')
+        self.logger.info(f'Opening recent folder: {path}')
         self.openFolder(exp_path=path)
 
     def closeEvent(self, event):
@@ -10901,7 +10941,7 @@ class guiWin(QMainWindow):
             screenName = '/'.join(self.screen().name().split('\\'))
         except AttributeError:
             screenName = 'None'
-            print('WARNING: could not retrieve screen name.'
+            self.logger.info('WARNING: could not retrieve screen name.'
                   'Please update to PyQt5 version >= 5.14')
         self.df_settings.at['geometry_left', 'value'] = left
         self.df_settings.at['geometry_top', 'value'] = top
@@ -10911,7 +10951,7 @@ class guiWin(QMainWindow):
         isMaximised = 'Yes' if isMaximised else 'No'
         self.df_settings.at['isMaximised', 'value'] = isMaximised
         self.df_settings.to_csv(self.settings_csv_path)
-        # print('Window screen name: ', screenName)
+        # self.logger.info('Window screen name: ', screenName)
 
     def storeDefaultAndCustomColors(self):
         c = self.overlayButton.palette().button().color().name()
@@ -10982,7 +11022,9 @@ if __name__ == "__main__":
     win.show()
 
     # Run the event loop
-    print('Lauching application...')
-    print('Done. If application GUI is not visible, it is probably minimized, '
-          'behind some other open window, or on second screen.')
+    win.logger.info('Lauching application...')
+    win.logger.info(
+        'Done. If application GUI is not visible, it is probably minimized, '
+         'behind some other open window, or on second screen.'
+    )
     sys.exit(app.exec_())
