@@ -264,19 +264,6 @@ class saveDataWorker(QObject):
                 last_tracked_i = self.mainWin.last_tracked_i
                 if last_tracked_i is None:
                     return
-            # elif mode == 'Cell cycle analysis':
-            #     self.mutex.lock()
-            #     self.askSaveLastVisitedCcaMode.emit(p, posData)
-            #     self.waitCond.wait(self.mutex)
-            #     self.mutex.unlock()
-            #     if self.askSaveLastCancelled:
-            #         self.mainWin.saveWin.aborted = True
-            #         self.finished.emit()
-            #         return
-            #     last_tracked_i = self.mainWin.last_tracked_i
-            #     last_cca_frame_i = self.mainWin.last_cca_frame_i
-            #     if last_cca_frame_i is None:
-            #         return
             elif self.mainWin.isSnapshot:
                 last_tracked_i = 0
 
@@ -466,7 +453,7 @@ class guiWin(QMainWindow):
 
     def __init__(self, app, parent=None, buttonToRestore=None, mainWin=None):
         """Initializer."""
-        super().__init__(mainWin)
+        super().__init__(parent)
 
         self.is_error_state = False
         self.setupLogger()
@@ -2025,7 +2012,7 @@ class guiWin(QMainWindow):
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter here ID that you want to delete',
-                    parent=self
+                    parent=self, allowedValues=posData.IDs
                 )
                 delID_prompt.exec_()
                 if delID_prompt.cancel:
@@ -2105,7 +2092,7 @@ class guiWin(QMainWindow):
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter here ID that you want to split',
-                    parent=self
+                    parent=self, allowedValues=posData.IDs
                 )
                 sepID_prompt.exec_()
                 if sepID_prompt.cancel:
@@ -2172,7 +2159,7 @@ class guiWin(QMainWindow):
                     msg='You clicked on the background.\n'
                          'Enter here the ID that you want to '
                          'fill the holes of',
-                    parent=self
+                    parent=self, allowedValues=posData.IDs
                 )
                 clickedBkgrID.exec_()
                 if clickedBkgrID.cancel:
@@ -2205,7 +2192,7 @@ class guiWin(QMainWindow):
                     msg='You clicked on the background.\n'
                          'Enter here the ID that you want to '
                          'replace with Hull contour',
-                    parent=self
+                    parent=self, allowedValues=posData.IDs
                 )
                 mergeID_prompt.exec_()
                 if mergeID_prompt.cancel:
@@ -2237,7 +2224,7 @@ class guiWin(QMainWindow):
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter here first ID that you want to merge',
-                    parent=self
+                    parent=self, allowedValues=posData.IDs
                 )
                 mergeID_prompt.exec_()
                 if mergeID_prompt.cancel:
@@ -2259,7 +2246,7 @@ class guiWin(QMainWindow):
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter here ID that you want to replace with a new one',
-                    parent=self
+                    parent=self, allowedValues=posData.IDs
                 )
                 editID_prompt.exec_()
                 if editID_prompt.cancel:
@@ -2394,7 +2381,7 @@ class guiWin(QMainWindow):
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to remove from the analysis',
-                    parent=self
+                    parent=self, allowedValues=posData.IDs
                 )
                 binID_prompt.exec_()
                 if binID_prompt.cancel:
@@ -2467,7 +2454,7 @@ class guiWin(QMainWindow):
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to annotate as dead',
-                    parent=self
+                    parent=self, allowedValues=posData.IDs
                 )
                 ripID_prompt.exec_()
                 if ripID_prompt.cancel:
@@ -2945,7 +2932,7 @@ class guiWin(QMainWindow):
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to merge with ID '
                          f'{self.firstID}',
-                    parent=self
+                    parent=self, allowedValues=posData.IDs
                 )
                 mergeID_prompt.exec_()
                 if mergeID_prompt.cancel:
@@ -3053,7 +3040,7 @@ class guiWin(QMainWindow):
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to annotate as mother cell',
-                    parent=self
+                    parent=self, allowedValues=posData.IDs
                 )
                 mothID_prompt.exec_()
                 if mothID_prompt.cancel:
@@ -3460,7 +3447,7 @@ class guiWin(QMainWindow):
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to annotate as divided',
-                    parent=self
+                    parent=self, allowedValues=posData.IDs
                 )
                 divID_prompt.exec_()
                 if divID_prompt.cancel:
@@ -3496,7 +3483,7 @@ class guiWin(QMainWindow):
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter ID of a bud you want to correct mother assignment',
-                    parent=self
+                    parent=self, allowedValues=posData.IDs
                 )
                 budID_prompt.exec_()
                 if budID_prompt.cancel:
@@ -3540,7 +3527,7 @@ class guiWin(QMainWindow):
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to annotate as '
                          '"history UNKNOWN/KNOWN"',
-                    parent=self
+                    parent=self, allowedValues=posData.IDs
                 )
                 unknownID_prompt.exec_()
                 if unknownID_prompt.cancel:
