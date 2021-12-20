@@ -291,7 +291,8 @@ class saveDataWorker(QObject):
                 segm_npy = np.copy(posData.segm_data)
                 npz_delROIs_info = {}
                 delROIs_info_path = posData.delROIs_info_path
-                acdc_df_li = [None]*posData.segmSizeT
+                acdc_df_li = []
+                keys = []
 
                 # Add segmented channel data for calc metrics
                 posData.fluo_data_dict[posData.filename] = posData.img_data
@@ -299,13 +300,9 @@ class saveDataWorker(QObject):
 
                 self.mainWin.getChNames(posData)
 
-                # Create list of dataframes from acdc_df on HDD
-                if posData.acdc_df is not None:
-                    for frame_i, df in posData.acdc_df.groupby(level=0):
-                        acdc_df_li[frame_i] = df.loc[frame_i]
-
                 self.progress.emit(f'Saving {posData.relPath}')
-                for frame_i, data_dict in enumerate(posData.allData_li):
+                end_i = self.mainWin.save_until_frame_i
+                for frame_i, data_dict in enumerate(posData.allData_li[:end_i+1]):
                     if self.saveWin.aborted:
                         self.finished.emit()
                         return
@@ -313,14 +310,10 @@ class saveDataWorker(QObject):
                     # Build segm_npy
                     lab = data_dict['labels']
                     posData.lab = lab
-                    if lab is not None:
-                        if posData.SizeT > 1:
-                            segm_npy[frame_i] = lab
-                        else:
-                            segm_npy = lab
+                    if posData.SizeT > 1:
+                        segm_npy[frame_i] = lab
                     else:
-                        frame_i -= 1
-                        break
+                        segm_npy = lab
 
                     acdc_df = data_dict['acdc_df']
 
@@ -335,12 +328,16 @@ class saveDataWorker(QObject):
                                 acdc_df = self.mainWin.addMetrics_acdc_df(
                                     acdc_df, rp, frame_i, lab, posData
                                 )
-                            acdc_df_li[frame_i] = acdc_df
+                            acdc_df_li.append(acdc_df)
+                            key = (frame_i, posData.TimeIncrement*frame_i)
+                            keys.append(key)
                         except Exception as e:
                             self.mutex.lock()
                             self.criticalMetrics.emit(traceback.format_exc())
                             self.waitCond.wait(self.mutex)
                             self.mutex.unlock()
+                            self.finished.emit()
+                            return
 
                     t = time.time()
                     exec_time = t - self.time_last_pbar_update
@@ -349,14 +346,6 @@ class saveDataWorker(QObject):
 
                 posData.fluo_data_dict.pop(posData.filename)
                 posData.fluo_bkgrData_dict.pop(posData.filename)
-
-                # Remove None and concat dataframe
-                keys = []
-                df_li = []
-                for i, df in enumerate(acdc_df_li):
-                    if df is not None:
-                        df_li.append(df)
-                        keys.append((i, posData.TimeIncrement*i))
 
                 self.progress.emit('Almost done...')
                 self.progressBar.emit(0, 0, 0)
@@ -379,7 +368,7 @@ class saveDataWorker(QObject):
 
                 try:
                     all_frames_acdc_df = pd.concat(
-                        df_li, keys=keys,
+                        acdc_df_li, keys=keys,
                         names=['frame_i', 'time_seconds', 'Cell_ID']
                     )
 
@@ -399,7 +388,8 @@ class saveDataWorker(QObject):
                     self.mutex.unlock()
 
                     all_frames_acdc_df = pd.concat(
-                        df_li, keys=keys, names=['frame_i', 'Cell_ID']
+                        acdc_df_li, keys=keys,
+                        names=['frame_i', 'time_seconds', 'Cell_ID']
                     )
 
                     # Save segmentation metadata
@@ -502,6 +492,7 @@ class guiWin(QMainWindow):
 
         self.isSnapshot = False
         self.pos_i = 0
+        self.save_until_frame_i = 0
         self.countKeyPress = 0
         self.xHoverImg, self.yHoverImg = None, None
 
@@ -4229,7 +4220,7 @@ class guiWin(QMainWindow):
                 information from frame {i+1} to the end. Therefore, you
                 will have to visit those frames again.<br><br>
                 The deletion of cell cycle information
-                <b>CANNOT BE UNDONE!<\b>
+                <b>CANNOT BE UNDONE!</b>
                 Saved data is not changed of course.<br><br>
                 Apply assignment or cancel process?
             </p>
@@ -9369,6 +9360,7 @@ class guiWin(QMainWindow):
         lut[ID+1:] = lut[ID+1:]*0.2
         self.img2.setLookupTable(lut)
 
+    @exception_handler
     def updateALLimg(
             self, image=None, never_visited=True,
             only_ax1=False, updateBlur=False,
@@ -10736,7 +10728,8 @@ class guiWin(QMainWindow):
     def askSaveLastVisitedCcaMode(self, p, posData):
         current_frame_i = posData.frame_i
         frame_i = 0
-        last_tracked_i = 0
+        last_cca_frame_i = 0
+        self.save_until_frame_i = 0
         self.worker.askSaveLastCancelled = False
         for frame_i, data_dict in enumerate(posData.allData_li):
             # Build segm_npy
@@ -10747,34 +10740,26 @@ class guiWin(QMainWindow):
             if 'cell_cycle_stage' not in acdc_df.columns:
                 frame_i -= 1
                 break
-        if frame_i>0:
+        if frame_i > 0:
             # Ask to save last visited frame or not
-            txt = (
-                f'Do you also want to save last visited frame {frame_i+1}?'
+            txt = (f"""
+            <p style="font-size:9pt">
+                You visited and annotated data up until frame
+                number {frame_i+1}.<br><br>
+                Enter <b>up to which frame number</b> you want to save data:
+            </p>
+            """)
+            lastFrameDialog = apps.QLineEditDialog(
+                title='Last frame number to save', defaultTxt=str(frame_i+1),
+                msg=txt, parent=self, allowedValues=range(1, frame_i+2)
             )
-            msg = QMessageBox()
-            save_current = msg.question(
-                self, 'Save current frame?', txt,
-                msg.Yes | msg.No | msg.Cancel
-            )
-            if posData.frame_i != frame_i:
-                # Get data from last frame if we are not on it
-                posData.frame_i = frame_i
-                self.get_data()
-            if save_current == msg.Yes:
-                last_tracked_i = frame_i
-                self.store_cca_df()
-            elif save_current == msg.No:
-                last_tracked_i = frame_i-1
-                self.unstore_cca_df()
-                current_frame_i = last_tracked_i
-                posData.frame_i = last_tracked_i
-                self.get_data()
-                self.updateScrollbars()
-                self.updateALLimg()
-            elif save_current == msg.Cancel:
+            lastFrameDialog.exec_()
+            if lastFrameDialog.cancel:
                 self.worker.askSaveLastCancelled = True
-        self.last_tracked_i = last_tracked_i
+            else:
+                self.save_until_frame_i = lastFrameDialog.EntryID - 1
+                last_cca_frame_i = self.save_until_frame_i
+        self.last_cca_frame_i = last_cca_frame_i
         self.waitCond.wakeAll()
 
     def getLastTrackedFrame(self, posData):
@@ -10794,6 +10779,7 @@ class guiWin(QMainWindow):
         current_frame_i = posData.frame_i
         frame_i = 0
         last_tracked_i = 0
+        self.save_until_frame_i = 0
         self.worker.askSaveLastCancelled = False
         for frame_i, data_dict in enumerate(posData.allData_li):
             # Build segm_npy
@@ -10801,33 +10787,25 @@ class guiWin(QMainWindow):
             if lab is None:
                 frame_i -= 1
                 break
-        if frame_i>0:
+        if frame_i > 0:
             # Ask to save last visited frame or not
-            txt = (
-                f'Do you also want to save last visited frame {frame_i+1}?'
+            txt = (f"""
+            <p style="font-size:9pt">
+                You visited and stored data up until frame
+                number {frame_i+1}.<br><br>
+                Enter <b>up to which frame number</b> you want to save data:
+            </p>
+            """)
+            lastFrameDialog = apps.QLineEditDialog(
+                title='Last frame number to save', defaultTxt=str(frame_i+1),
+                msg=txt, parent=self, allowedValues=range(1, frame_i+2)
             )
-            msg = QMessageBox()
-            save_current = msg.question(
-                self, 'Save current frame?', txt,
-                msg.Yes | msg.No | msg.Cancel
-            )
-            if posData.frame_i != frame_i:
-                # Go to that last frame if we are not on it
-                posData.frame_i = frame_i
-                self.get_data()
-            if save_current == msg.Yes:
-                last_tracked_i = frame_i
-                self.store_data()
-            elif save_current == msg.No:
-                last_tracked_i = frame_i-1
-                self.unstore_data()
-                current_frame_i = last_tracked_i
-                posData.frame_i = last_tracked_i
-                self.get_data()
-                self.updateScrollbars()
-                self.updateALLimg()
-            elif save_current == msg.Cancel:
+            lastFrameDialog.exec_()
+            if lastFrameDialog.cancel:
                 self.worker.askSaveLastCancelled = True
+            else:
+                self.save_until_frame_i = lastFrameDialog.EntryID - 1
+                last_tracked_i = self.save_until_frame_i
         self.last_tracked_i = last_tracked_i
         self.waitCond.wakeAll()
 
