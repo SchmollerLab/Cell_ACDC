@@ -8497,7 +8497,11 @@ class guiWin(QMainWindow):
     def updateLookuptable(self, lenNewLut=None):
         posData = self.data[self.pos_i]
         if lenNewLut is None:
-            lenNewLut = max(posData.IDs)+1
+            try:
+                lenNewLut = max(posData.IDs)+1
+            except ValueError:
+                # Empty segmentation mask
+                lenNewLut = 1
         # Build a new lut to include IDs > than original len of lut
         if lenNewLut > len(posData.lut):
             numNewColors = lenNewLut-len(posData.lut)
