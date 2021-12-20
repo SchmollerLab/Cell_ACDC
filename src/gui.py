@@ -3256,12 +3256,11 @@ class guiWin(QMainWindow):
                 self.isMouseDragImg1 = True
 
                 # Draw new objects
-                mask = np.zeros(posData.lab.shape, bool)
-                mask[ymin:ymax, xmin:xmax] = diskMask
+                localLab = posData.lab[ymin:ymax, xmin:xmax]
                 if drawUnder:
-                    mask[posData.lab!=0] = False
+                    diskMask[localLab!=0] = False
 
-                posData.lab[mask] = posData.brushID
+                posData.lab[ymin:ymax, xmin:xmax][diskMask] = posData.brushID
                 self.setImageImg2()
 
                 img = self.img1.image.copy()
