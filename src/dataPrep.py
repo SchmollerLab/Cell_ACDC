@@ -1915,6 +1915,9 @@ class dataPrepWin(QMainWindow):
             self.mainWin.setWindowState(Qt.WindowNoState)
             self.mainWin.setWindowState(Qt.WindowActive)
             self.mainWin.raise_()
+            # Discard close and simply hide window
+            event.ignore()
+            self.hide()
 
         if self.loop is not None:
             self.loop.exit()

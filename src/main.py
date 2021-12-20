@@ -125,6 +125,9 @@ class mainWin(QMainWindow):
 
         self.start_JVM = True
 
+        self.guiWin = None
+        self.dataPrepWin = None
+
     def launchWelcomeGuide(self, checked=False):
         src_path = os.path.dirname(os.path.realpath(__file__))
         temp_path = os.path.join(src_path, 'temp')
@@ -278,10 +281,11 @@ class mainWin(QMainWindow):
                 f'QPushButton {{background-color: {launchedColor};}}')
             self.dataPrepButton.setText('DataPrep is running. '
                                     'Click to restore window.')
-            self.dataPrepWin = dataPrep.dataPrepWin(
-                buttonToRestore=(self.dataPrepButton, defaultColor, defaultText),
-                mainWin=self
-            )
+            if self.dataPrepWin is None:
+                self.dataPrepWin = dataPrep.dataPrepWin(
+                    buttonToRestore=(self.dataPrepButton, defaultColor, defaultText),
+                    mainWin=self
+                )
             self.dataPrepWin.show()
         else:
             self.dataPrepWin.setWindowState(Qt.WindowNoState)
@@ -319,16 +323,29 @@ class mainWin(QMainWindow):
             self.guiButton.setStyleSheet(
                 f'QPushButton {{background-color: {launchedColor};}}')
             self.guiButton.setText('GUI is running. Click to restore window.')
-            self.guiWin = gui.guiWin(
-                self.app,
-                buttonToRestore=(self.guiButton, defaultColor, defaultText),
-                mainWin=self
-            )
+            if self.guiWin is None:
+                self.guiWin = gui.guiWin(
+                    self.app,
+                    buttonToRestore=(self.guiButton, defaultColor, defaultText),
+                    mainWin=self
+                )
             self.guiWin.show()
         else:
             self.guiWin.setWindowState(Qt.WindowNoState)
             self.guiWin.setWindowState(Qt.WindowActive)
             self.guiWin.raise_()
+
+    def guiClosed(self):
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.deleteGuiReference)
+        self.timer.start(100)
+
+    def deleteGuiReference(self):
+        try:
+            self.guiWin.isVisible()
+        except RuntimeError:
+            self.timer.stop()
+
 
     def launchConcatUtil(self, checked=False):
         isConcatEnabled = self.concatAcdcDfsAction.isEnabled()

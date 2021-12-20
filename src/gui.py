@@ -252,7 +252,7 @@ class saveDataWorker(QObject):
 
             current_frame_i = posData.frame_i
             mode = self.mainWin.modeComboBox.currentText()
-            if mode == 'Segmentation and Tracking' or mode == 'Viewer':
+            if not self.mainWin.isSnapshot:
                 self.mutex.lock()
                 self.askSaveLastVisitedSegmMode.emit(p, posData)
                 self.waitCond.wait(self.mutex)
@@ -264,18 +264,19 @@ class saveDataWorker(QObject):
                 last_tracked_i = self.mainWin.last_tracked_i
                 if last_tracked_i is None:
                     return
-            elif mode == 'Cell cycle analysis':
-                self.mutex.lock()
-                self.askSaveLastVisitedCcaMode.emit(p, posData)
-                self.waitCond.wait(self.mutex)
-                self.mutex.unlock()
-                if self.askSaveLastCancelled:
-                    self.mainWin.saveWin.aborted = True
-                    self.finished.emit()
-                    return
-                last_tracked_i = self.mainWin.last_tracked_i
-                if last_tracked_i is None:
-                    return
+            # elif mode == 'Cell cycle analysis':
+            #     self.mutex.lock()
+            #     self.askSaveLastVisitedCcaMode.emit(p, posData)
+            #     self.waitCond.wait(self.mutex)
+            #     self.mutex.unlock()
+            #     if self.askSaveLastCancelled:
+            #         self.mainWin.saveWin.aborted = True
+            #         self.finished.emit()
+            #         return
+            #     last_tracked_i = self.mainWin.last_tracked_i
+            #     last_cca_frame_i = self.mainWin.last_cca_frame_i
+            #     if last_cca_frame_i is None:
+            #         return
             elif self.mainWin.isSnapshot:
                 last_tracked_i = 0
 
@@ -465,7 +466,7 @@ class guiWin(QMainWindow):
 
     def __init__(self, app, parent=None, buttonToRestore=None, mainWin=None):
         """Initializer."""
-        super().__init__(parent)
+        super().__init__(mainWin)
 
         self.is_error_state = False
         self.setupLogger()
@@ -874,7 +875,7 @@ class guiWin(QMainWindow):
         self.setIsHistoryKnownButton.setToolTip(
             'Toggle "Annotate unknown history" mode ON/OFF\n\n'
             'EXAMPLE: useful for cells appearing from outside of the field of view\n\n'
-            'ACTION: left-click on cell\n\n'
+            'ACTION: Right-click on cell\n\n'
             'SHORTCUT: "U" key'
         )
         ccaToolBar.addWidget(self.setIsHistoryKnownButton)
@@ -1353,7 +1354,6 @@ class guiWin(QMainWindow):
         # self.aboutAction.triggered.connect(self.about)
         # Connect Open Recent to dynamically populate it
         self.openRecentMenu.aboutToShow.connect(self.populateOpenRecent)
-
         self.checkableQButtonsGroup.buttonClicked.connect(self.uncheckQButton)
 
     def gui_connectEditActions(self):
@@ -2112,8 +2112,6 @@ class guiWin(QMainWindow):
                     return
                 else:
                     ID = sepID_prompt.EntryID
-
-
 
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(False)
@@ -3182,6 +3180,7 @@ class guiWin(QMainWindow):
         # Right click in snapshot mode is for spline tool
         canAnnotateDivision = (
              not self.assignBudMothButton.isChecked()
+             and not self.setIsHistoryKnownButton.isChecked()
              and not (self.isSnapshot and self.curvToolButton.isChecked())
         )
 
@@ -3528,7 +3527,7 @@ class guiWin(QMainWindow):
             self.xClickBud, self.yClickBud = xdata, ydata
 
         # Annotate (or undo) that cell has unknown history
-        elif left_click and self.setIsHistoryKnownButton.isChecked():
+        elif right_click and self.setIsHistoryKnownButton.isChecked():
             if posData.cca_df is None:
                 return
 
@@ -3932,6 +3931,7 @@ class guiWin(QMainWindow):
                 return cca_df_ID
 
     def setHistoryKnowledge(self, ID, cca_df):
+        posData = self.data[self.pos_i]
         is_history_known = cca_df.at[ID, 'is_history_known']
         if is_history_known:
             cca_df.at[ID, 'is_history_known'] = False
@@ -10988,7 +10988,7 @@ class guiWin(QMainWindow):
         self.worker.criticalMetrics.connect(self.saveMetricsCritical)
         self.worker.criticalPermissionError.connect(self.saveDataPermissionError)
         self.worker.askSaveLastVisitedCcaMode.connect(
-            self.askSaveLastVisitedCcaMode
+            self.askSaveLastVisitedSegmMode
         )
         self.worker.askSaveLastVisitedSegmMode.connect(
             self.askSaveLastVisitedSegmMode
@@ -11092,13 +11092,11 @@ class guiWin(QMainWindow):
             )
             if save == msg.Yes:
                 self.saveData()
-                event.accept()
-            elif save == msg.No:
-                event.accept()
-            else:
+            elif save == msg.Cancel:
                 event.ignore()
+                return
 
-        if self.buttonToRestore is not None and event.isAccepted():
+        if self.mainWin is not None:
             button, color, text = self.buttonToRestore
             button.setText(text)
             button.setStyleSheet(
@@ -11106,6 +11104,12 @@ class guiWin(QMainWindow):
             self.mainWin.setWindowState(Qt.WindowNoState)
             self.mainWin.setWindowState(Qt.WindowActive)
             self.mainWin.raise_()
+            # Discard close and simply hide window
+            event.ignore()
+            self.hide()
+        else:
+            self.logger.info('GUI closed.')
+
 
     def saveWindowGeometry(self):
         isMaximised = self.isMaximized()

@@ -3461,8 +3461,9 @@ class QLineEditDialog(QDialog):
             return
 
     def ok_cb(self, event):
-        if self.notValidLabel.text():
-            return
+        if self.allowedValues:
+            if self.notValidLabel.text():
+                return
 
         self.cancel = False
         self.EntryID = int(self.ID_QLineEdit.text())
