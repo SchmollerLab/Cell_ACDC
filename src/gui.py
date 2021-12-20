@@ -145,6 +145,84 @@ def exception_handler(func):
         return result
     return inner_function
 
+class relabelSequentialWorker(QObject):
+    finished = pyqtSignal()
+    critical = pyqtSignal(object)
+    progress = pyqtSignal(str)
+    sigRemoveItemsGUI = pyqtSignal(int)
+    debug = pyqtSignal(object)
+
+    def __init__(self, posData, mainWin):
+        QObject.__init__(self)
+        self.mainWin = mainWin
+        self.posData = posData
+        self.mutex = QMutex()
+        self.waitCond = QWaitCondition()
+
+    def progressNewIDs(self, inv):
+        newIDs = inv.in_values
+        oldIDs = inv.out_values
+        li = list(zip(oldIDs, newIDs))
+        s = '\n'.join([str(pair).replace(',', ' -->') for pair in li])
+        s = f'IDs relabelled as follows:\n{s}'
+        self.progress.emit(s)
+
+    @worker_exception_handler
+    def run(self):
+        self.mutex.lock()
+
+        self.progress.emit('Relabelling process started...')
+
+        posData = self.posData
+        progressWin = self.mainWin.progressWin
+        mainWin = self.mainWin
+
+        current_lab = posData.lab.copy()
+        current_frame_i = posData.frame_i
+        segm_data = []
+        for frame_i, data_dict in enumerate(posData.allData_li):
+            lab = data_dict['labels']
+            if lab is None:
+                break
+            segm_data.append(lab)
+            if frame_i == current_frame_i:
+                break
+
+        if not segm_data:
+            segm_data = np.array(current_lab)
+
+        segm_data = np.array(segm_data)
+        segm_data, fw, inv = skimage.segmentation.relabel_sequential(
+            segm_data
+        )
+        self.progressNewIDs(inv)
+        self.sigRemoveItemsGUI.emit(numba_max(segm_data))
+
+        self.progress.emit(
+            'Updating stored data and cell cycle annotations '
+            '(if present)...'
+        )
+        newIDs = list(inv.in_values)
+        oldIDs = list(inv.out_values)
+        newIDs.append(-1)
+        oldIDs.append(-1)
+        for frame_i, lab in enumerate(segm_data):
+            posData.frame_i = frame_i
+            posData.lab = lab
+            mainWin.get_cca_df()
+            mainWin.update_cca_df_relabelling(
+                posData, oldIDs, newIDs
+            )
+            mainWin.update_rp()
+            mainWin.store_data()
+
+        # Go back to current frame
+        posData.frame_i = current_frame_i
+        mainWin.get_data()
+
+        self.mutex.unlock()
+        self.finished.emit()
+
 class saveDataWorker(QObject):
     finished = pyqtSignal()
     progress = pyqtSignal(str)
@@ -1712,6 +1790,13 @@ class guiWin(QMainWindow):
         if self.progressWin is not None:
             self.progressWin.logConsole.append(text)
         self.logger.info(text)
+
+    def workerFinished(self):
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+            self.progressWin.close()
+        self.logger.info('Relabelling process ended.')
+        self.updateALLimg()
 
     def workerInitProgressbar(self, totalIter):
         self.progressWin.mainPbar.setValue(0)
@@ -3459,6 +3544,32 @@ class guiWin(QMainWindow):
         # Allow mid-click actions on both images
         elif middle_click:
             self.gui_mousePressEventImg2(event)
+
+    def startRelabellingWorker(self, posData):
+        self.thread = QThread()
+        self.worker = relabelSequentialWorker(posData, self)
+        self.worker.moveToThread(self.thread)
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.thread.finished.connect(self.thread.deleteLater)
+
+        # Custom signals
+        # self.worker.sigRemoveItemsGUI.connect(self.removeGraphicsItemsIDs)
+        self.worker.progress.connect(self.workerProgress)
+        self.worker.critical.connect(self.workerCritical)
+        self.worker.finished.connect(self.workerFinished)
+
+        self.worker.debug.connect(self.workerDebug)
+
+        self.thread.started.connect(self.worker.run)
+        self.thread.start()
+
+    def workerDebug(self, item):
+        print(f'Updating frame {item.frame_i}')
+        print(item.cca_df)
+        stored_lab = item.allData_li[item.frame_i]['labels']
+        apps.imshow_tk(item.lab, additional_imgs=[stored_lab])
+        self.worker.waitCond.wakeAll()
 
     def keepToolActiveActionToggled(self, checked):
         parentToolButton = self.sender().parentWidget()
@@ -5513,6 +5624,39 @@ class guiWin(QMainWindow):
                     self.ccaTableWin.setFocus(True)
                     self.ccaTableWin.activateWindow()
                     self.ccaTableWin.updateTable(posData.cca_df)
+            elif ev.key() == Qt.Key_L:
+                mode = str(self.modeComboBox.currentText())
+                if mode == 'Viewer' or mode == 'Cell cycle analysis':
+                    self.startBlinkingModeCB()
+                    return
+                self.storeUndoRedoStates(False)
+                posData = self.data[self.pos_i]
+                if posData.SizeT > 1:
+                    self.progressWin = apps.QDialogWorkerProcess(
+                        title='Re-labelling sequential', parent=self,
+                        pbarDesc='Relabelling sequential...'
+                    )
+                    self.progressWin.show(self.app)
+                    self.progressWin.mainPbar.setMaximum(0)
+                    self.startRelabellingWorker(posData)
+                else:
+                    posData.lab, fw, inv = skimage.segmentation.relabel_sequential(
+                        posData.lab
+                    )
+                    # Update annotations based on relabelling
+                    newIDs = list(inv.in_values)
+                    oldIDs = list(inv.out_values)
+                    newIDs.append(-1)
+                    oldIDs.append(-1)
+                    self.update_cca_df_relabelling(posData, old_IDs, new_IDs)
+                    self.store_data()
+                    self.update_rp()
+                    li = list(zip(oldIDs, newIDs))
+                    s = '\n'.join([str(pair).replace(',', ' -->') for pair in li])
+                    s = f'IDs relabelled as follows:\n{s}'
+                    self.logger.info(s)
+
+                self.updateALLimg()
         elif ev.key() == Qt.Key_T:
             self.determineSlideshowWinPos()
             self.logger.info(self.slideshowWinLeft, self.slideshowWinTop)
@@ -5521,55 +5665,6 @@ class guiWin(QMainWindow):
             # # self.hist.sigLookupTableChanged.disconnect()
         elif ev.key() == Qt.Key_H:
             self.zoomToCells(enforce=True)
-        elif ev.key() == Qt.Key_L:
-            mode = str(self.modeComboBox.currentText())
-            if mode == 'Viewer' or mode == 'Cell cycle analysis':
-                self.startBlinkingModeCB()
-                return
-            self.storeUndoRedoStates(False)
-            posData = self.data[self.pos_i]
-            if posData.SizeT > 1:
-                current_lab = posData.lab.copy()
-                current_frame_i = posData.frame_i
-                segm_data = []
-                for frame_i, data_dict in enumerate(posData.allData_li):
-                    lab = data_dict['labels']
-                    if lab is None:
-                        break
-                    segm_data.append(lab)
-                    if frame_i == current_frame_i:
-                        break
-
-                segm_data = np.array(segm_data)
-                segm_data, fw, inv = skimage.segmentation.relabel_sequential(
-                    segm_data
-                )
-                self.removeGraphicsItemsIDs(numba_max(segm_data))
-                for frame_i, lab in enumerate(segm_data):
-                    posData.frame_i = frame_i
-                    posData.lab = lab
-                    self.update_rp()
-                    self.store_data()
-
-                # Go back to current frame
-                posData.frame_i = current_frame_i
-                self.get_data()
-
-                self.warnEditingWithCca_df('relabelling sequentially')
-            else:
-                posData.lab, fw, inv = skimage.segmentation.relabel_sequential(
-                    posData.lab
-                )
-                # Update annotations based on relabelling
-                newIDs = inv.in_values
-                oldIDs = inv.out_values
-                relIDs = posData.cca_df['relative_ID']
-                posData.cca_df['relative_ID'] = relIDs.replace(oldIDs, newIDs)
-                mapper = dict(zip(oldIDs, newIDs))
-                posData.cca_df = posData.cca_df.rename(index=mapper)
-                self.store_data()
-                self.update_rp()
-            self.updateALLimg()
         elif ev.key() == Qt.Key_Space:
             how = self.drawIDsContComboBox.currentText()
             if how.find('nothing') == -1:
@@ -6871,10 +6966,10 @@ class guiWin(QMainWindow):
             self.ax2.removeItem(_IDlabel2)
 
         self.ax1_ContoursCurves = self.ax1_ContoursCurves[:maxID]
-        self.ax2_ContoursCurves = self.ax1_ContoursCurves[:maxID]
-        self.ax1_LabelItemsIDs = self.ax1_ContoursCurves[:maxID]
-        self.ax2_LabelItemsIDs = self.ax1_ContoursCurves[:maxID]
-        self.ax1_BudMothLines = self.ax1_ContoursCurves[:maxID]
+        self.ax2_ContoursCurves = self.ax2_ContoursCurves[:maxID]
+        self.ax1_LabelItemsIDs = self.ax1_LabelItemsIDs[:maxID]
+        self.ax2_LabelItemsIDs = self.ax2_LabelItemsIDs[:maxID]
+        self.ax1_BudMothLines = self.ax1_BudMothLines[:maxID]
 
     def clearAllItems(self):
         allItems = zip(
@@ -8953,7 +9048,6 @@ class guiWin(QMainWindow):
             cells_img = -cells_img+numba_max(cells_img)
         return cells_img
 
-
     def setImageImg2(self):
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
@@ -8978,6 +9072,12 @@ class guiWin(QMainWindow):
         brushOverlay = (brushOverlay*255).astype(np.uint8)
         self.img1.setImage(brushOverlay)
         return overlay
+
+    def update_cca_df_relabelling(self, posData, oldIDs, newIDs):
+        relIDs = posData.cca_df['relative_ID']
+        posData.cca_df['relative_ID'] = relIDs.replace(oldIDs, newIDs)
+        mapper = dict(zip(oldIDs, newIDs))
+        posData.cca_df = posData.cca_df.rename(index=mapper)
 
     def update_cca_df_deletedIDs(self, posData, deleted_IDs):
         relIDs = posData.cca_df.reindex(deleted_IDs, fill_value=-1)['relative_ID']
