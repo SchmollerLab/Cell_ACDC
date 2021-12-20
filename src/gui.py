@@ -2582,7 +2582,8 @@ class guiWin(QMainWindow):
                 # Apply brush mask
                 posData.lab[mask] = posData.brushID
                 self.setImageImg2()
-                self.setTempImg1Brush(ymin, ymax, xmin, xmax)
+                brushMask = posData.lab == posData.brushID
+                self.setTempImg1Brush(brushMask)
 
         # Eraser dragging mouse --> keep erasing
         elif self.isMouseDragImg1 and self.eraserButton.isChecked():
@@ -2649,11 +2650,11 @@ class guiWin(QMainWindow):
                 )
 
             if np.any(self.flood_mask):
-                yy, xx = np.nonzero(self.flood_mask)
-                self.setTempImg1Brush(
-                    numba_min(yy), numba_max(yy),
-                    numba_min(xx), numba_max(xx), self.flood_mask
+                mask = np.logical_or(
+                    self.flood_mask,
+                    posData.lab==posData.brushID
                 )
+                self.setTempImg1Brush(mask)
 
     def gui_hoverEventImg1(self, event):
         posData = self.data[self.pos_i]
@@ -3241,10 +3242,12 @@ class guiWin(QMainWindow):
 
                 if ID > 0 and drawUnder:
                     posData.brushID = posData.lab[ydata, xdata]
+                    self.brushColor = self.img2.lut[posData.brushID]/255
                 else:
                     # Update brush ID. Take care of disappearing cells to remember
                     # to not use their IDs anymore in the future
                     self.setBrushID()
+                    self.brushColor = posData.lut[posData.brushID]/255
 
                 self.yPressAx2, self.xPressAx2 = y, x
 
@@ -3253,14 +3256,13 @@ class guiWin(QMainWindow):
                 self.isMouseDragImg1 = True
 
                 # Draw new objects
-                localLab = posData.lab[ymin:ymax, xmin:xmax]
-                mask = diskMask.copy()
+                mask = np.zeros(posData.lab.shape, bool)
+                mask[ymin:ymax, xmin:xmax] = diskMask
                 if drawUnder:
-                    mask[localLab!=0] = False
+                    mask[posData.lab!=0] = False
 
-                posData.lab[ymin:ymax, xmin:xmax][mask] = posData.brushID
+                posData.lab[mask] = posData.brushID
                 self.setImageImg2()
-                self.brushColor = self.img2.lut[posData.brushID]/255
 
                 img = self.img1.image.copy()
                 img = img/numba_max(img)
@@ -3269,7 +3271,8 @@ class guiWin(QMainWindow):
                 else:
                     self.imgRGB = gray2rgb(img)
 
-                self.setTempImg1Brush(ymin, ymax, xmin, xmax)
+                brushMask = posData.lab == posData.brushID
+                self.setTempImg1Brush(brushMask)
 
         elif left_click and canErase:
             x, y = event.pos().x(), event.pos().y()
@@ -3436,12 +3439,11 @@ class guiWin(QMainWindow):
                     )
 
                 if np.any(self.flood_mask):
-                    yy, xx = np.nonzero(self.flood_mask)
-                    self.setTempImg1Brush(
-                        numba_min(yy), numba_max(yy),
-                        numba_min(xx), numba_max(xx),
-                        mask=self.flood_mask
+                    mask = np.logical_or(
+                        self.flood_mask,
+                        posData.lab==posData.brushID
                     )
+                    self.setTempImg1Brush(mask)
                 self.isMouseDragImg1 = True
 
         # Annotate cell cycle division
@@ -3686,11 +3688,16 @@ class guiWin(QMainWindow):
                 item.setPen(pen)
                 item.setBrush(brush)
         else:
-            rgb = self.img2.lut[hoverID] if hoverRGB is None else hoverRGB
-            rgbPen = np.clip(rgb*1.2, 0, 255)
-            for item in ScatterItems:
-                item.setPen(*rgbPen, width=2)
-                item.setBrush(*rgb, 100)
+            try:
+                rgb = self.img2.lut[hoverID]
+                rgb = rgb if hoverRGB is None else hoverRGB
+                rgbPen = np.clip(rgb*1.2, 0, 255)
+                for item in ScatterItems:
+                    item.setPen(*rgbPen, width=2)
+                    item.setBrush(*rgb, 100)
+            except IndexError:
+                pass
+
 
     def getCheckNormAction(self):
         normalize = False
@@ -8516,7 +8523,6 @@ class guiWin(QMainWindow):
             pass
         self.img2.setLookupTable(lut)
 
-
     def update_rp_metadata(self, draw=True):
         posData = self.data[self.pos_i]
         binnedIDs_xx = []
@@ -9075,16 +9081,12 @@ class guiWin(QMainWindow):
         self.img2.setImage(DelROIlab)
         self.updateLookuptable()
 
-    def setTempImg1Brush(self, ymin, ymax, xmin, xmax, mask=None):
+    def setTempImg1Brush(self, mask):
         posData = self.data[self.pos_i]
-        if mask is None:
-            brushIDmask = posData.lab == posData.brushID
-        else:
-            brushIDmask = np.logical_or(mask, posData.lab==posData.brushID)
         brushOverlay = self.imgRGB.copy()
         alpha = 0.3
-        overlay = self.imgRGB[brushIDmask]*(1.0-alpha) + self.brushColor*alpha
-        brushOverlay[brushIDmask] = overlay
+        overlay = self.imgRGB[mask]*(1.0-alpha) + self.brushColor*alpha
+        brushOverlay[mask] = overlay
         brushOverlay = (brushOverlay*255).astype(np.uint8)
         self.img1.setImage(brushOverlay)
         return overlay
