@@ -60,5 +60,6 @@
     <file alias="wand_cursor.svg">resources/wand_cursor.svg</file>
     <file alias="curv_cursor.svg">resources/curv_cursor.svg</file>
     <file alias="fill_holes.svg">resources/fill_holes.svg</file>
+    <file alias="find.svg">resources/find.svg</file>
 </qresource>
 </RCC>

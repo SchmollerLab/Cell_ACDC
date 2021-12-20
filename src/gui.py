@@ -490,6 +490,7 @@ class guiWin(QMainWindow):
         self.slideshowWin = None
         self.ccaTableWin = None
         self.data_loaded = False
+        self.searchingID = False
         self.flag = True
 
         self.setWindowTitle("Cell-ACDC - GUI")
@@ -806,6 +807,7 @@ class guiWin(QMainWindow):
         self.addToolBar(navigateToolBar)
         navigateToolBar.addAction(self.prevAction)
         navigateToolBar.addAction(self.nextAction)
+        navigateToolBar.addAction(self.findIdAction)
 
         self.slideshowButton = QToolButton(self)
         self.slideshowButton.setIcon(QIcon(":eye-plus.svg"))
@@ -1193,6 +1195,14 @@ class guiWin(QMainWindow):
         self.newAction.setStatusTip(newTip)
         self.newAction.setToolTip(newTip)
         self.newAction.setWhatsThis("Create a new and empty text file")
+
+        self.findIdAction = QAction(self)
+        self.findIdAction.setIcon(QIcon(":find.svg"))
+        self.findIdAction.setShortcut('Ctrl+F')
+        self.findIdAction.setToolTip(
+            'Find and highlight ID (Ctrl+F). Press Esc to exist highlight mode'
+        )
+
         # Edit actions
         models = myutils.get_list_of_models()
         self.segmActions = []
@@ -1368,6 +1378,7 @@ class guiWin(QMainWindow):
         self.rulerButton.toggled.connect(self.ruler_cb)
         self.loadFluoAction.triggered.connect(self.loadFluo_cb)
         self.reloadAction.triggered.connect(self.reload_cb)
+        self.findIdAction.triggered.connect(self.findID)
         self.slideshowButton.toggled.connect(self.launchSlideshow)
         for action in self.segmActions:
             action.triggered.connect(self.repeatSegm)
@@ -1786,6 +1797,19 @@ class guiWin(QMainWindow):
 
         self.creatingAxesItemsFinished()
 
+    def findID(self):
+        posData = self.data[self.pos_i]
+        self.searchingID = True
+        searchIDdialog = apps.QLineEditDialog(
+            title='Search object by ID',
+            msg='Enter object ID to find and highlight',
+            parent=self, allowedValues=posData.IDs
+        )
+        searchIDdialog.exec_()
+        if searchIDdialog.cancel:
+            return
+        self.highlightSearchedID(searchIDdialog.EntryID)
+
     def workerProgress(self, text):
         if self.progressWin is not None:
             self.progressWin.logConsole.append(text)
@@ -2015,8 +2039,7 @@ class guiWin(QMainWindow):
                 delID_prompt.exec_()
                 if delID_prompt.cancel:
                     return
-                else:
-                    delID = delID_prompt.EntryID
+                delID = delID_prompt.EntryID
 
             # Ask to propagate change to all future visited frames
             (UndoFutFrames, applyFutFrames, endFrame_i,
@@ -5565,6 +5588,8 @@ class guiWin(QMainWindow):
                 self.wandToleranceSlider.setValue(val-1)
         elif ev.key() == Qt.Key_Escape:
             self.setUncheckedAllButtons()
+            if self.searchingID:
+                self.updateALLimg()
         elif ev.modifiers() == Qt.AltModifier:
             if ev.key() == Qt.Key_C:
                 font = QtGui.QFont()
@@ -8475,7 +8500,7 @@ class guiWin(QMainWindow):
     def updateLookuptable(self, lenNewLut=None):
         posData = self.data[self.pos_i]
         if lenNewLut is None:
-            lenNewLut = numba_max(posData.lab)+1
+            lenNewLut = max(posData.IDs)+1
         # Build a new lut to include IDs > than original len of lut
         if lenNewLut > len(posData.lut):
             numNewColors = lenNewLut-len(posData.lut)
@@ -9301,6 +9326,48 @@ class guiWin(QMainWindow):
     def addItemsAllIDs(self, IDs):
         for ID in IDs:
             self.addNewItems(ID)
+
+    def highlightSearchedID(self, ID):
+        contours = zip(
+            self.ax1_ContoursCurves,
+            self.ax2_ContoursCurves
+        )
+        for ax1ContCurve, ax2ContCurve in contours:
+            if ax1ContCurve is None:
+                continue
+            if ax1ContCurve.getData()[0] is not None:
+                ax1ContCurve.setData([], [])
+            if ax2ContCurve.getData()[0] is not None:
+                ax2ContCurve.setData([], [])
+
+        posData = self.data[self.pos_i]
+
+        # Red thick contour of searched ID
+        objIdx = posData.IDs.index(ID)
+        obj = posData.rp[objIdx]
+        cont = self.getObjContours(obj)
+        pen = self.newIDs_cpen
+        curveID = self.ax1_ContoursCurves[ID-1]
+        curveID.setData(cont[:,0], cont[:,1], pen=pen)
+
+        # Label ID
+        LabelItemID = self.ax1_LabelItemsIDs[ID-1]
+        txt = f'{ID}'
+        LabelItemID.setText(txt, color='r', bold=True, size=self.fontSize)
+        y, x = obj.centroid
+        w, h = LabelItemID.rect().right(), LabelItemID.rect().bottom()
+        LabelItemID.setPos(x-w/2, y-h/2)
+
+        LabelItemID = self.ax2_LabelItemsIDs[ID-1]
+        LabelItemID.setText(txt, color='r', bold=True, size=self.fontSize)
+        w, h = LabelItemID.rect().right(), LabelItemID.rect().bottom()
+        LabelItemID.setPos(x-w/2, y-h/2)
+
+        # Gray out all IDs excpet searched one
+        lut = posData.lut.copy()[:max(posData.IDs)+1]
+        lut[:ID] = lut[:ID]*0.2
+        lut[ID+1:] = lut[ID+1:]*0.2
+        self.img2.setLookupTable(lut)
 
     def updateALLimg(
             self, image=None, never_visited=True,

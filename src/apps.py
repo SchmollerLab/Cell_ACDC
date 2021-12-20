@@ -3371,9 +3371,10 @@ class askStopFrameSegm(QDialog):
 class QLineEditDialog(QDialog):
     def __init__(
             self, title='Entry messagebox', msg='Entry value',
-            defaultTxt='', parent=None
+            defaultTxt='', parent=None, allowedValues=None
         ):
         self.cancel = True
+        self.allowedValues = allowedValues
 
         super().__init__(parent)
         self.setWindowTitle(title)
@@ -3398,6 +3399,13 @@ class QLineEditDialog(QDialog):
         ID_QLineEdit.setText(defaultTxt)
         self.ID_QLineEdit = ID_QLineEdit
 
+        if allowedValues is not None:
+            notValidLabel = QLabel()
+            notValidLabel.setStyleSheet('color: red')
+            notValidLabel.setFont(_font)
+            notValidLabel.setAlignment(Qt.AlignCenter)
+            self.notValidLabel = notValidLabel
+
         okButton = QPushButton('Ok')
         okButton.setShortcut(Qt.Key_Enter)
 
@@ -3414,6 +3422,9 @@ class QLineEditDialog(QDialog):
         # Add widgets to layouts
         LineEditLayout.addWidget(msg, alignment=Qt.AlignCenter)
         LineEditLayout.addWidget(ID_QLineEdit, alignment=Qt.AlignCenter)
+        if allowedValues is not None:
+            LineEditLayout.addWidget(notValidLabel, alignment=Qt.AlignCenter)
+        buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(okButton)
         buttonsLayout.addWidget(cancelButton)
 
@@ -3438,12 +3449,21 @@ class QLineEditDialog(QDialog):
             val = int(newChar)
             if val > np.iinfo(np.uint16).max:
                 self.ID_QLineEdit.setText(str(np.iinfo(np.uint16).max))
+            if self.allowedValues is not None:
+                currentVal = int(self.ID_QLineEdit.text())
+                if currentVal not in self.allowedValues:
+                    self.notValidLabel.setText(f'{currentVal} not existing!')
+                else:
+                    self.notValidLabel.setText('')
         except Exception as e:
             text = text.replace(newChar, '')
             self.ID_QLineEdit.setText(text)
             return
 
     def ok_cb(self, event):
+        if self.notValidLabel.text():
+            return
+
         self.cancel = False
         self.EntryID = int(self.ID_QLineEdit.text())
         self.close()
