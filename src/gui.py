@@ -8232,8 +8232,10 @@ class guiWin(QMainWindow):
                     cca_df = self.get_cca_df(frame_i=i, return_df=True)
                     if cca_df is None:
                         break
-                    if ID not in cca_df:
+
+                    if ID not in cca_df.index:
                         continue
+
                     _ccs = cca_df.at[ID, 'cell_cycle_stage']
                     if _ccs == 'G1':
                         is_division_annotated = True
@@ -9061,7 +9063,6 @@ class guiWin(QMainWindow):
         self.img2.setImage(DelROIlab)
         self.updateLookuptable()
 
-    @exec_time
     def setTempImg1Brush(self, mask, alpha=0.3):
         posData = self.data[self.pos_i]
         brushOverlay = self.imgRGB.copy()
@@ -9512,6 +9513,10 @@ class guiWin(QMainWindow):
         ID = obj.label
         if ID in posData.lost_IDs:
             ContCurve = self.ax1_ContoursCurves[ID-1]
+            if ContCurve is None:
+                self.addNewItems(ID)
+            ContCurve = self.ax1_ContoursCurves[ID-1]
+
             if IDs_and_cont or onlyCont or ccaInfo_and_cont or forceContour:
                 cont = self.getObjContours(obj)
                 ContCurve.setData(
