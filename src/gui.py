@@ -5330,10 +5330,16 @@ class guiWin(QMainWindow):
             self.restoreHoveredID()
 
         # Hide items hover ID
-        if ID != 0 and self.ax1_ContoursCurves:
-            if self.ax1_ContoursCurves[ID-1] is None:
+        if ID != 0:
+            try:
+                contCurve = self.ax1_ContoursCurves[ID-1]
+            except IndexError:
                 return
-            self.ax1_ContoursCurves[ID-1].setData([], [])
+
+            if contCurve is None:
+                return
+
+            contCurve.setData([], [])
             self.ax1_LabelItemsIDs[ID-1].setText('')
             self.ax1BrushHoverID = ID
         else:
@@ -8480,7 +8486,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         if lenNewLut is None:
             try:
-                lenNewLut = max(posData.IDs)+1
+                lenNewLut = max(posData.IDs)+2
             except ValueError:
                 # Empty segmentation mask
                 lenNewLut = 1
