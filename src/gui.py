@@ -4306,7 +4306,7 @@ class guiWin(QMainWindow):
 
             G1_duration += 1
 
-        if G1_duration <= 1:
+        if G1_duration == 1:
             # G1_duration of the mother is single frame --> not eligible
             eligible = False
             self.warnMotherNotEligible(
@@ -7499,6 +7499,9 @@ class guiWin(QMainWindow):
                 continue
 
             relID = ccSeries.relative_ID
+            if relID == -1:
+                continue
+
             # Check is relID is gone while ID stays
             if relID not in posData.IDs and ID in posData.IDs:
                 ScellsIDsGone.append(relID)
