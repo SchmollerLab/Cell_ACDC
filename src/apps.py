@@ -3371,10 +3371,14 @@ class askStopFrameSegm(QDialog):
 class QLineEditDialog(QDialog):
     def __init__(
             self, title='Entry messagebox', msg='Entry value',
-            defaultTxt='', parent=None, allowedValues=None
+            defaultTxt='', parent=None, allowedValues=None,
+            warnLastFrame=False
         ):
         self.cancel = True
         self.allowedValues = allowedValues
+        self.warnLastFrame = warnLastFrame
+        if allowedValues and warnLastFrame:
+            self.maxValue = max(allowedValues)
 
         super().__init__(parent)
         self.setWindowTitle(title)
@@ -3460,13 +3464,37 @@ class QLineEditDialog(QDialog):
             self.ID_QLineEdit.setText(text)
             return
 
+    def warnValLessLastFrame(self, val):
+        msg = QMessageBox()
+        warn_txt = (f"""
+        <p style="font-size:10pt">
+            WARNING: saving until a frame number below the last visited
+            frame ({self.maxValue})<br>
+            will result in <b>loss of information
+            about any edit or annotation you did on frames
+            {val}-{self.maxValue}.</b><br><br>
+            Are you sure you want to proceed?
+        </p>
+        """)
+        answer = msg.warning(
+           self, 'WARNING: Potential loss of information',
+           warn_txt, msg.Yes | msg.Cancel
+        )
+        return answer == msg.Cancel
+
     def ok_cb(self, event):
         if self.allowedValues:
             if self.notValidLabel.text():
                 return
 
+        val = int(self.ID_QLineEdit.text())
+        if self.warnLastFrame and val < self.maxValue:
+            cancel = self.warnValLessLastFrame(val)
+            if cancel:
+                return
+
         self.cancel = False
-        self.EntryID = int(self.ID_QLineEdit.text())
+        self.EntryID = val
         self.close()
 
     def cancel_cb(self, event):

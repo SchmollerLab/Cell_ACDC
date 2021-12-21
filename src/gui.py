@@ -1605,12 +1605,11 @@ class guiWin(QMainWindow):
             self.ax1_oldIDcolor = (r, g, b)
             self.ax1_S_oldCellColor = (int(r*0.9), int(r*0.9), int(b*0.9))
             self.ax1_G1cellColor = (int(r*0.8), int(g*0.8), int(b*0.8), 178)
-            self.ax1_divAnnotColor = (int(r*0.9), int(g*0.9), int(b*0.9))
         else:
             self.ax1_oldIDcolor = (255, 255, 255) # white
             self.ax1_S_oldCellColor = (229, 229, 229)
             self.ax1_G1cellColor = (204, 204, 204, 178)
-            self.ax1_divAnnotColor = (245, 188, 1) # orange
+        self.ax1_divAnnotColor = (245, 188, 1) # orange
 
     def gui_addPlotItems(self):
         if 'textIDsColor' in self.df_settings.index:
@@ -4578,18 +4577,14 @@ class guiWin(QMainWindow):
         self.storeUndoRedoStates(False)
 
         posData = self.data[self.pos_i]
-        borderMask = np.zeros(posData.lab.shape, bool)
-        borderMask[0:2] = True
-        borderMask[-2:] = True
-        borderMask[:, 0:2] = True
-        borderMask[:, -2:] = True
-        borderIDs = np.unique(posData.lab[borderMask])[1:]
-        nullIDs = [0]*len(borderIDs)
-        core.lab_replace_values(
-            posData.lab, posData.rp, borderIDs, nullIDs
+        posData.lab = skimage.segmentation.clear_border(
+            posData.lab, buffer_size=1
         )
+        oldIDs = posData.IDs.copy()
+        self.update_rp()
+        removedIDs = [ID for ID in oldIDs if ID not in posData.IDs]
         if posData.cca_df is not None:
-            posData.cca_df = posData.cca_df.drop(index=borderIDs)
+            posData.cca_df = posData.cca_df.drop(index=removedIDs)
         self.store_data()
         self.updateALLimg()
 
@@ -5345,7 +5340,7 @@ class guiWin(QMainWindow):
             self.restoreHoveredID()
 
         # Hide items hover ID
-        if ID != 0:
+        if ID != 0 and self.ax1_ContoursCurves:
             self.ax1_ContoursCurves[ID-1].setData([], [])
             self.ax1_LabelItemsIDs[ID-1].setText('')
             self.ax1BrushHoverID = ID
@@ -9071,10 +9066,10 @@ class guiWin(QMainWindow):
         self.img2.setImage(DelROIlab)
         self.updateLookuptable()
 
-    def setTempImg1Brush(self, mask):
+    @exec_time
+    def setTempImg1Brush(self, mask, alpha=0.3):
         posData = self.data[self.pos_i]
         brushOverlay = self.imgRGB.copy()
-        alpha = 0.3
         overlay = self.imgRGB[mask]*(1.0-alpha) + self.brushColor*alpha
         brushOverlay[mask] = overlay
         brushOverlay = (brushOverlay*255).astype(np.uint8)
@@ -10445,8 +10440,6 @@ class guiWin(QMainWindow):
             for how in how_3Dto2D
         }
 
-
-
         tot_iter = (
             self.total_metrics
             *len(posData.loadedChNames)
@@ -10717,42 +10710,42 @@ class guiWin(QMainWindow):
         df = df.join(df_rp)
         return df
 
-    def askSaveLastVisitedCcaMode(self, p, posData):
-        current_frame_i = posData.frame_i
-        frame_i = 0
-        last_cca_frame_i = 0
-        self.save_until_frame_i = 0
-        self.worker.askSaveLastCancelled = False
-        for frame_i, data_dict in enumerate(posData.allData_li):
-            # Build segm_npy
-            acdc_df = data_dict['acdc_df']
-            if acdc_df is None:
-                frame_i -= 1
-                break
-            if 'cell_cycle_stage' not in acdc_df.columns:
-                frame_i -= 1
-                break
-        if frame_i > 0:
-            # Ask to save last visited frame or not
-            txt = (f"""
-            <p style="font-size:9pt">
-                You visited and annotated data up until frame
-                number {frame_i+1}.<br><br>
-                Enter <b>up to which frame number</b> you want to save data:
-            </p>
-            """)
-            lastFrameDialog = apps.QLineEditDialog(
-                title='Last frame number to save', defaultTxt=str(frame_i+1),
-                msg=txt, parent=self, allowedValues=range(1, frame_i+2)
-            )
-            lastFrameDialog.exec_()
-            if lastFrameDialog.cancel:
-                self.worker.askSaveLastCancelled = True
-            else:
-                self.save_until_frame_i = lastFrameDialog.EntryID - 1
-                last_cca_frame_i = self.save_until_frame_i
-        self.last_cca_frame_i = last_cca_frame_i
-        self.waitCond.wakeAll()
+    # def askSaveLastVisitedCcaMode(self, p, posData):
+    #     current_frame_i = posData.frame_i
+    #     frame_i = 0
+    #     last_cca_frame_i = 0
+    #     self.save_until_frame_i = 0
+    #     self.worker.askSaveLastCancelled = False
+    #     for frame_i, data_dict in enumerate(posData.allData_li):
+    #         # Build segm_npy
+    #         acdc_df = data_dict['acdc_df']
+    #         if acdc_df is None:
+    #             frame_i -= 1
+    #             break
+    #         if 'cell_cycle_stage' not in acdc_df.columns:
+    #             frame_i -= 1
+    #             break
+    #     if frame_i > 0:
+    #         # Ask to save last visited frame or not
+    #         txt = (f"""
+    #         <p style="font-size:9pt">
+    #             You visited and annotated data up until frame
+    #             number {frame_i+1}.<br><br>
+    #             Enter <b>up to which frame number</b> you want to save data:
+    #         </p>
+    #         """)
+    #         lastFrameDialog = apps.QLineEditDialog(
+    #             title='Last frame number to save', defaultTxt=str(frame_i+1),
+    #             msg=txt, parent=self, allowedValues=range(1, frame_i+2)
+    #         )
+    #         lastFrameDialog.exec_()
+    #         if lastFrameDialog.cancel:
+    #             self.worker.askSaveLastCancelled = True
+    #         else:
+    #             self.save_until_frame_i = lastFrameDialog.EntryID - 1
+    #             last_cca_frame_i = self.save_until_frame_i
+    #     self.last_cca_frame_i = last_cca_frame_i
+    #     self.waitCond.wakeAll()
 
     def getLastTrackedFrame(self, posData):
         last_tracked_i = 0
@@ -10790,7 +10783,8 @@ class guiWin(QMainWindow):
             """)
             lastFrameDialog = apps.QLineEditDialog(
                 title='Last frame number to save', defaultTxt=str(frame_i+1),
-                msg=txt, parent=self, allowedValues=range(1, frame_i+2)
+                msg=txt, parent=self, allowedValues=range(1, frame_i+2),
+                warnLastFrame=True
             )
             lastFrameDialog.exec_()
             if lastFrameDialog.cancel:
