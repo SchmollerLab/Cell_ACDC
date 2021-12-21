@@ -1741,36 +1741,27 @@ class guiWin(QMainWindow):
         )
         self.ax1.addItem(self.ax1_point_ScatterPlot)
 
-    def gui_startCreateAxesItemsWorker(self):
+    def gui_createIDsAxesItems(self):
+        allIDs = set()
+        for lab in self.data[self.pos_i].segm_data:
+            IDs = [obj.label for obj in skimage.measure.regionprops(lab)]
+            allIDs.update(IDs)
+
         numItems = numba_max(self.data[self.pos_i].segm_data)
 
-        self.logger.info(f'Creating {numItems} axes items...')
+        self.logger.info(f'Creating {len(allIDs)} axes items...')
 
-        self.ax1_ContoursCurves = []
-        self.ax2_ContoursCurves = []
-        self.ax1_BudMothLines = []
-        self.ax1_LabelItemsIDs = []
-        self.ax2_LabelItemsIDs = []
-        for i in range(numItems):
-            # Contours on ax1
-            ContCurve = pg.PlotDataItem()
-            self.ax1_ContoursCurves.append(ContCurve)
-
-            # Bud mother line on ax1
-            BudMothLine = pg.PlotDataItem()
-            self.ax1_BudMothLines.append(BudMothLine)
-
-            # LabelItems on ax1
-            ax1_IDlabel = pg.LabelItem()
-            self.ax1_LabelItemsIDs.append(ax1_IDlabel)
-
-            # LabelItems on ax2
-            ax2_IDlabel = pg.LabelItem()
-            self.ax2_LabelItemsIDs.append(ax2_IDlabel)
-
-            # Contours on ax2
-            ContCurve = pg.PlotDataItem()
-            self.ax2_ContoursCurves.append(ContCurve)
+        self.ax1_ContoursCurves = [None]*numItems
+        self.ax2_ContoursCurves = [None]*numItems
+        self.ax1_BudMothLines = [None]*numItems
+        self.ax1_LabelItemsIDs = [None]*numItems
+        self.ax2_LabelItemsIDs = [None]*numItems
+        for ID in allIDs:
+            self.ax1_ContoursCurves[ID-1] = pg.PlotDataItem()
+            self.ax1_BudMothLines[ID-1] = pg.PlotDataItem()
+            self.ax1_LabelItemsIDs[ID-1] = pg.LabelItem()
+            self.ax2_LabelItemsIDs[ID-1] = pg.LabelItem()
+            self.ax2_ContoursCurves[ID-1] = pg.PlotDataItem()
 
         self.creatingAxesItemsFinished()
 
@@ -1843,7 +1834,7 @@ class guiWin(QMainWindow):
         self.progressWin.show(self.app)
         self.progressWin.mainPbar.setMaximum(0)
 
-        QTimer.singleShot(50, self.gui_startCreateAxesItemsWorker)
+        QTimer.singleShot(50, self.gui_createIDsAxesItems)
 
     def gui_connectGraphicsEvents(self):
         self.img1.hoverEvent = self.gui_hoverEventImg1
@@ -4940,7 +4931,6 @@ class guiWin(QMainWindow):
         ccaInfo_and_cont = how == 'Draw cell cycle info and contours'
         onlyMothBudLines = how == 'Draw only mother-bud lines'
 
-        t0 = time.time()
         # Clear contours if requested
         if how.find('contours') == -1 or nothing:
             allCont = zip(self.ax1_ContoursCurves,
@@ -4952,22 +4942,20 @@ class guiWin(QMainWindow):
                     ax1ContCurve.setData([], [])
                 if ax2ContCurve.getData()[0] is not None:
                     ax2ContCurve.setData([], [])
-            t1 = time.time()
-
-            # self.logger.info(f'Clearing contours = {t1-t0:.3f}')
-
-        t0 = time.time()
 
         # Clear LabelItems IDs if requested (draw nothing or only contours)
         if onlyCont or nothing or onlyMothBudLines:
             for _IDlabel1 in self.ax1_LabelItemsIDs:
+                if _IDlabel1 is None:
+                    continue
                 _IDlabel1.setText('')
-            t1 = time.time()
 
         # Clear mother-bud lines if Requested
         drawLines = only_ccaInfo or ccaInfo_and_cont or onlyMothBudLines
         if not drawLines:
             for BudMothLine in self.ax1_BudMothLines:
+                if BudMothLine is None:
+                    continue
                 if BudMothLine.getData()[0] is not None:
                     BudMothLine.setData([], [])
 
@@ -5087,6 +5075,8 @@ class guiWin(QMainWindow):
             self.undoAction.triggered.connect(self.undo)
             self.redoAction.triggered.connect(self.redo)
             for BudMothLine in self.ax1_BudMothLines:
+                if BudMothLine is None:
+                    continue
                 if BudMothLine.getData()[0] is not None:
                     BudMothLine.setData([], [])
             if posData.cca_df is not None:
@@ -5341,6 +5331,8 @@ class guiWin(QMainWindow):
 
         # Hide items hover ID
         if ID != 0 and self.ax1_ContoursCurves:
+            if self.ax1_ContoursCurves[ID-1] is None:
+                return
             self.ax1_ContoursCurves[ID-1].setData([], [])
             self.ax1_LabelItemsIDs[ID-1].setText('')
             self.ax1BrushHoverID = ID
@@ -6690,6 +6682,9 @@ class guiWin(QMainWindow):
             (ax1ContCurve, ax2ContCurve,
             ax1_IDlabel, ax2_IDlabel,
             BudMothLine) = items_ID
+
+            if ax1ContCurve is None:
+                continue
 
             self.ax1.addItem(ax1ContCurve)
             self.ax1.addItem(BudMothLine)
@@ -9221,7 +9216,6 @@ class guiWin(QMainWindow):
         ax2ContCurve = pg.PlotDataItem()
         self.ax2.addItem(ax2ContCurve)
 
-        print('==========================')
         self.logger.info(f'Items created for new cell ID {newID}')
         if newID > start:
             empty = [None]*(newID-start)
@@ -9236,8 +9230,6 @@ class guiWin(QMainWindow):
         self.ax1_LabelItemsIDs[newID-1] = ax1_IDlabel
         self.ax2_LabelItemsIDs[newID-1] = ax2_IDlabel
         self.ax2_ContoursCurves[newID-1] = ax2ContCurve
-
-        print('==========================')
 
     def updateHistogramItem(self, imageItem):
         """
