@@ -45,6 +45,8 @@ src/temp/*
 # Ignore deprecated file
 src/deprecated.py
 
+# Ignore macOS files
+.DS_Store
 
 __pycache__/
 *.pyc
