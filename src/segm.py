@@ -789,7 +789,7 @@ class segmWin(QMainWindow):
             # all the posData and save segmSizeT which will be used as stop_i
             win = apps.askStopFrameSegm(user_ch_file_paths,
                                         user_ch_name, parent=self)
-            win.showAndSetFont(font)
+            win.setFont(font)
             win.exec_()
             if win.cancel:
                 abort = self.doAbort()

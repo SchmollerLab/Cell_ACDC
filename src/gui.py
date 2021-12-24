@@ -48,16 +48,16 @@ from skimage.color import gray2rgb, gray2rgba
 from PyQt5.QtCore import (
     Qt, QFile, QTextStream, QSize, QRect, QRectF,
     QEventLoop, QTimer, QEvent, QObject, pyqtSignal,
-    QThread, QMutex, QWaitCondition
+    QThread, QMutex, QWaitCondition, QSettings
 )
 from PyQt5.QtGui import (
     QIcon, QKeySequence, QCursor, QKeyEvent, QGuiApplication,
     QPixmap
 )
 from PyQt5.QtWidgets import (
-    QAction, QApplication, QLabel, QPushButton,
-    QMainWindow, QMenu, QToolBar, QGroupBox,
-    QScrollBar, QCheckBox, QToolButton, QSpinBox,
+    QAction, QApplication, QLabel, QPushButton, QHBoxLayout,
+    QMainWindow, QMenu, QToolBar, QGroupBox, QGridLayout,
+    QScrollBar, QCheckBox, QToolButton, QSpinBox, QGroupBox,
     QComboBox, QDial, QButtonGroup, QActionGroup,
     QShortcut, QFileDialog, QDoubleSpinBox,
     QAbstractSlider, QMessageBox, QWidget,
@@ -479,6 +479,7 @@ class guiWin(QMainWindow):
         self.LeftClickButtons = []
 
         self.isSnapshot = False
+        self.debugFlag = False
         self.pos_i = 0
         self.save_until_frame_i = 0
         self.countKeyPress = 0
@@ -1099,7 +1100,8 @@ class guiWin(QMainWindow):
         mainLayout.addWidget(self.graphLayout, row, 0, 1, 2)
 
         row += 1
-        mainLayout.addLayout(self.img1_Widglayout, row, 0)
+        mainLayout.addLayout(self.bottomLayout, row, 0)
+        mainLayout.setRowStretch(row, 0)
 
         return mainLayout
 
@@ -1331,17 +1333,16 @@ class guiWin(QMainWindow):
         self.saveAction.triggered.connect(self.saveData)
         self.showInExplorerAction.triggered.connect(self.showInExplorer)
         self.exitAction.triggered.connect(self.close)
-
         self.undoAction.triggered.connect(self.undo)
         self.redoAction.triggered.connect(self.redo)
 
         # Connect Help actions
         self.tipsAction.triggered.connect(self.showTipsAndTricks)
         self.UserManualAction.triggered.connect(self.showUserManual)
-        # self.aboutAction.triggered.connect(self.about)
         # Connect Open Recent to dynamically populate it
         self.openRecentMenu.aboutToShow.connect(self.populateOpenRecent)
         self.checkableQButtonsGroup.buttonClicked.connect(self.uncheckQButton)
+
 
     def gui_connectEditActions(self):
         self.showInExplorerAction.setEnabled(True)
@@ -1349,6 +1350,7 @@ class guiWin(QMainWindow):
         self.setEnabledFileToolbar(True)
         self.loadFluoAction.setEnabled(True)
         self.isEditActionsConnected = True
+
         self.fontSizeMenu.triggered.connect(self.changeFontSize)
         self.prevAction.triggered.connect(self.prev_cb)
         self.nextAction.triggered.connect(self.next_cb)
@@ -1358,8 +1360,10 @@ class guiWin(QMainWindow):
         self.reloadAction.triggered.connect(self.reload_cb)
         self.findIdAction.triggered.connect(self.findID)
         self.slideshowButton.toggled.connect(self.launchSlideshow)
+
         for action in self.segmActions:
             action.triggered.connect(self.repeatSegm)
+
         self.SegmActionRW.triggered.connect(self.randomWalkerSegm)
         self.postProcessSegmAction.toggled.connect(self.postProcessSegm)
         self.autoSegmAction.toggled.connect(self.autoSegm_cb)
@@ -1371,6 +1375,7 @@ class guiWin(QMainWindow):
         self.wandToolButton.toggled.connect(self.wand_cb)
         self.reInitCcaAction.triggered.connect(self.reInitCca)
         self.assignBudMothAutoAction.triggered.connect(self.autoAssignBud_YeastMate)
+
         # self.repeatAutoCcaAction.triggered.connect(self.repeatAutoCca)
         self.manuallyEditCcaAction.triggered.connect(self.manualEditCca)
         self.invertBwAction.toggled.connect(self.invertBw)
@@ -1380,7 +1385,6 @@ class guiWin(QMainWindow):
         # Mode
         self.modeComboBox.currentIndexChanged.connect(self.changeMode)
         self.modeComboBox.activated.connect(self.clearComboBoxFocus)
-
         self.equalizeHistPushButton.clicked.connect(self.equalizeHist)
         self.editOverlayColorAction.triggered.connect(self.toggleOverlayColorButton)
         self.editTextIDsColorAction.triggered.connect(self.toggleTextIDsColorButton)
@@ -1388,6 +1392,8 @@ class guiWin(QMainWindow):
         self.textIDsColorButton.sigColorChanging.connect(self.updateTextIDsColors)
         self.textIDsColorButton.sigColorChanged.connect(self.saveTextIDsColors)
         self.alphaScrollBar.valueChanged.connect(self.updateOverlay)
+
+
         # Drawing mode
         self.drawIDsContComboBox.currentIndexChanged.connect(
                                                 self.drawIDsContComboBox_cb)
@@ -1404,11 +1410,9 @@ class guiWin(QMainWindow):
         self.normalizeQActionGroup.triggered.connect(self.saveNormAction)
         self.imgPropertiesAction.triggered.connect(self.editImgProperties)
 
-    def gui_createImg1Widgets(self):
-        self.img1_Widglayout = QtGui.QGridLayout()
 
+    def gui_createImg1Widgets(self):
         # Toggle contours/ID comboboxf
-        row = 0
         self.drawIDsContComboBoxSegmItems = ['Draw IDs and contours',
                                              'Draw only cell cycle info',
                                              'Draw cell cycle info and contours',
@@ -1429,12 +1433,7 @@ class guiWin(QMainWindow):
         self.drawIDsContComboBox.setSizeAdjustPolicy(
                     self.drawIDsContComboBox.AdjustToContents)
 
-        self.img1_Widglayout.addWidget(
-                self.drawIDsContComboBox, row, 1, 1, 10,
-                alignment=Qt.AlignCenter)
-
         # Frames scrollbar
-        row += 1
         self.navigateScrollBar = QScrollBar(Qt.Horizontal)
         self.navigateScrollBar.setDisabled(True)
         self.navigateScrollBar.setMinimum(1)
@@ -1453,33 +1452,16 @@ class guiWin(QMainWindow):
         _font.setPointSize(10)
         t_label.setFont(_font)
         self.t_label = t_label
-        self.img1_Widglayout.addWidget(
-                t_label, row, 0, alignment=Qt.AlignRight)
-        self.img1_Widglayout.addWidget(
-                self.navigateScrollBar, row, 1, 1, 10)
-        self.t_label.hide()
-        self.navigateScrollBar.hide()
 
         # z-slice scrollbars
-        row += 1
         self.zSliceScrollBar = QScrollBar(Qt.Horizontal)
-        sp = self.zSliceScrollBar.sizePolicy()
-        sp.setRetainSizeWhenHidden(True)
-        self.zSliceScrollBar.setSizePolicy(sp)
         _z_label = QLabel('z-slice  ')
         _font = QtGui.QFont()
         _font.setPointSize(10)
         _z_label.setFont(_font)
         self.z_label = _z_label
-        self.img1_Widglayout.addWidget(
-                _z_label, row, 0, alignment=Qt.AlignRight)
-        self.img1_Widglayout.addWidget(
-                self.zSliceScrollBar, row, 1, 1, 10)
 
         self.zProjComboBox = QComboBox()
-        sp = self.zProjComboBox.sizePolicy()
-        sp.setRetainSizeWhenHidden(True)
-        self.zProjComboBox.setSizePolicy(sp)
         self.zProjComboBox.addItems([
             'single z-slice',
             'max z-projection',
@@ -1487,50 +1469,27 @@ class guiWin(QMainWindow):
             'median z-proj.'
         ])
 
-        self.img1_Widglayout.addWidget(self.zProjComboBox, row, 11, 1, 1)
-
-        row += 1
         self.zSliceOverlay_SB = QScrollBar(Qt.Horizontal)
-        sp = self.zSliceOverlay_SB.sizePolicy()
-        sp.setRetainSizeWhenHidden(True)
-        self.zSliceOverlay_SB.setSizePolicy(sp)
         _z_label = QLabel('overlay z-slice  ')
         _font = QtGui.QFont()
         _font.setPointSize(10)
         _z_label.setFont(_font)
         self.overlay_z_label = _z_label
-        self.img1_Widglayout.addWidget(
-                _z_label, row, 0, alignment=Qt.AlignRight)
-        self.img1_Widglayout.addWidget(
-                self.zSliceOverlay_SB, row, 1, 1, 10)
 
         self.zProjOverlay_CB = QComboBox()
-        sp = self.zProjOverlay_CB.sizePolicy()
-        sp.setRetainSizeWhenHidden(True)
-        self.zProjOverlay_CB.setSizePolicy(sp)
         self.zProjOverlay_CB.addItems(['single z-slice',
                                        'max z-projection',
                                        'mean z-projection',
                                        'median z-proj.',
                                        'same as above'])
         self.zProjOverlay_CB.setCurrentIndex(1)
-        self.img1_Widglayout.addWidget(self.zProjOverlay_CB, row, 11, 1, 1)
-
         self.zSliceOverlay_SB.setDisabled(True)
-        self.zSliceOverlay_SB.hide()
-        self.overlay_z_label.hide()
-        self.zProjOverlay_CB.hide()
-
-        self.enableZstackWidgets(False)
 
         # Fluorescent overlay alpha
-        row += 2
         alphaScrollBar_label = QLabel('Overlay alpha  ')
         alphaScrollBar_label.setFont(_font)
         alphaScrollBar = QScrollBar(Qt.Horizontal)
-        sp = alphaScrollBar.sizePolicy()
-        sp.setRetainSizeWhenHidden(True)
-        alphaScrollBar.setSizePolicy(sp)
+
         alphaScrollBar.setMinimum(0)
         alphaScrollBar.setMaximum(40)
         alphaScrollBar.setValue(20)
@@ -1541,18 +1500,58 @@ class guiWin(QMainWindow):
         )
         alphaScrollBar.setDisabled(True)
         self.alphaScrollBar = alphaScrollBar
-        self.img1_Widglayout.addWidget(
-            alphaScrollBar_label, row, 0, alignment=Qt.AlignRight
-        )
-        self.img1_Widglayout.addWidget(
-            alphaScrollBar, row, 1, 1, 10
-        )
         self.alphaScrollBar_label = alphaScrollBar_label
-        self.alphaScrollBar.hide()
-        self.alphaScrollBar_label.hide()
 
-        # Left, top, right, bottom
-        self.img1_Widglayout.setContentsMargins(80, 0, 0, 0)
+        self.bottomLayout = QHBoxLayout()
+        img1BottomGroupbox = self.gui_addImg1BottomWidgets()
+        sp = img1BottomGroupbox.sizePolicy()
+        sp.setRetainSizeWhenHidden(True)
+        img1BottomGroupbox.setSizePolicy(sp)
+        self.img1BottomGroupbox = img1BottomGroupbox
+
+        self.bottomLayout.addSpacing(100)
+        self.bottomLayout.addWidget(img1BottomGroupbox)
+        self.bottomLayout.addStretch()
+
+    def gui_addImg1BottomWidgets(self):
+        bottomLeftLayout = QGridLayout()
+        container = QGroupBox()
+
+        row = 0
+        bottomLeftLayout.addWidget(
+            self.drawIDsContComboBox, row, 1, alignment=Qt.AlignCenter
+        )
+
+        row += 1
+        bottomLeftLayout.addWidget(self.t_label, row, 0, alignment=Qt.AlignRight)
+        bottomLeftLayout.addWidget(self.navigateScrollBar, row, 1)
+
+        row += 1
+        bottomLeftLayout.addWidget(
+            self.z_label, row, 0, alignment=Qt.AlignRight
+        )
+        bottomLeftLayout.addWidget(self.zSliceScrollBar, row, 1)
+        bottomLeftLayout.addWidget(self.zProjComboBox, row, 2)
+
+        row += 1
+        bottomLeftLayout.addWidget(
+            self.overlay_z_label, row, 0, alignment=Qt.AlignRight
+        )
+        bottomLeftLayout.addWidget(self.zSliceOverlay_SB, row, 1)
+
+        bottomLeftLayout.addWidget(self.zProjOverlay_CB, row, 2)
+
+        row += 1
+        bottomLeftLayout.addWidget(
+            self.alphaScrollBar_label, row, 0, alignment=Qt.AlignRight
+        )
+        bottomLeftLayout.addWidget(self.alphaScrollBar, row, 1)
+
+        bottomLeftLayout.setColumnStretch(0,0)
+        bottomLeftLayout.setColumnStretch(1,3)
+        bottomLeftLayout.setColumnStretch(2,0)
+        container.setLayout(bottomLeftLayout)
+        return container
 
     def gui_createGraphicsPlots(self):
         self.graphLayout = pg.GraphicsLayoutWidget()
@@ -1765,38 +1764,6 @@ class guiWin(QMainWindow):
 
         self.creatingAxesItemsFinished()
 
-    def findID(self):
-        posData = self.data[self.pos_i]
-        self.searchingID = True
-        searchIDdialog = apps.QLineEditDialog(
-            title='Search object by ID',
-            msg='Enter object ID to find and highlight',
-            parent=self, allowedValues=posData.IDs
-        )
-        searchIDdialog.exec_()
-        if searchIDdialog.cancel:
-            return
-        self.highlightSearchedID(searchIDdialog.EntryID)
-
-    def workerProgress(self, text):
-        if self.progressWin is not None:
-            self.progressWin.logConsole.append(text)
-        self.logger.info(text)
-
-    def workerFinished(self):
-        if self.progressWin is not None:
-            self.progressWin.workerFinished = True
-            self.progressWin.close()
-        self.logger.info('Relabelling process ended.')
-        self.updateALLimg()
-
-    def workerInitProgressbar(self, totalIter):
-        self.progressWin.mainPbar.setValue(0)
-        self.progressWin.mainPbar.setMaximum(totalIter)
-
-    def workerUpdateProgressbar(self, step):
-        self.progressWin.mainPbar.update(step)
-
     def gui_createGraphicsItems(self):
         # Contour pens
         self.oldIDs_cpen = pg.mkPen(color=(200, 0, 0, 255*0.5), width=2)
@@ -1847,6 +1814,22 @@ class guiWin(QMainWindow):
         self.img2.mouseReleaseEvent = self.gui_mouseReleaseEventImg2
         self.hist.vb.contextMenuEvent = self.gui_raiseContextMenuLUT
 
+    def gui_initImg1BottomWidgets(self):
+        myutils.setRetainSizePolicy(self.zSliceScrollBar)
+        self.zSliceScrollBar.hide()
+        myutils.setRetainSizePolicy(self.zProjComboBox)
+        self.zProjComboBox.hide()
+        self.z_label.hide()
+
+        myutils.setRetainSizePolicy(self.zSliceOverlay_SB)
+        self.zSliceOverlay_SB.hide()
+        self.zProjOverlay_CB.hide()
+        self.overlay_z_label.hide()
+
+        myutils.setRetainSizePolicy(self.alphaScrollBar)
+        self.alphaScrollBar.hide()
+        self.alphaScrollBar_label.hide()
+
     @exception_handler
     def gui_mousePressEventImg2(self, event):
         modifiers = QGuiApplication.keyboardModifiers()
@@ -1869,6 +1852,8 @@ class guiWin(QMainWindow):
         # Enable dragging of the image window like pyqtgraph original code
         if dragImg:
             pg.ImageItem.mousePressEvent(self.img2, event)
+            event.ignore()
+            return
 
         x, y = event.pos().x(), event.pos().y()
         ID = posData.lab[int(y), int(x)]
@@ -2238,7 +2223,8 @@ class guiWin(QMainWindow):
                          'Enter here ID that you want to replace with a new one',
                     parent=self, allowedValues=posData.IDs
                 )
-                editID_prompt.exec_()
+                editID_prompt.show(block=True)
+
                 if editID_prompt.cancel:
                     return
                 else:
@@ -2250,7 +2236,7 @@ class guiWin(QMainWindow):
             posData.disableAutoActivateViewerWindow = True
             prev_IDs = [obj.label for obj in posData.rp]
             editID = apps.editID_QWidget(ID, prev_IDs, parent=self)
-            editID.exec_()
+            editID.show(block=True)
             if editID.cancel:
                 posData.disableAutoActivateViewerWindow = False
                 if not self.editID_Button.findChild(QAction).isChecked():
@@ -2323,7 +2309,6 @@ class guiWin(QMainWindow):
                 self.editID_Button.setChecked(False)
 
             posData.disableAutoActivateViewerWindow = True
-
 
             # Perform desired action on future frames
             posData.doNotShowAgain_EditID = doNotShowAgain
@@ -3535,6 +3520,38 @@ class guiWin(QMainWindow):
         # Allow mid-click actions on both images
         elif middle_click:
             self.gui_mousePressEventImg2(event)
+
+    def findID(self):
+        posData = self.data[self.pos_i]
+        self.searchingID = True
+        searchIDdialog = apps.QLineEditDialog(
+            title='Search object by ID',
+            msg='Enter object ID to find and highlight',
+            parent=self, allowedValues=posData.IDs
+        )
+        searchIDdialog.exec_()
+        if searchIDdialog.cancel:
+            return
+        self.highlightSearchedID(searchIDdialog.EntryID)
+
+    def workerProgress(self, text):
+        if self.progressWin is not None:
+            self.progressWin.logConsole.append(text)
+        self.logger.info(text)
+
+    def workerFinished(self):
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+            self.progressWin.close()
+        self.logger.info('Relabelling process ended.')
+        self.updateALLimg()
+
+    def workerInitProgressbar(self, totalIter):
+        self.progressWin.mainPbar.setValue(0)
+        self.progressWin.mainPbar.setMaximum(totalIter)
+
+    def workerUpdateProgressbar(self, step):
+        self.progressWin.mainPbar.update(step)
 
     def startRelabellingWorker(self, posData):
         self.thread = QThread()
@@ -5542,6 +5559,10 @@ class guiWin(QMainWindow):
 
     @exception_handler
     def keyPressEvent(self, ev):
+        if ev.key() == Qt.Key_U:
+            editID = apps.editID_QWidget([1,2,3], [1,2,3], parent=self)
+            editID.exec_()
+
         try:
             posData = self.data[self.pos_i]
         except AttributeError:
@@ -6729,9 +6750,12 @@ class guiWin(QMainWindow):
             color='w')
 
         self.setFramesSnapshotMode()
+
+        self.enableZstackWidgets(posData.SizeZ > 1)
+
+        self.img1BottomGroupbox.setVisible(True)
         self.updateALLimg(updateLabelItemColor=False)
         self.updateScrollbars()
-        self.navigateToolBar.show()
         self.fontSizeAction.setChecked(True)
         self.openAction.setEnabled(True)
         self.editTextIDsColorAction.setDisabled(False)
@@ -11059,9 +11083,11 @@ class guiWin(QMainWindow):
             df = pd.read_csv(recentPaths_path, index_col='index')
             if 'opened_last_on' in df.columns:
                 df = df.sort_values('opened_last_on', ascending=False)
-            self.MostRecentPath = df.iloc[0]['path']
-            if not isinstance(self.MostRecentPath, str):
-                self.MostRecentPath = ''
+            self.MostRecentPath = ''
+            for path in df['path']:
+                if os.path.exists(path):
+                    self.MostRecentPath = path
+                    break
         else:
             self.MostRecentPath = ''
 
@@ -11095,34 +11121,27 @@ class guiWin(QMainWindow):
             self.mainWin.setWindowState(Qt.WindowNoState)
             self.mainWin.setWindowState(Qt.WindowActive)
             self.mainWin.raise_()
-            # Discard close and simply hide window
-            event.ignore()
-            self.hide()
-        else:
-            self.logger.info('GUI closed.')
+            # # Discard close and simply hide window
+            # event.ignore()
+            # self.hide()
+
+        self.logger.info('Closng GUI logger...')
+        handlers = self.logger.handlers[:]
+        for handler in handlers:
+            handler.close()
+            self.logger.removeHandler(handler)
+        print('GUI closed.')
+
+    def readSettings(self):
+        settings = QSettings('schmollerlab', 'acdc_gui')
+        self.restoreGeometry(settings.value("geometry"))
+        # self.restoreState(settings.value("windowState"))
 
 
     def saveWindowGeometry(self):
-        isMaximised = self.isMaximized()
-        left = self.geometry().left()
-        top = self.geometry().top()
-        width = self.geometry().width()
-        height = self.geometry().height()
-        try:
-            screenName = '/'.join(self.screen().name().split('\\'))
-        except AttributeError:
-            screenName = 'None'
-            self.logger.info('WARNING: could not retrieve screen name.'
-                  'Please update to PyQt5 version >= 5.14')
-        self.df_settings.at['geometry_left', 'value'] = left
-        self.df_settings.at['geometry_top', 'value'] = top
-        self.df_settings.at['geometry_width', 'value'] = width
-        self.df_settings.at['geometry_height', 'value'] = height
-        self.df_settings.at['screenName', 'value'] = screenName
-        isMaximised = 'Yes' if isMaximised else 'No'
-        self.df_settings.at['isMaximised', 'value'] = isMaximised
-        self.df_settings.to_csv(self.settings_csv_path)
-        # self.logger.info('Window screen name: ', screenName)
+        settings = QSettings('schmollerlab', 'acdc_gui')
+        settings.setValue("geometry", self.saveGeometry())
+        # settings.setValue("windowState", self.saveState())
 
     def storeDefaultAndCustomColors(self):
         c = self.overlayButton.palette().button().color().name()
@@ -11136,40 +11155,17 @@ class guiWin(QMainWindow):
         self.setWindowState(Qt.WindowActive)
         self.raise_()
 
-        screenNames = []
-        for screen in self.app.screens():
-            name = '/'.join(screen.name().split('\\'))
-            screenNames.append(name)
-
-        if 'isMaximised' in self.df_settings.index:
-            self.df_settings.loc['isMaximised'] = (
-                self.df_settings.loc['isMaximised'].astype(str)
-            )
-
-        if 'geometry_left' in self.df_settings.index:
-            isMaximised = self.df_settings.at['isMaximised', 'value'] == 'Yes'
-            left = int(self.df_settings.at['geometry_left', 'value'])
-            screenName = self.df_settings.at['screenName', 'value']
-            if isMaximised:
-                g = self.geometry()
-                top, width, height = g.top(), g.width(), g.height()
-            else:
-                top = int(self.df_settings.at['geometry_top', 'value'])+10
-                width = int(self.df_settings.at['geometry_width', 'value'])
-                height = int(self.df_settings.at['geometry_height', 'value'])
-            if screenName in screenNames:
-                self.setGeometry(left, top, width, height)
-            if isMaximised:
-                self.showMaximized()
-        else:
-            self.showMaximized()
-
+        self.readSettings()
         self.storeDefaultAndCustomColors()
         h = self.drawIDsContComboBox.size().height()
         self.navigateScrollBar.setFixedHeight(h)
         self.zSliceScrollBar.setFixedHeight(h)
         self.alphaScrollBar.setFixedHeight(h)
         self.zSliceOverlay_SB.setFixedHeight(h)
+
+        self.gui_initImg1BottomWidgets()
+        self.img1BottomGroupbox.setVisible(False)
+
 
 if __name__ == "__main__":
     print('Loading application...')

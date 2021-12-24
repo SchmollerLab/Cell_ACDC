@@ -37,7 +37,7 @@ import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui
 from PyQt5 import QtCore
 from PyQt5.QtGui import QIcon, QFontMetrics
-from PyQt5.QtCore import Qt, QSize, QEvent, pyqtSignal
+from PyQt5.QtCore import Qt, QSize, QEvent, pyqtSignal, QEventLoop
 from PyQt5.QtWidgets import (
     QAction, QApplication, QMainWindow, QMenu, QLabel, QToolBar,
     QScrollBar, QWidget, QVBoxLayout, QLineEdit, QPushButton,
@@ -419,7 +419,7 @@ class QDialogMetadataXML(QDialog):
         cancelButton.clicked.connect(self.cancel_cb)
 
         self.setLayout(mainLayout)
-        self.setModal(True)
+        # self.setModal(True)
 
     def saveCh_checkBox_cb(self, state):
         self.checkChNames()
@@ -752,6 +752,19 @@ class QDialogMetadataXML(QDialog):
         self.cancel = True
         self.close()
 
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        super().show()
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()
+
 
 class QDialogWorkerProcess(QDialog):
     def __init__(
@@ -796,7 +809,7 @@ class QDialogWorkerProcess(QDialog):
         mainLayout.addWidget(self.logConsole)
 
         self.setLayout(mainLayout)
-        self.setModal(True)
+        # self.setModal(True)
 
     def keyPressEvent(self, event):
         isCtrlAlt = event.modifiers() == (Qt.ControlModifier | Qt.AltModifier)
@@ -851,7 +864,7 @@ class QDialogCombobox(QDialog):
         self.cancel = True
         self.selectedItemText = ''
         self.selectedItemIdx = None
-        super().__init__(parent)
+        super().__init__(parent=parent)
         self.setWindowTitle(title)
 
         mainLayout = QVBoxLayout()
@@ -895,18 +908,31 @@ class QDialogCombobox(QDialog):
         mainLayout.addLayout(bottomLayout)
         self.setLayout(mainLayout)
 
-        self.setModal(True)
+        # self.setModal(True)
 
         # Connect events
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
-
+        self.loop = None
 
     def ok_cb(self, event):
         self.cancel = False
         self.selectedItemText = self.ComboBox.currentText()
         self.selectedItemIdx = self.ComboBox.currentIndex()
         self.close()
+
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        super().show()
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()
 
 
 class QDialogListbox(QDialog):
@@ -957,7 +983,7 @@ class QDialogListbox(QDialog):
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.cancel_cb)
 
-        self.setModal(True)
+        # self.setModal(True)
 
     def ok_cb(self, event):
         self.cancel = False
@@ -969,6 +995,19 @@ class QDialogListbox(QDialog):
         self.cancel = True
         self.selectedItemsText = None
         self.close()
+
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        super().show()
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()
 
 class QDialogAppendTextFilename(QDialog):
     def __init__(self, filename, ext, parent=None, font=None):
@@ -1021,7 +1060,7 @@ class QDialogAppendTextFilename(QDialog):
         self.formLayout = formLayout
 
         self.setLayout(mainLayout)
-        self.setModal(True)
+        # self.setModal(True)
 
     def updateFinalFilename(self, text):
         finalFilename = f'{self.filenameNOext}_{text}{self.ext}'
@@ -1039,6 +1078,19 @@ class QDialogAppendTextFilename(QDialog):
             return
         self.cancel = False
         self.close()
+
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        super().show()
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()
 
 class QDialogEntriesWidget(QDialog):
     def __init__(self, entriesLabels, defaultTxts, winTitle='Input',
@@ -1082,13 +1134,26 @@ class QDialogEntriesWidget(QDialog):
         self.formLayout = formLayout
 
         self.setLayout(mainLayout)
-        self.setModal(True)
+        # self.setModal(True)
 
     def ok_cb(self, event):
         self.cancel = False
         self.entriesTxt = [self.formLayout.itemAt(i, 1).widget().text()
                            for i in range(len(self.entriesLabels))]
         self.close()
+
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        super().show()
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()
 
 class QDialogMetadata(QDialog):
     def __init__(self, SizeT, SizeZ, TimeIncrement,
@@ -1270,7 +1335,7 @@ class QDialogMetadata(QDialog):
         cancelButton.clicked.connect(self.cancel_cb)
 
         self.setLayout(mainLayout)
-        self.setModal(True)
+        # self.setModal(True)
 
     def SizeZvalueChanged(self, val):
         if len(self.imgDataShape) < 3:
@@ -1435,6 +1500,19 @@ class QDialogMetadata(QDialog):
     def cancel_cb(self, event):
         self.cancel = True
         self.close()
+
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        super().show()
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()
 
 class gaussBlurDialog(QDialog):
     def __init__(self, mainWindow):
@@ -2169,7 +2247,7 @@ class FutureFramesAction_QDialog(QDialog):
         # Connect events
         ButtonsGroup.buttonClicked.connect(self.buttonClicked)
 
-        self.setModal(True)
+        # self.setModal(True)
 
     def buttonClicked(self, button):
         if button == self.apply_and_reinit_b:
@@ -2205,22 +2283,18 @@ class FutureFramesAction_QDialog(QDialog):
             self.endFrame_i = self.endRangeFrame_i
             self.close()
 
+    def exec_(self):
+        self.show(block=True)
 
-class nonModalTempQMessage(QWidget):
-    def __init__(self, msg='Doing stuff...', parent=None):
-        super().__init__(parent)
+    def show(self, block=False):
+        super().show()
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
 
-        layout = QVBoxLayout()
-
-        msgLabel = QLabel(msg)
-        _font = QtGui.QFont()
-        _font.setPointSize(10)
-        _font.setBold(True)
-        msgLabel.setFont(_font)
-        msgLabel.setAlignment(Qt.AlignCenter)
-        layout.addWidget(msgLabel, alignment=Qt.AlignCenter)
-
-        self.setLayout(layout)
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()
 
 
 class postProcessSegmParams(QGroupBox):
@@ -2676,214 +2750,6 @@ class CellsSlideshow_GUI(QMainWindow):
         if left is not None and top is not None:
             self.setGeometry(left, top, 850, 800)
 
-class cellpose_ParamsDialog(QDialog):
-    def __init__(self, parent=None):
-        self.cancel = True
-        super().__init__(parent)
-        self.setWindowTitle("Cellpose parameters")
-        if parent is None:
-            self.setWindowIcon(QIcon(":assign-motherbud.svg"))
-
-
-        mainLayout = QVBoxLayout()
-        entriesLayout = QGridLayout()
-
-        row = 0
-        diameterLabel = QLabel('Diameter of cell (pixels):')
-        diameterEntry = QSpinBox()
-        diameterEntry.setValue(0)
-        diameterEntry.setMaximum(2147483647)
-        diameterEntry.setAlignment(Qt.AlignCenter)
-        entriesLayout.addWidget(diameterLabel, row, 0)
-        row += 1
-        entriesLayout.addWidget(diameterEntry, row, 0, 1, 2)
-        self.diameterEntry = diameterEntry
-
-        row += 1
-        flowThreshLabel = QLabel('Flow threshold: ')
-        flowThreshSlider = QSlider(Qt.Horizontal)
-        flowThreshSlider.setMinimum(0)
-        flowThreshSlider.setMaximum(10)
-        flowThreshSlider.setValue(4)
-        entriesLayout.addWidget(flowThreshLabel, row, 0)
-        row += 1
-        entriesLayout.addWidget(flowThreshSlider, row, 0)
-        self.flowThreshLabelValue = QLabel('0.4')
-        entriesLayout.addWidget(self.flowThreshLabelValue, row, 1)
-        self.flowThreshSlider = flowThreshSlider
-        self.flowThreshSlider.sliderMoved.connect(self.updateFlowThreshVal)
-
-        row += 1
-        cellProbThreshLabel = QLabel('Cell probability threshold: ')
-        cellProbThreshSlider = QSlider(Qt.Horizontal)
-        cellProbThreshSlider.setMinimum(-6)
-        cellProbThreshSlider.setMaximum(6)
-        cellProbThreshSlider.setValue(0)
-        entriesLayout.addWidget(cellProbThreshLabel, row, 0)
-        row += 1
-        entriesLayout.addWidget(cellProbThreshSlider, row, 0)
-        self.cellProbThreshLabelValue = QLabel('0')
-        entriesLayout.addWidget(self.cellProbThreshLabelValue, row, 1)
-        self.cellProbThreshSlider = cellProbThreshSlider
-        self.cellProbThreshSlider.sliderMoved.connect(self.updateCellProbVal)
-
-        row += 1
-        minSizeLabel = QLabel("Remove objects smaller than (area in pixels):")
-        entriesLayout.addWidget(minSizeLabel, row, 0)
-        row += 1
-        minSize_SB = QSpinBox()
-        minSize_SB.setAlignment(Qt.AlignCenter)
-        minSize_SB.setMinimum(1)
-        minSize_SB.setMaximum(2147483647)
-        minSize_SB.setValue(5)
-        entriesLayout.addWidget(minSize_SB, row, 0, 1, 2)
-        self.minSize_SB = minSize_SB
-
-        # Parameters link label
-        row += 1
-        url = 'https://colab.research.google.com/github/MouseLand/cellpose/blob/master/notebooks/Cellpose_2D_v0_1.ipynb#scrollTo=Rr0UozRm42CA'
-        htmlTxt = f'<a href=\"{url}">here</a>'
-        seeHereLabel = QLabel()
-        seeHereLabel.setText(f'See {htmlTxt} for details on the parameters')
-        seeHereLabel.setTextFormat(Qt.RichText)
-        seeHereLabel.setTextInteractionFlags(Qt.TextBrowserInteraction)
-        seeHereLabel.setOpenExternalLinks(True)
-        font = QtGui.QFont()
-        font.setPointSize(10)
-        seeHereLabel.setFont(font)
-        seeHereLabel.setStyleSheet("padding:10px 0px 0px 0px;")
-        entriesLayout.addWidget(seeHereLabel, row, 0, 1, 2)
-
-        HBoxLayout = QHBoxLayout()
-        okButton = QPushButton('Ok')
-        okButton.setShortcut(Qt.Key_Enter)
-        HBoxLayout.addWidget(okButton, alignment=Qt.AlignRight)
-
-        cancelButton = QPushButton('Cancel')
-        # cancelButton.setShortcut(Qt.Key_Escape)
-        HBoxLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
-        HBoxLayout.setContentsMargins(0, 10, 0, 0)
-
-        mainLayout.addLayout(entriesLayout)
-        mainLayout.addLayout(HBoxLayout)
-
-        okButton.clicked.connect(self.ok_cb)
-        cancelButton.clicked.connect(self.cancel_cb)
-
-        self.setLayout(mainLayout)
-        self.setModal(True)
-
-    def updateFlowThreshVal(self, valInt):
-        val = valInt/10
-        self.flowThreshLabelValue.setText(str(val))
-
-    def updateCellProbVal(self, valInt):
-        self.cellProbThreshLabelValue.setText(str(valInt))
-
-    def ok_cb(self, event):
-        self.cancel = False
-        self.diameter = self.diameterEntry.value()
-        self.flow_threshold = self.flowThreshSlider.value()/10
-        self.cellprob_threshold = self.cellProbThreshSlider.value()
-        self.minSize = self.minSize_SB.value()
-        self.close()
-
-    def cancel_cb(self, event):
-        self.cancel = True
-        self.close()
-
-class YeaZ_ParamsDialog(QDialog):
-    def __init__(self, parent=None):
-        self.cancel = True
-        super().__init__(parent)
-        self.setWindowTitle("YeaZ parameters")
-        if parent is None:
-            self.setWindowIcon(QIcon(":assign-motherbud.svg"))
-
-        mainLayout = QVBoxLayout()
-
-        formLayout = QFormLayout()
-        formLayout.setLabelAlignment(Qt.AlignRight)
-        formLayout.addRow("Threshold value:", QLineEdit())
-
-        minDist_SB = QSpinBox()
-        minDist_SB.setAlignment(Qt.AlignCenter)
-        minDist_SB.setMinimum(1)
-        minDist_SB.setMaximum(2147483647)
-        minDist_SB.setValue(10)
-        formLayout.addRow("Minimum distance:", minDist_SB)
-        self.minDist_SB = minDist_SB
-
-        minSize_SB = QSpinBox()
-        minSize_SB.setAlignment(Qt.AlignCenter)
-        minSize_SB.setMinimum(1)
-        minSize_SB.setMaximum(2147483647)
-        minSize_SB.setValue(5)
-        formLayout.addRow(
-            "Remove objects smaller than (area in pixels):", minSize_SB
-        )
-        self.minSize_SB = minSize_SB
-
-        threshVal_QLineEdit = formLayout.itemAt(0, 1).widget()
-        threshVal_QLineEdit.setText('None')
-        threshVal_QLineEdit.setAlignment(Qt.AlignCenter)
-        self.threshVal_QLineEdit = threshVal_QLineEdit
-
-
-        HBoxLayout = QHBoxLayout()
-        okButton = QPushButton('Ok')
-        okButton.setShortcut(Qt.Key_Enter)
-        HBoxLayout.addWidget(okButton, alignment=Qt.AlignRight)
-
-        cancelButton = QPushButton('Cancel')
-        # cancelButton.setShortcut(Qt.Key_Escape)
-        HBoxLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
-        HBoxLayout.setContentsMargins(0, 10, 0, 0)
-
-        mainLayout.addLayout(formLayout)
-        mainLayout.addLayout(HBoxLayout)
-
-        okButton.clicked.connect(self.ok_cb)
-        cancelButton.clicked.connect(self.cancel_cb)
-
-        self.setLayout(mainLayout)
-        self.setModal(True)
-
-    def ok_cb(self, event):
-        self.cancel = False
-        valid_threshVal = False
-        valid_minDist = False
-        threshTxt = self.threshVal_QLineEdit.text()
-        self.minDist = self.minDist_SB.value()
-        self.minSize = self.minSize_SB.value()
-        try:
-            self.threshVal = float(threshTxt)
-            if self.threshVal > 0 and self.threshVal < 1:
-                valid_threshVal = True
-            else:
-                valid_threshVal = False
-        except Exception as e:
-            if threshTxt == 'None':
-                self.threshVal = None
-                valid_threshVal = True
-            else:
-                valid_threshVal = False
-        if not valid_threshVal:
-            err_msg = (
-                'Threshold value is not valid. '
-                'Enter a floating point from 0 to 1 or "None"'
-            )
-            msg = QMessageBox()
-            msg.critical(
-                self, 'Invalid threshold value', err_msg, msg.Ok
-            )
-            return
-        self.close()
-
-    def cancel_cb(self, event):
-        self.cancel = True
-        self.close()
-
 class editCcaTableWidget(QDialog):
     def __init__(self, cca_df, parent=None):
         self.inputCca_df = cca_df
@@ -3085,7 +2951,7 @@ class editCcaTableWidget(QDialog):
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.cancel_cb)
 
-        self.setModal(True)
+        # self.setModal(True)
 
     def setRelID(self, itemIndex):
         idx = self.relIDComboBoxes.index(self.sender())
@@ -3344,7 +3210,7 @@ class askStopFrameSegm(QDialog):
 
         self.setLayout(mainLayout)
 
-        # self.setModal(True)
+        # # self.setModal(True)
 
     def saveSegmSizeT(self):
         for spinBox, posData in self.dataDict.values():
@@ -3364,9 +3230,20 @@ class askStopFrameSegm(QDialog):
         self.slideshowWin.update_img()
         self.slideshowWin.show()
 
-    def showAndSetFont(self, font):
-        self.show()
-        self.setFont(font)
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        super().show()
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()
+
+
 
 class QLineEditDialog(QDialog):
     def __init__(
@@ -3374,13 +3251,15 @@ class QLineEditDialog(QDialog):
             defaultTxt='', parent=None, allowedValues=None,
             warnLastFrame=False
         ):
+        QDialog.__init__(self)
+
+        self.loop = None
         self.cancel = True
         self.allowedValues = allowedValues
         self.warnLastFrame = warnLastFrame
         if allowedValues and warnLastFrame:
             self.maxValue = max(allowedValues)
 
-        super().__init__(parent)
         self.setWindowTitle(title)
 
         # Layouts
@@ -3438,7 +3317,7 @@ class QLineEditDialog(QDialog):
 
         self.setLayout(mainLayout)
 
-        self.setModal(True)
+        # self.setModal(True)
 
     def ID_LineEdit_cb(self, text):
         # Get inserted char
@@ -3501,6 +3380,19 @@ class QLineEditDialog(QDialog):
         self.cancel = True
         self.close()
 
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        super().show()
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()
+
 
 class editID_QWidget(QDialog):
     def __init__(self, clickedID, IDs, parent=None):
@@ -3559,7 +3451,7 @@ class editID_QWidget(QDialog):
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.cancel_cb)
 
-        self.setModal(True)
+        # self.setModal(True)
 
     def ID_LineEdit_cb(self, text):
         # Get inserted char
@@ -3651,81 +3543,19 @@ class editID_QWidget(QDialog):
         self.cancel = True
         self.close()
 
-def YeaZ_Params():
-    app = QApplication(sys.argv)
-    params = YeaZ_ParamsDialog()
-    params.show()
-    app.setStyle(QtGui.QStyleFactory.create('Fusion'))
-    app.exec_()
-    return params
+    def exec_(self):
+        self.show(block=True)
 
+    def show(self, block=False):
+        super().show()
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
 
-class tk_breakpoint:
-    '''Geometry: "WidthxHeight+Left+Top" '''
-    def __init__(self, title='Breakpoint', geometry="+800+400",
-                 message='Breakpoint', button_1_text='Continue',
-                 button_2_text='Abort', button_3_text='Delete breakpoint'):
-        self.abort = False
-        self.next_i = False
-        self.del_breakpoint = False
-        self.title = title
-        self.geometry = geometry
-        self.message = message
-        self.button_1_text = button_1_text
-        self.button_2_text = button_2_text
-        self.button_3_text = button_3_text
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()
 
-    def pausehere(self):
-        global root
-        if not self.del_breakpoint:
-            root = tk.Tk()
-            root.lift()
-            root.attributes("-topmost", True)
-            root.title(self.title)
-            root.geometry(self.geometry)
-            tk.Label(root,
-                     text=self.message,
-                     font=(None, 11)).grid(row=0, column=0,
-                                           columnspan=2, pady=4, padx=4)
-
-            tk.Button(root,
-                      text=self.button_1_text,
-                      command=self.continue_button,
-                      width=10,).grid(row=4,
-                                      column=0,
-                                      pady=8, padx=8)
-
-            tk.Button(root,
-                      text=self.button_2_text,
-                      command=self.abort_button,
-                      width=15).grid(row=4,
-                                     column=1,
-                                     pady=8, padx=8)
-            tk.Button(root,
-                      text=self.button_3_text,
-                      command=self.delete_breakpoint,
-                      width=20).grid(row=5,
-                                     column=0,
-                                     columnspan=2,
-                                     pady=(0,8))
-
-            root.mainloop()
-
-    def continue_button(self):
-        self.next_i=True
-        root.quit()
-        root.destroy()
-
-    def delete_breakpoint(self):
-        self.del_breakpoint=True
-        root.quit()
-        root.destroy()
-
-    def abort_button(self):
-        self.abort=True
-        exit('Execution aborted by the user')
-        root.quit()
-        root.destroy()
 
 class imshow_tk:
     def __init__(
@@ -3824,174 +3654,6 @@ class embed_tk:
         self.toolbar = toolbar
         self.root = root
 
-class auto_select_slice:
-    def __init__(self, auto_focus=True, prompt_use_for_all=False):
-        self.auto_focus = auto_focus
-        self.prompt_use_for_all = prompt_use_for_all
-        self.use_for_all = False
-
-    def run(self, frame_V, segm_slice=0, segm_npy=None, IDs=None):
-        if self.auto_focus:
-            auto_slice = self.auto_slice(frame_V)
-        else:
-            auto_slice = 0
-        self.segm_slice = segm_slice
-        self.slice = auto_slice
-        self.abort = True
-        self.data = frame_V
-        self.fig = plt.Figure()
-        self.ax = self.fig.add_subplot()
-        self.fig.subplots_adjust(bottom=0.20)
-        sl_width = 0.6
-        sl_left = 0.5 - (sl_width/2)
-        ok_width = 0.13
-        ok_left = 0.5 - (ok_width/2)
-        (self.ax).imshow(frame_V[auto_slice])
-        if segm_npy is not None:
-            self.contours = self.find_contours(segm_npy, IDs, group=True)
-            for cont in self.contours:
-                x = cont[:,1]
-                y = cont[:,0]
-                x = np.append(x, x[0])
-                y = np.append(y, y[0])
-                (self.ax).plot(x, y, c='r')
-        (self.ax).axis('off')
-        (self.ax).set_title('Select slice for amount calculation\n\n'
-                    f'Slice used for segmentation: {segm_slice}\n'
-                    f'Best focus determined by algorithm: slice {auto_slice}')
-        """Embed plt window into a tkinter window"""
-        sub_win = embed_tk('Mother-bud zoom', [1024,768,400,150], self.fig)
-        self.ax_sl = self.fig.add_subplot(
-                                position=[sl_left, 0.12, sl_width, 0.04],
-                                facecolor='0.1')
-        self.sl = Slider(self.ax_sl, 'Slice', -1, len(frame_V),
-                                canvas=sub_win.canvas,
-                                valinit=auto_slice,
-                                valstep=1,
-                                color='0.2',
-                                init_val_line_color='0.3',
-                                valfmt='%1.0f')
-        (self.sl).on_changed(self.update_slice)
-        self.ax_ok = self.fig.add_subplot(
-                                position=[ok_left, 0.05, ok_width, 0.05],
-                                facecolor='0.1')
-        self.ok_b = Button(self.ax_ok, 'Happy with that', canvas=sub_win.canvas,
-                                color='0.1',
-                                hovercolor='0.25',
-                                presscolor='0.35')
-        (self.ok_b).on_clicked(self.ok)
-        (sub_win.root).protocol("WM_DELETE_WINDOW", self.abort_exec)
-        (sub_win.canvas).mpl_connect('key_press_event', self.set_slvalue)
-        self.sub_win = sub_win
-        sub_win.root.wm_attributes('-topmost',True)
-        sub_win.root.focus_force()
-        sub_win.root.after_idle(sub_win.root.attributes,'-topmost',False)
-        sub_win.root.mainloop()
-
-    def find_contours(self, label_img, cells_ids, group=False, concat=False,
-                      return_hull=False):
-        contours = []
-        for id in cells_ids:
-            label_only_cells_ids_img = np.zeros_like(label_img)
-            label_only_cells_ids_img[label_img == id] = id
-            uint8_img = (label_only_cells_ids_img > 0).astype(np.uint8)
-            cont, hierarchy = cv2.findContours(uint8_img,cv2.RETR_LIST,
-                                               cv2.CHAIN_APPROX_NONE)
-            cnt = cont[0]
-            if return_hull:
-                hull = cv2.convexHull(cnt,returnPoints = True)
-                contours.append(hull)
-            else:
-                contours.append(cnt)
-        if concat:
-            all_contours = np.zeros((0,2), dtype=int)
-            for contour in contours:
-                contours_2D_yx = np.fliplr(np.reshape(contour, (contour.shape[0],2)))
-                all_contours = np.concatenate((all_contours, contours_2D_yx))
-        elif group:
-            # Return a list of n arrays for n objects. Each array has i rows of
-            # [y,x] coords for each ith pixel in the nth object's contour
-            all_contours = [[] for _ in range(len(cells_ids))]
-            for c in contours:
-                c2Dyx = np.fliplr(np.reshape(c, (c.shape[0],2)))
-                for y,x in c2Dyx:
-                    ID = label_img[y, x]
-                    idx = list(cells_ids).index(ID)
-                    all_contours[idx].append([y,x])
-            all_contours = [np.asarray(li) for li in all_contours]
-            IDs = [label_img[c[0,0],c[0,1]] for c in all_contours]
-        else:
-            all_contours = [np.fliplr(np.reshape(contour,
-                            (contour.shape[0],2))) for contour in contours]
-        return all_contours
-
-    def auto_slice(self, frame_V):
-        # https://stackoverflow.com/questions/6646371/detect-which-image-is-sharper
-        means = []
-        for i, img in enumerate(frame_V):
-            edge = sobel(img)
-            means.append(np.mean(edge))
-        slice = means.index(max(means))
-        print('Best slice = {}'.format(slice))
-        return slice
-
-    def set_slvalue(self, event):
-        if event.key == 'left':
-            self.sl.set_val(self.sl.val - 1)
-        if event.key == 'right':
-            self.sl.set_val(self.sl.val + 1)
-        if event.key == 'enter':
-            self.ok(None)
-
-    def update_slice(self, val):
-        self.slice = int(val)
-        img = self.data[int(val)]
-        self.ax.imshow(img)
-        self.fig.canvas.draw_idle()
-
-    def ok(self, event):
-        use_for_all = False
-        if self.prompt_use_for_all:
-            use_for_all = tk.messagebox.askyesno('Use same slice for all',
-                          f'Do you want to use slice {self.slice} for all positions?')
-        if use_for_all:
-            self.use_for_all = use_for_all
-        plt.close(self.fig)
-        self.sub_win.root.quit()
-        self.sub_win.root.destroy()
-
-    def abort_exec(self):
-        plt.close(self.fig)
-        self.sub_win.root.quit()
-        self.sub_win.root.destroy()
-        exit('Execution aborted by the user')
-
-class win_size:
-    def __init__(self, w=1, h=1, swap_screen=False):
-        try:
-            monitor = Display()
-            screens = monitor.get_screens()
-            num_screens = len(screens)
-            displ_w = int(screens[0].width*w)
-            displ_h = int(screens[0].height*h)
-            x_displ = screens[0].x
-            #Display plots maximized window
-            mng = plt.get_current_fig_manager()
-            if swap_screen:
-                geom = "{}x{}+{}+{}".format(displ_w,(displ_h-70),(displ_w-8), 0)
-                mng.window.wm_geometry(geom) #move GUI window to second monitor
-                                             #with string "widthxheight+x+y"
-            else:
-                geom = "{}x{}+{}+{}".format(displ_w,(displ_h-70),-8, 0)
-                mng.window.wm_geometry(geom) #move GUI window to second monitor
-                                             #with string "widthxheight+x+y"
-        except Exception as e:
-            try:
-                mng = plt.get_current_fig_manager()
-                mng.window.state('zoomed')
-            except Exception as e:
-                pass
-
 class QtSelectItems(QDialog):
     def __init__(self, title, items, informativeText,
                  CbLabel='Select value:  ', parent=None):
@@ -4046,7 +3708,7 @@ class QtSelectItems(QDialog):
         mainLayout.addLayout(bottomLayout)
         self.setLayout(mainLayout)
 
-        self.setModal(True)
+        # self.setModal(True)
 
         # Connect events
         okButton.clicked.connect(self.ok_cb)
@@ -4086,6 +3748,19 @@ class QtSelectItems(QDialog):
             self.selectedItemsText = [self.ComboBox.currentText()]
             self.selectedItemsIdx = [self.ComboBox.currentIndex()]
         self.close()
+
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        super().show()
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()
 
 class manualSeparateGui(QMainWindow):
     def __init__(self, lab, ID, img, fontSize='12pt',
@@ -4742,7 +4417,7 @@ class QDialogZsliceAbsent(QDialog):
         font.setPointSize(10)
         self.setFont(font)
 
-        self.setModal(True)
+        # self.setModal(True)
 
     def useSameAsCh_cb(self, checked):
         self.useSameAsCh = True
@@ -4756,6 +4431,19 @@ class QDialogZsliceAbsent(QDialog):
     def runDataPrep_cb(self, checked):
         self.runDataPrep = True
         self.close()
+
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        super().show()
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()
 
 class QDialogMultiSegmNpz(QDialog):
     def __init__(self, images_ls, parent_path, parent=None):
@@ -4813,7 +4501,7 @@ class QDialogMultiSegmNpz(QDialog):
 
         self.setLayout(mainLayout)
 
-        self.setModal(True)
+        # self.setModal(True)
 
         self.okButton = okButton
         self.okAndRemoveButton = okAndRemoveButton
@@ -4831,6 +4519,19 @@ class QDialogMultiSegmNpz(QDialog):
         self.selectedItemText = self.ComboBox.currentText()
         self.selectedItemIdx = self.ComboBox.currentIndex()
         self.close()
+
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        super().show()
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()
 
 class QDialogPbar(QDialog):
     def __init__(self, title='Progress', infoTxt='', parent=None):
@@ -4876,7 +4577,7 @@ class QDialogPbar(QDialog):
         mainLayout.addLayout(pBarLayout)
 
         self.setLayout(mainLayout)
-        self.setModal(True)
+        # self.setModal(True)
 
     def keyPressEvent(self, event):
         isCtrlAlt = event.modifiers() == (Qt.ControlModifier | Qt.AltModifier)
@@ -4982,7 +4683,7 @@ class QDialogModelParams(QDialog):
         font.setPointSize(10)
         self.setFont(font)
 
-        self.setModal(True)
+        # self.setModal(True)
 
     def createGroupParams(self, ArgSpecs_list, groupName):
         ArgWidget = namedtuple('ArgsWidgets', ['name', 'type', 'widget'])
@@ -5075,6 +4776,19 @@ class QDialogModelParams(QDialog):
         self.maxElongation = self.maxElongation_DSB.value()
         self.applyPostProcessing = self.artefactsGroupBox.isChecked()
         self.close()
+
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        super().show()
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()
 
 if __name__ == '__main__':
     # Create the application

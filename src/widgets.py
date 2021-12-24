@@ -20,7 +20,7 @@ from PyQt5.QtWidgets import (
     QGroupBox, QAbstractSlider, QDoubleSpinBox
 )
 
-import myutils
+import myutils, apps
 
 class QLogConsole(QTextEdit):
     def __init__(self, parent=None):
@@ -191,20 +191,29 @@ if __name__ == '__main__':
             container = QWidget()
             layout = QVBoxLayout()
 
-            slider = sliderWithSpinBox(isFloat=True)
-            slider.setMaximum(10)
-            slider.setValue(3.2)
-            slider.setSingleStep(0.1)
-            slider.valueChanged.connect(self.sliderValueChanged)
-            slider.sliderReleased.connect(self.sliderReleased)
-            layout.addWidget(slider)
-            self.slider = slider
+            # slider = sliderWithSpinBox(isFloat=True)
+            # slider.setMaximum(10)
+            # slider.setValue(3.2)
+            # slider.setSingleStep(0.1)
+            # slider.valueChanged.connect(self.sliderValueChanged)
+            # slider.slider.sliderReleased.connect(self.sliderReleased)
+            # layout.addWidget(slider)
+            # self.slider = slider
+
+            okButton = QPushButton('ok')
+            layout.addWidget(okButton)
+            okButton.clicked.connect(self.okClicked)
 
             # layout.addStretch(1)
             container.setLayout(layout)
             self.setCentralWidget(container)
 
             self.setFocus()
+
+        def okClicked(self, checked):
+            editID = apps.editID_QWidget(19, [19, 100, 50])
+            editID.exec_()
+            print('closed')
 
         def sliderValueChanged(self, value):
             print(value)

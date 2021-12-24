@@ -281,11 +281,10 @@ class mainWin(QMainWindow):
                 f'QPushButton {{background-color: {launchedColor};}}')
             self.dataPrepButton.setText('DataPrep is running. '
                                     'Click to restore window.')
-            if self.dataPrepWin is None:
-                self.dataPrepWin = dataPrep.dataPrepWin(
-                    buttonToRestore=(self.dataPrepButton, defaultColor, defaultText),
-                    mainWin=self
-                )
+            self.dataPrepWin = dataPrep.dataPrepWin(
+                buttonToRestore=(self.dataPrepButton, defaultColor, defaultText),
+                mainWin=self
+            )
             self.dataPrepWin.show()
         else:
             self.dataPrepWin.setWindowState(Qt.WindowNoState)
@@ -320,15 +319,15 @@ class mainWin(QMainWindow):
         defaultColor = self.defaultPushButtonColor
         defaultText = self.defaultTextGuiButton
         if c.lower() != launchedColor.lower():
+            print('Opening GUI...')
             self.guiButton.setStyleSheet(
                 f'QPushButton {{background-color: {launchedColor};}}')
             self.guiButton.setText('GUI is running. Click to restore window.')
-            if self.guiWin is None:
-                self.guiWin = gui.guiWin(
-                    self.app,
-                    buttonToRestore=(self.guiButton, defaultColor, defaultText),
-                    mainWin=self
-                )
+            self.guiWin = gui.guiWin(
+                self.app,
+                buttonToRestore=(self.guiButton, defaultColor, defaultText),
+                mainWin=self
+            )
             self.guiWin.show()
         else:
             self.guiWin.setWindowState(Qt.WindowNoState)
@@ -387,8 +386,9 @@ if __name__ == "__main__":
         QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
         QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+
     # Create the application
-    app = QApplication(sys.argv)
+    app = QApplication([])
     app.setStyle(QtGui.QStyleFactory.create('Fusion'))
     app.setWindowIcon(QtGui.QIcon(":assign-motherbud.svg"))
     win = mainWin(app)
@@ -400,4 +400,4 @@ if __name__ == "__main__":
         pass
     print('Done. If application is not visible, it is probably minimized '
           'or behind some other open window.')
-    sys.exit(app.exec_())
+    app.exec_()

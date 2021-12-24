@@ -40,6 +40,11 @@ def exec_time(func):
         return result
     return inner_function
 
+def setRetainSizePolicy(widget):
+    sp = widget.sizePolicy()
+    sp.setRetainSizeWhenHidden(True)
+    widget.setSizePolicy(sp)
+
 def getBasename(files):
     basename = files[0]
     for file in files:
