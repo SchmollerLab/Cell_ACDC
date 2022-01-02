@@ -379,6 +379,8 @@ class mainWin(QMainWindow):
         if self.welcomeGuide is not None:
             self.welcomeGuide.close()
 
+        print('Cell-ACDC closed. Have a gooda day!')
+
 if __name__ == "__main__":
     print('Launching application...')
     # Handle high resolution displays:

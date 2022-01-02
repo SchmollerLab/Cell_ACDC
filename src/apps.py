@@ -4843,12 +4843,11 @@ if __name__ == '__main__':
     # win = QDialogPbar(infoTxt=infoTxt)
     win = editID_QWidget(19, [19, 100, 50])
     # win = postProcessSegmDialog()
-    win.show()
     # win = QDialogAppendTextFilename('example.npz')
     font = QtGui.QFont()
     font.setPointSize(10)
     filenames = ['test1', 'test2']
-    # win = QDialogZsliceAbsent('test3', 30, filenames)
+    win = QDialogZsliceAbsent('test3', 30, filenames)
     # win = QDialogMetadata(
     #     1, 41, 180, 0.5, 0.09, 0.09, False, False, False,
     #     font=font, imgDataShape=(31, 350, 350)
@@ -4875,4 +4874,4 @@ if __name__ == '__main__':
     win.exec_()
     # print(win.chNames, win.saveChannels)
     # print(win.SizeT, win.SizeZ, win.zyx_vox_dim)
-    print(win.segment2D_kwargs)
+    # print(win.segment2D_kwargs)

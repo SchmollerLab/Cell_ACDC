@@ -1346,7 +1346,6 @@ class guiWin(QMainWindow):
 
     def gui_connectEditActions(self):
         self.showInExplorerAction.setEnabled(True)
-        self.navigateToolBar.setVisible(True)
         self.setEnabledFileToolbar(True)
         self.loadFluoAction.setEnabled(True)
         self.isEditActionsConnected = True
@@ -6580,7 +6579,7 @@ class guiWin(QMainWindow):
                     abort = True
         return skipPos, abort
 
-    def init_data(self, user_ch_file_paths, user_ch_name):
+    def loadSelectedData(self, user_ch_file_paths, user_ch_name):
         data = []
         numPos = len(user_ch_file_paths)
         for f, file_path in enumerate(user_ch_file_paths):
@@ -6760,6 +6759,7 @@ class guiWin(QMainWindow):
         self.openAction.setEnabled(True)
         self.editTextIDsColorAction.setDisabled(False)
         self.imgPropertiesAction.setEnabled(True)
+        self.navigateToolBar.setVisible(True)
 
     def setFramesSnapshotMode(self):
         if self.isSnapshot:
@@ -10163,7 +10163,7 @@ class guiWin(QMainWindow):
         self.initGlobalAttr()
 
         self.num_pos = len(user_ch_file_paths)
-        proceed = self.init_data(user_ch_file_paths, user_ch_name)
+        proceed = self.loadSelectedData(user_ch_file_paths, user_ch_name)
         if not proceed:
             self.openAction.setEnabled(True)
             self.titleLabel.setText(
