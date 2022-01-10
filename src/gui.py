@@ -7,7 +7,7 @@
 # SOFTWARE.
 
 # TODO:
-# - magic wand dock widget with slider for tolerance
+# 
 
 """Cell-ACDC GUI for correcting Segmentation and Tracking errors"""
 print('Importing modules...')
@@ -11137,7 +11137,6 @@ class guiWin(QMainWindow):
         if settings.value('geometry') is not None:
             self.restoreGeometry(settings.value("geometry"))
         # self.restoreState(settings.value("windowState"))
-
 
     def saveWindowGeometry(self):
         settings = QSettings('schmollerlab', 'acdc_gui')
