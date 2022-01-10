@@ -65,5 +65,9 @@
     <file alias="Ubuntu-Regular.ttf">resources/fonts/Ubuntu-Regular.ttf</file>
     <file alias="Ubuntu-Italic.ttf">resources/fonts/Ubuntu-Italic.ttf</file>
     <file alias="Ubuntu-BoldItalic.ttf">resources/fonts/Ubuntu-BoldItalic.ttf</file>
+    <file alias="Calibri-Bold.ttf">resources/fonts/Calibri-Bold.ttf</file>
+    <file alias="Ubuntu-Regular.ttf">resources/fonts/Ubuntu-Regular.ttf</file>
+    <file alias="Ubuntu-Italic.ttf">resources/fonts/Ubuntu-Italic.ttf</file>
+    <file alias="Ubuntu-BoldItalic.ttf">resources/fonts/Ubuntu-BoldItalic.ttf</file>
 </qresource>
 </RCC>

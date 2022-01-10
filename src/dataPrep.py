@@ -17,7 +17,7 @@ from tifffile.tifffile import TiffWriter, TiffFile
 
 from PyQt5.QtCore import (
     Qt, QFile, QTextStream, QSize, QRect, QRectF,
-    QObject, QThread, pyqtSignal
+    QObject, QThread, pyqtSignal, QSettings
 )
 from PyQt5.QtGui import (
     QIcon, QKeySequence, QCursor, QTextBlockFormat,
@@ -1907,6 +1907,8 @@ class dataPrepWin(QMainWindow):
         # self.titleLabel.item.setTextCursor(cursor)
 
     def closeEvent(self, event):
+        self.saveWindowGeometry()
+
         if self.buttonToRestore is not None:
             button, color, text = self.buttonToRestore
             button.setText(text)
@@ -1921,6 +1923,19 @@ class dataPrepWin(QMainWindow):
 
         if self.loop is not None:
             self.loop.exit()
+
+    def saveWindowGeometry(self):
+        settings = QSettings('schmollerlab', 'acdc_dataPrep')
+        settings.setValue("geometry", self.saveGeometry())
+
+    def readSettings(self):
+        settings = QSettings('schmollerlab', 'acdc_dataPrep')
+        if settings.value('geometry') is not None:
+            self.restoreGeometry(settings.value("geometry"))
+
+    def show(self):
+        QMainWindow.show(self)
+        self.readSettings()
 
 if __name__ == "__main__":
     # Handle high resolution displays:

@@ -142,6 +142,10 @@ class mainWin(QMainWindow):
         QFontDatabase.addApplicationFont(":Ubuntu-Bold.ttf")
         QFontDatabase.addApplicationFont(":Ubuntu-Italic.ttf")
         QFontDatabase.addApplicationFont(":Ubuntu-BoldItalic.ttf")
+        QFontDatabase.addApplicationFont(":Calibri-Regular.ttf")
+        QFontDatabase.addApplicationFont(":Calibri-Bold.ttf")
+        QFontDatabase.addApplicationFont(":Calibri-Italic.ttf")
+        QFontDatabase.addApplicationFont(":Calibri-BoldItalic.ttf")
 
     def launchWelcomeGuide(self, checked=False):
         src_path = os.path.dirname(os.path.realpath(__file__))
@@ -424,7 +428,7 @@ class mainWin(QMainWindow):
         if self.welcomeGuide is not None:
             self.welcomeGuide.close()
 
-        self.readSettings()
+        self.saveWindowGeometry()
 
         print('Cell-ACDC closed. Have a good day!')
 
