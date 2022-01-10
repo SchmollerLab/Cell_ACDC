@@ -233,35 +233,41 @@ class mainWin(QMainWindow):
         defaultText = self.defaultTextDataStructButton
 
         try:
-            win = dataStruct.createDataStructWin(parent=self)
-        except OSError:
-            traceback.print_exc()
+            dataStruct.createDataStructWin(parent=self)
+        except OSError as e:
+            print(f'WARNING: {e}')
             return
 
-        print('Launching data structure creation in a separate process...')
+        is_win = sys.platform.startswith("win")
 
-        self.dataStructButton.setStyleSheet(
-            f'QPushButton {{background-color: {launchedColor};}}')
-        self.dataStructButton.setText(
-            'Launching in a separate process...')
-        self.dataStructButton.setDisabled(True)
+        if is_win:
+            print('Launching data structure creation in a separate process...')
 
-        src_path = os.path.dirname(os.path.realpath(__file__))
-        dataStruct_path = os.path.join(src_path, 'dataStruct.py')
+            self.dataStructButton.setStyleSheet(
+                f'QPushButton {{background-color: {launchedColor};}}')
+            self.dataStructButton.setText(
+                'Launching in a separate process...')
+            self.dataStructButton.setDisabled(True)
 
-        # Due to javabridge limitation only one 'start_vm' can be called in
-        # each process. To get around with this every data structure conversion
-        # is launched in a separate process
-        subprocess.Popen(
-            [sys.executable, dataStruct_path],
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            shell=True,
-            bufsize=1,
-            encoding='utf-8'
-        )
+            src_path = os.path.dirname(os.path.realpath(__file__))
+            dataStruct_path = os.path.join(src_path, 'dataStruct.py')
 
-        QTimer.singleShot(10000, self.processDataStructLaunched)
+            # Due to javabridge limitation only one 'start_vm' can be called in
+            # each process. To get around with this every data structure conversion
+            # is launched in a separate process
+            subprocess.Popen(
+                [sys.executable, dataStruct_path],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                shell=True,
+                bufsize=1,
+                encoding='utf-8'
+            )
+
+            QTimer.singleShot(10000, self.processDataStructLaunched)
+        else:
+            self._showDataStructWin()
+
 
     def processDataStructLaunched(self):
         self.dataStructButton.setStyleSheet(
@@ -269,6 +275,15 @@ class mainWin(QMainWindow):
         self.dataStructButton.setText(
             '0. Create data structure from microscopy file(s)...')
         self.dataStructButton.setDisabled(False)
+
+    def _showDataStructWin(self):
+        if self.dataStructButton.isEnabled():
+            self.dataStructButton.setText(
+                '0. Restart Cell-ACDC to enable module 0 again.')
+            self.dataStructButton.setDisabled(True)
+            self.dataStructWin = dataStruct.createDataStructWin(parent=self)
+            self.dataStructWin.show()
+            self.dataStructWin.main()
 
 
     def launchDataPrep(self, checked=False):
@@ -379,7 +394,7 @@ class mainWin(QMainWindow):
         if self.welcomeGuide is not None:
             self.welcomeGuide.close()
 
-        print('Cell-ACDC closed. Have a gooda day!')
+        print('Cell-ACDC closed. Have a good day!')
 
 if __name__ == "__main__":
     print('Launching application...')

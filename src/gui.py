@@ -11134,7 +11134,8 @@ class guiWin(QMainWindow):
 
     def readSettings(self):
         settings = QSettings('schmollerlab', 'acdc_gui')
-        self.restoreGeometry(settings.value("geometry"))
+        if settings.value('geometry') is not None:
+            self.restoreGeometry(settings.value("geometry"))
         # self.restoreState(settings.value("windowState"))
 
 

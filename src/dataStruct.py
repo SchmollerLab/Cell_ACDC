@@ -613,6 +613,8 @@ class createDataStructWin(QMainWindow):
             start_JVM=True
         ):
         super().__init__(parent)
+        is_linux = sys.platform.startswith('linux')
+        is_mac = sys.platform == 'darwin'
         is_win = sys.platform.startswith("win")
 
         self.start_JVM = start_JVM
@@ -696,12 +698,12 @@ class createDataStructWin(QMainWindow):
 
         self.mainLayout = mainLayout
 
-        if not is_win:
+        if not is_win and not is_mac:
             if parent is None:
                 self.show()
             self.criticalNotWindowsOS()
             self.close()
-            raise OSError('This module is supported ONLY on Windows OS')
+            raise OSError('This module is supported ONLY on Windows OS or macOS')
 
         global bioformats, javabridge
         print('Checking if Java is installed...')
@@ -745,7 +747,7 @@ class createDataStructWin(QMainWindow):
         err_msg = (f"""
         <p style="font-size:10pt; line-height:1.2">
             Unfortunately, the module "0. Create data structure from microscopy file(s)"
-            is functional <b>only on Windows OS</b>.<br>
+            is functional <b>only on Windows OS and macOS</b>.<br>
             We are working on extending support to other Operating Systems.
             Note that all other modules are functional on
             macOS, Linux and Windows.<br><br>

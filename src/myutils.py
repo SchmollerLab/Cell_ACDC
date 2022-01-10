@@ -159,8 +159,8 @@ def download_java():
     elif is_mac:
         foldername = 'macOS'
         jre_name = 'jre1.8.0_301'
-        file_id = '1AmTFHouFwOPQlyRJ613sCXS_4uVMnM1-'
-        file_size = 78915584
+        file_id = '1N-Y53dzpDsCFNhdX3mtWixgea2D_ANEf'
+        file_size = 108796810
     elif is_linux:
         foldername = 'linux'
         file_id = '13vjFCpqBNp10K-Crl0XFXF8vN17Pi5cm'
