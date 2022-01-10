@@ -385,9 +385,9 @@ class QDialogMetadataXML(QDialog):
             trustButton.setToolTip(
                 "If you didn't have to manually modify metadata entries\n"
                 "it is very likely that metadata from the metadata reader\n"
-                "will be correct alsso for all the next positions.\n\n"
+                "will be correct also for all the next positions.\n\n"
                 "Click this button to stop showing this dialog and use\n"
-                "the metadata from the reader "
+                "the metadata from the reader\n"
                 "(except for channel names, I will use the manually entered)"
             )
             buttonsLayout.addWidget(trustButton, 1, 0)

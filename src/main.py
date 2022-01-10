@@ -20,7 +20,11 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QPushButton, QLabel, QAction,
     QMenu
 )
-from PyQt5.QtCore import Qt, QProcess, pyqtSignal, pyqtSlot, QTimer, QSize
+from PyQt5.QtCore import (
+    Qt, QProcess, pyqtSignal, pyqtSlot, QTimer, QSize,
+    QSettings
+)
+from PyQt5.QtGui import QFontDatabase
 from pyqtgraph.Qt import QtGui
 
 import dataPrep, segm, gui, dataStruct
@@ -48,6 +52,8 @@ class mainWin(QMainWindow):
         self.setWindowTitle("Cell-ACDC")
         self.setWindowIcon(QtGui.QIcon(":assign-motherbud.svg"))
 
+        self.loadFonts()
+
         self.createActions()
         self.createMenuBar()
         self.connectActions()
@@ -56,6 +62,7 @@ class mainWin(QMainWindow):
         self.setCentralWidget(mainContainer)
 
         mainLayout = QVBoxLayout()
+        mainLayout.addStretch()
 
         welcomeLabel = QLabel('Welcome to Cell-ACDC!')
         welcomeLabel.setAlignment(Qt.AlignCenter)
@@ -81,6 +88,8 @@ class mainWin(QMainWindow):
         # padding: top, left, bottom, right
         label.setStyleSheet("padding:0px 0px 10px 0px;")
         mainLayout.addWidget(label)
+
+        mainLayout.addStretch()
 
         dataStructButton = QPushButton(
             '0. Create data structure from microscopy file(s)...'
@@ -127,6 +136,12 @@ class mainWin(QMainWindow):
 
         self.guiWin = None
         self.dataPrepWin = None
+
+    def loadFonts(self):
+        QFontDatabase.addApplicationFont(":Ubuntu-Regular.ttf")
+        QFontDatabase.addApplicationFont(":Ubuntu-Bold.ttf")
+        QFontDatabase.addApplicationFont(":Ubuntu-Italic.ttf")
+        QFontDatabase.addApplicationFont(":Ubuntu-BoldItalic.ttf")
 
     def launchWelcomeGuide(self, checked=False):
         src_path = os.path.dirname(os.path.realpath(__file__))
@@ -280,6 +295,11 @@ class mainWin(QMainWindow):
         if self.dataStructButton.isEnabled():
             self.dataStructButton.setText(
                 '0. Restart Cell-ACDC to enable module 0 again.')
+            self.dataStructButton.setToolTip(
+                'Due to an interal limitation of the Java Virtual Machine\n'
+                'moduel 0 can be launched only once.\n'
+                'To use it again close and reopen Cell-ACDC'
+            )
             self.dataStructButton.setDisabled(True)
             self.dataStructWin = dataStruct.createDataStructWin(parent=self)
             self.dataStructWin.show()
@@ -389,10 +409,22 @@ class mainWin(QMainWindow):
         iconWidth = int(self.closeButton.iconSize().width()*1.3)
         self.closeButton.setIconSize(QSize(iconWidth, iconWidth))
         self.setColorsAndText()
+        self.readSettings()
+
+    def saveWindowGeometry(self):
+        settings = QSettings('schmollerlab', 'acdc_main')
+        settings.setValue("geometry", self.saveGeometry())
+
+    def readSettings(self):
+        settings = QSettings('schmollerlab', 'acdc_main')
+        if settings.value('geometry') is not None:
+            self.restoreGeometry(settings.value("geometry"))
 
     def closeEvent(self, event):
         if self.welcomeGuide is not None:
             self.welcomeGuide.close()
+
+        self.readSettings()
 
         print('Cell-ACDC closed. Have a good day!')
 

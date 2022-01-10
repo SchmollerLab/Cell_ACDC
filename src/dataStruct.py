@@ -41,7 +41,7 @@ class bioFormatsWorker(QObject):
     finished = pyqtSignal()
     progress = pyqtSignal(str)
     progressPbar = pyqtSignal(int)
-    started = pyqtSignal(int)
+    initPbar = pyqtSignal(int)
     criticalError = pyqtSignal(str, str, str)
     filesExisting = pyqtSignal(str)
     confirmMetadata = pyqtSignal(
@@ -532,11 +532,11 @@ class bioFormatsWorker(QObject):
                         self.aborted = True
                         break
 
+                self.numPos = self.SizeS
+                self.numPosDigits = len(str(self.numPos))
                 if p == 0:
-                    self.started.emit(self.SizeS*self.SizeC)
+                    self.initPbar.emit(self.numPos*self.SizeC)
                 for p in range(self.SizeS):
-                    self.numPos = self.SizeS
-                    self.numPosDigits = len(str(self.numPos))
                     abort = self.saveToPosFolder(p, exp_path, filename, p)
                     if abort:
                         self.aborted = True
@@ -548,10 +548,10 @@ class bioFormatsWorker(QObject):
                     if abort:
                         self.aborted = True
                         break
-                if p == 0:
-                    self.started.emit(self.SizeS*self.SizeC)
                 self.numPos = len(self.rawFilenames)
                 self.numPosDigits = len(str(self.numPos))
+                if p == 0:
+                    self.initPbar.emit(self.numPos*self.SizeC)
                 abort = self.saveToPosFolder(p, exp_path, filename, 0)
                 if abort:
                     self.aborted = True
@@ -580,9 +580,10 @@ class bioFormatsWorker(QObject):
                     javabridge.kill_vm()
                     return
 
-            self.started.emit(self.SizeS*self.SizeC)
-            self.numPos = self.SizeS
+
+            self.numPos = len(self.posNums)
             self.numPosDigits = len(str(self.numPos))
+            self.initPbar.emit(self.numPos*self.SizeC)
             for p_idx, pos in enumerate(self.posNums):
                 p = pos-1
                 abort = self.saveToPosFolder(
@@ -925,7 +926,7 @@ class createDataStructWin(QMainWindow):
         self.worker.finished.connect(self.worker.deleteLater)
         self.worker.finished.connect(self.taskEnded)
         self.thread.finished.connect(self.thread.deleteLater)
-        self.worker.started.connect(self.setPbarMax)
+        self.worker.initPbar.connect(self.setPbarMax)
         self.worker.progressPbar.connect(self.updatePbar)
         self.worker.progress.connect(self.log)
         self.worker.criticalError.connect(self.criticalBioFormats)
