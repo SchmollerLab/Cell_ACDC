@@ -146,6 +146,10 @@ class mainWin(QMainWindow):
         QFontDatabase.addApplicationFont(":Calibri-Bold.ttf")
         QFontDatabase.addApplicationFont(":Calibri-Italic.ttf")
         QFontDatabase.addApplicationFont(":Calibri-BoldItalic.ttf")
+        QFontDatabase.addApplicationFont(":ArialMT-Regular.ttf")
+        QFontDatabase.addApplicationFont(":ArialMT-Bold.otf")
+        QFontDatabase.addApplicationFont(":ArialMT-Italic.otf")
+        QFontDatabase.addApplicationFont(":ArialMT-BoldItalic.otf")
 
     def launchWelcomeGuide(self, checked=False):
         src_path = os.path.dirname(os.path.realpath(__file__))

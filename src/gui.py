@@ -7,7 +7,7 @@
 # SOFTWARE.
 
 # TODO:
-# 
+#
 
 """Cell-ACDC GUI for correcting Segmentation and Tracking errors"""
 print('Importing modules...')
@@ -5680,8 +5680,8 @@ class guiWin(QMainWindow):
 
                 self.updateALLimg()
         elif ev.key() == Qt.Key_T:
-            self.determineSlideshowWinPos()
-            self.logger.info(self.slideshowWinLeft, self.slideshowWinTop)
+            pass
+            # raise IndexError('Testing')
             # posData = self.data[self.pos_i]
             # self.logger.info(posData.allData_li[0]['acdc_df'])
             # # self.hist.sigLookupTableChanged.disconnect()
