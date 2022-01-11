@@ -4585,6 +4585,7 @@ class QDialogPbar(QDialog):
         super().__init__(parent)
 
         self.setWindowTitle(title)
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
 
         mainLayout = QVBoxLayout()
         pBarLayout = QGridLayout()

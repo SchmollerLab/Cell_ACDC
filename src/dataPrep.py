@@ -497,6 +497,9 @@ class dataPrepWin(QMainWindow):
             return
 
         posData = self.data[self.pos_i]
+        if posData.cropROI is None:
+            return
+        
         self.ax1.removeItem(posData.cropROI.label)
         self.ax1.removeItem(posData.cropROI)
 

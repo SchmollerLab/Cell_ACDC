@@ -233,6 +233,7 @@ class saveDataWorker(QObject):
     askSaveLastVisitedCcaMode = pyqtSignal(int, object)
     askSaveLastVisitedSegmMode = pyqtSignal(int, object)
     metricsPbarProgress = pyqtSignal(int, int)
+    askZsliceAbsent = pyqtSignal(str, object)
 
     def __init__(self, mainWin):
         QObject.__init__(self)
@@ -2017,7 +2018,6 @@ class guiWin(QMainWindow):
 
             # Apply Delete ID to future frames if requested
             if applyFutFrames:
-                self.app.setOverrideCursor(Qt.WaitCursor)
                 # Store current data before going to future frames
                 self.store_data()
                 for i in range(posData.frame_i+1, endFrame_i+1):
@@ -2033,8 +2033,6 @@ class guiWin(QMainWindow):
                     posData.frame_i = i
                     self.get_data()
                     self.store_data()
-
-                self.app.restoreOverrideCursor()
 
             # Back to current frame
             if applyFutFrames:
@@ -2322,7 +2320,6 @@ class guiWin(QMainWindow):
             self.current_frame_i = posData.frame_i
 
             if applyFutFrames:
-                self.app.setOverrideCursor(Qt.WaitCursor)
                 # Store data for current frame
                 self.store_data()
                 if endFrame_i is None:
@@ -2387,7 +2384,6 @@ class guiWin(QMainWindow):
 
             # Apply Exclude cell from analysis to future frames if requested
             if applyFutFrames:
-                self.app.setOverrideCursor(Qt.WaitCursor)
                 # Store current data before going to future frames
                 self.store_data()
                 for i in range(posData.frame_i+1, endFrame_i+1):
@@ -2460,7 +2456,6 @@ class guiWin(QMainWindow):
 
             # Apply Edit ID to future frames if requested
             if applyFutFrames:
-                self.app.setOverrideCursor(Qt.WaitCursor)
                 # Store current data before going to future frames
                 self.store_data()
                 for i in range(posData.frame_i+1, endFrame_i+1):
@@ -5050,7 +5045,6 @@ class guiWin(QMainWindow):
 
     def reload_cb(self):
         posData = self.data[self.pos_i]
-        self.app.setOverrideCursor(Qt.WaitCursor)
         # Store undo state before modifying stuff
         self.storeUndoRedoStates(False)
         labData = np.load(posData.segm_npz_path)
@@ -5063,7 +5057,6 @@ class guiWin(QMainWindow):
         self.get_data()
         self.tracking()
         self.updateALLimg()
-        self.app.restoreOverrideCursor()
 
     def clearComboBoxFocus(self, mode):
         # Remove focus from modeComboBox to avoid the key_up changes its value
@@ -8764,8 +8757,6 @@ class guiWin(QMainWindow):
                     self.overlayButton.setChecked(False)
                     return
                 ol_channels = selectFluo.selectedItemsText
-
-                self.app.setOverrideCursor(Qt.WaitCursor)
                 for posData in self.data:
                     ol_data = {}
                     ol_colors = {}
@@ -10265,7 +10256,6 @@ class guiWin(QMainWindow):
 
         fluo_channels = selectFluo.selectedItemsText
 
-        self.app.setOverrideCursor(Qt.WaitCursor)
         for posData in self.data:
             posData.ol_data = None
             for fluo_ch in fluo_channels:
@@ -10347,6 +10337,7 @@ class guiWin(QMainWindow):
         posData.loadedChNames = loadedChNames
 
     def zSliceAbsent(self, filename, posData):
+        self.app.restoreOverrideCursor()
         SizeZ = posData.SizeZ
         chNames = posData.chNames
         filenamesPresent = posData.segmInfo_df.index.get_level_values(0).unique()
@@ -10401,6 +10392,7 @@ class guiWin(QMainWindow):
                 exp_path = os.path.dirname(_posData.pos_path)
 
             dataPrepWin = dataPrep.dataPrepWin()
+            dataPrepWin.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
             dataPrepWin.titleText = (
             """
             Select z-slice (or projection) for each frame/position.<br>
@@ -10419,6 +10411,8 @@ class guiWin(QMainWindow):
             loop = QEventLoop(self)
             dataPrepWin.loop = loop
             loop.exec_()
+
+        self.waitCond.wakeAll()
 
     def set_metrics_func(self):
         self.metrics_func = {
@@ -10559,9 +10553,10 @@ class guiWin(QMainWindow):
                         col = 'z_slice_used_dataPrep'
                         z_slice = posData.segmInfo_df.at[idx, col]
                     except KeyError as e:
-                        self.app.restoreOverrideCursor()
-                        self.zSliceAbsent(filename, posData)
-                        self.app.setOverrideCursor(Qt.WaitCursor)
+                        self.worker.mutex.lock()
+                        self.worker.askZsliceAbsent.emit(filename, posData)
+                        self.worker.waitCond.wait(self.mutex)
+                        self.worker.mutex.unlock()
                         segmInfo_df = pd.read_csv(posData.segmInfo_df_csv_path)
                         index_col = ['filename', 'frame_i']
                         posData.segmInfo_df = segmInfo_df.set_index(index_col)
@@ -11045,6 +11040,7 @@ class guiWin(QMainWindow):
         self.worker.askSaveLastVisitedSegmMode.connect(
             self.askSaveLastVisitedSegmMode
         )
+        self.worker.askZsliceAbsent.connect(self.zSliceAbsent)
 
         self.thread.started.connect(self.worker.run)
 
