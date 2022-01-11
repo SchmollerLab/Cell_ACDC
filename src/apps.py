@@ -3117,13 +3117,22 @@ class editCcaTableWidget(QDialog):
         self.cancel = True
         self.close()
 
-    def show(self):
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
         super().show()
-        w = self.viewBox.minimumSizeHint().width() + 5*self.tableLayout.columnCount()
+        w = (
+            self.viewBox.minimumSizeHint().width()
+            + 5*self.tableLayout.columnCount()
+        )
         winGeometry = self.geometry()
         l, t, h = winGeometry.left(), winGeometry.top(), winGeometry.height()
         self.setGeometry(l, t, w, h)
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
 
     def eventFilter(self, object, event):
         # Disable wheel scroll on widgets to allow scroll only on scrollarea
@@ -3134,6 +3143,10 @@ class editCcaTableWidget(QDialog):
 
     def clearComboboxFocus(self):
         self.sender().clearFocus()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()
 
 class askStopFrameSegm(QDialog):
     def __init__(self, user_ch_file_paths, user_ch_name, parent=None):

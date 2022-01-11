@@ -1254,7 +1254,8 @@ class guiWin(QMainWindow):
         self.editOverlayColorAction.setDisabled(True)
 
         self.manuallyEditCcaAction = QAction(
-                            'Manually modify cell cycle annotations...', self)
+            'Edit cell cycle annotations...', self
+        )
         self.manuallyEditCcaAction.setDisabled(True)
 
         self.invertBwAction = QAction('Invert black/white', self)
@@ -4933,7 +4934,6 @@ class guiWin(QMainWindow):
     def manualEditCca(self):
         posData = self.data[self.pos_i]
         editCcaWidget = apps.editCcaTableWidget(posData.cca_df, parent=self)
-        editCcaWidget.showAndSetWidth()
         editCcaWidget.exec_()
         if editCcaWidget.cancel:
             return
@@ -8822,6 +8822,15 @@ class guiWin(QMainWindow):
     def enableOverlayWidgets(self, enabled):
         if enabled:
             posData = self.data[self.pos_i]
+            self.alphaScrollBar.setDisabled(False)
+            self.overlayColorButton.setDisabled(False)
+            self.editOverlayColorAction.setDisabled(False)
+            self.alphaScrollBar.show()
+            self.alphaScrollBar_label.show()
+
+            if posData.SizeZ == 1:
+                return
+
             self.zSliceOverlay_SB.setMaximum(posData.SizeZ-1)
             if self.zProjOverlay_CB.currentText().find('max') != -1:
                 self.overlay_z_label.setStyleSheet('color: gray')
@@ -8834,11 +8843,6 @@ class guiWin(QMainWindow):
             self.zSliceOverlay_SB.show()
             self.overlay_z_label.show()
             self.zProjOverlay_CB.show()
-            self.alphaScrollBar.setDisabled(False)
-            self.overlayColorButton.setDisabled(False)
-            self.editOverlayColorAction.setDisabled(False)
-            self.alphaScrollBar.show()
-            self.alphaScrollBar_label.show()
             self.zSliceOverlay_SB.valueChanged.connect(self.update_overlay_z_slice)
             self.zProjOverlay_CB.currentTextChanged.connect(self.updateOverlayZproj)
             self.zProjOverlay_CB.activated.connect(self.clearComboBoxFocus)
@@ -8852,6 +8856,10 @@ class guiWin(QMainWindow):
             self.editOverlayColorAction.setDisabled(True)
             self.alphaScrollBar.hide()
             self.alphaScrollBar_label.hide()
+
+            if posData.SizeZ == 1:
+                return
+                
             self.zSliceOverlay_SB.valueChanged.disconnect()
             self.zProjOverlay_CB.currentTextChanged.disconnect()
             self.zProjOverlay_CB.activated.disconnect()
