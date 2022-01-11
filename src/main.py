@@ -245,7 +245,7 @@ class mainWin(QMainWindow):
             self.convertWin.show()
             self.convertWin.main()
         else:
-            self.convertWin.setWindowState(Qt.WindowNoState)
+            # self.convertWin.setWindowState(Qt.WindowNoState)
             self.convertWin.setWindowState(Qt.WindowActive)
             self.convertWin.raise_()
 
@@ -330,7 +330,7 @@ class mainWin(QMainWindow):
             )
             self.dataPrepWin.show()
         else:
-            self.dataPrepWin.setWindowState(Qt.WindowNoState)
+            # self.dataPrepWin.setWindowState(Qt.WindowNoState)
             self.dataPrepWin.setWindowState(Qt.WindowActive)
             self.dataPrepWin.raise_()
 
@@ -351,7 +351,7 @@ class mainWin(QMainWindow):
             self.segmWin.show()
             self.segmWin.main()
         else:
-            self.segmWin.setWindowState(Qt.WindowNoState)
+            # self.segmWin.setWindowState(Qt.WindowNoState)
             self.segmWin.setWindowState(Qt.WindowActive)
             self.segmWin.raise_()
 
@@ -373,7 +373,7 @@ class mainWin(QMainWindow):
             )
             self.guiWin.show()
         else:
-            self.guiWin.setWindowState(Qt.WindowNoState)
+            # self.guiWin.setWindowState(Qt.WindowNoState)
             self.guiWin.setWindowState(Qt.WindowActive)
             self.guiWin.raise_()
 
@@ -401,7 +401,7 @@ class mainWin(QMainWindow):
             self.concatWin.show()
             self.concatWin.main()
         else:
-            self.concatWin.setWindowState(Qt.WindowNoState)
+            # self.concatWin.setWindowState(Qt.WindowNoState)
             self.concatWin.setWindowState(Qt.WindowActive)
             self.concatWin.raise_()
 

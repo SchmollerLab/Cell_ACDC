@@ -455,6 +455,8 @@ class guiWin(QMainWindow):
         """Initializer."""
         super().__init__(parent)
 
+        self.is_win = sys.platform.startswith("win")
+
         self.is_error_state = False
         self.setupLogger()
         self.loadLastSessionSettings()
@@ -1373,7 +1375,9 @@ class guiWin(QMainWindow):
         self.curvToolButton.toggled.connect(self.curvTool_cb)
         self.wandToolButton.toggled.connect(self.wand_cb)
         self.reInitCcaAction.triggered.connect(self.reInitCca)
-        self.assignBudMothAutoAction.triggered.connect(self.autoAssignBud_YeastMate)
+        self.assignBudMothAutoAction.triggered.connect(
+            self.autoAssignBud_YeastMate
+        )
 
         # self.repeatAutoCcaAction.triggered.connect(self.repeatAutoCca)
         self.manuallyEditCcaAction.triggered.connect(self.manualEditCca)
@@ -6309,6 +6313,19 @@ class guiWin(QMainWindow):
         return img
 
     def autoAssignBud_YeastMate(self):
+        if not self.is_win:
+            txt = (
+                'YeastMate is available only on Windows OS.'
+                'We are working on expading support also on macOS and Linux.\n\n'
+                'Thank you for your patience!'
+            )
+            msg = QMessageBox()
+            msg.critical(
+                self, 'Supported only on Windows', txt, msg.Ok
+            )
+            return
+
+
         model_name = 'YeastMate'
         idx = self.modelNames.index(model_name)
 
@@ -6479,8 +6496,10 @@ class guiWin(QMainWindow):
 
             if posData.frame_i <= 0 and mode == 'Cell cycle analysis':
                 IDs = [obj.label for obj in posData.rp]
-                editCcaWidget = apps.editCcaTableWidget(posData.cca_df,
-                                                        parent=self)
+                editCcaWidget = apps.editCcaTableWidget(
+                    posData.cca_df, parent=self,
+                    title='Initialize cell cycle annotations'
+                )
                 editCcaWidget.showAndSetWidth()
                 editCcaWidget.exec_()
                 if editCcaWidget.cancel:

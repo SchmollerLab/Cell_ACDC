@@ -756,6 +756,7 @@ class QDialogMetadataXML(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
         super().show()
         if block:
             self.loop = QEventLoop()
@@ -840,6 +841,7 @@ class QDialogWorkerProcess(QDialog):
             event.ignore()
 
     def show(self, app):
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
         QDialog.show(self)
         screen = app.primaryScreen()
         screenWidth = screen.size().width()
@@ -915,6 +917,8 @@ class QDialogCombobox(QDialog):
         cancelButton.clicked.connect(self.close)
         self.loop = None
 
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+
     def ok_cb(self, event):
         self.cancel = False
         self.selectedItemText = self.ComboBox.currentText()
@@ -925,7 +929,8 @@ class QDialogCombobox(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        super().show()
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        QDialog.show(self)
         if block:
             self.loop = QEventLoop()
             self.loop.exec_()
@@ -1000,6 +1005,7 @@ class QDialogListbox(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
         super().show()
         if block:
             self.loop = QEventLoop()
@@ -1083,6 +1089,7 @@ class QDialogAppendTextFilename(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
         super().show()
         if block:
             self.loop = QEventLoop()
@@ -1146,6 +1153,7 @@ class QDialogEntriesWidget(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
         super().show()
         if block:
             self.loop = QEventLoop()
@@ -1505,6 +1513,7 @@ class QDialogMetadata(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
         super().show()
         if block:
             self.loop = QEventLoop()
@@ -1530,6 +1539,7 @@ class gaussBlurDialog(QDialog):
         self.keys = items
 
         self.setWindowTitle('Gaussian blur sigma')
+        self.setWindowFlags(Qt.Tool | Qt.WindowStaysOnTopHint)
 
         mainLayout = QVBoxLayout()
         formLayout = QFormLayout()
@@ -1658,6 +1668,7 @@ class edgeDetectionDialog(QDialog):
         self.keys = items
 
         self.setWindowTitle('Edge detection')
+        self.setWindowFlags(Qt.Tool | Qt.WindowStaysOnTopHint)
 
         mainLayout = QVBoxLayout()
         paramsLayout = QGridLayout()
@@ -1824,6 +1835,7 @@ class entropyFilterDialog(QDialog):
         self.keys = items
 
         self.setWindowTitle('Edge detection')
+        self.setWindowFlags(Qt.Tool | Qt.WindowStaysOnTopHint)
 
         mainLayout = QVBoxLayout()
         paramsLayout = QGridLayout()
@@ -2287,6 +2299,7 @@ class FutureFramesAction_QDialog(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
         super().show()
         if block:
             self.loop = QEventLoop()
@@ -2386,6 +2399,7 @@ class postProcessSegmDialog(QDialog):
         self.mainWin = mainWin
 
         self.setWindowTitle('Post-processing segmentation parameters')
+        self.setWindowFlags(Qt.Tool | Qt.WindowStaysOnTopHint)
 
         mainLayout = QVBoxLayout()
         buttonsLayout = QHBoxLayout()
@@ -2481,6 +2495,7 @@ class postProcessSegmDialog(QDialog):
         self.close()
 
     def show(self):
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
         QDialog.show(self)
         self.resize(int(self.width()*1.5), self.height())
 
@@ -2746,18 +2761,23 @@ class CellsSlideshow_GUI(QMainWindow):
             self.button_toUncheck.setChecked(False)
 
     def show(self, left=None, top=None):
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         QMainWindow.show(self)
         if left is not None and top is not None:
             self.setGeometry(left, top, 850, 800)
 
 class editCcaTableWidget(QDialog):
-    def __init__(self, cca_df, parent=None):
+    def __init__(
+            self, cca_df, title='Edit cell cycle annotations', parent=None
+        ):
         self.inputCca_df = cca_df
         self.cancel = True
         self.cca_df = None
 
         super().__init__(parent)
-        self.setWindowTitle("Edit cell cycle annotations")
+        self.setWindowTitle(title)
+
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
 
         # Layouts
         mainLayout = QVBoxLayout()
@@ -3097,8 +3117,9 @@ class editCcaTableWidget(QDialog):
         self.cancel = True
         self.close()
 
-    def showAndSetWidth(self):
-        self.show()
+    def show(self):
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        super().show()
         w = self.viewBox.minimumSizeHint().width() + 5*self.tableLayout.columnCount()
         winGeometry = self.geometry()
         l, t, h = winGeometry.left(), winGeometry.top(), winGeometry.height()
@@ -3234,6 +3255,7 @@ class askStopFrameSegm(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
         super().show()
         if block:
             self.loop = QEventLoop()
@@ -3384,6 +3406,7 @@ class QLineEditDialog(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
         super().show()
         if block:
             self.loop = QEventLoop()
@@ -3547,6 +3570,7 @@ class editID_QWidget(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
         super().show()
         if block:
             self.loop = QEventLoop()
@@ -3753,6 +3777,7 @@ class QtSelectItems(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
         super().show()
         if block:
             self.loop = QEventLoop()
@@ -4302,6 +4327,10 @@ class pdDataFrameWidget(QMainWindow):
         self.parent = parent
         self.setWindowTitle('Cell cycle annotations')
 
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+
+
+
         mainContainer = QtGui.QWidget()
         self.setCentralWidget(mainContainer)
 
@@ -4436,6 +4465,7 @@ class QDialogZsliceAbsent(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
         super().show()
         if block:
             self.loop = QEventLoop()
@@ -4524,6 +4554,7 @@ class QDialogMultiSegmNpz(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
         super().show()
         if block:
             self.loop = QEventLoop()
@@ -4781,6 +4812,7 @@ class QDialogModelParams(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
         super().show()
         if block:
             self.loop = QEventLoop()
