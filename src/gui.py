@@ -5687,6 +5687,16 @@ class guiWin(QMainWindow):
             # # self.hist.sigLookupTableChanged.disconnect()
         elif ev.key() == Qt.Key_H:
             self.zoomToCells(enforce=True)
+            if self.countKeyPress == 0:
+                self.isKeyDoublePress = False
+                self.countKeyPress = 1
+                self.doubleKeyTimeElapsed = False
+                self.Button = None
+                QTimer.singleShot(400, self.doubleKeyTimerCallBack)
+            elif self.countKeyPress == 1 and not self.doubleKeyTimeElapsed:
+                self.ax1.vb.autoRange()
+                self.isKeyDoublePress = True
+                self.countKeyPress = 0
         elif ev.key() == Qt.Key_Space:
             how = self.drawIDsContComboBox.currentText()
             if how.find('nothing') == -1:
