@@ -8820,8 +8820,8 @@ class guiWin(QMainWindow):
             self.enableOverlayWidgets(False)
 
     def enableOverlayWidgets(self, enabled):
+        posData = self.data[self.pos_i]
         if enabled:
-            posData = self.data[self.pos_i]
             self.alphaScrollBar.setDisabled(False)
             self.overlayColorButton.setDisabled(False)
             self.editOverlayColorAction.setDisabled(False)
@@ -8859,7 +8859,7 @@ class guiWin(QMainWindow):
 
             if posData.SizeZ == 1:
                 return
-                
+
             self.zSliceOverlay_SB.valueChanged.disconnect()
             self.zProjOverlay_CB.currentTextChanged.disconnect()
             self.zProjOverlay_CB.activated.disconnect()
