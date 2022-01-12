@@ -1979,7 +1979,7 @@ class guiWin(QMainWindow):
                 if drawUnder:
                     mask[localLab!=0] = False
 
-                posData.lab[ymin:ymax, xmin:xmax][diskMask] = self.ax2BrushID
+                posData.lab[ymin:ymax, xmin:xmax][mask] = self.ax2BrushID
                 self.setImageImg2()
 
         # Delete entire ID (set to 0)
@@ -2516,33 +2516,32 @@ class guiWin(QMainWindow):
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             Y, X = posData.lab.shape
-            brushSize = self.brushSizeSpinbox.value()
-            if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
-                ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
-                rrPoly, ccPoly = self.getPolygonBrush((y, x), Y, X)
+            ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
+            rrPoly, ccPoly = self.getPolygonBrush((y, x), Y, X)
 
-                # Build brush mask
-                mask = np.zeros(posData.lab.shape, bool)
-                mask[ymin:ymax, xmin:xmax][diskMask] = True
-                mask[rrPoly, ccPoly] = True
+            # Build brush mask
+            mask = np.zeros(posData.lab.shape, bool)
+            mask[ymin:ymax, xmin:xmax][diskMask] = True
+            mask[rrPoly, ccPoly] = True
 
-                # If user double-pressed 'b' then draw over the labels
-                color = self.brushButton.palette().button().color().name()
-                drawUnder = color != self.doublePressKeyButtonColor
-                if drawUnder:
-                    mask[posData.lab!=0] = False
-                    self.setHoverToolSymbolColor(
-                        xdata, ydata, self.ax2_BrushCirclePen,
-                        (self.ax2_BrushCircle, self.ax1_BrushCircle),
-                        self.brushButton, brush=self.ax2_BrushCircleBrush
-                    )
+            # If user double-pressed 'b' then draw over the labels
+            color = self.brushButton.palette().button().color().name()
+            drawUnder = color != self.doublePressKeyButtonColor
+            if drawUnder:
+                mask[posData.lab!=0] = False
+                self.setHoverToolSymbolColor(
+                    xdata, ydata, self.ax2_BrushCirclePen,
+                    (self.ax2_BrushCircle, self.ax1_BrushCircle),
+                    self.brushButton, brush=self.ax2_BrushCircleBrush
+                )
 
-                # Apply brush mask
-                posData.lab[mask] = posData.brushID
-                self.setImageImg2()
-                brushMask = posData.lab == posData.brushID
-                self.setTempImg1Brush(brushMask)
+            # Apply brush mask
+            posData.lab[mask] = posData.brushID
+            self.setImageImg2()
+
+            brushMask = posData.lab == posData.brushID
+            self.setTempImg1Brush(brushMask)
 
         # Eraser dragging mouse --> keep erasing
         elif self.isMouseDragImg1 and self.eraserButton.isChecked():
@@ -2839,10 +2838,9 @@ class guiWin(QMainWindow):
             Y, X = posData.lab.shape
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            brushSize = self.brushSizeSpinbox.value()
-            rrPoly, ccPoly = self.getPolygonBrush((y, x), Y, X)
 
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
+            rrPoly, ccPoly = self.getPolygonBrush((y, x), Y, X)
 
             # Build brush mask
             mask = np.zeros(posData.lab.shape, bool)
@@ -3188,13 +3186,13 @@ class guiWin(QMainWindow):
         # Paint new IDs with brush and left click on the left image
         if left_click and canBrush:
             # Store undo state before modifying stuff
-            self.storeUndoRedoStates(False)
+
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             Y, X = posData.lab.shape
-            brushSize = self.brushSizeSpinbox.value()
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                 ID = posData.lab[ydata, xdata]
+                self.storeUndoRedoStates(False)
 
                 # If user double-pressed 'b' then draw over the labels
                 color = self.brushButton.palette().button().color().name()
@@ -3217,17 +3215,18 @@ class guiWin(QMainWindow):
 
                 # Draw new objects
                 localLab = posData.lab[ymin:ymax, xmin:xmax]
+                mask = diskMask.copy()
                 if drawUnder:
-                    diskMask[localLab!=0] = False
+                    mask[localLab!=0] = False
 
-                posData.lab[ymin:ymax, xmin:xmax][diskMask] = posData.brushID
+                posData.lab[ymin:ymax, xmin:xmax][mask] = posData.brushID
                 self.setImageImg2()
 
                 img = self.img1.image.copy()
-                img = img/numba_max(img)
                 if self.overlayButton.isChecked():
                     self.imgRGB = img/numba_max(img)
                 else:
+                    img = img/numba_max(img)
                     self.imgRGB = gray2rgb(img)
 
                 brushMask = posData.lab == posData.brushID
