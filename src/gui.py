@@ -4801,6 +4801,8 @@ class guiWin(QMainWindow):
         self.df_settings.to_csv(self.settings_csv_path)
         LIs = zip(self.ax1_LabelItemsIDs, self.ax2_LabelItemsIDs)
         for ax1_LI, ax2_LI in LIs:
+            if ax1_LI is None:
+                continue
             x1, y1 = ax1_LI.pos().x(), ax1_LI.pos().y()
             if x1>0:
                 w, h = ax1_LI.rect().right(), ax1_LI.rect().bottom()
