@@ -7589,6 +7589,8 @@ class guiWin(QMainWindow):
             notEnoughG1Cells, proceed = self.autoCca_df(
                 enforceAll=enforceAll
             )
+            if not proceed:
+                return notEnoughG1Cells, proceed
             mode = str(self.modeComboBox.currentText())
             if posData.cca_df is None or mode.find('Cell cycle') == -1:
                 notEnoughG1Cells = False
