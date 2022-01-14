@@ -51,9 +51,13 @@ class bioFormatsWorker(QObject):
     )
     # aborted = pyqtSignal()
 
-    def __init__(self, exp_path, rawFilenames, mutex, waitCond, rawDataStruct):
+    def __init__(
+            self, raw_src_path, rawFilenames, exp_dst_path,
+            mutex, waitCond, rawDataStruct
+        ):
         QObject.__init__(self)
-        self.exp_path = exp_path
+        self.raw_src_path = raw_src_path
+        self.exp_dst_path = exp_dst_path
         self.rawFilenames = rawFilenames
         self.mutex = mutex
         self.waitCond = waitCond
@@ -62,8 +66,8 @@ class bioFormatsWorker(QObject):
         self.trustMetadataReader = False
         self.rawDataStruct = rawDataStruct
 
-    def readMetadata(self, exp_path, filename):
-        rawFilePath = os.path.join(exp_path, filename)
+    def readMetadata(self, raw_src_path, filename):
+        rawFilePath = os.path.join(raw_src_path, filename)
 
         self.progress.emit('Reading OME metadata...')
 
@@ -324,14 +328,15 @@ class bioFormatsWorker(QObject):
             self.emWavelens = self.metadataWin.emWavelens
             self.addImageName = self.metadataWin.addImageName
 
-    def saveToPosFolder(self, p, exp_path, filename, series, p_idx=0):
-        foldername = os.path.basename(exp_path)
-        rawFilePath = os.path.join(exp_path, filename)
+    def saveToPosFolder(
+            self, p, raw_src_path, exp_dst_path, filename, series, p_idx=0
+        ):
+        rawFilePath = os.path.join(raw_src_path, filename)
 
-        if foldername == 'raw_microscopy_files':
-            exp_path = os.path.dirname(exp_path)
+        if os.path.basename(raw_src_path) == 'raw_microscopy_files':
+            raw_src_path = os.path.dirname(raw_src_path)
 
-        pos_path = os.path.join(exp_path, f'Position_{p+1}')
+        pos_path = os.path.join(exp_dst_path, f'Position_{p+1}')
         images_path = os.path.join(pos_path, 'Images')
 
         if os.path.exists(images_path) and self.askReplacePosFiles:
@@ -459,9 +464,9 @@ class bioFormatsWorker(QObject):
 
                 rawFilename = f'{basename}{p+1}_{chName}'
                 pos_rawFilenames.append(rawFilename)
-                exp_path = os.path.dirname(rawFilePath)
+                raw_src_path = os.path.dirname(rawFilePath)
                 rawFilePath = [
-                    os.path.join(exp_path, f) for f in myutils.listdir(exp_path)
+                    os.path.join(raw_src_path, f) for f in myutils.listdir(raw_src_path)
                     if f.find(rawFilename)!=-1
                 ][0]
 
@@ -493,13 +498,13 @@ class bioFormatsWorker(QObject):
                 # contain "otherFilename" in the name
                 otherFilename = f'{basename}{p+1}'
                 rawFilePath = set()
-                for f in myutils.listdir(exp_path):
+                for f in myutils.listdir(raw_src_path):
                     notRawFile = all(
                         [f.find(rawName)==-1 for rawName in pos_rawFilenames]
                     )
                     isPosFile = f.find(otherFilename)!=-1
                     if isPosFile and notRawFile:
-                        rawFilePath.add(os.path.join(exp_path, f))
+                        rawFilePath.add(os.path.join(raw_src_path, f))
 
                 for src in rawFilePath:
                     # Determine basename, posNum and chName to build
@@ -519,7 +524,8 @@ class bioFormatsWorker(QObject):
 
 
     def run(self):
-        exp_path = self.exp_path
+        raw_src_path = self.raw_src_path
+        exp_dst_path = self.exp_dst_path
         javabridge.start_vm(class_path=bioformats.JARS)
         self.progress.emit('Java VM running.')
         self.aborted = False
@@ -527,7 +533,7 @@ class bioFormatsWorker(QObject):
         for p, filename in enumerate(self.rawFilenames):
             if self.rawDataStruct == 0:
                 if not self.overWriteMetadata:
-                    abort = self.readMetadata(exp_path, filename)
+                    abort = self.readMetadata(raw_src_path, filename)
                     if abort:
                         self.aborted = True
                         break
@@ -537,14 +543,16 @@ class bioFormatsWorker(QObject):
                 if p == 0:
                     self.initPbar.emit(self.numPos*self.SizeC)
                 for p in range(self.SizeS):
-                    abort = self.saveToPosFolder(p, exp_path, filename, p)
+                    abort = self.saveToPosFolder(
+                        p, raw_src_path, exp_dst_path, filename, p
+                    )
                     if abort:
                         self.aborted = True
                         break
 
             elif self.rawDataStruct == 1:
                 if not self.overWriteMetadata:
-                    abort = self.readMetadata(exp_path, filename)
+                    abort = self.readMetadata(raw_src_path, filename)
                     if abort:
                         self.aborted = True
                         break
@@ -552,7 +560,9 @@ class bioFormatsWorker(QObject):
                 self.numPosDigits = len(str(self.numPos))
                 if p == 0:
                     self.initPbar.emit(self.numPos*self.SizeC)
-                abort = self.saveToPosFolder(p, exp_path, filename, 0)
+                abort = self.saveToPosFolder(
+                    p, raw_src_path, exp_dst_path, filename, 0
+                )
                 if abort:
                     self.aborted = True
                     break
@@ -561,10 +571,10 @@ class bioFormatsWorker(QObject):
                 break
 
             # Move files to raw_microscopy_files folder
-            foldername = os.path.basename(self.exp_path)
+            foldername = os.path.basename(self.raw_src_path)
             if foldername != 'raw_microscopy_files' and not self.aborted:
-                rawFilePath = os.path.join(self.exp_path, filename)
-                raw_path = os.path.join(exp_path, 'raw_microscopy_files')
+                rawFilePath = os.path.join(self.raw_src_path, filename)
+                raw_path = os.path.join(raw_src_path, 'raw_microscopy_files')
                 if not os.path.exists(raw_path):
                     os.mkdir(raw_path)
                 dst = os.path.join(raw_path, filename)
@@ -573,7 +583,7 @@ class bioFormatsWorker(QObject):
         if self.rawDataStruct == 2:
             filename = self.rawFilenames[0]
             if not self.overWriteMetadata:
-                abort = self.readMetadata(exp_path, filename)
+                abort = self.readMetadata(raw_src_path, filename)
                 if abort:
                     self.aborted = True
                     self.finished.emit()
@@ -587,7 +597,7 @@ class bioFormatsWorker(QObject):
             for p_idx, pos in enumerate(self.posNums):
                 p = pos-1
                 abort = self.saveToPosFolder(
-                    p, exp_path, self.basename, 0, p_idx=p_idx
+                    p, raw_src_path, exp_dst_path, self.basename, 0, p_idx=p_idx
                 )
                 if abort:
                     self.aborted = True
@@ -595,10 +605,10 @@ class bioFormatsWorker(QObject):
 
             for filename in self.rawFilenames:
                 # Move files to raw_microscopy_files folder
-                foldername = os.path.basename(self.exp_path)
+                foldername = os.path.basename(self.raw_src_path)
                 if foldername != 'raw_microscopy_files' and not self.aborted:
-                    rawFilePath = os.path.join(self.exp_path, filename)
-                    raw_path = os.path.join(exp_path, 'raw_microscopy_files')
+                    rawFilePath = os.path.join(self.raw_src_path, filename)
+                    raw_path = os.path.join(raw_src_path, 'raw_microscopy_files')
                     if not os.path.exists(raw_path):
                         os.mkdir(raw_path)
                     dst = os.path.join(raw_path, filename)
@@ -808,8 +818,8 @@ class createDataStructWin(QMainWindow):
         else:
             self.MostRecentPath = ''
 
-    def addToRecentPaths(self, exp_path):
-        if not os.path.exists(exp_path):
+    def addToRecentPaths(self, raw_src_path):
+        if not os.path.exists(raw_src_path):
             return
         src_path = os.path.dirname(os.path.realpath(__file__))
         recentPaths_path = os.path.join(
@@ -822,18 +832,18 @@ class createDataStructWin(QMainWindow):
                 openedOn = df['opened_last_on'].to_list()
             else:
                 openedOn = [np.nan]*len(recentPaths)
-            if exp_path in recentPaths:
-                pop_idx = recentPaths.index(exp_path)
+            if raw_src_path in recentPaths:
+                pop_idx = recentPaths.index(raw_src_path)
                 recentPaths.pop(pop_idx)
                 openedOn.pop(pop_idx)
-            recentPaths.insert(0, exp_path)
+            recentPaths.insert(0, raw_src_path)
             openedOn.insert(0, datetime.datetime.now())
             # Keep max 20 recent paths
             if len(recentPaths) > 20:
                 recentPaths.pop(-1)
                 openedOn.pop(-1)
         else:
-            recentPaths = [exp_path]
+            recentPaths = [raw_src_path]
             openedOn = [datetime.datetime.now()]
         df = pd.DataFrame({'path': recentPaths,
                            'opened_last_on': pd.Series(openedOn,
@@ -868,11 +878,11 @@ class createDataStructWin(QMainWindow):
             'Asking to select the folder that contains the microscopy files...'
         )
         self.getMostRecentPath()
-        exp_path = QFileDialog.getExistingDirectory(
+        raw_src_path = QFileDialog.getExistingDirectory(
             self, 'Select folder containing the microscopy files', self.MostRecentPath)
-        self.addToRecentPaths(exp_path)
+        self.addToRecentPaths(raw_src_path)
 
-        if exp_path == '':
+        if raw_src_path == '':
             if self.allowExit:
                 exit('Execution aborted by the user.')
             else:
@@ -882,7 +892,7 @@ class createDataStructWin(QMainWindow):
         self.log(
             'Checking file format of loaded files...'
         )
-        rawFilenames = self.checkFileFormat(exp_path)
+        rawFilenames = self.checkFileFormat(raw_src_path)
         if not rawFilenames:
             if self.allowExit:
                 exit('Folder selected does not contain files.')
@@ -900,6 +910,14 @@ class createDataStructWin(QMainWindow):
                     return
 
         self.log(
+            'Asking in which folder to save the images files...'
+        )
+        exp_dst_path = QFileDialog.getExistingDirectory(
+            self, 'Select the folder in which to save the images files',
+            raw_src_path
+        )
+
+        self.log(
             'Starting a Java Virtual Machine...'
         )
 
@@ -910,7 +928,8 @@ class createDataStructWin(QMainWindow):
         self.waitCond = QWaitCondition()
         self.thread = QThread()
         self.worker = bioFormatsWorker(
-            exp_path, rawFilenames, self.mutex, self.waitCond, rawDataStruct
+            raw_src_path, rawFilenames, exp_dst_path,
+            self.mutex, self.waitCond, rawDataStruct
         )
         if self.rawDataStruct == 2:
             self.worker.basename = self.basename
@@ -993,7 +1012,7 @@ class createDataStructWin(QMainWindow):
             abort = msg.information(
                self, 'Conversion task ended.',
                'Conversion task ended.\n\n'
-               f'Files saved to "{self.worker.exp_path}"',
+               f'Files saved to "{self.worker.exp_dst_path}"',
                msg.Close
             )
             self.close()
@@ -1041,17 +1060,17 @@ class createDataStructWin(QMainWindow):
         else:
             return False
 
-    def checkFileFormat(self, exp_path):
+    def checkFileFormat(self, raw_src_path):
         self.moveOtherFiles = False
         self.copyOtherFiles = False
-        ls = natsorted(myutils.listdir(exp_path))
+        ls = natsorted(myutils.listdir(raw_src_path))
         files = [
             filename for filename in ls
-            if os.path.isfile(os.path.join(exp_path, filename))
+            if os.path.isfile(os.path.join(raw_src_path, filename))
         ]
         all_ext = [
             os.path.splitext(filename)[1] for filename in ls
-            if os.path.isfile(os.path.join(exp_path, filename))
+            if os.path.isfile(os.path.join(raw_src_path, filename))
         ]
         counter = Counter(all_ext)
         unique_ext = list(counter.keys())
@@ -1061,7 +1080,7 @@ class createDataStructWin(QMainWindow):
             msg = QMessageBox()
             proceedWithMostCommon = msg.warning(
                 self, 'Multiple extensions detected',
-                f'The folder {exp_path}<br>'
+                f'The folder {raw_src_path}<br>'
                 'contains files with different file extensions '
                 f'(extensions detected: {unique_ext})<br><br>'
                 f'However, the most common extension is <b>{most_common_ext}</b>, '

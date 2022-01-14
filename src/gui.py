@@ -7,7 +7,7 @@
 # SOFTWARE.
 
 # TODO:
-#
+# - allow user to select where to save the tifs in dataStruct
 
 """Cell-ACDC GUI for correcting Segmentation and Tracking errors"""
 print('Importing modules...')
