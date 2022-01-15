@@ -2632,17 +2632,25 @@ class guiWin(QMainWindow):
         # Cursor left image --> restore cursor
         if event.isExit() and self.app.overrideCursor() is not None:
             self.app.restoreOverrideCursor()
+            if self.app.overrideCursor() is not None:
+                self.app.restoreOverrideCursor()
 
         # Alt key was released --> restore cursor
         noModifier = QGuiApplication.keyboardModifiers() == Qt.NoModifier
         if self.app.overrideCursor() == Qt.SizeAllCursor and noModifier:
             self.app.restoreOverrideCursor()
 
-        setWandCursor = self.wandToolButton.isChecked() and not event.isExit()
+        setWandCursor = (
+            self.wandToolButton.isChecked() and not event.isExit()
+            and noModifier
+        )
         if setWandCursor and self.app.overrideCursor() is None:
             self.app.setOverrideCursor(self.wandCursor)
 
-        setCurvCursor = self.curvToolButton.isChecked() and not event.isExit()
+        setCurvCursor = (
+            self.curvToolButton.isChecked() and not event.isExit()
+            and noModifier
+        )
         if setCurvCursor and self.app.overrideCursor() is None:
             self.app.setOverrideCursor(self.curvCursor)
 
@@ -2774,6 +2782,10 @@ class guiWin(QMainWindow):
             self.xHoverImg, self.yHoverImg = event.pos()
         else:
             self.xHoverImg, self.yHoverImg = None, None
+
+        # Cursor left image --> restore cursor
+        if event.isExit() and self.app.overrideCursor() is not None:
+            self.app.restoreOverrideCursor()
 
         # Alt key was released --> restore cursor
         noModifier = QGuiApplication.keyboardModifiers() == Qt.NoModifier
