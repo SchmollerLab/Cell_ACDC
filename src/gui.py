@@ -7,7 +7,7 @@
 # SOFTWARE.
 
 # TODO:
-# - allow user to select where to save the tifs in dataStruct
+#
 
 """Cell-ACDC GUI for correcting Segmentation and Tracking errors"""
 print('Importing modules...')
@@ -670,6 +670,10 @@ class guiWin(QMainWindow):
             if autoActivate:
                 self.setFocus(True)
                 self.activateWindow()
+
+    def isPanImageClick(self, mouseEvent, modifiers):
+        left_click = mouseEvent.button() == Qt.MouseButton.LeftButton
+        return modifiers == Qt.AltModifier and left_click
 
     def isMiddleClick(self, mouseEvent, modifiers):
         if sys.platform == 'darwin':
@@ -1839,18 +1843,21 @@ class guiWin(QMainWindow):
     def gui_mousePressEventImg2(self, event):
         modifiers = QGuiApplication.keyboardModifiers()
         ctrl = modifiers == Qt.ControlModifier
+        alt = modifiers == Qt.AltModifier
+        isMod = ctrl or alt
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
-        left_click = event.button() == Qt.MouseButton.LeftButton and not ctrl
+        left_click = event.button() == Qt.MouseButton.LeftButton and not isMod
         middle_click = self.isMiddleClick(event, modifiers)
-        right_click = event.button() == Qt.MouseButton.RightButton and not ctrl
+        right_click = event.button() == Qt.MouseButton.RightButton and not isMod
+        isPanImageClick = self.isPanImageClick(event, modifiers)
         eraserON = self.eraserButton.isChecked()
         brushON = self.brushButton.isChecked()
         separateON = self.separateBudButton.isChecked()
 
         # Drag image if neither brush or eraser are On pressed
         dragImg = (
-            left_click and not eraserON and not
+            (left_click or isPanImageClick) and not eraserON and not
             brushON and not separateON
         )
 
@@ -2622,7 +2629,13 @@ class guiWin(QMainWindow):
         else:
             self.xHoverImg, self.yHoverImg = None, None
 
+        # Cursor left image --> restore cursor
         if event.isExit() and self.app.overrideCursor() is not None:
+            self.app.restoreOverrideCursor()
+
+        # Alt key was released --> restore cursor
+        noModifier = QGuiApplication.keyboardModifiers() == Qt.NoModifier
+        if self.app.overrideCursor() == Qt.SizeAllCursor and noModifier:
             self.app.restoreOverrideCursor()
 
         setWandCursor = self.wandToolButton.isChecked() and not event.isExit()
@@ -2632,6 +2645,12 @@ class guiWin(QMainWindow):
         setCurvCursor = self.curvToolButton.isChecked() and not event.isExit()
         if setCurvCursor and self.app.overrideCursor() is None:
             self.app.setOverrideCursor(self.curvCursor)
+
+        # Cursor is moving on image while Alt key is pressed --> pan cursor
+        alt = QGuiApplication.keyboardModifiers() == Qt.AltModifier
+        setPanImageCursor = alt and not event.isExit()
+        if setPanImageCursor and self.app.overrideCursor() is None:
+            self.app.setOverrideCursor(Qt.SizeAllCursor)
 
         drawRulerLine = (
             self.rulerButton.isChecked() and self.rulerHoverON
@@ -2755,6 +2774,18 @@ class guiWin(QMainWindow):
             self.xHoverImg, self.yHoverImg = event.pos()
         else:
             self.xHoverImg, self.yHoverImg = None, None
+
+        # Alt key was released --> restore cursor
+        noModifier = QGuiApplication.keyboardModifiers() == Qt.NoModifier
+        if self.app.overrideCursor() == Qt.SizeAllCursor and noModifier:
+            self.app.restoreOverrideCursor()
+
+        # Cursor is moving on image while Alt key is pressed --> pan cursor
+        alt = QGuiApplication.keyboardModifiers() == Qt.AltModifier
+        setPanImageCursor = alt and not event.isExit()
+        if setPanImageCursor and self.app.overrideCursor() is None:
+            self.app.setOverrideCursor(Qt.SizeAllCursor)
+
         # Update x, y, value label bottom right
         if not event.isExit():
             x, y = event.pos()
@@ -3115,21 +3146,24 @@ class guiWin(QMainWindow):
     def gui_mousePressEventImg1(self, event):
         modifiers = QGuiApplication.keyboardModifiers()
         ctrl = modifiers == Qt.ControlModifier
+        alt = modifiers == Qt.AltModifier
+        isMod = ctrl or alt
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
         is_cca_on = mode == 'Cell cycle analysis' or self.isSnapshot
-        left_click = event.button() == Qt.MouseButton.LeftButton and not ctrl
+        left_click = event.button() == Qt.MouseButton.LeftButton and not isMod
         middle_click = self.isMiddleClick(event, modifiers)
-        right_click = event.button() == Qt.MouseButton.RightButton and not ctrl
+        right_click = event.button() == Qt.MouseButton.RightButton and not isMod
+        isPanImageClick = self.isPanImageClick(event, modifiers)
         brushON = self.brushButton.isChecked()
         curvToolON = self.curvToolButton.isChecked()
         histON = self.setIsHistoryKnownButton.isChecked()
         eraserON = self.eraserButton.isChecked()
         rulerON = self.rulerButton.isChecked()
-        wandON = self.wandToolButton.isChecked()
+        wandON = self.wandToolButton.isChecked() and not isPanImageClick
 
         dragImgLeft = (
-            left_click and not brushON and not histON
+            (left_click or isPanImageClick) and not brushON and not histON
             and not curvToolON and not eraserON and not rulerON
             and not wandON
         )
@@ -5586,6 +5620,10 @@ class guiWin(QMainWindow):
             if self.searchingID:
                 self.updateALLimg()
         elif ev.modifiers() == Qt.AltModifier:
+            isCursorSizeAll = self.app.overrideCursor() == Qt.SizeAllCursor
+            # Alt is pressed while cursor is on images --> set SizeAllCursor
+            if self.xHoverImg is not None and not isCursorSizeAll:
+                self.app.setOverrideCursor(Qt.SizeAllCursor)
             if ev.key() == Qt.Key_C:
                 font = QtGui.QFont()
                 font.setPointSize(10)
@@ -5781,6 +5819,8 @@ class guiWin(QMainWindow):
 
 
     def keyReleaseEvent(self, ev):
+        if self.app.overrideCursor() == Qt.SizeAllCursor:
+            self.app.restoreOverrideCursor()
         if ev.key() == Qt.Key_Control:
             self.isCtrlDown = False
         canRepeat = (
@@ -11161,7 +11201,7 @@ class guiWin(QMainWindow):
             # event.ignore()
             # self.hide()
 
-        self.logger.info('Closng GUI logger...')
+        self.logger.info('Closing GUI logger...')
         handlers = self.logger.handlers[:]
         for handler in handlers:
             handler.close()
