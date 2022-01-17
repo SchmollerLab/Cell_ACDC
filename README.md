@@ -1,14 +1,35 @@
 # <img src="https://github.com/SchmollerLab/Cell_ACDC/blob/main/src/resources/icons/assign-motherbud.svg" width="60" height="60"> Cell-ACDC
 
-### A Python GUI-based framework for <b>segmentation</b>, <b>tracking</b> and <b>cell cycle annotations</b> of microscopy data
+## What is Cell-ACDC?
+
+### A Python framework with a user-friendly GUI for **segmentation**, **tracking** and **cell cycle annotations** of microscopy data
 
 You can check out our pre-print [here](https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2) and Twitter thread [here](https://twitter.com/frank_pado/status/1443957038841794561?s=20).
+
+Let's face it, when dealing with segmentation of microscopy data we often do not have time to check that **everything is correct**, because it is a **tedious** and **very time consuming process**. Cell-ACDC comes to the rescue!
+We combined the currently **best available neural network models** (such as [YeaZ](https://www.nature.com/articles/s41467-020-19557-4) and
+[Cellpose](https://www.nature.com/articles/s41592-020-01018-x)) and we complemented them with a **fast and intuitive GUI**.
+
+We developed and implemented several smart functionalities such as **real-time continuous tracking**, **automatic propagation** of error correction, and several tools to facilitate manual correction, from simple yet useful **brush** and **eraser** to more complex flood fill (magic wand) and Random Walker segmentation routines!
+
+Cell-ACDC automatically computes **several single-cell numerical features** such as cell area and cell volume, plus the mean, max, median, sum and quantiles of any additional fluorescent channel. It even performs background correction, to compute the **protein amount and concentration**!
+
+You can load and analyse single **2D images**, **3D data** (3D z-stacks or 2D images over time) and even **4D data** (3D z-stacks over time)!
+
+Finally, we provide Jupyter notebooks to **visualize** and interactively **explore** the data produced!
+
+**Do not hesitate to contact me** here on GitHub (by opening an issue) or directly at my email francesco.padovani@helmholtz-muenchen.de for any problem and/or feedback on how to improve the user experience!
 
 Written in Python 3.8 by Francesco Padovani and Benedikt Mairhoermann.
 
 Tested on Windows 10 (64 bit), macOS, and Linux Mint 20.1
 
-*NOTE: This readme is not an exhaustive manual. Please find a <b>User Manual</b> (including detailed installation instructions) [here](https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf).*
+*NOTE: This readme is not an exhaustive manual. Please find a **User Manual** (including detailed installation instructions) [here](https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf).*
+
+## Update v1.2.2
+
+This is the first release with **full macOS support**! Additionally, navigating through time-lapse microscopy data is now **10x faster** than previous versions.
+More details [here](https://github.com/SchmollerLab/Cell_ACDC/releases/tag/v1.2.2)
 
 ## Installation using Anaconda
 
