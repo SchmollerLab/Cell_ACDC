@@ -3598,7 +3598,7 @@ class imshow_tk:
     def __init__(
             self, img, dots_coords=None, x_idx=1, axis=None,
             additional_imgs=[], titles=[], fixed_vrange=False,
-            run=True
+            run=True, show_IDs=False
         ):
         if img.ndim == 3:
             if img.shape[-1] > 4:
@@ -3618,7 +3618,7 @@ class imshow_tk:
                 raise TypeError(f'Invalid shape {im.shape} for image data. '
                 'Only 2D or 3D images.')
         n_imgs = len(additional_imgs)+1
-        if w/h > 1:
+        if w/h > 2:
             fig, ax = plt.subplots(n_imgs, 1, sharex=True, sharey=True)
         else:
             fig, ax = plt.subplots(1, n_imgs, sharex=True, sharey=True)
@@ -3643,6 +3643,29 @@ class imshow_tk:
                 ax[i+1].axis('off')
         for title, a in zip(titles, ax):
             a.set_title(title)
+
+        if show_IDs:
+            if issubclass(img.dtype.type, np.integer):
+                rp = skimage.measure.regionprops(img)
+                for obj in rp:
+                    y, x = obj.centroid
+                    ID = obj.label
+                    ax[0].text(
+                        int(x), int(y), str(ID), fontsize=12,
+                        fontweight='normal', horizontalalignment='center',
+                        verticalalignment='center', color='r'
+                    )
+            for i, img_i in enumerate(additional_imgs):
+                if issubclass(img_i.dtype.type, np.integer):
+                    rp = skimage.measure.regionprops(img_i)
+                    for obj in rp:
+                        y, x = obj.centroid
+                        ID = obj.label
+                        ax[i+1].text(
+                            int(x), int(y), str(ID), fontsize=14,
+                            fontweight='normal', horizontalalignment='center',
+                            verticalalignment='center', color='r'
+                        )
         sub_win = embed_tk('Imshow embedded in tk', [800,600,400,150], fig)
         sub_win.root.protocol("WM_DELETE_WINDOW", self._close)
         self.sub_win = sub_win

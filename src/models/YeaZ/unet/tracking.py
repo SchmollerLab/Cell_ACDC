@@ -3,12 +3,14 @@ import pandas as pd
 from munkres import Munkres
 from sklearn.preprocessing import scale
 from sklearn.metrics.pairwise import euclidean_distances
+from scipy.optimize import linear_sum_assignment
 from tqdm import tqdm
 
 
-def correspondence(prev, curr):
+def correspondence(prev, curr, use_scipy=False):
     """
-    source: YeaZ
+    source: YeaZ modified by Cell-ACDC developers to use
+    scipy.optimize.linear_sum_assignment instead of munkres library
     Corrects correspondence between previous and current mask, returns current
     mask with corrected cell values. New cells are given the unique identifier
     starting at max(prev)+1.
@@ -20,7 +22,10 @@ def correspondence(prev, curr):
     solved by the Hungarian algorithm as implemented in the munkres package.
     """
     newcell = np.max(prev) + 1
-    hu_dict = hungarian_align(prev, curr)
+    if use_scipy:
+        hu_dict = scipy_align(prev, curr)
+    else:
+        hu_dict = hungarian_align(prev, curr)
     new = curr.copy()
     for key, val in hu_dict.items():
         # If new cell
@@ -32,6 +37,27 @@ def correspondence(prev, curr):
 
     return new
 
+def scipy_align(m1, m2):
+    """
+    source: YeaZ modified by Cell-ACDC
+    Aligns the cells using the hungarian algorithm using the euclidean distance as
+    cost.
+    Returns dictionary of cells in m2 to cells in m1. If a cell is new, the dictionary
+    value is -1.
+    """
+    dist, ix1, ix2 = cell_distance(m1, m2)
+
+    # If dist couldn't be calculated, return dictionary from cells to themselves
+    if dist is None:
+        unique_m2 = np.unique(m2)
+        return dict(zip(unique_m2, unique_m2))
+
+    row_ind, col_ind = linear_sum_assignment(dist)
+
+    # Create dictionary of cell indicies
+    d = dict([(ix2.get(i2, -1), ix1.get(i1, -1)) for i1, i2 in zip(row_ind, col_ind)])
+    d.pop(-1, None)
+    return d
 
 def correspondence_stack(stack, signals=None):
     """
@@ -100,6 +126,13 @@ def cell_to_features(im, c, nsamples=None, time=None):
             'com_x': com[0],
             'com_y': com[1]}
 
+def get_features(m, t):
+    cells = list(np.unique(m))
+    if 0 in cells:
+        cells.remove(0)
+    features = [cell_to_features(m, c, time=t) for c in cells]
+    return pd.DataFrame(features), dict(enumerate(cells))
+
 
 def cell_distance(m1, m2, weight_com=3):
     """
@@ -112,13 +145,6 @@ def cell_distance(m1, m2, weight_com=3):
     # Modify to compute use more computed features
     #cols = ['com_x', 'com_y', 'roundness', 'sqrtarea']
     cols = ['com_x', 'com_y', 'area']
-
-    def get_features(m, t):
-        cells = list(np.unique(m))
-        if 0 in cells:
-            cells.remove(0)
-        features = [cell_to_features(m, c, time=t) for c in cells]
-        return pd.DataFrame(features), dict(enumerate(cells))
 
     # Create df, rescale
     feat1, ix_to_cell1 = get_features(m1, 1)

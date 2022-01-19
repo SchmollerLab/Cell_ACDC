@@ -29,6 +29,10 @@ def numba_max(arr):
 def numba_min(arr):
     return arr.min()
 
+@jit(nopython=True, parallel=True)
+def numba_argmax(arr):
+    return arr.argmax()
+
 def np_replace_values(arr, old_values, new_values):
     # See method_jdehesa https://stackoverflow.com/questions/45735230/how-to-replace-a-list-of-values-in-a-numpy-array
     old_values = np.asarray(old_values)
@@ -41,7 +45,9 @@ def np_replace_values(arr, old_values, new_values):
     arr = replacer[arr - n_min]
     return arr
 
-def lab_replace_values(lab, rp, oldIDs, newIDs):
+def lab_replace_values(lab, rp, oldIDs, newIDs, in_place=True):
+    if not in_place:
+        lab = lab.copy()
     for obj in rp:
         try:
             idx = oldIDs.index(obj.label)

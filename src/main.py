@@ -18,7 +18,7 @@ import pandas as pd
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QPushButton, QLabel, QAction,
-    QMenu
+    QMenu, QMessageBox
 )
 from PyQt5.QtCore import (
     Qt, QProcess, pyqtSignal, pyqtSlot, QTimer, QSize,
@@ -428,11 +428,52 @@ class mainWin(QMainWindow):
         if settings.value('geometry') is not None:
             self.restoreGeometry(settings.value("geometry"))
 
+    def checkOpenModules(self):
+        c1 = self.dataPrepButton.palette().button().color().name()
+        c2 = self.segmButton.palette().button().color().name()
+        c3 = self.guiButton.palette().button().color().name()
+        launchedColor = self.moduleLaunchedColor
+
+        openModules = []
+        if c1 == launchedColor:
+            openModules.append(self.dataPrepWin)
+        if c2 == launchedColor:
+            openModules.append(self.segmWin)
+        if c3 == launchedColor:
+            openModules.append(self.guiWin)
+
+        if not openModules:
+            return True, openModules
+
+        msg = QMessageBox()
+        warn_txt = (
+            'There are still other Cell-ACDC windows open.\n\n'
+            'Are you sure you want to close everything?'
+        )
+        acceptCloseAnswer = msg.warning(
+           self, 'Modules still open!', warn_txt, msg.Yes | msg.Cancel
+        )
+
+        return acceptCloseAnswer == msg.Yes, openModules
+
     def closeEvent(self, event):
         if self.welcomeGuide is not None:
             self.welcomeGuide.close()
 
         self.saveWindowGeometry()
+
+        acceptClose, openModules = self.checkOpenModules()
+        if acceptClose:
+            for openModule in openModules:
+                openModule.setWindowState(Qt.WindowActive)
+                openModule.raise_()
+                openModule.close()
+                if openModule.isVisible():
+                    event.ignore()
+                    return
+        else:
+            event.ignore()
+            return
 
         print('Cell-ACDC closed. Have a good day!')
 

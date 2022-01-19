@@ -755,7 +755,20 @@ class guiWin(QMainWindow):
         SegmMenu.addAction(self.SegmActionRW)
         SegmMenu.addAction(self.postProcessSegmAction)
         SegmMenu.addAction(self.autoSegmAction)
-        SegmMenu.aboutToShow.connect(self.segmMenuOpened)
+        SegmMenu.aboutToShow.connect(self.nonViewerEditMenuOpened)
+
+        # Segment menu
+        trackingMenu = menuBar.addMenu("&Tracking")
+        self.trackingMenu = trackingMenu
+        trackingMenu.addSeparator()
+        selectTrackAlgoMenu = trackingMenu.addMenu(
+            'Select real-time tracking algorithm'
+        )
+        selectTrackAlgoMenu.addAction(self.trackWithAcdcAction)
+        selectTrackAlgoMenu.addAction(self.trackWithYeazAction)
+        trackingMenu.addAction(self.repeatTrackingMenuAction)
+        trackingMenu.aboutToShow.connect(self.nonViewerEditMenuOpened)
+
 
         # Settings menu
         self.settingsMenu = QMenu("Settings", self)
@@ -1225,6 +1238,26 @@ class guiWin(QMainWindow):
         self.repeatTrackingAction = QAction(
             QIcon(":repeat-tracking.svg"), "Repeat tracking", self
         )
+        self.repeatTrackingMenuAction = QAction('Repeat tracking...', self)
+        self.repeatTrackingMenuAction.setDisabled(True)
+
+        trackingAlgosGroup = QActionGroup(self)
+        self.trackWithAcdcAction = QAction('Cell-ACDC', self)
+        self.trackWithAcdcAction.setCheckable(True)
+        trackingAlgosGroup.addAction(self.trackWithAcdcAction)
+
+        self.trackWithYeazAction = QAction('YeaZ', self)
+        self.trackWithYeazAction.setCheckable(True)
+        trackingAlgosGroup.addAction(self.trackWithYeazAction)
+
+        self.trackWithAcdcAction.setChecked(True)
+        if 'tracking_algorithm' in self.df_settings.index:
+            trackingAlgo = self.df_settings.at['tracking_algorithm', 'value']
+            if trackingAlgo == 'Cell-ACDC':
+                self.trackWithAcdcAction.setChecked(True)
+            elif trackingAlgo == 'YeaZ':
+                self.trackWithYeazAction.setChecked(True)
+
         # Standard key sequence
         # self.copyAction.setShortcut(QKeySequence.Copy)
         # self.pasteAction.setShortcut(QKeySequence.Paste)
@@ -1376,6 +1409,11 @@ class guiWin(QMainWindow):
         self.autoSegmAction.toggled.connect(self.autoSegm_cb)
         self.disableTrackingCheckBox.clicked.connect(self.disableTracking)
         self.repeatTrackingAction.triggered.connect(self.repeatTracking)
+        self.repeatTrackingMenuAction.triggered.connect(self.repeatTracking)
+        self.trackWithAcdcAction.toggled.connect(self.storeTrackingAlgo)
+        self.trackWithYeazAction.toggled.connect(self.storeTrackingAlgo)
+
+
         self.brushButton.toggled.connect(self.Brush_cb)
         self.eraserButton.toggled.connect(self.Eraser_cb)
         self.curvToolButton.toggled.connect(self.curvTool_cb)
@@ -3565,6 +3603,26 @@ class guiWin(QMainWindow):
         elif middle_click:
             self.gui_mousePressEventImg2(event)
 
+    def storeTrackingAlgo(self, checked):
+        if not checked:
+            return
+
+        trackingAlgo = self.sender().text()
+        self.df_settings.at['tracking_algorithm', 'value'] = trackingAlgo
+        self.df_settings.to_csv(self.settings_csv_path)
+
+        if self.sender().text() == 'YeaZ':
+            msg = QMessageBox()
+            info_txt = (f"""
+            <p style="font-size:10pt">
+                Note that YeaZ tracking algorithm is slightly more accurate,
+                but it is about <b>5-6 times slower</b>. This results in a
+                detectable delay when visualizing the next frame
+                (about 300 ms delay with 100 cells).
+            </p>
+            """)
+            msg.information(self, 'Info about YeaZ', info_txt, msg.Ok)
+
     def findID(self):
         posData = self.data[self.pos_i]
         self.searchingID = True
@@ -3651,7 +3709,7 @@ class guiWin(QMainWindow):
         self.slideshowWinLeft = winScreenCenterX - int(850/2)
         self.slideshowWinTop = winScreenCenterY - int(800/2)
 
-    def segmMenuOpened(self):
+    def nonViewerEditMenuOpened(self):
         mode = str(self.modeComboBox.currentText())
         if mode == 'Viewer':
             self.startBlinkingModeCB()
@@ -5053,6 +5111,7 @@ class guiWin(QMainWindow):
         for action in self.segmActions:
             action.setEnabled(enabled)
         self.SegmActionRW.setEnabled(enabled)
+        self.repeatTrackingMenuAction.setEnabled(enabled)
         self.postProcessSegmAction.setEnabled(enabled)
         self.autoSegmAction.setEnabled(enabled)
         self.editToolBar.setVisible(enabled)
@@ -5118,6 +5177,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         mode = self.modeComboBox.itemText(idx)
         if mode == 'Segmentation and Tracking':
+            self.trackingMenu.setDisabled(False)
             self.modeToolBar.setVisible(True)
             self.setEnabledWidgetsToolbar(True)
             self.initSegmTrackMode()
@@ -5200,6 +5260,7 @@ class guiWin(QMainWindow):
         for action in self.segmActions:
             action.setDisabled(False)
         self.SegmActionRW.setDisabled(False)
+        self.trackingMenu.setDisabled(True)
         self.postProcessSegmAction.setDisabled(False)
         self.autoSegmAction.setDisabled(False)
         self.ccaToolBar.setVisible(True)
@@ -6134,11 +6195,16 @@ class guiWin(QMainWindow):
             'Are you sure you want to proceed with ENABLING tracking from now on?'
 
             )
-            msg = QMessageBox()
-            enforce_Tracking = msg.warning(
-               self, 'Disable tracking?', warn_txt, msg.Yes | msg.No
-            )
-            if enforce_Tracking == msg.No:
+            msg = QMessageBox(self)
+            msg.setWindowTitle('Enable tracking?')
+            msg.setIcon(msg.Warning)
+            msg.setText(warn_txt)
+            msg.addButton(msg.Yes)
+            noButton = QPushButton('No')
+            msg.addButton(noButton, msg.NoRole)
+            msg.exec_()
+            enforce_Tracking = msg.clickedButton()
+            if msg.clickedButton() == noButton:
                 self.disableTrackingCheckBox.setChecked(True)
             else:
                 self.repeatTracking()
@@ -6513,18 +6579,26 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         if posData.frame_i < posData.segmSizeT-1:
             if 'lost' in self.titleLabel.text and isSegmMode:
-                msg = QMessageBox()
-                warn_msg = (
-                    'Current frame (compared to previous frame) '
-                    'has lost the following cells:\n\n'
-                    f'{posData.lost_IDs}\n\n'
-                    'Are you sure you want to continue?'
-                )
-                proceed_with_lost = msg.warning(
-                   self, 'Lost cells!', warn_msg, msg.Yes | msg.No
-                )
-                if proceed_with_lost == msg.No:
-                    return
+                if not self.doNotWarnLostCells:
+                    msg = QMessageBox(self)
+                    msg.setWindowTitle('Lost cells!')
+                    msg.setIcon(msg.Warning)
+                    warn_msg = (
+                        'Current frame (compared to previous frame) '
+                        'has lost the following cells:\n\n'
+                        f'{posData.lost_IDs}\n\n'
+                        'Are you sure you want to continue?\n'
+                    )
+                    msg.setText(warn_msg)
+                    msg.addButton(msg.Yes)
+                    noButton = QPushButton('No')
+                    msg.addButton(noButton, msg.NoRole)
+                    cb = QCheckBox('Do not show again')
+                    msg.setCheckBox(cb)
+                    msg.exec_()
+                    self.doNotWarnLostCells = msg.checkBox().isChecked()
+                    if msg.clickedButton() == noButton:
+                        return
             if 'multiple' in self.titleLabel.text and mode != 'Viewer':
                 msg = QMessageBox()
                 warn_msg = (
@@ -7192,6 +7266,7 @@ class guiWin(QMainWindow):
 
         self.segment2D_kwargs = None
         self.segmModelName = None
+        self.doNotWarnLostCells = False
 
         self.autoSegmDoNotAskAgain = False
 
@@ -9854,9 +9929,6 @@ class guiWin(QMainWindow):
 
                 # Relabel new untracked IDs sequentially starting
                 # from uniqueID to make sure they are unique
-                allIDs = IDs_curr_untracked.copy()
-                allIDs.extend(tracked_IDs)
-                max_ID = max(allIDs)
                 new_tracked_IDs = [
                     uniqueID+i for i in range(len(new_untracked_IDs))
                 ]
