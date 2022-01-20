@@ -3616,11 +3616,12 @@ class guiWin(QMainWindow):
         if self.sender().text() == 'YeaZ':
             msg = QMessageBox()
             info_txt = (f"""
-            <p style="font-size:10pt">
-                Note that YeaZ tracking algorithm is slightly more accurate,
-                but it is about <b>5-6 times slower</b>. This results in a
-                detectable delay when visualizing the next frame
-                (about 300 ms delay with 100 cells).
+            <p style="font-size:11pt">
+                Note that YeaZ tracking algorithm tends to be sliglhtly more accurate
+                overall, but it is <b>less capable of detecting segmentation
+                errors.</b><br><br>
+                If you need to correct as many segmentation errors as possible
+                we reccomend using Cell-ACDC tracking algorithm.
             </p>
             """)
             msg.information(self, 'Info about YeaZ', info_txt, msg.Ok)
