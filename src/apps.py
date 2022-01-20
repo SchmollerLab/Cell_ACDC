@@ -2,6 +2,7 @@ import os
 import sys
 import re
 import ast
+from heapq import nlargest
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
@@ -4098,7 +4099,7 @@ class manualSeparateGui(QMainWindow):
             for rr, cc in self.AllCutsCoords:
                 self.lab[rr, cc] = 0
             skimage.morphology.remove_small_objects(self.lab, 5, in_place=True)
-            self.updateLabels()
+            self.splitObjectAlongCurve()
 
 
     def histLUT_cb(self, LUTitem):
@@ -4157,7 +4158,7 @@ class manualSeparateGui(QMainWindow):
             self.prevAllCutsCoords = []
 
 
-    def updateLabels(self):
+    def splitObjectAlongCurve(self):
         self.lab = skimage.measure.label(self.lab, connectivity=1)
 
         # Relabel largest object with original ID
@@ -4168,6 +4169,16 @@ class manualSeparateGui(QMainWindow):
         maxAreaID = IDs[maxAreaIdx]
         if self.ID not in self.lab:
             self.lab[self.lab==maxAreaID] = self.ID
+
+        # Keep only the two largest objects
+        larger_areas = nlargest(2, areas)
+        larger_ids = [rp[areas.index(area)].label for area in larger_areas]
+        for obj in rp:
+            if obj.label not in larger_ids:
+                print(f'deleting ID {obj.label}')
+                self.lab[tuple(obj.coords.T)] = 0
+
+        rp = skimage.measure.regionprops(self.lab)
 
         if self.parent is not None:
             self.parent.setBrushID()
@@ -4180,7 +4191,6 @@ class manualSeparateGui(QMainWindow):
             posData = self.parent.data[self.parent.pos_i]
             posData.brushID += 1
             self.lab[obj.slice][obj.image] = posData.brushID
-
 
         # Replace 0s on the cutting curve with IDs
         self.cutLab = self.lab.copy()

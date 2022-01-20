@@ -2130,8 +2130,8 @@ class guiWin(QMainWindow):
 
             if right_click:
                 posData.lab, success = self.auto_separate_bud_ID(
-                                             ID, posData.lab, posData.rp,
-                                             max_ID, enforce=True)
+                    ID, posData.lab, posData.rp, max_ID, enforce=True
+                )
             else:
                 success = False
 
