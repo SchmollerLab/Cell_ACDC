@@ -1,3 +1,6 @@
+import os
+import sys
+import time
 import numpy as np
 import pandas as pd
 from munkres import Munkres
@@ -5,11 +8,21 @@ from sklearn.preprocessing import scale
 from sklearn.metrics.pairwise import euclidean_distances
 from scipy.optimize import linear_sum_assignment
 from tqdm import tqdm
+from skimage.measure import regionprops
+from math import sqrt
 
+unet_path = os.path.dirname(os.path.abspath(__file__))
+yeaz_path = os.path.dirname(unet_path)
+models_path = os.path.dirname(yeaz_path)
+src_path = os.path.dirname(models_path)
 
-def correspondence(prev, curr, use_scipy=False):
+sys.path.append(src_path)
+
+from myutils import exec_time
+
+def correspondence(prev, curr, use_scipy=True, use_modified_yeaz=True):
     """
-    source: YeaZ modified by Cell-ACDC developers to use
+    source: YeaZ modified by Cell-ACDC developers
     scipy.optimize.linear_sum_assignment instead of munkres library
     Corrects correspondence between previous and current mask, returns current
     mask with corrected cell values. New cells are given the unique identifier
@@ -23,9 +36,9 @@ def correspondence(prev, curr, use_scipy=False):
     """
     newcell = np.max(prev) + 1
     if use_scipy:
-        hu_dict = scipy_align(prev, curr)
+        hu_dict = scipy_align(prev, curr, acdc_yeaz=use_modified_yeaz)
     else:
-        hu_dict = hungarian_align(prev, curr)
+        hu_dict = hungarian_align(prev, curr, acdc_yeaz=use_modified_yeaz)
     new = curr.copy()
     for key, val in hu_dict.items():
         # If new cell
@@ -37,7 +50,7 @@ def correspondence(prev, curr, use_scipy=False):
 
     return new
 
-def scipy_align(m1, m2):
+def scipy_align(m1, m2, acdc_yeaz=True):
     """
     source: YeaZ modified by Cell-ACDC
     Aligns the cells using the hungarian algorithm using the euclidean distance as
@@ -45,14 +58,18 @@ def scipy_align(m1, m2):
     Returns dictionary of cells in m2 to cells in m1. If a cell is new, the dictionary
     value is -1.
     """
-    dist, ix1, ix2 = cell_distance(m1, m2)
+    dist, ix1, ix2 = cell_distance(m1, m2, acdc_yeaz=acdc_yeaz)
 
     # If dist couldn't be calculated, return dictionary from cells to themselves
     if dist is None:
         unique_m2 = np.unique(m2)
         return dict(zip(unique_m2, unique_m2))
 
+    t0 = time.perf_counter()
     row_ind, col_ind = linear_sum_assignment(dist)
+    t1 = time.perf_counter()
+
+    print(f'scipy assignment exec time = {(t1-t0)*1000:.3f} ms')
 
     # Create dictionary of cell indicies
     d = dict([(ix2.get(i2, -1), ix1.get(i1, -1)) for i1, i2 in zip(row_ind, col_ind)])
@@ -78,8 +95,7 @@ def correspondence_stack(stack, signals=None):
             signals.progressBar.emit(1)
     return corrected_stack
 
-
-def hungarian_align(m1, m2):
+def hungarian_align(m1, m2, acdc_yeaz=True):
     """
     source: YeaZ
     Aligns the cells using the hungarian algorithm using the euclidean distance as
@@ -87,21 +103,24 @@ def hungarian_align(m1, m2):
     Returns dictionary of cells in m2 to cells in m1. If a cell is new, the dictionary
     value is -1.
     """
-    dist, ix1, ix2 = cell_distance(m1, m2)
+    dist, ix1, ix2 = cell_distance(m1, m2, acdc_yeaz=acdc_yeaz)
 
     # If dist couldn't be calculated, return dictionary from cells to themselves
     if dist is None:
         unique_m2 = np.unique(m2)
         return dict(zip(unique_m2, unique_m2))
 
+    t0 = time.perf_counter()
     solver = Munkres()
     indexes = solver.compute(make_square(dist))
+    t1 = time.perf_counter()
+
+    print(f'Munkres assignment exec time = {(t1-t0)*1000:.3f} ms')
 
     # Create dictionary of cell indicies
     d = dict([(ix2.get(i2, -1), ix1.get(i1, -1)) for i1, i2 in indexes])
     d.pop(-1, None)
     return d
-
 
 def cell_to_features(im, c, nsamples=None, time=None):
     """
@@ -126,6 +145,29 @@ def cell_to_features(im, c, nsamples=None, time=None):
             'com_x': com[0],
             'com_y': com[1]}
 
+def get_features_acdc(m, t):
+    rp = regionprops(m)
+    features = {
+        'cell': [],
+        'time': [],
+        'sqrtarea': [],
+        'area': [],
+        'com_x': [],
+        'com_y': []
+    }
+    for obj in rp:
+        area = obj.area
+        y, x = obj.centroid
+        features['cell'].append(obj.label)
+        features['time'].append(t)
+        features['sqrtarea'].append(sqrt(area))
+        features['area'].append(area)
+        features['com_x'].append(y)
+        features['com_y'].append(x)
+    df = pd.DataFrame(features)
+    return df, dict(enumerate(features['cell']))
+
+
 def get_features(m, t):
     cells = list(np.unique(m))
     if 0 in cells:
@@ -133,8 +175,7 @@ def get_features(m, t):
     features = [cell_to_features(m, c, time=t) for c in cells]
     return pd.DataFrame(features), dict(enumerate(cells))
 
-
-def cell_distance(m1, m2, weight_com=3):
+def cell_distance(m1, m2, weight_com=3, acdc_yeaz=True):
     """
     source: YeaZ
     Gives distance matrix between cells in first and second frame, by embedding
@@ -146,9 +187,13 @@ def cell_distance(m1, m2, weight_com=3):
     #cols = ['com_x', 'com_y', 'roundness', 'sqrtarea']
     cols = ['com_x', 'com_y', 'area']
 
+    get_features_func = get_features_acdc if acdc_yeaz else get_features
+
     # Create df, rescale
-    feat1, ix_to_cell1 = get_features(m1, 1)
-    feat2, ix_to_cell2 = get_features(m2, 2)
+    feat1, ix_to_cell1 = get_features_func(m1, 1)
+    feat2, ix_to_cell2 = get_features_func(m2, 2)
+
+    # feat1_acdc, ix_to_cell1_acdc = get_features_acdc(m1, 1)
 
     # Check if one of matrices doesn't contain cells
     if len(feat1)==0 or len(feat2)==0:

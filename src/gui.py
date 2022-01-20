@@ -67,6 +67,8 @@ from PyQt5.QtWidgets import (
 from pyqtgraph.Qt import QtGui
 import pyqtgraph as pg
 
+from models.YeaZ.unet import tracking as tracking_yeaz
+
 # NOTE: Enable icons
 import qrc_resources
 
@@ -9810,7 +9812,6 @@ class guiWin(QMainWindow):
         else:
             self.disableTrackingCheckBox.setChecked(False)
 
-
     def tracking(
             self, onlyIDs=[], enforce=False, DoManualEdit=True,
             storeUndo=False, prev_lab=None, prev_rp=None,
@@ -9875,70 +9876,17 @@ class guiWin(QMainWindow):
                 prev_lab = posData.allData_li[posData.frame_i-1]['labels']
             if prev_rp is None:
                 prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
-            IDs_prev = []
-            IDs_curr_untracked = posData.IDs
-            IoA_matrix = np.zeros((len(posData.rp), len(prev_rp)))
 
-            # For each ID in previous frame get IoA with all current IDs
-            # Rows: IDs in current frame, columns: IDs in previous frame
-            for j, obj_prev in enumerate(prev_rp):
-                ID_prev = obj_prev.label
-                A_IDprev = obj_prev.area
-                IDs_prev.append(ID_prev)
-                mask_ID_prev = prev_lab==ID_prev
-                intersect_IDs, intersects = np.unique(
-                    posData.lab[mask_ID_prev], return_counts=True
+            if self.trackWithAcdcAction.isChecked():
+                tracked_lab = core.tracking_FP(
+                        prev_lab, prev_rp, posData.lab, posData.rp,
+                        posData.IDs, setBrushID_func=self.setBrushID,
+                        posData=posData
                 )
-                for intersect_ID, I in zip(intersect_IDs, intersects):
-                    if intersect_ID != 0:
-                        i = IDs_curr_untracked.index(intersect_ID)
-                        IoA = I/A_IDprev
-                        IoA_matrix[i, j] = IoA
-
-            # Determine max IoA between IDs and assign tracked ID if IoA > 0.4
-            max_IoA_col_idx = IoA_matrix.argmax(axis=1)
-            unique_col_idx, counts = np.unique(
-                max_IoA_col_idx, return_counts=True
-            )
-            counts_dict = dict(zip(unique_col_idx, counts))
-            tracked_IDs = []
-            old_IDs = []
-            for i, j in enumerate(max_IoA_col_idx):
-                max_IoU = IoA_matrix[i,j]
-                count = counts_dict[j]
-                if max_IoU > 0.4:
-                    tracked_ID = IDs_prev[j]
-                    if count == 1:
-                        old_ID = IDs_curr_untracked[i]
-                    elif count > 1:
-                        old_ID_idx = IoA_matrix[:,j].argmax()
-                        old_ID = IDs_curr_untracked[old_ID_idx]
-                    tracked_IDs.append(tracked_ID)
-                    old_IDs.append(old_ID)
-
-            # Compute new IDs that have not been tracked
-            new_untracked_IDs = [
-                ID for ID in IDs_curr_untracked if ID not in old_IDs
-            ]
-            tracked_lab = posData.lab
-            new_tracked_IDs_2 = []
-            if new_untracked_IDs:
-                # Compute starting unique ID
-                self.setBrushID(useCurrentLab=False)
-                uniqueID = posData.brushID
-
-                # Relabel new untracked IDs sequentially starting
-                # from uniqueID to make sure they are unique
-                new_tracked_IDs = [
-                    uniqueID+i for i in range(len(new_untracked_IDs))
-                ]
-                core.lab_replace_values(
-                    tracked_lab, posData.rp, new_untracked_IDs, new_tracked_IDs
-                )
-            if tracked_IDs:
-                # Relabel old IDs with respective tracked IDs
-                core.lab_replace_values(
-                    tracked_lab, posData.rp, old_IDs, tracked_IDs
+            elif self.trackWithYeazAction.isChecked():
+                tracked_lab = tracking_yeaz.correspondence(
+                    prev_lab, posData.lab, use_modified_yeaz=True,
+                    use_scipy=True
                 )
 
             if DoManualEdit:
@@ -9948,7 +9896,6 @@ class guiWin(QMainWindow):
                 self.manuallyEditTracking(tracked_lab, IDs)
         except ValueError:
             tracked_lab = posData.lab
-
 
         # Update labels, regionprops and determine new and lost IDs
         posData.lab = tracked_lab
