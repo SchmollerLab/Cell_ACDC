@@ -65,11 +65,7 @@ def scipy_align(m1, m2, acdc_yeaz=True):
         unique_m2 = np.unique(m2)
         return dict(zip(unique_m2, unique_m2))
 
-    t0 = time.perf_counter()
     row_ind, col_ind = linear_sum_assignment(dist)
-    t1 = time.perf_counter()
-
-    print(f'scipy assignment exec time = {(t1-t0)*1000:.3f} ms')
 
     # Create dictionary of cell indicies
     d = dict([(ix2.get(i2, -1), ix1.get(i1, -1)) for i1, i2 in zip(row_ind, col_ind)])
@@ -110,12 +106,8 @@ def hungarian_align(m1, m2, acdc_yeaz=True):
         unique_m2 = np.unique(m2)
         return dict(zip(unique_m2, unique_m2))
 
-    t0 = time.perf_counter()
     solver = Munkres()
     indexes = solver.compute(make_square(dist))
-    t1 = time.perf_counter()
-
-    print(f'Munkres assignment exec time = {(t1-t0)*1000:.3f} ms')
 
     # Create dictionary of cell indicies
     d = dict([(ix2.get(i2, -1), ix1.get(i1, -1)) for i1, i2 in indexes])
