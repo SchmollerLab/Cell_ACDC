@@ -6627,8 +6627,16 @@ class guiWin(QMainWindow):
                 if editCcaWidget.cancel:
                     return
                 if posData.cca_df is not None:
-                    if not posData.cca_df.equals(editCcaWidget.cca_df):
-                        self.remove_future_cca_df(0)
+                    is_cca_same_as_stored = (
+                        (posData.cca_df == editCcaWidget.cca_df).all(axis=None)
+                    )
+                    if not is_cca_same_as_stored:
+                        reinit_cca = self.warnEditingWithCca_df(
+                            'Reinitialize cell cyle annotations first frame',
+                            return_answer=True
+                        )
+                        if reinit_cca:
+                            self.remove_future_cca_df(0)
                 posData.cca_df = editCcaWidget.cca_df
                 self.store_cca_df()
 
@@ -9329,7 +9337,7 @@ class guiWin(QMainWindow):
             posData.cca_df = self.getBaseCca_df()
 
 
-    def warnEditingWithCca_df(self, editTxt):
+    def warnEditingWithCca_df(self, editTxt, return_answer=False):
         # Function used to warn that the user is editing in "Segmentation and
         # Tracking" mode a frame that contains cca annotations.
         # Ask whether to remove annotations from all future frames
@@ -9361,6 +9369,8 @@ class guiWin(QMainWindow):
         msg.addButton(yes, msg.YesRole)
         msg.addButton(QPushButton('Do not remove annotations'), msg.NoRole)
         msg.exec_()
+        if return_answer:
+            return msg.clickedButton() == yes
         if msg.clickedButton() == yes:
             self.store_data()
             posData.frame_i -= 1
