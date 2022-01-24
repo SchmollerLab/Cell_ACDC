@@ -26,7 +26,7 @@ See below **how it compares** to other popular tools available.
 
 <p align="center">
   <img src="https://github.com/SchmollerLab/Cell_ACDC/blob/main/src/resources/figures/Table1.jpg" width="600"><br>
-  *Table 1 of our [pre-print](https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2)*
+  *Table 1 of our [pre-print]*(https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2)
 </p>
 
 Cell-ACDC automatically computes **several single-cell numerical features** such as cell area and cell volume, plus the mean, max, median, sum and quantiles of any additional fluorescent channel. It even performs background correction, to compute the **protein amount and concentration**!
