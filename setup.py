@@ -7,6 +7,8 @@ setup(
     author="Francesco Padovani and Benedikt Mairhoermann",
     author_email="francesco.padovani@helmholtz-muenchen.de",
     description="segmentation, tracking and image annotations",
+    url="https://github.com/SchmollerLab/Cell_ACDC",
+    packages=setuptools.find_packages(),
     entry_points = {
             'console_scripts': ['acdc = cellacdc.main:main']
         },
