@@ -16,7 +16,7 @@ Tested on Windows 10 (64 bit), macOS, and Linux Mint 20.1
 
 ## Overview
 
-Let's face it, when dealing with segmentation of microscopy data we often do not have time to check that **everything is correct**, because it is a **tedious** and **very time consuming process**. Cell-ACDC comes to the rescue!
+Let's face it when dealing with segmentation of microscopy data we often do not have time to check that **everything is correct**, because it is a **tedious** and **very time consuming process**. Cell-ACDC comes to the rescue!
 We combined the currently **best available neural network models** (such as [YeaZ](https://www.nature.com/articles/s41467-020-19557-4) and
 [Cellpose](https://www.nature.com/articles/s41592-020-01018-x)) and we complemented them with a **fast and intuitive GUI**.
 
