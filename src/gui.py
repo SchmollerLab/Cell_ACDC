@@ -6623,7 +6623,6 @@ class guiWin(QMainWindow):
                     posData.cca_df, parent=self,
                     title='Initialize cell cycle annotations'
                 )
-                editCcaWidget.showAndSetWidth()
                 editCcaWidget.exec_()
                 if editCcaWidget.cancel:
                     return
