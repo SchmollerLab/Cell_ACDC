@@ -241,8 +241,6 @@ class segmWorker(QRunnable):
             self.signals.progressBar.emit(1)
             # lab_stack = core.smooth_contours(lab_stack, radius=2)
 
-        np.save('test_segm.npy', lab_stack)
-
         if self.applyPostProcessing:
             if posData.SizeT > 1:
                 for t, lab in enumerate(lab_stack):

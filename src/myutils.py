@@ -20,6 +20,8 @@ from pyqtgraph.colormap import ColorMap
 import prompts
 import inspect
 
+from natsort import natsorted
+
 from tifffile.tifffile import TiffWriter, TiffFile
 
 __all__ = ['ColorMap']
@@ -68,11 +70,11 @@ def findalliter(patter, string):
 
 
 def listdir(path):
-    return [
+    return natsorted([
         f for f in os.listdir(path)
         if not f.startswith('.')
         and not f.endswith('.ini')
-    ]
+    ])
 
 def getModelArgSpec(acdcSegment):
     ArgSpec = namedtuple('ArgSpec', ['name', 'default', 'type'])
@@ -366,7 +368,10 @@ def download_model(model_name):
         # Remove downloaded zip archive
         os.remove(models_zip_path)
 
-def imagej_tiffwriter(new_path, data, metadata, SizeT, SizeZ, imagej=True):
+def imagej_tiffwriter(
+        new_path, data, metadata: dict, SizeT, SizeZ,
+        imagej=True
+    ):
     if data.dtype != np.uint8 or data.dtype != np.uint16:
         data = skimage.img_as_uint(data)
     with TiffWriter(new_path, imagej=imagej) as new_tif:

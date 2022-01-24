@@ -1,5 +1,7 @@
 # <img src="https://github.com/SchmollerLab/Cell_ACDC/blob/main/src/resources/icons/assign-motherbud.svg" width="60" height="60"> Cell-ACDC
 
+<img src="https://github.com/SchmollerLab/Cell_ACDC/blob/main/src/resources/icons/assign-motherbud.svg">
+
 ## What is Cell-ACDC?
 
 ### A Python framework with a user-friendly GUI for **segmentation**, **tracking** and **cell cycle annotations** of microscopy data
@@ -30,10 +32,10 @@ Finally, we provide Jupyter notebooks to **visualize** and interactively **explo
 
 ## Update v1.2.2
 
-This is the first release with **full macOS support**! Additionally, navigating through time-lapse microscopy data is now **10x faster** than previous versions.
+This is the first release with **full macOS support**! Additionally, navigating through time-lapse microscopy data is now up to **10x faster** than previous versions.
 More details [here](https://github.com/SchmollerLab/Cell_ACDC/releases/tag/v1.2.2)
 
-## Installation using Anaconda
+## Installation using Anaconda (recommended)
 
 1. Download the [latest release](https://github.com/SchmollerLab/Cell_ACDC/releases) of Cell-ACDC.
 2. Install [Anaconda](https://www.anaconda.com/products/individual) or [Miniconda](https://docs.conda.io/en/latest/miniconda.html) for **Python 3.8**

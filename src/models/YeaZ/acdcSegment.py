@@ -66,6 +66,20 @@ class Model:
             tqdm_pbar.emit(1)
         return image
 
+    def predict3DT(self, timelapse3D):
+        # pad with zeros such that is divisible by 16
+        (nrow, ncol) = timelapse3D[0].shape
+        row_add = 16-nrow%16
+        col_add = 16-ncol%16
+        pad_info = ((0, 0), (0, row_add), (0, col_add))
+        padded = np.pad(timelapse3D, pad_info, 'constant')
+
+        x = padded[:, :, :, np.newaxis]
+        prediction = self.model.predict(x, batch_size=1, verbose=1)
+        prediction = prediction[:, 0:-row_add, 0:-col_add, 0]
+        return prediction
+
+
     def segment(self, image, thresh_val=0.0, min_distance=10):
         # Preprocess image
         image = self.yeaz_preprocess(image)
@@ -92,13 +106,19 @@ class Model:
         return lab.astype(np.uint16)
 
     def segment3DT(self, timelapse3D, thresh_val=0.0, min_distance=10, signals=None):
-        signals[0].progress.emit(f'Preprocessing images...')
-        signals[0].create_tqdm.emit(len(timelapse3D))
+        sig_progress_tqdm = None
+        if signals is not None:
+            signals[0].progress.emit(f'Preprocessing images...')
+            signals[0].create_tqdm.emit(len(timelapse3D))
+            sig_progress_tqdm = signals[0].progress_tqdm
+
         timelapse3D = np.array([
-            self.yeaz_preprocess(image, tqdm_pbar=signals[0].progress_tqdm)
+            self.yeaz_preprocess(image, tqdm_pbar=sig_progress_tqdm)
             for image in timelapse3D
         ])
-        signals[0].signal_close_tqdm.emit()
+
+        if signals is not None:
+            signals[0].signal_close_tqdm.emit()
 
         if thresh_val == 0:
             thresh_val = None
@@ -112,22 +132,31 @@ class Model:
 
         x = padded[:, :, :, np.newaxis]
 
-        signals[0].progress.emit(f'Predicting (the future) with YeaZ...')
+        if signals is not None:
+            signals[0].progress.emit(f'Predicting (the future) with YeaZ...')
+
+        callbacks = None
+        if signals is not None:
+            callbacks = [progressCallback(signals)]
 
         prediction = self.model.predict(
-            x, batch_size=1, verbose=1, callbacks=[progressCallback(signals)]
+            x, batch_size=1, verbose=1, callbacks=callbacks
         )[:,:,:,0]
 
-        signals[0].progress.emit(f'Labelling objects with YeaZ...')
+        if signals is not None:
+            signals[0].progress.emit(f'Labelling objects with YeaZ...')
 
         # remove padding with 0s
         prediction = prediction[:, 0:-row_add, 0:-col_add]
         lab_timelapse = np.zeros(prediction.shape, np.uint16)
-        signals[0].create_tqdm.emit(len(prediction))
+        if signals is not None:
+            signals[0].create_tqdm.emit(len(prediction))
         for t, pred in enumerate(prediction):
             thresh = neural_network.threshold(pred, thresh_val=thresh_val)
             lab = segment.segment(thresh, pred, min_distance=min_distance)
             lab_timelapse[t] = lab.astype(np.uint16)
-            signals[0].progress_tqdm.emit(1)
-        signals[0].signal_close_tqdm.emit()
+            if signals is not None:
+                ssignals[0].progress_tqdm.emit(1)
+        if signals is not None:
+            signals[0].signal_close_tqdm.emit()
         return lab_timelapse

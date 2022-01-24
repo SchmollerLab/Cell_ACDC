@@ -83,10 +83,12 @@ class loadData:
         csv_path = os.path.join(temp_path, 'last_entries_metadata.csv')
         self.metadata_df.to_csv(csv_path)
 
-    def getBasenameAndChNames(self):
+    def getBasenameAndChNames(self, useExt='.tif'):
         ls = myutils.listdir(self.images_path)
         selector = prompts.select_channel_name()
-        self.chNames, _ = selector.get_available_channels(ls, self.images_path)
+        self.chNames, _ = selector.get_available_channels(
+            ls, self.images_path, useExt=useExt
+        )
         self.basename = selector.basename
 
     def loadImgData(self):
@@ -164,8 +166,6 @@ class loadData:
         self.dataPrep_ROIcoordsFound = False if load_dataPrep_ROIcoords else None
         self.TifPathFound = False if getTifPath else None
         ls = myutils.listdir(self.images_path)
-
-
 
         for file in ls:
             filePath = os.path.join(self.images_path, file)
@@ -400,6 +400,9 @@ class loadData:
         # self.dataPrepBkgrValues_path = f'{base_path}dataPrep_bkgrValues.csv'
         self.dataPrepBkgrROis_path = f'{base_path}dataPrep_bkgrROIs.json'
         self.metadata_csv_path = f'{base_path}metadata.csv'
+        self.mot_events_path = f'{base_path}mot_events'
+        self.mot_metrics_csv_path = f'{base_path}mot_metrics'
+        self.raw_segm_npz_path = f'{base_path}segm_raw.npz'
 
     def setBlankSegmData(self, SizeT, SizeZ, SizeY, SizeX):
         Y, X = self.img_data.shape[-2:]
