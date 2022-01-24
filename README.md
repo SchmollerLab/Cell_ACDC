@@ -1,6 +1,6 @@
 # <img src="https://github.com/SchmollerLab/Cell_ACDC/blob/main/src/resources/icons/assign-motherbud.svg" width="60" height="60"> Cell-ACDC
 
-<img src="https://github.com/SchmollerLab/Cell_ACDC/blob/main/src/resources/icons/assign-motherbud.svg">
+<img src="https://github.com/SchmollerLab/Cell_ACDC/blob/main/src/resources/figures/Fig1.jpg">
 
 ## What is Cell-ACDC?
 
