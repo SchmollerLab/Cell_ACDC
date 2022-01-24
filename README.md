@@ -1,4 +1,4 @@
-# <img cellacdc="https://github.com/SchmollerLab/Cell_ACDC/tree/main/cellacdc/resources/icons/assign-motherbud.svg" width="60" height="60"> Cell-ACDC
+# <img cellacdc="https://github.com/SchmollerLab/Cell_ACDC/tree/main/cellacdc/resources/icons/icon.svg" width="60" height="60"> Cell-ACDC
 
 <img cellacdc="https://github.com/SchmollerLab/Cell_ACDC/tree/main/cellacdc/resources/figures/Fig1.jpg">
 
