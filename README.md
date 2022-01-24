@@ -1,6 +1,6 @@
-# <img cellacdc="https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/assign-motherbud.svg" width="60" height="60"> Cell-ACDC
+# <img src="https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/assign-motherbud.svg" width="60" height="60"> Cell-ACDC
 
-<img cellacdc="https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/figures/Fig1.jpg">
+<img src="https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/figures/Fig1.jpg">
 
 ## What is Cell-ACDC?
 
@@ -25,7 +25,7 @@ We developed and implemented several smart functionalities such as **real-time c
 See below **how it compares** to other popular tools available (*Table 1 our our [pre-print](https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2)*).
 
 <p align="center">
-  <img cellacdc="https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/figures/Table1.jpg" width="600">
+  <img src="https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/figures/Table1.jpg" width="600">
 </p>
 
 Cell-ACDC automatically computes **several single-cell numerical features** such as cell area and cell volume, plus the mean, max, median, sum and quantiles of any additional fluorescent channel. It even performs background correction, to compute the **protein amount and concentration**!

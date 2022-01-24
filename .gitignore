@@ -59,6 +59,7 @@ __pycache__/
 /*.py[cod]
 !cellacdc/javabridge/_javabridge.cp37-win_amd64.pyd
 !cellacdc/javabridge/_javabridge.cp38-win_amd64.pyd
+/*.dll
 
 *$py.class
 

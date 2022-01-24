@@ -499,7 +499,7 @@ class dataPrepWin(QMainWindow):
         posData = self.data[self.pos_i]
         if posData.cropROI is None:
             return
-        
+
         self.ax1.removeItem(posData.cropROI.label)
         self.ax1.removeItem(posData.cropROI)
 
@@ -1646,10 +1646,10 @@ class dataPrepWin(QMainWindow):
         tempFilePath = os.path.join(temp_dirpath, filename)
         return tempFilePath
 
-    def moveTempFile(self, cellacdc, dst):
-        print('Moving temp file: ', cellacdc)
-        tempDir = os.path.dirname(cellacdc)
-        shutil.move(cellacdc, dst)
+    def moveTempFile(self, source, dst):
+        print('Moving temp file: ', source)
+        tempDir = os.path.dirname(source)
+        shutil.move(source, dst)
         shutil.rmtree(tempDir)
 
     def getMostRecentPath(self):
