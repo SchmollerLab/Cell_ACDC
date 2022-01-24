@@ -1,6 +1,6 @@
-# <img src="https://github.com/SchmollerLab/Cell_ACDC/blob/main/src/resources/icons/assign-motherbud.svg" width="60" height="60"> Cell-ACDC
+# <img cellacdc="https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/assign-motherbud.svg" width="60" height="60"> Cell-ACDC
 
-<img src="https://github.com/SchmollerLab/Cell_ACDC/blob/main/src/resources/figures/Fig1.jpg">
+<img cellacdc="https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/figures/Fig1.jpg">
 
 ## What is Cell-ACDC?
 
@@ -25,7 +25,7 @@ We developed and implemented several smart functionalities such as **real-time c
 See below **how it compares** to other popular tools available (*Table 1 our our [pre-print](https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2)*).
 
 <p align="center">
-  <img src="https://github.com/SchmollerLab/Cell_ACDC/blob/main/src/resources/figures/Table1.jpg" width="600">
+  <img cellacdc="https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/figures/Table1.jpg" width="600">
 </p>
 
 Cell-ACDC automatically computes **several single-cell numerical features** such as cell area and cell volume, plus the mean, max, median, sum and quantiles of any additional fluorescent channel. It even performs background correction, to compute the **protein amount and concentration**!
@@ -62,7 +62,7 @@ More details [here](https://github.com/SchmollerLab/Cell_ACDC/releases/tag/v1.2.
 
 1. Open a terminal and navigate to Cell-ACDC folder
 2. Activate the environment (conda: `conda activate acdc`, pip on Windows: `.\env\Scripts\activate`, pip on Unix: `source env/bin/activate`)
-3. Navigate to `src` folder and run the main launcher with `python main.py`
+3. Navigate to `cellacdc` folder and run the main launcher with `python main.py`
 
 ## Usage
 
