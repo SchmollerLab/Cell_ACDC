@@ -403,6 +403,7 @@ class loadData:
         self.mot_events_path = f'{base_path}mot_events'
         self.mot_metrics_csv_path = f'{base_path}mot_metrics'
         self.raw_segm_npz_path = f'{base_path}segm_raw.npz'
+        self.raw_postprocessed_segm_npz_path = f'{base_path}segm_raw_postproc.npz'
 
     def setBlankSegmData(self, SizeT, SizeZ, SizeY, SizeX):
         Y, X = self.img_data.shape[-2:]

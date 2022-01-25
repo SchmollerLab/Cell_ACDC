@@ -49,7 +49,7 @@ More details [here](https://github.com/SchmollerLab/Cell_ACDC/releases/tag/v1.2.
 2. Install [Anaconda](https://www.anaconda.com/products/individual) or [Miniconda](https://docs.conda.io/en/latest/miniconda.html) for **Python 3.8**
 3. Unzip the Cell-ACDC source code, open a terminal and navigate with `cd` command to the Cell-ACDC folder
 4. Update conda with `conda update conda`. Optionally, consider removing unused package with the command `conda clean --all`
-5. Install the environment with `conda env create --file acdc.yml`. Creating the environment will take several minutes.
+5. Install the environment with `conda env create --file environment.yml`. Creating the environment will take several minutes.
 
 ## Installation using Pip
 

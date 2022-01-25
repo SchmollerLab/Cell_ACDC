@@ -2354,8 +2354,8 @@ class postProcessSegmParams(QGroupBox):
 
         minSolidity_DSB.setToolTip(
             'Solidity is a measure of convexity. A solidity of 1 means '
-            'that the shape is fully convex.\n As solidity approaches 0 '
-            'the object is more and more concave.\n'
+            'that the shape is fully convex (i.e., equal to the convex hull).\n '
+            'As solidity approaches 0 the object is more concave.\n'
             'Write 0 for ignoring this parameter.'
         )
 
