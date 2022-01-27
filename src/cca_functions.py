@@ -66,7 +66,11 @@ def calculate_downstream_data(
         for pos_idx, pos_dir in enumerate(image_folders[file_idx]):
             channel_data = ('placeholder')*no_of_channels
             print(f'Load files for {file}, {positions[file_idx][pos_idx]}...')
-            *channel_data, seg_mask, cc_data, metadata, cc_props = _load_files(pos_dir, channels)
+            try:
+                *channel_data, seg_mask, cc_data, metadata, cc_props = _load_files(pos_dir, channels)
+            except TypeError:
+                print(f'File {file}, position {positions[file_idx][pos_idx]} skipped due to missing segmentation mask/CC annotations.')
+                continue
             print(f'Number of cells in position: {len(cc_data.Cell_ID.unique())}')
             print(f'Number of annotated frames in position: {cc_data.frame_i.max()+1}')
             cc_data = _rename_columns(cc_data)
@@ -265,6 +269,10 @@ def _load_files(file_dir, channels):
     Check first if aligned files are available and use them if so.
     """
     no_of_aligned_files = len(glob.glob(f'{file_dir}\*aligned*'))
+    seg_mask_available = len(glob.glob(f'{file_dir}\*_segm*')) > 0
+    acdc_output_available = len(glob.glob(f'{file_dir}\*acdc_output*')) + len(glob.glob(f'{file_dir}\*cc_stage*')) > 0
+    if not (seg_mask_available and acdc_output_available):
+        return None
     channel_files = []
     if no_of_aligned_files > 0:
         for channel in channels:
