@@ -27,6 +27,12 @@ from tifffile.tifffile import TiffWriter, TiffFile
 __all__ = ['ColorMap']
 _mapCache = {}
 
+def showInExplorer(path):
+    if os.name == 'posix' or os.name == 'os2':
+        os.system(f'open "{path}"')
+    elif os.name == 'nt':
+        os.startfile(path)
+
 def exec_time(func):
     @wraps(func)
     def inner_function(self, *args, **kwargs):
@@ -258,8 +264,8 @@ def get_file_id(model_name, id=None):
         file_id = '1nmtUHG8JM8Hp1zas2xlXoWLYPqS9psON'
         file_size = 693685011
     elif model_name == 'cellpose':
-        file_id = '1nfOwE5UtGwKm4zLgPdzDbkJVG7kZL4Yw'
-        file_size = 392564736
+        file_id = '1qOdNz6WhKhbg25oaVMU1LFo4crmWrdOj'
+        file_size = 540806676
     elif model_name == 'YeastMate':
         file_id = '1wNfxtfIfwm755MdBRy_CXiduiZxXJhep'
         file_size = 164911104

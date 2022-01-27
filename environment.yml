@@ -13,6 +13,8 @@ dependencies:
     - cloudpickle==2.0.0
     - omegaconf==2.1.1
     - torchvision==0.10.0
+    - edt~=2.1.2
+    - ncolor~=1.1.2
   - pyqtgraph
   - pandas
   - pytables
@@ -24,7 +26,7 @@ dependencies:
   - numba
   - requests
   - tensorflow<2.6.0
-  - pytorch
+  - pytorch=1.9
   - munkres
   - scikit-learn
   - jupyterlab

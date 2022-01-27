@@ -1,3 +1,4 @@
+
 import os, sys, time, shutil, tempfile, datetime, pathlib, subprocess
 import numpy as np
 import torch
@@ -200,6 +201,7 @@ class CPnet(nn.Module):
         T0    = self.output(T0)
         if self.mkldnn:
             T0 = T0.to_dense()    
+            #T1 = T1.to_dense()    
         return T0, style0
 
     def save_model(self, filename):

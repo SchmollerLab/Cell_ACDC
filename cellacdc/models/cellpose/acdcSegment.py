@@ -8,8 +8,23 @@ import skimage.filters
 
 from . import models
 
+CELLPOSE_MODELS = [
+    'cyto',
+    'nuclei',
+    'cyto2',
+    'bact',
+    'bact_omni',
+    'cyto2_omni'
+]
+
 class Model:
     def __init__(self, model_type='cyto'):
+        if model_type not in CELLPOSE_MODELS:
+            err_msg = (
+                f'"{model_type}" not available. '
+                f'Avilable models are {CELLPOSE_MODELS}'
+            )
+            raise NameError(err_msg)
         script_path = os.path.dirname(os.path.realpath(__file__))
         model_path = os.path.join(script_path, 'model')
 

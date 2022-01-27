@@ -4527,20 +4527,24 @@ class QDialogMultiSegmNpz(QDialog):
         self.selectedItemText = ''
         self.selectedItemIdx = None
         self.removeOthers = False
+        self.images_ls = images_ls
+        self.parent_path = parent_path
         super().__init__(parent)
 
         informativeText = (f"""
         <p style="font-size:10pt">
-        The folder<br><br>{parent_path}<br><br>
-        contains <b>multipe segmentation masks!</b><br>
+            The folder<br><br>{parent_path}<br><br>
+            contains <b>multipe segmentation masks!</b><br>
         </p>
         """)
 
         self.setWindowTitle('Multiple segm.npz files detected!')
+        is_win = sys.platform.startswith("win")
 
         mainLayout = QVBoxLayout()
         infoLayout = QHBoxLayout()
-        buttonsLayout = QHBoxLayout()
+        selectionLayout = QGridLayout()
+        buttonsLayout = QGridLayout()
 
         label = QLabel()
         # padding: top, left, bottom, right
@@ -4557,27 +4561,28 @@ class QDialogMultiSegmNpz(QDialog):
         combobox = QComboBox()
         combobox.addItems(images_ls)
         self.ComboBox = combobox
-        mainLayout.addWidget(label)
-        mainLayout.addWidget(combobox)
 
         okButton = QPushButton(' Load selected ')
         okButton.setShortcut(Qt.Key_Enter)
-        buttonsLayout.addWidget(okButton)
-
-        okAndRemoveButton = QPushButton(' Load selected and remove the others ')
-        buttonsLayout.addWidget(okAndRemoveButton)
-
+        okAndRemoveButton = QPushButton(' Load selected and delete the other files ')
+        s = ' Show in Explorer... ' if is_win else ' Reveal in Finder... '
+        showInFileManagerButton = QPushButton(s)
         cancelButton = QPushButton(' Cancel ')
-        buttonsLayout.addWidget(cancelButton)
+
+        buttonsLayout.addWidget(okButton, 0, 0)
+        buttonsLayout.addWidget(okAndRemoveButton, 0, 1)
+        buttonsLayout.addWidget(showInFileManagerButton, 1, 0)
+        buttonsLayout.addWidget(cancelButton, 1, 1)
         buttonsLayout.setContentsMargins(0, 10, 0, 10)
-        mainLayout.addLayout(buttonsLayout)
 
-        # self.applyToAll_CB = QCheckBox('Apply to all positions')
-        # mainLayout.addWidget(self.applyToAll_CB, alignment=Qt.AlignLeft)
+        selectionLayout.addWidget(label, 0, 1, alignment=Qt.AlignLeft)
+        selectionLayout.addWidget(combobox, 1, 1)
+        selectionLayout.setColumnStretch(0, 1)
+        selectionLayout.setColumnStretch(2, 1)
+        selectionLayout.addLayout(buttonsLayout, 2, 1)
 
+        mainLayout.addLayout(selectionLayout)
         self.setLayout(mainLayout)
-
-        # self.setModal(True)
 
         self.okButton = okButton
         self.okAndRemoveButton = okAndRemoveButton
@@ -4586,10 +4591,27 @@ class QDialogMultiSegmNpz(QDialog):
         okButton.clicked.connect(self.ok_cb)
         okAndRemoveButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
+        showInFileManagerButton.clicked.connect(self.showInFileManager)
 
+    def showInFileManager(self, checked=True):
+        myutils.showInExplorer(self.parent_path)
 
     def ok_cb(self, event):
         self.removeOthers = self.sender() == self.okAndRemoveButton
+        if self.removeOthers:
+            msg = QMessageBox()
+            err_msg = (f"""
+            <p style="font-size:10pt">
+                Are you sure you want to <b>delete the files</b> below?<br><br>
+                {',<br>'.join(self.images_ls)}
+            </p>
+            """)
+            delete_answer = msg.warning(
+               self, 'Delete files?', err_msg, msg.Yes | msg.Cancel
+            )
+            if delete_answer == msg.Cancel:
+                self.removeOthers = False
+                return
         # self.applyToAll = self.applyToAll_CB.isChecked()
         self.cancel = False
         self.selectedItemText = self.ComboBox.currentText()
@@ -4926,7 +4948,8 @@ if __name__ == '__main__':
     font = QtGui.QFont()
     font.setPointSize(10)
     filenames = ['test1', 'test2']
-    win = QDialogZsliceAbsent('test3', 30, filenames)
+    # win = QDialogZsliceAbsent('test3', 30, filenames)
+    win = QDialogMultiSegmNpz(filenames, os.path.dirname(__file__))
     # win = QDialogMetadata(
     #     1, 41, 180, 0.5, 0.09, 0.09, False, False, False,
     #     font=font, imgDataShape=(31, 350, 350)

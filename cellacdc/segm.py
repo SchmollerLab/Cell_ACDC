@@ -465,7 +465,9 @@ class segmWin(QMainWindow):
             if abort:
                 self.close()
                 return
+
         model_name = win.selectedItemsText[0]
+        print(f'Importing {model_name}...')
         myutils.download_model(model_name)
         self.model_name = model_name
         acdcSegment = import_module(f'models.{model_name}.acdcSegment')

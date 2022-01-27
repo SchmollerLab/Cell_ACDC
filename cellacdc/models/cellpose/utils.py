@@ -5,10 +5,40 @@ from urllib.parse import urlparse
 import cv2
 from scipy.ndimage import find_objects, gaussian_filter, generate_binary_structure, label, maximum_filter1d, binary_fill_holes
 from scipy.spatial import ConvexHull
+from scipy.stats import gmean
 import numpy as np
 import colorsys
+import io
 
 from . import metrics
+try:
+    import omnipose, ncolor
+    OMNI_INSTALLED = True
+except:
+    OMNI_INSTALLED = False
+
+try:
+    from skimage.morphology import remove_small_holes
+    SKIMAGE_ENABLED = True
+except:
+    SKIMAGE_ENABLED = False
+
+class TqdmToLogger(io.StringIO):
+    """
+        Output stream for TQDM which will output to logger module instead of
+        the StdOut.
+    """
+    logger = None
+    level = None
+    buf = ''
+    def __init__(self,logger,level=None):
+        super(TqdmToLogger, self).__init__()
+        self.logger = logger
+        self.level = level or logging.INFO
+    def write(self,buf):
+        self.buf = buf.strip('\r\n\t ')
+    def flush(self):
+        self.logger.log(self.level, self.buf)
 
 def rgb_to_hsv(arr):
     rgb_to_hsv_channels = np.vectorize(colorsys.rgb_to_hsv)
@@ -34,6 +64,8 @@ def download_url_to_file(url, dst, progress=True):
             Default: True
     """
     file_size = None
+    import ssl
+    ssl._create_default_https_context = ssl._create_unverified_context
     u = urlopen(url)
     meta = u.info()
     if hasattr(meta, 'getheaders'):
@@ -64,24 +96,24 @@ def download_url_to_file(url, dst, progress=True):
 
 def distance_to_boundary(masks):
     """ get distance to boundary of mask pixels
-
+    
     Parameters
     ----------------
 
-    masks: int, 2D or 3D array
+    masks: int, 2D or 3D array 
         size [Ly x Lx] or [Lz x Ly x Lx], 0=NO masks; 1,2,...=mask labels
 
     Returns
     ----------------
 
-    dist_to_bound: 2D or 3D array
+    dist_to_bound: 2D or 3D array 
         size [Ly x Lx] or [Lz x Ly x Lx]
 
     """
     if masks.ndim > 3 or masks.ndim < 2:
         raise ValueError('distance_to_boundary takes 2D or 3D array, not %dD array'%masks.ndim)
     dist_to_bound = np.zeros(masks.shape, np.float64)
-
+    
     if masks.ndim==3:
         for i in range(masks.shape[0]):
             dist_to_bound[i] = distance_to_boundary(masks[i])
@@ -93,26 +125,26 @@ def distance_to_boundary(masks):
                 sr,sc = si
                 mask = (masks[sr, sc] == (i+1)).astype(np.uint8)
                 contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-                pvc, pvr = np.concatenate(contours[-2], axis=0).squeeze().T
+                pvc, pvr = np.concatenate(contours[-2], axis=0).squeeze().T  
                 ypix, xpix = np.nonzero(mask)
-                min_dist = ((ypix[:,np.newaxis] - pvr)**2 +
+                min_dist = ((ypix[:,np.newaxis] - pvr)**2 + 
                             (xpix[:,np.newaxis] - pvc)**2).min(axis=1)
                 dist_to_bound[ypix + sr.start, xpix + sc.start] = min_dist
         return dist_to_bound
 
 def masks_to_edges(masks, threshold=1.0):
-    """ get edges of masks as a 0-1 array
-
+    """ get edges of masks as a 0-1 array 
+    
     Parameters
     ----------------
 
-    masks: int, 2D or 3D array
+    masks: int, 2D or 3D array 
         size [Ly x Lx] or [Lz x Ly x Lx], 0=NO masks; 1,2,...=mask labels
 
     Returns
     ----------------
 
-    edges: 2D or 3D array
+    edges: 2D or 3D array 
         size [Ly x Lx] or [Lz x Ly x Lx], True pixels are edge pixels
 
     """
@@ -120,26 +152,62 @@ def masks_to_edges(masks, threshold=1.0):
     edges = (dist_to_bound < threshold) * (masks > 0)
     return edges
 
-def masks_to_outlines(masks):
-    """ get outlines of masks as a 0-1 array
-
+def remove_edge_masks(masks, change_index=True):
+    """ remove masks with pixels on edge of image
+    
     Parameters
     ----------------
 
-    masks: int, 2D or 3D array
+    masks: int, 2D or 3D array 
+        size [Ly x Lx] or [Lz x Ly x Lx], 0=NO masks; 1,2,...=mask labels
+
+    change_index: bool (optional, default True)
+        if True, after removing masks change indexing so no missing label numbers
+
+    Returns
+    ----------------
+
+    outlines: 2D or 3D array 
+        size [Ly x Lx] or [Lz x Ly x Lx], 0=NO masks; 1,2,...=mask labels
+
+    """
+    slices = find_objects(masks.astype(int))
+    for i,si in enumerate(slices):
+        remove = False
+        if si is not None:
+            for d,sid in enumerate(si):
+                if sid.start==0 or sid.stop==masks.shape[d]:
+                    remove=True
+                    break  
+            if remove:
+                masks[si][masks[si]==i+1] = 0
+    shape = masks.shape
+    if change_index:
+        _,masks = np.unique(masks, return_inverse=True)
+        masks = np.reshape(masks, shape).astype(np.int32)
+
+    return masks
+
+def masks_to_outlines(masks):
+    """ get outlines of masks as a 0-1 array 
+    
+    Parameters
+    ----------------
+
+    masks: int, 2D or 3D array 
         size [Ly x Lx] or [Lz x Ly x Lx], 0=NO masks; 1,2,...=mask labels
 
     Returns
     ----------------
 
-    outlines: 2D or 3D array
+    outlines: 2D or 3D array 
         size [Ly x Lx] or [Lz x Ly x Lx], True pixels are outlines
 
     """
     if masks.ndim > 3 or masks.ndim < 2:
         raise ValueError('masks_to_outlines takes 2D or 3D array, not %dD array'%masks.ndim)
-    outlines = np.zeros(masks.shape, np.bool)
-
+    outlines = np.zeros(masks.shape, bool)
+    
     if masks.ndim==3:
         for i in range(masks.shape[0]):
             outlines[i] = masks_to_outlines(masks[i])
@@ -151,8 +219,8 @@ def masks_to_outlines(masks):
                 sr,sc = si
                 mask = (masks[sr, sc] == (i+1)).astype(np.uint8)
                 contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
-                pvc, pvr = np.concatenate(contours[-2], axis=0).squeeze().T
-                vr, vc = pvr + sr.start, pvc + sc.start
+                pvc, pvr = np.concatenate(contours[-2], axis=0).squeeze().T            
+                vr, vc = pvr + sr.start, pvc + sc.start 
                 outlines[vr, vc] = 1
         return outlines
 
@@ -230,7 +298,7 @@ def get_mask_stats(masks_true):
     # area for solidity
     npoints = np.unique(masks_true, return_counts=True)[1][1:]
     areas = npoints - mask_perimeters / 2 - 1
-
+    
     compactness = np.zeros(masks_true.max())
     convexity = np.zeros(masks_true.max())
     solidity = np.zeros(masks_true.max())
@@ -249,10 +317,10 @@ def get_mask_stats(masks_true):
                 convex_areas[ic] = hull.volume
             except:
                 convex_perimeters[ic] = 0
-
-    convexity[mask_perimeters>0.0] = (convex_perimeters[mask_perimeters>0.0] /
+                
+    convexity[mask_perimeters>0.0] = (convex_perimeters[mask_perimeters>0.0] / 
                                       mask_perimeters[mask_perimeters>0.0])
-    solidity[convex_areas>0.0] = (areas[convex_areas>0.0] /
+    solidity[convex_areas>0.0] = (areas[convex_areas>0.0] / 
                                      convex_areas[convex_areas>0.0])
     convexity = np.clip(convexity, 0.0, 1.0)
     solidity = np.clip(solidity, 0.0, 1.0)
@@ -280,7 +348,7 @@ def get_masks_unet(output, cell_threshold=0, boundary_threshold=0):
                 dists[slc_pad] = np.minimum(dists[slc_pad], msk)
                 mins[slc_pad][dists[slc_pad]==msk] = (i+1)
         labels[labels==0] = borders[labels==0] * mins[labels==0]
-
+        
     masks = labels
     shape0 = masks.shape
     _,masks = np.unique(masks, return_inverse=True)
@@ -292,25 +360,29 @@ def stitch3D(masks, stitch_threshold=0.25):
     mmax = masks[0].max()
     for i in range(len(masks)-1):
         iou = metrics._intersection_over_union(masks[i+1], masks[i])[1:,1:]
-        iou[iou < stitch_threshold] = 0.0
-        iou[iou < iou.max(axis=0)] = 0.0
-        istitch = iou.argmax(axis=1) + 1
-        ino = np.nonzero(iou.max(axis=1)==0.0)[0]
-        istitch[ino] = np.arange(mmax+1, mmax+len(ino)+1, 1, int)
-        mmax += len(ino)
-        istitch = np.append(np.array(0), istitch)
-        masks[i+1] = istitch[masks[i+1]]
+        if iou.size > 0:
+            iou[iou < stitch_threshold] = 0.0
+            iou[iou < iou.max(axis=0)] = 0.0
+            istitch = iou.argmax(axis=1) + 1
+            ino = np.nonzero(iou.max(axis=1)==0.0)[0]
+            istitch[ino] = np.arange(mmax+1, mmax+len(ino)+1, 1, int)
+            mmax += len(ino)
+            istitch = np.append(np.array(0), istitch)
+            masks[i+1] = istitch[masks[i+1]]
     return masks
 
-def diameters(masks):
-    """ get median 'diameter' of masks """
-    _, counts = np.unique(np.int32(masks), return_counts=True)
-    counts = counts[1:]
-    md = np.median(counts**0.5)
-    if np.isnan(md):
-        md = 0
-    md /= (np.pi**0.5)/2
-    return md, counts**0.5
+# merged diameter functions
+def diameters(masks, omni=False, dist_threshold=1):
+    if omni and OMNI_INSTALLED: #new distance-field-derived diameter (aggrees with cicle but more general)
+        return omnipose.core.diameters(masks), None
+    else: #original 'equivalent area circle' diameter
+        _, counts = np.unique(np.int32(masks), return_counts=True)
+        counts = counts[1:]
+        md = np.median(counts**0.5)
+        if np.isnan(md):
+            md = 0
+        md /= (np.pi**0.5)/2
+        return md, counts**0.5
 
 def radius_distribution(masks, bins):
     unique, counts = np.unique(masks, return_counts=True)
@@ -329,11 +401,6 @@ def size_distribution(masks):
     counts = np.unique(masks, return_counts=True)[1][1:]
     return np.percentile(counts, 25) / np.percentile(counts, 75)
 
-def normalize99(img):
-    X = img.copy()
-    X = (X - np.percentile(X, 1)) / (np.percentile(X, 99) - np.percentile(X, 1))
-    return X
-
 def process_cells(M0, npix=20):
     unq, ic = np.unique(M0, return_counts=True)
     for j in range(len(unq)):
@@ -341,12 +408,13 @@ def process_cells(M0, npix=20):
             M0[M0==unq[j]] = 0
     return M0
 
-
-def fill_holes_and_remove_small_masks(masks, min_size=15):
+# Edited slightly to only remove small holes(under min_size) to avoid filling in voids formed by cells touching themselves
+# (Masks show this, outlines somehow do not. Also need to find a way to split self-contact points).
+def fill_holes_and_remove_small_masks(masks, min_size=15, hole_size=3, scale_factor=1):
     """ fill holes in masks (2D/3D) and discard masks smaller than min_size (2D)
-
+    
     fill holes in each mask using scipy.ndimage.morphology.binary_fill_holes
-
+    
     Parameters
     ----------------
 
@@ -361,14 +429,22 @@ def fill_holes_and_remove_small_masks(masks, min_size=15):
     ---------------
 
     masks: int, 2D or 3D array
-        masks with holes filled and masks smaller than min_size removed,
+        masks with holes filled and masks smaller than min_size removed, 
         0=NO masks; 1,2,...=mask labels,
         size [Ly x Lx] or [Lz x Ly x Lx]
-
+    
     """
+
+    if masks.ndim==2 and OMNI_INSTALLED:
+        # formatting to integer is critical
+        # need to test how it does with 3D
+        masks = ncolor.format_labels(masks, min_area=min_size)
+        
+    hole_size *= scale_factor
+        
     if masks.ndim > 3 or masks.ndim < 2:
         raise ValueError('masks_to_outlines takes 2D or 3D array, not %dD array'%masks.ndim)
-
+    
     slices = find_objects(masks)
     j = 0
     for i,slc in enumerate(slices):
@@ -377,12 +453,46 @@ def fill_holes_and_remove_small_masks(masks, min_size=15):
             npix = msk.sum()
             if min_size > 0 and npix < min_size:
                 masks[slc][msk] = 0
-            else:
+            elif npix > 0:   
                 if msk.ndim==3:
                     for k in range(msk.shape[0]):
+                        # Omnipose version (breaks 3D tests)
+                        # padmsk = remove_small_holes(np.pad(msk[k],1,mode='constant'),hsz)
+                        # msk[k] = padmsk[1:-1,1:-1]
+                        
+                        #Cellpose version
                         msk[k] = binary_fill_holes(msk[k])
-                else:
-                    msk = binary_fill_holes(msk)
+
+                else:          
+                    if OMNI_INSTALLED and SKIMAGE_ENABLED: # Omnipose version (passes 2D tests)
+                        hsz = np.count_nonzero(msk)*hole_size/100 #turn hole size into percentage
+                        padmsk = remove_small_holes(np.pad(msk,1,mode='constant'),hsz)
+                        msk = padmsk[1:-1,1:-1]
+                    else: #Cellpose version
+                        msk = binary_fill_holes(msk)
                 masks[slc][msk] = (j+1)
                 j+=1
     return masks
+
+
+    # if masks.ndim > 3 or masks.ndim < 2:
+    #     raise ValueError('fill_holes_and_remove_small_masks takes 2D or 3D array, not %dD array'%masks.ndim)
+    # slices = find_objects(masks)
+    # j = 0
+    # for i,slc in enumerate(slices):
+    #     if slc is not None:
+    #         msk = masks[slc] == (i+1)
+    #         npix = msk.sum()
+    #         if min_size > 0 and npix < min_size:
+    #             masks[slc][msk] = 0
+    #         else:    
+    #             if msk.ndim==3:
+    #                 for k in range(msk.shape[0]):
+    #                     msk[k] = binary_fill_holes(msk[k])
+    #             else:
+    #                 msk = binary_fill_holes(msk)
+    #             masks[slc][msk] = (j+1)
+    #             j+=1
+    # return masks
+
+
