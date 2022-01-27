@@ -1,17 +1,18 @@
 # Custom ignores
 figures
+!cellacdc/resources/figures
 notebooks/testing.ipynb
 notebooks/.ipynb_checkpoints
 .idea/
 test.txt
-src/test.py
-src/test1.py
-src/test_segm.npy
-src/deprecated
-src/java
-src/javabridge_cp37
-src/javabridge_cp38
-src/javabridge_linux
+cellacdc/test.py
+cellacdc/test1.py
+cellacdc/test_segm.npy
+cellacdc/deprecated
+cellacdc/java
+cellacdc/javabridge_cp37
+cellacdc/javabridge_cp38
+cellacdc/javabridge_linux
 instructions/
 benchmarks/
 env/*
@@ -19,31 +20,31 @@ data/*
 !data/placeholder.txt
 !data/.placeholder.txt
 tests/*
-src/utils/deprecated
+cellacdc/utils/deprecated
 instructions/Screenshots
 UserManual/*
 !UserManual/Cell-ACDC_User_Manual.pdf
 # Ignore models folder but keep the folder with placeholder.txt dummy file
 models/*
 !models/placeholder.txt
-src/models/cellpose/model/*
-src/models/YeaZ/model/*
-src/models/YeastMate/model/*
-!src/models/YeastMate/model/yeastmate_advanced.yaml
-!src/models/YeastMate/model/yeastmate.yaml
+cellacdc/models/cellpose/model/*
+cellacdc/models/YeaZ/model/*
+cellacdc/models/YeastMate/model/*
+!cellacdc/models/YeastMate/model/yeastmate_advanced.yaml
+!cellacdc/models/YeastMate/model/yeastmate.yaml
 
 # Hide placeholder.txt dummy file (probably works only on Linux)
 !models/.placeholder.txt
-src/lastCommit.txt
+cellacdc/lastCommit.txt
 
 # Ignore temp folder but keep the folder with placeholder.txt dummy file
-src/temp/*
-!src/temp/placeholder.txt
+cellacdc/temp/*
+!cellacdc/temp/placeholder.txt
 # Hide placeholder.txt dummy file (probably works only on Linux)
-!src/temp/.placeholder.txt
+!cellacdc/temp/.placeholder.txt
 
 # Ignore deprecated file
-src/deprecated.py
+cellacdc/deprecated.py
 
 # Ignore macOS files
 .DS_Store
@@ -56,14 +57,15 @@ setup_acdc.pdf
 # Byte-compiled / optimized / DLL files
 __pycache__/
 /*.py[cod]
-!src/javabridge/_javabridge.cp37-win_amd64.pyd
-!src/javabridge/_javabridge.cp38-win_amd64.pyd
+!cellacdc/javabridge/_javabridge.cp37-win_amd64.pyd
+!cellacdc/javabridge/_javabridge.cp38-win_amd64.pyd
+/*.dll
 
 *$py.class
 
 # C extensions
 /*.so
-!src/javabridge/_javabridge.cpython-38-x86_64-linux-gnu.so
+!cellacdc/javabridge/_javabridge.cpython-38-x86_64-linux-gnu.so
 
 # Distribution / packaging
 .Python
