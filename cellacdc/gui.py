@@ -6314,6 +6314,7 @@ class guiWin(QMainWindow):
         self.postProcessSegmAction.setChecked(False)
         self.postProcessSegmAction.toggled.connect(self.postProcessSegm)
 
+    @exception_handler
     def repeatSegm(self, model_name=''):
         if not model_name:
             idx = self.segmActions.index(self.sender())
