@@ -30,6 +30,7 @@ models/*
 cellacdc/models/cellpose/model/*
 cellacdc/models/YeaZ/model/*
 cellacdc/models/YeastMate/model/*
+cellacdc/models/StarDist/model/*
 !cellacdc/models/YeastMate/model/yeastmate_advanced.yaml
 !cellacdc/models/YeastMate/model/yeastmate.yaml
 

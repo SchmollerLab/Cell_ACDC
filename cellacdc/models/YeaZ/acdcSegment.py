@@ -156,7 +156,7 @@ class Model:
             lab = segment.segment(thresh, pred, min_distance=min_distance)
             lab_timelapse[t] = lab.astype(np.uint16)
             if signals is not None:
-                ssignals[0].progress_tqdm.emit(1)
+                signals[0].progress_tqdm.emit(1)
         if signals is not None:
             signals[0].signal_close_tqdm.emit()
         return lab_timelapse
