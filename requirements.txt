@@ -25,3 +25,4 @@ omegaconf==2.1.1
 torchvision==0.10.0
 edt~=2.1.2
 ncolor~=1.1.2
+stardist=0.7.3
