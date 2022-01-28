@@ -121,7 +121,7 @@ class loadData:
         ls = myutils.listdir(self.images_path)
         segm_files = [
             file for file in ls if file.endswith('segm.npz')
-            or file.endswith('segm_raw_postproc.npz')
+            or file.find('segm_raw_postproc') != -1
             or file.endswith('segm_raw.npz')
         ]
         is_multi_npz = len(segm_files)>1
@@ -171,23 +171,12 @@ class loadData:
         self.TifPathFound = False if getTifPath else None
         ls = myutils.listdir(self.images_path)
 
-        available_segm_files = []
-        if load_segm_data:
-            for file in ls:
-                filePath = os.path.join(self.images_path, file)
-                if selectedSegmNpz:
-                    is_segm_file = file == selectedSegmNpz
-                else:
-                    if file.endswith('segm.npz'):
-                        is_segm_file = file.endswith('segm.npz')
-
         for file in ls:
             filePath = os.path.join(self.images_path, file)
             if selectedSegmNpz:
                 is_segm_file = file == selectedSegmNpz
             else:
-                if file.endswith('segm.npz'):
-                    is_segm_file = file.endswith('segm.npz')
+                is_segm_file = file.endswith('segm.npz')
 
             if load_segm_data and is_segm_file:
                 self.segmFound = True
@@ -400,7 +389,7 @@ class loadData:
             basename = self.basename
         else:
             basename = f'{self.basename}_'
-        base_path = f'{self.images_path}/{basename}'
+        base_path = os.path.join(self.images_path, basename)
         self.slice_used_align_path = f'{base_path}slice_used_alignment.csv'
         self.slice_used_segm_path = f'{base_path}slice_segm.csv'
         self.align_npz_path = f'{base_path}{self.user_ch_name}_aligned.npz'
@@ -418,8 +407,8 @@ class loadData:
         self.mot_events_path = f'{base_path}mot_events'
         self.mot_metrics_csv_path = f'{base_path}mot_metrics'
         self.raw_segm_npz_path = f'{base_path}segm_raw.npz'
-        self.raw_postproc_segm_npz_path = f'{base_path}segm_raw_postproc.npz'
-        self.post_proc_mot_metrics = f'{base_path}post_proc_mot_metrics.csv'
+        self.raw_postproc_segm_path = f'{base_path}segm_raw_postproc'
+        self.post_proc_mot_metrics = f'{base_path}post_proc_mot_metrics'
 
     def setBlankSegmData(self, SizeT, SizeZ, SizeY, SizeX):
         Y, X = self.img_data.shape[-2:]

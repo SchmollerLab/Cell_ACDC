@@ -6764,6 +6764,9 @@ class guiWin(QMainWindow):
                     selectedSegmNpz=selectedSegmNpz
                 )
                 if f==0:
+                    if posData.segmFound:
+                        segm_fn = os.path.basename(posData.segm_npz_path)
+                        self.logger.info(f'Loading "{segm_fn}" segmentation file...')
                     proceed = posData.askInputMetadata(
                                                 ask_SizeT=self.num_pos==1,
                                                 ask_TimeIncrement=True,
