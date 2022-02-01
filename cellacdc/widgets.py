@@ -20,7 +20,7 @@ from PyQt5.QtWidgets import (
     QGroupBox, QAbstractSlider, QDoubleSpinBox
 )
 
-import myutils, apps
+from . import myutils, apps
 
 class QLogConsole(QTextEdit):
     def __init__(self, parent=None):

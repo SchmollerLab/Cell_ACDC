@@ -21,7 +21,7 @@ from PyQt5.QtCore import (
     Qt
 )
 
-import apps, myutils
+from . import apps, myutils
 
 class twobuttonsmessagebox:
     '''Geometry: "WidthxHeight+Left+Top" '''

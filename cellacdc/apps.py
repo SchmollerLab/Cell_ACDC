@@ -49,9 +49,9 @@ from PyQt5.QtWidgets import (
     QDockWidget, QMessageBox
 )
 
-import myutils, load, prompts, widgets, core
+from . import myutils, load, prompts, widgets, core
 
-import qrc_resources
+from . import qrc_resources
 
 
 pg.setConfigOption('imageAxisOrder', 'row-major') # best performance

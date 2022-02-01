@@ -24,8 +24,8 @@ from PyQt5.QtCore import (
 )
 from PyQt5 import QtGui
 
-import qrc_resources
-import apps, myutils
+from . import qrc_resources
+from . import apps, myutils
 
 if os.name == 'nt':
     try:

@@ -11,15 +11,6 @@ from tqdm import tqdm
 from skimage.measure import regionprops
 from math import sqrt
 
-unet_path = os.path.dirname(os.path.abspath(__file__))
-yeaz_path = os.path.dirname(unet_path)
-models_path = os.path.dirname(yeaz_path)
-cellacdc_path = os.path.dirname(models_path)
-
-sys.path.append(cellacdc_path)
-
-from myutils import exec_time
-
 def correspondence(prev, curr, use_scipy=True, use_modified_yeaz=True):
     """
     source: YeaZ modified by Cell-ACDC developers

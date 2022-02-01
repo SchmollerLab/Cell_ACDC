@@ -67,19 +67,18 @@ from PyQt5.QtWidgets import (
 from pyqtgraph.Qt import QtGui
 import pyqtgraph as pg
 
-from models.YeaZ.unet import tracking as tracking_yeaz
+from cellacdc.models.YeaZ.unet import tracking as tracking_yeaz
 
 # NOTE: Enable icons
-import qrc_resources
+from . import qrc_resources
 
 # Custom modules
-import load, prompts, apps
-import core, myutils, dataPrep, widgets
-from cca_functions import _calc_rot_vol
-from core import numba_max, numba_min
-from myutils import download_model, exec_time
-from QtDarkMode import breeze_resources
-from help import welcome
+from . import load, prompts, apps
+from . import core, myutils, dataPrep, widgets
+from cellacdc.cca_functions import _calc_rot_vol
+from cellacdc.core import numba_max, numba_min
+from cellacdc.myutils import download_model, exec_time
+from cellacdc.help import welcome
 
 if os.name == 'nt':
     try:

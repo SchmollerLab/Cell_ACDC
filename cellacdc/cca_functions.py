@@ -6,9 +6,6 @@ from tifffile import imread
 import os
 import glob
 from tqdm import tqdm
-
-import prompts
-import apps
 from pyqtgraph.Qt import QtGui
 from PyQt5.QtWidgets import QApplication
 from PyQt5 import QtCore
@@ -17,7 +14,12 @@ import difflib
 from scipy.stats import binned_statistic
 import warnings
 
-import myutils
+try:
+    from . import myutils, prompts, apps
+except Exception as e:
+    import myutils
+    import prompts
+    import apps
 
 
 def configuration_dialog():

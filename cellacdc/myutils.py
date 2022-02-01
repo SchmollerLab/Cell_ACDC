@@ -17,12 +17,13 @@ import pandas as pd
 import skimage
 from distutils.dir_util import copy_tree
 from pyqtgraph.colormap import ColorMap
-import prompts
 import inspect
 
 from natsort import natsorted
 
 from tifffile.tifffile import TiffWriter, TiffFile
+
+from . import prompts
 
 __all__ = ['ColorMap']
 _mapCache = {}

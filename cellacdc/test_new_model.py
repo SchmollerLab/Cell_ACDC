@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from collections import namedtuple
 from importlib import import_module
 
-import apps, myutils
+from . import apps, myutils
 
 from PyQt5.QtWidgets import QApplication, QStyleFactory
 

@@ -27,11 +27,11 @@ from PyQt5.QtCore import (
 from PyQt5 import QtGui
 
 # Custom modules
-import prompts, load, myutils, apps, core, dataPrep
+from . import prompts, load, myutils, apps, core, dataPrep
 
-from models.YeaZ.unet import tracking
+from cellacdc.models.YeaZ.unet import tracking
 
-import qrc_resources
+from . import qrc_resources
 
 if os.name == 'nt':
     try:

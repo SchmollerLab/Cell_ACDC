@@ -35,10 +35,10 @@ from pyqtgraph.Qt import QtGui
 import pyqtgraph as pg
 
 # NOTE: Enable icons
-import qrc_resources
+from . import qrc_resources
 
 # Custom modules
-import load, prompts, apps, core, myutils
+from . import load, prompts, apps, core, myutils
 
 if os.name == 'nt':
     try:

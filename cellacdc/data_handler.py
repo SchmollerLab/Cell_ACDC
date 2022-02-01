@@ -4,7 +4,10 @@ from PIL import Image
 import scipy.io as sio
 from nd2reader import ND2Reader
 
-import myutils
+try:
+    from . import myutils
+except Exception as e:
+    import myutils
 
 ### Helper Functions
 

@@ -19,7 +19,7 @@ from numba import jit
 from tqdm import tqdm
 
 # Custom modules
-import apps
+from . import apps
 
 @jit(nopython=True, parallel=True)
 def numba_max(arr):

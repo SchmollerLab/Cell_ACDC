@@ -22,7 +22,8 @@ from PyQt5.QtWidgets import (
     QApplication
 )
 import pyqtgraph as pg
-import prompts, apps, myutils
+
+from . import prompts, apps, myutils
 
 def get_user_ch_paths(images_paths, user_ch_name):
     user_ch_file_paths = []

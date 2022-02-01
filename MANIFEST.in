@@ -1,0 +1,7 @@
+include LICENSE
+exclude cellacdc/deprecated.py
+exclude cellacdc/lastCommit.txt
+exclude cellacdc/test.py
+exclude cellacdc/test1.py
+exclude cellacdc/resources/figures
+exclude cellacdc/cellacdc.egg-info
