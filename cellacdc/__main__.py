@@ -28,9 +28,23 @@ from PyQt5.QtGui import QFontDatabase
 from pyqtgraph.Qt import QtGui
 
 # acdc modules
-from cellacdc import (
-    dataPrep, segm, gui, dataStruct, utils, help, qrc_resources
-)
+try:
+    from cellacdc import (
+        dataPrep, segm, gui, dataStruct, utils, help, qrc_resources
+    )
+except ModuleNotFoundError as e:
+    src_path = os.path.dirname(os.path.abspath(__file__))
+    main_path = os.path.dirname(src_path)
+    print('----------------------------------------')
+    print(e)
+    print(
+        'Cellacdc NOT INSTALLED. '
+        'Run the following command to install: '
+        f'pip install -e "{main_path}"'
+    )
+    print('----------------------------------------')
+    exit('Execution aborted due to an error. See above for details.')
+
 
 if os.name == 'nt':
     try:
@@ -229,7 +243,7 @@ class mainWin(QMainWindow):
 
     def launchConvertFormatUtil(self, checked=False):
         s = self.sender().text()
-        m = re.findall('Convert \.(\w+) file\(s\) to (.*)\.(\w+)...', s)
+        m = re.findall(r'Convert \.(\w+) file\(s\) to (.*)\.(\w+)...', s)
         from_, info, to = m[0]
         isConvertEnabled = self.sender().isEnabled()
         if isConvertEnabled:
@@ -484,8 +498,7 @@ def main():
 
     # Create the application
     app = QApplication([])
-    if sys.platform.startswith("win"):
-        app.setStyle(QStyleFactory.create('Fusion'))
+    app.setStyle(QStyleFactory.create('Fusion'))
     app.setWindowIcon(QtGui.QIcon(":assign-motherbud.svg"))
     win = mainWin(app)
     win.show()
