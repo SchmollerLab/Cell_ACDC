@@ -18,7 +18,7 @@ import pandas as pd
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QPushButton, QLabel, QAction,
-    QMenu, QMessageBox
+    QMenu, QMessageBox, QStyleFactory
 )
 from PyQt5.QtCore import (
     Qt, QProcess, pyqtSignal, pyqtSlot, QTimer, QSize,
@@ -484,7 +484,8 @@ def main():
 
     # Create the application
     app = QApplication([])
-    app.setStyle(QtGui.QStyleFactory.create('Fusion'))
+    if sys.platform.startswith("win"):
+        app.setStyle(QStyleFactory.create('Fusion'))
     app.setWindowIcon(QtGui.QIcon(":assign-motherbud.svg"))
     win = mainWin(app)
     win.show()

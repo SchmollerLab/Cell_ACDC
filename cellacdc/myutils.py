@@ -23,10 +23,13 @@ from natsort import natsorted
 
 from tifffile.tifffile import TiffWriter, TiffFile
 
-from . import prompts
+from cellacdc import prompts
 
 __all__ = ['ColorMap']
 _mapCache = {}
+
+class utilClass:
+    pass
 
 def showInExplorer(path):
     if os.name == 'posix' or os.name == 'os2':
@@ -406,7 +409,12 @@ def imagej_tiffwriter(
 
 def get_list_of_models():
     cellacdc_path = os.path.dirname(os.path.abspath(__file__))
-    models = listdir(os.path.join(cellacdc_path, 'models'))
+    models_path = os.path.join(cellacdc_path, 'models')
+    models = []
+    for name in listdir(models_path):
+        _path = os.path.join(models_path, name)
+        if os.path.isdir(_path) and not name.endswith('__'):
+            models.append(name)
     return models
 
 def seconds_to_ETA(seconds):
@@ -441,7 +449,8 @@ def uint_to_float(img):
     return img
 
 if __name__ == '__main__':
-    model_name = 'cellpose'
-    download_model(model_name)
-
-    download_examples()
+    print(get_list_of_models())
+    # model_name = 'cellpose'
+    # download_model(model_name)
+    #
+    # download_examples()

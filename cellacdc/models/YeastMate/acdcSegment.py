@@ -10,7 +10,7 @@ import skimage.measure
 
 from .yeastmatedetector.inference import YeastMatePredictor
 
-from core import getBaseCca_df
+from cellacdc.core import getBaseCca_df
 
 class Model:
     def __init__(self):

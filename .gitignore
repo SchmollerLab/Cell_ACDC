@@ -2,6 +2,9 @@
 figures
 !cellacdc/resources/figures
 
+not_installed_requirements.txt
+requirements_new.txt
+
 notebooks/testing.ipynb
 notebooks/.ipynb_checkpoints
 .idea/
@@ -14,6 +17,7 @@ cellacdc/java
 cellacdc/javabridge_cp37
 cellacdc/javabridge_cp38
 cellacdc/javabridge_linux
+cellacdc/_version.py
 instructions/
 benchmarks/
 env/*

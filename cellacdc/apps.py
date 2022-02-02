@@ -27,7 +27,6 @@ import skimage.color
 import skimage.segmentation
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg,
                                                NavigationToolbar2Tk)
-from pyglet.canvas import Display
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
@@ -92,8 +91,12 @@ class QDialogMetadataXML(QDialog):
 
         mainLayout = QVBoxLayout()
         entriesLayout = QGridLayout()
-        self.channelNameLayouts = (QVBoxLayout(), QVBoxLayout(), QVBoxLayout())
-        self.channelEmWLayouts = (QVBoxLayout(), QVBoxLayout(), QVBoxLayout())
+        self.channelNameLayouts = (
+            QVBoxLayout(), QVBoxLayout(), QVBoxLayout(), QVBoxLayout()
+        )
+        self.channelEmWLayouts = (
+            QVBoxLayout(), QVBoxLayout(), QVBoxLayout(), QVBoxLayout()
+        )
         buttonsLayout = QGridLayout()
 
         infoLabel = QLabel()
@@ -289,6 +292,7 @@ class QDialogMetadataXML(QDialog):
         self.chNames_QLEs = []
         self.saveChannels_QCBs = []
         self.filename_QLabels = []
+        self.showChannelDataButtons = []
         for c in range(SizeC):
             chName_QLE = QLineEdit()
             chName_QLE.setStyleSheet(
@@ -310,7 +314,7 @@ class QDialogMetadataXML(QDialog):
             chName = chName_QLE.text()
             chName = self.removeInvalidCharacters(chName)
             filenameLabel = QLabel(f"""
-                <p style=font-size:8pt>
+                <p style=font-size:9pt>
                     {self.rawFilename}_{chName}.tif
                 </p>
             """)
@@ -337,9 +341,15 @@ class QDialogMetadataXML(QDialog):
             else:
                 self.channelNameLayouts[2].addWidget(QLabel())
 
+            showChannelDataButton = QPushButton()
+            showChannelDataButton.setIcon(QIcon(":eye-plus.svg"))
+            showChannelDataButton.clicked.connect(self.showChannelData)
+            self.channelNameLayouts[3].addWidget(showChannelDataButton)
+
             self.chNames_QLEs.append(chName_QLE)
             self.saveChannels_QCBs.append(checkBox)
             self.filename_QLabels.append(filenameLabel)
+            self.showChannelDataButtons.append(showChannelDataButton)
 
         self.checkChNames()
 
@@ -373,16 +383,16 @@ class QDialogMetadataXML(QDialog):
         entriesLayout.setContentsMargins(0, 15, 0, 0)
 
         if rawDataStruct is None or rawDataStruct!=-1:
-            okButton = QPushButton('Ok')
+            okButton = QPushButton(' Ok ')
         elif rawDataStruct==1:
-            okButton = QPushButton('Load next position')
-        buttonsLayout.addWidget(okButton, 0, 0)
+            okButton = QPushButton(' Load next position ')
+        buttonsLayout.addWidget(okButton, 0, 1)
 
         self.trustButton = None
         self.overWriteButton = None
         if rawDataStruct==1:
             trustButton = QPushButton(
-                'Trust metadata reader\n for all next positions')
+                ' Trust metadata reader\n for all next positions ')
             trustButton.setToolTip(
                 "If you didn't have to manually modify metadata entries\n"
                 "it is very likely that metadata from the metadata reader\n"
@@ -391,25 +401,27 @@ class QDialogMetadataXML(QDialog):
                 "the metadata from the reader\n"
                 "(except for channel names, I will use the manually entered)"
             )
-            buttonsLayout.addWidget(trustButton, 1, 0)
+            buttonsLayout.addWidget(trustButton, 1, 1)
             self.trustButton = trustButton
 
             overWriteButton = QPushButton(
-                'Use the above metadata\nfor all the next positions')
+                ' Use the above metadata\n for all the next positions ')
             overWriteButton.setToolTip(
                 "If you had to manually modify metadata entries\n"
                 "AND you know they will be the same for all next positions\n"
                 "you can click this button to stop showing this dialog\n"
                 "and use the same metadata for all the next positions."
             )
-            buttonsLayout.addWidget(overWriteButton, 1, 1)
+            buttonsLayout.addWidget(overWriteButton, 1, 2)
             self.overWriteButton = overWriteButton
 
             trustButton.clicked.connect(self.ok_cb)
             overWriteButton.clicked.connect(self.ok_cb)
 
         cancelButton = QPushButton('Cancel')
-        buttonsLayout.addWidget(cancelButton, 0, 1)
+        buttonsLayout.addWidget(cancelButton, 0, 2)
+        buttonsLayout.setColumnStretch(0, 1)
+        buttonsLayout.setColumnStretch(3, 1)
         buttonsLayout.setContentsMargins(0, 10, 0, 0)
 
         mainLayout.addLayout(entriesLayout)
@@ -481,13 +493,13 @@ class QDialogMetadataXML(QDialog):
         if self.addImageName_QCB.isChecked():
             self.ImageName = self.removeInvalidCharacters(self.ImageName)
             filename = (f"""
-                <p style=font-size:8pt>
+                <p style=font-size:9pt>
                     {rawFilename}_{self.ImageName}_{chName}.tif
                 </p>
             """)
         else:
             filename = (f"""
-                <p style=font-size:8pt>
+                <p style=font-size:9pt>
                     {rawFilename}_{chName}.tif
                 </p>
             """)
@@ -569,6 +581,11 @@ class QDialogMetadataXML(QDialog):
         self.PhysicalSizeYUnit_Label.setText(unit)
         self.PhysicalSizeZUnit_Label.setText(unit)
 
+    def showChannelData(self, checked=False):
+        idx = self.showChannelDataButtons.index(self.sender())
+        posData = myutils.utilClass()
+        
+
     def addRemoveChannels(self, value):
         currentSizeC = len(self.chNames_QLEs)
         DeltaChannels = abs(value-currentSizeC)
@@ -591,7 +608,7 @@ class QDialogMetadataXML(QDialog):
 
                 chName = chName_QLE.text()
                 filenameLabel = QLabel(f"""
-                    <p style=font-size:8pt>
+                    <p style=font-size:9pt>
                         {self.rawFilename}_{chName}.tif
                     </p>
                 """)
@@ -612,9 +629,15 @@ class QDialogMetadataXML(QDialog):
                 self.channelNameLayouts[2].addWidget(checkBox)
                 self.channelNameLayouts[2].addWidget(QLabel())
 
+                showChannelDataButton = QPushButton()
+                showChannelDataButton.setIcon(QIcon(":eye-plus.svg"))
+                showChannelDataButton.clicked.connect(self.showChannelData)
+                self.channelNameLayouts[3].addWidget(showChannelDataButton)
+
                 self.chNames_QLEs.append(chName_QLE)
                 self.saveChannels_QCBs.append(checkBox)
                 self.filename_QLabels.append(filenameLabel)
+                self.showChannelDataButtons.append(showChannelDataButton)
 
                 emWavelen_DSB = QDoubleSpinBox()
                 emWavelen_DSB.setAlignment(Qt.AlignCenter)
@@ -640,6 +663,8 @@ class QDialogMetadataXML(QDialog):
                 filename_L = self.channelNameLayouts[1].itemAt(idx+1).widget()
                 checkBox = self.channelNameLayouts[2].itemAt(idx).widget()
                 dummyLabel = self.channelNameLayouts[2].itemAt(idx+1).widget()
+                showButton = self.showChannelDataButtons[-1]
+                showButton.clicked.disconnect()
 
                 self.channelNameLayouts[0].removeWidget(label1)
                 self.channelNameLayouts[0].removeWidget(label2)
@@ -647,10 +672,12 @@ class QDialogMetadataXML(QDialog):
                 self.channelNameLayouts[1].removeWidget(filename_L)
                 self.channelNameLayouts[2].removeWidget(checkBox)
                 self.channelNameLayouts[2].removeWidget(dummyLabel)
+                self.channelNameLayouts[3].removeWidget(showButton)
 
                 self.chNames_QLEs.pop(-1)
                 self.saveChannels_QCBs.pop(-1)
                 self.filename_QLabels.pop(-1)
+                self.showChannelDataButtons.pop(-1)
 
                 label = self.channelEmWLayouts[0].itemAt(c-1).widget()
                 emWavelen_DSB = self.channelEmWLayouts[1].itemAt(c-1).widget()
@@ -2503,7 +2530,7 @@ class postProcessSegmDialog(QDialog):
     def closeEvent(self, event):
         self.sigClosed.emit()
 
-class CellsSlideshow_GUI(QMainWindow):
+class imageViewer(QMainWindow):
     """Main Window."""
 
     def __init__(
@@ -3260,8 +3287,9 @@ class askStopFrameSegm(QDialog):
     def visualize_cb(self, checked=True):
         spinBox, posData = self.dataDict[self.sender()]
         posData.frame_i = spinBox.value()-1
-        self.slideshowWin = CellsSlideshow_GUI(posData=posData,
-                                               spinBox=spinBox)
+        self.slideshowWin = imageViewer(
+            posData=posData, spinBox=spinBox
+        )
         self.slideshowWin.update_img()
         self.slideshowWin.show()
 

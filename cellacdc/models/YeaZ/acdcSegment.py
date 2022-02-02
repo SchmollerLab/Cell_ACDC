@@ -13,8 +13,6 @@ from tensorflow import keras
 
 from tqdm import tqdm
 
-import apps
-
 class progressCallback(keras.callbacks.Callback):
     def __init__(self, signals):
         self.signals = signals

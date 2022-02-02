@@ -5292,7 +5292,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         self.determineSlideshowWinPos()
         if self.slideshowButton.isChecked():
-            self.slideshowWin = apps.CellsSlideshow_GUI(
+            self.slideshowWin = apps.imageViewer(
                 parent=self,
                 button_toUncheck=self.slideshowButton,
             )
