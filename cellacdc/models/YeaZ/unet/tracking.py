@@ -3,13 +3,17 @@ import sys
 import time
 import numpy as np
 import pandas as pd
-from munkres import Munkres
 from sklearn.preprocessing import scale
 from sklearn.metrics.pairwise import euclidean_distances
 from scipy.optimize import linear_sum_assignment
 from tqdm import tqdm
 from skimage.measure import regionprops
 from math import sqrt
+
+try:
+    from munkres import Munkres
+except ModuleNotFoundError as e:
+    print(e)
 
 def correspondence(prev, curr, use_scipy=True, use_modified_yeaz=True):
     """
