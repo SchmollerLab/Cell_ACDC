@@ -3207,9 +3207,13 @@ class editCcaTableWidget(QDialog):
             self.loop.exit()
 
 class askStopFrameSegm(QDialog):
-    def __init__(self, user_ch_file_paths, user_ch_name, parent=None):
+    def __init__(
+            self, user_ch_file_paths, user_ch_name,
+            concat_segm=False, parent=None
+        ):
         self.parent = parent
         self.cancel = True
+        self.concat_segm = concat_segm
 
         super().__init__(parent)
         self.setWindowTitle('Enter stop frame')
@@ -3270,7 +3274,11 @@ class askStopFrameSegm(QDialog):
             if posData.segmSizeT == 1:
                 spinBox.setValue(posData.SizeT)
             else:
-                spinBox.setValue(posData.segmSizeT)
+                if self.concat_segm and posData.segmSizeT < posData.SizeT:
+                    spinBox.setMinimum(posData.segmSizeT+1)
+                    spinBox.setValue(posData.SizeT)
+                else:
+                    spinBox.setValue(posData.segmSizeT)
             spinBox.setAlignment(Qt.AlignCenter)
             visualizeButton = QPushButton('Visualize')
             visualizeButton.clicked.connect(self.visualize_cb)

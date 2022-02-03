@@ -9727,6 +9727,8 @@ class guiWin(QMainWindow):
         if posData.lost_IDs:
             # Get the rp from previous frame
             rp = posData.allData_li[posData.frame_i-1]['regionprops']
+            if rp is None:
+                return
             for obj in rp:
                 self.highlightLost_obj(obj)
 

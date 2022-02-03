@@ -81,6 +81,7 @@ class segmWorker(QRunnable):
         self.predictCcaState_model = mainWin.predictCcaState_model
         self.is_segment3DT_available = mainWin.is_segment3DT_available
         self.innerPbar_available = mainWin.innerPbar_available
+        self.concat_segm = mainWin.concat_segm
 
     def setupPausingItems(self):
         self.mutex = QMutex()
@@ -103,7 +104,7 @@ class segmWorker(QRunnable):
         posData.buildPaths()
         posData.loadImgData()
         posData.loadOtherFiles(
-            load_segm_data=False,
+            load_segm_data=self.concat_segm,
             load_acdc_df=False,
             load_shifts=False,
             loadSegmInfo=True,
@@ -137,9 +138,12 @@ class segmWorker(QRunnable):
         stop_i = posData.segmSizeT
 
         if posData.SizeT > 1:
+            self.t0 = 0
+            if self.concat_segm and posData.segm_data is not None:
+                self.t0 = len(posData.segm_data)
             if posData.SizeZ > 1:
                 # 3D data over time
-                img_data_slice = posData.img_data[:stop_i]
+                img_data_slice = posData.img_data[self.t0:stop_i]
                 Y, X = posData.img_data.shape[-2:]
                 img_data = np.zeros((stop_i, Y, X), posData.img_data.dtype)
                 df = posData.segmInfo_df.loc[posData.filename]
@@ -162,7 +166,7 @@ class segmWorker(QRunnable):
                     pad_info = ((0, 0), (0, 0), (y0, Y-y1), (x0, X-x1))
             else:
                 # 2D data over time
-                img_data = posData.img_data[:stop_i]
+                img_data = posData.img_data[self.t0:stop_i]
                 if isROIactive:
                     Y, X = img_data.shape[-2:]
                     img_data = img_data[:, y0:y1, x0:x1]
@@ -193,7 +197,6 @@ class segmWorker(QRunnable):
                     pad_info = ((y0, Y-y1), (x0, X-x1))
                     img_data = img_data[y0:y1, x0:x1]
 
-        #
         print(f'Image shape = {img_data.shape}')
 
         """Segmentation routine"""
@@ -260,11 +263,20 @@ class segmWorker(QRunnable):
                 )
 
         if posData.SizeT > 1 and self.do_tracking:
-            # self.signals.progress.emit('Tracking cells...')
             # NOTE: We use yeaz tracking also for cellpose
+            if self.concat_segm and posData.segm_data is not None:
+                # Insert last frame from existing segm to ensure
+                # correct tracking when concatenating
+                last_segm_frame = posData.segm_data[-1]
+                lab_stack = np.insert(
+                    lab_stack, 0, last_segm_frame, axis=0
+                )
             tracked_stack = tracking.correspondence_stack(
                 lab_stack, signals=self.signals
             ).astype(np.uint16)
+            if self.concat_segm and posData.segm_data is not None:
+                # Remove first frame that comes from existing segm
+                tracked_stack = tracked_stack[1:]
         else:
             tracked_stack = lab_stack
             try:
@@ -280,6 +292,12 @@ class segmWorker(QRunnable):
 
         if isROIactive:
             tracked_stack = np.pad(tracked_stack, pad_info,  mode='constant')
+
+        if self.concat_segm and posData.segm_data is not None:
+            # Concatenate existing segmentation with new one
+            tracked_stack = np.append(
+                posData.segm_data, tracked_stack, axis=0
+            )
 
         if self.save:
             self.signals.progress.emit(f'Saving {posData.relPath}...')
@@ -625,6 +643,7 @@ class segmWin(QMainWindow):
             elif aligned_npz_found:
                 user_ch_file_paths.append(img_path)
 
+
         selectROI = False
         # Ask other questions based on first position
         img_path = user_ch_file_paths[0]
@@ -633,7 +652,7 @@ class segmWin(QMainWindow):
         posData.buildPaths()
         posData.loadImgData()
         posData.loadOtherFiles(
-            load_segm_data=False,
+            load_segm_data=True,
             load_acdc_df=False,
             load_shifts=False,
             loadSegmInfo=True,
@@ -686,6 +705,26 @@ class segmWin(QMainWindow):
                 if abort:
                     self.close()
                     return
+
+        self.concat_segm = False
+        if posData.SizeT > 1:
+            # Check if there are segmentation already computed
+            ask_concat = False
+            for img_path in user_ch_file_paths:
+                images_path = os.path.dirname(img_path)
+                ls = myutils.listdir(images_path)
+                for file in ls:
+                    if file.endswith('segm.npz'):
+                        ask_concat = True
+                        break
+            if ask_concat:
+                concat_segm = self.askConcatSegm()
+                if concat_segm is None:
+                    abort = self.doAbort()
+                    if abort:
+                        self.close()
+                        return
+                self.concat_segm = concat_segm
 
         if posData.dataPrep_ROIcoords is None:
             # Ask ROI
@@ -767,7 +806,7 @@ class segmWin(QMainWindow):
             posData.buildPaths()
             posData.loadImgData()
             posData.loadOtherFiles(
-                load_segm_data=False,
+                load_segm_data=True,
                 load_acdc_df=False,
                 load_shifts=False,
                 loadSegmInfo=True,
@@ -790,8 +829,10 @@ class segmWin(QMainWindow):
         if posData.SizeT > 1:
             # Ask stop frame. The "askStopFrameSegm" will internally load
             # all the posData and save segmSizeT which will be used as stop_i
-            win = apps.askStopFrameSegm(user_ch_file_paths,
-                                        user_ch_name, parent=self)
+            win = apps.askStopFrameSegm(
+                user_ch_file_paths, user_ch_name,
+                concat_segm=self.concat_segm, parent=self
+            )
             win.setFont(font)
             win.exec_()
             if win.cancel:
@@ -859,6 +900,32 @@ class segmWin(QMainWindow):
             self.threadIdx = i
             img_path = user_ch_file_paths[i]
             self.startSegmWorker()
+
+    def askConcatSegm(self):
+        txt = (
+        'At least one of the loaded positions already contains a '
+        'segmentation file.\n\n'
+        'What do you want me to do?\n\n'
+        'NOTE: you will be able to choose a stop frame later.\n'
+        )
+        msg = QMessageBox(self)
+        msg.setWindowTitle('Concatenate or overwrite segmentation?')
+        msg.setIcon(msg.Information)
+        msg.setText(txt)
+        concatButton = QPushButton(
+            'Concatenate new segmentation to existing one'
+        )
+        overWriteButton = QPushButton('Overwrite existing segmentation')
+        cancelButton = QPushButton('Cancel')
+        msg.addButton(concatButton, msg.YesRole)
+        msg.addButton(overWriteButton, msg.NoRole)
+        msg.addButton(cancelButton, msg.RejectRole)
+        msg.exec_()
+        clickedButton = msg.clickedButton()
+        if clickedButton == cancelButton:
+            return None
+
+        return clickedButton == concatButton
 
     def addlogTerminal(self):
         self.logTerminal = QTerminal()
