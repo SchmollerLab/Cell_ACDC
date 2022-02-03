@@ -38,10 +38,10 @@ import numpy as np
 import os
 import sys
 
-import javabridge as jutil
-import bioformats
-import javabridge as javabridge
-import bioformats.omexml as ome
+from .. import javabridge as jutil
+from .. import bioformats
+from .. import javabridge
+from ..bioformats import omexml as ome
 
 def write_image(pathname, pixels, pixel_type,
                 c = 0, z = 0, t = 0,
@@ -425,7 +425,7 @@ def getColorModel(color_space,
 if __name__ == "__main__":
     import wx
     import matplotlib.backends.backend_wxagg as mmmm
-    import bioformats
+    from .. import bioformats
     from .formatreader import *
     from .metadatatools import *
 
@@ -506,5 +506,3 @@ if __name__ == "__main__":
 
     jutil.detach()
     app.MainLoop()
-
-

@@ -6,7 +6,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-print('Importing modules')
+print('Importing modules...')
 import sys
 import os
 import subprocess
@@ -29,9 +29,12 @@ from pyqtgraph.Qt import QtGui
 
 # acdc modules
 try:
+    # We try to import from cellacdc instead of "from ." to check
+    # if cellacdc was installed with pip or not
     from cellacdc import (
-        dataPrep, segm, gui, dataStruct, utils, help, qrc_resources
+        dataPrep, segm, gui, dataStruct, utils, help, qrc_resources, myutils
     )
+    from cellacdc.help import about
 except ModuleNotFoundError as e:
     src_path = os.path.dirname(os.path.abspath(__file__))
     main_path = os.path.dirname(src_path)
@@ -240,6 +243,11 @@ class mainWin(QMainWindow):
         self.npzToTiffAction.triggered.connect(self.launchConvertFormatUtil)
         self.TiffToNpzAction.triggered.connect(self.launchConvertFormatUtil)
         self.welcomeGuideAction.triggered.connect(self.launchWelcomeGuide)
+        self.aboutAction.triggered.connect(self.showAbout)
+
+    def showAbout(self):
+        self.aboutWin = about.QDialogAbout(parent=self)
+        self.aboutWin.show()
 
     def launchConvertFormatUtil(self, checked=False):
         s = self.sender().text()
@@ -273,6 +281,7 @@ class mainWin(QMainWindow):
             return
 
         is_win = sys.platform.startswith("win")
+        is_win = False
 
         if is_win:
             print('Launching data structure creation in a separate process...')
@@ -509,6 +518,9 @@ def main():
         pass
     print('Done. If application is not visible, it is probably minimized '
           'or behind some other open window.')
+    print('---------------------------------')
+    print(f'Welcome to Cell-ACDC v{myutils.read_version()}!')
+    print('---------------------------------')
     app.exec_()
 
 

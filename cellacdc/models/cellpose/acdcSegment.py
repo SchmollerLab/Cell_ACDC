@@ -36,10 +36,11 @@ class Model:
             model_dir=model_dir
         )
 
-    def segment(self, image,
-                diameter=0.0,
-                flow_threshold=0.4,
-                cellprob_threshold=0.0):
+    def segment(
+            self, image,
+            diameter=0.0,
+            mask_threshold=0.0
+        ):
         # Preprocess image
         image = image/image.max()
         image = skimage.filters.gaussian(image, sigma=1)
@@ -50,8 +51,7 @@ class Model:
             image,
             channels=[0,0],
             diameter=diameter,
-            flow_threshold=flow_threshold,
-            cellprob_threshold=cellprob_threshold
+            mask_threshold=mask_threshold
         )
         return lab
 

@@ -475,6 +475,7 @@ class dataPrepWin(QMainWindow):
     def update_img(self):
         self.updateNavigateItems()
         posData = self.data[self.pos_i]
+        print(self.pos_i)
         img = self.getImage(posData, posData.img_data, self.frame_i)
         # img = img/img.max()
         self.img.setImage(img)

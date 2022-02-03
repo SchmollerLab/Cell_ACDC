@@ -11,12 +11,6 @@ All rights reserved.
 
 import os.path
 
-import os
-try:
-    os.add_dll_directory(os.path.join(os.environ['JAVA_HOME'], 'jre', 'bin', 'server'))
-except Exception as e:
-    pass
-
 try:
     from _version import __version__
 except ImportError:

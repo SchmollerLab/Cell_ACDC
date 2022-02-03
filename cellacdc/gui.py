@@ -10,7 +10,6 @@
 #
 
 """Cell-ACDC GUI for correcting Segmentation and Tracking errors"""
-print('Importing modules...')
 import sys
 import os
 import shutil
@@ -67,7 +66,7 @@ from PyQt5.QtWidgets import (
 from pyqtgraph.Qt import QtGui
 import pyqtgraph as pg
 
-from cellacdc.models.YeaZ.unet import tracking as tracking_yeaz
+from .models.YeaZ.unet import tracking as tracking_yeaz
 
 # NOTE: Enable icons
 from . import qrc_resources
@@ -75,10 +74,10 @@ from . import qrc_resources
 # Custom modules
 from . import load, prompts, apps
 from . import core, myutils, dataPrep, widgets
-from cellacdc.cca_functions import _calc_rot_vol
-from cellacdc.core import numba_max, numba_min
-from cellacdc.myutils import download_model, exec_time
-from cellacdc.help import welcome
+from .cca_functions import _calc_rot_vol
+from .core import numba_max, numba_min
+from .myutils import download_model, exec_time
+from .help import welcome
 
 if os.name == 'nt':
     try:
@@ -126,7 +125,8 @@ def exception_handler(func):
                 result = func(self, *args, **kwargs)
         except Exception as e:
             result = None
-            self.logger.exception(e)
+            traceback_str = traceback.format_exc()
+            self.logger.exception(traceback_str)
             msg = QMessageBox(self)
             msg.setWindowTitle('Critical error')
             msg.setIcon(msg.Critical)
@@ -140,7 +140,7 @@ def exception_handler(func):
             </p>
             """)
             msg.setText(err_msg)
-            msg.setDetailedText(traceback.format_exc())
+            msg.setDetailedText(traceback_str)
             msg.exec_()
             self.is_error_state = True
         return result
@@ -1896,9 +1896,11 @@ class guiWin(QMainWindow):
 
         # Drag image if neither brush or eraser are On pressed
         dragImg = (
-            (left_click or isPanImageClick) and not eraserON and not
+            left_click and not eraserON and not
             brushON and not separateON
         )
+        if isPanImageClick:
+            dragImg = True
 
         # Enable dragging of the image window like pyqtgraph original code
         if dragImg:
@@ -3214,10 +3216,12 @@ class guiWin(QMainWindow):
         wandON = self.wandToolButton.isChecked() and not isPanImageClick
 
         dragImgLeft = (
-            (left_click or isPanImageClick) and not brushON and not histON
+            left_click and not brushON and not histON
             and not curvToolON and not eraserON and not rulerON
             and not wandON
         )
+        if isPanImageClick:
+            dragImgLeft = True
 
         dragImgMiddle = middle_click
 
@@ -5781,7 +5785,7 @@ class guiWin(QMainWindow):
                     oldIDs = list(inv.out_values)
                     newIDs.append(-1)
                     oldIDs.append(-1)
-                    self.update_cca_df_relabelling(posData, old_IDs, new_IDs)
+                    self.update_cca_df_relabelling(posData, oldIDs, newIDs)
                     self.store_data()
                     self.update_rp()
                     li = list(zip(oldIDs, newIDs))
@@ -7366,10 +7370,17 @@ class guiWin(QMainWindow):
             posData.ol_data = None
 
             # Colormap
-            posData.lut = self.cmap.getLookupTable(0,1, posData.HDDmaxID+10)
+            posData.lut = self.cmap.getLookupTable(0,1,255)
             np.random.shuffle(posData.lut)
             # Insert background color
             posData.lut = np.insert(posData.lut, 0, [25, 25, 25], axis=0)
+
+            print('----------------')
+            print(posData.relPath)
+            print(posData.HDDmaxID)
+            print(len(posData.lut))
+            pprint(posData.lut)
+            print('----------------')
 
             posData.allData_li = [
                     {
@@ -8675,7 +8686,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         if lenNewLut is None:
             try:
-                lenNewLut = max(posData.IDs)+2
+                lenNewLut = max(posData.IDs)+1
             except ValueError:
                 # Empty segmentation mask
                 lenNewLut = 1
@@ -8700,7 +8711,6 @@ class guiWin(QMainWindow):
                 lut[ID] = lut[ID]*0.2
         except Exception as e:
             self.logger.info('WARNING: Tracking is WRONG.')
-            pass
         self.img2.setLookupTable(lut)
 
     def update_rp_metadata(self, draw=True):
@@ -9209,11 +9219,20 @@ class guiWin(QMainWindow):
         self.df_settings.to_csv(self.settings_csv_path)
 
     def updateOlColors(self, button):
-        rgb = self.overlayColorButton.color().getRgb()[:3]
-        for posData in self.data:
-            posData.ol_colors[self._key] = rgb
-        self.df_settings.at['overlayColor',
-                            'value'] = '-'.join([str(v) for v in rgb])
+        posData = self.data[self.pos_i]
+        try:
+            fluo_filenames = list(posData.fluo_data_dict.keys())
+            _idx = fluo_filenames.index(self._key)
+            rgb = self.overlayColorButton.color().getRgb()[:3]
+            for _posData in self.data:
+                _key = list(_posData.fluo_data_dict.keys())[_idx]
+                _posData.ol_colors[_key] = rgb
+        except Exception as e:
+            self.logger.exception(traceback.format_exc())
+
+        self.df_settings.at['overlayColor', 'value'] = (
+            '-'.join([str(v) for v in rgb])
+        )
         self.df_settings.to_csv(self.settings_csv_path)
         self.updateOverlay(button)
 

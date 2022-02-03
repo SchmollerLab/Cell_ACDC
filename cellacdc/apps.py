@@ -73,14 +73,16 @@ class QDialogMetadataXML(QDialog):
             TimeIncrement=180.0, TimeIncrementUnit='s',
             PhysicalSizeX=1.0, PhysicalSizeY=1.0, PhysicalSizeZ=1.0,
             PhysicalSizeUnit='μm', ImageName='', chNames=None, emWavelens=None,
-            parent=None, rawDataStruct=None
+            parent=None, rawDataStruct=None, sampleImgData=None,
+            rawFilePath=None
         ):
-
         self.cancel = True
         self.trust = False
         self.overWrite = False
         rawFilename = os.path.splitext(rawFilename)[0]
         self.rawFilename = self.removeInvalidCharacters(rawFilename)
+        self.rawFilePath = rawFilePath
+        self.sampleImgData = sampleImgData
         self.ImageName = ImageName
         self.rawDataStruct = rawDataStruct
         super().__init__(parent)
@@ -345,6 +347,8 @@ class QDialogMetadataXML(QDialog):
             showChannelDataButton.setIcon(QIcon(":eye-plus.svg"))
             showChannelDataButton.clicked.connect(self.showChannelData)
             self.channelNameLayouts[3].addWidget(showChannelDataButton)
+            if self.sampleImgData is None:
+                showChannelDataButton.setDisabled(True)
 
             self.chNames_QLEs.append(chName_QLE)
             self.saveChannels_QCBs.append(checkBox)
@@ -584,7 +588,29 @@ class QDialogMetadataXML(QDialog):
     def showChannelData(self, checked=False):
         idx = self.showChannelDataButtons.index(self.sender())
         posData = myutils.utilClass()
-        
+        posData.frame_i = 0
+        posData.SizeT = self.SizeT_SB.value()
+        posData.SizeZ = self.SizeZ_SB.value()
+        posData.filename = f'{self.rawFilename}_C={idx}'
+        posData.segmInfo_df = pd.DataFrame({
+            'filename': [posData.filename],
+            'frame_i': [0],
+            'which_z_proj_gui': ['single z-slice'],
+            'z_slice_used_gui': [int(posData.SizeZ/2)]
+        }).set_index(['filename', 'frame_i'])
+        path_li = os.path.normpath(self.rawFilePath).split(os.sep)
+        posData.relPath = f'{f"{os.sep}".join(path_li[-3:1])}'
+        posData.relPath = f'{posData.relPath}{os.sep}{posData.filename}'
+        try:
+            posData.img_data = [self.sampleImgData[idx]] # single frame data
+        except Exception as e:
+            traceback.print_exc()
+            return
+
+        self.imageViewer = imageViewer(posData=posData)
+        self.imageViewer.update_img()
+        self.imageViewer.show()
+
 
     def addRemoveChannels(self, value):
         currentSizeC = len(self.chNames_QLEs)
@@ -633,6 +659,8 @@ class QDialogMetadataXML(QDialog):
                 showChannelDataButton.setIcon(QIcon(":eye-plus.svg"))
                 showChannelDataButton.clicked.connect(self.showChannelData)
                 self.channelNameLayouts[3].addWidget(showChannelDataButton)
+                if self.sampleImgData is None:
+                    showChannelDataButton.setDisabled(True)
 
                 self.chNames_QLEs.append(chName_QLE)
                 self.saveChannels_QCBs.append(checkBox)
@@ -793,7 +821,6 @@ class QDialogMetadataXML(QDialog):
     def closeEvent(self, event):
         if hasattr(self, 'loop'):
             self.loop.exit()
-
 
 class QDialogWorkerProcess(QDialog):
     def __init__(
@@ -2394,14 +2421,14 @@ class postProcessSegmParams(QGroupBox):
         layout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         if useSliders:
             maxElongation_DSB = widgets.sliderWithSpinBox(isFloat=True)
-            maxElongation_DSB.setMinimum(1)
+            maxElongation_DSB.setMinimum(0)
             maxElongation_DSB.setMaximum(100)
             maxElongation_DSB.setValue(3)
             maxElongation_DSB.setSingleStep(0.5)
         else:
             maxElongation_DSB = QDoubleSpinBox()
             maxElongation_DSB.setAlignment(Qt.AlignCenter)
-            maxElongation_DSB.setMinimum(1)
+            maxElongation_DSB.setMinimum(0)
             maxElongation_DSB.setMaximum(2147483647.0)
             maxElongation_DSB.setValue(3)
             maxElongation_DSB.setDecimals(1)
@@ -2568,6 +2595,7 @@ class imageViewer(QMainWindow):
 
         if posData is None:
             posData = self.parent.data[self.parent.pos_i]
+        self.posData = posData
 
         self.frame_i = posData.frame_i
         self.num_frames = posData.SizeT
@@ -2664,7 +2692,7 @@ class imageViewer(QMainWindow):
 
         # Frames scrollbar
         self.framesScrollBar = QScrollBar(Qt.Horizontal)
-        self.framesScrollBar.setFixedHeight(20)
+        # self.framesScrollBar.setFixedHeight(20)
         self.framesScrollBar.setMinimum(1)
         self.framesScrollBar.setMaximum(posData.SizeT)
         t_label = QLabel('frame  ')
@@ -2679,8 +2707,11 @@ class imageViewer(QMainWindow):
 
         # z-slice scrollbar
         self.zSliceScrollBar = QScrollBar(Qt.Horizontal)
-        self.zSliceScrollBar.setFixedHeight(20)
-        self.zSliceScrollBar.setDisabled(True)
+        # self.zSliceScrollBar.setFixedHeight(20)
+        if self.posData.SizeZ == 1:
+            self.zSliceScrollBar.setDisabled(True)
+            self.zSliceScrollBar.setVisible(False)
+        self.zSliceScrollBar.setMaximum(self.posData.SizeZ-1)
         _z_label = QLabel('z-slice  ')
         _font = QtGui.QFont()
         _font.setPointSize(10)
@@ -2690,7 +2721,6 @@ class imageViewer(QMainWindow):
         self.img_Widglayout.addWidget(self.zSliceScrollBar, 1, 1, 1, 20)
 
         self.img_Widglayout.setContentsMargins(100, 0, 50, 0)
-
         self.zSliceScrollBar.sliderMoved.connect(self.update_z_slice)
 
     def framesScrollBarMoved(self, frame_n):
@@ -4768,12 +4798,16 @@ class QDialogModelParams(QDialog):
         okButton = QPushButton(' Ok ')
         buttonsLayout.addWidget(okButton)
 
+        infoButton = QPushButton(' More info... ')
+        buttonsLayout.addWidget(infoButton)
+
         cancelButton = QPushButton(' Cancel ')
         buttonsLayout.addWidget(cancelButton)
 
         buttonsLayout.setContentsMargins(0, 10, 0, 10)
 
         okButton.clicked.connect(self.ok_cb)
+        infoButton.clicked.connect(self.info_params)
         cancelButton.clicked.connect(self.close)
 
         mainLayout.addWidget(initGroupBox)
@@ -4812,6 +4846,33 @@ class QDialogModelParams(QDialog):
         self.setFont(font)
 
         # self.setModal(True)
+
+    def info_params(self):
+        self.infoWin = QMessageBox()
+        self.infoWin.setWindowTitle('Model parameters info')
+        self.infoWin.setIcon(self.infoWin.Information)
+        txt = (
+            'Currently Cell-ACDC has three models implemented: '
+            'YeaZ, Cellpose and StarDist.\n\n'
+            'Cellpose and StarDist have the following default models available:\n\n'
+            'Cellpose:\n'
+            '   - cyto\n'
+            '   - nuclei\n'
+            '   - cyto2\n'
+            '   - bact\n'
+            '   - bact_omni\n'
+            '   - cyto2_omni\n\n'
+            'StarDist:\n'
+            '   - 2D_versatile_fluo\n'
+            '   - 2D_versatile_he\n'
+            '   - 2D_paper_dsb2018\n'
+        )
+        self.infoWin.setText(txt)
+        self.infoWin.addButton(self.infoWin.Ok)
+        self.infoWin.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        self.infoWin.setModal(False)
+        self.infoWin.show()
+
 
     def createGroupParams(self, ArgSpecs_list, groupName):
         ArgWidget = namedtuple('ArgsWidgets', ['name', 'type', 'widget'])
@@ -4909,7 +4970,7 @@ class QDialogModelParams(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show()
         if block:
             self.loop = QEventLoop()

@@ -29,7 +29,7 @@ from PyQt5 import QtGui
 # Custom modules
 from . import prompts, load, myutils, apps, core, dataPrep
 
-from cellacdc.models.YeaZ.unet import tracking
+from .models.YeaZ.unet import tracking
 
 from . import qrc_resources
 
@@ -712,7 +712,7 @@ class segmWin(QMainWindow):
         if selectROI:
             launchDataPrep = True
         if posData.segmInfo_df is not None and posData.SizeZ > 1:
-            if posData.filename not in posData.segmInfo_df.index:
+            if posData.filename not in posData.segmInfo_df.index.get_level_values(0):
                 launchDataPrep = True
 
         if launchDataPrep:

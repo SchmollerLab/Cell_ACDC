@@ -18,7 +18,7 @@ except ImportError:
     __version__ = "0.0.0"
 
 import os.path
-import javabridge
+from .. import javabridge
 from . import formatreader as _formatreader
 from . import formatwriter as _formatwriter
 
@@ -34,7 +34,7 @@ to the Java virtual machine's class path."""
 # See http://www.loci.wisc.edu/software/bio-formats
 READABLE_FORMATS = ('1sc', '2fl', 'acff', 'afi', 'afm', 'aim', 'al3d', 'ali',
                     'am', 'amiramesh', 'apl', 'arf', 'avi', 'bif', 'bin', 'bip',
-                    'bmp', 'btf', 'c01', 'cfg', 'ch5', 'cif', 'cr2', 'crw', 
+                    'bmp', 'btf', 'c01', 'cfg', 'ch5', 'cif', 'cr2', 'crw',
                     'cxd', 'czi', 'dat', 'dcm', 'dib', 'dicom', 'dm2', 'dm3',
                     'dm4', 'dti', 'dv', 'eps', 'epsi', 'exp', 'fdf', 'fff',
                     'ffr', 'fits', 'flex', 'fli', 'frm', 'gel', 'gif', 'grey',

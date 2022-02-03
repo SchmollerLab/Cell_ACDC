@@ -3,5 +3,8 @@ exclude cellacdc/deprecated.py
 exclude cellacdc/lastCommit.txt
 exclude cellacdc/test.py
 exclude cellacdc/test1.py
+exclude cellacdc/test_qt_app.py
 exclude cellacdc/resources/figures
 exclude cellacdc/cellacdc.egg-info
+exclude not_installed_requirements.txt
+exclude requirements_new.txt

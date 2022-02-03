@@ -24,9 +24,9 @@ cellacdc_path = os.path.join(os.path.dirname(script_path))
 sys.path.append(cellacdc_path)
 
 # Custom modules
-from cellacdc import prompts, load, myutils, apps
+from . import prompts, load, myutils, apps
 
-from cellacdc import qrc_resources
+from . import qrc_resources
 
 if os.name == 'nt':
     try:

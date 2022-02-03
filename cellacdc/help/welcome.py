@@ -21,10 +21,10 @@ script_path = os.path.dirname(os.path.realpath(__file__))
 cellacdc_path = os.path.dirname(script_path)
 sys.path.append(cellacdc_path)
 
-from cellacdc import gui, dataStruct, myutils
+from .. import gui, dataStruct, myutils
 
 # NOTE: Enable icons
-import qrc_resources
+from .. import qrc_resources
 
 if os.name == 'nt':
     try:

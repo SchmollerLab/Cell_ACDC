@@ -19,7 +19,6 @@ class Model:
             stardist_path = os.path.dirname(script_path)
             model_path = os.path.join(stardist_path, 'model')
             self.model = StarDist2D(None, name=model_name, basedir=model_path)
-        print(self.model)
 
     def segment(self, image, prob_thresh=0.0, nms_thresh=0.0):
         # Preprocess image

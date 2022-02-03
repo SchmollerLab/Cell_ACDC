@@ -13,7 +13,7 @@ from math import sqrt
 try:
     from munkres import Munkres
 except ModuleNotFoundError as e:
-    print(e)
+    pass
 
 def correspondence(prev, curr, use_scipy=True, use_modified_yeaz=True):
     """

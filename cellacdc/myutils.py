@@ -23,13 +23,20 @@ from natsort import natsorted
 
 from tifffile.tifffile import TiffWriter, TiffFile
 
-from cellacdc import prompts
+from . import prompts
 
 __all__ = ['ColorMap']
 _mapCache = {}
 
 class utilClass:
     pass
+
+def read_version():
+    try:
+        from . import _version
+        return _version.version
+    except Exception as e:
+        return 'ND'
 
 def showInExplorer(path):
     if os.name == 'posix' or os.name == 'os2':
@@ -421,7 +428,9 @@ def seconds_to_ETA(seconds):
     seconds = round(seconds)
     ETA = datetime.timedelta(seconds=seconds)
     ETA_split = str(ETA).split(':')
-    if seconds >= 86400:
+    if seconds < 0:
+        ETA = '00h:00m:00s'
+    elif seconds >= 86400:
         days, hhmmss = str(ETA).split(',')
         h, m, s = hhmmss.split(':')
         ETA = f'{days}, {int(h):02}h:{int(m):02}m:{int(s):02}s'

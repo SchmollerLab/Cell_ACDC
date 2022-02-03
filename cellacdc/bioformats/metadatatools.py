@@ -13,8 +13,8 @@ from __future__ import absolute_import, unicode_literals
 
 __version__ = "$Revision$"
 
-from javabridge import jutil
-import bioformats
+from ..javabridge import jutil
+from .. import bioformats
 
 def createOMEXMLMetadata():
     '''Creates an OME-XML metadata object using reflection, to avoid direct
@@ -260,4 +260,3 @@ def PositiveInteger(some_number):
     '''
     return jutil.make_instance('ome/xml/model/primitives/PositiveInteger',
                                '(Ljava/lang/Integer;)V', some_number)
-

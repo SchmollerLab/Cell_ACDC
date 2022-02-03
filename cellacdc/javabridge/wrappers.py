@@ -13,7 +13,7 @@ All rights reserved.
 import inspect
 import sys
 import numpy as np
-import javabridge as J
+from .. import javabridge as J
 
 try:
     basestring            # Python 2
@@ -23,23 +23,23 @@ except NameError:
 
 class JWrapper(object):
     '''A class that wraps a Java object
-    
+
     JWrapper uses Java reflection to find a Java object's methods and fields.
     You can then use dot notation to call the methods and get references
     to the fields. If methods return Java objects, these will also be
     wrapped, so you can use the wrapper to do almost anything.
-    
+
     When a class has overloaded methods with the same name, JWrapper will
     try to pick the one that matches the types of the arguments.
-    
+
     To access static methods and fields, use JClassWrapper.
-    
+
     `self.o` is the JB_Object wrapped by the wrapper. You
     can use `self.o` as an argument for the collection wrappers or anywhere
     else you might use a JB_Object.
-    
+
     Usage:
-    
+
         >>> a = JWrapper(javabridge.make_instance("java/util/ArrayList", "()V"))
         >>> a.add("Hello")
         >>> a.add("World")
@@ -50,7 +50,7 @@ class JWrapper(object):
     '''
     def __init__(self, o):
         '''Initialize the JWrapper with a Java object
-        
+
         :param o: a Java object (class = JB_Object)
         '''
         STATIC = J.get_static_field("java/lang/reflect/Modifier", "STATIC", "I")
@@ -79,10 +79,10 @@ class JWrapper(object):
         field_class = env.find_class("java/lang/reflect/Field")
         method_id = env.get_method_id(
             field_class, "getName", "()Ljava/lang/String;")
-        self.field_names = [ 
+        self.field_names = [
             env.get_string_utf(env.call_method(o, method_id)) for o in jfields]
         self.methods = methods
-        
+
     def __getattr__(self, name):
         if name in ("o", "class_wrapper", "methods", "field_names"):
             raise AttributeError()
@@ -95,7 +95,7 @@ class JWrapper(object):
             jfield = self.class_wrapper.getField(name)
         except:
             raise AttributeError()
-    
+
         STATIC = J.get_static_field("java/lang/reflect/Modifier", "STATIC", "I")
         if (J.call(jfield, "getModifiers", "()I") & STATIC) == STATIC:
             raise AttributeError()
@@ -104,7 +104,7 @@ class JWrapper(object):
         if isinstance(result, J.JB_Object):
             result = JWrapper(result)
         return result
-    
+
     def __setattr__(self, name, value):
         if name in ("o", "class_wrapper", "methods", "field_names") or \
            not hasattr(self, "methods"):
@@ -115,16 +115,16 @@ class JWrapper(object):
         except:
             object.__setattr__(self, name, value)
             return
-    
+
         STATIC = J.get_static_field("java/lang/reflect/Modifier", "STATIC", "I")
         if (J.call(jfield, "getModifiers", "()I") & STATIC) == STATIC:
             raise AttributeError()
         klass = J.call(jfield, "getType", "()Ljava/lang/Class;")
         result = J.set_field(self.o, name, sig(klass), value)
-            
+
     def __call(self, method_name, *args):
         '''Call the appropriate overloaded method with the given name
-        
+
         :param method_name: the name of the method to call
         :param *args: the arguments to the method, which are used to
                       disambiguate between similarly named methods
@@ -157,15 +157,15 @@ class JWrapper(object):
                 result = JWrapper(result)
             return result
         raise TypeError("No matching method found for %s" % method_name)
-    
+
     def __repr__(self):
-        classname = J.call(J.call(self.o, "getClass", "()Ljava/lang/Class;"), 
+        classname = J.call(J.call(self.o, "getClass", "()Ljava/lang/Class;"),
                            "getName", "()Ljava/lang/String;")
         return "Instance of %s: %s" % (classname, J.to_string(self.o))
-    
+
     def __str__(self):
         return J.to_string(self.o)
-    
+
     def __int__(self):
         return self.intValue()
 
@@ -185,8 +185,8 @@ class JWrapper(object):
     def __setitem__(self, i, v):
         if not J.is_instance_of(self.o,'java/util/Collection'):
             raise TypeError("%s is not a Collection and does not support __setitem__" % self)
-        return self.set(i, v) 
-    
+        return self.set(i, v)
+
     class Iterator:
         def __init__(self, o):
             self.o = o
@@ -208,22 +208,22 @@ class JWrapper(object):
 
 class JClassWrapper(object):
     '''Wrapper for a class
-    
+
     JWrapper uses Java reflection to find a Java object's methods and fields.
     You can then use dot notation to call the static methods and get references
     to the static fields. If methods return Java objects, these will also be
     wrapped, so you can use the wrapper to do almost anything.
-    
+
     When a class has overloaded methods with the same name, JWrapper will
     try to pick the one that matches the types of the arguments.
-    
+
     >>> Integer = JClassWrapper("java.lang.Integer")
     >>> Integer.MAX_VALUE
     2147483647
     '''
     def __init__(self, class_name):
         '''Initialize to wrap a class name
-        
+
         :param class_name: name of class in dotted form, e.g. java.lang.Integer
         '''
         STATIC = J.get_static_field("java/lang/reflect/Modifier", "STATIC", "I")
@@ -252,12 +252,12 @@ class JClassWrapper(object):
         field_class = env.find_class("java/lang/reflect/Field")
         method_id = env.get_method_id(
             field_class, "getName", "()Ljava/lang/String;")
-        self.field_names = [ 
+        self.field_names = [
             env.get_string_utf(env.call_method(o, method_id)) for o in jfields]
         self.methods = methods
-        
+
     def __getattr__(self, name):
-        if name in ("klass", "static_methods", "methods", "cname", 
+        if name in ("klass", "static_methods", "methods", "cname",
                     "field_names"):
             raise AttributeError()
         if not hasattr(self, "methods") or not hasattr(self, "field_names"):
@@ -268,7 +268,7 @@ class JClassWrapper(object):
             jfield = self.klass.getField(name)
         except:
             raise AttributeError("Could not find field %s" % name)
-    
+
         STATIC = J.get_static_field("java/lang/reflect/Modifier", "STATIC", "I")
         if (J.call(jfield, "getModifiers", "()I") & STATIC) != STATIC:
             raise AttributeError("Field %s is not static" % name)
@@ -277,9 +277,9 @@ class JClassWrapper(object):
         if isinstance(result, J.JB_Object):
             result = JWrapper(result)
         return result
-    
+
     def __setattr__(self, name, value):
-        if name in ("klass", "static_methods", "methods", "cname", 
+        if name in ("klass", "static_methods", "methods", "cname",
                     "field_names") or not hasattr(self, "methods"):
             object.__setattr__(self, name, value)
             return
@@ -293,10 +293,10 @@ class JClassWrapper(object):
             raise AttributeError()
         klass = J.call(jfield, "getType", "()Ljava/lang/Class;")
         result = J.set_static_field(self.cname, name, sig(klass), value)
-    
+
     def __call_static(self, method_name, *args):
         '''Call the appropriate overloaded method with the given name
-        
+
         :param method_name: the name of the method to call
         :param *args: the arguments to the method, which are used to
                       disambiguate between similarly named methods
@@ -359,14 +359,14 @@ class JClassWrapper(object):
             result = JWrapper(result)
             return result
         raise TypeError("No matching constructor found")
-    
+
 class JProxy(object):
     '''A wrapper around java.lang.reflect.Proxy
-    
+
     The wrapper takes a dictionary of either method name or a
     `java.lang.reflect.Method` instance to a callable that handles
     the method. You can also subclass JProxy and define methods
-    with the same names as the Java methods and they will be called.    
+    with the same names as the Java methods and they will be called.
 
     An example:
 
@@ -376,7 +376,7 @@ class JProxy(object):
                 'java.lang.Runnable',
                 dict(run=lambda:sys.stderr.write("Hello, world.\\n"))))
         >>> javabridge.JWrapper(runnable.o).run()
-        
+
     Another example:
 
         >>> import javabridge
@@ -391,7 +391,7 @@ class JProxy(object):
     '''
     def __init__(self, base_class_name, d=None):
         '''Initialize the proxy with the interface name and methods
-        
+
         :param base_class_name: the class name of the interface to implement
                                 in dotted form (e.g. java.lang.Runnable)
         :param d: an optional dictionary of method name to implementation
@@ -415,7 +415,7 @@ class JProxy(object):
             "Ljava/lang/reflect/InvocationHandler;)"
             "Ljava/lang/Object;",
             loader, classes, handler)
-        
+
     def __call__(self, proxy, method, jargs):
         name = J.call(method, "getName", "()Ljava/lang/String;")
         env = J.get_env()
@@ -426,10 +426,10 @@ class JProxy(object):
             result = getattr(self, name)(*args)
         retclass = J.call(method, "getReturnType", "()Ljava/lang/Class;")
         return cast(result, retclass)
-    
+
 def importClass(class_name, import_name = None):
     '''Import a wrapped class into the global context
-    
+
     :param class_name: a dotted class name such as java.lang.String
     :param import_name: if defined, use this name instead of the class's name
     '''
@@ -444,7 +444,7 @@ def importClass(class_name, import_name = None):
 def sig(klass):
     '''Return the JNI signature for a class'''
     name = J.call(klass, "getName", "()Ljava/lang/String;")
-    if not (J.call(klass, "isPrimitive", "()Z") or 
+    if not (J.call(klass, "isPrimitive", "()Z") or
             J.call(klass, "isArray", "()Z")):
         name = "L%s;" % name
     if name == 'void':
@@ -469,10 +469,10 @@ def sig(klass):
 
 def cast(o, klass):
     '''Cast the given object to the given class
-    
+
     :param o: either a Python object or Java object to be cast
     :param klass: a java.lang.Class indicating the target class
-    
+
     raises a TypeError if the object can't be cast.
     '''
     if J.call(klass, "getName", "()Ljava/lang/String;") == 'void':
@@ -484,7 +484,7 @@ def cast(o, klass):
             return None
         else:
             raise TypeError("Can't cast None to a primitive type")
-        
+
     if isinstance(o, J.JB_Object):
         if J.call(klass, "isInstance", "(Ljava/lang/Object;)Z", o):
             return o
@@ -503,7 +503,7 @@ def cast(o, klass):
             cast(o[0], component_type)
         return J.get_nice_arg(o, csig)
     elif is_primitive or csig in \
-         ('Ljava/lang/String;', 'Ljava/lang/CharSequence;', 
+         ('Ljava/lang/String;', 'Ljava/lang/CharSequence;',
           'Ljava/lang/Object;'):
         if csig == 'Ljava/lang/CharSequence;':
             csig = 'Ljava/lang/String;'

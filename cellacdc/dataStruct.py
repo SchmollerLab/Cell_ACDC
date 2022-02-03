@@ -24,8 +24,10 @@ from PyQt5.QtCore import (
 )
 from PyQt5 import QtGui
 
-from . import qrc_resources
-from . import apps, myutils
+# Here we use from cellacdc because this script is laucnhed in
+# a separate process that doesn't have a parent package
+from cellacdc import qrc_resources
+from cellacdc import apps, myutils
 
 if os.name == 'nt':
     try:
@@ -47,7 +49,7 @@ class bioFormatsWorker(QObject):
     confirmMetadata = pyqtSignal(
         str, float, str, int, int, int, int,
         float, str, float, float, float,
-        str, list, list, str
+        str, list, list, str, str, object
     )
     # aborted = pyqtSignal()
 
@@ -299,10 +301,24 @@ class bioFormatsWorker(QObject):
             self.emWavelens = emWavelens
         else:
             self.mutex.lock()
+            self.progress.emit('Reading sample image data...')
+            sampleImgData = []
+            for c in range(SizeC):
+                imgData_z = []
+                with bioformats.ImageReader(rawFilePath) as reader:
+                    for z in range(SizeZ):
+                        imgData = reader.read(
+                            c=c, z=z, t=0, rescale=False
+                        )
+                        imgData_z.append(imgData)
+                imgData_z = np.array(imgData_z, dtype=imgData.dtype)
+                imgData_z = np.squeeze(imgData_z)
+                sampleImgData.append(imgData_z)
             self.confirmMetadata.emit(
                 filename, LensNA, DimensionOrder, SizeT, SizeZ, SizeC, SizeS,
                 TimeIncrement, TimeIncrementUnit, PhysicalSizeX, PhysicalSizeY,
-                PhysicalSizeZ, PhysicalSizeUnit, chNames, emWavelens, ImageName
+                PhysicalSizeZ, PhysicalSizeUnit, chNames, emWavelens, ImageName,
+                rawFilePath, sampleImgData
             )
             self.waitCond.wait(self.mutex)
             self.mutex.unlock()
@@ -719,14 +735,14 @@ class createDataStructWin(QMainWindow):
         global bioformats, javabridge
         print('Checking if Java is installed...')
         try:
-            import javabridge
-            import bioformats
+            from cellacdc import javabridge
+            from cellacdc import bioformats
         except Exception as e:
             myutils.download_java()
 
         try:
-            import javabridge
-            import bioformats
+            from cellacdc import javabridge
+            from cellacdc import bioformats
         except Exception as e:
             traceback.print_exc()
             error_msg = (
@@ -739,7 +755,7 @@ class createDataStructWin(QMainWindow):
             print('===============================================================')
 
             msg = QMessageBox(self)
-            msg.setWindowTitle('Import javabridge/bioformats error')
+            msg.setWindowTitle('import javabridge/bioformats error')
             msg.setIcon(msg.Critical)
             msg.setText(error_msg)
             msg.setDetailedText(traceback.format_exc())
@@ -1260,7 +1276,8 @@ class createDataStructWin(QMainWindow):
     def askConfirmMetadata(
             self, filename, LensNA, DimensionOrder, SizeT, SizeZ, SizeC, SizeS,
             TimeIncrement, TimeIncrementUnit, PhysicalSizeX, PhysicalSizeY,
-            PhysicalSizeZ, PhysicalSizeUnit, chNames, emWavelens, ImageName
+            PhysicalSizeZ, PhysicalSizeUnit, chNames, emWavelens, ImageName,
+            rawFilePath, sampleImgData
         ):
         if self.rawDataStruct == 2:
             filename = self.basename
@@ -1272,7 +1289,8 @@ class createDataStructWin(QMainWindow):
             PhysicalSizeX=PhysicalSizeX, PhysicalSizeY=PhysicalSizeY,
             PhysicalSizeZ=PhysicalSizeZ, PhysicalSizeUnit=PhysicalSizeUnit,
             ImageName=ImageName, chNames=chNames, emWavelens=emWavelens,
-            parent=self, rawDataStruct=self.rawDataStruct
+            parent=self, rawDataStruct=self.rawDataStruct,
+            sampleImgData=sampleImgData, rawFilePath=rawFilePath
         )
         self.metadataWin.exec_()
         self.worker.metadataWin = self.metadataWin

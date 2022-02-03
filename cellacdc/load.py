@@ -59,7 +59,7 @@ class loadData:
         self.pos_foldername = os.path.basename(self.pos_path)
         self.cropROI = None
         path_li = os.path.normpath(imgPath).split(os.sep)
-        self.relPath = f'...{os.sep}{f"{os.sep}".join(path_li[-3:])}'
+        self.relPath = f'{f"{os.sep}".join(path_li[-3:])}'
         filename_ext = os.path.basename(imgPath)
         self.filename, self.ext = os.path.splitext(filename_ext)
         self.loadLastEntriesMetadata()
