@@ -7375,13 +7375,6 @@ class guiWin(QMainWindow):
             # Insert background color
             posData.lut = np.insert(posData.lut, 0, [25, 25, 25], axis=0)
 
-            print('----------------')
-            print(posData.relPath)
-            print(posData.HDDmaxID)
-            print(len(posData.lut))
-            pprint(posData.lut)
-            print('----------------')
-
             posData.allData_li = [
                     {
                      'regionprops': None,
