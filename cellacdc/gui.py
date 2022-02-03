@@ -2676,8 +2676,7 @@ class guiWin(QMainWindow):
 
         # Cursor left image --> restore cursor
         if event.isExit() and self.app.overrideCursor() is not None:
-            self.app.restoreOverrideCursor()
-            if self.app.overrideCursor() is not None:
+            while self.app.overrideCursor() is not None:
                 self.app.restoreOverrideCursor()
 
         # Alt key was released --> restore cursor
@@ -2839,12 +2838,24 @@ class guiWin(QMainWindow):
 
         # Cursor left image --> restore cursor
         if event.isExit() and self.app.overrideCursor() is not None:
-            self.app.restoreOverrideCursor()
+            while self.app.overrideCursor() is not None:
+                self.app.restoreOverrideCursor()
 
         # Alt key was released --> restore cursor
         noModifier = QGuiApplication.keyboardModifiers() == Qt.NoModifier
         if self.app.overrideCursor() == Qt.SizeAllCursor and noModifier:
             self.app.restoreOverrideCursor()
+
+        setBrushCursor = (
+            self.brushButton.isChecked() and not event.isExit()
+            and noModifier
+        )
+        setEraserCursor = (
+            self.eraserButton.isChecked() and not event.isExit()
+            and noModifier
+        )
+        if setBrushCursor or setEraserCursor:
+            self.app.setOverrideCursor(Qt.CrossCursor)
 
         # Cursor is moving on image while Alt key is pressed --> pan cursor
         alt = QGuiApplication.keyboardModifiers() == Qt.AltModifier
@@ -2869,8 +2880,7 @@ class guiWin(QMainWindow):
                 self.wcLabel.setText(f'')
 
         # Draw eraser circle
-        drawCircle = self.eraserButton.isChecked() and not event.isExit()
-        if drawCircle and not event.isExit():
+        if setEraserCursor:
             x, y = event.pos()
             self.updateEraserCursor(x, y)
         else:
@@ -2880,8 +2890,7 @@ class guiWin(QMainWindow):
             )
 
         # Draw Brush circle
-        drawCircle = self.brushButton.isChecked() and not event.isExit()
-        if drawCircle and not event.isExit():
+        if setBrushCursor:
             x, y = event.pos()
             self.updateBrushCursor(x, y)
         else:
@@ -5429,6 +5438,8 @@ class guiWin(QMainWindow):
             self.connectLeftClickButtons()
             self.wandControlsToolbar.setVisible(True)
         else:
+            while self.app.overrideCursor() is not None:
+                self.app.restoreOverrideCursor()
             self.wandControlsToolbar.setVisible(False)
 
     def restoreHoveredID(self):
@@ -5530,6 +5541,8 @@ class guiWin(QMainWindow):
                 [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
             )
             self.enableSizeSpinbox(False)
+            while self.app.overrideCursor() is not None:
+                self.app.restoreOverrideCursor()
 
     def setDiskMask(self):
         brushSize = self.brushSizeSpinbox.value()
@@ -5626,6 +5639,8 @@ class guiWin(QMainWindow):
             self.splineHoverON = False
             self.isRightClickDragImg1 = False
             self.clearCurvItems()
+            while self.app.overrideCursor() is not None:
+                self.app.restoreOverrideCursor()
 
     def updateEraserCursor(self, x, y):
         if x is None:
@@ -5679,6 +5694,8 @@ class guiWin(QMainWindow):
                          self.ax1_EraserX, self.ax2_EraserX)
             )
             self.enableSizeSpinbox(False)
+            while self.app.overrideCursor() is not None:
+                self.app.restoreOverrideCursor()
 
     @exception_handler
     def keyPressEvent(self, ev):
