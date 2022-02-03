@@ -2036,11 +2036,13 @@ class guiWin(QMainWindow):
             xdata, ydata = int(x), int(y)
             delID = posData.lab[ydata, xdata]
             if delID == 0:
+                nearest_ID = self.nearest_nonzero(posData.lab, y, x)
                 delID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter here ID that you want to delete',
-                    parent=self, allowedValues=posData.IDs
+                    parent=self, allowedValues=posData.IDs,
+                    defaultTxt=str(nearest_ID)
                 )
                 delID_prompt.exec_()
                 if delID_prompt.cancel:
@@ -2113,11 +2115,13 @@ class guiWin(QMainWindow):
             xdata, ydata = int(x), int(y)
             ID = posData.lab[ydata, xdata]
             if ID == 0:
+                nearest_ID = self.nearest_nonzero(posData.lab, y, x)
                 sepID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter here ID that you want to split',
-                    parent=self, allowedValues=posData.IDs
+                    parent=self, allowedValues=posData.IDs,
+                    defaultTxt=str(nearest_ID)
                 )
                 sepID_prompt.exec_()
                 if sepID_prompt.cancel:
@@ -2681,6 +2685,17 @@ class guiWin(QMainWindow):
         if self.app.overrideCursor() == Qt.SizeAllCursor and noModifier:
             self.app.restoreOverrideCursor()
 
+        setBrushCursor = (
+            self.brushButton.isChecked() and not event.isExit()
+            and noModifier
+        )
+        setEraserCursor = (
+            self.eraserButton.isChecked() and not event.isExit()
+            and noModifier
+        )
+        if setBrushCursor or setEraserCursor:
+            self.app.setOverrideCursor(Qt.CrossCursor)
+
         setWandCursor = (
             self.wandToolButton.isChecked() and not event.isExit()
             and noModifier
@@ -2747,8 +2762,7 @@ class guiWin(QMainWindow):
                 self.wcLabel.setText(f'')
 
         # Draw eraser circle
-        drawCircle = self.eraserButton.isChecked() and not event.isExit()
-        if not event.isExit() and drawCircle:
+        if not event.isExit() and setEraserCursor:
             x, y = event.pos()
             self.updateEraserCursor(x, y)
         else:
@@ -2758,8 +2772,7 @@ class guiWin(QMainWindow):
             )
 
         # Draw Brush circle
-        drawCircle = self.brushButton.isChecked() and not event.isExit()
-        if not event.isExit() and drawCircle:
+        if not event.isExit() and setBrushCursor:
             x, y = event.pos()
             self.updateBrushCursor(x, y)
             self.hideItemsHoverBrush(x, y)
@@ -6645,7 +6658,8 @@ class guiWin(QMainWindow):
                 self.store_cca_df()
 
             # Store data for current frame
-            self.store_data(debug=False)
+            if mode != 'Viewer':
+                self.store_data(debug=False)
             # Go to next frame
             posData.frame_i += 1
             self.removeAlldelROIsCurrentFrame()
@@ -8874,7 +8888,8 @@ class guiWin(QMainWindow):
                     ol_colors = {}
                     for i, ol_ch in enumerate(ol_channels):
                         ol_path, filename = self.getPathFromChName(
-                                                            ol_ch, posData)
+                            ol_ch, posData
+                        )
                         if ol_path is None:
                             self.criticalFluoChannelNotFound(ol_ch, posData)
                             self.app.restoreOverrideCursor()
