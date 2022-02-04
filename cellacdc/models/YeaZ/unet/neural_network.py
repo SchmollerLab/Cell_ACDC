@@ -80,6 +80,14 @@ def prediction(im, is_pc, path_weights):
             path_weights,
             'weights_budding_BF_multilab_0_1.hdf5'
         )
+        if not os.path.exists(path):
+            from .... import myutils
+            # Download new yeaz weights from 14.08.2021 update
+            file_id = '1nLn9n7uMiw8ZbYOwzL7IQnHuAPMtMzGR'
+            myutils.download_from_gdrive(
+                file_id, path, file_size=372619264,
+                model_name='YeaZ bright-field model (14.08.2021 update)'
+            )
 
     if not os.path.exists(path):
         raise ValueError(f'Weights file not found in {path}')

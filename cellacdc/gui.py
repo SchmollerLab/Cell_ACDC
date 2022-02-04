@@ -458,6 +458,10 @@ class guiWin(QMainWindow):
         super().__init__(parent)
 
         self.is_win = sys.platform.startswith("win")
+        if self.is_win:
+            self.openFolderText = 'Show in Explorer'
+        else:
+            self.openFolderText = 'Reveal in Finder'
 
         self.is_error_state = False
         self.setupLogger()
@@ -1181,8 +1185,9 @@ class guiWin(QMainWindow):
         self.loadFluoAction = QAction("Load fluorescent images...", self)
         self.reloadAction = QAction(QIcon(":reload.svg"),
                                           "Reload segmentation file", self)
-        self.showInExplorerAction = QAction(QIcon(":drawer.svg"),
-                                    "&Show in Explorer/Finder", self)
+        self.showInExplorerAction = QAction(
+            QIcon(":drawer.svg"), f"&{self.openFolderText}", self
+        )
         self.exitAction = QAction("&Exit", self)
         self.undoAction = QAction(QIcon(":undo.svg"), "Undo (Ctrl+Z)", self)
         self.redoAction = QAction(QIcon(":redo.svg"), "Redo (Ctrl+Y)", self)
@@ -9040,16 +9045,28 @@ class guiWin(QMainWindow):
 
 
     def criticalFluoChannelNotFound(self, fluo_ch, posData):
-        msg = QMessageBox()
-        warn_cca = msg.critical(
-            self, 'Requested channel data not found!',
-            f'The folder {posData.rel_path} does not contain either one of the '
+        msg = QMessageBox(self)
+        msg.setWindowTitle('Requested channel data not found!')
+        msg.setIcon(msg.Warning)
+        txt = (
+            f'The folder {posData.relPath} does not contain either one of the '
             'following files:\n\n'
             f'{posData.basename}_{fluo_ch}.tif\n'
             f'{posData.basename}_{fluo_ch}_aligned.npz\n\n'
-            'Data loading aborted.',
-            msg.Ok
+            'Data loading aborted.'
         )
+        msg.setText(txt)
+        msg.addButton(msg.Ok)
+        openFolderButton = msg.addButton(self.openFolderText, msg.HelpRole)
+        openFolderButton.disconnect()
+        slot = partial(self.showInExplorer, posData.images_path)
+        openFolderButton.clicked.connect(slot)
+        ls = "\n".join(myutils.listdir(posData.images_path))
+        msg.setDetailedText(
+            f'Files present in the {posData.relPath} folder:\n'
+            f'{ls}'
+        )
+        msg.exec_()
 
     def histLUT_cb(self, LUTitem):
         # Callback function for the histogram sliders moved by the user

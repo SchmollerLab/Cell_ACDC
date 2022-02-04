@@ -2571,6 +2571,10 @@ class imageViewer(QMainWindow):
         """Initializer."""
         super().__init__(parent)
 
+        if posData is None:
+            posData = self.parent.data[self.parent.pos_i]
+        self.posData = posData
+
         self.gui_createActions()
         self.gui_createMenuBar()
         self.gui_createToolBars()
@@ -2592,10 +2596,6 @@ class imageViewer(QMainWindow):
         mainLayout.addLayout(self.img_Widglayout, 1, 0)
 
         mainContainer.setLayout(mainLayout)
-
-        if posData is None:
-            posData = self.parent.data[self.parent.pos_i]
-        self.posData = posData
 
         self.frame_i = posData.frame_i
         self.num_frames = posData.SizeT
@@ -2708,9 +2708,6 @@ class imageViewer(QMainWindow):
         # z-slice scrollbar
         self.zSliceScrollBar = QScrollBar(Qt.Horizontal)
         # self.zSliceScrollBar.setFixedHeight(20)
-        if self.posData.SizeZ == 1:
-            self.zSliceScrollBar.setDisabled(True)
-            self.zSliceScrollBar.setVisible(False)
         self.zSliceScrollBar.setMaximum(self.posData.SizeZ-1)
         _z_label = QLabel('z-slice  ')
         _font = QtGui.QFont()
@@ -2719,6 +2716,11 @@ class imageViewer(QMainWindow):
         self.z_label = _z_label
         self.img_Widglayout.addWidget(_z_label, 1, 0, alignment=Qt.AlignCenter)
         self.img_Widglayout.addWidget(self.zSliceScrollBar, 1, 1, 1, 20)
+
+        if self.posData.SizeZ == 1:
+            self.zSliceScrollBar.setDisabled(True)
+            self.zSliceScrollBar.setVisible(False)
+            _z_label.setVisible(False)
 
         self.img_Widglayout.setContentsMargins(100, 0, 50, 0)
         self.zSliceScrollBar.sliderMoved.connect(self.update_z_slice)
