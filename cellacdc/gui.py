@@ -10744,9 +10744,9 @@ class guiWin(QMainWindow):
                     bkgrData_medians.append(np.median(bkgrVals_z_sumP))
                     bkgrData_medians.append(np.median(bkgrVals_zSlice))
 
-                    bkgrData_means.append(bkgrVals_z_maxP.mean())
-                    bkgrData_means.append(bkgrVals_z_sumP.mean())
-                    bkgrData_means.append(bkgrVals_zSlice.mean())
+                    bkgrData_means.append(np.mean(bkgrVals_z_maxP))
+                    bkgrData_means.append(np.mean(bkgrVals_z_sumP))
+                    bkgrData_means.append(np.mean(bkgrVals_zSlice))
 
                     bkgrData_q75s.append(np.quantile(bkgrVals_z_maxP, q=0.75))
                     bkgrData_q75s.append(np.quantile(bkgrVals_z_sumP, q=0.75))
