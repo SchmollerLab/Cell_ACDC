@@ -4457,11 +4457,15 @@ class guiWin(QMainWindow):
         """
         posData = self.data[self.pos_i]
         eligible = True
+        print('==================')
+        print(f'Current frame {posData.frame_i}')
+        print(f'assigning {budID} to mother {new_mothID}')
 
         G1_duration = 0
         # Check future frames
         for i in range(posData.frame_i, posData.segmSizeT):
             cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
+
             if cca_df_i is None:
                 # ith frame was not visited yet
                 break
@@ -4490,19 +4494,24 @@ class guiWin(QMainWindow):
             cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
 
             is_bud_existing = budID in cca_df_i.index
-            if not is_bud_existing:
-                # Bud was not emerged yet
-                break
 
             ccs = cca_df_i.at[new_mothID, 'cell_cycle_stage']
-            if ccs != 'G1':
+            if ccs != 'G1' and is_bud_existing:
+                # Requested mother not in G1 in the past
+                # during the life of the bud (is_bud_existing = True)
                 self.warnMotherNotEligible(
                     new_mothID, budID, i, 'not_G1_in_the_past'
                 )
                 eligible = False
+                return eligible
+
+            if ccs != 'G1':
+                # Stop counting G1 duration of the requested mother
                 break
 
             G1_duration += 1
+
+        print(f'final G1 duration = {G1_duration}')
 
         if G1_duration == 1:
             # G1_duration of the mother is single frame --> not eligible
@@ -4511,6 +4520,7 @@ class guiWin(QMainWindow):
                 new_mothID, budID, posData.frame_i, 'single_frame_G1_duration'
             )
 
+        print('==================')
         return eligible
 
     def getStatus_RelID_BeforeEmergence(self, budID, curr_mothID):

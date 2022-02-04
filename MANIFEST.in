@@ -6,5 +6,10 @@ exclude cellacdc/test1.py
 exclude cellacdc/test_qt_app.py
 exclude cellacdc/resources/figures
 exclude cellacdc/cellacdc.egg-info
+exclude cellacdc/temp/last_entries_metadata.csv
+exclude cellacdc/temp/recentPaths.csv
+exclude cellacdc/temp/segm_last_sel.csv
+exclude cellacdc/temp/settings.csv
+exclude cellacdc/utils/deprecated
 exclude not_installed_requirements.txt
 exclude requirements_new.txt
