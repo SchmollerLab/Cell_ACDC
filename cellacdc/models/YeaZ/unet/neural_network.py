@@ -71,9 +71,15 @@ def prediction(im, is_pc, path_weights):
                  input_size = (None,None,1))
 
     if is_pc:
-        path = os.path.join(path_weights, 'unet_weights_batchsize_25_Nepochs_100_SJR0_10.hdf5')
+        path = os.path.join(
+            path_weights,
+            'unet_weights_batchsize_25_Nepochs_100_SJR0_10.hdf5'
+        )
     else:
-        path = os.path.join(path_weights,'unet_weights_BF_batchsize_25_Nepochs_100_SJR_0_1.hdf5')
+        path = os.path.join(
+            path_weights,
+            'weights_budding_BF_multilab_0_1.hdf5'
+        )
 
     if not os.path.exists(path):
         raise ValueError(f'Weights file not found in {path}')

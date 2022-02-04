@@ -272,7 +272,7 @@ def get_model_path(model_name):
 
 def get_file_id(model_name, id=None):
     if model_name == 'YeaZ':
-        file_id = '1nmtUHG8JM8Hp1zas2xlXoWLYPqS9psON'
+        file_id = '1fKomXmggyTF3VicgiTf-2OneB1tpQl75'
         file_size = 693685011
     elif model_name == 'cellpose':
         file_id = '1qOdNz6WhKhbg25oaVMU1LFo4crmWrdOj'
