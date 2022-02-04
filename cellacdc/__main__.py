@@ -35,6 +35,8 @@ try:
         dataPrep, segm, gui, dataStruct, utils, help, qrc_resources, myutils
     )
     from cellacdc.help import about
+    from cellacdc.utils import concat as utilsConcat
+    from cellacdc.utils import convert as utilsConvert
 except ModuleNotFoundError as e:
     src_path = os.path.dirname(os.path.abspath(__file__))
     main_path = os.path.dirname(src_path)
@@ -207,7 +209,7 @@ class mainWin(QMainWindow):
 
         utilsMenu = QMenu("&Utilities", self)
         utilsMenu.addAction(self.concatAcdcDfsAction)
-        utilsMenu.addAction(self.alignAction)
+        # utilsMenu.addAction(self.alignAction)
         utilsMenu.addAction(self.npzToNpyAction)
         utilsMenu.addAction(self.npzToTiffAction)
         utilsMenu.addAction(self.TiffToNpzAction)
@@ -229,7 +231,7 @@ class mainWin(QMainWindow):
         self.concatAcdcDfsAction = QAction(
             'Concatenate acdc output tables from multiple Positions...'
         )
-        self.alignAction = QAction('Revert alignemnt/Align...')
+        # self.alignAction = QAction('Revert alignemnt/Align...')
 
         self.welcomeGuideAction = QAction('Welcome Guide')
         self.documentationAction = QAction('Documentation')
@@ -256,7 +258,7 @@ class mainWin(QMainWindow):
         isConvertEnabled = self.sender().isEnabled()
         if isConvertEnabled:
             self.sender().setDisabled(True)
-            self.convertWin = utils.convert.convertFileFormatWin(
+            self.convertWin = utilsConvert.convertFileFormatWin(
                 parent=self,
                 actionToEnable=self.sender(),
                 mainWin=self, from_=from_, to=to
@@ -413,7 +415,7 @@ class mainWin(QMainWindow):
         isConcatEnabled = self.concatAcdcDfsAction.isEnabled()
         if isConcatEnabled:
             self.concatAcdcDfsAction.setDisabled(True)
-            self.concatWin = utils.concat.concatWin(
+            self.concatWin = utilsConcat.concatWin(
                 parent=self,
                 actionToEnable=self.concatAcdcDfsAction,
                 mainWin=self

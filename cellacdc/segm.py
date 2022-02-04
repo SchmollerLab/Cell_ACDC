@@ -572,22 +572,23 @@ class segmWin(QMainWindow):
         elif is_images_folder:
             images_paths = [exp_path]
 
-        # Ask to save?
-        msg = QMessageBox()
-        msg.setFont(font)
-        answer = msg.question(
-            self, 'Save?', 'Do you want to save segmentation?',
-            msg.Yes | msg.No | msg.Cancel
-        )
-        if answer == msg.Yes:
-            self.save = True
-        elif answer == msg.No:
-            self.save = False
-        else:
-            abort = self.doAbort()
-            if abort:
-                self.close()
-                return
+        self.save = True
+        # # Ask to save? (only for debugging)
+        # msg = QMessageBox()
+        # msg.setFont(font)
+        # answer = msg.question(
+        #     self, 'Save?', 'Do you want to save segmentation?',
+        #     msg.Yes | msg.No | msg.Cancel
+        # )
+        # if answer == msg.Yes:
+        #     self.save = True
+        # elif answer == msg.No:
+        #     self.save = False
+        # else:
+        #     abort = self.doAbort()
+        #     if abort:
+        #         self.close()
+        #         return
 
         user_ch_file_paths = []
         for images_path in images_paths:

@@ -337,8 +337,9 @@ class saveDataWorker(QObject):
                 posData.fluo_data_dict.pop(posData.filename)
                 posData.fluo_bkgrData_dict.pop(posData.filename)
 
-                self.progress.emit('Almost done...')
-                self.progressBar.emit(0, 0, 0)
+                if posData.SizeT > 1:
+                    self.progress.emit('Almost done...')
+                    self.progressBar.emit(0, 0, 0)
 
                 if posData.segmInfo_df is not None:
                     try:
