@@ -832,7 +832,7 @@ class guiWin(QMainWindow):
         self.rulerButton.setIcon(QIcon(":ruler.svg"))
         self.rulerButton.setCheckable(True)
         self.rulerButton.setToolTip(
-            'Measure straight line. '
+            'Draw a straight line and show its length. '
             'Length is displayed on the bottom-right corner.'
         )
         navigateToolBar.addWidget(self.rulerButton)
@@ -1239,8 +1239,13 @@ class guiWin(QMainWindow):
         self.repeatTrackingAction = QAction(
             QIcon(":repeat-tracking.svg"), "Repeat tracking", self
         )
+        self.repeatTrackingAction.setToolTip(
+            'Repeat tracking on current frame\n'
+            'SHORTCUT: "Shift+T"'
+        )
         self.repeatTrackingMenuAction = QAction('Repeat tracking...', self)
         self.repeatTrackingMenuAction.setDisabled(True)
+        self.repeatTrackingAction.setShortcut('Shift+T')
 
         trackingAlgosGroup = QActionGroup(self)
         self.trackWithAcdcAction = QAction('Cell-ACDC', self)
