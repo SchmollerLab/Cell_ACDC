@@ -83,7 +83,7 @@ def calculate_downstream_data(
                 is_zstack_data=True
             if cc_props is not None and force_recalculation==False:
                 print('Cell Cycle property data already existing, loaded from disk...')
-                overall_df = overall_df.append(cc_props).reset_index(drop=True)
+                overall_df = pd.concat([overall_df,cc_props], ignore_index=True).reset_index(drop=True)
             else:
                 print(f'Calculate regionprops on each frame based on Segmentation...')
                 rp_df = _calculate_rp_df(seg_mask, is_timelapse_data, is_zstack_data, metadata, max_frame=cc_data.frame_i.max()+1)
@@ -115,7 +115,7 @@ def calculate_downstream_data(
                 common_prefix = _determine_common_prefix(files_in_curr_dir)
                 save_path = os.path.join(pos_dir, f'{common_prefix}cca_properties_downstream.csv')
                 temp_df.to_csv(save_path, index=False)
-                overall_df = overall_df.append(temp_df).reset_index(drop=True)
+                overall_df = pd.concat([overall_df, temp_df], ignore_index=True).reset_index(drop=True)
     return overall_df, is_timelapse_data, is_zstack_data
 
 
@@ -372,7 +372,7 @@ def _calculate_rp_df(seg_mask, is_timelapse_data, is_zstack_data, metadata, max_
                 for r_id in t_rp_df.Cell_ID.unique():
                     bin_label = label((img==r_id).astype(int))
                     t_rp_df.loc[t_rp_df['Cell_ID']==r_id, '2d_label_count'] = bin_label.max()
-                t_df = t_df.append(t_rp_df, ignore_index=True)
+                t_df = pd.concat([t_df, t_rp_df], ignore_index=True)
         # calculate global features by grouping
         grouped_df = t_df.groupby('Cell_ID').agg(
             min_t=('frame_i', min),
@@ -443,7 +443,7 @@ def _calculate_flu_signal(seg_mask, channel_data, channels, cc_data, is_timelaps
                     temp_df[f'{channels[c_idx]}_corrected_mean'] = np.clip(corrected_signal, 0, np.inf)
                 else:
                     temp_df[f'{channels[c_idx]}_corrected_mean'] = 0
-            df = df.append(temp_df, ignore_index=True)
+            df = pd.concat([df, temp_df], ignore_index=True)
         signal_indices = np.array(['_corrected_mean' in col for col in df.columns])
         keep_rows = df.loc[:,signal_indices].sum(axis=1) > 0
         df = df[keep_rows]
