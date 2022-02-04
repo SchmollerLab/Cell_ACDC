@@ -31,6 +31,10 @@ _mapCache = {}
 class utilClass:
     pass
 
+def is_in_bounds(x,y,X,Y):
+    in_bounds = x >= 0 and x < X and y >= 0 and y < Y
+    return in_bounds
+
 def read_version():
     try:
         from . import _version

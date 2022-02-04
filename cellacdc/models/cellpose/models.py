@@ -12,7 +12,7 @@ from . import transforms, dynamics, utils, plot
 from .core import UnetModel, assign_device, check_mkl, MXNET_ENABLED, parse_model_string
 
 try:
-    import omnipose
+    from . import omnipose
     OMNI_INSTALLED = True
 except:
     OMNI_INSTALLED = False
@@ -110,9 +110,11 @@ class Cellpose():
         if not net_avg:
             self.pretrained_model = self.pretrained_model[0]
 
-        self.cp = CellposeModel(device=self.device, gpu=self.gpu,
-                                pretrained_model=self.pretrained_model,
-                                diam_mean=self.diam_mean, torch=self.torch, omni=self.omni)
+        self.cp = CellposeModel(
+            device=self.device, gpu=self.gpu,
+            pretrained_model=self.pretrained_model,
+            diam_mean=self.diam_mean, torch=self.torch, omni=self.omni
+        )
         self.cp.model_type = model_type
 
         # size model not used for bacterial model

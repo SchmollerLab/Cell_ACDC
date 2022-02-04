@@ -131,15 +131,23 @@ def exception_handler(func):
             msg.setWindowTitle('Critical error')
             msg.setIcon(msg.Critical)
             err_msg = (f"""
-            <p style="font-size:10pt">
+            <p style="font-size:11px">
                 Error in function <b>{func.__name__}</b>.<br><br>
                 More details below or in the terminal/console.<br><br>
-                Note that the error details fro this session are also saved
+                Note that the error details from this session are also saved
                 in the file<br>
-                "/Cell_ACDC/logs/{self.log_filename}.log"
+                "/Cell_ACDC/logs/{self.log_filename}.log"<br><br>
+                Please <b>send the log file</b> when reporting a bug, thanks!
             </p>
             """)
             msg.setText(err_msg)
+            showLog = msg.addButton('Show log file...', msg.HelpRole)
+            showLog.disconnect()
+            cellacdc_path = os.path.dirname(os.path.abspath(__file__))
+            logs_path = os.path.join(cellacdc_path, 'logs')
+            slot = partial(myutils.showInExplorer, logs_path)
+            showLog.clicked.connect(slot)
+            msg.addButton(msg.Ok)
             msg.setDetailedText(traceback_str)
             msg.exec_()
             self.is_error_state = True
@@ -460,9 +468,9 @@ class guiWin(QMainWindow):
 
         self.is_win = sys.platform.startswith("win")
         if self.is_win:
-            self.openFolderText = 'Show in Explorer'
+            self.openFolderText = 'Show in Explorer...'
         else:
-            self.openFolderText = 'Reveal in Finder'
+            self.openFolderText = 'Reveal in Finder...'
 
         self.is_error_state = False
         self.setupLogger()
@@ -577,7 +585,7 @@ class guiWin(QMainWindow):
                     self.df_settings.loc['is_bw_inverted'].astype(str)
                 )
             if 'fontSize' not in self.df_settings.index:
-                self.df_settings.at['fontSize', 'value'] = '10pt'
+                self.df_settings.at['fontSize', 'value'] = '10px'
             if 'overlayColor' not in self.df_settings.index:
                 self.df_settings.at['overlayColor', 'value'] = '255-255-0'
             if 'how_normIntensities' not in self.df_settings.index:
@@ -585,7 +593,7 @@ class guiWin(QMainWindow):
                 self.df_settings.at['how_normIntensities', 'value'] = raw
         else:
             idx = ['is_bw_inverted', 'fontSize', 'overlayColor', 'how_normIntensities']
-            values = ['No', '10pt', '255-255-0', 'raw']
+            values = ['No', '10px', '255-255-0', 'raw']
             self.df_settings = pd.DataFrame({
                 'setting': idx,'value': values}
             ).set_index('setting')
@@ -2563,11 +2571,11 @@ class guiWin(QMainWindow):
         if mode == 'Viewer':
             return
 
-        posData = self.data[self.pos_i]
-        mode = str(self.modeComboBox.currentText())
-        if mode == 'Viewer':
+        Y, X = posData.lab.shape
+        x, y = event.pos().x(), event.pos().y()
+        xdata, ydata = int(x), int(y)
+        if not myutils.is_in_bounds(xdata, ydata, X, Y):
             return
-
 
         if self.isRightClickDragImg1 and self.curvToolButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
@@ -2919,6 +2927,17 @@ class guiWin(QMainWindow):
 
     @exception_handler
     def gui_mouseDragEventImg2(self, event):
+        posData = self.data[self.pos_i]
+        mode = str(self.modeComboBox.currentText())
+        if mode == 'Viewer':
+            return
+
+        Y, X = posData.lab.shape
+        x, y = event.pos().x(), event.pos().y()
+        xdata, ydata = int(x), int(y)
+        if not myutils.is_in_bounds(xdata, ydata, X, Y):
+            return
+
         # Eraser dragging mouse --> keep erasing
         if self.isMouseDragImg2 and self.eraserButton.isChecked():
             posData = self.data[self.pos_i]
@@ -2983,6 +3002,14 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
         if mode == 'Viewer':
+            return
+
+        Y, X = posData.lab.shape
+        x, y = event.pos().x(), event.pos().y()
+        xdata, ydata = int(x), int(y)
+        if not myutils.is_in_bounds(xdata, ydata, X, Y):
+            self.isMouseDragImg2 = False
+            self.updateALLimg()
             return
 
         # Eraser mouse release --> update IDs and contours
@@ -3051,6 +3078,14 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
         if mode == 'Viewer':
+            return
+
+        Y, X = posData.lab.shape
+        x, y = event.pos().x(), event.pos().y()
+        xdata, ydata = int(x), int(y)
+        if not myutils.is_in_bounds(xdata, ydata, X, Y):
+            self.isMouseDragImg2 = False
+            self.updateALLimg()
             return
 
         if mode=='Segmentation and Tracking' or self.isSnapshot:
@@ -3652,7 +3687,7 @@ class guiWin(QMainWindow):
         if self.sender().text() == 'YeaZ':
             msg = QMessageBox()
             info_txt = (f"""
-            <p style="font-size:11pt">
+            <p style="font-size:11px">
                 Note that YeaZ tracking algorithm tends to be sliglhtly more accurate
                 overall, but it is <b>less capable of detecting segmentation
                 errors.</b><br><br>
@@ -3813,6 +3848,9 @@ class guiWin(QMainWindow):
     def setHoverToolSymbolColor(self, xdata, ydata, pen, ScatterItems, button,
                                 brush=None, hoverRGB=None, ID=None):
         posData = self.data[self.pos_i]
+        Y, X = posData.lab.shape
+        if not myutils.is_in_bounds(xdata, ydata, X, Y):
+            return
         hoverID = posData.lab[ydata, xdata] if ID is None else ID
         color = button.palette().button().color().name()
         drawAbove = color == self.doublePressKeyButtonColor
@@ -4343,7 +4381,7 @@ class guiWin(QMainWindow):
     def warnMotherNotEligible(self, new_mothID, budID, i, why):
         if why == 'not_G1_in_the_future':
             err_msg = (f"""
-            <p style="font-size:10pt">
+            <p style="font-size:10px">
                 The requested cell in G1 (ID={new_mothID})
                 at future frame {i+1} has a bud assigned to it,
                 therefore it cannot be assigned as the mother
@@ -4373,7 +4411,7 @@ class guiWin(QMainWindow):
             cancel = enforce_assignment == msg.Cancel
         elif why == 'not_G1_in_the_past':
             err_msg = (f"""
-            <p style="font-size:10pt">
+            <p style="font-size:10px">
                 The requested cell in G1
                 (ID={new_mothID}) at past frame {i+1}
                 has a bud assigned to it, therefore it cannot be
@@ -4391,7 +4429,7 @@ class guiWin(QMainWindow):
             cancel = None
         elif why == 'single_frame_G1_duration':
             err_msg = (f"""
-            <p style="font-size:10pt">
+            <p style="font-size:10px">
                 Assigning bud ID {budID} to cell in G1
                 (ID={new_mothID}) would result in no G1 phase at all between
                 previous cell cycle and current cell cycle.
@@ -7675,7 +7713,7 @@ class guiWin(QMainWindow):
     def warnScellsGone(self, ScellsIDsGone, frame_i):
         msg = QMessageBox()
         text = (f"""
-        <p style="font-size:10pt">
+        <p style="font-size:10px">
             In the next frame the followning cells' IDs in S/G2/M
             (highlighted with a yellow contour) <b>will disappear</b>:<br><br>
             {ScellsIDsGone}<br><br>
@@ -9060,7 +9098,7 @@ class guiWin(QMainWindow):
         msg.addButton(msg.Ok)
         openFolderButton = msg.addButton(self.openFolderText, msg.HelpRole)
         openFolderButton.disconnect()
-        slot = partial(self.showInExplorer, posData.images_path)
+        slot = partial(myutils.showInExplorer, posData.images_path)
         openFolderButton.clicked.connect(slot)
         ls = "\n".join(myutils.listdir(posData.images_path))
         msg.setDetailedText(
@@ -10993,7 +11031,7 @@ class guiWin(QMainWindow):
         if frame_i > 0:
             # Ask to save last visited frame or not
             txt = (f"""
-            <p style="font-size:9pt">
+            <p style="font-size:10px">
                 You visited and stored data up until frame
                 number {frame_i+1}.<br><br>
                 Enter <b>up to which frame number</b> you want to save data:
@@ -11016,7 +11054,7 @@ class guiWin(QMainWindow):
     def askSaveMetrics(self):
         txt = (
         """
-        <p style="font-size:10pt">
+        <p style="font-size:10px">
             Do you also want to <b>save additional metrics</b>
             (e.g., cell volume, mean, amount etc.)?<br><br>
             NOTE: Saving additional metrics is <b>slower</b>,
@@ -11052,7 +11090,7 @@ class guiWin(QMainWindow):
         msg.setIcon(msg.Question)
         txt = (
         f"""
-        <p style="font-size:10pt">
+        <p style="font-size:10px">
             Do you want to save <b>ALL positions</b> or <b>only until
             Position_{last_pos}</b> (last visualized/corrected position)?<br>
         </p>
@@ -11154,7 +11192,7 @@ class guiWin(QMainWindow):
 
         infoTxt = (
         f"""
-            <p style=font-size:10pt>
+            <p style=font-size:10px>
                 Saving {self.exp_path}...<br>
             </p>
         """)

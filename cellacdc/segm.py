@@ -721,6 +721,7 @@ class segmWin(QMainWindow):
             if ask_concat:
                 concat_segm = self.askConcatSegm()
                 if concat_segm is None:
+                    self.save = False
                     abort = self.doAbort()
                     if abort:
                         self.close()
