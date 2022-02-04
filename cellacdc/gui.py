@@ -2038,6 +2038,7 @@ class guiWin(QMainWindow):
                     self.ax2BrushID = posData.brushID
                     posData.isNewID = True
 
+                self.updateLookuptable(lenNewLut=posData.ax2BrushID+1)
                 self.isMouseDragImg2 = True
 
                 # Draw new objects
@@ -2047,7 +2048,7 @@ class guiWin(QMainWindow):
                     mask[localLab!=0] = False
 
                 posData.lab[ymin:ymax, xmin:xmax][mask] = self.ax2BrushID
-                self.setImageImg2()
+                self.setImageImg2(updateLookuptable=False)
 
         # Delete entire ID (set to 0)
         elif middle_click and canDelete:
@@ -2609,7 +2610,7 @@ class guiWin(QMainWindow):
 
             # Apply brush mask
             posData.lab[mask] = posData.brushID
-            self.setImageImg2()
+            self.setImageImg2(updateLookuptable=False)
 
             brushMask = posData.lab == posData.brushID
             self.setTempImg1Brush(brushMask)
@@ -2966,7 +2967,7 @@ class guiWin(QMainWindow):
             self.erasedIDs.extend(posData.lab[mask])
 
             posData.lab[mask] = 0
-            self.setImageImg2()
+            self.setImageImg2(updateLookuptable=False)
 
         # Brush paint dragging mouse --> keep painting
         if self.isMouseDragImg2 and self.brushButton.isChecked():
@@ -3357,12 +3358,13 @@ class guiWin(QMainWindow):
 
                 if ID > 0 and drawUnder:
                     posData.brushID = posData.lab[ydata, xdata]
-                    self.brushColor = self.img2.lut[posData.brushID]/255
                 else:
                     # Update brush ID. Take care of disappearing cells to remember
                     # to not use their IDs anymore in the future
                     self.setBrushID()
-                    self.brushColor = posData.lut[posData.brushID]/255
+
+                self.updateLookuptable(lenNewLut=posData.brushID+1)
+                self.brushColor = posData.lut[posData.brushID]/255
 
                 self.yPressAx2, self.xPressAx2 = y, x
 
@@ -3377,7 +3379,7 @@ class guiWin(QMainWindow):
                     mask[localLab!=0] = False
 
                 posData.lab[ymin:ymax, xmin:xmax][mask] = posData.brushID
-                self.setImageImg2()
+                self.setImageImg2(updateLookuptable=False)
 
                 img = self.img1.image.copy()
                 if self.overlayButton.isChecked():
@@ -8755,14 +8757,8 @@ class guiWin(QMainWindow):
             posData.multiContIDs = set()
         self.titleLabel.setText(htmlTxt)
 
-    def updateLookuptable(self, lenNewLut=None):
+    def extendLabelsLUT(self, lenNewLut):
         posData = self.data[self.pos_i]
-        if lenNewLut is None:
-            try:
-                lenNewLut = max(posData.IDs)+1
-            except ValueError:
-                # Empty segmentation mask
-                lenNewLut = 1
         # Build a new lut to include IDs > than original len of lut
         if lenNewLut > len(posData.lut):
             numNewColors = lenNewLut-len(posData.lut)
@@ -8775,6 +8771,17 @@ class guiWin(QMainWindow):
                 rgb = posData.lut[idx]
                 _lut[len(posData.lut)+i] = rgb
             posData.lut = _lut
+
+    def updateLookuptable(self, lenNewLut=None):
+        posData = self.data[self.pos_i]
+        if lenNewLut is None:
+            try:
+                lenNewLut = max(posData.IDs)+1
+            except ValueError:
+                # Empty segmentation mask
+                lenNewLut = 1
+        # Build a new lut to include IDs > than original len of lut
+        self.extendLabelsLUT(lenNewLut)
 
         try:
             lut = posData.lut[:lenNewLut].copy()
@@ -9361,7 +9368,7 @@ class guiWin(QMainWindow):
             cells_img = -cells_img+numba_max(cells_img)
         return cells_img
 
-    def setImageImg2(self):
+    def setImageImg2(self, updateLookuptable=True):
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
         if mode == 'Segmentation and Tracking' or self.isSnapshot:
@@ -9370,7 +9377,8 @@ class guiWin(QMainWindow):
         else:
             DelROIlab = posData.lab
         self.img2.setImage(DelROIlab)
-        self.updateLookuptable()
+        if updateLookuptable:
+            self.updateLookuptable()
 
     def setTempImg1Brush(self, mask, alpha=0.3):
         posData = self.data[self.pos_i]
