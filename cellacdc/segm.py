@@ -470,9 +470,6 @@ class segmWin(QMainWindow):
 
         # Ask which model
         models = myutils.get_list_of_models()
-        if not sys.platform.startswith("win"):
-            # YeastMate available only on windows
-            models = [model for model in models if model != 'YeastMate']
         win = apps.QDialogListbox(
             'Select model',
             'Select model to use for segmentation: ',
