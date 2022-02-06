@@ -34,10 +34,39 @@ class utilClass:
 
 def install_javabridge():
     download_java()
+    is_win = sys.platform.startswith("win")
+    if is_win:
+        download_jdk()
     subprocess.check_call(
         [sys.executable, '-m', 'pip', 'install',
         'git+https://github.com/SchmollerLab/python-javabridge-acdc']
     )
+
+def download_jdk():
+    """Download Java JDK (Windows) to user path ~/.acdc-java"""
+
+    file_id = '1pfpq_d4l3UMSN0075h4yflBlmSfUatwL'
+    file_size = 135524352
+    foldername = 'win64'
+    jdk_name = 'jdk1.8.0_321'
+
+    user_path = str(pathlib.Path.home())
+    java_path = os.path.join(user_path, '.acdc-java', foldername)
+    jdk_path = os.path.join(java_path, jdk_name)
+    zip_dst = os.path.join(java_path, 'jdk_temp.zip')
+
+    if os.path.exists(jdk_path):
+        return jdk_path
+
+    download_from_gdrive(
+        file_id, zip_dst, file_size=file_size, model_name='JDK'
+    )
+    exctract_to = java_path
+    extract_zip(zip_dst, exctract_to)
+    # Remove downloaded zip archive
+    os.remove(zip_dst)
+    print('Java Development Kit downloaded successfully')
+    return jdk_path
 
 def is_in_bounds(x,y,X,Y):
     in_bounds = x >= 0 and x < X and y >= 0 and y < Y

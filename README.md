@@ -62,7 +62,7 @@ More details [here](https://github.com/SchmollerLab/Cell_ACDC/releases/tag/v1.2.
 5. Create a virtual environment with `python -m venv env`
 6. Install all the dependencies with `pip install -r requirements.txt`
 
-## Instal from source
+## Install from source
 
 If you want to try out experimental features (and if you have time maybe report a bug or two :D), you can install the developer version from source as follows:
 
