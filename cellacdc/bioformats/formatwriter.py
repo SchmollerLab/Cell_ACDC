@@ -38,9 +38,9 @@ import numpy as np
 import os
 import sys
 
-from .. import javabridge as jutil
+import javabridge as jutil
 from .. import bioformats
-from .. import javabridge
+import javabridge
 from ..bioformats import omexml as ome
 
 def write_image(pathname, pixels, pixel_type,

@@ -7,6 +7,7 @@ import tempfile
 import shutil
 import datetime
 import time
+import subprocess
 from functools import wraps
 from collections import namedtuple
 from tqdm import tqdm
@@ -30,6 +31,13 @@ _mapCache = {}
 
 class utilClass:
     pass
+
+def install_javabridge():
+    download_java()
+    subprocess.check_call(
+        [sys.executable, '-m', 'pip', 'install',
+        'git+https://github.com/SchmollerLab/python-javabridge-acdc']
+    )
 
 def is_in_bounds(x,y,X,Y):
     in_bounds = x >= 0 and x < X and y >= 0 and y < Y
@@ -168,6 +176,8 @@ def download_examples(which='time_lapse_2D', progress=None):
     return example_path
 
 def download_java():
+    """Download Java and JDK to user path ~/.acdc-java"""
+
     is_linux = sys.platform.startswith('linux')
     is_mac = sys.platform == 'darwin'
     is_win = sys.platform.startswith("win")
@@ -194,13 +204,13 @@ def download_java():
         jre_name = 'jre1.8.0_301'
         return
 
-    cellacdc_path = os.path.dirname(os.path.realpath(__file__))
-    java_path = os.path.join(cellacdc_path, 'java', foldername)
+    user_path = str(pathlib.Path.home())
+    java_path = os.path.join(user_path, '.acdc-java', foldername)
     jre_path = os.path.join(java_path, jre_name)
     zip_dst = os.path.join(java_path, 'java_temp.zip')
 
     if os.path.exists(jre_path):
-        return
+        return jre_path
 
     if not os.path.exists(java_path):
         os.makedirs(java_path)
@@ -213,6 +223,7 @@ def download_java():
     # Remove downloaded zip archive
     os.remove(zip_dst)
     print('Java downloaded successfully')
+    return jre_path
 
 def getFromMatplotlib(name):
     """

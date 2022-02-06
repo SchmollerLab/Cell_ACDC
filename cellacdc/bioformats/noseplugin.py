@@ -10,7 +10,7 @@ from __future__ import absolute_import, unicode_literals
 import logging
 from nose.plugins import Plugin
 
-from .. import javabridge
+import javabridge
 
 
 log = logging.getLogger(__name__)

@@ -13,7 +13,7 @@ from __future__ import absolute_import, unicode_literals
 
 __version__ = "$Revision$"
 
-from ..javabridge import jutil
+from javabridge import jutil
 from .. import bioformats
 
 def createOMEXMLMetadata():

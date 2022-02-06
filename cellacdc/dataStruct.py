@@ -735,20 +735,35 @@ class createDataStructWin(QMainWindow):
         global bioformats, javabridge
         print('Checking if Java is installed...')
         try:
-            from cellacdc import javabridge
-            from cellacdc import bioformats
+            import javabridge
         except Exception as e:
-            myutils.download_java()
+            msg = QMessageBox()
+            txt = (
+                'Cell-ACDC has to download and install a package called '
+                '"javabridge".\n\n'
+                'Make sure you have an active internet connection, '
+                'before continuing. '
+                'Progress will be displayed on the terminal\n\n'
+                'Alternatively, you can cancel the process and try later.'
+            )
+            answer = msg.information(
+                self, 'Install package', txt, msg.Ok | msg.Cancel
+            )
+            if answer == msg.Cancel:
+                raise ModuleNotFoundError(
+                    'User aborted javabridge installation'
+                )
+            myutils.install_javabridge()
 
         try:
-            from cellacdc import javabridge
+            import javabridge
             from cellacdc import bioformats
         except Exception as e:
             traceback.print_exc()
             error_msg = (
-            'Automatic download of Java failed. Please download the portable '
-            'version of Java SE Runtime Environment and extract it into '
-            '"/Cell_ACDC/cellacdc/java/<OS name folder>"'
+            'Error while importing "javabridge" and "bioformats"\n\n'
+            'Please report detailed error (click "See more details") '
+            'here: https://github.com/SchmollerLab/Cell_ACDC/issues'
             )
             print('===============================================================')
             print(error_msg)

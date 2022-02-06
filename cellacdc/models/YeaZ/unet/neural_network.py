@@ -81,7 +81,7 @@ def prediction(im, is_pc, path_weights):
             'weights_budding_BF_multilab_0_1.hdf5'
         )
         if not os.path.exists(path):
-            from .... import myutils
+            from cellacdc import myutils
             # Download new yeaz weights from 14.08.2021 update
             file_id = '1nLn9n7uMiw8ZbYOwzL7IQnHuAPMtMzGR'
             myutils.download_from_gdrive(

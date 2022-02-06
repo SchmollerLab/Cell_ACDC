@@ -18,7 +18,7 @@ except ImportError:
     __version__ = "0.0.0"
 
 import os.path
-from .. import javabridge
+import javabridge
 from . import formatreader as _formatreader
 from . import formatwriter as _formatwriter
 

@@ -5,7 +5,7 @@
 # Copyright (c) 2009-2014 Broad Institute
 # All rights reserved.
 
-from .. import javabridge
+import javabridge
 
 def basic_config():
     '''Configure logging for "WARN" level'''

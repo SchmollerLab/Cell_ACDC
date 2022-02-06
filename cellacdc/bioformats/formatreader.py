@@ -46,10 +46,10 @@ import shutil
 import tempfile
 import traceback
 
-from .. import javabridge as jutil
+import javabridge as jutil
 from .. import bioformats
 from . import metadatatools as metadatatools
-from .. import javabridge
+import javabridge
 import boto3
 
 OMERO_READER_IMPORTED = False
