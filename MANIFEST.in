@@ -1,4 +1,7 @@
 include LICENSE
+include notebooks
+include UserManual
+
 exclude cellacdc/deprecated.py
 exclude cellacdc/lastCommit.txt
 exclude cellacdc/test.py
@@ -11,5 +14,7 @@ exclude cellacdc/temp/recentPaths.csv
 exclude cellacdc/temp/segm_last_sel.csv
 exclude cellacdc/temp/settings.csv
 exclude cellacdc/utils/deprecated
+
+exclude requirements.txt
 exclude not_installed_requirements.txt
 exclude requirements_new.txt

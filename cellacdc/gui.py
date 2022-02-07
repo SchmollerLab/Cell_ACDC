@@ -136,16 +136,14 @@ def exception_handler(func):
                 More details below or in the terminal/console.<br><br>
                 Note that the error details from this session are also saved
                 in the file<br>
-                "/Cell_ACDC/logs/{self.log_filename}.log"<br><br>
+                {self.log_path}<br><br>
                 Please <b>send the log file</b> when reporting a bug, thanks!
             </p>
             """)
             msg.setText(err_msg)
             showLog = msg.addButton('Show log file...', msg.HelpRole)
             showLog.disconnect()
-            cellacdc_path = os.path.dirname(os.path.abspath(__file__))
-            logs_path = os.path.join(cellacdc_path, 'logs')
-            slot = partial(myutils.showInExplorer, logs_path)
+            slot = partial(myutils.showInExplorer, self.logs_path)
             showLog.clicked.connect(slot)
             msg.addButton(msg.Ok)
             msg.setDetailedText(traceback_str)
@@ -536,8 +534,9 @@ class guiWin(QMainWindow):
         logger = logging.getLogger('spotMAX')
         logger.setLevel(logging.INFO)
 
-        cellacdc_path = os.path.dirname(os.path.abspath(__file__))
-        logs_path = os.path.join(cellacdc_path, 'logs')
+        user_path = pathlib.Path.home()
+        logs_path = os.path.join(user_path, '.acdc-logs')
+        self.logs_path = logs_path
         if not os.path.exists(logs_path):
             os.mkdir(logs_path)
         else:
@@ -552,6 +551,7 @@ class guiWin(QMainWindow):
         date_time = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
         log_filename = f'{date_time}_{module}_stdout.log'
         log_path = os.path.join(logs_path, log_filename)
+        self.log_path = log_path
         self.log_filename = log_filename
 
         output_file_handler = logging.FileHandler(log_path, mode='w')

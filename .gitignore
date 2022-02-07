@@ -5,6 +5,9 @@ figures
 not_installed_requirements.txt
 requirements_new.txt
 
+# Starting from pip 21.3 setup.py is not needed anymore
+setup.py
+
 notebooks/testing.ipynb
 notebooks/.ipynb_checkpoints
 .idea/
