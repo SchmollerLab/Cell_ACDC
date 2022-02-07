@@ -531,7 +531,7 @@ class guiWin(QMainWindow):
         self.isEditActionsConnected = False
 
     def setupLogger(self, module='gui'):
-        logger = logging.getLogger('spotMAX')
+        logger = logging.getLogger('cellacdc-logger')
         logger.setLevel(logging.INFO)
 
         user_path = pathlib.Path.home()
