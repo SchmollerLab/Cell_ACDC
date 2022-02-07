@@ -37,6 +37,7 @@ try:
     from cellacdc.help import about
     from cellacdc.utils import concat as utilsConcat
     from cellacdc.utils import convert as utilsConvert
+    from cellacdc.utils import rename as utilsRename
 except ModuleNotFoundError as e:
     src_path = os.path.dirname(os.path.abspath(__file__))
     main_path = os.path.dirname(src_path)
@@ -213,6 +214,7 @@ class mainWin(QMainWindow):
         utilsMenu.addAction(self.npzToNpyAction)
         utilsMenu.addAction(self.npzToTiffAction)
         utilsMenu.addAction(self.TiffToNpzAction)
+        utilsMenu.addAction(self.renameAction)
         menuBar.addMenu(utilsMenu)
 
         helpMenu = QMenu("&Help", self)
@@ -231,6 +233,7 @@ class mainWin(QMainWindow):
         self.concatAcdcDfsAction = QAction(
             'Concatenate acdc output tables from multiple Positions...'
         )
+        self.renameAction = QAction('Rename files by appending additional text...')
         # self.alignAction = QAction('Revert alignemnt/Align...')
 
         self.welcomeGuideAction = QAction('Welcome Guide')
@@ -246,10 +249,27 @@ class mainWin(QMainWindow):
         self.TiffToNpzAction.triggered.connect(self.launchConvertFormatUtil)
         self.welcomeGuideAction.triggered.connect(self.launchWelcomeGuide)
         self.aboutAction.triggered.connect(self.showAbout)
+        self.renameAction.triggered.connect(self.launchRenameUtil)
 
     def showAbout(self):
         self.aboutWin = about.QDialogAbout(parent=self)
         self.aboutWin.show()
+
+    def launchRenameUtil(self):
+        isUtilnabled = self.sender().isEnabled()
+        if isUtilnabled:
+            self.sender().setDisabled(True)
+            self.renameWin = utilsRename.renameFilesWin(
+                parent=self,
+                actionToEnable=self.sender(),
+                mainWin=self
+            )
+            self.renameWin.show()
+            self.renameWin.main()
+        else:
+            # self.convertWin.setWindowState(Qt.WindowNoState)
+            self.renameWin.setWindowState(Qt.WindowActive)
+            self.renameWin.raise_()
 
     def launchConvertFormatUtil(self, checked=False):
         s = self.sender().text()

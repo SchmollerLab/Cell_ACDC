@@ -661,10 +661,9 @@ class segmWin(QMainWindow):
             load_metadata=True
         )
         proceed = posData.askInputMetadata(
-                                    ask_SizeT=True,
-                                    ask_TimeIncrement=False,
-                                    ask_PhysicalSizes=False,
-                                    save=True)
+            ask_SizeT=True, ask_TimeIncrement=False, ask_PhysicalSizes=False,
+            save=True
+        )
         self.SizeT = posData.SizeT
         self.SizeZ = posData.SizeZ
         if not proceed:

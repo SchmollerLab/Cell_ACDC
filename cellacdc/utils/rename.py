@@ -38,18 +38,17 @@ if os.name == 'nt':
     except Exception as e:
         pass
 
-class convertFileFormatWin(QMainWindow):
-    def __init__(self, parent=None, allowExit=False,
-                 actionToEnable=None, mainWin=None,
-                 from_='npz', to='npy'):
-        self.from_ = from_
-        self.to = to
+class renameFilesWin(QMainWindow):
+    def __init__(
+            self, parent=None, allowExit=False,
+            actionToEnable=None, mainWin=None
+        ):
         self.allowExit = allowExit
         self.processFinished = False
         self.actionToEnable = actionToEnable
         self.mainWin = mainWin
         super().__init__(parent)
-        self.setWindowTitle(f"Cell-ACDC - Convert .{from_} file to .{to}")
+        self.setWindowTitle(f"Cell-ACDC - Rename files")
         self.setWindowIcon(QtGui.QIcon(":assign-motherbud.svg"))
 
         mainContainer = QWidget()
@@ -57,8 +56,7 @@ class convertFileFormatWin(QMainWindow):
 
         mainLayout = QVBoxLayout()
 
-        label = QLabel(
-            f'Converting .{from_} to .{to} routine running...')
+        label = QLabel('Renaming files utility')
 
         label.setStyleSheet("padding:5px 10px 10px 10px;")
         label.setAlignment(Qt.AlignCenter)
@@ -116,7 +114,7 @@ class convertFileFormatWin(QMainWindow):
                 return
 
         self.setWindowTitle(
-            f'Cell-ACDC - Convert .{self.from_} to .{self.to} - "{exp_path}"'
+            f'Cell-ACDC - Renaming files - "{exp_path}"'
         )
 
         if os.path.basename(exp_path).find('Position_') != -1:
@@ -169,8 +167,7 @@ class convertFileFormatWin(QMainWindow):
         elif is_images_folder:
             images_paths = [exp_path]
 
-        proceed, selectedFilenames = self.selectFiles(
-                images_paths[0], filterExt=[f'{self.from_}'])
+        proceed, selectedFilenames = self.selectFiles(images_paths[0])
         if not proceed:
             abort = self.doAbort()
             if abort:
@@ -185,7 +182,7 @@ class convertFileFormatWin(QMainWindow):
                 self.close()
                 return
 
-        print(f'Converting .{self.from_} to .{self.to} started...')
+        print(f'Renaming files by appending "_{appendedTxt}"...')
         if len(selectedFilenames) > 1 or len(images_paths) > 1:
             ch_name_selector = prompts.select_channel_name()
             ls = myutils.listdir(images_paths[0])
@@ -206,43 +203,33 @@ class convertFileFormatWin(QMainWindow):
                 _, skip = ch_name_selector.get_available_channels(
                     ls, images_path, useExt=None
                 )
+                if skip:
+                    print('')
+                    print('-------------------------------------')
+                    print(
+                        f'{images_path} data structure compromised!'
+                        'Skipping it.'
+                    )
+                    print('-------------------------------------')
                 for _endswith in _endswith_li:
                     for file in ls:
                         if file.endswith(_endswith):
-                            self.convert(
-                                images_path, file, appendedTxt,
-                                from_=self.from_, to=self.to
+                            self._rename(
+                                file, images_path, appendedTxt
                             )
         else:
-            self.convert(
-                images_paths[0], selectedFilenames[0], appendedTxt,
-                from_=self.from_, to=self.to
-            )
+            self._rename(selectedFilenames[0], images_paths[0], appendedTxt)
+
         self.close()
         if self.allowExit:
             exit('Done.')
 
-    def convert(self, images_path, filename, appendedTxt,
-                from_='npz', to='npy'):
-        filePath = os.path.join(images_path, filename)
-        if self.from_ == 'npz':
-            data = np.load(filePath)['arr_0']
-        elif self.from_ == 'npy':
-            data = np.load(filePath)
-        filename, ext = os.path.splitext(filename)
-        if appendedTxt:
-            newFilename = f'{filename}_{appendedTxt}.{self.to}'
-        else:
-            newFilename = f'{filename}.{self.to}'
-        newPath = os.path.join(images_path, newFilename)
-        if self.to == 'npy':
-            np.save(newPath, data)
-        elif self.to == 'tif':
-            myutils.imagej_tiffwriter(newPath, data, None, 1, 1, imagej=False)
-        elif self.to == 'npz':
-            np.savez_compressed(newPath, data)
-        print(f'File {filePath} saved to {newPath}')
-
+    def _rename(self, file, parent_path, appendedTxt):
+        filename, ext = os.path.splitext(file)
+        new_file = f'{filename}_{appendedTxt}{ext}'
+        src_filepath = os.path.join(parent_path, file)
+        new_filepath = os.path.join(parent_path, new_file)
+        os.rename(src_filepath, new_filepath)
 
     def save(self, alignedData, filePath, appendedTxt, first_call=True):
         dir = os.path.dirname(filePath)
@@ -253,7 +240,7 @@ class convertFileFormatWin(QMainWindow):
         font = QtGui.QFont()
         font.setPointSize(10)
         self.win = apps.QDialogAppendTextFilename(
-            filename, self.to, parent=self, font=font
+            filename, '', parent=self, font=font
         )
         self.win.exec_()
         return self.win.cancel, self.win.LE.text()
@@ -276,10 +263,7 @@ class convertFileFormatWin(QMainWindow):
 
         selectFilesWidget = apps.QDialogListbox(
             'Select files',
-            f'Select the .{self.from_} files you want to convert to '
-            f'.{self.to}\n\n'
-            'NOTE: if you selected multiple Position folders I will try \n'
-            'to convert all selected files in each Position folder',
+            'Select the files you want to rename',
             items, multiSelection=True, parent=self
         )
         selectFilesWidget.exec_()

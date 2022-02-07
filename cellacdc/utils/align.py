@@ -189,7 +189,9 @@ class alignWin(QMainWindow):
                 selectedFilenames, images_paths[0], useExt=None
             )
             if abort or not channelNames:
-                self.criticalNoCommonBasename()
+                self.criticalNoCommonBasename(
+                    selectedFilenames, images_paths[0]
+                )
                 self.close()
                 return
 
@@ -309,28 +311,8 @@ class alignWin(QMainWindow):
             alignedData[frame_i] = aligned_img
         return alignedData
 
-    def criticalNoCommonBasename(self):
-        msg = QtGui.QMessageBox()
-        msg.critical(
-           self, 'Data structure compromised',
-           'The system detected files inside the "Images" folder '
-           'that do not start with the same, common basename.\n\n'
-           'To ensure correct loading of the relevant data, the folder "Images" '
-           'inside each Position folder should contain only files that start '
-           'with the same, common basename.\n\n'
-           'For example the following filenames:\n\n'
-           'F014_s01_phase_contr.tif\n'
-           'F014_s01_mCitrine.tif\n\n'
-           'are named correctly since they all start with the '
-           'the common basename "F014_s01_". After the common basename you '
-           'can write whatever text you want. In the example above, "phase_contr" '
-           'and "mCitrine" are the channel names.\n\n'
-           'We recommend using the provided Fiji/ImageJ macro to create the right '
-           'data structure.\n\n'
-           'To apply alignment select only one "Images" folder AND only one file at the time.',
-           msg.Ok
-        )
-
+    def criticalNoCommonBasename(self, filenames, parent_path):
+        myutils.checkDataIntegrity(filenames, parent_path, parentQWidget=self)
 
     def askAlignmentMode(self):
         msg = QtGui.QMessageBox(self)
