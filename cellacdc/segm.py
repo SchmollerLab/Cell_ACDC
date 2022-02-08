@@ -301,7 +301,6 @@ class segmWorker(QRunnable):
 
         if self.save:
             self.signals.progress.emit(f'Saving {posData.relPath}...')
-            posData.segm_npz_path = posData.segm_npz_path.replace('_segm.npz', '_segm_DAPI.npz')
             np.savez_compressed(posData.segm_npz_path, tracked_stack)
 
         t_end = time.time()

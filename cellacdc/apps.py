@@ -932,7 +932,7 @@ class QDialogCombobox(QDialog):
         if iconPixmap is not None:
             label = QLabel()
             # padding: top, left, bottom, right
-            # label.setStyleSheet("padding:5px 0px 10px 0px;")
+            # label.setStyleSheet("padding:5px 0px 12px 0px;")
             label.setPixmap(iconPixmap)
             infoLayout.addWidget(label)
 
@@ -2077,7 +2077,7 @@ class randomWalkerDialog(QDialog):
         font = QtGui.QFont()
         font.setPointSize(10)
         seeHereLabel.setFont(font)
-        seeHereLabel.setStyleSheet("padding:10px 0px 0px 0px;")
+        seeHereLabel.setStyleSheet("padding:12px 0px 0px 0px;")
         paramsLayout.addWidget(seeHereLabel, row, 0, 1, 2)
 
         computeButton = QPushButton('Compute segmentation')
@@ -3537,7 +3537,7 @@ class editID_QWidget(QDialog):
         note.setFont(_font)
         note.setAlignment(Qt.AlignCenter)
         # padding: top, left, bottom, right
-        note.setStyleSheet("padding:10px 0px 0px 0px;")
+        note.setStyleSheet("padding:12px 0px 0px 0px;")
         VBoxLayout.addWidget(note, alignment=Qt.AlignCenter)
         mainLayout.addLayout(VBoxLayout)
 
@@ -4622,7 +4622,7 @@ class QDialogMultiSegmNpz(QDialog):
 
         label = QLabel()
         # padding: top, left, bottom, right
-        # label.setStyleSheet("padding:5px 0px 10px 0px;")
+        # label.setStyleSheet("padding:5px 0px 12px 0px;")
         label.setPixmap(QtGui.QPixmap(':warning.svg'))
         infoLayout.addWidget(label)
 
@@ -4977,7 +4977,7 @@ class QDialogModelParams(QDialog):
         seeHereLabel.setTextFormat(Qt.RichText)
         seeHereLabel.setTextInteractionFlags(Qt.TextBrowserInteraction)
         seeHereLabel.setOpenExternalLinks(True)
-        seeHereLabel.setStyleSheet("padding:10px 0px 0px 0px;")
+        seeHereLabel.setStyleSheet("padding:12px 0px 0px 0px;")
         return seeHereLabel
 
     def argsWidgets_to_kwargs(self, argsWidgets):

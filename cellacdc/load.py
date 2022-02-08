@@ -4,6 +4,7 @@ import traceback
 import re
 import cv2
 import json
+from math import isnan
 from tqdm import tqdm
 import numpy as np
 import pandas as pd
@@ -24,6 +25,9 @@ from PyQt5.QtWidgets import (
 import pyqtgraph as pg
 
 from . import prompts, apps, myutils
+from . import base_cca_df, base_acdc_df # defined in __init__.py
+
+cca_df_colnames = list(base_cca_df.keys())
 
 def get_user_ch_paths(images_paths, user_ch_name):
     user_ch_file_paths = []
@@ -122,11 +126,12 @@ class loadData:
     def detectMultiSegmNpz(self, _endswith='', multiPos=False):
         ls = myutils.listdir(self.images_path)
         if _endswith:
-            selectedSegmNpz = [
-                f.endswith(_endswith) for f in ls
+            self.multiSegmAllPos = True
+            selectedSegmNpz_found = [
+                f for f in ls if f.endswith(_endswith)
             ]
-            if selectedSegmNpz:
-                return selectedSegmNpz[0], False
+            if selectedSegmNpz_found:
+                return selectedSegmNpz_found[0], False
 
         segm_files = [
             file for file in ls if file.endswith('segm.npz')
@@ -168,7 +173,7 @@ class loadData:
         ):
 
         self.segmFound = False if load_segm_data else None
-        self.acd_df_found = False if load_acdc_df else None
+        self.acdc_df_found = False if load_acdc_df else None
         self.shiftsFound = False if load_shifts else None
         self.segmInfoFound = False if loadSegmInfo else None
         self.delROIsInfoFound = False if load_delROIsInfo else None
@@ -199,7 +204,7 @@ class loadData:
                 self.tif_path = filePath
                 self.TifPathFound = True
             elif load_acdc_df and file.endswith('acdc_output.csv'):
-                self.acd_df_found = True
+                self.acdc_df_found = True
                 acdc_df = pd.read_csv(
                       filePath, index_col=['frame_i', 'Cell_ID']
                 )
@@ -329,7 +334,7 @@ class loadData:
     def setNotFoundData(self):
         if self.segmFound is not None and not self.segmFound:
             self.segm_data = None
-        if self.acd_df_found is not None and not self.acd_df_found:
+        if self.acdc_df_found is not None and not self.acdc_df_found:
             self.acdc_df = None
         if self.shiftsFound is not None and not self.shiftsFound:
             self.loaded_shifts = None
@@ -390,8 +395,39 @@ class loadData:
         if 'segmSizeT' in self.last_md_df.index:
             self.segmSizeT = int(self.last_md_df.at['segmSizeT', 'values'])
 
-    def checkMetadata_vs_shape(self):
-        pass
+    def check_acdc_df_integrity(self):
+        check = (
+            self.acdc_df_found is not None # acdc_df was laoded if present
+            and self.acdc_df is not None # acdc_df was present
+            and self.segmFound is not None # segm data was loaded if present
+            and self.segm_data is not None # segm data was present
+        )
+        if check:
+            if self.SizeT > 1:
+                for frame_i, lab in enumerate(self.segm_data):
+                    self._fix_acdc_df(lab, frame_i=frame_i)
+            else:
+                lab = self.segm_data
+                self._fix_acdc_df(lab)
+
+    def _fix_acdc_df(self, lab, frame_i=0):
+        rp = skimage.measure.regionprops(lab)
+        segm_IDs = [obj.label for obj in rp]
+        acdc_df_IDs = self.acdc_df.loc[frame_i].index
+        cca_df = self.acdc_df[cca_df_colnames]
+        for obj in rp:
+            ID = obj.label
+            if ID in acdc_df_IDs:
+                continue
+            idx = (frame_i, ID)
+            self.acdc_df.loc[idx, cca_df_colnames] = base_cca_df.values()
+            for col, val in base_acdc_df.items():
+                if not isnan(self.acdc_df.at[idx, col]):
+                    continue
+                self.acdc_df.at[idx, col] = val
+            y, x = obj.centroid
+            self.acdc_df.at[idx, 'x_centroid'] = x
+            self.acdc_df.at[idx, 'y_centroid'] = y
 
     def saveSegmHyperparams(self, hyperparams):
         df = pd.DataFrame(hyperparams, index=['value'])

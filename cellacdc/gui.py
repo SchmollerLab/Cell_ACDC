@@ -72,6 +72,7 @@ from .models.YeaZ.unet import tracking as tracking_yeaz
 from . import qrc_resources
 
 # Custom modules
+from . import base_cca_df
 from . import load, prompts, apps
 from . import core, myutils, dataPrep, widgets
 from .cca_functions import _calc_rot_vol
@@ -131,7 +132,7 @@ def exception_handler(func):
             msg.setWindowTitle('Critical error')
             msg.setIcon(msg.Critical)
             err_msg = (f"""
-            <p style="font-size:11px">
+            <p style="font-size:14px">
                 Error in function <b>{func.__name__}</b>.<br><br>
                 More details below or in the terminal/console.<br><br>
                 Note that the error details from this session are also saved
@@ -585,7 +586,7 @@ class guiWin(QMainWindow):
                     self.df_settings.loc['is_bw_inverted'].astype(str)
                 )
             if 'fontSize' not in self.df_settings.index:
-                self.df_settings.at['fontSize', 'value'] = '10px'
+                self.df_settings.at['fontSize', 'value'] = '12px'
             if 'overlayColor' not in self.df_settings.index:
                 self.df_settings.at['overlayColor', 'value'] = '255-255-0'
             if 'how_normIntensities' not in self.df_settings.index:
@@ -593,7 +594,7 @@ class guiWin(QMainWindow):
                 self.df_settings.at['how_normIntensities', 'value'] = raw
         else:
             idx = ['is_bw_inverted', 'fontSize', 'overlayColor', 'how_normIntensities']
-            values = ['No', '10px', '255-255-0', 'raw']
+            values = ['No', '12px', '255-255-0', 'raw']
             self.df_settings = pd.DataFrame({
                 'setting': idx,'value': values}
             ).set_index('setting')
@@ -3689,7 +3690,7 @@ class guiWin(QMainWindow):
         if self.sender().text() == 'YeaZ':
             msg = QMessageBox()
             info_txt = (f"""
-            <p style="font-size:11px">
+            <p style="font-size:14px">
                 Note that YeaZ tracking algorithm tends to be sliglhtly more accurate
                 overall, but it is <b>less capable of detecting segmentation
                 errors.</b><br><br>
@@ -4383,7 +4384,7 @@ class guiWin(QMainWindow):
     def warnMotherNotEligible(self, new_mothID, budID, i, why):
         if why == 'not_G1_in_the_future':
             err_msg = (f"""
-            <p style="font-size:10px">
+            <p style="font-size:12px">
                 The requested cell in G1 (ID={new_mothID})
                 at future frame {i+1} has a bud assigned to it,
                 therefore it cannot be assigned as the mother
@@ -4413,7 +4414,7 @@ class guiWin(QMainWindow):
             cancel = enforce_assignment == msg.Cancel
         elif why == 'not_G1_in_the_past':
             err_msg = (f"""
-            <p style="font-size:10px">
+            <p style="font-size:12px">
                 The requested cell in G1
                 (ID={new_mothID}) at past frame {i+1}
                 has a bud assigned to it, therefore it cannot be
@@ -4431,7 +4432,7 @@ class guiWin(QMainWindow):
             cancel = None
         elif why == 'single_frame_G1_duration':
             err_msg = (f"""
-            <p style="font-size:10px">
+            <p style="font-size:12px">
                 Assigning bud ID {budID} to cell in G1
                 (ID={new_mothID}) would result in no G1 phase at all between
                 previous cell cycle and current cell cycle.
@@ -6851,6 +6852,9 @@ class guiWin(QMainWindow):
                     return False
                 if posData.multiSegmAllPos:
                     _endswith = selectedSegmNpz[len(posData.basename)-1:]
+                    print('----------------')
+                    print(selectedSegmNpz)
+                    print(_endswith)
                 posData.loadOtherFiles(
                     load_segm_data=True,
                     load_acdc_df=True,
@@ -6868,11 +6872,12 @@ class guiWin(QMainWindow):
                         segm_fn = os.path.basename(posData.segm_npz_path)
                         self.logger.info(f'Loading "{segm_fn}" segmentation file...')
                     proceed = posData.askInputMetadata(
-                                                ask_SizeT=self.num_pos==1,
-                                                ask_TimeIncrement=True,
-                                                ask_PhysicalSizes=True,
-                                                singlePos=False,
-                                                save=True)
+                        ask_SizeT=self.num_pos==1,
+                        ask_TimeIncrement=True,
+                        ask_PhysicalSizes=True,
+                        singlePos=False,
+                        save=True
+                    )
                     if not proceed:
                         return False
                     self.SizeT = posData.SizeT
@@ -6907,6 +6912,7 @@ class guiWin(QMainWindow):
                 posData.setBlankSegmData(
                     posData.SizeT, posData.SizeZ, SizeY, SizeX
                 )
+                posData.check_acdc_df_integrity()
                 skipPos, abort = self.checkDataIntegrity(posData, numPos)
             except AttributeError:
                 self.logger.info('')
@@ -7400,22 +7406,11 @@ class guiWin(QMainWindow):
         self.isMouseDragImg1 = False
         self.isRightClickDragImg1 = False
 
-        self.cca_df_colnames = [
-            'cell_cycle_stage',
-            'generation_num',
-            'relative_ID',
-            'relationship',
-            'emerg_frame_i',
-            'division_frame_i',
-            'is_history_known',
-            'corrected_assignment'
-        ]
+        self.cca_df_colnames = list(base_cca_df.keys())
         self.cca_df_dtypes = [
             str, int, int, str, int, int, bool, bool
         ]
-        self.cca_df_default_values = [
-            'G1', 2, -1, 'mother', -1, -1, False, False
-        ]
+        self.cca_df_default_values = list(base_cca_df.values())
         self.cca_df_int_cols = [
             'generation_num',
             'relative_ID',
@@ -7656,14 +7651,14 @@ class guiWin(QMainWindow):
             posData.STOREDmaxID = 0
         posData.allData_li[posData.frame_i]['acdc_df'] = pd.DataFrame(
             {
-                        'Cell_ID': IDs,
-                        'is_cell_dead': is_cell_dead_li,
-                        'is_cell_excluded': is_cell_excluded_li,
-                        'x_centroid': xx_centroid,
-                        'y_centroid': yy_centroid,
-                        'editIDclicked_x': editIDclicked_x,
-                        'editIDclicked_y': editIDclicked_y,
-                        'editIDnewID': editIDnewID
+                'Cell_ID': IDs,
+                'is_cell_dead': is_cell_dead_li,
+                'is_cell_excluded': is_cell_excluded_li,
+                'x_centroid': xx_centroid,
+                'y_centroid': yy_centroid,
+                'editIDclicked_x': editIDclicked_x,
+                'editIDclicked_y': editIDclicked_y,
+                'editIDnewID': editIDnewID
             }
         ).set_index('Cell_ID')
 
@@ -7730,7 +7725,7 @@ class guiWin(QMainWindow):
     def warnScellsGone(self, ScellsIDsGone, frame_i):
         msg = QMessageBox()
         text = (f"""
-        <p style="font-size:10px">
+        <p style="font-size:12px">
             In the next frame the followning cells' IDs in S/G2/M
             (highlighted with a yellow contour) <b>will disappear</b>:<br><br>
             {ScellsIDsGone}<br><br>
@@ -11054,7 +11049,7 @@ class guiWin(QMainWindow):
         if frame_i > 0:
             # Ask to save last visited frame or not
             txt = (f"""
-            <p style="font-size:10px">
+            <p style="font-size:12px">
                 You visited and stored data up until frame
                 number {frame_i+1}.<br><br>
                 Enter <b>up to which frame number</b> you want to save data:
@@ -11077,7 +11072,7 @@ class guiWin(QMainWindow):
     def askSaveMetrics(self):
         txt = (
         """
-        <p style="font-size:10px">
+        <p style="font-size:12px">
             Do you also want to <b>save additional metrics</b>
             (e.g., cell volume, mean, amount etc.)?<br><br>
             NOTE: Saving additional metrics is <b>slower</b>,
@@ -11113,7 +11108,7 @@ class guiWin(QMainWindow):
         msg.setIcon(msg.Question)
         txt = (
         f"""
-        <p style="font-size:10px">
+        <p style="font-size:12px">
             Do you want to save <b>ALL positions</b> or <b>only until
             Position_{last_pos}</b> (last visualized/corrected position)?<br>
         </p>
@@ -11215,7 +11210,7 @@ class guiWin(QMainWindow):
 
         infoTxt = (
         f"""
-            <p style=font-size:10px>
+            <p style=font-size:12px>
                 Saving {self.exp_path}...<br>
             </p>
         """)
