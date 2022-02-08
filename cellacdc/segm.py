@@ -641,6 +641,15 @@ class segmWin(QMainWindow):
             elif aligned_npz_found:
                 user_ch_file_paths.append(img_path)
 
+        hyperparams = self.segment2D_kwargs.copy()
+        post_process_params = {
+            'minSize': self.minSize,
+            'minSolidity': self.minSolidity,
+            'maxElongation': self.maxElongation,
+            'applied_postprocessing': int(self.applyPostProcessing)
+        }
+        hyperparams.update(post_process_params)
+        hyperparams['segm_channel_name'] = user_ch_name
 
         selectROI = False
         # Ask other questions based on first position
@@ -648,6 +657,7 @@ class segmWin(QMainWindow):
         posData = load.loadData(img_path, user_ch_name, QParent=self)
         posData.getBasenameAndChNames()
         posData.buildPaths()
+        posData.saveSegmHyperparams(hyperparams)
         posData.loadImgData()
         posData.loadOtherFiles(
             load_segm_data=True,

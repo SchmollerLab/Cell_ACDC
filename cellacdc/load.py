@@ -385,6 +385,10 @@ class loadData:
     def checkMetadata_vs_shape(self):
         pass
 
+    def saveSegmHyperparams(self, hyperparams):
+        df = pd.DataFrame(hyperparams, index=['value'])
+        df.to_csv(self.segm_hyperparams_csv_path)
+
     def buildPaths(self):
         if self.basename.endswith('_'):
             basename = self.basename
@@ -410,6 +414,7 @@ class loadData:
         self.raw_segm_npz_path = f'{base_path}segm_raw.npz'
         self.raw_postproc_segm_path = f'{base_path}segm_raw_postproc'
         self.post_proc_mot_metrics = f'{base_path}post_proc_mot_metrics'
+        self.segm_hyperparams_csv_path = f'{base_path}segm_hyperparams.csv'
 
     def setBlankSegmData(self, SizeT, SizeZ, SizeY, SizeX):
         Y, X = self.img_data.shape[-2:]
