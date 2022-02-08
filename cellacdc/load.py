@@ -404,7 +404,10 @@ class loadData:
         )
         if check:
             if self.SizeT > 1:
+                annotates_frames = self.acdc_df.index.get_level_values(0)
                 for frame_i, lab in enumerate(self.segm_data):
+                    if frame_i not in annotates_frames:
+                        break
                     self._fix_acdc_df(lab, frame_i=frame_i)
             else:
                 lab = self.segm_data

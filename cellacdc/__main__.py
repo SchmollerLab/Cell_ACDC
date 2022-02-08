@@ -1,10 +1,4 @@
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPyTop HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
+#!/usr/bin/env python
 
 print('Importing modules...')
 import sys
@@ -18,13 +12,13 @@ import pandas as pd
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QPushButton, QLabel, QAction,
-    QMenu, QMessageBox, QStyleFactory
+    QMenu, QMessageBox, QStyleFactory, QHBoxLayout
 )
 from PyQt5.QtCore import (
     Qt, QProcess, pyqtSignal, pyqtSlot, QTimer, QSize,
     QSettings
 )
-from PyQt5.QtGui import QFontDatabase
+from PyQt5.QtGui import QFontDatabase, QIcon
 from pyqtgraph.Qt import QtGui
 
 # acdc modules
@@ -67,7 +61,7 @@ class mainWin(QMainWindow):
         self.welcomeGuide = None
         super().__init__(parent)
         self.setWindowTitle("Cell-ACDC")
-        self.setWindowIcon(QtGui.QIcon(":assign-motherbud.svg"))
+        self.setWindowIcon(QIcon(":assign-motherbud.svg"))
 
         self.loadFonts()
 
@@ -138,15 +132,27 @@ class mainWin(QMainWindow):
         self.guiButton = guiButton
         mainLayout.addWidget(guiButton)
 
-        closeButton = QPushButton(QtGui.QIcon(":exit.png"), '  Exit')
-        self.closeButton = closeButton
-        # closeButton.setIconSize(QSize(24,24))
         font = QtGui.QFont()
         font.setPointSize(10)
+
+        closeLayout = QHBoxLayout()
+        restartButton = QPushButton(
+            QIcon(":reload.svg"),
+            '  Restart Cell-ACDC'
+        )
+        restartButton.setFont(font)
+        restartButton.clicked.connect(self.close)
+        self.restartButton = restartButton
+        closeLayout.addWidget(restartButton)
+
+        closeButton = QPushButton(QIcon(":exit.png"), '  Exit')
+        self.closeButton = closeButton
+        # closeButton.setIconSize(QSize(24,24))
         closeButton.setFont(font)
         closeButton.clicked.connect(self.close)
-        mainLayout.addWidget(closeButton)
+        closeLayout.addWidget(closeButton)
 
+        mainLayout.addLayout(closeLayout)
         mainContainer.setLayout(mainLayout)
 
         self.start_JVM = True
@@ -455,7 +461,8 @@ class mainWin(QMainWindow):
         self.dataPrepButton.setMinimumHeight(h*2)
         self.segmButton.setMinimumHeight(h*2)
         self.guiButton.setMinimumHeight(h*2)
-        self.closeButton.setMinimumHeight(int(h*1.5))
+        self.restartButton.setMinimumHeight(int(h*2))
+        self.closeButton.setMinimumHeight(int(h*2))
         iconWidth = int(self.closeButton.iconSize().width()*1.3)
         self.closeButton.setIconSize(QSize(iconWidth, iconWidth))
         self.setColorsAndText()
@@ -517,7 +524,11 @@ class mainWin(QMainWindow):
             event.ignore()
             return
 
-        print('Cell-ACDC closed. Have a good day!')
+        if self.sender() == self.restartButton:
+            print('Restarting Cell-ACDC...')
+            os.execv(sys.argv[0], sys.argv)
+        else:
+            print('Cell-ACDC closed. Have a good day!')
 
 def main():
     print('Launching application...')
@@ -530,7 +541,7 @@ def main():
     # Create the application
     app = QApplication([])
     app.setStyle(QStyleFactory.create('Fusion'))
-    app.setWindowIcon(QtGui.QIcon(":assign-motherbud.svg"))
+    app.setWindowIcon(QIcon(":assign-motherbud.svg"))
     win = mainWin(app)
     win.show()
     win.launchWelcomeGuide()
