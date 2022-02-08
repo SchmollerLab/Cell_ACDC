@@ -1062,6 +1062,11 @@ class QDialogListbox(QDialog):
     def show(self, block=False):
         self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
         super().show()
+
+        horizontal_sb = self.listBox.horizontalScrollBar()
+        while horizontal_sb.isVisible():
+            self.resize(self.height(), self.width() + 10)
+
         if block:
             self.loop = QEventLoop()
             self.loop.exec_()
@@ -4590,11 +4595,12 @@ class QDialogZsliceAbsent(QDialog):
             self.loop.exit()
 
 class QDialogMultiSegmNpz(QDialog):
-    def __init__(self, images_ls, parent_path, parent=None):
+    def __init__(self, images_ls, parent_path, parent=None, multiPos=False):
         self.cancel = True
         self.selectedItemText = ''
         self.selectedItemIdx = None
         self.removeOthers = False
+        self.okAllPos = False
         self.images_ls = images_ls
         self.parent_path = parent_path
         super().__init__(parent)
@@ -4637,10 +4643,28 @@ class QDialogMultiSegmNpz(QDialog):
         showInFileManagerButton = QPushButton(s)
         cancelButton = QPushButton(' Cancel ')
 
-        buttonsLayout.addWidget(okButton, 0, 0)
-        buttonsLayout.addWidget(okAndRemoveButton, 0, 1)
-        buttonsLayout.addWidget(showInFileManagerButton, 1, 0)
-        buttonsLayout.addWidget(cancelButton, 1, 1)
+        row, col = 0, 0
+        buttonsLayout.addWidget(okButton, row, col)
+        row, col = 1, 0
+        if multiPos:
+            row, col = 1, 1
+        buttonsLayout.addWidget(showInFileManagerButton, row, col) # 1, 0 --> 1, 1
+
+        row, col = 0, 1
+        if multiPos:
+            okAllPos = QPushButton(' Load selected for ALL positions ')
+            buttonsLayout.addWidget(okAllPos, row, col) # 0, 1
+            row, col = 1, 0
+            okAllPos.clicked.connect(self.ok_allPos)
+
+        buttonsLayout.addWidget(okAndRemoveButton, row, col) # 0, 1 --> 1, 0
+
+        row, col = 1, 1
+        if multiPos:
+            row, col = 2, 1
+        buttonsLayout.addWidget(cancelButton, row, col) # 1, 1 --> 2, 1
+
+
         buttonsLayout.setContentsMargins(0, 10, 0, 10)
 
         selectionLayout.addWidget(label, 0, 1, alignment=Qt.AlignLeft)
@@ -4663,6 +4687,13 @@ class QDialogMultiSegmNpz(QDialog):
 
     def showInFileManager(self, checked=True):
         myutils.showInExplorer(self.parent_path)
+
+    def ok_allPos(self, checked=False):
+        self.cancel = False
+        self.okAllPos = True
+        self.selectedItemText = self.ComboBox.currentText()
+        self.selectedItemIdx = self.ComboBox.currentIndex()
+        self.close()
 
     def ok_cb(self, event):
         self.removeOthers = self.sender() == self.okAndRemoveButton

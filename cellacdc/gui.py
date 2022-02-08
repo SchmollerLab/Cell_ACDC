@@ -6837,15 +6837,20 @@ class guiWin(QMainWindow):
     def loadSelectedData(self, user_ch_file_paths, user_ch_name):
         data = []
         numPos = len(user_ch_file_paths)
+        _endswith = ''
         for f, file_path in enumerate(user_ch_file_paths):
             try:
                 posData = load.loadData(file_path, user_ch_name, QParent=self)
                 posData.getBasenameAndChNames()
                 posData.buildPaths()
                 posData.loadImgData()
-                selectedSegmNpz, cancel = posData.detectMultiSegmNpz()
+                selectedSegmNpz, cancel = posData.detectMultiSegmNpz(
+                    _endswith=_endswith, multiPos=numPos>1
+                )
                 if cancel:
                     return False
+                if posData.multiSegmAllPos:
+                    _endswith = selectedSegmNpz[len(posData.basename)-1:]
                 posData.loadOtherFiles(
                     load_segm_data=True,
                     load_acdc_df=True,

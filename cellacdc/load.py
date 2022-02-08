@@ -58,6 +58,7 @@ class loadData:
         self.exp_path = os.path.dirname(self.pos_path)
         self.pos_foldername = os.path.basename(self.pos_path)
         self.cropROI = None
+        self.multiSegmAllPos = False
         path_li = os.path.normpath(imgPath).split(os.sep)
         self.relPath = f'{f"{os.sep}".join(path_li[-3:])}'
         filename_ext = os.path.basename(imgPath)
@@ -118,22 +119,29 @@ class loadData:
             img_data[i] = frame
         return img_data
 
-    def detectMultiSegmNpz(self):
+    def detectMultiSegmNpz(self, _endswith='', multiPos=False):
         ls = myutils.listdir(self.images_path)
+        if _endswith:
+            selectedSegmNpz = [
+                f.endswith(_endswith) for f in ls
+            ]
+            if selectedSegmNpz:
+                return selectedSegmNpz[0], False
+
         segm_files = [
             file for file in ls if file.endswith('segm.npz')
             or file.find('segm_raw_postproc') != -1
             or file.endswith('segm_raw.npz')
+            or (file.endswith('.npz') and file.find('segm') != -1)
         ]
         is_multi_npz = len(segm_files)>1
         if is_multi_npz:
-            font = QtGui.QFont()
-            font.setPointSize(9)
             win = apps.QDialogMultiSegmNpz(
-                segm_files, self.pos_path, parent=self.parent
+                segm_files, self.pos_path, parent=self.parent,
+                multiPos=multiPos
             )
-            win.setFont(font)
             win.exec_()
+            self.multiSegmAllPos = win.okAllPos
             if win.removeOthers:
                 for file in segm_files:
                     if file == win.selectedItemText:
