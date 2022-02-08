@@ -453,7 +453,6 @@ class mainWin(QMainWindow):
             self.concatWin.setWindowState(Qt.WindowActive)
             self.concatWin.raise_()
 
-
     def show(self):
         QMainWindow.show(self)
         h = self.dataPrepButton.geometry().height()
@@ -526,7 +525,12 @@ class mainWin(QMainWindow):
 
         if self.sender() == self.restartButton:
             print('Restarting Cell-ACDC...')
-            os.execv(sys.argv[0], sys.argv)
+            try:
+                os.execv(sys.argv[0], sys.argv)
+            except Exception as e:
+                traceback.print_exc()
+                print('-----------------------------------------')
+                print('Failed to restart Cell-ACDC. Please restart manually')
         else:
             print('Cell-ACDC closed. Have a good day!')
 

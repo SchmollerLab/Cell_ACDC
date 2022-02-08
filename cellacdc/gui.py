@@ -2039,7 +2039,7 @@ class guiWin(QMainWindow):
                     self.ax2BrushID = posData.brushID
                     posData.isNewID = True
 
-                self.updateLookuptable(lenNewLut=posData.ax2BrushID+1)
+                self.updateLookuptable(lenNewLut=self.ax2BrushID+1)
                 self.isMouseDragImg2 = True
 
                 # Draw new objects
