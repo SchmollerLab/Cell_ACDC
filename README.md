@@ -20,7 +20,7 @@ Let's face it, when dealing with segmentation of microscopy data we often do not
 We combined the currently **best available neural network models** (such as [YeaZ](https://www.nature.com/articles/s41467-020-19557-4),
 [Cellpose](https://www.nature.com/articles/s41592-020-01018-x), [StarDist](https://github.com/stardist/stardist), and [YeastMate](https://github.com/hoerlteam/YeastMate)) and we complemented them with a **fast and intuitive GUI**.
 
-We developed and implemented several smart functionalities such as **real-time continuous tracking**, **automatic propagation** of error correction, and several tools to facilitate manual correction, from simple yet useful **brush** and **eraser** to more complex flood fill (magic wand) and Random Walker segmentation routines!
+We developed and implemented several smart functionalities such as **real-time continuous tracking**, **automatic propagation** of error correction, and several tools to facilitate manual correction, from simple yet useful **brush** and **eraser** to more complex flood fill (magic wand) and Random Walker segmentation routines.
 
 See below **how it compares** to other popular tools available (*Table 1 our our [pre-print](https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2)*).
 
@@ -30,13 +30,21 @@ See below **how it compares** to other popular tools available (*Table 1 our our
 
 ## Is it only about segmentation?
 
-Of course not! Cell-ACDC automatically computes **several single-cell numerical features** such as cell area and cell volume, plus the mean, max, median, sum and quantiles of any additional fluorescent channel. It even performs background correction, to compute the **protein amount and concentration**!
+Of course not! Cell-ACDC automatically computes **several single-cell numerical features** such as cell area and cell volume, plus the mean, max, median, sum and quantiles of any additional fluorescent channel. It even performs background correction, to compute the **protein amount and concentration**.
 
-You can load and analyse single **2D images**, **3D data** (3D z-stacks or 2D images over time) and even **4D data** (3D z-stacks over time)!
+You can load and analyse single **2D images**, **3D data** (3D z-stacks or 2D images over time) and even **4D data** (3D z-stacks over time).
 
-Finally, we provide Jupyter notebooks to **visualize** and interactively **explore** the data produced!
+Finally, we provide Jupyter notebooks to **visualize** and interactively **explore** the data produced.
 
 **Do not hesitate to contact me** here on GitHub (by opening an issue) or directly at my email francesco.padovani@helmholtz-muenchen.de for any problem and/or feedback on how to improve the user experience!
+
+## Update v1.2.3
+
+**NOTE: some users had issues installing the environment with this version. Please see this [issue](https://github.com/SchmollerLab/Cell_ACDC/issues/5) for a possible solution**
+
+This release includes new segmentation models:
+- Cellpose v0.8.0 with the models cyto2 and omnipose
+- StarDist
 
 ## Update v1.2.2
 
