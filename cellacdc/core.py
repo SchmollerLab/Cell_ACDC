@@ -53,6 +53,10 @@ def lab_replace_values(lab, rp, oldIDs, newIDs, in_place=True):
             idx = oldIDs.index(obj.label)
         except ValueError:
             continue
+
+        if obj.label == newIDs[idx]:
+            continue
+
         lab[obj.slice][obj.image] = newIDs[idx]
     return lab
 

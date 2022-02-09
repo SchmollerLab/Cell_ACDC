@@ -526,7 +526,7 @@ class mainWin(QMainWindow):
         if self.sender() == self.restartButton:
             print('Restarting Cell-ACDC...')
             try:
-                os.execv(sys.argv[0], sys.argv)
+                os.execv(sys.executable, ['python'] + sys.argv)
             except Exception as e:
                 traceback.print_exc()
                 print('-----------------------------------------')
