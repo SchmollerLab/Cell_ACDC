@@ -45,6 +45,7 @@ except ModuleNotFoundError as e:
     print('----------------------------------------')
     exit('Execution aborted due to an error. See above for details.')
 
+from . import is_win
 
 if os.name == 'nt':
     try:
@@ -236,6 +237,7 @@ class mainWin(QMainWindow):
         self.npzToNpyAction = QAction('Convert .npz file(s) to .npy...')
         self.npzToTiffAction = QAction('Convert .npz file(s) to .tif...')
         self.TiffToNpzAction = QAction('Convert .tif file(s) to _segm.npz...')
+        # self.TiffToHDFAction = QAction('Convert .tif file(s) to .h5py...')
         self.concatAcdcDfsAction = QAction(
             'Concatenate acdc output tables from multiple Positions...'
         )
@@ -273,7 +275,6 @@ class mainWin(QMainWindow):
             self.renameWin.show()
             self.renameWin.main()
         else:
-            # self.convertWin.setWindowState(Qt.WindowNoState)
             self.renameWin.setWindowState(Qt.WindowActive)
             self.renameWin.raise_()
 
@@ -308,7 +309,7 @@ class mainWin(QMainWindow):
             print(f'WARNING: {e}')
             return
 
-        is_win = sys.platform.startswith("win")
+        # For now let's not use a separate process
         is_win = False
 
         if is_win:
@@ -526,7 +527,10 @@ class mainWin(QMainWindow):
         if self.sender() == self.restartButton:
             print('Restarting Cell-ACDC...')
             try:
-                os.execv(sys.executable, ['python'] + sys.argv)
+                if is_win:
+                    os.execv(sys.argv[0], sys.argv)
+                else:
+                    os.execv(sys.executable, ['python'] + sys.argv)
             except Exception as e:
                 traceback.print_exc()
                 print('-----------------------------------------')

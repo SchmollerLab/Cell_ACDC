@@ -49,7 +49,7 @@ from PyQt5.QtWidgets import (
 )
 
 from . import myutils, load, prompts, widgets, core
-
+from . import is_mac
 from . import qrc_resources
 
 
@@ -996,8 +996,11 @@ class QDialogCombobox(QDialog):
 
 
 class QDialogListbox(QDialog):
-    def __init__(self, title, text, items, cancelText='Cancel',
-                 multiSelection=True, parent=None):
+    def __init__(
+            self, title, text, items, cancelText='Cancel',
+            multiSelection=True, parent=None,
+            additionalButtons=()
+        ):
         self.cancel = True
         super().__init__(parent)
         self.setWindowTitle(title)
@@ -1026,13 +1029,23 @@ class QDialogListbox(QDialog):
         listBox.itemDoubleClicked.connect(self.ok_cb)
         topLayout.addWidget(listBox)
 
+        bottomLayout.addStretch(1)
         okButton = QPushButton('Ok')
         okButton.setShortcut(Qt.Key_Enter)
-        bottomLayout.addWidget(okButton, alignment=Qt.AlignRight)
+        bottomLayout.addWidget(okButton)
+
+        if additionalButtons:
+            self._additionalButtons = []
+            for button in additionalButtons:
+                _button = QPushButton(button)
+                self._additionalButtons.append(_button)
+                bottomLayout.addWidget(_button)
+                _button.clicked.connect(self.ok_cb)
 
         cancelButton = QPushButton(cancelText)
         # cancelButton.setShortcut(Qt.Key_Escape)
-        bottomLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
+        bottomLayout.addWidget(cancelButton)
+        bottomLayout.addStretch(1)
         bottomLayout.setContentsMargins(0, 10, 0, 0)
 
         mainLayout.addLayout(topLayout)
@@ -1046,6 +1059,7 @@ class QDialogListbox(QDialog):
         # self.setModal(True)
 
     def ok_cb(self, event):
+        self.clickedButton = self.sender()
         self.cancel = False
         selectedItems = self.listBox.selectedItems()
         self.selectedItemsText = [item.text() for item in selectedItems]
@@ -4513,14 +4527,13 @@ class QDialogZsliceAbsent(QDialog):
         self.setWindowTitle('z-slice info absent!')
 
         mainLayout = QVBoxLayout()
-        buttonsLayout = QVBoxLayout()
-        comboBoxLayout = QHBoxLayout()
+        buttonsLayout = QGridLayout()
 
         txt = (
         f"""
-        <p style="font-size:11pt; text-align: center;">
-            You loaded the fluorescent file called {filename},<br>
-            however you <b>never selected which z-slice</b> you want to use
+        <p style="font-size:14px; text-align: center;">
+            You loaded the fluorescent file called<br><br>{filename}<br><br>
+            however you <b>never selected which z-slice</b><br> you want to use
             when calculating metrics<br> (e.g., mean, median, amount...etc.)<br><br>
             Choose one of following options:
         <p>
@@ -4530,19 +4543,19 @@ class QDialogZsliceAbsent(QDialog):
         mainLayout.addWidget(infoLabel, alignment=Qt.AlignCenter)
 
         runDataPrepButton = QPushButton(
-            'Visualize the data now and select a z-slice (RECOMMENDED)'
+            '  Visualize the data now and select a z-slice (RECOMMENDED)  '
         )
-        buttonsLayout.addWidget(runDataPrepButton)
+        buttonsLayout.addWidget(runDataPrepButton, 0, 1, 1, 2)
         runDataPrepButton.clicked.connect(self.runDataPrep_cb)
 
         useMiddleSliceButton = QPushButton(
-            f'Use the middle z-slice ({int(SizeZ/2)+1})'
+            f'  Use the middle z-slice ({int(SizeZ/2)+1})  '
         )
-        buttonsLayout.addWidget(useMiddleSliceButton)
+        buttonsLayout.addWidget(useMiddleSliceButton, 1, 1, 1, 2)
         useMiddleSliceButton.clicked.connect(self.useMiddleSlice_cb)
 
         useSameAsChButton = QPushButton(
-            'Use the same z-slice used for the channel: '
+            '  Use the same z-slice used for the channel: '
         )
         useSameAsChButton.clicked.connect(self.useSameAsCh_cb)
 
@@ -4552,9 +4565,11 @@ class QDialogZsliceAbsent(QDialog):
         # chNameComboBox.lineEdit().setAlignment(Qt.AlignCenter)
         # chNameComboBox.lineEdit().setReadOnly(True)
         self.chNameComboBox = chNameComboBox
-        comboBoxLayout.addWidget(useSameAsChButton)
-        comboBoxLayout.addWidget(chNameComboBox)
-        buttonsLayout.addLayout(comboBoxLayout)
+        buttonsLayout.addWidget(useSameAsChButton, 2, 1)
+        buttonsLayout.addWidget(chNameComboBox, 2, 2)
+
+        buttonsLayout.setColumnStretch(0, 1)
+        buttonsLayout.setColumnStretch(3, 1)
         buttonsLayout.setContentsMargins(10, 0, 10, 0)
 
         mainLayout.addLayout(buttonsLayout)
@@ -4738,8 +4753,10 @@ class QDialogPbar(QDialog):
         self.clickCount = 0
         super().__init__(parent)
 
-        self.setWindowTitle(title)
-        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        abort_text = 'Control+Cmd+C to abort' if is_mac else 'Ctrl+Alt+C to abort'
+
+        self.setWindowTitle(f'{title} ({abort_text})')
+        self.setWindowFlags(Qt.Window)
 
         mainLayout = QVBoxLayout()
         pBarLayout = QGridLayout()

@@ -1,6 +1,7 @@
 include LICENSE
 include notebooks
 include UserManual
+include FijiMacros
 
 exclude cellacdc/deprecated.py
 exclude cellacdc/lastCommit.txt

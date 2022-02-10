@@ -236,7 +236,7 @@ class saveDataWorker(QObject):
     progress = pyqtSignal(str)
     progressBar = pyqtSignal(int, int, float)
     critical = pyqtSignal(str)
-    criticalMetrics = pyqtSignal(str)
+    criticalMetrics = pyqtSignal(object)
     criticalPermissionError = pyqtSignal(str)
     askSaveLastVisitedCcaMode = pyqtSignal(int, object)
     askSaveLastVisitedSegmMode = pyqtSignal(int, object)
@@ -328,7 +328,7 @@ class saveDataWorker(QObject):
                             acdc_df_li.append(acdc_df)
                             key = (frame_i, posData.TimeIncrement*frame_i)
                             keys.append(key)
-                        except Exception as e:
+                        except Exception as error:
                             self.mutex.lock()
                             self.criticalMetrics.emit(traceback.format_exc())
                             self.waitCond.wait(self.mutex)
@@ -9105,7 +9105,7 @@ class guiWin(QMainWindow):
 
             self.zSliceOverlay_SB.valueChanged.disconnect()
             self.zProjOverlay_CB.currentTextChanged.disconnect()
-            self.zProjOverlay_CB.activated.disconnect()
+            self.zProjOverlafy_CB.activated.disconnect()
 
 
     def criticalFluoChannelNotFound(self, fluo_ch, posData):
@@ -10446,13 +10446,22 @@ class guiWin(QMainWindow):
             self.loadFluo_cb(None)
 
     def getPathFromChName(self, chName, posData):
-        aligned_files = [f for f in myutils.listdir(posData.images_path)
-                         if f.find(f'{chName}_aligned.npz')!=-1]
+        if chName.find('_aligned') != -1:
+            aligned_chName = chName
+        else:
+            aligned_chName = f'{chName}_aligned'
+
+        aligned_files = [
+            f for f in myutils.listdir(posData.images_path)
+            if f.find(f'{aligned_chName}.npz')!=-1
+        ]
         if aligned_files:
             filename = aligned_files[0]
         else:
-            tif_files = [f for f in myutils.listdir(posData.images_path)
-                         if f.find(f'{chName}.tif')!=-1]
+            tif_files = [
+                f for f in myutils.listdir(posData.images_path)
+                if f.find(f'{chName}.tif')!=-1
+            ]
             if not tif_files:
                 self.criticalFluoChannelNotFound(chName, posData)
                 self.app.restoreOverrideCursor()
@@ -10564,7 +10573,7 @@ class guiWin(QMainWindow):
         chNamesPresent = [
             ch for ch in chNames
             for file in filenamesPresent
-            if file.find(ch) != -1
+            if file.endswith(ch) or file.endswith(f'{ch}_aligned')
         ]
         win = apps.QDialogZsliceAbsent(filename, SizeZ, chNamesPresent)
         win.exec_()
@@ -10580,22 +10589,22 @@ class guiWin(QMainWindow):
         elif win.useSameAsCh:
             user_ch_name = filename[len(posData.basename):]
             for _posData in self.data:
-                _, cellacdcFilename = self.getPathFromChName(
+                _, srcFilename = self.getPathFromChName(
                     win.selectedChannel, _posData
                 )
-                cellacdc_df = _posData.segmInfo_df.loc[cellacdcFilename].copy()
+                cellacdc_df = _posData.segmInfo_df.loc[srcFilename].copy()
                 _, dstFilename = self.getPathFromChName(user_ch_name, _posData)
                 dst_df = myutils.getDefault_SegmInfo_df(_posData, dstFilename)
                 for z_info in cellacdc_df.itertuples():
                     frame_i = z_info.Index
                     zProjHow = z_info.which_z_proj
                     if zProjHow == 'single z-slice':
-                        cellacdc_idx = (cellacdcFilename, frame_i)
-                        if _posData.segmInfo_df.at[cellacdc_idx, 'resegmented_in_gui']:
+                        src_idx = (srcFilename, frame_i)
+                        if _posData.segmInfo_df.at[src_idx, 'resegmented_in_gui']:
                             col = 'z_slice_used_gui'
                         else:
                             col = 'z_slice_used_dataPrep'
-                        z_slice = _posData.segmInfo_df.at[cellacdc_idx, col]
+                        z_slice = _posData.segmInfo_df.at[src_idx, col]
                         dst_idx = (dstFilename, frame_i)
                         dst_df.at[dst_idx, 'z_slice_used_dataPrep'] = z_slice
                         dst_df.at[dst_idx, 'z_slice_used_gui'] = z_slice
@@ -10623,10 +10632,12 @@ class guiWin(QMainWindow):
             dataPrepWin.SizeT = self.data[0].SizeT
             dataPrepWin.SizeZ = self.data[0].SizeZ
             dataPrepWin.metadataAlreadyAsked = True
+            self.logger.info(f'Loading channel {user_ch_name} data...')
             dataPrepWin.loadFiles(
                 exp_path, user_ch_file_paths, user_ch_name
             )
             dataPrepWin.startAction.setDisabled(True)
+            dataPrepWin.onlySelectingZslice = True
 
             loop = QEventLoop(self)
             dataPrepWin.loop = loop
@@ -11129,20 +11140,37 @@ class guiWin(QMainWindow):
         msg.exec_()
         return msg.clickedButton() == allPosbutton, last_pos
 
-    def saveMetricsCritical(self, traceback_format):
+    @exception_handler
+    def saveMetricsCritical(self, error):
         self.logger.info('')
         self.logger.info('====================================')
-        self.logger.info(traceback_format)
+        self.logger.exception(traceback_format)
         self.logger.info('====================================')
         self.logger.info('')
         self.logger.info('Warning: calculating metrics failed see above...')
         self.logger.info('-----------------')
         msg = QMessageBox(self)
+        msg.setWindowTitle('Critical error')
         msg.setIcon(msg.Critical)
-        msg.setWindowTitle('Error')
-        msg.setText(traceback_format)
-        msg.setDefaultButton(msg.Ok)
+        err_msg = (f"""
+        <p style="font-size:14px">
+            Error <b>while saving metrics</b>.<br><br>
+            More details below or in the terminal/console.<br><br>
+            Note that the error details from this session are also saved
+            in the file<br>
+            {self.log_path}<br><br>
+            Please <b>send the log file</b> when reporting a bug, thanks!
+        </p>
+        """)
+        msg.setText(err_msg)
+        showLog = msg.addButton('Show log file...', msg.HelpRole)
+        showLog.disconnect()
+        slot = partial(myutils.showInExplorer, self.logs_path)
+        showLog.clicked.connect(slot)
+        msg.addButton(msg.Ok)
+        msg.setDetailedText(traceback_format)
         msg.exec_()
+        self.is_error_state = True
         self.waitCond.wakeAll()
 
     def saveDataPermissionError(self, err_msg):

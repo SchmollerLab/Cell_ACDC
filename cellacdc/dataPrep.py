@@ -90,6 +90,13 @@ class dataPrepWin(QMainWindow):
         self.titleText = None
         self.metadataAlreadyAsked = False
 
+        # When we load dataprep from other modules we usually disable
+        # start because we only want to select the z-slice
+        # However, is start is disabled removeBkgrROIs will be triggered
+        # and cause errors --> set self.onlySelectingZslice = True
+        # when dataprep is launched from the other modules
+        self.onlySelectingZslice = False
+
         mainContainer = QtGui.QWidget()
         self.setCentralWidget(mainContainer)
 
@@ -481,7 +488,7 @@ class dataPrepWin(QMainWindow):
         self.zSliceScrollBar.setMaximum(posData.SizeZ-1)
 
     def updateROI(self):
-        if self.startAction.isEnabled():
+        if self.startAction.isEnabled() or self.onlySelectingZslice:
             return
 
         posData = self.data[self.pos_i]
@@ -493,7 +500,7 @@ class dataPrepWin(QMainWindow):
         posData.cropROI.sigRegionChangeFinished.connect(self.ROImovingFinished)
 
     def removeCropROI(self):
-        if self.startAction.isEnabled():
+        if self.startAction.isEnabled() or self.onlySelectingZslice:
             return
 
         posData = self.data[self.pos_i]
@@ -511,7 +518,7 @@ class dataPrepWin(QMainWindow):
 
 
     def updateBkgrROIs(self):
-        if self.startAction.isEnabled():
+        if self.startAction.isEnabled() or self.onlySelectingZslice:
             return
 
         posData = self.data[self.pos_i]
@@ -523,7 +530,7 @@ class dataPrepWin(QMainWindow):
             roi.sigRegionChangeFinished.connect(self.bkgrROImovingFinished)
 
     def removeBkgrROIs(self):
-        if self.startAction.isEnabled():
+        if self.startAction.isEnabled() or self.onlySelectingZslice:
             return
 
         posData = self.data[self.pos_i]
