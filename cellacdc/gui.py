@@ -586,7 +586,10 @@ class guiWin(QMainWindow):
                     self.df_settings.loc['is_bw_inverted'].astype(str)
                 )
             if 'fontSize' not in self.df_settings.index:
-                self.df_settings.at['fontSize', 'value'] = '12px'
+                self.df_settings.at['fontSize', 'value'] = '12pt'
+            if 'fontSize' in self.df_settings.index:
+                _s = self.df_settings.at['fontSize', 'value']
+                self.df_settings.at['fontSize', 'value'] = _s.replace('px', 'pt')
             if 'overlayColor' not in self.df_settings.index:
                 self.df_settings.at['overlayColor', 'value'] = '255-255-0'
             if 'how_normIntensities' not in self.df_settings.index:
@@ -807,7 +810,7 @@ class guiWin(QMainWindow):
         fileToolBar.addAction(self.openAction)
         fileToolBar.addAction(self.saveAction)
         fileToolBar.addAction(self.showInExplorerAction)
-        fileToolBar.addAction(self.reloadAction)
+        # fileToolBar.addAction(self.reloadAction)
         fileToolBar.addAction(self.undoAction)
         fileToolBar.addAction(self.redoAction)
         self.fileToolBar = fileToolBar
@@ -1193,8 +1196,9 @@ class guiWin(QMainWindow):
         self.saveAction = QAction(QIcon(":file-save.svg"),
                                   "&Save (Ctrl+S)", self)
         self.loadFluoAction = QAction("Load fluorescent images...", self)
-        self.reloadAction = QAction(QIcon(":reload.svg"),
-                                          "Reload segmentation file", self)
+        # self.reloadAction = QAction(
+        #     QIcon(":reload.svg"), "Reload segmentation file", self
+        # )
         self.showInExplorerAction = QAction(
             QIcon(":drawer.svg"), f"&{self.openFolderText}", self
         )
@@ -1418,7 +1422,7 @@ class guiWin(QMainWindow):
         self.overlayButton.toggled.connect(self.overlay_cb)
         self.rulerButton.toggled.connect(self.ruler_cb)
         self.loadFluoAction.triggered.connect(self.loadFluo_cb)
-        self.reloadAction.triggered.connect(self.reload_cb)
+        # self.reloadAction.triggered.connect(self.reload_cb)
         self.findIdAction.triggered.connect(self.findID)
         self.slideshowButton.toggled.connect(self.launchSlideshow)
 
@@ -5888,6 +5892,10 @@ class guiWin(QMainWindow):
                 self.updateALLimg()
         elif ev.key() == Qt.Key_T:
             pass
+            # posData = self.data[self.pos_i]
+            # print(posData.last_tracked_i)
+            # print(posData.allData_li[posData.frame_i]['labels'])
+            # print(posData.allData_li[posData.frame_i+1]['labels'])
             # raise IndexError('Testing')
             # posData = self.data[self.pos_i]
             # self.logger.info(posData.allData_li[0]['acdc_df'])
@@ -10017,9 +10025,9 @@ class guiWin(QMainWindow):
 
             if self.trackWithAcdcAction.isChecked():
                 tracked_lab = core.tracking_FP(
-                        prev_lab, prev_rp, posData.lab, posData.rp,
-                        posData.IDs, setBrushID_func=self.setBrushID,
-                        posData=posData
+                    prev_lab, prev_rp, posData.lab, posData.rp,
+                    posData.IDs, setBrushID_func=self.setBrushID,
+                    posData=posData
                 )
             elif self.trackWithYeazAction.isChecked():
                 tracked_lab = tracking_yeaz.correspondence(
@@ -10056,6 +10064,7 @@ class guiWin(QMainWindow):
     def undo_changes_future_frames(self):
         posData = self.data[self.pos_i]
         posData.last_tracked_i = posData.frame_i
+        self.navigateScrollBar.setMaximum(posData.frame_i+1)
         for i in range(posData.frame_i+1, posData.segmSizeT):
             if posData.allData_li[i]['labels'] is None:
                 break
@@ -10067,7 +10076,6 @@ class guiWin(QMainWindow):
                  'delROIs_info': {'rois': [], 'delMasks': [], 'delIDsROI': []},
                  'histoLevels': {}
             }
-        self.setNavigateScrollBarMaximum()
 
     def removeAllItems(self):
         self.ax1.clear()
