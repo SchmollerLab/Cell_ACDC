@@ -134,7 +134,7 @@ def calculate_relatives_data(overall_df, channels):
         try:
             overall_df[f'{ch}_combined_amount_mother_bud'] = overall_df.apply(
                 lambda x: x.loc[f'{ch}_corrected_amount']+x.loc[f'{ch}_corrected_amount_rel'] if\
-                x.loc['cell_cycle_stage']=='S' and x.loc['relationship'] == 'mother' else\
+                x.loc['cell_cycle_stage']=='S' else\
                 x.loc[f'{ch}_corrected_amount'],
                 axis=1
             )
@@ -142,7 +142,7 @@ def calculate_relatives_data(overall_df, channels):
             continue
     overall_df['combined_mother_bud_volume'] = overall_df.apply(
         lambda x: x.loc['cell_vol_fl']+x.loc['cell_vol_fl_rel'] if\
-        x.loc['cell_cycle_stage']=='S' and x.loc['relationship'] == 'mother' else\
+        x.loc['cell_cycle_stage']=='S' else\
         x.loc['cell_vol_fl'],
         axis=1
     )
@@ -482,7 +482,7 @@ def binned_mean_stats(x, values, nbins, bins_min_count):
     return x_errorbar, y_errorbar, err_errorbar
 
 
-def calculate_effect_size_cohen(data, group1, group2, cat_column='size_category', val_column='FITC_concentration'):
+def calculate_effect_size_cohen(data, group1, group2, cat_column='size_category', val_column='Pp38_concentration'):
     assert cat_column in data.columns and val_column in data.columns
     data_gr1 = data[data[cat_column]==group1]
     data_gr2 = data[data[cat_column]==group2]
@@ -496,7 +496,7 @@ def calculate_effect_size_cohen(data, group1, group2, cat_column='size_category'
     effect_size = (np.mean(data_gr1[val_column])- np.mean(data_gr2[val_column])) / cohen_s
     return effect_size
 
-def calculate_effect_size_glass(data, group1, group2, cat_column='size_category', val_column='FITC_concentration'):
+def calculate_effect_size_glass(data, group1, group2, cat_column='size_category', val_column='Pp38_concentration'):
     assert cat_column in data.columns and val_column in data.columns
     data_gr1 = data[data[cat_column]==group1]
     data_gr2 = data[data[cat_column]==group2]
