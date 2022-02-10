@@ -417,7 +417,12 @@ class loadData:
         rp = skimage.measure.regionprops(lab)
         segm_IDs = [obj.label for obj in rp]
         acdc_df_IDs = self.acdc_df.loc[frame_i].index
-        cca_df = self.acdc_df[cca_df_colnames]
+        try:
+            cca_df = self.acdc_df[cca_df_colnames]
+        except KeyError:
+            # Columns not present because not annotated --> no need to fix
+            return
+
         for obj in rp:
             ID = obj.label
             if ID in acdc_df_IDs:
