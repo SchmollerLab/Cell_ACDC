@@ -2,7 +2,11 @@ try:
     import btrack
 except ModuleNotFoundError:
     pkg_name = 'BayesianTracker'
+    import os
+    import sys
+    import subprocess
     from PyQt5.QtWidgets import QMessageBox
+    msg = QMessageBox()
     txt = (
         f'Cell-ACDC is going to download and install "{pkg_name}".\n\n'
         'Make sure you have an active internet connection, '
