@@ -82,6 +82,7 @@ class segmWorker(QRunnable):
         self.is_segment3DT_available = mainWin.is_segment3DT_available
         self.innerPbar_available = mainWin.innerPbar_available
         self.concat_segm = mainWin.concat_segm
+        self.tracker = mainWin.tracker
 
     def setupPausingItems(self):
         self.mutex = QMutex()
@@ -271,9 +272,9 @@ class segmWorker(QRunnable):
                 lab_stack = np.insert(
                     lab_stack, 0, last_segm_frame, axis=0
                 )
-            tracked_stack = tracking.correspondence_stack(
+            tracked_stack = self.tracker.track(
                 lab_stack, signals=self.signals
-            ).astype(np.uint16)
+            )
             if self.concat_segm and posData.segm_data is not None:
                 # Remove first frame that comes from existing segm
                 tracked_stack = tracked_stack[1:]
@@ -834,6 +835,7 @@ class segmWin(QMainWindow):
             x0, x1, y0, y1 = posData.dataPrep_ROIcoords['value'][:4]
 
         self.do_tracking = False
+        self.tracker = None
         if posData.SizeT > 1:
             # Ask stop frame. The "askStopFrameSegm" will internally load
             # all the posData and save segmSizeT which will be used as stop_i
@@ -850,21 +852,35 @@ class segmWin(QMainWindow):
                     return
 
             # Ask whether to track the frames
-            msg = QMessageBox()
-            msg.setFont(font)
-            answer = msg.question(
-                self, 'Track?', 'Do you want to track the objects?',
-                msg.Yes | msg.No | msg.Cancel
+            trackers = myutils.get_list_of_trackers()
+            win = apps.QDialogListbox(
+                'Track objects?',
+                'Do you want to track the objects?\n\n'
+                'If yes, choose which tracker to use and click "Ok"\n\n'
+                'If you are unsure, choose YeaZ',
+                trackers, additionalButtons=['Do not track'],
+                multiSelection=False,
+                parent=self
             )
-            if answer == msg.Yes:
-                self.do_tracking = True
-            elif answer == msg.No:
-                self.do_tracking = False
-            else:
+            win.exec_()
+            if win.cancel:
                 abort = self.doAbort()
                 if abort:
                     self.close()
                     return
+
+            if win.clickedButton in win._additionalButtons:
+                self.do_tracking = False
+                trackerName = ''
+                self.trackerName = trackerName
+            else:
+                self.do_tracking = True
+                trackerName = win.selectedItemsText[0]
+                self.trackerName = trackerName
+                trackerModule = import_module(
+                    f'trackers.{trackerName}.{trackerName}_tracker'
+                )
+                self.tracker = trackerModule.tracker()
 
         print('Starting multiple parallel threads...')
         self.progressLabel.setText('Starting multiple parallel threads...')
@@ -924,14 +940,19 @@ class segmWin(QMainWindow):
             'Concatenate new segmentation to existing one'
         )
         overWriteButton = QPushButton('Overwrite existing segmentation')
+        doNotSaveButton = QPushButton('Do not save')
         cancelButton = QPushButton('Cancel')
         msg.addButton(concatButton, msg.YesRole)
         msg.addButton(overWriteButton, msg.NoRole)
+        msg.addButton(doNotSaveButton, msg.NoRole)
         msg.addButton(cancelButton, msg.RejectRole)
         msg.exec_()
         clickedButton = msg.clickedButton()
         if clickedButton == cancelButton:
             return None
+        elif clickedButton == doNotSaveButton:
+            self.save = False
+            return False
 
         return clickedButton == concatButton
 

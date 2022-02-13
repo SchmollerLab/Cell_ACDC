@@ -5500,7 +5500,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         if checked:
             self.disconnectLeftClickButtons()
-            self.uncheckLeftClickButtons(self.sender())
+            self.uncheckLeftClickButtons(self.wandToolButton)
             self.connectLeftClickButtons()
             self.wandControlsToolbar.setVisible(True)
         else:
@@ -5682,7 +5682,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         if checked:
             self.disconnectLeftClickButtons()
-            self.uncheckLeftClickButtons(self.sender())
+            self.uncheckLeftClickButtons(self.curvToolButton)
             self.connectLeftClickButtons()
             self.hoverLinSpace = np.linspace(0, 1, 1000)
             self.curvPlotItem = pg.PlotDataItem(pen=self.newIDs_cpen)
@@ -8088,9 +8088,9 @@ class guiWin(QMainWindow):
 
     def getObjContours(self, obj, appendMultiContID=True):
         contours, _ = cv2.findContours(
-                               obj.image.astype(np.uint8),
-                               cv2.RETR_EXTERNAL,
-                               cv2.CHAIN_APPROX_NONE
+           obj.image.astype(np.uint8),
+           cv2.RETR_EXTERNAL,
+           cv2.CHAIN_APPROX_NONE
         )
         min_y, min_x, _, _ = obj.bbox
         cont = np.squeeze(contours[0], axis=1)

@@ -352,6 +352,11 @@ def get_model_path(model_name):
             None for f in listdir(model_path) if f.endswith('.pth')
         ]
         model_exists = len(model_exists) > 0
+    elif model_name == 'YeaZ' and os.path.exists(model_path):
+        model_exists = [
+            None for f in listdir(model_path) if f.endswith('multilab_0_1.hdf5')
+        ]
+        model_exists = len(model_exists) > 0
 
     models_zip_path = os.path.join(model_path, 'model_temp.zip')
     return models_zip_path, model_exists

@@ -243,7 +243,7 @@ class QDialogMetadataXML(QDialog):
 
         self.PhysicalSizeYUnit_Label = QLabel()
         self.PhysicalSizeYUnit_Label.setStyleSheet(
-            'font-size:10pt; padding:5px 0px 2px 0px;'
+            'font-size:12px; padding:5px 0px 2px 0px;'
         )
         unit = self.PhysicalSizeUnit_CB.currentText()
         self.PhysicalSizeYUnit_Label.setText(unit)
@@ -264,7 +264,7 @@ class QDialogMetadataXML(QDialog):
         self.PhysicalSizeZUnit_Label = QLabel()
         # padding: top, left, bottom, right
         self.PhysicalSizeZUnit_Label.setStyleSheet(
-            'font-size:10pt; padding:5px 0px 2px 0px;'
+            'font-size:12px; padding:5px 0px 2px 0px;'
         )
         unit = self.PhysicalSizeUnit_CB.currentText()
         self.PhysicalSizeZUnit_Label.setText(unit)
@@ -381,7 +381,7 @@ class QDialogMetadataXML(QDialog):
             self.emWavelens_DSBs.append(emWavelen_DSB)
 
             unit = QLabel('nm')
-            unit.setStyleSheet('font-size:10pt; padding:5px 0px 2px 0px;')
+            unit.setStyleSheet('font-size:12px; padding:5px 0px 2px 0px;')
             self.channelEmWLayouts[2].addWidget(unit)
 
         entriesLayout.setContentsMargins(0, 15, 0, 0)
@@ -674,7 +674,7 @@ class QDialogMetadataXML(QDialog):
                 emWavelen_DSB.setDecimals(2)
                 emWavelen_DSB.setValue(500.0)
                 unit = QLabel('nm')
-                unit.setStyleSheet('font-size:10pt; padding:5px 0px 2px 0px;')
+                unit.setStyleSheet('font-size:12px; padding:5px 0px 2px 0px;')
 
                 txt = f'Channel {c} emission wavelength:  '
                 label = QLabel(txt)
@@ -1118,7 +1118,7 @@ class QDialogAppendTextFilename(QDialog):
         )
         # padding: top, left, bottom, right
         self.finalName_label.setStyleSheet(
-            'font-size:10pt; padding:5px 0px 0px 0px;'
+            'font-size:12px; padding:5px 0px 0px 0px;'
         )
 
         okButton = QPushButton('Ok')
@@ -1472,7 +1472,7 @@ class QDialogMetadata(QDialog):
         valid = all([valid4D, valid3D, valid2D])
         if not valid4D:
             txt = (f"""
-            <p style="font-size:10pt">
+            <p style="font-size:12px">
                 You loaded <b>4D data</b>, hence the number of frames MUST be
                 <b>{T}</b><br> nd the number of z-slices MUST be <b>{Z}</b>.<br><br>
                 What do you want to do?
@@ -1480,7 +1480,7 @@ class QDialogMetadata(QDialog):
             """)
         if not valid3D:
             txt = (f"""
-            <p style="font-size:10pt">
+            <p style="font-size:12px">
                 You loaded <b>3D data</b>, hence either the number of frames is
                 <b>{TZ}</b><br> or the number of z-slices can be <b>{TZ}</b>.<br><br>
                 However, if the number of frames is greater than 1 then the<br>
@@ -1491,7 +1491,7 @@ class QDialogMetadata(QDialog):
 
         if not valid2D:
             txt = (f"""
-            <p style="font-size:10pt">
+            <p style="font-size:12px">
                 You loaded <b>2D data</b>, hence the number of frames MUST be <b>1</b>
                 and the number of z-slices MUST be <b>1</b>.<br><br>
                 What do you want to do?
@@ -1777,7 +1777,7 @@ class edgeDetectionDialog(QDialog):
         row += 1
         sharpQSLabel = QLabel('Sharpen:')
         # padding: top, left, bottom, right
-        sharpQSLabel.setStyleSheet("font-size:10pt; padding:5px 0px 0px 0px;")
+        sharpQSLabel.setStyleSheet("font-size:12px; padding:5px 0px 0px 0px;")
         paramsLayout.addWidget(sharpQSLabel, row, 0)
         row += 1
         self.sharpValLabel = QLabel('5.00')
@@ -2063,7 +2063,7 @@ class randomWalkerDialog(QDialog):
         row += 1
         foregrQSLabel = QLabel('Foreground threshold:')
         # padding: top, left, bottom, right
-        foregrQSLabel.setStyleSheet("font-size:10pt; padding:5px 0px 0px 0px;")
+        foregrQSLabel.setStyleSheet("font-size:12px; padding:5px 0px 0px 0px;")
         paramsLayout.addWidget(foregrQSLabel, row, 0)
         row += 1
         self.foregrThreshValLabel = QLabel('0.95')
@@ -3469,7 +3469,7 @@ class QLineEditDialog(QDialog):
     def warnValLessLastFrame(self, val):
         msg = QMessageBox()
         warn_txt = (f"""
-        <p style="font-size:10pt">
+        <p style="font-size:12px">
             WARNING: saving until a frame number below the last visited
             frame ({self.maxValue})<br>
             will result in <b>loss of information
@@ -4621,7 +4621,7 @@ class QDialogMultiSegmNpz(QDialog):
         super().__init__(parent)
 
         informativeText = (f"""
-        <p style="font-size:10pt">
+        <p style="font-size:12px">
             The folder<br><br>{parent_path}<br><br>
             contains <b>multipe segmentation masks!</b><br>
         </p>
@@ -4715,7 +4715,7 @@ class QDialogMultiSegmNpz(QDialog):
         if self.removeOthers:
             msg = QMessageBox()
             err_msg = (f"""
-            <p style="font-size:10pt">
+            <p style="font-size:12px">
                 Are you sure you want to <b>delete the files</b> below?<br><br>
                 {',<br>'.join(self.images_ls)}
             </p>
@@ -4987,7 +4987,7 @@ class QDialogModelParams(QDialog):
         htmlTxt = f'<a href=\"{url}">here</a>'
         seeHereLabel = QLabel()
         seeHereLabel.setText(f"""
-            <p style="font-size:10pt">
+            <p style="font-size:12px">
                 See {htmlTxt} for details on the parameters
             </p>
         """)
@@ -5077,7 +5077,7 @@ if __name__ == '__main__':
     # )
     infoTxt = (
     """
-        <p style=font-size:10pt>
+        <p style=font-size:12px>
             Saving...<br>
         </p>
     """)

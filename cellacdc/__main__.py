@@ -32,6 +32,7 @@ try:
     from cellacdc.utils import concat as utilsConcat
     from cellacdc.utils import convert as utilsConvert
     from cellacdc.utils import rename as utilsRename
+    from cellacdc import is_win
 except ModuleNotFoundError as e:
     src_path = os.path.dirname(os.path.abspath(__file__))
     main_path = os.path.dirname(src_path)
@@ -45,7 +46,7 @@ except ModuleNotFoundError as e:
     print('----------------------------------------')
     exit('Execution aborted due to an error. See above for details.')
 
-from . import is_win
+
 
 if os.name == 'nt':
     try:
