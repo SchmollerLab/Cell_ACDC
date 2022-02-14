@@ -25,6 +25,7 @@ from natsort import natsorted
 from tifffile.tifffile import TiffWriter, TiffFile
 
 from PyQt5.QtWidgets import QMessageBox
+from PyQt5.QtCore import pyqtSignal, QObject
 
 from . import prompts
 
@@ -33,6 +34,10 @@ _mapCache = {}
 
 class utilClass:
     pass
+
+class signals(QObject):
+    progressBar = pyqtSignal(int)
+    progress = pyqtSignal(str)
 
 def checkDataIntegrity(filenames, parent_path, parentQWidget=None):
     char = filenames[0][:2]

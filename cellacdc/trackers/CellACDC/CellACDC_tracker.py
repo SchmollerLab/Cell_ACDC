@@ -1,6 +1,10 @@
+import os
+
 import numpy as np
-from cellacdc.core import lab_replace_values, np_replace_values, numba_argmax
 from skimage.measure import regionprops
+
+from cellacdc.core import lab_replace_values, np_replace_values, numba_argmax
+
 
 def calc_IoA_matrix(lab, prev_lab, rp, prev_rp):
     IDs_prev = []
@@ -86,10 +90,11 @@ class tracker:
     def __init__(self):
         pass
 
-    def track(self, segm_video, signals=None):
+    def track(self, segm_video, signals=None, export_to: os.PathLike=None):
         tracked_video = np.zeros_like(segm_video)
         for frame_i, lab in enumerate(segm_video):
             if frame_i == 0:
+                tracked_video[frame_i] = lab
                 continue
 
             prev_lab = segm_video[frame_i-1]
@@ -110,4 +115,9 @@ class tracker:
                 lab.copy(), rp, uniqueID
             )
             tracked_video[frame_i] = tracked_lab
+            if signals is not None:
+                signals.progressBar.emit(1)
         return tracked_video
+
+    def save_output(self):
+        pass

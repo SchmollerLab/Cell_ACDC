@@ -153,6 +153,55 @@ def exception_handler(func):
         return result
     return inner_function
 
+class trackingWorker(QObject):
+    finished = pyqtSignal()
+    critical = pyqtSignal(object)
+    progress = pyqtSignal(str)
+    debug = pyqtSignal(object)
+
+    def __init__(self, posData, mainWin, video_to_track):
+        QObject.__init__(self)
+        self.mainWin = mainWin
+        self.posData = posData
+        self.mutex = QMutex()
+        self.waitCond = QWaitCondition()
+        self.tracker = self.mainWin.tracker
+        self.video_to_track = video_to_track
+
+    @worker_exception_handler
+    def run(self):
+        self.mutex.lock()
+
+        self.progress.emit('Tracking process started...')
+
+        tracked_video = self.tracker.track(
+            self.video_to_track, signals=self.signals,
+            export_to=self.posData.btrack_tracks_h5_path
+        )
+
+        # Store new tracked video
+        current_frame_i = self.posData.frame_i
+        for rel_frame_i, lab in enumerate(tracked_video):
+            frame_i = rel_frame_i + self.mainWin.start_n - 1
+
+            if self.posData.allData_li[frame_i]['labels'] is None:
+                # repeating tracking on a never visited frame
+                # --> modify only raw data
+                self.posData.segm_data[frame_i] = lab.copy()
+            else:
+                # Get the rest of the stored metadata based on the new lab
+                self.posData.allData_li[frame_i]['labels'] = lab.copy()
+                self.posData.frame_i = frame_i
+                self.mainWin.get_data()
+                self.mainWin.store_data()
+
+        # Back to current frame
+        self.posData.frame_i = current_frame_i
+        self.mainWin.get_data()
+
+        self.mutex.unlock()
+        self.finished.emit()
+
 class relabelSequentialWorker(QObject):
     finished = pyqtSignal()
     critical = pyqtSignal(object)
@@ -784,6 +833,9 @@ class guiWin(QMainWindow):
         )
         selectTrackAlgoMenu.addAction(self.trackWithAcdcAction)
         selectTrackAlgoMenu.addAction(self.trackWithYeazAction)
+
+        trackingMenu.addAction(self.repeatTrackingVideoAction)
+
         trackingMenu.addAction(self.repeatTrackingMenuAction)
         trackingMenu.aboutToShow.connect(self.nonViewerEditMenuOpened)
 
@@ -1191,10 +1243,15 @@ class guiWin(QMainWindow):
         self.newAction = QAction(self)
         self.newAction.setText("&New")
         self.newAction.setIcon(QIcon(":file-new.svg"))
-        self.openAction = QAction(QIcon(":folder-open.svg"), "&Open folder...", self)
-        self.openFileAction = QAction(QIcon(":image.svg"),"&Open image/video file...", self)
-        self.saveAction = QAction(QIcon(":file-save.svg"),
-                                  "&Save (Ctrl+S)", self)
+        self.openAction = QAction(
+            QIcon(":folder-open.svg"), "&Open folder...", self
+        )
+        self.openFileAction = QAction(
+            QIcon(":image.svg"),"&Open image/video file...", self
+        )
+        self.saveAction = QAction(
+            QIcon(":file-save.svg"), "&Save (Ctrl+S)", self
+        )
         self.loadFluoAction = QAction("Load fluorescent images...", self)
         # self.reloadAction = QAction(
         #     QIcon(":reload.svg"), "Reload segmentation file", self
@@ -1262,9 +1319,17 @@ class guiWin(QMainWindow):
             'Repeat tracking on current frame\n'
             'SHORTCUT: "Shift+T"'
         )
-        self.repeatTrackingMenuAction = QAction('Repeat tracking...', self)
+        self.repeatTrackingMenuAction = QAction(
+            'Repeat tracking on current frame...', self
+        )
         self.repeatTrackingMenuAction.setDisabled(True)
-        self.repeatTrackingAction.setShortcut('Shift+T')
+        self.repeatTrackingMenuAction.setShortcut('Shift+T')
+
+        self.repeatTrackingVideoAction = QAction(
+            'Repeat tracking on multiple frames...', self
+        )
+        self.repeatTrackingVideoAction.setDisabled(True)
+        self.repeatTrackingVideoAction.setShortcut('Alt+Shift+T')
 
         trackingAlgosGroup = QActionGroup(self)
         self.trackWithAcdcAction = QAction('Cell-ACDC', self)
@@ -1435,6 +1500,9 @@ class guiWin(QMainWindow):
         self.disableTrackingCheckBox.clicked.connect(self.disableTracking)
         self.repeatTrackingAction.triggered.connect(self.repeatTracking)
         self.repeatTrackingMenuAction.triggered.connect(self.repeatTracking)
+        self.repeatTrackingVideoAction.triggered.connect(
+            self.repeatTrackingVideo
+        )
         self.trackWithAcdcAction.toggled.connect(self.storeTrackingAlgo)
         self.trackWithYeazAction.toggled.connect(self.storeTrackingAlgo)
 
@@ -3726,7 +3794,7 @@ class guiWin(QMainWindow):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
-        self.logger.info('Relabelling process ended.')
+        self.logger.info('Process ended.')
         self.updateALLimg()
 
     def workerInitProgressbar(self, totalIter):
@@ -3734,7 +3802,30 @@ class guiWin(QMainWindow):
         self.progressWin.mainPbar.setMaximum(totalIter)
 
     def workerUpdateProgressbar(self, step):
-        self.progressWin.mainPbar.update(step)
+        self.progressWin.mainPbar.update(self.progressWin.mainPbar.value()+step)
+
+    def startTrackingWorker(self, posData, video_to_track):
+        self.thread = QThread()
+        self.trackingWorker = trackingWorker(posData, self, video_to_track)
+        self.trackingWorker.moveToThread(self.thread)
+        self.trackingWorker.finished.connect(self.thread.quit)
+        self.trackingWorker.finished.connect(self.trackingWorker.deleteLater)
+        self.thread.finished.connect(self.thread.deleteLater)
+
+        # Custom signals
+        self.trackingWorker.signals = myutils.signals()
+        self.trackingWorker.signals.progress = self.trackingWorker.progress
+        self.trackingWorker.signals.progressBar.connect(
+            self.workerUpdateProgressbar
+        )
+        self.trackingWorker.progress.connect(self.workerProgress)
+        self.trackingWorker.critical.connect(self.workerCritical)
+        self.trackingWorker.finished.connect(self.workerFinished)
+
+        self.trackingWorker.debug.connect(self.workerDebug)
+
+        self.thread.started.connect(self.trackingWorker.run)
+        self.thread.start()
 
     def startRelabellingWorker(self, posData):
         self.thread = QThread()
@@ -5206,6 +5297,7 @@ class guiWin(QMainWindow):
             action.setEnabled(enabled)
         self.SegmActionRW.setEnabled(enabled)
         self.repeatTrackingMenuAction.setEnabled(enabled)
+        self.repeatTrackingVideoAction.setEnabled(enabled)
         self.postProcessSegmAction.setEnabled(enabled)
         self.autoSegmAction.setEnabled(enabled)
         self.editToolBar.setVisible(enabled)
@@ -6316,6 +6408,45 @@ class guiWin(QMainWindow):
                 self.repeatTracking()
                 self.UserEnforced_DisabledTracking = False
                 self.UserEnforced_Tracking = True
+
+    def repeatTrackingVideo(self):
+        posData = self.data[self.pos_i]
+        win = apps.selectTrackerGUI(
+            posData.SizeT, currentFrameNo=posData.frame_i+1
+        )
+        win.exec_()
+        if win.cancel:
+            self.logger.info('Tracking aborted.')
+            return
+
+        trackerName = win.selectedItemsText[0]
+        self.logger.info(f'Importing {trackerName} tracker...')
+        trackerModule = import_module(
+            f'trackers.{trackerName}.{trackerName}_tracker'
+        )
+        self.tracker = trackerModule.tracker()
+        start_n = win.startFrame
+        stop_n = win.stopFrame
+        video_to_track = np.copy(posData.segm_data)
+        for frame_i in range(start_n-1, stop_n):
+            data_dict = posData.allData_li[frame_i]
+            lab = data_dict['labels']
+            if lab is None:
+                break
+
+            video_to_track[frame_i] = lab
+        video_to_track = video_to_track[start_n-1:stop_n]
+
+        self.start_n = start_n
+        self.stop_n = stop_n
+
+        self.progressWin = apps.QDialogWorkerProcess(
+            title='Tracking', parent=self,
+            pbarDesc=f'Tracking from frame n. {start_n} to {stop_n}...'
+        )
+        self.progressWin.show(self.app)
+        self.progressWin.mainPbar.setMaximum(stop_n-start_n)
+        self.startTrackingWorker(posData, video_to_track)
 
     def repeatTracking(self):
         posData = self.data[self.pos_i]

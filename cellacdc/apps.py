@@ -88,7 +88,7 @@ class QDialogMetadataXML(QDialog):
         super().__init__(parent)
         self.setWindowTitle(title)
         font = QtGui.QFont()
-        font.setPointSize(10)
+        font.setPointSize(11)
         self.setFont(font)
 
         mainLayout = QVBoxLayout()
@@ -929,6 +929,8 @@ class QDialogCombobox(QDialog):
         topLayout = QHBoxLayout()
         bottomLayout = QHBoxLayout()
 
+        self.mainLayout = mainLayout
+
         if iconPixmap is not None:
             label = QLabel()
             # padding: top, left, bottom, right
@@ -994,7 +996,6 @@ class QDialogCombobox(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
-
 class QDialogListbox(QDialog):
     def __init__(
             self, title, text, items, cancelText='Cancel',
@@ -1009,9 +1010,11 @@ class QDialogListbox(QDialog):
         topLayout = QVBoxLayout()
         bottomLayout = QHBoxLayout()
 
+        self.mainLayout = mainLayout
+
         label = QLabel(text)
         _font = QtGui.QFont()
-        _font.setPointSize(10)
+        _font.setPointSize(11)
         label.setFont(_font)
         # padding: top, left, bottom, right
         label.setStyleSheet("padding:0px 0px 3px 0px;")
@@ -1088,6 +1091,72 @@ class QDialogListbox(QDialog):
     def closeEvent(self, event):
         if hasattr(self, 'loop'):
             self.loop.exit()
+
+class selectTrackerGUI(QDialogListbox):
+    def __init__(
+            self, SizeT, currentFrameNo=1, parent=None
+        ):
+        trackers = myutils.get_list_of_trackers()
+        super().__init__(
+            'Select tracker', 'Select one of the following trackers',
+            trackers, multiSelection=False, parent=parent
+        )
+        self.setWindowTitle('Select tracker')
+
+        selectFramesContainer = QGroupBox()
+        selectFramesLayout = QGridLayout()
+
+        self.startFrame_SB = QSpinBox()
+        self.startFrame_SB.setAlignment(Qt.AlignCenter)
+        self.startFrame_SB.setMinimum(1)
+        self.startFrame_SB.setMaximum(SizeT-1)
+        self.startFrame_SB.setValue(currentFrameNo)
+
+        self.stopFrame_SB = QSpinBox()
+        self.stopFrame_SB.setAlignment(Qt.AlignCenter)
+        self.stopFrame_SB.setMinimum(1)
+        self.stopFrame_SB.setMaximum(SizeT)
+        self.stopFrame_SB.setValue(SizeT)
+
+        selectFramesLayout.addWidget(QLabel('Start frame n.'), 0, 0)
+        selectFramesLayout.addWidget(self.startFrame_SB, 1, 0)
+
+        selectFramesLayout.addWidget(QLabel('Stop frame n.'), 0, 1)
+        selectFramesLayout.addWidget(self.stopFrame_SB, 1, 1)
+
+        self.warningLabel = QLabel()
+        palette = self.warningLabel.palette();
+        palette.setColor(self.warningLabel.backgroundRole(), Qt.red);
+        palette.setColor(self.warningLabel.foregroundRole(), Qt.red);
+        self.warningLabel.setPalette(palette);
+        selectFramesLayout.addWidget(
+            self.warningLabel, 2, 0, 1, 2, alignment=Qt.AlignCenter
+        )
+
+        selectFramesContainer.setLayout(selectFramesLayout)
+
+        self.mainLayout.insertWidget(1, selectFramesContainer)
+
+        self.stopFrame_SB.valueChanged.connect(self._checkRange)
+
+    def _checkRange(self):
+        start = self.startFrame_SB.value()
+        stop = self.stopFrame_SB.value()
+        if stop <= start:
+            self.warningLabel.setText(
+                'stop frame smaller than start frame'
+            )
+        else:
+            self.warningLabel.setText('')
+
+    def ok_cb(self, event):
+        if self.warningLabel.text():
+            return
+        else:
+            self.startFrame = self.startFrame_SB.value()
+            self.stopFrame = self.stopFrame_SB.value()
+            QDialogListbox.ok_cb(self, event)
+
 
 class QDialogAppendTextFilename(QDialog):
     def __init__(self, filename, ext, parent=None, font=None):
@@ -2089,7 +2158,7 @@ class randomWalkerDialog(QDialog):
         seeHereLabel.setTextInteractionFlags(Qt.TextBrowserInteraction)
         seeHereLabel.setOpenExternalLinks(True)
         font = QtGui.QFont()
-        font.setPointSize(10)
+        font.setPointSize(11)
         seeHereLabel.setFont(font)
         seeHereLabel.setStyleSheet("padding:12px 0px 0px 0px;")
         paramsLayout.addWidget(seeHereLabel, row, 0, 1, 2)
@@ -2225,7 +2294,7 @@ class FutureFramesAction_QDialog(QDialog):
 
         txtLabel = QLabel(txt)
         _font = QtGui.QFont()
-        _font.setPointSize(10)
+        _font.setPointSize(11)
         _font.setBold(True)
         txtLabel.setFont(_font)
         txtLabel.setAlignment(Qt.AlignCenter)
@@ -2252,7 +2321,7 @@ class FutureFramesAction_QDialog(QDialog):
 
         infotxtLabel = QLabel(infoTxt)
         _font = QtGui.QFont()
-        _font.setPointSize(10)
+        _font.setPointSize(11)
         infotxtLabel.setFont(_font)
 
         infotxtLabel.setStyleSheet("padding:0px 0px 3px 0px;")
@@ -2265,7 +2334,7 @@ class FutureFramesAction_QDialog(QDialog):
 
         noteTxtLabel = QLabel(noteTxt)
         _font = QtGui.QFont()
-        _font.setPointSize(10)
+        _font.setPointSize(11)
         _font.setBold(True)
         noteTxtLabel.setFont(_font)
         # padding: top, left, bottom, right
@@ -2511,7 +2580,7 @@ class postProcessSegmDialog(QDialog):
         cancelButton.clicked.connect(self.cancel_cb)
 
         font = QtGui.QFont()
-        font.setPointSize(10)
+        font.setPointSize(11)
         self.setFont(font)
 
         if mainWin is not None:
@@ -2716,7 +2785,7 @@ class imageViewer(QMainWindow):
         self.framesScrollBar.setMaximum(posData.SizeT)
         t_label = QLabel('frame  ')
         _font = QtGui.QFont()
-        _font.setPointSize(10)
+        _font.setPointSize(11)
         t_label.setFont(_font)
         self.img_Widglayout.addWidget(
                 t_label, 0, 0, alignment=Qt.AlignRight)
@@ -2730,7 +2799,7 @@ class imageViewer(QMainWindow):
         self.zSliceScrollBar.setMaximum(self.posData.SizeZ-1)
         _z_label = QLabel('z-slice  ')
         _font = QtGui.QFont()
-        _font.setPointSize(10)
+        _font.setPointSize(11)
         _z_label.setFont(_font)
         self.z_label = _z_label
         self.img_Widglayout.addWidget(_z_label, 1, 0, alignment=Qt.AlignCenter)
@@ -3266,7 +3335,7 @@ class askStopFrameSegm(QDialog):
         )
         infoLabel = QLabel(infoTxt, self)
         _font = QtGui.QFont()
-        _font.setPointSize(10)
+        _font.setPointSize(11)
         infoLabel.setFont(_font)
         infoLabel.setAlignment(Qt.AlignCenter)
         # padding: top, left, bottom, right
@@ -3393,7 +3462,7 @@ class QLineEditDialog(QDialog):
         # Widgets
         msg = QLabel(msg)
         _font = QtGui.QFont()
-        _font.setPointSize(10)
+        _font.setPointSize(11)
         msg.setFont(_font)
         msg.setAlignment(Qt.AlignCenter)
         # padding: top, left, bottom, right
@@ -3532,7 +3601,7 @@ class editID_QWidget(QDialog):
         VBoxLayout = QVBoxLayout()
         msg = QLabel(f'Replace ID {clickedID} with:')
         _font = QtGui.QFont()
-        _font.setPointSize(10)
+        _font.setPointSize(11)
         msg.setFont(_font)
         # padding: top, left, bottom, right
         msg.setStyleSheet("padding:0px 0px 3px 0px;")
@@ -4577,7 +4646,7 @@ class QDialogZsliceAbsent(QDialog):
         self.setLayout(mainLayout)
 
         font = QtGui.QFont()
-        font.setPointSize(10)
+        font.setPointSize(11)
         self.setFont(font)
 
         # self.setModal(True)
@@ -4900,7 +4969,7 @@ class QDialogModelParams(QDialog):
         self.setLayout(mainLayout)
 
         font = QtGui.QFont()
-        font.setPointSize(10)
+        font.setPointSize(11)
         self.setFont(font)
 
         # self.setModal(True)
@@ -5042,7 +5111,7 @@ if __name__ == '__main__':
     # Create the application
     app = QApplication(sys.argv)
     font = QtGui.QFont()
-    font.setPointSize(10)
+    font.setPointSize(11)
     # title='Select channel name'
     # CbLabel='Select channel name:  '
     # informativeText = ''
@@ -5093,7 +5162,7 @@ if __name__ == '__main__':
     # win = postProcessSegmDialog()
     # win = QDialogAppendTextFilename('example.npz')
     font = QtGui.QFont()
-    font.setPointSize(10)
+    font.setPointSize(11)
     filenames = ['test1', 'test2']
     # win = QDialogZsliceAbsent('test3', 30, filenames)
     win = QDialogMultiSegmNpz(filenames, os.path.dirname(__file__))

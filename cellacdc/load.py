@@ -467,6 +467,7 @@ class loadData:
         self.raw_postproc_segm_path = f'{base_path}segm_raw_postproc'
         self.post_proc_mot_metrics = f'{base_path}post_proc_mot_metrics'
         self.segm_hyperparams_csv_path = f'{base_path}segm_hyperparams.csv'
+        self.btrack_tracks_h5_path = f'{base_path}btrack_tracks.h5'
 
     def setBlankSegmData(self, SizeT, SizeZ, SizeY, SizeX):
         Y, X = self.img_data.shape[-2:]
