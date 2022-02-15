@@ -42,7 +42,7 @@ import skimage.exposure
 import skimage.transform
 import skimage.segmentation
 from functools import wraps
-from skimage.color import gray2rgb, gray2rgba
+from skimage.color import gray2rgb, gray2rgba, label2rgb
 
 from PyQt5.QtCore import (
     Qt, QFile, QTextStream, QSize, QRect, QRectF,
@@ -153,6 +153,55 @@ def exception_handler(func):
         return result
     return inner_function
 
+class trackingWorker(QObject):
+    finished = pyqtSignal()
+    critical = pyqtSignal(object)
+    progress = pyqtSignal(str)
+    debug = pyqtSignal(object)
+
+    def __init__(self, posData, mainWin, video_to_track):
+        QObject.__init__(self)
+        self.mainWin = mainWin
+        self.posData = posData
+        self.mutex = QMutex()
+        self.waitCond = QWaitCondition()
+        self.tracker = self.mainWin.tracker
+        self.video_to_track = video_to_track
+
+    @worker_exception_handler
+    def run(self):
+        self.mutex.lock()
+
+        self.progress.emit('Tracking process started...')
+
+        tracked_video = self.tracker.track(
+            self.video_to_track, signals=self.signals,
+            export_to=self.posData.btrack_tracks_h5_path
+        )
+
+        # Store new tracked video
+        current_frame_i = self.posData.frame_i
+        for rel_frame_i, lab in enumerate(tracked_video):
+            frame_i = rel_frame_i + self.mainWin.start_n - 1
+
+            if self.posData.allData_li[frame_i]['labels'] is None:
+                # repeating tracking on a never visited frame
+                # --> modify only raw data
+                self.posData.segm_data[frame_i] = lab.copy()
+            else:
+                # Get the rest of the stored metadata based on the new lab
+                self.posData.allData_li[frame_i]['labels'] = lab.copy()
+                self.posData.frame_i = frame_i
+                self.mainWin.get_data()
+                self.mainWin.store_data()
+
+        # Back to current frame
+        self.posData.frame_i = current_frame_i
+        self.mainWin.get_data()
+
+        self.mutex.unlock()
+        self.finished.emit()
+
 class relabelSequentialWorker(QObject):
     finished = pyqtSignal()
     critical = pyqtSignal(object)
@@ -236,7 +285,7 @@ class saveDataWorker(QObject):
     progress = pyqtSignal(str)
     progressBar = pyqtSignal(int, int, float)
     critical = pyqtSignal(str)
-    criticalMetrics = pyqtSignal(str)
+    criticalMetrics = pyqtSignal(object)
     criticalPermissionError = pyqtSignal(str)
     askSaveLastVisitedCcaMode = pyqtSignal(int, object)
     askSaveLastVisitedSegmMode = pyqtSignal(int, object)
@@ -328,7 +377,7 @@ class saveDataWorker(QObject):
                             acdc_df_li.append(acdc_df)
                             key = (frame_i, posData.TimeIncrement*frame_i)
                             keys.append(key)
-                        except Exception as e:
+                        except Exception as error:
                             self.mutex.lock()
                             self.criticalMetrics.emit(traceback.format_exc())
                             self.waitCond.wait(self.mutex)
@@ -479,6 +528,8 @@ class guiWin(QMainWindow):
         self.mainWin = mainWin
 
         self.app = app
+
+        self.graphLayoutBkgrColor = (235, 235, 235)
 
         self.progressWin = None
         self.slideshowWin = None
@@ -764,6 +815,7 @@ class guiWin(QMainWindow):
         normalizeIntensitiesMenu.addAction(self.normalizeRescale0to1Action)
         normalizeIntensitiesMenu.addAction(self.normalizeByMaxAction)
         ImageMenu.addAction(self.invertBwAction)
+        ImageMenu.addAction(self.shuffleCmapAction)
 
         # Segment menu
         SegmMenu = menuBar.addMenu("&Segment")
@@ -784,6 +836,9 @@ class guiWin(QMainWindow):
         )
         selectTrackAlgoMenu.addAction(self.trackWithAcdcAction)
         selectTrackAlgoMenu.addAction(self.trackWithYeazAction)
+
+        trackingMenu.addAction(self.repeatTrackingVideoAction)
+
         trackingMenu.addAction(self.repeatTrackingMenuAction)
         trackingMenu.aboutToShow.connect(self.nonViewerEditMenuOpened)
 
@@ -1136,6 +1191,7 @@ class guiWin(QMainWindow):
         mainLayout = QGridLayout()
         row = 0
         mainLayout.addWidget(self.graphLayout, row, 0, 1, 2)
+        mainLayout.addWidget(self.labelsGrad, row, 2)
 
         row += 1
         mainLayout.addLayout(self.bottomLayout, row, 0)
@@ -1191,10 +1247,15 @@ class guiWin(QMainWindow):
         self.newAction = QAction(self)
         self.newAction.setText("&New")
         self.newAction.setIcon(QIcon(":file-new.svg"))
-        self.openAction = QAction(QIcon(":folder-open.svg"), "&Open folder...", self)
-        self.openFileAction = QAction(QIcon(":image.svg"),"&Open image/video file...", self)
-        self.saveAction = QAction(QIcon(":file-save.svg"),
-                                  "&Save (Ctrl+S)", self)
+        self.openAction = QAction(
+            QIcon(":folder-open.svg"), "&Open folder...", self
+        )
+        self.openFileAction = QAction(
+            QIcon(":image.svg"),"&Open image/video file...", self
+        )
+        self.saveAction = QAction(
+            QIcon(":file-save.svg"), "&Save (Ctrl+S)", self
+        )
         self.loadFluoAction = QAction("Load fluorescent images...", self)
         # self.reloadAction = QAction(
         #     QIcon(":reload.svg"), "Reload segmentation file", self
@@ -1262,9 +1323,17 @@ class guiWin(QMainWindow):
             'Repeat tracking on current frame\n'
             'SHORTCUT: "Shift+T"'
         )
-        self.repeatTrackingMenuAction = QAction('Repeat tracking...', self)
+        self.repeatTrackingMenuAction = QAction(
+            'Repeat tracking on current frame...', self
+        )
         self.repeatTrackingMenuAction.setDisabled(True)
-        self.repeatTrackingAction.setShortcut('Shift+T')
+        self.repeatTrackingMenuAction.setShortcut('Shift+T')
+
+        self.repeatTrackingVideoAction = QAction(
+            'Repeat tracking on multiple frames...', self
+        )
+        self.repeatTrackingVideoAction.setDisabled(True)
+        self.repeatTrackingVideoAction.setShortcut('Alt+Shift+T')
 
         trackingAlgosGroup = QActionGroup(self)
         self.trackWithAcdcAction = QAction('Cell-ACDC', self)
@@ -1325,6 +1394,9 @@ class guiWin(QMainWindow):
         self.invertBwAction.setCheckable(True)
         checked = self.df_settings.at['is_bw_inverted', 'value'] == 'Yes'
         self.invertBwAction.setChecked(checked)
+
+        self.shuffleCmapAction =  QAction('Shuffle colormap...', self)
+        self.shuffleCmapAction.setShortcut('Shift+S')
 
         self.normalizeRawAction = QAction(
             'Do not normalize. Display raw image', self)
@@ -1435,6 +1507,9 @@ class guiWin(QMainWindow):
         self.disableTrackingCheckBox.clicked.connect(self.disableTracking)
         self.repeatTrackingAction.triggered.connect(self.repeatTracking)
         self.repeatTrackingMenuAction.triggered.connect(self.repeatTracking)
+        self.repeatTrackingVideoAction.triggered.connect(
+            self.repeatTrackingVideo
+        )
         self.trackWithAcdcAction.toggled.connect(self.storeTrackingAlgo)
         self.trackWithYeazAction.toggled.connect(self.storeTrackingAlgo)
 
@@ -1451,6 +1526,7 @@ class guiWin(QMainWindow):
         # self.repeatAutoCcaAction.triggered.connect(self.repeatAutoCca)
         self.manuallyEditCcaAction.triggered.connect(self.manualEditCca)
         self.invertBwAction.toggled.connect(self.invertBw)
+
         self.enableSmartTrackAction.toggled.connect(self.enableSmartTrack)
         # Brush/Eraser size action
         self.brushSizeSpinbox.valueChanged.connect(self.brushSize_cb)
@@ -1465,6 +1541,20 @@ class guiWin(QMainWindow):
         self.textIDsColorButton.sigColorChanged.connect(self.saveTextIDsColors)
         self.alphaScrollBar.valueChanged.connect(self.updateOverlay)
 
+        self.labelsGrad.colorButton.sigColorChanging.connect(self.updateBkgrColor)
+        self.labelsGrad.colorButton.sigColorChanged.connect(self.saveBkgrColor)
+        self.labelsGrad.sigGradientChangeFinished.connect(self.updateLabelsCmap)
+        self.labelsGrad.sigGradientChanged.connect(self.ticksCmapMoved)
+        self.labelsGrad.textColorButton.sigColorChanging.connect(
+            self.updateTextLabelsColor
+        )
+        self.labelsGrad.textColorButton.sigColorChanged.connect(
+            self.saveTextLabelsColor
+        )
+
+        self.labelsGrad.shuffleCmapAction.triggered.connect(self.shuffle_cmap)
+        self.shuffleCmapAction.triggered.connect(self.shuffle_cmap)
+        self.labelsGrad.invertBwAction.toggled.connect(self.setCheckedInvertBW)
 
         # Drawing mode
         self.drawIDsContComboBox.currentIndexChanged.connect(
@@ -1485,20 +1575,28 @@ class guiWin(QMainWindow):
 
     def gui_createImg1Widgets(self):
         # Toggle contours/ID comboboxf
-        self.drawIDsContComboBoxSegmItems = ['Draw IDs and contours',
-                                             'Draw only cell cycle info',
-                                             'Draw cell cycle info and contours',
-                                             'Draw only mother-bud lines',
-                                             'Draw only IDs',
-                                             'Draw only contours',
-                                             'Draw nothing']
-        self.drawIDsContComboBoxCcaItems = ['Draw only cell cycle info',
-                                            'Draw cell cycle info and contours',
-                                            'Draw only mother-bud lines',
-                                            'Draw IDs and contours',
-                                            'Draw only IDs',
-                                            'Draw only contours',
-                                            'Draw nothing']
+        self.drawIDsContComboBoxSegmItems = [
+            'Draw IDs and contours',
+            'Draw IDs and overlay segm. masks',
+            'Draw only cell cycle info',
+            'Draw cell cycle info and contours',
+            'Draw only mother-bud lines',
+            'Draw only IDs',
+            'Draw only contours',
+            'Draw only overlay segm. masks',
+            'Draw nothing'
+        ]
+        self.drawIDsContComboBoxCcaItems = [
+            'Draw only cell cycle info',
+            'Draw cell cycle info and contours',
+            'Draw only mother-bud lines',
+            'Draw IDs and contours',
+            'Draw IDs and overlay segm. masks',
+            'Draw only IDs',
+            'Draw only contours',
+            'Draw only overlay segm. masks',
+            'Draw nothing'
+        ]
         self.drawIDsContComboBox = QComboBox()
         self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
         # Always adjust combobox width to largest item
@@ -1627,6 +1725,11 @@ class guiWin(QMainWindow):
 
     def gui_createGraphicsPlots(self):
         self.graphLayout = pg.GraphicsLayoutWidget()
+        if self.invertBwAction.isChecked():
+            self.graphLayout.setBackground(self.graphLayoutBkgrColor)
+            self.titleColor = 'k'
+        else:
+            self.titleColor = 'w'
 
         # Left plot
         self.ax1 = pg.PlotItem()
@@ -1648,8 +1751,11 @@ class guiWin(QMainWindow):
         # Auto image adjustment button
         proxy = QtGui.QGraphicsProxyWidget()
         equalizeHistPushButton = QPushButton("Auto")
-        equalizeHistPushButton.setStyleSheet(
-               'QPushButton {background-color: #282828; color: #F0F0F0;}')
+        if not self.invertBwAction.isChecked():
+            equalizeHistPushButton.setStyleSheet(
+                'QPushButton {background-color: #282828; color: #F0F0F0;}'
+            )
+        self.equalizeHistPushButton = equalizeHistPushButton
         proxy.setWidget(equalizeHistPushButton)
         self.graphLayout.addItem(proxy, row=0, col=0)
         self.equalizeHistPushButton = equalizeHistPushButton
@@ -1660,18 +1766,31 @@ class guiWin(QMainWindow):
         self.hist.vb.raiseContextMenu = lambda x: None
         self.graphLayout.addItem(self.hist, row=1, col=0)
 
+        # Colormap gradient widget
+        self.labelsGrad = widgets.myGradientWidget()
+        try:
+            stateFound = self.labelsGrad.restoreState(self.df_settings)
+        except Exception as e:
+            self.logger.exception(traceback.format_exc())
+            print('======================================')
+            self.logger.info(
+                'Failed to restore previously used colormap. '
+                'Using default colormap "viridis"'
+            )
+            self.labelsGrad.loadPreset('viridis')
+
         # Title
-        self.titleLabel = pg.LabelItem(justify='center', color='w', size='14pt')
+        self.titleLabel = pg.LabelItem(justify='center', color=self.titleColor, size='14pt')
         self.titleLabel.setText(
             'Drag and drop image file or go to File --> Open folder...')
         self.graphLayout.addItem(self.titleLabel, row=0, col=1, colspan=2)
 
         # # Current frame text
-        # self.frameLabel = pg.LabelItem(justify='center', color='w', size='14pt')
+        # self.frameLabel = pg.LabelItem(justify='center', color=self.titleColor, size='14pt')
         # self.frameLabel.setText(' ')
         # self.graphLayout.addItem(self.frameLabel, row=2, col=1, colspan=2)
 
-    def gui_setLabelsColors(self, r, g, b, custom=False):
+    def gui_setImg1TextColors(self, r, g, b, custom=False):
         if custom:
             self.ax1_oldIDcolor = (r, g, b)
             self.ax1_S_oldCellColor = (int(r*0.9), int(r*0.9), int(b*0.9))
@@ -1685,19 +1804,23 @@ class guiWin(QMainWindow):
     def gui_addPlotItems(self):
         if 'textIDsColor' in self.df_settings.index:
             rgbString = self.df_settings.at['textIDsColor', 'value']
-            try:
-                r, g, b = re.findall('(\d+), (\d+), (\d+)', rgbString)[0]
-                r, g, b = int(r), int(g), int(b)
-            except TypeError:
-                r, g, b = 255, 255, 255
-            self.gui_setLabelsColors(r, g, b)
-            self.gui_setLabelsColors(r,g,b, custom=True)
+            r, g, b = myutils.rgb_str_to_values(rgbString)
+            self.gui_setImg1TextColors(r, g, b, custom=True)
             self.textIDsColorButton.setColor((r, g, b))
         else:
-            self.gui_setLabelsColors(0,0,0, custom=False)
+            self.gui_setImg1TextColors(0,0,0, custom=False)
+
+        if 'labels_text_color' in self.df_settings.index:
+            rgbString = self.df_settings.at['labels_text_color', 'value']
+            r, g, b = myutils.rgb_str_to_values(rgbString)
+            self.ax2_textColor = (r, g, b)
+        else:
+            self.ax2_textColor = (255, 0, 0)
 
         # Blank image
         self.blank = np.zeros((256,256), np.uint8)
+        if self.invertBwAction.isChecked():
+            self.blank = self.blank + self.graphLayoutBkgrColor[0]
 
         # Left image
         self.img1 = pg.ImageItem(self.blank)
@@ -1706,8 +1829,8 @@ class guiWin(QMainWindow):
             try:
                 action.name
                 action.triggered.disconnect()
-                action.triggered.connect(self.gradientContextMenuClicked)
-            except AttributeError:
+                action.triggered.connect(self.labelsGradientContextMenuClicked)
+            except (AttributeError, TypeError):
                 pass
 
         # Right image
@@ -1929,6 +2052,15 @@ class guiWin(QMainWindow):
         # Enable dragging of the image window like pyqtgraph original code
         if dragImg:
             pg.ImageItem.mousePressEvent(self.img2, event)
+            event.ignore()
+            return
+
+        # show gradient widget menu if none of the right-click actions are ON
+        is_right_click_action_ON = any([
+            b.isChecked() for b in self.checkableQButtonsGroup.buttons()
+        ])
+        if right_click and not is_right_click_action_ON:
+            self.labelsGrad.showMenu(event)
             event.ignore()
             return
 
@@ -3726,7 +3858,7 @@ class guiWin(QMainWindow):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
-        self.logger.info('Relabelling process ended.')
+        self.logger.info('Process ended.')
         self.updateALLimg()
 
     def workerInitProgressbar(self, totalIter):
@@ -3734,7 +3866,30 @@ class guiWin(QMainWindow):
         self.progressWin.mainPbar.setMaximum(totalIter)
 
     def workerUpdateProgressbar(self, step):
-        self.progressWin.mainPbar.update(step)
+        self.progressWin.mainPbar.update(self.progressWin.mainPbar.value()+step)
+
+    def startTrackingWorker(self, posData, video_to_track):
+        self.thread = QThread()
+        self.trackingWorker = trackingWorker(posData, self, video_to_track)
+        self.trackingWorker.moveToThread(self.thread)
+        self.trackingWorker.finished.connect(self.thread.quit)
+        self.trackingWorker.finished.connect(self.trackingWorker.deleteLater)
+        self.thread.finished.connect(self.thread.deleteLater)
+
+        # Custom signals
+        self.trackingWorker.signals = myutils.signals()
+        self.trackingWorker.signals.progress = self.trackingWorker.progress
+        self.trackingWorker.signals.progressBar.connect(
+            self.workerUpdateProgressbar
+        )
+        self.trackingWorker.progress.connect(self.workerProgress)
+        self.trackingWorker.critical.connect(self.workerCritical)
+        self.trackingWorker.finished.connect(self.workerFinished)
+
+        self.trackingWorker.debug.connect(self.workerDebug)
+
+        self.thread.started.connect(self.trackingWorker.run)
+        self.thread.start()
 
     def startRelabellingWorker(self, posData):
         self.thread = QThread()
@@ -4462,9 +4617,6 @@ class guiWin(QMainWindow):
         """
         posData = self.data[self.pos_i]
         eligible = True
-        print('==================')
-        print(f'Current frame {posData.frame_i}')
-        print(f'assigning {budID} to mother {new_mothID}')
 
         G1_duration = 0
         # Check future frames
@@ -4516,16 +4668,12 @@ class guiWin(QMainWindow):
 
             G1_duration += 1
 
-        print(f'final G1 duration = {G1_duration}')
-
         if G1_duration == 1:
             # G1_duration of the mother is single frame --> not eligible
             eligible = False
             self.warnMotherNotEligible(
                 new_mothID, budID, posData.frame_i, 'single_frame_G1_duration'
             )
-
-        print('==================')
         return eligible
 
     def getStatus_RelID_BeforeEmergence(self, budID, curr_mothID):
@@ -4957,25 +5105,39 @@ class guiWin(QMainWindow):
                 self.UserEnforced_Tracking = True
 
     def invertBw(self, checked):
+        self.labelsGrad.invertBwAction.toggled.disconnect()
+        self.labelsGrad.invertBwAction.setChecked(checked)
+        self.labelsGrad.invertBwAction.toggled.connect(self.setCheckedInvertBW)
+
         if self.slideshowWin is not None:
             self.slideshowWin.is_bw_inverted = checked
             self.slideshowWin.update_img()
-        self.df_settings.at['is_bw_inverted', 'value'] = str(checked)
+        self.df_settings.at['is_bw_inverted', 'value'] = 'Yes' if checked else 'No'
         self.df_settings.to_csv(self.settings_csv_path)
         if checked:
+            # Light mode
+            self.equalizeHistPushButton.setStyleSheet('')
+            self.graphLayout.setBackground(self.graphLayoutBkgrColor)
             self.ax2_BrushCirclePen = pg.mkPen((0,0,0), width=2)
             self.ax2_BrushCircleBrush = pg.mkBrush((0,0,0,50))
             self.ax1_oldIDcolor = [255-v for v in self.ax1_oldIDcolor]
             self.ax1_G1cellColor = [255-v for v in self.ax1_G1cellColor[:3]]
             self.ax1_G1cellColor.append(178)
             self.ax1_S_oldCellColor = [255-v for v in self.ax1_S_oldCellColor]
+            self.titleColor = 'k'
         else:
+            # Dark mode
+            self.equalizeHistPushButton.setStyleSheet(
+                'QPushButton {background-color: #282828; color: #F0F0F0;}'
+            )
+            self.graphLayout.setBackground('default')
             self.ax2_BrushCirclePen = pg.mkPen(width=2)
             self.ax2_BrushCircleBrush = pg.mkBrush((255,255,255,50))
             self.ax1_oldIDcolor = [255-v for v in self.ax1_oldIDcolor]
             self.ax1_G1cellColor = [255-v for v in self.ax1_G1cellColor[:3]]
             self.ax1_G1cellColor.append(178)
             self.ax1_S_oldCellColor = [255-v for v in self.ax1_S_oldCellColor]
+            self.titleColor = 'w'
 
         self.updateALLimg(updateLabelItemColor=False)
 
@@ -5206,6 +5368,7 @@ class guiWin(QMainWindow):
             action.setEnabled(enabled)
         self.SegmActionRW.setEnabled(enabled)
         self.repeatTrackingMenuAction.setEnabled(enabled)
+        self.repeatTrackingVideoAction.setEnabled(enabled)
         self.postProcessSegmAction.setEnabled(enabled)
         self.autoSegmAction.setEnabled(enabled)
         self.editToolBar.setVisible(enabled)
@@ -5500,7 +5663,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         if checked:
             self.disconnectLeftClickButtons()
-            self.uncheckLeftClickButtons(self.sender())
+            self.uncheckLeftClickButtons(self.wandToolButton)
             self.connectLeftClickButtons()
             self.wandControlsToolbar.setVisible(True)
         else:
@@ -5682,7 +5845,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         if checked:
             self.disconnectLeftClickButtons()
-            self.uncheckLeftClickButtons(self.sender())
+            self.uncheckLeftClickButtons(self.curvToolButton)
             self.connectLeftClickButtons()
             self.hoverLinSpace = np.linspace(0, 1, 1000)
             self.curvPlotItem = pg.PlotDataItem(pen=self.newIDs_cpen)
@@ -6317,6 +6480,45 @@ class guiWin(QMainWindow):
                 self.UserEnforced_DisabledTracking = False
                 self.UserEnforced_Tracking = True
 
+    def repeatTrackingVideo(self):
+        posData = self.data[self.pos_i]
+        win = apps.selectTrackerGUI(
+            posData.SizeT, currentFrameNo=posData.frame_i+1
+        )
+        win.exec_()
+        if win.cancel:
+            self.logger.info('Tracking aborted.')
+            return
+
+        trackerName = win.selectedItemsText[0]
+        self.logger.info(f'Importing {trackerName} tracker...')
+        trackerModule = import_module(
+            f'trackers.{trackerName}.{trackerName}_tracker'
+        )
+        self.tracker = trackerModule.tracker()
+        start_n = win.startFrame
+        stop_n = win.stopFrame
+        video_to_track = np.copy(posData.segm_data)
+        for frame_i in range(start_n-1, stop_n):
+            data_dict = posData.allData_li[frame_i]
+            lab = data_dict['labels']
+            if lab is None:
+                break
+
+            video_to_track[frame_i] = lab
+        video_to_track = video_to_track[start_n-1:stop_n]
+
+        self.start_n = start_n
+        self.stop_n = stop_n
+
+        self.progressWin = apps.QDialogWorkerProcess(
+            title='Tracking', parent=self,
+            pbarDesc=f'Tracking from frame n. {start_n} to {stop_n}...'
+        )
+        self.progressWin.show(self.app)
+        self.progressWin.mainPbar.setMaximum(stop_n-start_n)
+        self.startTrackingWorker(posData, video_to_track)
+
     def repeatTracking(self):
         posData = self.data[self.pos_i]
         prev_lab = posData.lab.copy()
@@ -6477,7 +6679,8 @@ class guiWin(QMainWindow):
 
         self.titleLabel.setText(
             f'{model_name} is thinking... '
-            '(check progress in terminal/console)', color='w')
+            '(check progress in terminal/console)', color=self.titleColor
+        )
 
         self.model = model
 
@@ -6550,7 +6753,8 @@ class guiWin(QMainWindow):
 
         self.titleLabel.setText(
             f'{model_name} is thinking... '
-            '(check progress in terminal/console)', color='w')
+            '(check progress in terminal/console)', color=self.titleColor
+        )
 
         # Store undo state before modifying stuff
         self.storeUndoRedoStates(False)
@@ -6775,7 +6979,7 @@ class guiWin(QMainWindow):
             self.store_data()
             msg = 'You reached the last segmented frame!'
             self.logger.info(msg)
-            self.titleLabel.setText(msg, color='w')
+            self.titleLabel.setText(msg, color=self.titleColor)
 
     def setNavigateScrollBarMaximum(self):
         posData = self.data[self.pos_i]
@@ -6806,7 +7010,7 @@ class guiWin(QMainWindow):
         else:
             msg = 'You reached the first frame!'
             self.logger.info(msg)
-            self.titleLabel.setText(msg, color='w')
+            self.titleLabel.setText(msg, color=self.titleColor)
 
     def checkDataIntegrity(self, posData, numPos):
         skipPos = False
@@ -6860,9 +7064,6 @@ class guiWin(QMainWindow):
                     return False
                 if posData.multiSegmAllPos:
                     _endswith = selectedSegmNpz[len(posData.basename)-1:]
-                    print('----------------')
-                    print(selectedSegmNpz)
-                    print(_endswith)
                 posData.loadOtherFiles(
                     load_segm_data=True,
                     load_acdc_df=True,
@@ -7023,7 +7224,7 @@ class guiWin(QMainWindow):
 
         self.titleLabel.setText(
             'Data successfully loaded. Right/Left arrow to navigate frames',
-            color='w')
+            color=self.titleColor)
 
         self.setFramesSnapshotMode()
 
@@ -7384,7 +7585,6 @@ class guiWin(QMainWindow):
 
     def initGlobalAttr(self):
         self.setOverlayColors()
-        self.cmap = myutils.getFromMatplotlib('viridis')
 
         self.splineHoverON = False
         self.rulerHoverON = False
@@ -7470,10 +7670,7 @@ class guiWin(QMainWindow):
             posData.ol_data = None
 
             # Colormap
-            posData.lut = self.cmap.getLookupTable(0,1,255)
-            np.random.shuffle(posData.lut)
-            # Insert background color
-            posData.lut = np.insert(posData.lut, 0, [25, 25, 25], axis=0)
+            self.setLut(posData)
 
             posData.allData_li = [
                     {
@@ -8088,9 +8285,9 @@ class guiWin(QMainWindow):
 
     def getObjContours(self, obj, appendMultiContID=True):
         contours, _ = cv2.findContours(
-                               obj.image.astype(np.uint8),
-                               cv2.RETR_EXTERNAL,
-                               cv2.CHAIN_APPROX_NONE
+           obj.image.astype(np.uint8),
+           cv2.RETR_EXTERNAL,
+           cv2.CHAIN_APPROX_NONE
         )
         min_y, min_x, _, _ = obj.bbox
         cont = np.squeeze(contours[0], axis=1)
@@ -8375,14 +8572,14 @@ class guiWin(QMainWindow):
                 msg = 'Looking good!'
                 self.last_cca_frame_i = last_cca_frame_i
                 posData.frame_i = last_cca_frame_i
-                self.titleLabel.setText(msg, color='w')
+                self.titleLabel.setText(msg, color=self.titleColor)
                 self.get_data()
                 self.updateALLimg()
                 self.updateScrollbars()
             else:
                 msg = 'Cell cycle analysis aborted.'
                 self.logger.info(msg)
-                self.titleLabel.setText(msg, color='w')
+                self.titleLabel.setText(msg, color=self.titleColor)
                 self.modeComboBox.setCurrentText(currentMode)
                 proceed = False
                 return
@@ -8398,7 +8595,7 @@ class guiWin(QMainWindow):
             )
             if goTo_last_annotated_frame_i == msg.Yes:
                 msg = 'Looking good!'
-                self.titleLabel.setText(msg, color='w')
+                self.titleLabel.setText(msg, color=self.titleColor)
                 self.last_cca_frame_i = last_cca_frame_i
                 posData.frame_i = last_cca_frame_i
                 self.get_data()
@@ -8407,7 +8604,7 @@ class guiWin(QMainWindow):
             elif goTo_last_annotated_frame_i == msg.Cancel:
                 msg = 'Cell cycle analysis aborted.'
                 self.logger.info(msg)
-                self.titleLabel.setText(msg, color='w')
+                self.titleLabel.setText(msg, color=self.titleColor)
                 self.modeComboBox.setCurrentText(currentMode)
                 proceed = False
                 return
@@ -8422,7 +8619,7 @@ class guiWin(QMainWindow):
             posData.cca_df = self.getBaseCca_df()
             msg = 'Cell cycle analysis initiliazed!'
             self.logger.info(msg)
-            self.titleLabel.setText(msg, color='w')
+            self.titleLabel.setText(msg, color=self.titleColor)
         else:
             self.get_cca_df()
         return proceed
@@ -8610,10 +8807,11 @@ class guiWin(QMainWindow):
         df = posData.cca_df
         txt = f'{ID}'
         if ID in posData.new_IDs:
-            color = 'r'
+            color = self.ax2_textColor
             bold = True
         else:
-            color = (230, 0, 0, 255*0.5)
+            r, g, b = self.ax2_textColor
+            color = (r, g, b, 255*0.5)
             bold = False
 
         LabelItemID.setText(txt, color=color, bold=bold, size=self.fontSize)
@@ -8634,6 +8832,8 @@ class guiWin(QMainWindow):
         only_ccaInfo = how == 'Draw only cell cycle info'
         ccaInfo_and_cont = how == 'Draw cell cycle info and contours'
         onlyMothBudLines = how == 'Draw only mother-bud lines'
+        IDs_and_masks = how == 'Draw IDs and overlay segm. masks'
+        onlyMasks = how == 'Draw only overlay segm. masks'
 
         # Draw LabelItems for IDs on ax2
         y, x = obj.centroid
@@ -8648,7 +8848,11 @@ class guiWin(QMainWindow):
                 self.store_cca_df()
 
         # Draw LabelItems for IDs on ax1 if requested
-        if IDs_and_cont or onlyIDs or only_ccaInfo or ccaInfo_and_cont:
+        draw_LIs = (
+            IDs_and_cont or onlyIDs or only_ccaInfo or ccaInfo_and_cont
+            or IDs_and_masks
+        )
+        if draw_LIs:
             # Draw LabelItems for IDs on ax2
             t0 = time.time()
             self.ax1_setTextID(obj, how, updateColor=updateColor)
@@ -9250,6 +9454,23 @@ class guiWin(QMainWindow):
             ol_img = self.normalizeIntensities(ol_img)
         return ol_img
 
+    def overlaySegmMasks(self, img):
+        how = self.drawIDsContComboBox.currentText()
+        if how.find('overlay segm. masks') == -1:
+            return img
+
+        posData = self.data[self.pos_i]
+        if len(posData.lut) > max(posData.IDs):
+            self.extendLabelsLUT()
+        colors = [posData.lut[ID]/255 for ID in posData.IDs]
+        if img.ndim == 2:
+            img = img/numba_max(img)
+            img = label2rgb(
+                posData.lab, image=img, colors=colors,
+                bg_label=0, bg_color=(0.1, 0.1, 0.1)
+            )
+        return img
+
     def getOverlayImg(self, fluoData=None, setImg=True):
         posData = self.data[self.pos_i]
         keys = list(posData.ol_data.keys())
@@ -9322,11 +9543,79 @@ class guiWin(QMainWindow):
 
     def updateTextIDsColors(self, button):
         r, g, b = np.array(self.textIDsColorButton.color().getRgb()[:3])
-        self.gui_setLabelsColors(r,g,b, custom=True)
+        self.gui_setImg1TextColors(r,g,b, custom=True)
         self.updateALLimg()
 
     def saveTextIDsColors(self, button):
         self.df_settings.at['textIDsColor', 'value'] = self.ax1_oldIDcolor
+        self.df_settings.to_csv(self.settings_csv_path)
+
+    def setLut(self, posData, shuffle=True):
+        if shuffle:
+            posData.lut = self.labelsGrad.item.colorMap().getLookupTable(0,1,255)
+            np.random.shuffle(posData.lut)
+        else:
+            if posData.rp is None:
+                posData.lut = self.labelsGrad.item.colorMap().getLookupTable(0,1,255)
+            else:
+                posData.lut = self.labelsGrad.item.colorMap().getLookupTable(
+                    0,1,len(posData.rp)
+                )
+        # Insert background color
+        if 'labels_bkgrColor' in self.df_settings.index:
+            rgbString = self.df_settings.at['labels_bkgrColor', 'value']
+            r, g, b = myutils.rgb_str_to_values(rgbString)
+        else:
+            r, g, b = 25, 25, 25
+            self.df_settings.at['labels_bkgrColor', 'value'] = (r, g, b)
+
+        posData.lut = np.insert(posData.lut, 0, [r, g, b], axis=0)
+
+    def shuffle_cmap(self):
+        posData = self.data[self.pos_i]
+        np.random.shuffle(posData.lut[1:])
+        self.updateLookuptable()
+
+    def setCheckedInvertBW(self, checked):
+        self.invertBwAction.setChecked(checked)
+
+    def ticksCmapMoved(self, gradient):
+        pass
+        # posData = self.data[self.pos_i]
+        # self.setLut(posData, shuffle=False)
+        # self.updateLookuptable()
+
+    def updateLabelsCmap(self, gradient):
+        for _posData in self.data:
+            self.setLut(_posData)
+        self.updateLookuptable()
+
+        self.df_settings = self.labelsGrad.saveState(self.df_settings)
+        self.df_settings.to_csv(self.settings_csv_path)
+
+    def updateBkgrColor(self, button):
+        color = button.color().getRgb()[:3]
+        for _posData in self.data:
+            _posData.lut[0] = color
+        self.updateLookuptable()
+
+    def updateTextLabelsColor(self, button):
+        self.ax2_textColor = button.color().getRgb()[:3]
+        posData = self.data[self.pos_i]
+        if posData.rp is None:
+            return
+
+        for obj in posData.rp:
+            self.ax2_setTextID(obj)
+
+    def saveTextLabelsColor(self, button):
+        color = button.color().getRgb()[:3]
+        self.df_settings.at['labels_text_color', 'value'] = color
+        self.df_settings.to_csv(self.settings_csv_path)
+
+    def saveBkgrColor(self, button):
+        color = button.color().getRgb()[:3]
+        self.df_settings.at['labels_bkgrColor', 'value'] = color
         self.df_settings.to_csv(self.settings_csv_path)
 
     def updateOlColors(self, button):
@@ -9697,6 +9986,8 @@ class guiWin(QMainWindow):
         else:
             img = image
 
+        img = self.overlaySegmMasks(img)
+
         self.img1.setImage(img)
         self.updateFilters(updateBlur, updateSharp, updateEntropy, updateFilters)
 
@@ -9787,6 +10078,8 @@ class guiWin(QMainWindow):
         only_ccaInfo = how == 'Draw only cell cycle info'
         ccaInfo_and_cont = how == 'Draw cell cycle info and contours'
         onlyMothBudLines = how == 'Draw only mother-bud lines'
+        IDs_and_masks = how == 'Draw IDs and overlay segm. masks'
+        onlyMasks = how == 'Draw only overlay segm. masks'
 
         for ax2ContCurve in self.ax2_ContoursCurves:
             if ax2ContCurve is None:
@@ -9798,7 +10091,11 @@ class guiWin(QMainWindow):
         if posData.frame_i == 0:
             return
 
-        if IDs_and_cont or onlyCont or ccaInfo_and_cont:
+        highlight = (
+            IDs_and_cont or onlyCont or ccaInfo_and_cont
+            or IDs_and_masks or onlyMasks
+        )
+        if highlight:
             for obj in posData.rp:
                 ID = obj.label
                 if ID in posData.new_IDs:
@@ -9849,6 +10146,10 @@ class guiWin(QMainWindow):
         only_ccaInfo = how == 'Draw only cell cycle info'
         ccaInfo_and_cont = how == 'Draw cell cycle info and contours'
         onlyMothBudLines = how == 'Draw only mother-bud lines'
+        IDs_and_masks = how == 'Draw IDs and overlay segm. masks'
+        onlyMasks = how == 'Draw only overlay segm. masks'
+
+
         ID = obj.label
         if ID in posData.lost_IDs:
             ContCurve = self.ax1_ContoursCurves[ID-1]
@@ -9856,7 +10157,12 @@ class guiWin(QMainWindow):
                 self.addNewItems(ID)
             ContCurve = self.ax1_ContoursCurves[ID-1]
 
-            if IDs_and_cont or onlyCont or ccaInfo_and_cont or forceContour:
+            highlight = (
+                IDs_and_cont or onlyCont or ccaInfo_and_cont
+                or IDs_and_masks or onlyMasks or forceContour
+            )
+
+            if highlight:
                 cont = self.getObjContours(obj)
                 ContCurve.setData(
                     cont[:,0], cont[:,1], pen=self.lostIDs_cpen
@@ -9878,7 +10184,7 @@ class guiWin(QMainWindow):
             posData.old_IDs = []
             posData.IDs = [obj.label for obj in posData.rp]
             posData.multiContIDs = set()
-            self.titleLabel.setText('Looking good!', color='w')
+            self.titleLabel.setText('Looking good!', color=self.titleColor)
             return
 
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
@@ -10263,7 +10569,7 @@ class guiWin(QMainWindow):
             self.openAction.setEnabled(True)
             self.titleLabel.setText(
                 'Drag and drop image file or go to File --> Open folder...',
-                color='w')
+                color=self.titleColor)
             return
 
         self.exp_path = exp_path
@@ -10279,7 +10585,7 @@ class guiWin(QMainWindow):
         else:
             is_images_folder = False
 
-        self.titleLabel.setText('Loading data...', color='w')
+        self.titleLabel.setText('Loading data...', color=self.titleColor)
         self.setWindowTitle(f'Cell-ACDC - GUI - "{exp_path}"')
 
 
@@ -10303,7 +10609,7 @@ class guiWin(QMainWindow):
                 )
                 self.titleLabel.setText(
                     'Drag and drop image file or go to File --> Open folder...',
-                    color='w')
+                    color=self.titleColor)
                 self.openAction.setEnabled(True)
                 return
 
@@ -10313,7 +10619,7 @@ class guiWin(QMainWindow):
                     self.titleLabel.setText(
                         'Drag and drop image file or go to '
                         'File --> Open folder...',
-                        color='w')
+                        color=self.titleColor)
                     self.openAction.setEnabled(True)
                     return
             else:
@@ -10361,7 +10667,7 @@ class guiWin(QMainWindow):
             if not ch_names:
                 self.titleLabel.setText(
                     'Drag and drop image file or go to File --> Open folder...',
-                    color='w')
+                    color=self.titleColor)
                 self.openAction.setEnabled(True)
                 self.criticalNoTifFound(images_path)
                 return
@@ -10372,7 +10678,7 @@ class guiWin(QMainWindow):
                 if ch_name_selector.was_aborted:
                     self.titleLabel.setText(
                         'Drag and drop image file or go to File --> Open folder...',
-                        color='w')
+                        color=self.titleColor)
                     self.openAction.setEnabled(True)
                     return
             else:
@@ -10416,7 +10722,7 @@ class guiWin(QMainWindow):
             self.openAction.setEnabled(True)
             self.titleLabel.setText(
                 'Drag and drop image file or go to File --> Open folder...',
-                color='w')
+                color=self.titleColor)
             return
 
     def appendPathWindowTitle(self, user_ch_file_paths):
@@ -10446,13 +10752,22 @@ class guiWin(QMainWindow):
             self.loadFluo_cb(None)
 
     def getPathFromChName(self, chName, posData):
-        aligned_files = [f for f in myutils.listdir(posData.images_path)
-                         if f.find(f'{chName}_aligned.npz')!=-1]
+        if chName.find('_aligned') != -1:
+            aligned_chName = chName
+        else:
+            aligned_chName = f'{chName}_aligned'
+
+        aligned_files = [
+            f for f in myutils.listdir(posData.images_path)
+            if f.find(f'{aligned_chName}.npz')!=-1
+        ]
         if aligned_files:
             filename = aligned_files[0]
         else:
-            tif_files = [f for f in myutils.listdir(posData.images_path)
-                         if f.find(f'{chName}.tif')!=-1]
+            tif_files = [
+                f for f in myutils.listdir(posData.images_path)
+                if f.find(f'{chName}.tif')!=-1
+            ]
             if not tif_files:
                 self.criticalFluoChannelNotFound(chName, posData)
                 self.app.restoreOverrideCursor()
@@ -10564,7 +10879,7 @@ class guiWin(QMainWindow):
         chNamesPresent = [
             ch for ch in chNames
             for file in filenamesPresent
-            if file.find(ch) != -1
+            if file.endswith(ch) or file.endswith(f'{ch}_aligned')
         ]
         win = apps.QDialogZsliceAbsent(filename, SizeZ, chNamesPresent)
         win.exec_()
@@ -10580,22 +10895,22 @@ class guiWin(QMainWindow):
         elif win.useSameAsCh:
             user_ch_name = filename[len(posData.basename):]
             for _posData in self.data:
-                _, cellacdcFilename = self.getPathFromChName(
+                _, srcFilename = self.getPathFromChName(
                     win.selectedChannel, _posData
                 )
-                cellacdc_df = _posData.segmInfo_df.loc[cellacdcFilename].copy()
+                cellacdc_df = _posData.segmInfo_df.loc[srcFilename].copy()
                 _, dstFilename = self.getPathFromChName(user_ch_name, _posData)
                 dst_df = myutils.getDefault_SegmInfo_df(_posData, dstFilename)
                 for z_info in cellacdc_df.itertuples():
                     frame_i = z_info.Index
                     zProjHow = z_info.which_z_proj
                     if zProjHow == 'single z-slice':
-                        cellacdc_idx = (cellacdcFilename, frame_i)
-                        if _posData.segmInfo_df.at[cellacdc_idx, 'resegmented_in_gui']:
+                        src_idx = (srcFilename, frame_i)
+                        if _posData.segmInfo_df.at[src_idx, 'resegmented_in_gui']:
                             col = 'z_slice_used_gui'
                         else:
                             col = 'z_slice_used_dataPrep'
-                        z_slice = _posData.segmInfo_df.at[cellacdc_idx, col]
+                        z_slice = _posData.segmInfo_df.at[src_idx, col]
                         dst_idx = (dstFilename, frame_i)
                         dst_df.at[dst_idx, 'z_slice_used_dataPrep'] = z_slice
                         dst_df.at[dst_idx, 'z_slice_used_gui'] = z_slice
@@ -10623,10 +10938,12 @@ class guiWin(QMainWindow):
             dataPrepWin.SizeT = self.data[0].SizeT
             dataPrepWin.SizeZ = self.data[0].SizeZ
             dataPrepWin.metadataAlreadyAsked = True
+            self.logger.info(f'Loading channel {user_ch_name} data...')
             dataPrepWin.loadFiles(
                 exp_path, user_ch_file_paths, user_ch_name
             )
             dataPrepWin.startAction.setDisabled(True)
+            dataPrepWin.onlySelectingZslice = True
 
             loop = QEventLoop(self)
             dataPrepWin.loop = loop
@@ -11129,20 +11446,37 @@ class guiWin(QMainWindow):
         msg.exec_()
         return msg.clickedButton() == allPosbutton, last_pos
 
-    def saveMetricsCritical(self, traceback_format):
+    @exception_handler
+    def saveMetricsCritical(self, error):
         self.logger.info('')
         self.logger.info('====================================')
-        self.logger.info(traceback_format)
+        self.logger.exception(traceback_format)
         self.logger.info('====================================')
         self.logger.info('')
         self.logger.info('Warning: calculating metrics failed see above...')
         self.logger.info('-----------------')
         msg = QMessageBox(self)
+        msg.setWindowTitle('Critical error')
         msg.setIcon(msg.Critical)
-        msg.setWindowTitle('Error')
-        msg.setText(traceback_format)
-        msg.setDefaultButton(msg.Ok)
+        err_msg = (f"""
+        <p style="font-size:14px">
+            Error <b>while saving metrics</b>.<br><br>
+            More details below or in the terminal/console.<br><br>
+            Note that the error details from this session are also saved
+            in the file<br>
+            {self.log_path}<br><br>
+            Please <b>send the log file</b> when reporting a bug, thanks!
+        </p>
+        """)
+        msg.setText(err_msg)
+        showLog = msg.addButton('Show log file...', msg.HelpRole)
+        showLog.disconnect()
+        slot = partial(myutils.showInExplorer, self.logs_path)
+        showLog.clicked.connect(slot)
+        msg.addButton(msg.Ok)
+        msg.setDetailedText(traceback_format)
         msg.exec_()
+        self.is_error_state = True
         self.waitCond.wakeAll()
 
     def saveDataPermissionError(self, err_msg):
@@ -11189,13 +11523,13 @@ class guiWin(QMainWindow):
     def saveData(self):
         self.store_data()
         self.titleLabel.setText(
-            'Saving data... (check progress in the terminal)', color='w'
+            'Saving data... (check progress in the terminal)', color=self.titleColor
         )
 
         self.save_metrics, cancel = self.askSaveMetrics()
         if cancel:
             self.titleLabel.setText(
-                'Saving data process cancelled.', color='w'
+                'Saving data process cancelled.', color=self.titleColor
             )
             return
 

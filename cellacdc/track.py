@@ -319,7 +319,7 @@ class segmWin(QMainWindow):
         self.buttonToRestore = buttonToRestore
         self.mainWin = mainWin
         super().__init__(parent)
-        self.setWindowTitle("Cell-ACDC - Segment")
+        self.setWindowTitle("Cell-ACDC - Tracking")
         self.setWindowIcon(QtGui.QIcon(":assign-motherbud.svg"))
 
         mainContainer = QWidget()
@@ -330,7 +330,7 @@ class segmWin(QMainWindow):
         self.mainLayout = mainLayout
 
         label = QLabel(
-            'Segmentation routine running...')
+            'Tracking routine running...')
 
         label.setStyleSheet("padding:5px 10px 10px 10px;")
         label.setAlignment(Qt.AlignCenter)
@@ -457,7 +457,7 @@ class segmWin(QMainWindow):
         font = QtGui.QFont()
         font.setPointSize(10)
 
-        self.setWindowTitle(f'Cell-ACDC - Segment - "{exp_path}"')
+        self.setWindowTitle(f'Cell-ACDC - Tracking - "{exp_path}"')
 
         self.addPbar()
         self.addlogTerminal()

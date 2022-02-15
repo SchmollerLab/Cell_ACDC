@@ -49,7 +49,7 @@ from PyQt5.QtWidgets import (
 )
 
 from . import myutils, load, prompts, widgets, core
-
+from . import is_mac
 from . import qrc_resources
 
 
@@ -88,7 +88,7 @@ class QDialogMetadataXML(QDialog):
         super().__init__(parent)
         self.setWindowTitle(title)
         font = QtGui.QFont()
-        font.setPointSize(10)
+        font.setPointSize(11)
         self.setFont(font)
 
         mainLayout = QVBoxLayout()
@@ -243,7 +243,7 @@ class QDialogMetadataXML(QDialog):
 
         self.PhysicalSizeYUnit_Label = QLabel()
         self.PhysicalSizeYUnit_Label.setStyleSheet(
-            'font-size:10pt; padding:5px 0px 2px 0px;'
+            'font-size:12px; padding:5px 0px 2px 0px;'
         )
         unit = self.PhysicalSizeUnit_CB.currentText()
         self.PhysicalSizeYUnit_Label.setText(unit)
@@ -264,7 +264,7 @@ class QDialogMetadataXML(QDialog):
         self.PhysicalSizeZUnit_Label = QLabel()
         # padding: top, left, bottom, right
         self.PhysicalSizeZUnit_Label.setStyleSheet(
-            'font-size:10pt; padding:5px 0px 2px 0px;'
+            'font-size:12px; padding:5px 0px 2px 0px;'
         )
         unit = self.PhysicalSizeUnit_CB.currentText()
         self.PhysicalSizeZUnit_Label.setText(unit)
@@ -381,7 +381,7 @@ class QDialogMetadataXML(QDialog):
             self.emWavelens_DSBs.append(emWavelen_DSB)
 
             unit = QLabel('nm')
-            unit.setStyleSheet('font-size:10pt; padding:5px 0px 2px 0px;')
+            unit.setStyleSheet('font-size:12px; padding:5px 0px 2px 0px;')
             self.channelEmWLayouts[2].addWidget(unit)
 
         entriesLayout.setContentsMargins(0, 15, 0, 0)
@@ -674,7 +674,7 @@ class QDialogMetadataXML(QDialog):
                 emWavelen_DSB.setDecimals(2)
                 emWavelen_DSB.setValue(500.0)
                 unit = QLabel('nm')
-                unit.setStyleSheet('font-size:10pt; padding:5px 0px 2px 0px;')
+                unit.setStyleSheet('font-size:12px; padding:5px 0px 2px 0px;')
 
                 txt = f'Channel {c} emission wavelength:  '
                 label = QLabel(txt)
@@ -929,6 +929,8 @@ class QDialogCombobox(QDialog):
         topLayout = QHBoxLayout()
         bottomLayout = QHBoxLayout()
 
+        self.mainLayout = mainLayout
+
         if iconPixmap is not None:
             label = QLabel()
             # padding: top, left, bottom, right
@@ -994,10 +996,12 @@ class QDialogCombobox(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
-
 class QDialogListbox(QDialog):
-    def __init__(self, title, text, items, cancelText='Cancel',
-                 multiSelection=True, parent=None):
+    def __init__(
+            self, title, text, items, cancelText='Cancel',
+            multiSelection=True, parent=None,
+            additionalButtons=()
+        ):
         self.cancel = True
         super().__init__(parent)
         self.setWindowTitle(title)
@@ -1006,9 +1010,11 @@ class QDialogListbox(QDialog):
         topLayout = QVBoxLayout()
         bottomLayout = QHBoxLayout()
 
+        self.mainLayout = mainLayout
+
         label = QLabel(text)
         _font = QtGui.QFont()
-        _font.setPointSize(10)
+        _font.setPointSize(11)
         label.setFont(_font)
         # padding: top, left, bottom, right
         label.setStyleSheet("padding:0px 0px 3px 0px;")
@@ -1026,13 +1032,23 @@ class QDialogListbox(QDialog):
         listBox.itemDoubleClicked.connect(self.ok_cb)
         topLayout.addWidget(listBox)
 
+        bottomLayout.addStretch(1)
         okButton = QPushButton('Ok')
         okButton.setShortcut(Qt.Key_Enter)
-        bottomLayout.addWidget(okButton, alignment=Qt.AlignRight)
+        bottomLayout.addWidget(okButton)
+
+        if additionalButtons:
+            self._additionalButtons = []
+            for button in additionalButtons:
+                _button = QPushButton(button)
+                self._additionalButtons.append(_button)
+                bottomLayout.addWidget(_button)
+                _button.clicked.connect(self.ok_cb)
 
         cancelButton = QPushButton(cancelText)
         # cancelButton.setShortcut(Qt.Key_Escape)
-        bottomLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
+        bottomLayout.addWidget(cancelButton)
+        bottomLayout.addStretch(1)
         bottomLayout.setContentsMargins(0, 10, 0, 0)
 
         mainLayout.addLayout(topLayout)
@@ -1046,6 +1062,7 @@ class QDialogListbox(QDialog):
         # self.setModal(True)
 
     def ok_cb(self, event):
+        self.clickedButton = self.sender()
         self.cancel = False
         selectedItems = self.listBox.selectedItems()
         self.selectedItemsText = [item.text() for item in selectedItems]
@@ -1074,6 +1091,72 @@ class QDialogListbox(QDialog):
     def closeEvent(self, event):
         if hasattr(self, 'loop'):
             self.loop.exit()
+
+class selectTrackerGUI(QDialogListbox):
+    def __init__(
+            self, SizeT, currentFrameNo=1, parent=None
+        ):
+        trackers = myutils.get_list_of_trackers()
+        super().__init__(
+            'Select tracker', 'Select one of the following trackers',
+            trackers, multiSelection=False, parent=parent
+        )
+        self.setWindowTitle('Select tracker')
+
+        selectFramesContainer = QGroupBox()
+        selectFramesLayout = QGridLayout()
+
+        self.startFrame_SB = QSpinBox()
+        self.startFrame_SB.setAlignment(Qt.AlignCenter)
+        self.startFrame_SB.setMinimum(1)
+        self.startFrame_SB.setMaximum(SizeT-1)
+        self.startFrame_SB.setValue(currentFrameNo)
+
+        self.stopFrame_SB = QSpinBox()
+        self.stopFrame_SB.setAlignment(Qt.AlignCenter)
+        self.stopFrame_SB.setMinimum(1)
+        self.stopFrame_SB.setMaximum(SizeT)
+        self.stopFrame_SB.setValue(SizeT)
+
+        selectFramesLayout.addWidget(QLabel('Start frame n.'), 0, 0)
+        selectFramesLayout.addWidget(self.startFrame_SB, 1, 0)
+
+        selectFramesLayout.addWidget(QLabel('Stop frame n.'), 0, 1)
+        selectFramesLayout.addWidget(self.stopFrame_SB, 1, 1)
+
+        self.warningLabel = QLabel()
+        palette = self.warningLabel.palette();
+        palette.setColor(self.warningLabel.backgroundRole(), Qt.red);
+        palette.setColor(self.warningLabel.foregroundRole(), Qt.red);
+        self.warningLabel.setPalette(palette);
+        selectFramesLayout.addWidget(
+            self.warningLabel, 2, 0, 1, 2, alignment=Qt.AlignCenter
+        )
+
+        selectFramesContainer.setLayout(selectFramesLayout)
+
+        self.mainLayout.insertWidget(1, selectFramesContainer)
+
+        self.stopFrame_SB.valueChanged.connect(self._checkRange)
+
+    def _checkRange(self):
+        start = self.startFrame_SB.value()
+        stop = self.stopFrame_SB.value()
+        if stop <= start:
+            self.warningLabel.setText(
+                'stop frame smaller than start frame'
+            )
+        else:
+            self.warningLabel.setText('')
+
+    def ok_cb(self, event):
+        if self.warningLabel.text():
+            return
+        else:
+            self.startFrame = self.startFrame_SB.value()
+            self.stopFrame = self.stopFrame_SB.value()
+            QDialogListbox.ok_cb(self, event)
+
 
 class QDialogAppendTextFilename(QDialog):
     def __init__(self, filename, ext, parent=None, font=None):
@@ -1104,7 +1187,7 @@ class QDialogAppendTextFilename(QDialog):
         )
         # padding: top, left, bottom, right
         self.finalName_label.setStyleSheet(
-            'font-size:10pt; padding:5px 0px 0px 0px;'
+            'font-size:12px; padding:5px 0px 0px 0px;'
         )
 
         okButton = QPushButton('Ok')
@@ -1458,7 +1541,7 @@ class QDialogMetadata(QDialog):
         valid = all([valid4D, valid3D, valid2D])
         if not valid4D:
             txt = (f"""
-            <p style="font-size:10pt">
+            <p style="font-size:12px">
                 You loaded <b>4D data</b>, hence the number of frames MUST be
                 <b>{T}</b><br> nd the number of z-slices MUST be <b>{Z}</b>.<br><br>
                 What do you want to do?
@@ -1466,7 +1549,7 @@ class QDialogMetadata(QDialog):
             """)
         if not valid3D:
             txt = (f"""
-            <p style="font-size:10pt">
+            <p style="font-size:12px">
                 You loaded <b>3D data</b>, hence either the number of frames is
                 <b>{TZ}</b><br> or the number of z-slices can be <b>{TZ}</b>.<br><br>
                 However, if the number of frames is greater than 1 then the<br>
@@ -1477,7 +1560,7 @@ class QDialogMetadata(QDialog):
 
         if not valid2D:
             txt = (f"""
-            <p style="font-size:10pt">
+            <p style="font-size:12px">
                 You loaded <b>2D data</b>, hence the number of frames MUST be <b>1</b>
                 and the number of z-slices MUST be <b>1</b>.<br><br>
                 What do you want to do?
@@ -1763,7 +1846,7 @@ class edgeDetectionDialog(QDialog):
         row += 1
         sharpQSLabel = QLabel('Sharpen:')
         # padding: top, left, bottom, right
-        sharpQSLabel.setStyleSheet("font-size:10pt; padding:5px 0px 0px 0px;")
+        sharpQSLabel.setStyleSheet("font-size:12px; padding:5px 0px 0px 0px;")
         paramsLayout.addWidget(sharpQSLabel, row, 0)
         row += 1
         self.sharpValLabel = QLabel('5.00')
@@ -2049,7 +2132,7 @@ class randomWalkerDialog(QDialog):
         row += 1
         foregrQSLabel = QLabel('Foreground threshold:')
         # padding: top, left, bottom, right
-        foregrQSLabel.setStyleSheet("font-size:10pt; padding:5px 0px 0px 0px;")
+        foregrQSLabel.setStyleSheet("font-size:12px; padding:5px 0px 0px 0px;")
         paramsLayout.addWidget(foregrQSLabel, row, 0)
         row += 1
         self.foregrThreshValLabel = QLabel('0.95')
@@ -2075,7 +2158,7 @@ class randomWalkerDialog(QDialog):
         seeHereLabel.setTextInteractionFlags(Qt.TextBrowserInteraction)
         seeHereLabel.setOpenExternalLinks(True)
         font = QtGui.QFont()
-        font.setPointSize(10)
+        font.setPointSize(11)
         seeHereLabel.setFont(font)
         seeHereLabel.setStyleSheet("padding:12px 0px 0px 0px;")
         paramsLayout.addWidget(seeHereLabel, row, 0, 1, 2)
@@ -2211,7 +2294,7 @@ class FutureFramesAction_QDialog(QDialog):
 
         txtLabel = QLabel(txt)
         _font = QtGui.QFont()
-        _font.setPointSize(10)
+        _font.setPointSize(11)
         _font.setBold(True)
         txtLabel.setFont(_font)
         txtLabel.setAlignment(Qt.AlignCenter)
@@ -2238,7 +2321,7 @@ class FutureFramesAction_QDialog(QDialog):
 
         infotxtLabel = QLabel(infoTxt)
         _font = QtGui.QFont()
-        _font.setPointSize(10)
+        _font.setPointSize(11)
         infotxtLabel.setFont(_font)
 
         infotxtLabel.setStyleSheet("padding:0px 0px 3px 0px;")
@@ -2251,7 +2334,7 @@ class FutureFramesAction_QDialog(QDialog):
 
         noteTxtLabel = QLabel(noteTxt)
         _font = QtGui.QFont()
-        _font.setPointSize(10)
+        _font.setPointSize(11)
         _font.setBold(True)
         noteTxtLabel.setFont(_font)
         # padding: top, left, bottom, right
@@ -2497,7 +2580,7 @@ class postProcessSegmDialog(QDialog):
         cancelButton.clicked.connect(self.cancel_cb)
 
         font = QtGui.QFont()
-        font.setPointSize(10)
+        font.setPointSize(11)
         self.setFont(font)
 
         if mainWin is not None:
@@ -2702,7 +2785,7 @@ class imageViewer(QMainWindow):
         self.framesScrollBar.setMaximum(posData.SizeT)
         t_label = QLabel('frame  ')
         _font = QtGui.QFont()
-        _font.setPointSize(10)
+        _font.setPointSize(11)
         t_label.setFont(_font)
         self.img_Widglayout.addWidget(
                 t_label, 0, 0, alignment=Qt.AlignRight)
@@ -2716,7 +2799,7 @@ class imageViewer(QMainWindow):
         self.zSliceScrollBar.setMaximum(self.posData.SizeZ-1)
         _z_label = QLabel('z-slice  ')
         _font = QtGui.QFont()
-        _font.setPointSize(10)
+        _font.setPointSize(11)
         _z_label.setFont(_font)
         self.z_label = _z_label
         self.img_Widglayout.addWidget(_z_label, 1, 0, alignment=Qt.AlignCenter)
@@ -3252,7 +3335,7 @@ class askStopFrameSegm(QDialog):
         )
         infoLabel = QLabel(infoTxt, self)
         _font = QtGui.QFont()
-        _font.setPointSize(10)
+        _font.setPointSize(11)
         infoLabel.setFont(_font)
         infoLabel.setAlignment(Qt.AlignCenter)
         # padding: top, left, bottom, right
@@ -3379,7 +3462,7 @@ class QLineEditDialog(QDialog):
         # Widgets
         msg = QLabel(msg)
         _font = QtGui.QFont()
-        _font.setPointSize(10)
+        _font.setPointSize(11)
         msg.setFont(_font)
         msg.setAlignment(Qt.AlignCenter)
         # padding: top, left, bottom, right
@@ -3455,7 +3538,7 @@ class QLineEditDialog(QDialog):
     def warnValLessLastFrame(self, val):
         msg = QMessageBox()
         warn_txt = (f"""
-        <p style="font-size:10pt">
+        <p style="font-size:12px">
             WARNING: saving until a frame number below the last visited
             frame ({self.maxValue})<br>
             will result in <b>loss of information
@@ -3518,7 +3601,7 @@ class editID_QWidget(QDialog):
         VBoxLayout = QVBoxLayout()
         msg = QLabel(f'Replace ID {clickedID} with:')
         _font = QtGui.QFont()
-        _font.setPointSize(10)
+        _font.setPointSize(11)
         msg.setFont(_font)
         # padding: top, left, bottom, right
         msg.setStyleSheet("padding:0px 0px 3px 0px;")
@@ -4513,14 +4596,13 @@ class QDialogZsliceAbsent(QDialog):
         self.setWindowTitle('z-slice info absent!')
 
         mainLayout = QVBoxLayout()
-        buttonsLayout = QVBoxLayout()
-        comboBoxLayout = QHBoxLayout()
+        buttonsLayout = QGridLayout()
 
         txt = (
         f"""
-        <p style="font-size:11pt; text-align: center;">
-            You loaded the fluorescent file called {filename},<br>
-            however you <b>never selected which z-slice</b> you want to use
+        <p style="font-size:14px; text-align: center;">
+            You loaded the fluorescent file called<br><br>{filename}<br><br>
+            however you <b>never selected which z-slice</b><br> you want to use
             when calculating metrics<br> (e.g., mean, median, amount...etc.)<br><br>
             Choose one of following options:
         <p>
@@ -4530,19 +4612,19 @@ class QDialogZsliceAbsent(QDialog):
         mainLayout.addWidget(infoLabel, alignment=Qt.AlignCenter)
 
         runDataPrepButton = QPushButton(
-            'Visualize the data now and select a z-slice (RECOMMENDED)'
+            '  Visualize the data now and select a z-slice (RECOMMENDED)  '
         )
-        buttonsLayout.addWidget(runDataPrepButton)
+        buttonsLayout.addWidget(runDataPrepButton, 0, 1, 1, 2)
         runDataPrepButton.clicked.connect(self.runDataPrep_cb)
 
         useMiddleSliceButton = QPushButton(
-            f'Use the middle z-slice ({int(SizeZ/2)+1})'
+            f'  Use the middle z-slice ({int(SizeZ/2)+1})  '
         )
-        buttonsLayout.addWidget(useMiddleSliceButton)
+        buttonsLayout.addWidget(useMiddleSliceButton, 1, 1, 1, 2)
         useMiddleSliceButton.clicked.connect(self.useMiddleSlice_cb)
 
         useSameAsChButton = QPushButton(
-            'Use the same z-slice used for the channel: '
+            '  Use the same z-slice used for the channel: '
         )
         useSameAsChButton.clicked.connect(self.useSameAsCh_cb)
 
@@ -4552,9 +4634,11 @@ class QDialogZsliceAbsent(QDialog):
         # chNameComboBox.lineEdit().setAlignment(Qt.AlignCenter)
         # chNameComboBox.lineEdit().setReadOnly(True)
         self.chNameComboBox = chNameComboBox
-        comboBoxLayout.addWidget(useSameAsChButton)
-        comboBoxLayout.addWidget(chNameComboBox)
-        buttonsLayout.addLayout(comboBoxLayout)
+        buttonsLayout.addWidget(useSameAsChButton, 2, 1)
+        buttonsLayout.addWidget(chNameComboBox, 2, 2)
+
+        buttonsLayout.setColumnStretch(0, 1)
+        buttonsLayout.setColumnStretch(3, 1)
         buttonsLayout.setContentsMargins(10, 0, 10, 0)
 
         mainLayout.addLayout(buttonsLayout)
@@ -4562,7 +4646,7 @@ class QDialogZsliceAbsent(QDialog):
         self.setLayout(mainLayout)
 
         font = QtGui.QFont()
-        font.setPointSize(10)
+        font.setPointSize(11)
         self.setFont(font)
 
         # self.setModal(True)
@@ -4606,7 +4690,7 @@ class QDialogMultiSegmNpz(QDialog):
         super().__init__(parent)
 
         informativeText = (f"""
-        <p style="font-size:10pt">
+        <p style="font-size:12px">
             The folder<br><br>{parent_path}<br><br>
             contains <b>multipe segmentation masks!</b><br>
         </p>
@@ -4700,7 +4784,7 @@ class QDialogMultiSegmNpz(QDialog):
         if self.removeOthers:
             msg = QMessageBox()
             err_msg = (f"""
-            <p style="font-size:10pt">
+            <p style="font-size:12px">
                 Are you sure you want to <b>delete the files</b> below?<br><br>
                 {',<br>'.join(self.images_ls)}
             </p>
@@ -4738,8 +4822,10 @@ class QDialogPbar(QDialog):
         self.clickCount = 0
         super().__init__(parent)
 
-        self.setWindowTitle(title)
-        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        abort_text = 'Control+Cmd+C to abort' if is_mac else 'Ctrl+Alt+C to abort'
+
+        self.setWindowTitle(f'{title} ({abort_text})')
+        self.setWindowFlags(Qt.Window)
 
         mainLayout = QVBoxLayout()
         pBarLayout = QGridLayout()
@@ -4883,7 +4969,7 @@ class QDialogModelParams(QDialog):
         self.setLayout(mainLayout)
 
         font = QtGui.QFont()
-        font.setPointSize(10)
+        font.setPointSize(11)
         self.setFont(font)
 
         # self.setModal(True)
@@ -4970,7 +5056,7 @@ class QDialogModelParams(QDialog):
         htmlTxt = f'<a href=\"{url}">here</a>'
         seeHereLabel = QLabel()
         seeHereLabel.setText(f"""
-            <p style="font-size:10pt">
+            <p style="font-size:12px">
                 See {htmlTxt} for details on the parameters
             </p>
         """)
@@ -5025,7 +5111,7 @@ if __name__ == '__main__':
     # Create the application
     app = QApplication(sys.argv)
     font = QtGui.QFont()
-    font.setPointSize(10)
+    font.setPointSize(11)
     # title='Select channel name'
     # CbLabel='Select channel name:  '
     # informativeText = ''
@@ -5060,7 +5146,7 @@ if __name__ == '__main__':
     # )
     infoTxt = (
     """
-        <p style=font-size:10pt>
+        <p style=font-size:12px>
             Saving...<br>
         </p>
     """)
@@ -5076,7 +5162,7 @@ if __name__ == '__main__':
     # win = postProcessSegmDialog()
     # win = QDialogAppendTextFilename('example.npz')
     font = QtGui.QFont()
-    font.setPointSize(10)
+    font.setPointSize(11)
     filenames = ['test1', 'test2']
     # win = QDialogZsliceAbsent('test3', 30, filenames)
     win = QDialogMultiSegmNpz(filenames, os.path.dirname(__file__))

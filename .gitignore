@@ -6,7 +6,11 @@ not_installed_requirements.txt
 requirements_new.txt
 
 # Starting from pip 21.3 setup.py is not needed anymore
+# and we rely only on setup.cfg for env
 setup.py
+environment.yml
+requirements.txt
+conda_env_list_commands.txt
 
 notebooks/testing.ipynb
 notebooks/.ipynb_checkpoints

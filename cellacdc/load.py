@@ -417,7 +417,12 @@ class loadData:
         rp = skimage.measure.regionprops(lab)
         segm_IDs = [obj.label for obj in rp]
         acdc_df_IDs = self.acdc_df.loc[frame_i].index
-        cca_df = self.acdc_df[cca_df_colnames]
+        try:
+            cca_df = self.acdc_df[cca_df_colnames]
+        except KeyError:
+            # Columns not present because not annotated --> no need to fix
+            return
+
         for obj in rp:
             ID = obj.label
             if ID in acdc_df_IDs:
@@ -462,6 +467,7 @@ class loadData:
         self.raw_postproc_segm_path = f'{base_path}segm_raw_postproc'
         self.post_proc_mot_metrics = f'{base_path}post_proc_mot_metrics'
         self.segm_hyperparams_csv_path = f'{base_path}segm_hyperparams.csv'
+        self.btrack_tracks_h5_path = f'{base_path}btrack_tracks.h5'
 
     def setBlankSegmData(self, SizeT, SizeZ, SizeY, SizeX):
         Y, X = self.img_data.shape[-2:]

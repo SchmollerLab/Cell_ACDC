@@ -25,6 +25,7 @@ from natsort import natsorted
 from tifffile.tifffile import TiffWriter, TiffFile
 
 from PyQt5.QtWidgets import QMessageBox
+from PyQt5.QtCore import pyqtSignal, QObject
 
 from . import prompts
 
@@ -33,6 +34,26 @@ _mapCache = {}
 
 class utilClass:
     pass
+
+class signals(QObject):
+    progressBar = pyqtSignal(int)
+    progress = pyqtSignal(str)
+
+def rgb_str_to_values(rgbString, errorRgb=(255,255,255)):
+    try:
+        r, g, b = re.findall('(\d+), (\d+), (\d+)', rgbString)[0]
+        r, g, b = int(r), int(g), int(b)
+    except TypeError:
+        r, g, b = errorRgb
+    return r, g, b
+
+def rgba_str_to_values(rgbString, errorRgb=(255,255,255,255)):
+    try:
+        r, g, b, a = re.findall('(\d+), (\d+), (\d+), (\d+)', rgbString)[0]
+        r, g, b, a = int(r), int(g), int(b), int(a)
+    except TypeError:
+        r, g, b, a = errorRgb
+    return r, g, b, a
 
 def checkDataIntegrity(filenames, parent_path, parentQWidget=None):
     char = filenames[0][:2]
@@ -346,13 +367,20 @@ def get_model_path(model_name):
     cellacdc_path = os.path.dirname(os.path.realpath(__file__))
     model_path = os.path.join(cellacdc_path, 'models', model_name, 'model')
 
-    if not os.path.exists(model_path):
-        model_folder_exists = False
-        os.mkdir(model_path)
-    else:
-        model_folder_exists = True
+    model_exists = os.path.exists(model_path) and len(listdir(model_path))>0
+    if model_name == 'YeastMate' and os.path.exists(model_path):
+        model_exists = [
+            None for f in listdir(model_path) if f.endswith('.pth')
+        ]
+        model_exists = len(model_exists) > 0
+    elif model_name == 'YeaZ' and os.path.exists(model_path):
+        model_exists = [
+            None for f in listdir(model_path) if f.endswith('multilab_0_1.hdf5')
+        ]
+        model_exists = len(model_exists) > 0
+
     models_zip_path = os.path.join(model_path, 'model_temp.zip')
-    return models_zip_path, model_folder_exists
+    return models_zip_path, model_exists
 
 def get_file_id(model_name, id=None):
     if model_name == 'YeaZ':
@@ -439,19 +467,6 @@ def check_v1_model_path():
             shutil.rmtree(v1_model_path)
 
 def download_model(model_name):
-    # First check if the weights file are already in the models folder
-    cellacdc_path = os.path.dirname(os.path.abspath(__file__))
-    main_path = os.path.dirname(cellacdc_path)
-    model_path = os.path.join(main_path, 'models', f'{model_name}_model')
-    if os.path.exists(model_path) and listdir(model_path):
-        cellacdc_model_path = os.path.join(cellacdc_path, 'models', model_name)
-        dst = os.path.join(cellacdc_model_path, 'model')
-        if not os.path.exists(dst):
-            os.mkdir(dst)
-        for file in listdir(model_path):
-            shutil.move(os.path.join(model_path, file), dst)
-        return
-
     # Download model from google drive
     models_zip_path, model_folder_exists = get_model_path(model_name)
     if not model_folder_exists:
@@ -496,7 +511,19 @@ def imagej_tiffwriter(
             Y, X = data.shape
             T, Z = 1, 1
         data.shape = T, Z, 1, Y, X, 1  # imageJ format should always have TZCYXS data shape
+        if metadata is None:
+            metadata = {}
         new_tif.save(data, metadata=metadata)
+
+def get_list_of_trackers():
+    cellacdc_path = os.path.dirname(os.path.abspath(__file__))
+    trackers_path = os.path.join(cellacdc_path, 'trackers')
+    trackers = []
+    for name in listdir(trackers_path):
+        _path = os.path.join(trackers_path, name)
+        if os.path.isdir(_path) and not name.endswith('__'):
+            trackers.append(name)
+    return trackers
 
 def get_list_of_models():
     cellacdc_path = os.path.dirname(os.path.abspath(__file__))

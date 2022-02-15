@@ -90,6 +90,13 @@ class dataPrepWin(QMainWindow):
         self.titleText = None
         self.metadataAlreadyAsked = False
 
+        # When we load dataprep from other modules we usually disable
+        # start because we only want to select the z-slice
+        # However, is start is disabled removeBkgrROIs will be triggered
+        # and cause errors --> set self.onlySelectingZslice = True
+        # when dataprep is launched from the other modules
+        self.onlySelectingZslice = False
+
         mainContainer = QtGui.QWidget()
         self.setCentralWidget(mainContainer)
 
@@ -481,7 +488,7 @@ class dataPrepWin(QMainWindow):
         self.zSliceScrollBar.setMaximum(posData.SizeZ-1)
 
     def updateROI(self):
-        if self.startAction.isEnabled():
+        if self.startAction.isEnabled() or self.onlySelectingZslice:
             return
 
         posData = self.data[self.pos_i]
@@ -493,7 +500,7 @@ class dataPrepWin(QMainWindow):
         posData.cropROI.sigRegionChangeFinished.connect(self.ROImovingFinished)
 
     def removeCropROI(self):
-        if self.startAction.isEnabled():
+        if self.startAction.isEnabled() or self.onlySelectingZslice:
             return
 
         posData = self.data[self.pos_i]
@@ -511,7 +518,7 @@ class dataPrepWin(QMainWindow):
 
 
     def updateBkgrROIs(self):
-        if self.startAction.isEnabled():
+        if self.startAction.isEnabled() or self.onlySelectingZslice:
             return
 
         posData = self.data[self.pos_i]
@@ -523,7 +530,7 @@ class dataPrepWin(QMainWindow):
             roi.sigRegionChangeFinished.connect(self.bkgrROImovingFinished)
 
     def removeBkgrROIs(self):
-        if self.startAction.isEnabled():
+        if self.startAction.isEnabled() or self.onlySelectingZslice:
             return
 
         posData = self.data[self.pos_i]
@@ -914,6 +921,8 @@ class dataPrepWin(QMainWindow):
                 Y, X = data.shape
                 T, Z = 1, 1
             data.shape = T, Z, 1, Y, X, 1  # imageJ format should always have TZCYXS data shape
+            if metadata is None:
+                metadata = {}
             new_tif.save(data, metadata=metadata)
 
     def getDefaultROI(self):
@@ -1097,8 +1106,8 @@ class dataPrepWin(QMainWindow):
             self.zProjComboBox.currentTextChanged.connect(self.updateZproj)
             if posData.SizeT > 1:
                 self.interpAction.setEnabled(True)
-                self.ZbackAction.setEnabled(True)
-                self.ZforwAction.setEnabled(True)
+            self.ZbackAction.setEnabled(True)
+            self.ZforwAction.setEnabled(True)
             df = posData.segmInfo_df
             idx = (posData.filename, self.frame_i)
             how = posData.segmInfo_df.at[idx, 'which_z_proj']
@@ -1136,6 +1145,9 @@ class dataPrepWin(QMainWindow):
                 idx = (posData.filename, self.frame_i)
                 posData.segmInfo_df.at[idx, 'which_z_proj'] = how
 
+        self.save_segmInfo_df_pos()
+
+    def save_segmInfo_df_pos(self):
         # Launch a separate thread to save to csv and keep gui responsive
         self.thread = QThread()
         self.worker = toCsvWorker()
@@ -1152,18 +1164,35 @@ class dataPrepWin(QMainWindow):
         posData = self.data[self.pos_i]
         df = posData.segmInfo_df
         z = df.at[(posData.filename, self.frame_i), 'z_slice_used_dataPrep']
-        for i in range(0, self.frame_i):
-            df.at[(posData.filename, i), 'z_slice_used_dataPrep'] = z
-            df.at[(posData.filename, i), 'z_slice_used_dataPrep'] = how
+        if posData.SizeT > 1:
+            for i in range(0, self.frame_i):
+                df.at[(posData.filename, i), 'z_slice_used_dataPrep'] = z
+                df.at[(posData.filename, i), 'which_z_proj'] = how
+            posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
+        elif posData.SizeZ > 1:
+            for _posData in self.data[:self.pos_i]:
+                df = _posData.segmInfo_df
+                df.at[(_posData.filename, 0), 'z_slice_used_dataPrep'] = z
+                df.at[(_posData.filename, 0), 'which_z_proj'] = how
+            self.save_segmInfo_df_pos()
 
     def useSameZ_fromHereForw(self, event):
         how = self.zProjComboBox.currentText()
         posData = self.data[self.pos_i]
         df = posData.segmInfo_df
         z = df.at[(posData.filename, self.frame_i), 'z_slice_used_dataPrep']
-        for i in range(self.frame_i, posData.SizeT):
-            df.at[(posData.filename, i), 'z_slice_used_dataPrep'] = z
-            df.at[(posData.filename, i), 'z_slice_used_dataPrep'] = how
+        if posData.SizeT > 1:
+            for i in range(self.frame_i, posData.SizeT):
+                df.at[(posData.filename, i), 'z_slice_used_dataPrep'] = z
+                df.at[(posData.filename, i), 'which_z_proj'] = how
+            posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
+        elif posData.SizeZ > 1:
+            for _posData in self.data[self.pos_i:]:
+                df = _posData.segmInfo_df
+                df.at[(_posData.filename, 0), 'z_slice_used_dataPrep'] = z
+                df.at[(_posData.filename, 0), 'which_z_proj'] = how
+
+            self.save_segmInfo_df_pos()
 
     def interp_z(self, event):
         posData = self.data[self.pos_i]
@@ -1177,8 +1206,8 @@ class dataPrepWin(QMainWindow):
         how = 'single z-slice'
         for i in range(self.frame_i, posData.SizeT):
             df.at[(posData.filename, i), 'z_slice_used_dataPrep'] = zz[i]
-            df.at[(posData.filename, i), 'z_slice_used_dataPrep'] = 'single z-slice'
-
+            df.at[(posData.filename, i), 'which_z_proj'] = 'single z-slice'
+        posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
 
     def prepData(self, event):
         self.titleLabel.setText(
