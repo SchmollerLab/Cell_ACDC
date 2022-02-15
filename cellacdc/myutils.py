@@ -39,6 +39,22 @@ class signals(QObject):
     progressBar = pyqtSignal(int)
     progress = pyqtSignal(str)
 
+def rgb_str_to_values(rgbString, errorRgb=(255,255,255)):
+    try:
+        r, g, b = re.findall('(\d+), (\d+), (\d+)', rgbString)[0]
+        r, g, b = int(r), int(g), int(b)
+    except TypeError:
+        r, g, b = errorRgb
+    return r, g, b
+
+def rgba_str_to_values(rgbString, errorRgb=(255,255,255,255)):
+    try:
+        r, g, b, a = re.findall('(\d+), (\d+), (\d+), (\d+)', rgbString)[0]
+        r, g, b, a = int(r), int(g), int(b), int(a)
+    except TypeError:
+        r, g, b, a = errorRgb
+    return r, g, b, a
+
 def checkDataIntegrity(filenames, parent_path, parentQWidget=None):
     char = filenames[0][:2]
     startWithSameChar = all([f.startswith(char) for f in filenames])
@@ -495,6 +511,8 @@ def imagej_tiffwriter(
             Y, X = data.shape
             T, Z = 1, 1
         data.shape = T, Z, 1, Y, X, 1  # imageJ format should always have TZCYXS data shape
+        if metadata is None:
+            metadata = {}
         new_tif.save(data, metadata=metadata)
 
 def get_list_of_trackers():

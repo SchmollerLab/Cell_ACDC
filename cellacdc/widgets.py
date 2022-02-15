@@ -17,10 +17,149 @@ from PyQt5.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QMainWindow, QStyleFactory,
     QLineEdit, QSlider, QSpinBox, QGridLayout, QDockWidget,
     QScrollArea, QSizePolicy, QComboBox, QPushButton, QScrollBar,
-    QGroupBox, QAbstractSlider, QDoubleSpinBox
+    QGroupBox, QAbstractSlider, QDoubleSpinBox, QWidgetAction,
+    QAction
 )
 
+import pyqtgraph as pg
+
 from . import myutils, apps
+
+class myColorButton(pg.ColorButton):
+    sigColorRejected = pyqtSignal(object)
+
+    def __init__(self, parent=None, color=(128,128,128), padding=6):
+        pg.ColorButton.__init__(
+            self, parent=parent, color=color, padding=padding
+        )
+
+    def colorRejected(self):
+        self.setColor(self.origColor, finished=False)
+        self.sigColorRejected.emit(self)
+
+class myGradientWidget(pg.GradientWidget):
+    def __init__(self, parent=None, orientation='right',  *args, **kargs):
+        pg.GradientWidget.__init__(
+            self, parent=parent, orientation=orientation,  *args, **kargs
+        )
+        # Background color button
+        hbox = QHBoxLayout()
+        hbox.addWidget(QLabel('Background color: '))
+        self.colorButton = pg.ColorButton(color=(25,25,25))
+        hbox.addWidget(self.colorButton)
+        widget = QWidget()
+        widget.setLayout(hbox)
+        act = QWidgetAction(self)
+        act.setDefaultWidget(widget)
+        self.menu.insertAction(self.item.rgbAction, act)
+
+        # IDs color button
+        hbox = QHBoxLayout()
+        hbox.addWidget(QLabel('Text color: '))
+        self.textColorButton = pg.ColorButton(color=(25,25,25))
+        hbox.addWidget(self.textColorButton)
+        widget = QWidget()
+        widget.setLayout(hbox)
+        act = QWidgetAction(self)
+        act.setDefaultWidget(widget)
+        self.menu.insertAction(self.item.rgbAction, act)
+
+        # Shuffle colors action
+        self.shuffleCmapAction =  QAction(
+            'Shuffle colormap...   (Shift+S)', self
+        )
+        self.menu.insertAction(self.item.rgbAction, self.shuffleCmapAction)
+        self.menu.insertSeparator(self.shuffleCmapAction)
+
+        # Invert bw action
+        self.invertBwAction = QAction('Invert black/white', self)
+        self.invertBwAction.setCheckable(True)
+        self.menu.insertAction(self.item.rgbAction, self.invertBwAction)
+
+        self.menu.insertSeparator(self.item.rgbAction)
+
+    def saveState(self, df):
+        # remove previous state
+        df = df[~df.index.str.contains('lab_cmap')].copy()
+
+        state = self.item.saveState()
+        for key, value in state.items():
+            if key == 'ticks':
+                for t, tick in enumerate(value):
+                    pos, rgb = tick
+                    df.at[f'lab_cmap_tick{t}_rgb', 'value'] = rgb
+                    df.at[f'lab_cmap_tick{t}_pos', 'value'] = pos
+            else:
+                if isinstance(value, bool):
+                    value = 'Yes' if value else 'No'
+                df.at[f'lab_cmap_{key}', 'value'] = value
+        return df
+
+    def restoreState(self, df):
+        # Insert background color
+        if 'labels_bkgrColor' in df.index:
+            rgbString = df.at['labels_bkgrColor', 'value']
+            r, g, b = myutils.rgb_str_to_values(rgbString)
+            self.colorButton.setColor((r, g, b))
+
+        if 'labels_text_color' in df.index:
+            rgbString = df.at['labels_text_color', 'value']
+            r, g, b = myutils.rgb_str_to_values(rgbString)
+            self.textColorButton.setColor((r, g, b))
+        else:
+            self.textColorButton.setColor((255, 0, 0))
+
+        checked = df.at['is_bw_inverted', 'value'] == 'Yes'
+        self.invertBwAction.setChecked(checked)
+
+        state = {'mode': 'rgb', 'ticksVisible': True, 'ticks': []}
+        ticks_pos = {}
+        ticks_rgb = {}
+        stateFound = False
+        for setting, value in df.itertuples():
+            idx = setting.find('lab_cmap_')
+            if idx == -1:
+                continue
+
+            stateFound = True
+            m = re.findall('tick(\d+)_(\w+)', setting)
+            if m:
+                tick_idx, tick_type = m[0]
+                if tick_type == 'pos':
+                    ticks_pos[int(tick_idx)] = float(value)
+                elif tick_type == 'rgb':
+                    ticks_rgb[int(tick_idx)] = myutils.rgba_str_to_values(value)
+            else:
+                key = setting[9:]
+                if value == 'Yes':
+                    value = True
+                elif value == 'No':
+                    value = False
+                state[key] = value
+
+        if stateFound:
+            ticks = [(0, 0)]*len(ticks_pos)
+            for idx, val in ticks_pos.items():
+                pos = val
+                rgb = ticks_rgb[idx]
+                ticks[idx] = (pos, rgb)
+
+            state['ticks'] = ticks
+            self.item.restoreState(state)
+        else:
+            self.item.loadPreset('viridis')
+
+        return stateFound
+
+    # def mousePressEvent(self, event):
+    #     self.showMenu(event)
+
+    def showMenu(self, ev):
+        try:
+            # Convert QPointF to QPoint
+            self.menu.popup(ev.screenPos().toPoint())
+        except AttributeError:
+            self.menu.popup(ev.screenPos())
 
 class QLogConsole(QTextEdit):
     def __init__(self, parent=None):
