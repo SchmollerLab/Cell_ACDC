@@ -921,6 +921,8 @@ class dataPrepWin(QMainWindow):
                 Y, X = data.shape
                 T, Z = 1, 1
             data.shape = T, Z, 1, Y, X, 1  # imageJ format should always have TZCYXS data shape
+            if metadata is None:
+                metadata = {}
             new_tif.save(data, metadata=metadata)
 
     def getDefaultROI(self):
