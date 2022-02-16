@@ -94,40 +94,51 @@ def checkDataIntegrity(filenames, parent_path, parentQWidget=None):
     return True
 
 def install_javabridge():
-    download_java()
+    jre_path, jre_file_id = download_java()
     is_win = sys.platform.startswith("win")
+    jdk_path, jdk_file_id = '', ''
     if is_win:
-        download_jdk()
+        jdk_path, jdk_file_id = download_jdk()
     subprocess.check_call(
         [sys.executable, '-m', 'pip', 'install',
         'git+https://github.com/SchmollerLab/python-javabridge-acdc']
     )
+    return jre_path, jre_file_id, jdk_path, jdk_file_id
 
-def download_jdk():
-    """Download Java JDK (Windows) to user path ~/.acdc-java"""
-
-    file_id = '1pfpq_d4l3UMSN0075h4yflBlmSfUatwL'
+def get_jdk_info():
+    file_id = '1G6SNk5vESqgdxob5UQv87PgVpIJa_dTe'
     file_size = 135524352
     foldername = 'win64'
     jdk_name = 'jdk1.8.0_321'
 
     user_path = str(pathlib.Path.home())
-    java_path = os.path.join(user_path, '.acdc-java', foldername)
+    java_path = os.path.join(user_path, 'acdc-java', foldername)
     jdk_path = os.path.join(java_path, jdk_name)
+    return java_path, jdk_path, file_id, file_size
+
+def download_jdk():
+    """Download Java JDK (Windows) to user path ~/acdc-java"""
+
+    java_path, jdk_path, file_id, file_size = get_jdk_info()
+
     zip_dst = os.path.join(java_path, 'jdk_temp.zip')
 
     if os.path.exists(jdk_path):
-        return jdk_path
+        return jdk_path, file_id
+
+    if not os.path.exists(java_path):
+        os.makedirs(java_path)
 
     download_from_gdrive(
-        file_id, zip_dst, file_size=file_size, model_name='JDK'
+        file_id, zip_dst, file_size=file_size,
+        model_name='Java Development Kit'
     )
     exctract_to = java_path
     extract_zip(zip_dst, exctract_to)
     # Remove downloaded zip archive
     os.remove(zip_dst)
     print('Java Development Kit downloaded successfully')
-    return jdk_path
+    return jdk_path, file_id
 
 def is_in_bounds(x,y,X,Y):
     in_bounds = x >= 0 and x < X and y >= 0 and y < Y
@@ -265,9 +276,7 @@ def download_examples(which='time_lapse_2D', progress=None):
     print('Example downloaded successfully')
     return example_path
 
-def download_java():
-    """Download Java and JDK to user path ~/.acdc-java"""
-
+def get_java_info():
     is_linux = sys.platform.startswith('linux')
     is_mac = sys.platform == 'darwin'
     is_win = sys.platform.startswith("win")
@@ -277,16 +286,16 @@ def download_java():
     if is_win64:
         foldername = 'win64'
         jre_name = 'jre1.8.0_301'
-        file_id = '19KXlsTwDwR7VZDBu2uWO1M3uIRlrPzLU'
+        file_id = '1G5zsMusJsB6to_bA-8wT5FHJ6yoS2oCu'
         file_size = 78397719
     elif is_mac:
         foldername = 'macOS'
         jre_name = 'jre1.8.0_301'
-        file_id = '1N-Y53dzpDsCFNhdX3mtWixgea2D_ANEf'
+        file_id = '1G487QwDlEUJVFLfJkuxvTkFPY_I0XTb8'
         file_size = 108796810
     elif is_linux:
         foldername = 'linux'
-        file_id = '13vjFCpqBNp10K-Crl0XFXF8vN17Pi5cm'
+        file_id = '1Fz8krhOS8JsX-GhkRDeMiEnAIWqZmCfP'
         jre_name = 'jre1.8.0_301'
         file_size = 92145253
     elif is_win:
@@ -295,12 +304,19 @@ def download_java():
         return
 
     user_path = str(pathlib.Path.home())
-    java_path = os.path.join(user_path, '.acdc-java', foldername)
+    java_path = os.path.join(user_path, 'acdc-java', foldername)
     jre_path = os.path.join(java_path, jre_name)
+    return java_path, jre_path, file_id, file_size
+
+
+def download_java():
+    """Download Java and JDK to user path ~/acdc-java"""
+    java_path, jre_path, file_id, file_size = get_java_info()
+
     zip_dst = os.path.join(java_path, 'java_temp.zip')
 
     if os.path.exists(jre_path):
-        return jre_path
+        return jre_path, file_id
 
     if not os.path.exists(java_path):
         os.makedirs(java_path)
@@ -313,7 +329,7 @@ def download_java():
     # Remove downloaded zip archive
     os.remove(zip_dst)
     print('Java downloaded successfully')
-    return jre_path
+    return jre_path, file_id
 
 def getFromMatplotlib(name):
     """
@@ -403,16 +419,17 @@ def download_from_gdrive(id, destination, file_size=None,
 
     session = requests.Session()
 
-    response = session.get(URL, params = { 'id' : id }, stream = True)
-    token = get_confirm_token(response)
+    with session.get(URL, params = { 'id' : id }, stream=True) as response:
+        token = get_confirm_token(response)
 
-    if token:
-        params = { 'id' : id, 'confirm' : token }
-        response = session.get(URL, params = params, stream = True)
-    save_response_content(
-        response, destination, file_size=file_size, model_name=model_name,
-        progress=progress
-    )
+        if token is not None:
+            params = { 'id' : id, 'confirm' : token }
+            response = session.get(URL, params=params, stream=True)
+
+        save_response_content(
+            response, destination, file_size=file_size, model_name=model_name,
+            progress=progress
+        )
 
 def get_confirm_token(response):
     for key, value in response.cookies.items():
@@ -420,26 +437,39 @@ def get_confirm_token(response):
             return value
     return None
 
-def save_response_content(response, destination, file_size=None,
-                          model_name='cellpose', progress=None):
+def save_response_content(
+        response, destination, file_size=None,
+        model_name='cellpose', progress=None
+    ):
     print(f'Downloading {model_name} to: {os.path.dirname(destination)}')
     CHUNK_SIZE = 32768
-    temp_folder = pathlib.Path.home().joinpath('.cp_temp')
+
+    # Download to a temp folder in user path
+    temp_folder = pathlib.Path.home().joinpath('.acdc_temp')
     if not os.path.exists(temp_folder):
         os.mkdir(temp_folder)
     temp_dst = os.path.join(temp_folder, os.path.basename(destination))
     if file_size is not None and progress is not None:
         progress.emit(file_size, -1)
-    pbar = tqdm(total=file_size, unit='B', unit_scale=True,
-                unit_divisor=1024, ncols=100)
+    pbar = tqdm(
+        total=file_size, unit='B', unit_scale=True,
+        unit_divisor=1024, ncols=100
+    )
     with open(temp_dst, "wb") as f:
         for chunk in response.iter_content(CHUNK_SIZE):
-            if chunk: # filter out keep-alive new chunks
-                f.write(chunk)
-                pbar.update(len(chunk))
-                if progress is not None:
-                    progress.emit(-1, len(chunk))
+            if not chunk:
+                break
+            f.write(chunk)
+            f.flush()
+            pbar.update(len(chunk))
+            if progress is not None:
+                progress.emit(-1, len(chunk))
     pbar.close()
+
+    # Move to destination and delete temp folder
+    destination_dir = os.path.dirname(destination)
+    if not os.path.exists(destination_dir):
+        os.makedirs(destination_dir)
     shutil.move(temp_dst, destination)
     shutil.rmtree(temp_folder)
 

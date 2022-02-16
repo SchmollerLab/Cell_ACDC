@@ -737,6 +737,9 @@ class createDataStructWin(QMainWindow):
         try:
             import javabridge
         except Exception as e:
+            print('======================================')
+            traceback.print_exc()
+            print('======================================')
             msg = QMessageBox()
             txt = (
                 'Cell-ACDC has to download and install a package called '
@@ -753,7 +756,74 @@ class createDataStructWin(QMainWindow):
                 raise ModuleNotFoundError(
                     'User aborted javabridge installation'
                 )
-            myutils.install_javabridge()
+
+            try:
+                java_output = myutils.install_javabridge()
+            except Exception as e:
+                print('======================================')
+                traceback.print_exc()
+                print('======================================')
+                _, jre_path, jre_file_id, _ = myutils.get_java_info()
+                _, jdk_path, jdk_file_id, _ = myutils.get_jdk_info()
+                java_url = f'https://drive.google.com/file/d/{jre_file_id}'
+                java_href = f'<a href="{java_url}">this</a>'
+
+                is_win = sys.platform.startswith("win")
+                if is_win:
+                    jdk_url = f'https://drive.google.com/file/d/{jdk_file_id}'
+                    jdk_href = f'<a href="{jdk_url}">this</a>'
+                    s = (
+                        f'Please download {java_href} and {jdk_href} .zip files '
+                        'and unzip their content into the following folder:<br><br>'
+                        f'{os.path.dirname(jre_path)}<br><br><br>'
+                        'Once unzipped you should have the following folders:<br><br>'
+                        f'{jre_path}<br>'
+                        f'{jdk_path}'
+                    )
+                    note = (
+                        '<br><br><i>NOTE: if clicking on the links above does not work'
+                        'copy the links below and paste them in your browser</i><br><br>'
+                        f'{java_url}<br><br>'
+                        f'{jdk_url}'
+                    )
+                else:
+                    s = (
+                        f'Please download {java_href} .zip file '
+                        'and unzip its content into the following folder:<br><br>'
+                        f'{os.path.dirname(jre_path)}<br><br><br>'
+                        'Once unzipped you should have the following folder:<br><br>'
+                        f'{jre_path}'
+                    )
+                    note = (
+                        '<br><br><i>NOTE: if clicking on the link above does not work'
+                        'copy the links below and paste them in your browser</i><br><br>'
+                        f'{java_url}'
+                    )
+
+                app = QApplication(sys.argv)
+
+                msg = QMessageBox()
+                msg.setIcon(msg.Warning)
+                msg.setWindowTitle('Java not found')
+                msg.setTextFormat(Qt.RichText)
+
+                txt = (f"""
+                <p style=font-size:12px>
+                    This module requires Java to work.<br><br>
+                    Follow the instructions below and then try
+                    launching this module again.<br><br>
+                    {s}{note}
+                </p>
+                """)
+                msg.setText(txt)
+                msg.exec_()
+                err = s.replace('<br>', ' ')
+                err = err.replace('<a href=', '')
+                err = err.replace('>this</a>', '')
+                raise ModuleNotFoundError(
+                    'Installation of module "javabridge" failed. '
+                    f'{err}'
+                )
 
         try:
             import javabridge
