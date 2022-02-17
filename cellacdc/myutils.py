@@ -25,7 +25,7 @@ from natsort import natsorted
 from tifffile.tifffile import TiffWriter, TiffFile
 
 from PyQt5.QtWidgets import QMessageBox
-from PyQt5.QtCore import pyqtSignal, QObject
+from PyQt5.QtCore import pyqtSignal, QObject, QCoreApplication
 
 from . import prompts
 
@@ -93,17 +93,28 @@ def checkDataIntegrity(filenames, parent_path, parentQWidget=None):
         return False
     return True
 
-def install_javabridge():
+def testQcoreApp():
+    print(QCoreApplication.instance())
+
+def download_acdc_java():
     jre_path, jre_file_id = download_java()
     is_win = sys.platform.startswith("win")
     jdk_path, jdk_file_id = '', ''
     if is_win:
         jdk_path, jdk_file_id = download_jdk()
-    subprocess.check_call(
-        [sys.executable, '-m', 'pip', 'install',
-        'git+https://github.com/SchmollerLab/python-javabridge-acdc']
-    )
-    return jre_path, jre_file_id, jdk_path, jdk_file_id
+
+
+def install_javabridge():
+    if sys.platform.startswith('win'):
+        subprocess.check_call(
+            [sys.executable, '-m', 'pip', 'install',
+            'git+https://github.com/SchmollerLab/python-javabridge-windows']
+        )
+    else:
+        subprocess.check_call(
+            [sys.executable, '-m', 'pip', 'install',
+            'git+https://github.com/SchmollerLab/python-javabridge-acdc']
+        )
 
 def get_jdk_info():
     file_id = '1G6SNk5vESqgdxob5UQv87PgVpIJa_dTe'
@@ -111,8 +122,8 @@ def get_jdk_info():
     foldername = 'win64'
     jdk_name = 'jdk1.8.0_321'
 
-    user_path = str(pathlib.Path.home())
-    java_path = os.path.join(user_path, 'acdc-java', foldername)
+    acdc_java_path, dot_acdc_java_path = get_acdc_java_path()
+    java_path = os.path.join(acdc_java_path, foldername)
     jdk_path = os.path.join(java_path, jdk_name)
     return java_path, jdk_path, file_id, file_size
 
@@ -125,6 +136,14 @@ def download_jdk():
 
     if os.path.exists(jdk_path):
         return jdk_path, file_id
+
+    # Also check the older .acdc-java
+    jdk_name = os.path.basename(jdk_path)
+    os_foldername = os.path.basename(os.path.dirname(jdk_path))
+    _, dot_acdc_java_path = get_acdc_java_path()
+    jdk_old_path = os.path.join(dot_acdc_java_path, os_foldername, jdk_name)
+    if os.path.exists(jdk_old_path):
+        return jdk_old_path, file_id
 
     if not os.path.exists(java_path):
         os.makedirs(java_path)
@@ -276,6 +295,12 @@ def download_examples(which='time_lapse_2D', progress=None):
     print('Example downloaded successfully')
     return example_path
 
+def get_acdc_java_path():
+    user_path = str(pathlib.Path.home())
+    acdc_java_path = os.path.join(user_path, 'acdc-java')
+    dot_acdc_java_path = os.path.join(user_path, '.acdc-java')
+    return acdc_java_path, dot_acdc_java_path
+
 def get_java_info():
     is_linux = sys.platform.startswith('linux')
     is_mac = sys.platform == 'darwin'
@@ -303,8 +328,8 @@ def get_java_info():
         jre_name = 'jre1.8.0_301'
         return
 
-    user_path = str(pathlib.Path.home())
-    java_path = os.path.join(user_path, 'acdc-java', foldername)
+    acdc_java_path, dot_acdc_java_path = get_acdc_java_path()
+    java_path = os.path.join(acdc_java_path, foldername)
     jre_path = os.path.join(java_path, jre_name)
     return java_path, jre_path, file_id, file_size
 
@@ -317,6 +342,14 @@ def download_java():
 
     if os.path.exists(jre_path):
         return jre_path, file_id
+
+    # Also check the older .acdc-java
+    jre_name = os.path.basename(jre_path)
+    os_foldername = os.path.basename(os.path.dirname(jre_path))
+    _, dot_acdc_java_path = get_acdc_java_path()
+    jre_old_path = os.path.join(dot_acdc_java_path, os_foldername, jre_name)
+    if os.path.exists(jre_old_path):
+        return jre_old_path, file_id
 
     if not os.path.exists(java_path):
         os.makedirs(java_path)
@@ -597,6 +630,20 @@ def uint_to_float(img):
     else:
         img = img/uint8_max
     return img
+
+def install_package_msg(pkg_name, parent=None):
+    msg = QMessageBox()
+    txt = (
+        f'Cell-ACDC is going to download and install "{pkg_name}".\n\n'
+        'Make sure you have an active internet connection, '
+        'before continuing. '
+        'Progress will be displayed on the terminal\n\n'
+        'Alternatively, you can cancel the process and try later.'
+    )
+    answer = msg.information(
+        parent, f'Install {pkg_name}', txt, msg.Ok | msg.Cancel
+    )
+    return answer == msg.Cancel
 
 if __name__ == '__main__':
     print(get_list_of_models())

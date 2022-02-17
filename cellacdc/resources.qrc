@@ -73,5 +73,6 @@
     <file alias="ArialMT-Regular.ttf">resources/fonts/ArialMT-Regular.ttf</file>
     <file alias="ArialMT-Italic.otf">resources/fonts/ArialMT-Italic.otf</file>
     <file alias="ArialMT-BoldItalic.otf">resources/fonts/ArialMT-BoldItalic.otf</file>
+    <file alias="visualcpp.png">resources/visual_studio_settings.png</file>
 </qresource>
 </RCC>

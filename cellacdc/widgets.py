@@ -10,7 +10,7 @@ from PyQt5.QtCore import (
 )
 from PyQt5.QtGui import (
     QFont, QPalette, QColor, QPen, QPaintEvent, QBrush, QPainter,
-    QRegExpValidator, QIcon
+    QRegExpValidator, QIcon, QPixmap
 )
 from PyQt5.QtWidgets import (
     QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
@@ -24,6 +24,21 @@ from PyQt5.QtWidgets import (
 import pyqtgraph as pg
 
 from . import myutils, apps
+from . import qrc_resources
+
+class view_visualcpp_screenshot(QWidget):
+    def __init__(self, parent=None):
+        super().__init__()
+        layout = QHBoxLayout()
+
+        self.setWindowTitle('Visual Studio Builld Tools installation')
+
+        pixmap = QPixmap(':visualcpp.png')
+        label = QLabel()
+        label.setPixmap(pixmap)
+
+        layout.addWidget(label)
+        self.setLayout(layout)
 
 class myColorButton(pg.ColorButton):
     sigColorRejected = pyqtSignal(object)

@@ -538,6 +538,7 @@ class mainWin(QMainWindow):
                 print('Failed to restart Cell-ACDC. Please restart manually')
         else:
             print('Cell-ACDC closed. Have a good day!')
+            exit()
 
 def main():
     print('Launching application...')

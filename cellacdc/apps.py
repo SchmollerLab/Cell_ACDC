@@ -5107,6 +5107,66 @@ class QDialogModelParams(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
+class warnVisualCppRequired(QMessageBox):
+    def __init__(self, pkg_name='javabridge', parent=None):
+        super().__init__()
+        self.loop = None
+        self.screenShotWin = None
+
+        self.setModal(False)
+        self.setIcon(self.Warning)
+        self.setWindowTitle(f'Installation of {pkg_name} info')
+        self.setTextFormat(Qt.RichText)
+        txt = (f"""
+        <p style=font-size:12px>
+            Installation of {pkg_name} on Windows requires
+            Microsoft Visual C++ 14.0 or higher.<br><br>
+            Cell-ACDC will anyway try to install {pkg_name} now.<br><br>
+            If the installation fails, please <b>close Cell-ACDC</b>,
+            then download and install <b>"Microsoft C++ Build Tools"</b>
+            from the link below
+            before trying this module again.<br><br>
+            <a href='https://visualstudio.microsoft.com/visual-cpp-build-tools/'>
+                https://visualstudio.microsoft.com/visual-cpp-build-tools/
+            </a><br><br>
+            <b>IMPORTANT</b>: when installing "Microsoft C++ Build Tools"
+            make sure to select <b>"Desktop development with C++"</b>.
+            Click "See the screenshot" for more details.
+        </p>
+        """)
+        seeScreenshotButton = QPushButton('See screenshot...')
+        okButton = QPushButton('Ok')
+        self.addButton(okButton, self.YesRole)
+        okButton.disconnect()
+        okButton.clicked.connect(self.close_)
+        self.addButton(seeScreenshotButton, self.HelpRole)
+        seeScreenshotButton.disconnect()
+        seeScreenshotButton.clicked.connect(
+            self.viewScreenshot
+        )
+        self.setText(txt)
+
+    def viewScreenshot(self, checked=False):
+        self.screenShotWin = widgets.view_visualcpp_screenshot()
+        self.screenShotWin.show()
+
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        super().show()
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def close_(self):
+        if self.loop is not None:
+            self.loop.exit()
+        if self.screenShotWin is not None:
+            self.screenShotWin.close()
+        self.close()
+
+
 if __name__ == '__main__':
     # Create the application
     app = QApplication(sys.argv)

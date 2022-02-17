@@ -20,7 +20,8 @@ from PyQt5.QtWidgets import (
     QWidget, QMessageBox, QPlainTextEdit, QProgressBar
 )
 from PyQt5.QtCore import (
-    Qt, QObject, pyqtSignal, QThread, QMutex, QWaitCondition
+    Qt, QObject, pyqtSignal, QThread, QMutex, QWaitCondition,
+    QEventLoop
 )
 from PyQt5 import QtGui
 
@@ -684,16 +685,16 @@ class createDataStructWin(QMainWindow):
         </head>
         <body>
         <blockquote>
-        <p style="font-size:11pt; line-height:1.2">
+        <p style="font-size:13px; line-height:1.2">
             This <b>wizard</b> will guide you through the <b>creation of the required
             data structure</b><br> starting from the raw microscopy file(s)
         </p>
-        <p style="font-size:10pt; line-height:1.2">
+        <p style="font-size:11px; line-height:1.2">
             Follow the instructions in the pop-up windows.<br>
             Note that pop-ups might be minimized or behind other open windows.<br>
             Keep an eye on the terminal/console in case of any error.
         </p>
-        <p style="font-size:10pt; line-height:1.2">
+        <p style="font-size:11px; line-height:1.2">
             Progress will be displayed below.
         </p>
         </blockquote>
@@ -740,25 +741,14 @@ class createDataStructWin(QMainWindow):
             print('======================================')
             traceback.print_exc()
             print('======================================')
-            msg = QMessageBox()
-            txt = (
-                'Cell-ACDC has to download and install a package called '
-                '"javabridge".\n\n'
-                'Make sure you have an active internet connection, '
-                'before continuing. '
-                'Progress will be displayed on the terminal\n\n'
-                'Alternatively, you can cancel the process and try later.'
-            )
-            answer = msg.information(
-                self, 'Install package', txt, msg.Ok | msg.Cancel
-            )
-            if answer == msg.Cancel:
+            cancel = myutils.install_package_msg('javabridge', parent=self)
+            if print:
                 raise ModuleNotFoundError(
                     'User aborted javabridge installation'
                 )
 
             try:
-                java_output = myutils.install_javabridge()
+                java_output = myutils.download_acdc_java()
             except Exception as e:
                 print('======================================')
                 traceback.print_exc()
@@ -825,6 +815,12 @@ class createDataStructWin(QMainWindow):
                     f'{err}'
                 )
 
+            if sys.platform.startswith('win'):
+                win = apps.warnVisualCppRequired(pkg_name='javabridge')
+                win.exec_()
+
+            myutils.install_javabridge()
+
         try:
             import javabridge
             from cellacdc import bioformats
@@ -857,7 +853,7 @@ class createDataStructWin(QMainWindow):
         msg.setWindowTitle('Not a Windows OS')
         msg.setStandardButtons(msg.Ok)
         err_msg = (f"""
-        <p style="font-size:10pt; line-height:1.2">
+        <p style="font-size:11px; line-height:1.2">
             Unfortunately, the module "0. Create data structure from microscopy file(s)"
             is functional <b>only on Windows OS and macOS</b>.<br>
             We are working on extending support to other Operating Systems.
@@ -881,7 +877,6 @@ class createDataStructWin(QMainWindow):
 
 
     def on_linkActivated(self, link):
-        print(link)
         if link == 'manual':
             systems = {
                 'nt': os.startfile,
@@ -1061,7 +1056,7 @@ class createDataStructWin(QMainWindow):
         manual_url = 'https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf'
         txt = (
         f"""
-        <p style="font-size:10pt;">
+        <p style="font-size:11px;">
         If you would like to add compatibility with your raw microscopy files,<br>
         you can request a new feature <a href=\"{issues_url}">here</a>.<br><br>
         Please label the issue as "enhancement" and provide as many details as
@@ -1130,7 +1125,7 @@ class createDataStructWin(QMainWindow):
              'Multiple microscopy files, one for each position',
              'Multiple microscopy files, one for each channel',
              'NONE of the above'],
-             '<p style="font-size:10pt">'
+             '<p style="font-size:11px">'
              'Select how you have your <b>raw_microscopy_files arranged</b>'
              '</p>',
              CbLabel='', parent=self
@@ -1209,7 +1204,7 @@ class createDataStructWin(QMainWindow):
         msg = QMessageBox(self)
         msg.setWindowTitle('Action with the other files?')
         txt = (f"""
-        <p style="font-size:10pt">
+        <p style="font-size:11px">
             What should I do with the other files (ext: {otherExt})
             in the folder?<br><br>
             <i>NOTE: Only the files with the same basename and position number
@@ -1255,7 +1250,7 @@ class createDataStructWin(QMainWindow):
     def warnMultipleFiles(self, files):
         win = apps.QDialogCombobox(
             'Multiple microscopy files detected!', files,
-             '<p style="font-size:10pt">'
+             '<p style="font-size:11px">'
              'You selected "Single microscopy file", '
              'but the <b>folder contains multiple files</b>.<br>'
              '</p>',
@@ -1336,7 +1331,7 @@ class createDataStructWin(QMainWindow):
         _, ext = os.path.splitext(filename)
         txt = (
             f"""
-            <p "font-size:10pt">
+            <p "font-size:11px">
             Error while {actionTxt} with Bio-Formats.<br><br>
 
             This is most likely because the <b>file format {ext} is not fully supported</b>
