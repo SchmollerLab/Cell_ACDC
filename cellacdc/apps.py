@@ -5160,11 +5160,13 @@ class warnVisualCppRequired(QMessageBox):
             self.loop.exec_()
 
     def close_(self):
+        self.hide()
+        self.close()
         if self.loop is not None:
             self.loop.exit()
         if self.screenShotWin is not None:
             self.screenShotWin.close()
-        self.close()
+
 
 
 if __name__ == '__main__':

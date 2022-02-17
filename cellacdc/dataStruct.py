@@ -742,7 +742,7 @@ class createDataStructWin(QMainWindow):
             traceback.print_exc()
             print('======================================')
             cancel = myutils.install_package_msg('javabridge', parent=self)
-            if print:
+            if cancel:
                 raise ModuleNotFoundError(
                     'User aborted javabridge installation'
                 )
