@@ -54,9 +54,19 @@ class myColorButton(pg.ColorButton):
 
 class myGradientWidget(pg.GradientWidget):
     def __init__(self, parent=None, orientation='right',  *args, **kargs):
+        self.removeHSVcmaps()
+        self.addGradients()
+
         pg.GradientWidget.__init__(
             self, parent=parent, orientation=orientation,  *args, **kargs
         )
+
+        for action in self.menu.actions():
+            if action.text() == 'HSV':
+                HSV_action = action
+                break
+        self.menu.removeAction(HSV_action)
+
         # Background color button
         hbox = QHBoxLayout()
         hbox.addWidget(QLabel('Background color: '))
@@ -92,6 +102,32 @@ class myGradientWidget(pg.GradientWidget):
         self.menu.insertAction(self.item.rgbAction, self.invertBwAction)
 
         self.menu.insertSeparator(self.item.rgbAction)
+
+    def removeHSVcmaps(self):
+        hsv_cmaps = []
+        for g, grad in pg.graphicsItems.GradientEditorItem.Gradients.items():
+            if grad['mode'] == 'hsv':
+                hsv_cmaps.append(g)
+        for g in hsv_cmaps:
+            del pg.graphicsItems.GradientEditorItem.Gradients[g]
+
+    def addGradients(self):
+        Gradients = pg.graphicsItems.GradientEditorItem.Gradients
+        Gradients['cividis'] = {
+            'ticks': [
+                (0.0, (0, 34, 78, 255)),
+                (0.25, (66, 78, 108, 255)),
+                (0.5, (124, 123, 120, 255)),
+                (0.75, (187, 173, 108, 255)),
+                (1.0, (254, 232, 56, 255))],
+            'mode': 'rgb'
+        }
+        Gradients['cool'] = {
+            'ticks': [
+                (0.0, (0, 255, 255, 255)),
+                (1.0, (255, 0, 255, 255))],
+            'mode': 'rgb'
+        }
 
     def saveState(self, df):
         # remove previous state
@@ -165,9 +201,6 @@ class myGradientWidget(pg.GradientWidget):
             self.item.loadPreset('viridis')
 
         return stateFound
-
-    # def mousePressEvent(self, event):
-    #     self.showMenu(event)
 
     def showMenu(self, ev):
         try:

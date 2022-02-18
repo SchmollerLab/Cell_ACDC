@@ -25,15 +25,9 @@ class Model:
                 f'Avilable models are {CELLPOSE_MODELS}'
             )
             raise NameError(err_msg)
-        script_path = os.path.dirname(os.path.realpath(__file__))
-        model_path = os.path.join(script_path, 'model')
-
-        model_dir = pathlib.Path(model_path)
-
         device, gpu = models.assign_device(True, False)
         self.model = models.Cellpose(
-            gpu=gpu, device=device, model_type=model_type, torch=True,
-            model_dir=model_dir
+            gpu=gpu, device=device, model_type=model_type, torch=True
         )
 
     def segment(

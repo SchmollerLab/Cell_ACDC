@@ -5107,9 +5107,74 @@ class QDialogModelParams(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
+class downloadModel(QMessageBox):
+    def __init__(self, model_name, parent=None):
+        super().__init__(parent)
+        self.loop = None
+        self.model_name = model_name
+
+    def download(self):
+        success = myutils.download_model(self.model_name)
+        if not success:
+            self.exec_()
+
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        import cellacdc
+        model_name = self.model_name
+        m = model_name.lower()
+        weights_filenames = getattr(cellacdc, f'{m}_weights_filenames')
+        self.setIcon(self.Critical)
+        self.setWindowTitle(f'Download of {model_name} failed')
+        self.setTextFormat(Qt.RichText)
+        url, alternative_url = myutils._model_url(
+            model_name, return_alternative=True
+        )
+        url_href = f'<a href="{url}">this link</a>'
+        alternative_url_href = f'<a href="{alternative_url}">this link</a>'
+        _, model_path = myutils.get_model_path(model_name, create_temp_dir=False)
+        txt = (f"""
+        <p style=font-size:13px>
+            Automatic download of {model_name} failed.<br><br>
+            Please, <b>manually download</b> the model weights from {url_href} or
+            {alternative_url_href}.<br><br>
+            Next, unzip the content of the downloaded file into the
+            following folder:<br><br>
+            {model_path}<br>
+        </p>
+        <p style=font-size:12px>
+            <i>NOTE: if clicking on the link above does not work
+            copy one of the links below and paste it into the browser</i><br><br>
+            {url}<br>{alternative_url}
+        </p>
+        """)
+        self.setText(txt)
+        weights_paths = [os.path.join(model_path, f) for f in weights_filenames]
+        weights = '\n\n'.join(weights_paths)
+        self.setDetailedText(
+            f'Files that {model_name} requires:\n\n'
+            f'{weights}'
+        )
+        okButton = QPushButton('Ok')
+        self.addButton(okButton, self.YesRole)
+        okButton.disconnect()
+        okButton.clicked.connect(self.close_)
+        super().show()
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def close_(self):
+        self.hide()
+        self.close()
+        if self.loop is not None:
+            self.loop.exit()
+
 class warnVisualCppRequired(QMessageBox):
     def __init__(self, pkg_name='javabridge', parent=None):
-        super().__init__()
+        super().__init__(parent)
         self.loop = None
         self.screenShotWin = None
 

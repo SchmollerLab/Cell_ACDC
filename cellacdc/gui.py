@@ -77,7 +77,7 @@ from . import load, prompts, apps
 from . import core, myutils, dataPrep, widgets
 from .cca_functions import _calc_rot_vol
 from .core import numba_max, numba_min
-from .myutils import download_model, exec_time
+from .myutils import exec_time
 from .help import welcome
 
 if os.name == 'nt':
@@ -855,8 +855,6 @@ class guiWin(QMainWindow):
         # helpMenu.addAction(self.aboutAction)
 
     def gui_createToolBars(self):
-        toolbarSize = 34
-
         # File toolbar
         fileToolBar = self.addToolBar("File")
         # fileToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
@@ -915,7 +913,6 @@ class guiWin(QMainWindow):
         colorsToolBar = QToolBar("Colors", self)
 
         self.overlayColorButton = pg.ColorButton(self, color=(230,230,230))
-        # self.overlayColorButton.mousePressEvent = self.mousePressColorButton
         self.overlayColorButton.setDisabled(True)
         colorsToolBar.addWidget(self.overlayColorButton)
 
@@ -6629,7 +6626,8 @@ class guiWin(QMainWindow):
             idx = self.modelNames.index(model_name)
             askSegmParams = self.segment2D_kwargs is None
 
-        myutils.download_model(model_name)
+        self.downloadWin = apps.downloadModel(model_name, parent=self)
+        self.downloadWin.download()
 
         # Store undo state before modifying stuff
         self.storeUndoRedoStates(False)
@@ -9460,8 +9458,8 @@ class guiWin(QMainWindow):
             return img
 
         posData = self.data[self.pos_i]
-        if len(posData.lut) > max(posData.IDs):
-            self.extendLabelsLUT()
+        if max(posData.IDs) > len(posData.lut):
+            self.extendLabelsLUT(10)
         colors = [posData.lut[ID]/255 for ID in posData.IDs]
         if img.ndim == 2:
             img = img/numba_max(img)

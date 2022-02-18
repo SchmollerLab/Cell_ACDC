@@ -3,6 +3,8 @@ import os
 import numpy as np
 import pandas as pd
 
+import pathlib
+
 import skimage.exposure
 import skimage.measure
 
@@ -14,12 +16,13 @@ from cellacdc.core import getBaseCca_df
 
 class Model:
     def __init__(self):
-        script_path = os.path.dirname(os.path.realpath(__file__))
-        model_path = os.path.join(script_path, 'model', 'yeastmate.yaml')
-        weights_path = os.path.join(script_path, 'model', 'yeastmate_weights.pth')
+        user_path = pathlib.Path.home()
+        model_path = os.path.join(str(user_path), f'acdc-YeastMate')
+        yaml_path = os.path.join(model_path, 'yeastmate.yaml')
+        weights_path = os.path.join(model_path, 'yeastmate_weights.pth')
 
         self.model = YeastMatePredictor(
-            model_path,
+            yaml_path,
             weights_path
         )
 

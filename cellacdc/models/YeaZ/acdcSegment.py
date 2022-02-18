@@ -1,4 +1,5 @@
 import os
+import pathlib
 
 import numpy as np
 
@@ -40,13 +41,13 @@ class Model:
 
         # Get the path where the weights are saved.
         # We suggest saving the weights files into a 'model' subfolder
-        script_path = os.path.dirname(os.path.abspath(__file__))
-        model_path = os.path.join(script_path, 'model')
+        user_path = pathlib.Path.home()
+        model_path = os.path.join(str(user_path), f'acdc-YeaZ')
 
         if is_phase_contrast:
             weights_fn = 'unet_weights_batchsize_25_Nepochs_100_SJR0_10.hdf5'
         else:
-            weights_fn = 'unet_weights_BF_batchsize_25_Nepochs_100_SJR_0_1.hdf5'
+            weights_fn = 'weights_budding_BF_multilab_0_1.hdf5'
 
         weights_path = os.path.join(model_path, weights_fn)
 

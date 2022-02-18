@@ -28,3 +28,14 @@ is_linux = sys.platform.startswith('linux')
 is_mac = sys.platform == 'darwin'
 is_win = sys.platform.startswith("win")
 is_win64 = (is_win and (os.environ["PROCESSOR_ARCHITECTURE"] == "AMD64"))
+
+yeaz_weights_filenames = [
+    'unet_weights_batchsize_25_Nepochs_100_SJR0_10.hdf5',
+    'weights_budding_BF_multilab_0_1.hdf5'
+]
+
+yeastmate_weights_filenames = [
+    'yeastmate_advanced.yaml',
+    'yeastmate_weights.pth',
+    'yeastmate.yaml'
+]

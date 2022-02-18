@@ -329,15 +329,14 @@ class segmWin(QMainWindow):
         buttonsLayout = QHBoxLayout()
         self.mainLayout = mainLayout
 
-        label = QLabel(
-            'Segmentation routine running...')
+        label = QLabel("""
+        <p style="font-size:16px">
+            <b>Segmentation routine running...</b>
+        </p>
+        """)
 
         label.setStyleSheet("padding:5px 10px 10px 10px;")
         label.setAlignment(Qt.AlignCenter)
-        font = QtGui.QFont()
-        font.setPointSize(10)
-        font.setBold(True)
-        label.setFont(font)
         mainLayout.addWidget(label)
 
         informativeText = QLabel("""
@@ -493,7 +492,9 @@ class segmWin(QMainWindow):
 
         model_name = win.selectedItemsText[0]
         print(f'Importing {model_name}...')
-        myutils.download_model(model_name)
+        self.downloadWin = apps.downloadModel(model_name, parent=self)
+        self.downloadWin.download()
+
         self.model_name = model_name
         acdcSegment = import_module(f'models.{model_name}.acdcSegment')
         self.acdcSegment =  acdcSegment
@@ -986,7 +987,8 @@ class segmWin(QMainWindow):
         self.tqdm_pbar.close()
 
     def setPredictBuddingModel(self):
-        myutils.download_model('YeastMate')
+        self.downloadYeastMate = apps.downloadModel('YeastMate', parent=self)
+        self.downloadYeastMate.download()
         import models.YeastMate.acdcSegment as yeastmate
         self.predictCcaState_model = yeastmate.Model()
 

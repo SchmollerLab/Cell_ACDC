@@ -61,6 +61,7 @@
     <file alias="curv_cursor.svg">resources/icons/curv_cursor.svg</file>
     <file alias="fill_holes.svg">resources/icons/fill_holes.svg</file>
     <file alias="find.svg">resources/icons/find.svg</file>
+    <file alias="visualcpp.png">resources/screenshots/visual_studio_settings.png</file>
     <file alias="Ubuntu-Bold.ttf">resources/fonts/Ubuntu-Bold.ttf</file>
     <file alias="Ubuntu-Regular.ttf">resources/fonts/Ubuntu-Regular.ttf</file>
     <file alias="Ubuntu-Italic.ttf">resources/fonts/Ubuntu-Italic.ttf</file>
@@ -73,6 +74,5 @@
     <file alias="ArialMT-Regular.ttf">resources/fonts/ArialMT-Regular.ttf</file>
     <file alias="ArialMT-Italic.otf">resources/fonts/ArialMT-Italic.otf</file>
     <file alias="ArialMT-BoldItalic.otf">resources/fonts/ArialMT-BoldItalic.otf</file>
-    <file alias="visualcpp.png">resources/visual_studio_settings.png</file>
 </qresource>
 </RCC>

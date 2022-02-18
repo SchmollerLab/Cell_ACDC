@@ -5,11 +5,13 @@ import difflib
 import sys
 import tempfile
 import shutil
+import traceback
 import datetime
 import time
 import subprocess
 from functools import wraps, partial
 from collections import namedtuple
+from collections.abc import Callable, Sequence
 from tqdm import tqdm
 import requests
 import zipfile
@@ -96,14 +98,6 @@ def checkDataIntegrity(filenames, parent_path, parentQWidget=None):
 def testQcoreApp():
     print(QCoreApplication.instance())
 
-def download_acdc_java():
-    jre_path, jre_file_id = download_java()
-    is_win = sys.platform.startswith("win")
-    jdk_path, jdk_file_id = '', ''
-    if is_win:
-        jdk_path, jdk_file_id = download_jdk()
-
-
 def install_javabridge():
     if sys.platform.startswith('win'):
         subprocess.check_call(
@@ -115,49 +109,6 @@ def install_javabridge():
             [sys.executable, '-m', 'pip', 'install',
             'git+https://github.com/SchmollerLab/python-javabridge-acdc']
         )
-
-def get_jdk_info():
-    file_id = '1G6SNk5vESqgdxob5UQv87PgVpIJa_dTe'
-    file_size = 135524352
-    foldername = 'win64'
-    jdk_name = 'jdk1.8.0_321'
-
-    acdc_java_path, dot_acdc_java_path = get_acdc_java_path()
-    java_path = os.path.join(acdc_java_path, foldername)
-    jdk_path = os.path.join(java_path, jdk_name)
-    return java_path, jdk_path, file_id, file_size
-
-def download_jdk():
-    """Download Java JDK (Windows) to user path ~/acdc-java"""
-
-    java_path, jdk_path, file_id, file_size = get_jdk_info()
-
-    zip_dst = os.path.join(java_path, 'jdk_temp.zip')
-
-    if os.path.exists(jdk_path):
-        return jdk_path, file_id
-
-    # Also check the older .acdc-java
-    jdk_name = os.path.basename(jdk_path)
-    os_foldername = os.path.basename(os.path.dirname(jdk_path))
-    _, dot_acdc_java_path = get_acdc_java_path()
-    jdk_old_path = os.path.join(dot_acdc_java_path, os_foldername, jdk_name)
-    if os.path.exists(jdk_old_path):
-        return jdk_old_path, file_id
-
-    if not os.path.exists(java_path):
-        os.makedirs(java_path)
-
-    download_from_gdrive(
-        file_id, zip_dst, file_size=file_size,
-        model_name='Java Development Kit'
-    )
-    exctract_to = java_path
-    extract_zip(zip_dst, exctract_to)
-    # Remove downloaded zip archive
-    os.remove(zip_dst)
-    print('Java Development Kit downloaded successfully')
-    return jdk_path, file_id
 
 def is_in_bounds(x,y,X,Y):
     in_bounds = x >= 0 and x < X and y >= 0 and y < Y
@@ -301,7 +252,7 @@ def get_acdc_java_path():
     dot_acdc_java_path = os.path.join(user_path, '.acdc-java')
     return acdc_java_path, dot_acdc_java_path
 
-def get_java_info():
+def get_java_url():
     is_linux = sys.platform.startswith('linux')
     is_mac = sys.platform == 'darwin'
     is_win = sys.platform.startswith("win")
@@ -309,60 +260,132 @@ def get_java_info():
 
     # https://drive.google.com/drive/u/0/folders/1MxhySsxB1aBrqb31QmLfVpq8z1vDyLbo
     if is_win64:
-        foldername = 'win64'
-        jre_name = 'jre1.8.0_301'
-        file_id = '1G5zsMusJsB6to_bA-8wT5FHJ6yoS2oCu'
-        file_size = 78397719
+        os_foldername = 'win64'
+        unzipped_foldername = 'java_portable_windows-0.1'
+        file_size = 214798150
+        url = 'https://github.com/SchmollerLab/java_portable_windows/archive/refs/tags/v0.1.zip'
     elif is_mac:
-        foldername = 'macOS'
-        jre_name = 'jre1.8.0_301'
-        file_id = '1G487QwDlEUJVFLfJkuxvTkFPY_I0XTb8'
-        file_size = 108796810
+        os_foldername = 'macOS'
+        unzipped_foldername = 'java_portable_macos-0.1'
+        url = 'https://github.com/SchmollerLab/java_portable_macos/archive/refs/tags/v0.1.zip'
+        file_size = 108478751
     elif is_linux:
-        foldername = 'linux'
-        file_id = '1Fz8krhOS8JsX-GhkRDeMiEnAIWqZmCfP'
-        jre_name = 'jre1.8.0_301'
-        file_size = 92145253
-    elif is_win:
-        foldername = 'win'
-        jre_name = 'jre1.8.0_301'
-        return
+        os_foldername = 'linux'
+        unzipped_foldername = 'java_portable_linux-0.1'
+        url = 'https://github.com/SchmollerLab/java_portable_linux/archive/refs/tags/v0.1.zip'
+        file_size = 92520706
+    return url, file_size, os_foldername, unzipped_foldername
 
+def _jdk_exists(jre_path):
+    # If jre_path exists and it's windows search for ~/acdc-java/win64/jdk
+    # or ~/.acdc-java/win64/jdk. If not Windows return jre_path
+    if not jre_path:
+        return ''
+    os_acdc_java_path = os.path.dirname(jre_path)
+    os_foldername = os.path.basename(os_acdc_java_path)
+    if not os_foldername.startswith('win'):
+        return jre_path
+    if os.path.exists(os_acdc_java_path):
+        for folder in os.listdir(os_acdc_java_path):
+            if not folder.startswith('jdk'):
+                continue
+            dir_path =  os.path.join(os_acdc_java_path, folder)
+            for file in os.listdir(dir_path):
+                if file == 'bin':
+                    return dir_path
+    return ''
+
+def _java_exists(os_foldername):
     acdc_java_path, dot_acdc_java_path = get_acdc_java_path()
-    java_path = os.path.join(acdc_java_path, foldername)
-    jre_path = os.path.join(java_path, jre_name)
-    return java_path, jre_path, file_id, file_size
+    os_acdc_java_path = os.path.join(acdc_java_path, os_foldername)
+    if os.path.exists(os_acdc_java_path):
+        for folder in os.listdir(os_acdc_java_path):
+            if not folder.startswith('jre'):
+                continue
+            dir_path =  os.path.join(os_acdc_java_path, folder)
+            for file in os.listdir(dir_path):
+                if file == 'bin':
+                    return dir_path
 
+    # Some users still has the old .acdc folder --> check
+    os_dot_acdc_java_path = os.path.join(dot_acdc_java_path, os_foldername)
+    if os.path.exists(os_dot_acdc_java_path):
+        for folder in os.listdir(os_dot_acdc_java_path):
+            if not folder.startswith('jre'):
+                continue
+            dir_path =  os.path.join(os_dot_acdc_java_path, folder)
+            for file in os.listdir(dir_path):
+                if file == 'bin':
+                    return dir_path
+
+    # Check if the user unzipped the javabridge_portable folder and not its content
+    os_acdc_java_path = os.path.join(acdc_java_path, os_foldername)
+    if os.path.exists(os_acdc_java_path):
+        for folder in os.listdir(os_acdc_java_path):
+            dir_path =  os.path.join(os_acdc_java_path, folder)
+            if folder.startswith('java_portable') and os.path.isdir(dir_path):
+                # Move files one level up
+                unzipped_path = os.path.join(os_acdc_java_path, folder)
+                for name in os.listdir(unzipped_path):
+                    # move files up one level
+                    src = os.path.join(unzipped_path, name)
+                    shutil.move(src, os_acdc_java_path)
+                try:
+                    shutil.rmtree(unzipped_path)
+                except PermissionError as e:
+                    pass
+        # Check if what we moved one level up was actually java
+        for folder in os.listdir(os_acdc_java_path):
+            if not folder.startswith('jre'):
+                continue
+            dir_path =  os.path.join(os_acdc_java_path, folder)
+            for file in os.listdir(dir_path):
+                if file == 'bin':
+                    return dir_path
+    return ''
 
 def download_java():
-    """Download Java and JDK to user path ~/acdc-java"""
-    java_path, jre_path, file_id, file_size = get_java_info()
+    url, file_size, os_foldername, unzipped_foldername = get_java_url()
+    jre_path = _java_exists(os_foldername)
+    jdk_path = _jdk_exists(jre_path)
+    if os_foldername.startswith('win') and jre_path and jdk_path:
+        return jre_path, jdk_path
 
-    zip_dst = os.path.join(java_path, 'java_temp.zip')
+    if jre_path:
+        return jre_path, jre_path
 
-    if os.path.exists(jre_path):
-        return jre_path, file_id
+    acdc_java_path, _ = get_acdc_java_path()
+    os_acdc_java_path = os.path.join(acdc_java_path, os_foldername)
+    temp_zip = os.path.join(os_acdc_java_path, 'acdc_java_temp.zip')
 
-    # Also check the older .acdc-java
-    jre_name = os.path.basename(jre_path)
-    os_foldername = os.path.basename(os.path.dirname(jre_path))
-    _, dot_acdc_java_path = get_acdc_java_path()
-    jre_old_path = os.path.join(dot_acdc_java_path, os_foldername, jre_name)
-    if os.path.exists(jre_old_path):
-        return jre_old_path, file_id
+    if not os.path.exists(os_acdc_java_path):
+        os.makedirs(os_acdc_java_path)
 
-    if not os.path.exists(java_path):
-        os.makedirs(java_path)
+    try:
+        download_url(url, temp_zip, file_size=file_size, desc='Java')
+        extract_zip(temp_zip, os_acdc_java_path)
+    except Exception as e:
+        print('=======================')
+        traceback.print_exc()
+        print('=======================')
+    finally:
+        os.remove(temp_zip)
 
-    download_from_gdrive(
-        file_id, zip_dst, file_size=file_size, model_name='Java'
-    )
-    exctract_to = java_path
-    extract_zip(zip_dst, exctract_to)
-    # Remove downloaded zip archive
-    os.remove(zip_dst)
-    print('Java downloaded successfully')
-    return jre_path, file_id
+    # Move files one level up
+    unzipped_path = os.path.join(os_acdc_java_path, unzipped_foldername)
+    for name in os.listdir(unzipped_path):
+        # move files up one level
+        src = os.path.join(unzipped_path, name)
+        shutil.move(src, os_acdc_java_path)
+
+    try:
+        shutil.rmtree(unzipped_path)
+    except PermissionError as e:
+        pass
+
+    jre_path = _java_exists(os_foldername)
+    jdk_path = _jdk_exists(jre_path)
+    return jre_path, jdk_path, url
 
 def getFromMatplotlib(name):
     """
@@ -412,39 +435,62 @@ def getFromMatplotlib(name):
         _mapCache[name] = cm
     return cm
 
-def get_model_path(model_name):
+def get_model_path(model_name, create_temp_dir=True):
     cellacdc_path = os.path.dirname(os.path.realpath(__file__))
-    model_path = os.path.join(cellacdc_path, 'models', model_name, 'model')
+    model_info_path = os.path.join(cellacdc_path, 'models', model_name, 'model')
 
-    model_exists = os.path.exists(model_path) and len(listdir(model_path))>0
-    if model_name == 'YeastMate' and os.path.exists(model_path):
-        model_exists = [
-            None for f in listdir(model_path) if f.endswith('.pth')
-        ]
-        model_exists = len(model_exists) > 0
-    elif model_name == 'YeaZ' and os.path.exists(model_path):
-        model_exists = [
-            None for f in listdir(model_path) if f.endswith('multilab_0_1.hdf5')
-        ]
-        model_exists = len(model_exists) > 0
-
-    models_zip_path = os.path.join(model_path, 'model_temp.zip')
-    return models_zip_path, model_exists
-
-def get_file_id(model_name, id=None):
-    if model_name == 'YeaZ':
-        file_id = '1fKomXmggyTF3VicgiTf-2OneB1tpQl75'
-        file_size = 693685011
-    elif model_name == 'cellpose':
-        file_id = '1qOdNz6WhKhbg25oaVMU1LFo4crmWrdOj'
-        file_size = 540806676
-    elif model_name == 'YeastMate':
-        file_id = '1wNfxtfIfwm755MdBRy_CXiduiZxXJhep'
-        file_size = 164911104
+    if os.path.exists(model_info_path):
+        for file in listdir(model_info_path):
+            if file == 'weights_location_path.txt':
+                with open(os.path.join(model_info_path, file), 'r') as txt:
+                    model_path = txt.read()
+                break
+        else:
+            user_path = pathlib.Path.home()
+            model_path = os.path.join(str(user_path), f'acdc-{model_name}')
     else:
-        file_id = id
-        file_size = None
-    return file_id, file_size
+        user_path = pathlib.Path.home()
+        model_path = os.path.join(str(user_path), f'acdc-{model_name}')
+
+    if not os.path.exists(model_path):
+        os.makedirs(model_path)
+
+    if not create_temp_dir:
+        return '', model_path
+
+    exists = check_model_exists(model_path, model_name)
+    if exists:
+        return '', model_path
+
+    temp_zip_path = _create_temp_dir()
+    return temp_zip_path, model_path
+
+
+def check_model_exists(model_path, model_name):
+    import cellacdc
+    m = model_name.lower()
+    weights_filenames = getattr(cellacdc, f'{m}_weights_filenames')
+    files_present = listdir(model_path)
+    return all([f in files_present for f in weights_filenames])
+
+def _create_temp_dir():
+    temp_model_path = tempfile.mkdtemp()
+    temp_zip_path = os.path.join(temp_model_path, 'model_temp.zip')
+    return temp_zip_path
+
+def _model_url(model_name, return_alternative=False):
+    if model_name == 'YeaZ':
+        url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/CnfxkQtdRQm5MrT/download/YeaZ_weights.zip'
+        alternative_url = 'https://zenodo.org/record/6127658/files/yeastmate_weights.zip?download=1'
+        file_size = 693685011
+    elif model_name == 'YeastMate':
+        url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/czTkPmZReGjDRjG/download/yeastmate_weights.zip'
+        alternative_url = 'https://zenodo.org/record/6140067/files/yeastmate_weights.zip?download=1'
+        file_size = 164911104
+    if return_alternative:
+        return url, alternative_url
+    else:
+        return url, file_size
 
 def download_from_gdrive(id, destination, file_size=None,
                          model_name='cellpose', progress=None):
@@ -452,23 +498,36 @@ def download_from_gdrive(id, destination, file_size=None,
 
     session = requests.Session()
 
-    with session.get(URL, params = { 'id' : id }, stream=True) as response:
-        token = get_confirm_token(response)
+    if token is not None:
+        params = { 'id' : id, 'confirm' : token }
+        response = session.get(URL, params=params, stream=True)
 
-        if token is not None:
-            params = { 'id' : id, 'confirm' : token }
-            response = session.get(URL, params=params, stream=True)
-
-        save_response_content(
-            response, destination, file_size=file_size, model_name=model_name,
-            progress=progress
-        )
+    save_response_content(
+        response, destination, file_size=file_size, model_name=model_name,
+        progress=progress
+    )
 
 def get_confirm_token(response):
     for key, value in response.cookies.items():
         if key.startswith('download_warning'):
             return value
     return None
+
+def download_url(url, dst, desc='', file_size=None, verbose=True):
+    CHUNK_SIZE = 32768
+    if verbose:
+        print(f'Downloading {desc} to: {os.path.dirname(dst)}')
+    response = requests.get(url, stream=True, timeout=20)
+    pbar = tqdm(
+        total=file_size, unit='B', unit_scale=True,
+        unit_divisor=1024, ncols=100
+    )
+    with open(dst, 'wb') as f:
+        for chunk in response.iter_content(CHUNK_SIZE):
+            # if chunk:
+            f.write(chunk)
+            pbar.update(len(chunk))
+    pbar.close()
 
 def save_response_content(
         response, destination, file_size=None,
@@ -490,13 +549,11 @@ def save_response_content(
     )
     with open(temp_dst, "wb") as f:
         for chunk in response.iter_content(CHUNK_SIZE):
-            if not chunk:
-                break
-            f.write(chunk)
-            f.flush()
-            pbar.update(len(chunk))
-            if progress is not None:
-                progress.emit(-1, len(chunk))
+            if chunk:
+                f.write(chunk)
+                pbar.update(len(chunk))
+                if progress is not None:
+                    progress.emit(-1, len(chunk))
     pbar.close()
 
     # Move to destination and delete temp folder
@@ -506,8 +563,9 @@ def save_response_content(
     shutil.move(temp_dst, destination)
     shutil.rmtree(temp_folder)
 
-def extract_zip(zip_path, extract_to_path):
-    print(f'Extracting to {extract_to_path}...')
+def extract_zip(zip_path, extract_to_path, verbose=True):
+    if verbose:
+        print(f'Extracting to {extract_to_path}...')
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
         zip_ref.extractall(extract_to_path)
 
@@ -529,23 +587,72 @@ def check_v1_model_path():
         if delete:
             shutil.rmtree(v1_model_path)
 
+def check_v123_model_path(model_name):
+    # Cell-ACDC v1.2.3 saved the weights inside the package,
+    # while from v1.2.4 we save them on user folder. If we find the
+    # weights in the package we move them to user folder without downloading
+    # new ones.
+    cellacdc_path = os.path.dirname(os.path.realpath(__file__))
+    v123_model_path = os.path.join(cellacdc_path, 'models', model_name, 'model')
+    exists = check_model_exists(v123_model_path, model_name)
+    if exists:
+        return v123_model_path
+    else:
+        return ''
+
 def download_model(model_name):
-    # Download model from google drive
-    models_zip_path, model_folder_exists = get_model_path(model_name)
-    if not model_folder_exists:
-        file_id, file_size = get_file_id(model_name)
-        if file_id is None:
-            return
-        # Download zip file
-        download_from_gdrive(
-            file_id, models_zip_path,
-            file_size=file_size, model_name=model_name
+    if model_name != 'YeastMate' and model_name != 'YeaZ':
+        # We manage only YeastMate and YeaZ
+        return True
+    try:
+        # Check if model exists
+        temp_zip_path, model_path = get_model_path(model_name)
+        if not temp_zip_path:
+            # Model exists return
+            return True
+
+        # Check if user has model in the old v1.2.3 location
+        v123_model_path = check_v123_model_path(model_name)
+        if v123_model_path:
+            print(f'Weights files found in {v123_model_path}')
+            print(f'--> moving to new location: {model_path}...')
+            for file in listdir(v123_model_path):
+                src = os.path.join(v123_model_path, file)
+                dst = os.path.join(model_path, file)
+                shutil.copy(src, dst)
+            return True
+
+        # Download model from url to tempDir/model_temp.zip
+        temp_dir = os.path.dirname(temp_zip_path)
+        url, file_size = _model_url(model_name)
+        print(f'Downloading {model_name} to {model_path}')
+        download_url(
+            url, temp_zip_path, file_size=file_size, desc=model_name,
+            verbose=False
         )
-        # Extract zip file
-        extract_to_path = os.path.dirname(models_zip_path)
-        extract_zip(models_zip_path, extract_to_path)
-        # Remove downloaded zip archive
-        os.remove(models_zip_path)
+
+        # Extract zip file inside temp dir
+        print(f'Extracting model...')
+        extract_zip(temp_zip_path, temp_dir, verbose=False)
+
+        # Move unzipped files to ~/acdc-{model_name} folder
+        print(f'Moving files from temporary folder to {model_path}...')
+        for file in listdir(temp_dir):
+            if file.endswith('.zip'):
+                continue
+            src = os.path.join(temp_dir, file)
+            dst = os.path.join(model_path, file)
+            shutil.move(src, dst)
+
+        # Remove temp directory
+        print(f'Removing temporary folder...')
+        shutil.rmtree(temp_dir)
+        return True
+
+    except Exception as e:
+        traceback.print_exc()
+        return False
+
 
 def imagej_tiffwriter(
         new_path, data, metadata: dict, SizeT, SizeZ,

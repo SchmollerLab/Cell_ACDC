@@ -748,57 +748,33 @@ class createDataStructWin(QMainWindow):
                 )
 
             try:
-                java_output = myutils.download_acdc_java()
+                jre_path, jdk_path, url = download_java()
             except Exception as e:
                 print('======================================')
                 traceback.print_exc()
                 print('======================================')
-                _, jre_path, jre_file_id, _ = myutils.get_java_info()
-                _, jdk_path, jdk_file_id, _ = myutils.get_jdk_info()
-                java_url = f'https://drive.google.com/file/d/{jre_file_id}'
-                java_href = f'<a href="{java_url}">this</a>'
-
-                is_win = sys.platform.startswith("win")
-                if is_win:
-                    jdk_url = f'https://drive.google.com/file/d/{jdk_file_id}'
-                    jdk_href = f'<a href="{jdk_url}">this</a>'
-                    s = (
-                        f'Please download {java_href} and {jdk_href} .zip files '
-                        'and unzip their content into the following folder:<br><br>'
-                        f'{os.path.dirname(jre_path)}<br><br><br>'
-                        'Once unzipped you should have the following folders:<br><br>'
-                        f'{jre_path}<br>'
-                        f'{jdk_path}'
-                    )
-                    note = (
-                        '<br><br><i>NOTE: if clicking on the links above does not work'
-                        'copy the links below and paste them in your browser</i><br><br>'
-                        f'{java_url}<br><br>'
-                        f'{jdk_url}'
-                    )
-                else:
-                    s = (
-                        f'Please download {java_href} .zip file '
-                        'and unzip its content into the following folder:<br><br>'
-                        f'{os.path.dirname(jre_path)}<br><br><br>'
-                        'Once unzipped you should have the following folder:<br><br>'
-                        f'{jre_path}'
-                    )
-                    note = (
-                        '<br><br><i>NOTE: if clicking on the link above does not work'
-                        'copy the links below and paste them in your browser</i><br><br>'
-                        f'{java_url}'
-                    )
-
-                app = QApplication(sys.argv)
-
+                url, file_size, os_foldername, unzipped_foldername = get_java_url()
+                acdc_java_path, _ = get_acdc_java_path()
+                java_href = f'<a href="{url}">this</a>'
+                s = (
+                    f'1. Download {java_href} .zip file and unzip it.<br>'
+                    '2. Inside the unzipped folder there should be a folder called '
+                    f'"{unzipped_foldername}". Open that folder and copy its '
+                    'content to the following path:<br><br>'
+                    f'{os.path.join(acdc_java_path, os_foldername)}'
+                )
+                note = (
+                    '<br><br><i>NOTE: if clicking on the link above does not work '
+                    'copy the link below and paste it into the browser</i><br><br>'
+                    f'{url}'
+                )
                 msg = QMessageBox()
                 msg.setIcon(msg.Warning)
                 msg.setWindowTitle('Java not found')
                 msg.setTextFormat(Qt.RichText)
 
                 txt = (f"""
-                <p style=font-size:12px>
+                <p style=font-size:13px>
                     This module requires Java to work.<br><br>
                     Follow the instructions below and then try
                     launching this module again.<br><br>
@@ -815,10 +791,9 @@ class createDataStructWin(QMainWindow):
                     f'{err}'
                 )
 
-            if sys.platform.startswith('win'):
-                win = apps.warnVisualCppRequired(pkg_name='javabridge')
-                win.exec_()
-
+            # if sys.platform.startswith('win'):
+            #     win = apps.warnVisualCppRequired(pkg_name='javabridge')
+            #     win.exec_()
             myutils.install_javabridge()
 
         try:
@@ -827,9 +802,9 @@ class createDataStructWin(QMainWindow):
         except Exception as e:
             traceback.print_exc()
             error_msg = (
-            'Error while importing "javabridge" and "bioformats"\n\n'
-            'Please report detailed error (click "See more details") '
-            'here: https://github.com/SchmollerLab/Cell_ACDC/issues'
+                'Error while importing "javabridge" and "bioformats"\n\n'
+                'Please report detailed error (click "See more details") '
+                'here: https://github.com/SchmollerLab/Cell_ACDC/issues'
             )
             print('===============================================================')
             print(error_msg)
@@ -850,7 +825,7 @@ class createDataStructWin(QMainWindow):
             msg = QMessageBox(self.parent())
         msg.setTextFormat(Qt.RichText)
         msg.setIcon(msg.Critical)
-        msg.setWindowTitle('Not a Windows OS')
+        msg.setWindowTitle('Not a supported OS')
         msg.setStandardButtons(msg.Ok)
         err_msg = (f"""
         <p style="font-size:11px; line-height:1.2">
