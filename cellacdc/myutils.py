@@ -213,19 +213,18 @@ def download_examples(which='time_lapse_2D', progress=None):
     # https://drive.google.com/drive/u/0/folders/1OgUgp_HuYsZlDg_TVWPuhT4OdZXJHbAg
     if which == 'time_lapse_2D':
         foldername = 'TimeLapse_2D'
-        file_id = '1NhEyl8WVTsprtAQ9_JAMum--r_2mVkbj'
+        url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/CaMdYXiwxxoq3Ts/download/TimeLapse_2D.zip'
         file_size = 45143552
     elif which == 'snapshots_3D':
         foldername = 'Multi_3D_zStacks'
-        file_id = '1Y1KNmCeT4LrBW7hStcvc0zj-NMsR9u2W'
+        url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/CXZDoQMANNrKL7a/download/Yeast_Analysed_multi3D_zStacks.zip'
         file_size = 124822528
     else:
         return ''
 
-    main_path = pathlib.Path(__file__).resolve().parents[1]
-    data_path = main_path / 'data'
-    examples_path = data_path / 'examples'
-    example_path = examples_path / foldername
+    user_path = pathlib.Path.home()
+    examples_path = os.path.join(user_path, 'acdc-examples')
+    example_path = os.path.join(examples_path, 'examples')
 
     if os.path.exists(example_path):
         return example_path
@@ -235,8 +234,8 @@ def download_examples(which='time_lapse_2D', progress=None):
     if not os.path.exists(examples_path):
         os.makedirs(examples_path)
 
-    download_from_gdrive(
-        file_id, zip_dst, file_size=file_size, model_name=foldername,
+    download_url(
+        url, zip_dst, desc=f'example "{foldername}"', file_size=file_size,
         progress=progress
     )
     exctract_to = examples_path
@@ -513,11 +512,15 @@ def get_confirm_token(response):
             return value
     return None
 
-def download_url(url, dst, desc='', file_size=None, verbose=True):
+def download_url(
+        url, dst, desc='', file_size=None, verbose=True, progress=None
+    ):
     CHUNK_SIZE = 32768
     if verbose:
         print(f'Downloading {desc} to: {os.path.dirname(dst)}')
     response = requests.get(url, stream=True, timeout=20)
+    if file_size is not None and progress is not None:
+        progress.emit(file_size, -1)
     pbar = tqdm(
         total=file_size, unit='B', unit_scale=True,
         unit_divisor=1024, ncols=100
@@ -527,6 +530,8 @@ def download_url(url, dst, desc='', file_size=None, verbose=True):
             # if chunk:
             f.write(chunk)
             pbar.update(len(chunk))
+            if progress is not None:
+                progress.emit(-1, len(chunk))
     pbar.close()
 
 def save_response_content(
