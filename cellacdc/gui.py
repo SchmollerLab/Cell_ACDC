@@ -6730,6 +6730,9 @@ class guiWin(QMainWindow):
             img = self.ol_cells_img
         else:
             img = self.img1.image
+        if self.invertBwAction.isChecked():
+            # Revinvert black and white since neural net requires it
+            img = -img+numba_max(img)
         return img
 
     def autoAssignBud_YeastMate(self):

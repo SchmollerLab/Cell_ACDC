@@ -2,6 +2,7 @@
 figures
 !cellacdc/resources/figures
 
+env_dependencies_issues.txt
 not_installed_requirements.txt
 requirements_new.txt
 
