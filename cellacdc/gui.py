@@ -624,7 +624,7 @@ class guiWin(QMainWindow):
         self.logger = logger
 
     def loadLastSessionSettings(self):
-        cellacdc_path = os.path.dirname(os.path.realpath(__file__))
+        cellacdc_path = os.path.dirname(os.path.abspath(__file__))
         temp_path = os.path.join(cellacdc_path, 'temp')
         csv_path = os.path.join(temp_path, 'settings.csv')
         self.settings_csv_path = csv_path
@@ -10818,7 +10818,7 @@ class guiWin(QMainWindow):
     def addToRecentPaths(self, exp_path):
         if not os.path.exists(exp_path):
             return
-        cellacdc_path = os.path.dirname(os.path.realpath(__file__))
+        cellacdc_path = os.path.dirname(os.path.abspath(__file__))
         recentPaths_path = os.path.join(
             cellacdc_path, 'temp', 'recentPaths.csv'
         )
@@ -11642,7 +11642,7 @@ class guiWin(QMainWindow):
         # Step 0. Remove the old options from the menu
         self.openRecentMenu.clear()
         # Step 1. Read recent Paths
-        cellacdc_path = os.path.dirname(os.path.realpath(__file__))
+        cellacdc_path = os.path.dirname(os.path.abspath(__file__))
         recentPaths_path = os.path.join(
             cellacdc_path, 'temp', 'recentPaths.csv'
         )
@@ -11663,7 +11663,7 @@ class guiWin(QMainWindow):
         self.openRecentMenu.addActions(actions)
 
     def getMostRecentPath(self):
-        cellacdc_path = os.path.dirname(os.path.realpath(__file__))
+        cellacdc_path = os.path.dirname(os.path.abspath(__file__))
         recentPaths_path = os.path.join(
             cellacdc_path, 'temp', 'recentPaths.csv'
         )
