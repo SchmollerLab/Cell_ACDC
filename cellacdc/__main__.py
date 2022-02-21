@@ -540,7 +540,7 @@ class mainWin(QMainWindow):
             print('Cell-ACDC closed. Have a good day!')
             exit()
 
-def main():
+def run():
     print('Launching application...')
     # Handle high resolution displays:
     if hasattr(Qt, 'AA_EnableHighDpiScaling'):
@@ -568,4 +568,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    run()

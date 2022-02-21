@@ -755,13 +755,18 @@ def uint_to_float(img):
 
 def install_package_msg(pkg_name, parent=None):
     msg = QMessageBox()
-    txt = (
-        f'Cell-ACDC is going to download and install "{pkg_name}".\n\n'
-        'Make sure you have an active internet connection, '
-        'before continuing. '
-        'Progress will be displayed on the terminal\n\n'
-        'Alternatively, you can cancel the process and try later.'
-    )
+    txt = (f"""
+    <p>
+        Cell-ACDC is going to download and install <code>{pkg_name}</code>.<br><br>
+        Make sure you have an <b>active internet connection</b>,
+        before continuing.
+        Progress will be displayed on the terminal<br><br>
+        <b>IMPORTANT:</b> If the installation fails please install
+        <code>{pkg_name}</code> manually with the follwing command:<br><br>
+        <code>pip install {pkg_name}</code><br><br>
+        Alternatively, you can cancel the process and try later.
+    </p>
+    """)
     answer = msg.information(
         parent, f'Install {pkg_name}', txt, msg.Ok | msg.Cancel
     )
