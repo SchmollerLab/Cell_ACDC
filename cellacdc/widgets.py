@@ -103,6 +103,24 @@ class myGradientWidget(pg.GradientWidget):
 
         self.menu.insertSeparator(self.item.rgbAction)
 
+        self.labelsAlphaMenu = self.menu.addMenu('Segm. masks overlay alpha...')
+        self.labelsAlphaMenu.setDisabled(True)
+        hbox = QHBoxLayout()
+        self.labelsAlphaSlider = sliderWithSpinBox(
+            title='Alpha', title_loc='in_line', is_float=True,
+            normalize=True
+        )
+        self.labelsAlphaSlider.setMaximum(100)
+        self.labelsAlphaSlider.setValue(0.3)
+        hbox.addWidget(self.labelsAlphaSlider)
+        hbox.addWidget(QLabel('(Ctrl + Up/Down)'))
+        widget = QWidget()
+        widget.setLayout(hbox)
+        act = QWidgetAction(self)
+        act.setDefaultWidget(widget)
+        self.labelsAlphaMenu.addSeparator()
+        self.labelsAlphaMenu.addAction(act)
+
     def removeHSVcmaps(self):
         hsv_cmaps = []
         for g, grad in pg.graphicsItems.GradientEditorItem.Gradients.items():
@@ -319,6 +337,9 @@ class sliderWithSpinBox(QWidget):
 
     def onEditingFinished(self):
         self.editingFinished.emit()
+
+    def maximum(self):
+        return self.slider.maximum()
 
     def setValue(self, value):
         valueInt = value

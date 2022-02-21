@@ -46,8 +46,13 @@ def rgb_str_to_values(rgbString, errorRgb=(255,255,255)):
         r, g, b = re.findall('(\d+), (\d+), (\d+)', rgbString)[0]
         r, g, b = int(r), int(g), int(b)
     except TypeError:
-        traceback.print_exc()
-        r, g, b = errorRgb
+        try:
+            r, g, b = rgbString
+        except Exception as e:
+            print('======================')
+            traceback.print_exc()
+            print('======================')
+            r, g, b = errorRgb
     return r, g, b
 
 def rgba_str_to_values(rgbString, errorRgb=(255,255,255,255)):
@@ -143,9 +148,9 @@ def exec_time(func):
         return result
     return inner_function
 
-def setRetainSizePolicy(widget):
+def setRetainSizePolicy(widget, retain=True):
     sp = widget.sizePolicy()
-    sp.setRetainSizeWhenHidden(True)
+    sp.setRetainSizeWhenHidden(retain)
     widget.setSizePolicy(sp)
 
 def getBasename(files):

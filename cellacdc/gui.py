@@ -1202,7 +1202,8 @@ class guiWin(QMainWindow):
 
         self.wandControlsToolbar = QToolBar("Controls", self)
         self.wandToleranceSlider = widgets.sliderWithSpinBox(
-            title='Tolerance', title_loc='in_line')
+            title='Tolerance', title_loc='in_line'
+        )
         self.wandToleranceSlider.setValue(5)
 
         self.wandAutoFillCheckbox = QCheckBox('Auto-fill holes')
@@ -1554,6 +1555,10 @@ class guiWin(QMainWindow):
         self.shuffleCmapAction.triggered.connect(self.shuffle_cmap)
         self.labelsGrad.invertBwAction.toggled.connect(self.setCheckedInvertBW)
 
+        self.labelsGrad.labelsAlphaSlider.valueChanged.connect(
+            self.updateLabelsAlpha
+        )
+
         # Drawing mode
         self.drawIDsContComboBox.currentIndexChanged.connect(
                                                 self.drawIDsContComboBox_cb)
@@ -1672,9 +1677,6 @@ class guiWin(QMainWindow):
 
         self.bottomLayout = QHBoxLayout()
         img1BottomGroupbox = self.gui_addImg1BottomWidgets()
-        sp = img1BottomGroupbox.sizePolicy()
-        sp.setRetainSizeWhenHidden(True)
-        img1BottomGroupbox.setSizePolicy(sp)
         self.img1BottomGroupbox = img1BottomGroupbox
 
         self.bottomLayout.addSpacing(100)
@@ -1693,6 +1695,9 @@ class guiWin(QMainWindow):
         row += 1
         bottomLeftLayout.addWidget(self.t_label, row, 0, alignment=Qt.AlignRight)
         bottomLeftLayout.addWidget(self.navigateScrollBar, row, 1)
+        sp = self.navigateScrollBar.sizePolicy()
+        sp.setRetainSizeWhenHidden(True)
+        self.navigateScrollBar.setSizePolicy(sp)
 
         row += 1
         bottomLeftLayout.addWidget(
@@ -1714,6 +1719,12 @@ class guiWin(QMainWindow):
             self.alphaScrollBar_label, row, 0, alignment=Qt.AlignRight
         )
         bottomLeftLayout.addWidget(self.alphaScrollBar, row, 1)
+        sp = self.alphaScrollBar_label.sizePolicy()
+        sp.setRetainSizeWhenHidden(True)
+        self.alphaScrollBar_label.setSizePolicy(sp)
+        sp = self.alphaScrollBar.sizePolicy()
+        sp.setRetainSizeWhenHidden(True)
+        self.alphaScrollBar.setSizePolicy(sp)
 
         bottomLeftLayout.setColumnStretch(0,0)
         bottomLeftLayout.setColumnStretch(1,3)
@@ -2008,18 +2019,12 @@ class guiWin(QMainWindow):
         self.hist.vb.contextMenuEvent = self.gui_raiseContextMenuLUT
 
     def gui_initImg1BottomWidgets(self):
-        myutils.setRetainSizePolicy(self.zSliceScrollBar)
         self.zSliceScrollBar.hide()
-        myutils.setRetainSizePolicy(self.zProjComboBox)
         self.zProjComboBox.hide()
         self.z_label.hide()
-
-        myutils.setRetainSizePolicy(self.zSliceOverlay_SB)
         self.zSliceOverlay_SB.hide()
         self.zProjOverlay_CB.hide()
         self.overlay_z_label.hide()
-
-        myutils.setRetainSizePolicy(self.alphaScrollBar)
         self.alphaScrollBar.hide()
         self.alphaScrollBar_label.hide()
 
@@ -5199,11 +5204,23 @@ class guiWin(QMainWindow):
 
     def enableZstackWidgets(self, enabled):
         if enabled:
+            myutils.setRetainSizePolicy(self.zSliceScrollBar)
+            myutils.setRetainSizePolicy(self.zProjComboBox)
+            myutils.setRetainSizePolicy(self.z_label)
+            myutils.setRetainSizePolicy(self.zSliceOverlay_SB)
+            myutils.setRetainSizePolicy(self.zProjOverlay_CB)
+            myutils.setRetainSizePolicy(self.overlay_z_label)
             self.zSliceScrollBar.setDisabled(False)
             self.zProjComboBox.show()
             self.zSliceScrollBar.show()
             self.z_label.show()
         else:
+            myutils.setRetainSizePolicy(self.zSliceScrollBar, retain=False)
+            myutils.setRetainSizePolicy(self.zProjComboBox, retain=False)
+            myutils.setRetainSizePolicy(self.z_label, retain=False)
+            myutils.setRetainSizePolicy(self.zSliceOverlay_SB, retain=False)
+            myutils.setRetainSizePolicy(self.zProjOverlay_CB, retain=False)
+            myutils.setRetainSizePolicy(self.overlay_z_label, retain=False)
             self.zSliceScrollBar.setDisabled(True)
             self.zProjComboBox.hide()
             self.zSliceScrollBar.hide()
@@ -5321,6 +5338,13 @@ class guiWin(QMainWindow):
         only_ccaInfo = how == 'Draw only cell cycle info'
         ccaInfo_and_cont = how == 'Draw cell cycle info and contours'
         onlyMothBudLines = how == 'Draw only mother-bud lines'
+        IDs_and_masks = how == 'Draw IDs and overlay segm. masks'
+        onlyMasks = how == 'Draw only overlay segm. masks'
+
+        if how.find('segm. masks') != -1:
+            self.labelsGrad.labelsAlphaMenu.setDisabled(False)
+        else:
+            self.labelsGrad.labelsAlphaMenu.setDisabled(True)
 
         # Clear contours if requested
         if how.find('contours') == -1 or nothing:
@@ -5943,31 +5967,28 @@ class guiWin(QMainWindow):
 
     @exception_handler
     def keyPressEvent(self, ev):
-        if ev.key() == Qt.Key_U:
-            editID = apps.editID_QWidget([1,2,3], [1,2,3], parent=self)
-            editID.exec_()
-
         try:
             posData = self.data[self.pos_i]
         except AttributeError:
             return
+        isCtrlModifier = ev.modifiers() == Qt.ControlModifier
         isBrushActive = (
             self.brushButton.isChecked() or self.eraserButton.isChecked()
         )
-        if ev.key() == Qt.Key_Up:
+        if ev.key() == Qt.Key_Up and not isCtrlModifier:
             if isBrushActive:
                 self.brushSizeSpinbox.setValue(self.brushSizeSpinbox.value()+1)
             elif self.wandToolButton.isChecked():
                 val = self.wandToleranceSlider.value()
                 self.wandToleranceSlider.setValue(val+1)
-        elif ev.key() == Qt.Key_Control:
-            self.isCtrlDown = True
-        elif ev.key() == Qt.Key_Down:
+        elif ev.key() == Qt.Key_Down and not isCtrlModifier:
             if isBrushActive:
                 self.brushSizeSpinbox.setValue(self.brushSizeSpinbox.value()-1)
             elif self.wandToolButton.isChecked():
                 val = self.wandToleranceSlider.value()
                 self.wandToleranceSlider.setValue(val-1)
+        elif ev.key() == Qt.Key_Control:
+            self.isCtrlDown = True
         elif ev.key() == Qt.Key_Escape:
             self.setUncheckedAllButtons()
             if self.searchingID:
@@ -5995,7 +6016,7 @@ class guiWin(QMainWindow):
                 if posData.SizeZ > 1:
                     self.zSliceScrollBar.setSliderPosition(z)
                 self.ax1_point_ScatterPlot.setData([x], [y])
-        elif ev.modifiers() == Qt.ControlModifier:
+        elif isCtrlModifier:
             if ev.key() == Qt.Key_P:
                 self.logger.info('========================')
                 self.logger.info('CURRENT Cell cycle analysis table:')
@@ -6068,6 +6089,15 @@ class guiWin(QMainWindow):
                     self.logger.info(s)
 
                 self.updateALLimg()
+            elif ev.key() == Qt.Key_Up:
+                val = self.labelsGrad.labelsAlphaSlider.value()
+                delta = 1/self.labelsGrad.labelsAlphaSlider.maximum()
+                print()
+                self.labelsGrad.labelsAlphaSlider.setValue(val+delta)
+            elif ev.key() == Qt.Key_Down:
+                val = self.labelsGrad.labelsAlphaSlider.value()
+                delta = 1/self.labelsGrad.labelsAlphaSlider.maximum()
+                self.labelsGrad.labelsAlphaSlider.setValue(val-delta)
         elif ev.key() == Qt.Key_T:
             pass
             # posData = self.data[self.pos_i]
@@ -6093,8 +6123,8 @@ class guiWin(QMainWindow):
         elif ev.key() == Qt.Key_Space:
             how = self.drawIDsContComboBox.currentText()
             if how.find('nothing') == -1:
-                self.drawIDsContComboBox.setCurrentText('Draw nothing')
                 self.prev_how = how
+                self.drawIDsContComboBox.setCurrentText('Draw nothing')
             else:
                 try:
                     self.drawIDsContComboBox.setCurrentText(self.prev_how)
@@ -7569,7 +7599,9 @@ class guiWin(QMainWindow):
 
     def addFluoChNameContextMenuAction(self, ch_name):
         posData = self.data[self.pos_i]
-        allTexts = [action.text() for action in self.chNamesQActionGroup.actions()]
+        allTexts = [
+            action.text() for action in self.chNamesQActionGroup.actions()
+        ]
         if ch_name not in allTexts:
             action = QAction(self)
             action.setText(ch_name)
@@ -7577,6 +7609,10 @@ class guiWin(QMainWindow):
             self.chNamesQActionGroup.addAction(action)
             action.setChecked(True)
             posData.fluoDataChNameActions.append(action)
+        allTexts = [
+            action.text() for action in self.chNamesQActionGroup.actions()
+        ]
+        print(allTexts)
 
     def computeSegm(self):
         posData = self.data[self.pos_i]
@@ -9489,12 +9525,14 @@ class guiWin(QMainWindow):
         if maxID > len(posData.lut):
             self.extendLabelsLUT(10)
         colors = [posData.lut[ID]/255 for ID in posData.IDs]
+        alpha = self.labelsGrad.labelsAlphaSlider.value()
         if img.ndim == 2:
             self.img_layer0 = img
             img = img/numba_max(img)
             img = label2rgb(
                 posData.lab, image=img, colors=colors,
-                bg_label=0, bg_color=(0.1, 0.1, 0.1)
+                bg_label=0, bg_color=(0.1, 0.1, 0.1),
+                alpha=alpha
             )
         return img
 
@@ -9996,6 +10034,9 @@ class guiWin(QMainWindow):
         lut[:ID] = lut[:ID]*0.2
         lut[ID+1:] = lut[ID+1:]*0.2
         self.img2.setLookupTable(lut)
+
+    def updateLabelsAlpha(self, value):
+        self.updateALLimg(only_ax1=True)
 
     @exception_handler
     def updateALLimg(
