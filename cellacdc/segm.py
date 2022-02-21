@@ -28,9 +28,6 @@ from PyQt5 import QtGui
 
 # Custom modules
 from . import prompts, load, myutils, apps, core, dataPrep
-
-from .models.YeaZ.unet import tracking
-
 from . import qrc_resources
 
 if os.name == 'nt':

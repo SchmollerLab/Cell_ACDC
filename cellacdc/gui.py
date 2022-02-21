@@ -66,8 +66,6 @@ from PyQt5.QtWidgets import (
 from pyqtgraph.Qt import QtGui
 import pyqtgraph as pg
 
-from .models.YeaZ.unet import tracking as tracking_yeaz
-
 # NOTE: Enable icons
 from . import qrc_resources
 
@@ -512,6 +510,9 @@ class guiWin(QMainWindow):
 
     def __init__(self, app, parent=None, buttonToRestore=None, mainWin=None):
         """Initializer."""
+        from .models.YeaZ.unet import tracking as tracking_yeaz
+        self.tracking_yeaz = tracking_yeaz
+
         super().__init__(parent)
 
         self.is_win = sys.platform.startswith("win")
@@ -10337,7 +10338,7 @@ class guiWin(QMainWindow):
                     posData=posData
                 )
             elif self.trackWithYeazAction.isChecked():
-                tracked_lab = tracking_yeaz.correspondence(
+                tracked_lab = self.tracking_yeaz.correspondence(
                     prev_lab, posData.lab, use_modified_yeaz=True,
                     use_scipy=True
                 )
