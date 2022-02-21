@@ -445,11 +445,10 @@ def get_model_path(model_name, create_temp_dir=True):
                     model_path = txt.read()
                 break
         else:
-            user_path = pathlib.Path.home()
-            model_path = os.path.join(str(user_path), f'acdc-{model_name}')
+            model_path = _write_model_location_to_txt(model_name)
     else:
-        user_path = pathlib.Path.home()
-        model_path = os.path.join(str(user_path), f'acdc-{model_name}')
+        os.makedirs(model_info_path)
+        model_path = _write_model_location_to_txt(model_name)
 
     if not os.path.exists(model_path):
         os.makedirs(model_path)
@@ -604,6 +603,17 @@ def check_v123_model_path(model_name):
         return v123_model_path
     else:
         return ''
+
+def _write_model_location_to_txt(model_name):
+    cellacdc_path = os.path.dirname(os.path.realpath(__file__))
+    model_info_path = os.path.join(cellacdc_path, 'models', model_name, 'model')
+    user_path = pathlib.Path.home()
+    model_path = os.path.join(str(user_path), f'acdc-{model_name}')
+    file = 'weights_location_path.txt'
+    with open(os.path.join(model_info_path, file), 'w') as txt:
+        txt.write(model_path)
+    return model_path
+
 
 def download_model(model_name):
     if model_name != 'YeastMate' and model_name != 'YeaZ':

@@ -38,7 +38,7 @@ except ModuleNotFoundError:
         app = QApplication(sys.argv)
 
     from cellacdc import myutils
-    cancel = myutils.install_package_msg('YeastMate', parent=self)
+    cancel = myutils.install_package_msg('YeastMate')
     if cancel:
         raise ModuleNotFoundError(
             'User aborted YeastMate installation'

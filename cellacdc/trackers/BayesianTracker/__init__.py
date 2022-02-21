@@ -7,7 +7,7 @@ except ModuleNotFoundError:
     import subprocess
     from PyQt5.QtWidgets import QMessageBox
     from cellacdc import myutils
-    cancel = myutils.install_package_msg(pkg_name, parent=self)
+    cancel = myutils.install_package_msg(pkg_name)
     if cancel:
         raise ModuleNotFoundError(
             f'User aborted {pkg_name} installation'
