@@ -2891,7 +2891,10 @@ class guiWin(QMainWindow):
                 val = _img[ydata, xdata]
                 maxVal = numba_max(_img)
                 ID = posData.lab[ydata, xdata]
-                maxID = max(posData.IDs)
+                if posData.IDs:
+                    maxID = max(posData.IDs)
+                else:
+                    maxID = 0
                 if _img.ndim > 2:
                     val = [v for v in val]
                     value = f'{val}'
@@ -2900,7 +2903,7 @@ class guiWin(QMainWindow):
                 txt = (
                     f'x={x:.2f}, y={y:.2f}, value={value}, '
                     f'max={maxVal:.2f}, ID={ID}, max_ID={maxID}, '
-                    f'num. of cells={len(posData.IDs)}'
+                    f'num. of objects={len(posData.IDs)}'
                 )
                 xx, yy = self.ax1_rulerPlotItem.getData()
                 if xx is not None:
@@ -3027,12 +3030,21 @@ class guiWin(QMainWindow):
             Y, X = _img.shape
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                 val = _img[ydata, xdata]
-                maxID = max(posData.IDs)
+                if posData.IDs:
+                    maxID = max(posData.IDs)
+                else:
+                    maxID = 0
                 maxVal = numba_max(self.img1.image)
+                img1_val = self.img1.image[ydata, xdata]
+                if self.img1.image.ndim > 2:
+                    img1_val = [v for v in img1_val]
+                    value = f'{img1_val}'
+                else:
+                    value = f'{img1_val:.2f}'
                 self.wcLabel.setText(
                     f'x={x:.2f}, y={y:.2f}, value={value}, '
-                    f'max={maxVal:.2f}, ID={ID}, max_ID={maxID}, '
-                    f'num. of cells={len(posData.IDs)}'
+                    f'max={maxVal:.2f}, ID={val}, max_ID={maxID}, '
+                    f'num. of objects={len(posData.IDs)}'
                 )
             else:
                 if self.eraserButton.isChecked() or self.brushButton.isChecked():
@@ -6732,8 +6744,11 @@ class guiWin(QMainWindow):
         self.checkIfAutoSegm()
 
     def getDisplayedCellsImg(self):
+        how = self.drawIDsContComboBox.currentText()
         if self.overlayButton.isChecked():
             img = self.ol_cells_img
+        elif how.find('segm. masks') != -1:
+            img = self.img_layer0
         else:
             img = self.img1.image
         if self.invertBwAction.isChecked():
@@ -9467,10 +9482,15 @@ class guiWin(QMainWindow):
             return img
 
         posData = self.data[self.pos_i]
-        if max(posData.IDs) > len(posData.lut):
+        if posData.IDs:
+            maxID = max(posData.IDs)
+        else:
+            maxID = 0
+        if maxID > len(posData.lut):
             self.extendLabelsLUT(10)
         colors = [posData.lut[ID]/255 for ID in posData.IDs]
         if img.ndim == 2:
+            self.img_layer0 = img
             img = img/numba_max(img)
             img = label2rgb(
                 posData.lab, image=img, colors=colors,
@@ -9571,7 +9591,10 @@ class guiWin(QMainWindow):
         # Insert background color
         if 'labels_bkgrColor' in self.df_settings.index:
             rgbString = self.df_settings.at['labels_bkgrColor', 'value']
-            r, g, b = myutils.rgb_str_to_values(rgbString)
+            try:
+                r, g, b = rgbString
+            except Exception as e:
+                r, g, b = myutils.rgb_str_to_values(rgbString)
         else:
             r, g, b = 25, 25, 25
             self.df_settings.at['labels_bkgrColor', 'value'] = (r, g, b)
