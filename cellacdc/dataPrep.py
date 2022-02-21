@@ -1507,10 +1507,7 @@ class dataPrepWin(QMainWindow):
                     zz = None
                 if align:
                     aligned_frames, shifts = align_func(
-                                              tif_data,
-                                              slices=zz,
-                                              user_shifts=posData.loaded_shifts,
-                                              pbar=True
+                        tif_data, slices=zz, user_shifts=posData.loaded_shifts
                     )
                     posData.loaded_shifts = shifts
                 else:

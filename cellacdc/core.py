@@ -209,11 +209,12 @@ def align_frames_3D(
     return data_aligned, registered_shifts
 
 
-def align_frames_2D(data, slices=None, register=True,
-                          user_shifts=None, pbar=False):
+def align_frames_2D(
+        data, slices=None, register=True, user_shifts=None, pbar=False
+    ):
     registered_shifts = np.zeros((len(data),2), int)
     data_aligned = np.copy(data)
-    for frame_i, frame_V in enumerate(data):
+    for frame_i, frame_V in enumerate(tqdm(data, ncols=100)):
         if frame_i != 0:  # skip first frame
             curr_frame_img = frame_V
             prev_frame_img = data_aligned[frame_i-1] #previously aligned frame, slice
