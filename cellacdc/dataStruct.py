@@ -748,13 +748,14 @@ class createDataStructWin(QMainWindow):
                 )
 
             try:
-                jre_path, jdk_path, url = download_java()
+                jre_path, jdk_path, url = myutils.download_java()
             except Exception as e:
                 print('======================================')
                 traceback.print_exc()
                 print('======================================')
-                url, file_size, os_foldername, unzipped_foldername = get_java_url()
-                acdc_java_path, _ = get_acdc_java_path()
+                java_info = myutils.get_java_url()
+                url, file_size, os_foldername, unzipped_foldername = java_info
+                acdc_java_path, _ = myutils.get_acdc_java_path()
                 java_href = f'<a href="{url}">this</a>'
                 s = (
                     f'1. Download {java_href} .zip file and unzip it.<br>'

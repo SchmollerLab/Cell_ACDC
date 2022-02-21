@@ -510,7 +510,7 @@ class guiWin(QMainWindow):
 
     def __init__(self, app, parent=None, buttonToRestore=None, mainWin=None):
         """Initializer."""
-        from .models.YeaZ.unet import tracking as tracking_yeaz
+        from .trackers.YeaZ import tracking as tracking_yeaz
         self.tracking_yeaz = tracking_yeaz
 
         super().__init__(parent)
@@ -2891,7 +2891,7 @@ class guiWin(QMainWindow):
                 val = _img[ydata, xdata]
                 maxVal = numba_max(_img)
                 ID = posData.lab[ydata, xdata]
-                maxID = numba_max(posData.lab)
+                maxID = max(posData.IDs)
                 if _img.ndim > 2:
                     val = [v for v in val]
                     value = f'{val}'
@@ -2899,7 +2899,8 @@ class guiWin(QMainWindow):
                     value = f'{val:.2f}'
                 txt = (
                     f'x={x:.2f}, y={y:.2f}, value={value}, '
-                    f'max={maxVal:.2f}, ID={ID}, max_ID={maxID}'
+                    f'max={maxVal:.2f}, ID={ID}, max_ID={maxID}, '
+                    f'num. of cells={len(posData.IDs)}'
                 )
                 xx, yy = self.ax1_rulerPlotItem.getData()
                 if xx is not None:
@@ -3026,8 +3027,12 @@ class guiWin(QMainWindow):
             Y, X = _img.shape
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                 val = _img[ydata, xdata]
+                maxID = max(posData.IDs)
+                maxVal = numba_max(self.img1.image)
                 self.wcLabel.setText(
-                    f'(x={x:.2f}, y={y:.2f}, value={val:.0f}, max={numba_max(_img)})'
+                    f'x={x:.2f}, y={y:.2f}, value={value}, '
+                    f'max={maxVal:.2f}, ID={ID}, max_ID={maxID}, '
+                    f'num. of cells={len(posData.IDs)}'
                 )
             else:
                 if self.eraserButton.isChecked() or self.brushButton.isChecked():
@@ -9892,8 +9897,9 @@ class guiWin(QMainWindow):
         maxTick = self.hist.gradient.getTick(1)
         self.hist.gradient.setTickValue(minTick, min)
         self.hist.gradient.setTickValue(maxTick, max)
-        self.hist.setLevels(min=numba_min(imageItem.image),
-                            max=numba_max(imageItem.image))
+        self.hist.setLevels(
+            min=numba_min(imageItem.image), max=numba_max(imageItem.image)
+        )
         h = imageItem.getHistogram()
         self.hist.plot.setData(*h)
         if connect:
