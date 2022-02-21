@@ -1,5 +1,7 @@
-from cellacdc.models.YeaZ.unet import tracking
+import os
 import numpy as np
+
+from cellacdc.models.YeaZ.unet import tracking
 
 class tracker:
     def __init__(self):
