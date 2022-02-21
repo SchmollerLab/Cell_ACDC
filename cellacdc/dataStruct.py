@@ -302,19 +302,20 @@ class bioFormatsWorker(QObject):
             self.emWavelens = emWavelens
         else:
             self.mutex.lock()
-            self.progress.emit('Reading sample image data...')
             sampleImgData = []
-            for c in range(SizeC):
-                imgData_z = []
-                with bioformats.ImageReader(rawFilePath) as reader:
-                    for z in range(SizeZ):
-                        imgData = reader.read(
-                            c=c, z=z, t=0, rescale=False
-                        )
-                        imgData_z.append(imgData)
-                imgData_z = np.array(imgData_z, dtype=imgData.dtype)
-                imgData_z = np.squeeze(imgData_z)
-                sampleImgData.append(imgData_z)
+            if self.rawDataStruct != 2:
+                self.progress.emit('Reading sample image data...')
+                for c in range(SizeC):
+                    imgData_z = []
+                    with bioformats.ImageReader(rawFilePath) as reader:
+                        for z in range(SizeZ):
+                            imgData = reader.read(
+                                c=c, z=z, t=0, rescale=False
+                            )
+                            imgData_z.append(imgData)
+                    imgData_z = np.array(imgData_z, dtype=imgData.dtype)
+                    imgData_z = np.squeeze(imgData_z)
+                    sampleImgData.append(imgData_z)
             self.confirmMetadata.emit(
                 filename, LensNA, DimensionOrder, SizeT, SizeZ, SizeC, SizeS,
                 TimeIncrement, TimeIncrementUnit, PhysicalSizeX, PhysicalSizeY,
@@ -483,7 +484,8 @@ class bioFormatsWorker(QObject):
                 pos_rawFilenames.append(rawFilename)
                 raw_src_path = os.path.dirname(rawFilePath)
                 rawFilePath = [
-                    os.path.join(raw_src_path, f) for f in myutils.listdir(raw_src_path)
+                    os.path.join(raw_src_path, f)
+                    for f in myutils.listdir(raw_src_path)
                     if f.find(rawFilename)!=-1
                 ][0]
 
@@ -614,7 +616,8 @@ class bioFormatsWorker(QObject):
             for p_idx, pos in enumerate(self.posNums):
                 p = pos-1
                 abort = self.saveToPosFolder(
-                    p, raw_src_path, exp_dst_path, self.basename, 0, p_idx=p_idx
+                    p, raw_src_path, exp_dst_path, self.basename,
+                    0, p_idx=p_idx
                 )
                 if abort:
                     self.aborted = True
@@ -685,16 +688,16 @@ class createDataStructWin(QMainWindow):
         </head>
         <body>
         <blockquote>
-        <p style="font-size:13px; line-height:1.2">
+        <p style="font-size:14px; line-height:1.2">
             This <b>wizard</b> will guide you through the <b>creation of the required
             data structure</b><br> starting from the raw microscopy file(s)
         </p>
-        <p style="font-size:11px; line-height:1.2">
+        <p style="font-size:12px; line-height:1.2">
             Follow the instructions in the pop-up windows.<br>
             Note that pop-ups might be minimized or behind other open windows.<br>
             Keep an eye on the terminal/console in case of any error.
         </p>
-        <p style="font-size:11px; line-height:1.2">
+        <p style="font-size:12px; line-height:1.2">
             Progress will be displayed below.
         </p>
         </blockquote>
@@ -712,9 +715,6 @@ class createDataStructWin(QMainWindow):
 
         self.logWin = QPlainTextEdit()
         self.logWin.setReadOnly(True)
-        font = QtGui.QFont()
-        font.setPointSize(10)
-        self.logWin.setFont(font)
         mainLayout.addWidget(self.logWin)
 
         abortButton = QPushButton('Abort process')
@@ -1240,15 +1240,10 @@ class createDataStructWin(QMainWindow):
             files = [win.selectedItemText]
 
     def attemptSeparateMultiChannel(self, rawFilenames):
-        basename = myutils.getBasename(rawFilenames)
-        if not basename:
-            self.criticalNoFilenamePattern()
-            return False
-
-        self.basename = basename
 
         self.chNames = set()
         self.posNums = set()
+        stripped_filenames = []
         for file in rawFilenames:
             filename, ext = os.path.splitext(file)
             m_iter = myutils.findalliter(f'(\d+)_(.+)', filename)
@@ -1262,10 +1257,19 @@ class createDataStructWin(QMainWindow):
                 posNum, chName = int(m[0][0]), m[0][1]
                 self.chNames.add(chName)
                 self.posNums.add(posNum)
+                ch_idx = filename.find(f'{posNum}_{chName}')
+                stripped_filenames.append(filename[:ch_idx])
             except Exception as e:
                 traceback.print_exc()
                 self.criticalNoFilenamePattern(error=traceback.format_exc())
                 return False
+
+        basename = myutils.getBasename(stripped_filenames)
+        if not basename:
+            self.criticalNoFilenamePattern()
+            return False
+
+        self.basename = basename
 
         self.posNums = sorted(list(self.posNums))
         self.chNames = list(self.chNames)

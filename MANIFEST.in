@@ -3,6 +3,7 @@ include notebooks
 include UserManual
 include FijiMacros
 include cellacdc/resources/*
+include cellacdc/bioformats/jars/*
 
 exclude cellacdc/deprecated.py
 exclude cellacdc/lastCommit.txt
