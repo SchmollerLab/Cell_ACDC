@@ -72,8 +72,6 @@ def remove_artefacts(
     if return_delIDs:
         delIDs = []
     for obj in rp:
-        minor_axis_length = max(1, obj.minor_axis_length)
-        elongation = obj.major_axis_length/minor_axis_length
         if obj.area < min_area:
             lab[obj.slice][obj.image] = 0
             if return_delIDs:

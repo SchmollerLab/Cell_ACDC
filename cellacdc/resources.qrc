@@ -61,6 +61,8 @@
     <file alias="curv_cursor.svg">resources/icons/curv_cursor.svg</file>
     <file alias="fill_holes.svg">resources/icons/fill_holes.svg</file>
     <file alias="find.svg">resources/icons/find.svg</file>
+    <file alias="expand.svg">resources/icons/expand.svg</file>
+    <file alias="collapse.svg">resources/icons/collapse.svg</file>
     <file alias="visualcpp.png">resources/screenshots/visual_studio_settings.png</file>
     <file alias="Ubuntu-Bold.ttf">resources/fonts/Ubuntu-Bold.ttf</file>
     <file alias="Ubuntu-Regular.ttf">resources/fonts/Ubuntu-Regular.ttf</file>

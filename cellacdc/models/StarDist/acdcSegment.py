@@ -11,6 +11,10 @@ stardist_default_models = [
 
 class Model:
     def __init__(self, model_name='T_cell'):
+        stardist_path = os.path.dirname(os.path.abspath(__file__))
+        T_cell_path = os.path.join(stardist_path, 'model', 'T_cell')
+        if not os.path.exists(T_cell_path):
+            model_name = stardist_default_models[0]
         # Initialize model
         if model_name in stardist_default_models:
             self.model = StarDist2D.from_pretrained(model_name)

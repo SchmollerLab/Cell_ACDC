@@ -3419,6 +3419,7 @@ class askStopFrameSegm(QDialog):
             posData=posData, spinBox=spinBox
         )
         self.slideshowWin.update_img()
+        self.slideshowWin.framesScrollBar.setDisabled(True)
         self.slideshowWin.show()
 
     def exec_(self):

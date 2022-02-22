@@ -18,13 +18,129 @@ from PyQt5.QtWidgets import (
     QLineEdit, QSlider, QSpinBox, QGridLayout, QDockWidget,
     QScrollArea, QSizePolicy, QComboBox, QPushButton, QScrollBar,
     QGroupBox, QAbstractSlider, QDoubleSpinBox, QWidgetAction,
-    QAction
+    QAction, QTabWidget, QAbstractSpinBox
 )
 
 import pyqtgraph as pg
 
 from . import myutils, apps
 from . import qrc_resources
+
+class readOnlyDoubleSpinbox(QDoubleSpinBox):
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
+        self.setReadOnly(True)
+        self.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        self.setAlignment(Qt.AlignCenter)
+        self.setMaximum(2**31-1)
+        self.setStyleSheet('background-color: rgba(240, 240, 240, 200);')
+
+class readOnlySpinbox(QSpinBox):
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
+        self.setReadOnly(True)
+        self.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        self.setAlignment(Qt.AlignCenter)
+        self.setMaximum(2**31-1)
+        self.setStyleSheet('background-color: rgba(240, 240, 240, 200);')
+
+class objPropsQGBox(QGroupBox):
+    def __init__(self, *args):
+        QGroupBox.__init__(self, *args)
+
+        mainLayout = QGridLayout()
+
+        row = 0
+        label = QLabel('Object ID: ')
+        self.idSB = QSpinBox()
+        self.idSB.setMaximum(2**16)
+        self.idSB.setButtonSymbols(QAbstractSpinBox.NoButtons)
+        self.idSB.setAlignment(Qt.AlignCenter)
+        mainLayout.addWidget(label, row, 0)
+        mainLayout.addWidget(self.idSB, row, 1)
+
+        row += 1
+        self.notExistingIDLabel = QLabel()
+        self.notExistingIDLabel.setStyleSheet(
+            'font-size:11px; color: rgb(255, 0, 0);'
+        )
+        mainLayout.addWidget(
+            self.notExistingIDLabel, row, 0, 1, 2, alignment=Qt.AlignCenter
+        )
+
+        row += 1
+        label = QLabel('Area (pixel): ')
+        self.cellAreaPxlSB = readOnlySpinbox()
+        mainLayout.addWidget(label, row, 0)
+        mainLayout.addWidget(self.cellAreaPxlSB, row, 1)
+
+        row += 1
+        label = QLabel('Area (<span>&#181;</span>m<sup>2</sup>): ')
+        self.cellAreaUm2DSB = readOnlyDoubleSpinbox()
+        mainLayout.addWidget(label, row, 0)
+        mainLayout.addWidget(self.cellAreaUm2DSB, row, 1)
+
+        row += 1
+        label = QLabel('Volume (voxel): ')
+        self.cellVolVoxSB = readOnlySpinbox()
+        mainLayout.addWidget(label, row, 0)
+        mainLayout.addWidget(self.cellVolVoxSB, row, 1)
+
+        row += 1
+        label = QLabel('Volume (fl): ')
+        self.cellVolFlDSB = readOnlyDoubleSpinbox()
+        mainLayout.addWidget(label, row, 0)
+        mainLayout.addWidget(self.cellVolFlDSB, row, 1)
+
+        row += 1
+        label = QLabel('Solidity: ')
+        self.solidityDSB = readOnlyDoubleSpinbox()
+        self.solidityDSB.setMaximum(1)
+        mainLayout.addWidget(label, row, 0)
+        mainLayout.addWidget(self.solidityDSB, row, 1)
+
+        row += 1
+        label = QLabel('Elongation: ')
+        self.elongationDSB = readOnlyDoubleSpinbox()
+        mainLayout.addWidget(label, row, 0)
+        mainLayout.addWidget(self.elongationDSB, row, 1)
+
+        mainLayout.setColumnStretch(1, 3)
+        self.setLayout(mainLayout)
+
+class guiTabControl(QTabWidget):
+    def __init__(self, *args):
+        super().__init__(args[0])
+
+        self.propsTab = QScrollArea(self)
+        self.propsQGBox = objPropsQGBox(self.propsTab)
+        self.propsTab.setWidget(self.propsQGBox)
+
+        self.addTab(self.propsTab, 'Analysis paramenters')
+
+class expandCollapseButton(QPushButton):
+    def __init__(self, parent=None):
+        QPushButton.__init__(self, parent)
+        self.setIcon(QIcon(":expand.svg"))
+        self.setFlat(True)
+        self.installEventFilter(self)
+        self.isExpand = True
+        self.clicked.connect(self.buttonClicked)
+
+    def buttonClicked(self, checked=False):
+        if self.isExpand:
+            self.setIcon(QIcon(":collapse.svg"))
+            self.isExpand = False
+        else:
+            self.setIcon(QIcon(":expand.svg"))
+            self.isExpand = True
+
+    def eventFilter(self, object, event):
+        if event.type() == QEvent.HoverEnter:
+            self.setFlat(False)
+        elif event.type() == QEvent.HoverLeave:
+            self.setFlat(True)
+        return False
 
 class view_visualcpp_screenshot(QWidget):
     def __init__(self, parent=None):
