@@ -73,6 +73,7 @@ from . import qrc_resources
 from . import base_cca_df
 from . import load, prompts, apps
 from . import core, myutils, dataPrep, widgets
+from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .core import numba_max, numba_min
 from .myutils import exec_time
@@ -1583,6 +1584,7 @@ class guiWin(QMainWindow):
             'Draw IDs and overlay segm. masks',
             'Draw only cell cycle info',
             'Draw cell cycle info and contours',
+            'Draw cell cycle info and overlay segm. masks',
             'Draw only mother-bud lines',
             'Draw only IDs',
             'Draw only contours',
@@ -1590,11 +1592,12 @@ class guiWin(QMainWindow):
             'Draw nothing'
         ]
         self.drawIDsContComboBoxCcaItems = [
-            'Draw only cell cycle info',
-            'Draw cell cycle info and contours',
-            'Draw only mother-bud lines',
             'Draw IDs and contours',
             'Draw IDs and overlay segm. masks',
+            'Draw only cell cycle info',
+            'Draw cell cycle info and contours',
+            'Draw cell cycle info and overlay segm. masks',
+            'Draw only mother-bud lines',
             'Draw only IDs',
             'Draw only contours',
             'Draw only overlay segm. masks',
@@ -2792,12 +2795,9 @@ class guiWin(QMainWindow):
                 if erasedID == 0:
                     continue
                 self.erasesedLab[posData.lab==erasedID] = erasedID
-            erasedRp = skimage.measure.regionprops(self.erasesedLab)
-            for obj in erasedRp:
-                idx = obj.label-1
-                curveID = self.ax1_ContoursCurves[idx]
-                cont = self.getObjContours(obj)
-                curveID.setData(cont[:,0], cont[:,1], pen=self.oldIDs_cpen)
+
+            how = self.drawIDsContComboBox.currentText()
+            self.setTempImg1Eraser(mask)
 
         # Wand dragging mouse --> keep doing the magic
         elif self.isMouseDragImg1 and self.wandToolButton.isChecked():
@@ -3449,8 +3449,6 @@ class guiWin(QMainWindow):
         if isPanImageClick:
             dragImgLeft = True
 
-        dragImgMiddle = middle_click
-
         # Right click in snapshot mode is for spline tool
         canAnnotateDivision = (
              not self.assignBudMothButton.isChecked()
@@ -3480,19 +3478,20 @@ class guiWin(QMainWindow):
             event.ignore()
             return
 
-        if dragImgMiddle:
-            pg.ImageItem.mousePressEvent(self.img1, event)
-            event.ignore()
-            return
+        dragImgMiddle = middle_click
+        # if dragImgMiddle:
+        #     pg.ImageItem.mousePressEvent(self.img1, event)
+        #     event.ignore()
+        #     return
 
         if mode == 'Viewer' and not canRuler:
             self.startBlinkingModeCB()
             event.ignore()
             return
 
-        # Allow right-click actions on both images
+        # Allow right-click or middle-click actions on both images
         eventOnImg2 = (
-            (right_click)
+            (right_click or middle_click)
             and (mode=='Segmentation and Tracking' or self.isSnapshot)
         )
         if eventOnImg2:
@@ -3539,7 +3538,12 @@ class guiWin(QMainWindow):
                 self.setImageImg2(updateLookuptable=False)
 
                 img = self.img1.image.copy()
-                if self.overlayButton.isChecked():
+                how = self.drawIDsContComboBox.currentText()
+                isRGB = (
+                    self.overlayButton.isChecked()
+                    or how.find('segm. masks') != -1
+                )
+                if isRGB:
                     self.imgRGB = img/numba_max(img)
                 else:
                     img = img/numba_max(img)
@@ -3588,12 +3592,12 @@ class guiWin(QMainWindow):
                     if erasedID == 0:
                         continue
                     self.erasesedLab[posData.lab==erasedID] = erasedID
-                erasedRp = skimage.measure.regionprops(self.erasesedLab)
-                for obj in erasedRp:
-                    idx = obj.label-1
-                    curveID = self.ax1_ContoursCurves[idx]
-                    cont = self.getObjContours(obj)
-                    curveID.setData(cont[:,0], cont[:,1], pen=self.oldIDs_cpen)
+
+                self.getDisplayedCellsImg()
+                how = self.drawIDsContComboBox.currentText()
+                if how.find('segm. masks') != -1:
+                    self.img1_RGB = gray2rgb(self.img_layer0)
+                self.setTempImg1Eraser(mask)
 
                 self.img2.updateImage()
                 self.isMouseDragImg1 = True
@@ -3609,8 +3613,12 @@ class guiWin(QMainWindow):
                 xxRA, yyRA = self.ax1_rulerAnchorsItem.getData()
                 if self.isCtrlDown:
                     ydata = yyRA[0]
-                self.ax1_rulerPlotItem.setData([xxRA[0], xdata], [yyRA[0], ydata])
-                self.ax1_rulerAnchorsItem.setData([xxRA[0], xdata], [yyRA[0], ydata])
+                self.ax1_rulerPlotItem.setData(
+                    [xxRA[0], xdata], [yyRA[0], ydata]
+                )
+                self.ax1_rulerAnchorsItem.setData(
+                    [xxRA[0], xdata], [yyRA[0], ydata]
+                )
 
         elif right_click and canCurv:
             # Draw manually assisted auto contour
@@ -3689,7 +3697,11 @@ class guiWin(QMainWindow):
 
                 img = self.img1.image.copy()
                 img = img/numba_max(img)
-                if self.overlayButton.isChecked():
+                isRGB = (
+                    self.overlayButton.isChecked()
+                    or how.find('segm. masks') != -1
+                )
+                if isRGB:
                     self.imgRGB = img/numba_max(img)
                 else:
                     self.imgRGB = gray2rgb(img)
@@ -3830,10 +3842,6 @@ class guiWin(QMainWindow):
             self.annotateIsHistoryKnown(ID)
             if not self.setIsHistoryKnownButton.findChild(QAction).isChecked():
                 self.setIsHistoryKnownButton.setChecked(False)
-
-        # Allow mid-click actions on both images
-        elif middle_click:
-            self.gui_mousePressEventImg2(event)
 
     def storeTrackingAlgo(self, checked):
         if not checked:
@@ -5481,8 +5489,8 @@ class guiWin(QMainWindow):
             self.addExistingDelROIs()
             self.checkTrackingEnabled()
             self.setEnabledCcaToolbar(enabled=False)
-            self.drawIDsContComboBox.clear()
-            self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
+            # self.drawIDsContComboBox.clear()
+            # self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
             try:
                 self.undoAction.triggered.disconnect()
                 self.redoAction.triggered.disconnect()
@@ -5514,9 +5522,19 @@ class guiWin(QMainWindow):
                 except Exception as e:
                     pass
                 self.undoAction.triggered.connect(self.UndoCca)
-                self.drawIDsContComboBox.clear()
-                self.drawIDsContComboBox.addItems(
-                                        self.drawIDsContComboBoxCcaItems)
+                how = self.drawIDsContComboBox.currentText()
+                if how.find('segm. masks') != -1:
+                    self.drawIDsContComboBox.setCurrentText(
+                        'Draw cell cycle info and overlay segm. masks'
+                    )
+                elif how.find('contours') != -1:
+                    self.drawIDsContComboBox.setCurrentText(
+                        'Draw cell cycle info and contours'
+                    )
+                else:
+                    self.drawIDsContComboBox.setCurrentText(
+                        'Draw only cell cycle info'
+                    )
         elif mode == 'Viewer':
             self.modeToolBar.setVisible(True)
             self.setEnabledWidgetsToolbar(False)
@@ -5527,8 +5545,8 @@ class guiWin(QMainWindow):
             self.undoAction.setDisabled(True)
             self.redoAction.setDisabled(True)
             currentMode = self.drawIDsContComboBox.currentText()
-            self.drawIDsContComboBox.clear()
-            self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxCcaItems)
+            # self.drawIDsContComboBox.clear()
+            # self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxCcaItems)
             self.drawIDsContComboBox.setCurrentText(currentMode)
             self.navigateScrollBar.setMaximum(posData.segmSizeT)
             try:
@@ -5544,10 +5562,10 @@ class guiWin(QMainWindow):
                 pass
             self.undoAction.triggered.connect(self.undo)
             self.redoAction.triggered.connect(self.redo)
-            self.drawIDsContComboBox.clear()
-            self.drawIDsContComboBox.addItems(
-                self.drawIDsContComboBoxCcaItems
-            )
+            # self.drawIDsContComboBox.clear()
+            # self.drawIDsContComboBox.addItems(
+            #     self.drawIDsContComboBoxCcaItems
+            # )
             self.setEnabledSnapshotMode()
 
     def setEnabledSnapshotMode(self):
@@ -8892,6 +8910,7 @@ class guiWin(QMainWindow):
         onlyMothBudLines = how == 'Draw only mother-bud lines'
         IDs_and_masks = how == 'Draw IDs and overlay segm. masks'
         onlyMasks = how == 'Draw only overlay segm. masks'
+        ccaInfo_and_masks = how == 'Draw cell cycle info and overlay segm. masks'
 
         # Draw LabelItems for IDs on ax2
         y, x = obj.centroid
@@ -8908,7 +8927,7 @@ class guiWin(QMainWindow):
         # Draw LabelItems for IDs on ax1 if requested
         draw_LIs = (
             IDs_and_cont or onlyIDs or only_ccaInfo or ccaInfo_and_cont
-            or IDs_and_masks
+            or IDs_and_masks or ccaInfo_and_masks
         )
         if draw_LIs:
             # Draw LabelItems for IDs on ax2
@@ -8919,7 +8938,10 @@ class guiWin(QMainWindow):
         self.drawingLabelsTimes.append(t1-t0)
 
         # Draw line connecting mother and buds
-        drawLines = only_ccaInfo or ccaInfo_and_cont or onlyMothBudLines
+        drawLines = (
+            only_ccaInfo or ccaInfo_and_cont or onlyMothBudLines
+            or ccaInfo_and_masks
+        )
         if drawLines and posData.cca_df is not None:
             ID = obj.label
             BudMothLine = self.ax1_BudMothLines[ID-1]
@@ -9472,9 +9494,9 @@ class guiWin(QMainWindow):
                 imgRange = numba_max(img)-numba_min(img)
                 min = numba_min(img) + imgRange*minPerc
                 max = numba_min(img) + imgRange*maxPerc
-                out_range = (min, max)
+                in_range = (min, max)
                 rescaled_img = func(
-                    rescaled_img, in_range='image', out_range=out_range
+                    rescaled_img, in_range=in_range#, out_range=out_range
                 )
         return rescaled_img
 
@@ -9526,15 +9548,35 @@ class guiWin(QMainWindow):
             self.extendLabelsLUT(10)
         colors = [posData.lut[ID]/255 for ID in posData.IDs]
         alpha = self.labelsGrad.labelsAlphaSlider.value()
+
+        # get bkgr color
+        if 'labels_text_color' in self.df_settings.index:
+            rgbString = self.df_settings.at['labels_text_color', 'value']
+            r, g, b = myutils.rgb_str_to_values(rgbString)
+            r, g, b = r/255, g/255, b/255
+        else:
+            r, g, b = 0.1, 0.1, 0.1
+
+        self.bg_color = (r, g, b)
+
         if img.ndim == 2:
-            self.img_layer0 = img
             img = img/numba_max(img)
-            img = label2rgb(
-                posData.lab, image=img, colors=colors,
-                bg_label=0, bg_color=(0.1, 0.1, 0.1),
-                alpha=alpha
-            )
-        return img
+            self.img_layer0 = img
+            self.img1_RGB = gray2rgb(img)
+        else:
+            # overlay fluo is ON --> image is already RGB
+            self.img1_RGB = img
+            self.img_layer0 = self.ol_cells_img
+
+        if posData.rp is None:
+            posData.rp = skimage.measure.regionprops(posData.lab)
+        for obj in posData.rp:
+            color = posData.lut[obj.label]/255
+            bkgr_label = self.img1_RGB[obj.slice][obj.image]
+            # colored_label = bkgr_label*color
+            overlay = bkgr_label*(1.0-alpha) + color*alpha
+            self.img1_RGB[obj.slice][obj.image] = overlay
+        return self.img1_RGB
 
     def getOverlayImg(self, fluoData=None, setImg=True):
         posData = self.data[self.pos_i]
@@ -9685,6 +9727,7 @@ class guiWin(QMainWindow):
         color = button.color().getRgb()[:3]
         self.df_settings.at['labels_bkgrColor', 'value'] = color
         self.df_settings.to_csv(self.settings_csv_path)
+        self.updateALLimg(only_ax1=True)
 
     def updateOlColors(self, button):
         posData = self.data[self.pos_i]
@@ -9763,6 +9806,33 @@ class guiWin(QMainWindow):
         brushOverlay = (brushOverlay*255).astype(np.uint8)
         self.img1.setImage(brushOverlay)
         return overlay
+
+    def setTempImg1Eraser(self, mask):
+        erasedRp = skimage.measure.regionprops(self.erasesedLab)
+        how = self.drawIDsContComboBox.currentText()
+        if how.find('contours') != -1:
+            for obj in erasedRp:
+                idx = obj.label-1
+                curveID = self.ax1_ContoursCurves[idx]
+                cont = self.getObjContours(obj)
+                curveID.setData(
+                    cont[:,0], cont[:,1], pen=self.oldIDs_cpen
+            )
+        elif how.find('segm. masks') != -1:
+            self.img1.image[mask] = self.img1_RGB[mask]
+            # posData = self.data[self.pos_i]
+            # alpha = self.labelsGrad.labelsAlphaSlider.value()
+            # for obj in erasedRp:
+            #     _lab = obj.image.astype(int)
+            #     colors = [posData.lut[obj.label]/255]
+            #     _img = self.img_layer0[obj.slice]
+            #     _img = label2rgb(
+            #         _lab, image=_img, colors=colors,
+            #         bg_label=0, bg_color=self.bg_color,
+            #         alpha=alpha
+            #     )
+            #     self.img1.image[obj.slice] = _img
+            self.img1.setImage(self.img1.image)
 
     def update_cca_df_relabelling(self, posData, oldIDs, newIDs):
         relIDs = posData.cca_df['relative_ID']
@@ -10152,6 +10222,7 @@ class guiWin(QMainWindow):
         onlyMothBudLines = how == 'Draw only mother-bud lines'
         IDs_and_masks = how == 'Draw IDs and overlay segm. masks'
         onlyMasks = how == 'Draw only overlay segm. masks'
+        ccaInfo_and_masks = how == 'Draw cell cycle info and overlay segm. masks'
 
         for ax2ContCurve in self.ax2_ContoursCurves:
             if ax2ContCurve is None:
@@ -10165,7 +10236,7 @@ class guiWin(QMainWindow):
 
         highlight = (
             IDs_and_cont or onlyCont or ccaInfo_and_cont
-            or IDs_and_masks or onlyMasks
+            or IDs_and_masks or onlyMasks or ccaInfo_and_masks
         )
         if highlight:
             for obj in posData.rp:
@@ -10220,6 +10291,7 @@ class guiWin(QMainWindow):
         onlyMothBudLines = how == 'Draw only mother-bud lines'
         IDs_and_masks = how == 'Draw IDs and overlay segm. masks'
         onlyMasks = how == 'Draw only overlay segm. masks'
+        ccaInfo_and_masks = how == 'Draw cell cycle info and overlay segm. masks'
 
 
         ID = obj.label
@@ -10232,6 +10304,7 @@ class guiWin(QMainWindow):
             highlight = (
                 IDs_and_cont or onlyCont or ccaInfo_and_cont
                 or IDs_and_masks or onlyMasks or forceContour
+                or ccaInfo_and_masks
             )
 
             if highlight:
@@ -10402,9 +10475,10 @@ class guiWin(QMainWindow):
                 prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
 
             if self.trackWithAcdcAction.isChecked():
-                tracked_lab = core.tracking_FP(
+                tracked_lab = CellACDC_tracker.track_frame(
                     prev_lab, prev_rp, posData.lab, posData.rp,
-                    posData.IDs, setBrushID_func=self.setBrushID,
+                    IDs_curr_untracked=posData.IDs,
+                    setBrushID_func=self.setBrushID,
                     posData=posData
                 )
             elif self.trackWithYeazAction.isChecked():

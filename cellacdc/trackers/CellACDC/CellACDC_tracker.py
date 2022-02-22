@@ -6,9 +6,11 @@ from skimage.measure import regionprops
 from cellacdc.core import lab_replace_values, np_replace_values, numba_argmax
 
 
-def calc_IoA_matrix(lab, prev_lab, rp, prev_rp):
+def calc_IoA_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None):
     IDs_prev = []
-    IDs_curr_untracked = [obj.label for obj in rp]
+    if IDs_curr_untracked is None:
+        IDs_curr_untracked = [obj.label for obj in rp]
+
     IoA_matrix = np.zeros((len(rp), len(prev_rp)))
 
     # For each ID in previous frame get IoA with all current IDs
@@ -64,9 +66,6 @@ def indexAssignment(
             new_tracked_IDs = [
                 uniqueID+i for i in range(len(new_untracked_IDs))
             ]
-        # tracked_lab = np_replace_values(
-        #     tracked_lab, new_untracked_IDs, new_tracked_IDs
-        # )
         lab_replace_values(
             tracked_lab, rp, new_untracked_IDs, new_tracked_IDs
         )
@@ -75,15 +74,35 @@ def indexAssignment(
         # print('New objects that get a new big ID: ', new_untracked_IDs)
         # print('New unique IDs for the new objects: ', new_tracked_IDs)
     if tracked_IDs:
-        # Relabel old IDs with respective tracked IDs
-        # tracked_lab = np_replace_values(
-        #     tracked_lab, old_IDs, tracked_IDs
-        # )
         lab_replace_values(
             tracked_lab, rp, old_IDs, tracked_IDs, in_place=True
         )
         # print('Old IDs to be tracked: ', old_IDs)
         # print('New IDs replacing old IDs: ', tracked_IDs)
+    return tracked_lab
+
+def track_frame(
+        prev_lab, prev_rp, lab, rp, IDs_curr_untracked=None,
+        uniqueID=None, setBrushID_func=None, posData=None
+    ):
+    IoA_matrix, IDs_curr_untracked, IDs_prev = calc_IoA_matrix(
+        lab, prev_lab, rp, prev_rp, IDs_curr_untracked=IDs_curr_untracked
+    )
+    old_IDs, tracked_IDs = assign(
+        IoA_matrix, IDs_curr_untracked, IDs_prev
+    )
+
+    if posData is None and uniqueID is None:
+        uniqueID = max((max(IDs_prev), max(IDs_curr_untracked)))+1
+    elif uniqueID is None:
+        # Compute starting unique ID
+        setBrushID_func(useCurrentLab=False)
+        uniqueID = posData.brushID
+
+    tracked_lab = indexAssignment(
+        old_IDs, tracked_IDs, IDs_curr_untracked,
+        lab.copy(), rp, uniqueID
+    )
     return tracked_lab
 
 class tracker:
@@ -102,18 +121,10 @@ class tracker:
             prev_rp = regionprops(prev_lab)
             rp = regionprops(lab.copy())
 
-            IoA_matrix, IDs_curr_untracked, IDs_prev = calc_IoA_matrix(
-                lab, prev_lab, rp, prev_rp
+            tracked_lab = track_frame(
+                prev_lab, prev_rp, lab, rp
             )
-            old_IDs, tracked_IDs = assign(
-                IoA_matrix, IDs_curr_untracked, IDs_prev
-            )
-            uniqueID = max((max(IDs_prev), max(IDs_curr_untracked)))+1
 
-            tracked_lab = indexAssignment(
-                old_IDs, tracked_IDs, IDs_curr_untracked,
-                lab.copy(), rp, uniqueID
-            )
             tracked_video[frame_i] = tracked_lab
             if signals is not None:
                 signals.progressBar.emit(1)

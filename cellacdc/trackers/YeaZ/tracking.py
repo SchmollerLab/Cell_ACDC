@@ -40,9 +40,12 @@ def correspondence(prev, curr, use_scipy=True, use_modified_yeaz=True):
         if val == -1:
             val = newcell
             newcell += 1
+            print(f'New cell = {val}')
 
         new[curr==key] = val
+        print(f'{key} --> {val}')
 
+    import pdb; pdb.set_trace()
     return new
 
 def scipy_align(m1, m2, acdc_yeaz=True):
@@ -76,6 +79,8 @@ def correspondence_stack(stack, signals=None):
     corrected_stack = np.empty(stack.shape, dtype=np.uint16)
     corrected_stack[0] = stack[0]
     for idx in range(len(stack)):
+        print('-------------------------')
+        print(f'Current frame = {idx}')
         try:
             curr = stack[idx+1]
             prev = corrected_stack[idx]
