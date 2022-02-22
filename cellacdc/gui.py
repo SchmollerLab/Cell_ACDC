@@ -5015,6 +5015,7 @@ class guiWin(QMainWindow):
         roi.setPen(color=(255,255,0))
         # First bring back IDs if the ROI moved away
         self.restoreDelROIlab(roi)
+        self.update_rp()
         self.setImageImg2()
 
     def cropROIovingFinished(self, roi):
@@ -9074,11 +9075,16 @@ class guiWin(QMainWindow):
                 _lut[len(posData.lut)+i] = rgb
             posData.lut = _lut
 
-    def updateLookuptable(self, lenNewLut=None):
+    def updateLookuptable(self, lenNewLut=None, delIDs=None):
         posData = self.data[self.pos_i]
         if lenNewLut is None:
             try:
-                lenNewLut = max(posData.IDs)+1
+                if delIDs is None:
+                    IDs = posData.IDs
+                else:
+                    # Remove IDs removed with ROI from LUT
+                    IDs = [ID for ID in posData.IDs if ID not in delIDs]
+                lenNewLut = max(IDs)+1
             except ValueError:
                 # Empty segmentation mask
                 lenNewLut = 1
@@ -9794,9 +9800,10 @@ class guiWin(QMainWindow):
             allDelIDs, DelROIlab = self.getDelROIlab()
         else:
             DelROIlab = posData.lab
+            allDelIDs = set()
         self.img2.setImage(DelROIlab)
         if updateLookuptable:
-            self.updateLookuptable()
+            self.updateLookuptable(delIDs=allDelIDs)
 
     def setTempImg1Brush(self, mask, alpha=0.3):
         posData = self.data[self.pos_i]
