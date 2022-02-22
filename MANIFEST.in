@@ -1,7 +1,7 @@
 include LICENSE
-include notebooks
-include UserManual
-include FijiMacros
+include notebooks/*
+include UserManual/*
+include FijiMacros/*
 include cellacdc/resources/*
 include cellacdc/bioformats/jars/*
 include cellacdc/bioformats/tests/*
