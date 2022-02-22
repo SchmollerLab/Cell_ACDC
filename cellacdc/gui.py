@@ -59,8 +59,8 @@ from PyQt5.QtWidgets import (
     QScrollBar, QCheckBox, QToolButton, QSpinBox, QGroupBox,
     QComboBox, QDial, QButtonGroup, QActionGroup,
     QShortcut, QFileDialog, QDoubleSpinBox,
-    QAbstractSlider, QMessageBox, QWidget,
-    QDockWidget, QGridLayout, QSizePolicy
+    QAbstractSlider, QMessageBox, QWidget, QDockWidget,
+    QDockWidget, QGridLayout, QSizePolicy, QVBoxLayout
 )
 
 from pyqtgraph.Qt import QtGui
@@ -412,40 +412,41 @@ class saveDataWorker(QObject):
                         self.mutex.unlock()
                         posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
 
-                try:
-                    all_frames_acdc_df = pd.concat(
-                        acdc_df_li, keys=keys,
-                        names=['frame_i', 'time_seconds', 'Cell_ID']
-                    )
+                if acdc_df_li:
+                    try:
+                        all_frames_acdc_df = pd.concat(
+                            acdc_df_li, keys=keys,
+                            names=['frame_i', 'time_seconds', 'Cell_ID']
+                        )
 
-                    # Save segmentation metadata
-                    all_frames_acdc_df.to_csv(acdc_output_csv_path)
-                    posData.acdc_df = all_frames_acdc_df
-                except PermissionError:
-                    err_msg = (
-                        'The below file is open in another app '
-                        '(Excel maybe?).\n\n'
-                        f'{acdc_output_csv_path}\n\n'
-                        'Close file and then press "Ok".'
-                    )
-                    self.mutex.lock()
-                    self.criticalPermissionError.emit(err_msg)
-                    self.waitCond.wait(self.mutex)
-                    self.mutex.unlock()
+                        # Save segmentation metadata
+                        all_frames_acdc_df.to_csv(acdc_output_csv_path)
+                        posData.acdc_df = all_frames_acdc_df
+                    except PermissionError:
+                        err_msg = (
+                            'The below file is open in another app '
+                            '(Excel maybe?).\n\n'
+                            f'{acdc_output_csv_path}\n\n'
+                            'Close file and then press "Ok".'
+                        )
+                        self.mutex.lock()
+                        self.criticalPermissionError.emit(err_msg)
+                        self.waitCond.wait(self.mutex)
+                        self.mutex.unlock()
 
-                    all_frames_acdc_df = pd.concat(
-                        acdc_df_li, keys=keys,
-                        names=['frame_i', 'time_seconds', 'Cell_ID']
-                    )
+                        all_frames_acdc_df = pd.concat(
+                            acdc_df_li, keys=keys,
+                            names=['frame_i', 'time_seconds', 'Cell_ID']
+                        )
 
-                    # Save segmentation metadata
-                    all_frames_acdc_df.to_csv(acdc_output_csv_path)
-                    posData.acdc_df = all_frames_acdc_df
-                except Exception as e:
-                    self.mutex.lock()
-                    self.critical.emit(traceback.format_exc())
-                    self.waitCond.wait(self.mutex)
-                    self.mutex.unlock()
+                        # Save segmentation metadata
+                        all_frames_acdc_df.to_csv(acdc_output_csv_path)
+                        posData.acdc_df = all_frames_acdc_df
+                    except Exception as e:
+                        self.mutex.lock()
+                        self.critical.emit(traceback.format_exc())
+                        self.waitCond.wait(self.mutex)
+                        self.mutex.unlock()
 
                 # Save segmentation file
                 np.savez_compressed(segm_npz_path, np.squeeze(segm_npy))
@@ -539,6 +540,7 @@ class guiWin(QMainWindow):
         self.data_loaded = False
         self.searchingID = False
         self.flag = True
+        self.currentPropsID = 0
 
         self.setWindowTitle("Cell-ACDC - GUI")
         self.setWindowIcon(QIcon(":assign-motherbud.svg"))
@@ -564,6 +566,8 @@ class guiWin(QMainWindow):
         self.gui_createMenuBar()
         self.gui_createToolBars()
         self.gui_createControlsToolbar()
+        self.gui_createLeftSideWidgets()
+        self.gui_createPropsDockWidget()
 
         self.gui_connectActions()
         self.gui_createStatusBar()
@@ -578,7 +582,7 @@ class guiWin(QMainWindow):
         mainContainer = QWidget()
         self.setCentralWidget(mainContainer)
 
-        mainLayout = self.gui_createGridLayout()
+        mainLayout = self.gui_createMainLayout()
 
         mainContainer.setLayout(mainLayout)
 
@@ -1186,17 +1190,33 @@ class guiWin(QMainWindow):
         # widgetsToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         # modeToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
 
-    def gui_createGridLayout(self):
+    def gui_createMainLayout(self):
         mainLayout = QGridLayout()
         row = 0
-        mainLayout.addWidget(self.graphLayout, row, 0, 1, 2)
-        mainLayout.addWidget(self.labelsGrad, row, 2)
+        mainLayout.addLayout(self.leftSideLayout, row, 0, 2, 1)
+        mainLayout.addWidget(self.graphLayout, row, 1, 1, 2)
+        mainLayout.addWidget(self.labelsGrad, row, 3)
 
         row += 1
-        mainLayout.addLayout(self.bottomLayout, row, 0)
+        mainLayout.addLayout(self.bottomLayout, row, 1)
         mainLayout.setRowStretch(row, 0)
 
         return mainLayout
+
+    def gui_createPropsDockWidget(self):
+        self.propsDockWidget = QDockWidget('Cell-ACDC objects', self)
+        self.guiTabControl = widgets.guiTabControl(self.propsDockWidget)
+
+        self.propsDockWidget.setWidget(self.guiTabControl)
+        self.propsDockWidget.setFeatures(
+            QDockWidget.DockWidgetFloatable | QDockWidget.DockWidgetMovable
+        )
+        self.propsDockWidget.setAllowedAreas(
+            Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea
+        )
+
+        self.addDockWidget(Qt.LeftDockWidgetArea, self.propsDockWidget)
+        self.propsDockWidget.hide()
 
     def gui_createControlsToolbar(self):
         self.addToolBarBreak()
@@ -1481,6 +1501,8 @@ class guiWin(QMainWindow):
         self.openRecentMenu.aboutToShow.connect(self.populateOpenRecent)
         self.checkableQButtonsGroup.buttonClicked.connect(self.uncheckQButton)
 
+        self.showPropsDockButton.clicked.connect(self.showPropsDockWidget)
+
 
     def gui_connectEditActions(self):
         self.showInExplorerAction.setEnabled(True)
@@ -1576,6 +1598,17 @@ class guiWin(QMainWindow):
         self.normalizeQActionGroup.triggered.connect(self.saveNormAction)
         self.imgPropertiesAction.triggered.connect(self.editImgProperties)
 
+        self.guiTabControl.propsQGBox.idSB.valueChanged.connect(
+            self.updatePropsWidget
+        )
+
+    def gui_createLeftSideWidgets(self):
+        self.leftSideLayout = QVBoxLayout()
+        self.showPropsDockButton = widgets.expandCollapseButton()
+        self.showPropsDockButton.setToolTip('Show object properties')
+        self.leftSideLayout.addWidget(self.showPropsDockButton)
+        self.leftSideLayout.setSpacing(0)
+        self.leftSideLayout.setContentsMargins(0,0,0,0)
 
     def gui_createImg1Widgets(self):
         # Toggle contours/ID comboboxf
@@ -2826,6 +2859,58 @@ class guiWin(QMainWindow):
                 )
                 self.setTempImg1Brush(mask)
 
+    def updatePropsWidget(self, ID):
+        update = (
+            self.propsDockWidget.isVisible()
+            and ID != 0 and ID!=self.currentPropsID
+        )
+        if not update:
+            return
+
+        posData = self.data[self.pos_i]
+        if posData.rp is None:
+            self.update_rp()
+
+        if not posData.IDs:
+            # empty segmentation mask
+            return
+
+        propsQGBox = self.guiTabControl.propsQGBox
+
+        if ID not in posData.IDs:
+            s = f'Object ID {ID} does not exist'
+            propsQGBox.notExistingIDLabel.setText(s)
+            return
+
+        propsQGBox.notExistingIDLabel.setText('')
+        self.currentPropsID = ID
+        propsQGBox.idSB.setValue(ID)
+        obj_idx = posData.IDs.index(ID)
+        obj = posData.rp[obj_idx]
+
+        propsQGBox.cellAreaPxlSB.setValue(obj.area)
+
+        PhysicalSizeY = posData.PhysicalSizeY
+        PhysicalSizeX = posData.PhysicalSizeX
+        yx_pxl_to_um2 = PhysicalSizeY*PhysicalSizeX
+        area_um2 = obj.area*yx_pxl_to_um2
+        propsQGBox.cellAreaUm2DSB.setValue(area_um2)
+
+        vol_vox, vol_fl = _calc_rot_vol(
+            obj, PhysicalSizeY, PhysicalSizeX
+        )
+        propsQGBox.cellVolVoxSB.setValue(vol_vox)
+        propsQGBox.cellVolFlDSB.setValue(vol_fl)
+
+
+        minor_axis_length = max(1, obj.minor_axis_length)
+        elongation = obj.major_axis_length/minor_axis_length
+        propsQGBox.elongationDSB.setValue(elongation)
+
+        solidity = obj.solidity
+        propsQGBox.solidityDSB.setValue(solidity)
+
+
     def gui_hoverEventImg1(self, event):
         posData = self.data[self.pos_i]
         # Update x, y, value label bottom right
@@ -2896,6 +2981,7 @@ class guiWin(QMainWindow):
                 val = _img[ydata, xdata]
                 maxVal = numba_max(_img)
                 ID = posData.lab[ydata, xdata]
+                self.updatePropsWidget(ID)
                 if posData.IDs:
                     maxID = max(posData.IDs)
                 else:
@@ -5986,6 +6072,8 @@ class guiWin(QMainWindow):
 
     @exception_handler
     def keyPressEvent(self, ev):
+        if ev.key() == Qt.Key_T:
+            self.guiTabControl.propsQGBox.cellAreaDSB.setValue(150000)
         try:
             posData = self.data[self.pos_i]
         except AttributeError:
@@ -9569,10 +9657,13 @@ class guiWin(QMainWindow):
             img = img/numba_max(img)
             self.img_layer0 = img
             self.img1_RGB = gray2rgb(img)
-        else:
+        elif self.overlayButton.isChecked():
             # overlay fluo is ON --> image is already RGB
             self.img1_RGB = img
             self.img_layer0 = self.ol_cells_img
+        else:
+            self.img1_RGB = img
+            return
 
         if posData.rp is None:
             posData.rp = skimage.measure.regionprops(posData.lab)
@@ -11888,6 +11979,13 @@ class guiWin(QMainWindow):
         self.defaultToolBarButtonColor = c
         self.doublePressKeyButtonColor = '#fa693b'
 
+    def showPropsDockWidget(self, checked=False):
+        if self.showPropsDockButton.isExpand:
+            self.propsDockWidget.setVisible(False)
+        else:
+            self.propsDockWidget.setVisible(True)
+            self.propsDockWidget.setEnabled(True)
+
     def show(self):
         QMainWindow.show(self)
 
@@ -11905,6 +12003,11 @@ class guiWin(QMainWindow):
 
         self.gui_initImg1BottomWidgets()
         self.img1BottomGroupbox.setVisible(False)
+
+        w = self.showPropsDockButton.width()
+        h = self.showPropsDockButton.height()
+        self.showPropsDockButton.setFixedWidth((int(w/2)))
+        self.showPropsDockButton.setFixedHeight(h*2)
 
 
 if __name__ == "__main__":
