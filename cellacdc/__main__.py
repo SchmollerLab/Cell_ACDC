@@ -105,7 +105,7 @@ class mainWin(QMainWindow):
         mainLayout.addStretch()
 
         dataStructButton = QPushButton(
-            '0. Create data structure from microscopy file(s)...'
+            '  0. Create data structure from microscopy file(s)...  '
         )
         font = QtGui.QFont()
         font.setPointSize(11)

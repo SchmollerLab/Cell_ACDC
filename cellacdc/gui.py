@@ -538,7 +538,7 @@ class guiWin(QMainWindow):
         self.slideshowWin = None
         self.ccaTableWin = None
         self.data_loaded = False
-        self.searchingID = False
+        self.highlightedID = 0
         self.flag = True
         self.currentPropsID = 0
 
@@ -1600,6 +1600,9 @@ class guiWin(QMainWindow):
 
         self.guiTabControl.propsQGBox.idSB.valueChanged.connect(
             self.updatePropsWidget
+        )
+        self.guiTabControl.highlightCheckbox.toggled.connect(
+            self.highlightIDcheckBoxToggled
         )
 
     def gui_createLeftSideWidgets(self):
@@ -2859,6 +2862,12 @@ class guiWin(QMainWindow):
                 )
                 self.setTempImg1Brush(mask)
 
+    def highlightIDcheckBoxToggled(self, checked):
+        if not checked:
+            self.updateALLimg()
+        else:
+            self.updatePropsWidget(self.highlightedID)
+
     def updatePropsWidget(self, ID):
         update = (
             self.propsDockWidget.isVisible()
@@ -2874,6 +2883,9 @@ class guiWin(QMainWindow):
         if not posData.IDs:
             # empty segmentation mask
             return
+
+        if self.guiTabControl.highlightCheckbox.isChecked():
+            self.highlightSearchedID(ID)
 
         propsQGBox = self.guiTabControl.propsQGBox
 
@@ -3952,7 +3964,6 @@ class guiWin(QMainWindow):
 
     def findID(self):
         posData = self.data[self.pos_i]
-        self.searchingID = True
         searchIDdialog = apps.QLineEditDialog(
             title='Search object by ID',
             msg='Enter object ID to find and highlight',
@@ -3962,6 +3973,8 @@ class guiWin(QMainWindow):
         if searchIDdialog.cancel:
             return
         self.highlightSearchedID(searchIDdialog.EntryID)
+        propsQGBox = self.guiTabControl.propsQGBox
+        propsQGBox.idSB.setValue(searchIDdialog.EntryID)
 
     def workerProgress(self, text):
         if self.progressWin is not None:
@@ -6098,8 +6111,10 @@ class guiWin(QMainWindow):
             self.isCtrlDown = True
         elif ev.key() == Qt.Key_Escape:
             self.setUncheckedAllButtons()
-            if self.searchingID:
-                self.updateALLimg()
+            if self.highlightedID != 0:
+                self.highlightedID = 0
+                self.guiTabControl.highlightCheckbox.setChecked(False)
+                # self.updateALLimg()
         elif ev.modifiers() == Qt.AltModifier:
             isCursorSizeAll = self.app.overrideCursor() == Qt.SizeAllCursor
             # Alt is pressed while cursor is on images --> set SizeAllCursor
@@ -9667,13 +9682,15 @@ class guiWin(QMainWindow):
 
         if posData.rp is None:
             posData.rp = skimage.measure.regionprops(posData.lab)
+
+        imgRGB = self.img1_RGB.copy()
         for obj in posData.rp:
             color = posData.lut[obj.label]/255
             bkgr_label = self.img1_RGB[obj.slice][obj.image]
             # colored_label = bkgr_label*color
             overlay = bkgr_label*(1.0-alpha) + color*alpha
-            self.img1_RGB[obj.slice][obj.image] = overlay
-        return self.img1_RGB
+            imgRGB[obj.slice][obj.image] = overlay
+        return imgRGB
 
     def getOverlayImg(self, fluoData=None, setImg=True):
         posData = self.data[self.pos_i]
@@ -9918,18 +9935,6 @@ class guiWin(QMainWindow):
             )
         elif how.find('segm. masks') != -1:
             self.img1.image[mask] = self.img1_RGB[mask]
-            # posData = self.data[self.pos_i]
-            # alpha = self.labelsGrad.labelsAlphaSlider.value()
-            # for obj in erasedRp:
-            #     _lab = obj.image.astype(int)
-            #     colors = [posData.lut[obj.label]/255]
-            #     _img = self.img_layer0[obj.slice]
-            #     _img = label2rgb(
-            #         _lab, image=_img, colors=colors,
-            #         bg_label=0, bg_color=self.bg_color,
-            #         alpha=alpha
-            #     )
-            #     self.img1.image[obj.slice] = _img
             self.img1.setImage(self.img1.image)
 
     def update_cca_df_relabelling(self, posData, oldIDs, newIDs):
@@ -10162,6 +10167,9 @@ class guiWin(QMainWindow):
             self.addNewItems(ID)
 
     def highlightSearchedID(self, ID):
+        if ID == 0:
+            return
+
         contours = zip(
             self.ax1_ContoursCurves,
             self.ax2_ContoursCurves
@@ -10176,13 +10184,30 @@ class guiWin(QMainWindow):
 
         posData = self.data[self.pos_i]
 
-        # Red thick contour of searched ID
+        self.highlightedID = ID
+
+        how = self.drawIDsContComboBox.currentText()
         objIdx = posData.IDs.index(ID)
         obj = posData.rp[objIdx]
-        cont = self.getObjContours(obj)
-        pen = self.newIDs_cpen
-        curveID = self.ax1_ContoursCurves[ID-1]
-        curveID.setData(cont[:,0], cont[:,1], pen=pen)
+
+        if how.find('segm. masks') != -1:
+            imgRGB = self.img1_RGB.copy()
+            for _obj in posData.rp:
+                color = posData.lut[_obj.label]/255
+                bkgr_label = self.img1_RGB[_obj.slice][_obj.image]
+                if _obj.label == obj.label:
+                    alpha = 0.8
+                else:
+                    alpha = 0.1
+                overlay = bkgr_label*(1.0-alpha) + color*alpha
+                imgRGB[_obj.slice][_obj.image] = overlay
+            self.img1.setImage(imgRGB)
+        else:
+            # Red thick contour of searched ID
+            cont = self.getObjContours(obj)
+            pen = self.newIDs_cpen
+            curveID = self.ax1_ContoursCurves[ID-1]
+            curveID.setData(cont[:,0], cont[:,1], pen=pen)
 
         # Label ID
         LabelItemID = self.ax1_LabelItemsIDs[ID-1]
@@ -10268,6 +10293,8 @@ class guiWin(QMainWindow):
 
         self.highlightLostNew()
         self.checkIDsMultiContour()
+
+        self.highlightSearchedID(self.highlightedID)
 
         if self.ccaTableWin is not None:
             self.ccaTableWin.updateTable(posData.cca_df)

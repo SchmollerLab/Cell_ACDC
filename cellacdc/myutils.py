@@ -322,6 +322,7 @@ def _java_exists(os_foldername):
             for file in os.listdir(dir_path):
                 if file == 'bin':
                     return dir_path
+    return ''
 
     # Check if the user unzipped the javabridge_portable folder and not its content
     os_acdc_java_path = os.path.join(acdc_java_path, os_foldername)
@@ -354,10 +355,11 @@ def download_java():
     jre_path = _java_exists(os_foldername)
     jdk_path = _jdk_exists(jre_path)
     if os_foldername.startswith('win') and jre_path and jdk_path:
-        return jre_path, jdk_path
+        return jre_path, jdk_path, url
 
     if jre_path:
-        return jre_path, jre_path
+        # on macOS jdk is the same as jre
+        return jre_path, jre_path, url
 
     acdc_java_path, _ = get_acdc_java_path()
     os_acdc_java_path = os.path.join(acdc_java_path, os_foldername)

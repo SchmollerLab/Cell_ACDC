@@ -53,11 +53,12 @@ class QDialogAbout(QDialog):
             Installed in: {cellacdc_path}
         </p>
         """)
+        installedLabel.setText(txt)
 
         layout.addWidget(iconLabel, 0, 0)
         layout.addWidget(titleLabel, 0, 1)
         layout.addWidget(infoLabel, 1, 1)
-        layout.addWidget(installedLabel, 0, 2, 1, 2)
+        layout.addWidget(installedLabel, 2, 0, 1, 2)
 
         self.setLayout(layout)
 

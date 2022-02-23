@@ -113,10 +113,21 @@ class guiTabControl(QTabWidget):
         super().__init__(args[0])
 
         self.propsTab = QScrollArea(self)
-        self.propsQGBox = objPropsQGBox(self.propsTab)
-        self.propsTab.setWidget(self.propsQGBox)
 
-        self.addTab(self.propsTab, 'Analysis paramenters')
+        container = QWidget()
+        layout = QVBoxLayout()
+
+        self.propsQGBox = objPropsQGBox(self.propsTab)
+
+        self.highlightCheckbox = QCheckBox('Highlight objects')
+        self.highlightCheckbox.setChecked(True)
+
+        layout.addWidget(self.propsQGBox)
+        layout.addWidget(self.highlightCheckbox)
+        container.setLayout(layout)
+
+        self.propsTab.setWidget(container)
+        self.addTab(self.propsTab, 'Object properties')
 
 class expandCollapseButton(QPushButton):
     def __init__(self, parent=None):
