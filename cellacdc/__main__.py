@@ -299,50 +299,34 @@ class mainWin(QMainWindow):
             self.convertWin.raise_()
 
     def launchDataStruct(self, checked=False):
-        c = self.dataStructButton.palette().button().color().name()
-        launchedColor = self.moduleLaunchedColor
-        defaultColor = self.defaultPushButtonColor
-        defaultText = self.defaultTextDataStructButton
-
         try:
             dataStruct.createDataStructWin(parent=self)
         except OSError as e:
             print(f'WARNING: {e}')
             return
 
-        # For now let's not use a separate process
-        is_win = False
+        self.dataStructButton.setStyleSheet(
+            f'QPushButton {{background-color: {self.moduleLaunchedColor};}}'
+        )
+        self.dataStructButton.setText(
+            '0. Creating data structure running.'
+        )
+        self.dataStructButton.setDisabled(True)
 
-        if is_win:
-            print('Launching data structure creation in a separate process...')
-
-            self.dataStructButton.setStyleSheet(
-                f'QPushButton {{background-color: {launchedColor};}}')
-            self.dataStructButton.setText(
-                'Launching in a separate process...')
-            self.dataStructButton.setDisabled(True)
-
-            cellacdc_path = os.path.dirname(os.path.realpath(__file__))
-            dataStruct_path = os.path.join(cellacdc_path, 'dataStruct.py')
-
-            # Due to javabridge limitation only one 'start_vm' can be called in
-            # each process. To get around with this every data structure conversion
-            # is launched in a separate process
-            subprocess.Popen(
-                [sys.executable, dataStruct_path],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                shell=True,
-                bufsize=1,
-                encoding='utf-8'
-            )
-
-            QTimer.singleShot(10000, self.processDataStructLaunched)
-        else:
-            self._showDataStructWin()
+        QTimer.singleShot(100, self.processDataStructLaunched)
 
 
     def processDataStructLaunched(self):
+        cellacdc_path = os.path.dirname(os.path.realpath(__file__))
+        dataStruct_path = os.path.join(cellacdc_path, 'dataStruct.py')
+
+        # Due to javabridge limitation only one 'start_vm' can be called in
+        # each process. To get around with this every data structure conversion
+        # is launched in a separate process
+        subprocess.check_call(
+            [sys.executable, dataStruct_path]
+        )
+
         self.dataStructButton.setStyleSheet(
             f'QPushButton {{background-color: {self.defaultPushButtonColor};}}')
         self.dataStructButton.setText(
@@ -372,8 +356,9 @@ class mainWin(QMainWindow):
         if c != self.moduleLaunchedColor:
             self.dataPrepButton.setStyleSheet(
                 f'QPushButton {{background-color: {launchedColor};}}')
-            self.dataPrepButton.setText('DataPrep is running. '
-                                    'Click to restore window.')
+            self.dataPrepButton.setText(
+                'DataPrep is running. Click to restore window.'
+            )
             self.dataPrepWin = dataPrep.dataPrepWin(
                 buttonToRestore=(self.dataPrepButton, defaultColor, defaultText),
                 mainWin=self

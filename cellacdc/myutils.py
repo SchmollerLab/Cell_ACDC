@@ -29,7 +29,7 @@ from tifffile.tifffile import TiffWriter, TiffFile
 from PyQt5.QtWidgets import QMessageBox
 from PyQt5.QtCore import pyqtSignal, QObject, QCoreApplication
 
-from . import prompts
+from . import prompts, widgets
 
 __all__ = ['ColorMap']
 _mapCache = {}
@@ -761,11 +761,83 @@ def uint_to_float(img):
         img = img/uint8_max
     return img
 
-def install_package_msg(pkg_name, parent=None):
-    msg = QMessageBox()
+def _java_instructions_macOS():
+    s = (f"""
+    To do so, <b>close Cell-ACDC</b> and run the following commands
+    in the Terminal <b>one at the time:</b><br>
+    <p>
+        <code>/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"</code>
+    </p>
+    <p>
+        <code>brew install --cask adoptopenjdk8</code>
+    </p><br>
+    The first command is used to install Homebrew (if you already have it skip
+    this step), a package manager for macOS/Linux.
+    The second command is used to install Java 8.
+    Follow the instructions on the terminal to complete
+    installation.<br><br>
+    Alternatively, <b>you can install Java as a regular app</b> by downloading
+    and running the app from
+    <a href="https://hmgubox2.helmholtz-muenchen.de/index.php/s/7xF7YnArwbt9ZqB">
+        here
+    </a>.
+    """)
+    return s
+
+def _java_instructions_windows():
+    s = (f"""
+    To do so, <b>first close Cell-ACDC</b>, then download and install Java 8 and
+    Java Development Kit for Windows. Here the links:<br>
+    <p>
+    Java 8: <a href="https://www.java.com/en/download/manual.jsp">here</a>
+    </p>
+    Java Development Kit: <a href="https://hmgubox2.helmholtz-muenchen.de/index.php/s/zocneD2j2wMwbNc">here</a>
+    </p>
+    </p><br>
+    """)
+    return s
+
+def install_javabridge_instructions_text():
+    if sys.platform.startswith('win'):
+        return _java_instructions_windows()
+    else:
+        return _java_instructions_macOS()
+
+def install_javabridge_help(parent=None):
+    msg = widgets.myMessageBox()
     txt = (f"""
     <p>
-        Cell-ACDC is going to download and install <code>{pkg_name}</code>.<br><br>
+        Cell-ACDC is going to <b>download and install</b>
+        <code>javabridge</code>.<br><br>
+        Make sure you have an <b>active internet connection</b>,
+        before continuing.
+        Progress will be displayed on the terminal<br><br>
+        <b>IMPORTANT:</b> If the installation fails, you probably have to
+        install Java 8.<br><br>
+        {install_javabridge_instructions_text()}<br><br>
+        Once you finished installing Java 8 try to open this module again.<br><br>
+        If installation is still failing, <b>please open an issue</b>
+        on our GitHub page
+        <a href="https://github.com/SchmollerLab/Cell_ACDC/issues">
+            here
+        </a>.<br><br>
+        Alternatively, you can cancel the process and try later.
+    </p>
+    """)
+    msg.setIcon()
+    msg.setWindowTitle('Installing javabridge')
+    msg.setText(txt)
+    msg.addButton('   Ok   ')
+    cancel = msg.addButton(' Cancel ')
+    msg.exec_()
+    return msg.clickedButton == cancel
+
+def install_package_msg(pkg_name, parent=None):
+    msg = widgets.myMessageBox()
+    txt = (f"""
+    <p>
+        Cell-ACDC is going to <b>download and install</b>
+        <code>{pkg_name}</code>.<br><br>
         Make sure you have an <b>active internet connection</b>,
         before continuing.
         Progress will be displayed on the terminal<br><br>
@@ -775,10 +847,13 @@ def install_package_msg(pkg_name, parent=None):
         Alternatively, you can cancel the process and try later.
     </p>
     """)
-    answer = msg.information(
-        parent, f'Install {pkg_name}', txt, msg.Ok | msg.Cancel
-    )
-    return answer == msg.Cancel
+    msg.setIcon()
+    msg.setWindowTitle(f'Install {pkg_name}')
+    msg.setText(txt)
+    msg.addButton('   Ok   ')
+    cancel = msg.addButton(' Cancel ')
+    msg.exec_()
+    return msg.clickedButton == cancel
 
 if __name__ == '__main__':
     print(get_list_of_models())

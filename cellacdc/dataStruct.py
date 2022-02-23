@@ -741,7 +741,7 @@ class createDataStructWin(QMainWindow):
             print('======================================')
             traceback.print_exc()
             print('======================================')
-            cancel = myutils.install_package_msg('javabridge', parent=self)
+            cancel = myutils.install_javabridge_help(parent=self)
             if cancel:
                 raise ModuleNotFoundError(
                     'User aborted javabridge installation'
@@ -927,11 +927,8 @@ class createDataStructWin(QMainWindow):
         self.log('Asking how raw data is structured...')
         rawDataStruct, abort = self.askRawDataStruct()
         if abort:
-            if self.allowExit:
-                exit('Execution aborted by the user.')
-            else:
-                self.close()
-                return
+            self.close()
+            return
 
         self.rawDataStruct = rawDataStruct
 
@@ -955,31 +952,22 @@ class createDataStructWin(QMainWindow):
         self.addToRecentPaths(raw_src_path)
 
         if raw_src_path == '':
-            if self.allowExit:
-                exit('Execution aborted by the user.')
-            else:
-                self.close()
-                return
+            self.close()
+            return
 
         self.log(
             'Checking file format of loaded files...'
         )
         rawFilenames = self.checkFileFormat(raw_src_path)
         if not rawFilenames:
-            if self.allowExit:
-                exit('Folder selected does not contain files.')
-            else:
-                self.close()
-                return
+            self.close()
+            return
 
         if rawDataStruct == 2:
             proceed = self.attemptSeparateMultiChannel(rawFilenames)
             if not proceed:
-                if self.allowExit:
-                    exit('File pattern not valid.')
-                else:
-                    self.close()
-                    return
+                self.close()
+                return
 
         self.log(
             'Asking in which folder to save the images files...'
@@ -1077,8 +1065,6 @@ class createDataStructWin(QMainWindow):
                msg.Close
             )
             self.close()
-            if self.allowExit:
-                exit('Conversion task ended.')
         elif not self.worker.aborted:
             msg = QMessageBox(self)
             abort = msg.information(
@@ -1088,8 +1074,6 @@ class createDataStructWin(QMainWindow):
                msg.Close
             )
             self.close()
-            if self.allowExit:
-                exit('Conversion task ended.')
 
     def log(self, text):
         self.logWin.appendPlainText(text)
@@ -1370,21 +1354,6 @@ class createDataStructWin(QMainWindow):
             self.worker.cancel = False
         self.waitCond.wakeAll()
 
-    def doAbort(self):
-        msg = QMessageBox(self)
-        closeAnswer = msg.warning(
-           self, 'Abort execution?', 'Do you really want to abort process?',
-           msg.Yes | msg.No
-        )
-        if closeAnswer == msg.Yes:
-            if self.allowExit:
-                exit('Execution aborted by the user')
-            else:
-                print('Creating data structure aborted by the user.')
-                return True
-        else:
-            return False
-
     def closeEvent(self, event):
         if self.buttonToRestore is not None:
             button, color, text = self.buttonToRestore
@@ -1421,6 +1390,5 @@ if __name__ == "__main__":
         print('Done. If window asking to select a folder is not visible, it is '
               'behind some other open window.')
         win.main()
-        sys.exit(app.exec_())
     except OSError:
         traceback.print_exc()

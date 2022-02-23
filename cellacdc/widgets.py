@@ -18,13 +18,65 @@ from PyQt5.QtWidgets import (
     QLineEdit, QSlider, QSpinBox, QGridLayout, QDockWidget,
     QScrollArea, QSizePolicy, QComboBox, QPushButton, QScrollBar,
     QGroupBox, QAbstractSlider, QDoubleSpinBox, QWidgetAction,
-    QAction, QTabWidget, QAbstractSpinBox
+    QAction, QTabWidget, QAbstractSpinBox, QMessageBox,
+    QStyle, QDialog
 )
 
 import pyqtgraph as pg
 
 from . import myutils, apps
 from . import qrc_resources
+
+class myMessageBox(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.layout = QGridLayout()
+        self.buttonsLayout = QHBoxLayout()
+        self.buttonsLayout.setSpacing(2)
+        self.buttons = []
+
+        self.layout.setColumnStretch(1, 1)
+        self.layout.addLayout(self.buttonsLayout, 1, 1, alignment=Qt.AlignRight)
+        self.setLayout(self.layout)
+
+    def setIcon(self, iconName='SP_MessageBoxInformation'):
+        label = QLabel(self)
+
+        standardIcon = getattr(QStyle, iconName)
+        icon = self.style().standardIcon(standardIcon)
+        pixmap = icon.pixmap(60, 60)
+        label.setPixmap(pixmap)
+
+        self.layout.addWidget(label, 0, 0, alignment=Qt.AlignTop)
+
+    def setText(self, text):
+        label = QLabel(self)
+        label.setText(text)
+        label.setWordWrap(True)
+        self.layout.addWidget(label, 0, 1, alignment=Qt.AlignTop)
+
+    def addButton(self, buttonText):
+        button = QPushButton(buttonText, self)
+        self.buttonsLayout.addWidget(button)
+        button.clicked.connect(self.close)
+        self.buttons.append(button)
+        return button
+
+    def exec_(self):
+        self.show()
+        widths = [button.width() for button in self.buttons]
+        if widths:
+            max_width = max(widths)
+            for button in self.buttons:
+                button.setMinimumWidth(max_width)
+        self.setMinimumWidth(self.width())
+        self.setMinimumHeight(self.height())
+        super().exec_()
+
+    def close(self, event):
+        self.clickedButton = self.sender()
+        super().close()
 
 class readOnlyDoubleSpinbox(QDoubleSpinBox):
     def __init__(self, parent=None):
