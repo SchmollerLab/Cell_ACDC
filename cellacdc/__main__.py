@@ -551,6 +551,10 @@ def run():
     print('---------------------------------')
     app.exec_()
 
+def main():
+    # Keep compatibility with users that installed older versions
+    # when the entry point was main()
+    run()
 
 if __name__ == "__main__":
     run()
