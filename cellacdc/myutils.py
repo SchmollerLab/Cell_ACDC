@@ -215,14 +215,13 @@ def getDefault_SegmInfo_df(posData, filename):
     }).set_index(['filename', 'frame_i'])
     return df
 
-def download_examples(which='time_lapse_2D', progress=None):
-    # https://drive.google.com/drive/u/0/folders/1OgUgp_HuYsZlDg_TVWPuhT4OdZXJHbAg
+def get_examples_path(which):
     if which == 'time_lapse_2D':
         foldername = 'TimeLapse_2D'
         url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/CaMdYXiwxxoq3Ts/download/TimeLapse_2D.zip'
         file_size = 45143552
     elif which == 'snapshots_3D':
-        foldername = 'Multi_3D_zStacks'
+        foldername = 'Multi_3D_zStack_Analysed'
         url = 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/CXZDoQMANNrKL7a/download/Yeast_Analysed_multi3D_zStacks.zip'
         file_size = 124822528
     else:
@@ -230,9 +229,15 @@ def download_examples(which='time_lapse_2D', progress=None):
 
     user_path = pathlib.Path.home()
     examples_path = os.path.join(user_path, 'acdc-examples')
-    example_path = os.path.join(examples_path, 'examples')
+    example_path = os.path.join(examples_path, foldername)
+    return examples_path, example_path, url, file_size
 
+def download_examples(which='time_lapse_2D', progress=None):
+    examples_path, example_path, url, file_size = get_examples_path(which)
     if os.path.exists(example_path):
+        if progress is not None:
+            # display 100% progressbar
+            progress.emit(0, 0)
         return example_path
 
     zip_dst = os.path.join(examples_path, 'example_temp.zip')
@@ -240,12 +245,19 @@ def download_examples(which='time_lapse_2D', progress=None):
     if not os.path.exists(examples_path):
         os.makedirs(examples_path)
 
+    print(f'Downloading example to {example_path}')
+
     download_url(
-        url, zip_dst, desc=f'example "{foldername}"', file_size=file_size,
+        url, zip_dst, verbose=False, file_size=file_size,
         progress=progress
     )
     exctract_to = examples_path
     extract_zip(zip_dst, exctract_to)
+
+    if progress is not None:
+        # display 100% progressbar
+        progress.emit(0, 0)
+
     # Remove downloaded zip archive
     os.remove(zip_dst)
     print('Example downloaded successfully')
@@ -512,6 +524,22 @@ def download_from_gdrive(id, destination, file_size=None,
         response, destination, file_size=file_size, model_name=model_name,
         progress=progress
     )
+
+def download_manual():
+    user_path = pathlib.Path.home()
+    manual_folder_path = os.path.join(user_path, 'acdc-manual')
+    if not os.path.exists(manual_folder_path):
+        os.makedirs(manual_folder_path)
+
+    manual_file_path = os.path.join(user_path, 'Cell-ACDC_User_Manual.pdf')
+    if not os.path.exists(manual_file_path):
+        url = 'https://github.com/SchmollerLab/Cell_ACDC/raw/main/UserManual/Cell-ACDC_User_Manual.pdf'
+        download_url(url, manual_file_path, file_size=1727470)
+    return manual_file_path
+
+def showUserManual():
+    manual_file_path = download_manual()
+    showInExplorer(manual_file_path)
 
 def get_confirm_token(response):
     for key, value in response.cookies.items():

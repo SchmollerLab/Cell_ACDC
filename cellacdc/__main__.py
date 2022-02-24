@@ -10,15 +10,17 @@ import traceback
 
 import pandas as pd
 
+from functools import partial
+
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QPushButton, QLabel, QAction,
     QMenu, QMessageBox, QStyleFactory, QHBoxLayout
 )
 from PyQt5.QtCore import (
     Qt, QProcess, pyqtSignal, pyqtSlot, QTimer, QSize,
-    QSettings
+    QSettings, QUrl
 )
-from PyQt5.QtGui import QFontDatabase, QIcon
+from PyQt5.QtGui import QFontDatabase, QIcon, QDesktopServices
 from pyqtgraph.Qt import QtGui
 
 # acdc modules
@@ -26,7 +28,8 @@ try:
     # We try to import from cellacdc instead of "from ." to check
     # if cellacdc was installed with pip or not
     from cellacdc import (
-        dataPrep, segm, gui, dataStruct, utils, help, qrc_resources, myutils
+        dataPrep, segm, gui, dataStruct, utils, help, qrc_resources, myutils,
+        cite_url
     )
     from cellacdc.help import about
     from cellacdc.utils import concat as utilsConcat
@@ -227,7 +230,7 @@ class mainWin(QMainWindow):
 
         helpMenu = QMenu("&Help", self)
         helpMenu.addAction(self.welcomeGuideAction)
-        helpMenu.addAction(self.documentationAction)
+        helpMenu.addAction(self.userManualAction)
         helpMenu.addAction(self.aboutAction)
         helpMenu.addAction(self.citeAction)
         helpMenu.addAction(self.contributeAction)
@@ -246,7 +249,7 @@ class mainWin(QMainWindow):
         # self.alignAction = QAction('Revert alignemnt/Align...')
 
         self.welcomeGuideAction = QAction('Welcome Guide')
-        self.documentationAction = QAction('Documentation')
+        self.userManualAction = QAction('User manual...')
         self.aboutAction = QAction('About Cell-ACDC')
         self.citeAction = QAction('Cite us...')
         self.contributeAction = QAction('Contribute...')
@@ -259,6 +262,15 @@ class mainWin(QMainWindow):
         self.welcomeGuideAction.triggered.connect(self.launchWelcomeGuide)
         self.aboutAction.triggered.connect(self.showAbout)
         self.renameAction.triggered.connect(self.launchRenameUtil)
+        self.userManualAction.triggered.connect(myutils.showUserManual)
+        self.contributeAction.triggered.connect(self.showContribute)
+        self.citeAction.triggered.connect(
+            partial(QDesktopServices.openUrl, QUrl(cite_url))
+        )
+
+    def showContribute(self):
+        self.launchWelcomeGuide()
+        self.welcomeGuide.showPage(self.welcomeGuide.contributeItem)
 
     def showAbout(self):
         self.aboutWin = about.QDialogAbout(parent=self)

@@ -1496,7 +1496,7 @@ class guiWin(QMainWindow):
 
         # Connect Help actions
         self.tipsAction.triggered.connect(self.showTipsAndTricks)
-        self.UserManualAction.triggered.connect(self.showUserManual)
+        self.UserManualAction.triggered.connect(myutils.showUserManual)
         # Connect Open Recent to dynamically populate it
         self.openRecentMenu.aboutToShow.connect(self.populateOpenRecent)
         self.checkableQButtonsGroup.buttonClicked.connect(self.uncheckQButton)
@@ -2382,12 +2382,14 @@ class guiWin(QMainWindow):
             xdata, ydata = int(x), int(y)
             ID = posData.lab[ydata, xdata]
             if ID == 0:
+                nearest_ID = self.nearest_nonzero(posData.lab, y, x)
                 clickedBkgrID = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter here the ID that you want to '
                          'fill the holes of',
-                    parent=self, allowedValues=posData.IDs
+                    parent=self, allowedValues=posData.IDs,
+                    defaultTxt=str(nearest_ID)
                 )
                 clickedBkgrID.exec_()
                 if clickedBkgrID.cancel:
@@ -2415,12 +2417,14 @@ class guiWin(QMainWindow):
             xdata, ydata = int(x), int(y)
             ID = posData.lab[ydata, xdata]
             if ID == 0:
+                nearest_ID = self.nearest_nonzero(posData.lab, y, x)
                 mergeID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter here the ID that you want to '
                          'replace with Hull contour',
-                    parent=self, allowedValues=posData.IDs
+                    parent=self, allowedValues=posData.IDs,
+                    defaultTxt=str(nearest_ID)
                 )
                 mergeID_prompt.exec_()
                 if mergeID_prompt.cancel:
@@ -2448,11 +2452,13 @@ class guiWin(QMainWindow):
             xdata, ydata = int(x), int(y)
             ID = posData.lab[ydata, xdata]
             if ID == 0:
+                nearest_ID = self.nearest_nonzero(posData.lab, y, x)
                 mergeID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter here first ID that you want to merge',
-                    parent=self, allowedValues=posData.IDs
+                    parent=self, allowedValues=posData.IDs,
+                    defaultTxt=str(nearest_ID)
                 )
                 mergeID_prompt.exec_()
                 if mergeID_prompt.cancel:
@@ -2470,11 +2476,13 @@ class guiWin(QMainWindow):
             xdata, ydata = int(x), int(y)
             ID = posData.lab[ydata, xdata]
             if ID == 0:
+                nearest_ID = self.nearest_nonzero(posData.lab, y, x)
                 editID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter here ID that you want to replace with a new one',
-                    parent=self, allowedValues=posData.IDs
+                    parent=self, allowedValues=posData.IDs,
+                    defaultTxt=str(nearest_ID)
                 )
                 editID_prompt.show(block=True)
 
@@ -2604,11 +2612,13 @@ class guiWin(QMainWindow):
             xdata, ydata = int(x), int(y)
             ID = posData.lab[ydata, xdata]
             if ID == 0:
+                nearest_ID = self.nearest_nonzero(posData.lab, y, x)
                 binID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to remove from the analysis',
-                    parent=self, allowedValues=posData.IDs
+                    parent=self, allowedValues=posData.IDs,
+                    defaultTxt=str(nearest_ID)
                 )
                 binID_prompt.exec_()
                 if binID_prompt.cancel:
@@ -2676,11 +2686,13 @@ class guiWin(QMainWindow):
             xdata, ydata = int(x), int(y)
             ID = posData.lab[ydata, xdata]
             if ID == 0:
+                nearest_ID = self.nearest_nonzero(posData.lab, y, x)
                 ripID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to annotate as dead',
-                    parent=self, allowedValues=posData.IDs
+                    parent=self, allowedValues=posData.IDs,
+                    defaultTxt=str(nearest_ID)
                 )
                 ripID_prompt.exec_()
                 if ripID_prompt.cancel:
@@ -3299,12 +3311,14 @@ class guiWin(QMainWindow):
             xdata, ydata = int(x), int(y)
             ID = posData.lab[ydata, xdata]
             if ID == 0:
+                nearest_ID = self.nearest_nonzero(posData.lab, y, x)
                 mergeID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to merge with ID '
                          f'{self.firstID}',
-                    parent=self, allowedValues=posData.IDs
+                    parent=self, allowedValues=posData.IDs,
+                    defaultTxt=str(nearest_ID)
                 )
                 mergeID_prompt.exec_()
                 if mergeID_prompt.cancel:
@@ -3416,11 +3430,13 @@ class guiWin(QMainWindow):
                 return
 
             if ID == 0:
+                nearest_ID = self.nearest_nonzero(posData.lab, y, x)
                 mothID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to annotate as mother cell',
-                    parent=self, allowedValues=posData.IDs
+                    parent=self, allowedValues=posData.IDs,
+                    defaultTxt=str(nearest_ID)
                 )
                 mothID_prompt.exec_()
                 if mothID_prompt.cancel:
@@ -3554,6 +3570,8 @@ class guiWin(QMainWindow):
              and not (self.isSnapshot and self.curvToolButton.isChecked())
         )
 
+        annotateDivision = right_click and is_cca_on and canAnnotateDivision
+
         canCurv = (
             curvToolON and not self.assignBudMothButton.isChecked()
             and not brushON and not dragImgLeft and not eraserON)
@@ -3591,6 +3609,7 @@ class guiWin(QMainWindow):
         eventOnImg2 = (
             (right_click or middle_click)
             and (mode=='Segmentation and Tracking' or self.isSnapshot)
+            and not annotateDivision
         )
         if eventOnImg2:
             self.gui_mousePressEventImg2(event)
@@ -3831,7 +3850,7 @@ class guiWin(QMainWindow):
                 self.isMouseDragImg1 = True
 
         # Annotate cell cycle division
-        elif right_click and is_cca_on and canAnnotateDivision:
+        elif annotateDivision:
             if posData.frame_i <= 0 and not self.isSnapshot:
                 return
 
@@ -3842,11 +3861,13 @@ class guiWin(QMainWindow):
             xdata, ydata = int(x), int(y)
             ID = posData.lab[ydata, xdata]
             if ID == 0:
+                nearest_ID = self.nearest_nonzero(posData.lab, y, x)
                 divID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to annotate as divided',
-                    parent=self, allowedValues=posData.IDs
+                    parent=self, allowedValues=posData.IDs,
+                    defaultTxt=str(nearest_ID)
                 )
                 divID_prompt.exec_()
                 if divID_prompt.cancel:
@@ -3878,11 +3899,13 @@ class guiWin(QMainWindow):
             xdata, ydata = int(x), int(y)
             ID = posData.lab[ydata, xdata]
             if ID == 0:
+                nearest_ID = self.nearest_nonzero(posData.lab, y, x)
                 budID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter ID of a bud you want to correct mother assignment',
-                    parent=self, allowedValues=posData.IDs
+                    parent=self, allowedValues=posData.IDs,
+                    defaultTxt=str(nearest_ID)
                 )
                 budID_prompt.exec_()
                 if budID_prompt.cancel:
@@ -3921,12 +3944,14 @@ class guiWin(QMainWindow):
             xdata, ydata = int(x), int(y)
             ID = posData.lab[ydata, xdata]
             if ID == 0:
+                nearest_ID = self.nearest_nonzero(posData.lab, y, x)
                 unknownID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
                          'Enter ID that you want to annotate as '
                          '"history UNKNOWN/KNOWN"',
-                    parent=self, allowedValues=posData.IDs
+                    parent=self, allowedValues=posData.IDs,
+                    defaultTxt=str(nearest_ID)
                 )
                 unknownID_prompt.exec_()
                 if unknownID_prompt.cancel:
@@ -11893,17 +11918,6 @@ class guiWin(QMainWindow):
         self.welcomeWin = welcome.welcomeWin(app=app)
         self.welcomeWin.showAndSetSize()
         self.welcomeWin.showPage(self.welcomeWin.quickStartItem)
-
-    def showUserManual(self):
-        systems = {
-            'nt': os.startfile,
-            'posix': lambda foldername: os.system('xdg-open "%s"' % foldername),
-            'os2': lambda foldername: os.system('open "%s"' % foldername)
-             }
-
-        main_path = pathlib.Path(__file__).resolve().parents[1]
-        userManual_path = main_path / 'UserManual'
-        systems.get(os.name, os.startfile)(userManual_path)
 
     def about(self):
         pass

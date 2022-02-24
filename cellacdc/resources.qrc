@@ -63,6 +63,8 @@
     <file alias="find.svg">resources/icons/find.svg</file>
     <file alias="expand.svg">resources/icons/expand.svg</file>
     <file alias="collapse.svg">resources/icons/collapse.svg</file>
+    <file alias="toolbar.png">resources/screenshots/toolbar.png</file>
+    <file alias="toolTip.png">resources/screenshots/toolTip.png</file>
     <file alias="visualcpp.png">resources/screenshots/visual_studio_settings.png</file>
     <file alias="Ubuntu-Bold.ttf">resources/fonts/Ubuntu-Bold.ttf</file>
     <file alias="Ubuntu-Regular.ttf">resources/fonts/Ubuntu-Regular.ttf</file>

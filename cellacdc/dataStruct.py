@@ -821,33 +821,41 @@ class createDataStructWin(QMainWindow):
 
     def criticalNotWindowsOS(self):
         if self.parent() is None:
-            msg = QMessageBox(self)
+            msg = widgets.myMessageBox(self)
         else:
-            msg = QMessageBox(self.parent())
-        msg.setTextFormat(Qt.RichText)
-        msg.setIcon(msg.Critical)
+            msg = widgets.myMessageBox(self.parent())
+        msg.setIcon(iconName='SP_MessageBoxCritical')
         msg.setWindowTitle('Not a supported OS')
-        msg.setStandardButtons(msg.Ok)
+        msg.addButton('    Ok     ')
         err_msg = (f"""
-        <p style="font-size:11px; line-height:1.2">
-            Unfortunately, the module "0. Create data structure from microscopy file(s)"
-            is functional <b>only on Windows OS and macOS</b>.<br>
-            We are working on extending support to other Operating Systems.
-            Note that all other modules are functional on
-            macOS, Linux and Windows.<br><br>
-            In the meantine, to create the required data structure,
-            you can use an <b>automated Fiji macro</b> that you can find in the folder
-            <a href=\"fiji">/Cell_ACDC/FijiMacros</a>.<br><br>
-            Check out the <b>instructions</b> on how to use the macros
-            in the section  <b>"Create data structure using Fiji Macros"</b> of the
-            user manual. You find the user manual in the folder
-            <a href=\"manual">/Cell_ACDC/UserManual</a>.
+        <p style="font-size:12px">
+        Unfortunately, the module "0. Create data structure from microscopy file(s)"
+        is functional <b>only on Windows OS and macOS</b>.<br><br>
+        We are working on extending support to other Operating Systems.<br><br>
+        Please open an issue on our
+        <a href="https://github.com/SchmollerLab/Cell_ACDC/issues">
+            GitHub page
+        </a> to request this feature.<br>
+        Note that <b>all other modules are functional</b> on
+        macOS, Linux and Windows.<br><br>
+        In the meantine, to create the required data structure,
+        you can use an <b>automated Fiji macro</b> that you can download from
+        <a href="https://github.com/SchmollerLab/Cell_ACDC/tree/main/FijiMacros">
+            here
+        </a>.<br><br>
+        Check out the <b>instructions</b> on how to use the macros
+        in the section  <b>"Create data structure using Fiji Macros"</b> of the
+        user manual.<br><br>
+        You can download the user manual from
+        <a href="https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf">
+            here
+        </a>.
         </p>
         """)
         msg.setText(err_msg)
-        msg_label = msg.findChild(QLabel, "qt_msgbox_label")
-        msg_label.setOpenExternalLinks(False)
-        msg_label.linkActivated.connect(self.on_linkActivated)
+        # msg_label = msg.findChild(QLabel, "qt_msgbox_label")
+        # msg_label.setOpenExternalLinks(False)
+        # msg_label.linkActivated.connect(self.on_linkActivated)
         msg.exec_()
 
 
