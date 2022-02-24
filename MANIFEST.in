@@ -19,6 +19,9 @@ exclude cellacdc/temp/segm_last_sel.csv
 exclude cellacdc/temp/settings.csv
 exclude cellacdc/utils/deprecated
 
+exclude cellacdc/models/YeastMate/detectron2
+exclude cellacdc/models/YeastMate/pycocotools
+
 exclude requirements.txt
 exclude not_installed_requirements.txt
 exclude requirements_new.txt
