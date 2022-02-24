@@ -268,12 +268,19 @@ class myGradientWidget(pg.GradientWidget):
         act.setDefaultWidget(widget)
         self.menu.insertAction(self.item.rgbAction, act)
 
+        # editFontSizeAction action
+        self.editFontSizeAction =  QAction(
+            'Text font size...', self
+        )
+        self.menu.insertAction(self.item.rgbAction, self.editFontSizeAction)
+        self.menu.insertSeparator(self.editFontSizeAction)
+
         # Shuffle colors action
         self.shuffleCmapAction =  QAction(
             'Shuffle colormap...   (Shift+S)', self
         )
         self.menu.insertAction(self.item.rgbAction, self.shuffleCmapAction)
-        self.menu.insertSeparator(self.shuffleCmapAction)
+
 
         # Invert bw action
         self.invertBwAction = QAction('Invert black/white', self)

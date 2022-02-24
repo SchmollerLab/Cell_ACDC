@@ -1503,7 +1503,6 @@ class guiWin(QMainWindow):
 
         self.showPropsDockButton.clicked.connect(self.showPropsDockWidget)
 
-
     def gui_connectEditActions(self):
         self.showInExplorerAction.setEnabled(True)
         self.setEnabledFileToolbar(True)
@@ -1573,6 +1572,7 @@ class guiWin(QMainWindow):
         self.labelsGrad.textColorButton.sigColorChanged.connect(
             self.saveTextLabelsColor
         )
+        self.labelsGrad.editFontSizeAction.triggered.connect(self.editFontSize)
 
         self.labelsGrad.shuffleCmapAction.triggered.connect(self.shuffle_cmap)
         self.shuffleCmapAction.triggered.connect(self.shuffle_cmap)
@@ -3635,8 +3635,8 @@ class guiWin(QMainWindow):
                     # Update brush ID. Take care of disappearing cells to remember
                     # to not use their IDs anymore in the future
                     self.setBrushID()
+                    self.updateLookuptable(lenNewLut=posData.brushID+1)
 
-                self.updateLookuptable(lenNewLut=posData.brushID+1)
                 self.brushColor = posData.lut[posData.brushID]/255
 
                 self.yPressAx2, self.xPressAx2 = y, x
@@ -5306,6 +5306,9 @@ class guiWin(QMainWindow):
             if action.text() == how:
                 action.setChecked(True)
                 break
+
+    def editFontSize(self):
+        self.fontSizeMenu.popup(QCursor.pos())
 
     @exception_handler
     def changeFontSize(self, action):

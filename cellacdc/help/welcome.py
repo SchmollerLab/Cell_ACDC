@@ -940,8 +940,6 @@ class welcomeWin(QWidget):
         elif len_chunk == 0:
             self.QPbar.setValue(self.QPbar.maximum())
 
-
-
     def openGUIexample(self):
         txt = (
         f"""
