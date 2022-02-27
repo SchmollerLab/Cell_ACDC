@@ -792,12 +792,14 @@ class createDataStructWin(QMainWindow):
                     f'{err}'
                 )
 
-            cancel = myutils.install_java()
-            if cancel:
-                raise ModuleNotFoundError(
-                    'User aborted Java installation'
-                )
-                return
+            if not is_win:
+                cancel = myutils.install_java()
+                if cancel:
+                    raise ModuleNotFoundError(
+                        'User aborted Java installation'
+                    )
+                    return
+
             myutils.install_javabridge()
 
         try:
