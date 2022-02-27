@@ -2017,7 +2017,7 @@ class guiWin(QMainWindow):
     def gui_createContourPens(self):
         if 'contLineWeight' in self.df_settings.index:
             val = self.df_settings.at['contLineWeight', 'value']
-            self.contLineWeight = val
+            self.contLineWeight = int(val)
         else:
             self.contLineWeight = 2
         if 'contLineColor' in self.df_settings.index:
@@ -2052,6 +2052,8 @@ class guiWin(QMainWindow):
         )
         for act in self.imgGrad.contLineWightActionGroup.actions():
             act.toggled.connect(self.contLineWeightToggled)
+
+        print(self.contLineColor, self.contLineWeight, type(self.contLineWeight))
 
         # Contours pens
         self.oldIDs_cpen = pg.mkPen(

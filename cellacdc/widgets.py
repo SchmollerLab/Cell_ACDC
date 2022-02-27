@@ -337,7 +337,9 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
             self.contLineWightActionGroup.addAction(action)
         self.gradient.menu.addMenu(contLineWeightMenu)
 
-        self.labelsAlphaMenu = self.menu.addMenu('Segm. masks overlay alpha...')
+        self.labelsAlphaMenu = self.gradient.menu.addMenu(
+            'Segm. masks overlay alpha...'
+        )
         self.labelsAlphaMenu.setDisabled(True)
         hbox = QHBoxLayout()
         self.labelsAlphaSlider = sliderWithSpinBox(
