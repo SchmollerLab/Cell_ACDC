@@ -17,6 +17,7 @@ from collections import namedtuple
 from natsort import natsorted
 # from MyWidgets import Slider, Button, MyRadioButtons
 from skimage.measure import label, regionprops
+from functools import partial
 import skimage.filters
 import skimage.measure
 import skimage.morphology
@@ -37,7 +38,7 @@ import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui
 from PyQt5 import QtCore
 from PyQt5.QtGui import QIcon, QFontMetrics
-from PyQt5.QtCore import Qt, QSize, QEvent, pyqtSignal, QEventLoop
+from PyQt5.QtCore import Qt, QSize, QEvent, pyqtSignal, QEventLoop, QTimer
 from PyQt5.QtWidgets import (
     QAction, QApplication, QMainWindow, QMenu, QLabel, QToolBar,
     QScrollBar, QWidget, QVBoxLayout, QLineEdit, QPushButton,
@@ -45,15 +46,138 @@ from PyQt5.QtWidgets import (
     QButtonGroup, QCheckBox, QSizePolicy, QComboBox, QSlider, QGridLayout,
     QSpinBox, QToolButton, QTableView, QTextBrowser, QDoubleSpinBox,
     QScrollArea, QFrame, QProgressBar, QGroupBox, QRadioButton,
-    QDockWidget, QMessageBox
+    QDockWidget, QMessageBox, QStyle
 )
 
 from . import myutils, load, prompts, widgets, core
 from . import is_mac
 from . import qrc_resources
-
+from . import is_win
 
 pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
+
+class installJavaDialog(widgets.myMessageBox):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.setWindowTitle('Install Java')
+        self.setIcon('SP_MessageBoxWarning')
+
+        txt = ("""
+        <p style="font-size:13px">
+            Your system doesn't have the <code>Java Development Kit</code>
+            installed<br> which is required for the installation of
+            <code>javabridge</code><br><br>
+        """)
+
+        txt_macOS = ("""
+            <b>Cell-ACDC is now going to install Java for you</b>.<br><br>
+            <i><b>NOTE</b>: You will be asked to insert your username and password<br>
+            on the terminal</i><br><br>
+            If you prefer to do it manually, cancel the process<br>
+            and follow the instructions below.
+        </p>
+        """)
+
+        txt_windows = ("""
+            <b>See instructions below on how to install it.</b>
+        </p>
+        """)
+
+        if not is_win:
+            self.instructionsButton = self.addButton('Show intructions...')
+            self.instructionsButton.setCheckable(True)
+            self.instructionsButton.disconnect()
+            self.instructionsButton.clicked.connect(self.showInstructions)
+            installButton = self.addButton('Install')
+            installButton.clicked.connect(self.installJavaMacOS)
+            txt = f'{txt}{txt_macOS}'
+        else:
+            okButton = self.addButton('Ok')
+            txt = f'{txt}{txt_windows}'
+
+        if not is_win:
+            self.cancelButton = self.addButton('Cancel')
+        else:
+            self.cancelButton = None
+
+        label = self.addText(txt)
+        label.setWordWrap(False)
+
+        self.resizeCount = 0
+
+    def addInstructions(self):
+        self.scrollArea = QScrollArea()
+        _container = QWidget()
+        _layout = QVBoxLayout()
+        for t, text in enumerate(myutils.install_javabridge_instructions_text()):
+            label = QLabel()
+            label.setText(text)
+            if is_win:
+                label.setWordWrap(True)
+            # label.setWordWrap(True)
+            if (t == 1 or t == 2) and not is_win:
+                label.setWordWrap(True)
+                code_layout = QHBoxLayout()
+                code_layout.addWidget(label)
+                copyButton = QToolButton()
+                copyButton.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+                copyButton.setIcon(QIcon(':edit-copy.svg'))
+                copyButton.setText('Copy')
+                if t==1:
+                    copyButton.textToCopy = myutils._install_homebrew_command()
+                else:
+                    copyButton.textToCopy = myutils._brew_install_java_command()
+                copyButton.clicked.connect(self.copyToClipboard)
+                code_layout.addWidget(copyButton, alignment=Qt.AlignLeft)
+                # code_layout.addStretch(1)
+                code_layout.setStretch(0, 2)
+                code_layout.setStretch(1, 0)
+                _layout.addLayout(code_layout)
+            else:
+                _layout.addWidget(label)
+        _container.setLayout(_layout)
+        self.scrollArea.setWidget(_container)
+        self.currentRow += 1
+        self.layout.addWidget(
+            self.scrollArea, self.currentRow, 1, alignment=Qt.AlignTop
+        )
+
+        # Stretch last row
+        self.currentRow += 1
+        self.layout.setRowStretch(self.currentRow, 1)
+        if not is_win:
+            self.scrollArea.hide()
+
+    def copyToClipboard(self):
+        cb = QApplication.clipboard()
+        cb.clear(mode=cb.Clipboard)
+        cb.setText(self.sender().textToCopy, mode=cb.Clipboard)
+        print('Command copied!')
+
+    def showInstructions(self, checked):
+        if checked:
+            self.instructionsButton.setText('Hide instructions')
+            self.origHeight = self.height()
+            self.resize(self.width(), self.height()+300)
+            self.scrollArea.show()
+        else:
+            self.instructionsButton.setText('Show instructions...')
+            self.scrollArea.hide()
+            func = partial(self.resize, self.width(), self.origHeight)
+            QTimer.singleShot(50, func)
+
+    def installJavaMacOS(self):
+        import subprocess
+        subprocess.check_call(myutils._install_homebrew_command().split())
+        subprocess.check_call(myutils._brew_install_java_command().split())
+
+    def show(self):
+        super().show()
+        self.addInstructions()
+        self.move(self.pos().x(), 20)
+        if is_win:
+            self.resize(self.width(), self.height()+150)
 
 class wandToleranceWidget(QFrame):
     def __init__(self, parent=None):

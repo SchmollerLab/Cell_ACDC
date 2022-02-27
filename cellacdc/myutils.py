@@ -29,7 +29,7 @@ from tifffile.tifffile import TiffWriter, TiffFile
 from PyQt5.QtWidgets import QMessageBox
 from PyQt5.QtCore import pyqtSignal, QObject, QCoreApplication
 
-from . import prompts, widgets
+from . import prompts, widgets, apps
 
 __all__ = ['ColorMap']
 _mapCache = {}
@@ -55,12 +55,15 @@ def rgb_str_to_values(rgbString, errorRgb=(255,255,255)):
             r, g, b = errorRgb
     return r, g, b
 
-def rgba_str_to_values(rgbString, errorRgb=(255,255,255,255)):
+def rgba_str_to_values(rgbaString, errorRgb=(255,255,255,255)):
     try:
-        r, g, b, a = re.findall('(\d+), (\d+), (\d+), (\d+)', rgbString)[0]
+        r, g, b, a = re.findall('(\d+), (\d+), (\d+), (\d+)', rgbaString)[0]
         r, g, b, a = int(r), int(g), int(b), int(a)
     except TypeError:
-        r, g, b, a = errorRgb
+        try:
+            r, g, b, a = rgbaString
+        except Exception as e:
+            r, g, b, a = errorRgb
     return r, g, b, a
 
 def checkDataIntegrity(filenames, parent_path, parentQWidget=None):
@@ -103,6 +106,15 @@ def checkDataIntegrity(filenames, parent_path, parentQWidget=None):
 
 def testQcoreApp():
     print(QCoreApplication.instance())
+
+def install_java():
+    try:
+        subprocess.check_call(['javac', '-version'])
+        return False
+    except Exception as e:
+        win = apps.installJavaDialog()
+        win.exec_()
+        return win.clickedButton == win.cancelButton
 
 def install_javabridge():
     if sys.platform.startswith('win'):
@@ -789,40 +801,61 @@ def uint_to_float(img):
         img = img/uint8_max
     return img
 
+def _install_homebrew_command():
+    return '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
+
+def _brew_install_java_command():
+    return 'brew install --cask adoptopenjdk8'
+
 def _java_instructions_macOS():
-    s = (f"""
-    To do so, <b>close Cell-ACDC</b> and run the following commands
-    in the Terminal <b>one at the time:</b><br>
-    <p>
-        <code>/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"</code>
+    s1 = ("""
+    <p style="font-size:13px">
+        <b>First close Cell-ACDC</b> and run the following commands<br>
+        in the Teminal <b>one by one:</b>
     </p>
-    <p>
-        <code>brew install --cask adoptopenjdk8</code>
-    </p><br>
-    The first command is used to install Homebrew (if you already have it skip
-    this step), a package manager for macOS/Linux.
-    The second command is used to install Java 8.
+    """)
+
+    s2 = (f"""
+    <p style="font-size:13px">
+        <code>{_install_homebrew_command()}</code>
+    </p>
+    """)
+
+    s3 = (f"""
+    <p style="font-size:13px">
+        <code>{_brew_install_java_command()}</code>
+    </p>
+    """)
+
+    s4 = ("""
+    <p style="font-size:13px">
+    The first command is used to install Homebrew<br>
+    a package manager for macOS/Linux.<br><br>
+    The second command is used to install Java 8.<br>
     Follow the instructions on the terminal to complete
     installation.<br><br>
-    Alternatively, <b>you can install Java as a regular app</b> by downloading
-    and running the app from
+    Alternatively,<b> you can install Java as a regular app</b><br>
+    by downloading the app from
     <a href="https://hmgubox2.helmholtz-muenchen.de/index.php/s/7xF7YnArwbt9ZqB">
         here
     </a>.
+    </p>
     """)
-    return s
+    return s1, s2, s3, s4
 
 def _java_instructions_windows():
-    s = (f"""
-    To do so, <b>first close Cell-ACDC</b>, then download and install Java 8 and
-    Java Development Kit for Windows. Here the links:<br>
-    <p>
-    Java 8: <a href="https://www.java.com/en/download/manual.jsp">here</a>
+    s = [f"""
+    <p style="font-size:13px">
+        <b>First close Cell-ACDC</b>, then download and install Java 8 and
+        Java Development Kit for Windows. Here the links:<br>
+    <p style="font-size:13px">
+        Java 8: <a href="https://www.java.com/en/download/manual.jsp">here</a>
     </p>
-    Java Development Kit: <a href="https://hmgubox2.helmholtz-muenchen.de/index.php/s/zocneD2j2wMwbNc">here</a>
+    <p style="font-size:13px">
+        Java Development Kit: <a href="https://hmgubox2.helmholtz-muenchen.de/index.php/s/zocneD2j2wMwbNc">here</a>
     </p>
     </p><br>
-    """)
+    """]
     return s
 
 def install_javabridge_instructions_text():
@@ -840,21 +873,17 @@ def install_javabridge_help(parent=None):
         Make sure you have an <b>active internet connection</b>,
         before continuing.
         Progress will be displayed on the terminal<br><br>
-        <b>IMPORTANT:</b> If the installation fails, you probably have to
-        install Java 8.<br><br>
-        {install_javabridge_instructions_text()}<br><br>
-        Once you finished installing Java 8 try to open this module again.<br><br>
-        If installation is still failing, <b>please open an issue</b>
-        on our GitHub page
+        <b>IMPORTANT:</b> If the installation fails, <b>please open an issue</b>
+        on our
         <a href="https://github.com/SchmollerLab/Cell_ACDC/issues">
-            here
+            GitHub page
         </a>.<br><br>
         Alternatively, you can cancel the process and try later.
     </p>
     """)
     msg.setIcon()
     msg.setWindowTitle('Installing javabridge')
-    msg.setText(txt)
+    msg.addText(txt)
     msg.addButton('   Ok   ')
     cancel = msg.addButton(' Cancel ')
     msg.exec_()
@@ -871,13 +900,13 @@ def install_package_msg(pkg_name, parent=None):
         Progress will be displayed on the terminal<br><br>
         <b>IMPORTANT:</b> If the installation fails please install
         <code>{pkg_name}</code> manually with the follwing command:<br><br>
-        <code>pip install {pkg_name}</code><br><br>
+        <code>pip install {pkg_name.lower()}</code><br><br>
         Alternatively, you can cancel the process and try later.
     </p>
     """)
     msg.setIcon()
     msg.setWindowTitle(f'Install {pkg_name}')
-    msg.setText(txt)
+    msg.addText(txt)
     msg.addButton('   Ok   ')
     cancel = msg.addButton(' Cancel ')
     msg.exec_()

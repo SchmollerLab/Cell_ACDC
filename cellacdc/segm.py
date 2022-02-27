@@ -27,7 +27,7 @@ from PyQt5.QtCore import (
 from PyQt5 import QtGui
 
 # Custom modules
-from . import prompts, load, myutils, apps, core, dataPrep
+from . import prompts, load, myutils, apps, core, dataPrep, widgets
 from . import qrc_resources
 
 if os.name == 'nt':
@@ -784,9 +784,33 @@ class segmWin(QMainWindow):
                     f'_segmInfo.csv file not found. Launching dataPrep.py...'
                 )
                 self.logTerminal.setText(
-                    f'WARNING: The image data in {img_path} is 3D but '
+                    f'The image data in {img_path} is 3D but '
                     f'_segmInfo.csv file not found. Launching dataPrep.py...'
                 )
+                msg = widgets.myMessageBox()
+                msg.setWindowTitle('3D z-stacks info missing')
+                msg.setIcon(iconName='SP_MessageBoxWarning')
+                txt = (f"""
+                <p style="font-size:13px">
+                    You loaded 3D z-stacks, but you <b>never selected which
+                    z-slice or projection method to use for segmentation</b>
+                    (Cell-ACDC cannot segment 3D z-stacks,
+                    it needs to convert them to 2D).<br><br>
+                    I opened a window where you can visualize
+                    your z-stacks and <b>select an appropriate z-slice
+                    or projection for each Position or frame</b>.
+                </p>
+                """)
+                msg.addText(txt)
+                msg.addButton('Ok')
+                cancel = msg.addButton(' Cancel ')
+                msg.exec_()
+                if msg.clickedButton == cancel:
+                    abort = self.doAbort()
+                    if abort:
+                        self.close()
+                        return
+
                 dataPrepWin.titleText = (
                 """
                 Select z-slice (or projection) for each frame/position.<br>

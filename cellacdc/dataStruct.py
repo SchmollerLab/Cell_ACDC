@@ -792,9 +792,12 @@ class createDataStructWin(QMainWindow):
                     f'{err}'
                 )
 
-            # if sys.platform.startswith('win'):
-            #     win = apps.warnVisualCppRequired(pkg_name='javabridge')
-            #     win.exec_()
+            cancel = myutils.install_java()
+            if cancel:
+                raise ModuleNotFoundError(
+                    'User aborted Java installation'
+                )
+                return
             myutils.install_javabridge()
 
         try:

@@ -6,7 +6,7 @@ import numpy as np
 import skimage.exposure
 import skimage.filters
 
-from . import models
+from cellpose import models
 
 CELLPOSE_MODELS = [
     'cyto',

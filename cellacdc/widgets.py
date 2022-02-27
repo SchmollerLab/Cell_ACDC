@@ -1,6 +1,9 @@
 import sys
 import time
 import re
+import numpy as np
+
+from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 
 from PyQt5.QtCore import (
     pyqtSignal, QTimer, Qt, QPoint, pyqtSlot, pyqtProperty,
@@ -19,25 +22,69 @@ from PyQt5.QtWidgets import (
     QScrollArea, QSizePolicy, QComboBox, QPushButton, QScrollBar,
     QGroupBox, QAbstractSlider, QDoubleSpinBox, QWidgetAction,
     QAction, QTabWidget, QAbstractSpinBox, QMessageBox,
-    QStyle, QDialog
+    QStyle, QDialog, QSpacerItem, QFrame, QMenu, QActionGroup
 )
 
 import pyqtgraph as pg
+from pyqtgraph import QtGui
 
 from . import myutils, apps
 from . import qrc_resources
+
+def removeHSVcmaps():
+    hsv_cmaps = []
+    for g, grad in pg.graphicsItems.GradientEditorItem.Gradients.items():
+        if grad['mode'] == 'hsv':
+            hsv_cmaps.append(g)
+    for g in hsv_cmaps:
+        del pg.graphicsItems.GradientEditorItem.Gradients[g]
+
+def renamePgCmaps():
+    Gradients = pg.graphicsItems.GradientEditorItem.Gradients
+    Gradients['hot'] = Gradients.pop('thermal')
+    Gradients.pop('greyclip')
+
+def addGradients():
+    Gradients = pg.graphicsItems.GradientEditorItem.Gradients
+    Gradients['cividis'] = {
+        'ticks': [
+            (0.0, (0, 34, 78, 255)),
+            (0.25, (66, 78, 108, 255)),
+            (0.5, (124, 123, 120, 255)),
+            (0.75, (187, 173, 108, 255)),
+            (1.0, (254, 232, 56, 255))],
+        'mode': 'rgb'
+    }
+    Gradients['cool'] = {
+        'ticks': [
+            (0.0, (0, 255, 255, 255)),
+            (1.0, (255, 0, 255, 255))],
+        'mode': 'rgb'
+    }
+    cmaps = {}
+    for name, gradient in Gradients.items():
+        ticks = gradient['ticks']
+        colors = [tuple([v/255 for v in tick[1]]) for tick in ticks]
+        cmaps[name] = LinearSegmentedColormap.from_list(name, colors, N=256)
+    return cmaps
+
+renamePgCmaps()
+removeHSVcmaps()
+cmaps = addGradients()
 
 class myMessageBox(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
 
         self.layout = QGridLayout()
+        self.layout.setHorizontalSpacing(20)
         self.buttonsLayout = QHBoxLayout()
         self.buttonsLayout.setSpacing(2)
         self.buttons = []
 
+        self.currentRow = 0
+
         self.layout.setColumnStretch(1, 1)
-        self.layout.addLayout(self.buttonsLayout, 1, 1, alignment=Qt.AlignRight)
         self.setLayout(self.layout)
 
     def setIcon(self, iconName='SP_MessageBoxInformation'):
@@ -50,11 +97,13 @@ class myMessageBox(QDialog):
 
         self.layout.addWidget(label, 0, 0, alignment=Qt.AlignTop)
 
-    def setText(self, text):
+    def addText(self, text):
         label = QLabel(self)
         label.setText(text)
         label.setWordWrap(True)
-        self.layout.addWidget(label, 0, 1, alignment=Qt.AlignTop)
+        self.layout.addWidget(label, self.currentRow, 1, alignment=Qt.AlignTop)
+        self.currentRow += 1
+        return label
 
     def addButton(self, buttonText):
         button = QPushButton(buttonText, self)
@@ -63,15 +112,38 @@ class myMessageBox(QDialog):
         self.buttons.append(button)
         return button
 
-    def exec_(self):
-        self.show()
+    def show(self):
+        # spacer
+        spacer = QSpacerItem(10, 10)
+        self.layout.addItem(spacer, self.currentRow, 1)
+        self.layout.setRowStretch(self.currentRow, 0)
+
+        # buttons
+        self.currentRow += 1
+        self.layout.addLayout(
+            self.buttonsLayout, self.currentRow, 0, 1, 2,
+            alignment=Qt.AlignRight
+        )
+
+        # spacer
+        self.currentRow += 1
+        spacer = QSpacerItem(10, 10)
+        self.layout.addItem(spacer, self.currentRow, 1)
+        self.layout.setRowStretch(self.currentRow, 0)
+
+        super().show()
         widths = [button.width() for button in self.buttons]
         if widths:
             max_width = max(widths)
             for button in self.buttons:
                 button.setMinimumWidth(max_width)
-        self.setMinimumWidth(self.width())
-        self.setMinimumHeight(self.height())
+
+    # def resizeEvent(self, event):
+    #     print(self.layout.itemAtPosition(0, 1).widget().sizeHint())
+    #     print(self.size())
+
+    def exec_(self):
+        self.show()
         super().exec_()
 
     def close(self, event):
@@ -219,6 +291,77 @@ class view_visualcpp_screenshot(QWidget):
         layout.addWidget(label)
         self.setLayout(layout)
 
+class myHistogramLUTitem(pg.HistogramLUTItem):
+    sigGradientMenuEvent = pyqtSignal(object)
+
+    def __init__(self, **kwargs):
+        self.cmaps = cmaps
+
+        super().__init__(**kwargs)
+
+        for action in self.gradient.menu.actions():
+            if action.text() == 'HSV':
+                HSV_action = action
+            elif action.text() == 'RGB':
+                RGB_ation = action
+        self.gradient.menu.removeAction(HSV_action)
+        self.gradient.menu.removeAction(RGB_ation)
+
+        # Invert bw action
+        self.invertBwAction = QAction('Invert black/white', self)
+        self.invertBwAction.setCheckable(True)
+        self.gradient.menu.addAction(self.invertBwAction)
+        self.gradient.menu.addSeparator()
+
+        # Contours color button
+        self.gradient.menu.addSection('Contours: ')
+        hbox = QHBoxLayout()
+        hbox.addWidget(QLabel('Color: '))
+        self.contoursColorButton = pg.ColorButton(color=(25,25,25))
+        hbox.addWidget(self.contoursColorButton)
+        widget = QWidget()
+        widget.setLayout(hbox)
+        act = QWidgetAction(self)
+        act.setDefaultWidget(widget)
+        self.gradient.menu.addAction(act)
+
+        # Contours line weight
+        contLineWeightMenu = QMenu('Line weight', self.gradient.menu)
+        self.contLineWightActionGroup = QActionGroup(self)
+        for w in range(1, 11):
+            action = contLineWeightMenu.addAction(str(w))
+            action.setCheckable(True)
+            if w == 2:
+                action.setChecked(True)
+            action.lineWeight = w
+            self.contLineWightActionGroup.addAction(action)
+        self.gradient.menu.addMenu(contLineWeightMenu)
+
+        self.labelsAlphaMenu = self.menu.addMenu('Segm. masks overlay alpha...')
+        self.labelsAlphaMenu.setDisabled(True)
+        hbox = QHBoxLayout()
+        self.labelsAlphaSlider = sliderWithSpinBox(
+            title='Alpha', title_loc='in_line', is_float=True,
+            normalize=True
+        )
+        self.labelsAlphaSlider.setMaximum(100)
+        self.labelsAlphaSlider.setValue(0.3)
+        hbox.addWidget(self.labelsAlphaSlider)
+        hbox.addWidget(QLabel('(Ctrl + Up/Down)'))
+        widget = QWidget()
+        widget.setLayout(hbox)
+        act = QWidgetAction(self)
+        act.setDefaultWidget(widget)
+        self.labelsAlphaMenu.addSeparator()
+        self.labelsAlphaMenu.addAction(act)
+
+        # Select channels section
+        self.gradient.menu.addSeparator()
+        self.gradient.menu.addSection('Select channel: ')
+
+        # hide histogram tool
+        self.vb.hide()
+
 class myColorButton(pg.ColorButton):
     sigColorRejected = pyqtSignal(object)
 
@@ -231,11 +374,8 @@ class myColorButton(pg.ColorButton):
         self.setColor(self.origColor, finished=False)
         self.sigColorRejected.emit(self)
 
-class myGradientWidget(pg.GradientWidget):
+class labelsGradientWidget(pg.GradientWidget):
     def __init__(self, parent=None, orientation='right',  *args, **kargs):
-        self.removeHSVcmaps()
-        self.addGradients()
-
         pg.GradientWidget.__init__(
             self, parent=parent, orientation=orientation,  *args, **kargs
         )
@@ -288,50 +428,6 @@ class myGradientWidget(pg.GradientWidget):
         self.menu.insertAction(self.item.rgbAction, self.invertBwAction)
 
         self.menu.insertSeparator(self.item.rgbAction)
-
-        self.labelsAlphaMenu = self.menu.addMenu('Segm. masks overlay alpha...')
-        self.labelsAlphaMenu.setDisabled(True)
-        hbox = QHBoxLayout()
-        self.labelsAlphaSlider = sliderWithSpinBox(
-            title='Alpha', title_loc='in_line', is_float=True,
-            normalize=True
-        )
-        self.labelsAlphaSlider.setMaximum(100)
-        self.labelsAlphaSlider.setValue(0.3)
-        hbox.addWidget(self.labelsAlphaSlider)
-        hbox.addWidget(QLabel('(Ctrl + Up/Down)'))
-        widget = QWidget()
-        widget.setLayout(hbox)
-        act = QWidgetAction(self)
-        act.setDefaultWidget(widget)
-        self.labelsAlphaMenu.addSeparator()
-        self.labelsAlphaMenu.addAction(act)
-
-    def removeHSVcmaps(self):
-        hsv_cmaps = []
-        for g, grad in pg.graphicsItems.GradientEditorItem.Gradients.items():
-            if grad['mode'] == 'hsv':
-                hsv_cmaps.append(g)
-        for g in hsv_cmaps:
-            del pg.graphicsItems.GradientEditorItem.Gradients[g]
-
-    def addGradients(self):
-        Gradients = pg.graphicsItems.GradientEditorItem.Gradients
-        Gradients['cividis'] = {
-            'ticks': [
-                (0.0, (0, 34, 78, 255)),
-                (0.25, (66, 78, 108, 255)),
-                (0.5, (124, 123, 120, 255)),
-                (0.75, (187, 173, 108, 255)),
-                (1.0, (254, 232, 56, 255))],
-            'mode': 'rgb'
-        }
-        Gradients['cool'] = {
-            'ticks': [
-                (0.0, (0, 255, 255, 255)),
-                (1.0, (255, 0, 255, 255))],
-            'mode': 'rgb'
-        }
 
     def saveState(self, df):
         # remove previous state

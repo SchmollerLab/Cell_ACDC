@@ -41,6 +41,8 @@ import skimage.draw
 import skimage.exposure
 import skimage.transform
 import skimage.segmentation
+import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 from functools import wraps
 from skimage.color import gray2rgb, gray2rgba, label2rgb
 
@@ -1193,7 +1195,8 @@ class guiWin(QMainWindow):
     def gui_createMainLayout(self):
         mainLayout = QGridLayout()
         row = 0
-        mainLayout.addLayout(self.leftSideLayout, row, 0, 2, 1)
+        mainLayout.addLayout(self.leftSideDocksLayout, row, 0, 2, 1)
+        # mainLayout.addWidget(self.imgGradWidget, row, 1)
         mainLayout.addWidget(self.graphLayout, row, 1, 1, 2)
         mainLayout.addWidget(self.labelsGrad, row, 3)
 
@@ -1578,7 +1581,7 @@ class guiWin(QMainWindow):
         self.shuffleCmapAction.triggered.connect(self.shuffle_cmap)
         self.labelsGrad.invertBwAction.toggled.connect(self.setCheckedInvertBW)
 
-        self.labelsGrad.labelsAlphaSlider.valueChanged.connect(
+        self.imgGrad.labelsAlphaSlider.valueChanged.connect(
             self.updateLabelsAlpha
         )
 
@@ -1591,10 +1594,13 @@ class guiWin(QMainWindow):
         self.entropyFilterAction.toggled.connect(self.entropyFilter)
         self.addDelRoiAction.triggered.connect(self.addDelROI)
         self.delBorderObjAction.triggered.connect(self.delBorderObj)
-        self.hist.sigLookupTableChanged.connect(self.histLUT_cb)
-        self.hist.gradient.sigGradientChangeFinished.connect(
-            self.histLUTfinished_cb
+
+        self.imgGrad.sigLookupTableChanged.connect(self.imgGradLUT_cb)
+        self.imgGrad.gradient.sigGradientChangeFinished.connect(
+            self.imgGradLUTfinished_cb
         )
+
+
         self.normalizeQActionGroup.triggered.connect(self.saveNormAction)
         self.imgPropertiesAction.triggered.connect(self.editImgProperties)
 
@@ -1606,14 +1612,17 @@ class guiWin(QMainWindow):
         )
 
     def gui_createLeftSideWidgets(self):
-        self.leftSideLayout = QVBoxLayout()
+        self.leftSideDocksLayout = QVBoxLayout()
         self.showPropsDockButton = widgets.expandCollapseButton()
         self.showPropsDockButton.setToolTip('Show object properties')
-        self.leftSideLayout.addWidget(self.showPropsDockButton)
-        self.leftSideLayout.setSpacing(0)
-        self.leftSideLayout.setContentsMargins(0,0,0,0)
+        self.leftSideDocksLayout.addWidget(self.showPropsDockButton)
+        self.leftSideDocksLayout.setSpacing(0)
+        self.leftSideDocksLayout.setContentsMargins(0,0,0,0)
 
     def gui_createImg1Widgets(self):
+        _font = QtGui.QFont()
+        _font.setPointSize(10)
+
         # Toggle contours/ID comboboxf
         self.drawIDsContComboBoxSegmItems = [
             'Draw IDs and contours',
@@ -1640,6 +1649,7 @@ class guiWin(QMainWindow):
             'Draw nothing'
         ]
         self.drawIDsContComboBox = QComboBox()
+        self.drawIDsContComboBox.setFont(_font)
         self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
         # Always adjust combobox width to largest item
         self.drawIDsContComboBox.setSizeAdjustPolicy(
@@ -1660,20 +1670,17 @@ class guiWin(QMainWindow):
             'Note that the "Viewer" mode allows you to scroll ALL frames.'
         )
         t_label = QLabel('frame n.  ')
-        _font = QtGui.QFont()
-        _font.setPointSize(10)
         t_label.setFont(_font)
         self.t_label = t_label
 
         # z-slice scrollbars
         self.zSliceScrollBar = QScrollBar(Qt.Horizontal)
         _z_label = QLabel('z-slice  ')
-        _font = QtGui.QFont()
-        _font.setPointSize(10)
         _z_label.setFont(_font)
         self.z_label = _z_label
 
         self.zProjComboBox = QComboBox()
+        self.zProjComboBox.setFont(_font)
         self.zProjComboBox.addItems([
             'single z-slice',
             'max z-projection',
@@ -1683,12 +1690,11 @@ class guiWin(QMainWindow):
 
         self.zSliceOverlay_SB = QScrollBar(Qt.Horizontal)
         _z_label = QLabel('overlay z-slice  ')
-        _font = QtGui.QFont()
-        _font.setPointSize(10)
         _z_label.setFont(_font)
         self.overlay_z_label = _z_label
 
         self.zProjOverlay_CB = QComboBox()
+        self.zProjOverlay_CB.setFont(_font)
         self.zProjOverlay_CB.addItems(['single z-slice',
                                        'max z-projection',
                                        'mean z-projection',
@@ -1809,13 +1815,13 @@ class guiWin(QMainWindow):
         self.equalizeHistPushButton = equalizeHistPushButton
 
         # Left image histogram
-        self.hist = pg.HistogramLUTItem()
+        self.imgGrad = widgets.myHistogramLUTitem()
         # Disable histogram default context Menu event
-        self.hist.vb.raiseContextMenu = lambda x: None
-        self.graphLayout.addItem(self.hist, row=1, col=0)
+        self.imgGrad.vb.raiseContextMenu = lambda x: None
+        self.graphLayout.addItem(self.imgGrad, row=1, col=0)
 
         # Colormap gradient widget
-        self.labelsGrad = widgets.myGradientWidget()
+        self.labelsGrad = widgets.labelsGradientWidget()
         try:
             stateFound = self.labelsGrad.restoreState(self.df_settings)
         except Exception as e:
@@ -1873,11 +1879,12 @@ class guiWin(QMainWindow):
         # Left image
         self.img1 = pg.ImageItem(self.blank)
         self.ax1.addItem(self.img1)
-        for action in self.hist.gradient.menu.actions():
+        # Disconnect colormaps actions and connect to gradientCmapContextMenuClicked
+        for action in self.imgGrad.gradient.menu.actions():
             try:
                 action.name
                 action.triggered.disconnect()
-                action.triggered.connect(self.labelsGradientContextMenuClicked)
+                action.triggered.connect(self.gradientCmapContextMenuClicked)
             except (AttributeError, TypeError):
                 pass
 
@@ -2007,22 +2014,75 @@ class guiWin(QMainWindow):
 
         self.creatingAxesItemsFinished()
 
+    def gui_createContourPens(self):
+        if 'contLineWeight' in self.df_settings.index:
+            val = self.df_settings.at['contLineWeight', 'value']
+            self.contLineWeight = val
+        else:
+            self.contLineWeight = 2
+        if 'contLineColor' in self.df_settings.index:
+            val = self.df_settings.at['contLineColor', 'value']
+            rgba = myutils.rgba_str_to_values(val)
+            self.contLineColor = [max(0, v-50) for v in rgba]
+            self.newIDlineColor = [min(255, v+50) for v in self.contLineColor]
+        else:
+            self.contLineColor = (205, 0, 0, 127)
+            self.newIDlineColor = (255, 0, 0, 255)
+
+        try:
+            self.imgGrad.contoursColorButton.sigColorChanging.disconnect()
+            self.imgGrad.contoursColorButton.sigColorChanged.disconnect()
+        except Exception as e:
+            pass
+        try:
+            for act in self.imgGrad.contLineWightActionGroup.actions():
+                act.toggled.disconnect()
+        except Exception as e:
+            pass
+        for act in self.imgGrad.contLineWightActionGroup.actions():
+            if act.lineWeight == self.contLineWeight:
+                act.setChecked(True)
+        self.imgGrad.contoursColorButton.setColor(self.contLineColor[:3])
+
+        self.imgGrad.contoursColorButton.sigColorChanging.connect(
+            self.updateContColour
+        )
+        self.imgGrad.contoursColorButton.sigColorChanged.connect(
+            self.saveContColour
+        )
+        for act in self.imgGrad.contLineWightActionGroup.actions():
+            act.toggled.connect(self.contLineWeightToggled)
+
+        # Contours pens
+        self.oldIDs_cpen = pg.mkPen(
+            color=self.contLineColor, width=self.contLineWeight
+        )
+        self.newIDs_cpen = pg.mkPen(
+            color=self.newIDlineColor, width=self.contLineWeight+1
+        )
+        self.tempNewIDs_cpen = pg.mkPen(
+            color='g', width=self.contLineWeight+1
+        )
+        self.lostIDs_cpen = pg.mkPen(
+            color=(245, 184, 0, 100), width=self.contLineWeight+2
+        )
+
+
     def gui_createGraphicsItems(self):
-        # Contour pens
-        self.oldIDs_cpen = pg.mkPen(color=(200, 0, 0, 255*0.5), width=2)
-        self.newIDs_cpen = pg.mkPen(color='r', width=3)
-        self.tempNewIDs_cpen = pg.mkPen(color='g', width=3)
-        self.lostIDs_cpen = pg.mkPen(color=(245, 184, 0, 100), width=4)
+        self.gui_createContourPens()
 
         # Lost ID question mark text color
         self.lostIDs_qMcolor = (245, 184, 0)
 
         # New bud-mother line pen
-        self.NewBudMoth_Pen = pg.mkPen(color='r', width=3, style=Qt.DashLine)
+        self.NewBudMoth_Pen = pg.mkPen(
+            color='r', width=3, style=Qt.DashLine
+        )
 
         # Old bud-mother line pen
-        self.OldBudMoth_Pen = pg.mkPen(color=(255,165,0), width=2,
-                                       style=Qt.DashLine)
+        self.OldBudMoth_Pen = pg.mkPen(
+            color=(255,165,0), width=2, style=Qt.DashLine
+        )
 
         # Temporary line item connecting bud to new mother
         self.BudMothTempLine = pg.PlotDataItem(pen=self.NewBudMoth_Pen)
@@ -2055,7 +2115,8 @@ class guiWin(QMainWindow):
         self.img2.mousePressEvent = self.gui_mousePressEventImg2
         self.img2.mouseMoveEvent = self.gui_mouseDragEventImg2
         self.img2.mouseReleaseEvent = self.gui_mouseReleaseEventImg2
-        self.hist.vb.contextMenuEvent = self.gui_raiseContextMenuLUT
+        self.imgGrad.gradient.showMenu = self.gui_gradientContextMenuEvent
+        # self.imgGrad.vb.contextMenuEvent = self.gui_gradientContextMenuEvent
 
     def gui_initImg1BottomWidgets(self):
         self.zSliceScrollBar.hide()
@@ -2097,21 +2158,17 @@ class guiWin(QMainWindow):
             event.ignore()
             return
 
-        # show gradient widget menu if none of the right-click actions are ON
-        is_right_click_action_ON = any([
-            b.isChecked() for b in self.checkableQButtonsGroup.buttons()
-        ])
-        if right_click and not is_right_click_action_ON:
-            self.labelsGrad.showMenu(event)
+        if mode == 'Viewer':
+            self.startBlinkingModeCB()
             event.ignore()
             return
 
         x, y = event.pos().x(), event.pos().y()
-        ID = posData.lab[int(y), int(x)]
-
-        if mode == 'Viewer':
-            self.startBlinkingModeCB()
-            event.ignore()
+        xdata, ydata = int(x), int(y)
+        Y, X = posData.lab.shape
+        if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
+            ID = posData.lab[ydata, xdata]
+        else:
             return
 
         # Check if right click on ROI
@@ -2142,6 +2199,20 @@ class guiWin(QMainWindow):
                 event.ignore()
                 return
 
+        # show gradient widget menu if none of the right-click actions are ON
+        # and event is not coming from image 1
+        is_right_click_action_ON = any([
+            b.isChecked() for b in self.checkableQButtonsGroup.buttons()
+        ])
+        is_event_from_img1 = hasattr(event, 'isImg1Sender')
+        showLabelsGradMenu = (
+            right_click and not is_right_click_action_ON
+            and not is_event_from_img1
+        )
+        if showLabelsGradMenu:
+            self.labelsGrad.showMenu(event)
+            event.ignore()
+            return
 
         # Left-click is used for brush, eraser, separate bud and curvature tool
         # Brush and eraser are mutually exclusive but we want to keep the eraser
@@ -2158,36 +2229,35 @@ class guiWin(QMainWindow):
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             Y, X = posData.lab.shape
-            if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
-                # Store undo state before modifying stuff
-                self.storeUndoRedoStates(False)
-                self.yPressAx2, self.xPressAx2 = y, x
-                # Keep a global mask to compute which IDs got erased
-                self.erasedIDs = []
-                self.erasedID = posData.lab[ydata, xdata]
+            # Store undo state before modifying stuff
+            self.storeUndoRedoStates(False)
+            self.yPressAx2, self.xPressAx2 = y, x
+            # Keep a global mask to compute which IDs got erased
+            self.erasedIDs = []
+            self.erasedID = posData.lab[ydata, xdata]
 
-                ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
+            ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
-                # Build eraser mask
-                mask = np.zeros(posData.lab.shape, bool)
-                mask[ymin:ymax, xmin:xmax][diskMask] = True
+            # Build eraser mask
+            mask = np.zeros(posData.lab.shape, bool)
+            mask[ymin:ymax, xmin:xmax][diskMask] = True
 
-                # If user double-pressed 'b' then erase over ALL labels
-                color = self.eraserButton.palette().button().color().name()
-                eraseOnlyOneID = (
-                    color != self.doublePressKeyButtonColor
-                    and self.erasedID != 0
-                )
-                if eraseOnlyOneID:
-                    mask[posData.lab!=self.erasedID] = False
+            # If user double-pressed 'b' then erase over ALL labels
+            color = self.eraserButton.palette().button().color().name()
+            eraseOnlyOneID = (
+                color != self.doublePressKeyButtonColor
+                and self.erasedID != 0
+            )
+            if eraseOnlyOneID:
+                mask[posData.lab!=self.erasedID] = False
 
-                self.eraseOnlyOneID = eraseOnlyOneID
+            self.eraseOnlyOneID = eraseOnlyOneID
 
-                self.erasedIDs.extend(posData.lab[mask])
-                posData.lab[mask] = 0
-                self.img2.updateImage()
+            self.erasedIDs.extend(posData.lab[mask])
+            posData.lab[mask] = 0
+            self.img2.updateImage()
 
-                self.isMouseDragImg2 = True
+            self.isMouseDragImg2 = True
 
         # Paint with brush and left click on the right image
         # NOTE: contours, IDs and rp will be updated
@@ -2196,38 +2266,37 @@ class guiWin(QMainWindow):
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             Y, X = posData.lab.shape
-            if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
-                # Store undo state before modifying stuff
-                self.storeUndoRedoStates(False)
-                self.yPressAx2, self.xPressAx2 = y, x
+            # Store undo state before modifying stuff
+            self.storeUndoRedoStates(False)
+            self.yPressAx2, self.xPressAx2 = y, x
 
-                ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
+            ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
-                ID = posData.lab[ydata, xdata]
+            ID = posData.lab[ydata, xdata]
 
-                # If user double-pressed 'b' then draw over the labels
-                color = self.brushButton.palette().button().color().name()
-                drawUnder = color != self.doublePressKeyButtonColor
+            # If user double-pressed 'b' then draw over the labels
+            color = self.brushButton.palette().button().color().name()
+            drawUnder = color != self.doublePressKeyButtonColor
 
-                if ID > 0 and drawUnder:
-                    self.ax2BrushID = ID
-                    posData.isNewID = False
-                else:
-                    self.setBrushID()
-                    self.ax2BrushID = posData.brushID
-                    posData.isNewID = True
+            if ID > 0 and drawUnder:
+                self.ax2BrushID = ID
+                posData.isNewID = False
+            else:
+                self.setBrushID()
+                self.ax2BrushID = posData.brushID
+                posData.isNewID = True
 
-                self.updateLookuptable(lenNewLut=self.ax2BrushID+1)
-                self.isMouseDragImg2 = True
+            self.updateLookuptable(lenNewLut=self.ax2BrushID+1)
+            self.isMouseDragImg2 = True
 
-                # Draw new objects
-                localLab = posData.lab[ymin:ymax, xmin:xmax]
-                mask = diskMask.copy()
-                if drawUnder:
-                    mask[localLab!=0] = False
+            # Draw new objects
+            localLab = posData.lab[ymin:ymax, xmin:xmax]
+            mask = diskMask.copy()
+            if drawUnder:
+                mask[localLab!=0] = False
 
-                posData.lab[ymin:ymax, xmin:xmax][mask] = self.ax2BrushID
-                self.setImageImg2(updateLookuptable=False)
+            posData.lab[ymin:ymax, xmin:xmax][mask] = self.ax2BrushID
+            self.setImageImg2(updateLookuptable=False)
 
         # Delete entire ID (set to 0)
         elif middle_click and canDelete:
@@ -3185,13 +3254,19 @@ class guiWin(QMainWindow):
                 [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
             )
 
-    def gui_raiseContextMenuLUT(self, event):
+    def gui_gradientContextMenuEvent(self, event):
+        self.imgGrad.gradient.menu.removeAction(self.userChNameAction)
+        self.imgGrad.gradient.menu.addAction(self.userChNameAction)
         posData = self.data[self.pos_i]
-        posData.lutmenu = QMenu(self)
-        posData.lutmenu.addAction(self.userChNameAction)
         for action in posData.fluoDataChNameActions:
-            posData.lutmenu.addAction(action)
-        posData.lutmenu.exec(event.screenPos())
+            self.imgGrad.gradient.menu.removeAction(action)
+            self.imgGrad.gradient.menu.addAction(action)
+        try:
+            # Convert QPointF to QPoint
+            self.imgGrad.gradient.menu.popup(event.screenPos().toPoint())
+        except AttributeError:
+            self.imgGrad.gradient.menu.popup(event.screenPos())
+        # self.imgGrad.gradient.showMenu(event)
 
     @exception_handler
     def gui_mouseDragEventImg2(self, event):
@@ -3543,10 +3618,10 @@ class guiWin(QMainWindow):
         isMod = ctrl or alt
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
-        is_cca_on = mode == 'Cell cycle analysis' or self.isSnapshot
+        isCcaMode = mode == 'Cell cycle analysis'
         left_click = event.button() == Qt.MouseButton.LeftButton and not isMod
         middle_click = self.isMiddleClick(event, modifiers)
-        right_click = event.button() == Qt.MouseButton.RightButton and not isMod
+        right_click = event.button() == Qt.MouseButton.RightButton
         isPanImageClick = self.isPanImageClick(event, modifiers)
         brushON = self.brushButton.isChecked()
         curvToolON = self.curvToolButton.isChecked()
@@ -3563,14 +3638,27 @@ class guiWin(QMainWindow):
         if isPanImageClick:
             dragImgLeft = True
 
-        # Right click in snapshot mode is for spline tool
+        # canAnnotateDivision True if any right-click action is ON
         canAnnotateDivision = (
              not self.assignBudMothButton.isChecked()
              and not self.setIsHistoryKnownButton.isChecked()
-             and not (self.isSnapshot and self.curvToolButton.isChecked())
+             and not self.curvToolButton.isChecked()
         )
 
-        annotateDivision = right_click and is_cca_on and canAnnotateDivision
+        # In timelapse mode division can be annotated if isCcaMode and right-click
+        # while in snapshot mode with Ctrl+rigth-click
+        isAnnotateDivision = (
+            (right_click and isCcaMode and canAnnotateDivision)
+            or (right_click and ctrl and self.isSnapshot)
+        )
+
+        isOnlyRightClick = (
+            right_click and canAnnotateDivision and not isAnnotateDivision
+            and not isMod
+        )
+
+        if isOnlyRightClick:
+            self.gui_gradientContextMenuEvent(event)
 
         canCurv = (
             curvToolON and not self.assignBudMothButton.isChecked()
@@ -3609,10 +3697,19 @@ class guiWin(QMainWindow):
         eventOnImg2 = (
             (right_click or middle_click)
             and (mode=='Segmentation and Tracking' or self.isSnapshot)
-            and not annotateDivision
+            and not isAnnotateDivision
         )
+        event.isImg1Sender = True
         if eventOnImg2:
             self.gui_mousePressEventImg2(event)
+
+        x, y = event.pos().x(), event.pos().y()
+        xdata, ydata = int(x), int(y)
+        Y, X = posData.lab.shape
+        if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
+            ID = posData.lab[ydata, xdata]
+        else:
+            return
 
         # Paint new IDs with brush and left click on the left image
         if left_click and canBrush:
@@ -3621,103 +3718,95 @@ class guiWin(QMainWindow):
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             Y, X = posData.lab.shape
-            if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
-                ID = posData.lab[ydata, xdata]
-                self.storeUndoRedoStates(False)
+            self.storeUndoRedoStates(False)
 
-                # If user double-pressed 'b' then draw over the labels
-                color = self.brushButton.palette().button().color().name()
-                drawUnder = color != self.doublePressKeyButtonColor
+            # If user double-pressed 'b' then draw over the labels
+            color = self.brushButton.palette().button().color().name()
+            drawUnder = color != self.doublePressKeyButtonColor
 
-                if ID > 0 and drawUnder:
-                    posData.brushID = posData.lab[ydata, xdata]
-                else:
-                    # Update brush ID. Take care of disappearing cells to remember
-                    # to not use their IDs anymore in the future
-                    self.setBrushID()
-                    self.updateLookuptable(lenNewLut=posData.brushID+1)
+            if ID > 0 and drawUnder:
+                posData.brushID = posData.lab[ydata, xdata]
+            else:
+                # Update brush ID. Take care of disappearing cells to remember
+                # to not use their IDs anymore in the future
+                self.setBrushID()
+                self.updateLookuptable(lenNewLut=posData.brushID+1)
 
-                self.brushColor = posData.lut[posData.brushID]/255
+            self.brushColor = posData.lut[posData.brushID]/255
 
-                self.yPressAx2, self.xPressAx2 = y, x
+            self.yPressAx2, self.xPressAx2 = y, x
 
-                ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
+            ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
-                self.isMouseDragImg1 = True
+            self.isMouseDragImg1 = True
 
-                # Draw new objects
-                localLab = posData.lab[ymin:ymax, xmin:xmax]
-                mask = diskMask.copy()
-                if drawUnder:
-                    mask[localLab!=0] = False
+            # Draw new objects
+            localLab = posData.lab[ymin:ymax, xmin:xmax]
+            mask = diskMask.copy()
+            if drawUnder:
+                mask[localLab!=0] = False
 
-                posData.lab[ymin:ymax, xmin:xmax][mask] = posData.brushID
-                self.setImageImg2(updateLookuptable=False)
+            posData.lab[ymin:ymax, xmin:xmax][mask] = posData.brushID
+            self.setImageImg2(updateLookuptable=False)
 
-                img = self.img1.image.copy()
-                how = self.drawIDsContComboBox.currentText()
-                isRGB = (
-                    self.overlayButton.isChecked()
-                    or how.find('segm. masks') != -1
-                )
-                if isRGB:
-                    self.imgRGB = img/numba_max(img)
-                else:
-                    img = img/numba_max(img)
-                    self.imgRGB = gray2rgb(img)
+            img = self.img1.image.copy()
+            how = self.drawIDsContComboBox.currentText()
+            if img.ndim > 2:
+                # image is already RGB
+                self.imgRGB = img/numba_max(img)
+            else:
+                img = img/numba_max(img)
+                self.imgRGB = gray2rgb(img)
 
-                brushMask = posData.lab == posData.brushID
-                self.setTempImg1Brush(brushMask)
+            brushMask = posData.lab == posData.brushID
+            self.setTempImg1Brush(brushMask)
 
         elif left_click and canErase:
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             Y, X = posData.lab.shape
-            if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
-                # Store undo state before modifying stuff
-                self.storeUndoRedoStates(False)
-                self.yPressAx2, self.xPressAx2 = y, x
-                # Keep a list of erased IDs got erased
-                self.erasedIDs = []
-                self.erasedID = posData.lab[ydata, xdata]
+            # Store undo state before modifying stuff
+            self.storeUndoRedoStates(False)
+            self.yPressAx2, self.xPressAx2 = y, x
+            # Keep a list of erased IDs got erased
+            self.erasedIDs = []
+            self.erasedID = posData.lab[ydata, xdata]
 
-                ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
+            ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
-                # Build eraser mask
-                mask = np.zeros(posData.lab.shape, bool)
-                mask[ymin:ymax, xmin:xmax][diskMask] = True
+            # Build eraser mask
+            mask = np.zeros(posData.lab.shape, bool)
+            mask[ymin:ymax, xmin:xmax][diskMask] = True
 
-                # If user double-pressed 'b' then erase over ALL labels
-                color = self.eraserButton.palette().button().color().name()
-                eraseOnlyOneID = (
-                    color != self.doublePressKeyButtonColor
-                    and self.erasedID != 0
-                )
+            # If user double-pressed 'b' then erase over ALL labels
+            color = self.eraserButton.palette().button().color().name()
+            eraseOnlyOneID = (
+                color != self.doublePressKeyButtonColor
+                and self.erasedID != 0
+            )
 
-                self.eraseOnlyOneID = eraseOnlyOneID
+            self.eraseOnlyOneID = eraseOnlyOneID
 
-                if eraseOnlyOneID:
-                    mask[posData.lab!=self.erasedID] = False
+            if eraseOnlyOneID:
+                mask[posData.lab!=self.erasedID] = False
 
 
-                self.erasedIDs.extend(posData.lab[mask])
+            self.erasedIDs.extend(posData.lab[mask])
 
-                posData.lab[mask] = 0
+            posData.lab[mask] = 0
 
-                self.erasesedLab = np.zeros_like(posData.lab)
-                for erasedID in np.unique(self.erasedIDs):
-                    if erasedID == 0:
-                        continue
-                    self.erasesedLab[posData.lab==erasedID] = erasedID
+            self.erasesedLab = np.zeros_like(posData.lab)
+            for erasedID in np.unique(self.erasedIDs):
+                if erasedID == 0:
+                    continue
+                self.erasesedLab[posData.lab==erasedID] = erasedID
 
-                self.getDisplayedCellsImg()
-                how = self.drawIDsContComboBox.currentText()
-                if how.find('segm. masks') != -1:
-                    self.img1_RGB = gray2rgb(self.img_layer0)
-                self.setTempImg1Eraser(mask)
+            self.getDisplayedCellsImg()
+            how = self.drawIDsContComboBox.currentText()
+            self.setTempImg1Eraser(mask)
 
-                self.img2.updateImage()
-                self.isMouseDragImg1 = True
+            self.img2.updateImage()
+            self.isMouseDragImg1 = True
 
         elif left_click and canRuler:
             x, y = event.pos().x(), event.pos().y()
@@ -3742,9 +3831,6 @@ class guiWin(QMainWindow):
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             Y, X = posData.lab.shape
-            clickOnImg = x >= 0 and x < X and y >= 0 and y < Y
-            if not clickOnImg:
-                return
 
             self.autoCont_x0 = xdata
             self.autoCont_y0 = ydata
@@ -3758,9 +3844,6 @@ class guiWin(QMainWindow):
             # Draw manual spline
             x, y = event.pos().x(), event.pos().y()
             Y, X = posData.lab.shape
-            clickOnImg = x >= 0 and x < X and y >= 0 and y < Y
-            if not clickOnImg:
-                return
 
             # Check if user clicked on starting anchor again --> close spline
             closeSpline = False
@@ -3800,57 +3883,52 @@ class guiWin(QMainWindow):
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             Y, X = posData.lab.shape
-            if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
-                # Store undo state before modifying stuff
-                self.storeUndoRedoStates(False)
+            # Store undo state before modifying stuff
+            self.storeUndoRedoStates(False)
 
-                posData.brushID = posData.lab[ydata, xdata]
-                if posData.brushID == 0:
-                    self.setBrushID()
-                    self.updateLookuptable(
-                        lenNewLut=numba_max(posData.lab)+posData.brushID+1
-                    )
-                self.brushColor = self.img2.lut[posData.brushID]/255
-
-                img = self.img1.image.copy()
-                img = img/numba_max(img)
-                isRGB = (
-                    self.overlayButton.isChecked()
-                    or how.find('segm. masks') != -1
+            posData.brushID = posData.lab[ydata, xdata]
+            if posData.brushID == 0:
+                self.setBrushID()
+                self.updateLookuptable(
+                    lenNewLut=numba_max(posData.lab)+posData.brushID+1
                 )
-                if isRGB:
-                    self.imgRGB = img/numba_max(img)
-                else:
-                    self.imgRGB = gray2rgb(img)
+            self.brushColor = self.img2.lut[posData.brushID]/255
 
-                # NOTE: flood is on mousedrag or release
-                tol = self.wandToleranceSlider.value()
-                self.flood_img = myutils.to_uint8(self.getDisplayedCellsImg())
-                flood_mask = skimage.segmentation.flood(
-                    self.flood_img, (ydata, xdata), tolerance=tol
+            img = self.img1.image.copy()
+            img = img/numba_max(img)
+            if img.ndim > 2:
+                self.imgRGB = img/numba_max(img)
+            else:
+                self.imgRGB = gray2rgb(img)
+
+            # NOTE: flood is on mousedrag or release
+            tol = self.wandToleranceSlider.value()
+            self.flood_img = myutils.to_uint8(self.getDisplayedCellsImg())
+            flood_mask = skimage.segmentation.flood(
+                self.flood_img, (ydata, xdata), tolerance=tol
+            )
+            bkgrLabMask = posData.lab==0
+
+            drawUnderMask = np.logical_or(
+                posData.lab==0, posData.lab==posData.brushID
+            )
+            self.flood_mask = np.logical_and(flood_mask, drawUnderMask)
+
+            if self.wandAutoFillCheckbox.isChecked():
+                self.flood_mask = scipy.ndimage.binary_fill_holes(
+                    self.flood_mask
                 )
-                bkgrLabMask = posData.lab==0
 
-                drawUnderMask = np.logical_or(
-                    posData.lab==0, posData.lab==posData.brushID
+            if np.any(self.flood_mask):
+                mask = np.logical_or(
+                    self.flood_mask,
+                    posData.lab==posData.brushID
                 )
-                self.flood_mask = np.logical_and(flood_mask, drawUnderMask)
-
-                if self.wandAutoFillCheckbox.isChecked():
-                    self.flood_mask = scipy.ndimage.binary_fill_holes(
-                        self.flood_mask
-                    )
-
-                if np.any(self.flood_mask):
-                    mask = np.logical_or(
-                        self.flood_mask,
-                        posData.lab==posData.brushID
-                    )
-                    self.setTempImg1Brush(mask)
-                self.isMouseDragImg1 = True
+                self.setTempImg1Brush(mask)
+            self.isMouseDragImg1 = True
 
         # Annotate cell cycle division
-        elif annotateDivision:
+        elif isAnnotateDivision:
             if posData.frame_i <= 0 and not self.isSnapshot:
                 return
 
@@ -5478,9 +5556,9 @@ class guiWin(QMainWindow):
         onlyMasks = how == 'Draw only overlay segm. masks'
 
         if how.find('segm. masks') != -1:
-            self.labelsGrad.labelsAlphaMenu.setDisabled(False)
+            self.imgGrad.labelsAlphaMenu.setDisabled(False)
         else:
-            self.labelsGrad.labelsAlphaMenu.setDisabled(True)
+            self.imgGrad.labelsAlphaMenu.setDisabled(True)
 
         # Clear contours if requested
         if how.find('contours') == -1 or nothing:
@@ -6114,7 +6192,9 @@ class guiWin(QMainWindow):
     @exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
-            self.guiTabControl.propsQGBox.cellAreaDSB.setValue(150000)
+            pass
+            # print('disconnect')
+            # self.imgGrad.sigLookupTableChanged.disconnect()
         try:
             posData = self.data[self.pos_i]
         except AttributeError:
@@ -6240,14 +6320,13 @@ class guiWin(QMainWindow):
 
                 self.updateALLimg()
             elif ev.key() == Qt.Key_Up:
-                val = self.labelsGrad.labelsAlphaSlider.value()
-                delta = 1/self.labelsGrad.labelsAlphaSlider.maximum()
-                print()
-                self.labelsGrad.labelsAlphaSlider.setValue(val+delta)
+                val = self.imgGrad.labelsAlphaSlider.value()
+                delta = 1/self.imgGrad.labelsAlphaSlider.maximum()
+                self.imgGrad.labelsAlphaSlider.setValue(val+delta)
             elif ev.key() == Qt.Key_Down:
-                val = self.labelsGrad.labelsAlphaSlider.value()
-                delta = 1/self.labelsGrad.labelsAlphaSlider.maximum()
-                self.labelsGrad.labelsAlphaSlider.setValue(val-delta)
+                val = self.imgGrad.labelsAlphaSlider.value()
+                delta = 1/self.imgGrad.labelsAlphaSlider.maximum()
+                self.imgGrad.labelsAlphaSlider.setValue(val-delta)
         elif ev.key() == Qt.Key_T:
             pass
             # posData = self.data[self.pos_i]
@@ -6257,7 +6336,7 @@ class guiWin(QMainWindow):
             # raise IndexError('Testing')
             # posData = self.data[self.pos_i]
             # self.logger.info(posData.allData_li[0]['acdc_df'])
-            # # self.hist.sigLookupTableChanged.disconnect()
+            # # self.imgGrad.sigLookupTableChanged.disconnect()
         elif ev.key() == Qt.Key_H:
             self.zoomToCells(enforce=True)
             if self.countKeyPress == 0:
@@ -7762,7 +7841,6 @@ class guiWin(QMainWindow):
         allTexts = [
             action.text() for action in self.chNamesQActionGroup.actions()
         ]
-        print(allTexts)
 
     def computeSegm(self):
         posData = self.data[self.pos_i]
@@ -7791,8 +7869,17 @@ class guiWin(QMainWindow):
         self.repeatSegm(model_name=self.segmModelName)
         self.update_rp()
 
+    def initImgCmap(self):
+        if not 'img_cmap' in self.df_settings.index:
+            self.df_settings.at['img_cmap', 'value'] = 'grey'
+        self.imgCmapName = self.df_settings.at['img_cmap', 'value']
+        self.imgCmap = self.imgGrad.cmaps[self.imgCmapName]
+
+
     def initGlobalAttr(self):
         self.setOverlayColors()
+
+        self.initImgCmap()
 
         self.splineHoverON = False
         self.rulerHoverON = False
@@ -9465,8 +9552,8 @@ class guiWin(QMainWindow):
                 self.overlayButton.setStyleSheet('background-color: #A7FAC7')
 
             self.normalizeRescale0to1Action.setChecked(True)
-            self.hist.imageItem = lambda: None
-            self.updateHistogramItem(self.img1)
+            self.imgGrad.imageItem = lambda: None
+            self.updateImageGradientItem(self.img1)
 
             rgb = self.df_settings.at['overlayColor', 'value']
             rgb = [int(v) for v in rgb.split('-')]
@@ -9479,7 +9566,7 @@ class guiWin(QMainWindow):
             self.UserNormAction.setChecked(True)
             self.create_chNamesQActionGroup(self.user_ch_name)
             posData.fluoDataChNameActions = []
-            self.updateHistogramItem(self.img1)
+            self.updateImageGradientItem(self.img1)
             self.updateALLimg(only_ax1=True)
             self.enableOverlayWidgets(False)
 
@@ -9553,58 +9640,86 @@ class guiWin(QMainWindow):
         )
         msg.exec_()
 
-    def histLUT_cb(self, LUTitem):
+    def imgGradLUT_cb(self, LUTitem):
         # Callback function for the histogram sliders moved by the user
         # Store the histogram levels that the user is manually changing
         # i.e. moving the gradient slider ticks up and down
         # Store them for all frames
-
         posData = self.data[self.pos_i]
         isOverlayON = self.overlayButton.isChecked()
-        min = self.hist.gradient.listTicks()[0][1]
-        max = self.hist.gradient.listTicks()[1][1]
+        min = self.imgGrad.gradient.listTicks()[0][1]
+        max = self.imgGrad.gradient.listTicks()[1][1]
+        isRGB = (
+            self.drawIDsContComboBox.currentText().find('segm. masks') != -1
+            or self.imgCmapName != 'grey'
+        )
         if isOverlayON:
             for i in range(0, posData.segmSizeT):
                 histoLevels = posData.allData_li[i]['histoLevels']
                 histoLevels[posData.manualContrastKey] = (min, max)
             if posData.ol_data is not None:
                 self.getOverlayImg(setImg=True)
+        elif isRGB:
+            cellsKey = f'{self.user_ch_name}_overlayOFF'
+            for i in range(0, posData.segmSizeT):
+                histoLevels = posData.allData_li[i]['histoLevels']
+                histoLevels[cellsKey] = (min, max)
+            img = self.getImageWithCmap()
+            img = self.overlaySegmMasks(img)
+            self.img1.setImage(img)
         else:
             cellsKey = f'{self.user_ch_name}_overlayOFF'
             for i in range(0, posData.segmSizeT):
                 histoLevels = posData.allData_li[i]['histoLevels']
                 histoLevels[cellsKey] = (min, max)
             img = self.getImage()
-            if self.hist.gradient.isLookupTrivial():
+            if self.imgGrad.gradient.isLookupTrivial():
                 self.img1.setLookupTable(None)
             else:
-                self.img1.setLookupTable(self.hist.getLookupTable(img=img))
+                self.img1.setLookupTable(self.imgGrad.getLookupTable(img=img))
 
-    def histLUTfinished_cb(self):
+    def imgGradLUTfinished_cb(self):
         if not self.overlayButton.isChecked():
-            cellsKey = f'{self.user_ch_name}_overlayOFF'
-            img = self.getImage()
-            img = self.adjustBrightness(img, cellsKey)
-            self.updateALLimg(image=img, only_ax1=True, updateFilters=True,
-                              updateHistoLevels=False)
+            self.updateALLimg(only_ax1=True, updateFilters=True)
 
-    def gradientContextMenuClicked(self, b=None):
+    def updateContColour(self, colorButton):
+        color = colorButton.color().getRgb()
+        self.df_settings.at['contLineColor', 'value'] = str(color)
+        self.gui_createContourPens()
+        self.updateALLimg()
+
+    def saveContColour(self, colorButton):
+        self.df_settings.to_csv(self.settings_csv_path)
+
+    def contLineWeightToggled(self, checked=True):
+        w = self.sender().lineWeight
+        self.df_settings.at['contLineWeight', 'value'] = w
+        self.df_settings.to_csv(self.settings_csv_path)
+        self.gui_createContourPens()
+        self.updateALLimg()
+
+    def gradientCmapContextMenuClicked(self, b=None):
         act = self.sender()
-        self.hist.gradient.loadPreset(act.name)
+        self.df_settings.at['img_cmap', 'value'] = act.name
+        self.df_settings.to_csv(self.settings_csv_path)
+        self.imgCmap = self.imgGrad.cmaps[act.name]
+        self.imgCmapName = act.name
+        self.updateALLimg()
+        return
         if act.name == 'grey':
             try:
-                self.hist.sigLookupTableChanged.disconnect()
+                self.imgGrad.sigLookupTableChanged.disconnect()
             except TypeError:
                 pass
-            self.hist.setImageItem(self.img1)
-            self.hist.imageItem = lambda: None
-            self.hist.sigLookupTableChanged.connect(self.histLUT_cb)
+            self.imgGrad.setImageItem(self.img1)
+            self.imgGrad.imageItem = lambda: None
+            self.imgGrad.sigLookupTableChanged.connect(self.imgGradLUT_cb)
         else:
             try:
-                self.hist.sigLookupTableChanged.disconnect()
+                self.imgGrad.sigLookupTableChanged.disconnect()
             except TypeError:
                 pass
-            self.hist.setImageItem(self.img1)
+            self.imgGrad.setImageItem(self.img1)
 
 
     def adjustBrightness(self, img, key,
@@ -9612,7 +9727,7 @@ class guiWin(QMainWindow):
         """
         Adjust contrast/brightness of the image selected in the histogram
         context menu using stored levels.
-        The levels are stored in histLUT_cb function which is called when
+        The levels are stored in imgGradLUT_cb function which is called when
         the user changes the gradient slider levels.
         Note that the gradient always returns values from 0 to 1 so we
         need to scale to the actual max min of the image.
@@ -9671,6 +9786,9 @@ class guiWin(QMainWindow):
             ol_img = self.normalizeIntensities(ol_img)
         return ol_img
 
+    def setLookupTableImg(self, img):
+        pass
+
     def overlaySegmMasks(self, img):
         how = self.drawIDsContComboBox.currentText()
         if how.find('overlay segm. masks') == -1:
@@ -9684,7 +9802,7 @@ class guiWin(QMainWindow):
         if maxID > len(posData.lut):
             self.extendLabelsLUT(10)
         colors = [posData.lut[ID]/255 for ID in posData.IDs]
-        alpha = self.labelsGrad.labelsAlphaSlider.value()
+        alpha = self.imgGrad.labelsAlphaSlider.value()
 
         # get bkgr color
         if 'labels_text_color' in self.df_settings.index:
@@ -9698,7 +9816,6 @@ class guiWin(QMainWindow):
 
         if img.ndim == 2:
             img = img/numba_max(img)
-            self.img_layer0 = img
             self.img1_RGB = gray2rgb(img)
         elif self.overlayButton.isChecked():
             # overlay fluo is ON --> image is already RGB
@@ -9706,7 +9823,13 @@ class guiWin(QMainWindow):
             self.img_layer0 = self.ol_cells_img
         else:
             self.img1_RGB = img
-            return
+
+        val = self.img1_RGB[tuple([0]*self.img1_RGB.ndim)]
+        if not isinstance(val, (np.floating, float)):
+            self.img1uintRGB = self.img_RGB.copy()
+            self.img1_RGB = self.img1_RGB/255
+        else:
+            self.img1uintRGB = self.img1_RGB
 
         if posData.rp is None:
             posData.rp = skimage.measure.regionprops(posData.lab)
@@ -9718,6 +9841,7 @@ class guiWin(QMainWindow):
             # colored_label = bkgr_label*color
             overlay = bkgr_label*(1.0-alpha) + color*alpha
             imgRGB[obj.slice][obj.image] = overlay
+        imgRGB = (np.clip(imgRGB, 0, 1)*255).astype(np.uint8)
         return imgRGB
 
     def getOverlayImg(self, fluoData=None, setImg=True):
@@ -9729,7 +9853,10 @@ class guiWin(QMainWindow):
 
         img = self.adjustBrightness(cells_img, posData.filename)
         self.ol_cells_img = img
-        gray_img_rgb = gray2rgb(img)
+        if self.imgCmapName == 'grey':
+            gray_img_rgb = gray2rgb(img)
+        else:
+            gray_img_rgb = self.imgCmap(img)[:, :, :3]
 
         # First fluo channel
         ol_img = self.getOlImg(keys[0])
@@ -9844,6 +9971,8 @@ class guiWin(QMainWindow):
 
         self.df_settings = self.labelsGrad.saveState(self.df_settings)
         self.df_settings.to_csv(self.settings_csv_path)
+
+        self.updateALLimg()
 
     def updateBkgrColor(self, button):
         color = button.color().getRgb()[:3]
@@ -9962,7 +10091,7 @@ class guiWin(QMainWindow):
                     cont[:,0], cont[:,1], pen=self.oldIDs_cpen
             )
         elif how.find('segm. masks') != -1:
-            self.img1.image[mask] = self.img1_RGB[mask]
+            self.img1.image[mask] = self.img1uintRGB[mask]
             self.img1.setImage(self.img1.image)
 
     def update_cca_df_relabelling(self, posData, oldIDs, newIDs):
@@ -10127,17 +10256,13 @@ class guiWin(QMainWindow):
         self.ax2_LabelItemsIDs[newID-1] = ax2_IDlabel
         self.ax2_ContoursCurves[newID-1] = ax2ContCurve
 
-    def updateHistogramItem(self, imageItem):
+    def updateImageGradientItem(self, imageItem):
         """
         Function called every time the image changes (updateALLimg).
-        Perform the following:
-
-        1. Set the gradient slider tick positions
-        2. Set the region max and min levels
-        3. Plot the histogram
+        Set the gradient slider tick positions
         """
         try:
-            self.hist.sigLookupTableChanged.disconnect()
+            self.imgGrad.sigLookupTableChanged.disconnect()
             connect = True
         except TypeError:
             connect = False
@@ -10155,17 +10280,19 @@ class guiWin(QMainWindow):
         elif not isOverlayON and overlayOFF_key not in histoLevels:
             min, max = 0, 1
 
-        minTick = self.hist.gradient.getTick(0)
-        maxTick = self.hist.gradient.getTick(1)
-        self.hist.gradient.setTickValue(minTick, min)
-        self.hist.gradient.setTickValue(maxTick, max)
-        self.hist.setLevels(
-            min=numba_min(imageItem.image), max=numba_max(imageItem.image)
-        )
-        h = imageItem.getHistogram()
-        self.hist.plot.setData(*h)
-        if connect:
-            self.hist.sigLookupTableChanged.connect(self.histLUT_cb)
+        minTick = self.imgGrad.gradient.getTick(0)
+        maxTick = self.imgGrad.gradient.getTick(1)
+        self.imgGrad.gradient.setTickValue(minTick, min)
+        self.imgGrad.gradient.setTickValue(maxTick, max)
+
+        # # NOTE: since v1.2.4 we hide the histogram viewbox
+        # self.imgGrad.setLevels(
+        #     min=numba_min(imageItem.image), max=numba_max(imageItem.image)
+        # )
+        # h = imageItem.getHistogram()
+        # self.imgGrad.plot.setData(*h)
+        # if connect:
+        #     self.imgGrad.sigLookupTableChanged.connect(self.imgGradLUT_cb)
 
     def updateFramePosLabel(self):
         if self.isSnapshot:
@@ -10259,12 +10386,21 @@ class guiWin(QMainWindow):
     def updateLabelsAlpha(self, value):
         self.updateALLimg(only_ax1=True)
 
+    def getImageWithCmap(self):
+        img = self.getImage()
+        cellsKey = f'{self.user_ch_name}_overlayOFF'
+        img = self.adjustBrightness(img, cellsKey)
+        self.img_layer0 = img
+        if self.imgCmapName != 'grey':
+            img = self.imgCmap(img)[:, :, :3]
+        return img
+
     @exception_handler
     def updateALLimg(
             self, image=None, never_visited=True,
             only_ax1=False, updateBlur=False,
             updateSharp=False, updateEntropy=False,
-            updateHistoLevels=True, updateFilters=False,
+            updateHistoLevels=False, updateFilters=False,
             updateLabelItemColor=False, debug=False
         ):
         posData = self.data[self.pos_i]
@@ -10273,9 +10409,7 @@ class guiWin(QMainWindow):
             if self.overlayButton.isChecked():
                 img = self.getOverlayImg(setImg=False)
             else:
-                img = self.getImage()
-                cellsKey = f'{self.user_ch_name}_overlayOFF'
-                img = self.adjustBrightness(img, cellsKey)
+                img = self.getImageWithCmap()
         else:
             img = image
 
@@ -10285,7 +10419,7 @@ class guiWin(QMainWindow):
         self.updateFilters(updateBlur, updateSharp, updateEntropy, updateFilters)
 
         if updateHistoLevels:
-            self.updateHistogramItem(self.img1)
+            self.updateImageGradientItem(self.img1)
 
         if self.slideshowWin is not None:
             self.slideshowWin.framne_i = posData.frame_i
@@ -10723,13 +10857,12 @@ class guiWin(QMainWindow):
                 break
         posData.manualContrastKey = key
         if not self.overlayButton.isChecked():
-            img = self.getImage()
-            img = self.adjustBrightness(img, key)
-            self.updateALLimg(image=img, only_ax1=True, updateFilters=True,
-                              updateHistoLevels=True)
+            self.updateALLimg(
+                only_ax1=True, updateFilters=True, updateHistoLevels=True
+            )
         else:
-            self.updateHistogramItem(self.img1)
-            self.getOverlayImg(setImg=True)
+            self.updateImageGradientItem(self.img1)
+            self.updateALLimg(only_ax1=True, updateFilters=True)
 
     def restoreDefaultColors(self):
         try:
