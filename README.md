@@ -10,7 +10,7 @@ Feel free to **ask any question** in our [Discussions area](https://github.com/S
 
 You can check out our pre-print [here](https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2) and Twitter thread [here](https://twitter.com/frank_pado/status/1443957038841794561?s=20).
 
-Written in Python 3.8 by Francesco Padovani and Benedikt Mairhoermann.
+Written in Python 3 (<3.9) by Francesco Padovani and Benedikt Mairhoermann.
 
 Tested on Windows 10 (64 bit), macOS, and Linux Mint 20.1
 
@@ -40,6 +40,13 @@ Finally, we provide Jupyter notebooks to **visualize** and interactively **explo
 
 **Do not hesitate to contact me** here on GitHub (by opening an issue) or directly at my email francesco.padovani@helmholtz-muenchen.de for any problem and/or feedback on how to improve the user experience!
 
+## Update v1.2.4
+First release that is finally available on PyPi.
+
+Main new feature: custom trackers! You can now add any tracker you want by implementing a simple tracker class. See the [manual](https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf) at the section "**Adding trackers to the pipeline**".
+
+Additionally, this release includes many UI/UX improvements such as color and style customisation, alongside a light/dark mode switch.
+
 ## Update v1.2.3
 
 **NOTE: some users had issues installing the environment with this version. Please see this [issue](https://github.com/SchmollerLab/Cell_ACDC/issues/5) for a possible solution**
@@ -57,20 +64,20 @@ More details [here](https://github.com/SchmollerLab/Cell_ACDC/releases/tag/v1.2.
 
 *NOTE: If you don't know what Anaconda is or you are not familiar with it, we recommend reading the detailed installation instructions found in manual [here](https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf).*
 
-1. Download the [latest release](https://github.com/SchmollerLab/Cell_ACDC/releases) of Cell-ACDC.
-2. Install [Anaconda](https://www.anaconda.com/products/individual) or [Miniconda](https://docs.conda.io/en/latest/miniconda.html) for **Python 3.8**
-3. Unzip the Cell-ACDC source code, open a terminal and navigate with `cd` command to the Cell-ACDC folder
-4. Update conda with `conda update conda`. Optionally, consider removing unused packages with the command `conda clean --all`
-5. Install the environment with `conda env create --file environment.yml`. Creating the environment will take several minutes.
+1. Install [Anaconda](https://www.anaconda.com/products/individual) or [Miniconda](https://docs.conda.io/en/latest/miniconda.html) for **Python 3.9**
+2. Update conda with `conda update conda`. Optionally, consider removing unused packages with the command `conda clean --all`
+3. Create a virtual environment with the command `conda create -n acdc python=3.9`
+4. Activate the environment `conda activate acdc`
+5. Install Cell-ACDC with the command `pip install cellacdc`
 
 ## Installation using Pip
 
-1. Download the [latest release](https://github.com/SchmollerLab/Cell_ACDC/releases) of Cell-ACDC.
-2. Download and install [Python 3.8](https://www.python.org/downloads/)
-3. Unzip the Cell-ACDC source code, open a terminal and navigate with `cd` command to the Cell-ACDC folder
-4. Upgrade pip with `pip install --updgrade pip`
-5. Create a virtual environment with `python -m venv env`
-6. Install all the dependencies with `pip install -r requirements.txt`
+1. Download and install [Python 3.8](https://www.python.org/downloads/)
+2. Upgrade pip with `pip install --updgrade pip`
+3. Navigate to a folder where you want to create the virtual environment
+4. Create a virtual environment with `python -m venv acdc`
+5. Activate the environment (Windows: `.\acdc\Scripts\activate`, macOS/Unix: `source acdc/bin/activate`)
+6. Install Cell-ACDC with the command `pip install cellacdc`
 
 ## Install from source
 
@@ -82,15 +89,9 @@ If you want to try out experimental features (and if you have time maybe report 
 5. Create a new conda environment with the command `conda create -n acdc python=3.8`
 6. Install Cell-ACDC and all of the dependencies with the command `pip install -e ".[all]"`. Note that to run this command you need to navigate to the Cell-ACDC path that where you cloned it.
 
-## Running Cell-ACDC (installed the latest version)
+## Running Cell-ACDC
 
-1. Open a terminal and navigate to Cell-ACDC folder
-2. Activate the environment (conda: `conda activate acdc`, pip on Windows: `.\env\Scripts\activate`, pip on Unix: `source env/bin/activate`)
-3. Navigate to `cellacdc` folder and run the main launcher with `python main.py`
-
-## Running Cell-ACDC (installed from source)
-
-1. Open a terminal and navigate to Cell-ACDC folder
+1. Open a terminal (on Windows use the Anaconda Prompt if you installed with `conda` otherwise we reccomend the PowerShell 7)
 2. Activate the environment (conda: `conda activate acdc`, pip on Windows: `.\env\Scripts\activate`, pip on Unix: `source env/bin/activate`)
 3. Run the command `cellacdc` or just `acdc`
 
