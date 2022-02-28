@@ -643,6 +643,7 @@ class createDataStructWin(QMainWindow):
             buttonToRestore=None, mainWin=None,
             start_JVM=True
         ):
+        print('Initializing data structures module...')
         super().__init__(parent)
         is_linux = sys.platform.startswith('linux')
         is_mac = sys.platform == 'darwin'
@@ -1400,8 +1401,7 @@ if __name__ == "__main__":
         win.show()
         win.setWindowState(Qt.WindowActive)
         win.raise_()
-        print('Done. If window asking to select a folder is not visible, it is '
-              'behind some other open window.')
+        print('Starting main process...')
         win.main()
     except OSError:
         traceback.print_exc()
