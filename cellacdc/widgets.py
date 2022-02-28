@@ -371,6 +371,27 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
         # hide histogram tool
         self.vb.hide()
 
+    def restoreState(self, df):
+        if 'contLineColor' in df.index:
+            rgba_str = df.at['contLineColor', 'value']
+            rgb = myutils.rgba_str_to_values(rgba_str)[:3]
+            self.contoursColorButton.setColor(rgb)
+
+        if 'contLineWeight' in df.index:
+            w = df.at['contLineWeight', 'value']
+            w = int(w)
+            for action in self.contLineWightActionGroup.actions():
+                if action.lineWeight == w:
+                    action.setChecked(True)
+                    break
+
+        if 'overlaySegmMasksAlpha' in df.index:
+            alpha = df.at['overlaySegmMasksAlpha', 'value']
+            self.labelsAlphaSlider.setValue(alpha)
+
+        checked = df.at['is_bw_inverted', 'value'] == 'Yes'
+        self.invertBwAction.setChecked(checked)
+
 class myColorButton(pg.ColorButton):
     sigColorRejected = pyqtSignal(object)
 
@@ -433,7 +454,7 @@ class labelsGradientWidget(pg.GradientWidget):
         self.menu.addAction(self.shuffleCmapAction)
 
         # Invert bw action
-        self.invertBwAction = QAction('Light mode', self)
+        self.invertBwAction = QAction('Invert black/white', self)
         self.invertBwAction.setCheckable(True)
         self.menu.addAction(self.invertBwAction)
 

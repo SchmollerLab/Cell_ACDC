@@ -805,12 +805,12 @@ def _install_homebrew_command():
     return '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
 
 def _brew_install_java_command():
-    return 'brew install --cask adoptopenjdk8'
+    return 'brew install --cask homebrew/cask-versions/adoptopenjdk8'
 
 def _java_instructions_macOS():
     s1 = ("""
     <p style="font-size:13px">
-        <b>First close Cell-ACDC</b> and run the following commands<br>
+        Run the following commands<br>
         in the Teminal <b>one by one:</b>
     </p>
     """)
@@ -846,7 +846,7 @@ def _java_instructions_macOS():
 def _java_instructions_windows():
     s = [f"""
     <p style="font-size:13px">
-        <b>First close Cell-ACDC</b>, then download and install Java 8 and
+        Download and install Java 8 and
         Java Development Kit for Windows. Here the links:<br>
     <p style="font-size:13px">
         Java 8: <a href="https://www.java.com/en/download/manual.jsp">here</a>

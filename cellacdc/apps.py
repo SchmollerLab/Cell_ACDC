@@ -72,8 +72,9 @@ class installJavaDialog(widgets.myMessageBox):
 
         txt_macOS = ("""
             <b>Cell-ACDC is now going to install Java for you</b>.<br><br>
-            <i><b>NOTE</b>: You will be asked to insert your username and password<br>
-            on the terminal</i><br><br>
+            <i><b>NOTE: After clicking on "Install", follow the instructions<br>
+            on the terminal</b>. You will be asked to confirm steps and insert<br>
+            your password to allow the installation.</i><br><br>
             If you prefer to do it manually, cancel the process<br>
             and follow the instructions below.
         </p>
@@ -90,6 +91,7 @@ class installJavaDialog(widgets.myMessageBox):
             self.instructionsButton.disconnect()
             self.instructionsButton.clicked.connect(self.showInstructions)
             installButton = self.addButton('Install')
+            installButton.disconnect()
             installButton.clicked.connect(self.installJavaMacOS)
             txt = f'{txt}{txt_macOS}'
         else:
@@ -169,8 +171,31 @@ class installJavaDialog(widgets.myMessageBox):
 
     def installJavaMacOS(self):
         import subprocess
-        subprocess.check_call(myutils._install_homebrew_command().split())
-        subprocess.check_call(myutils._brew_install_java_command().split())
+        try:
+            try:
+                subprocess.check_call(['brew', 'update'])
+            except Exception as e:
+                subprocess.run(
+                    myutils._install_homebrew_command(),
+                    check=True, text=True, shell=True
+                )
+            subprocess.run(
+                myutils._brew_install_java_command(),
+                check=True, text=True, shell=True
+            )
+            self.close()
+        except Exception as e:
+            msg = QMessageBox()
+            err_msg = ("""
+            <p style="font-size:13px">
+                Automatic installation of Java failed.<br><br>
+                Please, try manually by following the instructions provided
+                with the "Show instructions..." button. Thanks
+            </p>
+            """)
+            msg.critical(
+               self, 'Java installation failed', err_msg, msg.Ok
+            )
 
     def show(self):
         super().show()

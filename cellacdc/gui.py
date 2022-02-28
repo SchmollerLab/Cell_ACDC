@@ -1585,6 +1585,7 @@ class guiWin(QMainWindow):
         self.labelsGrad.invertBwAction.toggled.connect(self.setCheckedInvertBW)
         self.labelsGrad.hideLabelsImgAction.toggled.connect(self.hideLabels)
 
+        self.imgGrad.invertBwAction.toggled.connect(self.setCheckedInvertBW)
         self.imgGrad.labelsAlphaSlider.valueChanged.connect(
             self.updateLabelsAlpha
         )
@@ -1825,6 +1826,7 @@ class guiWin(QMainWindow):
         self.imgGrad = widgets.myHistogramLUTitem()
         # Disable histogram default context Menu event
         self.imgGrad.vb.raiseContextMenu = lambda x: None
+        self.imgGrad.restoreState(self.df_settings)
         self.graphLayout.addItem(self.imgGrad, row=1, col=0)
 
         # Colormap gradient widget
@@ -5348,6 +5350,10 @@ class guiWin(QMainWindow):
         self.labelsGrad.invertBwAction.setChecked(checked)
         self.labelsGrad.invertBwAction.toggled.connect(self.setCheckedInvertBW)
 
+        self.imgGrad.invertBwAction.toggled.disconnect()
+        self.imgGrad.invertBwAction.setChecked(checked)
+        self.imgGrad.invertBwAction.toggled.connect(self.setCheckedInvertBW)
+
         if self.slideshowWin is not None:
             self.slideshowWin.is_bw_inverted = checked
             self.slideshowWin.update_img()
@@ -7027,13 +7033,13 @@ class guiWin(QMainWindow):
         how = self.drawIDsContComboBox.currentText()
         if self.overlayButton.isChecked():
             img = self.ol_cells_img
-        elif how.find('segm. masks') != -1:
+        else:
             img = self.img_layer0
-        elif self.imgCmapName == 'grey':
-            img = self.img1.image
-            if self.invertBwAction.isChecked():
-                # Revinvert black and white since neural net requires it
-                img = -img+numba_max(img)
+
+        if self.imgCmapName == 'grey' and self.invertBwAction.isChecked():
+            # Neural network requires non-inverted bw images --> invert back
+            img = -img+numba_max(img)
+
         return img
 
     def autoAssignBud_YeastMate(self):
@@ -7547,6 +7553,16 @@ class guiWin(QMainWindow):
 
         self.ax2.vb.autoRange()
         self.ax1.vb.autoRange()
+
+        # Get current maxRange and prevent from zooming out too far
+        viewRange = self.ax1.viewRange()
+        [[xmin, xmax], [ymin, ymax]] = viewRange
+        yRange, xRange = abs(ymax-ymin), abs(xmax-xmin)
+        maxRange = max(yRange, xRange)
+        if maxRange == yRange:
+            self.ax1.setLimits(maxYRange=maxRange)
+        else:
+            self.ax1.setLimits(maxXRange=maxRange)
 
     def setFramesSnapshotMode(self):
         if self.isSnapshot:
@@ -9845,12 +9861,14 @@ class guiWin(QMainWindow):
         if img.ndim == 2:
             img = img/numba_max(img)
             self.img1_RGB = gray2rgb(img)
+            # NOTE: img_layer0 defined in getImageWithCmap()
         elif self.overlayButton.isChecked():
             # overlay fluo is ON --> image is already RGB
             self.img1_RGB = img
             self.img_layer0 = self.ol_cells_img
         else:
             self.img1_RGB = img
+            # NOTE: img_layer0 defined in getImageWithCmap()
 
         val = self.img1_RGB[tuple([0]*self.img1_RGB.ndim)]
         if not isinstance(val, (np.floating, float)):
@@ -10105,7 +10123,8 @@ class guiWin(QMainWindow):
             cells_img = posData.img_data[frame_i].copy()
         if normalizeIntens:
             cells_img = self.normalizeIntensities(cells_img)
-        if self.imgCmapName == 'grey':
+        if self.imgCmapName != 'grey':
+            # Do not invert bw for non grey cmaps
             return cells_img
         if self.invertBwAction.isChecked() and invert:
             cells_img = -cells_img+numba_max(cells_img)
@@ -10438,6 +10457,8 @@ class guiWin(QMainWindow):
         self.img2.setLookupTable(lut)
 
     def updateLabelsAlpha(self, value):
+        self.df_settings.at['overlaySegmMasksAlpha', 'value'] = value
+        self.df_settings.to_csv(self.settings_csv_path)
         self.updateALLimg(only_ax1=True)
 
     def getImageWithCmap(self):
