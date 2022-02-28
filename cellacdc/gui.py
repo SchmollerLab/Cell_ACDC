@@ -6358,27 +6358,25 @@ class guiWin(QMainWindow):
                 self.isKeyDoublePress = True
                 self.countKeyPress = 0
         elif ev.key() == Qt.Key_Space:
-            how = self.drawIDsContComboBox.currentText()
-            if how.find('nothing') == -1:
-                self.prev_how = how
-                self.drawIDsContComboBox.setCurrentText('Draw nothing')
-            else:
-                try:
-                    self.drawIDsContComboBox.setCurrentText(self.prev_how)
-                except Exception as e:
-                    # traceback.print_exc()
-                    pass
             if self.countKeyPress == 0:
+                # Single press --> wait that it's not double press
                 self.isKeyDoublePress = False
                 self.countKeyPress = 1
                 self.doubleKeyTimeElapsed = False
-                self.Button = None
-                QTimer.singleShot(400, self.doubleKeyTimerCallBack)
+                QTimer.singleShot(300, self.doubleKeySpacebarTimerCallback)
             elif self.countKeyPress == 1 and not self.doubleKeyTimeElapsed:
                 self.isKeyDoublePress = True
-                self.drawIDsContComboBox.setCurrentText(
-                    'Draw cell cycle info and contours'
-                )
+                # Double press --> toggle draw nothing
+                how = self.drawIDsContComboBox.currentText()
+                if how.find('nothing') == -1:
+                    self.prev_how = how
+                    self.drawIDsContComboBox.setCurrentText('Draw nothing')
+                else:
+                    try:
+                        self.drawIDsContComboBox.setCurrentText(self.prev_how)
+                    except Exception as e:
+                        # traceback.print_exc()
+                        pass
                 self.countKeyPress = 0
         elif ev.key() == Qt.Key_B or ev.key() == Qt.Key_X:
             mode = self.modeComboBox.currentText()
@@ -6441,6 +6439,21 @@ class guiWin(QMainWindow):
         c = self.defaultToolBarButtonColor
         self.Button.setStyleSheet(f'background-color: {c}')
 
+    def doubleKeySpacebarTimerCallback(self):
+        if self.isKeyDoublePress:
+            self.doubleKeyTimeElapsed = False
+            return
+        self.doubleKeyTimeElapsed = True
+        self.countKeyPress = 0
+
+        # Spacebar single press --> toggle next visualization
+        currentIndex = self.drawIDsContComboBox.currentIndex()
+        nItems = self.drawIDsContComboBox.count()
+        nextIndex = currentIndex+1
+        if nextIndex < nItems:
+            self.drawIDsContComboBox.setCurrentIndex(nextIndex)
+        else:
+            self.drawIDsContComboBox.setCurrentIndex(0)
 
     def keyReleaseEvent(self, ev):
         if self.app.overrideCursor() == Qt.SizeAllCursor:
@@ -7527,6 +7540,10 @@ class guiWin(QMainWindow):
         self.editTextIDsColorAction.setDisabled(False)
         self.imgPropertiesAction.setEnabled(True)
         self.navigateToolBar.setVisible(True)
+        if 'isLabelsVisible' in self.df_settings.index:
+            val = self.df_settings.at['isLabelsVisible', 'value'] == 'No'
+            if val:
+                self.labelsGrad.hideLabelsImgAction.setChecked(True)
 
         self.ax2.vb.autoRange()
         self.ax1.vb.autoRange()
@@ -9977,6 +9994,8 @@ class guiWin(QMainWindow):
             self.bottomLayout.setStretch(0, 2)
             self.bottomLayout.setStretch(2, 2)
             self.ax1.autoRange()
+            self.df_settings.at['isLabelsVisible', 'value'] = 'No'
+            self.df_settings.to_csv(self.settings_csv_path)
         else:
             self.ax2.show()
             self.graphLayout.removeItem(self.titleLabel)
@@ -9985,6 +10004,8 @@ class guiWin(QMainWindow):
             self.bottomLayout.setStretch(0, 1)
             self.bottomLayout.setStretch(2, 6)
             self.ax2.autoRange()
+            self.df_settings.at['isLabelsVisible', 'value'] = 'Yes'
+            self.df_settings.to_csv(self.settings_csv_path)
 
     def setCheckedInvertBW(self, checked):
         self.invertBwAction.setChecked(checked)
@@ -12219,6 +12240,8 @@ class guiWin(QMainWindow):
         h = self.showPropsDockButton.height()
         self.showPropsDockButton.setMaximumWidth(15)
         self.showPropsDockButton.setMaximumHeight(60)
+
+        self.setFocus(True)
 
 
 if __name__ == "__main__":
