@@ -75,13 +75,13 @@ More details [here](https://github.com/SchmollerLab/Cell_ACDC/releases/tag/v1.2.
 1. Download and install [Python 3.8](https://www.python.org/downloads/)
 2. Upgrade pip with `pip install --updgrade pip`
 3. Navigate to a folder where you want to create the virtual environment
-4. Create a virtual environment with `python -m venv acdc`
-5. Activate the environment (Windows: `.\acdc\Scripts\activate`, macOS/Unix: `source acdc/bin/activate`)
+4. Create a virtual environment: Windows: `py -m venv acdc`, macOS/Unix `python3 -m venv acdc`
+5. Activate the environment: Windows: `.\acdc\Scripts\activate`, macOS/Unix: `source acdc/bin/activate`
 6. Install Cell-ACDC with the command `pip install cellacdc`
 
 ## Install from source
 
-If you want to try out experimental features (and if you have time maybe report a bug or two :D), you can install the developer version from source as follows:
+If you want to contribute or try out experimental features (and, if you have time, maybe report a bug or two :D), you can install the developer version from source as follows:
 
 1. Clone the repo with the command `git clone https://github.com/SchmollerLab/Cell_ACDC.git`
 2. Install [Anaconda](https://www.anaconda.com/products/individual) or [Miniconda](https://docs.conda.io/en/latest/miniconda.html) for **Python 3.8**
