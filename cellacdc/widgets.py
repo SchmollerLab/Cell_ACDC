@@ -154,7 +154,7 @@ class myMessageBox(QDialog):
         self.show()
         super().exec_()
 
-    def close(self, event):
+    def close(self):
         self.clickedButton = self.sender()
         super().close()
 

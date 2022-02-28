@@ -185,6 +185,9 @@ class installJavaDialog(widgets.myMessageBox):
             )
             self.close()
         except Exception as e:
+            print('=======================')
+            traceback.print_exc()
+            print('=======================')
             msg = QMessageBox()
             err_msg = ("""
             <p style="font-size:13px">
