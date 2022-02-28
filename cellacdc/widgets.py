@@ -61,6 +61,14 @@ def addGradients():
             (1.0, (255, 0, 255, 255))],
         'mode': 'rgb'
     }
+    Gradients['sunset'] = {
+        'ticks': [
+            (0.0, (71, 118, 148, 255)),
+            (0.4, (222, 213, 141, 255)),
+            (0.8, (229, 184, 155, 255)),
+            (1.0, (240, 127, 97, 255))],
+        'mode': 'rgb'
+    }
     cmaps = {}
     for name, gradient in Gradients.items():
         ticks = gradient['ticks']
@@ -314,9 +322,8 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
         self.gradient.menu.addSeparator()
 
         # Contours color button
-        self.gradient.menu.addSection('Contours: ')
         hbox = QHBoxLayout()
-        hbox.addWidget(QLabel('Color: '))
+        hbox.addWidget(QLabel('Contours color: '))
         self.contoursColorButton = pg.ColorButton(color=(25,25,25))
         hbox.addWidget(self.contoursColorButton)
         widget = QWidget()
@@ -326,7 +333,7 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
         self.gradient.menu.addAction(act)
 
         # Contours line weight
-        contLineWeightMenu = QMenu('Line weight', self.gradient.menu)
+        contLineWeightMenu = QMenu('Contours line weight', self.gradient.menu)
         self.contLineWightActionGroup = QActionGroup(self)
         for w in range(1, 11):
             action = contLineWeightMenu.addAction(str(w))
@@ -385,8 +392,10 @@ class labelsGradientWidget(pg.GradientWidget):
         for action in self.menu.actions():
             if action.text() == 'HSV':
                 HSV_action = action
-                break
+            elif action.text() == 'RGB':
+                RGB_ation = action
         self.menu.removeAction(HSV_action)
+        self.menu.removeAction(RGB_ation)
 
         # Background color button
         hbox = QHBoxLayout()
@@ -397,7 +406,7 @@ class labelsGradientWidget(pg.GradientWidget):
         widget.setLayout(hbox)
         act = QWidgetAction(self)
         act.setDefaultWidget(widget)
-        self.menu.insertAction(self.item.rgbAction, act)
+        self.menu.addAction(act)
 
         # IDs color button
         hbox = QHBoxLayout()
@@ -408,28 +417,32 @@ class labelsGradientWidget(pg.GradientWidget):
         widget.setLayout(hbox)
         act = QWidgetAction(self)
         act.setDefaultWidget(widget)
-        self.menu.insertAction(self.item.rgbAction, act)
+        self.menu.addAction(act)
 
         # editFontSizeAction action
         self.editFontSizeAction =  QAction(
             'Text font size...', self
         )
-        self.menu.insertAction(self.item.rgbAction, self.editFontSizeAction)
-        self.menu.insertSeparator(self.editFontSizeAction)
+        self.menu.addAction(self.editFontSizeAction)
+        self.menu.addSeparator()
 
         # Shuffle colors action
         self.shuffleCmapAction =  QAction(
             'Shuffle colormap...   (Shift+S)', self
         )
-        self.menu.insertAction(self.item.rgbAction, self.shuffleCmapAction)
-
+        self.menu.addAction(self.shuffleCmapAction)
 
         # Invert bw action
-        self.invertBwAction = QAction('Invert black/white', self)
+        self.invertBwAction = QAction('Light mode', self)
         self.invertBwAction.setCheckable(True)
-        self.menu.insertAction(self.item.rgbAction, self.invertBwAction)
+        self.menu.addAction(self.invertBwAction)
 
-        self.menu.insertSeparator(self.item.rgbAction)
+        # hide labels action
+        self.hideLabelsImgAction = QAction('Hide segmentation image', self)
+        self.hideLabelsImgAction.setCheckable(True)
+        self.menu.addAction(self.hideLabelsImgAction)
+
+        self.menu.addSeparator()
 
     def saveState(self, df):
         # remove previous state

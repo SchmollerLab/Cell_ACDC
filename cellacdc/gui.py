@@ -585,6 +585,7 @@ class guiWin(QMainWindow):
         self.setCentralWidget(mainContainer)
 
         mainLayout = self.gui_createMainLayout()
+        self.mainLayout = mainLayout
 
         mainContainer.setLayout(mainLayout)
 
@@ -1196,12 +1197,14 @@ class guiWin(QMainWindow):
         mainLayout = QGridLayout()
         row = 0
         mainLayout.addLayout(self.leftSideDocksLayout, row, 0, 2, 1)
-        # mainLayout.addWidget(self.imgGradWidget, row, 1)
         mainLayout.addWidget(self.graphLayout, row, 1, 1, 2)
         mainLayout.addWidget(self.labelsGrad, row, 3)
 
         row += 1
-        mainLayout.addLayout(self.bottomLayout, row, 1)
+        mainLayout.addLayout(
+            self.bottomLayout, row, 1, 1, 2, alignment=Qt.AlignLeft
+        )
+        self.bottomLayout.row = row
         mainLayout.setRowStretch(row, 0)
 
         return mainLayout
@@ -1580,6 +1583,7 @@ class guiWin(QMainWindow):
         self.labelsGrad.shuffleCmapAction.triggered.connect(self.shuffle_cmap)
         self.shuffleCmapAction.triggered.connect(self.shuffle_cmap)
         self.labelsGrad.invertBwAction.toggled.connect(self.setCheckedInvertBW)
+        self.labelsGrad.hideLabelsImgAction.toggled.connect(self.hideLabels)
 
         self.imgGrad.labelsAlphaSlider.valueChanged.connect(
             self.updateLabelsAlpha
@@ -1621,7 +1625,8 @@ class guiWin(QMainWindow):
 
     def gui_createImg1Widgets(self):
         _font = QtGui.QFont()
-        _font.setPointSize(10)
+        # _font.setPointSize(10)
+        _font.setPixelSize(12)
 
         # Toggle contours/ID comboboxf
         self.drawIDsContComboBoxSegmItems = [
@@ -1724,9 +1729,11 @@ class guiWin(QMainWindow):
         img1BottomGroupbox = self.gui_addImg1BottomWidgets()
         self.img1BottomGroupbox = img1BottomGroupbox
 
-        self.bottomLayout.addSpacing(100)
+        # self.bottomLayout.addSpacing(100)
+        self.bottomLayout.addStretch(1)
         self.bottomLayout.addWidget(img1BottomGroupbox)
-        self.bottomLayout.addStretch()
+        self.bottomLayout.setStretch(1, 5)
+        self.bottomLayout.addStretch(6)
 
     def gui_addImg1BottomWidgets(self):
         bottomLeftLayout = QGridLayout()
@@ -1834,7 +1841,9 @@ class guiWin(QMainWindow):
             self.labelsGrad.loadPreset('viridis')
 
         # Title
-        self.titleLabel = pg.LabelItem(justify='center', color=self.titleColor, size='14pt')
+        self.titleLabel = pg.LabelItem(
+            justify='center', color=self.titleColor, size='14pt'
+        )
         self.titleLabel.setText(
             'Drag and drop image file or go to File --> Open folder...')
         self.graphLayout.addItem(self.titleLabel, row=0, col=1, colspan=2)
@@ -2053,8 +2062,6 @@ class guiWin(QMainWindow):
         for act in self.imgGrad.contLineWightActionGroup.actions():
             act.toggled.connect(self.contLineWeightToggled)
 
-        print(self.contLineColor, self.contLineWeight, type(self.contLineWeight))
-
         # Contours pens
         self.oldIDs_cpen = pg.mkPen(
             color=self.contLineColor, width=self.contLineWeight
@@ -2068,7 +2075,6 @@ class guiWin(QMainWindow):
         self.lostIDs_cpen = pg.mkPen(
             color=(245, 184, 0, 100), width=self.contLineWeight+2
         )
-
 
     def gui_createGraphicsItems(self):
         self.gui_createContourPens()
@@ -4418,7 +4424,7 @@ class guiWin(QMainWindow):
                 y1, x1 = self.autoCont_y0, self.autoCont_x0
                 yy, xx = self.get_dir_coords(alfa_dir, y1, x1, edge.shape)
                 a_dir = edge[yy, xx]
-                if self.invertBwAction.isChecked():
+                if self.invertBwAction.isChecked() and self.imgCmapName == 'grey':
                     min_int = numba_min(a_dir) # if int_val > ta else numba_min(a_dir)
                 else:
                     min_int = numba_max(a_dir)
@@ -7010,11 +7016,11 @@ class guiWin(QMainWindow):
             img = self.ol_cells_img
         elif how.find('segm. masks') != -1:
             img = self.img_layer0
-        else:
+        elif self.imgCmapName == 'grey':
             img = self.img1.image
-        if self.invertBwAction.isChecked():
-            # Revinvert black and white since neural net requires it
-            img = -img+numba_max(img)
+            if self.invertBwAction.isChecked():
+                # Revinvert black and white since neural net requires it
+                img = -img+numba_max(img)
         return img
 
     def autoAssignBud_YeastMate(self):
@@ -7514,13 +7520,16 @@ class guiWin(QMainWindow):
         self.enableZstackWidgets(posData.SizeZ > 1)
 
         self.img1BottomGroupbox.setVisible(True)
-        self.updateALLimg(updateLabelItemColor=False)
+        # self.updateALLimg(updateLabelItemColor=False)
         self.updateScrollbars()
         self.fontSizeAction.setChecked(True)
         self.openAction.setEnabled(True)
         self.editTextIDsColorAction.setDisabled(False)
         self.imgPropertiesAction.setEnabled(True)
         self.navigateToolBar.setVisible(True)
+
+        self.ax2.vb.autoRange()
+        self.ax1.vb.autoRange()
 
     def setFramesSnapshotMode(self):
         if self.isSnapshot:
@@ -7876,6 +7885,9 @@ class guiWin(QMainWindow):
             self.df_settings.at['img_cmap', 'value'] = 'grey'
         self.imgCmapName = self.df_settings.at['img_cmap', 'value']
         self.imgCmap = self.imgGrad.cmaps[self.imgCmapName]
+        if self.imgCmapName != 'grey':
+            # To ensure mapping to colors we need to normalize image
+            self.normalizeByMaxAction.setChecked(True)
 
 
     def initGlobalAttr(self):
@@ -8021,14 +8033,11 @@ class guiWin(QMainWindow):
         self.pos_i = 0
         self.get_data(debug=False)
         self.store_data()
-        self.updateALLimg()
+        # self.updateALLimg()
 
         # Link Y and X axis of both plots to scroll zoom and pan together
         self.ax2.vb.setYLink(self.ax1.vb)
         self.ax2.vb.setXLink(self.ax1.vb)
-
-        self.ax2.vb.autoRange()
-        self.ax1.vb.autoRange()
 
     def PosScrollBarAction(self, action):
         if action == QAbstractSlider.SliderSingleStepAdd:
@@ -8866,7 +8875,7 @@ class guiWin(QMainWindow):
                 msg.Yes | msg.Cancel
             )
             if goTo_last_annotated_frame_i == msg.Yes:
-                msg = 'Looking good!'
+                msg = ''
                 self.last_cca_frame_i = last_cca_frame_i
                 posData.frame_i = last_cca_frame_i
                 self.titleLabel.setText(msg, color=self.titleColor)
@@ -8891,7 +8900,7 @@ class guiWin(QMainWindow):
                 msg.Yes | msg.No | msg.Cancel
             )
             if goTo_last_annotated_frame_i == msg.Yes:
-                msg = 'Looking good!'
+                msg = ''
                 self.titleLabel.setText(msg, color=self.titleColor)
                 self.last_cca_frame_i = last_cca_frame_i
                 posData.frame_i = last_cca_frame_i
@@ -9828,7 +9837,7 @@ class guiWin(QMainWindow):
 
         val = self.img1_RGB[tuple([0]*self.img1_RGB.ndim)]
         if not isinstance(val, (np.floating, float)):
-            self.img1uintRGB = self.img_RGB.copy()
+            self.img1uintRGB = self.img1_RGB.copy()
             self.img1_RGB = self.img1_RGB/255
         else:
             self.img1uintRGB = self.img1_RGB
@@ -9891,6 +9900,8 @@ class guiWin(QMainWindow):
             return overlay
 
     def invertRGB(self, rgb_img):
+        if self.imgCmapName != 'grey':
+            return
         # see https://forum.image.sc/t/invert-rgb-image-without-changing-colors/33571
         R = rgb_img[:, :, 0]
         G = rgb_img[:, :, 1]
@@ -9956,6 +9967,24 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         np.random.shuffle(posData.lut[1:])
         self.updateLookuptable()
+
+    def hideLabels(self, checked):
+        if checked:
+            self.ax2.hide()
+            self.graphLayout.removeItem(self.titleLabel)
+            self.graphLayout.addItem(self.titleLabel, row=0, col=1)
+            self.mainLayout.setAlignment(self.bottomLayout, Qt.AlignCenter)
+            self.bottomLayout.setStretch(0, 2)
+            self.bottomLayout.setStretch(2, 2)
+            self.ax1.autoRange()
+        else:
+            self.ax2.show()
+            self.graphLayout.removeItem(self.titleLabel)
+            self.graphLayout.addItem(self.titleLabel, row=0, col=1, colspan=2)
+            self.mainLayout.setAlignment(self.bottomLayout, Qt.AlignLeft)
+            self.bottomLayout.setStretch(0, 1)
+            self.bottomLayout.setStretch(2, 6)
+            self.ax2.autoRange()
 
     def setCheckedInvertBW(self, checked):
         self.invertBwAction.setChecked(checked)
@@ -10055,6 +10084,8 @@ class guiWin(QMainWindow):
             cells_img = posData.img_data[frame_i].copy()
         if normalizeIntens:
             cells_img = self.normalizeIntensities(cells_img)
+        if self.imgCmapName == 'grey':
+            return cells_img
         if self.invertBwAction.isChecked() and invert:
             cells_img = -cells_img+numba_max(cells_img)
         return cells_img
@@ -10395,6 +10426,7 @@ class guiWin(QMainWindow):
         self.img_layer0 = img
         if self.imgCmapName != 'grey':
             img = self.imgCmap(img)[:, :, :3]
+            img = (np.clip(img, 0, 1)*255).astype(np.uint8)
         return img
 
     @exception_handler
@@ -10618,7 +10650,7 @@ class guiWin(QMainWindow):
             posData.old_IDs = []
             posData.IDs = [obj.label for obj in posData.rp]
             posData.multiContIDs = set()
-            self.titleLabel.setText('Looking good!', color=self.titleColor)
+            self.titleLabel.setText('', color=self.titleColor)
             return
 
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
@@ -10664,7 +10696,7 @@ class guiWin(QMainWindow):
                 f'{htmlTxt}, <font color="green">{warn_txt}</font>'
             )
         if not warn_txt:
-            warn_txt = 'Looking good!'
+            warn_txt = ''
             color = 'w'
             htmlTxt = (
                 f'<font color="white">{warn_txt}</font>'
@@ -12185,8 +12217,8 @@ class guiWin(QMainWindow):
 
         w = self.showPropsDockButton.width()
         h = self.showPropsDockButton.height()
-        self.showPropsDockButton.setFixedWidth((int(w/2)))
-        self.showPropsDockButton.setFixedHeight(h*2)
+        self.showPropsDockButton.setMaximumWidth(15)
+        self.showPropsDockButton.setMaximumHeight(60)
 
 
 if __name__ == "__main__":

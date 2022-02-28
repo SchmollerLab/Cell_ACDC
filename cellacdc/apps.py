@@ -1894,8 +1894,8 @@ class gaussBlurDialog(QDialog):
         img = self.getFilteredImg()
         if self.PreviewCheckBox.isChecked():
             self.mainWindow.img1.setImage(img)
-            h = self.mainWindow.img1.getHistogram()
-            self.mainWindow.hist.plot.setData(*h)
+            # h = self.mainWindow.img1.getHistogram()
+            # self.mainWindow.hist.plot.setData(*h)
 
     def sigmaQDSB_valueChanged(self, val):
         self.sigma = val
@@ -2056,14 +2056,13 @@ class edgeDetectionDialog(QDialog):
         img = self.mainWindow.normalizeIntensities(img)
         return img
 
-
     def apply(self):
         self.getData()
         img = self.getFilteredImg()
         if self.PreviewCheckBox.isChecked():
             self.mainWindow.img1.setImage(img)
-            h = self.mainWindow.img1.getHistogram()
-            self.mainWindow.hist.plot.setData(*h)
+            # h = self.mainWindow.img1.getHistogram()
+            # self.mainWindow.hist.plot.setData(*h)
 
     def sigmaSliderMoved(self, intVal):
         self.sigma = intVal/20
@@ -2199,8 +2198,8 @@ class entropyFilterDialog(QDialog):
         img = self.getFilteredImg()
         if self.PreviewCheckBox.isChecked():
             self.mainWindow.img1.setImage(img)
-            h = self.mainWindow.img1.getHistogram()
-            self.mainWindow.hist.plot.setData(*h)
+            # h = self.mainWindow.img1.getHistogram()
+            # self.mainWindow.hist.plot.setData(*h)
 
     def radiusSliderMoved(self, intVal):
         self.radiusValLabel.setText(f'{intVal}')
