@@ -364,6 +364,10 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
         self.labelsAlphaMenu.addSeparator()
         self.labelsAlphaMenu.addAction(act)
 
+        # Default settings
+        self.defaultSettingsAction = QAction('Restore default settings...', self)
+        self.gradient.menu.addAction(self.defaultSettingsAction)
+
         # Select channels section
         self.gradient.menu.addSeparator()
         self.gradient.menu.addSection('Select channel: ')
@@ -387,7 +391,7 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
 
         if 'overlaySegmMasksAlpha' in df.index:
             alpha = df.at['overlaySegmMasksAlpha', 'value']
-            self.labelsAlphaSlider.setValue(alpha)
+            self.labelsAlphaSlider.setValue(float(alpha))
 
         checked = df.at['is_bw_inverted', 'value'] == 'Yes'
         self.invertBwAction.setChecked(checked)
@@ -463,6 +467,10 @@ class labelsGradientWidget(pg.GradientWidget):
         self.hideLabelsImgAction.setCheckable(True)
         self.menu.addAction(self.hideLabelsImgAction)
 
+        # Default settings
+        self.defaultSettingsAction = QAction('Restore default settings...', self)
+        self.menu.addAction(self.hideLabelsImgAction)
+
         self.menu.addSeparator()
 
     def saveState(self, df):
@@ -482,7 +490,7 @@ class labelsGradientWidget(pg.GradientWidget):
                 df.at[f'lab_cmap_{key}', 'value'] = value
         return df
 
-    def restoreState(self, df):
+    def restoreState(self, df, loadCmap=True):
         # Insert background color
         if 'labels_bkgrColor' in df.index:
             rgbString = df.at['labels_bkgrColor', 'value']
@@ -498,6 +506,9 @@ class labelsGradientWidget(pg.GradientWidget):
 
         checked = df.at['is_bw_inverted', 'value'] == 'Yes'
         self.invertBwAction.setChecked(checked)
+
+        if not loadCmap:
+            return
 
         state = {'mode': 'rgb', 'ticksVisible': True, 'ticks': []}
         ticks_pos = {}

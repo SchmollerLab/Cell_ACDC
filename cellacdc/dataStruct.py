@@ -1386,7 +1386,7 @@ class createDataStructWin(QMainWindow):
 
 
 if __name__ == "__main__":
-    print('Launching segmentation script...')
+    print('Launching data structure module...')
     # Handle high resolution displays:
     if hasattr(Qt, 'AA_EnableHighDpiScaling'):
         QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)

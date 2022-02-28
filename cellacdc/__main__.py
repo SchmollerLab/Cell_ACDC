@@ -561,6 +561,7 @@ def run():
     print('---------------------------------')
     print(f'Welcome to Cell-ACDC v{myutils.read_version()}!')
     print('---------------------------------')
+    win.raise_()
     app.exec_()
 
 def main():

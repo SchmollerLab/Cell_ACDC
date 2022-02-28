@@ -1912,9 +1912,12 @@ class gaussBlurDialog(QDialog):
         img = skimage.filters.gaussian(self.img, sigma=self.sigma)
         if self.mainWindow.overlayButton.isChecked():
             key = self.channelsComboBox.currentText()
-            img = self.mainWindow.getOverlayImg(fluoData=(img, key),
-                                                setImg=False)
-        img = self.mainWindow.normalizeIntensities(img)
+            img = self.mainWindow.getOverlayImg(
+                fluoData=(img, key), setImg=False
+            )
+        else:
+            img = self.mainWindow.getImageWithCmap(img=img)
+        # img = self.mainWindow.normalizeIntensities(img)
         return img
 
     def apply(self):
@@ -2079,9 +2082,11 @@ class edgeDetectionDialog(QDialog):
         img = img - skimage.filters.gaussian(img, sigma=self.radius)
         if self.mainWindow.overlayButton.isChecked():
             key = self.channelsComboBox.currentText()
-            img = self.mainWindow.getOverlayImg(fluoData=(img, key),
-                                                setImg=False)
-        img = self.mainWindow.normalizeIntensities(img)
+            img = self.mainWindow.getOverlayImg(
+                fluoData=(img, key), setImg=False
+            )
+        else:
+            img = self.mainWindow.getImageWithCmap(img=img)
         return img
 
     def apply(self):
@@ -2216,9 +2221,11 @@ class entropyFilterDialog(QDialog):
         entropyImg = skimage.filters.rank.entropy(self.img, selem)
         if self.mainWindow.overlayButton.isChecked():
             key = self.channelsComboBox.currentText()
-            img = self.mainWindow.getOverlayImg(fluoData=(entropyImg, key),
-                                                setImg=False)
-        img = self.mainWindow.normalizeIntensities(entropyImg)
+            img = self.mainWindow.getOverlayImg(
+                fluoData=(entropyImg, key), setImg=False
+            )
+        else:
+            img = self.mainWindow.getImageWithCmap(img=entropyImg)
         return img
 
     def apply(self):

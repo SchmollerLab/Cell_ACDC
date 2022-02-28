@@ -367,7 +367,7 @@ class saveDataWorker(QObject):
                     # Build acdc_df and index it in each frame_i of acdc_df_li
                     if acdc_df is not None and np.any(lab):
                         acdc_df = load.loadData.BooleansTo0s1s(
-                                    acdc_df, inplace=False
+                            acdc_df, inplace=False
                         )
                         rp = data_dict['regionprops']
                         try:
@@ -1584,10 +1584,16 @@ class guiWin(QMainWindow):
         self.shuffleCmapAction.triggered.connect(self.shuffle_cmap)
         self.labelsGrad.invertBwAction.toggled.connect(self.setCheckedInvertBW)
         self.labelsGrad.hideLabelsImgAction.toggled.connect(self.hideLabels)
+        self.labelsGrad.defaultSettingsAction.triggered.connect(
+            self.restoreDefaultSettings
+        )
 
         self.imgGrad.invertBwAction.toggled.connect(self.setCheckedInvertBW)
         self.imgGrad.labelsAlphaSlider.valueChanged.connect(
             self.updateLabelsAlpha
+        )
+        self.imgGrad.defaultSettingsAction.triggered.connect(
+            self.restoreDefaultSettings
         )
 
         # Drawing mode
@@ -1840,7 +1846,7 @@ class guiWin(QMainWindow):
                 'Failed to restore previously used colormap. '
                 'Using default colormap "viridis"'
             )
-            self.labelsGrad.loadPreset('viridis')
+            self.labelsGrad.item.loadPreset('viridis')
 
         # Title
         self.titleLabel = pg.LabelItem(
@@ -2037,7 +2043,7 @@ class guiWin(QMainWindow):
             self.contLineColor = [max(0, v-50) for v in rgba]
             self.newIDlineColor = [min(255, v+50) for v in self.contLineColor]
         else:
-            self.contLineColor = (205, 0, 0, 127)
+            self.contLineColor = (205, 0, 0, 220)
             self.newIDlineColor = (255, 0, 0, 255)
 
         try:
@@ -5947,6 +5953,8 @@ class guiWin(QMainWindow):
             while self.app.overrideCursor() is not None:
                 self.app.restoreOverrideCursor()
             self.wandControlsToolbar.setVisible(False)
+        if self.labelsGrad.hideLabelsImgAction.isChecked():
+            self.ax1.vb.autoRange()
 
     def restoreHoveredID(self):
         posData = self.data[self.pos_i]
@@ -7551,18 +7559,19 @@ class guiWin(QMainWindow):
             if val:
                 self.labelsGrad.hideLabelsImgAction.setChecked(True)
 
+        self.setAxesMaxRange()
+
         self.ax2.vb.autoRange()
         self.ax1.vb.autoRange()
 
+    def setAxesMaxRange(self):
         # Get current maxRange and prevent from zooming out too far
-        viewRange = self.ax1.viewRange()
-        [[xmin, xmax], [ymin, ymax]] = viewRange
-        yRange, xRange = abs(ymax-ymin), abs(xmax-xmin)
-        maxRange = max(yRange, xRange)
-        if maxRange == yRange:
-            self.ax1.setLimits(maxYRange=maxRange)
-        else:
-            self.ax1.setLimits(maxXRange=maxRange)
+        screenSize = self.screen().size()
+        xRangeScreen, yRangeScreen = screenSize.width(), screenSize.height()
+        Y, X = self.img1.image.shape[:2]
+        xRange = Y/yRangeScreen*xRangeScreen
+        if xRange > X and xRangeScreen > yRangeScreen:
+            self.ax1.setLimits(maxXRange=int(xRange*2))
 
     def setFramesSnapshotMode(self):
         if self.isSnapshot:
@@ -7858,6 +7867,9 @@ class guiWin(QMainWindow):
 
         if isRightClick:
             xxS, yyS = self.curvPlotItem.getData()
+            if xxS is None:
+                self.setUncheckedAllButtons()
+                return
             N = len(xxS)
             self.smoothAutoContWithSpline(n=int(N*0.15))
 
@@ -9034,7 +9046,7 @@ class guiWin(QMainWindow):
             df = acdc_df.join(cca_df, how='left')
             posData.allData_li[i]['acdc_df'] = df.copy()
 
-    def ax1_setTextID(self, obj, how, updateColor=False):
+    def ax1_setTextID(self, obj, how, updateColor=False, debug=False):
         posData = self.data[self.pos_i]
         # Draw ID label on ax1 image depending on how
         LabelItemID = self.ax1_LabelItemsIDs[obj.label-1]
@@ -9129,6 +9141,8 @@ class guiWin(QMainWindow):
                 txt = f'{txt}?'
 
         try:
+            if debug:
+                print(txt, color)
             LabelItemID.setText(txt, color=color, bold=bold, size=self.fontSize)
         except UnboundLocalError:
             pass
@@ -9749,22 +9763,6 @@ class guiWin(QMainWindow):
         self.imgCmap = self.imgGrad.cmaps[act.name]
         self.imgCmapName = act.name
         self.updateALLimg()
-        return
-        if act.name == 'grey':
-            try:
-                self.imgGrad.sigLookupTableChanged.disconnect()
-            except TypeError:
-                pass
-            self.imgGrad.setImageItem(self.img1)
-            self.imgGrad.imageItem = lambda: None
-            self.imgGrad.sigLookupTableChanged.connect(self.imgGradLUT_cb)
-        else:
-            try:
-                self.imgGrad.sigLookupTableChanged.disconnect()
-            except TypeError:
-                pass
-            self.imgGrad.setImageItem(self.img1)
-
 
     def adjustBrightness(self, img, key,
                          func=skimage.exposure.rescale_intensity):
@@ -9980,7 +9978,9 @@ class guiWin(QMainWindow):
             np.random.shuffle(posData.lut)
         else:
             if posData.rp is None:
-                posData.lut = self.labelsGrad.item.colorMap().getLookupTable(0,1,255)
+                posData.lut = self.labelsGrad.item.colorMap().getLookupTable(
+                    0,1,255
+                )
             else:
                 posData.lut = self.labelsGrad.item.colorMap().getLookupTable(
                     0,1,len(posData.rp)
@@ -10005,6 +10005,7 @@ class guiWin(QMainWindow):
 
     def hideLabels(self, checked):
         if checked:
+            self.addDelRoiAction.setDisabled(True)
             self.ax2.hide()
             self.graphLayout.removeItem(self.titleLabel)
             self.graphLayout.addItem(self.titleLabel, row=0, col=1)
@@ -10437,6 +10438,26 @@ class guiWin(QMainWindow):
             curveID = self.ax1_ContoursCurves[ID-1]
             curveID.setData(cont[:,0], cont[:,1], pen=pen)
 
+        how = self.drawIDsContComboBox.currentText()
+        IDs_and_cont = how == 'Draw IDs and contours'
+        onlyIDs = how == 'Draw only IDs'
+        nothing = how == 'Draw nothing'
+        onlyCont = how == 'Draw only contours'
+        only_ccaInfo = how == 'Draw only cell cycle info'
+        ccaInfo_and_cont = how == 'Draw cell cycle info and contours'
+        onlyMothBudLines = how == 'Draw only mother-bud lines'
+        IDs_and_masks = how == 'Draw IDs and overlay segm. masks'
+        onlyMasks = how == 'Draw only overlay segm. masks'
+        ccaInfo_and_masks = how == 'Draw cell cycle info and overlay segm. masks'
+        draw_LIs = (
+            IDs_and_cont or onlyIDs or only_ccaInfo or ccaInfo_and_cont
+            or IDs_and_masks or ccaInfo_and_masks
+        )
+        # Restore other text IDs to default
+        if draw_LIs:
+            for _obj in posData.rp:
+                self.ax1_setTextID(_obj, how, debug=False)
+
         # Label ID
         LabelItemID = self.ax1_LabelItemsIDs[ID-1]
         txt = f'{ID}'
@@ -10456,13 +10477,34 @@ class guiWin(QMainWindow):
         lut[ID+1:] = lut[ID+1:]*0.2
         self.img2.setLookupTable(lut)
 
+    def restoreDefaultSettings(self):
+        df = self.df_settings
+        df.at['contLineWeight', 'value'] = 2
+        df.at['contLineColor', 'value'] = (205, 0, 0, 220)
+        df.at['overlaySegmMasksAlpha', 'value'] = 0.3
+        df.at['img_cmap', 'value'] = 'grey'
+        self.imgCmap = self.imgGrad.cmaps['grey']
+        self.imgCmapName = 'grey'
+        self.labelsGrad.item.loadPreset('viridis')
+        df.at['labels_bkgrColor', 'value'] = (25, 25, 25)
+        df.at['is_bw_inverted', 'value'] = 'No'
+        df = df[~df.index.str.contains('lab_cmap')]
+        df.to_csv(self.settings_csv_path)
+        self.gui_createContourPens()
+        self.imgGrad.restoreState(df)
+
+        self.labelsGrad.saveState(df)
+        self.labelsGrad.restoreState(df, loadCmap=False)
+
+
     def updateLabelsAlpha(self, value):
         self.df_settings.at['overlaySegmMasksAlpha', 'value'] = value
         self.df_settings.to_csv(self.settings_csv_path)
         self.updateALLimg(only_ax1=True)
 
-    def getImageWithCmap(self):
-        img = self.getImage()
+    def getImageWithCmap(self, img=None):
+        if img is None:
+            img = self.getImage()
         cellsKey = f'{self.user_ch_name}_overlayOFF'
         img = self.adjustBrightness(img, cellsKey)
         self.img_layer0 = img
@@ -12263,6 +12305,10 @@ class guiWin(QMainWindow):
         self.showPropsDockButton.setMaximumHeight(60)
 
         self.setFocus(True)
+
+    def resizeEvent(self, event):
+        if hasattr(self, 'ax1'):
+            self.ax1.autoRange()
 
 
 if __name__ == "__main__":
