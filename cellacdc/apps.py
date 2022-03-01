@@ -63,14 +63,11 @@ class installJavaDialog(widgets.myMessageBox):
         self.setWindowTitle('Install Java')
         self.setIcon('SP_MessageBoxWarning')
 
-        txt = ("""
+        txt_macOS = ("""
         <p style="font-size:13px">
             Your system doesn't have the <code>Java Development Kit</code>
-            installed<br> which is required for the installation of
+            installed<br> and/or a C++ compiler.which is required for the installation of
             <code>javabridge</code><br><br>
-        """)
-
-        txt_macOS = ("""
             <b>Cell-ACDC is now going to install Java for you</b>.<br><br>
             <i><b>NOTE: After clicking on "Install", follow the instructions<br>
             on the terminal</b>. You will be asked to confirm steps and insert<br>
@@ -81,6 +78,12 @@ class installJavaDialog(widgets.myMessageBox):
         """)
 
         txt_windows = ("""
+        <p style="font-size:13px">
+            Unfortunately, installing pre-compiled version of
+            <code>javabridge</code> <b>failed</b>.<br><br>
+            Cell-ACDC is going to <b>try to compile it now</b>.<br><br>
+            However, <b>before proceeding</b>, you need to install
+            <code>Java Development Kit</code><br> and a <b>C++ compiler</b>.<br><br>
             <b>See instructions below on how to install it.</b>
         </p>
         """)
@@ -93,32 +96,78 @@ class installJavaDialog(widgets.myMessageBox):
             installButton = self.addButton('Install')
             installButton.disconnect()
             installButton.clicked.connect(self.installJavaMacOS)
-            txt = f'{txt}{txt_macOS}'
+            txt = txt_macOS
         else:
             okButton = self.addButton('Ok')
-            txt = f'{txt}{txt_windows}'
+            txt = txt_windows
 
-        if not is_win:
-            self.cancelButton = self.addButton('Cancel')
-        else:
-            self.cancelButton = None
+        self.cancelButton = self.addButton('Cancel')
 
         label = self.addText(txt)
         label.setWordWrap(False)
 
         self.resizeCount = 0
 
-    def addInstructions(self):
+    def addInstructionsWindows(self):
         self.scrollArea = QScrollArea()
         _container = QWidget()
         _layout = QVBoxLayout()
         for t, text in enumerate(myutils.install_javabridge_instructions_text()):
             label = QLabel()
             label.setText(text)
-            if is_win:
-                label.setWordWrap(True)
+            if (t == 1 or t == 2):
+                label.setOpenExternalLinks(True)
+                label.setTextInteractionFlags(Qt.TextBrowserInteraction)
+                code_layout = QHBoxLayout()
+                code_layout.addWidget(label)
+                copyButton = QToolButton()
+                copyButton.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+                copyButton.setIcon(QIcon(':edit-copy.svg'))
+                copyButton.setText('Copy link')
+                if t==1:
+                    copyButton.textToCopy = myutils.jdk_windows_url()
+                    code_layout.addWidget(copyButton, alignment=Qt.AlignLeft)
+                else:
+                    copyButton.textToCopy = myutils.cpp_windows_url()
+                    screenshotButton = QToolButton()
+                    screenshotButton.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+                    screenshotButton.setIcon(QIcon(':cog.svg'))
+                    screenshotButton.setText('See screenshot')
+                    code_layout.addWidget(screenshotButton, alignment=Qt.AlignLeft)
+                    code_layout.addWidget(copyButton, alignment=Qt.AlignLeft)
+                    screenshotButton.clicked.connect(self.viewScreenshot)
+                copyButton.clicked.connect(self.copyToClipboard)
+                code_layout.setStretch(0, 2)
+                code_layout.setStretch(1, 0)
+                _layout.addLayout(code_layout)
+            else:
+                _layout.addWidget(label)
+
+
+        _container.setLayout(_layout)
+        self.scrollArea.setWidget(_container)
+        self.currentRow += 1
+        self.layout.addWidget(
+            self.scrollArea, self.currentRow, 1, alignment=Qt.AlignTop
+        )
+
+        # Stretch last row
+        self.currentRow += 1
+        self.layout.setRowStretch(self.currentRow, 1)
+
+    def viewScreenshot(self, checked=False):
+        self.screenShotWin = widgets.view_visualcpp_screenshot()
+        self.screenShotWin.show()
+
+    def addInstructionsMacOS(self):
+        self.scrollArea = QScrollArea()
+        _container = QWidget()
+        _layout = QVBoxLayout()
+        for t, text in enumerate(myutils.install_javabridge_instructions_text()):
+            label = QLabel()
+            label.setText(text)
             # label.setWordWrap(True)
-            if (t == 1 or t == 2) and not is_win:
+            if (t == 1 or t == 2):
                 label.setWordWrap(True)
                 code_layout = QHBoxLayout()
                 code_layout.addWidget(label)
@@ -148,8 +197,7 @@ class installJavaDialog(widgets.myMessageBox):
         # Stretch last row
         self.currentRow += 1
         self.layout.setRowStretch(self.currentRow, 1)
-        if not is_win:
-            self.scrollArea.hide()
+        self.scrollArea.hide()
 
     def copyToClipboard(self):
         cb = QApplication.clipboard()
@@ -202,10 +250,13 @@ class installJavaDialog(widgets.myMessageBox):
 
     def show(self):
         super().show()
-        self.addInstructions()
+        if not is_win:
+            self.addInstructionsMacOS()
+        else:
+            self.addInstructionsWindows()
         self.move(self.pos().x(), 20)
         if is_win:
-            self.resize(self.width(), self.height()+150)
+            self.resize(self.width(), self.height()+200)
 
 class wandToleranceWidget(QFrame):
     def __init__(self, parent=None):

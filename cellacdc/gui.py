@@ -78,7 +78,7 @@ from . import core, myutils, dataPrep, widgets
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .core import numba_max, numba_min
-from .myutils import exec_time
+from .myutils import exec_time, setupLogger
 from .help import welcome
 
 if os.name == 'nt':
@@ -526,7 +526,14 @@ class guiWin(QMainWindow):
             self.openFolderText = 'Reveal in Finder...'
 
         self.is_error_state = False
-        self.setupLogger()
+        logger, logs_path, log_path, log_filename = setupLogger(
+            module='gui'
+        )
+        self.logger = logger
+        self.log_path = log_path
+        self.log_filename = log_filename
+        self.logs_path = logs_path
+
         self.loadLastSessionSettings()
 
         self.buttonToRestore = buttonToRestore
@@ -590,47 +597,6 @@ class guiWin(QMainWindow):
         mainContainer.setLayout(mainLayout)
 
         self.isEditActionsConnected = False
-
-    def setupLogger(self, module='gui'):
-        logger = logging.getLogger('cellacdc-logger')
-        logger.setLevel(logging.INFO)
-
-        user_path = pathlib.Path.home()
-        logs_path = os.path.join(user_path, '.acdc-logs')
-        self.logs_path = logs_path
-        if not os.path.exists(logs_path):
-            os.mkdir(logs_path)
-        else:
-            # Keep 20 most recent logs
-            ls = myutils.listdir(logs_path)
-            if len(ls)>20:
-                ls = [os.path.join(logs_path, f) for f in ls]
-                ls.sort(key=lambda x: os.path.getmtime(x))
-                for file in ls[:-20]:
-                    os.remove(file)
-
-        date_time = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-        log_filename = f'{date_time}_{module}_stdout.log'
-        log_path = os.path.join(logs_path, log_filename)
-        self.log_path = log_path
-        self.log_filename = log_filename
-
-        output_file_handler = logging.FileHandler(log_path, mode='w')
-        stdout_handler = logging.StreamHandler(sys.stdout)
-
-        # Format your logs (optional)
-        formatter = logging.Formatter(
-            '%(asctime)s - %(name)s - %(levelname)s:\n'
-            '------------------------\n'
-            '%(message)s\n'
-            '------------------------\n',
-            datefmt='%d-%m-%Y, %H:%M:%S')
-        output_file_handler.setFormatter(formatter)
-
-        logger.addHandler(output_file_handler)
-        logger.addHandler(stdout_handler)
-
-        self.logger = logger
 
     def loadLastSessionSettings(self):
         cellacdc_path = os.path.dirname(os.path.abspath(__file__))

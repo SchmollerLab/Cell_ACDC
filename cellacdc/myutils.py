@@ -6,6 +6,7 @@ import sys
 import tempfile
 import shutil
 import traceback
+import logging
 import datetime
 import time
 import subprocess
@@ -40,6 +41,45 @@ class utilClass:
 class signals(QObject):
     progressBar = pyqtSignal(int)
     progress = pyqtSignal(str)
+
+def setupLogger(module='gui'):
+    logger = logging.getLogger('cellacdc-logger')
+    logger.setLevel(logging.INFO)
+
+    user_path = pathlib.Path.home()
+    logs_path = os.path.join(user_path, '.acdc-logs')
+    if not os.path.exists(logs_path):
+        os.mkdir(logs_path)
+    else:
+        # Keep 20 most recent logs
+        ls = listdir(logs_path)
+        if len(ls)>20:
+            ls = [os.path.join(logs_path, f) for f in ls]
+            ls.sort(key=lambda x: os.path.getmtime(x))
+            for file in ls[:-20]:
+                os.remove(file)
+
+    date_time = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    log_filename = f'{date_time}_{module}_stdout.log'
+    log_path = os.path.join(logs_path, log_filename)
+
+    output_file_handler = logging.FileHandler(log_path, mode='w')
+    stdout_handler = logging.StreamHandler(sys.stdout)
+
+    # Format your logs (optional)
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s:\n'
+        '------------------------\n'
+        '%(message)s\n'
+        '------------------------\n',
+        datefmt='%d-%m-%Y, %H:%M:%S')
+    output_file_handler.setFormatter(formatter)
+
+    logger.addHandler(output_file_handler)
+    logger.addHandler(stdout_handler)
+
+    return logger, logs_path, log_path, log_filename
+
 
 def rgb_str_to_values(rgbString, errorRgb=(255,255,255)):
     try:
@@ -116,12 +156,25 @@ def install_java():
         win.exec_()
         return win.clickedButton == win.cancelButton
 
-def install_javabridge():
+def install_javabridge(force_compile=False, attempt_uninstall_first=False):
+    if attempt_uninstall_first:
+        try:
+            subprocess.check_call(
+                [sys.executable, '-m', 'pip', 'uninstall', '-y', 'javabridge']
+            )
+        except Exception as e:
+            pass
     if sys.platform.startswith('win'):
-        subprocess.check_call(
-            [sys.executable, '-m', 'pip', 'install',
-            'git+https://github.com/SchmollerLab/python-javabridge-windows']
-        )
+        if force_compile:
+            subprocess.check_call(
+                [sys.executable, '-m', 'pip', 'install',
+                'git+https://github.com/SchmollerLab/python-javabridge-acdc']
+            )
+        else:
+            subprocess.check_call(
+                [sys.executable, '-m', 'pip', 'install',
+                'git+https://github.com/SchmollerLab/python-javabridge-windows']
+            )
     else:
         subprocess.check_call(
             [sys.executable, '-m', 'pip', 'install',
@@ -843,20 +896,59 @@ def _java_instructions_macOS():
     """)
     return s1, s2, s3, s4
 
+# def _java_instructions_windows():
+#     s = [f"""
+#     <p style="font-size:13px">
+#         Download and install Java 8 and
+#         Java Development Kit for Windows. Here the links:<br>
+#     <p style="font-size:13px">
+#         Java 8: <a href="https://www.java.com/en/download/manual.jsp">here</a>
+#     </p>
+#     <p style="font-size:13px">
+#         Java Development Kit: <a href="https://hmgubox2.helmholtz-muenchen.de/index.php/s/zocneD2j2wMwbNc">here</a>
+#     </p>
+#     </p><br>
+#     """]
+#     return s
+
+def jdk_windows_url():
+    return 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/zocneD2j2wMwbNc'
+
+def cpp_windows_url():
+    return 'https://visualstudio.microsoft.com/visual-cpp-build-tools/'
+
 def _java_instructions_windows():
-    s = [f"""
+    jdk_url = f'"{jdk_windows_url()}"'
+    cpp_url = f'"{cpp_windows_url()}"'
+    s1 = ("""
     <p style="font-size:13px">
-        Download and install Java 8 and
-        Java Development Kit for Windows. Here the links:<br>
-    <p style="font-size:13px">
-        Java 8: <a href="https://www.java.com/en/download/manual.jsp">here</a>
+        Download and install <code>Java Development Kit</code> and<br>
+        <b>Microsoft C++ Build Tools</b> for Windows (links below).<br><br>
+        <b>IMPORTANT</b>: when installing "Microsoft C++ Build Tools"<br>
+        make sure to select <b>"Desktop development with C++"</b>.<br>
+        Click "See the screenshot" for more details.<br>
     </p>
+    """)
+
+    s2 = (f"""
     <p style="font-size:13px">
-        Java Development Kit: <a href="https://hmgubox2.helmholtz-muenchen.de/index.php/s/zocneD2j2wMwbNc">here</a>
+        Java Development Kit:
+            <a href={jdk_url}>
+                here
+            </a>
     </p>
-    </p><br>
-    """]
-    return s
+    """)
+
+    s3 = (f"""
+    <p style="font-size:13px">
+        Microsoft C++ Build Tools:
+            <a href={cpp_url}>
+                here
+            </a>
+    </p>
+    </p>
+    """)
+    return s1, s2, s3
 
 def install_javabridge_instructions_text():
     if sys.platform.startswith('win'):

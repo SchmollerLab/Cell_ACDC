@@ -311,39 +311,62 @@ class mainWin(QMainWindow):
             self.convertWin.raise_()
 
     def launchDataStruct(self, checked=False):
-        try:
-            dataStruct.createDataStructWin(parent=self)
-        except OSError as e:
-            print(f'WARNING: {e}')
-            return
-
         self.dataStructButton.setStyleSheet(
             f'QPushButton {{background-color: {self.moduleLaunchedColor};}}'
         )
         self.dataStructButton.setText(
-            '0. Creating data structure running.'
+            '0. Creating data structure running...'
         )
-        self.dataStructButton.setDisabled(True)
+        # self.dataStructButton.setDisabled(True)
 
-        QTimer.singleShot(100, self.processDataStructLaunched)
+        QTimer.singleShot(100, self._showDataStructWin)
 
-
-    def processDataStructLaunched(self):
-        cellacdc_path = os.path.dirname(os.path.realpath(__file__))
-        dataStruct_path = os.path.join(cellacdc_path, 'dataStruct.py')
-
-        # Due to javabridge limitation only one 'start_vm' can be called in
-        # each process. To get around with this every data structure conversion
-        # is launched in a separate process
-        subprocess.check_call(
-            [sys.executable, dataStruct_path]
-        )
-
-        self.dataStructButton.setStyleSheet(
-            f'QPushButton {{background-color: {self.defaultPushButtonColor};}}')
-        self.dataStructButton.setText(
-            '0. Create data structure from microscopy file(s)...')
-        self.dataStructButton.setDisabled(False)
+    # def attemptDataStructSeparateProcess(self):
+    #     self.dataStructButton.setStyleSheet(
+    #         f'QPushButton {{background-color: {self.moduleLaunchedColor};}}'
+    #     )
+    #     self.dataStructButton.setText(
+    #         '0. Creating data structure running...'
+    #     )
+    #
+    #     cellacdc_path = os.path.dirname(os.path.realpath(__file__))
+    #     dataStruct_path = os.path.join(cellacdc_path, 'dataStruct.py')
+    #
+    #     # Due to javabridge limitation only one 'start_vm' can be called in
+    #     # each process. To get around with this every data structure conversion
+    #     # is launched in a separate process
+    #     try:
+    #         subprocess.run(
+    #             [sys.executable, dataStruct_path], check=True, text=True,
+    #             shell=False
+    #         )
+    #     except Exception as e:
+    #         print('=========================================')
+    #         traceback.print_exc()
+    #         print('=========================================')
+    #         err = ("""
+    #         <p style="font-size:12px">
+    #             Launching data structure module in a separate process failed.<br><br>
+    #             Please restart Cell-ACDC if you need to use this module again.
+    #         <p>
+    #         """)
+    #         self.dataStructButton.setStyleSheet(
+    #             f'QPushButton {{background-color: {self.defaultPushButtonColor};}}')
+    #         self.dataStructButton.setText(
+    #             '0. Restart Cell-ACDC to enable module 0 again.')
+    #         self.dataStructButton.setToolTip(
+    #             'Due to an interal limitation of the Java Virtual Machine\n'
+    #             'moduel 0 can be launched only once.\n'
+    #             'To use it again close and reopen Cell-ACDC'
+    #         )
+    #         self.dataStructButton.setDisabled(True)
+    #         return
+    #
+    #     self.dataStructButton.setStyleSheet(
+    #         f'QPushButton {{background-color: {self.defaultPushButtonColor};}}')
+    #     self.dataStructButton.setText(
+    #         '0. Create data structure from microscopy file(s)...')
+    #     self.dataStructButton.setDisabled(False)
 
     def _showDataStructWin(self):
         if self.dataStructButton.isEnabled():
@@ -527,6 +550,7 @@ class mainWin(QMainWindow):
             try:
                 if is_win:
                     os.execv(sys.argv[0], sys.argv)
+                    exit()
                 else:
                     os.execv(sys.executable, ['python'] + sys.argv)
             except Exception as e:

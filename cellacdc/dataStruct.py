@@ -13,6 +13,7 @@ from collections import Counter
 from tqdm import tqdm
 from natsort import natsorted
 from pprint import pprint
+from functools import wraps, partial
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QFileDialog,
@@ -39,6 +40,55 @@ if os.name == 'nt':
     except:
         pass
 
+def worker_exception_handler(func):
+    @wraps(func)
+    def run(self):
+        try:
+            result = func(self)
+        except Exception as error:
+            result = None
+            self.critical.emit(error)
+        return result
+    return run
+
+def exception_handler(func):
+    @wraps(func)
+    def inner_function(self, *args, **kwargs):
+        try:
+            if func.__code__.co_argcount==1 and func.__defaults__ is None:
+                result = func(self)
+            elif func.__code__.co_argcount>1 and func.__defaults__ is None:
+                result = func(self, *args)
+            else:
+                result = func(self, *args, **kwargs)
+        except Exception as e:
+            result = None
+            traceback_str = traceback.format_exc()
+            self.logger.exception(traceback_str)
+            msg = QMessageBox(self)
+            msg.setWindowTitle('Critical error')
+            msg.setIcon(msg.Critical)
+            err_msg = (f"""
+            <p style="font-size:14px">
+                Error in function <b>{func.__name__}</b>.<br><br>
+                More details below or in the terminal/console.<br><br>
+                Note that the error details from this session are also saved
+                in the file<br>
+                {self.log_path}<br><br>
+                Please <b>send the log file</b> when reporting a bug, thanks!
+            </p>
+            """)
+            msg.setText(err_msg)
+            showLog = msg.addButton('Show log file...', msg.HelpRole)
+            showLog.disconnect()
+            slot = partial(myutils.showInExplorer, self.logs_path)
+            showLog.clicked.connect(slot)
+            msg.addButton(msg.Ok)
+            msg.setDetailedText(traceback_str)
+            msg.exec_()
+            self.is_error_state = True
+        return result
+    return inner_function
 
 class bioFormatsWorker(QObject):
     finished = pyqtSignal()
@@ -52,6 +102,7 @@ class bioFormatsWorker(QObject):
         float, str, float, float, float,
         str, list, list, str, str, object
     )
+    critical = pyqtSignal(object)
     # aborted = pyqtSignal()
 
     def __init__(
@@ -541,7 +592,7 @@ class bioFormatsWorker(QObject):
                     elif self.copyOtherFiles:
                         shutil.copy(cellacdc, dst)
 
-
+    @worker_exception_handler
     def run(self):
         raw_src_path = self.raw_src_path
         exp_dst_path = self.exp_dst_path
@@ -643,7 +694,15 @@ class createDataStructWin(QMainWindow):
             buttonToRestore=None, mainWin=None,
             start_JVM=True
         ):
-        print('Initializing data structures module...')
+        logger, logs_path, log_path, log_filename = myutils.setupLogger(
+            module='dataStruct'
+        )
+        self.logger = logger
+        self.log_path = log_path
+        self.log_filename = log_filename
+        self.logs_path = logs_path
+
+        self.logger.info('Initializing data structures module...')
         super().__init__(parent)
         is_linux = sys.platform.startswith('linux')
         is_mac = sys.platform == 'darwin'
@@ -735,12 +794,13 @@ class createDataStructWin(QMainWindow):
             raise OSError('This module is supported ONLY on Windows OS or macOS')
 
         global bioformats, javabridge
-        print('Checking if Java is installed...')
+        self.logger.info('Checking if Java is installed...')
         try:
             import javabridge
-        except Exception as e:
+        except ModuleNotFoundError as e:
             print('======================================')
-            traceback.print_exc()
+            traceback_str = traceback.format_exc()
+            self.logger.exception(traceback_str)
             print('======================================')
             cancel = myutils.install_javabridge_help(parent=self)
             if cancel:
@@ -752,7 +812,8 @@ class createDataStructWin(QMainWindow):
                 jre_path, jdk_path, url = myutils.download_java()
             except Exception as e:
                 print('======================================')
-                traceback.print_exc()
+                traceback_str = traceback.format_exc()
+                self.logger.exception(traceback_str)
                 print('======================================')
                 java_info = myutils.get_java_url()
                 url, file_size, os_foldername, unzipped_foldername = java_info
@@ -803,17 +864,33 @@ class createDataStructWin(QMainWindow):
 
             myutils.install_javabridge()
 
+        except Exception as e:
+            print('======================================')
+            traceback_str = traceback.format_exc()
+            self.logger.exception(traceback_str)
+            print('======================================')
+            cancel = myutils.install_java()
+            if cancel:
+                raise ModuleNotFoundError(
+                    'User aborted Java installation'
+                )
+                return
+            myutils.install_javabridge(
+                force_compile=True, attempt_uninstall_first=True
+            )
+
         try:
             import javabridge
             from cellacdc import bioformats
         except Exception as e:
-            traceback.print_exc()
+            print('===============================================================')
+            traceback_str = traceback.format_exc()
+            self.logger.exception(traceback_str)
             error_msg = (
                 'Error while importing "javabridge" and "bioformats"\n\n'
                 'Please report detailed error (click "See more details") '
                 'here: https://github.com/SchmollerLab/Cell_ACDC/issues'
             )
-            print('===============================================================')
             print(error_msg)
             print('===============================================================')
 
@@ -863,7 +940,6 @@ class createDataStructWin(QMainWindow):
         # msg_label.setOpenExternalLinks(False)
         # msg_label.linkActivated.connect(self.on_linkActivated)
         msg.exec_()
-
 
 
     def on_linkActivated(self, link):
@@ -937,6 +1013,7 @@ class createDataStructWin(QMainWindow):
         df.index.name = 'index'
         df.to_csv(recentPaths_path)
 
+    @exception_handler
     def main(self):
         self.log('Asking how raw data is structured...')
         rawDataStruct, abort = self.askRawDataStruct()
@@ -1022,12 +1099,17 @@ class createDataStructWin(QMainWindow):
         self.worker.initPbar.connect(self.setPbarMax)
         self.worker.progressPbar.connect(self.updatePbar)
         self.worker.progress.connect(self.log)
+        self.worker.critical.connect(self.workerCritical)
         self.worker.criticalError.connect(self.criticalBioFormats)
         self.worker.confirmMetadata.connect(self.askConfirmMetadata)
         self.worker.filesExisting.connect(self.askReplacePosFilesFiles)
         self.thread.started.connect(self.worker.run)
 
         self.thread.start()
+
+    @exception_handler
+    def workerCritical(self, error):
+        raise error
 
     def instructManualStruct(self):
         issues_url = 'https://github.com/SchmollerLab/Cell_ACDC/issues'
@@ -1258,7 +1340,8 @@ class createDataStructWin(QMainWindow):
                 ch_idx = filename.find(f'{posNum}_{chName}')
                 stripped_filenames.append(filename[:ch_idx])
             except Exception as e:
-                traceback.print_exc()
+                traceback_str = traceback.format_exc()
+                self.logger.exception(traceback_str)
                 self.criticalNoFilenamePattern(error=traceback.format_exc())
                 return False
 
@@ -1369,20 +1452,22 @@ class createDataStructWin(QMainWindow):
         self.waitCond.wakeAll()
 
     def closeEvent(self, event):
+        self.logger.info('Closing data structure logger...')
+        handlers = self.logger.handlers[:]
+        for handler in handlers:
+            handler.close()
+            self.logger.removeHandler(handler)
+
         if self.buttonToRestore is not None:
-            button, color, text = self.buttonToRestore
-            button.setText(text)
-            button.setDisabled(True)
-            button.setToolTip(
-                'Button is disabled because due to an internal limitation '
-                'of the Java Virtual Machine you cannot start another process.\n\n'
-                'To launch another conversion process you need to RESTART Cell-ACDC'
-            )
+            button, color = self.buttonToRestore
+            button.setText('0. Attempt "Create data structure" again')
             button.setStyleSheet(
                 f'QPushButton {{background-color: {color};}}')
             self.mainWin.setWindowState(Qt.WindowNoState)
             self.mainWin.setWindowState(Qt.WindowActive)
             self.mainWin.raise_()
+
+
 
 
 if __name__ == "__main__":
@@ -1401,7 +1486,7 @@ if __name__ == "__main__":
         win.show()
         win.setWindowState(Qt.WindowActive)
         win.raise_()
-        print('Starting main process...')
+        win.logger.info('Starting main process...')
         win.main()
     except OSError:
         traceback.print_exc()
