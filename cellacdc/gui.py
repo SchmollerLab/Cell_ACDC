@@ -3344,7 +3344,7 @@ class guiWin(QMainWindow):
 
             # Update data (rp, etc)
             self.update_rp()
-            self.updateALLimg()
+            self.updateALLimg(updateFilters=True)
 
             for ID in erasedIDs:
                 if ID not in posData.lab:
@@ -3359,7 +3359,7 @@ class guiWin(QMainWindow):
             if posData.isNewID:
                 self.tracking(enforce=True)
 
-            self.updateALLimg()
+            self.updateALLimg(updateFilters=True)
             self.warnEditingWithCca_df('Add new ID with brush tool')
 
         # Merge IDs
@@ -10346,8 +10346,10 @@ class guiWin(QMainWindow):
                      f'frame n. {posData.frame_i+1}/{posData.segmSizeT}')
 
 
-    def updateFilters(self, updateBlur=False, updateSharp=False,
-                            updateEntropy=False, updateFilters=False):
+    def updateFilters(
+            self, updateBlur=False, updateSharp=False,
+            updateEntropy=False, updateFilters=False
+        ):
         if self.gaussWin is not None and (updateBlur or updateFilters):
             self.gaussWin.apply()
 
@@ -10484,7 +10486,7 @@ class guiWin(QMainWindow):
             self, image=None, never_visited=True,
             only_ax1=False, updateBlur=False,
             updateSharp=False, updateEntropy=False,
-            updateHistoLevels=False, updateFilters=False,
+            updateHistoLevels=False, updateFilters=True,
             updateLabelItemColor=False, debug=False
         ):
         posData = self.data[self.pos_i]
@@ -12270,7 +12272,7 @@ class guiWin(QMainWindow):
         self.showPropsDockButton.setMaximumWidth(15)
         self.showPropsDockButton.setMaximumHeight(60)
 
-        self.setFocus(True)
+        self.showPropsDockButton.clearFocus()
 
     def resizeEvent(self, event):
         if hasattr(self, 'ax1'):

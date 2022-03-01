@@ -585,8 +585,8 @@ def run():
     print('---------------------------------')
     print(f'Welcome to Cell-ACDC v{myutils.read_version()}!')
     print('---------------------------------')
-    win.raise_()
-    app.exec_()
+    # win.raise_()
+    sys.exit(app.exec_())
 
 def main():
     # Keep compatibility with users that installed older versions
