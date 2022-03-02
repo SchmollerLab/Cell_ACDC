@@ -996,7 +996,7 @@ def install_javabridge_help(parent=None):
     msg.exec_()
     return msg.clickedButton == cancel
 
-def install_package_msg(pkg_name, parent=None):
+def install_package_msg(pkg_name, note='', parent=None):
     msg = widgets.myMessageBox()
     txt = (f"""
     <p>
@@ -1011,6 +1011,8 @@ def install_package_msg(pkg_name, parent=None):
         Alternatively, you can cancel the process and try later.
     </p>
     """)
+    if note:
+        txt = f'{txt}{note}'
     msg.setIcon()
     msg.setWindowTitle(f'Install {pkg_name}')
     msg.addText(txt)

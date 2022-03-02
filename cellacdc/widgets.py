@@ -109,6 +109,7 @@ class myMessageBox(QDialog):
         label = QLabel(self)
         label.setText(text)
         label.setWordWrap(True)
+        label.setOpenExternalLinks(True)
         self.layout.addWidget(label, self.currentRow, 1, alignment=Qt.AlignTop)
         self.currentRow += 1
         return label
