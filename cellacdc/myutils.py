@@ -769,12 +769,12 @@ def download_model(model_name):
         traceback.print_exc()
         return False
 
-
 def imagej_tiffwriter(
         new_path, data, metadata: dict, SizeT, SizeZ,
         imagej=True
     ):
-    if data.dtype != np.uint8 or data.dtype != np.uint16:
+    if data.dtype != np.uint8 and data.dtype != np.uint16:
+        data = scale_float(data)
         data = skimage.img_as_uint(data)
     with TiffWriter(new_path, imagej=imagej) as new_tif:
         if not imagej:
@@ -853,6 +853,21 @@ def uint_to_float(img):
     else:
         img = img/uint8_max
     return img
+
+def scale_float(data):
+    # Check if float outside of -1, 1
+    val = data[tuple([0]*data.ndim)]
+    if isinstance(val, (np.floating, float)):
+        uint8_max = np.iinfo(np.uint8).max
+        uint16_max = np.iinfo(np.uint16).max
+        data_max = data.max()
+        if data_max <= uint8_max:
+            data = data/uint8_max
+        elif data_max <= uint16_max:
+            data = data/uint16_max
+        else:
+            data = data/data_max
+    return data
 
 def _install_homebrew_command():
     return '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
