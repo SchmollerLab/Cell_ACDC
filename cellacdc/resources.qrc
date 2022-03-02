@@ -53,6 +53,7 @@
     <file alias="download.svg">resources/icons/download.svg</file>
     <file alias="warning.svg">resources/icons/warning.svg</file>
     <file alias="crop.svg">resources/icons/crop.svg</file>
+    <file alias="cropZ.svg">resources/icons/cropZ.svg</file>
     <file alias="exit.png">resources/icons/exit.png</file>
     <file alias="delBorderObj.svg">resources/icons/delBorderObj.svg</file>
     <file alias="autoAssign.svg">resources/icons/autoAssign.svg</file>

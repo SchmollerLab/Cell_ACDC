@@ -89,10 +89,11 @@ class dataPrepWin(QMainWindow):
         self.loop = None
         self.titleText = None
         self.metadataAlreadyAsked = False
+        self.cropZtool = None
 
         # When we load dataprep from other modules we usually disable
         # start because we only want to select the z-slice
-        # However, is start is disabled removeBkgrROIs will be triggered
+        # However, if start is disabled removeBkgrROIs will be triggered
         # and cause errors --> set self.onlySelectingZslice = True
         # when dataprep is launched from the other modules
         self.onlySelectingZslice = False
@@ -105,6 +106,12 @@ class dataPrepWin(QMainWindow):
         mainLayout.addLayout(self.img_Widglayout, 1, 0)
 
         mainContainer.setLayout(mainLayout)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_P:
+            posData = self.data[self.pos_i]
+            self.updateCropZtool()
+            print(posData.segmInfo_df)
 
     def gui_createActions(self):
         # File actions
@@ -151,6 +158,11 @@ class dataPrepWin(QMainWindow):
 
         self.cropAction = QAction(QIcon(":crop.svg"), "Crop and save", self)
         self.cropAction.setEnabled(False)
+
+        self.cropZaction = QAction(QIcon(":cropZ.svg"), "Crop z-slices", self)
+        self.cropZaction.setEnabled(False)
+        self.cropZaction.setCheckable(True)
+
         self.startAction = QAction(QIcon(":start.svg"), "Start process!", self)
         self.startAction.setEnabled(False)
 
@@ -176,6 +188,7 @@ class dataPrepWin(QMainWindow):
         fileToolBar.addAction(self.showInExplorerAction)
         fileToolBar.addAction(self.startAction)
         fileToolBar.addAction(self.cropAction)
+        fileToolBar.addAction(self.cropZaction)
 
         navigateToolbar = QToolBar("Navigate", self)
         # navigateToolbar.setIconSize(QSize(toolbarSize, toolbarSize))
@@ -216,6 +229,7 @@ class dataPrepWin(QMainWindow):
         self.jumpBackwardAction.triggered.connect(self.skip10back_cb)
         self.addBkrgRoiActon.triggered.connect(self.addDefaultBkgrROI)
         self.cropAction.triggered.connect(self.crop_cb)
+        self.cropZaction.toggled.connect(self.openCropZtool)
         self.startAction.triggered.connect(self.prepData)
         self.interpAction.triggered.connect(self.interp_z)
         self.ZbackAction.triggered.connect(self.useSameZ_fromHereBack)
@@ -364,6 +378,7 @@ class dataPrepWin(QMainWindow):
             self.removeBkgrROIs()
             self.removeCropROI()
             self.pos_i += 1
+            self.updateCropZtool()
             self.update_img()
             self.updateROI()
             self.updateBkgrROIs()
@@ -376,6 +391,7 @@ class dataPrepWin(QMainWindow):
             self.removeBkgrROIs()
             self.removeCropROI()
             self.pos_i -= 1
+            self.updateCropZtool()
             self.update_img()
             self.updateROI()
             self.updateBkgrROIs()
@@ -448,12 +464,15 @@ class dataPrepWin(QMainWindow):
             self.navigateScrollBarMoved
         )
 
-    def getImage(self, posData, img_data, frame_i):
+    def getImage(self, posData, img_data, frame_i, force_z=None):
         if posData.SizeT > 1:
             img = img_data[frame_i].copy()
         else:
             img = img_data.copy()
         if posData.SizeZ > 1:
+            if force_z:
+                img = img[force_z]
+                return img
             df =  posData.segmInfo_df
             idx = (posData.filename, frame_i)
             z = posData.segmInfo_df.at[idx, 'z_slice_used_dataPrep']
@@ -575,7 +594,6 @@ class dataPrepWin(QMainWindow):
         self.updateBkgrROIs()
         self.updateROI()
 
-
     def crop(self, data, posData):
         x0, y0 = [int(round(c)) for c in posData.cropROI.pos()]
         w, h = [int(round(c)) for c in posData.cropROI.size()]
@@ -585,7 +603,26 @@ class dataPrepWin(QMainWindow):
             croppedData = data[:, y0:y0+h, x0:x0+w]
         elif data.ndim == 2:
             croppedData = data[y0:y0+h, x0:x0+w]
-        return croppedData
+
+        SizeZ = posData.SizeZ
+
+        if posData.SizeZ > 1 and self.cropZtool is not None:
+            idx = (posData.filename, 0)
+            try:
+                lower_z = int(posData.segmInfo_df.at[idx, 'crop_lower_z_slice'])
+            except KeyError:
+                lower_z = 0
+
+            try:
+                upper_z = int(posData.segmInfo_df.at[idx, 'crop_upper_z_slice'])
+            except KeyError:
+                upper_z = posData.SizeZ
+            if data.ndim == 4:
+                croppedData = data[:, lower_z:upper_z+1]
+            elif data.ndim == 3:
+                croppedData = data[lower_z:upper_z+1]
+            SizeZ = upper_z-lower_z+1
+        return croppedData, SizeZ
 
     def saveBkgrROIs(self, posData):
         if not posData.bkgrROIs:
@@ -762,7 +799,69 @@ class dataPrepWin(QMainWindow):
             with open(posData.dataPrepROI_coords_path, 'w') as csv:
                 csv.write(csv_data)
 
+    def openCropZtool(self, checked):
+        posData = self.data[self.pos_i]
+        if checked:
+            self.cropZtool = apps.QCropZtool(posData.SizeZ)
+            self.cropZtool.sigClose.connect(self.cropZtoolClosed)
+            self.cropZtool.sigZvalueChanged.connect(self.cropZtoolvalueChanged)
+            self.cropZtool.sigCrop.connect(self.crop_cb)
+            self.cropZtool.show()
+        else:
+            self.cropZtool.close()
+            self.cropZtool = None
+            # Restore original z-slice
+            df = posData.segmInfo_df
+            idx = (posData.filename, self.frame_i)
+            z = posData.segmInfo_df.at[idx, 'z_slice_used_dataPrep']
+            self.zSliceScrollBar.setValue(z)
 
+    def cropZtoolvalueChanged(self, whichZ, z):
+        self.zSliceScrollBar.valueChanged.disconnect()
+        self.zSliceScrollBar.setValue(z)
+        self.zSliceScrollBar.valueChanged.connect(self.update_z_slice)
+        posData = self.data[self.pos_i]
+        img = self.getImage(posData, posData.img_data, self.frame_i, force_z=z)
+        self.img.setImage(img)
+        df = posData.segmInfo_df
+        for frame_i in range(posData.SizeT):
+            idx = (posData.filename, frame_i)
+            posData.segmInfo_df[f'crop{whichZ}_z_slice'] = z
+
+    def cropZtoolReset(self):
+        posData = self.data[self.pos_i]
+        self.cropZtool.sigZvalueChanged.disconnect()
+        self.cropZtool.updateScrollbars(0, posData.SizeZ)
+        self.cropZtool.sigZvalueChanged.connect(self.cropZtoolvalueChanged)
+
+    def updateCropZtool(self):
+        posData = self.data[self.pos_i]
+        if posData.SizeZ == 1:
+            return
+        if self.cropZtool is None:
+            return
+
+        idx = (posData.filename, 0)
+        try:
+            lower_z = int(posData.segmInfo_df.at[idx, 'crop_lower_z_slice'])
+        except KeyError:
+            lower_z = 0
+
+        try:
+            upper_z = int(posData.segmInfo_df.at[idx, 'crop_upper_z_slice'])
+        except KeyError:
+            upper_z = posData.SizeZ
+
+        self.cropZtool.sigZvalueChanged.disconnect()
+        self.cropZtool.updateScrollbars(lower_z, upper_z)
+        self.cropZtool.sigZvalueChanged.connect(self.cropZtoolvalueChanged)
+
+    def cropZtoolClosed(self):
+        self.cropZtool = None
+        posData = self.data[self.pos_i]
+        idx = (posData.filename, self.frame_i)
+        z = posData.segmInfo_df.at[idx, 'z_slice_used_dataPrep']
+        self.zSliceScrollBar.setSliderPosition(z)
 
     def crop_cb(self):
         # msg = QMessageBox()
@@ -774,7 +873,7 @@ class dataPrepWin(QMainWindow):
         #     return
 
         self.cropAction.setDisabled(True)
-        for posData in self.data:
+        for p, posData in enumerate(self.data):
             self.saveBkgrROIs(posData)
 
             if posData.SizeZ > 1:
@@ -783,12 +882,13 @@ class dataPrepWin(QMainWindow):
 
             # Get crop shape and print it
             data = posData.img_data
-            croppedData = self.crop(data, posData)
+            croppedData, SizeZ = self.crop(data, posData)
 
-
-            doCrop = True
             if croppedData.shape != data.shape:
-                doCrop = self.askCropping(data.shape, croppedData.shape)
+                if p == 0:
+                    doCrop = self.askCropping(data.shape, croppedData.shape)
+                else:
+                    doCrop = True
             else:
                 doCrop = False
 
@@ -796,6 +896,11 @@ class dataPrepWin(QMainWindow):
                 self.cropAction.setEnabled(True)
                 print('Done.')
                 return
+
+            if SizeZ != posData.SizeZ:
+                # Update metadata with cropped SizeZ
+                posData.metadata_df.at['SizeZ', 'values'] = SizeZ
+                posData.metadata_df.to_csv(posData.metadata_csv_path)
 
             print(f'Cropping {posData.relPath}...')
             self.titleLabel.setText(
@@ -1123,6 +1228,7 @@ class dataPrepWin(QMainWindow):
             self.update_img()
             posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
 
+
     def updateZproj(self, how):
         posData = self.data[self.pos_i]
         for frame_i in range(self.frame_i, posData.SizeT):
@@ -1256,6 +1362,8 @@ class dataPrepWin(QMainWindow):
         self.saveROIcoords(False, self.data[self.pos_i])
         self.saveBkgrROIs(self.data[self.pos_i])
         self.cropAction.setEnabled(True)
+        if posData.SizeZ>1:
+            self.cropZaction.setEnabled(True)
         self.titleLabel.setText(
             'Data successfully prepped. You can now crop the images or '
             'close the program',

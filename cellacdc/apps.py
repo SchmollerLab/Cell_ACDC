@@ -1869,6 +1869,100 @@ class QDialogMetadata(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
+class QCropZtool(QWidget):
+    sigClose = pyqtSignal()
+    sigZvalueChanged = pyqtSignal(str, int)
+    sigReset = pyqtSignal()
+    sigCrop = pyqtSignal()
+
+    def __init__(self, SizeZ, parent=None):
+        super().__init__(parent)
+
+        self.setWindowFlags(Qt.Tool | Qt.WindowStaysOnTopHint)
+
+        self.SizeZ = SizeZ
+        self.numDigits = len(str(self.SizeZ))
+
+        self.setWindowTitle('Crop Z')
+
+        layout = QGridLayout()
+        buttonsLayout = QHBoxLayout()
+
+        self.lowerZscrollbar = QScrollBar(Qt.Horizontal)
+        self.lowerZscrollbar.setMaximum(SizeZ)
+        s = str(0).zfill(self.numDigits)
+        self.lowerZscrollbar.label = QLabel(f'{s}/{SizeZ-1}')
+
+        self.upperZscrollbar = QScrollBar(Qt.Horizontal)
+        self.upperZscrollbar.setValue(SizeZ)
+        self.upperZscrollbar.setMaximum(SizeZ)
+        self.upperZscrollbar.label = QLabel(f'{SizeZ-1}/{SizeZ-1}')
+
+        cancelButton = QPushButton('Cancel')
+        cropButton = QPushButton('Crop and save')
+        buttonsLayout.addWidget(cropButton)
+        buttonsLayout.addWidget(cancelButton)
+
+        layout.addWidget(
+            QLabel('Lower z-slice  '), 0, 0, alignment=Qt.AlignRight
+        )
+        layout.addWidget(
+            self.lowerZscrollbar.label, 0, 1, alignment=Qt.AlignRight
+        )
+        layout.addWidget(self.lowerZscrollbar, 0, 2)
+
+        layout.addWidget(
+            QLabel('Upper z-slice  '), 1, 0, alignment=Qt.AlignRight
+        )
+        layout.addWidget(
+            self.upperZscrollbar.label, 1, 1, alignment=Qt.AlignRight
+        )
+        layout.addWidget(self.upperZscrollbar, 1, 2)
+
+        layout.addLayout(buttonsLayout, 2, 2, alignment=Qt.AlignRight)
+
+        layout.setColumnStretch(0, 0)
+        layout.setColumnStretch(1, 0)
+        layout.setColumnStretch(2, 10)
+
+        self.setLayout(layout)
+
+        # resetButton.clicked.connect(self.emitReset)
+        cropButton.clicked.connect(self.emitCrop)
+        cancelButton.clicked.connect(self.close)
+        self.lowerZscrollbar.valueChanged.connect(self.ZvalueChanged)
+        self.upperZscrollbar.valueChanged.connect(self.ZvalueChanged)
+
+    def emitReset(self):
+        self.sigReset.emit()
+
+    def emitCrop(self):
+        self.sigCrop.emit()
+
+    def updateScrollbars(self, lower_z, upper_z):
+        self.lowerZscrollbar.setValue(lower_z)
+        self.upperZscrollbar.setValue(upper_z)
+
+    def ZvalueChanged(self, value):
+        which = 'lower' if self.sender() == self.lowerZscrollbar else 'upper'
+        if which == 'lower' and value > self.upperZscrollbar.value()-2:
+            self.lowerZscrollbar.setValue(self.upperZscrollbar.value()-2)
+            return
+        if which == 'upper' and value < self.lowerZscrollbar.value()+2:
+            self.upperZscrollbar.setValue(self.lowerZscrollbar.value()+2)
+            return
+
+        s = str(value).zfill(self.numDigits)
+        self.sender().label.setText(f'{s}/{self.SizeZ-1}')
+        self.sigZvalueChanged.emit(which, value)
+
+    def show(self):
+        super().show()
+        self.resize(self.width(), self.height())
+
+    def closeEvent(self, event):
+        self.sigClose.emit()
+
 class gaussBlurDialog(QDialog):
     def __init__(self, mainWindow):
         super().__init__(mainWindow)

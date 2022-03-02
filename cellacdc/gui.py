@@ -6181,7 +6181,6 @@ class guiWin(QMainWindow):
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
             pass
-            # print('disconnect')
             # self.imgGrad.sigLookupTableChanged.disconnect()
         try:
             posData = self.data[self.pos_i]
@@ -6994,6 +6993,7 @@ class guiWin(QMainWindow):
         self.update_rp()
         self.tracking(enforce=True)
         self.updateALLimg()
+        self.ax1.vb.autoRange()
         self.warnEditingWithCca_df('Repeat segmentation')
 
         txt = f'Done. Segmentation computed in {exec_time:.3f} s'
@@ -7526,8 +7526,13 @@ class guiWin(QMainWindow):
                 self.labelsGrad.hideLabelsImgAction.setChecked(True)
 
         self.setAxesMaxRange()
+        self.updateALLimg()
 
-        self.ax2.vb.autoRange()
+        QTimer.singleShot(300, self.autoRange)
+
+    def autoRange(self):
+        if not self.labelsGrad.hideLabelsImgAction.isChecked():
+            self.ax2.vb.autoRange()
         self.ax1.vb.autoRange()
 
     def setAxesMaxRange(self):
@@ -8047,8 +8052,9 @@ class guiWin(QMainWindow):
         # self.updateALLimg()
 
         # Link Y and X axis of both plots to scroll zoom and pan together
-        self.ax2.vb.setYLink(self.ax1.vb)
-        self.ax2.vb.setXLink(self.ax1.vb)
+        if not self.labelsGrad.hideLabelsImgAction.isChecked():
+            self.ax2.vb.setYLink(self.ax1.vb)
+            self.ax2.vb.setXLink(self.ax1.vb)
 
     def PosScrollBarAction(self, action):
         if action == QAbstractSlider.SliderSingleStepAdd:
@@ -8097,7 +8103,8 @@ class guiWin(QMainWindow):
         self.t_label.setText(
                  f'frame n. {posData.frame_i+1}/{posData.segmSizeT}')
         self.img1.setImage(cells_img)
-        self.img2.setImage(posData.lab)
+        if not self.labelsGrad.hideLabelsImgAction.isChecked():
+            self.img2.setImage(posData.lab)
         self.updateLookuptable()
         self.updateFramePosLabel()
         self.navigateScrollBarStartedMoving = False
@@ -9973,6 +9980,12 @@ class guiWin(QMainWindow):
         if checked:
             self.addDelRoiAction.setDisabled(True)
             self.ax2.hide()
+            oldLink = self.ax2.vb.linkedView(self.ax1.vb.YAxis)
+            try:
+                oldLink.sigYRangeChanged.disconnect()
+                oldLink.sigXRangeChanged.disconnect()
+            except TypeError:
+                pass
             self.graphLayout.removeItem(self.titleLabel)
             self.graphLayout.addItem(self.titleLabel, row=0, col=1)
             self.mainLayout.setAlignment(self.bottomLayout, Qt.AlignCenter)
@@ -9982,6 +9995,8 @@ class guiWin(QMainWindow):
             self.df_settings.at['isLabelsVisible', 'value'] = 'No'
             self.df_settings.to_csv(self.settings_csv_path)
         else:
+            self.ax2.vb.setYLink(self.ax1.vb)
+            self.ax2.vb.setXLink(self.ax1.vb)
             self.ax2.show()
             self.graphLayout.removeItem(self.titleLabel)
             self.graphLayout.addItem(self.titleLabel, row=0, col=1, colspan=2)
@@ -10106,7 +10121,8 @@ class guiWin(QMainWindow):
         else:
             DelROIlab = posData.lab
             allDelIDs = set()
-        self.img2.setImage(DelROIlab)
+        if not self.labelsGrad.hideLabelsImgAction.isChecked():
+            self.img2.setImage(DelROIlab)
         if updateLookuptable:
             self.updateLookuptable(delIDs=allDelIDs)
 
@@ -10702,7 +10718,7 @@ class guiWin(QMainWindow):
             posData.old_IDs = []
             posData.IDs = [obj.label for obj in posData.rp]
             posData.multiContIDs = set()
-            self.titleLabel.setText('', color=self.titleColor)
+            self.titleLabel.setText(' ', color=self.titleColor)
             return
 
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
@@ -10717,8 +10733,8 @@ class guiWin(QMainWindow):
         posData.new_IDs = new_IDs
         posData.old_IDs = prev_IDs
         posData.IDs = curr_IDs
-        warn_txt = ''
-        htmlTxt = ''
+        warn_txt = ' '
+        htmlTxt = ' '
         if lost_IDs:
             lost_IDs_format = lost_IDs.copy()
             if len(lost_IDs) + len(new_IDs) > 20 and len(lost_IDs)>10:
@@ -10748,7 +10764,7 @@ class guiWin(QMainWindow):
                 f'{htmlTxt}, <font color="green">{warn_txt}</font>'
             )
         if not warn_txt:
-            warn_txt = ''
+            warn_txt = ' '
             color = 'w'
             htmlTxt = (
                 f'<font color="white">{warn_txt}</font>'

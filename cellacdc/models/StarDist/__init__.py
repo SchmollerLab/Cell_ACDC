@@ -1,10 +1,11 @@
+import os
+import sys
+import subprocess
+
 try:
     import stardist
 except ModuleNotFoundError:
     pkg_name = 'StarDist'
-    import os
-    import sys
-    import subprocess
     from cellacdc import myutils
     cancel = myutils.install_package_msg(pkg_name)
     if cancel:
