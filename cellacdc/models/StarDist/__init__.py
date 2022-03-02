@@ -35,7 +35,7 @@ except ModuleNotFoundError:
     np_major, np_minor = [int(v) for v in np_version][:2]
     if np_major >= 1 and np_minor >= 22:
         subprocess.check_call(
-            [sys.executable, '-m', 'pip', 'install', 'numpy<1.22']
+            [sys.executable, '-m', 'pip', 'install', '--upgrade', 'numpy<1.22']
         )
 
 try:
@@ -52,21 +52,18 @@ except ModuleNotFoundError:
         [sys.executable, '-m', 'pip', 'install', 'stardist']
     )
 
-# import sys
-# import tensorflow
-# import h5py
-# if sys.version_info.minor < 9:
-#     # Tensorflow > 2.5 has the requirement h5py~=3.1.0,
-#     # but stardist 0.7.3 with python<3.9 requires h5py<3
-#     # see issue here https://github.com/stardist/stardist/issues/180
-#     tf_version = tensorflow.__version__.split('.')
-#     tf_major, tf_minor = [int(v) for v in tf_version][:2]
-#     h5py_version = h5py_version.__version__.split('.')
-#     h5py_major = int(h5py_version[0])
-#     if tf_major > 1 and tf_minor > 4 and h5py_major < 3:
-#         subprocess.check_call(
-#             [sys.executable, '-m', 'pip', 'uninstall', '-y', 'h5py']
-#         )
-#         subprocess.check_call(
-#             [sys.executable, '-m', 'pip', 'install', 'h5py~=3.1.0']
-#         )
+import sys
+import tensorflow
+import h5py
+if sys.version_info.minor < 9:
+    # Tensorflow > 2.3 has the requirement h5py~=3.1.0,
+    # but stardist 0.7.3 with python<3.9 requires h5py<3
+    # see issue here https://github.com/stardist/stardist/issues/180
+    tf_version = tensorflow.__version__.split('.')
+    tf_major, tf_minor = [int(v) for v in tf_version][:2]
+    h5py_version = h5py.__version__.split('.')
+    h5py_major = int(h5py_version[0])
+    if tf_major > 1 and tf_minor > 2 and h5py_major >= 3:
+        subprocess.check_call(
+            [sys.executable, '-m', 'pip', 'install', '--upgrade', 'h5py==2.10.0']
+        )

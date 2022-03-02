@@ -1005,6 +1005,7 @@ def install_package_msg(pkg_name, note='', parent=None):
         Make sure you have an <b>active internet connection</b>,
         before continuing.
         Progress will be displayed on the terminal<br><br>
+        You might have to <b>restart Cell-ACDC</b>.<br><br>
         <b>IMPORTANT:</b> If the installation fails please install
         <code>{pkg_name}</code> manually with the follwing command:<br><br>
         <code>pip install {pkg_name.lower()}</code><br><br>

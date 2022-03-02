@@ -22,5 +22,5 @@ except ModuleNotFoundError:
     np_major, np_minor = [int(v) for v in np_version][:2]
     if np_major >= 1 and np_minor >= 22:
         subprocess.check_call(
-            [sys.executable, '-m', 'pip', 'install', 'numpy<1.22']
+            [sys.executable, '-m', 'pip', 'install', '--upgrade', 'numpy<1.22']
         )
