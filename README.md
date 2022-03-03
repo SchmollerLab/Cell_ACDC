@@ -97,4 +97,4 @@ If you want to contribute or try out experimental features (and, if you have tim
 
 ## Usage
 
-For details about how to use Cell-ACDC please read the User Manual downloadable from (here)[https://github.com/SchmollerLab/Cell_ACDC/tree/main/UserManual]
+For details about how to use Cell-ACDC please read the User Manual downloadable from [here](https://github.com/SchmollerLab/Cell_ACDC/tree/main/UserManual)
