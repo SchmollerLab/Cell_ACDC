@@ -80,6 +80,20 @@ renamePgCmaps()
 removeHSVcmaps()
 cmaps = addGradients()
 
+class statusBarPermanentLabel(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.rightLabel = QLabel('')
+        self.leftLabel = QLabel('')
+
+        layout = QHBoxLayout()
+        layout.addWidget(self.leftLabel)
+        layout.addStretch(10)
+        layout.addWidget(self.rightLabel)
+
+        self.setLayout(layout)
+
 class myMessageBox(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)

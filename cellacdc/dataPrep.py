@@ -379,6 +379,7 @@ class dataPrepWin(QMainWindow):
             self.removeCropROI()
             self.pos_i += 1
             self.updateCropZtool()
+            self.setImageNameText()
             self.update_img()
             self.updateROI()
             self.updateBkgrROIs()
@@ -392,6 +393,7 @@ class dataPrepWin(QMainWindow):
             self.removeCropROI()
             self.pos_i -= 1
             self.updateCropZtool()
+            self.setImageNameText()
             self.update_img()
             self.updateROI()
             self.updateBkgrROIs()
@@ -451,14 +453,19 @@ class dataPrepWin(QMainWindow):
                      f'Current position = {self.pos_i+1}/{self.num_pos} '
                      f'({posData.pos_foldername})')
             self.navigateSB_label.setText(f'Pos n. {self.pos_i+1}')
-
-            self.navigateScrollbar.valueChanged.disconnect()
+            try:
+                self.navigateScrollbar.valueChanged.disconnect()
+            except TypeError:
+                pass
             self.navigateScrollbar.setValue(self.pos_i+1)
         else:
             self.frameLabel.setText(
                      f'Current frame = {self.frame_i+1}/{self.num_frames}')
             self.navigateSB_label.setText(f'frame n. {self.frame_i+1}')
-            self.navigateScrollbar.valueChanged.disconnect()
+            try:
+                self.navigateScrollbar.valueChanged.disconnect()
+            except TypeError:
+                pass
             self.navigateScrollbar.setValue(self.frame_i+1)
         self.navigateScrollbar.valueChanged.connect(
             self.navigateScrollBarMoved
@@ -1886,8 +1893,14 @@ class dataPrepWin(QMainWindow):
         self.openAction.setEnabled(True)
         self.startAction.setEnabled(True)
         self.showInExplorerAction.setEnabled(True)
+        self.setImageNameText()
         self.update_img()
         self.setFontSizeROIlabels()
+
+    def setImageNameText(self):
+        self.statusbar.clearMessage()
+        posData = self.data[self.pos_i]
+        self.statusbar.showMessage(posData.filename_ext)
 
     def initLoading(self):
         # Remove all items from a previous session if open is pressed again

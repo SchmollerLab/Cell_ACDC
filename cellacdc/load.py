@@ -66,6 +66,7 @@ class loadData:
         path_li = os.path.normpath(imgPath).split(os.sep)
         self.relPath = f'{f"{os.sep}".join(path_li[-3:])}'
         filename_ext = os.path.basename(imgPath)
+        self.filename_ext = filename_ext
         self.filename, self.ext = os.path.splitext(filename_ext)
         self.loadLastEntriesMetadata()
 

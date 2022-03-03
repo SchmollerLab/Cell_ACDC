@@ -1231,7 +1231,7 @@ class guiWin(QMainWindow):
         # Temporary message
         self.statusbar.showMessage("Ready", 3000)
         # Permanent widget
-        self.wcLabel = QLabel(f"")
+        self.wcLabel = QLabel('')
         self.statusbar.addPermanentWidget(self.wcLabel)
 
     def gui_createActions(self):
@@ -1995,7 +1995,7 @@ class guiWin(QMainWindow):
             self.ax2_LabelItemsIDs[ID-1] = pg.LabelItem()
             self.ax2_ContoursCurves[ID-1] = pg.PlotDataItem()
 
-        self.creatingAxesItemsFinished()
+        self.loadingDataFinished()
 
     def gui_createContourPens(self):
         if 'contLineWeight' in self.df_settings.index:
@@ -7146,6 +7146,7 @@ class guiWin(QMainWindow):
         else:
             self.logger.info('You reached last position.')
             self.pos_i = 0
+        self.setImageNameText()
         self.removeAlldelROIsCurrentFrame()
         proceed_cca, never_visited = self.get_data()
         self.updateALLimg(updateFilters=True, updateLabelItemColor=False)
@@ -7160,6 +7161,7 @@ class guiWin(QMainWindow):
         else:
             self.logger.info('You reached first position.')
             self.pos_i = self.num_pos-1
+        self.setImageNameText()
         self.removeAlldelROIsCurrentFrame()
         proceed_cca, never_visited = self.get_data()
         self.updateALLimg(updateSharp=True, updateBlur=True, updateEntropy=True)
@@ -7479,7 +7481,7 @@ class guiWin(QMainWindow):
             self.ax2.addItem(ax2_IDlabel)
             self.ax2.addItem(ax2ContCurve)
 
-    def creatingAxesItemsFinished(self):
+    def loadingDataFinished(self):
         self.progressWin.mainPbar.setMaximum(0)
 
         self.gui_addCreatedAxesItems()
@@ -7526,9 +7528,16 @@ class guiWin(QMainWindow):
                 self.labelsGrad.hideLabelsImgAction.setChecked(True)
 
         self.setAxesMaxRange()
+        self.setImageNameText()
         self.updateALLimg()
 
-        QTimer.singleShot(300, self.autoRange)
+        # QTimer.singleShot(150, self.autoRange)
+
+    def setImageNameText(self):
+        self.statusbar.clearMessage()
+        posData = self.data[self.pos_i]
+        self.statusbar.showMessage(posData.filename_ext)
+        # self.imgNameLabel.setText()
 
     def autoRange(self):
         if not self.labelsGrad.hideLabelsImgAction.isChecked():
