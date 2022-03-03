@@ -10,7 +10,7 @@ Feel free to **ask any question** in our [Discussions area](https://github.com/S
 
 You can check out our pre-print [here](https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2) and Twitter thread [here](https://twitter.com/frank_pado/status/1443957038841794561?s=20).
 
-Written in Python 3 (<3.9) by Francesco Padovani and Benedikt Mairhoermann.
+Written in Python 3 (<=3.9) by Francesco Padovani and Benedikt Mairhoermann.
 
 Tested on Windows 10 (64 bit), macOS, and Linux Mint 20.1
 
