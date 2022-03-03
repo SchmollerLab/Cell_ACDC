@@ -110,8 +110,7 @@ class dataPrepWin(QMainWindow):
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_P:
             posData = self.data[self.pos_i]
-            self.updateCropZtool()
-            print(posData.segmInfo_df)
+            print(posData.img_data.shape)
 
     def gui_createActions(self):
         # File actions
@@ -901,7 +900,15 @@ class dataPrepWin(QMainWindow):
 
             if not doCrop:
                 self.cropAction.setEnabled(True)
-                print('Done.')
+                txt = (
+                    'Done! You can close the program or load another position.'
+                )
+                self.titleLabel.setText(txt, color='g')
+                msg = QMessageBox()
+                msg.information(
+                    self, 'Done',
+                    f'<p style="font-size:13px">{txt}</p>', msg.Ok
+                )
                 return
 
             if SizeZ != posData.SizeZ:
@@ -932,7 +939,7 @@ class dataPrepWin(QMainWindow):
                 else:
                     data = skimage.io.imread(tif)
 
-                npz_data = self.crop(data, posData)
+                npz_data, _ = self.crop(data, posData)
 
                 if self.align:
                     print('Saving: ', npz)
@@ -942,15 +949,16 @@ class dataPrepWin(QMainWindow):
 
                 print('Saving: ', tif)
                 temp_tif = self.getTempfilePath(tif)
-                self.imagej_tiffwriter(temp_tif, npz_data,
-                                       metadata, posData)
+                self.imagej_tiffwriter(
+                    temp_tif, npz_data, metadata, posData
+                )
                 self.moveTempFile(temp_tif, tif)
 
             # Save segm.npz
             if posData.segmFound:
                 print('Saving: ', posData.segm_npz_path)
                 data = posData.segm_data
-                croppedSegm = self.crop(data, posData)
+                croppedSegm, _ = self.crop(data, posData)
                 temp_npz = self.getTempfilePath(posData.segm_npz_path)
                 np.savez_compressed(temp_npz, croppedSegm)
                 self.moveTempFile(temp_npz, posData.segm_npz_path)
@@ -973,10 +981,14 @@ class dataPrepWin(QMainWindow):
             print(f'{posData.pos_foldername} saved!')
             print(f'--------------------------------')
             print('')
-        # self.cropAction.setEnabled(True)
-        self.titleLabel.setText(
-            'Saved! You can close the program or load another position.',
-            color='g')
+        txt = (
+            'Saved! You can close the program or load another position.'
+        )
+        self.titleLabel.setText(txt, color='g')
+        msg = QMessageBox()
+        msg.information(
+            self, 'Done', f'<p style="font-size:13px">{txt}</p>', msg.Ok
+        )
 
     def permissionErrorCritical(self, path):
         msg = QMessageBox()
