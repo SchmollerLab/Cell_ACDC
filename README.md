@@ -83,18 +83,18 @@ More details [here](https://github.com/SchmollerLab/Cell_ACDC/releases/tag/v1.2.
 
 If you want to contribute or try out experimental features (and, if you have time, maybe report a bug or two :D), you can install the developer version from source as follows:
 
-1. Clone the repo with the command `git clone https://github.com/SchmollerLab/Cell_ACDC.git`
-2. Install [Anaconda](https://www.anaconda.com/products/individual) or [Miniconda](https://docs.conda.io/en/latest/miniconda.html) for **Python 3.8**
+1. Clone the repo with the command `git clone https://github.com/SchmollerLab/Cell_ACDC.git` (if you are on Windows you need to install `git` first. Install it from [here](https://git-scm.com/download/win))
+2. Install [Anaconda](https://www.anaconda.com/products/individual) or [Miniconda](https://docs.conda.io/en/latest/miniconda.html)
 3. Update conda with `conda update conda`. Optionally, consider removing unused packages with the command `conda clean --all`
 5. Create a new conda environment with the command `conda create -n acdc python=3.8`
-6. Install Cell-ACDC and all of the dependencies with the command `pip install -e ".[all]"`. Note that to run this command you need to navigate to the Cell-ACDC path that where you cloned it.
+6. In the terminal, navigate to the `Cell_ACDC` folder that you cloned before and install Cell-ACDC with the command `pip install -e .`.
 
 ## Running Cell-ACDC
 
-1. Open a terminal (on Windows use the Anaconda Prompt if you installed with `conda` otherwise we reccomend the PowerShell 7)
+1. Open a terminal (on Windows use the Anaconda Prompt if you installed with `conda` otherwise we recommend installing and using the [PowerShell 7](https://docs.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-windows?view=powershell-7.2))
 2. Activate the environment (conda: `conda activate acdc`, pip on Windows: `.\env\Scripts\activate`, pip on Unix: `source env/bin/activate`)
-3. Run the command `cellacdc` or just `acdc`
+3. Run the command `acdc` or `cellacdc`
 
 ## Usage
 
-For details about how to use Cell-ACDC please read the User Manual found in `Cell-ACDC/UserManual` folder.
+For details about how to use Cell-ACDC please read the User Manual downloadable from (here)[https://github.com/SchmollerLab/Cell_ACDC/tree/main/UserManual]
