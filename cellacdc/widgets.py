@@ -484,7 +484,7 @@ class labelsGradientWidget(pg.GradientWidget):
 
         # Default settings
         self.defaultSettingsAction = QAction('Restore default settings...', self)
-        self.menu.addAction(self.hideLabelsImgAction)
+        self.menu.addAction(self.defaultSettingsAction)
 
         self.menu.addSeparator()
 
