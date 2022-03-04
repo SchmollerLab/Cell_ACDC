@@ -1,5 +1,5 @@
 [![License](https://img.shields.io/badge/license-BSD%203--Clause-lightgrey)](https://github.com/SchmollerLab/Cell_ACDC/blob/main/LICENSE)
-[!(https://img.shields.io/github/repo-size/SchmollerLab/Cell_ACDC)]
+![repo size](https://img.shields.io/github/repo-size/SchmollerLab/Cell_ACDC)
 
 # <img src="https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/assign-motherbud.svg" width="60" height="60"> Cell-ACDC
 
