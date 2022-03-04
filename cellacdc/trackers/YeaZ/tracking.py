@@ -43,9 +43,6 @@ def correspondence(prev, curr, use_scipy=True, use_modified_yeaz=True):
             print(f'New cell = {val}')
 
         new[curr==key] = val
-        print(f'{key} --> {val}')
-
-    import pdb; pdb.set_trace()
     return new
 
 def scipy_align(m1, m2, acdc_yeaz=True):
