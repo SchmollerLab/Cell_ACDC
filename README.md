@@ -1,5 +1,8 @@
 [![License](https://img.shields.io/badge/license-BSD%203--Clause-lightgrey)](https://github.com/SchmollerLab/Cell_ACDC/blob/main/LICENSE)
+[![Python version](https://img.shields.io/pypi/pyversions/cellacdc)](https://www.python.org/downloads/)
+[![pypi version](https://img.shields.io/pypi/v/cellacdc)](https://pypi.org/project/cellacdc/)
 ![repo size](https://img.shields.io/github/repo-size/SchmollerLab/Cell_ACDC)
+[![DOI](https://img.shields.io/badge/DOI-10.1101%2F2021.09.28.462199-informational)](https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2)
 
 # <img src="https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/assign-motherbud.svg" width="60" height="60"> Cell-ACDC
 
