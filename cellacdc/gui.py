@@ -2357,7 +2357,7 @@ class guiWin(QMainWindow):
             self.ax1_LabelItemsIDs[delID-1].setText('')
             self.ax2_LabelItemsIDs[delID-1].setText('')
 
-            self.checkIDs_LostNew()
+            self.setTitleText()
             self.highlightLostNew()
             # self.checkIDsMultiContour()
 
@@ -2609,7 +2609,7 @@ class guiWin(QMainWindow):
             self.update_rp()
 
             # Since we manually changed an ID we don't want to repeat tracking
-            self.checkIDs_LostNew()
+            self.setTitleText()
             self.highlightLostNew()
             # self.checkIDsMultiContour()
 
@@ -6727,7 +6727,7 @@ class guiWin(QMainWindow):
             # Restore state
             self.getCurrentState()
             self.update_rp()
-            self.checkIDs_LostNew()
+            self.setTitleText()
             self.updateALLimg(image=self.ax1Image)
             self.store_data()
 
@@ -6746,7 +6746,7 @@ class guiWin(QMainWindow):
             # Restore state
             self.getCurrentState()
             self.update_rp()
-            self.checkIDs_LostNew()
+            self.setTitleText()
             self.updateALLimg(image=self.ax1Image)
             self.store_data()
 
@@ -6866,7 +6866,7 @@ class guiWin(QMainWindow):
                 allIDs = [obj.label for obj in posData.rp]
                 self.manuallyEditTracking(posData.lab, allIDs)
                 self.update_rp()
-                self.checkIDs_LostNew()
+                self.setTitleText()
                 self.highlightLostNew()
                 # self.checkIDsMultiContour()
             else:
@@ -9344,7 +9344,7 @@ class guiWin(QMainWindow):
                 self.ax2_LabelItemsIDs[prevID-1].setText('')
 
         self.highlightLostNew()
-        self.checkIDs_LostNew()
+        self.setTitleText()
         self.highlightmultiBudMoth()
 
     def highlightmultiBudMoth(self):
@@ -10629,7 +10629,7 @@ class guiWin(QMainWindow):
         self.update_rp_metadata(draw=True)
 
         self.highlightLostNew()
-        self.checkIDs_LostNew()
+        self.setTitleText()
         # # self.checkIDsMultiContour()
 
         self.highlightSearchedID(self.highlightedID)
@@ -10784,7 +10784,7 @@ class guiWin(QMainWindow):
             LabelItemID.setPos(x-w/2, y-h/2)
 
 
-    def checkIDs_LostNew(self):
+    def setTitleText(self):
         posData = self.data[self.pos_i]
         if posData.frame_i == 0:
             posData.lost_IDs = []
@@ -10831,7 +10831,16 @@ class guiWin(QMainWindow):
                 f'{htmlTxt}, <font color="green">{warn_txt}</font>'
             )
         if posData.multiContIDs:
-            warn_txt = f'IDs with multiple contours: {posData.multiContIDs}'
+            multiContIDs = list(posData.multiContIDs)
+            clip = (
+                len(lost_IDs) + len(new_IDs) + len(multiContIDs) > 30
+                and len(multiContIDs)>10
+            )
+            if clip:
+                del multiContIDs[5:-5]
+                multiContIDs.insert(5, "...")
+                multiContIDs = f"[{', '.join(map(str, multiContIDs))}]"
+            warn_txt = f'IDs with multiple contours: {multiContIDs}'
             htmlTxt = (
                 f'{htmlTxt}, <font color="red">{warn_txt}</font>'
             )
@@ -10885,7 +10894,7 @@ class guiWin(QMainWindow):
                 or self.isSnapshot
             )
             if skipTracking:
-                self.checkIDs_LostNew()
+                self.setTitleText()
                 return
 
             # Disable tracking for already visited frames
@@ -10917,7 +10926,7 @@ class guiWin(QMainWindow):
                 # self.logger.info('-------------')
                 # self.logger.info(f'Frame {posData.frame_i+1} NOT tracked')
                 # self.logger.info('-------------')
-                self.checkIDs_LostNew()
+                self.setTitleText()
                 return
 
             """Tracking starts here"""
@@ -10961,7 +10970,7 @@ class guiWin(QMainWindow):
         # Update labels, regionprops and determine new and lost IDs
         posData.lab = tracked_lab
         self.update_rp()
-        self.checkIDs_LostNew()
+        self.setTitleText()
 
     def manuallyEditTracking(self, tracked_lab, allIDs):
         posData = self.data[self.pos_i]
