@@ -998,6 +998,8 @@ def install_javabridge_help(parent=None):
 
 def install_package_msg(pkg_name, note='', parent=None):
     msg = widgets.myMessageBox()
+    if pkg_name == 'BayesianTracker':
+        pkg_name = 'btrack'
     txt = (f"""
     <p>
         Cell-ACDC is going to <b>download and install</b>

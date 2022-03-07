@@ -182,13 +182,15 @@ class trackingWorker(QObject):
 
         # Store new tracked video
         current_frame_i = self.posData.frame_i
+        self.trackingOnNeverVisitedFrames = False
         for rel_frame_i, lab in enumerate(tracked_video):
             frame_i = rel_frame_i + self.mainWin.start_n - 1
 
             if self.posData.allData_li[frame_i]['labels'] is None:
                 # repeating tracking on a never visited frame
-                # --> modify only raw data
+                # --> modify only raw data and ask later what to do
                 self.posData.segm_data[frame_i] = lab.copy()
+                self.trackingOnNeverVisitedFrames = True
             else:
                 # Get the rest of the stored metadata based on the new lab
                 self.posData.allData_li[frame_i]['labels'] = lab.copy()
@@ -2357,7 +2359,7 @@ class guiWin(QMainWindow):
 
             self.checkIDs_LostNew()
             self.highlightLostNew()
-            self.checkIDsMultiContour()
+            # self.checkIDsMultiContour()
 
         # Separate bud
         elif (right_click or left_click) and self.separateBudButton.isChecked():
@@ -2609,7 +2611,7 @@ class guiWin(QMainWindow):
             # Since we manually changed an ID we don't want to repeat tracking
             self.checkIDs_LostNew()
             self.highlightLostNew()
-            self.checkIDsMultiContour()
+            # self.checkIDsMultiContour()
 
             # Update colors for the edited IDs
             self.updateLookuptable()
@@ -4074,6 +4076,48 @@ class guiWin(QMainWindow):
         self.updateALLimg()
         self.titleLabel.setText('Done', color='w')
 
+    def trackingWorkerFinished(self):
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+            self.progressWin.close()
+        self.logger.info('Worker process ended.')
+        if self.trackingWorker.trackingOnNeverVisitedFrames:
+            msg = QMessageBox(self)
+            msg.setIcon(msg.Information)
+            msg.setWindowTitle('Disable real-time tracking?')
+            disableTrackingButton = QPushButton('Disable real-time tracking')
+            msg.setText("""
+            <p style="font-size:13px">
+                You perfomed tracking on frames that you have
+                <b>never visited.</b><br><br>
+                Cell-ACDC default behaviour is to <b>track them again</b> when you
+                will visit them.<br><br>
+                However, you can <b>overwrite this behaviour</b> and explicitly
+                disable tracking for all of the frames you already tracked.<br><br>
+                What do you want me to do?
+            </p>
+            """)
+            msg.addButton(disableTrackingButton, msg.YesRole)
+            msg.addButton(
+                QPushButton('Keep real-time tracking active'), msg.NoRole
+            )
+            msg.exec_()
+            if msg.clickedButton() == disableTrackingButton:
+                posData = self.data[self.pos_i]
+                current_frame_i = posData.frame_i
+                for frame_i in range(self.start_n-1, self.stop_n):
+                    posData.frame_i = frame_i
+                    self.get_data()
+                    self.store_data()
+                posData.last_tracked_i = frame_i
+                self.setNavigateScrollBarMaximum()
+
+                # Back to current frame
+                posData.frame_i = current_frame_i
+                self.get_data()
+        self.updateALLimg()
+        self.titleLabel.setText('Done', color='w')
+
     def workerInitProgressbar(self, totalIter):
         self.progressWin.mainPbar.setValue(0)
         self.progressWin.mainPbar.setMaximum(totalIter)
@@ -4097,7 +4141,7 @@ class guiWin(QMainWindow):
         )
         self.trackingWorker.progress.connect(self.workerProgress)
         self.trackingWorker.critical.connect(self.workerCritical)
-        self.trackingWorker.finished.connect(self.workerFinished)
+        self.trackingWorker.finished.connect(self.trackingWorkerFinished)
 
         self.trackingWorker.debug.connect(self.workerDebug)
 
@@ -5302,16 +5346,17 @@ class guiWin(QMainWindow):
     def enableSmartTrack(self, checked):
         posData = self.data[self.pos_i]
         # Disable tracking for already visited frames
+
         if posData.allData_li[posData.frame_i]['labels'] is not None:
-            self.disableTrackingCheckBox.setChecked(True)
+            trackingEnabled = True
         else:
-            self.disableTrackingCheckBox.setChecked(False)
+            trackingEnabled = False
 
         if checked:
             self.UserEnforced_DisabledTracking = False
             self.UserEnforced_Tracking = False
         else:
-            if self.disableTrackingCheckBox.isChecked():
+            if trackingEnabled:
                 self.UserEnforced_DisabledTracking = True
                 self.UserEnforced_Tracking = False
             else:
@@ -5708,7 +5753,7 @@ class guiWin(QMainWindow):
                     self.editToolBar.setVisible(True)
                 self.setEnabledCcaToolbar(enabled=True)
                 self.removeAlldelROIsCurrentFrame()
-                self.disableTrackingCheckBox.setChecked(True)
+                # self.disableTrackingCheckBox.setChecked(True)
                 try:
                     self.undoAction.triggered.disconnect()
                     self.redoAction.triggered.disconnect()
@@ -5734,7 +5779,7 @@ class guiWin(QMainWindow):
             self.setEnabledEditToolbarButton(enabled=False)
             self.setEnabledCcaToolbar(enabled=False)
             self.removeAlldelROIsCurrentFrame()
-            self.disableTrackingCheckBox.setChecked(True)
+            # self.disableTrackingCheckBox.setChecked(True)
             self.undoAction.setDisabled(True)
             self.redoAction.setDisabled(True)
             currentMode = self.drawIDsContComboBox.currentText()
@@ -5786,7 +5831,7 @@ class guiWin(QMainWindow):
             button = self.editToolBar.widgetForAction(action)
             action.setVisible(True)
             button.setEnabled(True)
-        self.disableTrackingCheckBox.setChecked(True)
+        # self.disableTrackingCheckBox.setChecked(True)
         self.disableTrackingCheckBox.setDisabled(True)
         self.repeatTrackingAction.setVisible(False)
         button = self.editToolBar.widgetForAction(self.repeatTrackingAction)
@@ -6181,6 +6226,8 @@ class guiWin(QMainWindow):
     @exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
+            posData = self.data[self.pos_i]
+            print(posData.multiContIDs)
             pass
             # self.imgGrad.sigLookupTableChanged.disconnect()
         try:
@@ -6720,7 +6767,7 @@ class guiWin(QMainWindow):
         self.enableSmartTrackAction.toggled.disconnect()
         self.enableSmartTrackAction.setChecked(False)
         self.enableSmartTrackAction.toggled.connect(self.enableSmartTrack)
-        if self.disableTrackingCheckBox.isChecked():
+        if isChecked:
             self.UserEnforced_DisabledTracking = True
             self.UserEnforced_Tracking = False
         else:
@@ -6749,7 +6796,8 @@ class guiWin(QMainWindow):
             msg.exec_()
             enforce_Tracking = msg.clickedButton()
             if msg.clickedButton() == noButton:
-                self.disableTrackingCheckBox.setChecked(True)
+                pass
+                # self.disableTrackingCheckBox.setChecked(True)
             else:
                 self.repeatTracking()
                 self.UserEnforced_DisabledTracking = False
@@ -6758,7 +6806,7 @@ class guiWin(QMainWindow):
     def repeatTrackingVideo(self):
         posData = self.data[self.pos_i]
         win = apps.selectTrackerGUI(
-            posData.SizeT, currentFrameNo=posData.frame_i+1
+            posData.segmSizeT, currentFrameNo=posData.frame_i+1
         )
         win.exec_()
         if win.cancel:
@@ -6820,7 +6868,7 @@ class guiWin(QMainWindow):
                 self.update_rp()
                 self.checkIDs_LostNew()
                 self.highlightLostNew()
-                self.checkIDsMultiContour()
+                # self.checkIDsMultiContour()
             else:
                 posData.editID_info = []
         self.updateALLimg()
@@ -6978,6 +7026,8 @@ class guiWin(QMainWindow):
     def workerCritical(self, error):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
+            self.progressWin.close()
+            self.thread.quit()
         raise error
 
     def debugSegmWorker(self, lab):
@@ -7273,6 +7323,8 @@ class guiWin(QMainWindow):
             if posData.last_tracked_i is not None:
                 if posData.frame_i > posData.last_tracked_i:
                     self.navigateScrollBar.setMaximum(posData.frame_i+1)
+                else:
+                    self.navigateScrollBar.setMaximum(posData.last_tracked_i+1)
             else:
                 self.navigateScrollBar.setMaximum(posData.frame_i+1)
         elif mode == 'Cell cycle analysis':
@@ -7560,7 +7612,7 @@ class guiWin(QMainWindow):
     def setFramesSnapshotMode(self):
         if self.isSnapshot:
             self.disableTrackingCheckBox.setDisabled(True)
-            self.disableTrackingCheckBox.setChecked(True)
+            # self.disableTrackingCheckBox.setChecked(True)
             self.repeatTrackingAction.setDisabled(True)
             self.logger.info('Setting GUI mode to "Snapshots"...')
             self.modeComboBox.clear()
@@ -8359,7 +8411,6 @@ class guiWin(QMainWindow):
         self.store_cca_df(frame_i=posData.frame_i-1, cca_df=prev_cca_df)
 
         return False, automaticallyDividedIDs
-
 
     def attempt_auto_cca(self, enforceAll=False):
         posData = self.data[self.pos_i]
@@ -9293,7 +9344,7 @@ class guiWin(QMainWindow):
                 self.ax2_LabelItemsIDs[prevID-1].setText('')
 
         self.highlightLostNew()
-        self.checkIDsMultiContour()
+        self.checkIDs_LostNew()
         self.highlightmultiBudMoth()
 
     def highlightmultiBudMoth(self):
@@ -9303,24 +9354,33 @@ class guiWin(QMainWindow):
             txt = LabelItemID
             LabelItemID.setText(f'{txt} !!', color=self.lostIDs_qMcolor)
 
-    def checkIDsMultiContour(self):
-        posData = self.data[self.pos_i]
-        txt = self.titleLabel.text
-        if 'Looking' not in txt or 'Data' not in txt:
-            warn_txt = self.titleLabel.text
-            htmlTxt = (
-                f'<font color="red">{warn_txt}</font>'
-            )
-        else:
-            htmlTxt = f'<font color="white">{self.titleLabel.text}</font>'
-        if posData.multiContIDs:
-            warn_txt = f'IDs with multiple contours: {posData.multiContIDs}'
-            color = 'red'
-            htmlTxt = (
-                f'<font color="red">{warn_txt}</font>, {htmlTxt}'
-            )
-            posData.multiContIDs = set()
-        self.titleLabel.setText(htmlTxt)
+    # def checkIDsMultiContour(self):
+    #     posData = self.data[self.pos_i]
+    #     txt = self.titleLabel.text
+    #     print('===================')
+    #     print(txt)
+    #     print('is looking good?', txt.find('Looking')==-1)
+    #     print('is multiple?', txt.find('Looking')==-1)
+    #     if txt.find('Looking') == -1 or txt.find('multiple') == -1:
+    #         warn_txt = self.titleLabel.text
+    #         htmlTxt = (
+    #             f'<font color="red">{warn_txt}</font>'
+    #         )
+    #     else:
+    #         htmlTxt = ''
+    #
+    #     print(htmlTxt)
+    #     print(posData.multiContIDs)
+    #     if posData.multiContIDs:
+    #         warn_txt = f'IDs with multiple contours: {posData.multiContIDs}'
+    #         color = 'red'
+    #         htmlTxt = (
+    #             f'<font color="red">{warn_txt}</font>, {htmlTxt}'
+    #         )
+    #         posData.multiContIDs = set()
+    #         print(htmlTxt)
+    #         print('===================')
+    #         self.titleLabel.setText(htmlTxt)
 
     def extendLabelsLUT(self, lenNewLut):
         posData = self.data[self.pos_i]
@@ -10413,6 +10473,9 @@ class guiWin(QMainWindow):
         self.highlightedID = ID
 
         how = self.drawIDsContComboBox.currentText()
+        if ID not in posData.IDs:
+            return
+
         objIdx = posData.IDs.index(ID)
         obj = posData.rp[objIdx]
 
@@ -10549,8 +10612,6 @@ class guiWin(QMainWindow):
         self.setImageImg2()
         self.update_rp()
 
-        self.checkIDs_LostNew()
-
         self.computingContoursTimes = []
         self.drawingLabelsTimes = []
         self.drawingContoursTimes = []
@@ -10558,7 +10619,6 @@ class guiWin(QMainWindow):
         for i, obj in enumerate(posData.rp):
             updateColor=True if updateLabelItemColor and i==0 else False
             self.drawID_and_Contour(obj, updateColor=updateColor)
-
 
         # self.logger.info('------------------------------------')
         # self.logger.info(f'Drawing labels = {np.sum(self.drawingLabelsTimes):.3f} s')
@@ -10569,7 +10629,8 @@ class guiWin(QMainWindow):
         self.update_rp_metadata(draw=True)
 
         self.highlightLostNew()
-        self.checkIDsMultiContour()
+        self.checkIDs_LostNew()
+        # # self.checkIDsMultiContour()
 
         self.highlightSearchedID(self.highlightedID)
 
@@ -10730,13 +10791,14 @@ class guiWin(QMainWindow):
             posData.new_IDs = []
             posData.old_IDs = []
             posData.IDs = [obj.label for obj in posData.rp]
-            posData.multiContIDs = set()
+            # posData.multiContIDs = set()
             self.titleLabel.setText('Looking good!', color=self.titleColor)
             return
 
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
         if prev_rp is None:
-            return
+            prev_lab = posData.segm_data[posData.frame_i-1]
+            prev_rp = skimage.measure.regionprops(prev_lab)
 
         prev_IDs = [obj.label for obj in prev_rp]
         curr_IDs = [obj.label for obj in posData.rp]
@@ -10755,15 +10817,8 @@ class guiWin(QMainWindow):
                 lost_IDs_format.insert(5, "...")
                 lost_IDs_format = f"[{', '.join(map(str, lost_IDs_format))}]"
             warn_txt = f'IDs lost in current frame: {lost_IDs_format}'
-            color = 'red'
             htmlTxt = (
                 f'<font color="red">{warn_txt}</font>'
-            )
-        if posData.multiContIDs:
-            warn_txt = f'IDs with multiple contours: {posData.multiContIDs}'
-            color = 'red'
-            htmlTxt = (
-                f'{htmlTxt}, <font color="red">{warn_txt}</font>'
             )
         if new_IDs:
             new_IDs_format = new_IDs.copy()
@@ -10772,18 +10827,22 @@ class guiWin(QMainWindow):
                 new_IDs_format.insert(5, "...")
                 new_IDs_format = f"[{', '.join(map(str, new_IDs_format))}]"
             warn_txt = f'New IDs in current frame: {new_IDs_format}'
-            color = 'r'
             htmlTxt = (
                 f'{htmlTxt}, <font color="green">{warn_txt}</font>'
             )
-        if not warn_txt:
+        if posData.multiContIDs:
+            warn_txt = f'IDs with multiple contours: {posData.multiContIDs}'
+            htmlTxt = (
+                f'{htmlTxt}, <font color="red">{warn_txt}</font>'
+            )
+            posData.multiContIDs = set()
+        if not htmlTxt:
             warn_txt = 'Looking good'
             color = 'w'
             htmlTxt = (
                 f'<font color="white">{warn_txt}</font>'
             )
         self.titleLabel.setText(htmlTxt)
-        posData.multiContIDs = set()
 
     def separateByLabelling(self, lab, rp, maxID=None):
         """
@@ -10807,9 +10866,11 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         posData.last_tracked_i = self.navigateScrollBar.maximum()-1
         if posData.frame_i <= posData.last_tracked_i:
-            self.disableTrackingCheckBox.setChecked(True)
+            # # self.disableTrackingCheckBox.setChecked(True)
+            return True
         else:
-            self.disableTrackingCheckBox.setChecked(False)
+            # # self.disableTrackingCheckBox.setChecked(False)
+            return False
 
     def tracking(
             self, onlyIDs=[], enforce=False, DoManualEdit=True,
@@ -10828,7 +10889,7 @@ class guiWin(QMainWindow):
                 return
 
             # Disable tracking for already visited frames
-            self.checkTrackingEnabled()
+            trackingDisabled = self.checkTrackingEnabled()
 
             """
             Track only frames that were NEVER visited or the user
@@ -10844,7 +10905,7 @@ class guiWin(QMainWindow):
             elif self.UserEnforced_DisabledTracking:
                 # Tracking specifically DISABLED by the user
                 do_tracking = False
-            elif self.disableTrackingCheckBox.isChecked():
+            elif trackingDisabled:
                 # User did not choose what to do --> tracking disabled for
                 # visited frames and enabled for never visited frames
                 do_tracking = False
@@ -10852,7 +10913,7 @@ class guiWin(QMainWindow):
                 do_tracking = True
 
             if not do_tracking:
-                self.disableTrackingCheckBox.setChecked(True)
+                # # self.disableTrackingCheckBox.setChecked(True)
                 # self.logger.info('-------------')
                 # self.logger.info(f'Frame {posData.frame_i+1} NOT tracked')
                 # self.logger.info('-------------')
@@ -10860,7 +10921,7 @@ class guiWin(QMainWindow):
                 return
 
             """Tracking starts here"""
-            self.disableTrackingCheckBox.setChecked(False)
+            # self.disableTrackingCheckBox.setChecked(False)
 
             if storeUndo:
                 # Store undo state before modifying stuff

@@ -9,6 +9,8 @@ import btrack
 from skimage.measure import regionprops
 from cellacdc.trackers.CellACDC import CellACDC_tracker
 
+from tqdm import tqdm
+
 class tracker:
     def __init__(self):
         trackers_path = os.path.dirname(__file__)
@@ -57,9 +59,12 @@ class tracker:
         return self._from_tracks_to_labels(tracks, segm_video, signals=signals)
 
     def _from_tracks_to_labels(self, tracks, segm_video, signals=None):
+        if signals is not None:
+            signals.progress.emit('Applying BayesianTracker tracks...')
+
         # Label the segm_video according to tracks
         tracked_video = np.zeros_like(segm_video)
-        for frame_i, lab in enumerate(segm_video):
+        for frame_i, lab in enumerate(tqdm(segm_video, ncols=100)):
             if frame_i == 0:
                 tracked_video[frame_i] = lab
                 continue
@@ -73,7 +78,19 @@ class tracker:
                 if not track.in_frame(frame_i):
                     continue
 
-                df = pd.DataFrame(track.to_dict()).set_index('t').loc[frame_i]
+                track_dict = track.to_dict()
+                if frame_i not in track_dict['t']:
+                    continue
+
+
+                try:
+                    df = pd.DataFrame(track.to_dict()).set_index('t').loc[frame_i]
+                except Exception as e:
+                    print('----------------------')
+                    print(frame_i)
+                    print(track.to_dict())
+                    print('----------------------')
+                    raise e
                 yc, xc = df['y'], df['x']
                 old_ID = lab[int(yc), int(xc)]
                 old_IDs.append(old_ID)
