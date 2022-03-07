@@ -1,22 +1,24 @@
+# <img src="https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/assign-motherbud.svg" width="80" height="80"> Cell-ACDC
+
+### A GUI-based Python framework for **segmentation**, **tracking** and **cell cycle annotations** of microscopy data
+
+
 [![Python version](https://img.shields.io/pypi/pyversions/cellacdc)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-BSD%203--Clause-brightgreen)](https://github.com/SchmollerLab/Cell_ACDC/blob/main/LICENSE)
 [![pypi version](https://img.shields.io/pypi/v/cellacdc?color=red)](https://pypi.org/project/cellacdc/)
-![repo size](https://img.shields.io/github/repo-size/SchmollerLab/Cell_ACDC)
+[![repo size](https://img.shields.io/github/repo-size/SchmollerLab/Cell_ACDC)](https://github.com/SchmollerLab/Cell_ACDC)
 [![DOI](https://img.shields.io/badge/DOI-10.1101%2F2021.09.28.462199-informational)](https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2)
 
-# <img src="https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/assign-motherbud.svg" width="60" height="60"> Cell-ACDC
-
-<img src="https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/figures/Fig1.jpg">
-
-## What is Cell-ACDC?
-
-### A Python framework with a user-friendly GUI for **segmentation**, **tracking** and **cell cycle annotations** of microscopy data
+<p align="left">
+  <img src="https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/figures/Fig1.jpg" width="700" alt><br>
+    <em>Overview of pipeline and GUI</em>
+</p><br>
 
 Feel free to **ask any question** in our [Discussions area](https://github.com/SchmollerLab/Cell_ACDC/discussions)!
 
 You can check out our pre-print [here](https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2) and Twitter thread [here](https://twitter.com/frank_pado/status/1443957038841794561?s=20).
 
-Written in Python 3 (<=3.9) by Francesco Padovani and Benedikt Mairhoermann.
+Written in Python 3 by Francesco Padovani and Benedikt Mairhoermann.
 
 Tested on Windows 10 (64 bit), macOS, and Linux Mint 20.1
 
@@ -30,7 +32,7 @@ We combined the currently **best available neural network models** (such as [Yea
 
 We developed and implemented several smart functionalities such as **real-time continuous tracking**, **automatic propagation** of error correction, and several tools to facilitate manual correction, from simple yet useful **brush** and **eraser** to more complex flood fill (magic wand) and Random Walker segmentation routines.
 
-See below **how it compares** to other popular tools available (*Table 1 our our [pre-print](https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2)*).
+See below **how it compares** to other popular tools available (*Table 1 of our [pre-print](https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2)*).
 
 <p align="center">
   <img src="https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/figures/Table1.jpg" width="600">
