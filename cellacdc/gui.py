@@ -4070,8 +4070,9 @@ class guiWin(QMainWindow):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
-        self.logger.info('Process ended.')
+        self.logger.info('Worker process ended.')
         self.updateALLimg()
+        self.titleLabel.setText('Done', color='w')
 
     def workerInitProgressbar(self, totalIter):
         self.progressWin.mainPbar.setValue(0)
@@ -7506,10 +7507,6 @@ class guiWin(QMainWindow):
         if not self.isEditActionsConnected:
             self.gui_connectEditActions()
 
-        self.titleLabel.setText(
-            'Data successfully loaded. Right/Left arrow to navigate frames',
-            color=self.titleColor)
-
         self.setFramesSnapshotMode()
 
         self.enableZstackWidgets(posData.SizeZ > 1)
@@ -7531,7 +7528,12 @@ class guiWin(QMainWindow):
         self.setImageNameText()
         self.updateALLimg()
 
-        # QTimer.singleShot(150, self.autoRange)
+        self.titleLabel.setText(
+            'Data successfully loaded. Right/Left arrow to navigate frames',
+            color=self.titleColor
+        )
+
+        QTimer.singleShot(200, self.autoRange)
 
     def setImageNameText(self):
         self.statusbar.clearMessage()
@@ -7545,6 +7547,8 @@ class guiWin(QMainWindow):
         self.ax1.vb.autoRange()
 
     def setAxesMaxRange(self):
+        return
+
         # Get current maxRange and prevent from zooming out too far
         screenSize = self.screen().size()
         xRangeScreen, yRangeScreen = screenSize.width(), screenSize.height()
@@ -8902,7 +8906,7 @@ class guiWin(QMainWindow):
                 msg.Yes | msg.Cancel
             )
             if goTo_last_annotated_frame_i == msg.Yes:
-                msg = ''
+                msg = 'Looking good!'
                 self.last_cca_frame_i = last_cca_frame_i
                 posData.frame_i = last_cca_frame_i
                 self.titleLabel.setText(msg, color=self.titleColor)
@@ -8927,7 +8931,7 @@ class guiWin(QMainWindow):
                 msg.Yes | msg.No | msg.Cancel
             )
             if goTo_last_annotated_frame_i == msg.Yes:
-                msg = ''
+                msg = 'Looking good!'
                 self.titleLabel.setText(msg, color=self.titleColor)
                 self.last_cca_frame_i = last_cca_frame_i
                 posData.frame_i = last_cca_frame_i
@@ -10727,7 +10731,7 @@ class guiWin(QMainWindow):
             posData.old_IDs = []
             posData.IDs = [obj.label for obj in posData.rp]
             posData.multiContIDs = set()
-            self.titleLabel.setText(' ', color=self.titleColor)
+            self.titleLabel.setText('Looking good!', color=self.titleColor)
             return
 
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
@@ -10742,8 +10746,8 @@ class guiWin(QMainWindow):
         posData.new_IDs = new_IDs
         posData.old_IDs = prev_IDs
         posData.IDs = curr_IDs
-        warn_txt = ' '
-        htmlTxt = ' '
+        warn_txt = ''
+        htmlTxt = ''
         if lost_IDs:
             lost_IDs_format = lost_IDs.copy()
             if len(lost_IDs) + len(new_IDs) > 20 and len(lost_IDs)>10:
@@ -10773,7 +10777,7 @@ class guiWin(QMainWindow):
                 f'{htmlTxt}, <font color="green">{warn_txt}</font>'
             )
         if not warn_txt:
-            warn_txt = ' '
+            warn_txt = 'Looking good'
             color = 'w'
             htmlTxt = (
                 f'<font color="white">{warn_txt}</font>'

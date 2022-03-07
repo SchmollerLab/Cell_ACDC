@@ -576,7 +576,7 @@ class QLogConsole(QTextEdit):
         super().__init__(parent)
         self.setReadOnly(True)
         font = QFont()
-        font.setPointSize(9)
+        font.setPixelSize(13)
         self.setFont(font)
 
     def write(self, message):
