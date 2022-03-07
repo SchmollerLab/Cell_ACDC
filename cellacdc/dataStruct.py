@@ -5,6 +5,8 @@ import re
 import traceback
 import time
 import datetime
+import tempfile
+import h5py
 import difflib
 import pathlib
 import numpy as np
@@ -382,6 +384,7 @@ class bioFormatsWorker(QObject):
             elif self.metadataWin.trust:
                 self.trustMetadataReader = True
 
+            self.to_h5 = self.metadataWin.to_h5
             self.LensNA = self.metadataWin.LensNA
             self.DimensionOrder = self.metadataWin.DimensionOrder
             self.SizeT = self.metadataWin.SizeT
@@ -447,6 +450,68 @@ class bioFormatsWorker(QObject):
             filename = f'{filenameNOext}_s{s0p}_{appendTxt}{ext}'
         return filename
 
+    def saveImgDataChannel(
+            self, reader, series, images_path, filenameNOext, s0p, chName
+        ):
+        if self.to_h5:
+            filename = self.getFilename(
+                filenameNOext, s0p, chName, series, '.h5'
+            )
+            tempDir = tempfile.mkdtemp()
+            tempFilepath = os.path.join(tempDir, filename)
+            print('==========================================================')
+            print(f'.h5 tempfile: "{tempFilepath}"')
+            print('==========================================================')
+            h5f = h5py.File(tempFilepath, 'w')
+            imgData = reader.read(
+                c=0, z=0, t=0, series=series, rescale=False
+            )
+            shape = (self.SizeT, self.SizeZ, *imgData.shape)
+            chunks = (1,1,*imgData.shape)
+            if self.compression_level>0:
+                imgData_ch = h5f.create_dataset(
+                    'data', shape, dtype=imgData.dtype,
+                    compression='gzip',
+                    compression_opts=self.compression_level,
+                    chunks=chunks, shuffle=False
+                )
+            else:
+                imgData_ch = h5f.create_dataset(
+                    'data', shape, dtype=imgData.dtype,
+                    chunks=chunks, shuffle=False
+                )
+        else:
+            filename = self.getFilename(
+                filenameNOext, s0p, chName, series, '.tif'
+            )
+            imgData_ch = []
+
+        filePath = os.path.join(images_path, filename)
+        for t in range(self.SizeT):
+            imgData_z = []
+            for z in range(self.SizeZ):
+                imgData = reader.read(
+                    c=0, z=z, t=t, series=series, rescale=False
+                )
+                if self.to_h5:
+                    imgData_ch[t, z] = imgData
+                else:
+                    imgData_z.append(imgData)
+
+            if not self.to_h5:
+                imgData_z = np.squeeze(np.array(imgData_z, dtype=imgData.dtype))
+                imgData_ch.append(imgData_z)
+
+        if not self.to_h5:
+            imgData_ch = np.squeeze(np.array(imgData_ch, dtype=imgData.dtype))
+            myutils.imagej_tiffwriter(
+                filePath, imgData_ch, {}, self.SizeT, self.SizeZ
+            )
+        else:
+            h5f.close()
+            shutil.move(tempFilepath, filePath)
+            shutil.rmtree(tempDir)
+
     def saveData(self, images_path, rawFilePath, filename, p, series, p_idx=0):
         s0p = str(p+1).zfill(self.numPosDigits)
         self.progress.emit(
@@ -502,24 +567,8 @@ class bioFormatsWorker(QObject):
                     self.progress.emit(
                         f'  Saving channel {c+1}/{len(self.chNames)} ({chName})'
                     )
-                    imgData_ch = []
-                    for t in range(self.SizeT):
-                        imgData_z = []
-                        for z in range(self.SizeZ):
-                            imgData = reader.read(
-                                c=c, z=z, t=t, series=series, rescale=False
-                            )
-                            imgData_z.append(imgData)
-                        imgData_z = np.array(imgData_z, dtype=imgData.dtype)
-                        imgData_ch.append(imgData_z)
-                    imgData_ch = np.array(imgData_ch, dtype=imgData.dtype)
-                    imgData_ch = np.squeeze(imgData_ch)
-                    filename = self.getFilename(
-                        filenameNOext, s0p, chName, series, '.tif'
-                    )
-                    tifPath = os.path.join(images_path, filename)
-                    myutils.imagej_tiffwriter(
-                        tifPath, imgData_ch, {}, self.SizeT, self.SizeZ
+                    self.saveImgDataChannel(
+                        reader, series, images_path, filenameNOext, s0p, chName
                     )
 
         elif self.rawDataStruct == 2:
@@ -545,24 +594,10 @@ class bioFormatsWorker(QObject):
                         f'  Saving channel {c+1}/{len(self.chNames)} ({chName})'
                     )
                     imgData_ch = []
-                    for t in range(self.SizeT):
-                        imgData_z = []
-                        for z in range(self.SizeZ):
-                            imgData = reader.read(
-                                c=0, z=z, t=t, series=series, rescale=False
-                            )
-                            imgData_z.append(imgData)
-                        imgData_z = np.array(imgData_z, dtype=imgData.dtype)
-                        imgData_ch.append(imgData_z)
-                    imgData_ch = np.array(imgData_ch, dtype=imgData.dtype)
-                    imgData_ch = np.squeeze(imgData_ch)
-                    filename = self.getFilename(
-                        filenameNOext, s0p, chName, series, '.tif'
+                    self.saveImgDataChannel(
+                        reader, series, images_path, filenameNOext, s0p, chName
                     )
-                    tifPath = os.path.join(images_path, filename)
-                    myutils.imagej_tiffwriter(
-                        tifPath, imgData_ch, {}, self.SizeT, self.SizeZ
-                    )
+
             if self.moveOtherFiles or self.copyOtherFiles:
                 # Move the other files present in the folder if they
                 # contain "otherFilename" in the name

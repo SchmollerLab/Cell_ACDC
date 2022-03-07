@@ -324,6 +324,28 @@ class QDialogMetadataXML(QDialog):
         mainLayout.addWidget(noteLabel, alignment=Qt.AlignCenter)
 
         row = 0
+        to_tif_radiobutton = QRadioButton(".tif")
+        to_tif_radiobutton.setChecked(True)
+        to_h5_radiobutton = QRadioButton(".h5")
+        to_h5_radiobutton.setToolTip(
+            '.h5 is highly recommended for big datasets to avoid memory issues.\n'
+            'As a rule of thumb, if the single position, single channel file\n'
+            'is larger than 1/5 of the available RAM we recommend using .h5 format'
+        )
+        self.to_h5_radiobutton = to_h5_radiobutton
+        txt = 'File format:  '
+        label = QLabel(txt)
+        fileFormatLayout = QHBoxLayout()
+        fileFormatLayout.addStretch(1)
+        fileFormatLayout.addWidget(to_tif_radiobutton)
+        fileFormatLayout.addStretch(1)
+        fileFormatLayout.addWidget(to_h5_radiobutton)
+        fileFormatLayout.addStretch(1)
+        entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
+        entriesLayout.addLayout(fileFormatLayout, row, 1)
+        to_h5_radiobutton.toggled.connect(self.updateFileFormat)
+
+        row += 1
         self.SizeS_SB = QSpinBox()
         self.SizeS_SB.setAlignment(Qt.AlignCenter)
         self.SizeS_SB.setMinimum(1)
@@ -399,7 +421,9 @@ class QDialogMetadataXML(QDialog):
         self.TimeIncrementUnit_CB.addItems(unitItems)
         if currentTxt:
             self.TimeIncrementUnit_CB.setCurrentText(currentTxt[0])
-        entriesLayout.addWidget(self.TimeIncrementUnit_CB, row, 2)
+        entriesLayout.addWidget(
+            self.TimeIncrementUnit_CB, row, 2, alignment=Qt.AlignLeft
+        )
 
         if SizeT == 1:
             self.TimeIncrement_DSB.hide()
@@ -429,7 +453,9 @@ class QDialogMetadataXML(QDialog):
             self.PhysicalSizeUnit_CB.setCurrentText(currentTxt[0])
         else:
             self.PhysicalSizeUnit_CB.setCurrentText(unitItems[1])
-        entriesLayout.addWidget(self.PhysicalSizeUnit_CB, row, 2)
+        entriesLayout.addWidget(
+            self.PhysicalSizeUnit_CB, row, 2, alignment=Qt.AlignLeft
+        )
         self.PhysicalSizeUnit_CB.currentTextChanged.connect(self.updatePSUnit)
 
         row += 1
@@ -498,6 +524,8 @@ class QDialogMetadataXML(QDialog):
         self.saveChannels_QCBs = []
         self.filename_QLabels = []
         self.showChannelDataButtons = []
+
+        ext = 'h5' if self.to_h5_radiobutton.isChecked() else 'tif'
         for c in range(SizeC):
             chName_QLE = QLineEdit()
             chName_QLE.setStyleSheet(
@@ -520,7 +548,7 @@ class QDialogMetadataXML(QDialog):
             chName = self.removeInvalidCharacters(chName)
             filenameLabel = QLabel(f"""
                 <p style=font-size:9pt>
-                    {self.rawFilename}_{chName}.tif
+                    {self.rawFilename}_{chName}.{ext}
                 </p>
             """)
 
@@ -688,6 +716,10 @@ class QDialogMetadataXML(QDialog):
             trim_ = chName.endswith('_')
         return chName
 
+    def updateFileFormat(self, is_h5):
+        for idx in range(len(self.chNames_QLEs)):
+            self.updateFilename(idx)
+
     def updateFilename(self, idx):
         chName = self.chNames_QLEs[idx].text()
         chName = self.removeInvalidCharacters(chName)
@@ -696,18 +728,20 @@ class QDialogMetadataXML(QDialog):
         else:
             rawFilename = self.rawFilename
 
+        ext = 'h5' if self.to_h5_radiobutton.isChecked() else 'tif'
+
         filenameLabel = self.filename_QLabels[idx]
         if self.addImageName_QCB.isChecked():
             self.ImageName = self.removeInvalidCharacters(self.ImageName)
             filename = (f"""
                 <p style=font-size:9pt>
-                    {rawFilename}_{self.ImageName}_{chName}.tif
+                    {rawFilename}_{self.ImageName}_{chName}.{ext}
                 </p>
             """)
         else:
             filename = (f"""
                 <p style=font-size:9pt>
-                    {rawFilename}_{chName}.tif
+                    {rawFilename}_{chName}.{ext}
                 </p>
             """)
         filenameLabel.setText(filename)
@@ -818,6 +852,7 @@ class QDialogMetadataXML(QDialog):
     def addRemoveChannels(self, value):
         currentSizeC = len(self.chNames_QLEs)
         DeltaChannels = abs(value-currentSizeC)
+        ext = 'h5' if self.to_h5_radiobutton.isChecked() else 'tif'
         if value > currentSizeC:
             for c in range(currentSizeC, currentSizeC+DeltaChannels):
                 chName_QLE = QLineEdit()
@@ -838,7 +873,7 @@ class QDialogMetadataXML(QDialog):
                 chName = chName_QLE.text()
                 filenameLabel = QLabel(f"""
                     <p style=font-size:9pt>
-                        {self.rawFilename}_{chName}.tif
+                        {self.rawFilename}_{chName}.{ext}
                     </p>
                 """)
 
@@ -970,6 +1005,7 @@ class QDialogMetadataXML(QDialog):
         self.PhysicalSizeX = self.PhysicalSizeX_DSB.value()
         self.PhysicalSizeY = self.PhysicalSizeY_DSB.value()
         self.PhysicalSizeZ = self.PhysicalSizeZ_DSB.value()
+        self.to_h5 = self.to_h5_radiobutton.isChecked()
         self.chNames = []
         self.addImageName = self.addImageName_QCB.isChecked()
         self.saveChannels = []
