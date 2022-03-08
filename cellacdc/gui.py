@@ -761,7 +761,7 @@ class guiWin(QMainWindow):
         self.fontSize = self.df_settings.at['fontSize', 'value']
         self.fontSizeMenu = editMenu.addMenu("Font size")
         fontActionGroup = QActionGroup(self)
-        fs = int(re.findall('(\d+)pt', self.fontSize)[0])
+        fs = int(re.findall(r'(\d+)pt', self.fontSize)[0])
         for i in range(2,25):
             action = QAction(self)
             action.setText(f'{i}')

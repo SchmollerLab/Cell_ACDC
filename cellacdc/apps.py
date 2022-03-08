@@ -4008,7 +4008,7 @@ class editID_QWidget(QDialog):
             return
 
         # Cast integers greater than uint16 machine limit
-        m_iter = re.finditer('\d+', self.ID_QLineEdit.text())
+        m_iter = re.finditer(r'\d+', self.ID_QLineEdit.text())
         for m in m_iter:
             val = int(m.group())
             uint16_max = np.iinfo(np.uint16).max
@@ -4049,7 +4049,7 @@ class editID_QWidget(QDialog):
             else:
                 valid = True
         except ValueError:
-            pattern = '\((\d+),\s*(\d+)\)'
+            pattern = r'\((\d+),\s*(\d+)\)'
             fa = re.findall(pattern, txt)
             if fa:
                 how = [(int(g[0]), int(g[1])) for g in fa]

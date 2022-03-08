@@ -615,7 +615,7 @@ class bioFormatsWorker(QObject):
                     # Determine basename, posNum and chName to build
                     # filename as "basename_s01_chName.ext"
                     _filename = os.path.basename(cellacdc)
-                    m = re.findall(f'{basename}(\d+)_(.+)', _filename)
+                    m = re.findall(fr'{basename}(\d+)_(.+)', _filename)
                     if not m or len(m[0])!=2:
                         dst = os.path.join(images_path, _filename)
                     else:
@@ -1362,7 +1362,7 @@ class createDataStructWin(QMainWindow):
         stripped_filenames = []
         for file in rawFilenames:
             filename, ext = os.path.splitext(file)
-            m_iter = myutils.findalliter(f'(\d+)_(.+)', filename)
+            m_iter = myutils.findalliter(fr'(\d+)_(.+)', filename)
             if len(m_iter) <= 1:
                 self.criticalNoFilenamePattern()
                 return False

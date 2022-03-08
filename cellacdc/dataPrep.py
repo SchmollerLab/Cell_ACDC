@@ -1391,7 +1391,7 @@ class dataPrepWin(QMainWindow):
     def setStandardRoiShape(self, text):
         posData = self.data[self.pos_i]
         Y, X = posData.img_data.shape[-2:]
-        m = re.findall('(\d+)x(\d+)', text)
+        m = re.findall(r'(\d+)x(\d+)', text)
         w, h = int(m[0][0]), int(m[0][1])
         # xc, yc = int(round(X/2)), int(round(Y/2))
         # yt, xl = int(round(xc-w/2)), int(round(yc-h/2))

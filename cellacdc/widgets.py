@@ -535,7 +535,7 @@ class labelsGradientWidget(pg.GradientWidget):
                 continue
 
             stateFound = True
-            m = re.findall('tick(\d+)_(\w+)', setting)
+            m = re.findall(r'tick(\d+)_(\w+)', setting)
             if m:
                 tick_idx, tick_type = m[0]
                 if tick_type == 'pos':
