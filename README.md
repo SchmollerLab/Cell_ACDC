@@ -2,7 +2,9 @@
 
 ### A GUI-based Python framework for **segmentation**, **tracking** and **cell cycle annotations** of microscopy data
 
-[![example workflow](https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/python-package.yml/badge.svg)](https://github.com/SchmollerLab/Cell_ACDC/actions)
+[![build ubuntu](https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-ubuntu.yml/badge.svg)](https://github.com/SchmollerLab/Cell_ACDC/actions)
+[![build macos](https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-macos.yml/badge.svg)](https://github.com/SchmollerLab/Cell_ACDC/actions)
+[![build windows](https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-windows.yml/badge.svg)](https://github.com/SchmollerLab/Cell_ACDC/actions)
 [![Python version](https://img.shields.io/pypi/pyversions/cellacdc)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-BSD%203--Clause-brightgreen)](https://github.com/SchmollerLab/Cell_ACDC/blob/main/LICENSE)
 [![pypi version](https://img.shields.io/pypi/v/cellacdc?color=red)](https://pypi.org/project/cellacdc/)
