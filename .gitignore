@@ -32,7 +32,7 @@ env/*
 data/*
 !data/placeholder.txt
 !data/.placeholder.txt
-tests/*
+mytests/
 cellacdc/utils/deprecated
 instructions/Screenshots
 UserManual/*
