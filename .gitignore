@@ -17,6 +17,7 @@ notebooks/testing.ipynb
 notebooks/.ipynb_checkpoints
 .idea/
 test.txt
+cellacdc/_version.py
 cellacdc/test_qt_app.py
 cellacdc/test.py
 cellacdc/test1.py
