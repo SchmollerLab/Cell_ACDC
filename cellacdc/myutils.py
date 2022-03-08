@@ -83,7 +83,7 @@ def setupLogger(module='gui'):
 
 def rgb_str_to_values(rgbString, errorRgb=(255,255,255)):
     try:
-        r, g, b = re.findall('(\d+), (\d+), (\d+)', rgbString)[0]
+        r, g, b = re.findall(r'(\d+), (\d+), (\d+)', rgbString)[0]
         r, g, b = int(r), int(g), int(b)
     except TypeError:
         try:
@@ -97,7 +97,7 @@ def rgb_str_to_values(rgbString, errorRgb=(255,255,255)):
 
 def rgba_str_to_values(rgbaString, errorRgb=(255,255,255,255)):
     try:
-        r, g, b, a = re.findall('(\d+), (\d+), (\d+), (\d+)', rgbaString)[0]
+        r, g, b, a = re.findall(r'(\d+), (\d+), (\d+), (\d+)', rgbaString)[0]
         r, g, b, a = int(r), int(g), int(b), int(a)
     except TypeError:
         try:
@@ -232,10 +232,10 @@ def getBasename(files):
 
 def findalliter(patter, string):
     """Function used to return all re.findall objects in string"""
-    m_test = re.findall(f'(\d+)_(.+)', string)
+    m_test = re.findall(r'(\d+)_(.+)', string)
     m_iter = [m_test]
     while m_test:
-        m_test = re.findall(f'(\d+)_(.+)', m_test[0][1])
+        m_test = re.findall(r'(\d+)_(.+)', m_test[0][1])
         m_iter.append(m_test)
     return m_iter
 

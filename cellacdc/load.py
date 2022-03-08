@@ -486,7 +486,7 @@ class loadData:
         for filename in myutils.listdir(self.images_path):
             file_path = os.path.join(self.images_path, filename)
             f, ext = os.path.splitext(filename)
-            m = re.match(f'{basename}.*\.tif', filename)
+            m = re.match(fr'{basename}.*\.tif', filename)
             if m is not None:
                 tif_paths.append(file_path)
                 # Search for npy fluo data
@@ -693,7 +693,7 @@ class select_exp_folder:
     def get_values_cca(self, exp_path):
         pos_foldernames = natsorted(myutils.listdir(exp_path))
         pos_foldernames = [pos for pos in pos_foldernames
-                               if re.match('Position_(\d+)', pos)]
+                               if re.match(r'Position_(\d+)', pos)]
         self.pos_foldernames = pos_foldernames
         values = []
         for pos in pos_foldernames:

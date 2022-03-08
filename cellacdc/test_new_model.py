@@ -10,6 +10,9 @@ from . import apps, myutils
 
 from PyQt5.QtWidgets import QApplication, QStyleFactory
 
+import pytest
+pytest.skip('skipping this test since it is gui based', allow_module_level=True)
+
 # Ask which model to use --> Test if new model is visible
 app = QApplication(sys.argv)
 app.setStyle(QStyleFactory.create('Fusion'))

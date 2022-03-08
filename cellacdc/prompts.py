@@ -91,7 +91,7 @@ class select_channel_name:
         if metadata_csv_path is not None:
             df = pd.read_csv(metadata_csv_path)
             if 'Description' in df.columns:
-                channelNamesMask = df.Description.str.contains('channel_\d+_name')
+                channelNamesMask = df.Description.str.contains(r'channel_\d+_name')
                 channelNames = df[channelNamesMask]['values'].to_list()
                 if channelNames:
                     channel_names = channelNames.copy()
