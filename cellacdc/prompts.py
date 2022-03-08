@@ -303,10 +303,3 @@ def askyesno(title='tk', message='Yes or no?', toplevel=False):
         root.quit()
         root.destroy()
     return yes
-
-
-if __name__ == '__main__':
-    app = QApplication(sys.argv)
-    app.setStyle(QtGui.QStyleFactory.create('Fusion'))
-    model = askWhichSegmModel()
-    print(model)
