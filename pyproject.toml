@@ -9,3 +9,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools_scm]
 write_to = "cellacdc/_version.py"
+
+# Ignore DeprecationWarnings
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore::DeprecationWarning"
+]
