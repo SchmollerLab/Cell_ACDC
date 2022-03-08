@@ -1,12 +1,16 @@
 import os
 import sys
+import time
 
 import numpy as np
 import pandas as pd
 
 from PyQt5.QtWidgets import QMainWindow, QApplication, QFrame
-from PyQt5.QtCore import Qt, QPoint, QRect, QObject, pyqtSignal
+from PyQt5.QtCore import Qt, QPoint, QRect, QObject, pyqtSignal, QThread
 from PyQt5.QtGui import QBrush, QColor, QPen, QPainter
+
+import pathlib
+USER_PATH = pathlib.Path.home()
 
 class screenRecorderWorker(QObject):
     sigGrabScreen = pyqtSignal()
@@ -134,7 +138,7 @@ class screenRecorder(QMainWindow):
         )
         if 'screenRecorder_rect' in self.df_settings.index:
             s = self.df_settings.at['screenRecorder_rect', 'value']
-            coords = [int(d) for f in s.split(',')]
+            coords = [int(d) for d in s.split(',')]
             self.x0, self.y0, self.x1, self.y1 = coords
         else:
             self.x0, self.y0, self.x1, self.y1 = 100, 100, 400, 300

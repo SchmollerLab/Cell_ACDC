@@ -1322,7 +1322,7 @@ class dataPrepWin(QMainWindow):
     def interp_z(self, event):
         posData = self.data[self.pos_i]
         df = posData.segmInfo_df
-        x0, z0 = 0, df.at[(posData.filename, i), 'z_slice_used_dataPrep']
+        x0, z0 = 0, df.at[(posData.filename, 0), 'z_slice_used_dataPrep']
         x1 = self.frame_i
         z1 = df.at[(posData.filename, x1), 'z_slice_used_dataPrep']
         f = scipy.interpolate.interp1d([x0, x1], [z0, z1])

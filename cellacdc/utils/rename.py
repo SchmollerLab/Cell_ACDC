@@ -328,21 +328,3 @@ class renameFilesWin(QMainWindow):
             self.mainWin.setWindowState(Qt.WindowNoState)
             self.mainWin.setWindowState(Qt.WindowActive)
             self.mainWin.raise_()
-
-
-if __name__ == "__main__":
-    print('Launching conversion script...')
-    # Handle high resolution displays:
-    if hasattr(Qt, 'AA_EnableHighDpiScaling'):
-        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-    if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
-        QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
-    # Create the application
-    app = QApplication(sys.argv)
-    app.setStyle(QStyleFactory.create('Fusion'))
-    win = convertFileFormatWin(allowExit=True)
-    win.show()
-    print('Done. If window asking to select a folder is not visible, it is '
-          'behind some other open window.')
-    win.main()
-    sys.exit(app.exec_())

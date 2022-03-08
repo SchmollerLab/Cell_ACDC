@@ -575,21 +575,6 @@ def _model_url(model_name, return_alternative=False):
     else:
         return url, file_size
 
-def download_from_gdrive(id, destination, file_size=None,
-                         model_name='cellpose', progress=None):
-    URL = "https://docs.google.com/uc?export=download"
-
-    session = requests.Session()
-
-    if token is not None:
-        params = { 'id' : id, 'confirm' : token }
-        response = session.get(URL, params=params, stream=True)
-
-    save_response_content(
-        response, destination, file_size=file_size, model_name=model_name,
-        progress=progress
-    )
-
 def download_manual():
     user_path = pathlib.Path.home()
     manual_folder_path = os.path.join(user_path, 'acdc-manual')
@@ -673,24 +658,6 @@ def extract_zip(zip_path, extract_to_path, verbose=True):
         print(f'Extracting to {extract_to_path}...')
     with zipfile.ZipFile(zip_path, 'r') as zip_ref:
         zip_ref.extractall(extract_to_path)
-
-def check_v1_model_path():
-    script_dirname = os.path.dirname(os.path.realpath(__file__))
-    main_path = os.path.dirname(script_dirname)
-    v1_model_path = os.path.join(main_path, 'model')
-    print(v1_model_path)
-    if os.path.exists(v1_model_path):
-        delete = prompts.twobuttonsmessagebox('Delete v1 model folder?',
-            'The script detected a "./model" folder.\n\n This is most likely from '
-            'Cell-ACDC v1.\n\nThis version will automatically download\n the '
-            'neural network models required into "/.models" folder.\n'
-            'The "./model" is not required anymore and we suggest deleting it,\n'
-            'however you can keep it if you want.\n\n '
-            'Do you want to delete it or keep it?',
-            'Delete', 'Keep', fs=10,
-        ).button_left
-        if delete:
-            shutil.rmtree(v1_model_path)
 
 def check_v123_model_path(model_name):
     # Cell-ACDC v1.2.3 saved the weights inside the package,

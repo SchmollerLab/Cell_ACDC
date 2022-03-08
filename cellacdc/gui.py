@@ -634,6 +634,7 @@ class guiWin(QMainWindow):
         file_path = event.mimeData().urls()[0].toLocalFile()
         if os.path.isdir(file_path):
             exp_path = file_path
+            basename = os.path.basename(file_path)
             if basename.find('Position_')!=-1 or basename=='Images':
                 event.accept()
             else:
@@ -5339,10 +5340,6 @@ class guiWin(QMainWindow):
             self.entropyWin.close()
             self.entropyWin = None
 
-    def setData(self, data):
-        if posData.SizeZ > 1:
-            pass
-
     def enableSmartTrack(self, checked):
         posData = self.data[self.pos_i]
         # Disable tracking for already visited frames
@@ -5510,6 +5507,7 @@ class guiWin(QMainWindow):
     def repeatAutoCca(self):
         # Do not allow automatic bud assignment if there are future
         # frames that already contain anotations
+        posData = self.data[self.pos_i]
         next_df = posData.allData_li[posData.frame_i+1]['acdc_df']
         if next_df is not None:
             if 'cell_cycle_stage' in next_df.columns:
@@ -5885,12 +5883,7 @@ class guiWin(QMainWindow):
         success = False
         if defects is not None:
             if len(defects) == 2:
-                if not enforce:
-                    # Yeaz watershed separation. To be tested
-                    dist_watshed = segment(lab_ID_bool, None, merge=False)
-                    num_obj_watshed = len(np.unique(dist_watshed))
-                else:
-                    num_obj_watshed = 0
+                num_obj_watshed = 0
                 # Separate only if it was a separation also with watershed method
                 if num_obj_watshed > 2 or enforce:
                     defects_points = [0]*len(defects)
@@ -9154,15 +9147,9 @@ class guiWin(QMainWindow):
                 LabelItemID.setText(txt, size=self.fontSize)
             if ccs == 'G1':
                 color = self.ax1_G1cellColor
-                if updateColor:
-                    c = self.getOptimalLabelItemColor(LabelItemID, c)
-                    self.ax1_G1cellColor = c
                 bold = False
             elif mothCell_S:
                 color = self.ax1_S_oldCellColor
-                if updateColor:
-                    c = self.getOptimalLabelItemColor(LabelItemID, c)
-                    self.ax1_S_oldCellColor = c
                 bold = False
             elif budNotEmergedNow:
                 color = 'r'
@@ -12064,7 +12051,7 @@ class guiWin(QMainWindow):
         return msg.clickedButton() == allPosbutton, last_pos
 
     @exception_handler
-    def saveMetricsCritical(self, error):
+    def saveMetricsCritical(self, traceback_format):
         self.logger.info('')
         self.logger.info('====================================')
         self.logger.exception(traceback_format)

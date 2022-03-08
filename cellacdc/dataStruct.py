@@ -824,7 +824,7 @@ class createDataStructWin(QMainWindow):
         if not is_win and not is_mac:
             if parent is None:
                 self.show()
-            self.criticalNotWindowsOS()
+            self.criticalOSnotSupported()
             self.close()
             raise OSError('This module is supported ONLY on Windows OS or macOS')
 
@@ -937,7 +937,8 @@ class createDataStructWin(QMainWindow):
             msg.exec_()
             raise FileNotFoundError('Dowload of Java failed. See above for details.')
 
-    def criticalNotWindowsOS(self):
+    def criticalOSnotSupported(self):
+        from cellacdc import widgets
         if self.parent() is None:
             msg = widgets.myMessageBox(self)
         else:
