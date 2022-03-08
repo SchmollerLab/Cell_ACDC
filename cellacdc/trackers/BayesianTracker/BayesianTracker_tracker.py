@@ -1,5 +1,6 @@
 import os
 import sys
+import traceback
 
 import numpy as np
 import pandas as pd
@@ -18,7 +19,10 @@ class tracker:
             trackers_path, 'model', 'cell_config.json'
         )
 
-    def track(self, segm_video, signals=None, export_to: os.PathLike=None):
+    def track(
+            self, segm_video, signals=None, export_to: os.PathLike=None,
+            verbose=False
+        ):
         if segm_video.ndim == 3:
             # btrack requires 4D data. Add extra dimension for 3D data
             segm_video = segm_video[:, np.newaxis, :, :]
@@ -26,6 +30,7 @@ class tracker:
         obj_from_arr = btrack.utils.segmentation_to_objects(
             segm_video, properties=('area',), scale=(1., 1., 1.)
         )
+
         if signals is not None:
             signals.progress.emit('Running BayesianTracker...')
 
@@ -49,16 +54,21 @@ class tracker:
             tracker.optimize()
 
             # save tracks
-            tracker.export(export_to, obj_type="obj_type_1")
+            if export_to is not None:
+                tracker.export(export_to, obj_type="obj_type_1")
 
             tracks = tracker.tracks
 
         # Remove the added axis
         segm_video = np.squeeze(segm_video)
+        tracked_video = self._from_tracks_to_labels(
+            tracks, segm_video, signals=signals, verbose=verbose
+        )
+        return tracked_video
 
-        return self._from_tracks_to_labels(tracks, segm_video, signals=signals)
-
-    def _from_tracks_to_labels(self, tracks, segm_video, signals=None):
+    def _from_tracks_to_labels(
+            self, tracks, segm_video, signals=None, verbose=False
+        ):
         if signals is not None:
             signals.progress.emit('Applying BayesianTracker tracks...')
 
@@ -71,32 +81,43 @@ class tracker:
 
             rp = regionprops(lab.copy())
             IDs_curr_untracked = [obj.label for obj in rp]
+            if not IDs_curr_untracked:
+                # No cells segmented
+                continue
 
             old_IDs = []
             tracked_IDs = []
             for track in tracks:
-                if not track.in_frame(frame_i):
-                    continue
-
                 track_dict = track.to_dict()
                 if frame_i not in track_dict['t']:
                     continue
 
+                df = pd.DataFrame(track.to_dict()).set_index('t').loc[frame_i]
 
-                try:
-                    df = pd.DataFrame(track.to_dict()).set_index('t').loc[frame_i]
-                except Exception as e:
-                    print('----------------------')
-                    print(frame_i)
-                    print(track.to_dict())
-                    print('----------------------')
-                    raise e
                 yc, xc = df['y'], df['x']
-                old_ID = lab[int(yc), int(xc)]
+                try:
+                    old_ID = lab[int(yc), int(xc)]
+                except Exception as e:
+                    # btrack sometimes finds cells that are not existing
+                    # skip them
+                    # traceback.print_exc()
+                    continue
+
                 old_IDs.append(old_ID)
                 tracked_IDs.append(df['ID'])
 
+            if not tracked_IDs:
+                # No cells tracked
+                continue
+
             uniqueID = max((max(tracked_IDs), max(IDs_curr_untracked)))+1
+
+            if verbose:
+                print('-------------------------')
+                print(f'Tracking frame n. {frame_i+1}')
+                for old_ID, tracked_ID in zip(old_IDs, tracked_IDs):
+                    print(f'Tracking ID {old_ID} --> {tracked_ID}')
+                print('-------------------------')
 
             tracked_lab = CellACDC_tracker.indexAssignment(
                 old_IDs, tracked_IDs, IDs_curr_untracked,
