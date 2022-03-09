@@ -7493,7 +7493,7 @@ class guiWin(QMainWindow):
         """)
         msg.setIcon(iconName='SP_MessageBoxCritical')
         msg.setWindowTitle('Loaded multiple positions with frames!')
-        msg.addText(err_msgs)
+        msg.addText(err_msg)
         msg.addButton('Ok')
         msg.show(block=True)
 
