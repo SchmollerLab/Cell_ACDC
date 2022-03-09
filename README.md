@@ -2,6 +2,8 @@
 
 ### A GUI-based Python framework for **segmentation**, **tracking** and **cell cycle annotations** of microscopy data
 
+*Written in Python 3 by Francesco Padovani and Benedikt Mairhoermann.*
+
 [![build ubuntu](https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-ubuntu.yml/badge.svg)](https://github.com/SchmollerLab/Cell_ACDC/actions)
 [![build macos](https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-macos.yml/badge.svg)](https://github.com/SchmollerLab/Cell_ACDC/actions)
 [![build windows](https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-windows.yml/badge.svg)](https://github.com/SchmollerLab/Cell_ACDC/actions)
@@ -16,15 +18,13 @@
     <em>Overview of pipeline and GUI</em>
 </p><br>
 
-Feel free to **ask any question** in our [Discussions area](https://github.com/SchmollerLab/Cell_ACDC/discussions)!
+## Resources
 
-You can check out our pre-print [here](https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2) and Twitter thread [here](https://twitter.com/frank_pado/status/1443957038841794561?s=20).
-
-Written in Python 3 by Francesco Padovani and Benedikt Mairhoermann.
-
-Tested on Windows 10 (64 bit), macOS, and Linux Mint 20.1
-
-*NOTE: This readme is not an exhaustive manual. Please find a **User Manual** (including detailed installation instructions) [here](https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf).*
+- [User Manual](https://github.com/SchmollerLab/Cell_ACDC/discussions) with **detailed instructions**
+- [Pre-print](https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2) of Cell-ACDC publication
+- Forum for discussions (feel free to **ask any question**)
+- **Report issues, request a feature or ask questions** [here](https://github.com/SchmollerLab/Cell_ACDC/issues).
+- Twitter [thread](https://twitter.com/frank_pado/status/1443957038841794561?s=20)
 
 ## Overview
 
