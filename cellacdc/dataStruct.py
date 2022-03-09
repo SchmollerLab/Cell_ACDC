@@ -468,18 +468,10 @@ class bioFormatsWorker(QObject):
             )
             shape = (self.SizeT, self.SizeZ, *imgData.shape)
             chunks = (1,1,*imgData.shape)
-            if self.compression_level>0:
-                imgData_ch = h5f.create_dataset(
-                    'data', shape, dtype=imgData.dtype,
-                    compression='gzip',
-                    compression_opts=self.compression_level,
-                    chunks=chunks, shuffle=False
-                )
-            else:
-                imgData_ch = h5f.create_dataset(
-                    'data', shape, dtype=imgData.dtype,
-                    chunks=chunks, shuffle=False
-                )
+            imgData_ch = h5f.create_dataset(
+                'data', shape, dtype=imgData.dtype,
+                chunks=chunks, shuffle=False
+            )
         else:
             filename = self.getFilename(
                 filenameNOext, s0p, chName, series, '.tif'
