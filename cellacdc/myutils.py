@@ -10,6 +10,7 @@ import logging
 import datetime
 import time
 import subprocess
+from math import pow
 from functools import wraps, partial
 from collections import namedtuple
 from collections.abc import Callable, Sequence
@@ -41,6 +42,23 @@ class utilClass:
 class signals(QObject):
     progressBar = pyqtSignal(int)
     progress = pyqtSignal(str)
+
+def _bytes_to_MB(size_bytes):
+    factor = pow(2, -20)
+    size_MB = round(size_bytes*factor)
+    return size_MB
+
+def _bytes_to_GB(size_bytes):
+    factor = pow(2, -30)
+    size_GB = round(size_bytes*factor, 2)
+    return size_GB
+
+def getMemoryFootprint(files_list):
+    required_memory = sum([
+        48 if file.endswith('.h5') else os.path.getsize(file)
+        for file in files_list
+    ])
+    return required_memory
 
 def setupLogger(module='gui'):
     logger = logging.getLogger('cellacdc-logger')
@@ -941,7 +959,7 @@ def install_javabridge_instructions_text():
 def install_javabridge_help(parent=None):
     msg = widgets.myMessageBox()
     txt = (f"""
-    <p>
+    <p style="font-size:13px">
         Cell-ACDC is going to <b>download and install</b>
         <code>javabridge</code>.<br><br>
         Make sure you have an <b>active internet connection</b>,

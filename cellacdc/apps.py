@@ -1061,7 +1061,7 @@ class QDialogMetadataXML(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
-class QDialogWorkerProcess(QDialog):
+class QDialogWorkerProgress(QDialog):
     def __init__(
             self, title='Progress', infoTxt='',
             showInnerPbar=False, pbarDesc='',
@@ -1072,7 +1072,10 @@ class QDialogWorkerProcess(QDialog):
         self.clickCount = 0
         super().__init__(parent)
 
-        self.setWindowTitle(title)
+        abort_text = 'Control+Cmd+C to abort' if is_mac else 'Ctrl+Alt+C to abort'
+
+        self.setWindowTitle(f'{title} ({abort_text})')
+        self.setWindowFlags(Qt.Window)
 
         mainLayout = QVBoxLayout()
         pBarLayout = QGridLayout()

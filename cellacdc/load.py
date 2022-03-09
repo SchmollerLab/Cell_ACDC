@@ -7,6 +7,7 @@ import json
 from math import isnan
 from tqdm import tqdm
 import numpy as np
+import h5py
 import pandas as pd
 import tkinter as tk
 from tkinter import ttk
@@ -62,6 +63,8 @@ class loadData:
         self.exp_path = os.path.dirname(self.pos_path)
         self.pos_foldername = os.path.basename(self.pos_path)
         self.cropROI = None
+        self.loadSizeT = None
+        self.loadSizeZ = None
         self.multiSegmAllPos = False
         path_li = os.path.normpath(imgPath).split(os.sep)
         self.relPath = f'{f"{os.sep}".join(path_li[-3:])}'
@@ -99,15 +102,60 @@ class loadData:
         self.basename = selector.basename
 
     def loadImgData(self):
-        if self.ext == '.npz':
+        self.z0_window = 0
+        self.t0_window = 0
+        if self.ext == '.h5':
+            self.h5f = h5py.File(self.imgPath, 'r')
+            self.dset = self.h5f['data']
+            self.img_data_shape = self.dset.shape
+            readH5 = self.loadSizeT is not None and self.loadSizeZ is not None
+            if not readH5:
+                return
+
+            is4D = self.SizeZ > 1 and self.SizeT > 1
+            is3Dz = self.SizeZ > 1 and self.SizeT == 1
+            is3Dt = self.SizeZ == 1 and self.SizeT > 1
+            is2D = self.SizeZ == 1 and self.SizeT == 1
+            if is4D:
+                midZ = int(self.SizeZ/2)
+                halfZLeft = int(self.loadSizeZ/2)
+                halfZRight = self.loadSizeZ-halfZLeft
+                z0 = midZ-halfZLeft
+                z1 = midZ+halfZRight
+                self.z0_window = z0
+                self.t0_window = 0
+                self.img_data = self.dset[:self.loadSizeT, z0:z1]
+            elif is3Dz:
+                midZ = int(self.SizeZ/2)
+                halfZLeft = int(self.loadSizeZ/2)
+                halfZRight = self.loadSizeZ-halfZLeft
+                z0 = midZ-halfZLeft
+                z1 = midZ+halfZRight
+                self.z0_window = z0
+                self.img_data = np.squeeze(self.dset[z0:z1])
+            elif is3Dt:
+                self.t0_window = 0
+                self.img_data = np.squeeze(self.dset[:self.loadSizeT])
+            elif is2D:
+                self.img_data = np.squeeze(self.dset[:])
+
+        elif self.ext == '.npz':
             self.img_data = np.load(self.imgPath)['arr_0']
+            self.dset = self.img_data
+            self.img_data_shape = self.img_data.shape
         elif self.ext == '.npy':
             self.img_data = np.load(self.imgPath)
+            self.dset = self.img_data
+            self.img_data_shape = self.img_data.shape
         else:
             try:
                 self.img_data = skimage.io.imread(self.imgPath)
+                self.dset = self.img_data
+                self.img_data_shape = self.img_data.shape
             except ValueError:
                 self.img_data = self._loadVideo(self.imgPath)
+                self.dset = self.img_data
+                self.img_data_shape = self.img_data.shape
             except Exception as e:
                 traceback.print_exc()
                 self.criticalExtNotValid()
@@ -510,8 +558,18 @@ class loadData:
         self.npy_paths = npy_paths
         self.npz_paths = npz_paths
 
+    def checkH5memoryFootprint(self):
+        if self.ext != '.h5':
+            return 0
+        else:
+            Y, X = self.dset.shape[-2:]
+            size = self.loadSizeT*self.loadSizeZ*Y*X
+            itemsize = self.dset.dtype.itemsize
+            required_memory = size*itemsize
+            return required_memory
+
     def askInputMetadata(
-            self,
+            self, numPos,
             ask_SizeT=False,
             ask_TimeIncrement=False,
             ask_PhysicalSizes=False,
@@ -524,8 +582,9 @@ class loadData:
             self.SizeT, self.SizeZ, self.TimeIncrement,
             self.PhysicalSizeZ, self.PhysicalSizeY, self.PhysicalSizeX,
             ask_SizeT, ask_TimeIncrement, ask_PhysicalSizes,
-            parent=self.parent, font=font, imgDataShape=self.img_data.shape,
-            posData=self, singlePos=singlePos)
+            parent=self.parent, font=font, imgDataShape=self.img_data_shape,
+            posData=self, singlePos=singlePos
+        )
         metadataWin.setFont(font)
         metadataWin.exec_()
         if metadataWin.cancel:
@@ -533,6 +592,10 @@ class loadData:
 
         self.SizeT = metadataWin.SizeT
         self.SizeZ = metadataWin.SizeZ
+
+        self.loadSizeS = numPos
+        self.loadSizeT = metadataWin.SizeT
+        self.loadSizeZ = metadataWin.SizeZ
 
         source = metadataWin if ask_TimeIncrement else self
         self.TimeIncrement = source.TimeIncrement

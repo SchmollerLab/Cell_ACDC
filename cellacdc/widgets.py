@@ -9,7 +9,7 @@ from PyQt5.QtCore import (
     pyqtSignal, QTimer, Qt, QPoint, pyqtSlot, pyqtProperty,
     QPropertyAnimation, QEasingCurve, QSequentialAnimationGroup,
     QSize, QRectF, QPointF, QRect, QPoint, QEasingCurve, QRegExp,
-    QEvent
+    QEvent, QEventLoop
 )
 from PyQt5.QtGui import (
     QFont, QPalette, QColor, QPen, QPaintEvent, QBrush, QPainter,
@@ -135,7 +135,8 @@ class myMessageBox(QDialog):
         self.buttons.append(button)
         return button
 
-    def show(self):
+    def show(self, block=False):
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
         # spacer
         spacer = QSpacerItem(10, 10)
         self.layout.addItem(spacer, self.currentRow, 1)
@@ -161,6 +162,10 @@ class myMessageBox(QDialog):
             for button in self.buttons:
                 button.setMinimumWidth(max_width)
 
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
     # def resizeEvent(self, event):
     #     print(self.layout.itemAtPosition(0, 1).widget().sizeHint())
     #     print(self.size())
@@ -172,6 +177,8 @@ class myMessageBox(QDialog):
     def close(self):
         self.clickedButton = self.sender()
         super().close()
+        if hasattr(self, 'loop'):
+            self.loop.exit()
 
 class readOnlyDoubleSpinbox(QDoubleSpinBox):
     def __init__(self, parent=None):

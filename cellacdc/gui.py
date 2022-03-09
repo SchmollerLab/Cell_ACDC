@@ -20,6 +20,7 @@ import time
 import datetime
 import logging
 import uuid
+import psutil
 from importlib import import_module
 from functools import partial
 from tqdm import tqdm
@@ -73,7 +74,7 @@ from . import qrc_resources
 
 # Custom modules
 from . import base_cca_df
-from . import load, prompts, apps
+from . import load, prompts, apps, workers
 from . import core, myutils, dataPrep, widgets
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
@@ -104,17 +105,6 @@ def qt_debug_trace():
     pyqtRemoveInputHook()
     import pdb; pdb.set_trace()
 
-def worker_exception_handler(func):
-    @wraps(func)
-    def run(self):
-        try:
-            result = func(self)
-        except Exception as error:
-            result = None
-            self.critical.emit(error)
-        return result
-    return run
-
 def exception_handler(func):
     @wraps(func)
     def inner_function(self, *args, **kwargs):
@@ -126,6 +116,9 @@ def exception_handler(func):
             else:
                 result = func(self, *args, **kwargs)
         except Exception as e:
+            if self.progressWin is not None:
+                self.progressWin.workerFinished = True
+                self.progressWin.close()
             result = None
             traceback_str = traceback.format_exc()
             self.logger.exception(traceback_str)
@@ -169,7 +162,7 @@ class trackingWorker(QObject):
         self.tracker = self.mainWin.tracker
         self.video_to_track = video_to_track
 
-    @worker_exception_handler
+    @workers.worker_exception_handler
     def run(self):
         self.mutex.lock()
 
@@ -227,7 +220,7 @@ class relabelSequentialWorker(QObject):
         s = f'IDs relabelled as follows:\n{s}'
         self.progress.emit(s)
 
-    @worker_exception_handler
+    @workers.worker_exception_handler
     def run(self):
         self.mutex.lock()
 
@@ -494,7 +487,7 @@ class segmWorker(QObject):
         QObject.__init__(self)
         self.mainWin = mainWin
 
-    @worker_exception_handler
+    @workers.worker_exception_handler
     def run(self):
         t0 = time.time()
         img = self.mainWin.getDisplayedCellsImg()
@@ -1228,6 +1221,12 @@ class guiWin(QMainWindow):
                 action.setChecked(True)
             action.toggled.connect(self.keepToolActiveActionToggled)
             menu.addAction(action)
+
+        self.warnLostCellsAction = QAction()
+        self.warnLostCellsAction.setText('Show pop-up warning for lost cells')
+        self.warnLostCellsAction.setCheckable(True)
+        self.warnLostCellsAction.setChecked(True)
+        self.settingsMenu.addAction(self.warnLostCellsAction)
 
     def gui_createStatusBar(self):
         self.statusbar = self.statusBar()
@@ -1998,7 +1997,7 @@ class guiWin(QMainWindow):
             self.ax2_LabelItemsIDs[ID-1] = pg.LabelItem()
             self.ax2_ContoursCurves[ID-1] = pg.PlotDataItem()
 
-        self.loadingDataFinished()
+        self.loadingDataCompleted()
 
     def gui_createContourPens(self):
         if 'contLineWeight' in self.df_settings.index:
@@ -2082,7 +2081,7 @@ class guiWin(QMainWindow):
         self.ax2.addItem(self.ax2BorderLine)
 
         # Create enough PlotDataItems and LabelItems to draw contours and IDs.
-        self.progressWin = apps.QDialogWorkerProcess(
+        self.progressWin = apps.QDialogWorkerProgress(
             title='Creating axes items', parent=self,
             pbarDesc='Creating axes items...'
         )
@@ -3422,6 +3421,7 @@ class guiWin(QMainWindow):
             # Allow right-click actions on both images
             self.gui_mouseReleaseEventImg2(event)
 
+        # Right-click curvature tool mouse release
         if self.isRightClickDragImg1 and self.curvToolButton.isChecked():
             self.isRightClickDragImg1 = False
             try:
@@ -4029,6 +4029,29 @@ class guiWin(QMainWindow):
             if not self.setIsHistoryKnownButton.findChild(QAction).isChecked():
                 self.setIsHistoryKnownButton.setChecked(False)
 
+    def gui_addCreatedAxesItems(self):
+        allItems = zip(
+            self.ax1_ContoursCurves,
+            self.ax2_ContoursCurves,
+            self.ax1_LabelItemsIDs,
+            self.ax2_LabelItemsIDs,
+            self.ax1_BudMothLines
+        )
+        for items_ID in allItems:
+            (ax1ContCurve, ax2ContCurve,
+            ax1_IDlabel, ax2_IDlabel,
+            BudMothLine) = items_ID
+
+            if ax1ContCurve is None:
+                continue
+
+            self.ax1.addItem(ax1ContCurve)
+            self.ax1.addItem(BudMothLine)
+            self.ax1.addItem(ax1_IDlabel)
+
+            self.ax2.addItem(ax2_IDlabel)
+            self.ax2.addItem(ax2ContCurve)
+
     def storeTrackingAlgo(self, checked):
         if not checked:
             return
@@ -4064,10 +4087,10 @@ class guiWin(QMainWindow):
         propsQGBox = self.guiTabControl.propsQGBox
         propsQGBox.idSB.setValue(searchIDdialog.EntryID)
 
-    def workerProgress(self, text):
+    def workerProgress(self, text, loggerLevel='INFO'):
         if self.progressWin is not None:
             self.progressWin.logConsole.append(text)
-        self.logger.info(text)
+        self.logger.log(getattr(logging, loggerLevel), text)
 
     def workerFinished(self):
         if self.progressWin is not None:
@@ -4252,6 +4275,7 @@ class guiWin(QMainWindow):
     def editImgProperties(self, checked=True):
         posData = self.data[self.pos_i]
         posData.askInputMetadata(
+            len(self.data),
             ask_SizeT=True,
             ask_TimeIncrement=True,
             ask_PhysicalSizes=True,
@@ -6220,7 +6244,8 @@ class guiWin(QMainWindow):
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
             posData = self.data[self.pos_i]
-            print(posData.multiContIDs)
+            print(posData.lab.shape)
+            print(self.img1.image.shape)
             pass
             # self.imgGrad.sigLookupTableChanged.disconnect()
         try:
@@ -6322,7 +6347,7 @@ class guiWin(QMainWindow):
                 self.storeUndoRedoStates(False)
                 posData = self.data[self.pos_i]
                 if posData.SizeT > 1:
-                    self.progressWin = apps.QDialogWorkerProcess(
+                    self.progressWin = apps.QDialogWorkerProgress(
                         title='Re-labelling sequential', parent=self,
                         pbarDesc='Relabelling sequential...'
                     )
@@ -6827,7 +6852,7 @@ class guiWin(QMainWindow):
         self.start_n = start_n
         self.stop_n = stop_n
 
-        self.progressWin = apps.QDialogWorkerProcess(
+        self.progressWin = apps.QDialogWorkerProgress(
             title='Tracking', parent=self,
             pbarDesc=f'Tracking from frame n. {start_n} to {stop_n}...'
         )
@@ -7218,7 +7243,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         if posData.frame_i < posData.segmSizeT-1:
             if 'lost' in self.titleLabel.text and isSegmMode:
-                if not self.doNotWarnLostCells:
+                if self.warnLostCellsAction.isChecked():
                     msg = QMessageBox(self)
                     msg.setWindowTitle('Lost cells!')
                     msg.setIcon(msg.Warning)
@@ -7235,7 +7260,8 @@ class guiWin(QMainWindow):
                     cb = QCheckBox('Do not show again')
                     msg.setCheckBox(cb)
                     msg.exec_()
-                    self.doNotWarnLostCells = msg.checkBox().isChecked()
+                    doNotWarnLostCells = not msg.checkBox().isChecked()
+                    self.warnLostCellsAction.setChecked(doNotWarnLostCells)
                     if msg.clickedButton() == noButton:
                         return
             if 'multiple' in self.titleLabel.text and mode != 'Viewer':
@@ -7342,192 +7368,153 @@ class guiWin(QMainWindow):
             self.logger.info(msg)
             self.titleLabel.setText(msg, color=self.titleColor)
 
-    def checkDataIntegrity(self, posData, numPos):
-        skipPos = False
-        abort = False
-        if numPos > 1:
-            if posData.SizeT > 1:
-                err_msg = (f'{posData.pos_foldername} contains frames over time. '
-                           f'Skipping it.')
-                self.logger.info(err_msg)
-                self.titleLabel.setText(err_msg, color='r')
-                skipPos = True
-        else:
-            if not posData.segmFound and posData.SizeT > 1:
-                err_msg = (
-                    'Segmentation mask file ("..._segm.npz") not found. '
-                    'You could run segmentation module first.'
-                )
-                self.logger.info(err_msg)
-                self.titleLabel.setText(err_msg, color='r')
-                skipPos = False
-                msg = QMessageBox()
-                warn_msg = (
-                    f'The folder {posData.pos_foldername} does not contain a '
-                    'pre-computed segmentation mask.\n\n'
-                    'You can continue with a blank mask or cancel and '
-                    'pre-compute the mask with "segm.py" script.\n\n'
-                    'Do you want to continue?'
-                )
-                continueWithBlankSegm = msg.warning(
-                   self, 'Segmentation file not found', warn_msg,
-                   msg.Yes | msg.Cancel
-                )
-                if continueWithBlankSegm == msg.Cancel:
-                    abort = True
-        return skipPos, abort
-
     def loadSelectedData(self, user_ch_file_paths, user_ch_name):
         data = []
         numPos = len(user_ch_file_paths)
-        _endswith = ''
-        for f, file_path in enumerate(user_ch_file_paths):
-            try:
-                posData = load.loadData(file_path, user_ch_name, QParent=self)
-                posData.getBasenameAndChNames()
-                posData.buildPaths()
-                posData.loadImgData()
-                selectedSegmNpz, cancel = posData.detectMultiSegmNpz(
-                    _endswith=_endswith, multiPos=numPos>1
-                )
-                if cancel:
-                    return False
-                if posData.multiSegmAllPos:
-                    _endswith = selectedSegmNpz[len(posData.basename)-1:]
-                posData.loadOtherFiles(
-                    load_segm_data=True,
-                    load_acdc_df=True,
-                    load_shifts=False,
-                    loadSegmInfo=True,
-                    load_delROIsInfo=True,
-                    loadBkgrData=True,
-                    loadBkgrROIs=True,
-                    load_last_tracked_i=True,
-                    load_metadata=True,
-                    selectedSegmNpz=selectedSegmNpz
-                )
-                if f==0:
-                    if posData.segmFound:
-                        segm_fn = os.path.basename(posData.segm_npz_path)
-                        self.logger.info(f'Loading "{segm_fn}" segmentation file...')
-                    proceed = posData.askInputMetadata(
-                        ask_SizeT=self.num_pos==1,
-                        ask_TimeIncrement=True,
-                        ask_PhysicalSizes=True,
-                        singlePos=False,
-                        save=True
-                    )
-                    if not proceed:
-                        return False
-                    self.SizeT = posData.SizeT
-                    self.SizeZ = posData.SizeZ
-                    self.TimeIncrement = posData.TimeIncrement
-                    self.PhysicalSizeZ = posData.PhysicalSizeZ
-                    self.PhysicalSizeY = posData.PhysicalSizeY
-                    self.PhysicalSizeX = posData.PhysicalSizeX
+        self.user_ch_file_paths = user_ch_file_paths
 
-                else:
-                    posData.SizeT = self.SizeT
-                    if self.SizeZ > 1:
-                        SizeZ = posData.img_data.shape[-3]
-                        posData.SizeZ = SizeZ
-                    else:
-                        posData.SizeZ = 1
-                    posData.TimeIncrement = self.TimeIncrement
-                    posData.PhysicalSizeZ = self.PhysicalSizeZ
-                    posData.PhysicalSizeY = self.PhysicalSizeY
-                    posData.PhysicalSizeX = self.PhysicalSizeX
-                    posData.saveMetadata()
-                SizeY, SizeX = posData.img_data.shape[-2:]
+        required_ram = myutils.getMemoryFootprint(user_ch_file_paths)
+        proceed = self.checkMemoryRequirements(required_ram)
+        if not proceed:
+            self.loadingDataAborted()
+            return
 
-                if posData.SizeZ > 1 and posData.img_data.ndim < 3:
-                    posData.SizeZ = 1
-                    posData.segmInfo_df = None
-                    try:
-                        os.remove(posData.segmInfo_df_csv_path)
-                    except FileNotFoundError:
-                        pass
+        posData = load.loadData(user_ch_file_paths[0], user_ch_name)
+        posData.getBasenameAndChNames()
+        posData.buildPaths()
+        posData.loadImgData()
+        posData.loadOtherFiles(load_metadata=True)
+        proceed = posData.askInputMetadata(
+            self.num_pos,
+            ask_SizeT=self.num_pos==1,
+            ask_TimeIncrement=True,
+            ask_PhysicalSizes=True,
+            singlePos=False,
+            save=True
+        )
+        if not proceed:
+            self.loadingDataAborted()
+            return
 
-                posData.setBlankSegmData(
-                    posData.SizeT, posData.SizeZ, SizeY, SizeX
-                )
-                posData.check_acdc_df_integrity()
-                skipPos, abort = self.checkDataIntegrity(posData, numPos)
-            except AttributeError:
-                self.logger.info('')
-                self.logger.info('====================================')
-                traceback.print_exc()
-                self.logger.info('====================================')
-                self.logger.info('')
-                skipPos = False
-                abort = True
 
-            if skipPos:
-                continue
-            elif abort:
-                return False
+        self.SizeT = posData.SizeT
+        self.SizeZ = posData.SizeZ
+        self.TimeIncrement = posData.TimeIncrement
+        self.PhysicalSizeZ = posData.PhysicalSizeZ
+        self.PhysicalSizeY = posData.PhysicalSizeY
+        self.PhysicalSizeX = posData.PhysicalSizeX
+        self.loadSizeS = posData.loadSizeS
+        self.loadSizeT = posData.loadSizeT
+        self.loadSizeZ = posData.loadSizeZ
 
-            if posData.SizeT == 1:
-                self.isSnapshot = True
-            else:
-                self.isSnapshot = False
+        self.isH5chunk = (
+            posData.ext == '.h5'
+            and (self.loadSizeT != self.SizeT
+                or self.loadSizeZ != self.SizeZ)
+        )
 
-            # Allow single 2D/3D image
-            if posData.SizeT < 2:
-                posData.img_data = np.array([posData.img_data])
-                posData.segm_data = np.array([posData.segm_data])
-            img_shape = posData.img_data.shape
-            posData.segmSizeT = len(posData.segm_data)
-            SizeT = posData.SizeT
-            SizeZ = posData.SizeZ
-            if f==0:
-                self.logger.info(f'Data shape = {img_shape}')
-                self.logger.info(f'Number of frames = {SizeT}')
-                self.logger.info(f'Number of z-slices per frame = {SizeZ}')
-            data.append(posData)
+        required_ram = posData.checkH5memoryFootprint()*self.loadSizeS
+        if required_ram > 0:
+            proceed = self.checkMemoryRequirements(required_ram)
+            if not proceed:
+                self.loadingDataAborted()
+                return
 
-        if not data:
-            errTitle = 'All loaded positions contains frames over time!'
-            err_msg = (
-                f'{errTitle}.\n\n'
-                'To load data that contains frames over time you have to select '
-                'only ONE position.'
-            )
-            msg = QMessageBox()
-            msg.critical(
-                self, errTitle, err_msg, msg.Ok
-            )
-            self.titleLabel.setText(errTitle, color='r')
-            return False
+        if posData.SizeT == 1:
+            self.isSnapshot = True
+        else:
+            self.isSnapshot = False
+
+        self.progressWin = apps.QDialogWorkerProgress(
+            title='Loading data...', parent=self,
+            pbarDesc=f'Loading "{user_ch_file_paths[0]}"...'
+        )
+        self.progressWin.show(self.app)
+
+        func = partial(
+            self.startLoadDataWorker, user_ch_file_paths, user_ch_name
+        )
+        QTimer.singleShot(150, func)
+
+    @exception_handler
+    def startLoadDataWorker(self, user_ch_file_paths, user_ch_name):
+        self.funcDescription = 'loading data'
+
+        self.thread = QThread()
+        self.loadDataMutex = QMutex()
+        self.loadDataWaitCond = QWaitCondition()
+
+        self.loadDataWorker = workers.loadDataWorker(
+            self, user_ch_file_paths, user_ch_name
+        )
+
+        self.loadDataWorker.moveToThread(self.thread)
+        self.loadDataWorker.signals.finished.connect(self.thread.quit)
+        self.loadDataWorker.signals.finished.connect(
+            self.loadDataWorker.deleteLater
+        )
+        self.thread.finished.connect(self.thread.deleteLater)
+
+        self.loadDataWorker.signals.finished.connect(
+            self.loadDataWorkerFinished
+        )
+        self.loadDataWorker.signals.progress.connect(self.workerProgress)
+        self.loadDataWorker.signals.initProgressBar.connect(
+            self.workerInitProgressbar
+        )
+        self.loadDataWorker.signals.progressBar.connect(
+            self.workerUpdateProgressbar
+        )
+        self.loadDataWorker.signals.critical.connect(
+            self.workerCritical
+        )
+        self.loadDataWorker.signals.dataIntegrityCritical.connect(
+            self.loadDataWorkerDataIntegrityCritical
+        )
+        self.loadDataWorker.signals.dataIntegrityWarning.connect(
+            self.loadDataWorkerDataIntegrityWarning
+        )
+
+        self.thread.started.connect(self.loadDataWorker.run)
+        self.thread.start()
+
+    def loadDataWorkerDataIntegrityCritical(self):
+        errTitle = 'All loaded positions contains frames over time!'
+        self.titleLabel.setText(errTitle, color='r')
+
+        msg = widgets.myMessageBox(self)
+
+        err_msg = (f"""
+        <p style="font-size:13px">
+            {errTitle}.<br><br>
+            To load data that contains frames over time you have to select
+            only ONE position.
+        </p>
+        """)
+        msg.setIcon(iconName='SP_MessageBoxCritical')
+        msg.setWindowTitle('Loaded multiple positions with frames!')
+        msg.addText(err_msgs)
+        msg.addButton('Ok')
+        msg.show(block=True)
+
+    @exception_handler
+    def loadDataWorkerFinished(self, data):
+        self.funcDescription = 'loading data worker finished'
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+            self.progressWin.close()
+            self.progressWin = None
+
+        if data is None or data=='abort':
+            self.loadingDataAborted()
+            return
 
         self.data = data
+        posData = self.data[self.pos_i]
         self.gui_createGraphicsItems()
         return True
 
-    def gui_addCreatedAxesItems(self):
-        allItems = zip(
-            self.ax1_ContoursCurves,
-            self.ax2_ContoursCurves,
-            self.ax1_LabelItemsIDs,
-            self.ax2_LabelItemsIDs,
-            self.ax1_BudMothLines
-        )
-        for items_ID in allItems:
-            (ax1ContCurve, ax2ContCurve,
-            ax1_IDlabel, ax2_IDlabel,
-            BudMothLine) = items_ID
-
-            if ax1ContCurve is None:
-                continue
-
-            self.ax1.addItem(ax1ContCurve)
-            self.ax1.addItem(BudMothLine)
-            self.ax1.addItem(ax1_IDlabel)
-
-            self.ax2.addItem(ax2_IDlabel)
-            self.ax2.addItem(ax2ContCurve)
-
-    def loadingDataFinished(self):
+    def loadingDataCompleted(self):
         self.progressWin.mainPbar.setMaximum(0)
 
         self.gui_addCreatedAxesItems()
@@ -7900,7 +7887,7 @@ class guiWin(QMainWindow):
                 self.setUncheckedAllButtons()
                 return
             N = len(xxS)
-            self.smoothAutoContWithSpline(n=int(N*0.15))
+            self.smoothAutoContWithSpline(n=int(N*0.05))
 
         xxS, yyS = self.curvPlotItem.getData()
 
@@ -7977,7 +7964,6 @@ class guiWin(QMainWindow):
 
         self.segment2D_kwargs = None
         self.segmModelName = None
-        self.doNotWarnLostCells = False
 
         self.autoSegmDoNotAskAgain = False
 
@@ -8110,9 +8096,8 @@ class guiWin(QMainWindow):
         # self.updateALLimg()
 
         # Link Y and X axis of both plots to scroll zoom and pan together
-        if not self.labelsGrad.hideLabelsImgAction.isChecked():
-            self.ax2.vb.setYLink(self.ax1.vb)
-            self.ax2.vb.setXLink(self.ax1.vb)
+        self.ax2.vb.setYLink(self.ax1.vb)
+        self.ax2.vb.setXLink(self.ax1.vb)
 
     def PosScrollBarAction(self, action):
         if action == QAbstractSlider.SliderSingleStepAdd:
@@ -8674,7 +8659,8 @@ class guiWin(QMainWindow):
         cont = np.squeeze(contours[0], axis=1)
         if len(contours)>1 and appendMultiContID:
             posData = self.data[self.pos_i]
-            posData.multiContIDs.add(obj.label)
+            if obj.label in posData.IDs:
+                posData.multiContIDs.add(obj.label)
         cont = np.vstack((cont, cont[0]))
         cont += [min_x, min_y]
         return cont
@@ -10055,17 +10041,19 @@ class guiWin(QMainWindow):
             self.df_settings.at['isLabelsVisible', 'value'] = 'No'
             self.df_settings.to_csv(self.settings_csv_path)
         else:
-            self.ax2.vb.setYLink(self.ax1.vb)
-            self.ax2.vb.setXLink(self.ax1.vb)
-            self.ax2.show()
+
             self.graphLayout.removeItem(self.titleLabel)
             self.graphLayout.addItem(self.titleLabel, row=0, col=1, colspan=2)
             self.mainLayout.setAlignment(self.bottomLayout, Qt.AlignLeft)
             self.bottomLayout.setStretch(0, 1)
             self.bottomLayout.setStretch(2, 6)
-            self.ax2.autoRange()
             self.df_settings.at['isLabelsVisible', 'value'] = 'Yes'
             self.df_settings.to_csv(self.settings_csv_path)
+            self.ax2.show()
+            self.updateALLimg()
+            self.ax2.vb.setYLink(self.ax1.vb)
+            self.ax2.vb.setXLink(self.ax1.vb)
+            self.ax2.autoRange()
 
     def setCheckedInvertBW(self, checked):
         self.invertBwAction.setChecked(checked)
@@ -11133,6 +11121,10 @@ class guiWin(QMainWindow):
 
         self.modeComboBox.setCurrentText('Viewer')
 
+    def loadingDataAborted(self):
+        self.openAction.setEnabled(True)
+        self.titleLabel.setText('Loading data aborted.')
+
     @exception_handler
     def openFolder(self, checked=False, exp_path=None, imageFilePath=''):
         """Main function to load data.
@@ -11191,7 +11183,6 @@ class guiWin(QMainWindow):
 
         self.titleLabel.setText('Loading data...', color=self.titleColor)
         self.setWindowTitle(f'Cell-ACDC - GUI - "{exp_path}"')
-
 
         ch_name_selector = prompts.select_channel_name(
             which_channel='segm', allow_abort=False
@@ -11291,31 +11282,45 @@ class guiWin(QMainWindow):
             user_ch_name = ch_name_selector.user_ch_name
 
         user_ch_file_paths = []
-        img_path = None
         for images_path in self.images_paths:
-            img_aligned_found = False
-            for filename in myutils.listdir(images_path):
-                img_path = os.path.join(images_path, filename)
-                if filename.find(f'{user_ch_name}_aligned.np') != -1:
-                    aligned_path = img_path
-                    img_aligned_found = True
-                elif filename.find(f'{user_ch_name}.tif') != -1:
-                    tif_path = img_path
-            if not img_aligned_found:
-                err_msg = ('Aligned frames file for channel '
-                           f'{user_ch_name} not found. '
-                           'Loading tifs files.')
-                self.titleLabel.setText(err_msg)
-                img_path = tif_path
+            h5_aligned_path = ''
+            h5_path = ''
+            npz_aligned_path = ''
+            tif_path = ''
+            for file in myutils.listdir(images_path):
+                channelDataPath = os.path.join(images_path, file)
+                if file.endswith(f'{user_ch_name}_aligned.h5'):
+                    h5_aligned_path = channelDataPath
+                elif file.endswith(f'{user_ch_name}.h5'):
+                    h5_path = channelDataPath
+                elif file.endswith(f'{user_ch_name}_aligned.npz'):
+                    npz_aligned_path = channelDataPath
+                elif file.endswith(f'{user_ch_name}.tif'):
+                    tif_path = channelDataPath
+
+            if h5_aligned_path:
+                self.logger.info(
+                    f'Using .h5 aligned file ({h5_aligned_path})...'
+                )
+                user_ch_file_paths.append(h5_aligned_path)
+            elif h5_path:
+                self.logger.info(f'Using .h5 file ({h5_path})...')
+                user_ch_file_paths.append(h5_path)
+            elif npz_aligned_path:
+                self.logger.info(
+                    f'Using .npz aligned file ({npz_aligned_path})...'
+                )
+                user_ch_file_paths.append(npz_aligned_path)
+            elif tif_path:
+                self.logger.info(f'Using .tif file ({tif_path})...')
+                user_ch_file_paths.append(tif_path)
             else:
-                img_path = aligned_path
-                # raise FileNotFoundError(err_msg)
+                self.criticalImgPathNotFound(images_path)
+                return
 
-            user_ch_file_paths.append(img_path)
-
-        self.logger.info(f'Loading {img_path}...')
         self.appendPathWindowTitle(user_ch_file_paths)
 
+        ch_name_selector.setUserChannelName()
         self.user_ch_name = user_ch_name
 
         self.initGlobalAttr()
@@ -11328,6 +11333,96 @@ class guiWin(QMainWindow):
                 'Drag and drop image file or go to File --> Open folder...',
                 color=self.titleColor)
             return
+
+    @exception_handler
+    def loadDataWorkerDataIntegrityWarning(self, pos_foldername):
+        err_msg = (
+            'WARNING: Segmentation mask file ("..._segm.npz") not found. '
+            'You could run segmentation module first.'
+        )
+        self.workerProgress(err_msg, 'INFO')
+        self.titleLabel.setText(err_msg, color='r')
+        abort = False
+        msg = widgets.myMessageBox(self)
+        warn_msg = (f"""
+        <p style="font-size:13px">
+            The folder {pos_foldername} does not contain a
+            pre-computed segmentation mask.<br><br>
+            You can continue with a blank mask or cancel and
+            pre-compute the mask with the segmentation module.<br><br>
+            Do you want to continue?
+        </p>
+        """)
+        msg.setIcon(iconName='SP_MessageBoxWarning')
+        msg.setWindowTitle('Segmentation file not found')
+        msg.addText(warn_msg)
+        msg.addButton('Ok')
+        continueWithBlankSegm = msg.addButton(' Cancel ')
+        msg.show(block=True)
+        if continueWithBlankSegm == msg.clickedButton:
+            abort = True
+        self.loadDataWorker.abort = abort
+        self.loadDataWaitCond.wakeAll()
+
+    def warnMemoryNotSufficient(self, total_ram, available_ram, required_ram):
+        total_ram = myutils._bytes_to_GB(total_ram)
+        available_ram = myutils._bytes_to_GB(available_ram)
+        required_ram = myutils._bytes_to_GB(required_ram)
+        required_perc = round(100*required_ram/available_ram)
+        msg = QMessageBox(self)
+        msg.setWindowTitle('Memory not sufficient')
+        msg.setIcon(msg.Warning)
+        msg.setText(f"""
+        <p style="font-size:10pt">
+            The total amount of data that you requested to load is about
+            <b>{required_ram:.2f} GB</b> ({required_perc}% of the available memory)
+            but there are only <b>{available_ram:.2f} GB</b> available.<br><br>
+            For <b>optimal operation</b>, we recommend loading <b>maximum 30%</b>
+            of the available memory. To do so, try to close open apps to
+            free up some memory or consider using .h5 files and load only
+            a portion of the file. Another option is to crop the images
+            using the data prep module.<br><br>
+            If you choose to continue, the <b>system might freeze</b>
+            or your OS could simply kill the process.<br><br>
+            What do you want to do?
+        </p>
+        """
+        )
+        continueButton = QPushButton('Continue anyway')
+        abortButton = QPushButton('Abort')
+        msg.addButton(continueButton, msg.YesRole)
+        msg.addButton(abortButton, msg.NoRole)
+        msg.exec_()
+        if msg.clickedButton() == continueButton:
+            return True
+        else:
+            return False
+
+    def checkMemoryRequirements(self, required_ram):
+        memory = psutil.virtual_memory()
+        total_ram = memory.total
+        available_ram = memory.available
+        if required_ram/available_ram > 0.3:
+            proceed = self.warnMemoryNotSufficient(
+                total_ram, available_ram, required_ram
+            )
+            return proceed
+        else:
+            return True
+
+    def criticalImgPathNotFound(self, images_path):
+        msg = QMessageBox(self)
+        msg.setWindowTitle('No valid files found!')
+        msg.setIcon(msg.Critical)
+        err_msg = (f"""
+        <p style="font-size:10pt">
+            The folder {images_path}<br>
+            <b>does not contain any valid image file!</b><br><br>
+            Valid file formats are .h5, .tif, _aligned.h5, _aligned.npz.
+        </p>
+        """)
+        msg.setText(err_msg)
+        msg.exec_()
 
     def appendPathWindowTitle(self, user_ch_file_paths):
         if self.isSnapshot:

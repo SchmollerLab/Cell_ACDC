@@ -78,7 +78,7 @@ class select_channel_name:
         self.allow_abort = allow_abort
 
     def get_available_channels(
-            self, filenames, images_path, useExt='.tif'
+            self, filenames, images_path, useExt=('.h5', '.tif')
         ):
         # First check if metadata.csv already has the channel names
         metadata_csv_path = None
@@ -127,7 +127,7 @@ class select_channel_name:
                 i, j, k = sm.find_longest_match(0, len(file),
                                                 0, len(basename))
                 basename = file[i:i+k]
-            elif ext == useExt:
+            elif ext in useExt:
                 sm = difflib.SequenceMatcher(None, file, basename)
                 i, j, k = sm.find_longest_match(0, len(file),
                                                 0, len(basename))
@@ -142,7 +142,7 @@ class select_channel_name:
                 if channel_name == filename:
                     # Warn that an intersection could not be found
                     basenameNotFound.append(True)
-            elif ext == useExt:
+            elif ext in useExt:
                 channel_name = filename.split(basename)[-1]
                 channel_names.append(channel_name)
                 if channel_name == filename:
