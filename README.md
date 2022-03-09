@@ -22,7 +22,7 @@
 
 - [User Manual](https://github.com/SchmollerLab/Cell_ACDC/discussions) with **detailed instructions**
 - [Pre-print](https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2) of Cell-ACDC publication
-- Forum for discussions (feel free to **ask any question**)
+- [Forum](https://github.com/SchmollerLab/Cell_ACDC/discussions) for discussions (feel free to **ask any question**)
 - **Report issues, request a feature or ask questions** [here](https://github.com/SchmollerLab/Cell_ACDC/issues).
 - Twitter [thread](https://twitter.com/frank_pado/status/1443957038841794561?s=20)
 
