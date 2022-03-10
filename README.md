@@ -1,6 +1,6 @@
 # <img src="https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/icons/assign-motherbud.svg" width="80" height="80"> Cell-ACDC
 
-### A GUI-based Python framework for **segmentation**, **tracking** and **cell cycle annotations** of microscopy data
+### A GUI-based Python framework for **segmentation**, **tracking**, **cell cycle annotations** and **quantification** of microscopy data
 
 *Written in Python 3 by Francesco Padovani and Benedikt Mairhoermann.*
 
@@ -13,10 +13,10 @@
 [![repo size](https://img.shields.io/github/repo-size/SchmollerLab/Cell_ACDC)](https://github.com/SchmollerLab/Cell_ACDC)
 [![DOI](https://img.shields.io/badge/DOI-10.1101%2F2021.09.28.462199-informational)](https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2)
 
-<p align="left">
+<div align="left">
   <img src="https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/figures/Fig1.jpg" width="700" alt><br>
     <em>Overview of pipeline and GUI</em>
-</p><br>
+</div>
 
 ## Resources
 
