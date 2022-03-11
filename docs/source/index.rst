@@ -4,6 +4,7 @@
 
 Cell-ACDC
 =========
+|
 
 |BuildUbuntu| |BuildMacOS| |BuildWindows| |PythonVersion| |Licence| |PiPyVersion| |RepoSize|
 
@@ -41,9 +42,6 @@ Resources
 * `Forum <https://github.com/SchmollerLab/Cell_ACDC/discussions>`_ for discussions (feel free to **ask any question**)
 * **Report issues, request a feature or ask questions** by opening a new issue [here](https://github.com/SchmollerLab/Cell_ACDC/issues).
 * Twitter `thread <https://twitter.com/frank_pado/status/1443957038841794561?s=20>`_
-
-Contents
---------
 
 .. toctree::
    :maxdepth: 1
