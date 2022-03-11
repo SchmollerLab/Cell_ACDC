@@ -1,6 +1,6 @@
 .. image:: images/logo.svg
    :align: left
-   :width: 80
+   :width: 60
 
 Cell-ACDC
 =========
@@ -17,7 +17,7 @@ Cell-ACDC
    :target: https://www.python.org/downloads/
 .. |Licence| image:: https://img.shields.io/badge/license-BSD%203--Clause-brightgreen
    :target: https://github.com/SchmollerLab/Cell_ACDC/blob/main/LICENSE
-.. |PiPyVersion| image:: https://img.shields.io/pypi/v/cellacdc?color=red)](https://pypi.org/project/cellacdc/
+.. |PiPyVersion| image:: https://img.shields.io/pypi/v/cellacdc?color=red
    :target: https://pypi.org/project/cellacdc/
 .. |RepoSize| image:: https://img.shields.io/github/repo-size/SchmollerLab/Cell_ACDC
    :target: https://github.com/SchmollerLab/Cell_ACDC
@@ -46,5 +46,8 @@ Contents
 --------
 
 .. toctree::
+   :maxdepth: 1
+   :hidden:
 
    installation
+   getting-started
