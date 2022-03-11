@@ -1,6 +1,6 @@
 # Configuration file for the Sphinx documentation builder.
 
-import datetime
+from datetime import datetime
 import cellacdc
 
 # -- Project information
@@ -10,7 +10,7 @@ author = cellacdc.__author__
 copyright = f'{datetime.now():%Y}, {author}.'
 
 version = cellacdc.__version__
-release = cellacdc.__version__
+release = version
 
 
 # -- General configuration
