@@ -6,6 +6,8 @@ try:
 except ImportError:
     __version__ = "not-installed"
 
+__author__ = 'Francesco Padovani and Benedikt Mairhoermann'
+
 cite_url = 'https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2'
 
 # Initialize variables that need to be globally accessible
