@@ -34,14 +34,29 @@ Cell-ACDC is a GUI-based Python framework for **segmentation**, **tracking**, **
 
 You can load and analyse **2D, 3D** (either single z-stacks or 2D images over time) and **4D** (3D z-stacks over time) images.
 
+Additionally, you can load **as many additional fluorescent channels** as you wish. Cell-ACDC will then compute many **numerical features** for each segmented cell, such as mean, sum, max, quantiles etc.
+It also performs **automatic background correction** and computes **protein amount**.
+
+Other numerical features computed are **cell volume**, and morphological properties of the segmented object.
+
 Resources
 ---------
 
 * `User Manual <https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf>`_ with **detailed instructions**
 * `Pre-print <https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2>`_ of Cell-ACDC publication
 * `Forum <https://github.com/SchmollerLab/Cell_ACDC/discussions>`_ for discussions (feel free to **ask any question**)
-* **Report issues, request a feature or ask questions** by opening a new issue [here](https://github.com/SchmollerLab/Cell_ACDC/issues).
+* **Report issues, request a feature or ask questions** by opening a new issue `here <https://github.com/SchmollerLab/Cell_ACDC/issues>`_.
 * Twitter `thread <https://twitter.com/frank_pado/status/1443957038841794561?s=20>`_
+
+Overview
+--------
+
+Let's face it, when dealing with segmentation of microscopy data we often do not have time to check that **everything is correct**, because it is a **tedious** and **very time consuming process**. Cell-ACDC comes to the rescue!
+We combined the currently **best available neural network models** (such as `YeaZ <https://www.nature.com/articles/s41467-020-19557-4>`_,
+`Cellpose <https://www.nature.com/articles/s41592-020-01018-x>`_, `StarDist <https://github.com/stardist/stardist>`_, and `YeastMate <https://github.com/hoerlteam/YeastMate>`_) and we complemented them with a **fast and intuitive GUI**.
+
+We developed and implemented several smart functionalities such as **real-time continuous tracking**, **automatic propagation** of error correction, and several tools to facilitate manual correction, from simple yet useful **brush** and **eraser** to more complex flood fill (magic wand) and Random Walker segmentation routines.
+
 
 .. toctree::
    :maxdepth: 1
