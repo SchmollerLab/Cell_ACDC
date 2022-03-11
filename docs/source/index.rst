@@ -2,7 +2,7 @@
    :align: left
    :width: 80
 
-|BuildUbuntu| |BuildMacOS| |BuildWindows| |PythonVersion| |Licence| |PiPyVersion| |RepoSize| |DOI|
+|BuildUbuntu| |BuildMacOS| |BuildWindows| |PythonVersion| |Licence| |PiPyVersion| |RepoSize|
 
 .. |BuildUbuntu| image:: https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-ubuntu.yml/badge.svg
    :target: https://github.com/SchmollerLab/Cell_ACDC/actions
@@ -18,8 +18,6 @@
    :target: https://pypi.org/project/cellacdc/
 .. |RepoSize| image:: https://img.shields.io/github/repo-size/SchmollerLab/Cell_ACDC
    :target: https://github.com/SchmollerLab/Cell_ACDC
-.. |DOI| image:: https://img.shields.io/badge/DOI-10.1101%2F2021.09.28.462199-informational
-   :target: https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2
 
 Welcome to Cell-ACDC's documentation!
 -------------------------------------
