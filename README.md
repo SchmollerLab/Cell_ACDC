@@ -20,7 +20,7 @@
 
 ## Resources
 
-- [User Manual](https://github.com/SchmollerLab/Cell_ACDC/discussions) with **detailed instructions**
+- [User Manual](https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf) with **detailed instructions**
 - [Pre-print](https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2) of Cell-ACDC publication
 - [Forum](https://github.com/SchmollerLab/Cell_ACDC/discussions) for discussions (feel free to **ask any question**)
 - **Report issues, request a feature or ask questions** by opening a new issue [here](https://github.com/SchmollerLab/Cell_ACDC/issues).
