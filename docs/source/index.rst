@@ -1,6 +1,5 @@
-|logo|
-
-.. |logo| image:: .../cellacdc/resources/icons/assign-motherbud.svg
+.. image:: images/logo.svg
+   :align: left
    :width: 80
 
 |BuildUbuntu| |BuildMacOS| |BuildWindows| |PythonVersion| |Licence| |PiPyVersion| |RepoSize| |DOI|
