@@ -1120,10 +1120,12 @@ class dataPrepWin(QMainWindow):
                 posData.loadAllImgPaths()
                 if f==0 and not self.metadataAlreadyAsked:
                     proceed = posData.askInputMetadata(
-                                                ask_SizeT=self.num_pos==1,
-                                                ask_TimeIncrement=False,
-                                                ask_PhysicalSizes=False,
-                                                save=True)
+                        self.num_pos,
+                        ask_SizeT=self.num_pos==1,
+                        ask_TimeIncrement=False,
+                        ask_PhysicalSizes=False,
+                        save=True
+                    )
                     self.SizeT = posData.SizeT
                     self.SizeZ = posData.SizeZ
                     if not proceed:

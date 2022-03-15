@@ -646,6 +646,7 @@ class segmWin(QMainWindow):
             elif aligned_npz_found:
                 user_ch_file_paths.append(img_path)
 
+        self.numPos = len(user_ch_file_paths)
         hyperparams = self.segment2D_kwargs.copy()
         post_process_params = {
             'minSize': self.minSize,
@@ -676,7 +677,10 @@ class segmWin(QMainWindow):
             load_metadata=True
         )
         proceed = posData.askInputMetadata(
-            ask_SizeT=True, ask_TimeIncrement=False, ask_PhysicalSizes=False,
+            self.numPos,
+            ask_SizeT=True,
+            ask_TimeIncrement=False,
+            ask_PhysicalSizes=False,
             save=True
         )
         self.SizeT = posData.SizeT
@@ -946,7 +950,6 @@ class segmWin(QMainWindow):
         self.threadCount = 1 # QThreadPool.globalInstance().maxThreadCount()
         self.numThreadsRunning = self.threadCount
         self.threadPool = QThreadPool.globalInstance()
-        self.numPos = len(user_ch_file_paths)
         self.threadIdx = 0
         for i in range(self.threadCount):
             self.threadIdx = i
