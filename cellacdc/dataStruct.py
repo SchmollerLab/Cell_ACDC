@@ -451,7 +451,8 @@ class bioFormatsWorker(QObject):
         return filename
 
     def saveImgDataChannel(
-            self, reader, series, images_path, filenameNOext, s0p, chName
+            self, reader, series, images_path, filenameNOext, s0p, chName,
+            ch_idx
         ):
         if self.to_h5:
             filename = self.getFilename(
@@ -463,8 +464,9 @@ class bioFormatsWorker(QObject):
             print(f'.h5 tempfile: "{tempFilepath}"')
             print('==========================================================')
             h5f = h5py.File(tempFilepath, 'w')
+            # Read SizeX and SizeY from the shape of one image
             imgData = reader.read(
-                c=0, z=0, t=0, series=series, rescale=False
+                c=ch_idx, z=0, t=0, series=series, rescale=False
             )
             shape = (self.SizeT, self.SizeZ, *imgData.shape)
             chunks = (1,1,*imgData.shape)
@@ -483,7 +485,7 @@ class bioFormatsWorker(QObject):
             imgData_z = []
             for z in range(self.SizeZ):
                 imgData = reader.read(
-                    c=0, z=z, t=t, series=series, rescale=False
+                    c=ch_idx, z=z, t=t, series=series, rescale=False
                 )
                 if self.to_h5:
                     imgData_ch[t, z] = imgData
@@ -560,7 +562,8 @@ class bioFormatsWorker(QObject):
                         f'  Saving channel {c+1}/{len(self.chNames)} ({chName})'
                     )
                     self.saveImgDataChannel(
-                        reader, series, images_path, filenameNOext, s0p, chName
+                        reader, series, images_path, filenameNOext, s0p,
+                        chName, c
                     )
 
         elif self.rawDataStruct == 2:
@@ -587,7 +590,8 @@ class bioFormatsWorker(QObject):
                     )
                     imgData_ch = []
                     self.saveImgDataChannel(
-                        reader, series, images_path, filenameNOext, s0p, chName
+                        reader, series, images_path, filenameNOext, s0p,
+                        chName, c
                     )
 
             if self.moveOtherFiles or self.copyOtherFiles:
