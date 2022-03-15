@@ -7,7 +7,7 @@ import cellacdc
 
 project = 'Cell-ACDC'
 author = cellacdc.__author__
-copyright = f'{datetime.now():%Y}, {author}.'
+copyright = f'{datetime.now():%Y}, {author}'
 
 version = cellacdc.__version__
 release = version

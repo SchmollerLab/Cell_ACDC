@@ -42,11 +42,17 @@ Other numerical features computed are **cell volume**, and morphological propert
 Resources
 ---------
 
-* `User Manual <https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf>`_ with **detailed instructions**
-* `Pre-print <https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2>`_ of Cell-ACDC publication
-* `Forum <https://github.com/SchmollerLab/Cell_ACDC/discussions>`_ for discussions (feel free to **ask any question**)
-* **Report issues, request a feature or ask questions** by opening a new issue `here <https://github.com/SchmollerLab/Cell_ACDC/issues>`_.
-* Twitter `thread <https://twitter.com/frank_pado/status/1443957038841794561?s=20>`_
+* `User Manual`_ with **detailed instructions**
+* `Pre-print`_ of Cell-ACDC publication
+* `Forum`_ for discussions (feel free to **ask any question**)
+* **Report issues, request a feature or ask questions** by opening a `new issue`_
+* Twitter `thread`_
+
+.. _User Manual: https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf
+.. _Pre-print: https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2
+.. _Forum: https://github.com/SchmollerLab/Cell_ACDC/discussions
+.. _new issue: https://github.com/SchmollerLab/Cell_ACDC/issues
+.. _thread: https://twitter.com/frank_pado/status/1443957038841794561?s=20
 
 Overview
 --------
