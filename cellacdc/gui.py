@@ -76,6 +76,7 @@ from . import qrc_resources
 from . import base_cca_df
 from . import load, prompts, apps, workers
 from . import core, myutils, dataPrep, widgets
+from . import measurements
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .core import numba_max, numba_min
@@ -798,7 +799,7 @@ class guiWin(QMainWindow):
         SegmMenu.addAction(self.autoSegmAction)
         SegmMenu.aboutToShow.connect(self.nonViewerEditMenuOpened)
 
-        # Segment menu
+        # Tracking menu
         trackingMenu = menuBar.addMenu("&Tracking")
         self.trackingMenu = trackingMenu
         trackingMenu.addSeparator()
@@ -813,6 +814,12 @@ class guiWin(QMainWindow):
         trackingMenu.addAction(self.repeatTrackingMenuAction)
         trackingMenu.aboutToShow.connect(self.nonViewerEditMenuOpened)
 
+        # Measurements menu
+        measurementsMenu = menuBar.addMenu("&Measurements")
+        self.measurementsMenu = measurementsMenu
+        measurementsMenu.addSeparator()
+        measurementsMenu.addAction(self.setMeasurementsAction)
+        measurementsMenu.addAction(self.addCustomMetricAction)
 
         # Settings menu
         self.settingsMenu = QMenu("Settings", self)
@@ -1346,6 +1353,9 @@ class guiWin(QMainWindow):
             elif trackingAlgo == 'YeaZ':
                 self.trackWithYeazAction.setChecked(True)
 
+        self.setMeasurementsAction = QAction('Set measurements...')
+        self.addCustomMetricAction = QAction('Add custom metric...')
+
         # Standard key sequence
         # self.copyAction.setShortcut(QKeySequence.Copy)
         # self.pasteAction.setShortcut(QKeySequence.Paste)
@@ -1535,6 +1545,9 @@ class guiWin(QMainWindow):
         self.textIDsColorButton.sigColorChanging.connect(self.updateTextIDsColors)
         self.textIDsColorButton.sigColorChanged.connect(self.saveTextIDsColors)
         self.alphaScrollBar.valueChanged.connect(self.updateOverlay)
+
+        self.setMeasurementsAction.triggered.connect(self.setMeasurements)
+        self.addCustomMetricAction.triggered.connect(self.addCustomMetric)
 
         self.labelsGrad.colorButton.sigColorChanging.connect(self.updateBkgrColor)
         self.labelsGrad.colorButton.sigColorChanged.connect(self.saveBkgrColor)
@@ -11650,40 +11663,21 @@ class guiWin(QMainWindow):
 
         self.waitCond.wakeAll()
 
+    def setMeasurements(self, checked=False):
+        pass
+
+    def addCustomMetric(self, checked=False):
+        pass
+
+
     def set_metrics_func(self):
-        self.metrics_func = {
-            'mean': lambda arr: arr.mean(),
-            'sum': lambda arr: arr.sum(),
-            'amount_autoBkgr': lambda arr, bkgr, area: (arr.mean()-bkgr)*area,
-            'amount_dataPrepBkgr': lambda arr, bkgr, area: (arr.mean()-bkgr)*area,
-            'median': lambda arr: np.median(arr),
-            'min': lambda arr: numba_min(arr),
-            'max': lambda arr: numba_max(arr),
-            'q25': lambda arr: np.quantile(arr, q=0.25),
-            'q75': lambda arr: np.quantile(arr, q=0.75),
-            'q05': lambda arr: np.quantile(arr, q=0.05),
-            'q95': lambda arr: np.quantile(arr, q=0.95)
-        }
-
+        metrics_func, all_metrics_names = measurements.standard_metrics_func()
+        self.metrics_func = metrics_func
+        self.all_metrics_names = all_metrics_names
         self.total_metrics = len(self.metrics_func)
+        self.custom_func_dict = measurements.get_custom_metrics_func()
+        self.total_metrics += len(self.custom_func_dict)
 
-        bkgr_val_names = (
-            'autoBkgr_val_median',
-            'autoBkgr_val_mean',
-            'autoBkgr_val_q75',
-            'autoBkgr_val_q25',
-            'autoBkgr_val_q95',
-            'autoBkgr_val_q05',
-            'dataPrepBkgr_val_median',
-            'dataPrepBkgr_val_mean',
-            'dataPrepBkgr_val_q75',
-            'dataPrepBkgr_val_q25',
-            'dataPrepBkgr_val_q95',
-            'dataPrepBkgr_val_q05',
-        )
-
-        self.all_metrics_names = list(self.metrics_func.keys())
-        self.all_metrics_names.extend(bkgr_val_names)
 
     def addMetrics_acdc_df(self, df, rp, frame_i, lab, posData):
         """
@@ -11727,12 +11721,19 @@ class guiWin(QMainWindow):
 
         # Defined in function set_metrics_func
         metrics_func = self.metrics_func
+        custom_func_dict = self.custom_func_dict
 
         # Dictionary where values is a list of 0s with len=numCells
         # and key is 'channelName_metrics_how' (e.g. 'GFP_mean_zSlice')
         metrics_values = {
             f'{chName}_{metric}{how}':list_0s.copy()
             for metric in self.all_metrics_names
+            for chName in posData.loadedChNames
+            for how in how_3Dto2D
+        }
+        custom_metrics_values = {
+            f'{chName}_{metric}{how}':list_0s.copy()
+            for metric in self.custom_func_dict
             for chName in posData.loadedChNames
             for how in how_3Dto2D
         }
@@ -11908,7 +11909,8 @@ class guiWin(QMainWindow):
                         key = f'{chName}_{func_name}{how}'
                         is_ROIbkgr_func = (
                             func_name == 'amount_dataPrepBkgr' and
-                            (ROI_bkgrMask is not None or bkgrArchive is not None)
+                                (ROI_bkgrMask is not None
+                                or bkgrArchive is not None)
                         )
                         if func_name == 'amount_autoBkgr':
                             val = func(fluo_data_ID, fluo_backgr, obj.area)
@@ -11967,6 +11969,25 @@ class guiWin(QMainWindow):
                         # pbar.update()
                         self.worker.metricsPbarProgress.emit(-1, 1)
 
+                    for custom_func_name, custom_func in custom_func_dict.items():
+                        key = f'{chName}_{custom_func_name}{how}'
+                        is_ROIbkgr_func = (
+                            ROI_bkgrMask is not None or bkgrArchive is not None
+                        )
+                        if is_ROIbkgr_func:
+                            ROI_bkgrData = fluo_2D[ROI_bkgrMask]
+                            ROI_bkgrVal = np.median(ROI_bkgrData)
+                        else:
+                            ROI_bkgrVal = bkgrData_medians[k]
+                        try:
+                            custom_val = custom_func(
+                                fluo_data_ID, fluo_backgr, ROI_bkgrVal
+                            )
+                            custom_metrics_values[key][i] = val
+                        except Exception as e:
+                            self.logger.info(traceback.format_exc())
+                        self.worker.metricsPbarProgress.emit(-1, 1)
+
         df['cell_area_pxl'] = pd.Series(data=IDs_area_pxl, index=IDs, dtype=float)
         df['cell_vol_vox'] = pd.Series(data=IDs_vol_vox, index=IDs, dtype=float)
         df['cell_area_um2'] = pd.Series(data=IDs_area_um2, index=IDs, dtype=float)
@@ -11975,6 +11996,10 @@ class guiWin(QMainWindow):
         df_metrics = pd.DataFrame(metrics_values, index=IDs)
 
         df = df.join(df_metrics)
+
+        if custom_metrics_values:
+            df_custom_metrics = pd.DataFrame(custom_metrics_values, index=IDs)
+            df = df.join(df_custom_metrics)
 
         # pbar.close()
 
