@@ -1,5 +1,6 @@
 import numpy as np
 import pathlib
+import sys
 import os
 import traceback
 
@@ -8,6 +9,8 @@ metrics_path = os.path.join(user_path, 'acdc-metrics')
 if not os.path.exists(metrics_path):
     os.makedirs(metrics_path)
 sys.path.append(metrics_path)
+
+from .core import numba_max, numba_min
 
 def get_custom_metrics_func():
     scripts = os.listdir(metrics_path)
