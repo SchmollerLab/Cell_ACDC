@@ -56,8 +56,8 @@ class QDialogAbout(QDialog):
         installedLabel.setText(txt)
 
         layout.addWidget(iconLabel, 0, 0)
-        layout.addWidget(titleLabel, 0, 1)
-        layout.addWidget(infoLabel, 1, 1)
+        layout.addWidget(titleLabel, 0, 1, alignment=Qt.AlignLeft)
+        layout.addWidget(infoLabel, 1, 1, alignment=Qt.AlignLeft)
         layout.addWidget(installedLabel, 2, 0, 1, 2)
 
         self.setLayout(layout)
