@@ -9860,7 +9860,7 @@ class guiWin(QMainWindow):
             maxID = max(posData.IDs)
         else:
             maxID = 0
-        if maxID > len(posData.lut):
+        if maxID >= len(posData.lut):
             self.extendLabelsLUT(10)
         colors = [posData.lut[ID]/255 for ID in posData.IDs]
         alpha = self.imgGrad.labelsAlphaSlider.value()
