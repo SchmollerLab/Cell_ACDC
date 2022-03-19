@@ -3,6 +3,7 @@ import pathlib
 import sys
 import os
 import traceback
+from importlib import import_module
 
 user_path = pathlib.Path.home()
 metrics_path = os.path.join(user_path, 'acdc-metrics')
@@ -15,10 +16,15 @@ from .core import numba_max, numba_min
 def get_custom_metrics_func():
     scripts = os.listdir(metrics_path)
     custom_func_dict = {}
-    for script in scripts:
+    for file in scripts:
+        module_name, ext = os.path.splitext(file)
+        if ext != '.py':
+            # print(f'The file {file} is not a python file. Ignoring it.')
+            continue
         try:
-            from script import script as func
-            custom_func_dict[script] = func
+            module = import_module(module_name)
+            func = getattr(module, module_name)
+            custom_func_dict[module_name] = func
         except Exception:
             traceback.print_exc()
     return custom_func_dict

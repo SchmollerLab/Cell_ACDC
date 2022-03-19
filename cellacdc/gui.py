@@ -11971,21 +11971,21 @@ class guiWin(QMainWindow):
 
                     for custom_func_name, custom_func in custom_func_dict.items():
                         key = f'{chName}_{custom_func_name}{how}'
-                        is_ROIbkgr_func = (
-                            ROI_bkgrMask is not None or bkgrArchive is not None
-                        )
-                        if is_ROIbkgr_func:
+                        if ROI_bkgrMask is not None:
                             ROI_bkgrData = fluo_2D[ROI_bkgrMask]
                             ROI_bkgrVal = np.median(ROI_bkgrData)
-                        else:
+                        elif bkgrArchive is not None:
                             ROI_bkgrVal = bkgrData_medians[k]
+                        else:
+                            ROI_bkgrVal = None
                         try:
                             custom_val = custom_func(
                                 fluo_data_ID, fluo_backgr, ROI_bkgrVal
                             )
                             custom_metrics_values[key][i] = val
                         except Exception as e:
-                            self.logger.info(traceback.format_exc())
+                            traceback.print_exc()
+                            # self.logger.info(traceback.format_exc())
                         self.worker.metricsPbarProgress.emit(-1, 1)
 
         df['cell_area_pxl'] = pd.Series(data=IDs_area_pxl, index=IDs, dtype=float)
