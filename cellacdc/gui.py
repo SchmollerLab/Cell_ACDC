@@ -6635,7 +6635,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         i = posData.frame_i
         c = self.UndoCount
-        self.ax1Image = posData.UndoRedoStates[i][c]['image'].copy()
+        image_left = posData.UndoRedoStates[i][c]['image'].copy()
         posData.lab = posData.UndoRedoStates[i][c]['labels'].copy()
         posData.editID_info = posData.UndoRedoStates[i][c]['editID_info'].copy()
         posData.binnedIDs = posData.UndoRedoStates[i][c]['binnedIDs'].copy()
@@ -6645,6 +6645,7 @@ class guiWin(QMainWindow):
             posData.cca_df = posData.UndoRedoStates[i][c]['cca_df'].copy()
         else:
             posData.cca_df = None
+        return image_left
 
     def storeUndoRedoStates(self, UndoFutFrames):
         posData = self.data[self.pos_i]
@@ -6746,10 +6747,10 @@ class guiWin(QMainWindow):
             self.redoAction.setEnabled(True)
 
             # Restore state
-            self.getCurrentState()
+            image_left = self.getCurrentState()
             self.update_rp()
             self.setTitleText()
-            self.updateALLimg(image=self.ax1Image)
+            self.updateALLimg(image=image_left, overlayMasks=False)
             self.store_data()
 
         if not self.UndoCount < len(posData.UndoRedoStates[posData.frame_i])-1:
@@ -6765,10 +6766,10 @@ class guiWin(QMainWindow):
             self.undoAction.setEnabled(True)
 
             # Restore state
-            self.getCurrentState()
+            image_left = self.getCurrentState()
             self.update_rp()
             self.setTitleText()
-            self.updateALLimg(image=self.ax1Image)
+            self.updateALLimg(image=image_left, overlayMasks=False)
             self.store_data()
 
         if not self.UndoCount > 0:
@@ -10564,7 +10565,8 @@ class guiWin(QMainWindow):
             only_ax1=False, updateBlur=False,
             updateSharp=False, updateEntropy=False,
             updateHistoLevels=False, updateFilters=True,
-            updateLabelItemColor=False, debug=False
+            updateLabelItemColor=False, debug=False,
+            overlayMasks=True
         ):
         posData = self.data[self.pos_i]
 
@@ -10576,7 +10578,8 @@ class guiWin(QMainWindow):
         else:
             img = image
 
-        img = self.overlaySegmMasks(img)
+        if overlayMasks:
+            img = self.overlaySegmMasks(img)
 
         self.img1.setImage(img)
         self.updateFilters(updateBlur, updateSharp, updateEntropy, updateFilters)
