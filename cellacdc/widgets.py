@@ -357,13 +357,17 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
         # Contours line weight
         contLineWeightMenu = QMenu('Contours line weight', self.gradient.menu)
         self.contLineWightActionGroup = QActionGroup(self)
+        self.contLineWightActionGroup.setExclusionPolicy(
+            QActionGroup.ExclusionPolicy.Exclusive
+        )
         for w in range(1, 11):
-            action = contLineWeightMenu.addAction(str(w))
+            action = QAction(str(w))
             action.setCheckable(True)
             if w == 2:
                 action.setChecked(True)
             action.lineWeight = w
             self.contLineWightActionGroup.addAction(action)
+            action = contLineWeightMenu.addAction(action)
         self.gradient.menu.addMenu(contLineWeightMenu)
 
         self.labelsAlphaMenu = self.gradient.menu.addMenu(
@@ -396,6 +400,11 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
 
         # hide histogram tool
         self.vb.hide()
+
+    def uncheckContLineWeightActions(self):
+        for act in self.contLineWightActionGroup.actions():
+            act.toggled.disconnect()
+            act.setChecked(False)
 
     def restoreState(self, df):
         if 'contLineColor' in df.index:
