@@ -10572,6 +10572,9 @@ class guiWin(QMainWindow):
         img = self.adjustBrightness(img, cellsKey)
         self.img_layer0 = img
         if self.imgCmapName != 'grey':
+            img_max = numba_max(img)
+            if img_max != 1:
+                img = img/img_max
             img = self.imgCmap(img)[:, :, :3]
             img = (np.clip(img, 0, 1)*255).astype(np.uint8)
         return img
@@ -11754,6 +11757,8 @@ class guiWin(QMainWindow):
             for chName in posData.loadedChNames
             for how in how_3Dto2D
         }
+
+        # print(custom_metrics_values)
 
         tot_iter = (
             self.total_metrics

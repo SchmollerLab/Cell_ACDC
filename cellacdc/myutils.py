@@ -32,6 +32,7 @@ from PyQt5.QtWidgets import QMessageBox
 from PyQt5.QtCore import pyqtSignal, QObject, QCoreApplication
 
 from . import prompts, widgets, apps
+from .core import numba_max
 
 __all__ = ['ColorMap']
 _mapCache = {}
@@ -205,10 +206,15 @@ def is_in_bounds(x,y,X,Y):
 
 def read_version():
     try:
-        from . import _version
-        return _version.version
+        from setuptools_scm import get_version
+        version = get_version(root='..', relative_to=__file__)
+        return version
     except Exception as e:
-        return 'ND'
+        try:
+            from . import _version
+            return _version.version
+        except Exception as e:
+            return 'ND'
 
 def showInExplorer(path):
     if os.name == 'posix' or os.name == 'os2':
@@ -828,15 +834,18 @@ def to_uint8(img):
     return img
 
 def uint_to_float(img):
-    if img.max() <= 1:
+    img_max = numba_max(img)
+    if img_max <= 1:
         return img
 
     uint8_max = np.iinfo(np.uint8).max
     uint16_max = np.iinfo(np.uint16).max
-    if img.max() > uint8_max:
+    if img_max <= uint8_max:
+        img = img/uint8_max
+    elif img_max <= uint16_max:
         img = img/uint16_max
     else:
-        img = img/uint8_max
+        img = img/img_max
     return img
 
 def scale_float(data):
@@ -845,7 +854,7 @@ def scale_float(data):
     if isinstance(val, (np.floating, float)):
         uint8_max = np.iinfo(np.uint8).max
         uint16_max = np.iinfo(np.uint16).max
-        data_max = data.max()
+        data_max = numba_max(data)
         if data_max <= uint8_max:
             data = data/uint8_max
         elif data_max <= uint16_max:
