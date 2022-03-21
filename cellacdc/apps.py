@@ -845,6 +845,11 @@ class QDialogMetadataXML(QDialog):
             return
 
         self.imageViewer = imageViewer(posData=posData)
+        if posData.SizeT > 1:
+            self.imageViewer.framesScrollBar.setDisabled(True)
+            self.imageViewer.framesScrollBar.setVisible(False)
+            self.imageViewer.frameLabel.hide()
+            self.imageViewer.t_label.hide()
         self.imageViewer.update_img()
         self.imageViewer.show()
 
@@ -3133,6 +3138,7 @@ class imageViewer(QMainWindow):
                 t_label, 0, 0, alignment=Qt.AlignRight)
         self.img_Widglayout.addWidget(
                 self.framesScrollBar, 0, 1, 1, 20)
+        self.t_label = t_label
         self.framesScrollBar.valueChanged.connect(self.framesScrollBarMoved)
 
         # z-slice scrollbar
@@ -3157,6 +3163,9 @@ class imageViewer(QMainWindow):
 
     def framesScrollBarMoved(self, frame_n):
         self.frame_i = frame_n-1
+        self.t_label.setText(
+            f'frame n. {self.frame_i+1}/{self.num_frames}'
+        )
         if self.spinBox is not None:
             self.spinBox.setValue(frame_n)
         self.update_img()
@@ -3234,7 +3243,6 @@ class imageViewer(QMainWindow):
         else:
             img = posData.img_data[frame_i].copy()
         return img
-
 
     def update_img(self):
         self.frameLabel.setText(

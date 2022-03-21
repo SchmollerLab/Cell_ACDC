@@ -755,6 +755,9 @@ class guiWin(QMainWindow):
         self.fontSize = self.df_settings.at['fontSize', 'value']
         self.fontSizeMenu = editMenu.addMenu("Font size")
         fontActionGroup = QActionGroup(self)
+        fontActionGroup.setExclusionPolicy(
+            QActionGroup.ExclusionPolicy.Exclusive
+        )
         fs = int(re.findall(r'(\d+)pt', self.fontSize)[0])
         for i in range(2,25):
             action = QAction(self)
@@ -3650,9 +3653,13 @@ class guiWin(QMainWindow):
             or (right_click and ctrl and self.isSnapshot)
         )
 
+        is_right_click_action_ON = any([
+            b.isChecked() for b in self.checkableQButtonsGroup.buttons()
+        ])
+
         isOnlyRightClick = (
             right_click and canAnnotateDivision and not isAnnotateDivision
-            and not isMod
+            and not isMod and not is_right_click_action_ON
         )
 
         if isOnlyRightClick:
@@ -3697,8 +3704,8 @@ class guiWin(QMainWindow):
             and (mode=='Segmentation and Tracking' or self.isSnapshot)
             and not isAnnotateDivision
         )
-        event.isImg1Sender = True
         if eventOnImg2:
+            event.isImg1Sender = True
             self.gui_mousePressEventImg2(event)
 
         x, y = event.pos().x(), event.pos().y()
@@ -6645,7 +6652,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         i = posData.frame_i
         c = self.UndoCount
-        self.ax1Image = posData.UndoRedoStates[i][c]['image'].copy()
+        image_left = posData.UndoRedoStates[i][c]['image'].copy()
         posData.lab = posData.UndoRedoStates[i][c]['labels'].copy()
         posData.editID_info = posData.UndoRedoStates[i][c]['editID_info'].copy()
         posData.binnedIDs = posData.UndoRedoStates[i][c]['binnedIDs'].copy()
@@ -6655,6 +6662,7 @@ class guiWin(QMainWindow):
             posData.cca_df = posData.UndoRedoStates[i][c]['cca_df'].copy()
         else:
             posData.cca_df = None
+        return image_left
 
     def storeUndoRedoStates(self, UndoFutFrames):
         posData = self.data[self.pos_i]
@@ -6756,10 +6764,10 @@ class guiWin(QMainWindow):
             self.redoAction.setEnabled(True)
 
             # Restore state
-            self.getCurrentState()
+            image_left = self.getCurrentState()
             self.update_rp()
             self.setTitleText()
-            self.updateALLimg(image=self.ax1Image)
+            self.updateALLimg(image=image_left, overlayMasks=False)
             self.store_data()
 
         if not self.UndoCount < len(posData.UndoRedoStates[posData.frame_i])-1:
@@ -6775,10 +6783,10 @@ class guiWin(QMainWindow):
             self.undoAction.setEnabled(True)
 
             # Restore state
-            self.getCurrentState()
+            image_left = self.getCurrentState()
             self.update_rp()
             self.setTitleText()
-            self.updateALLimg(image=self.ax1Image)
+            self.updateALLimg(image=image_left, overlayMasks=False)
             self.store_data()
 
         if not self.UndoCount > 0:
@@ -9782,11 +9790,17 @@ class guiWin(QMainWindow):
         self.df_settings.to_csv(self.settings_csv_path)
 
     def contLineWeightToggled(self, checked=True):
+        self.imgGrad.uncheckContLineWeightActions()
         w = self.sender().lineWeight
         self.df_settings.at['contLineWeight', 'value'] = w
         self.df_settings.to_csv(self.settings_csv_path)
         self.gui_createContourPens()
         self.updateALLimg()
+        for act in self.imgGrad.contLineWightActionGroup.actions():
+            if act == self.sender():
+                act.setChecked(True)
+            act.toggled.connect(self.contLineWeightToggled)
+
 
     def gradientCmapContextMenuClicked(self, b=None):
         act = self.sender()
@@ -9900,12 +9914,13 @@ class guiWin(QMainWindow):
             self.img1_RGB = img
             # NOTE: img_layer0 defined in getImageWithCmap()
 
+        # Check if RGB is 0,1 or 0,255 and convert accordingly
         val = self.img1_RGB[tuple([0]*self.img1_RGB.ndim)]
         if not isinstance(val, (np.floating, float)):
             self.img1uintRGB = self.img1_RGB.copy()
             self.img1_RGB = self.img1_RGB/255
         else:
-            self.img1uintRGB = self.img1_RGB
+            self.img1uintRGB = (self.img1_RGB*255).astype(np.uint8)
 
         if posData.rp is None:
             posData.rp = skimage.measure.regionprops(posData.lab)
@@ -10567,7 +10582,8 @@ class guiWin(QMainWindow):
             only_ax1=False, updateBlur=False,
             updateSharp=False, updateEntropy=False,
             updateHistoLevels=False, updateFilters=True,
-            updateLabelItemColor=False, debug=False
+            updateLabelItemColor=False, debug=False,
+            overlayMasks=True
         ):
         posData = self.data[self.pos_i]
 
@@ -10579,7 +10595,8 @@ class guiWin(QMainWindow):
         else:
             img = image
 
-        img = self.overlaySegmMasks(img)
+        if overlayMasks:
+            img = self.overlaySegmMasks(img)
 
         self.img1.setImage(img)
         self.updateFilters(updateBlur, updateSharp, updateEntropy, updateFilters)
