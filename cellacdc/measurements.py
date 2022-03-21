@@ -3,18 +3,31 @@ import pathlib
 import sys
 import os
 import traceback
+import shutil
 from importlib import import_module
-
-user_path = pathlib.Path.home()
-metrics_path = os.path.join(user_path, 'acdc-metrics')
-if not os.path.exists(metrics_path):
-    os.makedirs(metrics_path)
-sys.path.append(metrics_path)
 
 from .core import numba_max, numba_min
 
+user_path = pathlib.Path.home()
+acdc_metrics_path = os.path.join(user_path, 'acdc-metrics')
+if not os.path.exists(acdc_metrics_path):
+    os.makedirs(acdc_metrics_path)
+sys.path.append(acdc_metrics_path)
+
+cellacdc_path = os.path.dirname(os.path.abspath(__file__))
+metrics_path = os.path.join(cellacdc_path, 'metrics')
+
+# Copy metrics to acdc-metrics user path
+for file in os.listdir(metrics_path):
+    if not file.endswith('.py'):
+        continue
+    src = os.path.join(metrics_path, file)
+    dst = os.path.join(acdc_metrics_path, file)
+    shutil.copy(src, dst)
+
+
 def get_custom_metrics_func():
-    scripts = os.listdir(metrics_path)
+    scripts = os.listdir(acdc_metrics_path)
     custom_func_dict = {}
     for file in scripts:
         module_name, ext = os.path.splitext(file)

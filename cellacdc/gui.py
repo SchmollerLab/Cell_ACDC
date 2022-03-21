@@ -9,7 +9,6 @@
 # TODO:
 #
 
-"""Cell-ACDC GUI for correcting Segmentation and Tracking errors"""
 import sys
 import os
 import shutil
@@ -288,6 +287,7 @@ class saveDataWorker(QObject):
     askSaveLastVisitedSegmMode = pyqtSignal(int, object)
     metricsPbarProgress = pyqtSignal(int, int)
     askZsliceAbsent = pyqtSignal(str, object)
+    customMetricsCritical = pyqtSignal(str)
 
     def __init__(self, mainWin):
         QObject.__init__(self)
@@ -11758,8 +11758,6 @@ class guiWin(QMainWindow):
             for how in how_3Dto2D
         }
 
-        # print(custom_metrics_values)
-
         tot_iter = (
             self.total_metrics
             *len(posData.loadedChNames)
@@ -12006,7 +12004,9 @@ class guiWin(QMainWindow):
                             )
                             custom_metrics_values[key][i] = val
                         except Exception as e:
-                            traceback.print_exc()
+                            self.worker.customMetricsCritical.emit(
+                                traceback.format_exc()
+                            )
                             # self.logger.info(traceback.format_exc())
                         self.worker.metricsPbarProgress.emit(-1, 1)
 
@@ -12234,6 +12234,12 @@ class guiWin(QMainWindow):
         self.logger.info(text)
         self.saveWin.progressLabel.setText(text)
 
+    def saveDataCustomMetricsCritical(self, traceback_format):
+        self.logger.info('')
+        print('====================================')
+        self.logger.info(traceback_format)
+        print('====================================')
+
     def saveDataCritical(self, traceback_format):
         self.logger.info('')
         print('====================================')
@@ -12333,6 +12339,9 @@ class guiWin(QMainWindow):
         self.worker.metricsPbarProgress.connect(self.saveDataUpdateMetricsPbar)
         self.worker.critical.connect(self.saveDataCritical)
         self.worker.criticalMetrics.connect(self.saveMetricsCritical)
+        self.worker.customMetricsCritical.connect(
+            self.saveDataCustomMetricsCritical
+        )
         self.worker.criticalPermissionError.connect(self.saveDataPermissionError)
         self.worker.askSaveLastVisitedCcaMode.connect(
             self.askSaveLastVisitedSegmMode

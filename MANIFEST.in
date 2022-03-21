@@ -5,6 +5,7 @@ include FijiMacros/*
 include cellacdc/resources/*
 include cellacdc/bioformats/jars/*
 include cellacdc/bioformats/tests/*
+include cellacdc/metrics/*
 
 exclude cellacdc/deprecated.py
 exclude cellacdc/lastCommit.txt
