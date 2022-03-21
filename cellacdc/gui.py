@@ -754,6 +754,9 @@ class guiWin(QMainWindow):
         self.fontSize = self.df_settings.at['fontSize', 'value']
         self.fontSizeMenu = editMenu.addMenu("Font size")
         fontActionGroup = QActionGroup(self)
+        fontActionGroup.setExclusionPolicy(
+            QActionGroup.ExclusionPolicy.Exclusive
+        )
         fs = int(re.findall(r'(\d+)pt', self.fontSize)[0])
         for i in range(2,25):
             action = QAction(self)
@@ -3684,8 +3687,8 @@ class guiWin(QMainWindow):
             and (mode=='Segmentation and Tracking' or self.isSnapshot)
             and not isAnnotateDivision
         )
-        event.isImg1Sender = True
         if eventOnImg2:
+            event.isImg1Sender = True
             self.gui_mousePressEventImg2(event)
 
         x, y = event.pos().x(), event.pos().y()
@@ -9769,11 +9772,17 @@ class guiWin(QMainWindow):
         self.df_settings.to_csv(self.settings_csv_path)
 
     def contLineWeightToggled(self, checked=True):
+        self.imgGrad.uncheckContLineWeightActions()
         w = self.sender().lineWeight
         self.df_settings.at['contLineWeight', 'value'] = w
         self.df_settings.to_csv(self.settings_csv_path)
         self.gui_createContourPens()
         self.updateALLimg()
+        for act in self.imgGrad.contLineWightActionGroup.actions():
+            if act == self.sender():
+                act.setChecked(True)
+            act.toggled.connect(self.contLineWeightToggled)
+
 
     def gradientCmapContextMenuClicked(self, b=None):
         act = self.sender()
@@ -9887,12 +9896,13 @@ class guiWin(QMainWindow):
             self.img1_RGB = img
             # NOTE: img_layer0 defined in getImageWithCmap()
 
+        # Check if RGB is 0,1 or 0,255 and convert accordingly
         val = self.img1_RGB[tuple([0]*self.img1_RGB.ndim)]
         if not isinstance(val, (np.floating, float)):
             self.img1uintRGB = self.img1_RGB.copy()
             self.img1_RGB = self.img1_RGB/255
         else:
-            self.img1uintRGB = self.img1_RGB
+            self.img1uintRGB = (self.img1_RGB*255).astype(np.uint8)
 
         if posData.rp is None:
             posData.rp = skimage.measure.regionprops(posData.lab)
