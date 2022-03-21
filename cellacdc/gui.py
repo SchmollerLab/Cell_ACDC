@@ -3640,9 +3640,13 @@ class guiWin(QMainWindow):
             or (right_click and ctrl and self.isSnapshot)
         )
 
+        is_right_click_action_ON = any([
+            b.isChecked() for b in self.checkableQButtonsGroup.buttons()
+        ])
+
         isOnlyRightClick = (
             right_click and canAnnotateDivision and not isAnnotateDivision
-            and not isMod
+            and not isMod and not is_right_click_action_ON
         )
 
         if isOnlyRightClick:
