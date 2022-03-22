@@ -1294,12 +1294,14 @@ class dataPrepWin(QMainWindow):
         if posData.SizeT > 1:
             for i in range(0, self.frame_i):
                 df.at[(posData.filename, i), 'z_slice_used_dataPrep'] = z
+                df.at[(posData.filename, i), 'z_slice_used_gui'] = z
                 df.at[(posData.filename, i), 'which_z_proj'] = how
             posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
         elif posData.SizeZ > 1:
             for _posData in self.data[:self.pos_i]:
                 df = _posData.segmInfo_df
                 df.at[(_posData.filename, 0), 'z_slice_used_dataPrep'] = z
+                df.at[(_posData.filename, 0), 'z_slice_used_gui'] = z
                 df.at[(_posData.filename, 0), 'which_z_proj'] = how
             self.save_segmInfo_df_pos()
 
@@ -1311,12 +1313,14 @@ class dataPrepWin(QMainWindow):
         if posData.SizeT > 1:
             for i in range(self.frame_i, posData.SizeT):
                 df.at[(posData.filename, i), 'z_slice_used_dataPrep'] = z
+                df.at[(posData.filename, i), 'z_slice_used_gui'] = z
                 df.at[(posData.filename, i), 'which_z_proj'] = how
             posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
         elif posData.SizeZ > 1:
             for _posData in self.data[self.pos_i:]:
                 df = _posData.segmInfo_df
                 df.at[(_posData.filename, 0), 'z_slice_used_dataPrep'] = z
+                df.at[(_posData.filename, 0), 'z_slice_used_gui'] = z
                 df.at[(_posData.filename, 0), 'which_z_proj'] = how
 
             self.save_segmInfo_df_pos()
@@ -1332,6 +1336,7 @@ class dataPrepWin(QMainWindow):
         zz = np.round(f(xx)).astype(int)
         for i in range(self.frame_i):
             df.at[(posData.filename, i), 'z_slice_used_dataPrep'] = zz[i]
+            df.at[(posData.filename, i), 'z_slice_used_gui'] = zz[i]
             df.at[(posData.filename, i), 'which_z_proj'] = 'single z-slice'
         posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
 
@@ -1630,6 +1635,15 @@ class dataPrepWin(QMainWindow):
                     align_func = core.align_frames_3D
                     df = posData.segmInfo_df.loc[posData.filename]
                     zz = df['z_slice_used_dataPrep'].to_list()
+                    if not posData.filename.endswith('aligned'):
+                        # Add aligned channel to segmInfo
+                        df_aligned = df.rename(
+                            index={posData.filename: f'{posData.filename}_aligned'}
+                        )
+                        posData.segmInfo_df = pd.concat(
+                            [posData.segmInfo_df, df_aligned]
+                        )
+                        posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
                 else:
                     align_func = core.align_frames_2D
                     zz = None

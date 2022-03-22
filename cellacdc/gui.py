@@ -2945,8 +2945,10 @@ class guiWin(QMainWindow):
 
     def highlightIDcheckBoxToggled(self, checked):
         if not checked:
+            self.highlightedID = 0
             self.updateALLimg()
         else:
+            self.highlightedID = self.guiTabControl.propsQGBox.idSB.value()
             self.updatePropsWidget(self.highlightedID)
 
     def updatePropsWidget(self, ID):
@@ -12482,9 +12484,12 @@ class guiWin(QMainWindow):
     def showPropsDockWidget(self, checked=False):
         if self.showPropsDockButton.isExpand:
             self.propsDockWidget.setVisible(False)
+            self.highlightedID = 0
         else:
+            self.highlightedID = self.guiTabControl.propsQGBox.idSB.value()
             self.propsDockWidget.setVisible(True)
             self.propsDockWidget.setEnabled(True)
+        self.updateALLimg()
 
     def show(self):
         QMainWindow.show(self)

@@ -80,7 +80,6 @@ class segmWorker(QRunnable):
         self.innerPbar_available = mainWin.innerPbar_available
         self.concat_segm = mainWin.concat_segm
         self.tracker = mainWin.tracker
-        self.segmInfo_idx = mainWin.segmInfo_idx
 
     def setupPausingItems(self):
         self.mutex = QMutex()
@@ -145,7 +144,7 @@ class segmWorker(QRunnable):
                 img_data_slice = posData.img_data[self.t0:stop_i]
                 Y, X = posData.img_data.shape[-2:]
                 img_data = np.zeros((stop_i, Y, X), posData.img_data.dtype)
-                df = posData.segmInfo_df.loc[self.segmInfo_idx]
+                df = posData.segmInfo_df.loc[posData.filename]
                 for z_info in df[:stop_i].itertuples():
                     i = z_info.Index
                     z = z_info.z_slice_used_dataPrep
@@ -173,7 +172,7 @@ class segmWorker(QRunnable):
         else:
             if posData.SizeZ > 1:
                 # Single 3D image
-                z_info = posData.segmInfo_df.loc[self.segmInfo_idx].iloc[0]
+                z_info = posData.segmInfo_df.loc[posData.filename].iloc[0]
                 z = z_info.z_slice_used_dataPrep
                 zProjHow = z_info.which_z_proj
                 if zProjHow == 'single z-slice':
@@ -866,9 +865,7 @@ class segmWin(QMainWindow):
                 load_metadata=True
             )
         elif posData.SizeZ > 1:
-            segmInfo_idx = posData.filename if dataPrep_fn is None else dataPrep_fn
-            self.segmInfo_idx = segmInfo_idx
-            df = posData.segmInfo_df.loc[segmInfo_idx]
+            df = posData.segmInfo_df.loc[posData.filename]
             zz = df['z_slice_used_dataPrep'].to_list()
 
         isROIactive = False
