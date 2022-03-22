@@ -1635,9 +1635,9 @@ class dataPrepWin(QMainWindow):
                     align_func = core.align_frames_3D
                     df = posData.segmInfo_df.loc[posData.filename]
                     zz = df['z_slice_used_dataPrep'].to_list()
-                    if not posData.filename.endswith('aligned'):
+                    if not posData.filename.endswith('aligned') and align:
                         # Add aligned channel to segmInfo
-                        df_aligned = df.rename(
+                        df_aligned = posData.segmInfo_df.rename(
                             index={posData.filename: f'{posData.filename}_aligned'}
                         )
                         posData.segmInfo_df = pd.concat(
