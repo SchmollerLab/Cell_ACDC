@@ -591,7 +591,7 @@ class bioFormatsWorker(QObject):
                     imgData_ch = []
                     self.saveImgDataChannel(
                         reader, series, images_path, filenameNOext, s0p,
-                        chName, c
+                        chName, 0
                     )
 
             if self.moveOtherFiles or self.copyOtherFiles:
