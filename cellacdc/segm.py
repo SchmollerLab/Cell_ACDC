@@ -652,6 +652,7 @@ class segmWin(QMainWindow):
         self.numPos = len(user_ch_file_paths)
         hyperparams = self.segment2D_kwargs.copy()
         post_process_params = {
+            'model': model_name,
             'minSize': self.minSize,
             'minSolidity': self.minSolidity,
             'maxElongation': self.maxElongation,
