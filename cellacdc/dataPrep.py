@@ -494,7 +494,7 @@ class dataPrepWin(QMainWindow):
                 self.zSliceScrollBar.valueChanged.disconnect()
                 self.zSliceScrollBar.setSliderPosition(z)
                 self.zSliceScrollBar.valueChanged.connect(self.update_z_slice)
-                self.z_label.setText(f'z-slice  {z+1}/{posData.SizeZ}')
+                self.z_label.setText(f'z-slice  {z}/{posData.SizeZ-1}')
                 img = img[z]
             elif zProjHow == 'max z-projection':
                 img = img.max(axis=0)
@@ -1330,8 +1330,7 @@ class dataPrepWin(QMainWindow):
         f = scipy.interpolate.interp1d([x0, x1], [z0, z1])
         xx = np.arange(0, self.frame_i)
         zz = np.round(f(xx)).astype(int)
-        how = 'single z-slice'
-        for i in range(self.frame_i, posData.SizeT):
+        for i in range(self.frame_i):
             df.at[(posData.filename, i), 'z_slice_used_dataPrep'] = zz[i]
             df.at[(posData.filename, i), 'which_z_proj'] = 'single z-slice'
         posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
