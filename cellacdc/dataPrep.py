@@ -975,7 +975,7 @@ class dataPrepWin(QMainWindow):
                 'Cropping... (check progress in the terminal)',
                 color='w')
 
-            self.logger.info('Cropped data shape:', croppedData.shape)
+            self.logger.info(f'Cropped data shape: {croppedData.shape}')
             self.saveROIcoords(doCrop, posData)
 
             self.logger.info('Saving background data...')
@@ -996,12 +996,12 @@ class dataPrepWin(QMainWindow):
                 npz_data, _ = self.crop(data, posData)
 
                 if self.align:
-                    self.logger.info('Saving: ', npz)
+                    self.logger.info(f'Saving: {npz}')
                     temp_npz = self.getTempfilePath(npz)
                     np.savez_compressed(temp_npz, npz_data)
                     self.moveTempFile(temp_npz, npz)
 
-                self.logger.info('Saving: ', tif)
+                self.logger.info(f'Saving: {tif}')
                 temp_tif = self.getTempfilePath(tif)
                 self.imagej_tiffwriter(
                     temp_tif, npz_data, metadata, posData
@@ -1010,7 +1010,7 @@ class dataPrepWin(QMainWindow):
 
             # Save segm.npz
             if posData.segmFound:
-                self.logger.info('Saving: ', posData.segm_npz_path)
+                self.logger.info(f'Saving: {posData.segm_npz_path}')
                 data = posData.segm_data
                 croppedSegm, _ = self.crop(data, posData)
                 temp_npz = self.getTempfilePath(posData.segm_npz_path)
@@ -1020,7 +1020,7 @@ class dataPrepWin(QMainWindow):
             # Correct acdc_df if present and save
             if posData.acdc_df is not None:
                 x0, y0 = [int(round(c)) for c in posData.cropROI.pos()]
-                self.logger.info('Saving: ', posData.acdc_output_csv_path)
+                self.logger.info(f'Saving: {posData.acdc_output_csv_path}')
                 df = posData.acdc_df
                 df['x_centroid'] -= x0
                 df['y_centroid'] -= y0
@@ -1678,7 +1678,7 @@ class dataPrepWin(QMainWindow):
             if doAlign and tif.find(user_ch_name) != -1:
                 aligned = True
                 if align:
-                    self.logger.info('Aligning: ', tif)
+                    self.logger.info(f'Aligning: {tif}')
                 tif_data = skimage.io.imread(tif)
                 numFramesWith0s = self.detectTifAlignment(tif_data, posData)
                 if align:
@@ -1712,14 +1712,14 @@ class dataPrepWin(QMainWindow):
                     aligned_frames = tif_data.copy()
                 if align:
                     _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
-                    self.logger.info('Saving: ', _npz)
+                    self.logger.info(f'Saving: {_npz}')
                     temp_npz = self.getTempfilePath(_npz)
                     np.savez_compressed(temp_npz, aligned_frames)
                     self.moveTempFile(temp_npz, _npz)
                     np.save(posData.align_shifts_path, posData.loaded_shifts)
                     posData.all_npz_paths[i] = _npz
 
-                    self.logger.info('Saving: ', tif)
+                    self.logger.info(f'Saving: {tif}')
                     temp_tif = self.getTempfilePath(tif)
                     self.imagej_tiffwriter(temp_tif, aligned_frames,
                                            metadata, posData)
@@ -1734,7 +1734,7 @@ class dataPrepWin(QMainWindow):
                 if posData.loaded_shifts is None:
                     break
                 if align:
-                    self.logger.info('Aligning: ', tif)
+                    self.logger.info(f'Aligning: {tif}')
                 tif_data = skimage.io.imread(tif)
 
                 # Alignment routine
@@ -1754,13 +1754,13 @@ class dataPrepWin(QMainWindow):
                     aligned_frames = tif_data.copy()
                 _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
                 if align:
-                    self.logger.info('Saving: ', _npz)
+                    self.logger.info(f'Saving: {_npz}')
                     temp_npz = self.getTempfilePath(_npz)
                     np.savez_compressed(temp_npz, aligned_frames)
                     self.moveTempFile(temp_npz, _npz)
                     posData.all_npz_paths[i] = _npz
 
-                    self.logger.info('Saving: ', tif)
+                    self.logger.info(f'Saving: {tif}')
                     temp_tif = self.getTempfilePath(tif)
                     self.imagej_tiffwriter(temp_tif, aligned_frames,
                                            metadata, posData)
@@ -1780,13 +1780,13 @@ class dataPrepWin(QMainWindow):
             )
             if alignAnswer == msg.Yes:
                 self.segmAligned = True
-                self.logger.info('Aligning: ', posData.segm_npz_path)
+                self.logger.info(f'Aligning: {posData.segm_npz_path}')
                 posData.segm_data, shifts = core.align_frames_2D(
                                              posData.segm_data,
                                              slices=None,
                                              user_shifts=posData.loaded_shifts
                 )
-                self.logger.info('Saving: ', posData.segm_npz_path)
+                self.logger.info(f'Saving: {posData.segm_npz_path}')
                 temp_npz = self.getTempfilePath(posData.segm_npz_path)
                 np.savez_compressed(temp_npz, posData.segm_data)
                 self.moveTempFile(temp_npz, posData.segm_npz_path)
@@ -1842,7 +1842,7 @@ class dataPrepWin(QMainWindow):
             if npz is None and npy is None:
                 continue
             elif npy is not None and npz is None:
-                self.logger.info('Converting: ', npy)
+                self.logger.info(f'Converting: {npy}')
                 self.titleLabel.setText(
                     'Converting .npy to .npz... (check progress in terminal)',
                     color='w')
@@ -1871,7 +1871,7 @@ class dataPrepWin(QMainWindow):
         return tempFilePath
 
     def moveTempFile(self, source, dst):
-        self.logger.info('Moving temp file: ', source)
+        self.logger.info(f'Moving temp file: {source}')
         tempDir = os.path.dirname(source)
         shutil.move(source, dst)
         shutil.rmtree(tempDir)

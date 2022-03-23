@@ -3048,7 +3048,7 @@ class postProcessSegmDialog(QDialog):
             # Apply to all future frames or future positions
             for pos_i, posData in enumerate(self.mainWin.data):
                 self.mainWin.pos_i = pos_i
-                sself.mainWin.get_data()
+                self.mainWin.get_data()
                 origLab = posData.lab.copy()
                 self.origSegmData.append(origLab)
                 lab, delIDs = self.applyPostProcessing(origLab=origLab)
