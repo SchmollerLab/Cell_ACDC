@@ -2832,14 +2832,13 @@ class postProcessSegmParams(QGroupBox):
         if useSliders:
             minSolidity_DSB = widgets.sliderWithSpinBox(normalize=True)
             minSolidity_DSB.setMaximum(100)
-            minSolidity_DSB.setValue(0.5)
         else:
             minSolidity_DSB = QDoubleSpinBox()
             minSolidity_DSB.setAlignment(Qt.AlignCenter)
             minSolidity_DSB.setMinimum(0)
             minSolidity_DSB.setMaximum(1)
-            minSolidity_DSB.setValue(0.5)
-            minSolidity_DSB.setSingleStep(0.1)
+        minSolidity_DSB.setValue(0.5)
+        minSolidity_DSB.setSingleStep(0.1)
 
         minSolidity_DSB.setToolTip(
             'Solidity is a measure of convexity. A solidity of 1 means '
@@ -2883,10 +2882,15 @@ class postProcessSegmParams(QGroupBox):
 class postProcessSegmDialog(QDialog):
     sigClosed = pyqtSignal()
 
-    def __init__(self, mainWin=None):
+    def __init__(self, mainWin=None, isTimelapse=False, isMultiPos=False):
         super().__init__(mainWin)
         self.cancel = True
         self.mainWin = mainWin
+        self.isTimelapse = False
+        self.isMultiPos = False
+        if mainWin is not None:
+            self.isMultiPos = len(self.mainWin.data) > 1
+            self.isTimelapse = self.mainWin.data[self.mainWin.pos_i].SizeT > 1
 
         self.setWindowTitle('Post-processing segmentation parameters')
         self.setWindowFlags(Qt.Tool | Qt.WindowStaysOnTopHint)
@@ -2902,19 +2906,35 @@ class postProcessSegmDialog(QDialog):
         self.minSolidity_DSB = artefactsGroupBox.minSolidity_DSB
         self.maxElongation_DSB = artefactsGroupBox.maxElongation_DSB
 
-        self.minSize_SB.valueChanged.connect(self.applyPostProcessing)
-        self.minSolidity_DSB.valueChanged.connect(self.applyPostProcessing)
-        self.maxElongation_DSB.valueChanged.connect(self.applyPostProcessing)
+        self.minSize_SB.valueChanged.connect(self.valueChanged)
+        self.minSolidity_DSB.valueChanged.connect(self.valueChanged)
+        self.maxElongation_DSB.valueChanged.connect(self.valueChanged)
 
         self.minSize_SB.editingFinished.connect(self.onEditingFinished)
         self.minSolidity_DSB.editingFinished.connect(self.onEditingFinished)
         self.maxElongation_DSB.editingFinished.connect(self.onEditingFinished)
 
-        okButton = QPushButton('Ok')
+        if self.isTimelapse:
+            applyAllButton = QPushButton('Apply to all frames...')
+            applyAllButton.clicked.connect(self.applyAll_cb)
+            applyButton = QPushButton('Apply')
+            applyButton.clicked.connect(self.apply_cb)
+        elif self.isMultiPos:
+            applyAllButton = QPushButton('Apply to all Positions...')
+            applyAllButton.clicked.connect(self.applyAll_cb)
+            applyButton = QPushButton('Apply')
+            applyButton.clicked.connect(self.apply_cb)
+        else:
+            applyAllButton = QPushButton('Apply')
+            applyAllButton.clicked.connect(self.ok_cb)
+            okButton = None
+
         cancelButton = QPushButton('Cancel')
 
         buttonsLayout.addStretch(1)
-        buttonsLayout.addWidget(okButton)
+        if applyButton is not None:
+            buttonsLayout.addWidget(applyButton)
+        buttonsLayout.addWidget(applyAllButton)
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.setContentsMargins(0,10,0,0)
 
@@ -2923,16 +2943,11 @@ class postProcessSegmDialog(QDialog):
 
         self.setLayout(mainLayout)
 
-        okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.cancel_cb)
-
-        font = QtGui.QFont()
-        font.setPointSize(11)
-        self.setFont(font)
 
         if mainWin is not None:
             self.setPosData()
-            self.applyPostProcessing(0)
+            self.apply_cb()
 
     def setPosData(self):
         if self.mainWin is None:
@@ -2942,7 +2957,13 @@ class postProcessSegmDialog(QDialog):
         self.posData = self.mainWin.data[self.mainWin.pos_i]
         self.origLab = self.posData.lab.copy()
 
-    def applyPostProcessing(self, value):
+    def valueChanged(self, value):
+        lab, delIDs = self.applyPostProcessing()
+        self.posData.lab = lab
+        self.mainWin.clearItems_IDs(delIDs)
+        self.mainWin.setImageImg2()
+
+    def applyPostProcessing(self, origLab=None):
         if self.mainWin is None:
             return
 
@@ -2952,36 +2973,137 @@ class postProcessSegmDialog(QDialog):
 
         self.mainWin.warnEditingWithCca_df('post-processing segmentation mask')
 
-        self.posData.lab, delIDs = core.remove_artefacts(
-            self.origLab.copy(),
+        if origLab is None:
+            origLab = self.origLab.copy()
+
+        lab, delIDs = core.remove_artefacts(
+            origLab,
             min_solidity=minSolidity,
             min_area=minSize,
             max_elongation=maxElongation,
             return_delIDs=True
         )
 
-        self.mainWin.clearItems_IDs(delIDs)
-        self.mainWin.setImageImg2()
+        return lab, delIDs
 
     def onEditingFinished(self):
         if self.mainWin is None:
             return
 
         self.mainWin.update_rp()
+        self.mainWin.store_data()
         self.mainWin.updateALLimg()
 
     def ok_cb(self):
-        self.cancel = False
-        self.mainWin.update_rp()
-        self.mainWin.store_data()
-        self.mainWin.updateALLimg()
+        self.applyPostProcessing()
+        self.onEditingFinished()
         self.close()
+
+    def apply_cb(self):
+        self.applyPostProcessing()
+        self.onEditingFinished()
+
+    def applyAll_cb(self):
+        if self.mainWin is None:
+            return
+
+        if self.isTimelapse:
+            current_frame_i = self.posData.frame_i
+
+            self.origSegmData = self.posData.segm_data.copy()
+
+            # Apply to all future frames or future positions
+            for frame_i in range(self.posData.segmSizeT):
+                self.posData.frame_i = frame_i
+                lab = self.posData.allData_li[frame_i]['labels']
+                if lab is None:
+                    # Non-visited frame modify segm_data
+                    origLab = self.posData.segm_data[frame_i].copy()
+                    lab, delIDs = self.applyPostProcessing(origLab=origLab)
+                    self.posData.segm_data[frame_i] = lab
+                else:
+                    self.mainWin.get_data()
+                    origLab = self.posData.lab.copy()
+                    self.origSegmData[frame_i] = origLab
+                    lab, delIDs = self.applyPostProcessing(origLab=origLab)
+                    self.posData.lab = lab
+                    self.posData.allData_li[frame_i]['labels'] = lab.copy()
+                    # Get the rest of the stored metadata based on the new lab
+                    self.mainWin.get_data()
+                    self.mainWin.store_data()
+
+            # Back to current frame
+            self.posData.frame_i = current_frame_i
+            self.mainWin.get_data()
+            self.mainWin.updateALLimg()
+
+            msg = QMessageBox()
+            msg.information(
+                self, 'Done', 'Post-processing applied to all frames!'
+            )
+
+        elif self.isMultiPos:
+            self.origSegmData = []
+            current_pos_i = self.mainWin.pos_i
+            # Apply to all future frames or future positions
+            for pos_i, posData in enumerate(self.mainWin.data):
+                self.mainWin.pos_i = pos_i
+                sself.mainWin.get_data()
+                origLab = posData.lab.copy()
+                self.origSegmData.append(origLab)
+                lab, delIDs = self.applyPostProcessing(origLab=origLab)
+
+                self.posData.allData_li[0]['labels'] = lab.copy()
+                # Get the rest of the stored metadata based on the new lab
+                self.mainWin.get_data()
+                self.mainWin.store_data()
+
+            # Back to current pos and current frame
+            self.mainWin.pos_i = current_pos_i
+            self.mainWin.get_data()
+            self.mainWin.updateALLimg()
 
     def cancel_cb(self):
         if self.mainWin is not None:
             self.posData.lab = self.origLab
             self.mainWin.update_rp()
             self.mainWin.updateALLimg()
+
+        # Undo if changes were applied to all future frames
+        if hasattr(self, 'origSegmData'):
+            if self.isTimelapse:
+                current_frame_i = self.posData.frame_i
+                for frame_i in range(self.posData.segmSizeT):
+                    self.posData.frame_i = frame_i
+                    origLab = self.origSegmData[frame_i]
+                    lab = self.posData.allData_li[frame_i]['labels']
+                    if lab is None:
+                        # Non-visited frame modify segm_data
+                        self.posData.segm_data[frame_i] = origLab
+                    else:
+                        self.posData.allData_li[frame_i]['labels'] = origLab.copy()
+                        # Get the rest of the stored metadata based on the new lab
+                        self.mainWin.get_data()
+                        self.mainWin.store_data()
+                # Back to current frame
+                self.posData.frame_i = current_frame_i
+                self.mainWin.get_data()
+                self.mainWin.updateALLimg()
+            elif self.isMultiPos:
+                current_pos_i = self.mainWin.pos_i
+                # Apply to all future frames or future positions
+                for pos_i, posData in enumerate(self.mainWin.data):
+                    self.mainWin.pos_i = pos_i
+                    origLab = self.origSegmData[pos_i]
+                    self.posData.allData_li[0]['labels'] = lab.copy()
+                    # Get the rest of the stored metadata based on the new lab
+                    self.mainWin.get_data()
+                    self.mainWin.store_data()
+                # Back to current pos and current frame
+                self.mainWin.pos_i = current_pos_i
+                self.mainWin.get_data()
+                self.mainWin.updateALLimg()
+
         self.close()
 
     def show(self):

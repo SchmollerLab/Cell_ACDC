@@ -552,7 +552,10 @@ def get_model_path(model_name, create_temp_dir=True):
             if file == 'weights_location_path.txt':
                 with open(os.path.join(model_info_path, file), 'r') as txt:
                     model_path = txt.read()
-                break
+                if not os.path.exists(model_path):
+                    model_path = _write_model_location_to_txt(model_name)
+                else:
+                    break
         else:
             model_path = _write_model_location_to_txt(model_name)
     else:

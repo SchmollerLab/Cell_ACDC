@@ -12,7 +12,7 @@ import pandas as pd
 import scipy.interpolate
 import skimage
 import skimage.io
-from functools import partial
+from functools import partial, wraps
 from tifffile.tifffile import TiffWriter, TiffFile
 
 from PyQt5.QtCore import (
@@ -51,6 +51,45 @@ if os.name == 'nt':
 
 pg.setConfigOptions(imageAxisOrder='row-major')
 
+def exception_handler(func):
+    @wraps(func)
+    def inner_function(self, *args, **kwargs):
+        try:
+            if func.__code__.co_argcount==1 and func.__defaults__ is None:
+                result = func(self)
+            elif func.__code__.co_argcount>1 and func.__defaults__ is None:
+                result = func(self, *args)
+            else:
+                result = func(self, *args, **kwargs)
+        except Exception as e:
+            result = None
+            traceback_str = traceback.format_exc()
+            self.logger.exception(traceback_str)
+            msg = QMessageBox(self)
+            msg.setWindowTitle('Critical error')
+            msg.setIcon(msg.Critical)
+            err_msg = (f"""
+            <p style="font-size:14px">
+                Error in function <b>{func.__name__}</b>.<br><br>
+                More details below or in the terminal/console.<br><br>
+                Note that the error details from this session are also saved
+                in the file<br>
+                {self.log_path}<br><br>
+                Please <b>send the log file</b> when reporting a bug, thanks!
+            </p>
+            """)
+            msg.setText(err_msg)
+            showLog = msg.addButton('Show log file...', msg.HelpRole)
+            showLog.disconnect()
+            slot = partial(myutils.showInExplorer, self.logs_path)
+            showLog.clicked.connect(slot)
+            msg.addButton(msg.Ok)
+            msg.setDetailedText(traceback_str)
+            msg.exec_()
+            self.is_error_state = True
+        return result
+    return inner_function
+
 class toCsvWorker(QObject):
     finished = pyqtSignal()
     progress = pyqtSignal(int)
@@ -66,6 +105,14 @@ class toCsvWorker(QObject):
 class dataPrepWin(QMainWindow):
     def __init__(self, parent=None, buttonToRestore=None, mainWin=None):
         super().__init__(parent)
+
+        logger, logs_path, log_path, log_filename = myutils.setupLogger(
+            module='dataPrep'
+        )
+        self.logger = logger
+        self.log_path = log_path
+        self.log_filename = log_filename
+        self.logs_path = logs_path
 
         self.buttonToRestore = buttonToRestore
         self.mainWin = mainWin
@@ -107,10 +154,10 @@ class dataPrepWin(QMainWindow):
 
         mainContainer.setLayout(mainLayout)
 
+    @exception_handler
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_P:
-            posData = self.data[self.pos_i]
-            print(posData.img_data.shape)
+            raise FileNotFoundError
 
     def gui_createActions(self):
         # File actions
@@ -504,6 +551,7 @@ class dataPrepWin(QMainWindow):
                 img = np.median(img, axis=0)
         return img
 
+    @exception_handler
     def update_img(self):
         self.updateNavigateItems()
         posData = self.data[self.pos_i]
@@ -600,6 +648,7 @@ class dataPrepWin(QMainWindow):
         self.updateBkgrROIs()
         self.updateROI()
 
+    @exception_handler
     def crop(self, data, posData):
         x0, y0 = [int(round(c)) for c in posData.cropROI.pos()]
         w, h = [int(round(c)) for c in posData.cropROI.size()]
@@ -686,6 +735,11 @@ class dataPrepWin(QMainWindow):
             if bkgrROI_data:
                 bkgr_data_fn = f'{filename}_bkgrRoiData.npz'
                 bkgr_data_path = os.path.join(posData.images_path, bkgr_data_fn)
+                print('---------------------------------')
+                self.logger.info('Saving background data to:')
+                self.logger.info(bkgr_data_path)
+                print('*********************************')
+                print('')
                 np.savez_compressed(bkgr_data_path, **bkgrROI_data)
 
     def removeAllROIs(self, event):
@@ -782,7 +836,7 @@ class dataPrepWin(QMainWindow):
             # ROI coordinates are the exact image shape. No need to save them
             return
 
-        print(
+        self.logger.info(
             f'Saving ROI coords: x_left = {x0}, x_right = {x1}, '
             f'y_top = {y0}, y_bottom = {y1}\n'
             f'to {posData.dataPrepROI_coords_path}'
@@ -916,15 +970,15 @@ class dataPrepWin(QMainWindow):
                 posData.metadata_df.at['SizeZ', 'values'] = SizeZ
                 posData.metadata_df.to_csv(posData.metadata_csv_path)
 
-            print(f'Cropping {posData.relPath}...')
+            self.logger.info(f'Cropping {posData.relPath}...')
             self.titleLabel.setText(
                 'Cropping... (check progress in the terminal)',
                 color='w')
 
-            print('Cropped data shape:', croppedData.shape)
+            self.logger.info('Cropped data shape:', croppedData.shape)
             self.saveROIcoords(doCrop, posData)
 
-            print('Saving background data...')
+            self.logger.info('Saving background data...')
             self.saveBkgrData(posData)
 
             # Get metadata from tif
@@ -942,12 +996,12 @@ class dataPrepWin(QMainWindow):
                 npz_data, _ = self.crop(data, posData)
 
                 if self.align:
-                    print('Saving: ', npz)
+                    self.logger.info('Saving: ', npz)
                     temp_npz = self.getTempfilePath(npz)
                     np.savez_compressed(temp_npz, npz_data)
                     self.moveTempFile(temp_npz, npz)
 
-                print('Saving: ', tif)
+                self.logger.info('Saving: ', tif)
                 temp_tif = self.getTempfilePath(tif)
                 self.imagej_tiffwriter(
                     temp_tif, npz_data, metadata, posData
@@ -956,7 +1010,7 @@ class dataPrepWin(QMainWindow):
 
             # Save segm.npz
             if posData.segmFound:
-                print('Saving: ', posData.segm_npz_path)
+                self.logger.info('Saving: ', posData.segm_npz_path)
                 data = posData.segm_data
                 croppedSegm, _ = self.crop(data, posData)
                 temp_npz = self.getTempfilePath(posData.segm_npz_path)
@@ -966,7 +1020,7 @@ class dataPrepWin(QMainWindow):
             # Correct acdc_df if present and save
             if posData.acdc_df is not None:
                 x0, y0 = [int(round(c)) for c in posData.cropROI.pos()]
-                print('Saving: ', posData.acdc_output_csv_path)
+                self.logger.info('Saving: ', posData.acdc_output_csv_path)
                 df = posData.acdc_df
                 df['x_centroid'] -= x0
                 df['y_centroid'] -= y0
@@ -978,7 +1032,7 @@ class dataPrepWin(QMainWindow):
                     self.permissionErrorCritical(posData.acdc_output_csv_path)
                     df.to_csv(posData.acdc_output_csv_path)
 
-            print(f'{posData.pos_foldername} saved!')
+            self.logger.info(f'{posData.pos_foldername} saved!')
             print(f'--------------------------------')
             print('')
         txt = (
@@ -1172,9 +1226,9 @@ class dataPrepWin(QMainWindow):
             SizeT = posData.SizeT
             SizeZ = posData.SizeZ
             if f==0:
-                print(f'Data shape = {img_shape}')
-                print(f'Number of frames = {SizeT}')
-                print(f'Number of z-slices per frame = {SizeZ}')
+                self.logger.info(f'Data shape = {img_shape}')
+                self.logger.info(f'Number of frames = {SizeT}')
+                self.logger.info(f'Number of z-slices per frame = {SizeZ}')
             data.append(posData)
 
             if SizeT>1 and self.num_pos>1:
@@ -1340,6 +1394,7 @@ class dataPrepWin(QMainWindow):
             df.at[(posData.filename, i), 'which_z_proj'] = 'single z-slice'
         posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
 
+    @exception_handler
     def prepData(self, event):
         self.titleLabel.setText(
             'Prepping data... (check progress in the terminal)',
@@ -1374,7 +1429,7 @@ class dataPrepWin(QMainWindow):
                 if doZipAnswer == msg.Yes:
                     doZip = True
             if doZip:
-                print(f'Zipping Images folder: {zipPath}')
+                self.logger.info(f'Zipping Images folder: {zipPath}')
                 shutil.make_archive(imagesPath, 'zip', imagesPath)
             self.npy_to_npz(posData)
             self.alignData(self.user_ch_name, posData)
@@ -1382,7 +1437,7 @@ class dataPrepWin(QMainWindow):
                 posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
 
         self.update_img()
-        print('Done.')
+        self.logger.info('Done.')
         self.addROIs()
         self.saveROIcoords(False, self.data[self.pos_i])
         self.saveBkgrROIs(self.data[self.pos_i])
@@ -1609,7 +1664,7 @@ class dataPrepWin(QMainWindow):
         self.align = align
 
         if align:
-            print('Aligning data...')
+            self.logger.info('Aligning data...')
             self.titleLabel.setText(
                 'Aligning data...(check progress in terminal)',
                 color='w')
@@ -1623,12 +1678,13 @@ class dataPrepWin(QMainWindow):
             if doAlign and tif.find(user_ch_name) != -1:
                 aligned = True
                 if align:
-                    print('Aligning: ', tif)
+                    self.logger.info('Aligning: ', tif)
                 tif_data = skimage.io.imread(tif)
                 numFramesWith0s = self.detectTifAlignment(tif_data, posData)
-                proceed = self.warnTifAligned(numFramesWith0s, tif, posData)
-                if not proceed:
-                    break
+                if align:
+                    proceed = self.warnTifAligned(numFramesWith0s, tif, posData)
+                    if not proceed:
+                        return
 
                 # Alignment routine
                 if posData.SizeZ>1:
@@ -1656,14 +1712,14 @@ class dataPrepWin(QMainWindow):
                     aligned_frames = tif_data.copy()
                 if align:
                     _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
-                    print('Saving: ', _npz)
+                    self.logger.info('Saving: ', _npz)
                     temp_npz = self.getTempfilePath(_npz)
                     np.savez_compressed(temp_npz, aligned_frames)
                     self.moveTempFile(temp_npz, _npz)
                     np.save(posData.align_shifts_path, posData.loaded_shifts)
                     posData.all_npz_paths[i] = _npz
 
-                    print('Saving: ', tif)
+                    self.logger.info('Saving: ', tif)
                     temp_tif = self.getTempfilePath(tif)
                     self.imagej_tiffwriter(temp_tif, aligned_frames,
                                            metadata, posData)
@@ -1678,7 +1734,7 @@ class dataPrepWin(QMainWindow):
                 if posData.loaded_shifts is None:
                     break
                 if align:
-                    print('Aligning: ', tif)
+                    self.logger.info('Aligning: ', tif)
                 tif_data = skimage.io.imread(tif)
 
                 # Alignment routine
@@ -1698,13 +1754,13 @@ class dataPrepWin(QMainWindow):
                     aligned_frames = tif_data.copy()
                 _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
                 if align:
-                    print('Saving: ', _npz)
+                    self.logger.info('Saving: ', _npz)
                     temp_npz = self.getTempfilePath(_npz)
                     np.savez_compressed(temp_npz, aligned_frames)
                     self.moveTempFile(temp_npz, _npz)
                     posData.all_npz_paths[i] = _npz
 
-                    print('Saving: ', tif)
+                    self.logger.info('Saving: ', tif)
                     temp_tif = self.getTempfilePath(tif)
                     self.imagej_tiffwriter(temp_tif, aligned_frames,
                                            metadata, posData)
@@ -1724,13 +1780,13 @@ class dataPrepWin(QMainWindow):
             )
             if alignAnswer == msg.Yes:
                 self.segmAligned = True
-                print('Aligning: ', posData.segm_npz_path)
+                self.logger.info('Aligning: ', posData.segm_npz_path)
                 posData.segm_data, shifts = core.align_frames_2D(
                                              posData.segm_data,
                                              slices=None,
                                              user_shifts=posData.loaded_shifts
                 )
-                print('Saving: ', posData.segm_npz_path)
+                self.logger.info('Saving: ', posData.segm_npz_path)
                 temp_npz = self.getTempfilePath(posData.segm_npz_path)
                 np.savez_compressed(temp_npz, posData.segm_data)
                 self.moveTempFile(temp_npz, posData.segm_npz_path)
@@ -1786,7 +1842,7 @@ class dataPrepWin(QMainWindow):
             if npz is None and npy is None:
                 continue
             elif npy is not None and npz is None:
-                print('Converting: ', npy)
+                self.logger.info('Converting: ', npy)
                 self.titleLabel.setText(
                     'Converting .npy to .npz... (check progress in terminal)',
                     color='w')
@@ -1806,7 +1862,7 @@ class dataPrepWin(QMainWindow):
         #     np.savez_compressed(temp_npz, posData.segm_data)
         #     self.moveTempFile(temp_npz, posData.segm_npz_path)
         #     os.remove(posData.segm_npz_path)
-        print(f'{posData.relPath} done.')
+        self.logger.info(f'{posData.relPath} done.')
 
     def getTempfilePath(self, path):
         temp_dirpath = tempfile.mkdtemp()
@@ -1815,7 +1871,7 @@ class dataPrepWin(QMainWindow):
         return tempFilePath
 
     def moveTempFile(self, source, dst):
-        print('Moving temp file: ', source)
+        self.logger.info('Moving temp file: ', source)
         tempDir = os.path.dirname(source)
         shutil.move(source, dst)
         shutil.rmtree(tempDir)
@@ -1938,7 +1994,7 @@ class dataPrepWin(QMainWindow):
         self.openAction.setEnabled(False)
 
     def openRecentFile(self, path):
-        print(f'Opening recent folder: {path}')
+        self.logger.info(f'Opening recent folder: {path}')
         self.openFolder(exp_path=path)
 
     def openFolder(self, checked=False, exp_path=None):

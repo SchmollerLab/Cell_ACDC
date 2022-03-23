@@ -519,18 +519,34 @@ class welcomeWin(QWidget):
         <body>
         <blockquote>
         <p style="font-size:{fs}px; font-family:ubuntu">
-            <ul style="line-height:120%">
+            <ul style="line-height:150%">
                 <li>
                     Functions that are <b>NOT activated by a toolbar button</b>:
                     <blockquote>
-                    &nbsp;&nbsp; - Scrolling wheel button on Windows, Cmd+Click on macOS --> <b>delete</b> segmented object<br>
-                    &nbsp;&nbsp; - H key --> <b>automatic zoom</b> on the segmented objects<br>
-                    &nbsp;&nbsp; - Double press H key --> <b>zoom out</b><br>
-                    &nbsp;&nbsp; - Ctrl+P --> Visualize cell cycle annotations in a table<br>
-                    &nbsp;&nbsp; - Ctrl+L --> relabel object IDs sequentially<br>
-                    &nbsp;&nbsp; - Spacebar --> hide/show annotations on left image<br>
-                    &nbsp;&nbsp; - Ctrl+F --> hide/show annotations on left image<br>
-                    &nbsp;&nbsp; - Alt+Click&Drag --> pan/move image also with other tools active<br>
+
+                    &nbsp;&nbsp; - Click <code>scrolling wheel button</code> on Windows,
+                    <code>Cmd+Click</code> on macOS --> <b>delete</b> segmented object<br>
+
+                    &nbsp;&nbsp; - <code>H key</code> -->
+                    <b>automatic zoom</b> on the segmented objects<br>
+
+                    &nbsp;&nbsp; - Double press <code>H key</code> -->
+                    <b>zoom out</b><br>
+
+                    &nbsp;&nbsp; - <code>Ctrl+P</code> -->
+                    Visualize cell cycle annotations in a table<br>
+
+                    &nbsp;&nbsp; - <code>Ctrl+L</code> -->
+                    relabel object IDs sequentially<br>
+
+                    &nbsp;&nbsp; - <code>Spacebar</code> -->
+                    hide/show annotations on left image<br>
+
+                    &nbsp;&nbsp; - <code>Ctrl+F</code> --> 
+                    hide/show annotations on left image<br>
+
+                    &nbsp;&nbsp; - <code>Alt+Click&Drag</code> -->
+                    pan/move image also with other tools active<br>
                     </blockquote>
                 </li>
             </ul>

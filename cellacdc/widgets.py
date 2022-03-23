@@ -716,6 +716,9 @@ class sliderWithSpinBox(QWidget):
         self.slider.setMaximum(max)
         # self.spinBox.setMaximum(max)
 
+    def setSingleStep(self, step):
+        self.spinBox.setSingleStep(step)
+
     def setMinimum(self, min):
         self.slider.setMinimum(min)
         # self.spinBox.setMinimum(min)

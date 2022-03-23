@@ -771,6 +771,7 @@ class guiWin(QMainWindow):
         editMenu.addAction(self.editTextIDsColorAction)
         editMenu.addAction(self.editOverlayColorAction)
         editMenu.addAction(self.manuallyEditCcaAction)
+        editMenu.addAction(self.viewCcaTableAction)
         editMenu.addAction(self.enableSmartTrackAction)
         editMenu.addAction(self.enableAutoZoomToCellsAction)
 
@@ -791,6 +792,8 @@ class guiWin(QMainWindow):
         normalizeIntensitiesMenu.addAction(self.normalizeByMaxAction)
         ImageMenu.addAction(self.invertBwAction)
         ImageMenu.addAction(self.shuffleCmapAction)
+        ImageMenu.addAction(self.zoomToObjsAction)
+        ImageMenu.addAction(self.zoomOutAction)
 
         # Segment menu
         SegmMenu = menuBar.addMenu("&Segment")
@@ -800,6 +803,7 @@ class guiWin(QMainWindow):
         SegmMenu.addAction(self.SegmActionRW)
         SegmMenu.addAction(self.postProcessSegmAction)
         SegmMenu.addAction(self.autoSegmAction)
+        SegmMenu.addAction(self.relabelSequentialAction)
         SegmMenu.aboutToShow.connect(self.nonViewerEditMenuOpened)
 
         # Tracking menu
@@ -1397,6 +1401,12 @@ class guiWin(QMainWindow):
         )
         self.manuallyEditCcaAction.setDisabled(True)
 
+        self.viewCcaTableAction = QAction(
+            'Edit cell cycle annotations...', self
+        )
+        self.viewCcaTableAction.setDisabled(True)
+        self.viewCcaTableAction.setShortcut('Ctrl+P')
+
         self.invertBwAction = QAction('Invert black/white', self)
         self.invertBwAction.setCheckable(True)
         checked = self.df_settings.at['is_bw_inverted', 'value'] == 'Yes'
@@ -1426,6 +1436,15 @@ class guiWin(QMainWindow):
         # self.normalizeQActionGroup.addAction(self.normalizeToUbyteAction)
         self.normalizeQActionGroup.addAction(self.normalizeRescale0to1Action)
         self.normalizeQActionGroup.addAction(self.normalizeByMaxAction)
+
+        self.zoomToObjsAction = QAction('Zoom to objects  (shortcut: H key)', self)
+        self.zoomOutAction = QAction('Zoom out  (shortcut: double press H key)', self)
+
+        self.relabelSequentialAction = QAction(
+            'Relabel IDs sequentially...', self
+        )
+        self.relabelSequentialAction.setShortcut('Ctrl+L')
+        self.relabelSequentialAction.setDisabled(True)
 
         self.setLastUserNormAction()
 
@@ -1605,6 +1624,15 @@ class guiWin(QMainWindow):
         self.guiTabControl.highlightCheckbox.toggled.connect(
             self.highlightIDcheckBoxToggled
         )
+
+        self.relabelSequentialAction.triggered.connect(
+            self.relabelSequentialCallback
+        )
+
+        self.zoomToObjsAction.triggered.connect(self.zoomToObjsActionCallback)
+        self.zoomOutAction.triggered.connect(self.zoomOut)
+
+        self.viewCcaTableAction.triggered.connect(self.viewCcaTable)
 
     def gui_createLeftSideWidgets(self):
         self.leftSideDocksLayout = QVBoxLayout()
@@ -4074,6 +4102,40 @@ class guiWin(QMainWindow):
             self.ax2.addItem(ax2_IDlabel)
             self.ax2.addItem(ax2ContCurve)
 
+    def relabelSequentialCallback(self):
+        mode = str(self.modeComboBox.currentText())
+        if mode == 'Viewer' or mode == 'Cell cycle analysis':
+            self.startBlinkingModeCB()
+            return
+        self.storeUndoRedoStates(False)
+        posData = self.data[self.pos_i]
+        if posData.SizeT > 1:
+            self.progressWin = apps.QDialogWorkerProgress(
+                title='Re-labelling sequential', parent=self,
+                pbarDesc='Relabelling sequential...'
+            )
+            self.progressWin.show(self.app)
+            self.progressWin.mainPbar.setMaximum(0)
+            self.startRelabellingWorker(posData)
+        else:
+            posData.lab, fw, inv = skimage.segmentation.relabel_sequential(
+                posData.lab
+            )
+            # Update annotations based on relabelling
+            newIDs = list(inv.in_values)
+            oldIDs = list(inv.out_values)
+            newIDs.append(-1)
+            oldIDs.append(-1)
+            self.update_cca_df_relabelling(posData, oldIDs, newIDs)
+            self.store_data()
+            self.update_rp()
+            li = list(zip(oldIDs, newIDs))
+            s = '\n'.join([str(pair).replace(',', ' -->') for pair in li])
+            s = f'IDs relabelled as follows:\n{s}'
+            self.logger.info(s)
+
+        self.updateALLimg()
+
     def storeTrackingAlgo(self, checked):
         if not checked:
             return
@@ -5686,6 +5748,7 @@ class guiWin(QMainWindow):
 
     def setEnabledCcaToolbar(self, enabled=False):
         self.manuallyEditCcaAction.setDisabled(False)
+        self.viewCcaTableAction.setDisabled(False)
         self.ccaToolBar.setVisible(enabled)
         for action in self.ccaToolBar.actions():
             button = self.ccaToolBar.widgetForAction(action)
@@ -5696,6 +5759,7 @@ class guiWin(QMainWindow):
         for action in self.segmActions:
             action.setEnabled(enabled)
         self.SegmActionRW.setEnabled(enabled)
+        self.relabelSequentialAction.setEnabled(enabled)
         self.repeatTrackingMenuAction.setEnabled(enabled)
         self.repeatTrackingVideoAction.setEnabled(enabled)
         self.postProcessSegmAction.setEnabled(enabled)
@@ -5853,9 +5917,11 @@ class guiWin(QMainWindow):
     def setEnabledSnapshotMode(self):
         posData = self.data[self.pos_i]
         self.manuallyEditCcaAction.setDisabled(False)
+        self.viewCcaTableAction.setDisabled(False)
         for action in self.segmActions:
             action.setDisabled(False)
         self.SegmActionRW.setDisabled(False)
+        self.relabelSequentialAction.setDisabled(False)
         self.trackingMenu.setDisabled(True)
         self.postProcessSegmAction.setDisabled(False)
         self.autoSegmAction.setDisabled(False)
@@ -6322,79 +6388,9 @@ class guiWin(QMainWindow):
                     self.zSliceScrollBar.setSliderPosition(z)
                 self.ax1_point_ScatterPlot.setData([x], [y])
         elif isCtrlModifier:
-            if ev.key() == Qt.Key_P:
-                self.logger.info('========================')
-                self.logger.info('CURRENT Cell cycle analysis table:')
-                self.logger.info(posData.cca_df)
-                self.logger.info('------------------------')
-                self.logger.info(f'STORED Cell cycle analysis table for frame {posData.frame_i+1}:')
-                df = posData.allData_li[posData.frame_i]['acdc_df']
-                if 'cell_cycle_stage' in df.columns:
-                    cca_df = df[self.cca_df_colnames]
-                    self.logger.info(cca_df)
-                    cca_df = cca_df.merge(posData.cca_df, how='outer',
-                                          left_index=True, right_index=True,
-                                          suffixes=('_STORED', '_CURRENT'))
-                    cca_df = cca_df.reindex(sorted(cca_df.columns), axis=1)
-                    num_cols = len(cca_df.columns)
-                    for j in range(0,num_cols,2):
-                        df_j_x = cca_df.iloc[:,j]
-                        df_j_y = cca_df.iloc[:,j+1]
-                        if any(df_j_x!=df_j_y):
-                            self.logger.info('------------------------')
-                            self.logger.info('DIFFERENCES:')
-                            diff_df = cca_df.iloc[:,j:j+2]
-                            diff_mask = diff_df.iloc[:,0]!=diff_df.iloc[:,1]
-                            self.logger.info(diff_df[diff_mask])
-                else:
-                    cca_df = None
-                    self.logger.info(cca_df)
-                self.logger.info('========================')
-                if posData.cca_df is None:
-                    return
-                df = posData.cca_df.reset_index()
-                if self.ccaTableWin is None:
-                    self.ccaTableWin = apps.pdDataFrameWidget(df, parent=self)
-                    self.ccaTableWin.show()
-                    self.ccaTableWin.setGeometryWindow()
-                else:
-                    self.ccaTableWin.setFocus(True)
-                    self.ccaTableWin.activateWindow()
-                    self.ccaTableWin.updateTable(posData.cca_df)
-            elif ev.key() == Qt.Key_L:
-                mode = str(self.modeComboBox.currentText())
-                if mode == 'Viewer' or mode == 'Cell cycle analysis':
-                    self.startBlinkingModeCB()
-                    return
-                self.storeUndoRedoStates(False)
-                posData = self.data[self.pos_i]
-                if posData.SizeT > 1:
-                    self.progressWin = apps.QDialogWorkerProgress(
-                        title='Re-labelling sequential', parent=self,
-                        pbarDesc='Relabelling sequential...'
-                    )
-                    self.progressWin.show(self.app)
-                    self.progressWin.mainPbar.setMaximum(0)
-                    self.startRelabellingWorker(posData)
-                else:
-                    posData.lab, fw, inv = skimage.segmentation.relabel_sequential(
-                        posData.lab
-                    )
-                    # Update annotations based on relabelling
-                    newIDs = list(inv.in_values)
-                    oldIDs = list(inv.out_values)
-                    newIDs.append(-1)
-                    oldIDs.append(-1)
-                    self.update_cca_df_relabelling(posData, oldIDs, newIDs)
-                    self.store_data()
-                    self.update_rp()
-                    li = list(zip(oldIDs, newIDs))
-                    s = '\n'.join([str(pair).replace(',', ' -->') for pair in li])
-                    s = f'IDs relabelled as follows:\n{s}'
-                    self.logger.info(s)
-
-                self.updateALLimg()
-            elif ev.key() == Qt.Key_Up:
+            # if ev.key() == Qt.Key_P:
+            # elif ev.key() == Qt.Key_L:
+            if ev.key() == Qt.Key_Up:
                 val = self.imgGrad.labelsAlphaSlider.value()
                 delta = 1/self.imgGrad.labelsAlphaSlider.maximum()
                 self.imgGrad.labelsAlphaSlider.setValue(val+delta)
@@ -7191,6 +7187,12 @@ class guiWin(QMainWindow):
         if self.curvToolButton.isChecked():
             self.curvTool_cb(True)
 
+    def zoomOut(self):
+        self.ax1.vb.autoRange()
+
+    def zoomToObjsActionCallback(self):
+        self.zoomToCells(enforce=True)
+
     def zoomToCells(self, enforce=False):
         if not self.enableAutoZoomToCellsAction.isChecked() and not enforce:
             return
@@ -7209,6 +7211,47 @@ class guiWin(QMainWindow):
             yRange = max_row+10, min_row-10
 
         self.ax1.setRange(xRange=xRange, yRange=yRange)
+
+    def viewCcaTable(self):
+        posData = self.data[self.pos_i]
+        self.logger.info('========================')
+        self.logger.info('CURRENT Cell cycle analysis table:')
+        self.logger.info(posData.cca_df)
+        self.logger.info('------------------------')
+        self.logger.info(f'STORED Cell cycle analysis table for frame {posData.frame_i+1}:')
+        df = posData.allData_li[posData.frame_i]['acdc_df']
+        if 'cell_cycle_stage' in df.columns:
+            cca_df = df[self.cca_df_colnames]
+            self.logger.info(cca_df)
+            cca_df = cca_df.merge(posData.cca_df, how='outer',
+                                  left_index=True, right_index=True,
+                                  suffixes=('_STORED', '_CURRENT'))
+            cca_df = cca_df.reindex(sorted(cca_df.columns), axis=1)
+            num_cols = len(cca_df.columns)
+            for j in range(0,num_cols,2):
+                df_j_x = cca_df.iloc[:,j]
+                df_j_y = cca_df.iloc[:,j+1]
+                if any(df_j_x!=df_j_y):
+                    self.logger.info('------------------------')
+                    self.logger.info('DIFFERENCES:')
+                    diff_df = cca_df.iloc[:,j:j+2]
+                    diff_mask = diff_df.iloc[:,0]!=diff_df.iloc[:,1]
+                    self.logger.info(diff_df[diff_mask])
+        else:
+            cca_df = None
+            self.logger.info(cca_df)
+        self.logger.info('========================')
+        if posData.cca_df is None:
+            return
+        df = posData.cca_df.reset_index()
+        if self.ccaTableWin is None:
+            self.ccaTableWin = apps.pdDataFrameWidget(df, parent=self)
+            self.ccaTableWin.show()
+            self.ccaTableWin.setGeometryWindow()
+        else:
+            self.ccaTableWin.setFocus(True)
+            self.ccaTableWin.activateWindow()
+            self.ccaTableWin.updateTable(posData.cca_df)
 
     def updateScrollbars(self):
         self.updateItemsMousePos()
@@ -7231,6 +7274,18 @@ class guiWin(QMainWindow):
         if self.eraserButton.isChecked():
             self.updateEraserCursor(self.xHoverImg, self.yHoverImg)
 
+    def applyPostProcessing(self):
+        if self.postProcessSegmWin is not None:
+            self.postProcessSegmWin.setPosData()
+            posData = self.data[self.pos_i]
+            lab, delIDs = self.postProcessSegmWin.applyPostProcessing()
+            if posData.allData_li[posData.frame_i]['labels'] is None:
+                posData.lab = lab.copy()
+                self.update_rp()
+            else:
+                posData.allData_li[posData.frame_i]['labels'] = lab
+                self.get_data()
+
     def next_pos(self):
         self.store_data(debug=False)
         if self.pos_i < self.num_pos-1:
@@ -7241,6 +7296,7 @@ class guiWin(QMainWindow):
         self.setImageNameText()
         self.removeAlldelROIsCurrentFrame()
         proceed_cca, never_visited = self.get_data()
+        self.applyPostProcessing()
         self.updateALLimg(updateFilters=True, updateLabelItemColor=False)
         self.zoomToCells()
         self.updateScrollbars()
@@ -7256,6 +7312,7 @@ class guiWin(QMainWindow):
         self.setImageNameText()
         self.removeAlldelROIsCurrentFrame()
         proceed_cca, never_visited = self.get_data()
+        self.applyPostProcessing()
         self.updateALLimg(updateSharp=True, updateBlur=True, updateEntropy=True)
         self.zoomToCells()
         self.updateScrollbars()
@@ -7336,6 +7393,7 @@ class guiWin(QMainWindow):
                 posData.frame_i -= 1
                 self.get_data()
                 return
+            self.applyPostProcessing()
             self.tracking(storeUndo=True)
             notEnoughG1Cells, proceed = self.attempt_auto_cca()
             if notEnoughG1Cells or not proceed:
@@ -7380,6 +7438,7 @@ class guiWin(QMainWindow):
             self.removeAlldelROIsCurrentFrame()
             posData.frame_i -= 1
             _, never_visited = self.get_data()
+            self.applyPostProcessing()
             self.tracking()
             self.updateALLimg(never_visited=never_visited,
                               updateSharp=True, updateBlur=True,
@@ -9889,8 +9948,9 @@ class guiWin(QMainWindow):
             maxID = max(posData.IDs)
         else:
             maxID = 0
+
         if maxID >= len(posData.lut):
-            self.extendLabelsLUT(10)
+            self.extendLabelsLUT(maxID+10)
         colors = [posData.lut[ID]/255 for ID in posData.IDs]
         alpha = self.imgGrad.labelsAlphaSlider.value()
 
@@ -12376,7 +12436,7 @@ class guiWin(QMainWindow):
         pass
 
     def showTipsAndTricks(self):
-        self.welcomeWin = welcome.welcomeWin(app=app)
+        self.welcomeWin = welcome.welcomeWin()
         self.welcomeWin.showAndSetSize()
         self.welcomeWin.showPage(self.welcomeWin.quickStartItem)
 
