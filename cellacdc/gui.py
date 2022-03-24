@@ -7,7 +7,7 @@
 # SOFTWARE.
 
 # TODO:
-#
+print('Importing GUI modules...')
 
 import sys
 import os
@@ -91,7 +91,12 @@ if os.name == 'nt':
     except Exception as e:
         pass
 
-print('Initializing...')
+cellacdc_path = os.path.dirname(os.path.abspath(__file__))
+temp_path = os.path.join(cellacdc_path, 'temp')
+settings_csv_path = os.path.join(temp_path, 'settings.csv')
+favourite_func_metrics_csv_path = os.path.join(
+    temp_path, 'favourite_func_metrics.csv'
+)
 
 # Interpret image data as row-major instead of col-major
 pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
@@ -510,6 +515,9 @@ class guiWin(QMainWindow):
 
     def __init__(self, app, parent=None, buttonToRestore=None, mainWin=None):
         """Initializer."""
+
+        print('Initializing GUI...')
+
         from .trackers.YeaZ import tracking as tracking_yeaz
         self.tracking_yeaz = tracking_yeaz
 
@@ -595,12 +603,11 @@ class guiWin(QMainWindow):
         self.isEditActionsConnected = False
 
     def loadLastSessionSettings(self):
-        cellacdc_path = os.path.dirname(os.path.abspath(__file__))
-        temp_path = os.path.join(cellacdc_path, 'temp')
-        csv_path = os.path.join(temp_path, 'settings.csv')
-        self.settings_csv_path = csv_path
-        if os.path.exists(csv_path):
-            self.df_settings = pd.read_csv(csv_path, index_col='setting')
+        self.settings_csv_path = settings_csv_path
+        if os.path.exists(settings_csv_path):
+            self.df_settings = pd.read_csv(
+                settings_csv_path, index_col='setting'
+            )
             if 'is_bw_inverted' not in self.df_settings.index:
                 self.df_settings.at['is_bw_inverted', 'value'] = 'No'
             else:
@@ -827,6 +834,7 @@ class guiWin(QMainWindow):
         measurementsMenu.addSeparator()
         measurementsMenu.addAction(self.setMeasurementsAction)
         measurementsMenu.addAction(self.addCustomMetricAction)
+        measurementsMenu.setDisabled(True)
 
         # Settings menu
         self.settingsMenu = QMenu("Settings", self)
@@ -1568,7 +1576,7 @@ class guiWin(QMainWindow):
         self.textIDsColorButton.sigColorChanged.connect(self.saveTextIDsColors)
         self.alphaScrollBar.valueChanged.connect(self.updateOverlay)
 
-        self.setMeasurementsAction.triggered.connect(self.setMeasurements)
+        self.setMeasurementsAction.triggered.connect(self.showSetMeasurements)
         self.addCustomMetricAction.triggered.connect(self.addCustomMetric)
 
         self.labelsGrad.colorButton.sigColorChanging.connect(self.updateBkgrColor)
@@ -7274,6 +7282,7 @@ class guiWin(QMainWindow):
         if self.eraserButton.isChecked():
             self.updateEraserCursor(self.xHoverImg, self.yHoverImg)
 
+    @exception_handler
     def applyPostProcessing(self):
         if self.postProcessSegmWin is not None:
             self.postProcessSegmWin.setPosData()
@@ -7672,6 +7681,7 @@ class guiWin(QMainWindow):
             self.ax1.setLimits(maxXRange=int(xRange*2))
 
     def setFramesSnapshotMode(self):
+        self.measurementsMenu.setDisabled(False)
         if self.isSnapshot:
             self.disableTrackingCheckBox.setDisabled(True)
             # self.disableTrackingCheckBox.setChecked(True)
@@ -8051,6 +8061,7 @@ class guiWin(QMainWindow):
 
         self.clickedOnBud = False
         self.gaussWin = None
+        self.postProcessSegmWin = None
         self.edgeWin = None
         self.entropyWin = None
 
@@ -8080,6 +8091,11 @@ class guiWin(QMainWindow):
             'is_history_known',
             'corrected_assignment'
         ]
+
+        # Metrics
+        self.chNamesToSkipMetrics = []
+        self.metricsToSkip = {}
+        self.regionPropsToSave = measurements.get_props_names()
 
     def initPosAttr(self):
         for p, posData in enumerate(self.data):
@@ -11652,18 +11668,21 @@ class guiWin(QMainWindow):
         elif os.name == 'nt':
             os.startfile(path)
 
-    def getChNames(self, posData):
+    def getChNames(self, posData, returnList=False):
         fluo_keys = list(posData.fluo_data_dict.keys())
 
         loadedChNames = []
         for key in fluo_keys:
             chName = key[len(posData.basename):]
-            if chName.find('_aligned') != -1:
-                idx = chName.find('_aligned')
-                chName = f'gui_{chName[:idx]}'
+            aligned_idx = chName.find('_aligned')
+            if aligned_idx != -1:
+                chName = chName[:aligned_idx]
             loadedChNames.append(chName)
 
-        posData.loadedChNames = loadedChNames
+        if returnList:
+            return loadedChNames
+        else:
+            posData.loadedChNames = loadedChNames
 
     def zSliceAbsent(self, filename, posData):
         self.app.restoreOverrideCursor()
@@ -11745,8 +11764,63 @@ class guiWin(QMainWindow):
 
         self.waitCond.wakeAll()
 
-    def setMeasurements(self, checked=False):
-        pass
+    def showSetMeasurements(self, checked=False):
+        try:
+            df_favourite_funcs = pd.read_csv(favourite_func_metrics_csv_path)
+            favourite_funcs = df_favourite_funcs['favourite_func_name'].to_list()
+        except Exception as e:
+            favourite_funcs = None
+            pass
+        posData = self.data[self.pos_i]
+        fluo_keys = list(posData.fluo_data_dict.keys())
+        loadedChNames = self.getChNames(posData, returnList=True)
+        loadedChNames.insert(0, self.user_ch_name)
+        notLoadedChNames = [c for c in self.ch_names if c not in loadedChNames]
+        self.measurementsWin = apps.setMeasurementsDialog(
+            loadedChNames, notLoadedChNames, posData.SizeZ > 1,
+            favourite_funcs=favourite_funcs
+        )
+        self.measurementsWin.sigClosed.connect(self.setMeasurements)
+        self.measurementsWin.show()
+
+    def setMeasurements(self):
+        posData = self.data[self.pos_i]
+        fluo_keys = list(posData.fluo_data_dict.keys())
+        self.chNamesToSkipMetrics = []
+        self.metricsToSkip = {chName:[] for chName in self.ch_names}
+        favourite_funcs = set()
+        # Remove unchecked metrics
+        for chNameGroupbox in self.measurementsWin.chNameGroupboxes:
+            chName = chNameGroupbox.chName
+            if not chNameGroupbox.isChecked():
+                # Skip entire channel
+                self.chNamesToSkipMetrics.append(chName)
+            else:
+                for checkBox in chNameGroupbox.checkBoxes:
+                    colname = checkBox.text()
+                    if not checkBox.isChecked():
+                        self.metricsToSkip[chName].append(colname)
+                    else:
+                        func_name = colname[len(chName):]
+                        favourite_funcs.add(func_name)
+
+        if not self.measurementsWin.regionPropsQGBox.isChecked():
+            self.regionPropsToSave = ()
+        else:
+            self.regionPropsToSave = []
+            for checkBox in self.measurementsWin.regionPropsQGBox.checkBoxes:
+                if checkBox.isChecked():
+                    self.regionPropsToSave.append(checkBox.text())
+                    favourite_funcs.add(checkBox.text())
+            self.regionPropsToSave = tuple(self.regionPropsToSave)
+        df_favourite_funcs = pd.DataFrame(
+            {'favourite_func_name': list(favourite_funcs)}
+        )
+        df_favourite_funcs.to_csv(favourite_func_metrics_csv_path)
+        print(df_favourite_funcs)
+        pprint(self.regionPropsToSave)
+        pprint(self.metricsToSkip)
+        pprint(self.chNamesToSkipMetrics)
 
     def addCustomMetric(self, checked=False):
         pass
@@ -11848,6 +11922,7 @@ class guiWin(QMainWindow):
         for chName, filename in zip(posData.loadedChNames, fluo_keys):
             fluo_data = posData.fluo_data_dict[filename][frame_i]
             bkgrArchive = posData.fluo_bkgrData_dict[filename]
+            metricsToSkipChannel = self.metricsToSkip[chName]
             fluo_data_projs = []
             bkgrData_medians = []
             bkgrData_means = []
@@ -11969,22 +12044,36 @@ class guiWin(QMainWindow):
                     fluo_backgr = np.median(bkgr_arr)
 
                     bkgr_key = f'{chName}_autoBkgr_val_median{how}'
-                    metrics_values[bkgr_key][i] = fluo_backgr
+                    if not bkgr_key in metricsToSkipChannel:
+                        metrics_values[bkgr_key][i] = fluo_backgr
 
                     bkgr_key = f'{chName}_autoBkgr_val_mean{how}'
-                    metrics_values[bkgr_key][i] = bkgr_arr.mean()
+                    if not bkgr_key in metricsToSkipChannel:
+                        metrics_values[bkgr_key][i] = bkgr_arr.mean()
 
                     bkgr_key = f'{chName}_autoBkgr_val_q75{how}'
-                    metrics_values[bkgr_key][i] = np.quantile(bkgr_arr, q=0.75)
+                    if not bkgr_key in metricsToSkipChannel:
+                        metrics_values[bkgr_key][i] = np.quantile(
+                            bkgr_arr, q=0.75
+                        )
 
                     bkgr_key = f'{chName}_autoBkgr_val_q25{how}'
-                    metrics_values[bkgr_key][i] = np.quantile(bkgr_arr, q=0.25)
+                    if not bkgr_key in metricsToSkipChannel:
+                        metrics_values[bkgr_key][i] = np.quantile(
+                            bkgr_arr, q=0.25
+                        )
 
                     bkgr_key = f'{chName}_autoBkgr_val_q95{how}'
-                    metrics_values[bkgr_key][i] = np.quantile(bkgr_arr, q=0.95)
+                    if not bkgr_key in metricsToSkipChannel:
+                        metrics_values[bkgr_key][i] = np.quantile(
+                            bkgr_arr, q=0.95
+                        )
 
                     bkgr_key = f'{chName}_autoBkgr_val_q05{how}'
-                    metrics_values[bkgr_key][i] = np.quantile(bkgr_arr, q=0.05)
+                    if not bkgr_key in metricsToSkipChannel:
+                        metrics_values[bkgr_key][i] = np.quantile(
+                            bkgr_arr, q=0.05
+                        )
 
                     # Calculate metrics for each cell
                     for func_name, func in metrics_func.items():
@@ -11995,64 +12084,78 @@ class guiWin(QMainWindow):
                                 or bkgrArchive is not None)
                         )
                         if func_name == 'amount_autoBkgr':
-                            val = func(fluo_data_ID, fluo_backgr, obj.area)
-                            metrics_values[key][i] = val
+                            if not key in metricsToSkipChannel:
+                                val = func(fluo_data_ID, fluo_backgr, obj.area)
+                                metrics_values[key][i] = val
                         elif is_ROIbkgr_func:
                             if ROI_bkgrMask is not None:
                                 ROI_bkgrData = fluo_2D[ROI_bkgrMask]
                                 ROI_bkgrVal = np.median(ROI_bkgrData)
                             else:
                                 ROI_bkgrVal = bkgrData_medians[k]
-                            val = func(fluo_data_ID, ROI_bkgrVal, obj.area)
-                            metrics_values[key][i] = val
+
+                            if not key in metricsToSkipChannel:
+                                val = func(fluo_data_ID, ROI_bkgrVal, obj.area)
+                                metrics_values[key][i] = val
 
                             bkgr_key = f'{chName}_dataPrepBkgr_val_median{how}'
-                            metrics_values[bkgr_key][i] = ROI_bkgrVal
+                            if not bkgr_key in metricsToSkipChannel:
+                                metrics_values[bkgr_key][i] = ROI_bkgrVal
 
                             bkgr_key = f'{chName}_dataPrepBkgr_val_mean{how}'
-                            if ROI_bkgrMask is None:
-                                bkgr_val = bkgrData_means[k]
-                            else:
-                                bkgr_val = ROI_bkgrData.mean()
-                            metrics_values[bkgr_key][i] = bkgr_val
+                            if not bkgr_key in metricsToSkipChannel:
+                                if ROI_bkgrMask is None:
+                                    bkgr_val = bkgrData_means[k]
+                                else:
+                                    bkgr_val = ROI_bkgrData.mean()
+                                metrics_values[bkgr_key][i] = bkgr_val
 
                             bkgr_key = f'{chName}_dataPrepBkgr_val_q75{how}'
-                            if ROI_bkgrMask is None:
-                                bkgr_val = bkgrData_q75s[k]
-                            else:
-                                bkgr_val = np.quantile(ROI_bkgrData, q=0.75)
-                            metrics_values[bkgr_key][i] = bkgr_val
+                            if not bkgr_key in metricsToSkipChannel:
+                                if ROI_bkgrMask is None:
+                                    bkgr_val = bkgrData_q75s[k]
+                                else:
+                                    bkgr_val = np.quantile(ROI_bkgrData, q=0.75)
+                                metrics_values[bkgr_key][i] = bkgr_val
 
                             bkgr_key = f'{chName}_dataPrepBkgr_val_q25{how}'
-                            if ROI_bkgrMask is None:
-                                bkgr_val = bkgrData_q25s[k]
-                            else:
-                                bkgr_val = np.quantile(ROI_bkgrData, q=0.25)
-                            metrics_values[bkgr_key][i] = bkgr_val
+                            if not bkgr_key in metricsToSkipChannel:
+                                if ROI_bkgrMask is None:
+                                    bkgr_val = bkgrData_q25s[k]
+                                else:
+                                    bkgr_val = np.quantile(ROI_bkgrData, q=0.25)
+                                metrics_values[bkgr_key][i] = bkgr_val
 
                             bkgr_key = f'{chName}_dataPrepBkgr_val_q95{how}'
-                            if ROI_bkgrMask is None:
-                                bkgr_val = bkgrData_q95s[k]
-                            else:
-                                bkgr_val = np.quantile(ROI_bkgrData, q=0.95)
-                            metrics_values[bkgr_key][i] = bkgr_val
+                            if not bkgr_key in metricsToSkipChannel:
+                                if ROI_bkgrMask is None:
+                                    bkgr_val = bkgrData_q95s[k]
+                                else:
+                                    bkgr_val = np.quantile(ROI_bkgrData, q=0.95)
+                                metrics_values[bkgr_key][i] = bkgr_val
 
                             bkgr_key = f'{chName}_dataPrepBkgr_val_q05{how}'
-                            if ROI_bkgrMask is None:
-                                bkgr_val = bkgrData_q05s[k]
-                            else:
-                                bkgr_val = np.quantile(ROI_bkgrData, q=0.05)
-                            metrics_values[bkgr_key][i] = bkgr_val
+                            if not bkgr_key in metricsToSkipChannel:
+                                if ROI_bkgrMask is None:
+                                    bkgr_val = bkgrData_q05s[k]
+                                else:
+                                    bkgr_val = np.quantile(ROI_bkgrData, q=0.05)
+                                metrics_values[bkgr_key][i] = bkgr_val
 
                         elif func_name.find('amount') == -1:
-                            val = func(fluo_data_ID)
-                            metrics_values[key][i] = val
+                            if not key in metricsToSkipChannel:
+                                val = func(fluo_data_ID)
+                                metrics_values[key][i] = val
 
                         # pbar.update()
                         self.worker.metricsPbarProgress.emit(-1, 1)
 
                     for custom_func_name, custom_func in custom_func_dict.items():
                         key = f'{chName}_{custom_func_name}{how}'
+                        if key in metricsToSkipChannel:
+                            # Skip metric because unchecked in set measurements
+                            continue
+
                         if ROI_bkgrMask is not None:
                             ROI_bkgrData = fluo_2D[ROI_bkgrMask]
                             ROI_bkgrVal = np.median(ROI_bkgrData)
@@ -12088,33 +12191,12 @@ class guiWin(QMainWindow):
         # pbar.close()
 
         # Join with regionprops_table
-        props = (
-            'label',
-            'bbox',
-            'bbox_area',
-            'eccentricity',
-            'equivalent_diameter',
-            'euler_number',
-            'extent',
-            'filled_area',
-            'inertia_tensor_eigvals',
-            'local_centroid',
-            'major_axis_length',
-            'minor_axis_length',
-            'moments',
-            'moments_central',
-            'moments_hu',
-            'moments_normalized',
-            'orientation',
-            'perimeter',
-            'solidity'
-        )
-        rp_table = skimage.measure.regionprops_table(
-            posData.lab, properties=props
-        )
-        df_rp = pd.DataFrame(rp_table).set_index('label')
-
-        df = df.join(df_rp)
+        if self.regionPropsToSave:
+            rp_table = skimage.measure.regionprops_table(
+                posData.lab, properties=self.regionPropsToSave
+            )
+            df_rp = pd.DataFrame(rp_table).set_index('label')
+            df = df.join(df_rp)
         return df
 
     # def askSaveLastVisitedCcaMode(self, p, posData):

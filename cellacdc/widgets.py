@@ -28,7 +28,7 @@ from PyQt5.QtWidgets import (
 import pyqtgraph as pg
 from pyqtgraph import QtGui
 
-from . import myutils, apps
+from . import myutils, apps, measurements
 from . import qrc_resources
 
 def removeHSVcmaps():
@@ -197,6 +197,134 @@ class readOnlySpinbox(QSpinBox):
         self.setAlignment(Qt.AlignCenter)
         self.setMaximum(2**31-1)
         self.setStyleSheet('background-color: rgba(240, 240, 240, 200);')
+
+class _metricsQGBox(QGroupBox):
+    def __init__(self, desc_dict, title, favourite_funcs=None):
+        QGroupBox.__init__(self)
+        self.scrollArea = QScrollArea()
+        self.scrollAreaWidget = QWidget()
+        self.favourite_funcs = favourite_funcs
+
+        layout = QVBoxLayout()
+        inner_layout = QVBoxLayout()
+        self.inner_layout = inner_layout
+
+        self.checkBoxes = []
+
+        for metric_colname, metric_desc in desc_dict.items():
+            rowLayout = QHBoxLayout()
+
+            checkBox = QCheckBox(metric_colname)
+            if favourite_funcs is None:
+                checkBox.setChecked(True)
+            self.checkBoxes.append(checkBox)
+
+            infoButton = QPushButton(self)
+            infoButton.setCursor(Qt.WhatsThisCursor)
+            infoButton.setIcon(QIcon(":info.svg"))
+            infoButton.info = metric_desc
+            infoButton.colname = metric_colname
+            infoButton.clicked.connect(self.showInfo)
+
+            rowLayout.addWidget(checkBox)
+            rowLayout.addStretch(1)
+            rowLayout.addWidget(infoButton)
+
+            inner_layout.addLayout(rowLayout)
+
+        self.scrollAreaWidget.setLayout(inner_layout)
+        self.scrollArea.setWidget(self.scrollAreaWidget)
+        layout.addWidget(self.scrollArea)
+
+        self.selectAllButton = QPushButton('Deselect all', self)
+        self.selectAllButton.setCheckable(True)
+        self.selectAllButton.setChecked(True)
+        self.selectAllButton.clicked.connect(self.checkAll)
+        buttonsLayout = QHBoxLayout()
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(self.selectAllButton)
+
+        if favourite_funcs is not None:
+            self.loadFavouritesButton = QPushButton(
+                '  Load last selection...  ', self
+            )
+            self.loadFavouritesButton.clicked.connect(self.checkFavouriteFuncs)
+            self.checkFavouriteFuncs()
+            buttonsLayout.addWidget(self.loadFavouritesButton)
+
+        layout.addLayout(buttonsLayout)
+
+        self.setTitle(title)
+        self.setCheckable(True)
+        self.setLayout(layout)
+
+    def checkFavouriteFuncs(self, checked=True):
+        for checkBox in self.checkBoxes:
+            checkBox.setChecked(False)
+            for favourite_func in self.favourite_funcs:
+                func_name = checkBox.text()
+                if func_name.endswith(favourite_func):
+                    checkBox.setChecked(True)
+                    break
+
+    def checkAll(self, isChecked):
+        for checkBox in self.checkBoxes:
+            checkBox.setChecked(isChecked)
+        if isChecked:
+            self.selectAllButton.setText('Deselect all')
+        else:
+            self.selectAllButton.setText('Select all')
+
+    def showInfo(self, checked=False):
+        info_txt = self.sender().info
+        msg = myMessageBox()
+        msg.setIcon()
+        msg.setWindowTitle(f'{self.sender().colname} info')
+        msg.addText(info_txt)
+        msg.addButton('   Ok   ')
+        msg.exec_()
+
+    def show(self):
+        super().show()
+        fw = self.inner_layout.contentsRect().width()
+        sw = self.scrollArea.verticalScrollBar().sizeHint().width()
+        self.minWidth = fw + sw
+
+class channelMetricsQGBox(QGroupBox):
+    def __init__(self, isZstack, chName, favourite_funcs=None):
+        QGroupBox.__init__(self)
+
+        layout = QVBoxLayout()
+        metrics_desc, bkgr_val_desc = measurements.standard_metrics_desc(
+            isZstack, chName
+        )
+
+        metricsQGBox = _metricsQGBox(
+            metrics_desc, 'Standard measurements',
+            favourite_funcs=favourite_funcs
+        )
+        bkgrValsQGBox = _metricsQGBox(
+            bkgr_val_desc, 'Background values',
+            favourite_funcs=favourite_funcs
+        )
+
+        self.checkBoxes = metricsQGBox.checkBoxes.copy()
+        self.checkBoxes.extend(bkgrValsQGBox.checkBoxes)
+
+        layout.addWidget(metricsQGBox)
+        layout.addWidget(bkgrValsQGBox)
+
+        custom_metrics_desc = measurements.custom_metrics_desc(isZstack, chName)
+        if custom_metrics_desc:
+            customMetricsQGBox = _metricsQGBox(
+                custom_metrics_desc, 'Custom measurements'
+            )
+            layout.addWidget(customMetricsQGBox)
+            self.checkBoxes.extend(customMetricsQGBox.checkBoxes)
+
+        self.setTitle(f'{chName} metrics')
+        self.setCheckable(True)
+        self.setLayout(layout)
 
 class objPropsQGBox(QGroupBox):
     def __init__(self, *args):

@@ -31,8 +31,7 @@ from tifffile.tifffile import TiffWriter, TiffFile
 from PyQt5.QtWidgets import QMessageBox
 from PyQt5.QtCore import pyqtSignal, QObject, QCoreApplication
 
-from . import prompts, widgets, apps
-from .core import numba_max
+from . import prompts, widgets, apps, core
 
 __all__ = ['ColorMap']
 _mapCache = {}
@@ -837,7 +836,7 @@ def to_uint8(img):
     return img
 
 def uint_to_float(img):
-    img_max = numba_max(img)
+    img_max = core.numba_max(img)
     if img_max <= 1:
         return img
 
@@ -857,7 +856,7 @@ def scale_float(data):
     if isinstance(val, (np.floating, float)):
         uint8_max = np.iinfo(np.uint8).max
         uint16_max = np.iinfo(np.uint16).max
-        data_max = numba_max(data)
+        data_max = core.numba_max(data)
         if data_max <= uint8_max:
             data = data/uint8_max
         elif data_max <= uint16_max:

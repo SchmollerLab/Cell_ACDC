@@ -49,10 +49,9 @@ from PyQt5.QtWidgets import (
     QDockWidget, QMessageBox, QStyle
 )
 
-from . import myutils, load, prompts, widgets, core
-from . import is_mac
+from . import myutils, load, prompts, widgets, core, measurements
+from . import is_mac, is_win
 from . import qrc_resources
-from . import is_win
 
 pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
 
@@ -267,6 +266,73 @@ class wandToleranceWidget(QFrame):
         self.slider.layout.setColumnStretch(2, 21)
 
         self.setLayout(self.slider.layout)
+
+class setMeasurementsDialog(QDialog):
+    sigClosed = pyqtSignal()
+
+    def __init__(
+            self, loadedChNames, notLoadedChNames, isZstack,
+            favourite_funcs=None, parent=None
+        ):
+        super().__init__(parent)
+
+        self.setWindowTitle('Set measurements')
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+
+        layout = QVBoxLayout()
+        groupsLayout = QHBoxLayout()
+        buttonsLayout = QHBoxLayout()
+
+        self.chNameGroupboxes = []
+
+        for chName in loadedChNames:
+            channelGBox = widgets.channelMetricsQGBox(
+                isZstack, chName, favourite_funcs=favourite_funcs
+            )
+            channelGBox.chName = chName
+            groupsLayout.addWidget(channelGBox)
+            self.chNameGroupboxes.append(channelGBox)
+
+        for chName in notLoadedChNames:
+            channelGBox = widgets.channelMetricsQGBox(
+                isZstack, chName, favourite_funcs=favourite_funcs
+            )
+            channelGBox.setChecked(False)
+            channelGBox.chName = chName
+            groupsLayout.addWidget(channelGBox)
+            self.chNameGroupboxes.append(channelGBox)
+
+        props_info_txt = measurements.get_props_info_txt()
+        props_names = measurements.get_props_names()
+        rp_desc = {prop_name:props_info_txt for prop_name in props_names}
+        regionPropsQGBox = widgets._metricsQGBox(
+            rp_desc, 'Morphological properties',
+            favourite_funcs=favourite_funcs
+        )
+        self.regionPropsQGBox = regionPropsQGBox
+        groupsLayout.addWidget(regionPropsQGBox)
+
+        okButton = QPushButton('   Ok   ')
+
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(okButton)
+
+
+        layout.addLayout(groupsLayout)
+        layout.addLayout(buttonsLayout)
+
+        self.setLayout(layout)
+
+        okButton.clicked.connect(self.close)
+
+    def closeEvent(self, event):
+        self.sigClosed.emit()
+
+    def show(self):
+        super().show()
+        self.move(self.x(), 0)
+        h = self.screen().size().height()-100
+        self.resize(self.width(), h)
 
 class QDialogMetadataXML(QDialog):
     def __init__(
@@ -1404,7 +1470,6 @@ class selectTrackerGUI(QDialogListbox):
             self.stopFrame = self.stopFrame_SB.value()
             QDialogListbox.ok_cb(self, event)
 
-
 class QDialogAppendTextFilename(QDialog):
     def __init__(self, filename, ext, parent=None, font=None):
         super().__init__(parent)
@@ -2302,7 +2367,6 @@ class edgeDetectionDialog(QDialog):
         self.mainWindow.edgeDetectorAction.setChecked(False)
         self.mainWindow.updateALLimg(only_ax1=True, updateFilters=False)
 
-
 class entropyFilterDialog(QDialog):
     def __init__(self, mainWindow):
         super().__init__(mainWindow)
@@ -2798,7 +2862,6 @@ class FutureFramesAction_QDialog(QDialog):
     def closeEvent(self, event):
         if hasattr(self, 'loop'):
             self.loop.exit()
-
 
 class postProcessSegmParams(QGroupBox):
     def __init__(self, title, useSliders=False, parent=None, maxSize=None):
@@ -3908,8 +3971,6 @@ class askStopFrameSegm(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
-
-
 class QLineEditDialog(QDialog):
     def __init__(
             self, title='Entry messagebox', msg='Entry value',
@@ -4058,7 +4119,6 @@ class QLineEditDialog(QDialog):
     def closeEvent(self, event):
         if hasattr(self, 'loop'):
             self.loop.exit()
-
 
 class editID_QWidget(QDialog):
     def __init__(self, clickedID, IDs, parent=None):
@@ -4222,7 +4282,6 @@ class editID_QWidget(QDialog):
     def closeEvent(self, event):
         if hasattr(self, 'loop'):
             self.loop.exit()
-
 
 class imshow_tk:
     def __init__(
