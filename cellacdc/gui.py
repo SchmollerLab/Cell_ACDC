@@ -342,8 +342,15 @@ class saveDataWorker(QObject):
                 acdc_df_li = []
                 keys = []
 
-                # Add segmented channel data for calc metrics
-                posData.fluo_data_dict[posData.filename] = posData.img_data
+                # Add segmented channel data for calc metrics if requested
+                add_user_channel_data = True
+                for chName in self.mainWin.chNamesToSkipMetrics:
+                    if posData.filename.endswith(chName):
+                        add_user_channel_data = False
+
+                if add_user_channel_data:
+                    posData.fluo_data_dict[posData.filename] = posData.img_data
+
                 posData.fluo_bkgrData_dict[posData.filename] = posData.bkgrData
 
                 self.mainWin.getChNames(posData)
@@ -372,6 +379,7 @@ class saveDataWorker(QObject):
                         )
                         rp = data_dict['regionprops']
                         try:
+                            self.mutex.lock()
                             if save_metrics:
                                 acdc_df = self.mainWin.addMetrics_acdc_df(
                                     acdc_df, rp, frame_i, lab, posData
@@ -379,6 +387,7 @@ class saveDataWorker(QObject):
                             acdc_df_li.append(acdc_df)
                             key = (frame_i, posData.TimeIncrement*frame_i)
                             keys.append(key)
+                            self.mutex.unlock()
                         except Exception as error:
                             self.mutex.lock()
                             self.criticalMetrics.emit(traceback.format_exc())
@@ -392,7 +401,9 @@ class saveDataWorker(QObject):
                     self.progressBar.emit(1, -1, exec_time)
                     self.time_last_pbar_update = t
 
-                posData.fluo_data_dict.pop(posData.filename)
+                if add_user_channel_data:
+                    posData.fluo_data_dict.pop(posData.filename)
+
                 posData.fluo_bkgrData_dict.pop(posData.filename)
 
                 if posData.SizeT > 1:
@@ -11817,7 +11828,7 @@ class guiWin(QMainWindow):
             {'favourite_func_name': list(favourite_funcs)}
         )
         df_favourite_funcs.to_csv(favourite_func_metrics_csv_path)
-        
+
     def addCustomMetric(self, checked=False):
         pass
 
@@ -11918,7 +11929,7 @@ class guiWin(QMainWindow):
         for chName, filename in zip(posData.loadedChNames, fluo_keys):
             fluo_data = posData.fluo_data_dict[filename][frame_i]
             bkgrArchive = posData.fluo_bkgrData_dict[filename]
-            metricsToSkipChannel = self.metricsToSkip[chName]
+            metricsToSkipChannel = self.metricsToSkip.get(chName, [])
             fluo_data_projs = []
             bkgrData_medians = []
             bkgrData_means = []
@@ -12193,6 +12204,10 @@ class guiWin(QMainWindow):
             )
             df_rp = pd.DataFrame(rp_table).set_index('label')
             df = df.join(df_rp)
+
+        # Remove 0s columns
+        df = df.loc[:, (df != 0).any(axis=0)]
+
         return df
 
     # def askSaveLastVisitedCcaMode(self, p, posData):
@@ -12283,21 +12298,26 @@ class guiWin(QMainWindow):
     def askSaveMetrics(self):
         txt = (
         """
-        <p style="font-size:12px">
+        <p style="font-size:13px">
             Do you also want to <b>save additional metrics</b>
             (e.g., cell volume, mean, amount etc.)?<br><br>
             NOTE: Saving additional metrics is <b>slower</b>,
             we recommend doing it only when you need it.<br>
         </p>
         """)
-        cancel = True
-        msg = QMessageBox()
-        save_metrics_answer = msg.question(
-            self, 'Save metrics?', txt,
-            msg.Yes | msg.No | msg.Cancel
-        )
-        save_metrics = save_metrics_answer == msg.Yes
-        cancel = save_metrics_answer == msg.Cancel
+        msg = widgets.myMessageBox(parent=self)
+        msg.setIcon(iconName='SP_MessageBoxQuestion')
+        msg.setWindowTitle('Save metrics?')
+        msg.addText(txt)
+        yesButton = msg.addButton('Yes')
+        noButton = msg.addButton('No')
+        cancelButton = msg.addButton('Cancel')
+        setMeasurementsButton = msg.addButton('Set measurements...')
+        setMeasurementsButton.disconnect()
+        setMeasurementsButton.clicked.connect(self.showSetMeasurements)
+        msg.exec_()
+        save_metrics = msg.clickedButton == yesButton
+        cancel = msg.clickedButton == cancelButton or msg.clickedButton is None
         return save_metrics, cancel
 
     def askSaveAllPos(self):
