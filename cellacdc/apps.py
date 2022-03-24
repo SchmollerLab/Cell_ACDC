@@ -280,27 +280,41 @@ class setMeasurementsDialog(QDialog):
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
 
         layout = QVBoxLayout()
-        groupsLayout = QHBoxLayout()
+        groupsLayout = QGridLayout()
         buttonsLayout = QHBoxLayout()
 
         self.chNameGroupboxes = []
 
-        for chName in loadedChNames:
+        col = 0
+        for col, chName in enumerate(loadedChNames):
             channelGBox = widgets.channelMetricsQGBox(
                 isZstack, chName, favourite_funcs=favourite_funcs
             )
             channelGBox.chName = chName
-            groupsLayout.addWidget(channelGBox)
+            groupsLayout.addWidget(channelGBox, 0, col, 2, 1)
             self.chNameGroupboxes.append(channelGBox)
 
-        for chName in notLoadedChNames:
+        current_col = col+1
+        for col, chName in enumerate(notLoadedChNames):
             channelGBox = widgets.channelMetricsQGBox(
                 isZstack, chName, favourite_funcs=favourite_funcs
             )
             channelGBox.setChecked(False)
             channelGBox.chName = chName
-            groupsLayout.addWidget(channelGBox)
+            groupsLayout.addWidget(channelGBox, 0, current_col, 2, 1)
             self.chNameGroupboxes.append(channelGBox)
+            current_col += col
+
+        current_col += 1
+
+        size_metrics_desc = measurements.get_size_metrics_desc()
+        sizeMetricsQGBox = widgets._metricsQGBox(
+            size_metrics_desc, 'Size metrics',
+            favourite_funcs=favourite_funcs
+        )
+        self.sizeMetricsQGBox = sizeMetricsQGBox
+        groupsLayout.addWidget(sizeMetricsQGBox, 0, current_col)
+        groupsLayout.setRowStretch(0, 1)
 
         props_info_txt = measurements.get_props_info_txt()
         props_names = measurements.get_props_names()
@@ -310,7 +324,8 @@ class setMeasurementsDialog(QDialog):
             favourite_funcs=favourite_funcs
         )
         self.regionPropsQGBox = regionPropsQGBox
-        groupsLayout.addWidget(regionPropsQGBox)
+        groupsLayout.addWidget(regionPropsQGBox, 1, current_col)
+        groupsLayout.setRowStretch(1, 2)
 
         okButton = QPushButton('   Ok   ')
 
@@ -326,7 +341,8 @@ class setMeasurementsDialog(QDialog):
         okButton.clicked.connect(self.close)
 
     def closeEvent(self, event):
-        self.sigClosed.emit()
+        if self.sender() is not None:
+            self.sigClosed.emit()
 
     def show(self):
         super().show()

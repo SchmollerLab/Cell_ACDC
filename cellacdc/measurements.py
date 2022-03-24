@@ -76,6 +76,15 @@ def custom_metrics_desc(isZstack, chName):
             custom_metrics_desc[metric_name] = desc
     return custom_metrics_desc
 
+def _um3():
+    return '<code>&micro;m<sup>3</sup></code>'
+
+def _um2():
+    return '<code>&micro;m<sup>2</sup></code>'
+
+def _fl():
+    return '<code>fl</code>'
+
 def _get_zStack_note(how_desc):
     s = (f"""
         <i>NOTE: since you loaded <b>3D z-stacks</b>, Cell-ACDC needs
@@ -92,6 +101,73 @@ def _get_how_3Dto2D_desc():
         '(recommended for <b>epifluorescence imaging</b>)'
     ]
     return how_3Dto2D_desc
+
+def get_size_metrics_desc():
+    url = 'https://www.nature.com/articles/s41467-020-16764-x#Sec16'
+    size_metrics = {
+        'cell_area_pxl': ("""
+        <p style="font-size:13px">
+            <b>Area of the segmented object</b> in pixels, i.e.,
+            total number of pixels in the object.
+        </p>
+        """),
+        'cell_vol_vox': (f"""
+        <p style="font-size:13px">
+            <b>Estimated volume of the segmented object</b> in voxels.<br><br><br>
+            To calculate object volume based on 2D masks, the object is first
+            <b>aligned along its major axis</b>.<br><br>
+            Next, it is divided into slices perpendicular to the
+            major axis, where the height of each slice is one pixel
+            (i.e., one row).<br><br>
+            We then assume <b>rotational symmetry</b> of each slice around
+            its middle axis parallel to the object's major axis.<br><br>
+            For each slice Cell-ACDC calculates the volume of the resulting
+            <b>cylinder</b> with one pixel height and diameter the width
+            of the respective slice.<br><br>
+            Finally, the volumes of each cylinder are added to obtain
+            total object volume.<br><br>
+            <i> Note that in <a href=\"{url}">this</a> publication we
+            showed that this method strongly correlates with volume
+            computed from a 3D segmentation mask.</i>
+        </p>
+        """),
+        'cell_area_um2': (f"""
+        <p style="font-size:13px">
+            <b>Area of the segmented object</b> in {_um2()}, i.e.,
+            total number of pixels in the object.<br><br>
+            Conversion from pixels to {_um2()} is perfomed using
+            the provided pixel size.
+        </p>
+        """),
+        'cell_vol_fl': (f"""
+        <p style="font-size:13px">
+            <b>Estimated volume of the segmented object</b> in {_um3()}.<br><br><br>
+
+            To calculate object volume based on 2D masks, the object is first
+            <b>aligned along its major axis</b>.<br><br>
+
+            Next, it is divided into slices perpendicular to the
+            major axis, where the height of each slice is one pixel
+            (i.e., one row).<br><br>
+
+            We then assume <b>rotational symmetry</b> of each slice around
+            its middle axis parallel to the object's major axis.<br><br>
+
+            For each slice Cell-ACDC calculates the volume of the resulting
+            <b>cylinder</b> with one pixel height and diameter the width
+            of the respective slice.<br><br>
+
+            Finally, the volumes of each cylinder are added and converted
+            to {_fl()} (same as {_um3()}) using the provided pixel size
+            to obtain total object volume.<br><br>
+
+            <i> Note that in <a href=\"{url}">this</a> publication we
+            showed that this method strongly correlates with volume
+            computed from a 3D segmentation mask.</i>
+        </p>
+        """)
+    }
+    return size_metrics
 
 def standard_metrics_desc(isZstack, chName):
     how_3Dto2D = ['_maxProj', '_meanProj', '_zSlice'] if isZstack else ['']
@@ -284,3 +360,36 @@ def standard_metrics_func():
     all_metrics_names = list(metrics_func.keys())
     all_metrics_names.extend(bkgr_val_names)
     return metrics_func, all_metrics_names
+
+def add_metrics_instructions():
+    url = 'https://github.com/SchmollerLab/Cell_ACDC/issues'
+    href = f'<a href="{url}">here</a>'
+    s = (f"""
+    <p style="font-size:13px">
+    To add custom metrics to the <code>acdc_output.csv</code>
+    file you need to <b>create a python script and save it into the
+    following folder</b>
+    <code>{acdc_metrics_path}</code><br><br>
+    Name the file with the name of the column you want to add. Inside the
+    file, create a <b>function with the same name of the file</b>
+    similar to the example below:<br><br>
+    Pseudo-code:
+    <pre><code>
+    def <b>CV</b>(signal, autoBkgr, dataPrepBkgr, correct_with_bkgr=False, which_bkgr='auto'):
+        if correct_with_bkgr:
+            if which_bkgr=='auto':
+                signal = signal - autoBkgr
+            elif dataPrepBkgr is not None:
+                signal = signal - dataPrepBkgr
+
+        <i># Here goes your custom metric computation</i>
+        CV = np.std(signal)/np.mean(signal)
+
+        return CV
+    </code></pre>
+    Have a look at the <code>CV.py</code> file (click on "Show example..." below)
+    for a full example.<br><br>
+    <i>If it doesn't work, please report the issue {href} with the
+    code you wrote. Thanks.</i>
+    """)
+    return s, metrics_path

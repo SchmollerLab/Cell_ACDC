@@ -38,6 +38,7 @@ def CV(signal, autoBkgr, dataPrepBkgr, correct_with_bkgr=False, which_bkgr='auto
         elif dataPrepBkgr is not None:
             signal = signal - dataPrepBkgr
 
+    # Here goes your custom metric computation
     CV = np.std(signal)/np.mean(signal)
 
     return CV
