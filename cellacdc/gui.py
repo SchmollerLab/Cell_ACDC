@@ -11817,11 +11817,7 @@ class guiWin(QMainWindow):
             {'favourite_func_name': list(favourite_funcs)}
         )
         df_favourite_funcs.to_csv(favourite_func_metrics_csv_path)
-        print(df_favourite_funcs)
-        pprint(self.regionPropsToSave)
-        pprint(self.metricsToSkip)
-        pprint(self.chNamesToSkipMetrics)
-
+        
     def addCustomMetric(self, checked=False):
         pass
 
