@@ -40,6 +40,7 @@ See below **how it compares** to other popular tools available (*Table 1 of our 
   <img src="https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/figures/Table1.jpg" width="600">
 </p>
 
+
 ## Is it only about segmentation?
 
 Of course not! Cell-ACDC automatically computes **several single-cell numerical features** such as cell area and cell volume, plus the mean, max, median, sum and quantiles of any additional fluorescent channel's signal. It even performs background correction, to compute the **protein amount and concentration**.
