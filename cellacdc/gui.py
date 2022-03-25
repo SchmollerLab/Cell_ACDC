@@ -703,7 +703,7 @@ class saveDataWorker(QObject):
                 self.progressBar.emit(0, last_pos*(last_tracked_i+1), 0)
 
             if self.mainWin.isSnapshot:
-                self.mainWin.store_data()
+                self.mainWin.store_data(mainThread=False)
             try:
                 segm_npz_path = posData.segm_npz_path
                 acdc_output_csv_path = posData.acdc_output_csv_path
