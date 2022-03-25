@@ -8,8 +8,9 @@
 [![build macos](https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-macos.yml/badge.svg)](https://github.com/SchmollerLab/Cell_ACDC/actions)
 [![build windows](https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-windows.yml/badge.svg)](https://github.com/SchmollerLab/Cell_ACDC/actions)
 [![Python version](https://img.shields.io/pypi/pyversions/cellacdc)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/license-BSD%203--Clause-brightgreen)](https://github.com/SchmollerLab/Cell_ACDC/blob/main/LICENSE)
 [![pypi version](https://img.shields.io/pypi/v/cellacdc?color=red)](https://pypi.org/project/cellacdc/)
+[![Downloads](https://pepy.tech/badge/cellacdc/month)](https://pepy.tech/project/cellacdc)
+[![License](https://img.shields.io/badge/license-BSD%203--Clause-brightgreen)](https://github.com/SchmollerLab/Cell_ACDC/blob/main/LICENSE)
 [![repo size](https://img.shields.io/github/repo-size/SchmollerLab/Cell_ACDC)](https://github.com/SchmollerLab/Cell_ACDC)
 [![DOI](https://img.shields.io/badge/DOI-10.1101%2F2021.09.28.462199-informational)](https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2)
 

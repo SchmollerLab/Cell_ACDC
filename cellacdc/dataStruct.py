@@ -919,7 +919,7 @@ class createDataStructWin(QMainWindow):
             self.logger.exception(traceback_str)
             error_msg = (
                 'Error while importing "javabridge" and "bioformats"\n\n'
-                'Please report detailed error (click "See more details") '
+                'Please report detailed error (click "Show details") '
                 'here: https://github.com/SchmollerLab/Cell_ACDC/issues'
             )
             print(error_msg)
