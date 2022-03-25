@@ -3198,12 +3198,13 @@ class imageViewer(QMainWindow):
 
     def __init__(
             self, parent=None, posData=None, button_toUncheck=None,
-            spinBox=None
+            spinBox=None, linkWindow=None
         ):
         self.button_toUncheck = button_toUncheck
         self.parent = parent
         self.posData = posData
         self.spinBox = spinBox
+        self.linkWindow = linkWindow
         """Initializer."""
         super().__init__(parent)
 
@@ -3274,6 +3275,11 @@ class imageViewer(QMainWindow):
         editToolBar.addAction(self.nextAction)
         editToolBar.addAction(self.jumpBackwardAction)
         editToolBar.addAction(self.jumpForwardAction)
+
+        if self.linkWindow:
+            self.linkWindowCheckbox = QCheckBox("Link to main GUI")
+            self.linkWindowCheckbox.setChecked(True)
+            editToolBar.addWidget(self.linkWindowCheckbox)
 
     def gui_connectActions(self):
         self.exitAction.triggered.connect(self.close)

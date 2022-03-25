@@ -22,7 +22,10 @@ def worker_exception_handler(func):
         try:
             func(self)
         except Exception as error:
-            self.signals.critical.emit(error)
+            try:
+                self.signals.critical.emit(error)
+            except AttributeError:
+                self.critical.emit(error)
     return run
 
 class workerLogger:

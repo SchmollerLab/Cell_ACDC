@@ -53,12 +53,15 @@ def assign(IoA_matrix, IDs_curr_untracked, IDs_prev):
 
 def indexAssignment(
         old_IDs, tracked_IDs, IDs_curr_untracked, lab, rp, uniqueID,
-        remove_untracked=False
+        remove_untracked=False, assign_unique_new_IDs=True
     ):
     # Replace untracked IDs with tracked IDs and new IDs with increasing num
     new_untracked_IDs = [ID for ID in IDs_curr_untracked if ID not in old_IDs]
     tracked_lab = lab
-    if new_untracked_IDs:
+    print('----------------------------')
+    print(f'Assign new IDs uniquely = {assign_unique_new_IDs}')
+    print('***********************')
+    if new_untracked_IDs and assign_unique_new_IDs:
         # Relabel new untracked IDs unique IDs
         if remove_untracked:
             new_tracked_IDs = [0]*len(new_untracked_IDs)
@@ -83,7 +86,8 @@ def indexAssignment(
 
 def track_frame(
         prev_lab, prev_rp, lab, rp, IDs_curr_untracked=None,
-        uniqueID=None, setBrushID_func=None, posData=None
+        uniqueID=None, setBrushID_func=None, posData=None,
+        assign_unique_new_IDs=True
     ):
     IoA_matrix, IDs_curr_untracked, IDs_prev = calc_IoA_matrix(
         lab, prev_lab, rp, prev_rp, IDs_curr_untracked=IDs_curr_untracked
@@ -101,7 +105,8 @@ def track_frame(
 
     tracked_lab = indexAssignment(
         old_IDs, tracked_IDs, IDs_curr_untracked,
-        lab.copy(), rp, uniqueID
+        lab.copy(), rp, uniqueID,
+        assign_unique_new_IDs=assign_unique_new_IDs
     )
     return tracked_lab
 

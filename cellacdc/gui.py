@@ -268,11 +268,12 @@ class relabelSequentialWorker(QObject):
             posData.frame_i = frame_i
             posData.lab = lab
             mainWin.get_cca_df()
-            mainWin.update_cca_df_relabelling(
-                posData, oldIDs, newIDs
-            )
-            mainWin.update_rp()
-            mainWin.store_data()
+            if posData.cca_df is not None:
+                mainWin.update_cca_df_relabelling(
+                    posData, oldIDs, newIDs
+                )
+            mainWin.update_rp(draw=False)
+            mainWin.store_data(mainThread=False)
 
         # Go back to current frame
         posData.frame_i = current_frame_i
@@ -2857,7 +2858,7 @@ class guiWin(QMainWindow):
             self.update_rp()
 
             # Repeat tracking
-            self.tracking(enforce=True)
+            self.tracking(enforce=True, assign_unique_new_IDs=False)
 
             # Update all images
             self.updateALLimg()
@@ -3793,13 +3794,13 @@ class guiWin(QMainWindow):
                     self.warnEditingWithCca_df('Delete ID with eraser')
                     break
 
-        # Brush mouse release --> update IDs and contours
+        # Brush button mouse release --> update IDs and contours
         elif self.isMouseDragImg2 and self.brushButton.isChecked():
             self.isMouseDragImg2 = False
 
             self.update_rp()
             if posData.isNewID:
-                self.tracking(enforce=True)
+                self.tracking(enforce=True, assign_unique_new_IDs=False)
 
             self.updateALLimg(updateFilters=True)
             self.warnEditingWithCca_df('Add new ID with brush tool')
@@ -3834,7 +3835,7 @@ class guiWin(QMainWindow):
             self.update_rp()
 
             # Repeat tracking
-            self.tracking(enforce=True)
+            self.tracking(enforce=True, assign_unique_new_IDs=False)
 
             self.updateALLimg()
             if not self.mergeIDsButton.findChild(QAction).isChecked():
@@ -3867,7 +3868,7 @@ class guiWin(QMainWindow):
             try:
                 self.splineToObj(isRightClick=True)
                 self.update_rp()
-                self.tracking(enforce=True)
+                self.tracking(enforce=True, assign_unique_new_IDs=False)
                 self.updateALLimg()
                 self.warnEditingWithCca_df('Add new ID with curvature tool')
                 self.clearCurvItems()
@@ -3891,6 +3892,7 @@ class guiWin(QMainWindow):
                     self.warnEditingWithCca_df('Delete ID with eraser')
                     break
 
+        # Brush button mouse release
         elif self.isMouseDragImg1 and self.brushButton.isChecked():
             self.isMouseDragImg1 = False
 
@@ -3898,7 +3900,7 @@ class guiWin(QMainWindow):
             self.update_rp()
 
             # Repeat tracking
-            self.tracking(enforce=True)
+            self.tracking(enforce=True, assign_unique_new_IDs=False)
 
             # Update colors to include a new color for the new ID
             self.updateALLimg()
@@ -3915,7 +3917,7 @@ class guiWin(QMainWindow):
             self.update_rp()
 
             # Repeat tracking
-            self.tracking(enforce=True)
+            self.tracking(enforce=True, assign_unique_new_IDs=False)
 
             # Update colors to include a new color for the new ID
             self.updateALLimg()
@@ -4302,7 +4304,7 @@ class guiWin(QMainWindow):
                 self.splineHoverON = False
                 self.splineToObj()
                 self.update_rp()
-                self.tracking(enforce=True)
+                self.tracking(enforce=True, assign_unique_new_IDs=False)
                 self.updateALLimg()
                 self.warnEditingWithCca_df('Add new ID with curvature tool')
                 self.clearCurvItems()
@@ -6349,6 +6351,7 @@ class guiWin(QMainWindow):
             self.slideshowWin = apps.imageViewer(
                 parent=self,
                 button_toUncheck=self.slideshowButton,
+                linkWindow=posData.SizeT > 1
             )
             self.slideshowWin.update_img()
             self.slideshowWin.show(
@@ -7712,6 +7715,20 @@ class guiWin(QMainWindow):
         self.zoomToCells()
         self.updateScrollbars()
 
+    def updateViewerWindow(self):
+        if self.slideshowWin is None:
+            return
+
+        if self.slideshowWin.linkWindow is None:
+            return
+
+        if not self.slideshowWin.linkWindowCheckbox.isChecked():
+            return
+
+        posData = self.data[self.pos_i]
+        self.slideshowWin.frame_i = posData.frame_i
+        self.slideshowWin.update_img()
+
     def next_frame(self):
         mode = str(self.modeComboBox.currentText())
         isSegmMode =  mode == 'Segmentation and Tracking'
@@ -7800,6 +7817,7 @@ class guiWin(QMainWindow):
                 updateFilters=True,
                 updateLabelItemColor=False
             )
+            self.updateViewerWindow()
             self.setNavigateScrollBarMaximum()
             self.updateScrollbars()
             self.computeSegm()
@@ -7840,6 +7858,7 @@ class guiWin(QMainWindow):
                               updateEntropy=True)
             self.updateScrollbars()
             self.zoomToCells()
+            self.updateViewerWindow()
         else:
             msg = 'You reached the first frame!'
             self.logger.info(msg)
@@ -8637,6 +8656,7 @@ class guiWin(QMainWindow):
             self.img2.setImage(posData.lab)
         self.updateLookuptable()
         self.updateFramePosLabel()
+        self.updateViewerWindow()
         self.navigateScrollBarStartedMoving = False
 
     def framesScrollBarReleased(self):
@@ -8653,6 +8673,7 @@ class guiWin(QMainWindow):
         self.setNavigateScrollBarMaximum()
         self.computeSegm()
         self.zoomToCells()
+        self.updateViewerWindow()
 
     def unstore_data(self):
         posData = self.data[self.pos_i]
@@ -8665,7 +8686,7 @@ class guiWin(QMainWindow):
         }
 
 
-    def store_data(self, pos_i=None, enforce=True, debug=False):
+    def store_data(self, pos_i=None, enforce=True, debug=False, mainThread=True):
         pos_i = self.pos_i if pos_i is None else pos_i
         posData = self.data[pos_i]
         if posData.frame_i < 0:
@@ -8721,7 +8742,7 @@ class guiWin(QMainWindow):
             }
         ).set_index('Cell_ID')
 
-        self.store_cca_df(pos_i=pos_i)
+        self.store_cca_df(pos_i=pos_i, mainThread=mainThread)
 
     def nearest_point_2Dyx(self, points, all_others):
         """
@@ -9527,13 +9548,13 @@ class guiWin(QMainWindow):
                 continue
             acdc_df.drop(col, axis=1, inplace=True)
 
-    def store_cca_df(self, pos_i=None, frame_i=None, cca_df=None):
+    def store_cca_df(self, pos_i=None, frame_i=None, cca_df=None, mainThread=True):
         pos_i = self.pos_i if pos_i is None else pos_i
         posData = self.data[pos_i]
         i = posData.frame_i if frame_i is None else frame_i
         if cca_df is None:
             cca_df = posData.cca_df
-            if self.ccaTableWin is not None:
+            if self.ccaTableWin is not None and mainThread:
                 self.ccaTableWin.updateTable(posData.cca_df)
 
         acdc_df = posData.allData_li[i]['acdc_df']
@@ -9764,7 +9785,7 @@ class guiWin(QMainWindow):
         # Update rp for current posData.lab (e.g. after any change)
         posData.rp = skimage.measure.regionprops(posData.lab)
         posData.IDs = [obj.label for obj in posData.rp]
-        self.update_rp_metadata()
+        self.update_rp_metadata(draw=draw)
 
     def update_IDsContours(self, prev_IDs, newIDs=[]):
         """Function to draw labels text and contours of specific IDs.
@@ -11359,7 +11380,7 @@ class guiWin(QMainWindow):
     def tracking(
             self, onlyIDs=[], enforce=False, DoManualEdit=True,
             storeUndo=False, prev_lab=None, prev_rp=None,
-            return_lab=False
+            return_lab=False, assign_unique_new_IDs=True
         ):
         try:
             posData = self.data[self.pos_i]
@@ -11426,12 +11447,13 @@ class guiWin(QMainWindow):
                     prev_lab, prev_rp, posData.lab, posData.rp,
                     IDs_curr_untracked=posData.IDs,
                     setBrushID_func=self.setBrushID,
-                    posData=posData
+                    posData=posData,
+                    assign_unique_new_IDs=assign_unique_new_IDs
                 )
             elif self.trackWithYeazAction.isChecked():
                 tracked_lab = self.tracking_yeaz.correspondence(
                     prev_lab, posData.lab, use_modified_yeaz=True,
-                    use_scipy=True
+                    use_scipy=True, isVisited=True
                 )
 
             if DoManualEdit:
