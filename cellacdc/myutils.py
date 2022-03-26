@@ -854,15 +854,7 @@ def scale_float(data):
     # Check if float outside of -1, 1
     val = data[tuple([0]*data.ndim)]
     if isinstance(val, (np.floating, float)):
-        uint8_max = np.iinfo(np.uint8).max
-        uint16_max = np.iinfo(np.uint16).max
-        data_max = core.numba_max(data)
-        if data_max <= uint8_max:
-            data = data/uint8_max
-        elif data_max <= uint16_max:
-            data = data/uint16_max
-        else:
-            data = data/data_max
+        data = uint_to_float(data)
     return data
 
 def _install_homebrew_command():

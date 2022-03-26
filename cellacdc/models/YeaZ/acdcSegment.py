@@ -13,6 +13,7 @@ from .unet import segment
 from tensorflow import keras
 
 from tqdm import tqdm
+from cellacdc import myutils
 
 class progressCallback(keras.callbacks.Callback):
     def __init__(self, signals):
@@ -57,9 +58,10 @@ class Model:
         self.model.load_weights(weights_path)
 
     def yeaz_preprocess(self, image, tqdm_pbar=None):
-        image = skimage.filters.gaussian(image, sigma=1)
+        # image = skimage.filters.gaussian(image, sigma=1)
         # image = skimage.exposure.equalize_adapthist(image)
-        image = image/image.max()
+        # image = image/image.max()
+        image = myutils.uint_to_float(image)
         image = skimage.exposure.equalize_adapthist(image)
         if tqdm_pbar is not None:
             tqdm_pbar.emit(1)
