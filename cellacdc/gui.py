@@ -8178,9 +8178,40 @@ class guiWin(QMainWindow):
         self.loadDataWorker.signals.dataIntegrityWarning.connect(
             self.loadDataWorkerDataIntegrityWarning
         )
+        self.loadDataWorker.signals.sigPermissionError.connect(
+            self.workerPermissionError
+        )
+        self.loadDataWorker.signals.sigMultiSegm.connect(
+            self.loadDataWorkerMultiSegm
+        )
 
         self.thread.started.connect(self.loadDataWorker.run)
         self.thread.start()
+
+    def loadDataWorkerMultiSegm(self, segm_files, worker, multiPos, waitCond):
+        win = apps.QDialogMultiSegmNpz(
+            segm_files, worker.pos_path, parent=self,
+            multiPos=multiPos
+        )
+        win.exec_()
+        worker.multiSegmAllPos = win.okAllPos
+        worker.selectedItemText = win.selectedItemText
+        worker.cancel = win.cancel
+        if win.removeOthers:
+            for file in segm_files:
+                if file == win.selectedItemText:
+                    continue
+                os.remove(os.path.join(worker.images_path, file))
+        waitCond.wakeAll()
+
+    def workerPermissionError(self, txt, waitCond):
+        msg = widgets.myMessageBox(self)
+        msg.setIcon(iconName='SP_MessageBoxCritical')
+        msg.setWindowTitle('Permission denied')
+        msg.addText(txt)
+        msg.addButton('  Ok  ')
+        msg.exec_()
+        waitCond.wakeAll()
 
     def loadDataWorkerDataIntegrityCritical(self):
         errTitle = 'All loaded positions contains frames over time!'

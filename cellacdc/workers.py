@@ -50,6 +50,8 @@ class signals(QObject):
     signal_close_tqdm = pyqtSignal()
     create_tqdm = pyqtSignal(int)
     innerProgressBar = pyqtSignal(int)
+    sigPermissionError = pyqtSignal(str, object)
+    sigMultiSegm = pyqtSignal(object, object, bool, object)
 
 class loadDataWorker(QObject):
     def __init__(self, mainWin, user_ch_file_paths, user_ch_name):
@@ -105,9 +107,11 @@ class loadDataWorker(QObject):
             posData.getBasenameAndChNames()
             posData.buildPaths()
             posData.loadImgData()
-            selectedSegmNpz, cancel = posData.detectMultiSegmNpz()
+            selectedSegmNpz, cancel = posData.detectMultiSegmNpz(
+                signals=self.signals, mutex=self.mutex, waitCond=self.waitCond
+            )
             if cancel:
-                data = None
+                data = 'abort'
                 break
 
             posData.loadOtherFiles(
@@ -133,7 +137,9 @@ class loadDataWorker(QObject):
             posData.PhysicalSizeZ = self.mainWin.PhysicalSizeZ
             posData.PhysicalSizeY = self.mainWin.PhysicalSizeY
             posData.PhysicalSizeX = self.mainWin.PhysicalSizeX
-            posData.saveMetadata()
+            posData.saveMetadata(
+                signals=self.signals, mutex=self.mutex, waitCond=self.waitCond
+            )
             SizeY, SizeX = posData.img_data_shape[-2:]
 
             if posData.SizeZ > 1 and posData.img_data.ndim < 3:

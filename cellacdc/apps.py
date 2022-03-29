@@ -1470,8 +1470,10 @@ class QDialogWorkerProgress(QDialog):
         mainWinCenterY = int(mainWinTop+mainWinHeight/2)
 
         width = int(screenWidth/3)
+        width = width if self.width() < width else self.width()
         height = int(screenHeight/3)
         left = int(mainWinCenterX - width/2)
+        left = left if left >= 0 else 0
         top = int(mainWinCenterY - height/2)
 
         self.setGeometry(left, top, width, height)

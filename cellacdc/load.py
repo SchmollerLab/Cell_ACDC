@@ -21,7 +21,7 @@ import skimage.measure
 from PyQt5 import QtGui
 from PyQt5.QtCore import Qt, QRect, QRectF
 from PyQt5.QtWidgets import (
-    QApplication
+    QApplication, QMessageBox
 )
 import pyqtgraph as pg
 
@@ -101,7 +101,7 @@ class loadData:
         )
         self.basename = selector.basename
 
-    def loadImgData(self):
+    def loadImgData(self, signals=None):
         self.z0_window = 0
         self.t0_window = 0
         if self.ext == '.h5':
@@ -158,7 +158,7 @@ class loadData:
                 self.img_data_shape = self.img_data.shape
             except Exception as e:
                 traceback.print_exc()
-                self.criticalExtNotValid()
+                self.criticalExtNotValid(signals=signals)
 
     def _loadVideo(self, path):
         video = cv2.VideoCapture(path)
@@ -172,7 +172,10 @@ class loadData:
             img_data[i] = frame
         return img_data
 
-    def detectMultiSegmNpz(self, _endswith='', multiPos=False):
+    def detectMultiSegmNpz(
+            self, _endswith='', multiPos=False, signals=None,
+            mutex=None, waitCond=None
+        ):
         ls = myutils.listdir(self.images_path)
         if _endswith:
             self.multiSegmAllPos = True
@@ -190,18 +193,11 @@ class loadData:
         ]
         is_multi_npz = len(segm_files)>1
         if is_multi_npz:
-            win = apps.QDialogMultiSegmNpz(
-                segm_files, self.pos_path, parent=self.parent,
-                multiPos=multiPos
-            )
-            win.exec_()
-            self.multiSegmAllPos = win.okAllPos
-            if win.removeOthers:
-                for file in segm_files:
-                    if file == win.selectedItemText:
-                        continue
-                    os.remove(os.path.join(self.images_path, file))
-            return win.selectedItemText, win.cancel
+            mutex.lock()
+            signals.sigMultiSegm.emit(segm_files, self, multiPos, waitCond)
+            waitCond.wait(mutex)
+            mutex.unlock()
+            return self.selectedItemText, self.cancel
         else:
             return '', False
 
@@ -615,7 +611,7 @@ class loadData:
         self.PhysicalSizeY = from_posData.PhysicalSizeY
         self.PhysicalSizeX = from_posData.PhysicalSizeX
 
-    def saveMetadata(self):
+    def saveMetadata(self, signals=None, mutex=None, waitCond=None):
         if self.metadata_df is None:
             self.metadata_df = pd.DataFrame({
                 'SizeT': self.SizeT,
@@ -638,16 +634,23 @@ class loadData:
         try:
             self.metadata_df.to_csv(self.metadata_csv_path)
         except PermissionError:
-            msg = QtGui.QMessageBox()
-            warn_cca = msg.critical(
-                self.parent, 'Permission denied',
+            permissionErrorTxt = (
                 f'The below file is open in another app (Excel maybe?).\n\n'
                 f'{self.metadata_csv_path}\n\n'
-                'Close file and then press "Ok".',
-                msg.Ok
+                'Close file and then press "Ok".'
             )
-            self.metadata_df.to_csv(self.metadata_csv_path)
-
+            if signals is None:
+                msg = QMessageBox()
+                warn_cca = msg.critical(
+                    self.parent, 'Permission denied', permissionErrorTxt, msg.Ok
+                )
+                self.metadata_df.to_csv(self.metadata_csv_path)
+            else:
+                mutex.lock()
+                signals.sigPermissionError.emit(permissionErrorTxt, waitCond)
+                waitCond.wait(mutex)
+                mutex.unlock()
+                self.metadata_df.to_csv(self.metadata_csv_path)
         self.saveLastEntriesMetadata()
 
     @staticmethod
@@ -680,7 +683,7 @@ class loadData:
         return acdc_df
 
 
-    def criticalExtNotValid(self):
+    def criticalExtNotValid(self, signals=None):
         err_title = f'File extension {self.ext} not valid.'
         err_msg = (
             f'The requested file {self.relPath}\n'
@@ -692,13 +695,15 @@ class loadData:
             print(err_msg)
             print('-------------------------')
             raise FileNotFoundError(err_title)
-        else:
+        elif signals is None:
             print('-------------------------')
             print(err_msg)
             print('-------------------------')
-            msg = QtGui.QMessageBox()
+            msg = QMessageBox()
             msg.critical(self.parent, err_title, err_msg, msg.Ok)
             return None
+        elif signals is not None:
+            raise FileNotFoundError(err_title)
 
 class select_exp_folder:
     def QtPrompt(self, parentQWidget, values,
