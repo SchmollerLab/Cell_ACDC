@@ -948,6 +948,7 @@ class guiWin(QMainWindow):
 
         self.checkableButtons = []
         self.LeftClickButtons = []
+        self.customAnnotDict = {}
 
         self.isSnapshot = False
         self.debugFlag = False
@@ -1539,9 +1540,13 @@ class guiWin(QMainWindow):
         self.addToolBar(modeToolBar)
 
         self.modeComboBox = QComboBox()
-        self.modeComboBox.addItems(
-            ['Segmentation and Tracking', 'Cell cycle analysis', 'Viewer']
-        )
+        self.modeItems = [
+            'Segmentation and Tracking',
+            'Cell cycle analysis',
+            'Viewer',
+            'Custom annotations'
+        ]
+        self.modeComboBox.addItems(self.modeItems)
         self.modeComboBoxLabel = QLabel('    Mode: ')
         self.modeComboBoxLabel.setBuddy(self.modeComboBox)
         modeToolBar.addWidget(self.modeComboBoxLabel)
@@ -1556,6 +1561,8 @@ class guiWin(QMainWindow):
 
         self.gui_populateToolSettingsMenu()
 
+        self.gui_createAnnotateToolbar()
+
         # toolbarSize = 58
         # fileToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         # navigateToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
@@ -1563,6 +1570,13 @@ class guiWin(QMainWindow):
         # editToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         # widgetsToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         # modeToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
+
+    def gui_createAnnotateToolbar(self):
+        # Edit toolbar
+        self.annotateToolbar = QToolBar("Custom annotations", self)
+        self.addToolBar(Qt.LeftToolBarArea, self.annotateToolbar)
+        self.annotateToolbar.addAction(self.addCustomAnnotationAction)
+        self.annotateToolbar.setVisible(False)
 
     def gui_createMainLayout(self):
         mainLayout = QGridLayout()
@@ -1884,6 +1898,10 @@ class guiWin(QMainWindow):
             'Remove segmented objects touching the border of the image'
         )
 
+        self.addCustomAnnotationAction = QAction(self)
+        self.addCustomAnnotationAction.setIcon(QIcon(":annotate.svg"))
+        self.addCustomAnnotationAction.setToolTip('Add custom annotation')
+
     def gui_connectActions(self):
         # Connect File actions
         self.newAction.triggered.connect(self.newFile)
@@ -1903,6 +1921,8 @@ class guiWin(QMainWindow):
         self.checkableQButtonsGroup.buttonClicked.connect(self.uncheckQButton)
 
         self.showPropsDockButton.clicked.connect(self.showPropsDockWidget)
+
+        self.addCustomAnnotationAction.triggered.connect(self.addCustomAnnotation)
 
     def gui_connectEditActions(self):
         self.showInExplorerAction.setEnabled(True)
@@ -2627,10 +2647,13 @@ class guiWin(QMainWindow):
         is_right_click_action_ON = any([
             b.isChecked() for b in self.checkableQButtonsGroup.buttons()
         ])
+        is_right_click_custom_ON = any([
+            b.isChecked() for b in self.customAnnotDict.keys()
+        ])
         is_event_from_img1 = hasattr(event, 'isImg1Sender')
         showLabelsGradMenu = (
             right_click and not is_right_click_action_ON
-            and not is_event_from_img1
+            and not is_event_from_img1 and not is_right_click_custom_ON
         )
         if showLabelsGradMenu:
             self.labelsGrad.showMenu(event)
@@ -4046,6 +4069,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
         isCcaMode = mode == 'Cell cycle analysis'
+        isCustomAnnotMode = mode == 'Custom annotations'
         left_click = event.button() == Qt.MouseButton.LeftButton and not isMod
         middle_click = self.isMiddleClick(event, modifiers)
         right_click = event.button() == Qt.MouseButton.RightButton
@@ -4065,11 +4089,16 @@ class guiWin(QMainWindow):
         if isPanImageClick:
             dragImgLeft = True
 
+        is_right_click_custom_ON = any([
+            b.isChecked() for b in self.customAnnotDict.keys()
+        ])
+
         # canAnnotateDivision True if any right-click action is ON
         canAnnotateDivision = (
              not self.assignBudMothButton.isChecked()
              and not self.setIsHistoryKnownButton.isChecked()
              and not self.curvToolButton.isChecked()
+             and not is_right_click_custom_ON
         )
 
         # In timelapse mode division can be annotated if isCcaMode and right-click
@@ -4079,6 +4108,11 @@ class guiWin(QMainWindow):
             or (right_click and ctrl and self.isSnapshot)
         )
 
+        isCustomAnnot = (
+            right_click and isCustomAnnotMode
+            and self.customAnnotButton is not None
+        )
+
         is_right_click_action_ON = any([
             b.isChecked() for b in self.checkableQButtonsGroup.buttons()
         ])
@@ -4086,6 +4120,7 @@ class guiWin(QMainWindow):
         isOnlyRightClick = (
             right_click and canAnnotateDivision and not isAnnotateDivision
             and not isMod and not is_right_click_action_ON
+            and not is_right_click_custom_ON
         )
 
         if isOnlyRightClick:
@@ -4474,6 +4509,34 @@ class guiWin(QMainWindow):
             self.annotateIsHistoryKnown(ID)
             if not self.setIsHistoryKnownButton.findChild(QAction).isChecked():
                 self.setIsHistoryKnownButton.setChecked(False)
+
+        elif isCustomAnnot:
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(x), int(y)
+            ID = posData.lab[ydata, xdata]
+            if ID == 0:
+                nearest_ID = self.nearest_nonzero(posData.lab, y, x)
+                clickedBkgrDialog = apps.QLineEditDialog(
+                    title='Clicked on background',
+                    msg='You clicked on the background.\n'
+                         'Enter ID that you want to annotate as divided',
+                    parent=self, allowedValues=posData.IDs,
+                    defaultTxt=str(nearest_ID)
+                )
+                clickedBkgrDialog.exec_()
+                if clickedBkgrDialog.cancel:
+                    return
+                else:
+                    ID = clickedBkgrDialog.EntryID
+                    obj_idx = posData.IDs.index(ID)
+                    y, x = posData.rp[obj_idx].centroid
+                    xdata, ydata = int(x), int(y)
+
+            button = self.doCustomAnnotation(ID)
+            keepActive = self.customAnnotDict[button]['state']['keepActive']
+            if not keepActive:
+                button.setChecked(False)
+
 
     def gui_addCreatedAxesItems(self):
         allItems = zip(
@@ -6183,6 +6246,24 @@ class guiWin(QMainWindow):
             action.setEnabled(enabled)
             button.setEnabled(enabled)
 
+    def reconnectUndoRedo(self):
+        try:
+            self.undoAction.triggered.disconnect()
+            self.redoAction.triggered.disconnect()
+        except Exception as e:
+            pass
+        mode = self.modeComboBox.currentText()
+        if mode == 'Segmentation and Tracking' or mode == 'Snapshot':
+            self.undoAction.triggered.connect(self.undo)
+            self.redoAction.triggered.connect(self.redo)
+        elif mode == 'Cell cycle analysis':
+            self.undoAction.triggered.connect(self.UndoCca)
+        elif mode == 'Custom annotations':
+            self.undoAction.triggered.connect(self.undoCustomAnnotation)
+        else:
+            self.undoAction.setDisabled(True)
+            self.redoAction.setDisabled(True)
+
     def setEnabledWidgetsToolbar(self, enabled):
         self.widgetsToolBar.setVisible(enabled)
         for action in self.widgetsToolBar.actions():
@@ -6220,8 +6301,10 @@ class guiWin(QMainWindow):
             pass
 
     def changeMode(self, idx):
+        self.reconnectUndoRedo()
         posData = self.data[self.pos_i]
         mode = self.modeComboBox.itemText(idx)
+        self.annotateToolbar.setVisible(False)
         if mode == 'Segmentation and Tracking':
             self.trackingMenu.setDisabled(False)
             self.modeToolBar.setVisible(True)
@@ -6233,13 +6316,6 @@ class guiWin(QMainWindow):
             self.setEnabledCcaToolbar(enabled=False)
             # self.drawIDsContComboBox.clear()
             # self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
-            try:
-                self.undoAction.triggered.disconnect()
-                self.redoAction.triggered.disconnect()
-            except Exception as e:
-                pass
-            self.undoAction.triggered.connect(self.undo)
-            self.redoAction.triggered.connect(self.redo)
             for BudMothLine in self.ax1_BudMothLines:
                 if BudMothLine is None:
                     continue
@@ -6258,12 +6334,6 @@ class guiWin(QMainWindow):
                 self.setEnabledCcaToolbar(enabled=True)
                 self.removeAlldelROIsCurrentFrame()
                 # self.disableTrackingCheckBox.setChecked(True)
-                try:
-                    self.undoAction.triggered.disconnect()
-                    self.redoAction.triggered.disconnect()
-                except Exception as e:
-                    pass
-                self.undoAction.triggered.connect(self.UndoCca)
                 how = self.drawIDsContComboBox.currentText()
                 if how.find('segm. masks') != -1:
                     self.drawIDsContComboBox.setCurrentText(
@@ -6284,30 +6354,20 @@ class guiWin(QMainWindow):
             self.setEnabledCcaToolbar(enabled=False)
             self.removeAlldelROIsCurrentFrame()
             # self.disableTrackingCheckBox.setChecked(True)
-            self.undoAction.setDisabled(True)
-            self.redoAction.setDisabled(True)
-            currentMode = self.drawIDsContComboBox.currentText()
+            # currentMode = self.drawIDsContComboBox.currentText()
             # self.drawIDsContComboBox.clear()
             # self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxCcaItems)
-            self.drawIDsContComboBox.setCurrentText(currentMode)
+            # self.drawIDsContComboBox.setCurrentText(currentMode)
             self.navigateScrollBar.setMaximum(posData.segmSizeT)
-            try:
-                self.undoAction.triggered.disconnect()
-                self.redoAction.triggered.disconnect()
-            except Exception as e:
-                pass
+        elif mode == 'Custom annotations':
+            self.modeToolBar.setVisible(True)
+            self.setEnabledWidgetsToolbar(False)
+            self.setEnabledEditToolbarButton(enabled=False)
+            self.setEnabledCcaToolbar(enabled=False)
+            self.removeAlldelROIsCurrentFrame()
+            self.annotateToolbar.setVisible(True)
         elif mode == 'Snapshot':
-            try:
-                self.undoAction.triggered.disconnect()
-                self.redoAction.triggered.disconnect()
-            except Exception as e:
-                pass
-            self.undoAction.triggered.connect(self.undo)
-            self.redoAction.triggered.connect(self.redo)
-            # self.drawIDsContComboBox.clear()
-            # self.drawIDsContComboBox.addItems(
-            #     self.drawIDsContComboBoxCcaItems
-            # )
+            self.reconnectUndoRedo()
             self.setEnabledSnapshotMode()
 
     def setEnabledSnapshotMode(self):
@@ -6728,9 +6788,9 @@ class guiWin(QMainWindow):
     @exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
-            posData = self.data[self.pos_i]
-            print(posData.lab.shape)
-            print(self.img1.image.shape)
+            # posData = self.data[self.pos_i]
+            # acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
+            # print(acdc_df)
             pass
             # self.imgGrad.sigLookupTableChanged.disconnect()
         try:
@@ -7098,6 +7158,9 @@ class guiWin(QMainWindow):
         if len(posData.UndoRedoCcaStates[frame_i]) > 10:
             posData.UndoRedoCcaStates[frame_i].pop(-1)
 
+    def undoCustomAnnotation(self):
+        pass
+
     def UndoCca(self):
         posData = self.data[self.pos_i]
         # Undo current ccaState
@@ -7375,6 +7438,151 @@ class guiWin(QMainWindow):
         self.postProcessSegmAction.toggled.disconnect()
         self.postProcessSegmAction.setChecked(False)
         self.postProcessSegmAction.toggled.connect(self.postProcessSegm)
+
+    def addCustomAnnotation(self):
+        self.addAnnotWin = apps.customAnnotationDialog()
+        self.addAnnotWin.exec_()
+        if self.addAnnotWin.cancel:
+            return
+
+        symbol = self.addAnnotWin.symbol
+        symbolColor = self.addAnnotWin.state['symbolColor']
+        toolButton = widgets.customAnnotToolButton(
+            symbol, symbolColor, parent=self
+        )
+        toolButton.setCheckable(True)
+        keySequence = self.addAnnotWin.shortcutWidget.widget.keySequence
+        if keySequence is not None:
+            toolButton.setShortcut(keySequence)
+        toolButton.setToolTip(self.addAnnotWin.toolTip)
+        toolButton.toggled.connect(self.customAnnotButtonClicked)
+        toolButton.sigRemoveAction.connect(self.removeCustomAnnotButton)
+        toolButton.sigKeepActiveAction.connect(self.customAnnotKeepActive)
+        toolButton.sigModifyAction.connect(self.customAnnotModify)
+        action = self.annotateToolbar.addWidget(toolButton)
+
+        self.customAnnotDict[toolButton] = {
+            'action': action,
+            'state': self.addAnnotWin.state,
+            'annotatedIDs': {}
+        }
+
+        symbolColorBrush = [0, 0, 0, 50]
+        symbolColorBrush[:3] = symbolColor.getRgb()[:3]
+        scatterPlotItem = pg.ScatterPlotItem()
+        scatterPlotItem.setData(
+            [], [], symbol=symbol, pxMode=False,
+            brush=pg.mkBrush(symbolColorBrush), size=15,
+            pen=pg.mkPen(width=3, color=symbolColor)
+        )
+        self.customAnnotDict[toolButton]['scatterPlotItem'] = scatterPlotItem
+        self.ax1.addItem(scatterPlotItem)
+
+        posData = self.data[self.pos_i]
+        acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
+        if acdc_df is not None:
+            acdc_df[self.addAnnotWin.state['name']] = 0
+
+    def customAnnotKeepActive(self, button):
+        self.customAnnotDict[button]['state']['keepActive'] = button.keepToolActive
+
+    def customAnnotModify(self, button):
+        state = self.customAnnotDict[button]['state']
+        self.addAnnotWin = apps.customAnnotationDialog(state=state)
+        self.addAnnotWin.exec_()
+        if self.addAnnotWin.cancel:
+            return
+
+        # Rename column if existing
+        posData = self.data[self.pos_i]
+        acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
+        if acdc_df is not None:
+            old_name = self.customAnnotDict[button]['state']['name']
+            new_name = self.addAnnotWin.state['name']
+            acdc_df = acdc_df.rename(columns={old_name: new_name})
+            posData.allData_li[posData.frame_i]['acdc_df'] = acdc_df
+
+        self.customAnnotDict[button]['state'] = self.addAnnotWin.state
+
+        symbol = self.addAnnotWin.symbol
+        symbolColor = self.customAnnotDict[button]['state']['symbolColor']
+        button.setColor(symbolColor)
+        button.update()
+        symbolColorBrush = [0, 0, 0, 50]
+        symbolColorBrush[:3] = symbolColor.getRgb()[:3]
+        scatterPlotItem = self.customAnnotDict[button]['scatterPlotItem']
+        xx, yy = scatterPlotItem.getData()
+        if xx is None:
+            xx, yy = [], []
+        scatterPlotItem.setData(
+            xx, yy, symbol=symbol, pxMode=False,
+            brush=pg.mkBrush(symbolColorBrush), size=15,
+            pen=pg.mkPen(width=3, color=symbolColor)
+        )
+
+    def doCustomAnnotation(self, ID):
+        posData = self.data[self.pos_i]
+        buttons = [b for b in self.customAnnotDict.keys() if b.isChecked()]
+        if not buttons:
+            return
+
+        button = buttons[0]
+        annotatedIDs = self.customAnnotDict[button]['annotatedIDs']
+        annotIDs_frame_i = annotatedIDs.get(posData.frame_i, [])
+        if ID in annotIDs_frame_i:
+            annotIDs_frame_i.remove(ID)
+        elif ID != 0:
+            annotIDs_frame_i.append(ID)
+
+        self.customAnnotDict[button]['annotatedIDs'][posData.frame_i] = annotIDs_frame_i
+
+        state = self.customAnnotDict[button]['state']
+        acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
+        if acdc_df is None:
+            # visiting new frame for single time-point annot type do nothing
+            return
+
+        acdc_df[state['name']] = 0
+
+        xx, yy = [], []
+        for annotID in annotIDs_frame_i:
+            obj_idx = posData.IDs.index(annotID)
+            obj = posData.rp[obj_idx]
+            y, x = obj.centroid
+            xx.append(x)
+            yy.append(y)
+            acdc_df.at[annotID, state['name']] = 1
+
+        scatterPlotItem = self.customAnnotDict[button]['scatterPlotItem']
+        scatterPlotItem.setData(xx, yy)
+
+        return button
+
+    def removeCustomAnnotButton(self, button):
+        posData = self.data[self.pos_i]
+        acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
+        if acdc_df is not None:
+            acdc_df[self.addAnnotWin.state['name']] = 0
+
+        scatterPlotItem = self.customAnnotDict[button]['scatterPlotItem']
+        scatterPlotItem.setData([], [])
+
+        action = self.customAnnotDict[button]['action']
+        self.annotateToolbar.removeAction(action)
+        self.customAnnotDict.pop(button)
+
+    def customAnnotButtonClicked(self, checked):
+        if checked:
+            self.customAnnotButton = self.sender()
+            for button in self.customAnnotDict.keys():
+                if button == self.sender():
+                    continue
+
+                button.toggled.disconnect()
+                button.setChecked(False)
+                button.toggled.connect(self.customAnnotButtonClicked)
+        else:
+            self.customAnnotButton = None
 
     @exception_handler
     def repeatSegm(self, model_name=''):
@@ -8100,7 +8308,9 @@ class guiWin(QMainWindow):
             self.drawIDsContComboBox.setCurrentIndex(1)
             self.modeToolBar.setVisible(False)
             self.modeComboBox.setCurrentText('Snapshot')
+            self.annotateToolbar.setVisible(True)
         else:
+            self.annotateToolbar.setVisible(False)
             self.disableTrackingCheckBox.setDisabled(False)
             self.repeatTrackingAction.setDisabled(False)
             self.modeComboBox.setDisabled(False)
@@ -8112,9 +8322,7 @@ class guiWin(QMainWindow):
                 pass
                 # traceback.print_exc()
             self.modeComboBox.clear()
-            self.modeComboBox.addItems(['Segmentation and Tracking',
-                                        'Cell cycle analysis',
-                                        'Viewer'])
+            self.modeComboBox.addItems(self.modeItems)
             self.drawIDsContComboBox.clear()
             self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
             self.modeComboBox.currentIndexChanged.connect(self.changeMode)
@@ -11133,6 +11341,8 @@ class guiWin(QMainWindow):
         if self.ccaTableWin is not None:
             self.ccaTableWin.updateTable(posData.cca_df)
 
+        self.doCustomAnnotation(0)
+
     def startBlinkingModeCB(self):
         try:
             self.timer.stop()
@@ -11901,8 +12111,7 @@ class guiWin(QMainWindow):
             but there are only <b>{available_ram:.2f} GB</b> available.<br><br>
             For <b>optimal operation</b>, we recommend loading <b>maximum 30%</b>
             of the available memory. To do so, try to close open apps to
-            free up some memory or consider using .h5 files and load only
-            a portion of the file. Another option is to crop the images
+            free up some memory. Another option is to crop the images
             using the data prep module.<br><br>
             If you choose to continue, the <b>system might freeze</b>
             or your OS could simply kill the process.<br><br>
@@ -12057,8 +12266,8 @@ class guiWin(QMainWindow):
                 openedOn.pop(pop_idx)
             recentPaths.insert(0, exp_path)
             openedOn.insert(0, datetime.datetime.now())
-            # Keep max 20 recent paths
-            if len(recentPaths) > 20:
+            # Keep max 40 recent paths
+            if len(recentPaths) > 40:
                 recentPaths.pop(-1)
                 openedOn.pop(-1)
         else:

@@ -65,6 +65,7 @@
     <file alias="expand.svg">resources/icons/expand.svg</file>
     <file alias="collapse.svg">resources/icons/collapse.svg</file>
     <file alias="info.svg">resources/icons/info.svg</file>
+    <file alias="annotate.svg">resources/icons/annotate.svg</file>
     <file alias="toolbar.png">resources/screenshots/toolbar.png</file>
     <file alias="toolTip.png">resources/screenshots/toolTip.png</file>
     <file alias="visualcpp.png">resources/screenshots/visual_studio_settings.png</file>

@@ -46,10 +46,10 @@ from PyQt5.QtWidgets import (
     QButtonGroup, QCheckBox, QSizePolicy, QComboBox, QSlider, QGridLayout,
     QSpinBox, QToolButton, QTableView, QTextBrowser, QDoubleSpinBox,
     QScrollArea, QFrame, QProgressBar, QGroupBox, QRadioButton,
-    QDockWidget, QMessageBox, QStyle
+    QDockWidget, QMessageBox, QStyle, QPlainTextEdit
 )
 
-from . import myutils, load, prompts, widgets, core, measurements
+from . import myutils, load, prompts, widgets, core, measurements, html_utils
 from . import is_mac, is_win
 from . import qrc_resources
 
@@ -256,6 +256,239 @@ class installJavaDialog(widgets.myMessageBox):
         self.move(self.pos().x(), 20)
         if is_win:
             self.resize(self.width(), self.height()+200)
+
+class customAnnotationDialog(QDialog):
+    def __init__(self, parent=None, state=None):
+        self.cancel = True
+        self.loop = None
+
+        super().__init__(parent)
+
+        self.setWindowTitle('Custom annotation')
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+
+        layout = widgets.myFormLayout()
+
+        row = 0
+        typeCombobox = QComboBox()
+        typeCombobox.addItems([
+            'Single time-point',
+            'Multiple time-points',
+            'Multiple values class'
+        ])
+        if state is not None:
+            typeCombobox.setCurrentText(state['type'])
+        self.typeCombobox = typeCombobox
+        body_txt = ("""
+        <b>Single time-point</b> annotation: use this to annotate
+        an event that happens on a <b>single frame in time</b>
+        (e.g. cell division).
+        <br><br>
+        <b>Multiple time-points</b> annotation: use this to annotate
+        an event that has a <b>duration</b>, i.e., a start frame and a stop
+        frame (e.g. cell cycle phase).<br><br>
+        <b>Multiple values class</b> annotation: use this to annotate a class
+        that has <b>multiple values</b>. An example could be a cell cycle stage
+        that can have different values, such as 2-cells division
+        or 4-cells division.
+        """)
+        typeInfoTxt = (f'{html_utils.paragraph(body_txt)}')
+        self.typeWidget = widgets.formWidget(
+            typeCombobox, addInfoButton=True, labelTextLeft='Type: ',
+            parent=self, infoTxt=typeInfoTxt
+        )
+        layout.addFormWidget(self.typeWidget, row=row)
+        typeCombobox.currentTextChanged.connect(self.warnType)
+
+        row += 1
+        nameInfoTxt = ("""
+        <b>Name of the column</b> that will be saved in the <code>acdc_output.csv</code>
+        file.<br><br>
+        Valid charachters are letters and numbers separate by underscore only.
+        """)
+        nameInfoTxt = (f'{html_utils.paragraph(nameInfoTxt)}')
+        self.nameWidget = widgets.formWidget(
+            widgets.alphaNumericLineEdit(), addInfoButton=True,
+            labelTextLeft='Name: ', parent=self, infoTxt=nameInfoTxt
+        )
+        if state is not None:
+            self.nameWidget.widget.setText(state['name'])
+        layout.addFormWidget(self.nameWidget, row=row)
+
+        row += 1
+        symbolInfoTxt = ("""
+        <b>Symbol</b> that will be drawn on the annotated cell at
+        the requested time frame.
+        """)
+        symbolInfoTxt = (f'{html_utils.paragraph(symbolInfoTxt)}')
+        self.symbolWidget = widgets.formWidget(
+            widgets.pgScatterSymbolsCombobox(), addInfoButton=True,
+            labelTextLeft='Symbol: ', parent=self, infoTxt=symbolInfoTxt
+        )
+        if state is not None:
+            self.symbolWidget.widget.setCurrentText(state['symbol'])
+        layout.addFormWidget(self.symbolWidget, row=row)
+
+        row += 1
+        shortcutInfoTxt = ("""
+        <b>Shortcut</b> that you can use to <b>activate/deactivate</b> annotation
+        of this event.<br><br> Leave empty if you don't need a shortcut.
+        """)
+        shortcutInfoTxt = (f'{html_utils.paragraph(shortcutInfoTxt)}')
+        self.shortcutWidget = widgets.formWidget(
+            widgets.shortCutLineEdit(), addInfoButton=True,
+            labelTextLeft='Shortcut: ', parent=self, infoTxt=shortcutInfoTxt
+        )
+        if state is not None:
+            self.shortcutWidget.widget.setText(state['shortcut'])
+        layout.addFormWidget(self.shortcutWidget, row=row)
+
+        row += 1
+        descInfoTxt = ("""
+        <b>Description</b> will be used as the <b>tool tip</b> that will be
+        displayed when you hover with th mouse cursor on the toolbar button
+        specific for this annotation
+        """)
+        descInfoTxt = (f'{html_utils.paragraph(descInfoTxt)}')
+        self.descWidget = widgets.formWidget(
+            QPlainTextEdit(), addInfoButton=True,
+            labelTextLeft='Description: ', parent=self, infoTxt=descInfoTxt
+        )
+        if state is not None:
+            self.descWidget.widget.setPlainText(state['description'])
+        layout.addFormWidget(self.descWidget, row=row)
+
+        row += 1
+        optionsGroupBox = QGroupBox('Additional options')
+        optionsLayout = QGridLayout()
+        toggle = widgets.Toggle()
+        toggle.setChecked(True)
+        self.keepActiveToggle = toggle
+        toggleLabel = QLabel('Keep tool active after using it: ')
+        colorButtonLabel = QLabel('Symbol color: ')
+        self.colorButton = pg.ColorButton(color=(255, 0, 0))
+        self.colorButton.clicked.disconnect()
+        self.colorButton.clicked.connect(self.selectColor)
+        optionsLayout.setColumnStretch(0, 1)
+        optionsLayout.addWidget(toggleLabel, 0, 1)
+        optionsLayout.addWidget(toggle, 0, 2)
+        optionsLayout.setColumnStretch(3, 1)
+        optionsLayout.addWidget(colorButtonLabel, 1, 1)
+        optionsLayout.addWidget(self.colorButton, 1, 2)
+        optionsGroupBox.setLayout(optionsLayout)
+        layout.addWidget(optionsGroupBox, row, 1, alignment=Qt.AlignCenter)
+        optionsInfoButton = QPushButton(self)
+        optionsInfoButton.setCursor(Qt.WhatsThisCursor)
+        optionsInfoButton.setIcon(QIcon(":info.svg"))
+        optionsInfoButton.clicked.connect(self.showOptionsInfo)
+        layout.addWidget(optionsInfoButton, row, 3, alignment=Qt.AlignRight)
+
+        buttonsLayout = QHBoxLayout()
+        buttonsLayout.addStretch(1)
+        self.okButton = QPushButton('  Ok  ')
+        buttonsLayout.addWidget(self.okButton)
+        cancelButton = QPushButton('Cancel')
+        cancelButton.clicked.connect(self.close)
+        self.okButton.clicked.connect(self.ok_cb)
+        self.okButton.setFocus(True)
+        buttonsLayout.addWidget(cancelButton)
+
+        mainLayout = QVBoxLayout()
+        mainLayout.addLayout(layout)
+        mainLayout.addStretch(1)
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+
+        self.setLayout(mainLayout)
+
+    def selectColor(self):
+        pg.ColorButton.selectColor(self.colorButton)
+        w = self.width()
+        left = self.pos().x()
+        colorDialogTop = self.colorButton.colorDialog.pos().y()
+        self.colorButton.colorDialog.move(w+left+10, colorDialogTop)
+
+    def warnType(self, currentText):
+        if currentText == 'Single time-point':
+            return
+
+        self.typeCombobox.setCurrentIndex(0)
+
+        txt = ("""
+        Unfortunately, the only annotation type that is available so far is
+        <b>Single time-point</b>.<br><br>
+        We are working on implementing the other types too, so stay tuned!<br><br>
+        Thank you for your patience!
+        """)
+        txt = (f'{html_utils.paragraph(txt)}')
+        msg = widgets.myMessageBox()
+        msg.setIcon(iconName='SP_MessageBoxWarning')
+        msg.setWindowTitle(f'Feature not implemented yet')
+        msg.addText(txt)
+        msg.addButton('   Ok   ')
+        msg.exec_()
+
+    def showOptionsInfo(self):
+        info = ("""
+        <b>Keep tool active after using it</b>: Choose whether the tool
+        should stay active or not after annotating.<br><br>
+        <b>Symbold color</b>: Choose color of the symbol that will be used
+        to label annotated cell/object.
+        """)
+        info = (f'{html_utils.paragraph(info)}')
+        msg = widgets.myMessageBox()
+        msg.setIcon()
+        msg.setWindowTitle(f'Additional options info')
+        msg.addText(info)
+        msg.addButton('   Ok   ')
+        msg.exec_()
+
+    def ok_cb(self, checked=True):
+        self.cancel = False
+        self.close()
+
+    def closeEvent(self, event):
+        if self.sender()==self.okButton and not self.nameWidget.widget.text():
+            msg = QMessageBox()
+            msg.critical(
+                self, 'Empty name', 'The name cannot be empty!', msg.Ok
+            )
+            event.ignore()
+            self.cancel = True
+            return
+
+        self.toolTip = (
+            f'Name: {self.nameWidget.widget.text()}\n\n'
+            f'Type: {self.typeWidget.widget.currentText()}\n\n'
+            f'Usage: activate the button and RIGHT-CLICK on cell to annotate\n\n'
+            f'Description: {self.descWidget.widget.toPlainText()}\n\n'
+            f'SHORTCUT: "{self.shortcutWidget.widget.text()}"'
+        )
+
+        symbol = self.symbolWidget.widget.currentText()
+        self.symbol = re.findall(r"\'(\w+)\'", symbol)[0]
+
+        self.state = {
+            'type': self.typeWidget.widget.currentText(),
+            'name': self.nameWidget.widget.text(),
+            'symbol':  self.symbolWidget.widget.currentText(),
+            'shortcut': self.shortcutWidget.widget.text(),
+            'description': self.descWidget.widget.toPlainText(),
+            'keepActive': self.keepActiveToggle.isChecked(),
+            'symbolColor': self.colorButton.color()
+        }
+
+        if self.loop is not None:
+            self.loop.exit()
+
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        super().show()
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
 
 class wandToleranceWidget(QFrame):
     def __init__(self, parent=None):

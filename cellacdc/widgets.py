@@ -2,6 +2,8 @@ import sys
 import time
 import re
 import numpy as np
+import string
+import traceback
 
 from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 
@@ -9,11 +11,11 @@ from PyQt5.QtCore import (
     pyqtSignal, QTimer, Qt, QPoint, pyqtSlot, pyqtProperty,
     QPropertyAnimation, QEasingCurve, QSequentialAnimationGroup,
     QSize, QRectF, QPointF, QRect, QPoint, QEasingCurve, QRegExp,
-    QEvent, QEventLoop
+    QEvent, QEventLoop, QPropertyAnimation
 )
 from PyQt5.QtGui import (
     QFont, QPalette, QColor, QPen, QPaintEvent, QBrush, QPainter,
-    QRegExpValidator, QIcon, QPixmap
+    QRegExpValidator, QIcon, QPixmap, QKeySequence
 )
 from PyQt5.QtWidgets import (
     QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
@@ -28,7 +30,7 @@ from PyQt5.QtWidgets import (
 import pyqtgraph as pg
 from pyqtgraph import QtGui
 
-from . import myutils, apps, measurements
+from . import myutils, apps, measurements, is_mac, is_win
 from . import qrc_resources
 
 def removeHSVcmaps():
@@ -80,6 +82,16 @@ renamePgCmaps()
 removeHSVcmaps()
 cmaps = addGradients()
 
+class QClickableLabel(QLabel):
+    clicked = pyqtSignal(object)
+
+    def __init__(self, parent=None):
+        self.parent = parent
+        super().__init__(parent)
+
+    def mousePressEvent(self, event):
+        self.clicked.emit(self)
+
 class statusBarPermanentLabel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -93,6 +105,42 @@ class statusBarPermanentLabel(QWidget):
         layout.addWidget(self.rightLabel)
 
         self.setLayout(layout)
+
+class pgScatterSymbolsCombobox(QComboBox):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        symbols = [
+            "'o' circle (default)",
+            "'s' square",
+            "'t' triangle",
+            "'d' diamond",
+            "'+' plus",
+            "'t1' triangle pointing upwards",
+            "'t2' triangle pointing right side",
+            "'t3' triangle pointing left side",
+            "'p' pentagon",
+            "'h' hexagon",
+            "'star'",
+            "'x' cross",
+            "'arrow_up'",
+            "'arrow_right'",
+            "'arrow_down'",
+            "'arrow_left'",
+            "'crosshair'"
+        ]
+        self.addItems(symbols)
+
+
+class alphaNumericLineEdit(QLineEdit):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.validPattern = '^[a-zA-Z0-9_]+$'
+        self.setValidator(QRegExpValidator(QRegExp(self.validPattern)))
+
+        # self.setAlignment(Qt.AlignCenter)
+
 
 class myMessageBox(QDialog):
     def __init__(self, parent=None):
@@ -179,6 +227,420 @@ class myMessageBox(QDialog):
         super().close()
         if hasattr(self, 'loop'):
             self.loop.exit()
+
+class myFormLayout(QGridLayout):
+    def __init__(self):
+        QGridLayout.__init__(self)
+
+    def addFormWidget(self, formWidget, align=None, row=0):
+        for col, item in enumerate(formWidget.items):
+            if col==0:
+                alignment = Qt.AlignRight
+            elif col==2:
+                alignment = Qt.AlignLeft
+            else:
+                alignment = align
+            try:
+                if alignment is None:
+                    self.addWidget(item, row, col)
+                else:
+                    self.addWidget(item, row, col, alignment=alignment)
+            except TypeError:
+                self.addLayout(item, row, col)
+
+def keyboardModifierToText(modifier):
+    if modifier == Qt.ShiftModifier:
+        s = 'Shift'
+        key = s
+    elif modifier == Qt.ControlModifier:
+        s = 'Ctrl' if is_win else 'Command'
+        key = 'Ctrl'
+    elif modifier == Qt.AltModifier:
+        s = 'Alt' if is_win else 'Option'
+        key = 'Alt'
+    elif modifier == Qt.MetaModifier and is_mac:
+        s = 'Control'
+        key = 'Meta'
+    elif modifier == (Qt.ShiftModifier | Qt.ControlModifier):
+        s1 = 'Ctrl' if is_win else 'Command'
+        s = f'Shift+{s1}'
+        key = 'Shift+Ctrl'
+    elif modifier == (Qt.ShiftModifier | Qt.AltModifier):
+        s1 = 'Alt' if is_win else 'Option'
+        s = f'Shift+{s1}'
+        key = 'Shift+Alt'
+    elif modifier == (Qt.ShiftModifier | Qt.MetaModifier) and is_mac:
+        s = f'Shift+Control'
+        key = 'Shift+Meta'
+    elif modifier == (Qt.ControlModifier | Qt.AltModifier):
+        s1 = 'Ctrl' if is_win else 'Command'
+        s = f'Alt+{s1}'
+        key = 'Alt+Ctrl'
+    elif modifier == (Qt.ControlModifier | Qt.MetaModifier) and is_mac:
+        s1 = 'Ctrl' if is_win else 'Command'
+        s = f'Control+{s1}'
+        key = 'Meta+Ctrl'
+    elif modifier == (Qt.AltModifier | Qt.MetaModifier) and is_mac:
+        s = f'Control+Option'
+        key = 'Meta+Alt'
+    else:
+        s = ''
+        key = ''
+    return s, key
+
+def QtKeyToText(QtKey):
+    letter = ''
+    for letter in string.ascii_uppercase:
+        QtLetterEnum = getattr(Qt, f'Key_{letter}')
+        if QtKey == QtLetterEnum:
+            return letter
+    return letter
+
+class Toggle(QCheckBox):
+    def __init__(
+        self,
+        initial=None,
+        width=80,
+        bg_color='#b3b3b3',
+        circle_color='#DDD',
+        active_color='#005ce6',
+        animation_curve=QEasingCurve.InOutQuad
+    ):
+        QCheckBox.__init__(self)
+
+        # self.setFixedSize(width, 28)
+        self.setCursor(Qt.PointingHandCursor)
+
+        self._bg_color = bg_color
+        self._circle_color = circle_color
+        self._active_color = active_color
+        self._circle_margin = 10
+
+        self._circle_position = int(self._circle_margin/2)
+        self.animation = QPropertyAnimation(self, b'circle_position', self)
+        self.animation.setEasingCurve(animation_curve)
+        self.animation.setDuration(200)
+
+        self.stateChanged.connect(self.start_transition)
+        self.requestedState = None
+
+        self.installEventFilter(self)
+
+        if initial is not None:
+            self.setChecked(initial)
+
+    def sizeHint(self):
+        return QSize(45, 22)
+
+    def eventFilter(self, object, event):
+        # To get the actual position of the circle we need to wait that
+        # the widget is visible before setting the state
+        if event.type() == QEvent.Show and self.requestedState is not None:
+            self.setChecked(self.requestedState)
+        return False
+
+    def setChecked(self, state):
+        # To get the actual position of the circle we need to wait that
+        # the widget is visible before setting the state
+        if self.isVisible():
+            self.requestedState = None
+            QCheckBox.setChecked(self, state>0)
+        else:
+            self.requestedState = state
+
+    def circlePos(self, state: bool):
+        start = int(self._circle_margin/2)
+        if state:
+            if self.isVisible():
+                height, width = self.height(), self.width()
+            else:
+                sizeHint = self.sizeHint()
+                height, width = sizeHint.height(), sizeHint.width()
+            circle_diameter = height-self._circle_margin
+            pos = width-start-circle_diameter
+        else:
+            pos = start
+        return pos
+
+    @pyqtProperty(float)
+    def circle_position(self):
+        return self._circle_position
+
+    @circle_position.setter
+    def circle_position(self, pos):
+        self._circle_position = pos
+        self.update()
+
+    def start_transition(self, state):
+        self.animation.stop()
+        pos = self.circlePos(state)
+        self.animation.setEndValue(pos)
+        self.animation.start()
+
+    def hitButton(self, pos: QPoint):
+        return self.contentsRect().contains(pos)
+
+    def paintEvent(self, e):
+        # set painter
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+
+        # set no pen
+        p.setPen(Qt.NoPen)
+
+        # draw rectangle
+        rect = QRect(0, 0, self.width(), self.height())
+
+        if not self.isChecked():
+            # Draw background
+            p.setBrush(QColor(self._bg_color))
+            half_h = int(self.height()/2)
+            p.drawRoundedRect(
+                0, 0, rect.width(), self.height(), half_h, half_h
+            )
+
+            # Draw circle
+            p.setBrush(QColor(self._circle_color))
+            p.drawEllipse(
+                int(self._circle_position), int(self._circle_margin/2),
+                self.height()-self._circle_margin,
+                self.height()-self._circle_margin
+            )
+        else:
+            # Draw background
+            p.setBrush(QColor(self._active_color))
+            half_h = int(self.height()/2)
+            p.drawRoundedRect(
+                0, 0, rect.width(), self.height(), half_h, half_h
+            )
+
+            # Draw circle
+            p.setBrush(QColor(self._circle_color))
+            p.drawEllipse(
+                int(self._circle_position), int(self._circle_margin/2),
+                self.height()-self._circle_margin,
+                self.height()-self._circle_margin
+            )
+
+        p.end()
+
+class customAnnotToolButton(QToolButton):
+    sigRemoveAction = pyqtSignal(object)
+    sigKeepActiveAction = pyqtSignal(object)
+    sigModifyAction = pyqtSignal(object)
+
+    def __init__(self, symbol, color='r', keepToolActive=True, parent=None):
+        super().__init__(parent)
+        self.symbol = symbol
+        self.keepToolActive = keepToolActive
+        self.setColor(color)
+
+    def setColor(self, color):
+        self.penColor = color
+        self.brushColor = [0, 0, 0, 100]
+        self.brushColor[:3] = color.getRgb()[:3]
+
+    def paintEvent(self, event):
+        QToolButton.paintEvent(self, event)
+        p = QPainter(self)
+        w, h = self.width(), self.height()
+        sf = 0.6
+        p.scale(w*sf, h*sf)
+        p.translate(0.5/sf, 0.5/sf)
+        symbol = pg.graphicsItems.ScatterPlotItem.Symbols[self.symbol]
+        pen = pg.mkPen(color=self.penColor, width=2)
+        brush = pg.mkBrush(color=self.brushColor)
+        try:
+            p.setRenderHint(QPainter.Antialiasing)
+            p.setPen(pen)
+            p.setBrush(brush)
+            p.drawPath(symbol)
+        except Exception as e:
+            traceback.print_exc()
+        finally:
+            p.end()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            QToolButton.mousePressEvent(self, event)
+        elif event.button() == Qt.MouseButton.RightButton:
+            contextMenu = QMenu(self)
+            contextMenu.addSeparator()
+
+            removeAction = QAction('Remove annotation')
+            removeAction.triggered.connect(self.removeAction)
+            contextMenu.addAction(removeAction)
+
+            editAction = QAction('Modify annotation parameters...')
+            editAction.triggered.connect(self.modifyAction)
+            contextMenu.addAction(editAction)
+
+            keepActiveAction = QAction('Keep tool active after using it')
+            keepActiveAction.setCheckable(True)
+            keepActiveAction.setChecked(self.keepToolActive)
+            keepActiveAction.triggered.connect(self.keepToolActiveActionToggled)
+            contextMenu.addAction(keepActiveAction)
+
+            contextMenu.exec(event.globalPos())
+
+    def keepToolActiveActionToggled(self, checked):
+        self.keepToolActive = checked
+        self.sigKeepActiveAction.emit(self)
+
+    def modifyAction(self):
+        self.sigModifyAction.emit(self)
+
+    def removeAction(self):
+        self.sigRemoveAction.emit(self)
+
+class shortCutLineEdit(QLineEdit):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.textChanged.connect(self._setText)
+        self.keySequence = None
+
+    def _setText(self, sender=None):
+        if sender is None:
+            self.setText('')
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Backspace or event.key() == Qt.Key_Delete:
+            self.setText('')
+            self.keySequence = None
+            self.sender = None
+            return
+
+        modifier, sequenceKey = keyboardModifierToText(event.modifiers())
+        key = QtKeyToText(event.key())
+        shortcut = self.text()
+        if modifier and key:
+            self.sender = 'keyboard'
+            self.setText(f'{modifier}+{key.upper()}')
+            sequenceKey = f'{sequenceKey}+{key.upper()}'
+            self.keySequence = QKeySequence(sequenceKey)
+        elif modifier:
+            self.sender = 'keyboard'
+            self.setText(modifier)
+            self.keySequence = QKeySequence(sequenceKey)
+        elif key:
+            self.sender = 'keyboard'
+            self.setText(key.upper())
+            self.keySequence = QKeySequence(event.key())
+        else:
+            self.keySequence = None
+        self.sender = None
+
+class formWidget(QWidget):
+    sigApplyButtonClicked = pyqtSignal(object)
+    sigComputeButtonClicked = pyqtSignal(object)
+
+    def __init__(
+            self, widget,
+            initialVal=None,
+            stretchWidget=True,
+            labelTextLeft='',
+            labelTextRight='',
+            font=None,
+            addInfoButton=False,
+            addApplyButton=False,
+            addComputeButton=False,
+            key='',
+            infoTxt='',
+            parent=None
+        ):
+        QWidget.__init__(self, parent)
+        self.widget = widget
+        self.key = key
+        self.infoTxt = infoTxt
+
+        widget.setParent(self)
+
+        if isinstance(initialVal, bool):
+            widget.setChecked(initialVal)
+        elif isinstance(initialVal, str):
+            widget.setCurrentText(initialVal)
+        elif isinstance(initialVal, float) or isinstance(initialVal, int):
+            widget.setValue(initialVal)
+
+        self.items = []
+
+        if font is None:
+            font = QFont()
+            font.setPixelSize(14)
+
+        self.labelLeft = QClickableLabel(widget)
+        self.labelLeft.setText(labelTextLeft)
+        self.labelLeft.setFont(font)
+        self.items.append(self.labelLeft)
+
+        if not stretchWidget:
+            widgetLayout = QHBoxLayout()
+            widgetLayout.addStretch(1)
+            widgetLayout.addWidget(widget)
+            widgetLayout.addStretch(1)
+            self.items.append(widgetLayout)
+        else:
+            self.items.append(widget)
+
+        self.labelRight = QClickableLabel(widget)
+        self.labelRight.setText(labelTextRight)
+        self.labelRight.setFont(font)
+        self.items.append(self.labelRight)
+
+        if addInfoButton:
+            infoButton = QPushButton(self)
+            infoButton.setCursor(Qt.WhatsThisCursor)
+            infoButton.setIcon(QIcon(":info.svg"))
+            if labelTextLeft:
+                infoButton.setToolTip(
+                    f'Info about "{self.labelLeft.text()}" parameter'
+                )
+            else:
+                infoButton.setToolTip(
+                    f'Info about "{self.labelRight.text()}" measurement'
+                )
+            infoButton.clicked.connect(self.showInfo)
+            self.items.append(infoButton)
+
+        if addApplyButton:
+            applyButton = QPushButton(self)
+            applyButton.setCursor(Qt.PointingHandCursor)
+            applyButton.setCheckable(True)
+            applyButton.setIcon(QIcon(":apply.svg"))
+            applyButton.setToolTip(f'Apply this step and visualize results')
+            applyButton.clicked.connect(self.applyButtonClicked)
+            self.items.append(applyButton)
+
+        if addComputeButton:
+            computeButton = QPushButton(self)
+            computeButton.setCursor(Qt.BusyCursor)
+            computeButton.setIcon(QIcon(":compute.svg"))
+            computeButton.setToolTip(f'Compute this step and visualize results')
+            computeButton.clicked.connect(self.computeButtonClicked)
+            self.items.append(computeButton)
+
+        self.labelLeft.clicked.connect(self.tryChecking)
+        self.labelRight.clicked.connect(self.tryChecking)
+
+    def tryChecking(self, label):
+        try:
+            self.widget.setChecked(not self.widget.isChecked())
+        except AttributeError as e:
+            pass
+
+    def applyButtonClicked(self):
+        self.sigApplyButtonClicked.emit(self)
+
+    def computeButtonClicked(self):
+        self.sigComputeButtonClicked.emit(self)
+
+    def showInfo(self):
+        msg = myMessageBox()
+        msg.setIcon()
+        msg.setWindowTitle(f'{self.labelLeft.text()} info')
+        msg.addText(self.infoTxt)
+        msg.addButton('   Ok   ')
+        msg.exec_()
 
 class readOnlyDoubleSpinbox(QDoubleSpinBox):
     def __init__(self, parent=None):
