@@ -4611,7 +4611,7 @@ class guiWin(QMainWindow):
                 overall, but it is <b>less capable of detecting segmentation
                 errors.</b><br><br>
                 If you need to correct as many segmentation errors as possible
-                we reccomend using Cell-ACDC tracking algorithm.
+                we recommend using Cell-ACDC tracking algorithm.
             </p>
             """)
             msg.information(self, 'Info about YeaZ', info_txt, msg.Ok)
@@ -11663,7 +11663,7 @@ class guiWin(QMainWindow):
             elif self.trackWithYeazAction.isChecked():
                 tracked_lab = self.tracking_yeaz.correspondence(
                     prev_lab, posData.lab, use_modified_yeaz=True,
-                    use_scipy=True, isVisited=True
+                    use_scipy=True
                 )
 
             if DoManualEdit:
