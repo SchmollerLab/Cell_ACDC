@@ -4109,7 +4109,7 @@ class guiWin(QMainWindow):
         )
 
         isCustomAnnot = (
-            right_click and isCustomAnnotMode
+            right_click and (isCustomAnnotMode or self.isSnapshot)
             and self.customAnnotButton is not None
         )
 
