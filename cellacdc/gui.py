@@ -11453,7 +11453,7 @@ class guiWin(QMainWindow):
             elif self.trackWithYeazAction.isChecked():
                 tracked_lab = self.tracking_yeaz.correspondence(
                     prev_lab, posData.lab, use_modified_yeaz=True,
-                    use_scipy=True, isVisited=True
+                    use_scipy=True
                 )
 
             if DoManualEdit:
