@@ -416,9 +416,14 @@ class saveDataWorker(QObject):
                         col = 'z_slice_used_dataPrep'
                         z_slice = posData.segmInfo_df.at[idx, col]
                     except KeyError as e:
+                        self.progress.emit(
+                            f'z-slice for channel "{chName}" absent. '
+                            'Follow instructions on pop-up dialogs.'
+                        )
                         self.mutex.lock()
                         self.askZsliceAbsent.emit(filename, posData)
-                        self.waitCond.wait(self.mainWin.mutex)
+                        print('emitted')
+                        self.waitCond.wait(self.mutex)
                         self.mutex.unlock()
                         segmInfo_df = pd.read_csv(posData.segmInfo_df_csv_path)
                         index_col = ['filename', 'frame_i']
@@ -646,7 +651,7 @@ class saveDataWorker(QObject):
                             )
                             # self.mainWin.logger.info(traceback.format_exc())
                         self.metricsPbarProgress.emit(-1, 1)
-
+                        
         df['cell_area_pxl'] = pd.Series(data=IDs_area_pxl, index=IDs, dtype=float)
         df['cell_vol_vox'] = pd.Series(data=IDs_vol_vox, index=IDs, dtype=float)
         df['cell_area_um2'] = pd.Series(data=IDs_area_um2, index=IDs, dtype=float)
@@ -757,7 +762,6 @@ class saveDataWorker(QObject):
                         )
                         rp = data_dict['regionprops']
                         try:
-                            self.mutex.lock()
                             if save_metrics:
                                 acdc_df = self.addMetrics_acdc_df(
                                     acdc_df, rp, frame_i, lab, posData
@@ -765,7 +769,6 @@ class saveDataWorker(QObject):
                             acdc_df_li.append(acdc_df)
                             key = (frame_i, posData.TimeIncrement*frame_i)
                             keys.append(key)
-                            self.mutex.unlock()
                         except Exception as error:
                             self.mutex.lock()
                             self.criticalMetrics.emit(traceback.format_exc())
@@ -12454,6 +12457,8 @@ class guiWin(QMainWindow):
             posData.loadedChNames = loadedChNames
 
     def zSliceAbsent(self, filename, posData):
+        print('***********************')
+        print(filename)
         self.app.restoreOverrideCursor()
         SizeZ = posData.SizeZ
         chNames = posData.chNames
