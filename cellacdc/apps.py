@@ -404,6 +404,16 @@ class customAnnotationDialog(QDialog):
         self.okButton.setFocus(True)
 
         mainLayout = QVBoxLayout()
+
+        noteTxt = ("""
+        Custom annotations will be <b>saved in the <code>acdc_output.csv</code></b><br>
+        file as a column with the name you write in the field <code>Name</code><br>
+        """)
+        noteTxt = (f'{html_utils.paragraph(noteTxt, font_size="15px")}')
+        noteLabel = QLabel(noteTxt)
+        noteLabel.setAlignment(Qt.AlignCenter)
+        mainLayout.addWidget(noteLabel)
+
         mainLayout.addLayout(layout)
         mainLayout.addStretch(1)
         mainLayout.addSpacing(20)
