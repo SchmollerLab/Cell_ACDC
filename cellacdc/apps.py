@@ -439,7 +439,7 @@ class customAnnotationDialog(QDialog):
         self.descWidget.widget.setPlainText(selectedAnnot['description'])
         keySequence = widgets.macShortcutToQKeySequence(selectedAnnot['shortcut'])
         if keySequence:
-            self.keySequence = QKeySequence(keySequence)
+            self.shortcutWidget.widget.keySequence = QKeySequence(keySequence)
 
     def warnNoItemsSelected(self):
         msg = widgets.myMessageBox(self)

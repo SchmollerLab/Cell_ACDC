@@ -753,6 +753,7 @@ class saveDataWorker(QObject):
                         segm_npy = lab
 
                     acdc_df = data_dict['acdc_df']
+                    print(acdc_df)
 
                     # Build acdc_df and index it in each frame_i of acdc_df_li
                     if acdc_df is not None and np.any(lab):
@@ -941,6 +942,7 @@ class guiWin(QMainWindow):
         self.progressWin = None
         self.slideshowWin = None
         self.ccaTableWin = None
+        self.customAnnotButton = None
         self.data_loaded = False
         self.highlightedID = 0
         self.flag = True
@@ -6822,9 +6824,10 @@ class guiWin(QMainWindow):
     @exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
-            # posData = self.data[self.pos_i]
-            # acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
-            # print(acdc_df)
+            posData = self.data[self.pos_i]
+            acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
+            print(acdc_df.columns)
+            print(acdc_df)
             pass
             # self.imgGrad.sigLookupTableChanged.disconnect()
         try:
@@ -7478,7 +7481,6 @@ class guiWin(QMainWindow):
             try:
                 with open(custom_annot_path) as file:
                     self.savedCustomAnnot = json.load(file)
-                print(self.savedCustomAnnot)
             except Exception as e:
                 print('****************************')
                 self.logger.info(traceback.format_exc())
@@ -7502,6 +7504,7 @@ class guiWin(QMainWindow):
             symbol, symbolColor, parent=self
         )
         toolButton.setCheckable(True)
+        self.checkableQButtonsGroup.addButton(toolButton)
         keySequence = self.addAnnotWin.shortcutWidget.widget.keySequence
         if keySequence is not None:
             toolButton.setShortcut(keySequence)
@@ -7625,6 +7628,8 @@ class guiWin(QMainWindow):
         scatterPlotItem = self.customAnnotDict[button]['scatterPlotItem']
         scatterPlotItem.setData(xx, yy)
 
+        posData.allData_li[posData.frame_i]['acdc_df'] = acdc_df
+
         return button
 
     def removeCustomAnnotButton(self, button):
@@ -7638,6 +7643,7 @@ class guiWin(QMainWindow):
 
         action = self.customAnnotDict[button]['action']
         self.annotateToolbar.removeAction(action)
+        self.checkableQButtonsGroup.removeButton(button)
         self.customAnnotDict.pop(button)
 
     def customAnnotButtonClicked(self, checked):
@@ -9047,18 +9053,30 @@ class guiWin(QMainWindow):
             posData.STOREDmaxID = max(IDs)
         except ValueError:
             posData.STOREDmaxID = 0
-        posData.allData_li[posData.frame_i]['acdc_df'] = pd.DataFrame(
-            {
-                'Cell_ID': IDs,
-                'is_cell_dead': is_cell_dead_li,
-                'is_cell_excluded': is_cell_excluded_li,
-                'x_centroid': xx_centroid,
-                'y_centroid': yy_centroid,
-                'editIDclicked_x': editIDclicked_x,
-                'editIDclicked_y': editIDclicked_y,
-                'editIDnewID': editIDnewID
-            }
-        ).set_index('Cell_ID')
+
+        acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
+        if acdc_df is None:
+            posData.allData_li[posData.frame_i]['acdc_df'] = pd.DataFrame(
+                {
+                    'Cell_ID': IDs,
+                    'is_cell_dead': is_cell_dead_li,
+                    'is_cell_excluded': is_cell_excluded_li,
+                    'x_centroid': xx_centroid,
+                    'y_centroid': yy_centroid,
+                    'editIDclicked_x': editIDclicked_x,
+                    'editIDclicked_y': editIDclicked_y,
+                    'editIDnewID': editIDnewID
+                }
+            ).set_index('Cell_ID')
+        else:
+            acdc_df['Cell_ID'] = IDs
+            acdc_df['is_cell_dead'] = is_cell_dead_li
+            acdc_df['is_cell_excluded'] = is_cell_excluded_li
+            acdc_df['x_centroid'] = xx_centroid
+            acdc_df['y_centroid'] = yy_centroid
+            acdc_df['editIDclicked_x'] = editIDclicked_x
+            acdc_df['editIDclicked_y'] = editIDclicked_y
+            acdc_df['editIDnewIDs'] = editIDnewID
 
         self.store_cca_df(pos_i=pos_i, mainThread=mainThread)
 
