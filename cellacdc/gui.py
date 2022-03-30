@@ -422,7 +422,6 @@ class saveDataWorker(QObject):
                         )
                         self.mutex.lock()
                         self.askZsliceAbsent.emit(filename, posData)
-                        print('emitted')
                         self.waitCond.wait(self.mutex)
                         self.mutex.unlock()
                         segmInfo_df = pd.read_csv(posData.segmInfo_df_csv_path)
@@ -651,7 +650,7 @@ class saveDataWorker(QObject):
                             )
                             # self.mainWin.logger.info(traceback.format_exc())
                         self.metricsPbarProgress.emit(-1, 1)
-                        
+
         df['cell_area_pxl'] = pd.Series(data=IDs_area_pxl, index=IDs, dtype=float)
         df['cell_vol_vox'] = pd.Series(data=IDs_vol_vox, index=IDs, dtype=float)
         df['cell_area_um2'] = pd.Series(data=IDs_area_um2, index=IDs, dtype=float)
