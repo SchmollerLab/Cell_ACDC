@@ -377,7 +377,7 @@ class Toggle(QCheckBox):
         initial=None,
         width=80,
         bg_color='#b3b3b3',
-        circle_color='#DDD',
+        circle_color='#dddddd',
         active_color='#005ce6',
         animation_curve=QEasingCurve.InOutQuad
     ):
@@ -1042,6 +1042,34 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
 
         checked = df.at['is_bw_inverted', 'value'] == 'Yes'
         self.invertBwAction.setChecked(checked)
+
+class labelledQScrollbar(QScrollBar):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._label = None
+
+    def setLabel(self, label):
+        self._label = label
+
+    def setSliderPosition(self, position):
+        QScrollBar.setSliderPosition(self, position)
+        if self._label is not None:
+            s = self._label.text()
+            s = re.sub(r'(\d+)/(\d+)', fr'{position+1:02}/\2', s)
+            self._label.setText(s)
+
+class linkedQScrollbar(QScrollBar):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._linkedScrollBar = None
+
+    def linkScrollBar(self, scrollbar):
+        self._linkedScrollBar = scrollbar
+
+    def setSliderPosition(self, position):
+        QScrollBar.setSliderPosition(self, position)
+        if self._linkedScrollBar is not None:
+            self._linkedScrollBar.setSliderPosition(position)
 
 class myColorButton(pg.ColorButton):
     sigColorRejected = pyqtSignal(object)
