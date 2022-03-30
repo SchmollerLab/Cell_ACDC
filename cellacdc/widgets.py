@@ -214,9 +214,46 @@ class myMessageBox(QDialog):
             self.loop = QEventLoop()
             self.loop.exec_()
 
-    # def resizeEvent(self, event):
-    #     print(self.layout.itemAtPosition(0, 1).widget().sizeHint())
-    #     print(self.size())
+    def _template(self, parent, title, message, buttonsTexts):
+        self.setParent(parent)
+        self.setWindowTitle(title)
+        self.addText(message)
+        buttons = []
+        if buttonsTexts is None:
+            okButton = self.addButton('  Ok  ')
+            buttons.append(okButton)
+        elif isinstance(buttonsTexts, str):
+            button = self.addButton(buttonsTexts)
+            buttons.append(button)
+        else:
+            for buttonText in buttonsTexts:
+                button = self.addButton(buttonText)
+                buttons.append(button)
+        return buttons
+
+    def critical(self, parent, title, message, buttonsTexts=None):
+        self.setIcon(iconName='SP_MessageBoxCritical')
+        buttons = self._template(parent, title, message, buttonsTexts)
+        self.exec_()
+        return buttons
+
+    def information(self, parent, title, message, buttonsTexts=None):
+        self.setIcon(iconName='SP_MessageBoxInformation')
+        buttons = self._template(parent, title, message, buttonsTexts)
+        self.exec_()
+        return buttons
+
+    def warning(self, parent, title, message, buttonsTexts=None):
+        self.setIcon(iconName='SP_MessageBoxWarning')
+        buttons = self._template(parent, title, message, buttonsTexts)
+        self.exec_()
+        return buttons
+
+    def question(self, parent, title, message, buttonsTexts=None):
+        self.setIcon(iconName='SP_MessageBoxInformation')
+        buttons = self._template(parent, title, message, buttonsTexts)
+        self.exec_()
+        return buttons
 
     def exec_(self):
         self.show()

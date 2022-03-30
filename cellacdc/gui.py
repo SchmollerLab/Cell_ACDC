@@ -74,7 +74,7 @@ from . import qrc_resources
 
 # Custom modules
 from . import base_cca_df
-from . import load, prompts, apps, workers
+from . import load, prompts, apps, workers, html_utils
 from . import core, myutils, dataPrep, widgets
 from . import measurements
 from .trackers.CellACDC import CellACDC_tracker
@@ -4013,6 +4013,7 @@ class guiWin(QMainWindow):
             # We allow assiging a cell in G1 as mother only on first frame
             # OR if the history is unknown
             if relationship == 'bud' and posData.frame_i > 0 and is_history_known:
+                self.assignBudMothButton.setChecked(False)
                 txt = (f'You clicked on ID {ID} which is a BUD.\n'
                        'To assign a bud to a cell start by clicking on a bud '
                        'and release on a cell in G1')
@@ -4020,9 +4021,11 @@ class guiWin(QMainWindow):
                 msg.critical(
                     self, 'Released on a bud', txt, msg.Ok
                 )
+                self.assignBudMothButton.setChecked(True)
                 return
 
             elif ccs != 'G1' and posData.frame_i > 0:
+                self.assignBudMothButton.setChecked(False)
                 txt = (f'You clicked on a cell (ID={ID}) which is NOT in G1.\n'
                        'To assign a bud to a cell start by clicking on a bud '
                        'and release on a cell in G1')
@@ -4030,6 +4033,7 @@ class guiWin(QMainWindow):
                 msg.critical(
                     self, 'Released on a cell NOT in G1', txt, msg.Ok
                 )
+                self.assignBudMothButton.setChecked(True)
                 return
 
             elif posData.frame_i == 0:
@@ -4043,34 +4047,34 @@ class guiWin(QMainWindow):
                 rp_budID = posData.rp[bud_obj_idx]
                 rp_new_mothID = posData.rp[new_moth_obj_idx]
                 if rp_budID.area >= rp_new_mothID.area:
-                    msg = QMessageBox(self)
-                    msg.setWindowTitle('Which one is bud?')
-                    msg.setIcon(msg.Warning)
-                    msg.setText(
+                    self.assignBudMothButton.setChecked(False)
+                    msg = widgets.myMessageBox()
+                    txt = (
                         f'You clicked FIRST on ID {budID} and then on {new_mothID}.\n'
                         f'For me this means that you want ID {budID} to be the '
                         f'BUD of ID {new_mothID}.\n'
-                        f'However ID {budID} is bigger than {new_mothID} '
+                        f'However <b>ID {budID} is bigger than {new_mothID}</b> '
                         f'so maybe you shoul have clicked FIRST on {new_mothID}?\n\n'
                         'What do you want me to do?'
                     )
-                    swapButton = QPushButton(
-                            f'Assign ID {new_mothID} as the bud of ID {budID}'
-                    )
-                    keepButton = QPushButton(
+                    txt = html_utils.paragraph(txt)
+                    swapButton, keepButton = msg.warning(
+                        self, 'Which one is bud?', txt,
+                        buttonsTexts=(
+                            f'Assign ID {new_mothID} as the bud of ID {budID}',
                             f'Keep ID {budID} as the bud of  ID {new_mothID}'
+                        )
                     )
-                    msg.addButton(swapButton, msg.YesRole)
-                    msg.addButton(keepButton, msg.NoRole)
-                    msg.exec_()
-                    if msg.clickedButton() == swapButton:
+                    if msg.clickedButton == swapButton:
                         (xdata, ydata,
                         self.xClickBud, self.yClickBud) = (
                             self.xClickBud, self.yClickBud,
                             xdata, ydata
                         )
+                    self.assignBudMothButton.setChecked(True)
 
             elif is_history_known and not self.clickedOnHistoryKnown:
+                self.assignBudMothButton.setChecked(False)
                 budID = posData.lab[ydata, xdata]
                 # Allow assigning an unknown cell ONLY to another unknown cell
                 txt = (
@@ -4078,11 +4082,13 @@ class guiWin(QMainWindow):
                     'UNKNOWN history, but you then clicked/released on '
                     f'ID {ID} which has KNOWN history.\n\n'
                     'Only two cells with UNKNOWN history can be assigned as '
-                    'relative of each other.')
+                    'relative of each other.'
+                )
                 msg = QMessageBox()
                 msg.critical(
                     self, 'Released on a cell with KNOWN history', txt, msg.Ok
                 )
+                self.assignBudMothButton.setChecked(True)
                 return
 
             self.clickedOnHistoryKnown = is_history_known
