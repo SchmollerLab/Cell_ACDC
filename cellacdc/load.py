@@ -25,7 +25,7 @@ from PyQt5.QtWidgets import (
 )
 import pyqtgraph as pg
 
-from . import prompts, apps, myutils
+from . import prompts, apps, myutils, widgets
 from . import base_cca_df, base_acdc_df # defined in __init__.py
 
 cca_df_colnames = list(base_cca_df.keys())
@@ -174,7 +174,7 @@ class loadData:
 
     def detectMultiSegmNpz(
             self, _endswith='', multiPos=False, signals=None,
-            mutex=None, waitCond=None
+            mutex=None, waitCond=None, askMultiSegmFunc=None
         ):
         ls = myutils.listdir(self.images_path)
         if _endswith:
@@ -192,11 +192,14 @@ class loadData:
             or (file.endswith('.npz') and file.find('segm') != -1)
         ]
         is_multi_npz = len(segm_files)>1
-        if is_multi_npz:
+        if is_multi_npz and signals is not None:
             mutex.lock()
             signals.sigMultiSegm.emit(segm_files, self, multiPos, waitCond)
             waitCond.wait(mutex)
             mutex.unlock()
+            return self.selectedItemText, self.cancel
+        if is_multi_npz and askMultiSegmFunc is not None:
+            askMultiSegmFunc(segm_files, self, multiPos, waitCond)
             return self.selectedItemText, self.cancel
         else:
             return '', False
@@ -309,6 +312,21 @@ class loadData:
                 # traceback.print_exc()
                 self.last_tracked_i = None
         self.setNotFoundData()
+
+    def isSegm3D(self):
+        if self.SizeZ == 1:
+            return False
+
+        if self.segmFound is None:
+            return False
+
+        if not self.segmFound:
+            return False
+
+        if self.SizeT > 1:
+            return self.segm_data.ndim == 4
+        else:
+            return self.segm_data.ndim == 3
 
 
     def extractMetadata(self):
@@ -517,7 +535,11 @@ class loadData:
     def setBlankSegmData(self, SizeT, SizeZ, SizeY, SizeX):
         Y, X = self.img_data.shape[-2:]
         if self.segmFound is not None and not self.segmFound:
-            if SizeT > 1:
+            if SizeT > 1 and self.isSegm3D:
+                self.segm_data = np.zeros((SizeT, SizeZ, Y, X), int)
+            elif self.isSegm3D:
+                self.segm_data = np.zeros((SizeZ, Y, X), int)
+            elif SizeT > 1:
                 self.segm_data = np.zeros((SizeT, Y, X), int)
             else:
                 self.segm_data = np.zeros((Y, X), int)
@@ -570,7 +592,8 @@ class loadData:
             ask_TimeIncrement=False,
             ask_PhysicalSizes=False,
             singlePos=False,
-            save=False
+            save=False,
+            askSegm3D=True
         ):
         font = QtGui.QFont()
         font.setPointSize(10)
@@ -579,7 +602,7 @@ class loadData:
             self.PhysicalSizeZ, self.PhysicalSizeY, self.PhysicalSizeX,
             ask_SizeT, ask_TimeIncrement, ask_PhysicalSizes,
             parent=self.parent, font=font, imgDataShape=self.img_data_shape,
-            posData=self, singlePos=singlePos
+            posData=self, singlePos=singlePos, askSegm3D=askSegm3D
         )
         metadataWin.setFont(font)
         metadataWin.exec_()
@@ -588,6 +611,8 @@ class loadData:
 
         self.SizeT = metadataWin.SizeT
         self.SizeZ = metadataWin.SizeZ
+
+        self.isSegm3D = metadataWin.isSegm3D
 
         self.loadSizeS = numPos
         self.loadSizeT = metadataWin.SizeT
@@ -620,7 +645,8 @@ class loadData:
                 'PhysicalSizeZ': self.PhysicalSizeZ,
                 'PhysicalSizeY': self.PhysicalSizeY,
                 'PhysicalSizeX': self.PhysicalSizeX,
-                'segmSizeT': self.segmSizeT
+                'segmSizeT': self.segmSizeT,
+                'isSegm3D': self.isSegm3D
             }, index=['values']).T
             self.metadata_df.index.name = 'Description'
         else:
@@ -631,6 +657,7 @@ class loadData:
             self.metadata_df.at['PhysicalSizeY', 'values'] = self.PhysicalSizeY
             self.metadata_df.at['PhysicalSizeX', 'values'] = self.PhysicalSizeX
             self.metadata_df.at['segmSizeT', 'values'] = self.segmSizeT
+            self.metadata_df.at['isSegm3D', 'values'] = self.isSegm3D
         try:
             self.metadata_df.to_csv(self.metadata_csv_path)
         except PermissionError:
@@ -640,10 +667,12 @@ class loadData:
                 'Close file and then press "Ok".'
             )
             if signals is None:
-                msg = QMessageBox()
-                warn_cca = msg.critical(
-                    self.parent, 'Permission denied', permissionErrorTxt, msg.Ok
-                )
+                msg = widgets.myMessageBox(self)
+                msg.setIcon(iconName='SP_MessageBoxCritical')
+                msg.setWindowTitle('Permission denied')
+                msg.addText(permissionErrorTxt)
+                msg.addButton('  Ok  ')
+                msg.exec_()
                 self.metadata_df.to_csv(self.metadata_csv_path)
             else:
                 mutex.lock()

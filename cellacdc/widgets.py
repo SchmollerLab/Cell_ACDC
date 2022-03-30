@@ -288,6 +288,12 @@ def keyboardModifierToText(modifier):
         key = ''
     return s, key
 
+def macShortcutToQKeySequence(shortcut: str):
+    s = shortcut.replace('Control', 'Meta')
+    s = shortcut.replace('Option', 'Alt')
+    s = shortcut.replace('Command', 'Ctrl')
+    return s
+
 def QtKeyToText(QtKey):
     letter = ''
     for letter in string.ascii_uppercase:
@@ -295,134 +301,6 @@ def QtKeyToText(QtKey):
         if QtKey == QtLetterEnum:
             return letter
     return letter
-
-class Toggle(QCheckBox):
-    def __init__(
-        self,
-        initial=None,
-        width=80,
-        bg_color='#b3b3b3',
-        circle_color='#DDD',
-        active_color='#005ce6',
-        animation_curve=QEasingCurve.InOutQuad
-    ):
-        QCheckBox.__init__(self)
-
-        # self.setFixedSize(width, 28)
-        self.setCursor(Qt.PointingHandCursor)
-
-        self._bg_color = bg_color
-        self._circle_color = circle_color
-        self._active_color = active_color
-        self._circle_margin = 10
-
-        self._circle_position = int(self._circle_margin/2)
-        self.animation = QPropertyAnimation(self, b'circle_position', self)
-        self.animation.setEasingCurve(animation_curve)
-        self.animation.setDuration(200)
-
-        self.stateChanged.connect(self.start_transition)
-        self.requestedState = None
-
-        self.installEventFilter(self)
-
-        if initial is not None:
-            self.setChecked(initial)
-
-    def sizeHint(self):
-        return QSize(45, 22)
-
-    def eventFilter(self, object, event):
-        # To get the actual position of the circle we need to wait that
-        # the widget is visible before setting the state
-        if event.type() == QEvent.Show and self.requestedState is not None:
-            self.setChecked(self.requestedState)
-        return False
-
-    def setChecked(self, state):
-        # To get the actual position of the circle we need to wait that
-        # the widget is visible before setting the state
-        if self.isVisible():
-            self.requestedState = None
-            QCheckBox.setChecked(self, state>0)
-        else:
-            self.requestedState = state
-
-    def circlePos(self, state: bool):
-        start = int(self._circle_margin/2)
-        if state:
-            if self.isVisible():
-                height, width = self.height(), self.width()
-            else:
-                sizeHint = self.sizeHint()
-                height, width = sizeHint.height(), sizeHint.width()
-            circle_diameter = height-self._circle_margin
-            pos = width-start-circle_diameter
-        else:
-            pos = start
-        return pos
-
-    @pyqtProperty(float)
-    def circle_position(self):
-        return self._circle_position
-
-    @circle_position.setter
-    def circle_position(self, pos):
-        self._circle_position = pos
-        self.update()
-
-    def start_transition(self, state):
-        self.animation.stop()
-        pos = self.circlePos(state)
-        self.animation.setEndValue(pos)
-        self.animation.start()
-
-    def hitButton(self, pos: QPoint):
-        return self.contentsRect().contains(pos)
-
-    def paintEvent(self, e):
-        # set painter
-        p = QPainter(self)
-        p.setRenderHint(QPainter.Antialiasing)
-
-        # set no pen
-        p.setPen(Qt.NoPen)
-
-        # draw rectangle
-        rect = QRect(0, 0, self.width(), self.height())
-
-        if not self.isChecked():
-            # Draw background
-            p.setBrush(QColor(self._bg_color))
-            half_h = int(self.height()/2)
-            p.drawRoundedRect(
-                0, 0, rect.width(), self.height(), half_h, half_h
-            )
-
-            # Draw circle
-            p.setBrush(QColor(self._circle_color))
-            p.drawEllipse(
-                int(self._circle_position), int(self._circle_margin/2),
-                self.height()-self._circle_margin,
-                self.height()-self._circle_margin
-            )
-        else:
-            # Draw background
-            p.setBrush(QColor(self._active_color))
-            half_h = int(self.height()/2)
-            p.drawRoundedRect(
-                0, 0, rect.width(), self.height(), half_h, half_h
-            )
-
-            # Draw circle
-            p.setBrush(QColor(self._circle_color))
-            p.drawEllipse(
-                int(self._circle_position), int(self._circle_margin/2),
-                self.height()-self._circle_margin,
-                self.height()-self._circle_margin
-            )
-
-        p.end()
 
 class customAnnotToolButton(QToolButton):
     sigRemoveAction = pyqtSignal(object)
@@ -492,6 +370,154 @@ class customAnnotToolButton(QToolButton):
 
     def removeAction(self):
         self.sigRemoveAction.emit(self)
+
+class Toggle(QCheckBox):
+    def __init__(
+        self,
+        initial=None,
+        width=80,
+        bg_color='#b3b3b3',
+        circle_color='#DDD',
+        active_color='#005ce6',
+        animation_curve=QEasingCurve.InOutQuad
+    ):
+        QCheckBox.__init__(self)
+
+        # self.setFixedSize(width, 28)
+        self.setCursor(Qt.PointingHandCursor)
+
+        self._bg_color = bg_color
+        self._circle_color = circle_color
+        self._active_color = active_color
+        self._disabled_active_color = myutils.lighten_color(active_color)
+        self._disabled_circle_color = myutils.lighten_color(circle_color)
+        self._disabled_bg_color = myutils.lighten_color(bg_color, amount=0.5)
+        self._circle_margin = 10
+
+        self._circle_position = int(self._circle_margin/2)
+        self.animation = QPropertyAnimation(self, b'circle_position', self)
+        self.animation.setEasingCurve(animation_curve)
+        self.animation.setDuration(200)
+
+        self.stateChanged.connect(self.start_transition)
+        self.requestedState = None
+
+        self.installEventFilter(self)
+
+        if initial is not None:
+            self.setChecked(initial)
+
+    def sizeHint(self):
+        return QSize(45, 22)
+
+    def eventFilter(self, object, event):
+        # To get the actual position of the circle we need to wait that
+        # the widget is visible before setting the state
+        if event.type() == QEvent.Show and self.requestedState is not None:
+            self.setChecked(self.requestedState)
+        return False
+
+    def setChecked(self, state):
+        # To get the actual position of the circle we need to wait that
+        # the widget is visible before setting the state
+        if self.isVisible():
+            self.requestedState = None
+            QCheckBox.setChecked(self, state>0)
+        else:
+            self.requestedState = state
+
+    def circlePos(self, state: bool):
+        start = int(self._circle_margin/2)
+        if state:
+            if self.isVisible():
+                height, width = self.height(), self.width()
+            else:
+                sizeHint = self.sizeHint()
+                height, width = sizeHint.height(), sizeHint.width()
+            circle_diameter = height-self._circle_margin
+            pos = width-start-circle_diameter
+        else:
+            pos = start
+        return pos
+
+    @pyqtProperty(float)
+    def circle_position(self):
+        return self._circle_position
+
+    @circle_position.setter
+    def circle_position(self, pos):
+        self._circle_position = pos
+        self.update()
+
+    def start_transition(self, state):
+        self.animation.stop()
+        pos = self.circlePos(state)
+        self.animation.setEndValue(pos)
+        self.animation.start()
+
+    def hitButton(self, pos: QPoint):
+        return self.contentsRect().contains(pos)
+
+    def setDisabled(self, state):
+        QCheckBox.setDisabled(self, state)
+        self.update()
+
+    def paintEvent(self, e):
+        circle_color = (
+            self._circle_color if self.isEnabled()
+            else self._disabled_circle_color
+        )
+        active_color = (
+            self._active_color if self.isEnabled()
+            else self._disabled_active_color
+        )
+        unchecked_color = (
+            self._bg_color if self.isEnabled()
+            else self._disabled_bg_color
+        )
+
+        # set painter
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+
+        # set no pen
+        p.setPen(Qt.NoPen)
+
+        # draw rectangle
+        rect = QRect(0, 0, self.width(), self.height())
+
+        if not self.isChecked():
+            # Draw background
+            p.setBrush(QColor(unchecked_color))
+            half_h = int(self.height()/2)
+            p.drawRoundedRect(
+                0, 0, rect.width(), self.height(), half_h, half_h
+            )
+
+            # Draw circle
+            p.setBrush(QColor(circle_color))
+            p.drawEllipse(
+                int(self._circle_position), int(self._circle_margin/2),
+                self.height()-self._circle_margin,
+                self.height()-self._circle_margin
+            )
+        else:
+            # Draw background
+            p.setBrush(QColor(active_color))
+            half_h = int(self.height()/2)
+            p.drawRoundedRect(
+                0, 0, rect.width(), self.height(), half_h, half_h
+            )
+
+            # Draw circle
+            p.setBrush(QColor(circle_color))
+            p.drawEllipse(
+                int(self._circle_position), int(self._circle_margin/2),
+                self.height()-self._circle_margin,
+                self.height()-self._circle_margin
+            )
+
+        p.end()
 
 class shortCutLineEdit(QLineEdit):
     def __init__(self, parent=None):

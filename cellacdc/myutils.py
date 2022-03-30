@@ -23,6 +23,8 @@ import skimage
 from distutils.dir_util import copy_tree
 from pyqtgraph.colormap import ColorMap
 import inspect
+import matplotlib.colors
+import colorsys
 
 from natsort import natsorted
 
@@ -35,6 +37,28 @@ from . import prompts, widgets, apps, core
 
 __all__ = ['ColorMap']
 _mapCache = {}
+
+def lighten_color(color, amount=0.3, hex=True):
+    """
+    Lightens the given color by multiplying (1-luminosity) by the given amount.
+    Input can be matplotlib color string, hex string, or RGB tuple.
+
+    Examples:
+    >> lighten_color('g', 0.3)
+    >> lighten_color('#F034A3', 0.6)
+    >> lighten_color((.3,.55,.1), 0.5)
+    """
+
+    try:
+        c = matplotlib.colors.cnames[color]
+    except:
+        c = color
+    c = colorsys.rgb_to_hls(*matplotlib.colors.to_rgb(c))
+    lightened_c = colorsys.hls_to_rgb(c[0], 1 - amount * (1 - c[1]), c[2])
+    if hex:
+        lightened_c = tuple([int(round(v*255)) for v in lightened_c])
+        lightened_c = '#%02x%02x%02x' % lightened_c
+    return lightened_c
 
 class utilClass:
     pass

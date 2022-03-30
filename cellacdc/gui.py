@@ -19,6 +19,7 @@ import time
 import datetime
 import logging
 import uuid
+import json
 import psutil
 from importlib import import_module
 from functools import partial
@@ -97,6 +98,7 @@ settings_csv_path = os.path.join(temp_path, 'settings.csv')
 favourite_func_metrics_csv_path = os.path.join(
     temp_path, 'favourite_func_metrics.csv'
 )
+custom_annot_path = os.path.join(temp_path, 'custom_annotations.json')
 
 # Interpret image data as row-major instead of col-major
 pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
@@ -941,6 +943,7 @@ class guiWin(QMainWindow):
         self.highlightedID = 0
         self.flag = True
         self.currentPropsID = 0
+        self.isSegm3D = False
 
         self.setWindowTitle("Cell-ACDC - GUI")
         self.setWindowIcon(QIcon(":assign-motherbud.svg"))
@@ -977,6 +980,8 @@ class guiWin(QMainWindow):
         self.gui_addGraphicsItems()
 
         self.gui_createImg1Widgets()
+        self.gui_createLabWidgets()
+        self.gui_addBottomWidgetsToBottomLayout()
 
         self.set_metrics_func()
 
@@ -2158,20 +2163,11 @@ class guiWin(QMainWindow):
         alphaScrollBar.setDisabled(True)
         self.alphaScrollBar = alphaScrollBar
         self.alphaScrollBar_label = alphaScrollBar_label
-
-        self.bottomLayout = QHBoxLayout()
-        img1BottomGroupbox = self.gui_addImg1BottomWidgets()
-        self.img1BottomGroupbox = img1BottomGroupbox
-
-        # self.bottomLayout.addSpacing(100)
-        self.bottomLayout.addStretch(1)
-        self.bottomLayout.addWidget(img1BottomGroupbox)
-        self.bottomLayout.setStretch(1, 5)
-        self.bottomLayout.addStretch(6)
+        self.img1BottomGroupbox = self.gui_addImg1BottomWidgets()
 
     def gui_addImg1BottomWidgets(self):
         bottomLeftLayout = QGridLayout()
-        container = QGroupBox()
+        container = QGroupBox('Left image controls')
 
         row = 0
         bottomLeftLayout.addWidget(
@@ -2215,8 +2211,41 @@ class guiWin(QMainWindow):
         bottomLeftLayout.setColumnStretch(0,0)
         bottomLeftLayout.setColumnStretch(1,3)
         bottomLeftLayout.setColumnStretch(2,0)
+
         container.setLayout(bottomLeftLayout)
         return container
+
+    def gui_createLabWidgets(self):
+        bottomRightLayout = QGridLayout()
+        self.labBottomGroupbox = QGroupBox('Link to left image')
+        self.labBottomGroupbox.setCheckable(True)
+        self.labBottomGroupbox.setChecked(True)
+
+        font = QtGui.QFont()
+        font.setPixelSize(12)
+
+        row = 0
+        self.z_label_lab = QLabel('z-slice  ')
+        bottomRightLayout.addWidget(
+            self.z_label_lab, row, 0, alignment=Qt.AlignRight
+        )
+        self.zSliceScrollBarLab = QScrollBar(Qt.Horizontal)
+        bottomRightLayout.addWidget(self.zSliceScrollBarLab, row, 1)
+
+        bottomRightLayout.setColumnStretch(0,0)
+        bottomRightLayout.setColumnStretch(1,3)
+        # bottomRightLayout.setColumnStretch(2,0)
+
+        self.labBottomGroupbox.setLayout(bottomRightLayout)
+
+    def gui_addBottomWidgetsToBottomLayout(self):
+        self.bottomLayout = QHBoxLayout()
+        self.bottomLayout.addStretch(1)
+        self.bottomLayout.addWidget(self.img1BottomGroupbox)
+        self.bottomLayout.addStretch(1)
+        self.bottomLayout.addWidget(self.labBottomGroupbox)
+        self.bottomLayout.addStretch(1)
+        self.setBottomLayoutStretch()
 
     def gui_createGraphicsPlots(self):
         self.graphLayout = pg.GraphicsLayoutWidget()
@@ -4822,7 +4851,8 @@ class guiWin(QMainWindow):
             ask_SizeT=True,
             ask_TimeIncrement=True,
             ask_PhysicalSizes=True,
-            save=True, singlePos=True
+            save=True, singlePos=True,
+            askSegm3D=False
         )
 
     def setHoverToolSymbolData(self, xx, yy, ScatterItems, size=None):
@@ -7440,7 +7470,24 @@ class guiWin(QMainWindow):
         self.postProcessSegmAction.toggled.connect(self.postProcessSegm)
 
     def addCustomAnnotation(self):
-        self.addAnnotWin = apps.customAnnotationDialog()
+        if os.path.exists(custom_annot_path):
+            try:
+                with open(custom_annot_path) as file:
+                    self.savedCustomAnnot = json.load(file)
+                print(self.savedCustomAnnot)
+            except Exception as e:
+                print('****************************')
+                self.logger.info(traceback.format_exc())
+                print('****************************')
+                print('============================')
+                self.logger.info('Error while reading saved custom annotations. See above')
+                print('============================')
+        else:
+            self.savedCustomAnnot = {}
+
+        self.addAnnotWin = apps.customAnnotationDialog(
+            self.savedCustomAnnot, parent=self
+        )
         self.addAnnotWin.exec_()
         if self.addAnnotWin.cancel:
             return
@@ -7467,6 +7514,13 @@ class guiWin(QMainWindow):
             'annotatedIDs': {}
         }
 
+        # Save custom annotation to cellacdc/temp/custom_annotations.json
+        name = self.addAnnotWin.state['name']
+        state_to_save = self.addAnnotWin.state.copy()
+        state_to_save['symbolColor'] = tuple(symbolColor.getRgb())
+        self.savedCustomAnnot[name] = state_to_save
+        self.saveCustomAnnot()
+
         symbolColorBrush = [0, 0, 0, 50]
         symbolColorBrush[:3] = symbolColor.getRgb()[:3]
         scatterPlotItem = pg.ScatterPlotItem()
@@ -7482,6 +7536,10 @@ class guiWin(QMainWindow):
         acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
         if acdc_df is not None:
             acdc_df[self.addAnnotWin.state['name']] = 0
+
+    def saveCustomAnnot(self):
+        with open(custom_annot_path, mode='w') as file:
+            json.dump(self.savedCustomAnnot, file, indent=2)
 
     def customAnnotKeepActive(self, button):
         self.customAnnotDict[button]['state']['keepActive'] = button.keepToolActive
@@ -7503,6 +7561,13 @@ class guiWin(QMainWindow):
             posData.allData_li[posData.frame_i]['acdc_df'] = acdc_df
 
         self.customAnnotDict[button]['state'] = self.addAnnotWin.state
+
+        name = self.addAnnotWin.state['name']
+        state_to_save = self.addAnnotWin.state.copy()
+        symbolColor = self.addAnnotWin.state['symbolColor']
+        state_to_save['symbolColor'] = tuple(symbolColor.getRgb())
+        self.savedCustomAnnot[name] = self.addAnnotWin.state
+        self.saveCustomAnnot()
 
         symbol = self.addAnnotWin.symbol
         symbolColor = self.customAnnotDict[button]['state']['symbolColor']
@@ -8087,7 +8152,15 @@ class guiWin(QMainWindow):
         posData.getBasenameAndChNames()
         posData.buildPaths()
         posData.loadImgData()
-        posData.loadOtherFiles(load_metadata=True)
+        selectedSegmNpz, cancel = posData.detectMultiSegmNpz(
+            askMultiSegmFunc=self.loadDataWorkerMultiSegm
+        )
+        posData.loadOtherFiles(
+            load_metadata=True,
+            selectedSegmNpz=selectedSegmNpz
+        )
+        self.selectedSegmNpz = selectedSegmNpz
+
         proceed = posData.askInputMetadata(
             self.num_pos,
             ask_SizeT=self.num_pos==1,
@@ -8100,7 +8173,7 @@ class guiWin(QMainWindow):
             self.loadingDataAborted()
             return
 
-
+        self.isSegm3D = posData.isSegm3D
         self.SizeT = posData.SizeT
         self.SizeZ = posData.SizeZ
         self.TimeIncrement = posData.TimeIncrement
@@ -8202,7 +8275,8 @@ class guiWin(QMainWindow):
                 if file == win.selectedItemText:
                     continue
                 os.remove(os.path.join(worker.images_path, file))
-        waitCond.wakeAll()
+        if waitCond is not None:
+            waitCond.wakeAll()
 
     def workerPermissionError(self, txt, waitCond):
         msg = widgets.myMessageBox(self)
@@ -8278,8 +8352,10 @@ class guiWin(QMainWindow):
 
         self.enableZstackWidgets(posData.SizeZ > 1)
 
-        self.img1BottomGroupbox.setVisible(True)
-        # self.updateALLimg(updateLabelItemColor=False)
+        self.img1BottomGroupbox.show()
+        isLabVisible = self.df_settings.at['isLabelsVisible', 'value'] == 'Yes'
+        if self.isSegm3D and isLabVisible:
+            self.labBottomGroupbox.show()
         self.updateScrollbars()
         self.fontSizeAction.setChecked(True)
         self.openAction.setEnabled(True)
@@ -10787,21 +10863,19 @@ class guiWin(QMainWindow):
                 oldLink.sigXRangeChanged.disconnect()
             except TypeError:
                 pass
+            self.labBottomGroupbox.hide()
             self.graphLayout.removeItem(self.titleLabel)
             self.graphLayout.addItem(self.titleLabel, row=0, col=1)
             self.mainLayout.setAlignment(self.bottomLayout, Qt.AlignCenter)
-            self.bottomLayout.setStretch(0, 2)
-            self.bottomLayout.setStretch(2, 2)
             self.ax1.autoRange()
             self.df_settings.at['isLabelsVisible', 'value'] = 'No'
             self.df_settings.to_csv(self.settings_csv_path)
         else:
-
             self.graphLayout.removeItem(self.titleLabel)
             self.graphLayout.addItem(self.titleLabel, row=0, col=1, colspan=2)
             self.mainLayout.setAlignment(self.bottomLayout, Qt.AlignLeft)
-            self.bottomLayout.setStretch(0, 1)
-            self.bottomLayout.setStretch(2, 6)
+            if self.isSegm3D:
+                self.labBottomGroupbox.show()
             self.df_settings.at['isLabelsVisible', 'value'] = 'Yes'
             self.df_settings.to_csv(self.settings_csv_path)
             self.ax2.show()
@@ -10809,6 +10883,24 @@ class guiWin(QMainWindow):
             self.ax2.vb.setYLink(self.ax1.vb)
             self.ax2.vb.setXLink(self.ax1.vb)
             self.ax2.autoRange()
+        self.setBottomLayoutStretch()
+
+    def setBottomLayoutStretch(self):
+        if 'isLabelsVisible' not in self.df_settings.index:
+            self.df_settings.at['isLabelsVisible', 'value'] = 'Yes'
+
+        if self.df_settings.at['isLabelsVisible', 'value'] == 'Yes':
+            self.bottomLayout.setStretch(0, 1)
+            self.bottomLayout.setStretch(1, 5)
+            self.bottomLayout.setStretch(2, 1)
+            self.bottomLayout.setStretch(3, 5)
+            self.bottomLayout.setStretch(4, 1)
+        else:
+            self.bottomLayout.setStretch(0, 3)
+            self.bottomLayout.setStretch(1, 11)
+            self.bottomLayout.setStretch(2, 1)
+            self.bottomLayout.setStretch(3, 1)
+            self.bottomLayout.setStretch(4, 1)
 
     def setCheckedInvertBW(self, checked):
         self.invertBwAction.setChecked(checked)
@@ -12957,11 +13049,13 @@ class guiWin(QMainWindow):
         h = self.drawIDsContComboBox.size().height()
         self.navigateScrollBar.setFixedHeight(h)
         self.zSliceScrollBar.setFixedHeight(h)
+        self.zSliceScrollBarLab.setFixedHeight(h)
         self.alphaScrollBar.setFixedHeight(h)
         self.zSliceOverlay_SB.setFixedHeight(h)
 
         self.gui_initImg1BottomWidgets()
-        self.img1BottomGroupbox.setVisible(False)
+        self.img1BottomGroupbox.hide()
+        self.labBottomGroupbox.hide()
 
         w = self.showPropsDockButton.width()
         h = self.showPropsDockButton.height()

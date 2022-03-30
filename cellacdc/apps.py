@@ -37,7 +37,7 @@ import time
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui
 from PyQt5 import QtCore
-from PyQt5.QtGui import QIcon, QFontMetrics
+from PyQt5.QtGui import QIcon, QFontMetrics, QKeySequence
 from PyQt5.QtCore import Qt, QSize, QEvent, pyqtSignal, QEventLoop, QTimer
 from PyQt5.QtWidgets import (
     QAction, QApplication, QMainWindow, QMenu, QLabel, QToolBar,
@@ -258,9 +258,10 @@ class installJavaDialog(widgets.myMessageBox):
             self.resize(self.width(), self.height()+200)
 
 class customAnnotationDialog(QDialog):
-    def __init__(self, parent=None, state=None):
+    def __init__(self, savedCustomAnnot, parent=None, state=None):
         self.cancel = True
         self.loop = None
+        self.savedCustomAnnot = savedCustomAnnot
 
         super().__init__(parent)
 
@@ -384,14 +385,23 @@ class customAnnotationDialog(QDialog):
         layout.addWidget(optionsInfoButton, row, 3, alignment=Qt.AlignRight)
 
         buttonsLayout = QHBoxLayout()
-        buttonsLayout.addStretch(1)
+
+        self.loadSavedAnnotButton = QPushButton('Load annotation...')
+        if not savedCustomAnnot:
+            self.loadSavedAnnotButton.setDisabled(True)
         self.okButton = QPushButton('  Ok  ')
-        buttonsLayout.addWidget(self.okButton)
         cancelButton = QPushButton('Cancel')
+
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(self.loadSavedAnnotButton)
+        buttonsLayout.addWidget(self.okButton)
+
         cancelButton.clicked.connect(self.close)
+        self.loadSavedAnnotButton.clicked.connect(self.loadSavedAnnot)
         self.okButton.clicked.connect(self.ok_cb)
         self.okButton.setFocus(True)
-        buttonsLayout.addWidget(cancelButton)
 
         mainLayout = QVBoxLayout()
         mainLayout.addLayout(layout)
@@ -400,6 +410,61 @@ class customAnnotationDialog(QDialog):
         mainLayout.addLayout(buttonsLayout)
 
         self.setLayout(mainLayout)
+
+    def loadSavedAnnot(self):
+        items = list(self.savedCustomAnnot.keys())
+        self.selectAnnotWin = QDialogListbox(
+            'Load annotation parameters',
+            'Select annotation to load:', items,
+            additionalButtons=('Delete selected annnotations', ),
+            parent=self
+        )
+        for button in self.selectAnnotWin._additionalButtons:
+            button.disconnect()
+            button.clicked.connect(self.deleteSelectedAnnot)
+        self.selectAnnotWin.exec_()
+        if self.selectAnnotWin.cancel:
+            return
+        if self.selectAnnotWin.listBox.count() == 0:
+            return
+        if not self.selectAnnotWin.selectedItemsText:
+            self.warnNoItemsSelected()
+            return
+        selectedName = self.selectAnnotWin.selectedItemsText[-1]
+        selectedAnnot = self.savedCustomAnnot[selectedName]
+        self.typeCombobox.setCurrentText(selectedAnnot['type'])
+        self.nameWidget.widget.setText(selectedAnnot['name'])
+        self.symbolWidget.widget.setCurrentText(selectedAnnot['symbol'])
+        self.shortcutWidget.widget.setText(selectedAnnot['shortcut'])
+        self.descWidget.widget.setPlainText(selectedAnnot['description'])
+        keySequence = widgets.macShortcutToQKeySequence(selectedAnnot['shortcut'])
+        if keySequence:
+            self.keySequence = QKeySequence(keySequence)
+
+    def warnNoItemsSelected(self):
+        msg = widgets.myMessageBox(self)
+        msg.setIcon(iconName='SP_MessageBoxWarning')
+        msg.setWindowTitle('Delete annotation?')
+        msg.addText('You didn\'t select any annotation!')
+        msg.addButton('  Ok  ')
+        msg.exec_()
+
+    def deleteSelectedAnnot(self):
+        msg = widgets.myMessageBox(self)
+        msg.setIcon(iconName='SP_MessageBoxWarning')
+        msg.setWindowTitle('Delete annotation?')
+        msg.addText('Are you sure you want to delete the selected annotations?')
+        msg.addButton('Yes')
+        cancelButton = msg.addButton(' Cancel ')
+        msg.exec_()
+        if msg.clickedButton == cancelButton:
+            return
+        for item in self.selectAnnotWin.listBox.selectedItems():
+            name = item.text()
+            self.savedCustomAnnot.pop(name)
+        items = list(self.savedCustomAnnot.keys())
+        self.selectAnnotWin.listBox.clear()
+        self.selectAnnotWin.listBox.addItems(items)
 
     def selectColor(self):
         pg.ColorButton.selectColor(self.colorButton)
@@ -606,7 +671,7 @@ class QDialogMetadataXML(QDialog):
         super().__init__(parent)
         self.setWindowTitle(title)
         font = QtGui.QFont()
-        font.setPointSize(11)
+        font.setPixelSize(13)
         self.setFont(font)
 
         mainLayout = QVBoxLayout()
@@ -1578,7 +1643,7 @@ class QDialogListbox(QDialog):
 
         label = QLabel(text)
         _font = QtGui.QFont()
-        _font.setPointSize(11)
+        _font.setPixelSize(13)
         label.setFont(_font)
         # padding: top, left, bottom, right
         label.setStyleSheet("padding:0px 0px 3px 0px;")
@@ -1596,10 +1661,13 @@ class QDialogListbox(QDialog):
         listBox.itemDoubleClicked.connect(self.ok_cb)
         topLayout.addWidget(listBox)
 
-        bottomLayout.addStretch(1)
+        cancelButton = QPushButton(cancelText)
         okButton = QPushButton('Ok')
         okButton.setShortcut(Qt.Key_Enter)
-        bottomLayout.addWidget(okButton)
+
+        bottomLayout.addStretch(1)
+        bottomLayout.addWidget(cancelButton)
+        bottomLayout.addSpacing(20)
 
         if additionalButtons:
             self._additionalButtons = []
@@ -1609,10 +1677,7 @@ class QDialogListbox(QDialog):
                 bottomLayout.addWidget(_button)
                 _button.clicked.connect(self.ok_cb)
 
-        cancelButton = QPushButton(cancelText)
-        # cancelButton.setShortcut(Qt.Key_Escape)
-        bottomLayout.addWidget(cancelButton)
-        bottomLayout.addStretch(1)
+        bottomLayout.addWidget(okButton)
         bottomLayout.setContentsMargins(0, 10, 0, 0)
 
         mainLayout.addLayout(topLayout)
@@ -1870,14 +1935,17 @@ class QDialogEntriesWidget(QDialog):
             self.loop.exit()
 
 class QDialogMetadata(QDialog):
-    def __init__(self, SizeT, SizeZ, TimeIncrement,
-                 PhysicalSizeZ, PhysicalSizeY, PhysicalSizeX,
-                 ask_SizeT, ask_TimeIncrement, ask_PhysicalSizes,
-                 parent=None, font=None, imgDataShape=None, posData=None,
-                 singlePos=False):
+    def __init__(
+            self, SizeT, SizeZ, TimeIncrement,
+            PhysicalSizeZ, PhysicalSizeY, PhysicalSizeX,
+            ask_SizeT, ask_TimeIncrement, ask_PhysicalSizes,
+            parent=None, font=None, imgDataShape=None, posData=None,
+            singlePos=False, askSegm3D=True
+        ):
         self.cancel = True
         self.ask_TimeIncrement = ask_TimeIncrement
         self.ask_PhysicalSizes = ask_PhysicalSizes
+        self.askSegm3D = askSegm3D
         self.imgDataShape = imgDataShape
         self.posData = posData
         super().__init__(parent)
@@ -1989,6 +2057,31 @@ class QDialogMetadata(QDialog):
             self.PhysicalSizeXSpinBox.hide()
             self.PhysicalSizeXLabel.hide()
 
+        row += 1
+        self.isSegm3Dtoggle = widgets.Toggle()
+        if posData is not None:
+            self.isSegm3Dtoggle.setChecked(posData.isSegm3D())
+            if posData.segmFound is not None and posData.segmFound:
+                self.isSegm3Dtoggle.setDisabled(True)
+        self.isSegm3DLabel = QLabel('3D segmentation (z-stacks)')
+        gridLayout.addWidget(
+            self.isSegm3DLabel, row, 0, alignment=Qt.AlignRight
+        )
+        gridLayout.addWidget(
+            self.isSegm3Dtoggle, row, 1, alignment=Qt.AlignCenter
+        )
+        self.infoButtonSegm3D = QPushButton(self)
+        self.infoButtonSegm3D.setCursor(Qt.WhatsThisCursor)
+        self.infoButtonSegm3D.setIcon(QIcon(":info.svg"))
+        gridLayout.addWidget(
+            self.infoButtonSegm3D, row, 2, alignment=Qt.AlignLeft
+        )
+        self.infoButtonSegm3D.clicked.connect(self.infoSegm3D)
+        if SizeZ == 1 or not askSegm3D:
+            self.isSegm3DLabel.hide()
+            self.isSegm3Dtoggle.hide()
+            self.infoButtonSegm3D.hide()
+
         self.SizeZvalueChanged(SizeZ)
 
         if singlePos:
@@ -2051,6 +2144,29 @@ class QDialogMetadata(QDialog):
         self.setLayout(mainLayout)
         # self.setModal(True)
 
+    def infoSegm3D(self):
+        txt = (
+            'Cell-ACDC supports both <b>2D and 3D segmentation</b>. If your data '
+            'also have a time dimension, then you can choose to segment '
+            'a specific z-slice (2D segmentation mask per frame) or all of them '
+            '(3D segmentation mask per frame)<br><br>'
+            'In any case, if you choose to activate <b>3D segmentation</b> then the '
+            'segmentation mask will have the <b>same number of z-slices '
+            'of the image data</b>.<br><br>'
+            '<i>NOTE: if the toggle is disabled it means you already '
+            'loaded segmentation data and the shape cannot be changed now.<br>'
+            'if you need to start with a blank segmentation, '
+            'move the segmentation file outside of the <code>Images</code> '
+            'folder'
+            '</i>'
+        )
+        msg = widgets.myMessageBox()
+        msg.setIcon()
+        msg.setWindowTitle(f'3D segmentation info')
+        msg.addText(html_utils.paragraph(txt))
+        msg.addButton('   Ok   ')
+        msg.exec_()
+
     def SizeZvalueChanged(self, val):
         if len(self.imgDataShape) < 3:
             return
@@ -2060,14 +2176,20 @@ class QDialogMetadata(QDialog):
         else:
             self.SizeZ_SpinBox.setMaximum(2147483647)
 
-        if not self.ask_PhysicalSizes:
-            return
         if val > 1:
-            self.PhysicalSizeZSpinBox.show()
-            self.PhysicalSizeZLabel.show()
+            if self.ask_PhysicalSizes:
+                self.PhysicalSizeZSpinBox.show()
+                self.PhysicalSizeZLabel.show()
+            if self.askSegm3D:
+                self.isSegm3DLabel.show()
+                self.isSegm3Dtoggle.show()
+                self.infoButtonSegm3D.show()
         else:
             self.PhysicalSizeZSpinBox.hide()
             self.PhysicalSizeZLabel.hide()
+            self.isSegm3DLabel.hide()
+            self.isSegm3Dtoggle.hide()
+            self.infoButtonSegm3D.hide()
 
     def TimeIncrementShowHide(self, val):
         if not self.ask_TimeIncrement:
@@ -2083,6 +2205,7 @@ class QDialogMetadata(QDialog):
         self.cancel = False
         self.SizeT = self.SizeT_SpinBox.value()
         self.SizeZ = self.SizeZ_SpinBox.value()
+        self.isSegm3D = self.isSegm3Dtoggle.isChecked()
 
         self.TimeIncrement = self.TimeIncrementSpinBox.value()
         self.PhysicalSizeX = self.PhysicalSizeXSpinBox.value()
@@ -2820,7 +2943,7 @@ class randomWalkerDialog(QDialog):
         seeHereLabel.setTextInteractionFlags(Qt.TextBrowserInteraction)
         seeHereLabel.setOpenExternalLinks(True)
         font = QtGui.QFont()
-        font.setPointSize(11)
+        font.setPixelSize(13)
         seeHereLabel.setFont(font)
         seeHereLabel.setStyleSheet("padding:12px 0px 0px 0px;")
         paramsLayout.addWidget(seeHereLabel, row, 0, 1, 2)
@@ -2956,7 +3079,7 @@ class FutureFramesAction_QDialog(QDialog):
 
         txtLabel = QLabel(txt)
         _font = QtGui.QFont()
-        _font.setPointSize(11)
+        _font.setPixelSize(13)
         _font.setBold(True)
         txtLabel.setFont(_font)
         txtLabel.setAlignment(Qt.AlignCenter)
@@ -2983,7 +3106,7 @@ class FutureFramesAction_QDialog(QDialog):
 
         infotxtLabel = QLabel(infoTxt)
         _font = QtGui.QFont()
-        _font.setPointSize(11)
+        _font.setPixelSize(13)
         infotxtLabel.setFont(_font)
 
         infotxtLabel.setStyleSheet("padding:0px 0px 3px 0px;")
@@ -2996,7 +3119,7 @@ class FutureFramesAction_QDialog(QDialog):
 
         noteTxtLabel = QLabel(noteTxt)
         _font = QtGui.QFont()
-        _font.setPointSize(11)
+        _font.setPixelSize(13)
         _font.setBold(True)
         noteTxtLabel.setFont(_font)
         # padding: top, left, bottom, right
@@ -3574,7 +3697,7 @@ class imageViewer(QMainWindow):
         self.framesScrollBar.setMaximum(posData.SizeT)
         t_label = QLabel('frame  ')
         _font = QtGui.QFont()
-        _font.setPointSize(11)
+        _font.setPixelSize(13)
         t_label.setFont(_font)
         self.img_Widglayout.addWidget(
                 t_label, 0, 0, alignment=Qt.AlignRight)
@@ -3589,7 +3712,7 @@ class imageViewer(QMainWindow):
         self.zSliceScrollBar.setMaximum(self.posData.SizeZ-1)
         _z_label = QLabel('z-slice  ')
         _font = QtGui.QFont()
-        _font.setPointSize(11)
+        _font.setPixelSize(13)
         _z_label.setFont(_font)
         self.z_label = _z_label
         self.img_Widglayout.addWidget(_z_label, 1, 0, alignment=Qt.AlignCenter)
@@ -4127,7 +4250,7 @@ class askStopFrameSegm(QDialog):
         )
         infoLabel = QLabel(infoTxt, self)
         _font = QtGui.QFont()
-        _font.setPointSize(11)
+        _font.setPixelSize(13)
         infoLabel.setFont(_font)
         infoLabel.setAlignment(Qt.AlignCenter)
         # padding: top, left, bottom, right
@@ -4253,7 +4376,7 @@ class QLineEditDialog(QDialog):
         # Widgets
         msg = QLabel(msg)
         _font = QtGui.QFont()
-        _font.setPointSize(11)
+        _font.setPixelSize(13)
         msg.setFont(_font)
         msg.setAlignment(Qt.AlignCenter)
         # padding: top, left, bottom, right
@@ -4391,7 +4514,7 @@ class editID_QWidget(QDialog):
         VBoxLayout = QVBoxLayout()
         msg = QLabel(f'Replace ID {clickedID} with:')
         _font = QtGui.QFont()
-        _font.setPointSize(11)
+        _font.setPixelSize(13)
         msg.setFont(_font)
         # padding: top, left, bottom, right
         msg.setStyleSheet("padding:0px 0px 3px 0px;")
@@ -5435,7 +5558,7 @@ class QDialogZsliceAbsent(QDialog):
         self.setLayout(mainLayout)
 
         font = QtGui.QFont()
-        font.setPointSize(11)
+        font.setPixelSize(13)
         self.setFont(font)
 
         # self.setModal(True)
@@ -5758,7 +5881,7 @@ class QDialogModelParams(QDialog):
         self.setLayout(mainLayout)
 
         font = QtGui.QFont()
-        font.setPointSize(11)
+        font.setPixelSize(13)
         self.setFont(font)
 
         # self.setModal(True)
@@ -6027,7 +6150,7 @@ if __name__ == '__main__':
     # Create the application
     app = QApplication(sys.argv)
     font = QtGui.QFont()
-    font.setPointSize(11)
+    font.setPixelSize(13)
     # title='Select channel name'
     # CbLabel='Select channel name:  '
     # informativeText = ''
@@ -6078,7 +6201,7 @@ if __name__ == '__main__':
     # win = postProcessSegmDialog()
     # win = QDialogAppendTextFilename('example.npz')
     font = QtGui.QFont()
-    font.setPointSize(11)
+    font.setPixelSize(13)
     filenames = ['test1', 'test2']
     # win = QDialogZsliceAbsent('test3', 30, filenames)
     win = QDialogMultiSegmNpz(filenames, os.path.dirname(__file__))

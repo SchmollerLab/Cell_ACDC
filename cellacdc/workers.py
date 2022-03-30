@@ -103,17 +103,13 @@ class loadDataWorker(QObject):
             posData.loadSizeZ = self.mainWin.loadSizeZ
             posData.SizeT = self.mainWin.SizeT
             posData.SizeZ = self.mainWin.SizeZ
+            posData.isSegm3D = self.mainWin.isSegm3D
+
+            print(self.mainWin.selectedSegmNpz)
 
             posData.getBasenameAndChNames()
             posData.buildPaths()
             posData.loadImgData()
-            selectedSegmNpz, cancel = posData.detectMultiSegmNpz(
-                signals=self.signals, mutex=self.mutex, waitCond=self.waitCond
-            )
-            if cancel:
-                data = 'abort'
-                break
-
             posData.loadOtherFiles(
                 load_segm_data=True,
                 load_acdc_df=True,
@@ -124,7 +120,7 @@ class loadDataWorker(QObject):
                 loadBkgrROIs=True,
                 load_last_tracked_i=True,
                 load_metadata=True,
-                selectedSegmNpz=selectedSegmNpz
+                selectedSegmNpz=self.mainWin.selectedSegmNpz
             )
 
             posData.SizeT = self.mainWin.SizeT
