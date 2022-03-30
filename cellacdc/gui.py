@@ -416,7 +416,7 @@ class saveDataWorker(QObject):
                     except KeyError as e:
                         self.mutex.lock()
                         self.askZsliceAbsent.emit(filename, posData)
-                        self.waitCond.wait(self.mainWin.mutex)
+                        self.waitCond.wait(self.mutex)
                         self.mutex.unlock()
                         segmInfo_df = pd.read_csv(posData.segmInfo_df_csv_path)
                         index_col = ['filename', 'frame_i']
@@ -755,7 +755,6 @@ class saveDataWorker(QObject):
                         )
                         rp = data_dict['regionprops']
                         try:
-                            self.mutex.lock()
                             if save_metrics:
                                 acdc_df = self.addMetrics_acdc_df(
                                     acdc_df, rp, frame_i, lab, posData
@@ -763,7 +762,6 @@ class saveDataWorker(QObject):
                             acdc_df_li.append(acdc_df)
                             key = (frame_i, posData.TimeIncrement*frame_i)
                             keys.append(key)
-                            self.mutex.unlock()
                         except Exception as error:
                             self.mutex.lock()
                             self.criticalMetrics.emit(traceback.format_exc())
