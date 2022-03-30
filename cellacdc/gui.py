@@ -2118,7 +2118,7 @@ class guiWin(QMainWindow):
         self.t_label = t_label
 
         # z-slice scrollbars
-        self.zSliceScrollBar = QScrollBar(Qt.Horizontal)
+        self.zSliceScrollBar = widgets.linkedQScrollbar(Qt.Horizontal)
         _z_label = QLabel('z-slice  ')
         _z_label.setFont(_font)
         self.z_label = _z_label
@@ -2229,7 +2229,9 @@ class guiWin(QMainWindow):
         bottomRightLayout.addWidget(
             self.z_label_lab, row, 0, alignment=Qt.AlignRight
         )
-        self.zSliceScrollBarLab = QScrollBar(Qt.Horizontal)
+        self.zSliceScrollBarLab = widgets.labelledQScrollbar(Qt.Horizontal)
+        self.zSliceScrollBarLab.setLabel(self.z_label_lab)
+        self.zSliceScrollBar.linkScrollBar(self.zSliceScrollBarLab)
         bottomRightLayout.addWidget(self.zSliceScrollBarLab, row, 1)
 
         bottomRightLayout.setColumnStretch(0,0)
@@ -9000,7 +9002,6 @@ class guiWin(QMainWindow):
             'histoLevels': {}
         }
 
-
     def store_data(self, pos_i=None, enforce=True, debug=False, mainThread=True):
         pos_i = self.pos_i if pos_i is None else pos_i
         posData = self.data[pos_i]
@@ -9488,6 +9489,30 @@ class guiWin(QMainWindow):
         cont += [min_x, min_y]
         return cont
 
+    def get_2Dlab(self, is_stored=False):
+        posData = self.data[self.pos_i]
+        if self.isSegm3D:
+            z = self.zSliceScrollBarLab.sliderPosition()
+            if is_stored:
+                lab = posData.allData_li[posData.frame_i, z]['labels'].copy()
+            else:
+                lab = posData.segm_data[posData.frame_i, z].copy()
+            return lab
+        else:
+            if is_stored:
+                lab = posData.allData_li[posData.frame_i]['labels'].copy()
+            else:
+                lab = posData.segm_data[posData.frame_i].copy()
+            return lab
+
+    def get_labels(self, is_stored=False):
+        posData = self.data[self.pos_i]
+        if is_stored:
+            labels = posData.allData_li[posData.frame_i]['labels'].copy()
+        else:
+            labels = posData.segm_data[posData.frame_i].copy()
+        return labels
+
 
     def get_data(self, debug=False):
         posData = self.data[self.pos_i]
@@ -9520,7 +9545,7 @@ class guiWin(QMainWindow):
                 proceed_cca = False
                 return proceed_cca, never_visited
             # Requested frame was never visited before. Load from HDD
-            posData.lab = posData.segm_data[posData.frame_i].copy()
+            posData.lab = self.get_labels()
             posData.rp = skimage.measure.regionprops(posData.lab)
             if debug:
                 self.logger.info(never_visited)
@@ -9562,7 +9587,7 @@ class guiWin(QMainWindow):
         else:
             # Requested frame was already visited. Load from RAM.
             never_visited = False
-            posData.lab = posData.allData_li[posData.frame_i]['labels'].copy()
+            posData.lab = self.get_labels(is_stored=True)
             posData.rp = skimage.measure.regionprops(posData.lab)
             df = posData.allData_li[posData.frame_i]['acdc_df']
             binnedIDs_df = df[df['is_cell_excluded']]
