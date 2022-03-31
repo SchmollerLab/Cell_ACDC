@@ -35,6 +35,13 @@ from PyQt5.QtCore import pyqtSignal, QObject, QCoreApplication
 
 from . import prompts, widgets, apps, core
 
+def is_iterable(item):
+     try:
+         iter(item)
+         return True
+     except TypeError as e:
+         return False
+
 __all__ = ['ColorMap']
 _mapCache = {}
 

@@ -580,9 +580,14 @@ class setMeasurementsDialog(QDialog):
 
     def __init__(
             self, loadedChNames, notLoadedChNames, isZstack,
-            favourite_funcs=None, parent=None, acdc_df=None
+            favourite_funcs=None, parent=None, acdc_df=None,
+            acdc_df_path=None
         ):
         super().__init__(parent)
+
+        self.delExistingCols = False
+        self.acdc_df = acdc_df
+        self.acdc_df_path = acdc_df_path
 
         self.setWindowTitle('Set measurements')
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
@@ -636,6 +641,7 @@ class setMeasurementsDialog(QDialog):
         groupsLayout.setRowStretch(1, 2)
 
         okButton = QPushButton('   Ok   ')
+        self.okButton = okButton
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(okButton)
@@ -649,8 +655,74 @@ class setMeasurementsDialog(QDialog):
         okButton.clicked.connect(self.close)
 
     def closeEvent(self, event):
-        if self.sender() is not None:
+        if self.sender() == self.okButton and self.acdc_df is not None:
+            existing_colnames = list(self.acdc_df.columns)
+            unchecked_existing_colnames = []
+            unchecked_existing_rps = []
+            for chNameGroupbox in self.chNameGroupboxes:
+                for checkBox in chNameGroupbox.checkBoxes:
+                    colname = checkBox.text()
+                    is_existing = colname in existing_colnames
+                    if not chNameGroupbox.isChecked() and is_existing:
+                        unchecked_existing_colnames.append(colname)
+                        continue
+                    if not checkBox.isChecked() and is_existing:
+                        unchecked_existing_colnames.append(colname)
+            for checkBox in self.sizeMetricsQGBox.checkBoxes:
+                colname = checkBox.text()
+                is_existing = colname in existing_colnames
+                if not self.sizeMetricsQGBox.isChecked() and is_existing:
+                    unchecked_existing_colnames.append(colname)
+                    continue
+
+                if not checkBox.isChecked() and is_existing:
+                    unchecked_existing_colnames.append(colname)
+            for checkBox in self.regionPropsQGBox.checkBoxes:
+                colname = checkBox.text()
+                is_existing = any([col.find(colname) !=-1 for col in existing_colnames])
+                if not self.regionPropsQGBox.isChecked() and is_existing:
+                    unchecked_existing_rps.append(colname)
+                    continue
+
+                if not checkBox.isChecked() and is_existing:
+                    unchecked_existing_rps.append(colname)
+
+            if unchecked_existing_colnames or unchecked_existing_rps:
+                cancel, self.delExistingCols = self.warnUncheckedExistingMeasurements(
+                    unchecked_existing_colnames, unchecked_existing_rps
+                )
+                self.existingUncheckedColnames = unchecked_existing_colnames
+                self.existingUncheckedRps = unchecked_existing_rps
+                if cancel:
+                    event.ignore()
+                    return
+
             self.sigClosed.emit()
+
+    def warnUncheckedExistingMeasurements(
+            self, unchecked_existing_colnames, unchecked_existing_rps
+        ):
+        msg = widgets.myMessageBox()
+        msg.setWidth(500)
+        msg.addShowInFileManagerButton(self.acdc_df_path)
+        txt = (
+            'You chose to <b>not save</b> some measurements that are '
+            '<b>already present</b> in the saved <code>acdc_output.csv</code> '
+            'file.<br><br>'
+            'Do you want to <b>delete</b> these measurements or '
+            '<b>keep</b> them?<br><br>'
+            'Existing measurements not selected:'
+        )
+        listView = QListWidget(msg)
+        items = unchecked_existing_colnames.copy()
+        items.extend(unchecked_existing_rps)
+        listView.addItems(items)
+        listView.setSelectionMode(QAbstractItemView.NoSelection)
+        _, delButton, keepButton = msg.warning(
+            self, 'Unchecked existing measurements', txt,
+            widgets=listView, buttonsTexts=('Cancel', 'Delete', 'Keep')
+        )
+        return msg.cancel, msg.clickedButton == delButton
 
     def show(self):
         super().show()

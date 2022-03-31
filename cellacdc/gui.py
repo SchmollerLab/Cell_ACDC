@@ -690,6 +690,7 @@ class saveDataWorker(QObject):
         # Remove old gui_ columns from version < v1.2.4.rc-7
         gui_columns = df.filter(regex='gui_*').columns
         df = df.drop(columns=gui_columns, errors='ignore')
+        df = df.drop(columns='Cell_ID', errors='ignore')
 
         return df
 
@@ -12640,14 +12641,35 @@ class guiWin(QMainWindow):
         self.notLoadedChNames = notLoadedChNames
         self.measurementsWin = apps.setMeasurementsDialog(
             loadedChNames, notLoadedChNames, posData.SizeZ > 1,
-            favourite_funcs=favourite_funcs, acdc_df=posData.acdc_df
+            favourite_funcs=favourite_funcs, acdc_df=posData.acdc_df,
+            acdc_df_path=posData.images_path
         )
         self.measurementsWin.sigClosed.connect(self.setMeasurements)
         self.measurementsWin.show()
 
     def setMeasurements(self):
-        self.logger.info('Setting measurements...')
         posData = self.data[self.pos_i]
+        if self.measurementsWin.delExistingCols:
+            self.logger.info('Removing existing unchecked measurements...')
+            delCols = self.measurementsWin.existingUncheckedColnames
+            delRps = self.measurementsWin.existingUncheckedRps
+            delCols_format = [f'  *  {colname}' for colname in delCols]
+            delRps_format = [f'  *  {colname}' for colname in delRps]
+            delCols_format.extend(delRps_format)
+            delCols_format = '\n'.join(delCols_format)
+            self.logger.info(delCols_format)
+            for frame_i, data_dict in enumerate(posData.allData_li):
+                acdc_df = data_dict['acdc_df']
+                if acdc_df is None:
+                    continue
+
+                acdc_df = acdc_df.drop(columns=delCols, errors='ignore')
+                for col_rp in delRps:
+                    drop_df_rp = acdc_df.filter(regex=fr'{col_rp}.*', axis=1)
+                    drop_cols_rp = drop_df_rp.columns
+                    acdc_df = acdc_df.drop(columns=drop_cols_rp, errors='ignore')
+                posData.allData_li[frame_i]['acdc_df'] = acdc_df
+        self.logger.info('Setting measurements...')
         fluo_keys = list(posData.fluo_data_dict.keys())
         self.chNamesToSkipMetrics = []
         self.metricsToSkip = {chName:[] for chName in self.ch_names}
@@ -12691,6 +12713,7 @@ class guiWin(QMainWindow):
             {'favourite_func_name': list(favourite_funcs)}
         )
         df_favourite_funcs.to_csv(favourite_func_metrics_csv_path)
+        self.logger.info('Done.')
 
     def addCustomMetric(self, checked=False):
         txt, metrics_path = measurements.add_metrics_instructions()

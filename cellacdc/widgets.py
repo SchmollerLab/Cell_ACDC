@@ -4,6 +4,7 @@ import re
 import numpy as np
 import string
 import traceback
+from functools import partial
 
 from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 
@@ -152,6 +153,9 @@ class myMessageBox(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
 
+        self.cancel = True
+        self.cancelButton = None
+
         self.layout = QGridLayout()
         self.layout.setHorizontalSpacing(20)
         self.buttonsLayout = QHBoxLayout()
@@ -159,6 +163,7 @@ class myMessageBox(QDialog):
         self.buttons = []
 
         self.currentRow = 0
+        self._w = None
 
         self.layout.setColumnStretch(1, 1)
         self.setLayout(self.layout)
@@ -173,6 +178,18 @@ class myMessageBox(QDialog):
 
         self.layout.addWidget(label, 0, 0, alignment=Qt.AlignTop)
 
+    def addShowInFileManagerButton(self, path):
+        txt = 'Reveal in Finder' if is_mac else 'Show in Explorer'
+        self.showInFileManagButton = QPushButton(txt)
+        self.buttonsLayout.addWidget(self.showInFileManagButton)
+        func = partial(myutils.showInExplorer, path)
+        self.showInFileManagButton.clicked.connect(func)
+
+    def addCancelButton(self):
+        self.cancelButton = QPushButton('Cancel')
+        self.buttonsLayout.insertWidget(0, self.cancelButton)
+        self.buttonsLayout.insertSpacing(1, 20)
+
     def addText(self, text):
         label = QLabel(self)
         label.setText(text)
@@ -184,10 +201,26 @@ class myMessageBox(QDialog):
 
     def addButton(self, buttonText):
         button = QPushButton(buttonText, self)
-        self.buttonsLayout.addWidget(button)
+        if buttonText.find('Cancel') != -1:
+            self.cancelButton = button
+            self.buttonsLayout.insertWidget(0, button)
+            self.buttonsLayout.insertSpacing(1, 20)
+        else:
+            self.buttonsLayout.addWidget(button)
         button.clicked.connect(self.close)
         self.buttons.append(button)
         return button
+
+    def addWidget(self, widget):
+        self.layout.addWidget(widget, self.currentRow, 1)
+        self.currentRow += 1
+
+    def addLayout(self, layout):
+        self.layout.addLayout(layout, self.currentRow, 1)
+        self.currentRow += 1
+
+    def setWidth(self, w):
+        self._w = w
 
     def show(self, block=False):
         self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
@@ -219,15 +252,35 @@ class myMessageBox(QDialog):
         if self.width() < 350:
             self.resize(350, self.height())
 
+        if self._w is not None:
+            self.resize(self._w, self.height())
+
         if block:
             self.loop = QEventLoop()
             self.loop.exec_()
 
-    def _template(self, parent, title, message, buttonsTexts):
+    def _template(
+            self, parent, title, message,
+            buttonsTexts=None, layouts=None, widgets=None
+        ):
         if parent is not None:
             self.setParent(parent)
         self.setWindowTitle(title)
         self.addText(message)
+        if layouts is not None:
+            if myutils.is_iterable(layouts):
+                for layout in layouts:
+                    self.addLayout(layout)
+            else:
+                self.addLayout(layout)
+
+        if widgets is not None:
+            if myutils.is_iterable(widgets):
+                for widget in widgets:
+                    self.addWidget(widget)
+            else:
+                self.addWidget(widgets)
+
         buttons = []
         if buttonsTexts is None:
             okButton = self.addButton('  Ok  ')
@@ -241,27 +294,51 @@ class myMessageBox(QDialog):
                 buttons.append(button)
         return buttons
 
-    def critical(self, parent, title, message, buttonsTexts=None):
+    def critical(
+            self, parent, title, message,
+            buttonsTexts=None, layouts=None, widgets=None
+        ):
         self.setIcon(iconName='SP_MessageBoxCritical')
-        buttons = self._template(parent, title, message, buttonsTexts)
+        buttons = self._template(
+            parent, title, message,
+            buttonsTexts=buttonsTexts, layouts=layouts, widgets=widgets
+        )
         self.exec_()
         return buttons
 
-    def information(self, parent, title, message, buttonsTexts=None):
+    def information(
+            self, parent, title, message,
+            buttonsTexts=None, layouts=None, widgets=None
+        ):
         self.setIcon(iconName='SP_MessageBoxInformation')
-        buttons = self._template(parent, title, message, buttonsTexts)
+        buttons = self._template(
+            parent, title, message,
+            buttonsTexts=buttonsTexts, layouts=layouts, widgets=widgets
+        )
         self.exec_()
         return buttons
 
-    def warning(self, parent, title, message, buttonsTexts=None):
+    def warning(
+            self, parent, title, message,
+            buttonsTexts=None, layouts=None, widgets=None
+        ):
         self.setIcon(iconName='SP_MessageBoxWarning')
-        buttons = self._template(parent, title, message, buttonsTexts)
+        buttons = self._template(
+            parent, title, message,
+            buttonsTexts=buttonsTexts, layouts=layouts, widgets=widgets
+        )
         self.exec_()
         return buttons
 
-    def question(self, parent, title, message, buttonsTexts=None):
+    def question(
+            self, parent, title, message,
+            buttonsTexts=None, layouts=None, widgets=None
+        ):
         self.setIcon(iconName='SP_MessageBoxQuestion')
-        buttons = self._template(parent, title, message, buttonsTexts)
+        buttons = self._template(
+            parent, title, message,
+            buttonsTexts=buttonsTexts, layouts=layouts, widgets=widgets
+        )
         self.exec_()
         return buttons
 
@@ -271,6 +348,8 @@ class myMessageBox(QDialog):
 
     def close(self):
         self.clickedButton = self.sender()
+        if self.clickedButton is not None:
+            self.cancel = self.clickedButton == self.cancelButton
         super().close()
         if hasattr(self, 'loop'):
             self.loop.exit()
