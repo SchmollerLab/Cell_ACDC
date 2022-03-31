@@ -237,7 +237,7 @@ class relabelSequentialWorker(QObject):
         progressWin = self.mainWin.progressWin
         mainWin = self.mainWin
 
-        current_lab = posData.lab.copy()
+        current_lab = self.get_2Dlab(posData.lab).copy()
         current_frame_i = posData.frame_i
         segm_data = []
         for frame_i, data_dict in enumerate(posData.allData_li):
@@ -323,6 +323,7 @@ class saveDataWorker(QObject):
                --> background values are saved in posData.fluo_bkgrData_dict
                    and we calculate metrics from there
         """
+
         PhysicalSizeY = posData.PhysicalSizeY
         PhysicalSizeX = posData.PhysicalSizeX
 
@@ -494,6 +495,8 @@ class saveDataWorker(QObject):
 
             # Iterate cells
             for i, obj in enumerate(rp):
+                _slice = self.mainWin.getObjSlice(obj.slice)
+                _objMask = self.mainWin.getObjImage(obj.image)
                 IDs[i] = obj.label
                 # Calc volume
                 if 'cell_vol_vox' in self.mainWin.sizeMetricsToSave:
@@ -510,7 +513,8 @@ class saveDataWorker(QObject):
                 # Iterate method of 3D to 2D
                 how_iterable = enumerate(zip(how_3Dto2D, fluo_data_projs))
                 for k, (how, fluo_2D) in how_iterable:
-                    fluo_data_ID = fluo_2D[obj.slice][obj.image]
+
+                    fluo_data_ID = fluo_2D[_slice][_objMask]
 
                     # fluo_2D!=0 is required because when we align we pad with 0s
                     # instead of np.roll and we don't want to include those
@@ -658,10 +662,14 @@ class saveDataWorker(QObject):
 
         df_metrics = pd.DataFrame(metrics_values, index=IDs)
 
+        # Drop metrics that were already calculated in a prev session
+        df = df.drop(columns=df_metrics.columns, errors='ignore')
         df = df.join(df_metrics)
 
         if custom_metrics_values:
+            # Drop custom metrics that were already calculated in a prev session
             df_custom_metrics = pd.DataFrame(custom_metrics_values, index=IDs)
+            df = df.drop(columns=df_custom_metrics.columns, errors='ignore')
             df = df.join(df_custom_metrics)
 
         # pbar.close()
@@ -672,10 +680,16 @@ class saveDataWorker(QObject):
                 posData.lab, properties=self.mainWin.regionPropsToSave
             )
             df_rp = pd.DataFrame(rp_table).set_index('label')
+            # Drop regionprops that were already calculated in a prev session
+            df = df.drop(columns=df_rp.columns, errors='ignore')
             df = df.join(df_rp)
 
         # Remove 0s columns
         df = df.loc[:, (df != -2).any(axis=0)]
+
+        # Remove old gui_ columns from version < v1.2.4.rc-7
+        gui_columns = df.filter(regex='gui_*').columns
+        df = df.drop(columns=gui_columns, errors='ignore')
 
         return df
 
@@ -753,7 +767,6 @@ class saveDataWorker(QObject):
                         segm_npy = lab
 
                     acdc_df = data_dict['acdc_df']
-                    print(acdc_df)
 
                     # Build acdc_df and index it in each frame_i of acdc_df_li
                     if acdc_df is not None and np.any(lab):
@@ -2221,9 +2234,9 @@ class guiWin(QMainWindow):
 
     def gui_createLabWidgets(self):
         bottomRightLayout = QGridLayout()
-        self.labBottomGroupbox = QGroupBox('Link to left image')
+        self.labBottomGroupbox = QGroupBox('Segmentation image controls')
         self.labBottomGroupbox.setCheckable(True)
-        self.labBottomGroupbox.setChecked(True)
+        self.labBottomGroupbox.setChecked(False)
 
         font = QtGui.QFont()
         font.setPixelSize(12)
@@ -2243,6 +2256,14 @@ class guiWin(QMainWindow):
         # bottomRightLayout.setColumnStretch(2,0)
 
         self.labBottomGroupbox.setLayout(bottomRightLayout)
+
+        self.labBottomGroupbox.toggled.connect(self.labControlsToggled)
+
+    def labControlsToggled(self, checked):
+        if checked:
+            self.zSliceScrollBar.unlinkScrollBar()
+        else:
+            self.zSliceScrollBar.linkScrollBar(self.zSliceScrollBarLab)
 
     def gui_addBottomWidgetsToBottomLayout(self):
         self.bottomLayout = QHBoxLayout()
@@ -2368,7 +2389,7 @@ class guiWin(QMainWindow):
                 pass
 
         # Right image
-        self.img2 = pg.ImageItem(self.blank)
+        self.img2 = widgets.labImageItem(self.blank)
         self.ax2.addItem(self.img2)
 
         # Brush circle img1
@@ -2643,9 +2664,9 @@ class guiWin(QMainWindow):
 
         x, y = event.pos().x(), event.pos().y()
         xdata, ydata = int(x), int(y)
-        Y, X = posData.lab.shape
+        Y, X = self.get_2Dlab(posData.lab).shape
         if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
-            ID = posData.lab[ydata, xdata]
+            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
         else:
             return
 
@@ -2709,13 +2730,13 @@ class guiWin(QMainWindow):
         if left_click and canErase:
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            Y, X = posData.lab.shape
+            Y, X = self.get_2Dlab(posData.lab).shape
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(False)
             self.yPressAx2, self.xPressAx2 = y, x
             # Keep a global mask to compute which IDs got erased
             self.erasedIDs = []
-            self.erasedID = posData.lab[ydata, xdata]
+            self.erasedID = self.get_2Dlab(posData.lab)[ydata, xdata]
 
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
@@ -2746,14 +2767,14 @@ class guiWin(QMainWindow):
         elif left_click and canBrush:
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            Y, X = posData.lab.shape
+            Y, X = self.get_2Dlab(posData.lab).shape
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(False)
             self.yPressAx2, self.xPressAx2 = y, x
 
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
-            ID = posData.lab[ydata, xdata]
+            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
 
             # If user double-pressed 'b' then draw over the labels
             color = self.brushButton.palette().button().color().name()
@@ -2771,7 +2792,7 @@ class guiWin(QMainWindow):
             self.isMouseDragImg2 = True
 
             # Draw new objects
-            localLab = posData.lab[ymin:ymax, xmin:xmax]
+            localLab = self.get_2Dlab(posData.lab)[ymin:ymax, xmin:xmax]
             mask = diskMask.copy()
             if drawUnder:
                 mask[localLab!=0] = False
@@ -2783,9 +2804,11 @@ class guiWin(QMainWindow):
         elif middle_click and canDelete:
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            delID = posData.lab[ydata, xdata]
+            delID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if delID == 0:
-                nearest_ID = self.nearest_nonzero(posData.lab, y, x)
+                nearest_ID = self.nearest_nonzero(
+                    self.get_2Dlab(posData.lab), y, x
+                )
                 delID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
@@ -2862,9 +2885,9 @@ class guiWin(QMainWindow):
         elif (right_click or left_click) and self.separateBudButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            ID = posData.lab[ydata, xdata]
+            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero(posData.lab, y, x)
+                nearest_ID = self.nearest_nonzero(self.get_2Dlab(posData.lab), y, x)
                 sepID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
@@ -2883,9 +2906,11 @@ class guiWin(QMainWindow):
             max_ID = numba_max(posData.lab)
 
             if right_click:
-                posData.lab, success = self.auto_separate_bud_ID(
-                    ID, posData.lab, posData.rp, max_ID, enforce=True
+                lab2D, success = self.auto_separate_bud_ID(
+                    ID, self.get_2Dlab(posData.lab), posData.rp, max_ID,
+                    enforce=True
                 )
+                self.set_2Dlab(lab2D)
             else:
                 success = False
 
@@ -2894,10 +2919,11 @@ class guiWin(QMainWindow):
                 posData.disableAutoActivateViewerWindow = True
                 img = self.getDisplayedCellsImg()
                 manualSep = apps.manualSeparateGui(
-                                posData.lab, ID, img,
-                                fontSize=self.fontSize,
-                                IDcolor=self.img2.lut[ID],
-                                parent=self)
+                    self.get_2Dlab(posData.lab), ID, img,
+                    fontSize=self.fontSize,
+                    IDcolor=self.img2.lut[ID],
+                    parent=self
+                )
                 manualSep.show()
                 manualSep.centerWindow()
                 loop = QEventLoop(self)
@@ -2908,7 +2934,9 @@ class guiWin(QMainWindow):
                     if not self.separateBudButton.findChild(QAction).isChecked():
                         self.separateBudButton.setChecked(False)
                     return
-                posData.lab[manualSep.lab!=0] = manualSep.lab[manualSep.lab!=0]
+                lab2D = self.get_2Dlab(posData.lab)
+                lab2D[manualSep.lab!=0] = manualSep.lab[manualSep.lab!=0]
+                self.set_2Dlab(lab2D)
                 posData.disableAutoActivateViewerWindow = False
 
             # Update data (rp, etc)
@@ -2930,9 +2958,11 @@ class guiWin(QMainWindow):
         elif right_click and self.fillHolesToolButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            ID = posData.lab[ydata, xdata]
+            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero(posData.lab, y, x)
+                nearest_ID = self.nearest_nonzero(
+                    self.get_2Dlab(posData.lab), y, x
+                )
                 clickedBkgrID = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
@@ -2952,8 +2982,9 @@ class guiWin(QMainWindow):
                 self.storeUndoRedoStates(False)
                 obj_idx = posData.IDs.index(ID)
                 obj = posData.rp[obj_idx]
-                localFill = scipy.ndimage.binary_fill_holes(obj.image)
-                posData.lab[obj.slice][localFill] = ID
+                objMask = self.getObjImage(obj.image)
+                localFill = scipy.ndimage.binary_fill_holes(objMask)
+                posData.lab[self.getObjSlice(obj.slice)][localFill] = ID
 
                 self.update_rp()
                 self.updateALLimg()
@@ -2965,9 +2996,11 @@ class guiWin(QMainWindow):
         elif right_click and self.hullContToolButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            ID = posData.lab[ydata, xdata]
+            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero(posData.lab, y, x)
+                nearest_ID = self.nearest_nonzero(
+                    self.get_2Dlab(posData.lab), y, x
+                )
                 mergeID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
@@ -2987,8 +3020,9 @@ class guiWin(QMainWindow):
                 self.storeUndoRedoStates(False)
                 obj_idx = posData.IDs.index(ID)
                 obj = posData.rp[obj_idx]
-                localHull = skimage.morphology.convex_hull_image(obj.image)
-                posData.lab[obj.slice][localHull] = ID
+                objMask = self.getObjImage(obj.image)
+                localHull = skimage.morphology.convex_hull_image(objMask)
+                posData.lab[self.getObjSlice(obj.slice)][localHull] = ID
 
                 self.update_rp()
                 self.updateALLimg()
@@ -3000,9 +3034,11 @@ class guiWin(QMainWindow):
         elif right_click and self.mergeIDsButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            ID = posData.lab[ydata, xdata]
+            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero(posData.lab, y, x)
+                nearest_ID = self.nearest_nonzero(
+                    self.get_2Dlab(posData.lab), y, x
+                )
                 mergeID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
@@ -3024,9 +3060,11 @@ class guiWin(QMainWindow):
         elif right_click and self.editID_Button.isChecked():
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            ID = posData.lab[ydata, xdata]
+            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero(posData.lab, y, x)
+                nearest_ID = self.nearest_nonzero(
+                    self.get_2Dlab(posData.lab), y, x
+                )
                 editID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
@@ -3084,11 +3122,11 @@ class guiWin(QMainWindow):
                     # Append information for replicating the edit in tracking
                     # List of tuples (y, x, replacing ID)
                     obj = posData.rp[old_ID_idx]
-                    y, x = obj.centroid
+                    y, x = self.getObjCentroid(obj.centroid)
                     y, x = int(y), int(x)
                     posData.editID_info.append((y, x, new_ID))
                     obj = posData.rp[new_ID_idx]
-                    y, x = obj.centroid
+                    y, x = self.getObjCentroid(obj.centroid)
                     y, x = int(y), int(x)
                     posData.editID_info.append((y, x, old_ID))
                 else:
@@ -3098,7 +3136,7 @@ class guiWin(QMainWindow):
                     # Append information for replicating the edit in tracking
                     # List of tuples (y, x, replacing ID)
                     obj = posData.rp[old_ID_idx]
-                    y, x = obj.centroid
+                    y, x = self.getObjCentroid(obj.centroid)
                     y, x = int(y), int(x)
                     posData.editID_info.append((y, x, new_ID))
 
@@ -3160,9 +3198,11 @@ class guiWin(QMainWindow):
         elif right_click and self.binCellButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            ID = posData.lab[ydata, xdata]
+            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero(posData.lab, y, x)
+                nearest_ID = self.nearest_nonzero(
+                    self.get_2Dlab(posData.lab), y, x
+                )
                 binID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
@@ -3234,9 +3274,11 @@ class guiWin(QMainWindow):
         elif right_click and self.ripCellButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            ID = posData.lab[ydata, xdata]
+            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero(posData.lab, y, x)
+                nearest_ID = self.nearest_nonzero(
+                    self.get_2Dlab(posData.lab), y, x
+                )
                 ripID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
@@ -3313,7 +3355,7 @@ class guiWin(QMainWindow):
         if mode == 'Viewer':
             return
 
-        Y, X = posData.lab.shape
+        Y, X = self.get_2Dlab(posData.lab).shape
         x, y = event.pos().x(), event.pos().y()
         xdata, ydata = int(x), int(y)
         if not myutils.is_in_bounds(xdata, ydata, X, Y):
@@ -3328,7 +3370,7 @@ class guiWin(QMainWindow):
         elif self.isMouseDragImg1 and self.brushButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            Y, X = posData.lab.shape
+            Y, X = self.get_2Dlab(posData.lab).shape
 
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
             rrPoly, ccPoly = self.getPolygonBrush((y, x), Y, X)
@@ -3353,13 +3395,13 @@ class guiWin(QMainWindow):
             posData.lab[mask] = posData.brushID
             self.setImageImg2(updateLookuptable=False)
 
-            brushMask = posData.lab == posData.brushID
+            brushMask = self.get_2Dlab(posData.lab) == posData.brushID
             self.setTempImg1Brush(brushMask)
 
         # Eraser dragging mouse --> keep erasing
         elif self.isMouseDragImg1 and self.eraserButton.isChecked():
             posData = self.data[self.pos_i]
-            Y, X = posData.lab.shape
+            Y, X = self.get_2Dlab(posData.lab).shape
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             brushSize = self.brushSizeSpinbox.value()
@@ -3556,7 +3598,7 @@ class guiWin(QMainWindow):
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                 val = _img[ydata, xdata]
                 maxVal = numba_max(_img)
-                ID = posData.lab[ydata, xdata]
+                ID = self.get_2Dlab(posData.lab)[ydata, xdata]
                 self.updatePropsWidget(ID)
                 if posData.IDs:
                     maxID = max(posData.IDs)
@@ -3565,10 +3607,12 @@ class guiWin(QMainWindow):
                 if _img.ndim > 2:
                     val = [v for v in val]
                     value = f'{val}'
+                    val_l0 = self.img_layer0[ydata, xdata]
+                    val_str = f'rgb={val}, value_l0={val_l0:.2f}'
                 else:
-                    value = f'{val:.2f}'
+                    val_str = f'value={val:.2f}'
                 txt = (
-                    f'x={x:.2f}, y={y:.2f}, value={value}, '
+                    f'x={x:.2f}, y={y:.2f}, {val_str}, '
                     f'max={maxVal:.2f}, ID={ID}, max_ID={maxID}, '
                     f'num. of objects={len(posData.IDs)}'
                 )
@@ -3615,13 +3659,13 @@ class guiWin(QMainWindow):
             y2, x2 = y, x
             xdata, ydata = int(x), int(y)
             y1, x1 = self.yClickBud, self.xClickBud
-            ID = posData.lab[ydata, xdata]
+            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
                 self.BudMothTempLine.setData([x1, x2], [y1, y2])
             else:
                 obj_idx = posData.IDs.index(ID)
                 obj = posData.rp[obj_idx]
-                y2, x2 = obj.centroid
+                y2, x2 = self.getObjCentroid(obj.centroid)
                 self.BudMothTempLine.setData([x1, x2], [y1, y2])
 
         # Temporarily draw spline curve
@@ -3705,11 +3749,12 @@ class guiWin(QMainWindow):
                 img1_val = self.img1.image[ydata, xdata]
                 if self.img1.image.ndim > 2:
                     img1_val = [v for v in img1_val]
-                    value = f'{img1_val}'
+                    val_l0 = self.img_layer0[ydata, xdata]
+                    val_str = f'rgb={img1_val}, value_l0={val_l0:.2f}'
                 else:
-                    value = f'{img1_val:.2f}'
+                    val_str = f'value={img1_val:.2f}'
                 self.wcLabel.setText(
-                    f'x={x:.2f}, y={y:.2f}, value={value}, '
+                    f'x={x:.2f}, y={y:.2f}, {val_str}, '
                     f'max={maxVal:.2f}, ID={val}, max_ID={maxID}, '
                     f'num. of objects={len(posData.IDs)}'
                 )
@@ -3758,7 +3803,7 @@ class guiWin(QMainWindow):
         if mode == 'Viewer':
             return
 
-        Y, X = posData.lab.shape
+        Y, X = self.get_2Dlab(posData.lab).shape
         x, y = event.pos().x(), event.pos().y()
         xdata, ydata = int(x), int(y)
         if not myutils.is_in_bounds(xdata, ydata, X, Y):
@@ -3767,7 +3812,7 @@ class guiWin(QMainWindow):
         # Eraser dragging mouse --> keep erasing
         if self.isMouseDragImg2 and self.eraserButton.isChecked():
             posData = self.data[self.pos_i]
-            Y, X = posData.lab.shape
+            Y, X = self.get_2Dlab(posData.lab).shape
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             brushSize = self.brushSizeSpinbox.value()
@@ -3797,7 +3842,7 @@ class guiWin(QMainWindow):
         # Brush paint dragging mouse --> keep painting
         if self.isMouseDragImg2 and self.brushButton.isChecked():
             posData = self.data[self.pos_i]
-            Y, X = posData.lab.shape
+            Y, X = self.get_2Dlab(posData.lab).shape
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
 
@@ -3830,7 +3875,7 @@ class guiWin(QMainWindow):
         if mode == 'Viewer':
             return
 
-        Y, X = posData.lab.shape
+        Y, X = self.get_2Dlab(posData.lab).shape
         x, y = event.pos().x(), event.pos().y()
         xdata, ydata = int(x), int(y)
         if not myutils.is_in_bounds(xdata, ydata, X, Y):
@@ -3867,9 +3912,11 @@ class guiWin(QMainWindow):
         elif self.mergeIDsButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            ID = posData.lab[ydata, xdata]
+            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero(posData.lab, y, x)
+                nearest_ID = self.nearest_nonzero(
+                    self.get_2Dlab(posData.lab), y, x
+                )
                 mergeID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
@@ -3887,7 +3934,7 @@ class guiWin(QMainWindow):
             posData.lab[posData.lab==ID] = self.firstID
 
             # Mask to keep track of which ID needs redrawing of the contours
-            mergedID_mask = posData.lab==self.firstID
+            mergedID_mask = self.get_2Dlab(posData.lab)==self.firstID
 
             # Update data (rp, etc)
             self.update_rp()
@@ -3908,7 +3955,7 @@ class guiWin(QMainWindow):
         if mode == 'Viewer':
             return
 
-        Y, X = posData.lab.shape
+        Y, X = self.get_2Dlab(posData.lab).shape
         x, y = event.pos().x(), event.pos().y()
         xdata, ydata = int(x), int(y)
         if not myutils.is_in_bounds(xdata, ydata, X, Y):
@@ -3985,12 +4032,14 @@ class guiWin(QMainWindow):
         elif self.assignBudMothButton.isChecked() and self.clickedOnBud:
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            ID = posData.lab[ydata, xdata]
-            if ID == posData.lab[self.yClickBud, self.xClickBud]:
+            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
+            if ID == self.get_2Dlab(posData.lab)[self.yClickBud, self.xClickBud]:
                 return
 
             if ID == 0:
-                nearest_ID = self.nearest_nonzero(posData.lab, y, x)
+                nearest_ID = self.nearest_nonzero(
+                    self.get_2Dlab(posData.lab), y, x
+                )
                 mothID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
@@ -4040,8 +4089,8 @@ class guiWin(QMainWindow):
                 # Check that clicked bud actually is smaller that mother
                 # otherwise warn the user that he might have clicked first
                 # on a mother
-                budID = posData.lab[self.yClickBud, self.xClickBud]
-                new_mothID = posData.lab[ydata, xdata]
+                budID = self.get_2Dlab(posData.lab)[self.yClickBud, self.xClickBud]
+                new_mothID = self.get_2Dlab(posData.lab)[ydata, xdata]
                 bud_obj_idx = posData.IDs.index(budID)
                 new_moth_obj_idx = posData.IDs.index(new_mothID)
                 rp_budID = posData.rp[bud_obj_idx]
@@ -4075,7 +4124,7 @@ class guiWin(QMainWindow):
 
             elif is_history_known and not self.clickedOnHistoryKnown:
                 self.assignBudMothButton.setChecked(False)
-                budID = posData.lab[ydata, xdata]
+                budID = self.get_2Dlab(posData.lab)[ydata, xdata]
                 # Allow assigning an unknown cell ONLY to another unknown cell
                 txt = (
                     f'You started by clicking on ID {budID} which has '
@@ -4212,9 +4261,9 @@ class guiWin(QMainWindow):
 
         x, y = event.pos().x(), event.pos().y()
         xdata, ydata = int(x), int(y)
-        Y, X = posData.lab.shape
+        Y, X = self.get_2Dlab(posData.lab).shape
         if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
-            ID = posData.lab[ydata, xdata]
+            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
         else:
             return
 
@@ -4224,7 +4273,7 @@ class guiWin(QMainWindow):
 
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            Y, X = posData.lab.shape
+            Y, X = self.get_2Dlab(posData.lab).shape
             self.storeUndoRedoStates(False)
 
             # If user double-pressed 'b' then draw over the labels
@@ -4232,7 +4281,7 @@ class guiWin(QMainWindow):
             drawUnder = color != self.doublePressKeyButtonColor
 
             if ID > 0 and drawUnder:
-                posData.brushID = posData.lab[ydata, xdata]
+                posData.brushID = self.get_2Dlab(posData.lab)[ydata, xdata]
             else:
                 # Update brush ID. Take care of disappearing cells to remember
                 # to not use their IDs anymore in the future
@@ -4248,7 +4297,7 @@ class guiWin(QMainWindow):
             self.isMouseDragImg1 = True
 
             # Draw new objects
-            localLab = posData.lab[ymin:ymax, xmin:xmax]
+            localLab = self.get_2Dlab(posData.lab)[ymin:ymax, xmin:xmax]
             mask = diskMask.copy()
             if drawUnder:
                 mask[localLab!=0] = False
@@ -4265,19 +4314,19 @@ class guiWin(QMainWindow):
                 img = img/numba_max(img)
                 self.imgRGB = gray2rgb(img)
 
-            brushMask = posData.lab == posData.brushID
+            brushMask = self.get_2Dlab(posData.lab) == posData.brushID
             self.setTempImg1Brush(brushMask)
 
         elif left_click and canErase:
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            Y, X = posData.lab.shape
+            Y, X = self.get_2Dlab(posData.lab).shape
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(False)
             self.yPressAx2, self.xPressAx2 = y, x
             # Keep a list of erased IDs got erased
             self.erasedIDs = []
-            self.erasedID = posData.lab[ydata, xdata]
+            self.erasedID = self.get_2Dlab(posData.lab)[ydata, xdata]
 
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
@@ -4337,7 +4386,7 @@ class guiWin(QMainWindow):
             # Draw manually assisted auto contour
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            Y, X = posData.lab.shape
+            Y, X = self.get_2Dlab(posData.lab).shape
 
             self.autoCont_x0 = xdata
             self.autoCont_y0 = ydata
@@ -4350,7 +4399,7 @@ class guiWin(QMainWindow):
         elif left_click and canCurv:
             # Draw manual spline
             x, y = event.pos().x(), event.pos().y()
-            Y, X = posData.lab.shape
+            Y, X = self.get_2Dlab(posData.lab).shape
 
             # Check if user clicked on starting anchor again --> close spline
             closeSpline = False
@@ -4389,11 +4438,11 @@ class guiWin(QMainWindow):
         elif left_click and canWand:
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            Y, X = posData.lab.shape
+            Y, X = self.get_2Dlab(posData.lab).shape
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(False)
 
-            posData.brushID = posData.lab[ydata, xdata]
+            posData.brushID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if posData.brushID == 0:
                 self.setBrushID()
                 self.updateLookuptable(
@@ -4414,7 +4463,7 @@ class guiWin(QMainWindow):
             flood_mask = skimage.segmentation.flood(
                 self.flood_img, (ydata, xdata), tolerance=tol
             )
-            bkgrLabMask = posData.lab==0
+            bkgrLabMask = self.get_2Dlab(posData.lab)==0
 
             drawUnderMask = np.logical_or(
                 posData.lab==0, posData.lab==posData.brushID
@@ -4444,9 +4493,11 @@ class guiWin(QMainWindow):
 
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            ID = posData.lab[ydata, xdata]
+            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero(posData.lab, y, x)
+                nearest_ID = self.nearest_nonzero(
+                    self.get_2Dlab(posData.lab), y, x
+                )
                 divID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
@@ -4482,9 +4533,11 @@ class guiWin(QMainWindow):
 
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            ID = posData.lab[ydata, xdata]
+            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero(posData.lab, y, x)
+                nearest_ID = self.nearest_nonzero(
+                    self.get_2Dlab(posData.lab), y, x
+                )
                 budID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
@@ -4527,9 +4580,11 @@ class guiWin(QMainWindow):
 
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            ID = posData.lab[ydata, xdata]
+            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero(posData.lab, y, x)
+                nearest_ID = self.nearest_nonzero(
+                    self.get_2Dlab(posData.lab), y, x
+                )
                 unknownID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
@@ -4554,9 +4609,11 @@ class guiWin(QMainWindow):
         elif isCustomAnnot:
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            ID = posData.lab[ydata, xdata]
+            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
             if ID == 0:
-                nearest_ID = self.nearest_nonzero(posData.lab, y, x)
+                nearest_ID = self.nearest_nonzero(
+                    self.get_2Dlab(posData.lab), y, x
+                )
                 clickedBkgrDialog = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
@@ -4877,10 +4934,10 @@ class guiWin(QMainWindow):
     def setHoverToolSymbolColor(self, xdata, ydata, pen, ScatterItems, button,
                                 brush=None, hoverRGB=None, ID=None):
         posData = self.data[self.pos_i]
-        Y, X = posData.lab.shape
+        Y, X = self.get_2Dlab(posData.lab).shape
         if not myutils.is_in_bounds(xdata, ydata, X, Y):
             return
-        hoverID = posData.lab[ydata, xdata] if ID is None else ID
+        hoverID = self.get_2Dlab(posData.lab)[ydata, xdata] if ID is None else ID
         color = button.palette().button().color().name()
         drawAbove = color == self.doublePressKeyButtonColor
         if hoverID == 0 or drawAbove:
@@ -5591,8 +5648,8 @@ class guiWin(QMainWindow):
               before being assigned to the clicked bud
         """
         posData = self.data[self.pos_i]
-        budID = posData.lab[self.yClickBud, self.xClickBud]
-        new_mothID = posData.lab[self.yClickMoth, self.xClickMoth]
+        budID = self.get_2Dlab(posData.lab)[self.yClickBud, self.xClickBud]
+        new_mothID = self.get_2Dlab(posData.lab)[self.yClickMoth, self.xClickMoth]
 
         if budID == new_mothID:
             return
@@ -5823,7 +5880,7 @@ class guiWin(QMainWindow):
         if xl is None:
             xRange, yRange = self.ax2.viewRange()
             xl, yb = abs(xRange[0]), abs(yRange[0])
-        Y, X = posData.lab.shape
+        Y, X = self.get_2Dlab(posData.lab).shape
         roi = pg.ROI([xl, yb], [w, h],
                      rotatable=False,
                      removable=True,
@@ -5883,7 +5940,7 @@ class guiWin(QMainWindow):
 
     def getDelROIlab(self):
         posData = self.data[self.pos_i]
-        DelROIlab = posData.lab
+        DelROIlab = self.get_2Dlab(posData.lab)
         allDelIDs = set()
         # Iterate rois and delete IDs
         for roi in posData.allData_li[posData.frame_i]['delROIs_info']['rois']:
@@ -5900,7 +5957,7 @@ class guiWin(QMainWindow):
             delIDs = np.unique(posData.lab[ROImask])
             delIDsROI.update(delIDs)
             allDelIDs.update(delIDs)
-            _DelROIlab = posData.lab.copy()
+            _DelROIlab = self.get_2Dlab(posData.lab).copy()
             for obj in posData.rp:
                 ID = obj.label
                 if ID in delIDs:
@@ -6598,7 +6655,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         size = self.brushSizeSpinbox.value()*2
 
-        ID = posData.lab[ydata, xdata]
+        ID = self.get_2Dlab(posData.lab)[ydata, xdata]
         if ID == 0:
             prev_lab = posData.allData_li[posData.frame_i-1]['labels']
             if prev_lab is None:
@@ -7384,7 +7441,7 @@ class guiWin(QMainWindow):
 
     def repeatTracking(self):
         posData = self.data[self.pos_i]
-        prev_lab = posData.lab.copy()
+        prev_lab = self.get_2Dlab(posData.lab).copy()
         self.tracking(enforce=True, DoManualEdit=False)
         if posData.editID_info:
             editIDinfo = [
@@ -7404,7 +7461,8 @@ class guiWin(QMainWindow):
             msg.exec_()
             if msg.clickedButton() == keepManualEditButton:
                 allIDs = [obj.label for obj in posData.rp]
-                self.manuallyEditTracking(posData.lab, allIDs)
+                lab2D = self.get_2Dlab(posData.lab)
+                self.manuallyEditTracking(lab2D, allIDs)
                 self.update_rp()
                 self.setTitleText()
                 self.highlightLostNew()
@@ -7626,7 +7684,7 @@ class guiWin(QMainWindow):
         for annotID in annotIDs_frame_i:
             obj_idx = posData.IDs.index(annotID)
             obj = posData.rp[obj_idx]
-            y, x = obj.centroid
+            y, x = self.getObjCentroid(obj.centroid)
             xx.append(x)
             yy.append(y)
             acdc_df.at[annotID, state['name']] = 1
@@ -7887,12 +7945,12 @@ class guiWin(QMainWindow):
         lab_mask = (posData.lab>0).astype(np.uint8)
         rp = skimage.measure.regionprops(lab_mask)
         if not rp:
-            Y, X = posData.lab.shape
+            Y, X = self.get_2Dlab(posData.lab).shape
             xRange = -0.5, X+0.5
             yRange = -0.5, Y+0.5
         else:
             obj = rp[0]
-            min_row, min_col, max_row, max_col = obj.bbox
+            min_row, min_col, max_row, max_col = self.getObjBbox(obj.bbox)
             xRange = min_col-10, max_col+10
             yRange = max_row+10, min_row-10
 
@@ -8589,7 +8647,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         idx = (posData.filename, posData.frame_i)
         posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
-        self.updateALLimg(only_ax1=True)
+        self.updateALLimg(only_ax1=self.updateOnlyImg())
 
     def update_overlay_z_slice(self, z):
         self.getOverlayImg(setImg=True)
@@ -8615,7 +8673,7 @@ class guiWin(QMainWindow):
         else:
             self.zSliceScrollBar.setDisabled(True)
             self.z_label.setStyleSheet('color: gray')
-            self.updateALLimg(only_ax1=True)
+            self.updateALLimg(only_ax1=self.updateOnlyImg())
 
     def clearItems_IDs(self, IDs_to_clear):
         for ID in IDs_to_clear:
@@ -8981,10 +9039,11 @@ class guiWin(QMainWindow):
         if self.navigateScrollBarStartedMoving:
             self.clearAllItems()
         self.t_label.setText(
-                 f'frame n. {posData.frame_i+1}/{posData.segmSizeT}')
+            f'frame n. {posData.frame_i+1}/{posData.segmSizeT}'
+        )
         self.img1.setImage(cells_img)
         if not self.labelsGrad.hideLabelsImgAction.isChecked():
-            self.img2.setImage(posData.lab)
+            self.img2.setImage(posData.lab, z=self.z_lab())
         self.updateLookuptable()
         self.updateFramePosLabel()
         self.updateViewerWindow()
@@ -9047,8 +9106,8 @@ class guiWin(QMainWindow):
             is_cell_dead_li[i] = obj.dead
             is_cell_excluded_li[i] = obj.excluded
             IDs[i] = obj.label
-            xx_centroid[i] = int(obj.centroid[1])
-            yy_centroid[i] = int(obj.centroid[0])
+            xx_centroid[i] = int(self.getObjCentroid(obj.centroid)[1])
+            yy_centroid[i] = int(self.getObjCentroid(obj.centroid)[0])
             if obj.label in editedIDs:
                 y, x, new_ID = posData.editID_info[editedIDs.index(obj.label)]
                 editIDclicked_x[i] = int(x)
@@ -9075,7 +9134,7 @@ class guiWin(QMainWindow):
                 }
             ).set_index('Cell_ID')
         else:
-            acdc_df['Cell_ID'] = IDs
+            acdc_df = acdc_df.filter(IDs, axis=0)
             acdc_df['is_cell_dead'] = is_cell_dead_li
             acdc_df['is_cell_excluded'] = is_cell_excluded_li
             acdc_df['x_centroid'] = xx_centroid
@@ -9501,11 +9560,11 @@ class guiWin(QMainWindow):
 
     def getObjContours(self, obj, appendMultiContID=True):
         contours, _ = cv2.findContours(
-           obj.image.astype(np.uint8),
+           self.getObjImage(obj.image).astype(np.uint8),
            cv2.RETR_EXTERNAL,
            cv2.CHAIN_APPROX_NONE
         )
-        min_y, min_x, _, _ = obj.bbox
+        min_y, min_x, _, _ = self.getObjBbox(obj.bbox)
         cont = np.squeeze(contours[0], axis=1)
         if len(contours)>1 and appendMultiContID:
             posData = self.data[self.pos_i]
@@ -9515,21 +9574,31 @@ class guiWin(QMainWindow):
         cont += [min_x, min_y]
         return cont
 
-    def get_2Dlab(self, is_stored=False):
+    def getObjBbox(self, obj_bbox):
+        if self.isSegm3D:
+            obj_bbox = (obj_bbox[1], obj_bbox[2], obj_bbox[4], obj_bbox[5])
+            return obj_bbox
+        else:
+            return obj_bbox
+
+    def z_lab(self):
+        if self.isSegm3D:
+            return self.zSliceScrollBarLab.sliderPosition()
+        else:
+            return None
+
+    def get_2Dlab(self, lab):
+        if self.isSegm3D:
+            return lab[self.z_lab()]
+        else:
+            return lab
+
+    def set_2Dlab(self, lab2D):
         posData = self.data[self.pos_i]
         if self.isSegm3D:
-            z = self.zSliceScrollBarLab.sliderPosition()
-            if is_stored:
-                lab = posData.allData_li[posData.frame_i, z]['labels'].copy()
-            else:
-                lab = posData.segm_data[posData.frame_i, z].copy()
-            return lab
+            posData.lab[self.z_lab()] = lab2D
         else:
-            if is_stored:
-                lab = posData.allData_li[posData.frame_i]['labels'].copy()
-            else:
-                lab = posData.segm_data[posData.frame_i].copy()
-            return lab
+            posData.lab = lab2D
 
     def get_labels(self, is_stored=False):
         posData = self.data[self.pos_i]
@@ -9649,7 +9718,7 @@ class guiWin(QMainWindow):
                 delIDsROI = set(delROIsInfo_npz[file])
                 delROIs_info['delIDsROI'].append(delIDsROI)
             elif file.startswith(f'{posData.frame_i}_roi'):
-                Y, X = posData.lab.shape
+                Y, X = self.get_2Dlab(posData.lab).shape
                 x0, y0, w, h = delROIsInfo_npz[file]
                 addROI = (
                     posData.frame_i==0 or
@@ -10032,9 +10101,15 @@ class guiWin(QMainWindow):
             pass
 
         # Center LabelItem at centroid
-        y, x = obj.centroid
+        y, x = self.getObjCentroid(obj.centroid)
         w, h = LabelItemID.rect().right(), LabelItemID.rect().bottom()
         LabelItemID.setPos(x-w/2, y-h/2)
+
+    def getObjCentroid(self, obj_centroid):
+        if self.isSegm3D:
+            return obj_centroid[1:3]
+        else:
+            return obj_centroid
 
     def ax2_setTextID(self, obj):
         posData = self.data[self.pos_i]
@@ -10054,7 +10129,7 @@ class guiWin(QMainWindow):
         LabelItemID.setText(txt, color=color, bold=bold, size=self.fontSize)
 
         # Center LabelItem at centroid
-        y, x = obj.centroid
+        y, x = self.getObjCentroid(obj.centroid)
         w, h = LabelItemID.rect().right(), LabelItemID.rect().bottom()
         LabelItemID.setPos(x-w/2, y-h/2)
 
@@ -10074,7 +10149,7 @@ class guiWin(QMainWindow):
         ccaInfo_and_masks = how == 'Draw cell cycle info and overlay segm. masks'
 
         # Draw LabelItems for IDs on ax2
-        y, x = obj.centroid
+        y, x = self.getObjCentroid(obj.centroid)
         idx = obj.label-1
         t0 = time.time()
         self.ax2_setTextID(obj)
@@ -10119,8 +10194,8 @@ class guiWin(QMainWindow):
                 if relative_ID in posData.IDs:
                     relative_rp_idx = posData.IDs.index(relative_ID)
                     relative_ID_obj = posData.rp[relative_rp_idx]
-                    y1, x1 = obj.centroid
-                    y2, x2 = relative_ID_obj.centroid
+                    y1, x1 = self.getObjCentroid(obj.centroid)
+                    y2, x2 = relative_ID_self.getObjCentroid(obj.centroid)
                     BudMothLine.setData([x1, x2], [y1, y2], pen=pen)
             else:
                 BudMothLine.setData([], [])
@@ -10283,7 +10358,7 @@ class guiWin(QMainWindow):
             if ID in posData.binnedIDs:
                 obj.excluded = True
                 if draw:
-                    y, x = obj.centroid
+                    y, x = self.getObjCentroid(obj.centroid)
                     # Gray out ID label on image
                     LabelID = self.ax2_LabelItemsIDs[ID-1]
                     LabelID.setText(f'{ID}', color=(150, 0, 0))
@@ -10297,7 +10372,7 @@ class guiWin(QMainWindow):
                 obj.dead = True
                 if draw:
                     # Gray out ID label on image
-                    y, x = obj.centroid
+                    y, x = self.getObjCentroid(obj.centroid)
                     LabelID = self.ax2_LabelItemsIDs[ID-1]
                     LabelID.setText(f'{ID}', color=(150, 0, 0))
                     ripIDs_xx.append(x)
@@ -10629,6 +10704,10 @@ class guiWin(QMainWindow):
             else:
                 self.img1.setLookupTable(self.imgGrad.getLookupTable(img=img))
 
+    def updateOnlyImg(self):
+        isSegm2D = not self.isSegm3D
+        return isSegm2D or self.labBottomGroupbox.isChecked()
+
     def imgGradLUTfinished_cb(self):
         if not self.overlayButton.isChecked():
             self.updateALLimg(only_ax1=True, updateFilters=True)
@@ -10782,12 +10861,26 @@ class guiWin(QMainWindow):
         imgRGB = self.img1_RGB.copy()
         for obj in posData.rp:
             color = posData.lut[obj.label]/255
-            bkgr_label = self.img1_RGB[obj.slice][obj.image]
+            _slice = self.getObjSlice(obj.slice)
+            _objMask = self.getObjImage(obj.image)
+            bkgr_label = self.img1_RGB[_slice][_objMask]
             # colored_label = bkgr_label*color
             overlay = bkgr_label*(1.0-alpha) + color*alpha
-            imgRGB[obj.slice][obj.image] = overlay
+            imgRGB[_slice][_objMask] = overlay
         imgRGB = (np.clip(imgRGB, 0, 1)*255).astype(np.uint8)
         return imgRGB
+
+    def getObjImage(self, obj_image):
+        if self.isSegm3D:
+            return obj_image[self.z_lab()]
+        else:
+            return obj_image
+
+    def getObjSlice(self, obj_slice):
+        if self.isSegm3D:
+            return obj_slice[1:3]
+        else:
+            return obj_slice
 
     def getOverlayImg(self, fluoData=None, setImg=True):
         posData = self.data[self.pos_i]
@@ -11040,6 +11133,8 @@ class guiWin(QMainWindow):
                 if reconnect:
                     self.zSliceScrollBar.valueChanged.connect(self.update_z_slice)
                 self.z_label.setText(f'z-slice  {z+1:02}/{posData.SizeZ}')
+                if not self.labBottomGroupbox.isChecked():
+                    self.z_label_lab.setText(f'z-slice  {z+1:02}/{posData.SizeZ}')
                 cells_img = img[z].copy()
             elif zProjHow == 'max z-projection':
                 cells_img = img.max(axis=0).copy()
@@ -11065,10 +11160,10 @@ class guiWin(QMainWindow):
             self.addExistingDelROIs()
             allDelIDs, DelROIlab = self.getDelROIlab()
         else:
-            DelROIlab = posData.lab
+            DelROIlab = self.get_2Dlab(posData.lab)
             allDelIDs = set()
         if not self.labelsGrad.hideLabelsImgAction.isChecked():
-            self.img2.setImage(DelROIlab)
+            self.img2.setImage(DelROIlab, z=self.z_lab())
         if updateLookuptable:
             self.updateLookuptable(delIDs=allDelIDs)
 
@@ -11356,13 +11451,15 @@ class guiWin(QMainWindow):
             imgRGB = self.img1_RGB.copy()
             for _obj in posData.rp:
                 color = posData.lut[_obj.label]/255
-                bkgr_label = self.img1_RGB[_obj.slice][_obj.image]
+                _slice = self.getObjSlice(obj.slice)
+                _objMask = self.getObjImage(obj.image)
+                bkgr_label = self.img1_RGB[_slice][_objMask]
                 if _obj.label == obj.label:
                     alpha = 0.8
                 else:
                     alpha = 0.1
                 overlay = bkgr_label*(1.0-alpha) + color*alpha
-                imgRGB[_obj.slice][_obj.image] = overlay
+                imgRGB[_slice][_objMask] = overlay
             self.img1.setImage(imgRGB)
         else:
             # Red thick contour of searched ID
@@ -11395,7 +11492,7 @@ class guiWin(QMainWindow):
         LabelItemID = self.ax1_LabelItemsIDs[ID-1]
         txt = f'{ID}'
         LabelItemID.setText(txt, color='r', bold=True, size=self.fontSize)
-        y, x = obj.centroid
+        y, x = self.getObjCentroid(obj.centroid)
         w, h = LabelItemID.rect().right(), LabelItemID.rect().bottom()
         LabelItemID.setPos(x-w/2, y-h/2)
 
@@ -11617,7 +11714,7 @@ class guiWin(QMainWindow):
         txt = f'{obj.label}?'
         LabelItemID.setText(txt, color=textColor)
         # Center LabelItem at centroid
-        y, x = obj.centroid
+        y, x = self.getObjCentroid(obj.centroid)
         w, h = LabelItemID.rect().right(), LabelItemID.rect().bottom()
         LabelItemID.setPos(x-w/2, y-h/2)
 
@@ -11659,7 +11756,7 @@ class guiWin(QMainWindow):
             txt = f'{obj.label}?'
             LabelItemID.setText(txt, color=self.lostIDs_qMcolor)
             # Center LabelItem at centroid
-            y, x = obj.centroid
+            y, x = self.getObjCentroid(obj.centroid)
             w, h = LabelItemID.rect().right(), LabelItemID.rect().bottom()
             LabelItemID.setPos(x-w/2, y-h/2)
 
@@ -11747,7 +11844,9 @@ class guiWin(QMainWindow):
                     lab_obj += numba_max(lab)
                 else:
                     lab_obj += maxID
-                lab[obj.slice][obj.image] = lab_obj[obj.image]
+                _slice = obj.slice # self.getObjSlice(obj.slice)
+                _objMask = obj.image # self.getObjImage(obj.image)
+                lab[_slice][_objMask] = lab_obj[_objMask]
                 setRp = True
         return setRp
 
@@ -11846,7 +11945,7 @@ class guiWin(QMainWindow):
                 IDs = [obj.label for obj in rp]
                 self.manuallyEditTracking(tracked_lab, IDs)
         except ValueError:
-            tracked_lab = posData.lab
+            tracked_lab = self.get_2Dlab(posData.lab)
 
         # Update labels, regionprops and determine new and lost IDs
         posData.lab = tracked_lab
@@ -11948,7 +12047,7 @@ class guiWin(QMainWindow):
         Function used for loading an image file directly.
         """
         if file_path is None:
-            self.getMostRecentPath()
+            self.MostRecentPath = myutils.getMostRecentPath()
             file_path = QFileDialog.getOpenFileName(
                 self, 'Select image file', self.MostRecentPath,
                 "Images/Videos (*.png *.tif *.tiff *.jpg *.jpeg *.mov *.avi *.mp4)"
@@ -12062,7 +12161,7 @@ class guiWin(QMainWindow):
             self.ccaTableWin.close()
 
         if exp_path is None:
-            self.getMostRecentPath()
+            self.MostRecentPath = myutils.getMostRecentPath()
             exp_path = QFileDialog.getExistingDirectory(
                 self, 'Select experiment folder containing Position_n folders '
                       'or specific Position_n folder', self.MostRecentPath)
@@ -12075,7 +12174,7 @@ class guiWin(QMainWindow):
             return
 
         self.exp_path = exp_path
-        self.addToRecentPaths(exp_path)
+        myutils.addToRecentPaths(exp_path, logger=self.logger)
 
         if os.path.basename(exp_path).find('Position_') != -1:
             is_pos_folder = True
@@ -12419,41 +12518,6 @@ class guiWin(QMainWindow):
         self.app.restoreOverrideCursor()
         self.overlayButton.setStyleSheet('background-color: #A7FAC7')
 
-    def addToRecentPaths(self, exp_path):
-        if not os.path.exists(exp_path):
-            return
-        cellacdc_path = os.path.dirname(os.path.abspath(__file__))
-        recentPaths_path = os.path.join(
-            cellacdc_path, 'temp', 'recentPaths.csv'
-        )
-        if os.path.exists(recentPaths_path):
-            df = pd.read_csv(recentPaths_path, index_col='index')
-            recentPaths = df['path'].to_list()
-            if 'opened_last_on' in df.columns:
-                openedOn = df['opened_last_on'].to_list()
-            else:
-                openedOn = [np.nan]*len(recentPaths)
-            if exp_path in recentPaths:
-                self.logger.info(exp_path)
-                pop_idx = recentPaths.index(exp_path)
-                recentPaths.pop(pop_idx)
-                openedOn.pop(pop_idx)
-            recentPaths.insert(0, exp_path)
-            openedOn.insert(0, datetime.datetime.now())
-            # Keep max 40 recent paths
-            if len(recentPaths) > 40:
-                recentPaths.pop(-1)
-                openedOn.pop(-1)
-        else:
-            recentPaths = [exp_path]
-            openedOn = [datetime.datetime.now()]
-        df = pd.DataFrame({
-            'path': recentPaths,
-            'opened_last_on': pd.Series(openedOn, dtype='datetime64[ns]')}
-        )
-        df.index.name = 'index'
-        df.to_csv(recentPaths_path)
-
     def showInExplorer(self):
         posData = self.data[self.pos_i]
         path = posData.images_path
@@ -12576,7 +12640,7 @@ class guiWin(QMainWindow):
         self.notLoadedChNames = notLoadedChNames
         self.measurementsWin = apps.setMeasurementsDialog(
             loadedChNames, notLoadedChNames, posData.SizeZ > 1,
-            favourite_funcs=favourite_funcs
+            favourite_funcs=favourite_funcs, acdc_df=
         )
         self.measurementsWin.sigClosed.connect(self.setMeasurements)
         self.measurementsWin.show()
@@ -13005,23 +13069,6 @@ class guiWin(QMainWindow):
             actions.append(action)
         # Step 3. Add the actions to the menu
         self.openRecentMenu.addActions(actions)
-
-    def getMostRecentPath(self):
-        cellacdc_path = os.path.dirname(os.path.abspath(__file__))
-        recentPaths_path = os.path.join(
-            cellacdc_path, 'temp', 'recentPaths.csv'
-        )
-        if os.path.exists(recentPaths_path):
-            df = pd.read_csv(recentPaths_path, index_col='index')
-            if 'opened_last_on' in df.columns:
-                df = df.sort_values('opened_last_on', ascending=False)
-            self.MostRecentPath = ''
-            for path in df['path']:
-                if os.path.exists(path):
-                    self.MostRecentPath = path
-                    break
-        else:
-            self.MostRecentPath = ''
 
     def openRecentFile(self, path):
         self.logger.info(f'Opening recent folder: {path}')

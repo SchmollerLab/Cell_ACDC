@@ -122,6 +122,69 @@ def setupLogger(module='gui'):
 
     return logger, logs_path, log_path, log_filename
 
+def getPosfoldernames(exp_path):
+    ls = natsorted(listdir(exp_path))
+    pos_foldernames = [
+        pos for pos in ls if pos.find('Position_')!=-1
+        and os.path.isdir(os.path.join(exp_path, pos))
+    ]
+    return pos_foldernames
+
+def getMostRecentPath():
+    cellacdc_path = os.path.dirname(os.path.abspath(__file__))
+    recentPaths_path = os.path.join(
+        cellacdc_path, 'temp', 'recentPaths.csv'
+    )
+    if os.path.exists(recentPaths_path):
+        df = pd.read_csv(recentPaths_path, index_col='index')
+        if 'opened_last_on' in df.columns:
+            df = df.sort_values('opened_last_on', ascending=False)
+        MostRecentPath = ''
+        for path in df['path']:
+            if os.path.exists(path):
+                MostRecentPath = path
+                break
+    else:
+        MostRecentPath = ''
+    return MostRecentPath
+
+def addToRecentPaths(exp_path, logger=None):
+    if not os.path.exists(exp_path):
+        return
+    cellacdc_path = os.path.dirname(os.path.abspath(__file__))
+    recentPaths_path = os.path.join(
+        cellacdc_path, 'temp', 'recentPaths.csv'
+    )
+    if os.path.exists(recentPaths_path):
+        df = pd.read_csv(recentPaths_path, index_col='index')
+        recentPaths = df['path'].to_list()
+        if 'opened_last_on' in df.columns:
+            openedOn = df['opened_last_on'].to_list()
+        else:
+            openedOn = [np.nan]*len(recentPaths)
+        if exp_path in recentPaths:
+            if logger is not None:
+                logger.info(exp_path)
+            else:
+                print(exp_path)
+            pop_idx = recentPaths.index(exp_path)
+            recentPaths.pop(pop_idx)
+            openedOn.pop(pop_idx)
+        recentPaths.insert(0, exp_path)
+        openedOn.insert(0, datetime.datetime.now())
+        # Keep max 40 recent paths
+        if len(recentPaths) > 40:
+            recentPaths.pop(-1)
+            openedOn.pop(-1)
+    else:
+        recentPaths = [exp_path]
+        openedOn = [datetime.datetime.now()]
+    df = pd.DataFrame({
+        'path': recentPaths,
+        'opened_last_on': pd.Series(openedOn, dtype='datetime64[ns]')}
+    )
+    df.index.name = 'index'
+    df.to_csv(recentPaths_path)
 
 def rgb_str_to_values(rgbString, errorRgb=(255,255,255)):
     try:

@@ -43,8 +43,14 @@ def removeHSVcmaps():
 
 def renamePgCmaps():
     Gradients = pg.graphicsItems.GradientEditorItem.Gradients
-    Gradients['hot'] = Gradients.pop('thermal')
-    Gradients.pop('greyclip')
+    try:
+        Gradients['hot'] = Gradients.pop('thermal')
+    except KeyError:
+        pass
+    try:
+        Gradients.pop('greyclip')
+    except KeyError:
+        pass
 
 def addGradients():
     Gradients = pg.graphicsItems.GradientEditorItem.Gradients
@@ -210,12 +216,16 @@ class myMessageBox(QDialog):
             for button in self.buttons:
                 button.setMinimumWidth(max_width)
 
+        if self.width() < 350:
+            self.resize(350, self.height())
+
         if block:
             self.loop = QEventLoop()
             self.loop.exec_()
 
     def _template(self, parent, title, message, buttonsTexts):
-        self.setParent(parent)
+        if parent is not None:
+            self.setParent(parent)
         self.setWindowTitle(title)
         self.addText(message)
         buttons = []
@@ -250,7 +260,7 @@ class myMessageBox(QDialog):
         return buttons
 
     def question(self, parent, title, message, buttonsTexts=None):
-        self.setIcon(iconName='SP_MessageBoxInformation')
+        self.setIcon(iconName='SP_MessageBoxQuestion')
         buttons = self._template(parent, title, message, buttonsTexts)
         self.exec_()
         return buttons
@@ -1103,10 +1113,18 @@ class linkedQScrollbar(QScrollBar):
     def linkScrollBar(self, scrollbar):
         self._linkedScrollBar = scrollbar
 
+    def unlinkScrollBar(self):
+        self._linkedScrollBar = None
+
     def setSliderPosition(self, position):
         QScrollBar.setSliderPosition(self, position)
         if self._linkedScrollBar is not None:
             self._linkedScrollBar.setSliderPosition(position)
+
+    def setMaximum(self, max):
+        QScrollBar.setMaximum(self, max)
+        if self._linkedScrollBar is not None:
+            self._linkedScrollBar.setMaximum(max)
 
 class myColorButton(pg.ColorButton):
     sigColorRejected = pyqtSignal(object)
@@ -1282,7 +1300,6 @@ class QLogConsole(QTextEdit):
         if message:
             self.apppendText(message)
 
-
 class QProgressBarWithETA(QProgressBar):
     def __init__(self, parent=None):
         self.parent = parent
@@ -1434,6 +1451,20 @@ class sliderWithSpinBox(QWidget):
 
     def value(self):
         return self.spinBox.value()
+
+class labImageItem(pg.ImageItem):
+    def __init__(self, *args, **kwargs):
+        pg.ImageItem.__init__(self, *args, **kwargs)
+
+    def setImage(self, img=None, autolevels=None, z=None, **kargs):
+        if img is None:
+            pg.ImageItem.setImage(self, img, **kargs)
+            return
+
+        if img.ndim == 3 and img.shape[-1] > 4:
+            pg.ImageItem.setImage(self, img[z], **kargs)
+        else:
+            pg.ImageItem.setImage(self, img, **kargs)
 
 if __name__ == '__main__':
     class Window(QMainWindow):

@@ -580,7 +580,7 @@ class setMeasurementsDialog(QDialog):
 
     def __init__(
             self, loadedChNames, notLoadedChNames, isZstack,
-            favourite_funcs=None, parent=None
+            favourite_funcs=None, parent=None, acdc_df=None
         ):
         super().__init__(parent)
 
@@ -2282,12 +2282,7 @@ class QDialogMetadata(QDialog):
 
         if self.posData is not None and self.sender() != self.okButton:
             exp_path = self.posData.exp_path
-            pos_foldernames = natsorted(myutils.listdir(exp_path))
-            pos_foldernames = [
-                pos for pos in pos_foldernames
-                if pos.find('Position_')!=-1
-                and os.path.isdir(os.path.join(exp_path, pos))
-            ]
+            pos_foldernames = myutils.getPosfoldernames(exp_path)
             if self.sender() == self.selectButton:
                 select_folder = load.select_exp_folder()
                 select_folder.pos_foldernames = pos_foldernames

@@ -6,45 +6,82 @@ from tifffile import imread
 import os
 import glob
 from tqdm import tqdm
-from pyqtgraph.Qt import QtGui
-from PyQt5.QtWidgets import QApplication
+from PyQt5.QtGui import QIcon
+from PyQt5.QtWidgets import QApplication, QStyleFactory, QFileDialog
 from PyQt5 import QtCore
 import sys
 import difflib
 from scipy.stats import binned_statistic
 import warnings
 
-try:
-    from . import myutils, prompts, apps
-except Exception as e:
-    import myutils
-    import prompts
-    import apps
-
+from . import myutils, prompts, apps, qrc_resources, widgets, html_utils
 
 def configuration_dialog():
+    # app = QtCore.QCoreApplication.instance()
+    # if app is None:
+    app = QApplication(sys.argv)
+    app.setStyle(QStyleFactory.create('Fusion'))
+    app.setWindowIcon(QIcon(":assign-motherbud.svg"))
     continue_selection = True
     data_dirs = []
     positions = []
     while continue_selection:
-        data_dir = prompts.folder_dialog(title='Select folder containing Position_n folders')
-        if data_dir != '':
-            available_pos = sorted(myutils.listdir(data_dir))
-            app = QtCore.QCoreApplication.instance()
-            if app is None:
-                app = QApplication(sys.argv)
-            win = apps.QDialogListbox('Position Selection', 'Select which position you want to analyse', available_pos)
-            app.setStyle(QtGui.QStyleFactory.create('Fusion'))
-            win.show()
-            app.exec_()
-            pos = win.selectedItemsText
-            data_dirs.append(data_dir)
-            positions.append(pos)
-            continue_selection = prompts.askyesno(message= 'Do you wish to select another file?', title= 'Selection of further files')
-        else:
+        MostRecentPath = myutils.getMostRecentPath()
+        data_dir = QFileDialog.getExistingDirectory(
+            None, 'Select experiment folder containing Position_n folders ',
+            MostRecentPath
+        )
+        if not data_dir:
             continue_selection = False
+            break
+
+        myutils.addToRecentPaths(data_dir)
+        foldername = os.path.basename(data_dir)
+        if foldername == 'Images':
+            pos_path = os.path.dirname(data_dir)
+            data_dir = os.path.dirname(pos_path)
+            pos = [os.path.basename(pos_path)]
+        elif foldername.find('Position_') != -1:
+            pos_path = data_dir
+            data_dir = os.path.dirname(data_dir)
+            pos = [os.path.basename(pos_path)]
+        else:
+            available_pos = myutils.getPosfoldernames(data_dir)
+            if not available_pos:
+                print('******************************')
+                print('Selected folder does not contain any Position folders.')
+                print(f'Selected folder: "{data_dir}"')
+                print('******************************')
+                raise FileNotFoundError
+
+            win = apps.QDialogListbox(
+                'Position Selection',
+                'Select which position(s) you want to analyse',
+                available_pos
+            )
+            win.show()
+            win.exec_()
+            if win.cancel:
+                print('******************************')
+                print('Execution aborted by the user')
+                print('******************************')
+                raise InterruptedError
+            pos = win.selectedItemsText
+
+        data_dirs.append(data_dir)
+        positions.append(pos)
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph(
+            'Do you wish to select Positions from other experiments?'
+        )
+        yes, no = msg.question(
+            None, 'Continue selection?', txt, buttonsTexts=(' Yes ', ' No ')
+        )
+        continue_selection = msg.clickedButton == yes
     if len(data_dirs) == 0:
+        print('******************************')
         print("No positions selected!")
+        print('******************************')
         raise IndexError
     return data_dirs, positions
 
@@ -270,20 +307,20 @@ def _load_files(file_dir, channels):
     Function to load files of all given channels and the corresponding segmentation masks.
     Check first if aligned files are available and use them if so.
     """
-    no_of_aligned_files = len(glob.glob(f'{file_dir}\*aligned*'))
-    seg_mask_available = len(glob.glob(f'{file_dir}\*_segm*')) > 0
-    acdc_output_available = len(glob.glob(f'{file_dir}\*acdc_output*')) + len(glob.glob(f'{file_dir}\*cc_stage*')) > 0
+    no_of_aligned_files = len(glob.glob(f'{file_dir}\*aligned.npz'))
+    seg_mask_available = len(glob.glob(f'{file_dir}\*_segm.npz')) > 0
+    acdc_output_available = len(glob.glob(f'{file_dir}\*acdc_output.csv')) + len(glob.glob(f'{file_dir}\*cc_stage*')) > 0
     if not (seg_mask_available and acdc_output_available):
         return None
     channel_files = []
     if no_of_aligned_files > 0:
         for channel in channels:
             try:
-                ch_aligned_path = glob.glob(f'{file_dir}\*{channel}_aligned.npz*')[0]
+                ch_aligned_path = glob.glob(f'{file_dir}\*{channel}_aligned.npz')[0]
                 channel_files.append(np.load(ch_aligned_path)['arr_0'])
             except IndexError:
                 try:
-                    ch_aligned_path = glob.glob(f'{file_dir}\*{channel}_aligned.npy*')[0]
+                    ch_aligned_path = glob.glob(f'{file_dir}\*{channel}_aligned.npy')[0]
                     channel_files.append(np.load(ch_aligned_path))
                 except IndexError:
                     print(f'Could not find an aligned file for channel {channel}')
@@ -309,15 +346,15 @@ def _load_files(file_dir, channels):
         channel_files.append(np.load(segm_file_path))
     # append cc-data
     try:
-        cc_stage_path = glob.glob(f'{file_dir}\*acdc_output*')[0]
+        cc_stage_path = glob.glob(f'{file_dir}\*acdc_output.csv')[0]
     except IndexError:
-        cc_stage_path = glob.glob(f'{file_dir}\*cc_stage*')[0]
+        cc_stage_path = glob.glob(f'{file_dir}\*cc_stage.csv')[0]
     # assume cell cycle output of ACDC to be .csv
     channel_files.append(pd.read_csv(cc_stage_path))
 
     # append metadata if available, else append None
     if len(glob.glob(f'{file_dir}\*metadata*')) > 0:
-        metadata_path = glob.glob(f'{file_dir}\*metadata*')[0]
+        metadata_path = glob.glob(f'{file_dir}\*metadata.csv')[0]
         # assume calculated metadata to be .csv
         channel_files.append(pd.read_csv(metadata_path).set_index('Description'))
     else:
