@@ -10195,7 +10195,7 @@ class guiWin(QMainWindow):
                     relative_rp_idx = posData.IDs.index(relative_ID)
                     relative_ID_obj = posData.rp[relative_rp_idx]
                     y1, x1 = self.getObjCentroid(obj.centroid)
-                    y2, x2 = relative_ID_self.getObjCentroid(obj.centroid)
+                    y2, x2 = self.getObjCentroid(obj.centroid)
                     BudMothLine.setData([x1, x2], [y1, y2], pen=pen)
             else:
                 BudMothLine.setData([], [])
