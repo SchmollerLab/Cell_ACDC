@@ -2449,14 +2449,14 @@ class QCropZtool(QWidget):
         buttonsLayout = QHBoxLayout()
 
         self.lowerZscrollbar = QScrollBar(Qt.Horizontal)
-        self.lowerZscrollbar.setMaximum(SizeZ)
-        s = str(0).zfill(self.numDigits)
-        self.lowerZscrollbar.label = QLabel(f'{s}/{SizeZ-1}')
+        self.lowerZscrollbar.setMaximum(SizeZ-1)
+        s = str(1).zfill(self.numDigits)
+        self.lowerZscrollbar.label = QLabel(f'{s}/{SizeZ}')
 
         self.upperZscrollbar = QScrollBar(Qt.Horizontal)
-        self.upperZscrollbar.setValue(SizeZ)
-        self.upperZscrollbar.setMaximum(SizeZ)
-        self.upperZscrollbar.label = QLabel(f'{SizeZ-1}/{SizeZ-1}')
+        self.upperZscrollbar.setValue(SizeZ-1)
+        self.upperZscrollbar.setMaximum(SizeZ-1)
+        self.upperZscrollbar.label = QLabel(f'{SizeZ}/{SizeZ}')
 
         cancelButton = QPushButton('Cancel')
         cropButton = QPushButton('Crop and save')
@@ -2512,13 +2512,13 @@ class QCropZtool(QWidget):
             self.upperZscrollbar.setValue(self.lowerZscrollbar.value()+2)
             return
 
-        s = str(value).zfill(self.numDigits)
-        self.sender().label.setText(f'{s}/{self.SizeZ-1}')
+        s = str(value+1).zfill(self.numDigits)
+        self.sender().label.setText(f'{s}/{self.SizeZ}')
         self.sigZvalueChanged.emit(which, value)
 
     def show(self):
         super().show()
-        self.resize(self.width(), self.height())
+        self.resize(int(self.width()*1.5), self.height())
 
     def closeEvent(self, event):
         self.sigClose.emit()

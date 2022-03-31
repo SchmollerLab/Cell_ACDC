@@ -38,7 +38,7 @@ import pyqtgraph as pg
 from . import qrc_resources
 
 # Custom modules
-from . import load, prompts, apps, core, myutils
+from . import load, prompts, apps, core, myutils, widgets, html_utils
 
 if os.name == 'nt':
     try:
@@ -157,7 +157,8 @@ class dataPrepWin(QMainWindow):
     @exception_handler
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_P:
-            raise FileNotFoundError
+            posData = self.data[self.pos_i]
+            print(posData.segmInfo_df)
 
     def gui_createActions(self):
         # File actions
@@ -523,7 +524,8 @@ class dataPrepWin(QMainWindow):
         else:
             img = img_data.copy()
         if posData.SizeZ > 1:
-            if force_z:
+            if force_z is not None:
+                self.z_label.setText(f'z-slice  {force_z+1}/{posData.SizeZ}')
                 img = img[force_z]
                 return img
             df =  posData.segmInfo_df
@@ -541,7 +543,7 @@ class dataPrepWin(QMainWindow):
                 self.zSliceScrollBar.valueChanged.disconnect()
                 self.zSliceScrollBar.setSliderPosition(z)
                 self.zSliceScrollBar.valueChanged.connect(self.update_z_slice)
-                self.z_label.setText(f'z-slice  {z}/{posData.SizeZ-1}')
+                self.z_label.setText(f'z-slice  {z+1}/{posData.SizeZ}')
                 img = img[z]
             elif zProjHow == 'max z-projection':
                 img = img.max(axis=0)
@@ -886,7 +888,7 @@ class dataPrepWin(QMainWindow):
         df = posData.segmInfo_df
         for frame_i in range(posData.SizeT):
             idx = (posData.filename, frame_i)
-            posData.segmInfo_df[f'crop{whichZ}_z_slice'] = z
+            posData.segmInfo_df[f'crop_{whichZ}_z_slice'] = z
 
     def cropZtoolReset(self):
         posData = self.data[self.pos_i]
@@ -922,6 +924,9 @@ class dataPrepWin(QMainWindow):
         idx = (posData.filename, self.frame_i)
         z = posData.segmInfo_df.at[idx, 'z_slice_used_dataPrep']
         self.zSliceScrollBar.setSliderPosition(z)
+        self.cropZaction.toggled.disconnect()
+        self.cropZaction.setChecked(False)
+        self.cropZaction.toggled.connect(self.openCropZtool)
 
     def crop_cb(self):
         # msg = QMessageBox()
@@ -1410,23 +1415,31 @@ class dataPrepWin(QMainWindow):
             imagesPath = posData.images_path
             zipPath = f'{imagesPath}.zip'
             if nonTifFound and p==0:
-                msg = QMessageBox()
-                doZipAnswer = msg.warning(
-                   self, 'NON-Tif data detected!',
-                   'Additional NON-tif files detected.\n\n'
-                   'The requested experiment folder already contains .npy '
-                   'or .npz files '
-                   'most likely from previous analysis runs.\n\n'
-                   'To avoid data losses we recommend zipping the "Images" folder.\n\n'
-                   'If everything looks fine after prepping the data, '
-                   'you can manually '
-                   'delete the zip archive.\n\n'
-                   'Do you want to automatically zip now?\n\n'
-                   'PS: Zip archive location:\n\n'
-                   f'{zipPath}',
-                   msg.Yes | msg.No
+                txt = (
+                    'Additional <b>NON-tif files detected.</b><br><br>'
+                    'The requested experiment folder <b>already contains .npy '
+                    'or .npz files</b> '
+                    'most likely from previous analysis runs.<br><br>'
+                    'To <b>avoid data losses</b> we recommend zipping the '
+                    '"Images" folder.<br><br>'
+                    'If everything looks fine after prepping the data, '
+                    'you can manually '
+                    'delete the zip archive.<br><br>'
+                    'Do you want to <b>automatically zip now?</b><br><br>'
+                    'PS: Zip archive location:<br><br>'
+                    f'{zipPath}'
                 )
-                if doZipAnswer == msg.Yes:
+                txt = html_utils.paragraph(txt)
+                msg = widgets.myMessageBox()
+                _, yes, no = msg.warning(
+                   self, 'NON-Tif data detected!', txt,
+                   buttonsTexts=('Cancel', 'Yes', 'No')
+                )
+                if msg.cancel:
+                    self.cropAction.setEnabled(True)
+                    self.titleLabel.setText('Process aborted', color='w')
+                    break
+                if yes == msg.clickedButton:
                     doZip = True
             if doZip:
                 self.logger.info(f'Zipping Images folder: {zipPath}')
@@ -1435,19 +1448,19 @@ class dataPrepWin(QMainWindow):
             self.alignData(self.user_ch_name, posData)
             if posData.SizeZ>1:
                 posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
-
-        self.update_img()
-        self.logger.info('Done.')
-        self.addROIs()
-        self.saveROIcoords(False, self.data[self.pos_i])
-        self.saveBkgrROIs(self.data[self.pos_i])
-        self.cropAction.setEnabled(True)
-        if posData.SizeZ>1:
-            self.cropZaction.setEnabled(True)
-        self.titleLabel.setText(
-            'Data successfully prepped. You can now crop the images or '
-            'close the program',
-            color='w')
+        else:
+            self.update_img()
+            self.logger.info('Done.')
+            self.addROIs()
+            self.saveROIcoords(False, self.data[self.pos_i])
+            self.saveBkgrROIs(self.data[self.pos_i])
+            self.cropAction.setEnabled(True)
+            if posData.SizeZ>1:
+                self.cropZaction.setEnabled(True)
+            self.titleLabel.setText(
+                'Data successfully prepped. You can now crop the images or '
+                'close the program',
+                color='w')
 
     def setStandardRoiShape(self, text):
         posData = self.data[self.pos_i]
