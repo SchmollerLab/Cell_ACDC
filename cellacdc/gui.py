@@ -12640,7 +12640,7 @@ class guiWin(QMainWindow):
         self.notLoadedChNames = notLoadedChNames
         self.measurementsWin = apps.setMeasurementsDialog(
             loadedChNames, notLoadedChNames, posData.SizeZ > 1,
-            favourite_funcs=favourite_funcs, acdc_df=
+            favourite_funcs=favourite_funcs, acdc_df=posData.acdc_df
         )
         self.measurementsWin.sigClosed.connect(self.setMeasurements)
         self.measurementsWin.show()
