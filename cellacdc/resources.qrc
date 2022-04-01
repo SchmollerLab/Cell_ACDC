@@ -17,6 +17,7 @@
     <file alias="brush-cursor.png">resources/icons/brush-cursor.png</file>
     <file alias="undo.svg">resources/icons/undo.svg</file>
     <file alias="redo.svg">resources/icons/redo.svg</file>
+    <file alias="eye.svg">resources/icons/eye.svg</file>
     <file alias="separate-bud.svg">resources/icons/separate-bud.svg</file>
     <file alias="edit-id.svg">resources/icons/edit-id.svg</file>
     <file alias="eye-plus.svg">resources/icons/eye-plus.svg</file>

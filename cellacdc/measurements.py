@@ -6,7 +6,7 @@ import traceback
 import shutil
 from importlib import import_module
 
-from . import core
+from . import core, base_cca_df
 
 user_path = pathlib.Path.home()
 acdc_metrics_path = os.path.join(user_path, 'acdc-metrics')
@@ -24,6 +24,40 @@ for file in os.listdir(metrics_path):
     src = os.path.join(metrics_path, file)
     dst = os.path.join(acdc_metrics_path, file)
     shutil.copy(src, dst)
+
+def get_all_metrics_names():
+    all_metrics_names = []
+    custom_metrics_names = list(_get_custom_metrics_names().keys())
+    size_metrics_names = list(get_size_metrics_desc().keys())
+    standard_metrics_names = list(_get_metrics_names().keys())
+    bkgr_val_names = list(_get_bkgr_val_names().keys())
+    props_names = get_props_names()
+    all_metrics_names.extend(custom_metrics_names)
+    all_metrics_names.extend(size_metrics_names)
+    all_metrics_names.extend(standard_metrics_names)
+    all_metrics_names.extend(bkgr_val_names)
+    all_metrics_names.extend(props_names)
+    return all_metrics_names
+
+def get_all_acdc_df_colnames():
+    all_acdc_df_colnames = get_all_metrics_names()
+    all_acdc_df_colnames.append('frame_i')
+    all_acdc_df_colnames.append('time_seconds')
+    all_acdc_df_colnames.append('Cell_ID')
+    cca_df_colnames = list(base_cca_df.keys())
+    all_acdc_df_colnames.extend(cca_df_colnames)
+    additional_colnames = [
+        'is_cell_dead',
+        'is_cell_excluded',
+        'x_centroid',
+        'y_centroid',
+        'editIDclicked_x',
+        'editIDclicked_y',
+        'editIDnewID',
+        'editIDnewIDs'
+    ]
+    all_acdc_df_colnames.extend(additional_colnames)
+    return all_acdc_df_colnames
 
 
 def get_custom_metrics_func():

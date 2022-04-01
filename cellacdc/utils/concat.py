@@ -25,7 +25,7 @@ cellacdc_path = os.path.join(os.path.dirname(script_path))
 sys.path.append(cellacdc_path)
 
 # Custom modules
-from .. import prompts, load, myutils, apps
+from .. import prompts, load, myutils, apps, html_utils, widgets
 
 from .. import qrc_resources
 
@@ -54,29 +54,22 @@ class concatWin(QMainWindow):
 
         mainLayout = QVBoxLayout()
 
-        label = QLabel(
-            'Concatenating acdc output tables...')
+        titleText = html_utils.paragraph(
+            '<b>Concatenating acdc output tables...</b>', font_size='14px'
+        )
+        titleLabel = QLabel(titleText)
 
-        label.setStyleSheet("padding:5px 10px 10px 10px;")
-        label.setAlignment(Qt.AlignCenter)
-        font = QtGui.QFont()
-        font.setPointSize(10)
-        font.setBold(True)
-        label.setFont(font)
-        mainLayout.addWidget(label)
+        titleLabel.setStyleSheet("padding:5px 10px 10px 10px;")
+        mainLayout.addWidget(titleLabel)
 
-        informativeText = QLabel(
-            'Follow the instructions in the pop-up windows.\n'
-            'Note that pop-ups might be minimized or behind other open windows.\n\n'
-            'Progess is displayed in the terminal/console.')
+        infoTxt = (
+            'Follow the instructions in the pop-up windows.<br>'
+            'Note that pop-ups might be minimized or behind other open windows.<br><br>'
+            'Progess is displayed in the terminal/console.'
+        )
 
-        informativeText.setStyleSheet("padding:5px 0px 10px 0px;")
-        # informativeText.setWordWrap(True)
-        informativeText.setAlignment(Qt.AlignLeft)
-        font = QtGui.QFont()
-        font.setPointSize(9)
-        informativeText.setFont(font)
-        mainLayout.addWidget(informativeText)
+        informativeLabel = QLabel(html_utils.paragraph(infoTxt))
+        mainLayout.addWidget(informativeLabel)
 
         abortButton = QPushButton('Abort process')
         abortButton.clicked.connect(self.close)

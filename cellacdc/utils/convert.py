@@ -6,6 +6,7 @@ import time
 import datetime
 import numpy as np
 import pandas as pd
+import h5py
 
 import skimage.io
 from tifffile.tifffile import TiffWriter, TiffFile
@@ -25,7 +26,7 @@ cellacdc_path = os.path.join(os.path.dirname(script_path))
 sys.path.append(cellacdc_path)
 
 # Custom modules
-from .. import prompts, load, myutils, apps
+from .. import prompts, load, myutils, apps, load, widgets, html_utils
 
 from .. import qrc_resources
 
@@ -39,11 +40,14 @@ if os.name == 'nt':
         pass
 
 class convertFileFormatWin(QMainWindow):
-    def __init__(self, parent=None, allowExit=False,
-                 actionToEnable=None, mainWin=None,
-                 from_='npz', to='npy'):
+    def __init__(
+            self, parent=None, allowExit=False,
+            actionToEnable=None, mainWin=None,
+            from_='npz', to='npy', info=''
+        ):
         self.from_ = from_
         self.to = to
+        self.info = info
         self.allowExit = allowExit
         self.processFinished = False
         self.actionToEnable = actionToEnable
@@ -57,29 +61,24 @@ class convertFileFormatWin(QMainWindow):
 
         mainLayout = QVBoxLayout()
 
-        label = QLabel(
-            f'Converting .{from_} to .{to} routine running...')
+        titleText = html_utils.paragraph(
+            f'<b>Converting .{from_} to .{to} routine running...</b>',
+            font_size='14px'
+        )
+        titleLabel = QLabel(titleText)
+        mainLayout.addWidget(titleLabel)
 
-        label.setStyleSheet("padding:5px 10px 10px 10px;")
-        label.setAlignment(Qt.AlignCenter)
-        font = QtGui.QFont()
-        font.setPointSize(10)
-        font.setBold(True)
-        label.setFont(font)
-        mainLayout.addWidget(label)
+        infoTxt = (
+            'Follow the instructions in the pop-up windows.<br>'
+            'Note that pop-ups might be minimized or behind other open windows.<br><br>'
+            'Progess is displayed in the terminal/console.'
+        )
+        informativeLabel = QLabel(html_utils.paragraph(infoTxt))
 
-        informativeText = QLabel(
-            'Follow the instructions in the pop-up windows.\n'
-            'Note that pop-ups might be minimized or behind other open windows.\n\n'
-            'Progess is displayed in the terminal/console.')
-
-        informativeText.setStyleSheet("padding:5px 0px 10px 0px;")
-        # informativeText.setWordWrap(True)
-        informativeText.setAlignment(Qt.AlignLeft)
-        font = QtGui.QFont()
-        font.setPointSize(9)
-        informativeText.setFont(font)
-        mainLayout.addWidget(informativeText)
+        informativeLabel.setStyleSheet("padding:5px 0px 10px 0px;")
+        # informativeLabel.setWordWrap(True)
+        informativeLabel.setAlignment(Qt.AlignLeft)
+        mainLayout.addWidget(informativeLabel)
 
         abortButton = QPushButton('Abort process')
         abortButton.clicked.connect(self.close)
@@ -229,6 +228,12 @@ class convertFileFormatWin(QMainWindow):
             data = np.load(filePath)['arr_0']
         elif self.from_ == 'npy':
             data = np.load(filePath)
+        elif self.from_ == 'tif':
+            data = skimage.io.imread(filePath)
+        elif self.from_ == 'h5':
+            data = load.h5dump_to_arr(filePath)
+        if self.info.find('segm') != -1:
+            data = data.astype(np.uint16)
         filename, ext = os.path.splitext(filename)
         if appendedTxt:
             newFilename = f'{filename}_{appendedTxt}.{self.to}'
@@ -242,6 +247,23 @@ class convertFileFormatWin(QMainWindow):
         elif self.to == 'npz':
             np.savez_compressed(newPath, data)
         print(f'File {filePath} saved to {newPath}')
+        self.conversionDone(filePath, newPath)
+
+    def conversionDone(self, src, dst):
+        msg = widgets.myMessageBox()
+        msg.setWidth(700)
+        parent_path = os.path.dirname(dst)
+        txt = (
+            'Done!<br><br>'
+            'The file<br><br>'
+            f'<code>{src}</code><br><br>'
+            f'was converted to <b>.{self.to}</b>, and saved to<br><br>'
+            f'<code>{dst}</code>'
+        )
+        msg.addShowInFileManagerButton(parent_path)
+        msg.information(
+            self, 'Conversion done!', html_utils.paragraph(txt)
+        )
 
 
     def save(self, alignedData, filePath, appendedTxt, first_call=True):

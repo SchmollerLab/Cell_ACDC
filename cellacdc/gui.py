@@ -54,7 +54,7 @@ from PyQt5.QtCore import (
 )
 from PyQt5.QtGui import (
     QIcon, QKeySequence, QCursor, QKeyEvent, QGuiApplication,
-    QPixmap
+    QPixmap, QColor
 )
 from PyQt5.QtWidgets import (
     QAction, QApplication, QLabel, QPushButton, QHBoxLayout,
@@ -690,7 +690,10 @@ class saveDataWorker(QObject):
         # Remove old gui_ columns from version < v1.2.4.rc-7
         gui_columns = df.filter(regex='gui_*').columns
         df = df.drop(columns=gui_columns, errors='ignore')
-        df = df.drop(columns='Cell_ID', errors='ignore')
+        cell_id_cols = df.filter(regex='Cell_ID.*').columns
+        df = df.drop(columns=cell_id_cols, errors='ignore')
+        time_seconds_cols = df.filter(regex='time_seconds.*').columns
+        df = df.drop(columns=time_seconds_cols, errors='ignore')
 
         return df
 
@@ -1599,6 +1602,7 @@ class guiWin(QMainWindow):
         self.annotateToolbar = QToolBar("Custom annotations", self)
         self.addToolBar(Qt.LeftToolBarArea, self.annotateToolbar)
         self.annotateToolbar.addAction(self.addCustomAnnotationAction)
+        self.annotateToolbar.addAction(self.viewAllCustomAnnotAction)
         self.annotateToolbar.setVisible(False)
 
     def gui_createMainLayout(self):
@@ -1925,6 +1929,11 @@ class guiWin(QMainWindow):
         self.addCustomAnnotationAction.setIcon(QIcon(":annotate.svg"))
         self.addCustomAnnotationAction.setToolTip('Add custom annotation')
 
+        self.viewAllCustomAnnotAction = QAction(self)
+        self.viewAllCustomAnnotAction.setCheckable(True)
+        self.viewAllCustomAnnotAction.setIcon(QIcon(":eye.svg"))
+        self.viewAllCustomAnnotAction.setToolTip('Show all custom annotations')
+
     def gui_connectActions(self):
         # Connect File actions
         self.newAction.triggered.connect(self.newFile)
@@ -1945,7 +1954,12 @@ class guiWin(QMainWindow):
 
         self.showPropsDockButton.clicked.connect(self.showPropsDockWidget)
 
-        self.addCustomAnnotationAction.triggered.connect(self.addCustomAnnotation)
+        self.addCustomAnnotationAction.triggered.connect(
+            self.addCustomAnnotation
+        )
+        self.viewAllCustomAnnotAction.toggled.connect(
+            self.viewAllCustomAnnot
+        )
 
     def gui_connectEditActions(self):
         self.showInExplorerAction.setEnabled(True)
@@ -3572,6 +3586,13 @@ class guiWin(QMainWindow):
         )
         if setCurvCursor and self.app.overrideCursor() is None:
             self.app.setOverrideCursor(self.curvCursor)
+
+        setCustomAnnotCursor = (
+            self.customAnnotButton is not None and not event.isExit()
+            and noModifier
+        )
+        if setCustomAnnotCursor and self.app.overrideCursor() is None:
+            self.app.setOverrideCursor(Qt.PointingHandCursor)
 
         # Cursor is moving on image while Alt key is pressed --> pan cursor
         alt = QGuiApplication.keyboardModifiers() == Qt.AltModifier
@@ -6888,10 +6909,10 @@ class guiWin(QMainWindow):
     @exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
-            posData = self.data[self.pos_i]
-            acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
-            print(acdc_df.columns)
-            print(acdc_df)
+            # posData = self.data[self.pos_i]
+            # acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
+            # print(acdc_df.columns)
+            # print(acdc_df)
             pass
             # self.imgGrad.sigLookupTableChanged.disconnect()
         try:
@@ -6956,16 +6977,6 @@ class guiWin(QMainWindow):
                 val = self.imgGrad.labelsAlphaSlider.value()
                 delta = 1/self.imgGrad.labelsAlphaSlider.maximum()
                 self.imgGrad.labelsAlphaSlider.setValue(val-delta)
-        elif ev.key() == Qt.Key_T:
-            pass
-            # posData = self.data[self.pos_i]
-            # print(posData.last_tracked_i)
-            # print(posData.allData_li[posData.frame_i]['labels'])
-            # print(posData.allData_li[posData.frame_i+1]['labels'])
-            # raise IndexError('Testing')
-            # posData = self.data[self.pos_i]
-            # self.logger.info(posData.allData_li[0]['acdc_df'])
-            # # self.imgGrad.sigLookupTableChanged.disconnect()
         elif ev.key() == Qt.Key_H:
             self.zoomToCells(enforce=True)
             if self.countKeyPress == 0:
@@ -7541,58 +7552,83 @@ class guiWin(QMainWindow):
         self.postProcessSegmAction.setChecked(False)
         self.postProcessSegmAction.toggled.connect(self.postProcessSegm)
 
-    def addCustomAnnotation(self):
+    def readSavedCustomAnnot(self):
+        self.logger.info('Loading saved custom annotations...')
+        tempAnnot = {}
         if os.path.exists(custom_annot_path):
+            tempAnnot = load.read_json(
+                custom_annot_path, logger_func=self.logger.info
+            )
+
+        posData = self.data[self.pos_i]
+        self.savedCustomAnnot = {**tempAnnot, **posData.customAnnot}
+
+    def addCustomAnnotationSavedPos(self):
+        posData = self.data[self.pos_i]
+        for name, annotState in posData.customAnnot.items():
+            # Check if button is already present and update only annotated IDs
+            buttons = [b for b in self.customAnnotDict.keys() if b.name==name]
+            if buttons:
+                toolButton = buttons[0]
+                allAnnotedIDs = self.customAnnotDict[toolButton]['annotatedIDs']
+                allAnnotedIDs[self.pos_i] = pos.customAnnotIDs
+                continue
+
             try:
-                with open(custom_annot_path) as file:
-                    self.savedCustomAnnot = json.load(file)
+                symbol = re.findall(r"\'(\w+)\'", annotState['symbol'])[0]
             except Exception as e:
-                print('****************************')
-                self.logger.info(traceback.format_exc())
-                print('****************************')
-                print('============================')
-                self.logger.info('Error while reading saved custom annotations. See above')
-                print('============================')
-        else:
-            self.savedCustomAnnot = {}
+                traceback.print_exc()
+                symbol = 'o'
+            symbolColor = QColor(*annotState['symbolColor'])
+            shortcut = annotState['shortcut']
+            if shortcut is not None:
+                keySequence = widgets.macShortcutToQKeySequence(shortcut)
+                keySequence = QKeySequence(keySequence)
+            else:
+                keySequence = None
+            toolTip = myutils.getCustomAnnotTooltip(annotState)
+            keepActive = annotState.get('keepActive', True)
+            isHideChecked = annotState.get('isHideChecked', True)
 
-        self.addAnnotWin = apps.customAnnotationDialog(
-            self.savedCustomAnnot, parent=self
-        )
-        self.addAnnotWin.exec_()
-        if self.addAnnotWin.cancel:
-            return
+            toolButton, action = self.addCustomAnnotationButton(
+                symbol, symbolColor, keySequence, toolTip, name,
+                keepActive, isHideChecked
+            )
+            allPosAnnotIDs = [pos.customAnnotIDs for pos in self.data]
+            self.customAnnotDict[toolButton] = {
+                'action': action,
+                'state': annotState,
+                'annotatedIDs': allPosAnnotIDs
+            }
 
-        symbol = self.addAnnotWin.symbol
-        symbolColor = self.addAnnotWin.state['symbolColor']
+            self.addCustomAnnnotScatterPlot(symbolColor, symbol, toolButton)
+
+    def addCustomAnnotationButton(
+            self, symbol, symbolColor, keySequence, toolTip, annotName,
+            keepActive, isHideChecked
+        ):
         toolButton = widgets.customAnnotToolButton(
-            symbol, symbolColor, parent=self
+            symbol, symbolColor, parent=self, keepToolActive=keepActive,
+            isHideChecked=isHideChecked
         )
         toolButton.setCheckable(True)
         self.checkableQButtonsGroup.addButton(toolButton)
-        keySequence = self.addAnnotWin.shortcutWidget.widget.keySequence
         if keySequence is not None:
             toolButton.setShortcut(keySequence)
-        toolButton.setToolTip(self.addAnnotWin.toolTip)
+        toolButton.setToolTip(toolTip)
+        toolButton.name = annotName
         toolButton.toggled.connect(self.customAnnotButtonClicked)
         toolButton.sigRemoveAction.connect(self.removeCustomAnnotButton)
         toolButton.sigKeepActiveAction.connect(self.customAnnotKeepActive)
+        toolButton.sigHideAction.connect(self.customAnnotHide)
         toolButton.sigModifyAction.connect(self.customAnnotModify)
         action = self.annotateToolbar.addWidget(toolButton)
+        return toolButton, action
 
-        self.customAnnotDict[toolButton] = {
-            'action': action,
-            'state': self.addAnnotWin.state,
-            'annotatedIDs': {}
-        }
-
-        # Save custom annotation to cellacdc/temp/custom_annotations.json
-        name = self.addAnnotWin.state['name']
-        state_to_save = self.addAnnotWin.state.copy()
-        state_to_save['symbolColor'] = tuple(symbolColor.getRgb())
-        self.savedCustomAnnot[name] = state_to_save
-        self.saveCustomAnnot()
-
+    def addCustomAnnnotScatterPlot(
+            self, symbolColor, symbol, toolButton
+        ):
+        # Add scatter plot item
         symbolColorBrush = [0, 0, 0, 50]
         symbolColorBrush[:3] = symbolColor.getRgb()[:3]
         scatterPlotItem = pg.ScatterPlotItem()
@@ -7604,17 +7640,73 @@ class guiWin(QMainWindow):
         self.customAnnotDict[toolButton]['scatterPlotItem'] = scatterPlotItem
         self.ax1.addItem(scatterPlotItem)
 
+    def addCustomAnnotation(self):
+        self.readSavedCustomAnnot()
+
+        self.addAnnotWin = apps.customAnnotationDialog(
+            self.savedCustomAnnot, parent=self
+        )
+        self.addAnnotWin.exec_()
+        if self.addAnnotWin.cancel:
+            return
+
+        symbol = self.addAnnotWin.symbol
+        symbolColor = self.addAnnotWin.state['symbolColor']
+        keySequence = self.addAnnotWin.shortcutWidget.widget.keySequence
+        toolTip = self.addAnnotWin.toolTip
+        name = self.addAnnotWin.state['name']
+        keepActive = self.addAnnotWin.state.get('keepActive', True)
+        isHideChecked = self.addAnnotWin.state.get('isHideChecked', True)
+        toolButton, action = self.addCustomAnnotationButton(
+            symbol, symbolColor, keySequence, toolTip, name,
+            keepActive, isHideChecked
+        )
+
+        self.customAnnotDict[toolButton] = {
+            'action': action,
+            'state': self.addAnnotWin.state,
+            'annotatedIDs': [{} for _ in range(len(self.data))]
+        }
+
+        # Save custom annotation to cellacdc/temp/custom_annotations.json
+        state_to_save = self.addAnnotWin.state.copy()
+        state_to_save['symbolColor'] = tuple(symbolColor.getRgb())
+        self.savedCustomAnnot[name] = state_to_save
+        self.saveCustomAnnot()
+
+        # Add scatter plot item
+        self.addCustomAnnnotScatterPlot(symbolColor, symbol, toolButton)
+
+        # Add 0s column to acdc_df
         posData = self.data[self.pos_i]
         acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
         if acdc_df is not None:
             acdc_df[self.addAnnotWin.state['name']] = 0
 
+    def viewAllCustomAnnot(self, checked):
+        if not checked:
+            # Clear all annotations before showing only checked
+            for button in self.customAnnotDict.keys():
+                scatterPlotItem = self.customAnnotDict[button]['scatterPlotItem']
+                scatterPlotItem.setData([], [])
+        self.doCustomAnnotation(0)
+
     def saveCustomAnnot(self):
+        self.logger.info('Saving custom annotations parameters...')
+        # Save to cell acdc temp path
         with open(custom_annot_path, mode='w') as file:
             json.dump(self.savedCustomAnnot, file, indent=2)
 
+        # Save to pos path
+        for posData in self.data:
+            with open(posData.custom_annot_json_path, mode='w') as file:
+                json.dump(self.savedCustomAnnot, file, indent=2)
+
     def customAnnotKeepActive(self, button):
         self.customAnnotDict[button]['state']['keepActive'] = button.keepToolActive
+
+    def customAnnotHide(self, button):
+        self.customAnnotDict[button]['state']['isHideChecked'] = button.isHideChecked
 
     def customAnnotModify(self, button):
         state = self.customAnnotDict[button]['state']
@@ -7658,44 +7750,56 @@ class guiWin(QMainWindow):
         )
 
     def doCustomAnnotation(self, ID):
+        # NOTE: pass 0 for ID to not add
         posData = self.data[self.pos_i]
-        buttons = [b for b in self.customAnnotDict.keys() if b.isChecked()]
-        if not buttons:
-            return
+        if self.viewAllCustomAnnotAction.isChecked():
+            # User requested to show all annotations --> iterate all buttons
+            buttons = list(self.customAnnotDict.keys())
+        else:
+            # Annotate if the button is active or isHideChecked is False
+            buttons = [
+                b for b in self.customAnnotDict.keys()
+                if (b.isChecked() or not b.isHideChecked)
+            ]
+            if not buttons:
+                return
 
-        button = buttons[0]
-        annotatedIDs = self.customAnnotDict[button]['annotatedIDs']
-        annotIDs_frame_i = annotatedIDs.get(posData.frame_i, [])
-        if ID in annotIDs_frame_i:
-            annotIDs_frame_i.remove(ID)
-        elif ID != 0:
-            annotIDs_frame_i.append(ID)
+        for button in buttons:
+            annotatedIDs = self.customAnnotDict[button]['annotatedIDs'][self.pos_i]
+            annotIDs_frame_i = annotatedIDs.get(posData.frame_i, [])
+            if ID in annotIDs_frame_i:
+                annotIDs_frame_i.remove(ID)
+            elif ID != 0:
+                annotIDs_frame_i.append(ID)
 
-        self.customAnnotDict[button]['annotatedIDs'][posData.frame_i] = annotIDs_frame_i
+            annotPerButton = self.customAnnotDict[button]
+            allAnnotedIDs = annotPerButton['annotatedIDs']
+            posAnnotedIDs = allAnnotedIDs[self.pos_i]
+            posAnnotedIDs[posData.frame_i] = annotIDs_frame_i
 
-        state = self.customAnnotDict[button]['state']
-        acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
-        if acdc_df is None:
-            # visiting new frame for single time-point annot type do nothing
-            return
+            state = self.customAnnotDict[button]['state']
+            acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
+            if acdc_df is None:
+                # visiting new frame for single time-point annot type do nothing
+                return
 
-        acdc_df[state['name']] = 0
+            acdc_df[state['name']] = 0
 
-        xx, yy = [], []
-        for annotID in annotIDs_frame_i:
-            obj_idx = posData.IDs.index(annotID)
-            obj = posData.rp[obj_idx]
-            y, x = self.getObjCentroid(obj.centroid)
-            xx.append(x)
-            yy.append(y)
-            acdc_df.at[annotID, state['name']] = 1
+            xx, yy = [], []
+            for annotID in annotIDs_frame_i:
+                obj_idx = posData.IDs.index(annotID)
+                obj = posData.rp[obj_idx]
+                y, x = self.getObjCentroid(obj.centroid)
+                xx.append(x)
+                yy.append(y)
+                acdc_df.at[annotID, state['name']] = 1
 
-        scatterPlotItem = self.customAnnotDict[button]['scatterPlotItem']
-        scatterPlotItem.setData(xx, yy)
+            scatterPlotItem = self.customAnnotDict[button]['scatterPlotItem']
+            scatterPlotItem.setData(xx, yy)
 
-        posData.allData_li[posData.frame_i]['acdc_df'] = acdc_df
+            posData.allData_li[posData.frame_i]['acdc_df'] = acdc_df
 
-        return button
+        return buttons[0]
 
     def removeCustomAnnotButton(self, button):
         posData = self.data[self.pos_i]
@@ -7723,6 +7827,9 @@ class guiWin(QMainWindow):
                 button.toggled.connect(self.customAnnotButtonClicked)
         else:
             self.customAnnotButton = None
+            button = self.sender()
+            scatterPlotItem = self.customAnnotDict[button]['scatterPlotItem']
+            scatterPlotItem.setData([], [])
 
     @exception_handler
     def repeatSegm(self, model_name=''):
@@ -8039,6 +8146,7 @@ class guiWin(QMainWindow):
         else:
             self.logger.info('You reached last position.')
             self.pos_i = 0
+        self.addCustomAnnotationSavedPos()
         self.setImageNameText()
         self.removeAlldelROIsCurrentFrame()
         proceed_cca, never_visited = self.get_data()
@@ -8055,6 +8163,7 @@ class guiWin(QMainWindow):
         else:
             self.logger.info('You reached first position.')
             self.pos_i = self.num_pos-1
+        self.addCustomAnnotationSavedPos()
         self.setImageNameText()
         self.removeAlldelROIsCurrentFrame()
         proceed_cca, never_visited = self.get_data()
@@ -8441,6 +8550,9 @@ class guiWin(QMainWindow):
             val = self.df_settings.at['isLabelsVisible', 'value'] == 'No'
             if val:
                 self.labelsGrad.hideLabelsImgAction.setChecked(True)
+
+        self.readSavedCustomAnnot()
+        self.addCustomAnnotationSavedPos()
 
         self.setAxesMaxRange()
         self.setImageNameText()
@@ -10277,34 +10389,6 @@ class guiWin(QMainWindow):
             txt = LabelItemID
             LabelItemID.setText(f'{txt} !!', color=self.lostIDs_qMcolor)
 
-    # def checkIDsMultiContour(self):
-    #     posData = self.data[self.pos_i]
-    #     txt = self.titleLabel.text
-    #     print('===================')
-    #     print(txt)
-    #     print('is looking good?', txt.find('Looking')==-1)
-    #     print('is multiple?', txt.find('Looking')==-1)
-    #     if txt.find('Looking') == -1 or txt.find('multiple') == -1:
-    #         warn_txt = self.titleLabel.text
-    #         htmlTxt = (
-    #             f'<font color="red">{warn_txt}</font>'
-    #         )
-    #     else:
-    #         htmlTxt = ''
-    #
-    #     print(htmlTxt)
-    #     print(posData.multiContIDs)
-    #     if posData.multiContIDs:
-    #         warn_txt = f'IDs with multiple contours: {posData.multiContIDs}'
-    #         color = 'red'
-    #         htmlTxt = (
-    #             f'<font color="red">{warn_txt}</font>, {htmlTxt}'
-    #         )
-    #         posData.multiContIDs = set()
-    #         print(htmlTxt)
-    #         print('===================')
-    #         self.titleLabel.setText(htmlTxt)
-
     def extendLabelsLUT(self, lenNewLut):
         posData = self.data[self.pos_i]
         # Build a new lut to include IDs > than original len of lut
@@ -10996,7 +11080,7 @@ class guiWin(QMainWindow):
     def shuffle_cmap(self):
         posData = self.data[self.pos_i]
         np.random.shuffle(posData.lut[1:])
-        self.updateLookuptable()
+        self.updateALLimg()
 
     def hideLabels(self, checked):
         if checked:
@@ -12114,6 +12198,7 @@ class guiWin(QMainWindow):
 
     def reInitGui(self):
         self.removeAllItems()
+        self.reinitCustomAnnot()
         self.gui_addPlotItems()
         self.setUncheckedAllButtons()
         self.restoreDefaultColors()
@@ -12126,6 +12211,11 @@ class guiWin(QMainWindow):
         self.modeToolBar.hide()
 
         self.modeComboBox.setCurrentText('Viewer')
+
+    def reinitCustomAnnot(self):
+        buttons = list(self.customAnnotDict.keys())
+        for button in buttons:
+            self.removeCustomAnnotButton(button)
 
     def loadingDataAborted(self):
         self.openAction.setEnabled(True)
@@ -12545,8 +12635,6 @@ class guiWin(QMainWindow):
             posData.loadedChNames = loadedChNames
 
     def zSliceAbsent(self, filename, posData):
-        print('***********************')
-        print(filename)
         self.app.restoreOverrideCursor()
         SizeZ = posData.SizeZ
         chNames = posData.chNames
@@ -13099,6 +13187,7 @@ class guiWin(QMainWindow):
 
     def closeEvent(self, event):
         self.saveWindowGeometry()
+        self.saveCustomAnnot()
         if self.slideshowWin is not None:
             self.slideshowWin.close()
         if self.ccaTableWin is not None:

@@ -120,6 +120,7 @@ class loadDataWorker(QObject):
                 loadBkgrROIs=True,
                 load_last_tracked_i=True,
                 load_metadata=True,
+                load_customAnnot=True,
                 selectedSegmNpz=self.mainWin.selectedSegmNpz
             )
 

@@ -143,7 +143,7 @@ class alphaNumericLineEdit(QLineEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
 
-        self.validPattern = '^[a-zA-Z0-9_]+$'
+        self.validPattern = '^[a-zA-Z0-9_-]+$'
         self.setValidator(QRegExpValidator(QRegExp(self.validPattern)))
 
         # self.setAlignment(Qt.AlignCenter)
@@ -192,6 +192,9 @@ class myMessageBox(QDialog):
 
     def addText(self, text):
         label = QLabel(self)
+        label.setTextInteractionFlags(
+            Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard
+        )
         label.setText(text)
         label.setWordWrap(True)
         label.setOpenExternalLinks(True)
@@ -415,6 +418,8 @@ def keyboardModifierToText(modifier):
     return s, key
 
 def macShortcutToQKeySequence(shortcut: str):
+    if shortcut is None:
+        return
     s = shortcut.replace('Control', 'Meta')
     s = shortcut.replace('Option', 'Alt')
     s = shortcut.replace('Command', 'Ctrl')
@@ -432,11 +437,16 @@ class customAnnotToolButton(QToolButton):
     sigRemoveAction = pyqtSignal(object)
     sigKeepActiveAction = pyqtSignal(object)
     sigModifyAction = pyqtSignal(object)
+    sigHideAction = pyqtSignal(object)
 
-    def __init__(self, symbol, color='r', keepToolActive=True, parent=None):
+    def __init__(
+            self, symbol, color='r', keepToolActive=True, parent=None,
+            isHideChecked=True
+        ):
         super().__init__(parent)
         self.symbol = symbol
         self.keepToolActive = keepToolActive
+        self.isHideChecked = isHideChecked
         self.setColor(color)
 
     def setColor(self, color):
@@ -479,6 +489,12 @@ class customAnnotToolButton(QToolButton):
             editAction.triggered.connect(self.modifyAction)
             contextMenu.addAction(editAction)
 
+            hideAction = QAction('Hide annotations')
+            hideAction.setCheckable(True)
+            hideAction.setChecked(self.isHideChecked)
+            hideAction.triggered.connect(self.hideAction)
+            contextMenu.addAction(hideAction)
+
             keepActiveAction = QAction('Keep tool active after using it')
             keepActiveAction.setCheckable(True)
             keepActiveAction.setChecked(self.keepToolActive)
@@ -496,6 +512,10 @@ class customAnnotToolButton(QToolButton):
 
     def removeAction(self):
         self.sigRemoveAction.emit(self)
+
+    def hideAction(self, checked):
+        self.isHideChecked = checked
+        self.sigHideAction.emit(self)
 
 class Toggle(QCheckBox):
     def __init__(
@@ -752,6 +772,7 @@ class formWidget(QWidget):
                     f'Info about "{self.labelRight.text()}" measurement'
                 )
             infoButton.clicked.connect(self.showInfo)
+            self.infoButton = infoButton
             self.items.append(infoButton)
 
         if addApplyButton:

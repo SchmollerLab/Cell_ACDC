@@ -14,7 +14,8 @@ from tqdm import tqdm
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QFileDialog,
-    QVBoxLayout, QPushButton, QLabel
+    QVBoxLayout, QPushButton, QLabel, QMessageBox,
+    QWidget
 )
 from PyQt5.QtCore import Qt, QEventLoop
 from PyQt5 import QtGui
@@ -24,9 +25,9 @@ cellacdc_path = os.path.join(os.path.dirname(script_path))
 sys.path.append(cellacdc_path)
 
 # Custom modules
-from . import prompts, load, myutils, apps
+from .. import prompts, load, myutils, apps, html_utils, widgets
 
-from . import qrc_resources
+from .. import qrc_resources
 
 if os.name == 'nt':
     try:
@@ -39,43 +40,38 @@ if os.name == 'nt':
 
 class alignWin(QMainWindow):
     def __init__(self, parent=None, allowExit=False,
-                 buttonToRestore=None, mainWin=None):
+                 actionToEnable=None, mainWin=None):
         self.allowExit = allowExit
         self.processFinished = False
-        self.buttonToRestore = buttonToRestore
+        self.actionToEnable = actionToEnable
         self.mainWin = mainWin
         super().__init__(parent)
         self.setWindowTitle("Cell-ACDC - Align")
         self.setWindowIcon(QtGui.QIcon(":assign-motherbud.svg"))
 
-        mainContainer = QtGui.QWidget()
+        mainContainer = QWidget()
         self.setCentralWidget(mainContainer)
 
         mainLayout = QVBoxLayout()
 
-        label = QLabel(
-            'Alignment routine running...')
+        titleText = html_utils.paragraph(
+            '<b>Alignment routine running...</b>', font_size='14px'
+        )
+        titleLabel = QLabel(titleText)
+        mainLayout.addWidget(titleLabel)
 
-        label.setStyleSheet("padding:5px 10px 10px 10px;")
-        label.setAlignment(Qt.AlignCenter)
-        font = QtGui.QFont()
-        font.setPointSize(10)
-        font.setBold(True)
-        label.setFont(font)
-        mainLayout.addWidget(label)
+        infoTxt = (
+            'Follow the instructions in the pop-up windows.<br>'
+            'Note that pop-ups might be minimized or behind other open windows.<br><br>'
+            'Progess is displayed in the terminal/console.'
+        )
 
-        informativeText = QLabel(
-            'Follow the instructions in the pop-up windows.\n'
-            'Note that pop-ups might be minimized or behind other open windows.\n\n'
-            'Progess is displayed in the terminal/console.')
+        informativeLabel = QLabel(html_utils.paragraph(infoTxt))
 
-        informativeText.setStyleSheet("padding:5px 0px 10px 0px;")
-        # informativeText.setWordWrap(True)
-        informativeText.setAlignment(Qt.AlignLeft)
-        font = QtGui.QFont()
-        font.setPointSize(9)
-        informativeText.setFont(font)
-        mainLayout.addWidget(informativeText)
+        informativeLabel.setStyleSheet("padding:5px 0px 10px 0px;")
+        # informativeLabel.setWordWrap(True)
+        informativeLabel.setAlignment(Qt.AlignLeft)
+        mainLayout.addWidget(informativeLabel)
 
         abortButton = QPushButton('Abort process')
         abortButton.clicked.connect(self.close)
@@ -135,7 +131,7 @@ class alignWin(QMainWindow):
                     'is not a valid folder. '
                     'Select a folder that contains the Position_n folders'
                 )
-                msg = QtGui.QMessageBox()
+                msg = QMessageBox()
                 msg.critical(
                     self, 'Incompatible folder', txt, msg.Ok
                 )
@@ -164,7 +160,8 @@ class alignWin(QMainWindow):
             images_paths = [exp_path]
 
         proceed, selectedFilenames = self.selectFiles(
-                images_paths[0], filterExt=['npz', 'npy', 'tif'])
+            images_paths[0], filterExt=['npz', 'npy', 'tif']
+        )
         if not proceed:
             abort = self.doAbort()
             if abort:
@@ -172,6 +169,11 @@ class alignWin(QMainWindow):
                 return
 
         revertAlignment = self.askAlignmentMode()
+        if revertAlignment is None:
+            abort = self.doAbort()
+            if abort:
+                self.close()
+                return
 
         abort, appendTxts = self.askTxtAppend()
         if abort:
@@ -219,7 +221,8 @@ class alignWin(QMainWindow):
 
                     filePath = os.path.join(images_path, chNameFile[0])
                     alignedData = self.loadAndAlign(
-                                            filePath, shifts, revertAlignment)
+                        filePath, shifts, revertAlignment
+                    )
                     self.save(alignedData, filePath, appendedTxt)
 
         else:
@@ -238,9 +241,24 @@ class alignWin(QMainWindow):
                                             filePath, shifts, revertAlignment)
                 self.save(alignedData, filePath, appendedTxt)
 
+        self.alignmentDone(filePath)
         self.close()
         if self.allowExit:
             exit('Done.')
+
+    def alignmentDone(self, filePath):
+        msg = widgets.myMessageBox()
+        msg.setWidth(700)
+        parent_path = os.path.dirname(filePath)
+        txt = (
+            'Alignment routine ended successfully.<br><br>'
+            'File(s) saved to:<br><br>'
+            f'<code>{filePath}</code>'
+        )
+        msg.addShowInFileManagerButton(parent_path)
+        msg.information(
+            self, 'Alignment done!', html_utils.paragraph(txt)
+        )
 
     def save(self, alignedData, filePath, appendedTxt, first_call=True):
         dir = os.path.dirname(filePath)
@@ -286,7 +304,7 @@ class alignWin(QMainWindow):
         self.win = apps.QDialogEntriesWidget(
             winTitle='Appended name',
             entriesLabels=['Type a name to append at the end of each aligned file:'],
-            defaultTxts=['realigned'],
+            defaultTxts=['aligned'],
             parent=self, font=font
         )
         self.win.exec_()
@@ -305,6 +323,8 @@ class alignWin(QMainWindow):
             shifts = -shifts
         alignedData = np.zeros_like(data)
         for frame_i, shift in enumerate(shifts):
+            if frame_i >= len(data):
+                break
             img = data[frame_i]
             axis = tuple(range(img.ndim))[-2:]
             aligned_img = np.roll(img, tuple(shift), axis=axis)
@@ -315,21 +335,22 @@ class alignWin(QMainWindow):
         myutils.checkDataIntegrity(filenames, parent_path, parentQWidget=self)
 
     def askAlignmentMode(self):
-        msg = QtGui.QMessageBox(self)
-        msg.setWindowTitle('Alignment mode')
-        msg.setIcon(msg.Question)
-        msg.setText(
-            "Do you want to revert a previously applied alignment or repeat alignment?")
-        revertButton = QPushButton('Revert alignment')
-        msg.addButton(revertButton, msg.YesRole)
-        msg.addButton(QPushButton('Repeat alignment'), msg.NoRole)
-        msg.exec_()
-        if msg.clickedButton() == revertButton:
+        msg = widgets.myMessageBox()
+        txt = (
+            'Do you want to <b>revert</b> a previously applied <b>alignment</b> '
+            'or <b>apply alignment</b>?'
+        )
+        _, revertButton, applyButton = msg.question(
+            self, 'Alignment mode', html_utils.paragraph(txt),
+            buttonsTexts=('Cancel', 'Revert alignment', 'Apply alignment')
+        )
+        if msg.cancel:
+            return None
+        if msg.clickedButton == revertButton:
             revertAlignment = True
-            return revertAlignment
         else:
             revertAlignment = False
-            return revertAlignment
+        return revertAlignment
 
     def selectFiles(self, images_path, filterExt=None):
         files = myutils.listdir(images_path)
@@ -394,19 +415,18 @@ class alignWin(QMainWindow):
         df.to_csv(recentPaths_path)
 
     def doAbort(self):
-        msg = QtGui.QMessageBox()
-        closeAnswer = msg.warning(
-           self, 'Abort execution?', 'Do you really want to abort process?',
-           msg.Yes | msg.No
-        )
-        if closeAnswer == msg.Yes:
-            if self.allowExit:
-                exit('Execution aborted by the user')
-            else:
-                print('Segmentation routine aborted by the user.')
-                return True
+        if self.allowExit:
+            exit('Execution aborted by the user')
         else:
-            return False
+            print('Segmentation routine aborted by the user.')
+            return True
+
+    def closeEvent(self, event):
+        if self.actionToEnable is not None:
+            self.actionToEnable.setDisabled(False)
+            self.mainWin.setWindowState(Qt.WindowNoState)
+            self.mainWin.setWindowState(Qt.WindowActive)
+            self.mainWin.raise_()
 
 
 if __name__ == "__main__":

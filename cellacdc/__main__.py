@@ -35,6 +35,7 @@ try:
     from cellacdc.utils import concat as utilsConcat
     from cellacdc.utils import convert as utilsConvert
     from cellacdc.utils import rename as utilsRename
+    from cellacdc.utils import align as utilsAlign
     from cellacdc import is_win
 except ModuleNotFoundError as e:
     src_path = os.path.dirname(os.path.abspath(__file__))
@@ -221,10 +222,11 @@ class mainWin(QMainWindow):
 
         utilsMenu = QMenu("&Utilities", self)
         utilsMenu.addAction(self.concatAcdcDfsAction)
-        # utilsMenu.addAction(self.alignAction)
         utilsMenu.addAction(self.npzToNpyAction)
         utilsMenu.addAction(self.npzToTiffAction)
         utilsMenu.addAction(self.TiffToNpzAction)
+        utilsMenu.addAction(self.h5ToNpzAction)
+        utilsMenu.addAction(self.alignAction)
         utilsMenu.addAction(self.renameAction)
         menuBar.addMenu(utilsMenu)
 
@@ -241,12 +243,13 @@ class mainWin(QMainWindow):
         self.npzToNpyAction = QAction('Convert .npz file(s) to .npy...')
         self.npzToTiffAction = QAction('Convert .npz file(s) to .tif...')
         self.TiffToNpzAction = QAction('Convert .tif file(s) to _segm.npz...')
+        self.h5ToNpzAction = QAction('Convert .h5 file(s) to _segm.npz...')
         # self.TiffToHDFAction = QAction('Convert .tif file(s) to .h5py...')
         self.concatAcdcDfsAction = QAction(
             'Concatenate acdc output tables from multiple Positions...'
         )
         self.renameAction = QAction('Rename files by appending additional text...')
-        # self.alignAction = QAction('Revert alignemnt/Align...')
+        self.alignAction = QAction('Align or revert alignment...')
 
         self.welcomeGuideAction = QAction('Welcome Guide')
         self.userManualAction = QAction('User manual...')
@@ -255,10 +258,12 @@ class mainWin(QMainWindow):
         self.contributeAction = QAction('Contribute...')
 
     def connectActions(self):
+        self.alignAction.triggered.connect(self.launchAlignUtil)
         self.concatAcdcDfsAction.triggered.connect(self.launchConcatUtil)
         self.npzToNpyAction.triggered.connect(self.launchConvertFormatUtil)
         self.npzToTiffAction.triggered.connect(self.launchConvertFormatUtil)
         self.TiffToNpzAction.triggered.connect(self.launchConvertFormatUtil)
+        self.h5ToNpzAction.triggered.connect(self.launchConvertFormatUtil)
         self.welcomeGuideAction.triggered.connect(self.launchWelcomeGuide)
         self.aboutAction.triggered.connect(self.showAbout)
         self.renameAction.triggered.connect(self.launchRenameUtil)
@@ -301,7 +306,8 @@ class mainWin(QMainWindow):
             self.convertWin = utilsConvert.convertFileFormatWin(
                 parent=self,
                 actionToEnable=self.sender(),
-                mainWin=self, from_=from_, to=to
+                mainWin=self, from_=from_, to=to,
+                info=info
             )
             self.convertWin.show()
             self.convertWin.main()
@@ -457,6 +463,21 @@ class mainWin(QMainWindow):
             self.guiWin.isVisible()
         except RuntimeError:
             self.timer.stop()
+
+    def launchAlignUtil(self, checked=False):
+        if self.alignAction.isEnabled():
+            self.alignAction.setDisabled(True)
+            self.alignWin = utilsAlign.alignWin(
+                parent=self,
+                actionToEnable=self.alignAction,
+                mainWin=self
+            )
+            self.alignWin.show()
+            self.alignWin.main()
+        else:
+            # self.concatWin.setWindowState(Qt.WindowNoState)
+            self.alignWin.setWindowState(Qt.WindowActive)
+            self.alignWin.raise_()
 
 
     def launchConcatUtil(self, checked=False):

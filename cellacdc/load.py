@@ -4,6 +4,7 @@ import traceback
 import re
 import cv2
 import json
+import h5py
 from math import isnan
 from tqdm import tqdm
 import numpy as np
@@ -29,6 +30,37 @@ from . import prompts, apps, myutils, widgets
 from . import base_cca_df, base_acdc_df # defined in __init__.py
 
 cca_df_colnames = list(base_cca_df.keys())
+
+def read_json(json_path, logger_func=print):
+    json_data = {}
+    try:
+        with open(json_path) as file:
+            json_data = json.load(file)
+    except Exception as e:
+        print('****************************')
+        logger_func(traceback.format_exc())
+        print('****************************')
+        print('============================')
+        logger_func('Error while reading saved custom annotations. See above')
+        print('============================')
+    return json_data
+
+def h5py_iter(g, prefix=''):
+    for key, item in g.items():
+        path = '{}/{}'.format(prefix, key)
+        if isinstance(item, h5py.Dataset): # test for dataset
+            yield (path, item)
+        elif isinstance(item, h5py.Group): # test for group (go down)
+            yield from h5py_iter(item, path)
+
+def h5dump_to_arr(h5path):
+    data_dict = {}
+    with h5py.File(h5path, 'r') as f:
+        for (path, dset) in h5py_iter(f):
+            data_dict[dset.name] = dset[()]
+    sorted_keys = natsorted(data_dict.keys())
+    arr = np.array([data_dict[key] for key in sorted_keys])
+    return arr
 
 def get_user_ch_paths(images_paths, user_ch_name):
     user_ch_file_paths = []
@@ -216,6 +248,7 @@ class loadData:
             load_last_tracked_i=False,
             load_metadata=False,
             load_dataPrep_ROIcoords=False,
+            load_customAnnot=False,
             getTifPath=False,
             selectedSegmNpz=''
         ):
@@ -231,6 +264,7 @@ class loadData:
         self.metadataFound = False if load_metadata else None
         self.dataPrep_ROIcoordsFound = False if load_dataPrep_ROIcoords else None
         self.TifPathFound = False if getTifPath else None
+        self.customAnnotFound = False if load_customAnnot else None
         ls = myutils.listdir(self.images_path)
 
         for file in ls:
@@ -303,6 +337,9 @@ class loadData:
                 self.metadataFound = True
                 self.metadata_df = pd.read_csv(filePath).set_index('Description')
                 self.extractMetadata()
+            elif load_customAnnot and file.endswith('custom_annot_params.json'):
+                self.customAnnotFound = True
+                self.customAnnot = read_json(filePath)
 
         if load_last_tracked_i:
             self.last_tracked_i_found = True
@@ -311,7 +348,35 @@ class loadData:
             except AttributeError as e:
                 # traceback.print_exc()
                 self.last_tracked_i = None
+        self.getCustomAnnotatedIDs()
         self.setNotFoundData()
+
+    def getCustomAnnotatedIDs(self):
+        self.customAnnotIDs = {}
+
+        if self.acdc_df_found is None:
+            return
+
+        if not self.acdc_df_found:
+            return
+
+        if self.customAnnotFound is None:
+            return
+
+        if not self.customAnnotFound:
+            return
+
+        for name in self.customAnnot.keys():
+            self.customAnnotIDs[name] = {}
+            for frame_i, df in self.acdc_df.groupby(level=0):
+                if name not in self.acdc_df.columns:
+                    self.acdc_df[name] = 0
+                    continue
+
+                series = df[name]
+                series = series[series>0]
+                annotatedIDs = list(series.index.unique())
+                self.customAnnotIDs[name][frame_i] = annotatedIDs
 
     def isSegm3D(self):
         if self.SizeZ == 1:
@@ -330,17 +395,22 @@ class loadData:
 
 
     def extractMetadata(self):
+        self.metadata_df['values'] = self.metadata_df['values'].astype(str)
         if 'SizeT' in self.metadata_df.index:
-            self.SizeT = int(self.metadata_df.at['SizeT', 'values'])
+            self.SizeT = float(self.metadata_df.at['SizeT', 'values'])
+            self.SizeT = int(self.SizeT)
         elif self.last_md_df is not None and 'SizeT' in self.last_md_df.index:
-            self.SizeT = int(self.last_md_df.at['SizeT', 'values'])
+            self.SizeT = float(self.last_md_df.at['SizeT', 'values'])
+            self.SizeT = int(self.SizeT)
         else:
             self.SizeT = 1
 
         if 'SizeZ' in self.metadata_df.index:
-            self.SizeZ = int(self.metadata_df.at['SizeZ', 'values'])
+            self.SizeZ = float(self.metadata_df.at['SizeZ', 'values'])
+            self.SizeZ = int(self.SizeZ)
         elif self.last_md_df is not None and 'SizeZ' in self.last_md_df.index:
-            self.SizeZ = int(self.last_md_df.at['SizeZ', 'values'])
+            self.SizeZ = float(self.last_md_df.at['SizeZ', 'values'])
+            self.SizeZ = int(self.SizeZ)
         else:
             self.SizeZ = 1
 
@@ -386,11 +456,13 @@ class loadData:
             and self.SizeT > 1
         )
         if 'segmSizeT' in self.metadata_df.index:
-             self.segmSizeT = int(
+             self.segmSizeT = float(
                  self.metadata_df.at['segmSizeT', 'values']
              )
+             self.segmSizeT = int(self.segmSizeT)
         elif load_last_segmSizeT:
-            self.segmSizeT = int(self.last_md_df.at['segmSizeT', 'values'])
+            self.segmSizeT = float(self.last_md_df.at['segmSizeT', 'values'])
+            self.segmSizeT = int(self.segmSizeT)
         else:
             self.segmSizeT = self.SizeT
 
@@ -413,6 +485,8 @@ class loadData:
             self.last_tracked_i = None
         if self.TifPathFound is not None and not self.TifPathFound:
             self.tif_path = None
+        if self.customAnnotFound is not None and not self.customAnnotFound:
+            self.customAnnot = {}
 
         if self.metadataFound is None:
             # Loading metadata was not requested
@@ -531,6 +605,7 @@ class loadData:
         self.post_proc_mot_metrics = f'{base_path}post_proc_mot_metrics'
         self.segm_hyperparams_csv_path = f'{base_path}segm_hyperparams.csv'
         self.btrack_tracks_h5_path = f'{base_path}btrack_tracks.h5'
+        self.custom_annot_json_path = f'{base_path}custom_annot_params.json'
 
     def setBlankSegmData(self, SizeT, SizeZ, SizeY, SizeX):
         Y, X = self.img_data.shape[-2:]

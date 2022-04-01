@@ -37,7 +37,7 @@ import time
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui
 from PyQt5 import QtCore
-from PyQt5.QtGui import QIcon, QFontMetrics, QKeySequence
+from PyQt5.QtGui import QIcon, QFontMetrics, QKeySequence, QFont
 from PyQt5.QtCore import Qt, QSize, QEvent, pyqtSignal, QEventLoop, QTimer
 from PyQt5.QtWidgets import (
     QAction, QApplication, QMainWindow, QMenu, QLabel, QToolBar,
@@ -46,7 +46,7 @@ from PyQt5.QtWidgets import (
     QButtonGroup, QCheckBox, QSizePolicy, QComboBox, QSlider, QGridLayout,
     QSpinBox, QToolButton, QTableView, QTextBrowser, QDoubleSpinBox,
     QScrollArea, QFrame, QProgressBar, QGroupBox, QRadioButton,
-    QDockWidget, QMessageBox, QStyle, QPlainTextEdit
+    QDockWidget, QMessageBox, QStyle, QPlainTextEdit, QSpacerItem
 )
 
 from . import myutils, load, prompts, widgets, core, measurements, html_utils
@@ -263,6 +263,8 @@ class customAnnotationDialog(QDialog):
         self.loop = None
         self.savedCustomAnnot = savedCustomAnnot
 
+        self.internalNames = measurements.get_all_acdc_df_colnames()
+
         super().__init__(parent)
 
         self.setWindowTitle('Custom annotation')
@@ -305,16 +307,33 @@ class customAnnotationDialog(QDialog):
         nameInfoTxt = ("""
         <b>Name of the column</b> that will be saved in the <code>acdc_output.csv</code>
         file.<br><br>
-        Valid charachters are letters and numbers separate by underscore only.
+        Valid charachters are letters and numbers separate by underscore
+        or dash only.<br><br>
+        Additionally, some names are <b>reserved</b> because they are used
+        by Cell-ACDC for standard measurements.<br><br>
+        Internally reserved names:
         """)
-        nameInfoTxt = (f'{html_utils.paragraph(nameInfoTxt)}')
+        self.nameInfoTxt = (f'{html_utils.paragraph(nameInfoTxt)}')
         self.nameWidget = widgets.formWidget(
             widgets.alphaNumericLineEdit(), addInfoButton=True,
-            labelTextLeft='Name: ', parent=self, infoTxt=nameInfoTxt
+            labelTextLeft='Name: ', parent=self, infoTxt=self.nameInfoTxt
         )
+        self.nameWidget.infoButton.disconnect()
+        self.nameWidget.infoButton.clicked.connect(self.showNameInfo)
         if state is not None:
             self.nameWidget.widget.setText(state['name'])
+        self.nameWidget.widget.textChanged.connect(self.checkName)
         layout.addFormWidget(self.nameWidget, row=row)
+
+        row += 1
+        self.nameInfoLabel = QLabel()
+        layout.addWidget(
+            self.nameInfoLabel, row, 0, 1, 2, alignment=Qt.AlignCenter
+        )
+
+        row += 1
+        spacing = QSpacerItem(10, 10)
+        layout.addItem(spacing, row, 0)
 
         row += 1
         symbolInfoTxt = ("""
@@ -367,15 +386,27 @@ class customAnnotationDialog(QDialog):
         self.keepActiveToggle = toggle
         toggleLabel = QLabel('Keep tool active after using it: ')
         colorButtonLabel = QLabel('Symbol color: ')
+        self.hideAnnotTooggle = widgets.Toggle()
+        self.hideAnnotTooggle.setChecked(True)
+        hideAnnotTooggleLabel = QLabel(
+            'Hide annotation when button is not active: '
+        )
         self.colorButton = pg.ColorButton(color=(255, 0, 0))
         self.colorButton.clicked.disconnect()
         self.colorButton.clicked.connect(self.selectColor)
+
         optionsLayout.setColumnStretch(0, 1)
-        optionsLayout.addWidget(toggleLabel, 0, 1)
-        optionsLayout.addWidget(toggle, 0, 2)
+        optRow = 0
+        optionsLayout.addWidget(toggleLabel, optRow, 1)
+        optionsLayout.addWidget(toggle, optRow, 2)
+        optRow += 1
+        optionsLayout.addWidget(hideAnnotTooggleLabel, optRow, 1)
+        optionsLayout.addWidget(self.hideAnnotTooggle, optRow, 2)
         optionsLayout.setColumnStretch(3, 1)
-        optionsLayout.addWidget(colorButtonLabel, 1, 1)
-        optionsLayout.addWidget(self.colorButton, 1, 2)
+        optRow += 1
+        optionsLayout.addWidget(colorButtonLabel, optRow, 1)
+        optionsLayout.addWidget(self.colorButton, optRow, 2)
+
         optionsGroupBox.setLayout(optionsLayout)
         layout.addWidget(optionsGroupBox, row, 1, alignment=Qt.AlignCenter)
         optionsInfoButton = QPushButton(self)
@@ -383,6 +414,17 @@ class customAnnotationDialog(QDialog):
         optionsInfoButton.setIcon(QIcon(":info.svg"))
         optionsInfoButton.clicked.connect(self.showOptionsInfo)
         layout.addWidget(optionsInfoButton, row, 3, alignment=Qt.AlignRight)
+
+        row += 1
+        layout.addItem(QSpacerItem(5, 5), row, 0)
+
+        row += 1
+        noteText = (
+            '<i>NOTE: you can change these options later with<br>'
+            '<b>RIGHT-click</b> on the associated left-side <b>toolbar button<b>.</i>'
+        )
+        noteLabel = QLabel(html_utils.paragraph(noteText, font_size='11px'))
+        layout.addWidget(noteLabel, row, 1, 1, 3)
 
         buttonsLayout = QHBoxLayout()
 
@@ -407,7 +449,7 @@ class customAnnotationDialog(QDialog):
 
         noteTxt = ("""
         Custom annotations will be <b>saved in the <code>acdc_output.csv</code></b><br>
-        file as a column with the name you write in the field <code>Name</code><br>
+        file as a column with the name you write in the field <b>Name</b><br>
         """)
         noteTxt = (f'{html_utils.paragraph(noteTxt, font_size="15px")}')
         noteLabel = QLabel(noteTxt)
@@ -420,6 +462,30 @@ class customAnnotationDialog(QDialog):
         mainLayout.addLayout(buttonsLayout)
 
         self.setLayout(mainLayout)
+
+    def checkName(self, text):
+        if not text:
+            txt = 'Name cannot be empty'
+            self.nameInfoLabel.setText(
+                html_utils.paragraph(
+                    txt, font_size='11px', font_color='red'
+                )
+            )
+            return
+        for name in self.internalNames:
+            if name.find(text) != -1:
+                txt = (
+                    f'"{text}" cannot be part of the name, '
+                    'because <b>reserved<b>.'
+                )
+                self.nameInfoLabel.setText(
+                    html_utils.paragraph(
+                        txt, font_size='11px', font_color='red'
+                    )
+                )
+                break
+        else:
+            self.nameInfoLabel.setText('')
 
     def loadSavedAnnot(self):
         items = list(self.savedCustomAnnot.keys())
@@ -507,7 +573,12 @@ class customAnnotationDialog(QDialog):
         info = ("""
         <b>Keep tool active after using it</b>: Choose whether the tool
         should stay active or not after annotating.<br><br>
-        <b>Symbold color</b>: Choose color of the symbol that will be used
+        <b>Hide annotation when button is not active</b>: Choose whether
+        annotation on the cell/object should be visible only if the
+        button is active or also when it is not active.<br>
+        <i>NOTE: annotations are <b>always stored</b> no matter whether
+        they are visible or not.</i><br><br>
+        <b>Symbol color</b>: Choose color of the symbol that will be used
         to label annotated cell/object.
         """)
         info = (f'{html_utils.paragraph(info)}')
@@ -522,11 +593,41 @@ class customAnnotationDialog(QDialog):
         self.cancel = False
         self.close()
 
+    def showNameInfo(self):
+        msg = widgets.myMessageBox()
+        listView = QListWidget(msg)
+        listView.addItems(self.internalNames)
+        listView.setSelectionMode(QAbstractItemView.NoSelection)
+        msg.information(
+            self, 'Annotation Name info', self.nameInfoTxt,
+            widgets=listView
+        )
+
     def closeEvent(self, event):
         if self.sender()==self.okButton and not self.nameWidget.widget.text():
             msg = QMessageBox()
             msg.critical(
                 self, 'Empty name', 'The name cannot be empty!', msg.Ok
+            )
+            event.ignore()
+            self.cancel = True
+            return
+
+        if self.sender()==self.okButton and self.nameInfoLabel.text():
+            msg = widgets.myMessageBox()
+            listView = QListWidget(msg)
+            listView.addItems(self.internalNames)
+            listView.setSelectionMode(QAbstractItemView.NoSelection)
+            name = self.nameWidget.widget.text()
+            txt = (
+                f'"{name}" cannot be part of the name, '
+                'because it is <b>reserved</b> for standard measurements '
+                'saved by Cell-ACDC.<br><br>'
+                'Internally reserved names:'
+            )
+            msg.critical(
+                self, 'Not a valid name', html_utils.paragraph(txt),
+                widgets=listView
             )
             event.ignore()
             self.cancel = True
@@ -550,6 +651,7 @@ class customAnnotationDialog(QDialog):
             'shortcut': self.shortcutWidget.widget.text(),
             'description': self.descWidget.widget.toPlainText(),
             'keepActive': self.keepActiveToggle.isChecked(),
+            'isHideChecked': self.hideAnnotTooggle.isChecked(),
             'symbolColor': self.colorButton.color()
         }
 
@@ -1981,8 +2083,11 @@ class QDialogEntriesWidget(QDialog):
 
         cancelButton = QPushButton('Cancel')
 
-        buttonsLayout.addWidget(okButton, alignment=Qt.AlignRight)
-        buttonsLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(okButton)
+
         buttonsLayout.setContentsMargins(0, 10, 0, 0)
 
         mainLayout.addLayout(formLayout)
