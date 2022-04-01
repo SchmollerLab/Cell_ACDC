@@ -7571,7 +7571,7 @@ class guiWin(QMainWindow):
             if buttons:
                 toolButton = buttons[0]
                 allAnnotedIDs = self.customAnnotDict[toolButton]['annotatedIDs']
-                allAnnotedIDs[self.pos_i] = pos.customAnnotIDs
+                allAnnotedIDs[self.pos_i] = posData.customAnnotIDs
                 continue
 
             try:
