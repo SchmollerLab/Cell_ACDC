@@ -922,10 +922,13 @@ class segmWorker(QObject):
 class guiWin(QMainWindow):
     """Main Window."""
 
-    def __init__(self, app, parent=None, buttonToRestore=None, mainWin=None):
+    def __init__(
+            self, app, parent=None, buttonToRestore=None,
+            mainWin=None, version=None
+        ):
         """Initializer."""
 
-        print('Initializing GUI...')
+        self._version = version
 
         from .trackers.YeaZ import tracking as tracking_yeaz
         self.tracking_yeaz = tracking_yeaz
@@ -942,6 +945,10 @@ class guiWin(QMainWindow):
         logger, logs_path, log_path, log_filename = setupLogger(
             module='gui'
         )
+        if self._version is not None:
+            logger.info(f'Initializing GUI v{self._version}...')
+        else:
+            logger.info(f'Initializing GUI...')
         self.logger = logger
         self.log_path = log_path
         self.log_filename = log_filename
@@ -7719,6 +7726,12 @@ class guiWin(QMainWindow):
         scatterPlotItem.setData([], [])
 
     def saveCustomAnnot(self):
+        if not hasattr(self, 'savedCustomAnnot'):
+            return
+
+        if not self.savedCustomAnnot:
+            return
+
         self.logger.info('Saving custom annotations parameters...')
         # Save to cell acdc temp path
         with open(custom_annot_path, mode='w') as file:
@@ -8600,7 +8613,7 @@ class guiWin(QMainWindow):
         self.updateALLimg()
 
         self.titleLabel.setText(
-            'Data successfully loaded. Right/Left arrow to navigate frames',
+            'Data successfully loaded.',
             color=self.titleColor
         )
 
@@ -12570,20 +12583,22 @@ class guiWin(QMainWindow):
     def initFluoData(self):
         if len(self.ch_names) <= 1:
             return
-        msg = QMessageBox()
-        load_fluo = msg.question(
-            self, 'Load fluorescent images?',
-            'Do you also want to load fluorescent images? You can load as '
-            'many channels as you want.\n\n'
+        msg = widgets.myMessageBox()
+        txt = (
+            'Do you also want to <b>load fluorescent images?</b><br>'
+            'You can load <b>as many channels as you want</b>.<br><br>'
             'If you load fluorescent images then the software will '
-            'calculate metrics for each loaded fluorescent channel '
+            '<b>calculate metrics</b> for each loaded fluorescent channel '
             'such as min, max, mean, quantiles, etc. '
-            'for each segmented object.\n\n'
-            'NOTE: You can always load them later with '
-            'File --> Load fluorescent images',
-            msg.Yes | msg.No
+            'of each segmented object.<br><br>'
+            '<i>NOTE: You can always load them later from the menu</i> '
+            '<code>File --> Load fluorescent images</code>'
         )
-        if load_fluo == msg.Yes:
+        no, yes = msg.question(
+            self, 'Load fluorescent images?', html_utils.paragraph(txt),
+            buttonsTexts=('No', 'Yes')
+        )
+        if msg.clickedButton == yes:
             self.loadFluo_cb(None)
 
     def getPathFromChName(self, chName, posData):
@@ -13234,14 +13249,15 @@ class guiWin(QMainWindow):
         if self.ccaTableWin is not None:
             self.ccaTableWin.close()
         if self.saveAction.isEnabled() and self.titleLabel.text != 'Saved!':
-            msg = QMessageBox()
-            save = msg.question(
-                self, 'Save?', 'Do you want to save?',
-                msg.Yes | msg.No | msg.Cancel
+            msg = widgets.myMessageBox()
+            txt = html_utils.paragraph('Do you want to <b>save?</b>')
+            _, no, yes = msg.question(
+                self, 'Save?', txt,
+                buttonsTexts=('Cancel', 'No', 'Yes')
             )
-            if save == msg.Yes:
+            if msg.clickedButton == yes:
                 self.saveData()
-            elif save == msg.Cancel:
+            elif msg.cancel:
                 event.ignore()
                 return
 

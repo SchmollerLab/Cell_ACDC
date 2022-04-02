@@ -40,7 +40,8 @@ def read_json(json_path, logger_func=print):
         print('****************************')
         logger_func(traceback.format_exc())
         print('****************************')
-        print('============================')
+        logger_func(f'json path: {json_path}')
+        print('----------------------------')
         logger_func('Error while reading saved custom annotations. See above')
         print('============================')
     return json_data

@@ -165,6 +165,10 @@ class mainWin(QMainWindow):
 
         self.guiWin = None
         self.dataPrepWin = None
+        self._version = None
+
+    def setVersion(self, version):
+        self._version = version
 
     def loadFonts(self):
         QFontDatabase.addApplicationFont(":Ubuntu-Regular.ttf")
@@ -445,7 +449,7 @@ class mainWin(QMainWindow):
             self.guiWin = gui.guiWin(
                 self.app,
                 buttonToRestore=(self.guiButton, defaultColor, defaultText),
-                mainWin=self
+                mainWin=self, version=self._version
             )
             self.guiWin.show()
         else:
@@ -595,17 +599,21 @@ def run():
     app.setStyle(QStyleFactory.create('Fusion'))
     app.setWindowIcon(QIcon(":assign-motherbud.svg"))
     win = mainWin(app)
+    version = myutils.read_version()
+    win.setVersion(version)
     win.show()
     win.launchWelcomeGuide()
     try:
         win.welcomeGuide.showPage(win.welcomeGuide.welcomeItem)
     except AttributeError:
         pass
-    print('Done. If application is not visible, it is probably minimized '
+    print('**********************************************')
+    print(f'Welcome to Cell-ACDC v{version}!')
+    print('-----------------------------------')
+    print('NOTE: If application is not visible, it is probably minimized '
           'or behind some other open window.')
-    print('---------------------------------')
-    print(f'Welcome to Cell-ACDC v{myutils.read_version()}!')
-    print('---------------------------------')
+    print('-----------------------------------')
+    print('**********************************************')
     # win.raise_()
     sys.exit(app.exec_())
 
