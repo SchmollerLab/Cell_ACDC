@@ -1600,6 +1600,7 @@ class guiWin(QMainWindow):
     def gui_createAnnotateToolbar(self):
         # Edit toolbar
         self.annotateToolbar = QToolBar("Custom annotations", self)
+        self.annotateToolbar.setContextMenuPolicy(Qt.PreventContextMenu)
         self.addToolBar(Qt.LeftToolBarArea, self.annotateToolbar)
         self.annotateToolbar.addAction(self.addCustomAnnotationAction)
         self.annotateToolbar.addAction(self.viewAllCustomAnnotAction)
@@ -4221,7 +4222,8 @@ class guiWin(QMainWindow):
         )
 
         isCustomAnnot = (
-            right_click and (isCustomAnnotMode or self.isSnapshot)
+            (right_click or dragImgLeft)
+            and (isCustomAnnotMode or self.isSnapshot)
             and self.customAnnotButton is not None
         )
 
@@ -4255,7 +4257,7 @@ class guiWin(QMainWindow):
             and not dragImgLeft and not brushON and not rulerON)
 
         # Enable dragging of the image window like pyqtgraph original code
-        if dragImgLeft:
+        if dragImgLeft and not isCustomAnnot:
             pg.ImageItem.mousePressEvent(self.img1, event)
             event.ignore()
             return
@@ -7635,10 +7637,32 @@ class guiWin(QMainWindow):
         scatterPlotItem.setData(
             [], [], symbol=symbol, pxMode=False,
             brush=pg.mkBrush(symbolColorBrush), size=15,
-            pen=pg.mkPen(width=3, color=symbolColor)
+            pen=pg.mkPen(width=3, color=symbolColor),
+            hoverable=True, hoverBrush=pg.mkBrush(symbolColor),
+            tip=None
         )
+        scatterPlotItem.sigHovered.connect(self.customAnnotHovered)
+        scatterPlotItem.button = toolButton
         self.customAnnotDict[toolButton]['scatterPlotItem'] = scatterPlotItem
         self.ax1.addItem(scatterPlotItem)
+
+    def customAnnotHovered(self, scatterPlotItem, points, event):
+        # Show tool tip when hovering an annotation with annotation name and ID
+        vb = scatterPlotItem.getViewBox()
+        if vb is None:
+            return
+        if len(points) > 0:
+            posData = self.data[self.pos_i]
+            point = points[0]
+            x, y = point.pos().x(), point.pos().y()
+            xdata, ydata = int(x), int(y)
+            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
+            vb.setToolTip(
+                f'Annotation name: {scatterPlotItem.button.name}\n'
+                f'ID = {ID}'
+            )
+        else:
+            vb.setToolTip('')
 
     def addCustomAnnotation(self):
         self.readSavedCustomAnnot()
@@ -7687,9 +7711,12 @@ class guiWin(QMainWindow):
         if not checked:
             # Clear all annotations before showing only checked
             for button in self.customAnnotDict.keys():
-                scatterPlotItem = self.customAnnotDict[button]['scatterPlotItem']
-                scatterPlotItem.setData([], [])
+                self.clearScatterPlotCustomAnnotButton(button)
         self.doCustomAnnotation(0)
+
+    def clearScatterPlotCustomAnnotButton(self, button):
+        scatterPlotItem = self.customAnnotDict[button]['scatterPlotItem']
+        scatterPlotItem.setData([], [])
 
     def saveCustomAnnot(self):
         self.logger.info('Saving custom annotations parameters...')
@@ -7707,10 +7734,20 @@ class guiWin(QMainWindow):
 
     def customAnnotHide(self, button):
         self.customAnnotDict[button]['state']['isHideChecked'] = button.isHideChecked
+        clearAnnot = (
+            not button.isChecked() and button.isHideChecked
+            and not self.viewAllCustomAnnotAction.isChecked()
+        )
+        if clearAnnot:
+            # User checked hide annot with the button not active --> clear
+            self.clearScatterPlotCustomAnnotButton(button)
+        elif not button.isChecked():
+            # User uncheked hide annot with the button not active --> show
+            self.doCustomAnnotation(0)
 
     def customAnnotModify(self, button):
         state = self.customAnnotDict[button]['state']
-        self.addAnnotWin = apps.customAnnotationDialog(state=state)
+        self.addAnnotWin = apps.customAnnotationDialog(state)
         self.addAnnotWin.exec_()
         if self.addAnnotWin.cancel:
             return
@@ -7807,8 +7844,7 @@ class guiWin(QMainWindow):
         if acdc_df is not None:
             acdc_df[self.addAnnotWin.state['name']] = 0
 
-        scatterPlotItem = self.customAnnotDict[button]['scatterPlotItem']
-        scatterPlotItem.setData([], [])
+        self.clearScatterPlotCustomAnnotButton(button)
 
         action = self.customAnnotDict[button]['action']
         self.annotateToolbar.removeAction(action)
@@ -7818,6 +7854,7 @@ class guiWin(QMainWindow):
     def customAnnotButtonClicked(self, checked):
         if checked:
             self.customAnnotButton = self.sender()
+            # Uncheck the other buttons
             for button in self.customAnnotDict.keys():
                 if button == self.sender():
                     continue
@@ -7825,11 +7862,15 @@ class guiWin(QMainWindow):
                 button.toggled.disconnect()
                 button.setChecked(False)
                 button.toggled.connect(self.customAnnotButtonClicked)
+            self.doCustomAnnotation(0)
         else:
             self.customAnnotButton = None
             button = self.sender()
-            scatterPlotItem = self.customAnnotDict[button]['scatterPlotItem']
-            scatterPlotItem.setData([], [])
+            if self.viewAllCustomAnnotAction.isChecked():
+                return
+            if not button.isHideChecked:
+                return
+            self.clearScatterPlotCustomAnnotButton(button)
 
     @exception_handler
     def repeatSegm(self, model_name=''):
