@@ -1942,6 +1942,10 @@ class guiWin(QMainWindow):
         self.viewAllCustomAnnotAction.setIcon(QIcon(":eye.svg"))
         self.viewAllCustomAnnotAction.setToolTip('Show all custom annotations')
 
+        # self.imgGradLabelsAlphaUpAction = QAction(self)
+        # self.imgGradLabelsAlphaUpAction.setVisible(False)
+        # self.imgGradLabelsAlphaUpAction.setShortcut('Ctrl+Up')
+
     def gui_connectActions(self):
         # Connect File actions
         self.newAction.triggered.connect(self.newFile)
@@ -2729,10 +2733,12 @@ class guiWin(QMainWindow):
         is_right_click_custom_ON = any([
             b.isChecked() for b in self.customAnnotDict.keys()
         ])
-        is_event_from_img1 = hasattr(event, 'isImg1Sender')
+        is_event_from_img1 = False
+        if hasattr(event, 'isImg1Sender'):
+            is_event_from_img1 = event.isImg1Sender
         showLabelsGradMenu = (
             right_click and not is_right_click_action_ON
-            and not is_event_from_img1 and not is_right_click_custom_ON
+            and not is_event_from_img1
         )
         if showLabelsGradMenu:
             self.labelsGrad.showMenu(event)
@@ -4246,6 +4252,7 @@ class guiWin(QMainWindow):
 
         if isOnlyRightClick:
             self.gui_gradientContextMenuEvent(event)
+            return
 
         canCurv = (
             curvToolON and not self.assignBudMothButton.isChecked()
@@ -6928,24 +6935,23 @@ class guiWin(QMainWindow):
             posData = self.data[self.pos_i]
         except AttributeError:
             return
-        isCtrlModifier = ev.modifiers() == Qt.ControlModifier
+        if ev.key() == Qt.Key_Control:
+            self.isCtrlDown = True
         isBrushActive = (
             self.brushButton.isChecked() or self.eraserButton.isChecked()
         )
-        if ev.key() == Qt.Key_Up and not isCtrlModifier:
+        if ev.key() == Qt.Key_Up and not self.isCtrlDown:
             if isBrushActive:
                 self.brushSizeSpinbox.setValue(self.brushSizeSpinbox.value()+1)
             elif self.wandToolButton.isChecked():
                 val = self.wandToleranceSlider.value()
                 self.wandToleranceSlider.setValue(val+1)
-        elif ev.key() == Qt.Key_Down and not isCtrlModifier:
+        elif ev.key() == Qt.Key_Down and not self.isCtrlDown:
             if isBrushActive:
                 self.brushSizeSpinbox.setValue(self.brushSizeSpinbox.value()-1)
             elif self.wandToolButton.isChecked():
                 val = self.wandToleranceSlider.value()
                 self.wandToleranceSlider.setValue(val-1)
-        elif ev.key() == Qt.Key_Control:
-            self.isCtrlDown = True
         elif ev.key() == Qt.Key_Escape:
             self.setUncheckedAllButtons()
             if self.highlightedID != 0:
@@ -6975,9 +6981,7 @@ class guiWin(QMainWindow):
                 if posData.SizeZ > 1:
                     self.zSliceScrollBar.setSliderPosition(z)
                 self.ax1_point_ScatterPlot.setData([x], [y])
-        elif isCtrlModifier:
-            # if ev.key() == Qt.Key_P:
-            # elif ev.key() == Qt.Key_L:
+        elif self.isCtrlDown:
             if ev.key() == Qt.Key_Up:
                 val = self.imgGrad.labelsAlphaSlider.value()
                 delta = 1/self.imgGrad.labelsAlphaSlider.maximum()
@@ -7580,7 +7584,7 @@ class guiWin(QMainWindow):
             if buttons:
                 toolButton = buttons[0]
                 allAnnotedIDs = self.customAnnotDict[toolButton]['annotatedIDs']
-                allAnnotedIDs[self.pos_i] = posData.customAnnotIDs
+                allAnnotedIDs[self.pos_i] = posData.customAnnotIDs.get(name, {})
                 continue
 
             try:
@@ -7603,7 +7607,9 @@ class guiWin(QMainWindow):
                 symbol, symbolColor, keySequence, toolTip, name,
                 keepActive, isHideChecked
             )
-            allPosAnnotIDs = [pos.customAnnotIDs for pos in self.data]
+            allPosAnnotIDs = [
+                pos.customAnnotIDs.get(name, {}) for pos in self.data
+            ]
             self.customAnnotDict[toolButton] = {
                 'action': action,
                 'state': annotState,
@@ -11599,6 +11605,7 @@ class guiWin(QMainWindow):
                     alpha = 0.1
                 overlay = bkgr_label*(1.0-alpha) + color*alpha
                 imgRGB[_slice][_objMask] = overlay
+            imgRGB = (np.clip(imgRGB, 0, 1)*255).astype(np.uint8)
             self.img1.setImage(imgRGB)
         else:
             # Red thick contour of searched ID

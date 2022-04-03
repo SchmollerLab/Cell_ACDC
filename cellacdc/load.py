@@ -376,7 +376,7 @@ class loadData:
 
                 series = df[name]
                 series = series[series>0]
-                annotatedIDs = list(series.index.unique())
+                annotatedIDs = list(series.index.get_level_values(1).unique())
                 self.customAnnotIDs[name][frame_i] = annotatedIDs
 
     def isSegm3D(self):
