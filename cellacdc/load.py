@@ -369,11 +369,9 @@ class loadData:
 
         for name in self.customAnnot.keys():
             self.customAnnotIDs[name] = {}
+            if name not in self.acdc_df.columns:
+                self.acdc_df[name] = 0
             for frame_i, df in self.acdc_df.groupby(level=0):
-                if name not in self.acdc_df.columns:
-                    self.acdc_df[name] = 0
-                    continue
-
                 series = df[name]
                 series = series[series>0]
                 annotatedIDs = list(series.index.get_level_values(1).unique())

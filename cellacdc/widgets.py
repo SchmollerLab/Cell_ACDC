@@ -1145,7 +1145,8 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
         self.labelsAlphaSlider.setMaximum(100)
         self.labelsAlphaSlider.setValue(0.3)
         hbox.addWidget(self.labelsAlphaSlider)
-        hbox.addWidget(QLabel('(Ctrl + Up/Down)'))
+        shortCutText = 'Command+Up/Down' if is_mac else 'Ctrl+Up/Down'
+        hbox.addWidget(QLabel(f'({shortCutText})'))
         widget = QWidget()
         widget.setLayout(hbox)
         act = QWidgetAction(self)

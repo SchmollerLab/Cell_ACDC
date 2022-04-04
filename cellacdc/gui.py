@@ -7683,6 +7683,7 @@ class guiWin(QMainWindow):
         self.addAnnotWin = apps.customAnnotationDialog(
             self.savedCustomAnnot, parent=self
         )
+        self.addAnnotWin.sigDeleteSelecAnnot.connect(self.deleteSelectedAnnot)
         self.addAnnotWin.exec_()
         if self.addAnnotWin.cancel:
             return
@@ -7709,6 +7710,8 @@ class guiWin(QMainWindow):
         state_to_save = self.addAnnotWin.state.copy()
         state_to_save['symbolColor'] = tuple(symbolColor.getRgb())
         self.savedCustomAnnot[name] = state_to_save
+        for posData in self.data:
+            posData.customAnnot[name] = state_to_save
         self.saveCustomAnnot()
 
         # Add scatter plot item
@@ -7716,9 +7719,13 @@ class guiWin(QMainWindow):
 
         # Add 0s column to acdc_df
         posData = self.data[self.pos_i]
-        acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
-        if acdc_df is not None:
+        for frame_i, data_dict in enumerate(posData.allData_li):
+            acdc_df = data_dict['acdc_df']
+            if acdc_df is None:
+                continue
             acdc_df[self.addAnnotWin.state['name']] = 0
+        if posData.acdc_df is not None:
+            posData.acdc_df[self.addAnnotWin.state['name']] = 0
 
     def viewAllCustomAnnot(self, checked):
         if not checked:
@@ -7731,7 +7738,7 @@ class guiWin(QMainWindow):
         scatterPlotItem = self.customAnnotDict[button]['scatterPlotItem']
         scatterPlotItem.setData([], [])
 
-    def saveCustomAnnot(self):
+    def saveCustomAnnot(self, only_temp=False):
         if not hasattr(self, 'savedCustomAnnot'):
             return
 
@@ -7743,10 +7750,20 @@ class guiWin(QMainWindow):
         with open(custom_annot_path, mode='w') as file:
             json.dump(self.savedCustomAnnot, file, indent=2)
 
+        if only_temp:
+            return
+
         # Save to pos path
         for posData in self.data:
+            if not posData.customAnnot:
+                if os.path.exists(posData.custom_annot_json_path):
+                    try:
+                        os.remove(posData.custom_annot_json_path)
+                    except Exception as e:
+                        self.logger.info(traceback.format_exc())
+                continue
             with open(posData.custom_annot_json_path, mode='w') as file:
-                json.dump(self.savedCustomAnnot, file, indent=2)
+                json.dump(posData.customAnnot, file, indent=2)
 
     def customAnnotKeepActive(self, button):
         self.customAnnotDict[button]['state']['keepActive'] = button.keepToolActive
@@ -7764,9 +7781,15 @@ class guiWin(QMainWindow):
             # User uncheked hide annot with the button not active --> show
             self.doCustomAnnotation(0)
 
+    def deleteSelectedAnnot(self, items):
+        self.saveCustomAnnot(only_temp=True)
+
     def customAnnotModify(self, button):
         state = self.customAnnotDict[button]['state']
-        self.addAnnotWin = apps.customAnnotationDialog(state)
+        self.addAnnotWin = apps.customAnnotationDialog(
+            self.savedCustomAnnot, state=state
+        )
+        self.addAnnotWin.sigDeleteSelecAnnot.connect(self.deleteSelectedAnnot)
         self.addAnnotWin.exec_()
         if self.addAnnotWin.cancel:
             return
@@ -7858,10 +7881,20 @@ class guiWin(QMainWindow):
         return buttons[0]
 
     def removeCustomAnnotButton(self, button):
-        posData = self.data[self.pos_i]
-        acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
-        if acdc_df is not None:
-            acdc_df[self.addAnnotWin.state['name']] = 0
+        name = self.customAnnotDict[button]['state']['name']
+        # remove annotation from position
+        for posData in self.data:
+            posData.customAnnot.pop(name)
+            if posData.acdc_df is not None:
+                posData.acdc_df = posData.acdc_df.drop(
+                    columns=name, errors='ignore'
+                )
+                for frame_i, data_dict in enumerate(posData.allData_li):
+                    acdc_df = data_dict['acdc_df']
+                    if acdc_df is None:
+                        continue
+                    acdc_df = acdc_df.drop(columns=name, errors='ignore')
+                    posData.allData_li[frame_i]['acdc_df'] = acdc_df
 
         self.clearScatterPlotCustomAnnotButton(button)
 
@@ -7869,6 +7902,9 @@ class guiWin(QMainWindow):
         self.annotateToolbar.removeAction(action)
         self.checkableQButtonsGroup.removeButton(button)
         self.customAnnotDict.pop(button)
+        # self.savedCustomAnnot.pop(name)
+
+        self.saveCustomAnnot()
 
     def customAnnotButtonClicked(self, checked):
         if checked:
@@ -11605,6 +11641,8 @@ class guiWin(QMainWindow):
                     alpha = 0.1
                 overlay = bkgr_label*(1.0-alpha) + color*alpha
                 imgRGB[_slice][_objMask] = overlay
+                print('='*20)
+                print(obj.label, _obj.label, color, alpha)
             imgRGB = (np.clip(imgRGB, 0, 1)*255).astype(np.uint8)
             self.img1.setImage(imgRGB)
         else:
@@ -13122,7 +13160,7 @@ class guiWin(QMainWindow):
             self.titleLabel.setText(
                 'Saving data process cancelled.', color=self.titleColor
             )
-            return
+            return True
 
         last_pos = len(self.data)
         if self.isSnapshot:
@@ -13250,7 +13288,7 @@ class guiWin(QMainWindow):
 
     def closeEvent(self, event):
         self.saveWindowGeometry()
-        self.saveCustomAnnot()
+        # self.saveCustomAnnot()
         if self.slideshowWin is not None:
             self.slideshowWin.close()
         if self.ccaTableWin is not None:
@@ -13263,7 +13301,10 @@ class guiWin(QMainWindow):
                 buttonsTexts=('Cancel', 'No', 'Yes')
             )
             if msg.clickedButton == yes:
-                self.saveData()
+                cancel = self.saveData()
+                if cancel:
+                    event.ignore()
+                    return
             elif msg.cancel:
                 event.ignore()
                 return

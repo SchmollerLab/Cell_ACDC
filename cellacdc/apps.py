@@ -258,6 +258,8 @@ class installJavaDialog(widgets.myMessageBox):
             self.resize(self.width(), self.height()+200)
 
 class customAnnotationDialog(QDialog):
+    sigDeleteSelecAnnot = pyqtSignal(object)
+
     def __init__(self, savedCustomAnnot, parent=None, state=None):
         self.cancel = True
         self.loop = None
@@ -535,12 +537,14 @@ class customAnnotationDialog(QDialog):
         msg.exec_()
         if msg.clickedButton == cancelButton:
             return
+        self.sigDeleteSelecAnnot.emit(self.selectAnnotWin.listBox.selectedItems())
         for item in self.selectAnnotWin.listBox.selectedItems():
             name = item.text()
             self.savedCustomAnnot.pop(name)
         items = list(self.savedCustomAnnot.keys())
         self.selectAnnotWin.listBox.clear()
         self.selectAnnotWin.listBox.addItems(items)
+
 
     def selectColor(self):
         pg.ColorButton.selectColor(self.colorButton)
