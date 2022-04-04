@@ -62,7 +62,7 @@ class convertFileFormatWin(QMainWindow):
         mainLayout = QVBoxLayout()
 
         titleText = html_utils.paragraph(
-            f'<b>Converting .{from_} to .{to} routine running...</b>',
+            f'<br><b>Converting .{from_} to .{to} routine running...</b>',
             font_size='14px'
         )
         titleLabel = QLabel(titleText)

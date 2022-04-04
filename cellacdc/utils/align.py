@@ -55,7 +55,7 @@ class alignWin(QMainWindow):
         mainLayout = QVBoxLayout()
 
         titleText = html_utils.paragraph(
-            '<b>Alignment routine running...</b>', font_size='14px'
+            '<br><b>Alignment routine running...</b>', font_size='14px'
         )
         titleLabel = QLabel(titleText)
         mainLayout.addWidget(titleLabel)

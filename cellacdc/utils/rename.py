@@ -57,7 +57,7 @@ class renameFilesWin(QMainWindow):
         mainLayout = QVBoxLayout()
 
         titleText = html_utils.paragraph(
-            '<b>Renaming files utility</b>', font_size='14px'
+            '<br><b>Renaming files utility</b>', font_size='14px'
         )
         titleLabel = QLabel(titleText)
         mainLayout.addWidget(titleLabel)

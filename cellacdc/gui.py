@@ -6990,11 +6990,11 @@ class guiWin(QMainWindow):
         elif self.isCtrlDown:
             if ev.key() == Qt.Key_Up:
                 val = self.imgGrad.labelsAlphaSlider.value()
-                delta = 1/self.imgGrad.labelsAlphaSlider.maximum()
+                delta = 5/self.imgGrad.labelsAlphaSlider.maximum()
                 self.imgGrad.labelsAlphaSlider.setValue(val+delta)
             elif ev.key() == Qt.Key_Down:
                 val = self.imgGrad.labelsAlphaSlider.value()
-                delta = 1/self.imgGrad.labelsAlphaSlider.maximum()
+                delta = 5/self.imgGrad.labelsAlphaSlider.maximum()
                 self.imgGrad.labelsAlphaSlider.setValue(val-delta)
         elif ev.key() == Qt.Key_H:
             self.zoomToCells(enforce=True)

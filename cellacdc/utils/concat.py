@@ -55,7 +55,7 @@ class concatWin(QMainWindow):
         mainLayout = QVBoxLayout()
 
         titleText = html_utils.paragraph(
-            '<b>Concatenating acdc output tables...</b>', font_size='14px'
+            '<br><b>Concatenating acdc output tables...</b>', font_size='14px'
         )
         titleLabel = QLabel(titleText)
 
