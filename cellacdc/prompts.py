@@ -189,7 +189,7 @@ class select_channel_name:
     def QtPrompt(self, parent, channel_names, informativeText='',
                  CbLabel='Select channel name:  '):
         font = QtGui.QFont()
-        font.setPointSize(10)
+        font.setPixelSize(13)
         win = apps.QDialogCombobox(
                               'Select channel name',
                               channel_names,

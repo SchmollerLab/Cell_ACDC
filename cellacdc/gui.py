@@ -2108,7 +2108,7 @@ class guiWin(QMainWindow):
 
     def gui_createImg1Widgets(self):
         _font = QtGui.QFont()
-        # _font.setPointSize(10)
+        # _font.setPixelSize(13)
         _font.setPixelSize(12)
 
         # Toggle contours/ID comboboxf
@@ -2684,11 +2684,6 @@ class guiWin(QMainWindow):
             event.ignore()
             return
 
-        if mode == 'Viewer':
-            self.startBlinkingModeCB()
-            event.ignore()
-            return
-
         x, y = event.pos().x(), event.pos().y()
         xdata, ydata = int(x), int(y)
         Y, X = self.get_2Dlab(posData.lab).shape
@@ -2742,6 +2737,16 @@ class guiWin(QMainWindow):
         )
         if showLabelsGradMenu:
             self.labelsGrad.showMenu(event)
+            event.ignore()
+            return
+
+        editInViewerMode = (
+            (is_right_click_action_ON or is_right_click_custom_ON)
+            and right_click
+        )
+
+        if editInViewerMode:
+            self.startBlinkingModeCB()
             event.ignore()
             return
 
@@ -4252,6 +4257,7 @@ class guiWin(QMainWindow):
 
         if isOnlyRightClick:
             self.gui_gradientContextMenuEvent(event)
+            event.ignore()
             return
 
         canCurv = (
@@ -6014,7 +6020,7 @@ class guiWin(QMainWindow):
     def gaussBlur(self, checked):
         if checked:
             font = QtGui.QFont()
-            font.setPointSize(10)
+            font.setPixelSize(13)
             self.gaussWin = apps.gaussBlurDialog(self)
             self.gaussWin.setFont(font)
             self.gaussWin.show()
@@ -6025,7 +6031,7 @@ class guiWin(QMainWindow):
     def edgeDetection(self, checked):
         if checked:
             font = QtGui.QFont()
-            font.setPointSize(10)
+            font.setPixelSize(13)
             self.edgeWin = apps.edgeDetectionDialog(self)
             self.edgeWin.setFont(font)
             self.edgeWin.show()
@@ -6036,7 +6042,7 @@ class guiWin(QMainWindow):
     def entropyFilter(self, checked):
         if checked:
             font = QtGui.QFont()
-            font.setPointSize(10)
+            font.setPixelSize(13)
             self.entropyWin = apps.entropyFilterDialog(self)
             self.entropyWin.setFont(font)
             self.entropyWin.show()
@@ -6965,7 +6971,7 @@ class guiWin(QMainWindow):
                 self.app.setOverrideCursor(Qt.SizeAllCursor)
             if ev.key() == Qt.Key_C:
                 font = QtGui.QFont()
-                font.setPointSize(10)
+                font.setPixelSize(13)
                 win = apps.QDialogEntriesWidget(
                     ['Z coord.', 'Y coord.', 'X coord.'], ['0', '0', '0'],
                     winTitle='Point coordinates',
@@ -7537,7 +7543,7 @@ class guiWin(QMainWindow):
         # self.ax1.addItem(self.RWforegrScatterItem)
 
         font = QtGui.QFont()
-        font.setPointSize(10)
+        font.setPixelSize(13)
 
         # Store undo state before modifying stuff
         self.storeUndoRedoStates(False)
@@ -11214,13 +11220,27 @@ class guiWin(QMainWindow):
         if 'isLabelsVisible' not in self.df_settings.index:
             self.df_settings.at['isLabelsVisible', 'value'] = 'Yes'
 
-        if self.df_settings.at['isLabelsVisible', 'value'] == 'Yes':
+        bothControl = (
+            self.isSegm3D and
+            self.df_settings.at['isLabelsVisible', 'value'] == 'Yes'
+        )
+
+        if bothControl:
+            # Equally share space between the two control groupboxes
             self.bottomLayout.setStretch(0, 1)
             self.bottomLayout.setStretch(1, 5)
             self.bottomLayout.setStretch(2, 1)
             self.bottomLayout.setStretch(3, 5)
             self.bottomLayout.setStretch(4, 1)
+        elif self.df_settings.at['isLabelsVisible', 'value'] == 'Yes':
+            # Left control takes only left space
+            self.bottomLayout.setStretch(0, 1)
+            self.bottomLayout.setStretch(1, 5)
+            self.bottomLayout.setStretch(2, 5)
+            self.bottomLayout.setStretch(3, 1)
+            self.bottomLayout.setStretch(4, 1)
         else:
+            # Left control takes all the space
             self.bottomLayout.setStretch(0, 3)
             self.bottomLayout.setStretch(1, 11)
             self.bottomLayout.setStretch(2, 1)
@@ -11632,17 +11652,15 @@ class guiWin(QMainWindow):
             imgRGB = self.img1_RGB.copy()
             for _obj in posData.rp:
                 color = posData.lut[_obj.label]/255
-                _slice = self.getObjSlice(obj.slice)
-                _objMask = self.getObjImage(obj.image)
+                _slice = self.getObjSlice(_obj.slice)
+                _objMask = self.getObjImage(_obj.image)
                 bkgr_label = self.img1_RGB[_slice][_objMask]
                 if _obj.label == obj.label:
-                    alpha = 0.8
+                    alpha = 0.7
                 else:
-                    alpha = 0.1
+                    alpha = 0.2
                 overlay = bkgr_label*(1.0-alpha) + color*alpha
                 imgRGB[_slice][_objMask] = overlay
-                print('='*20)
-                print(obj.label, _obj.label, color, alpha)
             imgRGB = (np.clip(imgRGB, 0, 1)*255).astype(np.uint8)
             self.img1.setImage(imgRGB)
         else:
@@ -13190,7 +13208,7 @@ class guiWin(QMainWindow):
             parent=self, title='Saving data', infoTxt=infoTxt
         )
         font = QtGui.QFont()
-        font.setPointSize(10)
+        font.setPixelSize(13)
         self.saveWin.setFont(font)
         if not self.save_metrics:
             self.saveWin.metricsQPbar.hide()

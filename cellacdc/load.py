@@ -670,7 +670,7 @@ class loadData:
             askSegm3D=True
         ):
         font = QtGui.QFont()
-        font.setPointSize(10)
+        font.setPixelSize(13)
         metadataWin = apps.QDialogMetadata(
             self.SizeT, self.SizeZ, self.TimeIncrement,
             self.PhysicalSizeZ, self.PhysicalSizeY, self.PhysicalSizeX,
@@ -817,7 +817,7 @@ class select_exp_folder:
                        full_paths=None, allow_abort=True,
                        show=False, toggleMulti=False):
         font = QtGui.QFont()
-        font.setPointSize(10)
+        font.setPixelSize(13)
         win = apps.QtSelectItems(
             title, values, '', CbLabel=CbLabel, parent=parentQWidget
         )
