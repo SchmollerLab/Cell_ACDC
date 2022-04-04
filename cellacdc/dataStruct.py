@@ -760,7 +760,7 @@ class createDataStructWin(QMainWindow):
         label.setStyleSheet("padding:5px 10px 10px 10px;")
         label.setAlignment(Qt.AlignCenter)
         font = QtGui.QFont()
-        font.setPointSize(14)
+        font.setPixelSize(14)
         font.setBold(True)
         label.setFont(font)
         mainLayout.addWidget(label)

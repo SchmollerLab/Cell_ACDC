@@ -230,7 +230,7 @@ class renameFilesWin(QMainWindow):
 
     def askTxtAppend(self, filename):
         font = QtGui.QFont()
-        font.setPointSize(10)
+        font.setPixelSize(13)
         self.win = apps.QDialogAppendTextFilename(
             filename, '', parent=self, font=font
         )

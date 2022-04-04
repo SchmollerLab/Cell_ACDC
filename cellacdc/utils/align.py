@@ -238,22 +238,25 @@ class alignWin(QMainWindow):
                 # print(f'Aligning {filePath}...')
                 filePath = os.path.join(images_path, selectedFilenames[0])
                 alignedData = self.loadAndAlign(
-                                            filePath, shifts, revertAlignment)
+                    filePath, shifts, revertAlignment
+                )
                 self.save(alignedData, filePath, appendedTxt)
 
-        self.alignmentDone(filePath)
+        self.alignmentDone(filePath, appendedTxt)
         self.close()
         if self.allowExit:
             exit('Done.')
 
-    def alignmentDone(self, filePath):
+    def alignmentDone(self, filePath, appendedTxt):
         msg = widgets.myMessageBox()
         msg.setWidth(700)
         parent_path = os.path.dirname(filePath)
+        filename, ext = os.path.splitext(os.path.basename(filePath))
+        path = os.path.join(parent_path, f'{filename}_{appendedTxt}{ext}')
         txt = (
-            'Alignment routine ended successfully.<br><br>'
+            'Alignment routine <b>ended successfully</b>.<br><br>'
             'File(s) saved to:<br><br>'
-            f'<code>{filePath}</code>'
+            f'<code>{path}</code>'
         )
         msg.addShowInFileManagerButton(parent_path)
         msg.information(
@@ -288,7 +291,7 @@ class alignWin(QMainWindow):
 
     def askImageSizeZT(self, SizeT, SizeZ):
         font = QtGui.QFont()
-        font.setPointSize(10)
+        font.setPixelSize(13)
         win = apps.QDialogAcdcInputs(SizeT, SizeZ, None, None,
                                      show_finterval=False,
                                      parent=self, font=font)
@@ -300,7 +303,7 @@ class alignWin(QMainWindow):
 
     def askTxtAppend(self):
         font = QtGui.QFont()
-        font.setPointSize(10)
+        font.setPixelSize(13)
         self.win = apps.QDialogEntriesWidget(
             winTitle='Appended name',
             entriesLabels=['Type a name to append at the end of each aligned file:'],
@@ -322,7 +325,7 @@ class alignWin(QMainWindow):
         if revertAlignment:
             shifts = -shifts
         alignedData = np.zeros_like(data)
-        for frame_i, shift in enumerate(shifts):
+        for frame_i, shift in enumerate(tqdm(shifts, leave=False)):
             if frame_i >= len(data):
                 break
             img = data[frame_i]

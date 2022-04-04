@@ -451,7 +451,7 @@ class segmWin(QMainWindow):
                 return
 
         font = QtGui.QFont()
-        font.setPointSize(10)
+        font.setPixelSize(13)
 
         self.setWindowTitle(f'Cell-ACDC - Segment - "{exp_path}"')
 

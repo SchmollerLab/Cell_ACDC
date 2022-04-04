@@ -273,7 +273,7 @@ class convertFileFormatWin(QMainWindow):
 
     def askTxtAppend(self, filename):
         font = QtGui.QFont()
-        font.setPointSize(10)
+        font.setPixelSize(13)
         self.win = apps.QDialogAppendTextFilename(
             filename, self.to, parent=self, font=font
         )

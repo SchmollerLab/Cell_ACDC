@@ -334,7 +334,7 @@ class dataPrepWin(QMainWindow):
         self.img_Widglayout = QtGui.QGridLayout()
 
         _font = QtGui.QFont()
-        _font.setPointSize(10)
+        _font.setPixelSize(13)
 
         self.navigateScrollbar = QScrollBar(Qt.Horizontal)
         self.navigateScrollbar.setFixedHeight(20)

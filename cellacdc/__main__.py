@@ -84,7 +84,7 @@ class mainWin(QMainWindow):
         welcomeLabel = QLabel('Welcome to Cell-ACDC!')
         welcomeLabel.setAlignment(Qt.AlignCenter)
         font = QtGui.QFont()
-        font.setPointSize(14)
+        font.setPixelSize(14)
         font.setBold(True)
         font.setFamily('Ubuntu')
         welcomeLabel.setFont(font)
@@ -99,7 +99,7 @@ class mainWin(QMainWindow):
         label.setWordWrap(True)
         label.setAlignment(Qt.AlignCenter)
         font = QtGui.QFont()
-        font.setPointSize(11)
+        font.setPixelSize(13)
         font.setFamily('Ubuntu')
         label.setFont(font)
         # padding: top, left, bottom, right
@@ -112,7 +112,7 @@ class mainWin(QMainWindow):
             '  0. Create data structure from microscopy file(s)...  '
         )
         font = QtGui.QFont()
-        font.setPointSize(11)
+        font.setPixelSize(13)
         dataStructButton.setFont(font)
         dataStructButton.clicked.connect(self.launchDataStruct)
         self.dataStructButton = dataStructButton
@@ -120,7 +120,7 @@ class mainWin(QMainWindow):
 
         dataPrepButton = QPushButton('1. Launch data prep module...')
         font = QtGui.QFont()
-        font.setPointSize(11)
+        font.setPixelSize(13)
         dataPrepButton.setFont(font)
         dataPrepButton.clicked.connect(self.launchDataPrep)
         self.dataPrepButton = dataPrepButton
@@ -139,7 +139,7 @@ class mainWin(QMainWindow):
         mainLayout.addWidget(guiButton)
 
         font = QtGui.QFont()
-        font.setPointSize(10)
+        font.setPixelSize(13)
 
         closeLayout = QHBoxLayout()
         restartButton = QPushButton(
