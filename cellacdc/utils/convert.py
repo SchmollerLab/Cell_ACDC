@@ -254,7 +254,7 @@ class convertFileFormatWin(QMainWindow):
         msg.setWidth(700)
         parent_path = os.path.dirname(dst)
         txt = (
-            'Done!<br><br>'
+            '<b>Done!</b><br><br>'
             'The file<br><br>'
             f'<code>{src}</code><br><br>'
             f'was converted to <b>.{self.to}</b>, and saved to<br><br>'

@@ -150,11 +150,13 @@ class alphaNumericLineEdit(QLineEdit):
 
 
 class myMessageBox(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, showCentered=True):
         super().__init__(parent)
 
         self.cancel = True
         self.cancelButton = None
+
+        self.showCentered = showCentered
 
         self.layout = QGridLayout()
         self.layout.setHorizontalSpacing(20)
@@ -198,7 +200,7 @@ class myMessageBox(QDialog):
         label.setText(text)
         label.setWordWrap(True)
         label.setOpenExternalLinks(True)
-        self.layout.addWidget(label, self.currentRow, 1, alignment=Qt.AlignTop)
+        self.layout.addWidget(label, self.currentRow, 1)#, alignment=Qt.AlignTop)
         self.currentRow += 1
         return label
 
@@ -257,6 +259,15 @@ class myMessageBox(QDialog):
 
         if self._w is not None:
             self.resize(self._w, self.height())
+
+        if self.showCentered:
+            screen = self.screen()
+            screenWidth = screen.size().width()
+            screenHeight = screen.size().height()
+            w, h = self.width(), self.height()
+            left = int(screenWidth/2 - w/2)
+            top = int(screenHeight/2 - h/2)
+            self.move(left, top)
 
         if block:
             self.loop = QEventLoop()
