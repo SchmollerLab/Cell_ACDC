@@ -307,20 +307,23 @@ def _load_files(file_dir, channels):
     Function to load files of all given channels and the corresponding segmentation masks.
     Check first if aligned files are available and use them if so.
     """
-    no_of_aligned_files = len(glob.glob(f'{file_dir}\*aligned.npz'))
-    seg_mask_available = len(glob.glob(f'{file_dir}\*_segm.npz')) > 0
-    acdc_output_available = len(glob.glob(f'{file_dir}\*acdc_output.csv')) + len(glob.glob(f'{file_dir}\*cc_stage*')) > 0
+    no_of_aligned_files = len(glob.glob(os.path.join(f'{file_dir}', '*aligned.npz')))
+    seg_mask_available = len(glob.glob(os.path.join(f'{file_dir}', '*_segm.npz'))) > 0
+    acdc_output_available = (
+        len(glob.glob(os.path.join(f'{file_dir}', '*acdc_output.csv')))
+        + len(glob.glob(os.path.join(f'{file_dir}', '*cc_stage*'))) > 0
+    )
     if not (seg_mask_available and acdc_output_available):
         return None
     channel_files = []
     if no_of_aligned_files > 0:
         for channel in channels:
             try:
-                ch_aligned_path = glob.glob(f'{file_dir}\*{channel}_aligned.npz')[0]
+                ch_aligned_path = glob.glob(os.path.join(f'{file_dir}', '*{channel}_aligned.npz'))[0]
                 channel_files.append(np.load(ch_aligned_path)['arr_0'])
             except IndexError:
                 try:
-                    ch_aligned_path = glob.glob(f'{file_dir}\*{channel}_aligned.npy')[0]
+                    ch_aligned_path = glob.glob(os.path.join(f'{file_dir}', '*{channel}_aligned.npy'))[0]
                     channel_files.append(np.load(ch_aligned_path))
                 except IndexError:
                     print(f'Could not find an aligned file for channel {channel}')
@@ -329,7 +332,7 @@ def _load_files(file_dir, channels):
     else:
         for channel in channels:
             try:
-                ch_not_aligned_path = glob.glob(f'{file_dir}\*{channel}*')[0]
+                ch_not_aligned_path = glob.glob(os.path.join(f'{file_dir}', '*{channel}*'))[0]
                 channel_files.append(imread(ch_not_aligned_path))
             except IndexError:
                 print(f'Could not find any file for channel {channel}')
@@ -338,31 +341,31 @@ def _load_files(file_dir, channels):
 
     # append segmentation file
     try:
-        segm_file_path = glob.glob(f'{file_dir}\*_segm.npz')[0]
+        segm_file_path = glob.glob(os.path.join(f'{file_dir}', '*_segm.npz'))[0]
         channel_files.append(np.load(segm_file_path)['arr_0'])
     except IndexError:
-        segm_file_path = glob.glob(f'{file_dir}\*_segm.npy')[0]
+        segm_file_path = glob.glob(os.path.join(f'{file_dir}', '*_segm.npy'))[0]
         # assume segmentation mask to be .npy
         channel_files.append(np.load(segm_file_path))
     # append cc-data
     try:
-        cc_stage_path = glob.glob(f'{file_dir}\*acdc_output.csv')[0]
+        cc_stage_path = glob.glob(os.path.join(f'{file_dir}', '*acdc_output.csv'))[0]
     except IndexError:
-        cc_stage_path = glob.glob(f'{file_dir}\*cc_stage.csv')[0]
+        cc_stage_path = glob.glob(os.path.join(f'{file_dir}', '*cc_stage.csv'))[0]
     # assume cell cycle output of ACDC to be .csv
     channel_files.append(pd.read_csv(cc_stage_path))
 
     # append metadata if available, else append None
-    if len(glob.glob(f'{file_dir}\*metadata*')) > 0:
-        metadata_path = glob.glob(f'{file_dir}\*metadata.csv')[0]
+    if len(glob.glob(os.path.join(f'{file_dir}', '*metadata*'))) > 0:
+        metadata_path = glob.glob(os.path.join(f'{file_dir}', '*metadata.csv'))[0]
         # assume calculated metadata to be .csv
         channel_files.append(pd.read_csv(metadata_path).set_index('Description'))
     else:
         channel_files.append(None)
 
     # append cc-properties if available, else append None
-    if len(glob.glob(f'{file_dir}\*_downstream*')) > 0:
-        cc_props_path = glob.glob(f'{file_dir}\*_downstream*')[0]
+    if len(glob.glob(os.path.join(f'{file_dir}', '*_downstream*'))) > 0:
+        cc_props_path = glob.glob(os.path.join(f'{file_dir}', '*_downstream*'))[0]
         # assume calculated cc properties to be .csv
         channel_files.append(pd.read_csv(cc_props_path))
     else:
