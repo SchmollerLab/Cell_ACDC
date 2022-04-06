@@ -237,7 +237,7 @@ class relabelSequentialWorker(QObject):
         progressWin = self.mainWin.progressWin
         mainWin = self.mainWin
 
-        current_lab = self.get_2Dlab(posData.lab).copy()
+        current_lab = self.mainWin.get_2Dlab(posData.lab).copy()
         current_frame_i = posData.frame_i
         segm_data = []
         for frame_i, data_dict in enumerate(posData.allData_li):
@@ -2684,6 +2684,11 @@ class guiWin(QMainWindow):
             event.ignore()
             return
 
+        if mode == 'Viewer' and middle_click:
+            self.startBlinkingModeCB()
+            event.ignore()
+            return
+
         x, y = event.pos().x(), event.pos().y()
         xdata, ydata = int(x), int(y)
         Y, X = self.get_2Dlab(posData.lab).shape
@@ -2742,7 +2747,7 @@ class guiWin(QMainWindow):
 
         editInViewerMode = (
             (is_right_click_action_ON or is_right_click_custom_ON)
-            and right_click
+            and (right_click or middle_click) and mode=='Viewer'
         )
 
         if editInViewerMode:
@@ -6792,28 +6797,57 @@ class guiWin(QMainWindow):
         yBottom, xLeft = ydata-brushSize, xdata-brushSize
         yTop, xRight = ydata+brushSize+1, xdata+brushSize+1
 
-        if xLeft>=0 and yBottom>=0 and xRight<=X and yTop<=Y:
-            return yBottom, xLeft, yTop, xRight, self.diskMask
+        if xLeft<0:
+            if yBottom<0:
+                # Disk mask out of bounds top-left
+                diskMask = self.diskMask.copy()
+                diskMask = diskMask[-yBottom:, -xLeft:]
+                yBottom = 0
+            elif yTop>Y:
+                # Disk mask out of bounds bottom-left
+                diskMask = self.diskMask.copy()
+                diskMask = diskMask[0:Y-yBottom, -xLeft:]
+                yTop = Y
+            else:
+                # Disk mask out of bounds on the left
+                diskMask = self.diskMask.copy()
+                diskMask = diskMask[:, -xLeft:]
+            xLeft = 0
 
-        elif xLeft<0 and yBottom>=0 and xRight<=X and yTop<=Y:
-            diskMask = self.diskMask.copy()
-            diskMask = diskMask[:, -xLeft:]
-            return yBottom, 0, yTop, xRight, diskMask
+        elif xRight>X:
+            if yBottom<0:
+                # Disk mask out of bounds top-right
+                diskMask = self.diskMask.copy()
+                diskMask = diskMask[-yBottom:, 0:X-xLeft]
+                yBottom = 0
+            elif yTop>Y:
+                # Disk mask out of bounds bottom-right
+                diskMask = self.diskMask.copy()
+                diskMask = diskMask[0:Y-yBottom, 0:X-xLeft]
+                yTop = Y
+            else:
+                # Disk mask out of bounds on the right
+                diskMask = self.diskMask.copy()
+                diskMask = diskMask[:, 0:X-xLeft]
+            xRight = X
 
-        elif xLeft>=0 and yBottom<0 and xRight<=X and yTop<=Y:
+        elif yBottom<0:
+            # Disk mask out of bounds on top
             diskMask = self.diskMask.copy()
             diskMask = diskMask[-yBottom:]
-            return 0, xLeft, yTop, xRight, diskMask
+            yBottom = 0
 
-        elif xLeft>=0 and yBottom>=0 and xRight>X and yTop<=Y:
-            diskMask = self.diskMask.copy()
-            diskMask = diskMask[:, 0:X-xLeft]
-            return yBottom, xLeft, yTop, X, diskMask
-
-        elif xLeft>=0 and yBottom>=0 and xRight<=X and yTop>Y:
+        elif yTop>Y:
+            # Disk mask out of bounds on bottom
             diskMask = self.diskMask.copy()
             diskMask = diskMask[0:Y-yBottom]
-            return yBottom, xLeft, Y, xRight, diskMask
+            yTop = Y
+
+        else:
+            # Disk mask fully inside the image
+            diskMask = self.diskMask
+
+        return yBottom, xLeft, yTop, xRight, diskMask
 
     def setBrushID(self, useCurrentLab=True):
         # Make sure that the brushed ID is always a new one based on
@@ -6946,6 +6980,8 @@ class guiWin(QMainWindow):
         isBrushActive = (
             self.brushButton.isChecked() or self.eraserButton.isChecked()
         )
+        how = self.drawIDsContComboBox.currentText()
+        isOverlaySegm = how.find('overlay segm. masks') != -1
         if ev.key() == Qt.Key_Up and not self.isCtrlDown:
             if isBrushActive:
                 self.brushSizeSpinbox.setValue(self.brushSizeSpinbox.value()+1)
@@ -6987,7 +7023,7 @@ class guiWin(QMainWindow):
                 if posData.SizeZ > 1:
                     self.zSliceScrollBar.setSliderPosition(z)
                 self.ax1_point_ScatterPlot.setData([x], [y])
-        elif self.isCtrlDown:
+        elif self.isCtrlDown and isOverlaySegm:
             if ev.key() == Qt.Key_Up:
                 val = self.imgGrad.labelsAlphaSlider.value()
                 delta = 5/self.imgGrad.labelsAlphaSlider.maximum()
@@ -9349,7 +9385,8 @@ class guiWin(QMainWindow):
                 }
             ).set_index('Cell_ID')
         else:
-            acdc_df = acdc_df.filter(IDs, axis=0)
+            # Filter or add IDs that were not stored yet
+            acdc_df = acdc_df.reindex(posData.IDs)
             acdc_df['is_cell_dead'] = is_cell_dead_li
             acdc_df['is_cell_excluded'] = is_cell_excluded_li
             acdc_df['x_centroid'] = xx_centroid
@@ -9357,6 +9394,8 @@ class guiWin(QMainWindow):
             acdc_df['editIDclicked_x'] = editIDclicked_x
             acdc_df['editIDclicked_y'] = editIDclicked_y
             acdc_df['editIDnewIDs'] = editIDnewID
+            posData.allData_li[posData.frame_i]['acdc_df'] = acdc_df
+            print(acdc_df.is_cell_dead)
 
         self.store_cca_df(pos_i=pos_i, mainThread=mainThread)
 
