@@ -9395,7 +9395,6 @@ class guiWin(QMainWindow):
             acdc_df['editIDclicked_y'] = editIDclicked_y
             acdc_df['editIDnewIDs'] = editIDnewID
             posData.allData_li[posData.frame_i]['acdc_df'] = acdc_df
-            print(acdc_df.is_cell_dead)
 
         self.store_cca_df(pos_i=pos_i, mainThread=mainThread)
 
