@@ -1881,8 +1881,12 @@ class guiWin(QMainWindow):
         self.normalizeQActionGroup.addAction(self.normalizeRescale0to1Action)
         self.normalizeQActionGroup.addAction(self.normalizeByMaxAction)
 
-        self.zoomToObjsAction = QAction('Zoom to objects  (shortcut: H key)', self)
-        self.zoomOutAction = QAction('Zoom out  (shortcut: double press H key)', self)
+        self.zoomToObjsAction = QAction(
+            'Zoom to objects  (shortcut: H key)', self
+        )
+        self.zoomOutAction = QAction(
+            'Zoom out  (shortcut: double press H key)', self
+        )
 
         self.relabelSequentialAction = QAction(
             'Relabel IDs sequentially...', self

@@ -153,6 +153,8 @@ def calculate_downstream_data(
                 save_path = os.path.join(pos_dir, f'{common_prefix}cca_properties_downstream.csv')
                 temp_df.to_csv(save_path, index=False)
                 overall_df = pd.concat([overall_df, temp_df], ignore_index=True).reset_index(drop=True)
+
+    print('Done!')
     return overall_df, is_timelapse_data, is_zstack_data
 
 
@@ -319,11 +321,11 @@ def _load_files(file_dir, channels):
     if no_of_aligned_files > 0:
         for channel in channels:
             try:
-                ch_aligned_path = glob.glob(os.path.join(f'{file_dir}', '*{channel}_aligned.npz'))[0]
+                ch_aligned_path = glob.glob(os.path.join(f'{file_dir}', f'*{channel}_aligned.npz'))[0]
                 channel_files.append(np.load(ch_aligned_path)['arr_0'])
             except IndexError:
                 try:
-                    ch_aligned_path = glob.glob(os.path.join(f'{file_dir}', '*{channel}_aligned.npy'))[0]
+                    ch_aligned_path = glob.glob(os.path.join(f'{file_dir}', f'*{channel}_aligned.npy'))[0]
                     channel_files.append(np.load(ch_aligned_path))
                 except IndexError:
                     print(f'Could not find an aligned file for channel {channel}')
@@ -332,7 +334,7 @@ def _load_files(file_dir, channels):
     else:
         for channel in channels:
             try:
-                ch_not_aligned_path = glob.glob(os.path.join(f'{file_dir}', '*{channel}*'))[0]
+                ch_not_aligned_path = glob.glob(os.path.join(f'{file_dir}', f'*{channel}*'))[0]
                 channel_files.append(imread(ch_not_aligned_path))
             except IndexError:
                 print(f'Could not find any file for channel {channel}')
@@ -476,11 +478,15 @@ def _calculate_flu_signal(seg_mask, channel_data, channels, cc_data, is_timelaps
             for c_idx, c_array in enumerate(channel_data_cut):
                 if c_array is not None:
                     cell_signal = c_array*index_array
+                    # cell_signal = c_array[index_array]
                     summed = np.sum(cell_signal, axis=(1,2))
-                    count = np.sum(cell_signal!=0, axis=(1,2))
+                    # count = np.sum(cell_signal!=0, axis=(1,2))
+                    count = np.sum(index_array, axis=(1,2))
                     mean_signal = np.divide(summed, count, where=count!=0)
+                    # mean_signal = np.mean(cell_signal, axis=(1,2))
                     corrected_signal = mean_signal - np.array(bg_medians[c_idx])
-                    temp_df[f'{channels[c_idx]}_corrected_mean'] = np.clip(corrected_signal, 0, np.inf)
+                    # temp_df[f'{channels[c_idx]}_corrected_mean'] = np.clip(corrected_signal, 0, np.inf)
+                    temp_df[f'{channels[c_idx]}_corrected_mean'] = corrected_signal
                 else:
                     temp_df[f'{channels[c_idx]}_corrected_mean'] = 0
             df = pd.concat([df, temp_df], ignore_index=True)
