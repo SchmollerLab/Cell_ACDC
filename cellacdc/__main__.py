@@ -84,7 +84,7 @@ class mainWin(QMainWindow):
         welcomeLabel = QLabel('Welcome to Cell-ACDC!')
         welcomeLabel.setAlignment(Qt.AlignCenter)
         font = QtGui.QFont()
-        font.setPixelSize(14)
+        font.setPixelSize(16)
         font.setBold(True)
         font.setFamily('Ubuntu')
         welcomeLabel.setFont(font)

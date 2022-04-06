@@ -9947,7 +9947,9 @@ class guiWin(QMainWindow):
             editIDnewID = df['editIDnewID'].to_list()
             _zip = zip(editIDclicked_y, editIDclicked_x, editIDnewID)
             posData.editID_info = [
-                (int(y),int(x),newID) for y,x,newID in _zip if newID!=-1]
+                (int(y),int(x),newID) for y,x,newID in _zip
+                if not np.isnan(y)
+            ]
             self.get_cca_df()
 
         self.update_rp_metadata(draw=False)
