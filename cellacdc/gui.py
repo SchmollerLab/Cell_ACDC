@@ -6977,18 +6977,21 @@ class guiWin(QMainWindow):
             return
         if ev.key() == Qt.Key_Control:
             self.isCtrlDown = True
+        modifiers = ev.modifiers()
+        isAltModifier = modifiers == Qt.AltModifier
+        isCtrlModifier = modifiers == Qt.ControlModifier
         isBrushActive = (
             self.brushButton.isChecked() or self.eraserButton.isChecked()
         )
         how = self.drawIDsContComboBox.currentText()
         isOverlaySegm = how.find('overlay segm. masks') != -1
-        if ev.key() == Qt.Key_Up and not self.isCtrlDown:
+        if ev.key() == Qt.Key_Up and not isCtrlModifier:
             if isBrushActive:
                 self.brushSizeSpinbox.setValue(self.brushSizeSpinbox.value()+1)
             elif self.wandToolButton.isChecked():
                 val = self.wandToleranceSlider.value()
                 self.wandToleranceSlider.setValue(val+1)
-        elif ev.key() == Qt.Key_Down and not self.isCtrlDown:
+        elif ev.key() == Qt.Key_Down and not isCtrlModifier:
             if isBrushActive:
                 self.brushSizeSpinbox.setValue(self.brushSizeSpinbox.value()-1)
             elif self.wandToolButton.isChecked():
@@ -7000,7 +7003,7 @@ class guiWin(QMainWindow):
                 self.highlightedID = 0
                 self.guiTabControl.highlightCheckbox.setChecked(False)
                 # self.updateALLimg()
-        elif ev.modifiers() == Qt.AltModifier:
+        elif isAltModifier:
             isCursorSizeAll = self.app.overrideCursor() == Qt.SizeAllCursor
             # Alt is pressed while cursor is on images --> set SizeAllCursor
             if self.xHoverImg is not None and not isCursorSizeAll:
@@ -7023,7 +7026,7 @@ class guiWin(QMainWindow):
                 if posData.SizeZ > 1:
                     self.zSliceScrollBar.setSliderPosition(z)
                 self.ax1_point_ScatterPlot.setData([x], [y])
-        elif self.isCtrlDown and isOverlaySegm:
+        elif isCtrlModifier and isOverlaySegm:
             if ev.key() == Qt.Key_Up:
                 val = self.imgGrad.labelsAlphaSlider.value()
                 delta = 5/self.imgGrad.labelsAlphaSlider.maximum()
