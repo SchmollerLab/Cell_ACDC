@@ -4800,27 +4800,25 @@ class guiWin(QMainWindow):
             self.progressWin.close()
         self.logger.info('Worker process ended.')
         if self.trackingWorker.trackingOnNeverVisitedFrames:
-            msg = QMessageBox(self)
-            msg.setIcon(msg.Information)
-            msg.setWindowTitle('Disable real-time tracking?')
-            disableTrackingButton = QPushButton('Disable real-time tracking')
-            msg.setText("""
-            <p style="font-size:13px">
-                You perfomed tracking on frames that you have
-                <b>never visited.</b><br><br>
-                Cell-ACDC default behaviour is to <b>track them again</b> when you
-                will visit them.<br><br>
-                However, you can <b>overwrite this behaviour</b> and explicitly
-                disable tracking for all of the frames you already tracked.<br><br>
-                What do you want me to do?
-            </p>
-            """)
-            msg.addButton(disableTrackingButton, msg.YesRole)
-            msg.addButton(
-                QPushButton('Keep real-time tracking active'), msg.NoRole
+            msg = widgets.myMessageBox()
+            title = 'Disable real-time tracking?'
+            txt = (
+                'You perfomed tracking on frames that you have '
+                '<b>never visited.</b><br><br>'
+                'Cell-ACDC default behaviour is to <b>track them again</b> when you '
+                'will visit them.<br><br>'
+                'However, you can <b>overwrite this behaviour</b> and explicitly '
+                'disable tracking for all of the frames you already tracked.<br><br>'
+                'What do you want me to do?'
             )
-            msg.exec_()
-            if msg.clickedButton() == disableTrackingButton:
+            _, disableTrackingButton = msg.information(
+                self, title, html_utils.paragraph(txt),
+                buttonsTexts=(
+                    'Keep real-time tracking active (RECOMMENDED)',
+                    'Disable real-time tracking'
+                )
+            )
+            if msg.clickedButton == disableTrackingButton:
                 posData = self.data[self.pos_i]
                 current_frame_i = posData.frame_i
                 for frame_i in range(self.start_n-1, self.stop_n):
