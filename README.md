@@ -99,7 +99,7 @@ If you want to contribute or try out experimental features (and, if you have tim
 2. Clone the repo with the command `git clone https://github.com/SchmollerLab/Cell_ACDC.git` (if you are on Windows you need to install `git` first. Install it from [here](https://git-scm.com/download/win))
 3. Install [Anaconda](https://www.anaconda.com/products/individual) or [Miniconda](https://docs.conda.io/en/latest/miniconda.html)
 4. Update conda with `conda update conda`. Optionally, consider removing unused packages with the command `conda clean --all`
-5. Create a new conda environment with the command `conda create -n acdc python=3.8`
+5. Create a new conda environment with the command `conda create -n acdc python=3.9`
 6. In the terminal, navigate to the `Cell_ACDC` folder that you cloned before and install Cell-ACDC with the command `pip install -e .`.
 
 ## Running Cell-ACDC
