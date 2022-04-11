@@ -496,7 +496,7 @@ class saveDataWorker(QObject):
             # Iterate cells
             for i, obj in enumerate(rp):
                 _slice = self.mainWin.getObjSlice(obj.slice)
-                _objMask = self.mainWin.getObjImage(obj.image)
+                _objMask = self.mainWin.getObjImage(obj.image, obj.bbox)
                 IDs[i] = obj.label
                 # Calc volume
                 if 'cell_vol_vox' in self.mainWin.sizeMetricsToSave:
@@ -2278,6 +2278,7 @@ class guiWin(QMainWindow):
             self.z_label_lab, row, 0, alignment=Qt.AlignRight
         )
         self.zSliceScrollBarLab = widgets.labelledQScrollbar(Qt.Horizontal)
+        self.zSliceScrollBarLab.moving = False
         self.zSliceScrollBarLab.setLabel(self.z_label_lab)
         self.zSliceScrollBar.linkScrollBar(self.zSliceScrollBarLab)
         bottomRightLayout.addWidget(self.zSliceScrollBarLab, row, 1)
@@ -2293,8 +2294,22 @@ class guiWin(QMainWindow):
     def labControlsToggled(self, checked):
         if checked:
             self.zSliceScrollBar.unlinkScrollBar()
+            self.connectZSliceScrollBarLab()
         else:
             self.zSliceScrollBar.linkScrollBar(self.zSliceScrollBarLab)
+            self.connectZSliceScrollBarLab(disconnect=True)
+
+    def connectZSliceScrollBarLab(self, disconnect=False):
+        if disconnect:
+            self.zSliceScrollBarLab.actionTriggered.disconnect()
+            self.zSliceScrollBarLab.sliderReleased.disconnect()
+        else:
+            self.zSliceScrollBarLab.actionTriggered.connect(
+                self.updateZsliceLab
+            )
+            self.zSliceScrollBarLab.sliderReleased.connect(
+                self.zSliceScrollBarLabReleased
+            )
 
     def gui_addBottomWidgetsToBottomLayout(self):
         self.bottomLayout = QHBoxLayout()
@@ -3025,7 +3040,7 @@ class guiWin(QMainWindow):
                 self.storeUndoRedoStates(False)
                 obj_idx = posData.IDs.index(ID)
                 obj = posData.rp[obj_idx]
-                objMask = self.getObjImage(obj.image)
+                objMask = self.getObjImage(obj.image, obj.bbox)
                 localFill = scipy.ndimage.binary_fill_holes(objMask)
                 posData.lab[self.getObjSlice(obj.slice)][localFill] = ID
 
@@ -3063,7 +3078,7 @@ class guiWin(QMainWindow):
                 self.storeUndoRedoStates(False)
                 obj_idx = posData.IDs.index(ID)
                 obj = posData.rp[obj_idx]
-                objMask = self.getObjImage(obj.image)
+                objMask = self.getObjImage(obj.image, obj.bbox)
                 localHull = skimage.morphology.convex_hull_image(objMask)
                 posData.lab[self.getObjSlice(obj.slice)][localHull] = ID
 
@@ -3419,7 +3434,7 @@ class guiWin(QMainWindow):
             rrPoly, ccPoly = self.getPolygonBrush((y, x), Y, X)
 
             # Build brush mask
-            mask = np.zeros(posData.lab.shape, bool)
+            mask = np.zeros(self.get_2Dlab(posData.lab).shape, bool)
             mask[ymin:ymax, xmin:xmax][diskMask] = True
             mask[rrPoly, ccPoly] = True
 
@@ -3427,7 +3442,7 @@ class guiWin(QMainWindow):
             color = self.brushButton.palette().button().color().name()
             drawUnder = color != self.doublePressKeyButtonColor
             if drawUnder:
-                mask[posData.lab!=0] = False
+                mask[self.get_2Dlab(posData.lab)!=0] = False
                 self.setHoverToolSymbolColor(
                     xdata, ydata, self.ax2_BrushCirclePen,
                     (self.ax2_BrushCircle, self.ax1_BrushCircle),
@@ -3435,7 +3450,7 @@ class guiWin(QMainWindow):
                 )
 
             # Apply brush mask
-            posData.lab[mask] = posData.brushID
+            self.get_2Dlab(posData.lab)[mask] = posData.brushID
             self.setImageImg2(updateLookuptable=False)
 
             brushMask = self.get_2Dlab(posData.lab) == posData.brushID
@@ -4355,7 +4370,7 @@ class guiWin(QMainWindow):
             if drawUnder:
                 mask[localLab!=0] = False
 
-            posData.lab[ymin:ymax, xmin:xmax][mask] = posData.brushID
+            localLab[mask] = posData.brushID
             self.setImageImg2(updateLookuptable=False)
 
             img = self.img1.image.copy()
@@ -6712,7 +6727,7 @@ class guiWin(QMainWindow):
             if prev_lab is None:
                 self.restoreHoveredID()
                 return
-            ID = prev_lab[ydata, xdata]
+            ID = self.get_2Dlab(prev_lab)[ydata, xdata]
 
         # Restore ID previously hovered
         if ID != self.ax1BrushHoverID and not self.isMouseDragImg1:
@@ -8697,6 +8712,7 @@ class guiWin(QMainWindow):
         self.readSavedCustomAnnot()
         self.addCustomAnnotationSavedPos()
 
+        self.setBottomLayoutStretch()
         self.setAxesMaxRange()
         self.setImageNameText()
         self.updateALLimg()
@@ -8814,6 +8830,20 @@ class guiWin(QMainWindow):
             self.autoSegmDoNotAskAgain = True
             self.autoSegmAction.setChecked(False)
 
+    def updateZsliceLab(self, action):
+        self.zSliceScrollBarLab.updateLabel()
+        if action == QAbstractSlider.SliderMove:
+            if not self.zSliceScrollBarLab.moving:
+                self.clearAllItems()
+                self.zSliceScrollBarLab.moving = True
+            self.setImageImg2()
+        else:
+            self.updateALLimg()
+
+    def zSliceScrollBarLabReleased(self):
+        self.zSliceScrollBarLab.moving = False
+        self.updateALLimg()
+
     def init_segmInfo_df(self):
         self.t_label.show()
         self.navigateScrollBar.show()
@@ -8823,14 +8853,22 @@ class guiWin(QMainWindow):
             self.enableZstackWidgets(True)
             self.zSliceScrollBar.setMaximum(self.data[0].SizeZ-1)
             try:
-                self.zSliceScrollBar.valueChanged.disconnect()
+                self.zSliceScrollBar.actionTriggered.disconnect()
+                self.zSliceScrollBar.sliderReleased.disconnect()
                 self.zProjComboBox.currentTextChanged.disconnect()
                 self.zProjComboBox.activated.disconnect()
             except Exception as e:
                 pass
-            self.zSliceScrollBar.valueChanged.connect(self.update_z_slice)
+            self.zSliceScrollBar.actionTriggered.connect(
+                self.zSliceScrollBarActionTriggered
+            )
+            self.zSliceScrollBar.sliderReleased.connect(
+                self.zSliceScrollBarReleased
+            )
             self.zProjComboBox.currentTextChanged.connect(self.updateZproj)
             self.zProjComboBox.activated.connect(self.clearComboBoxFocus)
+            if self.isSegm3D and self.labBottomGroupbox.isChecked():
+                self.connectZSliceScrollBarLab()
         for posData in self.data:
             if posData.SizeZ > 1 and posData.segmInfo_df is not None:
                 if 'z_slice_used_gui' not in posData.segmInfo_df.columns:
@@ -8898,6 +8936,13 @@ class guiWin(QMainWindow):
                 self.navigateScrollBar.actionTriggered.connect(
                     self.framesScrollBarAction
                 )
+
+    def zSliceScrollBarActionTriggered(self, action):
+        self.update_z_slice(self.zSliceScrollBar.sliderPosition())
+
+    def zSliceScrollBarReleased(self):
+        self.zSliceScrollBarLab.moving = False
+        self.update_z_slice(self.zSliceScrollBar.sliderPosition())
 
     def update_z_slice(self, z):
         posData = self.data[self.pos_i]
@@ -8969,6 +9014,13 @@ class guiWin(QMainWindow):
         self.ax1_LabelItemsIDs = self.ax1_LabelItemsIDs[:maxID]
         self.ax2_LabelItemsIDs = self.ax2_LabelItemsIDs[:maxID]
         self.ax1_BudMothLines = self.ax1_BudMothLines[:maxID]
+
+    def clearLabAnnotations(self):
+        labAnnot = zip(self.ax2_ContoursCurves, self.ax2_LabelItemsIDs)
+        for ax2ContCurve, _IDlabel2 in labAnnot:
+            if ax2ContCurve.getData()[0] is not None:
+                ax2ContCurve.setData([], [])
+            _IDlabel2.setText('')
 
     def clearAllItems(self):
         allItems = zip(
@@ -9818,7 +9870,7 @@ class guiWin(QMainWindow):
 
     def getObjContours(self, obj, appendMultiContID=True):
         contours, _ = cv2.findContours(
-           self.getObjImage(obj.image).astype(np.uint8),
+           self.getObjImage(obj.image, obj.bbox).astype(np.uint8),
            cv2.RETR_EXTERNAL,
            cv2.CHAIN_APPROX_NONE
         )
@@ -9845,9 +9897,15 @@ class guiWin(QMainWindow):
         else:
             return None
 
-    def get_2Dlab(self, lab):
+    def get_2Dlab(self, lab, force_z=True):
         if self.isSegm3D:
-            return lab[self.z_lab()]
+            if force_z:
+                return lab[self.z_lab()]
+            zProjHow = self.zProjComboBox.currentText()
+            if self.labBottomGroupbox.isChecked() or zProjHow == 'single z-slice':
+                return lab[self.z_lab()]
+            else:
+                return lab.max(axis=0)
         else:
             return lab
 
@@ -10353,6 +10411,8 @@ class guiWin(QMainWindow):
             if not is_history_known:
                 txt = f'{txt}?'
 
+        txt = txt if self.isObjVisible(obj.bbox) else ''
+
         try:
             if debug:
                 print(txt, color)
@@ -10377,7 +10437,7 @@ class guiWin(QMainWindow):
         LabelItemID = self.ax2_LabelItemsIDs[obj.label-1]
         ID = obj.label
         df = posData.cca_df
-        txt = f'{ID}'
+        txt = f'{ID}' if self.isObjVisible(obj.bbox) else ''
         if ID in posData.new_IDs:
             color = self.ax2_textColor
             bold = True
@@ -10444,7 +10504,8 @@ class guiWin(QMainWindow):
             cca_df_ID = posData.cca_df.loc[ID]
             ccs_ID = cca_df_ID['cell_cycle_stage']
             relationship = cca_df_ID['relationship']
-            if ccs_ID == 'S' and relationship=='bud':
+            isObjVisible = self.isObjVisible(obj.bbox)
+            if ccs_ID == 'S' and relationship=='bud' and isObjVisible:
                 emerg_frame_i = cca_df_ID['emerg_frame_i']
                 if emerg_frame_i == posData.frame_i:
                     pen = self.NewBudMoth_Pen
@@ -10465,20 +10526,26 @@ class guiWin(QMainWindow):
 
         # Draw contours on ax1 if requested
         if IDs_and_cont or onlyCont or ccaInfo_and_cont:
-            ID = obj.label
-            t0 = time.time()
-            cont = self.getObjContours(obj)
-            t1 = time.time()
-            computingContoursTime = t1-t0
-            self.computingContoursTimes.append(computingContoursTime)
+            if not self.isObjVisible(obj.bbox):
+                curveID.setData([], [])
+            else:
+                ID = obj.label
+                t0 = time.time()
+                cont = self.getObjContours(obj)
+                t1 = time.time()
+                computingContoursTime = t1-t0
+                self.computingContoursTimes.append(computingContoursTime)
 
-            t0 = time.time()
-            curveID = self.ax1_ContoursCurves[idx]
-            pen = self.newIDs_cpen if ID in posData.new_IDs else self.oldIDs_cpen
-            curveID.setData(cont[:,0], cont[:,1], pen=pen)
-            t1 = time.time()
-            drawingContoursTimes = t1-t0
-            self.drawingContoursTimes.append(drawingContoursTimes)
+                t0 = time.time()
+                curveID = self.ax1_ContoursCurves[idx]
+                pen = (
+                    self.newIDs_cpen if ID in posData.new_IDs
+                    else self.oldIDs_cpen
+                )
+                curveID.setData(cont[:,0], cont[:,1], pen=pen)
+                t1 = time.time()
+                drawingContoursTimes = t1-t0
+                self.drawingContoursTimes.append(drawingContoursTimes)
 
 
     def update_rp(self, draw=True, debug=False):
@@ -11092,9 +11159,11 @@ class guiWin(QMainWindow):
 
         imgRGB = self.img1_RGB.copy()
         for obj in posData.rp:
+            if not self.isObjVisible(obj.bbox):
+                continue
             color = posData.lut[obj.label]/255
             _slice = self.getObjSlice(obj.slice)
-            _objMask = self.getObjImage(obj.image)
+            _objMask = self.getObjImage(obj.image, obj.bbox)
             bkgr_label = self.img1_RGB[_slice][_objMask]
             # colored_label = bkgr_label*color
             overlay = bkgr_label*(1.0-alpha) + color*alpha
@@ -11102,9 +11171,34 @@ class guiWin(QMainWindow):
         imgRGB = (np.clip(imgRGB, 0, 1)*255).astype(np.uint8)
         return imgRGB
 
-    def getObjImage(self, obj_image):
+    def isObjVisible(self, obj_bbox):
         if self.isSegm3D:
-            return obj_image[self.z_lab()]
+            zProjHow = self.zProjComboBox.currentText()
+            isZslice = zProjHow == 'single z-slice'
+            if not self.labBottomGroupbox.isChecked() and not isZslice:
+                # required a projection --> all obj are visible
+                return True
+            min_z = obj_bbox[0]
+            max_z = obj_bbox[0]
+            if self.z_lab()>=min_z and self.z_lab()<=max_z:
+                return True
+            else:
+                return False
+        else:
+            return True
+
+    def getObjImage(self, obj_image, obj_bbox):
+        if self.isSegm3D:
+            zProjHow = self.zProjComboBox.currentText()
+            isZslice = zProjHow == 'single z-slice'
+            if not self.labBottomGroupbox.isChecked() and not isZslice:
+                # required a projection
+                return obj_image.max(axis=0)
+
+            min_z = obj_bbox[0]
+            z = self.z_lab()
+            local_z = z - min_z
+            return obj_image[local_z]
         else:
             return obj_image
 
@@ -11273,9 +11367,9 @@ class guiWin(QMainWindow):
         if bothControl:
             # Equally share space between the two control groupboxes
             self.bottomLayout.setStretch(0, 1)
-            self.bottomLayout.setStretch(1, 5)
-            self.bottomLayout.setStretch(2, 1)
-            self.bottomLayout.setStretch(3, 5)
+            self.bottomLayout.setStretch(1, 6)
+            self.bottomLayout.setStretch(2, 2)
+            self.bottomLayout.setStretch(3, 6)
             self.bottomLayout.setStretch(4, 1)
         elif self.df_settings.at['isLabelsVisible', 'value'] == 'Yes':
             # Left control takes only left space
@@ -11371,13 +11465,19 @@ class guiWin(QMainWindow):
             if zProjHow == 'single z-slice':
                 reconnect = False
                 try:
-                    self.zSliceScrollBar.valueChanged.disconnect()
+                    self.zSliceScrollBar.actionTriggered.disconnect()
+                    self.zSliceScrollBar.sliderReleased.disconnect()
                     reconnect = True
                 except TypeError:
                     pass
                 self.zSliceScrollBar.setSliderPosition(z)
                 if reconnect:
-                    self.zSliceScrollBar.valueChanged.connect(self.update_z_slice)
+                    self.zSliceScrollBar.actionTriggered.connect(
+                        self.zSliceScrollBarActionTriggered
+                    )
+                    self.zSliceScrollBar.sliderReleased.connect(
+                        self.zSliceScrollBarReleased
+                    )
                 self.z_label.setText(f'z-slice  {z+1:02}/{posData.SizeZ}')
                 if not self.labBottomGroupbox.isChecked():
                     self.z_label_lab.setText(f'z-slice  {z+1:02}/{posData.SizeZ}')
@@ -11406,7 +11506,7 @@ class guiWin(QMainWindow):
             self.addExistingDelROIs()
             allDelIDs, DelROIlab = self.getDelROIlab()
         else:
-            DelROIlab = self.get_2Dlab(posData.lab)
+            DelROIlab = self.get_2Dlab(posData.lab, force_z=True)
             allDelIDs = set()
         if not self.labelsGrad.hideLabelsImgAction.isChecked():
             self.img2.setImage(DelROIlab, z=self.z_lab())
@@ -11696,9 +11796,11 @@ class guiWin(QMainWindow):
         if how.find('segm. masks') != -1:
             imgRGB = self.img1_RGB.copy()
             for _obj in posData.rp:
+                if not self.isObjVisible(_obj.bbox):
+                    continue
                 color = posData.lut[_obj.label]/255
                 _slice = self.getObjSlice(_obj.slice)
-                _objMask = self.getObjImage(_obj.image)
+                _objMask = self.getObjImage(_obj.image, _obj.bbox)
                 bkgr_label = self.img1_RGB[_slice][_objMask]
                 if _obj.label == obj.label:
                     alpha = 0.7
@@ -11839,6 +11941,8 @@ class guiWin(QMainWindow):
         self.drawingContoursTimes = []
         # Annotate ID and draw contours
         for i, obj in enumerate(posData.rp):
+            if not self.isObjVisible(obj.bbox):
+                continue
             updateColor=True if updateLabelItemColor and i==0 else False
             self.drawID_and_Contour(obj, updateColor=updateColor)
 

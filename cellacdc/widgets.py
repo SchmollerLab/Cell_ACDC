@@ -1210,12 +1210,20 @@ class labelledQScrollbar(QScrollBar):
     def setLabel(self, label):
         self._label = label
 
-    def setSliderPosition(self, position):
-        QScrollBar.setSliderPosition(self, position)
+    def updateLabel(self):
         if self._label is not None:
+            position = self.sliderPosition()
             s = self._label.text()
             s = re.sub(r'(\d+)/(\d+)', fr'{position+1:02}/\2', s)
             self._label.setText(s)
+
+    def setSliderPosition(self, position):
+        QScrollBar.setSliderPosition(self, position)
+        self.updateLabel()
+
+    def setValue(self, value):
+        QScrollBar.setValue(self, value)
+        self.updateLabel()
 
 class linkedQScrollbar(QScrollBar):
     def __init__(self, *args, **kwargs):
@@ -1224,6 +1232,7 @@ class linkedQScrollbar(QScrollBar):
 
     def linkScrollBar(self, scrollbar):
         self._linkedScrollBar = scrollbar
+        scrollbar.setSliderPosition(self.sliderPosition())
 
     def unlinkScrollBar(self):
         self._linkedScrollBar = None
