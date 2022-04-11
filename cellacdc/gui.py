@@ -10527,6 +10527,7 @@ class guiWin(QMainWindow):
         # Draw contours on ax1 if requested
         if IDs_and_cont or onlyCont or ccaInfo_and_cont:
             if not self.isObjVisible(obj.bbox):
+                curveID = self.ax1_ContoursCurves[idx]
                 curveID.setData([], [])
             else:
                 ID = obj.label
