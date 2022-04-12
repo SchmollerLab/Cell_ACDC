@@ -124,7 +124,7 @@ def calculate_downstream_data(
             else:
                 print(f'Calculate regionprops on each frame based on Segmentation...')
                 rp_df = _calculate_rp_df(seg_mask, is_timelapse_data, is_zstack_data, metadata, max_frame=cc_data.frame_i.max()+1)
-                print(f'Calculate mean signal strength for every channel and cell...')
+                print(f'Calculate signal metrics for every channel and cell...')
                 flu_signal_df = _calculate_flu_signal(
                     seg_mask,
                     channel_data,
@@ -133,15 +133,25 @@ def calculate_downstream_data(
                     is_timelapse_data,
                     is_zstack_data
                 )
-                temp_df = cc_data.merge(rp_df, on=['frame_i', 'Cell_ID'], how='left')
-                temp_df = temp_df.merge(flu_signal_df, on=['frame_i', 'Cell_ID'], how='left')
+                temp_df = cc_data.merge(
+                    rp_df, on=['frame_i', 'Cell_ID'], how='left',
+                    suffixes=('_gui', '')
+                )
+                temp_df = temp_df.merge(
+                    flu_signal_df, on=['frame_i', 'Cell_ID'], how='left',
+                    suffixes=('_gui', '')
+                )
                 # calculate amount of corrected signal by multiplying mean with area
                 if is_timelapse_data:
                     for channel in channels:
-                        temp_df[f'{channel}_corrected_amount'] = temp_df[f'{channel}_corrected_mean'] *\
-                        temp_df['area']
-                        temp_df[f'{channel}_corrected_concentration'] = temp_df[f'{channel}_corrected_amount']/\
-                        temp_df['cell_vol_fl']
+                        temp_df[f'{channel}_corrected_amount'] = (
+                            temp_df[f'{channel}_corrected_mean']
+                            * temp_df['area']
+                        )
+                        temp_df[f'{channel}_corrected_concentration'] = (
+                            temp_df[f'{channel}_corrected_amount']
+                            / temp_df['cell_vol_fl']
+                        )
                 temp_df['max_frame_pos'] = cc_data.frame_i.max()
                 temp_df['file'] = file
                 temp_df['selection_subset'] = file_idx
@@ -172,9 +182,21 @@ def calculate_relatives_data(overall_df, channels):
     for ch in channels:
         try:
             overall_df[f'{ch}_combined_amount_mother_bud'] = overall_df.apply(
-                lambda x: x.loc[f'{ch}_corrected_amount']+x.loc[f'{ch}_corrected_amount_rel'] if\
-                x.loc['cell_cycle_stage']=='S' else\
-                x.loc[f'{ch}_corrected_amount'],
+                lambda x: (
+                    x.loc[f'{ch}_corrected_amount']
+                    + x.loc[f'{ch}_corrected_amount_rel']
+                    if x.loc['cell_cycle_stage']=='S'
+                    else x.loc[f'{ch}_corrected_amount']
+                    ),
+                axis=1
+            )
+            overall_df[f'{ch}_combined_raw_sum_mother_bud'] = overall_df.apply(
+                lambda x: (
+                    x.loc[f'{ch}_raw_sum']
+                    + x.loc[f'{ch}_raw_sum_rel']
+                    if x.loc['cell_cycle_stage']=='S'
+                    else x.loc[f'{ch}_raw_sum']
+                    ),
                 axis=1
             )
         except KeyError:
@@ -487,8 +509,10 @@ def _calculate_flu_signal(seg_mask, channel_data, channels, cc_data, is_timelaps
                     corrected_signal = mean_signal - np.array(bg_medians[c_idx])
                     # temp_df[f'{channels[c_idx]}_corrected_mean'] = np.clip(corrected_signal, 0, np.inf)
                     temp_df[f'{channels[c_idx]}_corrected_mean'] = corrected_signal
+                    temp_df[f'{channels[c_idx]}_raw_sum'] = summed
                 else:
                     temp_df[f'{channels[c_idx]}_corrected_mean'] = 0
+                    temp_df[f'{channels[c_idx]}_raw_sum'] = 0
             df = pd.concat([df, temp_df], ignore_index=True)
         signal_indices = np.array(['_corrected_mean' in col for col in df.columns])
         keep_rows = df.loc[:,signal_indices].sum(axis=1) > 0

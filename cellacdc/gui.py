@@ -11042,8 +11042,9 @@ class guiWin(QMainWindow):
         self.imgCmapName = act.name
         self.updateALLimg()
 
-    def adjustBrightness(self, img, key,
-                         func=skimage.exposure.rescale_intensity):
+    def adjustBrightness(
+            self, img, key, func=skimage.exposure.rescale_intensity
+        ):
         """
         Adjust contrast/brightness of the image selected in the histogram
         context menu using stored levels.
