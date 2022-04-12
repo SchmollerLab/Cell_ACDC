@@ -1541,7 +1541,8 @@ class dataPrepWin(QMainWindow):
 
         xl, yt = [int(round(c)) for c in bkgrROI.pos()]
         bkgrROI.label = pg.LabelItem(
-            'Bkgr. ROI', color=(150,150,150), size=f'{self.pt}pt')
+            'Bkgr. ROI', color=(150,150,150), size=f'{self.pt}pt'
+        )
         hLabel = bkgrROI.label.rect().bottom()
         bkgrROI.label.setPos(xl, yt-hLabel)
 
@@ -1570,7 +1571,10 @@ class dataPrepWin(QMainWindow):
         self.ax1.addItem(bkgrROI.label)
         posData = self.data[self.pos_i]
         posData.bkgrROIs.append(bkgrROI)
-        self.saveBkgrROIs()
+        self.saveBkgrROIs(posData)
+
+        bkgrROI.sigRegionChanged.connect(self.bkgrROIMoving)
+        bkgrROI.sigRegionChangeFinished.connect(self.bkgrROImovingFinished)
 
     def bkgrROIMoving(self, roi):
         txt = roi.label.text
