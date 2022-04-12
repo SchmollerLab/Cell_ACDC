@@ -4049,15 +4049,15 @@ class editCcaTableWidget(QDialog):
         tableLayout.addWidget(ccsLabel, 0, col, alignment=AC)
 
         col += 1
+        relIDLabel = QLabel('Relative ID')
+        relIDLabel.setAlignment(Qt.AlignCenter)
+        tableLayout.addWidget(relIDLabel, 0, col, alignment=AC)
+
+        col += 1
         genNumLabel = QLabel('Generation number')
         genNumLabel.setAlignment(Qt.AlignCenter)
         tableLayout.addWidget(genNumLabel, 0, col, alignment=AC)
         genNumColWidth = genNumLabel.sizeHint().width()
-
-        col += 1
-        relIDLabel = QLabel('Relative ID')
-        relIDLabel.setAlignment(Qt.AlignCenter)
-        tableLayout.addWidget(relIDLabel, 0, col, alignment=AC)
 
         col += 1
         relationshipLabel = QLabel('Relationship')
@@ -4087,8 +4087,14 @@ class editCcaTableWidget(QDialog):
         okButton.setShortcut(Qt.Key_Enter)
 
         cancelButton = QPushButton('Cancel')
-        buttonsLayout.addWidget(okButton)
+
+        moreInfoButton = QPushButton('More info...')
+
+        buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(moreInfoButton)
+        buttonsLayout.addWidget(okButton)
 
         # Scroll area properties
         self.scrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
@@ -4138,17 +4144,6 @@ class editCcaTableWidget(QDialog):
             ccsComboBox.activated.connect(self.clearComboboxFocus)
 
             col += 1
-            genNumSpinBox = QSpinBox()
-            genNumSpinBox.setFocusPolicy(Qt.StrongFocus)
-            genNumSpinBox.installEventFilter(self)
-            genNumSpinBox.setValue(2)
-            genNumSpinBox.setAlignment(Qt.AlignCenter)
-            genNumSpinBox.setFixedWidth(int(genNumColWidth*2/3))
-            genNumSpinBox.setValue(cca_df.at[ID, 'generation_num'])
-            tableLayout.addWidget(genNumSpinBox, row+1, col, alignment=AC)
-            self.genNumSpinBoxes.append(genNumSpinBox)
-
-            col += 1
             relIDComboBox = QComboBox()
             relIDComboBox.setFocusPolicy(Qt.StrongFocus)
             relIDComboBox.installEventFilter(self)
@@ -4159,6 +4154,16 @@ class editCcaTableWidget(QDialog):
             relIDComboBox.currentIndexChanged.connect(self.setRelID)
             relIDComboBox.activated.connect(self.clearComboboxFocus)
 
+            col += 1
+            genNumSpinBox = QSpinBox()
+            genNumSpinBox.setFocusPolicy(Qt.StrongFocus)
+            genNumSpinBox.installEventFilter(self)
+            genNumSpinBox.setValue(2)
+            genNumSpinBox.setAlignment(Qt.AlignCenter)
+            genNumSpinBox.setFixedWidth(int(genNumColWidth*2/3))
+            genNumSpinBox.setValue(cca_df.at[ID, 'generation_num'])
+            tableLayout.addWidget(genNumSpinBox, row+1, col, alignment=AC)
+            self.genNumSpinBoxes.append(genNumSpinBox)
 
             col += 1
             relationshipComboBox = QComboBox()
@@ -4219,8 +4224,20 @@ class editCcaTableWidget(QDialog):
         # Connect to events
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.cancel_cb)
+        moreInfoButton.clicked.connect(self.moreInfo)
 
         # self.setModal(True)
+
+    def moreInfo(self, checked=True):
+        desc = myutils.get_cca_colname_desc()
+        msg = widgets.myMessageBox(parent=self)
+        msg.setWindowTitle('Cell cycle annotations info')
+        msg.setWidth(400)
+        msg.setIcon()
+        for col, txt in desc.items():
+            msg.addText(html_utils.paragraph(f'<b>{col}</b>: {txt}'))
+        msg.addButton('  Ok  ')
+        msg.exec_()
 
     def setRelID(self, itemIndex):
         idx = self.relIDComboBoxes.index(self.sender())

@@ -1843,10 +1843,11 @@ class guiWin(QMainWindow):
         self.manuallyEditCcaAction = QAction(
             'Edit cell cycle annotations...', self
         )
+        self.manuallyEditCcaAction.setShortcut('Ctrl+Shift+P')
         self.manuallyEditCcaAction.setDisabled(True)
 
         self.viewCcaTableAction = QAction(
-            'Edit cell cycle annotations...', self
+            'View cell cycle annotations...', self
         )
         self.viewCcaTableAction.setDisabled(True)
         self.viewCcaTableAction.setShortcut('Ctrl+P')

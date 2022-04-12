@@ -33,7 +33,7 @@ from tifffile.tifffile import TiffWriter, TiffFile
 from PyQt5.QtWidgets import QMessageBox
 from PyQt5.QtCore import pyqtSignal, QObject, QCoreApplication
 
-from . import prompts, widgets, apps, core
+from . import prompts, widgets, apps, core, html_utils
 
 def getCustomAnnotTooltip(annotState):
     toolTip = (
@@ -265,6 +265,45 @@ def checkDataIntegrity(filenames, parent_path, parentQWidget=None):
         msg.exec_()
         return False
     return True
+
+def get_cca_colname_desc():
+    desc = {
+        'Cell ID': (
+            'ID of the segmented cell. All of the other columns '
+            'are properties of this ID.'
+        ),
+        'Cell cycle stage': (
+            'G1 if the cell does NOT have a bud. S/G2/M if it does.'
+        ),
+        'Relative ID': (
+            'ID of the bud related to the Cell ID (row). For cells in G1 write the '
+            'bud ID it had in the previous cycle.'
+        ),
+        'Generation number': (
+            'Number of times the cell divided from a bud. For cells in the first '
+            'frame write any number greater than 1.'
+        ),
+        'Relationship': (
+            'Relationship of the current Cell ID (row). '
+            'Either <b>mother</b> or <b>bud</b>. An object is a bud if '
+            'it didn\'t divide from the mother yet. All other instances '
+            '(e.g., cell in G1) are still labelled as mother.'
+        ),
+        'Emerging frame num.': (
+            'Frame number at which the object emerged/appeared in the scene.'
+        ),
+        'Division frame num.': (
+            'Frame number at which the bud separated from the mother.'
+        ),
+        'Is history known?': (
+            'Cells that are already present in the first frame or appears '
+            'from outside of the field of view, have some information missing. '
+            'For example, for cells in the first frame we do not know how many '
+            'times it budded and divided in the past. '
+            'In these cases Is history known? is True.'
+        )
+    }
+    return desc
 
 def testQcoreApp():
     print(QCoreApplication.instance())
