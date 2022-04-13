@@ -58,9 +58,9 @@ def indexAssignment(
     # Replace untracked IDs with tracked IDs and new IDs with increasing num
     new_untracked_IDs = [ID for ID in IDs_curr_untracked if ID not in old_IDs]
     tracked_lab = lab
-    print('----------------------------')
-    print(f'Assign new IDs uniquely = {assign_unique_new_IDs}')
-    print('***********************')
+    # print('----------------------------')
+    # print(f'Assign new IDs uniquely = {assign_unique_new_IDs}')
+    # print('***********************')
     if new_untracked_IDs and assign_unique_new_IDs:
         # Relabel new untracked IDs unique IDs
         if remove_untracked:
