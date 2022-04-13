@@ -50,7 +50,7 @@ You can load and analyse single **2D images**, **3D data** (3D z-stacks or 2D im
 
 Finally, we provide Jupyter notebooks to **visualize** and interactively **explore** the data produced.
 
-**Do not hesitate to contact me** here on GitHub (by opening an issue) or directly at my email francesco.padovani@helmholtz-muenchen.de for any problem and/or feedback on how to improve the user experience!
+**Do not hesitate to contact me** here on GitHub (by opening an issue) or directly at my email [here](https://www.helmholtz-munich.de/ife/about-us/people/staff-detail/ma/8873/Dr.-Padovani/index.html) for any problem and/or feedback on how to improve the user experience!
 
 ## Update v1.2.4
 First release that is finally available on PyPi.
