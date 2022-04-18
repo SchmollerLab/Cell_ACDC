@@ -133,7 +133,7 @@ def exception_handler(func):
             msg.setWindowTitle('Critical error')
             msg.setIcon(msg.Critical)
             err_msg = (f"""
-            <p style="font-size:14px">
+            <p style="font-size:13px">
                 Error in function <b>{func.__name__}</b>.<br><br>
                 More details below or in the terminal/console.<br><br>
                 Note that the error details from this session are also saved
@@ -1685,6 +1685,35 @@ class guiWin(QMainWindow):
         self.warnLostCellsAction.setCheckable(True)
         self.warnLostCellsAction.setChecked(True)
         self.settingsMenu.addAction(self.warnLostCellsAction)
+
+        warnEditingWithAnnotTexts = {
+            'Delete ID': 'Show warning when deleting ID that has annotations',
+            'Separate IDs': 'Show warning when separating IDs that have annotations',
+            'Edit ID': 'Show warning when editing ID that has annotations',
+            'Annotate ID as dead':
+                'Show warning when annotating dead ID that has annotations',
+            'Delete ID with eraser':
+                'Show warning when erasing ID that has annotations',
+            'Add new ID with brush tool':
+                'Show warning when adding new ID (brush) that has annotations',
+            'Merge IDs':
+                'Show warning when merging IDs that have annotations',
+            'Add new ID with curvature tool':
+                'Show warning when adding new ID (curv. tool) that has annotations',
+            'Add new ID with magic-wand':
+                'Show warning when adding new ID (magic-wand) that has annotations',
+            'Delete IDs using ROI':
+                'Show warning when using ROIs to delete IDs that have annotations',
+        }
+        self.warnEditingWithAnnotActions = {}
+        for key, desc in warnEditingWithAnnotTexts.items():
+            action = QAction()
+            action.setText(desc)
+            action.setCheckable(True)
+            action.setChecked(True)
+            self.warnEditingWithAnnotActions[key] = action
+            self.settingsMenu.addAction(action)
+
 
     def gui_createStatusBar(self):
         self.statusbar = self.statusBar()
@@ -3972,7 +4001,8 @@ class guiWin(QMainWindow):
                 self.tracking(enforce=True, assign_unique_new_IDs=False)
 
             self.updateALLimg(updateFilters=True)
-            self.warnEditingWithCca_df('Add new ID with brush tool')
+            if posData.isNewID:
+                self.warnEditingWithCca_df('Add new ID with brush tool')
 
         # Merge IDs
         elif self.mergeIDsButton.isChecked():
@@ -4059,7 +4089,7 @@ class guiWin(QMainWindow):
             self.updateALLimg()
 
             for ID in erasedIDs:
-                if ID not in posData.lab:
+                if ID not in posData.IDs:
                     self.warnEditingWithCca_df('Delete ID with eraser')
                     break
 
@@ -4075,7 +4105,9 @@ class guiWin(QMainWindow):
 
             # Update colors to include a new color for the new ID
             self.updateALLimg()
-            self.warnEditingWithCca_df('Add new ID with brush tool')
+            if self.isNewID:
+                self.warnEditingWithCca_df('Add new ID with brush tool')
+            self.isNewID = False
 
         # Wand tool release, add new object
         elif self.isMouseDragImg1 and self.wandToolButton.isChecked():
@@ -4351,9 +4383,11 @@ class guiWin(QMainWindow):
 
             if ID > 0 and drawUnder:
                 posData.brushID = self.get_2Dlab(posData.lab)[ydata, xdata]
+                self.isNewID = False
             else:
                 # Update brush ID. Take care of disappearing cells to remember
                 # to not use their IDs anymore in the future
+                self.isNewID = True
                 self.setBrushID()
                 self.updateLookuptable(lenNewLut=posData.brushID+1)
 
@@ -11622,23 +11656,37 @@ class guiWin(QMainWindow):
         else:
             if 'cell_cycle_stage' not in acdc_df.columns:
                 return
-        msg = QMessageBox()
-        msg.setIcon(msg.Warning)
-        msg.setWindowTitle('Edited frame!')
-        msg.setText(
-            'You modified a frame that has cell cycle annotations.\n\n'
-            f'The change "{editTxt}" most likely makes the annotations wrong.\n\n'
-            'If you really want to apply this change we reccommend to remove\n'
-            'ALL cell cycle annotations from current frame to the end.\n\n'
-            'What should I do?'
+        action = self.warnEditingWithAnnotActions.get(editTxt, None)
+        if action is not None:
+            if not action.isChecked():
+                return
+
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph(
+            'You modified a frame that <b>has cell cycle annotations</b>.<br><br>'
+            f'The change <b>"{editTxt}"</b> most likely makes the '
+            '<b>annotations wrong</b>.<br><br>'
+            'If you really want to apply this change we reccommend to remove<br>'
+            'ALL cell cycle annotations from current frame to the end.<br><br>'
+            'What do you want to do?'
         )
-        yes = QPushButton('Remove annotations from future frames (RECOMMENDED)')
-        msg.addButton(yes, msg.YesRole)
-        msg.addButton(QPushButton('Do not remove annotations'), msg.NoRole)
-        msg.exec_()
+        if action is not None:
+            checkBox = QCheckBox('Remember my choice and do not ask again')
+        else:
+            checkBox = None
+        yesButton, _ = msg.warning(
+            self, 'Edited segmentation with annotations!', txt,
+            buttonsTexts=(
+                'Remove annotations from future frames (RECOMMENDED)',
+                'Do not remove annotations'
+                ),
+            widgets=checkBox
+            )
+        if action is not None:
+            action.setChecked(not checkBox.isChecked())
         if return_answer:
-            return msg.clickedButton() == yes
-        if msg.clickedButton() == yes:
+            return msg.clickedButton == yesButton
+        if msg.clickedButton == yesButton:
             self.store_data()
             posData.frame_i -= 1
             self.get_data()
