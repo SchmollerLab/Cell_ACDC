@@ -7024,10 +7024,12 @@ class guiWin(QMainWindow):
             self.enableSizeSpinbox(False)
             while self.app.overrideCursor() is not None:
                 self.app.restoreOverrideCursor()
+            self.updateALLimg()
 
     @exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
+            # posData = self.data[self.pos_i]
             # acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
             # print(acdc_df.columns)
             # print(acdc_df)
@@ -7280,7 +7282,7 @@ class guiWin(QMainWindow):
         # Ask what to do unless the user has previously checked doNotShowAgain
         if doNotShow:
             endFrame_i = i
-            doNotShowAgain = True
+            return UndoFutFrames, applyFutFrames, endFrame_i, doNotShow
         else:
             ffa = apps.FutureFramesAction_QDialog(
                     posData.frame_i+1, i, modTxt, applyTrackingB=applyTrackingB,
@@ -9004,11 +9006,9 @@ class guiWin(QMainWindow):
 
     def update_overlay_z_slice(self, z):
         posData = self.data[self.pos_i]
-        print(posData.loadedChNames)
-        keys = list(posData.ol_data.keys())
-        print(keys)
-        # idx = (posData.filename, posData.frame_i)
-        # posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
+        filename = list(posData.ol_data.keys())[0]
+        idx = (filename, posData.frame_i)
+        posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
         self.getOverlayImg(setImg=True)
 
     def updateOverlayZproj(self, how):
