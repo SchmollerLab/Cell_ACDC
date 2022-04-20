@@ -1711,6 +1711,7 @@ class guiWin(QMainWindow):
             action.setText(desc)
             action.setCheckable(True)
             action.setChecked(True)
+            action.removeAnnot = False
             self.warnEditingWithAnnotActions[key] = action
             self.settingsMenu.addAction(action)
 
@@ -7270,6 +7271,7 @@ class guiWin(QMainWindow):
         # Ask what to do unless the user has previously checked doNotShowAgain
         if doNotShow:
             endFrame_i = i
+            doNotShowAgain = True
         else:
             ffa = apps.FutureFramesAction_QDialog(
                     posData.frame_i+1, i, modTxt, applyTrackingB=applyTrackingB,
@@ -11684,6 +11686,7 @@ class guiWin(QMainWindow):
             )
         if action is not None:
             action.setChecked(not checkBox.isChecked())
+            action.removeAnnot = msg.clickedButton == yesButton
         if return_answer:
             return msg.clickedButton == yesButton
         if msg.clickedButton == yesButton:
@@ -11692,6 +11695,13 @@ class guiWin(QMainWindow):
             self.get_data()
             self.remove_future_cca_df(posData.frame_i)
             self.next_frame()
+        if action is not None:
+            if action.removeAnnot:
+                self.store_data()
+                posData.frame_i -= 1
+                self.get_data()
+                self.remove_future_cca_df(posData.frame_i)
+                self.next_frame()
 
     def addExistingDelROIs(self):
         posData = self.data[self.pos_i]
