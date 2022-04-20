@@ -36,7 +36,7 @@ try:
     from cellacdc.utils import convert as utilsConvert
     from cellacdc.utils import rename as utilsRename
     from cellacdc.utils import align as utilsAlign
-    from cellacdc import is_win
+    from cellacdc import is_win, is_linux
 except ModuleNotFoundError as e:
     src_path = os.path.dirname(os.path.abspath(__file__))
     main_path = os.path.dirname(src_path)
@@ -69,7 +69,8 @@ class mainWin(QMainWindow):
         self.setWindowTitle("Cell-ACDC")
         self.setWindowIcon(QIcon(":assign-motherbud.svg"))
 
-        self.loadFonts()
+        if not is_linux:
+            self.loadFonts()
 
         self.createActions()
         self.createMenuBar()
@@ -171,6 +172,8 @@ class mainWin(QMainWindow):
         self._version = version
 
     def loadFonts(self):
+        font = QtGui.QFont()
+        font.setFamily('Ubuntu')
         QFontDatabase.addApplicationFont(":Ubuntu-Regular.ttf")
         QFontDatabase.addApplicationFont(":Ubuntu-Bold.ttf")
         QFontDatabase.addApplicationFont(":Ubuntu-Italic.ttf")
