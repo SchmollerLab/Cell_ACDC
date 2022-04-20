@@ -1120,7 +1120,7 @@ class segmWin(QMainWindow):
             )
             return True
 
-    def closeEvent(self, event):
+    def closeEvent(self, event):            
         if self.buttonToRestore is not None:
             button, color, text = self.buttonToRestore
             button.setText(text)

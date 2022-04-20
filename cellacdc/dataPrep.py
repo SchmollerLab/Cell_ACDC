@@ -2171,6 +2171,12 @@ class dataPrepWin(QMainWindow):
             event.ignore()
             self.hide()
 
+        self.logger.info('Closing dataPrep logger...')
+        handlers = self.logger.handlers[:]
+        for handler in handlers:
+            handler.close()
+            self.logger.removeHandler(handler)
+
         if self.loop is not None:
             self.loop.exit()
 

@@ -2136,6 +2136,7 @@ class guiWin(QMainWindow):
     def gui_createLeftSideWidgets(self):
         self.leftSideDocksLayout = QVBoxLayout()
         self.showPropsDockButton = widgets.expandCollapseButton()
+        self.showPropsDockButton.setFocusPolicy(Qt.NoFocus)
         self.showPropsDockButton.setToolTip('Show object properties')
         self.leftSideDocksLayout.addWidget(self.showPropsDockButton)
         self.leftSideDocksLayout.setSpacing(0)
@@ -3730,6 +3731,7 @@ class guiWin(QMainWindow):
         if not event.isExit() and setEraserCursor:
             x, y = event.pos()
             self.updateEraserCursor(x, y)
+            self.hideItemsHoverBrush(x, y)
         else:
             self.setHoverToolSymbolData(
                 [], [], (self.ax1_EraserCircle, self.ax2_EraserCircle,
@@ -4088,6 +4090,8 @@ class guiWin(QMainWindow):
             # Update data (rp, etc)
             self.update_rp()
             self.updateALLimg()
+            # Keep overlaid masks when using eraser (if not contours mode)
+            self.setTempImg1Eraser(None, init=True)
 
             for ID in erasedIDs:
                 if ID not in posData.IDs:
@@ -4455,14 +4459,14 @@ class guiWin(QMainWindow):
 
             posData.lab[mask] = 0
 
-            self.erasesedLab = np.zeros_like(posData.lab)
+            self.setTempImg1Eraser(None, init=True)
+
             for erasedID in np.unique(self.erasedIDs):
                 if erasedID == 0:
                     continue
                 self.erasesedLab[posData.lab==erasedID] = erasedID
 
             self.getDisplayedCellsImg()
-            how = self.drawIDsContComboBox.currentText()
             self.setTempImg1Eraser(mask)
 
             self.img2.updateImage()
@@ -6344,6 +6348,8 @@ class guiWin(QMainWindow):
     def drawIDsContComboBox_cb(self, idx):
         self.updateALLimg()
         how = self.drawIDsContComboBox.currentText()
+        self.df_settings.at['how_draw_annotations', 'value'] = how
+        self.df_settings.to_csv(self.settings_csv_path)
         onlyIDs = how == 'Draw only IDs'
         nothing = how == 'Draw nothing'
         onlyCont = how == 'Draw only contours'
@@ -6385,6 +6391,9 @@ class guiWin(QMainWindow):
                     continue
                 if BudMothLine.getData()[0] is not None:
                     BudMothLine.setData([], [])
+
+        if self.eraserButton.isChecked():
+            self.setTempImg1Eraser(None, init=True)
 
     def mousePressColorButton(self, event):
         posData = self.data[self.pos_i]
@@ -7001,6 +7010,7 @@ class guiWin(QMainWindow):
                 [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
             )
             self.updateEraserCursor(self.xHoverImg, self.yHoverImg)
+            self.setTempImg1Eraser(None, init=True)
             self.disconnectLeftClickButtons()
             self.uncheckLeftClickButtons(self.sender())
             c = self.defaultToolBarButtonColor
@@ -7018,7 +7028,6 @@ class guiWin(QMainWindow):
     @exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
-            # posData = self.data[self.pos_i]
             # acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
             # print(acdc_df.columns)
             # print(acdc_df)
@@ -8753,6 +8762,7 @@ class guiWin(QMainWindow):
         self.setAxesMaxRange()
         self.setImageNameText()
         self.updateALLimg()
+        self.restoreSavedSettings()
 
         self.titleLabel.setText(
             'Data successfully loaded.',
@@ -8760,6 +8770,11 @@ class guiWin(QMainWindow):
         )
 
         QTimer.singleShot(200, self.autoRange)
+
+    def restoreSavedSettings(self):
+        if 'how_draw_annotations' in self.df_settings.index:
+            how = self.df_settings.at['how_draw_annotations', 'value']
+            self.drawIDsContComboBox.setCurrentText(how)
 
     def setImageNameText(self):
         self.statusbar.clearMessage()
@@ -8988,6 +9003,12 @@ class guiWin(QMainWindow):
         self.updateALLimg(only_ax1=self.updateOnlyImg())
 
     def update_overlay_z_slice(self, z):
+        posData = self.data[self.pos_i]
+        print(posData.loadedChNames)
+        keys = list(posData.ol_data.keys())
+        print(keys)
+        # idx = (posData.filename, posData.frame_i)
+        # posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
         self.getOverlayImg(setImg=True)
 
     def updateOverlayZproj(self, how):
@@ -11147,9 +11168,9 @@ class guiWin(QMainWindow):
     def setLookupTableImg(self, img):
         pass
 
-    def overlaySegmMasks(self, img):
+    def overlaySegmMasks(self, img, force=False):
         how = self.drawIDsContComboBox.currentText()
-        if how.find('overlay segm. masks') == -1:
+        if how.find('overlay segm. masks') == -1 and not force:
             return img
 
         posData = self.data[self.pos_i]
@@ -11561,10 +11582,20 @@ class guiWin(QMainWindow):
         self.img1.setImage(brushOverlay)
         return overlay
 
-    def setTempImg1Eraser(self, mask):
-        erasedRp = skimage.measure.regionprops(self.erasesedLab)
+    def setTempImg1Eraser(self, mask, init=False):
+        if init:
+            if self.overlayButton.isChecked():
+                img = self.getOverlayImg(setImg=False)
+            else:
+                img = self.getImageWithCmap()
+            self.imgRGB = self.overlaySegmMasks(img, force=True)
+            posData = self.data[self.pos_i]
+            lab = self.get_2Dlab(posData.lab)
+            self.erasesedLab = np.zeros_like(lab)
+
         how = self.drawIDsContComboBox.currentText()
         if how.find('contours') != -1:
+            erasedRp = skimage.measure.regionprops(self.erasesedLab)
             for obj in erasedRp:
                 idx = obj.label-1
                 curveID = self.ax1_ContoursCurves[idx]
@@ -11572,9 +11603,10 @@ class guiWin(QMainWindow):
                 curveID.setData(
                     cont[:,0], cont[:,1], pen=self.oldIDs_cpen
             )
-        elif how.find('segm. masks') != -1:
-            self.img1.image[mask] = self.img1uintRGB[mask]
-            self.img1.setImage(self.img1.image)
+        else:
+            if mask is not None:
+                self.imgRGB[mask] = self.img1uintRGB[mask]
+            self.img1.setImage(self.imgRGB)
 
     def update_cca_df_relabelling(self, posData, oldIDs, newIDs):
         relIDs = posData.cca_df['relative_ID']
@@ -12145,6 +12177,8 @@ class guiWin(QMainWindow):
         onlyMasks = how == 'Draw only overlay segm. masks'
         ccaInfo_and_masks = how == 'Draw cell cycle info and overlay segm. masks'
 
+        if nothing:
+            return
 
         ID = obj.label
         if ID in posData.lost_IDs:
@@ -13606,8 +13640,6 @@ class guiWin(QMainWindow):
         h = self.showPropsDockButton.height()
         self.showPropsDockButton.setMaximumWidth(15)
         self.showPropsDockButton.setMaximumHeight(60)
-
-        self.showPropsDockButton.clearFocus()
 
     def resizeEvent(self, event):
         if hasattr(self, 'ax1'):
