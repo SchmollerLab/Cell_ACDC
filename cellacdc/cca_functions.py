@@ -148,10 +148,14 @@ def calculate_downstream_data(
                             temp_df[f'{channel}_corrected_mean']
                             * temp_df['area']
                         )
-                        temp_df[f'{channel}_corrected_concentration'] = (
-                            temp_df[f'{channel}_corrected_amount']
-                            / temp_df['cell_vol_fl']
-                        )
+                        try:
+                            temp_df[f'{channel}_corrected_concentration'] = (
+                                temp_df[f'{channel}_corrected_amount']
+                                / temp_df['cell_vol_fl']
+                            )
+                        except KeyError:
+                            print(f'Volume is missing in acdc output, NaNs inserted in concentration columns of channel {channel}')
+                            temp_df[f'{channel}_corrected_concentration'] = None
                 temp_df['max_frame_pos'] = cc_data.frame_i.max()
                 temp_df['file'] = file
                 temp_df['selection_subset'] = file_idx
@@ -273,7 +277,6 @@ def calculate_per_phase_quantities(overall_df, group_cols, channels):
     )['complete_phase'].transform('sum')
     complete_cycle_indices = no_of_compl_phases_per_cycle == 2
     phase_grouped['complete_cycle'] = complete_cycle_indices.astype(int)
-    phase_grouped['all_complete'] = (phase_grouped['complete_cycle']+phase_grouped['complete_phase']==2).astype(int)
     # join phase-grouped data with
     phase_grouped = phase_grouped.merge(phase_grouped_flu, how='left', on=group_cols, suffixes=('',''))
     return phase_grouped
