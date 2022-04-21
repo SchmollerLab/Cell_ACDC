@@ -542,6 +542,9 @@ class welcomeWin(QWidget):
                     relabel object IDs sequentially<br>
 
                     &nbsp;&nbsp; - <code>Spacebar</code> -->
+                    toggle between annotations mode (IDs, contours, overlay segm. masks etc.)<br>
+
+                    &nbsp;&nbsp; - Double press <code>Spacebar</code> -->
                     hide/show annotations on left image<br>
 
                     &nbsp;&nbsp; - <code>Ctrl+F</code> -->
@@ -1049,7 +1052,7 @@ class welcomeWin(QWidget):
             welcomeWinRight = left+width
             if welcomeWinRight+mainWinWidth > screenRight:
                 # The right edge of the welcome window is out of screen bounds
-                # Keep in the screen
+                # Keep it in the screen
                 welcomeWinRight = screenRight-mainWinWidth
             self.mainWin.move(welcomeWinRight, top)
 
