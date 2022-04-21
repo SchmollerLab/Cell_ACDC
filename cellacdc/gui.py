@@ -655,11 +655,6 @@ class saveDataWorker(QObject):
                             # self.mainWin.logger.info(traceback.format_exc())
                         self.metricsPbarProgress.emit(-1, 1)
 
-        df['cell_area_pxl'] = pd.Series(data=IDs_area_pxl, index=IDs, dtype=float)
-        df['cell_vol_vox'] = pd.Series(data=IDs_vol_vox, index=IDs, dtype=float)
-        df['cell_area_um2'] = pd.Series(data=IDs_area_um2, index=IDs, dtype=float)
-        df['cell_vol_fl'] = pd.Series(data=IDs_vol_fl, index=IDs, dtype=float)
-
         df_metrics = pd.DataFrame(metrics_values, index=IDs)
 
         # Drop metrics that were already calculated in a prev session
@@ -694,6 +689,34 @@ class saveDataWorker(QObject):
         df = df.drop(columns=cell_id_cols, errors='ignore')
         time_seconds_cols = df.filter(regex='time_seconds.*').columns
         df = df.drop(columns=time_seconds_cols, errors='ignore')
+
+        return df
+
+    def addRotVolume(self, df, rp, posData):
+        PhysicalSizeY = posData.PhysicalSizeY
+        PhysicalSizeX = posData.PhysicalSizeX
+        yx_pxl_to_um2 = PhysicalSizeY*PhysicalSizeX
+
+        init_list = [-2]*len(rp)
+        IDs = init_list.copy()
+        IDs_vol_vox = init_list.copy()
+        IDs_area_pxl = init_list.copy()
+        IDs_vol_fl = init_list.copy()
+        IDs_area_um2 = init_list.copy()
+        for i, obj in enumerate(rp):
+            IDs[i] = obj.label
+            vol_vox, vol_fl = _calc_rot_vol(
+                obj, PhysicalSizeY, PhysicalSizeX
+            )
+            IDs_vol_vox[i] = vol_vox
+            IDs_vol_fl[i] = vol_fl
+            IDs_area_pxl[i] = obj.area
+            IDs_area_um2[i] = obj.area*yx_pxl_to_um2
+
+        df['cell_area_pxl'] = pd.Series(data=IDs_area_pxl, index=IDs, dtype=float)
+        df['cell_vol_vox'] = pd.Series(data=IDs_vol_vox, index=IDs, dtype=float)
+        df['cell_area_um2'] = pd.Series(data=IDs_area_um2, index=IDs, dtype=float)
+        df['cell_vol_fl'] = pd.Series(data=IDs_vol_fl, index=IDs, dtype=float)
 
         return df
 
@@ -782,6 +805,10 @@ class saveDataWorker(QObject):
                             if save_metrics:
                                 acdc_df = self.addMetrics_acdc_df(
                                     acdc_df, rp, frame_i, lab, posData
+                                )
+                            elif mode == 'Cell cycle analysis':
+                                acdc_df = self.addRotVolume(
+                                    acdc_df, rp, posData
                                 )
                             acdc_df_li.append(acdc_df)
                             key = (frame_i, posData.TimeIncrement*frame_i)

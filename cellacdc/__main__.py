@@ -612,11 +612,11 @@ def run():
         pass
     print('**********************************************')
     print(f'Welcome to Cell-ACDC v{version}!')
+    print('**********************************************')
     print('-----------------------------------')
     print('NOTE: If application is not visible, it is probably minimized '
           'or behind some other open window.')
     print('-----------------------------------')
-    print('**********************************************')
     # win.raise_()
     sys.exit(app.exec_())
 
