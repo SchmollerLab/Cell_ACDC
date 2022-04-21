@@ -8,7 +8,9 @@ import numpy as np
 from PyQt5.QtGui import (
     QIcon, QFont, QFontMetrics, QPixmap, QPalette, QColor
 )
-from PyQt5.QtCore import Qt, QSize, QEvent, pyqtSignal, QObject, QThread
+from PyQt5.QtCore import (
+    Qt, QSize, QEvent, pyqtSignal, QObject, QThread, QTimer
+)
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QGridLayout, QTextEdit, QPushButton,
     QListWidget, QListWidgetItem, QCheckBox, QFrame, QStyleFactory,
@@ -542,7 +544,7 @@ class welcomeWin(QWidget):
                     &nbsp;&nbsp; - <code>Spacebar</code> -->
                     hide/show annotations on left image<br>
 
-                    &nbsp;&nbsp; - <code>Ctrl+F</code> --> 
+                    &nbsp;&nbsp; - <code>Ctrl+F</code> -->
                     hide/show annotations on left image<br>
 
                     &nbsp;&nbsp; - <code>Alt+Click&Drag</code> -->
@@ -1010,9 +1012,23 @@ class welcomeWin(QWidget):
 
         self.treeSelector.setFixedWidth(self.treeSelector.width())
 
-        scrollbar = self.quickStartScrollArea.horizontalScrollBar()
-        while self.quickStartScrollArea.horizontalScrollBar().isVisible():
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.resizeScrollbar)
+        self.timer.start(1)
+
+    def resizeScrollbar(self):
+        if self.quickStartScrollArea.horizontalScrollBar().isVisible():
             self.resize(self.width()+5, self.height())
+        else:
+            self.timer.stop()
+            self.moveWindow()
+
+    def moveWindow(self):
+        screenWidth = self.screen().size().width()
+        screenHeight = self.screen().size().height()
+        screenLeft = self.screen().geometry().x()
+        screenTop = self.screen().geometry().y()
+        screenRight = screenLeft + screenWidth
 
         winGeometry = self.geometry()
         w = winGeometry.width()
@@ -1020,21 +1036,22 @@ class welcomeWin(QWidget):
         w0 = winGeometry.width()
         Dw = w - w0
         Dh = 1.5
-        left = 10 # l-int(Dw/2)
-        top = 70# int(t-(1-Dh))
+        left = screenLeft + 10
+        top = screenTop + 70
         width = w
         height = int(h*Dh)
+        if height > 0.9*screenHeight:
+            height = int(0.9*screenHeight)
 
-        screenWidth = self.screen().size().width()
-        screenHeight = self.screen().size().height()
-
-        self.setGeometry(10, 70, width, height)
+        self.setGeometry(left, top, width, height)
         if self.mainWin is not None:
             mainWinWidth = self.mainWin.width()
-            moveToLeft = left+width
-            if moveToLeft+mainWinWidth > screenWidth:
-                moveToLeft = screenWidth-mainWinWidth
-            self.mainWin.move(moveToLeft, top)
+            welcomeWinRight = left+width
+            if welcomeWinRight+mainWinWidth > screenRight:
+                # The right edge of the welcome window is out of screen bounds
+                # Keep in the screen
+                welcomeWinRight = screenRight-mainWinWidth
+            self.mainWin.move(welcomeWinRight, top)
 
 
     def showPage(self, currentItem):
