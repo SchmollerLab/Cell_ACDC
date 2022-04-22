@@ -248,17 +248,21 @@ class myMessageBox(QDialog):
         self.layout.setRowStretch(self.currentRow, 0)
 
         super().show()
+        self._block = block
+        QTimer.singleShot(10, self._resize)
+
+    def _resize(self):
         widths = [button.width() for button in self.buttons]
         if widths:
             max_width = max(widths)
             for button in self.buttons:
                 button.setMinimumWidth(max_width)
 
+        if self._w is not None and self.width() < self._w:
+            self.resize(self._w, self.height())
+
         if self.width() < 350:
             self.resize(350, self.height())
-
-        if self._w is not None:
-            self.resize(self._w, self.height())
 
         if self.showCentered:
             screen = self.screen()
