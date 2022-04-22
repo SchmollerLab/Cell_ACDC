@@ -273,7 +273,7 @@ class myMessageBox(QDialog):
             top = int(screenHeight/2 - h/2)
             self.move(left, top)
 
-        if block:
+        if self._block:
             self.loop = QEventLoop()
             self.loop.exec_()
 
