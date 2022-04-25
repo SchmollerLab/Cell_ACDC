@@ -18,7 +18,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import (
     Qt, QProcess, pyqtSignal, pyqtSlot, QTimer, QSize,
-    QSettings, QUrl
+    QSettings, QUrl, QObject
 )
 from PyQt5.QtGui import QFontDatabase, QIcon, QDesktopServices
 from pyqtgraph.Qt import QtGui
@@ -599,6 +599,7 @@ def run():
 
     # Create the application
     app = QApplication([])
+
     app.setStyle(QStyleFactory.create('Fusion'))
     app.setWindowIcon(QIcon(":assign-motherbud.svg"))
     win = mainWin(app)

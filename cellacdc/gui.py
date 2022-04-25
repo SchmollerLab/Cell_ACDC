@@ -499,6 +499,8 @@ class saveDataWorker(QObject):
                 _objMask = self.mainWin.getObjImage(obj.image, obj.bbox)
                 IDs[i] = obj.label
                 # Calc volume
+                vol_vox = None
+                vol_fl = None
                 if 'cell_vol_vox' in self.mainWin.sizeMetricsToSave:
                     vol_vox, vol_fl = _calc_rot_vol(
                         obj, PhysicalSizeY, PhysicalSizeX
@@ -564,10 +566,23 @@ class saveDataWorker(QObject):
                                 or bkgrArchive is not None)
                         )
                         if func_name == 'amount_autoBkgr':
+                            conc_keys = measurements.get_conc_keys(key)
                             if not key in metricsToSkipChannel:
                                 val = func(fluo_data_ID, fluo_backgr, obj.area)
                                 metrics_values[key][i] = val
+                                conc_key_vox, conc_key_fl = conc_keys
+                                calc_conc = (
+                                    vol_vox is not None
+                                    and conc_key_vox not in metricsToSkipChannel
+                                )
+                                if calc_conc:
+                                    # Compute concentration
+                                    conc_vox = val/vol_vox
+                                    conc_fl = val/vol_vox
+                                    metrics_values[conc_key_vox][i] = conc_vox
+                                    metrics_values[conc_key_fl][i] = conc_fl
                         elif is_ROIbkgr_func:
+                            conc_keys = measurements.get_conc_keys(key)
                             if ROI_bkgrMask is not None:
                                 ROI_bkgrData = fluo_2D[ROI_bkgrMask]
                                 ROI_bkgrVal = np.median(ROI_bkgrData)
@@ -577,6 +592,17 @@ class saveDataWorker(QObject):
                             if not key in metricsToSkipChannel:
                                 val = func(fluo_data_ID, ROI_bkgrVal, obj.area)
                                 metrics_values[key][i] = val
+                                conc_key_vox, conc_key_fl = conc_keys
+                                calc_conc = (
+                                    vol_vox is not None
+                                    and conc_key_vox not in metricsToSkipChannel
+                                )
+                                if calc_conc:
+                                    # Compute concentration
+                                    conc_vox = val/vol_vox
+                                    conc_fl = val/vol_vox
+                                    metrics_values[conc_key_vox][i] = conc_vox
+                                    metrics_values[conc_key_fl][i] = conc_fl
 
                             bkgr_key = f'{chName}_dataPrepBkgr_val_median{how}'
                             if not bkgr_key in metricsToSkipChannel:
@@ -959,6 +985,9 @@ class guiWin(QMainWindow):
 
         from .trackers.YeaZ import tracking as tracking_yeaz
         self.tracking_yeaz = tracking_yeaz
+
+        from config import parser_args
+        self.debug = parser_args['debug']
 
         super().__init__(parent)
 
@@ -3911,9 +3940,10 @@ class guiWin(QMainWindow):
         self.imgGrad.gradient.menu.removeAction(self.userChNameAction)
         self.imgGrad.gradient.menu.addAction(self.userChNameAction)
         posData = self.data[self.pos_i]
-        for action in posData.fluoDataChNameActions:
-            self.imgGrad.gradient.menu.removeAction(action)
-            self.imgGrad.gradient.menu.addAction(action)
+        if self.overlayButton.isChecked():
+            for action in posData.fluoDataChNameActions:
+                self.imgGrad.gradient.menu.removeAction(action)
+                self.imgGrad.gradient.menu.addAction(action)
         try:
             # Convert QPointF to QPoint
             self.imgGrad.gradient.menu.popup(event.screenPos().toPoint())
@@ -7056,12 +7086,14 @@ class guiWin(QMainWindow):
     @exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
-            # posData = self.data[self.pos_i]
-            # acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
-            # print(acdc_df.columns)
-            # print(acdc_df)
-            pass
-            # self.imgGrad.sigLookupTableChanged.disconnect()
+            if self.debug:
+                # posData = self.data[self.pos_i]
+                print(self.all_metrics_names)
+                # print(posData.manualContrastKey)
+                # acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
+                # print(acdc_df.columns)
+                # print(acdc_df)
+                pass
         try:
             posData = self.data[self.pos_i]
         except AttributeError:
@@ -9189,9 +9221,6 @@ class guiWin(QMainWindow):
             self.chNamesQActionGroup.addAction(action)
             action.setChecked(True)
             posData.fluoDataChNameActions.append(action)
-        allTexts = [
-            action.text() for action in self.chNamesQActionGroup.actions()
-        ]
 
     def computeSegm(self):
         posData = self.data[self.pos_i]
@@ -10969,17 +10998,34 @@ class guiWin(QMainWindow):
             rgb = self.df_settings.at['overlayColor', 'value']
             rgb = [int(v) for v in rgb.split('-')]
             self.overlayColorButton.setColor(rgb)
-
+            self.setCheckedContextMenuAction()
             self.updateALLimg(only_ax1=True)
-
             self.enableOverlayWidgets(True)
+
         else:
             self.UserNormAction.setChecked(True)
+            self.imgGrad.gradient.menu.removeAction(self.userChNameAction)
+            for action in posData.fluoDataChNameActions:
+                self.imgGrad.gradient.menu.removeAction(action)
             self.create_chNamesQActionGroup(self.user_ch_name)
-            posData.fluoDataChNameActions = []
+            # posData.fluoDataChNameActions = []
             self.updateImageGradientItem(self.img1)
             self.updateALLimg(only_ax1=True)
             self.enableOverlayWidgets(False)
+
+    def setCheckedContextMenuAction(self):
+        posData = self.data[self.pos_i]
+        self.userChNameAction.setChecked(False)
+        for action in posData.fluoDataChNameActions:
+            action.setChecked(False)
+        checkedActionText = posData.manualContrastKey[len(posData.basename):]
+        if self.userChNameAction.text() == checkedActionText:
+            self.userChNameAction.setChecked(True)
+        else:
+            for action in posData.fluoDataChNameActions:
+                if action.text() == checkedActionText:
+                    action.setChecked(True)
+                    break
 
     def enableOverlayWidgets(self, enabled):
         posData = self.data[self.pos_i]
@@ -12478,8 +12524,12 @@ class guiWin(QMainWindow):
         self.userChNameAction = QAction(self)
         self.userChNameAction.setCheckable(True)
         self.userChNameAction.setText(user_ch_name)
-        self.userChNameAction.setChecked(True)
         self.chNamesQActionGroup.addAction(self.userChNameAction)
+        posData = self.data[self.pos_i]
+        for action in posData.fluoDataChNameActions:
+            self.chNamesQActionGroup.addAction(action)
+            action.setChecked(False)
+        self.userChNameAction.setChecked(True)
         self.chNamesQActionGroup.triggered.connect(self.setManualContrastKey)
 
     def setManualContrastKey(self, action):

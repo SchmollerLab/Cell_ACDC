@@ -27,7 +27,11 @@ def html_body(txt):
 
 def paragraph(txt, font_size='13px', font_color=None):
     if is_mac:
+        # Qt < 5.15.3 has a bug on macOS and the space after comma and perdiod
+        # are super small. Force a non-breaking space (except for 'e.g.,').
         txt = txt.replace(',', ',&nbsp;')
+        txt = txt.replace('.', '.&nbsp;')
+        txt = txt.replace('e.g.&nbsp;', 'e.g.')
     if font_color is None:
         s = (f"""
         <p style="font-size:{font_size};">

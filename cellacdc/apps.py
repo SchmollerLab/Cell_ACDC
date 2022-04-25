@@ -722,7 +722,7 @@ class setMeasurementsDialog(QDialog):
             channelGBox.chName = chName
             groupsLayout.addWidget(channelGBox, 0, current_col, 2, 1)
             self.chNameGroupboxes.append(channelGBox)
-            current_col += col
+            current_col += 1
 
         current_col += 1
 
@@ -761,49 +761,53 @@ class setMeasurementsDialog(QDialog):
         okButton.clicked.connect(self.close)
 
     def closeEvent(self, event):
-        if self.sender() == self.okButton and self.acdc_df is not None:
-            existing_colnames = list(self.acdc_df.columns)
-            unchecked_existing_colnames = []
-            unchecked_existing_rps = []
-            for chNameGroupbox in self.chNameGroupboxes:
-                for checkBox in chNameGroupbox.checkBoxes:
-                    colname = checkBox.text()
-                    is_existing = colname in existing_colnames
-                    if not chNameGroupbox.isChecked() and is_existing:
-                        unchecked_existing_colnames.append(colname)
-                        continue
-                    if not checkBox.isChecked() and is_existing:
-                        unchecked_existing_colnames.append(colname)
-            for checkBox in self.sizeMetricsQGBox.checkBoxes:
+        if self.acdc_df is None:
+            return
+        if self.sender() != self.okButton:
+            return
+
+        existing_colnames = list(self.acdc_df.columns)
+        unchecked_existing_colnames = []
+        unchecked_existing_rps = []
+        for chNameGroupbox in self.chNameGroupboxes:
+            for checkBox in chNameGroupbox.checkBoxes:
                 colname = checkBox.text()
                 is_existing = colname in existing_colnames
-                if not self.sizeMetricsQGBox.isChecked() and is_existing:
+                if not chNameGroupbox.isChecked() and is_existing:
                     unchecked_existing_colnames.append(colname)
                     continue
-
                 if not checkBox.isChecked() and is_existing:
                     unchecked_existing_colnames.append(colname)
-            for checkBox in self.regionPropsQGBox.checkBoxes:
-                colname = checkBox.text()
-                is_existing = any([col.find(colname) !=-1 for col in existing_colnames])
-                if not self.regionPropsQGBox.isChecked() and is_existing:
-                    unchecked_existing_rps.append(colname)
-                    continue
+        for checkBox in self.sizeMetricsQGBox.checkBoxes:
+            colname = checkBox.text()
+            is_existing = colname in existing_colnames
+            if not self.sizeMetricsQGBox.isChecked() and is_existing:
+                unchecked_existing_colnames.append(colname)
+                continue
 
-                if not checkBox.isChecked() and is_existing:
-                    unchecked_existing_rps.append(colname)
+            if not checkBox.isChecked() and is_existing:
+                unchecked_existing_colnames.append(colname)
+        for checkBox in self.regionPropsQGBox.checkBoxes:
+            colname = checkBox.text()
+            is_existing = any([col.find(colname) !=-1 for col in existing_colnames])
+            if not self.regionPropsQGBox.isChecked() and is_existing:
+                unchecked_existing_rps.append(colname)
+                continue
 
-            if unchecked_existing_colnames or unchecked_existing_rps:
-                cancel, self.delExistingCols = self.warnUncheckedExistingMeasurements(
-                    unchecked_existing_colnames, unchecked_existing_rps
-                )
-                self.existingUncheckedColnames = unchecked_existing_colnames
-                self.existingUncheckedRps = unchecked_existing_rps
-                if cancel:
-                    event.ignore()
-                    return
+            if not checkBox.isChecked() and is_existing:
+                unchecked_existing_rps.append(colname)
 
-            self.sigClosed.emit()
+        if unchecked_existing_colnames or unchecked_existing_rps:
+            cancel, self.delExistingCols = self.warnUncheckedExistingMeasurements(
+                unchecked_existing_colnames, unchecked_existing_rps
+            )
+            self.existingUncheckedColnames = unchecked_existing_colnames
+            self.existingUncheckedRps = unchecked_existing_rps
+            if cancel:
+                event.ignore()
+                return
+
+        self.sigClosed.emit()
 
     def warnUncheckedExistingMeasurements(
             self, unchecked_existing_colnames, unchecked_existing_rps
@@ -811,7 +815,7 @@ class setMeasurementsDialog(QDialog):
         msg = widgets.myMessageBox()
         msg.setWidth(500)
         msg.addShowInFileManagerButton(self.acdc_df_path)
-        txt = (
+        txt = html_utils.paragraph(
             'You chose to <b>not save</b> some measurements that are '
             '<b>already present</b> in the saved <code>acdc_output.csv</code> '
             'file.<br><br>'
@@ -831,8 +835,8 @@ class setMeasurementsDialog(QDialog):
 
     def show(self):
         super().show()
-        self.move(self.x(), 0)
-        h = self.screen().size().height()-100
+        self.move(self.x(), 10)
+        h = self.screen().size().height()-200
         self.resize(self.width(), h)
 
 class QDialogMetadataXML(QDialog):

@@ -174,6 +174,8 @@ class myMessageBox(QDialog):
         self.buttonsLayout = QHBoxLayout()
         self.buttonsLayout.setSpacing(2)
         self.buttons = []
+        self.widgets = []
+        self.layouts = []
 
         self.currentRow = 0
         self._w = None
@@ -229,10 +231,12 @@ class myMessageBox(QDialog):
 
     def addWidget(self, widget):
         self.layout.addWidget(widget, self.currentRow, 1)
+        self.widgets.append(widget)
         self.currentRow += 1
 
     def addLayout(self, layout):
         self.layout.addLayout(layout, self.currentRow, 1)
+        self.layouts.append(layout)
         self.currentRow += 1
 
     def setWidth(self, w):
@@ -259,8 +263,11 @@ class myMessageBox(QDialog):
         self.layout.setRowStretch(self.currentRow, 0)
 
         super().show()
-        self._block = block
-        QTimer.singleShot(10, self._resize)
+        QTimer.singleShot(5, self._resize)
+
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
 
     def _resize(self):
         widths = [button.width() for button in self.buttons]
@@ -279,14 +286,44 @@ class myMessageBox(QDialog):
             screen = self.screen()
             screenWidth = screen.size().width()
             screenHeight = screen.size().height()
+            screenLeft = screen.geometry().x()
+            screenTop = screen.geometry().y()
             w, h = self.width(), self.height()
-            left = int(screenWidth/2 - w/2)
-            top = int(screenHeight/2 - h/2)
+            left = int(screenLeft + screenWidth/2 - w/2)
+            top = int(screenTop + screenHeight/2 - h/2)
             self.move(left, top)
 
-        if self._block:
-            self.loop = QEventLoop()
-            self.loop.exec_()
+        self._h = self.height()
+
+        if self.widgets:
+            return
+
+        if self.layouts:
+            return
+
+        # Start resizing height every 1 ms
+        self.resizeCallsCount = 0
+        self.timer = QTimer()
+        from config import warningHandler
+        warningHandler.sigGeometryWarning.connect(self.timer.stop)
+        self.timer.timeout.connect(self._resizeHeight)
+        self.timer.start(1)
+
+    def _resizeHeight(self):
+        try:
+            # Resize until a "Unable to set geometry" warning is captured
+            # by copnfig.warningHandler._resizeWarningHandler or #
+            # height doesn't change anymore
+            self.resize(self.width(), self.height()-1)
+            if self.height() == self._h or self.resizeCallsCount > 100:
+                self.timer.stop()
+                return
+
+            self.resizeCallsCount += 1
+            self._h = self.height()
+        except Exception as e:
+            # traceback.format_exc()
+            self.timer.stop()
 
     def _template(
             self, parent, title, message,
@@ -372,16 +409,15 @@ class myMessageBox(QDialog):
         return buttons
 
     def exec_(self):
-        self.show()
-        super().exec_()
+        self.show(block=True)
 
     def close(self):
         self.clickedButton = self.sender()
         if self.clickedButton is not None:
             self.cancel = self.clickedButton == self.cancelButton
-        super().close()
         if hasattr(self, 'loop'):
             self.loop.exit()
+        super().close()
 
 class myFormLayout(QGridLayout):
     def __init__(self):
@@ -939,6 +975,7 @@ class _metricsQGBox(QGroupBox):
     def showInfo(self, checked=False):
         info_txt = self.sender().info
         msg = myMessageBox()
+        msg.setWidth(600)
         msg.setIcon()
         msg.setWindowTitle(f'{self.sender().colname} info')
         msg.addText(info_txt)
