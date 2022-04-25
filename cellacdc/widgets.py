@@ -25,13 +25,14 @@ from PyQt5.QtWidgets import (
     QScrollArea, QSizePolicy, QComboBox, QPushButton, QScrollBar,
     QGroupBox, QAbstractSlider, QDoubleSpinBox, QWidgetAction,
     QAction, QTabWidget, QAbstractSpinBox, QMessageBox,
-    QStyle, QDialog, QSpacerItem, QFrame, QMenu, QActionGroup
+    QStyle, QDialog, QSpacerItem, QFrame, QMenu, QActionGroup,
+    QListWidget, QAbstractItemView
 )
 
 import pyqtgraph as pg
 from pyqtgraph import QtGui
 
-from . import myutils, apps, measurements, is_mac, is_win
+from . import myutils, apps, measurements, is_mac, is_win, html_utils
 from . import qrc_resources
 
 def removeHSVcmaps():
@@ -112,6 +113,16 @@ class statusBarPermanentLabel(QWidget):
         layout.addWidget(self.rightLabel)
 
         self.setLayout(layout)
+
+class readOnlyQList(QTextEdit):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setReadOnly(True)
+
+    def addItems(self, items):
+        items = [str(item) for item in items]
+        columnList = html_utils.paragraph('<br>'.join(items))
+        self.setText(columnList)
 
 class pgScatterSymbolsCombobox(QComboBox):
     def __init__(self, parent=None):

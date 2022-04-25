@@ -6,6 +6,8 @@ import traceback
 import shutil
 from importlib import import_module
 
+from skimage.measure._regionprops import PROPS, COL_DTYPES
+
 from . import core, base_cca_df
 
 user_path = pathlib.Path.home()
@@ -350,29 +352,17 @@ def get_props_info_txt():
     """)
     return txt
 
-def get_props_names():
-    props = (
-        'label',
-        'bbox',
-        'bbox_area',
-        'eccentricity',
-        'equivalent_diameter',
-        'euler_number',
-        'extent',
-        'filled_area',
-        'inertia_tensor_eigvals',
-        'local_centroid',
-        'major_axis_length',
-        'minor_axis_length',
-        'moments',
-        'moments_central',
-        'moments_hu',
-        'moments_normalized',
-        'orientation',
-        'perimeter',
-        'solidity'
+def _is_numeric_dtype(dtype):
+    is_numeric = (
+        dtype is float or dtype is int
     )
-    return props
+    return is_numeric
+
+def get_props_names():
+    props = {
+        prop for prop in PROPS.values() if _is_numeric_dtype(COL_DTYPES[prop])
+    }
+    return tuple(props)
 
 def standard_metrics_func():
     metrics_func = {

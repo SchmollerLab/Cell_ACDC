@@ -599,9 +599,9 @@ class customAnnotationDialog(QDialog):
 
     def showNameInfo(self):
         msg = widgets.myMessageBox()
-        listView = QListWidget(msg)
+        listView = widgets.readOnlyQList(msg)
         listView.addItems(self.internalNames)
-        listView.setSelectionMode(QAbstractItemView.NoSelection)
+        # listView.setSelectionMode(QAbstractItemView.NoSelection)
         msg.information(
             self, 'Annotation Name info', self.nameInfoTxt,
             widgets=listView
@@ -819,11 +819,10 @@ class setMeasurementsDialog(QDialog):
             '<b>keep</b> them?<br><br>'
             'Existing measurements not selected:'
         )
-        listView = QListWidget(msg)
+        listView = widgets.readOnlyQList(msg)
         items = unchecked_existing_colnames.copy()
         items.extend(unchecked_existing_rps)
         listView.addItems(items)
-        listView.setSelectionMode(QAbstractItemView.NoSelection)
         _, delButton, keepButton = msg.warning(
             self, 'Unchecked existing measurements', txt,
             widgets=listView, buttonsTexts=('Cancel', 'Delete', 'Keep')
