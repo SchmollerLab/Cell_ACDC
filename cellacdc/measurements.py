@@ -122,7 +122,7 @@ def _fl():
 def _get_zStack_note(how_desc):
     s = (f"""
         <i>NOTE: since you loaded <b>3D z-stacks</b>, Cell-ACDC needs
-        to convert the z-stacks to 2D images {how_desc}.<br>
+        to convert the z-stacks to 2D images {how_desc} for this metric.<br>
         This is specified in the name of the column.<br><br></i>
     """)
     return s
@@ -273,7 +273,7 @@ def standard_metrics_desc(isZstack, chName):
                 {_get_zStack_note(how_desc)}
                 Example: <code>{bkgr_colname}</code> is the
                 <b>{bkgr_desc.lower()}</b> of the {chName} background after
-                converting 3D to 2D conversion {how_desc}
+                converting 3D to 2D {how_desc}
                 """)
             else:
                 note_txt = ''
@@ -335,18 +335,18 @@ def _get_metrics_names():
 
 def _get_bkgr_val_names():
     bkgr_val_names = {
-        'autoBkgr_val_median': 'Median',
-        'autoBkgr_val_mean': 'Mean',
-        'autoBkgr_val_q75': '75 percentile',
-        'autoBkgr_val_q25': '25 percentile',
-        'autoBkgr_val_q95': '95 percentile',
-        'autoBkgr_val_q05': '5 percentile',
-        'dataPrepBkgr_val_median': 'Median',
-        'dataPrepBkgr_val_mean': 'Mean',
-        'dataPrepBkgr_val_q75': '75 percentile',
-        'dataPrepBkgr_val_q25': '25 percentile',
-        'dataPrepBkgr_val_q95': '95 percentile',
-        'dataPrepBkgr_val_q05': '5 percentile',
+        'autoBkgr_bkgrVal_median': 'Median',
+        'autoBkgr_bkgrVal_mean': 'Mean',
+        'autoBkgr_bkgrVal_q75': '75 percentile',
+        'autoBkgr_bkgrVal_q25': '25 percentile',
+        'autoBkgr_bkgrVal_q95': '95 percentile',
+        'autoBkgr_bkgrVal_q05': '5 percentile',
+        'dataPrepBkgr_bkgrVal_median': 'Median',
+        'dataPrepBkgr_bkgrVal_mean': 'Mean',
+        'dataPrepBkgr_bkgrVal_q75': '75 percentile',
+        'dataPrepBkgr_bkgrVal_q25': '25 percentile',
+        'dataPrepBkgr_bkgrVal_q95': '95 percentile',
+        'dataPrepBkgr_bkgrVal_q05': '5 percentile',
     }
     return bkgr_val_names
 
