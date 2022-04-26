@@ -13412,13 +13412,11 @@ class guiWin(QMainWindow):
 
     @exception_handler
     def saveMetricsCritical(self, traceback_format):
-        self.logger.info('')
-        self.logger.info('====================================')
+        print('\n====================================')
         self.logger.exception(traceback_format)
-        self.logger.info('====================================')
-        self.logger.info('')
+        print('====================================\n')
         self.logger.info('Warning: calculating metrics failed see above...')
-        self.logger.info('-----------------')
+        print('------------------------------')
         msg = QMessageBox(self)
         msg.setWindowTitle('Critical error')
         msg.setIcon(msg.Critical)
