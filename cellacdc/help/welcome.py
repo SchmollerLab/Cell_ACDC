@@ -548,7 +548,7 @@ class welcomeWin(QWidget):
                     hide/show annotations on left image<br>
 
                     &nbsp;&nbsp; - <code>Alt+Click&Drag</code> -->
-                    pan/move image also with other tools active<br>
+                    pan/move image even if other tools active<br>
                     </blockquote>
                 </li>
             </ul>
