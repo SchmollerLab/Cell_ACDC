@@ -208,7 +208,7 @@ class myMessageBox(QDialog):
     def addText(self, text):
         label = QLabel(self)
         label.setTextInteractionFlags(
-            Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard
+            Qt.TextBrowserInteraction | Qt.TextSelectableByKeyboard
         )
         label.setText(text)
         label.setWordWrap(True)
@@ -266,8 +266,7 @@ class myMessageBox(QDialog):
         QTimer.singleShot(5, self._resize)
 
         if block:
-            self.loop = QEventLoop()
-            self.loop.exec_()
+            self._block()
 
     def _resize(self):
         widths = [button.width() for button in self.buttons]
@@ -408,16 +407,20 @@ class myMessageBox(QDialog):
         self.exec_()
         return buttons
 
+    def _block(self):
+        self.loop = QEventLoop()
+        self.loop.exec_()
+
     def exec_(self):
         self.show(block=True)
 
-    def close(self):
+    def closeEvent(self, event):
         self.clickedButton = self.sender()
         if self.clickedButton is not None:
             self.cancel = self.clickedButton == self.cancelButton
         if hasattr(self, 'loop'):
+            print('close')
             self.loop.exit()
-        super().close()
 
 class myFormLayout(QGridLayout):
     def __init__(self):

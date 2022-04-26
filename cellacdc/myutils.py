@@ -33,7 +33,9 @@ from tifffile.tifffile import TiffWriter, TiffFile
 from PyQt5.QtWidgets import QMessageBox
 from PyQt5.QtCore import pyqtSignal, QObject, QCoreApplication
 
-from . import prompts, widgets, apps, core, html_utils
+from . import (
+    prompts, widgets, apps, core, html_utils, is_linux, is_win, is_mac
+)
 
 def getCustomAnnotTooltip(annotState):
     toolTip = (
@@ -336,10 +338,15 @@ def install_javabridge(force_compile=False, attempt_uninstall_first=False):
                 [sys.executable, '-m', 'pip', 'install',
                 'git+https://github.com/SchmollerLab/python-javabridge-windows']
             )
-    else:
+    elif is_mac:
         subprocess.check_call(
             [sys.executable, '-m', 'pip', 'install',
             'git+https://github.com/SchmollerLab/python-javabridge-acdc']
+        )
+    elif is_linux:
+        subprocess.check_call(
+            [sys.executable, '-m', 'pip', 'install',
+            'git+https://github.com/LeeKamentsky/python-javabridge.git@master']
         )
 
 def is_in_bounds(x,y,X,Y):
@@ -1006,28 +1013,57 @@ def _install_homebrew_command():
 def _brew_install_java_command():
     return 'brew install --cask homebrew/cask-versions/adoptopenjdk8'
 
-def _java_instructions_macOS():
-    s1 = ("""
-    <p style="font-size:13px">
+def _apt_update_command():
+    return 'sudo apt-get update'
+
+def _apt_gcc_command():
+    return 'sudo apt install python-dev gcc'
+
+def _apt_install_java_command():
+    return 'sudo apt-get install openjdk-8-jdk'
+
+def _java_instructions_linux():
+    s1 = html_utils.paragraph("""
         Run the following commands<br>
         in the Teminal <b>one by one:</b>
-    </p>
     """)
 
-    s2 = (f"""
-    <p style="font-size:13px">
+    s2 = html_utils.paragraph(f"""
+        <code>{_apt_gcc_command().replace(' ', '&nbsp;')}</code>
+    """)
+
+    s3 = html_utils.paragraph(f"""
+        <code>{_apt_update_command().replace(' ', '&nbsp;')}</code>
+    """)
+
+    s4 = html_utils.paragraph(f"""
+        <code>{_apt_install_java_command().replace(' ', '&nbsp;')}</code>
+    """)
+
+    s5 = html_utils.paragraph("""
+    The first command is used to install GCC.<br><br>
+    The second and third commands are used is used to install
+    Java Development Kit 8.<br><br>
+    Follow the instructions on the terminal to complete
+    installation.<br><br>
+    """)
+    return s1, s2, s3, s4
+
+def _java_instructions_macOS():
+    s1 = html_utils.paragraph("""
+        Run the following commands<br>
+        in the Teminal <b>one by one:</b>
+    """)
+
+    s2 = html_utils.paragraph(f"""
         <code>{_install_homebrew_command()}</code>
-    </p>
     """)
 
-    s3 = (f"""
-    <p style="font-size:13px">
-        <code>{_brew_install_java_command()}</code>
-    </p>
+    s3 = html_utils.paragraph(f"""
+        <code>{_brew_install_java_command().replace(' ', '&nbsp;')}</code>
     """)
 
-    s4 = ("""
-    <p style="font-size:13px">
+    s4 = html_utils.paragraph("""
     The first command is used to install Homebrew<br>
     a package manager for macOS/Linux.<br><br>
     The second command is used to install Java 8.<br>
@@ -1038,24 +1074,8 @@ def _java_instructions_macOS():
     <a href="https://hmgubox2.helmholtz-muenchen.de/index.php/s/7xF7YnArwbt9ZqB">
         here
     </a>.
-    </p>
     """)
     return s1, s2, s3, s4
-
-# def _java_instructions_windows():
-#     s = [f"""
-#     <p style="font-size:13px">
-#         Download and install Java 8 and
-#         Java Development Kit for Windows. Here the links:<br>
-#     <p style="font-size:13px">
-#         Java 8: <a href="https://www.java.com/en/download/manual.jsp">here</a>
-#     </p>
-#     <p style="font-size:13px">
-#         Java Development Kit: <a href="https://hmgubox2.helmholtz-muenchen.de/index.php/s/zocneD2j2wMwbNc">here</a>
-#     </p>
-#     </p><br>
-#     """]
-#     return s
 
 def jdk_windows_url():
     return 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/zocneD2j2wMwbNc'
@@ -1066,46 +1086,40 @@ def cpp_windows_url():
 def _java_instructions_windows():
     jdk_url = f'"{jdk_windows_url()}"'
     cpp_url = f'"{cpp_windows_url()}"'
-    s1 = ("""
-    <p style="font-size:13px">
+    s1 = html_utils.paragraph("""
         Download and install <code>Java Development Kit</code> and<br>
         <b>Microsoft C++ Build Tools</b> for Windows (links below).<br><br>
         <b>IMPORTANT</b>: when installing "Microsoft C++ Build Tools"<br>
         make sure to select <b>"Desktop development with C++"</b>.<br>
         Click "See the screenshot" for more details.<br>
-    </p>
     """)
 
-    s2 = (f"""
-    <p style="font-size:13px">
+    s2 = html_utils.paragraph(f"""
         Java Development Kit:
             <a href={jdk_url}>
                 here
             </a>
-    </p>
     """)
 
-    s3 = (f"""
-    <p style="font-size:13px">
+    s3 = html_utils.paragraph(f"""
         Microsoft C++ Build Tools:
             <a href={cpp_url}>
                 here
             </a>
-    </p>
-    </p>
     """)
     return s1, s2, s3
 
 def install_javabridge_instructions_text():
-    if sys.platform.startswith('win'):
+    if is_win:
         return _java_instructions_windows()
-    else:
+    elif is_mac:
         return _java_instructions_macOS()
+    elif is_linux:
+        return _java_instructions_linux()
 
 def install_javabridge_help(parent=None):
     msg = widgets.myMessageBox()
-    txt = (f"""
-    <p style="font-size:13px">
+    txt = html_utils.paragraph(f"""
         Cell-ACDC is going to <b>download and install</b>
         <code>javabridge</code>.<br><br>
         Make sure you have an <b>active internet connection</b>,
@@ -1117,7 +1131,6 @@ def install_javabridge_help(parent=None):
             GitHub page
         </a>.<br><br>
         Alternatively, you can cancel the process and try later.
-    </p>
     """)
     msg.setIcon()
     msg.setWindowTitle('Installing javabridge')

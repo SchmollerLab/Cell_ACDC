@@ -50,7 +50,7 @@ from PyQt5.QtWidgets import (
 )
 
 from . import myutils, load, prompts, widgets, core, measurements, html_utils
-from . import is_mac, is_win
+from . import is_mac, is_win, is_linux
 from . import qrc_resources
 
 pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
@@ -94,7 +94,7 @@ class installJavaDialog(widgets.myMessageBox):
             self.instructionsButton.clicked.connect(self.showInstructions)
             installButton = self.addButton('Install')
             installButton.disconnect()
-            installButton.clicked.connect(self.installJavaMacOS)
+            installButton.clicked.connect(self.installJava)
             txt = txt_macOS
         else:
             okButton = self.addButton('Ok')
@@ -198,6 +198,48 @@ class installJavaDialog(widgets.myMessageBox):
         self.layout.setRowStretch(self.currentRow, 1)
         self.scrollArea.hide()
 
+    def addInstructionsLinux(self):
+        self.scrollArea = QScrollArea()
+        _container = QWidget()
+        _layout = QVBoxLayout()
+        for t, text in enumerate(myutils.install_javabridge_instructions_text()):
+            label = QLabel()
+            label.setText(text)
+            # label.setWordWrap(True)
+            if (t == 1 or t == 2 or t==3):
+                label.setWordWrap(True)
+                code_layout = QHBoxLayout()
+                code_layout.addWidget(label)
+                copyButton = QToolButton()
+                copyButton.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+                copyButton.setIcon(QIcon(':edit-copy.svg'))
+                copyButton.setText('Copy')
+                if t==1:
+                    copyButton.textToCopy = myutils._apt_update_command()
+                elif t==2:
+                    copyButton.textToCopy = myutils._apt_install_java_command()
+                elif t==3:
+                    copyButton.textToCopy = myutils._apt_gcc_command()
+                copyButton.clicked.connect(self.copyToClipboard)
+                code_layout.addWidget(copyButton, alignment=Qt.AlignLeft)
+                # code_layout.addStretch(1)
+                code_layout.setStretch(0, 2)
+                code_layout.setStretch(1, 0)
+                _layout.addLayout(code_layout)
+            else:
+                _layout.addWidget(label)
+        _container.setLayout(_layout)
+        self.scrollArea.setWidget(_container)
+        self.currentRow += 1
+        self.layout.addWidget(
+            self.scrollArea, self.currentRow, 1, alignment=Qt.AlignTop
+        )
+
+        # Stretch last row
+        self.currentRow += 1
+        self.layout.setRowStretch(self.currentRow, 1)
+        self.scrollArea.hide()
+
     def copyToClipboard(self):
         cb = QApplication.clipboard()
         cb.clear(mode=cb.Clipboard)
@@ -216,20 +258,34 @@ class installJavaDialog(widgets.myMessageBox):
             func = partial(self.resize, self.width(), self.origHeight)
             QTimer.singleShot(50, func)
 
-    def installJavaMacOS(self):
+    def installJava(self):
         import subprocess
         try:
-            try:
-                subprocess.check_call(['brew', 'update'])
-            except Exception as e:
+            if is_mac:
+                try:
+                    subprocess.check_call(['brew', 'update'])
+                except Exception as e:
+                    subprocess.run(
+                        myutils._install_homebrew_command(),
+                        check=True, text=True, shell=True
+                    )
                 subprocess.run(
-                    myutils._install_homebrew_command(),
+                    myutils._brew_install_java_command(),
                     check=True, text=True, shell=True
                 )
-            subprocess.run(
-                myutils._brew_install_java_command(),
-                check=True, text=True, shell=True
-            )
+            elif is_linux:
+                subprocess.run(
+                    myutils._apt_gcc_command()(),
+                    check=True, text=True, shell=True
+                )
+                subprocess.run(
+                    myutils._apt_update_command()(),
+                    check=True, text=True, shell=True
+                )
+                subprocess.run(
+                    myutils._apt_install_java_command()(),
+                    check=True, text=True, shell=True
+                )
             self.close()
         except Exception as e:
             print('=======================')
@@ -247,15 +303,23 @@ class installJavaDialog(widgets.myMessageBox):
                self, 'Java installation failed', err_msg, msg.Ok
             )
 
-    def show(self):
-        super().show()
-        if not is_win:
-            self.addInstructionsMacOS()
-        else:
+    def show(self, block=False):
+        super().show(block=False)
+        print(is_linux)
+        if is_win:
             self.addInstructionsWindows()
+        elif is_mac:
+            self.addInstructionsMacOS()
+        elif is_linux:
+            self.addInstructionsLinux()
         self.move(self.pos().x(), 20)
         if is_win:
             self.resize(self.width(), self.height()+200)
+        if block:
+            self._block()
+
+    def exec_(self):
+        self.show(block=True)
 
 class customAnnotationDialog(QDialog):
     sigDeleteSelecAnnot = pyqtSignal(object)

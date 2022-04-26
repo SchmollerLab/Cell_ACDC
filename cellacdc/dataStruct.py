@@ -822,7 +822,7 @@ class createDataStructWin(QMainWindow):
                 self.show()
             self.criticalOSnotSupported()
             self.close()
-            raise OSError('This module is supported ONLY on Windows OS or macOS')
+            raise OSError('This module is supported ONLY on Windows 10/10 and macOS')
 
         global bioformats, javabridge
         self.logger.info('Checking if Java is installed...')
@@ -945,7 +945,7 @@ class createDataStructWin(QMainWindow):
         err_msg = (f"""
         <p style="font-size:12px">
         Unfortunately, the module "0. Create data structure from microscopy file(s)"
-        is functional <b>only on Windows OS and macOS</b>.<br><br>
+        is functional <b>only on Windows 10/11 and macOS</b>.<br><br>
         We are working on extending support to other Operating Systems.<br><br>
         Please open an issue on our
         <a href="https://github.com/SchmollerLab/Cell_ACDC/issues">
@@ -967,7 +967,7 @@ class createDataStructWin(QMainWindow):
         </a>.
         </p>
         """)
-        msg.setText(err_msg)
+        msg.addText(err_msg)
         # msg_label = msg.findChild(QLabel, "qt_msgbox_label")
         # msg_label.setOpenExternalLinks(False)
         # msg_label.linkActivated.connect(self.on_linkActivated)
