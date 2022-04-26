@@ -1344,6 +1344,7 @@ class guiWin(QMainWindow):
 
         # Navigation toolbar
         navigateToolBar = QToolBar("Navigation", self)
+        navigateToolBar.setContextMenuPolicy(Qt.PreventContextMenu)
         # navigateToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         self.addToolBar(navigateToolBar)
         navigateToolBar.addAction(self.prevAction)
@@ -1357,7 +1358,7 @@ class guiWin(QMainWindow):
         self.slideshowButton.setToolTip('Open slideshow (Ctrl+W)')
         navigateToolBar.addWidget(self.slideshowButton)
 
-        self.overlayButton = QToolButton(self)
+        self.overlayButton = widgets.rightClickToolButton(parent=self)
         self.overlayButton.setIcon(QIcon(":overlay.svg"))
         self.overlayButton.setCheckable(True)
         self.overlayButton.setToolTip('Overlay fluorescent image\n'
@@ -2074,6 +2075,7 @@ class guiWin(QMainWindow):
         self.prevAction.triggered.connect(self.prev_cb)
         self.nextAction.triggered.connect(self.next_cb)
         self.overlayButton.toggled.connect(self.overlay_cb)
+        self.overlayButton.sigRightClick.connect(self.showOverlayContextMenu)
         self.rulerButton.toggled.connect(self.ruler_cb)
         self.loadFluoAction.triggered.connect(self.loadFluo_cb)
         # self.reloadAction.triggered.connect(self.reload_cb)
@@ -10896,100 +10898,59 @@ class guiWin(QMainWindow):
             )
         return extensions
 
+    def loadOverlayData(self, ol_channels):
+        posData = self.data[self.pos_i]
+        for ol_ch in ol_channels:
+            if ol_ch not in list(posData.loadedFluoChannels):
+                # Requested channel was never loaded --> load it at first
+                # iter i == 0
+                success = self.loadFluo_cb(fluo_channels=[ol_ch])
+                if not success:
+                    return False
+
+        for posData in self.data:
+            ol_data = {}
+            ol_colors = {}
+            for i, ol_ch in enumerate(ol_channels):
+                fluo_path, filename = self.getPathFromChName(ol_ch, posData)
+                ol_data[filename] = posData.ol_data_dict[filename].copy()
+                ol_colors[filename] = self.overlayRGBs[i]
+                posData.ol_colors = ol_colors
+                if i!=0:
+                    continue
+                # Add first loaded channel to context menu
+                # Since we gave up on allowing multiple overlay channels
+                self.addFluoChNameContextMenuAction(ol_ch)
+            posData.manualContrastKey = filename
+            posData.ol_data = ol_data
+        return True
+
+
     def overlay_cb(self, checked):
         self.UserNormAction, _, _ = self.getCheckNormAction()
         posData = self.data[self.pos_i]
         if checked:
-            prompt = True
-            if posData.ol_data is not None:
-                prompt = False
-            # Check if there is already loaded data
-            elif posData.fluo_data_dict and posData.ol_data is None:
-                ch_names = list(posData.loadedFluoChannels)
-                if len(ch_names)>1:
-                    selectFluo = apps.QDialogListbox(
-                        'Select channel',
-                        'Select channel names to load:\n',
-                        ch_names, multiSelection=True, parent=self
-                    )
-                    selectFluo.exec_()
-                    ol_channels = selectFluo.selectedItemsText
-                    if selectFluo.cancel or not ol_channels:
-                        prompt = True
-                    else:
-                        prompt = False
-                else:
-                    prompt = False
-                    ol_channels = ch_names
-
-                for posData in self.data:
-                    ol_data = {}
-                    ol_colors = {}
-                    for i, ol_ch in enumerate(ol_channels):
-                        ol_path, filename = self.getPathFromChName(
-                            ol_ch, posData
-                        )
-                        if ol_path is None:
-                            self.criticalFluoChannelNotFound(ol_ch, posData)
-                            self.app.restoreOverrideCursor()
-                            return
-                        ol_data[filename] = posData.ol_data_dict[filename].copy()
-                        ol_colors[filename] = self.overlayRGBs[i]
-                        self.addFluoChNameContextMenuAction(ol_ch)
-                    posData.manualContrastKey = filename
-                    posData.ol_data = ol_data
-                    posData.ol_colors = ol_colors
-
-            if prompt:
-                # extensions = self.getFileExtensions(posData.images_path)
-                # ol_paths = QFileDialog.getOpenFileNames(
-                #     self, 'Select one or multiple fluorescent images',
-                #     posData.images_path, extensions
-                # )
+            if posData.ol_data is None:
+                # Overlay data was never loaded ask channel to overlay
                 ch_names = [ch for ch in self.ch_names if ch != self.user_ch_name]
                 selectFluo = apps.QDialogListbox(
                     'Select channel',
                     'Select channel names to load:\n',
-                    ch_names, multiSelection=True, parent=self
+                    ch_names, multiSelection=False, parent=self
                 )
                 selectFluo.exec_()
                 if selectFluo.cancel:
+                    self.overlayButton.toggled.disconnect()
                     self.overlayButton.setChecked(False)
+                    self.overlayButton.toggled.connect(self.overlay_cb)
                     return
                 ol_channels = selectFluo.selectedItemsText
-                for posData in self.data:
-                    ol_data = {}
-                    ol_colors = {}
-                    for i, ol_ch in enumerate(ol_channels):
-                        ol_path, filename = self.getPathFromChName(ol_ch,
-                                                                   posData)
-                        if ol_path is None:
-                            self.criticalFluoChannelNotFound(ol_ch, posData)
-                            self.app.restoreOverrideCursor()
-                            return
-                        fluo_data, bkgrData = self.load_fluo_data(ol_path)
-                        if fluo_data is None:
-                            self.app.restoreOverrideCursor()
-                            return
-
-                        # Allow single 2D/3D image
-                        if posData.SizeT < 2:
-                            fluo_data = np.array([fluo_data])
-
-                        posData.fluo_data_dict[filename] = fluo_data
-                        posData.fluo_bkgrData_dict[filename] = bkgrData
-                        posData.ol_data_dict[filename] = fluo_data
-                        ol_data[filename] = fluo_data.copy()
-                        ol_colors[filename] = self.overlayRGBs[i]
-                        posData.ol_colors = ol_colors
-                        if i!=0:
-                            continue
-                        self.addFluoChNameContextMenuAction(ol_ch)
-                    posData.manualContrastKey = filename
-                    posData.ol_data = ol_data
-
-                self.app.restoreOverrideCursor()
-                self.overlayButton.setStyleSheet('background-color: #A7FAC7')
+                success = self.loadOverlayData(ol_channels)
+                if not success:
+                    self.overlayButton.toggled.disconnect()
+                    self.overlayButton.setChecked(False)
+                    self.overlayButton.toggled.connect(self.overlay_cb)
+                    return
 
             self.normalizeRescale0to1Action.setChecked(True)
             self.imgGrad.imageItem = lambda: None
@@ -10998,7 +10959,7 @@ class guiWin(QMainWindow):
             rgb = self.df_settings.at['overlayColor', 'value']
             rgb = [int(v) for v in rgb.split('-')]
             self.overlayColorButton.setColor(rgb)
-            self.setCheckedContextMenuAction()
+            self.setCheckedOverlayContextMenusAction()
             self.updateALLimg(only_ax1=True)
             self.enableOverlayWidgets(True)
 
@@ -11013,7 +10974,23 @@ class guiWin(QMainWindow):
             self.updateALLimg(only_ax1=True)
             self.enableOverlayWidgets(False)
 
-    def setCheckedContextMenuAction(self):
+    def showOverlayContextMenu(self, event):
+        if not self.overlayButton.isChecked():
+            return
+
+        self.overlayContextMenu.exec_(QCursor.pos())
+
+    def changeOverlayChannel(self, action):
+        posData = self.data[self.pos_i]
+        loadedChannels = list(posData.loadedFluoChannels)
+        checkedChName = action.text()
+        channels = [checkedChName]
+        success = self.loadOverlayData(channels)
+        if not success:
+            return
+        self.overlay_cb(True)
+
+    def setCheckedOverlayContextMenusAction(self):
         posData = self.data[self.pos_i]
         self.userChNameAction.setChecked(False)
         for action in posData.fluoDataChNameActions:
@@ -11026,6 +11003,15 @@ class guiWin(QMainWindow):
                 if action.text() == checkedActionText:
                     action.setChecked(True)
                     break
+
+        actionGroup = self.overlayContextMenu.actionGroup
+        actionGroup.triggered.disconnect()
+        for action in self.overlayContextMenu.actions():
+            action.setChecked(False)
+            if action.text() == checkedActionText:
+                action.setChecked(True)
+        actionGroup = self.overlayContextMenu.actionGroup
+        actionGroup.triggered.connect(self.changeOverlayChannel)
 
     def enableOverlayWidgets(self, enabled):
         posData = self.data[self.pos_i]
@@ -12531,6 +12517,8 @@ class guiWin(QMainWindow):
             action.setChecked(False)
         self.userChNameAction.setChecked(True)
         self.chNamesQActionGroup.triggered.connect(self.setManualContrastKey)
+        for action in self.overlayContextMenu.actions():
+            action.setChecked(False)
 
     def setManualContrastKey(self, action):
         posData = self.data[self.pos_i]
@@ -12858,6 +12846,7 @@ class guiWin(QMainWindow):
         self.user_ch_name = user_ch_name
 
         self.initGlobalAttr()
+        self.createOverlayContextMenu()
 
         self.num_pos = len(user_ch_file_paths)
         proceed = self.loadSelectedData(user_ch_file_paths, user_ch_name)
@@ -12867,6 +12856,19 @@ class guiWin(QMainWindow):
                 'Drag and drop image file or go to File --> Open folder...',
                 color=self.titleColor)
             return
+
+    def createOverlayContextMenu(self):
+        ch_names = [ch for ch in self.ch_names if ch != self.user_ch_name]
+        self.overlayContextMenu = QMenu()
+        self.overlayContextMenu.addSeparator()
+        actionGroup = QActionGroup(self)
+        self.overlayContextMenu.actionGroup = actionGroup
+        for chName in ch_names:
+            action = QAction(chName, self.overlayContextMenu)
+            action.setCheckable(True)
+            self.overlayContextMenu.addAction(action)
+            self.overlayContextMenu.actionGroup.addAction(action)
+        actionGroup.triggered.connect(self.changeOverlayChannel)
 
     @exception_handler
     def loadDataWorkerDataIntegrityWarning(self, pos_foldername):
@@ -13022,7 +13024,7 @@ class guiWin(QMainWindow):
             selectFluo.exec_()
 
             if selectFluo.cancel:
-                return
+                return False
 
             fluo_channels = selectFluo.selectedItemsText
 
@@ -13032,12 +13034,10 @@ class guiWin(QMainWindow):
                 fluo_path, filename = self.getPathFromChName(fluo_ch, posData)
                 if fluo_path is None:
                     self.criticalFluoChannelNotFound(fluo_ch, posData)
-                    self.app.restoreOverrideCursor()
-                    return
+                    return False
                 fluo_data, bkgrData = self.load_fluo_data(fluo_path)
                 if fluo_data is None:
-                    self.app.restoreOverrideCursor()
-                    return
+                    return False
                 posData.loadedFluoChannels.add(fluo_ch)
 
                 if posData.SizeT < 2:
@@ -13046,8 +13046,8 @@ class guiWin(QMainWindow):
                 posData.fluo_data_dict[filename] = fluo_data
                 posData.fluo_bkgrData_dict[filename] = bkgrData
                 posData.ol_data_dict[filename] = fluo_data.copy()
-        self.app.restoreOverrideCursor()
         self.overlayButton.setStyleSheet('background-color: #A7FAC7')
+        return True
 
     def showInExplorer(self):
         posData = self.data[self.pos_i]
@@ -13210,7 +13210,9 @@ class guiWin(QMainWindow):
                 self.chNamesToSkipMetrics.append(chName)
             else:
                 if chName in self.notLoadedChNames:
-                    self.loadFluo_cb(fluo_channels=[chName])
+                    success = self.loadFluo_cb(fluo_channels=[chName])
+                    if not success:
+                        return
                 for checkBox in chNameGroupbox.checkBoxes:
                     colname = checkBox.text()
                     if not checkBox.isChecked():

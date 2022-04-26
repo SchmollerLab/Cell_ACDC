@@ -495,7 +495,20 @@ def QtKeyToText(QtKey):
             return letter
     return letter
 
-class customAnnotToolButton(QToolButton):
+class rightClickToolButton(QToolButton):
+    sigRightClick = pyqtSignal(object)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            QToolButton.mousePressEvent(self, event)
+        elif event.button() == Qt.MouseButton.RightButton:
+            self.sigRightClick.emit(event)
+
+
+class customAnnotToolButton(rightClickToolButton):
     sigRemoveAction = pyqtSignal(object)
     sigKeepActiveAction = pyqtSignal(object)
     sigModifyAction = pyqtSignal(object)
@@ -505,11 +518,12 @@ class customAnnotToolButton(QToolButton):
             self, symbol, color='r', keepToolActive=True, parent=None,
             isHideChecked=True
         ):
-        super().__init__(parent)
+        super().__init__(parent=parent)
         self.symbol = symbol
         self.keepToolActive = keepToolActive
         self.isHideChecked = isHideChecked
         self.setColor(color)
+        self.sigRightClick.connect(self.showContextMenu)
 
     def setColor(self, color):
         self.penColor = color
@@ -536,34 +550,31 @@ class customAnnotToolButton(QToolButton):
         finally:
             p.end()
 
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            QToolButton.mousePressEvent(self, event)
-        elif event.button() == Qt.MouseButton.RightButton:
-            contextMenu = QMenu(self)
-            contextMenu.addSeparator()
+    def showContextMenu(self, event):
+        contextMenu = QMenu(self)
+        contextMenu.addSeparator()
 
-            removeAction = QAction('Remove annotation')
-            removeAction.triggered.connect(self.removeAction)
-            contextMenu.addAction(removeAction)
+        removeAction = QAction('Remove annotation')
+        removeAction.triggered.connect(self.removeAction)
+        contextMenu.addAction(removeAction)
 
-            editAction = QAction('Modify annotation parameters...')
-            editAction.triggered.connect(self.modifyAction)
-            contextMenu.addAction(editAction)
+        editAction = QAction('Modify annotation parameters...')
+        editAction.triggered.connect(self.modifyAction)
+        contextMenu.addAction(editAction)
 
-            hideAction = QAction('Hide annotations')
-            hideAction.setCheckable(True)
-            hideAction.setChecked(self.isHideChecked)
-            hideAction.triggered.connect(self.hideAction)
-            contextMenu.addAction(hideAction)
+        hideAction = QAction('Hide annotations')
+        hideAction.setCheckable(True)
+        hideAction.setChecked(self.isHideChecked)
+        hideAction.triggered.connect(self.hideAction)
+        contextMenu.addAction(hideAction)
 
-            keepActiveAction = QAction('Keep tool active after using it')
-            keepActiveAction.setCheckable(True)
-            keepActiveAction.setChecked(self.keepToolActive)
-            keepActiveAction.triggered.connect(self.keepToolActiveActionToggled)
-            contextMenu.addAction(keepActiveAction)
+        keepActiveAction = QAction('Keep tool active after using it')
+        keepActiveAction.setCheckable(True)
+        keepActiveAction.setChecked(self.keepToolActive)
+        keepActiveAction.triggered.connect(self.keepToolActiveActionToggled)
+        contextMenu.addAction(keepActiveAction)
 
-            contextMenu.exec(event.globalPos())
+        contextMenu.exec(event.globalPos())
 
     def keepToolActiveActionToggled(self, checked):
         self.keepToolActive = checked

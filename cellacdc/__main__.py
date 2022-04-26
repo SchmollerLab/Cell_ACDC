@@ -545,7 +545,7 @@ class mainWin(QMainWindow):
 
         msg = QMessageBox()
         warn_txt = (
-            'There are still other Cell-ACDC windows open.\n\n'
+            'There are still <b>other Cell-ACDC windows open</b>.<br><br>'
             'Are you sure you want to close everything?'
         )
         acceptCloseAnswer = msg.warning(
@@ -590,6 +590,7 @@ class mainWin(QMainWindow):
             exit()
 
 def run():
+    from cellacdc.config import parser_args
     print('Launching application...')
     # Handle high resolution displays:
     if hasattr(Qt, 'AA_EnableHighDpiScaling'):

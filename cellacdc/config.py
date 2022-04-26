@@ -16,7 +16,11 @@ qInstallMessageHandler(warningHandler._resizeWarningHandler)
 ap = argparse.ArgumentParser(description='spotMAX inputs')
 ap.add_argument(
     '-d', '--debug', type=int, default=0,
-    help='Used for debugging. Test code with "if debug: ..."'
+    help=(
+        'Used for debugging. Test code with'
+        '"from cellacdc.config import parser_args, debug = parser_args["debug"]", '
+        'if debug: <debug code here>'
+    )
 )
 
 parser_args = vars(ap.parse_args())
