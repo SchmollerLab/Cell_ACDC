@@ -547,9 +547,6 @@ class welcomeWin(QWidget):
                     &nbsp;&nbsp; - Double press <code>Spacebar</code> -->
                     hide/show annotations on left image<br>
 
-                    &nbsp;&nbsp; - <code>Ctrl+F</code> -->
-                    hide/show annotations on left image<br>
-
                     &nbsp;&nbsp; - <code>Alt+Click&Drag</code> -->
                     pan/move image also with other tools active<br>
                     </blockquote>

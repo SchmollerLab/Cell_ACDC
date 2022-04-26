@@ -29,7 +29,7 @@ try:
     # if cellacdc was installed with pip or not
     from cellacdc import (
         dataPrep, segm, gui, dataStruct, utils, help, qrc_resources, myutils,
-        cite_url
+        cite_url, html_utils
     )
     from cellacdc.help import about
     from cellacdc.utils import concat as utilsConcat
@@ -544,7 +544,7 @@ class mainWin(QMainWindow):
             return True, openModules
 
         msg = QMessageBox()
-        warn_txt = (
+        warn_txt = html_utils.paragraph(
             'There are still <b>other Cell-ACDC windows open</b>.<br><br>'
             'Are you sure you want to close everything?'
         )
