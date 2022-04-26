@@ -1041,7 +1041,7 @@ def _java_instructions_linux():
     """)
 
     s5 = html_utils.paragraph("""
-    The first command is used to install GCC.<br><br>
+    The first command is used to install GCC, which is needed later.<br><br>
     The second and third commands are used is used to install
     Java Development Kit 8.<br><br>
     Follow the instructions on the terminal to complete
