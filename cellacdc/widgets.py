@@ -419,7 +419,6 @@ class myMessageBox(QDialog):
         if self.clickedButton is not None:
             self.cancel = self.clickedButton == self.cancelButton
         if hasattr(self, 'loop'):
-            print('close')
             self.loop.exit()
 
 class myFormLayout(QGridLayout):
