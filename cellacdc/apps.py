@@ -756,6 +756,7 @@ class setMeasurementsDialog(QDialog):
         super().__init__(parent)
 
         self.delExistingCols = False
+        self.okClicked = False
         self.acdc_df = acdc_df
         self.acdc_df_path = acdc_df_path
 
@@ -822,14 +823,13 @@ class setMeasurementsDialog(QDialog):
 
         self.setLayout(layout)
 
-        okButton.clicked.connect(self.close)
+        okButton.clicked.connect(self.ok_cb)
 
-    def closeEvent(self, event):
+    def ok_cb(self):
         if self.acdc_df is None:
+            self.close()
             return
-        if self.sender() != self.okButton:
-            return
-
+        self.okClicked = True
         existing_colnames = list(self.acdc_df.columns)
         unchecked_existing_colnames = []
         unchecked_existing_rps = []
@@ -868,9 +868,9 @@ class setMeasurementsDialog(QDialog):
             self.existingUncheckedColnames = unchecked_existing_colnames
             self.existingUncheckedRps = unchecked_existing_rps
             if cancel:
-                event.ignore()
                 return
 
+        self.close()
         self.sigClosed.emit()
 
     def warnUncheckedExistingMeasurements(
