@@ -502,9 +502,10 @@ class saveDataWorker(QObject):
                 vol_vox = None
                 vol_fl = None
                 if 'cell_vol_vox' in self.mainWin.sizeMetricsToSave:
-                    vol_vox, vol_fl = _calc_rot_vol(
-                        obj, PhysicalSizeY, PhysicalSizeX
-                    )
+                    # vol_vox, vol_fl = _calc_rot_vol(
+                    #     obj, PhysicalSizeY, PhysicalSizeX
+                    # )
+                    vol_vox, vol_fl = 0, 0
                     IDs_vol_vox[i] = vol_vox
                     IDs_vol_fl[i] = vol_fl
 
@@ -655,7 +656,6 @@ class saveDataWorker(QObject):
 
                         # pbar.update()
                         # self.metricsPbarProgress.emit(-1, 1)
-
                     for custom_func_name, custom_func in custom_func_dict.items():
                         key = f'{chName}_{custom_func_name}{how}'
                         if key in metricsToSkipChannel:
@@ -717,6 +717,8 @@ class saveDataWorker(QObject):
         df = df.drop(columns=time_seconds_cols, errors='ignore')
 
         return df
+
+
 
     def addRotVolume(self, df, rp, posData):
         PhysicalSizeY = posData.PhysicalSizeY
