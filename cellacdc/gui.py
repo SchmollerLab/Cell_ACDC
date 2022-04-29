@@ -371,7 +371,7 @@ class saveDataWorker(QObject):
             *numCells
         )
 
-        self.metricsPbarProgress.emit(tot_iter, 0)
+        # self.metricsPbarProgress.emit(tot_iter, 0)
 
         # pbar = tqdm(total=tot_iter, ncols=100, unit='metric', leave=False)
 
@@ -654,7 +654,7 @@ class saveDataWorker(QObject):
                                 metrics_values[key][i] = val
 
                         # pbar.update()
-                        self.metricsPbarProgress.emit(-1, 1)
+                        # self.metricsPbarProgress.emit(-1, 1)
 
                     for custom_func_name, custom_func in custom_func_dict.items():
                         key = f'{chName}_{custom_func_name}{how}'
@@ -679,7 +679,7 @@ class saveDataWorker(QObject):
                                 traceback.format_exc()
                             )
                             # self.mainWin.logger.info(traceback.format_exc())
-                        self.metricsPbarProgress.emit(-1, 1)
+                        # self.metricsPbarProgress.emit(-1, 1)
 
         df_metrics = pd.DataFrame(metrics_values, index=IDs)
 
@@ -13531,8 +13531,8 @@ class guiWin(QMainWindow):
         font = QtGui.QFont()
         font.setPixelSize(13)
         self.saveWin.setFont(font)
-        if not self.save_metrics:
-            self.saveWin.metricsQPbar.hide()
+        # if not self.save_metrics:
+        self.saveWin.metricsQPbar.hide()
         self.saveWin.progressLabel.setText('Preparing data...')
         self.saveWin.show()
 
@@ -13552,7 +13552,7 @@ class guiWin(QMainWindow):
         self.worker.finished.connect(self.saveDataFinished)
         self.worker.progress.connect(self.saveDataProgress)
         self.worker.progressBar.connect(self.saveDataUpdatePbar)
-        self.worker.metricsPbarProgress.connect(self.saveDataUpdateMetricsPbar)
+        # self.worker.metricsPbarProgress.connect(self.saveDataUpdateMetricsPbar)
         self.worker.critical.connect(self.saveDataCritical)
         self.worker.criticalMetrics.connect(self.saveMetricsCritical)
         self.worker.customMetricsCritical.connect(
