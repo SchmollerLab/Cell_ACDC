@@ -327,6 +327,7 @@ class customAnnotationDialog(QDialog):
     def __init__(self, savedCustomAnnot, parent=None, state=None):
         self.cancel = True
         self.loop = None
+        self.clickedButton = None
         self.savedCustomAnnot = savedCustomAnnot
 
         self.internalNames = measurements.get_all_acdc_df_colnames()
@@ -506,7 +507,8 @@ class customAnnotationDialog(QDialog):
         buttonsLayout.addWidget(self.loadSavedAnnotButton)
         buttonsLayout.addWidget(self.okButton)
 
-        cancelButton.clicked.connect(self.close)
+        cancelButton.clicked.connect(self.cancelCallBack)
+        self.cancelButton = cancelButton
         self.loadSavedAnnotButton.clicked.connect(self.loadSavedAnnot)
         self.okButton.clicked.connect(self.ok_cb)
         self.okButton.setFocus(True)
@@ -609,7 +611,6 @@ class customAnnotationDialog(QDialog):
         self.selectAnnotWin.listBox.clear()
         self.selectAnnotWin.listBox.addItems(items)
 
-
     def selectColor(self):
         pg.ColorButton.selectColor(self.colorButton)
         w = self.width()
@@ -659,6 +660,12 @@ class customAnnotationDialog(QDialog):
 
     def ok_cb(self, checked=True):
         self.cancel = False
+        self.clickedButton = self.okButton
+        self.close()
+
+    def cancelCallBack(self, checked=True):
+        self.cancel = True
+        self.clickedButton = self.cancelButton
         self.close()
 
     def showNameInfo(self):
@@ -672,7 +679,12 @@ class customAnnotationDialog(QDialog):
         )
 
     def closeEvent(self, event):
-        if self.sender()==self.okButton and not self.nameWidget.widget.text():
+        if self.clickedButton is None or self.clickedButton==self.cancelButton:
+            # cancel button or closed with 'x' button
+            self.cancel = True
+            return
+
+        if self.clickedButton==self.okButton and not self.nameWidget.widget.text():
             msg = QMessageBox()
             msg.critical(
                 self, 'Empty name', 'The name cannot be empty!', msg.Ok
@@ -681,7 +693,7 @@ class customAnnotationDialog(QDialog):
             self.cancel = True
             return
 
-        if self.sender()==self.okButton and self.nameInfoLabel.text():
+        if self.clickedButton==self.okButton and self.nameInfoLabel.text():
             msg = widgets.myMessageBox()
             listView = QListWidget(msg)
             listView.addItems(self.internalNames)

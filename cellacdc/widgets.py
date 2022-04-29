@@ -166,6 +166,7 @@ class myMessageBox(QDialog):
 
         self.cancel = True
         self.cancelButton = None
+        self.clickedButton = None
 
         self.showCentered = showCentered
 
@@ -225,7 +226,7 @@ class myMessageBox(QDialog):
             self.buttonsLayout.insertSpacing(1, 20)
         else:
             self.buttonsLayout.addWidget(button)
-        button.clicked.connect(self.close)
+        button.clicked.connect(self.buttonCallBack)
         self.buttons.append(button)
         return button
 
@@ -414,10 +415,13 @@ class myMessageBox(QDialog):
     def exec_(self):
         self.show(block=True)
 
-    def closeEvent(self, event):
+    def buttonCallBack(self, checked=True):
         self.clickedButton = self.sender()
-        if self.clickedButton is not None:
-            self.cancel = self.clickedButton == self.cancelButton
+        if self.clickedButton != self.cancelButton:
+            self.cancel = False
+        self.close()
+
+    def closeEvent(self, event):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
