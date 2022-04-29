@@ -525,33 +525,33 @@ class saveDataWorker(QObject):
                     bkgr_arr = fluo_2D[backgrMask]
                     fluo_backgr = np.median(bkgr_arr)
 
-                    bkgr_key = f'{chName}_autoBkgr_val_median{how}'
+                    bkgr_key = f'{chName}_autoBkgr_bkgrVal_median{how}'
                     if not bkgr_key in metricsToSkipChannel:
                         metrics_values[bkgr_key][i] = fluo_backgr
 
-                    bkgr_key = f'{chName}_autoBkgr_val_mean{how}'
+                    bkgr_key = f'{chName}_autoBkgr_bkgrVal_mean{how}'
                     if not bkgr_key in metricsToSkipChannel:
                         metrics_values[bkgr_key][i] = bkgr_arr.mean()
 
-                    bkgr_key = f'{chName}_autoBkgr_val_q75{how}'
+                    bkgr_key = f'{chName}_autoBkgr_bkgrVal_q75{how}'
                     if not bkgr_key in metricsToSkipChannel:
                         metrics_values[bkgr_key][i] = np.quantile(
                             bkgr_arr, q=0.75
                         )
 
-                    bkgr_key = f'{chName}_autoBkgr_val_q25{how}'
+                    bkgr_key = f'{chName}_autoBkgr_bkgrVal_q25{how}'
                     if not bkgr_key in metricsToSkipChannel:
                         metrics_values[bkgr_key][i] = np.quantile(
                             bkgr_arr, q=0.25
                         )
 
-                    bkgr_key = f'{chName}_autoBkgr_val_q95{how}'
+                    bkgr_key = f'{chName}_autoBkgr_bkgrVal_q95{how}'
                     if not bkgr_key in metricsToSkipChannel:
                         metrics_values[bkgr_key][i] = np.quantile(
                             bkgr_arr, q=0.95
                         )
 
-                    bkgr_key = f'{chName}_autoBkgr_val_q05{how}'
+                    bkgr_key = f'{chName}_autoBkgr_bkgrVal_q05{how}'
                     if not bkgr_key in metricsToSkipChannel:
                         metrics_values[bkgr_key][i] = np.quantile(
                             bkgr_arr, q=0.05
@@ -604,11 +604,11 @@ class saveDataWorker(QObject):
                                     metrics_values[conc_key_vox][i] = conc_vox
                                     metrics_values[conc_key_fl][i] = conc_fl
 
-                            bkgr_key = f'{chName}_dataPrepBkgr_val_median{how}'
+                            bkgr_key = f'{chName}_dataPrepBkgr_bkgrVal_median{how}'
                             if not bkgr_key in metricsToSkipChannel:
                                 metrics_values[bkgr_key][i] = ROI_bkgrVal
 
-                            bkgr_key = f'{chName}_dataPrepBkgr_val_mean{how}'
+                            bkgr_key = f'{chName}_dataPrepBkgr_bkgrVal_mean{how}'
                             if not bkgr_key in metricsToSkipChannel:
                                 if ROI_bkgrMask is None:
                                     bkgr_val = bkgrData_means[k]
@@ -616,7 +616,7 @@ class saveDataWorker(QObject):
                                     bkgr_val = ROI_bkgrData.mean()
                                 metrics_values[bkgr_key][i] = bkgr_val
 
-                            bkgr_key = f'{chName}_dataPrepBkgr_val_q75{how}'
+                            bkgr_key = f'{chName}_dataPrepBkgr_bkgrVal_q75{how}'
                             if not bkgr_key in metricsToSkipChannel:
                                 if ROI_bkgrMask is None:
                                     bkgr_val = bkgrData_q75s[k]
@@ -624,7 +624,7 @@ class saveDataWorker(QObject):
                                     bkgr_val = np.quantile(ROI_bkgrData, q=0.75)
                                 metrics_values[bkgr_key][i] = bkgr_val
 
-                            bkgr_key = f'{chName}_dataPrepBkgr_val_q25{how}'
+                            bkgr_key = f'{chName}_dataPrepBkgr_bkgrVal_q25{how}'
                             if not bkgr_key in metricsToSkipChannel:
                                 if ROI_bkgrMask is None:
                                     bkgr_val = bkgrData_q25s[k]
@@ -632,7 +632,7 @@ class saveDataWorker(QObject):
                                     bkgr_val = np.quantile(ROI_bkgrData, q=0.25)
                                 metrics_values[bkgr_key][i] = bkgr_val
 
-                            bkgr_key = f'{chName}_dataPrepBkgr_val_q95{how}'
+                            bkgr_key = f'{chName}_dataPrepBkgr_bkgrVal_q95{how}'
                             if not bkgr_key in metricsToSkipChannel:
                                 if ROI_bkgrMask is None:
                                     bkgr_val = bkgrData_q95s[k]
@@ -640,7 +640,7 @@ class saveDataWorker(QObject):
                                     bkgr_val = np.quantile(ROI_bkgrData, q=0.95)
                                 metrics_values[bkgr_key][i] = bkgr_val
 
-                            bkgr_key = f'{chName}_dataPrepBkgr_val_q05{how}'
+                            bkgr_key = f'{chName}_dataPrepBkgr_bkgrVal_q05{how}'
                             if not bkgr_key in metricsToSkipChannel:
                                 if ROI_bkgrMask is None:
                                     bkgr_val = bkgrData_q05s[k]

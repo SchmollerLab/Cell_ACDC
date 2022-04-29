@@ -177,12 +177,19 @@ class myMessageBox(QDialog):
         self.buttons = []
         self.widgets = []
         self.layouts = []
+        self.labels = []
 
         self.currentRow = 0
         self._w = None
 
         self.layout.setColumnStretch(1, 1)
         self.setLayout(self.layout)
+
+    def mousePressEvent(self, event):
+        for label in self.labels:
+            label.setTextInteractionFlags(
+                Qt.TextBrowserInteraction | Qt.TextSelectableByKeyboard
+            )
 
     def setIcon(self, iconName='SP_MessageBoxInformation'):
         label = QLabel(self)
@@ -208,12 +215,10 @@ class myMessageBox(QDialog):
 
     def addText(self, text):
         label = QLabel(self)
-        label.setTextInteractionFlags(
-            Qt.TextBrowserInteraction | Qt.TextSelectableByKeyboard
-        )
         label.setText(text)
         label.setWordWrap(True)
         label.setOpenExternalLinks(True)
+        self.labels.append(label)
         self.layout.addWidget(label, self.currentRow, 1)#, alignment=Qt.AlignTop)
         self.currentRow += 1
         return label
