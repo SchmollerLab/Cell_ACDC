@@ -101,6 +101,7 @@ class installJavaDialog(widgets.myMessageBox):
             txt = txt_windows
 
         self.cancelButton = self.addButton('Cancel')
+        self.cancelButton.setIcon(QIcon(':cancelButton.svg'))
 
         label = self.addText(txt)
         label.setWordWrap(False)
@@ -499,7 +500,9 @@ class customAnnotationDialog(QDialog):
         if not savedCustomAnnot:
             self.loadSavedAnnotButton.setDisabled(True)
         self.okButton = QPushButton('  Ok  ')
+        self.okButton.setIcon(QIcon(':okButton.svg'))
         cancelButton = QPushButton('Cancel')
+        cancelButton.setIcon(QIcon(':cancelButton.svg'))
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -586,7 +589,7 @@ class customAnnotationDialog(QDialog):
             self.shortcutWidget.widget.keySequence = QKeySequence(keySequence)
 
     def warnNoItemsSelected(self):
-        msg = widgets.myMessageBox(self)
+        msg = widgets.myMessageBox(parent=self)
         msg.setIcon(iconName='SP_MessageBoxWarning')
         msg.setWindowTitle('Delete annotation?')
         msg.addText('You didn\'t select any annotation!')
@@ -594,7 +597,7 @@ class customAnnotationDialog(QDialog):
         msg.exec_()
 
     def deleteSelectedAnnot(self):
-        msg = widgets.myMessageBox(self)
+        msg = widgets.myMessageBox(parent=self)
         msg.setIcon(iconName='SP_MessageBoxWarning')
         msg.setWindowTitle('Delete annotation?')
         msg.addText('Are you sure you want to delete the selected annotations?')
@@ -824,6 +827,7 @@ class setMeasurementsDialog(QDialog):
         groupsLayout.setRowStretch(1, 2)
 
         okButton = QPushButton('   Ok   ')
+        okButton.setIcon(QIcon(':okButton.svg'))
         self.okButton = okButton
 
         buttonsLayout.addStretch(1)
@@ -1266,6 +1270,7 @@ class QDialogMetadataXML(QDialog):
 
         if rawDataStruct is None or rawDataStruct!=-1:
             okButton = QPushButton(' Ok ')
+            okButton.setIcon(QIcon(':okButton.svg'))
         elif rawDataStruct==1:
             okButton = QPushButton(' Load next position ')
         buttonsLayout.addWidget(okButton, 0, 1)
@@ -1301,6 +1306,7 @@ class QDialogMetadataXML(QDialog):
             overWriteButton.clicked.connect(self.ok_cb)
 
         cancelButton = QPushButton('Cancel')
+        cancelButton.setIcon(QIcon(':cancelButton.svg'))
         buttonsLayout.addWidget(cancelButton, 0, 2)
         buttonsLayout.setColumnStretch(0, 1)
         buttonsLayout.setColumnStretch(3, 1)
@@ -1851,10 +1857,12 @@ class QDialogCombobox(QDialog):
         topLayout.setContentsMargins(0, 10, 0, 0)
 
         okButton = QPushButton('Ok')
+        okButton.setIcon(QIcon(':okButton.svg'))
         okButton.setShortcut(Qt.Key_Enter)
         bottomLayout.addWidget(okButton, alignment=Qt.AlignRight)
 
         cancelButton = QPushButton('Cancel')
+        cancelButton.setIcon(QIcon(':cancelButton.svg'))
         bottomLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
         bottomLayout.setContentsMargins(0, 10, 0, 0)
 
@@ -2086,9 +2094,11 @@ class QDialogAppendTextFilename(QDialog):
         )
 
         okButton = QPushButton('Ok')
+        okButton.setIcon(QIcon(':okButton.svg'))
         okButton.setShortcut(Qt.Key_Enter)
 
         cancelButton = QPushButton('Cancel')
+        cancelButton.setIcon(QIcon(':cancelButton.svg'))
 
         buttonsLayout.addWidget(okButton, alignment=Qt.AlignRight)
         buttonsLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
@@ -2162,9 +2172,11 @@ class QDialogEntriesWidget(QDialog):
             self.QLEs.append(LE)
 
         okButton = QPushButton('Ok')
+        okButton.setIcon(QIcon(':okButton.svg'))
         okButton.setShortcut(Qt.Key_Enter)
 
         cancelButton = QPushButton('Cancel')
+        cancelButton.setIcon(QIcon(':cancelButton.svg'))
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -2363,6 +2375,7 @@ class QDialogMetadata(QDialog):
             'Save metadata only for current positionh'
         )
         okButton.setShortcut(Qt.Key_Enter)
+        okButton.setIcon(QIcon(':okButton.svg'))
         self.okButton = okButton
 
         if ask_TimeIncrement or ask_PhysicalSizes:
@@ -2387,6 +2400,7 @@ class QDialogMetadata(QDialog):
             okButton.setText('Ok')
 
         cancelButton = QPushButton('Cancel')
+        cancelButton.setIcon(QIcon(':cancelButton.svg'))
 
         buttonsLayout.setColumnStretch(0, 1)
         buttonsLayout.addWidget(okButton, 0, 1)
@@ -2647,6 +2661,7 @@ class QCropZtool(QWidget):
         self.upperZscrollbar.label = QLabel(f'{SizeZ}/{SizeZ}')
 
         cancelButton = QPushButton('Cancel')
+        cancelButton.setIcon(QIcon(':cancelButton.svg'))
         cropButton = QPushButton('Crop and save')
         buttonsLayout.addWidget(cropButton)
         buttonsLayout.addWidget(cancelButton)
@@ -3632,6 +3647,7 @@ class postProcessSegmDialog(QDialog):
             okButton = None
 
         cancelButton = QPushButton('Cancel')
+        cancelButton.setIcon(QIcon(':cancelButton.svg'))
 
         buttonsLayout.addStretch(1)
         if applyButton is not None:
@@ -4163,9 +4179,11 @@ class editCcaTableWidget(QDialog):
 
         # Add buttons
         okButton = QPushButton('Ok')
+        okButton.setIcon(QIcon(':okButton.svg'))
         okButton.setShortcut(Qt.Key_Enter)
 
         cancelButton = QPushButton('Cancel')
+        cancelButton.setIcon(QIcon(':cancelButton.svg'))
 
         moreInfoButton = QPushButton('More info...')
 
@@ -4582,9 +4600,11 @@ class askStopFrameSegm(QDialog):
         mainLayout.addLayout(formLayout)
 
         okButton = QPushButton('Ok')
+        okButton.setIcon(QIcon(':okButton.svg'))
         okButton.setShortcut(Qt.Key_Enter)
 
         cancelButton = QPushButton('Cancel')
+        cancelButton.setIcon(QIcon(':cancelButton.svg'))
 
         buttonsLayout.addWidget(okButton, alignment=Qt.AlignRight)
         buttonsLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
@@ -4637,14 +4657,16 @@ class QLineEditDialog(QDialog):
     def __init__(
             self, title='Entry messagebox', msg='Entry value',
             defaultTxt='', parent=None, allowedValues=None,
-            warnLastFrame=False
+            warnLastFrame=False, isInteger=False, isFloat=False
         ):
-        QDialog.__init__(self)
+        QDialog.__init__(self, parent)
 
         self.loop = None
         self.cancel = True
         self.allowedValues = allowedValues
         self.warnLastFrame = warnLastFrame
+        self.isFloat = isFloat
+        self.isInteger = isInteger
         if allowedValues and warnLastFrame:
             self.maxValue = max(allowedValues)
 
@@ -4664,10 +4686,34 @@ class QLineEditDialog(QDialog):
         # padding: top, left, bottom, right
         msg.setStyleSheet("padding:0px 0px 3px 0px;")
 
-        ID_QLineEdit = QLineEdit()
+        if isFloat:
+            ID_QLineEdit = QDoubleSpinBox()
+            if allowedValues is not None:
+                _min, _max = allowedValues
+                ID_QLineEdit.setMinimum(_min)
+                ID_QLineEdit.setMaximum(_max)
+            else:
+                ID_QLineEdit.setMaximum(2**32)
+            if defaultTxt:
+                ID_QLineEdit.setValue(float(defaultTxt))
+
+        elif isInteger:
+            ID_QLineEdit = QSpinBox()
+            if allowedValues is not None:
+                _min, _max = allowedValues
+                ID_QLineEdit.setMinimum(_min)
+                ID_QLineEdit.setMaximum(_max)
+            else:
+                ID_QLineEdit.setMaximum(2147483647)
+            if defaultTxt:
+                ID_QLineEdit.setValue(int(defaultTxt))
+        else:
+            ID_QLineEdit = QLineEdit()
+            ID_QLineEdit.setText(defaultTxt)
+            ID_QLineEdit.textChanged[str].connect(self.ID_LineEdit_cb)
         ID_QLineEdit.setFont(_font)
         ID_QLineEdit.setAlignment(Qt.AlignCenter)
-        ID_QLineEdit.setText(defaultTxt)
+
         self.ID_QLineEdit = ID_QLineEdit
 
         if allowedValues is not None:
@@ -4678,12 +4724,13 @@ class QLineEditDialog(QDialog):
             self.notValidLabel = notValidLabel
 
         okButton = QPushButton('Ok')
+        okButton.setIcon(QIcon(':okButton.svg'))
         okButton.setShortcut(Qt.Key_Enter)
 
         cancelButton = QPushButton('Cancel')
+        cancelButton.setIcon(QIcon(':cancelButton.svg'))
 
         # Events
-        ID_QLineEdit.textChanged[str].connect(self.ID_LineEdit_cb)
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.cancel_cb)
 
@@ -4692,12 +4739,13 @@ class QLineEditDialog(QDialog):
 
         # Add widgets to layouts
         LineEditLayout.addWidget(msg, alignment=Qt.AlignCenter)
-        LineEditLayout.addWidget(ID_QLineEdit, alignment=Qt.AlignCenter)
+        LineEditLayout.addWidget(ID_QLineEdit)
         if allowedValues is not None:
             LineEditLayout.addWidget(notValidLabel, alignment=Qt.AlignCenter)
         buttonsLayout.addStretch(1)
-        buttonsLayout.addWidget(okButton)
         buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.insertSpacing(1, 20)
+        buttonsLayout.addWidget(okButton)
 
         # Add layouts
         mainLayout.addLayout(LineEditLayout)
@@ -4754,11 +4802,14 @@ class QLineEditDialog(QDialog):
             if self.notValidLabel.text():
                 return
 
-        val = int(self.ID_QLineEdit.text())
-        if self.warnLastFrame and val < self.maxValue:
-            cancel = self.warnValLessLastFrame(val)
-            if cancel:
-                return
+        if self.isFloat or self.isInteger:
+            val = self.ID_QLineEdit.value()
+        else:
+            val = int(self.ID_QLineEdit.text())
+            if self.warnLastFrame and val < self.maxValue:
+                cancel = self.warnValLessLastFrame(val)
+                if cancel:
+                    return
 
         self.cancel = False
         self.EntryID = val
@@ -4821,10 +4872,12 @@ class editID_QWidget(QDialog):
 
         HBoxLayout = QHBoxLayout()
         okButton = QPushButton('Ok')
+        okButton.setIcon(QIcon(':okButton.svg'))
         okButton.setShortcut(Qt.Key_Enter)
         HBoxLayout.addWidget(okButton, alignment=Qt.AlignRight)
 
         cancelButton = QPushButton('Cancel')
+        cancelButton.setIcon(QIcon(':cancelButton.svg'))
         # cancelButton.setShortcut(Qt.Key_Escape)
         HBoxLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
         HBoxLayout.setContentsMargins(0, 10, 0, 0)
@@ -5094,10 +5147,12 @@ class QtSelectItems(QDialog):
         topLayout.setContentsMargins(0, 10, 0, 0)
 
         okButton = QPushButton('Ok')
+        okButton.setIcon(QIcon(':okButton.svg'))
         okButton.setShortcut(Qt.Key_Enter)
         bottomLayout.addWidget(okButton, alignment=Qt.AlignRight)
 
         cancelButton = QPushButton('Cancel')
+        cancelButton.setIcon(QIcon(':cancelButton.svg'))
         bottomLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
 
         multiPosButton = QPushButton('Multiple selection')
@@ -6117,6 +6172,7 @@ class QDialogModelParams(QDialog):
         )
 
         okButton = QPushButton(' Ok ')
+        okButton.setIcon(QIcon(':okButton.svg'))
         buttonsLayout.addWidget(okButton)
 
         infoButton = QPushButton(' More info... ')
@@ -6352,6 +6408,7 @@ class downloadModel(QMessageBox):
             f'{weights}'
         )
         okButton = QPushButton('Ok')
+        okButton.setIcon(QIcon(':okButton.svg'))
         self.addButton(okButton, self.YesRole)
         okButton.disconnect()
         okButton.clicked.connect(self.close_)
@@ -6395,6 +6452,7 @@ class warnVisualCppRequired(QMessageBox):
         """)
         seeScreenshotButton = QPushButton('See screenshot...')
         okButton = QPushButton('Ok')
+        okButton.setIcon(QIcon(':okButton.svg'))
         self.addButton(okButton, self.YesRole)
         okButton.disconnect()
         okButton.clicked.connect(self.close_)

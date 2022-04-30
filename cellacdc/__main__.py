@@ -586,7 +586,9 @@ class mainWin(QMainWindow):
                 print('-----------------------------------------')
                 print('Failed to restart Cell-ACDC. Please restart manually')
         else:
+            print('**********************************************')
             print('Cell-ACDC closed. Have a good day!')
+            print('**********************************************')
             exit()
 
 def run():
@@ -615,10 +617,10 @@ def run():
     print('**********************************************')
     print(f'Welcome to Cell-ACDC v{version}!')
     print('**********************************************')
-    print('-----------------------------------')
-    print('NOTE: If application is not visible, it is probably minimized '
+    print('----------------------------------------------')
+    print('NOTE: If application is not visible, it is probably minimized\n'
           'or behind some other open window.')
-    print('-----------------------------------')
+    print('----------------------------------------------')
     # win.raise_()
     sys.exit(app.exec_())
 

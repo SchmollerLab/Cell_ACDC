@@ -208,8 +208,12 @@ class myMessageBox(QDialog):
         func = partial(myutils.showInExplorer, path)
         self.showInFileManagButton.clicked.connect(func)
 
-    def addCancelButton(self):
-        self.cancelButton = QPushButton('Cancel')
+    def addCancelButton(self, button=None):
+        if button is None:
+            self.cancelButton = QPushButton('Cancel')
+        else:
+            self.cancelButton = button
+        self.cancelButton.setIcon(QIcon(':cancelButton.svg'))
         self.buttonsLayout.insertWidget(0, self.cancelButton)
         self.buttonsLayout.insertSpacing(1, 20)
 
@@ -225,12 +229,25 @@ class myMessageBox(QDialog):
 
     def addButton(self, buttonText):
         button = QPushButton(buttonText, self)
-        if buttonText.find('Cancel') != -1:
-            self.cancelButton = button
-            self.buttonsLayout.insertWidget(0, button)
-            self.buttonsLayout.insertSpacing(1, 20)
+        isCancelButton = (
+            buttonText.lower().find('cancel') != -1
+            or buttonText.lower().find('abort') != -1
+        )
+        isYesButton = (
+            buttonText.lower().find('yes') != -1
+            or buttonText.lower().find('ok') != -1
+        )
+        isSettingsButton = (
+            buttonText.lower().find('set') != -1
+        )
+        if isCancelButton:
+            self.addCancelButton(button=button)
         else:
             self.buttonsLayout.addWidget(button)
+        if isYesButton:
+            button.setIcon(QIcon(':okButton.svg'))
+        if isSettingsButton:
+            button.setIcon(QIcon(':cog.svg'))
         button.clicked.connect(self.buttonCallBack)
         self.buttons.append(button)
         return button

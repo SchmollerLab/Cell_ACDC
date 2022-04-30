@@ -132,15 +132,13 @@ def exception_handler(func):
             msg = QMessageBox(self)
             msg.setWindowTitle('Critical error')
             msg.setIcon(msg.Critical)
-            err_msg = (f"""
-            <p style="font-size:13px">
+            err_msg = html_utils.paragraph(f"""
                 Error in function <b>{func.__name__}</b>.<br><br>
                 More details below or in the terminal/console.<br><br>
                 Note that the error details from this session are also saved
                 in the file<br>
                 {self.log_path}<br><br>
                 Please <b>send the log file</b> when reporting a bug, thanks!
-            </p>
             """)
             msg.setText(err_msg)
             showLog = msg.addButton('Show log file...', msg.HelpRole)
@@ -4854,14 +4852,12 @@ class guiWin(QMainWindow):
 
         if self.sender().text() == 'YeaZ':
             msg = QMessageBox()
-            info_txt = (f"""
-            <p style="font-size:14px">
+            info_txt = html_utils.paragraph(f"""
                 Note that YeaZ tracking algorithm tends to be sliglhtly more accurate
                 overall, but it is <b>less capable of detecting segmentation
                 errors.</b><br><br>
                 If you need to correct as many segmentation errors as possible
                 we recommend using Cell-ACDC tracking algorithm.
-            </p>
             """)
             msg.information(self, 'Info about YeaZ', info_txt, msg.Ok)
 
@@ -5615,8 +5611,7 @@ class guiWin(QMainWindow):
 
     def warnMotherNotEligible(self, new_mothID, budID, i, why):
         if why == 'not_G1_in_the_future':
-            err_msg = (f"""
-            <p style="font-size:12px">
+            err_msg = html_utils.paragraph(f"""
                 The requested cell in G1 (ID={new_mothID})
                 at future frame {i+1} has a bud assigned to it,
                 therefore it cannot be assigned as the mother
@@ -5637,7 +5632,6 @@ class guiWin(QMainWindow):
                 <b>CANNOT BE UNDONE!</b>
                 Saved data is not changed of course.<br><br>
                 Apply assignment or cancel process?
-            </p>
             """)
             msg = QMessageBox()
             enforce_assignment = msg.warning(
@@ -5645,8 +5639,7 @@ class guiWin(QMainWindow):
             )
             cancel = enforce_assignment == msg.Cancel
         elif why == 'not_G1_in_the_past':
-            err_msg = (f"""
-            <p style="font-size:12px">
+            err_msg = html_utils.paragraph(f"""
                 The requested cell in G1
                 (ID={new_mothID}) at past frame {i+1}
                 has a bud assigned to it, therefore it cannot be
@@ -5655,7 +5648,6 @@ class guiWin(QMainWindow):
                 only if this cell is in G1 for the entire life of the bud.<br>
                 One possible solution is to first go to frame {i+1} and
                 assign the bud of cell {new_mothID} to another cell.
-            </p>
             """)
             msg = QMessageBox()
             msg.warning(
@@ -5663,8 +5655,7 @@ class guiWin(QMainWindow):
             )
             cancel = None
         elif why == 'single_frame_G1_duration':
-            err_msg = (f"""
-            <p style="font-size:12px">
+            err_msg = html_utils.paragraph(f"""
                 Assigning bud ID {budID} to cell in G1
                 (ID={new_mothID}) would result in no G1 phase at all between
                 previous cell cycle and current cell cycle.
@@ -5674,7 +5665,6 @@ class guiWin(QMainWindow):
                 annotate division on any frame before current frame number {i+1}.
                 This will gurantee a G1 duration of cell {new_mothID}
                 of <b>at least 1 frame</b>. Thanks.
-            </p>
             """)
             msg = QMessageBox()
             msg.warning(
@@ -8714,7 +8704,7 @@ class guiWin(QMainWindow):
             waitCond.wakeAll()
 
     def workerPermissionError(self, txt, waitCond):
-        msg = widgets.myMessageBox(self)
+        msg = widgets.myMessageBox(parent=self)
         msg.setIcon(iconName='SP_MessageBoxCritical')
         msg.setWindowTitle('Permission denied')
         msg.addText(txt)
@@ -8726,14 +8716,12 @@ class guiWin(QMainWindow):
         errTitle = 'All loaded positions contains frames over time!'
         self.titleLabel.setText(errTitle, color='r')
 
-        msg = widgets.myMessageBox(self)
+        msg = widgets.myMessageBox(parent=self)
 
-        err_msg = (f"""
-        <p style="font-size:13px">
+        err_msg = html_utils.paragraph(f"""
             {errTitle}.<br><br>
             To load data that contains frames over time you have to select
             only ONE position.
-        </p>
         """)
         msg.setIcon(iconName='SP_MessageBoxCritical')
         msg.setWindowTitle('Loaded multiple positions with frames!')
@@ -9379,15 +9367,18 @@ class guiWin(QMainWindow):
 
                 # Ask whether to resume from last frame
                 if last_tracked_num>1:
-                    msg = QMessageBox()
-                    start_from_last_tracked_i = msg.question(
-                        self, 'Start from last session?',
+                    msg = widgets.myMessageBox()
+                    txt = html_utils.paragraph(
                         'The system detected a previous session ended '
-                        f'at frame {last_tracked_num}.\n\n'
-                        f'Do you want to resume from frame {last_tracked_num}?',
-                        msg.Yes | msg.No
+                        f'at frame {last_tracked_num}.<br><br>'
+                        f'Do you want to <b>resume from frame '
+                        f'{last_tracked_num}?</b>'
                     )
-                    if start_from_last_tracked_i == msg.Yes:
+                    noButton, yesButton = msg.question(
+                        self, 'Start from last session?', txt,
+                        buttonsTexts=(' No ', 'Yes')
+                    )
+                    if msg.clickedButton == yesButton:
                         posData.frame_i = posData.last_tracked_i
                     else:
                         posData.frame_i = 0
@@ -9615,8 +9606,7 @@ class guiWin(QMainWindow):
 
     def warnScellsGone(self, ScellsIDsGone, frame_i):
         msg = QMessageBox()
-        text = (f"""
-        <p style="font-size:12px">
+        text = html_utils.paragraph(f"""
             In the next frame the followning cells' IDs in S/G2/M
             (highlighted with a yellow contour) <b>will disappear</b>:<br><br>
             {ScellsIDsGone}<br><br>
@@ -9627,7 +9617,6 @@ class guiWin(QMainWindow):
             If you decide to continue these cells will be <b>automatically
             annotated as divided at frame number {frame_i}</b>.<br><br>
             Do you want to continue?
-        </p>
         """)
         answer = msg.warning(
            self, 'Cells in "S/G2/M" disappeared!', text,
@@ -12863,15 +12852,13 @@ class guiWin(QMainWindow):
         self.workerProgress(err_msg, 'INFO')
         self.titleLabel.setText(err_msg, color='r')
         abort = False
-        msg = widgets.myMessageBox(self)
-        warn_msg = (f"""
-        <p style="font-size:13px">
+        msg = widgets.myMessageBox(parent=self)
+        warn_msg = html_utils.paragraph(f"""
             The folder {pos_foldername} does not contain a
             pre-computed segmentation mask.<br><br>
             You can continue with a blank mask or cancel and
             pre-compute the mask with the segmentation module.<br><br>
             Do you want to continue?
-        </p>
         """)
         msg.setIcon(iconName='SP_MessageBoxWarning')
         msg.setWindowTitle('Segmentation file not found')
@@ -12889,11 +12876,8 @@ class guiWin(QMainWindow):
         available_ram = myutils._bytes_to_GB(available_ram)
         required_ram = myutils._bytes_to_GB(required_ram)
         required_perc = round(100*required_ram/available_ram)
-        msg = QMessageBox(self)
-        msg.setWindowTitle('Memory not sufficient')
-        msg.setIcon(msg.Warning)
-        msg.setText(f"""
-        <p style="font-size:10pt">
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph(f"""
             The total amount of data that you requested to load is about
             <b>{required_ram:.2f} GB</b> ({required_perc}% of the available memory)
             but there are only <b>{available_ram:.2f} GB</b> available.<br><br>
@@ -12904,15 +12888,12 @@ class guiWin(QMainWindow):
             If you choose to continue, the <b>system might freeze</b>
             or your OS could simply kill the process.<br><br>
             What do you want to do?
-        </p>
-        """
+        """)
+        cancelButton, continueButton = msg.warning(
+            self, 'Memory not sufficient', txt,
+            additionalButtons=('Cancel', 'Continue anyway')
         )
-        continueButton = QPushButton('Continue anyway')
-        abortButton = QPushButton('Abort')
-        msg.addButton(continueButton, msg.YesRole)
-        msg.addButton(abortButton, msg.NoRole)
-        msg.exec_()
-        if msg.clickedButton() == continueButton:
+        if msg.clickedButton == continueButton:
             return True
         else:
             return False
@@ -12933,12 +12914,10 @@ class guiWin(QMainWindow):
         msg = QMessageBox(self)
         msg.setWindowTitle('No valid files found!')
         msg.setIcon(msg.Critical)
-        err_msg = (f"""
-        <p style="font-size:10pt">
+        err_msg = html_utils.paragraph(f"""
             The folder {images_path}<br>
             <b>does not contain any valid image file!</b><br><br>
             Valid file formats are .h5, .tif, _aligned.h5, _aligned.npz.
-        </p>
         """)
         msg.setText(err_msg)
         msg.exec_()
@@ -13274,10 +13253,10 @@ class guiWin(QMainWindow):
         # with segmentation fault on macOS. I don't know why yet.
         self.logger.info('Computing cell volume...')
         end_i = self.save_until_frame_i
-        for p, posData in enumerate(tqdm(self.data[:self.last_pos], ncols=100)):
+        for p, posData in enumerate(self.data[:self.last_pos]):
             PhysicalSizeY = posData.PhysicalSizeY
             PhysicalSizeX = posData.PhysicalSizeX
-            for frame_i, data_dict in enumerate(posData.allData_li[:end_i+1]):
+            for frame_i, data_dict in enumerate(tqdm(posData.allData_li[:end_i+1], ncols=100)):
                 lab = data_dict['labels']
                 rp = data_dict['regionprops']
                 for i, obj in enumerate(rp):
@@ -13305,17 +13284,15 @@ class guiWin(QMainWindow):
                 break
         if frame_i > 0:
             # Ask to save last visited frame or not
-            txt = (f"""
-            <p style="font-size:12px">
+            txt = html_utils.paragraph(f"""
                 You visited and stored data up until frame
                 number {frame_i+1}.<br><br>
                 Enter <b>up to which frame number</b> you want to save data:
-            </p>
             """)
             lastFrameDialog = apps.QLineEditDialog(
                 title='Last frame number to save', defaultTxt=str(frame_i+1),
-                msg=txt, parent=self, allowedValues=range(1, frame_i+2),
-                warnLastFrame=True
+                msg=txt, parent=self, allowedValues=(1,frame_i+1),
+                warnLastFrame=True, isInteger=True
             )
             lastFrameDialog.exec_()
             if lastFrameDialog.cancel:
@@ -13327,14 +13304,12 @@ class guiWin(QMainWindow):
         return True
 
     def askSaveMetrics(self):
-        txt = (
+        txt = html_utils.paragraph(
         """
-        <p style="font-size:13px">
             Do you also want to <b>save additional metrics</b>
             (e.g., cell volume, mean, amount etc.)?<br><br>
             NOTE: Saving additional metrics is <b>slower</b>,
-            we recommend doing it only when you need it.<br>
-        </p>
+            we recommend doing it <b>only when you need it</b>.<br>
         """)
         msg = widgets.myMessageBox(parent=self)
         msg.setIcon(iconName='SP_MessageBoxQuestion')
@@ -13370,12 +13345,10 @@ class guiWin(QMainWindow):
         msg = QMessageBox(self)
         msg.setWindowTitle('Save all positions?')
         msg.setIcon(msg.Question)
-        txt = (
+        txt = html_utils.paragraph(
         f"""
-        <p style="font-size:12px">
             Do you want to save <b>ALL positions</b> or <b>only until
             Position_{last_pos}</b> (last visualized/corrected position)?<br>
-        </p>
         """)
         msg.setText(txt)
         allPosbutton =  QPushButton('Save ALL positions')
@@ -13395,16 +13368,14 @@ class guiWin(QMainWindow):
         msg = QMessageBox(self)
         msg.setWindowTitle('Critical error')
         msg.setIcon(msg.Critical)
-        err_msg = (f"""
-        <p style="font-size:14px">
+        err_msg = html_utils.paragraph(f"""
             Error <b>while saving metrics</b>.<br><br>
             More details below or in the terminal/console.<br><br>
             Note that the error details from this session are also saved
             in the file<br>
             {self.log_path}<br><br>
             Please <b>send the log file</b> when reporting a bug, thanks!
-        </p>
-        """)
+        """, font_size='14px')
         msg.setText(err_msg)
         showLog = msg.addButton('Show log file...', msg.HelpRole)
         showLog.disconnect()
@@ -13496,18 +13467,17 @@ class guiWin(QMainWindow):
         if self.isSnapshot:
             self.store_data(mainThread=False)
 
-        self.askSaveLastVisitedSegmMode()
+        proceed = self.askSaveLastVisitedSegmMode()
+        if not proceed:
+            return
 
         mode = self.modeComboBox.currentText()
         if self.save_metrics or mode == 'Cell cycle analysis':
             self.computeVolumeRegionprop()
 
-        infoTxt = (
-        f"""
-            <p style=font-size:12px>
-                Saving {self.exp_path}...<br>
-            </p>
-        """)
+        infoTxt = html_utils.paragraph(
+            f'Saving {self.exp_path}...<br>', font_size='14px'
+        )
 
         self.saveWin = apps.QDialogPbar(
             parent=self, title='Saving data', infoTxt=infoTxt

@@ -41,6 +41,8 @@
     <file alias="addDelRoi.svg">resources/icons/addDelRoi.svg</file>
     <file alias="curvature-tool.svg">resources/icons/curvature-tool.svg</file>
     <file alias="cancel.svg">resources/icons/cancel.svg</file>
+    <file alias="cancelButton.svg">resources/icons/cancelButton.svg</file>
+    <file alias="okButton.svg">resources/icons/okButton.svg</file>
     <file alias="bkgrRoi.svg">resources/icons/bkgrRoi.svg</file>
     <file alias="hull.svg">resources/icons/hull.svg</file>
     <file alias="image.svg">resources/icons/image.svg</file>
