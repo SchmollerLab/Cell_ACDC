@@ -306,13 +306,13 @@ class myMessageBox(QDialog):
         if self.layouts:
             return
 
-        # Start resizing height every 1 ms
-        self.resizeCallsCount = 0
-        self.timer = QTimer()
-        from config import warningHandler
-        warningHandler.sigGeometryWarning.connect(self.timer.stop)
-        self.timer.timeout.connect(self._resizeHeight)
-        self.timer.start(1)
+        # # Start resizing height every 1 ms
+        # self.resizeCallsCount = 0
+        # self.timer = QTimer()
+        # from config import warningHandler
+        # warningHandler.sigGeometryWarning.connect(self.timer.stop)
+        # self.timer.timeout.connect(self._resizeHeight)
+        # self.timer.start(1)
 
     def _resizeHeight(self):
         try:

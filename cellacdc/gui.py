@@ -291,8 +291,6 @@ class saveDataWorker(QObject):
     critical = pyqtSignal(str)
     criticalMetrics = pyqtSignal(object)
     criticalPermissionError = pyqtSignal(str)
-    askSaveLastVisitedCcaMode = pyqtSignal(int, object)
-    askSaveLastVisitedSegmMode = pyqtSignal(int, object)
     metricsPbarProgress = pyqtSignal(int, int)
     askZsliceAbsent = pyqtSignal(str, object)
     customMetricsCritical = pyqtSignal(str)
@@ -496,18 +494,14 @@ class saveDataWorker(QObject):
             # Iterate cells
             for i, obj in enumerate(rp):
                 _slice = self.mainWin.getObjSlice(obj.slice)
-                _objMask = self.mainWin.getObjImage(obj.image, obj.bbox)
+                _objMask = obj.image # self.mainWin.getObjImage(obj.image, obj.bbox)
                 IDs[i] = obj.label
                 # Calc volume
                 vol_vox = None
                 vol_fl = None
                 if 'cell_vol_vox' in self.mainWin.sizeMetricsToSave:
-                    # vol_vox, vol_fl = _calc_rot_vol(
-                    #     obj, PhysicalSizeY, PhysicalSizeX
-                    # )
-                    vol_vox, vol_fl = 0, 0
-                    IDs_vol_vox[i] = vol_vox
-                    IDs_vol_fl[i] = vol_fl
+                    IDs_vol_vox[i] = obj.vol_vox
+                    IDs_vol_fl[i] = obj.vol_fl
 
                 if 'cell_area_pxl' in self.mainWin.sizeMetricsToSave:
                     IDs_area_pxl[i] = obj.area
@@ -718,9 +712,7 @@ class saveDataWorker(QObject):
 
         return df
 
-
-
-    def addRotVolume(self, df, rp, posData):
+    def addVolumeMetrics(self, df, rp, posData):
         PhysicalSizeY = posData.PhysicalSizeY
         PhysicalSizeX = posData.PhysicalSizeX
         yx_pxl_to_um2 = PhysicalSizeY*PhysicalSizeX
@@ -733,11 +725,8 @@ class saveDataWorker(QObject):
         IDs_area_um2 = init_list.copy()
         for i, obj in enumerate(rp):
             IDs[i] = obj.label
-            vol_vox, vol_fl = _calc_rot_vol(
-                obj, PhysicalSizeY, PhysicalSizeX
-            )
-            IDs_vol_vox[i] = vol_vox
-            IDs_vol_fl[i] = vol_fl
+            IDs_vol_vox[i] = obj.vol_vox
+            IDs_vol_fl[i] = obj.vol_fl
             IDs_area_pxl[i] = obj.area
             IDs_area_um2[i] = obj.area*yx_pxl_to_um2
 
@@ -752,24 +741,19 @@ class saveDataWorker(QObject):
         last_pos = self.mainWin.last_pos
         save_metrics = self.mainWin.save_metrics
         self.time_last_pbar_update = time.time()
+        mode = self.mode
         for p, posData in enumerate(self.mainWin.data[:last_pos]):
             if self.saveWin.aborted:
                 self.finished.emit()
                 return
 
             current_frame_i = posData.frame_i
-            mode = self.mainWin.modeComboBox.currentText()
+
             if not self.mainWin.isSnapshot:
-                self.mutex.lock()
-                self.askSaveLastVisitedSegmMode.emit(p, posData)
-                self.waitCond.wait(self.mutex)
-                self.mutex.unlock()
-                if self.askSaveLastCancelled:
-                    self.mainWin.saveWin.aborted = True
-                    self.finished.emit()
-                    return
                 last_tracked_i = self.mainWin.last_tracked_i
                 if last_tracked_i is None:
+                    self.mainWin.saveWin.aborted = True
+                    self.finished.emit()
                     return
             elif self.mainWin.isSnapshot:
                 last_tracked_i = 0
@@ -777,8 +761,6 @@ class saveDataWorker(QObject):
             if p == 0:
                 self.progressBar.emit(0, last_pos*(last_tracked_i+1), 0)
 
-            if self.mainWin.isSnapshot:
-                self.mainWin.store_data(mainThread=False)
             try:
                 segm_npz_path = posData.segm_npz_path
                 acdc_output_csv_path = posData.acdc_output_csv_path
@@ -835,7 +817,7 @@ class saveDataWorker(QObject):
                                     acdc_df, rp, frame_i, lab, posData
                                 )
                             elif mode == 'Cell cycle analysis':
-                                acdc_df = self.addRotVolume(
+                                acdc_df = self.addVolumeMetrics(
                                     acdc_df, rp, posData
                                 )
                             acdc_df_li.append(acdc_df)
@@ -13270,43 +13252,6 @@ class guiWin(QMainWindow):
         self.custom_func_dict = measurements.get_custom_metrics_func()
         self.total_metrics += len(self.custom_func_dict)
 
-    # def askSaveLastVisitedCcaMode(self, p, posData):
-    #     current_frame_i = posData.frame_i
-    #     frame_i = 0
-    #     last_cca_frame_i = 0
-    #     self.save_until_frame_i = 0
-    #     self.worker.askSaveLastCancelled = False
-    #     for frame_i, data_dict in enumerate(posData.allData_li):
-    #         # Build segm_npy
-    #         acdc_df = data_dict['acdc_df']
-    #         if acdc_df is None:
-    #             frame_i -= 1
-    #             break
-    #         if 'cell_cycle_stage' not in acdc_df.columns:
-    #             frame_i -= 1
-    #             break
-    #     if frame_i > 0:
-    #         # Ask to save last visited frame or not
-    #         txt = (f"""
-    #         <p style="font-size:9pt">
-    #             You visited and annotated data up until frame
-    #             number {frame_i+1}.<br><br>
-    #             Enter <b>up to which frame number</b> you want to save data:
-    #         </p>
-    #         """)
-    #         lastFrameDialog = apps.QLineEditDialog(
-    #             title='Last frame number to save', defaultTxt=str(frame_i+1),
-    #             msg=txt, parent=self, allowedValues=range(1, frame_i+2)
-    #         )
-    #         lastFrameDialog.exec_()
-    #         if lastFrameDialog.cancel:
-    #             self.worker.askSaveLastCancelled = True
-    #         else:
-    #             self.save_until_frame_i = lastFrameDialog.EntryID - 1
-    #             last_cca_frame_i = self.save_until_frame_i
-    #     self.last_cca_frame_i = last_cca_frame_i
-    #     self.waitCond.wakeAll()
-
     def getLastTrackedFrame(self, posData):
         last_tracked_i = 0
         for frame_i, data_dict in enumerate(posData.allData_li):
@@ -13320,12 +13265,38 @@ class guiWin(QMainWindow):
         else:
             return last_tracked_i
 
-    def askSaveLastVisitedSegmMode(self, p, posData):
+    def computeVolumeRegionprop(self):
+        if not 'cell_vol_vox' in self.sizeMetricsToSave:
+            return
+
+        # We compute the cell volume in the main thread because calling
+        # skimage.transform.rotate in a separate thread causes crashes
+        # with segmentation fault on macOS. I don't know why yet.
+        self.logger.info('Computing cell volume...')
+        end_i = self.save_until_frame_i
+        for p, posData in enumerate(tqdm(self.data[:self.last_pos], ncols=100)):
+            PhysicalSizeY = posData.PhysicalSizeY
+            PhysicalSizeX = posData.PhysicalSizeX
+            for frame_i, data_dict in enumerate(posData.allData_li[:end_i+1]):
+                lab = data_dict['labels']
+                rp = data_dict['regionprops']
+                for i, obj in enumerate(rp):
+                    vol_vox, vol_fl = _calc_rot_vol(
+                        obj, PhysicalSizeY, PhysicalSizeX
+                    )
+                    obj.vol_vox = vol_vox
+                    obj.vol_fl = vol_fl
+                posData.allData_li[frame_i]['regionprops'] = rp
+
+    def askSaveLastVisitedSegmMode(self):
+        posData = self.data[self.pos_i]
         current_frame_i = posData.frame_i
         frame_i = 0
         last_tracked_i = 0
         self.save_until_frame_i = 0
-        self.worker.askSaveLastCancelled = False
+        if self.isSnapshot:
+            return True
+
         for frame_i, data_dict in enumerate(posData.allData_li):
             # Build segm_npy
             lab = data_dict['labels']
@@ -13348,12 +13319,12 @@ class guiWin(QMainWindow):
             )
             lastFrameDialog.exec_()
             if lastFrameDialog.cancel:
-                self.worker.askSaveLastCancelled = True
+                return False
             else:
                 self.save_until_frame_i = lastFrameDialog.EntryID - 1
                 last_tracked_i = self.save_until_frame_i
         self.last_tracked_i = last_tracked_i
-        self.waitCond.wakeAll()
+        return True
 
     def askSaveMetrics(self):
         txt = (
@@ -13381,7 +13352,7 @@ class guiWin(QMainWindow):
         return save_metrics, cancel
 
     def askSaveAllPos(self):
-        last_pos = 0
+        last_pos = 1
         ask = False
         for p, posData in enumerate(self.data):
             acdc_df = posData.allData_li[0]['acdc_df']
@@ -13389,6 +13360,8 @@ class guiWin(QMainWindow):
                 last_pos = p
                 ask = True
                 break
+        else:
+            last_pos = len(self.data)
 
         if not ask:
             # All pos have been visited, no reason to ask
@@ -13520,6 +13493,15 @@ class guiWin(QMainWindow):
 
         self.last_pos = last_pos
 
+        if self.isSnapshot:
+            self.store_data(mainThread=False)
+
+        self.askSaveLastVisitedSegmMode()
+
+        mode = self.modeComboBox.currentText()
+        if self.save_metrics or mode == 'Cell cycle analysis':
+            self.computeVolumeRegionprop()
+
         infoTxt = (
         f"""
             <p style=font-size:12px>
@@ -13543,6 +13525,7 @@ class guiWin(QMainWindow):
         self.waitCond = QWaitCondition()
         self.thread = QThread()
         self.worker = saveDataWorker(self)
+        self.worker.mode = mode
 
         self.worker.moveToThread(self.thread)
 
@@ -13561,12 +13544,6 @@ class guiWin(QMainWindow):
             self.saveDataCustomMetricsCritical
         )
         self.worker.criticalPermissionError.connect(self.saveDataPermissionError)
-        self.worker.askSaveLastVisitedCcaMode.connect(
-            self.askSaveLastVisitedSegmMode
-        )
-        self.worker.askSaveLastVisitedSegmMode.connect(
-            self.askSaveLastVisitedSegmMode
-        )
         self.worker.askZsliceAbsent.connect(self.zSliceAbsent)
 
         self.thread.started.connect(self.worker.run)

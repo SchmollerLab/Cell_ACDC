@@ -5,6 +5,7 @@ import pandas as pd
 from tifffile import imread
 import os
 import glob
+from math import pow
 from tqdm import tqdm
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication, QStyleFactory, QFileDialog
@@ -463,10 +464,10 @@ def _calculate_rp_df(seg_mask, is_timelapse_data, is_zstack_data, metadata, max_
 
 
 def _calc_rot_vol(obj, PhysicalSizeY=1, PhysicalSizeX=1):
-    vox_to_fl = float(PhysicalSizeY)*(float(PhysicalSizeX)**2)
+    vox_to_fl = PhysicalSizeY*pow(PhysicalSizeX, 2)
     rotate_ID_img = skimage.transform.rotate(
-        obj.image.astype(np.uint8), -(obj.orientation*180/np.pi),
-        resize=True, order=3, preserve_range=True
+        obj.image.astype(np.single), -(obj.orientation*180/np.pi),
+        resize=True, order=3
     )
     radii = np.sum(rotate_ID_img, axis=1)/2
     vol_vox = np.sum(np.pi*(radii**2))
