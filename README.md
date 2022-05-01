@@ -38,7 +38,7 @@ We developed and implemented several smart functionalities such as **real-time c
 See below **how it compares** to other popular tools available (*Table 1 of our [pre-print](https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2)*).
 
 <p align="center">
-  <img src="https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/figures/Table1.jpg" width="600">
+  <img src="https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/figures/Table1.jpg" width="600">
 </p>
 
 
