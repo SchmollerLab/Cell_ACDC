@@ -12090,6 +12090,9 @@ class guiWin(QMainWindow):
 
         self.doCustomAnnotation(0)
 
+        if self.eraserButton.isChecked():
+            self.setTempImg1Eraser(None, init=False)
+
     def startBlinkingModeCB(self):
         try:
             self.timer.stop()
