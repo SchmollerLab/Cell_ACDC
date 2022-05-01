@@ -342,6 +342,13 @@ class loadData:
                 self.customAnnotFound = True
                 self.customAnnot = read_json(filePath)
 
+        # Check if there is the old segm.npy
+        for file in ls:
+            filePath = os.path.join(self.images_path, file)
+            if load_segm_data and file.endswith('segm.npy') and not self.segmFound:
+                self.segmFound = True
+                self.segm_data = np.load(filePath)
+
         if load_last_tracked_i:
             self.last_tracked_i_found = True
             try:

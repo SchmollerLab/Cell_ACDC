@@ -31,7 +31,10 @@ def paragraph(txt, font_size='13px', font_color=None):
         # are super small. Force a non-breaking space (except for 'e.g.,').
         txt = txt.replace(',', ',&nbsp;')
         txt = txt.replace('.', '.&nbsp;')
-        txt = txt.replace('e.g.&nbsp;', 'e.g.')
+        txt = txt.replace('e.&nbsp;g.&nbsp;', 'e.g.')
+        txt = txt.replace('.&nbsp;.&nbsp;.&nbsp;', '...')
+        txt = txt.replace('i.&nbsp;e.&nbsp;', 'i.e.')
+        txt = txt.replace('etc.&nbsp;)', 'etc.)')
     if font_color is None:
         s = (f"""
         <p style="font-size:{font_size};">
