@@ -1010,6 +1010,7 @@ class guiWin(QMainWindow):
         self.flag = True
         self.currentPropsID = 0
         self.isSegm3D = False
+        self.newSegmFilename = ''
 
         self.setWindowTitle("Cell-ACDC - GUI")
         self.setWindowIcon(QIcon(":assign-motherbud.svg"))
@@ -1108,7 +1109,7 @@ class guiWin(QMainWindow):
         basename = os.path.basename(file_path)
         if os.path.isdir(file_path):
             exp_path = file_path
-            self._openFolder(exp_path=exp_path)
+            self.openFolder(exp_path=exp_path)
         else:
             self.openFile(file_path=file_path)
 
@@ -8580,16 +8581,29 @@ class guiWin(QMainWindow):
         posData = load.loadData(user_ch_file_paths[0], user_ch_name)
         posData.getBasenameAndChNames()
         posData.buildPaths()
+        if self.isNewFile:
+            win = apps.filenameDialog(
+                basename=f'{posData.basename}segm',
+                hintText='Insert a <b>filename</b> for the segmentation file:<br>'
+            )
+            win.exec_()
+            if win.cancel:
+                self.loadingDataAborted()
+                return
+            self.newSegmFilename = win.entryText
         posData.loadImgData()
         selectedSegmNpz, cancel = posData.detectMultiSegmNpz(
-            askMultiSegmFunc=self.loadDataWorkerMultiSegm
+            askMultiSegmFunc=self.loadDataWorkerMultiSegm,
+            isNewFile=self.isNewFile
         )
         posData.loadOtherFiles(
             load_metadata=True,
             create_new_segm=self.isNewFile,
+            new_segm_filename=self.newSegmFilename,
             selectedSegmNpz=selectedSegmNpz
         )
         self.selectedSegmNpz = selectedSegmNpz
+        print(posData.segm_npz_path)
 
         proceed = posData.askInputMetadata(
             self.num_pos,
@@ -12531,8 +12545,9 @@ class guiWin(QMainWindow):
 
     # Slots
     def newFile(self):
+        self.newSegmFilename = ''
         self.isNewFile = True
-        self.openFolder()
+        self._openFolder()
 
     def openFile(self, checked=False, file_path=None):
         self.isNewFile = False
@@ -12563,7 +12578,7 @@ class guiWin(QMainWindow):
 
         filename, ext = os.path.splitext(os.path.basename(file_path))
         if ext == '.tif' or ext == '.npz':
-            self.openFolder(exp_path=exp_path, imageFilePath=file_path)
+            self._openFolder(exp_path=exp_path, imageFilePath=file_path)
         else:
             self.logger.info('Copying file to .tif format...')
             data = load.loadData(file_path, '')
@@ -12594,7 +12609,7 @@ class guiWin(QMainWindow):
             myutils.imagej_tiffwriter(
                 tif_path, data.img_data, {}, SizeT, SizeZ
             )
-            self.openFolder(exp_path=exp_path, imageFilePath=tif_path)
+            self._openFolder(exp_path=exp_path, imageFilePath=tif_path)
 
     def criticalNoTifFound(self, images_path):
         err_title = f'No .tif files found in folder.'
@@ -13589,7 +13604,7 @@ class guiWin(QMainWindow):
 
     def openRecentFile(self, path):
         self.logger.info(f'Opening recent folder: {path}')
-        self._openFolder(exp_path=path)
+        self.openFolder(exp_path=path)
 
     def closeEvent(self, event):
         self.saveWindowGeometry()

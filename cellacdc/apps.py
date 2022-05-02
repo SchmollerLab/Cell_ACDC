@@ -54,6 +54,8 @@ from . import is_mac, is_win, is_linux
 from . import qrc_resources
 
 pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
+font = QtGui.QFont()
+font.setPixelSize(13)
 
 class installJavaDialog(widgets.myMessageBox):
     def __init__(self, parent=None):
@@ -749,6 +751,93 @@ class customAnnotationDialog(QDialog):
         if block:
             self.loop = QEventLoop()
             self.loop.exec_()
+
+class filenameDialog(QDialog):
+    def __init__(
+            self, ext='.npz', basename='', title='Insert file name',
+            hintText='', parent=None
+        ):
+        self.cancel = True
+        super().__init__(parent)
+
+        self.basename = basename
+        self.ext = ext
+        self.newSegmFilename = None
+
+        self.setWindowTitle(title)
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+
+        layout = QVBoxLayout()
+        entryLayout = QGridLayout()
+        buttonsLayout = QHBoxLayout()
+
+        hintLabel = QLabel(hintText)
+
+        basenameLabel = QLabel(basename)
+
+        self.lineEdit = QLineEdit()
+        self.lineEdit.setAlignment(Qt.AlignCenter)
+
+        extLabel = QLabel(ext)
+
+        self.filenameLabel = QLabel()
+        self.filenameLabel.setText(f'{basename}{ext}')
+
+        entryLayout.addWidget(basenameLabel, 0, 1)
+        entryLayout.addWidget(self.lineEdit, 0, 2)
+        entryLayout.addWidget(extLabel, 0, 3)
+        entryLayout.addWidget(
+            self.filenameLabel, 1, 1, 1, 3, alignment=Qt.AlignCenter
+        )
+        entryLayout.setColumnStretch(0, 1)
+        entryLayout.setColumnStretch(4, 1)
+
+        okButton = widgets.okPushButton('Ok')
+        cancelButton = widgets.cancelPushButton('Cancel')
+
+        buttonsLayout.addStretch()
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(okButton)
+
+        cancelButton.clicked.connect(self.close)
+        okButton.clicked.connect(self.ok_cb)
+        self.lineEdit.textChanged.connect(self.updateFilename)
+
+        layout.addWidget(hintLabel)
+        layout.addLayout(entryLayout)
+        layout.addStretch(1)
+        layout.addSpacing(20)
+        layout.addLayout(buttonsLayout)
+
+        self.setLayout(layout)
+        self.setFont(font)
+
+    def updateFilename(self, text):
+        if not text:
+            self.filenameLabel.setText(f'{self.basename}{self.ext}')
+        else:
+            text = text.replace(' ', '_')
+            self.filenameLabel.setText(f'{self.basename}_{text}{self.ext}')
+
+    def ok_cb(self, checked=True):
+        self.filename = self.filenameLabel.text()
+        self.entryText = self.lineEdit.text().replace(' ', '_')
+        self.cancel = False
+        self.close()
+
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        super().show()
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()
 
 class wandToleranceWidget(QFrame):
     def __init__(self, parent=None):
@@ -1856,14 +1945,15 @@ class QDialogCombobox(QDialog):
         topLayout.addWidget(combobox)
         topLayout.setContentsMargins(0, 10, 0, 0)
 
-        okButton = QPushButton('Ok')
-        okButton.setIcon(QIcon(':okButton.svg'))
+        okButton = widgets.okPushButton('Ok')
         okButton.setShortcut(Qt.Key_Enter)
-        bottomLayout.addWidget(okButton, alignment=Qt.AlignRight)
 
-        cancelButton = QPushButton('Cancel')
-        cancelButton.setIcon(QIcon(':cancelButton.svg'))
-        bottomLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
+        cancelButton = widgets.cancelPushButton('Cancel')
+
+        bottomLayout.addStretch(1)
+        bottomLayout.addWidget(cancelButton)
+        bottomLayout.addSpacing(20)
+        bottomLayout.addWidget(okButton)
         bottomLayout.setContentsMargins(0, 10, 0, 0)
 
         mainLayout.addLayout(infoLayout)

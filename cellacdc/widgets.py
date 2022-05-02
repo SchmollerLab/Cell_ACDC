@@ -90,6 +90,16 @@ renamePgCmaps()
 removeHSVcmaps()
 cmaps = addGradients()
 
+class okPushButton(QPushButton):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setIcon(QIcon(':okButton.svg'))
+
+class cancelPushButton(QPushButton):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setIcon(QIcon(':cancelButton.svg'))
+
 class QClickableLabel(QLabel):
     clicked = pyqtSignal(object)
 

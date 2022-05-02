@@ -207,8 +207,12 @@ class loadData:
 
     def detectMultiSegmNpz(
             self, _endswith='', multiPos=False, signals=None,
-            mutex=None, waitCond=None, askMultiSegmFunc=None
+            mutex=None, waitCond=None, askMultiSegmFunc=None,
+            isNewFile=False
         ):
+        if isNewFile:
+            return '', False
+
         ls = myutils.listdir(self.images_path)
         if _endswith:
             self.multiSegmAllPos = True
@@ -252,7 +256,8 @@ class loadData:
             load_dataPrep_ROIcoords=False,
             load_customAnnot=False,
             getTifPath=False,
-            selectedSegmNpz=''
+            selectedSegmNpz='',
+            new_segm_filename=''
         ):
 
         self.segmFound = False if load_segm_data else None
@@ -276,7 +281,7 @@ class loadData:
             else:
                 is_segm_file = file.endswith('segm.npz')
 
-            if load_segm_data and is_segm_file:
+            if load_segm_data and is_segm_file and not create_new_segm:
                 self.segmFound = True
                 self.segm_npz_path = filePath
                 self.segm_data = np.load(filePath)['arr_0']
@@ -344,11 +349,13 @@ class loadData:
                 self.customAnnot = read_json(filePath)
 
         # Check if there is the old segm.npy
-        for file in ls:
-            filePath = os.path.join(self.images_path, file)
-            if load_segm_data and file.endswith('segm.npy') and not self.segmFound:
-                self.segmFound = True
-                self.segm_data = np.load(filePath)
+        if not self.segmFound and not create_new_segm:
+            for file in ls:
+                is_segm_npy = file.endswith('segm.npy')
+                filePath = os.path.join(self.images_path, file)
+                if load_segm_data and is_segm_npy and not self.segmFound:
+                    self.segmFound = True
+                    self.segm_data = np.load(filePath)
 
         if load_last_tracked_i:
             self.last_tracked_i_found = True
@@ -357,6 +364,12 @@ class loadData:
             except AttributeError as e:
                 # traceback.print_exc()
                 self.last_tracked_i = None
+
+        if create_new_segm:
+            segm_new_filename = f'{self.basename}segm_{new_segm_filename}.npz'
+            filePath = os.path.join(self.images_path, segm_new_filename)
+            self.segm_npz_path = filePath
+
         self.getCustomAnnotatedIDs()
         self.setNotFoundData()
 
