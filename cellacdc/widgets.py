@@ -298,6 +298,12 @@ class myMessageBox(QDialog):
             for button in self.buttons:
                 button.setMinimumWidth(max_width)
 
+        heights = [button.height() for button in self.buttons]
+        if heights:
+            max_h = max(heights)
+            for button in self.buttons:
+                button.setMinimumHeight(max_h)
+
         if self._w is not None and self.width() < self._w:
             self.resize(self._w, self.height())
 

@@ -240,6 +240,7 @@ class loadData:
     def loadOtherFiles(
             self,
             load_segm_data=True,
+            create_new_segm=False,
             load_acdc_df=False,
             load_shifts=False,
             loadSegmInfo=False,

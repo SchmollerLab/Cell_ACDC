@@ -5953,10 +5953,12 @@ class QDialogMultiSegmNpz(QDialog):
         selectionLayout = QGridLayout()
         buttonsLayout = QGridLayout()
 
+        # Standard Qt Question icon
         label = QLabel()
-        # padding: top, left, bottom, right
-        # label.setStyleSheet("padding:5px 0px 12px 0px;")
-        label.setPixmap(QtGui.QPixmap(':warning.svg'))
+        standardIcon = getattr(QStyle, 'SP_MessageBoxQuestion')
+        icon = self.style().standardIcon(standardIcon)
+        pixmap = icon.pixmap(60, 60)
+        label.setPixmap(pixmap)
         infoLayout.addWidget(label)
 
         infoLabel = QLabel(informativeText)

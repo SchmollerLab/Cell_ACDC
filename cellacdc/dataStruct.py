@@ -839,6 +839,13 @@ class createDataStructWin(QMainWindow):
                     'User aborted javabridge installation'
                 )
 
+            isGitInstalled = myutils.check_git_installed(parent=self)
+            if not isGitInstalled:
+                raise ModuleNotFoundError(
+                    'Git is not installed. Install from '
+                    'https://git-scm.com/book/en/v2/Getting-Started-Installing-Git'
+                )
+
             try:
                 jre_path, jdk_path, url = myutils.download_java()
             except Exception as e:

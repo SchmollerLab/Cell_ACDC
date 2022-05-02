@@ -33,9 +33,8 @@ from tifffile.tifffile import TiffWriter, TiffFile
 from PyQt5.QtWidgets import QMessageBox
 from PyQt5.QtCore import pyqtSignal, QObject, QCoreApplication
 
-from . import (
-    prompts, widgets, apps, core, html_utils, is_linux, is_win, is_mac
-)
+from . import prompts, widgets, apps, core
+from . import html_utils, is_linux, is_win, is_mac
 
 def getCustomAnnotTooltip(annotState):
     toolTip = (
@@ -309,6 +308,30 @@ def get_cca_colname_desc():
 
 def testQcoreApp():
     print(QCoreApplication.instance())
+
+def check_git_installed(parent=None):
+    try:
+        subprocess.check_call(['git', '--version'])
+        return True
+    except Exception as e:
+        print('='*20)
+        traceback.print_exc()
+        print('='*20)
+        git_url = 'https://git-scm.com/book/en/v2/Getting-Started-Installing-Git'
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph(f"""
+            In order to install <code>javabridge</code> you first need to <b>install
+            Git</b> (it was not found).<br><br>
+            <b>Close Cell-ACDC</b> and follow the instructions
+            {html_utils.tag('here', f'a href="{git_url}"')}.<br><br>
+            <i><b>NOTE</b>: After installing Git you might need to <b>restart the
+            terminal</b></i>.
+        """)
+        msg.warning(
+            parent, 'Git not installed', txt
+        )
+        return False
+
 
 def install_java():
     try:

@@ -1108,7 +1108,7 @@ class guiWin(QMainWindow):
         basename = os.path.basename(file_path)
         if os.path.isdir(file_path):
             exp_path = file_path
-            self.openFolder(exp_path=exp_path)
+            self._openFolder(exp_path=exp_path)
         else:
             self.openFile(file_path=file_path)
 
@@ -1204,12 +1204,13 @@ class guiWin(QMainWindow):
         # File menu
         fileMenu = QMenu("&File", self)
         menuBar.addMenu(fileMenu)
-        # fileMenu.addAction(self.newAction)
+        fileMenu.addAction(self.newAction)
         fileMenu.addAction(self.openAction)
         fileMenu.addAction(self.openFileAction)
         # Open Recent submenu
         self.openRecentMenu = fileMenu.addMenu("Open Recent")
         fileMenu.addAction(self.saveAction)
+        fileMenu.addAction(self.saveAsAction)
         fileMenu.addAction(self.loadFluoAction)
         # Separator
         fileMenu.addSeparator()
@@ -1311,7 +1312,7 @@ class guiWin(QMainWindow):
         fileToolBar = self.addToolBar("File")
         # fileToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         fileToolBar.setMovable(False)
-        # fileToolBar.addAction(self.newAction)
+        fileToolBar.addAction(self.newAction)
         fileToolBar.addAction(self.openAction)
         fileToolBar.addAction(self.saveAction)
         fileToolBar.addAction(self.showInExplorerAction)
@@ -1775,8 +1776,9 @@ class guiWin(QMainWindow):
             QIcon(":image.svg"),"&Open image/video file...", self
         )
         self.saveAction = QAction(
-            QIcon(":file-save.svg"), "&Save (Ctrl+S)", self
+            QIcon(":file-save.svg"), "Save", self
         )
+        self.saveAsAction = QAction("Save as...", self)
         self.loadFluoAction = QAction("Load fluorescent images...", self)
         # self.reloadAction = QAction(
         #     QIcon(":reload.svg"), "Reload segmentation file", self
@@ -1785,19 +1787,20 @@ class guiWin(QMainWindow):
             QIcon(":drawer.svg"), f"&{self.openFolderText}", self
         )
         self.exitAction = QAction("&Exit", self)
-        self.undoAction = QAction(QIcon(":undo.svg"), "Undo (Ctrl+Z)", self)
-        self.redoAction = QAction(QIcon(":redo.svg"), "Redo (Ctrl+Y)", self)
+        self.undoAction = QAction(QIcon(":undo.svg"), "Undo", self)
+        self.redoAction = QAction(QIcon(":redo.svg"), "Redo", self)
         # String-based key sequences
         self.newAction.setShortcut("Ctrl+N")
         self.openAction.setShortcut("Ctrl+O")
+        self.saveAsAction.setShortcut("Ctrl+Shift+S")
         self.saveAction.setShortcut("Ctrl+S")
         self.undoAction.setShortcut("Ctrl+Z")
         self.redoAction.setShortcut("Ctrl+Y")
         # Help tips
-        newTip = "Create a new file"
+        newTip = "Create a new segmentation file"
         self.newAction.setStatusTip(newTip)
         self.newAction.setToolTip(newTip)
-        self.newAction.setWhatsThis("Create a new and empty text file")
+        self.newAction.setWhatsThis("Create a new and empty segmentation file")
 
         self.findIdAction = QAction(self)
         self.findIdAction.setIcon(QIcon(":find.svg"))
@@ -6484,7 +6487,7 @@ class guiWin(QMainWindow):
     def setEnabledFileToolbar(self, enabled):
         for action in self.fileToolBar.actions():
             button = self.fileToolBar.widgetForAction(action)
-            if action == self.openAction:
+            if action == self.openAction or action == self.newAction:
                 continue
             action.setEnabled(enabled)
             button.setEnabled(enabled)
@@ -8573,6 +8576,7 @@ class guiWin(QMainWindow):
             self.loadingDataAborted()
             return
 
+        # Get information from first loaded position
         posData = load.loadData(user_ch_file_paths[0], user_ch_name)
         posData.getBasenameAndChNames()
         posData.buildPaths()
@@ -8582,6 +8586,7 @@ class guiWin(QMainWindow):
         )
         posData.loadOtherFiles(
             load_metadata=True,
+            create_new_segm=self.isNewFile,
             selectedSegmNpz=selectedSegmNpz
         )
         self.selectedSegmNpz = selectedSegmNpz
@@ -12526,10 +12531,15 @@ class guiWin(QMainWindow):
 
     # Slots
     def newFile(self):
-        pass
+        self.isNewFile = True
+        self.openFolder()
+
+    def openFile(self, checked=False, file_path=None):
+        self.isNewFile = False
+        self._openFile(file_path=file_path)
 
     @exception_handler
-    def openFile(self, checked=False, file_path=None):
+    def _openFile(self, file_path=None):
         """
         Function used for loading an image file directly.
         """
@@ -12623,8 +12633,12 @@ class guiWin(QMainWindow):
         self.openAction.setEnabled(True)
         self.titleLabel.setText('Loading data aborted.')
 
-    @exception_handler
     def openFolder(self, checked=False, exp_path=None, imageFilePath=''):
+        self.isNewFile = False
+        self._openFolder(exp_path=exp_path, imageFilePath=imageFilePath)
+
+    @exception_handler
+    def _openFolder(self, exp_path=None, imageFilePath=''):
         """Main function to load data.
 
         Parameters
@@ -13575,7 +13589,7 @@ class guiWin(QMainWindow):
 
     def openRecentFile(self, path):
         self.logger.info(f'Opening recent folder: {path}')
-        self.openFolder(exp_path=path)
+        self._openFolder(exp_path=path)
 
     def closeEvent(self, event):
         self.saveWindowGeometry()
