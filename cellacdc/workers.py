@@ -105,8 +105,6 @@ class loadDataWorker(QObject):
             posData.SizeZ = self.mainWin.SizeZ
             posData.isSegm3D = self.mainWin.isSegm3D
 
-            print(self.mainWin.selectedSegmNpz)
-
             posData.getBasenameAndChNames()
             posData.buildPaths()
             posData.loadImgData()
@@ -121,7 +119,15 @@ class loadDataWorker(QObject):
                 load_last_tracked_i=True,
                 load_metadata=True,
                 load_customAnnot=True,
-                selectedSegmNpz=self.mainWin.selectedSegmNpz
+                selectedSegmNpz=self.mainWin.selectedSegmNpz,
+                create_new_segm=self.mainWin.isNewFile,
+                new_segm_filename=self.mainWin.newSegmFilename,
+            )
+
+            self.logger.log(
+                'Loaded paths:\n'
+                f'Segmentation path: {posData.segm_npz_path}\n'
+                f'ACDC output path {posData.acdc_output_csv_path}'
             )
 
             posData.SizeT = self.mainWin.SizeT

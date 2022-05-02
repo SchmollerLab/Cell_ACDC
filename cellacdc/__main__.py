@@ -29,7 +29,7 @@ try:
     # if cellacdc was installed with pip or not
     from cellacdc import (
         dataPrep, segm, gui, dataStruct, utils, help, qrc_resources, myutils,
-        cite_url, html_utils
+        cite_url, html_utils, widgets
     )
     from cellacdc.help import about
     from cellacdc.utils import concat as utilsConcat
@@ -543,16 +543,16 @@ class mainWin(QMainWindow):
         if not openModules:
             return True, openModules
 
-        msg = QMessageBox()
+        msg = widgets.myMessageBox()
         warn_txt = html_utils.paragraph(
             'There are still <b>other Cell-ACDC windows open</b>.<br><br>'
             'Are you sure you want to close everything?'
         )
-        acceptCloseAnswer = msg.warning(
-           self, 'Modules still open!', warn_txt, msg.Yes | msg.Cancel
+        _, yesButton = msg.warning(
+           self, 'Modules still open!', warn_txt, buttonsTexts=('Cancel', 'Yes')
         )
 
-        return acceptCloseAnswer == msg.Yes, openModules
+        return msg.clickedButton == yesButton, openModules
 
     def closeEvent(self, event):
         if self.welcomeGuide is not None:

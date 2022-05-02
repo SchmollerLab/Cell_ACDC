@@ -26,7 +26,7 @@ from PyQt5.QtWidgets import (
     QGroupBox, QAbstractSlider, QDoubleSpinBox, QWidgetAction,
     QAction, QTabWidget, QAbstractSpinBox, QMessageBox,
     QStyle, QDialog, QSpacerItem, QFrame, QMenu, QActionGroup,
-    QListWidget, QAbstractItemView
+    QListWidget, QAbstractItemView, QShortcut
 )
 
 import pyqtgraph as pg
@@ -94,6 +94,8 @@ class okPushButton(QPushButton):
     def __init__(self, *args):
         super().__init__(*args)
         self.setIcon(QIcon(':okButton.svg'))
+        QShortcut(Qt.Key_Return, self, self.click)
+        QShortcut(Qt.Key_Enter, self, self.click)
 
 class cancelPushButton(QPushButton):
     def __init__(self, *args):

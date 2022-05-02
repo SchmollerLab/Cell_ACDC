@@ -238,6 +238,8 @@ class loadData:
         if is_multi_npz and askMultiSegmFunc is not None:
             askMultiSegmFunc(segm_files, self, multiPos, waitCond)
             return self.selectedItemText, self.cancel
+        elif len(segm_files)==1:
+            return segm_files[0], False
         else:
             return '', False
 
@@ -274,12 +276,32 @@ class loadData:
         self.customAnnotFound = False if load_customAnnot else None
         ls = myutils.listdir(self.images_path)
 
+        linked_acdc_filename = None
+        if selectedSegmNpz and load_acdc_df:
+            # Check if there is an acdc_output file linked to selected .npz
+            _segm_fn = selectedSegmNpz[len(self.basename):]
+            _linked_acdc_fn = _segm_fn.replace('segm', 'acdc_output')
+            _linked_acdc_fn = _linked_acdc_fn.replace('.npz', '.csv')
+            _linked_acdc_fn = f'{self.basename}{_linked_acdc_fn}'
+            for file in ls:
+                if file == _linked_acdc_fn:
+                    filePath = os.path.join(self.images_path, file)
+                    self.acdc_output_csv_path = filePath
+                    linked_acdc_filename = file
+                    break
+
         for file in ls:
             filePath = os.path.join(self.images_path, file)
+
             if selectedSegmNpz:
                 is_segm_file = file == selectedSegmNpz
             else:
                 is_segm_file = file.endswith('segm.npz')
+
+            if linked_acdc_filename is not None:
+                is_acdc_df_file = file == linked_acdc_filename
+            else:
+                is_acdc_df_file = file.endswith('acdc_output.csv')
 
             if load_segm_data and is_segm_file and not create_new_segm:
                 self.segmFound = True
@@ -292,7 +314,7 @@ class loadData:
             elif getTifPath and file.find(f'{self.user_ch_name}.tif')!=-1:
                 self.tif_path = filePath
                 self.TifPathFound = True
-            elif load_acdc_df and file.endswith('acdc_output.csv'):
+            elif load_acdc_df and is_acdc_df_file and not create_new_segm:
                 self.acdc_df_found = True
                 acdc_df = pd.read_csv(
                       filePath, index_col=['frame_i', 'Cell_ID']
@@ -366,12 +388,24 @@ class loadData:
                 self.last_tracked_i = None
 
         if create_new_segm:
-            segm_new_filename = f'{self.basename}segm_{new_segm_filename}.npz'
-            filePath = os.path.join(self.images_path, segm_new_filename)
-            self.segm_npz_path = filePath
+            self.setFilePaths(new_segm_filename)
 
         self.getCustomAnnotatedIDs()
         self.setNotFoundData()
+
+    def setFilePaths(self, new_filename):
+        if self.basename.endswith('_'):
+            basename = self.basename
+        else:
+            basename = f'{self.basename}_'
+
+        segm_new_filename = f'{basename}segm_{new_filename}.npz'
+        filePath = os.path.join(self.images_path, segm_new_filename)
+        self.segm_npz_path = filePath
+
+        acdc_output_filename = f'{basename}acdc_output_{new_filename}.csv'
+        filePath = os.path.join(self.images_path, acdc_output_filename)
+        self.acdc_output_csv_path = filePath
 
     def getCustomAnnotatedIDs(self):
         self.customAnnotIDs = {}

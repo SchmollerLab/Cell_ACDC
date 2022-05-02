@@ -181,10 +181,6 @@ def addToRecentPaths(exp_path, logger=None):
         else:
             openedOn = [np.nan]*len(recentPaths)
         if exp_path in recentPaths:
-            if logger is not None:
-                logger.info(exp_path)
-            else:
-                print(exp_path)
             pop_idx = recentPaths.index(exp_path)
             recentPaths.pop(pop_idx)
             openedOn.pop(pop_idx)
@@ -389,9 +385,11 @@ def read_version():
             return 'ND'
 
 def showInExplorer(path):
-    if os.name == 'posix' or os.name == 'os2':
+    if is_mac:
         os.system(f'open "{path}"')
-    elif os.name == 'nt':
+    if is_linux:
+        os.system(f'xdg-open "{path}"')
+    else:
         os.startfile(path)
 
 def exec_time(func):

@@ -2030,7 +2030,8 @@ class guiWin(QMainWindow):
         self.openAction.triggered.connect(self.openFolder)
         self.openFileAction.triggered.connect(self.openFile)
         self.saveAction.triggered.connect(self.saveData)
-        self.showInExplorerAction.triggered.connect(self.showInExplorer)
+        self.saveAsAction.triggered.connect(self.saveAsData)
+        self.showInExplorerAction.triggered.connect(self.showInExplorer_cb)
         self.exitAction.triggered.connect(self.close)
         self.undoAction.triggered.connect(self.undo)
         self.redoAction.triggered.connect(self.redo)
@@ -8603,7 +8604,11 @@ class guiWin(QMainWindow):
             selectedSegmNpz=selectedSegmNpz
         )
         self.selectedSegmNpz = selectedSegmNpz
-        print(posData.segm_npz_path)
+
+        print('')
+        self.logger.info(
+            f'Segmentation filename: {posData.segm_npz_path}'
+        )
 
         proceed = posData.askInputMetadata(
             self.num_pos,
@@ -12696,6 +12701,7 @@ class guiWin(QMainWindow):
             return
 
         self.exp_path = exp_path
+        self.logger.info(f'Loading from {self.exp_path}')
         myutils.addToRecentPaths(exp_path, logger=self.logger)
 
         if os.path.basename(exp_path).find('Position_') != -1:
@@ -13044,14 +13050,10 @@ class guiWin(QMainWindow):
         self.overlayButton.setStyleSheet('background-color: #A7FAC7')
         return True
 
-    def showInExplorer(self):
+    def showInExplorer_cb(self):
         posData = self.data[self.pos_i]
         path = posData.images_path
-
-        if os.name == 'posix' or os.name == 'os2':
-            os.system(f'open "{path}"')
-        elif os.name == 'nt':
-            os.startfile(path)
+        myutils.showInExplorer(path)
 
     def getChNames(self, posData, returnList=False):
         fluo_keys = list(posData.fluo_data_dict.keys())
@@ -13418,6 +13420,25 @@ class guiWin(QMainWindow):
         msg.exec_()
         self.is_error_state = True
         self.waitCond.wakeAll()
+
+    def saveAsData(self, checked=True):
+        try:
+            posData = self.data[self.pos_i]
+        except AttributeError:
+            return
+
+        posData = self.data[self.pos_i]
+        win = apps.filenameDialog(
+            basename=f'{posData.basename}segm',
+            hintText='Insert a <b>filename</b> for the segmentation file:<br>'
+        )
+        win.exec_()
+        if win.cancel:
+            return
+
+        for posData in self.data:
+            posData.setFilePaths(new_filename=win.entryText)
+
 
     def saveDataPermissionError(self, err_msg):
         msg = QMessageBox()

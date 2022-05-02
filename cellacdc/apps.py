@@ -1946,7 +1946,6 @@ class QDialogCombobox(QDialog):
         topLayout.setContentsMargins(0, 10, 0, 0)
 
         okButton = widgets.okPushButton('Ok')
-        okButton.setShortcut(Qt.Key_Enter)
 
         cancelButton = widgets.cancelPushButton('Cancel')
 
@@ -5236,14 +5235,13 @@ class QtSelectItems(QDialog):
         topLayout.addWidget(combobox)
         topLayout.setContentsMargins(0, 10, 0, 0)
 
-        okButton = QPushButton('Ok')
-        okButton.setIcon(QIcon(':okButton.svg'))
-        okButton.setShortcut(Qt.Key_Enter)
-        bottomLayout.addWidget(okButton, alignment=Qt.AlignRight)
+        okButton = widgets.okPushButton('Ok')
+        cancelButton = widgets.cancelPushButton('Cancel')
 
-        cancelButton = QPushButton('Cancel')
-        cancelButton.setIcon(QIcon(':cancelButton.svg'))
-        bottomLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
+        bottomLayout.addStretch(1)
+        bottomLayout.addWidget(cancelButton)
+        bottomLayout.addSpacing(20)
+        bottomLayout.addWidget(okButton)
 
         multiPosButton = QPushButton('Multiple selection')
         multiPosButton.setCheckable(True)
