@@ -2529,8 +2529,8 @@ class QDialogMetadata(QDialog):
             '<i>NOTE: if the toggle is disabled it means you already '
             'loaded segmentation data and the shape cannot be changed now.<br>'
             'if you need to start with a blank segmentation, '
-            'move the segmentation file outside of the <code>Images</code> '
-            'folder'
+            'use the "Create a new segmentation file" button instead of the '
+            '"Load folder" button.'
             '</i>'
         )
         msg = widgets.myMessageBox()

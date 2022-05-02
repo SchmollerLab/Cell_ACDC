@@ -278,7 +278,7 @@ class myMessageBox(QDialog):
         self._w = w
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         # spacer
         spacer = QSpacerItem(10, 10)
         self.layout.addItem(spacer, self.currentRow, 1)

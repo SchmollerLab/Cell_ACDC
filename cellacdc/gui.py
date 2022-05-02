@@ -1771,7 +1771,7 @@ class guiWin(QMainWindow):
         self.newAction.setText("&New")
         self.newAction.setIcon(QIcon(":file-new.svg"))
         self.openAction = QAction(
-            QIcon(":folder-open.svg"), "&Open folder...", self
+            QIcon(":folder-open.svg"), "&Load folder...", self
         )
         self.openFileAction = QAction(
             QIcon(":image.svg"),"&Open image/video file...", self
