@@ -14,7 +14,11 @@ CELLPOSE_MODELS = [
     'cyto2',
     'bact',
     'bact_omni',
-    'cyto2_omni'
+    'cyto2_omni',
+    'tissuenet',
+    'TN1', 'TN2', 'TN3',
+    'livecell',
+    'LC1', 'LC2', 'LC3', 'LC4'
 ]
 
 class Model:
@@ -22,7 +26,7 @@ class Model:
         if model_type not in CELLPOSE_MODELS:
             err_msg = (
                 f'"{model_type}" not available. '
-                f'Avilable models are {CELLPOSE_MODELS}'
+                f'Available models are {CELLPOSE_MODELS}'
             )
             raise NameError(err_msg)
         device, gpu = models.assign_device(True, False)
