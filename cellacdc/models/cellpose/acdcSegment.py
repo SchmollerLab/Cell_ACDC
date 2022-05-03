@@ -42,7 +42,7 @@ class Model:
 
         # Run cellpose eval
         lab = self.model.eval(
-            image,
+            image.astype(np.float32),
             channels=[0,0],
             diameter=diameter,
             flow_threshold=flow_threshold,
