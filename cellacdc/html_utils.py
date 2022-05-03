@@ -19,8 +19,8 @@ def tag(text, tag_info='p style="font-size:10pt"'):
     return text
 
 def css_head(txt):
-    if is_mac:
-        txt = txt.replace(',', ',&nbsp;')
+    # if is_mac:
+    #     txt = txt.replace(',', ',&nbsp;')
     s = (f"""
     <!DOCTYPE html>
     <html>
@@ -44,15 +44,15 @@ def html_body(txt):
     return s
 
 def paragraph(txt, font_size='13px', font_color=None, wrap=True):
-    if is_mac:
-        # Qt < 5.15.3 has a bug on macOS and the space after comma and perdiod
-        # are super small. Force a non-breaking space (except for 'e.g.,').
-        txt = txt.replace(',', ',&nbsp;')
-        txt = txt.replace('.', '.&nbsp;')
-        txt = txt.replace('e.&nbsp;g.&nbsp;', 'e.g.')
-        txt = txt.replace('.&nbsp;.&nbsp;.&nbsp;', '...')
-        txt = txt.replace('i.&nbsp;e.&nbsp;', 'i.e.')
-        txt = txt.replace('etc.&nbsp;)', 'etc.)')
+    # if is_mac:
+    #     # Qt < 5.15.3 has a bug on macOS and the space after comma and perdiod
+    #     # are super small. Force a non-breaking space (except for 'e.g.,').
+    #     txt = txt.replace(',', ',&nbsp;')
+    #     txt = txt.replace('.', '.&nbsp;')
+    #     txt = txt.replace('e.&nbsp;g.&nbsp;', 'e.g.')
+    #     txt = txt.replace('.&nbsp;.&nbsp;.&nbsp;', '...')
+    #     txt = txt.replace('i.&nbsp;e.&nbsp;', 'i.e.')
+    #     txt = txt.replace('etc.&nbsp;)', 'etc.)')
     if not wrap:
         txt = txt.replace(' ', '&nbsp;')
     if font_color is None:

@@ -7,37 +7,33 @@ import skimage.exposure
 import skimage.filters
 
 from cellpose import models
+from cellacdc.models import CELLPOSE_MODELS
 
-CELLPOSE_MODELS = [
-    'cyto',
-    'nuclei',
-    'cyto2',
-    'bact',
-    'bact_omni',
-    'cyto2_omni',
-    'tissuenet',
-    'TN1', 'TN2', 'TN3',
-    'livecell',
-    'LC1', 'LC2', 'LC3', 'LC4'
-]
+help_url = 'https://cellpose.readthedocs.io/en/latest/api.html'
 
 class Model:
-    def __init__(self, model_type='cyto'):
+    def __init__(self, model_type='cyto', net_avg=False, gpu=False):
         if model_type not in CELLPOSE_MODELS:
             err_msg = (
                 f'"{model_type}" not available. '
                 f'Available models are {CELLPOSE_MODELS}'
             )
             raise NameError(err_msg)
-        device, gpu = models.assign_device(True, False)
-        self.model = models.Cellpose(
-            gpu=gpu, device=device, model_type=model_type, torch=True
-        )
+        try:
+            device, gpu = models.assign_device(True, False)
+            self.model = models.Cellpose(
+                gpu=gpu, device=device, model_type=model_type, torch=True
+            )
+        except Exception as e:
+            self.model = models.Cellpose(
+                gpu=gpu, model_type=model_type, net_avg=net_avg
+            )
 
     def segment(
             self, image,
             diameter=0.0,
-            mask_threshold=0.0
+            flow_threshold=0.4,
+            cellprob_threshold=0.0
         ):
         # Preprocess image
         image = image/image.max()
@@ -52,6 +48,3 @@ class Model:
             mask_threshold=mask_threshold
         )
         return lab
-
-def url_help():
-    return 'https://colab.research.google.com/github/MouseLand/cellpose/blob/master/notebooks/Cellpose_2D_v0_1.ipynb#scrollTo=Rr0UozRm42CA'

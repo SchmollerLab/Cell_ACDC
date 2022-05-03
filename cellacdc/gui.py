@@ -4798,7 +4798,8 @@ class guiWin(QMainWindow):
             self.ax2_LabelItemsIDs,
             self.ax1_BudMothLines
         )
-        for items_ID in allItems:
+        self.logger.info(f'Adding {len(self.ax1_ContoursCurves)} axes items...')
+        for items_ID in tqdm(allItems, ncols=100):
             (ax1ContCurve, ax2ContCurve,
             ax1_IDlabel, ax2_IDlabel,
             BudMothLine) = items_ID
@@ -8110,7 +8111,7 @@ class guiWin(QMainWindow):
             init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
             # Prompt user to enter the model parameters
             try:
-                url = acdcSegment.url_help()
+                url = acdcSegment.help_url
             except AttributeError:
                 url = None
 
@@ -8118,7 +8119,8 @@ class guiWin(QMainWindow):
                 init_params,
                 segment_params,
                 model_name, parent=self,
-                url=url)
+                url=url
+            )
             win.exec_()
             if win.cancel:
                 self.logger.info('Segmentation process cancelled.')

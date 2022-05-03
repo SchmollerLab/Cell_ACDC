@@ -4275,6 +4275,7 @@ class editCcaTableWidget(QDialog):
         cancelButton.setIcon(QIcon(':cancelButton.svg'))
 
         moreInfoButton = QPushButton('More info...')
+        moreInfoButton.setIcon(QIcon(':info.svg'))
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -6266,6 +6267,7 @@ class QDialogModelParams(QDialog):
         buttonsLayout.addWidget(okButton)
 
         infoButton = QPushButton(' More info... ')
+        infoButton.setIcon(QIcon(':info.svg'))
         buttonsLayout.addWidget(infoButton)
 
         cancelButton = QPushButton(' Cancel ')
@@ -6315,29 +6317,25 @@ class QDialogModelParams(QDialog):
         # self.setModal(True)
 
     def info_params(self):
-        self.infoWin = QMessageBox()
+        from cellacdc.models import CELLPOSE_MODELS, STARDIST_MODELS
+        self.infoWin = widgets.myMessageBox()
         self.infoWin.setWindowTitle('Model parameters info')
-        self.infoWin.setIcon(self.infoWin.Information)
-        txt = (
-            'Currently Cell-ACDC has three models implemented: '
-            'YeaZ, Cellpose and StarDist.\n\n'
-            'Cellpose and StarDist have the following default models available:\n\n'
-            'Cellpose:\n'
-            '   - cyto\n'
-            '   - nuclei\n'
-            '   - cyto2\n'
-            '   - bact\n'
-            '   - bact_omni\n'
-            '   - cyto2_omni\n\n'
-            'StarDist:\n'
-            '   - 2D_versatile_fluo\n'
-            '   - 2D_versatile_he\n'
-            '   - 2D_paper_dsb2018\n'
+        self.infoWin.setIcon()
+        cp_models = [f'&nbsp;&nbsp;- {m}'for m in CELLPOSE_MODELS]
+        cp_models = '<br>'.join(cp_models)
+        stardist_models = [f'  - {m}'for m in STARDIST_MODELS]
+        stardist_models = '<br>'.join(stardist_models)
+        txt = html_utils.paragraph(
+            'Currently Cell-ACDC has <b>four models implemented</b>: '
+            'YeaZ, Cellpose, StarDist, and YeastMate.<br><br>'
+            'Cellpose and StarDist have the following default models available:<br><br>'
+            '<b>Cellpose</b>:<br><br>'
+            f'{cp_models}<br><br>'
+            '<b>StarDist</b>:<br>'
+            f'{stardist_models}'
         )
-        self.infoWin.setText(txt)
-        self.infoWin.addButton(self.infoWin.Ok)
-        self.infoWin.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
-        self.infoWin.setModal(False)
+        self.infoWin.addText(txt)
+        self.infoWin.addButton(' Ok ')
         self.infoWin.show()
 
 
