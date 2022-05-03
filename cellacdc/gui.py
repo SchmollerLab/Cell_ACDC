@@ -2628,7 +2628,7 @@ class guiWin(QMainWindow):
         self.ax1_BudMothLines = [None]*numItems
         self.ax1_LabelItemsIDs = [None]*numItems
         self.ax2_LabelItemsIDs = [None]*numItems
-        for ID in allIDs:
+        for ID in tqdm(allIDs, ncols=100):
             self.ax1_ContoursCurves[ID-1] = pg.PlotDataItem()
             self.ax1_BudMothLines[ID-1] = pg.PlotDataItem()
             self.ax1_LabelItemsIDs[ID-1] = pg.LabelItem()
@@ -12929,7 +12929,7 @@ class guiWin(QMainWindow):
         """)
         cancelButton, continueButton = msg.warning(
             self, 'Memory not sufficient', txt,
-            additionalButtons=('Cancel', 'Continue anyway')
+            buttonsTexts=('Cancel', 'Continue anyway')
         )
         if msg.clickedButton == continueButton:
             return True
