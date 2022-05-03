@@ -1,15 +1,19 @@
-CELLPOSE_MODELS = [
-    'cyto',
-    'nuclei',
-    'cyto2',
-    'bact',
-    'bact_omni',
-    'cyto2_omni',
-    'tissuenet',
-    'TN1', 'TN2', 'TN3',
-    'livecell',
-    'LC1', 'LC2', 'LC3', 'LC4'
-]
+try:
+    from cellpose.models import MODEL_NAMES
+    CELLPOSE_MODELS = MODEL_NAMES
+except AttributeError:
+    CELLPOSE_MODELS = [
+        'cyto',
+        'nuclei',
+        'cyto2',
+        'bact',
+        'bact_omni',
+        'cyto2_omni',
+        'tissuenet',
+        'TN1', 'TN2', 'TN3',
+        'livecell',
+        'LC1', 'LC2', 'LC3', 'LC4'
+    ]
 
 STARDIST_MODELS = [
     '2D_versatile_fluo',

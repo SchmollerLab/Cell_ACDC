@@ -790,13 +790,16 @@ class loadData:
         try:
             self.metadata_df.to_csv(self.metadata_csv_path)
         except PermissionError:
+            print('='*20)
+            traceback.print_exc()
+            print('='*20)
             permissionErrorTxt = (
                 f'The below file is open in another app (Excel maybe?).\n\n'
                 f'{self.metadata_csv_path}\n\n'
                 'Close file and then press "Ok".'
             )
             if signals is None:
-                msg = widgets.myMessageBox(self)
+                msg = widgets.myMessageBox(self.parent)
                 msg.setIcon(iconName='SP_MessageBoxCritical')
                 msg.setWindowTitle('Permission denied')
                 msg.addText(permissionErrorTxt)
