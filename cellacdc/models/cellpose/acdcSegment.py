@@ -45,7 +45,7 @@ class Model:
             image,
             channels=[0,0],
             diameter=diameter,
-            flow_threshold=flow_threshold
+            flow_threshold=flow_threshold,
             cellprob_threshold=cellprob_threshold
         )
         return lab
