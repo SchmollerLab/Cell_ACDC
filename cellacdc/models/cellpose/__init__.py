@@ -15,6 +15,7 @@ try:
         version = pkg_resources.get_distribution("cellpose").version
         major = int(version.split('.')[0])
         if major < 2:
+            from PyQt5.QtWidgets import QApplication
             from PyQt5.QtCore import QCoreApplication
             from cellacdc import widgets, html_utils
 
@@ -31,6 +32,7 @@ try:
                 [sys.executable, '-m', 'pip', 'install', '--upgrade', 'cellpose']
             )
     except Exception as e:
+        from PyQt5.QtWidgets import QApplication
         from PyQt5.QtCore import QCoreApplication
         from cellacdc import widgets, html_utils
 
