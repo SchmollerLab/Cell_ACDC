@@ -2,10 +2,52 @@ import os
 import sys
 import subprocess
 
+upgrade_cellpose_txt = (
+    'Cell-ACDC needs to <b>upgrade</b> <code>cellpose</code>.<br><br>'
+    'It is recommended to <b>restart Cell-ACDC</b> after the installation.'
+)
+
 try:
     import cellpose
+    try:
+        # Upgrade cellpose to >= 2.0 if needed
+        import pkg_resources
+        version = pkg_resources.get_distribution("cellpose").version
+        major = int(version.split('.')[0])
+        if major < 2:
+            from PyQt5.QtCore import QCoreApplication
+            from cellacdc import widgets, html_utils
+
+            if QCoreApplication.instance() is None:
+                app = QApplication(sys.argv)
+
+            txt = html_utils.paragraph(upgrade_cellpose_txt)
+            msg = widgets.myMessageBox()
+            msg.information(
+                None, 'Upgrading cellpose', txt
+            )
+
+            subprocess.check_call(
+                [sys.executable, '-m', 'pip', 'install', '--upgrade', 'cellpose']
+            )
+    except Exception as e:
+        from PyQt5.QtCore import QCoreApplication
+        from cellacdc import widgets, html_utils
+
+        if QCoreApplication.instance() is None:
+            app = QApplication(sys.argv)
+
+        txt = html_utils.paragraph(upgrade_cellpose_txt)
+        msg = widgets.myMessageBox()
+        msg.information(
+            None, 'Upgrading cellpose', txt
+        )
+
+        subprocess.check_call(
+            [sys.executable, '-m', 'pip', 'install', '--upgrade', 'cellpose']
+        )
 except ModuleNotFoundError:
-    from PyQt5.QtWidgets import QMessageBox, QApplication
+    from PyQt5.QtWidgets import QApplication
     from PyQt5.QtCore import QCoreApplication
 
     if QCoreApplication.instance() is None:

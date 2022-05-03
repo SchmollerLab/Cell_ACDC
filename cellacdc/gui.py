@@ -4799,10 +4799,13 @@ class guiWin(QMainWindow):
             self.ax1_BudMothLines
         )
         self.logger.info(f'Adding {len(self.ax1_ContoursCurves)} axes items...')
-        for items_ID in tqdm(allItems, ncols=100):
+        pbar = tqdm(total=len(self.ax1_ContoursCurves), ncols=100)
+        for items_ID in allItems:
             (ax1ContCurve, ax2ContCurve,
             ax1_IDlabel, ax2_IDlabel,
             BudMothLine) = items_ID
+
+            pbar.update()
 
             if ax1ContCurve is None:
                 continue
@@ -4813,6 +4816,7 @@ class guiWin(QMainWindow):
 
             self.ax2.addItem(ax2_IDlabel)
             self.ax2.addItem(ax2ContCurve)
+        pbar.close()
 
     def relabelSequentialCallback(self):
         mode = str(self.modeComboBox.currentText())

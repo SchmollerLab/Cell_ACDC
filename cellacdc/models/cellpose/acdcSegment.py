@@ -19,33 +19,33 @@ class Model:
                 f'Available models are {CELLPOSE_MODELS}'
             )
             raise NameError(err_msg)
-        try:
-            device, gpu = models.assign_device(True, False)
+        if model_type=='cyto':
             self.model = models.Cellpose(
-                gpu=gpu, device=device, model_type=model_type, torch=True
+                gpu=gpu, net_avg=net_avg, model_type=model_type
             )
-        except Exception as e:
-            self.model = models.Cellpose(
-                gpu=gpu, model_type=model_type, net_avg=net_avg
+        else:
+            self.model = models.CellposeModel(
+                gpu=gpu, net_avg=net_avg, model_type=model_type
             )
 
     def segment(
             self, image,
             diameter=0.0,
             flow_threshold=0.4,
-            cellprob_threshold=0.0
+            cellprob_threshold=0.0,
+            net_avg=False
         ):
         # Preprocess image
-        image = image/image.max()
-        image = skimage.filters.gaussian(image, sigma=1)
-        image = skimage.exposure.equalize_adapthist(image)
+        # image = image/image.max()
+        # image = skimage.filters.gaussian(image, sigma=1)
+        # image = skimage.exposure.equalize_adapthist(image)
 
         # Run cellpose eval
-        lab, flows, _, _ = self.model.eval(
+        lab = self.model.eval(
             image,
             channels=[0,0],
             diameter=diameter,
             flow_threshold=flow_threshold,
             cellprob_threshold=cellprob_threshold
-        )
+        )[0]
         return lab
