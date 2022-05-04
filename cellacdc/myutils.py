@@ -36,6 +36,43 @@ from PyQt5.QtCore import pyqtSignal, QObject, QCoreApplication
 from . import prompts, widgets, apps, core
 from . import html_utils, is_linux, is_win, is_mac
 
+def exception_handler(func):
+    @wraps(func)
+    def inner_function(self, *args, **kwargs):
+        try:
+            if func.__code__.co_argcount==1 and func.__defaults__ is None:
+                result = func(self)
+            elif func.__code__.co_argcount>1 and func.__defaults__ is None:
+                result = func(self, *args)
+            else:
+                result = func(self, *args, **kwargs)
+        except Exception as e:
+            try:
+                if self.progressWin is not None:
+                    self.progressWin.workerFinished = True
+                    self.progressWin.close()
+            except AttributeError:
+                pass
+            result = None
+            traceback_str = traceback.format_exc()
+            self.logger.exception(traceback_str)
+            msg = widgets.myMessageBox(wrapText=False)
+            msg.addShowInFileManagerButton(self.logs_path, txt='Show log file...')
+            msg.setDetailedText(traceback_str)
+            err_msg = html_utils.paragraph(f"""
+                Error in function <code>{func.__name__}</code>.<br><br>
+                More details below or in the terminal/console.<br><br>
+                Note that the <b>error details</b> from this session are
+                also <b>saved in the following file</b>:<br><br>
+                {self.log_path}<br><br>
+                Please <b>send the log file</b> when reporting a bug, thanks!
+            """)
+
+            msg.critical(self, 'Critical error', err_msg)
+            self.is_error_state = True
+        return result
+    return inner_function
+
 def getCustomAnnotTooltip(annotState):
     toolTip = (
         f'Name: {annotState["name"]}\n\n'

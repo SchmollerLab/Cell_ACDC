@@ -38,7 +38,8 @@ import pyqtgraph as pg
 from . import qrc_resources
 
 # Custom modules
-from . import load, prompts, apps, core, myutils, widgets, html_utils
+from . import load, prompts, apps, core, myutils, widgets
+from . import html_utils, myutils
 
 if os.name == 'nt':
     try:
@@ -50,45 +51,6 @@ if os.name == 'nt':
         pass
 
 pg.setConfigOptions(imageAxisOrder='row-major')
-
-def exception_handler(func):
-    @wraps(func)
-    def inner_function(self, *args, **kwargs):
-        try:
-            if func.__code__.co_argcount==1 and func.__defaults__ is None:
-                result = func(self)
-            elif func.__code__.co_argcount>1 and func.__defaults__ is None:
-                result = func(self, *args)
-            else:
-                result = func(self, *args, **kwargs)
-        except Exception as e:
-            result = None
-            traceback_str = traceback.format_exc()
-            self.logger.exception(traceback_str)
-            msg = QMessageBox(self)
-            msg.setWindowTitle('Critical error')
-            msg.setIcon(msg.Critical)
-            err_msg = (f"""
-            <p style="font-size:14px">
-                Error in function <b>{func.__name__}</b>.<br><br>
-                More details below or in the terminal/console.<br><br>
-                Note that the error details from this session are also saved
-                in the file<br>
-                {self.log_path}<br><br>
-                Please <b>send the log file</b> when reporting a bug, thanks!
-            </p>
-            """)
-            msg.setText(err_msg)
-            showLog = msg.addButton('Show log file...', msg.HelpRole)
-            showLog.disconnect()
-            slot = partial(myutils.showInExplorer, self.logs_path)
-            showLog.clicked.connect(slot)
-            msg.addButton(msg.Ok)
-            msg.setDetailedText(traceback_str)
-            msg.exec_()
-            self.is_error_state = True
-        return result
-    return inner_function
 
 class toCsvWorker(QObject):
     finished = pyqtSignal()
@@ -104,6 +66,9 @@ class toCsvWorker(QObject):
 
 class dataPrepWin(QMainWindow):
     def __init__(self, parent=None, buttonToRestore=None, mainWin=None):
+        from .config import parser_args
+        self.debug = parser_args['debug']
+
         super().__init__(parent)
 
         logger, logs_path, log_path, log_filename = myutils.setupLogger(
@@ -154,11 +119,12 @@ class dataPrepWin(QMainWindow):
 
         mainContainer.setLayout(mainLayout)
 
-    @exception_handler
+    @myutils.exception_handler
     def keyPressEvent(self, event):
-        if event.key() == Qt.Key_P:
-            posData = self.data[self.pos_i]
-            print(posData.segmInfo_df)
+        if self.debug:
+            if event.key() == Qt.Key_P:
+                posData = self.data[self.pos_i]
+                print(posData.segmInfo_df)
 
     def gui_createActions(self):
         # File actions
@@ -553,7 +519,7 @@ class dataPrepWin(QMainWindow):
                 img = np.median(img, axis=0)
         return img
 
-    @exception_handler
+    @myutils.exception_handler
     def update_img(self):
         self.updateNavigateItems()
         posData = self.data[self.pos_i]
@@ -650,7 +616,7 @@ class dataPrepWin(QMainWindow):
         self.updateBkgrROIs()
         self.updateROI()
 
-    @exception_handler
+    @myutils.exception_handler
     def crop(self, data, posData):
         x0, y0 = [int(round(c)) for c in posData.cropROI.pos()]
         w, h = [int(round(c)) for c in posData.cropROI.size()]
@@ -1399,7 +1365,7 @@ class dataPrepWin(QMainWindow):
             df.at[(posData.filename, i), 'which_z_proj'] = 'single z-slice'
         posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
 
-    @exception_handler
+    @myutils.exception_handler
     def prepData(self, event):
         self.titleLabel.setText(
             'Prepping data... (check progress in the terminal)',

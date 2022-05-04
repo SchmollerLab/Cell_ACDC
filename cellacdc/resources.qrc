@@ -43,6 +43,8 @@
     <file alias="cancel.svg">resources/icons/cancel.svg</file>
     <file alias="cancelButton.svg">resources/icons/cancelButton.svg</file>
     <file alias="okButton.svg">resources/icons/okButton.svg</file>
+    <file alias="no.svg">resources/icons/no.svg</file>
+    <file alias="yesGray.svg">resources/icons/yesGray.svg</file>
     <file alias="bkgrRoi.svg">resources/icons/bkgrRoi.svg</file>
     <file alias="hull.svg">resources/icons/hull.svg</file>
     <file alias="image.svg">resources/icons/image.svg</file>

@@ -30,8 +30,8 @@ from PyQt5 import QtGui
 
 # Here we use from cellacdc because this script is laucnhed in
 # a separate process that doesn't have a parent package
-from cellacdc import qrc_resources
-from cellacdc import apps, myutils
+from . import qrc_resources
+from . import apps, myutils
 
 if os.name == 'nt':
     try:
@@ -52,45 +52,6 @@ def worker_exception_handler(func):
             self.critical.emit(error)
         return result
     return run
-
-def exception_handler(func):
-    @wraps(func)
-    def inner_function(self, *args, **kwargs):
-        try:
-            if func.__code__.co_argcount==1 and func.__defaults__ is None:
-                result = func(self)
-            elif func.__code__.co_argcount>1 and func.__defaults__ is None:
-                result = func(self, *args)
-            else:
-                result = func(self, *args, **kwargs)
-        except Exception as e:
-            result = None
-            traceback_str = traceback.format_exc()
-            self.logger.exception(traceback_str)
-            msg = QMessageBox(self)
-            msg.setWindowTitle('Critical error')
-            msg.setIcon(msg.Critical)
-            err_msg = (f"""
-            <p style="font-size:14px">
-                Error in function <b>{func.__name__}</b>.<br><br>
-                More details below or in the terminal/console.<br><br>
-                Note that the error details from this session are also saved
-                in the file<br>
-                {self.log_path}<br><br>
-                Please <b>send the log file</b> when reporting a bug, thanks!
-            </p>
-            """)
-            msg.setText(err_msg)
-            showLog = msg.addButton('Show log file...', msg.HelpRole)
-            showLog.disconnect()
-            slot = partial(myutils.showInExplorer, self.logs_path)
-            showLog.clicked.connect(slot)
-            msg.addButton(msg.Ok)
-            msg.setDetailedText(traceback_str)
-            msg.exec_()
-            self.is_error_state = True
-        return result
-    return inner_function
 
 class bioFormatsWorker(QObject):
     finished = pyqtSignal()
@@ -1052,7 +1013,7 @@ class createDataStructWin(QMainWindow):
         df.index.name = 'index'
         df.to_csv(recentPaths_path)
 
-    @exception_handler
+    @myutils.exception_handler
     def main(self):
         self.log('Asking how raw data is structured...')
         rawDataStruct, abort = self.askRawDataStruct()
@@ -1146,7 +1107,7 @@ class createDataStructWin(QMainWindow):
 
         self.thread.start()
 
-    @exception_handler
+    @myutils.exception_handler
     def workerCritical(self, error):
         raise error
 

@@ -103,7 +103,6 @@ class installJavaDialog(widgets.myMessageBox):
             txt = txt_windows
 
         self.cancelButton = self.addButton('Cancel')
-        self.cancelButton.setIcon(QIcon(':cancelButton.svg'))
 
         label = self.addText(txt)
         label.setWordWrap(False)
@@ -501,10 +500,8 @@ class customAnnotationDialog(QDialog):
         self.loadSavedAnnotButton = QPushButton('Load annotation...')
         if not savedCustomAnnot:
             self.loadSavedAnnotButton.setDisabled(True)
-        self.okButton = QPushButton('  Ok  ')
-        self.okButton.setIcon(QIcon(':okButton.svg'))
-        cancelButton = QPushButton('Cancel')
-        cancelButton.setIcon(QIcon(':cancelButton.svg'))
+        self.okButton = widgets.okPushButton('  Ok  ')
+        cancelButton = widgets.cancelPushButton('Cancel')
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -915,8 +912,7 @@ class setMeasurementsDialog(QDialog):
         groupsLayout.addWidget(regionPropsQGBox, 1, current_col)
         groupsLayout.setRowStretch(1, 2)
 
-        okButton = QPushButton('   Ok   ')
-        okButton.setIcon(QIcon(':okButton.svg'))
+        okButton = widgets.okPushButton('   Ok   ')
         self.okButton = okButton
 
         buttonsLayout.addStretch(1)
@@ -1358,8 +1354,7 @@ class QDialogMetadataXML(QDialog):
         entriesLayout.setContentsMargins(0, 15, 0, 0)
 
         if rawDataStruct is None or rawDataStruct!=-1:
-            okButton = QPushButton(' Ok ')
-            okButton.setIcon(QIcon(':okButton.svg'))
+            okButton = widgets.okPushButton(' Ok ')
         elif rawDataStruct==1:
             okButton = QPushButton(' Load next position ')
         buttonsLayout.addWidget(okButton, 0, 1)
@@ -1394,8 +1389,7 @@ class QDialogMetadataXML(QDialog):
             trustButton.clicked.connect(self.ok_cb)
             overWriteButton.clicked.connect(self.ok_cb)
 
-        cancelButton = QPushButton('Cancel')
-        cancelButton.setIcon(QIcon(':cancelButton.svg'))
+        cancelButton = widgets.cancelPushButton('Cancel')
         buttonsLayout.addWidget(cancelButton, 0, 2)
         buttonsLayout.setColumnStretch(0, 1)
         buttonsLayout.setColumnStretch(3, 1)
@@ -1867,18 +1861,17 @@ class QDialogWorkerProgress(QDialog):
 
     def askAbort(self):
         msg = QMessageBox()
-        txt = ("""
-        <p style="font-size:9pt">
+        txt = html_utils.paragraph("""
             Aborting with "Ctrl+Alt+C" is <b>not safe</b>.<br><br>
             The system status cannot be predicted and
             it will <b>require a restart</b>.<br><br>
             Are you sure you want to abort?
-        </p>
         """)
-        answer = msg.critical(
-            self, 'Are you sure you want to abort?', txt, msg.Yes | msg.No
+        yesButton, noButton = msg.critical(
+            self, 'Are you sure you want to abort?', txt,
+            buttonsTexts=('Yes', 'No')
         )
-        return answer == msg.Yes
+        return msg.clickedButton == yesButton
 
     def closeEvent(self, event):
         if not self.workerFinished:
@@ -2182,12 +2175,10 @@ class QDialogAppendTextFilename(QDialog):
             'font-size:12px; padding:5px 0px 0px 0px;'
         )
 
-        okButton = QPushButton('Ok')
-        okButton.setIcon(QIcon(':okButton.svg'))
+        okButton = widgets.okPushButton('Ok')
         okButton.setShortcut(Qt.Key_Enter)
 
-        cancelButton = QPushButton('Cancel')
-        cancelButton.setIcon(QIcon(':cancelButton.svg'))
+        cancelButton = widgets.cancelPushButton('Cancel')
 
         buttonsLayout.addWidget(okButton, alignment=Qt.AlignRight)
         buttonsLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
@@ -2260,12 +2251,10 @@ class QDialogEntriesWidget(QDialog):
             formLayout.addRow(label, LE)
             self.QLEs.append(LE)
 
-        okButton = QPushButton('Ok')
-        okButton.setIcon(QIcon(':okButton.svg'))
+        okButton = widgets.okPushButton('Ok')
         okButton.setShortcut(Qt.Key_Enter)
 
-        cancelButton = QPushButton('Cancel')
-        cancelButton.setIcon(QIcon(':cancelButton.svg'))
+        cancelButton = widgets.cancelPushButton('Cancel')
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -2459,12 +2448,11 @@ class QDialogMetadata(QDialog):
             okTxt = 'Apply only to this Position'
         else:
             okTxt = 'Ok for loaded Positions'
-        okButton = QPushButton(okTxt)
+        okButton = widgets.okPushButton(okTxt)
         okButton.setToolTip(
             'Save metadata only for current positionh'
         )
         okButton.setShortcut(Qt.Key_Enter)
-        okButton.setIcon(QIcon(':okButton.svg'))
         self.okButton = okButton
 
         if ask_TimeIncrement or ask_PhysicalSizes:
@@ -2488,8 +2476,7 @@ class QDialogMetadata(QDialog):
             self.selectButton = None
             okButton.setText('Ok')
 
-        cancelButton = QPushButton('Cancel')
-        cancelButton.setIcon(QIcon(':cancelButton.svg'))
+        cancelButton = widgets.cancelPushButton('Cancel')
 
         buttonsLayout.setColumnStretch(0, 1)
         buttonsLayout.addWidget(okButton, 0, 1)
@@ -2749,8 +2736,7 @@ class QCropZtool(QWidget):
         self.upperZscrollbar.setMaximum(SizeZ-1)
         self.upperZscrollbar.label = QLabel(f'{SizeZ}/{SizeZ}')
 
-        cancelButton = QPushButton('Cancel')
-        cancelButton.setIcon(QIcon(':cancelButton.svg'))
+        cancelButton = widgets.cancelPushButton('Cancel')
         cropButton = QPushButton('Crop and save')
         buttonsLayout.addWidget(cropButton)
         buttonsLayout.addWidget(cancelButton)
@@ -3735,8 +3721,7 @@ class postProcessSegmDialog(QDialog):
             applyAllButton.clicked.connect(self.ok_cb)
             okButton = None
 
-        cancelButton = QPushButton('Cancel')
-        cancelButton.setIcon(QIcon(':cancelButton.svg'))
+        cancelButton = widgets.cancelPushButton('Cancel')
 
         buttonsLayout.addStretch(1)
         if applyButton is not None:
@@ -4267,12 +4252,10 @@ class editCcaTableWidget(QDialog):
         self.tableLayout = tableLayout
 
         # Add buttons
-        okButton = QPushButton('Ok')
-        okButton.setIcon(QIcon(':okButton.svg'))
+        okButton = widgets.okPushButton('Ok')
         okButton.setShortcut(Qt.Key_Enter)
 
-        cancelButton = QPushButton('Cancel')
-        cancelButton.setIcon(QIcon(':cancelButton.svg'))
+        cancelButton = widgets.cancelPushButton('Cancel')
 
         moreInfoButton = QPushButton('More info...')
         moreInfoButton.setIcon(QIcon(':info.svg'))
@@ -4689,12 +4672,10 @@ class askStopFrameSegm(QDialog):
         mainLayout.addWidget(infoLabel, alignment=Qt.AlignCenter)
         mainLayout.addLayout(formLayout)
 
-        okButton = QPushButton('Ok')
-        okButton.setIcon(QIcon(':okButton.svg'))
+        okButton = widgets.okPushButton('Ok')
         okButton.setShortcut(Qt.Key_Enter)
 
-        cancelButton = QPushButton('Cancel')
-        cancelButton.setIcon(QIcon(':cancelButton.svg'))
+        cancelButton = widgets.cancelPushButton('Cancel')
 
         buttonsLayout.addWidget(okButton, alignment=Qt.AlignRight)
         buttonsLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
@@ -4813,12 +4794,10 @@ class QLineEditDialog(QDialog):
             notValidLabel.setAlignment(Qt.AlignCenter)
             self.notValidLabel = notValidLabel
 
-        okButton = QPushButton('Ok')
-        okButton.setIcon(QIcon(':okButton.svg'))
+        okButton = widgets.okPushButton('Ok')
         okButton.setShortcut(Qt.Key_Enter)
 
-        cancelButton = QPushButton('Cancel')
-        cancelButton.setIcon(QIcon(':cancelButton.svg'))
+        cancelButton = widgets.cancelPushButton('Cancel')
 
         # Events
         okButton.clicked.connect(self.ok_cb)
@@ -4961,13 +4940,11 @@ class editID_QWidget(QDialog):
         mainLayout.addLayout(VBoxLayout)
 
         HBoxLayout = QHBoxLayout()
-        okButton = QPushButton('Ok')
-        okButton.setIcon(QIcon(':okButton.svg'))
+        okButton = widgets.okPushButton('Ok')
         okButton.setShortcut(Qt.Key_Enter)
         HBoxLayout.addWidget(okButton, alignment=Qt.AlignRight)
 
-        cancelButton = QPushButton('Cancel')
-        cancelButton.setIcon(QIcon(':cancelButton.svg'))
+        cancelButton = widgets.cancelPushButton('Cancel')
         # cancelButton.setShortcut(Qt.Key_Escape)
         HBoxLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
         HBoxLayout.setContentsMargins(0, 10, 0, 0)
@@ -6214,19 +6191,18 @@ class QDialogPbar(QDialog):
                 self.close()
 
     def askAbort(self):
-        msg = QMessageBox()
-        txt = ("""
-        <p style="font-size:9pt">
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph("""
             Aborting with "Ctrl+Alt+C" is <b>not safe</b>.<br><br>
             The system status cannot be predicted and
             it will <b>require a restart</b>.<br><br>
             Are you sure you want to abort?
-        </p>
         """)
-        answer = msg.critical(
-            self, 'Are you sure you want to abort?', txt, msg.Yes | msg.No
+        yesButton, noButton = msg.critical(
+            self, 'Are you sure you want to abort?', txt,
+            buttonsTexts=('Yes', 'No')
         )
-        return answer == msg.Yes
+        return msg.clickedButton == yesButton
 
 
     def abort(self):
@@ -6262,8 +6238,7 @@ class QDialogModelParams(QDialog):
             'Parameters for 2D segmentation'
         )
 
-        okButton = QPushButton(' Ok ')
-        okButton.setIcon(QIcon(':okButton.svg'))
+        okButton = widgets.okPushButton(' Ok ')
         buttonsLayout.addWidget(okButton)
 
         infoButton = QPushButton(' More info... ')
@@ -6495,8 +6470,7 @@ class downloadModel(QMessageBox):
             f'Files that {model_name} requires:\n\n'
             f'{weights}'
         )
-        okButton = QPushButton('Ok')
-        okButton.setIcon(QIcon(':okButton.svg'))
+        okButton = widgets.okPushButton('Ok')
         self.addButton(okButton, self.YesRole)
         okButton.disconnect()
         okButton.clicked.connect(self.close_)
@@ -6539,8 +6513,7 @@ class warnVisualCppRequired(QMessageBox):
         </p>
         """)
         seeScreenshotButton = QPushButton('See screenshot...')
-        okButton = QPushButton('Ok')
-        okButton.setIcon(QIcon(':okButton.svg'))
+        okButton = widgets.okPushButton('Ok')
         self.addButton(okButton, self.YesRole)
         okButton.disconnect()
         okButton.clicked.connect(self.close_)

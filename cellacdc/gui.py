@@ -112,46 +112,6 @@ def qt_debug_trace():
     pyqtRemoveInputHook()
     import pdb; pdb.set_trace()
 
-def exception_handler(func):
-    @wraps(func)
-    def inner_function(self, *args, **kwargs):
-        try:
-            if func.__code__.co_argcount==1 and func.__defaults__ is None:
-                result = func(self)
-            elif func.__code__.co_argcount>1 and func.__defaults__ is None:
-                result = func(self, *args)
-            else:
-                result = func(self, *args, **kwargs)
-        except Exception as e:
-            if self.progressWin is not None:
-                self.progressWin.workerFinished = True
-                self.progressWin.close()
-            result = None
-            traceback_str = traceback.format_exc()
-            self.logger.exception(traceback_str)
-            msg = QMessageBox(self)
-            msg.setWindowTitle('Critical error')
-            msg.setIcon(msg.Critical)
-            err_msg = html_utils.paragraph(f"""
-                Error in function <b>{func.__name__}</b>.<br><br>
-                More details below or in the terminal/console.<br><br>
-                Note that the error details from this session are also saved
-                in the file<br>
-                {self.log_path}<br><br>
-                Please <b>send the log file</b> when reporting a bug, thanks!
-            """)
-            msg.setText(err_msg)
-            showLog = msg.addButton('Show log file...', msg.HelpRole)
-            showLog.disconnect()
-            slot = partial(myutils.showInExplorer, self.logs_path)
-            showLog.clicked.connect(slot)
-            msg.addButton(msg.Ok)
-            msg.setDetailedText(traceback_str)
-            msg.exec_()
-            self.is_error_state = True
-        return result
-    return inner_function
-
 class trackingWorker(QObject):
     finished = pyqtSignal()
     critical = pyqtSignal(object)
@@ -968,7 +928,7 @@ class guiWin(QMainWindow):
         from .trackers.YeaZ import tracking as tracking_yeaz
         self.tracking_yeaz = tracking_yeaz
 
-        from config import parser_args
+        from .config import parser_args
         self.debug = parser_args['debug']
 
         super().__init__(parent)
@@ -2750,7 +2710,7 @@ class guiWin(QMainWindow):
         self.alphaScrollBar.hide()
         self.alphaScrollBar_label.hide()
 
-    @exception_handler
+    @myutils.exception_handler
     def gui_mousePressEventImg2(self, event):
         modifiers = QGuiApplication.keyboardModifiers()
         ctrl = modifiers == Qt.ControlModifier
@@ -3483,7 +3443,7 @@ class guiWin(QMainWindow):
             if not self.ripCellButton.findChild(QAction).isChecked():
                 self.ripCellButton.setChecked(False)
 
-    @exception_handler
+    @myutils.exception_handler
     def gui_mouseDragEventImg1(self, event):
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
@@ -3940,7 +3900,7 @@ class guiWin(QMainWindow):
             self.imgGrad.gradient.menu.popup(event.screenPos())
         # self.imgGrad.gradient.showMenu(event)
 
-    @exception_handler
+    @myutils.exception_handler
     def gui_mouseDragEventImg2(self, event):
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
@@ -4012,7 +3972,7 @@ class guiWin(QMainWindow):
             posData.lab[mask] = self.ax2BrushID
             self.setImageImg2()
 
-    @exception_handler
+    @myutils.exception_handler
     def gui_mouseReleaseEventImg2(self, event):
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
@@ -4093,7 +4053,7 @@ class guiWin(QMainWindow):
             self.store_data()
             self.warnEditingWithCca_df('Merge IDs')
 
-    @exception_handler
+    @myutils.exception_handler
     def gui_mouseReleaseEventImg1(self, event):
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
@@ -4299,7 +4259,7 @@ class guiWin(QMainWindow):
             self.clickedOnBud = False
             self.BudMothTempLine.setData([], [])
 
-    @exception_handler
+    @myutils.exception_handler
     def gui_mousePressEventImg1(self, event):
         modifiers = QGuiApplication.keyboardModifiers()
         ctrl = modifiers == Qt.ControlModifier
@@ -6232,7 +6192,7 @@ class guiWin(QMainWindow):
     def editFontSize(self):
         self.fontSizeMenu.popup(QCursor.pos())
 
-    @exception_handler
+    @myutils.exception_handler
     def changeFontSize(self, action):
         self.fontSize = f'{action.text()}pt'
         self.df_settings.at['fontSize', 'value'] = self.fontSize
@@ -7069,12 +7029,12 @@ class guiWin(QMainWindow):
                 self.app.restoreOverrideCursor()
             self.updateALLimg()
 
-    @exception_handler
+    @myutils.exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
             if self.debug:
                 # posData = self.data[self.pos_i]
-                print(self.all_metrics_names)
+                raise ModuleNotFoundError
                 # print(posData.manualContrastKey)
                 # acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
                 # print(acdc_df.columns)
@@ -8082,7 +8042,7 @@ class guiWin(QMainWindow):
                 return
             self.clearScatterPlotCustomAnnotButton(button)
 
-    @exception_handler
+    @myutils.exception_handler
     def repeatSegm(self, model_name=''):
         if not model_name:
             idx = self.segmActions.index(self.sender())
@@ -8163,7 +8123,7 @@ class guiWin(QMainWindow):
         self.thread.started.connect(self.worker.run)
         self.thread.start()
 
-    @exception_handler
+    @myutils.exception_handler
     def workerCritical(self, error):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
@@ -8378,7 +8338,7 @@ class guiWin(QMainWindow):
         if self.eraserButton.isChecked():
             self.updateEraserCursor(self.xHoverImg, self.yHoverImg)
 
-    @exception_handler
+    @myutils.exception_handler
     def applyPostProcessing(self):
         if self.postProcessSegmWin is not None:
             self.postProcessSegmWin.setPosData()
@@ -8668,7 +8628,7 @@ class guiWin(QMainWindow):
         )
         QTimer.singleShot(150, func)
 
-    @exception_handler
+    @myutils.exception_handler
     def startLoadDataWorker(self, user_ch_file_paths, user_ch_name):
         self.funcDescription = 'loading data'
 
@@ -8759,7 +8719,7 @@ class guiWin(QMainWindow):
         msg.addButton('Ok')
         msg.show(block=True)
 
-    @exception_handler
+    @myutils.exception_handler
     def loadDataWorkerFinished(self, data):
         self.funcDescription = 'loading data worker finished'
         if self.progressWin is not None:
@@ -12050,7 +12010,7 @@ class guiWin(QMainWindow):
             img = (np.clip(img, 0, 1)*255).astype(np.uint8)
         return img
 
-    @exception_handler
+    @myutils.exception_handler
     def updateALLimg(
             self, image=None, never_visited=True,
             only_ax1=False, updateBlur=False,
@@ -12564,7 +12524,7 @@ class guiWin(QMainWindow):
         self.isNewFile = False
         self._openFile(file_path=file_path)
 
-    @exception_handler
+    @myutils.exception_handler
     def _openFile(self, file_path=None):
         """
         Function used for loading an image file directly.
@@ -12663,7 +12623,7 @@ class guiWin(QMainWindow):
         self.isNewFile = False
         self._openFolder(exp_path=exp_path, imageFilePath=imageFilePath)
 
-    @exception_handler
+    @myutils.exception_handler
     def _openFolder(self, exp_path=None, imageFilePath=''):
         """Main function to load data.
 
@@ -12887,7 +12847,7 @@ class guiWin(QMainWindow):
             self.overlayContextMenu.actionGroup.addAction(action)
         actionGroup.triggered.connect(self.changeOverlayChannel)
 
-    @exception_handler
+    @myutils.exception_handler
     def loadDataWorkerDataIntegrityWarning(self, pos_foldername):
         err_msg = (
             'WARNING: Segmentation mask file ("..._segm.npz") not found. '
@@ -13398,7 +13358,7 @@ class guiWin(QMainWindow):
         msg.exec_()
         return msg.clickedButton() == allPosbutton, last_pos
 
-    @exception_handler
+    @myutils.exception_handler
     def saveMetricsCritical(self, traceback_format):
         print('\n====================================')
         self.logger.exception(traceback_format)
@@ -13492,7 +13452,7 @@ class guiWin(QMainWindow):
             ETA = myutils.seconds_to_ETA(seconds)
             self.saveWin.ETA_label.setText(f'ETA: {ETA}')
 
-    @exception_handler
+    @myutils.exception_handler
     def saveData(self):
         self.store_data()
         self.titleLabel.setText(
