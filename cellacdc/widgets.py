@@ -102,6 +102,26 @@ class showInFileManagerButton(QPushButton):
         super().__init__(*args)
         self.setIcon(QIcon(':folder-open.svg'))
 
+class showDetailsButton(QPushButton):
+    def __init__(self, *args, txt='Show details...'):
+        super().__init__(*args)
+        self.setText(txt)
+        self.txt = txt
+        self.checkedIcon = QIcon(':hideUp.svg')
+        self.uncheckedIcon = QIcon(':showDown.svg')
+        self.setIcon(self.uncheckedIcon)
+        self.toggled.connect(self.onClicked)
+        w = self.sizeHint().width()
+        self.setFixedWidth(w)
+
+    def onClicked(self, checked):
+        if checked:
+            self.setText(' Hide details   ')
+            self.setIcon(self.checkedIcon)
+        else:
+            self.setText(self.txt)
+            self.setIcon(self.uncheckedIcon)
+
 class cancelPushButton(QPushButton):
     def __init__(self, *args):
         super().__init__(*args)
@@ -345,19 +365,17 @@ class myMessageBox(QDialog):
     def setDetailedText(self, text):
         self.detailsTextWidget = QPlainTextEdit(text)
         self.detailsTextWidget.setReadOnly(True)
-        self.detailsButton = QPushButton('Show details...')
+        self.detailsButton = showDetailsButton()
         self.detailsButton.setCheckable(True)
         self.detailsButton.clicked.connect(self._showDetails)
         self.detailsTextWidget.hide()
 
     def _showDetails(self, checked):
         if checked:
-            self.detailsButton.setText('Hide details')
             self.origHeight = self.height()
             self.resize(self.width(), self.height()+300)
             self.detailsTextWidget.show()
         else:
-            self.detailsButton.setText('Show details...')
             self.detailsTextWidget.hide()
             func = partial(self.resize, self.width(), self.origHeight)
             QTimer.singleShot(10, func)
