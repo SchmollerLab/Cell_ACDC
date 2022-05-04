@@ -9109,6 +9109,11 @@ class guiWin(QMainWindow):
             _IDlabel2.setText('')
 
     def clearAllItems(self):
+        self.ax2_binnedIDs_ScatterPlot.setData([], [])
+        self.ax2_ripIDs_ScatterPlot.setData([], [])
+        self.ax1_binnedIDs_ScatterPlot.setData([], [])
+        self.ax1_ripIDs_ScatterPlot.setData([], [])
+
         allItems = zip(
             self.ax1_ContoursCurves,
             self.ax2_ContoursCurves,
@@ -12996,8 +13001,8 @@ class guiWin(QMainWindow):
                 msg = widgets.myMessageBox()
                 txt = html_utils.paragraph(
                     'You already <b>loaded ALL channels</b>.<br><br>'
-                    'If you just want <b>to change overlaid channel</b> '
-                    'you can do it with <b>right-click</b> on the overlay button.'
+                    'To <b>change the overlaid channel</b> '
+                    '<b>right-click</b> on the overlay button.'
                 )
                 msg.information(self, 'All channels are loaded', txt)
                 return False

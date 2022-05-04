@@ -289,9 +289,10 @@ class myMessageBox(QDialog):
             buttonText.lower().find('yes') != -1
             or buttonText.lower().find('ok') != -1
             or buttonText.lower().find('continue') != -1
+            or buttonText.lower().find('recommended') != -1
         )
         isSettingsButton = buttonText.lower().find('set') != -1
-        isNoButton = buttonText.lower().find('no') != -1
+        isNoButton = buttonText.lower() == 'no'
 
         if isCancelButton:
             button = cancelPushButton(buttonText, self)
