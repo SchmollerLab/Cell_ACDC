@@ -1860,7 +1860,7 @@ class QDialogWorkerProgress(QDialog):
                 self.close()
 
     def askAbort(self):
-        msg = QMessageBox()
+        msg = widgets.myMessageBox()
         txt = html_utils.paragraph("""
             Aborting with "Ctrl+Alt+C" is <b>not safe</b>.<br><br>
             The system status cannot be predicted and
@@ -2018,8 +2018,11 @@ class QDialogListbox(QDialog):
         listBox.itemDoubleClicked.connect(self.ok_cb)
         topLayout.addWidget(listBox)
 
-        cancelButton = QPushButton(cancelText)
-        okButton = QPushButton('Ok')
+        if cancelText.lower().find('cancel') != -1:
+            cancelButton = widgets.cancelPushButton(cancelText)
+        else:
+            cancelButton = QPushButton(cancelText)
+        okButton = widgets.okPushButton(' Ok ')
         okButton.setShortcut(Qt.Key_Enter)
 
         bottomLayout.addStretch(1)
@@ -2618,7 +2621,7 @@ class QDialogMetadata(QDialog):
             msg.setIcon(msg.Warning)
             msg.setWindowTitle('Invalid entries')
             msg.setText(txt)
-            continueButton = QPushButton(
+            continueButton = widgets.okPushButton(
                 f'Continue anyway'
             )
             cancelButton = QPushButton(

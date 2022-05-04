@@ -288,6 +288,7 @@ class myMessageBox(QDialog):
         isYesButton = (
             buttonText.lower().find('yes') != -1
             or buttonText.lower().find('ok') != -1
+            or buttonText.lower().find('continue') != -1
         )
         isSettingsButton = buttonText.lower().find('set') != -1
         isNoButton = buttonText.lower().find('no') != -1

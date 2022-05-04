@@ -2681,7 +2681,7 @@ class guiWin(QMainWindow):
         # Create enough PlotDataItems and LabelItems to draw contours and IDs.
         self.progressWin = apps.QDialogWorkerProgress(
             title='Creating axes items', parent=self,
-            pbarDesc='Creating axes items...'
+            pbarDesc='Creating axes items (see progress in the terminal)...'
         )
         self.progressWin.show(self.app)
         self.progressWin.mainPbar.setMaximum(0)
@@ -4172,24 +4172,28 @@ class guiWin(QMainWindow):
             # OR if the history is unknown
             if relationship == 'bud' and posData.frame_i > 0 and is_history_known:
                 self.assignBudMothButton.setChecked(False)
-                txt = (f'You clicked on ID {ID} which is a BUD.\n'
-                       'To assign a bud to a cell start by clicking on a bud '
-                       'and release on a cell in G1')
-                msg = QMessageBox()
+                txt = html_utils.paragraph(
+                    f'You clicked on <b>ID {ID}</b> which is a <b>BUD</b>.<br>'
+                    'To assign a bud to a cell <b>start by clicking on a bud</b> '
+                    'and release on a cell in G1'
+                )
+                msg = widgets.myMessageBox()
                 msg.critical(
-                    self, 'Released on a bud', txt, msg.Ok
+                    self, 'Released on a bud', txt
                 )
                 self.assignBudMothButton.setChecked(True)
                 return
 
             elif ccs != 'G1' and posData.frame_i > 0:
                 self.assignBudMothButton.setChecked(False)
-                txt = (f'You clicked on a cell (ID={ID}) which is NOT in G1.\n'
-                       'To assign a bud to a cell start by clicking on a bud '
-                       'and release on a cell in G1')
-                msg = QMessageBox()
+                txt = html_utils.paragraph(
+                    f'You clicked on <b>ID={ID}</b> which is <b>NOT in G1</b>.<br>'
+                    'To assign a bud to a cell start by clicking on a bud '
+                    'and release on a cell in G1'
+                )
+                msg = widgets.myMessageBox()
                 msg.critical(
-                    self, 'Released on a cell NOT in G1', txt, msg.Ok
+                    self, 'Released on a cell NOT in G1', txt
                 )
                 self.assignBudMothButton.setChecked(True)
                 return
@@ -7033,8 +7037,9 @@ class guiWin(QMainWindow):
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
             if self.debug:
-                # posData = self.data[self.pos_i]
-                raise ModuleNotFoundError
+                posData = self.data[self.pos_i]
+                print(list(posData.loadedFluoChannels))
+                print([ch for ch in self.ch_names if ch != self.user_ch_name])
                 # print(posData.manualContrastKey)
                 # acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
                 # print(acdc_df.columns)
@@ -10898,7 +10903,7 @@ class guiWin(QMainWindow):
                 ch_names = [ch for ch in self.ch_names if ch != self.user_ch_name]
                 selectFluo = apps.QDialogListbox(
                     'Select channel',
-                    'Select channel names to load:\n',
+                    'Select channel names to overlay:\n',
                     ch_names, multiSelection=False, parent=self
                 )
                 selectFluo.exec_()
@@ -12982,7 +12987,20 @@ class guiWin(QMainWindow):
 
     def loadFluo_cb(self, checked=True, fluo_channels=None):
         if fluo_channels is None:
-            ch_names = [ch for ch in self.ch_names if ch != self.user_ch_name]
+            posData = self.data[self.pos_i]
+            ch_names = [
+                ch for ch in self.ch_names if ch != self.user_ch_name
+                and ch not in posData.loadedFluoChannels
+            ]
+            if not ch_names:
+                msg = widgets.myMessageBox()
+                txt = html_utils.paragraph(
+                    'You already <b>loaded ALL channels</b>.<br><br>'
+                    'If you just want <b>to change overlaid channel</b> '
+                    'you can do it with <b>right-click</b> on the overlay button.'
+                )
+                msg.information(self, 'All channels are loaded', txt)
+                return False
             selectFluo = apps.QDialogListbox(
                 'Select channel',
                 'Select channel names to load:\n',
@@ -12996,7 +13014,7 @@ class guiWin(QMainWindow):
             fluo_channels = selectFluo.selectedItemsText
 
         for posData in self.data:
-            posData.ol_data = None
+            # posData.ol_data = None
             for fluo_ch in fluo_channels:
                 fluo_path, filename = self.getPathFromChName(fluo_ch, posData)
                 if fluo_path is None:
