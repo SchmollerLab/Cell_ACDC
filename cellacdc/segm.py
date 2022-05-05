@@ -927,7 +927,11 @@ class segmWin(QMainWindow):
                         labShape = (posData.SizeZ, Y, X)
                     else:
                         labShape = (1, Y, X)
-                    paramsWin = apps.BayesianTrackerParamsWin(labShape)
+                    paramsWin = apps.BayesianTrackerParamsWin(labShape, parent=self)
+                    paramsWin.exec_()
+                    params = paramsWin.params
+                elif trackerName == 'CellACDC':
+                    paramsWin = apps.CellACDCTrackerParamsWin(parent=self)
                     paramsWin.exec_()
                     params = paramsWin.params
                 self.tracker = trackerModule.tracker(**params)

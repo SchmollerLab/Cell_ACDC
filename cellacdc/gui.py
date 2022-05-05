@@ -7617,7 +7617,11 @@ class guiWin(QMainWindow):
                 labShape = posData.lab.shape
             else:
                 labShape = (1, *posData.lab.shape)
-            paramsWin = apps.BayesianTrackerParamsWin(labShape)
+            paramsWin = apps.BayesianTrackerParamsWin(labShape, parent=self)
+            paramsWin.exec_()
+            params = paramsWin.params
+        elif trackerName == 'CellACDC':
+            paramsWin = apps.CellACDCTrackerParamsWin(parent=self)
             paramsWin.exec_()
             params = paramsWin.params
 
@@ -10260,25 +10264,21 @@ class guiWin(QMainWindow):
         self.navigateScrollBar.setMaximum(last_tracked_i+1)
         if posData.frame_i > last_tracked_i:
             # Prompt user to go to last tracked frame
-            msg = QMessageBox(self)
-            msg.setIcon(msg.Warning)
-            msg.setWindowTitle('Go to last visited frame?')
-            msg.setText(
+            msg = widgets.myMessageBox()
+            txt = html_utils.paragraph(
                 f'The last visited frame in "Segmentation and Tracking mode" '
                 f'is frame {last_tracked_i+1}.\n\n'
-                f'We recommend to resume from that frame.\n\n'
+                f'We recommend to resume from that frame.<br><br>'
                 'How do you want to proceed?'
             )
-            goToButton = QPushButton(
-                f'Resume from frame {last_tracked_i+1} (RECOMMENDED)'
+            goToButton, stayButton = msg.warning(
+                self, 'Go to last visited frame?', txt,
+                buttonsTexts=(
+                    f'Resume from frame {last_tracked_i+1} (RECOMMENDED)',
+                    f'Stay on current frame {posData.frame_i+1}'
+                )
             )
-            stayButton = QPushButton(
-                f'Stay on current frame {posData.frame_i+1}'
-            )
-            msg.addButton(goToButton, msg.YesRole)
-            msg.addButton(stayButton, msg.NoRole)
-            msg.exec_()
-            if msg.clickedButton() == goToButton:
+            if msg.clickedButton == goToButton:
                 posData.frame_i = last_tracked_i
                 self.get_data()
                 self.updateALLimg()
@@ -10360,15 +10360,14 @@ class guiWin(QMainWindow):
                 return
         elif posData.frame_i < last_cca_frame_i:
             # Prompt user to go to last annotated frame
-            msg = QMessageBox()
+            msg = widgets.myMessageBox()
             goTo_last_annotated_frame_i = msg.question(
                 self, 'Go to last annotated frame?',
                 f'The last annotated frame is frame {last_cca_frame_i+1}.\n'
                 'Do you want to restart cell cycle analysis from frame '
-                f'{last_cca_frame_i+1}?',
-                msg.Yes | msg.No | msg.Cancel
-            )
-            if goTo_last_annotated_frame_i == msg.Yes:
+                f'{last_cca_frame_i+1}?', buttonsTexts=('Yes', 'No', 'Cancel')
+            )[0]
+            if goTo_last_annotated_frame_i == msg.clickedButton:
                 msg = 'Looking good!'
                 self.titleLabel.setText(msg, color=self.titleColor)
                 self.last_cca_frame_i = last_cca_frame_i
@@ -10376,7 +10375,7 @@ class guiWin(QMainWindow):
                 self.get_data()
                 self.updateALLimg()
                 self.updateScrollbars()
-            elif goTo_last_annotated_frame_i == msg.Cancel:
+            elif msg.cancel:
                 msg = 'Cell cycle analysis aborted.'
                 self.logger.info(msg)
                 self.titleLabel.setText(msg, color=self.titleColor)

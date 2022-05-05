@@ -32,7 +32,7 @@ def calc_IoA_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None):
                 IoA_matrix[i, j] = IoA
     return IoA_matrix, IDs_curr_untracked, IDs_prev
 
-def assign(IoA_matrix, IDs_curr_untracked, IDs_prev):
+def assign(IoA_matrix, IDs_curr_untracked, IDs_prev, IoA_thresh=0.4):
     # Determine max IoA between IDs and assign tracked ID if IoA > 0.4
     max_IoA_col_idx = IoA_matrix.argmax(axis=1)
     unique_col_idx, counts = np.unique(max_IoA_col_idx, return_counts=True)
@@ -42,7 +42,7 @@ def assign(IoA_matrix, IDs_curr_untracked, IDs_prev):
     for i, j in enumerate(max_IoA_col_idx):
         max_IoU = IoA_matrix[i,j]
         count = counts_dict[j]
-        if max_IoU > 0.4:
+        if max_IoU > IoA_thresh:
             tracked_ID = IDs_prev[j]
             if count == 1:
                 old_ID = IDs_curr_untracked[i]
@@ -89,13 +89,14 @@ def indexAssignment(
 def track_frame(
         prev_lab, prev_rp, lab, rp, IDs_curr_untracked=None,
         uniqueID=None, setBrushID_func=None, posData=None,
-        assign_unique_new_IDs=True
+        assign_unique_new_IDs=True, IoA_thresh=0.4
     ):
     IoA_matrix, IDs_curr_untracked, IDs_prev = calc_IoA_matrix(
         lab, prev_lab, rp, prev_rp, IDs_curr_untracked=IDs_curr_untracked
     )
     old_IDs, tracked_IDs = assign(
-        IoA_matrix, IDs_curr_untracked, IDs_prev
+        IoA_matrix, IDs_curr_untracked, IDs_prev,
+        IoA_thresh=IoA_thresh
     )
 
     if posData is None and uniqueID is None:
@@ -113,8 +114,8 @@ def track_frame(
     return tracked_lab
 
 class tracker:
-    def __init__(self):
-        pass
+    def __init__(self, **params):
+        self.params = params
 
     def track(self, segm_video, signals=None, export_to: os.PathLike=None):
         tracked_video = np.zeros_like(segm_video)
@@ -128,8 +129,9 @@ class tracker:
             prev_rp = regionprops(prev_lab)
             rp = regionprops(lab.copy())
 
+            IoA_thresh = self.params.get('IoA_thresh', 0.4)
             tracked_lab = track_frame(
-                prev_lab, prev_rp, lab, rp
+                prev_lab, prev_rp, lab, rp, IoA_thresh=IoA_thresh
             )
 
             tracked_video[frame_i] = tracked_lab

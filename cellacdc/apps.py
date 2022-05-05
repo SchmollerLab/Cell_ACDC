@@ -1802,6 +1802,99 @@ class QDialogMetadataXML(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
+class CellACDCTrackerParamsWin(QDialog):
+    def __init__(self, parent=None):
+        self.cancel = True
+        super().__init__(parent)
+
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        self.setWindowTitle('Cell-ACDC tracker parameters')
+
+        paramsLayout = QGridLayout()
+        paramsBox = QGroupBox()
+
+        row = 0
+        label = QLabel(html_utils.paragraph(
+            'Minimum overlap between objects'
+        ))
+        paramsLayout.addWidget(label, row, 0)
+        maxOverlapSpinbox = QDoubleSpinBox()
+        maxOverlapSpinbox.setAlignment(Qt.AlignCenter)
+        maxOverlapSpinbox.setMinimum(0)
+        maxOverlapSpinbox.setMaximum(1)
+        maxOverlapSpinbox.setSingleStep(0.1)
+        maxOverlapSpinbox.setValue(0.4)
+        self.maxOverlapSpinbox = maxOverlapSpinbox
+        paramsLayout.addWidget(maxOverlapSpinbox, row, 1)
+        infoButton = widgets.infoPushButton()
+        infoButton.clicked.connect(self.showInfo)
+        paramsLayout.addWidget(infoButton, row, 2)
+        paramsLayout.setColumnStretch(0, 0)
+        paramsLayout.setColumnStretch(1, 1)
+        paramsLayout.setColumnStretch(2, 0)
+
+        cancelButton = widgets.cancelPushButton('Cancel')
+        okButton = widgets.okPushButton(' Ok ')
+        cancelButton.clicked.connect(self.cancel_cb)
+        okButton.clicked.connect(self.ok_cb)
+
+        buttonsLayout = QHBoxLayout()
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(okButton)
+
+        layout = QVBoxLayout()
+        infoText = html_utils.paragraph('<b>Cell-ACDC tracker parameters</b>')
+        infoLabel = QLabel(infoText)
+        layout.addWidget(infoLabel, alignment=Qt.AlignCenter)
+        layout.addSpacing(10)
+        paramsBox.setLayout(paramsLayout)
+        layout.addWidget(paramsBox)
+        layout.addSpacing(20)
+        layout.addLayout(buttonsLayout)
+        layout.addStretch(1)
+        self.setLayout(layout)
+        self.setFont(font)
+
+    def showInfo(self):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(
+            'Cell-ACDC tracker computes the percentage of overlap between '
+            'all the objects<br> at frame <code>n</code> and all the '
+            'objects in previous frame <code>n-1</code>.<br><br>'
+            'All objects with <b>overlap less than</b> '
+            '<code>Minimum overlap between objects</code><br>are considered '
+            '<b>new objects</b>.<br><br>'
+            'Set this value to 0 if you want to force tracking of ALL the '
+            'objects<br> in the previous frame (e.g., if cells move a lot '
+            'between frames)'
+        )
+        msg.information(self, 'Cell-ACDC tracker info', txt)
+
+    def ok_cb(self, checked=False):
+        self.cancel = False
+        self.params = {'IoA_thresh': self.maxOverlapSpinbox.value()}
+        self.close()
+
+    def cancel_cb(self, event):
+        self.cancel = True
+        self.close()
+
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        super().show()
+        self.resize(int(self.width()*1.3), self.height())
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()
+
 class BayesianTrackerParamsWin(QDialog):
     def __init__(self, segmShape, parent=None):
         self.cancel = True

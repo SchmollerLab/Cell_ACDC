@@ -97,6 +97,11 @@ class okPushButton(QPushButton):
         QShortcut(Qt.Key_Return, self, self.click)
         QShortcut(Qt.Key_Enter, self, self.click)
 
+class infoPushButton(QPushButton):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setIcon(QIcon(':info.svg'))
+
 class showInFileManagerButton(QPushButton):
     def __init__(self, *args):
         super().__init__(*args)
@@ -292,7 +297,7 @@ class myMessageBox(QDialog):
             or buttonText.lower().find('recommended') != -1
         )
         isSettingsButton = buttonText.lower().find('set') != -1
-        isNoButton = buttonText.lower() == 'no'
+        isNoButton = buttonText.replace(' ', '').lower() == 'no'
 
         if isCancelButton:
             button = cancelPushButton(buttonText, self)
