@@ -11,6 +11,8 @@ from skimage.measure import regionprops
 from skimage.segmentation import relabel_sequential
 from math import sqrt
 
+from cellacdc.trackers.CellACDC.CellACDC_tracker import indexAssignment
+
 try:
     from munkres import Munkres
 except ModuleNotFoundError as e:
@@ -20,32 +22,23 @@ def correspondence(prev, curr, use_scipy=True, use_modified_yeaz=True):
     """
     source: YeaZ modified by Cell-ACDC developers
     scipy.optimize.linear_sum_assignment instead of munkres library
-    Corrects correspondence between previous and current mask, returns current
-    mask with corrected cell values. New cells are given the unique identifier
-    starting at max(prev)+1.
-
-    This is done by embedding every cell into a feature space consisting of
-    the center of mass and the area. The pairwise euclidean distance is
-    calculated between the cells of the previous and current frame. This is
-    then used as a cost for the bipartite matching problem which is in turn
-    solved by the Hungarian algorithm as implemented in the munkres package.
     """
     if use_scipy:
         hu_dict = scipy_align(prev, curr, acdc_yeaz=use_modified_yeaz)
     else:
         hu_dict = hungarian_align(prev, curr, acdc_yeaz=use_modified_yeaz)
-    new = curr.copy()
-    curr_max_ID = np.max(curr)
-    max_new_ID = max([val for val in hu_dict.values()])
-    uniqueID = max(max_new_ID, curr_max_ID)+1
-    for key, val in hu_dict.items():
-        if val in curr:
-            # Tracked ID already present --> assign a unique ID first
-            new[curr==val] = uniqueID
-            uniqueID += 1
+    rp = regionprops(curr)
+    tracked_IDs = [val for val in hu_dict.values()]
+    old_IDs = [key for key in hu_dict.keys()]
+    IDs_curr_untracked = [obj.label for obj in regionprops(curr)]
+    IDs_prev = [obj.label for obj in regionprops(prev)]
+    uniqueID = max((max(IDs_prev), max(IDs_curr_untracked)))+1
 
-        new[curr==key] = val
-    return new
+    tracked_lab = indexAssignment(
+        old_IDs, tracked_IDs, IDs_curr_untracked,
+        curr.copy(), rp, uniqueID
+    )
+    return tracked_lab
 
 def scipy_align(m1, m2, acdc_yeaz=True):
     """
@@ -86,7 +79,7 @@ def correspondence_stack(stack, signals=None):
         tracked_stack[idx+1] = correspondence(prev, curr)
         if signals is not None:
             signals.progressBar.emit(1)
-    tracked_stack = relabel_sequential(tracked_stack)[0]
+    # tracked_stack = relabel_sequential(tracked_stack)[0]
     return tracked_stack
 
 def hungarian_align(m1, m2, acdc_yeaz=True):

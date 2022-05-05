@@ -55,6 +55,7 @@ def lab_replace_values(lab, rp, oldIDs, newIDs, in_place=True):
             continue
 
         if obj.label == newIDs[idx]:
+            # Skip assigning ID to same ID
             continue
 
         lab[obj.slice][obj.image] = newIDs[idx]

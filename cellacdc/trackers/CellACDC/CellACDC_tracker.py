@@ -8,7 +8,6 @@ from skimage.segmentation import relabel_sequential
 
 from cellacdc.core import lab_replace_values, np_replace_values
 
-
 def calc_IoA_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None):
     IDs_prev = []
     if IDs_curr_untracked is None:
@@ -65,7 +64,7 @@ def indexAssignment(
     # print(f'Assign new IDs uniquely = {assign_unique_new_IDs}')
     # print('***********************')
     if new_untracked_IDs and assign_unique_new_IDs:
-        # Relabel new untracked IDs unique IDs
+        # Relabel new untracked IDs (i.e., new cells) unique IDs
         if remove_untracked:
             new_tracked_IDs = [0]*len(new_untracked_IDs)
         else:
@@ -136,7 +135,7 @@ class tracker:
             tracked_video[frame_i] = tracked_lab
             if signals is not None:
                 signals.progressBar.emit(1)
-        tracked_video = relabel_sequential(tracked_video)[0]
+        # tracked_video = relabel_sequential(tracked_video)[0]
         return tracked_video
 
     def save_output(self):
