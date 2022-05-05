@@ -30,7 +30,6 @@ def correspondence(prev, curr, use_scipy=True, use_modified_yeaz=True):
     then used as a cost for the bipartite matching problem which is in turn
     solved by the Hungarian algorithm as implemented in the munkres package.
     """
-    newcell = np.max(prev) + 1
     if use_scipy:
         hu_dict = scipy_align(prev, curr, acdc_yeaz=use_modified_yeaz)
     else:
@@ -40,13 +39,8 @@ def correspondence(prev, curr, use_scipy=True, use_modified_yeaz=True):
     max_new_ID = max([val for val in hu_dict.values()])
     uniqueID = max(max_new_ID, curr_max_ID)+1
     for key, val in hu_dict.items():
-        # If new cell
-        if val == -1:
-            val = newcell
-            newcell += 1
-            # print(f'New cell = {val}')
-
         if val in curr:
+            # Tracked ID already present --> assign a unique ID first
             new[curr==val] = uniqueID
             uniqueID += 1
 
