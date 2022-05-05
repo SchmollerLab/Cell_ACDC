@@ -1,5 +1,7 @@
 import os
 
+from tqdm import tqdm
+
 import numpy as np
 from skimage.measure import regionprops
 from skimage.segmentation import relabel_sequential
@@ -117,7 +119,7 @@ class tracker:
 
     def track(self, segm_video, signals=None, export_to: os.PathLike=None):
         tracked_video = np.zeros_like(segm_video)
-        for frame_i, lab in enumerate(segm_video):
+        for frame_i, lab in enumerate(tqdm(segm_video, ncols=100)):
             if frame_i == 0:
                 tracked_video[frame_i] = lab
                 continue
