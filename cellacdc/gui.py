@@ -2165,18 +2165,18 @@ class guiWin(QMainWindow):
             'Draw only overlay segm. masks',
             'Draw nothing'
         ]
-        self.drawIDsContComboBoxCcaItems = [
-            'Draw IDs and contours',
-            'Draw IDs and overlay segm. masks',
-            'Draw only cell cycle info',
-            'Draw cell cycle info and contours',
-            'Draw cell cycle info and overlay segm. masks',
-            'Draw only mother-bud lines',
-            'Draw only IDs',
-            'Draw only contours',
-            'Draw only overlay segm. masks',
-            'Draw nothing'
-        ]
+        # self.drawIDsContComboBoxCcaItems = [
+        #     'Draw IDs and contours',
+        #     'Draw IDs and overlay segm. masks',
+        #     'Draw only cell cycle info',
+        #     'Draw cell cycle info and contours',
+        #     'Draw cell cycle info and overlay segm. masks',
+        #     'Draw only mother-bud lines',
+        #     'Draw only IDs',
+        #     'Draw only contours',
+        #     'Draw only overlay segm. masks',
+        #     'Draw nothing'
+        # ]
         self.drawIDsContComboBox = QComboBox()
         self.drawIDsContComboBox.setFont(_font)
         self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
@@ -2573,27 +2573,74 @@ class guiWin(QMainWindow):
         )
         self.ax1.addItem(self.ax1_point_ScatterPlot)
 
+    def _warn_too_many_items(self, numItems):
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph(f"""
+            You loaded a segmentation mask that has <b>{numItems} objects</b>.<br><br>
+            Creating graphical items for this many objects could take
+            a <b>long time</b>.<br><br>
+            We <b>recommend disabling graphical items</b>. The graphical items
+            <b>will be created "on-demand"</b> when you visualize a new time-point,
+            resulting in slighlty higher loading time of a new time-point.<br><br>
+            <i>Note that the ID of the object will still be displayed on the
+            bottom-right corner when you hover on it with the mouse.</i><br><br>
+            What do you want to do?
+        """)
+        _, doNotCreateItemsButton, _ = msg.warning(
+            self, 'Too many objects', txt,
+            buttonsTexts=(
+                'Cancel', ' Ok, create on-demand ',
+                'Try anyway'
+            )
+        )
+        return msg.cancel, msg.clickedButton==doNotCreateItemsButton
+
     def gui_createIDsAxesItems(self):
         allIDs = set()
-        for lab in self.data[self.pos_i].segm_data:
+        self.logger.info('Counting total number of segmented objects...')
+        for lab in tqdm(self.data[self.pos_i].segm_data, ncols=100):
             IDs = [obj.label for obj in skimage.measure.regionprops(lab)]
             allIDs.update(IDs)
 
         numItems = numba_max(self.data[self.pos_i].segm_data)
-
-        self.logger.info(f'Creating {len(allIDs)} axes items...')
-
         self.ax1_ContoursCurves = [None]*numItems
         self.ax2_ContoursCurves = [None]*numItems
         self.ax1_BudMothLines = [None]*numItems
         self.ax1_LabelItemsIDs = [None]*numItems
         self.ax2_LabelItemsIDs = [None]*numItems
+
+        if numItems > 500:
+            cancel, doNotCreateItems = self._warn_too_many_items(numItems)
+            if cancel:
+                self.progressWin.workerFinished = True
+                self.progressWin.close()
+                return
+            elif doNotCreateItems:
+                self.logger.info(f'Graphical items creation aborted.')
+                self.progressWin.workerFinished = True
+                self.progressWin.close()
+                drawModes = self.drawIDsContComboBoxSegmItems
+                # self.drawIDsContComboBoxSegmItems = drawModes
+                # self.drawIDsContComboBox.addItems(drawModes)
+                df = self.df_settings
+                df.at['how_draw_annotations', 'value'] = drawModes[-2]
+                self.drawIDsContComboBox.setCurrentText(drawModes[-2])
+                self.loadingDataCompleted()
+                return
+
+
+        self.logger.info(f'Creating {len(allIDs)} axes items...')
         for ID in tqdm(allIDs, ncols=100):
             self.ax1_ContoursCurves[ID-1] = pg.PlotDataItem()
             self.ax1_BudMothLines[ID-1] = pg.PlotDataItem()
             self.ax1_LabelItemsIDs[ID-1] = pg.LabelItem()
             self.ax2_LabelItemsIDs[ID-1] = pg.LabelItem()
             self.ax2_ContoursCurves[ID-1] = pg.PlotDataItem()
+
+        self.progressWin.mainPbar.setMaximum(0)
+        self.gui_addCreatedAxesItems()
+        self.progressWin.workerFinished = True
+        self.progressWin.close()
 
         self.loadingDataCompleted()
 
@@ -4904,6 +4951,8 @@ class guiWin(QMainWindow):
 
     def workerInitProgressbar(self, totalIter):
         self.progressWin.mainPbar.setValue(0)
+        if totalIter == 1:
+            totalIter = 0
         self.progressWin.mainPbar.setMaximum(totalIter)
 
     def workerUpdateProgressbar(self, step):
@@ -7686,9 +7735,9 @@ class guiWin(QMainWindow):
         self.postProcessSegmAction.toggled.connect(self.postProcessSegm)
 
     def readSavedCustomAnnot(self):
-        self.logger.info('Loading saved custom annotations...')
         tempAnnot = {}
         if os.path.exists(custom_annot_path):
+            self.logger.info('Loading saved custom annotations...')
             tempAnnot = load.read_json(
                 custom_annot_path, logger_func=self.logger.info
             )
@@ -8549,6 +8598,7 @@ class guiWin(QMainWindow):
             self.loadingDataAborted()
             return
 
+        self.logger.info(f'Reading {user_ch_name} channel metadata...')
         # Get information from first loaded position
         posData = load.loadData(user_ch_file_paths[0], user_ch_name)
         posData.getBasenameAndChNames()
@@ -8569,6 +8619,7 @@ class guiWin(QMainWindow):
             isNewFile=self.isNewFile
         )
         posData.loadOtherFiles(
+            load_segm_data=True,
             load_metadata=True,
             create_new_segm=self.isNewFile,
             new_segm_filename=self.newSegmFilename,
@@ -8629,12 +8680,13 @@ class guiWin(QMainWindow):
         self.progressWin.show(self.app)
 
         func = partial(
-            self.startLoadDataWorker, user_ch_file_paths, user_ch_name
+            self.startLoadDataWorker, user_ch_file_paths, user_ch_name,
+            posData
         )
         QTimer.singleShot(150, func)
 
     @myutils.exception_handler
-    def startLoadDataWorker(self, user_ch_file_paths, user_ch_name):
+    def startLoadDataWorker(self, user_ch_file_paths, user_ch_name, firstPosData):
         self.funcDescription = 'loading data'
 
         self.thread = QThread()
@@ -8642,7 +8694,7 @@ class guiWin(QMainWindow):
         self.loadDataWaitCond = QWaitCondition()
 
         self.loadDataWorker = workers.loadDataWorker(
-            self, user_ch_file_paths, user_ch_name
+            self, user_ch_file_paths, user_ch_name, firstPosData
         )
 
         self.loadDataWorker.moveToThread(self.thread)
@@ -8742,12 +8794,6 @@ class guiWin(QMainWindow):
         return True
 
     def loadingDataCompleted(self):
-        self.progressWin.mainPbar.setMaximum(0)
-
-        self.gui_addCreatedAxesItems()
-        self.progressWin.workerFinished = True
-        self.progressWin.close()
-
         posData = self.data[self.pos_i]
 
         self.init_segmInfo_df()
@@ -8839,7 +8885,7 @@ class guiWin(QMainWindow):
             self.modeComboBox.addItems(['Snapshot'])
             self.modeComboBox.setDisabled(True)
             self.drawIDsContComboBox.clear()
-            self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxCcaItems)
+            # self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
             self.drawIDsContComboBox.setCurrentIndex(1)
             self.modeToolBar.setVisible(False)
             self.modeComboBox.setCurrentText('Snapshot')
@@ -11887,7 +11933,43 @@ class guiWin(QMainWindow):
         if self.entropyWin is not None and (updateEntropy or updateFilters):
             self.entropyWin.apply()
 
+    def reinitGraphicalItems(self, IDs):
+        allItems = zip(
+            self.ax1_ContoursCurves,
+            self.ax2_ContoursCurves,
+            self.ax1_LabelItemsIDs,
+            self.ax2_LabelItemsIDs,
+            self.ax1_BudMothLines
+        )
+        for idx, items_ID in enumerate(allItems):
+            (ax1ContCurve, ax2ContCurve,
+            _IDlabel1, _IDlabel2,
+            BudMothLine) = items_ID
+
+            if idx in IDs or ax1ContCurve is None:
+                continue
+            else:
+                self.ax1.removeItem(self.ax1_ContoursCurves[idx])
+                self.ax1_ContoursCurves[idx] = None
+
+                self.ax2.removeItem(self.ax2_ContoursCurves[idx])
+                self.ax2_ContoursCurves[idx] = None
+
+                self.ax1.removeItem(self.ax1_BudMothLines[idx])
+                self.ax1_BudMothLines[idx] = None
+
+                self.ax1.removeItem(self.ax1_LabelItemsIDs[idx])
+                self.ax1_LabelItemsIDs[idx] = None
+
+                self.ax2.removeItem(self.ax1_ContoursCurves[idx])
+                self.ax2_LabelItemsIDs[idx] = None
+
     def addItemsAllIDs(self, IDs):
+        createdItems = [item is not None for item in self.ax1_ContoursCurves]
+        numCreatedItems = len(createdItems)
+        if numCreatedItems > 1000:
+            self.logger.info('Re-initializing graphical items...')
+            self.reinitGraphicalItems(IDs)
         for ID in IDs:
             self.addNewItems(ID)
 
@@ -12269,35 +12351,19 @@ class guiWin(QMainWindow):
         warn_txt = ''
         htmlTxt = ''
         if lost_IDs:
-            lost_IDs_format = lost_IDs.copy()
-            if len(lost_IDs) + len(new_IDs) > 20 and len(lost_IDs)>10:
-                del lost_IDs_format[5:-5]
-                lost_IDs_format.insert(5, "...")
-                lost_IDs_format = f"[{', '.join(map(str, lost_IDs_format))}]"
+            lost_IDs_format = myutils.get_trimmed_list(lost_IDs)
             warn_txt = f'IDs lost in current frame: {lost_IDs_format}'
             htmlTxt = (
                 f'<font color="red">{warn_txt}</font>'
             )
         if new_IDs:
-            new_IDs_format = new_IDs.copy()
-            if len(lost_IDs) + len(new_IDs) > 20 and len(new_IDs)>10:
-                del new_IDs_format[5:-5]
-                new_IDs_format.insert(5, "...")
-                new_IDs_format = f"[{', '.join(map(str, new_IDs_format))}]"
+            new_IDs_format = myutils.get_trimmed_list(new_IDs)
             warn_txt = f'New IDs in current frame: {new_IDs_format}'
             htmlTxt = (
                 f'{htmlTxt}, <font color="green">{warn_txt}</font>'
             )
         if posData.multiContIDs:
-            multiContIDs = list(posData.multiContIDs)
-            clip = (
-                len(lost_IDs) + len(new_IDs) + len(multiContIDs) > 30
-                and len(multiContIDs)>10
-            )
-            if clip:
-                del multiContIDs[5:-5]
-                multiContIDs.insert(5, "...")
-                multiContIDs = f"[{', '.join(map(str, multiContIDs))}]"
+            multiContIDs = myutils.get_trimmed_list(list(posData.multiContIDs))
             warn_txt = f'IDs with multiple contours: {multiContIDs}'
             htmlTxt = (
                 f'{htmlTxt}, <font color="red">{warn_txt}</font>'

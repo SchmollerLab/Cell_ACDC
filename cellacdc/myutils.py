@@ -122,6 +122,17 @@ class signals(QObject):
     progressBar = pyqtSignal(int)
     progress = pyqtSignal(str)
 
+def get_trimmed_list(li: list, max_num_digits=10):
+    li_str = li.copy()
+    tom_num_digits = sum([len(str(val)) for val in li])
+    avg_num_digits = tom_num_digits/len(li)
+    max_num_vals = int(round(max_num_digits/avg_num_digits))
+    if tom_num_digits>max_num_digits:
+        del li_str[max_num_vals:-max_num_vals]
+        li_str.insert(max_num_vals, "...")
+        li_str = f"[{', '.join(map(str, li_str))}]"
+    return li_str
+
 def _bytes_to_MB(size_bytes):
     factor = pow(2, -20)
     size_MB = round(size_bytes*factor)

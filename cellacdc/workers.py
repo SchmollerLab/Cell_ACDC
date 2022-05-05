@@ -54,7 +54,7 @@ class signals(QObject):
     sigMultiSegm = pyqtSignal(object, object, bool, object)
 
 class loadDataWorker(QObject):
-    def __init__(self, mainWin, user_ch_file_paths, user_ch_name):
+    def __init__(self, mainWin, user_ch_file_paths, user_ch_name, firstPosData):
         QObject.__init__(self)
         self.signals = signals()
         self.mainWin = mainWin
@@ -63,6 +63,7 @@ class loadDataWorker(QObject):
         self.logger = workerLogger(self.signals.progress)
         self.mutex = self.mainWin.loadDataMutex
         self.waitCond = self.mainWin.loadDataWaitCond
+        self.firstPosData = firstPosData
 
     def pause(self):
         self.mutex.lock()
@@ -93,8 +94,14 @@ class loadDataWorker(QObject):
         numPos = len(self.user_ch_file_paths)
         user_ch_name = self.user_ch_name
         self.signals.initProgressBar.emit(len(user_ch_file_paths))
-        for file_path in user_ch_file_paths:
-            posData = load.loadData(file_path, user_ch_name)
+        for i, file_path in enumerate(user_ch_file_paths):
+            if i == 0:
+                posData = self.firstPosData
+                segmFound = self.firstPosData.segmFound
+                loadSegm = False
+            else:
+                posData = load.loadData(file_path, user_ch_name)
+                loadSegm = True
 
             self.logger.log(f'Loading {posData.relPath}...')
 
@@ -105,11 +112,13 @@ class loadDataWorker(QObject):
             posData.SizeZ = self.mainWin.SizeZ
             posData.isSegm3D = self.mainWin.isSegm3D
 
-            posData.getBasenameAndChNames()
-            posData.buildPaths()
-            posData.loadImgData()
+            if i > 0:
+                posData.getBasenameAndChNames()
+                posData.buildPaths()
+                posData.loadImgData()
+
             posData.loadOtherFiles(
-                load_segm_data=True,
+                load_segm_data=loadSegm,
                 load_acdc_df=True,
                 load_shifts=False,
                 loadSegmInfo=True,
@@ -122,6 +131,12 @@ class loadDataWorker(QObject):
                 selectedSegmNpz=self.mainWin.selectedSegmNpz,
                 create_new_segm=self.mainWin.isNewFile,
                 new_segm_filename=self.mainWin.newSegmFilename,
+            )
+            if i == 0:
+                posData.segmFound = segmFound
+
+            self.logger.log(
+                f'{i}, {self.firstPosData.segmFound}, {posData.segmFound}'
             )
 
             self.logger.log(
