@@ -2,6 +2,7 @@ import os
 
 import numpy as np
 from skimage.measure import regionprops
+from skimage.segmentation import relabel_sequential
 
 from cellacdc.core import lab_replace_values, np_replace_values
 
@@ -133,6 +134,7 @@ class tracker:
             tracked_video[frame_i] = tracked_lab
             if signals is not None:
                 signals.progressBar.emit(1)
+        tracked_video = relabel_sequential(tracked_video)[0]
         return tracked_video
 
     def save_output(self):
