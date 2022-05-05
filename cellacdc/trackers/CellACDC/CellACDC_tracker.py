@@ -3,7 +3,7 @@ import os
 import numpy as np
 from skimage.measure import regionprops
 
-from cellacdc.core import lab_replace_values, np_replace_values, numba_argmax
+from cellacdc.core import lab_replace_values, np_replace_values
 
 
 def calc_IoA_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None):

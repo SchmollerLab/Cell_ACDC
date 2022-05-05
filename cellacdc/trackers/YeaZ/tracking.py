@@ -8,6 +8,7 @@ from sklearn.metrics.pairwise import euclidean_distances
 from scipy.optimize import linear_sum_assignment
 from tqdm import tqdm
 from skimage.measure import regionprops
+from skimage.segmentation import relabel_sequential
 from math import sqrt
 
 try:
@@ -35,12 +36,19 @@ def correspondence(prev, curr, use_scipy=True, use_modified_yeaz=True):
     else:
         hu_dict = hungarian_align(prev, curr, acdc_yeaz=use_modified_yeaz)
     new = curr.copy()
+    curr_max_ID = np.max(curr)
+    max_new_ID = max([val for val in hu_dict.values()])
+    uniqueID = max(max_new_ID, curr_max_ID)+1
     for key, val in hu_dict.items():
         # If new cell
         if val == -1:
             val = newcell
             newcell += 1
-            print(f'New cell = {val}')
+            # print(f'New cell = {val}')
+
+        if val in curr:
+            new[curr==val] = uniqueID
+            uniqueID += 1
 
         new[curr==key] = val
     return new
@@ -73,18 +81,19 @@ def correspondence_stack(stack, signals=None):
     corrects correspondence of a stack of segmented and labeled masks, by
     fitting the hungarian iteratively on the stack
     """
-    corrected_stack = np.empty(stack.shape, dtype=np.uint16)
-    corrected_stack[0] = stack[0]
-    for idx in range(len(stack)):
+    tracked_stack = np.empty(stack.shape, dtype=np.uint16)
+    tracked_stack[0] = stack[0]
+    for idx in tqdm(range(len(stack)), ncols=100):
         try:
             curr = stack[idx+1]
-            prev = corrected_stack[idx]
+            prev = tracked_stack[idx]
         except IndexError:
             continue
-        corrected_stack[idx+1] = correspondence(prev, curr)
+        tracked_stack[idx+1] = correspondence(prev, curr)
         if signals is not None:
             signals.progressBar.emit(1)
-    return corrected_stack
+    tracked_stack = relabel_sequential(tracked_stack)[0]
+    return tracked_stack
 
 def hungarian_align(m1, m2, acdc_yeaz=True):
     """
