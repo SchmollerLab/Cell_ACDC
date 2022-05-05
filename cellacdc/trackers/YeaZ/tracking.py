@@ -76,8 +76,6 @@ def correspondence_stack(stack, signals=None):
     corrected_stack = np.empty(stack.shape, dtype=np.uint16)
     corrected_stack[0] = stack[0]
     for idx in range(len(stack)):
-        print('-------------------------')
-        print(f'Current frame = {idx}')
         try:
             curr = stack[idx+1]
             prev = corrected_stack[idx]

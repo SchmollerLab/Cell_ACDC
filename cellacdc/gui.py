@@ -7594,6 +7594,7 @@ class guiWin(QMainWindow):
                 self.UserEnforced_DisabledTracking = False
                 self.UserEnforced_Tracking = True
 
+    @myutils.exception_handler
     def repeatTrackingVideo(self):
         posData = self.data[self.pos_i]
         win = apps.selectTrackerGUI(
@@ -7609,7 +7610,18 @@ class guiWin(QMainWindow):
         trackerModule = import_module(
             f'trackers.{trackerName}.{trackerName}_tracker'
         )
-        self.tracker = trackerModule.tracker()
+
+        params = {}
+        if trackerName == 'BayesianTracker':
+            if self.isSegm3D:
+                labShape = posData.lab.shape
+            else:
+                labShape = (1, *posData.lab.shape)
+            paramsWin = apps.BayesianTrackerParamsWin(labShape)
+            paramsWin.exec_()
+            params = paramsWin.params
+
+        self.tracker = trackerModule.tracker(**params)
         start_n = win.startFrame
         stop_n = win.stopFrame
         video_to_track = np.copy(posData.segm_data)
@@ -11965,8 +11977,9 @@ class guiWin(QMainWindow):
                 self.ax2_LabelItemsIDs[idx] = None
 
     def addItemsAllIDs(self, IDs):
-        createdItems = [item is not None for item in self.ax1_ContoursCurves]
-        numCreatedItems = len(createdItems)
+        numCreatedItems = sum(
+            1 for item in self.ax1_ContoursCurves if item is not None
+        )
         if numCreatedItems > 1000:
             self.logger.info('Re-initializing graphical items...')
             self.reinitGraphicalItems(IDs)

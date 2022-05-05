@@ -1802,6 +1802,149 @@ class QDialogMetadataXML(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
+class BayesianTrackerParamsWin(QDialog):
+    def __init__(self, segmShape, parent=None):
+        self.cancel = True
+        super().__init__(parent)
+
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        self.setWindowTitle('Bayesian tracker parameters')
+
+        paramsLayout = QGridLayout()
+        paramsBox = QGroupBox()
+
+        row = 0
+        label = QLabel(html_utils.paragraph('Verbose'))
+        paramsLayout.addWidget(label, row, 0)
+        verboseToggle = widgets.Toggle()
+        verboseToggle.setChecked(True)
+        self.verboseToggle = verboseToggle
+        paramsLayout.addWidget(verboseToggle, row, 1, alignment=Qt.AlignCenter)
+
+        row += 1
+        label = QLabel(html_utils.paragraph('Max search radius'))
+        paramsLayout.addWidget(label, row, 0)
+        maxSearchRadiusSpinbox = QSpinBox()
+        maxSearchRadiusSpinbox.setAlignment(Qt.AlignCenter)
+        maxSearchRadiusSpinbox.setMinimum(1)
+        maxSearchRadiusSpinbox.setMaximum(2147483647)
+        maxSearchRadiusSpinbox.setValue(50)
+        self.maxSearchRadiusSpinbox = maxSearchRadiusSpinbox
+        paramsLayout.addWidget(maxSearchRadiusSpinbox, row, 1)
+
+        row += 1
+        Z, Y, X = segmShape
+        label = QLabel(html_utils.paragraph('Tracking volume'))
+        paramsLayout.addWidget(label, row, 0)
+        volumeLineEdit = QLineEdit()
+        defaultVol = f'  (0, {X}), (0, {Y})  '
+        if Z > 1:
+            defaultVol = f'{defaultVol}, (0, {Z})  '
+        volumeLineEdit.setText(defaultVol)
+        volumeLineEdit.setAlignment(Qt.AlignCenter)
+        self.volumeLineEdit = volumeLineEdit
+        paramsLayout.addWidget(volumeLineEdit, row, 1)
+
+        row += 1
+        label = QLabel(html_utils.paragraph('Interactive mode step size'))
+        paramsLayout.addWidget(label, row, 0)
+        stepSizeSpinbox = QSpinBox()
+        stepSizeSpinbox.setAlignment(Qt.AlignCenter)
+        stepSizeSpinbox.setMinimum(1)
+        stepSizeSpinbox.setMaximum(2147483647)
+        stepSizeSpinbox.setValue(100)
+        self.stepSizeSpinbox = stepSizeSpinbox
+        paramsLayout.addWidget(stepSizeSpinbox, row, 1)
+
+        row += 1
+        label = QLabel(html_utils.paragraph('Update method'))
+        paramsLayout.addWidget(label, row, 0)
+        updateMethodCombobox = QComboBox()
+        updateMethodCombobox.addItems([
+            'EXACT', 'APPROXIMATE'
+        ])
+        self.updateMethodCombobox = updateMethodCombobox
+        paramsLayout.addWidget(updateMethodCombobox, row, 1)
+
+        cancelButton = widgets.cancelPushButton('Cancel')
+        okButton = widgets.okPushButton(' Ok ')
+        cancelButton.clicked.connect(self.cancel_cb)
+        okButton.clicked.connect(self.ok_cb)
+
+        buttonsLayout = QHBoxLayout()
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(okButton)
+
+        layout = QVBoxLayout()
+        infoText = html_utils.paragraph('<b>Bayesian Tracker parameters</b>')
+        infoLabel = QLabel(infoText)
+        layout.addWidget(infoLabel, alignment=Qt.AlignCenter)
+        layout.addSpacing(10)
+        paramsBox.setLayout(paramsLayout)
+        layout.addWidget(paramsBox)
+        layout.addSpacing(20)
+        layout.addLayout(buttonsLayout)
+        layout.addStretch(1)
+        self.setLayout(layout)
+        self.setFont(font)
+
+    def ok_cb(self, checked=False):
+        self.cancel = False
+        try:
+            m = re.findall('\((\d+), *(\d+)\)', self.volumeLineEdit.text())
+            if len(m) < 2:
+                raise
+            self.volume = tuple([(int(start), int(end)) for start, end in m])
+            if len(self.volume) == 2:
+                self.volume = (self.volume[0], self.volume[1], (-1e5, 1e5))
+        except Exception as e:
+            self.warnNotAcceptedVolume()
+            return
+
+        self.verbose = self.verboseToggle.isChecked()
+        self.max_search_radius = self.maxSearchRadiusSpinbox.value()
+        self.update_method = self.updateMethodCombobox.currentText()
+        self.params = {
+            'verbose': self.verbose,
+            'volume': self.volume,
+            'max_search_radius': self.max_search_radius,
+            'update_method': self.update_method,
+            'step_size': self.stepSizeSpinbox.value()
+        }
+        self.close()
+
+    def warnNotAcceptedVolume(self):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(
+            f'{self.volumeLineEdit.text()} is <b>not a valid volume!</b><br><br>'
+            'Valid volume is for example (0, 2048), (0, 2048)<br>'
+            'for 2D segmentation or (0, 2048), (0, 2048), (0, 2048)<br>'
+            'for 3D segmentation.'
+        )
+        msg.critical(
+            self, 'Invalid volume', txt
+        )
+
+    def cancel_cb(self, event):
+        self.cancel = True
+        self.close()
+
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        super().show()
+        self.resize(int(self.width()*1.3), self.height())
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()
+
 class QDialogWorkerProgress(QDialog):
     def __init__(
             self, title='Progress', infoTxt='',
