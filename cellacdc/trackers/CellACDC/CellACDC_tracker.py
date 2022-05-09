@@ -42,7 +42,7 @@ def assign(IoA_matrix, IDs_curr_untracked, IDs_prev, IoA_thresh=0.4):
     for i, j in enumerate(max_IoA_col_idx):
         max_IoU = IoA_matrix[i,j]
         count = counts_dict[j]
-        if max_IoU > IoA_thresh:
+        if max_IoU >= IoA_thresh:
             tracked_ID = IDs_prev[j]
             if count == 1:
                 old_ID = IDs_curr_untracked[i]

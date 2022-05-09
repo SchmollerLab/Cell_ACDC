@@ -936,8 +936,7 @@ class segmWin(QMainWindow):
                     params = paramsWin.params
                 self.tracker = trackerModule.tracker(**params)
 
-        print('Starting multiple parallel threads...')
-        self.progressLabel.setText('Starting multiple parallel threads...')
+        self.progressLabel.setText('Starting main worker...')
 
         max = 0
         for imgPath in user_ch_file_paths:
