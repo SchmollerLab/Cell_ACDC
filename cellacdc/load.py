@@ -27,7 +27,7 @@ from PyQt5.QtWidgets import (
 import pyqtgraph as pg
 
 from . import prompts, apps, myutils, widgets
-from . import base_cca_df, base_acdc_df # defined in __init__.py
+from . import base_cca_df, base_acdc_df, html_utils
 
 cca_df_colnames = list(base_cca_df.keys())
 
@@ -259,7 +259,8 @@ class loadData:
             load_customAnnot=False,
             getTifPath=False,
             selectedSegmNpz='',
-            new_segm_filename=''
+            new_segm_filename='',
+            labelBoolSegm=None
         ):
 
         self.segmFound = False if load_segm_data else None
@@ -274,6 +275,7 @@ class loadData:
         self.dataPrep_ROIcoordsFound = False if load_dataPrep_ROIcoords else None
         self.TifPathFound = False if getTifPath else None
         self.customAnnotFound = False if load_customAnnot else None
+        self.labelBoolSegm = labelBoolSegm
         ls = myutils.listdir(self.images_path)
 
         linked_acdc_filename = None
@@ -307,6 +309,9 @@ class loadData:
                 self.segmFound = True
                 self.segm_npz_path = filePath
                 self.segm_data = np.load(filePath)['arr_0']
+                if self.segm_data.dtype == bool:
+                    if self.labelBoolSegm is None:
+                        self.askBooleanSegm()
                 squeezed_arr = np.squeeze(self.segm_data)
                 if squeezed_arr.shape != self.segm_data.shape:
                     self.segm_data = squeezed_arr
@@ -392,6 +397,45 @@ class loadData:
 
         self.getCustomAnnotatedIDs()
         self.setNotFoundData()
+
+    def askBooleanSegm(self):
+        segmFilename = os.path.basename(self.segm_npz_path)
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph(
+            f'The loaded segmentation file<br><br>'
+            f'"{segmFilename}"<br><br> '
+            'has <b>boolean data type</b>.<br><br>'
+            'To correctly load it, Cell-ACDC needs to <b>convert</b> it '
+            'to <b>integer data type</b>.<br><br>'
+            'Do you want to <b>label the mask</b> to separate the objects '
+            '(recommended) or do you want to keep one single object?<br>'
+        )
+        LabelButton, _  = msg.question(
+            self.parent, 'Boolean segmentation mask?', txt,
+            buttonsTexts=('Label (recommended)', 'Keep single object')
+        )
+        if msg.clickedButton == LabelButton:
+            self.labelBoolSegm = True
+        else:
+            self.labelBoolSegm = False
+
+    def labelSegmData(self):
+        if self.labelBoolSegm is None:
+            return
+
+        if self.segm_data.dtype != bool:
+            return
+
+        if self.labelBoolSegm:
+            if self.SizeT > 1:
+                segm_data = np.zeros(self.segm_data.shape, dtype=np.uint16)
+                for i, lab in enumerate(self.segm_data):
+                    segm_data[i] = skimage.measure.label(lab)
+                self.segm_data = segm_data
+            else:
+                self.segm_data = skimage.measure.label(self.segm_data)
+        else:
+            self.segm_data = self.segm_data.astype(np.uint16)
 
     def setFilePaths(self, new_filename):
         if self.basename.endswith('_'):
@@ -793,9 +837,9 @@ class loadData:
             print('='*20)
             traceback.print_exc()
             print('='*20)
-            permissionErrorTxt = (
-                f'The below file is open in another app (Excel maybe?).\n\n'
-                f'{self.metadata_csv_path}\n\n'
+            permissionErrorTxt = html_utils.paragraph(
+                f'The below file is open in another app (Excel maybe?).<br><br>'
+                f'{self.metadata_csv_path}<br><br>'
                 'Close file and then press "Ok".'
             )
             if signals is None:

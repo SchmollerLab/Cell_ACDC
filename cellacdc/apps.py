@@ -2001,7 +2001,7 @@ class BayesianTrackerParamsWin(QDialog):
 
         url = 'https://btrack.readthedocs.io/en/latest/index.html'
         moreInfoText = html_utils.paragraph(
-            '<i>Find more info on the Bayesian Tracker '
+            '<i>Find more info on the Bayesian Tracker\'s '
             f'<a href="{url}">home page</a></i>'
         )
         moreInfoLabel = QLabel(moreInfoText)

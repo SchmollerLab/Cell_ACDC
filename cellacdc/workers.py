@@ -131,7 +131,10 @@ class loadDataWorker(QObject):
                 selectedSegmNpz=self.mainWin.selectedSegmNpz,
                 create_new_segm=self.mainWin.isNewFile,
                 new_segm_filename=self.mainWin.newSegmFilename,
+                labelBoolSegm=self.mainWin.labelBoolSegm
             )
+            posData.labelSegmData()
+
             if i == 0:
                 posData.segmFound = segmFound
 

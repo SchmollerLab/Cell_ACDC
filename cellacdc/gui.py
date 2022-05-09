@@ -5111,9 +5111,17 @@ class guiWin(QMainWindow):
             if z == 0 or z == SizeZ-1 or self.isCtrlDown:
                 hoverID = self.get_2Dlab(posData.lab)[ydata, xdata]
             else:
-                hoverID1 = posData.lab[z-1, ydata, xdata]
-                hoverID = self.get_2Dlab(posData.lab)[ydata, xdata]
-                hoverID = posData.lab[z+1, ydata, xdata]
+                hoverIDa = posData.lab[z-1, ydata, xdata]
+                hoverIDb = self.get_2Dlab(posData.lab)[ydata, xdata]
+                hoverIDc = posData.lab[z+1, ydata, xdata]
+                if hoverIDa > 0:
+                    hoverID = hoverIDb
+                elif hoverIDb > 0:
+                    hoverID = hoverIDb
+                elif hoverIDc > 0:
+                    hoverID = hoverIDb
+                else:
+                    hoverID = 0
         else:
             if ID is None:
                 hoverID = self.get_2Dlab(posData.lab)[ydata, xdata]
@@ -8657,6 +8665,8 @@ class guiWin(QMainWindow):
             selectedSegmNpz=selectedSegmNpz
         )
         self.selectedSegmNpz = selectedSegmNpz
+        self.labelBoolSegm = posData.labelBoolSegm
+        posData.labelSegmData()
 
         print('')
         self.logger.info(
