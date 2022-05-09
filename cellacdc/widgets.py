@@ -26,7 +26,8 @@ from PyQt5.QtWidgets import (
     QGroupBox, QAbstractSlider, QDoubleSpinBox, QWidgetAction,
     QAction, QTabWidget, QAbstractSpinBox, QMessageBox,
     QStyle, QDialog, QSpacerItem, QFrame, QMenu, QActionGroup,
-    QListWidget, QAbstractItemView, QShortcut, QPlainTextEdit
+    QListWidget, QAbstractItemView, QShortcut, QPlainTextEdit,
+    QFileDialog
 )
 
 import pyqtgraph as pg
@@ -142,6 +143,36 @@ class noPushButton(QPushButton):
         super().__init__(*args)
         self.setIcon(QIcon(':no.svg'))
 
+class browseFileButton(QPushButton):
+    sigPathSelected = pyqtSignal(str)
+
+    def __init__(self, *args, ext=None, title='Select file', start_dir=''):
+        super().__init__(*args)
+        self.setIcon(QIcon(':folder-open.svg'))
+        self.clicked.connect(self.browse)
+        self._file_types = 'All Files (*)'
+        self._title = title
+        self._start_dir = start_dir
+        if ext is not None:
+            s = ''
+            s_li = []
+            for name, extensions in ext.items():
+                _s = ''
+                for ext in extensions:
+                    _s = f'{_s}*{ext} '
+                s_li.append(f'{name} {_s.strip()}')
+
+            self._file_types = ';;'.join(s_li)
+            self._file_types = f'{self._file_types};;All Files (*)'
+
+    def browse(self):
+        print(self._start_dir)
+        file_path = QFileDialog.getOpenFileName(
+            self, self._title, self._start_dir, self._file_types
+        )[0]
+        if file_path:
+            self.sigPathSelected.emit(file_path)
+
 class QClickableLabel(QLabel):
     clicked = pyqtSignal(object)
 
@@ -151,6 +182,7 @@ class QClickableLabel(QLabel):
 
     def mousePressEvent(self, event):
         self.clicked.emit(self)
+
 
 class statusBarPermanentLabel(QWidget):
     def __init__(self, parent=None):

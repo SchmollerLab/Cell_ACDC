@@ -15,10 +15,6 @@ from tqdm import tqdm
 
 class tracker:
     def __init__(self, **params):
-        trackers_path = os.path.dirname(__file__)
-        self.model_path = os.path.join(
-            trackers_path, 'model', 'cell_config.json'
-        )
         self.params = params
 
     def track(
@@ -40,7 +36,7 @@ class tracker:
         with btrack.BayesianTracker() as tracker:
 
             # configure the tracker using a config file
-            tracker.configure_from_file(self.model_path)
+            tracker.configure_from_file(self.params['model_path'])
             update_method = self.params['update_method']
             tracker.update_method = getattr(BayesianUpdates, update_method)
             tracker.verbose = self.params['verbose']

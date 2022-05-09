@@ -5105,7 +5105,20 @@ class guiWin(QMainWindow):
         Y, X = self.get_2Dlab(posData.lab).shape
         if not myutils.is_in_bounds(xdata, ydata, X, Y):
             return
-        hoverID = self.get_2Dlab(posData.lab)[ydata, xdata] if ID is None else ID
+        if self.isSegm3D:
+            z = self.z_lab()
+            SizeZ = posData.lab.shape[0]
+            if z == 0 or z == SizeZ-1 or self.isCtrlDown:
+                hoverID = self.get_2Dlab(posData.lab)[ydata, xdata]
+            else:
+                hoverID1 = posData.lab[z-1, ydata, xdata]
+                hoverID = self.get_2Dlab(posData.lab)[ydata, xdata]
+                hoverID = posData.lab[z+1, ydata, xdata]
+        else:
+            if ID is None:
+                hoverID = self.get_2Dlab(posData.lab)[ydata, xdata]
+            else:
+                hoverID = ID
         color = button.palette().button().color().name()
         drawAbove = color == self.doublePressKeyButtonColor
         if hoverID == 0 or drawAbove:
@@ -7619,6 +7632,8 @@ class guiWin(QMainWindow):
                 labShape = (1, *posData.lab.shape)
             paramsWin = apps.BayesianTrackerParamsWin(labShape, parent=self)
             paramsWin.exec_()
+            if paramsWin.cancel:
+                pass
             params = paramsWin.params
         elif trackerName == 'CellACDC':
             paramsWin = apps.CellACDCTrackerParamsWin(parent=self)

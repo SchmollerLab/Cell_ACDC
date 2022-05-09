@@ -1907,6 +1907,29 @@ class BayesianTrackerParamsWin(QDialog):
         paramsBox = QGroupBox()
 
         row = 0
+        this_path = os.path.dirname(os.path.abspath(__file__))
+        default_model_path = os.path.join(
+            this_path, 'trackers', 'BayesianTracker',
+            'model', 'cell_config.json'
+        )
+        label = QLabel(html_utils.paragraph('Model path'))
+        paramsLayout.addWidget(label, row, 0)
+        modelPathLineEdit = QLineEdit()
+        start_dir = ''
+        if os.path.exists(default_model_path):
+            start_dir = os.path.dirname(default_model_path)
+            modelPathLineEdit.setText(default_model_path)
+        self.modelPathLineEdit = modelPathLineEdit
+        paramsLayout.addWidget(modelPathLineEdit, row, 1)
+        browseButton = widgets.browseFileButton(
+            title='Select Bayesian Tracker model file',
+            ext={'JSON Config': ('.json',)},
+            start_dir=start_dir
+        )
+        browseButton.sigPathSelected.connect(self.onPathSelected)
+        paramsLayout.addWidget(browseButton, row, 2, alignment=Qt.AlignLeft)
+
+        row += 1
         label = QLabel(html_utils.paragraph('Verbose'))
         paramsLayout.addWidget(label, row, 0)
         verboseToggle = widgets.Toggle()
@@ -1953,9 +1976,7 @@ class BayesianTrackerParamsWin(QDialog):
         label = QLabel(html_utils.paragraph('Update method'))
         paramsLayout.addWidget(label, row, 0)
         updateMethodCombobox = QComboBox()
-        updateMethodCombobox.addItems([
-            'EXACT', 'APPROXIMATE'
-        ])
+        updateMethodCombobox.addItems(['EXACT', 'APPROXIMATE'])
         self.updateMethodCombobox = updateMethodCombobox
         paramsLayout.addWidget(updateMethodCombobox, row, 1)
 
@@ -1977,11 +1998,24 @@ class BayesianTrackerParamsWin(QDialog):
         layout.addSpacing(10)
         paramsBox.setLayout(paramsLayout)
         layout.addWidget(paramsBox)
+
+        url = 'https://btrack.readthedocs.io/en/latest/index.html'
+        moreInfoText = html_utils.paragraph(
+            '<i>Find more info on the Bayesian Tracker '
+            f'<a href="{url}">home page</a></i>'
+        )
+        moreInfoLabel = QLabel(moreInfoText)
+        moreInfoLabel.setOpenExternalLinks(True)
+        layout.addWidget(moreInfoLabel, alignment=Qt.AlignCenter)
+
         layout.addSpacing(20)
         layout.addLayout(buttonsLayout)
         layout.addStretch(1)
         self.setLayout(layout)
         self.setFont(font)
+
+    def onPathSelected(self, path):
+        self.modelPathLineEdit.setText(path)
 
     def ok_cb(self, checked=False):
         self.cancel = False
@@ -1996,10 +2030,16 @@ class BayesianTrackerParamsWin(QDialog):
             self.warnNotAcceptedVolume()
             return
 
+        if not os.path.exists(self.modelPathLineEdit.text()):
+            self.warnNotVaidPath()
+            return
+
         self.verbose = self.verboseToggle.isChecked()
         self.max_search_radius = self.maxSearchRadiusSpinbox.value()
         self.update_method = self.updateMethodCombobox.currentText()
+        self.model_path = os.path.normpath(self.modelPathLineEdit.text())
         self.params = {
+            'model_path': self.model_path,
             'verbose': self.verbose,
             'volume': self.volume,
             'max_search_radius': self.max_search_radius,
@@ -2007,6 +2047,20 @@ class BayesianTrackerParamsWin(QDialog):
             'step_size': self.stepSizeSpinbox.value()
         }
         self.close()
+
+    def warnNotVaidPath(self):
+        url = 'https://github.com/lowe-lab-ucl/segment-classify-track/tree/main/models'
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(
+            'The model configuration file path<br><br>'
+            f'{self.modelPathLineEdit.text()}<br><br> '
+            'does <b>not exist.</b><br><br>'
+            'You can find some <b>pre-configured models</b> '
+            f'<a href="{url}">here</a>.'
+        )
+        msg.critical(
+            self, 'Invalid volume', txt
+        )
 
     def warnNotAcceptedVolume(self):
         msg = widgets.myMessageBox(wrapText=False)

@@ -32,7 +32,10 @@ def correspondence(prev, curr, use_scipy=True, use_modified_yeaz=True):
     old_IDs = [key for key in hu_dict.keys()]
     IDs_curr_untracked = [obj.label for obj in regionprops(curr)]
     IDs_prev = [obj.label for obj in regionprops(prev)]
-    uniqueID = max((max(IDs_prev), max(IDs_curr_untracked)))+1
+    if IDs_prev or IDs_curr_untracked:
+        uniqueID = max((max(IDs_prev), max(IDs_curr_untracked)))+1
+    else:
+        uniqueID = 1
 
     tracked_lab = indexAssignment(
         old_IDs, tracked_IDs, IDs_curr_untracked,

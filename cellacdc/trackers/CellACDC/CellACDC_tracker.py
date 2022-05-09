@@ -33,7 +33,7 @@ def calc_IoA_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None):
     return IoA_matrix, IDs_curr_untracked, IDs_prev
 
 def assign(IoA_matrix, IDs_curr_untracked, IDs_prev, IoA_thresh=0.4):
-    # Determine max IoA between IDs and assign tracked ID if IoA > 0.4
+    # Determine max IoA between IDs and assign tracked ID if IoA >= IoA_thresh
     max_IoA_col_idx = IoA_matrix.argmax(axis=1)
     unique_col_idx, counts = np.unique(max_IoA_col_idx, return_counts=True)
     counts_dict = dict(zip(unique_col_idx, counts))
