@@ -53,7 +53,7 @@ class tracker:
             tracker.track_interactive(step_size=self.params['step_size'])
 
             # generate hypotheses and run the global optimizer
-            if params['optimize']:
+            if self.params['optimize']:
                 tracker.optimize()
 
             # save tracks
