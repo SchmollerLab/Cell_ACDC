@@ -3611,6 +3611,7 @@ class guiWin(QMainWindow):
     def highlightIDcheckBoxToggled(self, checked):
         if not checked:
             self.highlightedID = 0
+            self.initLookupTableLab()
             self.updateALLimg()
         else:
             self.highlightedID = self.guiTabControl.propsQGBox.idSB.value()
@@ -6124,7 +6125,7 @@ class guiWin(QMainWindow):
 
     def getDelROIlab(self):
         posData = self.data[self.pos_i]
-        DelROIlab = self.get_2Dlab(posData.lab)
+        DelROIlab = self.get_2Dlab(posData.lab, force_z=False)
         allDelIDs = set()
         # Iterate rois and delete IDs
         for roi in posData.allData_li[posData.frame_i]['delROIs_info']['rois']:
@@ -7147,6 +7148,7 @@ class guiWin(QMainWindow):
             if self.highlightedID != 0:
                 self.highlightedID = 0
                 self.guiTabControl.highlightCheckbox.setChecked(False)
+                self.highlightIDcheckBoxToggled(False)
                 # self.updateALLimg()
         elif isAltModifier:
             isCursorSizeAll = self.app.overrideCursor() == Qt.SizeAllCursor
@@ -8879,6 +8881,8 @@ class guiWin(QMainWindow):
         self.setBottomLayoutStretch()
         self.setAxesMaxRange()
         self.setImageNameText()
+
+        self.initLookupTableLab()
         self.updateALLimg()
         self.restoreSavedSettings()
 
@@ -9537,7 +9541,7 @@ class guiWin(QMainWindow):
         )
         self.img1.setImage(cells_img)
         if not self.labelsGrad.hideLabelsImgAction.isChecked():
-            self.img2.setImage(posData.lab, z=self.z_lab())
+            self.img2.setImage(posData.lab, z=self.z_lab(), autoLevels=False)
         self.updateLookuptable()
         self.updateFramePosLabel()
         self.updateViewerWindow()
@@ -10821,6 +10825,13 @@ class guiWin(QMainWindow):
                 rgb = posData.lut[idx]
                 _lut[len(posData.lut)+i] = rgb
             posData.lut = _lut
+            return True
+        return False
+
+    def initLookupTableLab(self):
+        posData = self.data[self.pos_i]
+        self.img2.setLookupTable(posData.lut)
+        self.img2.setLevels([0, len(posData.lut)])
 
     def updateLookuptable(self, lenNewLut=None, delIDs=None):
         posData = self.data[self.pos_i]
@@ -10836,17 +10847,26 @@ class guiWin(QMainWindow):
                 # Empty segmentation mask
                 lenNewLut = 1
         # Build a new lut to include IDs > than original len of lut
-        self.extendLabelsLUT(lenNewLut)
+        updateLevels = self.extendLabelsLUT(lenNewLut)
+        lut = posData.lut.copy()
 
         try:
-            lut = posData.lut[:lenNewLut].copy()
+            # lut = posData.lut[:lenNewLut].copy()
             for ID in posData.binnedIDs:
                 lut[ID] = lut[ID]*0.2
+
             for ID in posData.ripIDs:
                 lut[ID] = lut[ID]*0.2
         except Exception as e:
-            self.logger.info('WARNING: Tracking is WRONG.')
+            err_str = traceback.format_exc()
+            print('='*30)
+            self.logger.info(err_str)
+            print('='*30)
+
+        if updateLevels:
+            self.img2.setLevels([0, len(lut)])
         self.img2.setLookupTable(lut)
+
 
     def update_rp_metadata(self, draw=True):
         posData = self.data[self.pos_i]
@@ -11713,10 +11733,10 @@ class guiWin(QMainWindow):
             self.addExistingDelROIs()
             allDelIDs, DelROIlab = self.getDelROIlab()
         else:
-            DelROIlab = self.get_2Dlab(posData.lab, force_z=True)
+            DelROIlab = self.get_2Dlab(posData.lab, force_z=False)
             allDelIDs = set()
         if not self.labelsGrad.hideLabelsImgAction.isChecked():
-            self.img2.setImage(DelROIlab, z=self.z_lab())
+            self.img2.setImage(DelROIlab, z=self.z_lab(), autoLevels=False)
         self._lab = DelROIlab
         if updateLookuptable:
             self.updateLookuptable(delIDs=allDelIDs)
@@ -12129,7 +12149,7 @@ class guiWin(QMainWindow):
         LabelItemID.setPos(x-w/2, y-h/2)
 
         # Gray out all IDs excpet searched one
-        lut = posData.lut.copy()[:max(posData.IDs)+1]
+        lut = posData.lut.copy() # [:max(posData.IDs)+1]
         lut[:ID] = lut[:ID]*0.2
         lut[ID+1:] = lut[ID+1:]*0.2
         self.img2.setLookupTable(lut)
