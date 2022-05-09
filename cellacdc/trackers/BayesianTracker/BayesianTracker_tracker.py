@@ -37,10 +37,11 @@ class tracker:
 
             # configure the tracker using a config file
             tracker.configure_from_file(self.params['model_path'])
-            update_method = self.params['update_method']
-            tracker.update_method = getattr(BayesianUpdates, update_method)
             tracker.verbose = self.params['verbose']
-            tracker.max_search_radius = self.params['max_search_radius']
+            update_method = self.params['update_method']
+            if update_method == 'APPROXIMATE':
+                tracker.update_method = getattr(BayesianUpdates, update_method)
+                tracker.max_search_radius = self.params['max_search_radius']
 
             # append the objects to be tracked
             tracker.append(obj_from_arr)
@@ -52,7 +53,8 @@ class tracker:
             tracker.track_interactive(step_size=self.params['step_size'])
 
             # generate hypotheses and run the global optimizer
-            tracker.optimize()
+            if params['optimize']:
+                tracker.optimize()
 
             # save tracks
             if export_to is not None:
