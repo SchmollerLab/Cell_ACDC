@@ -1938,6 +1938,14 @@ class BayesianTrackerParamsWin(QDialog):
         paramsLayout.addWidget(verboseToggle, row, 1, alignment=Qt.AlignCenter)
 
         row += 1
+        label = QLabel(html_utils.paragraph('Run optimizer'))
+        paramsLayout.addWidget(label, row, 0)
+        optimizeToggle = widgets.Toggle()
+        optimizeToggle.setChecked(True)
+        self.optimizeToggle = optimizeToggle
+        paramsLayout.addWidget(optimizeToggle, row, 1, alignment=Qt.AlignCenter)
+
+        row += 1
         label = QLabel(html_utils.paragraph('Max search radius'))
         paramsLayout.addWidget(label, row, 0)
         maxSearchRadiusSpinbox = QSpinBox()
@@ -1946,6 +1954,7 @@ class BayesianTrackerParamsWin(QDialog):
         maxSearchRadiusSpinbox.setMaximum(2147483647)
         maxSearchRadiusSpinbox.setValue(50)
         self.maxSearchRadiusSpinbox = maxSearchRadiusSpinbox
+        self.maxSearchRadiusSpinbox.setDisabled(True)
         paramsLayout.addWidget(maxSearchRadiusSpinbox, row, 1)
 
         row += 1
@@ -1978,6 +1987,7 @@ class BayesianTrackerParamsWin(QDialog):
         updateMethodCombobox = QComboBox()
         updateMethodCombobox.addItems(['EXACT', 'APPROXIMATE'])
         self.updateMethodCombobox = updateMethodCombobox
+        self.updateMethodCombobox.currentTextChanged.connect(self.methodChanged)
         paramsLayout.addWidget(updateMethodCombobox, row, 1)
 
         cancelButton = widgets.cancelPushButton('Cancel')
@@ -2014,6 +2024,12 @@ class BayesianTrackerParamsWin(QDialog):
         self.setLayout(layout)
         self.setFont(font)
 
+    def methodChanged(self, method):
+        if method == 'APPROXIMATE':
+            self.maxSearchRadiusSpinbox.setDisabled(False)
+        else:
+            self.maxSearchRadiusSpinbox.setDisabled(True)
+
     def onPathSelected(self, path):
         self.modelPathLineEdit.setText(path)
 
@@ -2044,7 +2060,8 @@ class BayesianTrackerParamsWin(QDialog):
             'volume': self.volume,
             'max_search_radius': self.max_search_radius,
             'update_method': self.update_method,
-            'step_size': self.stepSizeSpinbox.value()
+            'step_size': self.stepSizeSpinbox.value(),
+            'optimize': self.optimizeToggle.isChecked()
         }
         self.close()
 

@@ -4491,13 +4491,15 @@ class guiWin(QMainWindow):
             self.yPressAx2, self.xPressAx2 = y, x
             # Keep a list of erased IDs got erased
             self.erasedIDs = []
-            self.erasedID = self.get_2Dlab(posData.lab)[ydata, xdata]
+            lab_2D = self.get_2Dlab(posData.lab)
+            self.erasedID = lab_2D[ydata, xdata]
 
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
             # Build eraser mask
-            mask = np.zeros(posData.lab.shape, bool)
+            mask = np.zeros(lab_2D.shape, bool)
             mask[ymin:ymax, xmin:xmax][diskMask] = True
+
 
             # If user double-pressed 'b' then erase over ALL labels
             color = self.eraserButton.palette().button().color().name()
@@ -4509,19 +4511,18 @@ class guiWin(QMainWindow):
             self.eraseOnlyOneID = eraseOnlyOneID
 
             if eraseOnlyOneID:
-                mask[posData.lab!=self.erasedID] = False
+                mask[lab_2D!=self.erasedID] = False
 
+            self.erasedIDs.extend(lab_2D[mask])
 
-            self.erasedIDs.extend(posData.lab[mask])
-
-            posData.lab[mask] = 0
+            self.applyEraserMask(mask)
 
             self.setTempImg1Eraser(None, init=True)
 
             for erasedID in np.unique(self.erasedIDs):
                 if erasedID == 0:
                     continue
-                self.erasesedLab[posData.lab==erasedID] = erasedID
+                self.erasesedLab[lab_2D==erasedID] = erasedID
 
             self.getDisplayedCellsImg()
             self.setTempImg1Eraser(mask)
@@ -8919,18 +8920,25 @@ class guiWin(QMainWindow):
         self.measurementsMenu.setDisabled(False)
         if self.isSnapshot:
             self.disableTrackingCheckBox.setDisabled(True)
-            # self.disableTrackingCheckBox.setChecked(True)
+            try:
+                self.drawIDsContComboBox.currentIndexChanged.disconnect()
+            except Exception as e:
+                pass
+
             self.repeatTrackingAction.setDisabled(True)
             self.logger.info('Setting GUI mode to "Snapshots"...')
             self.modeComboBox.clear()
             self.modeComboBox.addItems(['Snapshot'])
             self.modeComboBox.setDisabled(True)
             self.drawIDsContComboBox.clear()
-            # self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
+            self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
             self.drawIDsContComboBox.setCurrentIndex(1)
             self.modeToolBar.setVisible(False)
             self.modeComboBox.setCurrentText('Snapshot')
             self.annotateToolbar.setVisible(True)
+            self.drawIDsContComboBox.currentIndexChanged.connect(
+                self.drawIDsContComboBox_cb
+            )
         else:
             self.annotateToolbar.setVisible(False)
             self.disableTrackingCheckBox.setDisabled(False)
@@ -10078,12 +10086,36 @@ class guiWin(QMainWindow):
             if force_z:
                 return lab[self.z_lab()]
             zProjHow = self.zProjComboBox.currentText()
-            if self.labBottomGroupbox.isChecked() or zProjHow == 'single z-slice':
+            isZslice = zProjHow == 'single z-slice'
+            if self.labBottomGroupbox.isChecked() or isZslice:
                 return lab[self.z_lab()]
             else:
                 return lab.max(axis=0)
         else:
             return lab
+
+    def applyEraserMask(self, mask):
+        if self.isSegm3D:
+            posData = self.data[self.pos_i]
+            zProjHow = self.zProjComboBox.currentText()
+            isZslice = zProjHow == 'single z-slice'
+            if self.labBottomGroupbox.isChecked() or isZslice:
+                posData.lab[self.z_lab(), mask] = 0
+            else:
+                posData.lab[:, mask] = 0
+        else:
+            posData.lab[mask] = 0
+
+    def get_2Drp(self, lab=None):
+        if self.isSegm3D:
+            if lab is None:
+                # self._lab is defined at self.setImageImg2()
+                lab = self._lab
+            lab = self.get_2Dlab(lab)
+            rp = skimage.measure.regionprops(lab)
+            return rp
+        else:
+            return self.data[self.pos_i].rp
 
     def set_2Dlab(self, lab2D):
         posData = self.data[self.pos_i]
@@ -11333,8 +11365,9 @@ class guiWin(QMainWindow):
 
         imgRGB = self.img1_RGB.copy()
         for obj in posData.rp:
-            if not self.isObjVisible(obj.bbox):
+            if not self.isObjVisible(obj.bbox, debug=False):
                 continue
+
             color = posData.lut[obj.label]/255
             _slice = self.getObjSlice(obj.slice)
             _objMask = self.getObjImage(obj.image, obj.bbox)
@@ -11345,7 +11378,7 @@ class guiWin(QMainWindow):
         imgRGB = (np.clip(imgRGB, 0, 1)*255).astype(np.uint8)
         return imgRGB
 
-    def isObjVisible(self, obj_bbox):
+    def isObjVisible(self, obj_bbox, debug=False):
         if self.isSegm3D:
             zProjHow = self.zProjComboBox.currentText()
             isZslice = zProjHow == 'single z-slice'
@@ -11353,7 +11386,7 @@ class guiWin(QMainWindow):
                 # required a projection --> all obj are visible
                 return True
             min_z = obj_bbox[0]
-            max_z = obj_bbox[0]
+            max_z = obj_bbox[3]-1
             if self.z_lab()>=min_z and self.z_lab()<=max_z:
                 return True
             else:
@@ -11684,6 +11717,7 @@ class guiWin(QMainWindow):
             allDelIDs = set()
         if not self.labelsGrad.hideLabelsImgAction.isChecked():
             self.img2.setImage(DelROIlab, z=self.z_lab())
+        self._lab = DelROIlab
         if updateLookuptable:
             self.updateLookuptable(delIDs=allDelIDs)
 
