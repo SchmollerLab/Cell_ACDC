@@ -5584,8 +5584,9 @@ class QtSelectItems(QDialog):
             selectedItems = self.ListBox.selectedItems()
             selectedItemsText = [item.text() for item in selectedItems]
             self.selectedItemsText = natsorted(selectedItemsText)
-            self.selectedItemsIdx = [self.items.index(txt)
-                                     for txt in self.selectedItemsText]
+            self.selectedItemsIdx = [
+                self.items.index(txt) for txt in self.selectedItemsText
+            ]
         else:
             self.selectedItemsText = [self.ComboBox.currentText()]
             self.selectedItemsIdx = [self.ComboBox.currentIndex()]
@@ -6304,7 +6305,7 @@ class QDialogZsliceAbsent(QDialog):
             self.loop.exit()
 
 class QDialogMultiSegmNpz(QDialog):
-    def __init__(self, images_ls, parent_path, parent=None, multiPos=False):
+    def __init__(self, images_ls, parent_path, parent=None):
         self.cancel = True
         self.selectedItemText = ''
         self.selectedItemIdx = None
@@ -6314,20 +6315,18 @@ class QDialogMultiSegmNpz(QDialog):
         self.parent_path = parent_path
         super().__init__(parent)
 
-        informativeText = (f"""
-        <p style="font-size:12px">
+        informativeText = html_utils.paragraph(f"""
             The folder<br><br>{parent_path}<br><br>
             contains <b>multipe segmentation masks!</b><br>
-        </p>
         """)
 
-        self.setWindowTitle('Multiple segm.npz files detected!')
+        self.setWindowTitle('Multiple segm.npz files detected')
         is_win = sys.platform.startswith("win")
 
         mainLayout = QVBoxLayout()
         infoLayout = QHBoxLayout()
         selectionLayout = QGridLayout()
-        buttonsLayout = QGridLayout()
+        buttonsLayout = QHBoxLayout()
 
         # Standard Qt Question icon
         label = QLabel()
@@ -6342,44 +6341,35 @@ class QDialogMultiSegmNpz(QDialog):
         infoLayout.addStretch(1)
         mainLayout.addLayout(infoLayout)
 
-        label = QLabel('Select which segmentation file to load:')
-        combobox = QComboBox()
-        combobox.addItems(images_ls)
-        self.ComboBox = combobox
+        questionText = html_utils.paragraph(
+            'Select which segmentation file to load:'
+        )
+        label = QLabel(questionText)
+        listWidget = QListWidget()
+        listWidget.addItems(images_ls)
+        self.items = list(images_ls)
+        self.listWidget = listWidget
 
-        okButton = QPushButton(' Load selected ')
-        okButton.setShortcut(Qt.Key_Enter)
-        okAndRemoveButton = QPushButton(' Load selected and delete the other files ')
-        s = ' Show in Explorer... ' if is_win else ' Reveal in Finder... '
-        showInFileManagerButton = QPushButton(s)
-        cancelButton = QPushButton(' Cancel ')
+        okButton = widgets.okPushButton(' Load selected ')
+        okAndRemoveButton = QPushButton(
+            'Load selected and delete the other files'
+        )
+        okAndRemoveButton.setIcon(QIcon(':bin.svg'))
+        txt = 'Reveal in Finder...' if is_mac else 'Show in Explorer...'
+        showInFileManagerButton = widgets.showInFileManagerButton(txt)
+        cancelButton = widgets.cancelPushButton(' Cancel ')
 
-        row, col = 0, 0
-        buttonsLayout.addWidget(okButton, row, col)
-        row, col = 1, 0
-        if multiPos:
-            row, col = 1, 1
-        buttonsLayout.addWidget(showInFileManagerButton, row, col) # 1, 0 --> 1, 1
 
-        row, col = 0, 1
-        if multiPos:
-            okAllPos = QPushButton(' Load selected for ALL positions ')
-            buttonsLayout.addWidget(okAllPos, row, col) # 0, 1
-            row, col = 1, 0
-            okAllPos.clicked.connect(self.ok_allPos)
-
-        buttonsLayout.addWidget(okAndRemoveButton, row, col) # 0, 1 --> 1, 0
-
-        row, col = 1, 1
-        if multiPos:
-            row, col = 2, 1
-        buttonsLayout.addWidget(cancelButton, row, col) # 1, 1 --> 2, 1
-
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addWidget(showInFileManagerButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(okButton)
 
         buttonsLayout.setContentsMargins(0, 10, 0, 10)
 
         selectionLayout.addWidget(label, 0, 1, alignment=Qt.AlignLeft)
-        selectionLayout.addWidget(combobox, 1, 1)
+        selectionLayout.addWidget(listWidget, 1, 1)
         selectionLayout.setColumnStretch(0, 1)
         selectionLayout.setColumnStretch(2, 1)
         selectionLayout.addLayout(buttonsLayout, 2, 1)
@@ -6399,33 +6389,10 @@ class QDialogMultiSegmNpz(QDialog):
     def showInFileManager(self, checked=True):
         myutils.showInExplorer(self.parent_path)
 
-    def ok_allPos(self, checked=False):
-        self.cancel = False
-        self.okAllPos = True
-        self.selectedItemText = self.ComboBox.currentText()
-        self.selectedItemIdx = self.ComboBox.currentIndex()
-        self.close()
-
     def ok_cb(self, event):
-        self.removeOthers = self.sender() == self.okAndRemoveButton
-        if self.removeOthers:
-            msg = QMessageBox()
-            err_msg = (f"""
-            <p style="font-size:12px">
-                Are you sure you want to <b>delete the files</b> below?<br><br>
-                {',<br>'.join(self.images_ls)}
-            </p>
-            """)
-            delete_answer = msg.warning(
-               self, 'Delete files?', err_msg, msg.Yes | msg.Cancel
-            )
-            if delete_answer == msg.Cancel:
-                self.removeOthers = False
-                return
-        # self.applyToAll = self.applyToAll_CB.isChecked()
         self.cancel = False
-        self.selectedItemText = self.ComboBox.currentText()
-        self.selectedItemIdx = self.ComboBox.currentIndex()
+        self.selectedItemText = self.listWidget.selectedItems()[0].text()
+        self.selectedItemIdx = self.items.index(self.selectedItemText)
         self.close()
 
     def exec_(self):

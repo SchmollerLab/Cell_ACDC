@@ -229,14 +229,8 @@ class loadData:
             or (file.endswith('.npz') and file.find('segm') != -1)
         ]
         is_multi_npz = len(segm_files)>1
-        if is_multi_npz and signals is not None:
-            mutex.lock()
-            signals.sigMultiSegm.emit(segm_files, self, multiPos, waitCond)
-            waitCond.wait(mutex)
-            mutex.unlock()
-            return self.selectedItemText, self.cancel
         if is_multi_npz and askMultiSegmFunc is not None:
-            askMultiSegmFunc(segm_files, self, multiPos, waitCond)
+            askMultiSegmFunc(segm_files, self, waitCond)
             return self.selectedItemText, self.cancel
         elif len(segm_files)==1:
             return segm_files[0], False
@@ -282,9 +276,10 @@ class loadData:
         if selectedSegmNpz and load_acdc_df:
             # Check if there is an acdc_output file linked to selected .npz
             _segm_fn = selectedSegmNpz[len(self.basename):]
-            _linked_acdc_fn = _segm_fn.replace('segm', 'acdc_output')
-            _linked_acdc_fn = _linked_acdc_fn.replace('.npz', '.csv')
-            _linked_acdc_fn = f'{self.basename}{_linked_acdc_fn}'
+            _acdc_df_end_fn = _segm_fn.replace('segm', 'acdc_output')
+            _acdc_df_end_fn = _acdc_df_end_fn.replace('.npz', '.csv')
+            self._acdc_df_end_fn = _acdc_df_end_fn
+            _linked_acdc_fn = f'{self.basename}{_acdc_df_end_fn}'
             for file in ls:
                 if file == _linked_acdc_fn:
                     filePath = os.path.join(self.images_path, file)
@@ -296,7 +291,9 @@ class loadData:
             filePath = os.path.join(self.images_path, file)
 
             if selectedSegmNpz:
-                is_segm_file = file == selectedSegmNpz
+                _endName = selectedSegmNpz[len(self.basename):]
+                self._segm_end_fn = _endName
+                is_segm_file = file.endswith(_endName)
             else:
                 is_segm_file = file.endswith('segm.npz')
 
@@ -491,7 +488,6 @@ class loadData:
         else:
             return self.segm_data.ndim == 3
 
-
     def extractMetadata(self):
         self.metadata_df['values'] = self.metadata_df['values'].astype(str)
         if 'SizeT' in self.metadata_df.index:
@@ -567,8 +563,23 @@ class loadData:
     def setNotFoundData(self):
         if self.segmFound is not None and not self.segmFound:
             self.segm_data = None
+            # Segmentation file not found and a specifc one was requested
+            if hasattr(self, '_segm_end_fn'):
+                if self.basename.endswith('_'):
+                    basename = self.basename
+                else:
+                    basename = f'{self.basename}_'
+                base_path = os.path.join(self.images_path, basename)
+                self.segm_npz_path = f'{base_path}{self._segm_end_fn}'
         if self.acdc_df_found is not None and not self.acdc_df_found:
             self.acdc_df = None
+            if hasattr(self, '_acdc_df_end_fn'):
+                if self.basename.endswith('_'):
+                    basename = self.basename
+                else:
+                    basename = f'{self.basename}_'
+                base_path = os.path.join(self.images_path, basename)
+                self.acdc_output_csv_path = f'{base_path}{self._acdc_df_end_fn}'
         if self.shiftsFound is not None and not self.shiftsFound:
             self.loaded_shifts = None
         if self.segmInfoFound is not None and not self.segmInfoFound:

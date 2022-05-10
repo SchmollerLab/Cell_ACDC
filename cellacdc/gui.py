@@ -112,6 +112,54 @@ def qt_debug_trace():
     pyqtRemoveInputHook()
     import pdb; pdb.set_trace()
 
+def get_data_exception_handler(func):
+    @wraps(func)
+    def inner_function(self, *args, **kwargs):
+        try:
+            if func.__code__.co_argcount==1 and func.__defaults__ is None:
+                result = func(self)
+            elif func.__code__.co_argcount>1 and func.__defaults__ is None:
+                result = func(self, *args)
+            else:
+                result = func(self, *args, **kwargs)
+        except Exception as e:
+            try:
+                if self.progressWin is not None:
+                    self.progressWin.workerFinished = True
+                    self.progressWin.close()
+            except AttributeError:
+                pass
+            result = None
+            posData = self.data[self.pos_i]
+            acdc_df_filename = os.path.basename(posData.acdc_output_csv_path)
+            segm_filename = os.path.basename(posData.segm_npz_path)
+            traceback_str = traceback.format_exc()
+            self.logger.exception(traceback_str)
+            msg = widgets.myMessageBox(wrapText=False)
+            msg.addShowInFileManagerButton(self.logs_path, txt='Show log file...')
+            msg.setDetailedText(traceback_str)
+            err_msg = html_utils.paragraph(f"""
+                Error in function <code>{func.__name__}</code>.<br><br>
+                One possbile explanation is that either the
+                <code>{acdc_df_filename}</code> file<br>
+                or the segmentation file <code>{segm_filename}</code><br>
+                <b>are corrupted/damaged</b>.<br><br>
+                <b>Try moving these files</b> (one by one) outside of the
+                <code>{posData.relPath}</code> folder
+                <br>and reloading the data.<br><br>
+                More details below or in the terminal/console.<br><br>
+                Note that the <b>error details</b> from this session are
+                also <b>saved in the following file</b>:<br><br>
+                {self.log_path}<br><br>
+                Please <b>send the log file</b> when reporting a bug, thanks!
+            """)
+
+            msg.critical(self, 'Critical error', err_msg)
+            self.is_error_state = True
+            raise e
+        return result
+    return inner_function
+
 class trackingWorker(QObject):
     finished = pyqtSignal()
     critical = pyqtSignal(object)
@@ -8670,6 +8718,9 @@ class guiWin(QMainWindow):
             askMultiSegmFunc=self.loadDataWorkerMultiSegm,
             isNewFile=self.isNewFile
         )
+        if cancel:
+            self.loadingDataAborted()
+            return
         posData.loadOtherFiles(
             load_segm_data=True,
             load_metadata=True,
@@ -8780,27 +8831,17 @@ class guiWin(QMainWindow):
         self.loadDataWorker.signals.sigPermissionError.connect(
             self.workerPermissionError
         )
-        self.loadDataWorker.signals.sigMultiSegm.connect(
-            self.loadDataWorkerMultiSegm
-        )
 
         self.thread.started.connect(self.loadDataWorker.run)
         self.thread.start()
 
-    def loadDataWorkerMultiSegm(self, segm_files, worker, multiPos, waitCond):
+    def loadDataWorkerMultiSegm(self, segm_files, worker, waitCond):
         win = apps.QDialogMultiSegmNpz(
-            segm_files, worker.pos_path, parent=self,
-            multiPos=multiPos
+            segm_files, worker.pos_path, parent=self
         )
         win.exec_()
-        worker.multiSegmAllPos = win.okAllPos
         worker.selectedItemText = win.selectedItemText
         worker.cancel = win.cancel
-        if win.removeOthers:
-            for file in segm_files:
-                if file == win.selectedItemText:
-                    continue
-                os.remove(os.path.join(worker.images_path, file))
         if waitCond is not None:
             waitCond.wakeAll()
 
@@ -8911,7 +8952,11 @@ class guiWin(QMainWindow):
     def setImageNameText(self):
         self.statusbar.clearMessage()
         posData = self.data[self.pos_i]
-        self.statusbar.showMessage(posData.filename_ext)
+        txt = (
+            f'Image file name: {posData.filename_ext}, '
+            f'Segmentation file name: {os.path.basename(posData.segm_npz_path)}'
+        )
+        self.statusbar.showMessage(txt)
         # self.imgNameLabel.setText()
 
     def autoRange(self):
@@ -10146,7 +10191,7 @@ class guiWin(QMainWindow):
             labels = posData.segm_data[posData.frame_i].copy()
         return labels
 
-
+    @get_data_exception_handler
     def get_data(self, debug=False):
         posData = self.data[self.pos_i]
         proceed_cca = True
@@ -10188,15 +10233,7 @@ class guiWin(QMainWindow):
                     # Since there was already segmentation metadata from
                     # previous closed session add it to current metadata
                     df = posData.acdc_df.loc[posData.frame_i].copy()
-                    try:
-                        binnedIDs_df = df[df['is_cell_excluded']]
-                    except Exception as e:
-                        self.logger.info('')
-                        self.logger.info('====================================')
-                        traceback.print_exc()
-                        self.logger.info('====================================')
-                        self.logger.info('')
-                        raise
+                    binnedIDs_df = df[df['is_cell_excluded']]
                     binnedIDs = set(binnedIDs_df.index).union(posData.binnedIDs)
                     posData.binnedIDs = binnedIDs
                     ripIDs_df = df[df['is_cell_dead']]

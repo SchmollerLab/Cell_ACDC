@@ -51,7 +51,6 @@ class signals(QObject):
     create_tqdm = pyqtSignal(int)
     innerProgressBar = pyqtSignal(int)
     sigPermissionError = pyqtSignal(str, object)
-    sigMultiSegm = pyqtSignal(object, object, bool, object)
 
 class loadDataWorker(QObject):
     def __init__(self, mainWin, user_ch_file_paths, user_ch_name, firstPosData):
