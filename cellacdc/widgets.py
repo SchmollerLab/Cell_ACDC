@@ -95,8 +95,9 @@ class okPushButton(QPushButton):
     def __init__(self, *args):
         super().__init__(*args)
         self.setIcon(QIcon(':yesGray.svg'))
-        QShortcut(Qt.Key_Return, self, self.click)
-        QShortcut(Qt.Key_Enter, self, self.click)
+        self.setShortcut(Qt.Key_Enter)
+        # QShortcut(Qt.Key_Return, self, self.click)
+        # QShortcut(Qt.Key_Enter, self, self.click)
 
 class infoPushButton(QPushButton):
     def __init__(self, *args):
@@ -252,6 +253,7 @@ class myMessageBox(QDialog):
 
         self.cancel = True
         self.cancelButton = None
+        self.okButton = None
         self.clickedButton = None
 
         self.showCentered = showCentered
@@ -337,6 +339,7 @@ class myMessageBox(QDialog):
         elif isYesButton:
             button = okPushButton(buttonText, self)
             self.buttonsLayout.addWidget(button)
+            self.okButton = button
         elif isSettingsButton:
             button = setPushButton(buttonText, self)
             self.buttonsLayout.addWidget(button)
@@ -455,6 +458,9 @@ class myMessageBox(QDialog):
             self.move(left, top)
 
         self._h = self.height()
+
+        if self.okButton is not None:
+            self.okButton.setFocus(True)
 
         if self.widgets:
             return

@@ -7412,28 +7412,37 @@ class guiWin(QMainWindow):
         else:
             cca_df = None
 
-        posData.UndoRedoStates[posData.frame_i].insert(
-            0,
-            {'image': self.img1.image.copy(),
-             'labels': posData.lab.copy(),
-             'editID_info': posData.editID_info.copy(),
-             'binnedIDs': posData.binnedIDs.copy(),
-             'ripIDs': posData.ripIDs.copy(),
-             'cca_df': cca_df}
-        )
+        if hasattr(self, 'imgRGB'):
+            imgRGB = self.imgRGB.copy()
+        else:
+            imgRGB = None
+
+        state = {
+            'image': self.img1.image.copy(),
+            'imgRGB': imgRGB,
+            'labels': posData.lab.copy(),
+            'editID_info': posData.editID_info.copy(),
+            'binnedIDs': posData.binnedIDs.copy(),
+            'ripIDs': posData.ripIDs.copy(),
+            'cca_df': cca_df
+        }
+        posData.UndoRedoStates[posData.frame_i].insert(0, state)
 
     def getCurrentState(self):
         posData = self.data[self.pos_i]
         i = posData.frame_i
         c = self.UndoCount
-        image_left = posData.UndoRedoStates[i][c]['image'].copy()
-        posData.lab = posData.UndoRedoStates[i][c]['labels'].copy()
-        posData.editID_info = posData.UndoRedoStates[i][c]['editID_info'].copy()
-        posData.binnedIDs = posData.UndoRedoStates[i][c]['binnedIDs'].copy()
-        posData.ripIDs = posData.UndoRedoStates[i][c]['ripIDs'].copy()
-        cca_df = posData.UndoRedoStates[i][c]['cca_df']
+        state = posData.UndoRedoStates[i][c]
+        if state['imgRGB'] is not None:
+            self.imgRGB = state['imgRGB'].copy()
+        image_left = state['image'].copy()
+        posData.lab = state['labels'].copy()
+        posData.editID_info = state['editID_info'].copy()
+        posData.binnedIDs = state['binnedIDs'].copy()
+        posData.ripIDs = state['ripIDs'].copy()
+        cca_df = state['cca_df']
         if cca_df is not None:
-            posData.cca_df = posData.UndoRedoStates[i][c]['cca_df'].copy()
+            posData.cca_df = state['cca_df'].copy()
         else:
             posData.cca_df = None
         return image_left
@@ -10100,8 +10109,8 @@ class guiWin(QMainWindow):
             return lab
 
     def applyEraserMask(self, mask):
+        posData = self.data[self.pos_i]
         if self.isSegm3D:
-            posData = self.data[self.pos_i]
             zProjHow = self.zProjComboBox.currentText()
             isZslice = zProjHow == 'single z-slice'
             if self.labBottomGroupbox.isChecked() or isZslice:

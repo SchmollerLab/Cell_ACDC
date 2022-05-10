@@ -26,8 +26,9 @@ import skimage.draw
 import skimage.registration
 import skimage.color
 import skimage.segmentation
-from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg,
-                                               NavigationToolbar2Tk)
+from matplotlib.backends.backend_tkagg import (
+    FigureCanvasTkAgg, NavigationToolbar2Tk
+)
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
@@ -5268,7 +5269,6 @@ class editID_QWidget(QDialog):
         ID_QLineEdit.textChanged[str].connect(self.ID_LineEdit_cb)
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.cancel_cb)
-
         # self.setModal(True)
 
     def ID_LineEdit_cb(self, text):

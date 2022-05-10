@@ -464,7 +464,31 @@ def _calculate_rp_df(seg_mask, is_timelapse_data, is_zstack_data, metadata, max_
 
 
 def _calc_rot_vol(obj, PhysicalSizeY=1, PhysicalSizeX=1):
-    vox_to_fl = PhysicalSizeY*pow(PhysicalSizeX, 2)
+    """Given the region properties of a 2D object (from skimage.measure.regionprops).
+    calculate the rotation volume as described in the Supplementary information of
+    https://www.nature.com/articles/s41467-020-16764-x
+
+    Parameters
+    ----------
+    obj : class skimage.measure.RegionProperties
+        Single item of the list returned by from skimage.measure.regionprops.
+    PhysicalSizeY : type
+        Physical size of the pixel in the Y-diretion in micrometer/pixel.
+    PhysicalSizeX : type
+        Physical size of the pixel in the X-diretion in micrometer/pixel.
+
+    Returns
+    -------
+    tuple
+        Tuple of the calculate volume in voxels and femtoliters.
+
+    Notes
+    -------
+    We convert PhysicalSizeY and PhysicalSizeX to float because when they are
+    read from csv they might be a string value.
+
+    """
+    vox_to_fl = float(PhysicalSizeY)*pow(float(PhysicalSizeX), 2)
     rotate_ID_img = skimage.transform.rotate(
         obj.image.astype(np.single), -(obj.orientation*180/np.pi),
         resize=True, order=3
