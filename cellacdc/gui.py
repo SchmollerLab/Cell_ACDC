@@ -2878,12 +2878,13 @@ class guiWin(QMainWindow):
             self.yPressAx2, self.xPressAx2 = y, x
             # Keep a global mask to compute which IDs got erased
             self.erasedIDs = []
-            self.erasedID = self.get_2Dlab(posData.lab)[ydata, xdata]
+            lab_2D = self.get_2Dlab(posData.lab)
+            self.erasedID = lab_2D[ydata, xdata]
 
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
             # Build eraser mask
-            mask = np.zeros(posData.lab.shape, bool)
+            mask = np.zeros(lab_2D.shape, bool)
             mask[ymin:ymax, xmin:xmax][diskMask] = True
 
             # If user double-pressed 'b' then erase over ALL labels
