@@ -2942,13 +2942,13 @@ class guiWin(QMainWindow):
                 and self.erasedID != 0
             )
             if eraseOnlyOneID:
-                mask[posData.lab!=self.erasedID] = False
+                mask[lab_2D!=self.erasedID] = False
 
             self.eraseOnlyOneID = eraseOnlyOneID
 
-            self.erasedIDs.extend(posData.lab[mask])
-            posData.lab[mask] = 0
-            self.img2.updateImage()
+            self.erasedIDs.extend(lab_2D[mask])
+            self.applyEraserMask(mask)
+            self.setImageImg2()
 
             self.isMouseDragImg2 = True
 
@@ -3592,7 +3592,8 @@ class guiWin(QMainWindow):
         # Eraser dragging mouse --> keep erasing
         elif self.isMouseDragImg1 and self.eraserButton.isChecked():
             posData = self.data[self.pos_i]
-            Y, X = self.get_2Dlab(posData.lab).shape
+            lab_2D = self.get_2Dlab(posData.lab)
+            Y, X = lab_2D.shape
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             brushSize = self.brushSizeSpinbox.value()
@@ -3602,12 +3603,12 @@ class guiWin(QMainWindow):
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
             # Build eraser mask
-            mask = np.zeros(posData.lab.shape, bool)
+            mask = np.zeros(lab_2D.shape, bool)
             mask[ymin:ymax, xmin:xmax][diskMask] = True
             mask[rrPoly, ccPoly] = True
 
             if self.eraseOnlyOneID:
-                mask[posData.lab!=self.erasedID] = False
+                mask[lab_2D!=self.erasedID] = False
                 self.setHoverToolSymbolColor(
                     xdata, ydata, self.eraserCirclePen,
                     (self.ax2_EraserCircle, self.ax1_EraserCircle),
@@ -3616,8 +3617,8 @@ class guiWin(QMainWindow):
                 )
 
 
-            self.erasedIDs.extend(posData.lab[mask])
-            posData.lab[mask] = 0
+            self.erasedIDs.extend(lab_2D[mask])
+            self.applyEraserMask(mask)
 
             self.setImageImg2()
 
@@ -4013,7 +4014,8 @@ class guiWin(QMainWindow):
         # Eraser dragging mouse --> keep erasing
         if self.isMouseDragImg2 and self.eraserButton.isChecked():
             posData = self.data[self.pos_i]
-            Y, X = self.get_2Dlab(posData.lab).shape
+            lab_2D = self.get_2Dlab(posData.lab)
+            Y, X = lab_2D.shape
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             brushSize = self.brushSizeSpinbox.value()
@@ -4022,12 +4024,12 @@ class guiWin(QMainWindow):
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
             # Build eraser mask
-            mask = np.zeros(posData.lab.shape, bool)
+            mask = np.zeros(lab_2D.shape, bool)
             mask[ymin:ymax, xmin:xmax][diskMask] = True
             mask[rrPoly, ccPoly] = True
 
             if self.eraseOnlyOneID:
-                mask[posData.lab!=self.erasedID] = False
+                mask[lab_2D!=self.erasedID] = False
                 self.setHoverToolSymbolColor(
                     xdata, ydata, self.eraserCirclePen,
                     (self.ax2_EraserCircle, self.ax1_EraserCircle),
@@ -4035,9 +4037,9 @@ class guiWin(QMainWindow):
                     ID=self.erasedID
                 )
 
-            self.erasedIDs.extend(posData.lab[mask])
+            self.erasedIDs.extend(lab_2D[mask])
 
-            posData.lab[mask] = 0
+            self.applyEraserMask(mask)
             self.setImageImg2(updateLookuptable=False)
 
         # Brush paint dragging mouse --> keep painting
@@ -12311,7 +12313,7 @@ class guiWin(QMainWindow):
         self.doCustomAnnotation(0)
 
         if self.eraserButton.isChecked():
-            self.setTempImg1Eraser(None, init=False)
+            self.setTempImg1Eraser(None, init=self.isSegm3D)
 
     def startBlinkingModeCB(self):
         try:
