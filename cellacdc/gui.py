@@ -10119,6 +10119,8 @@ class guiWin(QMainWindow):
            cv2.RETR_EXTERNAL,
            cv2.CHAIN_APPROX_NONE
         )
+        if not contours:
+            return np.array([[np.nan, np.nan]])
         min_y, min_x, _, _ = self.getObjBbox(obj.bbox)
         cont = np.squeeze(contours[0], axis=1)
         if len(contours)>1 and appendMultiContID:
