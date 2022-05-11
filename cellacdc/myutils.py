@@ -1056,6 +1056,7 @@ def to_uint8(img):
 
 def uint_to_float(img):
     img_max = core.numba_max(img)
+    # Check if float outside of -1, 1
     if img_max <= 1:
         return img
 
@@ -1070,7 +1071,6 @@ def uint_to_float(img):
     return img
 
 def scale_float(data):
-    # Check if float outside of -1, 1
     val = data[tuple([0]*data.ndim)]
     if isinstance(val, (np.floating, float)):
         data = uint_to_float(data)

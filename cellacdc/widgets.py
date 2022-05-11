@@ -680,7 +680,6 @@ class rightClickToolButton(QToolButton):
         elif event.button() == Qt.MouseButton.RightButton:
             self.sigRightClick.emit(event)
 
-
 class customAnnotToolButton(rightClickToolButton):
     sigRemoveAction = pyqtSignal(object)
     sigKeepActiveAction = pyqtSignal(object)
@@ -1386,10 +1385,11 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
         self.labelsAlphaMenu.setDisabled(True)
         hbox = QHBoxLayout()
         self.labelsAlphaSlider = sliderWithSpinBox(
-            title='Alpha', title_loc='in_line', is_float=True,
+            title='Alpha', title_loc='in_line', isFloat=True,
             normalize=True
         )
         self.labelsAlphaSlider.setMaximum(100)
+        self.labelsAlphaSlider.setSingleStep(0.05)
         self.labelsAlphaSlider.setValue(0.3)
         hbox.addWidget(self.labelsAlphaSlider)
         shortCutText = 'Command+Up/Down' if is_mac else 'Ctrl+Up/Down'
@@ -1697,7 +1697,6 @@ class sliderWithSpinBox(QWidget):
     def __init__(self, *args, **kwargs):
         QWidget.__init__(self, *args)
 
-
         layout = QGridLayout()
 
         title = kwargs.get('title')
@@ -1706,10 +1705,9 @@ class sliderWithSpinBox(QWidget):
         if title is not None:
             titleLabel = QLabel(self)
             titleLabel.setText(title)
-            loc = kwargs.get('title_loc')
-            loc = loc if loc is not None else 'top'
+            loc = kwargs.get('title_loc', 'top')
             if loc == 'top':
-                layout.addWidget(titleLabel, 1, col, alignment=Qt.AlignLeft)
+                layout.addWidget(titleLabel, 0, col, alignment=Qt.AlignLeft)
             elif loc=='in_line':
                 row = -1
                 col = 1
@@ -1720,6 +1718,7 @@ class sliderWithSpinBox(QWidget):
         normalize = kwargs.get('normalize')
         if normalize is not None:
             self._normalize = True
+            self._isFloat = True
 
         self._isFloat = False
         isFloat = kwargs.get('isFloat')
@@ -1760,12 +1759,16 @@ class sliderWithSpinBox(QWidget):
         valueInt = value
         if self._normalize:
             valueInt = int(value*self.slider.maximum())
-        if self._isFloat:
+        elif self._isFloat:
             valueInt = int(value)
-            self.spinBox.valueChanged.disconnect()
-            self.spinBox.setValue(value)
-            self.spinBox.valueChanged.connect(self.spinboxValueChanged)
+
+        self.spinBox.valueChanged.disconnect()
+        self.spinBox.setValue(value)
+        self.spinBox.valueChanged.connect(self.spinboxValueChanged)
+
+        self.slider.valueChanged.disconnect()
         self.slider.setValue(valueInt)
+        self.slider.valueChanged.connect(self.sliderValueChanged)
 
     def setMaximum(self, max):
         self.slider.setMaximum(max)
@@ -1784,6 +1787,12 @@ class sliderWithSpinBox(QWidget):
     def setDecimals(self, decimals):
         self.spinBox.setDecimals(decimals)
 
+    def setTickPosition(self, position):
+        self.slider.setTickPosition(position)
+
+    def setTickInterval(self, interval):
+        self.slider.setTickInterval(interval)
+
     def sliderValueChanged(self, val):
         self.spinBox.valueChanged.disconnect()
         if self._normalize:
@@ -1796,11 +1805,12 @@ class sliderWithSpinBox(QWidget):
         self.valueChanged.emit(self.value())
 
     def spinboxValueChanged(self, val):
-        self.slider.valueChanged.disconnect()
         if self._normalize:
             val = int(val*self.slider.maximum())
-        if self._isFloat:
+        elif self._isFloat:
             val = int(val)
+
+        self.slider.valueChanged.disconnect()
         self.slider.setValue(val)
         self.slider.valueChanged.connect(self.sliderValueChanged)
         self.sigValueChange.emit(self.value())

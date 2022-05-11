@@ -3240,6 +3240,155 @@ class gaussBlurDialog(QDialog):
         self.mainWindow.gaussBlurAction.setChecked(False)
         self.mainWindow.updateALLimg(only_ax1=True, updateFilters=False)
 
+class diffGaussFilterDialog(QDialog):
+    sigClose = pyqtSignal()
+    sigRemoveFilterClicked = pyqtSignal()
+    sigValueChanged = pyqtSignal(object, str)
+
+    def __init__(self, is3D=False, parent=None, channels=None):
+        super().__init__(parent)
+        self.cancel = True
+        self.parent = parent
+
+        self.setWindowTitle('Sharpening filter')
+        self.setWindowFlags(Qt.Tool | Qt.WindowStaysOnTopHint)
+
+        mainLayout = QVBoxLayout()
+        buttonsLayout = QHBoxLayout()
+
+        if channels is not None:
+            channelsLayout = QHBoxLayout()
+            channelsComboBox = QComboBox()
+            channelsComboBox.addItems(channels)
+            self.channelsComboBox = channelsComboBox
+            channelsComboBox.currentTextChanged.connect(self.valueChanged)
+            channelsLayout.addStretch(1)
+            channelsLayout.addWidget(QLabel('Channel to filter:'))
+            channelsLayout.addWidget(channelsComboBox)
+            channelsLayout.addStretch(1)
+            mainLayout.addLayout(channelsLayout)
+
+        firstGroupbox = QGroupBox('First gaussian filter')
+        firstLayout = QVBoxLayout()
+        self.firstSigmaSliderYX = widgets.sliderWithSpinBox(
+            isFloat=True, title='Sigma YX-direction:',
+            title_loc='in_line'
+        )
+        self.firstSigmaSliderYX.setTickPosition(QSlider.TicksBelow)
+        self.firstSigmaSliderYX.setSingleStep(0.5)
+        self.firstSigmaSliderYX.setTickInterval(10)
+        self.firstSigmaSliderZ = widgets.sliderWithSpinBox(
+            isFloat=True, title='Sigma Z-direction:  ',
+            title_loc='in_line'
+        )
+        self.firstSigmaSliderZ.setTickPosition(QSlider.TicksBelow)
+        self.firstSigmaSliderZ.setSingleStep(0.5)
+        self.firstSigmaSliderZ.setTickInterval(10)
+        firstLayout.addWidget(self.firstSigmaSliderYX)
+        firstLayout.addWidget(self.firstSigmaSliderZ)
+        firstGroupbox.setLayout(firstLayout)
+
+        secondGroupbox = QGroupBox('Second gaussian filter')
+        secondLayout = QVBoxLayout()
+        self.secondSigmaSliderYX = widgets.sliderWithSpinBox(
+            isFloat=True, title='Sigma YX-direction:',
+            title_loc='in_line'
+        )
+        self.secondSigmaSliderYX.setTickPosition(QSlider.TicksBelow)
+        self.secondSigmaSliderYX.setSingleStep(0.5)
+        self.secondSigmaSliderYX.setTickInterval(10)
+
+        self.secondSigmaSliderZ = widgets.sliderWithSpinBox(
+            isFloat=True, title='Sigma Z-direction:  ',
+            title_loc='in_line'
+        )
+        self.secondSigmaSliderZ.setTickPosition(QSlider.TicksBelow)
+        self.secondSigmaSliderZ.setSingleStep(0.5)
+        self.secondSigmaSliderZ.setTickInterval(10)
+
+        secondLayout.addWidget(self.secondSigmaSliderYX)
+        secondLayout.addWidget(self.secondSigmaSliderZ)
+        secondGroupbox.setLayout(secondLayout)
+
+        if not is3D:
+            self.firstSigmaSliderZ.hide()
+            self.secondSigmaSliderZ.hide()
+
+        cancelButton = widgets.cancelPushButton('Cancel')
+        applyButton = widgets.okPushButton('Apply filter')
+        removeButton = widgets.noPushButton('Remove filter')
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(applyButton)
+
+        mainLayout.addWidget(firstGroupbox)
+        mainLayout.addSpacing(20)
+        mainLayout.addWidget(secondGroupbox)
+        mainLayout.addSpacing(10)
+        mainLayout.addLayout(buttonsLayout)
+        mainLayout.addStretch(1)
+
+        self.setLayout(mainLayout)
+        self.setFont(font)
+
+        self.firstSigmaSliderYX.sigValueChange.connect(self.valueChanged)
+        self.secondSigmaSliderYX.sigValueChange.connect(self.valueChanged)
+        if not is3D:
+            self.firstSigmaSliderZ.sigValueChange.connect(self.valueChanged)
+            self.secondSigmaSliderZ.sigValueChange.connect(self.valueChanged)
+        cancelButton.clicked.connect(self.close)
+        applyButton.clicked.connect(self.valueChanged)
+        removeButton.clicked.connect(self.removeClicked)
+
+    def keyPressEvent(self, event):
+        # Avoid closing on enter or return
+        pass
+
+    def removeClicked(self):
+        self.sigRemoveFilterClicked.emit()
+
+    def initSpotmaxValues(self, posData):
+        self.firstSigmaSliderYX.setValue(0)
+        self.firstSigmaSliderZ.setValue(0)
+        PhysicalSizeY = posData.PhysicalSizeY
+        PhysicalSizeX = posData.PhysicalSizeX
+        PhysicalSizeZ = posData.PhysicalSizeZ
+        zyx_vox_dim = [PhysicalSizeZ, PhysicalSizeY, PhysicalSizeZ]
+        wavelen = 510
+        NA = 1.4
+        yx_resolution_multi = 1
+        z_resolution_limit = 1
+        _, zyx_resolution_pxl, _ = core.calc_resolution_limited_vol(
+            wavelen, NA, yx_resolution_multi, zyx_vox_dim, z_resolution_limit
+        )
+        self.secondSigmaSliderYX.setValue(zyx_resolution_pxl[1])
+        self.secondSigmaSliderZ.setValue(zyx_resolution_pxl[0])
+
+    def valueChanged(self, value=None):
+        sigmas = self.getSigmas()
+        if hasattr(self, 'channelsComboBox'):
+            channel = self.channelsComboBox.currentText()
+        else:
+            channel = ''
+        self.sigValueChanged.emit(sigmas, channel)
+
+    def getSigmas(self):
+        sigma1_yx = self.firstSigmaSliderYX.value()
+        sigma1_z = self.firstSigmaSliderZ.value()
+        sigma2_yx = self.secondSigmaSliderYX.value()
+        sigma2_z = self.secondSigmaSliderZ.value()
+        sigmas1 = (sigma1_z, sigma1_yx, sigma1_yx) if sigma1_z>0 else sigma1_yx
+        sigmas2 = (sigma2_z, sigma2_yx, sigma2_yx) if sigma2_z>0 else sigma2_yx
+        return sigmas1, sigmas2
+
+    def showEvent(self, event):
+        self.resize(int(self.width()*1.5), self.height())
+        self.firstSigmaSliderYX.setFocus(True)
+
+    def closeEvent(self, event):
+        self.sigClose.emit()
+
 class edgeDetectionDialog(QDialog):
     def __init__(self, mainWindow):
         super().__init__(mainWindow)

@@ -286,6 +286,11 @@ class loadData:
                     self.acdc_output_csv_path = filePath
                     linked_acdc_filename = file
                     break
+            else:
+                # acdc_output not found --> create a linked acdc_output
+                self.acdc_output_csv_path = os.path.join(
+                    self.images_path, _linked_acdc_fn
+                )
 
         for file in ls:
             filePath = os.path.join(self.images_path, file)

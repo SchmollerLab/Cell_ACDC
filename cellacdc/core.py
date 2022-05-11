@@ -98,6 +98,22 @@ def remove_artefacts(
     else:
         return lab
 
+def _calc_airy_radius(wavelen, NA):
+    airy_radius_nm = (1.22 * wavelen)/(2*NA)
+    airy_radius_um = airy_radius_nm*1E-3 #convert nm to µm
+    return airy_radius_nm, airy_radius_um
+
+def calc_resolution_limited_vol(
+        wavelen, NA, yx_resolution_multi, zyx_vox_dim, z_resolution_limit
+    ):
+    airy_radius_nm, airy_radius_um = _calc_airy_radius(wavelen, NA)
+    yx_resolution = airy_radius_um*yx_resolution_multi
+    zyx_resolution = np.asarray(
+        [z_resolution_limit, yx_resolution, yx_resolution]
+    )
+    zyx_resolution_pxl = zyx_resolution/np.asarray(zyx_vox_dim)
+    return zyx_resolution, zyx_resolution_pxl, airy_radius_nm
+
 def align_frames_3D(
         data, slices=None, register=True,
         user_shifts=None, pbar=False):

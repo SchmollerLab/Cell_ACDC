@@ -1258,6 +1258,7 @@ class guiWin(QMainWindow):
         ImageMenu.addAction(self.imgPropertiesAction)
         filtersMenu = ImageMenu.addMenu("Filters")
         filtersMenu.addAction(self.gaussBlurAction)
+        filtersMenu.addAction(self.diffGaussFilterAction)
         filtersMenu.addAction(self.edgeDetectorAction)
         filtersMenu.addAction(self.entropyFilterAction)
         normalizeIntensitiesMenu = ImageMenu.addMenu("Normalize intensities")
@@ -1995,6 +1996,9 @@ class guiWin(QMainWindow):
         self.gaussBlurAction = QAction('Gaussian blur...', self)
         self.gaussBlurAction.setCheckable(True)
 
+        self.diffGaussFilterAction = QAction('Sharpen...', self)
+        self.diffGaussFilterAction.setCheckable(True)
+
         self.imgPropertiesAction = QAction('Properties...', self)
         self.imgPropertiesAction.setDisabled(True)
 
@@ -2156,6 +2160,7 @@ class guiWin(QMainWindow):
                                                 self.drawIDsContComboBox_cb)
         self.drawIDsContComboBox.activated.connect(self.clearComboBoxFocus)
         self.gaussBlurAction.toggled.connect(self.gaussBlur)
+        self.diffGaussFilterAction.toggled.connect(self.diffGaussCallback)
         self.edgeDetectorAction.toggled.connect(self.edgeDetection)
         self.entropyFilterAction.toggled.connect(self.entropyFilter)
         self.addDelRoiAction.triggered.connect(self.addDelROI)
@@ -6220,6 +6225,73 @@ class guiWin(QMainWindow):
             self.gaussWin.close()
             self.gaussWin = None
 
+    def diffGaussCallback(self, checked):
+        if checked:
+            posData = self.data[self.pos_i]
+            channels = [posData.filename]
+            try:
+                channels.extend(list(posData.ol_data_dict.keys()))
+            except Exception as e:
+                pass
+            self.diffGaussFilterWin = apps.diffGaussFilterDialog(
+                parent=self, is3D=posData.SizeZ>1, channels=channels
+            )
+            if posData.SizeZ > 1:
+                self.diffGaussFilterWin.initSpotmaxValues(posData)
+            self.diffGaussFilterWin.sigClose.connect(
+                self.diffGaussFilterWinClosed
+            )
+            self.diffGaussFilterWin.sigValueChanged.connect(
+                self.diffGaussFilterWinValueChanged
+            )
+            self.diffGaussFilterWin.sigRemoveFilterClicked.connect(
+                self.updateALLimg
+            )
+            self.diffGaussFilterWin.show()
+            self.diffGaussFilterWin.valueChanged()
+        else:
+            self.diffGaussFilterWin.sigClose.disconnect()
+            self.diffGaussFilterWin.sigValueChanged.disconnect()
+            self.diffGaussFilterWin.sigRemoveFilterClicked.disconnect()
+            self.diffGaussFilterWin.close()
+            self.diffGaussFilterWin = None
+
+    def diffGaussFilterWinClosed(self):
+        self.diffGaussFilterWin.sigClose.disconnect()
+        self.diffGaussFilterWin.sigValueChanged.disconnect()
+        self.diffGaussFilterWin = None
+        self.updateALLimg()
+
+    def getDiffGaussFilteredImg(self, imgData, sigmas):
+        posData = self.data[self.pos_i]
+        sigmas1, sigmas2 = sigmas
+        if sigma1_yx>0:
+            filtered1 = skimage.filters.gaussian(imgData, sigma=sigmas1)
+        else:
+            filtered1 = myutils.uint_to_float(imgData)
+
+        if sigma2_yx>0:
+            filtered2 = skimage.filters.gaussian(imgData, sigma=sigmas2)
+        else:
+            filtered2 = myutils.uint_to_float(imgData)
+
+        resultFiltered = filtered1 - filtered2
+
+        if posData.SizeZ > 1:
+            img = self.get_2Dimg_from_3D(resultFiltered)
+        else:
+            img = resultFiltered
+        return img
+
+    def diffGaussFilterWinValueChanged(self, sigmas, filename):
+        _imgData = self.getImageDataFromFilename(filename)
+        if _imgData is None:
+            return
+        imgData = _imgData.copy()
+        img = self.getDiffGaussFilteredImg(imgData, sigmas)
+        img = self.getImageWithCmap(img=img)
+        self.updateALLimg(image=img, updateFilters=False)
+
     def edgeDetection(self, checked):
         if checked:
             font = QtGui.QFont()
@@ -6476,7 +6548,7 @@ class guiWin(QMainWindow):
         self.updateALLimg()
 
     def drawIDsContComboBox_cb(self, idx):
-        self.updateALLimg()
+        self.updateALLimg(updateDiffGaussFilter=True)
         how = self.drawIDsContComboBox.currentText()
         self.df_settings.at['how_draw_annotations', 'value'] = how
         self.df_settings.to_csv(self.settings_csv_path)
@@ -8379,9 +8451,9 @@ class guiWin(QMainWindow):
         self.models[idx] = model
 
         img = self.getDisplayedCellsImg()
-        if self.gaussWin is None:
-            img = skimage.filters.gaussian(img, sigma=1)
-        img = skimage.exposure.equalize_adapthist(skimage.img_as_float(img))
+        # if self.gaussWin is None:
+        #     img = skimage.filters.gaussian(img, sigma=1)
+        # img = skimage.exposure.equalize_adapthist(skimage.img_as_float(img))
 
         posData.cca_df = model.predictCcaState(img, posData.lab)
         self.store_data()
@@ -9407,6 +9479,7 @@ class guiWin(QMainWindow):
 
         self.clickedOnBud = False
         self.gaussWin = None
+        self.diffGaussFilterWin = None
         self.postProcessSegmWin = None
         self.edgeWin = None
         self.entropyWin = None
@@ -11390,6 +11463,10 @@ class guiWin(QMainWindow):
         if how.find('overlay segm. masks') == -1 and not force:
             return img
 
+        alpha = self.imgGrad.labelsAlphaSlider.value()
+        if alpha == 0:
+            return img
+
         posData = self.data[self.pos_i]
         if posData.IDs:
             maxID = max(posData.IDs)
@@ -11399,7 +11476,6 @@ class guiWin(QMainWindow):
         if maxID >= len(posData.lut):
             self.extendLabelsLUT(maxID+10)
         colors = [posData.lut[ID]/255 for ID in posData.IDs]
-        alpha = self.imgGrad.labelsAlphaSlider.value()
 
         # get bkgr color
         if 'labels_text_color' in self.df_settings.index:
@@ -11435,6 +11511,7 @@ class guiWin(QMainWindow):
             posData.rp = skimage.measure.regionprops(posData.lab)
 
         imgRGB = self.img1_RGB.copy()
+
         for obj in posData.rp:
             if not self.isObjVisible(obj.bbox, debug=False):
                 continue
@@ -11730,6 +11807,51 @@ class guiWin(QMainWindow):
     def updateOverlay(self, button):
         self.getOverlayImg(setImg=True)
 
+    def getImageDataFromFilename(self, filename):
+        posData = self.data[self.pos_i]
+        if filename == posData.filename:
+            return posData.img_data[posData.frame_i]
+        else:
+            return posData.ol_data_dict.get(filename)
+
+    def get_2Dimg_from_3D(self, imgData):
+        posData = self.data[self.pos_i]
+        idx = (posData.filename, posData.frame_i)
+        z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
+        zProjHow = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
+        if zProjHow == 'single z-slice':
+            img = imgData[z].copy()
+        elif zProjHow == 'max z-projection':
+            img = imgData.max(axis=0).copy()
+        elif zProjHow == 'mean z-projection':
+            img = imgData.mean(axis=0).copy()
+        elif zProjHow == 'median z-proj.':
+            img = np.median(imgData, axis=0).copy()
+        return img
+
+    def updateZsliceScrollbar(self, z):
+        posData = self.data[self.pos_i]
+        zProjHow = self.zProjComboBox.currentText()
+        if zProjHow != 'single z-slice':
+            return
+        reconnect = False
+        try:
+            self.zSliceScrollBar.actionTriggered.disconnect()
+            self.zSliceScrollBar.sliderReleased.disconnect()
+            reconnect = True
+        except TypeError:
+            pass
+        self.zSliceScrollBar.setSliderPosition(z)
+        if reconnect:
+            self.zSliceScrollBar.actionTriggered.connect(
+                self.zSliceScrollBarActionTriggered
+            )
+            self.zSliceScrollBar.sliderReleased.connect(
+                self.zSliceScrollBarReleased
+            )
+        self.z_label.setText(f'z-slice  {z+1:02}/{posData.SizeZ}')
+        if not self.labBottomGroupbox.isChecked():
+            self.z_label_lab.setText(f'z-slice  {z+1:02}/{posData.SizeZ}')
 
     def getImage(self, frame_i=None, invert=True, normalizeIntens=True):
         posData = self.data[self.pos_i]
@@ -11740,34 +11862,8 @@ class guiWin(QMainWindow):
             z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
             zProjHow = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
             img = posData.img_data[frame_i]
-            if zProjHow == 'single z-slice':
-                reconnect = False
-                try:
-                    self.zSliceScrollBar.actionTriggered.disconnect()
-                    self.zSliceScrollBar.sliderReleased.disconnect()
-                    reconnect = True
-                except TypeError:
-                    pass
-                self.zSliceScrollBar.setSliderPosition(z)
-                if reconnect:
-                    self.zSliceScrollBar.actionTriggered.connect(
-                        self.zSliceScrollBarActionTriggered
-                    )
-                    self.zSliceScrollBar.sliderReleased.connect(
-                        self.zSliceScrollBarReleased
-                    )
-                self.z_label.setText(f'z-slice  {z+1:02}/{posData.SizeZ}')
-                if not self.labBottomGroupbox.isChecked():
-                    self.z_label_lab.setText(f'z-slice  {z+1:02}/{posData.SizeZ}')
-                cells_img = img[z].copy()
-            elif zProjHow == 'max z-projection':
-                cells_img = img.max(axis=0).copy()
-            elif zProjHow == 'mean z-projection':
-                cells_img = img.mean(axis=0).copy()
-            elif zProjHow == 'median z-proj.':
-                cells_img = np.median(img, axis=0).copy()
-        else:
-            cells_img = posData.img_data[frame_i].copy()
+            self.updateZsliceScrollbar(z)
+            cells_img = self.get_2Dimg_from_3D(img)
         if normalizeIntens:
             cells_img = self.normalizeIntensities(cells_img)
         if self.imgCmapName != 'grey':
@@ -12224,7 +12320,6 @@ class guiWin(QMainWindow):
         self.labelsGrad.saveState(df)
         self.labelsGrad.restoreState(df, loadCmap=False)
 
-
     def updateLabelsAlpha(self, value):
         self.df_settings.at['overlaySegmMasksAlpha', 'value'] = value
         self.df_settings.to_csv(self.settings_csv_path)
@@ -12251,15 +12346,24 @@ class guiWin(QMainWindow):
             updateSharp=False, updateEntropy=False,
             updateHistoLevels=False, updateFilters=True,
             updateLabelItemColor=False, debug=False,
-            overlayMasks=True
+            overlayMasks=True, updateDiffGaussFilter=False
         ):
         posData = self.data[self.pos_i]
 
         if image is None:
-            if self.overlayButton.isChecked():
-                img = self.getOverlayImg(setImg=False)
+            if not updateDiffGaussFilter or self.diffGaussFilterWin is None:
+                if self.overlayButton.isChecked():
+                    img = self.getOverlayImg(setImg=False)
+                else:
+                    img = self.getImageWithCmap()
             else:
-                img = self.getImageWithCmap()
+                # Apply diff gauss sharpen filter
+                sigmas = self.diffGaussFilterWin.getSigmas()
+                filename = self.diffGaussFilterWin.channelsComboBox.currentText()
+                _imgData = self.getImageDataFromFilename(filename)
+                imgData = _imgData.copy()
+                img = self.getDiffGaussFilteredImg(imgData, sigmas)
+                img = self.getImageWithCmap(img=img)
         else:
             img = image
 
