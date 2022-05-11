@@ -6335,9 +6335,6 @@ class guiWin(QMainWindow):
         self.diffGaussFilteredData = resultFiltered
         return resultFiltered
 
-
-        return img
-
     def diffGaussFilterWinValueChanged(self, sigmas, filename):
         posData = self.data[self.pos_i]
         _imgData = self.getImageDataFromFilename(filename)
@@ -12470,7 +12467,7 @@ class guiWin(QMainWindow):
                 if posData.SizeZ > 1:
                     img = self.get_2Dimg_from_3D(filteredData)
                 else:
-                    img = resultFiltered
+                    img = filteredData
                 img = self.getImageWithCmap(img=img)
         else:
             img = image
