@@ -6496,6 +6496,7 @@ class QDialogMultiSegmNpz(QDialog):
         label = QLabel(questionText)
         listWidget = QListWidget()
         listWidget.addItems(images_ls)
+        listWidget.setCurrentRow(0)
         self.items = list(images_ls)
         self.listWidget = listWidget
 

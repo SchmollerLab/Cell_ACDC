@@ -3857,7 +3857,7 @@ class guiWin(QMainWindow):
                 self.wcLabel.setText(f'')
 
         # Draw eraser circle
-        if not event.isExit() and setEraserCursor:
+        if setEraserCursor:
             x, y = event.pos()
             self.updateEraserCursor(x, y)
             self.hideItemsHoverBrush(x, y)
@@ -3868,7 +3868,7 @@ class guiWin(QMainWindow):
             )
 
         # Draw Brush circle
-        if not event.isExit() and setBrushCursor:
+        if setBrushCursor:
             x, y = event.pos()
             self.updateBrushCursor(x, y)
             self.hideItemsHoverBrush(x, y)
@@ -3966,7 +3966,7 @@ class guiWin(QMainWindow):
         if not event.isExit():
             x, y = event.pos()
             xdata, ydata = int(x), int(y)
-            _img = self.img2.image
+            _img = self.displayedLab
             Y, X = _img.shape
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                 val = _img[ydata, xdata]
@@ -5200,16 +5200,16 @@ class guiWin(QMainWindow):
             )
             if z == 0 or z == SizeZ-1 or doNotLinkThroughZ:
                 masked_lab = lab_2D[ymin:ymax, xmin:xmax][diskMask]
-                hoverID = numba_max(masked_lab)
+                hoverID = np.max(masked_lab)
             else:
                 masked_lab_a = posData.lab[z-1, ymin:ymax, xmin:xmax][diskMask]
-                hoverIDa = numba_max(masked_lab_a)
+                hoverIDa = np.max(masked_lab_a)
 
                 masked_lab_b = lab_2D[ymin:ymax, xmin:xmax][diskMask]
-                hoverIDb = numba_max(masked_lab_b)
+                hoverIDb = np.max(masked_lab_b)
 
                 masked_lab_c = posData.lab[z+1, ymin:ymax, xmin:xmax][diskMask]
-                hoverIDc = numba_max(masked_lab_c)
+                hoverIDc = np.max(masked_lab_c)
                 if hoverIDa > 0:
                     hoverID = hoverIDa
                 elif hoverIDb > 0:
@@ -5219,7 +5219,8 @@ class guiWin(QMainWindow):
                 else:
                     hoverID = 0
         else:
-            hoverID = lab_2D[ymin:ymax, xmin:xmax][diskMask]
+            masked_lab = lab_2D[ymin:ymax, xmin:xmax][diskMask]
+            hoverID = np.max(masked_lab)
 
         return hoverID
 
@@ -6221,7 +6222,7 @@ class guiWin(QMainWindow):
         idx = delROIs_info['rois'].index(roi)
         delMask = delROIs_info['delMasks'][idx]
         delIDs = delROIs_info['delIDsROI'][idx]
-        ROImask = np.zeros(self.img2.image.shape, bool)
+        ROImask = np.zeros(self.displayedLab.shape, bool)
         ROImask[y0:y0+h, x0:x0+w] = True
         overlapROIdelIDs = np.unique(delMask[ROImask])
         for ID in delIDs:
@@ -6331,19 +6332,23 @@ class guiWin(QMainWindow):
             filtered2 = myutils.uint_to_float(imgData)
 
         resultFiltered = filtered1 - filtered2
+        self.diffGaussFilteredData = resultFiltered
+        return resultFiltered
 
-        if posData.SizeZ > 1:
-            img = self.get_2Dimg_from_3D(resultFiltered)
-        else:
-            img = resultFiltered
+
         return img
 
     def diffGaussFilterWinValueChanged(self, sigmas, filename):
+        posData = self.data[self.pos_i]
         _imgData = self.getImageDataFromFilename(filename)
         if _imgData is None:
             return
         imgData = _imgData.copy()
-        img = self.getDiffGaussFilteredImg(imgData, sigmas)
+        filteredData = self.getDiffGaussFilteredImg(imgData, sigmas)
+        if posData.SizeZ > 1:
+            img = self.get_2Dimg_from_3D(filteredData)
+        else:
+            img = filteredData
         img = self.getImageWithCmap(img=img)
         self.updateALLimg(image=img, updateFilters=False)
 
@@ -7014,7 +7019,7 @@ class guiWin(QMainWindow):
             return
 
         xdata, ydata = int(x), int(y)
-        _img = self.img2.image
+        _img = self.displayedLab
         Y, X = _img.shape
 
         if not (xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y):
@@ -7057,7 +7062,7 @@ class guiWin(QMainWindow):
             return
 
         xdata, ydata = int(x), int(y)
-        _img = self.img2.image
+        _img = self.displayedLab
         Y, X = _img.shape
 
         if not (xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y):
@@ -7110,7 +7115,7 @@ class guiWin(QMainWindow):
         self.diskMask = skimage.morphology.disk(brushSize, dtype=bool)
 
     def getDiskMask(self, xdata, ydata):
-        Y, X = self.img2.image.shape[-2:]
+        Y, X = self.displayedLab.shape[-2:]
 
         brushSize = self.brushSizeSpinbox.value()
         yBottom, xLeft = ydata-brushSize, xdata-brushSize
@@ -7231,8 +7236,9 @@ class guiWin(QMainWindow):
             return
 
         xdata, ydata = int(x), int(y)
-        _img = self.img2.image
+        _img = self.displayedLab
         Y, X = _img.shape
+        posData = self.data[self.pos_i]
 
         if not (xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y):
             return
@@ -9211,11 +9217,15 @@ class guiWin(QMainWindow):
                 self.zSliceScrollBarLab.moving = True
             self.setImageImg2()
         else:
-            self.updateALLimg()
+            self.updateALLimg(
+                useStoredGaussFiltered=True, updateDiffGaussFilter=True
+            )
 
     def zSliceScrollBarLabReleased(self):
         self.zSliceScrollBarLab.moving = False
-        self.updateALLimg()
+        self.updateALLimg(
+            useStoredGaussFiltered=True, updateDiffGaussFilter=True
+        )
 
     def init_segmInfo_df(self):
         self.t_label.show()
@@ -9321,7 +9331,10 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         idx = (posData.filename, posData.frame_i)
         posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
-        self.updateALLimg(only_ax1=self.updateOnlyImg())
+        self.updateALLimg(
+            only_ax1=self.updateOnlyImg(), useStoredGaussFiltered=True,
+            updateDiffGaussFilter=True
+        )
 
     def update_overlay_z_slice(self, z):
         posData = self.data[self.pos_i]
@@ -10330,8 +10343,8 @@ class guiWin(QMainWindow):
     def get_2Drp(self, lab=None):
         if self.isSegm3D:
             if lab is None:
-                # self._lab is defined at self.setImageImg2()
-                lab = self._lab
+                # self.displayedLab is defined at self.setImageImg2()
+                lab = self.displayedLab
             lab = self.get_2Dlab(lab)
             rp = skimage.measure.regionprops(lab)
             return rp
@@ -11971,7 +11984,7 @@ class guiWin(QMainWindow):
             allDelIDs = set()
         if not self.labelsGrad.hideLabelsImgAction.isChecked():
             self.img2.setImage(DelROIlab, z=self.z_lab(), autoLevels=False)
-        self._lab = DelROIlab
+        self.displayedLab = DelROIlab
         if updateLookuptable:
             self.updateLookuptable(delIDs=allDelIDs)
 
@@ -12433,7 +12446,8 @@ class guiWin(QMainWindow):
             updateSharp=False, updateEntropy=False,
             updateHistoLevels=False, updateFilters=True,
             updateLabelItemColor=False, debug=False,
-            overlayMasks=True, updateDiffGaussFilter=False
+            overlayMasks=True, updateDiffGaussFilter=False,
+            useStoredGaussFiltered=False
         ):
         posData = self.data[self.pos_i]
 
@@ -12444,12 +12458,19 @@ class guiWin(QMainWindow):
                 else:
                     img = self.getImageWithCmap()
             else:
-                # Apply diff gauss sharpen filter
-                sigmas = self.diffGaussFilterWin.getSigmas()
-                filename = self.diffGaussFilterWin.channelsComboBox.currentText()
-                _imgData = self.getImageDataFromFilename(filename)
-                imgData = _imgData.copy()
-                img = self.getDiffGaussFilteredImg(imgData, sigmas)
+                if useStoredGaussFiltered:
+                    filteredData = self.diffGaussFilteredData
+                else:
+                    # Apply diff gauss sharpen filter
+                    sigmas = self.diffGaussFilterWin.getSigmas()
+                    filename = self.diffGaussFilterWin.channelsComboBox.currentText()
+                    _imgData = self.getImageDataFromFilename(filename)
+                    imgData = _imgData.copy()
+                    filteredData = self.getDiffGaussFilteredImg(imgData, sigmas)
+                if posData.SizeZ > 1:
+                    img = self.get_2Dimg_from_3D(filteredData)
+                else:
+                    img = resultFiltered
                 img = self.getImageWithCmap(img=img)
         else:
             img = image
