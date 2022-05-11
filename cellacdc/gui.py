@@ -2994,7 +2994,8 @@ class guiWin(QMainWindow):
             if drawUnder:
                 mask[localLab!=0] = False
 
-            lab_2D[ymin:ymax, xmin:xmax][mask] = self.ax2BrushID
+            self.applyBrushMask(ymin, xmin, ymax, xmax, mask, self.ax2BrushID)
+
             self.setImageImg2(updateLookuptable=False)
 
         # Delete entire ID (set to 0)
@@ -3567,13 +3568,14 @@ class guiWin(QMainWindow):
         elif self.isMouseDragImg1 and self.brushButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            Y, X = self.get_2Dlab(posData.lab).shape
+            lab_2D = self.get_2Dlab(posData.lab)
+            Y, X = lab_2D.shape
 
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
             rrPoly, ccPoly = self.getPolygonBrush((y, x), Y, X)
 
             # Build brush mask
-            mask = np.zeros(self.get_2Dlab(posData.lab).shape, bool)
+            mask = np.zeros(lab_2D.shape, bool)
             mask[ymin:ymax, xmin:xmax][diskMask] = True
             mask[rrPoly, ccPoly] = True
 
@@ -3581,7 +3583,7 @@ class guiWin(QMainWindow):
             color = self.brushButton.palette().button().color().name()
             drawUnder = color != self.doublePressKeyButtonColor
             if drawUnder:
-                mask[self.get_2Dlab(posData.lab)!=0] = False
+                mask[lab_2D!=0] = False
                 self.setHoverToolSymbolColor(
                     xdata, ydata, self.ax2_BrushCirclePen,
                     (self.ax2_BrushCircle, self.ax1_BrushCircle),
@@ -3589,7 +3591,8 @@ class guiWin(QMainWindow):
                 )
 
             # Apply brush mask
-            self.get_2Dlab(posData.lab)[mask] = posData.brushID
+            self.applyBrushMask(0,0,0,0, mask, posData.brushID, isLocal=False)
+
             self.setImageImg2(updateLookuptable=False)
 
             brushMask = self.get_2Dlab(posData.lab) == posData.brushID
@@ -4051,7 +4054,8 @@ class guiWin(QMainWindow):
         # Brush paint dragging mouse --> keep painting
         if self.isMouseDragImg2 and self.brushButton.isChecked():
             posData = self.data[self.pos_i]
-            Y, X = self.get_2Dlab(posData.lab).shape
+            lab_2D = self.get_2Dlab(posData.lab)
+            Y, X = lab_2D.shape
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
 
@@ -4059,7 +4063,7 @@ class guiWin(QMainWindow):
             rrPoly, ccPoly = self.getPolygonBrush((y, x), Y, X)
 
             # Build brush mask
-            mask = np.zeros(posData.lab.shape, bool)
+            mask = np.zeros(lab_2D.shape, bool)
             mask[ymin:ymax, xmin:xmax][diskMask] = True
             mask[rrPoly, ccPoly] = True
 
@@ -4074,7 +4078,8 @@ class guiWin(QMainWindow):
                 )
 
             # Apply brush mask
-            posData.lab[mask] = self.ax2BrushID
+            self.applyBrushMask(0,0,0,0, mask, self.ax2BrushID, isLocal=False)
+
             self.setImageImg2()
 
     @myutils.exception_handler
@@ -4494,7 +4499,8 @@ class guiWin(QMainWindow):
 
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            Y, X = self.get_2Dlab(posData.lab).shape
+            lab_2D = self.get_2Dlab(posData.lab)
+            Y, X = lab_2D.shape
             self.storeUndoRedoStates(False)
 
             # If user double-pressed 'b' then draw over the labels
@@ -4502,7 +4508,7 @@ class guiWin(QMainWindow):
             drawUnder = color != self.doublePressKeyButtonColor
 
             if ID > 0 and drawUnder:
-                posData.brushID = self.get_2Dlab(posData.lab)[ydata, xdata]
+                posData.brushID = lab_2D[ydata, xdata]
                 self.isNewID = False
             else:
                 # Update brush ID. Take care of disappearing cells to remember
@@ -4520,12 +4526,13 @@ class guiWin(QMainWindow):
             self.isMouseDragImg1 = True
 
             # Draw new objects
-            localLab = self.get_2Dlab(posData.lab)[ymin:ymax, xmin:xmax]
+            localLab = lab_2D[ymin:ymax, xmin:xmax]
             mask = diskMask.copy()
             if drawUnder:
                 mask[localLab!=0] = False
 
-            localLab[mask] = posData.brushID
+            self.applyBrushMask(ymin, xmin, ymax, xmax, mask, posData.brushID)
+
             self.setImageImg2(updateLookuptable=False)
 
             img = self.img1.image.copy()
@@ -10245,17 +10252,27 @@ class guiWin(QMainWindow):
         else:
             posData.lab[mask] = 0
 
-    def applyBrushMask(self, ymin, xmin, ymax, xmax, mask, brushID):
+    def applyBrushMask(self, ymin, xmin, ymax, xmax, mask, ID, isLocal=True):
         posData = self.data[self.pos_i]
         if self.isSegm3D:
             zProjHow = self.zProjComboBox.currentText()
             isZslice = zProjHow == 'single z-slice'
             if self.labBottomGroupbox.isChecked() or isZslice:
-                posData.lab[self.z_lab(), mask] = 0
+                if isLocal:
+                    posData.lab[self.z_lab(), ymin:ymax, xmin:xmax][mask] = ID
+                else:
+                    posData.lab[self.z_lab()][mask] = ID
             else:
-                posData.lab[:, mask] = 0
+                if isLocal:
+                    for z in range(len(posData.lab)):
+                        posData.lab[z, ymin:ymax, xmin:xmax][mask] = ID
+                else:
+                    posData.lab[:, mask] = ID
         else:
-            posData.lab[mask] = 0
+            if isLocal:
+                posData.lab[ymin:ymax, xmin:xmax][mask] = ID
+            else:
+                posData.lab[mask] = ID
 
     def get_2Drp(self, lab=None):
         if self.isSegm3D:
