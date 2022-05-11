@@ -2987,7 +2987,7 @@ class guiWin(QMainWindow):
 
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
-            ID = lab_2D[ydata, xdata]
+            ID = self.getHoverID(xdata, ydata)
 
             # If user double-pressed 'b' then draw over the labels
             color = self.brushButton.palette().button().color().name()
@@ -3746,7 +3746,6 @@ class guiWin(QMainWindow):
         solidity = obj.solidity
         propsQGBox.solidityDSB.setValue(solidity)
 
-
     def gui_hoverEventImg1(self, event):
         posData = self.data[self.pos_i]
         # Update x, y, value label bottom right
@@ -3761,13 +3760,15 @@ class guiWin(QMainWindow):
                 self.app.restoreOverrideCursor()
 
         # Alt key was released --> restore cursor
-        noModifier = QGuiApplication.keyboardModifiers() == Qt.NoModifier
+        modifiers = QGuiApplication.keyboardModifiers()
+        noModifier = modifiers == Qt.NoModifier
+        shift = modifiers == Qt.ShiftModifier
         if self.app.overrideCursor() == Qt.SizeAllCursor and noModifier:
             self.app.restoreOverrideCursor()
 
         setBrushCursor = (
             self.brushButton.isChecked() and not event.isExit()
-            and noModifier
+            and (noModifier or shift)
         )
         setEraserCursor = (
             self.eraserButton.isChecked() and not event.isExit()
@@ -3938,13 +3939,15 @@ class guiWin(QMainWindow):
                 self.app.restoreOverrideCursor()
 
         # Alt key was released --> restore cursor
-        noModifier = QGuiApplication.keyboardModifiers() == Qt.NoModifier
+        modifiers = QGuiApplication.keyboardModifiers()
+        noModifier = modifiers == Qt.NoModifier
+        shift = modifiers == Qt.ShiftModifier
         if self.app.overrideCursor() == Qt.SizeAllCursor and noModifier:
             self.app.restoreOverrideCursor()
 
         setBrushCursor = (
             self.brushButton.isChecked() and not event.isExit()
-            and noModifier
+            and (noModifier or shift)
         )
         setEraserCursor = (
             self.eraserButton.isChecked() and not event.isExit()
@@ -4523,8 +4526,10 @@ class guiWin(QMainWindow):
             color = self.brushButton.palette().button().color().name()
             drawUnder = color != self.doublePressKeyButtonColor
 
+            ID = self.getHoverID(xdata, ydata)
+
             if ID > 0 and drawUnder:
-                posData.brushID = lab_2D[ydata, xdata]
+                posData.brushID = ID
                 self.isNewID = False
             else:
                 # Update brush ID. Take care of disappearing cells to remember
@@ -5181,34 +5186,58 @@ class guiWin(QMainWindow):
             else:
                 item.setData(xx, yy, size=size)
 
-    def setHoverToolSymbolColor(self, xdata, ydata, pen, ScatterItems, button,
-                                brush=None, hoverRGB=None, ID=None):
+    def getHoverID(self, xdata, ydata):
+        ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
+        posData = self.data[self.pos_i]
+        lab_2D = self.get_2Dlab(posData.lab)
+        if self.isSegm3D:
+            z = self.z_lab()
+            SizeZ = posData.lab.shape[0]
+            modifiers = QGuiApplication.keyboardModifiers()
+            shift = modifiers == Qt.ShiftModifier
+            doNotLinkThroughZ = (
+                self.brushButton.isChecked() and shift
+            )
+            if z == 0 or z == SizeZ-1 or doNotLinkThroughZ:
+                masked_lab = lab_2D[ymin:ymax, xmin:xmax][diskMask]
+                hoverID = numba_max(masked_lab)
+            else:
+                masked_lab_a = posData.lab[z-1, ymin:ymax, xmin:xmax][diskMask]
+                hoverIDa = numba_max(masked_lab_a)
+
+                masked_lab_b = lab_2D[ymin:ymax, xmin:xmax][diskMask]
+                hoverIDb = numba_max(masked_lab_b)
+
+                masked_lab_c = posData.lab[z+1, ymin:ymax, xmin:xmax][diskMask]
+                hoverIDc = numba_max(masked_lab_c)
+                if hoverIDa > 0:
+                    hoverID = hoverIDa
+                elif hoverIDb > 0:
+                    hoverID = hoverIDb
+                elif hoverIDc > 0:
+                    hoverID = hoverIDc
+                else:
+                    hoverID = 0
+        else:
+            hoverID = lab_2D[ymin:ymax, xmin:xmax][diskMask]
+
+        return hoverID
+
+    def setHoverToolSymbolColor(
+            self, xdata, ydata, pen, ScatterItems, button,
+            brush=None, hoverRGB=None, ID=None
+        ):
+
         posData = self.data[self.pos_i]
         Y, X = self.get_2Dlab(posData.lab).shape
         if not myutils.is_in_bounds(xdata, ydata, X, Y):
             return
-        if self.isSegm3D:
-            z = self.z_lab()
-            SizeZ = posData.lab.shape[0]
-            if z == 0 or z == SizeZ-1 or self.isCtrlDown:
-                hoverID = self.get_2Dlab(posData.lab)[ydata, xdata]
-            else:
-                hoverIDa = posData.lab[z-1, ydata, xdata]
-                hoverIDb = self.get_2Dlab(posData.lab)[ydata, xdata]
-                hoverIDc = posData.lab[z+1, ydata, xdata]
-                if hoverIDa > 0:
-                    hoverID = hoverIDb
-                elif hoverIDb > 0:
-                    hoverID = hoverIDb
-                elif hoverIDc > 0:
-                    hoverID = hoverIDb
-                else:
-                    hoverID = 0
+
+        if ID is None:
+            hoverID = self.getHoverID(xdata, ydata)
         else:
-            if ID is None:
-                hoverID = self.get_2Dlab(posData.lab)[ydata, xdata]
-            else:
-                hoverID = ID
+            hoverID = ID
+
         color = button.palette().button().color().name()
         drawAbove = color == self.doublePressKeyButtonColor
         if hoverID == 0 or drawAbove:
@@ -7275,6 +7304,14 @@ class guiWin(QMainWindow):
         modifiers = ev.modifiers()
         isAltModifier = modifiers == Qt.AltModifier
         isCtrlModifier = modifiers == Qt.ControlModifier
+        isShiftModifier = modifiers == Qt.ShiftModifier
+        if isShiftModifier:
+            self.setHoverToolSymbolColor(
+                1, 1, self.ax2_BrushCirclePen,
+                (self.ax2_BrushCircle, self.ax1_BrushCircle),
+                self.brushButton, brush=self.ax2_BrushCircleBrush,
+                ID=0
+            )
         isBrushActive = (
             self.brushButton.isChecked() or self.eraserButton.isChecked()
         )
