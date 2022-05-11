@@ -2963,14 +2963,15 @@ class guiWin(QMainWindow):
         elif left_click and canBrush:
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            Y, X = self.get_2Dlab(posData.lab).shape
+            lab_2D = self.get_2Dlab(posData.lab)
+            Y, X = lab_2D.shape
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(False)
             self.yPressAx2, self.xPressAx2 = y, x
 
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
-            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
+            ID = lab_2D[ydata, xdata]
 
             # If user double-pressed 'b' then draw over the labels
             color = self.brushButton.palette().button().color().name()
@@ -2988,12 +2989,12 @@ class guiWin(QMainWindow):
             self.isMouseDragImg2 = True
 
             # Draw new objects
-            localLab = self.get_2Dlab(posData.lab)[ymin:ymax, xmin:xmax]
+            localLab = lab_2D[ymin:ymax, xmin:xmax]
             mask = diskMask.copy()
             if drawUnder:
                 mask[localLab!=0] = False
 
-            posData.lab[ymin:ymax, xmin:xmax][mask] = self.ax2BrushID
+            lab_2D[ymin:ymax, xmin:xmax][mask] = self.ax2BrushID
             self.setImageImg2(updateLookuptable=False)
 
         # Delete entire ID (set to 0)
@@ -6265,6 +6266,8 @@ class guiWin(QMainWindow):
     def getDiffGaussFilteredImg(self, imgData, sigmas):
         posData = self.data[self.pos_i]
         sigmas1, sigmas2 = sigmas
+        sigma1_yx = sigmas1 if isinstance(sigmas1, float) else sigmas1[1]
+        sigma2_yx = sigmas2 if isinstance(sigmas2, float) else sigmas2[1]
         if sigma1_yx>0:
             filtered1 = skimage.filters.gaussian(imgData, sigma=sigmas1)
         else:
@@ -10231,6 +10234,18 @@ class guiWin(QMainWindow):
             return lab
 
     def applyEraserMask(self, mask):
+        posData = self.data[self.pos_i]
+        if self.isSegm3D:
+            zProjHow = self.zProjComboBox.currentText()
+            isZslice = zProjHow == 'single z-slice'
+            if self.labBottomGroupbox.isChecked() or isZslice:
+                posData.lab[self.z_lab(), mask] = 0
+            else:
+                posData.lab[:, mask] = 0
+        else:
+            posData.lab[mask] = 0
+
+    def applyBrushMask(self, ymin, xmin, ymax, xmax, mask, brushID):
         posData = self.data[self.pos_i]
         if self.isSegm3D:
             zProjHow = self.zProjComboBox.currentText()
