@@ -681,6 +681,22 @@ class saveDataWorker(QObject):
                             # self.mainWin.logger.info(traceback.format_exc())
                         # self.metricsPbarProgress.emit(-1, 1)
 
+        if 'cell_area_pxl' in self.mainWin.sizeMetricsToSave:
+            df['cell_area_pxl'] = pd.Series(
+                data=IDs_area_pxl, index=IDs, dtype=float
+            )
+            df['cell_area_um2'] = pd.Series(
+                data=IDs_area_um2, index=IDs, dtype=float
+            )
+
+        if 'cell_vol_vox' in self.mainWin.sizeMetricsToSave:
+            df['cell_vol_vox'] = pd.Series(
+                data=IDs_vol_vox, index=IDs, dtype=float
+            )
+            df['cell_vol_fl'] = pd.Series(
+                data=IDs_vol_fl, index=IDs, dtype=float
+            )
+
         df_metrics = pd.DataFrame(metrics_values, index=IDs)
 
         # Drop metrics that were already calculated in a prev session
@@ -11896,6 +11912,8 @@ class guiWin(QMainWindow):
             img = posData.img_data[frame_i]
             self.updateZsliceScrollbar(z)
             cells_img = self.get_2Dimg_from_3D(img)
+        else:
+            cells_img = posData.img_data[frame_i].copy()
         if normalizeIntens:
             cells_img = self.normalizeIntensities(cells_img)
         if self.imgCmapName != 'grey':
@@ -13612,7 +13630,7 @@ class guiWin(QMainWindow):
             return last_tracked_i
 
     def computeVolumeRegionprop(self):
-        if not 'cell_vol_vox' in self.sizeMetricsToSave:
+        if 'cell_vol_vox' not in self.sizeMetricsToSave:
             return
 
         # We compute the cell volume in the main thread because calling

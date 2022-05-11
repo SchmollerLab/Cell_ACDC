@@ -18,6 +18,14 @@ import warnings
 from . import myutils, prompts, apps, qrc_resources, widgets, html_utils
 
 def configuration_dialog():
+    if os.name == 'nt':
+        try:
+            # Set taskbar icon in windows
+            import ctypes
+            myappid = 'schmollerlab.cellacdc.pyqt.v1' # arbitrary string
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+        except Exception as e:
+            pass
     # app = QtCore.QCoreApplication.instance()
     # if app is None:
     app = QApplication(sys.argv)
