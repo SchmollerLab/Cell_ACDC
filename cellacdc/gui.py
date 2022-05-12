@@ -673,7 +673,7 @@ class saveDataWorker(QObject):
                             custom_val = custom_func(
                                 fluo_data_ID, fluo_backgr, ROI_bkgrVal
                             )
-                            custom_metrics_values[key][i] = val
+                            custom_metrics_values[key][i] = custom_val
                         except Exception as e:
                             self.customMetricsCritical.emit(
                                 traceback.format_exc()
