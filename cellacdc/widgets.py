@@ -260,7 +260,7 @@ class myLabelItem(pg.LabelItem):
         if color is None:
             color = pg.getConfigOption('foreground')
         color = pg.functions.mkColor(color)
-        optlist.append('color: ' + color.name(QColor.HexArgb))
+        optlist.append('color: ' + color.name(QColor.NameFormat.HexArgb))
         if 'size' in opts:
             optlist.append('font-size: ' + opts['size'])
         if 'bold' in opts and opts['bold'] in [True, False]:
