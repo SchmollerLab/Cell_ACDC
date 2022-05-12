@@ -1784,11 +1784,12 @@ class guiWin(QMainWindow):
 
     def gui_createStatusBar(self):
         self.statusbar = self.statusBar()
-        # Temporary message
-        self.statusbar.showMessage("Ready", 3000)
         # Permanent widget
         self.wcLabel = QLabel('')
         self.statusbar.addPermanentWidget(self.wcLabel)
+        self.statusBarLabel = QLabel('')
+        self.statusbar.addWidget(self.statusBarLabel)
+
 
     def gui_createActions(self):
         # File actions
@@ -2702,8 +2703,8 @@ class guiWin(QMainWindow):
         for ID in tqdm(allIDs, ncols=100):
             self.ax1_ContoursCurves[ID-1] = pg.PlotDataItem()
             self.ax1_BudMothLines[ID-1] = pg.PlotDataItem()
-            self.ax1_LabelItemsIDs[ID-1] = pg.LabelItem()
-            self.ax2_LabelItemsIDs[ID-1] = pg.LabelItem()
+            self.ax1_LabelItemsIDs[ID-1] = widgets.myLabelItem()
+            self.ax2_LabelItemsIDs[ID-1] = widgets.myLabelItem()
             self.ax2_ContoursCurves[ID-1] = pg.PlotDataItem()
 
         self.progressWin.mainPbar.setMaximum(0)
@@ -3966,7 +3967,7 @@ class guiWin(QMainWindow):
         if not event.isExit():
             x, y = event.pos()
             xdata, ydata = int(x), int(y)
-            _img = self.displayedLab
+            _img = self.currentLab2D
             Y, X = _img.shape
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                 val = _img[ydata, xdata]
@@ -6222,7 +6223,7 @@ class guiWin(QMainWindow):
         idx = delROIs_info['rois'].index(roi)
         delMask = delROIs_info['delMasks'][idx]
         delIDs = delROIs_info['delIDsROI'][idx]
-        ROImask = np.zeros(self.displayedLab.shape, bool)
+        ROImask = np.zeros(self.currentLab2D.shape, bool)
         ROImask[y0:y0+h, x0:x0+w] = True
         overlapROIdelIDs = np.unique(delMask[ROImask])
         for ID in delIDs:
@@ -6309,12 +6310,10 @@ class guiWin(QMainWindow):
             self.diffGaussFilterWin.sigRemoveFilterClicked.disconnect()
             self.diffGaussFilterWin.close()
             self.diffGaussFilterWin = None
+            self.updateALLimg()
 
     def diffGaussFilterWinClosed(self):
-        self.diffGaussFilterWin.sigClose.disconnect()
-        self.diffGaussFilterWin.sigValueChanged.disconnect()
-        self.diffGaussFilterWin = None
-        self.updateALLimg()
+        self.diffGaussFilterAction.setChecked(False)
 
     def getDiffGaussFilteredImg(self, imgData, sigmas):
         posData = self.data[self.pos_i]
@@ -6618,10 +6617,10 @@ class guiWin(QMainWindow):
         IDs_and_masks = how == 'Draw IDs and overlay segm. masks'
         onlyMasks = how == 'Draw only overlay segm. masks'
 
-        if how.find('segm. masks') != -1:
-            self.imgGrad.labelsAlphaMenu.setDisabled(False)
-        else:
-            self.imgGrad.labelsAlphaMenu.setDisabled(True)
+        # if how.find('segm. masks') != -1:
+        #     self.imgGrad.labelsAlphaMenu.setDisabled(False)
+        # else:
+        #     self.imgGrad.labelsAlphaMenu.setDisabled(True)
 
         # Clear contours if requested
         if how.find('contours') == -1 or nothing:
@@ -7016,7 +7015,7 @@ class guiWin(QMainWindow):
             return
 
         xdata, ydata = int(x), int(y)
-        _img = self.displayedLab
+        _img = self.currentLab2D
         Y, X = _img.shape
 
         if not (xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y):
@@ -7053,13 +7052,14 @@ class guiWin(QMainWindow):
         else:
             prev_lab = posData.allData_li[posData.frame_i-1]['labels']
             rp = posData.allData_li[posData.frame_i-1]['regionprops']
+            self.ax1BrushHoverID = 0
 
     def updateBrushCursor(self, x, y):
         if x is None:
             return
 
         xdata, ydata = int(x), int(y)
-        _img = self.displayedLab
+        _img = self.currentLab2D
         Y, X = _img.shape
 
         if not (xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y):
@@ -7112,7 +7112,7 @@ class guiWin(QMainWindow):
         self.diskMask = skimage.morphology.disk(brushSize, dtype=bool)
 
     def getDiskMask(self, xdata, ydata):
-        Y, X = self.displayedLab.shape[-2:]
+        Y, X = self.currentLab2D.shape[-2:]
 
         brushSize = self.brushSizeSpinbox.value()
         yBottom, xLeft = ydata-brushSize, xdata-brushSize
@@ -7233,7 +7233,7 @@ class guiWin(QMainWindow):
             return
 
         xdata, ydata = int(x), int(y)
-        _img = self.displayedLab
+        _img = self.currentLab2D
         Y, X = _img.shape
         posData = self.data[self.pos_i]
 
@@ -7366,11 +7366,13 @@ class guiWin(QMainWindow):
             if ev.key() == Qt.Key_Up:
                 val = self.imgGrad.labelsAlphaSlider.value()
                 delta = 5/self.imgGrad.labelsAlphaSlider.maximum()
-                self.imgGrad.labelsAlphaSlider.setValue(val+delta)
+                val = val+delta
+                self.imgGrad.labelsAlphaSlider.setValue(val, emitSignal=True)
             elif ev.key() == Qt.Key_Down:
                 val = self.imgGrad.labelsAlphaSlider.value()
                 delta = 5/self.imgGrad.labelsAlphaSlider.maximum()
-                self.imgGrad.labelsAlphaSlider.setValue(val-delta)
+                val = val-delta
+                self.imgGrad.labelsAlphaSlider.setValue(val, emitSignal=True)
         elif ev.key() == Qt.Key_H:
             self.zoomToCells(enforce=True)
             if self.countKeyPress == 0:
@@ -9092,12 +9094,14 @@ class guiWin(QMainWindow):
     def setImageNameText(self):
         self.statusbar.clearMessage()
         posData = self.data[self.pos_i]
+        segmentedChannelname = posData.filename[len(posData.basename):]
+        segmEndName = os.path.basename(posData.segm_npz_path)[len(posData.basename):]
         txt = (
-            f'Image file name: {posData.filename_ext}, '
-            f'Segmentation file name: {os.path.basename(posData.segm_npz_path)}'
+            f'Segmented channel: {segmentedChannelname}, '
+            f'Segmentation file name: {segmEndName}'
         )
-        self.statusbar.showMessage(txt)
-        # self.imgNameLabel.setText()
+        self.logger.info(txt)
+        self.statusBarLabel.setText(txt)
 
     def autoRange(self):
         if not self.labelsGrad.hideLabelsImgAction.isChecked():
@@ -10340,8 +10344,8 @@ class guiWin(QMainWindow):
     def get_2Drp(self, lab=None):
         if self.isSegm3D:
             if lab is None:
-                # self.displayedLab is defined at self.setImageImg2()
-                lab = self.displayedLab
+                # self.currentLab2D is defined at self.setImageImg2()
+                lab = self.currentLab2D
             lab = self.get_2Dlab(lab)
             rp = skimage.measure.regionprops(lab)
             return rp
@@ -10837,15 +10841,31 @@ class guiWin(QMainWindow):
             if not is_history_known:
                 txt = f'{txt}?'
 
-        txt = txt if self.isObjVisible(obj.bbox) else ''
+        if not self.isObjVisible(obj.bbox):
+            # Object not visible (entire bbox in another z_range)
+            LabelItemID.setText('')
+            return
+        elif self.isSegm3D:
+            if obj.label not in self.currentLab2D:
+                # Object is present in z+1 and z-1 but not in z --> transparent
+                r,g,b = self.ax1_oldIDcolor
+                color = QColor(r,g,b,100)
+                LabelItemID.setText(txt, color=color, size=self.fontSize)
+                self.setLabelCenteredObject(obj, LabelItemID)
+                return
 
         try:
             if debug:
                 print(txt, color)
-            LabelItemID.setText(txt, color=color, bold=bold, size=self.fontSize)
+            LabelItemID.setText(
+                txt, color=color, bold=bold, size=self.fontSize
+            )
         except UnboundLocalError:
             pass
 
+        self.setLabelCenteredObject(obj, LabelItemID)
+
+    def setLabelCenteredObject(self, obj, LabelItemID):
         # Center LabelItem at centroid
         y, x = self.getObjCentroid(obj.centroid)
         w, h = LabelItemID.rect().right(), LabelItemID.rect().bottom()
@@ -11981,7 +12001,7 @@ class guiWin(QMainWindow):
             allDelIDs = set()
         if not self.labelsGrad.hideLabelsImgAction.isChecked():
             self.img2.setImage(DelROIlab, z=self.z_lab(), autoLevels=False)
-        self.displayedLab = DelROIlab
+        self.currentLab2D = DelROIlab
         if updateLookuptable:
             self.updateLookuptable(delIDs=allDelIDs)
 
@@ -12178,11 +12198,11 @@ class guiWin(QMainWindow):
         self.ax1.addItem(BudMothLine)
 
         # LabelItems on ax1
-        ax1_IDlabel = pg.LabelItem()
+        ax1_IDlabel = widgets.myLabelItem()
         self.ax1.addItem(ax1_IDlabel)
 
         # LabelItems on ax2
-        ax2_IDlabel = pg.LabelItem()
+        ax2_IDlabel = widgets.myLabelItem()
         self.ax2.addItem(ax2_IDlabel)
 
         # Contours on ax2

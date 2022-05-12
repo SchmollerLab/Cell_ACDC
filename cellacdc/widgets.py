@@ -244,6 +244,36 @@ class alphaNumericLineEdit(QLineEdit):
 
         # self.setAlignment(Qt.AlignCenter)
 
+class myLabelItem(pg.LabelItem):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def setText(self, text, **args):
+        self.text = text
+        opts = self.opts
+        for k in args:
+            opts[k] = args[k]
+
+        optlist = []
+
+        color = self.opts['color']
+        if color is None:
+            color = pg.getConfigOption('foreground')
+        color = pg.functions.mkColor(color)
+        optlist.append('color: ' + color.name(QColor.HexArgb))
+        if 'size' in opts:
+            optlist.append('font-size: ' + opts['size'])
+        if 'bold' in opts and opts['bold'] in [True, False]:
+            optlist.append('font-weight: ' + {True:'bold', False:'normal'}[opts['bold']])
+        if 'italic' in opts and opts['italic'] in [True, False]:
+            optlist.append('font-style: ' + {True:'italic', False:'normal'}[opts['italic']])
+        full = "<span style='%s'>%s</span>" % ('; '.join(optlist), text)
+        #print full
+        self.item.setHtml(full)
+        self.updateMin()
+        self.resizeEvent(None)
+        self.updateGeometry()
+
 
 class myMessageBox(QDialog):
     def __init__(self, parent=None, showCentered=True, wrapText=True):
@@ -1382,7 +1412,7 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
         self.labelsAlphaMenu = self.gradient.menu.addMenu(
             'Segm. masks overlay alpha...'
         )
-        self.labelsAlphaMenu.setDisabled(True)
+        # self.labelsAlphaMenu.setDisabled(True)
         hbox = QHBoxLayout()
         self.labelsAlphaSlider = sliderWithSpinBox(
             title='Alpha', title_loc='in_line', isFloat=True,
@@ -1755,7 +1785,7 @@ class sliderWithSpinBox(QWidget):
     def maximum(self):
         return self.slider.maximum()
 
-    def setValue(self, value):
+    def setValue(self, value, emitSignal=False):
         valueInt = value
         if self._normalize:
             valueInt = int(value*self.slider.maximum())
@@ -1769,6 +1799,10 @@ class sliderWithSpinBox(QWidget):
         self.slider.valueChanged.disconnect()
         self.slider.setValue(valueInt)
         self.slider.valueChanged.connect(self.sliderValueChanged)
+
+        if emitSignal:
+            self.sigValueChange.emit(self.value())
+            self.valueChanged.emit(self.value())
 
     def setMaximum(self, max):
         self.slider.setMaximum(max)
