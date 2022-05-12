@@ -10278,7 +10278,7 @@ class guiWin(QMainWindow):
         return cont
 
     def getObjBbox(self, obj_bbox):
-        if self.isSegm3D:
+        if self.isSegm3D and len(obj_bbox)==6:
             obj_bbox = (obj_bbox[1], obj_bbox[2], obj_bbox[4], obj_bbox[5])
             return obj_bbox
         else:
@@ -11638,7 +11638,7 @@ class guiWin(QMainWindow):
             return True
 
     def getObjImage(self, obj_image, obj_bbox):
-        if self.isSegm3D:
+        if self.isSegm3D and len(obj_bbox)==6:
             zProjHow = self.zProjComboBox.currentText()
             isZslice = zProjHow == 'single z-slice'
             if not self.labBottomGroupbox.isChecked() and not isZslice:

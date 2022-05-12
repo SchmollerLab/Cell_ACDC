@@ -2491,8 +2491,11 @@ class QDialogAppendTextFilename(QDialog):
 
         cancelButton = widgets.cancelPushButton('Cancel')
 
-        buttonsLayout.addWidget(okButton, alignment=Qt.AlignRight)
-        buttonsLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(okButton)
+
         buttonsLayout.setContentsMargins(0, 10, 0, 0)
 
         mainLayout.addLayout(formLayout)
@@ -6521,6 +6524,7 @@ class QDialogMultiSegmNpz(QDialog):
         selectionLayout.addWidget(label, 0, 1, alignment=Qt.AlignLeft)
         selectionLayout.addWidget(listWidget, 1, 1)
         selectionLayout.setColumnStretch(0, 1)
+        selectionLayout.setColumnStretch(1, 3)
         selectionLayout.setColumnStretch(2, 1)
         selectionLayout.addLayout(buttonsLayout, 2, 1)
 
