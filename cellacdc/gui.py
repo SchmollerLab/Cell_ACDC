@@ -8854,7 +8854,7 @@ class guiWin(QMainWindow):
                 return
             self.newSegmFilename = win.entryText
         posData.loadImgData()
-        selectedSegmNpz, cancel = posData.detectMultiSegmNpz(
+        selectedSegmNpz, endFilenameSegm, cancel = posData.detectMultiSegmNpz(
             askMultiSegmFunc=self.loadDataWorkerMultiSegm,
             isNewFile=self.isNewFile
         )
@@ -8866,9 +8866,9 @@ class guiWin(QMainWindow):
             load_metadata=True,
             create_new_segm=self.isNewFile,
             new_segm_filename=self.newSegmFilename,
-            selectedSegmNpz=selectedSegmNpz
+            endFilenameSegm=endFilenameSegm
         )
-        self.selectedSegmNpz = selectedSegmNpz
+        self.endFilenameSegm = endFilenameSegm
         self.labelBoolSegm = posData.labelBoolSegm
         posData.labelSegmData()
 

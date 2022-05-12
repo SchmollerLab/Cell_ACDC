@@ -127,7 +127,7 @@ class loadDataWorker(QObject):
                 load_last_tracked_i=True,
                 load_metadata=True,
                 load_customAnnot=True,
-                selectedSegmNpz=self.mainWin.selectedSegmNpz,
+                endFilenameSegm=self.mainWin.endFilenameSegm,
                 create_new_segm=self.mainWin.isNewFile,
                 new_segm_filename=self.mainWin.newSegmFilename,
                 labelBoolSegm=self.mainWin.labelBoolSegm
@@ -136,10 +136,6 @@ class loadDataWorker(QObject):
 
             if i == 0:
                 posData.segmFound = segmFound
-
-            self.logger.log(
-                f'{i}, {self.firstPosData.segmFound}, {posData.segmFound}'
-            )
 
             self.logger.log(
                 'Loaded paths:\n'

@@ -231,11 +231,14 @@ class loadData:
         is_multi_npz = len(segm_files)>1
         if is_multi_npz and askMultiSegmFunc is not None:
             askMultiSegmFunc(segm_files, self, waitCond)
-            return self.selectedItemText, self.cancel
+            endFilename = self.selectedItemText[len(self.basename):]
+            return self.selectedItemText, endFilename, self.cancel
         elif len(segm_files)==1:
-            return segm_files[0], False
+            segmFilename = segm_files[0]
+            endFilename = segmFilename[len(self.basename):]
+            return segm_files[0], endFilename, False
         else:
-            return '', False
+            return '', '', False
 
     def loadOtherFiles(
             self,
@@ -252,7 +255,7 @@ class loadData:
             load_dataPrep_ROIcoords=False,
             load_customAnnot=False,
             getTifPath=False,
-            selectedSegmNpz='',
+            endFilenameSegm='',
             new_segm_filename='',
             labelBoolSegm=None
         ):
@@ -273,10 +276,9 @@ class loadData:
         ls = myutils.listdir(self.images_path)
 
         linked_acdc_filename = None
-        if selectedSegmNpz and load_acdc_df:
+        if endFilenameSegm and load_acdc_df:
             # Check if there is an acdc_output file linked to selected .npz
-            _segm_fn = selectedSegmNpz[len(self.basename):]
-            _acdc_df_end_fn = _segm_fn.replace('segm', 'acdc_output')
+            _acdc_df_end_fn = endFilenameSegm.replace('segm', 'acdc_output')
             _acdc_df_end_fn = _acdc_df_end_fn.replace('.npz', '.csv')
             self._acdc_df_end_fn = _acdc_df_end_fn
             _linked_acdc_fn = f'{self.basename}{_acdc_df_end_fn}'
@@ -295,10 +297,9 @@ class loadData:
         for file in ls:
             filePath = os.path.join(self.images_path, file)
 
-            if selectedSegmNpz:
-                _endName = selectedSegmNpz[len(self.basename):]
-                self._segm_end_fn = _endName
-                is_segm_file = file.endswith(_endName)
+            if endFilenameSegm:
+                self._segm_end_fn = endFilenameSegm
+                is_segm_file = file.endswith(endFilenameSegm)
             else:
                 is_segm_file = file.endswith('segm.npz')
 
