@@ -1857,15 +1857,15 @@ class labImageItem(pg.ImageItem):
     def __init__(self, *args, **kwargs):
         pg.ImageItem.__init__(self, *args, **kwargs)
 
-    def setImage(self, img=None, autolevels=None, z=None, **kargs):
+    def setImage(self, img=None, autolevels=False, z=None, **kargs):
         if img is None:
             pg.ImageItem.setImage(self, img, **kargs)
             return
 
-        if img.ndim == 3 and img.shape[-1] > 4:
-            pg.ImageItem.setImage(self, img[z], **kargs)
+        if img.ndim == 3 and img.shape[-1] > 4 and z is not None:
+            pg.ImageItem.setImage(self, img[z], autolevels=autolevels, **kargs)
         else:
-            pg.ImageItem.setImage(self, img, **kargs)
+            pg.ImageItem.setImage(self, img, autolevels=autolevels, **kargs)
 
 if __name__ == '__main__':
     class Window(QMainWindow):

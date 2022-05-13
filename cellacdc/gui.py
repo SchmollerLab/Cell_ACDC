@@ -1536,6 +1536,31 @@ class guiWin(QMainWindow):
         self.checkableButtons.append(self.fillHolesToolButton)
         self.checkableQButtonsGroup.addButton(self.fillHolesToolButton)
 
+        self.moveLabelToolButton = QToolButton(self)
+        self.moveLabelToolButton.setIcon(QIcon(":moveLabel.svg"))
+        self.moveLabelToolButton.setCheckable(True)
+        self.moveLabelToolButton.setShortcut('p')
+        self.moveLabelToolButton.setToolTip(
+            'Toggle "Move label (a.k.a. mask)" ON/OFF\n\n'
+            'ACTION: right-click drag and drop a labels to move it around\n\n'
+            'SHORTCUT: "P" key')
+        editToolBar.addWidget(self.moveLabelToolButton)
+        self.checkableButtons.append(self.moveLabelToolButton)
+        self.checkableQButtonsGroup.addButton(self.moveLabelToolButton)
+
+        self.expandLabelToolButton = QToolButton(self)
+        self.expandLabelToolButton.setIcon(QIcon(":expandLabel.svg"))
+        self.expandLabelToolButton.setCheckable(True)
+        self.expandLabelToolButton.setShortcut('e')
+        self.expandLabelToolButton.setToolTip(
+            'Toggle "Expand/Shrink label (a.k.a. masks)" ON/OFF\n\n'
+            'ACTION: leave mouse cursor on the label you want to expand/shrink'
+            'and press "+" or "-" on the keyboard to expand or shrink the mask.\n\n'
+            'SHORTCUT: "E" key')
+        editToolBar.addWidget(self.expandLabelToolButton)
+        self.checkableButtons.append(self.expandLabelToolButton)
+        self.checkableQButtonsGroup.addButton(self.expandLabelToolButton)
+
         self.editID_Button = QToolButton(self)
         self.editID_Button.setIcon(QIcon(":edit-id.svg"))
         self.editID_Button.setCheckable(True)
@@ -3245,6 +3270,38 @@ class guiWin(QMainWindow):
                 if not self.hullContToolButton.findChild(QAction).isChecked():
                     self.hullContToolButton.setChecked(False)
 
+        # Move label
+        elif right_click and self.moveLabelToolButton.isChecked():
+            # Store undo state before modifying stuff
+            self.storeUndoRedoStates(False)
+
+            x, y = event.pos().x(), event.pos().y()
+            self.imgRGB = self.img1.image
+            self.startMovingLabel(x, y)
+
+        # Fill holes
+        elif right_click and self.fillHolesToolButton.isChecked():
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(x), int(y)
+            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
+            if ID == 0:
+                nearest_ID = self.nearest_nonzero(
+                    self.get_2Dlab(posData.lab), y, x
+                )
+                clickedBkgrID = apps.QLineEditDialog(
+                    title='Clicked on background',
+                    msg='You clicked on the background.\n'
+                         'Enter here the ID that you want to '
+                         'fill the holes of',
+                    parent=self, allowedValues=posData.IDs,
+                    defaultTxt=str(nearest_ID)
+                )
+                clickedBkgrID.exec_()
+                if clickedBkgrID.cancel:
+                    return
+                else:
+                    ID = clickedBkgrID.EntryID
+
         # Merge IDs
         elif right_click and self.mergeIDsButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
@@ -3563,6 +3620,70 @@ class guiWin(QMainWindow):
             if not self.ripCellButton.findChild(QAction).isChecked():
                 self.ripCellButton.setChecked(False)
 
+    def startMovingLabel(self, xPos, yPos):
+        posData = self.data[self.pos_i]
+        xdata, ydata = int(xPos), int(yPos)
+        lab_2D = self.get_2Dlab(posData.lab)
+        ID = lab_2D[ydata, xdata]
+        if ID == 0:
+            self.isMovingLabel = False
+            return
+
+        posData = self.data[self.pos_i]
+        self.isMovingLabel = True
+        self.movingID = ID
+        self.prevMovePos = (xdata, ydata)
+        self.movingIDColor = posData.lut[ID]/255
+        movingObj = posData.rp[posData.IDs.index(ID)]
+        self.movingObjCoords = movingObj.coords.copy()
+
+    def dragLabel(self, xPos, yPos):
+        posData = self.data[self.pos_i]
+        lab_2D = self.get_2Dlab(posData.lab)
+        Y, X = lab_2D.shape
+        xdata, ydata = int(xPos), int(yPos)
+        if xdata<0 or ydata<0 or xdata>=X or ydata>=Y:
+            return
+
+        xStart, yStart = self.prevMovePos
+        deltaX = xdata-xStart
+        deltaY = ydata-yStart
+
+        yy, xx = self.movingObjCoords[:,-2], self.movingObjCoords[:,-1]
+        if self.isSegm3D:
+            zz = self.movingObjCoords[:,0]
+            posData.lab[zz, yy, xx] = 0
+            prevCoords = (zz.copy(), yy.copy(), xx.copy())
+        else:
+            posData.lab[yy, xx] = 0
+            prevCoords = (None, yy.copy(), xx.copy())
+        self.currentLab2D[yy, xx] = 0
+
+        self.movingObjCoords[:,-2] = self.movingObjCoords[:,-2]+deltaY
+        self.movingObjCoords[:,-1] = self.movingObjCoords[:,-1]+deltaX
+
+        yy, xx = self.movingObjCoords[:,-2], self.movingObjCoords[:,-1]
+
+        yy[yy<0] = 0
+        xx[xx<0] = 0
+        yy[yy>=Y] = Y-1
+        xx[xx>=X] = X-1
+
+        if self.isSegm3D:
+            zz = self.movingObjCoords[:,0]
+            posData.lab[zz, yy, xx] = self.movingID
+            newCoords = (zz.copy(), yy.copy(), xx.copy())
+        else:
+            posData.lab[yy, xx] = self.movingID
+            newCoords = (None, yy.copy(), xx.copy())
+
+        if not self.labelsGrad.hideLabelsImgAction.isChecked():
+            self.img2.setImage(self.currentLab2D)
+
+        self.setTempImg1MoveLabel(prevCoords)
+
+        self.prevMovePos = (xdata, ydata)
+
     @myutils.exception_handler
     def gui_mouseDragEventImg1(self, event):
         posData = self.data[self.pos_i]
@@ -3656,6 +3777,11 @@ class guiWin(QMainWindow):
 
             how = self.drawIDsContComboBox.currentText()
             self.setTempImg1Eraser(mask)
+
+        # Move label dragging mouse --> keep moving
+        elif self.isMovingLabel and self.moveLabelToolButton.isChecked():
+            x, y = event.pos().x(), event.pos().y()
+            self.dragLabel(x, y)
 
         # Wand dragging mouse --> keep doing the magic
         elif self.isMouseDragImg1 and self.wandToolButton.isChecked():
@@ -4225,7 +4351,7 @@ class guiWin(QMainWindow):
 
             # Update data (rp, etc)
             self.update_rp()
-            self.updateALLimg()
+            self.updateALLimg(useStoredGaussFiltered=True)
             # Keep overlaid masks when using eraser (if not contours mode)
             self.setTempImg1Eraser(None, init=True)
 
@@ -4245,7 +4371,7 @@ class guiWin(QMainWindow):
             self.tracking(enforce=True, assign_unique_new_IDs=False)
 
             # Update colors to include a new color for the new ID
-            self.updateALLimg()
+            self.updateALLimg(useStoredGaussFiltered=True)
             if self.isNewID:
                 self.warnEditingWithCca_df('Add new ID with brush tool')
             self.isNewID = False
@@ -4263,9 +4389,23 @@ class guiWin(QMainWindow):
             # Repeat tracking
             self.tracking(enforce=True, assign_unique_new_IDs=False)
 
-            # Update colors to include a new color for the new ID
             self.updateALLimg()
             self.warnEditingWithCca_df('Add new ID with magic-wand')
+
+        # Wand tool release, add new object
+        elif self.isMovingLabel and self.moveLabelToolButton.isChecked():
+            self.isMovingLabel = False
+
+            # Update data (rp, etc)
+            self.update_rp()
+
+            # Repeat tracking
+            self.tracking(enforce=True, assign_unique_new_IDs=False)
+
+            self.updateALLimg(useStoredGaussFiltered=True)
+
+            if not self.moveLabelToolButton.findChild(QAction).isChecked():
+                self.moveLabelToolButton.setChecked(False)
 
         # Assign mother to bud
         elif self.assignBudMothButton.isChecked() and self.clickedOnBud:
@@ -4426,7 +4566,6 @@ class guiWin(QMainWindow):
             b.isChecked() for b in self.customAnnotDict.keys()
         ])
 
-        # canAnnotateDivision True if any right-click action is ON
         canAnnotateDivision = (
              not self.assignBudMothButton.isChecked()
              and not self.setIsHistoryKnownButton.isChecked()
@@ -4462,6 +4601,7 @@ class guiWin(QMainWindow):
             event.ignore()
             return
 
+        # Left click actions
         canCurv = (
             curvToolON and not self.assignBudMothButton.isChecked()
             and not brushON and not dragImgLeft and not eraserON)
@@ -6346,7 +6486,9 @@ class guiWin(QMainWindow):
         else:
             img = filteredData
         img = self.getImageWithCmap(img=img)
-        self.updateALLimg(image=img, updateFilters=False)
+        self.updateALLimg(
+            image=img, updateFilters=False, updateDiffGaussFilter=False
+        )
 
     def edgeDetection(self, checked):
         if checked:
@@ -7293,6 +7435,8 @@ class guiWin(QMainWindow):
                 posData = self.data[self.pos_i]
                 print(list(posData.loadedFluoChannels))
                 print([ch for ch in self.ch_names if ch != self.user_ch_name])
+                print(self.img1uintRGB.max())
+                print(self.img1uintRGB.shape)
                 # print(posData.manualContrastKey)
                 # acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
                 # print(acdc_df.columns)
@@ -9570,6 +9714,7 @@ class guiWin(QMainWindow):
         self.data_loaded = True
         self.isMouseDragImg2 = False
         self.isMouseDragImg1 = False
+        self.isMovingLabel = False
         self.isRightClickDragImg1 = False
 
         self.cca_df_colnames = list(base_cca_df.keys())
@@ -12028,11 +12173,52 @@ class guiWin(QMainWindow):
                 cont = self.getObjContours(obj)
                 curveID.setData(
                     cont[:,0], cont[:,1], pen=self.oldIDs_cpen
-            )
-        else:
+                )
+        elif how.find('overlay segm. masks') != -1:
             if mask is not None:
                 self.imgRGB[mask] = self.img1uintRGB[mask]
             self.img1.setImage(self.imgRGB)
+
+    def setTempImg1MoveLabel(self, prevCoords):
+        how = self.drawIDsContComboBox.currentText()
+        if how.find('contours') != -1:
+            contCurveID = self.ax1_ContoursCurves[self.movingID-1]
+            contCurveID.setData([], [])
+            currentLab2Drp = skimage.measure.regionprops(self.currentLab2D)
+            for obj in currentLab2Drp:
+                if obj.label == self.movingID:
+                    cont = self.getObjContours(obj)
+                    contCurveID.setData(
+                        cont[:,0], cont[:,1], pen=self.oldIDs_cpen
+                    )
+                    break
+        elif how.find('overlay segm. masks') != -1:
+            # Remove previous overlaid mask
+            prevCoords = prevCoords[-2:]
+            self.imgRGB[prevCoords] = self.img1uintRGB[prevCoords]
+
+            # Get coords of current 2D object
+            currentLab2Drp = skimage.measure.regionprops(self.currentLab2D)
+            movingObj = None
+            for obj in currentLab2Drp:
+                if obj.label == self.movingID:
+                    movingObj = obj
+                    break
+
+            if movingObj is None:
+                return
+
+            # Overlay new moved mask
+            newCoords = movingObj.coords
+            imgRGB_float = self.imgRGB/255
+            alpha = self.imgGrad.labelsAlphaSlider.value()
+            color = self.movingIDColor
+            newCoords = (newCoords[:,0], newCoords[:,1])
+            overlay = imgRGB_float[newCoords]*(1.0-alpha) + color*alpha
+            imgRGB_float[newCoords] = overlay
+            self.imgRGB = (np.clip(imgRGB_float, 0, 1)*255).astype(np.uint8)
+            self.img1.setImage(self.imgRGB)
+
 
     def update_cca_df_relabelling(self, posData, oldIDs, newIDs):
         relIDs = posData.cca_df['relative_ID']
@@ -12457,7 +12643,7 @@ class guiWin(QMainWindow):
             updateSharp=False, updateEntropy=False,
             updateHistoLevels=False, updateFilters=True,
             updateLabelItemColor=False, debug=False,
-            overlayMasks=True, updateDiffGaussFilter=False,
+            overlayMasks=True, updateDiffGaussFilter=True,
             useStoredGaussFiltered=False
         ):
         posData = self.data[self.pos_i]
