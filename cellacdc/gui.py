@@ -10884,14 +10884,9 @@ class guiWin(QMainWindow):
         ID = obj.label
         df = posData.cca_df
         txt = f'{ID}' if self.isObjVisible(obj.bbox) else ''
-        if ID in posData.new_IDs:
-            color = self.ax2_textColor
-            bold = True
-        else:
-            r, g, b = self.ax2_textColor
-            color = (r, g, b, 255*0.5)
-            bold = False
-
+        color = self.ax2_textColor
+        bold = ID in posData.new_IDs
+        
         LabelItemID.setText(txt, color=color, bold=bold, size=self.fontSize)
 
         # Center LabelItem at centroid
@@ -10933,11 +10928,11 @@ class guiWin(QMainWindow):
         )
         if draw_LIs:
             # Draw LabelItems for IDs on ax2
-            t0 = time.time()
+            # t0 = time.time()
             self.ax1_setTextID(obj, how, updateColor=updateColor)
 
-        t1 = time.time()
-        self.drawingLabelsTimes.append(t1-t0)
+        # t1 = time.time()
+        # self.drawingLabelsTimes.append(t1-t0)
 
         # Draw line connecting mother and buds
         drawLines = (
@@ -10977,22 +10972,22 @@ class guiWin(QMainWindow):
                 curveID.setData([], [])
             else:
                 ID = obj.label
-                t0 = time.time()
+                # t0 = time.time()
                 cont = self.getObjContours(obj)
-                t1 = time.time()
-                computingContoursTime = t1-t0
-                self.computingContoursTimes.append(computingContoursTime)
+                # t1 = time.time()
+                # computingContoursTime = t1-t0
+                # self.computingContoursTimes.append(computingContoursTime)
 
-                t0 = time.time()
+                # t0 = time.time()
                 curveID = self.ax1_ContoursCurves[idx]
                 pen = (
                     self.newIDs_cpen if ID in posData.new_IDs
                     else self.oldIDs_cpen
                 )
                 curveID.setData(cont[:,0], cont[:,1], pen=pen)
-                t1 = time.time()
-                drawingContoursTimes = t1-t0
-                self.drawingContoursTimes.append(drawingContoursTimes)
+                # t1 = time.time()
+                # drawingContoursTimes = t1-t0
+                # self.drawingContoursTimes.append(drawingContoursTimes)
 
 
     def update_rp(self, draw=True, debug=False):
