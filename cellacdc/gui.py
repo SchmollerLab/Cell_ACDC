@@ -3859,9 +3859,14 @@ class guiWin(QMainWindow):
         area_um2 = obj.area*yx_pxl_to_um2
         propsQGBox.cellAreaUm2DSB.setValue(area_um2)
 
-        vol_vox, vol_fl = _calc_rot_vol(
-            obj, PhysicalSizeY, PhysicalSizeX
-        )
+        if self.isSegm3D:
+            PhysicalSizeZ = posData.PhysicalSizeZ
+            vol_vox = obj.area
+            vol_fl = vol_vox*PhysicalSizeZ*PhysicalSizeY*PhysicalSizeX
+        else:
+            vol_vox, vol_fl = _calc_rot_vol(
+                obj, PhysicalSizeY, PhysicalSizeX
+            )
         propsQGBox.cellVolVoxSB.setValue(vol_vox)
         propsQGBox.cellVolFlDSB.setValue(vol_fl)
 
@@ -3911,6 +3916,11 @@ class guiWin(QMainWindow):
         if setWandCursor and self.app.overrideCursor() is None:
             self.app.setOverrideCursor(self.wandCursor)
 
+        setMoveLabelCursor = (
+            self.moveLabelToolButton.isChecked() and not event.isExit()
+            and noModifier
+        )
+
         setCurvCursor = (
             self.curvToolButton.isChecked() and not event.isExit()
             and noModifier
@@ -3951,7 +3961,7 @@ class guiWin(QMainWindow):
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                 val = _img[ydata, xdata]
                 maxVal = numba_max(_img)
-                ID = self.get_2Dlab(posData.lab)[ydata, xdata]
+                ID = self.currentLab2D[ydata, xdata]
                 self.updatePropsWidget(ID)
                 if posData.IDs:
                     maxID = max(posData.IDs)
@@ -3982,6 +3992,10 @@ class guiWin(QMainWindow):
                 self.clickedOnBud = False
                 self.BudMothTempLine.setData([], [])
                 self.wcLabel.setText(f'')
+
+        if setMoveLabelCursor:
+            x, y = event.pos()
+            self.updateMoveLabelCursor(x, y)
 
         # Draw eraser circle
         if setEraserCursor:
@@ -4083,6 +4097,11 @@ class guiWin(QMainWindow):
         if setBrushCursor or setEraserCursor:
             self.app.setOverrideCursor(Qt.CrossCursor)
 
+        setMoveLabelCursor = (
+            self.moveLabelToolButton.isChecked() and not event.isExit()
+            and noModifier
+        )
+
         # Cursor is moving on image while Alt key is pressed --> pan cursor
         alt = QGuiApplication.keyboardModifiers() == Qt.AltModifier
         setPanImageCursor = alt and not event.isExit()
@@ -4118,6 +4137,10 @@ class guiWin(QMainWindow):
                 if self.eraserButton.isChecked() or self.brushButton.isChecked():
                     self.gui_mouseReleaseEventImg2(event)
                 self.wcLabel.setText(f'')
+
+        if setMoveLabelCursor:
+            x, y = event.pos()
+            self.updateMoveLabelCursor(x, y)
 
         # Draw eraser circle
         if setEraserCursor:
@@ -4228,6 +4251,11 @@ class guiWin(QMainWindow):
 
             self.setImageImg2()
 
+        # Move label dragging mouse --> keep moving
+        elif self.isMovingLabel and self.moveLabelToolButton.isChecked():
+            x, y = event.pos().x(), event.pos().y()
+            self.dragLabel(x, y)
+
     @myutils.exception_handler
     def gui_mouseReleaseEventImg2(self, event):
         posData = self.data[self.pos_i]
@@ -4268,6 +4296,21 @@ class guiWin(QMainWindow):
             self.updateALLimg(updateFilters=True)
             if posData.isNewID:
                 self.warnEditingWithCca_df('Add new ID with brush tool')
+
+        # Move label mouse released, update move
+        elif self.isMovingLabel and self.moveLabelToolButton.isChecked():
+            self.isMovingLabel = False
+
+            # Update data (rp, etc)
+            self.update_rp()
+
+            # Repeat tracking
+            self.tracking(enforce=True, assign_unique_new_IDs=False)
+
+            self.updateALLimg(useStoredGaussFiltered=True)
+
+            if not self.moveLabelToolButton.findChild(QAction).isChecked():
+                self.moveLabelToolButton.setChecked(False)
 
         # Merge IDs
         elif self.mergeIDsButton.isChecked():
@@ -4392,7 +4435,7 @@ class guiWin(QMainWindow):
             self.updateALLimg()
             self.warnEditingWithCca_df('Add new ID with magic-wand')
 
-        # Wand tool release, add new object
+        # Move label mouse released, update move
         elif self.isMovingLabel and self.moveLabelToolButton.isChecked():
             self.isMovingLabel = False
 
@@ -7369,6 +7412,26 @@ class guiWin(QMainWindow):
             self.clearCurvItems()
             while self.app.overrideCursor() is not None:
                 self.app.restoreOverrideCursor()
+
+    def updateMoveLabelCursor(self, x, y):
+        if x is None:
+            return
+
+        xdata, ydata = int(x), int(y)
+        Y, X = self.currentLab2D.shape
+        if not (xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y):
+            return
+
+        ID = self.currentLab2D[ydata, xdata]
+        if ID == 0:
+            if self.highlightedID != 0:
+                self.updateALLimg()
+                self.highlightedID = 0
+            return
+
+        if self.app.overrideCursor() != Qt.SizeAllCursor:
+            self.app.setOverrideCursor(Qt.SizeAllCursor)
+        self.highlightSearchedID(ID)
 
     def updateEraserCursor(self, x, y):
         if x is None:
@@ -12189,7 +12252,7 @@ class guiWin(QMainWindow):
                 if obj.label == self.movingID:
                     cont = self.getObjContours(obj)
                     contCurveID.setData(
-                        cont[:,0], cont[:,1], pen=self.oldIDs_cpen
+                        cont[:,0], cont[:,1], pen=self.newIDs_cpen
                     )
                     break
         elif how.find('overlay segm. masks') != -1:
@@ -12211,7 +12274,7 @@ class guiWin(QMainWindow):
             # Overlay new moved mask
             newCoords = movingObj.coords
             imgRGB_float = self.imgRGB/255
-            alpha = self.imgGrad.labelsAlphaSlider.value()
+            alpha = 0.7 # self.imgGrad.labelsAlphaSlider.value()
             color = self.movingIDColor
             newCoords = (newCoords[:,0], newCoords[:,1])
             overlay = imgRGB_float[newCoords]*(1.0-alpha) + color*alpha
@@ -12512,6 +12575,9 @@ class guiWin(QMainWindow):
         if ID == 0:
             return
 
+        if ID == self.highlightedID:
+            return
+
         contours = zip(
             self.ax1_ContoursCurves,
             self.ax2_ContoursCurves
@@ -12525,7 +12591,6 @@ class guiWin(QMainWindow):
                 ax2ContCurve.setData([], [])
 
         posData = self.data[self.pos_i]
-
         self.highlightedID = ID
 
         how = self.drawIDsContComboBox.currentText()
@@ -12578,6 +12643,7 @@ class guiWin(QMainWindow):
         if draw_LIs:
             for _obj in posData.rp:
                 self.ax1_setTextID(_obj, how, debug=False)
+                self.ax2_setTextID(_obj)
 
         # Label ID
         LabelItemID = self.ax1_LabelItemsIDs[ID-1]
