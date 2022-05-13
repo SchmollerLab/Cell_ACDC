@@ -12,7 +12,7 @@ import time
 import subprocess
 from math import pow
 from functools import wraps, partial
-from collections import namedtuple
+from collections import namedtuple, Counter
 from collections.abc import Callable, Sequence
 from tqdm import tqdm
 import requests
@@ -72,6 +72,17 @@ def exception_handler(func):
             self.is_error_state = True
         return result
     return inner_function
+
+def filterCommonStart(images_path):
+    startNameLen = 6
+    ls = listdir(images_path)
+    if not ls:
+        return []
+    allFilesStartNames = [f[:startNameLen] for f in ls]
+    mostCommonStart = Counter(allFilesStartNames).most_common(1)[0][0]
+    commonStartFilenames = [f for f in ls if f.startswith(mostCommonStart)]
+    return commonStartFilenames
+
 
 def getCustomAnnotTooltip(annotState):
     toolTip = (

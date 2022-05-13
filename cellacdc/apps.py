@@ -759,6 +759,8 @@ class filenameDialog(QDialog):
         super().__init__(parent)
 
         self.basename = basename
+        if ext.find('.') == -1:
+            ext = f'.{ext}'
         self.ext = ext
         self.newSegmFilename = None
 
