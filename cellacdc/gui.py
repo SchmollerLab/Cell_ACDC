@@ -10886,7 +10886,7 @@ class guiWin(QMainWindow):
         txt = f'{ID}' if self.isObjVisible(obj.bbox) else ''
         color = self.ax2_textColor
         bold = ID in posData.new_IDs
-        
+
         LabelItemID.setText(txt, color=color, bold=bold, size=self.fontSize)
 
         # Center LabelItem at centroid
@@ -11939,9 +11939,11 @@ class guiWin(QMainWindow):
             img = np.median(imgData, axis=0).copy()
         return img
 
-    def updateZsliceScrollbar(self, z):
+    def updateZsliceScrollbar(self, frame_i):
         posData = self.data[self.pos_i]
-        zProjHow = self.zProjComboBox.currentText()
+        idx = (posData.filename, frame_i)
+        z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
+        zProjHow = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
         if zProjHow != 'single z-slice':
             return
         reconnect = False
@@ -11968,11 +11970,8 @@ class guiWin(QMainWindow):
         if frame_i is None:
             frame_i = posData.frame_i
         if posData.SizeZ > 1:
-            idx = (posData.filename, frame_i)
-            z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
-            zProjHow = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
             img = posData.img_data[frame_i]
-            self.updateZsliceScrollbar(z)
+            self.updateZsliceScrollbar(frame_i)
             cells_img = self.get_2Dimg_from_3D(img)
         else:
             cells_img = posData.img_data[frame_i].copy()
@@ -12483,6 +12482,7 @@ class guiWin(QMainWindow):
                     img = self.get_2Dimg_from_3D(filteredData)
                 else:
                     img = filteredData
+                self.updateZsliceScrollbar(posData.frame_i)
                 img = self.getImageWithCmap(img=img)
         else:
             img = image
