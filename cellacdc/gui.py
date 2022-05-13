@@ -12462,8 +12462,16 @@ class guiWin(QMainWindow):
         ):
         posData = self.data[self.pos_i]
 
+        if self.diffGaussFilterWin is None:
+            _updateDiffGaussFilter = False
+        elif updateDiffGaussFilter:
+            isPreview = self.diffGaussFilterWin.previewCheckBox.isChecked()
+            _updateDiffGaussFilter = isPreview
+        else:
+            _updateDiffGaussFilter = False
+
         if image is None:
-            if not updateDiffGaussFilter or self.diffGaussFilterWin is None:
+            if not _updateDiffGaussFilter:
                 if self.overlayButton.isChecked():
                     img = self.getOverlayImg(setImg=False)
                 else:

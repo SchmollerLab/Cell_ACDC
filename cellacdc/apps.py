@@ -3319,18 +3319,18 @@ class diffGaussFilterDialog(QDialog):
             self.firstSigmaSliderZ.hide()
             self.secondSigmaSliderZ.hide()
 
+        self.previewCheckBox = QCheckBox('Preview filter')
+        self.previewCheckBox.setChecked(True)
+
         cancelButton = widgets.cancelPushButton('Cancel')
-        applyButton = widgets.okPushButton('Apply filter')
-        removeButton = widgets.noPushButton('Remove filter')
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
-        buttonsLayout.addSpacing(20)
-        buttonsLayout.addWidget(removeButton)
-        buttonsLayout.addWidget(applyButton)
 
         mainLayout.addWidget(firstGroupbox)
         mainLayout.addSpacing(20)
         mainLayout.addWidget(secondGroupbox)
+        mainLayout.addSpacing(20)
+        mainLayout.addWidget(self.previewCheckBox)
         mainLayout.addSpacing(10)
         mainLayout.addLayout(buttonsLayout)
         mainLayout.addStretch(1)
@@ -3343,16 +3343,19 @@ class diffGaussFilterDialog(QDialog):
         if not is3D:
             self.firstSigmaSliderZ.sigValueChange.connect(self.valueChanged)
             self.secondSigmaSliderZ.sigValueChange.connect(self.valueChanged)
+
         cancelButton.clicked.connect(self.close)
-        applyButton.clicked.connect(self.valueChanged)
-        removeButton.clicked.connect(self.removeClicked)
+        self.previewCheckBox.toggled.connect(self.previewToggled)
 
     def keyPressEvent(self, event):
         # Avoid closing on enter or return
         pass
 
-    def removeClicked(self):
-        self.sigRemoveFilterClicked.emit()
+    def previewToggled(self, checked):
+        if checked:
+            self.valueChanged()
+        else:
+            self.sigRemoveFilterClicked.emit()
 
     def initSpotmaxValues(self, posData):
         self.firstSigmaSliderYX.setValue(0)
@@ -3377,6 +3380,7 @@ class diffGaussFilterDialog(QDialog):
             channel = self.channelsComboBox.currentText()
         else:
             channel = ''
+        self.filterApplied = True
         self.sigValueChanged.emit(sigmas, channel)
 
     def getSigmas(self):
