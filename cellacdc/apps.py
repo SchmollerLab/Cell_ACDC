@@ -3325,6 +3325,7 @@ class diffGaussFilterDialog(QDialog):
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(removeButton)
         buttonsLayout.addWidget(applyButton)
 
         mainLayout.addWidget(firstGroupbox)
