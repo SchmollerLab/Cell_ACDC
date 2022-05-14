@@ -1557,9 +1557,10 @@ class guiWin(QMainWindow):
             'ACTION: leave mouse cursor on the label you want to expand/shrink'
             'and press "+" or "-" on the keyboard to expand or shrink the mask.\n\n'
             'SHORTCUT: "E" key')
-        editToolBar.addWidget(self.expandLabelToolButton)
-        self.checkableButtons.append(self.expandLabelToolButton)
-        self.checkableQButtonsGroup.addButton(self.expandLabelToolButton)
+        # editToolBar.addWidget(self.expandLabelToolButton)
+        self.expandLabelToolButton.hide()
+        # self.checkableButtons.append(self.expandLabelToolButton)
+        # self.checkableQButtonsGroup.addButton(self.expandLabelToolButton)
 
         self.editID_Button = QToolButton(self)
         self.editID_Button.setIcon(QIcon(":edit-id.svg"))
