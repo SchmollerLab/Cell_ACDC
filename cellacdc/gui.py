@@ -3277,7 +3277,7 @@ class guiWin(QMainWindow):
             self.storeUndoRedoStates(False)
 
             x, y = event.pos().x(), event.pos().y()
-            self.imgRGB = self.img1.image
+            self.imgRGB = self.img1.image.copy()
             self.startMovingLabel(x, y)
 
         # Fill holes
@@ -4279,7 +4279,7 @@ class guiWin(QMainWindow):
 
             # Update data (rp, etc)
             self.update_rp()
-            self.updateALLimg(updateFilters=True)
+            self.updateALLimg(updateFilters=True, useEraserImg=True)
 
             for ID in erasedIDs:
                 if ID not in posData.lab:
@@ -4395,9 +4395,7 @@ class guiWin(QMainWindow):
 
             # Update data (rp, etc)
             self.update_rp()
-            self.updateALLimg(useStoredGaussFiltered=True)
-            # Keep overlaid masks when using eraser (if not contours mode)
-            self.setTempImg1Eraser(None, init=True)
+            self.updateALLimg(useStoredGaussFiltered=True, useEraserImg=True)
 
             for ID in erasedIDs:
                 if ID not in posData.IDs:
@@ -12403,6 +12401,8 @@ class guiWin(QMainWindow):
             self.get_data()
             self.remove_future_cca_df(posData.frame_i)
             self.next_frame()
+        else:
+            self.store_data()
         if action is not None:
             if action.removeAnnot:
                 self.store_data()
@@ -12711,7 +12711,7 @@ class guiWin(QMainWindow):
             updateHistoLevels=False, updateFilters=True,
             updateLabelItemColor=False, debug=False,
             overlayMasks=True, updateDiffGaussFilter=True,
-            useStoredGaussFiltered=False
+            useStoredGaussFiltered=False, useEraserImg=False
         ):
         posData = self.data[self.pos_i]
 
@@ -12799,7 +12799,7 @@ class guiWin(QMainWindow):
 
         self.doCustomAnnotation(0)
 
-        if self.eraserButton.isChecked():
+        if self.eraserButton.isChecked() and useEraserImg:
             self.setTempImg1Eraser(None, init=self.isSegm3D)
 
     def startBlinkingModeCB(self):
