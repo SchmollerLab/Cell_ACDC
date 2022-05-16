@@ -3645,6 +3645,8 @@ class guiWin(QMainWindow):
             or dilation != self.isDilation
         )
 
+        ID = self.hoverLabelID
+
         if reinitExpandingLab:
             # hoverLabelID different from previously expanded ID --> reinit
             self.isExpandingLabel = True
@@ -4157,6 +4159,11 @@ class guiWin(QMainWindow):
 
         setMoveLabelCursor = (
             self.moveLabelToolButton.isChecked() and not event.isExit()
+            and noModifier
+        )
+
+        setExpandLabelCursor = (
+            self.expandLabelToolButton.isChecked() and not event.isExit()
             and noModifier
         )
 
