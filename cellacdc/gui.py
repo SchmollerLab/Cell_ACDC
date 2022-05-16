@@ -1765,6 +1765,43 @@ class guiWin(QMainWindow):
         self.wandControlsToolbar.setVisible(False)
 
     def gui_populateToolSettingsMenu(self):
+        brushHoverModeActionGroup = QActionGroup(self)
+        brushHoverModeActionGroup.setExclusionPolicy(
+            QActionGroup.ExclusionPolicy.Exclusive
+        )
+        self.brushHoverCenterModeAction = QAction()
+        self.brushHoverCenterModeAction.setCheckable(True)
+        self.brushHoverCenterModeAction.setText(
+            'Use center of the brush/eraser cursor to determine hover ID'
+        )
+        self.brushHoverCircleModeAction = QAction()
+        self.brushHoverCircleModeAction.setCheckable(True)
+        self.brushHoverCircleModeAction.setText(
+            'Use the entire circle of the brush/eraser cursor to determine hover ID'
+        )
+        brushHoverModeActionGroup.addAction(self.brushHoverCenterModeAction)
+        brushHoverModeActionGroup.addAction(self.brushHoverCircleModeAction)
+        brushHoverModeMenu = self.settingsMenu.addMenu(
+            'Brush/eraser cursor hovering mode'
+        )
+        brushHoverModeMenu.addAction(self.brushHoverCenterModeAction)
+        brushHoverModeMenu.addAction(self.brushHoverCircleModeAction)
+
+        if 'useCenterBrushCursorHoverID' not in self.df_settings.index:
+            self.df_settings.at['useCenterBrushCursorHoverID', 'value'] = 'Yes'
+
+        useCenterBrushCursorHoverID = self.df_settings.at[
+            'useCenterBrushCursorHoverID', 'value'
+        ] == 'Yes'
+        self.brushHoverCenterModeAction.setChecked(useCenterBrushCursorHoverID)
+        self.brushHoverCircleModeAction.setChecked(not useCenterBrushCursorHoverID)
+
+        self.brushHoverCenterModeAction.toggled.connect(
+            self.useCenterBrushCursorHoverIDtoggled
+        )
+
+        self.settingsMenu.addSeparator()
+
         for button in self.checkableQButtonsGroup.buttons():
             toolName = re.findall('Toggle "(.*)"', button.toolTip())[0]
             menu = self.settingsMenu.addMenu(f'{toolName} tool')
@@ -2981,7 +3018,7 @@ class guiWin(QMainWindow):
             # Keep a global mask to compute which IDs got erased
             self.erasedIDs = []
             lab_2D = self.get_2Dlab(posData.lab)
-            self.erasedID = lab_2D[ydata, xdata]
+            self.erasedID = self.getHoverID(xdata, ydata)
 
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
@@ -4825,7 +4862,7 @@ class guiWin(QMainWindow):
             # Keep a list of erased IDs got erased
             self.erasedIDs = []
             lab_2D = self.get_2Dlab(posData.lab)
-            self.erasedID = lab_2D[ydata, xdata]
+            self.erasedID = self.getHoverID(xdata, ydata)
 
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
@@ -5437,6 +5474,7 @@ class guiWin(QMainWindow):
         ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
         posData = self.data[self.pos_i]
         lab_2D = self.get_2Dlab(posData.lab)
+        ID = lab_2D[ydata, xdata]
         if self.isSegm3D:
             z = self.z_lab()
             SizeZ = posData.lab.shape[0]
@@ -5446,17 +5484,32 @@ class guiWin(QMainWindow):
                 self.brushButton.isChecked() and shift
             )
             if z == 0 or z == SizeZ-1 or doNotLinkThroughZ:
-                masked_lab = lab_2D[ymin:ymax, xmin:xmax][diskMask]
-                hoverID = np.max(masked_lab)
+                if self.brushHoverCenterModeAction.isChecked() or ID>0:
+                    hoverID = ID
+                else:
+                    masked_lab = lab_2D[ymin:ymax, xmin:xmax][diskMask]
+                    hoverID = np.bincount(masked_lab).argmax()
             else:
-                masked_lab_a = posData.lab[z-1, ymin:ymax, xmin:xmax][diskMask]
-                hoverIDa = np.max(masked_lab_a)
+                ID_z_under = posData.lab[z-1, ydata, xdata]
+                if self.brushHoverCenterModeAction.isChecked() or ID_z_under>0:
+                    hoverIDa = ID_z_under
+                else:
+                    masked_lab_a = posData.lab[z-1, ymin:ymax, xmin:xmax][diskMask]
+                    hoverIDa = np.bincount(masked_lab_a).argmax()
 
-                masked_lab_b = lab_2D[ymin:ymax, xmin:xmax][diskMask]
-                hoverIDb = np.max(masked_lab_b)
+                if self.brushHoverCenterModeAction.isChecked() or ID>0:
+                    hoverIDb = lab_2D[ydata, xdata]
+                else:
+                    masked_lab_b = lab_2D[ymin:ymax, xmin:xmax][diskMask]
+                    hoverIDb = np.bincount(masked_lab_b).argmax()
 
-                masked_lab_c = posData.lab[z+1, ymin:ymax, xmin:xmax][diskMask]
-                hoverIDc = np.max(masked_lab_c)
+                ID_z_above = posData.lab[z+1, ydata, xdata]
+                if self.brushHoverCenterModeAction.isChecked() or ID_z_above>0:
+                    hoverIDc = ID_z_above
+                else:
+                    masked_lab_c = posData.lab[z+1, ymin:ymax, xmin:xmax][diskMask]
+                    hoverIDc = np.bincount(masked_lab_c).argmax()
+
                 if hoverIDa > 0:
                     hoverID = hoverIDa
                 elif hoverIDb > 0:
@@ -5466,8 +5519,11 @@ class guiWin(QMainWindow):
                 else:
                     hoverID = 0
         else:
-            masked_lab = lab_2D[ymin:ymax, xmin:xmax][diskMask]
-            hoverID = np.max(masked_lab)
+            if self.brushHoverCenterModeAction.isChecked() or ID>0:
+                hoverID = ID
+            else:
+                masked_lab = lab_2D[ymin:ymax, xmin:xmax][diskMask]
+                hoverID = np.bincount(masked_lab).argmax()
 
         return hoverID
 
@@ -12069,6 +12125,13 @@ class guiWin(QMainWindow):
 
         posData.lut = np.insert(posData.lut, 0, [r, g, b], axis=0)
 
+    def useCenterBrushCursorHoverIDtoggled(self, checked):
+        if checked:
+            self.df_settings.at['useCenterBrushCursorHoverID', 'value'] = 'Yes'
+        else:
+            self.df_settings.at['useCenterBrushCursorHoverID', 'value'] = 'No'
+        self.df_settings.to_csv(self.settings_csv_path)
+
     def shuffle_cmap(self):
         posData = self.data[self.pos_i]
         np.random.shuffle(posData.lut[1:])
@@ -12285,7 +12348,8 @@ class guiWin(QMainWindow):
         if updateLookuptable:
             self.updateLookuptable(delIDs=allDelIDs)
 
-    def setTempImg1Brush(self, mask, alpha=0.3):
+    def setTempImg1Brush(self, mask):
+        alpha = self.imgGrad.labelsAlphaSlider.value()
         posData = self.data[self.pos_i]
         brushOverlay = self.imgRGB.copy()
         overlay = self.imgRGB[mask]*(1.0-alpha) + self.brushColor*alpha
