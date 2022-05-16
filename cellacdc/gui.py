@@ -787,7 +787,7 @@ class saveDataWorker(QObject):
                 segm_npz_path = posData.segm_npz_path
                 acdc_output_csv_path = posData.acdc_output_csv_path
                 last_tracked_i_path = posData.last_tracked_i_path
-                segm_npy = np.copy(posData.segm_data)
+                segm_npy = posData.segm_data
                 npz_delROIs_info = {}
                 delROIs_info_path = posData.delROIs_info_path
                 acdc_df_li = []
@@ -1031,6 +1031,9 @@ class guiWin(QMainWindow):
         self.customAnnotButton = None
         self.data_loaded = False
         self.highlightedID = 0
+        self.hoverLabelID = 0
+        self.expandingID = -1
+        self.isDilation = True
         self.flag = True
         self.currentPropsID = 0
         self.isSegm3D = False
@@ -1555,12 +1558,13 @@ class guiWin(QMainWindow):
         self.expandLabelToolButton.setToolTip(
             'Toggle "Expand/Shrink label (a.k.a. masks)" ON/OFF\n\n'
             'ACTION: leave mouse cursor on the label you want to expand/shrink'
-            'and press "+" or "-" on the keyboard to expand or shrink the mask.\n\n'
+            'and press arrow up/down on the keyboard to expand/shrink the mask.\n\n'
             'SHORTCUT: "E" key')
         # editToolBar.addWidget(self.expandLabelToolButton)
         self.expandLabelToolButton.hide()
-        # self.checkableButtons.append(self.expandLabelToolButton)
-        # self.checkableQButtonsGroup.addButton(self.expandLabelToolButton)
+        self.checkableButtons.append(self.expandLabelToolButton)
+        self.LeftClickButtons.append(self.expandLabelToolButton)
+        self.checkableQButtonsGroup.addButton(self.expandLabelToolButton)
 
         self.editID_Button = QToolButton(self)
         self.editID_Button.setIcon(QIcon(":edit-id.svg"))
@@ -2148,6 +2152,8 @@ class guiWin(QMainWindow):
         self.assignBudMothAutoAction.triggered.connect(
             self.autoAssignBud_YeastMate
         )
+
+        self.expandLabelToolButton.toggled.connect(self.expandLabelCallback)
 
         # self.repeatAutoCcaAction.triggered.connect(self.repeatAutoCca)
         self.manuallyEditCcaAction.triggered.connect(self.manualEditCca)
@@ -3621,6 +3627,51 @@ class guiWin(QMainWindow):
             if not self.ripCellButton.findChild(QAction).isChecked():
                 self.ripCellButton.setChecked(False)
 
+    def expandLabelCallback(self, checked):
+        self.disconnectLeftClickButtons()
+        self.uncheckLeftClickButtons(self.sender())
+        self.connectLeftClickButtons()
+
+    def expandLabel(self, dilation=True):
+        posData = self.data[self.pos_i]
+        if self.hoverLabelID == 0:
+            self.isExpandingLabel = False
+            return
+
+        # Reinitialize label to expand when we hover on a different ID
+        # or we change direction
+        reinitExpandingLab = (
+            self.expandingID != self.hoverLabelID
+            or dilation != self.isDilation
+        )
+
+        if reinitExpandingLab:
+            # hoverLabelID different from previously expanded ID --> reinit
+            self.isExpandingLabel = True
+            self.expandingID = ID
+            self.expandingIDColor = posData.lut[ID]/255
+            obj = posData.rp[posData.IDs.index(ID)]
+            self.expandingLab = np.zeros_like(self.currentLab2D)
+            self.expandingLab[obj.coords[:,-2], obj.coords[:,-1]] = ID
+            self.self.expandFootprintSize = 1
+
+        footprint = skimage.morphology.disk(self.expandFootprintSize)
+        if dilation:
+            expandedLab = skimage.morphology.dilation(
+                self.expandingLab, footprint=footprint
+            )
+        else:
+            expandedLab = skimage.morphology.erosion(
+                self.expandingLab, footprint=footprint
+            )
+
+        expandedObjMask = skimage.measure.regionprops(expandedLab).image
+
+        if not self.labelsGrad.hideLabelsImgAction.isChecked():
+            self.img2.setImage(self.currentLab2D)
+
+        self.setTempImg1ExpandLabel(expandedObjMask)
+
     def startMovingLabel(self, xPos, yPos):
         posData = self.data[self.pos_i]
         xdata, ydata = int(xPos), int(yPos)
@@ -3637,6 +3688,7 @@ class guiWin(QMainWindow):
         self.movingIDColor = posData.lut[ID]/255
         movingObj = posData.rp[posData.IDs.index(ID)]
         self.movingObjCoords = movingObj.coords.copy()
+
 
     def dragLabel(self, xPos, yPos):
         posData = self.data[self.pos_i]
@@ -3922,6 +3974,11 @@ class guiWin(QMainWindow):
             and noModifier
         )
 
+        setExpandLabelCursor = (
+            self.expandLabelToolButton.isChecked() and not event.isExit()
+            and noModifier
+        )
+
         setCurvCursor = (
             self.curvToolButton.isChecked() and not event.isExit()
             and noModifier
@@ -3994,9 +4051,9 @@ class guiWin(QMainWindow):
                 self.BudMothTempLine.setData([], [])
                 self.wcLabel.setText(f'')
 
-        if setMoveLabelCursor:
+        if setMoveLabelCursor or setExpandLabelCursor:
             x, y = event.pos()
-            self.updateMoveLabelCursor(x, y)
+            self.updateHoverLabelCursor(x, y)
 
         # Draw eraser circle
         if setEraserCursor:
@@ -4139,9 +4196,9 @@ class guiWin(QMainWindow):
                     self.gui_mouseReleaseEventImg2(event)
                 self.wcLabel.setText(f'')
 
-        if setMoveLabelCursor:
+        if setMoveLabelCursor or setExpandLabelCursor:
             x, y = event.pos()
-            self.updateMoveLabelCursor(x, y)
+            self.updateHoverLabelCursor(x, y)
 
         # Draw eraser circle
         if setEraserCursor:
@@ -7151,6 +7208,7 @@ class guiWin(QMainWindow):
             if button != sender:
                 button.setChecked(False)
         self.wandControlsToolbar.setVisible(False)
+        self.enableSizeSpinbox(False)
 
     def connectLeftClickButtons(self):
         self.brushButton.toggled.connect(self.Brush_cb)
@@ -7158,6 +7216,7 @@ class guiWin(QMainWindow):
         self.rulerButton.toggled.connect(self.ruler_cb)
         self.eraserButton.toggled.connect(self.Eraser_cb)
         self.wandToolButton.toggled.connect(self.wand_cb)
+        self.expandLabelToolButton.toggled.connect(self.expandLabelCallback)
 
     def brushSize_cb(self, value):
         self.ax2_EraserCircle.setSize(value*2)
@@ -7263,7 +7322,6 @@ class guiWin(QMainWindow):
 
     def Brush_cb(self, checked):
         if checked:
-            self.enableSizeSpinbox(True)
             self.setDiskMask()
             self.setHoverToolSymbolData(
                 [], [], (self.ax1_EraserCircle, self.ax2_EraserCircle,
@@ -7277,6 +7335,7 @@ class guiWin(QMainWindow):
             c = self.defaultToolBarButtonColor
             self.eraserButton.setStyleSheet(f'background-color: {c}')
             self.connectLeftClickButtons()
+            self.enableSizeSpinbox(True)
         else:
             self.setHoverToolSymbolData(
                 [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
@@ -7412,8 +7471,9 @@ class guiWin(QMainWindow):
             while self.app.overrideCursor() is not None:
                 self.app.restoreOverrideCursor()
 
-    def updateMoveLabelCursor(self, x, y):
+    def updateHoverLabelCursor(self, x, y):
         if x is None:
+            self.hoverLabelID = 0
             return
 
         xdata, ydata = int(x), int(y)
@@ -7422,6 +7482,8 @@ class guiWin(QMainWindow):
             return
 
         ID = self.currentLab2D[ydata, xdata]
+        self.hoverLabelID = ID
+
         if ID == 0:
             if self.highlightedID != 0:
                 self.updateALLimg()
@@ -7468,7 +7530,6 @@ class guiWin(QMainWindow):
 
     def Eraser_cb(self, checked):
         if checked:
-            self.enableSizeSpinbox(True)
             self.setDiskMask()
             self.setHoverToolSymbolData(
                 [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
@@ -7480,6 +7541,7 @@ class guiWin(QMainWindow):
             c = self.defaultToolBarButtonColor
             self.brushButton.setStyleSheet(f'background-color: {c}')
             self.connectLeftClickButtons()
+            self.enableSizeSpinbox(True)
         else:
             self.setHoverToolSymbolData(
                 [], [], (self.ax1_EraserCircle, self.ax2_EraserCircle,
@@ -7524,20 +7586,30 @@ class guiWin(QMainWindow):
         isBrushActive = (
             self.brushButton.isChecked() or self.eraserButton.isChecked()
         )
+        isExpandLabelActive = self.expandLabelToolButton.isChecked()
+        isWandActive = self.wandToolButton.isChecked()
         how = self.drawIDsContComboBox.currentText()
         isOverlaySegm = how.find('overlay segm. masks') != -1
-        if ev.key() == Qt.Key_Up and not isCtrlModifier:
+        if ev.key()==Qt.Key_Up and not isCtrlModifier:
             if isBrushActive:
-                self.brushSizeSpinbox.setValue(self.brushSizeSpinbox.value()+1)
-            elif self.wandToolButton.isChecked():
-                val = self.wandToleranceSlider.value()
-                self.wandToleranceSlider.setValue(val+1)
-        elif ev.key() == Qt.Key_Down and not isCtrlModifier:
+                brushSize = self.brushSizeSpinbox.value()
+                self.brushSizeSpinbox.setValue(brushSize+1)
+            elif isWandActive:
+                wandTolerance = self.wandToleranceSlider.value()
+                self.wandToleranceSlider.setValue(wandTolerance+1)
+            elif isExpandLabelActive:
+                self.expandLabel(dilation=True)
+                self.expandFootprintSize += 1
+        elif ev.key()==Qt.Key_Down and not isCtrlModifier:
             if isBrushActive:
-                self.brushSizeSpinbox.setValue(self.brushSizeSpinbox.value()-1)
-            elif self.wandToolButton.isChecked():
-                val = self.wandToleranceSlider.value()
-                self.wandToleranceSlider.setValue(val-1)
+                brushSize = self.brushSizeSpinbox.value()
+                self.brushSizeSpinbox.setValue(brushSize-1)
+            elif isWandActive:
+                wandTolerance = self.wandToleranceSlider.value()
+                self.wandToleranceSlider.setValue(wandTolerance-1)
+            elif isExpandLabelActive:
+                self.expandLabel(dilation=False)
+                self.expandFootprintSize += 1
         elif ev.key() == Qt.Key_Escape:
             self.setUncheckedAllButtons()
             if self.highlightedID != 0:
@@ -12240,6 +12312,13 @@ class guiWin(QMainWindow):
             if mask is not None:
                 self.imgRGB[mask] = self.img1uintRGB[mask]
             self.img1.setImage(self.imgRGB)
+
+    def setTempImg1ExpandLabel(self, expandedObjMask):
+        how = self.drawIDsContComboBox.currentText()
+        if how.find('contours') != -1:
+            pass
+        elif how.find('overlay segm. masks') != -1:
+            pass
 
     def setTempImg1MoveLabel(self, prevCoords):
         how = self.drawIDsContComboBox.currentText()
