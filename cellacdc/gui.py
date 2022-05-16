@@ -8132,7 +8132,7 @@ class guiWin(QMainWindow):
         self.tracker = trackerModule.tracker(**params)
         start_n = win.startFrame
         stop_n = win.stopFrame
-        video_to_track = np.copy(posData.segm_data)
+        video_to_track = posData.segm_data
         for frame_i in range(start_n-1, stop_n):
             data_dict = posData.allData_li[frame_i]
             lab = data_dict['labels']
