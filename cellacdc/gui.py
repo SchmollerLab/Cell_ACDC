@@ -9199,7 +9199,7 @@ class guiWin(QMainWindow):
         posData.loadImgData()
         selectedSegmNpz, endFilenameSegm, cancel = posData.detectMultiSegmNpz(
             askMultiSegmFunc=self.loadDataWorkerMultiSegm,
-            isNewFile=self.isNewFile
+            newEndFilenameSegm=self.newSegmFilename
         )
         if cancel:
             self.loadingDataAborted()

@@ -112,6 +112,8 @@ class loadDataWorker(QObject):
             posData.isSegm3D = self.mainWin.isSegm3D
 
             if i > 0:
+                # First pos was already loaded in the main thread
+                # see loadSelectedData function in gui.py
                 posData.getBasenameAndChNames()
                 posData.buildPaths()
                 posData.loadImgData()
@@ -139,8 +141,8 @@ class loadDataWorker(QObject):
 
             self.logger.log(
                 'Loaded paths:\n'
-                f'Segmentation path: {posData.segm_npz_path}\n'
-                f'ACDC output path {posData.acdc_output_csv_path}'
+                f'Segmentation file name: {os.path.basename(posData.segm_npz_path)}\n'
+                f'ACDC output file name {os.path.basename(posData.acdc_output_csv_path)}'
             )
 
             posData.SizeT = self.mainWin.SizeT

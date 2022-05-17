@@ -206,21 +206,14 @@ class loadData:
         return img_data
 
     def detectMultiSegmNpz(
-            self, _endswith='', multiPos=False, signals=None,
+            self, multiPos=False, signals=None,
             mutex=None, waitCond=None, askMultiSegmFunc=None,
-            isNewFile=False
+            newEndFilenameSegm=''
         ):
-        if isNewFile:
-            return '', False
+        if newEndFilenameSegm:
+            return '', newEndFilenameSegm, False
 
         ls = myutils.listdir(self.images_path)
-        if _endswith:
-            self.multiSegmAllPos = True
-            selectedSegmNpz_found = [
-                f for f in ls if f.endswith(_endswith)
-            ]
-            if selectedSegmNpz_found:
-                return selectedSegmNpz_found[0], False
 
         segm_files = [
             file for file in ls if file.endswith('segm.npz')
