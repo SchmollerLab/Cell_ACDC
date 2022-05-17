@@ -446,7 +446,7 @@ def read_version():
 def showInExplorer(path):
     if is_mac:
         os.system(f'open "{path}"')
-    if is_linux:
+    elif is_linux:
         os.system(f'xdg-open "{path}"')
     else:
         os.startfile(path)

@@ -127,7 +127,7 @@ def calculate_downstream_data(
                 is_timelapse_data=True
             if int(metadata.loc['SizeZ'])>1:
                 is_zstack_data=True
-            if cc_props is not None and force_recalculation==False:
+            if cc_props is not None and not force_recalculation:
                 print('Cell Cycle property data already existing, loaded from disk...')
                 overall_df = pd.concat([overall_df,cc_props], ignore_index=True).reset_index(drop=True)
             else:
