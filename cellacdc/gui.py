@@ -6173,6 +6173,11 @@ class guiWin(QMainWindow):
             cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
 
             is_bud_existing = budID in cca_df_i.index
+            is_moth_existing = new_mothID in cca_df_i.index
+
+            if not is_moth_existing:
+                # Mother not existing because it appeared from outside FOV
+                break
 
             ccs = cca_df_i.at[new_mothID, 'cell_cycle_stage']
             if ccs != 'G1' and is_bud_existing:
