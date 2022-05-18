@@ -12,11 +12,11 @@ def CV(signal, autoBkgr, dataPrepBkgr, correct_with_bkgr=False, which_bkgr='auto
     signal : numpy 1D array
         This is a numpy array with all the intensities of the signal
         from each single segmented object.
-    autoBkgr : numpy 1D array
+    autoBkgr : single numeric value
         Median of all the background pixels (i.e. pixels with value 0 in the
         segmentation mask). Pass None if background correction with
         this value is not needed.
-    dataPrepBkgr : numpy 1D array
+    dataPrepBkgr : single numeric value
         Median of all the pixels inside the background ROIs added during the
         data prep step (Cell-ACDC module 1).
         Pass None if background correction with this vaue is not needed.

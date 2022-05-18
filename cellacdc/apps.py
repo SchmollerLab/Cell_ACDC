@@ -4220,12 +4220,12 @@ class postProcessSegmDialog(QDialog):
         self.origLab = self.posData.lab.copy()
 
     def valueChanged(self, value):
-        lab, delIDs = self.applyPostProcessing()
+        lab, delIDs = self.apply()
         self.posData.lab = lab
         self.mainWin.clearItems_IDs(delIDs)
         self.mainWin.setImageImg2()
 
-    def applyPostProcessing(self, origLab=None):
+    def apply(self, origLab=None):
         if self.mainWin is None:
             return
 
@@ -4257,12 +4257,12 @@ class postProcessSegmDialog(QDialog):
         self.mainWin.updateALLimg()
 
     def ok_cb(self):
-        self.applyPostProcessing()
+        self.apply()
         self.onEditingFinished()
         self.close()
 
     def apply_cb(self):
-        self.applyPostProcessing()
+        self.apply()
         self.onEditingFinished()
 
     def applyAll_cb(self):
@@ -4281,13 +4281,13 @@ class postProcessSegmDialog(QDialog):
                 if lab is None:
                     # Non-visited frame modify segm_data
                     origLab = self.posData.segm_data[frame_i].copy()
-                    lab, delIDs = self.applyPostProcessing(origLab=origLab)
+                    lab, delIDs = self.apply(origLab=origLab)
                     self.posData.segm_data[frame_i] = lab
                 else:
                     self.mainWin.get_data()
                     origLab = self.posData.lab.copy()
                     self.origSegmData[frame_i] = origLab
-                    lab, delIDs = self.applyPostProcessing(origLab=origLab)
+                    lab, delIDs = self.apply(origLab=origLab)
                     self.posData.lab = lab
                     self.posData.allData_li[frame_i]['labels'] = lab.copy()
                     # Get the rest of the stored metadata based on the new lab
@@ -4313,7 +4313,7 @@ class postProcessSegmDialog(QDialog):
                 self.mainWin.get_data()
                 origLab = posData.lab.copy()
                 self.origSegmData.append(origLab)
-                lab, delIDs = self.applyPostProcessing(origLab=origLab)
+                lab, delIDs = self.apply(origLab=origLab)
 
                 self.posData.allData_li[0]['labels'] = lab.copy()
                 # Get the rest of the stored metadata based on the new lab
@@ -6476,7 +6476,7 @@ class QDialogMultiSegmNpz(QDialog):
 
         informativeText = html_utils.paragraph(f"""
             The folder<br><br>{parent_path}<br><br>
-            contains <b>multipe segmentation masks!</b><br>
+            contains <b>multipe segmentation masks</b><br>
         """)
 
         self.setWindowTitle('Multiple segm.npz files detected')

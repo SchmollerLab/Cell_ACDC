@@ -471,6 +471,27 @@ def setRetainSizePolicy(widget, retain=True):
     sp.setRetainSizeWhenHidden(retain)
     widget.setSizePolicy(sp)
 
+def getAcdcDfSegmPaths(images_path):
+    ls = listdir(images_path)
+    basename = getBasename(ls)
+    paths = {}
+    for file in ls:
+        filePath = os.path.join(images_path, file)
+        fileName, ext = os.path.splitext(file)
+        endName = fileName[len(basename):]
+        if endName.find('acdc_output') != -1 and ext=='.csv':
+            info_name = endName.replace('acdc_output', '')
+            paths.setdefault(info_name, {})
+            paths[info_name]['acdc_df_path'] = filePath
+            paths[info_name]['acdc_df_filename'] = fileName
+        elif endName.find('segm') != -1 and ext=='.npz':
+            info_name = endName.replace('segm', '')
+            paths.setdefault(info_name, {})
+            paths[info_name]['segm_path'] = filePath
+            paths[info_name]['segm_filename'] = fileName
+    return paths
+
+
 def getBasename(files):
     basename = files[0]
     for file in files:

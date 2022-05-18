@@ -8976,11 +8976,11 @@ class guiWin(QMainWindow):
             self.updateEraserCursor(self.xHoverImg, self.yHoverImg)
 
     @myutils.exception_handler
-    def applyPostProcessing(self):
+    def postProcessing(self):
         if self.postProcessSegmWin is not None:
             self.postProcessSegmWin.setPosData()
             posData = self.data[self.pos_i]
-            lab, delIDs = self.postProcessSegmWin.applyPostProcessing()
+            lab, delIDs = self.postProcessSegmWin.apply()
             if posData.allData_li[posData.frame_i]['labels'] is None:
                 posData.lab = lab.copy()
                 self.update_rp()
@@ -8999,7 +8999,7 @@ class guiWin(QMainWindow):
         self.setImageNameText()
         self.removeAlldelROIsCurrentFrame()
         proceed_cca, never_visited = self.get_data()
-        self.applyPostProcessing()
+        self.postProcessing()
         self.updateALLimg(updateFilters=True, updateLabelItemColor=False)
         self.zoomToCells()
         self.updateScrollbars()
@@ -9016,7 +9016,7 @@ class guiWin(QMainWindow):
         self.setImageNameText()
         self.removeAlldelROIsCurrentFrame()
         proceed_cca, never_visited = self.get_data()
-        self.applyPostProcessing()
+        self.postProcessing()
         self.updateALLimg(updateSharp=True, updateBlur=True, updateEntropy=True)
         self.zoomToCells()
         self.updateScrollbars()
@@ -9111,7 +9111,7 @@ class guiWin(QMainWindow):
                 posData.frame_i -= 1
                 self.get_data()
                 return
-            self.applyPostProcessing()
+            self.postProcessing()
             self.tracking(storeUndo=True)
             notEnoughG1Cells, proceed = self.attempt_auto_cca()
             if notEnoughG1Cells or not proceed:
@@ -9157,7 +9157,7 @@ class guiWin(QMainWindow):
             self.removeAlldelROIsCurrentFrame()
             posData.frame_i -= 1
             _, never_visited = self.get_data()
-            self.applyPostProcessing()
+            self.postProcessing()
             self.tracking()
             self.updateALLimg(never_visited=never_visited,
                               updateSharp=True, updateBlur=True,

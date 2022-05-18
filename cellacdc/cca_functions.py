@@ -543,7 +543,6 @@ def _calculate_flu_signal(seg_mask, channel_data, channels, cc_data, is_timelaps
                     mean_signal = np.divide(summed, count, where=count!=0)
                     # mean_signal = np.mean(cell_signal, axis=(1,2))
                     corrected_signal = mean_signal - np.array(bg_medians[c_idx])
-                    # temp_df[f'{channels[c_idx]}_corrected_mean'] = np.clip(corrected_signal, 0, np.inf)
                     temp_df[f'{channels[c_idx]}_corrected_mean'] = corrected_signal
                     temp_df[f'{channels[c_idx]}_raw_sum'] = summed
                 else:
