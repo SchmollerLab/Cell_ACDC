@@ -977,6 +977,52 @@ class shortCutLineEdit(QLineEdit):
             self.keySequence = None
         self.sender = None
 
+class selectStartStopFrames(QGroupBox):
+    def __init__(self, SizeT, currentFrameNum=0, parent=None):
+        super().__init__(parent)
+        selectFramesLayout = QGridLayout()
+
+        self.startFrame_SB = QSpinBox()
+        self.startFrame_SB.setAlignment(Qt.AlignCenter)
+        self.startFrame_SB.setMinimum(1)
+        self.startFrame_SB.setMaximum(SizeT-1)
+        self.startFrame_SB.setValue(currentFrameNum)
+
+        self.stopFrame_SB = QSpinBox()
+        self.stopFrame_SB.setAlignment(Qt.AlignCenter)
+        self.stopFrame_SB.setMinimum(1)
+        self.stopFrame_SB.setMaximum(SizeT)
+        self.stopFrame_SB.setValue(SizeT)
+
+        selectFramesLayout.addWidget(QLabel('Start frame n.'), 0, 0)
+        selectFramesLayout.addWidget(self.startFrame_SB, 1, 0)
+
+        selectFramesLayout.addWidget(QLabel('Stop frame n.'), 0, 1)
+        selectFramesLayout.addWidget(self.stopFrame_SB, 1, 1)
+
+        self.warningLabel = QLabel()
+        palette = self.warningLabel.palette();
+        palette.setColor(self.warningLabel.backgroundRole(), Qt.red);
+        palette.setColor(self.warningLabel.foregroundRole(), Qt.red);
+        self.warningLabel.setPalette(palette);
+        selectFramesLayout.addWidget(
+            self.warningLabel, 2, 0, 1, 2, alignment=Qt.AlignCenter
+        )
+
+        self.setLayout(selectFramesLayout)
+
+        self.stopFrame_SB.valueChanged.connect(self._checkRange)
+
+    def _checkRange(self):
+        start = self.startFrame_SB.value()
+        stop = self.stopFrame_SB.value()
+        if stop <= start:
+            self.warningLabel.setText(
+                'stop frame smaller than start frame'
+            )
+        else:
+            self.warningLabel.setText('')
+
 class formWidget(QWidget):
     sigApplyButtonClicked = pyqtSignal(object)
     sigComputeButtonClicked = pyqtSignal(object)

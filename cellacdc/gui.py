@@ -1294,8 +1294,14 @@ class guiWin(QMainWindow):
         # Segment menu
         SegmMenu = menuBar.addMenu("&Segment")
         SegmMenu.addSeparator()
+        self.segmSingleFrameMenu = SegmMenu.addMenu('Segment displayed frame')
         for action in self.segmActions:
-            SegmMenu.addAction(action)
+            self.segmSingleFrameMenu.addAction(action)
+
+        self.segmVideoMenu = SegmMenu.addMenu('Segment multiple frames')
+        for action in self.segmActionsVideo:
+            self.segmVideoMenu.addAction(action)
+
         SegmMenu.addAction(self.SegmActionRW)
         SegmMenu.addAction(self.postProcessSegmAction)
         SegmMenu.addAction(self.autoSegmAction)
@@ -1910,11 +1916,17 @@ class guiWin(QMainWindow):
         self.acdcSegment_li = []
         self.models = []
         for model_name in models:
-            action = QAction(f"{model_name}...", self)
+            action = QAction(f"{model_name}...")
             self.segmActions.append(action)
             self.modelNames.append(model_name)
             self.models.append(None)
             self.acdcSegment_li.append(None)
+            action.setDisabled(True)
+
+        self.segmActionsVideo = []
+        for model_name in models:
+            action = QAction(f"{model_name}...")
+            self.segmActionsVideo.append(action)
             action.setDisabled(True)
         self.SegmActionRW = QAction("Random walker...", self)
         self.SegmActionRW.setDisabled(True)
@@ -2165,8 +2177,8 @@ class guiWin(QMainWindow):
         self.findIdAction.triggered.connect(self.findID)
         self.slideshowButton.toggled.connect(self.launchSlideshow)
 
-        for action in self.segmActions:
-            action.triggered.connect(self.repeatSegm)
+        self.segmSingleFrameMenu.triggered.connect(self.segmFrameCallback)
+        self.segmVideoMenu.triggered.connect(self.segmVideoCallback)
 
         self.SegmActionRW.triggered.connect(self.randomWalkerSegm)
         self.postProcessSegmAction.toggled.connect(self.postProcessSegm)
@@ -6994,6 +7006,10 @@ class guiWin(QMainWindow):
     def setEnabledEditToolbarButton(self, enabled=False):
         for action in self.segmActions:
             action.setEnabled(enabled)
+
+        for action in self.segmActionsVideo:
+            action.setEnabled(enabled)
+
         self.SegmActionRW.setEnabled(enabled)
         self.relabelSequentialAction.setEnabled(enabled)
         self.repeatTrackingMenuAction.setEnabled(enabled)
@@ -7154,6 +7170,8 @@ class guiWin(QMainWindow):
         for action in self.segmActions:
             action.setDisabled(False)
         self.SegmActionRW.setDisabled(False)
+        if posData.SizeT == 1:
+            self.segmVideoMenu.setDisabled(True)
         self.relabelSequentialAction.setDisabled(False)
         self.trackingMenu.setDisabled(True)
         self.postProcessSegmAction.setDisabled(False)
@@ -8684,14 +8702,31 @@ class guiWin(QMainWindow):
                 return
             self.clearScatterPlotCustomAnnotButton(button)
 
+    def segmFrameCallback(self, action):
+        idx = self.segmActions.index(action)
+        model_name = self.modelNames[idx]
+        self.repeatSegm(model_name=model_name, askSegmParams=True)
+
+    def segmVideoCallback(self, action):
+        posData = self.data[self.pos_i]
+        win = apps.startStopFramesDialog(
+            posData.SizeT, currentFrameNum=posData.frame_i+1
+        )
+        win.exec_()
+        if win.cancel:
+            self.logger.info('Segmentation on multiple frames aborted.')
+            return
+
+        idx = self.segmActionsVideo.index(action)
+        model_name = self.modelNames[idx]
+        self.repeatSegmVideo(model_name, win.startFrame, win.stopFrame)
+
     @myutils.exception_handler
-    def repeatSegm(self, model_name=''):
-        if not model_name:
-            idx = self.segmActions.index(self.sender())
-            model_name = self.modelNames[idx]
-            askSegmParams = True
-        else:
-            idx = self.modelNames.index(model_name)
+    def repeatSegm(self, model_name='', askSegmParams=False):
+        idx = self.modelNames.index(model_name)
+        # Ask segm parameters if not already set
+        # and not called by segmSingleFrameMenu (askSegmParams=False)
+        if not askSegmParams:
             askSegmParams = self.segment2D_kwargs is None
 
         self.downloadWin = apps.downloadModel(model_name, parent=self)
@@ -8764,6 +8799,91 @@ class guiWin(QMainWindow):
 
         self.thread.started.connect(self.worker.run)
         self.thread.start()
+
+    @myutils.exception_handler
+    def repeatSegmVideo(self, model_name, startFrameNum, stopFrameNum):
+        idx = self.modelNames.index(model_name)
+
+        self.downloadWin = apps.downloadModel(model_name, parent=self)
+        self.downloadWin.download()
+
+        posData = self.data[self.pos_i]
+        # Check if model needs to be imported
+        acdcSegment = self.acdcSegment_li[idx]
+        if acdcSegment is None:
+            self.logger.info(f'Importing {model_name}...')
+            acdcSegment = import_module(f'models.{model_name}.acdcSegment')
+            self.acdcSegment_li[idx] = acdcSegment
+
+        # Read all models parameters
+        init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
+        # Prompt user to enter the model parameters
+        try:
+            url = acdcSegment.help_url
+        except AttributeError:
+            url = None
+
+        win = apps.QDialogModelParams(
+            init_params,
+            segment_params,
+            model_name, parent=self,
+            url=url
+        )
+        win.exec_()
+        if win.cancel:
+            self.logger.info('Segmentation process cancelled.')
+            self.titleLabel.setText('Segmentation process cancelled.')
+            return
+
+        model = acdcSegment.Model(**win.init_kwargs)
+
+        self.undo_changes_future_frames(from_frame_i=startFrameNum-1)
+
+        self.titleLabel.setText(
+            f'{model_name} is thinking... '
+            '(check progress in terminal/console)', color=self.titleColor
+        )
+
+        self.progressWin = apps.QDialogWorkerProgress(
+            title='Segmenting video', parent=self,
+            pbarDesc=f'Segmenting from frame n. {startFrameNum} to {stopFrameNum}...'
+        )
+        self.progressWin.show(self.app)
+        self.progressWin.mainPbar.setMaximum(stopFrameNum-startFrameNum)
+
+        self.thread = QThread()
+        self.worker = workers.segmVideoWorker(
+            posData, win, model, startFrameNum, stopFrameNum
+        )
+        self.worker.moveToThread(self.thread)
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.thread.finished.connect(self.thread.deleteLater)
+
+        # Custom signals
+        self.worker.critical.connect(self.workerCritical)
+        self.worker.finished.connect(self.segmVideoWorkerFinished)
+        self.worker.progressBar.connect(self.workerUpdateProgressbar)
+
+        self.thread.started.connect(self.worker.run)
+        self.thread.start()
+
+    def segmVideoWorkerFinished(self, exec_time):
+        self.progressWin.workerFinished = True
+        self.progressWin.close()
+        self.progressWin = None
+
+        posData = self.data[self.pos_i]
+
+        self.get_data()
+        self.tracking(enforce=True)
+        self.updateALLimg()
+
+        txt = f'Done. Segmentation computed in {exec_time:.3f} s'
+        self.logger.info('-----------------')
+        self.logger.info(txt)
+        self.logger.info('=================')
+        self.titleLabel.setText(txt, color='g')
 
     @myutils.exception_handler
     def workerCritical(self, error):
@@ -13294,11 +13414,13 @@ class guiWin(QMainWindow):
             else:
                 tracked_lab[tracked_lab == old_ID] = new_ID
 
-    def undo_changes_future_frames(self):
+    def undo_changes_future_frames(self, from_frame_i=None):
         posData = self.data[self.pos_i]
-        posData.last_tracked_i = posData.frame_i
-        self.navigateScrollBar.setMaximum(posData.frame_i+1)
-        for i in range(posData.frame_i+1, posData.segmSizeT):
+        if from_frame_i is None:
+            from_frame_i = posData.frame_i+1
+        posData.last_tracked_i = from_frame_i
+        self.navigateScrollBar.setMaximum(from_frame_i+1)
+        for i in range(from_frame_i, posData.segmSizeT):
             if posData.allData_li[i]['labels'] is None:
                 break
 

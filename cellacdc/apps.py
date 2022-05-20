@@ -58,6 +58,24 @@ pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
 font = QtGui.QFont()
 font.setPixelSize(13)
 
+class baseDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        super().show()
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()
+
 class installJavaDialog(widgets.myMessageBox):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -2391,6 +2409,48 @@ class QDialogListbox(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
+class startStopFramesDialog(baseDialog):
+    def __init__(
+            self, SizeT, currentFrameNum=0, parent=None,
+            windowTitle='Select frame range to segment'
+        ):
+        super().__init__(parent=parent)
+
+        self.setWindowTitle(windowTitle)
+
+        self.cancel = True
+
+        layout = QVBoxLayout()
+        buttonsLayout = QHBoxLayout()
+
+        self.selectFramesGroupbox = widgets.selectStartStopFrames(
+            SizeT, currentFrameNum=currentFrameNum, parent=parent
+        )
+
+        okButton = widgets.okPushButton('Ok')
+        cancelButton = widgets.cancelPushButton('Cancel')
+
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(okButton)
+
+        layout.addWidget(self.selectFramesGroupbox)
+        layout.addLayout(buttonsLayout)
+        self.setLayout(layout)
+
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.close)
+
+    def ok_cb(self):
+        if self.selectFramesGroupbox.warningLabel.text():
+            return
+        else:
+            self.startFrame = self.selectFramesGroupbox.startFrame_SB.value()
+            self.stopFrame = self.selectFramesGroupbox.stopFrame_SB.value()
+            self.cancel = False
+            self.close()
+
 class selectTrackerGUI(QDialogListbox):
     def __init__(
             self, SizeT, currentFrameNo=1, parent=None
@@ -2402,58 +2462,18 @@ class selectTrackerGUI(QDialogListbox):
         )
         self.setWindowTitle('Select tracker')
 
-        selectFramesContainer = QGroupBox()
-        selectFramesLayout = QGridLayout()
-
-        self.startFrame_SB = QSpinBox()
-        self.startFrame_SB.setAlignment(Qt.AlignCenter)
-        self.startFrame_SB.setMinimum(1)
-        self.startFrame_SB.setMaximum(SizeT-1)
-        self.startFrame_SB.setValue(currentFrameNo)
-
-        self.stopFrame_SB = QSpinBox()
-        self.stopFrame_SB.setAlignment(Qt.AlignCenter)
-        self.stopFrame_SB.setMinimum(1)
-        self.stopFrame_SB.setMaximum(SizeT)
-        self.stopFrame_SB.setValue(SizeT)
-
-        selectFramesLayout.addWidget(QLabel('Start frame n.'), 0, 0)
-        selectFramesLayout.addWidget(self.startFrame_SB, 1, 0)
-
-        selectFramesLayout.addWidget(QLabel('Stop frame n.'), 0, 1)
-        selectFramesLayout.addWidget(self.stopFrame_SB, 1, 1)
-
-        self.warningLabel = QLabel()
-        palette = self.warningLabel.palette();
-        palette.setColor(self.warningLabel.backgroundRole(), Qt.red);
-        palette.setColor(self.warningLabel.foregroundRole(), Qt.red);
-        self.warningLabel.setPalette(palette);
-        selectFramesLayout.addWidget(
-            self.warningLabel, 2, 0, 1, 2, alignment=Qt.AlignCenter
+        self.selectFramesGroupbox = widgets.selectStartStopFrames(
+            SizeT, currentFrameNum=currentFrameNo, parent=parent
         )
 
-        selectFramesContainer.setLayout(selectFramesLayout)
-
-        self.mainLayout.insertWidget(1, selectFramesContainer)
-
-        self.stopFrame_SB.valueChanged.connect(self._checkRange)
-
-    def _checkRange(self):
-        start = self.startFrame_SB.value()
-        stop = self.stopFrame_SB.value()
-        if stop <= start:
-            self.warningLabel.setText(
-                'stop frame smaller than start frame'
-            )
-        else:
-            self.warningLabel.setText('')
+        self.mainLayout.insertWidget(1, self.selectFramesGroupbox)
 
     def ok_cb(self, event):
-        if self.warningLabel.text():
+        if self.selectFramesGroupbox.warningLabel.text():
             return
         else:
-            self.startFrame = self.startFrame_SB.value()
-            self.stopFrame = self.stopFrame_SB.value()
+            self.startFrame = self.selectFramesGroupbox.startFrame_SB.value()
+            self.stopFrame = self.selectFramesGroupbox.stopFrame_SB.value()
             QDialogListbox.ok_cb(self, event)
 
 class QDialogAppendTextFilename(QDialog):

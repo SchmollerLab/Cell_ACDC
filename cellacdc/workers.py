@@ -52,6 +52,45 @@ class signals(QObject):
     innerProgressBar = pyqtSignal(int)
     sigPermissionError = pyqtSignal(str, object)
 
+class segmVideoWorker(QObject):
+    finished = pyqtSignal(float)
+    debug = pyqtSignal(object)
+    critical = pyqtSignal(object)
+    progressBar = pyqtSignal(int)
+
+    def __init__(self, posData, paramWin, model, startFrameNum, stopFrameNum):
+        QObject.__init__(self)
+        self.minSize = paramWin.minSize
+        self.minSolidity = paramWin.minSolidity
+        self.maxElongation = paramWin.maxElongation
+        self.applyPostProcessing = paramWin.applyPostProcessing
+        self.segment2D_kwargs = paramWin.segment2D_kwargs
+        self.model = model
+        self.posData = posData
+        self.startFrameNum = startFrameNum
+        self.stopFrameNum = stopFrameNum
+
+    @worker_exception_handler
+    def run(self):
+        t0 = time.time()
+        img_data = self.posData.img_data[self.startFrameNum-1:self.stopFrameNum]
+        for i, img in enumerate(img_data):
+            frame_i = i+self.startFrameNum-1
+            img = myutils.uint_to_float(img)
+            lab = self.model.segment(img, **self.segment2D_kwargs)
+            if self.applyPostProcessing:
+                lab = core.remove_artefacts(
+                    lab,
+                    min_solidity=self.minSolidity,
+                    min_area=self.minSize,
+                    max_elongation=self.maxElongation
+                )
+            self.posData.segm_data[frame_i] = lab
+            self.progressBar.emit(1)
+        t1 = time.time()
+        exec_time = t1-t0
+        self.finished.emit(exec_time)
+
 class loadDataWorker(QObject):
     def __init__(self, mainWin, user_ch_file_paths, user_ch_name, firstPosData):
         QObject.__init__(self)
