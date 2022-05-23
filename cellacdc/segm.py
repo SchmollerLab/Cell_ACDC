@@ -920,10 +920,23 @@ class segmWin(QMainWindow):
                 trackerModule = import_module(
                     f'trackers.{trackerName}.{trackerName}_tracker'
                 )
-                self.tracker = trackerModule.tracker()
+                params = {}
+                if trackerName == 'BayesianTracker':
+                    Y, X = posData.img_data_shape[-2:]
+                    if posData.isSegm3D:
+                        labShape = (posData.SizeZ, Y, X)
+                    else:
+                        labShape = (1, Y, X)
+                    paramsWin = apps.BayesianTrackerParamsWin(labShape, parent=self)
+                    paramsWin.exec_()
+                    params = paramsWin.params
+                elif trackerName == 'CellACDC':
+                    paramsWin = apps.CellACDCTrackerParamsWin(parent=self)
+                    paramsWin.exec_()
+                    params = paramsWin.params
+                self.tracker = trackerModule.tracker(**params)
 
-        print('Starting multiple parallel threads...')
-        self.progressLabel.setText('Starting multiple parallel threads...')
+        self.progressLabel.setText('Starting main worker...')
 
         max = 0
         for imgPath in user_ch_file_paths:
@@ -1120,7 +1133,7 @@ class segmWin(QMainWindow):
             )
             return True
 
-    def closeEvent(self, event):            
+    def closeEvent(self, event):
         if self.buttonToRestore is not None:
             button, color, text = self.buttonToRestore
             button.setText(text)

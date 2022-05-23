@@ -14,11 +14,13 @@ requirements.txt
 conda_env_list_commands.txt
 
 notebooks/testing.ipynb
+notebooks/test.ipynb
 notebooks/.ipynb_checkpoints
 .idea/
 test.txt
 cellacdc/_version.py
 cellacdc/test_qt_app.py
+cellacdc/test_qthread.py
 cellacdc/test.py
 cellacdc/test1.py
 cellacdc/test_segm.npy

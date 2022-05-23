@@ -7,6 +7,7 @@ import datetime
 import numpy as np
 import pandas as pd
 import h5py
+from collections import Counter
 
 import skimage.io
 from tifffile.tifffile import TiffWriter, TiffFile
@@ -134,29 +135,30 @@ class convertFileFormatWin(QMainWindow):
             select_folder = load.select_exp_folder()
             values = select_folder.get_values_segmGUI(exp_path)
             if not values:
-                txt = (
-                    'The selected folder:\n\n '
-                    f'{exp_path}\n\n'
+                txt = html_utils.paragraph(
+                    'The selected folder:<br><br> '
+                    f'{exp_path}<br><br>'
                     'is not a valid folder. '
                     'Select a folder that contains the Position_n folders'
                 )
-                msg = QMessageBox()
+                msg = widgets.myMessageBox()
                 msg.critical(
-                    self, 'Incompatible folder', txt, msg.Ok
+                    self, 'Incompatible folder', txt
                 )
                 self.close()
                 return
 
+            if len(values) > 1:
+                select_folder.QtPrompt(self, values, allow_abort=False, show=True)
+                if select_folder.was_aborted:
+                    abort = self.doAbort()
+                    if abort:
+                        self.close()
+                        return
+                pos_foldernames = select_folder.selected_pos
+            else:
+                pos_foldernames = values
 
-            select_folder.QtPrompt(self, values, allow_abort=False, show=True)
-            if select_folder.was_aborted:
-                abort = self.doAbort()
-                if abort:
-                    self.close()
-                    return
-
-
-            pos_foldernames = select_folder.selected_pos
             images_paths = [os.path.join(exp_path, pos, 'Images')
                             for pos in pos_foldernames]
 
@@ -169,15 +171,17 @@ class convertFileFormatWin(QMainWindow):
             images_paths = [exp_path]
 
         proceed, selectedFilenames = self.selectFiles(
-                images_paths[0], filterExt=[f'{self.from_}'])
+            images_paths[0], filterExt=[f'{self.from_}']
+        )
         if not proceed:
             abort = self.doAbort()
             if abort:
                 self.close()
                 return
 
+        basename = self.getBasename(images_paths[0], selectedFilenames)
 
-        abort, appendedTxt = self.askTxtAppend(selectedFilenames[0])
+        abort, appendedTxt = self.askTxtAppend(basename)
         if abort:
             abort = self.doAbort()
             if abort:
@@ -185,44 +189,59 @@ class convertFileFormatWin(QMainWindow):
                 return
 
         print(f'Converting .{self.from_} to .{self.to} started...')
-        if len(selectedFilenames) > 1 or len(images_paths) > 1:
-            ch_name_selector = prompts.select_channel_name()
-            ls = myutils.listdir(images_paths[0])
-            all_channelNames, abort = ch_name_selector.get_available_channels(
-                    ls, images_paths[0], useExt=None
-            )
-            if abort:
+        if len(images_paths) > 1:
+            _endswith = selectedFilenames[0][len(basename):]
+            if not _endswith:
                 self.criticalNoCommonBasename(
                     selectedFilenames, images_paths[0]
                 )
                 self.close()
                 return
-            _endswith_li = [
-                f[len(ch_name_selector.basename):] for f in selectedFilenames
-            ]
-            for images_path in tqdm(images_paths, ncols=100):
+
+            for pos_i, images_path in enumerate(tqdm(images_paths, ncols=100)):
                 ls = myutils.listdir(images_path)
-                _, skip = ch_name_selector.get_available_channels(
-                    ls, images_path, useExt=None
+                _basename = self.getBasename(
+                    images_path, selectedFilenames
                 )
-                for _endswith in _endswith_li:
-                    for file in ls:
-                        if file.endswith(_endswith):
-                            self.convert(
-                                images_path, file, appendedTxt,
-                                from_=self.from_, to=self.to
-                            )
+                for file in ls:
+                    if file.endswith(_endswith):
+                        self.convert(
+                            images_path, file, appendedTxt, _basename,
+                            from_=self.from_, to=self.to, prompt=False
+                        )
         else:
             self.convert(
-                images_paths[0], selectedFilenames[0], appendedTxt,
+                images_paths[0], selectedFilenames[0], appendedTxt, basename,
                 from_=self.from_, to=self.to
             )
         self.close()
         if self.allowExit:
             exit('Done.')
 
-    def convert(self, images_path, filename, appendedTxt,
-                from_='npz', to='npy'):
+    def getBasename(self, images_path, selectedFilenames):
+        commonStartFilenames = myutils.filterCommonStart(images_path)
+        selector = prompts.select_channel_name()
+        _, noBasename = selector.get_available_channels(
+            commonStartFilenames, images_path, useExt=None
+        )
+        if noBasename:
+            basename = os.path.splitext(selectedFilenames[0])[0]
+        else:
+            basename = selector.basename
+
+        if basename.endswith('_'):
+            if self.info.startswith('_'):
+                basename = f'{basename}{self.info[1:]}'
+            else:
+                basename = f'{basename}{self.info}'
+        else:
+            basename = f'{basename}_{self.info}'
+        return basename
+
+    def convert(
+            self, images_path, filename, appendedTxt, basename,
+            from_='npz', to='npy', prompt=True
+        ):
         filePath = os.path.join(images_path, filename)
         if self.from_ == 'npz':
             data = np.load(filePath)['arr_0']
@@ -236,9 +255,9 @@ class convertFileFormatWin(QMainWindow):
             data = data.astype(np.uint16)
         filename, ext = os.path.splitext(filename)
         if appendedTxt:
-            newFilename = f'{filename}_{appendedTxt}.{self.to}'
+            newFilename = f'{basename}_{appendedTxt}.{self.to}'
         else:
-            newFilename = f'{filename}.{self.to}'
+            newFilename = f'{basename}.{self.to}'
         newPath = os.path.join(images_path, newFilename)
         if self.to == 'npy':
             np.save(newPath, data)
@@ -246,8 +265,12 @@ class convertFileFormatWin(QMainWindow):
             myutils.imagej_tiffwriter(newPath, data, None, 1, 1, imagej=False)
         elif self.to == 'npz':
             np.savez_compressed(newPath, data)
-        print(f'File {filePath} saved to {newPath}')
-        self.conversionDone(filePath, newPath)
+        print('')
+        print('-'*30)
+        print(f'File "{filePath}" saved to "{newPath}"')
+        print('-'*30)
+        if prompt:
+            self.conversionDone(filePath, newPath)
 
     def conversionDone(self, src, dst):
         msg = widgets.myMessageBox()
@@ -271,18 +294,37 @@ class convertFileFormatWin(QMainWindow):
         filename, ext = os.path.splitext(os.path.basename(filePath))
         path = os.path.join(dir, f'{filename}_{appendedTxt}{ext}')
 
-    def askTxtAppend(self, filename):
-        font = QtGui.QFont()
-        font.setPixelSize(13)
-        self.win = apps.QDialogAppendTextFilename(
-            filename, self.to, parent=self, font=font
+    def askTxtAppend(self, basename):
+        hintText = html_utils.paragraph(
+            '<b>OPTIONAL</b>: write here an additional text to append '
+            'to the filename'
         )
-        self.win.exec_()
-        return self.win.cancel, self.win.LE.text()
+        win = apps.filenameDialog(
+            ext=self.to, title='New filename',
+            hintText=hintText, parent=self, basename=basename
+        )
+        win.exec_()
+        if win.cancel:
+            win.entryText = ''
+        return win.cancel, win.entryText
 
     def criticalNoCommonBasename(self, filenames, parent_path):
-        myutils.checkDataIntegrity(filenames, parent_path, parentQWidget=self)
-
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph(
+            f'The file name <code>{filenames[0]}</code><br>'
+            'does not follow <b>Cell-ACDC naming convention</b>.<br><br>'
+            'The name must have the <b>same common basename</b> '
+            'as all the other files inside the '
+            '<code>Position_n/Images</code> folder.<br><Br>'
+            'For example, if in the Images folder you have two files called '
+            '<code>ASY015_SCD_phase_contr.tif</code> and '
+            '<code>ASY015_SCD_mCitrine.tif</code> then the common basename '
+            'is <code>ASY015_SCD_</code> and the file that you are tring to '
+            'convert should <b>start with the same common basename</b>.'
+        )
+        msg.critical(
+            self, 'Name of selected file not compatible', txt
+        )
 
     def selectFiles(self, images_path, filterExt=None):
         files = myutils.listdir(images_path)
@@ -302,7 +344,7 @@ class convertFileFormatWin(QMainWindow):
             f'.{self.to}\n\n'
             'NOTE: if you selected multiple Position folders I will try \n'
             'to convert all selected files in each Position folder',
-            items, multiSelection=True, parent=self
+            items, multiSelection=False, parent=self
         )
         selectFilesWidget.exec_()
 
@@ -348,12 +390,6 @@ class convertFileFormatWin(QMainWindow):
         df.to_csv(recentPaths_path)
 
     def doAbort(self):
-        # msg = QMessageBox()
-        # closeAnswer = msg.warning(
-        #    self, 'Abort execution?', 'Do you really want to abort process?',
-        #    msg.Yes | msg.No
-        # )
-        # if closeAnswer == msg.Yes:
         if self.allowExit:
             exit('Execution aborted by the user')
         else:

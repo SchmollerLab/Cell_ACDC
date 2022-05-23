@@ -1,12 +1,15 @@
 import numpy as np
 import pathlib
+import re
 import sys
 import os
 import traceback
 import shutil
 from importlib import import_module
 
-from . import core, base_cca_df
+from skimage.measure._regionprops import PROPS, COL_DTYPES, RegionProperties
+
+from . import core, base_cca_df, html_utils
 
 user_path = pathlib.Path.home()
 acdc_metrics_path = os.path.join(user_path, 'acdc-metrics')
@@ -91,19 +94,16 @@ def custom_metrics_desc(isZstack, chName):
         for func_name, func_desc in custom_metrics_names.items():
             metric_name = f'{chName}_{func_name}{how}'
             if isZstack:
-                note_txt = (f"""
-                <p style="font-size:13px">
+                note_txt = html_utils.paragraph(f"""
                     {_get_zStack_note(how_desc)}
                     Example: <code>{metric_name}</code> is the
                     <b>{func_desc.lower()}</b> of the {chName} signal after
                     converting 3D to 2D {how_desc}
-                </p>
                 """)
             else:
-                note_txt = '</p>'
+                note_txt = ''
 
-            desc = (f"""
-            <p style="font-size:13px">
+            desc = html_utils.paragraph(f"""
                 <b>{func_desc}</b> is a custom defined measurement.<br>
                 {note_txt}
             """)
@@ -122,7 +122,7 @@ def _fl():
 def _get_zStack_note(how_desc):
     s = (f"""
         <i>NOTE: since you loaded <b>3D z-stacks</b>, Cell-ACDC needs
-        to convert the z-stacks to 2D images {how_desc}.<br>
+        to convert the z-stacks to 2D images {how_desc} for this metric.<br>
         This is specified in the name of the column.<br><br></i>
     """)
     return s
@@ -139,14 +139,11 @@ def _get_how_3Dto2D_desc():
 def get_size_metrics_desc():
     url = 'https://www.nature.com/articles/s41467-020-16764-x#Sec16'
     size_metrics = {
-        'cell_area_pxl': ("""
-        <p style="font-size:13px">
+        'cell_area_pxl': html_utils.paragraph("""
             <b>Area of the segmented object</b> in pixels, i.e.,
             total number of pixels in the object.
-        </p>
         """),
-        'cell_vol_vox': (f"""
-        <p style="font-size:13px">
+        'cell_vol_vox': html_utils.paragraph(f"""
             <b>Estimated volume of the segmented object</b> in voxels.<br><br><br>
             To calculate object volume based on 2D masks, the object is first
             <b>aligned along its major axis</b>.<br><br>
@@ -163,18 +160,14 @@ def get_size_metrics_desc():
             <i> Note that in <a href=\"{url}">this</a> publication we
             showed that this method strongly correlates with volume
             computed from a 3D segmentation mask.</i>
-        </p>
         """),
-        'cell_area_um2': (f"""
-        <p style="font-size:13px">
+        'cell_area_um2': html_utils.paragraph(f"""
             <b>Area of the segmented object</b> in {_um2()}, i.e.,
             total number of pixels in the object.<br><br>
             Conversion from pixels to {_um2()} is perfomed using
             the provided pixel size.
-        </p>
         """),
-        'cell_vol_fl': (f"""
-        <p style="font-size:13px">
+        'cell_vol_fl': html_utils.paragraph(f"""
             <b>Estimated volume of the segmented object</b> in {_um3()}.<br><br><br>
 
             To calculate object volume based on 2D masks, the object is first
@@ -198,7 +191,6 @@ def get_size_metrics_desc():
             <i> Note that in <a href=\"{url}">this</a> publication we
             showed that this method strongly correlates with volume
             computed from a 3D segmentation mask.</i>
-        </p>
         """)
     }
     return size_metrics
@@ -219,10 +211,9 @@ def standard_metrics_desc(isZstack, chName):
                 Example: <code>{metric_name}</code> is the
                 <b>{func_desc.lower()}</b> of the {chName} signal after
                 converting 3D to 2D {how_desc}
-                </p>
                 """)
             else:
-                note_txt = '</p>'
+                note_txt = ''
 
             if func_desc == 'Amount':
                 amount_desc = ("""
@@ -232,8 +223,20 @@ def standard_metrics_desc(isZstack, chName):
                     <b>protein amount</b>.
                     <br><br>
                 """)
+                main_desc = f'<b>{func_desc}</b> computed from'
+            elif func_desc == 'Concentration':
+                amount_desc = ("""
+                    Concentration is given by <code>Amount/cell_volume</code>,
+                    where amount is the <b>background corrected total
+                    fluorescent intensity</b>. Amount is usually the best proxy
+                    for the amount of the tagged molecule, e.g.,
+                    <b>protein amount</b>.
+                    <br><br>
+                """)
+                main_desc = f'<b>{func_desc}</b> computed from'
             else:
                 amount_desc = ''
+                main_desc = f'<b>{func_desc}</b> computed from'
 
             if func_name == 'amount_autoBkgr':
                 bkgr_desc = ("""
@@ -256,9 +259,8 @@ def standard_metrics_desc(isZstack, chName):
             else:
                 bkgr_desc = ''
 
-            desc = (f"""
-            <p style="font-size:13px">
-                <b>{func_desc}</b> of the intensities from all the pixels inside
+            desc = html_utils.paragraph(f"""
+                {main_desc} the pixels inside
                 each segmented object.<br><br>
                 {amount_desc}{bkgr_desc}{note_txt}
             """)
@@ -271,11 +273,10 @@ def standard_metrics_desc(isZstack, chName):
                 {_get_zStack_note(how_desc)}
                 Example: <code>{bkgr_colname}</code> is the
                 <b>{bkgr_desc.lower()}</b> of the {chName} background after
-                converting 3D to 2D conversion {how_desc}
-                </p>
+                converting 3D to 2D {how_desc}
                 """)
             else:
-                note_txt = '</p>'
+                note_txt = ''
 
             if bkgr_name.find('autoBkgr') != -1:
                 bkgr_type_desc = ("""
@@ -295,8 +296,7 @@ def standard_metrics_desc(isZstack, chName):
                     <br><br>
                 """)
 
-            bkgr_final_desc = (f"""
-            <p style="font-size:13px">
+            bkgr_final_desc = html_utils.paragraph(f"""
                 <b>{bkgr_desc}</b> of the background intensities.<br><br>
                 {bkgr_type_desc}{note_txt}
             """)
@@ -304,12 +304,25 @@ def standard_metrics_desc(isZstack, chName):
 
     return metrics_desc, bkgr_val_desc
 
+def get_conc_keys(amount_colname):
+    conc_key_vox = re.sub(
+        r'amount_([A-Za-z]+)',
+        r'concentration_\1_from_vol_vox',
+        amount_colname
+    )
+    conc_key_fl = conc_key_vox.replace('from_vol_vox', 'from_vol_fl')
+    return conc_key_vox, conc_key_fl
+
 def _get_metrics_names():
     metrics_names = {
         'mean': 'Mean',
         'sum': 'Sum',
         'amount_autoBkgr': 'Amount',
         'amount_dataPrepBkgr': 'Amount',
+        'concentration_autoBkgr_from_vol_vox': 'Concentration',
+        'concentration_dataPrepBkgr_from_vol_vox': 'Concentration',
+        'concentration_autoBkgr_from_vol_fl': 'Concentration',
+        'concentration_dataPrepBkgr_from_vol_fl': 'Concentration',
         'median': 'Median',
         'min': 'Minimum',
         'max': 'Maximum',
@@ -322,55 +335,60 @@ def _get_metrics_names():
 
 def _get_bkgr_val_names():
     bkgr_val_names = {
-        'autoBkgr_val_median': 'Median',
-        'autoBkgr_val_mean': 'Mean',
-        'autoBkgr_val_q75': '75 percentile',
-        'autoBkgr_val_q25': '25 percentile',
-        'autoBkgr_val_q95': '95 percentile',
-        'autoBkgr_val_q05': '5 percentile',
-        'dataPrepBkgr_val_median': 'Median',
-        'dataPrepBkgr_val_mean': 'Mean',
-        'dataPrepBkgr_val_q75': '75 percentile',
-        'dataPrepBkgr_val_q25': '25 percentile',
-        'dataPrepBkgr_val_q95': '95 percentile',
-        'dataPrepBkgr_val_q05': '5 percentile',
+        'autoBkgr_bkgrVal_median': 'Median',
+        'autoBkgr_bkgrVal_mean': 'Mean',
+        'autoBkgr_bkgrVal_q75': '75 percentile',
+        'autoBkgr_bkgrVal_q25': '25 percentile',
+        'autoBkgr_bkgrVal_q95': '95 percentile',
+        'autoBkgr_bkgrVal_q05': '5 percentile',
+        'dataPrepBkgr_bkgrVal_median': 'Median',
+        'dataPrepBkgr_bkgrVal_mean': 'Mean',
+        'dataPrepBkgr_bkgrVal_q75': '75 percentile',
+        'dataPrepBkgr_bkgrVal_q25': '25 percentile',
+        'dataPrepBkgr_bkgrVal_q95': '95 percentile',
+        'dataPrepBkgr_bkgrVal_q05': '5 percentile',
     }
     return bkgr_val_names
 
 def get_props_info_txt():
     url = 'https://scikit-image.org/docs/0.18.x/api/skimage.measure.html#skimage.measure.regionprops'
-    txt = (f"""
-    <p style="font-size:13px"
+    txt = html_utils.paragraph(f"""
         Morphological properties are calculated using the function
         from the library <code>scikit-image</code> called
         <code>skimage.measure.regionprops</code>.<br><br>
         You can find more details about each one of the properties
         <a href=\"{url}"></a>.
-    </p>
     """)
     return txt
+
+def _is_numeric_dtype(dtype):
+    is_numeric = (
+        dtype is float or dtype is int
+    )
+    return is_numeric
 
 def get_props_names():
     props = (
         'label',
-        'bbox',
-        'bbox_area',
-        'eccentricity',
-        'equivalent_diameter',
-        'euler_number',
-        'extent',
-        'filled_area',
         'inertia_tensor_eigvals',
-        'local_centroid',
         'major_axis_length',
-        'minor_axis_length',
+        'equivalent_diameter',
         'moments',
-        'moments_central',
-        'moments_hu',
+        'area',
+        'solidity',
+        'feret_diameter_max',
+        'extent',
+        'inertia_tensor',
+        'filled_area',
+        'centroid',
+        'bbox_area',
+        'local_centroid',
+        'convex_area',
+        'euler_number',
+        'minor_axis_length',
         'moments_normalized',
-        'orientation',
-        'perimeter',
-        'solidity'
+        'moments_central',
+        'bbox'
     )
     return props
 
@@ -381,25 +399,24 @@ def standard_metrics_func():
         'amount_autoBkgr': lambda arr, bkgr, area: (arr.mean()-bkgr)*area,
         'amount_dataPrepBkgr': lambda arr, bkgr, area: (arr.mean()-bkgr)*area,
         'median': lambda arr: np.median(arr),
-        'min': lambda arr: core.numba_min(arr),
-        'max': lambda arr: core.numba_max(arr),
+        'min': lambda arr: np.min(arr),
+        'max': lambda arr: np.max(arr),
         'q25': lambda arr: np.quantile(arr, q=0.25),
         'q75': lambda arr: np.quantile(arr, q=0.75),
         'q05': lambda arr: np.quantile(arr, q=0.05),
         'q95': lambda arr: np.quantile(arr, q=0.95)
     }
+    all_metrics_names = list(_get_metrics_names().keys())
 
     bkgr_val_names = tuple(_get_bkgr_val_names().keys())
-
-    all_metrics_names = list(metrics_func.keys())
     all_metrics_names.extend(bkgr_val_names)
+
     return metrics_func, all_metrics_names
 
 def add_metrics_instructions():
     url = 'https://github.com/SchmollerLab/Cell_ACDC/issues'
     href = f'<a href="{url}">here</a>'
-    s = (f"""
-    <p style="font-size:13px">
+    s = html_utils.paragraph(f"""
     To add custom metrics to the <code>acdc_output.csv</code>
     file you need to <b>create a python script and save it into the
     following folder</b>

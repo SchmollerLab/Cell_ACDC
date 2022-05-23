@@ -12,7 +12,7 @@ import time
 import subprocess
 from math import pow
 from functools import wraps, partial
-from collections import namedtuple
+from collections import namedtuple, Counter
 from collections.abc import Callable, Sequence
 from tqdm import tqdm
 import requests
@@ -33,7 +33,56 @@ from tifffile.tifffile import TiffWriter, TiffFile
 from PyQt5.QtWidgets import QMessageBox
 from PyQt5.QtCore import pyqtSignal, QObject, QCoreApplication
 
-from . import prompts, widgets, apps, core, html_utils
+from . import prompts, widgets, apps, core
+from . import html_utils, is_linux, is_win, is_mac
+
+def exception_handler(func):
+    @wraps(func)
+    def inner_function(self, *args, **kwargs):
+        try:
+            if func.__code__.co_argcount==1 and func.__defaults__ is None:
+                result = func(self)
+            elif func.__code__.co_argcount>1 and func.__defaults__ is None:
+                result = func(self, *args)
+            else:
+                result = func(self, *args, **kwargs)
+        except Exception as e:
+            try:
+                if self.progressWin is not None:
+                    self.progressWin.workerFinished = True
+                    self.progressWin.close()
+            except AttributeError:
+                pass
+            result = None
+            traceback_str = traceback.format_exc()
+            self.logger.exception(traceback_str)
+            msg = widgets.myMessageBox(wrapText=False)
+            msg.addShowInFileManagerButton(self.logs_path, txt='Show log file...')
+            msg.setDetailedText(traceback_str)
+            err_msg = html_utils.paragraph(f"""
+                Error in function <code>{func.__name__}</code>.<br><br>
+                More details below or in the terminal/console.<br><br>
+                Note that the <b>error details</b> from this session are
+                also <b>saved in the following file</b>:<br><br>
+                {self.log_path}<br><br>
+                Please <b>send the log file</b> when reporting a bug, thanks!
+            """)
+
+            msg.critical(self, 'Critical error', err_msg)
+            self.is_error_state = True
+        return result
+    return inner_function
+
+def filterCommonStart(images_path):
+    startNameLen = 6
+    ls = listdir(images_path)
+    if not ls:
+        return []
+    allFilesStartNames = [f[:startNameLen] for f in ls]
+    mostCommonStart = Counter(allFilesStartNames).most_common(1)[0][0]
+    commonStartFilenames = [f for f in ls if f.startswith(mostCommonStart)]
+    return commonStartFilenames
+
 
 def getCustomAnnotTooltip(annotState):
     toolTip = (
@@ -83,6 +132,17 @@ class utilClass:
 class signals(QObject):
     progressBar = pyqtSignal(int)
     progress = pyqtSignal(str)
+
+def get_trimmed_list(li: list, max_num_digits=10):
+    li_str = li.copy()
+    tom_num_digits = sum([len(str(val)) for val in li])
+    avg_num_digits = tom_num_digits/len(li)
+    max_num_vals = int(round(max_num_digits/avg_num_digits))
+    if tom_num_digits>max_num_digits:
+        del li_str[max_num_vals:-max_num_vals]
+        li_str.insert(max_num_vals, "...")
+        li_str = f"[{', '.join(map(str, li_str))}]"
+    return li_str
 
 def _bytes_to_MB(size_bytes):
     factor = pow(2, -20)
@@ -180,10 +240,6 @@ def addToRecentPaths(exp_path, logger=None):
         else:
             openedOn = [np.nan]*len(recentPaths)
         if exp_path in recentPaths:
-            if logger is not None:
-                logger.info(exp_path)
-            else:
-                print(exp_path)
             pop_idx = recentPaths.index(exp_path)
             recentPaths.pop(pop_idx)
             openedOn.pop(pop_idx)
@@ -308,6 +364,30 @@ def get_cca_colname_desc():
 def testQcoreApp():
     print(QCoreApplication.instance())
 
+def check_git_installed(parent=None):
+    try:
+        subprocess.check_call(['git', '--version'])
+        return True
+    except Exception as e:
+        print('='*20)
+        traceback.print_exc()
+        print('='*20)
+        git_url = 'https://git-scm.com/book/en/v2/Getting-Started-Installing-Git'
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph(f"""
+            In order to install <code>javabridge</code> you first need to <b>install
+            Git</b> (it was not found).<br><br>
+            <b>Close Cell-ACDC</b> and follow the instructions
+            {html_utils.tag('here', f'a href="{git_url}"')}.<br><br>
+            <i><b>NOTE</b>: After installing Git you might need to <b>restart the
+            terminal</b></i>.
+        """)
+        msg.warning(
+            parent, 'Git not installed', txt
+        )
+        return False
+
+
 def install_java():
     try:
         subprocess.check_call(['javac', '-version'])
@@ -336,10 +416,15 @@ def install_javabridge(force_compile=False, attempt_uninstall_first=False):
                 [sys.executable, '-m', 'pip', 'install',
                 'git+https://github.com/SchmollerLab/python-javabridge-windows']
             )
-    else:
+    elif is_mac:
         subprocess.check_call(
             [sys.executable, '-m', 'pip', 'install',
             'git+https://github.com/SchmollerLab/python-javabridge-acdc']
+        )
+    elif is_linux:
+        subprocess.check_call(
+            [sys.executable, '-m', 'pip', 'install',
+            'git+https://github.com/LeeKamentsky/python-javabridge.git@master']
         )
 
 def is_in_bounds(x,y,X,Y):
@@ -359,9 +444,11 @@ def read_version():
             return 'ND'
 
 def showInExplorer(path):
-    if os.name == 'posix' or os.name == 'os2':
+    if is_mac:
         os.system(f'open "{path}"')
-    elif os.name == 'nt':
+    elif is_linux:
+        os.system(f'xdg-open "{path}"')
+    else:
         os.startfile(path)
 
 def exec_time(func):
@@ -383,6 +470,27 @@ def setRetainSizePolicy(widget, retain=True):
     sp = widget.sizePolicy()
     sp.setRetainSizeWhenHidden(retain)
     widget.setSizePolicy(sp)
+
+def getAcdcDfSegmPaths(images_path):
+    ls = listdir(images_path)
+    basename = getBasename(ls)
+    paths = {}
+    for file in ls:
+        filePath = os.path.join(images_path, file)
+        fileName, ext = os.path.splitext(file)
+        endName = fileName[len(basename):]
+        if endName.find('acdc_output') != -1 and ext=='.csv':
+            info_name = endName.replace('acdc_output', '')
+            paths.setdefault(info_name, {})
+            paths[info_name]['acdc_df_path'] = filePath
+            paths[info_name]['acdc_df_filename'] = fileName
+        elif endName.find('segm') != -1 and ext=='.npz':
+            info_name = endName.replace('segm', '')
+            paths.setdefault(info_name, {})
+            paths[info_name]['segm_path'] = filePath
+            paths[info_name]['segm_filename'] = fileName
+    return paths
+
 
 def getBasename(files):
     basename = files[0]
@@ -980,6 +1088,7 @@ def to_uint8(img):
 
 def uint_to_float(img):
     img_max = core.numba_max(img)
+    # Check if float outside of -1, 1
     if img_max <= 1:
         return img
 
@@ -994,7 +1103,6 @@ def uint_to_float(img):
     return img
 
 def scale_float(data):
-    # Check if float outside of -1, 1
     val = data[tuple([0]*data.ndim)]
     if isinstance(val, (np.floating, float)):
         data = uint_to_float(data)
@@ -1006,28 +1114,57 @@ def _install_homebrew_command():
 def _brew_install_java_command():
     return 'brew install --cask homebrew/cask-versions/adoptopenjdk8'
 
-def _java_instructions_macOS():
-    s1 = ("""
-    <p style="font-size:13px">
+def _apt_update_command():
+    return 'sudo apt-get update'
+
+def _apt_gcc_command():
+    return 'sudo apt install python-dev gcc'
+
+def _apt_install_java_command():
+    return 'sudo apt-get install openjdk-8-jdk'
+
+def _java_instructions_linux():
+    s1 = html_utils.paragraph("""
         Run the following commands<br>
         in the Teminal <b>one by one:</b>
-    </p>
     """)
 
-    s2 = (f"""
-    <p style="font-size:13px">
+    s2 = html_utils.paragraph(f"""
+        <code>{_apt_gcc_command().replace(' ', '&nbsp;')}</code>
+    """)
+
+    s3 = html_utils.paragraph(f"""
+        <code>{_apt_update_command().replace(' ', '&nbsp;')}</code>
+    """)
+
+    s4 = html_utils.paragraph(f"""
+        <code>{_apt_install_java_command().replace(' ', '&nbsp;')}</code>
+    """)
+
+    s5 = html_utils.paragraph("""
+    The first command is used to install GCC, which is needed later.<br><br>
+    The second and third commands are used is used to install
+    Java Development Kit 8.<br><br>
+    Follow the instructions on the terminal to complete
+    installation.<br><br>
+    """)
+    return s1, s2, s3, s4
+
+def _java_instructions_macOS():
+    s1 = html_utils.paragraph("""
+        Run the following commands<br>
+        in the Teminal <b>one by one:</b>
+    """)
+
+    s2 = html_utils.paragraph(f"""
         <code>{_install_homebrew_command()}</code>
-    </p>
     """)
 
-    s3 = (f"""
-    <p style="font-size:13px">
-        <code>{_brew_install_java_command()}</code>
-    </p>
+    s3 = html_utils.paragraph(f"""
+        <code>{_brew_install_java_command().replace(' ', '&nbsp;')}</code>
     """)
 
-    s4 = ("""
-    <p style="font-size:13px">
+    s4 = html_utils.paragraph("""
     The first command is used to install Homebrew<br>
     a package manager for macOS/Linux.<br><br>
     The second command is used to install Java 8.<br>
@@ -1038,24 +1175,8 @@ def _java_instructions_macOS():
     <a href="https://hmgubox2.helmholtz-muenchen.de/index.php/s/7xF7YnArwbt9ZqB">
         here
     </a>.
-    </p>
     """)
     return s1, s2, s3, s4
-
-# def _java_instructions_windows():
-#     s = [f"""
-#     <p style="font-size:13px">
-#         Download and install Java 8 and
-#         Java Development Kit for Windows. Here the links:<br>
-#     <p style="font-size:13px">
-#         Java 8: <a href="https://www.java.com/en/download/manual.jsp">here</a>
-#     </p>
-#     <p style="font-size:13px">
-#         Java Development Kit: <a href="https://hmgubox2.helmholtz-muenchen.de/index.php/s/zocneD2j2wMwbNc">here</a>
-#     </p>
-#     </p><br>
-#     """]
-#     return s
 
 def jdk_windows_url():
     return 'https://hmgubox2.helmholtz-muenchen.de/index.php/s/zocneD2j2wMwbNc'
@@ -1066,46 +1187,40 @@ def cpp_windows_url():
 def _java_instructions_windows():
     jdk_url = f'"{jdk_windows_url()}"'
     cpp_url = f'"{cpp_windows_url()}"'
-    s1 = ("""
-    <p style="font-size:13px">
+    s1 = html_utils.paragraph("""
         Download and install <code>Java Development Kit</code> and<br>
         <b>Microsoft C++ Build Tools</b> for Windows (links below).<br><br>
         <b>IMPORTANT</b>: when installing "Microsoft C++ Build Tools"<br>
         make sure to select <b>"Desktop development with C++"</b>.<br>
         Click "See the screenshot" for more details.<br>
-    </p>
     """)
 
-    s2 = (f"""
-    <p style="font-size:13px">
+    s2 = html_utils.paragraph(f"""
         Java Development Kit:
             <a href={jdk_url}>
                 here
             </a>
-    </p>
     """)
 
-    s3 = (f"""
-    <p style="font-size:13px">
+    s3 = html_utils.paragraph(f"""
         Microsoft C++ Build Tools:
             <a href={cpp_url}>
                 here
             </a>
-    </p>
-    </p>
     """)
     return s1, s2, s3
 
 def install_javabridge_instructions_text():
-    if sys.platform.startswith('win'):
+    if is_win:
         return _java_instructions_windows()
-    else:
+    elif is_mac:
         return _java_instructions_macOS()
+    elif is_linux:
+        return _java_instructions_linux()
 
 def install_javabridge_help(parent=None):
     msg = widgets.myMessageBox()
-    txt = (f"""
-    <p style="font-size:13px">
+    txt = html_utils.paragraph(f"""
         Cell-ACDC is going to <b>download and install</b>
         <code>javabridge</code>.<br><br>
         Make sure you have an <b>active internet connection</b>,
@@ -1117,7 +1232,6 @@ def install_javabridge_help(parent=None):
             GitHub page
         </a>.<br><br>
         Alternatively, you can cancel the process and try later.
-    </p>
     """)
     msg.setIcon()
     msg.setWindowTitle('Installing javabridge')

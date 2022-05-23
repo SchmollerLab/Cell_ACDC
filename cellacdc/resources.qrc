@@ -12,12 +12,16 @@
     <file alias="arrow-right.svg">resources/icons/arrow-right.svg</file>
     <file alias="arrow-up.svg">resources/icons/arrow-up.svg</file>
     <file alias="arrow-down.svg">resources/icons/arrow-down.svg</file>
+    <file alias="showDown.svg">resources/icons/showDown.svg</file>
+    <file alias="hideUp.svg">resources/icons/hideUp.svg</file>
     <file alias="brush.svg">resources/icons/brush.svg</file>
     <file alias="eraser.png">resources/icons/eraser.png</file>
     <file alias="brush-cursor.png">resources/icons/brush-cursor.png</file>
     <file alias="undo.svg">resources/icons/undo.svg</file>
     <file alias="redo.svg">resources/icons/redo.svg</file>
     <file alias="eye.svg">resources/icons/eye.svg</file>
+    <file alias="moveLabel.svg">resources/icons/moveLabel.svg</file>
+    <file alias="expandLabel.svg">resources/icons/expandLabel.svg</file>
     <file alias="separate-bud.svg">resources/icons/separate-bud.svg</file>
     <file alias="edit-id.svg">resources/icons/edit-id.svg</file>
     <file alias="eye-plus.svg">resources/icons/eye-plus.svg</file>
@@ -41,6 +45,10 @@
     <file alias="addDelRoi.svg">resources/icons/addDelRoi.svg</file>
     <file alias="curvature-tool.svg">resources/icons/curvature-tool.svg</file>
     <file alias="cancel.svg">resources/icons/cancel.svg</file>
+    <file alias="cancelButton.svg">resources/icons/cancelButton.svg</file>
+    <file alias="okButton.svg">resources/icons/okButton.svg</file>
+    <file alias="no.svg">resources/icons/no.svg</file>
+    <file alias="yesGray.svg">resources/icons/yesGray.svg</file>
     <file alias="bkgrRoi.svg">resources/icons/bkgrRoi.svg</file>
     <file alias="hull.svg">resources/icons/hull.svg</file>
     <file alias="image.svg">resources/icons/image.svg</file>

@@ -18,7 +18,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import (
     Qt, QProcess, pyqtSignal, pyqtSlot, QTimer, QSize,
-    QSettings, QUrl
+    QSettings, QUrl, QObject
 )
 from PyQt5.QtGui import QFontDatabase, QIcon, QDesktopServices
 from pyqtgraph.Qt import QtGui
@@ -29,7 +29,7 @@ try:
     # if cellacdc was installed with pip or not
     from cellacdc import (
         dataPrep, segm, gui, dataStruct, utils, help, qrc_resources, myutils,
-        cite_url
+        cite_url, html_utils, widgets
     )
     from cellacdc.help import about
     from cellacdc.utils import concat as utilsConcat
@@ -543,16 +543,16 @@ class mainWin(QMainWindow):
         if not openModules:
             return True, openModules
 
-        msg = QMessageBox()
-        warn_txt = (
-            'There are still other Cell-ACDC windows open.\n\n'
+        msg = widgets.myMessageBox()
+        warn_txt = html_utils.paragraph(
+            'There are still <b>other Cell-ACDC windows open</b>.<br><br>'
             'Are you sure you want to close everything?'
         )
-        acceptCloseAnswer = msg.warning(
-           self, 'Modules still open!', warn_txt, msg.Yes | msg.Cancel
+        _, yesButton = msg.warning(
+           self, 'Modules still open!', warn_txt, buttonsTexts=('Cancel', 'Yes')
         )
 
-        return acceptCloseAnswer == msg.Yes, openModules
+        return msg.clickedButton == yesButton, openModules
 
     def closeEvent(self, event):
         if self.welcomeGuide is not None:
@@ -586,10 +586,13 @@ class mainWin(QMainWindow):
                 print('-----------------------------------------')
                 print('Failed to restart Cell-ACDC. Please restart manually')
         else:
+            print('**********************************************')
             print('Cell-ACDC closed. Have a good day!')
+            print('**********************************************')
             exit()
 
 def run():
+    from cellacdc.config import parser_args
     print('Launching application...')
     # Handle high resolution displays:
     if hasattr(Qt, 'AA_EnableHighDpiScaling'):
@@ -599,6 +602,7 @@ def run():
 
     # Create the application
     app = QApplication([])
+
     app.setStyle(QStyleFactory.create('Fusion'))
     app.setWindowIcon(QIcon(":assign-motherbud.svg"))
     win = mainWin(app)
@@ -612,11 +616,11 @@ def run():
         pass
     print('**********************************************')
     print(f'Welcome to Cell-ACDC v{version}!')
-    print('-----------------------------------')
-    print('NOTE: If application is not visible, it is probably minimized '
-          'or behind some other open window.')
-    print('-----------------------------------')
     print('**********************************************')
+    print('----------------------------------------------')
+    print('NOTE: If application is not visible, it is probably minimized\n'
+          'or behind some other open window.')
+    print('----------------------------------------------')
     # win.raise_()
     sys.exit(app.exec_())
 

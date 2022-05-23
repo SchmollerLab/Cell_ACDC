@@ -51,10 +51,48 @@ class signals(QObject):
     create_tqdm = pyqtSignal(int)
     innerProgressBar = pyqtSignal(int)
     sigPermissionError = pyqtSignal(str, object)
-    sigMultiSegm = pyqtSignal(object, object, bool, object)
+
+class segmVideoWorker(QObject):
+    finished = pyqtSignal(float)
+    debug = pyqtSignal(object)
+    critical = pyqtSignal(object)
+    progressBar = pyqtSignal(int)
+
+    def __init__(self, posData, paramWin, model, startFrameNum, stopFrameNum):
+        QObject.__init__(self)
+        self.minSize = paramWin.minSize
+        self.minSolidity = paramWin.minSolidity
+        self.maxElongation = paramWin.maxElongation
+        self.applyPostProcessing = paramWin.applyPostProcessing
+        self.segment2D_kwargs = paramWin.segment2D_kwargs
+        self.model = model
+        self.posData = posData
+        self.startFrameNum = startFrameNum
+        self.stopFrameNum = stopFrameNum
+
+    @worker_exception_handler
+    def run(self):
+        t0 = time.time()
+        img_data = self.posData.img_data[self.startFrameNum-1:self.stopFrameNum]
+        for i, img in enumerate(img_data):
+            frame_i = i+self.startFrameNum-1
+            img = myutils.uint_to_float(img)
+            lab = self.model.segment(img, **self.segment2D_kwargs)
+            if self.applyPostProcessing:
+                lab = core.remove_artefacts(
+                    lab,
+                    min_solidity=self.minSolidity,
+                    min_area=self.minSize,
+                    max_elongation=self.maxElongation
+                )
+            self.posData.segm_data[frame_i] = lab
+            self.progressBar.emit(1)
+        t1 = time.time()
+        exec_time = t1-t0
+        self.finished.emit(exec_time)
 
 class loadDataWorker(QObject):
-    def __init__(self, mainWin, user_ch_file_paths, user_ch_name):
+    def __init__(self, mainWin, user_ch_file_paths, user_ch_name, firstPosData):
         QObject.__init__(self)
         self.signals = signals()
         self.mainWin = mainWin
@@ -63,6 +101,7 @@ class loadDataWorker(QObject):
         self.logger = workerLogger(self.signals.progress)
         self.mutex = self.mainWin.loadDataMutex
         self.waitCond = self.mainWin.loadDataWaitCond
+        self.firstPosData = firstPosData
 
     def pause(self):
         self.mutex.lock()
@@ -93,8 +132,14 @@ class loadDataWorker(QObject):
         numPos = len(self.user_ch_file_paths)
         user_ch_name = self.user_ch_name
         self.signals.initProgressBar.emit(len(user_ch_file_paths))
-        for file_path in user_ch_file_paths:
-            posData = load.loadData(file_path, user_ch_name)
+        for i, file_path in enumerate(user_ch_file_paths):
+            if i == 0:
+                posData = self.firstPosData
+                segmFound = self.firstPosData.segmFound
+                loadSegm = False
+            else:
+                posData = load.loadData(file_path, user_ch_name)
+                loadSegm = True
 
             self.logger.log(f'Loading {posData.relPath}...')
 
@@ -105,13 +150,15 @@ class loadDataWorker(QObject):
             posData.SizeZ = self.mainWin.SizeZ
             posData.isSegm3D = self.mainWin.isSegm3D
 
-            print(self.mainWin.selectedSegmNpz)
+            if i > 0:
+                # First pos was already loaded in the main thread
+                # see loadSelectedData function in gui.py
+                posData.getBasenameAndChNames()
+                posData.buildPaths()
+                posData.loadImgData()
 
-            posData.getBasenameAndChNames()
-            posData.buildPaths()
-            posData.loadImgData()
             posData.loadOtherFiles(
-                load_segm_data=True,
+                load_segm_data=loadSegm,
                 load_acdc_df=True,
                 load_shifts=False,
                 loadSegmInfo=True,
@@ -121,7 +168,20 @@ class loadDataWorker(QObject):
                 load_last_tracked_i=True,
                 load_metadata=True,
                 load_customAnnot=True,
-                selectedSegmNpz=self.mainWin.selectedSegmNpz
+                endFilenameSegm=self.mainWin.endFilenameSegm,
+                create_new_segm=self.mainWin.isNewFile,
+                new_segm_filename=self.mainWin.newSegmFilename,
+                labelBoolSegm=self.mainWin.labelBoolSegm
+            )
+            posData.labelSegmData()
+
+            if i == 0:
+                posData.segmFound = segmFound
+
+            self.logger.log(
+                'Loaded paths:\n'
+                f'Segmentation file name: {os.path.basename(posData.segm_npz_path)}\n'
+                f'ACDC output file name {os.path.basename(posData.acdc_output_csv_path)}'
             )
 
             posData.SizeT = self.mainWin.SizeT

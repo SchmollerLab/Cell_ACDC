@@ -27,7 +27,7 @@ from PyQt5.QtWidgets import (
 import pyqtgraph as pg
 
 from . import prompts, apps, myutils, widgets
-from . import base_cca_df, base_acdc_df # defined in __init__.py
+from . import base_cca_df, base_acdc_df, html_utils
 
 cca_df_colnames = list(base_cca_df.keys())
 
@@ -206,17 +206,14 @@ class loadData:
         return img_data
 
     def detectMultiSegmNpz(
-            self, _endswith='', multiPos=False, signals=None,
-            mutex=None, waitCond=None, askMultiSegmFunc=None
+            self, multiPos=False, signals=None,
+            mutex=None, waitCond=None, askMultiSegmFunc=None,
+            newEndFilenameSegm=''
         ):
+        if newEndFilenameSegm:
+            return '', newEndFilenameSegm, False
+
         ls = myutils.listdir(self.images_path)
-        if _endswith:
-            self.multiSegmAllPos = True
-            selectedSegmNpz_found = [
-                f for f in ls if f.endswith(_endswith)
-            ]
-            if selectedSegmNpz_found:
-                return selectedSegmNpz_found[0], False
 
         segm_files = [
             file for file in ls if file.endswith('segm.npz')
@@ -225,21 +222,21 @@ class loadData:
             or (file.endswith('.npz') and file.find('segm') != -1)
         ]
         is_multi_npz = len(segm_files)>1
-        if is_multi_npz and signals is not None:
-            mutex.lock()
-            signals.sigMultiSegm.emit(segm_files, self, multiPos, waitCond)
-            waitCond.wait(mutex)
-            mutex.unlock()
-            return self.selectedItemText, self.cancel
         if is_multi_npz and askMultiSegmFunc is not None:
-            askMultiSegmFunc(segm_files, self, multiPos, waitCond)
-            return self.selectedItemText, self.cancel
+            askMultiSegmFunc(segm_files, self, waitCond)
+            endFilename = self.selectedItemText[len(self.basename):]
+            return self.selectedItemText, endFilename, self.cancel
+        elif len(segm_files)==1:
+            segmFilename = segm_files[0]
+            endFilename = segmFilename[len(self.basename):]
+            return segm_files[0], endFilename, False
         else:
-            return '', False
+            return '', '', False
 
     def loadOtherFiles(
             self,
             load_segm_data=True,
+            create_new_segm=False,
             load_acdc_df=False,
             load_shifts=False,
             loadSegmInfo=False,
@@ -251,7 +248,9 @@ class loadData:
             load_dataPrep_ROIcoords=False,
             load_customAnnot=False,
             getTifPath=False,
-            selectedSegmNpz=''
+            endFilenameSegm='',
+            new_segm_filename='',
+            labelBoolSegm=None
         ):
 
         self.segmFound = False if load_segm_data else None
@@ -266,19 +265,49 @@ class loadData:
         self.dataPrep_ROIcoordsFound = False if load_dataPrep_ROIcoords else None
         self.TifPathFound = False if getTifPath else None
         self.customAnnotFound = False if load_customAnnot else None
+        self.labelBoolSegm = labelBoolSegm
         ls = myutils.listdir(self.images_path)
+
+        linked_acdc_filename = None
+        if endFilenameSegm and load_acdc_df:
+            # Check if there is an acdc_output file linked to selected .npz
+            _acdc_df_end_fn = endFilenameSegm.replace('segm', 'acdc_output')
+            _acdc_df_end_fn = _acdc_df_end_fn.replace('.npz', '.csv')
+            self._acdc_df_end_fn = _acdc_df_end_fn
+            _linked_acdc_fn = f'{self.basename}{_acdc_df_end_fn}'
+            for file in ls:
+                if file == _linked_acdc_fn:
+                    filePath = os.path.join(self.images_path, file)
+                    self.acdc_output_csv_path = filePath
+                    linked_acdc_filename = file
+                    break
+            else:
+                # acdc_output not found --> create a linked acdc_output
+                self.acdc_output_csv_path = os.path.join(
+                    self.images_path, _linked_acdc_fn
+                )
 
         for file in ls:
             filePath = os.path.join(self.images_path, file)
-            if selectedSegmNpz:
-                is_segm_file = file == selectedSegmNpz
+
+            if endFilenameSegm:
+                self._segm_end_fn = endFilenameSegm
+                is_segm_file = file.endswith(endFilenameSegm)
             else:
                 is_segm_file = file.endswith('segm.npz')
 
-            if load_segm_data and is_segm_file:
+            if linked_acdc_filename is not None:
+                is_acdc_df_file = file == linked_acdc_filename
+            else:
+                is_acdc_df_file = file.endswith('acdc_output.csv')
+
+            if load_segm_data and is_segm_file and not create_new_segm:
                 self.segmFound = True
                 self.segm_npz_path = filePath
                 self.segm_data = np.load(filePath)['arr_0']
+                if self.segm_data.dtype == bool:
+                    if self.labelBoolSegm is None:
+                        self.askBooleanSegm()
                 squeezed_arr = np.squeeze(self.segm_data)
                 if squeezed_arr.shape != self.segm_data.shape:
                     self.segm_data = squeezed_arr
@@ -286,7 +315,7 @@ class loadData:
             elif getTifPath and file.find(f'{self.user_ch_name}.tif')!=-1:
                 self.tif_path = filePath
                 self.TifPathFound = True
-            elif load_acdc_df and file.endswith('acdc_output.csv'):
+            elif load_acdc_df and is_acdc_df_file and not create_new_segm:
                 self.acdc_df_found = True
                 acdc_df = pd.read_csv(
                       filePath, index_col=['frame_i', 'Cell_ID']
@@ -342,6 +371,15 @@ class loadData:
                 self.customAnnotFound = True
                 self.customAnnot = read_json(filePath)
 
+        # Check if there is the old segm.npy
+        if not self.segmFound and not create_new_segm:
+            for file in ls:
+                is_segm_npy = file.endswith('segm.npy')
+                filePath = os.path.join(self.images_path, file)
+                if load_segm_data and is_segm_npy and not self.segmFound:
+                    self.segmFound = True
+                    self.segm_data = np.load(filePath)
+
         if load_last_tracked_i:
             self.last_tracked_i_found = True
             try:
@@ -349,8 +387,65 @@ class loadData:
             except AttributeError as e:
                 # traceback.print_exc()
                 self.last_tracked_i = None
+
+        if create_new_segm:
+            self.setFilePaths(new_segm_filename)
+
         self.getCustomAnnotatedIDs()
         self.setNotFoundData()
+
+    def askBooleanSegm(self):
+        segmFilename = os.path.basename(self.segm_npz_path)
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph(
+            f'The loaded segmentation file<br><br>'
+            f'"{segmFilename}"<br><br> '
+            'has <b>boolean data type</b>.<br><br>'
+            'To correctly load it, Cell-ACDC needs to <b>convert</b> it '
+            'to <b>integer data type</b>.<br><br>'
+            'Do you want to <b>label the mask</b> to separate the objects '
+            '(recommended) or do you want to keep one single object?<br>'
+        )
+        LabelButton, _  = msg.question(
+            self.parent, 'Boolean segmentation mask?', txt,
+            buttonsTexts=('Label (recommended)', 'Keep single object')
+        )
+        if msg.clickedButton == LabelButton:
+            self.labelBoolSegm = True
+        else:
+            self.labelBoolSegm = False
+
+    def labelSegmData(self):
+        if self.labelBoolSegm is None:
+            return
+
+        if self.segm_data.dtype != bool:
+            return
+
+        if self.labelBoolSegm:
+            if self.SizeT > 1:
+                segm_data = np.zeros(self.segm_data.shape, dtype=np.uint16)
+                for i, lab in enumerate(self.segm_data):
+                    segm_data[i] = skimage.measure.label(lab)
+                self.segm_data = segm_data
+            else:
+                self.segm_data = skimage.measure.label(self.segm_data)
+        else:
+            self.segm_data = self.segm_data.astype(np.uint16)
+
+    def setFilePaths(self, new_filename):
+        if self.basename.endswith('_'):
+            basename = self.basename
+        else:
+            basename = f'{self.basename}_'
+
+        segm_new_filename = f'{basename}segm_{new_filename}.npz'
+        filePath = os.path.join(self.images_path, segm_new_filename)
+        self.segm_npz_path = filePath
+
+        acdc_output_filename = f'{basename}acdc_output_{new_filename}.csv'
+        filePath = os.path.join(self.images_path, acdc_output_filename)
+        self.acdc_output_csv_path = filePath
 
     def getCustomAnnotatedIDs(self):
         self.customAnnotIDs = {}
@@ -391,7 +486,6 @@ class loadData:
             return self.segm_data.ndim == 4
         else:
             return self.segm_data.ndim == 3
-
 
     def extractMetadata(self):
         self.metadata_df['values'] = self.metadata_df['values'].astype(str)
@@ -468,8 +562,23 @@ class loadData:
     def setNotFoundData(self):
         if self.segmFound is not None and not self.segmFound:
             self.segm_data = None
+            # Segmentation file not found and a specifc one was requested
+            if hasattr(self, '_segm_end_fn'):
+                if self.basename.endswith('_'):
+                    basename = self.basename
+                else:
+                    basename = f'{self.basename}_'
+                base_path = os.path.join(self.images_path, basename)
+                self.segm_npz_path = f'{base_path}{self._segm_end_fn}'
         if self.acdc_df_found is not None and not self.acdc_df_found:
             self.acdc_df = None
+            if hasattr(self, '_acdc_df_end_fn'):
+                if self.basename.endswith('_'):
+                    basename = self.basename
+                else:
+                    basename = f'{self.basename}_'
+                base_path = os.path.join(self.images_path, basename)
+                self.acdc_output_csv_path = f'{base_path}{self._acdc_df_end_fn}'
         if self.shiftsFound is not None and not self.shiftsFound:
             self.loaded_shifts = None
         if self.segmInfoFound is not None and not self.segmInfoFound:
@@ -735,13 +844,16 @@ class loadData:
         try:
             self.metadata_df.to_csv(self.metadata_csv_path)
         except PermissionError:
-            permissionErrorTxt = (
-                f'The below file is open in another app (Excel maybe?).\n\n'
-                f'{self.metadata_csv_path}\n\n'
+            print('='*20)
+            traceback.print_exc()
+            print('='*20)
+            permissionErrorTxt = html_utils.paragraph(
+                f'The below file is open in another app (Excel maybe?).<br><br>'
+                f'{self.metadata_csv_path}<br><br>'
                 'Close file and then press "Ok".'
             )
             if signals is None:
-                msg = widgets.myMessageBox(self)
+                msg = widgets.myMessageBox(self.parent)
                 msg.setIcon(iconName='SP_MessageBoxCritical')
                 msg.setWindowTitle('Permission denied')
                 msg.addText(permissionErrorTxt)

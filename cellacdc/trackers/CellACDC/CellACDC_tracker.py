@@ -1,10 +1,12 @@
 import os
 
+from tqdm import tqdm
+
 import numpy as np
 from skimage.measure import regionprops
+from skimage.segmentation import relabel_sequential
 
-from cellacdc.core import lab_replace_values, np_replace_values, numba_argmax
-
+from cellacdc.core import lab_replace_values, np_replace_values
 
 def calc_IoA_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None):
     IDs_prev = []
@@ -30,8 +32,8 @@ def calc_IoA_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None):
                 IoA_matrix[i, j] = IoA
     return IoA_matrix, IDs_curr_untracked, IDs_prev
 
-def assign(IoA_matrix, IDs_curr_untracked, IDs_prev):
-    # Determine max IoA between IDs and assign tracked ID if IoA > 0.4
+def assign(IoA_matrix, IDs_curr_untracked, IDs_prev, IoA_thresh=0.4):
+    # Determine max IoA between IDs and assign tracked ID if IoA >= IoA_thresh
     max_IoA_col_idx = IoA_matrix.argmax(axis=1)
     unique_col_idx, counts = np.unique(max_IoA_col_idx, return_counts=True)
     counts_dict = dict(zip(unique_col_idx, counts))
@@ -40,7 +42,7 @@ def assign(IoA_matrix, IDs_curr_untracked, IDs_prev):
     for i, j in enumerate(max_IoA_col_idx):
         max_IoU = IoA_matrix[i,j]
         count = counts_dict[j]
-        if max_IoU > 0.4:
+        if max_IoU >= IoA_thresh:
             tracked_ID = IDs_prev[j]
             if count == 1:
                 old_ID = IDs_curr_untracked[i]
@@ -62,7 +64,7 @@ def indexAssignment(
     # print(f'Assign new IDs uniquely = {assign_unique_new_IDs}')
     # print('***********************')
     if new_untracked_IDs and assign_unique_new_IDs:
-        # Relabel new untracked IDs unique IDs
+        # Relabel new untracked IDs (i.e., new cells) unique IDs
         if remove_untracked:
             new_tracked_IDs = [0]*len(new_untracked_IDs)
         else:
@@ -87,13 +89,14 @@ def indexAssignment(
 def track_frame(
         prev_lab, prev_rp, lab, rp, IDs_curr_untracked=None,
         uniqueID=None, setBrushID_func=None, posData=None,
-        assign_unique_new_IDs=True
+        assign_unique_new_IDs=True, IoA_thresh=0.4
     ):
     IoA_matrix, IDs_curr_untracked, IDs_prev = calc_IoA_matrix(
         lab, prev_lab, rp, prev_rp, IDs_curr_untracked=IDs_curr_untracked
     )
     old_IDs, tracked_IDs = assign(
-        IoA_matrix, IDs_curr_untracked, IDs_prev
+        IoA_matrix, IDs_curr_untracked, IDs_prev,
+        IoA_thresh=IoA_thresh
     )
 
     if posData is None and uniqueID is None:
@@ -111,12 +114,12 @@ def track_frame(
     return tracked_lab
 
 class tracker:
-    def __init__(self):
-        pass
+    def __init__(self, **params):
+        self.params = params
 
     def track(self, segm_video, signals=None, export_to: os.PathLike=None):
         tracked_video = np.zeros_like(segm_video)
-        for frame_i, lab in enumerate(segm_video):
+        for frame_i, lab in enumerate(tqdm(segm_video, ncols=100)):
             if frame_i == 0:
                 tracked_video[frame_i] = lab
                 continue
@@ -126,13 +129,15 @@ class tracker:
             prev_rp = regionprops(prev_lab)
             rp = regionprops(lab.copy())
 
+            IoA_thresh = self.params.get('IoA_thresh', 0.4)
             tracked_lab = track_frame(
-                prev_lab, prev_rp, lab, rp
+                prev_lab, prev_rp, lab, rp, IoA_thresh=IoA_thresh
             )
 
             tracked_video[frame_i] = tracked_lab
             if signals is not None:
                 signals.progressBar.emit(1)
+        # tracked_video = relabel_sequential(tracked_video)[0]
         return tracked_video
 
     def save_output(self):

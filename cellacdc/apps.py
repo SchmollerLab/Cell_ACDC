@@ -26,8 +26,9 @@ import skimage.draw
 import skimage.registration
 import skimage.color
 import skimage.segmentation
-from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg,
-                                               NavigationToolbar2Tk)
+from matplotlib.backends.backend_tkagg import (
+    FigureCanvasTkAgg, NavigationToolbar2Tk
+)
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
@@ -50,10 +51,30 @@ from PyQt5.QtWidgets import (
 )
 
 from . import myutils, load, prompts, widgets, core, measurements, html_utils
-from . import is_mac, is_win
+from . import is_mac, is_win, is_linux
 from . import qrc_resources
 
 pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
+font = QtGui.QFont()
+font.setPixelSize(13)
+
+class baseDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        super().show()
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()
 
 class installJavaDialog(widgets.myMessageBox):
     def __init__(self, parent=None):
@@ -94,7 +115,7 @@ class installJavaDialog(widgets.myMessageBox):
             self.instructionsButton.clicked.connect(self.showInstructions)
             installButton = self.addButton('Install')
             installButton.disconnect()
-            installButton.clicked.connect(self.installJavaMacOS)
+            installButton.clicked.connect(self.installJava)
             txt = txt_macOS
         else:
             okButton = self.addButton('Ok')
@@ -198,6 +219,48 @@ class installJavaDialog(widgets.myMessageBox):
         self.layout.setRowStretch(self.currentRow, 1)
         self.scrollArea.hide()
 
+    def addInstructionsLinux(self):
+        self.scrollArea = QScrollArea()
+        _container = QWidget()
+        _layout = QVBoxLayout()
+        for t, text in enumerate(myutils.install_javabridge_instructions_text()):
+            label = QLabel()
+            label.setText(text)
+            # label.setWordWrap(True)
+            if (t == 1 or t == 2 or t==3):
+                label.setWordWrap(True)
+                code_layout = QHBoxLayout()
+                code_layout.addWidget(label)
+                copyButton = QToolButton()
+                copyButton.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+                copyButton.setIcon(QIcon(':edit-copy.svg'))
+                copyButton.setText('Copy')
+                if t==1:
+                    copyButton.textToCopy = myutils._apt_update_command()
+                elif t==2:
+                    copyButton.textToCopy = myutils._apt_install_java_command()
+                elif t==3:
+                    copyButton.textToCopy = myutils._apt_gcc_command()
+                copyButton.clicked.connect(self.copyToClipboard)
+                code_layout.addWidget(copyButton, alignment=Qt.AlignLeft)
+                # code_layout.addStretch(1)
+                code_layout.setStretch(0, 2)
+                code_layout.setStretch(1, 0)
+                _layout.addLayout(code_layout)
+            else:
+                _layout.addWidget(label)
+        _container.setLayout(_layout)
+        self.scrollArea.setWidget(_container)
+        self.currentRow += 1
+        self.layout.addWidget(
+            self.scrollArea, self.currentRow, 1, alignment=Qt.AlignTop
+        )
+
+        # Stretch last row
+        self.currentRow += 1
+        self.layout.setRowStretch(self.currentRow, 1)
+        self.scrollArea.hide()
+
     def copyToClipboard(self):
         cb = QApplication.clipboard()
         cb.clear(mode=cb.Clipboard)
@@ -216,20 +279,34 @@ class installJavaDialog(widgets.myMessageBox):
             func = partial(self.resize, self.width(), self.origHeight)
             QTimer.singleShot(50, func)
 
-    def installJavaMacOS(self):
+    def installJava(self):
         import subprocess
         try:
-            try:
-                subprocess.check_call(['brew', 'update'])
-            except Exception as e:
+            if is_mac:
+                try:
+                    subprocess.check_call(['brew', 'update'])
+                except Exception as e:
+                    subprocess.run(
+                        myutils._install_homebrew_command(),
+                        check=True, text=True, shell=True
+                    )
                 subprocess.run(
-                    myutils._install_homebrew_command(),
+                    myutils._brew_install_java_command(),
                     check=True, text=True, shell=True
                 )
-            subprocess.run(
-                myutils._brew_install_java_command(),
-                check=True, text=True, shell=True
-            )
+            elif is_linux:
+                subprocess.run(
+                    myutils._apt_gcc_command()(),
+                    check=True, text=True, shell=True
+                )
+                subprocess.run(
+                    myutils._apt_update_command()(),
+                    check=True, text=True, shell=True
+                )
+                subprocess.run(
+                    myutils._apt_install_java_command()(),
+                    check=True, text=True, shell=True
+                )
             self.close()
         except Exception as e:
             print('=======================')
@@ -247,15 +324,23 @@ class installJavaDialog(widgets.myMessageBox):
                self, 'Java installation failed', err_msg, msg.Ok
             )
 
-    def show(self):
-        super().show()
-        if not is_win:
-            self.addInstructionsMacOS()
-        else:
+    def show(self, block=False):
+        super().show(block=False)
+        print(is_linux)
+        if is_win:
             self.addInstructionsWindows()
+        elif is_mac:
+            self.addInstructionsMacOS()
+        elif is_linux:
+            self.addInstructionsLinux()
         self.move(self.pos().x(), 20)
         if is_win:
             self.resize(self.width(), self.height()+200)
+        if block:
+            self._block()
+
+    def exec_(self):
+        self.show(block=True)
 
 class customAnnotationDialog(QDialog):
     sigDeleteSelecAnnot = pyqtSignal(object)
@@ -263,6 +348,7 @@ class customAnnotationDialog(QDialog):
     def __init__(self, savedCustomAnnot, parent=None, state=None):
         self.cancel = True
         self.loop = None
+        self.clickedButton = None
         self.savedCustomAnnot = savedCustomAnnot
 
         self.internalNames = measurements.get_all_acdc_df_colnames()
@@ -433,8 +519,8 @@ class customAnnotationDialog(QDialog):
         self.loadSavedAnnotButton = QPushButton('Load annotation...')
         if not savedCustomAnnot:
             self.loadSavedAnnotButton.setDisabled(True)
-        self.okButton = QPushButton('  Ok  ')
-        cancelButton = QPushButton('Cancel')
+        self.okButton = widgets.okPushButton('  Ok  ')
+        cancelButton = widgets.cancelPushButton('Cancel')
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -442,7 +528,8 @@ class customAnnotationDialog(QDialog):
         buttonsLayout.addWidget(self.loadSavedAnnotButton)
         buttonsLayout.addWidget(self.okButton)
 
-        cancelButton.clicked.connect(self.close)
+        cancelButton.clicked.connect(self.cancelCallBack)
+        self.cancelButton = cancelButton
         self.loadSavedAnnotButton.clicked.connect(self.loadSavedAnnot)
         self.okButton.clicked.connect(self.ok_cb)
         self.okButton.setFocus(True)
@@ -520,7 +607,7 @@ class customAnnotationDialog(QDialog):
             self.shortcutWidget.widget.keySequence = QKeySequence(keySequence)
 
     def warnNoItemsSelected(self):
-        msg = widgets.myMessageBox(self)
+        msg = widgets.myMessageBox(parent=self)
         msg.setIcon(iconName='SP_MessageBoxWarning')
         msg.setWindowTitle('Delete annotation?')
         msg.addText('You didn\'t select any annotation!')
@@ -528,7 +615,7 @@ class customAnnotationDialog(QDialog):
         msg.exec_()
 
     def deleteSelectedAnnot(self):
-        msg = widgets.myMessageBox(self)
+        msg = widgets.myMessageBox(parent=self)
         msg.setIcon(iconName='SP_MessageBoxWarning')
         msg.setWindowTitle('Delete annotation?')
         msg.addText('Are you sure you want to delete the selected annotations?')
@@ -544,7 +631,6 @@ class customAnnotationDialog(QDialog):
         items = list(self.savedCustomAnnot.keys())
         self.selectAnnotWin.listBox.clear()
         self.selectAnnotWin.listBox.addItems(items)
-
 
     def selectColor(self):
         pg.ColorButton.selectColor(self.colorButton)
@@ -595,20 +681,31 @@ class customAnnotationDialog(QDialog):
 
     def ok_cb(self, checked=True):
         self.cancel = False
+        self.clickedButton = self.okButton
+        self.close()
+
+    def cancelCallBack(self, checked=True):
+        self.cancel = True
+        self.clickedButton = self.cancelButton
         self.close()
 
     def showNameInfo(self):
         msg = widgets.myMessageBox()
-        listView = QListWidget(msg)
+        listView = widgets.readOnlyQList(msg)
         listView.addItems(self.internalNames)
-        listView.setSelectionMode(QAbstractItemView.NoSelection)
+        # listView.setSelectionMode(QAbstractItemView.NoSelection)
         msg.information(
             self, 'Annotation Name info', self.nameInfoTxt,
             widgets=listView
         )
 
     def closeEvent(self, event):
-        if self.sender()==self.okButton and not self.nameWidget.widget.text():
+        if self.clickedButton is None or self.clickedButton==self.cancelButton:
+            # cancel button or closed with 'x' button
+            self.cancel = True
+            return
+
+        if self.clickedButton==self.okButton and not self.nameWidget.widget.text():
             msg = QMessageBox()
             msg.critical(
                 self, 'Empty name', 'The name cannot be empty!', msg.Ok
@@ -617,7 +714,7 @@ class customAnnotationDialog(QDialog):
             self.cancel = True
             return
 
-        if self.sender()==self.okButton and self.nameInfoLabel.text():
+        if self.clickedButton==self.okButton and self.nameInfoLabel.text():
             msg = widgets.myMessageBox()
             listView = QListWidget(msg)
             listView.addItems(self.internalNames)
@@ -671,6 +768,95 @@ class customAnnotationDialog(QDialog):
             self.loop = QEventLoop()
             self.loop.exec_()
 
+class filenameDialog(QDialog):
+    def __init__(
+            self, ext='.npz', basename='', title='Insert file name',
+            hintText='', parent=None
+        ):
+        self.cancel = True
+        super().__init__(parent)
+
+        self.basename = basename
+        if ext.find('.') == -1:
+            ext = f'.{ext}'
+        self.ext = ext
+        self.newSegmFilename = None
+
+        self.setWindowTitle(title)
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+
+        layout = QVBoxLayout()
+        entryLayout = QGridLayout()
+        buttonsLayout = QHBoxLayout()
+
+        hintLabel = QLabel(hintText)
+
+        basenameLabel = QLabel(basename)
+
+        self.lineEdit = QLineEdit()
+        self.lineEdit.setAlignment(Qt.AlignCenter)
+
+        extLabel = QLabel(ext)
+
+        self.filenameLabel = QLabel()
+        self.filenameLabel.setText(f'{basename}{ext}')
+
+        entryLayout.addWidget(basenameLabel, 0, 1)
+        entryLayout.addWidget(self.lineEdit, 0, 2)
+        entryLayout.addWidget(extLabel, 0, 3)
+        entryLayout.addWidget(
+            self.filenameLabel, 1, 1, 1, 3, alignment=Qt.AlignCenter
+        )
+        entryLayout.setColumnStretch(0, 1)
+        entryLayout.setColumnStretch(4, 1)
+
+        okButton = widgets.okPushButton('Ok')
+        cancelButton = widgets.cancelPushButton('Cancel')
+
+        buttonsLayout.addStretch()
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(okButton)
+
+        cancelButton.clicked.connect(self.close)
+        okButton.clicked.connect(self.ok_cb)
+        self.lineEdit.textChanged.connect(self.updateFilename)
+
+        layout.addWidget(hintLabel)
+        layout.addLayout(entryLayout)
+        layout.addStretch(1)
+        layout.addSpacing(20)
+        layout.addLayout(buttonsLayout)
+
+        self.setLayout(layout)
+        self.setFont(font)
+
+    def updateFilename(self, text):
+        if not text:
+            self.filenameLabel.setText(f'{self.basename}{self.ext}')
+        else:
+            text = text.replace(' ', '_')
+            self.filenameLabel.setText(f'{self.basename}_{text}{self.ext}')
+
+    def ok_cb(self, checked=True):
+        self.filename = self.filenameLabel.text()
+        self.entryText = self.lineEdit.text().replace(' ', '_')
+        self.cancel = False
+        self.close()
+
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        super().show()
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()
+
 class wandToleranceWidget(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -692,6 +878,7 @@ class setMeasurementsDialog(QDialog):
         super().__init__(parent)
 
         self.delExistingCols = False
+        self.okClicked = False
         self.acdc_df = acdc_df
         self.acdc_df_path = acdc_df_path
 
@@ -722,7 +909,7 @@ class setMeasurementsDialog(QDialog):
             channelGBox.chName = chName
             groupsLayout.addWidget(channelGBox, 0, current_col, 2, 1)
             self.chNameGroupboxes.append(channelGBox)
-            current_col += col
+            current_col += 1
 
         current_col += 1
 
@@ -746,7 +933,7 @@ class setMeasurementsDialog(QDialog):
         groupsLayout.addWidget(regionPropsQGBox, 1, current_col)
         groupsLayout.setRowStretch(1, 2)
 
-        okButton = QPushButton('   Ok   ')
+        okButton = widgets.okPushButton('   Ok   ')
         self.okButton = okButton
 
         buttonsLayout.addStretch(1)
@@ -758,52 +945,55 @@ class setMeasurementsDialog(QDialog):
 
         self.setLayout(layout)
 
-        okButton.clicked.connect(self.close)
+        okButton.clicked.connect(self.ok_cb)
 
-    def closeEvent(self, event):
-        if self.sender() == self.okButton and self.acdc_df is not None:
-            existing_colnames = list(self.acdc_df.columns)
-            unchecked_existing_colnames = []
-            unchecked_existing_rps = []
-            for chNameGroupbox in self.chNameGroupboxes:
-                for checkBox in chNameGroupbox.checkBoxes:
-                    colname = checkBox.text()
-                    is_existing = colname in existing_colnames
-                    if not chNameGroupbox.isChecked() and is_existing:
-                        unchecked_existing_colnames.append(colname)
-                        continue
-                    if not checkBox.isChecked() and is_existing:
-                        unchecked_existing_colnames.append(colname)
-            for checkBox in self.sizeMetricsQGBox.checkBoxes:
+    def ok_cb(self):
+        if self.acdc_df is None:
+            self.close()
+            return
+        self.okClicked = True
+        existing_colnames = list(self.acdc_df.columns)
+        unchecked_existing_colnames = []
+        unchecked_existing_rps = []
+        for chNameGroupbox in self.chNameGroupboxes:
+            for checkBox in chNameGroupbox.checkBoxes:
                 colname = checkBox.text()
                 is_existing = colname in existing_colnames
-                if not self.sizeMetricsQGBox.isChecked() and is_existing:
+                if not chNameGroupbox.isChecked() and is_existing:
                     unchecked_existing_colnames.append(colname)
                     continue
-
                 if not checkBox.isChecked() and is_existing:
                     unchecked_existing_colnames.append(colname)
-            for checkBox in self.regionPropsQGBox.checkBoxes:
-                colname = checkBox.text()
-                is_existing = any([col.find(colname) !=-1 for col in existing_colnames])
-                if not self.regionPropsQGBox.isChecked() and is_existing:
-                    unchecked_existing_rps.append(colname)
-                    continue
+        for checkBox in self.sizeMetricsQGBox.checkBoxes:
+            colname = checkBox.text()
+            is_existing = colname in existing_colnames
+            if not self.sizeMetricsQGBox.isChecked() and is_existing:
+                unchecked_existing_colnames.append(colname)
+                continue
 
-                if not checkBox.isChecked() and is_existing:
-                    unchecked_existing_rps.append(colname)
+            if not checkBox.isChecked() and is_existing:
+                unchecked_existing_colnames.append(colname)
+        for checkBox in self.regionPropsQGBox.checkBoxes:
+            colname = checkBox.text()
+            is_existing = any([col.find(colname) !=-1 for col in existing_colnames])
+            if not self.regionPropsQGBox.isChecked() and is_existing:
+                unchecked_existing_rps.append(colname)
+                continue
 
-            if unchecked_existing_colnames or unchecked_existing_rps:
-                cancel, self.delExistingCols = self.warnUncheckedExistingMeasurements(
-                    unchecked_existing_colnames, unchecked_existing_rps
-                )
-                self.existingUncheckedColnames = unchecked_existing_colnames
-                self.existingUncheckedRps = unchecked_existing_rps
-                if cancel:
-                    event.ignore()
-                    return
+            if not checkBox.isChecked() and is_existing:
+                unchecked_existing_rps.append(colname)
 
-            self.sigClosed.emit()
+        if unchecked_existing_colnames or unchecked_existing_rps:
+            cancel, self.delExistingCols = self.warnUncheckedExistingMeasurements(
+                unchecked_existing_colnames, unchecked_existing_rps
+            )
+            self.existingUncheckedColnames = unchecked_existing_colnames
+            self.existingUncheckedRps = unchecked_existing_rps
+            if cancel:
+                return
+
+        self.close()
+        self.sigClosed.emit()
 
     def warnUncheckedExistingMeasurements(
             self, unchecked_existing_colnames, unchecked_existing_rps
@@ -811,7 +1001,7 @@ class setMeasurementsDialog(QDialog):
         msg = widgets.myMessageBox()
         msg.setWidth(500)
         msg.addShowInFileManagerButton(self.acdc_df_path)
-        txt = (
+        txt = html_utils.paragraph(
             'You chose to <b>not save</b> some measurements that are '
             '<b>already present</b> in the saved <code>acdc_output.csv</code> '
             'file.<br><br>'
@@ -819,11 +1009,10 @@ class setMeasurementsDialog(QDialog):
             '<b>keep</b> them?<br><br>'
             'Existing measurements not selected:'
         )
-        listView = QListWidget(msg)
+        listView = widgets.readOnlyQList(msg)
         items = unchecked_existing_colnames.copy()
         items.extend(unchecked_existing_rps)
         listView.addItems(items)
-        listView.setSelectionMode(QAbstractItemView.NoSelection)
         _, delButton, keepButton = msg.warning(
             self, 'Unchecked existing measurements', txt,
             widgets=listView, buttonsTexts=('Cancel', 'Delete', 'Keep')
@@ -832,8 +1021,8 @@ class setMeasurementsDialog(QDialog):
 
     def show(self):
         super().show()
-        self.move(self.x(), 0)
-        h = self.screen().size().height()-100
+        self.move(self.x(), 10)
+        h = self.screen().size().height()-200
         self.resize(self.width(), h)
 
 class QDialogMetadataXML(QDialog):
@@ -1186,7 +1375,7 @@ class QDialogMetadataXML(QDialog):
         entriesLayout.setContentsMargins(0, 15, 0, 0)
 
         if rawDataStruct is None or rawDataStruct!=-1:
-            okButton = QPushButton(' Ok ')
+            okButton = widgets.okPushButton(' Ok ')
         elif rawDataStruct==1:
             okButton = QPushButton(' Load next position ')
         buttonsLayout.addWidget(okButton, 0, 1)
@@ -1221,7 +1410,7 @@ class QDialogMetadataXML(QDialog):
             trustButton.clicked.connect(self.ok_cb)
             overWriteButton.clicked.connect(self.ok_cb)
 
-        cancelButton = QPushButton('Cancel')
+        cancelButton = widgets.cancelPushButton('Cancel')
         buttonsLayout.addWidget(cancelButton, 0, 2)
         buttonsLayout.setColumnStretch(0, 1)
         buttonsLayout.setColumnStretch(3, 1)
@@ -1634,6 +1823,313 @@ class QDialogMetadataXML(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
+class CellACDCTrackerParamsWin(QDialog):
+    def __init__(self, parent=None):
+        self.cancel = True
+        super().__init__(parent)
+
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        self.setWindowTitle('Cell-ACDC tracker parameters')
+
+        paramsLayout = QGridLayout()
+        paramsBox = QGroupBox()
+
+        row = 0
+        label = QLabel(html_utils.paragraph(
+            'Minimum overlap between objects'
+        ))
+        paramsLayout.addWidget(label, row, 0)
+        maxOverlapSpinbox = QDoubleSpinBox()
+        maxOverlapSpinbox.setAlignment(Qt.AlignCenter)
+        maxOverlapSpinbox.setMinimum(0)
+        maxOverlapSpinbox.setMaximum(1)
+        maxOverlapSpinbox.setSingleStep(0.1)
+        maxOverlapSpinbox.setValue(0.4)
+        self.maxOverlapSpinbox = maxOverlapSpinbox
+        paramsLayout.addWidget(maxOverlapSpinbox, row, 1)
+        infoButton = widgets.infoPushButton()
+        infoButton.clicked.connect(self.showInfo)
+        paramsLayout.addWidget(infoButton, row, 2)
+        paramsLayout.setColumnStretch(0, 0)
+        paramsLayout.setColumnStretch(1, 1)
+        paramsLayout.setColumnStretch(2, 0)
+
+        cancelButton = widgets.cancelPushButton('Cancel')
+        okButton = widgets.okPushButton(' Ok ')
+        cancelButton.clicked.connect(self.cancel_cb)
+        okButton.clicked.connect(self.ok_cb)
+
+        buttonsLayout = QHBoxLayout()
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(okButton)
+
+        layout = QVBoxLayout()
+        infoText = html_utils.paragraph('<b>Cell-ACDC tracker parameters</b>')
+        infoLabel = QLabel(infoText)
+        layout.addWidget(infoLabel, alignment=Qt.AlignCenter)
+        layout.addSpacing(10)
+        paramsBox.setLayout(paramsLayout)
+        layout.addWidget(paramsBox)
+        layout.addSpacing(20)
+        layout.addLayout(buttonsLayout)
+        layout.addStretch(1)
+        self.setLayout(layout)
+        self.setFont(font)
+
+    def showInfo(self):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(
+            'Cell-ACDC tracker computes the percentage of overlap between '
+            'all the objects<br> at frame <code>n</code> and all the '
+            'objects in previous frame <code>n-1</code>.<br><br>'
+            'All objects with <b>overlap less than</b> '
+            '<code>Minimum overlap between objects</code><br>are considered '
+            '<b>new objects</b>.<br><br>'
+            'Set this value to 0 if you want to force tracking of ALL the '
+            'objects<br> in the previous frame (e.g., if cells move a lot '
+            'between frames)'
+        )
+        msg.information(self, 'Cell-ACDC tracker info', txt)
+
+    def ok_cb(self, checked=False):
+        self.cancel = False
+        self.params = {'IoA_thresh': self.maxOverlapSpinbox.value()}
+        self.close()
+
+    def cancel_cb(self, event):
+        self.cancel = True
+        self.close()
+
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        super().show()
+        self.resize(int(self.width()*1.3), self.height())
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()
+
+class BayesianTrackerParamsWin(QDialog):
+    def __init__(self, segmShape, parent=None):
+        self.cancel = True
+        super().__init__(parent)
+
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        self.setWindowTitle('Bayesian tracker parameters')
+
+        paramsLayout = QGridLayout()
+        paramsBox = QGroupBox()
+
+        row = 0
+        this_path = os.path.dirname(os.path.abspath(__file__))
+        default_model_path = os.path.join(
+            this_path, 'trackers', 'BayesianTracker',
+            'model', 'cell_config.json'
+        )
+        label = QLabel(html_utils.paragraph('Model path'))
+        paramsLayout.addWidget(label, row, 0)
+        modelPathLineEdit = QLineEdit()
+        start_dir = ''
+        if os.path.exists(default_model_path):
+            start_dir = os.path.dirname(default_model_path)
+            modelPathLineEdit.setText(default_model_path)
+        self.modelPathLineEdit = modelPathLineEdit
+        paramsLayout.addWidget(modelPathLineEdit, row, 1)
+        browseButton = widgets.browseFileButton(
+            title='Select Bayesian Tracker model file',
+            ext={'JSON Config': ('.json',)},
+            start_dir=start_dir
+        )
+        browseButton.sigPathSelected.connect(self.onPathSelected)
+        paramsLayout.addWidget(browseButton, row, 2, alignment=Qt.AlignLeft)
+
+        row += 1
+        label = QLabel(html_utils.paragraph('Verbose'))
+        paramsLayout.addWidget(label, row, 0)
+        verboseToggle = widgets.Toggle()
+        verboseToggle.setChecked(True)
+        self.verboseToggle = verboseToggle
+        paramsLayout.addWidget(verboseToggle, row, 1, alignment=Qt.AlignCenter)
+
+        row += 1
+        label = QLabel(html_utils.paragraph('Run optimizer'))
+        paramsLayout.addWidget(label, row, 0)
+        optimizeToggle = widgets.Toggle()
+        optimizeToggle.setChecked(True)
+        self.optimizeToggle = optimizeToggle
+        paramsLayout.addWidget(optimizeToggle, row, 1, alignment=Qt.AlignCenter)
+
+        row += 1
+        label = QLabel(html_utils.paragraph('Max search radius'))
+        paramsLayout.addWidget(label, row, 0)
+        maxSearchRadiusSpinbox = QSpinBox()
+        maxSearchRadiusSpinbox.setAlignment(Qt.AlignCenter)
+        maxSearchRadiusSpinbox.setMinimum(1)
+        maxSearchRadiusSpinbox.setMaximum(2147483647)
+        maxSearchRadiusSpinbox.setValue(50)
+        self.maxSearchRadiusSpinbox = maxSearchRadiusSpinbox
+        self.maxSearchRadiusSpinbox.setDisabled(True)
+        paramsLayout.addWidget(maxSearchRadiusSpinbox, row, 1)
+
+        row += 1
+        Z, Y, X = segmShape
+        label = QLabel(html_utils.paragraph('Tracking volume'))
+        paramsLayout.addWidget(label, row, 0)
+        volumeLineEdit = QLineEdit()
+        defaultVol = f'  (0, {X}), (0, {Y})  '
+        if Z > 1:
+            defaultVol = f'{defaultVol}, (0, {Z})  '
+        volumeLineEdit.setText(defaultVol)
+        volumeLineEdit.setAlignment(Qt.AlignCenter)
+        self.volumeLineEdit = volumeLineEdit
+        paramsLayout.addWidget(volumeLineEdit, row, 1)
+
+        row += 1
+        label = QLabel(html_utils.paragraph('Interactive mode step size'))
+        paramsLayout.addWidget(label, row, 0)
+        stepSizeSpinbox = QSpinBox()
+        stepSizeSpinbox.setAlignment(Qt.AlignCenter)
+        stepSizeSpinbox.setMinimum(1)
+        stepSizeSpinbox.setMaximum(2147483647)
+        stepSizeSpinbox.setValue(100)
+        self.stepSizeSpinbox = stepSizeSpinbox
+        paramsLayout.addWidget(stepSizeSpinbox, row, 1)
+
+        row += 1
+        label = QLabel(html_utils.paragraph('Update method'))
+        paramsLayout.addWidget(label, row, 0)
+        updateMethodCombobox = QComboBox()
+        updateMethodCombobox.addItems(['EXACT', 'APPROXIMATE'])
+        self.updateMethodCombobox = updateMethodCombobox
+        self.updateMethodCombobox.currentTextChanged.connect(self.methodChanged)
+        paramsLayout.addWidget(updateMethodCombobox, row, 1)
+
+        cancelButton = widgets.cancelPushButton('Cancel')
+        okButton = widgets.okPushButton(' Ok ')
+        cancelButton.clicked.connect(self.cancel_cb)
+        okButton.clicked.connect(self.ok_cb)
+
+        buttonsLayout = QHBoxLayout()
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(okButton)
+
+        layout = QVBoxLayout()
+        infoText = html_utils.paragraph('<b>Bayesian Tracker parameters</b>')
+        infoLabel = QLabel(infoText)
+        layout.addWidget(infoLabel, alignment=Qt.AlignCenter)
+        layout.addSpacing(10)
+        paramsBox.setLayout(paramsLayout)
+        layout.addWidget(paramsBox)
+
+        url = 'https://btrack.readthedocs.io/en/latest/index.html'
+        moreInfoText = html_utils.paragraph(
+            '<i>Find more info on the Bayesian Tracker\'s '
+            f'<a href="{url}">home page</a></i>'
+        )
+        moreInfoLabel = QLabel(moreInfoText)
+        moreInfoLabel.setOpenExternalLinks(True)
+        layout.addWidget(moreInfoLabel, alignment=Qt.AlignCenter)
+
+        layout.addSpacing(20)
+        layout.addLayout(buttonsLayout)
+        layout.addStretch(1)
+        self.setLayout(layout)
+        self.setFont(font)
+
+    def methodChanged(self, method):
+        if method == 'APPROXIMATE':
+            self.maxSearchRadiusSpinbox.setDisabled(False)
+        else:
+            self.maxSearchRadiusSpinbox.setDisabled(True)
+
+    def onPathSelected(self, path):
+        self.modelPathLineEdit.setText(path)
+
+    def ok_cb(self, checked=False):
+        self.cancel = False
+        try:
+            m = re.findall('\((\d+), *(\d+)\)', self.volumeLineEdit.text())
+            if len(m) < 2:
+                raise
+            self.volume = tuple([(int(start), int(end)) for start, end in m])
+            if len(self.volume) == 2:
+                self.volume = (self.volume[0], self.volume[1], (-1e5, 1e5))
+        except Exception as e:
+            self.warnNotAcceptedVolume()
+            return
+
+        if not os.path.exists(self.modelPathLineEdit.text()):
+            self.warnNotVaidPath()
+            return
+
+        self.verbose = self.verboseToggle.isChecked()
+        self.max_search_radius = self.maxSearchRadiusSpinbox.value()
+        self.update_method = self.updateMethodCombobox.currentText()
+        self.model_path = os.path.normpath(self.modelPathLineEdit.text())
+        self.params = {
+            'model_path': self.model_path,
+            'verbose': self.verbose,
+            'volume': self.volume,
+            'max_search_radius': self.max_search_radius,
+            'update_method': self.update_method,
+            'step_size': self.stepSizeSpinbox.value(),
+            'optimize': self.optimizeToggle.isChecked()
+        }
+        self.close()
+
+    def warnNotVaidPath(self):
+        url = 'https://github.com/lowe-lab-ucl/segment-classify-track/tree/main/models'
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(
+            'The model configuration file path<br><br>'
+            f'{self.modelPathLineEdit.text()}<br><br> '
+            'does <b>not exist.</b><br><br>'
+            'You can find some <b>pre-configured models</b> '
+            f'<a href="{url}">here</a>.'
+        )
+        msg.critical(
+            self, 'Invalid volume', txt
+        )
+
+    def warnNotAcceptedVolume(self):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(
+            f'{self.volumeLineEdit.text()} is <b>not a valid volume!</b><br><br>'
+            'Valid volume is for example (0, 2048), (0, 2048)<br>'
+            'for 2D segmentation or (0, 2048), (0, 2048), (0, 2048)<br>'
+            'for 3D segmentation.'
+        )
+        msg.critical(
+            self, 'Invalid volume', txt
+        )
+
+    def cancel_cb(self, event):
+        self.cancel = True
+        self.close()
+
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        super().show()
+        self.resize(int(self.width()*1.3), self.height())
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()
+
 class QDialogWorkerProgress(QDialog):
     def __init__(
             self, title='Progress', infoTxt='',
@@ -1692,19 +2188,18 @@ class QDialogWorkerProgress(QDialog):
                 self.close()
 
     def askAbort(self):
-        msg = QMessageBox()
-        txt = ("""
-        <p style="font-size:9pt">
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph("""
             Aborting with "Ctrl+Alt+C" is <b>not safe</b>.<br><br>
             The system status cannot be predicted and
             it will <b>require a restart</b>.<br><br>
             Are you sure you want to abort?
-        </p>
         """)
-        answer = msg.critical(
-            self, 'Are you sure you want to abort?', txt, msg.Yes | msg.No
+        yesButton, noButton = msg.critical(
+            self, 'Are you sure you want to abort?', txt,
+            buttonsTexts=('Yes', 'No')
         )
-        return answer == msg.Yes
+        return msg.clickedButton == yesButton
 
     def closeEvent(self, event):
         if not self.workerFinished:
@@ -1771,12 +2266,14 @@ class QDialogCombobox(QDialog):
         topLayout.addWidget(combobox)
         topLayout.setContentsMargins(0, 10, 0, 0)
 
-        okButton = QPushButton('Ok')
-        okButton.setShortcut(Qt.Key_Enter)
-        bottomLayout.addWidget(okButton, alignment=Qt.AlignRight)
+        okButton = widgets.okPushButton('Ok')
 
-        cancelButton = QPushButton('Cancel')
-        bottomLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
+        cancelButton = widgets.cancelPushButton('Cancel')
+
+        bottomLayout.addStretch(1)
+        bottomLayout.addWidget(cancelButton)
+        bottomLayout.addSpacing(20)
+        bottomLayout.addWidget(okButton)
         bottomLayout.setContentsMargins(0, 10, 0, 0)
 
         mainLayout.addLayout(infoLayout)
@@ -1849,8 +2346,11 @@ class QDialogListbox(QDialog):
         listBox.itemDoubleClicked.connect(self.ok_cb)
         topLayout.addWidget(listBox)
 
-        cancelButton = QPushButton(cancelText)
-        okButton = QPushButton('Ok')
+        if cancelText.lower().find('cancel') != -1:
+            cancelButton = widgets.cancelPushButton(cancelText)
+        else:
+            cancelButton = QPushButton(cancelText)
+        okButton = widgets.okPushButton(' Ok ')
         okButton.setShortcut(Qt.Key_Enter)
 
         bottomLayout.addStretch(1)
@@ -1909,6 +2409,48 @@ class QDialogListbox(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
+class startStopFramesDialog(baseDialog):
+    def __init__(
+            self, SizeT, currentFrameNum=0, parent=None,
+            windowTitle='Select frame range to segment'
+        ):
+        super().__init__(parent=parent)
+
+        self.setWindowTitle(windowTitle)
+
+        self.cancel = True
+
+        layout = QVBoxLayout()
+        buttonsLayout = QHBoxLayout()
+
+        self.selectFramesGroupbox = widgets.selectStartStopFrames(
+            SizeT, currentFrameNum=currentFrameNum, parent=parent
+        )
+
+        okButton = widgets.okPushButton('Ok')
+        cancelButton = widgets.cancelPushButton('Cancel')
+
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(okButton)
+
+        layout.addWidget(self.selectFramesGroupbox)
+        layout.addLayout(buttonsLayout)
+        self.setLayout(layout)
+
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.close)
+
+    def ok_cb(self):
+        if self.selectFramesGroupbox.warningLabel.text():
+            return
+        else:
+            self.startFrame = self.selectFramesGroupbox.startFrame_SB.value()
+            self.stopFrame = self.selectFramesGroupbox.stopFrame_SB.value()
+            self.cancel = False
+            self.close()
+
 class selectTrackerGUI(QDialogListbox):
     def __init__(
             self, SizeT, currentFrameNo=1, parent=None
@@ -1920,58 +2462,18 @@ class selectTrackerGUI(QDialogListbox):
         )
         self.setWindowTitle('Select tracker')
 
-        selectFramesContainer = QGroupBox()
-        selectFramesLayout = QGridLayout()
-
-        self.startFrame_SB = QSpinBox()
-        self.startFrame_SB.setAlignment(Qt.AlignCenter)
-        self.startFrame_SB.setMinimum(1)
-        self.startFrame_SB.setMaximum(SizeT-1)
-        self.startFrame_SB.setValue(currentFrameNo)
-
-        self.stopFrame_SB = QSpinBox()
-        self.stopFrame_SB.setAlignment(Qt.AlignCenter)
-        self.stopFrame_SB.setMinimum(1)
-        self.stopFrame_SB.setMaximum(SizeT)
-        self.stopFrame_SB.setValue(SizeT)
-
-        selectFramesLayout.addWidget(QLabel('Start frame n.'), 0, 0)
-        selectFramesLayout.addWidget(self.startFrame_SB, 1, 0)
-
-        selectFramesLayout.addWidget(QLabel('Stop frame n.'), 0, 1)
-        selectFramesLayout.addWidget(self.stopFrame_SB, 1, 1)
-
-        self.warningLabel = QLabel()
-        palette = self.warningLabel.palette();
-        palette.setColor(self.warningLabel.backgroundRole(), Qt.red);
-        palette.setColor(self.warningLabel.foregroundRole(), Qt.red);
-        self.warningLabel.setPalette(palette);
-        selectFramesLayout.addWidget(
-            self.warningLabel, 2, 0, 1, 2, alignment=Qt.AlignCenter
+        self.selectFramesGroupbox = widgets.selectStartStopFrames(
+            SizeT, currentFrameNum=currentFrameNo, parent=parent
         )
 
-        selectFramesContainer.setLayout(selectFramesLayout)
-
-        self.mainLayout.insertWidget(1, selectFramesContainer)
-
-        self.stopFrame_SB.valueChanged.connect(self._checkRange)
-
-    def _checkRange(self):
-        start = self.startFrame_SB.value()
-        stop = self.stopFrame_SB.value()
-        if stop <= start:
-            self.warningLabel.setText(
-                'stop frame smaller than start frame'
-            )
-        else:
-            self.warningLabel.setText('')
+        self.mainLayout.insertWidget(1, self.selectFramesGroupbox)
 
     def ok_cb(self, event):
-        if self.warningLabel.text():
+        if self.selectFramesGroupbox.warningLabel.text():
             return
         else:
-            self.startFrame = self.startFrame_SB.value()
-            self.stopFrame = self.stopFrame_SB.value()
+            self.startFrame = self.selectFramesGroupbox.startFrame_SB.value()
+            self.stopFrame = self.selectFramesGroupbox.stopFrame_SB.value()
             QDialogListbox.ok_cb(self, event)
 
 class QDialogAppendTextFilename(QDialog):
@@ -2006,13 +2508,16 @@ class QDialogAppendTextFilename(QDialog):
             'font-size:12px; padding:5px 0px 0px 0px;'
         )
 
-        okButton = QPushButton('Ok')
+        okButton = widgets.okPushButton('Ok')
         okButton.setShortcut(Qt.Key_Enter)
 
-        cancelButton = QPushButton('Cancel')
+        cancelButton = widgets.cancelPushButton('Cancel')
 
-        buttonsLayout.addWidget(okButton, alignment=Qt.AlignRight)
-        buttonsLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(okButton)
+
         buttonsLayout.setContentsMargins(0, 10, 0, 0)
 
         mainLayout.addLayout(formLayout)
@@ -2082,10 +2587,10 @@ class QDialogEntriesWidget(QDialog):
             formLayout.addRow(label, LE)
             self.QLEs.append(LE)
 
-        okButton = QPushButton('Ok')
+        okButton = widgets.okPushButton('Ok')
         okButton.setShortcut(Qt.Key_Enter)
 
-        cancelButton = QPushButton('Cancel')
+        cancelButton = widgets.cancelPushButton('Cancel')
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -2279,7 +2784,7 @@ class QDialogMetadata(QDialog):
             okTxt = 'Apply only to this Position'
         else:
             okTxt = 'Ok for loaded Positions'
-        okButton = QPushButton(okTxt)
+        okButton = widgets.okPushButton(okTxt)
         okButton.setToolTip(
             'Save metadata only for current positionh'
         )
@@ -2307,7 +2812,7 @@ class QDialogMetadata(QDialog):
             self.selectButton = None
             okButton.setText('Ok')
 
-        cancelButton = QPushButton('Cancel')
+        cancelButton = widgets.cancelPushButton('Cancel')
 
         buttonsLayout.setColumnStretch(0, 1)
         buttonsLayout.addWidget(okButton, 0, 1)
@@ -2347,8 +2852,8 @@ class QDialogMetadata(QDialog):
             '<i>NOTE: if the toggle is disabled it means you already '
             'loaded segmentation data and the shape cannot be changed now.<br>'
             'if you need to start with a blank segmentation, '
-            'move the segmentation file outside of the <code>Images</code> '
-            'folder'
+            'use the "Create a new segmentation file" button instead of the '
+            '"Load folder" button.'
             '</i>'
         )
         msg = widgets.myMessageBox()
@@ -2449,7 +2954,7 @@ class QDialogMetadata(QDialog):
             msg.setIcon(msg.Warning)
             msg.setWindowTitle('Invalid entries')
             msg.setText(txt)
-            continueButton = QPushButton(
+            continueButton = widgets.okPushButton(
                 f'Continue anyway'
             )
             cancelButton = QPushButton(
@@ -2567,7 +3072,7 @@ class QCropZtool(QWidget):
         self.upperZscrollbar.setMaximum(SizeZ-1)
         self.upperZscrollbar.label = QLabel(f'{SizeZ}/{SizeZ}')
 
-        cancelButton = QPushButton('Cancel')
+        cancelButton = widgets.cancelPushButton('Cancel')
         cropButton = QPushButton('Crop and save')
         buttonsLayout.addWidget(cropButton)
         buttonsLayout.addWidget(cancelButton)
@@ -2759,6 +3264,160 @@ class gaussBlurDialog(QDialog):
     def closeEvent(self, event):
         self.mainWindow.gaussBlurAction.setChecked(False)
         self.mainWindow.updateALLimg(only_ax1=True, updateFilters=False)
+
+class diffGaussFilterDialog(QDialog):
+    sigClose = pyqtSignal()
+    sigRemoveFilterClicked = pyqtSignal()
+    sigValueChanged = pyqtSignal(object, str)
+
+    def __init__(self, is3D=False, parent=None, channels=None):
+        super().__init__(parent)
+        self.cancel = True
+        self.parent = parent
+
+        self.setWindowTitle('Sharpening filter')
+        self.setWindowFlags(Qt.Tool | Qt.WindowStaysOnTopHint)
+
+        mainLayout = QVBoxLayout()
+        buttonsLayout = QHBoxLayout()
+
+        if channels is not None:
+            channelsLayout = QHBoxLayout()
+            channelsComboBox = QComboBox()
+            channelsComboBox.addItems(channels)
+            self.channelsComboBox = channelsComboBox
+            channelsComboBox.currentTextChanged.connect(self.valueChanged)
+            channelsLayout.addStretch(1)
+            channelsLayout.addWidget(QLabel('Channel to filter:'))
+            channelsLayout.addWidget(channelsComboBox)
+            channelsLayout.addStretch(1)
+            mainLayout.addLayout(channelsLayout)
+
+        firstGroupbox = QGroupBox('First gaussian filter')
+        firstLayout = QVBoxLayout()
+        self.firstSigmaSliderYX = widgets.sliderWithSpinBox(
+            isFloat=True, title='Sigma YX-direction:',
+            title_loc='in_line'
+        )
+        self.firstSigmaSliderYX.setTickPosition(QSlider.TicksBelow)
+        self.firstSigmaSliderYX.setSingleStep(0.5)
+        self.firstSigmaSliderYX.setTickInterval(10)
+        self.firstSigmaSliderZ = widgets.sliderWithSpinBox(
+            isFloat=True, title='Sigma Z-direction:  ',
+            title_loc='in_line'
+        )
+        self.firstSigmaSliderZ.setTickPosition(QSlider.TicksBelow)
+        self.firstSigmaSliderZ.setSingleStep(0.5)
+        self.firstSigmaSliderZ.setTickInterval(10)
+        firstLayout.addWidget(self.firstSigmaSliderYX)
+        firstLayout.addWidget(self.firstSigmaSliderZ)
+        firstGroupbox.setLayout(firstLayout)
+
+        secondGroupbox = QGroupBox('Second gaussian filter')
+        secondLayout = QVBoxLayout()
+        self.secondSigmaSliderYX = widgets.sliderWithSpinBox(
+            isFloat=True, title='Sigma YX-direction:',
+            title_loc='in_line'
+        )
+        self.secondSigmaSliderYX.setTickPosition(QSlider.TicksBelow)
+        self.secondSigmaSliderYX.setSingleStep(0.5)
+        self.secondSigmaSliderYX.setTickInterval(10)
+
+        self.secondSigmaSliderZ = widgets.sliderWithSpinBox(
+            isFloat=True, title='Sigma Z-direction:  ',
+            title_loc='in_line'
+        )
+        self.secondSigmaSliderZ.setTickPosition(QSlider.TicksBelow)
+        self.secondSigmaSliderZ.setSingleStep(0.5)
+        self.secondSigmaSliderZ.setTickInterval(10)
+
+        secondLayout.addWidget(self.secondSigmaSliderYX)
+        secondLayout.addWidget(self.secondSigmaSliderZ)
+        secondGroupbox.setLayout(secondLayout)
+
+        if not is3D:
+            self.firstSigmaSliderZ.hide()
+            self.secondSigmaSliderZ.hide()
+
+        self.previewCheckBox = QCheckBox('Preview filter')
+        self.previewCheckBox.setChecked(True)
+
+        cancelButton = widgets.cancelPushButton('Cancel')
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+
+        mainLayout.addWidget(firstGroupbox)
+        mainLayout.addSpacing(20)
+        mainLayout.addWidget(secondGroupbox)
+        mainLayout.addSpacing(20)
+        mainLayout.addWidget(self.previewCheckBox)
+        mainLayout.addSpacing(10)
+        mainLayout.addLayout(buttonsLayout)
+        mainLayout.addStretch(1)
+
+        self.setLayout(mainLayout)
+        self.setFont(font)
+
+        self.firstSigmaSliderYX.sigValueChange.connect(self.valueChanged)
+        self.secondSigmaSliderYX.sigValueChange.connect(self.valueChanged)
+        if not is3D:
+            self.firstSigmaSliderZ.sigValueChange.connect(self.valueChanged)
+            self.secondSigmaSliderZ.sigValueChange.connect(self.valueChanged)
+
+        cancelButton.clicked.connect(self.close)
+        self.previewCheckBox.toggled.connect(self.previewToggled)
+
+    def keyPressEvent(self, event):
+        # Avoid closing on enter or return
+        pass
+
+    def previewToggled(self, checked):
+        if checked:
+            self.valueChanged()
+        else:
+            self.sigRemoveFilterClicked.emit()
+
+    def initSpotmaxValues(self, posData):
+        self.firstSigmaSliderYX.setValue(0)
+        self.firstSigmaSliderZ.setValue(0)
+        PhysicalSizeY = posData.PhysicalSizeY
+        PhysicalSizeX = posData.PhysicalSizeX
+        PhysicalSizeZ = posData.PhysicalSizeZ
+        zyx_vox_dim = [PhysicalSizeZ, PhysicalSizeY, PhysicalSizeZ]
+        wavelen = 510
+        NA = 1.4
+        yx_resolution_multi = 1
+        z_resolution_limit = 1
+        _, zyx_resolution_pxl, _ = core.calc_resolution_limited_vol(
+            wavelen, NA, yx_resolution_multi, zyx_vox_dim, z_resolution_limit
+        )
+        self.secondSigmaSliderYX.setValue(zyx_resolution_pxl[1])
+        self.secondSigmaSliderZ.setValue(zyx_resolution_pxl[0])
+
+    def valueChanged(self, value=None):
+        sigmas = self.getSigmas()
+        if hasattr(self, 'channelsComboBox'):
+            channel = self.channelsComboBox.currentText()
+        else:
+            channel = ''
+        self.filterApplied = True
+        self.sigValueChanged.emit(sigmas, channel)
+
+    def getSigmas(self):
+        sigma1_yx = self.firstSigmaSliderYX.value()
+        sigma1_z = self.firstSigmaSliderZ.value()
+        sigma2_yx = self.secondSigmaSliderYX.value()
+        sigma2_z = self.secondSigmaSliderZ.value()
+        sigmas1 = (sigma1_z, sigma1_yx, sigma1_yx) if sigma1_z>0 else sigma1_yx
+        sigmas2 = (sigma2_z, sigma2_yx, sigma2_yx) if sigma2_z>0 else sigma2_yx
+        return sigmas1, sigmas2
+
+    def showEvent(self, event):
+        self.resize(int(self.width()*1.5), self.height())
+        self.firstSigmaSliderYX.setFocus(True)
+
+    def closeEvent(self, event):
+        self.sigClose.emit()
 
 class edgeDetectionDialog(QDialog):
     def __init__(self, mainWindow):
@@ -3552,7 +4211,7 @@ class postProcessSegmDialog(QDialog):
             applyAllButton.clicked.connect(self.ok_cb)
             okButton = None
 
-        cancelButton = QPushButton('Cancel')
+        cancelButton = widgets.cancelPushButton('Cancel')
 
         buttonsLayout.addStretch(1)
         if applyButton is not None:
@@ -3581,12 +4240,12 @@ class postProcessSegmDialog(QDialog):
         self.origLab = self.posData.lab.copy()
 
     def valueChanged(self, value):
-        lab, delIDs = self.applyPostProcessing()
+        lab, delIDs = self.apply()
         self.posData.lab = lab
         self.mainWin.clearItems_IDs(delIDs)
         self.mainWin.setImageImg2()
 
-    def applyPostProcessing(self, origLab=None):
+    def apply(self, origLab=None):
         if self.mainWin is None:
             return
 
@@ -3618,12 +4277,12 @@ class postProcessSegmDialog(QDialog):
         self.mainWin.updateALLimg()
 
     def ok_cb(self):
-        self.applyPostProcessing()
+        self.apply()
         self.onEditingFinished()
         self.close()
 
     def apply_cb(self):
-        self.applyPostProcessing()
+        self.apply()
         self.onEditingFinished()
 
     def applyAll_cb(self):
@@ -3642,13 +4301,13 @@ class postProcessSegmDialog(QDialog):
                 if lab is None:
                     # Non-visited frame modify segm_data
                     origLab = self.posData.segm_data[frame_i].copy()
-                    lab, delIDs = self.applyPostProcessing(origLab=origLab)
+                    lab, delIDs = self.apply(origLab=origLab)
                     self.posData.segm_data[frame_i] = lab
                 else:
                     self.mainWin.get_data()
                     origLab = self.posData.lab.copy()
                     self.origSegmData[frame_i] = origLab
-                    lab, delIDs = self.applyPostProcessing(origLab=origLab)
+                    lab, delIDs = self.apply(origLab=origLab)
                     self.posData.lab = lab
                     self.posData.allData_li[frame_i]['labels'] = lab.copy()
                     # Get the rest of the stored metadata based on the new lab
@@ -3674,7 +4333,7 @@ class postProcessSegmDialog(QDialog):
                 self.mainWin.get_data()
                 origLab = posData.lab.copy()
                 self.origSegmData.append(origLab)
-                lab, delIDs = self.applyPostProcessing(origLab=origLab)
+                lab, delIDs = self.apply(origLab=origLab)
 
                 self.posData.allData_li[0]['labels'] = lab.copy()
                 # Get the rest of the stored metadata based on the new lab
@@ -4083,12 +4742,13 @@ class editCcaTableWidget(QDialog):
         self.tableLayout = tableLayout
 
         # Add buttons
-        okButton = QPushButton('Ok')
+        okButton = widgets.okPushButton('Ok')
         okButton.setShortcut(Qt.Key_Enter)
 
-        cancelButton = QPushButton('Cancel')
+        cancelButton = widgets.cancelPushButton('Cancel')
 
         moreInfoButton = QPushButton('More info...')
+        moreInfoButton.setIcon(QIcon(':info.svg'))
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
@@ -4502,10 +5162,10 @@ class askStopFrameSegm(QDialog):
         mainLayout.addWidget(infoLabel, alignment=Qt.AlignCenter)
         mainLayout.addLayout(formLayout)
 
-        okButton = QPushButton('Ok')
+        okButton = widgets.okPushButton('Ok')
         okButton.setShortcut(Qt.Key_Enter)
 
-        cancelButton = QPushButton('Cancel')
+        cancelButton = widgets.cancelPushButton('Cancel')
 
         buttonsLayout.addWidget(okButton, alignment=Qt.AlignRight)
         buttonsLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
@@ -4558,14 +5218,16 @@ class QLineEditDialog(QDialog):
     def __init__(
             self, title='Entry messagebox', msg='Entry value',
             defaultTxt='', parent=None, allowedValues=None,
-            warnLastFrame=False
+            warnLastFrame=False, isInteger=False, isFloat=False
         ):
-        QDialog.__init__(self)
+        QDialog.__init__(self, parent)
 
         self.loop = None
         self.cancel = True
         self.allowedValues = allowedValues
         self.warnLastFrame = warnLastFrame
+        self.isFloat = isFloat
+        self.isInteger = isInteger
         if allowedValues and warnLastFrame:
             self.maxValue = max(allowedValues)
 
@@ -4585,10 +5247,34 @@ class QLineEditDialog(QDialog):
         # padding: top, left, bottom, right
         msg.setStyleSheet("padding:0px 0px 3px 0px;")
 
-        ID_QLineEdit = QLineEdit()
+        if isFloat:
+            ID_QLineEdit = QDoubleSpinBox()
+            if allowedValues is not None:
+                _min, _max = allowedValues
+                ID_QLineEdit.setMinimum(_min)
+                ID_QLineEdit.setMaximum(_max)
+            else:
+                ID_QLineEdit.setMaximum(2**32)
+            if defaultTxt:
+                ID_QLineEdit.setValue(float(defaultTxt))
+
+        elif isInteger:
+            ID_QLineEdit = QSpinBox()
+            if allowedValues is not None:
+                _min, _max = allowedValues
+                ID_QLineEdit.setMinimum(_min)
+                ID_QLineEdit.setMaximum(_max)
+            else:
+                ID_QLineEdit.setMaximum(2147483647)
+            if defaultTxt:
+                ID_QLineEdit.setValue(int(defaultTxt))
+        else:
+            ID_QLineEdit = QLineEdit()
+            ID_QLineEdit.setText(defaultTxt)
+            ID_QLineEdit.textChanged[str].connect(self.ID_LineEdit_cb)
         ID_QLineEdit.setFont(_font)
         ID_QLineEdit.setAlignment(Qt.AlignCenter)
-        ID_QLineEdit.setText(defaultTxt)
+
         self.ID_QLineEdit = ID_QLineEdit
 
         if allowedValues is not None:
@@ -4598,13 +5284,12 @@ class QLineEditDialog(QDialog):
             notValidLabel.setAlignment(Qt.AlignCenter)
             self.notValidLabel = notValidLabel
 
-        okButton = QPushButton('Ok')
+        okButton = widgets.okPushButton('Ok')
         okButton.setShortcut(Qt.Key_Enter)
 
-        cancelButton = QPushButton('Cancel')
+        cancelButton = widgets.cancelPushButton('Cancel')
 
         # Events
-        ID_QLineEdit.textChanged[str].connect(self.ID_LineEdit_cb)
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.cancel_cb)
 
@@ -4613,12 +5298,13 @@ class QLineEditDialog(QDialog):
 
         # Add widgets to layouts
         LineEditLayout.addWidget(msg, alignment=Qt.AlignCenter)
-        LineEditLayout.addWidget(ID_QLineEdit, alignment=Qt.AlignCenter)
+        LineEditLayout.addWidget(ID_QLineEdit)
         if allowedValues is not None:
             LineEditLayout.addWidget(notValidLabel, alignment=Qt.AlignCenter)
         buttonsLayout.addStretch(1)
-        buttonsLayout.addWidget(okButton)
         buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.insertSpacing(1, 20)
+        buttonsLayout.addWidget(okButton)
 
         # Add layouts
         mainLayout.addLayout(LineEditLayout)
@@ -4675,11 +5361,14 @@ class QLineEditDialog(QDialog):
             if self.notValidLabel.text():
                 return
 
-        val = int(self.ID_QLineEdit.text())
-        if self.warnLastFrame and val < self.maxValue:
-            cancel = self.warnValLessLastFrame(val)
-            if cancel:
-                return
+        if self.isFloat or self.isInteger:
+            val = self.ID_QLineEdit.value()
+        else:
+            val = int(self.ID_QLineEdit.text())
+            if self.warnLastFrame and val < self.maxValue:
+                cancel = self.warnValLessLastFrame(val)
+                if cancel:
+                    return
 
         self.cancel = False
         self.EntryID = val
@@ -4741,11 +5430,11 @@ class editID_QWidget(QDialog):
         mainLayout.addLayout(VBoxLayout)
 
         HBoxLayout = QHBoxLayout()
-        okButton = QPushButton('Ok')
+        okButton = widgets.okPushButton('Ok')
         okButton.setShortcut(Qt.Key_Enter)
         HBoxLayout.addWidget(okButton, alignment=Qt.AlignRight)
 
-        cancelButton = QPushButton('Cancel')
+        cancelButton = widgets.cancelPushButton('Cancel')
         # cancelButton.setShortcut(Qt.Key_Escape)
         HBoxLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
         HBoxLayout.setContentsMargins(0, 10, 0, 0)
@@ -4759,7 +5448,6 @@ class editID_QWidget(QDialog):
         ID_QLineEdit.textChanged[str].connect(self.ID_LineEdit_cb)
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.cancel_cb)
-
         # self.setModal(True)
 
     def ID_LineEdit_cb(self, text):
@@ -5014,12 +5702,13 @@ class QtSelectItems(QDialog):
         topLayout.addWidget(combobox)
         topLayout.setContentsMargins(0, 10, 0, 0)
 
-        okButton = QPushButton('Ok')
-        okButton.setShortcut(Qt.Key_Enter)
-        bottomLayout.addWidget(okButton, alignment=Qt.AlignRight)
+        okButton = widgets.okPushButton('Ok')
+        cancelButton = widgets.cancelPushButton('Cancel')
 
-        cancelButton = QPushButton('Cancel')
-        bottomLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
+        bottomLayout.addStretch(1)
+        bottomLayout.addWidget(cancelButton)
+        bottomLayout.addSpacing(20)
+        bottomLayout.addWidget(okButton)
 
         multiPosButton = QPushButton('Multiple selection')
         multiPosButton.setCheckable(True)
@@ -5074,8 +5763,9 @@ class QtSelectItems(QDialog):
             selectedItems = self.ListBox.selectedItems()
             selectedItemsText = [item.text() for item in selectedItems]
             self.selectedItemsText = natsorted(selectedItemsText)
-            self.selectedItemsIdx = [self.items.index(txt)
-                                     for txt in self.selectedItemsText]
+            self.selectedItemsIdx = [
+                self.items.index(txt) for txt in self.selectedItemsText
+            ]
         else:
             self.selectedItemsText = [self.ComboBox.currentText()]
             self.selectedItemsIdx = [self.ComboBox.currentIndex()]
@@ -5794,7 +6484,7 @@ class QDialogZsliceAbsent(QDialog):
             self.loop.exit()
 
 class QDialogMultiSegmNpz(QDialog):
-    def __init__(self, images_ls, parent_path, parent=None, multiPos=False):
+    def __init__(self, images_ls, parent_path, parent=None):
         self.cancel = True
         self.selectedItemText = ''
         self.selectedItemIdx = None
@@ -5804,25 +6494,25 @@ class QDialogMultiSegmNpz(QDialog):
         self.parent_path = parent_path
         super().__init__(parent)
 
-        informativeText = (f"""
-        <p style="font-size:12px">
+        informativeText = html_utils.paragraph(f"""
             The folder<br><br>{parent_path}<br><br>
-            contains <b>multipe segmentation masks!</b><br>
-        </p>
+            contains <b>multipe segmentation masks</b><br>
         """)
 
-        self.setWindowTitle('Multiple segm.npz files detected!')
+        self.setWindowTitle('Multiple segm.npz files detected')
         is_win = sys.platform.startswith("win")
 
         mainLayout = QVBoxLayout()
         infoLayout = QHBoxLayout()
         selectionLayout = QGridLayout()
-        buttonsLayout = QGridLayout()
+        buttonsLayout = QHBoxLayout()
 
+        # Standard Qt Question icon
         label = QLabel()
-        # padding: top, left, bottom, right
-        # label.setStyleSheet("padding:5px 0px 12px 0px;")
-        label.setPixmap(QtGui.QPixmap(':warning.svg'))
+        standardIcon = getattr(QStyle, 'SP_MessageBoxQuestion')
+        icon = self.style().standardIcon(standardIcon)
+        pixmap = icon.pixmap(60, 60)
+        label.setPixmap(pixmap)
         infoLayout.addWidget(label)
 
         infoLabel = QLabel(informativeText)
@@ -5830,45 +6520,38 @@ class QDialogMultiSegmNpz(QDialog):
         infoLayout.addStretch(1)
         mainLayout.addLayout(infoLayout)
 
-        label = QLabel('Select which segmentation file to load:')
-        combobox = QComboBox()
-        combobox.addItems(images_ls)
-        self.ComboBox = combobox
+        questionText = html_utils.paragraph(
+            'Select which segmentation file to load:'
+        )
+        label = QLabel(questionText)
+        listWidget = QListWidget()
+        listWidget.addItems(images_ls)
+        listWidget.setCurrentRow(0)
+        self.items = list(images_ls)
+        self.listWidget = listWidget
 
-        okButton = QPushButton(' Load selected ')
-        okButton.setShortcut(Qt.Key_Enter)
-        okAndRemoveButton = QPushButton(' Load selected and delete the other files ')
-        s = ' Show in Explorer... ' if is_win else ' Reveal in Finder... '
-        showInFileManagerButton = QPushButton(s)
-        cancelButton = QPushButton(' Cancel ')
+        okButton = widgets.okPushButton(' Load selected ')
+        okAndRemoveButton = QPushButton(
+            'Load selected and delete the other files'
+        )
+        okAndRemoveButton.setIcon(QIcon(':bin.svg'))
+        txt = 'Reveal in Finder...' if is_mac else 'Show in Explorer...'
+        showInFileManagerButton = widgets.showInFileManagerButton(txt)
+        cancelButton = widgets.cancelPushButton(' Cancel ')
 
-        row, col = 0, 0
-        buttonsLayout.addWidget(okButton, row, col)
-        row, col = 1, 0
-        if multiPos:
-            row, col = 1, 1
-        buttonsLayout.addWidget(showInFileManagerButton, row, col) # 1, 0 --> 1, 1
 
-        row, col = 0, 1
-        if multiPos:
-            okAllPos = QPushButton(' Load selected for ALL positions ')
-            buttonsLayout.addWidget(okAllPos, row, col) # 0, 1
-            row, col = 1, 0
-            okAllPos.clicked.connect(self.ok_allPos)
-
-        buttonsLayout.addWidget(okAndRemoveButton, row, col) # 0, 1 --> 1, 0
-
-        row, col = 1, 1
-        if multiPos:
-            row, col = 2, 1
-        buttonsLayout.addWidget(cancelButton, row, col) # 1, 1 --> 2, 1
-
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addWidget(showInFileManagerButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(okButton)
 
         buttonsLayout.setContentsMargins(0, 10, 0, 10)
 
         selectionLayout.addWidget(label, 0, 1, alignment=Qt.AlignLeft)
-        selectionLayout.addWidget(combobox, 1, 1)
+        selectionLayout.addWidget(listWidget, 1, 1)
         selectionLayout.setColumnStretch(0, 1)
+        selectionLayout.setColumnStretch(1, 3)
         selectionLayout.setColumnStretch(2, 1)
         selectionLayout.addLayout(buttonsLayout, 2, 1)
 
@@ -5887,33 +6570,10 @@ class QDialogMultiSegmNpz(QDialog):
     def showInFileManager(self, checked=True):
         myutils.showInExplorer(self.parent_path)
 
-    def ok_allPos(self, checked=False):
-        self.cancel = False
-        self.okAllPos = True
-        self.selectedItemText = self.ComboBox.currentText()
-        self.selectedItemIdx = self.ComboBox.currentIndex()
-        self.close()
-
     def ok_cb(self, event):
-        self.removeOthers = self.sender() == self.okAndRemoveButton
-        if self.removeOthers:
-            msg = QMessageBox()
-            err_msg = (f"""
-            <p style="font-size:12px">
-                Are you sure you want to <b>delete the files</b> below?<br><br>
-                {',<br>'.join(self.images_ls)}
-            </p>
-            """)
-            delete_answer = msg.warning(
-               self, 'Delete files?', err_msg, msg.Yes | msg.Cancel
-            )
-            if delete_answer == msg.Cancel:
-                self.removeOthers = False
-                return
-        # self.applyToAll = self.applyToAll_CB.isChecked()
         self.cancel = False
-        self.selectedItemText = self.ComboBox.currentText()
-        self.selectedItemIdx = self.ComboBox.currentIndex()
+        self.selectedItemText = self.listWidget.selectedItems()[0].text()
+        self.selectedItemIdx = self.items.index(self.selectedItemText)
         self.close()
 
     def exec_(self):
@@ -5989,19 +6649,18 @@ class QDialogPbar(QDialog):
                 self.close()
 
     def askAbort(self):
-        msg = QMessageBox()
-        txt = ("""
-        <p style="font-size:9pt">
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph("""
             Aborting with "Ctrl+Alt+C" is <b>not safe</b>.<br><br>
             The system status cannot be predicted and
             it will <b>require a restart</b>.<br><br>
             Are you sure you want to abort?
-        </p>
         """)
-        answer = msg.critical(
-            self, 'Are you sure you want to abort?', txt, msg.Yes | msg.No
+        yesButton, noButton = msg.critical(
+            self, 'Are you sure you want to abort?', txt,
+            buttonsTexts=('Yes', 'No')
         )
-        return answer == msg.Yes
+        return msg.clickedButton == yesButton
 
 
     def abort(self):
@@ -6037,10 +6696,11 @@ class QDialogModelParams(QDialog):
             'Parameters for 2D segmentation'
         )
 
-        okButton = QPushButton(' Ok ')
+        okButton = widgets.okPushButton(' Ok ')
         buttonsLayout.addWidget(okButton)
 
         infoButton = QPushButton(' More info... ')
+        infoButton.setIcon(QIcon(':info.svg'))
         buttonsLayout.addWidget(infoButton)
 
         cancelButton = QPushButton(' Cancel ')
@@ -6090,29 +6750,25 @@ class QDialogModelParams(QDialog):
         # self.setModal(True)
 
     def info_params(self):
-        self.infoWin = QMessageBox()
+        from cellacdc.models import CELLPOSE_MODELS, STARDIST_MODELS
+        self.infoWin = widgets.myMessageBox()
         self.infoWin.setWindowTitle('Model parameters info')
-        self.infoWin.setIcon(self.infoWin.Information)
-        txt = (
-            'Currently Cell-ACDC has three models implemented: '
-            'YeaZ, Cellpose and StarDist.\n\n'
-            'Cellpose and StarDist have the following default models available:\n\n'
-            'Cellpose:\n'
-            '   - cyto\n'
-            '   - nuclei\n'
-            '   - cyto2\n'
-            '   - bact\n'
-            '   - bact_omni\n'
-            '   - cyto2_omni\n\n'
-            'StarDist:\n'
-            '   - 2D_versatile_fluo\n'
-            '   - 2D_versatile_he\n'
-            '   - 2D_paper_dsb2018\n'
+        self.infoWin.setIcon()
+        cp_models = [f'&nbsp;&nbsp;- {m}'for m in CELLPOSE_MODELS]
+        cp_models = '<br>'.join(cp_models)
+        stardist_models = [f'  - {m}'for m in STARDIST_MODELS]
+        stardist_models = '<br>'.join(stardist_models)
+        txt = html_utils.paragraph(
+            'Currently Cell-ACDC has <b>four models implemented</b>: '
+            'YeaZ, Cellpose, StarDist, and YeastMate.<br><br>'
+            'Cellpose and StarDist have the following default models available:<br><br>'
+            '<b>Cellpose</b>:<br><br>'
+            f'{cp_models}<br><br>'
+            '<b>StarDist</b>:<br>'
+            f'{stardist_models}'
         )
-        self.infoWin.setText(txt)
-        self.infoWin.addButton(self.infoWin.Ok)
-        self.infoWin.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
-        self.infoWin.setModal(False)
+        self.infoWin.addText(txt)
+        self.infoWin.addButton(' Ok ')
         self.infoWin.show()
 
 
@@ -6272,7 +6928,7 @@ class downloadModel(QMessageBox):
             f'Files that {model_name} requires:\n\n'
             f'{weights}'
         )
-        okButton = QPushButton('Ok')
+        okButton = widgets.okPushButton('Ok')
         self.addButton(okButton, self.YesRole)
         okButton.disconnect()
         okButton.clicked.connect(self.close_)
@@ -6315,7 +6971,7 @@ class warnVisualCppRequired(QMessageBox):
         </p>
         """)
         seeScreenshotButton = QPushButton('See screenshot...')
-        okButton = QPushButton('Ok')
+        okButton = widgets.okPushButton('Ok')
         self.addButton(okButton, self.YesRole)
         okButton.disconnect()
         okButton.clicked.connect(self.close_)

@@ -25,13 +25,15 @@ from PyQt5.QtWidgets import (
     QScrollArea, QSizePolicy, QComboBox, QPushButton, QScrollBar,
     QGroupBox, QAbstractSlider, QDoubleSpinBox, QWidgetAction,
     QAction, QTabWidget, QAbstractSpinBox, QMessageBox,
-    QStyle, QDialog, QSpacerItem, QFrame, QMenu, QActionGroup
+    QStyle, QDialog, QSpacerItem, QFrame, QMenu, QActionGroup,
+    QListWidget, QAbstractItemView, QShortcut, QPlainTextEdit,
+    QFileDialog
 )
 
 import pyqtgraph as pg
 from pyqtgraph import QtGui
 
-from . import myutils, apps, measurements, is_mac, is_win
+from . import myutils, apps, measurements, is_mac, is_win, html_utils
 from . import qrc_resources
 
 def removeHSVcmaps():
@@ -89,6 +91,89 @@ renamePgCmaps()
 removeHSVcmaps()
 cmaps = addGradients()
 
+class okPushButton(QPushButton):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setIcon(QIcon(':yesGray.svg'))
+        self.setShortcut(Qt.Key_Enter)
+        # QShortcut(Qt.Key_Return, self, self.click)
+        # QShortcut(Qt.Key_Enter, self, self.click)
+
+class infoPushButton(QPushButton):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setIcon(QIcon(':info.svg'))
+
+class showInFileManagerButton(QPushButton):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setIcon(QIcon(':folder-open.svg'))
+
+class showDetailsButton(QPushButton):
+    def __init__(self, *args, txt='Show details...'):
+        super().__init__(*args)
+        self.setText(txt)
+        self.txt = txt
+        self.checkedIcon = QIcon(':hideUp.svg')
+        self.uncheckedIcon = QIcon(':showDown.svg')
+        self.setIcon(self.uncheckedIcon)
+        self.toggled.connect(self.onClicked)
+        w = self.sizeHint().width()
+        self.setFixedWidth(w)
+
+    def onClicked(self, checked):
+        if checked:
+            self.setText(' Hide details   ')
+            self.setIcon(self.checkedIcon)
+        else:
+            self.setText(self.txt)
+            self.setIcon(self.uncheckedIcon)
+
+class cancelPushButton(QPushButton):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setIcon(QIcon(':cancelButton.svg'))
+
+class setPushButton(QPushButton):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setIcon(QIcon(':cog.svg'))
+
+class noPushButton(QPushButton):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setIcon(QIcon(':no.svg'))
+
+class browseFileButton(QPushButton):
+    sigPathSelected = pyqtSignal(str)
+
+    def __init__(self, *args, ext=None, title='Select file', start_dir=''):
+        super().__init__(*args)
+        self.setIcon(QIcon(':folder-open.svg'))
+        self.clicked.connect(self.browse)
+        self._file_types = 'All Files (*)'
+        self._title = title
+        self._start_dir = start_dir
+        if ext is not None:
+            s = ''
+            s_li = []
+            for name, extensions in ext.items():
+                _s = ''
+                for ext in extensions:
+                    _s = f'{_s}*{ext} '
+                s_li.append(f'{name} {_s.strip()}')
+
+            self._file_types = ';;'.join(s_li)
+            self._file_types = f'{self._file_types};;All Files (*)'
+
+    def browse(self):
+        print(self._start_dir)
+        file_path = QFileDialog.getOpenFileName(
+            self, self._title, self._start_dir, self._file_types
+        )[0]
+        if file_path:
+            self.sigPathSelected.emit(file_path)
+
 class QClickableLabel(QLabel):
     clicked = pyqtSignal(object)
 
@@ -98,6 +183,7 @@ class QClickableLabel(QLabel):
 
     def mousePressEvent(self, event):
         self.clicked.emit(self)
+
 
 class statusBarPermanentLabel(QWidget):
     def __init__(self, parent=None):
@@ -112,6 +198,16 @@ class statusBarPermanentLabel(QWidget):
         layout.addWidget(self.rightLabel)
 
         self.setLayout(layout)
+
+class readOnlyQList(QTextEdit):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setReadOnly(True)
+
+    def addItems(self, items):
+        items = [str(item) for item in items]
+        columnList = html_utils.paragraph('<br>'.join(items))
+        self.setText(columnList)
 
 class pgScatterSymbolsCombobox(QComboBox):
     def __init__(self, parent=None):
@@ -148,13 +244,47 @@ class alphaNumericLineEdit(QLineEdit):
 
         # self.setAlignment(Qt.AlignCenter)
 
+class myLabelItem(pg.LabelItem):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def setText(self, text, **args):
+        self.text = text
+        opts = self.opts
+        for k in args:
+            opts[k] = args[k]
+
+        optlist = []
+
+        color = self.opts['color']
+        if color is None:
+            color = pg.getConfigOption('foreground')
+        color = pg.functions.mkColor(color)
+        optlist.append('color: ' + color.name(QColor.NameFormat.HexArgb))
+        if 'size' in opts:
+            optlist.append('font-size: ' + opts['size'])
+        if 'bold' in opts and opts['bold'] in [True, False]:
+            optlist.append('font-weight: ' + {True:'bold', False:'normal'}[opts['bold']])
+        if 'italic' in opts and opts['italic'] in [True, False]:
+            optlist.append('font-style: ' + {True:'italic', False:'normal'}[opts['italic']])
+        full = "<span style='%s'>%s</span>" % ('; '.join(optlist), text)
+        #print full
+        self.item.setHtml(full)
+        self.updateMin()
+        self.resizeEvent(None)
+        self.updateGeometry()
+
 
 class myMessageBox(QDialog):
-    def __init__(self, parent=None, showCentered=True):
+    def __init__(self, parent=None, showCentered=True, wrapText=True):
         super().__init__(parent)
+
+        self.wrapText = wrapText
 
         self.cancel = True
         self.cancelButton = None
+        self.okButton = None
+        self.clickedButton = None
 
         self.showCentered = showCentered
 
@@ -163,12 +293,23 @@ class myMessageBox(QDialog):
         self.buttonsLayout = QHBoxLayout()
         self.buttonsLayout.setSpacing(2)
         self.buttons = []
+        self.widgets = []
+        self.layouts = []
+        self.labels = []
+        self.detailsTextWidget = None
+        self.showInFileManagButton = None
 
         self.currentRow = 0
         self._w = None
 
         self.layout.setColumnStretch(1, 1)
         self.setLayout(self.layout)
+
+    def mousePressEvent(self, event):
+        for label in self.labels:
+            label.setTextInteractionFlags(
+                Qt.TextBrowserInteraction | Qt.TextSelectableByKeyboard
+            )
 
     def setIcon(self, iconName='SP_MessageBoxInformation'):
         label = QLabel(self)
@@ -180,55 +321,84 @@ class myMessageBox(QDialog):
 
         self.layout.addWidget(label, 0, 0, alignment=Qt.AlignTop)
 
-    def addShowInFileManagerButton(self, path):
-        txt = 'Reveal in Finder' if is_mac else 'Show in Explorer'
-        self.showInFileManagButton = QPushButton(txt)
+    def addShowInFileManagerButton(self, path, txt=None):
+        if txt is None:
+            txt = 'Reveal in Finder...' if is_mac else 'Show in Explorer...'
+        self.showInFileManagButton = showInFileManagerButton(txt)
         self.buttonsLayout.addWidget(self.showInFileManagButton)
         func = partial(myutils.showInExplorer, path)
         self.showInFileManagButton.clicked.connect(func)
 
-    def addCancelButton(self):
-        self.cancelButton = QPushButton('Cancel')
+    def addCancelButton(self, button=None):
+        if button is None:
+            self.cancelButton = cancelPushButton('Cancel')
+        else:
+            self.cancelButton = button
+            self.cancelButton.setIcon(QIcon(':cancelButton.svg'))
+
         self.buttonsLayout.insertWidget(0, self.cancelButton)
         self.buttonsLayout.insertSpacing(1, 20)
 
     def addText(self, text):
         label = QLabel(self)
-        label.setTextInteractionFlags(
-            Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard
-        )
         label.setText(text)
-        label.setWordWrap(True)
+        label.setWordWrap(self.wrapText)
         label.setOpenExternalLinks(True)
+        self.labels.append(label)
         self.layout.addWidget(label, self.currentRow, 1)#, alignment=Qt.AlignTop)
         self.currentRow += 1
         return label
 
     def addButton(self, buttonText):
-        button = QPushButton(buttonText, self)
-        if buttonText.find('Cancel') != -1:
-            self.cancelButton = button
-            self.buttonsLayout.insertWidget(0, button)
-            self.buttonsLayout.insertSpacing(1, 20)
-        else:
+        isCancelButton = (
+            buttonText.lower().find('cancel') != -1
+            or buttonText.lower().find('abort') != -1
+        )
+        isYesButton = (
+            buttonText.lower().find('yes') != -1
+            or buttonText.lower().find('ok') != -1
+            or buttonText.lower().find('continue') != -1
+            or buttonText.lower().find('recommended') != -1
+        )
+        isSettingsButton = buttonText.lower().find('set') != -1
+        isNoButton = buttonText.replace(' ', '').lower() == 'no'
+
+        if isCancelButton:
+            button = cancelPushButton(buttonText, self)
+            self.addCancelButton(button=button)
+        elif isYesButton:
+            button = okPushButton(buttonText, self)
             self.buttonsLayout.addWidget(button)
-        button.clicked.connect(self.close)
+            self.okButton = button
+        elif isSettingsButton:
+            button = setPushButton(buttonText, self)
+            self.buttonsLayout.addWidget(button)
+        elif isNoButton:
+            button = noPushButton(buttonText, self)
+            self.buttonsLayout.addWidget(button)
+        else:
+            button = QPushButton(buttonText, self)
+            self.buttonsLayout.addWidget(button)
+
+        button.clicked.connect(self.buttonCallBack)
         self.buttons.append(button)
         return button
 
     def addWidget(self, widget):
         self.layout.addWidget(widget, self.currentRow, 1)
+        self.widgets.append(widget)
         self.currentRow += 1
 
     def addLayout(self, layout):
         self.layout.addLayout(layout, self.currentRow, 1)
+        self.layouts.append(layout)
         self.currentRow += 1
 
     def setWidth(self, w):
         self._w = w
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         # spacer
         spacer = QSpacerItem(10, 10)
         self.layout.addItem(spacer, self.currentRow, 1)
@@ -236,10 +406,21 @@ class myMessageBox(QDialog):
 
         # buttons
         self.currentRow += 1
+
+        if self.detailsTextWidget is not None:
+            self.buttonsLayout.insertWidget(1, self.detailsButton)
+
         self.layout.addLayout(
             self.buttonsLayout, self.currentRow, 0, 1, 2,
             alignment=Qt.AlignRight
         )
+
+        # Details
+        if self.detailsTextWidget is not None:
+            self.currentRow += 1
+            self.layout.addWidget(
+                self.detailsTextWidget, self.currentRow, 0, 1, 2
+            )
 
         # spacer
         self.currentRow += 1
@@ -248,30 +429,98 @@ class myMessageBox(QDialog):
         self.layout.setRowStretch(self.currentRow, 0)
 
         super().show()
+        QTimer.singleShot(5, self._resize)
+
+        if block:
+            self._block()
+
+    def setDetailedText(self, text):
+        self.detailsTextWidget = QPlainTextEdit(text)
+        self.detailsTextWidget.setReadOnly(True)
+        self.detailsButton = showDetailsButton()
+        self.detailsButton.setCheckable(True)
+        self.detailsButton.clicked.connect(self._showDetails)
+        self.detailsTextWidget.hide()
+
+    def _showDetails(self, checked):
+        if checked:
+            self.origHeight = self.height()
+            self.resize(self.width(), self.height()+300)
+            self.detailsTextWidget.show()
+        else:
+            self.detailsTextWidget.hide()
+            func = partial(self.resize, self.width(), self.origHeight)
+            QTimer.singleShot(10, func)
+
+
+    def _resize(self):
         widths = [button.width() for button in self.buttons]
         if widths:
             max_width = max(widths)
             for button in self.buttons:
                 button.setMinimumWidth(max_width)
 
+        heights = [button.height() for button in self.buttons]
+        if heights:
+            max_h = max(heights)
+            for button in self.buttons:
+                button.setMinimumHeight(max_h)
+            if self.detailsTextWidget is not None:
+                self.detailsButton.setMinimumHeight(max_h)
+            if self.showInFileManagButton is not None:
+                self.showInFileManagButton.setMinimumHeight(max_h)
+
+        if self._w is not None and self.width() < self._w:
+            self.resize(self._w, self.height())
+
         if self.width() < 350:
             self.resize(350, self.height())
-
-        if self._w is not None:
-            self.resize(self._w, self.height())
 
         if self.showCentered:
             screen = self.screen()
             screenWidth = screen.size().width()
             screenHeight = screen.size().height()
+            screenLeft = screen.geometry().x()
+            screenTop = screen.geometry().y()
             w, h = self.width(), self.height()
-            left = int(screenWidth/2 - w/2)
-            top = int(screenHeight/2 - h/2)
+            left = int(screenLeft + screenWidth/2 - w/2)
+            top = int(screenTop + screenHeight/2 - h/2)
             self.move(left, top)
 
-        if block:
-            self.loop = QEventLoop()
-            self.loop.exec_()
+        self._h = self.height()
+
+        if self.okButton is not None:
+            self.okButton.setFocus(True)
+
+        if self.widgets:
+            return
+
+        if self.layouts:
+            return
+
+        # # Start resizing height every 1 ms
+        # self.resizeCallsCount = 0
+        # self.timer = QTimer()
+        # from config import warningHandler
+        # warningHandler.sigGeometryWarning.connect(self.timer.stop)
+        # self.timer.timeout.connect(self._resizeHeight)
+        # self.timer.start(1)
+
+    def _resizeHeight(self):
+        try:
+            # Resize until a "Unable to set geometry" warning is captured
+            # by copnfig.warningHandler._resizeWarningHandler or #
+            # height doesn't change anymore
+            self.resize(self.width(), self.height()-1)
+            if self.height() == self._h or self.resizeCallsCount > 100:
+                self.timer.stop()
+                return
+
+            self.resizeCallsCount += 1
+            self._h = self.height()
+        except Exception as e:
+            # traceback.format_exc()
+            self.timer.stop()
 
     def _template(
             self, parent, title, message,
@@ -356,15 +605,20 @@ class myMessageBox(QDialog):
         self.exec_()
         return buttons
 
-    def exec_(self):
-        self.show()
-        super().exec_()
+    def _block(self):
+        self.loop = QEventLoop()
+        self.loop.exec_()
 
-    def close(self):
+    def exec_(self):
+        self.show(block=True)
+
+    def buttonCallBack(self, checked=True):
         self.clickedButton = self.sender()
-        if self.clickedButton is not None:
-            self.cancel = self.clickedButton == self.cancelButton
-        super().close()
+        if self.clickedButton != self.cancelButton:
+            self.cancel = False
+        self.close()
+
+    def closeEvent(self, event):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
@@ -444,7 +698,19 @@ def QtKeyToText(QtKey):
             return letter
     return letter
 
-class customAnnotToolButton(QToolButton):
+class rightClickToolButton(QToolButton):
+    sigRightClick = pyqtSignal(object)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            QToolButton.mousePressEvent(self, event)
+        elif event.button() == Qt.MouseButton.RightButton:
+            self.sigRightClick.emit(event)
+
+class customAnnotToolButton(rightClickToolButton):
     sigRemoveAction = pyqtSignal(object)
     sigKeepActiveAction = pyqtSignal(object)
     sigModifyAction = pyqtSignal(object)
@@ -454,11 +720,12 @@ class customAnnotToolButton(QToolButton):
             self, symbol, color='r', keepToolActive=True, parent=None,
             isHideChecked=True
         ):
-        super().__init__(parent)
+        super().__init__(parent=parent)
         self.symbol = symbol
         self.keepToolActive = keepToolActive
         self.isHideChecked = isHideChecked
         self.setColor(color)
+        self.sigRightClick.connect(self.showContextMenu)
 
     def setColor(self, color):
         self.penColor = color
@@ -485,34 +752,31 @@ class customAnnotToolButton(QToolButton):
         finally:
             p.end()
 
-    def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton:
-            QToolButton.mousePressEvent(self, event)
-        elif event.button() == Qt.MouseButton.RightButton:
-            contextMenu = QMenu(self)
-            contextMenu.addSeparator()
+    def showContextMenu(self, event):
+        contextMenu = QMenu(self)
+        contextMenu.addSeparator()
 
-            removeAction = QAction('Remove annotation')
-            removeAction.triggered.connect(self.removeAction)
-            contextMenu.addAction(removeAction)
+        removeAction = QAction('Remove annotation')
+        removeAction.triggered.connect(self.removeAction)
+        contextMenu.addAction(removeAction)
 
-            editAction = QAction('Modify annotation parameters...')
-            editAction.triggered.connect(self.modifyAction)
-            contextMenu.addAction(editAction)
+        editAction = QAction('Modify annotation parameters...')
+        editAction.triggered.connect(self.modifyAction)
+        contextMenu.addAction(editAction)
 
-            hideAction = QAction('Hide annotations')
-            hideAction.setCheckable(True)
-            hideAction.setChecked(self.isHideChecked)
-            hideAction.triggered.connect(self.hideAction)
-            contextMenu.addAction(hideAction)
+        hideAction = QAction('Hide annotations')
+        hideAction.setCheckable(True)
+        hideAction.setChecked(self.isHideChecked)
+        hideAction.triggered.connect(self.hideAction)
+        contextMenu.addAction(hideAction)
 
-            keepActiveAction = QAction('Keep tool active after using it')
-            keepActiveAction.setCheckable(True)
-            keepActiveAction.setChecked(self.keepToolActive)
-            keepActiveAction.triggered.connect(self.keepToolActiveActionToggled)
-            contextMenu.addAction(keepActiveAction)
+        keepActiveAction = QAction('Keep tool active after using it')
+        keepActiveAction.setCheckable(True)
+        keepActiveAction.setChecked(self.keepToolActive)
+        keepActiveAction.triggered.connect(self.keepToolActiveActionToggled)
+        contextMenu.addAction(keepActiveAction)
 
-            contextMenu.exec(event.globalPos())
+        contextMenu.exec(event.globalPos())
 
     def keepToolActiveActionToggled(self, checked):
         self.keepToolActive = checked
@@ -712,6 +976,52 @@ class shortCutLineEdit(QLineEdit):
         else:
             self.keySequence = None
         self.sender = None
+
+class selectStartStopFrames(QGroupBox):
+    def __init__(self, SizeT, currentFrameNum=0, parent=None):
+        super().__init__(parent)
+        selectFramesLayout = QGridLayout()
+
+        self.startFrame_SB = QSpinBox()
+        self.startFrame_SB.setAlignment(Qt.AlignCenter)
+        self.startFrame_SB.setMinimum(1)
+        self.startFrame_SB.setMaximum(SizeT-1)
+        self.startFrame_SB.setValue(currentFrameNum)
+
+        self.stopFrame_SB = QSpinBox()
+        self.stopFrame_SB.setAlignment(Qt.AlignCenter)
+        self.stopFrame_SB.setMinimum(1)
+        self.stopFrame_SB.setMaximum(SizeT)
+        self.stopFrame_SB.setValue(SizeT)
+
+        selectFramesLayout.addWidget(QLabel('Start frame n.'), 0, 0)
+        selectFramesLayout.addWidget(self.startFrame_SB, 1, 0)
+
+        selectFramesLayout.addWidget(QLabel('Stop frame n.'), 0, 1)
+        selectFramesLayout.addWidget(self.stopFrame_SB, 1, 1)
+
+        self.warningLabel = QLabel()
+        palette = self.warningLabel.palette();
+        palette.setColor(self.warningLabel.backgroundRole(), Qt.red);
+        palette.setColor(self.warningLabel.foregroundRole(), Qt.red);
+        self.warningLabel.setPalette(palette);
+        selectFramesLayout.addWidget(
+            self.warningLabel, 2, 0, 1, 2, alignment=Qt.AlignCenter
+        )
+
+        self.setLayout(selectFramesLayout)
+
+        self.stopFrame_SB.valueChanged.connect(self._checkRange)
+
+    def _checkRange(self):
+        start = self.startFrame_SB.value()
+        stop = self.stopFrame_SB.value()
+        if stop <= start:
+            self.warningLabel.setText(
+                'stop frame smaller than start frame'
+            )
+        else:
+            self.warningLabel.setText('')
 
 class formWidget(QWidget):
     sigApplyButtonClicked = pyqtSignal(object)
@@ -924,6 +1234,7 @@ class _metricsQGBox(QGroupBox):
     def showInfo(self, checked=False):
         info_txt = self.sender().info
         msg = myMessageBox()
+        msg.setWidth(600)
         msg.setIcon()
         msg.setWindowTitle(f'{self.sender().colname} info')
         msg.addText(info_txt)
@@ -1147,13 +1458,14 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
         self.labelsAlphaMenu = self.gradient.menu.addMenu(
             'Segm. masks overlay alpha...'
         )
-        self.labelsAlphaMenu.setDisabled(True)
+        # self.labelsAlphaMenu.setDisabled(True)
         hbox = QHBoxLayout()
         self.labelsAlphaSlider = sliderWithSpinBox(
-            title='Alpha', title_loc='in_line', is_float=True,
+            title='Alpha', title_loc='in_line', isFloat=True,
             normalize=True
         )
         self.labelsAlphaSlider.setMaximum(100)
+        self.labelsAlphaSlider.setSingleStep(0.05)
         self.labelsAlphaSlider.setValue(0.3)
         hbox.addWidget(self.labelsAlphaSlider)
         shortCutText = 'Command+Up/Down' if is_mac else 'Ctrl+Up/Down'
@@ -1461,7 +1773,6 @@ class sliderWithSpinBox(QWidget):
     def __init__(self, *args, **kwargs):
         QWidget.__init__(self, *args)
 
-
         layout = QGridLayout()
 
         title = kwargs.get('title')
@@ -1470,10 +1781,9 @@ class sliderWithSpinBox(QWidget):
         if title is not None:
             titleLabel = QLabel(self)
             titleLabel.setText(title)
-            loc = kwargs.get('title_loc')
-            loc = loc if loc is not None else 'top'
+            loc = kwargs.get('title_loc', 'top')
             if loc == 'top':
-                layout.addWidget(titleLabel, 1, col, alignment=Qt.AlignLeft)
+                layout.addWidget(titleLabel, 0, col, alignment=Qt.AlignLeft)
             elif loc=='in_line':
                 row = -1
                 col = 1
@@ -1484,6 +1794,7 @@ class sliderWithSpinBox(QWidget):
         normalize = kwargs.get('normalize')
         if normalize is not None:
             self._normalize = True
+            self._isFloat = True
 
         self._isFloat = False
         isFloat = kwargs.get('isFloat')
@@ -1520,16 +1831,24 @@ class sliderWithSpinBox(QWidget):
     def maximum(self):
         return self.slider.maximum()
 
-    def setValue(self, value):
+    def setValue(self, value, emitSignal=False):
         valueInt = value
         if self._normalize:
             valueInt = int(value*self.slider.maximum())
-        if self._isFloat:
+        elif self._isFloat:
             valueInt = int(value)
-            self.spinBox.valueChanged.disconnect()
-            self.spinBox.setValue(value)
-            self.spinBox.valueChanged.connect(self.spinboxValueChanged)
+
+        self.spinBox.valueChanged.disconnect()
+        self.spinBox.setValue(value)
+        self.spinBox.valueChanged.connect(self.spinboxValueChanged)
+
+        self.slider.valueChanged.disconnect()
         self.slider.setValue(valueInt)
+        self.slider.valueChanged.connect(self.sliderValueChanged)
+
+        if emitSignal:
+            self.sigValueChange.emit(self.value())
+            self.valueChanged.emit(self.value())
 
     def setMaximum(self, max):
         self.slider.setMaximum(max)
@@ -1548,6 +1867,12 @@ class sliderWithSpinBox(QWidget):
     def setDecimals(self, decimals):
         self.spinBox.setDecimals(decimals)
 
+    def setTickPosition(self, position):
+        self.slider.setTickPosition(position)
+
+    def setTickInterval(self, interval):
+        self.slider.setTickInterval(interval)
+
     def sliderValueChanged(self, val):
         self.spinBox.valueChanged.disconnect()
         if self._normalize:
@@ -1560,11 +1885,12 @@ class sliderWithSpinBox(QWidget):
         self.valueChanged.emit(self.value())
 
     def spinboxValueChanged(self, val):
-        self.slider.valueChanged.disconnect()
         if self._normalize:
             val = int(val*self.slider.maximum())
-        if self._isFloat:
+        elif self._isFloat:
             val = int(val)
+
+        self.slider.valueChanged.disconnect()
         self.slider.setValue(val)
         self.slider.valueChanged.connect(self.sliderValueChanged)
         self.sigValueChange.emit(self.value())
@@ -1577,15 +1903,15 @@ class labImageItem(pg.ImageItem):
     def __init__(self, *args, **kwargs):
         pg.ImageItem.__init__(self, *args, **kwargs)
 
-    def setImage(self, img=None, autolevels=None, z=None, **kargs):
+    def setImage(self, img=None, autolevels=False, z=None, **kargs):
         if img is None:
             pg.ImageItem.setImage(self, img, **kargs)
             return
 
-        if img.ndim == 3 and img.shape[-1] > 4:
-            pg.ImageItem.setImage(self, img[z], **kargs)
+        if img.ndim == 3 and img.shape[-1] > 4 and z is not None:
+            pg.ImageItem.setImage(self, img[z], autolevels=autolevels, **kargs)
         else:
-            pg.ImageItem.setImage(self, img, **kargs)
+            pg.ImageItem.setImage(self, img, autolevels=autolevels, **kargs)
 
 if __name__ == '__main__':
     class Window(QMainWindow):

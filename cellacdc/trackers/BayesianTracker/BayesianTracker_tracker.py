@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 import btrack
+from btrack.constants import BayesianUpdates
 
 from skimage.measure import regionprops
 from cellacdc.trackers.CellACDC import CellACDC_tracker
@@ -13,11 +14,8 @@ from cellacdc.trackers.CellACDC import CellACDC_tracker
 from tqdm import tqdm
 
 class tracker:
-    def __init__(self):
-        trackers_path = os.path.dirname(__file__)
-        self.model_path = os.path.join(
-            trackers_path, 'model', 'cell_config.json'
-        )
+    def __init__(self, **params):
+        self.params = params
 
     def track(
             self, segm_video, signals=None, export_to: os.PathLike=None,
@@ -28,7 +26,7 @@ class tracker:
             segm_video = segm_video[:, np.newaxis, :, :]
 
         obj_from_arr = btrack.utils.segmentation_to_objects(
-            segm_video, properties=('area',), scale=(1., 1., 1.)
+            segm_video, properties=('area',)
         )
 
         if signals is not None:
@@ -38,20 +36,25 @@ class tracker:
         with btrack.BayesianTracker() as tracker:
 
             # configure the tracker using a config file
-            tracker.configure_from_file(self.model_path)
-            tracker.max_search_radius = 10
+            tracker.configure_from_file(self.params['model_path'])
+            tracker.verbose = self.params['verbose']
+            update_method = self.params['update_method']
+            if update_method == 'APPROXIMATE':
+                tracker.update_method = getattr(BayesianUpdates, update_method)
+                tracker.max_search_radius = self.params['max_search_radius']
 
             # append the objects to be tracked
             tracker.append(obj_from_arr)
 
             # set the volume
-            tracker.volume=((0, 1200), (0, 1200), (-1e5, 64.))
+            tracker.volume=self.params['volume']
 
             # track them (in interactive mode)
-            tracker.track_interactive(step_size=100)
+            tracker.track_interactive(step_size=self.params['step_size'])
 
             # generate hypotheses and run the global optimizer
-            tracker.optimize()
+            if self.params['optimize']:
+                tracker.optimize()
 
             # save tracks
             if export_to is not None:

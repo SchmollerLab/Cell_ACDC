@@ -14,22 +14,22 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle, Circle, PathPatch, Path
 
 import pandas as pd
-from numba import jit
+# from numba import jit
 
 from tqdm import tqdm
 
 # Custom modules
 from . import apps
 
-@jit(nopython=True, parallel=True)
+# @jit(nopython=True, parallel=True)
 def numba_max(arr):
     return arr.max()
 
-@jit(nopython=True, parallel=True)
+# @jit(nopython=True, parallel=True)
 def numba_min(arr):
     return arr.min()
 
-@jit(nopython=True, parallel=True)
+# @jit(nopython=True, parallel=True)
 def numba_argmax(arr):
     return arr.argmax()
 
@@ -55,6 +55,7 @@ def lab_replace_values(lab, rp, oldIDs, newIDs, in_place=True):
             continue
 
         if obj.label == newIDs[idx]:
+            # Skip assigning ID to same ID
             continue
 
         lab[obj.slice][obj.image] = newIDs[idx]
@@ -96,6 +97,22 @@ def remove_artefacts(
         return lab, delIDs
     else:
         return lab
+
+def _calc_airy_radius(wavelen, NA):
+    airy_radius_nm = (1.22 * wavelen)/(2*NA)
+    airy_radius_um = airy_radius_nm*1E-3 #convert nm to µm
+    return airy_radius_nm, airy_radius_um
+
+def calc_resolution_limited_vol(
+        wavelen, NA, yx_resolution_multi, zyx_vox_dim, z_resolution_limit
+    ):
+    airy_radius_nm, airy_radius_um = _calc_airy_radius(wavelen, NA)
+    yx_resolution = airy_radius_um*yx_resolution_multi
+    zyx_resolution = np.asarray(
+        [z_resolution_limit, yx_resolution, yx_resolution]
+    )
+    zyx_resolution_pxl = zyx_resolution/np.asarray(zyx_vox_dim)
+    return zyx_resolution, zyx_resolution_pxl, airy_radius_nm
 
 def align_frames_3D(
         data, slices=None, register=True,

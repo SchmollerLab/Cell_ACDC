@@ -7,47 +7,44 @@ import skimage.exposure
 import skimage.filters
 
 from cellpose import models
+from cellacdc.models import CELLPOSE_MODELS
 
-CELLPOSE_MODELS = [
-    'cyto',
-    'nuclei',
-    'cyto2',
-    'bact',
-    'bact_omni',
-    'cyto2_omni'
-]
+help_url = 'https://cellpose.readthedocs.io/en/latest/api.html'
 
 class Model:
-    def __init__(self, model_type='cyto'):
+    def __init__(self, model_type='cyto', net_avg=False, gpu=False):
         if model_type not in CELLPOSE_MODELS:
             err_msg = (
                 f'"{model_type}" not available. '
-                f'Avilable models are {CELLPOSE_MODELS}'
+                f'Available models are {CELLPOSE_MODELS}'
             )
             raise NameError(err_msg)
-        device, gpu = models.assign_device(True, False)
-        self.model = models.Cellpose(
-            gpu=gpu, device=device, model_type=model_type, torch=True
-        )
+        if model_type=='cyto':
+            self.model = models.Cellpose(
+                gpu=gpu, net_avg=net_avg, model_type=model_type
+            )
+        else:
+            self.model = models.CellposeModel(
+                gpu=gpu, net_avg=net_avg, model_type=model_type
+            )
 
     def segment(
             self, image,
             diameter=0.0,
-            mask_threshold=0.0
+            flow_threshold=0.4,
+            cellprob_threshold=0.0
         ):
         # Preprocess image
-        image = image/image.max()
-        image = skimage.filters.gaussian(image, sigma=1)
-        image = skimage.exposure.equalize_adapthist(image)
+        # image = image/image.max()
+        # image = skimage.filters.gaussian(image, sigma=1)
+        # image = skimage.exposure.equalize_adapthist(image)
 
         # Run cellpose eval
-        lab, flows, _, _ = self.model.eval(
-            image,
+        lab = self.model.eval(
+            image.astype(np.float32),
             channels=[0,0],
             diameter=diameter,
-            mask_threshold=mask_threshold
-        )
+            flow_threshold=flow_threshold,
+            cellprob_threshold=cellprob_threshold
+        )[0]
         return lab
-
-def url_help():
-    return 'https://colab.research.google.com/github/MouseLand/cellpose/blob/master/notebooks/Cellpose_2D_v0_1.ipynb#scrollTo=Rr0UozRm42CA'

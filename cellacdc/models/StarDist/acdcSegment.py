@@ -3,14 +3,11 @@ from csbdeep.utils import normalize
 import numpy as np
 import os
 
-stardist_default_models = [
-    '2D_versatile_fluo',
-    '2D_versatile_he',
-    '2D_paper_dsb2018'
-]
+from cellacdc import models
 
 class Model:
     def __init__(self, model_name='T_cell'):
+        stardist_default_models = models.STARDIST_MODELS
         stardist_path = os.path.dirname(os.path.abspath(__file__))
         T_cell_path = os.path.join(stardist_path, 'model', 'T_cell')
         if not os.path.exists(T_cell_path):

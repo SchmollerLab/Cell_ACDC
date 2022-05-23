@@ -5,6 +5,7 @@ import pandas as pd
 from tifffile import imread
 import os
 import glob
+from math import pow
 from tqdm import tqdm
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication, QStyleFactory, QFileDialog
@@ -17,6 +18,14 @@ import warnings
 from . import myutils, prompts, apps, qrc_resources, widgets, html_utils
 
 def configuration_dialog():
+    if os.name == 'nt':
+        try:
+            # Set taskbar icon in windows
+            import ctypes
+            myappid = 'schmollerlab.cellacdc.pyqt.v1' # arbitrary string
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+        except Exception as e:
+            pass
     # app = QtCore.QCoreApplication.instance()
     # if app is None:
     app = QApplication(sys.argv)
@@ -118,7 +127,7 @@ def calculate_downstream_data(
                 is_timelapse_data=True
             if int(metadata.loc['SizeZ'])>1:
                 is_zstack_data=True
-            if cc_props is not None and force_recalculation==False:
+            if cc_props is not None and not force_recalculation:
                 print('Cell Cycle property data already existing, loaded from disk...')
                 overall_df = pd.concat([overall_df,cc_props], ignore_index=True).reset_index(drop=True)
             else:
@@ -463,10 +472,34 @@ def _calculate_rp_df(seg_mask, is_timelapse_data, is_zstack_data, metadata, max_
 
 
 def _calc_rot_vol(obj, PhysicalSizeY=1, PhysicalSizeX=1):
-    vox_to_fl = float(PhysicalSizeY)*(float(PhysicalSizeX)**2)
+    """Given the region properties of a 2D object (from skimage.measure.regionprops).
+    calculate the rotation volume as described in the Supplementary information of
+    https://www.nature.com/articles/s41467-020-16764-x
+
+    Parameters
+    ----------
+    obj : class skimage.measure.RegionProperties
+        Single item of the list returned by from skimage.measure.regionprops.
+    PhysicalSizeY : type
+        Physical size of the pixel in the Y-diretion in micrometer/pixel.
+    PhysicalSizeX : type
+        Physical size of the pixel in the X-diretion in micrometer/pixel.
+
+    Returns
+    -------
+    tuple
+        Tuple of the calculate volume in voxels and femtoliters.
+
+    Notes
+    -------
+    We convert PhysicalSizeY and PhysicalSizeX to float because when they are
+    read from csv they might be a string value.
+
+    """
+    vox_to_fl = float(PhysicalSizeY)*pow(float(PhysicalSizeX), 2)
     rotate_ID_img = skimage.transform.rotate(
-        obj.image.astype(np.uint8), -(obj.orientation*180/np.pi),
-        resize=True, order=3, preserve_range=True
+        obj.image.astype(np.single), -(obj.orientation*180/np.pi),
+        resize=True, order=3
     )
     radii = np.sum(rotate_ID_img, axis=1)/2
     vol_vox = np.sum(np.pi*(radii**2))
@@ -510,7 +543,6 @@ def _calculate_flu_signal(seg_mask, channel_data, channels, cc_data, is_timelaps
                     mean_signal = np.divide(summed, count, where=count!=0)
                     # mean_signal = np.mean(cell_signal, axis=(1,2))
                     corrected_signal = mean_signal - np.array(bg_medians[c_idx])
-                    # temp_df[f'{channels[c_idx]}_corrected_mean'] = np.clip(corrected_signal, 0, np.inf)
                     temp_df[f'{channels[c_idx]}_corrected_mean'] = corrected_signal
                     temp_df[f'{channels[c_idx]}_raw_sum'] = summed
                 else:
