@@ -1566,7 +1566,7 @@ class guiWin(QMainWindow):
             'ACTION: leave mouse cursor on the label you want to expand/shrink'
             'and press arrow up/down on the keyboard to expand/shrink the mask.\n\n'
             'SHORTCUT: "E" key')
-        # editToolBar.addWidget(self.expandLabelToolButton)
+        editToolBar.addWidget(self.expandLabelToolButton)
         self.expandLabelToolButton.hide()
         self.checkableButtons.append(self.expandLabelToolButton)
         self.LeftClickButtons.append(self.expandLabelToolButton)
@@ -3680,6 +3680,7 @@ class guiWin(QMainWindow):
         self.disconnectLeftClickButtons()
         self.uncheckLeftClickButtons(self.sender())
         self.connectLeftClickButtons()
+        self.expandFootprintSize = 1
 
     def expandLabel(self, dilation=True):
         posData = self.data[self.pos_i]
@@ -3696,32 +3697,53 @@ class guiWin(QMainWindow):
 
         ID = self.hoverLabelID
 
+        obj = posData.rp[posData.IDs.index(ID)]
+
         if reinitExpandingLab:
+            # Store undo state before modifying stuff
+            self.storeUndoRedoStates(False)
             # hoverLabelID different from previously expanded ID --> reinit
             self.isExpandingLabel = True
             self.expandingID = ID
             self.expandingIDColor = posData.lut[ID]/255
-            obj = posData.rp[posData.IDs.index(ID)]
             self.expandingLab = np.zeros_like(self.currentLab2D)
             self.expandingLab[obj.coords[:,-2], obj.coords[:,-1]] = ID
-            self.self.expandFootprintSize = 1
+            self.expandFootprintSize = 1
+            self.imgRGB = self.img1.image.copy()
+
+        prevCoords = (obj.coords[:,-2], obj.coords[:,-1])
+        self.currentLab2D[obj.coords[:,-2], obj.coords[:,-1]] = 0
+        posData.lab[obj.coords[:,-2], obj.coords[:,-1]] = 0
 
         footprint = skimage.morphology.disk(self.expandFootprintSize)
         if dilation:
             expandedLab = skimage.morphology.dilation(
                 self.expandingLab, footprint=footprint
             )
+            self.isDilation = True
         else:
             expandedLab = skimage.morphology.erosion(
                 self.expandingLab, footprint=footprint
             )
+            self.isDilation = False
 
-        expandedObjMask = skimage.measure.regionprops(expandedLab).image
+        # Prevent expanding into neighbouring labels
+        expandedLab[self.currentLab2D>0] = 0
+
+        # Get coords of the dilated/eroded object
+        expandedObj = skimage.measure.regionprops(expandedLab)[0]
+        expandedObjCoords = (expandedObj.coords[:,-2], expandedObj.coords[:,-1])
+
+        # Add the dilated/erored object
+        self.currentLab2D[expandedObjCoords] = self.expandingID
+        posData.lab[expandedObjCoords] = self.expandingID
+
+        self.update_rp()
 
         if not self.labelsGrad.hideLabelsImgAction.isChecked():
-            self.img2.setImage(self.currentLab2D)
+            self.img2.setImage(img=self.currentLab2D, autoLevels=False)
 
-        self.setTempImg1ExpandLabel(expandedObjMask)
+        self.setTempImg1ExpandLabel(prevCoords, expandedObjCoords)
 
     def startMovingLabel(self, xPos, yPos):
         posData = self.data[self.pos_i]
@@ -12509,12 +12531,31 @@ class guiWin(QMainWindow):
                 self.imgRGB[mask] = self.img1uintRGB[mask]
             self.img1.setImage(self.imgRGB)
 
-    def setTempImg1ExpandLabel(self, expandedObjMask):
+    def setTempImg1ExpandLabel(self, prevCoords, expandedObjCoords):
         how = self.drawIDsContComboBox.currentText()
         if how.find('contours') != -1:
-            pass
+            contCurveID = self.ax1_ContoursCurves[self.expandingID-1]
+            contCurveID.setData([], [])
+            currentLab2Drp = skimage.measure.regionprops(self.currentLab2D)
+            for obj in currentLab2Drp:
+                if obj.label == self.expandingID:
+                    cont = self.getObjContours(obj)
+                    contCurveID.setData(
+                        cont[:,0], cont[:,1], pen=self.newIDs_cpen
+                    )
+                    break
         elif how.find('overlay segm. masks') != -1:
-            pass
+            # Remove previous overlaid mask
+            self.imgRGB[prevCoords] = self.img1uintRGB[prevCoords]
+
+            # Overlay new moved mask
+            imgRGB_float = self.imgRGB/255
+            alpha = 0.7 # self.imgGrad.labelsAlphaSlider.value()
+            color = self.expandingIDColor
+            overlay = imgRGB_float[expandedObjCoords]*(1.0-alpha) + color*alpha
+            imgRGB_float[expandedObjCoords] = overlay
+            self.imgRGB = (np.clip(imgRGB_float, 0, 1)*255).astype(np.uint8)
+            self.img1.setImage(self.imgRGB)
 
     def setTempImg1MoveLabel(self, prevCoords):
         how = self.drawIDsContComboBox.currentText()

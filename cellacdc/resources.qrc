@@ -43,6 +43,7 @@
     <file alias="zback.svg">resources/icons/zback.svg</file>
     <file alias="zforw.svg">resources/icons/zforw.svg</file>
     <file alias="addDelRoi.svg">resources/icons/addDelRoi.svg</file>
+    <file alias="addCustomDelRoi.svg">resources/icons/addCustomDelRoi.svg</file>
     <file alias="curvature-tool.svg">resources/icons/curvature-tool.svg</file>
     <file alias="cancel.svg">resources/icons/cancel.svg</file>
     <file alias="cancelButton.svg">resources/icons/cancelButton.svg</file>
