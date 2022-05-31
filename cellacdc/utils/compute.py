@@ -9,7 +9,7 @@ from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QStyle
 )
 
-from .. import widgets, apps, workers, html_utils, myutils, gui
+from .. import widgets, apps, workers, html_utils, myutils, gui, measurements
 
 cellacdc_path = os.path.dirname(os.path.abspath(apps.__file__))
 temp_path = os.path.join(cellacdc_path, 'temp')
@@ -21,6 +21,8 @@ class computeMeasurmentsUtilWin(QDialog):
     def __init__(self, expPaths, app, parent=None):
         super().__init__(parent)
         self.setWindowTitle('Compute measurements utility')
+
+        self.parent = parent
 
         logger, logs_path, log_path, log_filename = myutils.setupLogger(
             module='utils.computeMeasurements'
@@ -70,6 +72,8 @@ class computeMeasurmentsUtilWin(QDialog):
         self.runWorker()
 
     def runWorker(self):
+        self.gui = gui.guiWin(self.app, parent=self.parent)
+
         self.progressWin = apps.QDialogWorkerProgress(
             title='Computing measurements', parent=self,
             pbarDesc='Computing measurements...'
@@ -90,9 +94,37 @@ class computeMeasurmentsUtilWin(QDialog):
         self.worker.signals.critical.connect(self.workerCritical)
         self.worker.signals.sigSelectSegmFiles.connect(self.selectSegmFileLoadData)
         self.worker.signals.sigInitAddMetrics.connect(self.initAddMetricsWorker)
+        self.worker.signals.sigPermissionError.connect(self.warnPermissionError)
+        self.worker.signals.initProgressBar.connect(self.workerInitProgressbar)
+        self.worker.signals.progressBar.connect(self.workerUpdateProgressbar)
+        self.worker.signals.sigUpdatePbarDesc.connect(self.workerUpdatePbarDesc)
 
         self.thread.started.connect(self.worker.run)
         self.thread.start()
+
+    def workerInitProgressbar(self, totalIter):
+        self.progressWin.mainPbar.setValue(0)
+        if totalIter == 1:
+            totalIter = 0
+        self.progressWin.mainPbar.setMaximum(totalIter)
+
+    def workerUpdateProgressbar(self, step):
+        self.progressWin.mainPbar.update(self.progressWin.mainPbar.value()+step)
+
+    def workerUpdatePbarDesc(self, desc):
+        self.progressWin.progressLabel.setText(desc)
+
+    def warnPermissionError(self, traceback_str, path):
+        err_msg = html_utils.paragraph(
+            'The file below is open in another app '
+            '(Excel maybe?).<br><br>'
+            f'{path}<br><br>'
+            'Close file and then press "Ok".'
+        )
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.setDetailedText(traceback_str)
+        msg.warning(self, 'Permission error', err_msg)
+        self.worker.waitCond.wakeAll()
 
     def selectSegmFileLoadData(self, posData):
         segm_files = posData.detectMultiSegmNpz()
@@ -120,8 +152,7 @@ class computeMeasurmentsUtilWin(QDialog):
 
         measurementsWin = apps.setMeasurementsDialog(
             posData.chNames, [], posData.SizeZ > 1,
-            favourite_funcs=favourite_funcs, acdc_df=posData.acdc_df,
-            acdc_df_path=posData.images_path, posData=posData
+            favourite_funcs=favourite_funcs, posData=posData
         )
         measurementsWin.exec_()
         if measurementsWin.cancel:
@@ -129,14 +160,12 @@ class computeMeasurmentsUtilWin(QDialog):
             self.worker.waitCond.wakeAll()
             return
 
-        self.guiNoWin = myutils.utilClass()
-        self.guiNoWin.ch_names = posData.chNames
-        self.guiNoWin.notLoadedChNames = []
+        self.gui.ch_names = posData.chNames
+        self.gui.notLoadedChNames = []
+        self.gui.setMetricsFunc()
+        self.gui.setMetricsToSkip(measurementsWin)
 
-        # gui.guiWin.initMetricsToSave(self.guiNoWin)
-        gui.guiWin.setMetricsToSkip(self.guiNoWin, measurementsWin)
-
-        print(self.guiNoWin.sizeMetricsToSave)
+        self.worker.waitCond.wakeAll()
 
     def progressWinClosed(self, aborted):
         self.abort = aborted
@@ -156,9 +185,8 @@ class computeMeasurmentsUtilWin(QDialog):
             raise error
         except:
             traceback_str = traceback.format_exc()
-            self.worker.logger.log(traceback_str)
             print('='*20)
-            self.logger.error(traceback_str)
+            self.worker.logger.log(traceback_str)
             print('='*20)
 
     def workerFinished(self, worker):

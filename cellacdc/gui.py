@@ -826,7 +826,7 @@ class saveDataWorker(QObject):
 
                 # Add segmented channel data for calc metrics if requested
                 add_user_channel_data = True
-                for chName in self.mainWin.chNamesMetricsToSkip:
+                for chName in self.mainWin.chNamesToSkip:
                     skipUserChannel = (
                         posData.filename.endswith(chName)
                         or posData.filename.endswith(f'{chName}_aligned')
@@ -1026,6 +1026,8 @@ class guiWin(QMainWindow):
         ):
         """Initializer."""
 
+        super().__init__(parent)
+
         self._version = version
 
         from .trackers.YeaZ import tracking as tracking_yeaz
@@ -1034,8 +1036,11 @@ class guiWin(QMainWindow):
         from .config import parser_args
         self.debug = parser_args['debug']
 
-        super().__init__(parent)
+        self.buttonToRestore = buttonToRestore
+        self.mainWin = mainWin
+        self.app = app
 
+    def run(self):
         self.is_win = sys.platform.startswith("win")
         if self.is_win:
             self.openFolderText = 'Show in Explorer...'
@@ -1056,11 +1061,6 @@ class guiWin(QMainWindow):
         self.logs_path = logs_path
 
         self.loadLastSessionSettings()
-
-        self.buttonToRestore = buttonToRestore
-        self.mainWin = mainWin
-
-        self.app = app
 
         self.graphLayoutBkgrColor = (235, 235, 235)
 
@@ -1125,6 +1125,8 @@ class guiWin(QMainWindow):
         mainContainer.setLayout(mainLayout)
 
         self.isEditActionsConnected = False
+
+        self.show()
 
     def loadLastSessionSettings(self):
         self.settings_csv_path = settings_csv_path
@@ -10123,7 +10125,7 @@ class guiWin(QMainWindow):
         self.initMetricsToSave()
 
     def initMetricsToSave(self):
-        self.chNamesMetricsToSkip = []
+        self.chNamesToSkip = []
         self.metricsToSkip = {}
         self.regionPropsToSave = measurements.get_props_names()
         self.mixedChCombineMetricsToSave = list(
@@ -14092,8 +14094,8 @@ class guiWin(QMainWindow):
                     return False
                 posData.loadedFluoChannels.add(fluo_ch)
 
-                if posData.SizeT < 2:
-                    fluo_data = np.array([fluo_data])
+                if posData.SizeT == 1:
+                    fluo_data = fluo_data[np.newaxis]
 
                 posData.fluo_data_dict[filename] = fluo_data
                 posData.fluo_bkgrData_dict[filename] = bkgrData
@@ -14251,7 +14253,7 @@ class guiWin(QMainWindow):
         self.logger.info('Metrics successfully set.')
 
     def setMetricsToSkip(self, measurementsWin):
-        self.chNamesMetricsToSkip = []
+        self.chNamesToSkip = []
         self.metricsToSkip = {chName:[] for chName in self.ch_names}
         favourite_funcs = set()
         # Remove unchecked metrics and load checked not loaded channels
@@ -14259,7 +14261,7 @@ class guiWin(QMainWindow):
             chName = chNameGroupbox.chName
             if not chNameGroupbox.isChecked():
                 # Skip entire channel
-                self.chNamesMetricsToSkip.append(chName)
+                self.chNamesToSkip.append(chName)
             else:
                 if chName in self.notLoadedChNames:
                     success = self.loadFluo_cb(fluo_channels=[chName])

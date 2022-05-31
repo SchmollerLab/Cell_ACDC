@@ -499,6 +499,32 @@ def getChannelFilePath(images_path, chName):
             return filePath
     return filePath
 
+def getBaseAcdcDf(rp):
+    zeros_list = [0]*len(rp)
+    nones_list = [None]*len(rp)
+    minus1_list = [-1]*len(rp)
+    IDs = []
+    xx_centroid = []
+    yy_centroid = []
+    for obj in rp:
+        xc, yc = obj.centroid[-2:]
+        IDs.append(obj.label)
+        xx_centroid.append(xc)
+        yy_centroid.append(yc)
+    df = pd.DataFrame(
+        {
+            'Cell_ID': IDs,
+            'is_cell_dead': zeros_list,
+            'is_cell_excluded': zeros_list,
+            'x_centroid': xx_centroid,
+            'y_centroid': yy_centroid,
+            'editIDclicked_x': nones_list,
+            'editIDclicked_y': nones_list,
+            'editIDnewID': minus1_list
+        }
+    ).set_index('Cell_ID')
+    return df
+
 def getBasenameAndChNames(images_path):
     _tempPosData = utilClass()
     _tempPosData.images_path = images_path

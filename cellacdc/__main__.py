@@ -546,7 +546,7 @@ class mainWin(QMainWindow):
                 buttonToRestore=(self.guiButton, defaultColor, defaultText),
                 mainWin=self, version=self._version
             )
-            self.guiWin.show()
+            self.guiWin.run()
         else:
             # self.guiWin.setWindowState(Qt.WindowNoState)
             self.guiWin.setWindowState(Qt.WindowActive)

@@ -973,8 +973,10 @@ class setMeasurementsDialog(QBaseDialog):
 
     def ok_cb(self):
         if self.acdc_df is None:
+            self.cancel = False
             self.close()
             return
+
         self.okClicked = True
         existing_colnames = list(self.acdc_df.columns)
         unchecked_existing_colnames = []
@@ -1016,8 +1018,8 @@ class setMeasurementsDialog(QBaseDialog):
             if cancel:
                 return
 
-        self.close()
         self.cancel = False
+        self.close()
         self.sigClosed.emit()
 
     def warnUncheckedExistingMeasurements(
@@ -4742,6 +4744,7 @@ class selectPositionsMultiExp(QBaseDialog):
                 QTreeWidgetItem(exp_path_item, [pos]) for pos in positions
             ]
             exp_path_item.addChildren(postions_items)
+            exp_path_item.setExpanded(True)
 
         buttonsLayout = QHBoxLayout()
         cancelButton = widgets.cancelPushButton('Cancel')

@@ -9,6 +9,7 @@ import h5py
 import traceback
 
 import skimage.io
+import skimage.measure
 
 from PyQt5.QtCore import (
     pyqtSignal, QObject, QRunnable, QMutex, QWaitCondition
@@ -54,6 +55,7 @@ class signals(QObject):
     sigSelectSegmFiles = pyqtSignal(object)
     sigSetMeasurements = pyqtSignal(object)
     sigInitAddMetrics = pyqtSignal(object)
+    sigUpdatePbarDesc = pyqtSignal(str)
 
 class segmVideoWorker(QObject):
     finished = pyqtSignal(float)
@@ -75,7 +77,7 @@ class segmVideoWorker(QObject):
 
     @worker_exception_handler
     def run(self):
-        t0 = time.time()
+        t0 = time.perf_counter()
         img_data = self.posData.img_data[self.startFrameNum-1:self.stopFrameNum]
         for i, img in enumerate(img_data):
             frame_i = i+self.startFrameNum-1
@@ -90,11 +92,13 @@ class segmVideoWorker(QObject):
                 )
             self.posData.segm_data[frame_i] = lab
             self.progressBar.emit(1)
-        t1 = time.time()
+        t1 = time.perf_counter()
         exec_time = t1-t0
         self.finished.emit(exec_time)
 
 class calcMetricsWorker(QObject):
+    progressBar = pyqtSignal(int, int, float)
+
     def __init__(self, mainWin):
         QObject.__init__(self)
         self.signals = signals()
@@ -112,6 +116,7 @@ class calcMetricsWorker(QObject):
     def run(self):
         expPaths = self.mainWin.expPaths
         tot_exp = len(expPaths)
+        self.signals.initProgressBar.emit(0)
         for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
             tot_pos = len(pos_foldernames)
             for p, pos in enumerate(pos_foldernames):
@@ -127,6 +132,8 @@ class calcMetricsWorker(QObject):
                 pos_path = os.path.join(exp_path, pos)
                 images_path = os.path.join(pos_path, 'Images')
                 basename, chNames = myutils.getBasenameAndChNames(images_path)
+
+                self.signals.sigUpdatePbarDesc.emit(f'Processing {pos_path}')
 
                 # Use first found channel, it doesn't matter for metrics
                 chName = chNames[0]
@@ -162,6 +169,8 @@ class calcMetricsWorker(QObject):
                     endFilenameSegm=self.mainWin.endFilenameSegm
                 )
                 posData.labelSegmData()
+                self.mainWin.gui.data = [posData]
+                self.mainWin.gui.pos_i = 0
 
                 self.logger.log(
                     'Loaded paths:\n'
@@ -178,12 +187,97 @@ class calcMetricsWorker(QObject):
                         self.signals.finished.emit(self)
                         return
 
+                # Load the other channels
+                for fluoChName in posData.chNames:
+                    if fluoChName in self.mainWin.gui.chNamesToSkip:
+                        continue
+
+                    if fluoChName == chName:
+                        posData.fluo_data_dict[chName] = posData.img_data
+                        posData.fluo_bkgrData_dict[chName] = posData.bkgrData
+                        continue
+
+                    fluo_path, filename = self.mainWin.gui.getPathFromChName(
+                        fluoChName, posData
+                    )
+                    if fluo_path is None:
+                        continue
+
+                    self.logger.log(f'Loading {fluoChName} data...')
+                    fluo_data, bkgrData = self.mainWin.gui.load_fluo_data(
+                        fluo_path
+                    )
+                    if fluo_data is None:
+                        continue
+
+                    if posData.SizeT == 1:
+                        # Add single frame for snapshot data
+                        fluo_data = fluo_data[np.newaxis]
+
+                    posData.loadedFluoChannels.add(fluoChName)
+                    posData.fluo_data_dict[filename] = fluo_data
+                    posData.fluo_bkgrData_dict[filename] = bkgrData
+
+                if not posData.fluo_data_dict:
+                    self.logger.log(
+                        f'The following path does not contain '
+                        f'any valid image data: "{pos_path}"'
+                    )
+                    continue
+
+                if posData.SizeT == 1:
+                    # Add single frame for snapshot data
+                    posData.segm_data = posData.segm_data[np.newaxis]
+
+                acdc_df_li = []
+                self.signals.initProgressBar.emit(len(posData.segm_data))
+                for frame_i, lab in enumerate(posData.segm_data):
+                    if self.abort:
+                        self.signals.finished.emit(self)
+                        return
+
+                    if not np.any(lab):
+                        # Empty segmentation mask --> skip
+                        continue
+
+                    rp = skimage.measure.regionprops(lab)
+
+                    if posData.acdc_df is None:
+                        acdc_df = myutils.getBaseAcdcDf(rp)
+                    else:
+                        acdc_df = posData.acdc_df.loc[frame_i]
+
+                    acdc_df = self.mainWin.gui.addMetrics_acdc_df(
+                        acdc_df, rp, frame_i, lab, posData
+                    )
+                    acdc_df_li.append(acdc_df)
+                    key = (frame_i, posData.TimeIncrement*frame_i)
+                    keys.append(key)
+
+                    self.signals.progressBar.emit(1)
+
+                all_frames_acdc_df = pd.concat(
+                    acdc_df_li, keys=keys,
+                    names=['frame_i', 'time_seconds', 'Cell_ID']
+                )
+                self.mainWin.gui.addCombineMetrics_acdc_df(
+                    posData, all_frames_acdc_df
+                )
+                try:
+                    all_frames_acdc_df.to_csv(posData.acdc_output_csv_path)
+                except PermissionError:
+                    traceback_str = traceback.format_exc()
+                    self.mutex.lock()
+                    self.signals.sigPermissionError.emit(
+                        traceback_str, acdc_output_csv_path
+                    )
+                    self.waitCond.wait(self.mutex)
+                    self.mutex.unlock()
+                    all_frames_acdc_df.to_csv(posData.acdc_output_csv_path)
+
                 if self.abort:
                     self.signals.finished.emit(self)
                     return
-
-                # (metrics_func, all_metrics_names, custom_func_dict,
-                # total_metrics) = measurements.getMetricsFunc(posData)
 
         self.signals.finished.emit(self)
 
