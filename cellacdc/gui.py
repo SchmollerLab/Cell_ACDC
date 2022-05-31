@@ -14813,33 +14813,3 @@ class guiWin(QMainWindow):
     def resizeEvent(self, event):
         if hasattr(self, 'ax1'):
             self.ax1.autoRange()
-
-
-if __name__ == "__main__":
-    print('Loading application...')
-    # Handle high resolution displays:
-    if hasattr(Qt, 'AA_EnableHighDpiScaling'):
-        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-    if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
-        QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
-    # Create the application
-    app = QApplication(sys.argv)
-    # Apply style
-    app.setStyle(QtGui.QStyleFactory.create('Fusion'))
-    app.setWindowIcon(QIcon(":assign-motherbud.svg"))
-    # Apply dark mode
-    # file = QFile(":/dark.qss")
-    # file.open(QFile.ReadOnly | QFile.Text)
-    # stream = QTextStream(file)
-    # app.setStyleShefet(stream.readAll())
-    # Create and show the main window
-    win = guiWin(app)
-    win.show()
-
-    # Run the event loop
-    win.logger.info('Lauching application...')
-    win.logger.info(
-        'Done. If application GUI is not visible, it is probably minimized, '
-         'behind some other open window, or on second screen.'
-    )
-    sys.exit(app.exec_())
