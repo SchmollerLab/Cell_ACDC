@@ -57,6 +57,7 @@ class computeMeasurmentsUtilWin(QDialog):
 
         self.setLayout(mainLayout)
 
+    def showEvent(self, event):
         self.runWorker()
 
     def runWorker(self):
@@ -82,7 +83,7 @@ class computeMeasurmentsUtilWin(QDialog):
         self.thread.started.connect(self.worker.run)
         self.thread.start()
 
-    def initWorkerLoadData(posData):
+    def initWorkerLoadData(self, posData):
         segm_files = posData.detectMultiSegmNpz()
         if len(segm_files)==1:
             segmFilename = segm_files[0]

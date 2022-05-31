@@ -158,8 +158,14 @@ class calcMetricsWorker(QObject):
                 )
                 posData.labelSegmData()
 
-                (metrics_func, all_metrics_names, custom_func_dict,
-                total_metrics) = measurements.getMetricsFunc(posData)
+                self.logger.log(
+                    'Loaded paths:\n'
+                    f'Segmentation file name: {os.path.basename(posData.segm_npz_path)}\n'
+                    f'ACDC output file name {os.path.basename(posData.acdc_output_csv_path)}'
+                )
+
+                # (metrics_func, all_metrics_names, custom_func_dict,
+                # total_metrics) = measurements.getMetricsFunc(posData)
         self.signals.finished.emit(self)
 
 class loadDataWorker(QObject):

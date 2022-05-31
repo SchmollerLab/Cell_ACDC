@@ -29,13 +29,14 @@ try:
     # if cellacdc was installed with pip or not
     from cellacdc import (
         dataPrep, segm, gui, dataStruct, utils, help, qrc_resources, myutils,
-        cite_url, html_utils, widgets
+        cite_url, html_utils, widgets, apps
     )
     from cellacdc.help import about
     from cellacdc.utils import concat as utilsConcat
     from cellacdc.utils import convert as utilsConvert
     from cellacdc.utils import rename as utilsRename
     from cellacdc.utils import align as utilsAlign
+    from cellacdc.utils import compute as utilsCompute
     from cellacdc import is_win, is_linux
 except ModuleNotFoundError as e:
     src_path = os.path.dirname(os.path.abspath(__file__))
@@ -309,7 +310,7 @@ class mainWin(QMainWindow):
             print('Compute measurements utility aborted by the user.')
             return
 
-        exp_paths = {}
+        expPaths = {}
         mostRecentPath = myutils.getMostRecentPath()
         while True:
             exp_path = QFileDialog.getExistingDirectory(
@@ -339,7 +340,7 @@ class mainWin(QMainWindow):
 
                 continue
 
-            exp_paths[exp_path] = posFolders
+            expPaths[exp_path] = posFolders
             mostRecentPath = exp_path
             msg = widgets.myMessageBox()
             txt = html_utils.paragraph("""
@@ -352,7 +353,16 @@ class mainWin(QMainWindow):
             if msg.clickedButton == noButton:
                 break
 
-        pass
+        selectPosWin = apps.selectPositionsMultiExp(expPaths)
+        selectPosWin.exec_()
+        if selectPosWin.cancel:
+            print('Compute measurements utility aborted by the user.')
+            return
+
+        self.calcMeasWin = utilsCompute.computeMeasurmentsUtilWin(
+            selectPosWin.selectedPaths
+        )
+        self.calcMeasWin.show()
 
     def launchRenameUtil(self):
         isUtilnabled = self.sender().isEnabled()
