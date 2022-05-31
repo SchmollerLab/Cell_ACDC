@@ -269,7 +269,7 @@ class calcMetricsWorker(QObject):
                     traceback_str = traceback.format_exc()
                     self.mutex.lock()
                     self.signals.sigPermissionError.emit(
-                        traceback_str, acdc_output_csv_path
+                        traceback_str, posData.acdc_output_csv_path
                     )
                     self.waitCond.wait(self.mutex)
                     self.mutex.unlock()
