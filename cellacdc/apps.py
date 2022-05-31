@@ -2,6 +2,7 @@ import os
 import sys
 import re
 import ast
+import configparser
 from heapq import nlargest
 import matplotlib
 import matplotlib.pyplot as plt
@@ -38,7 +39,9 @@ import time
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui
 from PyQt5 import QtCore
-from PyQt5.QtGui import QIcon, QFontMetrics, QKeySequence, QFont
+from PyQt5.QtGui import (
+    QIcon, QFontMetrics, QKeySequence, QFont, QGuiApplication
+)
 from PyQt5.QtCore import Qt, QSize, QEvent, pyqtSignal, QEventLoop, QTimer
 from PyQt5.QtWidgets import (
     QAction, QApplication, QMainWindow, QMenu, QLabel, QToolBar,
@@ -47,7 +50,8 @@ from PyQt5.QtWidgets import (
     QButtonGroup, QCheckBox, QSizePolicy, QComboBox, QSlider, QGridLayout,
     QSpinBox, QToolButton, QTableView, QTextBrowser, QDoubleSpinBox,
     QScrollArea, QFrame, QProgressBar, QGroupBox, QRadioButton,
-    QDockWidget, QMessageBox, QStyle, QPlainTextEdit, QSpacerItem
+    QDockWidget, QMessageBox, QStyle, QPlainTextEdit, QSpacerItem,
+    QTreeWidget, QTreeWidgetItem, QTextEdit
 )
 
 from . import myutils, load, prompts, widgets, core, measurements, html_utils
@@ -58,7 +62,7 @@ pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
 font = QtGui.QFont()
 font.setPixelSize(13)
 
-class baseDialog(QDialog):
+class QBaseDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
 
@@ -873,7 +877,7 @@ class setMeasurementsDialog(QDialog):
     def __init__(
             self, loadedChNames, notLoadedChNames, isZstack,
             favourite_funcs=None, parent=None, acdc_df=None,
-            acdc_df_path=None
+            acdc_df_path=None, posData=None
         ):
         super().__init__(parent)
 
@@ -883,7 +887,7 @@ class setMeasurementsDialog(QDialog):
         self.acdc_df_path = acdc_df_path
 
         self.setWindowTitle('Set measurements')
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        # self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
 
         layout = QVBoxLayout()
         groupsLayout = QGridLayout()
@@ -894,20 +898,22 @@ class setMeasurementsDialog(QDialog):
         col = 0
         for col, chName in enumerate(loadedChNames):
             channelGBox = widgets.channelMetricsQGBox(
-                isZstack, chName, favourite_funcs=favourite_funcs
+                isZstack, chName, favourite_funcs=favourite_funcs,
+                posData=posData
             )
             channelGBox.chName = chName
-            groupsLayout.addWidget(channelGBox, 0, col, 2, 1)
+            groupsLayout.addWidget(channelGBox, 0, col, 3, 1)
             self.chNameGroupboxes.append(channelGBox)
 
         current_col = col+1
         for col, chName in enumerate(notLoadedChNames):
             channelGBox = widgets.channelMetricsQGBox(
-                isZstack, chName, favourite_funcs=favourite_funcs
+                isZstack, chName, favourite_funcs=favourite_funcs,
+                posData=posData
             )
             channelGBox.setChecked(False)
             channelGBox.chName = chName
-            groupsLayout.addWidget(channelGBox, 0, current_col, 2, 1)
+            groupsLayout.addWidget(channelGBox, 0, current_col, 3, 1)
             self.chNameGroupboxes.append(channelGBox)
             current_col += 1
 
@@ -933,12 +939,24 @@ class setMeasurementsDialog(QDialog):
         groupsLayout.addWidget(regionPropsQGBox, 1, current_col)
         groupsLayout.setRowStretch(1, 2)
 
+        desc = measurements.get_user_combine_mixed_channels_desc()
+        self.mixedChannelsCombineMetricsQGBox = None
+        if desc:
+            mixedChannelsCombineMetricsQGBox = widgets._metricsQGBox(
+                desc, 'Mixed channels combined measurements',
+                favourite_funcs=favourite_funcs
+            )
+            self.mixedChannelsCombineMetricsQGBox = mixedChannelsCombineMetricsQGBox
+            groupsLayout.addWidget(
+                mixedChannelsCombineMetricsQGBox, 2, current_col
+            )
+            groupsLayout.setRowStretch(1, 1)
+
         okButton = widgets.okPushButton('   Ok   ')
         self.okButton = okButton
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(okButton)
-
 
         layout.addLayout(groupsLayout)
         layout.addLayout(buttonsLayout)
@@ -2131,6 +2149,8 @@ class BayesianTrackerParamsWin(QDialog):
             self.loop.exit()
 
 class QDialogWorkerProgress(QDialog):
+    sigClosed = pyqtSignal(bool)
+
     def __init__(
             self, title='Progress', infoTxt='',
             showInnerPbar=False, pbarDesc='',
@@ -2204,6 +2224,9 @@ class QDialogWorkerProgress(QDialog):
     def closeEvent(self, event):
         if not self.workerFinished:
             event.ignore()
+            return
+
+        self.sigClosed.emit(self.aborted)
 
     def show(self, app):
         self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
@@ -2409,7 +2432,7 @@ class QDialogListbox(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
-class startStopFramesDialog(baseDialog):
+class startStopFramesDialog(QBaseDialog):
     def __init__(
             self, SizeT, currentFrameNum=0, parent=None,
             windowTitle='Select frame range to segment'
@@ -3612,7 +3635,6 @@ class entropyFilterDialog(QDialog):
         paramsLayout = QGridLayout()
         buttonsLayout = QHBoxLayout()
 
-
         channelCBLabel = QLabel('Channel:')
         mainLayout.addWidget(channelCBLabel)
         self.channelsComboBox = QComboBox()
@@ -4673,6 +4695,90 @@ class imageViewer(QMainWindow):
         QMainWindow.show(self)
         if left is not None and top is not None:
             self.setGeometry(left, top, 850, 800)
+
+class selectPositionsMultiExp(QBaseDialog):
+    def __init__(self, expPaths: dict, parent=None):
+        super().__init__(parent=parent)
+
+        self.expPaths = expPaths
+        self.cancel = True
+
+        mainLayout = QVBoxLayout()
+
+        self.setWindowTitle('Select Positions to process')
+
+        infoTxt = html_utils.paragraph(
+            'Select one or more Positions to process<br><br>'
+            '<code>Ctrl+Click</code> <i>to select multiple items</i><br>'
+            '<code>Shift+Click</code> <i>to select a range of items</i><br>',
+            center=True
+        )
+        infoLabel = QLabel(infoTxt)
+
+        self.treeWidget = QTreeWidget()
+        self.treeWidget.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        self.treeWidget.setHeaderHidden(True)
+        self.treeWidget.setFont(font)
+        for exp_path, positions in expPaths.items():
+            exp_path_item = QTreeWidgetItem([exp_path])
+            self.treeWidget.addTopLevelItem(exp_path_item)
+            postions_items = [
+                QTreeWidgetItem(exp_path_item, [pos]) for pos in positions
+            ]
+            exp_path_item.addChildren(postions_items)
+
+        buttonsLayout = QHBoxLayout()
+        cancelButton = widgets.cancelPushButton('Cancel')
+        okButton = widgets.okPushButton(' Ok ')
+
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(okButton)
+
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.close)
+
+        mainLayout.addWidget(infoLabel, alignment=Qt.AlignCenter)
+        mainLayout.addWidget(self.treeWidget)
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+
+        self.setLayout(mainLayout)
+
+        self.setStyleSheet("""
+            QTreeWidget::item:hover {background-color:#E6E6E6;}
+            QTreeWidget::item:selected {background-color:#CFEB9B;}
+            QTreeWidget::item:selected {color:black;}
+            QTreeView {
+                selection-background-color: #CFEB9B;
+                selection-color: white;
+                show-decoration-selected: 1;
+            }
+        """)
+
+    def ok_cb(self):
+        if not self.treeWidget.selectedItems():
+            msg = widgets.myMessageBox(wrapText=False)
+            txt = 'You did not select any experiment/Position folder!'
+            msg.warning(self, 'Empty selection!', html_utils.paragraph(txt))
+            return
+
+        self.cancel = False
+        self.selectedPaths = {}
+        for item in self.treeWidget.selectedItems():
+            if item.parent() is None:
+                exp_path = item.text(0)
+                self.selectedPaths[exp_path] = self.expPaths[exp_path]
+            else:
+                exp_path = item.parent().text(0)
+                pos_folder = item.text(0)
+                if exp_path not in self.selectedPaths:
+                    self.selectedPaths[exp_path] = []
+                self.selectedPaths[exp_path].append(pos_folder)
+
+        self.close()
+
 
 class editCcaTableWidget(QDialog):
     def __init__(
@@ -7003,6 +7109,444 @@ class warnVisualCppRequired(QMessageBox):
         if self.screenShotWin is not None:
             self.screenShotWin.close()
 
+class combineMetricsEquationDialog(QBaseDialog):
+    sigOk = pyqtSignal(object)
+
+    def __init__(self, allChNames, isZstack, parent=None, debug=False):
+        super().__init__(parent)
+
+        self.initAttributes()
+
+        self.allChNames = allChNames
+
+        self.cancel = True
+        self.isOperatorMode = False
+
+        mainLayout = QVBoxLayout()
+        equationLayout = QHBoxLayout()
+
+        metricsTreeWidget = QTreeWidget()
+        metricsTreeWidget.setHeaderHidden(True)
+        metricsTreeWidget.setFont(font)
+        self.metricsTreeWidget = metricsTreeWidget
+
+        for chName in allChNames:
+            channelTreeItem = QTreeWidgetItem(metricsTreeWidget)
+            channelTreeItem.setText(0, f'{chName} measurements')
+            metricsTreeWidget.addTopLevelItem(channelTreeItem)
+
+            metrics_desc, bkgr_val_desc = measurements.standard_metrics_desc(
+                isZstack, chName
+            )
+            custom_metrics_desc = measurements.custom_metrics_desc(
+                isZstack, chName
+            )
+
+            foregrMetricsTreeItem = QTreeWidgetItem(channelTreeItem)
+            foregrMetricsTreeItem.setText(0, 'Cell signal measurements')
+            channelTreeItem.addChild(foregrMetricsTreeItem)
+
+            bkgrMetricsTreeItem = QTreeWidgetItem(channelTreeItem)
+            bkgrMetricsTreeItem.setText(0, 'Background values')
+            channelTreeItem.addChild(bkgrMetricsTreeItem)
+
+            if custom_metrics_desc:
+                customMetricsTreeItem = QTreeWidgetItem(channelTreeItem)
+                customMetricsTreeItem.setText(0, 'Custom measurements')
+                channelTreeItem.addChild(customMetricsTreeItem)
+
+            self.addTreeItems(
+                foregrMetricsTreeItem, metrics_desc.keys(), isCol=True
+            )
+            self.addTreeItems(
+                bkgrMetricsTreeItem, bkgr_val_desc.keys(), isCol=True
+            )
+
+            if custom_metrics_desc:
+                self.addTreeItems(
+                    customMetricsTreeItem, custom_metrics_desc.keys(),
+                    isCol=True
+                )
+
+        self.addChannelLessItems(isZstack)
+
+        sizeMetricsTreeItem = QTreeWidgetItem(metricsTreeWidget)
+        sizeMetricsTreeItem.setText(0, 'Size measurements')
+        metricsTreeWidget.addTopLevelItem(sizeMetricsTreeItem)
+
+        size_metrics_desc = measurements.get_size_metrics_desc()
+        self.addTreeItems(
+            sizeMetricsTreeItem, size_metrics_desc.keys(), isCol=True
+        )
+
+        propMetricsTreeItem = QTreeWidgetItem(metricsTreeWidget)
+        propMetricsTreeItem.setText(0, 'Region properties')
+        metricsTreeWidget.addTopLevelItem(propMetricsTreeItem)
+
+        props_names = measurements.get_props_names()
+        self.addTreeItems(
+            propMetricsTreeItem, props_names, isCol=True
+        )
+
+        operatorsLayout = QHBoxLayout()
+        operatorsLayout.addStretch(1)
+
+        iconSize = 24
+
+        self.operatorButtons = []
+        self.operators = [
+            ('add', '+'),
+            ('subtract', '-'),
+            ('multiply', '*'),
+            ('divide', '/'),
+            ('open_bracket', '('),
+            ('close_bracket', ')'),
+            ('square', '**2'),
+            ('pow', '**'),
+            ('ln', 'log('),
+            ('log10', 'log10('),
+        ]
+        operatorFont = QFont()
+        operatorFont.setPixelSize(16)
+        for name, text in self.operators:
+            button = QPushButton()
+            button.setIcon(QIcon(f':{name}.svg'))
+            button.setIconSize(QSize(iconSize,iconSize))
+            button.text = text
+            operatorsLayout.addWidget(button)
+            self.operatorButtons.append(button)
+            button.clicked.connect(self.addOperator)
+            # button.setFont(operatorFont)
+
+        clearButton = QPushButton()
+        clearButton.setIcon(QIcon(':clear.svg'))
+        clearButton.setIconSize(QSize(iconSize,iconSize))
+        clearButton.setFont(operatorFont)
+
+        clearEntryButton = QPushButton()
+        clearEntryButton.setIcon(QIcon(':backspace.svg'))
+        clearEntryButton.setFont(operatorFont)
+        clearEntryButton.setIconSize(QSize(iconSize,iconSize))
+
+        operatorsLayout.addWidget(clearButton)
+        operatorsLayout.addWidget(clearEntryButton)
+        operatorsLayout.addStretch(1)
+
+        newColNameLayout = QVBoxLayout()
+        newColNameLineEdit = widgets.alphaNumericLineEdit()
+        newColNameLineEdit.setAlignment(Qt.AlignCenter)
+        self.newColNameLineEdit = newColNameLineEdit
+        newColNameLayout.addStretch(1)
+        newColNameLayout.addWidget(QLabel('New measurement name:'))
+        newColNameLayout.addWidget(newColNameLineEdit)
+        newColNameLayout.addStretch(1)
+
+        equationDisplayLayout = QVBoxLayout()
+        equationDisplayLayout.addWidget(QLabel('Equation:'))
+        equationDisplay = QPlainTextEdit()
+        # equationDisplay.setReadOnly(True)
+        self.equationDisplay = equationDisplay
+        equationDisplayLayout.addWidget(equationDisplay)
+        equationDisplayLayout.setStretch(0,0)
+        equationDisplayLayout.setStretch(1,1)
+
+        equationLayout.addLayout(newColNameLayout)
+        equationLayout.addWidget(QLabel(' = '))
+        equationLayout.addLayout(equationDisplayLayout)
+        equationLayout.setStretch(0,1)
+        equationLayout.setStretch(1,0)
+        equationLayout.setStretch(2,2)
+
+        testOutputLayout = QVBoxLayout()
+        testOutputLayout.addWidget(QLabel('Result of test with random inputs:'))
+        testOutputDisplay = QTextEdit()
+        testOutputDisplay.setReadOnly(True)
+        self.testOutputDisplay = testOutputDisplay
+        testOutputLayout.addWidget(testOutputDisplay)
+        testOutputLayout.setStretch(0,0)
+        testOutputLayout.setStretch(1,1)
+
+        instructions = html_utils.paragraph("""
+            <b>Double-click</b> on any of the <b>available measurements</b>
+            to add it to the equation.<br><br>
+            <i>NOTE: the result will be saved in the <code>acdc_output.csv</code>
+            file as a column with the same name<br>
+            you enter in "New measurement name"
+            field.</i><br>
+        """)
+
+        buttonsLayout = QHBoxLayout()
+
+        cancelButton = widgets.cancelPushButton('Cancel')
+        helpButton = widgets.infoPushButton('  Help...')
+        testButton = widgets.calcPushButton('Test output')
+        okButton = widgets.okPushButton(' Ok ')
+        okButton.setDisabled(True)
+        self.okButton = okButton
+
+        buttonsLayout.addStretch(1)
+
+        if debug:
+            debugButton = QPushButton('Debug')
+            debugButton.clicked.connect(self._debug)
+            buttonsLayout.addWidget(debugButton)
+
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(helpButton)
+        buttonsLayout.addWidget(testButton)
+        buttonsLayout.addWidget(okButton)
+
+        mainLayout.addWidget(QLabel(instructions))
+        mainLayout.addWidget(QLabel('Available measurements:'))
+        mainLayout.addWidget(metricsTreeWidget)
+        mainLayout.addLayout(operatorsLayout)
+        mainLayout.addLayout(equationLayout)
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+        mainLayout.addLayout(testOutputLayout)
+
+        clearButton.clicked.connect(self.clearEquation)
+        clearEntryButton.clicked.connect(self.clearEntryEquation)
+        metricsTreeWidget.itemDoubleClicked.connect(self.addColname)
+
+        helpButton.clicked.connect(self.showHelp)
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.close)
+        testButton.clicked.connect(self.test_cb)
+
+        self.setLayout(mainLayout)
+        self.setFont(font)
+
+        self.setStyleSheet("""
+            QTreeWidget::item:hover {background-color:#E6E6E6;}
+            QTreeWidget::item:selected {background-color:#CFEB9B;}
+            QTreeWidget::item:selected {color:black;}
+            QTreeView {
+                selection-background-color: #CFEB9B;
+                selection-color: white;
+                show-decoration-selected: 1;
+            }
+        """)
+
+    def addChannelLessItems(self, isZstack):
+        allChannelsTreeItem = QTreeWidgetItem(self.metricsTreeWidget)
+        allChannelsTreeItem.setText(0, f'All channels measurements')
+        metrics_desc, bkgr_val_desc = measurements.standard_metrics_desc(
+            isZstack, ''
+        )
+        custom_metrics_desc = measurements.custom_metrics_desc(
+            isZstack, ''
+        )
+
+        foregrMetricsTreeItem = QTreeWidgetItem(allChannelsTreeItem)
+        foregrMetricsTreeItem.setText(0, 'Cell signal measurements')
+        allChannelsTreeItem.addChild(foregrMetricsTreeItem)
+
+        bkgrMetricsTreeItem = QTreeWidgetItem(allChannelsTreeItem)
+        bkgrMetricsTreeItem.setText(0, 'Background values')
+        allChannelsTreeItem.addChild(bkgrMetricsTreeItem)
+
+        if custom_metrics_desc:
+            customMetricsTreeItem = QTreeWidgetItem(allChannelsTreeItem)
+            customMetricsTreeItem.setText(0, 'Custom measurements')
+            allChannelsTreeItem.addChild(customMetricsTreeItem)
+
+        self.addTreeItems(
+            foregrMetricsTreeItem, metrics_desc.keys(), isCol=True,
+            isChannelLess=True
+        )
+        self.addTreeItems(
+            bkgrMetricsTreeItem, bkgr_val_desc.keys(), isCol=True,
+            isChannelLess=True
+        )
+
+        if custom_metrics_desc:
+            self.addTreeItems(
+                customMetricsTreeItem, custom_metrics_desc.keys(),
+                isCol=True, isChannelLess=True
+            )
+
+    def addOperator(self):
+        button = self.sender()
+        text = f'{self.equationDisplay.toPlainText()}{button.text}'
+        self.equationDisplay.setPlainText(text)
+        self.clearLenghts.append(len(button.text))
+
+    def clearEquation(self):
+        self.isOperatorMode = False
+        self.equationDisplay.setPlainText('')
+        self.initAttributes()
+
+    def initAttributes(self):
+        self.clearLenghts = []
+        self.equationColNames = []
+        self.channelLessColnames = []
+
+    def clearEntryEquation(self):
+        if not self.clearLenghts:
+            return
+
+        text = self.equationDisplay.toPlainText()
+        newText = text[:-self.clearLenghts[-1]]
+        clearedText = text[-self.clearLenghts[-1]:]
+        self.clearLenghts.pop(-1)
+        self.equationDisplay.setPlainText(newText)
+        if clearedText in self.equationColNames:
+            self.equationColNames.remove(clearedText)
+        if clearedText in self.channelLessColnames:
+            self.channelLessColnames.remove(clearedText)
+
+    def addTreeItems(
+            self, parentItem, itemsText, isCol=False, isChannelLess=False
+        ):
+        for text in itemsText:
+            _item = QTreeWidgetItem(parentItem)
+            _item.setText(0, text)
+            parentItem.addChild(_item)
+            if isCol:
+                _item.isCol = True
+            _item.isChannelLess = isChannelLess
+
+
+    def addColname(self, item, column):
+        if not hasattr(item, 'isCol'):
+            return
+
+        colName = item.text(0)
+        text = f'{self.equationDisplay.toPlainText()}{colName}'
+        self.equationDisplay.setPlainText(text)
+        self.clearLenghts.append(len(colName))
+        self.equationColNames.append(colName)
+        if item.isChannelLess:
+            self.channelLessColnames.append(colName)
+
+    def _debug(self):
+        print(self.getEquationsDict())
+
+    def getEquationsDict(self):
+        equation = self.equationDisplay.toPlainText()
+        newColName = self.newColNameLineEdit.text()
+        if not self.channelLessColnames:
+            chNamesInTerms = set()
+            for term in self.equationColNames:
+                for chName in self.allChNames:
+                    if chName in term:
+                        chNamesInTerms.add(chName)
+            if len(chNamesInTerms) == 1:
+                # Equation uses metrics from a single channel --> append channel name
+                chName = chNamesInTerms.pop()
+                chColName = f'{chName}_{newColName}'
+                isMixedChannels = False
+                return {chColName:equation}, isMixedChannels
+            else:
+                # Equation doesn't use all channels metrics nor is single channel
+                isMixedChannels = True
+                return {newColName:equation}, isMixedChannels
+
+        isMixedChannels = False
+        equations = {}
+        for chName in self.allChNames:
+            chEquation = equation
+            chEquationName = newColName
+            # Append each channel name to channelLess terms
+            for colName in self.channelLessColnames:
+                chColName = f'{chName}{colName}'
+                chEquation = chEquation.replace(colName, chColName)
+                chEquationName = f'{chName}_{newColName}'
+                equations[chEquationName] = chEquation
+        return equations, isMixedChannels
+
+    def ok_cb(self):
+        if not self.newColNameLineEdit.text():
+            self.warnEmptyEquationName()
+            return
+        self.cancel = False
+
+        # Save equation to "<user_path>/acdc-metrics/combine_metrics.ini" file
+        config = measurements.read_saved_user_combine_config()
+
+        equationsDict, isMixedChannels = self.getEquationsDict()
+        for newColName, equation in equationsDict.items():
+            config = measurements.add_user_combine_metrics(
+                config, equation, newColName, isMixedChannels
+            )
+
+        self.sigOk.emit(self)
+
+        isChannelLess = len(self.channelLessColnames) > 0
+        if isChannelLess:
+            channelLess_equation = self.equationDisplay.toPlainText()
+            equation_name = self.newColNameLineEdit.text()
+            config = measurements.add_channelLess_combine_metrics(
+                config, channelLess_equation, equation_name,
+                self.channelLessColnames
+            )
+
+        measurements.save_common_combine_metrics(config)
+
+        self.close()
+
+    def warnEmptyEquationName(self):
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph("""
+            "New measurement name" field <b>cannot be empty</b>!
+        """)
+        msg.critical(
+            self, 'Empty new measurement name', txt
+        )
+
+    def showHelp(self):
+        txt = measurements.get_combine_metrics_help_txt()
+        msg = widgets.myMessageBox(
+            showCentered=False, wrapText=False,
+            scrollableText=True, enlargeWidthFactor=1.7
+        )
+        path = measurements.acdc_metrics_path
+        msg.addShowInFileManagerButton(path, txt='Show saved file...')
+        msg.information(self, 'Combine measurements help', txt)
+
+    def test_cb(self):
+        # Evaluate equation with random inputs
+        equation = self.equationDisplay.toPlainText()
+        random_data = np.random.rand(1, len(self.equationColNames))*5
+        df = pd.DataFrame(
+            data=random_data,
+            columns=self.equationColNames
+        ).round(5)
+        newColName = self.newColNameLineEdit.text()
+        try:
+            df[newColName] = df.eval(equation)
+        except Exception as e:
+            traceback.print_exc()
+            self.testOutputDisplay.setHtml(html_utils.paragraph(e))
+            self.testOutputDisplay.setStyleSheet("border: 2px solid red")
+            return
+
+        self.testOutputDisplay.setStyleSheet("border: 2px solid green")
+        self.okButton.setDisabled(False)
+
+        result = df.round(5).iloc[0][newColName]
+
+        # Substitute numbers into equation
+        inputs = df.iloc[0]
+        equation_numbers = equation
+        for c, col in enumerate(self.equationColNames):
+            equation_numbers = equation_numbers.replace(col, str(inputs[c]))
+
+        # Format output into html text
+        cols = self.equationColNames
+        inputs_txt = [f'{col} = {input}' for col, input in zip(cols, inputs)]
+        list_html = html_utils.to_list(inputs_txt)
+        text = html_utils.paragraph(f"""
+            By substituting the following random inputs:
+            {list_html}
+            we get the equation:<br><br>
+            &nbsp;&nbsp;<code>{newColName} = {equation_numbers}</code><br><br>
+            that <b>equals to</b>:<br><br>
+            &nbsp;&nbsp;<code>{newColName} = {result}</code>
+        """)
+        self.testOutputDisplay.setHtml(text)
 
 
 if __name__ == '__main__':

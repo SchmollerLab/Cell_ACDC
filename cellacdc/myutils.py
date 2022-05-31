@@ -33,7 +33,7 @@ from tifffile.tifffile import TiffWriter, TiffFile
 from PyQt5.QtWidgets import QMessageBox
 from PyQt5.QtCore import pyqtSignal, QObject, QCoreApplication
 
-from . import prompts, widgets, apps, core
+from . import prompts, widgets, apps, core, load
 from . import html_utils, is_linux, is_win, is_mac
 
 def exception_handler(func):
@@ -491,6 +491,18 @@ def getAcdcDfSegmPaths(images_path):
             paths[info_name]['segm_filename'] = fileName
     return paths
 
+def getChannelFilePath(images_path, chName):
+    file = ''
+    for file in listdir(images_path):
+        if re.search(fr'{chName}.(\w+)$', file) is not None:
+            return file
+    return file
+
+def getBasenameAndChNames(images_path):
+    _tempPosData = utilClass()
+    _tempPosData.images_path = images_path
+    load.loadData.getBasenameAndChNames(_tempPosData)
+    return _tempPosData.basename, _tempPosData.chNames
 
 def getBasename(files):
     basename = files[0]
@@ -518,7 +530,7 @@ def listdir(path):
     return natsorted([
         f for f in os.listdir(path)
         if not f.startswith('.')
-        and not f.endswith('.ini')
+        and not f == 'desktop.ini'
     ])
 
 def getModelArgSpec(acdcSegment):

@@ -14,7 +14,7 @@ from PyQt5.QtCore import (
     pyqtSignal, QObject, QRunnable, QMutex, QWaitCondition
 )
 
-from . import load, myutils, core
+from . import load, myutils, core, measurements, gui
 
 def worker_exception_handler(func):
     @wraps(func)
@@ -51,6 +51,8 @@ class signals(QObject):
     create_tqdm = pyqtSignal(int)
     innerProgressBar = pyqtSignal(int)
     sigPermissionError = pyqtSignal(str, object)
+    sigInitLoadData = pyqtSignal(object)
+    sigSetMeasurements = pyqtSignal(object)
 
 class segmVideoWorker(QObject):
     finished = pyqtSignal(float)
@@ -90,6 +92,72 @@ class segmVideoWorker(QObject):
         t1 = time.time()
         exec_time = t1-t0
         self.finished.emit(exec_time)
+
+class calcMetricsWorker(QObject):
+    def __init__(self, mainWin):
+        QObject.__init__(self)
+        self.signals = signals()
+        self.abort = False
+        self.logger = workerLogger(self.signals.progress)
+        self.mutex = QMutex()
+        self.waitCond = QWaitCondition()
+        self.mainWin = mainWin
+
+    def getImgFilePath(images_path, chName):
+        for file in myutils.listdir(images_path):
+            pass
+
+    @worker_exception_handler
+    def run(self):
+        expPaths = self.mainWin.expPaths
+        tot_exp = len(expPaths)
+        for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
+            tot_pos = len(pos_foldernames)
+            for p, pos in enumerate(pos_foldernames):
+                self.logger.log(
+                    f'Processing experiment n. {i+1}/{tot_exp}, '
+                    f'Position n. {p+1}/{tot_pos}'
+                )
+
+                pos_path = os.path.join(exp_path, pos)
+                images_path = os.path.join(pos_path, 'Images')
+                basename, chNames = myutils.getBasenameAndChNames(images_path)
+
+                # Use first found channel, it doesn't matter for metrics
+                chName = chNames[0]
+                file_path = myutils.getChannelFilePath(images_path, chName)
+
+                # Load data
+                posData = load.loadData(file_path, user_ch_name)
+                posData.getBasenameAndChNames()
+                posData.buildPaths()
+                posData.loadImgData()
+
+                if p == 0:
+                    self.mutex.lock()
+                    self.waitCond.wait(self.mutex)
+                    self.signals.sigInitLoadData.emit(posData)
+                    self.mutex.unlock()
+
+                posData.loadOtherFiles(
+                    load_segm_data=True,
+                    load_acdc_df=True,
+                    load_shifts=False,
+                    loadSegmInfo=True,
+                    load_delROIsInfo=True,
+                    loadBkgrData=True,
+                    loadBkgrROIs=True,
+                    load_last_tracked_i=True,
+                    load_metadata=True,
+                    load_customAnnot=True,
+                    load_customCombineMetrics=True,
+                    endFilenameSegm=self.mainWin.endFilenameSegm
+                )
+                posData.labelSegmData()
+
+                (metrics_func, all_metrics_names, custom_func_dict,
+                total_metrics) = measurements.getMetricsFunc(posData)
+        self.signals.finished.emit(self)
 
 class loadDataWorker(QObject):
     def __init__(self, mainWin, user_ch_file_paths, user_ch_name, firstPosData):
@@ -168,6 +236,7 @@ class loadDataWorker(QObject):
                 load_last_tracked_i=True,
                 load_metadata=True,
                 load_customAnnot=True,
+                load_customCombineMetrics=True,
                 endFilenameSegm=self.mainWin.endFilenameSegm,
                 create_new_segm=self.mainWin.isNewFile,
                 new_segm_filename=self.mainWin.newSegmFilename,

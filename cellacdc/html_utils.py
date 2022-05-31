@@ -18,6 +18,17 @@ def tag(text, tag_info='p style="font-size:10pt"'):
     text = f'<{tag_info}>{text}</{tag}>'
     return text
 
+def href_tag(text, url):
+    txt = tag(text, tag_info=f'a href="{url}"')
+    return txt
+
+def to_list(items, ordered=False):
+    list_tag = 'ol' if ordered else 'ul'
+    items_txt = ''.join([f'<li>{item}</li>' for item in items])
+    txt = tag(items_txt, tag_info=list_tag)
+    return txt
+
+
 def css_head(txt):
     # if is_mac:
     #     txt = txt.replace(',', ',&nbsp;')
@@ -43,7 +54,7 @@ def html_body(txt):
     """)
     return s
 
-def paragraph(txt, font_size='13px', font_color=None, wrap=True):
+def paragraph(txt, font_size='13px', font_color=None, wrap=True, center=False):
     # if is_mac:
     #     # Qt < 5.15.3 has a bug on macOS and the space after comma and perdiod
     #     # are super small. Force a non-breaking space (except for 'e.g.,').
@@ -67,4 +78,6 @@ def paragraph(txt, font_size='13px', font_color=None, wrap=True):
             {txt}
         </p>
         """)
+    if center:
+        s = re.sub(r'<p style="(.*)">', r'<p style="\1; text-align:center">', s)
     return s

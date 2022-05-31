@@ -349,7 +349,7 @@ class saveDataWorker(QObject):
         n = len(how_3Dto2D)
         numFluoChannels = len(fluo_keys)
 
-        # Defined in function set_metrics_func
+        # Defined in function setMetricsFunc
         metrics_func = self.mainWin.metrics_func
         custom_func_dict = self.mainWin.custom_func_dict
 
@@ -734,6 +734,37 @@ class saveDataWorker(QObject):
 
         return df
 
+    def _dfEvalEquation(self, df, newColName, expr):
+        try:
+            df[newColName] = df.eval(expr)
+        except:
+            print('-'*20)
+            self.mainWin.logger.info(traceback.format_exc())
+            print('='*20)
+
+    def addCombineMetrics_acdc_df(self, posData, df):
+        # Add channel specifc combined metrics
+        config = posData.combineMetricsConfig
+        for chName in posData.loadedChNames:
+            metricsToSkipChannel = self.mainWin.metricsToSkip.get(chName, [])
+            posDataEquations = config['equations']
+            userPathChEquations = config['user_path_equations']
+            for newColName, equation in posDataEquations.items():
+                if newColName in metricsToSkipChannel:
+                    continue
+                self._dfEvalEquation(df, newColName, equation)
+            for newColName, equation in userPathChEquations.items():
+                if newColName in metricsToSkipChannel:
+                    continue
+                self._dfEvalEquation(df, newColName, equation)
+
+        # Add mixed channels combined metrics
+        mixedChannelsEquations = config['mixed_channels_equations']
+        for newColName, equation in mixedChannelsEquations.items():
+            if newColName not in self.mainWin.mixedChCombineMetricsToSave:
+                continue
+            self._dfEvalEquation(df, newColName, equation)
+
     def addVolumeMetrics(self, df, rp, posData):
         PhysicalSizeY = posData.PhysicalSizeY
         PhysicalSizeX = posData.PhysicalSizeX
@@ -795,7 +826,7 @@ class saveDataWorker(QObject):
 
                 # Add segmented channel data for calc metrics if requested
                 add_user_channel_data = True
-                for chName in self.mainWin.chNamesToSkipMetrics:
+                for chName in self.mainWin.chNamesMetricsToSkip:
                     skipUserChannel = (
                         posData.filename.endswith(chName)
                         or posData.filename.endswith(f'{chName}_aligned')
@@ -890,6 +921,11 @@ class saveDataWorker(QObject):
                             names=['frame_i', 'time_seconds', 'Cell_ID']
                         )
 
+                        if save_metrics:
+                            self.addCombineMetrics_acdc_df(
+                                posData, all_frames_acdc_df
+                            )
+
                         # Save segmentation metadata
                         all_frames_acdc_df.to_csv(acdc_output_csv_path)
                         posData.acdc_df = all_frames_acdc_df
@@ -925,6 +961,9 @@ class saveDataWorker(QObject):
 
                 with open(last_tracked_i_path, 'w+') as txt:
                     txt.write(str(frame_i))
+
+                # Save combined metrics equations
+                posData.saveCombineMetrics()
 
                 posData.last_tracked_i = last_tracked_i
 
@@ -1076,8 +1115,6 @@ class guiWin(QMainWindow):
         self.gui_createImg1Widgets()
         self.gui_createLabWidgets()
         self.gui_addBottomWidgetsToBottomLayout()
-
-        self.set_metrics_func()
 
         mainContainer = QWidget()
         self.setCentralWidget(mainContainer)
@@ -1329,6 +1366,7 @@ class guiWin(QMainWindow):
         measurementsMenu.addSeparator()
         measurementsMenu.addAction(self.setMeasurementsAction)
         measurementsMenu.addAction(self.addCustomMetricAction)
+        measurementsMenu.addAction(self.addCombineMetricAction)
         measurementsMenu.setDisabled(True)
 
         # Settings menu
@@ -1983,7 +2021,8 @@ class guiWin(QMainWindow):
                 self.trackWithYeazAction.setChecked(True)
 
         self.setMeasurementsAction = QAction('Set measurements...')
-        self.addCustomMetricAction = QAction('Add custom metric...')
+        self.addCustomMetricAction = QAction('Add custom measurement...')
+        self.addCombineMetricAction = QAction('Add combined measurement...')
 
         # Standard key sequence
         # self.copyAction.setShortcut(QKeySequence.Copy)
@@ -2224,6 +2263,7 @@ class guiWin(QMainWindow):
 
         self.setMeasurementsAction.triggered.connect(self.showSetMeasurements)
         self.addCustomMetricAction.triggered.connect(self.addCustomMetric)
+        self.addCombineMetricAction.triggered.connect(self.addCombineMetric)
 
         self.labelsGrad.colorButton.sigColorChanging.connect(self.updateBkgrColor)
         self.labelsGrad.colorButton.sigColorChanged.connect(self.saveBkgrColor)
@@ -9567,6 +9607,8 @@ class guiWin(QMainWindow):
         self.updateALLimg()
         self.restoreSavedSettings()
 
+        self.setMetricsFunc()
+
         self.titleLabel.setText(
             'Data successfully loaded.',
             color=self.titleColor
@@ -10078,9 +10120,12 @@ class guiWin(QMainWindow):
         ]
 
         # Metrics
-        self.chNamesToSkipMetrics = []
+        self.chNamesMetricsToSkip = []
         self.metricsToSkip = {}
         self.regionPropsToSave = measurements.get_props_names()
+        self.mixedChCombineMetricsToSave = list(
+            measurements.get_user_combine_mixed_channels_desc().keys()
+        )
         self.sizeMetricsToSave = list(
             measurements.get_size_metrics_desc().keys()
         )
@@ -13677,8 +13722,11 @@ class guiWin(QMainWindow):
         if exp_path is None:
             self.MostRecentPath = myutils.getMostRecentPath()
             exp_path = QFileDialog.getExistingDirectory(
-                self, 'Select experiment folder containing Position_n folders '
-                      'or specific Position_n folder', self.MostRecentPath)
+                self,
+                'Select experiment folder containing Position_n folders '
+                'or specific Position_n folder',
+                self.MostRecentPath
+            )
 
         if exp_path == '':
             self.openAction.setEnabled(True)
@@ -14167,7 +14215,7 @@ class guiWin(QMainWindow):
         self.measurementsWin = apps.setMeasurementsDialog(
             loadedChNames, notLoadedChNames, posData.SizeZ > 1,
             favourite_funcs=favourite_funcs, acdc_df=posData.acdc_df,
-            acdc_df_path=posData.images_path
+            acdc_df_path=posData.images_path, posData=posData
         )
         self.measurementsWin.sigClosed.connect(self.setMeasurements)
         self.measurementsWin.show()
@@ -14196,7 +14244,7 @@ class guiWin(QMainWindow):
                 posData.allData_li[frame_i]['acdc_df'] = acdc_df
         self.logger.info('Setting measurements...')
         fluo_keys = list(posData.fluo_data_dict.keys())
-        self.chNamesToSkipMetrics = []
+        self.chNamesMetricsToSkip = []
         self.metricsToSkip = {chName:[] for chName in self.ch_names}
         favourite_funcs = set()
         # Remove unchecked metrics and load checked not loaded channels
@@ -14204,7 +14252,7 @@ class guiWin(QMainWindow):
             chName = chNameGroupbox.chName
             if not chNameGroupbox.isChecked():
                 # Skip entire channel
-                self.chNamesToSkipMetrics.append(chName)
+                self.chNamesMetricsToSkip.append(chName)
             else:
                 if chName in self.notLoadedChNames:
                     success = self.loadFluo_cb(fluo_channels=[chName])
@@ -14236,6 +14284,21 @@ class guiWin(QMainWindow):
                     self.regionPropsToSave.append(checkBox.text())
                     favourite_funcs.add(checkBox.text())
             self.regionPropsToSave = tuple(self.regionPropsToSave)
+
+        if self.measurementsWin.mixedChannelsCombineMetricsQGBox is None:
+            self.mixedChCombineMetricsToSave = ()
+        elif not self.measurementsWin.mixedChannelsCombineMetricsQGBox.isChecked():
+            self.mixedChCombineMetricsToSave = ()
+        else:
+            mixedChCombineMetricsToSave = []
+            win = self.measurementsWin
+            checkBoxes = win.mixedChannelsCombineMetricsQGBox.checkBoxes
+            for checkBox in checkBoxes:
+                if checkBox.isChecked():
+                    mixedChCombineMetricsToSave.append(checkBox.text())
+                    favourite_funcs.add(checkBox.text())
+            self.mixedChCombineMetricsToSave = tuple(mixedChCombineMetricsToSave)
+
         df_favourite_funcs = pd.DataFrame(
             {'favourite_func_name': list(favourite_funcs)}
         )
@@ -14256,14 +14319,33 @@ class guiWin(QMainWindow):
         )
         msg.exec_()
 
+    def addCombineMetric(self):
+        posData = self.data[self.pos_i]
+        isZstack = posData.SizeZ > 1
+        win = apps.combineMetricsEquationDialog(
+            self.ch_names, isZstack, parent=self
+        )
+        win.sigOk.connect(self.saveCombineMetricsToPosData)
+        win.exec_()
+        win.sigOk.disconnect()
 
-    def set_metrics_func(self):
-        metrics_func, all_metrics_names = measurements.standard_metrics_func()
+    def saveCombineMetricsToPosData(self, window):
+        for posData in self.data:
+            equationsDict, isMixedChannels = window.getEquationsDict()
+            for newColName, equation in equationsDict.items():
+                posData.addEquationCombineMetrics(
+                    equation, newColName, isMixedChannels
+                )
+                posData.saveCombineMetrics()
+
+    def setMetricsFunc(self):
+        posData = self.data[self.pos_i]
+        (metrics_func, all_metrics_names,
+        custom_func_dict, total_metrics) = measurements.getMetricsFunc(posData)
         self.metrics_func = metrics_func
         self.all_metrics_names = all_metrics_names
-        self.total_metrics = len(self.metrics_func)
-        self.custom_func_dict = measurements.get_custom_metrics_func()
-        self.total_metrics += len(self.custom_func_dict)
+        self.total_metrics = total_metrics
+        self.custom_func_dict = custom_func_dict
 
     def getLastTrackedFrame(self, posData):
         last_tracked_i = 0

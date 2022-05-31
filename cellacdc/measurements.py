@@ -9,13 +9,15 @@ from importlib import import_module
 
 from skimage.measure._regionprops import PROPS, COL_DTYPES, RegionProperties
 
-from . import core, base_cca_df, html_utils
+from . import core, base_cca_df, html_utils, config
 
 user_path = pathlib.Path.home()
 acdc_metrics_path = os.path.join(user_path, 'acdc-metrics')
 if not os.path.exists(acdc_metrics_path):
     os.makedirs(acdc_metrics_path)
 sys.path.append(acdc_metrics_path)
+
+combine_metrics_ini_path = os.path.join(acdc_metrics_path, 'combine_metrics.ini')
 
 cellacdc_path = os.path.dirname(os.path.abspath(__file__))
 metrics_path = os.path.join(cellacdc_path, 'metrics')
@@ -27,6 +29,18 @@ for file in os.listdir(metrics_path):
     src = os.path.join(metrics_path, file)
     dst = os.path.join(acdc_metrics_path, file)
     shutil.copy(src, dst)
+
+def getMetricsFunc(posData):
+    metrics_func, all_metrics_names = standard_metrics_func()
+    total_metrics = len(metrics_func)
+    custom_func_dict = get_custom_metrics_func()
+    total_metrics += len(custom_func_dict)
+
+    # Here we simply update the total. The combineMetricsConfig is
+    # defined in loadData.setCombineMetricsConfig method
+    for key, section in posData.combineMetricsConfig.items():
+        total_metrics += len(section)
+    return metrics_func, all_metrics_names, custom_func_dict, total_metrics
 
 def get_all_metrics_names():
     all_metrics_names = []
@@ -62,6 +76,9 @@ def get_all_acdc_df_colnames():
     all_acdc_df_colnames.extend(additional_colnames)
     return all_acdc_df_colnames
 
+def get_user_combine_metrics_equations(chName):
+    _, equations = channel_combine_metrics_desc(chName)
+    return equations
 
 def get_custom_metrics_func():
     scripts = os.listdir(acdc_metrics_path)
@@ -79,13 +96,62 @@ def get_custom_metrics_func():
             traceback.print_exc()
     return custom_func_dict
 
+def read_saved_user_combine_config():
+    configPars = _get_saved_user_combine_config()
+    if configPars is None:
+        configPars = config.ConfigParser()
+
+    if 'equations' not in configPars:
+        configPars['equations'] = {}
+
+    if 'mixed_channels_equations' not in configPars:
+        configPars['mixed_channels_equations'] = {}
+
+    if 'channelLess_equations' not in configPars:
+        configPars['channelLess_equations'] = {}
+
+    return configPars
+
+
+def _get_saved_user_combine_config():
+    files = os.listdir(acdc_metrics_path)
+    configPars = None
+    for file in files:
+        module_name, ext = os.path.splitext(file)
+        if ext != '.ini':
+            continue
+
+        filePath = os.path.join(acdc_metrics_path, file)
+        configPars = config.ConfigParser()
+        configPars.read(filePath)
+    return configPars
+
+def add_user_combine_metrics(configPars, equation, colName, isMixedChannels):
+    section = 'mixed_channels_equations' if isMixedChannels else 'equations'
+    if section not in configPars:
+        configPars[section] = {}
+    configPars[section][colName] = equation
+    return configPars
+
+def add_channelLess_combine_metrics(configPars, equation, equation_name, terms):
+    if 'channelLess_equations' not in configPars:
+        configPars['channelLess_equations'] = {}
+    terms = ','.join(terms)
+    equation_terms = f'{equation};{terms}'
+    configPars['channelLess_equations'][equation_name] = equation_terms
+    return configPars
+
+def save_common_combine_metrics(configPars):
+    with open(combine_metrics_ini_path, 'w') as configfile:
+        configPars.write(configfile)
+
 def _get_custom_metrics_names():
     custom_func_dict = get_custom_metrics_func()
     keys = custom_func_dict.keys()
     custom_metrics_names = {func_name:func_name for func_name in keys}
     return custom_metrics_names
 
-def custom_metrics_desc(isZstack, chName):
+def custom_metrics_desc(isZstack, chName, posData=None):
     how_3Dto2D = ['_maxProj', '_meanProj', '_zSlice'] if isZstack else ['']
     how_3Dto2D_desc = _get_how_3Dto2D_desc()
     custom_metrics_names = _get_custom_metrics_names()
@@ -104,11 +170,137 @@ def custom_metrics_desc(isZstack, chName):
                 note_txt = ''
 
             desc = html_utils.paragraph(f"""
-                <b>{func_desc}</b> is a custom defined measurement.<br>
+                <b>{func_desc}</b> is a custom defined measurement.<br><br>
+                The code for this function is located at the following path:<br><br>
+                <code>{os.path.join(acdc_metrics_path, func_desc)}</code><br><br>
                 {note_txt}
             """)
             custom_metrics_desc[metric_name] = desc
+
+    combine_metrics_desc, _ = channel_combine_metrics_desc(chName, posData=posData)
+    custom_metrics_desc = {**custom_metrics_desc, **combine_metrics_desc}
+
     return custom_metrics_desc
+
+def channel_combine_metrics_desc(chName, posData=None):
+    combine_metrics_configPars = read_saved_user_combine_config()
+
+    how_3Dto2D = ['_maxProj', '_meanProj', '_zSlice']
+    how_3Dto2D_desc = _get_how_3Dto2D_desc()
+    combine_metrics = combine_metrics_configPars['equations']
+    if posData is not None:
+        posDataEquations = posData.combineMetricsConfig['equations']
+        print(dict(posDataEquations))
+        combine_metrics = {**combine_metrics, **posDataEquations}
+    combine_metrics_desc = {}
+    all_metrics_names = get_all_metrics_names()
+    equations = {}
+    for name, equation in combine_metrics.items():
+        metric_name = name
+        if not any([metric in equation for metric in all_metrics_names]):
+            # Equation does not contain any of the available metrics --> Skip it
+            continue
+
+        if chName not in metric_name:
+            # Equation name is not specific to the requested channel --> Skip it
+            continue
+
+        how_3Dto2D_present = [how for how in how_3Dto2D if how in equation]
+        isZstack = len(how_3Dto2D_present) > 0
+
+        if isZstack:
+            how_desc = how_3Dto2D_present[0]
+            note_txt = html_utils.paragraph(f"""{_get_zStack_note(how_desc)}""")
+        else:
+            note_txt = ''
+
+        desc = html_utils.paragraph(f"""
+            <b>{metric_name}</b> is a custom combined measurement that is the
+            <b>result of the following equation</b>:.<br><br>
+            <code>{metric_name} = {equation}</code><br><br>
+            {note_txt}
+        """)
+        combine_metrics_desc[metric_name] = desc
+        equations[metric_name] = equation
+
+    channelLess_combine_metrics = combine_metrics_configPars['channelLess_equations']
+    for name, equation_terms in channelLess_combine_metrics.items():
+        channelLess_equation, terms = equation_terms.split(';')
+        _colNames = terms.split(',')
+        metric_name = f'{chName}_{name}'
+        equation = channelLess_equation
+        for _col in _colNames:
+            equation = equation.replace(_col, f'{chName}{_col}')
+
+        if not any([metric in equation for metric in all_metrics_names]):
+            # Equation does not contain any of the available metrics --> Skip it
+            continue
+
+        how_3Dto2D_present = [how for how in how_3Dto2D if how in equation]
+        isZstack = len(how_3Dto2D_present) > 0
+
+        if isZstack:
+            how_desc = how_3Dto2D_present[0]
+            note_txt = html_utils.paragraph(f"""{_get_zStack_note(how_desc)}""")
+        else:
+            note_txt = ''
+
+        desc = html_utils.paragraph(f"""
+            <b>{metric_name}</b> is a custom combined measurement that is the
+            <b>result of the following equation</b>:.<br><br>
+            <code>{metric_name} = {equation}</code><br><br>
+            {note_txt}
+        """)
+        combine_metrics_desc[metric_name] = desc
+        equations[metric_name] = equation
+
+    return combine_metrics_desc, equations
+
+def get_user_combine_mixed_channels_equations():
+    _, equations = _user_combine_mixed_channels_desc()
+    return equations
+
+def get_user_combine_mixed_channels_desc():
+    desc, _ = _user_combine_mixed_channels_desc()
+    return desc
+
+def _user_combine_mixed_channels_desc():
+    configPars = _get_saved_user_combine_config()
+    if configPars is None:
+        return {}, {}
+
+    equations = {}
+    mixed_channels_desc = {}
+    how_3Dto2D = ['_maxProj', '_meanProj', '_zSlice']
+    how_3Dto2D_desc = _get_how_3Dto2D_desc()
+    mixed_channels_combine_metrics = configPars['mixed_channels_equations']
+    all_metrics_names = get_all_metrics_names()
+    equations = {}
+    for name, equation in mixed_channels_combine_metrics.items():
+        metric_name = name
+        if not any([metric in equation for metric in all_metrics_names]):
+            # Equation does not contain any of the available metrics --> Skip it
+            continue
+
+        how_3Dto2D_present = [how for how in how_3Dto2D if how in equation]
+        isZstack = len(how_3Dto2D_present) > 0
+
+        if isZstack:
+            how_desc = how_3Dto2D_present[0]
+            note_txt = html_utils.paragraph(f"""{_get_zStack_note(how_desc)}""")
+        else:
+            note_txt = ''
+
+        desc = html_utils.paragraph(f"""
+            <b>{metric_name}</b> is a custom combined measurement that is the
+            <b>result of the following equation</b>:.<br><br>
+            <code>{metric_name} = {equation}</code><br><br>
+            {note_txt}
+        """)
+        mixed_channels_desc[metric_name] = desc
+        equations[metric_name] = equation
+    return mixed_channels_desc, equations
+
 
 def _um3():
     return '<code>&micro;m<sup>3</sup></code>'
@@ -444,3 +636,101 @@ def add_metrics_instructions():
     code you wrote. Thanks.</i>
     """)
     return s, metrics_path
+
+def _get_combine_metrics_examples_list():
+    examples = [
+        """
+        <code>concentration = _amount_autoBkgr/cell_vol_fl</code><br><br>
+        --> <b>for each channel</b> create a new column with the name
+        <code>channel_name_concentration</code><br>
+        with the result of the division between <code>_amount_autoBkgr</code> and
+        <code>cell_vol_fl</code><br><br>.
+        """,
+        """
+        <code>autofluo_corrected_mean = _mean-channel_1_mean</code><br><br>
+        --> <b>for each channel</b> create a new column with the name
+        <code>channel_autofluo_corrected_mean</code><br>
+        with the result of the subtraction between each channel
+        signal's mean and the channel_1 signal's mean<br><br>.
+        """,
+        """
+        <code>amount = channel_1_mean-channel_1_autoBkgr_bkgrVal_median</code><br><br>
+        --> Create a <b>single new column</b> with the name
+        <code>channel_1_amount</code><br>
+        with the result of the subtraction between the channel_1 signal's mean
+        and the channel_1 background's intensities median<br><br>.
+        """,
+        """
+        <code>ch1_minus_ch2_mean = channel_1_mean-channel_2_mean</code><br><br>
+        --> Create a <b>single new column</b> with the name
+        <code>ch1_minus_ch2_mean</code><br>
+        with the result of the subtraction between the channel_1 signal's mean
+        and the channel_2 signal's mean.
+        """
+    ]
+    return examples
+
+def get_combine_metrics_help_txt():
+    pandas_eval_url = 'https://pandas.pydata.org/docs/reference/api/pandas.eval.html'
+    examples = _get_combine_metrics_examples_list()
+    txt = html_utils.paragraph(f"""
+        This dialog allows you to write an equation that will be used to
+        <b>combine multiple measurements</b>.<br><br>
+
+        To <b>add a measurement</b> to the equation <b>double-click</b> on
+        any of the available measurements in the list.<br><br>
+
+        To <b>add a mathematical operator</b> click on any
+        of the tool buttons.<br><br>
+
+        <b>Write a name</b> for the resulting measurement in the
+        "New measurement name" field.<br>
+        This field <b>cannot be left empty</b>.<br><br>
+
+        This name will be used as the <b>name of a new column</b>
+        in the <code>acdc_output.csv</code> file.<br>
+        This column will contain the resulting measurement.<br><br>
+
+        Once you wrote the name and the equation you need to <b>test it</b> by
+        clicking on the "Test output" button.<br>
+        This will evaluate the equation with random inputs and it will
+        display the result below the button.<br>
+        <b>Carefully inspect the output</b>, as it could contain an error.<br>
+        If there is no error, <b>check that the result is as expected</b>.<br><br>
+
+        Once you are happy with the test, click the "Ok" button.<br><br>
+
+        If you need to calculate the <b>same measurement for each one of the
+        channels</b><br>
+        select the measurements from the "All channels measurements"
+        item in the list.<br><br>
+
+        You can add measurements specific for one channel or all channels
+        measurements to the same equation<br>
+        (e.g., if you need to divide a quantity of each channel
+        with a specific channel measurement).<br><br>
+
+        If you select any of the all channels measurement, Cell-ACDC will
+        create <b>one column for each channel</b>.<br>
+        The new columns will start with the channel name followed by the
+        new measurement name.<br><br>
+
+        Note that you can <b>manually edit the equation</b>, for example, if you
+        need a mathematical operator<br>
+        that is not available with the buttons.<br><br>
+
+        Cell-ACDC uses the <b>Python package <code>pandas</code></b> to evaluate
+        the expression.<br>
+        You can <b>read more</b> about it
+        {html_utils.href_tag('here', pandas_eval_url)}<br><br>
+
+        The equations will be <b>saved</b> to both the loaded
+        </b>Position folder</b><br>
+        (file that ends with <code>custom_combine_metrics.ini</code>)
+        and the following path:<br><br>
+        <code>{combine_metrics_ini_path}</code><br><br>
+
+        Examples:
+        {html_utils.to_list(examples)}
+    """)
+    return txt

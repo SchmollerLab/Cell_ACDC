@@ -14,7 +14,7 @@ from functools import partial
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QPushButton, QLabel, QAction,
-    QMenu, QMessageBox, QStyleFactory, QHBoxLayout
+    QMenu, QMessageBox, QStyleFactory, QHBoxLayout, QFileDialog
 )
 from PyQt5.QtCore import (
     Qt, QProcess, pyqtSignal, pyqtSlot, QTimer, QSize,
@@ -229,6 +229,7 @@ class mainWin(QMainWindow):
 
         utilsMenu = QMenu("&Utilities", self)
         utilsMenu.addAction(self.concatAcdcDfsAction)
+        utilsMenu.addAction(self.calcMetricsAcdcDf)
         utilsMenu.addAction(self.npzToNpyAction)
         utilsMenu.addAction(self.npzToTiffAction)
         utilsMenu.addAction(self.TiffToNpzAction)
@@ -255,6 +256,9 @@ class mainWin(QMainWindow):
         self.concatAcdcDfsAction = QAction(
             'Concatenate acdc output tables from multiple Positions...'
         )
+        self.calcMetricsAcdcDf = QAction(
+            'Compute measurements for one or more experiments...'
+        )
         self.renameAction = QAction('Rename files by appending additional text...')
         self.alignAction = QAction('Align or revert alignment...')
 
@@ -272,6 +276,7 @@ class mainWin(QMainWindow):
         self.TiffToNpzAction.triggered.connect(self.launchConvertFormatUtil)
         self.h5ToNpzAction.triggered.connect(self.launchConvertFormatUtil)
         self.welcomeGuideAction.triggered.connect(self.launchWelcomeGuide)
+        self.calcMetricsAcdcDf.triggered.connect(self.launchCalcMetricsUtil)
         self.aboutAction.triggered.connect(self.showAbout)
         self.renameAction.triggered.connect(self.launchRenameUtil)
         self.userManualAction.triggered.connect(myutils.showUserManual)
@@ -287,6 +292,67 @@ class mainWin(QMainWindow):
     def showAbout(self):
         self.aboutWin = about.QDialogAbout(parent=self)
         self.aboutWin.show()
+
+    def launchCalcMetricsUtil(self):
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph("""
+            After you click "Ok" on this dialog you will be asked
+            to <b>select the experiment folders</b>, one by one.<br><br>
+            Next, you will be able to <b>choose specific Positions</b>
+            from each selected experiment.
+        """)
+        msg.information(
+            self, 'Compute measurements utility', txt,
+            buttonsTexts=('Cancel', 'Ok')
+        )
+        if msg.cancel:
+            print('Compute measurements utility aborted by the user.')
+            return
+
+        exp_paths = {}
+        mostRecentPath = myutils.getMostRecentPath()
+        while True:
+            exp_path = QFileDialog.getExistingDirectory(
+                self, 'Select experiment folder containing Position_n folders',
+                mostRecentPath
+            )
+            posFolders = myutils.getPosfoldernames(exp_path)
+            if not posFolders:
+                msg = widgets.myMessageBox()
+                msg.addShowInFileManagerButton(
+                    exp_path, txt='Show selected folder...'
+                )
+                _ls = "\n".join(os.listdir(exp_path))
+                msg.setDetailedText(f'Files present in the folder:\n{_ls}')
+                txt = html_utils.paragraph(f"""
+                    The selected folder:<br><br>
+                    <code>{exp_path}</code><br><br>
+                    does not contain any valid Position folders.<br>
+                """)
+                msg.warning(
+                    self, 'Not valid folder', txt,
+                    buttonsTexts=('Cancel', 'Ok')
+                )
+                if msg.cancel:
+                    print('Compute measurements utility aborted by the user.')
+                    return
+
+                continue
+
+            exp_paths[exp_path] = posFolders
+            mostRecentPath = exp_path
+            msg = widgets.myMessageBox()
+            txt = html_utils.paragraph("""
+                Do you want to select other experiment folders?
+            """)
+            noButton, yesButton = msg.question(
+                self, 'Select additional experiments?', txt,
+                buttonsTexts=('No', 'Yes')
+            )
+            if msg.clickedButton == noButton:
+                break
+
+        pass
 
     def launchRenameUtil(self):
         isUtilnabled = self.sender().isEnabled()

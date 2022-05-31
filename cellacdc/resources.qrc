@@ -1,5 +1,19 @@
 <!DOCTYPE RCC><RCC version="1.0">
 <qresource>
+    <file alias="backspace.svg">resources/icons/math/backspace.svg</file>
+    <file alias="square_root.svg">resources/icons/math/square_root.svg</file>
+    <file alias="add.svg">resources/icons/math/add.svg</file>
+    <file alias="multiply.svg">resources/icons/math/multiply.svg</file>
+    <file alias="divide.svg">resources/icons/math/divide.svg</file>
+    <file alias="subtract.svg">resources/icons/math/subtract.svg</file>
+    <file alias="pow.svg">resources/icons/math/pow.svg</file>
+    <file alias="open_bracket.svg">resources/icons/math/open_bracket.svg</file>
+    <file alias="close_bracket.svg">resources/icons/math/close_bracket.svg</file>
+    <file alias="square.svg">resources/icons/math/square.svg</file>
+    <file alias="log10.svg">resources/icons/math/log10.svg</file>
+    <file alias="ln.svg">resources/icons/math/ln.svg</file>
+    <file alias="calc.svg">resources/icons/math/calc.svg</file>
+    <file alias="clear.svg">resources/icons/math/clear.svg</file>
     <file alias="file-new.svg">resources/icons/file-new.svg</file>
     <file alias="file-open.svg">resources/icons/file-open.svg</file>
     <file alias="file-save.svg">resources/icons/file-save.svg</file>
@@ -15,6 +29,7 @@
     <file alias="showDown.svg">resources/icons/showDown.svg</file>
     <file alias="hideUp.svg">resources/icons/hideUp.svg</file>
     <file alias="brush.svg">resources/icons/brush.svg</file>
+    <file alias="continue.svg">resources/icons/continue.svg</file>
     <file alias="eraser.png">resources/icons/eraser.png</file>
     <file alias="brush-cursor.png">resources/icons/brush-cursor.png</file>
     <file alias="undo.svg">resources/icons/undo.svg</file>

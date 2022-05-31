@@ -1,5 +1,11 @@
 from PyQt5.QtCore import QObject, pyqtSignal, qInstallMessageHandler
 import argparse
+import configparser
+
+class ConfigParser(configparser.ConfigParser):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.optionxform = str
 
 class QtWarningHandler(QObject):
     sigGeometryWarning = pyqtSignal(object)

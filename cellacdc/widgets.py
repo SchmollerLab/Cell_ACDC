@@ -104,6 +104,16 @@ class infoPushButton(QPushButton):
         super().__init__(*args)
         self.setIcon(QIcon(':info.svg'))
 
+class continuePushButton(QPushButton):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setIcon(QIcon(':continue.svg'))
+
+class calcPushButton(QPushButton):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setIcon(QIcon(':calc.svg'))
+
 class showInFileManagerButton(QPushButton):
     def __init__(self, *args):
         super().__init__(*args)
@@ -276,10 +286,14 @@ class myLabelItem(pg.LabelItem):
 
 
 class myMessageBox(QDialog):
-    def __init__(self, parent=None, showCentered=True, wrapText=True):
+    def __init__(
+            self, parent=None, showCentered=True, wrapText=True,
+            scrollableText=False, enlargeWidthFactor=0
+        ):
         super().__init__(parent)
 
         self.wrapText = wrapText
+        self.enlargeWidthFactor = enlargeWidthFactor
 
         self.cancel = True
         self.cancelButton = None
@@ -287,6 +301,8 @@ class myMessageBox(QDialog):
         self.clickedButton = None
 
         self.showCentered = showCentered
+
+        self.scrollableText = scrollableText
 
         self.layout = QGridLayout()
         self.layout.setHorizontalSpacing(20)
@@ -345,7 +361,14 @@ class myMessageBox(QDialog):
         label.setWordWrap(self.wrapText)
         label.setOpenExternalLinks(True)
         self.labels.append(label)
-        self.layout.addWidget(label, self.currentRow, 1)#, alignment=Qt.AlignTop)
+        if self.scrollableText:
+            textWidget = QScrollArea()
+            textWidget.setFrameStyle(QFrame.NoFrame)
+            textWidget.setWidget(label)
+        else:
+            textWidget = label
+
+        self.layout.addWidget(textWidget, self.currentRow, 1)#, alignment=Qt.AlignTop)
         self.currentRow += 1
         return label
 
@@ -475,6 +498,9 @@ class myMessageBox(QDialog):
 
         if self.width() < 350:
             self.resize(350, self.height())
+
+        if self.enlargeWidthFactor > 0:
+            self.resize(int(self.width()*self.enlargeWidthFactor), self.height())
 
         if self.showCentered:
             screen = self.screen()
@@ -1248,7 +1274,7 @@ class _metricsQGBox(QGroupBox):
         self.minWidth = fw + sw
 
 class channelMetricsQGBox(QGroupBox):
-    def __init__(self, isZstack, chName, favourite_funcs=None):
+    def __init__(self, isZstack, chName, posData=None, favourite_funcs=None):
         QGroupBox.__init__(self)
 
         layout = QVBoxLayout()
@@ -1271,13 +1297,17 @@ class channelMetricsQGBox(QGroupBox):
         layout.addWidget(metricsQGBox)
         layout.addWidget(bkgrValsQGBox)
 
-        custom_metrics_desc = measurements.custom_metrics_desc(isZstack, chName)
+        custom_metrics_desc = measurements.custom_metrics_desc(
+            isZstack, chName, posData=posData
+        )
+
         if custom_metrics_desc:
             customMetricsQGBox = _metricsQGBox(
                 custom_metrics_desc, 'Custom measurements'
             )
             layout.addWidget(customMetricsQGBox)
             self.checkBoxes.extend(customMetricsQGBox.checkBoxes)
+
 
         self.setTitle(f'{chName} metrics')
         self.setCheckable(True)

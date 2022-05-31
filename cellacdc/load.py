@@ -26,7 +26,7 @@ from PyQt5.QtWidgets import (
 )
 import pyqtgraph as pg
 
-from . import prompts, apps, myutils, widgets
+from . import prompts, apps, myutils, widgets, measurements, config
 from . import base_cca_df, base_acdc_df, html_utils
 
 cca_df_colnames = list(base_cca_df.keys())
@@ -221,6 +221,8 @@ class loadData:
             or file.endswith('segm_raw.npz')
             or (file.endswith('.npz') and file.find('segm') != -1)
         ]
+        if askMultiSegmFunc is None:
+            return segm_files
         is_multi_npz = len(segm_files)>1
         if is_multi_npz and askMultiSegmFunc is not None:
             askMultiSegmFunc(segm_files, self, waitCond)
@@ -247,6 +249,7 @@ class loadData:
             load_metadata=False,
             load_dataPrep_ROIcoords=False,
             load_customAnnot=False,
+            load_customCombineMetrics=False,
             getTifPath=False,
             endFilenameSegm='',
             new_segm_filename='',
@@ -265,6 +268,7 @@ class loadData:
         self.dataPrep_ROIcoordsFound = False if load_dataPrep_ROIcoords else None
         self.TifPathFound = False if getTifPath else None
         self.customAnnotFound = False if load_customAnnot else None
+        self.combineMetricsFound = False if load_customCombineMetrics else None
         self.labelBoolSegm = labelBoolSegm
         ls = myutils.listdir(self.images_path)
 
@@ -370,6 +374,9 @@ class loadData:
             elif load_customAnnot and file.endswith('custom_annot_params.json'):
                 self.customAnnotFound = True
                 self.customAnnot = read_json(filePath)
+            elif load_customCombineMetrics and file.endswith('custom_combine_metrics.ini'):
+                self.combineMetricsFound = True
+                self.setCombineMetricsConfig(ini_path=filePath)
 
         # Check if there is the old segm.npy
         if not self.segmFound and not create_new_segm:
@@ -595,6 +602,8 @@ class loadData:
             self.tif_path = None
         if self.customAnnotFound is not None and not self.customAnnotFound:
             self.customAnnot = {}
+        if self.combineMetricsFound is not None and not self.combineMetricsFound:
+            self.setCombineMetricsConfig()
 
         if self.metadataFound is None:
             # Loading metadata was not requested
@@ -630,15 +639,63 @@ class loadData:
         # if 'SizeZ' in self.last_md_df.index and self.SizeZ == 1:
         #     self.SizeZ = int(self.last_md_df.at['SizeZ', 'values'])
         if 'TimeIncrement' in self.last_md_df.index:
-            self.TimeIncrement = float(self.last_md_df.at['TimeIncrement', 'values'])
+            self.TimeIncrement = float(
+                self.last_md_df.at['TimeIncrement', 'values']
+            )
         if 'PhysicalSizeX' in self.last_md_df.index:
-            self.PhysicalSizeX = float(self.last_md_df.at['PhysicalSizeX', 'values'])
+            self.PhysicalSizeX = float(
+                self.last_md_df.at['PhysicalSizeX', 'values']
+            )
         if 'PhysicalSizeY' in self.last_md_df.index:
-            self.PhysicalSizeY = float(self.last_md_df.at['PhysicalSizeY', 'values'])
+            self.PhysicalSizeY = float(
+                self.last_md_df.at['PhysicalSizeY', 'values']
+            )
         if 'PhysicalSizeZ' in self.last_md_df.index:
-            self.PhysicalSizeZ = float(self.last_md_df.at['PhysicalSizeZ', 'values'])
+            self.PhysicalSizeZ = float(
+                self.last_md_df.at['PhysicalSizeZ', 'values']
+            )
         if 'segmSizeT' in self.last_md_df.index:
             self.segmSizeT = int(self.last_md_df.at['segmSizeT', 'values'])
+
+    def addEquationCombineMetrics(self, equation, colName, isMixedChannels):
+        section = 'mixed_channels_equations' if isMixedChannels else 'equations'
+        self.combineMetricsConfig[section][colName] = equation
+
+    def setCombineMetricsConfig(self, ini_path=''):
+        if ini_path:
+            configPars = config.ConfigParser()
+            configPars.read(ini_path)
+        else:
+            configPars = config.ConfigParser()
+
+        if 'equations' not in configPars:
+            configPars['equations'] = {}
+
+        if 'mixed_channels_equations' not in configPars:
+            configPars['mixed_channels_equations'] = {}
+
+        if 'user_path_equations' not in configPars:
+            configPars['user_path_equations'] = {}
+
+        # Append channel specific equations from the user_path ini file
+        userPathChEquations = configPars['user_path_equations']
+        for chName in self.chNames:
+            chName_equations = measurements.get_user_combine_metrics_equations(
+                chName
+            )
+            userPathChEquations = {**userPathChEquations, **chName_equations}
+
+        # Append mixed channels equations from the user_path ini file
+        userPathMixedChEquations = {
+            **configPars['mixed_channels_equations'],
+            **measurements.get_user_combine_mixed_channels_equations()
+        }
+
+        self.combineMetricsConfig = configPars
+
+    def saveCombineMetrics(self):
+        with open(self.custom_combine_metrics_path, 'w') as configfile:
+            self.combineMetricsConfig.write(configfile)
 
     def check_acdc_df_integrity(self):
         check = (
@@ -714,6 +771,7 @@ class loadData:
         self.segm_hyperparams_csv_path = f'{base_path}segm_hyperparams.csv'
         self.btrack_tracks_h5_path = f'{base_path}btrack_tracks.h5'
         self.custom_annot_json_path = f'{base_path}custom_annot_params.json'
+        self.custom_combine_metrics_path = f'{base_path}custom_combine_metrics.ini'
 
     def setBlankSegmData(self, SizeT, SizeZ, SizeY, SizeX):
         Y, X = self.img_data.shape[-2:]
