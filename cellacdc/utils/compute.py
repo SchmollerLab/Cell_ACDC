@@ -7,7 +7,13 @@ from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QStyle
 )
 
-from .. import widgets, apps, workers, html_utils, myutils
+from .. import widgets, apps, workers, html_utils, myutils, gui
+
+cellacdc_path = os.path.dirname(os.path.abspath(apps.__file__))
+temp_path = os.path.join(cellacdc_path, 'temp')
+favourite_func_metrics_csv_path = os.path.join(
+    temp_path, 'favourite_func_metrics.csv'
+)
 
 class computeMeasurmentsUtilWin(QDialog):
     def __init__(self, expPaths, app, parent=None):
@@ -22,6 +28,7 @@ class computeMeasurmentsUtilWin(QDialog):
         self.log_filename = log_filename
         self.logs_path = logs_path
 
+        self.expPaths = expPaths
         self.app = app
         self.abort = False
         self.worker = None
@@ -77,13 +84,15 @@ class computeMeasurmentsUtilWin(QDialog):
         self.worker.signals.finished.connect(self.workerFinished)
         self.thread.finished.connect(self.thread.deleteLater)
 
+        self.worker.signals.progress.connect(self.workerProgress)
         self.worker.signals.critical.connect(self.workerCritical)
-        self.worker.signals.sigInitLoadData.connect(self.initWorkerLoadData)
+        self.worker.signals.sigSelectSegmFiles.connect(self.selectSegmFileLoadData)
+        self.worker.signals.sigInitAddMetrics.connect(self.initAddMetricsWorker)
 
         self.thread.started.connect(self.worker.run)
         self.thread.start()
 
-    def initWorkerLoadData(self, posData):
+    def selectSegmFileLoadData(self, posData):
         segm_files = posData.detectMultiSegmNpz()
         if len(segm_files)==1:
             segmFilename = segm_files[0]
@@ -99,10 +108,39 @@ class computeMeasurmentsUtilWin(QDialog):
         self.worker.abort = win.cancel
         self.worker.waitCond.wakeAll()
 
+    def initAddMetricsWorker(self, posData):
+        # Set measurements
+        try:
+            df_favourite_funcs = pd.read_csv(favourite_func_metrics_csv_path)
+            favourite_funcs = df_favourite_funcs['favourite_func_name'].to_list()
+        except Exception as e:
+            favourite_funcs = None
+
+        measurementsWin = apps.setMeasurementsDialog(
+            posData.chNames, [], posData.SizeZ > 1,
+            favourite_funcs=favourite_funcs, acdc_df=posData.acdc_df,
+            acdc_df_path=posData.images_path, posData=posData
+        )
+        measurementsWin.exec_()
+        if measurementsWin.cancel:
+            self.worker.abort = measurementsWin.cancel
+            self.worker.waitCond.wakeAll()
+            return
+
+        self.guiNoWin = myutils.utilClass()
+        self.guiNoWin.ch_names = posData.chNames
+        self.guiNoWin.notLoadedChNames = []
+
+        # gui.guiWin.initMetricsToSave(self.guiNoWin)
+        gui.guiWin.setMetricsToSkip(self.guiNoWin, measurementsWin)
+
+        print(self.guiNoWin.sizeMetricsToSave)
+
     def progressWinClosed(self, aborted):
         self.abort = aborted
         if aborted and self.worker is not None:
             self.worker.abort = True
+            self.close()
 
     def abortCallback(self):
         self.abort = True

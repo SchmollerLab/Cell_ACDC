@@ -494,9 +494,10 @@ def getAcdcDfSegmPaths(images_path):
 def getChannelFilePath(images_path, chName):
     file = ''
     for file in listdir(images_path):
+        filePath = os.path.join(images_path, file)
         if re.search(fr'{chName}.(\w+)$', file) is not None:
-            return file
-    return file
+            return filePath
+    return filePath
 
 def getBasenameAndChNames(images_path):
     _tempPosData = utilClass()

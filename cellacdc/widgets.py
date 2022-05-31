@@ -1085,7 +1085,7 @@ class formWidget(QWidget):
 
         if font is None:
             font = QFont()
-            font.setPixelSize(14)
+            font.setPixelSize(13)
 
         self.labelLeft = QClickableLabel(widget)
         self.labelLeft.setText(labelTextLeft)
@@ -1239,6 +1239,9 @@ class _metricsQGBox(QGroupBox):
         self.setTitle(title)
         self.setCheckable(True)
         self.setLayout(layout)
+        _font = QFont()
+        _font.setPixelSize(12)
+        self.setFont(_font)
 
     def checkFavouriteFuncs(self, checked=True):
         for checkBox in self.checkBoxes:

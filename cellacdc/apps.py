@@ -871,7 +871,7 @@ class wandToleranceWidget(QFrame):
 
         self.setLayout(self.slider.layout)
 
-class setMeasurementsDialog(QDialog):
+class setMeasurementsDialog(QBaseDialog):
     sigClosed = pyqtSignal()
 
     def __init__(
@@ -879,7 +879,9 @@ class setMeasurementsDialog(QDialog):
             favourite_funcs=None, parent=None, acdc_df=None,
             acdc_df_path=None, posData=None
         ):
-        super().__init__(parent)
+        super().__init__(parent=parent)
+
+        self.cancel = True
 
         self.delExistingCols = False
         self.okClicked = False
@@ -953,9 +955,12 @@ class setMeasurementsDialog(QDialog):
             groupsLayout.setRowStretch(1, 1)
 
         okButton = widgets.okPushButton('   Ok   ')
+        cancelButton = widgets.cancelPushButton('Cancel')
         self.okButton = okButton
 
         buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
         buttonsLayout.addWidget(okButton)
 
         layout.addLayout(groupsLayout)
@@ -964,6 +969,7 @@ class setMeasurementsDialog(QDialog):
         self.setLayout(layout)
 
         okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.close)
 
     def ok_cb(self):
         if self.acdc_df is None:
@@ -1011,6 +1017,7 @@ class setMeasurementsDialog(QDialog):
                 return
 
         self.close()
+        self.cancel = False
         self.sigClosed.emit()
 
     def warnUncheckedExistingMeasurements(
@@ -1037,8 +1044,8 @@ class setMeasurementsDialog(QDialog):
         )
         return msg.cancel, msg.clickedButton == delButton
 
-    def show(self):
-        super().show()
+    def show(self, block=False):
+        super().show(block=block)
         self.move(self.x(), 10)
         h = self.screen().size().height()-200
         self.resize(self.width(), h)

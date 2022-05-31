@@ -317,34 +317,46 @@ class mainWin(QMainWindow):
                 self, 'Select experiment folder containing Position_n folders',
                 mostRecentPath
             )
-            posFolders = myutils.getPosfoldernames(exp_path)
-            if not posFolders:
-                msg = widgets.myMessageBox()
-                msg.addShowInFileManagerButton(
-                    exp_path, txt='Show selected folder...'
-                )
-                _ls = "\n".join(os.listdir(exp_path))
-                msg.setDetailedText(f'Files present in the folder:\n{_ls}')
-                txt = html_utils.paragraph(f"""
-                    The selected folder:<br><br>
-                    <code>{exp_path}</code><br><br>
-                    does not contain any valid Position folders.<br>
-                """)
-                msg.warning(
-                    self, 'Not valid folder', txt,
-                    buttonsTexts=('Cancel', 'Ok')
-                )
-                if msg.cancel:
-                    print('Compute measurements utility aborted by the user.')
-                    return
-
-                continue
+            myutils.addToRecentPaths(exp_path)
+            baseFolder = os.path.basename(exp_path)
+            isPosFolder = re.search('Position_(\d+)$', baseFolder) is not None
+            isImagesFolder = baseFolder == 'Images'
+            if isImagesFolder:
+                posPath = os.path.dirname(exp_path)
+                posFolders = [os.path.basename(posPath)]
+                exp_path = os.path.dirname(posPath)
+            elif isPosFolder:
+                posPath = exp_path
+                posFolders = [os.path.basename(posPath)]
+                exp_path = os.path.dirname(exp_path)
+            else:
+                posFolders = myutils.getPosfoldernames(exp_path)
+                if not posFolders:
+                    msg = widgets.myMessageBox()
+                    msg.addShowInFileManagerButton(
+                        exp_path, txt='Show selected folder...'
+                    )
+                    _ls = "\n".join(os.listdir(exp_path))
+                    msg.setDetailedText(f'Files present in the folder:\n{_ls}')
+                    txt = html_utils.paragraph(f"""
+                        The selected folder:<br><br>
+                        <code>{exp_path}</code><br><br>
+                        does not contain any valid Position folders.<br>
+                    """)
+                    msg.warning(
+                        self, 'Not valid folder', txt,
+                        buttonsTexts=('Cancel', 'Try again')
+                    )
+                    if msg.cancel:
+                        print('Compute measurements utility aborted by the user.')
+                        return
+                    continue
 
             expPaths[exp_path] = posFolders
             mostRecentPath = exp_path
             msg = widgets.myMessageBox(wrapText=False)
             txt = html_utils.paragraph("""
-                Do you want to select additional experiment folders?
+                Do you want to select <b>additional experiment folders</b>?
             """)
             noButton, yesButton = msg.question(
                 self, 'Select additional experiments?', txt,
@@ -353,14 +365,18 @@ class mainWin(QMainWindow):
             if msg.clickedButton == noButton:
                 break
 
-        selectPosWin = apps.selectPositionsMultiExp(expPaths)
-        selectPosWin.exec_()
-        if selectPosWin.cancel:
-            print('Compute measurements utility aborted by the user.')
-            return
+        if len(expPaths) > 1 or len(posFolders) > 1:
+            selectPosWin = apps.selectPositionsMultiExp(expPaths)
+            selectPosWin.exec_()
+            if selectPosWin.cancel:
+                print('Compute measurements utility aborted by the user.')
+                return
+            selectedExpPaths = selectPosWin.selectedPaths
+        else:
+            selectedExpPaths = expPaths
 
         self.calcMeasWin = utilsCompute.computeMeasurmentsUtilWin(
-            selectPosWin.selectedPaths, self.app, parent=self
+            selectedExpPaths, self.app, parent=self
         )
         self.calcMeasWin.show()
 

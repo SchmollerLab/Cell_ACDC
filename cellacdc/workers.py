@@ -51,8 +51,9 @@ class signals(QObject):
     create_tqdm = pyqtSignal(int)
     innerProgressBar = pyqtSignal(int)
     sigPermissionError = pyqtSignal(str, object)
-    sigInitLoadData = pyqtSignal(object)
+    sigSelectSegmFiles = pyqtSignal(object)
     sigSetMeasurements = pyqtSignal(object)
+    sigInitAddMetrics = pyqtSignal(object)
 
 class segmVideoWorker(QObject):
     finished = pyqtSignal(float)
@@ -114,6 +115,10 @@ class calcMetricsWorker(QObject):
         for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
             tot_pos = len(pos_foldernames)
             for p, pos in enumerate(pos_foldernames):
+                if self.abort:
+                    self.signals.finished.emit(self)
+                    return
+
                 self.logger.log(
                     f'Processing experiment n. {i+1}/{tot_exp}, '
                     f'Position n. {p+1}/{tot_pos}'
@@ -128,15 +133,15 @@ class calcMetricsWorker(QObject):
                 file_path = myutils.getChannelFilePath(images_path, chName)
 
                 # Load data
-                posData = load.loadData(file_path, user_ch_name)
+                posData = load.loadData(file_path, chName)
                 posData.getBasenameAndChNames()
                 posData.buildPaths()
                 posData.loadImgData()
 
                 if p == 0:
                     self.mutex.lock()
+                    self.signals.sigSelectSegmFiles.emit(posData)
                     self.waitCond.wait(self.mutex)
-                    self.signals.sigInitLoadData.emit(posData)
                     self.mutex.unlock()
                     if self.abort:
                         self.signals.finished.emit(self)
@@ -164,8 +169,22 @@ class calcMetricsWorker(QObject):
                     f'ACDC output file name {os.path.basename(posData.acdc_output_csv_path)}'
                 )
 
+                if p == 0:
+                    self.mutex.lock()
+                    self.signals.sigInitAddMetrics.emit(posData)
+                    self.waitCond.wait(self.mutex)
+                    self.mutex.unlock()
+                    if self.abort:
+                        self.signals.finished.emit(self)
+                        return
+
+                if self.abort:
+                    self.signals.finished.emit(self)
+                    return
+
                 # (metrics_func, all_metrics_names, custom_func_dict,
                 # total_metrics) = measurements.getMetricsFunc(posData)
+
         self.signals.finished.emit(self)
 
 class loadDataWorker(QObject):

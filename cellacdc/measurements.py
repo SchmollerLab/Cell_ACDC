@@ -190,7 +190,6 @@ def channel_combine_metrics_desc(chName, posData=None):
     combine_metrics = combine_metrics_configPars['equations']
     if posData is not None:
         posDataEquations = posData.combineMetricsConfig['equations']
-        print(dict(posDataEquations))
         combine_metrics = {**combine_metrics, **posDataEquations}
     combine_metrics_desc = {}
     all_metrics_names = get_all_metrics_names()
