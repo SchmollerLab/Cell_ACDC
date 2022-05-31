@@ -1,3 +1,5 @@
+import logging
+
 from PyQt5.QtCore import pyqtSignal, QThread
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QStyle
@@ -89,9 +91,10 @@ class computeMeasurmentsUtilWin(QDialog):
             waitCond.wakeAll()
 
     def initWorkerLoadData(posData):
-        selectedSegmNpz, endFilenameSegm, cancel = posData.detectMultiSegmNpz(
-            askMultiSegmFunc=self.loadDataWorkerMultiSegm
-        )
+        segm_files = posData.detectMultiSegmNpz()
+        if len(segm_files)==1:
+            segmFilename = segm_files[0]
+            self.endFilenameSegm = segmFilename[len(posData.basename):]
 
     def progressWinClosed(self, aborted):
         self.abort = aborted
