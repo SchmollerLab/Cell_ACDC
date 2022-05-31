@@ -2161,7 +2161,8 @@ class QDialogWorkerProgress(QDialog):
         self.clickCount = 0
         super().__init__(parent)
 
-        abort_text = 'Control+Cmd+C to abort' if is_mac else 'Ctrl+Alt+C to abort'
+        abort_text = 'Option+Command+C to abort' if is_mac else 'Ctrl+Alt+C to abort'
+        self.abort_text = abort_text
 
         self.setWindowTitle(f'{title} ({abort_text})')
         self.setWindowFlags(Qt.Window)
@@ -2209,8 +2210,8 @@ class QDialogWorkerProgress(QDialog):
 
     def askAbort(self):
         msg = widgets.myMessageBox()
-        txt = html_utils.paragraph("""
-            Aborting with "Ctrl+Alt+C" is <b>not safe</b>.<br><br>
+        txt = html_utils.paragraph(f"""
+            Aborting with <code>{self.abort_text}</code> is <b>not safe</b>.<br><br>
             The system status cannot be predicted and
             it will <b>require a restart</b>.<br><br>
             Are you sure you want to abort?
@@ -4720,7 +4721,15 @@ class selectPositionsMultiExp(QBaseDialog):
         self.treeWidget.setHeaderHidden(True)
         self.treeWidget.setFont(font)
         for exp_path, positions in expPaths.items():
-            exp_path_item = QTreeWidgetItem([exp_path])
+            pathLevels = exp_path.split(os.sep)
+            if len(pathLevels) > 4:
+                itemText = os.path.join(*pathLevels[-4:])
+                itemText = f'...{itemText}'
+            else:
+                itemText = exp_path
+            exp_path_item = QTreeWidgetItem([itemText])
+            exp_path_item.setToolTip(0, exp_path)
+            exp_path_item.full_path = exp_path
             self.treeWidget.addTopLevelItem(exp_path_item)
             postions_items = [
                 QTreeWidgetItem(exp_path_item, [pos]) for pos in positions
@@ -4768,16 +4777,19 @@ class selectPositionsMultiExp(QBaseDialog):
         self.selectedPaths = {}
         for item in self.treeWidget.selectedItems():
             if item.parent() is None:
-                exp_path = item.text(0)
+                exp_path = item.full_path
                 self.selectedPaths[exp_path] = self.expPaths[exp_path]
             else:
-                exp_path = item.parent().text(0)
+                exp_path = item.parent().full_path
                 pos_folder = item.text(0)
                 if exp_path not in self.selectedPaths:
                     self.selectedPaths[exp_path] = []
                 self.selectedPaths[exp_path].append(pos_folder)
 
         self.close()
+
+    def showEvent(self, event):
+        self.resize(int(self.width()*1.5), self.height())
 
 
 class editCcaTableWidget(QDialog):
@@ -6703,7 +6715,8 @@ class QDialogPbar(QDialog):
         self.clickCount = 0
         super().__init__(parent)
 
-        abort_text = 'Control+Cmd+C to abort' if is_mac else 'Ctrl+Alt+C to abort'
+        abort_text = 'Option+Command+C to abort' if is_mac else 'Ctrl+Alt+C to abort'
+        self.abort_text = abort_text
 
         self.setWindowTitle(f'{title} ({abort_text})')
         self.setWindowFlags(Qt.Window)
@@ -6756,8 +6769,8 @@ class QDialogPbar(QDialog):
 
     def askAbort(self):
         msg = widgets.myMessageBox()
-        txt = html_utils.paragraph("""
-            Aborting with "Ctrl+Alt+C" is <b>not safe</b>.<br><br>
+        txt = html_utils.paragraph(f"""
+            Aborting with <code>{self.abort_text}</code> is <b>not safe</b>.<br><br>
             The system status cannot be predicted and
             it will <b>require a restart</b>.<br><br>
             Are you sure you want to abort?

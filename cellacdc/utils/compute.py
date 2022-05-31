@@ -108,15 +108,15 @@ class computeMeasurmentsUtilWin(QDialog):
         self.abort = True
         if self.worker is not None:
             self.worker.abort = True
-        elif self.progressWin is None:
+        else:
             self.close()
 
     def workerCritical(self, error):
         try:
-            raise e
+            raise error
         except:
             traceback_str = traceback.format_exc()
-            self.worker.log(traceback_str)
+            self.worker.logger.log(traceback_str)
             print('='*20)
             self.logger.error(traceback_str)
             print('='*20)

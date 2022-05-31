@@ -342,9 +342,9 @@ class mainWin(QMainWindow):
 
             expPaths[exp_path] = posFolders
             mostRecentPath = exp_path
-            msg = widgets.myMessageBox()
+            msg = widgets.myMessageBox(wrapText=False)
             txt = html_utils.paragraph("""
-                Do you want to select other experiment folders?
+                Do you want to select additional experiment folders?
             """)
             noButton, yesButton = msg.question(
                 self, 'Select additional experiments?', txt,
@@ -360,7 +360,7 @@ class mainWin(QMainWindow):
             return
 
         self.calcMeasWin = utilsCompute.computeMeasurmentsUtilWin(
-            selectPosWin.selectedPaths
+            selectPosWin.selectedPaths, self.app, parent=self
         )
         self.calcMeasWin.show()
 
