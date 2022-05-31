@@ -230,6 +230,7 @@ class calcMetricsWorker(QObject):
                     posData.segm_data = posData.segm_data[np.newaxis]
 
                 acdc_df_li = []
+                keys = []
                 self.signals.initProgressBar.emit(len(posData.segm_data))
                 for frame_i, lab in enumerate(posData.segm_data):
                     if self.abort:
