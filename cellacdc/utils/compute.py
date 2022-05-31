@@ -2,6 +2,8 @@ import os
 import traceback
 import logging
 
+import pandas as pd
+
 from PyQt5.QtCore import pyqtSignal, QThread
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QStyle
