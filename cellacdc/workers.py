@@ -138,6 +138,9 @@ class calcMetricsWorker(QObject):
                     self.waitCond.wait(self.mutex)
                     self.signals.sigInitLoadData.emit(posData)
                     self.mutex.unlock()
+                    if self.abort:
+                        self.signals.finished.emit(self)
+                        return
 
                 posData.loadOtherFiles(
                     load_segm_data=True,

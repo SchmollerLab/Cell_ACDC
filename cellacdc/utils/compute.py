@@ -1,3 +1,5 @@
+import os
+import traceback
 import logging
 
 from PyQt5.QtCore import pyqtSignal, QThread
@@ -80,21 +82,21 @@ class computeMeasurmentsUtilWin(QDialog):
         self.thread.started.connect(self.worker.run)
         self.thread.start()
 
-    def loadDataWorkerMultiSegm(self, segm_files, worker, waitCond):
-        win = apps.QDialogMultiSegmNpz(
-            segm_files, worker.pos_path, parent=self
-        )
-        win.exec_()
-        worker.selectedItemText = win.selectedItemText
-        worker.cancel = win.cancel
-        if waitCond is not None:
-            waitCond.wakeAll()
-
     def initWorkerLoadData(posData):
         segm_files = posData.detectMultiSegmNpz()
         if len(segm_files)==1:
             segmFilename = segm_files[0]
             self.endFilenameSegm = segmFilename[len(posData.basename):]
+            self.worker.waitCond.wakeAll()
+            return
+
+        win = apps.QDialogMultiSegmNpz(
+            segm_files, posData.images_path, parent=self
+        )
+        win.exec_()
+        self.endFilenameSegm = win.selectedItemText[len(posData.basename):]
+        self.worker.abort = win.cancel
+        self.worker.waitCond.wakeAll()
 
     def progressWinClosed(self, aborted):
         self.abort = aborted
