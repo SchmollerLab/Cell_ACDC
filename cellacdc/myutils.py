@@ -162,7 +162,7 @@ def getMemoryFootprint(files_list):
     return required_memory
 
 def setupLogger(module='gui'):
-    logger = logging.getLogger('cellacdc-logger')
+    logger = logging.getLogger(f'cellacdc-logger-{module}')
     logger.setLevel(logging.INFO)
 
     user_path = pathlib.Path.home()

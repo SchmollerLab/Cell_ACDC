@@ -354,7 +354,9 @@ class loadData:
                         rotatable=False,
                         removable=False,
                         pen=pg.mkPen(color=(150,150,150)),
-                        maxBounds=QRectF(QRect(0,0,X,Y))
+                        maxBounds=QRectF(QRect(0,0,X,Y)),
+                        scaleSnap=True,
+                        translateSnap=True
                     )
                     roi.setState(roi_state)
                     self.bkgrROIs.append(roi)

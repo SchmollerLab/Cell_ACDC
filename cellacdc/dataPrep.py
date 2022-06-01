@@ -124,7 +124,13 @@ class dataPrepWin(QMainWindow):
         if self.debug:
             if event.key() == Qt.Key_P:
                 posData = self.data[self.pos_i]
-                print(posData.segmInfo_df)
+                for r, roi in enumerate(posData.bkgrROIs):
+                    print(roi.pos(), roi.size())
+                    xl, yt = [int(round(c)) for c in roi.pos()]
+                    w, h = [int(round(c)) for c in roi.size()]
+                    print('-'*20)
+                    print(yt, yt+h, yt+h>yt)
+                    print(xl, xl+w, xl+w>xl)
 
     def gui_createActions(self):
         # File actions
@@ -688,6 +694,9 @@ class dataPrepWin(QMainWindow):
             for r, roi in enumerate(posData.bkgrROIs):
                 xl, yt = [int(round(c)) for c in roi.pos()]
                 w, h = [int(round(c)) for c in roi.size()]
+                if not yt+h>yt or not xl+w>xl:
+                    # Prevent 0 height or 0 width roi
+                    continue
                 is4D = posData.SizeT > 1 and posData.SizeZ > 1
                 is3Dz = posData.SizeT == 1 and posData.SizeZ > 1
                 is3Dt = posData.SizeT > 1 and posData.SizeZ == 1
@@ -1088,7 +1097,9 @@ class dataPrepWin(QMainWindow):
             rotatable=False,
             removable=False,
             pen=pg.mkPen(color='r'),
-            maxBounds=QRectF(QRect(0,0,X,Y))
+            maxBounds=QRectF(QRect(0,0,X,Y)),
+            scaleSnap=True,
+            translateSnap=True
         )
         return cropROI
 
@@ -1461,7 +1472,9 @@ class dataPrepWin(QMainWindow):
                     rotatable=False,
                     removable=False,
                     pen=pg.mkPen(color='r'),
-                    maxBounds=QRectF(QRect(0,0,X,Y))
+                    maxBounds=QRectF(QRect(0,0,X,Y)),
+                    scaleSnap=True,
+                    translateSnap=True
                 )
 
             self.setROIprops(cropROI)
@@ -1498,7 +1511,9 @@ class dataPrepWin(QMainWindow):
             rotatable=False,
             removable=False,
             pen=pg.mkPen(color=(150,150,150)),
-            maxBounds=QRectF(QRect(0,0,X,Y))
+            maxBounds=QRectF(QRect(0,0,X,Y)),
+            scaleSnap=True,
+            translateSnap=True
         )
         return bkgrROI
 

@@ -169,6 +169,7 @@ class calcMetricsWorker(QObject):
                     endFilenameSegm=self.mainWin.endFilenameSegm
                 )
                 posData.labelSegmData()
+
                 self.mainWin.gui.data = [posData]
                 self.mainWin.gui.pos_i = 0
 

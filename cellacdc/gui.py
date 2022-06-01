@@ -457,6 +457,15 @@ class saveDataWorker(QObject):
                         bkgrVals_z_maxP.extend(roi_z_maxP[roi_z_maxP!=0])
                         bkgrVals_z_sumP.extend(roi_z_sumP[roi_z_sumP!=0])
                         bkgrVals_zSlice.extend(roi_zSlice[roi_zSlice!=0])
+                    if not bkgrVals_z_maxP:
+                        # issue 51: a user had an empty bkgr data
+                        bkgrVals_z_maxP = [0]
+                    if not bkgrVals_z_sumP:
+                        # issue 51: a user had an empty bkgr data
+                        bkgrVals_z_sumP = [0]
+                    if not bkgrVals_zSlice:
+                        # issue 51: a user had an empty bkgr data
+                        bkgrVals_zSlice = [0]
                     bkgrData_medians.append(np.median(bkgrVals_z_maxP))
                     bkgrData_medians.append(np.median(bkgrVals_z_sumP))
                     bkgrData_medians.append(np.median(bkgrVals_zSlice))
@@ -484,12 +493,17 @@ class saveDataWorker(QObject):
                 fluo_data_2D = fluo_data
                 fluo_data_projs.append(fluo_data_2D)
                 if bkgrArchive is not None:
+                    # Note that if bkgrArchive is not None then
+                    # ROI_bkgrMask is None (no .json file available)
                     bkgrVals_2D = []
                     for roi_key in bkgrArchive.files:
                         roiData = bkgrArchive[roi_key]
                         if posData.SizeT > 1:
                             roiData = bkgrArchive[roi_key][frame_i]
                         bkgrVals_2D.extend(roiData[roiData!=0])
+                    if not bkgrVals_2D:
+                        # issue 51: a user had an empty bkgr data
+                        bkgrVals_2D = [0]
                     bkgrData_medians.append(np.median(bkgrVals_2D))
                     bkgrData_means.append(np.mean(bkgrVals_2D))
                     bkgrData_q75s.append(np.quantile(bkgrVals_2D, q=0.75))
