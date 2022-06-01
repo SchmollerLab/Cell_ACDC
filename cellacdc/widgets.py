@@ -154,6 +154,11 @@ class noPushButton(QPushButton):
         super().__init__(*args)
         self.setIcon(QIcon(':no.svg'))
 
+class delPushButton(QPushButton):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setIcon(QIcon(':bin.svg'))
+
 class browseFileButton(QPushButton):
     sigPathSelected = pyqtSignal(str)
 
@@ -385,6 +390,7 @@ class myMessageBox(QDialog):
         )
         isSettingsButton = buttonText.lower().find('set') != -1
         isNoButton = buttonText.replace(' ', '').lower() == 'no'
+        isDelButton = buttonText.lower().find('delete') != -1
 
         if isCancelButton:
             button = cancelPushButton(buttonText, self)
@@ -398,6 +404,9 @@ class myMessageBox(QDialog):
             self.buttonsLayout.addWidget(button)
         elif isNoButton:
             button = noPushButton(buttonText, self)
+            self.buttonsLayout.addWidget(button)
+        elif isDelButton:
+            button = delPushButton(buttonText, self)
             self.buttonsLayout.addWidget(button)
         else:
             button = QPushButton(buttonText, self)

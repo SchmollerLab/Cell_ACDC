@@ -522,6 +522,8 @@ class saveDataWorker(QObject):
                 if 'cell_vol_vox' in self.mainWin.sizeMetricsToSave:
                     IDs_vol_vox[i] = obj.vol_vox
                     IDs_vol_fl[i] = obj.vol_fl
+                    vol_vox = obj.vol_vox
+                    vol_fl = obj.vol_fl
 
                 if 'cell_area_pxl' in self.mainWin.sizeMetricsToSave:
                     IDs_area_pxl[i] = obj.area
@@ -586,15 +588,21 @@ class saveDataWorker(QObject):
                                 val = func(fluo_data_ID, fluo_backgr, obj.area)
                                 metrics_values[key][i] = val
                                 conc_key_vox, conc_key_fl = conc_keys
-                                calc_conc = (
+                                calc_conc_vox = (
                                     vol_vox is not None
                                     and conc_key_vox not in metricsToSkipChannel
                                 )
-                                if calc_conc:
+                                if calc_conc_vox:
                                     # Compute concentration
                                     conc_vox = val/vol_vox
-                                    conc_fl = val/vol_vox
                                     metrics_values[conc_key_vox][i] = conc_vox
+
+                                calc_conc_fl = (
+                                    vol_fl is not None
+                                    and conc_key_fl not in metricsToSkipChannel
+                                )
+                                if calc_conc_fl:
+                                    conc_fl = val/vol_fl
                                     metrics_values[conc_key_fl][i] = conc_fl
                         elif is_ROIbkgr_func:
                             conc_keys = measurements.get_conc_keys(key)
@@ -14308,6 +14316,8 @@ class guiWin(QMainWindow):
                     else:
                         func_name = colname[len(chName):]
                         favourite_funcs.add(func_name)
+
+        pprint(self.metricsToSkip)
 
         if not measurementsWin.sizeMetricsQGBox.isChecked():
             self.sizeMetricsToSave = []
