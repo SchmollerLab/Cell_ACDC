@@ -13706,6 +13706,23 @@ class guiWin(QMainWindow):
 
     def openFolder(self, checked=False, exp_path=None, imageFilePath=''):
         self.isNewFile = False
+        if hasattr(self, 'data'):
+            self.store_data()
+            msg = widgets.myMessageBox()
+            txt = html_utils.paragraph(
+                'Do you want to <b>save</b> before loading another dataset?'
+            )
+            _, no, yes = msg.question(
+                self, 'Save?', txt,
+                buttonsTexts=('Cancel', 'No', 'Yes')
+            )
+            if msg.clickedButton == yes:
+                func = partial(self._openFolder, exp_path, imageFilePath)
+                cancel = self.saveData(finishedCallback=func)
+                return
+            elif msg.cancel:
+                return
+
         self._openFolder(exp_path=exp_path, imageFilePath=imageFilePath)
 
     @myutils.exception_handler
@@ -13727,17 +13744,6 @@ class guiWin(QMainWindow):
         -------
             None
         """
-
-        self.reInitGui()
-
-        self.openAction.setEnabled(False)
-
-        if self.slideshowWin is not None:
-            self.slideshowWin.close()
-
-        if self.ccaTableWin is not None:
-            self.ccaTableWin.close()
-
         if exp_path is None:
             self.MostRecentPath = myutils.getMostRecentPath()
             exp_path = QFileDialog.getExistingDirectory(
@@ -13753,6 +13759,16 @@ class guiWin(QMainWindow):
                 'Drag and drop image file or go to File --> Open folder...',
                 color=self.titleColor)
             return
+
+        self.reInitGui()
+
+        self.openAction.setEnabled(False)
+
+        if self.slideshowWin is not None:
+            self.slideshowWin.close()
+
+        if self.ccaTableWin is not None:
+            self.ccaTableWin.close()
 
         self.exp_path = exp_path
         self.logger.info(f'Loading from {self.exp_path}')
@@ -14591,7 +14607,7 @@ class guiWin(QMainWindow):
             self.saveWin.ETA_label.setText(f'ETA: {ETA}')
 
     @myutils.exception_handler
-    def saveData(self):
+    def saveData(self, checked=False, finishedCallback=None):
         self.store_data()
         self.titleLabel.setText(
             'Saving data... (check progress in the terminal)', color=self.titleColor
@@ -14662,6 +14678,8 @@ class guiWin(QMainWindow):
 
         # Custom signals
         self.worker.finished.connect(self.saveDataFinished)
+        if finishedCallback is not None:
+            self.worker.finished.connect(finishedCallback)
         self.worker.progress.connect(self.saveDataProgress)
         self.worker.progressBar.connect(self.saveDataUpdatePbar)
         # self.worker.metricsPbarProgress.connect(self.saveDataUpdateMetricsPbar)
