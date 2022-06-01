@@ -906,6 +906,7 @@ class setMeasurementsDialog(QBaseDialog):
             channelGBox.chName = chName
             groupsLayout.addWidget(channelGBox, 0, col, 3, 1)
             self.chNameGroupboxes.append(channelGBox)
+            groupsLayout.setColumnStretch(col, 5)
 
         current_col = col+1
         for col, chName in enumerate(notLoadedChNames):
@@ -917,6 +918,7 @@ class setMeasurementsDialog(QBaseDialog):
             channelGBox.chName = chName
             groupsLayout.addWidget(channelGBox, 0, current_col, 3, 1)
             self.chNameGroupboxes.append(channelGBox)
+            groupsLayout.setColumnStretch(current_col, 5)
             current_col += 1
 
         current_col += 1
@@ -929,6 +931,7 @@ class setMeasurementsDialog(QBaseDialog):
         self.sizeMetricsQGBox = sizeMetricsQGBox
         groupsLayout.addWidget(sizeMetricsQGBox, 0, current_col)
         groupsLayout.setRowStretch(0, 1)
+        groupsLayout.setColumnStretch(current_col, 3)
 
         props_info_txt = measurements.get_props_info_txt()
         props_names = measurements.get_props_names()
@@ -953,6 +956,8 @@ class setMeasurementsDialog(QBaseDialog):
                 mixedChannelsCombineMetricsQGBox, 2, current_col
             )
             groupsLayout.setRowStretch(1, 1)
+
+        self.numberCols = current_col
 
         okButton = widgets.okPushButton('   Ok   ')
         cancelButton = widgets.cancelPushButton('Cancel')
@@ -1047,10 +1052,16 @@ class setMeasurementsDialog(QBaseDialog):
         return msg.cancel, msg.clickedButton == delButton
 
     def show(self, block=False):
+        super().show(block=False)
+        screenWidth = self.screen().size().width()
+        screenHeight = self.screen().size().height()
+        h = screenHeight-200
+        minColWith = screenWidth/5
+        w = minColWith*self.numberCols
+        xLeft = int((screenWidth-w)/2)
+        self.move(xLeft, 50)
+        self.resize(int(w), h)
         super().show(block=block)
-        self.move(self.x(), 10)
-        h = self.screen().size().height()-200
-        self.resize(self.width(), h)
 
 class QDialogMetadataXML(QDialog):
     def __init__(
@@ -5265,7 +5276,7 @@ class askStopFrameSegm(QDialog):
                 load_segm_data=False,
                 load_metadata=True,
                 loadSegmInfo=True,
-                )
+            )
             spinBox.setMaximum(posData.SizeT)
             if posData.segmSizeT == 1:
                 spinBox.setValue(posData.SizeT)
@@ -7571,90 +7582,78 @@ class combineMetricsEquationDialog(QBaseDialog):
         """)
         self.testOutputDisplay.setHtml(text)
 
+class stopFrameDialog(QBaseDialog):
+    def __init__(self, posDatas, parent=None):
+        super().__init__(parent=parent)
 
-if __name__ == '__main__':
-    # Create the application
-    app = QApplication(sys.argv)
-    font = QtGui.QFont()
-    font.setPixelSize(13)
-    # title='Select channel name'
-    # CbLabel='Select channel name:  '
-    # informativeText = ''
-    # win = QtSelectItems(title, ['mNeon', 'mKate'],
-    #                     informativeText, CbLabel=CbLabel, parent=None)
-    # win = edgeDetectionDialog(None)
-    # win = QDialogEntriesWidget(entriesLabels=['Input 1'])
-    IDs = list(range(1,10))
-    cc_stage = ['G1' for ID in IDs]
-    num_cycles = [-1]*len(IDs)
-    relationship = ['mother' for ID in IDs]
-    related_to = [-1]*len(IDs)
-    is_history_known = [False]*len(IDs)
-    corrected_assignment = [False]*len(IDs)
-    cca_df = pd.DataFrame({
-                       'cell_cycle_stage': cc_stage,
-                       'generation_num': num_cycles,
-                       'relative_ID': related_to,
-                       'relationship': relationship,
-                       'emerg_frame_i': num_cycles,
-                       'division_frame_i': num_cycles,
-                       'is_history_known': is_history_known,
-                       'corrected_assignment': corrected_assignment},
-                        index=IDs)
-    cca_df.index.name = 'Cell_ID'
-    #
-    # df = cca_df.reset_index()
-    #
-    # win = pdDataFrameWidget(df)
-    # win = QDialogMetadataXML(
-    #     rawDataStruct=1, chNames=[''], ImageName='image'
-    # )
-    infoTxt = (
-    """
-        <p style=font-size:12px>
-            Saving...<br>
-        </p>
-    """)
-    ArgSpec = namedtuple('ArgSpec', ['name', 'default', 'type'])
-    init_params = [ArgSpec(name='is_phase_contrast', default=True, type=bool)]
-    segment_params = [
-        ArgSpec(name='thresh_val', default=0.0, type=float),
-        ArgSpec(name='min_distance', default=10, type=int)
-    ]
-    # win = QDialogModelParams(init_params, segment_params, 'YeaZ', url='None')
-    # win = QDialogPbar(infoTxt=infoTxt)
-    win = editID_QWidget(19, [19, 100, 50])
-    # win = postProcessSegmDialog()
-    # win = QDialogAppendTextFilename('example.npz')
-    font = QtGui.QFont()
-    font.setPixelSize(13)
-    filenames = ['test1', 'test2']
-    # win = QDialogZsliceAbsent('test3', 30, filenames)
-    win = QDialogMultiSegmNpz(filenames, os.path.dirname(__file__))
-    # win = QDialogMetadata(
-    #     1, 41, 180, 0.5, 0.09, 0.09, False, False, False,
-    #     font=font, imgDataShape=(31, 350, 350)
-    # )
-    # win = cellpose_ParamsDialog()
-    # user_ch_file_paths = [
-    #     r"G:\My Drive\1_MIA_Data\Beno\test_QtGui\testGuiOnlyTifs\TIFFs\Position_1\Images\19-03-2021_KCY050_SCGE_s02_phase_contr.tif",
-    #     r"G:\My Drive\1_MIA_Data\Beno\test_QtGui\testGuiOnlyTifs\TIFFs\Position_2\Images\19-03-2021_KCY050_SCGE_s02_phase_contr.tif"
-    # ]
-    # user_ch_name = 'phase_contr'
-    # win = askStopFrameSegm(user_ch_file_paths, user_ch_name)
-    # lab = np.load(r"G:\My Drive\1_MIA_Data\Test_data\Test_Qt_GUI\Position_5\Images\F016_s05_segm.npz")['arr_0'][0]
-    # img = np.load(r"G:\My Drive\1_MIA_Data\Test_data\Test_Qt_GUI\Position_5\Images\F016_s05_phase_contr_aligned.npz")['arr_0'][0]
-    # win = manualSeparateGui(lab, 2, img)
-    # win.setFont(font)
-    # win.progressLabel.setText('Preparing data...')
-    app.setStyle(QtGui.QStyleFactory.create('Fusion'))
-    # win.showAndSetWidth()
-    # win.showAndSetFont(font)
-    # win.setWidths(font=font)
-    # win.setSize()
-    # win.setGeometryWindow()
-    # win.show()
-    win.exec_()
-    # print(win.chNames, win.saveChannels)
-    # print(win.SizeT, win.SizeZ, win.zyx_vox_dim)
-    # print(win.segment2D_kwargs)
+        self.cancel = True
+
+        self.setWindowTitle('Stop frame')
+
+        mainLayout = QVBoxLayout()
+
+        infoTxt = html_utils.paragraph(
+            'Enter a <b>stop frame number</b> for each of the loaded Positions',
+            center=True
+        )
+        exp_path = posDatas[0].exp_path
+        exp_path = os.path.normpath(exp_path).split(os.sep)
+        exp_path = f'...{f"{os.sep}".join(exp_path[-4:])}'
+        subInfoTxt = html_utils.paragraph(
+            f'Experiment folder: <code>{exp_path}<code>', font_size='12px',
+            center=True
+        )
+        infoLabel = QLabel(f'{infoTxt}{subInfoTxt}')
+        infoLabel.setToolTip(posDatas[0].exp_path)
+        mainLayout.addWidget(infoLabel)
+        mainLayout.addSpacing(20)
+
+        self.posDatas = posDatas
+        for posData in posDatas:
+            _layout = QHBoxLayout()
+            _layout.addStretch(1)
+            _label = QLabel(html_utils.paragraph(f'{posData.pos_foldername}'))
+            _layout.addWidget(_label)
+
+            _spinBox = QSpinBox()
+            _spinBox.setMaximum(214748364)
+            _spinBox.setAlignment(Qt.AlignCenter)
+            _spinBox.setFont(font)
+            if posData.acdc_df is not None:
+                _val = posData.acdc_df.index.get_level_values(0).max()+1
+            else:
+                _val = posData.segmSizeT
+            _spinBox.setValue(_val)
+
+            posData.stopFrameSpinbox = _spinBox
+
+            _layout.addWidget(_spinBox)
+
+            _layout.addStretch(1)
+
+            mainLayout.addLayout(_layout)
+
+        buttonsLayout = QHBoxLayout()
+
+        okButton = widgets.okPushButton(' Ok ')
+        cancelButton = widgets.cancelPushButton(' Cancel ')
+
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(okButton)
+
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.close)
+
+        self.setLayout(mainLayout)
+
+    def ok_cb(self):
+        self.cancel = False
+        for posData in self.posDatas:
+            stopFrameNum = posData.stopFrameSpinbox.value()
+            posData.stopFrameNum = stopFrameNum
+        self.close()

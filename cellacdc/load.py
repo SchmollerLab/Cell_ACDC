@@ -83,7 +83,7 @@ def get_user_ch_paths(images_paths, user_ch_name):
     return user_ch_file_paths
 
 class loadData:
-    def __init__(self, imgPath, user_ch_name, QParent=None):
+    def __init__(self, imgPath, user_ch_name, relPathDepth=3, QParent=None):
         self.fluo_data_dict = {}
         self.fluo_bkgrData_dict = {}
         self.bkgrROIs = []
@@ -100,7 +100,7 @@ class loadData:
         self.loadSizeZ = None
         self.multiSegmAllPos = False
         path_li = os.path.normpath(imgPath).split(os.sep)
-        self.relPath = f'{f"{os.sep}".join(path_li[-3:])}'
+        self.relPath = f'{f"{os.sep}".join(path_li[-relPathDepth:])}'
         filename_ext = os.path.basename(imgPath)
         self.filename_ext = filename_ext
         self.filename, self.ext = os.path.splitext(filename_ext)

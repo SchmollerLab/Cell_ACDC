@@ -4,12 +4,17 @@ import logging
 
 import pandas as pd
 
+from tqdm import tqdm
+
 from PyQt5.QtCore import pyqtSignal, QThread
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QStyle
 )
 
-from .. import widgets, apps, workers, html_utils, myutils, gui, measurements
+from .. import (
+    widgets, apps, workers, html_utils, myutils,
+    gui, measurements,cca_functions
+)
 
 cellacdc_path = os.path.dirname(os.path.abspath(apps.__file__))
 temp_path = os.path.join(cellacdc_path, 'temp')
@@ -73,6 +78,7 @@ class computeMeasurmentsUtilWin(QDialog):
 
     def runWorker(self):
         self.gui = gui.guiWin(self.app, parent=self.parent)
+        self.gui.logger = self.logger
 
         self.progressWin = apps.QDialogWorkerProgress(
             title='Computing measurements', parent=self,
@@ -98,9 +104,17 @@ class computeMeasurmentsUtilWin(QDialog):
         self.worker.signals.initProgressBar.connect(self.workerInitProgressbar)
         self.worker.signals.progressBar.connect(self.workerUpdateProgressbar)
         self.worker.signals.sigUpdatePbarDesc.connect(self.workerUpdatePbarDesc)
+        self.worker.signals.sigComputeVolume.connect(self.computeVolumeRegionprop)
+        self.worker.signals.sigAskStopFrame.connect(self.workerAskStopFrame)
 
         self.thread.started.connect(self.worker.run)
         self.thread.start()
+
+    def workerAskStopFrame(self, posDatas):
+        win = apps.stopFrameDialog(posDatas, parent=self)
+        win.exec_()
+        self.worker.abort = win.cancel
+        self.worker.waitCond.wakeAll()
 
     def workerInitProgressbar(self, totalIter):
         self.progressWin.mainPbar.setValue(0)
@@ -109,7 +123,7 @@ class computeMeasurmentsUtilWin(QDialog):
         self.progressWin.mainPbar.setMaximum(totalIter)
 
     def workerUpdateProgressbar(self, step):
-        self.progressWin.mainPbar.update(self.progressWin.mainPbar.value()+step)
+        self.progressWin.mainPbar.update(step)
 
     def workerUpdatePbarDesc(self, desc):
         self.progressWin.progressLabel.setText(desc)
@@ -164,7 +178,41 @@ class computeMeasurmentsUtilWin(QDialog):
         self.gui.notLoadedChNames = []
         self.gui.setMetricsFunc()
         self.gui.setMetricsToSkip(measurementsWin)
+        self.gui.mutex = self.worker.mutex
+        self.gui.waitCond = self.worker.waitCond
+        self.gui.saveWin = self.progressWin
 
+        self.gui.saveDataWorker = gui.saveDataWorker(self.gui)
+
+        self.gui.saveDataWorker.criticalPermissionError.connect(self.skipEvent)
+        self.gui.saveDataWorker.askZsliceAbsent.connect(self.gui.zSliceAbsent)
+
+        self.worker.waitCond.wakeAll()
+
+    def skipEvent(self, dummy):
+        self.worker.waitCond.wakeAll()
+
+    def computeVolumeRegionprop(self, end_frame_i, posData):
+        if 'cell_vol_vox' not in self.gui.sizeMetricsToSave:
+            return
+
+        # We compute the cell volume in the main thread because calling
+        # skimage.transform.rotate in a separate thread causes crashes
+        # with segmentation fault on macOS. I don't know why yet.
+        self.logger.info('Computing cell volume...')
+        PhysicalSizeY = posData.PhysicalSizeY
+        PhysicalSizeX = posData.PhysicalSizeX
+        iterable = enumerate(tqdm(posData.allData_li[:end_frame_i+1], ncols=100))
+        for frame_i, data_dict in iterable:
+            lab = data_dict['labels']
+            rp = data_dict['regionprops']
+            for i, obj in enumerate(rp):
+                vol_vox, vol_fl = cca_functions._calc_rot_vol(
+                    obj, PhysicalSizeY, PhysicalSizeX
+                )
+                obj.vol_vox = vol_vox
+                obj.vol_fl = vol_fl
+            posData.allData_li[frame_i]['regionprops'] = rp
         self.worker.waitCond.wakeAll()
 
     def progressWinClosed(self, aborted):

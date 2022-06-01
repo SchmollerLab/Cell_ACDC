@@ -1240,7 +1240,7 @@ class _metricsQGBox(QGroupBox):
         self.setCheckable(True)
         self.setLayout(layout)
         _font = QFont()
-        _font.setPixelSize(12)
+        _font.setPixelSize(11)
         self.setFont(_font)
 
     def checkFavouriteFuncs(self, checked=True):
@@ -1777,14 +1777,24 @@ class QProgressBarWithETA(QProgressBar):
         palette.setColor(QPalette.HighlightedText, QColor(0, 0, 0))
         self.setPalette(palette)
         self.ETA_label = QLabel('NDh:NDm:NDs')
-        self.last_time_update = time.perf_counter()
 
-    def update(self, step):
-        t = time.perf_counter()
+    def update(self, step: int):
         self.setValue(self.value()+step)
-        elpased_seconds = (t - self.last_time_update)/step
-        steps_left = self.maximum() - self.value()
-        seconds_left = elpased_seconds*steps_left
+        t = time.perf_counter()
+        if not hasattr(self, 'last_time_update'):
+            self.last_time_update = t
+            self.mean_value_duration = None
+            return
+        seconds_per_value = (t - self.last_time_update)/step
+        value_left = self.maximum() - self.value()
+        if self.mean_value_duration is None:
+            self.mean_value_duration = seconds_per_value
+        else:
+            self.mean_value_duration = (
+                self.mean_value_duration*(self.value()-1) + seconds_per_value
+            )/self.value()
+
+        seconds_left = self.mean_value_duration*value_left
         ETA = myutils.seconds_to_ETA(seconds_left)
         self.ETA_label.setText(ETA)
         self.last_time_update = t

@@ -1,6 +1,8 @@
 import sys
 import os
 import time
+
+from pprint import pprint
 from functools import wraps
 
 import numpy as np
@@ -56,6 +58,8 @@ class signals(QObject):
     sigSetMeasurements = pyqtSignal(object)
     sigInitAddMetrics = pyqtSignal(object)
     sigUpdatePbarDesc = pyqtSignal(str)
+    sigComputeVolume = pyqtSignal(int, object)
+    sigAskStopFrame = pyqtSignal(object)
 
 class segmVideoWorker(QObject):
     finished = pyqtSignal(float)
@@ -114,11 +118,15 @@ class calcMetricsWorker(QObject):
 
     @worker_exception_handler
     def run(self):
+        debugging = False
         expPaths = self.mainWin.expPaths
         tot_exp = len(expPaths)
         self.signals.initProgressBar.emit(0)
         for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
             tot_pos = len(pos_foldernames)
+            self.allPosDataInputs = []
+            posDatas = []
+            self.logger.log('-'*30)
             for p, pos in enumerate(pos_foldernames):
                 if self.abort:
                     self.signals.finished.emit(self)
@@ -133,7 +141,7 @@ class calcMetricsWorker(QObject):
                 images_path = os.path.join(pos_path, 'Images')
                 basename, chNames = myutils.getBasenameAndChNames(images_path)
 
-                self.signals.sigUpdatePbarDesc.emit(f'Processing {pos_path}')
+                self.signals.sigUpdatePbarDesc.emit(f'Loading {pos_path}...')
 
                 # Use first found channel, it doesn't matter for metrics
                 chName = chNames[0]
@@ -142,8 +150,6 @@ class calcMetricsWorker(QObject):
                 # Load data
                 posData = load.loadData(file_path, chName)
                 posData.getBasenameAndChNames()
-                posData.buildPaths()
-                posData.loadImgData()
 
                 if p == 0:
                     self.mutex.lock()
@@ -153,6 +159,51 @@ class calcMetricsWorker(QObject):
                     if self.abort:
                         self.signals.finished.emit(self)
                         return
+
+                posData.loadOtherFiles(
+                    load_segm_data=False,
+                    load_acdc_df=True,
+                    load_metadata=True,
+                    loadSegmInfo=True
+                )
+
+                posDatas.append(posData)
+
+                self.allPosDataInputs.append({
+                    'file_path': file_path,
+                    'chName': chName
+                })
+
+            if any([posData.SizeT > 1 for posData in posDatas]):
+                self.mutex.lock()
+                self.signals.sigAskStopFrame.emit(posDatas)
+                self.waitCond.wait(self.mutex)
+                self.mutex.unlock()
+                if self.abort:
+                    self.signals.finished.emit(self)
+                    return
+                for p, posData in enumerate(posDatas):
+                    self.allPosDataInputs[p]['stopFrameNum'] = posData.stopFrameNum
+                # remove posDatas from memory for timelapse data
+                del posDatas
+            else:
+                for p, posData in enumerate(posDatas):
+                    self.allPosDataInputs[p]['stopFrameNum'] = 1
+
+            # Iterate pos and calculate metrics
+            numPos = len(self.allPosDataInputs)
+            for p, posDataInputs in enumerate(self.allPosDataInputs):
+                file_path = posDataInputs['file_path']
+                chName = posDataInputs['chName']
+                stopFrameNum = posDataInputs['stopFrameNum']
+
+                posData = load.loadData(file_path, chName)
+
+                self.signals.sigUpdatePbarDesc.emit(f'Processing {posData.pos_path}')
+
+                posData.getBasenameAndChNames()
+                posData.buildPaths()
+                posData.loadImgData()
 
                 posData.loadOtherFiles(
                     load_segm_data=True,
@@ -170,8 +221,21 @@ class calcMetricsWorker(QObject):
                 )
                 posData.labelSegmData()
 
-                self.mainWin.gui.data = [posData]
-                self.mainWin.gui.pos_i = 0
+                if posData.SizeT > 1:
+                    self.mainWin.gui.data = [None]*numPos
+                else:
+                    self.mainWin.gui.data = posDatas
+
+                self.mainWin.gui.pos_i = p
+                self.mainWin.gui.data[p] = posData
+                self.mainWin.gui.last_pos = numPos
+
+                self.mainWin.gui.isSegm3D = posData.isSegm3D()
+
+                # Allow single 2D/3D image
+                if posData.SizeT == 1:
+                    posData.img_data = posData.img_data[np.newaxis]
+                    posData.segm_data = posData.segm_data[np.newaxis]
 
                 self.logger.log(
                     'Loaded paths:\n'
@@ -189,13 +253,16 @@ class calcMetricsWorker(QObject):
                         return
 
                 # Load the other channels
+                posData.loadedChNames = []
                 for fluoChName in posData.chNames:
                     if fluoChName in self.mainWin.gui.chNamesToSkip:
                         continue
 
                     if fluoChName == chName:
-                        posData.fluo_data_dict[chName] = posData.img_data
-                        posData.fluo_bkgrData_dict[chName] = posData.bkgrData
+                        filename = posData.filename
+                        posData.fluo_data_dict[filename] = posData.img_data
+                        posData.fluo_bkgrData_dict[filename] = posData.bkgrData
+                        posData.loadedChNames.append(chName)
                         continue
 
                     fluo_path, filename = self.mainWin.gui.getPathFromChName(
@@ -215,6 +282,7 @@ class calcMetricsWorker(QObject):
                         # Add single frame for snapshot data
                         fluo_data = fluo_data[np.newaxis]
 
+                    posData.loadedChNames.append(fluoChName)
                     posData.loadedFluoChannels.add(fluoChName)
                     posData.fluo_data_dict[filename] = fluo_data
                     posData.fluo_bkgrData_dict[filename] = bkgrData
@@ -222,34 +290,48 @@ class calcMetricsWorker(QObject):
                 if not posData.fluo_data_dict:
                     self.logger.log(
                         f'The following path does not contain '
-                        f'any valid image data: "{pos_path}"'
+                        f'any valid image data: "{posData.pos_path}"'
                     )
                     continue
 
-                if posData.SizeT == 1:
-                    # Add single frame for snapshot data
-                    posData.segm_data = posData.segm_data[np.newaxis]
+                # Recreate allData_li attribute of the gui
+                posData.allData_li = []
+                for frame_i, lab in enumerate(posData.segm_data[:stopFrameNum]):
+                    data_dict = {
+                        'labels': lab,
+                        'regionprops': skimage.measure.regionprops(lab)
+                    }
+                    posData.allData_li.append(data_dict)
+
+                # Signal to compute volume in the main thread
+                self.mutex.lock()
+                self.signals.sigComputeVolume.emit(stopFrameNum, posData)
+                self.waitCond.wait(self.mutex)
+                self.mutex.unlock()
 
                 acdc_df_li = []
                 keys = []
-                self.signals.initProgressBar.emit(len(posData.segm_data))
-                for frame_i, lab in enumerate(posData.segm_data):
+                self.signals.initProgressBar.emit(stopFrameNum)
+                for frame_i, data_dict in enumerate(posData.allData_li[:stopFrameNum]):
                     if self.abort:
                         self.signals.finished.emit(self)
                         return
 
+                    lab = data_dict['labels']
                     if not np.any(lab):
                         # Empty segmentation mask --> skip
                         continue
 
-                    rp = skimage.measure.regionprops(lab)
+                    rp = data_dict['regionprops']
+                    posData.lab = lab
+                    posData.rp = rp
 
                     if posData.acdc_df is None:
                         acdc_df = myutils.getBaseAcdcDf(rp)
                     else:
-                        acdc_df = posData.acdc_df.loc[frame_i]
+                        acdc_df = posData.acdc_df.loc[frame_i].copy()
 
-                    acdc_df = self.mainWin.gui.addMetrics_acdc_df(
+                    acdc_df = self.mainWin.gui.saveDataWorker.addMetrics_acdc_df(
                         acdc_df, rp, frame_i, lab, posData
                     )
                     acdc_df_li.append(acdc_df)
@@ -258,12 +340,19 @@ class calcMetricsWorker(QObject):
 
                     self.signals.progressBar.emit(1)
 
+
+                if debugging:
+                    continue
+
                 all_frames_acdc_df = pd.concat(
                     acdc_df_li, keys=keys,
                     names=['frame_i', 'time_seconds', 'Cell_ID']
                 )
-                self.mainWin.gui.addCombineMetrics_acdc_df(
+                self.mainWin.gui.saveDataWorker.addCombineMetrics_acdc_df(
                     posData, all_frames_acdc_df
+                )
+                self.logger.log(
+                    f'Saving acdc_output to: "{posData.acdc_output_csv_path}"'
                 )
                 try:
                     all_frames_acdc_df.to_csv(posData.acdc_output_csv_path)
@@ -280,6 +369,8 @@ class calcMetricsWorker(QObject):
                 if self.abort:
                     self.signals.finished.emit(self)
                     return
+
+            self.logger.log('*'*30)
 
         self.signals.finished.emit(self)
 
@@ -412,9 +503,9 @@ class loadDataWorker(QObject):
                 break
 
             # Allow single 2D/3D image
-            if posData.SizeT < 2:
-                posData.img_data = np.array([posData.img_data])
-                posData.segm_data = np.array([posData.segm_data])
+            if posData.SizeT == 1:
+                posData.img_data = posData.img_data[np.newaxis]
+                posData.segm_data = posData.segm_data[np.newaxis]
             img_shape = posData.img_data_shape
             posData.segmSizeT = len(posData.segm_data)
             SizeT = posData.SizeT

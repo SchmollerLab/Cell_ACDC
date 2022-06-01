@@ -727,6 +727,10 @@ class saveDataWorker(QObject):
 
         # Join with regionprops_table
         if self.mainWin.regionPropsToSave:
+            if 'label' not in self.mainWin.regionPropsToSave:
+                self.mainWin.regionPropsToSave = (
+                    'label', *self.mainWin.regionPropsToSave
+                )
             rp_table = skimage.measure.regionprops_table(
                 posData.lab, properties=self.mainWin.regionPropsToSave
             )
@@ -5417,7 +5421,7 @@ class guiWin(QMainWindow):
         self.progressWin.mainPbar.setMaximum(totalIter)
 
     def workerUpdateProgressbar(self, step):
-        self.progressWin.mainPbar.update(self.progressWin.mainPbar.value()+step)
+        self.progressWin.mainPbar.update(step)
 
     def startTrackingWorker(self, posData, video_to_track):
         self.thread = QThread()
