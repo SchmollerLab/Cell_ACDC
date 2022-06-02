@@ -1200,7 +1200,9 @@ class readOnlySpinbox(QSpinBox):
         self.setStyleSheet('background-color: rgba(240, 240, 240, 200);')
 
 class _metricsQGBox(QGroupBox):
-    def __init__(self, desc_dict, title, favourite_funcs=None):
+    def __init__(
+            self, desc_dict, title, favourite_funcs=None, isZstack=False
+        ):
         QGroupBox.__init__(self)
         self.scrollArea = QScrollArea()
         self.scrollAreaWidget = QWidget()
@@ -1216,8 +1218,7 @@ class _metricsQGBox(QGroupBox):
             rowLayout = QHBoxLayout()
 
             checkBox = QCheckBox(metric_colname)
-            if favourite_funcs is None:
-                checkBox.setChecked(True)
+            checkBox.setChecked(True)
             self.checkBoxes.append(checkBox)
 
             infoButton = QPushButton(self)
@@ -1250,7 +1251,7 @@ class _metricsQGBox(QGroupBox):
                 '  Load last selection...  ', self
             )
             self.loadFavouritesButton.clicked.connect(self.checkFavouriteFuncs)
-            self.checkFavouriteFuncs()
+            # self.checkFavouriteFuncs()
             buttonsLayout.addWidget(self.loadFavouritesButton)
 
         layout.addLayout(buttonsLayout)
@@ -1262,7 +1263,7 @@ class _metricsQGBox(QGroupBox):
         _font.setPixelSize(11)
         self.setFont(_font)
 
-    def checkFavouriteFuncs(self, checked=True):
+    def checkFavouriteFuncs(self, checked=True, isZstack=False):
         for checkBox in self.checkBoxes:
             checkBox.setChecked(False)
             for favourite_func in self.favourite_funcs:
