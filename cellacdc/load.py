@@ -34,7 +34,7 @@ cca_df_colnames = list(base_cca_df.keys())
 additional_metadata_path = os.path.join(temp_path, 'additional_metadata.json')
 last_entries_metadata_path = os.path.join(temp_path, 'last_entries_metadata.csv')
 
-def read_json(json_path, logger_func=print):
+def read_json(json_path, logger_func=print, desc='custom annotations'):
     json_data = {}
     try:
         with open(json_path) as file:
@@ -45,7 +45,7 @@ def read_json(json_path, logger_func=print):
         print('****************************')
         logger_func(f'json path: {json_path}')
         print('----------------------------')
-        logger_func('Error while reading saved custom annotations. See above')
+        logger_func(f'Error while reading saved {desc}. See above')
         print('============================')
     return json_data
 
@@ -576,8 +576,9 @@ class loadData:
         if not self.additionalMetadataValues:
             # Load metadata values saved in temp folder
             if os.path.exists(additional_metadata_path):
-                with open(additional_metadata_path) as file:
-                    self.additionalMetadataValues = json.load(file)
+                self.additionalMetadataValues = read_json(
+                    additional_metadata_path, desc='additional metadata'
+                )
 
 
     def setNotFoundData(self):
