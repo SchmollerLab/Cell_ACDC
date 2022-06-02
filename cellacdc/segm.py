@@ -29,7 +29,7 @@ from PyQt5 import QtGui
 
 # Custom modules
 from . import prompts, load, myutils, apps, core, dataPrep, widgets
-from . import qrc_resources
+from . import qrc_resources, html_utils
 
 if os.name == 'nt':
     try:
