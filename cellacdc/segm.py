@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from importlib import import_module
+from functools import partial
 
 import skimage.exposure
 import skimage.morphology
@@ -727,25 +728,34 @@ class segmWin(QMainWindow):
                     return
 
         self.concat_segm = False
-        if posData.SizeT > 1:
-            # Check if there are segmentation already computed
-            ask_concat = False
-            for img_path in user_ch_file_paths:
-                images_path = os.path.dirname(img_path)
-                ls = myutils.listdir(images_path)
-                for file in ls:
-                    if file.endswith('segm.npz'):
-                        ask_concat = True
-                        break
-            if ask_concat:
-                concat_segm = self.askConcatSegm()
-                if concat_segm is None:
-                    self.save = False
-                    abort = self.doAbort()
-                    if abort:
-                        self.close()
-                        return
-                self.concat_segm = concat_segm
+        askNewName = True
+        # Check if there are segmentation already computed
+        isMultiSegm = False
+        for img_path in user_ch_file_paths:
+            images_path = os.path.dirname(img_path)
+            segm_files = load.get_segm_files(images_path)
+            if len(segm_files) > 0:
+                isMultiSegm = True
+                break
+
+        if isMultiSegm:
+            concat_segm, askNewName = self.askMultipleSegm(
+                segm_files, isTimelapse=posData.SizeT>1
+            )
+            if concat_segm is None:
+                self.save = False
+                abort = self.doAbort()
+                if abort:
+                    self.close()
+                    return
+            self.concat_segm = concat_segm
+
+        print(askNewName, self.concat_segm)
+        self.close()
+        return
+
+        if askNewName:
+            pass
 
         if posData.dataPrep_ROIcoords is None:
             # Ask ROI
@@ -977,36 +987,69 @@ class segmWin(QMainWindow):
             img_path = user_ch_file_paths[i]
             self.startSegmWorker()
 
-    def askConcatSegm(self):
-        txt = (
-        'At least one of the loaded positions already contains a '
-        'segmentation file.\n\n'
-        'What do you want me to do?\n\n'
-        'NOTE: you will be able to choose a stop frame later.\n'
+    def askMultipleSegm(self, segm_files, isTimelapse=True):
+        txt = html_utils.paragraph("""
+            At least one of the loaded positions <b>already contains a
+            segmentation file</b>.<br><br>'
+            What do you want me to do?<br><br>
+            <i>NOTE: you will be able to choose a stop frame later.</i><br>
+        """)
+        msg = widgets.myMessageBox()
+        msg.setWindowTitle('Multiple segmentation files')
+        msg.addText(txt)
+        concatButton = ''
+        if isTimelapse:
+            concatButton = widgets.reloadPushButton(
+                'Select segm. file to concatenate to...'
+            )
+        overWriteButton = widgets.savePushButton(
+            'Select segm. file to overwrite...'
         )
-        msg = QMessageBox(self)
-        msg.setWindowTitle('Concatenate or overwrite segmentation?')
-        msg.setIcon(msg.Information)
-        msg.setText(txt)
-        concatButton = QPushButton(
-            'Concatenate new segmentation to existing one'
+        doNotSaveButton = widgets.noPushButton('Do not save')
+        newButton = widgets.newFilePushButton('Save as...')
+        msg.addCancelButton()
+        if isTimelapse:
+            msg.addButton(concatButton)
+        msg.addButton(overWriteButton)
+        msg.addButton(newButton)
+        msg.addButton(doNotSaveButton)
+        if isTimelapse:
+            concatButton.clicked.disconnect()
+            func = partial(
+                self.selectSegmFile, segm_files, False, msg, concatButton
+            )
+            concatButton.clicked.connect(func)
+        overWriteButton.clicked.disconnect()
+        func = partial(
+            self.selectSegmFile, segm_files, True, msg, overWriteButton
         )
-        overWriteButton = QPushButton('Overwrite existing segmentation')
-        doNotSaveButton = QPushButton('Do not save')
-        cancelButton = QPushButton('Cancel')
-        msg.addButton(concatButton, msg.YesRole)
-        msg.addButton(overWriteButton, msg.NoRole)
-        msg.addButton(doNotSaveButton, msg.NoRole)
-        msg.addButton(cancelButton, msg.RejectRole)
+        overWriteButton.clicked.connect(func)
         msg.exec_()
-        clickedButton = msg.clickedButton()
-        if clickedButton == cancelButton:
-            return None
+        clickedButton = msg.clickedButton
+        if msg.cancel:
+            return None, None
         elif clickedButton == doNotSaveButton:
             self.save = False
-            return False
+            return False, False
+        elif clickedButton == concatButton:
+            concat = True
+            askNewName = False
+            return concat, askNewName
+        elif clickedButton == newButton:
+            concat = False
+            askNewName = True
+            return concat, askNewName
 
-        return clickedButton == concatButton
+    def selectSegmFile(self, segm_files, isOverwrite, msg, button):
+        action = 'overwrite' if isOverwrite else 'concatenate to'
+        selectSegmFileWin = apps.QDialogListbox(
+            'Select segmentation file',
+            f'Select segmentation file to {action}:\n',
+            segm_files, multiSelection=False, parent=msg
+        )
+        selectSegmFileWin.exec_()
+        button.clicked.connect(msg.buttonCallBack)
+        button.click()
 
     def addlogTerminal(self):
         self.logTerminal = QTerminal()

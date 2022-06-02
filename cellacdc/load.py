@@ -85,6 +85,17 @@ def get_user_ch_paths(images_paths, user_ch_name):
         print(f'Loading {img_path}...')
     return user_ch_file_paths
 
+def get_segm_files(images_path):
+    ls = myutils.listdir(images_path)
+
+    segm_files = [
+        file for file in ls if file.endswith('segm.npz')
+        or file.find('segm_raw_postproc') != -1
+        or file.endswith('segm_raw.npz')
+        or (file.endswith('.npz') and file.find('segm') != -1)
+    ]
+    return segm_files
+
 class loadData:
     def __init__(self, imgPath, user_ch_name, relPathDepth=3, QParent=None):
         self.fluo_data_dict = {}
@@ -213,14 +224,8 @@ class loadData:
         if newEndFilenameSegm:
             return '', newEndFilenameSegm, False
 
-        ls = myutils.listdir(self.images_path)
+        segm_files = get_segm_files(self.images_path)
 
-        segm_files = [
-            file for file in ls if file.endswith('segm.npz')
-            or file.find('segm_raw_postproc') != -1
-            or file.endswith('segm_raw.npz')
-            or (file.endswith('.npz') and file.find('segm') != -1)
-        ]
         if askMultiSegmFunc is None:
             return segm_files
         is_multi_npz = len(segm_files)>1

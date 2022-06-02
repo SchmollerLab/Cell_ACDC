@@ -110,9 +110,12 @@ class mainWin(QMainWindow):
 
         mainLayout.addStretch()
 
-        dataStructButton = QPushButton(
+        iconSize = 24
+
+        dataStructButton = widgets.setPushButton(
             '  0. Create data structure from microscopy file(s)...  '
         )
+        dataStructButton.setIconSize(QSize(iconSize,iconSize))
         font = QtGui.QFont()
         font.setPixelSize(13)
         dataStructButton.setFont(font)
@@ -120,7 +123,9 @@ class mainWin(QMainWindow):
         self.dataStructButton = dataStructButton
         mainLayout.addWidget(dataStructButton)
 
-        dataPrepButton = QPushButton('1. Launch data prep module...')
+        dataPrepButton = QPushButton('  1. Launch data prep module...')
+        dataPrepButton.setIcon(QIcon(':prep.svg'))
+        dataPrepButton.setIconSize(QSize(iconSize,iconSize))
         font = QtGui.QFont()
         font.setPixelSize(13)
         dataPrepButton.setFont(font)
@@ -128,13 +133,17 @@ class mainWin(QMainWindow):
         self.dataPrepButton = dataPrepButton
         mainLayout.addWidget(dataPrepButton)
 
-        segmButton = QPushButton('2. Launch segmentation module...')
+        segmButton = QPushButton('  2. Launch segmentation module...')
+        segmButton.setIcon(QIcon(':segment.svg'))
+        segmButton.setIconSize(QSize(iconSize,iconSize))
         segmButton.setFont(font)
         segmButton.clicked.connect(self.launchSegm)
         self.segmButton = segmButton
         mainLayout.addWidget(segmButton)
 
-        guiButton = QPushButton('3. Launch GUI...')
+        guiButton = QPushButton('  3. Launch GUI...')
+        guiButton.setIcon(QIcon(':assign-motherbud.svg'))
+        guiButton.setIconSize(QSize(iconSize,iconSize))
         guiButton.setFont(font)
         guiButton.clicked.connect(self.launchGui)
         self.guiButton = guiButton

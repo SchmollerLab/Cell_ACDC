@@ -99,6 +99,21 @@ class okPushButton(QPushButton):
         # QShortcut(Qt.Key_Return, self, self.click)
         # QShortcut(Qt.Key_Enter, self, self.click)
 
+class reloadPushButton(QPushButton):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setIcon(QIcon(':reload.svg'))
+
+class savePushButton(QPushButton):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setIcon(QIcon(':file-save.svg'))
+
+class newFilePushButton(QPushButton):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setIcon(QIcon(':file-new.svg'))
+
 class infoPushButton(QPushButton):
     def __init__(self, *args):
         super().__init__(*args)
@@ -163,6 +178,11 @@ class noPushButton(QPushButton):
     def __init__(self, *args):
         super().__init__(*args)
         self.setIcon(QIcon(':no.svg'))
+
+class editPushButton(QPushButton):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setIcon(QIcon(':edit-id.svg'))
 
 class delPushButton(QPushButton):
     def __init__(self, *args):
