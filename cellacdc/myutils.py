@@ -534,7 +534,7 @@ def getBasenameAndChNames(images_path):
 def getBasename(files):
     basename = files[0]
     for file in files:
-        # Determine the basename based on intersection of all .tif
+        # Determine the basename based on intersection of all files
         _, ext = os.path.splitext(file)
         sm = difflib.SequenceMatcher(None, file, basename)
         i, j, k = sm.find_longest_match(

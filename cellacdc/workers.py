@@ -452,9 +452,9 @@ class loadDataWorker(QObject):
                 load_metadata=True,
                 load_customAnnot=True,
                 load_customCombineMetrics=True,
-                endFilenameSegm=self.mainWin.endFilenameSegm,
+                end_filename_segm=self.mainWin.endFilenameSegm,
                 create_new_segm=self.mainWin.isNewFile,
-                new_segm_filename=self.mainWin.newSegmFilename,
+                new_endname=self.mainWin.newSegmEndName,
                 labelBoolSegm=self.mainWin.labelBoolSegm
             )
             posData.labelSegmData()

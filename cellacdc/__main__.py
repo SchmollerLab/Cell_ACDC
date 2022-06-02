@@ -37,7 +37,7 @@ try:
     from cellacdc.utils import rename as utilsRename
     from cellacdc.utils import align as utilsAlign
     from cellacdc.utils import compute as utilsCompute
-    from cellacdc import is_win, is_linux
+    from cellacdc import is_win, is_linux, temp_path
 except ModuleNotFoundError as e:
     src_path = os.path.dirname(os.path.abspath(__file__))
     main_path = os.path.dirname(src_path)
@@ -237,6 +237,8 @@ class mainWin(QMainWindow):
     def createMenuBar(self):
         menuBar = self.menuBar()
 
+        self.recentPathsMenu = menuBar.addMenu('&Recent paths')
+
         utilsMenu = QMenu("&Utilities", self)
         utilsMenu.addAction(self.concatAcdcDfsAction)
         utilsMenu.addAction(self.calcMetricsAcdcDf)
@@ -294,6 +296,28 @@ class mainWin(QMainWindow):
         self.citeAction.triggered.connect(
             partial(QDesktopServices.openUrl, QUrl(cite_url))
         )
+        self.recentPathsMenu.aboutToShow.connect(self.populateOpenRecent)
+
+    def populateOpenRecent(self):
+        # Step 0. Remove the old options from the menu
+        self.recentPathsMenu.clear()
+        # Step 1. Read recent Paths
+        recentPaths_path = os.path.join(temp_path, 'recentPaths.csv')
+        if os.path.exists(recentPaths_path):
+            df = pd.read_csv(recentPaths_path, index_col='index')
+            if 'opened_last_on' in df.columns:
+                df = df.sort_values('opened_last_on', ascending=False)
+            recentPaths = df['path'].to_list()
+        else:
+            recentPaths = []
+        # Step 2. Dynamically create the actions
+        actions = []
+        for path in recentPaths:
+            action = QAction(path, self)
+            action.triggered.connect(partial(myutils.showInExplorer, path))
+            actions.append(action)
+        # Step 3. Add the actions to the menu
+        self.recentPathsMenu.addActions(actions)
 
     def showContribute(self):
         self.launchWelcomeGuide()

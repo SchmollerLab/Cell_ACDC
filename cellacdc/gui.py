@@ -1102,7 +1102,7 @@ class guiWin(QMainWindow):
         self.flag = True
         self.currentPropsID = 0
         self.isSegm3D = False
-        self.newSegmFilename = ''
+        self.newSegmEndName = ''
 
         self.setWindowTitle("Cell-ACDC - GUI")
         self.setWindowIcon(QIcon(":assign-motherbud.svg"))
@@ -9410,11 +9410,11 @@ class guiWin(QMainWindow):
             if win.cancel:
                 self.loadingDataAborted()
                 return
-            self.newSegmFilename = win.entryText
+            self.newSegmEndName = win.entryText
         posData.loadImgData()
         selectedSegmNpz, endFilenameSegm, cancel = posData.detectMultiSegmNpz(
             askMultiSegmFunc=self.loadDataWorkerMultiSegm,
-            newEndFilenameSegm=self.newSegmFilename
+            newEndFilenameSegm=self.newSegmEndName
         )
         if cancel:
             self.loadingDataAborted()
@@ -9423,8 +9423,8 @@ class guiWin(QMainWindow):
             load_segm_data=True,
             load_metadata=True,
             create_new_segm=self.isNewFile,
-            new_segm_filename=self.newSegmFilename,
-            endFilenameSegm=endFilenameSegm
+            new_endname=self.newSegmEndName,
+            end_filename_segm=endFilenameSegm
         )
         self.endFilenameSegm = endFilenameSegm
         self.labelBoolSegm = posData.labelBoolSegm
@@ -13613,7 +13613,7 @@ class guiWin(QMainWindow):
 
     # Slots
     def newFile(self):
-        self.newSegmFilename = ''
+        self.newSegmEndName = ''
         self.isNewFile = True
         self._openFolder()
 

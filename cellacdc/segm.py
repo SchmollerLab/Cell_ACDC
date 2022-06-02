@@ -81,6 +81,8 @@ class segmWorker(QRunnable):
         self.innerPbar_available = mainWin.innerPbar_available
         self.concat_segm = mainWin.concat_segm
         self.tracker = mainWin.tracker
+        self.isNewSegmFile = mainWin.isNewSegmFile
+        self.endFilenameSegm = mainWin.endFilenameSegm
 
     def setupPausingItems(self):
         self.mutex = QMutex()
@@ -111,8 +113,17 @@ class segmWorker(QRunnable):
             load_dataPrep_ROIcoords=True,
             loadBkgrData=False,
             load_last_tracked_i=False,
-            load_metadata=True
+            load_metadata=True,
+            end_filename_segm=self.endFilenameSegm
         )
+        s = self.endFilenameSegm
+        # Get only name from the string 'segm_<name>.npz'
+        endName = s.replace('segm', '', 1).replace('_', '', 1).split('.')[0]
+        if endName and not self.concat_segm:
+            # Create a new file that is not the default 'segm.npz'
+            posData.setFilePaths(endName)
+
+        self.signals.progress.emit(f'Segmentation file {posData.segm_npz_path}...')
 
         posData.SizeT = self.SizeT
         if self.SizeZ > 1:
@@ -196,7 +207,7 @@ class segmWorker(QRunnable):
                     pad_info = ((y0, Y-y1), (x0, X-x1))
                     img_data = img_data[y0:y1, x0:x1]
 
-        print(f'Image shape = {img_data.shape}')
+        self.signals.progress.emit(f'Image shape = {img_data.shape}')
 
         """Segmentation routine"""
         self.signals.progress.emit(f'Segmenting with {self.model_name}...')
@@ -317,6 +328,12 @@ class segmWin(QMainWindow):
         self.buttonToRestore = buttonToRestore
         self.mainWin = mainWin
         super().__init__(parent)
+
+        logger, logs_path, log_path, log_filename = myutils.setupLogger(
+            module='segm'
+        )
+        self.logger = logger
+
         self.setWindowTitle("Cell-ACDC - Segment")
         self.setWindowIcon(QtGui.QIcon(":assign-motherbud.svg"))
 
@@ -469,7 +486,7 @@ class segmWin(QMainWindow):
         else:
             is_images_folder = False
 
-        print('Loading data...')
+        self.logger.info('Loading data...')
         self.progressLabel.setText('Loading data...')
 
         # Ask which model
@@ -489,7 +506,7 @@ class segmWin(QMainWindow):
                 return
 
         model_name = win.selectedItemsText[0]
-        print(f'Importing {model_name}...')
+        self.logger.info(f'Importing {model_name}...')
         self.downloadWin = apps.downloadModel(model_name, parent=self)
         self.downloadWin.download()
 
@@ -596,7 +613,7 @@ class segmWin(QMainWindow):
         user_ch_file_paths = []
         for images_path in images_paths:
             print('')
-            print(f'Processing {images_path}')
+            self.logger.info(f'Processing {images_path}')
             filenames = myutils.listdir(images_path)
             if ch_name_selector.is_first_call:
                 ch_names, warn = (
@@ -634,7 +651,7 @@ class segmWin(QMainWindow):
             if not aligned_npz_found and not tif_found:
                 print('')
                 print('-------------------------------------------------------')
-                print(f'WARNING: The folder {images_path}\n does not contain the file '
+                self.logger.info(f'WARNING: The folder {images_path}\n does not contain the file '
                       f'{user_ch_name}_aligned.npz\n or the file {user_ch_name}.tif. '
                       'Skipping it.')
                 print('-------------------------------------------------------')
@@ -642,7 +659,7 @@ class segmWin(QMainWindow):
             elif not aligned_npz_found and tif_found:
                 print('')
                 print('-------------------------------------------------------')
-                print(f'WARNING: The folder {images_path}\n does not contain the file '
+                self.logger.info(f'WARNING: The folder {images_path}\n does not contain the file '
                       f'{user_ch_name}_aligned.npz. Segmenting .tif data.')
                 print('-------------------------------------------------------')
                 print('')
@@ -709,6 +726,7 @@ class segmWin(QMainWindow):
             self.addPbar(add_inner=True)
             self.innerPbar_available = True
 
+
         if posData.SizeT == 1:
             # Ask if I should predict budding
             msg = QMessageBox()
@@ -727,9 +745,12 @@ class segmWin(QMainWindow):
                     self.close()
                     return
 
-        self.concat_segm = False
-        askNewName = True
         # Check if there are segmentation already computed
+        self.selectedSegmFile = None
+        self.endFilenameSegm = 'segm.npz'
+        self.concat_segm = False
+        self.isNewSegmFile = False
+        askNewName = True
         isMultiSegm = False
         for img_path in user_ch_file_paths:
             images_path = os.path.dirname(img_path)
@@ -750,12 +771,22 @@ class segmWin(QMainWindow):
                     return
             self.concat_segm = concat_segm
 
-        print(askNewName, self.concat_segm)
-        self.close()
-        return
+        if self.selectedSegmFile is not None:
+            self.endFilenameSegm = self.selectedSegmFile[len(posData.basename):]
 
         if askNewName:
-            pass
+            self.isNewSegmFile = True
+            win = apps.filenameDialog(
+                basename=f'{posData.basename}segm',
+                hintText='Insert a <b>filename</b> for the segmentation file:<br>'
+            )
+            win.exec_()
+            if win.cancel:
+                abort = self.doAbort()
+                if abort:
+                    self.close()
+                    return
+            self.endFilenameSegm = f'segm_{win.entryText}.npz'
 
         if posData.dataPrep_ROIcoords is None:
             # Ask ROI
@@ -801,7 +832,7 @@ class segmWin(QMainWindow):
                 )
             else:
                 print('')
-                print(
+                self.logger.info(
                     f'WARNING: The image data in {img_path} is 3D but '
                     f'_segmInfo.csv file not found. Launching dataPrep.py...'
                 )
@@ -990,54 +1021,67 @@ class segmWin(QMainWindow):
     def askMultipleSegm(self, segm_files, isTimelapse=True):
         txt = html_utils.paragraph("""
             At least one of the loaded positions <b>already contains a
-            segmentation file</b>.<br><br>'
+            segmentation file</b>.<br><br>
             What do you want me to do?<br><br>
             <i>NOTE: you will be able to choose a stop frame later.</i><br>
         """)
-        msg = widgets.myMessageBox()
+        msg = widgets.myMessageBox(resizeButtons=False)
         msg.setWindowTitle('Multiple segmentation files')
         msg.addText(txt)
         concatButton = ''
         if isTimelapse:
-            concatButton = widgets.reloadPushButton(
-                'Select segm. file to concatenate to...'
-            )
-        overWriteButton = widgets.savePushButton(
-            'Select segm. file to overwrite...'
-        )
+            if len(segm_files) > 1:
+                concatTxt = 'Select segm. file to concatenate to...'
+            else:
+                concatTxt = 'Concatenate to existing segmentation file'
+            concatButton = widgets.reloadPushButton(concatTxt)
+        if len(segm_files) > 1:
+            overWriteText = 'Select segm. file to overwrite...'
+        else:
+            overWriteText = 'Overwrite existing segmentation file'
+        overWriteButton = widgets.savePushButton(overWriteText)
         doNotSaveButton = widgets.noPushButton('Do not save')
         newButton = widgets.newFilePushButton('Save as...')
-        msg.addCancelButton()
+        msg.addCancelButton(connect=True)
         if isTimelapse:
             msg.addButton(concatButton)
         msg.addButton(overWriteButton)
         msg.addButton(newButton)
         msg.addButton(doNotSaveButton)
-        if isTimelapse:
-            concatButton.clicked.disconnect()
+        if len(segm_files)>1:
+            if isTimelapse:
+                concatButton.clicked.disconnect()
+                func = partial(
+                    self.selectSegmFile, segm_files, False, msg,
+                    concatButton
+                )
+                concatButton.clicked.connect(func)
+            overWriteButton.clicked.disconnect()
             func = partial(
-                self.selectSegmFile, segm_files, False, msg, concatButton
+                self.selectSegmFile, segm_files, True, msg,
+                overWriteButton
             )
-            concatButton.clicked.connect(func)
-        overWriteButton.clicked.disconnect()
-        func = partial(
-            self.selectSegmFile, segm_files, True, msg, overWriteButton
-        )
-        overWriteButton.clicked.connect(func)
+            overWriteButton.clicked.connect(func)
+        else:
+            self.selectedSegmFile = segm_files[0]
+
         msg.exec_()
-        clickedButton = msg.clickedButton
         if msg.cancel:
             return None, None
-        elif clickedButton == doNotSaveButton:
+        elif msg.clickedButton == doNotSaveButton:
             self.save = False
             return False, False
-        elif clickedButton == concatButton:
+        elif msg.clickedButton == concatButton:
             concat = True
             askNewName = False
             return concat, askNewName
-        elif clickedButton == newButton:
+        elif msg.clickedButton == newButton:
             concat = False
             askNewName = True
+            return concat, askNewName
+        elif msg.clickedButton == overWriteButton:
+            concat = False
+            askNewName = False
             return concat, askNewName
 
     def selectSegmFile(self, segm_files, isOverwrite, msg, button):
@@ -1048,6 +1092,13 @@ class segmWin(QMainWindow):
             segm_files, multiSelection=False, parent=msg
         )
         selectSegmFileWin.exec_()
+        if selectSegmFileWin.cancel:
+            msg.cancel = True
+            msg.cancelButton.click()
+            return
+
+        self.selectedSegmFile = selectSegmFileWin.selectedItemsText[0]
+        button.clicked.disconnect()
         button.clicked.connect(msg.buttonCallBack)
         button.click()
 
@@ -1099,7 +1150,7 @@ class segmWin(QMainWindow):
 
     def segmWorkerProgress(self, text):
         print('-----------------------------------------')
-        print(text)
+        self.logger.info(text)
         self.progressLabel.setText(text)
 
 
@@ -1177,6 +1228,8 @@ class segmWin(QMainWindow):
             return True
 
     def closeEvent(self, event):
+        print('')
+        self.logger.info('Closing segmentation module...')
         if self.buttonToRestore is not None:
             button, color, text = self.buttonToRestore
             button.setText(text)
@@ -1185,22 +1238,8 @@ class segmWin(QMainWindow):
             self.mainWin.setWindowState(Qt.WindowNoState)
             self.mainWin.setWindowState(Qt.WindowActive)
             self.mainWin.raise_()
-
-
-if __name__ == "__main__":
-    print('Launching segmentation script...')
-    # Handle high resolution displays:
-    if hasattr(Qt, 'AA_EnableHighDpiScaling'):
-        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-    if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
-        QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
-    # Create the application
-    app = QApplication(sys.argv)
-    app.setStyle(QStyleFactory.create('Fusion'))
-    app.setWindowIcon(QtGui.QIcon(":assign-motherbud.svg"))
-    win = segmWin(allowExit=True)
-    win.show()
-    print('Done. If window asking to select a folder is not visible, it is '
-          'behind some other open window.')
-    win.main()
-    sys.exit(app.exec_())
+        self.logger.info('Segmentation module closed.')
+        handlers = self.logger.handlers[:]
+        for handler in handlers:
+            handler.close()
+            self.logger.removeHandler(handler)

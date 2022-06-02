@@ -323,12 +323,14 @@ class myLabelItem(pg.LabelItem):
 class myMessageBox(QDialog):
     def __init__(
             self, parent=None, showCentered=True, wrapText=True,
-            scrollableText=False, enlargeWidthFactor=0
+            scrollableText=False, enlargeWidthFactor=0,
+            resizeButtons=True
         ):
         super().__init__(parent)
 
         self.wrapText = wrapText
         self.enlargeWidthFactor = enlargeWidthFactor
+        self.resizeButtons = resizeButtons
 
         self.cancel = True
         self.cancelButton = None
@@ -380,7 +382,7 @@ class myMessageBox(QDialog):
         func = partial(myutils.showInExplorer, path)
         self.showInFileManagButton.clicked.connect(func)
 
-    def addCancelButton(self, button=None):
+    def addCancelButton(self, button=None, connect=False):
         if button is None:
             self.cancelButton = cancelPushButton('Cancel')
         else:
@@ -389,6 +391,8 @@ class myMessageBox(QDialog):
 
         self.buttonsLayout.insertWidget(0, self.cancelButton)
         self.buttonsLayout.insertSpacing(1, 20)
+        if connect:
+            self.cancelButton.clicked.connect(self.buttonCallBack)
 
     def addText(self, text):
         label = QLabel(self)
@@ -408,6 +412,14 @@ class myMessageBox(QDialog):
         return label
 
     def addButton(self, buttonText):
+        if not isinstance(buttonText, str):
+            # Passing button directly
+            button = buttonText
+            self.buttonsLayout.addWidget(button)
+            button.clicked.connect(self.buttonCallBack)
+            self.buttons.append(button)
+            return button
+
         isCancelButton = (
             buttonText.lower().find('cancel') != -1
             or buttonText.lower().find('abort') != -1
@@ -516,11 +528,12 @@ class myMessageBox(QDialog):
 
 
     def _resize(self):
-        widths = [button.width() for button in self.buttons]
-        if widths:
-            max_width = max(widths)
-            for button in self.buttons:
-                button.setMinimumWidth(max_width)
+        if self.resizeButtons:
+            widths = [button.width() for button in self.buttons]
+            if widths:
+                max_width = max(widths)
+                for button in self.buttons:
+                    button.setMinimumWidth(max_width)
 
         heights = [button.height() for button in self.buttons]
         if heights:

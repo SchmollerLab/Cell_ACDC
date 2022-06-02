@@ -118,6 +118,7 @@ class loadData:
         filename_ext = os.path.basename(imgPath)
         self.filename_ext = filename_ext
         self.filename, self.ext = os.path.splitext(filename_ext)
+        self.additionalMetadataValues = None
         self.loadLastEntriesMetadata()
 
     def loadLastEntriesMetadata(self):
@@ -137,7 +138,7 @@ class loadData:
             return
         self.metadata_df.to_csv(last_entries_metadata_path)
 
-    def getBasenameAndChNames(self, useExt='.tif'):
+    def getBasenameAndChNames(self, useExt=None):
         ls = myutils.listdir(self.images_path)
         selector = prompts.select_channel_name()
         self.chNames, _ = selector.get_available_channels(
@@ -256,8 +257,8 @@ class loadData:
             load_customAnnot=False,
             load_customCombineMetrics=False,
             getTifPath=False,
-            endFilenameSegm='',
-            new_segm_filename='',
+            end_filename_segm='',
+            new_endname='',
             labelBoolSegm=None
         ):
 
@@ -278,9 +279,9 @@ class loadData:
         ls = myutils.listdir(self.images_path)
 
         linked_acdc_filename = None
-        if endFilenameSegm and load_acdc_df:
+        if end_filename_segm and load_acdc_df:
             # Check if there is an acdc_output file linked to selected .npz
-            _acdc_df_end_fn = endFilenameSegm.replace('segm', 'acdc_output')
+            _acdc_df_end_fn = end_filename_segm.replace('segm', 'acdc_output')
             _acdc_df_end_fn = _acdc_df_end_fn.replace('.npz', '.csv')
             self._acdc_df_end_fn = _acdc_df_end_fn
             _linked_acdc_fn = f'{self.basename}{_acdc_df_end_fn}'
@@ -299,9 +300,9 @@ class loadData:
         for file in ls:
             filePath = os.path.join(self.images_path, file)
 
-            if endFilenameSegm:
-                self._segm_end_fn = endFilenameSegm
-                is_segm_file = file.endswith(endFilenameSegm)
+            if end_filename_segm:
+                self._segm_end_fn = end_filename_segm
+                is_segm_file = file.endswith(end_filename_segm)
             else:
                 is_segm_file = file.endswith('segm.npz')
 
@@ -403,7 +404,7 @@ class loadData:
                 self.last_tracked_i = None
 
         if create_new_segm:
-            self.setFilePaths(new_segm_filename)
+            self.setFilePaths(new_endname)
 
         self.getCustomAnnotatedIDs()
         self.setNotFoundData()
@@ -447,17 +448,17 @@ class loadData:
         else:
             self.segm_data = self.segm_data.astype(np.uint16)
 
-    def setFilePaths(self, new_filename):
+    def setFilePaths(self, new_endname):
         if self.basename.endswith('_'):
             basename = self.basename
         else:
             basename = f'{self.basename}_'
 
-        segm_new_filename = f'{basename}segm_{new_filename}.npz'
+        segm_new_filename = f'{basename}segm_{new_endname}.npz'
         filePath = os.path.join(self.images_path, segm_new_filename)
         self.segm_npz_path = filePath
 
-        acdc_output_filename = f'{basename}acdc_output_{new_filename}.csv'
+        acdc_output_filename = f'{basename}acdc_output_{new_endname}.csv'
         filePath = os.path.join(self.images_path, acdc_output_filename)
         self.acdc_output_csv_path = filePath
 

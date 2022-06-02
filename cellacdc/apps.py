@@ -784,7 +784,6 @@ class filenameDialog(QDialog):
         if ext.find('.') == -1:
             ext = f'.{ext}'
         self.ext = ext
-        self.newSegmFilename = None
 
         self.setWindowTitle(title)
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
@@ -4848,6 +4847,8 @@ class selectPositionsMultiExp(QBaseDialog):
             exp_path_item.addChildren(postions_items)
             exp_path_item.setExpanded(True)
 
+        self.treeWidget.itemClicked.connect(self.selectAllChildren)
+
         buttonsLayout = QHBoxLayout()
         cancelButton = widgets.cancelPushButton('Cancel')
         okButton = widgets.okPushButton(' Ok ')
@@ -4878,6 +4879,13 @@ class selectPositionsMultiExp(QBaseDialog):
             }
         """)
 
+    def selectAllChildren(self, item, col):
+        if item.parent() is not None:
+            return
+
+        for i in range(item.childCount()):
+            item.child(i).setSelected(True)
+
     def ok_cb(self):
         if not self.treeWidget.selectedItems():
             msg = widgets.myMessageBox(wrapText=False)
@@ -4892,7 +4900,11 @@ class selectPositionsMultiExp(QBaseDialog):
                 exp_path = item.full_path
                 self.selectedPaths[exp_path] = self.expPaths[exp_path]
             else:
-                exp_path = item.parent().full_path
+                parent = item.parent()
+                if parent.isSelected():
+                    # Already added all children
+                    continue
+                exp_path = parent.full_path
                 pos_folder = item.text(0)
                 if exp_path not in self.selectedPaths:
                     self.selectedPaths[exp_path] = []
@@ -5427,7 +5439,7 @@ class askStopFrameSegm(QDialog):
             posData=posData, spinBox=spinBox
         )
         self.slideshowWin.update_img()
-        self.slideshowWin.framesScrollBar.setDisabled(True)
+        # self.slideshowWin.framesScrollBar.setDisabled(True)
         self.slideshowWin.show()
 
     def exec_(self):
