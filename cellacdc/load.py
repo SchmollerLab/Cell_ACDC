@@ -27,9 +27,12 @@ from PyQt5.QtWidgets import (
 import pyqtgraph as pg
 
 from . import prompts, apps, myutils, widgets, measurements, config
-from . import base_cca_df, base_acdc_df, html_utils
+from . import base_cca_df, base_acdc_df, html_utils, temp_path
 
 cca_df_colnames = list(base_cca_df.keys())
+
+additional_metadata_path = os.path.join(temp_path, 'additional_metadata.json')
+last_entries_metadata_path = os.path.join(temp_path, 'last_entries_metadata.csv')
 
 def read_json(json_path, logger_func=print):
     json_data = {}
@@ -119,12 +122,9 @@ class loadData:
             self.last_md_df = pd.read_csv(csv_path).set_index('Description')
 
     def saveLastEntriesMetadata(self):
-        cellacdc_path = os.path.dirname(os.path.realpath(__file__))
-        temp_path = os.path.join(cellacdc_path, 'temp')
-        if not os.path.exists:
+        if not os.path.exists(temp_path):
             return
-        csv_path = os.path.join(temp_path, 'last_entries_metadata.csv')
-        self.metadata_df.to_csv(csv_path)
+        self.metadata_df.to_csv(last_entries_metadata_path)
 
     def getBasenameAndChNames(self, useExt='.tif'):
         ls = myutils.listdir(self.images_path)
@@ -568,6 +568,18 @@ class loadData:
         else:
             self.segmSizeT = self.SizeT
 
+        self.additionalMetadataValues = {}
+        for name in self.metadata_df.index:
+            if name.startswith('__'):
+                value = self.metadata_df.at[name, 'values']
+                self.additionalMetadataValues[name] = value
+        if not self.additionalMetadataValues:
+            # Load metadata values saved in temp folder
+            if os.path.exists(additional_metadata_path):
+                with open(additional_metadata_path) as file:
+                    self.additionalMetadataValues = json.load(file)
+
+
     def setNotFoundData(self):
         if self.segmFound is not None and not self.segmFound:
             self.segm_data = None
@@ -845,7 +857,8 @@ class loadData:
             self.PhysicalSizeZ, self.PhysicalSizeY, self.PhysicalSizeX,
             ask_SizeT, ask_TimeIncrement, ask_PhysicalSizes,
             parent=self.parent, font=font, imgDataShape=self.img_data_shape,
-            posData=self, singlePos=singlePos, askSegm3D=askSegm3D
+            posData=self, singlePos=singlePos, askSegm3D=askSegm3D,
+            additionalValues=self.additionalMetadataValues
         )
         metadataWin.setFont(font)
         metadataWin.exec_()
@@ -868,8 +881,10 @@ class loadData:
         self.PhysicalSizeZ = source.PhysicalSizeZ
         self.PhysicalSizeY = source.PhysicalSizeY
         self.PhysicalSizeX = source.PhysicalSizeX
+
+        self.additionalMetadataValues = metadataWin.additionalValues
         if save:
-            self.saveMetadata()
+            self.saveMetadata(additionalMetadata=metadataWin.additionalValues)
         return True
 
     def transferMetadata(self, from_posData):
@@ -879,9 +894,12 @@ class loadData:
         self.PhysicalSizeY = from_posData.PhysicalSizeY
         self.PhysicalSizeX = from_posData.PhysicalSizeX
 
-    def saveMetadata(self, signals=None, mutex=None, waitCond=None):
+    def saveMetadata(
+            self, signals=None, mutex=None, waitCond=None,
+            additionalMetadata=None
+        ):
         if self.metadata_df is None:
-            self.metadata_df = pd.DataFrame({
+            metadata_dict = {
                 'SizeT': self.SizeT,
                 'SizeZ': self.SizeZ,
                 'TimeIncrement': self.TimeIncrement,
@@ -890,7 +908,14 @@ class loadData:
                 'PhysicalSizeX': self.PhysicalSizeX,
                 'segmSizeT': self.segmSizeT,
                 'isSegm3D': self.isSegm3D
-            }, index=['values']).T
+            }
+            if additionalMetadata is not None:
+                metadata_dict = {**metadata_dict, **additionalMetadata}
+                for key in list(metadata_dict.keys()):
+                    if key.startswith('__') and key not in additionalMetadata:
+                        metadata_dict.pop(key)
+
+            self.metadata_df = pd.DataFrame(metadata_dict, index=['values']).T
             self.metadata_df.index.name = 'Description'
         else:
             self.metadata_df.at['SizeT', 'values'] = self.SizeT
@@ -901,6 +926,16 @@ class loadData:
             self.metadata_df.at['PhysicalSizeX', 'values'] = self.PhysicalSizeX
             self.metadata_df.at['segmSizeT', 'values'] = self.segmSizeT
             self.metadata_df.at['isSegm3D', 'values'] = self.isSegm3D
+            if additionalMetadata is not None:
+                for name, value in additionalMetadata.items():
+                    self.metadata_df.at[name, 'values'] = value
+
+                idx_to_drop = []
+                for name in self.metadata_df.index:
+                    if name.startswith('__') and name not in additionalMetadata:
+                        idx_to_drop.append(name)
+
+                self.metadata_df = self.metadata_df.drop(idx_to_drop)
         try:
             self.metadata_df.to_csv(self.metadata_csv_path)
         except PermissionError:
@@ -926,7 +961,10 @@ class loadData:
                 waitCond.wait(mutex)
                 mutex.unlock()
                 self.metadata_df.to_csv(self.metadata_csv_path)
-        self.saveLastEntriesMetadata()
+        self.metadata_df.to_csv(last_entries_metadata_path)
+        if additionalMetadata is not None:
+            with open(additional_metadata_path, mode='w') as file:
+                json.dump(additionalMetadata, file, indent=2)
 
     @staticmethod
     def BooleansTo0s1s(acdc_df, csv_path=None, inplace=True):

@@ -14262,7 +14262,8 @@ class guiWin(QMainWindow):
         self.measurementsWin = apps.setMeasurementsDialog(
             loadedChNames, notLoadedChNames, posData.SizeZ > 1,
             favourite_funcs=favourite_funcs, acdc_df=posData.acdc_df,
-            acdc_df_path=posData.images_path, posData=posData
+            acdc_df_path=posData.images_path, posData=posData,
+            addCombineMetricCallback=self.addCombineMetric
         )
         self.measurementsWin.sigClosed.connect(self.setMeasurements)
         self.measurementsWin.show()

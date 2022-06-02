@@ -877,7 +877,7 @@ class setMeasurementsDialog(QBaseDialog):
     def __init__(
             self, loadedChNames, notLoadedChNames, isZstack,
             favourite_funcs=None, parent=None, acdc_df=None,
-            acdc_df_path=None, posData=None
+            acdc_df_path=None, posData=None, addCombineMetricCallback=None
         ):
         super().__init__(parent=parent)
 
@@ -926,7 +926,7 @@ class setMeasurementsDialog(QBaseDialog):
         size_metrics_desc = measurements.get_size_metrics_desc()
         sizeMetricsQGBox = widgets._metricsQGBox(
             size_metrics_desc, 'Size metrics',
-            favourite_funcs=favourite_funcs
+            favourite_funcs=favourite_funcs, isZstack=isZstack
         )
         self.sizeMetricsQGBox = sizeMetricsQGBox
         groupsLayout.addWidget(sizeMetricsQGBox, 0, current_col)
@@ -938,7 +938,7 @@ class setMeasurementsDialog(QBaseDialog):
         rp_desc = {prop_name:props_info_txt for prop_name in props_names}
         regionPropsQGBox = widgets._metricsQGBox(
             rp_desc, 'Morphological properties',
-            favourite_funcs=favourite_funcs
+            favourite_funcs=favourite_funcs, isZstack=isZstack
         )
         self.regionPropsQGBox = regionPropsQGBox
         groupsLayout.addWidget(regionPropsQGBox, 1, current_col)
@@ -949,7 +949,7 @@ class setMeasurementsDialog(QBaseDialog):
         if desc:
             mixedChannelsCombineMetricsQGBox = widgets._metricsQGBox(
                 desc, 'Mixed channels combined measurements',
-                favourite_funcs=favourite_funcs
+                favourite_funcs=favourite_funcs, isZstack=isZstack
             )
             self.mixedChannelsCombineMetricsQGBox = mixedChannelsCombineMetricsQGBox
             groupsLayout.addWidget(
@@ -961,11 +961,18 @@ class setMeasurementsDialog(QBaseDialog):
 
         okButton = widgets.okPushButton('   Ok   ')
         cancelButton = widgets.cancelPushButton('Cancel')
+        if addCombineMetricCallback is not None:
+            addCombineMetricButton = widgets.addPushButton(
+                'Add combined measurement...'
+            )
+            addCombineMetricButton.clicked.connect(addCombineMetricCallback)
         self.okButton = okButton
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.addSpacing(20)
+        if addCombineMetricCallback is not None:
+            buttonsLayout.addWidget(addCombineMetricButton)
         buttonsLayout.addWidget(okButton)
 
         layout.addLayout(groupsLayout)
@@ -2680,7 +2687,7 @@ class QDialogMetadata(QDialog):
             PhysicalSizeZ, PhysicalSizeY, PhysicalSizeX,
             ask_SizeT, ask_TimeIncrement, ask_PhysicalSizes,
             parent=None, font=None, imgDataShape=None, posData=None,
-            singlePos=False, askSegm3D=True
+            singlePos=False, askSegm3D=True, additionalValues=None
         ):
         self.cancel = True
         self.ask_TimeIncrement = ask_TimeIncrement
@@ -2688,6 +2695,7 @@ class QDialogMetadata(QDialog):
         self.askSegm3D = askSegm3D
         self.imgDataShape = imgDataShape
         self.posData = posData
+        self.additionalValues = additionalValues
         super().__init__(parent)
         self.setWindowTitle('Image properties')
 
@@ -2824,6 +2832,17 @@ class QDialogMetadata(QDialog):
 
         self.SizeZvalueChanged(SizeZ)
 
+        self.additionalFieldsWidgets = []
+        addFieldButton = widgets.addPushButton('Add custom field')
+        addFieldInfoButton = widgets.infoPushButton()
+        addFieldInfoButton.clicked.connect(self.showAddFieldInfo)
+        addFieldButton.clicked.connect(self.addField)
+        addFieldLayout = QHBoxLayout()
+        addFieldLayout.addStretch(1)
+        addFieldLayout.addWidget(addFieldButton)
+        addFieldLayout.addWidget(addFieldInfoButton)
+        addFieldLayout.addStretch(1)
+
         if singlePos:
             okTxt = 'Apply only to this Position'
         else:
@@ -2868,12 +2887,15 @@ class QDialogMetadata(QDialog):
             buttonsLayout.addWidget(cancelButton, 0, 2)
         buttonsLayout.setColumnStretch(3, 1)
 
-        buttonsLayout.setContentsMargins(0, 10, 0, 0)
-
         gridLayout.setColumnMinimumWidth(1, 100)
         mainLayout.addLayout(gridLayout)
+        mainLayout.addSpacing(10)
+        mainLayout.addLayout(addFieldLayout)
         # mainLayout.addLayout(formLayout)
+        mainLayout.addSpacing(20)
+        mainLayout.addStretch(1)
         mainLayout.addLayout(buttonsLayout)
+        self.mainLayout = mainLayout
 
         okButton.clicked.connect(self.ok_cb)
         if ask_TimeIncrement or ask_PhysicalSizes:
@@ -2881,8 +2903,73 @@ class QDialogMetadata(QDialog):
             selectButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.cancel_cb)
 
+        self.addAdditionalValues(additionalValues)
+
         self.setLayout(mainLayout)
         # self.setModal(True)
+
+    def addAdditionalValues(self, values):
+        if values is None:
+            return
+
+        for i, (name, value) in enumerate(values.items()):
+            self.addField()
+            nameWidget = self.additionalFieldsWidgets[i]['nameWidget']
+            valueWidget = self.additionalFieldsWidgets[i]['valueWidget']
+            nameWidget.setText(str(name).strip('__'))
+            valueWidget.setText(str(value))
+
+    def addField(self):
+        nameWidget = QLineEdit()
+        nameWidget.setAlignment(Qt.AlignCenter)
+        valueWidget = QLineEdit()
+        valueWidget.setAlignment(Qt.AlignCenter)
+        removeButton = widgets.delPushButton()
+
+        fieldLayout = QGridLayout()
+        fieldLayout.addWidget(QLabel('Name'), 0, 0)
+        fieldLayout.addWidget(nameWidget, 1, 0)
+        fieldLayout.addWidget(QLabel('Value'), 0, 1)
+        fieldLayout.addWidget(valueWidget, 1, 1)
+        fieldLayout.addWidget(removeButton, 1, 2)
+
+        self.additionalFieldsWidgets.append({
+            'nameWidget': nameWidget,
+            'valueWidget': valueWidget,
+            'removeButton': removeButton,
+            'layout': fieldLayout
+        })
+
+        idx = len(self.additionalFieldsWidgets)-1
+        removeButton.clicked.connect(partial(self.removeField, idx))
+
+        row = self.mainLayout.count()-3
+        self.mainLayout.insertLayout(row, fieldLayout)
+
+    def removeField(self, idx):
+        widgets = self.additionalFieldsWidgets[idx]
+
+        layoutToRemove = widgets['layout']
+        for row in range(layoutToRemove.rowCount()):
+            for col in range(layoutToRemove.columnCount()):
+                item = layoutToRemove.itemAtPosition(row, col)
+                if item is not None:
+                    widget = item.widget()
+                    layoutToRemove.removeWidget(widget)
+
+        self.additionalFieldsWidgets.pop(idx)
+
+        self.mainLayout.removeItem(layoutToRemove)
+
+    def showAddFieldInfo(self):
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph("""
+            Add a <b>field (name and value)</b> that will be saved to the
+            <code>metadata.csv</code> file and as a column in the
+            <code>acdc_output.csv</code> table.<br><br>
+            Example: a strain name or the replicate number.
+        """)
+        msg.information(self, 'Add field info', txt)
 
     def infoSegm3D(self):
         txt = (
@@ -2951,6 +3038,10 @@ class QDialogMetadata(QDialog):
         self.PhysicalSizeX = self.PhysicalSizeXSpinBox.value()
         self.PhysicalSizeY = self.PhysicalSizeYSpinBox.value()
         self.PhysicalSizeZ = self.PhysicalSizeZSpinBox.value()
+        self.additionalValues = {
+            f"__{field['nameWidget'].text()}":field['valueWidget'].text()
+            for field in self.additionalFieldsWidgets
+        }
         valid4D = True
         valid3D = True
         valid2D = True

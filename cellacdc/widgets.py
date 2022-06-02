@@ -104,6 +104,16 @@ class infoPushButton(QPushButton):
         super().__init__(*args)
         self.setIcon(QIcon(':info.svg'))
 
+class addPushButton(QPushButton):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setIcon(QIcon(':add.svg'))
+
+class subtractPushButton(QPushButton):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setIcon(QIcon(':subtract.svg'))
+
 class continuePushButton(QPushButton):
     def __init__(self, *args):
         super().__init__(*args)

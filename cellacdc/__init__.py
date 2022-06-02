@@ -1,6 +1,12 @@
 import sys
 import os
 
+cellacdc_path = os.path.dirname(os.path.abspath(__file__))
+temp_path = os.path.join(cellacdc_path, 'temp')
+
+if not os.path.exists(temp_path):
+    os.makedirs(temp_path)
+
 try:
     from setuptools_scm import get_version
     __version__ = get_version(root='..', relative_to=__file__)
