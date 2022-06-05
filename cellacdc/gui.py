@@ -14480,7 +14480,7 @@ class guiWin(QMainWindow):
             NOTE: Saving additional metrics is <b>slower</b>,
             we recommend doing it <b>only when you need it</b>.<br>
         """)
-        msg = widgets.myMessageBox(parent=self)
+        msg = widgets.myMessageBox(parent=self, resizeButtons=False)
         msg.setIcon(iconName='SP_MessageBoxQuestion')
         msg.setWindowTitle('Save metrics?')
         msg.addText(txt)
@@ -14562,17 +14562,26 @@ class guiWin(QMainWindow):
         except AttributeError:
             return
 
+        segm_files = load.get_segm_files(posData.images_path)
+        existingEndnames = load.get_existing_endnames(
+            posData.basename, segm_files
+        )
+        print(existingEndnames)
         posData = self.data[self.pos_i]
         win = apps.filenameDialog(
             basename=f'{posData.basename}segm',
-            hintText='Insert a <b>filename</b> for the segmentation file:<br>'
+            hintText='Insert a <b>filename</b> for the segmentation file:<br>',
+            existingNames=existingEndnames
         )
         win.exec_()
         if win.cancel:
             return
 
         for posData in self.data:
-            posData.setFilePaths(new_filename=win.entryText)
+            posData.setFilePaths(new_endname=win.entryText)
+
+        self.setImageNameText()
+        self.saveData()
 
 
     def saveDataPermissionError(self, err_msg):

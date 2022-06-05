@@ -237,7 +237,10 @@ class mainWin(QMainWindow):
     def createMenuBar(self):
         menuBar = self.menuBar()
 
-        self.recentPathsMenu = menuBar.addMenu('&Recent paths')
+        self.recentPathsMenu = QMenu("&Recent paths", self)
+        # On macOS an empty menu would not appear --> add dummy action
+        self.recentPathsMenu.addAction('dummy macos')
+        menuBar.addMenu(self.recentPathsMenu)
 
         utilsMenu = QMenu("&Utilities", self)
         utilsMenu.addAction(self.concatAcdcDfsAction)

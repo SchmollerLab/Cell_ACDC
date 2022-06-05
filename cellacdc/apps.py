@@ -775,7 +775,7 @@ class customAnnotationDialog(QDialog):
 class filenameDialog(QDialog):
     def __init__(
             self, ext='.npz', basename='', title='Insert file name',
-            hintText='', parent=None
+            hintText='', existingNames='', parent=None
         ):
         self.cancel = True
         super().__init__(parent)
@@ -824,6 +824,9 @@ class filenameDialog(QDialog):
         cancelButton.clicked.connect(self.close)
         okButton.clicked.connect(self.ok_cb)
         self.lineEdit.textChanged.connect(self.updateFilename)
+        if existingNames:
+            self.existingNames = existingNames
+            self.lineEdit.editingFinished.connect(self.checkExistingNames)
 
         layout.addWidget(hintLabel)
         layout.addLayout(entryLayout)
@@ -834,6 +837,25 @@ class filenameDialog(QDialog):
         self.setLayout(layout)
         self.setFont(font)
 
+    def _text(self):
+        return self.lineEdit.text().replace(' ', '_')
+
+    def checkExistingNames(self):
+        if self._text() not in self.existingNames:
+            return True
+
+        filename = self.filenameLabel.text()
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph(
+            f'The file <code>{filename}</code> is <b>already existing</b>.<br><br>'
+            'Do you want to <b>overwrite</b> the existing file?'
+        )
+        noButton, yesButton = msg.warning(
+            self, 'File name existing', txt, buttonsTexts=('No', 'Yes')
+        )
+        return msg.clickedButton == yesButton
+
+
     def updateFilename(self, text):
         if not text:
             self.filenameLabel.setText(f'{self.basename}{self.ext}')
@@ -842,8 +864,11 @@ class filenameDialog(QDialog):
             self.filenameLabel.setText(f'{self.basename}_{text}{self.ext}')
 
     def ok_cb(self, checked=True):
+        valid = self.checkExistingNames()
+        if not valid:
+            return
         self.filename = self.filenameLabel.text()
-        self.entryText = self.lineEdit.text().replace(' ', '_')
+        self.entryText = self._text()
         self.cancel = False
         self.close()
 

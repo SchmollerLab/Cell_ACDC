@@ -96,6 +96,17 @@ def get_segm_files(images_path):
     ]
     return segm_files
 
+def get_existing_endnames(basename, segm_files):
+    existing_endnames = []
+    for f in segm_files:
+        filename, _ = os.path.splitext(f)
+        endname = filename[len(basename):]
+        # Remove the 'segm_' part
+        endname = endname.replace('segm', '', 1).replace('_', '', 1)
+        existing_endnames.append(endname)
+    return existing_endnames
+
+
 class loadData:
     def __init__(self, imgPath, user_ch_name, relPathDepth=3, QParent=None):
         self.fluo_data_dict = {}
