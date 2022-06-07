@@ -6240,9 +6240,9 @@ class guiWin(QMainWindow):
                 This will gurantee a G1 duration of cell {new_mothID}
                 of <b>at least 1 frame</b>. Thanks.
             """)
-            msg = QMessageBox()
+            msg = widgets.myMessageBox()
             msg.warning(
-               self, 'Cell not eligible', err_msg, msg.Ok
+               self, 'Cell not eligible', err_msg
             )
             cancel = None
         return cancel
@@ -9291,25 +9291,22 @@ class guiWin(QMainWindow):
         if posData.frame_i < posData.segmSizeT-1:
             if 'lost' in self.titleLabel.text and isSegmMode:
                 if self.warnLostCellsAction.isChecked():
-                    msg = QMessageBox(self)
-                    msg.setWindowTitle('Lost cells!')
-                    msg.setIcon(msg.Warning)
-                    warn_msg = (
+                    msg = widgets.myMessageBox()
+                    warn_msg = html_utils.paragraph(
                         'Current frame (compared to previous frame) '
-                        'has lost the following cells:\n\n'
-                        f'{posData.lost_IDs}\n\n'
-                        'Are you sure you want to continue?\n'
+                        'has <b>lost the following cells</b>:<br><br>'
+                        f'{posData.lost_IDs}<br><br>'
+                        'Are you <b>sure</b> you want to continue?<br>'
                     )
-                    msg.setText(warn_msg)
-                    msg.addButton(msg.Yes)
-                    noButton = QPushButton('No')
-                    msg.addButton(noButton, msg.NoRole)
-                    cb = QCheckBox('Do not show again')
-                    msg.setCheckBox(cb)
-                    msg.exec_()
-                    doNotWarnLostCells = not msg.checkBox().isChecked()
+                    checkBox = QCheckBox('Do not show again')
+                    noButton, yesButton = msg.warning(
+                        self, 'Lost cells!', warn_msg,
+                        buttonsTexts=('No', 'Yes'),
+                        widgets=checkBox
+                    )
+                    doNotWarnLostCells = not checkBox.isChecked()
                     self.warnLostCellsAction.setChecked(doNotWarnLostCells)
-                    if msg.clickedButton() == noButton:
+                    if msg.clickedButton == noButton:
                         return
             if 'multiple' in self.titleLabel.text and mode != 'Viewer':
                 msg = QMessageBox()
@@ -10329,9 +10326,9 @@ class guiWin(QMainWindow):
             max_frame_n = self.navigateScrollBar.maximum()
             SizeT = self.data[self.pos_i].SizeT
             if frame_n == max_frame_n and frame_n<SizeT:
-                self.navigateScrollBar.setMaximum(max_frame_n+1)
-                self.navigateScrollBar.setSliderPosition(frame_n+1)
-            self.framesScrollBarReleased(isNext=True)
+                self.next_cb()
+            else:
+                self.framesScrollBarReleased(isNext=True)
         elif action == QAbstractSlider.SliderSingleStepSub:
             self.framesScrollBarReleased(isPrev=True)
         elif action == QAbstractSlider.SliderPageStepAdd:
@@ -13516,6 +13513,8 @@ class guiWin(QMainWindow):
 
             """Tracking starts here"""
             # self.disableTrackingCheckBox.setChecked(False)
+            staturBarLabelText = self.statusBarLabel.text()
+            self.statusBarLabel.setText('Tracking...')
 
             if storeUndo:
                 # Store undo state before modifying stuff
@@ -13557,6 +13556,9 @@ class guiWin(QMainWindow):
         posData.lab = tracked_lab
         self.update_rp()
         self.setTitleText()
+        QTimer.singleShot(50, partial(
+            self.statusBarLabel.setText, staturBarLabelText
+        ))
 
     def manuallyEditTracking(self, tracked_lab, allIDs):
         posData = self.data[self.pos_i]
