@@ -10297,13 +10297,13 @@ class guiWin(QMainWindow):
 
     def PosScrollBarAction(self, action):
         if action == QAbstractSlider.SliderSingleStepAdd:
-            self.PosScrollBarReleased(isNext=True)
+            self.next_cb()
         elif action == QAbstractSlider.SliderSingleStepSub:
-            self.PosScrollBarReleased(isNext=False, isPrev=True)
+            self.prev_cb()
         elif action == QAbstractSlider.SliderPageStepAdd:
-            self.PosScrollBarReleased(isNext=True)
+            self.PosScrollBarReleased()
         elif action == QAbstractSlider.SliderPageStepSub:
-            self.PosScrollBarReleased(isNext=False, isPrev=True)
+            self.PosScrollBarReleased()
 
     def PosScrollBarMoved(self, pos_n):
         self.pos_i = pos_n-1
@@ -10311,26 +10311,17 @@ class guiWin(QMainWindow):
         proceed_cca, never_visited = self.get_data()
         self.updateALLimg(updateFilters=False, updateDiffGaussFilter=False)
 
-    def PosScrollBarReleased(self, isNext=True, isPrev=False):
-        pos_i = self.navigateScrollBar.sliderPosition()-1
-        if isNext:
-            self.pos_i = pos_i - 1
-            self.next_pos()
-        else:
-            self.pos_i = pos_i + 1
-            self.prev_pos()
+    def PosScrollBarReleased(self):
+        self.pos_i = self.navigateScrollBar.sliderPosition()-1
+        self.updateFramePosLabel()
+        proceed_cca, never_visited = self.get_data()
+        self.updateALLimg()
 
     def framesScrollBarAction(self, action):
         if action == QAbstractSlider.SliderSingleStepAdd:
-            frame_n = self.navigateScrollBar.sliderPosition()
-            max_frame_n = self.navigateScrollBar.maximum()
-            SizeT = self.data[self.pos_i].SizeT
-            if frame_n == max_frame_n and frame_n<SizeT:
-                self.next_cb()
-            else:
-                self.framesScrollBarReleased(isNext=True)
+            self.next_cb()
         elif action == QAbstractSlider.SliderSingleStepSub:
-            self.framesScrollBarReleased(isPrev=True)
+            self.prev_cb()
         elif action == QAbstractSlider.SliderPageStepAdd:
             self.framesScrollBarReleased()
         elif action == QAbstractSlider.SliderPageStepSub:
@@ -10357,19 +10348,13 @@ class guiWin(QMainWindow):
         self.updateViewerWindow()
         self.navigateScrollBarStartedMoving = False
 
-    def framesScrollBarReleased(self, isNext=False, isPrev=False):
+    def framesScrollBarReleased(self):
         self.navigateScrollBarStartedMoving = True
         posData = self.data[self.pos_i]
-        frame_i = self.navigateScrollBar.sliderPosition()-1
-        if isNext:
-            posData.frame_i = frame_i - 1
-            self.next_frame()
-        elif isPrev:
-            posData.frame_i = frame_i + 1
-            self.prev_frame()
-        else:
-            posData.frame_i = frame_i
-            self.updateALLimg()
+        posData.frame_i = self.navigateScrollBar.sliderPosition()-1
+        self.updateFramePosLabel()
+        proceed_cca, never_visited = self.get_data()
+        self.updateALLimg()
 
     def unstore_data(self):
         posData = self.data[self.pos_i]
