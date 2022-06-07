@@ -3345,7 +3345,6 @@ class gaussBlurDialog(QDialog):
         mainLayout.addWidget(self.sigmaSlider)
         mainLayout.addWidget(self.PreviewCheckBox)
 
-
         closeButton = QPushButton('Close')
 
         buttonsLayout.addWidget(closeButton, alignment=Qt.AlignCenter)
@@ -3365,7 +3364,7 @@ class gaussBlurDialog(QDialog):
 
     def preview_cb(self, checked):
         if not checked:
-            self.restoreNonFiltered()
+            # self.restoreNonFiltered()
             self.mainWindow.updateALLimg(only_ax1=True, updateSharp=False)
         else:
             self.getData()
@@ -3481,6 +3480,7 @@ class diffGaussFilterDialog(QDialog):
         self.secondSigmaSliderYX.setTickPosition(QSlider.TicksBelow)
         self.secondSigmaSliderYX.setSingleStep(0.5)
         self.secondSigmaSliderYX.setTickInterval(10)
+        self.secondSigmaSliderYX.setValue(1)
 
         self.secondSigmaSliderZ = widgets.sliderWithSpinBox(
             isFloat=True, title='Sigma Z-direction:  ',
@@ -3681,7 +3681,7 @@ class edgeDetectionDialog(QDialog):
 
     def preview_cb(self, checked):
         if not checked:
-            self.restoreNonFiltered()
+            # self.restoreNonFiltered()
             self.mainWindow.updateALLimg(only_ax1=True, updateSharp=False)
         else:
             self.getData()
@@ -3826,7 +3826,7 @@ class entropyFilterDialog(QDialog):
 
     def preview_cb(self, checked):
         if not checked:
-            self.restoreNonFiltered()
+            # self.restoreNonFiltered()
             self.mainWindow.updateALLimg(only_ax1=True, updateSharp=False)
         else:
             self.getData()

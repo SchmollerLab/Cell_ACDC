@@ -7744,11 +7744,6 @@ class guiWin(QMainWindow):
         if ev.key() == Qt.Key_T:
             if self.debug:
                 posData = self.data[self.pos_i]
-                print(posData.additionalMetadataValues())
-                # print(posData.manualContrastKey)
-                # acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
-                # print(acdc_df.columns)
-                # print(acdc_df)
                 pass
         try:
             posData = self.data[self.pos_i]
@@ -9211,8 +9206,34 @@ class guiWin(QMainWindow):
                 posData.allData_li[posData.frame_i]['labels'] = lab
                 self.get_data()
 
+    def updateSharpenFilterWindows(self, prev_pos_i):
+        if self.diffGaussFilterWin is None:
+            return
+        oldFilename = self.diffGaussFilterWin.channelsComboBox.currentText()
+        prevPosData = self.data[prev_pos_i]
+        filterEndName = oldFilename[len(prevPosData.basename)]
+
+        posData = self.data[self.pos_i]
+        loadedFilenames = [posData.filename]
+        if posData.fluo_data_dict:
+            loadedFilenames.extend(posData.fluo_data_dict.keys())
+
+        self.diffGaussFilterWin.sigValueChanged.disconnect()
+        self.diffGaussFilterWin.channelsComboBox.clear()
+        self.diffGaussFilterWin.channelsComboBox.addItems(loadedFilenames)
+        if filterEndName is not None:
+            for loadedFilename in loadedFilenames:
+                if loadedFilename.endswith(filterEndName):
+                    self.diffGaussFilterWin.channelsComboBox.setCurrentText(
+                        loadedFilename
+                    )
+        self.diffGaussFilterWin.sigValueChanged.connect(
+            self.diffGaussFilterWinValueChanged
+        )
+
     def next_pos(self):
         self.store_data(debug=False)
+        prev_pos_i = self.pos_i
         if self.pos_i < self.num_pos-1:
             self.pos_i += 1
         else:
@@ -9223,6 +9244,7 @@ class guiWin(QMainWindow):
         self.removeAlldelROIsCurrentFrame()
         proceed_cca, never_visited = self.get_data()
         self.postProcessing()
+        self.updateSharpenFilterWindows(prev_pos_i)
         self.updateALLimg(updateFilters=True, updateLabelItemColor=False)
         self.zoomToCells()
         self.updateScrollbars()
@@ -9230,6 +9252,7 @@ class guiWin(QMainWindow):
 
     def prev_pos(self):
         self.store_data(debug=False)
+        prev_pos_i = self.pos_i
         if self.pos_i > 0:
             self.pos_i -= 1
         else:
@@ -9240,7 +9263,8 @@ class guiWin(QMainWindow):
         self.removeAlldelROIsCurrentFrame()
         proceed_cca, never_visited = self.get_data()
         self.postProcessing()
-        self.updateALLimg(updateSharp=True, updateBlur=True, updateEntropy=True)
+        self.updateSharpenFilterWindows(prev_pos_i)
+        self.updateALLimg(updateFilters=True)
         self.zoomToCells()
         self.updateScrollbars()
 
@@ -13143,7 +13167,8 @@ class guiWin(QMainWindow):
                     img = self.get_2Dimg_from_3D(filteredData)
                 else:
                     img = filteredData
-                self.updateZsliceScrollbar(posData.frame_i)
+                if posData.SizeZ > 1:
+                    self.updateZsliceScrollbar(posData.frame_i)
                 img = self.getImageWithCmap(img=img)
         else:
             img = image

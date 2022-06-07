@@ -106,6 +106,16 @@ def get_existing_endnames(basename, segm_files):
         existing_endnames.append(endname)
     return existing_endnames
 
+def get_endname_from_channels(filename, channels):
+    endname = None
+    for ch in channels:
+        ch_aligned = f'{ch}_aligned'
+        m = re.search(fr'{ch}(.\w+)*$', filename)
+        m_aligned = re.search(fr'{ch_aligned}(.\w+)*$', filename)
+        if m_aligned is not None:
+            return endname
+        elif m is not None:
+            return endname
 
 class loadData:
     def __init__(self, imgPath, user_ch_name, relPathDepth=3, QParent=None):
