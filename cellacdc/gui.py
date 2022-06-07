@@ -1312,6 +1312,7 @@ class guiWin(QMainWindow):
         self.openRecentMenu = fileMenu.addMenu("Open Recent")
         fileMenu.addAction(self.saveAction)
         fileMenu.addAction(self.saveAsAction)
+        fileMenu.addAction(self.quickSaveAction)
         fileMenu.addAction(self.loadFluoAction)
         # Separator
         fileMenu.addSeparator()
@@ -1949,10 +1950,9 @@ class guiWin(QMainWindow):
         self.openFileAction = QAction(
             QIcon(":image.svg"),"&Open image/video file...", self
         )
-        self.saveAction = QAction(
-            QIcon(":file-save.svg"), "Save", self
-        )
+        self.saveAction = QAction(QIcon(":file-save.svg"), "Save", self)
         self.saveAsAction = QAction("Save as...", self)
+        self.quickSaveAction = QAction("Save only segm. file", self)
         self.loadFluoAction = QAction("Load fluorescent images...", self)
         # self.reloadAction = QAction(
         #     QIcon(":reload.svg"), "Reload segmentation file", self
@@ -1967,7 +1967,8 @@ class guiWin(QMainWindow):
         self.newAction.setShortcut("Ctrl+N")
         self.openAction.setShortcut("Ctrl+O")
         self.saveAsAction.setShortcut("Ctrl+Shift+S")
-        self.saveAction.setShortcut("Ctrl+S")
+        self.saveAction.setShortcut("Ctrl+Alt+S")
+        self.quickSaveAction.setShortcut("Ctrl+S")
         self.undoAction.setShortcut("Ctrl+Z")
         self.redoAction.setShortcut("Ctrl+Y")
         # Help tips
@@ -2214,6 +2215,7 @@ class guiWin(QMainWindow):
         self.openFileAction.triggered.connect(self.openFile)
         self.saveAction.triggered.connect(self.saveData)
         self.saveAsAction.triggered.connect(self.saveAsData)
+        self.quickSaveAction.triggered.connect(self.quickSave)
         self.showInExplorerAction.triggered.connect(self.showInExplorer_cb)
         self.exitAction.triggered.connect(self.close)
         self.undoAction.triggered.connect(self.undo)
@@ -10331,11 +10333,11 @@ class guiWin(QMainWindow):
                 self.navigateScrollBar.setSliderPosition(frame_n+1)
             self.framesScrollBarReleased(isNext=True)
         elif action == QAbstractSlider.SliderSingleStepSub:
-            self.framesScrollBarReleased(isNext=False, isPrev=True)
+            self.framesScrollBarReleased(isPrev=True)
         elif action == QAbstractSlider.SliderPageStepAdd:
-            self.framesScrollBarReleased(isNext=True)
+            self.framesScrollBarReleased()
         elif action == QAbstractSlider.SliderPageStepSub:
-            self.framesScrollBarReleased(isNext=False, isPrev=True)
+            self.framesScrollBarReleased()
 
     def framesScrollBarMoved(self, frame_n):
         posData = self.data[self.pos_i]
@@ -10358,16 +10360,19 @@ class guiWin(QMainWindow):
         self.updateViewerWindow()
         self.navigateScrollBarStartedMoving = False
 
-    def framesScrollBarReleased(self, isNext=True, isPrev=False):
+    def framesScrollBarReleased(self, isNext=False, isPrev=False):
         self.navigateScrollBarStartedMoving = True
         posData = self.data[self.pos_i]
         frame_i = self.navigateScrollBar.sliderPosition()-1
         if isNext:
             posData.frame_i = frame_i - 1
             self.next_frame()
-        else:
+        elif isPrev:
             posData.frame_i = frame_i + 1
             self.prev_frame()
+        else:
+            posData.frame_i = frame_i
+            self.updateALLimg()
 
     def unstore_data(self):
         posData = self.data[self.pos_i]
@@ -14471,7 +14476,7 @@ class guiWin(QMainWindow):
                     obj.vol_fl = vol_fl
                 posData.allData_li[frame_i]['regionprops'] = rp
 
-    def askSaveLastVisitedSegmMode(self):
+    def askSaveLastVisitedSegmMode(self, isQuickSave=False):
         posData = self.data[self.pos_i]
         current_frame_i = posData.frame_i
         frame_i = 0
@@ -14486,6 +14491,12 @@ class guiWin(QMainWindow):
             if lab is None:
                 frame_i -= 1
                 break
+
+        if isQuickSave:
+            self.save_until_frame_i = frame_i
+            self.last_tracked_i = frame_i
+            return True
+
         if frame_i > 0:
             # Ask to save last visited frame or not
             txt = html_utils.paragraph(f"""
@@ -14665,22 +14676,26 @@ class guiWin(QMainWindow):
             ETA = myutils.seconds_to_ETA(seconds)
             self.saveWin.ETA_label.setText(f'ETA: {ETA}')
 
+    def quickSave(self):
+        self.saveData(isQuickSave=True)
+
     @myutils.exception_handler
-    def saveData(self, checked=False, finishedCallback=None):
+    def saveData(self, checked=False, finishedCallback=None, isQuickSave=False):
         self.store_data()
         self.titleLabel.setText(
             'Saving data... (check progress in the terminal)', color=self.titleColor
         )
-
-        self.save_metrics, cancel = self.askSaveMetrics()
-        if cancel:
-            self.titleLabel.setText(
-                'Saving data process cancelled.', color=self.titleColor
-            )
-            return True
+        self.save_metrics = False
+        if not isQuickSave:
+            self.save_metrics, cancel = self.askSaveMetrics()
+            if cancel:
+                self.titleLabel.setText(
+                    'Saving data process cancelled.', color=self.titleColor
+                )
+                return True
 
         last_pos = len(self.data)
-        if self.isSnapshot:
+        if self.isSnapshot and not isQuickSave:
             save_Allpos, last_pos = self.askSaveAllPos()
             if save_Allpos:
                 last_pos = len(self.data)
@@ -14699,7 +14714,7 @@ class guiWin(QMainWindow):
         if self.isSnapshot:
             self.store_data(mainThread=False)
 
-        proceed = self.askSaveLastVisitedSegmMode()
+        proceed = self.askSaveLastVisitedSegmMode(isQuickSave=isQuickSave)
         if not proceed:
             return
 
