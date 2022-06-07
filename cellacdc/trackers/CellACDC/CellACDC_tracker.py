@@ -8,6 +8,8 @@ from skimage.segmentation import relabel_sequential
 
 from cellacdc.core import lab_replace_values, np_replace_values
 
+debug = False
+
 def calc_IoA_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None):
     IDs_prev = []
     if IDs_curr_untracked is None:
@@ -39,6 +41,8 @@ def assign(IoA_matrix, IDs_curr_untracked, IDs_prev, IoA_thresh=0.4):
     counts_dict = dict(zip(unique_col_idx, counts))
     tracked_IDs = []
     old_IDs = []
+    if debug:
+        print(f'IDs in previous frame: {IDs_prev}')
     for i, j in enumerate(max_IoA_col_idx):
         max_IoU = IoA_matrix[i,j]
         count = counts_dict[j]
@@ -57,12 +61,15 @@ def indexAssignment(
         old_IDs, tracked_IDs, IDs_curr_untracked, lab, rp, uniqueID,
         remove_untracked=False, assign_unique_new_IDs=True
     ):
+    if debug:
+        print('%'*30)
     # Replace untracked IDs with tracked IDs and new IDs with increasing num
     new_untracked_IDs = [ID for ID in IDs_curr_untracked if ID not in old_IDs]
     tracked_lab = lab
-    # print('----------------------------')
-    # print(f'Assign new IDs uniquely = {assign_unique_new_IDs}')
-    # print('***********************')
+    if debug:
+        print('----------------------------')
+        print(f'Assign new IDs uniquely = {assign_unique_new_IDs}')
+        print('***********************')
     if new_untracked_IDs and assign_unique_new_IDs:
         # Relabel new untracked IDs (i.e., new cells) unique IDs
         if remove_untracked:
@@ -74,16 +81,42 @@ def indexAssignment(
         lab_replace_values(
             tracked_lab, rp, new_untracked_IDs, new_tracked_IDs
         )
-        # print('Current IDs: ', IDs_curr_untracked)
-        # print('Previous IDs: ', old_IDs)
-        # print('New objects that get a new big ID: ', new_untracked_IDs)
-        # print('New unique IDs for the new objects: ', new_tracked_IDs)
+        if debug:
+            print('----------------------------')
+            print('Current IDs: ', IDs_curr_untracked)
+            print('Previous IDs: ', old_IDs)
+            print('New objects that get a new big ID: ', new_untracked_IDs)
+            print('New unique IDs for the new objects: ', new_tracked_IDs)
+            for _ID, replacingID in zip(new_untracked_IDs, new_tracked_IDs):
+                print(f'{_ID} --> {replacingID}')
+            print('***********************')
+    elif new_untracked_IDs and tracked_IDs:
+        # If we don't replace unique new IDs we check that tracked IDs are
+        # not already existing to avoid duplicates
+        new_IDs_in_trackedIDs = [ID for ID in new_untracked_IDs if ID in tracked_IDs]
+        new_tracked_IDs = [uniqueID+i for i in range(len(new_IDs_in_trackedIDs))]
+        lab_replace_values(
+            tracked_lab, rp, new_IDs_in_trackedIDs, new_tracked_IDs
+        )
+        if debug:
+            print('----------------------------')
+            print(f'New tracked IDs that already exists: {new_IDs_in_trackedIDs}')
+            for _ID, replacingID in zip(new_IDs_in_trackedIDs, new_tracked_IDs):
+                print(f'{_ID} --> {replacingID}')
+            print('***********************')
     if tracked_IDs:
         lab_replace_values(
             tracked_lab, rp, old_IDs, tracked_IDs, in_place=True
         )
-        # print('Old IDs to be tracked: ', old_IDs)
-        # print('New IDs replacing old IDs: ', tracked_IDs)
+        if debug:
+            print('----------------------------')
+            print('Old IDs to be tracked: ', old_IDs)
+            print('New IDs replacing old IDs: ', tracked_IDs)
+            for _ID, replacingID in zip(old_IDs, tracked_IDs):
+                print(f'{_ID} --> {replacingID}')
+            print('***********************')
+    if debug:
+        print('='*30)
     return tracked_lab
 
 def track_frame(
