@@ -816,6 +816,7 @@ class filenameDialog(QDialog):
 
         okButton = widgets.okPushButton('Ok')
         cancelButton = widgets.cancelPushButton('Cancel')
+        self.okButton = okButton
 
         buttonsLayout.addStretch()
         buttonsLayout.addWidget(cancelButton)
@@ -878,6 +879,7 @@ class filenameDialog(QDialog):
 
     def show(self, block=False):
         super().show()
+        self.okButton.setDefault(True)
         if block:
             self.loop = QEventLoop()
             self.loop.exec_()

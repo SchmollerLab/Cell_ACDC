@@ -95,7 +95,7 @@ class okPushButton(QPushButton):
     def __init__(self, *args):
         super().__init__(*args)
         self.setIcon(QIcon(':yesGray.svg'))
-        self.setShortcut(Qt.Key_Enter)
+        self.setDefault(True)
         # QShortcut(Qt.Key_Return, self, self.click)
         # QShortcut(Qt.Key_Enter, self, self.click)
 

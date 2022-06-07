@@ -9796,9 +9796,9 @@ class guiWin(QMainWindow):
             return
 
         questionTxt = html_utils.paragraph(
-            f'Some or all loaded {txt} contain empty segmentation masks.<br><br>'
-            'Do you want to activate automatic segmentation* when visiting '
-            f'these {txt}?<br><br>'
+            f'Some or all loaded {txt} contain <b>empty segmentation masks</b>.<br><br>'
+            'Do you want to <b>activate automatic segmentation</b><sup>*</sup> '
+            f'when visiting these {txt}?<br><br>'
             '<i>* Automatic segmentation can always be turned ON/OFF from the menu<br>'
             '  <code>Edit --> Segmentation --> Enable automatic segmentation</code><br><br></i>'
             f'NOTE: you can automatically segment all {txt} using the<br>'
