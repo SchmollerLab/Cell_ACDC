@@ -402,7 +402,7 @@ class loadDataWorker(QObject):
                 self.titleLabel.setText(err_msg, color='r')
                 skipPos = True
         else:
-            if not posData.segmFound and posData.SizeT > 1:
+            if not posData.segmFound and posData.SizeT > 1 and not self.mainWin.isNewFile:
                 self.signals.dataIntegrityWarning.emit(posData.pos_foldername)
                 self.pause()
                 abort = self.abort

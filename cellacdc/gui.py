@@ -9433,9 +9433,14 @@ class guiWin(QMainWindow):
         posData.getBasenameAndChNames()
         posData.buildPaths()
         if self.isNewFile:
+            segm_files = load.get_segm_files(posData.images_path)
+            existingEndnames = load.get_existing_endnames(
+                posData.basename, segm_files
+            )
             win = apps.filenameDialog(
                 basename=f'{posData.basename}segm',
-                hintText='Insert a <b>filename</b> for the segmentation file:<br>'
+                hintText='Insert a <b>filename</b> for the segmentation file:<br>',
+                existingNames=existingEndnames
             )
             win.exec_()
             if win.cancel:
@@ -9780,20 +9785,21 @@ class guiWin(QMainWindow):
         if not ask:
             return
 
-        questionTxt = (
-            f'Some or all loaded {txt} contain empty segmentation masks.\n\n'
+        questionTxt = html_utils.paragraph(
+            f'Some or all loaded {txt} contain empty segmentation masks.<br><br>'
             'Do you want to activate automatic segmentation* when visiting '
-            f'these {txt}?\n\n'
-            '* Automatic segmentation can always be turned ON/OFF from the menu\n'
-            '  "Edit --> Segmentation --> Enable automatic segmentation"\n\n'
-            f'** Remember that you can automatically segment all {txt} using the\n'
+            f'these {txt}?<br><br>'
+            '<i>* Automatic segmentation can always be turned ON/OFF from the menu<br>'
+            '  <code>Edit --> Segmentation --> Enable automatic segmentation</code><br><br></i>'
+            f'NOTE: you can automatically segment all {txt} using the<br>'
             '    segmentation module.'
         )
-        msg = QMessageBox(self)
-        doSegmAnswer = msg.question(
-            self, 'Automatic segmentation?', questionTxt, msg.Yes | msg.No
+        msg = widgets.myMessageBox(wrapText=False)
+        noButton, yesButton = msg.question(
+            self, 'Automatic segmentation?', questionTxt,
+            buttonsTexts=('No', 'Yes')
         )
-        if doSegmAnswer == msg.Yes:
+        if msg.clickedButton == yesButton:
             self.autoSegmAction.setChecked(True)
         else:
             self.autoSegmDoNotAskAgain = True
@@ -11987,14 +11993,14 @@ class guiWin(QMainWindow):
 
 
     def criticalFluoChannelNotFound(self, fluo_ch, posData):
-        msg = QMessageBox(self)
+        msg = QMessageBox()
         msg.setWindowTitle('Requested channel data not found!')
         msg.setIcon(msg.Warning)
-        txt = (
-            f'The folder {posData.relPath} does not contain either one of the '
-            'following files:\n\n'
-            f'{posData.basename}_{fluo_ch}.tif\n'
-            f'{posData.basename}_{fluo_ch}_aligned.npz\n\n'
+        txt = html_utils.paragraph(
+            f'The folder {posData.relPath} <b>does not contain</b> '
+            'either one of the following files:<br><br>'
+            f'{posData.basename}_{fluo_ch}.tif<br>'
+            f'{posData.basename}_{fluo_ch}_aligned.npz<br><br>'
             'Data loading aborted.'
         )
         msg.setText(txt)
@@ -14001,8 +14007,8 @@ class guiWin(QMainWindow):
         abort = False
         msg = widgets.myMessageBox(parent=self)
         warn_msg = html_utils.paragraph(f"""
-            The folder {pos_foldername} does not contain a
-            pre-computed segmentation mask.<br><br>
+            The folder {pos_foldername} <b>does not contain a
+            pre-computed segmentation mask</b>.<br><br>
             You can continue with a blank mask or cancel and
             pre-compute the mask with the segmentation module.<br><br>
             Do you want to continue?
@@ -14599,7 +14605,6 @@ class guiWin(QMainWindow):
         existingEndnames = load.get_existing_endnames(
             posData.basename, segm_files
         )
-        print(existingEndnames)
         posData = self.data[self.pos_i]
         win = apps.filenameDialog(
             basename=f'{posData.basename}segm',

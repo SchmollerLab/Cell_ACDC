@@ -781,6 +781,7 @@ class filenameDialog(QDialog):
         super().__init__(parent)
 
         self.basename = basename
+        self.existingNames = []
         if ext.find('.') == -1:
             ext = f'.{ext}'
         self.ext = ext
