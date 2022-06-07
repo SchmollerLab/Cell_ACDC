@@ -14494,7 +14494,7 @@ class guiWin(QMainWindow):
             lastFrameDialog = apps.QLineEditDialog(
                 title='Last frame number to save', defaultTxt=str(frame_i+1),
                 msg=txt, parent=self, allowedValues=(1,frame_i+1),
-                warnLastFrame=True, isInteger=True
+                warnLastFrame=True, isInteger=True, stretchEntry=False
             )
             lastFrameDialog.exec_()
             if lastFrameDialog.cancel:

@@ -5485,7 +5485,8 @@ class QLineEditDialog(QDialog):
     def __init__(
             self, title='Entry messagebox', msg='Entry value',
             defaultTxt='', parent=None, allowedValues=None,
-            warnLastFrame=False, isInteger=False, isFloat=False
+            warnLastFrame=False, isInteger=False, isFloat=False,
+            stretchEntry=True
         ):
         QDialog.__init__(self, parent)
 
@@ -5565,7 +5566,15 @@ class QLineEditDialog(QDialog):
 
         # Add widgets to layouts
         LineEditLayout.addWidget(msg, alignment=Qt.AlignCenter)
-        LineEditLayout.addWidget(ID_QLineEdit)
+        if stretchEntry:
+            LineEditLayout.addWidget(ID_QLineEdit)
+        else:
+            entryLayout = QHBoxLayout()
+            entryLayout.addStretch(1)
+            entryLayout.addWidget(ID_QLineEdit)
+            entryLayout.addStretch(1)
+            entryLayout.setStretch(1,1)
+            LineEditLayout.addLayout(entryLayout)
         if allowedValues is not None:
             LineEditLayout.addWidget(notValidLabel, alignment=Qt.AlignCenter)
         buttonsLayout.addStretch(1)
