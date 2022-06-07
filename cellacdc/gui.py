@@ -105,6 +105,7 @@ pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
 np.random.seed(1568)
 
 pd.set_option("display.max_columns", 20)
+pd.set_option("display.max_rows", 200)
 pd.set_option('display.expand_frame_repr', False)
 
 def qt_debug_trace():
@@ -750,14 +751,6 @@ class saveDataWorker(QObject):
         # Remove 0s columns
         df = df.loc[:, (df != -2).any(axis=0)]
 
-        # Remove old gui_ columns from version < v1.2.4.rc-7
-        gui_columns = df.filter(regex='gui_*').columns
-        df = df.drop(columns=gui_columns, errors='ignore')
-        cell_id_cols = df.filter(regex='Cell_ID.*').columns
-        df = df.drop(columns=cell_id_cols, errors='ignore')
-        time_seconds_cols = df.filter(regex='time_seconds.*').columns
-        df = df.drop(columns=time_seconds_cols, errors='ignore')
-
         return df
 
     def _dfEvalEquation(self, df, newColName, expr):
@@ -767,6 +760,23 @@ class saveDataWorker(QObject):
             print('-'*20)
             self.mainWin.logger.info(traceback.format_exc())
             print('='*20)
+
+    def _removeDeprecatedRows(self, df):
+        v1_2_4_rc25_deprectated_cols = [
+            'editIDclicked_x', 'editIDclicked_y',
+            'editIDnewID', 'editIDnewIDs'
+        ]
+        df = df.drop(columns=v1_2_4_rc25_deprectated_cols, errors='ignore')
+
+        # Remove old gui_ columns from version < v1.2.4.rc-7
+        gui_columns = df.filter(regex='gui_*').columns
+        df = df.drop(columns=gui_columns, errors='ignore')
+        cell_id_cols = df.filter(regex='Cell_ID.*').columns
+        df = df.drop(columns=cell_id_cols, errors='ignore')
+        time_seconds_cols = df.filter(regex='time_seconds.*').columns
+        df = df.drop(columns=time_seconds_cols, errors='ignore')
+
+        return df
 
     def addCombineMetrics_acdc_df(self, posData, df):
         # Add channel specifc combined metrics
@@ -947,19 +957,21 @@ class saveDataWorker(QObject):
                         posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
 
                 if acdc_df_li:
-                    try:
-                        all_frames_acdc_df = pd.concat(
-                            acdc_df_li, keys=keys,
-                            names=['frame_i', 'time_seconds', 'Cell_ID']
+                    all_frames_acdc_df = pd.concat(
+                        acdc_df_li, keys=keys,
+                        names=['frame_i', 'time_seconds', 'Cell_ID']
+                    )
+                    if save_metrics:
+                        self.addCombineMetrics_acdc_df(
+                            posData, all_frames_acdc_df
                         )
 
-                        if save_metrics:
-                            self.addCombineMetrics_acdc_df(
-                                posData, all_frames_acdc_df
-                            )
+                    self.addAdditionalMetadata(posData, all_frames_acdc_df)
 
-                        self.addAdditionalMetadata(posData, all_frames_acdc_df)
-
+                    all_frames_acdc_df = self._removeDeprecatedRows(
+                        all_frames_acdc_df
+                    )
+                    try:
                         # Save segmentation metadata
                         all_frames_acdc_df.to_csv(acdc_output_csv_path)
                         posData.acdc_df = all_frames_acdc_df
@@ -974,11 +986,6 @@ class saveDataWorker(QObject):
                         self.criticalPermissionError.emit(err_msg)
                         self.waitCond.wait(self.mutex)
                         self.mutex.unlock()
-
-                        all_frames_acdc_df = pd.concat(
-                            acdc_df_li, keys=keys,
-                            names=['frame_i', 'time_seconds', 'Cell_ID']
-                        )
 
                         # Save segmentation metadata
                         all_frames_acdc_df.to_csv(acdc_output_csv_path)
@@ -7746,6 +7753,9 @@ class guiWin(QMainWindow):
         if ev.key() == Qt.Key_T:
             if self.debug:
                 posData = self.data[self.pos_i]
+                print(posData.editID_info)
+                print(posData.allData_li[posData.frame_i]['acdc_df'])
+                self.store_data()
                 pass
         try:
             posData = self.data[self.pos_i]
@@ -10240,15 +10250,13 @@ class guiWin(QMainWindow):
             # Colormap
             self.setLut(posData)
 
-            posData.allData_li = [
-                    {
-                     'regionprops': None,
-                     'labels': None,
-                     'acdc_df': None,
-                     'delROIs_info': {'rois': [], 'delMasks': [], 'delIDsROI': []},
-                     'histoLevels': {}
-                     }
-                    for i in range(posData.segmSizeT)
+            posData.allData_li = [{
+                'regionprops': None,
+                'labels': None,
+                'acdc_df': None,
+                'delROIs_info': {'rois': [], 'delMasks': [], 'delIDsROI': []},
+                'histoLevels': {}
+                } for i in range(posData.segmSizeT)
             ]
 
             posData.ccaStatus_whenEmerged = {}
@@ -10395,21 +10403,16 @@ class guiWin(QMainWindow):
         IDs = [0]*len(posData.rp)
         xx_centroid = [0]*len(posData.rp)
         yy_centroid = [0]*len(posData.rp)
-        editIDclicked_x = [np.nan]*len(posData.rp)
-        editIDclicked_y = [np.nan]*len(posData.rp)
-        editIDnewID = [-1]*len(posData.rp)
-        editedIDs = [newID for _, _, newID in posData.editID_info]
+        areManuallyEdited = [0]*len(posData.rp)
+        editedNewIDs = [vals[2] for vals in posData.editID_info]
         for i, obj in enumerate(posData.rp):
             is_cell_dead_li[i] = obj.dead
             is_cell_excluded_li[i] = obj.excluded
             IDs[i] = obj.label
             xx_centroid[i] = int(self.getObjCentroid(obj.centroid)[1])
             yy_centroid[i] = int(self.getObjCentroid(obj.centroid)[0])
-            if obj.label in editedIDs:
-                y, x, new_ID = posData.editID_info[editedIDs.index(obj.label)]
-                editIDclicked_x[i] = int(x)
-                editIDclicked_y[i] = int(y)
-                editIDnewID[i] = new_ID
+            if obj.label in editedNewIDs:
+                areManuallyEdited[i] = 1
 
         try:
             posData.STOREDmaxID = max(IDs)
@@ -10425,21 +10428,18 @@ class guiWin(QMainWindow):
                     'is_cell_excluded': is_cell_excluded_li,
                     'x_centroid': xx_centroid,
                     'y_centroid': yy_centroid,
-                    'editIDclicked_x': editIDclicked_x,
-                    'editIDclicked_y': editIDclicked_y,
-                    'editIDnewID': editIDnewID
+                    'was_manually_edited': areManuallyEdited
                 }
             ).set_index('Cell_ID')
         else:
             # Filter or add IDs that were not stored yet
-            acdc_df = acdc_df.reindex(posData.IDs)
+            acdc_df = acdc_df.drop(columns=['time_seconds'], errors='ignore')
+            acdc_df = acdc_df.reindex(IDs, fill_value=0)
             acdc_df['is_cell_dead'] = is_cell_dead_li
             acdc_df['is_cell_excluded'] = is_cell_excluded_li
             acdc_df['x_centroid'] = xx_centroid
             acdc_df['y_centroid'] = yy_centroid
-            acdc_df['editIDclicked_x'] = editIDclicked_x
-            acdc_df['editIDclicked_y'] = editIDclicked_y
-            acdc_df['editIDnewIDs'] = editIDnewID
+            acdc_df['was_manually_edited'] = areManuallyEdited
             posData.allData_li[posData.frame_i]['acdc_df'] = acdc_df
 
         self.store_cca_df(pos_i=pos_i, mainThread=mainThread)
@@ -10959,6 +10959,14 @@ class guiWin(QMainWindow):
             labels = posData.segm_data[posData.frame_i].copy()
         return labels
 
+    def _get_editID_info(self, df):
+        manually_edited_df = df[df['was_manually_edited'] > 0]
+        editID_info = [
+            (row.y_centroid, row.x_centroid, row.Index)
+            for row in manually_edited_df.itertuples()
+        ]
+        return editID_info
+
     @get_data_exception_handler
     def get_data(self, debug=False):
         posData = self.data[self.pos_i]
@@ -10993,8 +11001,6 @@ class guiWin(QMainWindow):
             # Requested frame was never visited before. Load from HDD
             posData.lab = self.get_labels()
             posData.rp = skimage.measure.regionprops(posData.lab)
-            if debug:
-                self.logger.info(never_visited)
             if posData.acdc_df is not None:
                 frames = posData.acdc_df.index.get_level_values(0)
                 if posData.frame_i in frames:
@@ -11007,6 +11013,7 @@ class guiWin(QMainWindow):
                     ripIDs_df = df[df['is_cell_dead']]
                     ripIDs = set(ripIDs_df.index).union(posData.ripIDs)
                     posData.ripIDs = ripIDs
+                    posData.editID_info.extend(self._get_editID_info(df))
                     # Load cca df into current metadata
                     if 'cell_cycle_stage' in df.columns:
                         if any(df['cell_cycle_stage'].isna()):
@@ -11032,14 +11039,7 @@ class guiWin(QMainWindow):
             posData.binnedIDs = set(binnedIDs_df.index)
             ripIDs_df = df[df['is_cell_dead']]
             posData.ripIDs = set(ripIDs_df.index)
-            editIDclicked_x = df['editIDclicked_x'].to_list()
-            editIDclicked_y = df['editIDclicked_y'].to_list()
-            editIDnewID = df['editIDnewID'].to_list()
-            _zip = zip(editIDclicked_y, editIDclicked_x, editIDnewID)
-            posData.editID_info = [
-                (int(y),int(x),newID) for y,x,newID in _zip
-                if not np.isnan(y)
-            ]
+            posData.editID_info = self._get_editID_info(df)
             self.get_cca_df()
 
         self.update_rp_metadata(draw=False)
@@ -14350,8 +14350,6 @@ class guiWin(QMainWindow):
                     else:
                         func_name = colname[len(chName):]
                         favourite_funcs.add(func_name)
-
-        pprint(self.metricsToSkip)
 
         if not measurementsWin.sizeMetricsQGBox.isChecked():
             self.sizeMetricsToSave = []
