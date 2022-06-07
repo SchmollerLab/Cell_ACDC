@@ -3781,17 +3781,18 @@ class guiWin(QMainWindow):
 
         prevCoords = (obj.coords[:,-2], obj.coords[:,-1])
         self.currentLab2D[obj.coords[:,-2], obj.coords[:,-1]] = 0
-        posData.lab[obj.coords[:,-2], obj.coords[:,-1]] = 0
+        lab_2D = self.get_2Dlab(posData.lab)
+        lab_2D[obj.coords[:,-2], obj.coords[:,-1]] = 0
 
         footprint = skimage.morphology.disk(self.expandFootprintSize)
         if dilation:
             expandedLab = skimage.morphology.dilation(
-                self.expandingLab, footprint=footprint
+                self.expandingLab, footprint
             )
             self.isDilation = True
         else:
             expandedLab = skimage.morphology.erosion(
-                self.expandingLab, footprint=footprint
+                self.expandingLab, footprint
             )
             self.isDilation = False
 
@@ -3804,7 +3805,9 @@ class guiWin(QMainWindow):
 
         # Add the dilated/erored object
         self.currentLab2D[expandedObjCoords] = self.expandingID
-        posData.lab[expandedObjCoords] = self.expandingID
+        lab_2D[expandedObjCoords] = self.expandingID
+
+        self.set_2Dlab(lab_2D)
 
         self.update_rp()
 
@@ -12609,18 +12612,7 @@ class guiWin(QMainWindow):
 
     def setTempImg1ExpandLabel(self, prevCoords, expandedObjCoords):
         how = self.drawIDsContComboBox.currentText()
-        if how.find('contours') != -1:
-            contCurveID = self.ax1_ContoursCurves[self.expandingID-1]
-            contCurveID.setData([], [])
-            currentLab2Drp = skimage.measure.regionprops(self.currentLab2D)
-            for obj in currentLab2Drp:
-                if obj.label == self.expandingID:
-                    cont = self.getObjContours(obj)
-                    contCurveID.setData(
-                        cont[:,0], cont[:,1], pen=self.newIDs_cpen
-                    )
-                    break
-        elif how.find('overlay segm. masks') != -1:
+        if how.find('overlay segm. masks') != -1:
             # Remove previous overlaid mask
             self.imgRGB[prevCoords] = self.img1uintRGB[prevCoords]
 
@@ -12632,6 +12624,17 @@ class guiWin(QMainWindow):
             imgRGB_float[expandedObjCoords] = overlay
             self.imgRGB = (np.clip(imgRGB_float, 0, 1)*255).astype(np.uint8)
             self.img1.setImage(self.imgRGB)
+        else:
+            contCurveID = self.ax1_ContoursCurves[self.expandingID-1]
+            contCurveID.setData([], [])
+            currentLab2Drp = skimage.measure.regionprops(self.currentLab2D)
+            for obj in currentLab2Drp:
+                if obj.label == self.expandingID:
+                    cont = self.getObjContours(obj)
+                    contCurveID.setData(
+                        cont[:,0], cont[:,1], pen=self.newIDs_cpen
+                    )
+                    break
 
     def setTempImg1MoveLabel(self, prevCoords):
         how = self.drawIDsContComboBox.currentText()
