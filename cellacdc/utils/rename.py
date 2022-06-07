@@ -212,6 +212,12 @@ class renameFilesWin(QMainWindow):
         else:
             self._rename(selectedFilenames[0], images_paths[0], appendedTxt)
 
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph(
+            'Renaming process <b>completed</b>.<br><br>'
+        )
+        msg.information(self, 'Renaming process completed', txt)
+
         self.close()
         if self.allowExit:
             exit('Done.')
