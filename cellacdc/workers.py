@@ -479,7 +479,8 @@ class loadDataWorker(QObject):
             posData.PhysicalSizeY = self.mainWin.PhysicalSizeY
             posData.PhysicalSizeX = self.mainWin.PhysicalSizeX
             posData.saveMetadata(
-                signals=self.signals, mutex=self.mutex, waitCond=self.waitCond
+                signals=self.signals, mutex=self.mutex, waitCond=self.waitCond,
+                additionalMetadata=self.firstPosData._additionalMetadataValues
             )
             SizeY, SizeX = posData.img_data_shape[-2:]
 

@@ -816,6 +816,12 @@ class saveDataWorker(QObject):
 
         return df
 
+    def addAdditionalMetadata(self, posData, df):
+        for col, val in posData.additionalMetadataValues().items():
+            if col in df.columns:
+                df.pop(col)
+            df.insert(0, col, val)
+
     def run(self):
         last_pos = self.mainWin.last_pos
         save_metrics = self.mainWin.save_metrics
@@ -951,6 +957,8 @@ class saveDataWorker(QObject):
                             self.addCombineMetrics_acdc_df(
                                 posData, all_frames_acdc_df
                             )
+
+                        self.addAdditionalMetadata(posData, all_frames_acdc_df)
 
                         # Save segmentation metadata
                         all_frames_acdc_df.to_csv(acdc_output_csv_path)
@@ -7736,10 +7744,7 @@ class guiWin(QMainWindow):
         if ev.key() == Qt.Key_T:
             if self.debug:
                 posData = self.data[self.pos_i]
-                print(list(posData.loadedFluoChannels))
-                print([ch for ch in self.ch_names if ch != self.user_ch_name])
-                print(self.img1uintRGB.max())
-                print(self.img1uintRGB.shape)
+                print(posData.additionalMetadataValues())
                 # print(posData.manualContrastKey)
                 # acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
                 # print(acdc_df.columns)

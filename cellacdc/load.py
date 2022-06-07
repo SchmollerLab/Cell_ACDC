@@ -129,7 +129,7 @@ class loadData:
         filename_ext = os.path.basename(imgPath)
         self.filename_ext = filename_ext
         self.filename, self.ext = os.path.splitext(filename_ext)
-        self.additionalMetadataValues = None
+        self._additionalMetadataValues = None
         self.loadLastEntriesMetadata()
 
     def loadLastEntriesMetadata(self):
@@ -585,18 +585,26 @@ class loadData:
         else:
             self.segmSizeT = self.SizeT
 
-        self.additionalMetadataValues = {}
+        self._additionalMetadataValues = {}
         for name in self.metadata_df.index:
             if name.startswith('__'):
                 value = self.metadata_df.at[name, 'values']
-                self.additionalMetadataValues[name] = value
-        if not self.additionalMetadataValues:
+                self._additionalMetadataValues[name] = value
+        if not self._additionalMetadataValues:
             # Load metadata values saved in temp folder
             if os.path.exists(additional_metadata_path):
-                self.additionalMetadataValues = read_json(
+                self._additionalMetadataValues = read_json(
                     additional_metadata_path, desc='additional metadata'
                 )
 
+    def additionalMetadataValues(self):
+        additionalMetadataValues = {}
+        for name in self.metadata_df.index:
+            if name.startswith('__'):
+                value = self.metadata_df.at[name, 'values']
+                key = name.replace('__', '', 1)
+                additionalMetadataValues[key] = value
+        return additionalMetadataValues
 
     def setNotFoundData(self):
         if self.segmFound is not None and not self.segmFound:
@@ -876,7 +884,7 @@ class loadData:
             ask_SizeT, ask_TimeIncrement, ask_PhysicalSizes,
             parent=self.parent, font=font, imgDataShape=self.img_data_shape,
             posData=self, singlePos=singlePos, askSegm3D=askSegm3D,
-            additionalValues=self.additionalMetadataValues
+            additionalValues=self._additionalMetadataValues
         )
         metadataWin.setFont(font)
         metadataWin.exec_()
@@ -900,9 +908,9 @@ class loadData:
         self.PhysicalSizeY = source.PhysicalSizeY
         self.PhysicalSizeX = source.PhysicalSizeX
 
-        self.additionalMetadataValues = metadataWin.additionalValues
+        self._additionalMetadataValues = metadataWin._additionalValues
         if save:
-            self.saveMetadata(additionalMetadata=metadataWin.additionalValues)
+            self.saveMetadata(additionalMetadata=metadataWin._additionalValues)
         return True
 
     def transferMetadata(self, from_posData):

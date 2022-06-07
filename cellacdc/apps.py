@@ -2719,7 +2719,7 @@ class QDialogMetadata(QDialog):
         self.askSegm3D = askSegm3D
         self.imgDataShape = imgDataShape
         self.posData = posData
-        self.additionalValues = additionalValues
+        self._additionalValues = additionalValues
         super().__init__(parent)
         self.setWindowTitle('Image properties')
 
@@ -3062,7 +3062,7 @@ class QDialogMetadata(QDialog):
         self.PhysicalSizeX = self.PhysicalSizeXSpinBox.value()
         self.PhysicalSizeY = self.PhysicalSizeYSpinBox.value()
         self.PhysicalSizeZ = self.PhysicalSizeZSpinBox.value()
-        self.additionalValues = {
+        self._additionalValues = {
             f"__{field['nameWidget'].text()}":field['valueWidget'].text()
             for field in self.additionalFieldsWidgets
         }

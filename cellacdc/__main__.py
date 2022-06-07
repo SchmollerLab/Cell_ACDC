@@ -83,34 +83,26 @@ class mainWin(QMainWindow):
         mainLayout = QVBoxLayout()
         mainLayout.addStretch()
 
-        welcomeLabel = QLabel('Welcome to Cell-ACDC!')
-        welcomeLabel.setAlignment(Qt.AlignCenter)
-        font = QtGui.QFont()
-        font.setPixelSize(16)
-        font.setBold(True)
-        font.setFamily('Ubuntu')
-        welcomeLabel.setFont(font)
+        welcomeLabel = QLabel(html_utils.paragraph(
+            '<b>Welcome to Cell-ACDC!</b>',
+            center=True, font_size='18px'
+        ))
         # padding: top, left, bottom, right
         welcomeLabel.setStyleSheet("padding:0px 0px 5px 0px;")
         mainLayout.addWidget(welcomeLabel)
 
-        label = QLabel(
-            'Press any of the following buttons\n'
-            'to launch the respective module')
-
-        label.setWordWrap(True)
-        label.setAlignment(Qt.AlignCenter)
-        font = QtGui.QFont()
-        font.setPixelSize(13)
-        font.setFamily('Ubuntu')
-        label.setFont(font)
+        label = QLabel(html_utils.paragraph(
+            'Press any of the following buttons<br>'
+            'to <b>launch</b> the respective module',
+            center=True, font_size='14px'
+        ))
         # padding: top, left, bottom, right
         label.setStyleSheet("padding:0px 0px 10px 0px;")
         mainLayout.addWidget(label)
 
         mainLayout.addStretch()
 
-        iconSize = 24
+        iconSize = 26
 
         dataStructButton = widgets.setPushButton(
             '  0. Create data structure from microscopy file(s)...  '
@@ -158,11 +150,13 @@ class mainWin(QMainWindow):
             '  Restart Cell-ACDC'
         )
         restartButton.setFont(font)
+        restartButton.setIconSize(QSize(iconSize, iconSize))
         restartButton.clicked.connect(self.close)
         self.restartButton = restartButton
         closeLayout.addWidget(restartButton)
 
         closeButton = QPushButton(QIcon(":exit.png"), '  Exit')
+        closeButton.setIconSize(QSize(iconSize, iconSize))
         self.closeButton = closeButton
         # closeButton.setIconSize(QSize(24,24))
         closeButton.setFont(font)
@@ -183,7 +177,7 @@ class mainWin(QMainWindow):
 
     def loadFonts(self):
         font = QtGui.QFont()
-        font.setFamily('Ubuntu')
+        # font.setFamily('Ubuntu')
         QFontDatabase.addApplicationFont(":Ubuntu-Regular.ttf")
         QFontDatabase.addApplicationFont(":Ubuntu-Bold.ttf")
         QFontDatabase.addApplicationFont(":Ubuntu-Italic.ttf")
@@ -634,14 +628,15 @@ class mainWin(QMainWindow):
     def show(self):
         QMainWindow.show(self)
         h = self.dataPrepButton.geometry().height()
-        self.dataStructButton.setMinimumHeight(h*2)
-        self.dataPrepButton.setMinimumHeight(h*2)
-        self.segmButton.setMinimumHeight(h*2)
-        self.guiButton.setMinimumHeight(h*2)
-        self.restartButton.setMinimumHeight(int(h*2))
-        self.closeButton.setMinimumHeight(int(h*2))
-        iconWidth = int(self.closeButton.iconSize().width()*1.3)
-        self.closeButton.setIconSize(QSize(iconWidth, iconWidth))
+        f = 1.8
+        self.dataStructButton.setMinimumHeight(int(h*f))
+        self.dataPrepButton.setMinimumHeight(int(h*f))
+        self.segmButton.setMinimumHeight(int(h*f))
+        self.guiButton.setMinimumHeight(int(h*f))
+        self.restartButton.setMinimumHeight(int(int(h*f)))
+        self.closeButton.setMinimumHeight(int(int(h*f)))
+        # iconWidth = int(self.closeButton.iconSize().width()*1.3)
+        # self.closeButton.setIconSize(QSize(iconWidth, iconWidth))
         self.setColorsAndText()
         self.readSettings()
 
