@@ -123,7 +123,8 @@ class segmWorker(QRunnable):
             # Create a new file that is not the default 'segm.npz'
             posData.setFilePaths(endName)
 
-        self.signals.progress.emit(f'Segmentation file {posData.segm_npz_path}...')
+        segmFilename = os.path.basename(posData.segm_npz_path)
+        self.signals.progress.emit(f'Segmentation file {segmFilename}...')
 
         posData.SizeT = self.SizeT
         if self.SizeZ > 1:
