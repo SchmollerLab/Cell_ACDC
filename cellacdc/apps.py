@@ -3130,7 +3130,7 @@ class QDialogMetadata(QDialog):
 
         if self.posData is not None and self.sender() != self.okButton:
             exp_path = self.posData.exp_path
-            pos_foldernames = myutils.getPosfoldernames(exp_path)
+            pos_foldernames = myutils.get_pos_foldernames(exp_path)
             if self.sender() == self.selectButton:
                 select_folder = load.select_exp_folder()
                 select_folder.pos_foldernames = pos_foldernames

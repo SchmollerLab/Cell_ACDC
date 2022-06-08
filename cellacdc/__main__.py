@@ -360,7 +360,7 @@ class mainWin(QMainWindow):
                 posFolders = [os.path.basename(posPath)]
                 exp_path = os.path.dirname(exp_path)
             else:
-                posFolders = myutils.getPosfoldernames(exp_path)
+                posFolders = myutils.get_pos_foldernames(exp_path)
                 if not posFolders:
                     msg = widgets.myMessageBox()
                     msg.addShowInFileManagerButton(

@@ -55,7 +55,7 @@ def configuration_dialog():
             data_dir = os.path.dirname(data_dir)
             pos = [os.path.basename(pos_path)]
         else:
-            available_pos = myutils.getPosfoldernames(data_dir)
+            available_pos = myutils.get_pos_foldernames(data_dir)
             if not available_pos:
                 print('******************************')
                 print('Selected folder does not contain any Position folders.')
