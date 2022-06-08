@@ -2,7 +2,6 @@ import os
 import sys
 import re
 import ast
-import configparser
 from heapq import nlargest
 import matplotlib
 import matplotlib.pyplot as plt
@@ -55,7 +54,7 @@ from PyQt5.QtWidgets import (
 )
 
 from . import myutils, load, prompts, widgets, core, measurements, html_utils
-from . import is_mac, is_win, is_linux
+from . import is_mac, is_win, is_linux, temp_path, config
 from . import qrc_resources
 
 pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
@@ -6961,41 +6960,70 @@ class QDialogModelParams(QDialog):
         self.cancel = True
         super().__init__(parent)
 
+        self.model_name = model_name
+
         self.setWindowTitle(f'{model_name} parameters')
 
         mainLayout = QVBoxLayout()
         buttonsLayout = QHBoxLayout()
 
+        loadFunc = self.loadLastSelection
+
         initGroupBox, self.init_argsWidgets = self.createGroupParams(
             init_params,
             'Parameters for model initialization'
+        )
+        initDefaultButton = widgets.reloadPushButton('Restore default')
+        initLoadLastSelButton = QPushButton('Load last parameters')
+        initButtonsLayout = QHBoxLayout()
+        initButtonsLayout.addStretch(1)
+        initButtonsLayout.addWidget(initDefaultButton)
+        initButtonsLayout.addWidget(initLoadLastSelButton)
+        initDefaultButton.clicked.connect(self.restoreDefaultInit)
+        initLoadLastSelButton.clicked.connect(
+            partial(loadFunc, f'{self.model_name}.init', self.init_argsWidgets)
         )
 
         segmentGroupBox, self.segment2D_argsWidgets = self.createGroupParams(
             segment_params,
             'Parameters for 2D segmentation'
         )
+        segmentDefaultButton = widgets.reloadPushButton('Restore default')
+        segmentLoadLastSelButton = QPushButton('Load last parameters')
+        segmentButtonsLayout = QHBoxLayout()
+        segmentButtonsLayout.addStretch(1)
+        segmentButtonsLayout.addWidget(segmentDefaultButton)
+        segmentButtonsLayout.addWidget(segmentLoadLastSelButton)
+        segmentDefaultButton.clicked.connect(self.restoreDefaultSegment)
+        section = f'{self.model_name}.segment'
+        segmentLoadLastSelButton.clicked.connect(
+            partial(loadFunc, section, self.segment2D_argsWidgets)
+        )
 
+        cancelButton = widgets.cancelPushButton(' Cancel ')
         okButton = widgets.okPushButton(' Ok ')
-        buttonsLayout.addWidget(okButton)
+        infoButton = widgets.infoPushButton(' Help... ')
+        # restoreDefaultButton = widgets.reloadPushButton('Restore default')
 
-        infoButton = QPushButton(' More info... ')
-        infoButton.setIcon(QIcon(':info.svg'))
-        buttonsLayout.addWidget(infoButton)
-
-        cancelButton = QPushButton(' Cancel ')
         buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(infoButton)
+        # buttonsLayout.addWidget(restoreDefaultButton)
+        buttonsLayout.addWidget(okButton)
 
         buttonsLayout.setContentsMargins(0, 10, 0, 10)
 
         okButton.clicked.connect(self.ok_cb)
         infoButton.clicked.connect(self.info_params)
         cancelButton.clicked.connect(self.close)
+        # restoreDefaultButton.clicked.connect(self.restoreDefault)
 
         mainLayout.addWidget(initGroupBox)
+        mainLayout.addLayout(initButtonsLayout)
         mainLayout.addSpacing(15)
         mainLayout.addStretch(1)
         mainLayout.addWidget(segmentGroupBox)
+        mainLayout.addLayout(segmentButtonsLayout)
 
         # Add minimum size spinbox whihc is valid for all models
         artefactsGroupBox = postProcessSegmParams(
@@ -7009,9 +7037,26 @@ class QDialogModelParams(QDialog):
         self.minSolidity_DSB = artefactsGroupBox.minSolidity_DSB
         self.maxElongation_DSB = artefactsGroupBox.maxElongation_DSB
 
+        self.minSize_SB.default = self.minSize_SB.value()
+        self.minSolidity_DSB.default = self.minSolidity_DSB.value()
+        self.maxElongation_DSB.default = self.maxElongation_DSB.value()
+        self.artefactsGroupBox.default = True
+
         mainLayout.addSpacing(15)
         mainLayout.addStretch(1)
         mainLayout.addWidget(artefactsGroupBox)
+
+        postProcDefaultButton = widgets.reloadPushButton('Restore default')
+        postProcLoadLastSelButton = QPushButton('Load last parameters')
+        postProcButtonsLayout = QHBoxLayout()
+        postProcButtonsLayout.addStretch(1)
+        postProcButtonsLayout.addWidget(postProcDefaultButton)
+        postProcButtonsLayout.addWidget(postProcLoadLastSelButton)
+        postProcDefaultButton.clicked.connect(self.restoreDefaultPostprocess)
+        postProcLoadLastSelButton.clicked.connect(
+            self.loadLastSelectionPostProcess
+        )
+        mainLayout.addLayout(postProcButtonsLayout)
 
         if url is not None:
             mainLayout.addWidget(
@@ -7019,6 +7064,7 @@ class QDialogModelParams(QDialog):
                 alignment=Qt.AlignCenter
             )
 
+        mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
 
         self.setLayout(mainLayout)
@@ -7027,7 +7073,159 @@ class QDialogModelParams(QDialog):
         font.setPixelSize(13)
         self.setFont(font)
 
+        self.configPars = self.readLastSelection()
+        if self.configPars is None:
+            initLoadLastSelButton.setDisabled(True)
+            segmentLoadLastSelButton.setDisabled(True)
+            postProcLoadLastSelButton.setDisabled(True)
+
+        initLoadLastSelButton.click()
+        segmentLoadLastSelButton.click()
+        postProcLoadLastSelButton.click()
+
         # self.setModal(True)
+
+    def createGroupParams(self, ArgSpecs_list, groupName):
+        ArgWidget = namedtuple(
+            'ArgsWidgets',
+            ['name', 'type', 'widget', 'defaultVal', 'valueSetter']
+        )
+        ArgsWidgets_list = []
+        groupBox = QGroupBox(groupName)
+
+        groupBoxLayout = QGridLayout()
+        for row, ArgSpec in enumerate(ArgSpecs_list):
+            var_name = ArgSpec.name.replace('_', ' ').capitalize()
+            label = QLabel(f'{var_name}:  ')
+            groupBoxLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
+            if ArgSpec.type == bool:
+                booleanGroup = QButtonGroup()
+                booleanGroup.setExclusive(True)
+                trueRadioButton = QRadioButton('True')
+                falseRadioButton = QRadioButton('False')
+                booleanGroup.addButton(trueRadioButton)
+                booleanGroup.addButton(falseRadioButton)
+                trueRadioButton.notButton = falseRadioButton
+                falseRadioButton.notButton = trueRadioButton
+                trueRadioButton.group = booleanGroup
+                if ArgSpec.default:
+                    trueRadioButton.setChecked(True)
+                    defaultVal = True
+                else:
+                    falseRadioButton.setChecked(True)
+                    defaultVal = False
+                valueSetter = QRadioButton.setChecked
+                widget = trueRadioButton
+                groupBoxLayout.addWidget(trueRadioButton, row, 1)
+                groupBoxLayout.addWidget(falseRadioButton, row, 2)
+            elif ArgSpec.type == int:
+                spinBox = QSpinBox()
+                spinBox.setAlignment(Qt.AlignCenter)
+                spinBox.setMaximum(2147483647)
+                spinBox.setValue(ArgSpec.default)
+                defaultVal = ArgSpec.default
+                valueSetter = QSpinBox.setValue
+                widget = spinBox
+                groupBoxLayout.addWidget(spinBox, row, 1, 1, 2)
+            elif ArgSpec.type == float:
+                doubleSpinBox = QDoubleSpinBox()
+                doubleSpinBox.setAlignment(Qt.AlignCenter)
+                doubleSpinBox.setMaximum(2**32)
+                doubleSpinBox.setValue(ArgSpec.default)
+                widget = doubleSpinBox
+                defaultVal = ArgSpec.default
+                valueSetter = QDoubleSpinBox.setValue
+                groupBoxLayout.addWidget(doubleSpinBox, row, 1, 1, 2)
+            else:
+                lineEdit = QLineEdit()
+                lineEdit.setText(str(ArgSpec.default))
+                lineEdit.setAlignment(Qt.AlignCenter)
+                widget = lineEdit
+                defaultVal = str(ArgSpec.default)
+                valueSetter = QLineEdit.setText
+                groupBoxLayout.addWidget(lineEdit, row, 1, 1, 2)
+
+            argsInfo = ArgWidget(
+                name=ArgSpec.name,
+                type=ArgSpec.type,
+                widget=widget,
+                defaultVal=defaultVal,
+                valueSetter=valueSetter
+            )
+            ArgsWidgets_list.append(argsInfo)
+
+        groupBox.setLayout(groupBoxLayout)
+        return groupBox, ArgsWidgets_list
+
+    def restoreDefaultInit(self):
+        for argWidget in self.init_argsWidgets:
+            defaultVal = argWidget.defaultVal
+            widget = argWidget.widget
+            argWidget.valueSetter(widget, defaultVal)
+            if defaultVal == False:
+                argWidget.valueSetter(widget.notButton, True)
+
+    def restoreDefaultSegment(self):
+        for argWidget in self.segment2D_argsWidgets:
+            defaultVal = argWidget.defaultVal
+            widget = argWidget.widget
+            argWidget.valueSetter(widget, defaultVal)
+            if defaultVal == False:
+                argWidget.valueSetter(widget.notButton, True)
+
+    def restoreDefaultPostprocess(self):
+        self.minSize_SB.setValue(self.minSize_SB.default)
+        self.minSolidity_DSB.setValue(self.minSolidity_DSB.default)
+        self.maxElongation_DSB.setValue(self.maxElongation_DSB.default)
+        self.artefactsGroupBox.setChecked(self.artefactsGroupBox.default)
+
+    def readLastSelection(self):
+        self.ini_path = os.path.join(temp_path, 'last_params_segm_models.ini')
+        if not os.path.exists(self.ini_path):
+            return None
+
+        configPars = config.ConfigParser()
+        configPars.read(self.ini_path)
+        return configPars
+
+    def loadLastSelection(self, section, argWidgetList):
+        if self.configPars is None:
+            return
+
+        getters = ['getboolean', 'getfloat', 'getint', 'get']
+        options = self.configPars.options(section)
+        for argWidget in argWidgetList:
+            option = argWidget.name
+            val = None
+            for getter in getters:
+                try:
+                    val = getattr(self.configPars, getter)(section, option)
+                    print(val)
+                    break
+                except ValueError:
+                    pass
+            widget = argWidget.widget
+            argWidget.valueSetter(widget, val)
+
+    def loadLastSelectionPostProcess(self):
+        postProcessSection = f'{self.model_name}.postprocess'
+        minSize = self.configPars.getint(postProcessSection, 'minSize')
+        self.minSize_SB.setValue(minSize)
+
+        minSolidity = self.configPars.getfloat(
+            postProcessSection, 'minSolidity'
+        )
+        self.minSolidity_DSB.setValue(minSolidity)
+
+        maxElongation = self.configPars.getfloat(
+            postProcessSection, 'maxElongation'
+        )
+        self.maxElongation_DSB.setValue(maxElongation)
+
+        applyPostProcessing = self.configPars.getboolean(
+            postProcessSection, 'applyPostProcessing'
+        )
+        self.artefactsGroupBox.setChecked(applyPostProcessing)
 
     def info_params(self):
         from cellacdc.models import CELLPOSE_MODELS, STARDIST_MODELS
@@ -7050,58 +7248,6 @@ class QDialogModelParams(QDialog):
         self.infoWin.addText(txt)
         self.infoWin.addButton(' Ok ')
         self.infoWin.show()
-
-
-    def createGroupParams(self, ArgSpecs_list, groupName):
-        ArgWidget = namedtuple('ArgsWidgets', ['name', 'type', 'widget'])
-        ArgsWidgets_list = []
-        groupBox = QGroupBox(groupName)
-
-        groupBoxLayout = QGridLayout()
-        for row, ArgSpec in enumerate(ArgSpecs_list):
-            var_name = ArgSpec.name.replace('_', ' ').capitalize()
-            label = QLabel(f'{var_name}:  ')
-            groupBoxLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
-            if ArgSpec.type == bool:
-                trueRadioButton = QRadioButton('True')
-                falseRadioButton = QRadioButton('False')
-                if ArgSpec.default:
-                    trueRadioButton.setChecked(True)
-                else:
-                    falseRadioButton.setChecked(True)
-                widget = trueRadioButton
-                groupBoxLayout.addWidget(trueRadioButton, row, 1)
-                groupBoxLayout.addWidget(falseRadioButton, row, 2)
-            elif ArgSpec.type == int:
-                spinBox = QSpinBox()
-                spinBox.setAlignment(Qt.AlignCenter)
-                spinBox.setMaximum(2147483647)
-                spinBox.setValue(ArgSpec.default)
-                widget = spinBox
-                groupBoxLayout.addWidget(spinBox, row, 1, 1, 2)
-            elif ArgSpec.type == float:
-                doubleSpinBox = QDoubleSpinBox()
-                doubleSpinBox.setAlignment(Qt.AlignCenter)
-                doubleSpinBox.setMaximum(2**32)
-                doubleSpinBox.setValue(ArgSpec.default)
-                widget = doubleSpinBox
-                groupBoxLayout.addWidget(doubleSpinBox, row, 1, 1, 2)
-            else:
-                lineEdit = QLineEdit()
-                lineEdit.setText(str(ArgSpec.default))
-                lineEdit.setAlignment(Qt.AlignCenter)
-                widget = lineEdit
-                groupBoxLayout.addWidget(lineEdit, row, 1, 1, 2)
-
-            argsInfo = ArgWidget(
-                name=ArgSpec.name,
-                type=ArgSpec.type,
-                widget=widget,
-            )
-            ArgsWidgets_list.append(argsInfo)
-
-        groupBox.setLayout(groupBoxLayout)
-        return groupBox, ArgsWidgets_list
 
     def createSeeHereLabel(self, url):
         htmlTxt = f'<a href=\"{url}">here</a>'
@@ -7142,7 +7288,28 @@ class QDialogModelParams(QDialog):
         self.minSolidity = self.minSolidity_DSB.value()
         self.maxElongation = self.maxElongation_DSB.value()
         self.applyPostProcessing = self.artefactsGroupBox.isChecked()
+        self._saveParams()
         self.close()
+
+    def _saveParams(self):
+        if self.configPars is None:
+            self.configPars = config.ConfigParser()
+        self.configPars[f'{self.model_name}.init'] = {}
+        self.configPars[f'{self.model_name}.segment'] = {}
+        for key, val in self.init_kwargs.items():
+            self.configPars[f'{self.model_name}.init'][key] = str(val)
+        for key, val in self.segment2D_kwargs.items():
+            self.configPars[f'{self.model_name}.segment'][key] = str(val)
+
+        self.configPars[f'{self.model_name}.postprocess'] = {}
+        postProcessConfig = self.configPars[f'{self.model_name}.postprocess']
+        postProcessConfig['minSize'] = str(self.minSize)
+        postProcessConfig['minSolidity'] = str(self.minSolidity)
+        postProcessConfig['maxElongation'] = str(self.maxElongation)
+        postProcessConfig['applyPostProcessing'] = str(self.applyPostProcessing)
+
+        with open(self.ini_path, 'w') as configfile:
+            self.configPars.write(configfile)
 
     def exec_(self):
         self.show(block=True)
