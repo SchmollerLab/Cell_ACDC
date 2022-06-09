@@ -30,6 +30,12 @@ from . import prompts, apps, myutils, widgets, measurements, config
 from . import base_cca_df, base_acdc_df, html_utils, temp_path
 
 cca_df_colnames = list(base_cca_df.keys())
+acdc_df_bool_cols = [
+    'is_cell_dead',
+    'is_cell_excluded',
+    'is_history_known',
+    'corrected_assignment'
+]
 
 additional_metadata_path = os.path.join(temp_path, 'additional_metadata.json')
 last_entries_metadata_path = os.path.join(temp_path, 'last_entries_metadata.csv')
@@ -116,6 +122,37 @@ def get_endname_from_channels(filename, channels):
             return endname
         elif m is not None:
             return endname
+
+def pd_int_to_bool(acdc_df, colsToCast=None):
+    if colsToCast is None:
+        colsToCast = acdc_df_bool_cols
+    colsToCast = ['is_cell_dead', 'is_cell_excluded']
+    for col in colsToCast:
+        acdc_df[col] = acdc_df[col] > 0
+    return acdc_df
+
+def pd_bool_to_int(acdc_df, colsToCast=None, csv_path=None, inplace=True):
+    """
+    Function used to convert "FALSE" strings and booleans to 0s and 1s
+    to avoid pandas interpreting as strings or numbers
+    """
+    if not inplace:
+        acdc_df = acdc_df.copy()
+    if colsToCast is None:
+        colsToCast = acdc_df_bool_cols
+    for col in colsToCast:
+        isInt = pd.api.types.is_integer_dtype(acdc_df[col])
+        isFloat = pd.api.types.is_float_dtype(acdc_df[col])
+        isObject = pd.api.types.is_object_dtype(acdc_df[col])
+        isString = pd.api.types.is_string_dtype(acdc_df[col])
+        isBool = pd.api.types.is_bool_dtype(acdc_df[col])
+        if isFloat or isBool:
+            acdc_df[col] = acdc_df[col].astype(int)
+        elif isString or isObject:
+            acdc_df[col] = (acdc_df[col].str.lower() == 'true').astype(int)
+    if csv_path is not None:
+        acdc_df.to_csv(csv_path)
+    return acdc_df
 
 class loadData:
     def __init__(self, imgPath, user_ch_name, relPathDepth=3, QParent=None):
@@ -349,10 +386,10 @@ class loadData:
             elif load_acdc_df and is_acdc_df_file and not create_new_segm:
                 self.acdc_df_found = True
                 acdc_df = pd.read_csv(
-                      filePath, index_col=['frame_i', 'Cell_ID']
-                )
-                acdc_df = self.BooleansTo0s1s(acdc_df, inplace=True)
-                acdc_df = self.intToBoolean(acdc_df)
+                    filePath, index_col=['frame_i', 'Cell_ID']
+                ).fillna(0)
+                acdc_df = pd_bool_to_int(acdc_df, acdc_df_bool_cols, inplace=True)
+                acdc_df = pd_int_to_bool(acdc_df, acdc_df_bool_cols)
                 self.acdc_df = acdc_df
             elif load_shifts and file.endswith('align_shift.npy'):
                 self.shiftsFound = True
@@ -1001,36 +1038,6 @@ class loadData:
         if additionalMetadata is not None:
             with open(additional_metadata_path, mode='w') as file:
                 json.dump(additionalMetadata, file, indent=2)
-
-    @staticmethod
-    def BooleansTo0s1s(acdc_df, csv_path=None, inplace=True):
-        """
-        Function used to convert "FALSE" strings and booleans to 0s and 1s
-        to avoid pandas interpreting as strings or numbers
-        """
-        if not inplace:
-            acdc_df = acdc_df.copy()
-        colsToCast = ['is_cell_dead', 'is_cell_excluded']
-        for col in colsToCast:
-            isInt = pd.api.types.is_integer_dtype(acdc_df[col])
-            isFloat = pd.api.types.is_float_dtype(acdc_df[col])
-            isObject = pd.api.types.is_object_dtype(acdc_df[col])
-            isString = pd.api.types.is_string_dtype(acdc_df[col])
-            isBool = pd.api.types.is_bool_dtype(acdc_df[col])
-            if isFloat or isBool:
-                acdc_df[col] = acdc_df[col].astype(int)
-            elif isString or isObject:
-                acdc_df[col] = (acdc_df[col].str.lower() == 'true').astype(int)
-        if csv_path is not None:
-            acdc_df.to_csv(csv_path)
-        return acdc_df
-
-    def intToBoolean(self, acdc_df):
-        colsToCast = ['is_cell_dead', 'is_cell_excluded']
-        for col in colsToCast:
-            acdc_df[col] = acdc_df[col] > 0
-        return acdc_df
-
 
     def criticalExtNotValid(self, signals=None):
         err_title = f'File extension {self.ext} not valid.'

@@ -902,9 +902,7 @@ class saveDataWorker(QObject):
 
                     # Build acdc_df and index it in each frame_i of acdc_df_li
                     if acdc_df is not None and np.any(lab):
-                        acdc_df = load.loadData.BooleansTo0s1s(
-                            acdc_df, inplace=False
-                        )
+                        acdc_df = load.pd_bool_to_int(acdc_df, inplace=False)
                         rp = data_dict['regionprops']
                         try:
                             if save_metrics:
@@ -3491,9 +3489,10 @@ class guiWin(QMainWindow):
                     return
                 else:
                     ID = editID_prompt.EntryID
-                    obj_idx = posData.IDs.index(ID)
-                    y, x = posData.rp[obj_idx].centroid
-                    xdata, ydata = int(x), int(y)
+
+            obj_idx = posData.IDs.index(ID)
+            y, x = posData.rp[obj_idx].centroid
+            xdata, ydata = int(x), int(y)
 
             posData.disableAutoActivateViewerWindow = True
             prev_IDs = [obj.label for obj in posData.rp]
@@ -7754,8 +7753,8 @@ class guiWin(QMainWindow):
             if self.debug:
                 posData = self.data[self.pos_i]
                 print(posData.editID_info)
-                print(posData.allData_li[posData.frame_i]['acdc_df'])
-                self.store_data()
+                # print(posData.allData_li[posData.frame_i]['acdc_df'])
+                # self.store_data()
                 pass
         try:
             posData = self.data[self.pos_i]
@@ -10960,6 +10959,8 @@ class guiWin(QMainWindow):
         return labels
 
     def _get_editID_info(self, df):
+        if 'was_manually_edited' not in df.columns:
+            return []
         manually_edited_df = df[df['was_manually_edited'] > 0]
         editID_info = [
             (row.y_centroid, row.x_centroid, row.Index)
@@ -13553,9 +13554,13 @@ class guiWin(QMainWindow):
 
     def manuallyEditTracking(self, tracked_lab, allIDs):
         posData = self.data[self.pos_i]
+        infoToRemove = []
         # Correct tracking with manually changed IDs
         for y, x, new_ID in posData.editID_info:
             old_ID = tracked_lab[y, x]
+            if old_ID == 0:
+                infoToRemove.append((y, x, new_ID))
+                continue
             if new_ID in allIDs:
                 tempID = numba_max(tracked_lab) + 1
                 tracked_lab[tracked_lab == old_ID] = tempID
@@ -13563,6 +13568,8 @@ class guiWin(QMainWindow):
                 tracked_lab[tracked_lab == tempID] = new_ID
             else:
                 tracked_lab[tracked_lab == old_ID] = new_ID
+        for info in infoToRemove:
+            posData.editID_info.remove(info)
 
     def undo_changes_future_frames(self, from_frame_i=None):
         posData = self.data[self.pos_i]
