@@ -1220,11 +1220,9 @@ class segmWin(QMainWindow):
         if self.allowExit:
             exit('Execution aborted by the user')
         else:
-            msg = QMessageBox()
-            closeAnswer = msg.critical(
-               self, 'Execution aborted',
-               'Segmentation task aborted.',
-               msg.Ok
+            msg = widgets.myMessageBox(showCentered=False)
+            closeAnswer = msg.information(
+               self, 'Execution aborted', 'Segmentation task aborted.'
             )
             return True
 
