@@ -2733,7 +2733,7 @@ class QDialogMetadata(QDialog):
         if imgDataShape is not None:
             label = QLabel(
                 f"""
-                <p style="font-size:11pt">
+                <p style="font-size:13px">
                     <i>Image data shape</i> = <b>{imgDataShape}</b><br>
                 </p>
                 """)
