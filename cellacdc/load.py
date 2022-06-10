@@ -126,9 +126,11 @@ def get_endname_from_channels(filename, channels):
 def pd_int_to_bool(acdc_df, colsToCast=None):
     if colsToCast is None:
         colsToCast = acdc_df_bool_cols
-    colsToCast = ['is_cell_dead', 'is_cell_excluded']
     for col in colsToCast:
-        acdc_df[col] = acdc_df[col] > 0
+        try:
+            acdc_df[col] = acdc_df[col] > 0
+        except KeyError:
+            continue
     return acdc_df
 
 def pd_bool_to_int(acdc_df, colsToCast=None, csv_path=None, inplace=True):
@@ -141,15 +143,18 @@ def pd_bool_to_int(acdc_df, colsToCast=None, csv_path=None, inplace=True):
     if colsToCast is None:
         colsToCast = acdc_df_bool_cols
     for col in colsToCast:
-        isInt = pd.api.types.is_integer_dtype(acdc_df[col])
-        isFloat = pd.api.types.is_float_dtype(acdc_df[col])
-        isObject = pd.api.types.is_object_dtype(acdc_df[col])
-        isString = pd.api.types.is_string_dtype(acdc_df[col])
-        isBool = pd.api.types.is_bool_dtype(acdc_df[col])
-        if isFloat or isBool:
-            acdc_df[col] = acdc_df[col].astype(int)
-        elif isString or isObject:
-            acdc_df[col] = (acdc_df[col].str.lower() == 'true').astype(int)
+        try:
+            isInt = pd.api.types.is_integer_dtype(acdc_df[col])
+            isFloat = pd.api.types.is_float_dtype(acdc_df[col])
+            isObject = pd.api.types.is_object_dtype(acdc_df[col])
+            isString = pd.api.types.is_string_dtype(acdc_df[col])
+            isBool = pd.api.types.is_bool_dtype(acdc_df[col])
+            if isFloat or isBool:
+                acdc_df[col] = acdc_df[col].astype(int)
+            elif isString or isObject:
+                acdc_df[col] = (acdc_df[col].str.lower() == 'true').astype(int)
+        except KeyError:
+            continue
     if csv_path is not None:
         acdc_df.to_csv(csv_path)
     return acdc_df
