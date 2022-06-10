@@ -710,7 +710,7 @@ class mainWin(QMainWindow):
                 print('Failed to restart Cell-ACDC. Please restart manually')
         else:
             print('**********************************************')
-            print('Cell-ACDC closed. Have a good day!')
+            print(f'Cell-ACDC closed. {myutils.get_salute_string()}')
             print('**********************************************')
             exit()
 

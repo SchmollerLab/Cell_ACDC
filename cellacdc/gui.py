@@ -1078,6 +1078,7 @@ class guiWin(QMainWindow):
         self.buttonToRestore = buttonToRestore
         self.mainWin = mainWin
         self.app = app
+        self.closeGUI = False
 
     def run(self):
         self.is_win = sys.platform.startswith("win")
@@ -1116,6 +1117,7 @@ class guiWin(QMainWindow):
         self.currentPropsID = 0
         self.isSegm3D = False
         self.newSegmEndName = ''
+        self.closeGUI = False
 
         self.setWindowTitle("Cell-ACDC - GUI")
         self.setWindowIcon(QIcon(":assign-motherbud.svg"))
@@ -14774,6 +14776,15 @@ class guiWin(QMainWindow):
             self.titleLabel.setText('Saved!')
         self.saveWin.workerFinished = True
         self.saveWin.close()
+        if self.closeGUI:
+            salute_string = myutils.get_salute_string()
+            msg = widgets.myMessageBox()
+            txt = html_utils.paragraph(
+                'Data <b>saved!</b>. The GUI will now close.<br><br>'
+                f'{salute_string}'
+            )
+            msg.information(self, 'Data saved', txt)
+            self.close()
 
     def copyContent(self):
         pass
@@ -14835,10 +14846,13 @@ class guiWin(QMainWindow):
                 buttonsTexts=('Cancel', 'No', 'Yes')
             )
             if msg.clickedButton == yes:
+                self.closeGUI = True
                 cancel = self.saveData()
+                event.ignore()
                 if cancel:
-                    event.ignore()
+                    self.closeGUI = False
                     return
+                saveData
             elif msg.cancel:
                 event.ignore()
                 return
