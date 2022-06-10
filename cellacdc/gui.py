@@ -14852,7 +14852,6 @@ class guiWin(QMainWindow):
                 if cancel:
                     self.closeGUI = False
                     return
-                saveData
             elif msg.cancel:
                 event.ignore()
                 return
