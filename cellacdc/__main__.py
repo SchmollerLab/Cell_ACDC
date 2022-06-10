@@ -703,7 +703,7 @@ class mainWin(QMainWindow):
                     os.execv(sys.argv[0], sys.argv)
                     exit()
                 else:
-                    os.execv(sys.executable, ['python'] + sys.argv)
+                    os.execv(sys.executable, ['python3'] + sys.argv)
             except Exception as e:
                 traceback.print_exc()
                 print('-----------------------------------------')
