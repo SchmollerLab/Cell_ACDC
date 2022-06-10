@@ -2033,7 +2033,7 @@ class dataPrepWin(QMainWindow):
 
         if not is_pos_folder and not is_images_folder:
             select_folder = load.select_exp_folder()
-            values = select_folder.get_values_segmGUI(exp_path)
+            values = select_folder.get_values_dataprep(exp_path)
             if not values:
                 txt = (
                     'The selected folder:\n\n '

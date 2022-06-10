@@ -5953,11 +5953,15 @@ class embed_tk:
         self.root = root
 
 class QtSelectItems(QDialog):
-    def __init__(self, title, items, informativeText,
-                 CbLabel='Select value:  ', parent=None):
+    def __init__(
+            self, title, items, informativeText,
+            CbLabel='Select value:  ', parent=None,
+            showInFileManagerPath=None
+        ):
         self.cancel = True
         self.selectedItemsText = ''
         self.selectedItemsIdx = None
+        self.showInFileManagerPath = showInFileManagerPath
         self.items = items
         super().__init__(parent)
         self.setWindowTitle(title)
@@ -5982,10 +5986,15 @@ class QtSelectItems(QDialog):
 
         okButton = widgets.okPushButton('Ok')
         cancelButton = widgets.cancelPushButton('Cancel')
+        if showInFileManagerPath is not None:
+            txt = myutils.get_open_filemaneger_os_string()
+            showInFileManagerButton = widgets.showInFileManagerButton(txt)
 
         bottomLayout.addStretch(1)
         bottomLayout.addWidget(cancelButton)
         bottomLayout.addSpacing(20)
+        if showInFileManagerPath is not None:
+            bottomLayout.addWidget(showInFileManagerButton)
         bottomLayout.addWidget(okButton)
 
         multiPosButton = QPushButton('Multiple selection')
@@ -6013,6 +6022,18 @@ class QtSelectItems(QDialog):
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
         multiPosButton.toggled.connect(self.toggleMultiSelection)
+        if showInFileManagerPath is not None:
+            showInFileManagerButton.clicked.connect(self.showInFileManager)
+
+    def showInFileManager(self):
+        selectedTexts, _ = self.getSelectedItems()
+        folder = selectedTexts[0].split('(')[0].strip()
+        path = os.path.join(self.showInFileManagerPath, folder)
+        if os.path.exists(path) and os.path.isdir(path):
+            showPath = path
+        else:
+            showPath = self.showInFileManagerPath
+        myutils.showInExplorer(showPath)
 
     def toggleMultiSelection(self, checked):
         if checked:
@@ -6034,19 +6055,22 @@ class QtSelectItems(QDialog):
             self.ListBox.hide()
             self.ComboBox.show()
 
-
-    def ok_cb(self, event):
-        self.cancel = False
+    def getSelectedItems(self):
         if self.multiPosButton.isChecked():
             selectedItems = self.ListBox.selectedItems()
             selectedItemsText = [item.text() for item in selectedItems]
-            self.selectedItemsText = natsorted(selectedItemsText)
-            self.selectedItemsIdx = [
+            selectedItemsText = natsorted(selectedItemsText)
+            selectedItemsIdx = [
                 self.items.index(txt) for txt in self.selectedItemsText
             ]
         else:
-            self.selectedItemsText = [self.ComboBox.currentText()]
-            self.selectedItemsIdx = [self.ComboBox.currentIndex()]
+            selectedItemsText = [self.ComboBox.currentText()]
+            selectedItemsIdx = [self.ComboBox.currentIndex()]
+        return selectedItemsText, selectedItemsIdx
+
+    def ok_cb(self, event):
+        self.cancel = False
+        self.selectedItemsText, self.selectedItemsIdx = self.getSelectedItems()
         self.close()
 
     def exec_(self):

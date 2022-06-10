@@ -73,6 +73,14 @@ def exception_handler(func):
         return result
     return inner_function
 
+def get_open_filemaneger_os_string():
+    if is_win:
+        return 'Show in Explorer...'
+    elif is_mac:
+        return 'Reveal in Finder...'
+    elif is_linux:
+        return 'Show in File Manager...'
+
 def filterCommonStart(images_path):
     startNameLen = 6
     ls = listdir(images_path)

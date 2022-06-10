@@ -1067,17 +1067,21 @@ class loadData:
             raise FileNotFoundError(err_title)
 
 class select_exp_folder:
-    def QtPrompt(self, parentQWidget, values,
-                       current=0,
-                       title='Select Position folder',
-                       CbLabel="Select \'Position_n\' folder to analyze:",
-                       showinexplorer_button=False,
-                       full_paths=None, allow_abort=True,
-                       show=False, toggleMulti=False):
+    def __init__(self):
+        self.exp_path = None
+
+    def QtPrompt(
+            self, parentQWidget, values,
+            current=0, title='Select Position folder',
+            CbLabel="Select \'Position_n\' folder to analyze:",
+            showinexplorer_button=False, full_paths=None,
+            allow_abort=True, show=False, toggleMulti=False
+        ):
         font = QtGui.QFont()
         font.setPixelSize(13)
         win = apps.QtSelectItems(
-            title, values, '', CbLabel=CbLabel, parent=parentQWidget
+            title, values, '', CbLabel=CbLabel, parent=parentQWidget,
+            showInFileManagerPath=self.exp_path
         )
         win.setFont(font)
         toFront = win.windowState() & ~Qt.WindowMinimized | Qt.WindowActive
@@ -1094,32 +1098,64 @@ class select_exp_folder:
             ]
 
     def get_values_segmGUI(self, exp_path):
-        pos_foldernames = natsorted(myutils.listdir(exp_path))
-        pos_foldernames = [f for f in pos_foldernames
-                           if f.find('Position_')!=-1
-                           and os.path.isdir(f'{exp_path}/{f}')]
+        self.exp_path = exp_path
+        pos_foldernames = myutils.get_pos_foldernames(exp_path)
         self.pos_foldernames = pos_foldernames
         values = []
         for pos in pos_foldernames:
             last_tracked_i_found = False
             pos_path = f'{exp_path}/{pos}'
-            if os.path.isdir(pos_path):
-                images_path = f'{exp_path}/{pos}/Images'
-                filenames = myutils.listdir(images_path)
-                for filename in filenames:
-                    if filename.find('acdc_output.csv') != -1:
-                        last_tracked_i_found = True
-                        acdc_df_path = f'{images_path}/{filename}'
-                        acd_df = pd.read_csv(acdc_df_path)
-                        last_tracked_i = max(acd_df['frame_i'])
-                if last_tracked_i_found:
-                    values.append(f'{pos} (Last tracked frame: {last_tracked_i+1})')
-                else:
-                    values.append(pos)
+            images_path = f'{exp_path}/{pos}/Images'
+            filenames = myutils.listdir(images_path)
+            for filename in filenames:
+                if filename.find('acdc_output.csv') != -1:
+                    last_tracked_i_found = True
+                    acdc_df_path = f'{images_path}/{filename}'
+                    acd_df = pd.read_csv(acdc_df_path)
+                    last_tracked_i = max(acd_df['frame_i'])
+                    break
+            if last_tracked_i_found:
+                values.append(f'{pos} (Last tracked frame: {last_tracked_i+1})')
+            else:
+                values.append(pos)
+        self.values = values
+        return values
+
+    def get_values_dataprep(self, exp_path):
+        self.exp_path = exp_path
+        pos_foldernames = myutils.get_pos_foldernames(exp_path)
+        self.pos_foldernames = pos_foldernames
+        values = []
+        for pos in pos_foldernames:
+            is_prepped = False
+            pos_path = f'{exp_path}/{pos}'
+            images_path = f'{exp_path}/{pos}/Images'
+            filenames = myutils.listdir(images_path)
+            for filename in filenames:
+                if filename.endswith('dataPrepROIs_coords.csv'):
+                    is_prepped = True
+                    break
+                elif filename.endswith('dataPrep_bkgrROIs.json'):
+                    is_prepped = True
+                    break
+                elif filename.endswith('aligned.npz'):
+                    is_prepped = True
+                    break
+                elif filename.endswith('align_shift.npy'):
+                    is_prepped = True
+                    break
+                elif filename.endswith('bkgrRoiData.npz'):
+                    is_prepped = True
+                    break
+            if is_prepped:
+                values.append(f'{pos} (already prepped)')
+            else:
+                values.append(pos)
         self.values = values
         return values
 
     def get_values_cca(self, exp_path):
+        self.exp_path = exp_path
         pos_foldernames = natsorted(myutils.listdir(exp_path))
         pos_foldernames = [pos for pos in pos_foldernames
                                if re.match(r'Position_(\d+)', pos)]
