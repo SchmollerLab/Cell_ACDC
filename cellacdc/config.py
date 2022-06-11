@@ -29,4 +29,8 @@ ap.add_argument(
     )
 )
 
+# Add dummy argument for stupid Jupyter
+ap.add_argument('-f')
+
+
 parser_args = vars(ap.parse_args())
