@@ -2713,7 +2713,8 @@ class QDialogMetadata(QDialog):
             PhysicalSizeZ, PhysicalSizeY, PhysicalSizeX,
             ask_SizeT, ask_TimeIncrement, ask_PhysicalSizes,
             parent=None, font=None, imgDataShape=None, posData=None,
-            singlePos=False, askSegm3D=True, additionalValues=None
+            singlePos=False, askSegm3D=True, additionalValues=None,
+            forceEnableAskSegm3D=False
         ):
         self.cancel = True
         self.ask_TimeIncrement = ask_TimeIncrement
@@ -2732,11 +2733,10 @@ class QDialogMetadata(QDialog):
 
         if imgDataShape is not None:
             label = QLabel(
-                f"""
-                <p style="font-size:13px">
-                    <i>Image data shape</i> = <b>{imgDataShape}</b><br>
-                </p>
-                """)
+                html_utils.paragraph(
+                    '<i>Image data shape</i> = <b>{imgDataShape}</b><br>'
+                )
+            )
             mainLayout.addWidget(label, alignment=Qt.AlignCenter)
 
         row = 0
@@ -2835,7 +2835,15 @@ class QDialogMetadata(QDialog):
         self.isSegm3Dtoggle = widgets.Toggle()
         if posData is not None:
             self.isSegm3Dtoggle.setChecked(posData.isSegm3D())
-            if posData.segmFound is not None and posData.segmFound:
+            disableToggle = (
+                # Disable toggle if not force enable and if
+                # segm data was found (we cannot change the shaoe of
+                # loaded segmentation in the GUI)
+                posData.segmFound is not None
+                and posData.segmFound
+                and not forceEnableAskSegm3D
+            )
+            if disableToggle:
                 self.isSegm3Dtoggle.setDisabled(True)
         self.isSegm3DLabel = QLabel('3D segmentation (z-stacks)')
         gridLayout.addWidget(
@@ -3006,6 +3014,9 @@ class QDialogMetadata(QDialog):
             'In any case, if you choose to activate <b>3D segmentation</b> then the '
             'segmentation mask will have the <b>same number of z-slices '
             'of the image data</b>.<br><br>'
+            'Additionally, in the model parameters window, you will be able '
+            'to choose if you want to segment the <b>entire 3D volume at once</b> '
+            'or use the <b>2D model on each z-slice</b>, one by one.<br><br>'
             '<i>NOTE: if the toggle is disabled it means you already '
             'loaded segmentation data and the shape cannot be changed now.<br>'
             'if you need to start with a blank segmentation, '
@@ -6061,7 +6072,7 @@ class QtSelectItems(QDialog):
             selectedItemsText = [item.text() for item in selectedItems]
             selectedItemsText = natsorted(selectedItemsText)
             selectedItemsIdx = [
-                self.items.index(txt) for txt in self.selectedItemsText
+                self.items.index(txt) for txt in selectedItemsText
             ]
         else:
             selectedItemsText = [self.ComboBox.currentText()]
@@ -7010,7 +7021,7 @@ class QDialogModelParams(QDialog):
 
         segmentGroupBox, self.segment2D_argsWidgets = self.createGroupParams(
             segment_params,
-            'Parameters for 2D segmentation'
+            'Parameters for segmentation'
         )
         segmentDefaultButton = widgets.reloadPushButton('Restore default')
         segmentLoadLastSelButton = QPushButton('Load last parameters')
@@ -7119,7 +7130,7 @@ class QDialogModelParams(QDialog):
 
         groupBoxLayout = QGridLayout()
         for row, ArgSpec in enumerate(ArgSpecs_list):
-            var_name = ArgSpec.name.replace('_', ' ').capitalize()
+            var_name = ArgSpec.name.replace('_', ' ').title()
             label = QLabel(f'{var_name}:  ')
             groupBoxLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
             if ArgSpec.type == bool:
@@ -7217,14 +7228,17 @@ class QDialogModelParams(QDialog):
             return
 
         getters = ['getboolean', 'getfloat', 'getint', 'get']
-        options = self.configPars.options(section)
+        try:
+            options = self.configPars.options(section)
+        except Exception:
+            return
+
         for argWidget in argWidgetList:
             option = argWidget.name
             val = None
             for getter in getters:
                 try:
                     val = getattr(self.configPars, getter)(section, option)
-                    print(val)
                     break
                 except ValueError:
                     pass
@@ -7233,6 +7247,10 @@ class QDialogModelParams(QDialog):
 
     def loadLastSelectionPostProcess(self):
         postProcessSection = f'{self.model_name}.postprocess'
+
+        if postProcessSection not in self.configPars.sections():
+            return
+
         minSize = self.configPars.getint(postProcessSection, 'minSize')
         self.minSize_SB.setValue(minSize)
 
