@@ -205,7 +205,7 @@ def label_3d_segm(labels):
     rp_split_lab = skimage.measure.regionprops(labels)
     merge_lab = skimage.measure.label(labels)
     rp_merge_lab = skimage.measure.regionprops(merge_lab)
-    for obj in rp_before:
+    for obj in rp_split_lab:
         pass
 
     return labels
