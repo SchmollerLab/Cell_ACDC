@@ -32,7 +32,10 @@ class Model:
             self, image,
             diameter=0.0,
             flow_threshold=0.4,
-            cellprob_threshold=0.0
+            cellprob_threshold=0.0,
+            min_size=-1,
+            normalize=True,
+            segment_3D_volume=False
         ):
         # Preprocess image
         # image = image/image.max()
@@ -40,11 +43,32 @@ class Model:
         # image = skimage.exposure.equalize_adapthist(image)
 
         # Run cellpose eval
-        lab = self.model.eval(
-            image.astype(np.float32),
-            channels=[0,0],
-            diameter=diameter,
-            flow_threshold=flow_threshold,
-            cellprob_threshold=cellprob_threshold
-        )[0]
+        if not segment_3D_volume and image.ndim == 3:
+            lab = np.zeros(image.shape, dtype=np.uint16)
+            for i, _img in enumerate(image):
+                _lab2D = self.model.eval(
+                    _img.astype(np.float32),
+                    channels=[0,0],
+                    diameter=diameter,
+                    flow_threshold=flow_threshold,
+                    cellprob_threshold=cellprob_threshold,
+                    min_size=min_size,
+                    normalize=normalize,
+                    do_3D=segment_3D_volume
+                )[0]
+                lab[i] = _lab2D
+        else:
+            lab = self.model.eval(
+                image.astype(np.float32),
+                channels=[0,0],
+                diameter=diameter,
+                flow_threshold=flow_threshold,
+                cellprob_threshold=cellprob_threshold,
+                min_size=min_size,
+                normalize=normalize,
+                do_3D=segment_3D_volume
+            )[0]
         return lab
+
+def url_help():
+    return 'https://cellpose.readthedocs.io/en/latest/api.html'

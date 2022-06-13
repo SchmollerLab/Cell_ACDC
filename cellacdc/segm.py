@@ -543,8 +543,10 @@ class segmWin(QMainWindow):
         self.maxElongation = win.maxElongation
         self.applyPostProcessing = win.applyPostProcessing
 
+        init_kwargs = win.init_kwargs
+        
         # Initialize model
-        self.model = acdcSegment.Model(**win.init_kwargs)
+        self.model = acdcSegment.Model(**init_kwargs)
 
         ch_name_selector = prompts.select_channel_name(
             which_channel='segm', allow_abort=True
@@ -704,8 +706,10 @@ class segmWin(QMainWindow):
             ask_SizeT=True,
             ask_TimeIncrement=False,
             ask_PhysicalSizes=False,
-            save=True
+            save=True,
+            forceEnableAskSegm3D=True
         )
+        self.isSegm3D = posData.isSegm3D
         self.SizeT = posData.SizeT
         self.SizeZ = posData.SizeZ
         if not proceed:

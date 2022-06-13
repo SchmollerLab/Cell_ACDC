@@ -187,6 +187,29 @@ def align_frames_2D(
             # plt.show()
     return data_aligned, registered_shifts
 
+def label_3d_segm(labels):
+    """Label objects in 3D array that is the result of applying
+    2D segmentation model on each z-slice.
+
+    Parameters
+    ----------
+    labels : Numpy array
+        Array of labels with shape (Z, Y, X).
+
+    Returns
+    -------
+    Numpy array
+        Labelled array with shape (Z, Y, X).
+
+    """
+    rp_split_lab = skimage.measure.regionprops(labels)
+    merge_lab = skimage.measure.label(labels)
+    rp_merge_lab = skimage.measure.regionprops(merge_lab)
+    for obj in rp_before:
+        pass
+
+    return labels
+
 def get_objContours(obj):
     contours, _ = cv2.findContours(
                            obj.image.astype(np.uint8),

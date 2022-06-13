@@ -926,7 +926,8 @@ class loadData:
             ask_PhysicalSizes=False,
             singlePos=False,
             save=False,
-            askSegm3D=True
+            askSegm3D=True,
+            forceEnableAskSegm3D=False,
         ):
         font = QtGui.QFont()
         font.setPixelSize(13)
@@ -936,7 +937,8 @@ class loadData:
             ask_SizeT, ask_TimeIncrement, ask_PhysicalSizes,
             parent=self.parent, font=font, imgDataShape=self.img_data_shape,
             posData=self, singlePos=singlePos, askSegm3D=askSegm3D,
-            additionalValues=self._additionalMetadataValues
+            additionalValues=self._additionalMetadataValues,
+            forceEnableAskSegm3D=forceEnableAskSegm3D
         )
         metadataWin.setFont(font)
         metadataWin.exec_()
