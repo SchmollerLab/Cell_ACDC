@@ -6061,7 +6061,7 @@ class QtSelectItems(QDialog):
             selectedItemsText = [item.text() for item in selectedItems]
             selectedItemsText = natsorted(selectedItemsText)
             selectedItemsIdx = [
-                self.items.index(txt) for txt in self.selectedItemsText
+                self.items.index(txt) for txt in selectedItemsText
             ]
         else:
             selectedItemsText = [self.ComboBox.currentText()]

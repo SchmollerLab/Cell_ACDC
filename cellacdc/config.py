@@ -29,4 +29,7 @@ ap.add_argument(
     )
 )
 
+# Add a -t argument for Jupyter notebook
+ap.add_argument(-t)
+
 parser_args = vars(ap.parse_args())
