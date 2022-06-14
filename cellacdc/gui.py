@@ -6599,19 +6599,24 @@ class guiWin(QMainWindow):
             delROIs_info['rois'].append(roi)
             delROIs_info['delMasks'].append(np.zeros_like(posData.lab))
             delROIs_info['delIDsROI'].append(set())
-        self.ax2.addItem(roi)
+        if self.labelsGrad.hideLabelsImgAction.isChecked():
+            self.ax1.addItem(roi)
+        else:
+            self.ax2.addItem(roi)
 
     def getDelROI(self, xl=None, yb=None, w=32, h=32):
         posData = self.data[self.pos_i]
         if xl is None:
-            xRange, yRange = self.ax2.viewRange()
+            xRange, yRange = self.ax1.viewRange()
             xl, yb = abs(xRange[0]), abs(yRange[0])
-        Y, X = self.get_2Dlab(posData.lab).shape
-        roi = pg.ROI([xl, yb], [w, h],
-                     rotatable=False,
-                     removable=True,
-                     pen=pg.mkPen(color='r'),
-                     maxBounds=QRectF(QRect(0,0,X,Y)))
+        Y, X = self.currentLab2D.shape
+        roi = pg.ROI(
+            [xl, yb], [w, h],
+            rotatable=False,
+            removable=True,
+            pen=pg.mkPen(color='r'),
+            maxBounds=QRectF(QRect(0,0,X,Y))
+        )
 
         roi.handleSize = 7
 
@@ -6630,17 +6635,19 @@ class guiWin(QMainWindow):
         roi.addScaleHandle([1, 0], [0, 1])
 
         roi.sigRegionChanged.connect(self.ROImoving)
-        roi.sigRegionChangeFinished.connect(self.cropROIovingFinished)
+        roi.sigRegionChangeFinished.connect(self.cropROImovingFinished)
         return roi
 
     def ROImoving(self, roi):
+        print(roi.pos())
+        print(roi.size())
         roi.setPen(color=(255,255,0))
         # First bring back IDs if the ROI moved away
         self.restoreDelROIlab(roi)
         self.update_rp()
         self.setImageImg2()
 
-    def cropROIovingFinished(self, roi):
+    def cropROImovingFinished(self, roi):
         roi.setPen(color='r')
         self.update_rp()
         self.updateALLimg()
@@ -6656,13 +6663,15 @@ class guiWin(QMainWindow):
         ROImask = np.zeros(self.currentLab2D.shape, bool)
         ROImask[y0:y0+h, x0:x0+w] = True
         overlapROIdelIDs = np.unique(delMask[ROImask])
+        lab2D = self.get_2Dlab(posData.lab)
         for ID in delIDs:
             if ID>0 and ID not in overlapROIdelIDs and not enforce:
-                posData.lab[delMask==ID] = ID
+                lab2D[delMask==ID] = ID
                 delMask[delMask==ID] = 0
             elif ID>0 and enforce:
-                posData.lab[delMask==ID] = ID
+                lab2D[delMask==ID] = ID
                 delMask[delMask==ID] = 0
+        self.set_2Dlab(lab2D)
 
     def getDelROIlab(self):
         posData = self.data[self.pos_i]
@@ -12392,7 +12401,7 @@ class guiWin(QMainWindow):
 
     def hideLabels(self, checked):
         if checked:
-            self.addDelRoiAction.setDisabled(True)
+            # self.addDelRoiAction.setDisabled(True)
             self.ax2.hide()
             oldLink = self.ax2.vb.linkedView(self.ax1.vb.YAxis)
             try:
@@ -12839,7 +12848,10 @@ class guiWin(QMainWindow):
         for roi in delROIs_info['rois']:
             if roi in self.ax2.items:
                 continue
-            self.ax2.addItem(roi)
+            if self.labelsGrad.hideLabelsImgAction.isChecked():
+                self.ax1.addItem(roi)
+            else:
+                self.ax2.addItem(roi)
 
     def addNewItems(self, newID):
         posData = self.data[self.pos_i]
