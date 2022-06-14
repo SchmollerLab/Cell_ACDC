@@ -12463,9 +12463,18 @@ class guiWin(QMainWindow):
             self.graphLayout.removeItem(self.titleLabel)
             self.graphLayout.addItem(self.titleLabel, row=0, col=1)
             self.mainLayout.setAlignment(self.bottomLayout, Qt.AlignCenter)
-            self.ax1.autoRange()
             self.df_settings.at['isLabelsVisible', 'value'] = 'No'
             self.df_settings.to_csv(self.settings_csv_path)
+            # Move del ROIs to the left image
+            for posData in self.data:
+                delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
+                for roi in delROIs_info['rois']:
+                    if roi not in self.ax2.items:
+                        continue
+
+                    self.ax1.addItem(roi)
+                    # self.ax2.removeItem(roi)
+            QTimer.singleShot(200, self.autoRange)
         else:
             self.graphLayout.removeItem(self.titleLabel)
             self.graphLayout.addItem(self.titleLabel, row=0, col=1, colspan=2)
@@ -12478,7 +12487,8 @@ class guiWin(QMainWindow):
             self.updateALLimg()
             self.ax2.vb.setYLink(self.ax1.vb)
             self.ax2.vb.setXLink(self.ax1.vb)
-            self.ax2.autoRange()
+            QTimer.singleShot(200, self.autoRange)
+
         self.setBottomLayoutStretch()
 
     def setBottomLayoutStretch(self):
