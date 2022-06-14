@@ -1305,7 +1305,7 @@ def install_package_msg(pkg_name, note='', parent=None):
     msg = widgets.myMessageBox()
     if pkg_name == 'BayesianTracker':
         pkg_name = 'btrack'
-    txt = (f"""
+    txt = html_utils.paragraph(f"""
     <p>
         Cell-ACDC is going to <b>download and install</b>
         <code>{pkg_name}</code>.<br><br>
