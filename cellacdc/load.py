@@ -152,6 +152,9 @@ def pd_bool_to_int(acdc_df, colsToCast=None, csv_path=None, inplace=True):
             if isFloat or isBool:
                 acdc_df[col] = acdc_df[col].astype(int)
             elif isString or isObject:
+                # Object data type can have mixed data types so we first convert
+                # to strings
+                acdc_df[col] = acdc_df[col].astype(str)
                 acdc_df[col] = (acdc_df[col].str.lower() == 'true').astype(int)
         except KeyError:
             continue

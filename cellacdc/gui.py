@@ -901,10 +901,10 @@ class saveDataWorker(QObject):
                     acdc_df = data_dict['acdc_df']
 
                     # Build acdc_df and index it in each frame_i of acdc_df_li
-                    if acdc_df is not None and np.any(lab):
-                        acdc_df = load.pd_bool_to_int(acdc_df, inplace=False)
-                        rp = data_dict['regionprops']
+                    if acdc_df is not None and np.any(lab) and not self.saveOnlySegm:
                         try:
+                            acdc_df = load.pd_bool_to_int(acdc_df, inplace=False)
+                            rp = data_dict['regionprops']
                             if save_metrics:
                                 acdc_df = self.addMetrics_acdc_df(
                                     acdc_df, rp, frame_i, lab, posData
@@ -928,6 +928,10 @@ class saveDataWorker(QObject):
                     exec_time = t - self.time_last_pbar_update
                     self.progressBar.emit(1, -1, exec_time)
                     self.time_last_pbar_update = t
+
+                # Save segmentation file
+                np.savez_compressed(segm_npz_path, np.squeeze(segm_npy))
+                posData.segm_data = segm_npy
 
                 if add_user_channel_data:
                     posData.fluo_data_dict.pop(posData.filename)
@@ -993,10 +997,6 @@ class saveDataWorker(QObject):
                         self.critical.emit(traceback.format_exc())
                         self.waitCond.wait(self.mutex)
                         self.mutex.unlock()
-
-                # Save segmentation file
-                np.savez_compressed(segm_npz_path, np.squeeze(segm_npy))
-                posData.segm_data = segm_npy
 
                 with open(last_tracked_i_path, 'w+') as txt:
                     txt.write(str(frame_i))
@@ -7809,8 +7809,8 @@ class guiWin(QMainWindow):
         if ev.key() == Qt.Key_T:
             if self.debug:
                 posData = self.data[self.pos_i]
-                print(posData.editID_info)
-                # print(posData.allData_li[posData.frame_i]['acdc_df'])
+                # print(posData.editID_info)
+                print(posData.allData_li[posData.frame_i]['acdc_df'])
                 # self.store_data()
                 pass
         try:
@@ -14835,6 +14835,7 @@ class guiWin(QMainWindow):
         self.thread = QThread()
         self.worker = saveDataWorker(self)
         self.worker.mode = mode
+        self.worker.saveOnlySegm = isQuickSave
 
         self.worker.moveToThread(self.thread)
 
