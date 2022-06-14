@@ -2734,7 +2734,7 @@ class QDialogMetadata(QDialog):
         if imgDataShape is not None:
             label = QLabel(
                 html_utils.paragraph(
-                    '<i>Image data shape</i> = <b>{imgDataShape}</b><br>'
+                    f'<i>Image data shape</i> = <b>{imgDataShape}</b><br>'
                 )
             )
             mainLayout.addWidget(label, alignment=Qt.AlignCenter)
