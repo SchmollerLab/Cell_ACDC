@@ -1,0 +1,45 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: >-
+  Cell-ACDC: segment, track, annotate and quantify
+  microscopy image data
+message: >-
+  If you use this software, please cite our paper:
+  https://doi.org/10.1101/2021.09.28.462199
+type: software
+authors:
+  - given-names: Francesco
+    family-names: Padovani
+    orcid: 'https://orcid.org/0000-0003-2540-8240'
+    email: francesco.padovani@helmholtz-muenchen.de
+    affiliation: >-
+      Institute of Functional Epigenetics, Helmholtz
+      Zentrum München, 85764 Neuherberg, Germany
+  - given-names: 'Benedikt '
+    family-names: Mairhörmann
+    affiliation: >-
+      Institute of Functional Epigenetics, Helmholtz
+      Zentrum München, 85764 Neuherberg, Germany
+    orcid: 'https://orcid.org/0000-0001-8012-9303'
+  - given-names: Kurt
+    family-names: Schmoller
+    email: kurt.schmoller@helmholtz-muenchen.de
+    affiliation: >-
+      Institute of Functional Epigenetics, Helmholtz
+      Zentrum München, 85764 Neuherberg, Germany
+    orcid: 'https://orcid.org/0000-0001-5790-5204'
+  - given-names: Jette
+    family-names: Lengefeld
+    affiliation: >-
+      Department of Biosciences and Nutrition
+      (BioNut), Karolinska Institutet, Huddinge,
+      Sweden
+    orcid: 'https://orcid.org/0000-0001-6021-7613'
+  - given-names: Pascal
+    family-names: Falter-Braun
+    affiliation: >-
+      Institute of Network Biology, Helmholtz Zentrum
+      München, 85764 Neuherberg, Germany
+    orcid: 'https://orcid.org/0000-0003-2012-6746'
