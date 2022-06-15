@@ -221,7 +221,7 @@ def setupLogger(module='gui'):
     return logger, logs_path, log_path, log_filename
 
 def get_pos_foldernames(exp_path):
-    ls = natsorted(listdir(exp_path))
+    ls = listdir(exp_path)
     pos_foldernames = [
         pos for pos in ls if pos.find('Position_')!=-1
         and os.path.isdir(os.path.join(exp_path, pos))
