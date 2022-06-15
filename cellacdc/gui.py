@@ -146,7 +146,7 @@ def get_data_exception_handler(func):
                 or the segmentation file <code>{segm_filename}</code><br>
                 <b>are corrupted/damaged</b>.<br><br>
                 <b>Try moving these files</b> (one by one) outside of the
-                <code>{posData.relPath}</code> folder
+                <code>{os.path.dirname(posData.relPath)}</code> folder
                 <br>and reloading the data.<br><br>
                 More details below or in the terminal/console.<br><br>
                 Note that the <b>error details</b> from this session are
@@ -2421,7 +2421,7 @@ class guiWin(QMainWindow):
                     self.drawIDsContComboBox.AdjustToContents)
 
         # Frames scrollbar
-        self.navigateScrollBar = QScrollBar(Qt.Horizontal)
+        self.navigateScrollBar = widgets.navigateQScrollBar(Qt.Horizontal)
         self.navigateScrollBar.setDisabled(True)
         self.navigateScrollBar.setMinimum(1)
         self.navigateScrollBar.setMaximum(1)
@@ -5455,6 +5455,8 @@ class guiWin(QMainWindow):
                 # Back to current frame
                 posData.frame_i = current_frame_i
                 self.get_data()
+        posData = self.data[self.pos_i]
+        posData.updateSegmSizeT()
         self.updateALLimg()
         self.titleLabel.setText('Done', color='w')
 
@@ -5745,7 +5747,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         current_frame_i = posData.frame_i
         self.store_data()
-        for i in range(posData.frame_i, posData.segmSizeT):
+        for i in range(posData.frame_i, posData.SizeT):
             delROIs_info = posData.allData_li[i]['delROIs_info']
             if self.roi_to_del in delROIs_info['rois']:
                 posData.frame_i = i
@@ -5998,7 +6000,7 @@ class guiWin(QMainWindow):
             self.ccaTableWin.updateTable(posData.cca_df)
 
         # Correct future frames
-        for i in range(posData.frame_i+1, posData.segmSizeT):
+        for i in range(posData.frame_i+1, posData.SizeT):
             cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
             if cca_df_i is None:
                 # ith frame was not visited yet
@@ -6159,7 +6161,7 @@ class guiWin(QMainWindow):
 
 
         # Correct future frames
-        for i in range(posData.frame_i+1, posData.segmSizeT):
+        for i in range(posData.frame_i+1, posData.SizeT):
             cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
             if cca_df_i is None:
                 # ith frame was not visited yet
@@ -6283,7 +6285,7 @@ class guiWin(QMainWindow):
 
         G1_duration = 0
         # Check future frames
-        for i in range(posData.frame_i, posData.segmSizeT):
+        for i in range(posData.frame_i, posData.SizeT):
             cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
 
             if cca_df_i is None:
@@ -6494,7 +6496,7 @@ class guiWin(QMainWindow):
             self.ccaTableWin.updateTable(posData.cca_df)
 
         # Correct future frames
-        for i in range(posData.frame_i+1, posData.segmSizeT):
+        for i in range(posData.frame_i+1, posData.SizeT):
             # Get cca_df for ith frame from allData_li
             cca_df_i = self.get_cca_df(frame_i=i, return_df=True)
             if cca_df_i is None:
@@ -6612,7 +6614,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         self.warnEditingWithCca_df('Delete IDs using ROI')
         roi = self.getDelROI()
-        for i in range(posData.frame_i, posData.segmSizeT):
+        for i in range(posData.frame_i, posData.SizeT):
             delROIs_info = posData.allData_li[i]['delROIs_info']
             delROIs_info['rois'].append(roi)
             delROIs_info['delMasks'].append(np.zeros_like(posData.lab))
@@ -7317,7 +7319,7 @@ class guiWin(QMainWindow):
             # self.drawIDsContComboBox.clear()
             # self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxCcaItems)
             # self.drawIDsContComboBox.setCurrentText(currentMode)
-            self.navigateScrollBar.setMaximum(posData.segmSizeT)
+            self.navigateScrollBar.setMaximum(posData.SizeT)
         elif mode == 'Custom annotations':
             self.modeToolBar.setVisible(True)
             self.setEnabledWidgetsToolbar(False)
@@ -8054,14 +8056,14 @@ class guiWin(QMainWindow):
         """
         posData = self.data[self.pos_i]
         # Do not check the future for the last frame
-        if posData.frame_i+1 == posData.segmSizeT:
+        if posData.frame_i+1 == posData.SizeT:
             # No future frames to propagate the change to
             return False, False, None, doNotShow
 
         areFutureIDs_affected = []
         # Get number of future frames already visited and checked if future
         # frames has an ID affected by the change
-        for i in range(posData.frame_i+1, posData.segmSizeT):
+        for i in range(posData.frame_i+1, posData.SizeT):
             if posData.allData_li[i]['labels'] is None:
                 i -= 1
                 break
@@ -8230,7 +8232,7 @@ class guiWin(QMainWindow):
         # Undo all past and future frames that has a last status inserted
         # when modyfing current frame
         prevStateId = prevCcaState['id']
-        for frame_i in range(0, posData.segmSizeT):
+        for frame_i in range(0, posData.SizeT):
             if storeState:
                 cca_df_i = self.get_cca_df(frame_i=frame_i, return_df=True)
                 if cca_df_i is None:
@@ -8347,7 +8349,7 @@ class guiWin(QMainWindow):
     def repeatTrackingVideo(self):
         posData = self.data[self.pos_i]
         win = apps.selectTrackerGUI(
-            posData.segmSizeT, currentFrameNo=posData.frame_i+1
+            posData.SizeT, currentFrameNo=posData.frame_i+1
         )
         win.exec_()
         if win.cancel:
@@ -9354,7 +9356,7 @@ class guiWin(QMainWindow):
         mode = str(self.modeComboBox.currentText())
         isSegmMode =  mode == 'Segmentation and Tracking'
         posData = self.data[self.pos_i]
-        if posData.frame_i < posData.segmSizeT-1:
+        if posData.frame_i < posData.SizeT-1:
             if 'lost' in self.titleLabel.text and isSegmMode:
                 if self.warnLostCellsAction.isChecked():
                     msg = widgets.myMessageBox()
@@ -9692,6 +9694,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
 
         self.init_segmInfo_df()
+        self.connectScrollbars()
         self.initPosAttr()
         self.initFluoData()
         self.navigateScrollBar.setSliderPosition(posData.frame_i+1)
@@ -9890,30 +9893,6 @@ class guiWin(QMainWindow):
         )
 
     def init_segmInfo_df(self):
-        self.t_label.show()
-        self.navigateScrollBar.show()
-        self.navigateScrollBar.setDisabled(False)
-
-        if self.data[0].SizeZ > 1:
-            self.enableZstackWidgets(True)
-            self.zSliceScrollBar.setMaximum(self.data[0].SizeZ-1)
-            try:
-                self.zSliceScrollBar.actionTriggered.disconnect()
-                self.zSliceScrollBar.sliderReleased.disconnect()
-                self.zProjComboBox.currentTextChanged.disconnect()
-                self.zProjComboBox.activated.disconnect()
-            except Exception as e:
-                pass
-            self.zSliceScrollBar.actionTriggered.connect(
-                self.zSliceScrollBarActionTriggered
-            )
-            self.zSliceScrollBar.sliderReleased.connect(
-                self.zSliceScrollBarReleased
-            )
-            self.zProjComboBox.currentTextChanged.connect(self.updateZproj)
-            self.zProjComboBox.activated.connect(self.clearComboBoxFocus)
-            if self.isSegm3D and self.labBottomGroupbox.isChecked():
-                self.connectZSliceScrollBarLab()
         for posData in self.data:
             if posData.SizeZ > 1 and posData.segmInfo_df is not None:
                 if 'z_slice_used_gui' not in posData.segmInfo_df.columns:
@@ -9942,45 +9921,74 @@ class guiWin(QMainWindow):
                     posData.segmInfo_df = posData.segmInfo_df[unique_idx]
                 posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
 
-            if posData.SizeT == 1:
-                self.t_label.setText('Position n. ')
-                self.navigateScrollBar.setMinimum(1)
-                self.navigateScrollBar.setMaximum(len(self.data))
-                try:
-                    self.navigateScrollBar.sliderMoved.disconnect()
-                    self.navigateScrollBar.sliderReleased.disconnect()
-                    self.navigateScrollBar.actionTriggered.disconnect()
-                except TypeError:
-                    pass
-                self.navigateScrollBar.sliderMoved.connect(
-                    self.PosScrollBarMoved
-                )
-                self.navigateScrollBar.sliderReleased.connect(
-                    self.PosScrollBarReleased
-                )
-                self.navigateScrollBar.actionTriggered.connect(
-                    self.PosScrollBarAction
-                )
-            else:
-                self.navigateScrollBar.setMinimum(1)
-                if posData.last_tracked_i is not None:
-                    self.navigateScrollBar.setMaximum(posData.last_tracked_i+1)
-                try:
-                    self.navigateScrollBar.sliderMoved.disconnect()
-                    self.navigateScrollBar.sliderReleased.disconnect()
-                    self.navigateScrollBar.actionTriggered.disconnect()
-                except Exception as e:
-                    pass
-                self.t_label.setText('frame n.  ')
-                self.navigateScrollBar.sliderMoved.connect(
-                    self.framesScrollBarMoved
-                )
-                self.navigateScrollBar.sliderReleased.connect(
-                    self.framesScrollBarReleased
-                )
-                self.navigateScrollBar.actionTriggered.connect(
-                    self.framesScrollBarAction
-                )
+    def connectScrollbars(self):
+        self.t_label.show()
+        self.navigateScrollBar.show()
+        self.navigateScrollBar.setDisabled(False)
+
+        if self.data[0].SizeZ > 1:
+            self.enableZstackWidgets(True)
+            self.zSliceScrollBar.setMaximum(self.data[0].SizeZ-1)
+            try:
+                self.zSliceScrollBar.actionTriggered.disconnect()
+                self.zSliceScrollBar.sliderReleased.disconnect()
+                self.zProjComboBox.currentTextChanged.disconnect()
+                self.zProjComboBox.activated.disconnect()
+            except Exception as e:
+                pass
+            self.zSliceScrollBar.actionTriggered.connect(
+                self.zSliceScrollBarActionTriggered
+            )
+            self.zSliceScrollBar.sliderReleased.connect(
+                self.zSliceScrollBarReleased
+            )
+            self.zProjComboBox.currentTextChanged.connect(self.updateZproj)
+            self.zProjComboBox.activated.connect(self.clearComboBoxFocus)
+            if self.isSegm3D and self.labBottomGroupbox.isChecked():
+                self.connectZSliceScrollBarLab()
+
+        posData = self.data[self.pos_i]
+        if posData.SizeT == 1:
+            self.t_label.setText('Position n. ')
+            self.navigateScrollBar.setMinimum(1)
+            self.navigateScrollBar.setMaximum(len(self.data))
+            self.navigateScrollBar.setAbsoluteMaximum(len(self.data))
+            try:
+                self.navigateScrollBar.sliderMoved.disconnect()
+                self.navigateScrollBar.sliderReleased.disconnect()
+                self.navigateScrollBar.actionTriggered.disconnect()
+            except TypeError:
+                pass
+            self.navigateScrollBar.sliderMoved.connect(
+                self.PosScrollBarMoved
+            )
+            self.navigateScrollBar.sliderReleased.connect(
+                self.PosScrollBarReleased
+            )
+            self.navigateScrollBar.actionTriggered.connect(
+                self.PosScrollBarAction
+            )
+        else:
+            self.navigateScrollBar.setMinimum(1)
+            self.navigateScrollBar.setAbsoluteMaximum(posData.SizeT)
+            if posData.last_tracked_i is not None:
+                self.navigateScrollBar.setMaximum(posData.last_tracked_i+1)
+            try:
+                self.navigateScrollBar.sliderMoved.disconnect()
+                self.navigateScrollBar.sliderReleased.disconnect()
+                self.navigateScrollBar.actionTriggered.disconnect()
+            except Exception as e:
+                pass
+            self.t_label.setText('frame n.  ')
+            self.navigateScrollBar.sliderMoved.connect(
+                self.framesScrollBarMoved
+            )
+            self.navigateScrollBar.sliderReleased.connect(
+                self.framesScrollBarReleased
+            )
+            self.navigateScrollBar.actionTriggered.connect(
+                self.framesScrollBarAction
+            )
 
     def zSliceScrollBarActionTriggered(self, action):
         self.update_z_slice(self.zSliceScrollBar.sliderPosition())
@@ -10297,8 +10305,8 @@ class guiWin(QMainWindow):
             posData.new_IDs = []
             posData.lost_IDs = []
             posData.multiBud_mothIDs = [2]
-            posData.UndoRedoStates = [[] for _ in range(posData.segmSizeT)]
-            posData.UndoRedoCcaStates = [[] for _ in range(posData.segmSizeT)]
+            posData.UndoRedoStates = [[] for _ in range(posData.SizeT)]
+            posData.UndoRedoCcaStates = [[] for _ in range(posData.SizeT)]
 
             posData.ol_data_dict = {}
             posData.ol_data = None
@@ -10314,7 +10322,7 @@ class guiWin(QMainWindow):
                     'rois': [], 'delMasks': [], 'delIDsROI': []
                 },
                 'histoLevels': {}
-                } for i in range(posData.segmSizeT)
+                } for i in range(posData.SizeT)
             ]
 
             posData.ccaStatus_whenEmerged = {}
@@ -10330,7 +10338,7 @@ class guiWin(QMainWindow):
                 # Load previous session data
                 # Keep track of which ROIs have already been added
                 # in previous frame
-                delROIshapes = [[] for _ in range(posData.segmSizeT)]
+                delROIshapes = [[] for _ in range(posData.SizeT)]
                 for i in range(last_tracked_num):
                     posData.frame_i = i
                     self.get_data()
@@ -10390,8 +10398,13 @@ class guiWin(QMainWindow):
         self.updateALLimg()
 
     def framesScrollBarAction(self, action):
+        print('Action triggered')
         if action == QAbstractSlider.SliderSingleStepAdd:
+            # Clicking on dialogs triggered by next_cb might trigger
+            # pressEvent of navigateQScrollBar, avoid that
+            self.navigateScrollBar.disableCustomPressEvent()
             self.next_cb()
+            QTimer.singleShot(100, self.navigateScrollBar.enableCustomPressEvent)
         elif action == QAbstractSlider.SliderSingleStepSub:
             self.prev_cb()
         elif action == QAbstractSlider.SliderPageStepAdd:
@@ -10410,7 +10423,7 @@ class guiWin(QMainWindow):
         if self.navigateScrollBarStartedMoving:
             self.clearAllItems()
         self.t_label.setText(
-            f'frame n. {posData.frame_i+1}/{posData.segmSizeT}'
+            f'frame n. {posData.frame_i+1}/{posData.SizeT}'
         )
         self.img1.setImage(cells_img)
         if not self.labelsGrad.hideLabelsImgAction.isChecked():
@@ -10753,7 +10766,7 @@ class guiWin(QMainWindow):
                 posData.new_IDs = [ID for ID in posData.new_IDs
                                 if curr_df.at[ID, 'is_history_known']
                                 and curr_df.at[ID, 'cell_cycle_stage'] == 'S']
-                if posData.frame_i+1 < posData.segmSizeT:
+                if posData.frame_i+1 < posData.SizeT:
                     next_df = posData.allData_li[posData.frame_i+1]['acdc_df']
                     if next_df is None:
                         lastVisited = True
@@ -11011,13 +11024,28 @@ class guiWin(QMainWindow):
         else:
             posData.lab = lab2D
 
-    def get_labels(self, is_stored=False):
+    def get_labels(self, is_stored=False, frame_i=None, return_existing=False):
         posData = self.data[self.pos_i]
+        if frame_i is None:
+            frame_i = posData.frame_i
+        existing = True
         if is_stored:
-            labels = posData.allData_li[posData.frame_i]['labels'].copy()
+            labels = posData.allData_li[frame_i]['labels'].copy()
         else:
-            labels = posData.segm_data[posData.frame_i].copy()
-        return labels
+            try:
+                labels = posData.segm_data[frame_i].copy()
+            except IndexError:
+                existing = False
+                # Visting a frame that was not segmented --> empty masks
+                if self.isSegm3D:
+                    shape = (posData.SizeZ, posData.SizeY, posData.SizeX)
+                else:
+                    shape = (posData.SizeY, posData.SizeX)
+                labels = np.zeros(shape, dtype=np.uint16)
+        if return_existing:
+            return labels, existing
+        else:
+            return labels
 
     def _get_editID_info(self, df):
         if 'was_manually_edited' not in df.columns:
@@ -11340,7 +11368,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         self.last_cca_frame_i = posData.frame_i
         self.setNavigateScrollBarMaximum()
-        for i in range(from_frame_i, posData.segmSizeT):
+        for i in range(from_frame_i, posData.SizeT):
             df = posData.allData_li[i]['acdc_df']
             if df is None:
                 # No more saved info to delete
@@ -11439,7 +11467,7 @@ class guiWin(QMainWindow):
             # to use orange instead of red
             is_division_annotated = False
             if ccs == 'S' and is_bud and not self.isSnapshot:
-                for i in range(posData.frame_i+1, posData.segmSizeT):
+                for i in range(posData.frame_i+1, posData.SizeT):
                     cca_df = self.get_cca_df(frame_i=i, return_df=True)
                     if cca_df is None:
                         break
@@ -12092,14 +12120,14 @@ class guiWin(QMainWindow):
             or self.imgCmapName != 'grey'
         )
         if isOverlayON:
-            for i in range(0, posData.segmSizeT):
+            for i in range(0, posData.SizeT):
                 histoLevels = posData.allData_li[i]['histoLevels']
                 histoLevels[posData.manualContrastKey] = (min, max)
             if posData.ol_data is not None:
                 self.getOverlayImg(setImg=True)
         elif isRGB:
             cellsKey = f'{self.user_ch_name}_overlayOFF'
-            for i in range(0, posData.segmSizeT):
+            for i in range(0, posData.SizeT):
                 histoLevels = posData.allData_li[i]['histoLevels']
                 histoLevels[cellsKey] = (min, max)
             img = self.getImageWithCmap()
@@ -12107,7 +12135,7 @@ class guiWin(QMainWindow):
             self.img1.setImage(img)
         else:
             cellsKey = f'{self.user_ch_name}_overlayOFF'
-            for i in range(0, posData.segmSizeT):
+            for i in range(0, posData.SizeT):
                 histoLevels = posData.allData_li[i]['histoLevels']
                 histoLevels[cellsKey] = (min, max)
             img = self.getImage()
@@ -13038,7 +13066,7 @@ class guiWin(QMainWindow):
         else:
             posData = self.data[0]
             self.t_label.setText(
-                     f'frame n. {posData.frame_i+1}/{posData.segmSizeT}')
+                     f'frame n. {posData.frame_i+1}/{posData.SizeT}')
 
 
     def updateFilters(
@@ -13487,8 +13515,11 @@ class guiWin(QMainWindow):
             return
 
         prev_rp = posData.allData_li[posData.frame_i-1]['regionprops']
+        existing = True
         if prev_rp is None:
-            prev_lab = posData.segm_data[posData.frame_i-1]
+            prev_lab, existing = self.get_labels(
+                frame_i=posData.frame_i-1, return_existing=True
+            )
             prev_rp = skimage.measure.regionprops(prev_lab)
 
         prev_IDs = [obj.label for obj in prev_rp]
@@ -13500,7 +13531,10 @@ class guiWin(QMainWindow):
         posData.old_IDs = prev_IDs
         posData.IDs = curr_IDs
         warn_txt = ''
-        htmlTxt = ''
+        if existing:
+            htmlTxt = ''
+        else:
+            htmlTxt = f'<font color="white">Never segmented frame. </font>'
         if lost_IDs:
             lost_IDs_format = myutils.get_trimmed_list(lost_IDs)
             warn_txt = f'IDs lost in current frame: {lost_IDs_format}'
@@ -13680,7 +13714,7 @@ class guiWin(QMainWindow):
             from_frame_i = posData.frame_i+1
         posData.last_tracked_i = from_frame_i
         self.navigateScrollBar.setMaximum(from_frame_i+1)
-        for i in range(from_frame_i, posData.segmSizeT):
+        for i in range(from_frame_i, posData.SizeT):
             if posData.allData_li[i]['labels'] is None:
                 break
 

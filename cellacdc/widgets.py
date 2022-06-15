@@ -1623,6 +1623,36 @@ class labelledQScrollbar(QScrollBar):
         QScrollBar.setValue(self, value)
         self.updateLabel()
 
+class navigateQScrollBar(QScrollBar):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._disableCustomPressEvent = False
+
+    def disableCustomPressEvent(self):
+        self._disableCustomPressEvent = True
+
+    def enableCustomPressEvent(self):
+        self._disableCustomPressEvent = False
+
+    def setAbsoluteMaximum(self, absoluteMaximum):
+        self._absoluteMaximum = absoluteMaximum
+
+    def absoluteMaximum():
+        return self._absoluteMaximum
+
+    def mousePressEvent(self, event):
+        super().mousePressEvent(event)
+        if self.maximum() == self._absoluteMaximum:
+            return
+
+        if self._disableCustomPressEvent:
+            return
+
+        if self.sliderPosition() == self.maximum():
+            # Clicked right arrow of scrollbar with the slider at maximum --> +1
+            # self.setMaximum(self.maximum()+1)
+            self.triggerAction(QAbstractSlider.SliderSingleStepAdd)
+
 class linkedQScrollbar(QScrollBar):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

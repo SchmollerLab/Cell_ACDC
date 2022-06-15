@@ -950,6 +950,7 @@ class loadData:
 
         self.SizeT = metadataWin.SizeT
         self.SizeZ = metadataWin.SizeZ
+        self.SizeY, self.SizeX = self.img_data_shape[-2:]
 
         self.isSegm3D = metadataWin.isSegm3D
 
@@ -977,6 +978,41 @@ class loadData:
         self.PhysicalSizeY = from_posData.PhysicalSizeY
         self.PhysicalSizeX = from_posData.PhysicalSizeX
 
+    def updateSegmSizeT(self):
+        segmSizeT = len(self.segm_data)
+        if self.segmSizeT == segmSizeT:
+            return
+        self.segmSizeT = segmSizeT
+        self.metadata_df.at['segmSizeT', 'values'] = segmSizeT
+        self.metadataToCsv()
+
+    def metadataToCsv(self, signals=None, mutex=None, waitCond=None):
+        try:
+            self.metadata_df.to_csv(self.metadata_csv_path)
+        except PermissionError:
+            print('='*20)
+            traceback.print_exc()
+            print('='*20)
+            permissionErrorTxt = html_utils.paragraph(
+                f'The below file is open in another app (Excel maybe?).<br><br>'
+                f'{self.metadata_csv_path}<br><br>'
+                'Close file and then press "Ok".'
+            )
+            if signals is None:
+                msg = widgets.myMessageBox(self.parent)
+                msg.setIcon(iconName='SP_MessageBoxCritical')
+                msg.setWindowTitle('Permission denied')
+                msg.addText(permissionErrorTxt)
+                msg.addButton('  Ok  ')
+                msg.exec_()
+                self.metadata_df.to_csv(self.metadata_csv_path)
+            else:
+                mutex.lock()
+                signals.sigPermissionError.emit(permissionErrorTxt, waitCond)
+                waitCond.wait(mutex)
+                mutex.unlock()
+                self.metadata_df.to_csv(self.metadata_csv_path)
+
     def saveMetadata(
             self, signals=None, mutex=None, waitCond=None,
             additionalMetadata=None
@@ -985,6 +1021,8 @@ class loadData:
             metadata_dict = {
                 'SizeT': self.SizeT,
                 'SizeZ': self.SizeZ,
+                'SizeY': self.SizeY,
+                'SizeX': self.SizeX,
                 'TimeIncrement': self.TimeIncrement,
                 'PhysicalSizeZ': self.PhysicalSizeZ,
                 'PhysicalSizeY': self.PhysicalSizeY,
@@ -1019,31 +1057,7 @@ class loadData:
                         idx_to_drop.append(name)
 
                 self.metadata_df = self.metadata_df.drop(idx_to_drop)
-        try:
-            self.metadata_df.to_csv(self.metadata_csv_path)
-        except PermissionError:
-            print('='*20)
-            traceback.print_exc()
-            print('='*20)
-            permissionErrorTxt = html_utils.paragraph(
-                f'The below file is open in another app (Excel maybe?).<br><br>'
-                f'{self.metadata_csv_path}<br><br>'
-                'Close file and then press "Ok".'
-            )
-            if signals is None:
-                msg = widgets.myMessageBox(self.parent)
-                msg.setIcon(iconName='SP_MessageBoxCritical')
-                msg.setWindowTitle('Permission denied')
-                msg.addText(permissionErrorTxt)
-                msg.addButton('  Ok  ')
-                msg.exec_()
-                self.metadata_df.to_csv(self.metadata_csv_path)
-            else:
-                mutex.lock()
-                signals.sigPermissionError.emit(permissionErrorTxt, waitCond)
-                waitCond.wait(mutex)
-                mutex.unlock()
-                self.metadata_df.to_csv(self.metadata_csv_path)
+        self.metadataToCsv(signals=signals, mutex=signals, waitCond=waitCond)
         self.metadata_df.to_csv(last_entries_metadata_path)
         if additionalMetadata is not None:
             with open(additional_metadata_path, mode='w') as file:
