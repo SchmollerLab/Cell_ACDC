@@ -1642,7 +1642,7 @@ class navigateQScrollBar(QScrollBar):
     def setAbsoluteMaximum(self, absoluteMaximum):
         self._absoluteMaximum = absoluteMaximum
 
-    def absoluteMaximum():
+    def absoluteMaximum(self):
         return self._absoluteMaximum
 
     def mousePressEvent(self, event):
