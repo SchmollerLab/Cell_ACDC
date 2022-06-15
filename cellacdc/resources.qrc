@@ -1,5 +1,6 @@
 <!DOCTYPE RCC><RCC version="1.0">
 <qresource>
+    <file alias="icon.ico">resources/icon.ico</file>
     <file alias="backspace.svg">resources/icons/math/backspace.svg</file>
     <file alias="square_root.svg">resources/icons/math/square_root.svg</file>
     <file alias="add.svg">resources/icons/math/add.svg</file>

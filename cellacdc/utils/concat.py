@@ -47,7 +47,7 @@ class concatWin(QMainWindow):
         self.mainWin = mainWin
         super().__init__(parent)
         self.setWindowTitle("Cell-ACDC - Align")
-        self.setWindowIcon(QtGui.QIcon(":assign-motherbud.svg"))
+        self.setWindowIcon(QtGui.QIcon(":icon.ico"))
 
         mainContainer = QWidget()
         self.setCentralWidget(mainContainer)

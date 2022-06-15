@@ -84,7 +84,7 @@ class dataPrepWin(QMainWindow):
 
         self.setWindowTitle("Cell-ACDC - data prep")
         self.setGeometry(100, 50, 850, 800)
-        self.setWindowIcon(QIcon(":assign-motherbud.svg"))
+        self.setWindowIcon(QIcon(":icon.ico"))
 
         self.gui_createActions()
         self.gui_createMenuBar()
@@ -2182,7 +2182,7 @@ if __name__ == "__main__":
         QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     # Create the application
     app = QApplication(sys.argv)
-    app.setWindowIcon(QIcon(":assign-motherbud.svg"))
+    app.setWindowIcon(QIcon(":icon.ico"))
     win = dataPrepWin()
     win.show()
     # Apply style

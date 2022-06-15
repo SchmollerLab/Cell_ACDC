@@ -32,7 +32,7 @@ class QDialogAbout(QDialog):
 
         titleLabel.setText(txt)
 
-        iconPixmap = QPixmap(":assign-motherbud.svg")
+        iconPixmap = QPixmap(":icon.ico")
         iconLabel = QLabel()
         iconLabel.setPixmap(iconPixmap)
 

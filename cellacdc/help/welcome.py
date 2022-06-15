@@ -65,7 +65,7 @@ class welcomeWin(QWidget):
         self.app = app
         super().__init__(parent)
         self.setWindowTitle('Welcome')
-        self.setWindowIcon(QIcon(":assign-motherbud.svg"))
+        self.setWindowIcon(QIcon(":icon.ico"))
         self.loadSettings()
 
         self.itemsDict = {}

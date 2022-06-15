@@ -30,7 +30,7 @@ def configuration_dialog():
     # if app is None:
     app = QApplication(sys.argv)
     app.setStyle(QStyleFactory.create('Fusion'))
-    app.setWindowIcon(QIcon(":assign-motherbud.svg"))
+    app.setWindowIcon(QIcon(":icon.ico"))
     continue_selection = True
     data_dirs = []
     positions = []

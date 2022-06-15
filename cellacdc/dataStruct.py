@@ -707,7 +707,7 @@ class createDataStructWin(QMainWindow):
         self.mainWin = mainWin
 
         self.setWindowTitle("Cell-ACDC - From raw microscopy file to tifs")
-        self.setWindowIcon(QtGui.QIcon(":assign-motherbud.svg"))
+        self.setWindowIcon(QtGui.QIcon(":icon.ico"))
 
         mainContainer = QWidget()
         self.setCentralWidget(mainContainer)
@@ -1480,7 +1480,7 @@ if __name__ == "__main__":
     # Create the application
     app = QApplication(sys.argv)
     app.setStyle(QStyleFactory.create('Fusion'))
-    app.setWindowIcon(QtGui.QIcon(":assign-motherbud.svg"))
+    app.setWindowIcon(QtGui.QIcon(":icon.ico"))
     try:
         win = createDataStructWin(allowExit=True)
         win.show()

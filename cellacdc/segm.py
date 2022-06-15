@@ -336,7 +336,7 @@ class segmWin(QMainWindow):
         self.logger = logger
 
         self.setWindowTitle("Cell-ACDC - Segment")
-        self.setWindowIcon(QtGui.QIcon(":assign-motherbud.svg"))
+        self.setWindowIcon(QtGui.QIcon(":icon.ico"))
 
         mainContainer = QWidget()
         self.setCentralWidget(mainContainer)
@@ -544,7 +544,7 @@ class segmWin(QMainWindow):
         self.applyPostProcessing = win.applyPostProcessing
 
         init_kwargs = win.init_kwargs
-        
+
         # Initialize model
         self.model = acdcSegment.Model(**init_kwargs)
 

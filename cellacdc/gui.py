@@ -1120,7 +1120,7 @@ class guiWin(QMainWindow):
         self.closeGUI = False
 
         self.setWindowTitle("Cell-ACDC - GUI")
-        self.setWindowIcon(QIcon(":assign-motherbud.svg"))
+        self.setWindowIcon(QIcon(":icon.ico"))
         self.setAcceptDrops(True)
 
         self.checkableButtons = []
@@ -1501,7 +1501,7 @@ class guiWin(QMainWindow):
 
         # Assign mother to bud button
         self.assignBudMothButton = QToolButton(self)
-        self.assignBudMothButton.setIcon(QIcon(":assign-motherbud.svg"))
+        self.assignBudMothButton.setIcon(QIcon("assign-motherbud.svg"))
         self.assignBudMothButton.setCheckable(True)
         self.assignBudMothButton.setShortcut('a')
         self.assignBudMothButton.setVisible(False)

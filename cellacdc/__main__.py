@@ -68,7 +68,7 @@ class mainWin(QMainWindow):
         self.welcomeGuide = None
         super().__init__(parent)
         self.setWindowTitle("Cell-ACDC")
-        self.setWindowIcon(QIcon(":assign-motherbud.svg"))
+        self.setWindowIcon(QIcon(":icon.ico"))
 
         if not is_linux:
             self.loadFonts()
@@ -134,7 +134,7 @@ class mainWin(QMainWindow):
         mainLayout.addWidget(segmButton)
 
         guiButton = QPushButton('  3. Launch GUI...')
-        guiButton.setIcon(QIcon(':assign-motherbud.svg'))
+        guiButton.setIcon(QIcon(':icon.ico'))
         guiButton.setIconSize(QSize(iconSize,iconSize))
         guiButton.setFont(font)
         guiButton.clicked.connect(self.launchGui)
@@ -727,7 +727,7 @@ def run():
     app = QApplication([])
 
     app.setStyle(QStyleFactory.create('Fusion'))
-    app.setWindowIcon(QIcon(":assign-motherbud.svg"))
+    app.setWindowIcon(QIcon(":icon.ico"))
     win = mainWin(app)
     version = myutils.read_version()
     win.setVersion(version)

@@ -55,7 +55,7 @@ class convertFileFormatWin(QMainWindow):
         self.mainWin = mainWin
         super().__init__(parent)
         self.setWindowTitle(f"Cell-ACDC - Convert .{from_} file to .{to}")
-        self.setWindowIcon(QtGui.QIcon(":assign-motherbud.svg"))
+        self.setWindowIcon(QtGui.QIcon(":icon.ico"))
 
         mainContainer = QWidget()
         self.setCentralWidget(mainContainer)
