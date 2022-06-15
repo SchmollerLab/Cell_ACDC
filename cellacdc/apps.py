@@ -2834,7 +2834,7 @@ class QDialogMetadata(QDialog):
         row += 1
         self.isSegm3Dtoggle = widgets.Toggle()
         if posData is not None:
-            self.isSegm3Dtoggle.setChecked(posData.isSegm3D())
+            self.isSegm3Dtoggle.setChecked(posData.getIsSegm3D())
             disableToggle = (
                 # Disable toggle if not force enable and if
                 # segm data was found (we cannot change the shaoe of

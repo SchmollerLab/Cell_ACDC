@@ -58,7 +58,7 @@ def exception_handler(func):
             self.logger.exception(traceback_str)
             msg = widgets.myMessageBox(wrapText=False)
             msg.addShowInFileManagerButton(self.logs_path, txt='Show log file...')
-            msg.setDetailedText(traceback_str)
+            msg.setDetailedText(traceback_str, visible=True)
             err_msg = html_utils.paragraph(f"""
                 Error in function <code>{func.__name__}</code>.<br><br>
                 More details below or in the terminal/console.<br><br>

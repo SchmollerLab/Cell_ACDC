@@ -553,7 +553,7 @@ class loadData:
                 annotatedIDs = list(series.index.get_level_values(1).unique())
                 self.customAnnotIDs[name][frame_i] = annotatedIDs
 
-    def isSegm3D(self):
+    def getIsSegm3D(self):
         if self.SizeZ == 1:
             return False
 

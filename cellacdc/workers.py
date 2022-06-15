@@ -230,7 +230,7 @@ class calcMetricsWorker(QObject):
                 self.mainWin.gui.data[p] = posData
                 self.mainWin.gui.last_pos = numPos
 
-                self.mainWin.gui.isSegm3D = posData.isSegm3D()
+                self.mainWin.gui.isSegm3D = posData.getIsSegm3D()
 
                 # Allow single 2D/3D image
                 if posData.SizeT == 1:

@@ -10398,7 +10398,6 @@ class guiWin(QMainWindow):
         self.updateALLimg()
 
     def framesScrollBarAction(self, action):
-        print('Action triggered')
         if action == QAbstractSlider.SliderSingleStepAdd:
             # Clicking on dialogs triggered by next_cb might trigger
             # pressEvent of navigateQScrollBar, avoid that
@@ -14710,16 +14709,14 @@ class guiWin(QMainWindow):
         msg.exec_()
         return msg.clickedButton() == allPosbutton, last_pos
 
-    @myutils.exception_handler
     def saveMetricsCritical(self, traceback_format):
         print('\n====================================')
         self.logger.exception(traceback_format)
         print('====================================\n')
         self.logger.info('Warning: calculating metrics failed see above...')
         print('------------------------------')
-        msg = QMessageBox(self)
-        msg.setWindowTitle('Critical error')
-        msg.setIcon(msg.Critical)
+
+        msg = widgets.myMessageBox(wrapText=False)
         err_msg = html_utils.paragraph(f"""
             Error <b>while saving metrics</b>.<br><br>
             More details below or in the terminal/console.<br><br>
@@ -14727,15 +14724,11 @@ class guiWin(QMainWindow):
             in the file<br>
             {self.log_path}<br><br>
             Please <b>send the log file</b> when reporting a bug, thanks!
-        """, font_size='14px')
-        msg.setText(err_msg)
-        showLog = msg.addButton('Show log file...', msg.HelpRole)
-        showLog.disconnect()
-        slot = partial(myutils.showInExplorer, self.logs_path)
-        showLog.clicked.connect(slot)
-        msg.addButton(msg.Ok)
-        msg.setDetailedText(traceback_format)
-        msg.exec_()
+        """)
+        msg.addShowInFileManagerButton(self.logs_path, txt='Show log file...')
+        msg.setDetailedText(traceback_format, visible=True)
+        msg.critical(self, 'Critical error while saving metrics', err_msg)
+
         self.is_error_state = True
         self.waitCond.wakeAll()
 

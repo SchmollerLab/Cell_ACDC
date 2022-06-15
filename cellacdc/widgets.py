@@ -351,6 +351,7 @@ class myMessageBox(QDialog):
         self.labels = []
         self.detailsTextWidget = None
         self.showInFileManagButton = None
+        self.visibleDetails = False
 
         self.currentRow = 0
         self._w = None
@@ -508,13 +509,14 @@ class myMessageBox(QDialog):
         if block:
             self._block()
 
-    def setDetailedText(self, text):
+    def setDetailedText(self, text, visible=False):
         self.detailsTextWidget = QPlainTextEdit(text)
         self.detailsTextWidget.setReadOnly(True)
         self.detailsButton = showDetailsButton()
         self.detailsButton.setCheckable(True)
         self.detailsButton.clicked.connect(self._showDetails)
         self.detailsTextWidget.hide()
+        self.visibleDetails = visible
 
     def _showDetails(self, checked):
         if checked:
@@ -553,6 +555,9 @@ class myMessageBox(QDialog):
 
         if self.enlargeWidthFactor > 0:
             self.resize(int(self.width()*self.enlargeWidthFactor), self.height())
+
+        if self.visibleDetails:
+            self.detailsButton.click()
 
         if self.showCentered:
             screen = self.screen()
