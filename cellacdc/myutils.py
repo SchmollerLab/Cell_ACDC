@@ -73,6 +73,12 @@ def exception_handler(func):
         return result
     return inner_function
 
+def get_gdrive_path():
+    if is_win:
+        return os.path.join(f'G:{os.sep}', 'My Drive')
+    elif is_mac:
+        return os.path.join(f'/Volumes')
+
 def get_open_filemaneger_os_string():
     if is_win:
         return 'Show in Explorer...'

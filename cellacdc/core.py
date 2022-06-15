@@ -212,9 +212,7 @@ def label_3d_segm(labels):
 
 def get_objContours(obj):
     contours, _ = cv2.findContours(
-                           obj.image.astype(np.uint8),
-                           cv2.RETR_EXTERNAL,
-                           cv2.CHAIN_APPROX_NONE
+        obj.image.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE
     )
     min_y, min_x, _, _ = obj.bbox
     cont = np.squeeze(contours[0], axis=1)
