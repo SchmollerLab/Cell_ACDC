@@ -588,6 +588,14 @@ class loadData:
         else:
             self.SizeZ = 1
 
+        if 'SizeY' in self.metadata_df.index:
+            self.SizeY = float(self.metadata_df.at['SizeY', 'values'])
+            self.SizeY = int(self.SizeY)
+            self.SizeX = float(self.metadata_df.at['SizeX', 'values'])
+            self.SizeX = int(self.SizeX)
+        else:
+            self.SizeY, self.SizeX = self.img_data_shape[-2:]
+
         if 'TimeIncrement' in self.metadata_df.index:
             self.TimeIncrement = float(
                 self.metadata_df.at['TimeIncrement', 'values']
@@ -716,6 +724,8 @@ class loadData:
             self.SizeT, self.SizeZ = self.img_data.shape[:2]
         else:
             self.SizeT, self.SizeZ = 1, 1
+
+        self.SizeY, self.SizeX = self.img_data_shape[-2:]
 
         self.TimeIncrement = 1.0
         self.PhysicalSizeX = 1.0
