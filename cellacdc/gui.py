@@ -2852,7 +2852,7 @@ class guiWin(QMainWindow):
             IDs = [obj.label for obj in skimage.measure.regionprops(lab)]
             allIDs.update(IDs)
 
-        numItems = numba_max(self.data[self.pos_i].segm_data)
+        numItems = (self.data[self.pos_i].segm_data).max()
         self.ax1_ContoursCurves = [None]*numItems
         self.ax2_ContoursCurves = [None]*numItems
         self.ax1_BudMothLines = [None]*numItems
