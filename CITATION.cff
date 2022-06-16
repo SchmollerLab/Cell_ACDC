@@ -3,7 +3,7 @@
 
 cff-version: 1.2.0
 title: >-
-  Cell-ACDC: segmentation, tracking, annotatatio and quantification of
+  Cell-ACDC: segmentation, tracking, annotation and quantification of
   microscopy imaging data
 message: >-
   If you use this software, please cite our paper:
