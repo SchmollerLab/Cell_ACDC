@@ -175,6 +175,7 @@ class loadData:
         self.pos_path = os.path.dirname(self.images_path)
         self.exp_path = os.path.dirname(self.pos_path)
         self.pos_foldername = os.path.basename(self.pos_path)
+        self.pos_num = self.getPosNum()
         self.cropROI = None
         self.loadSizeT = None
         self.loadSizeZ = None
@@ -186,6 +187,13 @@ class loadData:
         self.filename, self.ext = os.path.splitext(filename_ext)
         self._additionalMetadataValues = None
         self.loadLastEntriesMetadata()
+
+    def getPosNum(self):
+        try:
+            pos_num = int(re.findall('Position_(\d+)', self.pos_foldername))[0]
+        except Exception:
+            pos_num = 0
+        return pos_num
 
     def loadLastEntriesMetadata(self):
         cellacdc_path = os.path.dirname(os.path.realpath(__file__))

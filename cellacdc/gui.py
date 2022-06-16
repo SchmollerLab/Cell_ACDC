@@ -14708,6 +14708,7 @@ class guiWin(QMainWindow):
             # All pos have been visited, no reason to ask
             return True, len(self.data)
 
+        last_posfoldername = self.data[last_pos-1].pos_foldername
         msg = QMessageBox(self)
         msg.setWindowTitle('Save all positions?')
         msg.setIcon(msg.Question)
@@ -14718,7 +14719,7 @@ class guiWin(QMainWindow):
         """)
         msg.setText(txt)
         allPosbutton =  QPushButton('Save ALL positions')
-        upToLastButton = QPushButton(f'Save until Position_{last_pos}')
+        upToLastButton = QPushButton(f'Save until {last_posfoldername}')
         msg.addButton(allPosbutton, msg.YesRole)
         msg.addButton(upToLastButton, msg.NoRole)
         msg.exec_()
