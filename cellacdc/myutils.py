@@ -56,7 +56,7 @@ def exception_handler(func):
             result = None
             traceback_str = traceback.format_exc()
             self.logger.exception(traceback_str)
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
             msg.addShowInFileManagerButton(self.logs_path, txt='Show log file...')
             msg.setDetailedText(traceback_str, visible=True)
             err_msg = html_utils.paragraph(f"""

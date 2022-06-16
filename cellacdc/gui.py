@@ -893,6 +893,9 @@ class saveDataWorker(QObject):
                     # Build segm_npy
                     lab = data_dict['labels']
                     posData.lab = lab
+                    if lab is None:
+                        break
+
                     if posData.SizeT > 1:
                         segm_npy[frame_i] = lab
                     else:
@@ -900,29 +903,37 @@ class saveDataWorker(QObject):
 
                     acdc_df = data_dict['acdc_df']
 
+                    if self.saveOnlySegm:
+                        continue
+
+                    if acdc_df is None:
+                        continue
+
+                    if not np.any(lab):
+                        continue
+
                     # Build acdc_df and index it in each frame_i of acdc_df_li
-                    if acdc_df is not None and np.any(lab) and not self.saveOnlySegm:
-                        try:
-                            acdc_df = load.pd_bool_to_int(acdc_df, inplace=False)
-                            rp = data_dict['regionprops']
-                            if save_metrics:
-                                acdc_df = self.addMetrics_acdc_df(
-                                    acdc_df, rp, frame_i, lab, posData
-                                )
-                            elif mode == 'Cell cycle analysis':
-                                acdc_df = self.addVolumeMetrics(
-                                    acdc_df, rp, posData
-                                )
-                            acdc_df_li.append(acdc_df)
-                            key = (frame_i, posData.TimeIncrement*frame_i)
-                            keys.append(key)
-                        except Exception as error:
-                            self.mutex.lock()
-                            self.criticalMetrics.emit(traceback.format_exc())
-                            self.waitCond.wait(self.mutex)
-                            self.mutex.unlock()
-                            self.finished.emit()
-                            return
+                    try:
+                        acdc_df = load.pd_bool_to_int(acdc_df, inplace=False)
+                        rp = data_dict['regionprops']
+                        if save_metrics:
+                            acdc_df = self.addMetrics_acdc_df(
+                                acdc_df, rp, frame_i, lab, posData
+                            )
+                        elif mode == 'Cell cycle analysis':
+                            acdc_df = self.addVolumeMetrics(
+                                acdc_df, rp, posData
+                            )
+                        acdc_df_li.append(acdc_df)
+                        key = (frame_i, posData.TimeIncrement*frame_i)
+                        keys.append(key)
+                    except Exception as error:
+                        self.mutex.lock()
+                        self.criticalMetrics.emit(traceback.format_exc())
+                        self.waitCond.wait(self.mutex)
+                        self.mutex.unlock()
+                        self.finished.emit()
+                        return
 
                     t = time.time()
                     exec_time = t - self.time_last_pbar_update
@@ -932,15 +943,6 @@ class saveDataWorker(QObject):
                 # Save segmentation file
                 np.savez_compressed(segm_npz_path, np.squeeze(segm_npy))
                 posData.segm_data = segm_npy
-
-                if add_user_channel_data:
-                    posData.fluo_data_dict.pop(posData.filename)
-
-                posData.fluo_bkgrData_dict.pop(posData.filename)
-
-                if posData.SizeT > 1:
-                    self.progress.emit('Almost done...')
-                    self.progressBar.emit(0, 0, 0)
 
                 if posData.segmInfo_df is not None:
                     try:
@@ -957,6 +959,18 @@ class saveDataWorker(QObject):
                         self.waitCond.wait(self.mutex)
                         self.mutex.unlock()
                         posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
+
+                if self.saveOnlySegm:
+                    continue
+
+                if add_user_channel_data:
+                    posData.fluo_data_dict.pop(posData.filename)
+
+                posData.fluo_bkgrData_dict.pop(posData.filename)
+
+                if posData.SizeT > 1:
+                    self.progress.emit('Almost done...')
+                    self.progressBar.emit(0, 0, 0)
 
                 if acdc_df_li:
                     all_frames_acdc_df = pd.concat(
@@ -7812,7 +7826,8 @@ class guiWin(QMainWindow):
             if self.debug:
                 posData = self.data[self.pos_i]
                 # print(posData.editID_info)
-                print(posData.allData_li[posData.frame_i]['acdc_df'])
+                print(posData.segm_data.shape)
+                print(self.last_pos)
                 # self.store_data()
                 pass
         try:
