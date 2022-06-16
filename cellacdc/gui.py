@@ -9700,8 +9700,8 @@ class guiWin(QMainWindow):
             self.loadingDataAborted()
             return
 
+        self.pos_i = 0
         self.data = data
-        posData = self.data[self.pos_i]
         self.gui_createGraphicsItems()
         return True
 
