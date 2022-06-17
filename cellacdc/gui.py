@@ -7825,10 +7825,8 @@ class guiWin(QMainWindow):
         if ev.key() == Qt.Key_T:
             if self.debug:
                 posData = self.data[self.pos_i]
-                # print(posData.editID_info)
-                print(posData.segm_data.shape)
-                print(self.last_pos)
-                # self.store_data()
+                for posData in self.data:
+                    print(posData.segm_npz_path)
                 pass
         try:
             posData = self.data[self.pos_i]

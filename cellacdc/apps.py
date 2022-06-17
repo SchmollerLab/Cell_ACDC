@@ -827,7 +827,7 @@ class filenameDialog(QDialog):
         self.lineEdit.textChanged.connect(self.updateFilename)
         if existingNames:
             self.existingNames = existingNames
-            self.lineEdit.editingFinished.connect(self.checkExistingNames)
+            # self.lineEdit.editingFinished.connect(self.checkExistingNames)
 
         layout.addWidget(hintLabel)
         layout.addLayout(entryLayout)
@@ -872,6 +872,12 @@ class filenameDialog(QDialog):
         self.entryText = self._text()
         self.cancel = False
         self.close()
+
+    def closeEvent(self, event):
+        valid = self.checkExistingNames()
+        if not valid:
+            event.ignore()
+            return
 
     def exec_(self):
         self.show(block=True)
