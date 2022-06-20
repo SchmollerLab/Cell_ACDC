@@ -520,11 +520,25 @@ def getAcdcDfSegmPaths(images_path):
 
 def getChannelFilePath(images_path, chName):
     file = ''
+    alignedFilePath = ''
+    tifFilePath = ''
+    h5FilePath = ''
     for file in listdir(images_path):
         filePath = os.path.join(images_path, file)
-        if re.search(fr'{chName}.(\w+)$', file) is not None:
-            return filePath
-    return filePath
+        if file.endswith(f'{chName}_aligned.npz'):
+            alignedFilePath = filePath
+        elif file.endswith(f'{chName}.tif'):
+            tifFilePath = filePath
+        elif file.endswith(f'{chName}.h5'):
+            h5FilePath = filePath
+    if alignedFilePath:
+        return alignedFilePath
+    elif h5FilePath:
+        return h5FilePath
+    elif tifFilePath:
+        return tifFilePath
+    else:
+        return ''
 
 def getBaseAcdcDf(rp):
     zeros_list = [0]*len(rp)

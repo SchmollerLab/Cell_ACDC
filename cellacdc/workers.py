@@ -54,7 +54,7 @@ class signals(QObject):
     create_tqdm = pyqtSignal(int)
     innerProgressBar = pyqtSignal(int)
     sigPermissionError = pyqtSignal(str, object)
-    sigSelectSegmFiles = pyqtSignal(object)
+    sigSelectSegmFiles = pyqtSignal(object, object)
     sigSetMeasurements = pyqtSignal(object)
     sigInitAddMetrics = pyqtSignal(object)
     sigUpdatePbarDesc = pyqtSignal(str)
@@ -116,6 +116,16 @@ class calcMetricsWorker(QObject):
         for file in myutils.listdir(images_path):
             pass
 
+    def emitSelectSegmFiles(self, exp_path, pos_foldernames):
+        self.mutex.lock()
+        self.signals.sigSelectSegmFiles.emit(exp_path, pos_foldernames)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        if self.abort:
+            return True
+        else:
+            return False
+
     @worker_exception_handler
     def run(self):
         debugging = False
@@ -127,6 +137,13 @@ class calcMetricsWorker(QObject):
             self.allPosDataInputs = []
             posDatas = []
             self.logger.log('-'*30)
+            expFoldername = os.path.basename(exp_path)
+
+            abort = self.emitSelectSegmFiles(exp_path, pos_foldernames)
+            if abort:
+                self.signals.finished.emit(self)
+                return
+
             for p, pos in enumerate(pos_foldernames):
                 if self.abort:
                     self.signals.finished.emit(self)
@@ -150,15 +167,6 @@ class calcMetricsWorker(QObject):
                 # Load data
                 posData = load.loadData(file_path, chName)
                 posData.getBasenameAndChNames()
-
-                if p == 0:
-                    self.mutex.lock()
-                    self.signals.sigSelectSegmFiles.emit(posData)
-                    self.waitCond.wait(self.mutex)
-                    self.mutex.unlock()
-                    if self.abort:
-                        self.signals.finished.emit(self)
-                        return
 
                 posData.loadOtherFiles(
                     load_segm_data=False,
@@ -217,7 +225,7 @@ class calcMetricsWorker(QObject):
                     load_metadata=True,
                     load_customAnnot=True,
                     load_customCombineMetrics=True,
-                    endFilenameSegm=self.mainWin.endFilenameSegm
+                    end_filename_segm=self.mainWin.endFilenameSegm
                 )
                 posData.labelSegmData()
 
@@ -340,8 +348,17 @@ class calcMetricsWorker(QObject):
 
                     self.signals.progressBar.emit(1)
 
-
                 if debugging:
+                    continue
+
+                if not acdc_df_li:
+                    print('-'*30)
+                    self.logger.log(
+                        'All selected positions in the experiment folder '
+                        f'{expFoldername} have EMPTY segmentation mask. '
+                        'Metrics will not be saved.'
+                    )
+                    print('-'*30)
                     continue
 
                 all_frames_acdc_df = pd.concat(
@@ -443,7 +460,7 @@ class loadDataWorker(QObject):
                 posData.getBasenameAndChNames()
                 posData.buildPaths()
                 posData.loadImgData()
-                
+
             posData.loadOtherFiles(
                 load_segm_data=loadSegm,
                 load_acdc_df=True,

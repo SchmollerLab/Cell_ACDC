@@ -244,6 +244,20 @@ class statusBarPermanentLabel(QWidget):
 
         self.setLayout(layout)
 
+class listWidget(QListWidget):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setStyleSheet("""
+            QListWidget::item:hover {background-color:#E6E6E6;}
+            QListWidget::item:selected {background-color:#CFEB9B;}
+            QListWidget::item:selected {color:black;}
+            QListView {
+                selection-background-color: #CFEB9B;
+                selection-color: white;
+                show-decoration-selected: 1;
+            }
+        """)
+
 class readOnlyQList(QTextEdit):
     def __init__(self, parent=None):
         super().__init__(parent)

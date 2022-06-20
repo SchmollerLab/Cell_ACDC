@@ -9568,6 +9568,8 @@ class guiWin(QMainWindow):
                     return
 
                 selectedSegmEndName = win.selectedItemText
+            elif len(existingSegmEndNames) == 1:
+                selectedSegmEndName = existingSegmEndNames[0]
 
         posData.loadImgData()
         posData.loadOtherFiles(
@@ -12119,28 +12121,25 @@ class guiWin(QMainWindow):
 
 
     def criticalFluoChannelNotFound(self, fluo_ch, posData):
-        msg = QMessageBox()
-        msg.setWindowTitle('Requested channel data not found!')
-        msg.setIcon(msg.Warning)
-        txt = html_utils.paragraph(
-            f'The folder {posData.relPath} <b>does not contain</b> '
-            'either one of the following files:<br><br>'
-            f'{posData.basename}_{fluo_ch}.tif<br>'
-            f'{posData.basename}_{fluo_ch}_aligned.npz<br><br>'
-            'Data loading aborted.'
-        )
-        msg.setText(txt)
-        msg.addButton(msg.Ok)
-        openFolderButton = msg.addButton(self.openFolderText, msg.HelpRole)
-        openFolderButton.disconnect()
-        slot = partial(myutils.showInExplorer, posData.images_path)
-        openFolderButton.clicked.connect(slot)
+        msg = widgets.myMessageBox(showCentered=False)
         ls = "\n".join(myutils.listdir(posData.images_path))
         msg.setDetailedText(
             f'Files present in the {posData.relPath} folder:\n'
             f'{ls}'
         )
-        msg.exec_()
+        title = 'Requested channel data not found!'
+        txt = html_utils.paragraph(
+            f'The folder <code>{posData.pos_path}</code> '
+            '<b>does not contain</b> '
+            'either one of the following files:<br><br>'
+            f'{posData.basename}_{fluo_ch}.tif<br>'
+            f'{posData.basename}_{fluo_ch}_aligned.npz<br><br>'
+            'Data loading aborted.'
+        )
+        msg.addShowInFileManagerButton(posData.images_path)
+        okButton = msg.warning(
+            self, title, txt, buttonsTexts=('Ok')
+        )
 
     def imgGradLUT_cb(self, LUTitem):
         # Callback function for the histogram sliders moved by the user

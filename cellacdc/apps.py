@@ -719,7 +719,7 @@ class customAnnotationDialog(QDialog):
 
         if self.clickedButton==self.okButton and self.nameInfoLabel.text():
             msg = widgets.myMessageBox()
-            listView = QListWidget(msg)
+            listView = widgets.listWidget(msg)
             listView.addItems(self.internalNames)
             listView.setSelectionMode(QAbstractItemView.NoSelection)
             name = self.nameWidget.widget.text()
@@ -2417,7 +2417,7 @@ class QDialogListbox(QDialog):
         label.setStyleSheet("padding:0px 0px 3px 0px;")
         topLayout.addWidget(label, alignment=Qt.AlignCenter)
 
-        listBox = QListWidget()
+        listBox = widgets.listWidget()
         listBox.setFont(_font)
         listBox.addItems(items)
         if multiSelection:
@@ -6028,7 +6028,7 @@ class QtSelectItems(QDialog):
         self.multiPosButton = multiPosButton
         bottomLayout.addWidget(multiPosButton, alignment=Qt.AlignLeft)
 
-        listBox = QListWidget()
+        listBox = widgets.listWidget()
         listBox.addItems(items)
         listBox.setSelectionMode(QAbstractItemView.ExtendedSelection)
         listBox.setCurrentRow(0)
@@ -6852,7 +6852,7 @@ class QDialogMultiSegmNpz(QDialog):
             'Select which segmentation file to load:'
         )
         label = QLabel(questionText)
-        listWidget = QListWidget()
+        listWidget = widgets.listWidget()
         listWidget.addItems(images_ls)
         listWidget.setCurrentRow(0)
         self.items = list(images_ls)
