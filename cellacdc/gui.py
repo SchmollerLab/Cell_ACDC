@@ -762,11 +762,11 @@ class saveDataWorker(QObject):
             print('='*20)
 
     def _removeDeprecatedRows(self, df):
-        v1_2_4_rc25_deprectated_cols = [
+        v1_2_4_rc25_deprecated_cols = [
             'editIDclicked_x', 'editIDclicked_y',
             'editIDnewID', 'editIDnewIDs'
         ]
-        df = df.drop(columns=v1_2_4_rc25_deprectated_cols, errors='ignore')
+        df = df.drop(columns=v1_2_4_rc25_deprecated_cols, errors='ignore')
 
         # Remove old gui_ columns from version < v1.2.4.rc-7
         gui_columns = df.filter(regex='gui_*').columns
