@@ -136,7 +136,7 @@ def get_data_exception_handler(func):
             segm_filename = os.path.basename(posData.segm_npz_path)
             traceback_str = traceback.format_exc()
             self.logger.exception(traceback_str)
-            msg = widgets.myMessageBox(wrapText=False)
+            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
             msg.addShowInFileManagerButton(self.logs_path, txt='Show log file...')
             msg.setDetailedText(traceback_str)
             err_msg = html_utils.paragraph(f"""
@@ -1996,7 +1996,7 @@ class guiWin(QMainWindow):
         newTip = "Create a new segmentation file"
         self.newAction.setStatusTip(newTip)
         self.newAction.setToolTip(newTip)
-        self.newAction.setWhatsThis("Create a new and empty segmentation file")
+        self.newAction.setWhatsThis("Create a new empty segmentation file")
 
         self.findIdAction = QAction(self)
         self.findIdAction.setIcon(QIcon(":find.svg"))
@@ -7824,9 +7824,11 @@ class guiWin(QMainWindow):
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
             if self.debug:
+                print(self.isSegm3D)
                 posData = self.data[self.pos_i]
                 for posData in self.data:
                     print(posData.segm_npz_path)
+                    print(posData.acdc_output_csv_path)
                 pass
         try:
             posData = self.data[self.pos_i]
@@ -9513,37 +9515,59 @@ class guiWin(QMainWindow):
         posData = load.loadData(user_ch_file_paths[0], user_ch_name)
         posData.getBasenameAndChNames()
         posData.buildPaths()
-        if self.isNewFile:
-            segm_files = load.get_segm_files(posData.images_path)
-            existingEndnames = load.get_existing_endnames(
-                posData.basename, segm_files
+
+        # Get end name of every existing segmentation file
+        existingSegmEndNames = set()
+        for filePath in user_ch_file_paths:
+            _posData = load.loadData(filePath, user_ch_name)
+            _posData.getBasenameAndChNames()
+            segm_files = load.get_segm_files(_posData.images_path)
+            _existingEndnames = load.get_existing_segm_endnames(
+                _posData.basename, segm_files
             )
+            existingSegmEndNames.update(_existingEndnames)
+
+        selectedSegmEndName = ''
+        self.newSegmEndName = ''
+        if self.isNewFile:
+            # Remove the 'segm_' part to allow filenameDialog to check if
+            # a new file is existing (since we only ask for the part after
+            # 'segm_')
+            existingEndNames = [
+                n.replace('segm', '', 1).replace('_', '', 1)
+                for n in existingSegmEndNames
+            ]
             win = apps.filenameDialog(
                 basename=f'{posData.basename}segm',
                 hintText='Insert a <b>filename</b> for the segmentation file:<br>',
-                existingNames=existingEndnames
+                existingNames=existingEndNames
             )
             win.exec_()
             if win.cancel:
                 self.loadingDataAborted()
                 return
             self.newSegmEndName = win.entryText
+        else:
+            if len(existingSegmEndNames) > 1:
+                win = apps.QDialogMultiSegmNpz(
+                    existingSegmEndNames, self.exp_path, parent=self
+                )
+                win.exec_()
+                if win.cancel:
+                    self.loadingDataAborted()
+                    return
+
+                selectedSegmEndName = win.selectedItemText
+
         posData.loadImgData()
-        selectedSegmNpz, endFilenameSegm, cancel = posData.detectMultiSegmNpz(
-            askMultiSegmFunc=self.loadDataWorkerMultiSegm,
-            newEndFilenameSegm=self.newSegmEndName
-        )
-        if cancel:
-            self.loadingDataAborted()
-            return
         posData.loadOtherFiles(
             load_segm_data=True,
             load_metadata=True,
             create_new_segm=self.isNewFile,
             new_endname=self.newSegmEndName,
-            end_filename_segm=endFilenameSegm
+            end_filename_segm=selectedSegmEndName
         )
-        self.endFilenameSegm = endFilenameSegm
+        self.selectedSegmEndName = selectedSegmEndName
         self.labelBoolSegm = posData.labelBoolSegm
         posData.labelSegmData()
 
@@ -9649,16 +9673,6 @@ class guiWin(QMainWindow):
 
         self.thread.started.connect(self.loadDataWorker.run)
         self.thread.start()
-
-    def loadDataWorkerMultiSegm(self, segm_files, worker, waitCond):
-        win = apps.QDialogMultiSegmNpz(
-            segm_files, worker.pos_path, parent=self
-        )
-        win.exec_()
-        worker.selectedItemText = win.selectedItemText
-        worker.cancel = win.cancel
-        if waitCond is not None:
-            waitCond.wakeAll()
 
     def workerPermissionError(self, txt, waitCond):
         msg = widgets.myMessageBox(parent=self)
@@ -14752,10 +14766,13 @@ class guiWin(QMainWindow):
         except AttributeError:
             return
 
-        segm_files = load.get_segm_files(posData.images_path)
-        existingEndnames = load.get_existing_endnames(
-            posData.basename, segm_files
-        )
+        existingEndnames = set()
+        for _posData in self.data:
+            segm_files = load.get_segm_files(_posData.images_path)
+            _existingEndnames = load.get_existing_segm_endnames(
+                _posData.basename, segm_files
+            )
+            existingEndnames.update(_existingEndnames)
         posData = self.data[self.pos_i]
         win = apps.filenameDialog(
             basename=f'{posData.basename}segm',

@@ -545,9 +545,7 @@ def getBaseAcdcDf(rp):
             'is_cell_excluded': zeros_list,
             'x_centroid': xx_centroid,
             'y_centroid': yy_centroid,
-            'editIDclicked_x': nones_list,
-            'editIDclicked_y': nones_list,
-            'editIDnewID': minus1_list
+            'was_manually_edited': minus1_list
         }
     ).set_index('Cell_ID')
     return df

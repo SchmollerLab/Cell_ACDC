@@ -68,10 +68,7 @@ def get_all_acdc_df_colnames():
         'is_cell_excluded',
         'x_centroid',
         'y_centroid',
-        'editIDclicked_x',
-        'editIDclicked_y',
-        'editIDnewID',
-        'editIDnewIDs'
+        'was_manually_edited'
     ]
     all_acdc_df_colnames.extend(additional_colnames)
     return all_acdc_df_colnames

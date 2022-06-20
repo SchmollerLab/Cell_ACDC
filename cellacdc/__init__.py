@@ -35,7 +35,7 @@ base_cca_df = {
 base_acdc_df = {
     'is_cell_dead': False,
     'is_cell_excluded': False,
-    'editIDnewID': -1
+    'was_manually_edited': 0
 }
 
 is_linux = sys.platform.startswith('linux')

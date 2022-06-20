@@ -102,13 +102,14 @@ def get_segm_files(images_path):
     ]
     return segm_files
 
-def get_existing_endnames(basename, segm_files):
+def get_existing_segm_endnames(basename, segm_files):
     existing_endnames = []
     for f in segm_files:
         filename, _ = os.path.splitext(f)
         endname = filename[len(basename):]
         # Remove the 'segm_' part
-        endname = endname.replace('segm', '', 1).replace('_', '', 1)
+        # endname = endname.replace('segm', '', 1).replace('_', '', 1)
+        # endname = endname.replace('_', '', 1)
         existing_endnames.append(endname)
     return existing_endnames
 
@@ -303,6 +304,7 @@ class loadData:
 
         if askMultiSegmFunc is None:
             return segm_files
+
         is_multi_npz = len(segm_files)>1
         if is_multi_npz and askMultiSegmFunc is not None:
             askMultiSegmFunc(segm_files, self, waitCond)
@@ -356,32 +358,36 @@ class loadData:
         if end_filename_segm and load_acdc_df:
             # Check if there is an acdc_output file linked to selected .npz
             _acdc_df_end_fn = end_filename_segm.replace('segm', 'acdc_output')
-            _acdc_df_end_fn = _acdc_df_end_fn.replace('.npz', '.csv')
+            _acdc_df_end_fn = f'{_acdc_df_end_fn}.csv'
             self._acdc_df_end_fn = _acdc_df_end_fn
             _linked_acdc_fn = f'{self.basename}{_acdc_df_end_fn}'
-            for file in ls:
-                if file == _linked_acdc_fn:
-                    filePath = os.path.join(self.images_path, file)
-                    self.acdc_output_csv_path = filePath
-                    linked_acdc_filename = file
-                    break
-            else:
-                # acdc_output not found --> create a linked acdc_output
-                self.acdc_output_csv_path = os.path.join(
-                    self.images_path, _linked_acdc_fn
-                )
+            acdc_df_path = os.path.join(self.images_path, _linked_acdc_fn)
+            self.acdc_output_csv_path = acdc_df_path
+            linked_acdc_filename = _linked_acdc_fn
 
         for file in ls:
             filePath = os.path.join(self.images_path, file)
+            endName = file[len(self.basename):].split('.')[0]
 
-            if end_filename_segm:
+            if new_endname:
+                # Do not load any segmentation file since user asked for new one
+                # This is redundant since we alse have create_new_segm=True
+                # but we keep it for code readability
+                is_segm_file = False
+            elif end_filename_segm:
+                # Load the segmentation file selected by the user
                 self._segm_end_fn = end_filename_segm
-                is_segm_file = file.endswith(end_filename_segm)
+                is_segm_file = endName == end_filename_segm
             else:
+                # Load default segmentation file
                 is_segm_file = file.endswith('segm.npz')
 
             if linked_acdc_filename is not None:
                 is_acdc_df_file = file == linked_acdc_filename
+            elif end_filename_segm:
+                # Requested a specific file but it is not present
+                # do not load acdc_df file
+                is_acdc_df_file = False
             else:
                 is_acdc_df_file = file.endswith('acdc_output.csv')
 
@@ -681,15 +687,18 @@ class loadData:
         if self.segmFound is not None and not self.segmFound:
             self.segm_data = None
             # Segmentation file not found and a specifc one was requested
+            # --> set the path
             if hasattr(self, '_segm_end_fn'):
                 if self.basename.endswith('_'):
                     basename = self.basename
                 else:
                     basename = f'{self.basename}_'
                 base_path = os.path.join(self.images_path, basename)
-                self.segm_npz_path = f'{base_path}{self._segm_end_fn}'
+                self.segm_npz_path = f'{base_path}{self._segm_end_fn}.npz'
         if self.acdc_df_found is not None and not self.acdc_df_found:
             self.acdc_df = None
+            # Set the file path for selected acdc_output.csv file
+            # since it was not found
             if hasattr(self, '_acdc_df_end_fn'):
                 if self.basename.endswith('_'):
                     basename = self.basename

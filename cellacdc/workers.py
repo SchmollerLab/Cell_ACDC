@@ -394,6 +394,10 @@ class loadDataWorker(QObject):
     def checkSelectedDataShape(self, posData, numPos):
         skipPos = False
         abort = False
+        emitWarning = (
+            not posData.segmFound and posData.SizeT > 1
+            and not self.mainWin.isNewFile
+        )
         if numPos > 1:
             if posData.SizeT > 1:
                 err_msg = (f'{posData.pos_foldername} contains frames over time. '
@@ -402,7 +406,7 @@ class loadDataWorker(QObject):
                 self.titleLabel.setText(err_msg, color='r')
                 skipPos = True
         else:
-            if not posData.segmFound and posData.SizeT > 1 and not self.mainWin.isNewFile:
+            if emitWarning:
                 self.signals.dataIntegrityWarning.emit(posData.pos_foldername)
                 self.pause()
                 abort = self.abort
@@ -439,7 +443,7 @@ class loadDataWorker(QObject):
                 posData.getBasenameAndChNames()
                 posData.buildPaths()
                 posData.loadImgData()
-
+                
             posData.loadOtherFiles(
                 load_segm_data=loadSegm,
                 load_acdc_df=True,
@@ -452,7 +456,7 @@ class loadDataWorker(QObject):
                 load_metadata=True,
                 load_customAnnot=True,
                 load_customCombineMetrics=True,
-                end_filename_segm=self.mainWin.endFilenameSegm,
+                end_filename_segm=self.mainWin.selectedSegmEndName,
                 create_new_segm=self.mainWin.isNewFile,
                 new_endname=self.mainWin.newSegmEndName,
                 labelBoolSegm=self.mainWin.labelBoolSegm

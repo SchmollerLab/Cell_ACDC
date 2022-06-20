@@ -6814,8 +6814,8 @@ class QDialogMultiSegmNpz(QDialog):
         super().__init__(parent)
 
         informativeText = html_utils.paragraph(f"""
-            The folder<br><br>{parent_path}<br><br>
-            contains <b>multipe segmentation masks</b><br>
+            The loaded Position folders contains
+            <b>multipe segmentation masks</b><br>
         """)
 
         self.setWindowTitle('Multiple segm.npz files detected')

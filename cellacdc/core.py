@@ -268,27 +268,19 @@ def cca_df_to_acdc_df(cca_df, rp, acdc_df=None):
         is_cell_excluded_li = []
         xx_centroid = []
         yy_centroid = []
-        editIDclicked_x = []
-        editIDclicked_y = []
-        editIDnewID = []
         for obj in rp:
             IDs.append(obj.label)
             is_cell_dead_li.append(0)
             is_cell_excluded_li.append(0)
             xx_centroid.append(int(obj.centroid[1]))
             yy_centroid.append(int(obj.centroid[0]))
-            editIDclicked_x.append(np.nan)
-            editIDclicked_y.append(np.nan)
-            editIDnewID.append(-1)
         acdc_df = pd.DataFrame({
             'Cell_ID': IDs,
             'is_cell_dead': is_cell_dead_li,
             'is_cell_excluded': is_cell_excluded_li,
             'x_centroid': xx_centroid,
             'y_centroid': yy_centroid,
-            'editIDclicked_x': editIDclicked_x,
-            'editIDclicked_y': editIDclicked_y,
-            'editIDnewID': editIDnewID
+            'was_manually_edited': is_cell_excluded_li.copy()
         }).set_index('Cell_ID')
 
     acdc_df = acdc_df.join(cca_df, how='left')
