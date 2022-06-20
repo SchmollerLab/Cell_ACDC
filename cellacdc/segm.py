@@ -83,6 +83,7 @@ class segmWorker(QRunnable):
         self.tracker = mainWin.tracker
         self.isNewSegmFile = mainWin.isNewSegmFile
         self.endFilenameSegm = mainWin.endFilenameSegm
+        self.isSegm3D = mainWin.isSegm3D
 
     def setupPausingItems(self):
         self.mutex = QMutex()
@@ -132,6 +133,8 @@ class segmWorker(QRunnable):
             posData.SizeZ = SizeZ
         else:
             posData.SizeZ = 1
+
+        posData.isSegm3D = self.isSegm3D
         posData.saveMetadata()
 
         isROIactive = False
@@ -596,22 +599,6 @@ class segmWin(QMainWindow):
             images_paths = [exp_path]
 
         self.save = True
-        # # Ask to save? (only for debugging)
-        # msg = QMessageBox()
-        # msg.setFont(font)
-        # answer = msg.question(
-        #     self, 'Save?', 'Do you want to save segmentation?',
-        #     msg.Yes | msg.No | msg.Cancel
-        # )
-        # if answer == msg.Yes:
-        #     self.save = True
-        # elif answer == msg.No:
-        #     self.save = False
-        # else:
-        #     abort = self.doAbort()
-        #     if abort:
-        #         self.close()
-        #         return
 
         user_ch_file_paths = []
         for images_path in images_paths:
@@ -671,16 +658,6 @@ class segmWin(QMainWindow):
                 user_ch_file_paths.append(img_path)
 
         self.numPos = len(user_ch_file_paths)
-        hyperparams = self.segment2D_kwargs.copy()
-        post_process_params = {
-            'model': model_name,
-            'minSize': self.minSize,
-            'minSolidity': self.minSolidity,
-            'maxElongation': self.maxElongation,
-            'applied_postprocessing': int(self.applyPostProcessing)
-        }
-        hyperparams.update(post_process_params)
-        hyperparams['segm_channel_name'] = user_ch_name
 
         selectROI = False
         # Ask other questions based on first position
@@ -688,7 +665,6 @@ class segmWin(QMainWindow):
         posData = load.loadData(img_path, user_ch_name, QParent=self)
         posData.getBasenameAndChNames()
         posData.buildPaths()
-        posData.saveSegmHyperparams(hyperparams)
         posData.loadImgData()
         posData.loadOtherFiles(
             load_segm_data=True,
@@ -792,6 +768,16 @@ class segmWin(QMainWindow):
                     self.close()
                     return
             self.endFilenameSegm = f'segm_{win.entryText}.npz'
+
+        # Save hyperparams
+        post_process_params = {
+            'model': model_name,
+            'minSize': self.minSize,
+            'minSolidity': self.minSolidity,
+            'maxElongation': self.maxElongation,
+            'applied_postprocessing': self.applyPostProcessing
+        }
+        posData.saveSegmHyperparams(self.segment2D_kwargs, post_process_params)
 
         if posData.dataPrep_ROIcoords is None:
             # Ask ROI
@@ -986,8 +972,9 @@ class segmWin(QMainWindow):
 
         max = 0
         for imgPath in user_ch_file_paths:
-            posData = load.loadData(imgPath, user_ch_name)
-            posData.loadOtherFiles(
+            _posData = load.loadData(imgPath, user_ch_name)
+            _posData.getBasenameAndChNames()
+            _posData.loadOtherFiles(
                 load_segm_data=False,
                 load_metadata=True
             )

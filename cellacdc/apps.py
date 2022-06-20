@@ -1306,7 +1306,7 @@ class QDialogMetadataXML(QDialog):
 
         self.PhysicalSizeYUnit_Label = QLabel()
         self.PhysicalSizeYUnit_Label.setStyleSheet(
-            'font-size:12px; padding:5px 0px 2px 0px;'
+            'font-size:13px; padding:5px 0px 2px 0px;'
         )
         unit = self.PhysicalSizeUnit_CB.currentText()
         self.PhysicalSizeYUnit_Label.setText(unit)
@@ -1327,7 +1327,7 @@ class QDialogMetadataXML(QDialog):
         self.PhysicalSizeZUnit_Label = QLabel()
         # padding: top, left, bottom, right
         self.PhysicalSizeZUnit_Label.setStyleSheet(
-            'font-size:12px; padding:5px 0px 2px 0px;'
+            'font-size:13px; padding:5px 0px 2px 0px;'
         )
         unit = self.PhysicalSizeUnit_CB.currentText()
         self.PhysicalSizeZUnit_Label.setText(unit)
@@ -1446,7 +1446,7 @@ class QDialogMetadataXML(QDialog):
             self.emWavelens_DSBs.append(emWavelen_DSB)
 
             unit = QLabel('nm')
-            unit.setStyleSheet('font-size:12px; padding:5px 0px 2px 0px;')
+            unit.setStyleSheet('font-size:13px; padding:5px 0px 2px 0px;')
             self.channelEmWLayouts[2].addWidget(unit)
 
         entriesLayout.setContentsMargins(0, 15, 0, 0)
@@ -1751,7 +1751,7 @@ class QDialogMetadataXML(QDialog):
                 emWavelen_DSB.setDecimals(2)
                 emWavelen_DSB.setValue(500.0)
                 unit = QLabel('nm')
-                unit.setStyleSheet('font-size:12px; padding:5px 0px 2px 0px;')
+                unit.setStyleSheet('font-size:13px; padding:5px 0px 2px 0px;')
 
                 txt = f'Channel {c} emission wavelength:  '
                 label = QLabel(txt)
@@ -2459,7 +2459,16 @@ class QDialogListbox(QDialog):
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.cancel_cb)
 
-        # self.setModal(True)
+        self.setStyleSheet("""
+            QListWidget::item:hover {background-color:#E6E6E6;}
+            QListWidget::item:selected {background-color:#CFEB9B;}
+            QListWidget::item:selected {color:black;}
+            QListView {
+                selection-background-color: #CFEB9B;
+                selection-color: white;
+                show-decoration-selected: 1;
+            }
+        """)
 
     def ok_cb(self, event):
         self.clickedButton = self.sender()
@@ -2588,7 +2597,7 @@ class QDialogAppendTextFilename(QDialog):
         )
         # padding: top, left, bottom, right
         self.finalName_label.setStyleSheet(
-            'font-size:12px; padding:5px 0px 0px 0px;'
+            'font-size:13px; padding:5px 0px 0px 0px;'
         )
 
         okButton = widgets.okPushButton('Ok')
@@ -3101,7 +3110,7 @@ class QDialogMetadata(QDialog):
         valid = all([valid4D, valid3D, valid2D])
         if not valid4D:
             txt = (f"""
-            <p style="font-size:12px">
+            <p style="font-size:13px">
                 You loaded <b>4D data</b>, hence the number of frames MUST be
                 <b>{T}</b><br> nd the number of z-slices MUST be <b>{Z}</b>.<br><br>
                 What do you want to do?
@@ -3109,7 +3118,7 @@ class QDialogMetadata(QDialog):
             """)
         if not valid3D:
             txt = (f"""
-            <p style="font-size:12px">
+            <p style="font-size:13px">
                 You loaded <b>3D data</b>, hence either the number of frames is
                 <b>{TZ}</b><br> or the number of z-slices can be <b>{TZ}</b>.<br><br>
                 However, if the number of frames is greater than 1 then the<br>
@@ -3120,7 +3129,7 @@ class QDialogMetadata(QDialog):
 
         if not valid2D:
             txt = (f"""
-            <p style="font-size:12px">
+            <p style="font-size:13px">
                 You loaded <b>2D data</b>, hence the number of frames MUST be <b>1</b>
                 and the number of z-slices MUST be <b>1</b>.<br><br>
                 What do you want to do?
@@ -3652,7 +3661,7 @@ class edgeDetectionDialog(QDialog):
         row += 1
         sharpQSLabel = QLabel('Sharpen:')
         # padding: top, left, bottom, right
-        sharpQSLabel.setStyleSheet("font-size:12px; padding:5px 0px 0px 0px;")
+        sharpQSLabel.setStyleSheet("font-size:13px; padding:5px 0px 0px 0px;")
         paramsLayout.addWidget(sharpQSLabel, row, 0)
         row += 1
         self.sharpValLabel = QLabel('5.00')
@@ -3939,7 +3948,7 @@ class randomWalkerDialog(QDialog):
         row += 1
         foregrQSLabel = QLabel('Foreground threshold:')
         # padding: top, left, bottom, right
-        foregrQSLabel.setStyleSheet("font-size:12px; padding:5px 0px 0px 0px;")
+        foregrQSLabel.setStyleSheet("font-size:13px; padding:5px 0px 0px 0px;")
         paramsLayout.addWidget(foregrQSLabel, row, 0)
         row += 1
         self.foregrThreshValLabel = QLabel('0.95')
@@ -5636,7 +5645,7 @@ class QLineEditDialog(QDialog):
     def warnValLessLastFrame(self, val):
         msg = QMessageBox()
         warn_txt = (f"""
-        <p style="font-size:12px">
+        <p style="font-size:13px">
             WARNING: saving until a frame number below the last visited
             frame ({self.maxValue})<br>
             will result in <b>loss of information
@@ -7246,7 +7255,7 @@ class QDialogModelParams(QDialog):
                 try:
                     val = getattr(self.configPars, getter)(section, option)
                     break
-                except ValueError:
+                except Exception:
                     pass
             widget = argWidget.widget
             argWidget.valueSetter(widget, val)
@@ -7301,7 +7310,7 @@ class QDialogModelParams(QDialog):
         htmlTxt = f'<a href=\"{url}">here</a>'
         seeHereLabel = QLabel()
         seeHereLabel.setText(f"""
-            <p style="font-size:12px">
+            <p style="font-size:13px">
                 See {htmlTxt} for details on the parameters
             </p>
         """)
@@ -7410,7 +7419,7 @@ class downloadModel(QMessageBox):
             following folder:<br><br>
             {model_path}<br>
         </p>
-        <p style=font-size:12px>
+        <p style=font-size:13px>
             <i>NOTE: if clicking on the link above does not work
             copy one of the links below and paste it into the browser</i><br><br>
             {url}<br>{alternative_url}
@@ -7449,7 +7458,7 @@ class warnVisualCppRequired(QMessageBox):
         self.setWindowTitle(f'Installation of {pkg_name} info')
         self.setTextFormat(Qt.RichText)
         txt = (f"""
-        <p style=font-size:12px>
+        <p style=font-size:13px>
             Installation of {pkg_name} on Windows requires
             Microsoft Visual C++ 14.0 or higher.<br><br>
             Cell-ACDC will anyway try to install {pkg_name} now.<br><br>

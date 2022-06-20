@@ -608,7 +608,10 @@ class loadData:
             self.SizeX = float(self.metadata_df.at['SizeX', 'values'])
             self.SizeX = int(self.SizeX)
         else:
-            self.SizeY, self.SizeX = self.img_data_shape[-2:]
+            if hasattr(self, 'img_data_shape'):
+                self.SizeY, self.SizeX = self.img_data_shape[-2:]
+            else:
+                self.SizeY, self.SizeX = 1, 1
 
         if 'TimeIncrement' in self.metadata_df.index:
             self.TimeIncrement = float(
@@ -861,9 +864,32 @@ class loadData:
             self.acdc_df.at[idx, 'x_centroid'] = x
             self.acdc_df.at[idx, 'y_centroid'] = y
 
-    def saveSegmHyperparams(self, hyperparams):
-        df = pd.DataFrame(hyperparams, index=['value'])
-        df.to_csv(self.segm_hyperparams_csv_path)
+    def getSegmEndname(self):
+        segmFilename = os.path.basename(self.segm_npz_path)
+        segmFilename = os.path.splitext(segmFilename)[0]
+        segmEndName = segmFilename[len(self.basename):]
+        return segmEndName
+
+    def saveSegmHyperparams(self, hyperparams, post_process_params):
+        cp = config.ConfigParser()
+
+        if os.path.exists(self.segm_hyperparams_ini_path):
+            cp.read(self.segm_hyperparams_ini_path)
+
+        segmEndName = self.getSegmEndname()
+        now = datetime.now().strftime('%Y-%m-%d_%H:%M')
+        section = f'{now}.{segmEndName}.segmentation'
+        cp[section] = {'segmented_channel': self.user_ch_name}
+        for key, value in hyperparams.items():
+            cp[section][key] = str(value)
+
+        section = f'{now}.{segmEndName}.post-processing'
+        cp[section] = {}
+        for key, value in post_process_params.items():
+            cp[section][key] = str(value)
+
+        with open(self.segm_hyperparams_ini_path, 'w') as configfile:
+            cp.write(configfile)
 
     def buildPaths(self):
         if self.basename.endswith('_'):
@@ -890,7 +916,7 @@ class loadData:
         self.raw_segm_npz_path = f'{base_path}segm_raw.npz'
         self.raw_postproc_segm_path = f'{base_path}segm_raw_postproc'
         self.post_proc_mot_metrics = f'{base_path}post_proc_mot_metrics'
-        self.segm_hyperparams_csv_path = f'{base_path}segm_hyperparams.csv'
+        self.segm_hyperparams_ini_path = f'{base_path}segm_hyperparams.ini'
         self.btrack_tracks_h5_path = f'{base_path}btrack_tracks.h5'
         self.custom_annot_json_path = f'{base_path}custom_annot_params.json'
         self.custom_combine_metrics_path = f'{base_path}custom_combine_metrics.ini'
@@ -1044,6 +1070,8 @@ class loadData:
             self, signals=None, mutex=None, waitCond=None,
             additionalMetadata=None
         ):
+        segmEndName = self.getSegmEndname()
+        isSegm3Dkey = f'{segmEndName}_isSegm3D'
         if self.metadata_df is None:
             metadata_dict = {
                 'SizeT': self.SizeT,
@@ -1055,7 +1083,7 @@ class loadData:
                 'PhysicalSizeY': self.PhysicalSizeY,
                 'PhysicalSizeX': self.PhysicalSizeX,
                 'segmSizeT': self.segmSizeT,
-                'isSegm3D': self.isSegm3D
+                isSegm3Dkey: self.isSegm3D
             }
             if additionalMetadata is not None:
                 metadata_dict = {**metadata_dict, **additionalMetadata}
@@ -1073,7 +1101,7 @@ class loadData:
             self.metadata_df.at['PhysicalSizeY', 'values'] = self.PhysicalSizeY
             self.metadata_df.at['PhysicalSizeX', 'values'] = self.PhysicalSizeX
             self.metadata_df.at['segmSizeT', 'values'] = self.segmSizeT
-            self.metadata_df.at['isSegm3D', 'values'] = self.isSegm3D
+            self.metadata_df.at[isSegm3Dkey, 'values'] = self.isSegm3D
             if additionalMetadata is not None:
                 for name, value in additionalMetadata.items():
                     self.metadata_df.at[name, 'values'] = value

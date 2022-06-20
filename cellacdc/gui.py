@@ -7829,6 +7829,7 @@ class guiWin(QMainWindow):
                 for posData in self.data:
                     print(posData.segm_npz_path)
                     print(posData.acdc_output_csv_path)
+                    print(posData.segm_data.shape)
                 pass
         try:
             posData = self.data[self.pos_i]
@@ -8954,6 +8955,15 @@ class guiWin(QMainWindow):
 
             model = acdcSegment.Model(**win.init_kwargs)
             self.models[idx] = model
+
+            postProcessParams = {
+                'model': model_name,
+                'minSize': self.minSize,
+                'minSolidity': self.minSolidity,
+                'maxElongation': self.maxElongation,
+                'applied_postprocessing': self.applyPostProcessing
+            }
+            posData.saveSegmHyperparams(self.segment2D_kwargs, postProcessParams)
         else:
             model = self.models[idx]
 
