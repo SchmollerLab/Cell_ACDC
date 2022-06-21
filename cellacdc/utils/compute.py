@@ -159,7 +159,7 @@ class computeMeasurmentsUtilWin(QDialog):
             existingSegmEndNames.update(_existingEndnames)
 
         if len(existingSegmEndNames) == 1:
-            self.endFilenameSegm = existingSegmEndNames[0]
+            self.endFilenameSegm = list(existingSegmEndNames)[0]
             self.worker.waitCond.wakeAll()
             return
 

@@ -2,6 +2,7 @@ from stardist.models import StarDist2D, StarDist3D
 from csbdeep.utils import normalize
 import numpy as np
 import os
+import skimage.measure
 
 from cellacdc import models
 
@@ -63,18 +64,19 @@ class Model:
         prob_thresh = prob_thresh if prob_thresh > 0 else None
         nms_thresh = nms_thresh if nms_thresh > 0 else None
         if not segment_3D_volume and image.ndim == 3:
-            lab = np.zeros(image.shape, dtype=np.uint16)
+            labels = np.zeros(image.shape, dtype=np.uint16)
             for i, _img in enumerate(image):
-                _lab2D, _ = self.model.predict_instances(
+                lab, _ = self.model.predict_instances(
                     normalize(_img),
                     prob_thresh=prob_thresh,
                     nms_thresh=nms_thresh
                 )
-                lab[i] = _lab2D
+                labels[i] = lab
+            labels = skimage.measure.label(labels>0)
         else:
-            lab, _ = self.model.predict_instances(
+            labels, _ = self.model.predict_instances(
                 normalize(image),
                 prob_thresh=prob_thresh,
                 nms_thresh=nms_thresh
             )
-        return lab.astype(np.uint16)
+        return labels.astype(np.uint16)

@@ -155,8 +155,8 @@ class segmWorker(QRunnable):
             self.t0 = 0
             if self.concat_segm and posData.segm_data is not None:
                 self.t0 = len(posData.segm_data)
-            if posData.SizeZ > 1:
-                # 3D data over time
+            if posData.SizeZ > 1 and not self.isSegm3D:
+                # 2D segmentation on 3D data over time
                 img_data_slice = posData.img_data[self.t0:stop_i]
                 Y, X = posData.img_data.shape[-2:]
                 img_data = np.zeros((stop_i, Y, X), posData.img_data.dtype)
@@ -178,6 +178,13 @@ class segmWorker(QRunnable):
                     Y, X = img_data.shape[-2:]
                     img_data = img_data[:, :, y0:y1, x0:x1]
                     pad_info = ((0, 0), (0, 0), (y0, Y-y1), (x0, X-x1))
+            elif posData.SizeZ > 1 and self.isSegm3D:
+                # 3D segmentation on 3D data over time
+                img_data = posData.img_data[self.t0:stop_i]
+                if isROIactive:
+                    Y, X = img_data.shape[-2:]
+                    img_data = img_data[:, :, y0:y1, x0:x1]
+                    pad_info = ((0, 0), (0, 0), (y0, Y-y1), (x0, X-x1))
             else:
                 # 2D data over time
                 img_data = posData.img_data[self.t0:stop_i]
@@ -186,8 +193,8 @@ class segmWorker(QRunnable):
                     img_data = img_data[:, y0:y1, x0:x1]
                     pad_info = ((0, 0), (y0, Y-y1), (x0, X-x1))
         else:
-            if posData.SizeZ > 1:
-                # Single 3D image
+            if posData.SizeZ > 1 and not self.isSegm3D:
+                # 2D segmentation on single 3D image
                 z_info = posData.segmInfo_df.loc[posData.filename].iloc[0]
                 z = z_info.z_slice_used_dataPrep
                 zProjHow = z_info.which_z_proj
@@ -199,6 +206,12 @@ class segmWorker(QRunnable):
                     img_data = posData.img_data.mean(axis=0)
                 elif zProjHow == 'median z-proj.':
                     img_data = np.median(posData.img_data, axis=0)
+                if isROIactive:
+                    Y, X = img_data.shape[-2:]
+                    pad_info = ((0, 0), (y0, Y-y1), (x0, X-x1))
+                    img_data = img_data[:, y0:y1, x0:x1]
+            elif posData.SizeZ > 1 and self.isSegm3D:
+                img_data = posData.img_data
                 if isROIactive:
                     Y, X = img_data.shape[-2:]
                     pad_info = ((0, 0), (y0, Y-y1), (x0, X-x1))
@@ -697,7 +710,7 @@ class segmWin(QMainWindow):
         self.predictCcaState_model = None
 
         self.is_segment3DT_available = False
-        if posData.SizeT>1:
+        if posData.SizeT>1 and not self.isSegm3D:
             self.is_segment3DT_available = any(
                 [name=='segment3DT' for name in dir(acdcSegment.Model)]
             )
@@ -798,12 +811,29 @@ class segmWin(QMainWindow):
                     self.close()
                     return
 
+        # Check if we should launch dataPrep:
+        #   1. 2D segmentation on z-stack data that was never visualized
+        #      with dataPrep
+        #   2. Select a ROI to segment
+        segm2D_never_visualized_dataPrep = (
+            not self.isSegm3D
+            and posData.SizeZ > 1
+            and posData.segmInfo_df is None
+        )
+        segm2D_channel_never_visualize = (
+            not self.isSegm3D
+            and posData.SizeZ > 1
+            and posData.segmInfo_df is not None
+        )
         launchDataPrep = False
-        if posData.SizeZ > 1 and posData.segmInfo_df is None:
+
+        if segm2D_never_visualized_dataPrep:
             launchDataPrep = True
         if selectROI:
             launchDataPrep = True
-        if posData.segmInfo_df is not None and posData.SizeZ > 1:
+
+        if segm2D_channel_never_visualize:
+            # segmInfo_df exists --> check if it has channel z-slice info
             filenames = posData.segmInfo_df.index.get_level_values(0).unique()
             for _filename in filenames:
                 if _filename.endswith(user_ch_name):
@@ -897,7 +927,7 @@ class segmWin(QMainWindow):
                 load_last_tracked_i=False,
                 load_metadata=True
             )
-        elif posData.SizeZ > 1:
+        elif posData.SizeZ > 1 and not self.isSegm3D:
             df = posData.segmInfo_df.loc[posData.filename]
             zz = df['z_slice_used_dataPrep'].to_list()
 

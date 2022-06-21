@@ -5,6 +5,7 @@ import numpy as np
 
 import skimage.exposure
 import skimage.filters
+import skimage.measure
 
 from cellpose import models
 from cellacdc.models import CELLPOSE_MODELS
@@ -44,9 +45,9 @@ class Model:
 
         # Run cellpose eval
         if not segment_3D_volume and image.ndim == 3:
-            lab = np.zeros(image.shape, dtype=np.uint16)
+            labels = np.zeros(image.shape, dtype=np.uint16)
             for i, _img in enumerate(image):
-                _lab2D = self.model.eval(
+                lab = self.model.eval(
                     _img.astype(np.float32),
                     channels=[0,0],
                     diameter=diameter,
@@ -56,9 +57,10 @@ class Model:
                     normalize=normalize,
                     do_3D=segment_3D_volume
                 )[0]
-                lab[i] = _lab2D
+                labels[i] = _lab2D
+            labels = skimage.measure.label(labels>0)
         else:
-            lab = self.model.eval(
+            labels = self.model.eval(
                 image.astype(np.float32),
                 channels=[0,0],
                 diameter=diameter,
@@ -68,7 +70,7 @@ class Model:
                 normalize=normalize,
                 do_3D=segment_3D_volume
             )[0]
-        return lab
+        return labels
 
 def url_help():
     return 'https://cellpose.readthedocs.io/en/latest/api.html'

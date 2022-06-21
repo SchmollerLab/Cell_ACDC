@@ -9569,7 +9569,7 @@ class guiWin(QMainWindow):
 
                 selectedSegmEndName = win.selectedItemText
             elif len(existingSegmEndNames) == 1:
-                selectedSegmEndName = existingSegmEndNames[0]
+                selectedSegmEndName = list(existingSegmEndNames)[0]
 
         posData.loadImgData()
         posData.loadOtherFiles(

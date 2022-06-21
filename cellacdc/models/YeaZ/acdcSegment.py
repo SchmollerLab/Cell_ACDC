@@ -5,6 +5,7 @@ import numpy as np
 
 import skimage.exposure
 import skimage.filters
+import skimage.measure
 
 from .unet import model
 from .unet import neural_network
@@ -81,7 +82,7 @@ class Model:
         return prediction
 
 
-    def segment(self, image, thresh_val=0.0, min_distance=10):
+    def segment2D(self, image, thresh_val=0.0, min_distance=10):
         # Preprocess image
         image = self.yeaz_preprocess(image)
 
@@ -105,6 +106,21 @@ class Model:
         thresh = neural_network.threshold(prediction, thresh_val=thresh_val)
         lab = segment.segment(thresh, prediction, min_distance=min_distance)
         return lab.astype(np.uint16)
+
+    def segment(self, image, thresh_val=0.0, min_distance=10):
+        if image.ndim == 3:
+            labels = np.zeros(image.shape, dtype=np.uint16)
+            for z, img in enumerate(image):
+                lab = self.segment2D(
+                    img, thresh_val=thresh_val, min_distance=min_distance
+                )
+                labels[z] = lab
+            labels = skimage.measure.label(labels>0)
+        else:
+            labels = self.segment2D(
+                image, thresh_val=thresh_val, min_distance=min_distance
+            )
+        return labels
 
     def segment3DT(self, timelapse3D, thresh_val=0.0, min_distance=10, signals=None):
         sig_progress_tqdm = None
