@@ -57,7 +57,7 @@ class Model:
                     normalize=normalize,
                     do_3D=segment_3D_volume
                 )[0]
-                labels[i] = _lab2D
+                labels[i] = lab
             labels = skimage.measure.label(labels>0)
         else:
             labels = self.model.eval(
