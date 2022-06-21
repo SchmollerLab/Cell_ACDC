@@ -62,7 +62,31 @@ def lab_replace_values(lab, rp, oldIDs, newIDs, in_place=True):
     return lab
 
 def remove_artefacts(
-        lab, min_solidity=0.5, min_area=15, max_elongation=3,
+        labels, min_solidity=0.5, min_area=15, max_elongation=3,
+        return_delIDs=False
+    ):
+    if labels.ndim == 3:
+        for z, lab in enumerate(labels):
+            lab = remove_artefacts_lab2D(
+                lab, min_solidity, min_area, max_elongation
+            )
+            labels[z] = lab
+        result = labels
+    else:
+        result = remove_artefacts_lab2D(
+            lab, min_solidity, min_area, max_elongation,
+            return_delIDs=return_delIDs
+        )
+
+    if return_delIDs:
+        labels, delIDs = result
+        return labels, delIDs
+    else:
+        labels = result
+        return labels
+
+def remove_artefacts_lab2D(
+        lab, min_solidity, min_area, max_elongation,
         return_delIDs=False
     ):
     """
