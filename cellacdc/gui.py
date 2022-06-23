@@ -7841,6 +7841,7 @@ class guiWin(QMainWindow):
         isAltModifier = modifiers == Qt.AltModifier
         isCtrlModifier = modifiers == Qt.ControlModifier
         isShiftModifier = modifiers == Qt.ShiftModifier
+        self.isZmodifier = ev.key()==Qt.Key_Z
         if isShiftModifier:
             self.setHoverToolSymbolColor(
                 1, 1, self.ax2_BrushCirclePen,
@@ -8031,12 +8032,15 @@ class guiWin(QMainWindow):
             self.app.restoreOverrideCursor()
         if ev.key() == Qt.Key_Control:
             self.isCtrlDown = False
+        elif ev.key() == Qt.Key_Z:
+            self.isZmodifier = False
         canRepeat = (
             ev.key() == Qt.Key_Left
             or ev.key() == Qt.Key_Right
             or ev.key() == Qt.Key_Up
             or ev.key() == Qt.Key_Down
             or ev.key() == Qt.Key_Control
+            or ev.key() == Qt.Key_Z
         )
         if canRepeat:
             return
@@ -9184,16 +9188,24 @@ class guiWin(QMainWindow):
         self.titleLabel.setText('Budding event prediction done.', color='g')
 
     def next_cb(self):
-        t0 = time.perf_counter()
+        if self.isZmodifier:
+            stepAddAction = QAbstractSlider.SliderSingleStepAdd
+            self.zSliceScrollBar.triggerAction(stepAddAction)
+            return
+
         if self.isSnapshot:
             self.next_pos()
         else:
             self.next_frame()
         if self.curvToolButton.isChecked():
             self.curvTool_cb(True)
-        t1 = time.perf_counter()
 
     def prev_cb(self):
+        if self.isZmodifier:
+            stepSubAction = QAbstractSlider.SliderSingleStepSub
+            self.zSliceScrollBar.triggerAction(stepSubAction)
+            return
+
         if self.isSnapshot:
             self.prev_pos()
         else:
@@ -13906,6 +13918,8 @@ class guiWin(QMainWindow):
         return
 
     def reInitGui(self):
+        self.isZmodifier = False
+
         self.removeAllItems()
         self.reinitCustomAnnot()
         self.gui_addPlotItems()
