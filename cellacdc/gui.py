@@ -1044,32 +1044,6 @@ class saveDataWorker(QObject):
 
         self.finished.emit()
 
-class segmWorker(QObject):
-    finished = pyqtSignal(np.ndarray, float)
-    debug = pyqtSignal(object)
-    critical = pyqtSignal(object)
-
-    def __init__(self, mainWin):
-        QObject.__init__(self)
-        self.mainWin = mainWin
-
-    @workers.worker_exception_handler
-    def run(self):
-        t0 = time.time()
-        img = self.mainWin.getDisplayedCellsImg()
-        img = myutils.uint_to_float(img)
-        lab = self.mainWin.model.segment(img, **self.mainWin.segment2D_kwargs)
-        if self.mainWin.applyPostProcessing:
-            lab = core.remove_artefacts(
-                lab,
-                min_solidity=self.mainWin.minSolidity,
-                min_area=self.mainWin.minSize,
-                max_elongation=self.mainWin.maxElongation
-            )
-        t1 = time.time()
-        exec_time = t1-t0
-        self.finished.emit(lab, exec_time)
-
 class guiWin(QMainWindow):
     """Main Window."""
 
@@ -8976,10 +8950,30 @@ class guiWin(QMainWindow):
             '(check progress in terminal/console)', color=self.titleColor
         )
 
+        self.segment3D = False
+        if self.isSegm3D and self.askRepeatSegment3D:
+            msg = widgets.myMessageBox(showCentered=False)
+            msg.addDoNotShowAgainCheckbox(text='Do not ask again')
+            txt = html_utils.paragraph(
+                'Do you want to segment the <b>entire z-stack</b> or only the '
+                '<b>current z-slice</b>?'
+            )
+            _, segment3DButton, _ = msg.question(
+                self, '3D segmentation?', txt,
+                buttonsTexts=('Cancel', 'Segment 3D z-stack', 'Segment 2D z-slice')
+            )
+            if msg.cancel:
+                self.titleLabel.setText('Segmentation process aborted.')
+                self.logger.info('Segmentation process aborted.')
+                return
+            self.segment3D = msg.clickedButton == segment3DButton
+            if msg.doNotShowAgainCheckbox.isChecked():
+                self.askRepeatSegment3D = False
+
         self.model = model
 
         self.thread = QThread()
-        self.worker = segmWorker(self)
+        self.worker = workers.segmWorker(self)
         self.worker.moveToThread(self.thread)
         self.worker.finished.connect(self.thread.quit)
         self.worker.finished.connect(self.worker.deleteLater)
@@ -9095,7 +9089,10 @@ class guiWin(QMainWindow):
             idx = (posData.filename, posData.frame_i)
             posData.segmInfo_df.at[idx, 'resegmented_in_gui'] = True
 
-        posData.lab = lab.copy()
+        if lab.ndim == 2 and self.isSegm3D:
+            self.set_2Dlab(lab)
+        else:
+            posData.lab = lab.copy()
         self.update_rp()
         self.tracking(enforce=True)
         self.updateALLimg()
@@ -13115,6 +13112,34 @@ class guiWin(QMainWindow):
             self.t_label.setText(
                      f'frame n. {posData.frame_i+1}/{posData.SizeT}')
 
+    def getDisplayedZstack(self):
+        isDiffGaussFilter = False
+        if self.diffGaussFilterWin is None:
+            isDiffGaussFilter = False
+        elif self.diffGaussFilterWin.previewCheckBox.isChecked():
+            isDiffGaussFilter = True
+
+        if isDiffGaussFilter:
+            zStack = self.diffGaussFilteredData
+        else:
+            posData = self.data[self.pos_i]
+            zStack = posData.img_data[posData.frame_i]
+
+        for z, img in enumerate(zStack):
+            # Apply the other filters
+            if self.gaussWin is not None:
+                img = self.gaussWin.filter(img)
+
+            if self.edgeWin is not None:
+                img = self.edgeWin.filter(img)
+
+            if self.entropyWin is not None:
+                img = self.entropyWin.filter(img)
+
+            zStack[z] = img
+
+        return zStack
+
 
     def updateFilters(
             self, updateBlur=False, updateSharp=False,
@@ -13919,6 +13944,7 @@ class guiWin(QMainWindow):
 
     def reInitGui(self):
         self.isZmodifier = False
+        self.askRepeatSegment3D = True
 
         self.removeAllItems()
         self.reinitCustomAnnot()

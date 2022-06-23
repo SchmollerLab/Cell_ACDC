@@ -3413,8 +3413,11 @@ class gaussBlurDialog(QDialog):
         self.segmSizeT = posData.segmSizeT
         self.imgData = data
 
+    def filter(self, img):
+        return skimage.filters.gaussian(self.img, sigma=self.sigma)
+
     def getFilteredImg(self):
-        img = skimage.filters.gaussian(self.img, sigma=self.sigma)
+        img = self.filter(self.img)
         if self.mainWindow.overlayButton.isChecked():
             key = self.channelsComboBox.currentText()
             img = self.mainWindow.getOverlayImg(
@@ -3734,6 +3737,12 @@ class edgeDetectionDialog(QDialog):
     def detectEdges(self):
         self.edge = skimage.filters.sobel(self.img)
 
+    def filter(self, img):
+        edge = skimage.filters.sobel(img)
+        img = skimage.filters.gaussian(edge, sigma=self.sigma)
+        img = img - skimage.filters.gaussian(img, sigma=self.radius)
+        return img
+
     def getFilteredImg(self):
         img = self.edge.copy()
         # Blur
@@ -3872,6 +3881,12 @@ class entropyFilterDialog(QDialog):
         self.img = skimage.img_as_ubyte(img)
         self.frame_i = posData.frame_i
         self.imgData = data
+
+    def filter(self, img):
+        radius = self.radiusSlider.sliderPosition()
+        selem = skimage.morphology.disk(radius)
+        img = skimage.filters.rank.entropy(img, selem)
+        return img
 
     def getFilteredImg(self):
         radius = self.radiusSlider.sliderPosition()

@@ -366,6 +366,7 @@ class myMessageBox(QDialog):
         self.detailsTextWidget = None
         self.showInFileManagButton = None
         self.visibleDetails = False
+        self.doNotShowAgainCheckbox = None
 
         self.currentRow = 0
         self._w = None
@@ -473,6 +474,9 @@ class myMessageBox(QDialog):
         self.buttons.append(button)
         return button
 
+    def addDoNotShowAgainCheckbox(self, text='Do not show again'):
+        self.doNotShowAgainCheckbox = QCheckBox('Do not show again')
+
     def addWidget(self, widget):
         self.layout.addWidget(widget, self.currentRow, 1)
         self.widgets.append(widget)
@@ -498,6 +502,13 @@ class myMessageBox(QDialog):
 
         if self.detailsTextWidget is not None:
             self.buttonsLayout.insertWidget(1, self.detailsButton)
+
+        # Do not show again checkbox
+        if self.doNotShowAgainCheckbox is not None:
+            self.layout.addWidget(
+                self.doNotShowAgainCheckbox, self.currentRow, 0, 1, 2
+            )
+            self.currentRow += 1
 
         self.layout.addLayout(
             self.buttonsLayout, self.currentRow, 0, 1, 2,

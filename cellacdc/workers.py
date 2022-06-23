@@ -61,6 +61,35 @@ class signals(QObject):
     sigComputeVolume = pyqtSignal(int, object)
     sigAskStopFrame = pyqtSignal(object)
 
+class segmWorker(QObject):
+    finished = pyqtSignal(np.ndarray, float)
+    debug = pyqtSignal(object)
+    critical = pyqtSignal(object)
+
+    def __init__(self, mainWin):
+        QObject.__init__(self)
+        self.mainWin = mainWin
+
+    @worker_exception_handler
+    def run(self):
+        t0 = time.time()
+        if self.mainWin.segment3D:
+            img = self.mainWin.getDisplayedZstack()
+        else:
+            img = self.mainWin.getDisplayedCellsImg()
+        img = myutils.uint_to_float(img)
+        lab = self.mainWin.model.segment(img, **self.mainWin.segment2D_kwargs)
+        if self.mainWin.applyPostProcessing:
+            lab = core.remove_artefacts(
+                lab,
+                min_solidity=self.mainWin.minSolidity,
+                min_area=self.mainWin.minSize,
+                max_elongation=self.mainWin.maxElongation
+            )
+        t1 = time.time()
+        exec_time = t1-t0
+        self.finished.emit(lab, exec_time)
+
 class segmVideoWorker(QObject):
     finished = pyqtSignal(float)
     debug = pyqtSignal(object)
