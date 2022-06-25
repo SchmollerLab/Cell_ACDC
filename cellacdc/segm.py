@@ -508,13 +508,7 @@ class segmWin(QMainWindow):
 
         # Ask which model
         models = myutils.get_list_of_models()
-        win = apps.QDialogListbox(
-            'Select model',
-            'Select model to use for segmentation: ',
-            models,
-            multiSelection=False,
-            parent=self
-        )
+        win = apps.QDialogSelectModel(parent=self)
         win.exec_()
         if win.cancel:
             abort = self.doAbort()
@@ -522,7 +516,7 @@ class segmWin(QMainWindow):
                 self.close()
                 return
 
-        model_name = win.selectedItemsText[0]
+        model_name = win.selectedModel
         self.logger.info(f'Importing {model_name}...')
         self.downloadWin = apps.downloadModel(model_name, parent=self)
         self.downloadWin.download()
