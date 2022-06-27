@@ -383,7 +383,7 @@ class saveDataWorker(QObject):
 
         # self.metricsPbarProgress.emit(tot_iter, 0)
 
-        pbar = tqdm(total=tot_iter, ncols=100, unit='metric', leave=False)
+        # pbar = tqdm(total=tot_iter, ncols=100, unit='metric', leave=False)
 
         if self.mainWin.isSegm3D:
             outCellsMask3D = lab==0
@@ -767,6 +767,7 @@ class saveDataWorker(QObject):
                             )
                             # self.mainWin.logger.info(traceback.format_exc())
                         # self.metricsPbarProgress.emit(-1, 1)
+                        # pbar.update()
 
         if 'cell_area_pxl' in self.mainWin.sizeMetricsToSave:
             df['cell_area_pxl'] = pd.Series(
@@ -803,7 +804,7 @@ class saveDataWorker(QObject):
             df = df.drop(columns=df_custom_metrics.columns, errors='ignore')
             df = df.join(df_custom_metrics)
 
-        pbar.close()
+        # pbar.close()
 
         # Join with regionprops_table
         if self.mainWin.regionPropsToSave:
