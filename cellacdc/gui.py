@@ -2928,6 +2928,11 @@ class guiWin(QMainWindow):
             allIDs.update(IDs)
 
         numItems = (self.data[self.pos_i].segm_data).max()
+        if numItems == 0:
+            numItems = 100
+            # Pre-generate 100 items to make first 100 new objects faster
+            allIDs = range(1,numItems+1)
+
         self.ax1_ContoursCurves = [None]*numItems
         self.ax2_ContoursCurves = [None]*numItems
         self.ax1_BudMothLines = [None]*numItems
@@ -2952,7 +2957,6 @@ class guiWin(QMainWindow):
                 self.drawIDsContComboBox.setCurrentText(drawModes[-2])
                 self.loadingDataCompleted()
                 return
-
 
         self.logger.info(f'Creating {len(allIDs)} axes items...')
         for ID in tqdm(allIDs, ncols=100):
