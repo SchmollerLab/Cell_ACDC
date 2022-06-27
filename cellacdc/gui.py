@@ -7525,7 +7525,13 @@ class guiWin(QMainWindow):
             self.slideshowWin = apps.imageViewer(
                 parent=self,
                 button_toUncheck=self.slideshowButton,
-                linkWindow=posData.SizeT > 1
+                linkWindow=posData.SizeT > 1,
+                enableOverlay=True
+            )
+            h = self.drawIDsContComboBox.size().height()
+            self.slideshowWin.framesScrollBar.setFixedHeight(h)
+            self.slideshowWin.overlayButton.setChecked(
+                self.overlayButton.isChecked()
             )
             self.slideshowWin.update_img()
             self.slideshowWin.show(
@@ -7961,13 +7967,12 @@ class guiWin(QMainWindow):
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
             if self.debug:
-                print(self.isSegm3D)
                 posData = self.data[self.pos_i]
-                for posData in self.data:
-                    print(posData.segm_npz_path)
-                    print(posData.acdc_output_csv_path)
-                    print(posData.segm_data.shape)
-                pass
+                print(posData.ol_data.keys())
+                values = posData.ol_data.values()
+                values = list(values)
+                print((values[0][posData.frame_i]).max())
+                print(posData.img_data[posData.frame_i].max())
         try:
             posData = self.data[self.pos_i]
         except AttributeError:
@@ -10632,13 +10637,18 @@ class guiWin(QMainWindow):
             posData.lab = posData.segm_data[posData.frame_i]
         else:
             posData.lab = posData.allData_li[posData.frame_i]['labels']
-        cells_img = self.getImage()
+
+        if self.overlayButton.isChecked():
+            img = self.getOverlayImg(setImg=False)
+        else:
+            img = self.getImageWithCmap()
+
         if self.navigateScrollBarStartedMoving:
             self.clearAllItems()
         self.t_label.setText(
             f'frame n. {posData.frame_i+1}/{posData.SizeT}'
         )
-        self.img1.setImage(cells_img)
+        self.img1.setImage(img)
         if not self.labelsGrad.hideLabelsImgAction.isChecked():
             self.img2.setImage(posData.lab, z=self.z_lab(), autoLevels=False)
         self.updateLookuptable()
@@ -12161,27 +12171,30 @@ class guiWin(QMainWindow):
             posData.ol_data = ol_data
         return True
 
+    def askSelectOverlayChannel(self):
+        ch_names = [ch for ch in self.ch_names if ch != self.user_ch_name]
+        selectFluo = apps.QDialogListbox(
+            'Select channel',
+            'Select channel names to overlay:\n',
+            ch_names, multiSelection=False, parent=self
+        )
+        selectFluo.exec_()
+        if selectFluo.cancel:
+            return False
+
+        ol_channels = selectFluo.selectedItemsText
+        success = self.loadOverlayData(ol_channels)
+        if not success:
+            return False
+
+        return True
 
     def overlay_cb(self, checked):
         self.UserNormAction, _, _ = self.getCheckNormAction()
         posData = self.data[self.pos_i]
         if checked:
             if posData.ol_data is None:
-                # Overlay data was never loaded ask channel to overlay
-                ch_names = [ch for ch in self.ch_names if ch != self.user_ch_name]
-                selectFluo = apps.QDialogListbox(
-                    'Select channel',
-                    'Select channel names to overlay:\n',
-                    ch_names, multiSelection=False, parent=self
-                )
-                selectFluo.exec_()
-                if selectFluo.cancel:
-                    self.overlayButton.toggled.disconnect()
-                    self.overlayButton.setChecked(False)
-                    self.overlayButton.toggled.connect(self.overlay_cb)
-                    return
-                ol_channels = selectFluo.selectedItemsText
-                success = self.loadOverlayData(ol_channels)
+                success = self.askSelectOverlayChannel()
                 if not success:
                     self.overlayButton.toggled.disconnect()
                     self.overlayButton.setChecked(False)
@@ -12198,7 +12211,6 @@ class guiWin(QMainWindow):
             self.setCheckedOverlayContextMenusAction()
             self.updateALLimg(only_ax1=True)
             self.enableOverlayWidgets(True)
-
         else:
             self.UserNormAction.setChecked(True)
             self.imgGrad.gradient.menu.removeAction(self.userChNameAction)
@@ -12431,9 +12443,12 @@ class guiWin(QMainWindow):
                 )
         return rescaled_img
 
-    def getOlImg(self, key, normalizeIntens=True):
+    def getOlImg(self, key, normalizeIntens=True, frame_i=None):
         posData = self.data[self.pos_i]
-        img = posData.ol_data[key][posData.frame_i]
+        if frame_i is None:
+            frame_i = posData.frame_i
+
+        img = posData.ol_data[key][frame_i]
         if posData.SizeZ > 1:
             zProjHow = self.zProjOverlay_CB.currentText()
             z = self.zSliceOverlay_SB.sliderPosition()
@@ -12573,12 +12588,12 @@ class guiWin(QMainWindow):
         else:
             return obj_slice
 
-    def getOverlayImg(self, fluoData=None, setImg=True):
+    def getOverlayImg(self, fluoData=None, setImg=True, frame_i=None):
         posData = self.data[self.pos_i]
         keys = list(posData.ol_data.keys())
 
         # Cells channel (e.g. phase_contrast)
-        cells_img = self.getImage(invert=False)
+        cells_img = self.getImage(invert=False, frame_i=frame_i)
 
         img = self.adjustBrightness(cells_img, posData.filename)
         self.ol_cells_img = img
@@ -12588,7 +12603,7 @@ class guiWin(QMainWindow):
             gray_img_rgb = self.imgCmap(img)[:, :, :3]
 
         # First fluo channel
-        ol_img = self.getOlImg(keys[0])
+        ol_img = self.getOlImg(keys[0], frame_i=frame_i)
         if fluoData is not None:
             fluoImg, fluoKey = fluoData
             if fluoKey == keys[0]:
@@ -12635,7 +12650,7 @@ class guiWin(QMainWindow):
     def _overlay(self, gray_img_rgb, ol_img, color):
         ol_RGB_val = [v/255 for v in color]
         ol_alpha = self.alphaScrollBar.value()/self.alphaScrollBar.maximum()
-        ol_norm_img = ol_img/numba_max(ol_img)
+        ol_norm_img = ol_img/ol_img.max()
         ol_img_rgb = gray2rgb(ol_norm_img)*ol_RGB_val
         overlay = (gray_img_rgb*(1.0 - ol_alpha)+ol_img_rgb*ol_alpha)
         overlay = overlay/numba_max(overlay)
@@ -12898,7 +12913,7 @@ class guiWin(QMainWindow):
             # Do not invert bw for non grey cmaps
             return cells_img
         if self.invertBwAction.isChecked() and invert:
-            cells_img = -cells_img+numba_max(cells_img)
+            cells_img = -cells_img+cells_img.max()
         return cells_img
 
     def setImageImg2(self, updateLookuptable=True):
