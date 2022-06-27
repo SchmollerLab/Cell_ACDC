@@ -3097,11 +3097,7 @@ class QDialogMetadata(QDialog):
         self.mainLayout.insertLayout(row, fieldLayout)
 
     def removeField(self, idx):
-        print(self.additionalFieldsWidgets)
         widgets = self.additionalFieldsWidgets[idx]
-
-        print(widgets)
-        print(idx)
 
         layoutToRemove = widgets['layout']
         for row in range(layoutToRemove.rowCount()):

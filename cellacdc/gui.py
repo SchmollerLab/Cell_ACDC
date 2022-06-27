@@ -741,7 +741,7 @@ class saveDataWorker(QObject):
                                 val = func(fluo_data_ID)
                                 metrics_values[key][i] = val
 
-                        pbar.update()
+                        # pbar.update()
                         # self.metricsPbarProgress.emit(-1, 1)
                     for custom_func_name, custom_func in custom_func_dict.items():
                         key = f'{chName}_{custom_func_name}{how}'
