@@ -885,8 +885,8 @@ class saveDataWorker(QObject):
         IDs_vol_fl = init_list.copy()
         IDs_area_um2 = init_list.copy()
         if self.mainWin.isSegm3D:
-            IDs_vol_vox_3D = list_0s.copy()
-            IDs_vol_fl_3D = list_0s.copy()
+            IDs_vol_vox_3D = init_list.copy()
+            IDs_vol_fl_3D = init_list.copy()
 
         for i, obj in enumerate(rp):
             IDs[i] = obj.label
