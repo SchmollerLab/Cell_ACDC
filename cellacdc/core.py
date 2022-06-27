@@ -66,15 +66,25 @@ def remove_artefacts(
         return_delIDs=False
     ):
     if labels.ndim == 3:
+        delIDs = set()
         for z, lab in enumerate(labels):
-            lab = remove_artefacts_lab2D(
-                lab, min_solidity, min_area, max_elongation
+            _result = remove_artefacts_lab2D(
+                lab, min_solidity, min_area, max_elongation,
+                return_delIDs=return_delIDs
             )
+            if return_delIDs:
+                lab, _delIDs = _result
+                delIDs.update(_delIDs)
+            else:
+                lab = _result
             labels[z] = lab
-        result = labels
+        if return_delIDs:
+            result = labels, delIDs
+        else:
+            result = labels
     else:
         result = remove_artefacts_lab2D(
-            lab, min_solidity, min_area, max_elongation,
+            labels, min_solidity, min_area, max_elongation,
             return_delIDs=return_delIDs
         )
 
