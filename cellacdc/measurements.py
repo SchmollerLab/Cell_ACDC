@@ -73,8 +73,8 @@ def get_all_acdc_df_colnames():
     all_acdc_df_colnames.extend(additional_colnames)
     return all_acdc_df_colnames
 
-def get_user_combine_metrics_equations(chName):
-    _, equations = channel_combine_metrics_desc(chName)
+def get_user_combine_metrics_equations(chName, isSegm3D=False):
+    _, equations = channel_combine_metrics_desc(chName, isSegm3D=isSegm3D)
     return equations
 
 def get_custom_metrics_func():
@@ -148,9 +148,8 @@ def _get_custom_metrics_names():
     custom_metrics_names = {func_name:func_name for func_name in keys}
     return custom_metrics_names
 
-def custom_metrics_desc(isZstack, chName, posData=None):
-    how_3Dto2D = ['_maxProj', '_meanProj', '_zSlice'] if isZstack else ['']
-    how_3Dto2D_desc = _get_how_3Dto2D_desc()
+def custom_metrics_desc(isZstack, chName, posData=None, isSegm3D=False):
+    how_3Dto2D, how_3Dto2D_desc = get_how_3Dto2D(isZstack, isSegm3D)
     custom_metrics_names = _get_custom_metrics_names()
     custom_metrics_desc = {}
     for how, how_desc in zip(how_3Dto2D, how_3Dto2D_desc):
@@ -174,16 +173,17 @@ def custom_metrics_desc(isZstack, chName, posData=None):
             """)
             custom_metrics_desc[metric_name] = desc
 
-    combine_metrics_desc, _ = channel_combine_metrics_desc(chName, posData=posData)
+    combine_metrics_desc, _ = channel_combine_metrics_desc(
+        chName, posData=posData, isSegm3D=isSegm3D
+    )
     custom_metrics_desc = {**custom_metrics_desc, **combine_metrics_desc}
 
     return custom_metrics_desc
 
-def channel_combine_metrics_desc(chName, posData=None):
+def channel_combine_metrics_desc(chName, posData=None, isSegm3D=False):
     combine_metrics_configPars = read_saved_user_combine_config()
 
-    how_3Dto2D = ['_maxProj', '_meanProj', '_zSlice']
-    how_3Dto2D_desc = _get_how_3Dto2D_desc()
+    how_3Dto2D, how_3Dto2D_desc = get_how_3Dto2D(True, isSegm3D)
     combine_metrics = combine_metrics_configPars['equations']
     if posData is not None:
         posDataEquations = posData.combineMetricsConfig['equations']
@@ -252,23 +252,22 @@ def channel_combine_metrics_desc(chName, posData=None):
 
     return combine_metrics_desc, equations
 
-def get_user_combine_mixed_channels_equations():
-    _, equations = _user_combine_mixed_channels_desc()
+def get_user_combine_mixed_channels_equations(isSegm3D=False):
+    _, equations = _user_combine_mixed_channels_desc(isSegm3D=isSegm3D)
     return equations
 
-def get_user_combine_mixed_channels_desc():
-    desc, _ = _user_combine_mixed_channels_desc()
+def get_user_combine_mixed_channels_desc(isSegm3D=False):
+    desc, _ = _user_combine_mixed_channels_desc(isSegm3D=isSegm3D)
     return desc
 
-def _user_combine_mixed_channels_desc():
+def _user_combine_mixed_channels_desc(isSegm3D=False):
     configPars = _get_saved_user_combine_config()
     if configPars is None:
         return {}, {}
 
     equations = {}
     mixed_channels_desc = {}
-    how_3Dto2D = ['_maxProj', '_meanProj', '_zSlice']
-    how_3Dto2D_desc = _get_how_3Dto2D_desc()
+    how_3Dto2D, how_3Dto2D_desc = get_how_3Dto2D(True, isSegm3D)
     mixed_channels_combine_metrics = configPars['mixed_channels_equations']
     all_metrics_names = get_all_metrics_names()
     equations = {}
@@ -314,15 +313,6 @@ def _get_zStack_note(how_desc):
         This is specified in the name of the column.<br><br></i>
     """)
     return s
-
-def _get_how_3Dto2D_desc():
-    how_3Dto2D_desc = [
-        'using a <b>max projection</b>',
-        'using a <b>mean projection</b> (recommended for <b>confocal imaging</b>)',
-        'using the <b>z-slice you used for segmentation</b> '
-        '(recommended for <b>epifluorescence imaging</b>)'
-    ]
-    return how_3Dto2D_desc
 
 def get_size_metrics_desc():
     url = 'https://www.nature.com/articles/s41467-020-16764-x#Sec16'
@@ -383,9 +373,23 @@ def get_size_metrics_desc():
     }
     return size_metrics
 
-def standard_metrics_desc(isZstack, chName):
+def get_how_3Dto2D(isZstack, isSegm3D):
     how_3Dto2D = ['_maxProj', '_meanProj', '_zSlice'] if isZstack else ['']
-    how_3Dto2D_desc = _get_how_3Dto2D_desc()
+    if isSegm3D:
+        how_3Dto2D.append('_3D')
+    how_3Dto2D_desc = [
+        'using a <b>max projection</b>',
+        'using a <b>mean projection</b> (recommended for <b>confocal imaging</b>)',
+        'using the <b>z-slice you used for segmentation</b> '
+        '(recommended for <b>epifluorescence imaging</b>)'
+        '<i>NOTE: if segmentation mask is <b>3D</b>, Cell-ACDC will use the '
+        '<b>center z-slice</b> of each object.</i>',
+        'using 3D data'
+    ]
+    return how_3Dto2D, how_3Dto2D_desc
+
+def standard_metrics_desc(isZstack, chName, isSegm3D=False):
+    how_3Dto2D, how_3Dto2D_desc = get_how_3Dto2D(isZstack, isSegm3D)
     metrics_names = _get_metrics_names()
     bkgr_val_names = _get_bkgr_val_names()
     metrics_desc = {}
@@ -631,7 +635,7 @@ def add_metrics_instructions():
     <i>If it doesn't work, please report the issue {href} with the
     code you wrote. Thanks.</i>
     """)
-    return s, metrics_path
+    return s
 
 def _get_combine_metrics_examples_list():
     examples = [

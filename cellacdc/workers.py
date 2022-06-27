@@ -277,7 +277,7 @@ class calcMetricsWorker(QObject):
                 self.logger.log(
                     'Loaded paths:\n'
                     f'Segmentation file name: {os.path.basename(posData.segm_npz_path)}\n'
-                    f'ACDC output file name {os.path.basename(posData.acdc_output_csv_path)}'
+                    f'ACDC output file name: {os.path.basename(posData.acdc_output_csv_path)}'
                 )
 
                 if p == 0:

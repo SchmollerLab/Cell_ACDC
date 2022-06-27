@@ -907,7 +907,7 @@ class setMeasurementsDialog(QBaseDialog):
     sigClosed = pyqtSignal()
 
     def __init__(
-            self, loadedChNames, notLoadedChNames, isZstack,
+            self, loadedChNames, notLoadedChNames, isZstack, isSegm3D,
             favourite_funcs=None, parent=None, acdc_df=None,
             acdc_df_path=None, posData=None, addCombineMetricCallback=None
         ):
@@ -932,7 +932,7 @@ class setMeasurementsDialog(QBaseDialog):
         col = 0
         for col, chName in enumerate(loadedChNames):
             channelGBox = widgets.channelMetricsQGBox(
-                isZstack, chName, favourite_funcs=favourite_funcs,
+                isZstack, chName, isSegm3D, favourite_funcs=favourite_funcs,
                 posData=posData
             )
             channelGBox.chName = chName
@@ -943,7 +943,7 @@ class setMeasurementsDialog(QBaseDialog):
         current_col = col+1
         for col, chName in enumerate(notLoadedChNames):
             channelGBox = widgets.channelMetricsQGBox(
-                isZstack, chName, favourite_funcs=favourite_funcs,
+                isZstack, chName, isSegm3D, favourite_funcs=favourite_funcs,
                 posData=posData
             )
             channelGBox.setChecked(False)
@@ -976,7 +976,9 @@ class setMeasurementsDialog(QBaseDialog):
         groupsLayout.addWidget(regionPropsQGBox, 1, current_col)
         groupsLayout.setRowStretch(1, 2)
 
-        desc = measurements.get_user_combine_mixed_channels_desc()
+        desc = measurements.get_user_combine_mixed_channels_desc(
+            isSegm3D=isSegm3D
+        )
         self.mixedChannelsCombineMetricsQGBox = None
         if desc:
             mixedChannelsCombineMetricsQGBox = widgets._metricsQGBox(
@@ -2480,6 +2482,105 @@ class QDialogListbox(QDialog):
     def cancel_cb(self, event):
         self.cancel = True
         self.selectedItemsText = None
+        self.close()
+
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        super().show()
+
+        horizontal_sb = self.listBox.horizontalScrollBar()
+        while horizontal_sb.isVisible():
+            self.resize(self.height(), self.width() + 10)
+
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()
+
+class QDialogSelectModel(QDialog):
+    def __init__(self, parent=None):
+        self.cancel = True
+        super().__init__(parent)
+        self.setWindowTitle('Select model')
+
+        mainLayout = QVBoxLayout()
+        topLayout = QVBoxLayout()
+        bottomLayout = QHBoxLayout()
+
+        self.mainLayout = mainLayout
+
+        label = QLabel(html_utils.paragraph(
+            'Select model to use for segmentation: '
+        ))
+        # padding: top, left, bottom, right
+        label.setStyleSheet("padding:0px 0px 3px 0px;")
+        topLayout.addWidget(label, alignment=Qt.AlignCenter)
+
+        listBox = widgets.listWidget()
+        models = myutils.get_list_of_models()
+        models.append('Custom model...')
+        listBox.setFont(font)
+        listBox.addItems(models)
+        listBox.setSelectionMode(QAbstractItemView.SingleSelection)
+        listBox.setCurrentRow(0)
+        self.listBox = listBox
+        listBox.itemDoubleClicked.connect(self.ok_cb)
+        topLayout.addWidget(listBox)
+
+        cancelButton = widgets.cancelPushButton('Cancel')
+        okButton = widgets.okPushButton(' Ok ')
+        okButton.setShortcut(Qt.Key_Enter)
+
+        bottomLayout.addStretch(1)
+        bottomLayout.addWidget(cancelButton)
+        bottomLayout.addSpacing(20)
+        bottomLayout.addWidget(okButton)
+        bottomLayout.setContentsMargins(0, 10, 0, 0)
+
+        mainLayout.addLayout(topLayout)
+        mainLayout.addLayout(bottomLayout)
+        self.setLayout(mainLayout)
+
+        # Connect events
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.cancel_cb)
+
+        self.setStyleSheet("""
+            QListWidget::item:hover {background-color:#E6E6E6;}
+            QListWidget::item:selected {background-color:#CFEB9B;}
+            QListWidget::item:selected {color:black;}
+            QListView {
+                selection-background-color: #CFEB9B;
+                selection-color: white;
+                show-decoration-selected: 1;
+            }
+        """)
+
+    def ok_cb(self, event):
+        self.clickedButton = self.sender()
+        self.cancel = False
+        item = self.listBox.currentItem()
+        model = item.text()
+        if model == 'Custom model...':
+            txt, models_path = myutils.get_add_custom_model_instructions()
+            msg = widgets.myMessageBox(showCentered=False)
+            msg.addShowInFileManagerButton(models_path, txt='Open models folder...')
+            msg.information(
+                self, 'Custom model instructions', txt, buttonsTexts=('Ok',)
+            )
+        else:
+            self.selectedModel = model
+            self.close()
+
+    def cancel_cb(self, event):
+        self.cancel = True
+        self.selectedModel = None
         self.close()
 
     def exec_(self):
@@ -7525,7 +7626,7 @@ class warnVisualCppRequired(QMessageBox):
 class combineMetricsEquationDialog(QBaseDialog):
     sigOk = pyqtSignal(object)
 
-    def __init__(self, allChNames, isZstack, parent=None, debug=False):
+    def __init__(self, allChNames, isZstack, isSegm3D, parent=None, debug=False):
         super().__init__(parent)
 
         self.initAttributes()
@@ -7549,10 +7650,10 @@ class combineMetricsEquationDialog(QBaseDialog):
             metricsTreeWidget.addTopLevelItem(channelTreeItem)
 
             metrics_desc, bkgr_val_desc = measurements.standard_metrics_desc(
-                isZstack, chName
+                isZstack, chName, isSegm3D=isSegm3D
             )
             custom_metrics_desc = measurements.custom_metrics_desc(
-                isZstack, chName
+                isZstack, chName, isSegm3D=isSegm3D
             )
 
             foregrMetricsTreeItem = QTreeWidgetItem(channelTreeItem)
@@ -7581,7 +7682,7 @@ class combineMetricsEquationDialog(QBaseDialog):
                     isCol=True
                 )
 
-        self.addChannelLessItems(isZstack)
+        self.addChannelLessItems(isZstack, isSegm3D=isSegm3D)
 
         sizeMetricsTreeItem = QTreeWidgetItem(metricsTreeWidget)
         sizeMetricsTreeItem.setText(0, 'Size measurements')
@@ -7742,14 +7843,14 @@ class combineMetricsEquationDialog(QBaseDialog):
             }
         """)
 
-    def addChannelLessItems(self, isZstack):
+    def addChannelLessItems(self, isZstack, isSegm3D=False):
         allChannelsTreeItem = QTreeWidgetItem(self.metricsTreeWidget)
         allChannelsTreeItem.setText(0, f'All channels measurements')
         metrics_desc, bkgr_val_desc = measurements.standard_metrics_desc(
-            isZstack, ''
+            isZstack, '', isSegm3D=isSegm3D
         )
         custom_metrics_desc = measurements.custom_metrics_desc(
-            isZstack, ''
+            isZstack, '', isSegm3D=isSegm3D
         )
 
         foregrMetricsTreeItem = QTreeWidgetItem(allChannelsTreeItem)

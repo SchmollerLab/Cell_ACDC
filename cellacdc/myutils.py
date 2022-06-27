@@ -35,6 +35,7 @@ from PyQt5.QtCore import pyqtSignal, QObject, QCoreApplication
 
 from . import prompts, widgets, apps, core, load
 from . import html_utils, is_linux, is_win, is_mac
+from . import cellacdc_path
 
 def exception_handler(func):
     @wraps(func)
@@ -120,6 +121,44 @@ def getCustomAnnotTooltip(annotState):
         f'SHORTCUT: "{annotState["shortcut"]}"'
     )
     return toolTip
+
+def get_add_custom_model_instructions():
+    url = 'https://github.com/SchmollerLab/Cell_ACDC/issues'
+    user_manual_url = 'https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf'
+    href_user_manual = f'<a href="{user_manual_url}">user manual</a>'
+    href = f'<a href="{url}">here</a>'
+    models_path = os.path.join(cellacdc_path, 'models')
+    s = html_utils.paragraph(f"""
+    To use a custom model you need to <b>implement an API</b> in the
+    following folder:<br><br>
+    <code>{models_path}</code><br><br>
+    In the above path, <b>create a folder</b> with the name of your model.
+    Inside this new folder create a file named <code>__init__.py</code> and a
+    file named <br>acdcSegment.py<br>.<br><br>
+    The <code>__init__.py</code> can be left empty or you can use it to
+    define constants that can be imported by your model.<br><br>
+    In the <code>acdcSegment.py</code> file you will <b>implement the main
+    API class</b>.
+    Have a look at the other existing models, but essentially you have to create
+    a class called <code>Model</code> with at least the <code>__init__</code>
+    and the <code>segment</code> method. The segment method takes the image as
+    an input and return the segmentation mask.<br><br>
+    You can find more details in the {href_user_manual} at the section
+    called <code>Adding segmentation models to the pipeline</code>.<br><br>
+    Pseudo-code:
+    <pre><code>
+    class Model:
+        def __init__(self, **kwargs):
+            self.model = myModel()
+
+        def segment(self, image, **kwargs):
+            labels = self.model.predict(image)
+            return labels
+    </code></pre>
+    If it doesn't work, please report the issue {href} with the
+    code you wrote. Thanks.
+    """)
+    return s, models_path
 
 def is_iterable(item):
      try:

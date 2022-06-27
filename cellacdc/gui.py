@@ -333,6 +333,8 @@ class saveDataWorker(QObject):
         PhysicalSizeX = posData.PhysicalSizeX
 
         yx_pxl_to_um2 = PhysicalSizeY*PhysicalSizeX
+        if self.mainWin.isSegm3D:
+            vox_to_fl_3D = PhysicalSizeY*PhysicalSizeX*posData.PhysicalSizeZ
         numCells = len(rp)
 
         list_0s = [-2]*numCells
@@ -341,12 +343,15 @@ class saveDataWorker(QObject):
         IDs_area_pxl = list_0s.copy()
         IDs_vol_fl = list_0s.copy()
         IDs_area_um2 = list_0s.copy()
+        if self.mainWin.isSegm3D:
+            IDs_vol_vox_3D = list_0s.copy()
+            IDs_vol_fl_3D = list_0s.copy()
 
         # Initialize fluo metrics arrays
         fluo_keys = list(posData.fluo_data_dict.keys())
         fluo_data = posData.fluo_data_dict[fluo_keys[0]][frame_i]
         is_3D = fluo_data.ndim == 3
-        how_3Dto2D = ['_maxProj', '_meanProj', '_zSlice'] if is_3D else ['']
+        how_3Dto2D, _ = measurements.get_how_3Dto2D(is_3D, self.mainWin.isSegm3D)
         n = len(how_3Dto2D)
         numFluoChannels = len(fluo_keys)
 
@@ -378,9 +383,15 @@ class saveDataWorker(QObject):
 
         # self.metricsPbarProgress.emit(tot_iter, 0)
 
-        # pbar = tqdm(total=tot_iter, ncols=100, unit='metric', leave=False)
+        pbar = tqdm(total=tot_iter, ncols=100, unit='metric', leave=False)
 
-        outCellsMask = lab==0
+        if self.mainWin.isSegm3D:
+            outCellsMask3D = lab==0
+            outCellsMaskProj = lab.max(axis=0) == 0
+        else:
+            outCellsMask2D = lab==0
+            outCellsMaskZslice = outCellsMask2D
+            outCellsMaskProj = outCellsMask2D
 
         # Compute ROI bkgrMask
         if posData.bkgrROIs:
@@ -439,15 +450,22 @@ class saveDataWorker(QObject):
                 fluo_data_z_maxP = fluo_data.max(axis=0)
                 fluo_data_z_sumP = fluo_data.mean(axis=0)
                 fluo_data_zSlice = fluo_data[z_slice]
+                if self.mainWin.isSegm3D:
+                    fluo_data_3D = fluo_data
+                    outCellsMaskZslice = lab[z_slice]
 
                 # how_3Dto2D = ['_maxProj', '_sumProj', '_zSlice']
                 fluo_data_projs.append(fluo_data_z_maxP)
                 fluo_data_projs.append(fluo_data_z_sumP)
                 fluo_data_projs.append(fluo_data_zSlice)
+                if self.mainWin.isSegm3D:
+                    fluo_data_projs.append(fluo_data)
+
                 if bkgrArchive is not None:
                     bkgrVals_z_maxP = []
                     bkgrVals_z_sumP = []
                     bkgrVals_zSlice = []
+                    bkgrVals_3D = []
                     for roi_key in bkgrArchive.files:
                         roiData = bkgrArchive[roi_key]
                         if posData.SizeT > 1:
@@ -458,6 +476,8 @@ class saveDataWorker(QObject):
                         bkgrVals_z_maxP.extend(roi_z_maxP[roi_z_maxP!=0])
                         bkgrVals_z_sumP.extend(roi_z_sumP[roi_z_sumP!=0])
                         bkgrVals_zSlice.extend(roi_zSlice[roi_zSlice!=0])
+                        if self.mainWin.isSegm3D:
+                            bkgrVals_3D.extend(roiData[roiData!=0])
                     if not bkgrVals_z_maxP:
                         # issue 51: a user had an empty bkgr data
                         bkgrVals_z_maxP = [0]
@@ -470,26 +490,38 @@ class saveDataWorker(QObject):
                     bkgrData_medians.append(np.median(bkgrVals_z_maxP))
                     bkgrData_medians.append(np.median(bkgrVals_z_sumP))
                     bkgrData_medians.append(np.median(bkgrVals_zSlice))
+                    if self.mainWin.isSegm3D:
+                        bkgrData_medians.extend(np.median(bkgrVals_3D))
 
                     bkgrData_means.append(np.mean(bkgrVals_z_maxP))
                     bkgrData_means.append(np.mean(bkgrVals_z_sumP))
                     bkgrData_means.append(np.mean(bkgrVals_zSlice))
+                    if self.mainWin.isSegm3D:
+                        bkgrData_means.extend(np.mean(bkgrVals_3D))
 
                     bkgrData_q75s.append(np.quantile(bkgrVals_z_maxP, q=0.75))
                     bkgrData_q75s.append(np.quantile(bkgrVals_z_sumP, q=0.75))
                     bkgrData_q75s.append(np.quantile(bkgrVals_zSlice, q=0.75))
+                    if self.mainWin.isSegm3D:
+                        bkgrData_q75s.extend(np.quantile(bkgrVals_3D, q=0.75))
 
                     bkgrData_q25s.append(np.quantile(bkgrVals_z_maxP, q=0.25))
                     bkgrData_q25s.append(np.quantile(bkgrVals_z_sumP, q=0.25))
                     bkgrData_q25s.append(np.quantile(bkgrVals_zSlice, q=0.25))
+                    if self.mainWin.isSegm3D:
+                        bkgrData_q25s.extend(np.quantile(bkgrVals_3D, q=0.25))
 
                     bkgrData_q95s.append(np.quantile(bkgrVals_z_maxP, q=0.95))
                     bkgrData_q95s.append(np.quantile(bkgrVals_z_sumP, q=0.95))
                     bkgrData_q95s.append(np.quantile(bkgrVals_zSlice, q=0.95))
+                    if self.mainWin.isSegm3D:
+                        bkgrData_q95s.extend(np.quantile(bkgrVals_3D, q=0.95))
 
                     bkgrData_q05s.append(np.quantile(bkgrVals_z_maxP, q=0.05))
                     bkgrData_q05s.append(np.quantile(bkgrVals_z_sumP, q=0.05))
                     bkgrData_q05s.append(np.quantile(bkgrVals_zSlice, q=0.05))
+                    if self.mainWin.isSegm3D:
+                        bkgrData_q05s.extend(np.quantile(bkgrVals_3D, q=0.05))
             else:
                 fluo_data_2D = fluo_data
                 fluo_data_projs.append(fluo_data_2D)
@@ -514,8 +546,19 @@ class saveDataWorker(QObject):
 
             # Iterate cells
             for i, obj in enumerate(rp):
-                _slice = self.mainWin.getObjSlice(obj.slice)
-                _objMask = obj.image # self.mainWin.getObjImage(obj.image, obj.bbox)
+                if self.mainWin.isSegm3D:
+                    obj3Dslice = obj.slice
+                    obj3Dimage = obj.image
+                    obj2Dproj = obj.image.max(axis=0)
+                    obj2Dslice = obj3Dslice[1:3]
+                    min_z = obj.bbox[0]
+                    z_slice = int(math.floor(obj.centroid[0]))
+                    local_z = z_slice - min_z
+                    obj2DzImage = obj.image[local_z]
+                else:
+                    obj2Dslice = obj.slice
+                    obj2Dproj = obj.image
+                    obj2DzImage = obj.image # self.mainWin.getObjImage(obj.image, obj.bbox)
                 IDs[i] = obj.label
                 # Calc volume
                 vol_vox = None
@@ -525,22 +568,40 @@ class saveDataWorker(QObject):
                     IDs_vol_fl[i] = obj.vol_fl
                     vol_vox = obj.vol_vox
                     vol_fl = obj.vol_fl
+                    if self.mainWin.isSegm3D:
+                        IDs_vol_vox_3D[i] = obj.area
+                        IDs_vol_fl_3D[i] = obj.area*vox_to_fl_3D
 
                 if 'cell_area_pxl' in self.mainWin.sizeMetricsToSave:
                     IDs_area_pxl[i] = obj.area
                     IDs_area_um2[i] = obj.area*yx_pxl_to_um2
 
                 # Iterate method of 3D to 2D
+                # '_maxProj', '_meanProj', '_zSlice', '_3D'
                 how_iterable = enumerate(zip(how_3Dto2D, fluo_data_projs))
-                for k, (how, fluo_2D) in how_iterable:
+                for k, (how, fluo_img) in how_iterable:
 
-                    fluo_data_ID = fluo_2D[_slice][_objMask]
-
-                    # fluo_2D!=0 is required because when we align we pad with 0s
+                    # fluo_img!=0 is required because when we align we pad with 0s
                     # instead of np.roll and we don't want to include those
                     # exact 0s in the backgrMask
-                    backgrMask = np.logical_and(outCellsMask, fluo_2D!=0)
-                    bkgr_arr = fluo_2D[backgrMask]
+                    if how == '_maxProj':
+                        fluo_data_ID = fluo_img[obj2Dslice][obj2Dproj]
+                        backgrMask = np.logical_and(outCellsMaskProj, fluo_img!=0)
+                    elif how == '_meanProj':
+                        fluo_data_ID = fluo_img[obj2Dslice][obj2Dproj]
+                        backgrMask = np.logical_and(outCellsMaskProj, fluo_img!=0)
+                    elif how == '_zSlice':
+                        fluo_data_ID = fluo_img[obj2Dslice][obj2DzImage]
+                        backgrMask = np.logical_and(outCellsMaskZslice, fluo_img!=0)
+                    elif how == '_3D':
+                        fluo_data_ID = fluo_img[obj3Dslice][obj3Dimage]
+                        backgrMask = np.logical_and(outCellsMask3D, fluo_img!=0)
+                    else:
+                        # 2D data
+                        fluo_data_ID = fluo_img[obj2Dslice][obj2DzImage]
+                        backgrMask = np.logical_and(outCellsMask2D, fluo_img!=0)
+
+                    bkgr_arr = fluo_img[backgrMask]
                     fluo_backgr = np.median(bkgr_arr)
 
                     bkgr_key = f'{chName}_autoBkgr_bkgrVal_median{how}'
@@ -578,13 +639,13 @@ class saveDataWorker(QObject):
                     # Calculate metrics for each cell
                     for func_name, func in metrics_func.items():
                         key = f'{chName}_{func_name}{how}'
+                        conc_keys = measurements.get_conc_keys(key)
                         is_ROIbkgr_func = (
                             func_name == 'amount_dataPrepBkgr' and
                                 (ROI_bkgrMask is not None
                                 or bkgrArchive is not None)
                         )
                         if func_name == 'amount_autoBkgr':
-                            conc_keys = measurements.get_conc_keys(key)
                             if not key in metricsToSkipChannel:
                                 val = func(fluo_data_ID, fluo_backgr, obj.area)
                                 metrics_values[key][i] = val
@@ -606,9 +667,8 @@ class saveDataWorker(QObject):
                                     conc_fl = val/vol_fl
                                     metrics_values[conc_key_fl][i] = conc_fl
                         elif is_ROIbkgr_func:
-                            conc_keys = measurements.get_conc_keys(key)
                             if ROI_bkgrMask is not None:
-                                ROI_bkgrData = fluo_2D[ROI_bkgrMask]
+                                ROI_bkgrData = fluo_img[ROI_bkgrMask]
                                 ROI_bkgrVal = np.median(ROI_bkgrData)
                             else:
                                 ROI_bkgrVal = bkgrData_medians[k]
@@ -623,8 +683,12 @@ class saveDataWorker(QObject):
                                 )
                                 if calc_conc:
                                     # Compute concentration
-                                    conc_vox = val/vol_vox
-                                    conc_fl = val/vol_vox
+                                    if how == '_3D':
+                                        conc_vox = val/IDs_vol_vox_3D[i]
+                                        conc_fl = val/IDs_vol_fl_3D[i]
+                                    else:
+                                        conc_vox = val/vol_vox
+                                        conc_fl = val/vol_fl
                                     metrics_values[conc_key_vox][i] = conc_vox
                                     metrics_values[conc_key_fl][i] = conc_fl
 
@@ -677,7 +741,7 @@ class saveDataWorker(QObject):
                                 val = func(fluo_data_ID)
                                 metrics_values[key][i] = val
 
-                        # pbar.update()
+                        pbar.update()
                         # self.metricsPbarProgress.emit(-1, 1)
                     for custom_func_name, custom_func in custom_func_dict.items():
                         key = f'{chName}_{custom_func_name}{how}'
@@ -686,7 +750,7 @@ class saveDataWorker(QObject):
                             continue
 
                         if ROI_bkgrMask is not None:
-                            ROI_bkgrData = fluo_2D[ROI_bkgrMask]
+                            ROI_bkgrData = fluo_img[ROI_bkgrMask]
                             ROI_bkgrVal = np.median(ROI_bkgrData)
                         elif bkgrArchive is not None:
                             ROI_bkgrVal = bkgrData_medians[k]
@@ -719,6 +783,13 @@ class saveDataWorker(QObject):
             df['cell_vol_fl'] = pd.Series(
                 data=IDs_vol_fl, index=IDs, dtype=float
             )
+            if self.mainWin.isSegm3D:
+                df['cell_vol_vox_3D'] = pd.Series(
+                    data=IDs_vol_vox_3D, index=IDs, dtype=float
+                )
+                df['cell_vol_fl_3D'] = pd.Series(
+                    data=IDs_vol_fl_3D, index=IDs, dtype=float
+                )
 
         df_metrics = pd.DataFrame(metrics_values, index=IDs)
 
@@ -732,7 +803,7 @@ class saveDataWorker(QObject):
             df = df.drop(columns=df_custom_metrics.columns, errors='ignore')
             df = df.join(df_custom_metrics)
 
-        # pbar.close()
+        pbar.close()
 
         # Join with regionprops_table
         if self.mainWin.regionPropsToSave:
@@ -805,6 +876,7 @@ class saveDataWorker(QObject):
         PhysicalSizeY = posData.PhysicalSizeY
         PhysicalSizeX = posData.PhysicalSizeX
         yx_pxl_to_um2 = PhysicalSizeY*PhysicalSizeX
+        vox_to_fl_3D = PhysicalSizeY*PhysicalSizeX*posData.PhysicalSizeZ
 
         init_list = [-2]*len(rp)
         IDs = init_list.copy()
@@ -812,17 +884,27 @@ class saveDataWorker(QObject):
         IDs_area_pxl = init_list.copy()
         IDs_vol_fl = init_list.copy()
         IDs_area_um2 = init_list.copy()
+        if self.mainWin.isSegm3D:
+            IDs_vol_vox_3D = list_0s.copy()
+            IDs_vol_fl_3D = list_0s.copy()
+
         for i, obj in enumerate(rp):
             IDs[i] = obj.label
             IDs_vol_vox[i] = obj.vol_vox
             IDs_vol_fl[i] = obj.vol_fl
             IDs_area_pxl[i] = obj.area
             IDs_area_um2[i] = obj.area*yx_pxl_to_um2
+            if self.mainWin.isSegm3D:
+                IDs_vol_vox_3D[i] = obj.area
+                IDs_vol_fl_3D[i] = obj.area*vox_to_fl_3D
 
         df['cell_area_pxl'] = pd.Series(data=IDs_area_pxl, index=IDs, dtype=float)
         df['cell_vol_vox'] = pd.Series(data=IDs_vol_vox, index=IDs, dtype=float)
         df['cell_area_um2'] = pd.Series(data=IDs_area_um2, index=IDs, dtype=float)
         df['cell_vol_fl'] = pd.Series(data=IDs_vol_fl, index=IDs, dtype=float)
+        if self.mainWin.isSegm3D:
+            df['cell_vol_vox_3D'] = pd.Series(data=IDs_vol_vox_3D, index=IDs, dtype=float)
+            df['cell_vol_fl_3D'] = pd.Series(data=IDs_vol_fl_3D, index=IDs, dtype=float)
 
         return df
 
@@ -1367,9 +1449,13 @@ class guiWin(QMainWindow):
         for action in self.segmActions:
             self.segmSingleFrameMenu.addAction(action)
 
+        self.segmSingleFrameMenu.addAction(self.addCustomModelAction)
+
         self.segmVideoMenu = SegmMenu.addMenu('Segment multiple frames')
         for action in self.segmActionsVideo:
             self.segmVideoMenu.addAction(action)
+
+        self.segmVideoMenu.addAction(self.addCustomModelAction)
 
         SegmMenu.addAction(self.SegmActionRW)
         SegmMenu.addAction(self.postProcessSegmAction)
@@ -1993,6 +2079,8 @@ class guiWin(QMainWindow):
             self.acdcSegment_li.append(None)
             action.setDisabled(True)
 
+        self.addCustomModelAction = QAction('Custom model...', self)
+
         self.segmActionsVideo = []
         for model_name in models:
             action = QAction(f"{model_name}...")
@@ -2043,6 +2131,7 @@ class guiWin(QMainWindow):
         self.trackWithYeazAction = QAction('YeaZ', self)
         self.trackWithYeazAction.setCheckable(True)
         trackingAlgosGroup.addAction(self.trackWithYeazAction)
+
 
         self.trackWithAcdcAction.setChecked(True)
         if 'tracking_algorithm' in self.df_settings.index:
@@ -2231,6 +2320,9 @@ class guiWin(QMainWindow):
         self.viewAllCustomAnnotAction.toggled.connect(
             self.viewAllCustomAnnot
         )
+        self.addCustomModelAction.triggered.connect(
+            self.showInstructionsCustomModel
+        )
 
     def gui_connectEditActions(self):
         self.showInExplorerAction.setEnabled(True)
@@ -2352,6 +2444,13 @@ class guiWin(QMainWindow):
         self.guiTabControl.highlightCheckbox.toggled.connect(
             self.highlightIDcheckBoxToggled
         )
+        intensMeasurQGBox = self.guiTabControl.intensMeasurQGBox
+        intensMeasurQGBox.additionalMeasCombobox.currentTextChanged.connect(
+            self.updatePropsWidget
+        )
+        intensMeasurQGBox.channelCombobox.currentTextChanged.connect(
+            self.updatePropsWidget
+        )
 
         self.relabelSequentialAction.triggered.connect(
             self.relabelSequentialCallback
@@ -2365,6 +2464,7 @@ class guiWin(QMainWindow):
     def gui_createLeftSideWidgets(self):
         self.leftSideDocksLayout = QVBoxLayout()
         self.showPropsDockButton = widgets.expandCollapseButton()
+        self.showPropsDockButton.setDisabled(True)
         self.showPropsDockButton.setFocusPolicy(Qt.NoFocus)
         self.showPropsDockButton.setToolTip('Show object properties')
         self.leftSideDocksLayout.addWidget(self.showPropsDockButton)
@@ -4000,6 +4100,12 @@ class guiWin(QMainWindow):
             self.updatePropsWidget(self.highlightedID)
 
     def updatePropsWidget(self, ID):
+        if isinstance(ID, str):
+            # Function called by currentTextChanged of channelCombobox or
+            # additionalMeasCombobox. We set elf.currentPropsID = 0 to force update
+            ID = self.guiTabControl.propsQGBox.idSB.value()
+            self.currentPropsID = 0
+
         update = (
             self.propsDockWidget.isVisible()
             and ID != 0 and ID!=self.currentPropsID
@@ -4031,22 +4137,31 @@ class guiWin(QMainWindow):
         obj_idx = posData.IDs.index(ID)
         obj = posData.rp[obj_idx]
 
-        propsQGBox.cellAreaPxlSB.setValue(obj.area)
+        if self.isSegm3D:
+            area_pxl = np.count_nonzero(obj.image[self.z_lab()])
+        else:
+            area_pxl = obj.area
+
+        propsQGBox.cellAreaPxlSB.setValue(area_pxl)
 
         PhysicalSizeY = posData.PhysicalSizeY
         PhysicalSizeX = posData.PhysicalSizeX
         yx_pxl_to_um2 = PhysicalSizeY*PhysicalSizeX
-        area_um2 = obj.area*yx_pxl_to_um2
+
+        area_um2 = area_pxl*yx_pxl_to_um2
+
         propsQGBox.cellAreaUm2DSB.setValue(area_um2)
 
         if self.isSegm3D:
             PhysicalSizeZ = posData.PhysicalSizeZ
-            vol_vox = obj.area
-            vol_fl = vol_vox*PhysicalSizeZ*PhysicalSizeY*PhysicalSizeX
-        else:
-            vol_vox, vol_fl = _calc_rot_vol(
-                obj, PhysicalSizeY, PhysicalSizeX
-            )
+            vol_vox_3D = obj.area
+            vol_fl_3D = vol_vox_3D*PhysicalSizeZ*PhysicalSizeY*PhysicalSizeX
+            propsQGBox.cellVolVox3D_SB.setValue(vol_vox_3D)
+            propsQGBox.cellVolFl3D_DSB.setValue(vol_fl_3D)
+
+        vol_vox, vol_fl = _calc_rot_vol(
+            obj, PhysicalSizeY, PhysicalSizeX
+        )
         propsQGBox.cellVolVoxSB.setValue(vol_vox)
         propsQGBox.cellVolFlDSB.setValue(vol_fl)
 
@@ -4057,6 +4172,37 @@ class guiWin(QMainWindow):
 
         solidity = obj.solidity
         propsQGBox.solidityDSB.setValue(solidity)
+
+        intensMeasurQGBox = self.guiTabControl.intensMeasurQGBox
+        selectedChannel = intensMeasurQGBox.channelCombobox.currentText()
+        if selectedChannel == self.user_ch_name:
+            imgData = posData.img_data[posData.frame_i]
+        else:
+            _, filename = self.getPathFromChName(selectedChannel, posData)
+            imgData = posData.fluo_data_dict[filename][posData.frame_i]
+
+        objData = imgData[obj.slice][obj.image]
+
+        intensMeasurQGBox.minimumDSB.setValue(np.min(objData))
+        intensMeasurQGBox.maximumDSB.setValue(np.max(objData))
+        intensMeasurQGBox.meanDSB.setValue(np.mean(objData))
+        intensMeasurQGBox.medianDSB.setValue(np.median(objData))
+
+        funcDesc = intensMeasurQGBox.additionalMeasCombobox.currentText()
+        func = intensMeasurQGBox.additionalMeasCombobox.functions[funcDesc]
+        if funcDesc == 'Concentration':
+            bkgrVal = np.median(imgData[posData.lab == 0])
+            amount = func(objData, bkgrVal, obj.area)
+            value = amount/vol_vox
+        elif funcDesc == 'Amount':
+            bkgrVal = np.median(imgData[posData.lab == 0])
+            amount = func(objData, bkgrVal, obj.area)
+            value = amount
+        else:
+            value = func(objData)
+
+        intensMeasurQGBox.additionalMeasCombobox.indicator.setValue(value)
+
 
     def gui_hoverEventImg1(self, event):
         posData = self.data[self.pos_i]
@@ -9741,6 +9887,9 @@ class guiWin(QMainWindow):
     def loadingDataCompleted(self):
         posData = self.data[self.pos_i]
 
+        self.guiTabControl.addChannels([posData.user_ch_name])
+        self.showPropsDockButton.setDisabled(False)
+
         self.init_segmInfo_df()
         self.connectScrollbars()
         self.initPosAttr()
@@ -12050,6 +12199,14 @@ class guiWin(QMainWindow):
 
         self.overlayContextMenu.exec_(QCursor.pos())
 
+    def showInstructionsCustomModel(self):
+        txt, models_path = myutils.get_add_custom_model_instructions()
+        msg = widgets.myMessageBox(showCentered=False)
+        msg.addShowInFileManagerButton(models_path, txt='Open models folder...')
+        msg.information(
+            self, 'Custom model instructions', txt, buttonsTexts=('Ok',)
+        )
+
     def changeOverlayChannel(self, action):
         posData = self.data[self.pos_i]
         loadedChannels = list(posData.loadedFluoChannels)
@@ -13945,6 +14102,7 @@ class guiWin(QMainWindow):
     def reInitGui(self):
         self.isZmodifier = False
         self.askRepeatSegment3D = True
+        self.showPropsDockButton.setDisabled(True)
 
         self.removeAllItems()
         self.reinitCustomAnnot()
@@ -14325,27 +14483,22 @@ class guiWin(QMainWindow):
             self.loadFluo_cb(None)
 
     def getPathFromChName(self, chName, posData):
-        if chName.find('_aligned') != -1:
-            aligned_chName = chName
-        else:
-            aligned_chName = f'{chName}_aligned'
-
-        aligned_files = [
-            f for f in myutils.listdir(posData.images_path)
-            if f.find(f'{aligned_chName}.npz')!=-1
-        ]
-        if aligned_files:
-            filename = aligned_files[0]
-        else:
-            tif_files = [
-                f for f in myutils.listdir(posData.images_path)
-                if f.find(f'{chName}.tif')!=-1
+        ls = myutils.listdir(posData.images_path)
+        basenames = {f[len(posData.basename):]:f for f in ls}
+        validEnds = ['_aligned.npz', '_aligned.h5', '.h5', '.tif']
+        for end in validEnds:
+            files = [
+                filename for basename, filename in basenames.items()
+                if basename.find(f'{chName}{end}')!=-1
             ]
-            if not tif_files:
-                self.criticalFluoChannelNotFound(chName, posData)
-                self.app.restoreOverrideCursor()
-                return None, None
-            filename = tif_files[0]
+            if files:
+                filename = files[0]
+                break
+        else:
+            self.criticalFluoChannelNotFound(chName, posData)
+            self.app.restoreOverrideCursor()
+            return None, None
+
         fluo_path = os.path.join(posData.images_path, filename)
         filename, _ = os.path.splitext(filename)
         return fluo_path, filename
@@ -14397,6 +14550,9 @@ class guiWin(QMainWindow):
                 posData.fluo_bkgrData_dict[filename] = bkgrData
                 posData.ol_data_dict[filename] = fluo_data.copy()
         self.overlayButton.setStyleSheet('background-color: #A7FAC7')
+        self.guiTabControl.addChannels([
+            posData.user_ch_name, *posData.loadedFluoChannels
+        ])
         return True
 
     def showInExplorer_cb(self):
@@ -14514,7 +14670,7 @@ class guiWin(QMainWindow):
         notLoadedChNames = [c for c in self.ch_names if c not in loadedChNames]
         self.notLoadedChNames = notLoadedChNames
         self.measurementsWin = apps.setMeasurementsDialog(
-            loadedChNames, notLoadedChNames, posData.SizeZ > 1,
+            loadedChNames, notLoadedChNames, posData.SizeZ > 1, self.isSegm3D,
             favourite_funcs=favourite_funcs, acdc_df=posData.acdc_df,
             acdc_df_path=posData.images_path, posData=posData,
             addCombineMetricCallback=self.addCombineMetric
@@ -14611,7 +14767,8 @@ class guiWin(QMainWindow):
         df_favourite_funcs.to_csv(favourite_func_metrics_csv_path)
 
     def addCustomMetric(self, checked=False):
-        txt, metrics_path = measurements.add_metrics_instructions()
+        txt = measurements.add_metrics_instructions()
+        metrics_path = measurements.metrics_path
         msg = widgets.myMessageBox()
         msg.setIcon()
         msg.setWindowTitle('Add custom metrics instructions')
@@ -14628,7 +14785,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         isZstack = posData.SizeZ > 1
         win = apps.combineMetricsEquationDialog(
-            self.ch_names, isZstack, parent=self
+            self.ch_names, isZstack, self.isSegm3D, parent=self
         )
         win.sigOk.connect(self.saveCombineMetricsToPosData)
         win.exec_()
@@ -15032,6 +15189,8 @@ class guiWin(QMainWindow):
         # Step 2. Dynamically create the actions
         actions = []
         for path in recentPaths:
+            if not os.path.exists(path):
+                continue
             action = QAction(path, self)
             action.triggered.connect(partial(self.openRecentFile, path))
             actions.append(action)
@@ -15108,6 +15267,17 @@ class guiWin(QMainWindow):
             self.highlightedID = 0
         else:
             self.highlightedID = self.guiTabControl.propsQGBox.idSB.value()
+            if self.isSegm3D:
+                self.guiTabControl.propsQGBox.cellVolVox3D_SB.show()
+                self.guiTabControl.propsQGBox.cellVolVox3D_SB.label.show()
+                self.guiTabControl.propsQGBox.cellVolFl3D_DSB.show()
+                self.guiTabControl.propsQGBox.cellVolFl3D_DSB.label.show()
+            else:
+                self.guiTabControl.propsQGBox.cellVolVox3D_SB.hide()
+                self.guiTabControl.propsQGBox.cellVolVox3D_SB.label.hide()
+                self.guiTabControl.propsQGBox.cellVolFl3D_DSB.hide()
+                self.guiTabControl.propsQGBox.cellVolFl3D_DSB.label.hide()
+
             self.propsDockWidget.setVisible(True)
             self.propsDockWidget.setEnabled(True)
         self.updateALLimg()

@@ -5,7 +5,7 @@ import pandas as pd
 from tifffile import imread
 import os
 import glob
-from math import pow
+from math import pow, floor
 from tqdm import tqdm
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication, QStyleFactory, QFileDialog
@@ -492,10 +492,25 @@ def _calc_rot_vol(obj, PhysicalSizeY=1, PhysicalSizeX=1):
 
     Notes
     -------
+    For 3D objects we take the z-slice passing through the centroid
+
     We convert PhysicalSizeY and PhysicalSizeX to float because when they are
     read from csv they might be a string value.
 
     """
+    if obj.image.ndim == 3:
+        try:
+            zc = int(floor(obj.centroid[0]))
+            local_z = zc - obj.bbox[0]
+            obj_lab = obj.image.astype(np.uint16)[local_z]*obj.label
+            obj = regionprops(obj_lab)[0]
+        except Exception as e:
+            print('*'*30)
+            print(obj.label)
+            print(obj.centroid)
+            print(obj.image.shape)
+            print('*'*30)
+
     vox_to_fl = float(PhysicalSizeY)*pow(float(PhysicalSizeX), 2)
     rotate_ID_img = skimage.transform.rotate(
         obj.image.astype(np.single), -(obj.orientation*180/np.pi),

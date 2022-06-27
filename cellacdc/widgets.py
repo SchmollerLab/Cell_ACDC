@@ -219,6 +219,12 @@ class browseFileButton(QPushButton):
         if file_path:
             self.sigPathSelected.emit(file_path)
 
+class QHLine(QFrame):
+    def __init__(self):
+        super(QHLine, self).__init__()
+        self.setFrameShape(QFrame.HLine)
+        self.setFrameShadow(QFrame.Sunken)
+
 class QClickableLabel(QLabel):
     clicked = pyqtSignal(object)
 
@@ -1360,12 +1366,15 @@ class _metricsQGBox(QGroupBox):
         self.minWidth = fw + sw
 
 class channelMetricsQGBox(QGroupBox):
-    def __init__(self, isZstack, chName, posData=None, favourite_funcs=None):
+    def __init__(
+            self, isZstack, chName, isSegm3D,
+            posData=None, favourite_funcs=None
+        ):
         QGroupBox.__init__(self)
 
         layout = QVBoxLayout()
         metrics_desc, bkgr_val_desc = measurements.standard_metrics_desc(
-            isZstack, chName
+            isZstack, chName, isSegm3D=isSegm3D
         )
 
         metricsQGBox = _metricsQGBox(
@@ -1384,7 +1393,7 @@ class channelMetricsQGBox(QGroupBox):
         layout.addWidget(bkgrValsQGBox)
 
         custom_metrics_desc = measurements.custom_metrics_desc(
-            isZstack, chName, posData=posData
+            isZstack, chName, posData=posData, isSegm3D=isSegm3D
         )
 
         if custom_metrics_desc:
@@ -1400,8 +1409,8 @@ class channelMetricsQGBox(QGroupBox):
         self.setLayout(layout)
 
 class objPropsQGBox(QGroupBox):
-    def __init__(self, *args):
-        QGroupBox.__init__(self, *args)
+    def __init__(self, parent=None):
+        QGroupBox.__init__(self, 'Properties', parent)
 
         mainLayout = QGridLayout()
 
@@ -1413,6 +1422,11 @@ class objPropsQGBox(QGroupBox):
         self.idSB.setAlignment(Qt.AlignCenter)
         mainLayout.addWidget(label, row, 0)
         mainLayout.addWidget(self.idSB, row, 1)
+
+        mainLayout.setColumnStretch(row, 3)
+
+        row += 1
+        mainLayout.addWidget(QHLine(), row, 0, 1, 2)
 
         row += 1
         self.notExistingIDLabel = QLabel()
@@ -1436,16 +1450,36 @@ class objPropsQGBox(QGroupBox):
         mainLayout.addWidget(self.cellAreaUm2DSB, row, 1)
 
         row += 1
-        label = QLabel('Volume (voxel): ')
+        mainLayout.addWidget(QHLine(), row, 0, 1, 2)
+
+        row += 1
+        label = QLabel('Rotational volume (voxel): ')
         self.cellVolVoxSB = readOnlySpinbox()
         mainLayout.addWidget(label, row, 0)
         mainLayout.addWidget(self.cellVolVoxSB, row, 1)
 
         row += 1
-        label = QLabel('Volume (fl): ')
+        label = QLabel('3D volume (voxel): ')
+        self.cellVolVox3D_SB = readOnlySpinbox()
+        self.cellVolVox3D_SB.label = label
+        mainLayout.addWidget(label, row, 0)
+        mainLayout.addWidget(self.cellVolVox3D_SB, row, 1)
+
+        row += 1
+        label = QLabel('Rotational volume (fl): ')
         self.cellVolFlDSB = readOnlyDoubleSpinbox()
         mainLayout.addWidget(label, row, 0)
         mainLayout.addWidget(self.cellVolFlDSB, row, 1)
+
+        row += 1
+        label = QLabel('3D volume (fl): ')
+        self.cellVolFl3D_DSB = readOnlyDoubleSpinbox()
+        self.cellVolFl3D_DSB.label = label
+        mainLayout.addWidget(label, row, 0)
+        mainLayout.addWidget(self.cellVolFl3D_DSB, row, 1)
+
+        row += 1
+        mainLayout.addWidget(QHLine(), row, 0, 1, 2)
 
         row += 1
         label = QLabel('Solidity: ')
@@ -1460,8 +1494,76 @@ class objPropsQGBox(QGroupBox):
         mainLayout.addWidget(label, row, 0)
         mainLayout.addWidget(self.elongationDSB, row, 1)
 
-        mainLayout.setColumnStretch(1, 3)
+        row += 1
+        mainLayout.addWidget(QHLine(), row, 0, 1, 2)
+
         self.setLayout(mainLayout)
+
+class objIntesityMeasurQGBox(QGroupBox):
+    def __init__(self, parent=None):
+        QGroupBox.__init__(self, 'Intensity measurements', parent)
+
+        mainLayout = QGridLayout()
+
+        row = 0
+        label = QLabel('Raw intensity measurements')
+
+        row += 1
+        label = QLabel('Channel: ')
+        self.channelCombobox = QComboBox()
+        self.channelCombobox.addItem('placeholderlong')
+        mainLayout.addWidget(label, row, 0)
+        mainLayout.addWidget(self.channelCombobox, row, 1)
+
+        row += 1
+        label = QLabel('Minimum: ')
+        self.minimumDSB = readOnlyDoubleSpinbox()
+        mainLayout.addWidget(label, row, 0)
+        mainLayout.addWidget(self.minimumDSB, row, 1)
+
+        row += 1
+        label = QLabel('Maximum: ')
+        self.maximumDSB = readOnlyDoubleSpinbox()
+        mainLayout.addWidget(label, row, 0)
+        mainLayout.addWidget(self.maximumDSB, row, 1)
+
+        row += 1
+        label = QLabel('Mean: ')
+        self.meanDSB = readOnlyDoubleSpinbox()
+        mainLayout.addWidget(label, row, 0)
+        mainLayout.addWidget(self.meanDSB, row, 1)
+
+        row += 1
+        label = QLabel('Median: ')
+        self.medianDSB = readOnlyDoubleSpinbox()
+        mainLayout.addWidget(label, row, 0)
+        mainLayout.addWidget(self.medianDSB, row, 1)
+
+        row += 1
+        metricsDesc = measurements._get_metrics_names()
+        metricsFunc, _ = measurements.standard_metrics_func()
+        items = [metricsDesc[key] for key in metricsFunc.keys()]
+        items.append('Concentration')
+        items.sort()
+        nameFuncDict = {}
+        for name, desc in metricsDesc.items():
+            if name not in metricsFunc.keys():
+                continue
+            nameFuncDict[desc] = metricsFunc[name]
+
+        funcionCombobox = QComboBox()
+        funcionCombobox.addItems(items)
+        self.additionalMeasCombobox = funcionCombobox
+        self.additionalMeasCombobox.indicator = readOnlyDoubleSpinbox()
+        self.additionalMeasCombobox.functions = nameFuncDict
+        mainLayout.addWidget(funcionCombobox, row, 0)
+        mainLayout.addWidget(self.additionalMeasCombobox.indicator, row, 1)
+
+        self.setLayout(mainLayout)
+
+    def addChannels(self, channels):
+        self.channelCombobox.clear()
+        self.channelCombobox.addItems(channels)
 
 class guiTabControl(QTabWidget):
     def __init__(self, *args):
@@ -1472,17 +1574,22 @@ class guiTabControl(QTabWidget):
         container = QWidget()
         layout = QVBoxLayout()
 
-        self.propsQGBox = objPropsQGBox(self.propsTab)
+        self.propsQGBox = objPropsQGBox(parent=self.propsTab)
+        self.intensMeasurQGBox = objIntesityMeasurQGBox(parent=self.propsTab)
 
         self.highlightCheckbox = QCheckBox('Highlight objects')
         self.highlightCheckbox.setChecked(True)
 
         layout.addWidget(self.propsQGBox)
+        layout.addWidget(self.intensMeasurQGBox)
         layout.addWidget(self.highlightCheckbox)
         container.setLayout(layout)
 
         self.propsTab.setWidget(container)
-        self.addTab(self.propsTab, 'Object properties')
+        self.addTab(self.propsTab, 'Measurements')
+
+    def addChannels(self, channels):
+        self.intensMeasurQGBox.addChannels(channels)
 
 class expandCollapseButton(QPushButton):
     def __init__(self, parent=None):
