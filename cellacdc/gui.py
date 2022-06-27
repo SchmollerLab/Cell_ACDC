@@ -4139,7 +4139,11 @@ class guiWin(QMainWindow):
         obj = posData.rp[obj_idx]
 
         if self.isSegm3D:
-            area_pxl = np.count_nonzero(obj.image[self.z_lab()])
+            if self.zProjComboBox.currentText() == 'single z-slice':
+                local_z = self.z_lab() - obj.bbox[0]
+                area_pxl = np.count_nonzero(obj.image[local_z])
+            else:
+                area_pxl = np.count_nonzero(obj.image.max(axis=0))
         else:
             area_pxl = obj.area
 
@@ -13360,6 +13364,8 @@ class guiWin(QMainWindow):
         if ID == self.highlightedID:
             return
 
+
+        how = self.drawIDsContComboBox.currentText()
         contours = zip(
             self.ax1_ContoursCurves,
             self.ax2_ContoursCurves
@@ -13368,9 +13374,22 @@ class guiWin(QMainWindow):
             if ax1ContCurve is None:
                 continue
             if ax1ContCurve.getData()[0] is not None:
-                ax1ContCurve.setData([], [])
+                if how.find('contours') != -1:
+                    ax1ContCurve.setPen(self.oldIDs_cpen)
+                else:
+                    ax1ContCurve.setData([], [])
             if ax2ContCurve.getData()[0] is not None:
-                ax2ContCurve.setData([], [])
+                if how.find('contours') != -1:
+                    ax2ContCurve.setPen(self.oldIDs_cpen)
+                else:
+                    ax1ContCurve.setData([], [])
+
+        if how.find('IDs') == -1:
+            labelItems = zip(self.ax1_LabelItemsIDs, self.ax2_LabelItemsIDs)
+            for labelItem_ax1, labelItem_ax2 in labelItems:
+                labelItem_ax1.setText('')
+                labelItem_ax2.setText('')
+
 
         posData = self.data[self.pos_i]
         self.highlightedID = ID
