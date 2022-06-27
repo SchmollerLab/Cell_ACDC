@@ -4511,6 +4511,7 @@ class postProcessSegmDialog(QDialog):
         else:
             applyAllButton = QPushButton('Apply')
             applyAllButton.clicked.connect(self.ok_cb)
+            applyButton = None
             okButton = None
 
         cancelButton = widgets.cancelPushButton('Cancel')

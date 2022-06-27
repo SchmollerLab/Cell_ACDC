@@ -5766,19 +5766,23 @@ class guiWin(QMainWindow):
             doNotLinkThroughZ = (
                 self.brushButton.isChecked() and shift
             )
-            if z == 0 or z == SizeZ-1 or doNotLinkThroughZ:
+            if doNotLinkThroughZ:
                 if self.brushHoverCenterModeAction.isChecked() or ID>0:
                     hoverID = ID
                 else:
                     masked_lab = lab_2D[ymin:ymax, xmin:xmax][diskMask]
                     hoverID = np.bincount(masked_lab).argmax()
             else:
-                ID_z_under = posData.lab[z-1, ydata, xdata]
-                if self.brushHoverCenterModeAction.isChecked() or ID_z_under>0:
-                    hoverIDa = ID_z_under
+                if z > 0:
+                    ID_z_under = posData.lab[z-1, ydata, xdata]
+                    if self.brushHoverCenterModeAction.isChecked() or ID_z_under>0:
+                        hoverIDa = ID_z_under
+                    else:
+                        lab = posData.lab
+                        masked_lab_a = lab[z-1, ymin:ymax, xmin:xmax][diskMask]
+                        hoverIDa = np.bincount(masked_lab_a).argmax()
                 else:
-                    masked_lab_a = posData.lab[z-1, ymin:ymax, xmin:xmax][diskMask]
-                    hoverIDa = np.bincount(masked_lab_a).argmax()
+                    hoverIDa = 0
 
                 if self.brushHoverCenterModeAction.isChecked() or ID>0:
                     hoverIDb = lab_2D[ydata, xdata]
@@ -5786,12 +5790,16 @@ class guiWin(QMainWindow):
                     masked_lab_b = lab_2D[ymin:ymax, xmin:xmax][diskMask]
                     hoverIDb = np.bincount(masked_lab_b).argmax()
 
-                ID_z_above = posData.lab[z+1, ydata, xdata]
-                if self.brushHoverCenterModeAction.isChecked() or ID_z_above>0:
-                    hoverIDc = ID_z_above
+                if z < SizeZ-1:
+                    ID_z_above = posData.lab[z+1, ydata, xdata]
+                    if self.brushHoverCenterModeAction.isChecked() or ID_z_above>0:
+                        hoverIDc = ID_z_above
+                    else:
+                        lab = posData.lab
+                        masked_lab_c = lab[z+1, ymin:ymax, xmin:xmax][diskMask]
+                        hoverIDc = np.bincount(masked_lab_c).argmax()
                 else:
-                    masked_lab_c = posData.lab[z+1, ymin:ymax, xmin:xmax][diskMask]
-                    hoverIDc = np.bincount(masked_lab_c).argmax()
+                    hoverIDc = 0
 
                 if hoverIDa > 0:
                     hoverID = hoverIDa
