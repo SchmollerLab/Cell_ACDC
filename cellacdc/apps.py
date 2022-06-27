@@ -39,7 +39,7 @@ import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui
 from PyQt5 import QtCore
 from PyQt5.QtGui import (
-    QIcon, QFontMetrics, QKeySequence, QFont, QGuiApplication
+    QIcon, QFontMetrics, QKeySequence, QFont, QGuiApplication, QCursor
 )
 from PyQt5.QtCore import Qt, QSize, QEvent, pyqtSignal, QEventLoop, QTimer
 from PyQt5.QtWidgets import (
@@ -4703,7 +4703,7 @@ class imageViewer(QMainWindow):
 
     def __init__(
             self, parent=None, posData=None, button_toUncheck=None,
-            spinBox=None, linkWindow=None
+            spinBox=None, linkWindow=None, enableOverlay=False,
         ):
         self.button_toUncheck = button_toUncheck
         self.parent = parent
@@ -4716,6 +4716,7 @@ class imageViewer(QMainWindow):
         if posData is None:
             posData = self.parent.data[self.parent.pos_i]
         self.posData = posData
+        self.enableOverlay = enableOverlay
 
         self.gui_createActions()
         self.gui_createMenuBar()
@@ -4760,6 +4761,10 @@ class imageViewer(QMainWindow):
         self.nextAction.setShortcut("right")
         self.jumpForwardAction.setShortcut("up")
         self.jumpBackwardAction.setShortcut("down")
+        if self.enableOverlay:
+            self.overlayButton = widgets.rightClickToolButton(parent=self)
+            self.overlayButton.setIcon(QIcon(":overlay.svg"))
+            self.overlayButton.setCheckable(True)
 
     def gui_createMenuBar(self):
         menuBar = self.menuBar()
@@ -4781,7 +4786,12 @@ class imageViewer(QMainWindow):
         editToolBar.addAction(self.jumpBackwardAction)
         editToolBar.addAction(self.jumpForwardAction)
 
+        if self.enableOverlay:
+            editToolBar.addWidget(self.overlayButton)
+
         if self.linkWindow:
+            # Insert a spacing
+            editToolBar.addWidget(QLabel('  '))
             self.linkWindowCheckbox = QCheckBox("Link to main GUI")
             self.linkWindowCheckbox.setChecked(True)
             editToolBar.addWidget(self.linkWindowCheckbox)
@@ -4792,6 +4802,16 @@ class imageViewer(QMainWindow):
         self.nextAction.triggered.connect(self.next_frame)
         self.jumpForwardAction.triggered.connect(self.skip10ahead_frames)
         self.jumpBackwardAction.triggered.connect(self.skip10back_frames)
+        if self.enableOverlay:
+            self.overlayButton.toggled.connect(self.update_img)
+            self.overlayButton.sigRightClick.connect(self.showOverlayContextMenu)
+
+    def showOverlayContextMenu(self, event):
+        if not self.overlayButton.isChecked():
+            return
+
+        if self.parent is not None:
+            self.parent.overlayContextMenu.exec_(QCursor.pos())
 
     def gui_createStatusBar(self):
         self.statusbar = self.statusBar()
@@ -4817,7 +4837,7 @@ class imageViewer(QMainWindow):
         self.Plot.addItem(self.img)
 
         #Image histogram
-        hist = pg.HistogramLUTItem()
+        hist = widgets.myHistogramLUTitem()
         self.hist = hist
         hist.setImageItem(self.img)
         self.graphLayout.addItem(hist, row=1, col=0)
@@ -4958,13 +4978,38 @@ class imageViewer(QMainWindow):
 
     def update_img(self):
         self.frameLabel.setText(
-                 f'Current frame = {self.frame_i+1}/{self.num_frames}')
+            f'Current frame = {self.frame_i+1}/{self.num_frames}'
+        )
         if self.parent is None:
             img = self.getImage()
         else:
-            img = self.parent.getImage(frame_i=self.frame_i)
+            if self.overlayButton.isChecked():
+                img = self.getOverlayImg()
+            else:
+                img = self.parent.getImage(frame_i=self.frame_i)
+                img = self.parent.getImageWithCmap(img=img)
         self.img.setImage(img)
         self.framesScrollBar.setSliderPosition(self.frame_i+1)
+
+    def getOverlayImg(self):
+        try:
+            img = self.parent.getOverlayImg(
+                setImg=False, frame_i=self.frame_i
+            )
+        except AttributeError:
+            success = self.parent.askSelectOverlayChannel()
+            if not success:
+                self.overlayButton.toggled.disconnect()
+                self.overlayButton.setChecked(False)
+                self.overlayButton.toggled.connect(self.update_img)
+                img = self.parent.getImage(frame_i=self.frame_i)
+                img = self.parent.getImageWithCmap(img=img)
+            else:
+                self.parent.setCheckedOverlayContextMenusAction()
+                img = self.parent.getOverlayImg(
+                    setImg=False, frame_i=self.frame_i
+                )
+        return img
 
     def closeEvent(self, event):
         if self.button_toUncheck is not None:
@@ -6369,7 +6414,7 @@ class manualSeparateGui(QMainWindow):
         self.ax.addItem(self.imgItem)
 
         #Image histogram
-        self.hist = pg.HistogramLUTItem()
+        self.hist = widgets.myHistogramLUTitem()
 
         # Curvature items
         self.hoverLinSpace = np.linspace(0, 1, 1000)
