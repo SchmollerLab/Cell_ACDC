@@ -1284,6 +1284,7 @@ class guiWin(QMainWindow):
     def dropEvent(self, event):
         event.setDropAction(Qt.CopyAction)
         file_path = event.mimeData().urls()[0].toLocalFile()
+        self.logger.info(f'Dragged and dropped path "{file_path}"')
         basename = os.path.basename(file_path)
         if os.path.isdir(file_path):
             exp_path = file_path
@@ -14073,6 +14074,8 @@ class guiWin(QMainWindow):
         self._openFolder()
 
     def openFile(self, checked=False, file_path=None):
+        self.logger.info(f'Opening FILE "{file_path}"')
+
         self.isNewFile = False
         self._openFile(file_path=file_path)
 
@@ -14176,6 +14179,8 @@ class guiWin(QMainWindow):
         self.titleLabel.setText('Loading data aborted.')
 
     def openFolder(self, checked=False, exp_path=None, imageFilePath=''):
+        self.logger.info(f'Opening FOLDER "{exp_path}"')
+
         self.isNewFile = False
         if hasattr(self, 'data'):
             self.store_data()

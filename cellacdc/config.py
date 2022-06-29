@@ -19,7 +19,7 @@ class QtWarningHandler(QObject):
 warningHandler = QtWarningHandler()
 qInstallMessageHandler(warningHandler._resizeWarningHandler)
 
-ap = argparse.ArgumentParser(description='spotMAX inputs')
+ap = argparse.ArgumentParser(description='Cell-ACDC parser')
 ap.add_argument(
     '-d', '--debug', action='store_true',
     help=(
@@ -31,6 +31,5 @@ ap.add_argument(
 
 # Add dummy argument for stupid Jupyter
 ap.add_argument('-f')
-
 
 parser_args = vars(ap.parse_args())
