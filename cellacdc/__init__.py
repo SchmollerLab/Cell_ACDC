@@ -1,5 +1,15 @@
 import sys
 import os
+import inspect
+
+def printl(*objects, **kwargs):
+    cf = inspect.currentframe()
+    filpath = inspect.getframeinfo(cf).filename
+    filename = os.path.basename(filpath)
+    print('*'*30)
+    print(f'File "{filename}", line {cf.f_back.f_lineno}:')
+    print(*objects, **kwargs)
+    print('='*30)
 
 cellacdc_path = os.path.dirname(os.path.abspath(__file__))
 temp_path = os.path.join(cellacdc_path, 'temp')

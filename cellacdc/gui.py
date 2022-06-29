@@ -76,7 +76,7 @@ from . import qrc_resources
 from . import base_cca_df
 from . import load, prompts, apps, workers, html_utils
 from . import core, myutils, dataPrep, widgets
-from . import measurements
+from . import measurements, printl
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .core import numba_max, numba_min
@@ -14250,15 +14250,8 @@ class guiWin(QMainWindow):
         self.logger.info(f'Loading from {self.exp_path}')
         myutils.addToRecentPaths(exp_path, logger=self.logger)
 
-        if os.path.basename(exp_path).find('Position_') != -1:
-            is_pos_folder = True
-        else:
-            is_pos_folder = False
-
-        if os.path.basename(exp_path).find('Images') != -1:
-            is_images_folder = True
-        else:
-            is_images_folder = False
+        is_pos_folder = os.path.basename(exp_path).find('Position_') != -1
+        is_images_folder = os.path.basename(exp_path).find('Images') != -1
 
         self.titleLabel.setText('Loading data...', color=self.titleColor)
         self.setWindowTitle(f'Cell-ACDC - GUI - "{exp_path}"')
@@ -14316,8 +14309,7 @@ class guiWin(QMainWindow):
             # images_path = exp_path because called by openFile func
             filenames = myutils.listdir(exp_path)
             ch_names, basenameNotFound = (
-                ch_name_selector.get_available_channels(
-                    filenames, exp_path)
+                ch_name_selector.get_available_channels(filenames, exp_path)
             )
             filename = os.path.basename(imageFilePath)
             self.ch_names = ch_names
@@ -14359,6 +14351,9 @@ class guiWin(QMainWindow):
                 ch_name_selector.channel_name = ch_names[0]
             ch_name_selector.setUserChannelName()
             user_ch_name = ch_name_selector.user_ch_name
+        else:
+            # File opened directly with self.openFile
+            ch_name_selector.channel_name = user_ch_name
 
         user_ch_file_paths = []
         for images_path in self.images_paths:
