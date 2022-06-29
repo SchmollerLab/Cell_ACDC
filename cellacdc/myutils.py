@@ -34,7 +34,7 @@ from PyQt5.QtWidgets import QMessageBox
 from PyQt5.QtCore import pyqtSignal, QObject, QCoreApplication
 
 from . import prompts, widgets, apps, core, load
-from . import html_utils, is_linux, is_win, is_mac
+from . import html_utils, is_linux, is_win, is_mac, issues_url
 from . import cellacdc_path
 
 def exception_handler(func):
@@ -60,12 +60,17 @@ def exception_handler(func):
             msg = widgets.myMessageBox(wrapText=False, showCentered=False)
             msg.addShowInFileManagerButton(self.logs_path, txt='Show log file...')
             msg.setDetailedText(traceback_str, visible=True)
+            href = f'<a href="{issues_url}">GitHub page</a>'
             err_msg = html_utils.paragraph(f"""
                 Error in function <code>{func.__name__}</code>.<br><br>
                 More details below or in the terminal/console.<br><br>
                 Note that the <b>error details</b> from this session are
-                also <b>saved in the following file</b>:<br><br>
-                {self.log_path}<br><br>
+                also <b>saved in the following file</b>:
+                <br><br>
+                <code>{self.log_path}</code>
+                <br><br>
+                You can <b>report</b> this error by opening an issue
+                on our {href}.<br><br>
                 Please <b>send the log file</b> when reporting a bug, thanks!
             """)
 

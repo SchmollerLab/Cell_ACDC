@@ -7968,6 +7968,7 @@ class guiWin(QMainWindow):
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
             if self.debug:
+                raise FileNotFoundError
                 posData = self.data[self.pos_i]
                 print(posData.ol_data.keys())
                 values = posData.ol_data.values()
