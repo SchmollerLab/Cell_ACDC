@@ -13282,6 +13282,8 @@ class guiWin(QMainWindow):
         maxTick = self.imgGrad.gradient.getTick(1)
         self.imgGrad.gradient.setTickValue(minTick, min)
         self.imgGrad.gradient.setTickValue(maxTick, max)
+        if connect:
+            self.imgGrad.sigLookupTableChanged.connect(self.imgGradLUT_cb)
 
         # # NOTE: since v1.2.4 we hide the histogram viewbox
         # self.imgGrad.setLevels(
@@ -13289,8 +13291,7 @@ class guiWin(QMainWindow):
         # )
         # h = imageItem.getHistogram()
         # self.imgGrad.plot.setData(*h)
-        # if connect:
-        #     self.imgGrad.sigLookupTableChanged.connect(self.imgGradLUT_cb)
+        
 
     def updateFramePosLabel(self):
         if self.isSnapshot:
