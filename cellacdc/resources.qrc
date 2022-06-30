@@ -38,6 +38,8 @@
     <file alias="undo.svg">resources/icons/undo.svg</file>
     <file alias="redo.svg">resources/icons/redo.svg</file>
     <file alias="eye.svg">resources/icons/eye.svg</file>
+    <file alias="play.svg">resources/icons/play.svg</file>
+    <file alias="stop.svg">resources/icons/stop.svg</file>
     <file alias="moveLabel.svg">resources/icons/moveLabel.svg</file>
     <file alias="expandLabel.svg">resources/icons/expandLabel.svg</file>
     <file alias="separate-bud.svg">resources/icons/separate-bud.svg</file>
@@ -60,6 +62,7 @@
     <file alias="interp.svg">resources/icons/interp.svg</file>
     <file alias="zback.svg">resources/icons/zback.svg</file>
     <file alias="zforw.svg">resources/icons/zforw.svg</file>
+    <file alias="cog_play.svg">resources/icons/cog_play.svg</file>
     <file alias="addDelRoi.svg">resources/icons/addDelRoi.svg</file>
     <file alias="addCustomDelRoi.svg">resources/icons/addCustomDelRoi.svg</file>
     <file alias="curvature-tool.svg">resources/icons/curvature-tool.svg</file>

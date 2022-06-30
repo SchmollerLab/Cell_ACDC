@@ -8,18 +8,20 @@ import numpy as np
 import pandas as pd
 import h5py
 from collections import Counter
-
-import skimage.io
-from tifffile.tifffile import TiffWriter, TiffFile
-
 from tqdm import tqdm
+
+import skimage
+import skimage.io
+import skimage.color
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QFileDialog,
     QVBoxLayout, QPushButton, QLabel, QStyleFactory,
-    QWidget, QMessageBox
+    QWidget, QMessageBox, QDialog, QHBoxLayout
 )
-from PyQt5.QtCore import Qt, QEventLoop
+from PyQt5.QtCore import (
+    Qt, QEventLoop, QSize, QThread, pyqtSignal, QObject
+)
 from PyQt5 import QtGui
 
 script_path = os.path.dirname(os.path.realpath(__file__))
@@ -28,6 +30,7 @@ sys.path.append(cellacdc_path)
 
 # Custom modules
 from .. import prompts, load, myutils, apps, load, widgets, html_utils
+from .. import workers
 
 from .. import qrc_resources
 
@@ -403,20 +406,199 @@ class convertFileFormatWin(QMainWindow):
             self.mainWin.setWindowState(Qt.WindowActive)
             self.mainWin.raise_()
 
+class ImagesToPositions(QDialog):
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        
+        logger, logs_path, log_path, log_filename = myutils.setupLogger(
+            module='converter'
+        )
 
-if __name__ == "__main__":
-    print('Launching conversion script...')
-    # Handle high resolution displays:
-    if hasattr(Qt, 'AA_EnableHighDpiScaling'):
-        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-    if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
-        QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
-    # Create the application
-    app = QApplication(sys.argv)
-    app.setStyle(QStyleFactory.create('Fusion'))
-    win = convertFileFormatWin(allowExit=True)
-    win.show()
-    print('Done. If window asking to select a folder is not visible, it is '
-          'behind some other open window.')
-    win.main()
-    sys.exit(app.exec_())
+        self.logger = logger
+        self.log_path = log_path
+        self.log_filename = log_filename
+        self.logs_path = logs_path
+
+        self.logger.info('Initializing converter...')
+
+        self.cancel = True
+
+        self.setWindowTitle('Cell-ACDC converter')
+        self.funcDescription = 'Cell-ACDC converter'
+
+        instructions = [
+            'Press <b>start</b> button',
+            '<b>Select folder</b> containing the images',
+            'Select <b>where to save</b> the Position folders',
+            'Insert a text to append at the end of each image (e.g., the channel name)',
+            'Wait that process ends'
+        ]
+
+        txt = html_utils.paragraph(f"""
+            This utility takes a <b>list of images</b> from a folder
+            and it structure them into the <b>required data structure</b><br>
+            (i.e., one image per Position folder).<br><br>
+            Images are <b>converted to .tif</b> format, if needed.<br><br>
+            How to use it:
+            {html_utils.to_list(instructions, ordered=True)}
+        """)
+
+        layout = QVBoxLayout()
+        textLayout = QHBoxLayout()
+
+        pixmap = QtGui.QIcon(":cog_play.svg").pixmap(QSize(64,64))
+        iconLabel = QLabel()
+        iconLabel.setPixmap(pixmap)
+
+        textLayout.addWidget(iconLabel, alignment=Qt.AlignTop)
+        textLayout.addSpacing(20)
+        textLayout.addWidget(QLabel(txt))
+        textLayout.addStretch(1)
+
+        buttonsLayout = QHBoxLayout()
+        stopButton = widgets.stopPushButton('Stop process')
+        startButton = widgets.playPushButton('    Start     ')
+        cancelButton = widgets.cancelPushButton('Close')
+
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(startButton)
+        buttonsLayout.addWidget(stopButton)
+
+        self.startButton = startButton
+        self.stopButton = stopButton
+
+        progressBarLayout = QHBoxLayout()
+        self.progressBar = widgets.QProgressBarWithETA(parent=self)
+        progressBarLayout.addWidget(self.progressBar)
+        progressBarLayout.addWidget(self.progressBar.ETA_label)
+        # self.progressBar.hide()
+        self.logConsole = widgets.QLogConsole(parent=self)
+
+        layout.addLayout(textLayout)
+        layout.addSpacing(20)
+        layout.addLayout(buttonsLayout)
+        layout.addSpacing(20)
+        layout.addLayout(progressBarLayout)
+        layout.addWidget(self.logConsole)
+
+        self.setLayout(layout)
+
+        cancelButton.clicked.connect(self.close)
+        startButton.clicked.connect(self.start)
+        stopButton.clicked.connect(self.stop)
+    
+    def showEvent(self, event: QtGui.QShowEvent) -> None:
+        self.startButton.setFixedWidth(self.stopButton.width())
+        self.stopButton.hide()
+        return super().showEvent(event)
+
+    @myutils.exception_handler    
+    def start(self):
+        self.startButton.hide()
+        self.stopButton.show()
+
+        MostRecentPath = myutils.getMostRecentPath()
+        folderPath = QFileDialog.getExistingDirectory(
+            self, 'Select folder containing images', MostRecentPath
+        )
+        if not folderPath:
+            self.logger.info('No path selected. Process stopped.')
+            self.stop()
+            return
+        
+        tagertFolderPath = QFileDialog.getExistingDirectory(
+            self, 'Select where to save Position folders', folderPath
+        )
+        if not tagertFolderPath:
+            self.logger.info('Target path not selected. Process stopped.')
+            self.stop()
+            return
+        
+        myutils.addToRecentPaths(tagertFolderPath, logger=self.logger)
+
+        textToAppendInstructions = html_utils.paragraph(
+            'Insert a <b>name to append</b> at the end of each new .tif file.'
+            '<br><br>'
+            'This name is required because Cell-ACDC needs to load files<br>'
+            'that ends with the same common name.<br><br>'
+            'Typically, you can use this for the channel name, e.g., "GFP".'
+        )
+        win = apps.filenameDialog(
+            ext='.tif', title='Insert text to append', 
+            hintText=textToAppendInstructions,
+            parent=self, allowEmpty=False
+        )
+        win.exec_()
+        if win.cancel:
+            self.logger.info('Process cancelled at insert text.')
+            self.stop()
+            return
+
+        self.thread = QThread()
+        self.worker = workers.ImagesToPositionsWorker(
+            folderPath, tagertFolderPath, win.entryText
+        )
+        self.worker.moveToThread(self.thread)
+        self.worker.finished.connect(self.thread.quit)
+        self.worker.finished.connect(self.worker.deleteLater)
+        self.thread.finished.connect(self.thread.deleteLater)
+
+        self.worker.progress.connect(self.workerProgress)
+        self.worker.initPbar.connect(self.workerInitProgressBar)
+        self.worker.updatePbar.connect(self.workerUpdateProgressBar)
+        self.worker.critical.connect(self.workerCritical)
+        self.worker.finished.connect(self.workerFinished)
+
+        self.thread.started.connect(self.worker.run)
+        self.thread.start()
+    
+    def stop(self):
+        self.startButton.show()
+        self.stopButton.hide()
+
+        if hasattr(self, 'worker'):
+            self.worker.abort = True
+    
+    @myutils.exception_handler
+    def workerInitProgressBar(self, maximum):
+        self.progressBar.setValue(0)
+        self.progressBar.setMaximum(maximum)
+    
+    @myutils.exception_handler
+    def workerUpdateProgressBar(self):
+        self.progressBar.update(1)
+    
+    @myutils.exception_handler
+    def workerProgress(self, txt):
+        self.logger.info(txt)
+        self.logConsole.append(txt)
+    
+    @myutils.exception_handler
+    def workerProgressBar(self, txt):
+        self.logger.info(txt)
+        self.logConsole.write(txt)
+    
+    @myutils.exception_handler
+    def workerCritical(self, error):
+        raise error
+    
+    @myutils.exception_handler
+    def workerFinished(self):
+        self.startButton.show()
+        self.stopButton.hide()
+
+        if self.worker.abort:
+            msg = widgets.myMessageBox()
+            msg.warning(
+                self, 'Conversion process stopped', 
+                html_utils.paragraph('Conversion process stopped!')
+            )
+        else:
+            msg = widgets.myMessageBox()
+            msg.information(
+                self, 'Conversion completed', 
+                html_utils.paragraph('Conversion process completed!')
+            )
+

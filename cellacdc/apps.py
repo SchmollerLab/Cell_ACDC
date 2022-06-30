@@ -774,11 +774,12 @@ class customAnnotationDialog(QDialog):
 class filenameDialog(QDialog):
     def __init__(
             self, ext='.npz', basename='', title='Insert file name',
-            hintText='', existingNames='', parent=None
+            hintText='', existingNames='', parent=None, allowEmpty=True
         ):
         self.cancel = True
         super().__init__(parent)
 
+        self.allowEmpty = allowEmpty
         self.basename = basename
         self.existingNames = []
         if ext.find('.') == -1:
@@ -830,6 +831,7 @@ class filenameDialog(QDialog):
             # self.lineEdit.editingFinished.connect(self.checkExistingNames)
 
         layout.addWidget(hintLabel)
+        layout.addSpacing(20)
         layout.addLayout(entryLayout)
         layout.addStretch(1)
         layout.addSpacing(20)
@@ -868,6 +870,15 @@ class filenameDialog(QDialog):
         valid = self.checkExistingNames()
         if not valid:
             return
+        
+        if not self.allowEmpty and not self._text():
+            msg = widgets.myMessageBox()
+            msg.warning(
+                self, 'Empty text', 
+                html_utils.paragraph('Text entry field <b>cannot be empty</b>')
+            )
+            return
+            
         self.filename = self.filenameLabel.text()
         self.entryText = self._text()
         self.cancel = False

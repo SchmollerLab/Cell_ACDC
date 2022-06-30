@@ -243,6 +243,7 @@ class mainWin(QMainWindow):
         utilsMenu.addAction(self.npzToTiffAction)
         utilsMenu.addAction(self.TiffToNpzAction)
         utilsMenu.addAction(self.h5ToNpzAction)
+        utilsMenu.addAction(self.batchConverterAction)
         utilsMenu.addAction(self.alignAction)
         utilsMenu.addAction(self.renameAction)
         menuBar.addMenu(utilsMenu)
@@ -261,6 +262,9 @@ class mainWin(QMainWindow):
         self.npzToTiffAction = QAction('Convert .npz file(s) to .tif...')
         self.TiffToNpzAction = QAction('Convert .tif file(s) to _segm.npz...')
         self.h5ToNpzAction = QAction('Convert .h5 file(s) to _segm.npz...')
+        self.batchConverterAction = QAction(
+            'Create required data structure from image files...'
+        )
         # self.TiffToHDFAction = QAction('Convert .tif file(s) to .h5py...')
         self.concatAcdcDfsAction = QAction(
             'Concatenate acdc output tables from multiple Positions...'
@@ -284,6 +288,9 @@ class mainWin(QMainWindow):
         self.npzToTiffAction.triggered.connect(self.launchConvertFormatUtil)
         self.TiffToNpzAction.triggered.connect(self.launchConvertFormatUtil)
         self.h5ToNpzAction.triggered.connect(self.launchConvertFormatUtil)
+        self.batchConverterAction.triggered.connect(
+                self.launchImageBatchConverter
+            )
         self.welcomeGuideAction.triggered.connect(self.launchWelcomeGuide)
         self.calcMetricsAcdcDf.triggered.connect(self.launchCalcMetricsUtil)
         self.aboutAction.triggered.connect(self.showAbout)
@@ -444,6 +451,10 @@ class mainWin(QMainWindow):
             # self.convertWin.setWindowState(Qt.WindowNoState)
             self.convertWin.setWindowState(Qt.WindowActive)
             self.convertWin.raise_()
+    
+    def launchImageBatchConverter(self):
+        self.batchConverterWin = utilsConvert.ImagesToPositions()
+        self.batchConverterWin.show()
 
     def launchDataStruct(self, checked=False):
         self.dataStructButton.setStyleSheet(

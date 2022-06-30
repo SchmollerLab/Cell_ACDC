@@ -139,6 +139,16 @@ class calcPushButton(QPushButton):
         super().__init__(*args)
         self.setIcon(QIcon(':calc.svg'))
 
+class playPushButton(QPushButton):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setIcon(QIcon(':play.svg'))
+
+class stopPushButton(QPushButton):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setIcon(QIcon(':stop.svg'))
+
 class showInFileManagerButton(QPushButton):
     def __init__(self, *args):
         super().__init__(*args)

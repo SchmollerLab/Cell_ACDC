@@ -14491,16 +14491,17 @@ class guiWin(QMainWindow):
             return True
 
     def criticalImgPathNotFound(self, images_path):
-        msg = QMessageBox(self)
-        msg.setWindowTitle('No valid files found!')
-        msg.setIcon(msg.Critical)
+        msg = widgets.myMessageBox()
+        msg.addShowInFileManagerButton(images_path)
         err_msg = html_utils.paragraph(f"""
-            The folder {images_path}<br>
+            The folder<br><br>
+            <code>{images_path}</code><br><br>
             <b>does not contain any valid image file!</b><br><br>
             Valid file formats are .h5, .tif, _aligned.h5, _aligned.npz.
         """)
-        msg.setText(err_msg)
-        msg.exec_()
+        okButton = msg.critical(
+            self, 'No valid files found!', err_msg, buttonsTexts=('Ok',)
+        )
 
     def appendPathWindowTitle(self, user_ch_file_paths):
         if self.isSnapshot:
