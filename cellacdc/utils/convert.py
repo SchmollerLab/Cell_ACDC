@@ -427,6 +427,7 @@ class ImagesToPositions(QDialog):
         self.funcDescription = 'Cell-ACDC converter'
 
         instructions = [
+            'Put all the images into one folder'
             'Press <b>start</b> button',
             '<b>Select folder</b> containing the images',
             'Select <b>where to save</b> the Position folders',
