@@ -5634,13 +5634,15 @@ class askStopFrameSegm(QDialog):
 
         cancelButton = widgets.cancelPushButton('Cancel')
 
-        buttonsLayout.addWidget(okButton, alignment=Qt.AlignRight)
-        buttonsLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
-        buttonsLayout.setContentsMargins(0, 10, 0, 0)
+        buttonsLayout.addStretch(1)    
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(okButton)
 
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
 
+        mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
 
         self.setLayout(mainLayout)
@@ -5650,7 +5652,8 @@ class askStopFrameSegm(QDialog):
     def saveSegmSizeT(self):
         for spinBox, posData in self.dataDict.values():
             posData.segmSizeT = spinBox.value()
-            posData.saveMetadata()
+            posData.metadata_df.at['segmSizeT', 'values'] = posData.segmSizeT
+            posData.metadataToCsv()
 
     def ok_cb(self, event):
         self.cancel = False

@@ -465,6 +465,7 @@ class myMessageBox(QDialog):
         isSettingsButton = buttonText.lower().find('set') != -1
         isNoButton = buttonText.replace(' ', '').lower() == 'no'
         isDelButton = buttonText.lower().find('delete') != -1
+        isAddButton = buttonText.lower().find('add ') != -1
 
         if isCancelButton:
             button = cancelPushButton(buttonText, self)
@@ -481,6 +482,9 @@ class myMessageBox(QDialog):
             self.buttonsLayout.addWidget(button)
         elif isDelButton:
             button = delPushButton(buttonText, self)
+            self.buttonsLayout.addWidget(button)
+        elif isAddButton:
+            button = addPushButton(buttonText, self)
             self.buttonsLayout.addWidget(button)
         else:
             button = QPushButton(buttonText, self)

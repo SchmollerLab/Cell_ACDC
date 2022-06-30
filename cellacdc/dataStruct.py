@@ -31,7 +31,7 @@ from PyQt5 import QtGui
 # Here we use from cellacdc because this script is laucnhed in
 # a separate process that doesn't have a parent package
 from . import qrc_resources
-from . import apps, myutils
+from . import apps, myutils, widgets, html_utils
 
 if os.name == 'nt':
     try:
@@ -82,6 +82,9 @@ class bioFormatsWorker(QObject):
         self.overWriteMetadata = False
         self.trustMetadataReader = False
         self.rawDataStruct = rawDataStruct
+        self.overwritePos = False
+        self.addFiles = False
+        self.cancel = False
 
     def readMetadata(self, raw_src_path, filename):
         rawFilePath = os.path.join(raw_src_path, filename)
@@ -381,9 +384,11 @@ class bioFormatsWorker(QObject):
             if self.cancel:
                 return True
 
-        if os.path.exists(images_path):
+        if os.path.exists(images_path) and self.overwritePos:
             shutil.rmtree(images_path)
-        os.makedirs(images_path)
+        
+        if not os.path.exists(images_path):
+            os.makedirs(images_path)
 
         self.saveData(images_path, rawFilePath, filename, p, series, p_idx=p_idx)
 
@@ -1102,7 +1107,7 @@ class createDataStructWin(QMainWindow):
         self.worker.critical.connect(self.workerCritical)
         self.worker.criticalError.connect(self.criticalBioFormats)
         self.worker.confirmMetadata.connect(self.askConfirmMetadata)
-        self.worker.filesExisting.connect(self.askReplacePosFilesFiles)
+        self.worker.filesExisting.connect(self.askReplacePos)
         self.thread.started.connect(self.worker.run)
 
         self.thread.start()
@@ -1437,18 +1442,24 @@ class createDataStructWin(QMainWindow):
         self.worker.metadataWin = self.metadataWin
         self.waitCond.wakeAll()
 
-    def askReplacePosFilesFiles(self, pos_path):
-        msg = QMessageBox(self)
-        abort = msg.warning(
-           self, 'Replace files?',
-           f'The folder "{pos_path}" already exists.\n\n'
-           'Do you want to replace it?',
-           msg.YesToAll | msg.Cancel
+    def askReplacePos(self, pos_path):
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph(
+            f'The following folder <b>already exists</b>.<br><br>'
+            f'<code>{pos_path}</code><br><br>'
+            'Do you want to <b>overwrite</b> all of its content or '
+            '<b>add files</b> to it?'
         )
-        if abort == msg.Cancel:
+        cancelButton, overwriteButton, addFilesButton = msg.warning(
+           self, 'Replace files?', txt,
+           buttonsTexts=('Cancel', 'Overwrite', 'Add files')
+        )
+        if msg.cancel:
             self.worker.cancel = True
-        else:
-            self.worker.cancel = False
+        elif overwriteButton == msg.clickedButton:
+            self.worker.overwritePos = True
+        elif addFilesButton == msg.clickedButton:
+            self.worker.addFiles = True
         self.waitCond.wakeAll()
 
     def closeEvent(self, event):

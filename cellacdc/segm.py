@@ -392,7 +392,7 @@ class segmWin(QMainWindow):
         self.progressLabel = QLabel(self)
         self.mainLayout.addWidget(self.progressLabel)
 
-        abortButton = QPushButton('    Abort process    ')
+        abortButton = widgets.cancelPushButton('Abort process')
         abortButton.clicked.connect(self.close)
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(abortButton)
@@ -921,6 +921,7 @@ class segmWin(QMainWindow):
                 load_last_tracked_i=False,
                 load_metadata=True
             )
+            posData.isSegm3D = self.isSegm3D
         elif posData.SizeZ > 1 and not self.isSegm3D:
             df = posData.segmInfo_df.loc[posData.filename]
             zz = df['z_slice_used_dataPrep'].to_list()
