@@ -13998,13 +13998,13 @@ class guiWin(QMainWindow):
                 break
 
             posData.allData_li[i] = {
-                 'regionprops': [],
-                 'labels': None,
-                 'acdc_df': None,
-                 'delROIs_info': {
+                'regionprops': [],
+                'labels': None,
+                'acdc_df': None,
+                'delROIs_info': {
                     'rois': [], 'delMasks': [], 'delIDsROI': []
                 },
-                 'histoLevels': {}
+                'histoLevels': {}
             }
 
     def removeAllItems(self):
