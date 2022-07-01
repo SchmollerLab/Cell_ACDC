@@ -3,11 +3,13 @@ import os
 import inspect
 
 def printl(*objects, **kwargs):
-    cf = inspect.currentframe()
-    filpath = inspect.getframeinfo(cf).filename
+    currentframe = inspect.currentframe()
+    callingframe = inspect.getouterframes(currentframe)[1].frame
+    callingframe_info = inspect.getframeinfo(callingframe)
+    filpath = callingframe_info.filename
     filename = os.path.basename(filpath)
     print('*'*30)
-    print(f'File "{filename}", line {cf.f_back.f_lineno}:')
+    print(f'File "{filename}", line {callingframe_info.lineno}:')
     print(*objects, **kwargs)
     print('='*30)
 
@@ -64,3 +66,6 @@ yeastmate_weights_filenames = [
     'yeastmate_weights.pth',
     'yeastmate.yaml'
 ]
+
+graphLayoutBkgrColor = (235, 235, 235)
+darkBkgrColor = [255-v for v in graphLayoutBkgrColor]
