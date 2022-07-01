@@ -39,7 +39,7 @@ from . import qrc_resources
 
 # Custom modules
 from . import load, prompts, apps, core, myutils, widgets
-from . import html_utils, myutils
+from . import html_utils, myutils, darkBkgrColor, printl
 
 if os.name == 'nt':
     try:
@@ -124,13 +124,15 @@ class dataPrepWin(QMainWindow):
         if self.debug:
             if event.key() == Qt.Key_P:
                 posData = self.data[self.pos_i]
-                for r, roi in enumerate(posData.bkgrROIs):
-                    print(roi.pos(), roi.size())
-                    xl, yt = [int(round(c)) for c in roi.pos()]
-                    w, h = [int(round(c)) for c in roi.size()]
-                    print('-'*20)
-                    print(yt, yt+h, yt+h>yt)
-                    print(xl, xl+w, xl+w>xl)
+                posData.cropROI.disconnect()
+                self.removeAllHandles(posData.cropROI)
+                # for r, roi in enumerate(posData.bkgrROIs):
+                #     print(roi.pos(), roi.size())
+                #     xl, yt = [int(round(c)) for c in roi.pos()]
+                #     w, h = [int(round(c)) for c in roi.size()]
+                #     print('-'*20)
+                #     print(yt, yt+h, yt+h>yt)
+                #     print(xl, xl+w, xl+w>xl)
 
     def gui_createActions(self):
         # File actions
@@ -265,6 +267,8 @@ class dataPrepWin(QMainWindow):
     def gui_addGraphicsItems(self):
         self.graphLayout = pg.GraphicsLayoutWidget()
 
+        self.graphLayout.setBackground(darkBkgrColor)
+
         # Plot Item container for image
         self.ax1 = pg.PlotItem()
         self.ax1.invertY(True)
@@ -290,7 +294,8 @@ class dataPrepWin(QMainWindow):
 
     def gui_addPlotItems(self):
         # Image Item
-        self.img = pg.ImageItem(np.zeros((512,512)))
+        # blankImage = np.full((512,512,3), darkBkgrColor)
+        self.img = pg.ImageItem()
         self.ax1.addItem(self.img)
         self.hist.setImageItem(self.img)
 
@@ -662,10 +667,10 @@ class dataPrepWin(QMainWindow):
             json.dump(ROIstates, json_fp)
 
     def saveBkgrData(self, posData):
-        try:
-            os.remove(posData.dataPrepBkgrROis_path)
-        except FileNotFoundError:
-            pass
+        # try:
+        #     os.remove(posData.dataPrepBkgrROis_path)
+        # except FileNotFoundError:
+        #     pass
 
         # If we crop we save data from background ROI for each bkgrROI
         for chName in posData.chNames:
@@ -943,6 +948,7 @@ class dataPrepWin(QMainWindow):
                     self, 'Done',
                     f'<p style="font-size:13px">{txt}</p>', msg.Ok
                 )
+                self.disconnectROIs(posData)
                 return
 
             if SizeZ != posData.SizeZ:
@@ -1015,14 +1021,42 @@ class dataPrepWin(QMainWindow):
             self.logger.info(f'{posData.pos_foldername} saved!')
             print(f'--------------------------------')
             print('')
+        
+        self.disconnectROIs(posData)
+
         txt = (
             'Saved! You can close the program or load another position.'
         )
         self.titleLabel.setText(txt, color='g')
-        msg = QMessageBox()
+        msg = widgets.myMessageBox()
         msg.information(
-            self, 'Done', f'<p style="font-size:13px">{txt}</p>', msg.Ok
+            self, 'Data prep done', html_utils.paragraph(txt)
         )
+    
+    def removeAllHandles(self, roi):
+        for handle in roi.handles:
+            item = handle['item']
+            item.disconnectROI(roi)
+            if len(item.rois) == 0 and roi.scene() is not None:
+                roi.scene().removeItem(item)
+        roi.handles = []
+        roi.stateChanged()
+    
+    def disconnectROIs(self, posData):
+        posData.cropROI.disconnect()
+        posData.cropROI.translatable = False
+        posData.cropROI.resizable = False
+        self.removeAllHandles(posData.cropROI)
+
+        for roi in posData.bkgrROIs:
+            roi.disconnect()
+            roi.translatable = False
+            roi.resizable = False
+            roi.removable = False
+
+            self.removeAllHandles(roi)
+        
+        self.logger.info('ROIs disconnected.')
 
     def permissionErrorCritical(self, path):
         msg = QMessageBox()
@@ -1036,25 +1070,22 @@ class dataPrepWin(QMainWindow):
 
 
     def askCropping(self, dataShape, croppedShape):
-        msg = QMessageBox(self)
-        msg.setWindowTitle('Crop?')
-        msg.setIcon(msg.Warning)
-        msg.setText(
-            f'You are about to crop data from shape {dataShape} '
-            f'to shape {croppedShape}\n\n'
-            'Saving cropped data cannot be undone.\n\n'
-            'Do you want to crop or simply save the ROI coordinates for the segmentation step?')
-        doCropButton = QPushButton('Yes, crop please.')
-        msg.addButton(doCropButton, msg.NoRole)
-        msg.addButton(QPushButton('No, save without cropping'), msg.YesRole)
-        cancelButton = QPushButton('Cancel')
-        msg.addButton(cancelButton, msg.RejectRole)
-        msg.exec_()
-        if msg.clickedButton() == doCropButton:
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(f"""
+            You are about to <b>crop</b> data from shape {dataShape} 
+            to shape {croppedShape}.<br><br>
+            Saving cropped data <b>cannot be undone</b>.<br><br>
+            Do you want to crop or simply save the ROI coordinates<br>
+            for the segmentation step?
+        """)
+        yesButton, nopButton = msg.warning(
+            self, 'Crop?', txt, 
+            buttonsTexts=('Yes, crop please.', ' Save without cropping ')
+        )
+        proceed = False
+        if msg.clickedButton == yesButton:
             proceed = True
-        elif msg.clickedButton() == cancelButton:
-            proceed = False
-        else:
+        elif msg.clickedButton == nopButton:
             proceed = False
         return proceed
 
@@ -1133,17 +1164,17 @@ class dataPrepWin(QMainWindow):
                 posData.buildPaths()
                 posData.loadImgData()
                 posData.loadOtherFiles(
-                                   load_segm_data=True,
-                                   load_acdc_df=True,
-                                   load_shifts=True,
-                                   loadSegmInfo=True,
-                                   load_dataPrep_ROIcoords=True,
-                                   load_delROIsInfo=False,
-                                   loadBkgrData=False,
-                                   loadBkgrROIs=True,
-                                   load_last_tracked_i=False,
-                                   load_metadata=True,
-                                   getTifPath=True
+                    load_segm_data=True,
+                    load_acdc_df=True,
+                    load_shifts=True,
+                    loadSegmInfo=True,
+                    load_dataPrep_ROIcoords=True,
+                    load_delROIsInfo=False,
+                    loadBkgrData=False,
+                    loadBkgrROIs=True,
+                    load_last_tracked_i=False,
+                    load_metadata=True,
+                    getTifPath=True
                 )
 
                 # If data was cropped then dataPrep_ROIcoords are useless
@@ -1422,7 +1453,10 @@ class dataPrepWin(QMainWindow):
                 self.logger.info(f'Zipping Images folder: {zipPath}')
                 shutil.make_archive(imagesPath, 'zip', imagesPath)
             self.npy_to_npz(posData)
-            self.alignData(self.user_ch_name, posData)
+            success = self.alignData(self.user_ch_name, posData)
+            if not success:
+                self.titleLabel.setText('Data prep cancelled.', color='r')
+                return
             if posData.SizeZ>1:
                 posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
         else:
@@ -1491,7 +1525,7 @@ class dataPrepWin(QMainWindow):
         self.addBkrgRoiActon.setDisabled(False)
 
         for posData in self.data:
-            if not posData.bkgrROIs:
+            if not posData.bkgrROIs and not posData.bkgrDataExists:
                 bkgrROI = self.getDefaultBkgrROI()
                 self.setBkgrROIprops(bkgrROI)
                 posData.bkgrROIs.append(bkgrROI)
@@ -1641,16 +1675,27 @@ class dataPrepWin(QMainWindow):
 
         align = True
         if posData.loaded_shifts is None and posData.SizeT > 1:
-            msg = QMessageBox()
-            alignAnswer = msg.question(
-                self, 'Align frames?',
-                f'Do you want to align ALL channels based on "{user_ch_name}" '
-                'channel?\n\n'
-                'If you don\'t know what to choose, we reccommend '
-                'aligning.',
-                msg.Yes | msg.No
+            msg = widgets.myMessageBox()
+            if user_ch_name:
+                txt = html_utils.paragraph(f"""
+                    Do you want to <b>align ALL channels</b> based on 
+                    <code>{user_ch_name}</code> channel?<br><br>
+                    <i>If you don't know what to choose, we <b>reccommend</b> 
+                    aligning.</i>
+                """)
+            else:
+                txt = html_utils.paragraph(f"""
+                    Do you want to <b>align</b> the frames over time?<br><br>
+                    <i>If you don't know what to choose, we <b>reccommend</b> 
+                    aligning.</i>
+                """)
+            _, yesButton, noButton = msg.question(
+                self, 'Align frames?', txt,
+                buttonsTexts=('Cancel', 'Yes', 'No')
             )
-            if alignAnswer == msg.No:
+            if msg.cancel:
+                return False
+            elif msg.clickedButton == noButton:
                 align = False
                 # Create 0, 0 shifts to perform 0 alignment
                 posData.loaded_shifts = np.zeros((self.num_frames,2), int)
@@ -1682,7 +1727,7 @@ class dataPrepWin(QMainWindow):
                 if align:
                     proceed = self.warnTifAligned(numFramesWith0s, tif, posData)
                     if not proceed:
-                        return
+                        return False
 
                 # Alignment routine
                 if posData.SizeZ>1:
@@ -1788,6 +1833,8 @@ class dataPrepWin(QMainWindow):
                 temp_npz = self.getTempfilePath(posData.segm_npz_path)
                 np.savez_compressed(temp_npz, posData.segm_data)
                 self.moveTempFile(temp_npz, posData.segm_npz_path)
+        
+        return True
 
 
     def detectTifAlignment(self, tif_data, posData):

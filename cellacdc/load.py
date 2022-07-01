@@ -27,7 +27,7 @@ from PyQt5.QtWidgets import (
 import pyqtgraph as pg
 
 from . import prompts, apps, myutils, widgets, measurements, config
-from . import base_cca_df, base_acdc_df, html_utils, temp_path
+from . import base_cca_df, base_acdc_df, html_utils, temp_path, printl
 
 cca_df_colnames = list(base_cca_df.keys())
 acdc_df_bool_cols = [
@@ -101,6 +101,33 @@ def get_segm_files(images_path):
         or (file.endswith('.npz') and file.find('segm') != -1)
     ]
     return segm_files
+
+def get_filename_from_channel(images_path, channel_name):
+    h5_aligned_path = ''
+    h5_path = ''
+    npz_aligned_path = ''
+    tif_path = ''
+    for file in myutils.listdir(images_path):
+        channelDataPath = os.path.join(images_path, file)
+        if file.endswith(f'{channel_name}_aligned.h5'):
+            h5_aligned_path = channelDataPath
+        elif file.endswith(f'{channel_name}.h5'):
+            h5_path = channelDataPath
+        elif file.endswith(f'{channel_name}_aligned.npz'):
+            npz_aligned_path = channelDataPath
+        elif file.endswith(f'{channel_name}.tif'):
+            tif_path = channelDataPath
+    
+    if h5_aligned_path:
+        return h5_aligned_path
+    elif h5_path:
+        return h5_path
+    elif npz_aligned_path:
+        return npz_aligned_path
+    elif tif_path:
+        return tif_path
+    else:
+        return ''
 
 def get_existing_segm_endnames(basename, segm_files):
     existing_endnames = []
@@ -352,6 +379,7 @@ class loadData:
         self.customAnnotFound = False if load_customAnnot else None
         self.combineMetricsFound = False if load_customCombineMetrics else None
         self.labelBoolSegm = labelBoolSegm
+        self.bkgrDataExists = False
         ls = myutils.listdir(self.images_path)
 
         linked_acdc_filename = None
@@ -425,9 +453,11 @@ class loadData:
             elif load_delROIsInfo and file.endswith('delROIsInfo.npz'):
                 self.delROIsInfoFound = True
                 self.delROIsInfo_npz = np.load(filePath)
-            elif loadBkgrData and file.endswith(f'{self.filename}_bkgrRoiData.npz'):
-                self.bkgrDataFound = True
-                self.bkgrData = np.load(filePath)
+            elif file.endswith(f'{self.filename}_bkgrRoiData.npz'):
+                self.bkgrDataExists = True
+                if loadBkgrData:
+                    self.bkgrDataFound = True
+                    self.bkgrData = np.load(filePath)
             elif loadBkgrROIs and file.endswith('dataPrep_bkgrROIs.json'):
                 self.bkgrROisFound = True
                 with open(filePath) as json_fp:
@@ -717,6 +747,9 @@ class loadData:
             self.delROIsInfo_npz = None
         if self.bkgrDataFound is not None and not self.bkgrDataFound:
             self.bkgrData = None
+        if self.bkgrDataExists:
+            # Do not load bkgrROIs if bkgrDataFound to avoid addMetrics to use it
+            self.bkgrROIs = []
         if self.dataPrep_ROIcoordsFound is not None and not self.dataPrep_ROIcoordsFound:
             self.dataPrep_ROIcoords = None
         if self.last_tracked_i_found is not None and not self.last_tracked_i_found:
