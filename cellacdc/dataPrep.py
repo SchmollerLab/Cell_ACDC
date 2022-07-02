@@ -1029,9 +1029,8 @@ class dataPrepWin(QMainWindow):
         )
         self.titleLabel.setText(txt, color='g')
         msg = widgets.myMessageBox()
-        msg.information(
-            self, 'Data prep done', html_utils.paragraph(txt)
-        )
+        txt = html_utils.paragraph(txt.replace('! ', '!<br><br>'))
+        msg.information(self, 'Data prep done', txt)
     
     def removeAllHandles(self, roi):
         for handle in roi.handles:

@@ -73,7 +73,7 @@ import pyqtgraph as pg
 from . import qrc_resources
 
 # Custom modules
-from . import base_cca_df
+from . import base_cca_df, graphLayoutBkgrColor
 from . import load, prompts, apps, workers, html_utils
 from . import core, myutils, dataPrep, widgets
 from . import measurements, printl
@@ -1172,8 +1172,6 @@ class guiWin(QMainWindow):
         self.logs_path = logs_path
 
         self.loadLastSessionSettings()
-
-        self.graphLayoutBkgrColor = (235, 235, 235)
 
         self.progressWin = None
         self.slideshowWin = None
@@ -2686,7 +2684,7 @@ class guiWin(QMainWindow):
     def gui_createGraphicsPlots(self):
         self.graphLayout = pg.GraphicsLayoutWidget()
         if self.invertBwAction.isChecked():
-            self.graphLayout.setBackground(self.graphLayoutBkgrColor)
+            self.graphLayout.setBackground(graphLayoutBkgrColor)
             self.titleColor = 'k'
         else:
             self.titleColor = 'w'
@@ -2783,7 +2781,7 @@ class guiWin(QMainWindow):
         # Blank image
         self.blank = np.zeros((256,256), np.uint8)
         if self.invertBwAction.isChecked():
-            self.blank = self.blank + self.graphLayoutBkgrColor[0]
+            self.blank = self.blank + graphLayoutBkgrColor[0]
 
         # Left image
         self.img1 = pg.ImageItem(self.blank)
@@ -3564,12 +3562,12 @@ class guiWin(QMainWindow):
                     ID = editID_prompt.EntryID
 
             obj_idx = posData.IDs.index(ID)
-            y, x = posData.rp[obj_idx].centroid
+            y, x = posData.rp[obj_idx].centroid[-2:]
             xdata, ydata = int(x), int(y)
 
             posData.disableAutoActivateViewerWindow = True
-            prev_IDs = [obj.label for obj in posData.rp]
-            editID = apps.editID_QWidget(ID, prev_IDs, parent=self)
+            prev_IDs = posData.IDs.copy()
+            editID = apps.editID_QWidget(ID, posData.IDs, parent=self)
             editID.show(block=True)
             if editID.cancel:
                 posData.disableAutoActivateViewerWindow = False
@@ -3580,11 +3578,10 @@ class guiWin(QMainWindow):
             # Ask to propagate change to all future visited frames
             (UndoFutFrames, applyFutFrames, endFrame_i,
             doNotShowAgain) = self.propagateChange(
-                                    ID, 'Edit ID',
-                                    posData.doNotShowAgain_EditID,
-                                    posData.UndoFutFrames_EditID,
-                                    posData.applyFutFrames_EditID,
-                                    applyTrackingB=True)
+                ID, 'Edit ID', posData.doNotShowAgain_EditID,
+                posData.UndoFutFrames_EditID, posData.applyFutFrames_EditID,
+                applyTrackingB=True
+            )
 
             if UndoFutFrames is None:
                 return
@@ -7048,7 +7045,7 @@ class guiWin(QMainWindow):
         if checked:
             # Light mode
             self.equalizeHistPushButton.setStyleSheet('')
-            self.graphLayout.setBackground(self.graphLayoutBkgrColor)
+            self.graphLayout.setBackground(graphLayoutBkgrColor)
             self.ax2_BrushCirclePen = pg.mkPen((0,0,0), width=2)
             self.ax2_BrushCircleBrush = pg.mkBrush((0,0,0,50))
             self.ax1_oldIDcolor = [255-v for v in self.ax1_oldIDcolor]
@@ -14141,15 +14138,17 @@ class guiWin(QMainWindow):
 
     def criticalNoTifFound(self, images_path):
         err_title = f'No .tif files found in folder.'
-        err_msg = (
-            f'The folder "{images_path}" does not contain .tif files.\n\n'
-            'Only .tif files can be loaded with "Open Folder" button.\n\n'
-            'Try with "File --> Open image/video file..." and directly select '
-            'the file you want to load.'
+        err_msg = html_utils.paragraph(
+            'The following folder<br><br>'
+            '<code>{images_path}</code><br><br>'
+            '<b>does not contain .tif or .h5 files</b>.<br><br>'
+            'Only .tif or .h5 files can be loaded with "Open Folder" button.<br><br>'
+            'Try with <code>File --> Open image/video file...</code> '
+            'and directly select the file you want to load.'
         )
-        msg = QMessageBox()
-        msg.critical(self, err_title, err_msg, msg.Ok)
-        return
+        msg = widgets.myMessageBox()
+        msg.addShowInFileManagerButton(images_path)
+        msg.critical(self, err_title, err_msg)
 
     def reInitGui(self):
         self.isZmodifier = False
@@ -14266,15 +14265,15 @@ class guiWin(QMainWindow):
             select_folder = load.select_exp_folder()
             values = select_folder.get_values_segmGUI(exp_path)
             if not values:
-                txt = (
-                    'The selected folder:\n\n '
-                    f'{exp_path}\n\n'
-                    'is not a valid folder. '
+                txt = html_utils.paragraph(
+                    'The selected folder:<br><br>'
+                    f'<code>{exp_path}</code><br><br>'
+                    'is <b>not a valid folder</b>.<br><br>'
                     'Select a folder that contains the Position_n folders'
                 )
-                msg = QMessageBox()
+                msg = widgets.myMessageBox()
                 msg.critical(
-                    self, 'Incompatible folder', txt, msg.Ok
+                    self, 'Incompatible folder', txt
                 )
                 self.titleLabel.setText(
                     'Drag and drop image file or go to File --> Open folder...',
@@ -14342,7 +14341,8 @@ class guiWin(QMainWindow):
             if len(ch_names) > 1:
                 CbLabel='Select channel name to segment: '
                 ch_name_selector.QtPrompt(
-                    self, ch_names, CbLabel=CbLabel)
+                    self, ch_names, CbLabel=CbLabel
+                )
                 if ch_name_selector.was_aborted:
                     self.titleLabel.setText(
                         'Drag and drop image file or go to File --> Open folder...',

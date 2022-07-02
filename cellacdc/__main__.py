@@ -37,6 +37,7 @@ try:
     from cellacdc.utils import rename as utilsRename
     from cellacdc.utils import align as utilsAlign
     from cellacdc.utils import compute as utilsCompute
+    from cellacdc.utils import repeat as utilsRepeat
     from cellacdc import is_win, is_linux, temp_path
 except ModuleNotFoundError as e:
     src_path = os.path.dirname(os.path.abspath(__file__))
@@ -244,6 +245,7 @@ class mainWin(QMainWindow):
         utilsMenu.addAction(self.TiffToNpzAction)
         utilsMenu.addAction(self.h5ToNpzAction)
         utilsMenu.addAction(self.batchConverterAction)
+        utilsMenu.addAction(self.repeatDataPrepAction)
         utilsMenu.addAction(self.alignAction)
         utilsMenu.addAction(self.renameAction)
         menuBar.addMenu(utilsMenu)
@@ -264,6 +266,9 @@ class mainWin(QMainWindow):
         self.h5ToNpzAction = QAction('Convert .h5 file(s) to _segm.npz...')
         self.batchConverterAction = QAction(
             'Create required data structure from image files...'
+        )
+        self.repeatDataPrepAction = QAction(
+            'Re-apply data prep steps to selected channels...'
         )
         # self.TiffToHDFAction = QAction('Convert .tif file(s) to .h5py...')
         self.concatAcdcDfsAction = QAction(
@@ -290,6 +295,9 @@ class mainWin(QMainWindow):
         self.h5ToNpzAction.triggered.connect(self.launchConvertFormatUtil)
         self.batchConverterAction.triggered.connect(
                 self.launchImageBatchConverter
+            )
+        self.repeatDataPrepAction.triggered.connect(
+                self.launchRepeatDataPrep
             )
         self.welcomeGuideAction.triggered.connect(self.launchWelcomeGuide)
         self.calcMetricsAcdcDf.triggered.connect(self.launchCalcMetricsUtil)
@@ -453,7 +461,11 @@ class mainWin(QMainWindow):
             self.convertWin.raise_()
     
     def launchImageBatchConverter(self):
-        self.batchConverterWin = utilsConvert.ImagesToPositions()
+        self.batchConverterWin = utilsConvert.ImagesToPositions(parent=self)
+        self.batchConverterWin.show()
+    
+    def launchRepeatDataPrep(self):
+        self.batchConverterWin = utilsRepeat.repeatDataPrepWindow(parent=self)
         self.batchConverterWin.show()
 
     def launchDataStruct(self, checked=False):

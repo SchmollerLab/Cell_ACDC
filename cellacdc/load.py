@@ -747,6 +747,9 @@ class loadData:
             self.delROIsInfo_npz = None
         if self.bkgrDataFound is not None and not self.bkgrDataFound:
             self.bkgrData = None
+        if self.bkgrROisFound is not None and not self.bkgrROisFound:
+            # Do not load bkgrROIs if bkgrDataFound to avoid addMetrics to use it
+            self.bkgrROIs = []
         if self.bkgrDataExists:
             # Do not load bkgrROIs if bkgrDataFound to avoid addMetrics to use it
             self.bkgrROIs = []

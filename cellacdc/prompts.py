@@ -192,12 +192,13 @@ class select_channel_name:
         font = QtGui.QFont()
         font.setPixelSize(13)
         win = apps.QDialogCombobox(
-                              'Select channel name',
-                              channel_names,
-                              informativeText,
-                              CbLabel=CbLabel,
-                              parent=parent,
-                              defaultChannelName=self.last_sel_channel)
+            'Select channel name',
+            channel_names,
+            informativeText,
+            CbLabel=CbLabel,
+            parent=parent,
+            defaultChannelName=self.last_sel_channel
+        )
         win.setFont(font)
         win.exec_()
         if win.cancel:
