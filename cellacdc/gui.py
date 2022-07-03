@@ -79,7 +79,6 @@ from . import core, myutils, dataPrep, widgets
 from . import measurements, printl
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
-from .core import numba_max, numba_min
 from .myutils import exec_time, setupLogger
 from .help import welcome
 
@@ -263,7 +262,7 @@ class relabelSequentialWorker(QObject):
             segm_data
         )
         self.progressNewIDs(inv)
-        self.sigRemoveItemsGUI.emit(numba_max(segm_data))
+        self.sigRemoveItemsGUI.emit(np.max(segm_data))
 
         self.progress.emit(
             'Updating stored data and cell cycle annotations '
@@ -3231,11 +3230,11 @@ class guiWin(QMainWindow):
 
             if ID > 0 and drawUnder:
                 self.ax2BrushID = ID
-                posData.isNewID = False
+                self.isNewID = False
             else:
                 self.setBrushID()
                 self.ax2BrushID = posData.brushID
-                posData.isNewID = True
+                self.isNewID = True
 
             self.updateLookuptable(lenNewLut=self.ax2BrushID+1)
             self.isMouseDragImg2 = True
@@ -3249,6 +3248,7 @@ class guiWin(QMainWindow):
             self.applyBrushMask(ymin, xmin, ymax, xmax, mask, self.ax2BrushID)
 
             self.setImageImg2(updateLookuptable=False)
+            self.lastHoverID = -1
 
         # Delete entire ID (set to 0)
         elif middle_click and canDelete:
@@ -3353,7 +3353,7 @@ class guiWin(QMainWindow):
 
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(False)
-            max_ID = numba_max(posData.lab)
+            max_ID = np.max(posData.lab)
 
             if right_click:
                 lab2D, success = self.auto_separate_bud_ID(
@@ -3593,7 +3593,7 @@ class guiWin(QMainWindow):
                 self.addNewItems(new_ID)
 
                 if new_ID in prev_IDs:
-                    tempID = numba_max(posData.lab) + 1
+                    tempID = np.max(posData.lab) + 1
                     posData.lab[posData.lab == old_ID] = tempID
                     posData.lab[posData.lab == new_ID] = old_ID
                     posData.lab[posData.lab == tempID] = new_ID
@@ -3662,7 +3662,7 @@ class guiWin(QMainWindow):
                     else:
                         for old_ID, new_ID in editID.how:
                             if new_ID in prev_IDs:
-                                tempID = numba_max(posData.lab) + 1
+                                tempID = posData.lab.max() + 1
                                 posData.lab[posData.lab == old_ID] = tempID
                                 posData.lab[posData.lab == new_ID] = old_ID
                                 posData.lab[posData.lab == tempID] = new_ID
@@ -4298,7 +4298,7 @@ class guiWin(QMainWindow):
             Y, X = _img.shape[:2]
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                 val = _img[ydata, xdata]
-                maxVal = numba_max(_img)
+                maxVal = _img.max()
                 ID = self.currentLab2D[ydata, xdata]
                 self.updatePropsWidget(ID)
                 if posData.IDs:
@@ -4463,7 +4463,7 @@ class guiWin(QMainWindow):
                     maxID = max(posData.IDs)
                 else:
                     maxID = 0
-                maxVal = numba_max(self.img1.image)
+                maxVal = np.max(self.img1.image)
                 img1_val = self.img1.image[ydata, xdata]
                 if self.img1.image.ndim > 2:
                     img1_val = [v for v in img1_val]
@@ -4633,11 +4633,11 @@ class guiWin(QMainWindow):
             self.isMouseDragImg2 = False
 
             self.update_rp()
-            if posData.isNewID:
+            if self.isNewID:
                 self.tracking(enforce=True, assign_unique_new_IDs=False)
 
             self.updateALLimg(updateFilters=True)
-            if posData.isNewID:
+            if self.isNewID:
                 self.warnEditingWithCca_df('Add new ID with brush tool')
 
         # Move label mouse released, update move
@@ -5123,13 +5123,15 @@ class guiWin(QMainWindow):
             how = self.drawIDsContComboBox.currentText()
             if img.ndim > 2:
                 # image is already RGB
-                self.imgRGB = img/numba_max(img)
+                self.imgRGB = img/np.max(img)
             else:
-                img = img/numba_max(img)
+                img = img/np.max(img)
                 self.imgRGB = gray2rgb(img)
 
             brushMask = self.get_2Dlab(posData.lab) == posData.brushID
             self.setTempImg1Brush(brushMask)
+
+            self.lastHoverID = -1
 
         elif left_click and canErase:
             x, y = event.pos().x(), event.pos().y()
@@ -5261,14 +5263,14 @@ class guiWin(QMainWindow):
             if posData.brushID == 0:
                 self.setBrushID()
                 self.updateLookuptable(
-                    lenNewLut=numba_max(posData.lab)+posData.brushID+1
+                    lenNewLut=np.max(posData.lab)+posData.brushID+1
                 )
             self.brushColor = self.img2.lut[posData.brushID]/255
 
             img = self.img1.image.copy()
-            img = img/numba_max(img)
+            img = img/np.max(img)
             if img.ndim > 2:
-                self.imgRGB = img/numba_max(img)
+                self.imgRGB = img/np.max(img)
             else:
                 self.imgRGB = gray2rgb(img)
 
@@ -5722,7 +5724,7 @@ class guiWin(QMainWindow):
 
     def getOptimalLabelItemColor(self, LabelItemID, desiredGray):
         img = self.img1.image
-        img = img/numba_max(img)
+        img = img/np.max(img)
         w, h = LabelItemID.rect().right(), LabelItemID.rect().bottom()
         x, y = LabelItemID.pos()
         w, h, x, y = int(w), int(h), int(x), int(y)
@@ -5756,13 +5758,12 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         lab_2D = self.get_2Dlab(posData.lab)
         ID = lab_2D[ydata, xdata]
+        self.isHoverZneighID = False
         if self.isSegm3D:
             z = self.z_lab()
             SizeZ = posData.lab.shape[0]
-            modifiers = QGuiApplication.keyboardModifiers()
-            shift = modifiers == Qt.ShiftModifier
             doNotLinkThroughZ = (
-                self.brushButton.isChecked() and shift
+                self.brushButton.isChecked() and self.isShiftDown
             )
             if doNotLinkThroughZ:
                 if self.brushHoverCenterModeAction.isChecked() or ID>0:
@@ -5801,10 +5802,12 @@ class guiWin(QMainWindow):
 
                 if hoverIDa > 0:
                     hoverID = hoverIDa
+                    self.isHoverZneighID = True
                 elif hoverIDb > 0:
                     hoverID = hoverIDb
                 elif hoverIDc > 0:
                     hoverID = hoverIDc
+                    self.isHoverZneighID = True
                 else:
                     hoverID = 0
         else:
@@ -5847,7 +5850,17 @@ class guiWin(QMainWindow):
                     item.setBrush(*rgb, 100)
             except IndexError:
                 pass
-
+        
+        checkChangeID = (
+            self.isHoverZneighID and not self.isShiftDown
+            and self.lastHoverID != hoverID
+        )
+        if checkChangeID:
+            # We are hovering an ID in z+1 or z-1
+            self.restoreBrushID = hoverID
+            self.changeBrushID()
+        
+        self.lastHoverID = hoverID
 
     def getCheckNormAction(self):
         normalize = False
@@ -5877,7 +5890,7 @@ class guiWin(QMainWindow):
             img = skimage.exposure.rescale_intensity(img)
             return img
         elif how == 'Normalize by max value':
-            img = img/numba_max(img)
+            img = img/np.max(img)
         return img
 
     def removeAlldelROIsCurrentFrame(self):
@@ -6007,9 +6020,9 @@ class guiWin(QMainWindow):
                 yy, xx = self.get_dir_coords(alfa_dir, y1, x1, edge.shape)
                 a_dir = edge[yy, xx]
                 if self.invertBwAction.isChecked() and self.imgCmapName == 'grey':
-                    min_int = numba_min(a_dir) # if int_val > ta else numba_min(a_dir)
+                    min_int = np.min(a_dir) # if int_val > ta else np.min(a_dir)
                 else:
-                    min_int = numba_max(a_dir)
+                    min_int = np.max(a_dir)
                 min_i = list(a_dir).index(min_int)
                 y, x = yy[min_i], xx[min_i]
                 try:
@@ -7560,7 +7573,7 @@ class guiWin(QMainWindow):
         # First try separating by labelling
         lab_ID = lab_ID_bool.astype(int)
         rp_ID = skimage.measure.regionprops(lab_ID)
-        setRp = self.separateByLabelling(lab_ID, rp_ID, maxID=numba_max(lab))
+        setRp = self.separateByLabelling(lab_ID, rp_ID, maxID=np.max(lab))
         if setRp:
             success = True
             lab[lab_ID_bool] = lab_ID[lab_ID_bool]
@@ -7827,13 +7840,13 @@ class guiWin(QMainWindow):
         # already visited frames
         posData = self.data[self.pos_i]
         if useCurrentLab:
-            newID = numba_max(posData.lab)
+            newID = np.max(posData.lab)
         else:
             newID = 1
         for frame_i, storedData in enumerate(posData.allData_li):
             lab = storedData['labels']
             if lab is not None:
-                _max = numba_max(lab)
+                _max = np.max(lab)
                 if _max > newID:
                     newID = _max
             else:
@@ -7984,12 +7997,15 @@ class guiWin(QMainWindow):
         isShiftModifier = modifiers == Qt.ShiftModifier
         self.isZmodifier = ev.key()==Qt.Key_Z
         if isShiftModifier:
+            self.isShiftDown = True
+            # Force default brush symbol with shift down
             self.setHoverToolSymbolColor(
                 1, 1, self.ax2_BrushCirclePen,
                 (self.ax2_BrushCircle, self.ax1_BrushCircle),
                 self.brushButton, brush=self.ax2_BrushCircleBrush,
                 ID=0
             )
+            self.changeBrushID()        
         isBrushActive = (
             self.brushButton.isChecked() or self.eraserButton.isChecked()
         )
@@ -8173,6 +8189,16 @@ class guiWin(QMainWindow):
             self.app.restoreOverrideCursor()
         if ev.key() == Qt.Key_Control:
             self.isCtrlDown = False
+        elif ev.key() == Qt.Key_Shift:
+            # Restore normal brush cursor when releasing shift
+            xdata, ydata = int(self.xHoverImg), int(self.yHoverImg)
+            self.setHoverToolSymbolColor(
+                xdata, ydata, self.ax2_BrushCirclePen,
+                (self.ax2_BrushCircle, self.ax1_BrushCircle),
+                self.brushButton, brush=self.ax2_BrushCircleBrush
+            )
+            self.changeBrushID()
+            self.isShiftDown = False
         elif ev.key() == Qt.Key_Z:
             self.isZmodifier = False
         canRepeat = (
@@ -9282,7 +9308,7 @@ class guiWin(QMainWindow):
 
         if self.imgCmapName == 'grey' and self.invertBwAction.isChecked():
             # Neural network requires non-inverted bw images --> invert back
-            img = -img+numba_max(img)
+            img = -img+np.max(img)
 
         return img
 
@@ -10433,6 +10459,7 @@ class guiWin(QMainWindow):
         self.splineHoverON = False
         self.rulerHoverON = False
         self.isCtrlDown = False
+        self.isShiftDown = False
         self.autoContourHoverON = False
         self.navigateScrollBarStartedMoving = True
 
@@ -10498,9 +10525,8 @@ class guiWin(QMainWindow):
             posData.curvHoverItems = []
             posData.fluoDataChNameActions = []
             posData.manualContrastKey = posData.filename
-            posData.isNewID = False
 
-            posData.HDDmaxID = numba_max(posData.segm_data)
+            posData.HDDmaxID = np.max(posData.segm_data)
 
             # Decision on what to do with changes to future frames attr
             posData.doNotShowAgain_EditID = False
@@ -10756,7 +10782,7 @@ class guiWin(QMainWindow):
         i, j = np.unravel_index(dist.argmin(), dist.shape)
         nearest_point = all_others[j]
         point = points[i]
-        min_dist = numba_min(dist)
+        min_dist = np.min(dist)
         return min_dist, nearest_point
 
     def checkMultiBudMoth(self, draw=False):
@@ -11205,6 +11231,53 @@ class guiWin(QMainWindow):
                 posData.lab[:, mask] = 0
         else:
             posData.lab[mask] = 0
+    
+    def changeBrushID(self):
+        if not self.isSegm3D:
+            # Changing brush ID with shift is only for 3D segm
+            return
+
+        if not self.brushButton.isChecked():
+            # Brush if not active
+            return
+        
+        if not self.isMouseDragImg2 and not self.isMouseDragImg1:
+            # Mouse if not brushing at the moment
+            return
+
+        posData = self.data[self.pos_i]
+        forceNewObj = not self.isNewID
+        
+        if forceNewObj:
+            # Shift is down --> force new object with brush
+            # e.g., 24 --> 28: 
+            # 24 is hovering ID that we store as self.prevBrushID
+            # 24 object becomes 28 that is the new posData.brushID
+            self.isNewID = True
+            self.changedID = posData.brushID
+            self.restoreBrushID = posData.brushID
+            # Set a new ID
+            self.setBrushID()
+            self.ax2BrushID = posData.brushID
+        else:
+            # Shift released or hovering on ID in z+-1 
+            # --> restore brush ID from before shift was pressed or from 
+            # when we started brushing from outside an object 
+            # but we hovered on ID in z+-1 while dragging.
+            # We change the entire 28 object to 24 so before changing the 
+            # brush ID back to 24 we builg the mask with 28 to change it to 24
+            self.isNewID = False
+            self.changedID = posData.brushID
+            # Restore ID   
+            posData.brushID = self.restoreBrushID
+            self.ax2BrushID = self.restoreBrushID
+               
+        brushID = posData.brushID
+        brushIDmask = self.get_2Dlab(posData.lab) == self.changedID
+        self.applyBrushMask(1,1,1,1, brushIDmask, brushID, isLocal=False)
+        if self.isMouseDragImg1:
+            self.brushColor = posData.lut[posData.brushID]/255
+            self.setTempImg1Brush(brushIDmask)
 
     def applyBrushMask(self, ymin, xmin, ymax, xmax, mask, ID, isLocal=True):
         posData = self.data[self.pos_i]
@@ -12433,9 +12506,9 @@ class guiWin(QMainWindow):
             if minPerc == 0 and maxPerc == 1:
                 rescaled_img = img
             else:
-                imgRange = numba_max(img)-numba_min(img)
-                min = numba_min(img) + imgRange*minPerc
-                max = numba_min(img) + imgRange*maxPerc
+                imgRange = np.max(img)-np.min(img)
+                min = np.min(img) + imgRange*minPerc
+                max = np.min(img) + imgRange*maxPerc
                 in_range = (min, max)
                 rescaled_img = func(
                     rescaled_img, in_range=in_range#, out_range=out_range
@@ -12512,7 +12585,7 @@ class guiWin(QMainWindow):
         self.bg_color = (r, g, b)
 
         if img.ndim == 2:
-            img = img/numba_max(img)
+            img = img/np.max(img)
             self.img1_RGB = gray2rgb(img)
             # NOTE: img_layer0 defined in getImageWithCmap()
         elif self.overlayButton.isChecked():
@@ -12652,7 +12725,7 @@ class guiWin(QMainWindow):
         ol_norm_img = ol_img/ol_img.max()
         ol_img_rgb = gray2rgb(ol_norm_img)*ol_RGB_val
         overlay = (gray_img_rgb*(1.0 - ol_alpha)+ol_img_rgb*ol_alpha)
-        overlay = overlay/numba_max(overlay)
+        overlay = overlay/np.max(overlay)
         overlay = (np.clip(overlay, 0, 1)*255).astype(np.uint8)
         return overlay
 
@@ -13284,7 +13357,7 @@ class guiWin(QMainWindow):
 
         # # NOTE: since v1.2.4 we hide the histogram viewbox
         # self.imgGrad.setLevels(
-        #     min=numba_min(imageItem.image), max=numba_max(imageItem.image)
+        #     min=np.min(imageItem.image), max=np.max(imageItem.image)
         # )
         # h = imageItem.getHistogram()
         # self.imgGrad.plot.setData(*h)
@@ -13523,7 +13596,7 @@ class guiWin(QMainWindow):
         img = self.adjustBrightness(img, cellsKey)
         self.img_layer0 = img
         if self.imgCmapName != 'grey':
-            img_max = numba_max(img)
+            img_max = np.max(img)
             if img_max != 1:
                 img = img/img_max
             img = self.imgCmap(img)[:, :, :3]
@@ -13849,7 +13922,7 @@ class guiWin(QMainWindow):
             rp_lab_obj = skimage.measure.regionprops(lab_obj)
             if len(rp_lab_obj)>1:
                 if maxID is None:
-                    lab_obj += numba_max(lab)
+                    lab_obj += np.max(lab)
                 else:
                     lab_obj += maxID
                 _slice = obj.slice # self.getObjSlice(obj.slice)
@@ -13975,7 +14048,7 @@ class guiWin(QMainWindow):
                 infoToRemove.append((y, x, new_ID))
                 continue
             if new_ID in allIDs:
-                tempID = numba_max(tracked_lab) + 1
+                tempID = np.max(tracked_lab) + 1
                 tracked_lab[tracked_lab == old_ID] = tempID
                 tracked_lab[tracked_lab == new_ID] = old_ID
                 tracked_lab[tracked_lab == tempID] = new_ID
