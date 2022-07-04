@@ -1519,7 +1519,8 @@ class dataPrepWin(QMainWindow):
             self.ROIshapeComboBox.currentTextChanged.disconnect()
         except Exception as e:
             self.ROIshapeComboBox.currentTextChanged.connect(
-                                                      self.setStandardRoiShape)
+                self.setStandardRoiShape
+            )
 
         self.addBkrgRoiActon.setDisabled(False)
 

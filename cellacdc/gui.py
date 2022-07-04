@@ -948,7 +948,7 @@ class saveDataWorker(QObject):
                     saved_segm_data = posData.segm_data
                 else:
                     frame_shape = posData.segm_data.shape[1:]
-                    segm_shape = (end_i, *frame_shape)
+                    segm_shape = (end_i+1, *frame_shape)
                     saved_segm_data = np.zeros(segm_shape, dtype=np.uint16)
                 npz_delROIs_info = {}
                 delROIs_info_path = posData.delROIs_info_path
@@ -2581,7 +2581,10 @@ class guiWin(QMainWindow):
         container = QGroupBox('Left image controls')
 
         row = 0
-        bottomLeftLayout.addWidget(self.drawIDsContComboBox, row, 0, 1, 4)
+        bottomLeftLayout.addWidget(
+            self.drawIDsContComboBox, row, 0, 1, 4,
+            alignment=Qt.AlignCenter
+        )
 
         row += 1
         bottomLeftLayout.addWidget(self.t_label, row, 0, alignment=Qt.AlignRight)
@@ -9999,8 +10002,12 @@ class guiWin(QMainWindow):
         if self.isSegm3D:
             layout = self.bottomLeftLayout
             layout.removeWidget(self.drawIDsContComboBox)
-            layout.addWidget(self.drawIDsContComboBox, 0, 2, 1, 2)
-            layout.addWidget(self.highlightZneighObjCheckbox, 0, 0, 1, 2)
+            layout.addWidget(self.drawIDsContComboBox, 0, 2, 1, 2,
+                alignment=Qt.AlignCenter
+            )
+            layout.addWidget(self.highlightZneighObjCheckbox, 0, 0, 1, 2,
+                alignment=Qt.AlignCenter
+            )
             
 
     def restoreSavedSettings(self):
@@ -10669,7 +10676,10 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         posData.frame_i = frame_n-1
         if posData.allData_li[posData.frame_i]['labels'] is None:
-            posData.lab = posData.segm_data[posData.frame_i]
+            if posData.frame_i < len(posData.segm_data):
+                posData.lab = posData.segm_data[posData.frame_i]
+            else:
+                posData.lab = np.zeros_like(posData.segm_data[0])
         else:
             posData.lab = posData.allData_li[posData.frame_i]['labels']
 
@@ -14266,7 +14276,10 @@ class guiWin(QMainWindow):
         except Exception as e:
             pass
         self.highlightZneighObjCheckbox.hide()
-        layout.addWidget(self.drawIDsContComboBox, 0, 0, 1, 4)
+        layout.addWidget(
+            self.drawIDsContComboBox, 0, 0, 1, 4,
+            alignment=Qt.AlignCenter
+        )
 
 
     def reinitCustomAnnot(self):
