@@ -101,7 +101,8 @@ If you want to contribute or try out experimental features (and, if you have tim
 3. Install [Anaconda](https://www.anaconda.com/products/individual) or [Miniconda](https://docs.conda.io/en/latest/miniconda.html)
 4. Update conda with `conda update conda`. Optionally, consider removing unused packages with the command `conda clean --all`
 5. Create a new conda environment with the command `conda create -n acdc python=3.9`
-6. In the terminal, navigate to the `Cell_ACDC` folder that you cloned before and install Cell-ACDC with the command `pip install -e .`.
+6. Activate the environment with the command `conda activate acdc`
+7. In the terminal, navigate to the `Cell_ACDC` folder that you cloned before and install Cell-ACDC with the command `pip install -e .`.
 
 ## Running Cell-ACDC
 
