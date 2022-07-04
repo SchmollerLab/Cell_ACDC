@@ -1190,7 +1190,8 @@ class dataPrepWin(QMainWindow):
                         ask_SizeT=self.num_pos==1,
                         ask_TimeIncrement=False,
                         ask_PhysicalSizes=False,
-                        save=True
+                        save=True,
+                        askSegm3D=False
                     )
                     self.SizeT = posData.SizeT
                     self.SizeZ = posData.SizeZ
