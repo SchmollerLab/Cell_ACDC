@@ -9,6 +9,7 @@
 # TODO:
 print('Importing GUI modules...')
 
+from curses import echo
 import sys
 import os
 import shutil
@@ -942,7 +943,13 @@ class saveDataWorker(QObject):
                 segm_npz_path = posData.segm_npz_path
                 acdc_output_csv_path = posData.acdc_output_csv_path
                 last_tracked_i_path = posData.last_tracked_i_path
-                segm_npy = posData.segm_data
+                end_i = self.mainWin.save_until_frame_i
+                if end_i < len(posData.segm_data):
+                    saved_segm_data = posData.segm_data
+                else:
+                    frame_shape = posData.segm_data.shape[1:]
+                    segm_shape = (end_i, *frame_shape)
+                    saved_segm_data = np.zeros(segm_shape, dtype=np.uint16)
                 npz_delROIs_info = {}
                 delROIs_info_path = posData.delROIs_info_path
                 acdc_df_li = []
@@ -966,22 +973,21 @@ class saveDataWorker(QObject):
                 self.mainWin.getChNames(posData)
 
                 self.progress.emit(f'Saving {posData.relPath}')
-                end_i = self.mainWin.save_until_frame_i
                 for frame_i, data_dict in enumerate(posData.allData_li[:end_i+1]):
                     if self.saveWin.aborted:
                         self.finished.emit()
                         return
 
-                    # Build segm_npy
+                    # Build saved_segm_data
                     lab = data_dict['labels']
                     posData.lab = lab
                     if lab is None:
                         break
 
                     if posData.SizeT > 1:
-                        segm_npy[frame_i] = lab
+                        saved_segm_data[frame_i] = lab
                     else:
-                        segm_npy = lab
+                        saved_segm_data = lab
 
                     acdc_df = data_dict['acdc_df']
 
@@ -1023,8 +1029,8 @@ class saveDataWorker(QObject):
                     self.time_last_pbar_update = t
 
                 # Save segmentation file
-                np.savez_compressed(segm_npz_path, np.squeeze(segm_npy))
-                posData.segm_data = segm_npy
+                np.savez_compressed(segm_npz_path, np.squeeze(saved_segm_data))
+                posData.segm_data = saved_segm_data
 
                 if posData.segmInfo_df is not None:
                     try:
@@ -2475,7 +2481,7 @@ class guiWin(QMainWindow):
         # _font.setPixelSize(13)
         _font.setPixelSize(12)
 
-        # Toggle contours/ID comboboxf
+        # Toggle contours/ID combobox
         self.drawIDsContComboBoxSegmItems = [
             'Draw IDs and contours',
             'Draw IDs and overlay segm. masks',
@@ -2488,24 +2494,20 @@ class guiWin(QMainWindow):
             'Draw only overlay segm. masks',
             'Draw nothing'
         ]
-        # self.drawIDsContComboBoxCcaItems = [
-        #     'Draw IDs and contours',
-        #     'Draw IDs and overlay segm. masks',
-        #     'Draw only cell cycle info',
-        #     'Draw cell cycle info and contours',
-        #     'Draw cell cycle info and overlay segm. masks',
-        #     'Draw only mother-bud lines',
-        #     'Draw only IDs',
-        #     'Draw only contours',
-        #     'Draw only overlay segm. masks',
-        #     'Draw nothing'
-        # ]
         self.drawIDsContComboBox = QComboBox()
         self.drawIDsContComboBox.setFont(_font)
         self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
         # Always adjust combobox width to largest item
         self.drawIDsContComboBox.setSizeAdjustPolicy(
-                    self.drawIDsContComboBox.AdjustToContents)
+            self.drawIDsContComboBox.AdjustToContents
+        )
+
+        # Toggle highlight z+-1 objects combobox
+        self.highlightZneighObjCheckbox = QCheckBox(
+            'Highlight z-neighbouring labels'
+        )
+        self.highlightZneighObjCheckbox.setFont(_font)
+        self.highlightZneighObjCheckbox.hide()
 
         # Frames scrollbar
         self.navigateScrollBar = widgets.navigateQScrollBar(Qt.Horizontal)
@@ -2575,16 +2577,15 @@ class guiWin(QMainWindow):
 
     def gui_addImg1BottomWidgets(self):
         bottomLeftLayout = QGridLayout()
+        self.bottomLeftLayout = bottomLeftLayout
         container = QGroupBox('Left image controls')
 
         row = 0
-        bottomLeftLayout.addWidget(
-            self.drawIDsContComboBox, row, 1, alignment=Qt.AlignCenter
-        )
+        bottomLeftLayout.addWidget(self.drawIDsContComboBox, row, 0, 1, 4)
 
         row += 1
         bottomLeftLayout.addWidget(self.t_label, row, 0, alignment=Qt.AlignRight)
-        bottomLeftLayout.addWidget(self.navigateScrollBar, row, 1)
+        bottomLeftLayout.addWidget(self.navigateScrollBar, row, 1, 1, 2)
         sp = self.navigateScrollBar.sizePolicy()
         sp.setRetainSizeWhenHidden(True)
         self.navigateScrollBar.setSizePolicy(sp)
@@ -2593,22 +2594,22 @@ class guiWin(QMainWindow):
         bottomLeftLayout.addWidget(
             self.z_label, row, 0, alignment=Qt.AlignRight
         )
-        bottomLeftLayout.addWidget(self.zSliceScrollBar, row, 1)
-        bottomLeftLayout.addWidget(self.zProjComboBox, row, 2)
+        bottomLeftLayout.addWidget(self.zSliceScrollBar, row, 1, 1, 2)
+        bottomLeftLayout.addWidget(self.zProjComboBox, row, 3)
 
         row += 1
         bottomLeftLayout.addWidget(
             self.overlay_z_label, row, 0, alignment=Qt.AlignRight
         )
-        bottomLeftLayout.addWidget(self.zSliceOverlay_SB, row, 1)
+        bottomLeftLayout.addWidget(self.zSliceOverlay_SB, row, 1, 1, 2)
 
-        bottomLeftLayout.addWidget(self.zProjOverlay_CB, row, 2)
+        bottomLeftLayout.addWidget(self.zProjOverlay_CB, row, 3)
 
         row += 1
         bottomLeftLayout.addWidget(
             self.alphaScrollBar_label, row, 0, alignment=Qt.AlignRight
         )
-        bottomLeftLayout.addWidget(self.alphaScrollBar, row, 1)
+        bottomLeftLayout.addWidget(self.alphaScrollBar, row, 1, 1, 2)
         sp = self.alphaScrollBar_label.sizePolicy()
         sp.setRetainSizeWhenHidden(True)
         self.alphaScrollBar_label.setSizePolicy(sp)
@@ -9957,6 +9958,7 @@ class guiWin(QMainWindow):
         self.setFramesSnapshotMode()
 
         self.enableZstackWidgets(posData.SizeZ > 1)
+        self.showHighlightZneighCheckbox()
 
         self.img1BottomGroupbox.show()
         isLabVisible = self.df_settings.at['isLabelsVisible', 'value'] == 'Yes'
@@ -9992,6 +9994,14 @@ class guiWin(QMainWindow):
         )
 
         QTimer.singleShot(200, self.autoRange)
+    
+    def showHighlightZneighCheckbox(self):
+        if self.isSegm3D:
+            layout = self.bottomLeftLayout
+            layout.removeWidget(self.drawIDsContComboBox)
+            layout.addWidget(self.drawIDsContComboBox, 0, 2, 1, 2)
+            layout.addWidget(self.highlightZneighObjCheckbox, 0, 0, 1, 2)
+            
 
     def restoreSavedSettings(self):
         if 'how_draw_annotations' in self.df_settings.index:
@@ -11511,7 +11521,6 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         last_tracked_i = 0
         for frame_i, data_dict in enumerate(posData.allData_li):
-            # Build segm_npy
             lab = data_dict['labels']
             if lab is None and frame_i == 0:
                 last_tracked_i = 0
@@ -12781,6 +12790,12 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         np.random.shuffle(posData.lut[1:])
         self.updateALLimg()
+    
+    def highlightZneighLabels_cb(self, checked):
+        if checked:
+            pass
+        else:
+            pass
 
     def hideLabels(self, checked):
         if checked:
@@ -14228,6 +14243,7 @@ class guiWin(QMainWindow):
         self.askRepeatSegment3D = True
         self.showPropsDockButton.setDisabled(True)
 
+        self.reinitWidgetsPos()
         self.removeAllItems()
         self.reinitCustomAnnot()
         self.gui_addPlotItems()
@@ -14242,6 +14258,16 @@ class guiWin(QMainWindow):
         self.modeToolBar.hide()
 
         self.modeComboBox.setCurrentText('Viewer')
+    
+    def reinitWidgetsPos(self):
+        layout = self.bottomLeftLayout
+        try:
+            layout.removeWidget(self.highlightZneighObjCheckbox)
+        except Exception as e:
+            pass
+        self.highlightZneighObjCheckbox.hide()
+        layout.addWidget(self.drawIDsContComboBox, 0, 0, 1, 4)
+
 
     def reinitCustomAnnot(self):
         buttons = list(self.customAnnotDict.keys())
@@ -14935,7 +14961,6 @@ class guiWin(QMainWindow):
     def getLastTrackedFrame(self, posData):
         last_tracked_i = 0
         for frame_i, data_dict in enumerate(posData.allData_li):
-            # Build segm_npy
             lab = data_dict['labels']
             if lab is None:
                 frame_i -= 1
@@ -14978,7 +15003,6 @@ class guiWin(QMainWindow):
             return True
 
         for frame_i, data_dict in enumerate(posData.allData_li):
-            # Build segm_npy
             lab = data_dict['labels']
             if lab is None:
                 frame_i -= 1
