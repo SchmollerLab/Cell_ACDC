@@ -45,7 +45,6 @@ except ModuleNotFoundError as e:
     print('='*30)
     traceback.print_exc()
     print('----------------------------------------')
-   
     print(
         'Cellacdc NOT INSTALLED. '
         'Run the following command to install: '
@@ -53,8 +52,6 @@ except ModuleNotFoundError as e:
     )
     print('----------------------------------------')
     exit('Execution aborted due to an error. See above for details.')
-
-
 
 if os.name == 'nt':
     try:

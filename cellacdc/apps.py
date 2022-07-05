@@ -4403,7 +4403,7 @@ class postProcessSegmParams(QGroupBox):
         layout = QGridLayout()
 
         row = 0
-        label = QLabel("Minimum area (pixels): ")
+        label = QLabel("Minimum area (pixels) ")
         layout.addWidget(label, row, 0, alignment=Qt.AlignRight)
 
         if useSliders:
@@ -4417,12 +4417,22 @@ class postProcessSegmParams(QGroupBox):
             minSize_SB.setMinimum(1)
             minSize_SB.setMaximum(2147483647)
             minSize_SB.setValue(5)
+        
+        txt = (
+            '<b>Area</b> is the total number of pixels in the segmented object.'
+        )
 
         layout.addWidget(minSize_SB, row, 1)
+        infoButton = widgets.infoPushButton()
+        infoButton.clicked.connect(self.showInfo)
+        infoButton.tooltip = txt
+        infoButton.name = 'area'
+        infoButton.desc = f'less than "{label.text()}"'
+        layout.addWidget(infoButton, row, 2)
         self.minSize_SB = minSize_SB
 
         row += 1
-        label = QLabel("Minimum solidity (0-1): ")
+        label = QLabel("Minimum solidity (0-1) ")
         layout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         if useSliders:
             minSolidity_DSB = widgets.sliderWithSpinBox(normalize=True)
@@ -4435,18 +4445,24 @@ class postProcessSegmParams(QGroupBox):
         minSolidity_DSB.setValue(0.5)
         minSolidity_DSB.setSingleStep(0.1)
 
-        minSolidity_DSB.setToolTip(
-            'Solidity is a measure of convexity. A solidity of 1 means '
-            'that the shape is fully convex (i.e., equal to the convex hull).\n '
-            'As solidity approaches 0 the object is more concave.\n'
+        txt = (
+            '<b>Solidity</b> is a measure of convexity. A solidity of 1 means '
+            'that the shape is fully convex (i.e., equal to the convex hull). '
+            'As solidity approaches 0 the object is more concave.<br>'
             'Write 0 for ignoring this parameter.'
         )
 
         layout.addWidget(minSolidity_DSB, row, 1)
+        infoButton = widgets.infoPushButton()
+        infoButton.clicked.connect(self.showInfo)
+        infoButton.tooltip = txt
+        infoButton.name = 'solidity'
+        infoButton.desc = f'less than "{label.text()}"'
+        layout.addWidget(infoButton, row, 2)
         self.minSolidity_DSB = minSolidity_DSB
 
         row += 1
-        label = QLabel("Max elongation (1=circle):")
+        label = QLabel("Max elongation (1=circle) ")
         layout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         if useSliders:
             maxElongation_DSB = widgets.sliderWithSpinBox(isFloat=True)
@@ -4463,21 +4479,50 @@ class postProcessSegmParams(QGroupBox):
             maxElongation_DSB.setDecimals(1)
             maxElongation_DSB.setSingleStep(1.0)
 
-        maxElongation_DSB.setToolTip(
-            'Elongation is the ratio between major and minor axis lengths.\n'
-            'An elongation of 1 is like a circle.\n'
+        txt = (
+            '<b>Elongation</b> is the ratio between major and minor axis lengths. '
+            'An elongation of 1 is like a circle.<br>'
             'Write 0 for ignoring this parameter.'
         )
 
         layout.addWidget(maxElongation_DSB, row, 1)
+        infoButton = widgets.infoPushButton()
+        infoButton.clicked.connect(self.showInfo)
+        infoButton.tooltip = txt
+        infoButton.name = 'elongation'
+        infoButton.desc = f'greater than "{label.text()}"'
+        layout.addWidget(infoButton, row, 2)
         self.maxElongation_DSB = maxElongation_DSB
 
-        self.setLayout(layout)
+        layout.setColumnStretch(1, 2)
 
-class postProcessSegmDialog(QDialog):
+        self.setLayout(layout)
+    
+    def showInfo(self):
+        title = f'{self.sender().text()} info'
+        tooltip = self.sender().tooltip
+        name = self.sender().name
+        desc = self.sender().desc
+        txt = (f"""
+            The post-processing step is applied to the output of the 
+            segmentation model.<br><br>
+            During this step, Cell-ACDC will remove all the objects with {name}
+            <b>{desc}</b>.<br><br>
+            {tooltip}    
+        """)
+        if self.isCheckable():
+            note = f""""
+                You can deactivate this step by un-checking the checkbox 
+                called "Post-processing parameters".
+            """
+            txt = f'{txt}{note}'
+        msg = widgets.myMessageBox(showCentered=False)
+        msg.information(self, title, html_utils.paragraph(txt))
+
+class postProcessSegmDialog(QBaseDialog):
     sigClosed = pyqtSignal()
 
-    def __init__(self, mainWin=None, isTimelapse=False, isMultiPos=False):
+    def __init__(self, mainWin=None, useSliders=True):
         super().__init__(mainWin)
         self.cancel = True
         self.mainWin = mainWin
@@ -4494,7 +4539,7 @@ class postProcessSegmDialog(QDialog):
         buttonsLayout = QHBoxLayout()
 
         artefactsGroupBox = postProcessSegmParams(
-            'Post-processing parameters', useSliders=True
+            'Post-processing parameters', useSliders=useSliders
         )
 
         self.minSize_SB = artefactsGroupBox.minSize_SB
@@ -4701,13 +4746,14 @@ class postProcessSegmDialog(QDialog):
 
         self.close()
 
-    def show(self):
-        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
-        QDialog.show(self)
+    def show(self, block=False):
+        # self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        super().show(block=block)
         self.resize(int(self.width()*1.5), self.height())
 
     def closeEvent(self, event):
         self.sigClosed.emit()
+        super().closeEvent(event)
 
 class imageViewer(QMainWindow):
     """Main Window."""
