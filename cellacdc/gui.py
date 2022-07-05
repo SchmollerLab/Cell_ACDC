@@ -8,8 +8,6 @@
 
 # TODO:
 print('Importing GUI modules...')
-
-from curses import echo
 import sys
 import os
 import shutil
@@ -14280,7 +14278,6 @@ class guiWin(QMainWindow):
             self.drawIDsContComboBox, 0, 0, 1, 4,
             alignment=Qt.AlignCenter
         )
-
 
     def reinitCustomAnnot(self):
         buttons = list(self.customAnnotDict.keys())

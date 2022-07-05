@@ -42,8 +42,10 @@ try:
 except ModuleNotFoundError as e:
     src_path = os.path.dirname(os.path.abspath(__file__))
     main_path = os.path.dirname(src_path)
+    print('='*30)
+    traceback.print_exc()
     print('----------------------------------------')
-    print(e)
+    
     print(
         'Cellacdc NOT INSTALLED. '
         'Run the following command to install: '
