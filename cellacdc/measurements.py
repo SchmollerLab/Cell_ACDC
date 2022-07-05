@@ -608,6 +608,8 @@ def standard_metrics_func():
 def add_metrics_instructions():
     url = 'https://github.com/SchmollerLab/Cell_ACDC/issues'
     href = f'<a href="{url}">here</a>'
+    rp_url = f'https://scikit-image.org/docs/stable/api/skimage.measure.html#skimage.measure.regionprops'
+    rp_href = f'<a href="{rp_url}">skimage.measure.regionproperties</a>'
     s = html_utils.paragraph(f"""
     To add custom metrics to the <code>acdc_output.csv</code>
     file you need to <b>create a python script and save it into the
@@ -618,7 +620,7 @@ def add_metrics_instructions():
     similar to the example below:<br><br>
     Pseudo-code:
     <pre><code>
-    def <b>CV</b>(signal, autoBkgr, dataPrepBkgr, correct_with_bkgr=False, which_bkgr='auto'):
+    def <b>CV</b>(signal, autoBkgr, dataPrepBkgr, objectRp, correct_with_bkgr=False, which_bkgr='auto'):
         if correct_with_bkgr:
             if which_bkgr=='auto':
                 signal = signal - autoBkgr
@@ -630,6 +632,13 @@ def add_metrics_instructions():
 
         return CV
     </code></pre>
+    where <code>signal</code> is a vector contaning the fluorescent intesities 
+    from the segmented object, <code>autoBkgr</code> is the median of the 
+    background intensities (all the pixels outside of the objects), 
+    <code>dataPrepBkgr</code> is the median of the pixels inside the 
+    background ROI drawn in the data prep step, and <code>objectRp</code> 
+    are the region properties of the segmented object computed with 
+    the function <code>{rp_href}</code>.<br><br>
     Have a look at the <code>CV.py</code> file (click on "Show example..." below)
     for a full example.<br><br>
     <i>If it doesn't work, please report the issue {href} with the
