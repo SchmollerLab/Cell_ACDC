@@ -756,7 +756,7 @@ class saveDataWorker(QObject):
                             ROI_bkgrVal = None
                         try:
                             custom_val = custom_func(
-                                fluo_data_ID, fluo_backgr, ROI_bkgrVal
+                                fluo_data_ID, fluo_backgr, ROI_bkgrVal, obj
                             )
                             custom_metrics_values[key][i] = custom_val
                         except Exception as e:
@@ -14929,16 +14929,9 @@ class guiWin(QMainWindow):
         txt = measurements.add_metrics_instructions()
         metrics_path = measurements.metrics_path
         msg = widgets.myMessageBox()
-        msg.setIcon()
-        msg.setWindowTitle('Add custom metrics instructions')
-        msg.addText(txt)
-        msg.addButton('Ok')
-        showExampleButton = msg.addButton('  Show example...  ')
-        showExampleButton.disconnect()
-        showExampleButton.clicked.connect(
-            partial(myutils.showInExplorer, metrics_path)
-        )
-        msg.exec_()
+        msg.addShowInFileManagerButton(metrics_path, 'Show exmaple...')
+        title = 'Add custom metrics instructions'
+        msg.information(self, title, txt, buttonsTexts=('Ok',))
 
     def addCombineMetric(self):
         posData = self.data[self.pos_i]

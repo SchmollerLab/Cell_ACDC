@@ -1,6 +1,6 @@
 import numpy as np
 
-def CV(signal, autoBkgr, dataPrepBkgr, correct_with_bkgr=False, which_bkgr='auto'):
+def CV(signal, autoBkgr, dataPrepBkgr, objectRp, correct_with_bkgr=False, which_bkgr='auto'):
     """Function used to calculate coefficient of variation.
 
     NOTE: Make sure to call the function with the same name as the Python file
@@ -20,6 +20,9 @@ def CV(signal, autoBkgr, dataPrepBkgr, correct_with_bkgr=False, which_bkgr='auto
         Median of all the pixels inside the background ROIs added during the
         data prep step (Cell-ACDC module 1).
         Pass None if background correction with this vaue is not needed.
+    objectRp: skimage.measure.RegionProperties class
+        Refer to `skimage.measure.regionprops` for more information
+        on the available region properties.
     correct_with_bkgr : boolean
         Pass True if you need background correction.
     which_bkgr : string
