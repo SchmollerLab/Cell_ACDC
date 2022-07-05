@@ -110,7 +110,7 @@ def get_salute_string():
     time_end_evening = datetime.time(20,00,00)
     if time_now < time_end_morning:
         return 'Have a good day!'
-    elif time_now < time_end_morning:
+    elif time_now < time_end_afternoon:
         return 'Have a good afternoon!'
     elif time_now < time_end_evening:
         return 'Have a good evening!'
