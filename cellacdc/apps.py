@@ -4609,9 +4609,11 @@ class postProcessSegmDialog(QBaseDialog):
 
     def valueChanged(self, value):
         lab, delIDs = self.apply()
-        self.posData.lab = lab
+        self.mainWin.clearOverlaidMasks(delIDs)
+        self.posData.lab = lab   
         self.mainWin.clearItems_IDs(delIDs)
         self.mainWin.setImageImg2()
+        self.mainWin.clearOverlaidMasks(delIDs)
 
     def apply(self, origLab=None):
         if self.mainWin is None:
@@ -4732,6 +4734,8 @@ class postProcessSegmDialog(QBaseDialog):
                         self.posData.segm_data[frame_i] = origLab
                     else:
                         self.posData.allData_li[frame_i]['labels'] = origLab.copy()
+                        self.posData.lab = origLab.copy()
+                        self.mainWin.update_rp()
                         # Get the rest of the stored metadata based on the new lab
                         self.mainWin.get_data()
                         self.mainWin.store_data()

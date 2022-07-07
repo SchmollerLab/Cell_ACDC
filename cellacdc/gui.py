@@ -3402,13 +3402,9 @@ class guiWin(QMainWindow):
                 img = self.img1.image
                 img[delID_mask] = self.img1uintRGB[delID_mask]
                 self.img1.setImage(img)
-                return img
 
             self.setTitleText()
-            # if posData.SizeT > 1:
-            #     self.tracking(enforce=True)
-            #     self.highlightLostNew()
-            # self.checkIDsMultiContour()
+            self.highlightLostNew()
 
         # Separate bud
         elif (right_click or left_click) and self.separateBudButton.isChecked():
@@ -10434,6 +10430,21 @@ class guiWin(QMainWindow):
             self.ax1_LabelItemsIDs[ID-1].setText('')
             self.ax2_LabelItemsIDs[ID-1].setText('')
             self.ax1_BudMothLines[ID-1].setData([], [])
+    
+    def clearOverlaidMasks(self, IDs_to_clear):
+        how = self.drawIDsContComboBox.currentText()
+        if not how.find('overlay segm. masks') != -1:
+            return
+
+        posData = self.data[self.pos_i]
+        for ID in IDs_to_clear:
+            img = self.img1.image
+            obj_idx = posData.IDs.index(ID)
+            obj = posData.rp[obj_idx]
+            objMask = self.getObjImage(obj.image, obj.bbox)
+            objSlice = self.getObjSlice(obj.slice)
+            img[objSlice][objMask] = self.img1uintRGB[objSlice][objMask]
+            self.img1.setImage(img)
 
     def removeGraphicsItemsIDs(self, maxID):
         itemsToRemove = zip(
