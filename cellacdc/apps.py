@@ -2646,6 +2646,8 @@ class startStopFramesDialog(QBaseDialog):
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
 
+        self.setFont(font)
+
     def ok_cb(self):
         if self.selectFramesGroupbox.warningLabel.text():
             return
@@ -2654,6 +2656,14 @@ class startStopFramesDialog(QBaseDialog):
             self.stopFrame = self.selectFramesGroupbox.stopFrame_SB.value()
             self.cancel = False
             self.close()
+    
+    def show(self, block=False):
+        super().show(block=False)
+
+        self.resize(int(self.width()*1.5), self.height())
+
+        if block:
+            super().show(block=True)
 
 class selectTrackerGUI(QDialogListbox):
     def __init__(
@@ -6633,7 +6643,7 @@ class manualSeparateGui(QMainWindow):
             self.ax.removeItem(labelItemID)
         self.labelItemsIDs = []
         for obj in rp:
-            labelItemID = pg.LabelItem()
+            labelItemID = widgets.myLabelItem()
             labelItemID.setText(f'{obj.label}', color='r', size=self.fontSize)
             y, x = obj.centroid
             w, h = labelItemID.rect().right(), labelItemID.rect().bottom()

@@ -23,6 +23,10 @@ def correspondence(prev, curr, use_scipy=True, use_modified_yeaz=True):
     source: YeaZ modified by Cell-ACDC developers
     scipy.optimize.linear_sum_assignment instead of munkres library
     """
+    if not np.any(curr):
+        # Skip empty frames
+        return curr
+
     if use_scipy:
         hu_dict = scipy_align(prev, curr, acdc_yeaz=use_modified_yeaz)
     else:

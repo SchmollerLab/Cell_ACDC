@@ -397,6 +397,11 @@ class loadData:
             filePath = os.path.join(self.images_path, file)
             endName = file[len(self.basename):].split('.')[0]
 
+            loadMetadata = (
+                load_metadata and file.endswith('metadata.csv')
+                and not file.endswith('segm_metadata.csv')
+            )
+
             if new_endname:
                 # Do not load any segmentation file since user asked for new one
                 # This is redundant since we alse have create_new_segm=True
@@ -435,9 +440,10 @@ class loadData:
                 self.TifPathFound = True
             elif load_acdc_df and is_acdc_df_file and not create_new_segm:
                 self.acdc_df_found = True
-                acdc_df = pd.read_csv(
-                    filePath, index_col=['frame_i', 'Cell_ID']
-                ).fillna(0)
+                acdc_df = pd.read_csv(filePath)
+                acdc_df_drop_cca = acdc_df.drop(columns=cca_df_colnames).fillna(0)
+                acdc_df[acdc_df_drop_cca.columns] = acdc_df_drop_cca
+                acdc_df = acdc_df.set_index(['frame_i', 'Cell_ID'])
                 acdc_df = pd_bool_to_int(acdc_df, acdc_df_bool_cols, inplace=True)
                 acdc_df = pd_int_to_bool(acdc_df, acdc_df_bool_cols)
                 self.acdc_df = acdc_df
@@ -483,18 +489,18 @@ class loadData:
                     if 'value' in df.columns:
                         self.dataPrep_ROIcoordsFound = True
                         self.dataPrep_ROIcoords = df
-            elif (load_metadata and file.endswith('metadata.csv')
-                and not file.endswith('segm_metadata.csv')
-                ):
+            elif loadMetadata:
                 self.metadataFound = True
                 self.metadata_df = pd.read_csv(filePath).set_index('Description')
-                self.extractMetadata()
             elif load_customAnnot and file.endswith('custom_annot_params.json'):
                 self.customAnnotFound = True
                 self.customAnnot = read_json(filePath)
             elif load_customCombineMetrics and file.endswith('custom_combine_metrics.ini'):
                 self.combineMetricsFound = True
                 self.setCombineMetricsConfig(ini_path=filePath)
+
+        if self.metadataFound is not None and self.metadataFound:
+            self.extractMetadata()
 
         # Check if there is the old segm.npy
         if not self.segmFound and not create_new_segm:
@@ -642,6 +648,14 @@ class loadData:
                 self.SizeY, self.SizeX = self.img_data_shape[-2:]
             else:
                 self.SizeY, self.SizeX = 1, 1
+
+        self.isSegm3D = False
+        if hasattr(self, 'segm_npz_path'):
+            segmEndName = self.getSegmEndname()
+            isSegm3Dkey = f'{segmEndName}_isSegm3D'        
+            if 'isSegm3Dkey' in self.metadata_df.index:
+                isSegm3D = str(self.metadata_df.at[isSegm3Dkey, 'values'])
+                self.isSegm3D = isSegm3D.lower() == 'true'
 
         if 'TimeIncrement' in self.metadata_df.index:
             self.TimeIncrement = float(

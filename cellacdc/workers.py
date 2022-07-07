@@ -256,6 +256,12 @@ class calcMetricsWorker(QObject):
                     end_filename_segm=self.mainWin.endFilenameSegm
                 )
                 posData.labelSegmData()
+                if not posData.segmFound:
+                    self.logger.log(
+                        f'Skipping {expFoldername}{os.sep}{posData.pos_foldername}'
+                        f'because segm. file was not found.'
+                    )
+                    continue
 
                 if posData.SizeT > 1:
                     self.mainWin.gui.data = [None]*numPos
@@ -725,6 +731,64 @@ class reapplyDataPrepWorker(QObject):
             if self.abort:
                 break
         self.finished.emit()
+
+class LazyLoader(QObject):
+    sigLoadingFinished = pyqtSignal()
+
+    def __init__(self, mutex, waitCond, readH5mutex, waitReadH5cond):
+        QObject.__init__(self)
+        self.signals = signals()
+        self.mutex = mutex
+        self.waitCond = waitCond
+        self.exit = False
+        self.salute = True
+        self.sender = None
+        self.H5readWait = False
+        self.waitReadH5cond = waitReadH5cond
+        self.readH5mutex = readH5mutex
+
+    def setArgs(self, posData, current_idx, axis, updateImgOnFinished):
+        self.wait = False
+        self.updateImgOnFinished = updateImgOnFinished
+        self.posData = posData
+        self.current_idx = current_idx
+        self.axis = axis
+
+    def pauseH5read(self):
+        self.readH5mutex.lock()
+        self.waitReadH5cond.wait(self.mutex)
+        self.readH5mutex.unlock()
+
+    def pause(self):
+        self.mutex.lock()
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+
+    @worker_exception_handler
+    def run(self):
+        while True:
+            if self.exit:
+                self.signals.progress.emit(
+                    'Closing lazy loader...', 'INFO'
+                )
+                break
+            elif self.wait:
+                self.signals.progress.emit(
+                    'Lazy loader paused.', 'INFO'
+                )
+                self.pause()
+            else:
+                self.signals.progress.emit(
+                    'Lazy loader resumed.', 'INFO'
+                )
+                self.posData.loadChannelDataChunk(
+                    self.current_idx, axis=self.axis, worker=self
+                )
+                self.sigLoadingFinished.emit()
+                self.wait = True
+
+        self.signals.finished.emit(None)
+
 
 class ImagesToPositionsWorker(QObject):
     finished = pyqtSignal()

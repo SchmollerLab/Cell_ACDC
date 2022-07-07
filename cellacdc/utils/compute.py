@@ -13,7 +13,7 @@ from PyQt5.QtWidgets import (
 
 from .. import (
     widgets, apps, workers, html_utils, myutils,
-    gui, measurements,cca_functions, load
+    gui, measurements,cca_functions, load, printl
 )
 
 cellacdc_path = os.path.dirname(os.path.abspath(apps.__file__))
@@ -181,8 +181,10 @@ class computeMeasurmentsUtilWin(QDialog):
 
         measurementsWin = apps.setMeasurementsDialog(
             posData.chNames, [], posData.SizeZ > 1,
-            favourite_funcs=favourite_funcs, posData=posData
+            favourite_funcs=favourite_funcs, posData=posData,
+            isSegm3D=posData.isSegm3D
         )
+        printl('setMeasurementsDialog executing')
         measurementsWin.exec_()
         if measurementsWin.cancel:
             self.worker.abort = measurementsWin.cancel

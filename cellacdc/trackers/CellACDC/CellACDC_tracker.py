@@ -124,6 +124,10 @@ def track_frame(
         uniqueID=None, setBrushID_func=None, posData=None,
         assign_unique_new_IDs=True, IoA_thresh=0.4
     ):
+    if not np.any(lab):
+        # Skip empty frames
+        return lab
+
     IoA_matrix, IDs_curr_untracked, IDs_prev = calc_IoA_matrix(
         lab, prev_lab, rp, prev_rp, IDs_curr_untracked=IDs_curr_untracked
     )

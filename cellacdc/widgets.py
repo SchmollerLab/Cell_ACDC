@@ -34,7 +34,7 @@ import pyqtgraph as pg
 from pyqtgraph import QtGui
 
 from . import myutils, apps, measurements, is_mac, is_win, html_utils
-from . import qrc_resources
+from . import qrc_resources, printl
 
 def removeHSVcmaps():
     hsv_cmaps = []
@@ -328,6 +328,13 @@ class myLabelItem(pg.LabelItem):
         opts = self.opts
         for k in args:
             opts[k] = args[k]
+        
+        if 'size' in self.opts:
+            size = self.opts['size']
+            if size == '0pt' or size == '0px':
+                self.opts['size'] = '1pt'
+                super().setText('', size='1pt')
+                return
 
         optlist = []
 
@@ -1692,6 +1699,33 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
             action = contLineWeightMenu.addAction(action)
         self.gradient.menu.addMenu(contLineWeightMenu)
 
+        # Mother-bud line color
+        hbox = QHBoxLayout()
+        hbox.addWidget(QLabel('Mother-bud line color: '))
+        self.mothBudLineColorButton = pg.ColorButton(color=(255,0,0))
+        hbox.addWidget(self.mothBudLineColorButton)
+        widget = QWidget()
+        widget.setLayout(hbox)
+        act = QWidgetAction(self)
+        act.setDefaultWidget(widget)
+        self.gradient.menu.addAction(act)
+
+        # Mother-bud line weight
+        mothBudLineWeightMenu = QMenu('Mother-bud line weight', self.gradient.menu)
+        self.mothBudLineWightActionGroup = QActionGroup(self)
+        self.mothBudLineWightActionGroup.setExclusionPolicy(
+            QActionGroup.ExclusionPolicy.Exclusive
+        )
+        for w in range(1, 11):
+            action = QAction(str(w))
+            action.setCheckable(True)
+            if w == 2:
+                action.setChecked(True)
+            action.lineWeight = w
+            self.mothBudLineWightActionGroup.addAction(action)
+            action = mothBudLineWeightMenu.addAction(action)
+        self.gradient.menu.addMenu(mothBudLineWeightMenu)
+
         self.labelsAlphaMenu = self.gradient.menu.addMenu(
             'Segm. masks overlay alpha...'
         )
@@ -1727,6 +1761,11 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
 
     def uncheckContLineWeightActions(self):
         for act in self.contLineWightActionGroup.actions():
+            act.toggled.disconnect()
+            act.setChecked(False)
+
+    def uncheckMothBudLineLineWeightActions(self):
+        for act in self.mothBudLineWightActionGroup.actions():
             act.toggled.disconnect()
             act.setChecked(False)
 
