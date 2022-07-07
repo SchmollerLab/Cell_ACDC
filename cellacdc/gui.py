@@ -1210,8 +1210,8 @@ class guiWin(QMainWindow):
         self.checkableQButtonsGroup = QButtonGroup(self)
         self.checkableQButtonsGroup.setExclusive(False)
 
+        self.gui_createLazyLoader()
         self.gui_createCursors()
-
         self.gui_createActions()
         self.gui_createMenuBar()
         self.gui_createToolBars()
@@ -1408,7 +1408,7 @@ class guiWin(QMainWindow):
             QActionGroup.ExclusionPolicy.Exclusive
         )
         fs = int(re.findall(r'(\d+)pt', self.fontSize)[0])
-        for i in range(2,25):
+        for i in range(0,25):
             action = QAction(self)
             action.setText(f'{i}')
             action.setCheckable(True)
@@ -1873,6 +1873,32 @@ class guiWin(QMainWindow):
         self.annotateToolbar.addAction(self.addCustomAnnotationAction)
         self.annotateToolbar.addAction(self.viewAllCustomAnnotAction)
         self.annotateToolbar.setVisible(False)
+
+    def gui_createLazyLoader(self):
+        self.lazyLoaderThread = QThread()
+        self.lazyLoaderMutex = QMutex()
+        self.lazyLoaderWaitCond = QWaitCondition()
+        self.waitReadH5cond = QWaitCondition()
+        self.readH5mutex = QMutex()
+        self.lazyLoader = workers.LazyLoader(
+            self.lazyLoaderMutex, self.lazyLoaderWaitCond, 
+            self.waitReadH5cond, self.readH5mutex
+        )
+        self.lazyLoader.moveToThread(self.lazyLoaderThread)
+        self.lazyLoader.wait = True
+
+        self.lazyLoader.signals.finished.connect(self.lazyLoaderThread.quit)
+        self.lazyLoader.signals.finished.connect(self.lazyLoader.deleteLater)
+        self.lazyLoaderThread.finished.connect(self.lazyLoaderThread.deleteLater)
+
+        self.lazyLoader.signals.progress.connect(self.workerProgress)
+        self.lazyLoader.signals.sigLoadingNewChunk.connect(self.loadingNewChunk)
+        self.lazyLoader.sigLoadingFinished.connect(self.lazyLoaderFinished)
+        self.lazyLoader.signals.critical.connect(self.lazyLoaderCritical)
+        self.lazyLoader.signals.finished.connect(self.lazyLoaderWorkerClosed)
+
+        self.lazyLoaderThread.started.connect(self.lazyLoader.run)
+        self.lazyLoaderThread.start()
 
     def gui_createMainLayout(self):
         mainLayout = QGridLayout()
@@ -2502,7 +2528,7 @@ class guiWin(QMainWindow):
 
         # Toggle highlight z+-1 objects combobox
         self.highlightZneighObjCheckbox = QCheckBox(
-            'Highlight z-neighbouring labels'
+            'Highlight objects in neighbouring z-slices'
         )
         self.highlightZneighObjCheckbox.setFont(_font)
         self.highlightZneighObjCheckbox.hide()
@@ -2571,9 +2597,9 @@ class guiWin(QMainWindow):
         alphaScrollBar.setDisabled(True)
         self.alphaScrollBar = alphaScrollBar
         self.alphaScrollBar_label = alphaScrollBar_label
-        self.img1BottomGroupbox = self.gui_addImg1BottomWidgets()
+        self.img1BottomGroupbox = self.gui_getImg1BottomWidgets()
 
-    def gui_addImg1BottomWidgets(self):
+    def gui_getImg1BottomWidgets(self):
         bottomLeftLayout = QGridLayout()
         self.bottomLeftLayout = bottomLeftLayout
         container = QGroupBox('Left image controls')
@@ -2972,6 +2998,55 @@ class guiWin(QMainWindow):
         self.progressWin.close()
 
         self.loadingDataCompleted()
+    
+    def gui_createMothBudLinePens(self):
+        if 'mothBudLineWeight' in self.df_settings.index:
+            val = self.df_settings.at['mothBudLineWeight', 'value']
+            self.mothBudLineWeight = int(val)
+        else:
+            self.mothBudLineWeight = 2
+
+        self.newMothBudlineColor = (255, 0, 0)            
+        if 'mothBudLineColor' in self.df_settings.index:
+            val = self.df_settings.at['mothBudLineColor', 'value']
+            rgba = myutils.rgba_str_to_values(val)
+            self.mothBudLineColor = rgba[0:3]
+        else:
+            self.mothBudLineColor = (255,165,0)
+
+        try:
+            self.imgGrad.mothBudLineColorButton.sigColorChanging.disconnect()
+            self.imgGrad.mothBudLineColorButton.sigColorChanged.disconnect()
+        except Exception as e:
+            pass
+        try:
+            for act in self.imgGrad.mothBudLineWightActionGroup.actions():
+                act.toggled.disconnect()
+        except Exception as e:
+            pass
+        for act in self.imgGrad.mothBudLineWightActionGroup.actions():
+            if act.lineWeight == self.mothBudLineWeight:
+                act.setChecked(True)
+        self.imgGrad.mothBudLineColorButton.setColor(self.mothBudLineColor[:3])
+
+        self.imgGrad.mothBudLineColorButton.sigColorChanging.connect(
+            self.updateMothBudLineColour
+        )
+        self.imgGrad.mothBudLineColorButton.sigColorChanged.connect(
+            self.saveMothBudLineColour
+        )
+        for act in self.imgGrad.mothBudLineWightActionGroup.actions():
+            act.toggled.connect(self.mothBudLineWeightToggled)
+
+        # Contours pens
+        self.NewBudMoth_Pen = pg.mkPen(
+            color=self.newMothBudlineColor, width=self.mothBudLineWeight+1, 
+            style=Qt.DashLine
+        )
+        self.OldBudMoth_Pen = pg.mkPen(
+            color=self.mothBudLineColor, width=self.mothBudLineWeight, 
+            style=Qt.DashLine
+        )
 
     def gui_createContourPens(self):
         if 'contLineWeight' in self.df_settings.index:
@@ -3032,15 +3107,7 @@ class guiWin(QMainWindow):
         # Lost ID question mark text color
         self.lostIDs_qMcolor = (245, 184, 0)
 
-        # New bud-mother line pen
-        self.NewBudMoth_Pen = pg.mkPen(
-            color='r', width=3, style=Qt.DashLine
-        )
-
-        # Old bud-mother line pen
-        self.OldBudMoth_Pen = pg.mkPen(
-            color=(255,165,0), width=2, style=Qt.DashLine
-        )
+        self.gui_createMothBudLinePens()
 
         # Temporary line item connecting bud to new mother
         self.BudMothTempLine = pg.PlotDataItem(pen=self.NewBudMoth_Pen)
@@ -3264,7 +3331,7 @@ class guiWin(QMainWindow):
                 delID_prompt = apps.QLineEditDialog(
                     title='Clicked on background',
                     msg='You clicked on the background.\n'
-                         'Enter here ID that you want to delete',
+                        'Enter here ID that you want to delete',
                     parent=self, allowedValues=posData.IDs,
                     defaultTxt=str(nearest_ID)
                 )
@@ -3315,7 +3382,8 @@ class guiWin(QMainWindow):
 
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(UndoFutFrames)
-            posData.lab[posData.lab==delID] = 0
+            delID_mask = posData.lab==delID
+            posData.lab[delID_mask] = 0
 
             # Update data (rp, etc)
             self.update_rp()
@@ -3329,8 +3397,17 @@ class guiWin(QMainWindow):
             self.ax1_LabelItemsIDs[delID-1].setText('')
             self.ax2_LabelItemsIDs[delID-1].setText('')
 
+            how = self.drawIDsContComboBox.currentText()
+            if how.find('overlay segm. masks') != -1:
+                img = self.img1.image
+                img[delID_mask] = self.img1uintRGB[delID_mask]
+                self.img1.setImage(img)
+                return img
+
             self.setTitleText()
-            self.highlightLostNew()
+            # if posData.SizeT > 1:
+            #     self.tracking(enforce=True)
+            #     self.highlightLostNew()
             # self.checkIDsMultiContour()
 
         # Separate bud
@@ -5562,6 +5639,26 @@ class guiWin(QMainWindow):
         self.logger.info('Worker process ended.')
         self.updateALLimg()
         self.titleLabel.setText('Done', color='w')
+    
+    def loadingNewChunk(self, chunk_range):
+        coord0_chunk, coord1_chunk = chunk_range
+        desc = (
+            f'Loading new window, range = ({coord0_chunk}, {coord1_chunk})...'
+        )
+        self.progressWin = apps.QDialogWorkerProcess(
+            title='Loading data...', parent=self, pbarDesc=desc
+        )
+        self.progressWin.mainPbar.setMaximum(0)
+        self.progressWin.show(self.app)
+    
+    def lazyLoaderFinished(self):
+        self.logger.info('Load chunk data worker done.')
+        if self.lazyLoader.updateImgOnFinished:
+            self.updateALLimg()
+
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+            self.progressWin.close()
 
     def trackingWorkerFinished(self):
         if self.progressWin is not None:
@@ -5756,6 +5853,9 @@ class guiWin(QMainWindow):
                 item.setData(xx, yy, size=size)
 
     def getHoverID(self, xdata, ydata):
+        if not hasattr(self, 'diskMask'):
+            return 0
+        
         ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
         posData = self.data[self.pos_i]
         lab_2D = self.get_2Dlab(posData.lab)
@@ -5831,11 +5931,12 @@ class guiWin(QMainWindow):
         if not myutils.is_in_bounds(xdata, ydata, X, Y):
             return
 
+        self.isHoverZneighID = False
         if ID is None:
             hoverID = self.getHoverID(xdata, ydata)
         else:
             hoverID = ID
-
+            
         color = button.palette().button().color().name()
         drawAbove = color == self.doublePressKeyButtonColor
         if hoverID == 0 or drawAbove:
@@ -7109,6 +7210,7 @@ class guiWin(QMainWindow):
         for ax1_LI, ax2_LI in LIs:
             if ax1_LI is None:
                 continue
+            
             x1, y1 = ax1_LI.pos().x(), ax1_LI.pos().y()
             if x1>0:
                 w, h = ax1_LI.rect().right(), ax1_LI.rect().bottom()
@@ -7430,6 +7532,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         mode = self.modeComboBox.itemText(idx)
         self.annotateToolbar.setVisible(False)
+        self.labBottomGroupbox.hide()
         if mode == 'Segmentation and Tracking':
             self.trackingMenu.setDisabled(False)
             self.modeToolBar.setVisible(True)
@@ -7478,6 +7581,7 @@ class guiWin(QMainWindow):
             self.setEnabledEditToolbarButton(enabled=False)
             self.setEnabledCcaToolbar(enabled=False)
             self.removeAlldelROIsCurrentFrame()
+            self.labBottomGroupbox.show()
             # self.disableTrackingCheckBox.setChecked(True)
             # currentMode = self.drawIDsContComboBox.currentText()
             # self.drawIDsContComboBox.clear()
@@ -8000,14 +8104,15 @@ class guiWin(QMainWindow):
         self.isZmodifier = ev.key()==Qt.Key_Z
         if isShiftModifier:
             self.isShiftDown = True
-            # Force default brush symbol with shift down
-            self.setHoverToolSymbolColor(
-                1, 1, self.ax2_BrushCirclePen,
-                (self.ax2_BrushCircle, self.ax1_BrushCircle),
-                self.brushButton, brush=self.ax2_BrushCircleBrush,
-                ID=0
-            )
-            self.changeBrushID()        
+            if self.isSegm3D:
+                # Force default brush symbol with shift down
+                self.setHoverToolSymbolColor(
+                    1, 1, self.ax2_BrushCirclePen,
+                    (self.ax2_BrushCircle, self.ax1_BrushCircle),
+                    self.brushButton, brush=self.ax2_BrushCircleBrush,
+                    ID=0
+                )
+                self.changeBrushID()        
         isBrushActive = (
             self.brushButton.isChecked() or self.eraserButton.isChecked()
         )
@@ -8192,14 +8297,15 @@ class guiWin(QMainWindow):
         if ev.key() == Qt.Key_Control:
             self.isCtrlDown = False
         elif ev.key() == Qt.Key_Shift:
-            # Restore normal brush cursor when releasing shift
-            xdata, ydata = int(self.xHoverImg), int(self.yHoverImg)
-            self.setHoverToolSymbolColor(
-                xdata, ydata, self.ax2_BrushCirclePen,
-                (self.ax2_BrushCircle, self.ax1_BrushCircle),
-                self.brushButton, brush=self.ax2_BrushCircleBrush
-            )
-            self.changeBrushID()
+            if self.isSegm3D:
+                # Restore normal brush cursor when releasing shift
+                xdata, ydata = int(self.xHoverImg), int(self.yHoverImg)
+                self.setHoverToolSymbolColor(
+                    xdata, ydata, self.ax2_BrushCirclePen,
+                    (self.ax2_BrushCircle, self.ax1_BrushCircle),
+                    self.brushButton, brush=self.ax2_BrushCircleBrush
+                )
+                self.changeBrushID()
             self.isShiftDown = False
         elif ev.key() == Qt.Key_Z:
             self.isZmodifier = False
@@ -9267,12 +9373,23 @@ class guiWin(QMainWindow):
         self.titleLabel.setText(txt, color='g')
 
     @myutils.exception_handler
+    def lazyLoaderCritical(self, error):
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+            self.progressWin.close()
+            self.lazyLoader.pause()
+        raise error
+    
+    @myutils.exception_handler
     def workerCritical(self, error):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
-            self.thread.quit()
         raise error
+    
+    def lazyLoaderWorkerClosed(self):
+        if self.lazyLoader.salute:
+            print('Cell-ACDC GUI closed.')
 
     def debugSegmWorker(self, lab):
         apps.imshow_tk(lab)
@@ -9730,6 +9847,12 @@ class guiWin(QMainWindow):
         posData.getBasenameAndChNames()
         posData.buildPaths()
 
+        if posData.ext != '.h5':
+            self.lazyLoader.salute = False
+            self.lazyLoader.exit = True
+            self.lazyLoaderWaitCond.wakeAll()
+            self.waitReadH5cond.wakeAll()
+
         # Get end name of every existing segmentation file
         existingSegmEndNames = set()
         for filePath in user_ch_file_paths:
@@ -9962,9 +10085,12 @@ class guiWin(QMainWindow):
         self.showHighlightZneighCheckbox()
 
         self.img1BottomGroupbox.show()
+
         isLabVisible = self.df_settings.at['isLabelsVisible', 'value'] == 'Yes'
-        if self.isSegm3D and isLabVisible:
+        if self.isSegm3D and isLabVisible and not self.isSnapshot:
             self.labBottomGroupbox.show()
+        else:
+            self.labBottomGroupbox.hide()
         self.updateScrollbars()
         self.fontSizeAction.setChecked(True)
         self.openAction.setEnabled(True)
@@ -10000,11 +10126,14 @@ class guiWin(QMainWindow):
         if self.isSegm3D:
             layout = self.bottomLeftLayout
             layout.removeWidget(self.drawIDsContComboBox)
-            layout.addWidget(self.drawIDsContComboBox, 0, 2, 1, 2,
-                alignment=Qt.AlignCenter
-            )
+            layout.addWidget(self.drawIDsContComboBox, 0, 2, 1, 2)
             layout.addWidget(self.highlightZneighObjCheckbox, 0, 0, 1, 2,
-                alignment=Qt.AlignCenter
+                alignment=Qt.AlignLeft
+            )
+            self.highlightZneighObjCheckbox.show()
+            self.highlightZneighObjCheckbox.setChecked(True)
+            self.highlightZneighObjCheckbox.toggled.connect(
+                self.highlightZneighLabels_cb
             )
             
 
@@ -11875,6 +12004,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         # Draw ID label on ax1 image
         LabelItemID = self.ax2_LabelItemsIDs[obj.label-1]
+
         ID = obj.label
         df = posData.cca_df
         txt = f'{ID}' if self.isObjVisible(obj.bbox) else ''
@@ -12479,6 +12609,15 @@ class guiWin(QMainWindow):
 
     def saveContColour(self, colorButton):
         self.df_settings.to_csv(self.settings_csv_path)
+    
+    def updateMothBudLineColour(self, colorButton):
+        color = colorButton.color().getRgb()
+        self.df_settings.at['mothBudLineColor', 'value'] = str(color)
+        self.gui_createMothBudLinePens()
+        self.updateALLimg()
+
+    def saveMothBudLineColour(self, colorButton):
+        self.df_settings.to_csv(self.settings_csv_path)
 
     def contLineWeightToggled(self, checked=True):
         self.imgGrad.uncheckContLineWeightActions()
@@ -12491,6 +12630,18 @@ class guiWin(QMainWindow):
             if act == self.sender():
                 act.setChecked(True)
             act.toggled.connect(self.contLineWeightToggled)
+    
+    def mothBudLineWeightToggled(self):
+        self.imgGrad.uncheckContLineWeightActions()
+        w = self.sender().lineWeight
+        self.df_settings.at['mothBudLineWeight', 'value'] = w
+        self.df_settings.to_csv(self.settings_csv_path)
+        self.gui_createMothBudLinePens()
+        self.updateALLimg()
+        for act in self.imgGrad.mothBudLineWightActionGroup.actions():
+            if act == self.sender():
+                act.setChecked(True)
+            act.toggled.connect(self.mothBudLineWeightToggled)
 
 
     def gradientCmapContextMenuClicked(self, b=None):
@@ -12637,8 +12788,29 @@ class guiWin(QMainWindow):
             # colored_label = bkgr_label*color
             overlay = bkgr_label*(1.0-alpha) + color*alpha
             imgRGB[_slice][_objMask] = overlay
+            if self.highlightZneighObjCheckbox.isChecked():
+                zUnder = self.zSliceScrollBar.sliderPosition() - 1
+                objUnderMask = self.getObject2DimageFromZ(zUnder, obj)
+
+            
         imgRGB = (np.clip(imgRGB, 0, 1)*255).astype(np.uint8)
         return imgRGB
+    
+    def getObject2DimageFromZ(self, z, obj):
+        posData = self.data[self.pos_i]
+        z_min = obj.bbox[0]
+        local_z = z - z_min
+        if local_z >= posData.SizeZ or local_z < 0:
+            return
+        return obj.image[local_z]
+    
+    def getObject2DsliceFromZ(self, z, obj):
+        posData = self.data[self.pos_i]
+        z_min = obj.bbox[0]
+        local_z = z - z_min
+        if local_z >= posData.SizeZ or local_z < 0:
+            return
+        return obj.image[local_z]
 
     def isObjVisible(self, obj_bbox, debug=False):
         if self.isSegm3D:
@@ -12648,8 +12820,8 @@ class guiWin(QMainWindow):
                 # required a projection --> all obj are visible
                 return True
             min_z = obj_bbox[0]
-            max_z = obj_bbox[3]-1
-            if self.z_lab()>=min_z and self.z_lab()<=max_z:
+            max_z = obj_bbox[3]
+            if self.z_lab()>=min_z and self.z_lab()<max_z:
                 return True
             else:
                 return False
@@ -12835,7 +13007,7 @@ class guiWin(QMainWindow):
             self.graphLayout.removeItem(self.titleLabel)
             self.graphLayout.addItem(self.titleLabel, row=0, col=1, colspan=2)
             self.mainLayout.setAlignment(self.bottomLayout, Qt.AlignLeft)
-            if self.isSegm3D:
+            if self.isSegm3D and not self.isSnapshot:
                 self.labBottomGroupbox.show()
             self.df_settings.at['isLabelsVisible', 'value'] = 'Yes'
             self.df_settings.to_csv(self.settings_csv_path)
@@ -12854,6 +13026,7 @@ class guiWin(QMainWindow):
         bothControl = (
             self.isSegm3D and
             self.df_settings.at['isLabelsVisible', 'value'] == 'Yes'
+            and not self.isSnapshot
         )
 
         if bothControl:
@@ -13571,6 +13744,7 @@ class guiWin(QMainWindow):
 
         # Label ID
         LabelItemID = self.ax1_LabelItemsIDs[ID-1]
+        
         txt = f'{ID}'
         LabelItemID.setText(txt, color='r', bold=True, size=self.fontSize)
         y, x = self.getObjCentroid(obj.centroid)
@@ -13591,6 +13765,7 @@ class guiWin(QMainWindow):
     def restoreDefaultSettings(self):
         df = self.df_settings
         df.at['contLineWeight', 'value'] = 2
+        df.at['mothBudLineWeight', 'value'] = 2
         df.at['contLineColor', 'value'] = (205, 0, 0, 220)
         df.at['overlaySegmMasksAlpha', 'value'] = 0.3
         df.at['img_cmap', 'value'] = 'grey'
@@ -13601,6 +13776,7 @@ class guiWin(QMainWindow):
         df.at['is_bw_inverted', 'value'] = 'No'
         df = df[~df.index.str.contains('lab_cmap')]
         df.to_csv(self.settings_csv_path)
+        self.gui_createMothBudLinePens()
         self.gui_createContourPens()
         self.imgGrad.restoreState(df)
 
@@ -13700,6 +13876,7 @@ class guiWin(QMainWindow):
         # Annotate ID and draw contours
         for i, obj in enumerate(posData.rp):
             if not self.isObjVisible(obj.bbox):
+                printl(f'{obj.label} not visibile')
                 continue
             updateColor=True if updateLabelItemColor and i==0 else False
             self.drawID_and_Contour(obj, updateColor=updateColor)
@@ -14268,7 +14445,14 @@ class guiWin(QMainWindow):
         self.modeComboBox.setCurrentText('Viewer')
     
     def reinitWidgetsPos(self):
+        try:
+            # self.highlightZneighObjCheckbox will be connected in 
+            # self.showHighlightZneighCheckbox()
+            self.highlightZneighObjCheckbox.toggled.disconnect()
+        except Exception as e:
+            pass
         layout = self.bottomLeftLayout
+        self.highlightZneighObjCheckbox.hide()
         try:
             layout.removeWidget(self.highlightZneighObjCheckbox)
         except Exception as e:
@@ -15352,6 +15536,11 @@ class guiWin(QMainWindow):
         self.openFolder(exp_path=path)
 
     def closeEvent(self, event):
+        # Close the inifinte loop of the thread
+        self.lazyLoader.exit = True
+        self.lazyLoaderWaitCond.wakeAll()
+        self.waitReadH5cond.wakeAll()
+
         self.saveWindowGeometry()
         # self.saveCustomAnnot()
         if self.slideshowWin is not None:
@@ -15393,7 +15582,6 @@ class guiWin(QMainWindow):
         for handler in handlers:
             handler.close()
             self.logger.removeHandler(handler)
-        print('GUI closed.')
 
     def readSettings(self):
         settings = QSettings('schmollerlab', 'acdc_gui')
