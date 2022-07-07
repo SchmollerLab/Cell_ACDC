@@ -6232,9 +6232,11 @@ class QtSelectItems(QDialog):
         self.topLayout = topLayout
         bottomLayout = QHBoxLayout()
 
+        stretchRow = 0
         if informativeText:
             infoLabel = QLabel(informativeText)
             mainLayout.addWidget(infoLabel, alignment=Qt.AlignCenter)
+            stretchRow = 1
 
         label = QLabel(CbLabel)
         topLayout.addWidget(label)
@@ -6243,7 +6245,6 @@ class QtSelectItems(QDialog):
         combobox.addItems(items)
         self.ComboBox = combobox
         topLayout.addWidget(combobox)
-        topLayout.setContentsMargins(0, 10, 0, 0)
 
         okButton = widgets.okPushButton('Ok')
         cancelButton = widgets.cancelPushButton('Cancel')
@@ -6267,15 +6268,18 @@ class QtSelectItems(QDialog):
         listBox.addItems(items)
         listBox.setSelectionMode(QAbstractItemView.ExtendedSelection)
         listBox.setCurrentRow(0)
+        listBox.setFont(font)
         topLayout.addWidget(listBox)
         listBox.hide()
         self.ListBox = listBox
 
-        bottomLayout.setContentsMargins(0, 10, 0, 0)
-
-        mainLayout.addLayout(topLayout)
+        mainLayout.addLayout(topLayout)  
+        mainLayout.addSpacing(20)
         mainLayout.addLayout(bottomLayout)
+
         self.setLayout(mainLayout)
+        self.mainLayout = mainLayout
+        self.topLayout = topLayout
 
         # self.setModal(True)
 
@@ -6285,6 +6289,8 @@ class QtSelectItems(QDialog):
         multiPosButton.toggled.connect(self.toggleMultiSelection)
         if showInFileManagerPath is not None:
             showInFileManagerButton.clicked.connect(self.showInFileManager)
+
+        self.setFont(font)
 
     def showInFileManager(self):
         selectedTexts, _ = self.getSelectedItems()
@@ -6307,14 +6313,16 @@ class QtSelectItems(QDialog):
                 h = sum([self.ListBox.sizeHintForRow(i) for i in range(10)])
             else:
                 h = sum([self.ListBox.sizeHintForRow(i) for i in range(n)])
-            self.ListBox.setFixedHeight(h+5)
+            self.ListBox.setMinimumHeight(h+5)
             self.ListBox.setFocusPolicy(Qt.StrongFocus)
             self.ListBox.setFocus(True)
             self.ListBox.setCurrentRow(0)
+            self.mainLayout.setStretchFactor(self.topLayout, 2)
         else:
             self.multiPosButton.setText('Multiple selection')
             self.ListBox.hide()
             self.ComboBox.show()
+            self.resize(self.width(), self.singleSelectionHeight)
 
     def getSelectedItems(self):
         if self.multiPosButton.isChecked():
@@ -6340,6 +6348,7 @@ class QtSelectItems(QDialog):
     def show(self, block=False):
         self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
         super().show()
+        self.singleSelectionHeight = self.height()
         if block:
             self.loop = QEventLoop()
             self.loop.exec_()
