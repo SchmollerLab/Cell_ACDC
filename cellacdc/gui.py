@@ -13900,8 +13900,9 @@ class guiWin(QMainWindow):
         # Update annotated IDs (e.g. dead cells)
         self.update_rp_metadata(draw=True)
 
-        self.highlightLostNew()
         self.setTitleText()
+        self.highlightLostNew()
+        
         # # self.checkIDsMultiContour()
 
         self.highlightSearchedID(self.highlightedID)

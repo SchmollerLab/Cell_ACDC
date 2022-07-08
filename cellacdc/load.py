@@ -1197,7 +1197,7 @@ class select_exp_folder:
     def QtPrompt(
             self, parentQWidget, values,
             current=0, title='Select Position folder',
-            CbLabel="Select \'Position_n\' folder to analyze:",
+            CbLabel="Select folder to load:",
             showinexplorer_button=False, full_paths=None,
             allow_abort=True, show=False, toggleMulti=False
         ):
