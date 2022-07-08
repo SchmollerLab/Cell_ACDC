@@ -51,6 +51,7 @@
     <file alias="repeat-tracking.svg">resources/icons/repeat-tracking.svg</file>
     <file alias="bin.svg">resources/icons/bin.svg</file>
     <file alias="rip.svg">resources/icons/rip.svg</file>
+    <file alias="reinitLastSegm.svg">resources/icons/reinitLastSegm.svg</file>
     <file alias="merge-IDs.svg">resources/icons/merge-IDs.svg</file>
     <file alias="overlay.svg">resources/icons/overlay.svg</file>
     <file alias="assign-motherbud.svg">resources/icons/assign-motherbud.svg</file>

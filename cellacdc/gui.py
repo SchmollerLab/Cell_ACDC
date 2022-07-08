@@ -1807,6 +1807,17 @@ class guiWin(QMainWindow):
 
         editToolBar.addAction(self.repeatTrackingAction)
 
+        self.reinitLastSegmFrameAction = QAction(self)
+        self.reinitLastSegmFrameAction.setIcon(QIcon(":reinitLastSegm.svg"))
+        self.reinitLastSegmFrameAction.setVisible(False)
+        self.reinitLastSegmFrameAction.setToolTip(
+            'Reset last segmented frame to current one.\n'
+            'NOTE: This will re-enable real-time tracking for all the '
+            'future frames.'
+        )
+        editToolBar.addAction(self.reinitLastSegmFrameAction)
+        editToolBar.setVisible(False)
+
         # Widgets toolbar
         widgetsToolBar = QToolBar("Widgets", self)
         self.addToolBar(widgetsToolBar)
@@ -2196,7 +2207,7 @@ class guiWin(QMainWindow):
         self.reInitCcaAction.setIcon(QIcon(":reinitCca.svg"))
         self.reInitCcaAction.setVisible(False)
         self.reInitCcaAction.setToolTip(
-            'Reinitialize cell cycle annotations table from this frame onward.\n'
+            'Re-initialize cell cycle annotations table from this frame onward.\n'
             'NOTE: This will erase all the already annotated future frames information\n'
             '(from the current session not the saved information)'
         )
@@ -2396,6 +2407,8 @@ class guiWin(QMainWindow):
         )
 
         self.expandLabelToolButton.toggled.connect(self.expandLabelCallback)
+
+        self.reinitLastSegmFrameAction.triggered.connect(self.reInitLastSegmFrame)
 
         # self.repeatAutoCcaAction.triggered.connect(self.repeatAutoCca)
         self.manuallyEditCcaAction.triggered.connect(self.manualEditCca)
@@ -3917,7 +3930,7 @@ class guiWin(QMainWindow):
             self.isExpandingLabel = False
             return
 
-        # Reinitialize label to expand when we hover on a different ID
+        # Re-initialize label to expand when we hover on a different ID
         # or we change direction
         reinitExpandingLab = (
             self.expandingID != self.hoverLabelID
@@ -7252,14 +7265,14 @@ class guiWin(QMainWindow):
 
     def reInitCca(self):
         if not self.isSnapshot:
-            txt = (
-                'If you decide to continue ALL cell cycle annotations from this '
-                'frame to the end will be erased from current session '
+            txt = html_utils.paragraph(
+                'If you decide to continue <b>ALL cell cycle annotations</b> from '
+                'this frame to the end will be <b>erased from current session</b> '
                 '(saved data is not touched of course)\n\n'
                 'To annotate future frames again you will have to revisit them.\n\n'
                 'Do you want to continue?'
             )
-            msg = QMessageBox()
+            msg = widgets.myMessageBox()
             reinit = msg.warning(
                self, 'Cell not eligible', txt, msg.Yes | msg.Cancel
             )
@@ -7283,7 +7296,8 @@ class guiWin(QMainWindow):
             posData = self.data[self.pos_i]
             posData.cca_df = self.getBaseCca_df()
             self.store_data()
-            self.updateALLimg()
+            self.updateALLimg()        
+
 
     def repeatAutoCca(self):
         # Do not allow automatic bud assignment if there are future
@@ -7299,8 +7313,8 @@ class guiWin(QMainWindow):
                     'there are future frames that already contain cell cycle '
                     'annotations. The behaviour in this case cannot be predicted.\n\n'
                     'We suggest assigning the bud manually OR use the '
-                    '"Renitialize cell cycle annotations" button which properly '
-                    'reinitialize future frames.',
+                    '"Re-initialize cell cycle annotations" button which properly '
+                    're-initialize future frames.',
                     msg.Ok
                 )
                 return
@@ -7611,6 +7625,7 @@ class guiWin(QMainWindow):
         self.ccaToolBar.setVisible(True)
         self.editToolBar.setVisible(True)
         self.modeToolBar.setVisible(False)
+        self.reinitLastSegmFrameAction.setVisible(False)
         for action in self.ccaToolBar.actions():
             button = self.ccaToolBar.widgetForAction(action)
             if button == self.assignBudMothButton:
@@ -8460,7 +8475,7 @@ class guiWin(QMainWindow):
         if UndoFutFrames:
             # Since we modified current frame all future frames that were already
             # visited are not valid anymore. Undo changes there
-            self.undo_changes_future_frames()
+            self.reInitLastSegmFrame()
 
         # Restart count from the most recent state (index 0)
         # NOTE: index 0 is most recent state before doing last change
@@ -9320,7 +9335,7 @@ class guiWin(QMainWindow):
 
         model = acdcSegment.Model(**win.init_kwargs)
 
-        self.undo_changes_future_frames(from_frame_i=startFrameNum-1)
+        self.reInitLastSegmFrame(from_frame_i=startFrameNum-1)
 
         self.titleLabel.setText(
             f'{model_name} is thinking... '
@@ -9748,7 +9763,7 @@ class guiWin(QMainWindow):
                     )
                     if not is_cca_same_as_stored:
                         reinit_cca = self.warnEditingWithCca_df(
-                            'Reinitialize cell cyle annotations first frame',
+                            'Re-initialize cell cyle annotations first frame',
                             return_answer=True
                         )
                         if reinit_cca:
@@ -11111,7 +11126,7 @@ class guiWin(QMainWindow):
                 '   before attempting cell cycle analysis again.\n\n'
                 '2. Edited a frame in "Segmentation and Tracking" mode\n'
                 '   that already had cell cyce annotations -->\n'
-                '   click on "Reinitialize cell cycle annotations" button,\n'
+                '   click on "Re-initialize cell cycle annotations" button,\n'
                 '   and try again.')
             msg.setDetailedText(traceback.format_exc())
             msg.exec_()
@@ -13412,7 +13427,7 @@ class guiWin(QMainWindow):
         # Ask whether to remove annotations from all future frames
         posData = self.data[self.pos_i]
         if self.isSnapshot and posData.cca_df is not None:
-            # For snapshot mode we reinitialize cca_df depending on the edit
+            # For snapshot mode we re-initialize cca_df depending on the edit
             self.update_cca_df_snapshots(editTxt, posData)
             self.store_data()
             self.updateALLimg()
@@ -14172,6 +14187,8 @@ class guiWin(QMainWindow):
             # Disable tracking for already visited frames
             trackingDisabled = self.checkTrackingEnabled()
 
+            printl(posData.frame_i, f'trackingDisabled: {trackingDisabled}')
+
             """
             Track only frames that were NEVER visited or the user
             specifically requested to track:
@@ -14269,12 +14286,13 @@ class guiWin(QMainWindow):
         for info in infoToRemove:
             posData.editID_info.remove(info)
 
-    def undo_changes_future_frames(self, from_frame_i=None):
+    def reInitLastSegmFrame(self, from_frame_i=None):
         posData = self.data[self.pos_i]
         if from_frame_i is None:
             from_frame_i = posData.frame_i+1
         posData.last_tracked_i = from_frame_i
         self.navigateScrollBar.setMaximum(from_frame_i+1)
+        # self.navigateScrollBar.setMinimum(1)
         for i in range(from_frame_i, posData.SizeT):
             if posData.allData_li[i]['labels'] is None:
                 break
