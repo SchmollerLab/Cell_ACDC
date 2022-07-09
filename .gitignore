@@ -1,4 +1,5 @@
 # Custom ignores
+tweets
 figures
 !cellacdc/resources/figures
 

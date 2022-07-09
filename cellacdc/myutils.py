@@ -1210,7 +1210,7 @@ def to_uint8(img):
     return img
 
 def uint_to_float(img):
-    img_max = core.numba_max(img)
+    img_max = np.max(img)
     # Check if float outside of -1, 1
     if img_max <= 1:
         return img

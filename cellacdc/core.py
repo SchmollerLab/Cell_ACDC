@@ -14,24 +14,11 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle, Circle, PathPatch, Path
 
 import pandas as pd
-# from numba import jit
 
 from tqdm import tqdm
 
 # Custom modules
 from . import apps
-
-# @jit(nopython=True, parallel=True)
-def numba_max(arr):
-    return arr.max()
-
-# @jit(nopython=True, parallel=True)
-def numba_min(arr):
-    return arr.min()
-
-# @jit(nopython=True, parallel=True)
-def numba_argmax(arr):
-    return arr.argmax()
 
 def np_replace_values(arr, old_values, new_values):
     # See method_jdehesa https://stackoverflow.com/questions/45735230/how-to-replace-a-list-of-values-in-a-numpy-array
