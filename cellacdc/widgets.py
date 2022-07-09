@@ -320,13 +320,13 @@ class alphaNumericLineEdit(QLineEdit):
         # self.setAlignment(Qt.AlignCenter)
 
 class mySpinBox(QSpinBox):
-    sigKeyPressEvent = pyqtSignal(object, object)
+    sigTabEvent = pyqtSignal(object, object)
 
     def __init__(self, *args) -> None:
         super().__init__(*args)
     
     def event(self, event):
-        if event.type()==QEvent.KeyPress:
+        if event.type()==QEvent.KeyPress and event.key() == Qt.Key_Tab:
             self.sigKeyPressEvent.emit(event, self)
             return True
 

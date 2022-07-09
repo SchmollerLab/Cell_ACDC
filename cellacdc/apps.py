@@ -5659,7 +5659,7 @@ class askStopFrameSegm(QDialog):
                 )
             )
             spinBox = widgets.mySpinBox()
-            spinBox.sigKeyPressEvent.connect(self.keyPressEventSpinbox)
+            spinBox.sigTabEvent.connect(self.sigTabEvent)
             posData = load.loadData(img_path, user_ch_name, QParent=parent)
             posData.getBasenameAndChNames()
             posData.buildPaths()
@@ -5715,12 +5715,11 @@ class askStopFrameSegm(QDialog):
         # # self.setModal(True)
 
     def keyPressEventSpinbox(self, event, sender):
-        if event.key() == Qt.Key_Tab:
-            self.tab_idx += 1      
-            if self.tab_idx >= len(self.spinBoxes):
-                self.tab_idx = 0
-            focusSpinbox = self.spinBoxes[self.tab_idx]
-            focusSpinbox.setFocus(True)
+        self.tab_idx += 1      
+        if self.tab_idx >= len(self.spinBoxes):
+            self.tab_idx = 0
+        focusSpinbox = self.spinBoxes[self.tab_idx]
+        focusSpinbox.setFocus(True)
 
     def saveSegmSizeT(self):
         for spinBox, posData in self.dataDict.values():
