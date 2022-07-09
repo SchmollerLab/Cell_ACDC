@@ -327,7 +327,7 @@ class mySpinBox(QSpinBox):
     
     def event(self, event):
         if event.type()==QEvent.KeyPress and event.key() == Qt.Key_Tab:
-            self.sigKeyPressEvent.emit(event, self)
+            self.sigTabEvent.emit(event, self)
             return True
 
         return super().event(event)
