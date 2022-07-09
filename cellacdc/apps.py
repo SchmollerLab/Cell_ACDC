@@ -39,7 +39,8 @@ import pyqtgraph as pg
 from pyqtgraph.Qt import QtGui
 from PyQt5 import QtCore
 from PyQt5.QtGui import (
-    QIcon, QFontMetrics, QKeySequence, QFont, QGuiApplication, QCursor
+    QIcon, QFontMetrics, QKeySequence, QFont, QGuiApplication, QCursor,
+    QKeyEvent  
 )
 from PyQt5.QtCore import Qt, QSize, QEvent, pyqtSignal, QEventLoop, QTimer
 from PyQt5.QtWidgets import (
@@ -55,7 +56,7 @@ from PyQt5.QtWidgets import (
 
 from . import myutils, load, prompts, widgets, core, measurements, html_utils
 from . import is_mac, is_win, is_linux, temp_path, config
-from . import qrc_resources
+from . import qrc_resources, printl
 
 pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
 font = QtGui.QFont()
@@ -5649,17 +5650,19 @@ class askStopFrameSegm(QDialog):
         self.dataDict = {}
 
         # Form layout widget
-        for img_path in user_ch_file_paths:
+        self.spinBoxes = []
+        self.tab_idx = 0
+        for (i, img_path) in enumerate(user_ch_file_paths):
             pos_foldername = os.path.basename(
                 os.path.dirname(
                     os.path.dirname(img_path)
                 )
             )
-            spinBox = QSpinBox()
+            spinBox = widgets.mySpinBox()
+            spinBox.sigKeyPressEvent.connect(self.keyPressEventSpinbox)
             posData = load.loadData(img_path, user_ch_name, QParent=parent)
             posData.getBasenameAndChNames()
             posData.buildPaths()
-            posData.loadImgData()
             posData.loadOtherFiles(
                 load_segm_data=False,
                 load_metadata=True,
@@ -5677,13 +5680,15 @@ class askStopFrameSegm(QDialog):
             spinBox.setAlignment(Qt.AlignCenter)
             visualizeButton = QPushButton('Visualize')
             visualizeButton.clicked.connect(self.visualize_cb)
-            formLabel = QLabel(f'{pos_foldername}  ')
+            formLabel = QLabel(html_utils.paragraph(f'{pos_foldername}  '))
             layout = QHBoxLayout()
             layout.addWidget(formLabel, alignment=Qt.AlignRight)
             layout.addWidget(spinBox)
             layout.addWidget(visualizeButton)
             self.dataDict[visualizeButton] = (spinBox, posData)
             formLayout.addRow(layout)
+            spinBox.idx = i
+            self.spinBoxes.append(spinBox)
 
         self.formLayout = formLayout
         mainLayout.addWidget(infoLabel, alignment=Qt.AlignCenter)
@@ -5709,6 +5714,14 @@ class askStopFrameSegm(QDialog):
 
         # # self.setModal(True)
 
+    def keyPressEventSpinbox(self, event, sender):
+        if event.key() == Qt.Key_Tab:
+            self.tab_idx += 1      
+            if self.tab_idx >= len(self.spinBoxes):
+                self.tab_idx = 0
+            focusSpinbox = self.spinBoxes[self.tab_idx]
+            focusSpinbox.setFocus(True)
+
     def saveSegmSizeT(self):
         for spinBox, posData in self.dataDict.values():
             posData.segmSizeT = spinBox.value()
@@ -5722,6 +5735,8 @@ class askStopFrameSegm(QDialog):
 
     def visualize_cb(self, checked=True):
         spinBox, posData = self.dataDict[self.sender()]
+        print('Loading image data...')
+        posData.loadImgData()
         posData.frame_i = spinBox.value()-1
         self.slideshowWin = imageViewer(
             posData=posData, spinBox=spinBox

@@ -319,6 +319,20 @@ class alphaNumericLineEdit(QLineEdit):
 
         # self.setAlignment(Qt.AlignCenter)
 
+class mySpinBox(QSpinBox):
+    sigKeyPressEvent = pyqtSignal(object, object)
+
+    def __init__(self, *args) -> None:
+        super().__init__(*args)
+    
+    def event(self, event):
+        if event.type()==QEvent.KeyPress:
+            self.sigKeyPressEvent.emit(event, self)
+            return True
+
+        return super().event(event)
+
+
 class myLabelItem(pg.LabelItem):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

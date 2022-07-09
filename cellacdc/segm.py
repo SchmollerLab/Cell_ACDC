@@ -241,7 +241,8 @@ class segmWorker(QRunnable):
                 lab_stack = self.model.segment3DT(
                     img_data, **self.segment2D_kwargs
                 )
-                self.signals.progressBar.emit(1)
+                if self.inner_Pbar_available:
+                    self.signals.progressBar.emit(1)
             else:
                 lab_stack = np.zeros(img_data.shape, np.uint16)
                 for t, img in enumerate(img_data):
@@ -251,6 +252,8 @@ class segmWorker(QRunnable):
                         self.signals.innerProgressBar.emit(1)
                     else:
                         self.signals.progressBar.emit(1)
+                if self.inner_Pbar_available:
+                    self.signals.progressBar.emit(1)
         else:
             lab_stack = self.model.segment(img_data, **self.segment2D_kwargs)
             if self.predictCcaState_model is not None:
