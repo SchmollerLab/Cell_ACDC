@@ -33,7 +33,7 @@
     <file alias="segment.svg">resources/icons/segment.svg</file>
     <file alias="prep.svg">resources/icons/prep.svg</file>
     <file alias="continue.svg">resources/icons/continue.svg</file>
-    <file alias="eraser.png">resources/icons/eraser.png</file>
+    <file alias="eraser.svg">resources/icons/eraser.svg</file>
     <file alias="brush-cursor.png">resources/icons/brush-cursor.png</file>
     <file alias="undo.svg">resources/icons/undo.svg</file>
     <file alias="redo.svg">resources/icons/redo.svg</file>

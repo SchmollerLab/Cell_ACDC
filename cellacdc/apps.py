@@ -6253,7 +6253,7 @@ class QtSelectItems(QDialog):
             stretchRow = 1
 
         label = QLabel(CbLabel)
-        topLayout.addWidget(label)
+        topLayout.addWidget(label, alignment=Qt.AlignRight)
 
         combobox = QComboBox(self)
         combobox.addItems(items)

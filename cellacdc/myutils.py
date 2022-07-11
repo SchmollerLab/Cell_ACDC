@@ -35,7 +35,7 @@ from PyQt5.QtCore import pyqtSignal, QObject, QCoreApplication
 
 from . import prompts, widgets, apps, core, load
 from . import html_utils, is_linux, is_win, is_mac, issues_url
-from . import cellacdc_path
+from . import cellacdc_path, printl
 
 def exception_handler(func):
     @wraps(func)

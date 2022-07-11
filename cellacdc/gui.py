@@ -1627,16 +1627,17 @@ class guiWin(QMainWindow):
             '   - Painting on the background will create a new label.\n'
             '   - Edit an existing label by starting to paint on the label\n'
             '     (brush cursor changes color when hovering an existing label).\n'
-            '   - Painting is always UNDER existing labels, unless you press\n'
-            '     "b" key twice quickly. If double-press is successfull, '
-            '     then brush button is red and brush cursor always white.\n\n'
+            '   - Power brush: Painting is always UNDER existing labels,\n'
+            '     unless you press "b" key twice quickly.\n'
+            '     If double-press is successfull, then brush button turns red\n'
+            '     and brush cursor always white.\n\n'
             'SHORTCUT: "B" key')
         editToolBar.addWidget(self.brushButton)
         self.checkableButtons.append(self.brushButton)
         self.LeftClickButtons.append(self.brushButton)
 
         self.eraserButton = QToolButton(self)
-        self.eraserButton.setIcon(QIcon(":eraser.png"))
+        self.eraserButton.setIcon(QIcon(":eraser.svg"))
         self.eraserButton.setCheckable(True)
         self.eraserButton.setToolTip(
             'Erase segmentation labels with a circular eraser.\n'
@@ -1834,6 +1835,11 @@ class guiWin(QMainWindow):
         brushSizeLabel.setBuddy(self.brushSizeSpinbox)
         self.brushSizeLabelAction = widgetsToolBar.addWidget(brushSizeLabel)
         self.brushSizeAction = widgetsToolBar.addWidget(self.brushSizeSpinbox)
+        widgetsToolBar.addWidget(QLabel('  '))
+        self.brushAutoFillCheckbox = QCheckBox('Auto-fill holes')
+        self.brushAutoFillAction = widgetsToolBar.addWidget(
+            self.brushAutoFillCheckbox
+        )
         self.brushSizeLabelAction.setVisible(False)
         self.brushSizeAction.setVisible(False)
 
@@ -2839,6 +2845,14 @@ class guiWin(QMainWindow):
         self.img2 = widgets.labImageItem(self.blank)
         self.ax2.addItem(self.img2)
 
+        # Brush/Eraser/Wand.. layer item
+        self.tempLayerImg1 = pg.ImageItem()
+        self.ax1.addItem(self.tempLayerImg1)
+
+        # Overlay segm. masks item
+        self.labelsLayerImg1 = pg.ImageItem()
+        self.ax1.addItem(self.labelsLayerImg1)
+
         # Brush circle img1
         self.ax1_BrushCircle = pg.ScatterPlotItem()
         self.ax1_BrushCircle.setData([], [], symbol='o', pxMode=False,
@@ -2886,7 +2900,7 @@ class guiWin(QMainWindow):
 
 
         # # Experimental: brush cursors
-        # self.eraserCursor = QCursor(QIcon(":eraser.png").pixmap(30, 30))
+        # self.eraserCursor = QCursor(QIcon(":eraser.svg").pixmap(30, 30))
         # brushCursorPixmap = QIcon(":brush-cursor.png").pixmap(32, 32)
         # self.brushCursor = QCursor(brushCursorPixmap, 16, 16)
 
@@ -3303,6 +3317,7 @@ class guiWin(QMainWindow):
             self.yPressAx2, self.xPressAx2 = y, x
 
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
+            diskSlice = (slice(ymin, ymax), slice(xmin, xmax))
 
             ID = self.getHoverID(xdata, ydata)
 
@@ -3322,12 +3337,12 @@ class guiWin(QMainWindow):
             self.isMouseDragImg2 = True
 
             # Draw new objects
-            localLab = lab_2D[ymin:ymax, xmin:xmax]
+            localLab = lab_2D[diskSlice]
             mask = diskMask.copy()
             if drawUnder:
                 mask[localLab!=0] = False
 
-            self.applyBrushMask(ymin, xmin, ymax, xmax, mask, self.ax2BrushID)
+            self.applyBrushMask(mask, self.ax2BrushID, toLocalSlice=diskSlice)
 
             self.setImageImg2(updateLookuptable=False)
             self.lastHoverID = -1
@@ -4049,7 +4064,7 @@ class guiWin(QMainWindow):
             newCoords = (None, yy.copy(), xx.copy())
 
         if not self.labelsGrad.hideLabelsImgAction.isChecked():
-            self.img2.setImage(self.currentLab2D)
+            self.img2.setImage(self.currentLab2D, autoLevels=False)
 
         self.setTempImg1MoveLabel(prevCoords)
 
@@ -4083,9 +4098,11 @@ class guiWin(QMainWindow):
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
             rrPoly, ccPoly = self.getPolygonBrush((y, x), Y, X)
 
+            diskSlice = (slice(ymin, ymax), slice(xmin, xmax))
+
             # Build brush mask
             mask = np.zeros(lab_2D.shape, bool)
-            mask[ymin:ymax, xmin:xmax][diskMask] = True
+            mask[diskSlice][diskMask] = True
             mask[rrPoly, ccPoly] = True
 
             # If user double-pressed 'b' then draw over the labels
@@ -4100,12 +4117,17 @@ class guiWin(QMainWindow):
                 )
 
             # Apply brush mask
-            self.applyBrushMask(0,0,0,0, mask, posData.brushID, isLocal=False)
+            self.applyBrushMask(mask, posData.brushID)
 
             self.setImageImg2(updateLookuptable=False)
 
-            brushMask = self.get_2Dlab(posData.lab) == posData.brushID
-            self.setTempImg1Brush(brushMask)
+            lab2D = self.get_2Dlab(posData.lab)
+            localLab = lab2D[diskSlice]
+            brushMask = localLab == posData.brushID
+            self.setTempImg1Brush(
+                False, brushMask, posData.brushID, 
+                toLocalSlice=diskSlice
+            )
 
         # Eraser dragging mouse --> keep erasing
         elif self.isMouseDragImg1 and self.eraserButton.isChecked():
@@ -4119,6 +4141,8 @@ class guiWin(QMainWindow):
             rrPoly, ccPoly = self.getPolygonBrush((y, x), Y, X)
 
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
+
+            diskSlice = (slice(ymin, ymax), slice(xmin, xmax))
 
             # Build eraser mask
             mask = np.zeros(lab_2D.shape, bool)
@@ -4146,8 +4170,8 @@ class guiWin(QMainWindow):
                     continue
                 self.erasesedLab[posData.lab==erasedID] = erasedID
 
-            how = self.drawIDsContComboBox.currentText()
-            self.setTempImg1Eraser(mask)
+            eraserMask = mask[diskSlice]
+            self.setTempImg1Eraser(eraserMask, toLocalSlice=diskSlice)
 
         # Move label dragging mouse --> keep moving
         elif self.isMovingLabel and self.moveLabelToolButton.isChecked():
@@ -4179,7 +4203,20 @@ class guiWin(QMainWindow):
                     self.flood_mask,
                     posData.lab==posData.brushID
                 )
-                self.setTempImg1Brush(mask)
+                self.setTempImg1Brush(False, mask, posData.brushID)
+    
+    def fillHolesID(self, ID, sender='brush'):
+        posData = self.data[self.pos_i]
+        if sender == 'brush':
+            if not self.brushAutoFillCheckbox.isChecked():
+                return
+            
+            obj_idx = posData.IDs.index(ID)
+            obj = posData.rp[obj_idx]
+            objMask = self.getObjImage(obj.image, obj.bbox)
+            localFill = scipy.ndimage.binary_fill_holes(objMask)
+            posData.lab[self.getObjSlice(obj.slice)][localFill] = ID
+            self.update_rp()
 
     def highlightIDcheckBoxToggled(self, checked):
         if not checked:
@@ -4678,7 +4715,7 @@ class guiWin(QMainWindow):
                 )
 
             # Apply brush mask
-            self.applyBrushMask(0,0,0,0, mask, self.ax2BrushID, isLocal=False)
+            self.applyBrushMask(mask, self.ax2BrushID)
 
             self.setImageImg2()
 
@@ -4721,6 +4758,7 @@ class guiWin(QMainWindow):
             self.isMouseDragImg2 = False
 
             self.update_rp()
+            self.fillHolesID(self.ax2BrushID, sender='brush')
             if self.isNewID:
                 self.tracking(enforce=True, assign_unique_new_IDs=False)
 
@@ -4821,6 +4859,9 @@ class guiWin(QMainWindow):
         # Eraser mouse release --> update IDs and contours
         elif self.isMouseDragImg1 and self.eraserButton.isChecked():
             self.isMouseDragImg1 = False
+
+            self.resetTempLayer()
+
             erasedIDs = np.unique(self.erasedIDs)
 
             # Update data (rp, etc)
@@ -4836,8 +4877,12 @@ class guiWin(QMainWindow):
         elif self.isMouseDragImg1 and self.brushButton.isChecked():
             self.isMouseDragImg1 = False
 
+            self.resetTempLayer()
+
             # Update data (rp, etc)
             self.update_rp()
+            posData = self.data[self.pos_i]
+            self.fillHolesID(posData.brushID, sender='brush')
 
             # Repeat tracking
             self.tracking(enforce=True, assign_unique_new_IDs=False)
@@ -5194,16 +5239,17 @@ class guiWin(QMainWindow):
             self.yPressAx2, self.xPressAx2 = y, x
 
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
+            diskSlice = (slice(ymin, ymax), slice(xmin, xmax))
 
             self.isMouseDragImg1 = True
 
             # Draw new objects
-            localLab = lab_2D[ymin:ymax, xmin:xmax]
+            localLab = lab_2D[diskSlice]
             mask = diskMask.copy()
             if drawUnder:
                 mask[localLab!=0] = False
 
-            self.applyBrushMask(ymin, xmin, ymax, xmax, mask, posData.brushID)
+            self.applyBrushMask(mask, posData.brushID, toLocalSlice=diskSlice)
 
             self.setImageImg2(updateLookuptable=False)
 
@@ -5215,9 +5261,15 @@ class guiWin(QMainWindow):
             else:
                 img = img/np.max(img)
                 self.imgRGB = gray2rgb(img)
-
-            brushMask = self.get_2Dlab(posData.lab) == posData.brushID
-            self.setTempImg1Brush(brushMask)
+          
+            self.croppedImgRGB = self.imgRGB
+            lab2D = self.get_2Dlab(posData.lab)
+            self.globalBrushMask = np.zeros(lab2D.shape, dtype=bool)
+            brushMask = lab2D[diskSlice] == posData.brushID
+            self.setTempImg1Brush(
+                True, brushMask, posData.brushID, 
+                toLocalSlice=diskSlice
+            )
 
             self.lastHoverID = -1
 
@@ -5232,6 +5284,8 @@ class guiWin(QMainWindow):
             self.erasedIDs = []
             lab_2D = self.get_2Dlab(posData.lab)
             self.erasedID = self.getHoverID(xdata, ydata)
+
+            
 
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
@@ -5252,19 +5306,16 @@ class guiWin(QMainWindow):
             if eraseOnlyOneID:
                 mask[lab_2D!=self.erasedID] = False
 
-            self.erasedIDs.extend(lab_2D[mask])
-
+            self.getDisplayedCellsImg()
+            self.setTempImg1Eraser(mask, init=True)
             self.applyEraserMask(mask)
 
-            self.setTempImg1Eraser(None, init=True)
+            self.erasedIDs.extend(lab_2D[mask])  
 
             for erasedID in np.unique(self.erasedIDs):
                 if erasedID == 0:
                     continue
                 self.erasesedLab[lab_2D==erasedID] = erasedID
-
-            self.getDisplayedCellsImg()
-            self.setTempImg1Eraser(mask)
 
             self.img2.updateImage()
             self.isMouseDragImg1 = True
@@ -5385,7 +5436,7 @@ class guiWin(QMainWindow):
                     self.flood_mask,
                     posData.lab==posData.brushID
                 )
-                self.setTempImg1Brush(mask)
+                self.setTempImg1Brush(True, mask, posData.brushID)
             self.isMouseDragImg1 = True
 
         # Annotate cell cycle division
@@ -6048,6 +6099,7 @@ class guiWin(QMainWindow):
         self.get_data()
         self.updateALLimg()
 
+    # @exec_time
     def getPolygonBrush(self, yxc2, Y, X):
         # see https://en.wikipedia.org/wiki/Tangent_lines_to_circles
         y1, x1 = self.yPressAx2, self.xPressAx2
@@ -6898,6 +6950,16 @@ class guiWin(QMainWindow):
         else:
             self.ax2.addItem(roi)
         self.applyDelROIimg1(None, init=True)
+    
+    def getViewRange(self):
+        Y, X = self.img1.image.shape[:2]
+        xRange, yRange = self.ax1.viewRange()
+        xmin = 0 if xRange[0] < 0 else xRange[0]
+        ymin = 0 if yRange[0] < 0 else yRange[0]
+        
+        xmax = X if xRange[1] >= X else xRange[1]
+        ymax = Y if yRange[1] >= Y else yRange[1]
+        return int(ymin), int(ymax), int(xmin), int(xmax)
 
     def getDelROI(self, xl=None, yb=None, w=32, h=32):
         posData = self.data[self.pos_i]
@@ -7512,6 +7574,7 @@ class guiWin(QMainWindow):
     def enableSizeSpinbox(self, enabled):
         self.brushSizeLabelAction.setVisible(enabled)
         self.brushSizeAction.setVisible(enabled)
+        self.brushAutoFillAction.setVisible(enabled)
 
     def reload_cb(self):
         posData = self.data[self.pos_i]
@@ -7608,6 +7671,8 @@ class guiWin(QMainWindow):
         elif mode == 'Snapshot':
             self.reconnectUndoRedo()
             self.setEnabledSnapshotMode()
+            self.setEnabledWidgetsToolbar(True)
+            self.disableTrackingAction.setVisible(False)
 
     def setEnabledSnapshotMode(self):
         posData = self.data[self.pos_i]
@@ -8074,7 +8139,6 @@ class guiWin(QMainWindow):
                 [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
             )
             self.updateEraserCursor(self.xHoverImg, self.yHoverImg)
-            self.setTempImg1Eraser(None, init=True)
             self.disconnectLeftClickButtons()
             self.uncheckLeftClickButtons(self.sender())
             c = self.defaultToolBarButtonColor
@@ -8094,6 +8158,7 @@ class guiWin(QMainWindow):
     @myutils.exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
+            printl(self.getViewRange())
             if self.debug:
                 raise FileNotFoundError
                 posData = self.data[self.pos_i]
@@ -8576,7 +8641,7 @@ class guiWin(QMainWindow):
             image_left = self.getCurrentState()
             self.update_rp()
             self.setTitleText()
-            self.updateALLimg(image=image_left, overlayMasks=False)
+            self.updateALLimg(image=image_left, overlayMasks=True)
             self.store_data()
 
         if not self.UndoCount < len(posData.UndoRedoStates[posData.frame_i])-1:
@@ -11447,30 +11512,33 @@ class guiWin(QMainWindow):
                
         brushID = posData.brushID
         brushIDmask = self.get_2Dlab(posData.lab) == self.changedID
-        self.applyBrushMask(1,1,1,1, brushIDmask, brushID, isLocal=False)
+        self.applyBrushMask(brushIDmask, brushID)
         if self.isMouseDragImg1:
             self.brushColor = posData.lut[posData.brushID]/255
-            self.setTempImg1Brush(brushIDmask)
+            self.setTempImg1Brush(True, brushIDmask, posData.brushID)
 
-    def applyBrushMask(self, ymin, xmin, ymax, xmax, mask, ID, isLocal=True):
+    # @exec_time
+    def applyBrushMask(self, mask, ID, toLocalSlice=None):
         posData = self.data[self.pos_i]
         if self.isSegm3D:
             zProjHow = self.zProjComboBox.currentText()
             isZslice = zProjHow == 'single z-slice'
             if self.labBottomGroupbox.isChecked() or isZslice:
-                if isLocal:
-                    posData.lab[self.z_lab(), ymin:ymax, xmin:xmax][mask] = ID
+                if toLocalSlice is not None:
+                    toLocalSlice = (self.z_lab(), *toLocalSlice)
+                    posData.lab[toLocalSlice][mask] = ID
                 else:
                     posData.lab[self.z_lab()][mask] = ID
             else:
-                if isLocal:
+                if toLocalSlice is not None:
                     for z in range(len(posData.lab)):
-                        posData.lab[z, ymin:ymax, xmin:xmax][mask] = ID
+                        toLocalSlice = (z, *toLocalSlice)
+                        posData.lab[toLocalSlice][mask] = ID
                 else:
                     posData.lab[:, mask] = ID
         else:
-            if isLocal:
-                posData.lab[ymin:ymax, xmin:xmax][mask] = ID
+            if toLocalSlice is not None:
+                posData.lab[toLocalSlice][mask] = ID
             else:
                 posData.lab[mask] = ID
 
@@ -12209,6 +12277,7 @@ class guiWin(QMainWindow):
                 rgb = posData.lut[idx]
                 _lut[len(posData.lut)+i] = rgb
             posData.lut = _lut
+            self.initBrushLayerLUT()
             return True
         return False
 
@@ -12216,6 +12285,18 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         self.img2.setLookupTable(posData.lut)
         self.img2.setLevels([0, len(posData.lut)])
+        self.initBrushLayerLUT()
+    
+    def initBrushLayerLUT(self):
+        posData = self.data[self.pos_i]
+        brushLayerLut = np.zeros((len(posData.lut), 4), dtype=np.uint8)
+        brushLayerLut[:,-1] = 255
+        brushLayerLut[:,:-1] = posData.lut
+        brushLayerLut[0] = [0,0,0,0]
+        self.tempLayerImg1.setLevels([0, len(brushLayerLut)])
+        self.tempLayerImg1.setLookupTable(brushLayerLut)
+        self.labelsLayerImg1.setLevels([0, len(brushLayerLut)])
+        self.labelsLayerImg1.setLookupTable(brushLayerLut)
 
     def updateLookuptable(self, lenNewLut=None, delIDs=None):
         posData = self.data[self.pos_i]
@@ -12606,6 +12687,8 @@ class guiWin(QMainWindow):
                 histoLevels = posData.allData_li[i]['histoLevels']
                 histoLevels[cellsKey] = (min, max)
             img = self.getImageWithCmap()
+            if not hasattr(self, 'currentLab2D'):
+                self.setImageImg2(set=False)
             img = self.overlaySegmMasks(img)
             self.img1.setImage(img)
         else:
@@ -12766,7 +12849,6 @@ class guiWin(QMainWindow):
 
         if maxID >= len(posData.lut):
             self.extendLabelsLUT(maxID+10)
-        colors = [posData.lut[ID]/255 for ID in posData.IDs]
 
         # get bkgr color
         if 'labels_text_color' in self.df_settings.index:
@@ -12778,49 +12860,9 @@ class guiWin(QMainWindow):
 
         self.bg_color = (r, g, b)
 
-        if img.ndim == 2:
-            img = img/np.max(img)
-            self.img1_RGB = gray2rgb(img)
-            # NOTE: img_layer0 defined in getImageWithCmap()
-        elif self.overlayButton.isChecked():
-            # overlay fluo is ON --> image is already RGB
-            self.img1_RGB = img
-            self.img_layer0 = self.ol_cells_img
-        else:
-            self.img1_RGB = img
-            # NOTE: img_layer0 defined in getImageWithCmap()
+        self.labelsLayerImg1.setImage(self.currentLab2D, autoLevels=False)
 
-        # Check if RGB is 0,1 or 0,255 and convert accordingly
-        val = self.img1_RGB[tuple([0]*self.img1_RGB.ndim)]
-        if not isinstance(val, (np.floating, float)):
-            self.img1uintRGB = self.img1_RGB.copy()
-            self.img1_RGB = self.img1_RGB/255
-        else:
-            self.img1uintRGB = (self.img1_RGB*255).astype(np.uint8)
-
-        if posData.rp is None:
-            posData.rp = skimage.measure.regionprops(posData.lab)
-
-        imgRGB = self.img1_RGB.copy()
-
-        for obj in posData.rp:
-            if not self.isObjVisible(obj.bbox, debug=False):
-                continue
-
-            color = posData.lut[obj.label]/255
-            _slice = self.getObjSlice(obj.slice)
-            _objMask = self.getObjImage(obj.image, obj.bbox)
-            bkgr_label = self.img1_RGB[_slice][_objMask]
-            # colored_label = bkgr_label*color
-            overlay = bkgr_label*(1.0-alpha) + color*alpha
-            imgRGB[_slice][_objMask] = overlay
-            if self.highlightZneighObjCheckbox.isChecked():
-                zUnder = self.zSliceScrollBar.sliderPosition() - 1
-                objUnderMask = self.getObject2DimageFromZ(zUnder, obj)
-
-            
-        imgRGB = (np.clip(imgRGB, 0, 1)*255).astype(np.uint8)
-        return imgRGB
+        return img
     
     def getObject2DimageFromZ(self, z, obj):
         posData = self.data[self.pos_i]
@@ -13210,7 +13252,7 @@ class guiWin(QMainWindow):
             cells_img = -cells_img+cells_img.max()
         return cells_img
 
-    def setImageImg2(self, updateLookuptable=True):
+    def setImageImg2(self, updateLookuptable=True, set=True):
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
         if mode == 'Segmentation and Tracking' or self.isSnapshot:
@@ -13219,7 +13261,7 @@ class guiWin(QMainWindow):
         else:
             DelROIlab = self.get_2Dlab(posData.lab, force_z=False)
             allDelIDs = set()
-        if not self.labelsGrad.hideLabelsImgAction.isChecked():
+        if not self.labelsGrad.hideLabelsImgAction.isChecked() and set:
             self.img2.setImage(DelROIlab, z=self.z_lab(), autoLevels=False)
         self.currentLab2D = DelROIlab
         if updateLookuptable:
@@ -13253,27 +13295,31 @@ class guiWin(QMainWindow):
                 overlayRGB[delMaskID] = self.img1uintRGB[delMaskID]
                 self.ax1_LabelItemsIDs[ID-1].setText('')
             self.img1.setImage(overlayRGB)
+    
+    def resetTempLayer(self):
+        Y, X = self.img1.image.shape[:2]
+        tempImage = np.zeros((Y, X), dtype=np.uint16)
+        self.tempLayerImg1.setImage(tempImage, autolevels=False)
+        return tempImage
 
-    def setTempImg1Brush(self, mask):
-        alpha = self.imgGrad.labelsAlphaSlider.value()
-        posData = self.data[self.pos_i]
-        brushOverlay = self.imgRGB.copy()
-        overlay = self.imgRGB[mask]*(1.0-alpha) + self.brushColor*alpha
-        brushOverlay[mask] = overlay
-        brushOverlay = (brushOverlay*255).astype(np.uint8)
-        self.img1.setImage(brushOverlay)
-        return overlay
-
-    def setTempImg1Eraser(self, mask, init=False):
+    # @exec_time
+    def setTempImg1Brush(self, init: bool, mask, ID, toLocalSlice=None):
         if init:
-            if self.overlayButton.isChecked():
-                img = self.getOverlayImg(setImg=False)
-            else:
-                img = self.getImageWithCmap()
-            self.imgRGB = self.overlaySegmMasks(img, force=True)
-            posData = self.data[self.pos_i]
-            lab = self.get_2Dlab(posData.lab)
-            self.erasesedLab = np.zeros_like(lab)
+            Y, X = self.img1.image.shape[:2]
+            alpha = self.imgGrad.labelsAlphaSlider.value()
+            self.tempLayerImg1.setOpacity(alpha)
+            self.resetTempLayer()
+        
+        if toLocalSlice is None:
+           self.tempLayerImg1.image[mask] = ID
+        else:
+           self.tempLayerImg1.image[toLocalSlice][mask] = ID
+        
+        self.tempLayerImg1.updateImage()
+  
+    def setTempImg1Eraser(self, mask, init=False, toLocalSlice=None):
+        if init:
+            self.erasesedLab = np.zeros_like(self.currentLab2D)  
 
         how = self.drawIDsContComboBox.currentText()
         if how.find('contours') != -1:
@@ -13287,8 +13333,11 @@ class guiWin(QMainWindow):
                 )
         elif how.find('overlay segm. masks') != -1:
             if mask is not None:
-                self.imgRGB[mask] = self.img1uintRGB[mask]
-            self.img1.setImage(self.imgRGB)
+                if toLocalSlice is None:
+                    self.labelsLayerImg1.image[mask] = 0
+                else:
+                    self.labelsLayerImg1.image[toLocalSlice][mask] = 0        
+            self.labelsLayerImg1.updateImage()
 
     def setTempImg1ExpandLabel(self, prevCoords, expandedObjCoords):
         how = self.drawIDsContComboBox.currentText()
@@ -13812,6 +13861,7 @@ class guiWin(QMainWindow):
     def updateLabelsAlpha(self, value):
         self.df_settings.at['overlaySegmMasksAlpha', 'value'] = value
         self.df_settings.to_csv(self.settings_csv_path)
+        self.labelsLayerImg1.setOpacity(value)
         self.updateALLimg(only_ax1=True)
 
     def getImageWithCmap(self, img=None):
@@ -13875,6 +13925,7 @@ class guiWin(QMainWindow):
             img = image
 
         if overlayMasks:
+            self.setImageImg2()
             img = self.overlaySegmMasks(img)
 
         self.img1.setImage(img)
@@ -13893,7 +13944,6 @@ class guiWin(QMainWindow):
         self.addItemsAllIDs(posData.IDs)
         self.clearAllItems()
 
-        self.setImageImg2()
         self.update_rp()
 
         self.computingContoursTimes = []
@@ -14471,8 +14521,12 @@ class guiWin(QMainWindow):
         self.editToolBar.hide()
         self.widgetsToolBar.hide()
         self.modeToolBar.hide()
+        self.disableTrackingAction.setVisible(True)
 
         self.modeComboBox.setCurrentText('Viewer')
+        
+        alpha = self.imgGrad.labelsAlphaSlider.value()
+        self.labelsLayerImg1.setOpacity(alpha)
     
     def reinitWidgetsPos(self):
         try:
