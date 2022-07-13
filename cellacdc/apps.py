@@ -57,6 +57,7 @@ from PyQt5.QtWidgets import (
 from . import myutils, load, prompts, widgets, core, measurements, html_utils
 from . import is_mac, is_win, is_linux, temp_path, config
 from . import qrc_resources, printl
+from . import colors
 
 pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
 font = QtGui.QFont()
@@ -6759,7 +6760,7 @@ class manualSeparateGui(QMainWindow):
 
     def updateLookuptable(self):
         # Lookup table
-        self.cmap = myutils.getFromMatplotlib('viridis')
+        self.cmap = colors.getFromMatplotlib('viridis')
         self.lut = self.cmap.getLookupTable(0,1,self.lab.max()+1)
         self.lut[0] = [25,25,25]
         self.lut[self.ID] = self.IDcolor

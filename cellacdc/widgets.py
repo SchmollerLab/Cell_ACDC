@@ -1,4 +1,5 @@
 import sys
+import operator
 import time
 import re
 import numpy as np
@@ -16,7 +17,7 @@ from PyQt5.QtCore import (
 )
 from PyQt5.QtGui import (
     QFont, QPalette, QColor, QPen, QPaintEvent, QBrush, QPainter,
-    QRegExpValidator, QIcon, QPixmap, QKeySequence
+    QRegExpValidator, QIcon, QPixmap, QKeySequence,QLinearGradient 
 )
 from PyQt5.QtWidgets import (
     QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
@@ -35,6 +36,7 @@ from pyqtgraph import QtGui
 
 from . import myutils, apps, measurements, is_mac, is_win, html_utils
 from . import qrc_resources, printl
+from . import colors
 
 def removeHSVcmaps():
     hsv_cmaps = []
@@ -85,11 +87,13 @@ def addGradients():
         ticks = gradient['ticks']
         colors = [tuple([v/255 for v in tick[1]]) for tick in ticks]
         cmaps[name] = LinearSegmentedColormap.from_list(name, colors, N=256)
-    return cmaps
+    return cmaps, Gradients
+
+nonInvertibleCmaps = ['cool', 'sunset', 'bipolar']
 
 renamePgCmaps()
 removeHSVcmaps()
-cmaps = addGradients()
+cmaps, Gradients = addGradients()
 
 class okPushButton(QPushButton):
     def __init__(self, *args):
@@ -959,9 +963,9 @@ class Toggle(QCheckBox):
         self._bg_color = bg_color
         self._circle_color = circle_color
         self._active_color = active_color
-        self._disabled_active_color = myutils.lighten_color(active_color)
-        self._disabled_circle_color = myutils.lighten_color(circle_color)
-        self._disabled_bg_color = myutils.lighten_color(bg_color, amount=0.5)
+        self._disabled_active_color = colors.lighten_color(active_color)
+        self._disabled_circle_color = colors.lighten_color(circle_color)
+        self._disabled_bg_color = colors.lighten_color(bg_color, amount=0.5)
         self._circle_margin = 10
 
         self._circle_position = int(self._circle_margin/2)
@@ -1672,6 +1676,9 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
 
         super().__init__(**kwargs)
 
+        self.isInverted = False
+        self.lastGradient = Gradients['grey']
+
         for action in self.gradient.menu.actions():
             if action.text() == 'HSV':
                 HSV_action = action
@@ -1773,6 +1780,83 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
         # hide histogram tool
         self.vb.hide()
 
+        # Set inverted gradients for invert bw action
+        self.addInvertedColorMaps()
+    
+    def getInvertedGradients(self):
+        invertedGradients = {}
+        for name, gradient in Gradients.items():
+            ticks = gradient['ticks']
+            sortedTicks = self.sortTicks(ticks)
+            if name in nonInvertibleCmaps:
+                invertedColors = sortedTicks
+            else:
+                invertedColors = [
+                    (t[0], ti[1]) 
+                    for t, ti in zip(sortedTicks, sortedTicks[::-1])
+                ]
+            invertedGradient = {}
+            invertedGradient['ticks'] = invertedColors
+            invertedGradient['mode'] = gradient['mode']
+            invertedGradients[name] = invertedGradient
+        return invertedGradients
+    
+    def sortTicks(self, ticks):
+        sortedTicks = sorted(ticks, key=operator.itemgetter(0))
+        return sortedTicks
+    
+    def addInvertedColorMaps(self):
+        self.invertedGradients = self.getInvertedGradients()
+        for action in self.gradient.menu.actions():
+            if not hasattr(action, 'name'):
+                continue
+            
+            if action.name not in self.cmaps:
+                continue
+            
+            action.triggered.disconnect()
+            action.triggered.connect(self.colormapClicked)
+
+            px = QPixmap(100, 15)
+            p = QPainter(px)
+            invertedGradient = self.invertedGradients[action.name]
+            qtGradient = QLinearGradient(QPointF(0,0), QPointF(100,0))
+            ticks = self.sortTicks(invertedGradient['ticks'])
+            qtGradient.setStops([(x, QColor(*color)) for x,color in ticks])
+            brush = QBrush(qtGradient)
+            p.fillRect(QRect(0, 0, 100, 15), brush)
+            p.end()
+            widget = action.defaultWidget()
+            hbox = widget.layout()
+            rectLabelWidget = QLabel()
+            rectLabelWidget.setPixmap(px)
+            hbox.addWidget(rectLabelWidget)
+            rectLabelWidget.hide()
+    
+    def setInvertedColorMaps(self, inverted):
+        if inverted:
+            showIdx = 2
+            hideIdx = 1
+        else:
+            showIdx = 1
+            hideIdx = 2
+        
+        for action in self.gradient.menu.actions():
+            if not hasattr(action, 'name'):
+                continue
+            
+            if action.name not in self.cmaps:
+                continue
+
+            widget = action.defaultWidget()
+            hbox = widget.layout()
+            hideCmapRect = hbox.itemAt(hideIdx).widget()
+            showCmapRect = hbox.itemAt(showIdx).widget()
+            hideCmapRect.hide()
+            showCmapRect.show()
+        
+        self.isInverted = inverted
+
     def uncheckContLineWeightActions(self):
         for act in self.contLineWightActionGroup.actions():
             act.toggled.disconnect()
@@ -1782,11 +1866,25 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
         for act in self.mothBudLineWightActionGroup.actions():
             act.toggled.disconnect()
             act.setChecked(False)
+    
+    def setGradient(self, gradient):
+        self.gradient.restoreState(gradient)
+        self.lastGradient = gradient
+    
+    def invertCurrentColormap(self):
+        self.setGradient(self.lastGradient)
+    
+    def colormapClicked(self, checked=False, name=None):
+        name = self.sender().name
+        if self.isInverted:
+            self.setGradient(self.invertedGradients[name])
+        else:
+            self.setGradient(Gradients[name])
 
     def restoreState(self, df):
         if 'contLineColor' in df.index:
             rgba_str = df.at['contLineColor', 'value']
-            rgb = myutils.rgba_str_to_values(rgba_str)[:3]
+            rgb = colors.rgba_str_to_values(rgba_str)[:3]
             self.contoursColorButton.setColor(rgb)
 
         if 'contLineWeight' in df.index:
@@ -1977,12 +2075,12 @@ class labelsGradientWidget(pg.GradientWidget):
         # Insert background color
         if 'labels_bkgrColor' in df.index:
             rgbString = df.at['labels_bkgrColor', 'value']
-            r, g, b = myutils.rgb_str_to_values(rgbString)
+            r, g, b = colors.rgb_str_to_values(rgbString)
             self.colorButton.setColor((r, g, b))
 
         if 'labels_text_color' in df.index:
             rgbString = df.at['labels_text_color', 'value']
-            r, g, b = myutils.rgb_str_to_values(rgbString)
+            r, g, b = colors.rgb_str_to_values(rgbString)
             self.textColorButton.setColor((r, g, b))
         else:
             self.textColorButton.setColor((255, 0, 0))
@@ -2009,7 +2107,7 @@ class labelsGradientWidget(pg.GradientWidget):
                 if tick_type == 'pos':
                     ticks_pos[int(tick_idx)] = float(value)
                 elif tick_type == 'rgb':
-                    ticks_rgb[int(tick_idx)] = myutils.rgba_str_to_values(value)
+                    ticks_rgb[int(tick_idx)] = colors.rgba_str_to_values(value)
             else:
                 key = setting[9:]
                 if value == 'Yes':

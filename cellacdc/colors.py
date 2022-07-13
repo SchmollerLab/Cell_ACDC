@@ -60,6 +60,12 @@ def getFromMatplotlib(name):
         _mapCache[name] = cm
     return cm
 
+def get_pg_gradient(colors):
+    ticks_pos = np.linspace(0,1,len(colors))
+    ticks = [(tick_pos, color) for tick_pos, color in zip(ticks_pos, colors)]
+    gradient = {'ticks': ticks, 'mode': 'rgb'}
+    return gradient
+
 def lighten_color(color, amount=0.3, hex=True):
     """
     Lightens the given color by multiplying (1-luminosity) by the given amount.
@@ -113,3 +119,18 @@ def get_lut_from_colors(colors, name='mycmap', N=256, to_uint8=False):
     if to_uint8:
         lut = (lut*255).astype(np.uint8)
     return lut
+
+def invertRGB(self, rgb_img):
+    if self.imgCmapName != 'grey':
+        return
+    # see https://forum.image.sc/t/invert-rgb-image-without-changing-colors/33571
+    R = rgb_img[:, :, 0]
+    G = rgb_img[:, :, 1]
+    B = rgb_img[:, :, 2]
+    GB_mean = np.mean([G, B], axis=0)
+    RB_mean = np.mean([R, B], axis=0)
+    RG_mean = np.mean([R, G], axis=0)
+    rgb_img[:, :, 0] = 1-GB_mean
+    rgb_img[:, :, 1] = 1-RB_mean
+    rgb_img[:, :, 2] = 1-RG_mean
+    return rgb_img
