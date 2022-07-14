@@ -8355,7 +8355,7 @@ class guiWin(QMainWindow):
         if ev.key() == Qt.Key_Control:
             self.isCtrlDown = False
         elif ev.key() == Qt.Key_Shift:
-            if self.isSegm3D:
+            if self.isSegm3D and self.xHoverImg is not None:
                 # Restore normal brush cursor when releasing shift
                 xdata, ydata = int(self.xHoverImg), int(self.yHoverImg)
                 self.setHoverToolSymbolColor(
@@ -11438,7 +11438,13 @@ class guiWin(QMainWindow):
         if not contours:
             return np.array([[np.nan, np.nan]])
         min_y, min_x, _, _ = self.getObjBbox(obj.bbox)
-        cont = np.squeeze(contours[0], axis=1)
+        if len(contours) > 1:
+            contoursLengths = [len(c) for c in contours]
+            maxLenIdx = contoursLengths.index(max(contoursLengths))
+            contour = contours[maxLenIdx]
+        else:
+            contour = contours[0]
+        cont = np.squeeze(contour, axis=1)
         if len(contours)>1 and appendMultiContID:
             posData = self.data[self.pos_i]
             if obj.label in posData.IDs:
