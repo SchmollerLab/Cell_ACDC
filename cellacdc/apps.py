@@ -5985,14 +5985,13 @@ class editID_QWidget(QDialog):
 
         HBoxLayout = QHBoxLayout()
         okButton = widgets.okPushButton('Ok')
-        okButton.setShortcut(Qt.Key_Enter)
-        HBoxLayout.addWidget(okButton, alignment=Qt.AlignRight)
-
         cancelButton = widgets.cancelPushButton('Cancel')
-        # cancelButton.setShortcut(Qt.Key_Escape)
-        HBoxLayout.addWidget(cancelButton, alignment=Qt.AlignLeft)
-        HBoxLayout.setContentsMargins(0, 10, 0, 0)
 
+        HBoxLayout.addWidget(cancelButton)
+        HBoxLayout.addSpacing(20)
+        HBoxLayout.addWidget(okButton)
+
+        mainLayout.addSpacing(10)
         mainLayout.addLayout(HBoxLayout)
 
         self.setLayout(mainLayout)
@@ -6051,16 +6050,18 @@ class editID_QWidget(QDialog):
             ID = int(txt)
             how = [(self.clickedID, ID)]
             if ID in self.IDs:
-                warn_msg = (
-                    f'ID {ID} is already existing. If you continue ID {ID} '
-                    f'will be swapped with ID {self.clickedID}\n\n'
+                warn_msg = html_utils.paragraph(
+                    f'ID {ID} is <b>already existing</b>.<br><br>'
+                    f'If you continue, ID {ID} will be swapped with '
+                    f'ID {self.clickedID}<br><br>'
                     'Do you want to continue?'
                 )
-                msg = QMessageBox()
-                do_swap = msg.warning(
-                    self, 'Invalid entry', warn_msg, msg.Yes | msg.Cancel
+                msg = widgets.myMessageBox()
+                noButton, yesButton = msg.warning(
+                    self, 'Invalid entry', warn_msg, 
+                    buttonsTexts=('No', 'Yes')
                 )
-                if do_swap == msg.Yes:
+                if yesButton == msg.clickedButton:
                     valid = True
                 else:
                     return
@@ -6079,15 +6080,15 @@ class editID_QWidget(QDialog):
             self.how = how
             self.close()
         else:
-            err_msg = (
+            err_msg = html_utils.paragraph(
                 'You entered invalid text. Valid text is either a single integer'
                 f' ID that will be used to replace ID {self.clickedID} '
-                'or a list of elements enclosed in parenthesis separated by a comma\n'
+                'or a list of elements enclosed in parenthesis separated by a comma<br>'
                 'such as (5, 10), (8, 27) to replace ID 5 with ID 10 and ID 8 with ID 27'
             )
-            msg = QMessageBox()
+            msg = widgets.myMessageBox()
             msg.critical(
-                self, 'Invalid entry', err_msg, msg.Ok
+                self, 'Invalid entry', err_msg
             )
 
     def cancel_cb(self, event):

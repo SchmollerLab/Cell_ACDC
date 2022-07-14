@@ -3685,14 +3685,15 @@ class guiWin(QMainWindow):
 
                     # Append information for replicating the edit in tracking
                     # List of tuples (y, x, replacing ID)
-                    obj = posData.rp[old_ID_idx]
-                    y, x = self.getObjCentroid(obj.centroid)
-                    y, x = int(y), int(x)
-                    posData.editID_info.append((y, x, new_ID))
-                    obj = posData.rp[new_ID_idx]
-                    y, x = self.getObjCentroid(obj.centroid)
-                    y, x = int(y), int(x)
-                    posData.editID_info.append((y, x, old_ID))
+                    objo = posData.rp[old_ID_idx]
+                    yo, xo = self.getObjCentroid(objo.centroid)
+                    objn = posData.rp[new_ID_idx]
+                    yn, xn = self.getObjCentroid(objn.centroid)
+                    if not math.isnan(yo) and not math.isnan(yn):
+                        yn, xn = int(yn), int(xn)
+                        posData.editID_info.append((yn, xn, new_ID))
+                        yo, xo = int(y), int(x)
+                        posData.editID_info.append((yo, xo, old_ID))
                 else:
                     posData.lab[posData.lab == old_ID] = new_ID
                     old_ID_idx = posData.IDs.index(old_ID)
@@ -3701,8 +3702,9 @@ class guiWin(QMainWindow):
                     # List of tuples (y, x, replacing ID)
                     obj = posData.rp[old_ID_idx]
                     y, x = self.getObjCentroid(obj.centroid)
-                    y, x = int(y), int(x)
-                    posData.editID_info.append((y, x, new_ID))
+                    if not math.isnan(y) and not math.isnan(y):
+                        y, x = int(y), int(x)
+                        posData.editID_info.append((y, x, new_ID))
 
             # Update rps
             self.update_rp()
@@ -4929,6 +4931,10 @@ class guiWin(QMainWindow):
                     y, x = posData.rp[obj_idx].centroid
                     xdata, ydata = int(x), int(y)
 
+            if self.isSnapshot:
+                # Store undo state before modifying stuff
+                self.storeUndoRedoStates(False)
+
             relationship = posData.cca_df.at[ID, 'relationship']
             ccs = posData.cca_df.at[ID, 'cell_cycle_stage']
             is_history_known = posData.cca_df.at[ID, 'is_history_known']
@@ -5448,6 +5454,8 @@ class guiWin(QMainWindow):
                     xdata, ydata = int(x), int(y)
 
             if not self.isSnapshot:
+                # Store undo state before modifying stuff
+                self.storeUndoRedoStates(False)
                 # Annotate or undo division
                 self.manualCellCycleAnnotation(ID)
             else:
