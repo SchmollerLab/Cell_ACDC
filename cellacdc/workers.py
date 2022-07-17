@@ -62,6 +62,7 @@ class signals(QObject):
     sigUpdatePbarDesc = pyqtSignal(str)
     sigComputeVolume = pyqtSignal(int, object)
     sigAskStopFrame = pyqtSignal(object)
+    sigWarnMismatchSegmDataShape = pyqtSignal(object)
 
 class segmWorker(QObject):
     finished = pyqtSignal(np.ndarray, float)
@@ -462,6 +463,14 @@ class loadDataWorker(QObject):
                 self.pause()
                 abort = self.abort
         return skipPos, abort
+    
+    def warnMismatchSegmDataShape(self, posData):
+        self.skipPos = False
+        self.mutex.lock()
+        self.signals.sigWarnMismatchSegmDataShape.emit(posData)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.skipPos
 
     @worker_exception_handler
     def run(self):
@@ -516,6 +525,18 @@ class loadDataWorker(QObject):
 
             if i == 0:
                 posData.segmFound = segmFound
+
+            if posData.getIsSegm3D() != self.mainWin.isSegm3D:
+                skipPos = self.warnMismatchSegmDataShape(posData)
+                if skipPos:
+                    self.logger.log(
+                        f'Skipping "{posData.relPath}" because segmentation '
+                        'data shape different from first Position loaded.'
+                    )
+                    continue
+                else:
+                    data = 'abort'
+                    break
 
             self.logger.log(
                 'Loaded paths:\n'

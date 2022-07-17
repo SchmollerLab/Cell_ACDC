@@ -608,10 +608,10 @@ class loadData:
             return False
 
         if self.segmFound is None:
-            return False
+            return
 
         if not self.segmFound:
-            return False
+            return
 
         if self.SizeT > 1:
             return self.segm_data.ndim == 4

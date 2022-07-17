@@ -10065,9 +10065,32 @@ class guiWin(QMainWindow):
         self.loadDataWorker.signals.sigPermissionError.connect(
             self.workerPermissionError
         )
+        self.loadDataWorker.signals.sigWarnMismatchSegmDataShape.connect(
+            self.askMismatchSegmDataShape
+        )
 
         self.thread.started.connect(self.loadDataWorker.run)
         self.thread.start()
+    
+    def askMismatchSegmDataShape(self, posData):
+        msg = widgets.myMessageBox(wrapText=False)
+        title = 'Segm. data shape mismatch'
+        f = '3D' if self.isSegm3D else '2D'
+        r = '2D' if self.isSegm3D else '3D'
+        text = html_utils.paragraph(f"""
+            The segmentation masks of the first Position that you loaded is 
+            <b>{f}</b>,<br>
+            while {posData.pos_foldername} is <b>{r}</b>.<br><br>
+            The loaded segmentation masks <b>must be</b> either <b>all 3D</b> 
+            or <b>all 2D</b>.<br><br>
+            Do you want to skip loading this position or cancel the process?
+        """)
+        _, skipPosButton = msg.warning(
+            self, title, text, buttonsTexts=('Cancel', 'Skip this Position')
+        )
+        if skipPosButton == msg.clickedButton:
+            self.loadDataWorker.skipPos = True
+        self.loadDataWorker.waitCond.wakeAll()
 
     def workerPermissionError(self, txt, waitCond):
         msg = widgets.myMessageBox(parent=self)
