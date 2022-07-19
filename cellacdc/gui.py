@@ -4290,13 +4290,12 @@ class guiWin(QMainWindow):
 
         intensMeasurQGBox = self.guiTabControl.intensMeasurQGBox
         selectedChannel = intensMeasurQGBox.channelCombobox.currentText()
+        
         if selectedChannel == self.user_ch_name:
-            imgData = posData.img_data[posData.frame_i]
+            image = self.img1.image
         else:
-            _, filename = self.getPathFromChName(selectedChannel, posData)
-            imgData = posData.fluo_data_dict[filename][posData.frame_i]
+            image = self.overlayLayersItems[selectedChannel][0].image
 
-        image = self.img1.image
         objData = image[obj.slice][obj.image]
 
         intensMeasurQGBox.minimumDSB.setValue(np.min(objData))
