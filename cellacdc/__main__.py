@@ -168,7 +168,7 @@ class mainWin(QMainWindow):
 
         self.start_JVM = True
 
-        self.guiWin = None
+        self.guiWins = []
         self.dataPrepWin = None
         self._version = None
 
@@ -584,36 +584,10 @@ class mainWin(QMainWindow):
 
 
     def launchGui(self, checked=False):
-        c = self.guiButton.palette().button().color().name()
-        launchedColor = self.moduleLaunchedColor
-        defaultColor = self.defaultPushButtonColor
-        defaultText = self.defaultTextGuiButton
-        if c.lower() != launchedColor.lower():
-            print('Opening GUI...')
-            self.guiButton.setStyleSheet(
-                f'QPushButton {{background-color: {launchedColor};}}')
-            self.guiButton.setText('GUI is running. Click to restore window.')
-            self.guiWin = gui.guiWin(
-                self.app,
-                buttonToRestore=(self.guiButton, defaultColor, defaultText),
-                mainWin=self, version=self._version
-            )
-            self.guiWin.run()
-        else:
-            # self.guiWin.setWindowState(Qt.WindowNoState)
-            self.guiWin.setWindowState(Qt.WindowActive)
-            self.guiWin.raise_()
-
-    def guiClosed(self):
-        self.timer = QTimer()
-        self.timer.timeout.connect(self.deleteGuiReference)
-        self.timer.start(100)
-
-    def deleteGuiReference(self):
-        try:
-            self.guiWin.isVisible()
-        except RuntimeError:
-            self.timer.stop()
+        print('Opening GUI...')
+        guiWin = gui.guiWin(self.app, mainWin=self, version=self._version)
+        guiWin.run()
+        self.guiWins.append(guiWin)
 
     def launchAlignUtil(self, checked=False):
         if self.alignAction.isEnabled():

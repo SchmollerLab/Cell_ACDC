@@ -1137,6 +1137,8 @@ class saveDataWorker(QObject):
 class guiWin(QMainWindow):
     """Main Window."""
 
+    sigClosed = pyqtSignal(object)
+
     def __init__(
             self, app, parent=None, buttonToRestore=None,
             mainWin=None, version=None
@@ -4294,7 +4296,8 @@ class guiWin(QMainWindow):
             _, filename = self.getPathFromChName(selectedChannel, posData)
             imgData = posData.fluo_data_dict[filename][posData.frame_i]
 
-        objData = imgData[obj.slice][obj.image]
+        image = self.img1.image
+        objData = image[obj.slice][obj.image]
 
         intensMeasurQGBox.minimumDSB.setValue(np.min(objData))
         intensMeasurQGBox.maximumDSB.setValue(np.max(objData))
@@ -4304,11 +4307,11 @@ class guiWin(QMainWindow):
         funcDesc = intensMeasurQGBox.additionalMeasCombobox.currentText()
         func = intensMeasurQGBox.additionalMeasCombobox.functions[funcDesc]
         if funcDesc == 'Concentration':
-            bkgrVal = np.median(imgData[posData.lab == 0])
+            bkgrVal = np.median(image[posData.lab == 0])
             amount = func(objData, bkgrVal, obj.area)
             value = amount/vol_vox
         elif funcDesc == 'Amount':
-            bkgrVal = np.median(imgData[posData.lab == 0])
+            bkgrVal = np.median(image[posData.lab == 0])
             amount = func(objData, bkgrVal, obj.area)
             value = amount
         else:
@@ -10232,6 +10235,8 @@ class guiWin(QMainWindow):
             f'Segmented channel: {segmentedChannelname}, '
             f'Segmentation file name: {segmEndName}'
         )
+        if not self.isSnapshot:
+            txt = f'{txt}, {posData.pos_foldername}'
         self.logger.info(txt)
         self.statusBarLabel.setText(txt)
 
@@ -14491,7 +14496,6 @@ class guiWin(QMainWindow):
         is_images_folder = os.path.basename(exp_path).find('Images') != -1
 
         self.titleLabel.setText('Loading data...', color=self.titleColor)
-        self.setWindowTitle(f'Cell-ACDC - GUI - "{exp_path}"')
 
         ch_name_selector = prompts.select_channel_name(
             which_channel='segm', allow_abort=False
@@ -14541,7 +14545,9 @@ class guiWin(QMainWindow):
 
         elif is_images_folder and not imageFilePath:
             images_paths = [exp_path]
-
+            pos_path = os.path.dirname(exp_path)
+            exp_path = os.path.dirname(pos_path)
+            
         elif imageFilePath:
             # images_path = exp_path because called by openFile func
             filenames = myutils.listdir(exp_path)
@@ -14554,6 +14560,10 @@ class guiWin(QMainWindow):
                 chName for chName in ch_names if filename.find(chName)!=-1
             ][0]
             images_paths = [exp_path]
+            pos_path = os.path.dirname(exp_path)
+            exp_path = os.path.dirname(pos_path)
+        
+        self.setWindowTitle(f'Cell-ACDC - GUI - "{exp_path}"')
 
         self.images_paths = images_paths
 
@@ -14575,7 +14585,7 @@ class guiWin(QMainWindow):
                 self.criticalNoTifFound(images_path)
                 return
             if len(ch_names) > 1:
-                CbLabel='Select channel name to segment: '
+                CbLabel='Select channel name to load: '
                 ch_name_selector.QtPrompt(
                     self, ch_names, CbLabel=CbLabel
                 )
@@ -14629,8 +14639,6 @@ class guiWin(QMainWindow):
             else:
                 self.criticalImgPathNotFound(images_path)
                 return
-
-        self.appendPathWindowTitle(user_ch_file_paths)
 
         ch_name_selector.setUserChannelName()
         self.user_ch_name = user_ch_name
@@ -14735,13 +14743,6 @@ class guiWin(QMainWindow):
         okButton = msg.critical(
             self, 'No valid files found!', err_msg, buttonsTexts=('Ok',)
         )
-
-    def appendPathWindowTitle(self, user_ch_file_paths):
-        if self.isSnapshot:
-            return
-
-        pos_path = os.path.dirname(os.path.dirname(user_ch_file_paths[0]))
-        self.setWindowTitle(f'Cell-ACDC - GUI - "{pos_path}"')
 
     def initFluoData(self):
         if len(self.ch_names) <= 1:
@@ -15604,23 +15605,13 @@ class guiWin(QMainWindow):
                 event.ignore()
                 return
 
-        if self.mainWin is not None:
-            button, color, text = self.buttonToRestore
-            button.setText(text)
-            button.setStyleSheet(
-                f'QPushButton {{background-color: {color};}}')
-            self.mainWin.setWindowState(Qt.WindowNoState)
-            self.mainWin.setWindowState(Qt.WindowActive)
-            self.mainWin.raise_()
-            # # Discard close and simply hide window
-            # event.ignore()
-            # self.hide()
-
         self.logger.info('Closing GUI logger...')
         handlers = self.logger.handlers[:]
         for handler in handlers:
             handler.close()
             self.logger.removeHandler(handler)
+        
+        self.sigClosed.emit(self)
 
     def readSettings(self):
         settings = QSettings('schmollerlab', 'acdc_gui')
