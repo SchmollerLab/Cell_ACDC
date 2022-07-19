@@ -7323,11 +7323,12 @@ class guiWin(QMainWindow):
                 'Do you want to continue?'
             )
             msg = widgets.myMessageBox()
-            reinit = msg.warning(
-               self, 'Cell not eligible', txt, msg.Yes | msg.Cancel
+            msg.warning(
+               self, 'Re-initialize annnotations?', txt, 
+               buttonsTexts=('Cancel', 'Yes')
             )
             posData = self.data[self.pos_i]
-            if reinit == msg.Cancel:
+            if msg.cancel:
                 return
             # Go to previous frame without storing and then back to current
             if posData.frame_i > 0:
