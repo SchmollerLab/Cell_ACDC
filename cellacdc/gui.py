@@ -7318,7 +7318,7 @@ class guiWin(QMainWindow):
             txt = html_utils.paragraph(
                 'If you decide to continue <b>ALL cell cycle annotations</b> from '
                 'this frame to the end will be <b>erased from current session</b> '
-                '(saved data is not touched of course)<br><br>'
+                '(saved data is not touched of course).<br><br>'
                 'To annotate future frames again you will have to revisit them.<br><br>'
                 'Do you want to continue?'
             )
