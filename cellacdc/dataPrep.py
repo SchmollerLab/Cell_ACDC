@@ -929,27 +929,29 @@ class dataPrepWin(QMainWindow):
             data = posData.img_data
             croppedData, SizeZ = self.crop(data, posData)
 
+            isCroppingCancelled = False
             if croppedData.shape != data.shape:
                 if p == 0:
-                    doCrop = self.askCropping(data.shape, croppedData.shape)
+                    isCroppingCancelled = self.askCropping(
+                        data.shape, croppedData.shape
+                    )
+                    doCrop = not isCroppingCancelled
                 else:
                     doCrop = True
             else:
                 doCrop = False
 
-            if not doCrop:
+            if isCroppingCancelled:
                 self.cropAction.setEnabled(True)
-                txt = (
-                    'Done! You can close the program or load another position.'
-                )
-                self.titleLabel.setText(txt, color='g')
-                msg = QMessageBox()
-                msg.information(
-                    self, 'Done',
-                    f'<p style="font-size:13px">{txt}</p>', msg.Ok
-                )
-                self.disconnectROIs(posData)
+                txt = ('Cropping cancelled.')
+                self.titleLabel.setText(txt, color='r')
                 return
+            elif croppedData.shape == data.shape:
+                self.cropAction.setEnabled(True)
+                txt = ('Crop ROI has same shape of the image --> no need to crop. Process stopped.')
+                self.titleLabel.setText(txt, color='r')
+                return
+
 
             if SizeZ != posData.SizeZ:
                 # Update metadata with cropped SizeZ
@@ -1077,16 +1079,11 @@ class dataPrepWin(QMainWindow):
             Do you want to crop or simply save the ROI coordinates<br>
             for the segmentation step?
         """)
-        yesButton, nopButton = msg.warning(
+        _, yesButton = msg.warning(
             self, 'Crop?', txt, 
-            buttonsTexts=('Yes, crop please.', ' Save without cropping ')
+            buttonsTexts=('Cancel', 'Yes, crop please.')
         )
-        proceed = False
-        if msg.clickedButton == yesButton:
-            proceed = True
-        elif msg.clickedButton == nopButton:
-            proceed = False
-        return proceed
+        return msg.cancel
 
 
     def imagej_tiffwriter(self, new_path, data, metadata, posData):
@@ -1988,6 +1985,8 @@ class dataPrepWin(QMainWindow):
         # Step 2. Dynamically create the actions
         actions = []
         for path in recentPaths:
+            if not os.path.exists(path):
+                continue
             action = QAction(path, self)
             action.triggered.connect(partial(self.openRecentFile, path))
             actions.append(action)
