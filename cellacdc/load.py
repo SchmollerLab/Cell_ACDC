@@ -251,7 +251,6 @@ class loadData:
     def loadImgData(self, signals=None):
         self.z0_window = 0
         self.t0_window = 0
-        printl(self.ext, self.imgPath)
         if self.ext == '.h5':
             self.h5f = h5py.File(self.imgPath, 'r')
             self.dset = self.h5f['data']

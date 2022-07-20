@@ -1670,11 +1670,18 @@ class view_visualcpp_screenshot(QWidget):
 
 class myHistogramLUTitem(pg.HistogramLUTItem):
     sigGradientMenuEvent = pyqtSignal(object)
+    sigTickColorAccepted = pyqtSignal(object)
 
     def __init__(self, **kwargs):
         self.cmaps = cmaps
 
         super().__init__(**kwargs)
+
+        self.gradient.colorDialog.setWindowFlags(
+            Qt.Dialog | Qt.WindowStaysOnTopHint
+        )
+        self.gradient.colorDialog.accepted.disconnect()
+        self.gradient.colorDialog.accepted.connect(self.tickColorAccepted)
 
         self.isInverted = False
         self.lastGradient = Gradients['grey']
@@ -1693,10 +1700,23 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
         self.gradient.menu.addAction(self.invertBwAction)
         self.gradient.menu.addSeparator()
 
+        # Text color button
+        hbox = QHBoxLayout()
+        hbox.addWidget(QLabel('Text color: '))
+        self.textColorButton = myColorButton(color=(255,255,255))
+        hbox.addStretch(1)
+        hbox.addWidget(self.textColorButton)
+        widget = QWidget()
+        widget.setLayout(hbox)
+        act = QWidgetAction(self)
+        act.setDefaultWidget(widget)
+        self.gradient.menu.addAction(act)
+
         # Contours color button
         hbox = QHBoxLayout()
         hbox.addWidget(QLabel('Contours color: '))
-        self.contoursColorButton = pg.ColorButton(color=(25,25,25))
+        self.contoursColorButton = myColorButton(color=(25,25,25))
+        hbox.addStretch(1)
         hbox.addWidget(self.contoursColorButton)
         widget = QWidget()
         widget.setLayout(hbox)
@@ -1723,7 +1743,8 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
         # Mother-bud line color
         hbox = QHBoxLayout()
         hbox.addWidget(QLabel('Mother-bud line color: '))
-        self.mothBudLineColorButton = pg.ColorButton(color=(255,0,0))
+        self.mothBudLineColorButton = myColorButton(color=(255,0,0))
+        hbox.addStretch(1)
         hbox.addWidget(self.mothBudLineColorButton)
         widget = QWidget()
         widget.setLayout(hbox)
@@ -1773,15 +1794,28 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
         self.defaultSettingsAction = QAction('Restore default settings...', self)
         self.gradient.menu.addAction(self.defaultSettingsAction)
 
-        # Select channels section
-        self.gradient.menu.addSeparator()
-        self.gradient.menu.addSection('Select channel: ')
-
         # hide histogram tool
         self.vb.hide()
 
         # Set inverted gradients for invert bw action
         self.addInvertedColorMaps()
+    
+    def addOverlayColorButton(self, rgbColor):
+        # Overlay color button
+        hbox = QHBoxLayout()
+        hbox.addWidget(QLabel('Overlay color: '))
+        self.overlayColorButton = myColorButton(color=rgbColor)
+        hbox.addStretch(1)
+        hbox.addWidget(self.overlayColorButton)
+        widget = QWidget()
+        widget.setLayout(hbox)
+        act = QWidgetAction(self)
+        act.setDefaultWidget(widget)
+        self.gradient.menu.addAction(act)
+    
+    def tickColorAccepted(self):
+        self.gradient.currentColorAccepted()
+        self.sigTickColorAccepted.emit(self.gradient.colorDialog.color().getRgb())
     
     def getInvertedGradients(self):
         invertedGradients = {}
@@ -1882,11 +1916,16 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
             self.setGradient(Gradients[name])
 
     def restoreState(self, df):
+        if 'textIDsColor' in df.index:
+            rgbString = df.at['textIDsColor', 'value']
+            r, g, b = colors.rgb_str_to_values(rgbString)
+            self.textColorButton.setColor((r, g, b))
+
         if 'contLineColor' in df.index:
             rgba_str = df.at['contLineColor', 'value']
             rgb = colors.rgba_str_to_values(rgba_str)[:3]
             self.contoursColorButton.setColor(rgb)
-
+        
         if 'contLineWeight' in df.index:
             w = df.at['contLineWeight', 'value']
             w = int(w)
@@ -1898,7 +1937,7 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
         if 'overlaySegmMasksAlpha' in df.index:
             alpha = df.at['overlaySegmMasksAlpha', 'value']
             self.labelsAlphaSlider.setValue(float(alpha))
-
+        
         checked = df.at['is_bw_inverted', 'value'] == 'Yes'
         self.invertBwAction.setChecked(checked)
 
@@ -1978,16 +2017,27 @@ class linkedQScrollbar(QScrollBar):
             self._linkedScrollBar.setMaximum(max)
 
 class myColorButton(pg.ColorButton):
-    sigColorRejected = pyqtSignal(object)
+    def __init__(self, parent=None, color=(128,128,128), padding=3):
+        super().__init__(parent=parent, color=color)
+        if isinstance(padding, (int, float)):
+            self.padding = (padding, padding, -padding, -padding)  
+        else:
+            self.padding = padding
+        self.setFlat(True)
+   
+    def paintEvent(self, ev):
+        super().paintEvent(ev)
+        p = QPainter(self)
+        rect = self.rect().adjusted(*self.padding)
+        ## draw white base, then texture for indicating transparency, then actual color
+        p.setBrush(pg.mkBrush('w'))
+        p.drawRect(rect)
+        p.setBrush(QBrush(Qt.BrushStyle.DiagCrossPattern))
+        p.drawRect(rect)
+        p.setBrush(pg.mkBrush(self._color))
+        p.drawRect(rect)
+        p.end()
 
-    def __init__(self, parent=None, color=(128,128,128), padding=6):
-        pg.ColorButton.__init__(
-            self, parent=parent, color=color, padding=padding
-        )
-
-    def colorRejected(self):
-        self.setColor(self.origColor, finished=False)
-        self.sigColorRejected.emit(self)
 
 class labelsGradientWidget(pg.GradientWidget):
     def __init__(self, parent=None, orientation='right',  *args, **kargs):
@@ -2006,7 +2056,7 @@ class labelsGradientWidget(pg.GradientWidget):
         # Background color button
         hbox = QHBoxLayout()
         hbox.addWidget(QLabel('Background color: '))
-        self.colorButton = pg.ColorButton(color=(25,25,25))
+        self.colorButton = myColorButton(color=(25,25,25))
         hbox.addWidget(self.colorButton)
         widget = QWidget()
         widget.setLayout(hbox)
@@ -2017,7 +2067,7 @@ class labelsGradientWidget(pg.GradientWidget):
         # IDs color button
         hbox = QHBoxLayout()
         hbox.addWidget(QLabel('Text color: '))
-        self.textColorButton = pg.ColorButton(color=(25,25,25))
+        self.textColorButton = myColorButton(color=(25,25,25))
         hbox.addWidget(self.textColorButton)
         widget = QWidget()
         widget.setLayout(hbox)

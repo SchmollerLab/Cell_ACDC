@@ -484,7 +484,7 @@ class customAnnotationDialog(QDialog):
         hideAnnotTooggleLabel = QLabel(
             'Hide annotation when button is not active: '
         )
-        self.colorButton = pg.ColorButton(color=(255, 0, 0))
+        self.colorButton = widgets.myColorButton(color=(255, 0, 0))
         self.colorButton.clicked.disconnect()
         self.colorButton.clicked.connect(self.selectColor)
 

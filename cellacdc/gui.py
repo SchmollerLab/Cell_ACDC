@@ -2232,10 +2232,10 @@ class guiWin(QMainWindow):
             '(from the current session not the saved information)'
         )
 
-        self.editTextIDsColorAction = QAction('Edit text on IDs color...', self)
+        self.editTextIDsColorAction = QAction('Text on IDs color...', self)
         self.editTextIDsColorAction.setDisabled(True)
 
-        self.editOverlayColorAction = QAction('Edit overlay color...', self)
+        self.editOverlayColorAction = QAction('Overlay color...', self)
         self.editOverlayColorAction.setDisabled(True)
 
         self.manuallyEditCcaAction = QAction(
@@ -2472,6 +2472,10 @@ class guiWin(QMainWindow):
         )
 
         self.imgGrad.invertBwAction.toggled.connect(self.setCheckedInvertBW)
+        self.imgGrad.textColorButton.disconnect()
+        self.imgGrad.textColorButton.clicked.connect(
+            self.editTextIDsColorAction.trigger
+        )
         self.imgGrad.labelsAlphaSlider.valueChanged.connect(
             self.updateLabelsAlpha
         )
@@ -4615,7 +4619,6 @@ class guiWin(QMainWindow):
     def gui_gradientContextMenuEvent(self, event):      
         posData = self.data[self.pos_i]
         if self.overlayButton.isChecked():
-            self.currentLutItem.gradient.menu.addAction(self.userChNameAction)
             for action in posData.fluoDataChNameActions:
                 self.currentLutItem.gradient.menu.removeAction(action)
                 self.currentLutItem.gradient.menu.addAction(action)
@@ -7248,7 +7251,7 @@ class guiWin(QMainWindow):
         how = action.text()
         self.df_settings.at['how_normIntensities', 'value'] = how
         self.df_settings.to_csv(self.settings_csv_path)
-        self.updateALLimg(only_ax1=True, updateFilters=True)
+        self.updateALLimg(updateFilters=True)
 
     def setLastUserNormAction(self):
         how = self.df_settings.at['how_normIntensities', 'value']
@@ -10476,8 +10479,7 @@ class guiWin(QMainWindow):
         idx = (posData.filename, posData.frame_i)
         posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
         self.updateALLimg(
-            only_ax1=self.updateOnlyImg(), useStoredGaussFiltered=True,
-            updateDiffGaussFilter=True
+            useStoredGaussFiltered=True, updateDiffGaussFilter=True
         )
 
     def update_overlay_z_slice(self, z):
@@ -10508,7 +10510,7 @@ class guiWin(QMainWindow):
         else:
             self.zSliceScrollBar.setDisabled(True)
             self.z_label.setStyleSheet('color: gray')
-            self.updateALLimg(only_ax1=self.updateOnlyImg())
+            self.updateALLimg()
 
     def clearItems_IDs(self, IDs_to_clear):
         for ID in IDs_to_clear:
@@ -12514,6 +12516,10 @@ class guiWin(QMainWindow):
             (49, 222, 134),
             (22, 108, 27)
         ]
+        if 'overlayColor' in self.df_settings.index:
+            rgba_str = self.df_settings.at['overlayColor', 'value']
+            rgb = [int(v) for v in rgba_str.split('-')]
+            self.overlayRGBs[0] = tuple(rgb)
 
     def getFileExtensions(self, images_path):
         alignedFound = any([f.find('_aligned.np')!=-1
@@ -12602,13 +12608,13 @@ class guiWin(QMainWindow):
 
             self.setOverlayItemsVisible(self.imgGrad.checkedChannelname, True)
 
-            self.updateALLimg(only_ax1=True)
+            self.updateALLimg()
             self.enableOverlayWidgets(True)
         else:
             for action in posData.fluoDataChNameActions:
                 self.imgGrad.gradient.menu.removeAction(action)
             self.create_chNamesQActionGroup(self.user_ch_name)
-            self.updateALLimg(only_ax1=True)
+            self.updateALLimg()
             self.enableOverlayWidgets(False)
             self.setOverlayItemsVisible('', False)
             for items in self.overlayLayersItems.values():
@@ -12725,10 +12731,16 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         ticks = self.imgGrad.gradient.listTicks()
 
-        self.img1ChannelGradients[self.imgGrad.checkedChannelname] = {
-            'ticks': [(x, t.color.getRgb()) for t,x in ticks],
-            'mode': 'rgb'
-        }
+        if hasattr(self.imgGrad, 'checkedChannelname'):
+            self.img1ChannelGradients[self.imgGrad.checkedChannelname] = {
+                'ticks': [(x, t.color.getRgb()) for t,x in ticks],
+                'mode': 'rgb'
+            }
+        else:
+            self.img1ChannelGradients[self.user_ch_name] = {
+                'ticks': [(x, t.color.getRgb()) for t,x in ticks],
+                'mode': 'rgb'
+            }
 
     def updateContColour(self, colorButton):
         color = colorButton.color().getRgb()
@@ -12913,6 +12925,10 @@ class guiWin(QMainWindow):
 
     def updateTextIDsColors(self, button):
         r, g, b = np.array(self.textIDsColorButton.color().getRgb()[:3])
+        self.imgGrad.textColorButton.setColor((r, g, b))
+        for items in self.overlayLayersItems.values():
+            lutItem = items[1]
+            lutItem.textColorButton.setColor((r, g, b))
         self.gui_setImg1TextColors(r,g,b, custom=True)
         self.updateALLimg()
 
@@ -13081,25 +13097,17 @@ class guiWin(QMainWindow):
         color = button.color().getRgb()[:3]
         self.df_settings.at['labels_bkgrColor', 'value'] = color
         self.df_settings.to_csv(self.settings_csv_path)
-        self.updateALLimg(only_ax1=True)
+        self.updateALLimg()
 
     def updateOlColors(self, button):
-        posData = self.data[self.pos_i]
-        try:
-            fluo_filenames = list(posData.fluo_data_dict.keys())
-            _idx = fluo_filenames.index(self._key)
-            rgb = self.overlayColorButton.color().getRgb()[:3]
-            for _posData in self.data:
-                _key = list(_posData.fluo_data_dict.keys())[_idx]
-                _posData.ol_colors[_key] = rgb
-        except Exception as e:
-            self.logger.exception(traceback.format_exc())
-
+        rgb = self.overlayColorButton.color().getRgb()[:3]
         self.df_settings.at['overlayColor', 'value'] = (
             '-'.join([str(v) for v in rgb])
         )
         self.df_settings.to_csv(self.settings_csv_path)
-        self.updateOverlay(button)
+        lutItem = self.overlayLayersItems[self.imgGrad.checkedChannelname][1]
+        self.initColormapOverlayLayerItem(rgb, lutItem)
+        lutItem.overlayColorButton.setColor(rgb)
 
     def getImageDataFromFilename(self, filename):
         posData = self.data[self.pos_i]
@@ -13739,7 +13747,7 @@ class guiWin(QMainWindow):
         self.df_settings.at['overlaySegmMasksAlpha', 'value'] = value
         self.df_settings.to_csv(self.settings_csv_path)
         self.labelsLayerImg1.setOpacity(value)
-        self.updateALLimg(only_ax1=True)
+        self.updateALLimg()
 
     def getImageWithCmap(self, img=None):
         if img is None:
@@ -13757,11 +13765,9 @@ class guiWin(QMainWindow):
 
     @myutils.exception_handler
     def updateALLimg(
-            self, image=None, never_visited=True,
-            only_ax1=False, updateBlur=False,
+            self, image=None, only_ax1=False, updateBlur=False,
             updateSharp=False, updateEntropy=False,
-            updateHistoLevels=False, updateFilters=True,
-            updateLabelItemColor=False, debug=False,
+            updateFilters=True, updateLabelItemColor=False,
             overlayMasks=True, updateDiffGaussFilter=True,
             useStoredGaussFiltered=False, useEraserImg=False
         ):
@@ -14845,13 +14851,28 @@ class guiWin(QMainWindow):
     def getOverlayItems(self, channelName):
         imageItem = pg.ImageItem()
         lutItem = widgets.myHistogramLUTitem()
+        lutItem.restoreState(self.df_settings)
         lutItem.setImageItem(imageItem)
         lutItem.vb.raiseContextMenu = lambda x: None
         lutItem.gradient.showMenu = self.gui_gradientContextMenuEvent
         initColor = self.overlayRGBs.pop(0)
         self.initColormapOverlayLayerItem(initColor, lutItem)
+        lutItem.addOverlayColorButton(initColor)
         lutItem.initColor = initColor
         lutItem.hide()
+        lutItem.overlayColorButton.disconnect()
+        lutItem.overlayColorButton.clicked.connect(
+            self.editOverlayColorAction.trigger
+        )
+        lutItem.textColorButton.disconnect()
+        lutItem.textColorButton.clicked.connect(
+            self.editTextIDsColorAction.trigger
+        )
+
+        # Select channels section
+        lutItem.gradient.menu.addSeparator()
+        lutItem.gradient.menu.addSection('Select channel: ')
+        lutItem.gradient.menu.addAction(self.userChNameAction)
 
         alphaScrollBar = QScrollBar(Qt.Horizontal)
         label = QLabel(f'Overlay alpha {channelName}')
@@ -14919,7 +14940,7 @@ class guiWin(QMainWindow):
                 self.graphLayout.removeItem(lutItem)
             self.graphLayout.addItem(self.imgGrad, row=1, col=0)
             self.imgGrad.show()
-            self.currentLutItem = lutItem
+            self.currentLutItem = self.imgGrad
 
     def initColormapOverlayLayerItem(self, foregrColor, lutItem):
         if self.invertBwAction.isChecked():
