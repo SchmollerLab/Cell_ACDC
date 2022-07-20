@@ -1933,10 +1933,23 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
                 if action.lineWeight == w:
                     action.setChecked(True)
                     break
+        
+        if 'mothBudLineWeight' in df.index:
+            w = df.at['mothBudLineWeight', 'value']
+            w = int(w)
+            for action in self.mothBudLineWightActionGroup.actions():
+                if action.lineWeight == w:
+                    action.setChecked(True)
+                    break
 
         if 'overlaySegmMasksAlpha' in df.index:
             alpha = df.at['overlaySegmMasksAlpha', 'value']
             self.labelsAlphaSlider.setValue(float(alpha))
+        
+        if 'mothBudLineColor' in df.index:
+            rgba_str = df.at['mothBudLineColor', 'value']
+            rgb = colors.rgba_str_to_values(rgba_str)[:3]
+            self.mothBudLineColorButton.setColor(rgb)
         
         checked = df.at['is_bw_inverted', 'value'] == 'Yes'
         self.invertBwAction.setChecked(checked)

@@ -104,8 +104,13 @@ def rgb_str_to_values(rgbString, errorRgb=(255,255,255)):
 
 def rgba_str_to_values(rgbaString, errorRgb=(255,255,255,255)):
     try:
-        r, g, b, a = re.findall(r'(\d+), (\d+), (\d+), (\d+)', rgbaString)[0]
-        r, g, b, a = int(r), int(g), int(b), int(a)
+        m = re.findall(r'(\d+), *(\d+), *(\d+),* *(\d+)*', rgbaString)
+        r, g, b, a = m[0]
+        if a:
+            r, g, b, a = int(r), int(g), int(b), int(a)
+        else:
+            a = 255
+            r, g, b = int(r), int(g), int(b)
     except TypeError:
         try:
             r, g, b, a = rgbaString

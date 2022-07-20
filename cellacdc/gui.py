@@ -13731,7 +13731,7 @@ class guiWin(QMainWindow):
         df = self.df_settings
         df.at['contLineWeight', 'value'] = 2
         df.at['mothBudLineWeight', 'value'] = 2
-        df.at['mothBudLineColor', 'value'] = (255,165,0)
+        df.at['mothBudLineColor', 'value'] = (255, 165, 0, 255)
         df.at['contLineColor', 'value'] = (205, 0, 0, 220)
         df.at['overlaySegmMasksAlpha', 'value'] = 0.3
         df.at['img_cmap', 'value'] = 'grey'
@@ -13745,6 +13745,9 @@ class guiWin(QMainWindow):
         self.gui_createMothBudLinePens()
         self.gui_createContourPens()
         self.imgGrad.restoreState(df)
+        for items in self.overlayLayersItems.values():
+            lutItem = items[1]
+            lutItem.restoreState(df)
 
         self.labelsGrad.saveState(df)
         self.labelsGrad.restoreState(df, loadCmap=False)
