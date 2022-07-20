@@ -1,11 +1,13 @@
 import os
 import cellacdc
+from functools import partial
 
-from PyQt5.QtWidgets import QDialog, QLabel, QGridLayout
+from PyQt5.QtWidgets import QDialog, QLabel, QGridLayout, QHBoxLayout
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtCore import Qt
 
 from ..myutils import read_version
+from .. import widgets, myutils
 from .. import qrc_resources
 
 class QDialogAbout(QDialog):
@@ -32,7 +34,8 @@ class QDialogAbout(QDialog):
 
         titleLabel.setText(txt)
 
-        iconPixmap = QPixmap(":icon.ico")
+        iconPixmap = QPixmap(":logo.svg")
+        # iconPixmap.scaled(8,8)
         iconLabel = QLabel()
         iconLabel.setPixmap(iconPixmap)
 
@@ -47,6 +50,7 @@ class QDialogAbout(QDialog):
         """)
         infoLabel.setText(txt)
 
+        installedLayout = QHBoxLayout()
         installedLabel = QLabel()
         txt = (f"""
         <p style="font-size:12px; font-family:ubuntu">
@@ -55,11 +59,20 @@ class QDialogAbout(QDialog):
         """)
         installedLabel.setText(txt)
 
+        button = widgets.showInFileManagerButton(
+            myutils.get_open_filemaneger_os_string()
+        )
+        func = partial(myutils.showInExplorer, cellacdc_path)
+        button.clicked.connect(func)
+        installedLayout.addWidget(installedLabel)
+        installedLayout.addStretch(1)
+        installedLayout.addWidget(button)
+
         layout.addWidget(iconLabel, 0, 0)
         layout.addWidget(titleLabel, 0, 1, alignment=Qt.AlignLeft)
         layout.addWidget(infoLabel, 1, 1, alignment=Qt.AlignLeft)
         layout.setColumnStretch(2,1)
-        layout.addWidget(installedLabel, 2, 0, 1, 3)
+        layout.addLayout(installedLayout, 2, 0, 1, 3)
 
         self.setLayout(layout)
 
