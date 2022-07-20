@@ -7617,7 +7617,7 @@ class guiWin(QMainWindow):
             if posData.cca_df is not None:
                 self.store_cca_df()
         elif mode == 'Cell cycle analysis':
-            proceed = self.init_cca()
+            proceed = self.initCca()
             self.modeToolBar.setVisible(True)
             self.setEnabledWidgetsToolbar(False)
             if proceed:
@@ -9841,7 +9841,6 @@ class guiWin(QMainWindow):
                 self.get_data()
                 return
             self.updateALLimg(
-                never_visited=never_visited,
                 updateFilters=True,
                 updateLabelItemColor=False
             )
@@ -9881,9 +9880,9 @@ class guiWin(QMainWindow):
             _, never_visited = self.get_data()
             self.postProcessing()
             self.tracking()
-            self.updateALLimg(never_visited=never_visited,
-                              updateSharp=True, updateBlur=True,
-                              updateEntropy=True)
+            self.updateALLimg(
+                updateSharp=True, updateBlur=True, updateEntropy=True
+            )
             self.updateScrollbars()
             self.zoomToCells()
             self.updateViewerWindow()
@@ -11855,23 +11854,23 @@ class guiWin(QMainWindow):
 
         self.checkTrackingEnabled()
 
-    def init_cca(self):
+    def initCca(self):
         posData = self.data[self.pos_i]
-        currentMode = self.modeComboBox.currentText()
+        defaultMode = 'Viewer'
         if posData.last_tracked_i is None:
-            txt = (
-                'On this dataset either you never checked that the segmentation '
-                'and tracking are correct or you did not save yet.\n\n'
+            txt = html_utils.paragraph(
+                'On this dataset either you <b>never checked</b> that the segmentation '
+                'and tracking are <b>correct</b> or you did not save yet.<br><br>'
                 'If you already visited some frames with "Segmentation and tracking" '
-                'mode save data before switching to "Cell cycle analysis mode".\n\n'
+                'mode save data before switching to "Cell cycle analysis mode".<br><br>'
                 'Otherwise you first have to check (and eventually correct) some frames '
                 'in "Segmentation and Tracking" mode before proceeding '
                 'with cell cycle analysis.')
-            msg = QMessageBox()
+            msg = widgets.critical()
             msg.critical(
-                self, 'Tracking check not performed', txt, msg.Ok
+                self, 'Tracking was never checked', txt
             )
-            self.modeComboBox.setCurrentText(currentMode)
+            self.modeComboBox.setCurrentText(defaultMode)
             return
 
         proceed = True
@@ -11895,15 +11894,18 @@ class guiWin(QMainWindow):
 
         if posData.frame_i > last_cca_frame_i:
             # Prompt user to go to last annotated frame
-            msg = QMessageBox()
+            msg = widgets.myMessageBox()
+            txt = html_utils.paragraph(f"""
+                The <b>last annotated frame</b> is frame {last_cca_frame_i+1}.<br>
+                The cell cycle analysis will restart from that frame.<br><br>
+                Do you want to proceed?
+                {last_cca_frame_i+1}?
+            """)
             goTo_last_annotated_frame_i = msg.warning(
-                self, 'Go to last annotated frame?',
-                f'The last annotated frame is frame {last_cca_frame_i+1}.\n'
-                'The cell cycle analysis will restart from that frame.\n'
-                'Do you want to proceed?',
-                msg.Yes | msg.Cancel
-            )
-            if goTo_last_annotated_frame_i == msg.Yes:
+                self, 'Go to last annotated frame?', txt, 
+                buttonsTexts=('Yes', 'Cancel')
+            )[0]
+            if goTo_last_annotated_frame_i == msg.clickedButton:
                 msg = 'Looking good!'
                 self.last_cca_frame_i = last_cca_frame_i
                 posData.frame_i = last_cca_frame_i
@@ -11915,17 +11917,20 @@ class guiWin(QMainWindow):
                 msg = 'Cell cycle analysis aborted.'
                 self.logger.info(msg)
                 self.titleLabel.setText(msg, color=self.titleColor)
-                self.modeComboBox.setCurrentText(currentMode)
+                self.modeComboBox.setCurrentText(defaultMode)
                 proceed = False
                 return
         elif posData.frame_i < last_cca_frame_i:
             # Prompt user to go to last annotated frame
             msg = widgets.myMessageBox()
+            txt = html_utils.paragraph(f"""
+                The <b>last annotated frame</b> is frame {last_cca_frame_i+1}.<br>'
+                Do you want to restart cell cycle analysis from frame
+                {last_cca_frame_i+1}?
+            """)
             goTo_last_annotated_frame_i = msg.question(
-                self, 'Go to last annotated frame?',
-                f'The last annotated frame is frame {last_cca_frame_i+1}.\n'
-                'Do you want to restart cell cycle analysis from frame '
-                f'{last_cca_frame_i+1}?', buttonsTexts=('Yes', 'No', 'Cancel')
+                self, 'Go to last annotated frame?', txt, 
+                buttonsTexts=('Yes', 'No', 'Cancel')
             )[0]
             if goTo_last_annotated_frame_i == msg.clickedButton:
                 msg = 'Looking good!'
@@ -11939,7 +11944,7 @@ class guiWin(QMainWindow):
                 msg = 'Cell cycle analysis aborted.'
                 self.logger.info(msg)
                 self.titleLabel.setText(msg, color=self.titleColor)
-                self.modeComboBox.setCurrentText(currentMode)
+                self.modeComboBox.setCurrentText(defaultMode)
                 proceed = False
                 return
         else:
@@ -13726,6 +13731,7 @@ class guiWin(QMainWindow):
         df = self.df_settings
         df.at['contLineWeight', 'value'] = 2
         df.at['mothBudLineWeight', 'value'] = 2
+        df.at['mothBudLineColor', 'value'] = (255,165,0)
         df.at['contLineColor', 'value'] = (205, 0, 0, 220)
         df.at['overlaySegmMasksAlpha', 'value'] = 0.3
         df.at['img_cmap', 'value'] = 'grey'
