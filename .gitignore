@@ -13,6 +13,7 @@ environment.yml
 requirements.txt
 conda_env_list_commands.txt
 
+tweets
 notebooks/testing.ipynb
 notebooks/test.ipynb
 notebooks/.ipynb_checkpoints
