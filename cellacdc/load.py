@@ -442,8 +442,11 @@ class loadData:
             elif load_acdc_df and is_acdc_df_file and not create_new_segm:
                 self.acdc_df_found = True
                 acdc_df = pd.read_csv(filePath)
-                acdc_df_drop_cca = acdc_df.drop(columns=cca_df_colnames).fillna(0)
-                acdc_df[acdc_df_drop_cca.columns] = acdc_df_drop_cca
+                try:
+                    acdc_df_drop_cca = acdc_df.drop(columns=cca_df_colnames).fillna(0)
+                    acdc_df[acdc_df_drop_cca.columns] = acdc_df_drop_cca
+                except KeyError:
+                    pass
                 acdc_df = acdc_df.set_index(['frame_i', 'Cell_ID'])
                 acdc_df = pd_bool_to_int(acdc_df, acdc_df_bool_cols, inplace=True)
                 acdc_df = pd_int_to_bool(acdc_df, acdc_df_bool_cols)

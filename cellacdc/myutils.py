@@ -564,10 +564,10 @@ def getBaseAcdcDf(rp):
     ).set_index('Cell_ID')
     return df
 
-def getBasenameAndChNames(images_path):
+def getBasenameAndChNames(images_path, useExt=None):
     _tempPosData = utilClass()
     _tempPosData.images_path = images_path
-    load.loadData.getBasenameAndChNames(_tempPosData)
+    load.loadData.getBasenameAndChNames(_tempPosData, useExt=useExt)
     return _tempPosData.basename, _tempPosData.chNames
 
 def getBasename(files):
