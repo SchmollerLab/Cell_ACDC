@@ -17,7 +17,8 @@ from PyQt5.QtCore import (
     pyqtSignal, QObject, QRunnable, QMutex, QWaitCondition
 )
 
-from . import load, myutils, core, measurements, gui
+from . import load, myutils, core
+from . import printl
 
 def worker_exception_handler(func):
     @wraps(func)
@@ -54,12 +55,13 @@ class signals(QObject):
     create_tqdm = pyqtSignal(int)
     innerProgressBar = pyqtSignal(int)
     sigPermissionError = pyqtSignal(str, object)
-    sigSelectSegmFiles = pyqtSignal(object)
+    sigSelectSegmFiles = pyqtSignal(object, object)
     sigSetMeasurements = pyqtSignal(object)
     sigInitAddMetrics = pyqtSignal(object)
     sigUpdatePbarDesc = pyqtSignal(str)
     sigComputeVolume = pyqtSignal(int, object)
     sigAskStopFrame = pyqtSignal(object)
+    sigWarnMismatchSegmDataShape = pyqtSignal(object)
 
 class segmVideoWorker(QObject):
     finished = pyqtSignal(float)
@@ -112,9 +114,15 @@ class calcMetricsWorker(QObject):
         self.waitCond = QWaitCondition()
         self.mainWin = mainWin
 
-    def getImgFilePath(images_path, chName):
-        for file in myutils.listdir(images_path):
-            pass
+    def emitSelectSegmFiles(self, exp_path, pos_foldernames):
+        self.mutex.lock()
+        self.signals.sigSelectSegmFiles.emit(exp_path, pos_foldernames)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        if self.abort:
+            return True
+        else:
+            return False
 
     @worker_exception_handler
     def run(self):
@@ -127,6 +135,13 @@ class calcMetricsWorker(QObject):
             self.allPosDataInputs = []
             posDatas = []
             self.logger.log('-'*30)
+            expFoldername = os.path.basename(exp_path)
+
+            abort = self.emitSelectSegmFiles(exp_path, pos_foldernames)
+            if abort:
+                self.signals.finished.emit(self)
+                return
+
             for p, pos in enumerate(pos_foldernames):
                 if self.abort:
                     self.signals.finished.emit(self)
@@ -134,12 +149,14 @@ class calcMetricsWorker(QObject):
 
                 self.logger.log(
                     f'Processing experiment n. {i+1}/{tot_exp}, '
-                    f'Position n. {p+1}/{tot_pos}'
+                    f'{pos} ({p+1}/{tot_pos})'
                 )
 
                 pos_path = os.path.join(exp_path, pos)
                 images_path = os.path.join(pos_path, 'Images')
-                basename, chNames = myutils.getBasenameAndChNames(images_path)
+                basename, chNames = myutils.getBasenameAndChNames(
+                    images_path, useExt=('.tif',)
+                )
 
                 self.signals.sigUpdatePbarDesc.emit(f'Loading {pos_path}...')
 
@@ -149,16 +166,7 @@ class calcMetricsWorker(QObject):
 
                 # Load data
                 posData = load.loadData(file_path, chName)
-                posData.getBasenameAndChNames()
-
-                if p == 0:
-                    self.mutex.lock()
-                    self.signals.sigSelectSegmFiles.emit(posData)
-                    self.waitCond.wait(self.mutex)
-                    self.mutex.unlock()
-                    if self.abort:
-                        self.signals.finished.emit(self)
-                        return
+                posData.getBasenameAndChNames(useExt=('.tif',))
 
                 posData.loadOtherFiles(
                     load_segm_data=False,
@@ -189,7 +197,7 @@ class calcMetricsWorker(QObject):
             else:
                 for p, posData in enumerate(posDatas):
                     self.allPosDataInputs[p]['stopFrameNum'] = 1
-
+            
             # Iterate pos and calculate metrics
             numPos = len(self.allPosDataInputs)
             for p, posDataInputs in enumerate(self.allPosDataInputs):
@@ -201,7 +209,7 @@ class calcMetricsWorker(QObject):
 
                 self.signals.sigUpdatePbarDesc.emit(f'Processing {posData.pos_path}')
 
-                posData.getBasenameAndChNames()
+                posData.getBasenameAndChNames(useExt=('.tif',))
                 posData.buildPaths()
                 posData.loadImgData()
 
@@ -217,9 +225,19 @@ class calcMetricsWorker(QObject):
                     load_metadata=True,
                     load_customAnnot=True,
                     load_customCombineMetrics=True,
-                    endFilenameSegm=self.mainWin.endFilenameSegm
+                    end_filename_segm=self.mainWin.endFilenameSegm
                 )
                 posData.labelSegmData()
+                if not posData.segmFound:
+                    relPath = (
+                        f'...{os.sep}{expFoldername}'
+                        f'{os.sep}{posData.pos_foldername}'
+                    )
+                    self.logger.log(
+                        f'Skipping "{relPath}" '
+                        f'because segm. file was not found.'
+                    )
+                    continue
 
                 if posData.SizeT > 1:
                     self.mainWin.gui.data = [None]*numPos
@@ -230,7 +248,7 @@ class calcMetricsWorker(QObject):
                 self.mainWin.gui.data[p] = posData
                 self.mainWin.gui.last_pos = numPos
 
-                self.mainWin.gui.isSegm3D = posData.isSegm3D()
+                self.mainWin.gui.isSegm3D = posData.getIsSegm3D()
 
                 # Allow single 2D/3D image
                 if posData.SizeT == 1:
@@ -240,7 +258,7 @@ class calcMetricsWorker(QObject):
                 self.logger.log(
                     'Loaded paths:\n'
                     f'Segmentation file name: {os.path.basename(posData.segm_npz_path)}\n'
-                    f'ACDC output file name {os.path.basename(posData.acdc_output_csv_path)}'
+                    f'ACDC output file name: {os.path.basename(posData.acdc_output_csv_path)}'
                 )
 
                 if p == 0:
@@ -329,7 +347,10 @@ class calcMetricsWorker(QObject):
                     if posData.acdc_df is None:
                         acdc_df = myutils.getBaseAcdcDf(rp)
                     else:
-                        acdc_df = posData.acdc_df.loc[frame_i].copy()
+                        try:
+                            acdc_df = posData.acdc_df.loc[frame_i].copy()
+                        except:
+                            acdc_df = myutils.getBaseAcdcDf(rp)
 
                     acdc_df = self.mainWin.gui.saveDataWorker.addMetrics_acdc_df(
                         acdc_df, rp, frame_i, lab, posData
@@ -340,8 +361,17 @@ class calcMetricsWorker(QObject):
 
                     self.signals.progressBar.emit(1)
 
-
                 if debugging:
+                    continue
+
+                if not acdc_df_li:
+                    print('-'*30)
+                    self.logger.log(
+                        'All selected positions in the experiment folder '
+                        f'{expFoldername} have EMPTY segmentation mask. '
+                        'Metrics will not be saved.'
+                    )
+                    print('-'*30)
                     continue
 
                 all_frames_acdc_df = pd.concat(
@@ -452,7 +482,7 @@ class loadDataWorker(QObject):
                 load_metadata=True,
                 load_customAnnot=True,
                 load_customCombineMetrics=True,
-                end_filename_segm=self.mainWin.endFilenameSegm,
+                end_filename_segm=self.mainWin.selectedSegmEndName,
                 create_new_segm=self.mainWin.isNewFile,
                 new_endname=self.mainWin.newSegmEndName,
                 labelBoolSegm=self.mainWin.labelBoolSegm

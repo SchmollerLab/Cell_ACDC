@@ -309,7 +309,7 @@ class saveDataWorker(QObject):
         self.mutex = mainWin.mutex
         self.waitCond = mainWin.waitCond
 
-    def addMetrics_acdc_df(self, df, rp, frame_i, lab, posData):
+    def addMetrics_acdc_df(self, df, rp, frame_i, lab, posData, tqdmProgress=False):
         """
         Function used to add metrics to the acdc_df.
 
@@ -368,7 +368,7 @@ class saveDataWorker(QObject):
             for chName in posData.loadedChNames
             for how in how_3Dto2D
         }
-
+        
         tot_iter = (
             self.mainWin.total_metrics
             *len(posData.loadedChNames)
@@ -377,8 +377,8 @@ class saveDataWorker(QObject):
         )
 
         # self.metricsPbarProgress.emit(tot_iter, 0)
-
-        # pbar = tqdm(total=tot_iter, ncols=100, unit='metric', leave=False)
+        if tqdmProgress:
+            pbar = tqdm(total=tot_iter, ncols=100, unit='metric')
 
         outCellsMask = lab==0
 
@@ -677,7 +677,8 @@ class saveDataWorker(QObject):
                                 val = func(fluo_data_ID)
                                 metrics_values[key][i] = val
 
-                        # pbar.update()
+                        if tqdmProgress:
+                            pbar.update()
                         # self.metricsPbarProgress.emit(-1, 1)
                     for custom_func_name, custom_func in custom_func_dict.items():
                         key = f'{chName}_{custom_func_name}{how}'
@@ -732,7 +733,8 @@ class saveDataWorker(QObject):
             df = df.drop(columns=df_custom_metrics.columns, errors='ignore')
             df = df.join(df_custom_metrics)
 
-        # pbar.close()
+        if tqdmProgress:
+            pbar.close()
 
         # Join with regionprops_table
         if self.mainWin.regionPropsToSave:
@@ -9498,37 +9500,61 @@ class guiWin(QMainWindow):
         posData = load.loadData(user_ch_file_paths[0], user_ch_name)
         posData.getBasenameAndChNames()
         posData.buildPaths()
-        if self.isNewFile:
-            segm_files = load.get_segm_files(posData.images_path)
-            existingEndnames = load.get_existing_endnames(
-                posData.basename, segm_files
+
+        # Get end name of every existing segmentation file
+        existingSegmEndNames = set()
+        for filePath in user_ch_file_paths:
+            _posData = load.loadData(filePath, user_ch_name)
+            _posData.getBasenameAndChNames()
+            segm_files = load.get_segm_files(_posData.images_path)
+            _existingEndnames = load.get_existing_segm_endnames(
+                _posData.basename, segm_files
             )
+            existingSegmEndNames.update(_existingEndnames)
+
+        selectedSegmEndName = ''
+        self.newSegmEndName = ''
+        if self.isNewFile:
+            # Remove the 'segm_' part to allow filenameDialog to check if
+            # a new file is existing (since we only ask for the part after
+            # 'segm_')
+            existingEndNames = [
+                n.replace('segm', '', 1).replace('_', '', 1)
+                for n in existingSegmEndNames
+            ]
             win = apps.filenameDialog(
                 basename=f'{posData.basename}segm',
                 hintText='Insert a <b>filename</b> for the segmentation file:<br>',
-                existingNames=existingEndnames
+                existingNames=existingEndNames
             )
             win.exec_()
             if win.cancel:
                 self.loadingDataAborted()
                 return
             self.newSegmEndName = win.entryText
+        else:
+            if len(existingSegmEndNames) > 1:
+                win = apps.QDialogMultiSegmNpz(
+                    existingSegmEndNames, self.exp_path, parent=self
+                )
+                win.exec_()
+                if win.cancel:
+                    self.loadingDataAborted()
+                    return
+
+                selectedSegmEndName = win.selectedItemText
+            elif len(existingSegmEndNames) == 1:
+                selectedSegmEndName = list(existingSegmEndNames)[0]
+        
         posData.loadImgData()
-        selectedSegmNpz, endFilenameSegm, cancel = posData.detectMultiSegmNpz(
-            askMultiSegmFunc=self.loadDataWorkerMultiSegm,
-            newEndFilenameSegm=self.newSegmEndName
-        )
-        if cancel:
-            self.loadingDataAborted()
-            return
         posData.loadOtherFiles(
             load_segm_data=True,
             load_metadata=True,
             create_new_segm=self.isNewFile,
             new_endname=self.newSegmEndName,
-            end_filename_segm=endFilenameSegm
+            end_filename_segm=selectedSegmEndName
         )
-        self.endFilenameSegm = endFilenameSegm
+        self.selectedSegmEndName = selectedSegmEndName
         self.labelBoolSegm = posData.labelBoolSegm
         posData.labelSegmData()
 

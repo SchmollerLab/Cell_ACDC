@@ -1,5 +1,19 @@
 import sys
 import os
+import inspect
+from datetime import datetime
+
+def printl(*objects, **kwargs):
+    timestap = datetime.now().strftime('%H:%M:%S')
+    currentframe = inspect.currentframe()
+    callingframe = inspect.getouterframes(currentframe)[1].frame
+    callingframe_info = inspect.getframeinfo(callingframe)
+    filpath = callingframe_info.filename
+    filename = os.path.basename(filpath)
+    print('*'*30)
+    print(f'{timestap} - File "{filename}", line {callingframe_info.lineno}:')
+    print(*objects, **kwargs)
+    print('='*30)
 
 cellacdc_path = os.path.dirname(os.path.abspath(__file__))
 temp_path = os.path.join(cellacdc_path, 'temp')

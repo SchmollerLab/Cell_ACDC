@@ -112,6 +112,17 @@ def get_existing_endnames(basename, segm_files):
         existing_endnames.append(endname)
     return existing_endnames
 
+def get_existing_segm_endnames(basename, segm_files):
+    existing_endnames = []
+    for f in segm_files:
+        filename, _ = os.path.splitext(f)
+        endname = filename[len(basename):]
+        # Remove the 'segm_' part
+        # endname = endname.replace('segm', '', 1).replace('_', '', 1)
+        # endname = endname.replace('_', '', 1)
+        existing_endnames.append(endname)
+    return existing_endnames
+
 def get_endname_from_channels(filename, channels):
     endname = None
     for ch in channels:
@@ -283,30 +294,6 @@ class loadData:
             img_data[i] = frame
         return img_data
 
-    def detectMultiSegmNpz(
-            self, multiPos=False, signals=None,
-            mutex=None, waitCond=None, askMultiSegmFunc=None,
-            newEndFilenameSegm=''
-        ):
-        if newEndFilenameSegm:
-            return '', newEndFilenameSegm, False
-
-        segm_files = get_segm_files(self.images_path)
-
-        if askMultiSegmFunc is None:
-            return segm_files
-        is_multi_npz = len(segm_files)>1
-        if is_multi_npz and askMultiSegmFunc is not None:
-            askMultiSegmFunc(segm_files, self, waitCond)
-            endFilename = self.selectedItemText[len(self.basename):]
-            return self.selectedItemText, endFilename, self.cancel
-        elif len(segm_files)==1:
-            segmFilename = segm_files[0]
-            endFilename = segmFilename[len(self.basename):]
-            return segm_files[0], endFilename, False
-        else:
-            return '', '', False
-
     def loadOtherFiles(
             self,
             load_segm_data=True,
@@ -342,38 +329,48 @@ class loadData:
         self.customAnnotFound = False if load_customAnnot else None
         self.combineMetricsFound = False if load_customCombineMetrics else None
         self.labelBoolSegm = labelBoolSegm
+        self.bkgrDataExists = False
         ls = myutils.listdir(self.images_path)
 
         linked_acdc_filename = None
         if end_filename_segm and load_acdc_df:
             # Check if there is an acdc_output file linked to selected .npz
             _acdc_df_end_fn = end_filename_segm.replace('segm', 'acdc_output')
-            _acdc_df_end_fn = _acdc_df_end_fn.replace('.npz', '.csv')
+            _acdc_df_end_fn = f'{_acdc_df_end_fn}.csv'
             self._acdc_df_end_fn = _acdc_df_end_fn
             _linked_acdc_fn = f'{self.basename}{_acdc_df_end_fn}'
-            for file in ls:
-                if file == _linked_acdc_fn:
-                    filePath = os.path.join(self.images_path, file)
-                    self.acdc_output_csv_path = filePath
-                    linked_acdc_filename = file
-                    break
-            else:
-                # acdc_output not found --> create a linked acdc_output
-                self.acdc_output_csv_path = os.path.join(
-                    self.images_path, _linked_acdc_fn
-                )
+            acdc_df_path = os.path.join(self.images_path, _linked_acdc_fn)
+            self.acdc_output_csv_path = acdc_df_path
+            linked_acdc_filename = _linked_acdc_fn
 
         for file in ls:
             filePath = os.path.join(self.images_path, file)
+            endName = file[len(self.basename):].split('.')[0]
 
-            if end_filename_segm:
+            loadMetadata = (
+                load_metadata and file.endswith('metadata.csv')
+                and not file.endswith('segm_metadata.csv')
+            )
+
+            if new_endname:
+                # Do not load any segmentation file since user asked for new one
+                # This is redundant since we alse have create_new_segm=True
+                # but we keep it for code readability
+                is_segm_file = False
+            elif end_filename_segm:
+                # Load the segmentation file selected by the user
                 self._segm_end_fn = end_filename_segm
-                is_segm_file = file.endswith(end_filename_segm)
+                is_segm_file = endName == end_filename_segm
             else:
+                # Load default segmentation file
                 is_segm_file = file.endswith('segm.npz')
 
             if linked_acdc_filename is not None:
                 is_acdc_df_file = file == linked_acdc_filename
+            elif end_filename_segm:
+                # Requested a specific file but it is not present
+                # do not load acdc_df file
+                is_acdc_df_file = False
             else:
                 is_acdc_df_file = file.endswith('acdc_output.csv')
 
@@ -393,9 +390,13 @@ class loadData:
                 self.TifPathFound = True
             elif load_acdc_df and is_acdc_df_file and not create_new_segm:
                 self.acdc_df_found = True
-                acdc_df = pd.read_csv(
-                    filePath, index_col=['frame_i', 'Cell_ID']
-                ).fillna(0)
+                acdc_df = pd.read_csv(filePath)
+                try:
+                    acdc_df_drop_cca = acdc_df.drop(columns=cca_df_colnames).fillna(0)
+                    acdc_df[acdc_df_drop_cca.columns] = acdc_df_drop_cca
+                except KeyError:
+                    pass
+                acdc_df = acdc_df.set_index(['frame_i', 'Cell_ID'])
                 acdc_df = pd_bool_to_int(acdc_df, acdc_df_bool_cols, inplace=True)
                 acdc_df = pd_int_to_bool(acdc_df, acdc_df_bool_cols)
                 self.acdc_df = acdc_df
@@ -411,9 +412,11 @@ class loadData:
             elif load_delROIsInfo and file.endswith('delROIsInfo.npz'):
                 self.delROIsInfoFound = True
                 self.delROIsInfo_npz = np.load(filePath)
-            elif loadBkgrData and file.endswith(f'{self.filename}_bkgrRoiData.npz'):
-                self.bkgrDataFound = True
-                self.bkgrData = np.load(filePath)
+            elif file.endswith(f'{self.filename}_bkgrRoiData.npz'):
+                self.bkgrDataExists = True
+                if loadBkgrData:
+                    self.bkgrDataFound = True
+                    self.bkgrData = np.load(filePath)
             elif loadBkgrROIs and file.endswith('dataPrep_bkgrROIs.json'):
                 self.bkgrROisFound = True
                 with open(filePath) as json_fp:
@@ -439,18 +442,18 @@ class loadData:
                     if 'value' in df.columns:
                         self.dataPrep_ROIcoordsFound = True
                         self.dataPrep_ROIcoords = df
-            elif (load_metadata and file.endswith('metadata.csv')
-                and not file.endswith('segm_metadata.csv')
-                ):
+            elif loadMetadata:
                 self.metadataFound = True
                 self.metadata_df = pd.read_csv(filePath).set_index('Description')
-                self.extractMetadata()
             elif load_customAnnot and file.endswith('custom_annot_params.json'):
                 self.customAnnotFound = True
                 self.customAnnot = read_json(filePath)
             elif load_customCombineMetrics and file.endswith('custom_combine_metrics.ini'):
                 self.combineMetricsFound = True
                 self.setCombineMetricsConfig(ini_path=filePath)
+
+        if self.metadataFound is not None and self.metadataFound:
+            self.extractMetadata()
 
         # Check if there is the old segm.npy
         if not self.segmFound and not create_new_segm:
@@ -660,20 +663,38 @@ class loadData:
                 key = name.replace('__', '', 1)
                 additionalMetadataValues[key] = value
         return additionalMetadataValues
+    
+    def getIsSegm3D(self):
+        if self.SizeZ == 1:
+            return False
+
+        if self.segmFound is None:
+            return
+
+        if not self.segmFound:
+            return
+
+        if self.SizeT > 1:
+            return self.segm_data.ndim == 4
+        else:
+            return self.segm_data.ndim == 3
 
     def setNotFoundData(self):
         if self.segmFound is not None and not self.segmFound:
             self.segm_data = None
             # Segmentation file not found and a specifc one was requested
+            # --> set the path
             if hasattr(self, '_segm_end_fn'):
                 if self.basename.endswith('_'):
                     basename = self.basename
                 else:
                     basename = f'{self.basename}_'
                 base_path = os.path.join(self.images_path, basename)
-                self.segm_npz_path = f'{base_path}{self._segm_end_fn}'
+                self.segm_npz_path = f'{base_path}{self._segm_end_fn}.npz'
         if self.acdc_df_found is not None and not self.acdc_df_found:
             self.acdc_df = None
+            # Set the file path for selected acdc_output.csv file
+            # since it was not found
             if hasattr(self, '_acdc_df_end_fn'):
                 if self.basename.endswith('_'):
                     basename = self.basename
@@ -689,6 +710,12 @@ class loadData:
             self.delROIsInfo_npz = None
         if self.bkgrDataFound is not None and not self.bkgrDataFound:
             self.bkgrData = None
+        if self.bkgrROisFound is not None and not self.bkgrROisFound:
+            # Do not load bkgrROIs if bkgrDataFound to avoid addMetrics to use it
+            self.bkgrROIs = []
+        if self.bkgrDataExists:
+            # Do not load bkgrROIs if bkgrDataFound to avoid addMetrics to use it
+            self.bkgrROIs = []
         if self.dataPrep_ROIcoordsFound is not None and not self.dataPrep_ROIcoordsFound:
             self.dataPrep_ROIcoords = None
         if self.last_tracked_i_found is not None and not self.last_tracked_i_found:
@@ -716,6 +743,8 @@ class loadData:
             self.SizeT, self.SizeZ = self.img_data.shape[:2]
         else:
             self.SizeT, self.SizeZ = 1, 1
+
+        self.SizeY, self.SizeX = self.img_data_shape[-2:]
 
         self.TimeIncrement = 1.0
         self.PhysicalSizeX = 1.0
@@ -751,7 +780,7 @@ class loadData:
             )
         if 'segmSizeT' in self.last_md_df.index:
             self.segmSizeT = int(self.last_md_df.at['segmSizeT', 'values'])
-
+    
     def addEquationCombineMetrics(self, equation, colName, isMixedChannels):
         section = 'mixed_channels_equations' if isMixedChannels else 'equations'
         self.combineMetricsConfig[section][colName] = equation

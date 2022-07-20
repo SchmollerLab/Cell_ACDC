@@ -31,6 +31,7 @@ try:
         dataPrep, segm, gui, dataStruct, utils, help, qrc_resources, myutils,
         cite_url, html_utils, widgets, apps
     )
+    from cellacdc import printl
     from cellacdc.help import about
     from cellacdc.utils import concat as utilsConcat
     from cellacdc.utils import convert as utilsConvert
@@ -409,7 +410,7 @@ class mainWin(QMainWindow):
             selectedExpPaths, self.app, parent=self
         )
         self.calcMeasWin.show()
-
+    
     def launchRenameUtil(self):
         isUtilnabled = self.sender().isEnabled()
         if isUtilnabled:

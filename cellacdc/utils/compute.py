@@ -13,7 +13,7 @@ from PyQt5.QtWidgets import (
 
 from .. import (
     widgets, apps, workers, html_utils, myutils,
-    gui, measurements,cca_functions
+    gui, measurements,cca_functions, load, printl
 )
 
 cellacdc_path = os.path.dirname(os.path.abspath(apps.__file__))
@@ -140,19 +140,34 @@ class computeMeasurmentsUtilWin(QDialog):
         msg.warning(self, 'Permission error', err_msg)
         self.worker.waitCond.wakeAll()
 
-    def selectSegmFileLoadData(self, posData):
-        segm_files = posData.detectMultiSegmNpz()
-        if len(segm_files)==1:
-            segmFilename = segm_files[0]
-            self.endFilenameSegm = segmFilename[len(posData.basename):]
+    def selectSegmFileLoadData(self, exp_path, pos_foldernames):
+        # Get end name of every existing segmentation file
+        existingSegmEndNames = set()
+        for p, pos in enumerate(pos_foldernames):
+            pos_path = os.path.join(exp_path, pos)
+            images_path = os.path.join(pos_path, 'Images')
+            basename, chNames = myutils.getBasenameAndChNames(images_path)
+            # Use first found channel, it doesn't matter for metrics
+            chName = chNames[0]
+            filePath = myutils.getChannelFilePath(images_path, chName)
+            _posData = load.loadData(filePath, chName)
+            _posData.getBasenameAndChNames()
+            segm_files = load.get_segm_files(_posData.images_path)
+            _existingEndnames = load.get_existing_segm_endnames(
+                _posData.basename, segm_files
+            )
+            existingSegmEndNames.update(_existingEndnames)
+
+        if len(existingSegmEndNames) == 1:
+            self.endFilenameSegm = list(existingSegmEndNames)[0]
             self.worker.waitCond.wakeAll()
             return
 
         win = apps.QDialogMultiSegmNpz(
-            segm_files, posData.images_path, parent=self
+            existingSegmEndNames, exp_path, parent=self
         )
         win.exec_()
-        self.endFilenameSegm = win.selectedItemText[len(posData.basename):]
+        self.endFilenameSegm = win.selectedItemText
         self.worker.abort = win.cancel
         self.worker.waitCond.wakeAll()
 
@@ -242,9 +257,15 @@ class computeMeasurmentsUtilWin(QDialog):
             self.progressWin.workerFinished = True
             self.progressWin.close()
         if worker.abort:
-            self.logger.info('Computing measurements ABORTED.')
+            txt = 'Computing measurements ABORTED.'
+            self.logger.info(txt)
+            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+            msg.warning(self, 'Process aborted', html_utils.paragraph(txt))
         else:
-            self.logger.info('Computing measurements completed.')
+            txt = 'Computing measurements completed.'
+            self.logger.info(txt)
+            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+            msg.information(self, 'Process completed', html_utils.paragraph(txt))
 
         self.worker = None
         self.progressWin = None
