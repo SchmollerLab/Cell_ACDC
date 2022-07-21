@@ -2707,9 +2707,9 @@ class guiWin(QMainWindow):
         self.graphLayout = pg.GraphicsLayoutWidget()
         if self.invertBwAction.isChecked():
             self.graphLayout.setBackground(graphLayoutBkgrColor)
-            self.titleColor = 'k'
+            self.titleColor = 'black'
         else:
-            self.titleColor = 'w'
+            self.titleColor = 'white'
 
         # Left plot
         self.ax1 = pg.PlotItem()
@@ -2800,11 +2800,6 @@ class guiWin(QMainWindow):
             self.ax2_textColor = (r, g, b)
         else:
             self.ax2_textColor = (255, 0, 0)
-
-        # # Blank image
-        # self.blank = np.zeros((256,256), np.uint8)
-        # if self.invertBwAction.isChecked():
-        #     self.blank = self.blank + graphLayoutBkgrColor[0]
 
         # Left image
         self.img1 = pg.ImageItem()
@@ -4604,12 +4599,16 @@ class guiWin(QMainWindow):
                 [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
             )
 
-    def gui_gradientContextMenuEvent(self, event):      
-        posData = self.data[self.pos_i]
+    def gui_gradientContextMenuEvent(self, event):
         if self.overlayButton.isChecked():
-            for action in posData.fluoDataChNameActions:
+            for action in self.currentLutItem.selectChannelsActions:
+                action.setVisible(True)
+            for action in self.fluoDataChNameActions:
                 self.currentLutItem.gradient.menu.removeAction(action)
                 self.currentLutItem.gradient.menu.addAction(action)
+        else:
+            for action in self.currentLutItem.selectChannelsActions:
+                action.setVisible(False)
         try:
             # Convert QPointF to QPoint
             self.currentLutItem.gradient.menu.popup(event.screenPos().toPoint())
@@ -6161,10 +6160,7 @@ class guiWin(QMainWindow):
                 y1, x1 = self.autoCont_y0, self.autoCont_x0
                 yy, xx = self.get_dir_coords(alfa_dir, y1, x1, edge.shape)
                 a_dir = edge[yy, xx]
-                if self.invertBwAction.isChecked() and self.imgCmapName == 'grey':
-                    min_int = np.min(a_dir) # if int_val > ta else np.min(a_dir)
-                else:
-                    min_int = np.max(a_dir)
+                min_int = np.max(a_dir)
                 min_i = list(a_dir).index(min_int)
                 y, x = yy[min_i], xx[min_i]
                 try:
@@ -7205,6 +7201,15 @@ class guiWin(QMainWindow):
         self.imgGrad.setInvertedColorMaps(checked)
         self.imgGrad.invertCurrentColormap()
 
+        for items in self.overlayLayersItems.values():
+            lutItem = items[1]
+            lutItem.invertBwAction.toggled.disconnect()
+            lutItem.invertBwAction.setChecked(checked)
+            lutItem.invertBwAction.toggled.connect(self.setCheckedInvertBW)
+            lutItem.setInvertedColorMaps(checked)
+            rgb = self.overlayColorButton.color().getRgb()[:3]
+            lutItem.initColormapOverlayLayerItem(rgb, lutItem)
+
         if self.slideshowWin is not None:
             self.slideshowWin.is_bw_inverted = checked
             self.slideshowWin.update_img()
@@ -7220,7 +7225,7 @@ class guiWin(QMainWindow):
             self.ax1_G1cellColor = [255-v for v in self.ax1_G1cellColor[:3]]
             self.ax1_G1cellColor.append(178)
             self.ax1_S_oldCellColor = [255-v for v in self.ax1_S_oldCellColor]
-            self.titleColor = 'k'    
+            self.titleColor = 'black'    
         else:
             # Dark mode
             self.equalizeHistPushButton.setStyleSheet(
@@ -7233,7 +7238,9 @@ class guiWin(QMainWindow):
             self.ax1_G1cellColor = [255-v for v in self.ax1_G1cellColor[:3]]
             self.ax1_G1cellColor.append(178)
             self.ax1_S_oldCellColor = [255-v for v in self.ax1_S_oldCellColor]
-            self.titleColor = 'w'
+            self.titleColor = 'white'
+        
+        self.updateALLimg()
 
     def saveNormAction(self, action):
         how = action.text()
@@ -8153,6 +8160,7 @@ class guiWin(QMainWindow):
     @myutils.exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
+            print(self.ax1_oldIDcolor)
             # lutItem = self.
             # printl(lutItem.gradient.listTicks())
             # gradient = colors.get_pg_gradient(((0,0,0,0), (255,255,0,255)))
@@ -10149,17 +10157,20 @@ class guiWin(QMainWindow):
         self.guiTabControl.addChannels([posData.user_ch_name])
         self.showPropsDockButton.setDisabled(False)
 
+        self.createUserChannelNameAction()
+
         self.init_segmInfo_df()
         self.connectScrollbars()
         self.initPosAttr()
         self.initFluoData()
+        self.createChannelNamesActions()
+        self.addSelectChannelsToGradientMenu(self.imgGrad)
+
         self.navigateScrollBar.setSliderPosition(posData.frame_i+1)
         if posData.SizeZ > 1:
             idx = (posData.filename, posData.frame_i)
             how = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
             self.zProjComboBox.setCurrentText(how)
-
-        self.create_chNamesQActionGroup(self.user_ch_name)
 
         # Connect events at the end of loading data process
         self.gui_connectGraphicsEvents()
@@ -10207,6 +10218,7 @@ class guiWin(QMainWindow):
             'Data successfully loaded.',
             color=self.titleColor
         )
+
 
         QTimer.singleShot(200, self.autoRange)
     
@@ -10703,7 +10715,7 @@ class guiWin(QMainWindow):
             action.setCheckable(True)
             self.chNamesQActionGroup.addAction(action)
             action.setChecked(True)
-            posData.fluoDataChNameActions.append(action)
+            self.fluoDataChNameActions.append(action)
 
     def computeSegm(self):
         posData = self.data[self.pos_i]
@@ -10746,6 +10758,8 @@ class guiWin(QMainWindow):
         self.setOverlayColors()
 
         self.initImgCmap()
+
+        self.fluoDataChNameActions = []
 
         self.splineHoverON = False
         self.rulerHoverON = False
@@ -10814,7 +10828,6 @@ class guiWin(QMainWindow):
             posData.curvPlotItems = []
             posData.curvAnchorsItems = []
             posData.curvHoverItems = []
-            posData.fluoDataChNameActions = []
             posData.manualContrastKey = posData.filename
 
             posData.HDDmaxID = np.max(posData.segm_data)
@@ -12553,7 +12566,7 @@ class guiWin(QMainWindow):
                     return False
 
         lastChannelName = ol_channels[-1]
-        for action in posData.fluoDataChNameActions:
+        for action in self.fluoDataChNameActions:
             if action.text() == lastChannelName:
                 action.setChecked(True)
 
@@ -12612,15 +12625,12 @@ class guiWin(QMainWindow):
             self.overlayColorButton.setColor(rgb)
             
             self.setCheckedOverlayContextMenusAction()
-
-            self.setOverlayItemsVisible(self.imgGrad.checkedChannelname, True)
+            topLayerChannelName = list(self.overlayLayersItems.keys())[0]
+            self.setOverlayItemsVisible(topLayerChannelName, True)
 
             self.updateALLimg()
             self.enableOverlayWidgets(True)
         else:
-            for action in posData.fluoDataChNameActions:
-                self.imgGrad.gradient.menu.removeAction(action)
-            self.create_chNamesQActionGroup(self.user_ch_name)
             self.updateALLimg()
             self.enableOverlayWidgets(False)
             self.setOverlayItemsVisible('', False)
@@ -12653,15 +12663,14 @@ class guiWin(QMainWindow):
         self.overlay_cb(True)
 
     def setCheckedOverlayContextMenusAction(self):
-        posData = self.data[self.pos_i]
         self.userChNameAction.setChecked(False)
-        for action in posData.fluoDataChNameActions:
+        for action in self.fluoDataChNameActions:
             action.setChecked(False)
         checkedActionText = self.imgGrad.checkedChannelname
         if self.userChNameAction.text() == checkedActionText:
             self.userChNameAction.setChecked(True)
         else:
-            for action in posData.fluoDataChNameActions:
+            for action in self.fluoDataChNameActions:
                 if action.text() == checkedActionText:
                     action.setChecked(True)
                     break
@@ -12754,6 +12763,9 @@ class guiWin(QMainWindow):
         self.df_settings.at['contLineColor', 'value'] = str(color)
         self.gui_createContourPens()
         self.updateALLimg()
+        for items in self.overlayLayersItems.values():
+            lutItem = items[0]
+            lutItem.contoursColorButton.setColor(color)
 
     def saveContColour(self, colorButton):
         self.df_settings.to_csv(self.settings_csv_path)
@@ -12762,6 +12774,9 @@ class guiWin(QMainWindow):
         color = colorButton.color().getRgb()
         self.df_settings.at['mothBudLineColor', 'value'] = str(color)
         self.gui_createMothBudLinePens()
+        for items in self.overlayLayersItems.values():
+            lutItem = items[0]
+            lutItem.mothBudLineColorButton.setColor(color)
         self.updateALLimg()
 
     def saveMothBudLineColour(self, colorButton):
@@ -13179,8 +13194,6 @@ class guiWin(QMainWindow):
         if self.imgCmapName != 'grey':
             # Do not invert bw for non grey cmaps
             return cells_img
-        if self.invertBwAction.isChecked() and invert:
-            cells_img = -cells_img+cells_img.max()
         return cells_img
 
     def setImageImg2(self, updateLookuptable=True, set_image=True):
@@ -13758,7 +13771,6 @@ class guiWin(QMainWindow):
         self.df_settings.at['overlaySegmMasksAlpha', 'value'] = value
         self.df_settings.to_csv(self.settings_csv_path)
         self.labelsLayerImg1.setOpacity(value)
-        self.updateALLimg()
 
     def getImageWithCmap(self, img=None):
         if img is None:
@@ -13813,7 +13825,6 @@ class guiWin(QMainWindow):
                     img = filteredData
                 if posData.SizeZ > 1:
                     self.updateZsliceScrollbar(posData.frame_i)
-                img = self.getImageWithCmap(img=img)
         else:
             img = image
 
@@ -14075,7 +14086,7 @@ class guiWin(QMainWindow):
             warn_txt = 'Looking good'
             color = 'w'
             htmlTxt = (
-                f'<font color="white">{warn_txt}</font>'
+                f'<font color="{self.titleColor}">{warn_txt}</font>'
             )
         self.titleLabel.setText(htmlTxt)
 
@@ -14256,7 +14267,7 @@ class guiWin(QMainWindow):
             pass
         try:
             posData = self.data[self.pos_i]
-            for action in posData.fluoDataChNameActions:
+            for action in self.fluoDataChNameActions:
                 self.chNamesQActionGroup.removeAction(action)
         except Exception as e:
             pass
@@ -14264,16 +14275,18 @@ class guiWin(QMainWindow):
             self.overlayButton.setChecked(False)
         except Exception as e:
             pass
-
-    def create_chNamesQActionGroup(self, user_ch_name):
-        # LUT histogram channel name context menu actions
-        self.chNamesQActionGroup = QActionGroup(self)
+    
+    def createUserChannelNameAction(self):
         self.userChNameAction = QAction(self)
         self.userChNameAction.setCheckable(True)
-        self.userChNameAction.setText(user_ch_name)
+        self.userChNameAction.setText(self.user_ch_name)
+
+    def createChannelNamesActions(self):
+        # LUT histogram channel name context menu actions
+        self.chNamesQActionGroup = QActionGroup(self) 
         self.chNamesQActionGroup.addAction(self.userChNameAction)
         posData = self.data[self.pos_i]
-        for action in posData.fluoDataChNameActions:
+        for action in self.fluoDataChNameActions:
             self.chNamesQActionGroup.addAction(action)       
             action.setChecked(False)
         self.userChNameAction.setChecked(True)
@@ -14285,6 +14298,10 @@ class guiWin(QMainWindow):
 
     def chNameGradientActionClicked(self, action):
         self.imgGrad.checkedChannelname = action.text()
+        if action.text() == self.user_ch_name:
+            self.setOverlayItemsVisible('', False)
+        else:
+            self.setOverlayItemsVisible(action.text(), True)
 
     def restoreDefaultColors(self):
         try:
@@ -14858,6 +14875,14 @@ class guiWin(QMainWindow):
         ])
         return True
     
+    def addSelectChannelsToGradientMenu(self, lutItem):
+        separator = lutItem.gradient.menu.addSeparator()
+        section = lutItem.gradient.menu.addSection('Select channel: ')
+        lutItem.gradient.menu.addAction(self.userChNameAction)
+        lutItem.selectChannelsActions = [separator, section, self.userChNameAction]
+        for action in lutItem.selectChannelsActions:
+            action.setVisible(False)
+    
     def getOverlayItems(self, channelName):
         imageItem = pg.ImageItem()
         lutItem = widgets.myHistogramLUTitem()
@@ -14871,6 +14896,23 @@ class guiWin(QMainWindow):
         lutItem.initColor = initColor
         lutItem.hide()
 
+        lutItem.invertBwAction.toggled.connect(self.setCheckedInvertBW)
+        lutItem.fontSizeMenu.aboutToShow.connect(self.showFontSizeMenu)
+
+        lutItem.contoursColorButton.disconnect() 
+        lutItem.contoursColorButton.clicked.connect(
+            self.imgGrad.contoursColorButton.click
+        )
+        for act in lutItem.contLineWightActionGroup.actions():
+            act.toggled.connect(self.contLineWeightToggled)
+        
+        lutItem.mothBudLineColorButton.disconnect() 
+        lutItem.mothBudLineColorButton.clicked.connect(
+            self.imgGrad.mothBudLineColorButton.click
+        )
+        for act in lutItem.mothBudLineWightActionGroup.actions():
+            act.toggled.connect(self.mothBudLineWeightToggled)
+
         lutItem.overlayColorButton.disconnect()     
         lutItem.overlayColorButton.clicked.connect(
             self.editOverlayColorAction.trigger
@@ -14881,10 +14923,14 @@ class guiWin(QMainWindow):
             self.editTextIDsColorAction.trigger
         )
 
-        # Select channels section
-        lutItem.gradient.menu.addSeparator()
-        lutItem.gradient.menu.addSection('Select channel: ')
-        lutItem.gradient.menu.addAction(self.userChNameAction)
+        lutItem.defaultSettingsAction.triggered.connect(
+            self.restoreDefaultSettings
+        )
+        lutItem.labelsAlphaSlider.valueChanged.connect(
+            self.setValueLabelsAlphaSlider
+        )
+
+        self.addSelectChannelsToGradientMenu(lutItem)
 
         alphaScrollBar = QScrollBar(Qt.Horizontal)
         label = QLabel(f'Overlay alpha {channelName}')
@@ -14920,6 +14966,10 @@ class guiWin(QMainWindow):
 
         return imageItem, lutItem, alphaScrollBar
     
+    def setValueLabelsAlphaSlider(self, value):
+        self.imgGrad.labelsAlphaSlider.setValue(value)
+        self.updateLabelsAlpha(value)
+    
     def setOverlayItemsVisible(self, channelName, visible):
         if visible:
             self.imgGrad.hide()
@@ -14935,7 +14985,7 @@ class guiWin(QMainWindow):
                     try:
                         self.graphLayout.removeItem(lutItem)
                     except Exception as e:
-                        printl(channelName, self.imgGrad.checkedChannelname)
+                        pass
             
             _, lutItem, alphaSB = itemsToShow
             lutItem.show()
@@ -14949,7 +14999,10 @@ class guiWin(QMainWindow):
                 lutItem.hide()
                 alphaSB.hide()
                 alphaSB.label.hide()
-                self.graphLayout.removeItem(lutItem)
+                try:
+                    self.graphLayout.removeItem(lutItem)
+                except Exception as e:
+                    pass
             self.graphLayout.addItem(self.imgGrad, row=1, col=0)
             self.imgGrad.show()
             self.currentLutItem = self.imgGrad
@@ -14958,7 +15011,7 @@ class guiWin(QMainWindow):
         if self.invertBwAction.isChecked():
             bkgrColor = (255,255,255,255)
         else:
-            bkgrColor = (0,0,0,0)
+            bkgrColor = (0,0,0,255)
         gradient = colors.get_pg_gradient((bkgrColor, foregrColor))
         lutItem.setGradient(gradient)
     

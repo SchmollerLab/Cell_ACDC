@@ -1325,7 +1325,6 @@ class createDataStructWin(QMainWindow):
             files = [win.selectedItemText]
 
     def attemptSeparateMultiChannel(self, rawFilenames):
-
         self.chNames = set()
         self.posNums = set()
         stripped_filenames = []

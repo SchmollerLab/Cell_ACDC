@@ -1694,6 +1694,7 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
         self.gradient.colorDialog.accepted.connect(self.tickColorAccepted)
 
         self.isInverted = False
+        self.lastGradientName = 'grey'
         self.lastGradient = Gradients['grey']
 
         for action in self.gradient.menu.actions():
@@ -1862,7 +1863,19 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
     
     def tickColorAccepted(self):
         self.gradient.currentColorAccepted()
-        self.sigTickColorAccepted.emit(self.gradient.colorDialog.color().getRgb())
+        # self.sigTickColorAccepted.emit(self.gradient.colorDialog.color().getRgb())
+    
+    def invertGradient(self, gradient):
+        ticks = gradient['ticks']
+        sortedTicks = self.sortTicks(ticks)
+        invertedColors = [
+            (t[0], ti[1]) 
+            for t, ti in zip(sortedTicks, sortedTicks[::-1])
+        ]
+        invertedGradient = {}
+        invertedGradient['ticks'] = invertedColors
+        invertedGradient['mode'] = gradient['mode']
+        return invertedGradient
     
     def getInvertedGradients(self):
         invertedGradients = {}
@@ -1952,11 +1965,12 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
         self.gradient.restoreState(gradient)
         self.lastGradient = gradient
     
-    def invertCurrentColormap(self):
-        self.setGradient(self.lastGradient)
+    def invertCurrentColormap(self, debug=False):
+        self.setGradient(self.invertGradient(self.lastGradient))
     
     def colormapClicked(self, checked=False, name=None):
         name = self.sender().name
+        self.lastGradientName = name
         if self.isInverted:
             self.setGradient(self.invertedGradients[name])
         else:
