@@ -8160,7 +8160,7 @@ class guiWin(QMainWindow):
     @myutils.exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
-            print(self.ax1_oldIDcolor)
+            printl(self.getChNamesOverlayImages())
             # lutItem = self.
             # printl(lutItem.gradient.listTicks())
             # gradient = colors.get_pg_gradient(((0,0,0,0), (255,255,0,255)))
@@ -12623,10 +12623,8 @@ class guiWin(QMainWindow):
             rgb = self.df_settings.at['overlayColor', 'value']
             rgb = [int(v) for v in rgb.split('-')]
             self.overlayColorButton.setColor(rgb)
-            
-            self.setCheckedOverlayContextMenusAction()
-            topLayerChannelName = list(self.overlayLayersItems.keys())[0]
-            self.setOverlayItemsVisible(topLayerChannelName, True)
+                    
+            self.setOverlayItemsVisible(self.imgGrad.checkedChannelname, True)
 
             self.updateALLimg()
             self.enableOverlayWidgets(True)
@@ -12930,6 +12928,13 @@ class guiWin(QMainWindow):
             return obj_slice[1:3]
         else:
             return obj_slice
+        
+    def getChNamesOverlayImages(self):
+        olChNames = []
+        for action in self.overlayContextMenu.actions():
+            if action.isChecked():
+                olChNames.append(action.text())
+        return olChNames
     
     def setOverlayImages(self, frame_i=None):
         posData = self.data[self.pos_i]
@@ -14139,8 +14144,6 @@ class guiWin(QMainWindow):
             # Disable tracking for already visited frames
             trackingDisabled = self.checkTrackingEnabled()
 
-            printl(posData.frame_i, f'trackingDisabled: {trackingDisabled}')
-
             """
             Track only frames that were NEVER visited or the user
             specifically requested to track:
@@ -14289,10 +14292,12 @@ class guiWin(QMainWindow):
         for action in self.fluoDataChNameActions:
             self.chNamesQActionGroup.addAction(action)       
             action.setChecked(False)
+        
         self.userChNameAction.setChecked(True)
         self.chNamesQActionGroup.triggered.connect(
             self.chNameGradientActionClicked
         )
+
         for action in self.overlayContextMenu.actions():
             action.setChecked(False)
 
@@ -14973,7 +14978,8 @@ class guiWin(QMainWindow):
     def setOverlayItemsVisible(self, channelName, visible):
         if visible:
             self.imgGrad.hide()
-            self.graphLayout.removeItem(self.imgGrad) 
+            self.graphLayout.removeItem(self.imgGrad)
+            itemsToShow = None
             for name, items in self.overlayLayersItems.items():
                 _, lutItem, alphaSB = items
                 if name == channelName:
@@ -14987,12 +14993,17 @@ class guiWin(QMainWindow):
                     except Exception as e:
                         pass
             
-            _, lutItem, alphaSB = itemsToShow
-            lutItem.show()
-            alphaSB.show()
-            alphaSB.label.show()
-            self.currentLutItem = lutItem
-            self.graphLayout.addItem(lutItem, row=1, col=0)
+            if itemsToShow is None:
+                self.graphLayout.addItem(self.imgGrad, row=1, col=0)
+                self.imgGrad.show()
+                self.currentLutItem = self.imgGrad
+            else:
+                _, lutItem, alphaSB = itemsToShow
+                lutItem.show()
+                alphaSB.show()
+                alphaSB.label.show()
+                self.currentLutItem = lutItem
+                self.graphLayout.addItem(lutItem, row=1, col=0)
         else:
             for name, items in self.overlayLayersItems.items():
                 _, lutItem, alphaSB = items
