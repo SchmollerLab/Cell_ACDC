@@ -1410,20 +1410,7 @@ class guiWin(QMainWindow):
         # Font size
         self.fontSize = self.df_settings.at['fontSize', 'value']
         self.fontSizeMenu = editMenu.addMenu("Font size")
-        fontActionGroup = QActionGroup(self)
-        fontActionGroup.setExclusionPolicy(
-            QActionGroup.ExclusionPolicy.Exclusive
-        )
-        fs = int(re.findall(r'(\d+)pt', self.fontSize)[0])
-        for i in range(0,25):
-            action = QAction(self)
-            action.setText(f'{i}')
-            action.setCheckable(True)
-            if i == fs:
-                action.setChecked(True)
-                self.fontSizeAction = action
-            fontActionGroup.addAction(action)
-            action = self.fontSizeMenu.addAction(action)
+
         editMenu.addAction(self.editTextIDsColorAction)
         editMenu.addAction(self.editOverlayColorAction)
         editMenu.addAction(self.manuallyEditCcaAction)
@@ -2390,7 +2377,7 @@ class guiWin(QMainWindow):
         self.loadFluoAction.setEnabled(True)
         self.isEditActionsConnected = True
 
-        self.fontSizeMenu.triggered.connect(self.changeFontSize)
+        self.fontSizeMenu.aboutToShow.connect(self.showFontSizeMenu)
         self.prevAction.triggered.connect(self.prev_cb)
         self.nextAction.triggered.connect(self.next_cb)
         self.overlayButton.toggled.connect(self.overlay_cb)
@@ -2461,7 +2448,7 @@ class guiWin(QMainWindow):
         self.labelsGrad.textColorButton.sigColorChanged.connect(
             self.saveTextLabelsColor
         )
-        self.labelsGrad.editFontSizeAction.triggered.connect(self.editFontSize)
+        self.labelsGrad.fontSizeMenu.aboutToShow.connect(self.showFontSizeMenu)
 
         self.labelsGrad.shuffleCmapAction.triggered.connect(self.shuffle_cmap)
         self.shuffleCmapAction.triggered.connect(self.shuffle_cmap)
@@ -2471,6 +2458,7 @@ class guiWin(QMainWindow):
             self.restoreDefaultSettings
         )
 
+        self.imgGrad.fontSizeMenu.aboutToShow.connect(self.showFontSizeMenu)
         self.imgGrad.invertBwAction.toggled.connect(self.setCheckedInvertBW)
         self.imgGrad.textColorButton.disconnect()
         self.imgGrad.textColorButton.clicked.connect(
@@ -7260,12 +7248,27 @@ class guiWin(QMainWindow):
                 action.setChecked(True)
                 break
 
-    def editFontSize(self):
-        self.fontSizeMenu.popup(QCursor.pos())
+    def showFontSizeMenu(self):
+        menu = self.sender()
+        menu.clear()
+        fontActionGroup = QActionGroup(self)
+        fontActionGroup.setExclusionPolicy(
+            QActionGroup.ExclusionPolicy.Exclusive
+        )
+        fs = int(re.findall(r'(\d+)pt', self.fontSize)[0])
+        for i in range(0,25):
+            action = QAction(self)
+            action.setText(f'{i}')
+            action.setCheckable(True)
+            if i == fs:
+                action.setChecked(True)
+            fontActionGroup.addAction(action)
+            menu.addAction(action)
+            action.triggered.connect(self.changeFontSize)
 
     @myutils.exception_handler
-    def changeFontSize(self, action):
-        self.fontSize = f'{action.text()}pt'
+    def changeFontSize(self):
+        self.fontSize = f'{self.sender().text()}pt'
         self.df_settings.at['fontSize', 'value'] = self.fontSize
         self.df_settings.to_csv(self.settings_csv_path)
         LIs = zip(self.ax1_LabelItemsIDs, self.ax2_LabelItemsIDs)
@@ -10176,7 +10179,6 @@ class guiWin(QMainWindow):
         else:
             self.labBottomGroupbox.hide()
         self.updateScrollbars()
-        self.fontSizeAction.setChecked(True)
         self.openAction.setEnabled(True)
         self.editTextIDsColorAction.setDisabled(False)
         self.imgPropertiesAction.setEnabled(True)
@@ -14282,7 +14284,6 @@ class guiWin(QMainWindow):
             action.setChecked(False)
 
     def chNameGradientActionClicked(self, action):
-        printl(action.text())
         self.imgGrad.checkedChannelname = action.text()
 
     def restoreDefaultColors(self):
@@ -14869,10 +14870,12 @@ class guiWin(QMainWindow):
         lutItem.addOverlayColorButton(initColor)
         lutItem.initColor = initColor
         lutItem.hide()
-        lutItem.overlayColorButton.disconnect()
+
+        lutItem.overlayColorButton.disconnect()     
         lutItem.overlayColorButton.clicked.connect(
             self.editOverlayColorAction.trigger
         )
+
         lutItem.textColorButton.disconnect()
         lutItem.textColorButton.clicked.connect(
             self.editTextIDsColorAction.trigger

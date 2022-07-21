@@ -13,7 +13,7 @@ from PyQt5.QtCore import (
     pyqtSignal, QTimer, Qt, QPoint, pyqtSlot, pyqtProperty,
     QPropertyAnimation, QEasingCurve, QSequentialAnimationGroup,
     QSize, QRectF, QPointF, QRect, QPoint, QEasingCurve, QRegExp,
-    QEvent, QEventLoop, QPropertyAnimation
+    QEvent, QEventLoop, QPropertyAnimation, QObject
 )
 from PyQt5.QtGui import (
     QFont, QPalette, QColor, QPen, QPaintEvent, QBrush, QPainter,
@@ -277,6 +277,16 @@ class listWidget(QListWidget):
                 show-decoration-selected: 1;
             }
         """)
+
+class FilterObject(QObject):
+    sigFilteredEvent = pyqtSignal(object, object)
+
+    def __init__(self) -> None:
+        super().__init__()
+    
+    def eventFilter(self, object, event):
+        self.sigFilteredEvent.emit(object, event)
+        return super().eventFilter(object, event)
 
 class readOnlyQList(QTextEdit):
     def __init__(self, parent=None):
@@ -859,7 +869,7 @@ class rightClickToolButton(QToolButton):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            QToolButton.mousePressEvent(self, event)
+            super().mousePressEvent(event)
         elif event.button() == Qt.MouseButton.RightButton:
             self.sigRightClick.emit(event)
 
@@ -1700,6 +1710,10 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
         self.gradient.menu.addAction(self.invertBwAction)
         self.gradient.menu.addSeparator()
 
+        # Font size menu action
+        self.fontSizeMenu =  QMenu('Text font size')
+        self.gradient.menu.addMenu(self.fontSizeMenu) 
+
         # Text color button
         hbox = QHBoxLayout()
         hbox.addWidget(QLabel('Text color: '))
@@ -1708,20 +1722,9 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
         hbox.addWidget(self.textColorButton)
         widget = QWidget()
         widget.setLayout(hbox)
-        act = QWidgetAction(self)
+        act = highlightableQWidgetAction(self)
         act.setDefaultWidget(widget)
-        self.gradient.menu.addAction(act)
-
-        # Contours color button
-        hbox = QHBoxLayout()
-        hbox.addWidget(QLabel('Contours color: '))
-        self.contoursColorButton = myColorButton(color=(25,25,25))
-        hbox.addStretch(1)
-        hbox.addWidget(self.contoursColorButton)
-        widget = QWidget()
-        widget.setLayout(hbox)
-        act = QWidgetAction(self)
-        act.setDefaultWidget(widget)
+        act.triggered.connect(self.textColorButton.click)
         self.gradient.menu.addAction(act)
 
         # Contours line weight
@@ -1740,16 +1743,17 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
             action = contLineWeightMenu.addAction(action)
         self.gradient.menu.addMenu(contLineWeightMenu)
 
-        # Mother-bud line color
+        # Contours color button
         hbox = QHBoxLayout()
-        hbox.addWidget(QLabel('Mother-bud line color: '))
-        self.mothBudLineColorButton = myColorButton(color=(255,0,0))
+        hbox.addWidget(QLabel('Contours color: '))
+        self.contoursColorButton = myColorButton(color=(25,25,25))
         hbox.addStretch(1)
-        hbox.addWidget(self.mothBudLineColorButton)
+        hbox.addWidget(self.contoursColorButton)
         widget = QWidget()
         widget.setLayout(hbox)
-        act = QWidgetAction(self)
+        act = highlightableQWidgetAction(self)
         act.setDefaultWidget(widget)
+        act.triggered.connect(self.contoursColorButton.click)
         self.gradient.menu.addAction(act)
 
         # Mother-bud line weight
@@ -1767,6 +1771,20 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
             self.mothBudLineWightActionGroup.addAction(action)
             action = mothBudLineWeightMenu.addAction(action)
         self.gradient.menu.addMenu(mothBudLineWeightMenu)
+
+        # Mother-bud line color
+        hbox = QHBoxLayout()
+        hbox.addWidget(QLabel('Mother-bud line color: '))
+        self.mothBudLineColorButton = myColorButton(color=(255,0,0))
+        hbox.addStretch(1)
+        hbox.addWidget(self.mothBudLineColorButton)
+        widget = QWidget()
+        widget.setLayout(hbox)
+        act = highlightableQWidgetAction(self)
+        act.setDefaultWidget(widget)
+        act.triggered.connect(self.mothBudLineColorButton.click)
+        self.gradient.menu.addAction(act)
+
 
         self.labelsAlphaMenu = self.gradient.menu.addMenu(
             'Segm. masks overlay alpha...'
@@ -1799,6 +1817,34 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
 
         # Set inverted gradients for invert bw action
         self.addInvertedColorMaps()
+
+        self.filterObject = FilterObject()
+        self.filterObject.sigFilteredEvent.connect(self.gradientMenuEventFilter)
+        self.gradient.menu.installEventFilter(self.filterObject)
+        self.highlightedAction = None
+        self.lastHoveredAction = None
+    
+    def gradientMenuEventFilter(self, object, event):
+        if event.type() == QEvent.Type.MouseMove:
+            hoveredAction = self.gradient.menu.actionAt(event.pos())
+            isActionEntered = (
+                hoveredAction != self.lastHoveredAction
+            )
+            if isActionEntered:
+                if isinstance(hoveredAction, highlightableQWidgetAction):
+                    # print('Entered a custom action')
+                    pass
+                isActionLeft = (
+                    self.highlightedAction is not None
+                    and self.highlightedAction != hoveredAction
+                ) 
+                if isActionLeft:
+                    if isinstance(self.highlightedAction, highlightableQWidgetAction):
+                        # print('Left a custom action')
+                        pass
+                self.highlightedAction = hoveredAction
+
+            self.lastHoveredAction = hoveredAction
     
     def addOverlayColorButton(self, rgbColor):
         # Overlay color button
@@ -1809,8 +1855,9 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
         hbox.addWidget(self.overlayColorButton)
         widget = QWidget()
         widget.setLayout(hbox)
-        act = QWidgetAction(self)
+        act = highlightableQWidgetAction(self)
         act.setDefaultWidget(widget)
+        act.triggered.connect(self.overlayColorButton.click)
         self.gradient.menu.addAction(act)
     
     def tickColorAccepted(self):
@@ -2051,6 +2098,9 @@ class myColorButton(pg.ColorButton):
         p.drawRect(rect)
         p.end()
 
+class highlightableQWidgetAction(QWidgetAction):
+    def __init__(self, parent) -> None:
+        super().__init__(parent)
 
 class labelsGradientWidget(pg.GradientWidget):
     def __init__(self, parent=None, orientation='right',  *args, **kargs):
@@ -2074,9 +2124,14 @@ class labelsGradientWidget(pg.GradientWidget):
         hbox.addWidget(self.colorButton)
         widget = QWidget()
         widget.setLayout(hbox)
-        act = QWidgetAction(self)
+        act = highlightableQWidgetAction(self)
         act.setDefaultWidget(widget)
+        act.triggered.connect(self.colorButton.click)
         self.menu.addAction(act)
+
+        # Font size menu action
+        self.fontSizeMenu =  QMenu('Text font size', self)
+        self.menu.addMenu(self.fontSizeMenu)   
 
         # IDs color button
         hbox = QHBoxLayout()
@@ -2086,16 +2141,11 @@ class labelsGradientWidget(pg.GradientWidget):
         hbox.addWidget(self.textColorButton)
         widget = QWidget()
         widget.setLayout(hbox)
-        act = QWidgetAction(self)
+        act = highlightableQWidgetAction(self)
         act.setDefaultWidget(widget)
-        self.menu.addAction(act)
-
-        # editFontSizeAction action
-        self.editFontSizeAction =  QAction(
-            'Text font size...', self
-        )
-        self.menu.addAction(self.editFontSizeAction)
-        self.menu.addSeparator()
+        act.triggered.connect(self.textColorButton.click)
+        self.menu.addAction(act)   
+        self.menu.addSeparator()  
 
         # Shuffle colors action
         self.shuffleCmapAction =  QAction(
