@@ -8160,7 +8160,8 @@ class guiWin(QMainWindow):
     @myutils.exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
-            printl(self.getChNamesOverlayImages())
+            printl(self.overlayLayersItems)
+            printl(self.checkedOverlayChannels)
             # lutItem = self.
             # printl(lutItem.gradient.listTicks())
             # gradient = colors.get_pg_gradient(((0,0,0,0), (255,255,0,255)))
@@ -10972,7 +10973,8 @@ class guiWin(QMainWindow):
 
         img = self.getImage()
         self.img1.setImage(img)
-        self.setOverlayImages()
+        if self.overlayButton.isChecked():
+            self.setOverlayImages()
 
         if self.navigateScrollBarStartedMoving:
             self.clearAllItems()
@@ -12555,7 +12557,7 @@ class guiWin(QMainWindow):
             )
         return extensions
 
-    def loadOverlayData(self, ol_channels):
+    def loadOverlayData(self, ol_channels, addToExisting=False):
         posData = self.data[self.pos_i]
         for ol_ch in ol_channels:
             if ol_ch not in list(posData.loadedFluoChannels):
@@ -12571,9 +12573,12 @@ class guiWin(QMainWindow):
                 action.setChecked(True)
 
         for p, posData in enumerate(self.data):
-            ol_data = {}
+            if addToExisting:
+                ol_data = posData.ol_data
+            else:
+                ol_data = {}
             for i, ol_ch in enumerate(ol_channels):
-                fluo_path, filename = self.getPathFromChName(ol_ch, posData)
+                _, filename = self.getPathFromChName(ol_ch, posData)
                 ol_data[filename] = posData.ol_data_dict[filename].copy()              
                 if p == 0:
                     imageItem = self.overlayLayersItems[ol_ch][0]
@@ -12613,10 +12618,11 @@ class guiWin(QMainWindow):
                     self.overlayButton.toggled.connect(self.overlay_cb)
                     return
                 
-                success = self.loadOverlayData(selectedChannels)
-                self.imgGrad.checkedChannelname = selectedChannels[-1]
+                success = self.loadOverlayData(selectedChannels)         
                 if not success:
                     return False
+                self.imgGrad.checkedChannelname = selectedChannels[-1]
+                self.setCheckedOverlayContextMenusActions(selectedChannels)
 
             self.normalizeRescale0to1Action.setChecked(True)
 
@@ -12650,28 +12656,11 @@ class guiWin(QMainWindow):
             self, 'Custom model instructions', txt, buttonsTexts=('Ok',)
         )
 
-    def changeOverlayChannel(self, action):
-        posData = self.data[self.pos_i]
-        loadedChannels = list(posData.loadedFluoChannels)
-        checkedChName = action.text()
-        channels = [checkedChName]
-        success = self.loadOverlayData(channels)
-        if not success:
-            return
-        self.overlay_cb(True)
-
-    def setCheckedOverlayContextMenusAction(self):
-        self.userChNameAction.setChecked(False)
-        for action in self.fluoDataChNameActions:
-            action.setChecked(False)
-        checkedActionText = self.imgGrad.checkedChannelname
-        if self.userChNameAction.text() == checkedActionText:
-            self.userChNameAction.setChecked(True)
-        else:
-            for action in self.fluoDataChNameActions:
-                if action.text() == checkedActionText:
-                    action.setChecked(True)
-                    break
+    def setCheckedOverlayContextMenusActions(self, channelNames):
+        for action in self.overlayContextMenu.actions():
+            if action.text() in channelNames:
+                action.setChecked(True)
+                self.checkedOverlayChannels.add(action.text())
 
     def enableOverlayWidgets(self, enabled):
         posData = self.data[self.pos_i]   
@@ -12928,19 +12917,14 @@ class guiWin(QMainWindow):
             return obj_slice[1:3]
         else:
             return obj_slice
-        
-    def getChNamesOverlayImages(self):
-        olChNames = []
-        for action in self.overlayContextMenu.actions():
-            if action.isChecked():
-                olChNames.append(action.text())
-        return olChNames
     
     def setOverlayImages(self, frame_i=None):
         posData = self.data[self.pos_i]
         for filename in posData.ol_data:
             ol_img = self.getOlImg(filename, frame_i=frame_i)
             chName = myutils.get_chname_from_basename(filename, posData.basename)
+            if chName not in self.checkedOverlayChannels:
+                continue
             imageItem = self.overlayLayersItems[chName][0]
             imageItem.setImage(ol_img)
 
@@ -14697,10 +14681,32 @@ class guiWin(QMainWindow):
         ch_names = [ch for ch in self.ch_names if ch != self.user_ch_name]
         self.overlayContextMenu = QMenu()
         self.overlayContextMenu.addSeparator()
+        self.checkedOverlayChannels = set()
         for chName in ch_names:
             action = QAction(chName, self.overlayContextMenu)
             action.setCheckable(True)
+            action.toggled.connect(self.overlayChannelToggled)
             self.overlayContextMenu.addAction(action)
+    
+    def overlayChannelToggled(self, checked):
+        channelName = self.sender().text()
+        if checked:
+            posData = self.data[self.pos_i]
+            if channelName not in posData.loadedFluoChannels:
+                self.loadOverlayData([channelName], addToExisting=True)
+            self.setOverlayItemsVisible(channelName, True)
+            self.checkedOverlayChannels.add(channelName)    
+        else:
+            self.checkedOverlayChannels.remove(channelName)
+            imageItem = self.overlayLayersItems[channelName][0]
+            imageItem.clear()
+            try:
+                channelToShow = next(iter(self.checkedOverlayChannels))
+                self.setOverlayItemsVisible(channelToShow, True)
+            except StopIteration:
+                self.setOverlayItemsVisible('', False)
+                self.img1.setOpacity(1)
+        self.updateALLimg()
 
     @myutils.exception_handler
     def loadDataWorkerDataIntegrityWarning(self, pos_foldername):
@@ -14978,7 +14984,10 @@ class guiWin(QMainWindow):
     def setOverlayItemsVisible(self, channelName, visible):
         if visible:
             self.imgGrad.hide()
-            self.graphLayout.removeItem(self.imgGrad)
+            try:
+                self.graphLayout.removeItem(self.imgGrad)
+            except Exception as e:
+                pass
             itemsToShow = None
             for name, items in self.overlayLayersItems.items():
                 _, lutItem, alphaSB = items
