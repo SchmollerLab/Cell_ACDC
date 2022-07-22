@@ -395,7 +395,7 @@ class loadData:
 
         for file in ls:
             filePath = os.path.join(self.images_path, file)
-            endName = file[len(self.basename):].split('.')[0]
+            endName, segmExt = file[len(self.basename):].split('.')
 
             loadMetadata = (
                 load_metadata and file.endswith('metadata.csv')
@@ -410,7 +410,7 @@ class loadData:
             elif end_filename_segm:
                 # Load the segmentation file selected by the user
                 self._segm_end_fn = end_filename_segm
-                is_segm_file = endName == end_filename_segm
+                is_segm_file = endName == end_filename_segm and segmExt == '.npz'
             else:
                 # Load default segmentation file
                 is_segm_file = file.endswith('segm.npz')
