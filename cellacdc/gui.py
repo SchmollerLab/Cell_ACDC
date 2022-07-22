@@ -1825,9 +1825,9 @@ class guiWin(QMainWindow):
         self.addToolBar(widgetsToolBar)
 
         self.disableTrackingCheckBox = QCheckBox("Disable tracking")
-        self.disableTrackingCheckBox.setLayoutDirection(Qt.RightToLeft)
         self.disableTrackingAction = widgetsToolBar.addWidget(
-                                            self.disableTrackingCheckBox)
+            self.disableTrackingCheckBox
+        )
         self.disableTrackingAction.setVisible(False)
 
         self.brushSizeSpinbox = QSpinBox()
@@ -1843,6 +1843,7 @@ class guiWin(QMainWindow):
         )
         self.brushSizeLabelAction.setVisible(False)
         self.brushSizeAction.setVisible(False)
+        self.brushAutoFillAction.setVisible(False)
 
         widgetsToolBar.setVisible(False)
         self.widgetsToolBar = widgetsToolBar
@@ -2800,7 +2801,7 @@ class guiWin(QMainWindow):
             self.ax2_textColor = (r, g, b)
         else:
             self.ax2_textColor = (255, 0, 0)
-
+        
         # Left image
         self.img1 = pg.ImageItem()
         self.imgGrad.setImageItem(self.img1)
@@ -2810,16 +2811,35 @@ class guiWin(QMainWindow):
         self.img2 = widgets.labImageItem()
         self.ax2.addItem(self.img2)
 
+        self.topLayerItems = []
+
+        self.gui_createContourPens()
+        self.gui_createMothBudLinePens()
+
+        self.eraserCirclePen = pg.mkPen(width=1.5, color='r')
+
+        # Lost ID question mark text color
+        self.lostIDs_qMcolor = (245, 184, 0)
+        
+        # Temporary line item connecting bud to new mother
+        self.BudMothTempLine = pg.PlotDataItem(pen=self.NewBudMoth_Pen)
+        self.topLayerItems.append(self.BudMothTempLine)
+
+        # Red/green border rect item
+        self.GreenLinePen = pg.mkPen(color='g', width=2)
+        self.RedLinePen = pg.mkPen(color='r', width=2)
+        self.ax1BorderLine = pg.PlotDataItem()
+        self.topLayerItems.append(self.ax1BorderLine)
+        self.ax2BorderLine = pg.PlotDataItem(pen=pg.mkPen(color='r', width=2))
+        self.topLayerItems.append(self.ax2BorderLine)
+
         # Brush/Eraser/Wand.. layer item
         self.tempLayerImg1 = pg.ImageItem()
-        self.ax1.addItem(self.tempLayerImg1)
+        self.topLayerItems.append(self.tempLayerImg1)
 
         # Overlay segm. masks item
         self.labelsLayerImg1 = pg.ImageItem()
-        self.ax1.addItem(self.labelsLayerImg1)
-
-        # Additional overlay items are created 
-        self.overlayLayersItems = {}
+        self.topLayerItems.append(self.labelsLayerImg1)
 
         # Brush circle img1
         self.ax1_BrushCircle = pg.ScatterPlotItem()
@@ -2828,32 +2848,71 @@ class guiWin(QMainWindow):
             brush=pg.mkBrush((255,255,255,50)),
             pen=pg.mkPen(width=2)
         )
-        self.ax1.addItem(self.ax1_BrushCircle)
+        self.topLayerItems.append(self.ax1_BrushCircle)
+
+        # Eraser circle img1
+        self.ax1_EraserCircle = pg.ScatterPlotItem()
+        self.ax1_EraserCircle.setData(
+            [], [], symbol='o', pxMode=False,
+            brush=None, pen=self.eraserCirclePen
+        )
+        self.topLayerItems.append(self.ax1_EraserCircle)
+
+        self.ax1_EraserX = pg.ScatterPlotItem()
+        self.ax1_EraserX.setData(
+            [], [], symbol='x', pxMode=False, size=3,
+            brush=pg.mkBrush(color=(255,0,0,50)),
+            pen=pg.mkPen(width=1, color='r')
+        )
+        self.topLayerItems.append(self.ax1_EraserX)
+        
+
+        self.ax1_binnedIDs_ScatterPlot = pg.ScatterPlotItem()
+        self.ax1_binnedIDs_ScatterPlot.setData(
+                                 [], [], symbol='t', pxMode=False,
+                                 brush=pg.mkBrush((255,0,0,50)), size=15,
+                                 pen=pg.mkPen(width=3, color='r'))
+        self.topLayerItems.append(self.ax1_binnedIDs_ScatterPlot)
+        
+        self.ax1_ripIDs_ScatterPlot = pg.ScatterPlotItem()
+        self.ax1_ripIDs_ScatterPlot.setData(
+                                 [], [], symbol='x', pxMode=False,
+                                 brush=pg.mkBrush((255,0,0,50)), size=15,
+                                 pen=pg.mkPen(width=2, color='r'))
+        self.topLayerItems.append(self.ax1_ripIDs_ScatterPlot)
+
+        # Ruler plotItem and scatterItem
+        rulerPen = pg.mkPen(color='r', style=Qt.DashLine, width=2)
+        self.ax1_rulerPlotItem = pg.PlotDataItem(pen=rulerPen)
+        self.ax1_rulerAnchorsItem = pg.ScatterPlotItem(
+            symbol='o', size=9,
+            brush=pg.mkBrush((255,0,0,50)),
+            pen=pg.mkPen((255,0,0), width=2)
+        )
+        self.topLayerItems.append(self.ax1_rulerPlotItem)
+        self.topLayerItems.append(self.ax1_rulerAnchorsItem)
+
+        # Experimental: scatter plot to add a point marker
+        self.ax1_point_ScatterPlot = pg.ScatterPlotItem()
+        self.ax1_point_ScatterPlot.setData(
+            [], [], symbol='o', pxMode=False, size=3,
+            pen=pg.mkPen(width=2, color='r'),
+            brush=pg.mkBrush((255,0,0,50))
+        )
+        self.topLayerItems.append(self.ax1_point_ScatterPlot)
 
         # Eraser circle img2
         self.ax2_EraserCircle = pg.ScatterPlotItem()
-        self.eraserCirclePen = pg.mkPen(width=1.5, color='r')
-        self.ax2_EraserCircle.setData([], [], symbol='o', pxMode=False,
-                                 brush=None,
-                                 pen=self.eraserCirclePen)
+        self.ax2_EraserCircle.setData(
+            [], [], symbol='o', pxMode=False, brush=None,
+            pen=self.eraserCirclePen
+        )
         self.ax2.addItem(self.ax2_EraserCircle)
         self.ax2_EraserX = pg.ScatterPlotItem()
         self.ax2_EraserX.setData([], [], symbol='x', pxMode=False, size=3,
                                       brush=pg.mkBrush(color=(255,0,0,50)),
                                       pen=pg.mkPen(width=1.5, color='r'))
         self.ax2.addItem(self.ax2_EraserX)
-
-        # Eraser circle img1
-        self.ax1_EraserCircle = pg.ScatterPlotItem()
-        self.ax1_EraserCircle.setData([], [], symbol='o', pxMode=False,
-                                 brush=None,
-                                 pen=self.eraserCirclePen)
-        self.ax1.addItem(self.ax1_EraserCircle)
-        self.ax1_EraserX = pg.ScatterPlotItem()
-        self.ax1_EraserX.setData([], [], symbol='x', pxMode=False, size=3,
-                                      brush=pg.mkBrush(color=(255,0,0,50)),
-                                      pen=pg.mkPen(width=1, color='r'))
-        self.ax1.addItem(self.ax1_EraserX)
 
         # Brush circle img2
         self.ax2_BrushCirclePen = pg.mkPen(width=2)
@@ -2888,39 +2947,6 @@ class guiWin(QMainWindow):
                                  pen=pg.mkPen(width=2, color='r'))
         self.ax2.addItem(self.ax2_ripIDs_ScatterPlot)
 
-        self.ax1_binnedIDs_ScatterPlot = pg.ScatterPlotItem()
-        self.ax1_binnedIDs_ScatterPlot.setData(
-                                 [], [], symbol='t', pxMode=False,
-                                 brush=pg.mkBrush((255,0,0,50)), size=15,
-                                 pen=pg.mkPen(width=3, color='r'))
-        self.ax1.addItem(self.ax1_binnedIDs_ScatterPlot)
-        self.ax1_ripIDs_ScatterPlot = pg.ScatterPlotItem()
-        self.ax1_ripIDs_ScatterPlot.setData(
-                                 [], [], symbol='x', pxMode=False,
-                                 brush=pg.mkBrush((255,0,0,50)), size=15,
-                                 pen=pg.mkPen(width=2, color='r'))
-        self.ax1.addItem(self.ax1_ripIDs_ScatterPlot)
-
-        # Ruler plotItem and scatterItem
-        rulerPen = pg.mkPen(color='r', style=Qt.DashLine, width=2)
-        self.ax1_rulerPlotItem = pg.PlotDataItem(pen=rulerPen)
-        self.ax1_rulerAnchorsItem = pg.ScatterPlotItem(
-            symbol='o', size=9,
-            brush=pg.mkBrush((255,0,0,50)),
-            pen=pg.mkPen((255,0,0), width=2)
-        )
-        self.ax1.addItem(self.ax1_rulerPlotItem)
-        self.ax1.addItem(self.ax1_rulerAnchorsItem)
-
-        # Experimental: scatter plot to add a point marker
-        self.ax1_point_ScatterPlot = pg.ScatterPlotItem()
-        self.ax1_point_ScatterPlot.setData(
-            [], [], symbol='o', pxMode=False, size=3,
-            pen=pg.mkPen(width=2, color='r'),
-            brush=pg.mkBrush((255,0,0,50))
-        )
-        self.ax1.addItem(self.ax1_point_ScatterPlot)
-
     def _warn_too_many_items(self, numItems):
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph(f"""
@@ -2942,6 +2968,16 @@ class guiWin(QMainWindow):
             )
         )
         return msg.cancel, msg.clickedButton==doNotCreateItemsButton
+    
+    def gui_createOverlayItems(self):
+        self.overlayLayersItems = {}
+        for ch in self.ch_names:
+            if ch == self.user_ch_name:
+                continue
+            overlayItems = self.getOverlayItems(ch)                
+            self.overlayLayersItems[ch] = overlayItems
+            imageItem = self.overlayLayersItems[ch][0]
+            self.ax1.addItem(imageItem)
 
     def gui_createIDsAxesItems(self):
         allIDs = set()
@@ -2995,6 +3031,10 @@ class guiWin(QMainWindow):
         self.progressWin.close()
 
         self.loadingDataCompleted()
+    
+    def gui_addTopLayerItems(self):
+        for item in self.topLayerItems:
+            self.ax1.addItem(item)
     
     def gui_createMothBudLinePens(self):
         if 'mothBudLineWeight' in self.df_settings.index:
@@ -3099,25 +3139,6 @@ class guiWin(QMainWindow):
         )
 
     def gui_createGraphicsItems(self):
-        self.gui_createContourPens()
-
-        # Lost ID question mark text color
-        self.lostIDs_qMcolor = (245, 184, 0)
-
-        self.gui_createMothBudLinePens()
-
-        # Temporary line item connecting bud to new mother
-        self.BudMothTempLine = pg.PlotDataItem(pen=self.NewBudMoth_Pen)
-        self.ax1.addItem(self.BudMothTempLine)
-
-        # Red/green border rect item
-        self.GreenLinePen = pg.mkPen(color='g', width=2)
-        self.RedLinePen = pg.mkPen(color='r', width=2)
-        self.ax1BorderLine = pg.PlotDataItem()
-        self.ax1.addItem(self.ax1BorderLine)
-        self.ax2BorderLine = pg.PlotDataItem(pen=pg.mkPen(color='r', width=2))
-        self.ax2.addItem(self.ax2BorderLine)
-
         # Create enough PlotDataItems and LabelItems to draw contours and IDs.
         self.progressWin = apps.QDialogWorkerProgress(
             title='Creating axes items', parent=self,
@@ -10153,12 +10174,12 @@ class guiWin(QMainWindow):
         return True
 
     def loadingDataCompleted(self):
+        self.gui_addTopLayerItems()
+
         posData = self.data[self.pos_i]
 
         self.guiTabControl.addChannels([posData.user_ch_name])
         self.showPropsDockButton.setDisabled(False)
-
-        self.createUserChannelNameAction()
 
         self.init_segmInfo_df()
         self.connectScrollbars()
@@ -11483,11 +11504,11 @@ class guiWin(QMainWindow):
         proceed = True
         return notEnoughG1Cells, proceed
 
-    def getObjContours(self, obj, appendMultiContID=True):
+    def getObjContours(self, obj, appendMultiContID=True, approx=False):
+        approxMode = cv2.CHAIN_APPROX_SIMPLE if approx else cv2.CHAIN_APPROX_NONE
         contours, _ = cv2.findContours(
            self.getObjImage(obj.image, obj.bbox).astype(np.uint8),
-           cv2.RETR_EXTERNAL,
-           cv2.CHAIN_APPROX_NONE
+           cv2.RETR_CCOMP, approxMode
         )
         if not contours:
             return np.array([[np.nan, np.nan]])
@@ -11496,13 +11517,13 @@ class guiWin(QMainWindow):
             contoursLengths = [len(c) for c in contours]
             maxLenIdx = contoursLengths.index(max(contoursLengths))
             contour = contours[maxLenIdx]
+            if appendMultiContID:
+                posData = self.data[self.pos_i]
+                if obj.label in posData.IDs:
+                    posData.multiContIDs.add(obj.label)
         else:
             contour = contours[0]
         cont = np.squeeze(contour, axis=1)
-        if len(contours)>1 and appendMultiContID:
-            posData = self.data[self.pos_i]
-            if obj.label in posData.IDs:
-                posData.multiContIDs.add(obj.label)
         cont = np.vstack((cont, cont[0]))
         cont += [min_x, min_y]
         return cont
@@ -12272,7 +12293,7 @@ class guiWin(QMainWindow):
             else:
                 ID = obj.label
                 # t0 = time.time()
-                cont = self.getObjContours(obj)
+                cont = self.getObjContours(obj, approx=True)
                 # t1 = time.time()
                 # computingContoursTime = t1-t0
                 # self.computingContoursTimes.append(computingContoursTime)
@@ -12579,17 +12600,12 @@ class guiWin(QMainWindow):
                 ol_data = {}
             for i, ol_ch in enumerate(ol_channels):
                 _, filename = self.getPathFromChName(ol_ch, posData)
-                ol_data[filename] = posData.ol_data_dict[filename].copy()              
-                if p == 0:
-                    imageItem = self.overlayLayersItems[ol_ch][0]
-                    self.ax1.addItem(imageItem)
+                ol_data[filename] = posData.ol_data_dict[filename].copy()                                  
                 if i!=0:
                     continue
                 self.addFluoChNameContextMenuAction(ol_ch)
             posData.manualContrastKey = filename
             posData.ol_data = ol_data
-        
-        self.setOpacityOverlayLayersItems()
 
         return True
 
@@ -12623,6 +12639,7 @@ class guiWin(QMainWindow):
                     return False
                 self.imgGrad.checkedChannelname = selectedChannels[-1]
                 self.setCheckedOverlayContextMenusActions(selectedChannels)
+                self.setOpacityOverlayLayersItems()
 
             self.normalizeRescale0to1Action.setChecked(True)
 
@@ -14408,11 +14425,6 @@ class guiWin(QMainWindow):
         
         alpha = self.imgGrad.labelsAlphaSlider.value()
         self.labelsLayerImg1.setOpacity(alpha)
-
-        for (imageItem, _) in self.overlayLayersItems.values():
-            self.ax1.removeItem(imageItem)
-        
-        self.overlayLayersItems = {}
     
     def reinitWidgetsPos(self):
         try:
@@ -14667,6 +14679,8 @@ class guiWin(QMainWindow):
 
         self.initGlobalAttr()
         self.createOverlayContextMenu()
+        self.createUserChannelNameAction()
+        self.gui_createOverlayItems()
 
         self.num_pos = len(user_ch_file_paths)
         proceed = self.loadSelectedData(user_ch_file_paths, user_ch_name)
@@ -14706,6 +14720,7 @@ class guiWin(QMainWindow):
             except StopIteration:
                 self.setOverlayItemsVisible('', False)
                 self.img1.setOpacity(1)
+        self.setOpacityOverlayLayersItems()
         self.updateALLimg()
 
     @myutils.exception_handler
@@ -14877,9 +14892,6 @@ class guiWin(QMainWindow):
                 posData.fluo_bkgrData_dict[filename] = bkgrData
                 posData.ol_data_dict[filename] = fluo_data.copy()
                 
-                if p == 0:
-                    overlayItems = self.getOverlayItems(fluo_ch)                
-                    self.overlayLayersItems[fluo_ch] = overlayItems
         self.overlayButton.setStyleSheet('background-color: #A7FAC7')
         self.guiTabControl.addChannels([
             posData.user_ch_name, *posData.loadedFluoChannels
@@ -14896,6 +14908,7 @@ class guiWin(QMainWindow):
     
     def getOverlayItems(self, channelName):
         imageItem = pg.ImageItem()
+
         lutItem = widgets.myHistogramLUTitem()
         lutItem.restoreState(self.df_settings)
         lutItem.setImageItem(imageItem)
@@ -15038,6 +15051,8 @@ class guiWin(QMainWindow):
     def setOpacityOverlayLayersItems(self, value=None):
         tot_alpha = 0
         for channelName, items in self.overlayLayersItems.items():
+            if channelName not in self.checkedOverlayChannels:
+                continue
             imageItem, _, alphaSB = items
             ol_alpha = alphaSB.value()/alphaSB.maximum()
             imageItem.setOpacity(ol_alpha)
