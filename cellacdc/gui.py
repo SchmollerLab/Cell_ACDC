@@ -2801,6 +2801,8 @@ class guiWin(QMainWindow):
         else:
             self.ax2_textColor = (255, 0, 0)
         
+        self.emptyLab = np.zeros((2,2), dtype=np.uint16)
+        
         # Left image
         self.img1 = pg.ImageItem()
         self.imgGrad.setImageItem(self.img1)
@@ -4851,7 +4853,7 @@ class guiWin(QMainWindow):
         elif self.isMouseDragImg1 and self.eraserButton.isChecked():
             self.isMouseDragImg1 = False
 
-            self.resetTempLayer()
+            self.tempLayerImg1.setImage(self.emptyLab)
 
             erasedIDs = np.unique(self.erasedIDs)
 
@@ -4868,7 +4870,7 @@ class guiWin(QMainWindow):
         elif self.isMouseDragImg1 and self.brushButton.isChecked():
             self.isMouseDragImg1 = False
 
-            self.resetTempLayer()
+            self.tempLayerImg1.setImage(self.emptyLab)
 
             # Update data (rp, etc)
             self.update_rp()
@@ -12393,8 +12395,6 @@ class guiWin(QMainWindow):
         brushLayerLut[:,-1] = 255
         brushLayerLut[:,:-1] = posData.lut
         brushLayerLut[0] = [0,0,0,0]
-        self.tempLayerImg1.setLevels([0, len(brushLayerLut)])
-        self.tempLayerImg1.setLookupTable(brushLayerLut)
         self.labelsLayerImg1.setLevels([0, len(brushLayerLut)])
         self.labelsLayerImg1.setLookupTable(brushLayerLut)
 
@@ -13245,11 +13245,19 @@ class guiWin(QMainWindow):
                 self.ax1_LabelItemsIDs[ID-1].setText('')
             self.img1.setImage(overlayRGB)
     
-    def resetTempLayer(self):
+    def initTempLayer(self, ID):
+        posData = self.data[self.pos_i]
+        how = self.drawIDsContComboBox.currentText()
         Y, X = self.img1.image.shape[:2]
         tempImage = np.zeros((Y, X), dtype=np.uint16)
-        self.tempLayerImg1.setImage(tempImage, autolevels=False)
-        return tempImage
+        if how.find('contours') != -1:
+            tempImage[self.currentLab2D==ID] = ID
+        lut = np.zeros((2, 4), dtype=np.uint8)
+        lut[1,-1] = 255
+        lut[1,:-1] = posData.lut[ID]
+        self.tempLayerImg1.setLookupTable(lut)
+        self.tempLayerImg1.setImage(tempImage)
+        return tempImage        
 
     # @exec_time
     def setTempImg1Brush(self, init: bool, mask, ID, toLocalSlice=None):
@@ -13257,7 +13265,7 @@ class guiWin(QMainWindow):
             Y, X = self.img1.image.shape[:2]
             alpha = self.imgGrad.labelsAlphaSlider.value()
             self.tempLayerImg1.setOpacity(alpha)
-            self.resetTempLayer()
+            self.initTempLayer(ID)
         
         if toLocalSlice is None:
            self.tempLayerImg1.image[mask] = ID
