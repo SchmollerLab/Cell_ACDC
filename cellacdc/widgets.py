@@ -1922,9 +1922,6 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
             p.end()
             widget = action.defaultWidget()
             hbox = widget.layout()
-            if hbox is None:
-                printl(action.name)
-                continue
             rectLabelWidget = QLabel()
             rectLabelWidget.setPixmap(px)
             hbox.addWidget(rectLabelWidget)
