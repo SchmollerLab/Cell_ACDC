@@ -2976,7 +2976,7 @@ class QDialogMetadata(QDialog):
             self.isSegm3Dtoggle.setChecked(posData.getIsSegm3D())
             disableToggle = (
                 # Disable toggle if not force enable and if
-                # segm data was found (we cannot change the shaoe of
+                # segm data was found (we cannot change the shape of
                 # loaded segmentation in the GUI)
                 posData.segmFound is not None
                 and posData.segmFound
@@ -3079,6 +3079,7 @@ class QDialogMetadata(QDialog):
         self.addAdditionalValues(additionalValues)
 
         self.setLayout(mainLayout)
+        self.setFont(font)
         # self.setModal(True)
 
     def addAdditionalValues(self, values):
@@ -3449,19 +3450,14 @@ class QCropZtool(QWidget):
         self.sigClose.emit()
 
 class gaussBlurDialog(QDialog):
-    def __init__(self, mainWindow):
-        super().__init__(mainWindow)
+    sigClose = pyqtSignal(object)
+    sigApplyFilter = pyqtSignal(str, float)
+    sigPreviewToggled = pyqtSignal(bool, str, float)
+
+    def __init__(self, layersChannelNames, parent=None):
+        super().__init__(parent)
         self.cancel = True
-        self.mainWindow = mainWindow
-
-        posData = mainWindow.data[mainWindow.pos_i]
-        items = [posData.filename]
-        try:
-            items.extend(list(posData.ol_data_dict.keys()))
-        except Exception as e:
-            pass
-
-        self.keys = items
+        self.setFont(font)
 
         self.setWindowTitle('Gaussian blur sigma')
         self.setWindowFlags(Qt.Tool | Qt.WindowStaysOnTopHint)
@@ -3471,8 +3467,7 @@ class gaussBlurDialog(QDialog):
         buttonsLayout = QHBoxLayout()
 
         self.channelsComboBox = QComboBox()
-        self.channelsComboBox.addItems(items)
-        self.channelsComboBox.setCurrentText(posData.manualContrastKey)
+        self.channelsComboBox.addItems(layersChannelNames)
         mainLayout.addWidget(self.channelsComboBox)
 
         self.sigmaQDSB = QDoubleSpinBox()
@@ -3504,7 +3499,7 @@ class gaussBlurDialog(QDialog):
 
         mainLayout.addLayout(buttonsLayout)
 
-        self.PreviewCheckBox.clicked.connect(self.preview_cb)
+        self.PreviewCheckBox.toggled.connect(self.preview_cb)
         self.sigmaSlider.sliderMoved.connect(self.sigmaSliderMoved)
         self.sigmaQDSB.valueChanged.connect(self.sigmaQDSB_valueChanged)
         self.channelsComboBox.currentTextChanged.connect(self.apply)
@@ -3513,52 +3508,20 @@ class gaussBlurDialog(QDialog):
         self.setLayout(mainLayout)
 
         self.apply()
+    
+    def addChannelName(self, newChannelName):
+        self.channelsComboBox.addItem(newChannelName)
 
     def preview_cb(self, checked):
-        if not checked:
-            # self.restoreNonFiltered()
-            self.mainWindow.updateALLimg(only_ax1=True, updateSharp=False)
-        else:
-            self.getData()
-            self.apply()
-
-    def getData(self):
-        posData = self.mainWindow.data[self.mainWindow.pos_i]
-        key = self.channelsComboBox.currentText()
-        if key.find(self.mainWindow.user_ch_name) != -1:
-            img = self.mainWindow.getImage()
-            data = posData.img_data
-        else:
-            img = self.mainWindow.getOlImg(key)
-            data = posData.ol_data[key]
-
-        self.img = img
-        self.frame_i = posData.frame_i
-        self.segmSizeT = posData.segmSizeT
-        self.imgData = data
-
-    def filter(self, img):
-        return skimage.filters.gaussian(self.img, sigma=self.sigma)
-
-    def getFilteredImg(self):
-        img = self.filter(self.img)
-        if self.mainWindow.overlayButton.isChecked():
-            key = self.channelsComboBox.currentText()
-            img = self.mainWindow.getOverlayImg(
-                fluoData=(img, key), setImg=False
-            )
-        else:
-            img = self.mainWindow.getImageWithCmap(img=img)
-        # img = self.mainWindow.normalizeIntensities(img)
-        return img
+        channelName = self.channelsComboBox.currentText()
+        self.sigPreviewToggled.emit(checked, channelName, self.sigma)
+    
+    def filter(self, image):
+        return skimage.filters.gaussian(image, self.sigma)
 
     def apply(self):
-        self.getData()
-        img = self.getFilteredImg()
-        if self.PreviewCheckBox.isChecked():
-            self.mainWindow.img1.setImage(img)
-            # h = self.mainWindow.img1.getHistogram()
-            # self.mainWindow.hist.plot.setData(*h)
+        channelName = self.channelsComboBox.currentText()
+        self.sigApplyFilter.emit(channelName, self.sigma)
 
     def sigmaQDSB_valueChanged(self, val):
         self.sigma = val
@@ -3575,8 +3538,11 @@ class gaussBlurDialog(QDialog):
         self.apply()
 
     def closeEvent(self, event):
-        self.mainWindow.gaussBlurAction.setChecked(False)
-        self.mainWindow.updateALLimg(only_ax1=True, updateFilters=False)
+        self.sigClose.emit(self)
+    
+    def show(self):
+        super().show()
+        self.resize(int(self.width()*1.3), self.height())
 
 class diffGaussFilterDialog(QDialog):
     sigClose = pyqtSignal()

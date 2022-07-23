@@ -395,7 +395,8 @@ class loadData:
 
         for file in ls:
             filePath = os.path.join(self.images_path, file)
-            endName, segmExt = file[len(self.basename):].split('.')
+            filename, segmExt = os.path.splitext(file)
+            endName = filename[len(self.basename):]
 
             loadMetadata = (
                 load_metadata and file.endswith('metadata.csv')
@@ -1038,18 +1039,15 @@ class loadData:
             askSegm3D=True,
             forceEnableAskSegm3D=False,
         ):
-        font = QtGui.QFont()
-        font.setPixelSize(13)
         metadataWin = apps.QDialogMetadata(
             self.SizeT, self.SizeZ, self.TimeIncrement,
             self.PhysicalSizeZ, self.PhysicalSizeY, self.PhysicalSizeX,
             ask_SizeT, ask_TimeIncrement, ask_PhysicalSizes,
-            parent=self.parent, font=font, imgDataShape=self.img_data_shape,
+            parent=self.parent, font=apps.font, imgDataShape=self.img_data_shape,
             posData=self, singlePos=singlePos, askSegm3D=askSegm3D,
             additionalValues=self._additionalMetadataValues,
             forceEnableAskSegm3D=forceEnableAskSegm3D
         )
-        metadataWin.setFont(font)
         metadataWin.exec_()
         if metadataWin.cancel:
             return False

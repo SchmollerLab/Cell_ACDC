@@ -2300,17 +2300,17 @@ class guiWin(QMainWindow):
         self.gaussBlurAction = QAction('Gaussian blur...', self)
         self.gaussBlurAction.setCheckable(True)
 
-        self.diffGaussFilterAction = QAction('Sharpen...', self)
+        self.diffGaussFilterAction = QAction('Sharpen (DoG filter)...', self)
         self.diffGaussFilterAction.setCheckable(True)
-
-        self.imgPropertiesAction = QAction('Properties...', self)
-        self.imgPropertiesAction.setDisabled(True)
 
         self.edgeDetectorAction = QAction('Edge detection...', self)
         self.edgeDetectorAction.setCheckable(True)
 
         self.entropyFilterAction = QAction('Object detection...', self)
         self.entropyFilterAction.setCheckable(True)
+
+        self.imgPropertiesAction = QAction('Properties...', self)
+        self.imgPropertiesAction.setDisabled(True)
 
         self.addDelRoiAction = QAction(self)
         self.addDelRoiAction.setIcon(QIcon(":addDelRoi.svg"))
@@ -2474,7 +2474,8 @@ class guiWin(QMainWindow):
 
         # Drawing mode
         self.drawIDsContComboBox.currentIndexChanged.connect(
-                                                self.drawIDsContComboBox_cb)
+            self.drawIDsContComboBox_cb
+        )
         self.drawIDsContComboBox.activated.connect(self.clearComboBoxFocus)
         self.gaussBlurAction.toggled.connect(self.gaussBlur)
         self.diffGaussFilterAction.toggled.connect(self.diffGaussCallback)
@@ -7090,14 +7091,32 @@ class guiWin(QMainWindow):
 
     def gaussBlur(self, checked):
         if checked:
-            font = QtGui.QFont()
-            font.setPixelSize(13)
-            self.gaussWin = apps.gaussBlurDialog(self)
-            self.gaussWin.setFont(font)
+            channels = [self.user_ch_name]
+            channels.extend(self.checkedOverlayChannels)
+            self.gaussWin = apps.gaussBlurDialog(channels, parent=self)
+            self.gaussWin.action = self.sender()
+            self.gaussWin.sigClose.connect(self.gaussWinClosed)
+            self.gaussWin.sigApplyFilter.connect(self.applyGaussBlur)
+            self.gaussWin.sigPreviewToggled.connect(self.previewGaussBlurToggled)
             self.gaussWin.show()
-        else:
+        elif self.gaussWin is not None:
+            self.gaussWin.disconnect()
             self.gaussWin.close()
             self.gaussWin = None
+    
+    def filterWinClosed(self, filterWin):
+        filterWin.disconnect()
+        filterWin = None
+        filterWin.action.setChecked(False)
+    
+    def applyGaussBlur(self, channelName, sigma):
+        pass
+
+    def previewGaussBlurToggled(self, checked, channelName, sigma):
+        if checked:
+            self.applyGaussBlur(channelName, sigma)
+        else:
+            self.updateALLimg()
 
     def diffGaussCallback(self, checked):
         if checked:
@@ -7171,10 +7190,7 @@ class guiWin(QMainWindow):
 
     def edgeDetection(self, checked):
         if checked:
-            font = QtGui.QFont()
-            font.setPixelSize(13)
             self.edgeWin = apps.edgeDetectionDialog(self)
-            self.edgeWin.setFont(font)
             self.edgeWin.show()
         else:
             self.edgeWin.close()
@@ -7182,12 +7198,18 @@ class guiWin(QMainWindow):
 
     def entropyFilter(self, checked):
         if checked:
-            font = QtGui.QFont()
-            font.setPixelSize(13)
-            self.entropyWin = apps.entropyFilterDialog(self)
-            self.entropyWin.setFont(font)
+            channels = [self.user_ch_name]
+            channels.extend(self.checkedOverlayChannels)
+            self.entropyWin = apps.entropyFilterDialog(channels, parent=self)
+            self.entropyWin.action = self.sender()
+            self.entropyWin.sigClose.connect(self.filterWinClosed)
+            self.entropyWin.sigApplyFilter.connect(self.applyEntropyFilter)
+            self.entropyWin.sigPreviewToggled.connect(
+                self.previewEntropyFilterToggle
+            )
             self.entropyWin.show()
         else:
+            self.entropyWin.disconnect()
             self.entropyWin.close()
             self.entropyWin = None
 
@@ -9580,9 +9602,6 @@ class guiWin(QMainWindow):
         self.models[idx] = model
 
         img = self.getDisplayedCellsImg()
-        # if self.gaussWin is None:
-        #     img = skimage.filters.gaussian(img, sigma=1)
-        # img = skimage.exposure.equalize_adapthist(skimage.img_as_float(img))
 
         posData.cca_df = model.predictCcaState(img, posData.lab)
         self.store_data()
@@ -10850,7 +10869,6 @@ class guiWin(QMainWindow):
             posData.curvPlotItems = []
             posData.curvAnchorsItems = []
             posData.curvHoverItems = []
-            posData.manualContrastKey = posData.filename
 
             posData.HDDmaxID = np.max(posData.segm_data)
 
@@ -12600,7 +12618,6 @@ class guiWin(QMainWindow):
                 _, filename = self.getPathFromChName(ol_ch, posData)
                 ol_data[filename] = posData.ol_data_dict[filename].copy()                                  
                 self.addFluoChNameContextMenuAction(ol_ch)
-            posData.manualContrastKey = filename
             posData.ol_data = ol_data
 
         return True
@@ -13575,12 +13592,12 @@ class guiWin(QMainWindow):
         else:
             posData = self.data[self.pos_i]
             zStack = posData.img_data[posData.frame_i]
+        
+        if self.gaussWin is not None:
+            zStack = self.gaussWin.filter(zStack)
 
         for z, img in enumerate(zStack):
             # Apply the other filters
-            if self.gaussWin is not None:
-                img = self.gaussWin.filter(img)
-
             if self.edgeWin is not None:
                 img = self.edgeWin.filter(img)
 
