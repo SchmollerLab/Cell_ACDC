@@ -76,7 +76,7 @@ from . import base_cca_df, graphLayoutBkgrColor
 from . import load, prompts, apps, workers, html_utils
 from . import core, myutils, dataPrep, widgets
 from . import measurements, printl
-from . import colors
+from . import colors, filters
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .myutils import exec_time, setupLogger
@@ -302,7 +302,7 @@ class saveDataWorker(QObject):
     criticalPermissionError = pyqtSignal(str)
     metricsPbarProgress = pyqtSignal(int, int)
     askZsliceAbsent = pyqtSignal(str, object)
-    customMetricsCritical = pyqtSignal(str)
+    customMetricsCritical = pyqtSignal(str, str)
 
     def __init__(self, mainWin):
         QObject.__init__(self)
@@ -310,6 +310,7 @@ class saveDataWorker(QObject):
         self.saveWin = mainWin.saveWin
         self.mutex = mainWin.mutex
         self.waitCond = mainWin.waitCond
+        self.customMetricsErrors = {}
 
     def addMetrics_acdc_df(self, df, rp, frame_i, lab, posData):
         """
@@ -759,13 +760,37 @@ class saveDataWorker(QObject):
                         else:
                             ROI_bkgrVal = None
                         try:
-                            custom_val = custom_func(
-                                fluo_data_ID, fluo_backgr, ROI_bkgrVal, obj
-                            )
+                            try:
+                                # Original custom metrics without obj
+                                custom_val = custom_func(
+                                    fluo_data_ID, fluo_backgr, ROI_bkgrVal
+                                )
+                            except:
+                                try:
+                                    custom_val = custom_func(
+                                    fluo_data_ID, fluo_backgr, ROI_bkgrVal, obj
+                                )
+                                except:
+                                    metrics_obj = {
+                                        key:mm[i] for key, mm 
+                                        in metrics_values.items()
+                                    }
+                                    metrics_obj['cell_vol_vox'] = IDs_vol_vox[i]
+                                    metrics_obj['cell_vol_fl'] = IDs_vol_fl[i]
+                                    metrics_obj['cell_area_pxl'] = IDs_area_pxl[i]
+                                    metrics_obj['cell_area_um2'] = IDs_area_um2[i]
+                                    if self.mainWin.isSegm3D:
+                                        metrics_obj['cell_vol_vox_3D'] = IDs_vol_vox_3D[i]
+                                        metrics_obj['cell_vol_fl_3D'] = IDs_vol_fl_3D[i]
+                                    
+                                    custom_val = custom_func(
+                                        fluo_data_ID, fluo_backgr, ROI_bkgrVal, 
+                                        obj, metrics_obj
+                                    )
                             custom_metrics_values[key][i] = custom_val
                         except Exception as e:
                             self.customMetricsCritical.emit(
-                                traceback.format_exc()
+                                traceback.format_exc(), custom_func_name
                             )
                             # self.mainWin.logger.info(traceback.format_exc())
                         # self.metricsPbarProgress.emit(-1, 1)
@@ -1197,6 +1222,7 @@ class guiWin(QMainWindow):
         self.newSegmEndName = ''
         self.closeGUI = False
         self.img1ChannelGradients = {}
+        self.filtersWins = {}
 
         self.setWindowTitle("Cell-ACDC - GUI")
         self.setWindowIcon(QIcon(":icon.ico"))
@@ -1424,10 +1450,9 @@ class guiWin(QMainWindow):
         ImageMenu.addSeparator()
         ImageMenu.addAction(self.imgPropertiesAction)
         filtersMenu = ImageMenu.addMenu("Filters")
-        filtersMenu.addAction(self.gaussBlurAction)
-        filtersMenu.addAction(self.diffGaussFilterAction)
-        filtersMenu.addAction(self.edgeDetectorAction)
-        filtersMenu.addAction(self.entropyFilterAction)
+        for filtersDict in self.filtersWins.values():
+            filtersMenu.addAction(filtersDict['action'])
+        
         normalizeIntensitiesMenu = ImageMenu.addMenu("Normalize intensities")
         normalizeIntensitiesMenu.addAction(self.normalizeRawAction)
         normalizeIntensitiesMenu.addAction(self.normalizeToFloatAction)
@@ -2297,17 +2322,44 @@ class guiWin(QMainWindow):
             'Automatic zoom to all cells when pressing "Next/Previous"', self)
         self.enableAutoZoomToCellsAction.setCheckable(True)
 
-        self.gaussBlurAction = QAction('Gaussian blur...', self)
-        self.gaussBlurAction.setCheckable(True)
+        gaussBlurAction = QAction('Gaussian blur...', self)
+        gaussBlurAction.setCheckable(True)
+        name = 'Gaussian blur'
+        gaussBlurAction.filterName = name
+        self.filtersWins[name] = {}
+        self.filtersWins[name]['action'] = gaussBlurAction
+        self.filtersWins[name]['dialogueApp'] = filters.gaussBlurDialog
+        self.filtersWins[name]['window'] = None
 
-        self.diffGaussFilterAction = QAction('Sharpen (DoG filter)...', self)
-        self.diffGaussFilterAction.setCheckable(True)
+        diffGaussFilterAction = QAction('Sharpen (DoG filter)...', self)
+        diffGaussFilterAction.setCheckable(True)
+        name = 'Sharpen (DoG filter)'
+        diffGaussFilterAction.filterName = name
+        self.filtersWins[name] = {}
+        self.filtersWins[name]['action'] = diffGaussFilterAction
+        self.filtersWins[name]['dialogueApp'] = filters.diffGaussFilterDialog
+        self.filtersWins[name]['initMethods'] = {'initSpotmaxValues': ['posData']}
+        self.filtersWins[name]['window'] = None
 
-        self.edgeDetectorAction = QAction('Edge detection...', self)
-        self.edgeDetectorAction.setCheckable(True)
+        edgeDetectorAction = QAction('Edge detection...', self)
+        edgeDetectorAction.setCheckable(True)      
+        name = 'Edge detection filter'
+        edgeDetectorAction.filterName = name
+        self.filtersWins[name] = {}
+        self.filtersWins[name]['action'] = edgeDetectorAction
+        self.filtersWins[name]['dialogueApp'] = filters.edgeDetectionDialog
+        self.filtersWins[name]['window'] = None
 
-        self.entropyFilterAction = QAction('Object detection...', self)
-        self.entropyFilterAction.setCheckable(True)
+        entropyFilterAction = QAction(
+            'Object detection (entropy filter)...', self
+        )
+        entropyFilterAction.setCheckable(True)
+        name = 'Object detection filter'
+        entropyFilterAction.filterName = name
+        self.filtersWins[name] = {}
+        self.filtersWins[name]['action'] = entropyFilterAction
+        self.filtersWins[name]['dialogueApp'] = filters.entropyFilterDialog
+        self.filtersWins[name]['window'] = None
 
         self.imgPropertiesAction = QAction('Properties...', self)
         self.imgPropertiesAction.setDisabled(True)
@@ -2477,10 +2529,10 @@ class guiWin(QMainWindow):
             self.drawIDsContComboBox_cb
         )
         self.drawIDsContComboBox.activated.connect(self.clearComboBoxFocus)
-        self.gaussBlurAction.toggled.connect(self.gaussBlur)
-        self.diffGaussFilterAction.toggled.connect(self.diffGaussCallback)
-        self.edgeDetectorAction.toggled.connect(self.edgeDetection)
-        self.entropyFilterAction.toggled.connect(self.entropyFilter)
+
+        for filtersDict in self.filtersWins.values():
+            filtersDict['action'].toggled.connect(self.filterToggled)
+
         self.addDelRoiAction.triggered.connect(self.addDelROI)
         self.delBorderObjAction.triggered.connect(self.delBorderObj)
 
@@ -4770,7 +4822,7 @@ class guiWin(QMainWindow):
             # Repeat tracking
             self.tracking(enforce=True, assign_unique_new_IDs=False)
 
-            self.updateALLimg(useStoredGaussFiltered=True)
+            self.updateALLimg()
 
             if not self.moveLabelToolButton.findChild(QAction).isChecked():
                 self.moveLabelToolButton.setChecked(False)
@@ -4860,7 +4912,7 @@ class guiWin(QMainWindow):
 
             # Update data (rp, etc)
             self.update_rp()
-            self.updateALLimg(useStoredGaussFiltered=True, useEraserImg=True)
+            self.updateALLimg()
 
             for ID in erasedIDs:
                 if ID not in posData.IDs:
@@ -4882,7 +4934,7 @@ class guiWin(QMainWindow):
             self.tracking(enforce=True, assign_unique_new_IDs=False)
 
             # Update colors to include a new color for the new ID
-            self.updateALLimg(useStoredGaussFiltered=True)
+            self.updateALLimg()
             if self.isNewID:
                 self.warnEditingWithCca_df('Add new ID with brush tool')
             self.isNewID = False
@@ -4913,7 +4965,7 @@ class guiWin(QMainWindow):
             # Repeat tracking
             self.tracking(enforce=True, assign_unique_new_IDs=False)
 
-            self.updateALLimg(useStoredGaussFiltered=True)
+            self.updateALLimg()
 
             if not self.moveLabelToolButton.findChild(QAction).isChecked():
                 self.moveLabelToolButton.setChecked(False)
@@ -7089,129 +7141,78 @@ class guiWin(QMainWindow):
             delROIs_info['delIDsROI'][idx] = delIDsROI
         return allDelIDs, DelROIlab
 
-    def gaussBlur(self, checked):
-        if checked:
-            channels = [self.user_ch_name]
-            channels.extend(self.checkedOverlayChannels)
-            self.gaussWin = apps.gaussBlurDialog(channels, parent=self)
-            self.gaussWin.action = self.sender()
-            self.gaussWin.sigClose.connect(self.gaussWinClosed)
-            self.gaussWin.sigApplyFilter.connect(self.applyGaussBlur)
-            self.gaussWin.sigPreviewToggled.connect(self.previewGaussBlurToggled)
-            self.gaussWin.show()
-        elif self.gaussWin is not None:
-            self.gaussWin.disconnect()
-            self.gaussWin.close()
-            self.gaussWin = None
-    
-    def filterWinClosed(self, filterWin):
-        filterWin.disconnect()
-        filterWin = None
-        filterWin.action.setChecked(False)
-    
-    def applyGaussBlur(self, channelName, sigma):
-        pass
-
-    def previewGaussBlurToggled(self, checked, channelName, sigma):
-        if checked:
-            self.applyGaussBlur(channelName, sigma)
-        else:
-            self.updateALLimg()
-
-    def diffGaussCallback(self, checked):
+    def filterToggled(self, checked):
+        action = self.sender()
+        filterName = action.filterName
+        filterDialogApp = self.filtersWins[filterName]['dialogueApp']
+        filterWin = self.filtersWins[filterName]['window']
         if checked:
             posData = self.data[self.pos_i]
-            channels = [posData.filename]
-            try:
-                channels.extend(list(posData.ol_data_dict.keys()))
-            except Exception as e:
-                pass
-            self.diffGaussFilterWin = apps.diffGaussFilterDialog(
-                parent=self, is3D=posData.SizeZ>1, channels=channels
-            )
-            if posData.SizeZ > 1:
-                self.diffGaussFilterWin.initSpotmaxValues(posData)
-            self.diffGaussFilterWin.sigClose.connect(
-                self.diffGaussFilterWinClosed
-            )
-            self.diffGaussFilterWin.sigValueChanged.connect(
-                self.diffGaussFilterWinValueChanged
-            )
-            self.diffGaussFilterWin.sigRemoveFilterClicked.connect(
-                self.updateALLimg
-            )
-            self.diffGaussFilterWin.show()
-            self.diffGaussFilterWin.valueChanged()
-        else:
-            self.diffGaussFilterWin.sigClose.disconnect()
-            self.diffGaussFilterWin.sigValueChanged.disconnect()
-            self.diffGaussFilterWin.sigRemoveFilterClicked.disconnect()
-            self.diffGaussFilterWin.close()
-            self.diffGaussFilterWin = None
+            channels = [self.user_ch_name]
+            channels.extend(self.checkedOverlayChannels)
+            is3D = posData.SizeZ>1
+            filterWin = filterDialogApp(channels, parent=self, is3D=is3D)
+            initMethods = self.filtersWins[filterName].get('initMethods')
+            if initMethods is not None:
+                localVariables = locals()
+                for method_name, args in initMethods.items(): 
+                    method = getattr(filterWin, method_name)
+                    args = [localVariables[arg] for arg in args]
+                    method(*args)
+            self.filtersWins[filterName]['window'] = filterWin
+            filterWin.action = self.sender()
+            filterWin.sigClose.connect(self.filterWinClosed)
+            filterWin.sigApplyFilter.connect(self.applyFilter)
+            filterWin.sigPreviewToggled.connect(self.previewFilterToggled)
+            filterWin.show()
+            filterWin.apply()
+        elif filterWin is not None:
+            filterWin.disconnect()
+            filterWin.close()
+            self.filteredData = {}
+            self.filtersWins[filterName]['window'] = None
             self.updateALLimg()
-
-    def diffGaussFilterWinClosed(self):
-        self.diffGaussFilterAction.setChecked(False)
-
-    def getDiffGaussFilteredImg(self, imgData, sigmas):
+    
+    def filterWinClosed(self, filterWin):
+        action = filterWin.action
+        filterWin = None
+        action.setChecked(False)
+    
+    def applyFilter(self, channelName, setImg=True):
         posData = self.data[self.pos_i]
-        sigmas1, sigmas2 = sigmas
-        sigma1_yx = sigmas1 if isinstance(sigmas1, float) else sigmas1[1]
-        sigma2_yx = sigmas2 if isinstance(sigmas2, float) else sigmas2[1]
-        if sigma1_yx>0:
-            filtered1 = skimage.filters.gaussian(imgData, sigma=sigmas1)
+        if channelName == self.user_ch_name:
+            imgData = posData.img_data[posData.frame_i]
         else:
-            filtered1 = myutils.uint_to_float(imgData)
+            _, filename = self.getPathFromChName(channelName, posData)
+            imgData = posData.ol_data_dict[filename][posData.frame_i]
+        filteredData = imgData.copy()
+        for filterDict in self.filtersWins.values():
+            filterWin = filterDict['window']
+            if filterWin is None:
+                continue
+            filteredData = filterWin.filter(filteredData)
 
-        if sigma2_yx>0:
-            filtered2 = skimage.filters.gaussian(imgData, sigma=sigmas2)
-        else:
-            filtered2 = myutils.uint_to_float(imgData)
+        self.filteredData[channelName] = filteredData
 
-        resultFiltered = filtered1 - filtered2
-        self.diffGaussFilteredData = resultFiltered
-        return resultFiltered
-
-    def diffGaussFilterWinValueChanged(self, sigmas, filename):
-        posData = self.data[self.pos_i]
-        _imgData = self.getImageDataFromFilename(filename)
-        if _imgData is None:
-            return
-        imgData = _imgData.copy()
-        filteredData = self.getDiffGaussFilteredImg(imgData, sigmas)
         if posData.SizeZ > 1:
             img = self.get_2Dimg_from_3D(filteredData)
         else:
             img = filteredData
-        img = self.getImageWithCmap(img=img)
-        self.updateALLimg(
-            image=img, updateFilters=False, updateDiffGaussFilter=False
-        )
-
-    def edgeDetection(self, checked):
-        if checked:
-            self.edgeWin = apps.edgeDetectionDialog(self)
-            self.edgeWin.show()
+        
+        if not setImg:
+            return img
+        
+        if channelName == self.user_ch_name:
+            self.img1.setImage(img)
         else:
-            self.edgeWin.close()
-            self.edgeWin = None
+            imageItem = self.overlayLayersItems[channelName][0]
+            imageItem.setImage()
 
-    def entropyFilter(self, checked):
+    def previewFilterToggled(self, checked, filterWin, channelName):
         if checked:
-            channels = [self.user_ch_name]
-            channels.extend(self.checkedOverlayChannels)
-            self.entropyWin = apps.entropyFilterDialog(channels, parent=self)
-            self.entropyWin.action = self.sender()
-            self.entropyWin.sigClose.connect(self.filterWinClosed)
-            self.entropyWin.sigApplyFilter.connect(self.applyEntropyFilter)
-            self.entropyWin.sigPreviewToggled.connect(
-                self.previewEntropyFilterToggle
-            )
-            self.entropyWin.show()
+            self.applyGaussBlur(filterWin, channelName)
         else:
-            self.entropyWin.disconnect()
-            self.entropyWin.close()
-            self.entropyWin = None
+            self.updateALLimg()
 
     def enableSmartTrack(self, checked):
         posData = self.data[self.pos_i]
@@ -7477,7 +7478,7 @@ class guiWin(QMainWindow):
         self.updateALLimg()
 
     def drawIDsContComboBox_cb(self, idx):
-        self.updateALLimg(updateDiffGaussFilter=True)
+        self.updateALLimg()
         how = self.drawIDsContComboBox.currentText()
         self.df_settings.at['how_draw_annotations', 'value'] = how
         self.df_settings.to_csv(self.settings_csv_path)
@@ -8204,11 +8205,8 @@ class guiWin(QMainWindow):
     @myutils.exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
-            # lutItem = self.
-            # printl(lutItem.gradient.listTicks())
-            # gradient = colors.get_pg_gradient(((0,0,0,0), (255,255,0,255)))
-            # lutItem.setGradient(gradient)
-            # printl(lutItem.gradient.listTicks())
+            posData = self.data[self.pos_i]
+            printl(posData.combineMetricsConfig)
             if self.debug:
                 raise FileNotFoundError
                 posData = self.data[self.pos_i]
@@ -8691,7 +8689,7 @@ class guiWin(QMainWindow):
             image_left = self.getCurrentState()
             self.update_rp()
             self.setTitleText()
-            self.updateALLimg(image=image_left, overlayMasks=True)
+            self.updateALLimg(image=image_left)
             self.store_data()
 
         if not self.UndoCount < len(posData.UndoRedoStates[posData.frame_i])-1:
@@ -8710,7 +8708,7 @@ class guiWin(QMainWindow):
             image_left = self.getCurrentState()
             self.update_rp()
             self.setTitleText()
-            self.updateALLimg(image=image_left, overlayMasks=False)
+            self.updateALLimg(image=image_left)
             self.store_data()
 
         if not self.UndoCount > 0:
@@ -9735,31 +9733,6 @@ class guiWin(QMainWindow):
                 posData.allData_li[posData.frame_i]['labels'] = lab
                 self.get_data()
 
-    def updateSharpenFilterWindows(self, prev_pos_i):
-        if self.diffGaussFilterWin is None:
-            return
-        oldFilename = self.diffGaussFilterWin.channelsComboBox.currentText()
-        prevPosData = self.data[prev_pos_i]
-        filterEndName = oldFilename[len(prevPosData.basename)]
-
-        posData = self.data[self.pos_i]
-        loadedFilenames = [posData.filename]
-        if posData.fluo_data_dict:
-            loadedFilenames.extend(posData.fluo_data_dict.keys())
-
-        self.diffGaussFilterWin.sigValueChanged.disconnect()
-        self.diffGaussFilterWin.channelsComboBox.clear()
-        self.diffGaussFilterWin.channelsComboBox.addItems(loadedFilenames)
-        if filterEndName is not None:
-            for loadedFilename in loadedFilenames:
-                if loadedFilename.endswith(filterEndName):
-                    self.diffGaussFilterWin.channelsComboBox.setCurrentText(
-                        loadedFilename
-                    )
-        self.diffGaussFilterWin.sigValueChanged.connect(
-            self.diffGaussFilterWinValueChanged
-        )
-
     def next_pos(self):
         self.store_data(debug=False)
         prev_pos_i = self.pos_i
@@ -9773,8 +9746,7 @@ class guiWin(QMainWindow):
         self.removeAlldelROIsCurrentFrame()
         proceed_cca, never_visited = self.get_data()
         self.postProcessing()
-        self.updateSharpenFilterWindows(prev_pos_i)
-        self.updateALLimg(updateFilters=True, updateLabelItemColor=False)
+        self.updateALLimg(updateFilters=True)
         self.zoomToCells()
         self.updateScrollbars()
         self.computeSegm()
@@ -9792,7 +9764,6 @@ class guiWin(QMainWindow):
         self.removeAlldelROIsCurrentFrame()
         proceed_cca, never_visited = self.get_data()
         self.postProcessing()
-        self.updateSharpenFilterWindows(prev_pos_i)
         self.updateALLimg(updateFilters=True)
         self.zoomToCells()
         self.updateScrollbars()
@@ -9891,10 +9862,7 @@ class guiWin(QMainWindow):
                 posData.frame_i -= 1
                 self.get_data()
                 return
-            self.updateALLimg(
-                updateFilters=True,
-                updateLabelItemColor=False
-            )
+            self.updateALLimg(updateFilters=True)
             self.updateViewerWindow()
             self.setNavigateScrollBarMaximum()
             self.updateScrollbars()
@@ -9931,9 +9899,7 @@ class guiWin(QMainWindow):
             _, never_visited = self.get_data()
             self.postProcessing()
             self.tracking()
-            self.updateALLimg(
-                updateSharp=True, updateBlur=True, updateEntropy=True
-            )
+            self.updateALLimg(updateFilters=True)
             self.updateScrollbars()
             self.zoomToCells()
             self.updateViewerWindow()
@@ -10417,15 +10383,11 @@ class guiWin(QMainWindow):
                 self.zSliceScrollBarLab.moving = True
             self.setImageImg2()
         else:
-            self.updateALLimg(
-                useStoredGaussFiltered=True, updateDiffGaussFilter=True
-            )
+            self.updateALLimg()
 
     def zSliceScrollBarLabReleased(self):
         self.zSliceScrollBarLab.moving = False
-        self.updateALLimg(
-            useStoredGaussFiltered=True, updateDiffGaussFilter=True
-        )
+        self.updateALLimg()
 
     def init_segmInfo_df(self):
         for posData in self.data:
@@ -10536,9 +10498,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         idx = (posData.filename, posData.frame_i)
         posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
-        self.updateALLimg(
-            useStoredGaussFiltered=True, updateDiffGaussFilter=True
-        )
+        self.updateALLimg()
 
     def update_overlay_z_slice(self, z):
         self.setOverlayImages()
@@ -10802,6 +10762,8 @@ class guiWin(QMainWindow):
 
         self.fluoDataChNameActions = []
 
+        self.filteredData = {}
+
         self.splineHoverON = False
         self.rulerHoverON = False
         self.isCtrlDown = False
@@ -10815,11 +10777,7 @@ class guiWin(QMainWindow):
         self.autoSegmDoNotAskAgain = False
 
         self.clickedOnBud = False
-        self.gaussWin = None
-        self.diffGaussFilterWin = None
         self.postProcessSegmWin = None
-        self.edgeWin = None
-        self.entropyWin = None
 
         self.UserEnforced_DisabledTracking = False
         self.UserEnforced_Tracking = False
@@ -10977,7 +10935,7 @@ class guiWin(QMainWindow):
         self.pos_i = pos_n-1
         self.updateFramePosLabel()
         proceed_cca, never_visited = self.get_data()
-        self.updateALLimg(updateFilters=False, updateDiffGaussFilter=False)
+        self.updateALLimg()
 
     def PosScrollBarReleased(self):
         self.pos_i = self.navigateScrollBar.sliderPosition()-1
@@ -12866,14 +12824,14 @@ class guiWin(QMainWindow):
     def setLookupTableImg(self, img):
         pass
 
-    def overlaySegmMasks(self, img, force=False):
+    def setOverlaySegmMasks(self, force=False):
         how = self.drawIDsContComboBox.currentText()
         if how.find('overlay segm. masks') == -1 and not force:
-            return img
+            return
 
         alpha = self.imgGrad.labelsAlphaSlider.value()
         if alpha == 0:
-            return img
+            return
 
         posData = self.data[self.pos_i]
         if posData.IDs:
@@ -12895,8 +12853,6 @@ class guiWin(QMainWindow):
         self.bg_color = (r, g, b)
 
         self.labelsLayerImg1.setImage(self.currentLab2D, autoLevels=False)
-
-        return img
     
     def getObject2DimageFromZ(self, z, obj):
         posData = self.data[self.pos_i]
@@ -12951,15 +12907,30 @@ class guiWin(QMainWindow):
         else:
             return obj_slice
     
-    def setOverlayImages(self, frame_i=None):
+    def setOverlayImages(self, frame_i=None, updateFilters=False):
         posData = self.data[self.pos_i]
         for filename in posData.ol_data:
-            ol_img = self.getOlImg(filename, frame_i=frame_i)
             chName = myutils.get_chname_from_basename(filename, posData.basename)
             if chName not in self.checkedOverlayChannels:
                 continue
             imageItem = self.overlayLayersItems[chName][0]
+
+            if updateFilters:
+                filteredData = self.filteredData.get(chName)
+                if filteredData is None:
+                    # Filtered data not existing
+                    ol_img = self.getOlImg(filename, frame_i=frame_i)
+                elif posData.SizeZ > 1:
+                    # 3D filtered data (see self.applyFilter)
+                    ol_img = self.get_2Dimg_from_3D(filteredData)
+                else:
+                    # 2D filtered data (see self.applyFilter)
+                    ol_img = filteredData
+            else:
+                img = self.applyFilter(chName, setImg=False)
+            
             imageItem.setImage(ol_img)
+            
 
     def toggleOverlayColorButton(self, checked=True):
         self.mousePressColorButton(None)
@@ -13201,7 +13172,7 @@ class guiWin(QMainWindow):
         if not self.labBottomGroupbox.isChecked():
             self.z_label_lab.setText(f'z-slice  {z+1:02}/{posData.SizeZ}')
 
-    def getImage(self, frame_i=None, invert=True, normalizeIntens=True):
+    def getImage(self, frame_i=None, normalizeIntens=True):
         posData = self.data[self.pos_i]
         if frame_i is None:
             frame_i = posData.frame_i
@@ -13235,11 +13206,7 @@ class guiWin(QMainWindow):
 
     def applyDelROIimg1(self, roi, init=False):
         if init:
-            if self.overlayButton.isChecked():
-                img = self.getOverlayImg(setImg=False)
-            else:
-                img = self.getImageWithCmap()
-            self.imgRGB = self.overlaySegmMasks(img, force=True)
+            self.setOverlaySegmMasks(force=True)
             return
 
         posData = self.data[self.pos_i]
@@ -13255,12 +13222,11 @@ class guiWin(QMainWindow):
                 self.ax1_ContoursCurves[ID-1].setData([], [])
                 self.ax1_LabelItemsIDs[ID-1].setText('')
         elif how.find('overlay segm. masks') != -1:
-            overlayRGB = self.imgRGB.copy()
+            lab = self.currentLab2D.copy()
+            lab[delMask] = 0
             for ID in delIDs:
-                delMaskID = delMask==ID
-                overlayRGB[delMaskID] = self.img1uintRGB[delMaskID]
                 self.ax1_LabelItemsIDs[ID-1].setText('')
-            self.img1.setImage(overlayRGB)
+            self.labelsLayerImg1.setImage(lab, autoLevels=False)
     
     def initTempLayer(self, ID):
         posData = self.data[self.pos_i]
@@ -13580,47 +13546,8 @@ class guiWin(QMainWindow):
             self.t_label.setText(
                      f'frame n. {posData.frame_i+1}/{posData.SizeT}')
 
-    def getDisplayedZstack(self):
-        isDiffGaussFilter = False
-        if self.diffGaussFilterWin is None:
-            isDiffGaussFilter = False
-        elif self.diffGaussFilterWin.previewCheckBox.isChecked():
-            isDiffGaussFilter = True
-
-        if isDiffGaussFilter:
-            zStack = self.diffGaussFilteredData
-        else:
-            posData = self.data[self.pos_i]
-            zStack = posData.img_data[posData.frame_i]
-        
-        if self.gaussWin is not None:
-            zStack = self.gaussWin.filter(zStack)
-
-        for z, img in enumerate(zStack):
-            # Apply the other filters
-            if self.edgeWin is not None:
-                img = self.edgeWin.filter(img)
-
-            if self.entropyWin is not None:
-                img = self.entropyWin.filter(img)
-
-            zStack[z] = img
-
-        return zStack
-
-
-    def updateFilters(
-            self, updateBlur=False, updateSharp=False,
-            updateEntropy=False, updateFilters=False
-        ):
-        if self.gaussWin is not None and (updateBlur or updateFilters):
-            self.gaussWin.apply()
-
-        if self.edgeWin is not None and (updateSharp or updateFilters):
-            self.edgeWin.apply()
-
-        if self.entropyWin is not None and (updateEntropy or updateFilters):
-            self.entropyWin.apply()
+    def updateFilters(self):
+        pass
 
     def reinitGraphicalItems(self, IDs):
         allItems = zip(
@@ -13802,74 +13729,42 @@ class guiWin(QMainWindow):
         self.df_settings.to_csv(self.settings_csv_path)
         self.labelsLayerImg1.setOpacity(value)
 
-    def getImageWithCmap(self, img=None):
-        if img is None:
-            img = self.getImage()
-        cellsKey = f'{self.user_ch_name}_overlayOFF'
-        img = self.adjustBrightness(img, cellsKey)
-        self.img_layer0 = img
-        if self.imgCmapName != 'grey':
-            img_max = np.max(img)
-            if img_max != 1:
-                img = img/img_max
-            img = self.imgCmap(img)[:, :, :3]
-            img = (np.clip(img, 0, 1)*255).astype(np.uint8)
-        return img
-
     @myutils.exception_handler
     def updateALLimg(
-            self, image=None, only_ax1=False, updateBlur=False,
-            updateSharp=False, updateEntropy=False,
-            updateFilters=True, updateLabelItemColor=False,
-            overlayMasks=True, updateDiffGaussFilter=True,
-            useStoredGaussFiltered=False, useEraserImg=False
+            self, image=None, only_ax1=False, updateFilters=False,
+            useEraserImg=False
         ):
         self.clearAx1Items()
 
         posData = self.data[self.pos_i]
 
-        if self.diffGaussFilterWin is None:
-            _updateDiffGaussFilter = False
-        elif updateDiffGaussFilter:
-            isPreview = self.diffGaussFilterWin.previewCheckBox.isChecked()
-            _updateDiffGaussFilter = isPreview
-        else:
-            _updateDiffGaussFilter = False
-
         if image is None:
-            if not _updateDiffGaussFilter:
-                img = self.getImage()
-            else:
-                if useStoredGaussFiltered:
-                    filteredData = self.diffGaussFilteredData
-                else:
-                    # Apply diff gauss sharpen filter
-                    sigmas = self.diffGaussFilterWin.getSigmas()
-                    filename = self.diffGaussFilterWin.channelsComboBox.currentText()
-                    _imgData = self.getImageDataFromFilename(filename)
-                    imgData = _imgData.copy()
-                    filteredData = self.getDiffGaussFilteredImg(imgData, sigmas)
-                if posData.SizeZ > 1:
+            if not updateFilters:
+                filteredData = self.filteredData.get(self.user_ch_name)
+                if filteredData is None:
+                    # Filtered data not existing
+                    img = self.getImage()
+                elif posData.SizeZ > 1:
+                    # 3D filtered data (see self.applyFilter)
                     img = self.get_2Dimg_from_3D(filteredData)
                 else:
+                    # 2D filtered data (see self.applyFilter)
                     img = filteredData
-                if posData.SizeZ > 1:
-                    self.updateZsliceScrollbar(posData.frame_i)
+            else:
+                img = self.applyFilter(self.user_ch_name, setImg=False)
         else:
             img = image
-
-        if overlayMasks:
-            self.setImageImg2()
-            img = self.overlaySegmMasks(img)
-
+        
         self.img1.setImage(img)
-        self.updateFilters(updateBlur, updateSharp, updateEntropy, updateFilters)
         
         if self.overlayButton.isChecked():
-            img = self.setOverlayImages()
+            img = self.setOverlayImages(updateFilters=updateFilters)
 
+        self.setImageImg2()
+        self.setOverlaySegmMasks()
+              
         if self.slideshowWin is not None:
-            self.slideshowWin.framne_i = posData.frame_i
+            self.slideshowWin.frame_i = posData.frame_i
             self.slideshowWin.update_img()
 
         if only_ax1:
@@ -13886,8 +13781,7 @@ class guiWin(QMainWindow):
         for i, obj in enumerate(posData.rp):
             if not self.isObjVisible(obj.bbox):
                 continue
-            updateColor=True if updateLabelItemColor and i==0 else False
-            self.drawID_and_Contour(obj, updateColor=updateColor)
+            self.drawID_and_Contour(obj)
 
         # self.logger.info('------------------------------------')
         # self.logger.info(f'Drawing labels = {np.sum(self.drawingLabelsTimes):.3f} s')
@@ -15537,11 +15431,12 @@ class guiWin(QMainWindow):
         self.logger.info(text)
         self.saveWin.progressLabel.setText(text)
 
-    def saveDataCustomMetricsCritical(self, traceback_format):
+    def saveDataCustomMetricsCritical(self, traceback_format, func_name):
         self.logger.info('')
         print('====================================')
         self.logger.info(traceback_format)
         print('====================================')
+        self.worker.customMetricsErrors[func_name] = traceback_format
 
     def saveDataCritical(self, traceback_format):
         self.logger.info('')
@@ -15667,7 +15562,12 @@ class guiWin(QMainWindow):
         self.thread.started.connect(self.worker.run)
 
         self.thread.start()
-
+    
+    def warnErrorsCustomMetrics(self):
+        win = apps.CustomMetricsErrorsDialog(
+            self.worker.customMetricsErrors, self.logs_path
+        )
+        win.exec_()
 
     def saveDataFinished(self):
         if self.saveWin.aborted:
@@ -15676,6 +15576,8 @@ class guiWin(QMainWindow):
             self.titleLabel.setText('Saved!')
         self.saveWin.workerFinished = True
         self.saveWin.close()
+        if self.worker.customMetricsErrors:
+            self.warnErrorsCustomMetrics()
         if self.closeGUI:
             salute_string = myutils.get_salute_string()
             msg = widgets.myMessageBox()
