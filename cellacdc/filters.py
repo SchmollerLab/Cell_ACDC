@@ -1,4 +1,3 @@
-from msilib import add_stream
 import numpy as np
 
 import skimage.filters
