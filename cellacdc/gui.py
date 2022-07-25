@@ -7151,7 +7151,13 @@ class guiWin(QMainWindow):
             channels = [self.user_ch_name]
             channels.extend(self.checkedOverlayChannels)
             is3D = posData.SizeZ>1
-            filterWin = filterDialogApp(channels, parent=self, is3D=is3D)
+            if hasattr(self.imgGrad, 'checkedChannelname'):
+                currentChannel = self.imgGrad.checkedChannelname
+            else:
+                currentChannel = self.user_ch_name
+            filterWin = filterDialogApp(
+                channels, parent=self, is3D=is3D, currentChannel=currentChannel
+            )
             initMethods = self.filtersWins[filterName].get('initMethods')
             if initMethods is not None:
                 localVariables = locals()
@@ -7206,7 +7212,7 @@ class guiWin(QMainWindow):
             self.img1.setImage(img)
         else:
             imageItem = self.overlayLayersItems[channelName][0]
-            imageItem.setImage()
+            imageItem.setImage(img)
 
     def previewFilterToggled(self, checked, filterWin, channelName):
         if checked:
@@ -12915,7 +12921,7 @@ class guiWin(QMainWindow):
                 continue
             imageItem = self.overlayLayersItems[chName][0]
 
-            if updateFilters:
+            if not updateFilters:
                 filteredData = self.filteredData.get(chName)
                 if filteredData is None:
                     # Filtered data not existing
@@ -12927,11 +12933,10 @@ class guiWin(QMainWindow):
                     # 2D filtered data (see self.applyFilter)
                     ol_img = filteredData
             else:
-                img = self.applyFilter(chName, setImg=False)
+                ol_img = self.applyFilter(chName, setImg=False)
             
             imageItem.setImage(ol_img)
             
-
     def toggleOverlayColorButton(self, checked=True):
         self.mousePressColorButton(None)
 

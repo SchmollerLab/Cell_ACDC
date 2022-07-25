@@ -168,7 +168,7 @@ def custom_metrics_desc(isZstack, chName, posData=None, isSegm3D=False):
             desc = html_utils.paragraph(f"""
                 <b>{func_desc}</b> is a custom defined measurement.<br><br>
                 The code for this function is located at the following path:<br><br>
-                <code>{os.path.join(acdc_metrics_path, func_desc)}</code><br><br>
+                <code>{os.path.join(acdc_metrics_path, func_desc)}.py</code><br><br>
                 {note_txt}
             """)
             custom_metrics_desc[metric_name] = desc

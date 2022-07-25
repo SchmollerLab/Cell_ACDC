@@ -1,3 +1,4 @@
+from cgitb import html
 import os
 import sys
 import re
@@ -3449,564 +3450,6 @@ class QCropZtool(QWidget):
     def closeEvent(self, event):
         self.sigClose.emit()
 
-class gaussBlurDialog(QDialog):
-    sigClose = pyqtSignal(object)
-    sigApplyFilter = pyqtSignal(str, float)
-    sigPreviewToggled = pyqtSignal(bool, str, float)
-
-    def __init__(self, layersChannelNames, parent=None):
-        super().__init__(parent)
-        self.cancel = True
-        self.setFont(font)
-
-        self.setWindowTitle('Gaussian blur sigma')
-        self.setWindowFlags(Qt.Tool | Qt.WindowStaysOnTopHint)
-
-        mainLayout = QVBoxLayout()
-        formLayout = QFormLayout()
-        buttonsLayout = QHBoxLayout()
-
-        self.channelsComboBox = QComboBox()
-        self.channelsComboBox.addItems(layersChannelNames)
-        mainLayout.addWidget(self.channelsComboBox)
-
-        self.sigmaQDSB = QDoubleSpinBox()
-        self.sigmaQDSB.setAlignment(Qt.AlignCenter)
-        self.sigmaQDSB.setSingleStep(0.5)
-        self.sigmaQDSB.setValue(1.0)
-        formLayout.addRow('Gaussian filter sigma:  ', self.sigmaQDSB)
-        formLayout.setContentsMargins(0, 10, 0, 10)
-
-        self.sigmaSlider = QSlider(Qt.Horizontal)
-        self.sigmaSlider.setMinimum(0)
-        self.sigmaSlider.setMaximum(100)
-        self.sigmaSlider.setValue(20)
-        self.sigma = 1.0
-        self.sigmaSlider.setTickPosition(QSlider.TicksBelow)
-        self.sigmaSlider.setTickInterval(10)
-
-        self.PreviewCheckBox = QCheckBox("Preview")
-        self.PreviewCheckBox.setChecked(True)
-
-        mainLayout.addLayout(formLayout)
-        mainLayout.addWidget(self.sigmaSlider)
-        mainLayout.addWidget(self.PreviewCheckBox)
-
-        closeButton = QPushButton('Close')
-
-        buttonsLayout.addWidget(closeButton, alignment=Qt.AlignCenter)
-        buttonsLayout.setContentsMargins(0, 10, 0, 0)
-
-        mainLayout.addLayout(buttonsLayout)
-
-        self.PreviewCheckBox.toggled.connect(self.preview_cb)
-        self.sigmaSlider.sliderMoved.connect(self.sigmaSliderMoved)
-        self.sigmaQDSB.valueChanged.connect(self.sigmaQDSB_valueChanged)
-        self.channelsComboBox.currentTextChanged.connect(self.apply)
-        closeButton.clicked.connect(self.close)
-
-        self.setLayout(mainLayout)
-
-        self.apply()
-    
-    def addChannelName(self, newChannelName):
-        self.channelsComboBox.addItem(newChannelName)
-
-    def preview_cb(self, checked):
-        channelName = self.channelsComboBox.currentText()
-        self.sigPreviewToggled.emit(checked, channelName, self.sigma)
-    
-    def filter(self, image):
-        return skimage.filters.gaussian(image, self.sigma)
-
-    def apply(self):
-        channelName = self.channelsComboBox.currentText()
-        self.sigApplyFilter.emit(channelName, self.sigma)
-
-    def sigmaQDSB_valueChanged(self, val):
-        self.sigma = val
-        self.sigmaSlider.sliderMoved.disconnect()
-        self.sigmaSlider.setSliderPosition(int(val*20))
-        self.sigmaSlider.sliderMoved.connect(self.sigmaSliderMoved)
-        self.apply()
-
-    def sigmaSliderMoved(self, intVal):
-        self.sigma = intVal/20
-        self.sigmaQDSB.valueChanged.disconnect()
-        self.sigmaQDSB.setValue(self.sigma)
-        self.sigmaQDSB.valueChanged.connect(self.sigmaSliderMoved)
-        self.apply()
-
-    def closeEvent(self, event):
-        self.sigClose.emit(self)
-    
-    def show(self):
-        super().show()
-        self.resize(int(self.width()*1.3), self.height())
-
-class diffGaussFilterDialog(QDialog):
-    sigClose = pyqtSignal()
-    sigRemoveFilterClicked = pyqtSignal()
-    sigValueChanged = pyqtSignal(object, str)
-
-    def __init__(self, is3D=False, parent=None, channels=None):
-        super().__init__(parent)
-        self.cancel = True
-        self.parent = parent
-
-        self.setWindowTitle('Sharpening filter')
-        self.setWindowFlags(Qt.Tool | Qt.WindowStaysOnTopHint)
-
-        mainLayout = QVBoxLayout()
-        buttonsLayout = QHBoxLayout()
-
-        if channels is not None:
-            channelsLayout = QHBoxLayout()
-            channelsComboBox = QComboBox()
-            channelsComboBox.addItems(channels)
-            self.channelsComboBox = channelsComboBox
-            channelsComboBox.currentTextChanged.connect(self.valueChanged)
-            channelsLayout.addStretch(1)
-            channelsLayout.addWidget(QLabel('Channel to filter:'))
-            channelsLayout.addWidget(channelsComboBox)
-            channelsLayout.addStretch(1)
-            mainLayout.addLayout(channelsLayout)
-
-        firstGroupbox = QGroupBox('First gaussian filter')
-        firstLayout = QVBoxLayout()
-        self.firstSigmaSliderYX = widgets.sliderWithSpinBox(
-            isFloat=True, title='Sigma YX-direction:',
-            title_loc='in_line'
-        )
-        self.firstSigmaSliderYX.setTickPosition(QSlider.TicksBelow)
-        self.firstSigmaSliderYX.setSingleStep(0.5)
-        self.firstSigmaSliderYX.setTickInterval(10)
-        self.firstSigmaSliderZ = widgets.sliderWithSpinBox(
-            isFloat=True, title='Sigma Z-direction:  ',
-            title_loc='in_line'
-        )
-        self.firstSigmaSliderZ.setTickPosition(QSlider.TicksBelow)
-        self.firstSigmaSliderZ.setSingleStep(0.5)
-        self.firstSigmaSliderZ.setTickInterval(10)
-        firstLayout.addWidget(self.firstSigmaSliderYX)
-        firstLayout.addWidget(self.firstSigmaSliderZ)
-        firstGroupbox.setLayout(firstLayout)
-
-        secondGroupbox = QGroupBox('Second gaussian filter')
-        secondLayout = QVBoxLayout()
-        self.secondSigmaSliderYX = widgets.sliderWithSpinBox(
-            isFloat=True, title='Sigma YX-direction:',
-            title_loc='in_line'
-        )
-        self.secondSigmaSliderYX.setTickPosition(QSlider.TicksBelow)
-        self.secondSigmaSliderYX.setSingleStep(0.5)
-        self.secondSigmaSliderYX.setTickInterval(10)
-        self.secondSigmaSliderYX.setValue(1)
-
-        self.secondSigmaSliderZ = widgets.sliderWithSpinBox(
-            isFloat=True, title='Sigma Z-direction:  ',
-            title_loc='in_line'
-        )
-        self.secondSigmaSliderZ.setTickPosition(QSlider.TicksBelow)
-        self.secondSigmaSliderZ.setSingleStep(0.5)
-        self.secondSigmaSliderZ.setTickInterval(10)
-
-        secondLayout.addWidget(self.secondSigmaSliderYX)
-        secondLayout.addWidget(self.secondSigmaSliderZ)
-        secondGroupbox.setLayout(secondLayout)
-
-        if not is3D:
-            self.firstSigmaSliderZ.hide()
-            self.secondSigmaSliderZ.hide()
-
-        self.previewCheckBox = QCheckBox('Preview filter')
-        self.previewCheckBox.setChecked(True)
-
-        cancelButton = widgets.cancelPushButton('Cancel')
-        buttonsLayout.addStretch(1)
-        buttonsLayout.addWidget(cancelButton)
-
-        mainLayout.addWidget(firstGroupbox)
-        mainLayout.addSpacing(20)
-        mainLayout.addWidget(secondGroupbox)
-        mainLayout.addSpacing(20)
-        mainLayout.addWidget(self.previewCheckBox)
-        mainLayout.addSpacing(10)
-        mainLayout.addLayout(buttonsLayout)
-        mainLayout.addStretch(1)
-
-        self.setLayout(mainLayout)
-        self.setFont(font)
-
-        self.firstSigmaSliderYX.sigValueChange.connect(self.valueChanged)
-        self.secondSigmaSliderYX.sigValueChange.connect(self.valueChanged)
-        if not is3D:
-            self.firstSigmaSliderZ.sigValueChange.connect(self.valueChanged)
-            self.secondSigmaSliderZ.sigValueChange.connect(self.valueChanged)
-
-        cancelButton.clicked.connect(self.close)
-        self.previewCheckBox.toggled.connect(self.previewToggled)
-
-    def keyPressEvent(self, event):
-        # Avoid closing on enter or return
-        pass
-
-    def previewToggled(self, checked):
-        if checked:
-            self.valueChanged()
-        else:
-            self.sigRemoveFilterClicked.emit()
-
-    def initSpotmaxValues(self, posData):
-        self.firstSigmaSliderYX.setValue(0)
-        self.firstSigmaSliderZ.setValue(0)
-        PhysicalSizeY = posData.PhysicalSizeY
-        PhysicalSizeX = posData.PhysicalSizeX
-        PhysicalSizeZ = posData.PhysicalSizeZ
-        zyx_vox_dim = [PhysicalSizeZ, PhysicalSizeY, PhysicalSizeZ]
-        wavelen = 510
-        NA = 1.4
-        yx_resolution_multi = 1
-        z_resolution_limit = 1
-        _, zyx_resolution_pxl, _ = core.calc_resolution_limited_vol(
-            wavelen, NA, yx_resolution_multi, zyx_vox_dim, z_resolution_limit
-        )
-        self.secondSigmaSliderYX.setValue(zyx_resolution_pxl[1])
-        self.secondSigmaSliderZ.setValue(zyx_resolution_pxl[0])
-
-    def valueChanged(self, value=None):
-        sigmas = self.getSigmas()
-        if hasattr(self, 'channelsComboBox'):
-            channel = self.channelsComboBox.currentText()
-        else:
-            channel = ''
-        self.filterApplied = True
-        self.sigValueChanged.emit(sigmas, channel)
-
-    def getSigmas(self):
-        sigma1_yx = self.firstSigmaSliderYX.value()
-        sigma1_z = self.firstSigmaSliderZ.value()
-        sigma2_yx = self.secondSigmaSliderYX.value()
-        sigma2_z = self.secondSigmaSliderZ.value()
-        sigmas1 = (sigma1_z, sigma1_yx, sigma1_yx) if sigma1_z>0 else sigma1_yx
-        sigmas2 = (sigma2_z, sigma2_yx, sigma2_yx) if sigma2_z>0 else sigma2_yx
-        return sigmas1, sigmas2
-
-    def showEvent(self, event):
-        self.resize(int(self.width()*1.5), self.height())
-        self.firstSigmaSliderYX.setFocus(True)
-
-    def closeEvent(self, event):
-        self.sigClose.emit()
-
-class edgeDetectionDialog(QDialog):
-    def __init__(self, mainWindow):
-        super().__init__(mainWindow)
-        self.cancel = True
-        self.mainWindow = mainWindow
-
-        if mainWindow is not None:
-            posData = self.mainWindow.data[self.mainWindow.pos_i]
-            items = [posData.filename]
-        else:
-            items = ['test']
-        try:
-            posData = self.mainWindow.data[self.mainWindow.pos_i]
-            items.extend(list(posData.ol_data_dict.keys()))
-        except Exception as e:
-            pass
-
-        self.keys = items
-
-        self.setWindowTitle('Edge detection')
-        self.setWindowFlags(Qt.Tool | Qt.WindowStaysOnTopHint)
-
-        mainLayout = QVBoxLayout()
-        paramsLayout = QGridLayout()
-        buttonsLayout = QHBoxLayout()
-
-
-        channelCBLabel = QLabel('Channel:')
-        mainLayout.addWidget(channelCBLabel)
-        self.channelsComboBox = QComboBox()
-        self.channelsComboBox.addItems(items)
-        if mainWindow is not None:
-            self.channelsComboBox.setCurrentText(posData.manualContrastKey)
-        if not self.mainWindow.overlayButton.isChecked():
-            self.channelsComboBox.setCurrentIndex(0)
-        mainLayout.addWidget(self.channelsComboBox)
-
-        row = 0
-        sigmaQSLabel = QLabel('Blur:')
-        paramsLayout.addWidget(sigmaQSLabel, row, 0)
-        row += 1
-        self.sigmaValLabel = QLabel('1.00')
-        paramsLayout.addWidget(self.sigmaValLabel, row, 1)
-        self.sigmaSlider = QSlider(Qt.Horizontal)
-        self.sigmaSlider.setMinimum(1)
-        self.sigmaSlider.setMaximum(100)
-        self.sigmaSlider.setValue(20)
-        self.sigma = 1.0
-        self.sigmaSlider.setTickPosition(QSlider.TicksBelow)
-        self.sigmaSlider.setTickInterval(10)
-        paramsLayout.addWidget(self.sigmaSlider, row, 0)
-
-        row += 1
-        sharpQSLabel = QLabel('Sharpen:')
-        # padding: top, left, bottom, right
-        sharpQSLabel.setStyleSheet("font-size:13px; padding:5px 0px 0px 0px;")
-        paramsLayout.addWidget(sharpQSLabel, row, 0)
-        row += 1
-        self.sharpValLabel = QLabel('5.00')
-        paramsLayout.addWidget(self.sharpValLabel, row, 1)
-        self.sharpSlider = QSlider(Qt.Horizontal)
-        self.sharpSlider.setMinimum(1)
-        self.sharpSlider.setMaximum(100)
-        self.sharpSlider.setValue(50)
-        self.radius = 5.0
-        self.sharpSlider.setTickPosition(QSlider.TicksBelow)
-        self.sharpSlider.setTickInterval(10)
-        paramsLayout.addWidget(self.sharpSlider, row, 0)
-
-        row += 1
-        self.PreviewCheckBox = QCheckBox("Preview")
-        self.PreviewCheckBox.setChecked(True)
-        paramsLayout.addWidget(self.PreviewCheckBox, row, 0, 1, 2,
-                               alignment=Qt.AlignCenter)
-
-
-        closeButton = QPushButton('Close')
-
-        buttonsLayout.addWidget(closeButton, alignment=Qt.AlignCenter)
-
-        paramsLayout.setContentsMargins(0, 10, 0, 0)
-        buttonsLayout.setContentsMargins(0, 10, 0, 0)
-
-        mainLayout.addLayout(paramsLayout)
-        mainLayout.addLayout(buttonsLayout)
-
-        self.PreviewCheckBox.clicked.connect(self.preview_cb)
-        self.sigmaSlider.sliderMoved.connect(self.sigmaSliderMoved)
-        self.sharpSlider.sliderMoved.connect(self.sharpSliderMoved)
-        self.channelsComboBox.currentTextChanged.connect(self.apply)
-        closeButton.clicked.connect(self.close)
-
-        self.setLayout(mainLayout)
-        self.apply()
-
-    def setSize(self):
-        x = self.pos().x()
-        y = self.pos().y()
-        h = self.size().height()
-        self.setGeometry(x, y, 300, h)
-
-    def preview_cb(self, checked):
-        if not checked:
-            # self.restoreNonFiltered()
-            self.mainWindow.updateALLimg(only_ax1=True, updateSharp=False)
-        else:
-            self.getData()
-            self.apply()
-
-    def getData(self):
-        key = self.channelsComboBox.currentText()
-        posData = self.mainWindow.data[self.mainWindow.pos_i]
-        if key.find(self.mainWindow.user_ch_name) != -1:
-            img = self.mainWindow.getImage(normalizeIntens=False)
-            data = posData.img_data
-        else:
-            img = self.mainWindow.getOlImg(key, normalizeIntens=False)
-            data = posData.ol_data[key]
-
-        if self.PreviewCheckBox.isChecked():
-            self.img = skimage.exposure.equalize_adapthist(img)
-            self.detectEdges()
-        self.frame_i = posData.frame_i
-        self.imgData = data
-
-    def detectEdges(self):
-        self.edge = skimage.filters.sobel(self.img)
-
-    def filter(self, img):
-        edge = skimage.filters.sobel(img)
-        img = skimage.filters.gaussian(edge, sigma=self.sigma)
-        img = img - skimage.filters.gaussian(img, sigma=self.radius)
-        return img
-
-    def getFilteredImg(self):
-        img = self.edge.copy()
-        # Blur
-        img = skimage.filters.gaussian(img, sigma=self.sigma)
-        # Sharpen
-        img = img - skimage.filters.gaussian(img, sigma=self.radius)
-        if self.mainWindow.overlayButton.isChecked():
-            key = self.channelsComboBox.currentText()
-            img = self.mainWindow.getOverlayImg(
-                fluoData=(img, key), setImg=False
-            )
-        else:
-            img = self.mainWindow.getImageWithCmap(img=img)
-        return img
-
-    def apply(self):
-        self.getData()
-        img = self.getFilteredImg()
-        if self.PreviewCheckBox.isChecked():
-            self.mainWindow.img1.setImage(img)
-            # h = self.mainWindow.img1.getHistogram()
-            # self.mainWindow.hist.plot.setData(*h)
-
-    def sigmaSliderMoved(self, intVal):
-        self.sigma = intVal/20
-        self.sigmaValLabel.setText(f'{self.sigma:.2f}')
-        self.apply()
-
-    def sharpSliderMoved(self, intVal):
-        self.radius = 10 - intVal/10
-        if self.radius < 0.15:
-            self.radius = 0.15
-        self.sharpValLabel.setText(f'{intVal/10:.2f}')
-        self.apply()
-
-    def closeEvent(self, event):
-        self.mainWindow.edgeDetectorAction.setChecked(False)
-        self.mainWindow.updateALLimg(only_ax1=True, updateFilters=False)
-
-class entropyFilterDialog(QDialog):
-    def __init__(self, mainWindow):
-        super().__init__(mainWindow)
-        self.cancel = True
-        self.mainWindow = mainWindow
-
-        if mainWindow is not None:
-            posData = self.mainWindow.data[self.mainWindow.pos_i]
-            items = [posData.filename]
-        else:
-            items = ['test']
-        try:
-            posData = self.mainWindow.data[self.mainWindow.pos_i]
-            items.extend(list(posData.ol_data_dict.keys()))
-        except Exception as e:
-            pass
-
-        self.keys = items
-
-        self.setWindowTitle('Edge detection')
-        self.setWindowFlags(Qt.Tool | Qt.WindowStaysOnTopHint)
-
-        mainLayout = QVBoxLayout()
-        paramsLayout = QGridLayout()
-        buttonsLayout = QHBoxLayout()
-
-        channelCBLabel = QLabel('Channel:')
-        mainLayout.addWidget(channelCBLabel)
-        self.channelsComboBox = QComboBox()
-        self.channelsComboBox.addItems(items)
-        if mainWindow is not None:
-            self.channelsComboBox.setCurrentText(posData.manualContrastKey)
-        mainLayout.addWidget(self.channelsComboBox)
-
-        row = 0
-        sigmaQSLabel = QLabel('Radius: ')
-        paramsLayout.addWidget(sigmaQSLabel, row, 0)
-        row += 1
-        self.radiusValLabel = QLabel('10')
-        paramsLayout.addWidget(self.radiusValLabel, row, 1)
-        self.radiusSlider = QSlider(Qt.Horizontal)
-        self.radiusSlider.setMinimum(1)
-        self.radiusSlider.setMaximum(100)
-        self.radiusSlider.setValue(10)
-        self.radiusSlider.setTickPosition(QSlider.TicksBelow)
-        self.radiusSlider.setTickInterval(10)
-        paramsLayout.addWidget(self.radiusSlider, row, 0)
-
-        row += 1
-        self.PreviewCheckBox = QCheckBox("Preview")
-        self.PreviewCheckBox.setChecked(True)
-        paramsLayout.addWidget(self.PreviewCheckBox, row, 0, 1, 2,
-                               alignment=Qt.AlignCenter)
-
-        closeButton = QPushButton('Close')
-
-        buttonsLayout.addWidget(closeButton, alignment=Qt.AlignCenter)
-
-        paramsLayout.setContentsMargins(0, 10, 0, 0)
-        buttonsLayout.setContentsMargins(0, 10, 0, 0)
-
-        mainLayout.addLayout(paramsLayout)
-        mainLayout.addLayout(buttonsLayout)
-
-        self.PreviewCheckBox.clicked.connect(self.preview_cb)
-        self.radiusSlider.sliderMoved.connect(self.radiusSliderMoved)
-        self.channelsComboBox.currentTextChanged.connect(self.apply)
-        closeButton.clicked.connect(self.close)
-
-        self.setLayout(mainLayout)
-
-        self.apply()
-
-    def setSize(self):
-        x = self.pos().x()
-        y = self.pos().y()
-        h = self.size().height()
-        self.setGeometry(x, y, 300, h)
-
-    def preview_cb(self, checked):
-        if not checked:
-            # self.restoreNonFiltered()
-            self.mainWindow.updateALLimg(only_ax1=True, updateSharp=False)
-        else:
-            self.getData()
-            self.apply()
-
-    def getData(self):
-        key = self.channelsComboBox.currentText()
-        posData = self.mainWindow.data[self.mainWindow.pos_i]
-        if key.find(self.mainWindow.user_ch_name) != -1:
-            img = self.mainWindow.getImage()
-            data = posData.img_data
-        else:
-            img = self.mainWindow.getOlImg(key)
-            data = posData.ol_data[key]
-        self.img = skimage.img_as_ubyte(img)
-        self.frame_i = posData.frame_i
-        self.imgData = data
-
-    def filter(self, img):
-        radius = self.radiusSlider.sliderPosition()
-        selem = skimage.morphology.disk(radius)
-        img = skimage.filters.rank.entropy(img, selem)
-        return img
-
-    def getFilteredImg(self):
-        radius = self.radiusSlider.sliderPosition()
-        selem = skimage.morphology.disk(radius)
-        entropyImg = skimage.filters.rank.entropy(self.img, selem)
-        if self.mainWindow.overlayButton.isChecked():
-            key = self.channelsComboBox.currentText()
-            img = self.mainWindow.getOverlayImg(
-                fluoData=(entropyImg, key), setImg=False
-            )
-        else:
-            img = self.mainWindow.getImageWithCmap(img=entropyImg)
-        return img
-
-    def apply(self):
-        self.getData()
-        img = self.getFilteredImg()
-        if self.PreviewCheckBox.isChecked():
-            self.mainWindow.img1.setImage(img)
-            # h = self.mainWindow.img1.getHistogram()
-            # self.mainWindow.hist.plot.setData(*h)
-
-    def radiusSliderMoved(self, intVal):
-        self.radiusValLabel.setText(f'{intVal}')
-        self.apply()
-
-    def closeEvent(self, event):
-        self.mainWindow.entropyFilterAction.setChecked(False)
-        self.mainWindow.updateALLimg(only_ax1=True, updateFilters=False)
-
 class randomWalkerDialog(QDialog):
     def __init__(self, mainWindow):
         super().__init__(mainWindow)
@@ -4372,6 +3815,63 @@ class FutureFramesAction_QDialog(QDialog):
     def closeEvent(self, event):
         if hasattr(self, 'loop'):
             self.loop.exit()
+
+class CustomMetricsErrorsDialog(QBaseDialog):
+    def __init__(self, customMetricsErrors, log_path='', parent=None):
+        super().__init__(parent)
+
+        layout = QGridLayout()
+        
+
+        label = QLabel(self)
+        standardIcon = getattr(QStyle, 'SP_MessageBoxWarning')
+        icon = self.style().standardIcon(standardIcon)
+        pixmap = icon.pixmap(60, 60)
+        label.setPixmap(pixmap)
+        layout.addWidget(label, 0, 0, alignment=Qt.AlignTop)
+
+        layout.addWidget(QLabel(html_utils.paragraph("""
+            When computing <b>custom metrics</b> the following metrics 
+            were <b>ignored</b> because they raised an <b>error</b>:
+        """)), 0, 1)
+
+        scrollArea = QScrollArea()
+        scrollAreaWidget = QWidget()  
+        textLayout = QVBoxLayout()
+        for func_name, traceback_format in customMetricsErrors.items():
+            nameLabel = QLabel(f'<b>{func_name}</b>: ')
+            errorMessage = f'\n{traceback_format}'
+            errorLabel = QLabel(errorMessage)
+            print(func_name)
+            print(traceback_format)
+            errorLabel.setStyleSheet("background-color: white")
+            errorLabel.setFrameShape(QFrame.Panel)
+            errorLabel.setFrameShadow(QFrame.Sunken)
+            textLayout.addWidget(nameLabel)
+            textLayout.addWidget(errorLabel)
+            textLayout.addStretch(1)
+        
+        scrollAreaWidget.setLayout(textLayout)
+        scrollArea.setWidget(scrollAreaWidget)
+        
+        layout.addWidget(scrollArea, 1, 1)
+
+        buttonsLayout = QHBoxLayout()
+        showLogButton = widgets.showInFileManagerButton('Show log file...')
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(showLogButton)
+        
+        okButton = widgets.okPushButton(' Ok ')
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(okButton)
+
+        showLogButton.clicked.connect(partial(myutils.showInExplorer, log_path))
+        okButton.clicked.connect(self.close)
+        layout.setVerticalSpacing(10)
+        layout.addLayout(buttonsLayout, 2, 1)
+
+        self.setLayout(layout)
+        self.setFont(font)
 
 class postProcessSegmParams(QGroupBox):
     def __init__(self, title, useSliders=False, parent=None, maxSize=None):
