@@ -862,7 +862,12 @@ class loadData:
             chName_equations = measurements.get_user_combine_metrics_equations(
                 chName
             )
+            chName_equations = {
+                key:val for key, val in chName_equations.items()
+                if key not in configPars['equations']
+            }
             userPathChEquations = {**userPathChEquations, **chName_equations}
+            configPars['user_path_equations'] = userPathChEquations
 
         # Append mixed channels equations from the user_path ini file
         userPathMixedChEquations = {
