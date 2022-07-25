@@ -1,3 +1,4 @@
+from posixpath import basename
 import sys
 import os
 import re
@@ -27,7 +28,7 @@ sys.path.append(cellacdc_path)
 # Custom modules
 from .. import prompts, load, myutils, apps, html_utils, widgets
 
-from .. import qrc_resources
+from .. import qrc_resources, printl
 
 if os.name == 'nt':
     try:
@@ -46,7 +47,7 @@ class concatWin(QMainWindow):
         self.actionToEnable = actionToEnable
         self.mainWin = mainWin
         super().__init__(parent)
-        self.setWindowTitle("Cell-ACDC - Align")
+        self.setWindowTitle("Cell-ACDC - Concatenate")
         self.setWindowIcon(QtGui.QIcon(":icon.ico"))
 
         mainContainer = QWidget()
@@ -78,22 +79,8 @@ class concatWin(QMainWindow):
         mainLayout.setContentsMargins(20, 0, 20, 20)
         mainContainer.setLayout(mainLayout)
 
-    def getMostRecentPath(self):
-        recentPaths_path = os.path.join(
-            cellacdc_path, 'temp', 'recentPaths.csv'
-        )
-        if os.path.exists(recentPaths_path):
-            df = pd.read_csv(recentPaths_path, index_col='index')
-            if 'opened_last_on' in df.columns:
-                df = df.sort_values('opened_last_on', ascending=False)
-            self.MostRecentPath = df.iloc[0]['path']
-            if not isinstance(self.MostRecentPath, str):
-                self.MostRecentPath = ''
-        else:
-            self.MostRecentPath = ''
-
     def main(self):
-        self.getMostRecentPath()
+        self.MostRecentPath = myutils.getMostRecentPath()
         exp_path = QFileDialog.getExistingDirectory(
             self, 'Select experiment folder containing Position_n folders',
             self.MostRecentPath)
@@ -136,8 +123,11 @@ class concatWin(QMainWindow):
                         for pos in pos_foldernames]
 
         AllPos_df = self.concatAcdcOutputDfs(images_paths)
+        if AllPos_df is None:
+            self.close()
+            return
+        
         csv_path = self.saveAllPos_df(AllPos_df, exp_path)
-
 
         self.close()
         self.dialogProcessDone(csv_path)
@@ -145,15 +135,17 @@ class concatWin(QMainWindow):
             exit(f'Done. File saved to {csv_path}')
 
     def saveAllPos_df(self, AllPos_df, exp_path):
+        
         AllPos_df_folder = os.path.join(exp_path, 'AllPos_acdc_output')
         if not os.path.exists(AllPos_df_folder):
             os.mkdir(AllPos_df_folder)
-
-        csv_path = os.path.join(AllPos_df_folder, 'AllPos_acdc_output.csv')
+        
+        AllPos_df_filename = f'AllPos_{self.acdc_df_endname}'
+        csv_path = os.path.join(AllPos_df_folder, AllPos_df_filename)
         csv_path_new = csv_path
         i = 1
         while os.path.exists(csv_path_new):
-            newFilename = f'AllPos_acdc_output_{i}.csv'
+            newFilename = f'{i}_{AllPos_df_filename}'
             csv_path_new = os.path.join(AllPos_df_folder, newFilename)
             i += 1
 
@@ -174,9 +166,8 @@ class concatWin(QMainWindow):
         print('==============')
         msg = QMessageBox()
         msg.information(
-            self, 'Process completed.', txt, msg.Ok
+            self, 'Concatenation process completed.', txt, msg.Ok
         )
-
 
     def askNewOrReplace(self, AllPos_df_folder):
         msg = QMessageBox(self)
@@ -195,27 +186,72 @@ class concatWin(QMainWindow):
         else:
             newFile = False
             return newFile
+    
+    def askSelectAcdcDfFile(self, acdc_df_files):
+        selectAcdcDfFile = apps.QDialogListbox(
+            'Select file to concatenate',
+            'Select file to concatenate:\n',
+            acdc_df_files, multiSelection=False, parent=self
+        )
+        selectAcdcDfFile.exec_()
+        if selectAcdcDfFile.cancel:
+            return
+        else:
+            return selectAcdcDfFile.selectedItemsText[0]
 
     def concatAcdcOutputDfs(self, images_paths):
         print('Loading "acdc_output.csv" and concatenating...')
         keys = []
         df_li = []
-        for images_path in tqdm(images_paths, ncols=100):
+        self.acdc_df_endname = ''
+        for i, images_path in enumerate(tqdm(images_paths, ncols=100)):
             ls = myutils.listdir(images_path)
-            acdc_df_path = [f for f in ls if f.find('acdc_output.csv')!=-1]
-            if not acdc_df_path:
+            basename, _ = myutils.getBasenameAndChNames(images_path)
+            acdc_df_files = [
+                f for f in ls if f.endswith('.csv')
+                and f[len(basename):].find('acdc_output') != -1
+            ]
+            if not acdc_df_files:
                 print('')
                 print('=============================')
-                print('WARNING: "acdc_output.csv" not found in folder '
-                      f'{images_path}. Skipping it')
+                print('WARNING: "acdc_output.csv" files not found in folder '
+                    f'{images_path}. Skipping it')
                 print('=============================')
                 continue
-            acdc_df_path = os.path.join(images_path, acdc_df_path[0])
+            
+            if not self.acdc_df_endname:              
+                if len(acdc_df_files) == 1:
+                    acdc_df_file = acdc_df_files[0]
+                elif i == 0:
+                    acdc_df_file = self.askSelectAcdcDfFile(acdc_df_files)
+                    if acdc_df_file is None:
+                        print('')
+                        print('=============================')
+                        print('Concatenation process aborted.')
+                        print('=============================')
+                        return
+                self.acdc_df_endname = acdc_df_file[len(basename):]      
+            else:
+                acdc_df_files = [
+                    f for f in acdc_df_files if f.endswith(self.acdc_df_endname)
+                ]
+                if not acdc_df_files:
+                    print('')
+                    print('=============================')
+                    print(
+                        f'WARNING: "{self.acdc_df_endname}" file not found in folder '
+                        f'{images_path}. Skipping it'
+                    )
+                    print('=============================')
+                    continue
+                acdc_df_file = acdc_df_files[0]
+            
+            acdc_df_path = os.path.join(images_path, acdc_df_file)
             df = pd.read_csv(acdc_df_path).set_index(['frame_i', 'Cell_ID'])
             keys.append(os.path.basename(os.path.dirname(images_path)))
             df_li.append(df)
         AllPos_df = pd.concat(
-                df_li, keys=keys, names=['Position_n', 'frame_i', 'Cell_ID']
+            df_li, keys=keys, names=['Position_n', 'frame_i', 'Cell_ID']
         )
         return AllPos_df
 
@@ -267,19 +303,11 @@ class concatWin(QMainWindow):
         df.to_csv(recentPaths_path)
 
     def doAbort(self):
-        msg = QMessageBox()
-        closeAnswer = msg.warning(
-           self, 'Abort execution?', 'Do you really want to abort process?',
-           msg.Yes | msg.No
-        )
-        if closeAnswer == msg.Yes:
-            if self.allowExit:
-                exit('Execution aborted by the user')
-            else:
-                print('Segmentation routine aborted by the user.')
-                return True
+        if self.allowExit:
+            exit('Execution aborted by the user')
         else:
-            return False
+            print('Concatenation process aborted by the user.')
+            return True
 
     def closeEvent(self, event):
         if self.actionToEnable is not None:

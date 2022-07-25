@@ -10164,9 +10164,14 @@ class guiWin(QMainWindow):
         return True
 
     def loadingDataCompleted(self):
-        self.gui_addTopLayerItems()
-
         posData = self.data[self.pos_i]
+
+        if self.isSnapshot:
+            self.setWindowTitle(f'Cell-ACDC - GUI - "{posData.exp_path}"')
+        else:
+            self.setWindowTitle(f'Cell-ACDC - GUI - "{posData.pos_path}"')
+
+        self.gui_addTopLayerItems()
 
         self.guiTabControl.addChannels([posData.user_ch_name])
         self.showPropsDockButton.setDisabled(False)
@@ -10998,7 +11003,7 @@ class guiWin(QMainWindow):
         posData.frame_i = self.navigateScrollBar.sliderPosition()-1
         self.updateFramePosLabel()
         proceed_cca, never_visited = self.get_data()
-        self.updateALLimg()
+        self.updateALLimg(updateFilters=True)
 
     def unstore_data(self):
         posData = self.data[self.pos_i]
@@ -12827,9 +12832,6 @@ class guiWin(QMainWindow):
             ol_img = self.normalizeIntensities(ol_img)
         return ol_img
 
-    def setLookupTableImg(self, img):
-        pass
-
     def setOverlaySegmMasks(self, force=False):
         how = self.drawIDsContComboBox.currentText()
         if how.find('overlay segm. masks') == -1 and not force:
@@ -14520,8 +14522,6 @@ class guiWin(QMainWindow):
             images_paths = [exp_path]
             pos_path = os.path.dirname(exp_path)
             exp_path = os.path.dirname(pos_path)
-        
-        self.setWindowTitle(f'Cell-ACDC - GUI - "{exp_path}"')
 
         self.images_paths = images_paths
 
