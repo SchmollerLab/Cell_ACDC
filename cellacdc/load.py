@@ -345,7 +345,8 @@ class loadData:
 
         for file in ls:
             filePath = os.path.join(self.images_path, file)
-            endName = file[len(self.basename):].split('.')[0]
+            filename, ext = os.path.splitext(file)
+            endName = filename[len(self.basename):]
 
             loadMetadata = (
                 load_metadata and file.endswith('metadata.csv')
@@ -360,7 +361,7 @@ class loadData:
             elif end_filename_segm:
                 # Load the segmentation file selected by the user
                 self._segm_end_fn = end_filename_segm
-                is_segm_file = endName == end_filename_segm
+                is_segm_file = endName == end_filename_segm and ext == '.npz'
             else:
                 # Load default segmentation file
                 is_segm_file = file.endswith('segm.npz')
@@ -807,7 +808,12 @@ class loadData:
             chName_equations = measurements.get_user_combine_metrics_equations(
                 chName
             )
+            chName_equations = {
+                key:val for key, val in chName_equations.items()
+                if key not in configPars['equations']
+            }
             userPathChEquations = {**userPathChEquations, **chName_equations}
+            configPars['user_path_equations'] = userPathChEquations
 
         # Append mixed channels equations from the user_path ini file
         userPathMixedChEquations = {
