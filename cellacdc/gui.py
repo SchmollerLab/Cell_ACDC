@@ -7204,13 +7204,16 @@ class guiWin(QMainWindow):
             _, filename = self.getPathFromChName(channelName, posData)
             imgData = posData.ol_data_dict[filename][posData.frame_i]
         filteredData = imgData.copy()
+        storeFiltered = False
         for filterDict in self.filtersWins.values():
             filterWin = filterDict['window']
             if filterWin is None:
                 continue
             filteredData = filterWin.filter(filteredData)
+            storeFiltered = True
 
-        self.filteredData[channelName] = filteredData
+        if storeFiltered:
+            self.filteredData[channelName] = filteredData
 
         if posData.SizeZ > 1:
             img = self.get_2Dimg_from_3D(filteredData)
