@@ -10807,6 +10807,9 @@ class guiWin(QMainWindow):
 
         self.ax1BrushHoverID = 0
 
+        self.last_pos_i = -1
+        self.last_frame_i = -1
+
         # Plots items
         self.data_loaded = True
         self.isMouseDragImg2 = False
@@ -11877,7 +11880,7 @@ class guiWin(QMainWindow):
             if msg.clickedButton == goToButton:
                 posData.frame_i = last_tracked_i
                 self.get_data()
-                self.updateALLimg()
+                self.updateALLimg(updateFilters=True)
                 self.updateScrollbars()
             else:
                 current_frame_i = posData.frame_i
@@ -11948,7 +11951,7 @@ class guiWin(QMainWindow):
                 posData.frame_i = last_cca_frame_i
                 self.titleLabel.setText(msg, color=self.titleColor)
                 self.get_data()
-                self.updateALLimg()
+                self.updateALLimg(updateFilters=True)
                 self.updateScrollbars()
             else:
                 msg = 'Cell cycle analysis aborted.'
@@ -11975,7 +11978,7 @@ class guiWin(QMainWindow):
                 self.last_cca_frame_i = last_cca_frame_i
                 posData.frame_i = last_cca_frame_i
                 self.get_data()
-                self.updateALLimg()
+                self.updateALLimg(updateFilters=True)
                 self.updateScrollbars()
             elif msg.cancel:
                 msg = 'Cell cycle analysis aborted.'
@@ -13754,11 +13757,18 @@ class guiWin(QMainWindow):
             useEraserImg=False
         ):
         self.clearAx1Items()
-
         posData = self.data[self.pos_i]
 
+        if self.last_pos_i != self.pos_i or posData.frame_i != self.last_frame_i:
+            updateFilters = True
+        
+        self.last_pos_i = self.pos_i
+        self.last_frame_i = posData.frame_i
+
         if image is None:
-            if not updateFilters:
+            if updateFilters:
+                img = self.applyFilter(self.user_ch_name, setImg=False)
+            else:
                 filteredData = self.filteredData.get(self.user_ch_name)
                 if filteredData is None:
                     # Filtered data not existing
@@ -13768,9 +13778,7 @@ class guiWin(QMainWindow):
                     img = self.get_2Dimg_from_3D(filteredData)
                 else:
                     # 2D filtered data (see self.applyFilter)
-                    img = filteredData
-            else:
-                img = self.applyFilter(self.user_ch_name, setImg=False)
+                    img = filteredData            
         else:
             img = image
         
