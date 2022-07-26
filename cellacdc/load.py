@@ -2,7 +2,6 @@ import os
 import sys
 import traceback
 import re
-from attr import has
 import cv2
 import json
 import h5py
