@@ -5491,9 +5491,6 @@ class guiWin(QMainWindow):
 
         # Annotate cell cycle division
         elif isAnnotateDivision:
-            if posData.frame_i <= 0 and not self.isSnapshot:
-                return
-
             if posData.cca_df is None:
                 return
 
@@ -6414,20 +6411,32 @@ class guiWin(QMainWindow):
 
     def annotateDivision(self, cca_df, ID, relID):
         # Correct as follows:
-        # If S then assign to G1 and +1 on generation number
+        # For frame_i > 0 --> assign to G1 and +1 on generation number
+        # For frame == 0 --> reinitialize to unknown cells
         posData = self.data[self.pos_i]
         store = False
         cca_df.at[ID, 'cell_cycle_stage'] = 'G1'
-        gen_num_clickedID = cca_df.at[ID, 'generation_num']
-        cca_df.at[ID, 'generation_num'] += 1
-        cca_df.at[ID, 'division_frame_i'] = posData.frame_i
         cca_df.at[relID, 'cell_cycle_stage'] = 'G1'
-        gen_num_relID = cca_df.at[relID, 'generation_num']
-        cca_df.at[relID, 'generation_num'] = gen_num_relID+1
-        cca_df.at[relID, 'division_frame_i'] = posData.frame_i
-        if gen_num_clickedID < gen_num_relID:
-            cca_df.at[ID, 'relationship'] = 'mother'
+        
+        if posData.frame_i > 0:
+            gen_num_clickedID = cca_df.at[ID, 'generation_num']
+            cca_df.at[ID, 'generation_num'] += 1
+            cca_df.at[ID, 'division_frame_i'] = posData.frame_i    
+            gen_num_relID = cca_df.at[relID, 'generation_num']
+            cca_df.at[relID, 'generation_num'] = gen_num_relID+1
+            cca_df.at[relID, 'division_frame_i'] = posData.frame_i
+            if gen_num_clickedID < gen_num_relID:
+                cca_df.at[ID, 'relationship'] = 'mother'
+            else:
+                cca_df.at[relID, 'relationship'] = 'mother'
         else:
+            cca_df.at[ID, 'generation_num'] = 2
+            cca_df.at[relID, 'generation_num'] = 2
+
+            cca_df.at[ID, 'division_frame_i'] = -1
+            cca_df.at[relID, 'division_frame_i'] = -1
+
+            cca_df.at[ID, 'relationship'] = 'mother' 
             cca_df.at[relID, 'relationship'] = 'mother'
         store = True
         return store
@@ -6513,6 +6522,10 @@ class guiWin(QMainWindow):
 
         if relID not in posData.IDs:
             return
+        
+        if clicked_ccs == 'G1' and posData.frame_i == 0:
+            # We do not allow undoing division annotation on first frame
+            return
 
         ccs_relID = posData.cca_df.at[relID, 'cell_cycle_stage']
         if clicked_ccs == 'S':
@@ -6533,7 +6546,6 @@ class guiWin(QMainWindow):
 
         if self.ccaTableWin is not None:
             self.ccaTableWin.updateTable(posData.cca_df)
-
 
         # Correct future frames
         for i in range(posData.frame_i+1, posData.SizeT):
@@ -11908,8 +11920,8 @@ class guiWin(QMainWindow):
             else:
                 if 'cell_cycle_stage' not in df.columns:
                     break
-
-        last_cca_frame_i = i-1 if i>0 else 0
+        
+        last_cca_frame_i = i if i==0 or i+1==len(posData.allData_li) else i-1
 
         if last_cca_frame_i == 0:
             # Remove undoable actions from segmentation mode
@@ -11949,7 +11961,7 @@ class guiWin(QMainWindow):
             # Prompt user to go to last annotated frame
             msg = widgets.myMessageBox()
             txt = html_utils.paragraph(f"""
-                The <b>last annotated frame</b> is frame {last_cca_frame_i+1}.<br>'
+                The <b>last annotated frame</b> is frame {last_cca_frame_i+1}.<br>
                 Do you want to restart cell cycle analysis from frame
                 {last_cca_frame_i+1}?
             """)
