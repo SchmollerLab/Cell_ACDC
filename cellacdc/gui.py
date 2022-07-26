@@ -756,6 +756,15 @@ class saveDataWorker(QObject):
         return df
 
     def _dfEvalEquation(self, df, newColName, expr):
+        if newColName not in df.columns:
+            print('*'*30)
+            self.mainWin.logger.info(
+                f'The column "{newColName}" for the combined measurement '
+                f'"{expr}" is not present in the metrics table. '
+                '--> Skipping this measurement.'
+            )
+            print('='*20)
+            return
         try:
             df[newColName] = df.eval(expr)
         except:
@@ -7812,7 +7821,7 @@ class guiWin(QMainWindow):
             if self.debug:
                 posData = self.data[self.pos_i]
                 # print(posData.editID_info)
-                print(posData.allData_li[posData.frame_i]['acdc_df'])
+                print(posData.combineMetricsConfig)
                 # self.store_data()
                 pass
         try:
@@ -14545,7 +14554,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         isZstack = posData.SizeZ > 1
         win = apps.combineMetricsEquationDialog(
-            self.ch_names, isZstack, parent=self
+            self.ch_names, isZstack, parent=self, debug=self.debug
         )
         win.sigOk.connect(self.saveCombineMetricsToPosData)
         win.exec_()

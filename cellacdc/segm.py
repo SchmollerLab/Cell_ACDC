@@ -94,6 +94,7 @@ class segmWorker(QRunnable):
 
         posData = load.loadData(img_path, user_ch_name)
         if self.predictCcaState_model is not None:
+            posData.getBasenameAndChNames()
             posData.loadOtherFiles(
                 load_segm_data=False,
                 load_acdc_df=True
@@ -987,6 +988,7 @@ class segmWin(QMainWindow):
         max = 0
         for imgPath in user_ch_file_paths:
             posData = load.loadData(imgPath, user_ch_name)
+            posData.getBasenameAndChNames()
             posData.loadOtherFiles(
                 load_segm_data=False,
                 load_metadata=True
