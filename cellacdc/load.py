@@ -396,6 +396,8 @@ class loadData:
         for file in ls:
             filePath = os.path.join(self.images_path, file)
             filename, segmExt = os.path.splitext(file)
+            if not hasattr(self, 'basename'):
+                self.getBasenameAndChNames()
             endName = filename[len(self.basename):]
 
             loadMetadata = (
@@ -870,7 +872,7 @@ class loadData:
             configPars['user_path_equations'] = userPathChEquations
 
         # Append mixed channels equations from the user_path ini file
-        userPathMixedChEquations = {
+        configPars['mixed_channels_equations'] = {
             **configPars['mixed_channels_equations'],
             **measurements.get_user_combine_mixed_channels_equations()
         }
