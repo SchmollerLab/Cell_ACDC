@@ -301,6 +301,13 @@ class segmWorker(QRunnable):
                 lab_stack = np.insert(
                     lab_stack, 0, last_segm_frame, axis=0
                 )
+            
+            if self.save:
+                # Since tracker could raise errors we save the not-tracked 
+                # version which will eventually overwritten
+                self.signals.progress.emit(f'Saving NON-tracked masks of {posData.relPath}...')
+                np.savez_compressed(posData.segm_npz_path, lab_stack)
+            
             tracked_stack = self.tracker.track(
                 lab_stack, signals=self.signals,
                 export_to=posData.btrack_tracks_h5_path

@@ -36,6 +36,8 @@ def calc_IoA_matrix(lab, prev_lab, rp, prev_rp, IDs_curr_untracked=None):
 
 def assign(IoA_matrix, IDs_curr_untracked, IDs_prev, IoA_thresh=0.4):
     # Determine max IoA between IDs and assign tracked ID if IoA >= IoA_thresh
+    if IoA_matrix.size == 0:
+        return [], []
     max_IoA_col_idx = IoA_matrix.argmax(axis=1)
     unique_col_idx, counts = np.unique(max_IoA_col_idx, return_counts=True)
     counts_dict = dict(zip(unique_col_idx, counts))
@@ -137,7 +139,9 @@ def track_frame(
     )
 
     if posData is None and uniqueID is None:
-        uniqueID = max((max(IDs_prev), max(IDs_curr_untracked)))+1
+        uniqueID = max(
+            (max(IDs_prev, default=0), max(IDs_curr_untracked, default=0))
+        ) + 1
     elif uniqueID is None:
         # Compute starting unique ID
         setBrushID_func(useCurrentLab=False)
