@@ -1414,6 +1414,9 @@ class guiWin(QMainWindow):
         pixmap = QPixmap(":curv_cursor.svg")
         self.curvCursor = QCursor(pixmap, 16, 16)
 
+        pixmap = QPixmap(":addDelPolyLineRoi_cursor.svg")
+        self.polyLineRoiCursor = QCursor(pixmap, 16, 16)
+
     def gui_createMenuBar(self):
         menuBar = self.menuBar()
         # File menu
@@ -2377,6 +2380,7 @@ class guiWin(QMainWindow):
             'To delete rectangle right-click on it --> remove.')
         
         self.addDelPolyLineRoiAction = QAction(self)
+        self.addDelPolyLineRoiAction.setCheckable(True)
         self.addDelPolyLineRoiAction.roiType = 'polyline'
         self.addDelPolyLineRoiAction.setIcon(QIcon(":addDelPolyLineRoi.svg"))
         self.addDelPolyLineRoiAction.setToolTip(
@@ -2390,7 +2394,10 @@ class guiWin(QMainWindow):
             '- Add a new anchor point on an existing segment with right-click on the segment.\n\n'
             'Moving and reshaping the ROI will restore deleted IDs if they are not '
             'touched by it anymore.\n'
-            'To delete the ROI right-click on it --> remove.')
+            'To delete the ROI right-click on it --> remove.'
+        )
+        self.checkableButtons.append(self.addDelPolyLineRoiAction)
+        self.LeftClickButtons.append(self.addDelPolyLineRoiAction)
 
         self.delBorderObjAction = QAction(self)
         self.delBorderObjAction.setIcon(QIcon(":delBorderObj.svg"))
@@ -2553,7 +2560,7 @@ class guiWin(QMainWindow):
             filtersDict['action'].toggled.connect(self.filterToggled)
 
         self.addDelRoiAction.triggered.connect(self.addDelROI)
-        self.addDelPolyLineRoiAction.triggered.connect(self.addDelROI)
+        self.addDelPolyLineRoiAction.toggled.connect(self.addDelPolyLineRoi_cb)
         self.delBorderObjAction.triggered.connect(self.delBorderObj)
 
         self.imgGrad.sigLookupTableChanged.connect(self.imgGradLUT_cb)
@@ -4429,8 +4436,15 @@ class guiWin(QMainWindow):
             self.eraserButton.isChecked() and not event.isExit()
             and noModifier
         )
+        setAddDelPolyLineCursor = (
+            self.addDelPolyLineRoiAction.isChecked() and not event.isExit()
+            and noModifier
+        )
         if setBrushCursor or setEraserCursor:
             self.app.setOverrideCursor(Qt.CrossCursor)
+
+        if setAddDelPolyLineCursor:
+            self.app.setOverrideCursor(self.polyLineRoiCursor)
 
         setWandCursor = (
             self.wandToolButton.isChecked() and not event.isExit()
@@ -5173,6 +5187,7 @@ class guiWin(QMainWindow):
         eraserON = self.eraserButton.isChecked()
         rulerON = self.rulerButton.isChecked()
         wandON = self.wandToolButton.isChecked() and not isPanImageClick
+        polyLineRoiON = self.addDelPolyLineRoiAction.isChecked()
 
         # Check if right click on ROI
         isClickOnDelRoi = self.gui_clickedDelRoi(event, left_click, right_click)
@@ -5182,7 +5197,7 @@ class guiWin(QMainWindow):
         dragImgLeft = (
             left_click and not brushON and not histON
             and not curvToolON and not eraserON and not rulerON
-            and not wandON
+            and not wandON and not polyLineRoiON
         )
         if isPanImageClick:
             dragImgLeft = True
@@ -5229,19 +5244,32 @@ class guiWin(QMainWindow):
         # Left click actions
         canCurv = (
             curvToolON and not self.assignBudMothButton.isChecked()
-            and not brushON and not dragImgLeft and not eraserON)
+            and not brushON and not dragImgLeft and not eraserON
+            and not polyLineRoiON
+        )
         canBrush = (
             brushON and not curvToolON and not rulerON
-            and not dragImgLeft and not eraserON and not wandON)
+            and not dragImgLeft and not eraserON and not wandON
+        )
         canErase = (
             eraserON and not curvToolON and not rulerON
-            and not dragImgLeft and not brushON and not wandON)
+            and not dragImgLeft and not brushON and not wandON
+            and not polyLineRoiON
+        )
         canRuler = (
             rulerON and not curvToolON and not brushON
-            and not dragImgLeft and not brushON and not wandON)
+            and not dragImgLeft and not brushON and not wandON
+            and not polyLineRoiON
+        )
         canWand = (
             wandON and not curvToolON and not brushON
-            and not dragImgLeft and not brushON and not rulerON)
+            and not dragImgLeft and not brushON and not rulerON
+            and not polyLineRoiON
+        )
+        canPolyLine = (
+            polyLineRoiON and not wandON and not curvToolON and not brushON
+            and not dragImgLeft and not brushON and not rulerON
+        )
 
         # Enable dragging of the image window like pyqtgraph original code
         if dragImgLeft and not isCustomAnnot:
@@ -7020,7 +7048,7 @@ class guiWin(QMainWindow):
     def addDelROI(self, event):
         posData = self.data[self.pos_i]
         self.warnEditingWithCca_df('Delete IDs using ROI')
-        roi = self.getDelROI(type=self.sender().roiType)
+        roi = self.getDelROI()
         for i in range(posData.frame_i, posData.SizeT):
             delROIs_info = posData.allData_li[i]['delROIs_info']
             delROIs_info['rois'].append(roi)
@@ -7032,6 +7060,15 @@ class guiWin(QMainWindow):
             self.ax2.addItem(roi)
         self.applyDelROIimg1(roi, init=True)
     
+    def addDelPolyLineRoi_cb(self, checked):
+        if checked:
+            self.disconnectLeftClickButtons()
+            self.uncheckLeftClickButtons(self.addDelPolyLineRoiAction)
+            self.connectLeftClickButtons()
+        else:
+            while self.app.overrideCursor() is not None:
+                self.app.restoreOverrideCursor()
+    
     def getViewRange(self):
         Y, X = self.img1.image.shape[:2]
         xRange, yRange = self.ax1.viewRange()
@@ -7042,14 +7079,14 @@ class guiWin(QMainWindow):
         ymax = Y if yRange[1] >= Y else yRange[1]
         return int(ymin), int(ymax), int(xmin), int(xmax)
 
-    def getDelROI(self, xl=None, yb=None, w=32, h=32, type='rect'):
+    def getDelROI(self, xl=None, yb=None, w=32, h=32, anchors=None):
         posData = self.data[self.pos_i]
         if xl is None:
             xRange, yRange = self.ax1.viewRange()
             xl = 0 if xRange[0] < 0 else xRange[0]
             yb = 0 if yRange[0] < 0 else yRange[0]
         Y, X = self.currentLab2D.shape
-        if type == 'rect':
+        if anchors is None:
             roi = pg.ROI(
                 [xl, yb], [w, h],
                 rotatable=False,
@@ -7904,6 +7941,7 @@ class guiWin(QMainWindow):
         self.eraserButton.toggled.connect(self.Eraser_cb)
         self.wandToolButton.toggled.connect(self.wand_cb)
         self.expandLabelToolButton.toggled.connect(self.expandLabelCallback)
+        self.addDelPolyLineRoiAction.toggled.connect(self.addDelPolyLineRoi_cb)
 
     def brushSize_cb(self, value):
         self.ax2_EraserCircle.setSize(value*2)
