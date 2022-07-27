@@ -878,7 +878,8 @@ class saveDataWorker(QObject):
         return df
 
     def addCombineMetrics_acdc_df(self, posData, df):
-        # Add channel specifc combined metrics
+        # Add channel specifc combined metrics (from equations and 
+        # from user_path_equations sections)
         config = posData.combineMetricsConfig
         for chName in posData.loadedChNames:
             metricsToSkipChannel = self.mainWin.metricsToSkip.get(chName, [])
@@ -8228,6 +8229,8 @@ class guiWin(QMainWindow):
         if ev.key() == Qt.Key_T:
             posData = self.data[self.pos_i]
             printl(posData.combineMetricsConfig)
+            printl(self.mixedChCombineMetricsToSave)
+            printl(self.metricsToSkip)
             if self.debug:
                 raise FileNotFoundError
                 posData = self.data[self.pos_i]

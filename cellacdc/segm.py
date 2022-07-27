@@ -304,7 +304,7 @@ class segmWorker(QRunnable):
             
             if self.save:
                 # Since tracker could raise errors we save the not-tracked 
-                # version which will eventually overwritten
+                # version which will eventually be overwritten
                 self.signals.progress.emit(f'Saving NON-tracked masks of {posData.relPath}...')
                 np.savez_compressed(posData.segm_npz_path, lab_stack)
             
