@@ -1831,6 +1831,7 @@ class guiWin(QMainWindow):
         self.checkableQButtonsGroup.addButton(self.ripCellButton)
 
         editToolBar.addAction(self.addDelRoiAction)
+        editToolBar.addAction(self.addDelPolyLineRoiAction)
         editToolBar.addAction(self.delBorderObjAction)
 
         editToolBar.addAction(self.repeatTrackingAction)
@@ -2366,13 +2367,30 @@ class guiWin(QMainWindow):
         self.imgPropertiesAction.setDisabled(True)
 
         self.addDelRoiAction = QAction(self)
+        self.addDelRoiAction.roiType = 'rect'
         self.addDelRoiAction.setIcon(QIcon(":addDelRoi.svg"))
         self.addDelRoiAction.setToolTip(
             'Add resizable rectangle. Every ID touched by the rectangle will be '
             'automaticaly deleted.\n '
-            'Moving the rectangle will restore deleted IDs if they are not '
+            'Moving adn resizing the rectangle will restore deleted IDs if they are not '
             'touched by it anymore.\n'
             'To delete rectangle right-click on it --> remove.')
+        
+        self.addDelPolyLineRoiAction = QAction(self)
+        self.addDelPolyLineRoiAction.roiType = 'polyline'
+        self.addDelPolyLineRoiAction.setIcon(QIcon(":addDelPolyLineRoi.svg"))
+        self.addDelPolyLineRoiAction.setToolTip(
+            'Add custom poly-line deletion ROI. Every ID touched by the ROI will be '
+            'automaticaly deleted.\n\n'
+            'USAGE:\n'
+            '- Activate the button.\n'
+            '- Left-click on the LEFT image to add a new anchor point.\n'
+            '- Add as many anchor points as needed and then close by clicking on starting anchor.\n'
+            '- Delete an anchor-point with right-click on it.\n'
+            '- Add a new anchor point on an existing segment with right-click on the segment.\n\n'
+            'Moving and reshaping the ROI will restore deleted IDs if they are not '
+            'touched by it anymore.\n'
+            'To delete the ROI right-click on it --> remove.')
 
         self.delBorderObjAction = QAction(self)
         self.delBorderObjAction.setIcon(QIcon(":delBorderObj.svg"))
@@ -2535,6 +2553,7 @@ class guiWin(QMainWindow):
             filtersDict['action'].toggled.connect(self.filterToggled)
 
         self.addDelRoiAction.triggered.connect(self.addDelROI)
+        self.addDelPolyLineRoiAction.triggered.connect(self.addDelROI)
         self.delBorderObjAction.triggered.connect(self.delBorderObj)
 
         self.imgGrad.sigLookupTableChanged.connect(self.imgGradLUT_cb)
@@ -7001,7 +7020,7 @@ class guiWin(QMainWindow):
     def addDelROI(self, event):
         posData = self.data[self.pos_i]
         self.warnEditingWithCca_df('Delete IDs using ROI')
-        roi = self.getDelROI()
+        roi = self.getDelROI(type=self.sender().roiType)
         for i in range(posData.frame_i, posData.SizeT):
             delROIs_info = posData.allData_li[i]['delROIs_info']
             delROIs_info['rois'].append(roi)
@@ -7011,7 +7030,7 @@ class guiWin(QMainWindow):
             self.ax1.addItem(roi)
         else:
             self.ax2.addItem(roi)
-        self.applyDelROIimg1(None, init=True)
+        self.applyDelROIimg1(roi, init=True)
     
     def getViewRange(self):
         Y, X = self.img1.image.shape[:2]
@@ -7023,37 +7042,36 @@ class guiWin(QMainWindow):
         ymax = Y if yRange[1] >= Y else yRange[1]
         return int(ymin), int(ymax), int(xmin), int(xmax)
 
-    def getDelROI(self, xl=None, yb=None, w=32, h=32):
+    def getDelROI(self, xl=None, yb=None, w=32, h=32, type='rect'):
         posData = self.data[self.pos_i]
         if xl is None:
             xRange, yRange = self.ax1.viewRange()
             xl = 0 if xRange[0] < 0 else xRange[0]
             yb = 0 if yRange[0] < 0 else yRange[0]
         Y, X = self.currentLab2D.shape
-        roi = pg.ROI(
-            [xl, yb], [w, h],
-            rotatable=False,
-            removable=True,
-            pen=pg.mkPen(color='r'),
-            maxBounds=QRectF(QRect(0,0,X,Y))
-        )
+        if type == 'rect':
+            roi = pg.ROI(
+                [xl, yb], [w, h],
+                rotatable=False,
+                removable=True,
+                pen=pg.mkPen(color='r'),
+                maxBounds=QRectF(QRect(0,0,X,Y))
+            )
+            ## handles scaling horizontally around center
+            roi.addScaleHandle([1, 0.5], [0, 0.5])
+            roi.addScaleHandle([0, 0.5], [1, 0.5])
+
+            ## handles scaling vertically from opposite edge
+            roi.addScaleHandle([0.5, 0], [0.5, 1])
+            roi.addScaleHandle([0.5, 1], [0.5, 0])
+
+            ## handles scaling both vertically and horizontally
+            roi.addScaleHandle([1, 1], [0, 0])
+            roi.addScaleHandle([0, 0], [1, 1])
+            roi.addScaleHandle([0, 1], [1, 0])
+            roi.addScaleHandle([1, 0], [0, 1])
 
         roi.handleSize = 7
-
-        ## handles scaling horizontally around center
-        roi.addScaleHandle([1, 0.5], [0, 0.5])
-        roi.addScaleHandle([0, 0.5], [1, 0.5])
-
-        ## handles scaling vertically from opposite edge
-        roi.addScaleHandle([0.5, 0], [0.5, 1])
-        roi.addScaleHandle([0.5, 1], [0.5, 0])
-
-        ## handles scaling both vertically and horizontally
-        roi.addScaleHandle([1, 1], [0, 0])
-        roi.addScaleHandle([0, 0], [1, 1])
-        roi.addScaleHandle([0, 1], [1, 0])
-        roi.addScaleHandle([1, 0], [0, 1])
-
         roi.sigRegionChanged.connect(self.delROImoving)
         roi.sigRegionChangeFinished.connect(self.delROImovingFinished)
         return roi
@@ -7099,27 +7117,19 @@ class guiWin(QMainWindow):
     def restoreDelROIimg1(self, delMaskID, delID):
         posData = self.data[self.pos_i]
         how = self.drawIDsContComboBox.currentText()
+        idx = delID-1
         if how.find('nothing') != -1:
             return
-        elif how.find('contours') != -1:
-            idx = delID-1
-            obj_idx = posData.IDs.index(delID)
-            obj = posData.rp[obj_idx]
+        elif how.find('contours') != -1:        
+            obj = skimage.measure.regionprops(delMaskID.astype(int))[0]
             curveID = self.ax1_ContoursCurves[idx]
             cont = self.getObjContours(obj)
             curveID.setData(
                 cont[:,0], cont[:,1], pen=self.oldIDs_cpen
-            )
-            self.ax1_LabelItemsIDs[delID-1].setText(f'{delID}')
+            )       
         elif how.find('overlay segm. masks') != -1:
-            self.ax1_LabelItemsIDs[delID-1].setText(f'{delID}')
-            alpha = self.imgGrad.labelsAlphaSlider.value()
-            overlayRGB = self.imgRGB.copy()/255
-            color = posData.lut[delID]/255
-            overlay = overlayRGB[delMaskID>0]*(1.0-alpha) + color*alpha
-            overlayRGB[delMaskID>0] = overlay
-            overlayRGB = (np.clip(overlayRGB, 0, 1)*255).astype(np.uint8)
-            self.img1.setImage(overlayRGB)
+            self.labelsLayerImg1.setImage(self.currentLab2D, autoLevels=False)
+        self.ax1_LabelItemsIDs[delID-1].setText(f'{delID}')
 
     def getDelROIlab(self):
         posData = self.data[self.pos_i]
@@ -7512,6 +7522,7 @@ class guiWin(QMainWindow):
         onlyMothBudLines = how == 'Draw only mother-bud lines'
         IDs_and_masks = how == 'Draw IDs and overlay segm. masks'
         onlyMasks = how == 'Draw only overlay segm. masks'
+        ccaInfo_and_masks = how == 'Draw cell cycle info and overlay segm. masks'
 
         # if how.find('segm. masks') != -1:
         #     self.imgGrad.labelsAlphaMenu.setDisabled(False)
@@ -7538,7 +7549,10 @@ class guiWin(QMainWindow):
                 _IDlabel1.setText('')
 
         # Clear mother-bud lines if Requested
-        drawLines = only_ccaInfo or ccaInfo_and_cont or onlyMothBudLines
+        drawLines = (
+            only_ccaInfo or ccaInfo_and_cont or onlyMothBudLines 
+            or ccaInfo_and_masks
+        )
         if not drawLines:
             for BudMothLine in self.ax1_BudMothLines:
                 if BudMothLine is None:
@@ -7686,11 +7700,11 @@ class guiWin(QMainWindow):
             self.setEnabledCcaToolbar(enabled=False)
             # self.drawIDsContComboBox.clear()
             # self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
-            for BudMothLine in self.ax1_BudMothLines:
-                if BudMothLine is None:
-                    continue
-                if BudMothLine.getData()[0] is not None:
-                    BudMothLine.setData([], [])
+            # for BudMothLine in self.ax1_BudMothLines:
+            #     if BudMothLine is None:
+            #         continue
+            #     if BudMothLine.getData()[0] is not None:
+            #         BudMothLine.setData([], [])
             if posData.cca_df is not None:
                 self.store_cca_df()
         elif mode == 'Cell cycle analysis':
@@ -12871,16 +12885,6 @@ class guiWin(QMainWindow):
         if maxID >= len(posData.lut):
             self.extendLabelsLUT(maxID+10)
 
-        # get bkgr color
-        if 'labels_text_color' in self.df_settings.index:
-            rgbString = self.df_settings.at['labels_text_color', 'value']
-            r, g, b = colors.rgb_str_to_values(rgbString)
-            r, g, b = r/255, g/255, b/255
-        else:
-            r, g, b = 0.1, 0.1, 0.1
-
-        self.bg_color = (r, g, b)
-
         self.labelsLayerImg1.setImage(self.currentLab2D, autoLevels=False)
     
     def getObject2DimageFromZ(self, z, obj):
@@ -13233,7 +13237,8 @@ class guiWin(QMainWindow):
             self.updateLookuptable(delIDs=allDelIDs)
 
     def applyDelROIimg1(self, roi, init=False):
-        if init:
+        how = self.drawIDsContComboBox.currentText()
+        if init and how.find('contours') == -1:
             self.setOverlaySegmMasks(force=True)
             return
 
@@ -13242,7 +13247,6 @@ class guiWin(QMainWindow):
         idx = delROIs_info['rois'].index(roi)
         delIDs = delROIs_info['delIDsROI'][idx]
         delMask = delROIs_info['delMasks'][idx]
-        how = self.drawIDsContComboBox.currentText()
         if how.find('nothing') != -1:
             return
         elif how.find('contours') != -1:
