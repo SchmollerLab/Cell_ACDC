@@ -7818,10 +7818,13 @@ class guiWin(QMainWindow):
     @myutils.exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
+            posData = self.data[self.pos_i]
+            # print(posData.editID_info)
+            print(posData.combineMetricsConfig)
+            print(self.mixedChCombineMetricsToSave)
+            print(self.metricsToSkip)
             if self.debug:
-                posData = self.data[self.pos_i]
-                # print(posData.editID_info)
-                print(posData.combineMetricsConfig)
+                
                 # self.store_data()
                 pass
         try:
