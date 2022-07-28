@@ -5154,12 +5154,11 @@ class guiWin(QMainWindow):
             posData.allData_li[posData.frame_i]['delROIs_info']['rois'].copy()
         )
         for r, roi in enumerate(delROIs):
-            x0, y0 = [int(c) for c in roi.pos()]
-            w, h = [int(c) for c in roi.size()]
-            x1, y1 = x0+w, y0+h
-            clickedOnROI = (
-                x>=x0 and x<=x1 and y>=y0 and y<=y1
-            )
+            ROImask = self.getDelRoiMask(roi)
+            if self.isSegm3D:
+                clickedOnROI = ROImask[self.z_lab(), int(y), int(x)]
+            else:
+                clickedOnROI = ROImask[int(y), int(x)]
             raiseContextMenuRoi = right_click and clickedOnROI
             dragRoi = left_click and clickedOnROI
             if raiseContextMenuRoi:
@@ -5177,6 +5176,28 @@ class guiWin(QMainWindow):
                 event.ignore()
                 return True
         return False
+
+    def gui_getHoveredSegmentsPolyLineRoi(self):
+        posData = self.data[self.pos_i]
+        delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
+        segments = []
+        for roi in delROIs_info['rois']:         
+            for seg in roi.segments:       
+                if seg.currentPen == seg.hoverPen:
+                    seg.roi = roi
+                    segments.append(seg)
+        return segments
+    
+    def gui_getHoveredHandlesPolyLineRoi(self):
+        posData = self.data[self.pos_i]
+        delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
+        handles = []
+        for roi in delROIs_info['rois']:         
+            for handle in roi.getHandles():       
+                if handle.currentPen == handle.hoverPen:
+                    handle.roi = roi
+                    handles.append(handle)
+        return handles
 
     @myutils.exception_handler
     def gui_mousePressEventImg1(self, event):
@@ -5200,11 +5221,25 @@ class guiWin(QMainWindow):
         wandON = self.wandToolButton.isChecked() and not isPanImageClick
         polyLineRoiON = self.addDelPolyLineRoiAction.isChecked()
 
+        # Check if right-click on segment of polyline roi to add segment
+        segments = self.gui_getHoveredSegmentsPolyLineRoi()
+        if len(segments) == 1 and right_click:
+            seg = segments[0]
+            seg.roi.segmentClicked(seg, event)
+            return
+        
+        # Check if right-click on handle of polyline roi to remove it
+        handles = self.gui_getHoveredHandlesPolyLineRoi()
+        if len(handles) == 1 and right_click:
+            handle = handles[0]
+            handle.roi.removeHandle(handle)
+            return
+
         # Check if right click on ROI
         isClickOnDelRoi = self.gui_clickedDelRoi(event, left_click, right_click)
         if isClickOnDelRoi:
             return
-
+        
         dragImgLeft = (
             left_click and not brushON and not histON
             and not curvToolON and not eraserON and not rulerON
@@ -6195,23 +6230,33 @@ class guiWin(QMainWindow):
         for roi in delROIs_info['rois']:
             self.ax2.removeItem(roi)
 
-        # Collect garbage ROIs:
         for item in self.ax2.items:
             if isinstance(item, pg.ROI):
                 self.ax2.removeItem(item)
+        
+        for item in self.ax1.items:
+            if isinstance(item, pg.ROI):
+                self.ax1.removeItem(item)
 
     def removeDelROI(self, event):
         posData = self.data[self.pos_i]
-        current_frame_i = posData.frame_i
-        self.store_data()
-        for i in range(posData.frame_i, posData.SizeT):
+        
+        delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
+        self.restoreAnnotDelROI(self.roi_to_del, enforce=True)
+        idx = delROIs_info['rois'].index(self.roi_to_del)
+        delROIs_info['rois'].pop(idx)
+        delROIs_info['delMasks'].pop(idx)
+        delROIs_info['delIDsROI'].pop(idx)
+        
+        # Restore deleted IDs from already visited future frames
+        current_frame_i = posData.frame_i    
+        for i in range(posData.frame_i+1, posData.SizeT):
             delROIs_info = posData.allData_li[i]['delROIs_info']
             if self.roi_to_del in delROIs_info['rois']:
                 posData.frame_i = i
-                idx = delROIs_info['rois'].index(self.roi_to_del)
-                # Restore deleted IDs from already visited frames
+                idx = delROIs_info['rois'].index(self.roi_to_del)         
                 if posData.allData_li[i]['labels'] is not None:
-                    if len(delROIs_info['delIDsROI'][idx]) > 1:
+                    if delROIs_info['delIDsROI'][idx]:
                         posData.lab = posData.allData_li[i]['labels']
                         self.restoreAnnotDelROI(self.roi_to_del, enforce=True)
                         posData.allData_li[i]['labels'] = posData.lab
@@ -6220,16 +6265,24 @@ class guiWin(QMainWindow):
                 delROIs_info['rois'].pop(idx)
                 delROIs_info['delMasks'].pop(idx)
                 delROIs_info['delIDsROI'].pop(idx)
+        
+        if isinstance(self.roi_to_del, pg.PolyLineROI):
+            # PolyLine ROIs are only on ax1
+            self.ax1.removeItem(self.roi_to_del)
+        elif self.labelsGrad.hideLabelsImgAction.isChecked():
+            # Rect ROI is on ax1 because ax2 is hidden
+            self.ax1.removeItem(self.roi_to_del)
+        else:
+            # Rect ROI is on ax2 because ax2 is visible
+            self.ax2.removeItem(self.roi_to_del)
 
         # Back to current frame
         posData.frame_i = current_frame_i
-        posData.lab = posData.allData_li[posData.frame_i]['labels']
-        if self.labelsGrad.hideLabelsImgAction.isChecked():
-            self.ax1.removeItem(self.roi_to_del)
-        else:
-            self.ax2.removeItem(self.roi_to_del)
+        posData.lab = posData.allData_li[posData.frame_i]['labels']                   
         self.get_data()
+        self.update_rp()
         self.updateALLimg()
+        self.store_data()
 
     # @exec_time
     def getPolygonBrush(self, yxc2, Y, X):
@@ -7103,6 +7156,7 @@ class guiWin(QMainWindow):
             self.disconnectLeftClickButtons()
             self.uncheckLeftClickButtons(self.addDelPolyLineRoiAction)
             self.connectLeftClickButtons()
+            self.warnEditingWithCca_df('Delete IDs using ROI')
         else:
             self.tempSegmentON = False
             self.ax1_rulerPlotItem.setData([], [])
@@ -7110,7 +7164,7 @@ class guiWin(QMainWindow):
             self.startPointPolyLineItem.setData([], [])
             while self.app.overrideCursor() is not None:
                 self.app.restoreOverrideCursor()
-    
+         
     def createDelPolyLineRoi(self):
         Y, X = self.currentLab2D.shape
         self.polyLineRoi = pg.PolyLineROI(
@@ -7120,12 +7174,16 @@ class guiWin(QMainWindow):
         )
         self.polyLineRoi.handleSize = 7
         self.polyLineRoi.points = []
-        self.polyLineRoi.sigRegionChanged.connect(self.delROImoving)
-        self.polyLineRoi.sigRegionChangeFinished.connect(self.delROImovingFinished)
         self.ax1.addItem(self.polyLineRoi)
     
     def addPointsPolyLineRoi(self, closed=False):
         self.polyLineRoi.setPoints(self.polyLineRoi.points, closed=closed)
+        if not closed:
+            return
+
+        # Connect closed ROI
+        self.polyLineRoi.sigRegionChanged.connect(self.delROImoving)
+        self.polyLineRoi.sigRegionChangeFinished.connect(self.delROImovingFinished)
     
     def getViewRange(self):
         Y, X = self.img1.image.shape[:2]
@@ -7175,7 +7233,6 @@ class guiWin(QMainWindow):
         roi.setPen(color=(255,255,0))
         # First bring back IDs if the ROI moved away
         self.restoreAnnotDelROI(roi)
-        self.update_rp()
         self.setImageImg2()
         self.applyDelROIimg1(roi)
 
@@ -7205,6 +7262,7 @@ class guiWin(QMainWindow):
             restoredIDs.add(ID)
         delROIs_info['delIDsROI'][idx] = delIDs - restoredIDs
         self.set_2Dlab(lab2D)
+        self.update_rp()
 
     def restoreDelROIimg1(self, delMaskID, delID):
         posData = self.data[self.pos_i]
@@ -7255,18 +7313,27 @@ class guiWin(QMainWindow):
     
     def getDelRoiMask(self, roi):
         posData = self.data[self.pos_i]
-        
+        ROImask = np.zeros(posData.lab.shape, bool)
         if isinstance(roi, pg.PolyLineROI):
-            rr, cc = [], []
-            ROImask = skimage.draw.polygon()
-        else:
-            ROImask = np.zeros(posData.lab.shape, bool)
+            r, c = [], []
+            x0, y0 = roi.pos().x(), roi.pos().y()
+            for _, point in roi.getLocalHandlePositions():
+                xr, yr = point.x(), point.y()
+                r.append(int(yr+y0))
+                c.append(int(xr+x0))
+            rr, cc = skimage.draw.polygon(r, c, shape=self.currentLab2D.shape)
+            if self.isSegm3D:
+                ROImask[self.z_lab(), rr, cc] = True
+            else:
+                ROImask[rr, cc] = True
+        else: 
             x0, y0 = [int(c) for c in roi.pos()]
             w, h = [int(c) for c in roi.size()]
             if self.isSegm3D:
                 ROImask[self.z_lab(), y0:y0+h, x0:x0+w] = True
             else:
                 ROImask[y0:y0+h, x0:x0+w] = True
+        return ROImask
 
     def filterToggled(self, checked):
         action = self.sender()
@@ -8347,9 +8414,14 @@ class guiWin(QMainWindow):
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
             posData = self.data[self.pos_i]
-            printl(posData.combineMetricsConfig)
-            printl(self.mixedChCombineMetricsToSave)
-            printl(self.metricsToSkip)
+            delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
+            roi = delROIs_info['rois'][0]
+            for seg in roi.segments:
+                if seg.currentPen == seg.hoverPen:
+                    pass
+            # printl(posData.combineMetricsConfig)
+            # printl(self.mixedChCombineMetricsToSave)
+            # printl(self.metricsToSkip)
             if self.debug:
                 raise FileNotFoundError
                 posData = self.data[self.pos_i]
@@ -10396,7 +10468,6 @@ class guiWin(QMainWindow):
                 self.highlightZneighLabels_cb
             )
             
-
     def restoreSavedSettings(self):
         if 'how_draw_annotations' in self.df_settings.index:
             how = self.df_settings.at['how_draw_annotations', 'value']
@@ -13620,9 +13691,14 @@ class guiWin(QMainWindow):
         for roi in delROIs_info['rois']:
             if roi in self.ax2.items or roi in self.ax1.items:
                 continue
-            if self.labelsGrad.hideLabelsImgAction.isChecked():
+            if isinstance(roi, pg.PolyLineROI):
+                # PolyLine ROIs are only on ax1
+                self.ax1.addItem(roi)
+            elif self.labelsGrad.hideLabelsImgAction.isChecked():
+                # Rect ROI is on ax1 because ax2 is hidden
                 self.ax1.addItem(roi)
             else:
+                # Rect ROI is on ax2 because ax2 is visible
                 self.ax2.addItem(roi)
 
     def addNewItems(self, newID):
