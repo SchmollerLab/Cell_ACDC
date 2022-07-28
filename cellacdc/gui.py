@@ -10479,12 +10479,12 @@ class guiWin(QMainWindow):
         segmentedChannelname = posData.filename[len(posData.basename):]
         segmEndName = os.path.basename(posData.segm_npz_path)[len(posData.basename):]
         txt = (
-            f'Basename: {posData.basename}',
-            f'Segmented channel: {segmentedChannelname}, '
+            f'Basename: {posData.basename} || '
+            f'Segmented channel: {segmentedChannelname} || '
             f'Segmentation file name: {segmEndName}'
         )
         if not self.isSnapshot:
-            txt = f'{txt}, {posData.pos_foldername}'
+            txt = f'{txt} || {posData.pos_foldername}'
         self.logger.info(txt)
         self.statusBarLabel.setText(txt)
 
