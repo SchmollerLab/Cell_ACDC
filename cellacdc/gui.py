@@ -2865,7 +2865,7 @@ class guiWin(QMainWindow):
             self.ax1_G1cellColor = (204, 204, 204, 178)
         self.ax1_divAnnotColor = (245, 188, 1) # orange
 
-    def gui_addPlotItems(self):
+    def gui_createPlotItems(self):
         if 'textIDsColor' in self.df_settings.index:
             rgbString = self.df_settings.at['textIDsColor', 'value']
             r, g, b = colors.rgb_str_to_values(rgbString)
@@ -2973,7 +2973,7 @@ class guiWin(QMainWindow):
         self.topLayerItems.append(self.ax1_rulerPlotItem)
         self.topLayerItems.append(self.ax1_rulerAnchorsItem)
 
-        # Experimental: scatter plot to add a point marker
+        # Start point of polyline roi
         self.ax1_point_ScatterPlot = pg.ScatterPlotItem()
         self.ax1_point_ScatterPlot.setData(
             [], [], symbol='o', pxMode=False, size=3,
@@ -2981,6 +2981,16 @@ class guiWin(QMainWindow):
             brush=pg.mkBrush((255,0,0,50))
         )
         self.topLayerItems.append(self.ax1_point_ScatterPlot)
+
+        # Experimental: scatter plot to add a point marker
+        self.startPointPolyLineItem = pg.ScatterPlotItem()
+        self.startPointPolyLineItem.setData(
+            [], [], symbol='o', size=9,
+            pen=pg.mkPen(width=2, color='r'),
+            brush=pg.mkBrush((255,0,0,50)),
+            hoverable=True, hoverBrush=pg.mkBrush((255,0,0,255))
+        )
+        self.topLayerItems.append(self.startPointPolyLineItem)
 
         # Eraser circle img2
         self.ax2_EraserCircle = pg.ScatterPlotItem()
@@ -4484,8 +4494,9 @@ class guiWin(QMainWindow):
             self.app.setOverrideCursor(Qt.SizeAllCursor)
 
         drawRulerLine = (
-            self.rulerButton.isChecked() and self.rulerHoverON
-            and not event.isExit()
+            (self.rulerButton.isChecked() 
+            or self.addDelPolyLineRoiAction.isChecked())
+            and self.tempSegmentON and not event.isExit()
         )
         if drawRulerLine:
             x, y = event.pos()
@@ -5418,14 +5429,18 @@ class guiWin(QMainWindow):
             self.img2.updateImage()
             self.isMouseDragImg1 = True
 
-        elif left_click and canRuler:
+        elif left_click and canRuler or canPolyLine:
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            if not self.rulerHoverON:
+            closePolyLine = (
+                len(self.startPointPolyLineItem.pointsAt(event.pos())) > 0
+            )
+            if not self.tempSegmentON or canPolyLine:
+                # Keep adding anchor points for polyline
                 self.ax1_rulerAnchorsItem.setData([xdata], [ydata])
-                self.rulerHoverON = True
+                self.tempSegmentON = True
             else:
-                self.rulerHoverON = False
+                self.tempSegmentON = False
                 xxRA, yyRA = self.ax1_rulerAnchorsItem.getData()
                 if self.isCtrlDown:
                     ydata = yyRA[0]
@@ -5435,6 +5450,26 @@ class guiWin(QMainWindow):
                 self.ax1_rulerAnchorsItem.setData(
                     [xxRA[0], xdata], [yyRA[0], ydata]
                 )
+            
+            
+            if canPolyLine and not self.startPointPolyLineItem.getData()[0]:
+                # Create and add roi item
+                self.createDelPolyLineRoi()
+                # Add start point of polyline roi
+                self.startPointPolyLineItem.setData([xdata], [ydata])
+                self.polyLineRoi.points.append((xdata, ydata))
+            elif canPolyLine:
+                # Add points to polyline roi and eventually close it
+                if not closePolyLine:
+                    self.polyLineRoi.points.append((xdata, ydata))
+                self.addPointsPolyLineRoi(closed=closePolyLine)
+                if closePolyLine:
+                    # Close polyline ROI
+                    self.tempSegmentON = False
+                    self.ax1_rulerAnchorsItem.setData([], [])
+                    self.ax1_rulerPlotItem.setData([], [])
+                    self.startPointPolyLineItem.setData([], [])
+                    self.addRoiToDelRoiInfo(self.polyLineRoi)
 
         elif right_click and canCurv:
             # Draw manually assisted auto contour
@@ -5974,7 +6009,7 @@ class guiWin(QMainWindow):
             self.uncheckLeftClickButtons(self.sender())
             self.connectLeftClickButtons()
         else:
-            self.rulerHoverON = False
+            self.tempSegmentON = False
             self.ax1_rulerPlotItem.setData([], [])
             self.ax1_rulerAnchorsItem.setData([], [])
 
@@ -7045,20 +7080,23 @@ class guiWin(QMainWindow):
         self.store_data()
         self.updateALLimg()
 
-    def addDelROI(self, event):
-        posData = self.data[self.pos_i]
-        self.warnEditingWithCca_df('Delete IDs using ROI')
+    def addDelROI(self, event):       
         roi = self.getDelROI()
-        for i in range(posData.frame_i, posData.SizeT):
-            delROIs_info = posData.allData_li[i]['delROIs_info']
-            delROIs_info['rois'].append(roi)
-            delROIs_info['delMasks'].append(np.zeros_like(posData.lab))
-            delROIs_info['delIDsROI'].append(set())
+        self.addRoiToDelRoiInfo(roi)
         if self.labelsGrad.hideLabelsImgAction.isChecked():
             self.ax1.addItem(roi)
         else:
             self.ax2.addItem(roi)
         self.applyDelROIimg1(roi, init=True)
+        self.warnEditingWithCca_df('Delete IDs using ROI')
+    
+    def addRoiToDelRoiInfo(self, roi):
+        posData = self.data[self.pos_i]
+        for i in range(posData.frame_i, posData.SizeT):
+            delROIs_info = posData.allData_li[i]['delROIs_info']
+            delROIs_info['rois'].append(roi)
+            delROIs_info['delMasks'].append(np.zeros_like(posData.lab))
+            delROIs_info['delIDsROI'].append(set())
     
     def addDelPolyLineRoi_cb(self, checked):
         if checked:
@@ -7066,8 +7104,28 @@ class guiWin(QMainWindow):
             self.uncheckLeftClickButtons(self.addDelPolyLineRoiAction)
             self.connectLeftClickButtons()
         else:
+            self.tempSegmentON = False
+            self.ax1_rulerPlotItem.setData([], [])
+            self.ax1_rulerAnchorsItem.setData([], [])
+            self.startPointPolyLineItem.setData([], [])
             while self.app.overrideCursor() is not None:
                 self.app.restoreOverrideCursor()
+    
+    def createDelPolyLineRoi(self):
+        Y, X = self.currentLab2D.shape
+        self.polyLineRoi = pg.PolyLineROI(
+            [], rotatable=False,
+            removable=True,
+            pen=pg.mkPen(color='r')
+        )
+        self.polyLineRoi.handleSize = 7
+        self.polyLineRoi.points = []
+        self.polyLineRoi.sigRegionChanged.connect(self.delROImoving)
+        self.polyLineRoi.sigRegionChangeFinished.connect(self.delROImovingFinished)
+        self.ax1.addItem(self.polyLineRoi)
+    
+    def addPointsPolyLineRoi(self, closed=False):
+        self.polyLineRoi.setPoints(self.polyLineRoi.points, closed=closed)
     
     def getViewRange(self):
         Y, X = self.img1.image.shape[:2]
@@ -7128,14 +7186,11 @@ class guiWin(QMainWindow):
 
     def restoreAnnotDelROI(self, roi, enforce=True):
         posData = self.data[self.pos_i]
-        x0, y0 = [int(c) for c in roi.pos()]
-        w, h = [int(c) for c in roi.size()]
+        ROImask = self.getDelRoiMask(roi)
         delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
         idx = delROIs_info['rois'].index(roi)
         delMask = delROIs_info['delMasks'][idx]
         delIDs = delROIs_info['delIDsROI'][idx]
-        ROImask = np.zeros(self.currentLab2D.shape, bool)
-        ROImask[y0:y0+h, x0:x0+w] = True
         overlapROIdelIDs = np.unique(delMask[ROImask])
         lab2D = self.get_2Dlab(posData.lab)
         restoredIDs = set()
@@ -7175,15 +7230,12 @@ class guiWin(QMainWindow):
         # Iterate rois and delete IDs
         for roi in posData.allData_li[posData.frame_i]['delROIs_info']['rois']:
             if roi not in self.ax2.items and roi not in self.ax1.items:
-                continue
-            ROImask = np.zeros(posData.lab.shape, bool)
+                continue     
+            ROImask = self.getDelRoiMask(roi)
             delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
             idx = delROIs_info['rois'].index(roi)
             delObjROImask = delROIs_info['delMasks'][idx]
-            delIDsROI = delROIs_info['delIDsROI'][idx]
-            x0, y0 = [int(c) for c in roi.pos()]
-            w, h = [int(c) for c in roi.size()]
-            ROImask[y0:y0+h, x0:x0+w] = True
+            delIDsROI = delROIs_info['delIDsROI'][idx]   
             delIDs = np.unique(posData.lab[ROImask])
             if delIDs[0] == 0:
                 delIDs = delIDs[1:]
@@ -7200,6 +7252,21 @@ class guiWin(QMainWindow):
             delROIs_info['delMasks'][idx] = delObjROImask
             delROIs_info['delIDsROI'][idx] = delIDsROI
         return allDelIDs, DelROIlab
+    
+    def getDelRoiMask(self, roi):
+        posData = self.data[self.pos_i]
+        
+        if isinstance(roi, pg.PolyLineROI):
+            rr, cc = [], []
+            ROImask = skimage.draw.polygon()
+        else:
+            ROImask = np.zeros(posData.lab.shape, bool)
+            x0, y0 = [int(c) for c in roi.pos()]
+            w, h = [int(c) for c in roi.size()]
+            if self.isSegm3D:
+                ROImask[self.z_lab(), y0:y0+h, x0:x0+w] = True
+            else:
+                ROImask[y0:y0+h, x0:x0+w] = True
 
     def filterToggled(self, checked):
         action = self.sender()
@@ -8538,7 +8605,7 @@ class guiWin(QMainWindow):
         for button in self.checkableButtons:
             button.setChecked(False)
         self.splineHoverON = False
-        self.rulerHoverON = False
+        self.tempSegmentON = False
         self.isRightClickDragImg1 = False
         self.clearCurvItems(removeItems=False)
 
@@ -9109,6 +9176,7 @@ class guiWin(QMainWindow):
             )
         else:
             vb.setToolTip('')
+
 
     def addCustomAnnotation(self):
         self.readSavedCustomAnnot()
@@ -10340,6 +10408,7 @@ class guiWin(QMainWindow):
         segmentedChannelname = posData.filename[len(posData.basename):]
         segmEndName = os.path.basename(posData.segm_npz_path)[len(posData.basename):]
         txt = (
+            f'Basename: {posData.basename}',
             f'Segmented channel: {segmentedChannelname}, '
             f'Segmentation file name: {segmEndName}'
         )
@@ -10846,7 +10915,7 @@ class guiWin(QMainWindow):
         self.filteredData = {}
 
         self.splineHoverON = False
-        self.rulerHoverON = False
+        self.tempSegmentON = False
         self.isCtrlDown = False
         self.isShiftDown = False
         self.autoContourHoverON = False
@@ -14403,7 +14472,7 @@ class guiWin(QMainWindow):
         self.reinitWidgetsPos()
         self.removeAllItems()
         self.reinitCustomAnnot()
-        self.gui_addPlotItems()
+        self.gui_createPlotItems()
         self.setUncheckedAllButtons()
         self.restoreDefaultColors()
         self.curvToolButton.setChecked(False)

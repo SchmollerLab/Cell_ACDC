@@ -1678,6 +1678,10 @@ class view_visualcpp_screenshot(QWidget):
         layout.addWidget(label)
         self.setLayout(layout)
 
+class PolyLineROI(pg.PolyLineROI):
+    def __init__(self, positions, closed=False, pos=None, **args):
+        super().__init__(positions, closed, pos, **args)
+
 class myHistogramLUTitem(pg.HistogramLUTItem):
     sigGradientMenuEvent = pyqtSignal(object)
     sigTickColorAccepted = pyqtSignal(object)

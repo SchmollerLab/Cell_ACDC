@@ -81,17 +81,9 @@
   <title
      id="title2">magic-wand</title>
   <path
-     style="fill:none;stroke:#000000;stroke-width:1.05338px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
-     d="M 2,16 H 30"
-     id="path946"
-     inkscape:path-effect="#path-effect948"
-     inkscape:original-d="M 2,16 H 30" />
-  <path
-     style="fill:none;stroke:#000000;stroke-width:1.05013px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
-     d="M 16,2.0000001 V 30"
-     id="path950"
-     inkscape:path-effect="#path-effect952"
-     inkscape:original-d="M 16,2.0000001 V 30" />
+     id="rect2032"
+     style="fill:#e6e6e6;fill-opacity:1;fill-rule:evenodd;stroke:#000000;stroke-width:0.3;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-opacity:1"
+     d="M 15.349609 2.1503906 L 15.349609 15.349609 L 2.1503906 15.349609 L 2.1503906 16.650391 L 15.349609 16.650391 L 15.349609 29.849609 L 16.650391 29.849609 L 16.650391 16.650391 L 29.849609 16.650391 L 29.849609 15.349609 L 16.650391 15.349609 L 16.650391 2.1503906 L 15.349609 2.1503906 z " />
   <circle
      style="fill:none;fill-rule:evenodd;stroke:#b40000;stroke-width:1.10685;stroke-linecap:round;stroke-linejoin:round"
      id="path1056"
