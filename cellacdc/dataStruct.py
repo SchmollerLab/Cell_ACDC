@@ -689,8 +689,12 @@ class createDataStructWin(QMainWindow):
     def __init__(
             self, parent=None, allowExit=False,
             buttonToRestore=None, mainWin=None,
-            start_JVM=True
+            start_JVM=True, version=None
         ):
+        super().__init__(parent)
+
+        self._version = version
+
         logger, logs_path, log_path, log_filename = myutils.setupLogger(
             module='dataStruct'
         )
@@ -699,8 +703,12 @@ class createDataStructWin(QMainWindow):
         self.log_filename = log_filename
         self.logs_path = logs_path
 
-        self.logger.info('Initializing data structures module...')
-        super().__init__(parent)
+        if self._version is not None:
+            logger.info(f'Initializing Data structure module v{self._version}...')
+        else:
+            logger.info(f'Initializing Data structure module...')
+
+        
         is_linux = sys.platform.startswith('linux')
         is_mac = sys.platform == 'darwin'
         is_win = sys.platform.startswith("win")

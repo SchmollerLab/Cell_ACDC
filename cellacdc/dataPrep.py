@@ -65,16 +65,27 @@ class toCsvWorker(QObject):
         self.finished.emit()
 
 class dataPrepWin(QMainWindow):
-    def __init__(self, parent=None, buttonToRestore=None, mainWin=None):
+    def __init__(
+            self, parent=None, buttonToRestore=None, mainWin=None,
+            version=None
+        ):
         from .config import parser_args
         self.debug = parser_args['debug']
 
         super().__init__(parent)
 
+        self._version = version
+
         logger, logs_path, log_path, log_filename = myutils.setupLogger(
             module='dataPrep'
         )
         self.logger = logger
+
+        if self._version is not None:
+            logger.info(f'Initializing Data Prep module v{self._version}...')
+        else:
+            logger.info(f'Initializing Data Prep module...')
+
         self.log_path = log_path
         self.log_filename = log_filename
         self.logs_path = logs_path

@@ -535,7 +535,9 @@ class mainWin(QMainWindow):
                 'To use it again close and reopen Cell-ACDC'
             )
             self.dataStructButton.setDisabled(True)
-            self.dataStructWin = dataStruct.createDataStructWin(parent=self)
+            self.dataStructWin = dataStruct.createDataStructWin(
+                parent=self, version=self._version
+            )
             self.dataStructWin.show()
             self.dataStructWin.main()
 
@@ -553,7 +555,7 @@ class mainWin(QMainWindow):
             )
             self.dataPrepWin = dataPrep.dataPrepWin(
                 buttonToRestore=(self.dataPrepButton, defaultColor, defaultText),
-                mainWin=self
+                mainWin=self, version=self._version
             )
             self.dataPrepWin.show()
         else:
@@ -573,7 +575,7 @@ class mainWin(QMainWindow):
                                     'Check progress in the terminal/console')
             self.segmWin = segm.segmWin(
                 buttonToRestore=(self.segmButton, defaultColor, defaultText),
-                mainWin=self
+                mainWin=self, version=self._version
             )
             self.segmWin.show()
             self.segmWin.main()

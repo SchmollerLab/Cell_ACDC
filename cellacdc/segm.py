@@ -348,18 +348,27 @@ class segmWorker(QRunnable):
 
 
 class segmWin(QMainWindow):
-    def __init__(self, parent=None, allowExit=False,
-                 buttonToRestore=None, mainWin=None):
+    def __init__(
+            self, parent=None, allowExit=False, buttonToRestore=None, 
+            mainWin=None, version=None
+        ):
+        super().__init__(parent)
+
         self.allowExit = allowExit
         self.processFinished = False
         self.buttonToRestore = buttonToRestore
         self.mainWin = mainWin
-        super().__init__(parent)
+        self._version = version
 
         logger, logs_path, log_path, log_filename = myutils.setupLogger(
             module='segm'
         )
         self.logger = logger
+
+        if self._version is not None:
+            logger.info(f'Initializing Segmentation module v{self._version}...')
+        else:
+            logger.info(f'Initializing Segmentation module...')
 
         self.setWindowTitle("Cell-ACDC - Segment")
         self.setWindowIcon(QtGui.QIcon(":icon.ico"))
