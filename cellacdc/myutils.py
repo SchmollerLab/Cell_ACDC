@@ -1047,7 +1047,7 @@ def imagej_tiffwriter(
     if data.dtype != np.uint8 and data.dtype != np.uint16:
         data = scale_float(data)
         data = skimage.img_as_uint(data)
-    with TiffWriter(new_path, imagej=imagej) as new_tif:
+    with TiffWriter(new_path, imagej=imagej, bigtiff=True) as new_tif:
         if not imagej:
             new_tif.save(data)
             return
