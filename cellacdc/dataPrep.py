@@ -1100,7 +1100,7 @@ class dataPrepWin(QMainWindow):
     def imagej_tiffwriter(self, new_path, data, metadata, posData):
         if data.dtype != np.uint8 or data.dtype != np.uint16:
             data = skimage.img_as_uint(data)
-        with TiffWriter(new_path, imagej=True) as new_tif:
+        with TiffWriter(new_path, imagej=True, bigtiff=True) as new_tif:
             if posData.SizeZ > 1 and posData.SizeT > 1:
                 # 3D data over time
                 T, Z, Y, X = data.shape
