@@ -403,7 +403,10 @@ class saveDataWorker(QObject):
                 for roi in posData.bkgrROIs:
                     xl, yl = [int(round(c)) for c in roi.pos()]
                     w, h = [int(round(c)) for c in roi.size()]
-                    ROI_bkgrMask[yl:yl+h, xl:xl+w] = True
+                    if self.mainWin.isSegm3D:
+                        ROI_bkgrMask[:, yl:yl+h, xl:xl+w] = True
+                    else:
+                        ROI_bkgrMask[yl:yl+h, xl:xl+w] = True
         else:
             ROI_bkgrMask = None
 
@@ -456,6 +459,8 @@ class saveDataWorker(QObject):
                 if self.mainWin.isSegm3D:
                     fluo_data_3D = fluo_data
                     outCellsMaskZslice = lab[z_slice]
+                    if ROI_bkgrMask is not None:            
+                        ROI_bkgrMask_zSlice = ROI_bkgrMask[z_slice]
 
                 # how_3Dto2D = ['_maxProj', '_sumProj', '_zSlice']
                 fluo_data_projs.append(fluo_data_z_maxP)
@@ -590,19 +595,29 @@ class saveDataWorker(QObject):
                     if how == '_maxProj':
                         fluo_data_ID = fluo_img[obj2Dslice][obj2Dproj]
                         backgrMask = np.logical_and(outCellsMaskProj, fluo_img!=0)
+                        if ROI_bkgrMask is not None:
+                            ROI_bkgrMask_k = ROI_bkgrMask.max(axis=0)
                     elif how == '_meanProj':
                         fluo_data_ID = fluo_img[obj2Dslice][obj2Dproj]
                         backgrMask = np.logical_and(outCellsMaskProj, fluo_img!=0)
+                        if ROI_bkgrMask is not None:
+                            ROI_bkgrMask_k = ROI_bkgrMask.max(axis=0)
                     elif how == '_zSlice':
                         fluo_data_ID = fluo_img[obj2Dslice][obj2DzImage]
                         backgrMask = np.logical_and(outCellsMaskZslice, fluo_img!=0)
+                        if ROI_bkgrMask is not None:
+                            ROI_bkgrMask_k = ROI_bkgrMask_zSlice
                     elif how == '_3D':
                         fluo_data_ID = fluo_img[obj3Dslice][obj3Dimage]
                         backgrMask = np.logical_and(outCellsMask3D, fluo_img!=0)
+                        if ROI_bkgrMask is not None:
+                            ROI_bkgrMask_k = ROI_bkgrMask
                     else:
                         # 2D data
                         fluo_data_ID = fluo_img[obj2Dslice][obj2DzImage]
                         backgrMask = np.logical_and(outCellsMask2D, fluo_img!=0)
+                        if ROI_bkgrMask is not None:
+                            ROI_bkgrMask_k = ROI_bkgrMask
 
                     bkgr_arr = fluo_img[backgrMask]
                     fluo_backgr = np.median(bkgr_arr)
@@ -671,7 +686,7 @@ class saveDataWorker(QObject):
                                     metrics_values[conc_key_fl][i] = conc_fl
                         elif is_ROIbkgr_func:
                             if ROI_bkgrMask is not None:
-                                ROI_bkgrData = fluo_img[ROI_bkgrMask]
+                                ROI_bkgrData = fluo_img[ROI_bkgrMask_k]
                                 ROI_bkgrVal = np.median(ROI_bkgrData)
                             else:
                                 ROI_bkgrVal = bkgrData_medians[k]
@@ -753,7 +768,7 @@ class saveDataWorker(QObject):
                             continue
 
                         if ROI_bkgrMask is not None:
-                            ROI_bkgrData = fluo_img[ROI_bkgrMask]
+                            ROI_bkgrData = fluo_img[ROI_bkgrMask_k]
                             ROI_bkgrVal = np.median(ROI_bkgrData)
                         elif bkgrArchive is not None:
                             ROI_bkgrVal = bkgrData_medians[k]
@@ -783,10 +798,13 @@ class saveDataWorker(QObject):
                                         metrics_obj['cell_vol_vox_3D'] = IDs_vol_vox_3D[i]
                                         metrics_obj['cell_vol_fl_3D'] = IDs_vol_fl_3D[i]
                                     
-                                    custom_val = custom_func(
-                                        fluo_data_ID, fluo_backgr, ROI_bkgrVal, 
-                                        obj, metrics_obj
-                                    )
+                                    try:
+                                        custom_val = custom_func(
+                                            fluo_data_ID, fluo_backgr, 
+                                            ROI_bkgrVal, obj, metrics_obj
+                                        )
+                                    except:
+                                        custom_val = 0
                             custom_metrics_values[key][i] = custom_val
                         except Exception as e:
                             self.customMetricsCritical.emit(
