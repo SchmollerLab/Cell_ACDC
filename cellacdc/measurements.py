@@ -568,7 +568,6 @@ def get_props_names():
         'moments',
         'area',
         'solidity',
-        'feret_diameter_max',
         'extent',
         'inertia_tensor',
         'filled_area',
