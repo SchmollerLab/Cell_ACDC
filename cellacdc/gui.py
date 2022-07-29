@@ -12061,8 +12061,8 @@ class guiWin(QMainWindow):
         )
         cca_df.index.name = 'Cell_ID'
         return cca_df
-
-    def initSegmTrackMode(self):
+    
+    def get_last_tracked_i(self):
         posData = self.data[self.pos_i]
         last_tracked_i = 0
         for frame_i, data_dict in enumerate(posData.allData_li):
@@ -12075,6 +12075,11 @@ class guiWin(QMainWindow):
                 break
             else:
                 last_tracked_i = posData.segmSizeT-1
+        return last_tracked_i
+
+    def initSegmTrackMode(self):
+        posData = self.data[self.pos_i]
+        last_tracked_i = self.get_last_tracked_i()
 
         self.navigateScrollBar.setMaximum(last_tracked_i+1)
         if posData.frame_i > last_tracked_i:
@@ -12112,8 +12117,9 @@ class guiWin(QMainWindow):
 
     def initCca(self):
         posData = self.data[self.pos_i]
+        last_tracked_i = self.get_last_tracked_i()
         defaultMode = 'Viewer'
-        if posData.last_tracked_i is None:
+        if last_tracked_i == 0:
             txt = html_utils.paragraph(
                 'On this dataset either you <b>never checked</b> that the segmentation '
                 'and tracking are <b>correct</b> or you did not save yet.<br><br>'
@@ -12122,7 +12128,7 @@ class guiWin(QMainWindow):
                 'Otherwise you first have to check (and eventually correct) some frames '
                 'in "Segmentation and Tracking" mode before proceeding '
                 'with cell cycle analysis.')
-            msg = widgets.critical()
+            msg = widgets.myMessageBox()
             msg.critical(
                 self, 'Tracking was never checked', txt
             )
