@@ -34,14 +34,19 @@ class Model:
             diameter=0.0,
             flow_threshold=0.4,
             cellprob_threshold=0.0,
+            stitch_threshold=0.0,
             min_size=-1,
+            anisotropy=0.0,
             normalize=True,
-            segment_3D_volume=False
+            resample=True,
+            segment_3D_volume=False            
         ):
         # Preprocess image
         # image = image/image.max()
         # image = skimage.filters.gaussian(image, sigma=1)
         # image = skimage.exposure.equalize_adapthist(image)
+        if anisotropy == 0:
+            anisotropy = None
 
         # Run cellpose eval
         if not segment_3D_volume and image.ndim == 3:
@@ -53,9 +58,12 @@ class Model:
                     diameter=diameter,
                     flow_threshold=flow_threshold,
                     cellprob_threshold=cellprob_threshold,
+                    stitch_threshold=stitch_threshold,
                     min_size=min_size,
                     normalize=normalize,
-                    do_3D=segment_3D_volume
+                    do_3D=segment_3D_volume,
+                    anisotropy=anisotropy,
+                    resample=resample
                 )[0]
                 labels[i] = lab
             labels = skimage.measure.label(labels>0)
