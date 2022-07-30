@@ -8431,12 +8431,14 @@ class guiWin(QMainWindow):
     @myutils.exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
+            last_tracked_i = self.get_last_tracked_i()
+            printl(last_tracked_i)
             posData = self.data[self.pos_i]
-            delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
-            roi = delROIs_info['rois'][0]
-            for seg in roi.segments:
-                if seg.currentPen == seg.hoverPen:
-                    pass
+            # delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
+            # roi = delROIs_info['rois'][0]
+            # for seg in roi.segments:
+            #     if seg.currentPen == seg.hoverPen:
+            #         pass
             # printl(posData.combineMetricsConfig)
             # printl(self.mixedChCombineMetricsToSave)
             # printl(self.metricsToSkip)
@@ -10104,7 +10106,8 @@ class guiWin(QMainWindow):
             self.zoomToCells()
         else:
             # Store data for current frame
-            self.store_data()
+            if mode != 'Viewer':
+                self.store_data(debug=False)
             msg = 'You reached the last segmented frame!'
             self.logger.info(msg)
             self.titleLabel.setText(msg, color=self.titleColor)
@@ -10127,7 +10130,10 @@ class guiWin(QMainWindow):
     def prev_frame(self):
         posData = self.data[self.pos_i]
         if posData.frame_i > 0:
-            self.store_data()
+            # Store data for current frame
+            mode = str(self.modeComboBox.currentText())
+            if mode != 'Viewer':
+                self.store_data(debug=False)
             self.removeAlldelROIsCurrentFrame()
             posData.frame_i -= 1
             _, never_visited = self.get_data()
