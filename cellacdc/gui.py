@@ -8431,17 +8431,17 @@ class guiWin(QMainWindow):
     @myutils.exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
-            last_tracked_i = self.get_last_tracked_i()
-            printl(last_tracked_i)
+            # last_tracked_i = self.get_last_tracked_i()
+            # printl(last_tracked_i)
             posData = self.data[self.pos_i]
             # delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
             # roi = delROIs_info['rois'][0]
             # for seg in roi.segments:
             #     if seg.currentPen == seg.hoverPen:
             #         pass
-            # printl(posData.combineMetricsConfig)
-            # printl(self.mixedChCombineMetricsToSave)
-            # printl(self.metricsToSkip)
+            printl(posData.combineMetricsConfig)
+            printl('mixed channel to save:', self.mixedChCombineMetricsToSave)
+            printl('metric to skip:', self.metricsToSkip)
             if self.debug:
                 raise FileNotFoundError
                 posData = self.data[self.pos_i]
