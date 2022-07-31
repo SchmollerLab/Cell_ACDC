@@ -758,7 +758,6 @@ class saveDataWorker(QObject):
 
     def _dfEvalEquation(self, df, newColName, expr):
         try:
-            raise FileNotFoundError
             df[newColName] = df.eval(expr)
         except Exception as e:
             self.customMetricsCritical.emit(
@@ -801,7 +800,7 @@ class saveDataWorker(QObject):
         # Add mixed channels combined metrics
         mixedChannelsEquations = config['mixed_channels_equations']
         for newColName, equation in mixedChannelsEquations.items():
-            if newColName not in self.mainWin.mixedChCombineMetricsToSave:
+            if newColName in self.mainWin.mixedChCombineMetricsToSkip:
                 continue
             self._dfEvalEquation(df, newColName, equation)
 
@@ -7811,11 +7810,10 @@ class guiWin(QMainWindow):
     @myutils.exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
-            raise FileNotFoundError
             posData = self.data[self.pos_i]
             # print(posData.editID_info)
             printl(posData.combineMetricsConfig)
-            printl('mixedChCombineMetricsToSave', self.mixedChCombineMetricsToSave)
+            printl('mixedChCombineMetricsToSkip', self.mixedChCombineMetricsToSkip)
             printl('metricsToSkip', self.metricsToSkip)
             printl(posData.acdc_output_csv_path)
             df = pd.read_csv(posData.acdc_output_csv_path)
@@ -10295,9 +10293,7 @@ class guiWin(QMainWindow):
         self.chNamesToSkip = []
         self.metricsToSkip = {}
         self.regionPropsToSave = measurements.get_props_names()
-        self.mixedChCombineMetricsToSave = list(
-            measurements.get_user_combine_mixed_channels_desc().keys()
-        )
+        self.mixedChCombineMetricsToSkip = []
         self.sizeMetricsToSave = list(
             measurements.get_size_metrics_desc().keys()
         )
@@ -14520,19 +14516,19 @@ class guiWin(QMainWindow):
                     favourite_funcs.add(checkBox.text())
             self.regionPropsToSave = tuple(self.regionPropsToSave)
 
-        if measurementsWin.mixedChannelsCombineMetricsQGBox is None:
-            self.mixedChCombineMetricsToSave = ()
-        elif not measurementsWin.mixedChannelsCombineMetricsQGBox.isChecked():
-            self.mixedChCombineMetricsToSave = ()
-        else:
-            mixedChCombineMetricsToSave = []
+        if measurementsWin.mixedChannelsCombineMetricsQGBox is not None:
+            skipAll = not measurementsWin.mixedChannelsCombineMetricsQGBox.isChecked()
+            mixedChCombineMetricsToSkip = []
             win = measurementsWin
             checkBoxes = win.mixedChannelsCombineMetricsQGBox.checkBoxes
             for checkBox in checkBoxes:
-                if checkBox.isChecked():
-                    mixedChCombineMetricsToSave.append(checkBox.text())
+                if skipAll:
+                    mixedChCombineMetricsToSkip.append(checkBox.text())
+                elif not checkBox.isChecked():
+                    mixedChCombineMetricsToSkip.append(checkBox.text())
+                else:             
                     favourite_funcs.add(checkBox.text())
-            self.mixedChCombineMetricsToSave = tuple(mixedChCombineMetricsToSave)
+            self.mixedChCombineMetricsToSkip = tuple(mixedChCombineMetricsToSkip)
 
         df_favourite_funcs = pd.DataFrame(
             {'favourite_func_name': list(favourite_funcs)}
