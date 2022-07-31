@@ -35,6 +35,7 @@ from PyQt5.QtCore import pyqtSignal, QObject, QCoreApplication
 
 from . import prompts, widgets, apps, core, load
 from . import html_utils, is_linux, is_win, is_mac
+from . import github_issues_url
 
 def exception_handler(func):
     @wraps(func)
@@ -54,6 +55,7 @@ def exception_handler(func):
             except AttributeError:
                 pass
             result = None
+            github_issues_href = f'<a href={github_issues_url}>here</a>'
             traceback_str = traceback.format_exc()
             self.logger.exception(traceback_str)
             msg = widgets.myMessageBox(wrapText=False)
@@ -65,7 +67,9 @@ def exception_handler(func):
                 Note that the <b>error details</b> from this session are
                 also <b>saved in the following file</b>:<br><br>
                 {self.log_path}<br><br>
-                Please <b>send the log file</b> when reporting a bug, thanks!
+                IMPORTANT: You can <b>report</b> this error by opening an issue
+                (please <b>attach the log file</b>)<br>
+                on our github page {github_issues_href}.<br>
             """)
 
             msg.critical(self, 'Critical error', err_msg)

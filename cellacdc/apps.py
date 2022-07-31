@@ -56,6 +56,7 @@ from PyQt5.QtWidgets import (
 from . import myutils, load, prompts, widgets, core, measurements, html_utils
 from . import is_mac, is_win, is_linux, temp_path, config
 from . import qrc_resources
+from . import github_issues_url
 
 pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
 font = QtGui.QFont()
@@ -5628,22 +5629,19 @@ class QLineEditDialog(QDialog):
             return
 
     def warnValLessLastFrame(self, val):
-        msg = QMessageBox()
-        warn_txt = (f"""
-        <p style="font-size:12px">
+        msg = widgets.myMessageBox()
+        warn_txt = html_utils.paragraph(f"""
             WARNING: saving until a frame number below the last visited
-            frame ({self.maxValue})<br>
-            will result in <b>loss of information
-            about any edit or annotation you did on frames
+            frame ({self.maxValue}) will result in <b>LOSS of information</b>
+            about any <b>edit or annotation</b> you did <b>on frames
             {val}-{self.maxValue}.</b><br><br>
             Are you sure you want to proceed?
-        </p>
         """)
-        answer = msg.warning(
-           self, 'WARNING: Potential loss of information',
-           warn_txt, msg.Yes | msg.Cancel
+        msg.warning(
+           self, 'WARNING: Potential loss of information', warn_txt, 
+           buttonsTexts=('Cancel', 'Yes, I am sure.')
         )
-        return answer == msg.Cancel
+        return msg.cancel
 
     def ok_cb(self, event):
         if self.allowedValues:
@@ -5654,10 +5652,11 @@ class QLineEditDialog(QDialog):
             val = self.ID_QLineEdit.value()
         else:
             val = int(self.ID_QLineEdit.text())
-            if self.warnLastFrame and val < self.maxValue:
-                cancel = self.warnValLessLastFrame(val)
-                if cancel:
-                    return
+        
+        if self.warnLastFrame and val < self.maxValue:
+            cancel = self.warnValLessLastFrame(val)
+            if cancel:
+                return
 
         self.cancel = False
         self.EntryID = val
@@ -5680,6 +5679,69 @@ class QLineEditDialog(QDialog):
     def closeEvent(self, event):
         if hasattr(self, 'loop'):
             self.loop.exit()
+
+class CustomMetricsErrorsDialog(QBaseDialog):
+    def __init__(self, customMetricsErrors, log_path='', parent=None):
+        super().__init__(parent)
+
+        layout = QGridLayout()
+        
+
+        label = QLabel(self)
+        standardIcon = getattr(QStyle, 'SP_MessageBoxWarning')
+        icon = self.style().standardIcon(standardIcon)
+        pixmap = icon.pixmap(60, 60)
+        label.setPixmap(pixmap)
+        layout.addWidget(label, 0, 0, alignment=Qt.AlignTop)
+
+        github_issues_href = f'<a href={github_issues_url}>here</a>'
+        infoLabel = QLabel(html_utils.paragraph(f"""
+            When computing <b>custom metrics</b> the following metrics 
+            were <b>ignored</b> because they raised an <b>error</b>.<br><br>
+            NOTE: If you <b>need help</b> understanding these errors you can <b>open 
+            an issue</b> on our github page {github_issues_href}.
+        """))
+        infoLabel.setOpenExternalLinks(True)
+        layout.addWidget(infoLabel, 0, 1)
+
+        scrollArea = QScrollArea()
+        scrollAreaWidget = QWidget()  
+        textLayout = QVBoxLayout()
+        for func_name, traceback_format in customMetricsErrors.items():
+            nameLabel = QLabel(f'<b>{func_name}</b>: ')
+            errorMessage = f'\n{traceback_format}'
+            errorLabel = QLabel(errorMessage)
+            print(func_name)
+            print(traceback_format)
+            errorLabel.setStyleSheet("background-color: white")
+            errorLabel.setFrameShape(QFrame.Panel)
+            errorLabel.setFrameShadow(QFrame.Sunken)
+            textLayout.addWidget(nameLabel)
+            textLayout.addWidget(errorLabel)
+            textLayout.addStretch(1)
+        
+        scrollAreaWidget.setLayout(textLayout)
+        scrollArea.setWidget(scrollAreaWidget)
+        
+        layout.addWidget(scrollArea, 1, 1)
+
+        buttonsLayout = QHBoxLayout()
+        showLogButton = widgets.showInFileManagerButton('Show log file...')
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(showLogButton)
+        
+        okButton = widgets.okPushButton(' Ok ')
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(okButton)
+
+        showLogButton.clicked.connect(partial(myutils.showInExplorer, log_path))
+        okButton.clicked.connect(self.close)
+        layout.setVerticalSpacing(10)
+        layout.addLayout(buttonsLayout, 2, 1)
+
+        self.setLayout(layout)
+        self.setFont(font)
+
 
 class editID_QWidget(QDialog):
     def __init__(self, clickedID, IDs, parent=None):

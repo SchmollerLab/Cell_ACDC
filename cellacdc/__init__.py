@@ -2,17 +2,19 @@ import sys
 import os
 import inspect
 from datetime import datetime
+from pprint import pprint
 
-def printl(*objects, **kwargs):
+def printl(*objects, pretty=False, **kwargs):
     timestap = datetime.now().strftime('%H:%M:%S')
     currentframe = inspect.currentframe()
     callingframe = inspect.getouterframes(currentframe)[1].frame
     callingframe_info = inspect.getframeinfo(callingframe)
     filpath = callingframe_info.filename
     filename = os.path.basename(filpath)
+    print_func = pprint if pretty else print
     print('*'*30)
     print(f'{timestap} - File "{filename}", line {callingframe_info.lineno}:')
-    print(*objects, **kwargs)
+    print_func(*objects, **kwargs)
     print('='*30)
 
 cellacdc_path = os.path.dirname(os.path.abspath(__file__))
@@ -33,6 +35,7 @@ except Exception as e:
 __author__ = 'Francesco Padovani and Benedikt Mairhoermann'
 
 cite_url = 'https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2'
+github_issues_url = 'https://github.com/SchmollerLab/Cell_ACDC/issues'
 
 # Initialize variables that need to be globally accessible
 base_cca_df = {

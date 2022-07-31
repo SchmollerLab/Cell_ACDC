@@ -76,7 +76,7 @@ from . import qrc_resources
 from . import base_cca_df
 from . import load, prompts, apps, workers, html_utils
 from . import core, myutils, dataPrep, widgets
-from . import measurements
+from . import measurements, printl
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .core import numba_max, numba_min
@@ -300,7 +300,7 @@ class saveDataWorker(QObject):
     criticalPermissionError = pyqtSignal(str)
     metricsPbarProgress = pyqtSignal(int, int)
     askZsliceAbsent = pyqtSignal(str, object)
-    customMetricsCritical = pyqtSignal(str)
+    customMetricsCritical = pyqtSignal(str, str)
 
     def __init__(self, mainWin):
         QObject.__init__(self)
@@ -308,6 +308,7 @@ class saveDataWorker(QObject):
         self.saveWin = mainWin.saveWin
         self.mutex = mainWin.mutex
         self.waitCond = mainWin.waitCond
+        self.customMetricsErrors = {}
 
     def addMetrics_acdc_df(self, df, rp, frame_i, lab, posData, tqdmProgress=False):
         """
@@ -700,7 +701,7 @@ class saveDataWorker(QObject):
                             custom_metrics_values[key][i] = custom_val
                         except Exception as e:
                             self.customMetricsCritical.emit(
-                                traceback.format_exc()
+                                traceback.format_exc(), custom_func_name
                             )
                             # self.mainWin.logger.info(traceback.format_exc())
                         # self.metricsPbarProgress.emit(-1, 1)
@@ -756,21 +757,13 @@ class saveDataWorker(QObject):
         return df
 
     def _dfEvalEquation(self, df, newColName, expr):
-        if newColName not in df.columns:
-            print('*'*30)
-            self.mainWin.logger.info(
-                f'The column "{newColName}" for the combined measurement '
-                f'"{expr}" is not present in the metrics table. '
-                '--> Skipping this measurement.'
-            )
-            print('='*20)
-            return
         try:
+            raise FileNotFoundError
             df[newColName] = df.eval(expr)
-        except:
-            print('-'*20)
-            self.mainWin.logger.info(traceback.format_exc())
-            print('='*20)
+        except Exception as e:
+            self.customMetricsCritical.emit(
+                traceback.format_exc(), newColName
+            )
 
     def _removeDeprecatedRows(self, df):
         v1_2_4_rc25_deprectated_cols = [
@@ -7818,11 +7811,18 @@ class guiWin(QMainWindow):
     @myutils.exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
+            raise FileNotFoundError
             posData = self.data[self.pos_i]
             # print(posData.editID_info)
-            print(posData.combineMetricsConfig)
-            print(self.mixedChCombineMetricsToSave)
-            print(self.metricsToSkip)
+            printl(posData.combineMetricsConfig)
+            printl('mixedChCombineMetricsToSave', self.mixedChCombineMetricsToSave)
+            printl('metricsToSkip', self.metricsToSkip)
+            printl(posData.acdc_output_csv_path)
+            df = pd.read_csv(posData.acdc_output_csv_path)
+            printl('mCitrineFFC_test exists:', 'mCitrineFFC_test' in df.columns)
+            printl('mCitrineRaw_test exists:', 'mCitrineRaw_test' in df.columns)
+            printl('mCitrineFFC_AF_deduction exists:', 'mCitrineFFC_AF_deduction' in df.columns)
+            # printl(df.columns.to_list(), pretty=True)
             if self.debug:
                 
                 # self.store_data()
@@ -14779,11 +14779,12 @@ class guiWin(QMainWindow):
         self.logger.info(text)
         self.saveWin.progressLabel.setText(text)
 
-    def saveDataCustomMetricsCritical(self, traceback_format):
+    def saveDataCustomMetricsCritical(self, traceback_format, func_name):
         self.logger.info('')
         print('====================================')
         self.logger.info(traceback_format)
         print('====================================')
+        self.worker.customMetricsErrors[func_name] = traceback_format
 
     def saveDataCritical(self, traceback_format):
         self.logger.info('')
@@ -14909,6 +14910,12 @@ class guiWin(QMainWindow):
         self.thread.started.connect(self.worker.run)
 
         self.thread.start()
+    
+    def warnErrorsCustomMetrics(self):
+        win = apps.CustomMetricsErrorsDialog(
+            self.worker.customMetricsErrors, self.logs_path
+        )
+        win.exec_()
 
 
     def saveDataFinished(self):
@@ -14918,6 +14925,8 @@ class guiWin(QMainWindow):
             self.titleLabel.setText('Saved!')
         self.saveWin.workerFinished = True
         self.saveWin.close()
+        if self.worker.customMetricsErrors:
+            self.warnErrorsCustomMetrics()
         if self.closeGUI:
             salute_string = myutils.get_salute_string()
             msg = widgets.myMessageBox()
