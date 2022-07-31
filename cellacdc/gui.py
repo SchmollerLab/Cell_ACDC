@@ -7811,18 +7811,17 @@ class guiWin(QMainWindow):
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
             posData = self.data[self.pos_i]
-            # print(posData.editID_info)
-            printl(posData.combineMetricsConfig)
-            printl('mixedChCombineMetricsToSkip', self.mixedChCombineMetricsToSkip)
-            printl('metricsToSkip', self.metricsToSkip)
-            printl(posData.acdc_output_csv_path)
-            df = pd.read_csv(posData.acdc_output_csv_path)
-            printl('mCitrineFFC_test exists:', 'mCitrineFFC_test' in df.columns)
-            printl('mCitrineRaw_test exists:', 'mCitrineRaw_test' in df.columns)
-            printl('mCitrineFFC_AF_deduction exists:', 'mCitrineFFC_AF_deduction' in df.columns)
             # printl(df.columns.to_list(), pretty=True)
             if self.debug:
-                
+                # print(posData.editID_info)
+                printl(posData.combineMetricsConfig)
+                printl('mixedChCombineMetricsToSkip', self.mixedChCombineMetricsToSkip)
+                printl('metricsToSkip', self.metricsToSkip)
+                printl(posData.acdc_output_csv_path)
+                df = pd.read_csv(posData.acdc_output_csv_path)
+                printl('mCitrineFFC_test exists:', 'mCitrineFFC_test' in df.columns)
+                printl('mCitrineRaw_test exists:', 'mCitrineRaw_test' in df.columns)
+                printl('mCitrineFFC_AF_deduction exists:', 'mCitrineFFC_AF_deduction' in df.columns)
                 # self.store_data()
                 pass
         try:
@@ -9729,6 +9728,7 @@ class guiWin(QMainWindow):
 
         self.init_segmInfo_df()
         self.initPosAttr()
+        self.initCustomMetrics()
         self.initFluoData()
         self.navigateScrollBar.setSliderPosition(posData.frame_i+1)
         if posData.SizeZ > 1:
@@ -10286,10 +10286,8 @@ class guiWin(QMainWindow):
             'corrected_assignment'
         ]
 
-        # Metrics
-        self.initMetricsToSave()
-
-    def initMetricsToSave(self):
+    def initCustomMetrics(self):
+        self.logger.info('Initializing custom measurements...')
         self.chNamesToSkip = []
         self.metricsToSkip = {}
         self.regionPropsToSave = measurements.get_props_names()
@@ -10297,6 +10295,20 @@ class guiWin(QMainWindow):
         self.sizeMetricsToSave = list(
             measurements.get_size_metrics_desc().keys()
         )
+        posData = self.data[self.pos_i]
+        exp_path = posData.exp_path
+        posFoldernames = myutils.get_pos_foldernames(exp_path)
+        for pos in posFoldernames:
+            images_path = os.path.join(exp_path, pos, 'Images')
+            for file in myutils.listdir(images_path):
+                if not file.endswith('custom_combine_metrics.ini'):
+                    continue
+                filePath = os.path.join(images_path, file)
+                configPars = load.read_config_metrics(filePath)
+
+                posData.combineMetricsConfig = load.add_configPars_metrics(
+                    configPars, posData.combineMetricsConfig
+                )
 
     def initPosAttr(self):
         for p, posData in enumerate(self.data):
