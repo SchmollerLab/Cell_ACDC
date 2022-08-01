@@ -915,7 +915,7 @@ class saveDataWorker(QObject):
         # Add mixed channels combined metrics
         mixedChannelsEquations = config['mixed_channels_equations']
         for newColName, equation in mixedChannelsEquations.items():
-            if newColName not in self.mainWin.mixedChCombineMetricsToSave:
+            if newColName in self.mainWin.mixedChCombineMetricsToSkip:
                 continue
             self._dfEvalEquation(df, newColName, equation)
 
@@ -1250,6 +1250,9 @@ class guiWin(QMainWindow):
         self.checkableButtons = []
         self.LeftClickButtons = []
         self.customAnnotDict = {}
+
+        # Keep a list of functions that are not functional in 3D, yet
+        self.functionsNotTested3D = []
 
         self.isSnapshot = False
         self.debugFlag = False
@@ -1636,9 +1639,10 @@ class guiWin(QMainWindow):
             '(right-click drag-and-drop)\n\n'
             'SHORTCUT: "A" key'
         )
-        ccaToolBar.addWidget(self.assignBudMothButton)
+        self.assignBudMothButton.action = ccaToolBar.addWidget(self.assignBudMothButton)
         self.checkableButtons.append(self.assignBudMothButton)
         self.checkableQButtonsGroup.addButton(self.assignBudMothButton)
+        self.functionsNotTested3D.append(self.assignBudMothButton)
 
         # Set is_history_known button
         self.setIsHistoryKnownButton = QToolButton(self)
@@ -1652,14 +1656,17 @@ class guiWin(QMainWindow):
             'ACTION: Right-click on cell\n\n'
             'SHORTCUT: "U" key'
         )
-        ccaToolBar.addWidget(self.setIsHistoryKnownButton)
+        self.setIsHistoryKnownButton.action = ccaToolBar.addWidget(self.setIsHistoryKnownButton)
         self.checkableButtons.append(self.setIsHistoryKnownButton)
         self.checkableQButtonsGroup.addButton(self.setIsHistoryKnownButton)
+        self.functionsNotTested3D.append(self.setIsHistoryKnownButton)
 
         ccaToolBar.addAction(self.assignBudMothAutoAction)
         ccaToolBar.addAction(self.reInitCcaAction)
         ccaToolBar.setVisible(False)
         self.ccaToolBar = ccaToolBar
+        self.functionsNotTested3D.append(self.assignBudMothAutoAction)
+        self.functionsNotTested3D.append(self.reInitCcaAction)
 
         # Edit toolbar
         editToolBar = QToolBar("Edit", self)
@@ -1712,8 +1719,9 @@ class guiWin(QMainWindow):
             'ACTION: left-clicks for manual spline anchors,\n'
             'right button for drawing auto-contour\n\n'
             'SHORTCUT: "C" key')
-        editToolBar.addWidget(self.curvToolButton)
+        self.curvToolButton.action = editToolBar.addWidget(self.curvToolButton)
         self.LeftClickButtons.append(self.curvToolButton)
+        self.functionsNotTested3D.append(self.curvToolButton)
         # self.checkableButtons.append(self.curvToolButton)
 
         self.wandToolButton = QToolButton(self)
@@ -1725,8 +1733,9 @@ class guiWin(QMainWindow):
             'ACTION: left-click for single selection,\n'
             'or left-click and then drag for continous selection\n\n'
             'SHORTCUT: "W" key')
-        editToolBar.addWidget(self.wandToolButton)
+        self.wandToolButton.action = editToolBar.addWidget(self.wandToolButton)
         self.LeftClickButtons.append(self.wandToolButton)
+        self.functionsNotTested3D.append(self.wandToolButton)
 
         self.hullContToolButton = QToolButton(self)
         self.hullContToolButton.setIcon(QIcon(":hull.svg"))
@@ -1737,9 +1746,10 @@ class guiWin(QMainWindow):
             'ACTION: right-click on a cell to replace it with its hull contour.\n'
             'Use it to fill cracks and holes.\n\n'
             'SHORTCUT: "K" key')
-        editToolBar.addWidget(self.hullContToolButton)
+        self.hullContToolButton.action = editToolBar.addWidget(self.hullContToolButton)
         self.checkableButtons.append(self.hullContToolButton)
         self.checkableQButtonsGroup.addButton(self.hullContToolButton)
+        self.functionsNotTested3D.append(self.hullContToolButton)
 
         self.fillHolesToolButton = QToolButton(self)
         self.fillHolesToolButton.setIcon(QIcon(":fill_holes.svg"))
@@ -1749,9 +1759,10 @@ class guiWin(QMainWindow):
             'Toggle "Fill holes" ON/OFF\n\n'
             'ACTION: right-click on a cell to fill holes\n\n'
             'SHORTCUT: "F" key')
-        editToolBar.addWidget(self.fillHolesToolButton)
+        self.fillHolesToolButton.action = editToolBar.addWidget(self.fillHolesToolButton)
         self.checkableButtons.append(self.fillHolesToolButton)
         self.checkableQButtonsGroup.addButton(self.fillHolesToolButton)
+        self.functionsNotTested3D.append(self.fillHolesToolButton)
 
         self.moveLabelToolButton = QToolButton(self)
         self.moveLabelToolButton.setIcon(QIcon(":moveLabel.svg"))
@@ -1761,7 +1772,7 @@ class guiWin(QMainWindow):
             'Toggle "Move label (a.k.a. mask)" ON/OFF\n\n'
             'ACTION: right-click drag and drop a labels to move it around\n\n'
             'SHORTCUT: "P" key')
-        editToolBar.addWidget(self.moveLabelToolButton)
+        self.moveLabelToolButton.action = editToolBar.addWidget(self.moveLabelToolButton)
         self.checkableButtons.append(self.moveLabelToolButton)
         self.checkableQButtonsGroup.addButton(self.moveLabelToolButton)
 
@@ -1774,7 +1785,7 @@ class guiWin(QMainWindow):
             'ACTION: leave mouse cursor on the label you want to expand/shrink'
             'and press arrow up/down on the keyboard to expand/shrink the mask.\n\n'
             'SHORTCUT: "E" key')
-        editToolBar.addWidget(self.expandLabelToolButton)
+        self.expandLabelToolButton.action = editToolBar.addWidget(self.expandLabelToolButton)
         self.expandLabelToolButton.hide()
         self.checkableButtons.append(self.expandLabelToolButton)
         self.LeftClickButtons.append(self.expandLabelToolButton)
@@ -1803,9 +1814,10 @@ class guiWin(QMainWindow):
             'ACTION: right-click for automatic and left-click for manual\n\n'
             'SHORTCUT: "S" key'
         )
-        editToolBar.addWidget(self.separateBudButton)
+        self.separateBudButton.action = editToolBar.addWidget(self.separateBudButton)
         self.checkableButtons.append(self.separateBudButton)
         self.checkableQButtonsGroup.addButton(self.separateBudButton)
+        self.functionsNotTested3D.append(self.separateBudButton)
 
         self.mergeIDsButton = QToolButton(self)
         self.mergeIDsButton.setIcon(QIcon(":merge-IDs.svg"))
@@ -1817,9 +1829,10 @@ class guiWin(QMainWindow):
             'ACTION: right-click\n\n'
             'SHORTCUT: "M" key'
         )
-        editToolBar.addWidget(self.mergeIDsButton)
+        self.mergeIDsButton.action = editToolBar.addWidget(self.mergeIDsButton)
         self.checkableButtons.append(self.mergeIDsButton)
         self.checkableQButtonsGroup.addButton(self.mergeIDsButton)
+        self.functionsNotTested3D.append(self.mergeIDsButton)
 
         self.binCellButton = QToolButton(self)
         self.binCellButton.setIcon(QIcon(":bin.svg"))
@@ -1832,9 +1845,10 @@ class guiWin(QMainWindow):
             'SHORTCUT: "R" key'
         )
         self.binCellButton.setShortcut("r")
-        editToolBar.addWidget(self.binCellButton)
+        self.binCellButton.action = editToolBar.addWidget(self.binCellButton)
         self.checkableButtons.append(self.binCellButton)
         self.checkableQButtonsGroup.addButton(self.binCellButton)
+        self.functionsNotTested3D.append(self.binCellButton)
 
         self.ripCellButton = QToolButton(self)
         self.ripCellButton.setIcon(QIcon(":rip.svg"))
@@ -1847,15 +1861,27 @@ class guiWin(QMainWindow):
             'SHORTCUT: "D" key'
         )
         self.ripCellButton.setShortcut("d")
-        editToolBar.addWidget(self.ripCellButton)
+        self.ripCellButton.action = editToolBar.addWidget(self.ripCellButton)
         self.checkableButtons.append(self.ripCellButton)
         self.checkableQButtonsGroup.addButton(self.ripCellButton)
+        self.functionsNotTested3D.append(self.ripCellButton)
 
         editToolBar.addAction(self.addDelRoiAction)
         editToolBar.addAction(self.addDelPolyLineRoiAction)
         editToolBar.addAction(self.delBorderObjAction)
 
+        self.addDelRoiAction.toolbar = editToolBar
+        self.functionsNotTested3D.append(self.addDelRoiAction)
+
+        self.addDelPolyLineRoiAction.toolbar = editToolBar
+        self.functionsNotTested3D.append(self.addDelPolyLineRoiAction)
+
+        self.delBorderObjAction.toolbar = editToolBar
+        self.functionsNotTested3D.append(self.delBorderObjAction)
+
         editToolBar.addAction(self.repeatTrackingAction)
+
+        self.functionsNotTested3D.append(self.repeatTrackingAction)
 
         self.reinitLastSegmFrameAction = QAction(self)
         self.reinitLastSegmFrameAction.setIcon(QIcon(":reinitLastSegm.svg"))
@@ -1867,6 +1893,8 @@ class guiWin(QMainWindow):
         )
         editToolBar.addAction(self.reinitLastSegmFrameAction)
         editToolBar.setVisible(False)
+        self.reinitLastSegmFrameAction.toolbar = editToolBar
+        self.functionsNotTested3D.append(self.reinitLastSegmFrameAction)
 
         # Widgets toolbar
         widgetsToolBar = QToolBar("Widgets", self)
@@ -1877,6 +1905,7 @@ class guiWin(QMainWindow):
             self.disableTrackingCheckBox
         )
         self.disableTrackingAction.setVisible(False)
+        self.functionsNotTested3D.append(self.disableTrackingAction)
 
         self.brushSizeSpinbox = QSpinBox()
         self.brushSizeSpinbox.setValue(4)
@@ -2397,6 +2426,7 @@ class guiWin(QMainWindow):
             'touched by it anymore.\n'
             'To delete rectangle right-click on it --> remove.')
         
+        
         self.addDelPolyLineRoiAction = QAction(self)
         self.addDelPolyLineRoiAction.setCheckable(True)
         self.addDelPolyLineRoiAction.roiType = 'polyline'
@@ -2416,21 +2446,24 @@ class guiWin(QMainWindow):
         )
         self.checkableButtons.append(self.addDelPolyLineRoiAction)
         self.LeftClickButtons.append(self.addDelPolyLineRoiAction)
+       
 
         self.delBorderObjAction = QAction(self)
         self.delBorderObjAction.setIcon(QIcon(":delBorderObj.svg"))
         self.delBorderObjAction.setToolTip(
             'Remove segmented objects touching the border of the image'
         )
-
+    
         self.addCustomAnnotationAction = QAction(self)
         self.addCustomAnnotationAction.setIcon(QIcon(":annotate.svg"))
         self.addCustomAnnotationAction.setToolTip('Add custom annotation')
+        self.functionsNotTested3D.append(self.addCustomAnnotationAction)
 
         self.viewAllCustomAnnotAction = QAction(self)
         self.viewAllCustomAnnotAction.setCheckable(True)
         self.viewAllCustomAnnotAction.setIcon(QIcon(":eye.svg"))
         self.viewAllCustomAnnotAction.setToolTip('Show all custom annotations')
+        self.functionsNotTested3D.append(self.viewAllCustomAnnotAction)
 
         # self.imgGradLabelsAlphaUpAction = QAction(self)
         # self.imgGradLabelsAlphaUpAction.setVisible(False)
@@ -4557,7 +4590,7 @@ class guiWin(QMainWindow):
                     lenTxt = (
                         f'length={lenPxl:.2f} pxl ({lenPxl*pxlToUm:.2f} um)'
                     )
-                    txt = f'{txt}, {lenTxt}'
+                    txt = f'{txt}, <b>{lenTxt}</b>'
                 self.wcLabel.setText(txt)
             else:
                 self.clickedOnBud = False
@@ -7842,6 +7875,8 @@ class guiWin(QMainWindow):
             if widget == self.disableTrackingCheckBox:
                 action.setVisible(enabled)
                 widget.setEnabled(enabled)
+        
+        self.disableNonFunctionalButtons()
 
     def enableSizeSpinbox(self, enabled):
         self.brushSizeLabelAction.setVisible(enabled)
@@ -7982,6 +8017,8 @@ class guiWin(QMainWindow):
         button = self.editToolBar.widgetForAction(self.repeatTrackingAction)
         button.setDisabled(True)
         self.setEnabledWidgetsToolbar(False)
+        self.disableNonFunctionalButtons()
+        self.reinitLastSegmFrameAction.setVisible(False)
 
     def launchSlideshow(self):
         posData = self.data[self.pos_i]
@@ -8431,17 +8468,15 @@ class guiWin(QMainWindow):
     @myutils.exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
-            # last_tracked_i = self.get_last_tracked_i()
-            # printl(last_tracked_i)
             posData = self.data[self.pos_i]
-            # delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
-            # roi = delROIs_info['rois'][0]
-            # for seg in roi.segments:
-            #     if seg.currentPen == seg.hoverPen:
-            #         pass
             printl(posData.combineMetricsConfig)
-            printl('mixed channel to save:', self.mixedChCombineMetricsToSave)
-            printl('metric to skip:', self.metricsToSkip)
+            printl('mixedChCombineMetricsToSkip', self.mixedChCombineMetricsToSkip)
+            printl('metricsToSkip', self.metricsToSkip)
+            printl(posData.acdc_output_csv_path)
+            df = pd.read_csv(posData.acdc_output_csv_path)
+            printl('mCitrineFFC_test exists:', 'mCitrineFFC_test' in df.columns)
+            printl('mCitrineRaw_test exists:', 'mCitrineRaw_test' in df.columns)
+            printl('mCitrineFFC_AF_deduction exists:', 'mCitrineFFC_AF_deduction' in df.columns)
             if self.debug:
                 raise FileNotFoundError
                 posData = self.data[self.pos_i]
@@ -10256,6 +10291,8 @@ class guiWin(QMainWindow):
         self.loadSizeT = posData.loadSizeT
         self.loadSizeZ = posData.loadSizeZ
 
+        self.disableNonFunctionalButtons()
+
         self.isH5chunk = (
             posData.ext == '.h5'
             and (self.loadSizeT != self.SizeT
@@ -10285,6 +10322,25 @@ class guiWin(QMainWindow):
             posData
         )
         QTimer.singleShot(150, func)
+    
+    def disableNonFunctionalButtons(self):
+        if not self.isSegm3D:
+            return 
+
+        for item in self.functionsNotTested3D:
+            if hasattr(item, 'action'):
+                toolButton = item
+                action = toolButton.action
+                toolButton.setDisabled(True)
+            elif hasattr(item, 'toolbar'):
+                toolbar = item.toolbar
+                action = item
+                toolButton = toolbar.widgetForAction(action)
+                toolButton.setDisabled(True)    
+            else: 
+                action = item
+            action.setDisabled(True)
+            
 
     @myutils.exception_handler
     def startLoadDataWorker(self, user_ch_file_paths, user_ch_name, firstPosData):
@@ -10413,6 +10469,7 @@ class guiWin(QMainWindow):
         self.init_segmInfo_df()
         self.connectScrollbars()
         self.initPosAttr()
+        self.initCustomMetrics()
         self.initFluoData()
         self.createChannelNamesActions()
         self.addSelectChannelsToGradientMenu(self.imgGrad)
@@ -10475,6 +10532,7 @@ class guiWin(QMainWindow):
             color=self.titleColor
         )
 
+        self.disableNonFunctionalButtons()
 
         QTimer.singleShot(200, self.autoRange)
     
@@ -11055,19 +11113,29 @@ class guiWin(QMainWindow):
             'corrected_assignment'
         ]
 
-        # Metrics
-        self.initMetricsToSave()
-
-    def initMetricsToSave(self):
+    def initCustomMetrics(self):
+        self.logger.info('Initializing custom measurements...')
         self.chNamesToSkip = []
         self.metricsToSkip = {}
         self.regionPropsToSave = measurements.get_props_names()
-        self.mixedChCombineMetricsToSave = list(
-            measurements.get_user_combine_mixed_channels_desc().keys()
-        )
+        self.mixedChCombineMetricsToSkip = []
         self.sizeMetricsToSave = list(
             measurements.get_size_metrics_desc().keys()
         )
+        posData = self.data[self.pos_i]
+        exp_path = posData.exp_path
+        posFoldernames = myutils.get_pos_foldernames(exp_path)
+        for pos in posFoldernames:
+            images_path = os.path.join(exp_path, pos, 'Images')
+            for file in myutils.listdir(images_path):
+                if not file.endswith('custom_combine_metrics.ini'):
+                    continue
+                filePath = os.path.join(images_path, file)
+                configPars = load.read_config_metrics(filePath)
+
+                posData.combineMetricsConfig = load.add_configPars_metrics(
+                    configPars, posData.combineMetricsConfig
+                )
 
     def initPosAttr(self):
         for p, posData in enumerate(self.data):
@@ -15430,19 +15498,19 @@ class guiWin(QMainWindow):
                     favourite_funcs.add(checkBox.text())
             self.regionPropsToSave = tuple(self.regionPropsToSave)
 
-        if measurementsWin.mixedChannelsCombineMetricsQGBox is None:
-            self.mixedChCombineMetricsToSave = ()
-        elif not measurementsWin.mixedChannelsCombineMetricsQGBox.isChecked():
-            self.mixedChCombineMetricsToSave = ()
-        else:
-            mixedChCombineMetricsToSave = []
+        if measurementsWin.mixedChannelsCombineMetricsQGBox is not None:
+            skipAll = not measurementsWin.mixedChannelsCombineMetricsQGBox.isChecked()
+            mixedChCombineMetricsToSkip = []
             win = measurementsWin
             checkBoxes = win.mixedChannelsCombineMetricsQGBox.checkBoxes
             for checkBox in checkBoxes:
-                if checkBox.isChecked():
-                    mixedChCombineMetricsToSave.append(checkBox.text())
+                if skipAll:
+                    mixedChCombineMetricsToSkip.append(checkBox.text())
+                elif not checkBox.isChecked():
+                    mixedChCombineMetricsToSkip.append(checkBox.text())
+                else:             
                     favourite_funcs.add(checkBox.text())
-            self.mixedChCombineMetricsToSave = tuple(mixedChCombineMetricsToSave)
+            self.mixedChCombineMetricsToSkip = tuple(mixedChCombineMetricsToSkip)
 
         df_favourite_funcs = pd.DataFrame(
             {'favourite_func_name': list(favourite_funcs)}

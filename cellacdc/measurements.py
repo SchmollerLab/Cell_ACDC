@@ -303,6 +303,9 @@ def _um3():
 def _um2():
     return '<code>&micro;m<sup>2</sup></code>'
 
+def _um():
+    return '<code>&micro;</code>'
+
 def _fl():
     return '<code>fl</code>'
 
@@ -369,6 +372,21 @@ def get_size_metrics_desc():
             <i> Note that in <a href=\"{url}">this</a> publication we
             showed that this method strongly correlates with volume
             computed from a 3D segmentation mask.</i>
+        """),
+        'cell_vol_vox_3D': html_utils.paragraph(f"""
+            <b>Volume</b> of the segmented object in <b>voxels</b>.<br><br>
+            This is given by the total number of voxels inside the object.
+        """),
+        'cell_vol_fl_3D': html_utils.paragraph(f"""
+            <b>Volume</b> of the segmented object in <b>{_fl()}</b>.<br><br>
+            This is given by the total number of voxels inside the object 
+            multiplied by the voxel volume.<br><br>
+            The voxel volume is given by:<br><br>
+            <code>PhysicalSizeZ * PhysicalSizeY * PhysicalSizeX</code><br><br>
+            where <code>PhysicalSizeZ</code> is the spacing between z-slices 
+            (in {_um()}), while <code>PhysicalSizeY</code> and 
+            <code>PhysicalSizeX</code> are the pixel height and pixel width, 
+            respectively (in {_um()}). 
         """)
     }
     return size_metrics

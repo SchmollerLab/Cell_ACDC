@@ -59,6 +59,7 @@ from . import myutils, load, prompts, widgets, core, measurements, html_utils
 from . import is_mac, is_win, is_linux, temp_path, config
 from . import qrc_resources, printl
 from . import colors
+from . import issues_url
 
 pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
 font = QtGui.QFont()
@@ -970,6 +971,11 @@ class setMeasurementsDialog(QBaseDialog):
         current_col += 1
 
         size_metrics_desc = measurements.get_size_metrics_desc()
+        if not isSegm3D:
+            size_metrics_desc = {
+                key:val for key,val in size_metrics_desc.items()
+                if not key.endswith('_3D')
+            }
         sizeMetricsQGBox = widgets._metricsQGBox(
             size_metrics_desc, 'Size metrics',
             favourite_funcs=favourite_funcs, isZstack=isZstack
@@ -3830,10 +3836,15 @@ class CustomMetricsErrorsDialog(QBaseDialog):
         label.setPixmap(pixmap)
         layout.addWidget(label, 0, 0, alignment=Qt.AlignTop)
 
-        layout.addWidget(QLabel(html_utils.paragraph("""
+        github_issues_href = f'<a href={issues_url}>here</a>'
+        infoLabel = QLabel(html_utils.paragraph(f"""
             When computing <b>custom metrics</b> the following metrics 
-            were <b>ignored</b> because they raised an <b>error</b>:
-        """)), 0, 1)
+            were <b>ignored</b> because they raised an <b>error</b>.<br><br>
+            NOTE: If you <b>need help</b> understanding these errors you can <b>open 
+            an issue</b> on our github page {github_issues_href}.
+        """))
+        infoLabel.setOpenExternalLinks(True)
+        layout.addWidget(infoLabel, 0, 1)
 
         scrollArea = QScrollArea()
         scrollAreaWidget = QWidget()  

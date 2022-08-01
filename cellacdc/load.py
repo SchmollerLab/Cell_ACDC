@@ -55,6 +55,39 @@ def read_json(json_path, logger_func=print, desc='custom annotations'):
         print('============================')
     return json_data
 
+def read_config_metrics(ini_path):
+    configPars = config.ConfigParser()
+    configPars.read(ini_path)
+    if 'equations' not in configPars:
+        configPars['equations'] = {}
+
+    if 'mixed_channels_equations' not in configPars:
+        configPars['mixed_channels_equations'] = {}
+
+    if 'user_path_equations' not in configPars:
+        configPars['user_path_equations'] = {}
+    
+    return configPars
+
+def add_configPars_metrics(configPars_ref, configPars2_to_add):
+    configPars_ref['equations'] = {
+        **configPars2_to_add['equations'], **configPars_ref['equations']
+    }
+    configPars_ref['mixed_channels_equations'] = {
+        **configPars2_to_add['mixed_channels_equations'], 
+        **configPars_ref['mixed_channels_equations']
+    }
+    configPars_ref['user_path_equations'] = {
+        **configPars2_to_add['user_path_equations'], 
+        **configPars_ref['user_path_equations']
+    }
+    keep_user_path_equations = {
+        key:val for key, val in configPars_ref['user_path_equations'].items()
+        if key not in configPars_ref['equations']
+    } 
+    configPars_ref['user_path_equations'] = keep_user_path_equations
+    return configPars_ref
+
 def h5py_iter(g, prefix=''):
     for key, item in g.items():
         path = '{}/{}'.format(prefix, key)
