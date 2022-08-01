@@ -3558,9 +3558,8 @@ class guiWin(QMainWindow):
 
             how = self.drawIDsContComboBox.currentText()
             if how.find('overlay segm. masks') != -1:
-                img = self.img1.image
-                img[delID_mask] = self.img1uintRGB[delID_mask]
-                self.img1.setImage(img)
+                self.labelsLayerImg1.image[delID_mask] = 0
+                self.labelsLayerImg1.updateImage()
 
             self.setTitleText()
             self.highlightLostNew()
@@ -10839,21 +10838,6 @@ class guiWin(QMainWindow):
             self.ax1_LabelItemsIDs[ID-1].setText('')
             self.ax2_LabelItemsIDs[ID-1].setText('')
             self.ax1_BudMothLines[ID-1].setData([], [])
-    
-    def clearOverlaidMasks(self, IDs_to_clear):
-        how = self.drawIDsContComboBox.currentText()
-        if not how.find('overlay segm. masks') != -1:
-            return
-
-        posData = self.data[self.pos_i]
-        for ID in IDs_to_clear:
-            img = self.img1.image
-            obj_idx = posData.IDs.index(ID)
-            obj = posData.rp[obj_idx]
-            objMask = self.getObjImage(obj.image, obj.bbox)
-            objSlice = self.getObjSlice(obj.slice)
-            img[objSlice][objMask] = self.img1uintRGB[objSlice][objMask]
-            self.img1.setImage(img)
 
     def removeGraphicsItemsIDs(self, maxID):
         itemsToRemove = zip(
@@ -13591,16 +13575,12 @@ class guiWin(QMainWindow):
         how = self.drawIDsContComboBox.currentText()
         if how.find('overlay segm. masks') != -1:
             # Remove previous overlaid mask
-            self.imgRGB[prevCoords] = self.img1uintRGB[prevCoords]
-
+            self.labelsLayerImg1.image[prevCoords] = 0
+            
             # Overlay new moved mask
-            imgRGB_float = self.imgRGB/255
-            alpha = 0.7 # self.imgGrad.labelsAlphaSlider.value()
-            color = self.expandingIDColor
-            overlay = imgRGB_float[expandedObjCoords]*(1.0-alpha) + color*alpha
-            imgRGB_float[expandedObjCoords] = overlay
-            self.imgRGB = (np.clip(imgRGB_float, 0, 1)*255).astype(np.uint8)
-            self.img1.setImage(self.imgRGB)
+            self.labelsLayerImg1.image[expandedObjCoords] = self.expandingID
+
+            self.labelsLayerImg1.updateImage()
         else:
             contCurveID = self.ax1_ContoursCurves[self.expandingID-1]
             contCurveID.setData([], [])
