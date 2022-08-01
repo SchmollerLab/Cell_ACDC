@@ -22,7 +22,6 @@ import json
 import psutil
 from importlib import import_module
 from functools import partial
-from pygments import highlight
 from tqdm import tqdm
 from pprint import pprint
 import time
@@ -2540,6 +2539,7 @@ class guiWin(QMainWindow):
         self.curvToolButton.toggled.connect(self.curvTool_cb)
         self.wandToolButton.toggled.connect(self.wand_cb)
         self.reInitCcaAction.triggered.connect(self.reInitCca)
+        self.moveLabelToolButton.toggled.connect(self.moveLabelButtonToggled)
         self.assignBudMothAutoAction.triggered.connect(
             self.autoAssignBud_YeastMate
         )
@@ -2972,7 +2972,7 @@ class guiWin(QMainWindow):
 
         # Highlighted ID layer item
         self.highLightIDLayerImg1 = pg.ImageItem()
-        self.highLightIDLayerImg1.setOpacity(0.7)
+        
         self.topLayerItems.append(self.highLightIDLayerImg1)
 
         # Overlay segm. masks item
@@ -3726,7 +3726,6 @@ class guiWin(QMainWindow):
             self.storeUndoRedoStates(False)
 
             x, y = event.pos().x(), event.pos().y()
-            self.imgRGB = self.img1.image.copy()
             self.startMovingLabel(x, y)
 
         # Fill holes
@@ -4101,11 +4100,9 @@ class guiWin(QMainWindow):
             # hoverLabelID different from previously expanded ID --> reinit
             self.isExpandingLabel = True
             self.expandingID = ID
-            self.expandingIDColor = posData.lut[ID]/255
             self.expandingLab = np.zeros_like(self.currentLab2D)
             self.expandingLab[obj.coords[:,-2], obj.coords[:,-1]] = ID
             self.expandFootprintSize = 1
-            self.imgRGB = self.img1.image.copy()
 
         prevCoords = (obj.coords[:,-2], obj.coords[:,-1])
         self.currentLab2D[obj.coords[:,-2], obj.coords[:,-1]] = 0
@@ -4157,9 +4154,14 @@ class guiWin(QMainWindow):
         self.isMovingLabel = True
         self.movingID = ID
         self.prevMovePos = (xdata, ydata)
-        self.movingIDColor = posData.lut[ID]/255
         movingObj = posData.rp[posData.IDs.index(ID)]
         self.movingObjCoords = movingObj.coords.copy()
+        yy, xx = movingObj.coords[:,-2], movingObj.coords[:,-1]
+
+        how = self.drawIDsContComboBox.currentText()
+        if how.find('overlay segm. masks') != -1:
+            self.labelsLayerImg1.image[yy, xx] = 0
+            self.labelsLayerImg1.updateImage()
 
     def dragLabel(self, xPos, yPos):
         posData = self.data[self.pos_i]
@@ -4174,14 +4176,12 @@ class guiWin(QMainWindow):
         deltaY = ydata-yStart
 
         yy, xx = self.movingObjCoords[:,-2], self.movingObjCoords[:,-1]
+
         if self.isSegm3D:
             zz = self.movingObjCoords[:,0]
             posData.lab[zz, yy, xx] = 0
-            prevCoords = (zz.copy(), yy.copy(), xx.copy())
         else:
             posData.lab[yy, xx] = 0
-            prevCoords = (None, yy.copy(), xx.copy())
-        self.currentLab2D[yy, xx] = 0
 
         self.movingObjCoords[:,-2] = self.movingObjCoords[:,-2]+deltaY
         self.movingObjCoords[:,-1] = self.movingObjCoords[:,-1]+deltaX
@@ -4196,15 +4196,13 @@ class guiWin(QMainWindow):
         if self.isSegm3D:
             zz = self.movingObjCoords[:,0]
             posData.lab[zz, yy, xx] = self.movingID
-            newCoords = (zz.copy(), yy.copy(), xx.copy())
         else:
             posData.lab[yy, xx] = self.movingID
-            newCoords = (None, yy.copy(), xx.copy())
 
         if not self.labelsGrad.hideLabelsImgAction.isChecked():
             self.img2.setImage(self.currentLab2D, autoLevels=False)
-
-        self.setTempImg1MoveLabel(prevCoords)
+        
+        self.setTempImg1MoveLabel()
 
         self.prevMovePos = (xdata, ydata)
 
@@ -5067,10 +5065,10 @@ class guiWin(QMainWindow):
             # Repeat tracking
             self.tracking(enforce=True, assign_unique_new_IDs=False)
 
-            self.updateALLimg()
-
             if not self.moveLabelToolButton.findChild(QAction).isChecked():
                 self.moveLabelToolButton.setChecked(False)
+
+            self.updateALLimg()
 
         # Assign mother to bud
         elif self.assignBudMothButton.isChecked() and self.clickedOnBud:
@@ -5460,14 +5458,6 @@ class guiWin(QMainWindow):
 
             img = self.img1.image.copy()
             how = self.drawIDsContComboBox.currentText()
-            if img.ndim > 2:
-                # image is already RGB
-                self.imgRGB = img/np.max(img)
-            else:
-                img = img/np.max(img)
-                self.imgRGB = gray2rgb(img)
-          
-            self.croppedImgRGB = self.imgRGB
             lab2D = self.get_2Dlab(posData.lab)
             self.globalBrushMask = np.zeros(lab2D.shape, dtype=bool)
             brushMask = lab2D[diskSlice] == posData.brushID
@@ -5634,13 +5624,6 @@ class guiWin(QMainWindow):
                     lenNewLut=np.max(posData.lab)+posData.brushID+1
                 )
             self.brushColor = self.img2.lut[posData.brushID]/255
-
-            img = self.img1.image.copy()
-            img = img/np.max(img)
-            if img.ndim > 2:
-                self.imgRGB = img/np.max(img)
-            else:
-                self.imgRGB = gray2rgb(img)
 
             # NOTE: flood is on mousedrag or release
             tol = self.wandToleranceSlider.value()
@@ -8243,6 +8226,10 @@ class guiWin(QMainWindow):
             (self.ax2_BrushCircle, self.ax1_BrushCircle),
             self.brushButton, brush=self.ax2_BrushCircleBrush
         )
+    
+    def moveLabelButtonToggled(self, checked):
+        if not checked:
+            self.highLightIDLayerImg1.setImage(self.emptyLab.copy())
 
     def Brush_cb(self, checked):
         if checked:
@@ -8828,14 +8815,8 @@ class guiWin(QMainWindow):
         else:
             cca_df = None
 
-        if hasattr(self, 'imgRGB'):
-            imgRGB = self.imgRGB.copy()
-        else:
-            imgRGB = None
-
         state = {
             'image': self.img1.image.copy(),
-            'imgRGB': imgRGB,
             'labels': posData.lab.copy(),
             'editID_info': posData.editID_info.copy(),
             'binnedIDs': posData.binnedIDs.copy(),
@@ -8849,8 +8830,6 @@ class guiWin(QMainWindow):
         i = posData.frame_i
         c = self.UndoCount
         state = posData.UndoRedoStates[i][c]
-        if state['imgRGB'] is not None:
-            self.imgRGB = state['imgRGB'].copy()
         image_left = state['image'].copy()
         posData.lab = state['labels'].copy()
         posData.editID_info = state['editID_info'].copy()
@@ -10905,7 +10884,7 @@ class guiWin(QMainWindow):
         self.ax1_binnedIDs_ScatterPlot.clear()
         self.ax1_ripIDs_ScatterPlot.clear()
         self.labelsLayerImg1.clear()
-        self.highLightIDLayerImg1.clear()
+        self.highLightIDLayerImg1.setImage(self.emptyLab.copy())
         allItems = zip(
             self.ax1_ContoursCurves,
             self.ax1_LabelItemsIDs,
@@ -12671,7 +12650,7 @@ class guiWin(QMainWindow):
                 rgb = posData.lut[idx]
                 _lut[len(posData.lut)+i] = rgb
             posData.lut = _lut
-            self.initBrushLayerLUT()
+            self.initLabelsLayersImg1()
             return True
         return False
 
@@ -12679,9 +12658,9 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         self.img2.setLookupTable(posData.lut)
         self.img2.setLevels([0, len(posData.lut)])
-        self.initBrushLayerLUT()
+        self.initLabelsLayersImg1()
     
-    def initBrushLayerLUT(self):
+    def initLabelsLayersImg1(self):
         posData = self.data[self.pos_i]
         brushLayerLut = np.zeros((len(posData.lut), 4), dtype=np.uint8)
         brushLayerLut[:,-1] = 255
@@ -13603,7 +13582,7 @@ class guiWin(QMainWindow):
                     )
                     break
 
-    def setTempImg1MoveLabel(self, prevCoords):
+    def setTempImg1MoveLabel(self):
         how = self.drawIDsContComboBox.currentText()
         if how.find('contours') != -1:
             contCurveID = self.ax1_ContoursCurves[self.movingID-1]
@@ -13617,9 +13596,6 @@ class guiWin(QMainWindow):
                     )
                     break
         elif how.find('overlay segm. masks') != -1:
-            # Remove previous overlaid mask
-            self.labelsLayerImg1.image[prevCoords] = 0
-
             # Get coords of current 2D object
             currentLab2Drp = skimage.measure.regionprops(self.currentLab2D)
             movingObj = None
@@ -13632,7 +13608,8 @@ class guiWin(QMainWindow):
                 return
 
             # Overlay new moved mask
-            self.labelsLayerImg1.image[movingObj.coords] = self.movingID
+            yy, xx = movingObj.coords[:,-2], movingObj.coords[:,-1]
+            self.labelsLayerImg1.image[yy, xx] = self.movingID
 
             self.labelsLayerImg1.updateImage()
 
@@ -13930,14 +13907,20 @@ class guiWin(QMainWindow):
 
         if how.find('segm. masks') != -1:
             highlightedLab = np.zeros_like(self.currentLab2D)
+            lut = np.zeros((2, 4), dtype=np.uint8)
             for _obj in posData.rp:
                 if not self.isObjVisible(_obj.bbox):
                     continue
                 if _obj.label != obj.label:
-                        continue
+                    continue
                 _slice = self.getObjSlice(_obj.slice)
                 _objMask = self.getObjImage(_obj.image, _obj.bbox)
                 highlightedLab[_slice][_objMask] = _obj.label
+                rgb = posData.lut[_obj.label].copy()    
+                lut[:, :-1] = rgb
+                # Set alpha to 0.7
+                lut[1, -1] = 178
+            self.highLightIDLayerImg1.setLookupTable(lut)
             self.highLightIDLayerImg1.setImage(highlightedLab)
         else:
             # Red thick contour of searched ID
