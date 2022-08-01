@@ -5231,7 +5231,9 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
         segments = []
-        for roi in delROIs_info['rois']:         
+        for roi in delROIs_info['rois']:
+            if not isinstance(roi, pg.PolyLineROI):
+                continue       
             for seg in roi.segments:       
                 if seg.currentPen == seg.hoverPen:
                     seg.roi = roi
@@ -5242,7 +5244,9 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
         handles = []
-        for roi in delROIs_info['rois']:         
+        for roi in delROIs_info['rois']:
+            if not isinstance(roi, pg.PolyLineROI):
+                continue           
             for handle in roi.getHandles():       
                 if handle.currentPen == handle.hoverPen:
                     handle.roi = roi
