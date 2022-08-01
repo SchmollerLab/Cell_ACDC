@@ -22,6 +22,7 @@ import json
 import psutil
 from importlib import import_module
 from functools import partial
+from pygments import highlight
 from tqdm import tqdm
 from pprint import pprint
 import time
@@ -2969,6 +2970,11 @@ class guiWin(QMainWindow):
         self.tempLayerImg1 = pg.ImageItem()
         self.topLayerItems.append(self.tempLayerImg1)
 
+        # Highlighted ID layer item
+        self.highLightIDLayerImg1 = pg.ImageItem()
+        self.highLightIDLayerImg1.setOpacity(0.7)
+        self.topLayerItems.append(self.highLightIDLayerImg1)
+
         # Overlay segm. masks item
         self.labelsLayerImg1 = pg.ImageItem()
         self.topLayerItems.append(self.labelsLayerImg1)
@@ -3168,6 +3174,7 @@ class guiWin(QMainWindow):
             self.ax2_ContoursCurves[ID-1] = pg.PlotDataItem()
 
         self.progressWin.mainPbar.setMaximum(0)
+        self.gui_addTopLayerItems()
         self.gui_addCreatedAxesItems()
         self.progressWin.workerFinished = True
         self.progressWin.close()
@@ -4154,7 +4161,6 @@ class guiWin(QMainWindow):
         movingObj = posData.rp[posData.IDs.index(ID)]
         self.movingObjCoords = movingObj.coords.copy()
 
-
     def dragLabel(self, xPos, yPos):
         posData = self.data[self.pos_i]
         lab_2D = self.get_2Dlab(posData.lab)
@@ -4441,9 +4447,10 @@ class guiWin(QMainWindow):
         selectedChannel = intensMeasurQGBox.channelCombobox.currentText()
         
         if selectedChannel == self.user_ch_name:
-            image = self.img1.image
+            image = posData.img_data[posData.frame_i]
         else:
-            image = self.overlayLayersItems[selectedChannel][0].image
+            _, filename = self.getPathFromChName(selectedChannel, posData)
+            image = posData.ol_data_dict[filename][posData.frame_i]
 
         objData = image[obj.slice][obj.image]
 
@@ -10464,8 +10471,6 @@ class guiWin(QMainWindow):
         else:
             self.setWindowTitle(f'Cell-ACDC - GUI - "{posData.pos_path}"')
 
-        self.gui_addTopLayerItems()
-
         self.guiTabControl.addChannels([posData.user_ch_name])
         self.showPropsDockButton.setDisabled(False)
 
@@ -10900,6 +10905,7 @@ class guiWin(QMainWindow):
         self.ax1_binnedIDs_ScatterPlot.clear()
         self.ax1_ripIDs_ScatterPlot.clear()
         self.labelsLayerImg1.clear()
+        self.highLightIDLayerImg1.clear()
         allItems = zip(
             self.ax1_ContoursCurves,
             self.ax1_LabelItemsIDs,
@@ -13612,8 +13618,7 @@ class guiWin(QMainWindow):
                     break
         elif how.find('overlay segm. masks') != -1:
             # Remove previous overlaid mask
-            prevCoords = prevCoords[-2:]
-            self.imgRGB[prevCoords] = self.img1uintRGB[prevCoords]
+            self.labelsLayerImg1.image[prevCoords] = 0
 
             # Get coords of current 2D object
             currentLab2Drp = skimage.measure.regionprops(self.currentLab2D)
@@ -13627,15 +13632,9 @@ class guiWin(QMainWindow):
                 return
 
             # Overlay new moved mask
-            newCoords = movingObj.coords
-            imgRGB_float = self.imgRGB/255
-            alpha = 0.7 # self.imgGrad.labelsAlphaSlider.value()
-            color = self.movingIDColor
-            newCoords = (newCoords[:,0], newCoords[:,1])
-            overlay = imgRGB_float[newCoords]*(1.0-alpha) + color*alpha
-            imgRGB_float[newCoords] = overlay
-            self.imgRGB = (np.clip(imgRGB_float, 0, 1)*255).astype(np.uint8)
-            self.img1.setImage(self.imgRGB)
+            self.labelsLayerImg1.image[movingObj.coords] = self.movingID
+
+            self.labelsLayerImg1.updateImage()
 
 
     def update_cca_df_relabelling(self, posData, oldIDs, newIDs):
@@ -13891,9 +13890,8 @@ class guiWin(QMainWindow):
         if ID == 0:
             return
 
-        if ID == self.highlightedID:
+        if ID == self.highlightedID and not self.isSegm3D:
             return
-
 
         how = self.drawIDsContComboBox.currentText()
         contours = zip(
@@ -13920,7 +13918,6 @@ class guiWin(QMainWindow):
                 labelItem_ax1.setText('')
                 labelItem_ax2.setText('')
 
-
         posData = self.data[self.pos_i]
         self.highlightedID = ID
 
@@ -13932,22 +13929,16 @@ class guiWin(QMainWindow):
         obj = posData.rp[objIdx]
 
         if how.find('segm. masks') != -1:
-            imgRGB = self.img1_RGB.copy()
+            highlightedLab = np.zeros_like(self.currentLab2D)
             for _obj in posData.rp:
                 if not self.isObjVisible(_obj.bbox):
                     continue
-                color = posData.lut[_obj.label]/255
+                if _obj.label != obj.label:
+                        continue
                 _slice = self.getObjSlice(_obj.slice)
                 _objMask = self.getObjImage(_obj.image, _obj.bbox)
-                bkgr_label = self.img1_RGB[_slice][_objMask]
-                if _obj.label == obj.label:
-                    alpha = 0.7
-                else:
-                    alpha = 0.2
-                overlay = bkgr_label*(1.0-alpha) + color*alpha
-                imgRGB[_slice][_objMask] = overlay
-            imgRGB = (np.clip(imgRGB, 0, 1)*255).astype(np.uint8)
-            self.img1.setImage(imgRGB)
+                highlightedLab[_slice][_objMask] = _obj.label
+            self.highLightIDLayerImg1.setImage(highlightedLab)
         else:
             # Red thick contour of searched ID
             cont = self.getObjContours(obj)
