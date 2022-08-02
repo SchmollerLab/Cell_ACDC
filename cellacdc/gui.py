@@ -13879,6 +13879,8 @@ class guiWin(QMainWindow):
         if how.find('IDs') == -1:
             labelItems = zip(self.ax1_LabelItemsIDs, self.ax2_LabelItemsIDs)
             for labelItem_ax1, labelItem_ax2 in labelItems:
+                if labelItem_ax1 is None:
+                    continue
                 labelItem_ax1.setText('')
                 labelItem_ax2.setText('')
 
