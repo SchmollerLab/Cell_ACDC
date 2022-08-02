@@ -297,7 +297,7 @@ class saveDataWorker(QObject):
     progress = pyqtSignal(str)
     progressBar = pyqtSignal(int, int, float)
     critical = pyqtSignal(str)
-    criticalMetrics = pyqtSignal(object)
+    addMetricsCritical = pyqtSignal(str, str)
     criticalPermissionError = pyqtSignal(str)
     metricsPbarProgress = pyqtSignal(int, int)
     askZsliceAbsent = pyqtSignal(str, object)
@@ -310,6 +310,7 @@ class saveDataWorker(QObject):
         self.mutex = mainWin.mutex
         self.waitCond = mainWin.waitCond
         self.customMetricsErrors = {}
+        self.addMetricsErrors = {}
 
     def addMetrics_acdc_df(self, df, rp, frame_i, lab, posData):
         """
@@ -872,10 +873,10 @@ class saveDataWorker(QObject):
     def _dfEvalEquation(self, df, newColName, expr):
         try:
             df[newColName] = df.eval(expr)
-        except:
-            print('-'*20)
-            self.mainWin.logger.info(traceback.format_exc())
-            print('='*20)
+        except Exception as e:
+            self.customMetricsCritical.emit(
+                traceback.format_exc(), newColName
+            )
 
     def _removeDeprecatedRows(self, df):
         v1_2_4_rc25_deprecated_cols = [
@@ -1061,12 +1062,9 @@ class saveDataWorker(QObject):
                         key = (frame_i, posData.TimeIncrement*frame_i)
                         keys.append(key)
                     except Exception as error:
-                        self.mutex.lock()
-                        self.criticalMetrics.emit(traceback.format_exc())
-                        self.waitCond.wait(self.mutex)
-                        self.mutex.unlock()
-                        self.finished.emit()
-                        return
+                        self.addMetricsCritical.emit(
+                            traceback.format_exc(), str(error)
+                        )
 
                     t = time.time()
                     exec_time = t - self.time_last_pbar_update
@@ -15702,6 +15700,13 @@ class guiWin(QMainWindow):
         self.logger.info(traceback_format)
         print('====================================')
         self.worker.customMetricsErrors[func_name] = traceback_format
+    
+    def saveDataAddMetricsCritical(self, traceback_format, error_message):
+        self.logger.info('')
+        print('====================================')
+        self.logger.info(traceback_format)
+        print('====================================')
+        self.worker.addMetricsErrors[error_message] = traceback_format
 
     def saveDataCritical(self, traceback_format):
         self.logger.info('')
@@ -15817,9 +15822,11 @@ class guiWin(QMainWindow):
         self.worker.progressBar.connect(self.saveDataUpdatePbar)
         # self.worker.metricsPbarProgress.connect(self.saveDataUpdateMetricsPbar)
         self.worker.critical.connect(self.saveDataCritical)
-        self.worker.criticalMetrics.connect(self.saveMetricsCritical)
         self.worker.customMetricsCritical.connect(
             self.saveDataCustomMetricsCritical
+        )
+        self.worker.addMetricsCritical.connect(
+            self.saveDataAddMetricsCritical
         )
         self.worker.criticalPermissionError.connect(self.saveDataPermissionError)
         self.worker.askZsliceAbsent.connect(self.zSliceAbsent)
@@ -15829,8 +15836,16 @@ class guiWin(QMainWindow):
         self.thread.start()
     
     def warnErrorsCustomMetrics(self):
-        win = apps.CustomMetricsErrorsDialog(
-            self.worker.customMetricsErrors, self.logs_path
+        win = apps.ComputeMetricsErrorsDialog(
+            self.worker.customMetricsErrors, self.logs_path, 
+            log_type='custom_metrics', parent=self
+        )
+        win.exec_()
+    
+    def warnErrorsAddMetrics(self):
+        win = apps.ComputeMetricsErrorsDialog(
+            self.worker.addMetricsErrors, self.logs_path, 
+            log_type='standard_metrics', parent=self
         )
         win.exec_()
 
@@ -15841,6 +15856,8 @@ class guiWin(QMainWindow):
             self.titleLabel.setText('Saved!')
         self.saveWin.workerFinished = True
         self.saveWin.close()
+        if self.worker.addMetricsErrors:
+           self.warnErrorsAddMetrics()
         if self.worker.customMetricsErrors:
             self.warnErrorsCustomMetrics()
         if self.closeGUI:

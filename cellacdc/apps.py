@@ -3822,13 +3822,17 @@ class FutureFramesAction_QDialog(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
-class CustomMetricsErrorsDialog(QBaseDialog):
-    def __init__(self, customMetricsErrors, log_path='', parent=None):
+class ComputeMetricsErrorsDialog(QBaseDialog):
+    def __init__(
+            self, customMetricsErrors, log_path='', parent=None, 
+            log_type='custom_metrics'
+        ):
         super().__init__(parent)
 
         layout = QGridLayout()
-        
 
+        self.setWindowTitle('Errors summary')
+        
         label = QLabel(self)
         standardIcon = getattr(QStyle, 'SP_MessageBoxWarning')
         icon = self.style().standardIcon(standardIcon)
@@ -3836,13 +3840,24 @@ class CustomMetricsErrorsDialog(QBaseDialog):
         label.setPixmap(pixmap)
         layout.addWidget(label, 0, 0, alignment=Qt.AlignTop)
 
-        github_issues_href = f'<a href={issues_url}>here</a>'
-        infoLabel = QLabel(html_utils.paragraph(f"""
-            When computing <b>custom metrics</b> the following metrics 
-            were <b>ignored</b> because they raised an <b>error</b>.<br><br>
-            NOTE: If you <b>need help</b> understanding these errors you can <b>open 
-            an issue</b> on our github page {github_issues_href}.
-        """))
+        if log_type == 'custom_metrics':
+            infoText = ("""
+                When computing <b>custom metrics</b> the following metrics 
+                were <b>ignored</b> because they raised an <b>error</b>.<br><br>
+            """)
+        else:
+            infoText = ("""
+                <b>Standard metrics</b> were <b>NOT saved</b> because Cell-ACDC 
+                encoutered the following errors.<br><br>
+            """)
+
+        github_issues_href = f'<a href={issues_url}>here</a>'   
+        noteText = (f"""
+            NOTE: If you <b>need help</b> understanding these errors you can 
+            <b>open an issue</b> on our github page {github_issues_href}.
+        """)
+   
+        infoLabel = QLabel(html_utils.paragraph(f'{infoText}{noteText}'))
         infoLabel.setOpenExternalLinks(True)
         layout.addWidget(infoLabel, 0, 1)
 
