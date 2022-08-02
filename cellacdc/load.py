@@ -203,11 +203,11 @@ def pd_bool_to_int(acdc_df, colsToCast=None, csv_path=None, inplace=True):
         acdc_df = acdc_df.copy()
     if colsToCast is None:
         colsToCast = acdc_df_bool_cols
-    for col in colsToCast:
-        series = acdc_df[col]
-        notna_idx = series.notna()
-        notna_series = series.dropna()
+    for col in colsToCast:   
         try:
+            series = acdc_df[col]
+            notna_idx = series.notna()
+            notna_series = series.dropna()
             isInt = pd.api.types.is_integer_dtype(notna_series)
             isFloat = pd.api.types.is_float_dtype(notna_series)
             isObject = pd.api.types.is_object_dtype(notna_series)
