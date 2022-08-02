@@ -25,7 +25,6 @@ from functools import partial
 from tqdm import tqdm
 from pprint import pprint
 import time
-
 import cv2
 import math
 import numpy as np
@@ -4152,16 +4151,13 @@ class guiWin(QMainWindow):
 
         posData = self.data[self.pos_i]
         self.isMovingLabel = True
+        self.highLightIDLayerImg1.clear()
         self.movingID = ID
         self.prevMovePos = (xdata, ydata)
         movingObj = posData.rp[posData.IDs.index(ID)]
         self.movingObjCoords = movingObj.coords.copy()
         yy, xx = movingObj.coords[:,-2], movingObj.coords[:,-1]
-
-        how = self.drawIDsContComboBox.currentText()
-        if how.find('overlay segm. masks') != -1:
-            self.labelsLayerImg1.image[yy, xx] = 0
-            self.labelsLayerImg1.updateImage()
+        self.currentLab2D[yy, xx] = 0
 
     def dragLabel(self, xPos, yPos):
         posData = self.data[self.pos_i]
@@ -5067,8 +5063,8 @@ class guiWin(QMainWindow):
 
             if not self.moveLabelToolButton.findChild(QAction).isChecked():
                 self.moveLabelToolButton.setChecked(False)
-
-            self.updateALLimg()
+            else:
+                self.updateALLimg()
 
         # Assign mother to bud
         elif self.assignBudMothButton.isChecked() and self.clickedOnBud:
@@ -8229,7 +8225,10 @@ class guiWin(QMainWindow):
     
     def moveLabelButtonToggled(self, checked):
         if not checked:
-            self.highLightIDLayerImg1.setImage(self.emptyLab.copy())
+            self.hoverLabelID = 0
+            self.highlightedID = 0
+            self.highLightIDLayerImg1.clear()
+            self.highlightIDcheckBoxToggled(False)
 
     def Brush_cb(self, checked):
         if checked:
@@ -8403,7 +8402,9 @@ class guiWin(QMainWindow):
 
         if self.app.overrideCursor() != Qt.SizeAllCursor:
             self.app.setOverrideCursor(Qt.SizeAllCursor)
-        self.highlightSearchedID(ID)
+        
+        if not self.isMovingLabel:
+            self.highlightSearchedID(ID)
 
     def updateEraserCursor(self, x, y):
         if x is None:
@@ -13596,22 +13597,7 @@ class guiWin(QMainWindow):
                     )
                     break
         elif how.find('overlay segm. masks') != -1:
-            # Get coords of current 2D object
-            currentLab2Drp = skimage.measure.regionprops(self.currentLab2D)
-            movingObj = None
-            for obj in currentLab2Drp:
-                if obj.label == self.movingID:
-                    movingObj = obj
-                    break
-
-            if movingObj is None:
-                return
-
-            # Overlay new moved mask
-            yy, xx = movingObj.coords[:,-2], movingObj.coords[:,-1]
-            self.labelsLayerImg1.image[yy, xx] = self.movingID
-
-            self.labelsLayerImg1.updateImage()
+            self.labelsLayerImg1.setImage(self.currentLab2D, autoLevels=False)
 
 
     def update_cca_df_relabelling(self, posData, oldIDs, newIDs):
@@ -13867,7 +13853,7 @@ class guiWin(QMainWindow):
         if ID == 0:
             return
 
-        if ID == self.highlightedID and not self.isSegm3D:
+        if ID == self.highlightedID:
             return
 
         how = self.drawIDsContComboBox.currentText()
@@ -15479,7 +15465,7 @@ class guiWin(QMainWindow):
         txt = measurements.add_metrics_instructions()
         metrics_path = measurements.metrics_path
         msg = widgets.myMessageBox()
-        msg.addShowInFileManagerButton(metrics_path, 'Show exmaple...')
+        msg.addShowInFileManagerButton(metrics_path, 'Show example...')
         title = 'Add custom metrics instructions'
         msg.information(self, title, txt, buttonsTexts=('Ok',))
 
