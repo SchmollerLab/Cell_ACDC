@@ -204,21 +204,29 @@ def pd_bool_to_int(acdc_df, colsToCast=None, csv_path=None, inplace=True):
     if colsToCast is None:
         colsToCast = acdc_df_bool_cols
     for col in colsToCast:
+        series = acdc_df[col]
+        notna_idx = series.notna()
+        notna_series = series.dropna()
         try:
-            isInt = pd.api.types.is_integer_dtype(acdc_df[col])
-            isFloat = pd.api.types.is_float_dtype(acdc_df[col])
-            isObject = pd.api.types.is_object_dtype(acdc_df[col])
-            isString = pd.api.types.is_string_dtype(acdc_df[col])
-            isBool = pd.api.types.is_bool_dtype(acdc_df[col])
+            isInt = pd.api.types.is_integer_dtype(notna_series)
+            isFloat = pd.api.types.is_float_dtype(notna_series)
+            isObject = pd.api.types.is_object_dtype(notna_series)
+            isString = pd.api.types.is_string_dtype(notna_series)
+            isBool = pd.api.types.is_bool_dtype(notna_series)
             if isFloat or isBool:
-                acdc_df[col] = acdc_df[col].astype(int)
+                acdc_df.loc[notna_idx, col] = acdc_df.loc[notna_idx, col].astype(int)
             elif isString or isObject:
                 # Object data type can have mixed data types so we first convert
                 # to strings
-                acdc_df[col] = acdc_df[col].astype(str)
-                acdc_df[col] = (acdc_df[col].str.lower() == 'true').astype(int)
+                acdc_df.loc[notna_idx, col] = acdc_df.loc[notna_idx, col].astype(str)
+                acdc_df.loc[notna_idx, col] = (
+                    acdc_df.loc[notna_idx, col].str.lower() == 'true'
+                ).astype(int)
         except KeyError:
             continue
+        except Exception as e:
+            printl(col)
+            traceback.print_exc()
     if csv_path is not None:
         acdc_df.to_csv(csv_path)
     return acdc_df
