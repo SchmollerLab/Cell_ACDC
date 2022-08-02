@@ -4357,6 +4357,7 @@ class guiWin(QMainWindow):
             self.updateALLimg()
         else:
             self.highlightedID = self.guiTabControl.propsQGBox.idSB.value()
+            self.highlightSearchedID(self.highlightedID, force=True)
             self.updatePropsWidget(self.highlightedID)
 
     def updatePropsWidget(self, ID):
@@ -12669,6 +12670,8 @@ class guiWin(QMainWindow):
         brushLayerLut[0] = [0,0,0,0]
         self.labelsLayerImg1.setLevels([0, len(brushLayerLut)])
         self.labelsLayerImg1.setLookupTable(brushLayerLut)
+        alpha = self.imgGrad.labelsAlphaSlider.value()
+        self.labelsLayerImg1.setOpacity(alpha)
 
     def updateLookuptable(self, lenNewLut=None, delIDs=None):
         posData = self.data[self.pos_i]
@@ -13849,11 +13852,11 @@ class guiWin(QMainWindow):
         for ID in IDs:
             self.addNewItems(ID)
 
-    def highlightSearchedID(self, ID):
+    def highlightSearchedID(self, ID, force=False):
         if ID == 0:
             return
 
-        if ID == self.highlightedID:
+        if ID == self.highlightedID and not force:
             return
 
         how = self.drawIDsContComboBox.currentText()
@@ -13908,6 +13911,8 @@ class guiWin(QMainWindow):
                 lut[1, -1] = 178
             self.highLightIDLayerImg1.setLookupTable(lut)
             self.highLightIDLayerImg1.setImage(highlightedLab)
+            alpha = self.imgGrad.labelsAlphaSlider.value()
+            self.labelsLayerImg1.setOpacity(alpha/3)
         else:
             # Red thick contour of searched ID
             cont = self.getObjContours(obj)
@@ -14058,7 +14063,7 @@ class guiWin(QMainWindow):
         
         # # self.checkIDsMultiContour()
 
-        self.highlightSearchedID(self.highlightedID)
+        self.highlightSearchedID(self.highlightedID, force=True)
 
         if self.ccaTableWin is not None:
             self.ccaTableWin.updateTable(posData.cca_df)
@@ -15952,7 +15957,7 @@ class guiWin(QMainWindow):
     def showPropsDockWidget(self, checked=False):
         if self.showPropsDockButton.isExpand:
             self.propsDockWidget.setVisible(False)
-            self.highlightedID = 0
+            self.highlightIDcheckBoxToggled(False)
         else:
             self.highlightedID = self.guiTabControl.propsQGBox.idSB.value()
             if self.isSegm3D:
