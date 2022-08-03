@@ -1201,6 +1201,7 @@ class dataPrepWin(QMainWindow):
                         save=True,
                         askSegm3D=False
                     )
+                    self.isSegm3D = posData.isSegm3D
                     self.SizeT = posData.SizeT
                     self.SizeZ = posData.SizeZ
                     if not proceed:
@@ -1209,6 +1210,7 @@ class dataPrepWin(QMainWindow):
                             color='w')
                         return False
                 else:
+                    posData.isSegm3D = self.isSegm3D
                     posData.SizeT = self.SizeT
                     if self.SizeZ > 1:
                         # In case we know we are loading single 3D z-stacks
