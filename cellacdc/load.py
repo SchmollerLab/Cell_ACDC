@@ -655,7 +655,7 @@ class loadData:
             return False
 
         if self.segmFound is None:
-            return
+            return False
 
         if not self.segmFound:
             return

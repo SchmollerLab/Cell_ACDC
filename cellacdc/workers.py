@@ -534,8 +534,13 @@ class loadDataWorker(QObject):
             if i == 0:
                 posData.segmFound = segmFound
 
-            isMismatch = posData.getIsSegm3D() != self.mainWin.isSegm3D
-            if isMismatch and not self.mainWin.isNewFile:
+            isPosSegm3D = posData.getIsSegm3D()
+            isMismatch = (
+                isPosSegm3D != self.mainWin.isSegm3D 
+                and isPosSegm3D is not None
+                and not self.mainWin.isNewFile
+            )
+            if isMismatch:
                 skipPos = self.warnMismatchSegmDataShape(posData)
                 if skipPos:
                     self.logger.log(
