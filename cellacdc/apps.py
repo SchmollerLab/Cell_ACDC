@@ -5211,7 +5211,7 @@ class askStopFrameSegm(QDialog):
                 else:
                     spinBox.setValue(posData.segmSizeT)
             spinBox.setAlignment(Qt.AlignCenter)
-            visualizeButton = QPushButton('Visualize')
+            visualizeButton = widgets.viewPushButton('Visualize')
             visualizeButton.clicked.connect(self.visualize_cb)
             formLabel = QLabel(html_utils.paragraph(f'{pos_foldername}  '))
             layout = QHBoxLayout()
@@ -7783,6 +7783,12 @@ class stopFrameDialog(QBaseDialog):
 
             _layout.addWidget(_spinBox)
 
+            viewButton = widgets.viewPushButton('Visualize...')
+            viewButton.clicked.connect(
+                partial(self.viewChannelData, posData, _spinBox)
+            )
+            _layout.addWidget(viewButton, alignment=Qt.AlignRight)
+
             _layout.addStretch(1)
 
             mainLayout.addLayout(_layout)
@@ -7804,6 +7810,42 @@ class stopFrameDialog(QBaseDialog):
         cancelButton.clicked.connect(self.close)
 
         self.setLayout(mainLayout)
+    
+    def viewChannelData(self, posData, spinBox):
+        self.sender().setText('Loading...')
+        QTimer.singleShot(
+            200, partial(self._viewChannelData, posData, spinBox, self.sender())
+        )
+
+    def _viewChannelData(self, posData, spinBox, senderButton):      
+        chNames = posData.chNames
+        if len(chNames) > 1:
+            ch_name_selector = prompts.select_channel_name(
+                which_channel='segm', allow_abort=False
+            )
+            ch_name_selector.QtPrompt(
+                self, chNames,'Select channel name to visualize: '
+            )
+            if ch_name_selector.was_aborted:
+                return
+            chName = ch_name_selector.channel_name
+        else:
+            chName = chNames[0]
+        
+        channel_file_path = load.get_filename_from_channel(
+            posData.images_path, chName
+        )
+        posData.frame_i = 0
+        posData.loadImgData(imgPath=channel_file_path)
+        self.slideshowWin = imageViewer(
+            posData=posData, spinBox=spinBox
+        )
+        self.slideshowWin.update_img()
+        self.slideshowWin.show()
+        senderButton.setText('Visualize...')
+
+        
+
 
     def ok_cb(self):
         self.cancel = False

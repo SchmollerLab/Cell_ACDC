@@ -63,7 +63,7 @@ class signals(QObject):
     sigComputeVolume = pyqtSignal(int, object)
     sigAskStopFrame = pyqtSignal(object)
     sigWarnMismatchSegmDataShape = pyqtSignal(object)
-    sigErrorsReport = pyqtSignal(dict)
+    sigErrorsReport = pyqtSignal(dict, dict)
 
 class segmWorker(QObject):
     finished = pyqtSignal(np.ndarray, float)
@@ -302,6 +302,9 @@ class calcMetricsWorker(QObject):
                     if self.abort:
                         self.signals.finished.emit(self)
                         return
+                
+                addMetrics_acdc_df = self.mainWin.gui.saveDataWorker.addMetrics_acdc_df
+                addVolumeMetrics = self.mainWin.gui.saveDataWorker.addVolumeMetrics
 
                 # Load the other channels
                 posData.loadedChNames = []
@@ -338,12 +341,7 @@ class calcMetricsWorker(QObject):
                     posData.fluo_data_dict[filename] = fluo_data
                     posData.fluo_bkgrData_dict[filename] = bkgrData
 
-                if not posData.fluo_data_dict:
-                    self.logger.log(
-                        f'The following path does not contain '
-                        f'any valid image data: "{posData.pos_path}"'
-                    )
-                    continue
+                
 
                 # Recreate allData_li attribute of the gui
                 posData.allData_li = []
@@ -359,6 +357,12 @@ class calcMetricsWorker(QObject):
                 self.signals.sigComputeVolume.emit(stopFrameNum, posData)
                 self.waitCond.wait(self.mutex)
                 self.mutex.unlock()
+
+                if not posData.fluo_data_dict:
+                    self.logger.log(
+                        'None of the signals were loaded from the path: '
+                        f'"{posData.pos_path}"'
+                    )
 
                 acdc_df_li = []
                 keys = []
@@ -386,9 +390,14 @@ class calcMetricsWorker(QObject):
                             acdc_df = myutils.getBaseAcdcDf(rp)
 
                     try:
-                        acdc_df = self.mainWin.gui.saveDataWorker.addMetrics_acdc_df(
-                            acdc_df, rp, frame_i, lab, posData
-                        )
+                        if posData.fluo_data_dict:
+                            acdc_df = addMetrics_acdc_df(
+                                acdc_df, rp, frame_i, lab, posData
+                            )
+                        else:
+                            acdc_df = addVolumeMetrics(
+                                acdc_df, rp, posData
+                            )
                         acdc_df_li.append(acdc_df)
                         key = (frame_i, posData.TimeIncrement*frame_i)
                         keys.append(key)
@@ -421,6 +430,9 @@ class calcMetricsWorker(QObject):
                 self.mainWin.gui.saveDataWorker.addCombineMetrics_acdc_df(
                     posData, all_frames_acdc_df
                 )
+                self.mainWin.gui.saveDataWorker.addAdditionalMetadata(
+                    posData, all_frames_acdc_df
+                )
                 self.logger.log(
                     f'Saving acdc_output to: "{posData.acdc_output_csv_path}"'
                 )
@@ -443,7 +455,7 @@ class calcMetricsWorker(QObject):
             self.logger.log('*'*30)
 
             self.mutex.lock()
-            self.sigErrorsReport.emit(
+            self.signals.sigErrorsReport.emit(
                 self.standardMetricsErrors, self.customMetricsErrors
             )
             self.waitCond.wait(self.mutex)

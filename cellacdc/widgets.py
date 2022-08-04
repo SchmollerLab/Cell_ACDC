@@ -123,6 +123,11 @@ class helpPushButton(QPushButton):
         super().__init__(*args)
         self.setIcon(QIcon(':help.svg'))
 
+class viewPushButton(QPushButton):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setIcon(QIcon(':eye.svg'))
+
 class infoPushButton(QPushButton):
     def __init__(self, *args):
         super().__init__(*args)

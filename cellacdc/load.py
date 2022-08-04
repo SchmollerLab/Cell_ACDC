@@ -289,11 +289,13 @@ class loadData:
         )
         self.basename = selector.basename
 
-    def loadImgData(self, signals=None):
+    def loadImgData(self, imgPath=None, signals=None):
+        if imgPath is None:
+            imgPath = self.imgPath
         self.z0_window = 0
         self.t0_window = 0
         if self.ext == '.h5':
-            self.h5f = h5py.File(self.imgPath, 'r')
+            self.h5f = h5py.File(imgPath, 'r')
             self.dset = self.h5f['data']
             self.img_data_shape = self.dset.shape
             readH5 = self.loadSizeT is not None and self.loadSizeZ is not None
@@ -328,20 +330,20 @@ class loadData:
                 self.img_data = np.squeeze(self.dset[:])
 
         elif self.ext == '.npz':
-            self.img_data = np.load(self.imgPath)['arr_0']
+            self.img_data = np.load(imgPath)['arr_0']
             self.dset = self.img_data
             self.img_data_shape = self.img_data.shape
         elif self.ext == '.npy':
-            self.img_data = np.load(self.imgPath)
+            self.img_data = np.load(imgPath)
             self.dset = self.img_data
             self.img_data_shape = self.img_data.shape
         else:
             try:
-                self.img_data = skimage.io.imread(self.imgPath)
+                self.img_data = skimage.io.imread(imgPath)
                 self.dset = self.img_data
                 self.img_data_shape = self.img_data.shape
             except ValueError:
-                self.img_data = self._loadVideo(self.imgPath)
+                self.img_data = self._loadVideo(imgPath)
                 self.dset = self.img_data
                 self.img_data_shape = self.img_data.shape
             except Exception as e:
