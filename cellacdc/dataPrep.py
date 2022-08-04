@@ -289,7 +289,7 @@ class dataPrepWin(QMainWindow):
         self.graphLayout.addItem(self.ax1, row=1, col=1)
 
         #Image histogram
-        self.hist = pg.HistogramLUTItem()
+        self.hist = widgets.myHistogramLUTitem()
         self.graphLayout.addItem(self.hist, row=1, col=0)
 
         # Title

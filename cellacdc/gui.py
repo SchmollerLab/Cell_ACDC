@@ -9774,6 +9774,8 @@ class guiWin(QMainWindow):
     def lazyLoaderWorkerClosed(self):
         if self.lazyLoader.salute:
             print('Cell-ACDC GUI closed.')
+        
+        self.sigClosed.emit(self)
 
     def debugSegmWorker(self, lab):
         apps.imshow_tk(lab)
@@ -15962,8 +15964,6 @@ class guiWin(QMainWindow):
         for handler in handlers:
             handler.close()
             self.logger.removeHandler(handler)
-        
-        self.sigClosed.emit(self)
 
     def readSettings(self):
         settings = QSettings('schmollerlab', 'acdc_gui')
