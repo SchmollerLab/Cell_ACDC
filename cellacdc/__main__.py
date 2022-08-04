@@ -588,8 +588,12 @@ class mainWin(QMainWindow):
     def launchGui(self, checked=False):
         print('Opening GUI...')
         guiWin = gui.guiWin(self.app, mainWin=self, version=self._version)
+        guiWin.sigClosed.emit(self.guiClosed)
         guiWin.run()
         self.guiWins.append(guiWin)
+    
+    def guiClosed(self, guiWin):
+        self.guiWins.remove(guiWin)
 
     def launchAlignUtil(self, checked=False):
         if self.alignAction.isEnabled():
@@ -658,8 +662,8 @@ class mainWin(QMainWindow):
             openModules.append(self.dataPrepWin)
         if c2 == launchedColor:
             openModules.append(self.segmWin)
-        if c3 == launchedColor:
-            openModules.append(self.guiWin)
+        if self.guiWins:
+            openModules.extend(self.guiWins)
 
         if not openModules:
             return True, openModules
