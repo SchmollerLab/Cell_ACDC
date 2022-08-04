@@ -77,6 +77,30 @@ def exception_handler(func):
         return result
     return inner_function
 
+def get_pos_status(pos_path):
+    images_path = os.path.join(pos_path, 'Images')
+    ls = listdir(images_path)
+    for file in ls:
+        if file.endswith('acdc_output.csv'):
+            acdc_df_path = os.path.join(images_path, file)
+            break
+    else:
+        return ''
+    
+    acdc_df = pd.read_csv(acdc_df_path)
+    last_tracked_i = acdc_df['frame_i'].max()
+    last_cca_i = 0
+    if 'cell_cycle_stage' in acdc_df.columns:
+        cca_df = acdc_df[['frame_i', 'cell_cycle_stage']].dropna()
+        last_cca_i = cca_df['frame_i'].max()
+    if last_cca_i > 0:
+        return (
+            f' (last tracked frame = {last_tracked_i+1}, '
+            f'last annotated frame = {last_cca_i+1})'
+        )
+    else:
+        return f' (last tracked frame = {last_tracked_i+1})'
+
 def get_gdrive_path():
     if is_win:
         return os.path.join(f'G:{os.sep}', 'My Drive')

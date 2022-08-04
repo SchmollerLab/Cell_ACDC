@@ -4619,7 +4619,7 @@ class imageViewer(QMainWindow):
             self.setGeometry(left, top, 850, 800)
 
 class selectPositionsMultiExp(QBaseDialog):
-    def __init__(self, expPaths: dict, parent=None):
+    def __init__(self, expPaths: dict, infoPaths: dict=None, parent=None):
         super().__init__(parent=parent)
 
         self.expPaths = expPaths
@@ -4643,6 +4643,9 @@ class selectPositionsMultiExp(QBaseDialog):
         self.treeWidget.setFont(font)
         for exp_path, positions in expPaths.items():
             pathLevels = exp_path.split(os.sep)
+            posFoldersInfo = None
+            if infoPaths is not None:
+                posFoldersInfo = infoPaths.get(exp_path)
             if len(pathLevels) > 4:
                 itemText = os.path.join(*pathLevels[-4:])
                 itemText = f'...{itemText}'
@@ -4652,9 +4655,14 @@ class selectPositionsMultiExp(QBaseDialog):
             exp_path_item.setToolTip(0, exp_path)
             exp_path_item.full_path = exp_path
             self.treeWidget.addTopLevelItem(exp_path_item)
-            postions_items = [
-                QTreeWidgetItem(exp_path_item, [pos]) for pos in positions
-            ]
+            postions_items = []
+            for pos in positions:
+                if posFoldersInfo is not None:
+                    status = posFoldersInfo.get(pos, '')
+                pos_item_text = f'{pos}{status}'
+                pos_item = QTreeWidgetItem(exp_path_item, [pos_item_text])
+                pos_item.posFoldername = pos
+                postions_items.append(pos_item)
             exp_path_item.addChildren(postions_items)
             exp_path_item.setExpanded(True)
 
@@ -4716,7 +4724,7 @@ class selectPositionsMultiExp(QBaseDialog):
                     # Already added all children
                     continue
                 exp_path = parent.full_path
-                pos_folder = item.text(0)
+                pos_folder = item.posFoldername
                 if exp_path not in self.selectedPaths:
                     self.selectedPaths[exp_path] = []
                 self.selectedPaths[exp_path].append(pos_folder)
@@ -4724,7 +4732,7 @@ class selectPositionsMultiExp(QBaseDialog):
         self.close()
 
     def showEvent(self, event):
-        self.resize(int(self.width()*1.5), self.height())
+        self.resize(int(self.width()*2), self.height())
 
 
 class editCcaTableWidget(QDialog):

@@ -39,6 +39,7 @@ try:
     from cellacdc.utils import compute as utilsCompute
     from cellacdc.utils import repeat as utilsRepeat
     from cellacdc import is_win, is_linux, temp_path
+    from cellacdc import printl
 except ModuleNotFoundError as e:
     src_path = os.path.dirname(os.path.abspath(__file__))
     main_path = os.path.dirname(src_path)
@@ -410,7 +411,8 @@ class mainWin(QMainWindow):
                 break
 
         if len(expPaths) > 1 or len(posFolders) > 1:
-            selectPosWin = apps.selectPositionsMultiExp(expPaths)
+            infoPaths = self.getInfoPosStatus(expPaths)
+            selectPosWin = apps.selectPositionsMultiExp(expPaths, infoPaths=infoPaths)
             selectPosWin.exec_()
             if selectPosWin.cancel:
                 print('Compute measurements utility aborted by the user.')
@@ -423,6 +425,17 @@ class mainWin(QMainWindow):
             selectedExpPaths, self.app, parent=self
         )
         self.calcMeasWin.show()
+    
+    def getInfoPosStatus(self, expPaths):
+        infoPaths = {}
+        for exp_path, posFoldernames in expPaths.items():
+            posFoldersInfo = {}
+            for pos in posFoldernames:
+                pos_path = os.path.join(exp_path, pos)
+                status = myutils.get_pos_status(pos_path)
+                posFoldersInfo[pos] = status
+            infoPaths[exp_path] = posFoldersInfo
+        return infoPaths
 
     def launchRenameUtil(self):
         isUtilnabled = self.sender().isEnabled()
