@@ -63,6 +63,7 @@ class signals(QObject):
     sigComputeVolume = pyqtSignal(int, object)
     sigAskStopFrame = pyqtSignal(object)
     sigWarnMismatchSegmDataShape = pyqtSignal(object)
+    sigErrorsReport = pyqtSignal(dict)
 
 class segmWorker(QObject):
     finished = pyqtSignal(np.ndarray, float)
@@ -161,6 +162,8 @@ class calcMetricsWorker(QObject):
         tot_exp = len(expPaths)
         self.signals.initProgressBar.emit(0)
         for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
+            self.standardMetricsErrors = {}
+            self.customMetricsErrors = {}
             tot_pos = len(pos_foldernames)
             self.allPosDataInputs = []
             posDatas = []
@@ -382,12 +385,19 @@ class calcMetricsWorker(QObject):
                         except:
                             acdc_df = myutils.getBaseAcdcDf(rp)
 
-                    acdc_df = self.mainWin.gui.saveDataWorker.addMetrics_acdc_df(
-                        acdc_df, rp, frame_i, lab, posData
-                    )
-                    acdc_df_li.append(acdc_df)
-                    key = (frame_i, posData.TimeIncrement*frame_i)
-                    keys.append(key)
+                    try:
+                        acdc_df = self.mainWin.gui.saveDataWorker.addMetrics_acdc_df(
+                            acdc_df, rp, frame_i, lab, posData
+                        )
+                        acdc_df_li.append(acdc_df)
+                        key = (frame_i, posData.TimeIncrement*frame_i)
+                        keys.append(key)
+                    except Exception as error:
+                        traceback_format = traceback.format_exc()
+                        print('-'*30)      
+                        self.logger.log(traceback_format)
+                        print('-'*30)
+                        self.standardMetricsErrors[str(error)] = traceback_format
 
                     self.signals.progressBar.emit(1)
 
@@ -431,6 +441,13 @@ class calcMetricsWorker(QObject):
                     return
 
             self.logger.log('*'*30)
+
+            self.mutex.lock()
+            self.sigErrorsReport.emit(
+                self.standardMetricsErrors, self.customMetricsErrors
+            )
+            self.waitCond.wait(self.mutex)
+            self.mutex.unlock()
 
         self.signals.finished.emit(self)
 

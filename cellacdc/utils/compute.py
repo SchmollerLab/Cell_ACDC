@@ -106,9 +106,25 @@ class computeMeasurmentsUtilWin(QDialog):
         self.worker.signals.sigUpdatePbarDesc.connect(self.workerUpdatePbarDesc)
         self.worker.signals.sigComputeVolume.connect(self.computeVolumeRegionprop)
         self.worker.signals.sigAskStopFrame.connect(self.workerAskStopFrame)
+        self.worker.signals.sigErrorsReport.connect(self.warnErrors)
 
         self.thread.started.connect(self.worker.run)
         self.thread.start()
+    
+    def warnErrors(self, standardMetricsErrors, customMetricsErrors):
+        if standardMetricsErrors:
+            win = apps.ComputeMetricsErrorsDialog(
+                standardMetricsErrors, self.logs_path, 
+                log_type='standard_metrics', parent=self
+            )
+            win.exec_()
+        elif customMetricsErrors:
+            win = apps.ComputeMetricsErrorsDialog(
+                customMetricsErrors, self.logs_path, 
+                log_type='custom_metrics', parent=self
+            )
+            win.exec_()
+        self.worker.waitCond.wakeAll()
 
     def workerAskStopFrame(self, posDatas):
         win = apps.stopFrameDialog(posDatas, parent=self)
@@ -203,8 +219,18 @@ class computeMeasurmentsUtilWin(QDialog):
 
         self.gui.saveDataWorker.criticalPermissionError.connect(self.skipEvent)
         self.gui.saveDataWorker.askZsliceAbsent.connect(self.gui.zSliceAbsent)
+        self.gui.saveDataWorker.customMetricsCritical.connect(
+            self.addCombinedMetricsError
+        )
 
         self.worker.waitCond.wakeAll()
+    
+    def addCombinedMetricsError(self, traceback_format, func_name):
+        self.logger.info('')
+        print('====================================')
+        self.logger.info(traceback_format)
+        print('====================================')
+        self.worker.customMetricsErrors[func_name] = traceback_format
 
     def skipEvent(self, dummy):
         self.worker.waitCond.wakeAll()
