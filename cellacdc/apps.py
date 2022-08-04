@@ -778,10 +778,33 @@ class customAnnotationDialog(QDialog):
 class filenameDialog(QDialog):
     def __init__(
             self, ext='.npz', basename='', title='Insert file name',
-            hintText='', existingNames='', parent=None, allowEmpty=True
+            hintText='', existingNames='', parent=None, allowEmpty=True,
+            helpText=''
         ):
         self.cancel = True
         super().__init__(parent)
+
+        if hintText.find('segmentation') != -1:
+            helpText = ("""
+                With Cell-ACDC you can create as many segmentation files 
+                <b>as you want</b>.<br><br>
+                If you plan to create <b>only one file</b> then you can leave the 
+                text entry <b>empty</b>.<br>
+                Cell-ACDC will save the segmentation file with the filename 
+                ending with <code>_segm.npz</code>.<br><br>
+                However, <b>we recommend to insert some text</b> that will easily 
+                allow you <b>to identify</b> what is the segmentation file about.<br><br>
+                For example, if you are about to segment the channel 
+                <code>phase_contr</code>, you could write 
+                <code>phase_contr</code>.<br>
+                Cell-ACDC will then save the file with the
+                filename ending with <code>_segm_phase_contr.npz</code>.<br><br>
+                This way you can create <b>multiple segmentation files</b>, 
+                for example one for each channel or one for each segmentation model.<br><br>
+                Note that the <b>numerical features and annotations</b> will be saved 
+                in a CSV file ending with the same text as the segmentation file,<br> 
+                e.g., ending with <code>_acdc_output_phase_contr.csv</code>.
+            """)
 
         self.allowEmpty = allowEmpty
         self.basename = basename
@@ -825,6 +848,10 @@ class filenameDialog(QDialog):
         buttonsLayout.addStretch()
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.addSpacing(20)
+        if helpText:
+            helpButton = widgets.helpPushButton('Help...')
+            helpButton.clicked.connect(partial(self.showHelp, helpText))
+            buttonsLayout.addWidget(helpButton)
         buttonsLayout.addWidget(okButton)
 
         cancelButton.clicked.connect(self.close)
@@ -843,6 +870,11 @@ class filenameDialog(QDialog):
 
         self.setLayout(layout)
         self.setFont(font)
+    
+    def showHelp(self, text):
+        text = html_utils.paragraph(text)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.information(self, 'Filename help', text)
 
     def _text(self):
         return self.lineEdit.text().replace(' ', '_')

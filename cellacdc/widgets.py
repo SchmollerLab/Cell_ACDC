@@ -118,6 +118,11 @@ class newFilePushButton(QPushButton):
         super().__init__(*args)
         self.setIcon(QIcon(':file-new.svg'))
 
+class helpPushButton(QPushButton):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setIcon(QIcon(':help.svg'))
+
 class infoPushButton(QPushButton):
     def __init__(self, *args):
         super().__init__(*args)
