@@ -133,6 +133,16 @@ class infoPushButton(QPushButton):
         super().__init__(*args)
         self.setIcon(QIcon(':info.svg'))
 
+class threeDPushButton(QPushButton):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setIcon(QIcon(':3d.svg'))
+
+class twoDPushButton(QPushButton):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setIcon(QIcon(':2d.svg'))
+
 class addPushButton(QPushButton):
     def __init__(self, *args):
         super().__init__(*args)
@@ -511,6 +521,8 @@ class myMessageBox(QDialog):
         isNoButton = buttonText.replace(' ', '').lower() == 'no'
         isDelButton = buttonText.lower().find('delete') != -1
         isAddButton = buttonText.lower().find('add ') != -1
+        is3Dbutton = buttonText.find(' 3D ') != -1
+        is2Dbutton = buttonText.find(' 2D ') != -1
 
         if isCancelButton:
             button = cancelPushButton(buttonText, self)
@@ -530,6 +542,12 @@ class myMessageBox(QDialog):
             self.buttonsLayout.addWidget(button)
         elif isAddButton:
             button = addPushButton(buttonText, self)
+            self.buttonsLayout.addWidget(button)
+        elif is3Dbutton:
+            button = threeDPushButton(buttonText, self)
+            self.buttonsLayout.addWidget(button)
+        elif is2Dbutton:
+            button = twoDPushButton(buttonText, self)
             self.buttonsLayout.addWidget(button)
         else:
             button = QPushButton(buttonText, self)

@@ -81,7 +81,7 @@ class segmWorker(QObject):
             img = self.mainWin.getDisplayedZstack()
         else:
             img = self.mainWin.getDisplayedCellsImg()
-        img = myutils.uint_to_float(img)
+        # img = myutils.uint_to_float(img)
         lab = self.mainWin.model.segment(img, **self.mainWin.segment2D_kwargs)
         if self.mainWin.applyPostProcessing:
             lab = core.remove_artefacts(
@@ -597,6 +597,7 @@ class loadDataWorker(QObject):
             posData.PhysicalSizeZ = self.mainWin.PhysicalSizeZ
             posData.PhysicalSizeY = self.mainWin.PhysicalSizeY
             posData.PhysicalSizeX = self.mainWin.PhysicalSizeX
+            posData.isSegm3D = self.mainWin.isSegm3D
             posData.saveMetadata(
                 signals=self.signals, mutex=self.mutex, waitCond=self.waitCond,
                 additionalMetadata=self.firstPosData._additionalMetadataValues

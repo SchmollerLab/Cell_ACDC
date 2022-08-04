@@ -9804,6 +9804,14 @@ class guiWin(QMainWindow):
 
     def getDisplayedCellsImg(self):
         return self.img1.image
+    
+    def getDisplayedZstack(self):
+        filteredData = self.filteredData.get(self.user_ch_name)
+        if filteredData is None:
+            posData = self.data[self.pos_i]
+            return posData.img_data[posData.frame_i]
+        else:
+            return filteredData
 
     def autoAssignBud_YeastMate(self):
         if not self.is_win:

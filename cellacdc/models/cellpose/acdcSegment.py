@@ -102,7 +102,7 @@ class Model:
                 labels[i] = lab
             labels = skimage.measure.label(labels>0)
         else:
-            image = self._initialize_image(image)      
+            image = self._initialize_image(image)  
             labels = self._eval(image, **eval_kwargs)
         return labels
 
