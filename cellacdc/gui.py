@@ -1586,7 +1586,7 @@ class guiWin(QMainWindow):
             'left of the image.\n\n'
             'Use the colorbar ticks to adjust the selected channel\'s intensity.\n\n'
             'You can also adjust the opacity of the selected channel with the\n'
-            '"Overlay alpha" scrollbar below the image.\n\n'
+            '"Alpha <channel_name>" scrollbar below the image.\n\n'
             'NOTE: This button has a green background if you successfully '
             'loaded fluorescent data'
         )
@@ -15266,7 +15266,7 @@ class guiWin(QMainWindow):
     
     def addAlphaScrollbar(self, channelName, imageItem):
         alphaScrollBar = QScrollBar(Qt.Horizontal)
-        label = QLabel(f'Overlay alpha {channelName}')
+        label = QLabel(f'Alpha {channelName}')
         label.setFont(_font)
         label.hide()
         alphaScrollBar.imageItem = imageItem
