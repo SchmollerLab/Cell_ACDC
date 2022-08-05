@@ -1574,6 +1574,17 @@ class objPropsQGBox(QGroupBox):
         row += 1
         mainLayout.addWidget(QHLine(), row, 0, 1, 2)
 
+        row += 1
+        propsNames = measurements.get_props_names()[1:]
+        self.additionalPropsCombobox = QComboBox()
+        self.additionalPropsCombobox.addItems(propsNames)
+        self.additionalPropsCombobox.indicator = readOnlyDoubleSpinbox()
+        mainLayout.addWidget(self.additionalPropsCombobox, row, 0)
+        mainLayout.addWidget(self.additionalPropsCombobox.indicator, row, 1)
+
+        row += 1
+        mainLayout.addWidget(QHLine(), row, 0, 1, 2)
+
         self.setLayout(mainLayout)
 
 class objIntesityMeasurQGBox(QGroupBox):
@@ -1657,9 +1668,9 @@ class guiTabControl(QTabWidget):
         self.highlightCheckbox = QCheckBox('Highlight objects')
         self.highlightCheckbox.setChecked(True)
 
-        layout.addWidget(self.propsQGBox)
-        layout.addWidget(self.intensMeasurQGBox)
         layout.addWidget(self.highlightCheckbox)
+        layout.addWidget(self.propsQGBox)
+        layout.addWidget(self.intensMeasurQGBox)       
         container.setLayout(layout)
 
         self.propsTab.setWidget(container)

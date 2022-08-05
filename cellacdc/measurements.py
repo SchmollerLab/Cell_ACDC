@@ -580,8 +580,9 @@ def _is_numeric_dtype(dtype):
 def get_props_names():
     props = (
         'label',
-        'inertia_tensor_eigvals',
         'major_axis_length',
+        'minor_axis_length',
+        'inertia_tensor_eigvals', 
         'equivalent_diameter',
         'moments',
         'area',
@@ -594,7 +595,6 @@ def get_props_names():
         'local_centroid',
         'convex_area',
         'euler_number',
-        'minor_axis_length',
         'moments_normalized',
         'moments_central',
         'bbox'

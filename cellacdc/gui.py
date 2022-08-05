@@ -2022,6 +2022,8 @@ class guiWin(QMainWindow):
         self.propsDockWidget = QDockWidget('Cell-ACDC objects', self)
         self.guiTabControl = widgets.guiTabControl(self.propsDockWidget)
 
+        # self.guiTabControl.setFont(_font)
+
         self.propsDockWidget.setWidget(self.guiTabControl)
         self.propsDockWidget.setFeatures(
             QDockWidget.DockWidgetFloatable | QDockWidget.DockWidgetMovable
@@ -2518,6 +2520,9 @@ class guiWin(QMainWindow):
         self.nextAction.triggered.connect(self.next_cb)
         self.overlayButton.toggled.connect(self.overlay_cb)
         self.overlayButton.sigRightClick.connect(self.showOverlayContextMenu)
+        self.overlayLabelsButton.sigRightClick.connect(
+            self.showOverlayLabelsContextMenu
+        )
         self.rulerButton.toggled.connect(self.ruler_cb)
         self.loadFluoAction.triggered.connect(self.loadFluo_cb)
         # self.reloadAction.triggered.connect(self.reload_cb)
@@ -2641,6 +2646,11 @@ class guiWin(QMainWindow):
             self.updatePropsWidget
         )
         intensMeasurQGBox.channelCombobox.currentTextChanged.connect(
+            self.updatePropsWidget
+        )
+        
+        propsQGBox = self.guiTabControl.propsQGBox
+        propsQGBox.additionalPropsCombobox.currentTextChanged.connect(
             self.updatePropsWidget
         )
 
@@ -4372,7 +4382,7 @@ class guiWin(QMainWindow):
             # Function called by currentTextChanged of channelCombobox or
             # additionalMeasCombobox. We set elf.currentPropsID = 0 to force update
             ID = self.guiTabControl.propsQGBox.idSB.value()
-            self.currentPropsID = 0
+            self.currentPropsID = -1
 
         update = (
             self.propsDockWidget.isVisible()
@@ -4445,14 +4455,18 @@ class guiWin(QMainWindow):
         solidity = obj.solidity
         propsQGBox.solidityDSB.setValue(solidity)
 
+        additionalPropName = propsQGBox.additionalPropsCombobox.currentText()
+        additionalPropValue = getattr(obj, additionalPropName)
+        propsQGBox.additionalPropsCombobox.indicator.setValue(additionalPropValue)
+
         intensMeasurQGBox = self.guiTabControl.intensMeasurQGBox
         selectedChannel = intensMeasurQGBox.channelCombobox.currentText()
         
-        if selectedChannel == self.user_ch_name:
-            image = posData.img_data[posData.frame_i]
-        else:
+        try:
             _, filename = self.getPathFromChName(selectedChannel, posData)
             image = posData.ol_data_dict[filename][posData.frame_i]
+        except Exception as e:
+            image = posData.img_data[posData.frame_i]
 
         objData = image[obj.slice][obj.image]
 
@@ -9945,6 +9959,8 @@ class guiWin(QMainWindow):
             self.next_frame()
         if self.curvToolButton.isChecked():
             self.curvTool_cb(True)
+        
+        self.updatePropsWidget('')
 
     def prev_cb(self):
         if self.isZmodifier:
@@ -9958,6 +9974,8 @@ class guiWin(QMainWindow):
             self.prev_frame()
         if self.curvToolButton.isChecked():
             self.curvTool_cb(True)
+        
+        self.updatePropsWidget('')
 
     def zoomOut(self):
         self.ax1.vb.autoRange()
@@ -10308,6 +10326,7 @@ class guiWin(QMainWindow):
 
         if len(existingSegmEndNames) > 1:
             self.overlayLabelsButtonAction.setVisible(True)
+            self.createOverlayLabelsContextMenu(existingSegmEndNames)
             # self.overlayLabelsButton.setVisible(False)
 
         posData.loadImgData()
@@ -13005,6 +13024,12 @@ class guiWin(QMainWindow):
             return
 
         self.overlayContextMenu.exec_(QCursor.pos())
+    
+    def showOverlayLabelsContextMenu(self, event):
+        if not self.overlayLabelsButton.isChecked():
+            return
+
+        self.overlayLabelsContextMenu.exec_(QCursor.pos())
 
     def showInstructionsCustomModel(self):
         txt, models_path = myutils.get_add_custom_model_instructions()
@@ -14956,6 +14981,30 @@ class guiWin(QMainWindow):
             action.setCheckable(True)
             action.toggled.connect(self.overlayChannelToggled)
             self.overlayContextMenu.addAction(action)
+    
+    def createOverlayLabelsContextMenu(self, segmEndnames):
+        self.overlayLabelsContextMenu = QMenu()
+        self.overlayLabelsContextMenu.addSeparator()
+        self.checkedOverlayLabelsChannels = set()
+        for segmEndname in segmEndnames:
+            action = QAction(segmEndname, self.overlayLabelsContextMenu)
+            action.setCheckable(True)
+            action.toggled.connect(self.overlayLabelsNameToggled)
+            self.overlayLabelsContextMenu.addAction(action)
+        self.overlayLabelsContextMenu.addSeparator()
+        for segmEndname in segmEndnames:
+            menuName = f'{segmEndname} drawing mode'
+            drawModeMenu = self.overlayLabelsContextMenu.addMenu(segmEndname)
+            for drawMode in self.drawIDsContComboBoxSegmItems:
+                action = QAction(drawMode, drawModeMenu)
+                action.setCheckable(True)
+                action.toggled.connect(self.overlayLabelsDrawModeToggled)
+    
+    def overlayLabelsNameToggled(self, checked):
+        pass
+    
+    def overlayLabelsDrawModeToggled(self, checked):
+        pass
     
     def overlayChannelToggled(self, checked):
         # Action toggled from overlayButton context menu
