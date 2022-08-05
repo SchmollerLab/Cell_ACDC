@@ -5531,8 +5531,7 @@ class guiWin(QMainWindow):
                 self.ax1_rulerAnchorsItem.setData(
                     [xxRA[0], xdata], [yyRA[0], ydata]
                 )
-            
-            
+             
             if canPolyLine and not self.startPointPolyLineItem.getData()[0]:
                 # Create and add roi item
                 self.createDelPolyLineRoi()
@@ -5551,6 +5550,9 @@ class guiWin(QMainWindow):
                     self.ax1_rulerPlotItem.setData([], [])
                     self.startPointPolyLineItem.setData([], [])
                     self.addRoiToDelRoiInfo(self.polyLineRoi)
+                    # Call roi moving on closing ROI
+                    self.delROImoving(self.polyLineRoi)
+                    self.delROImovingFinished(self.polyLineRoi)
 
         elif right_click and canCurv:
             # Draw manually assisted auto contour
@@ -6266,7 +6268,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
         rois = delROIs_info['rois'].copy()
-        for roi in delROIs_info['rois']:
+        for roi in rois:
             self.ax2.removeItem(roi)
 
         for item in self.ax2.items:
@@ -6279,9 +6281,14 @@ class guiWin(QMainWindow):
 
     def removeDelROI(self, event):
         posData = self.data[self.pos_i]
+
+        if isinstance(self.roi_to_del, pg.PolyLineROI):
+            self.roi_to_del.clearPoints()
+        else:
+            self.roi_to_del.setPos((0,0))
+            self.roi_to_del.setSize((0,0))
         
         delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
-        self.restoreAnnotDelROI(self.roi_to_del, enforce=True)
         idx = delROIs_info['rois'].index(self.roi_to_del)
         delROIs_info['rois'].pop(idx)
         delROIs_info['delMasks'].pop(idx)
@@ -6319,8 +6326,6 @@ class guiWin(QMainWindow):
         posData.frame_i = current_frame_i
         posData.lab = posData.allData_li[posData.frame_i]['labels']                   
         self.get_data()
-        self.update_rp()
-        self.updateALLimg()
         self.store_data()
 
     # @exec_time
@@ -7334,8 +7339,9 @@ class guiWin(QMainWindow):
             delObjROImask = delROIs_info['delMasks'][idx]
             delIDsROI = delROIs_info['delIDsROI'][idx]   
             delIDs = np.unique(posData.lab[ROImask])
-            if delIDs[0] == 0:
-                delIDs = delIDs[1:]
+            if len(delIDs) > 0:
+                if delIDs[0] == 0:
+                    delIDs = delIDs[1:]
             delIDsROI.update(delIDs)
             allDelIDs.update(delIDs)
             _DelROIlab = self.get_2Dlab(posData.lab).copy()
@@ -7360,6 +7366,9 @@ class guiWin(QMainWindow):
                 xr, yr = point.x(), point.y()
                 r.append(int(yr+y0))
                 c.append(int(xr+x0))
+            if not r or not c:
+                return ROImask
+            
             rr, cc = skimage.draw.polygon(r, c, shape=self.currentLab2D.shape)
             if self.isSegm3D:
                 ROImask[self.z_lab(), rr, cc] = True
@@ -8538,6 +8547,10 @@ class guiWin(QMainWindow):
                 self.guiTabControl.highlightCheckbox.setChecked(False)
                 self.highlightIDcheckBoxToggled(False)
                 # self.updateALLimg()
+            try:
+                self.polyLineRoi.clearPoints()
+            except Exception as e:
+                pass
         elif isAltModifier:
             isCursorSizeAll = self.app.overrideCursor() == Qt.SizeAllCursor
             # Alt is pressed while cursor is on images --> set SizeAllCursor
@@ -10236,6 +10249,7 @@ class guiWin(QMainWindow):
             self.lazyLoader.exit = True
             self.lazyLoaderWaitCond.wakeAll()
             self.waitReadH5cond.wakeAll()
+            self.lazyLoader = None
 
         # Get end name of every existing segmentation file
         existingSegmEndNames = set()
@@ -11365,7 +11379,10 @@ class guiWin(QMainWindow):
             is_cell_dead_li[i] = obj.dead
             is_cell_excluded_li[i] = obj.excluded
             IDs[i] = obj.label
-            xx_centroid[i] = int(self.getObjCentroid(obj.centroid)[1])
+            try:
+                xx_centroid[i] = int(self.getObjCentroid(obj.centroid)[1])
+            except Exception as e:
+                printl(posData.frame_i, obj.label)
             yy_centroid[i] = int(self.getObjCentroid(obj.centroid)[0])
             if obj.label in editedNewIDs:
                 areManuallyEdited[i] = 1
@@ -15964,9 +15981,10 @@ class guiWin(QMainWindow):
 
     def closeEvent(self, event):
         # Close the inifinte loop of the thread
-        self.lazyLoader.exit = True
-        self.lazyLoaderWaitCond.wakeAll()
-        self.waitReadH5cond.wakeAll()
+        if self.lazyLoader is not None:
+            self.lazyLoader.exit = True
+            self.lazyLoaderWaitCond.wakeAll()
+            self.waitReadH5cond.wakeAll()
 
         self.saveWindowGeometry()
         # self.saveCustomAnnot()
@@ -15997,6 +16015,9 @@ class guiWin(QMainWindow):
         for handler in handlers:
             handler.close()
             self.logger.removeHandler(handler)
+        
+        if self.lazyLoader is None:
+            self.sigClosed.emit(self)
 
     def readSettings(self):
         settings = QSettings('schmollerlab', 'acdc_gui')
