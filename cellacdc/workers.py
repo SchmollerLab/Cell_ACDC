@@ -73,23 +73,45 @@ class segmWorker(QObject):
     def __init__(self, mainWin):
         QObject.__init__(self)
         self.mainWin = mainWin
+        self.z_range = None
 
     @worker_exception_handler
     def run(self):
         t0 = time.time()
         if self.mainWin.segment3D:
             img = self.mainWin.getDisplayedZstack()
+            SizeZ = len(img)
+            if self.z_range is not None:
+                startZ, stopZ = self.z_range
+                img = img[startZ:stopZ+1]
         else:
             img = self.mainWin.getDisplayedCellsImg()
+        
+        posData = self.mainWin.data[self.mainWin.pos_i]
+        lab = np.zeros_like(posData.segm_data[0])
+
         # img = myutils.uint_to_float(img)
-        lab = self.mainWin.model.segment(img, **self.mainWin.segment2D_kwargs)
+        _lab = self.mainWin.model.segment(img, **self.mainWin.segment2D_kwargs)
         if self.mainWin.applyPostProcessing:
-            lab = core.remove_artefacts(
-                lab,
+            _lab = core.remove_artefacts(
+                _lab,
                 min_solidity=self.mainWin.minSolidity,
                 min_area=self.mainWin.minSize,
                 max_elongation=self.mainWin.maxElongation
             )
+        
+        if self.z_range is not None:
+            # 3D segmentation of a z-slices range
+            lab[startZ:stopZ+1] = _lab
+        elif not self.mainWin.segment3D and posData.isSegm3D:
+            # 3D segmentation but segmented current z-slice
+            idx = (posData.filename, posData.frame_i)
+            z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
+            lab[z] = _lab
+        else:
+            # Either whole z-stack or 2D segmentation
+            lab = _lab
+        
         t1 = time.time()
         exec_time = t1-t0
         self.finished.emit(lab, exec_time)

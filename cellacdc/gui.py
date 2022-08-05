@@ -197,11 +197,11 @@ class trackingWorker(QObject):
             if self.posData.allData_li[frame_i]['labels'] is None:
                 # repeating tracking on a never visited frame
                 # --> modify only raw data and ask later what to do
-                self.posData.segm_data[frame_i] = lab.copy()
+                self.posData.segm_data[frame_i] = lab
                 self.trackingOnNeverVisitedFrames = True
             else:
                 # Get the rest of the stored metadata based on the new lab
-                self.posData.allData_li[frame_i]['labels'] = lab.copy()
+                self.posData.allData_li[frame_i]['labels'] = lab
                 self.posData.frame_i = frame_i
                 self.mainWin.get_data()
                 self.mainWin.store_data()
@@ -9635,7 +9635,8 @@ class guiWin(QMainWindow):
             '(check progress in terminal/console)', color=self.titleColor
         )
 
-        self.segment3D = False
+        if self.askRepeatSegment3D:
+            self.segment3D = False
         if self.isSegm3D and self.askRepeatSegment3D:
             msg = widgets.myMessageBox(showCentered=False)
             msg.addDoNotShowAgainCheckbox(text='Do not ask again')
@@ -9654,11 +9655,40 @@ class guiWin(QMainWindow):
             self.segment3D = msg.clickedButton == segment3DButton
             if msg.doNotShowAgainCheckbox.isChecked():
                 self.askRepeatSegment3D = False
+        
+        if self.askZrangeSegm3D:
+            self.z_range = None
+        if self.isSegm3D and self.segment3D and self.askZrangeSegm3D:
+            idx = (posData.filename, posData.frame_i)
+            orignal_z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
+            selectZtool = apps.QCropZtool(
+                posData.SizeZ, parent=self, cropButtonText='Ok',
+                addDoNotShowAgain=True, title='Select z-slice range to segment'
+            )
+            selectZtool.sigZvalueChanged.connect(self.selectZtoolZvalueChanged)
+            selectZtool.sigCrop.connect(selectZtool.close)
+            selectZtool.exec_()
+            self.update_z_slice(orignal_z)
+            if selectZtool.cancel:
+                self.titleLabel.setText('Segmentation process aborted.')
+                self.logger.info('Segmentation process aborted.')
+                return
+            startZ = selectZtool.lowerZscrollbar.value()
+            stopZ = selectZtool.upperZscrollbar.value()
+            self.z_range = (startZ, stopZ)
+            if selectZtool.doNotShowAgainCheckbox.isChecked():
+                self.askZrangeSegm3D = False
+        
+        self.titleLabel.setText(
+            f'{model_name} is thinking... '
+            '(check progress in terminal/console)', color=self.titleColor
+        )
 
         self.model = model
 
         self.thread = QThread()
         self.worker = workers.segmWorker(self)
+        self.worker.z_range = self.z_range
         self.worker.moveToThread(self.thread)
         self.worker.finished.connect(self.thread.quit)
         self.worker.finished.connect(self.worker.deleteLater)
@@ -9670,6 +9700,9 @@ class guiWin(QMainWindow):
 
         self.thread.started.connect(self.worker.run)
         self.thread.start()
+    
+    def selectZtoolZvalueChanged(self, whichZ, z):
+        self.update_z_slice(z)
 
     @myutils.exception_handler
     def repeatSegmVideo(self, model_name, startFrameNum, stopFrameNum):
@@ -9773,9 +9806,8 @@ class guiWin(QMainWindow):
     
     def lazyLoaderWorkerClosed(self):
         if self.lazyLoader.salute:
-            print('Cell-ACDC GUI closed.')
-        
-        self.sigClosed.emit(self)
+            print('Cell-ACDC GUI closed.')     
+            self.sigClosed.emit(self)
 
     def debugSegmWorker(self, lab):
         apps.imshow_tk(lab)
@@ -14600,6 +14632,7 @@ class guiWin(QMainWindow):
     def reInitGui(self):
         self.isZmodifier = False
         self.askRepeatSegment3D = True
+        self.askZrangeSegm3D = True
         self.showPropsDockButton.setDisabled(True)
 
         self.reinitWidgetsPos()

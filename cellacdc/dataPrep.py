@@ -855,7 +855,7 @@ class dataPrepWin(QMainWindow):
     def openCropZtool(self, checked):
         posData = self.data[self.pos_i]
         if checked:
-            self.cropZtool = apps.QCropZtool(posData.SizeZ)
+            self.cropZtool = apps.QCropZtool(posData.SizeZ, parent=self)
             self.cropZtool.sigClose.connect(self.cropZtoolClosed)
             self.cropZtool.sigZvalueChanged.connect(self.cropZtoolvalueChanged)
             self.cropZtool.sigCrop.connect(self.crop_cb)

@@ -3394,21 +3394,26 @@ class QDialogMetadata(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
-class QCropZtool(QWidget):
+class QCropZtool(QBaseDialog):
     sigClose = pyqtSignal()
     sigZvalueChanged = pyqtSignal(str, int)
     sigReset = pyqtSignal()
     sigCrop = pyqtSignal()
 
-    def __init__(self, SizeZ, parent=None):
+    def __init__(
+            self, SizeZ, cropButtonText='Crop and save', parent=None, 
+            addDoNotShowAgain=False, title='Select z-slices'
+        ):
         super().__init__(parent)
+
+        self.cancel = True
 
         self.setWindowFlags(Qt.Tool | Qt.WindowStaysOnTopHint)
 
         self.SizeZ = SizeZ
         self.numDigits = len(str(self.SizeZ))
 
-        self.setWindowTitle('Crop Z')
+        self.setWindowTitle(title)
 
         layout = QGridLayout()
         buttonsLayout = QHBoxLayout()
@@ -3424,27 +3429,40 @@ class QCropZtool(QWidget):
         self.upperZscrollbar.label = QLabel(f'{SizeZ}/{SizeZ}')
 
         cancelButton = widgets.cancelPushButton('Cancel')
-        cropButton = QPushButton('Crop and save')
+        cropButton = widgets.okPushButton(cropButtonText)
         buttonsLayout.addWidget(cropButton)
         buttonsLayout.addWidget(cancelButton)
 
+        row = 0
         layout.addWidget(
-            QLabel('Lower z-slice  '), 0, 0, alignment=Qt.AlignRight
+            QLabel('Lower z-slice  '), row, 0, alignment=Qt.AlignRight
         )
         layout.addWidget(
-            self.lowerZscrollbar.label, 0, 1, alignment=Qt.AlignRight
+            self.lowerZscrollbar.label, row, 1, alignment=Qt.AlignRight
         )
-        layout.addWidget(self.lowerZscrollbar, 0, 2)
+        layout.addWidget(self.lowerZscrollbar, row, 2)
 
-        layout.addWidget(
-            QLabel('Upper z-slice  '), 1, 0, alignment=Qt.AlignRight
-        )
-        layout.addWidget(
-            self.upperZscrollbar.label, 1, 1, alignment=Qt.AlignRight
-        )
-        layout.addWidget(self.upperZscrollbar, 1, 2)
+        row += 1
+        layout.setRowStretch(row, 5)
 
-        layout.addLayout(buttonsLayout, 2, 2, alignment=Qt.AlignRight)
+        row += 1
+        layout.addWidget(
+            QLabel('Upper z-slice  '), row, 0, alignment=Qt.AlignRight
+        )
+        layout.addWidget(
+            self.upperZscrollbar.label, row, 1, alignment=Qt.AlignRight
+        )
+        layout.addWidget(self.upperZscrollbar, row, 2)
+
+        row += 1
+        if addDoNotShowAgain:
+            self.doNotShowAgainCheckbox = QCheckBox('Do not ask again')
+            layout.addWidget(
+                self.doNotShowAgainCheckbox, row, 2, alignment=Qt.AlignLeft
+            )
+            row += 1
+
+        layout.addLayout(buttonsLayout, row, 2, alignment=Qt.AlignRight)
 
         layout.setColumnStretch(0, 0)
         layout.setColumnStretch(1, 0)
@@ -3462,6 +3480,7 @@ class QCropZtool(QWidget):
         self.sigReset.emit()
 
     def emitCrop(self):
+        self.cancel = False
         self.sigCrop.emit()
 
     def updateScrollbars(self, lower_z, upper_z):
@@ -3481,11 +3500,11 @@ class QCropZtool(QWidget):
         self.sender().label.setText(f'{s}/{self.SizeZ}')
         self.sigZvalueChanged.emit(which, value)
 
-    def show(self):
-        super().show()
+    def showEvent(self, event):
         self.resize(int(self.width()*1.5), self.height())
 
     def closeEvent(self, event):
+        super().closeEvent(event)
         self.sigClose.emit()
 
 class randomWalkerDialog(QDialog):

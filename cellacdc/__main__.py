@@ -601,10 +601,10 @@ class mainWin(QMainWindow):
     def launchGui(self, checked=False):
         print('Opening GUI...')
         guiWin = gui.guiWin(self.app, mainWin=self, version=self._version)
+        self.guiWins.append(guiWin)
         guiWin.sigClosed.connect(self.guiClosed)
         guiWin.run()
-        self.guiWins.append(guiWin)
-    
+        
     def guiClosed(self, guiWin):
         self.guiWins.remove(guiWin)
 
