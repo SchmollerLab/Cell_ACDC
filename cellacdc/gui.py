@@ -1590,9 +1590,18 @@ class guiWin(QMainWindow):
             'NOTE: This button has a green background if you successfully '
             'loaded fluorescent data'
         )
-        navigateToolBar.addWidget(self.overlayButton)
+        self.overlayButtonAction = navigateToolBar.addWidget(self.overlayButton)
         # self.checkableButtons.append(self.overlayButton)
         # self.checkableQButtonsGroup.addButton(self.overlayButton)
+
+        self.overlayLabelsButton = widgets.rightClickToolButton(parent=self)
+        self.overlayLabelsButton.setIcon(QIcon(":overlay_labels.svg"))
+        self.overlayLabelsButton.setCheckable(True)
+        # self.overlayLabelsButton.setVisible(False)
+        self.overlayLabelsButtonAction = navigateToolBar.addWidget(
+            self.overlayLabelsButton
+        )
+        self.overlayLabelsButtonAction.setVisible(False)
 
         self.rulerButton = QToolButton(self)
         self.rulerButton.setIcon(QIcon(":ruler.svg"))
@@ -9821,6 +9830,8 @@ class guiWin(QMainWindow):
         if self.lazyLoader.salute:
             print('Cell-ACDC GUI closed.')     
             self.sigClosed.emit(self)
+        
+        self.lazyLoader = None
 
     def debugSegmWorker(self, lab):
         apps.imshow_tk(lab)
@@ -10249,7 +10260,6 @@ class guiWin(QMainWindow):
             self.lazyLoader.exit = True
             self.lazyLoaderWaitCond.wakeAll()
             self.waitReadH5cond.wakeAll()
-            self.lazyLoader = None
 
         # Get end name of every existing segmentation file
         existingSegmEndNames = set()
@@ -10295,6 +10305,10 @@ class guiWin(QMainWindow):
                 selectedSegmEndName = win.selectedItemText
             elif len(existingSegmEndNames) == 1:
                 selectedSegmEndName = list(existingSegmEndNames)[0]
+
+        if len(existingSegmEndNames) > 1:
+            self.overlayLabelsButtonAction.setVisible(True)
+            # self.overlayLabelsButton.setVisible(False)
 
         posData.loadImgData()
         posData.loadOtherFiles(
@@ -11379,10 +11393,7 @@ class guiWin(QMainWindow):
             is_cell_dead_li[i] = obj.dead
             is_cell_excluded_li[i] = obj.excluded
             IDs[i] = obj.label
-            try:
-                xx_centroid[i] = int(self.getObjCentroid(obj.centroid)[1])
-            except Exception as e:
-                printl(posData.frame_i, obj.label)
+            xx_centroid[i] = int(self.getObjCentroid(obj.centroid)[1])
             yy_centroid[i] = int(self.getObjCentroid(obj.centroid)[0])
             if obj.label in editedNewIDs:
                 areManuallyEdited[i] = 1
