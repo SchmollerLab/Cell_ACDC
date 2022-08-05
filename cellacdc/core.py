@@ -232,11 +232,13 @@ def label_3d_segm(labels):
 
     return labels
 
-def get_objContours(obj):
+def get_objContours(obj, all=False):
     contours, _ = cv2.findContours(
-        obj.image.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE
+        obj.image.astype(np.uint8), cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE
     )
     min_y, min_x, _, _ = obj.bbox
+    if all:
+        return [np.squeeze(cont, axis=1)+[min_x, min_y] for cont in contours]
     cont = np.squeeze(contours[0], axis=1)
     cont = np.vstack((cont, cont[0]))
     cont += [min_x, min_y]

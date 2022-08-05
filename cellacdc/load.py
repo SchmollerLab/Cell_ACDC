@@ -184,6 +184,15 @@ def get_endname_from_channels(filename, channels):
         elif m is not None:
             return endname
 
+def get_path_from_endname(end_name, images_path):
+    for file in myutils.listdir(images_path):
+        filename, ext = os.path.splitext(file)
+        if file.endswith(end_name):
+            return os.path.join(images_path, file), file
+        elif filename.endswith(end_name):
+            return os.path.join(images_path, file), file
+    return '', ''
+
 def pd_int_to_bool(acdc_df, colsToCast=None):
     if colsToCast is None:
         colsToCast = acdc_df_bool_cols

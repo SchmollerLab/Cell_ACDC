@@ -2519,6 +2519,7 @@ class guiWin(QMainWindow):
         self.prevAction.triggered.connect(self.prev_cb)
         self.nextAction.triggered.connect(self.next_cb)
         self.overlayButton.toggled.connect(self.overlay_cb)
+        self.overlayLabelsButton.toggled.connect(self.overlayLabels_cb)
         self.overlayButton.sigRightClick.connect(self.showOverlayContextMenu)
         self.overlayLabelsButton.sigRightClick.connect(
             self.showOverlayLabelsContextMenu
@@ -2974,6 +2975,10 @@ class guiWin(QMainWindow):
         self.BudMothTempLine = pg.PlotDataItem(pen=self.NewBudMoth_Pen)
         self.topLayerItems.append(self.BudMothTempLine)
 
+        # Overlay segm. masks item
+        self.labelsLayerImg1 = pg.ImageItem()
+        self.ax1.addItem(self.labelsLayerImg1)
+
         # Red/green border rect item
         self.GreenLinePen = pg.mkPen(color='g', width=2)
         self.RedLinePen = pg.mkPen(color='r', width=2)
@@ -2987,13 +2992,8 @@ class guiWin(QMainWindow):
         self.topLayerItems.append(self.tempLayerImg1)
 
         # Highlighted ID layer item
-        self.highLightIDLayerImg1 = pg.ImageItem()
-        
+        self.highLightIDLayerImg1 = pg.ImageItem()        
         self.topLayerItems.append(self.highLightIDLayerImg1)
-
-        # Overlay segm. masks item
-        self.labelsLayerImg1 = pg.ImageItem()
-        self.topLayerItems.append(self.labelsLayerImg1)
 
         # Brush circle img1
         self.ax1_BrushCircle = pg.ScatterPlotItem()
@@ -3190,12 +3190,19 @@ class guiWin(QMainWindow):
             self.ax2_ContoursCurves[ID-1] = pg.PlotDataItem()
 
         self.progressWin.mainPbar.setMaximum(0)
+        self.gui_addOverlayLayerItems()
         self.gui_addTopLayerItems()
         self.gui_addCreatedAxesItems()
         self.progressWin.workerFinished = True
         self.progressWin.close()
 
         self.loadingDataCompleted()
+    
+    def gui_addOverlayLayerItems(self):
+        for items in self.overlayLabelsItems.values():
+            imageItem, contoursItem = items
+            self.ax1.addItem(imageItem)
+            self.ax1.addItem(contoursItem)
     
     def gui_addTopLayerItems(self):
         for item in self.topLayerItems:
@@ -10324,11 +10331,6 @@ class guiWin(QMainWindow):
             elif len(existingSegmEndNames) == 1:
                 selectedSegmEndName = list(existingSegmEndNames)[0]
 
-        if len(existingSegmEndNames) > 1:
-            self.overlayLabelsButtonAction.setVisible(True)
-            self.createOverlayLabelsContextMenu(existingSegmEndNames)
-            # self.overlayLabelsButton.setVisible(False)
-
         posData.loadImgData()
         posData.loadOtherFiles(
             load_segm_data=True,
@@ -10368,6 +10370,13 @@ class guiWin(QMainWindow):
         self.loadSizeS = posData.loadSizeS
         self.loadSizeT = posData.loadSizeT
         self.loadSizeZ = posData.loadSizeZ
+
+        if len(existingSegmEndNames) > 1 and not self.isSegm3D:
+            self.existingSegmEndNames = existingSegmEndNames
+            self.overlayLabelsButtonAction.setVisible(True)
+            self.createOverlayLabelsContextMenu(existingSegmEndNames)
+            self.createOverlayLabelsItems(existingSegmEndNames)
+            # self.overlayLabelsButton.setVisible(False)
 
         self.disableNonFunctionalButtons()
 
@@ -10990,39 +10999,18 @@ class guiWin(QMainWindow):
             if BudMothLine.getData()[0] is not None:
                 BudMothLine.clear()
             _IDlabel1.setText('')
+        
+        self.clearOverlayLabelsItems()
+        
+    def clearOverlayLabelsItems(self):
+        for segmEndname, drawMode in self.drawModeOverlayLabelsChannels.items():
+            imageItem, contoursItem = self.overlayLabelsItems[segmEndname]
+            imageItem.clear()
+            contoursItem.clear()
 
     def clearAllItems(self):
         self.clearAx1Items()
-        self.ax2_binnedIDs_ScatterPlot.setData([], [])
-        self.ax2_ripIDs_ScatterPlot.setData([], [])
-        self.ax1_binnedIDs_ScatterPlot.setData([], [])
-        self.ax1_ripIDs_ScatterPlot.setData([], [])
-
-        self.labelsLayerImg1.clear()
-
-        allItems = zip(
-            self.ax1_ContoursCurves,
-            self.ax2_ContoursCurves,
-            self.ax1_LabelItemsIDs,
-            self.ax2_LabelItemsIDs,
-            self.ax1_BudMothLines
-        )
-        for idx, items_ID in enumerate(allItems):
-            (ax1ContCurve, ax2ContCurve,
-            _IDlabel1, _IDlabel2,
-            BudMothLine) = items_ID
-
-            if ax1ContCurve is None:
-                continue
-
-            if ax1ContCurve.getData()[0] is not None:
-                ax1ContCurve.setData([], [])
-            if ax2ContCurve.getData()[0] is not None:
-                ax2ContCurve.setData([], [])
-            if BudMothLine.getData()[0] is not None:
-                BudMothLine.setData([], [])
-            _IDlabel1.setText('')
-            _IDlabel2.setText('')
+        self.clearAx2Items()
 
     def clearCurvItems(self, removeItems=True):
         try:
@@ -11234,6 +11222,8 @@ class guiWin(QMainWindow):
 
             posData.ol_data_dict = {}
             posData.ol_data = None
+
+            posData.ol_labels_data = None
 
             # Colormap
             self.setLut(posData)
@@ -12978,6 +12968,36 @@ class guiWin(QMainWindow):
             return
 
         return selectFluo.selectedItemsText
+    
+    def overlayLabels_cb(self, checked):
+        if checked:
+            if not self.drawModeOverlayLabelsChannels:
+                selectedLabelsEndnames = self.askLabelsToOverlay()
+                if selectedLabelsEndnames is None:
+                    self.logger.info('Overlay labels cancelled.')
+                    return
+                for selectedEndname in selectedLabelsEndnames:
+                    self.loadOverlayLabelsData(selectedEndname)
+                    for action in self.overlayLabelsContextMenu.actions():
+                        if not action.isCheckable():
+                            continue
+                        if action.text() == selectedEndname:
+                            action.setChecked(True)
+            self.updateALLimg()
+        else:
+            self.clearOverlayLabelsItems()
+    
+    def askLabelsToOverlay(self):
+        selectOverlayLabels = apps.QDialogListbox(
+            'Select segmentation to overlay',
+            'Select segmentation file to overlay:\n',
+            self.existingSegmEndNames, multiSelection=True, parent=self
+        )
+        selectOverlayLabels.exec_()
+        if selectOverlayLabels.cancel:
+            return
+
+        return selectOverlayLabels.selectedItemsText
 
     def overlay_cb(self, checked):
         self.UserNormAction, _, _ = self.getCheckNormAction()
@@ -14121,6 +14141,8 @@ class guiWin(QMainWindow):
         
         if self.overlayButton.isChecked():
             img = self.setOverlayImages(updateFilters=updateFilters)
+        
+        self.setOverlayLabelsItems()
 
         self.setImageImg2()
         self.setOverlaySegmMasks()
@@ -14167,6 +14189,46 @@ class guiWin(QMainWindow):
 
         if self.eraserButton.isChecked() and useEraserImg:
             self.setTempImg1Eraser(None, init=self.isSegm3D)
+    
+    def setOverlayLabelsItems(self):
+        if not self.overlayLabelsButton.isChecked():
+            return 
+
+        for segmEndname, drawMode in self.drawModeOverlayLabelsChannels.items():  
+            ol_lab = self.getOverlayLabelsData(segmEndname)
+            imageItem, contoursItem = self.overlayLabelsItems[segmEndname]
+            contoursItem.clear()
+            if drawMode == 'Draw contours':
+                for obj in skimage.measure.regionprops(ol_lab):
+                    contours = core.get_objContours(obj, all=True)
+                    for cont in contours:
+                        contoursItem.addPoints(cont[:,0], cont[:,1])
+            elif drawMode == 'Overlay labels':
+                imageItem.setImage(ol_lab, autoLevels=False)
+    
+    def getOverlayLabelsData(self, segmEndname):
+        posData = self.data[self.pos_i]
+        
+        if posData.ol_labels_data is None:
+            self.loadOverlayLabelsData(segmEndname)            
+        elif segmEndname not in posData.ol_labels_data:
+            self.loadOverlayLabelsData(segmEndname)
+        
+        return posData.ol_labels_data[segmEndname][posData.frame_i]
+    
+    def loadOverlayLabelsData(self, segmEndname):
+        posData = self.data[self.pos_i]
+        filePath, filename = load.get_path_from_endname(
+            segmEndname, posData.images_path
+        )
+        self.logger.info(f'Loading "{segmEndname}.npz" to overlay...')
+        labelsData = np.load(filePath)['arr_0']
+        if posData.SizeT == 1:
+            labelsData = labelsData[np.newaxis]
+        
+        if posData.ol_labels_data is None:
+            posData.ol_labels_data = {}
+        posData.ol_labels_data[segmEndname] = labelsData
 
     def startBlinkingModeCB(self):
         try:
@@ -14985,7 +15047,7 @@ class guiWin(QMainWindow):
     def createOverlayLabelsContextMenu(self, segmEndnames):
         self.overlayLabelsContextMenu = QMenu()
         self.overlayLabelsContextMenu.addSeparator()
-        self.checkedOverlayLabelsChannels = set()
+        self.drawModeOverlayLabelsChannels = {}
         for segmEndname in segmEndnames:
             action = QAction(segmEndname, self.overlayLabelsContextMenu)
             action.setCheckable(True)
@@ -14994,17 +15056,68 @@ class guiWin(QMainWindow):
         self.overlayLabelsContextMenu.addSeparator()
         for segmEndname in segmEndnames:
             menuName = f'{segmEndname} drawing mode'
-            drawModeMenu = self.overlayLabelsContextMenu.addMenu(segmEndname)
-            for drawMode in self.drawIDsContComboBoxSegmItems:
+            drawModeMenu = self.overlayLabelsContextMenu.addMenu(menuName)
+            drawModeMenu.segmEndname = segmEndname
+            actionGroup = QActionGroup(drawModeMenu)
+            for i, drawMode in enumerate(['Draw contours', 'Overlay labels']):
                 action = QAction(drawMode, drawModeMenu)
+                action.segmEndname = segmEndname
                 action.setCheckable(True)
+                if i == 0:
+                    action.setChecked(True)
+                actionGroup.addAction(action)
+                action.actionGroup = actionGroup
                 action.toggled.connect(self.overlayLabelsDrawModeToggled)
+                drawModeMenu.addAction(action)
+    
+    def createOverlayLabelsItems(self, segmEndnames):
+        self.overlayLabelsItems = {}
+        for segmEndname in segmEndnames:
+            lut = np.zeros((255, 4), dtype=np.uint8)
+            lut[:,-1] = 255
+            lut[:,:-1] = self.labelsGrad.item.colorMap().getLookupTable(0,1,255)
+            lut[0] = [0,0,0,0]
+            imageItem = pg.ImageItem()
+            imageItem.setLookupTable(lut)
+            alpha = self.imgGrad.labelsAlphaSlider.value()
+            imageItem.setOpacity(alpha)
+            imageItem.setLevels([0, 255])
+            contoursItem = pg.ScatterPlotItem()
+            contoursItem.setData(
+                [], [], symbol='s', pxMode=False, size=1,
+                brush=pg.mkBrush(color=(255,0,0,150)),
+                pen=pg.mkPen(width=2, color='r')
+            )
+
+            self.overlayLabelsItems[segmEndname] = (imageItem, contoursItem)
     
     def overlayLabelsNameToggled(self, checked):
-        pass
+        name = self.sender().text()
+        if checked:
+            # Find which draw mode is checked
+            for action in self.overlayLabelsContextMenu.actions():
+                drawModeMenu = action.menu()
+                if drawModeMenu is None:
+                    continue
+                if drawModeMenu.segmEndname == name:
+                    for action in drawModeMenu.actions():
+                        if action.isChecked():
+                            drawMode = action.text()
+                            self.drawModeOverlayLabelsChannels[name] = drawMode
+                    break
+        else:
+            self.drawModeOverlayLabelsChannels.pop(name)
+        self.setOverlayLabelsItems()
     
     def overlayLabelsDrawModeToggled(self, checked):
-        pass
+        if not checked:
+            return
+
+        segmEndname = self.sender().segmEndname
+        drawMode = self.sender().text()
+        if segmEndname in self.drawModeOverlayLabelsChannels:
+            self.drawModeOverlayLabelsChannels[segmEndname] = drawMode
+            self.setOverlayLabelsItems()
     
     def overlayChannelToggled(self, checked):
         # Action toggled from overlayButton context menu
