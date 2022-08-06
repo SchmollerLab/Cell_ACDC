@@ -34,7 +34,7 @@ except Exception as e:
 
 __author__ = 'Francesco Padovani and Benedikt Mairhoermann'
 
-cite_url = 'https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2'
+cite_url = 'https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6'
 issues_url = 'https://github.com/SchmollerLab/Cell_ACDC/issues'
 
 # Initialize variables that need to be globally accessible

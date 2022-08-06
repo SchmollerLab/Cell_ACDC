@@ -230,7 +230,7 @@ class welcomeWin(QWidget):
             <b>cell cycle annotation</b> of microscopy imaging data.
         </p>
         <p style="font-size:15px; font-family:ubuntu">
-            You can check out our <a href=\"paper">pre-print</a>
+            You can check out our <a href=\"paper">publication</a>
             or Twitter <a href=\"tweet">thread</a>.
         </p>
         <p style="font-size:15px; font-family:ubuntu">
@@ -834,9 +834,9 @@ class welcomeWin(QWidget):
                 </li>
                 <li>
                     <a href=\"{cite_url}\">
-                        Pre-print
+                        Publication
                     </a>
-                    on bioRxiv
+                    on BMC Biology
                 </li>
             </ul>
         </p>
@@ -856,7 +856,7 @@ class welcomeWin(QWidget):
         if link == 'DataPrepMore':
             pass
         elif link == 'paper':
-            url = 'https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2'
+            url = cite_url
             webbrowser.open(url)
         elif link == 'tweet':
             url = 'https://twitter.com/frank_pado/status/1443957038841794561?s=20'

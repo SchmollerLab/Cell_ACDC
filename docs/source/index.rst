@@ -43,13 +43,13 @@ Resources
 ---------
 
 * `User Manual`_ with **detailed instructions**
-* `Pre-print`_ of Cell-ACDC publication
+* `Publication`_ of Cell-ACDC publication
 * `Forum`_ for discussions (feel free to **ask any question**)
 * **Report issues, request a feature or ask questions** by opening a `new issue`_
 * Twitter `thread`_
 
 .. _User Manual: https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf
-.. _Pre-print: https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2
+.. _Publication: https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6
 .. _Forum: https://github.com/SchmollerLab/Cell_ACDC/discussions
 .. _new issue: https://github.com/SchmollerLab/Cell_ACDC/issues
 .. _thread: https://twitter.com/frank_pado/status/1443957038841794561?s=20

@@ -12,7 +12,7 @@
 [![Downloads](https://pepy.tech/badge/cellacdc/month)](https://pepy.tech/project/cellacdc)
 [![License](https://img.shields.io/badge/license-BSD%203--Clause-brightgreen)](https://github.com/SchmollerLab/Cell_ACDC/blob/main/LICENSE)
 [![repo size](https://img.shields.io/github/repo-size/SchmollerLab/Cell_ACDC)](https://github.com/SchmollerLab/Cell_ACDC)
-[![DOI](https://img.shields.io/badge/DOI-10.1101%2F2021.09.28.462199-informational)](https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2)
+[![DOI](https://img.shields.io/badge/DOI-10.1101%2F2021.09.28.462199-informational)](https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6)
 
 <div align="left">
   <img src="https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/figures/Fig1.jpg" width="700" alt><br>
@@ -22,7 +22,7 @@
 ## Resources
 
 - [User Manual](https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf) with **detailed instructions**
-- [Pre-print](https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2) of Cell-ACDC publication
+- [Publication](https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6) of Cell-ACDC publication
 - [Forum](https://github.com/SchmollerLab/Cell_ACDC/discussions) for discussions (feel free to **ask any question**)
 - **Report issues, request a feature or ask questions** by opening a new issue [here](https://github.com/SchmollerLab/Cell_ACDC/issues).
 - Twitter [thread](https://twitter.com/frank_pado/status/1443957038841794561?s=20)
@@ -35,7 +35,7 @@ We combined the currently **best available neural network models** (such as [Yea
 
 We developed and implemented several smart functionalities such as **real-time continuous tracking**, **automatic propagation** of error correction, and several tools to facilitate manual correction, from simple yet useful **brush** and **eraser** to more complex flood fill (magic wand) and Random Walker segmentation routines.
 
-See below **how it compares** to other popular tools available (*Table 1 of our [pre-print](https://www.biorxiv.org/content/10.1101/2021.09.28.462199v2)*).
+See below **how it compares** to other popular tools available (*Table 1 of our [publication](https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6)*).
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/main/cellacdc/resources/figures/Table1.jpg" width="600">
