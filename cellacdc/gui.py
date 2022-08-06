@@ -10371,6 +10371,8 @@ class guiWin(QMainWindow):
         self.loadSizeT = posData.loadSizeT
         self.loadSizeZ = posData.loadSizeZ
 
+        self.overlayLabelsItems = {}
+        self.drawModeOverlayLabelsChannels = {}
         if len(existingSegmEndNames) > 1 and not self.isSegm3D:
             self.existingSegmEndNames = existingSegmEndNames
             self.overlayLabelsButtonAction.setVisible(True)
