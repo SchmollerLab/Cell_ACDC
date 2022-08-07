@@ -22,7 +22,7 @@
 ## Resources
 
 - [User Manual](https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf) with **detailed instructions**
-- [Publication](https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6) of Cell-ACDC publication
+- [Publication](https://bmcbiol.biomedcentral.com/articles/10.1186/s12915-022-01372-6) of Cell-ACDC
 - [Forum](https://github.com/SchmollerLab/Cell_ACDC/discussions) for discussions (feel free to **ask any question**)
 - **Report issues, request a feature or ask questions** by opening a new issue [here](https://github.com/SchmollerLab/Cell_ACDC/issues).
 - Twitter [thread](https://twitter.com/frank_pado/status/1443957038841794561?s=20)
