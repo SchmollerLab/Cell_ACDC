@@ -505,7 +505,8 @@ def exec_time(func):
         else:
             result = func(self, *args, **kwargs)
         t1 = time.perf_counter()
-        print(f'{func.__name__} exec time = {(t1-t0)*1000:.3f} ms')
+        s = f'{func.__name__} execution time = {(t1-t0)*1000:.3f} ms'
+        printl(s, is_decorator=True)
         return result
     return inner_function
 

@@ -4,10 +4,12 @@ import inspect
 from datetime import datetime
 from pprint import pprint
 
-def printl(*objects, pretty=False, **kwargs):
+def printl(*objects, pretty=False, is_decorator=False, **kwargs):
     timestap = datetime.now().strftime('%H:%M:%S')
     currentframe = inspect.currentframe()
-    callingframe = inspect.getouterframes(currentframe)[1].frame
+    outerframes = inspect.getouterframes(currentframe)
+    idx = 2 if is_decorator else 1
+    callingframe = outerframes[idx].frame
     callingframe_info = inspect.getframeinfo(callingframe)
     filpath = callingframe_info.filename
     filename = os.path.basename(filpath)

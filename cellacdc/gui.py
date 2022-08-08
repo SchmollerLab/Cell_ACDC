@@ -1262,6 +1262,8 @@ class guiWin(QMainWindow):
         self.checkableQButtonsGroup = QButtonGroup(self)
         self.checkableQButtonsGroup.setExclusive(False)
 
+        self.lazyLoader = None
+
         self.gui_createCursors()
         self.gui_createActions()
         self.gui_createMenuBar()
@@ -1976,6 +1978,9 @@ class guiWin(QMainWindow):
         self.annotateToolbar.setVisible(False)
 
     def gui_createLazyLoader(self):
+        if not self.lazyLoader is None:
+            return
+
         self.lazyLoaderThread = QThread()
         self.lazyLoaderMutex = QMutex()
         self.lazyLoaderWaitCond = QWaitCondition()
@@ -3581,7 +3586,10 @@ class guiWin(QMainWindow):
             # Update data (rp, etc)
             self.update_rp()
 
-            self.warnEditingWithCca_df('Delete ID')
+            if self.isSnapshot:
+                self.fixCcaDfAfterEdit('Delete ID')
+            else:
+                self.warnEditingWithCca_df('Delete ID')
 
             self.setImageImg2()
 
@@ -3663,9 +3671,12 @@ class guiWin(QMainWindow):
             # Repeat tracking
             self.tracking(enforce=True, assign_unique_new_IDs=False)
 
-            # Update all images
-            self.updateALLimg()
-            self.warnEditingWithCca_df('Separate IDs')
+            if self.isSnapshot:
+                self.fixCcaDfAfterEdit('Separate IDs')
+                self.updateALLimg()
+            else:
+                self.warnEditingWithCca_df('Separate IDs')
+
             self.store_data()
 
             if not self.separateBudButton.findChild(QAction).isChecked():
@@ -3901,9 +3912,12 @@ class guiWin(QMainWindow):
             # Update colors for the edited IDs
             self.updateLookuptable()
 
-            self.warnEditingWithCca_df('Edit ID')
+            if self.isSnapshot:
+                self.fixCcaDfAfterEdit('Edit ID')
+                self.updateALLimg()
+            else:
+                self.warnEditingWithCca_df('Edit ID')
 
-            self.updateALLimg()
             if not self.editID_Button.findChild(QAction).isChecked():
                 self.editID_Button.setChecked(False)
 
@@ -4093,7 +4107,11 @@ class guiWin(QMainWindow):
             self.updateLookuptable()
             self.store_data()
 
-            self.warnEditingWithCca_df('Annotate ID as dead')
+            if self.isSnapshot:
+                self.fixCcaDfAfterEdit('Annotate ID as dead')
+                self.updateALLimg()
+            else:
+                self.warnEditingWithCca_df('Annotate ID as dead')
 
             if not self.ripCellButton.findChild(QAction).isChecked():
                 self.ripCellButton.setChecked(False)
@@ -4365,6 +4383,7 @@ class guiWin(QMainWindow):
                 )
                 self.setTempImg1Brush(False, mask, posData.brushID)
     
+    @exec_time
     def fillHolesID(self, ID, sender='brush'):
         posData = self.data[self.pos_i]
         if sender == 'brush':
@@ -4921,12 +4940,17 @@ class guiWin(QMainWindow):
 
             # Update data (rp, etc)
             self.update_rp()
-            self.updateALLimg(updateFilters=True, useEraserImg=True)
 
             for ID in erasedIDs:
                 if ID not in posData.lab:
-                    self.warnEditingWithCca_df('Delete ID with eraser')
+                    if self.isSnapshot:
+                        self.fixCcaDfAfterEdit('Delete ID with eraser')
+                        self.updateALLimg()
+                    else:
+                        self.warnEditingWithCca_df('Delete ID with eraser')
                     break
+            else:
+                self.updateALLimg(useEraserImg=True)
 
         # Brush button mouse release --> update IDs and contours
         elif self.isMouseDragImg2 and self.brushButton.isChecked():
@@ -4934,12 +4958,18 @@ class guiWin(QMainWindow):
 
             self.update_rp()
             self.fillHolesID(self.ax2BrushID, sender='brush')
-            if self.isNewID:
-                self.tracking(enforce=True, assign_unique_new_IDs=False)
+            self.tracking(enforce=True, assign_unique_new_IDs=False)
 
-            self.updateALLimg(updateFilters=True)
+            # Update images
             if self.isNewID:
-                self.warnEditingWithCca_df('Add new ID with brush tool')
+                editTxt = 'Add new ID with brush tool'
+                if self.isSnapshot:
+                    self.fixCcaDfAfterEdit(editTxt)
+                    self.updateALLimg()
+                else:
+                    self.warnEditingWithCca_df(editTxt)
+            else:
+                self.updateALLimg()
 
         # Move label mouse released, update move
         elif self.isMovingLabel and self.moveLabelToolButton.isChecked():
@@ -4990,11 +5020,15 @@ class guiWin(QMainWindow):
             # Repeat tracking
             self.tracking(enforce=True, assign_unique_new_IDs=False)
 
-            self.updateALLimg()
+            if self.isSnapshot:
+                self.fixCcaDfAfterEdit('Merge IDs')
+                self.updateALLimg()
+            else:
+                self.warnEditingWithCca_df('Merge IDs')
+
             if not self.mergeIDsButton.findChild(QAction).isChecked():
                 self.mergeIDsButton.setChecked(False)
             self.store_data()
-            self.warnEditingWithCca_df('Merge IDs')
 
     @myutils.exception_handler
     def gui_mouseReleaseEventImg1(self, event):
@@ -5022,8 +5056,11 @@ class guiWin(QMainWindow):
                 self.splineToObj(isRightClick=True)
                 self.update_rp()
                 self.tracking(enforce=True, assign_unique_new_IDs=False)
-                self.updateALLimg()
-                self.warnEditingWithCca_df('Add new ID with curvature tool')
+                if self.isSnapshot:
+                    self.fixCcaDfAfterEdit('Add new ID with curvature tool')
+                    self.updateALLimg()
+                else:
+                    self.warnEditingWithCca_df('Add new ID with curvature tool')
                 self.clearCurvItems()
                 self.curvTool_cb(True)
             except ValueError:
@@ -5041,12 +5078,17 @@ class guiWin(QMainWindow):
 
             # Update data (rp, etc)
             self.update_rp()
-            self.updateALLimg()
 
             for ID in erasedIDs:
                 if ID not in posData.IDs:
-                    self.warnEditingWithCca_df('Delete ID with eraser')
+                    if self.isSnapshot:
+                        self.fixCcaDfAfterEdit('Delete ID with eraser')
+                        self.updateALLimg()
+                    else:
+                        self.warnEditingWithCca_df('Delete ID with eraser')
                     break
+            else:
+                self.updateALLimg()
 
         # Brush button mouse release
         elif self.isMouseDragImg1 and self.brushButton.isChecked():
@@ -5056,16 +5098,24 @@ class guiWin(QMainWindow):
 
             # Update data (rp, etc)
             self.update_rp()
+            
             posData = self.data[self.pos_i]
             self.fillHolesID(posData.brushID, sender='brush')
 
             # Repeat tracking
             self.tracking(enforce=True, assign_unique_new_IDs=False)
 
-            # Update colors to include a new color for the new ID
-            self.updateALLimg()
+            # Update images
             if self.isNewID:
-                self.warnEditingWithCca_df('Add new ID with brush tool')
+                editTxt = 'Add new ID with brush tool'
+                if self.isSnapshot:
+                    self.fixCcaDfAfterEdit(editTxt)
+                    self.updateALLimg()
+                else:
+                    self.warnEditingWithCca_df(editTxt)
+            else:
+                self.updateALLimg()
+            
             self.isNewID = False
 
         # Wand tool release, add new object
@@ -5081,8 +5131,11 @@ class guiWin(QMainWindow):
             # Repeat tracking
             self.tracking(enforce=True, assign_unique_new_IDs=False)
 
-            self.updateALLimg()
-            self.warnEditingWithCca_df('Add new ID with magic-wand')
+            if self.isSnapshot:
+                self.fixCcaDfAfterEdit('Add new ID with magic-wand')
+                self.updateALLimg()
+            else:
+                self.warnEditingWithCca_df('Add new ID with magic-wand')
 
         # Move label mouse released, update move
         elif self.isMovingLabel and self.moveLabelToolButton.isChecked():
@@ -5442,6 +5495,7 @@ class guiWin(QMainWindow):
 
         # Paint new IDs with brush and left click on the left image
         if left_click and canBrush:
+            printl('Mouse pressed brush')
             # Store undo state before modifying stuff
 
             x, y = event.pos().x(), event.pos().y()
@@ -5636,8 +5690,11 @@ class guiWin(QMainWindow):
                 self.splineToObj()
                 self.update_rp()
                 self.tracking(enforce=True, assign_unique_new_IDs=False)
-                self.updateALLimg()
-                self.warnEditingWithCca_df('Add new ID with curvature tool')
+                if self.isSnapshot:
+                    self.fixCcaDfAfterEdit('Add new ID with curvature tool')
+                    self.updateALLimg()
+                else:
+                    self.warnEditingWithCca_df('Add new ID with curvature tool')
                 self.clearCurvItems()
                 self.curvTool_cb(True)
 
@@ -7219,7 +7276,12 @@ class guiWin(QMainWindow):
         else:
             self.ax2.addItem(roi)
         self.applyDelROIimg1(roi, init=True)
-        self.warnEditingWithCca_df('Delete IDs using ROI')
+
+        if self.isSnapshot:
+            self.fixCcaDfAfterEdit('Delete IDs using ROI')
+            self.updateALLimg()
+        else:
+            self.warnEditingWithCca_df('Delete IDs using ROI')
     
     def addRoiToDelRoiInfo(self, roi):
         posData = self.data[self.pos_i]
@@ -7234,7 +7296,11 @@ class guiWin(QMainWindow):
             self.disconnectLeftClickButtons()
             self.uncheckLeftClickButtons(self.addDelPolyLineRoiAction)
             self.connectLeftClickButtons()
-            self.warnEditingWithCca_df('Delete IDs using ROI')
+            if self.isSnapshot:
+                self.fixCcaDfAfterEdit('Delete IDs using ROI')
+                self.updateALLimg()
+            else:
+                self.warnEditingWithCca_df('Delete IDs using ROI')
         else:
             self.tempSegmentON = False
             self.ax1_rulerPlotItem.setData([], [])
@@ -9157,9 +9223,14 @@ class guiWin(QMainWindow):
                 # self.checkIDsMultiContour()
             else:
                 posData.editID_info = []
-        self.updateALLimg()
         if np.any(posData.lab != prev_lab):
-            self.warnEditingWithCca_df('Repeat tracking')
+            if self.isSnapshot:
+                self.fixCcaDfAfterEdit('Repeat tracking')
+                self.updateALLimg()
+            else:
+                self.warnEditingWithCca_df('Repeat tracking')
+        else:
+            self.updateALLimg()
 
     def autoSegm_cb(self, checked):
         if checked:
@@ -9874,9 +9945,14 @@ class guiWin(QMainWindow):
             posData.lab = lab.copy()
         self.update_rp()
         self.tracking(enforce=True)
-        self.updateALLimg()
+        
+        if self.isSnapshot:
+            self.fixCcaDfAfterEdit('Repeat segmentation')
+            self.updateALLimg()
+        else:
+            self.warnEditingWithCca_df('Repeat segmentation')
+
         self.ax1.vb.autoRange()
-        self.warnEditingWithCca_df('Repeat segmentation')
 
         txt = f'Done. Segmentation computed in {exec_time:.3f} s'
         self.logger.info('-----------------')
@@ -11096,9 +11172,12 @@ class guiWin(QMainWindow):
                 self.randomWalkerWin.computeSegm()
                 self.update_rp()
                 self.tracking(enforce=True)
-                self.updateALLimg()
+                if self.isSnapshot:
+                    self.fixCcaDfAfterEdit('Random Walker segmentation')
+                    self.updateALLimg()
+                else:
+                    self.warnEditingWithCca_df('Random Walker segmentation')
                 self.store_data()
-                self.warnEditingWithCca_df('Random Walker segmentation')
             else:
                 return
 
@@ -12666,7 +12745,7 @@ class guiWin(QMainWindow):
                 # drawingContoursTimes = t1-t0
                 # self.drawingContoursTimes.append(drawingContoursTimes)
 
-
+    @exec_time
     def update_rp(self, draw=True, debug=False):
         posData = self.data[self.pos_i]
         # Update rp for current posData.lab (e.g. after any change)
@@ -13785,29 +13864,34 @@ class guiWin(QMainWindow):
 
         elif editTxt == 'Random Walker segmentation':
             posData.cca_df = self.getBaseCca_df()
-
+    
+    def fixCcaDfAfterEdit(self, editTxt):
+        posData = self.data[self.pos_i]
+        if posData.cca_df is not None:
+            # For snapshot mode we re-initialize cca_df depending on the edit
+            self.update_cca_df_snapshots(editTxt, posData)
+            self.store_data()
 
     def warnEditingWithCca_df(self, editTxt, return_answer=False):
         # Function used to warn that the user is editing in "Segmentation and
         # Tracking" mode a frame that contains cca annotations.
-        # Ask whether to remove annotations from all future frames
-        posData = self.data[self.pos_i]
-        if self.isSnapshot and posData.cca_df is not None:
-            # For snapshot mode we re-initialize cca_df depending on the edit
-            self.update_cca_df_snapshots(editTxt, posData)
-            self.store_data()
-            self.updateALLimg()
+        # Ask whether to remove annotations from all future frames 
+        if self.isSnapshot:
             return
 
+        posData = self.data[self.pos_i]
         acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
         if acdc_df is None:
+            self.updateALLimg()
             return
         else:
             if 'cell_cycle_stage' not in acdc_df.columns:
+                self.updateALLimg()
                 return
         action = self.warnEditingWithAnnotActions.get(editTxt, None)
         if action is not None:
             if not action.isChecked():
+                self.updateALLimg()
                 return
 
         msg = widgets.myMessageBox()
@@ -14113,6 +14197,7 @@ class guiWin(QMainWindow):
         self.df_settings.to_csv(self.settings_csv_path)
         self.labelsLayerImg1.setOpacity(value)
 
+    @exec_time
     @myutils.exception_handler
     def updateALLimg(
             self, image=None, only_ax1=False, updateFilters=False,
@@ -14476,6 +14561,7 @@ class guiWin(QMainWindow):
             # # self.disableTrackingCheckBox.setChecked(False)
             return False
 
+    @exec_time
     def tracking(
             self, onlyIDs=[], enforce=False, DoManualEdit=True,
             storeUndo=False, prev_lab=None, prev_rp=None,
@@ -14754,7 +14840,7 @@ class guiWin(QMainWindow):
 
     def reInitGui(self):
         self.gui_createLazyLoader()
-        
+
         self.isZmodifier = False
         self.askRepeatSegment3D = True
         self.askZrangeSegm3D = True
