@@ -738,7 +738,7 @@ def run():
     if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
         QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
     
-    # Needed by pyqtgraph with desktop resolution scaling
+    # Needed by pyqtgraph with display resolution scaling
     QApplication.setAttribute(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
