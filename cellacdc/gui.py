@@ -4383,7 +4383,7 @@ class guiWin(QMainWindow):
                 )
                 self.setTempImg1Brush(False, mask, posData.brushID)
     
-    @exec_time
+    # @exec_time
     def fillHolesID(self, ID, sender='brush'):
         posData = self.data[self.pos_i]
         if sender == 'brush':
@@ -5495,7 +5495,6 @@ class guiWin(QMainWindow):
 
         # Paint new IDs with brush and left click on the left image
         if left_click and canBrush:
-            printl('Mouse pressed brush')
             # Store undo state before modifying stuff
 
             x, y = event.pos().x(), event.pos().y()
@@ -12745,7 +12744,7 @@ class guiWin(QMainWindow):
                 # drawingContoursTimes = t1-t0
                 # self.drawingContoursTimes.append(drawingContoursTimes)
 
-    @exec_time
+    # @exec_time
     def update_rp(self, draw=True, debug=False):
         posData = self.data[self.pos_i]
         # Update rp for current posData.lab (e.g. after any change)
@@ -14197,7 +14196,7 @@ class guiWin(QMainWindow):
         self.df_settings.to_csv(self.settings_csv_path)
         self.labelsLayerImg1.setOpacity(value)
 
-    @exec_time
+    # @exec_time
     @myutils.exception_handler
     def updateALLimg(
             self, image=None, only_ax1=False, updateFilters=False,
@@ -14561,7 +14560,7 @@ class guiWin(QMainWindow):
             # # self.disableTrackingCheckBox.setChecked(False)
             return False
 
-    @exec_time
+    # @exec_time
     def tracking(
             self, onlyIDs=[], enforce=False, DoManualEdit=True,
             storeUndo=False, prev_lab=None, prev_rp=None,
