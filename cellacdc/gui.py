@@ -1262,7 +1262,6 @@ class guiWin(QMainWindow):
         self.checkableQButtonsGroup = QButtonGroup(self)
         self.checkableQButtonsGroup.setExclusive(False)
 
-        self.gui_createLazyLoader()
         self.gui_createCursors()
         self.gui_createActions()
         self.gui_createMenuBar()
@@ -2005,11 +2004,16 @@ class guiWin(QMainWindow):
     def gui_createMainLayout(self):
         mainLayout = QGridLayout()
         row = 0
-        mainLayout.addLayout(self.leftSideDocksLayout, row, 0, 2, 1)
-        mainLayout.addWidget(self.graphLayout, row, 1, 1, 2)
+        col = 1 # Leave column 1 for the overlay labels gradient editor
+        mainLayout.addLayout(self.leftSideDocksLayout, row, col, 2, 1)
+
+        col = 2
+        mainLayout.addWidget(self.graphLayout, row, col, 1, 2)
+
+        col += 2 # graphLayout spans two columns
         mainLayout.addWidget(self.labelsGrad, row, 3)
 
-        row += 1
+        row = 1
         mainLayout.addLayout(
             self.bottomLayout, row, 1, 1, 2, alignment=Qt.AlignLeft
         )
@@ -3200,7 +3204,7 @@ class guiWin(QMainWindow):
     
     def gui_addOverlayLayerItems(self):
         for items in self.overlayLabelsItems.values():
-            imageItem, contoursItem = items
+            imageItem, contoursItem, lutItem = items
             self.ax1.addItem(imageItem)
             self.ax1.addItem(contoursItem)
     
@@ -11006,7 +11010,8 @@ class guiWin(QMainWindow):
         
     def clearOverlayLabelsItems(self):
         for segmEndname, drawMode in self.drawModeOverlayLabelsChannels.items():
-            imageItem, contoursItem = self.overlayLabelsItems[segmEndname]
+            items = self.overlayLabelsItems[segmEndname]
+            imageItem, contoursItem, lutItem = items
             imageItem.clear()
             contoursItem.clear()
 
@@ -14198,7 +14203,8 @@ class guiWin(QMainWindow):
 
         for segmEndname, drawMode in self.drawModeOverlayLabelsChannels.items():  
             ol_lab = self.getOverlayLabelsData(segmEndname)
-            imageItem, contoursItem = self.overlayLabelsItems[segmEndname]
+            items = self.overlayLabelsItems[segmEndname]
+            imageItem, contoursItem, lutItem = items
             contoursItem.clear()
             if drawMode == 'Draw contours':
                 for obj in skimage.measure.regionprops(ol_lab):
@@ -14747,6 +14753,8 @@ class guiWin(QMainWindow):
         msg.critical(self, err_title, err_msg)
 
     def reInitGui(self):
+        self.gui_createLazyLoader()
+        
         self.isZmodifier = False
         self.askRepeatSegment3D = True
         self.askZrangeSegm3D = True
@@ -15076,6 +15084,7 @@ class guiWin(QMainWindow):
         self.overlayLabelsItems = {}
         for segmEndname in segmEndnames:
             lut = np.zeros((255, 4), dtype=np.uint8)
+            lut = np.random.shuffle(lut)
             lut[:,-1] = 255
             lut[:,:-1] = self.labelsGrad.item.colorMap().getLookupTable(0,1,255)
             lut[0] = [0,0,0,0]
@@ -15090,8 +15099,10 @@ class guiWin(QMainWindow):
                 brush=pg.mkBrush(color=(255,0,0,150)),
                 pen=pg.mkPen(width=2, color='r')
             )
-
-            self.overlayLabelsItems[segmEndname] = (imageItem, contoursItem)
+            lutItem = widgets.myHistogramLUTitem()
+            # mainLayout.addWidget(lutItem)
+            items = (imageItem, contoursItem, lutItem)
+            self.overlayLabelsItems[segmEndname] = items
     
     def overlayLabelsNameToggled(self, checked):
         name = self.sender().text()
@@ -15417,6 +15428,12 @@ class guiWin(QMainWindow):
     def setValueLabelsAlphaSlider(self, value):
         self.imgGrad.labelsAlphaSlider.setValue(value)
         self.updateLabelsAlpha(value)
+    
+    def setOverlayLabelsItemsVisible(self, segmEndname, visible):
+        if visible:
+            pass
+        else:
+            pass
     
     def setOverlayItemsVisible(self, channelName, visible):
         if visible:
