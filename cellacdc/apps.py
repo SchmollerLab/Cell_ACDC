@@ -1073,6 +1073,7 @@ class setMeasurementsDialog(QBaseDialog):
         if self.acdc_df is None:
             self.cancel = False
             self.close()
+            self.sigClosed.emit()
             return
 
         self.okClicked = True
@@ -1116,10 +1117,10 @@ class setMeasurementsDialog(QBaseDialog):
             if cancel:
                 return
 
-        self.cancel = False
+        self.cancel = False  
         self.close()
         self.sigClosed.emit()
-
+        
     def warnUncheckedExistingMeasurements(
             self, unchecked_existing_colnames, unchecked_existing_rps
         ):
@@ -3919,8 +3920,9 @@ class ComputeMetricsErrorsDialog(QBaseDialog):
             nameLabel = QLabel(f'<b>{func_name}</b>: ')
             errorMessage = f'\n{traceback_format}'
             errorLabel = QLabel(errorMessage)
-            print(func_name)
-            print(traceback_format)
+            errorLabel.setTextInteractionFlags(
+                Qt.TextSelectableByMouse | Qt.TextSelectableByKeyboard
+            )
             errorLabel.setStyleSheet("background-color: white")
             errorLabel.setFrameShape(QFrame.Panel)
             errorLabel.setFrameShadow(QFrame.Sunken)

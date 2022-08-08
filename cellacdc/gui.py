@@ -8574,14 +8574,7 @@ class guiWin(QMainWindow):
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
             posData = self.data[self.pos_i]
-            printl(posData.combineMetricsConfig)
-            printl('mixedChCombineMetricsToSkip', self.mixedChCombineMetricsToSkip)
-            printl('metricsToSkip', self.metricsToSkip)
-            printl(posData.acdc_output_csv_path)
-            df = pd.read_csv(posData.acdc_output_csv_path)
-            printl('mCitrineFFC_test exists:', 'mCitrineFFC_test' in df.columns)
-            printl('mCitrineRaw_test exists:', 'mCitrineRaw_test' in df.columns)
-            printl('mCitrineFFC_AF_deduction exists:', 'mCitrineFFC_AF_deduction' in df.columns)
+            printl(self.regionPropsToSave)
             if self.debug:
                 raise FileNotFoundError
                 posData = self.data[self.pos_i]
