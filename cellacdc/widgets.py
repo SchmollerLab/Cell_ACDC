@@ -2160,10 +2160,14 @@ class highlightableQWidgetAction(QWidgetAction):
         super().__init__(parent)
 
 class overlayLabelsGradientWidget(pg.GradientWidget):
-    def __init__(self, parent=None, orientation='right',  *args, **kargs):
-        pg.GradientWidget.__init__(
-            self, parent=parent, orientation=orientation,  *args, **kargs
-        )
+    def __init__(
+            self, imageItem, selectActionGroup, segmEndname, 
+            parent=None, orientation='right'
+        ):
+        pg.GradientWidget.__init__(self, parent=parent, orientation=orientation)
+
+        self.imageItem = imageItem
+        self.selectActionGroup = selectActionGroup
 
         for action in self.menu.actions():
             if action.text() == 'HSV':
@@ -2179,7 +2183,73 @@ class overlayLabelsGradientWidget(pg.GradientWidget):
         )
         self.menu.addAction(self.shuffleCmapAction)
 
+        # Drawing mode
+        drawModeMenu = QMenu('Drawing mode', self)
+        self.drawModeActionGroup = QActionGroup(self)
+        contoursDrawModeAction = QAction('Draw contours', drawModeMenu)
+        contoursDrawModeAction.setCheckable(True)
+        contoursDrawModeAction.setChecked(True)
+        contoursDrawModeAction.segmEndname = segmEndname
+        self.drawModeActionGroup.addAction(contoursDrawModeAction)
+        drawModeMenu.addAction(contoursDrawModeAction)
+        olDrawModeAction = QAction('Overlay labels', drawModeMenu)
+        olDrawModeAction.setCheckable(True)
+        olDrawModeAction.segmEndname = segmEndname
+        self.drawModeActionGroup.addAction(olDrawModeAction)
+        drawModeMenu.addAction(olDrawModeAction)
+        self.menu.addMenu(drawModeMenu)
+
+        self.labelsAlphaMenu = self.menu.addMenu(
+            'Overlay labels alpha...'
+        )
+        hbox = QHBoxLayout()
+        self.labelsAlphaSlider = sliderWithSpinBox(
+            title='Alpha', title_loc='in_line', isFloat=True,
+            normalize=True
+        )
+        self.labelsAlphaSlider.setMaximum(100)
+        self.labelsAlphaSlider.setSingleStep(0.05)
+        self.labelsAlphaSlider.setValue(0.3)
+        hbox.addWidget(self.labelsAlphaSlider)
+        widget = QWidget()
+        widget.setLayout(hbox)
+        act = QWidgetAction(self)
+        act.setDefaultWidget(widget)
+        self.labelsAlphaMenu.addSeparator()
+        self.labelsAlphaMenu.addAction(act)
+
         self.menu.addSeparator()
+        self.menu.addSection('Select segm. file to adjust:')
+        for action in selectActionGroup.actions():
+            self.menu.addAction(action)
+        
+        self.item.loadPreset('viridis')
+        self.updateImageLut(None)
+        self.updateImageOpacity(0.3)
+
+        # Connect events
+        self.sigGradientChangeFinished.connect(self.updateImageLut)
+        self.labelsAlphaSlider.valueChanged.connect(self.updateImageOpacity)
+        self.shuffleCmapAction.triggered.connect(self.shuffleCmap)
+    
+    def shuffleCmap(self):
+        lut = self.imageItem.lut
+        np.random.shuffle(lut)
+        lut[0] = [0,0,0,0]
+        self.imageItem.setLookupTable(lut)
+        self.imageItem.update()
+    
+    def updateImageLut(self, gradientItem):
+        lut = np.zeros((255, 4), dtype=np.uint8)
+        lut[:,-1] = 255
+        lut[:,:-1] = self.item.colorMap().getLookupTable(0,1,255)
+        np.random.shuffle(lut)
+        lut[0] = [0,0,0,0]
+        self.imageItem.setLookupTable(lut)
+        self.imageItem.setLevels([0, 255])
+    
+    def updateImageOpacity(self, value):
+        self.imageItem.setOpacity(value)
 
 class labelsGradientWidget(pg.GradientWidget):
     def __init__(self, parent=None, orientation='right',  *args, **kargs):

@@ -2640,7 +2640,6 @@ class guiWin(QMainWindow):
             self.imgGradLUTfinished_cb
         )
 
-
         self.normalizeQActionGroup.triggered.connect(self.saveNormAction)
         self.imgPropertiesAction.triggered.connect(self.editImgProperties)
 
@@ -10449,7 +10448,8 @@ class guiWin(QMainWindow):
             self.overlayLabelsButtonAction.setVisible(True)
             self.createOverlayLabelsContextMenu(existingSegmEndNames)
             self.createOverlayLabelsItems(existingSegmEndNames)
-            # self.overlayLabelsButton.setVisible(False)
+        else:
+            self.overlayLabelsButtonAction.setVisible(False)
 
         self.disableNonFunctionalButtons()
 
@@ -13060,10 +13060,14 @@ class guiWin(QMainWindow):
                             continue
                         if action.text() == selectedEndname:
                             action.setChecked(True)
+                lastSelectedName = selectedLabelsEndnames[-1]
+                for action in self.selectOverlayLabelsActionGroup.actions():
+                    if action.text() == lastSelectedName:
+                        action.setChecked(True)
             self.updateALLimg()
         else:
             self.clearOverlayLabelsItems()
-            self.setOverlayLabelsItemsVisible('', False)
+            self.setOverlayLabelsItemsVisible(False)
     
     def askLabelsToOverlay(self):
         selectOverlayLabels = apps.QDialogListbox(
@@ -15139,76 +15143,54 @@ class guiWin(QMainWindow):
         for segmEndname in segmEndnames:
             action = QAction(segmEndname, self.overlayLabelsContextMenu)
             action.setCheckable(True)
-            action.toggled.connect(self.overlayLabelsNameToggled)
+            action.toggled.connect(self.addOverlayLabelsToggled)
             self.overlayLabelsContextMenu.addAction(action)
-        self.overlayLabelsContextMenu.addSeparator()
-        for segmEndname in segmEndnames:
-            menuName = f'{segmEndname} drawing mode'
-            drawModeMenu = self.overlayLabelsContextMenu.addMenu(menuName)
-            drawModeMenu.segmEndname = segmEndname
-            actionGroup = QActionGroup(drawModeMenu)
-            for i, drawMode in enumerate(['Draw contours', 'Overlay labels']):
-                action = QAction(drawMode, drawModeMenu)
-                action.segmEndname = segmEndname
-                action.setCheckable(True)
-                if i == 0:
-                    action.setChecked(True)
-                actionGroup.addAction(action)
-                action.actionGroup = actionGroup
-                action.toggled.connect(self.overlayLabelsDrawModeToggled)
-                drawModeMenu.addAction(action)
     
     def createOverlayLabelsItems(self, segmEndnames):
+        selectActionGroup = QActionGroup(self)
+        for segmEndname in segmEndnames:
+            action = QAction(segmEndname)
+            action.setCheckable(True)
+            action.toggled.connect(self.setOverlayLabelsItemsVisible)
+            selectActionGroup.addAction(action)
+        self.selectOverlayLabelsActionGroup = selectActionGroup
+
         self.overlayLabelsItems = {}
         for segmEndname in segmEndnames:
-            lut = np.zeros((255, 4), dtype=np.uint8)
-            np.random.shuffle(lut)
-            lut[:,-1] = 255
-            lut[:,:-1] = self.labelsGrad.item.colorMap().getLookupTable(0,1,255)
-            lut[0] = [0,0,0,0]
             imageItem = pg.ImageItem()
-            imageItem.setLookupTable(lut)
-            alpha = self.imgGrad.labelsAlphaSlider.value()
-            imageItem.setOpacity(alpha)
-            imageItem.setLevels([0, 255])
+
+            gradItem = widgets.overlayLabelsGradientWidget(
+                imageItem, selectActionGroup, segmEndname
+            )
+            gradItem.hide()
+            gradItem.drawModeActionGroup.triggered.connect(
+                self.overlayLabelsDrawModeToggled
+            )
+            self.mainLayout.addWidget(gradItem, 0, 0)
+
             contoursItem = pg.ScatterPlotItem()
             contoursItem.setData(
                 [], [], symbol='s', pxMode=False, size=1,
                 brush=pg.mkBrush(color=(255,0,0,150)),
                 pen=pg.mkPen(width=2, color='r')
             )
-            gradItem = widgets.overlayLabelsGradientWidget()
-            gradItem.sigGradientChangeFinished.connect(self.updateLabelsCmap)
-            gradItem.hide()
-            self.mainLayout.addWidget(gradItem, 0, 0)
 
             items = (imageItem, contoursItem, gradItem)
             self.overlayLabelsItems[segmEndname] = items
     
-    def overlayLabelsNameToggled(self, checked):
+    def addOverlayLabelsToggled(self, checked):
         name = self.sender().text()
         if checked:
-            # Find which draw mode is checked
-            for action in self.overlayLabelsContextMenu.actions():
-                drawModeMenu = action.menu()
-                if drawModeMenu is None:
-                    continue
-                if drawModeMenu.segmEndname == name:
-                    for action in drawModeMenu.actions():
-                        if action.isChecked():
-                            drawMode = action.text()
-                            self.drawModeOverlayLabelsChannels[name] = drawMode
-                    break
+            gradItem = self.overlayLabelsItems[name][-1]
+            drawMode = gradItem.drawModeActionGroup.checkedAction().text()
+            self.drawModeOverlayLabelsChannels[name] = drawMode
         else:
             self.drawModeOverlayLabelsChannels.pop(name)
         self.setOverlayLabelsItems()
     
-    def overlayLabelsDrawModeToggled(self, checked):
-        if not checked:
-            return
-
-        segmEndname = self.sender().segmEndname
-        drawMode = self.sender().text()
+    def overlayLabelsDrawModeToggled(self, action):
+        segmEndname = action.segmEndname
+        drawMode = action.text()
         if segmEndname in self.drawModeOverlayLabelsChannels:
             self.drawModeOverlayLabelsChannels[segmEndname] = drawMode
             self.setOverlayLabelsItems()
@@ -15410,7 +15392,7 @@ class guiWin(QMainWindow):
     
     def addSelectChannelsToGradientMenu(self, lutItem):
         separator = lutItem.gradient.menu.addSeparator()
-        section = lutItem.gradient.menu.addSection('Select channel: ')
+        section = lutItem.gradient.menu.addSection('Select channel to adjust: ')
         lutItem.gradient.menu.addAction(self.userChNameAction)
         lutItem.selectChannelsActions = [separator, section, self.userChNameAction]
         for action in lutItem.selectChannelsActions:
@@ -15510,13 +15492,14 @@ class guiWin(QMainWindow):
         self.imgGrad.labelsAlphaSlider.setValue(value)
         self.updateLabelsAlpha(value)
     
-    def setOverlayLabelsItemsVisible(self, segmEndname, visible):  
+    def setOverlayLabelsItemsVisible(self, checked):  
         for _segmEndname, drawMode in self.drawModeOverlayLabelsChannels.items():
             items = self.overlayLabelsItems[_segmEndname]
             gradItem = items[-1]
             gradItem.hide()
         
-        if visible:
+        if checked:
+            segmEndname = self.sender().text()
             gradItem = self.overlayLabelsItems[segmEndname][-1]
             gradItem.show()
     

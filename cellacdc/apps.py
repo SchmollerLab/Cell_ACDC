@@ -6629,6 +6629,9 @@ class QDialogMultiSegmNpz(QDialog):
         self.selectedItemIdx = None
         self.removeOthers = False
         self.okAllPos = False
+
+        images_ls = sorted(images_ls, key=len)
+
         self.images_ls = images_ls
         self.parent_path = parent_path
         super().__init__(parent)
@@ -6666,6 +6669,7 @@ class QDialogMultiSegmNpz(QDialog):
         listWidget = widgets.listWidget()
         listWidget.addItems(images_ls)
         listWidget.setCurrentRow(0)
+        listWidget.itemDoubleClicked.connect(self.listDoubleClicked)
         self.items = list(images_ls)
         self.listWidget = listWidget
 
@@ -6705,6 +6709,9 @@ class QDialogMultiSegmNpz(QDialog):
         okAndRemoveButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
         showInFileManagerButton.clicked.connect(self.showInFileManager)
+    
+    def listDoubleClicked(self, item):
+        self.ok_cb()
 
     def showInFileManager(self, checked=True):
         myutils.showInExplorer(self.parent_path)
