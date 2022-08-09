@@ -63,7 +63,7 @@ class signals(QObject):
     sigComputeVolume = pyqtSignal(int, object)
     sigAskStopFrame = pyqtSignal(object)
     sigWarnMismatchSegmDataShape = pyqtSignal(object)
-    sigErrorsReport = pyqtSignal(dict, dict)
+    sigErrorsReport = pyqtSignal(dict, dict, dict)
 
 class segmWorker(QObject):
     finished = pyqtSignal(np.ndarray, float)
@@ -186,6 +186,7 @@ class calcMetricsWorker(QObject):
         for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
             self.standardMetricsErrors = {}
             self.customMetricsErrors = {}
+            self.regionPropsErrors = {}
             tot_pos = len(pos_foldernames)
             self.allPosDataInputs = []
             posDatas = []
@@ -478,7 +479,8 @@ class calcMetricsWorker(QObject):
 
             self.mutex.lock()
             self.signals.sigErrorsReport.emit(
-                self.standardMetricsErrors, self.customMetricsErrors
+                self.standardMetricsErrors, self.customMetricsErrors,
+                self.regionPropsErrors
             )
             self.waitCond.wait(self.mutex)
             self.mutex.unlock()

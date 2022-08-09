@@ -111,14 +111,22 @@ class computeMeasurmentsUtilWin(QDialog):
         self.thread.started.connect(self.worker.run)
         self.thread.start()
     
-    def warnErrors(self, standardMetricsErrors, customMetricsErrors):
+    def warnErrors(
+            self, standardMetricsErrors, customMetricsErrors, regionPropsErrors
+        ):
         if standardMetricsErrors:
             win = apps.ComputeMetricsErrorsDialog(
                 standardMetricsErrors, self.logs_path, 
                 log_type='standard_metrics', parent=self
             )
             win.exec_()
-        elif customMetricsErrors:
+        if regionPropsErrors:
+            win = apps.ComputeMetricsErrorsDialog(
+                regionPropsErrors, self.logs_path, 
+                log_type='region_props', parent=self
+            )
+            win.exec_()
+        if customMetricsErrors:
             win = apps.ComputeMetricsErrorsDialog(
                 customMetricsErrors, self.logs_path, 
                 log_type='custom_metrics', parent=self
@@ -222,8 +230,18 @@ class computeMeasurmentsUtilWin(QDialog):
         self.gui.saveDataWorker.customMetricsCritical.connect(
             self.addCombinedMetricsError
         )
+        self.gui.saveDataWorker.regionPropsCritical.connect(
+            self.addRegionPropsErrors
+        )
 
         self.worker.waitCond.wakeAll()
+    
+    def addRegionPropsErrors(self, traceback_format, error_message):
+        self.logger.info('')
+        print('====================================')
+        self.logger.info(traceback_format)
+        print('====================================')
+        self.worker.regionPropsErrors[error_message] = traceback_format
     
     def addCombinedMetricsError(self, traceback_format, func_name):
         self.logger.info('')

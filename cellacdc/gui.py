@@ -298,6 +298,7 @@ class saveDataWorker(QObject):
     progressBar = pyqtSignal(int, int, float)
     critical = pyqtSignal(str)
     addMetricsCritical = pyqtSignal(str, str)
+    regionPropsCritical = pyqtSignal(str, str)
     criticalPermissionError = pyqtSignal(str)
     metricsPbarProgress = pyqtSignal(int, int)
     askZsliceAbsent = pyqtSignal(str, object)
@@ -311,6 +312,7 @@ class saveDataWorker(QObject):
         self.waitCond = mainWin.waitCond
         self.customMetricsErrors = {}
         self.addMetricsErrors = {}
+        self.regionPropsErrors = {}
 
     def addMetrics_acdc_df(self, df, rp, frame_i, lab, posData):
         """
@@ -857,13 +859,17 @@ class saveDataWorker(QObject):
                 self.mainWin.regionPropsToSave = (
                     'label', *self.mainWin.regionPropsToSave
                 )
-            rp_table = skimage.measure.regionprops_table(
-                posData.lab, properties=self.mainWin.regionPropsToSave
-            )
-            df_rp = pd.DataFrame(rp_table).set_index('label')
-            # Drop regionprops that were already calculated in a prev session
-            df = df.drop(columns=df_rp.columns, errors='ignore')
-            df = df.join(df_rp)
+            try:
+                rp_table = skimage.measure.regionprops_table(
+                    posData.lab, properties=self.mainWin.regionPropsToSave
+                )
+                df_rp = pd.DataFrame(rp_table).set_index('label')
+                # Drop regionprops that were already calculated in a prev session
+                df = df.drop(columns=df_rp.columns, errors='ignore')
+                df = df.join(df_rp)
+            except Exception as error:
+                traceback_format = traceback.format_exc()
+                self.regionPropsCritical.emit(traceback_format, str(error))
 
         # Remove 0s columns
         df = df.loc[:, (df != -2).any(axis=0)]
@@ -16029,6 +16035,13 @@ class guiWin(QMainWindow):
         self.logger.info(traceback_format)
         print('====================================')
         self.worker.addMetricsErrors[error_message] = traceback_format
+    
+    def saveDataRegionPropsCritical(self, traceback_format, error_message):
+        self.logger.info('')
+        print('====================================')
+        self.logger.info(traceback_format)
+        print('====================================')
+        self.worker.regionPropsErrors[error_message] = traceback_format
 
     def saveDataCritical(self, traceback_format):
         self.logger.info('')
@@ -16147,8 +16160,9 @@ class guiWin(QMainWindow):
         self.worker.customMetricsCritical.connect(
             self.saveDataCustomMetricsCritical
         )
-        self.worker.addMetricsCritical.connect(
-            self.saveDataAddMetricsCritical
+        self.worker.addMetricsCritical.connect(self.saveDataAddMetricsCritical)
+        self.worker.regionPropsCritical.connect(
+            self.saveDataRegionPropsCritical
         )
         self.worker.criticalPermissionError.connect(self.saveDataPermissionError)
         self.worker.askZsliceAbsent.connect(self.zSliceAbsent)
@@ -16170,6 +16184,13 @@ class guiWin(QMainWindow):
             log_type='standard_metrics', parent=self
         )
         win.exec_()
+    
+    def warnErrorsRegionProps(self):
+        win = apps.ComputeMetricsErrorsDialog(
+            self.worker.regionPropsErrors, self.logs_path, 
+            log_type='region_props', parent=self
+        )
+        win.exec_()
 
     def saveDataFinished(self):
         if self.saveWin.aborted:
@@ -16179,7 +16200,9 @@ class guiWin(QMainWindow):
         self.saveWin.workerFinished = True
         self.saveWin.close()
         if self.worker.addMetricsErrors:
-           self.warnErrorsAddMetrics()
+           self.warnErrorsAddMetrics()    
+        if self.worker.regionPropsErrors:
+            self.warnErrorsRegionProps()
         if self.worker.customMetricsErrors:
             self.warnErrorsCustomMetrics()
         if self.closeGUI:

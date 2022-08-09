@@ -173,6 +173,11 @@ class stopPushButton(QPushButton):
         super().__init__(*args)
         self.setIcon(QIcon(':stop.svg'))
 
+class copyPushButton(QPushButton):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setIcon(QIcon(':edit-copy.svg'))
+
 class showInFileManagerButton(QPushButton):
     def __init__(self, *args):
         super().__init__(*args)

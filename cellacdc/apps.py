@@ -3876,10 +3876,12 @@ class FutureFramesAction_QDialog(QDialog):
 
 class ComputeMetricsErrorsDialog(QBaseDialog):
     def __init__(
-            self, customMetricsErrors, log_path='', parent=None, 
+            self, errorsDict, log_path='', parent=None, 
             log_type='custom_metrics'
         ):
         super().__init__(parent)
+
+        self.errorsDict = errorsDict
 
         layout = QGridLayout()
 
@@ -3897,10 +3899,19 @@ class ComputeMetricsErrorsDialog(QBaseDialog):
                 When computing <b>custom metrics</b> the following metrics 
                 were <b>ignored</b> because they raised an <b>error</b>.<br><br>
             """)
-        else:
+        elif log_type == 'standard_metrics':
             infoText = ("""
                 <b>Standard metrics</b> were <b>NOT saved</b> because Cell-ACDC 
                 encoutered the following errors.<br><br>
+            """)
+        else:
+            rp_url = 'https://scikit-image.org/docs/0.18.x/api/skimage.measure.html#skimage.measure.regionprops'
+            rp_href = f'<a href="{rp_url}">skimage.measure.regionprops</a>'
+            infoText = (f"""
+                <b>Region properties</b> were <b>NOT saved</b> because Cell-ACDC 
+                encoutered the following errors.<br>
+                Region properties are calculated using the <code>scikit-image</code> 
+                function called <code>{rp_href}</code>.<br><br>
             """)
 
         github_issues_href = f'<a href={issues_url}>here</a>'   
@@ -3916,7 +3927,7 @@ class ComputeMetricsErrorsDialog(QBaseDialog):
         scrollArea = QScrollArea()
         scrollAreaWidget = QWidget()  
         textLayout = QVBoxLayout()
-        for func_name, traceback_format in customMetricsErrors.items():
+        for func_name, traceback_format in errorsDict.items():
             nameLabel = QLabel(f'<b>{func_name}</b>: ')
             errorMessage = f'\n{traceback_format}'
             errorLabel = QLabel(errorMessage)
@@ -3939,6 +3950,13 @@ class ComputeMetricsErrorsDialog(QBaseDialog):
         showLogButton = widgets.showInFileManagerButton('Show log file...')
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(showLogButton)
+
+        copyButton = widgets.copyPushButton('Copy error message')
+        copyButton.clicked.connect(self.copyErrorMessage)
+        buttonsLayout.addWidget(copyButton)
+        self.copyButton = copyButton
+        self.copyButton.text = 'Copy error message'
+        self.copyButton.icon = self.copyButton.icon()
         
         okButton = widgets.okPushButton(' Ok ')
         buttonsLayout.addSpacing(20)
@@ -3951,6 +3969,27 @@ class ComputeMetricsErrorsDialog(QBaseDialog):
 
         self.setLayout(layout)
         self.setFont(font)
+    
+    def copyErrorMessage(self):
+        cb = QApplication.clipboard()
+        cb.clear(mode=cb.Clipboard)
+        copiedText = ''
+        for _, traceback_format in self.errorsDict.items():
+            errorBlock = f'{"="*30}\n{traceback_format}{"*"*30}'
+            copiedText = f'{copiedText}{errorBlock}'
+        cb.setText(copiedText, mode=cb.Clipboard)
+        print('Error message copied.')
+        self.copyButton.setIcon(QIcon(':okButton.svg'))
+        self.copyButton.setText(' Copied to clipboard!')
+        QTimer.singleShot(2000, self.restoreCopyButton)
+    
+    def restoreCopyButton(self):
+        self.copyButton.setText(self.copyButton.text)
+        self.copyButton.setIcon(self.copyButton.icon)
+    
+    def showEvent(self, a0) -> None:
+        self.copyButton.setFixedWidth(self.copyButton.width())
+        return super().showEvent(a0)
 
 class postProcessSegmParams(QGroupBox):
     def __init__(self, title, useSliders=False, parent=None, maxSize=None):
