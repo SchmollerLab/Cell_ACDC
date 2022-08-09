@@ -2008,19 +2008,18 @@ class guiWin(QMainWindow):
 
     def gui_createMainLayout(self):
         mainLayout = QGridLayout()
-        row = 0
-        col = 1 # Leave column 1 for the overlay labels gradient editor
+        row, col = 0, 1 # Leave column 1 for the overlay labels gradient editor
         mainLayout.addLayout(self.leftSideDocksLayout, row, col, 2, 1)
 
-        col = 2
+        row, col = 0, 2
         mainLayout.addWidget(self.graphLayout, row, col, 1, 2)
 
-        col += 2 # graphLayout spans two columns
-        mainLayout.addWidget(self.labelsGrad, row, 3)
+        row, col = 0, 4 # graphLayout spans two columns
+        mainLayout.addWidget(self.labelsGrad, row, col)
 
-        row = 1
+        row, col = 1, 2
         mainLayout.addLayout(
-            self.bottomLayout, row, 1, 1, 2, alignment=Qt.AlignLeft
+            self.bottomLayout, row, col, 1, 2, alignment=Qt.AlignLeft
         )
         self.bottomLayout.row = row
         mainLayout.setRowStretch(row, 0)
@@ -3209,7 +3208,7 @@ class guiWin(QMainWindow):
     
     def gui_addOverlayLayerItems(self):
         for items in self.overlayLabelsItems.values():
-            imageItem, contoursItem, lutItem = items
+            imageItem, contoursItem, gradItem = items
             self.ax1.addItem(imageItem)
             self.ax1.addItem(contoursItem)
     
@@ -11079,7 +11078,7 @@ class guiWin(QMainWindow):
     def clearOverlayLabelsItems(self):
         for segmEndname, drawMode in self.drawModeOverlayLabelsChannels.items():
             items = self.overlayLabelsItems[segmEndname]
-            imageItem, contoursItem, lutItem = items
+            imageItem, contoursItem, gradItem = items
             imageItem.clear()
             contoursItem.clear()
 
@@ -13064,6 +13063,7 @@ class guiWin(QMainWindow):
             self.updateALLimg()
         else:
             self.clearOverlayLabelsItems()
+            self.setOverlayLabelsItemsVisible('', False)
     
     def askLabelsToOverlay(self):
         selectOverlayLabels = apps.QDialogListbox(
@@ -14281,7 +14281,7 @@ class guiWin(QMainWindow):
         for segmEndname, drawMode in self.drawModeOverlayLabelsChannels.items():  
             ol_lab = self.getOverlayLabelsData(segmEndname)
             items = self.overlayLabelsItems[segmEndname]
-            imageItem, contoursItem, lutItem = items
+            imageItem, contoursItem, gradItem = items
             contoursItem.clear()
             if drawMode == 'Draw contours':
                 for obj in skimage.measure.regionprops(ol_lab):
@@ -15162,7 +15162,7 @@ class guiWin(QMainWindow):
         self.overlayLabelsItems = {}
         for segmEndname in segmEndnames:
             lut = np.zeros((255, 4), dtype=np.uint8)
-            lut = np.random.shuffle(lut)
+            np.random.shuffle(lut)
             lut[:,-1] = 255
             lut[:,:-1] = self.labelsGrad.item.colorMap().getLookupTable(0,1,255)
             lut[0] = [0,0,0,0]
@@ -15177,9 +15177,12 @@ class guiWin(QMainWindow):
                 brush=pg.mkBrush(color=(255,0,0,150)),
                 pen=pg.mkPen(width=2, color='r')
             )
-            lutItem = widgets.myHistogramLUTitem()
-            # mainLayout.addWidget(lutItem)
-            items = (imageItem, contoursItem, lutItem)
+            gradItem = widgets.overlayLabelsGradientWidget()
+            gradItem.sigGradientChangeFinished.connect(self.updateLabelsCmap)
+            gradItem.hide()
+            self.mainLayout.addWidget(gradItem, 0, 0)
+
+            items = (imageItem, contoursItem, gradItem)
             self.overlayLabelsItems[segmEndname] = items
     
     def overlayLabelsNameToggled(self, checked):
@@ -15507,11 +15510,15 @@ class guiWin(QMainWindow):
         self.imgGrad.labelsAlphaSlider.setValue(value)
         self.updateLabelsAlpha(value)
     
-    def setOverlayLabelsItemsVisible(self, segmEndname, visible):
+    def setOverlayLabelsItemsVisible(self, segmEndname, visible):  
+        for _segmEndname, drawMode in self.drawModeOverlayLabelsChannels.items():
+            items = self.overlayLabelsItems[_segmEndname]
+            gradItem = items[-1]
+            gradItem.hide()
+        
         if visible:
-            pass
-        else:
-            pass
+            gradItem = self.overlayLabelsItems[segmEndname][-1]
+            gradItem.show()
     
     def setOverlayItemsVisible(self, channelName, visible):
         if visible:

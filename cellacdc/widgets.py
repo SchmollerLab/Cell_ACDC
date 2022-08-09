@@ -2159,6 +2159,28 @@ class highlightableQWidgetAction(QWidgetAction):
     def __init__(self, parent) -> None:
         super().__init__(parent)
 
+class overlayLabelsGradientWidget(pg.GradientWidget):
+    def __init__(self, parent=None, orientation='right',  *args, **kargs):
+        pg.GradientWidget.__init__(
+            self, parent=parent, orientation=orientation,  *args, **kargs
+        )
+
+        for action in self.menu.actions():
+            if action.text() == 'HSV':
+                HSV_action = action
+            elif action.text() == 'RGB':
+                RGB_ation = action
+        self.menu.removeAction(HSV_action)
+        self.menu.removeAction(RGB_ation)
+
+        # Shuffle colors action
+        self.shuffleCmapAction =  QAction(
+            'Shuffle colormap...', self
+        )
+        self.menu.addAction(self.shuffleCmapAction)
+
+        self.menu.addSeparator()
+
 class labelsGradientWidget(pg.GradientWidget):
     def __init__(self, parent=None, orientation='right',  *args, **kargs):
         pg.GradientWidget.__init__(
