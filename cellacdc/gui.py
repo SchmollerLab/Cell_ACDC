@@ -10636,7 +10636,7 @@ class guiWin(QMainWindow):
         self.initCustomMetrics()
         self.initFluoData()
         self.createChannelNamesActions()
-        self.addSelectChannelsToGradientMenu(self.imgGrad)
+        self.addActionsLutItemContextMenu(self.imgGrad)
         
         # Scrollbar for opacity of img1 (when overlaying)
         self.img1.alphaScrollbar = self.addAlphaScrollbar(
@@ -12508,11 +12508,19 @@ class guiWin(QMainWindow):
     def ax1_setTextID(self, obj, how, updateColor=False, debug=False):
         posData = self.data[self.pos_i]
         # Draw ID label on ax1 image depending on how
-        LabelItemID = self.ax1_LabelItemsIDs[obj.label-1]
-        ID = obj.label
+        LabelItemID = self.ax1_LabelItemsIDs[obj.label-1]       
         df = posData.cca_df
+        ID = obj.label
         if df is None or how.find('cell cycle') == -1:
-            txt = f'{ID}'
+            if self.annotSettingsIDmenu.checkedAction().text().find('tree') != -1:
+                try:
+                    acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
+                    annotID = acdc_df.at[obj.label, 'Cell_ID_tree']
+                except Exception as e:
+                    annotID = obj.label
+            else:
+                annotID = obj.label
+            txt = f'{annotID}'
             if updateColor:
                 LabelItemID.setText(txt, size=self.fontSize)
             if ID in posData.new_IDs:
@@ -12570,8 +12578,19 @@ class guiWin(QMainWindow):
                 and emerged_now
                 and not is_division_annotated
             )
-
-            txt = f'{ccs}-{generation_num}'
+            
+            if self.annotSettingsGenNumMenu.checkedAction().text().find('tree') != -1:
+                try:
+                    acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
+                    gen_num = acdc_df.at[obj.label, 'generation_num_tree']
+                except Exception as e:
+                    gen_num = generation_num
+                else:
+                    gen_num = generation_num
+            else:
+                gen_num = generation_num
+            
+            txt = f'{ccs}-{gen_num}'
             if updateColor:
                 LabelItemID.setText(txt, size=self.fontSize)
             if ccs == 'G1':
@@ -12636,7 +12655,15 @@ class guiWin(QMainWindow):
 
         ID = obj.label
         df = posData.cca_df
-        txt = f'{ID}' if self.isObjVisible(obj.bbox) else ''
+        if self.annotSettingsIDmenu.checkedAction().text().find('tree') != -1:
+            try:
+                acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
+                annotID = acdc_df.at[obj.label, 'Cell_ID_tree']
+            except Exception as e:
+                annotID = obj.label
+        else:
+            annotID = obj.label
+        txt = f'{annotID}' if self.isObjVisible(obj.bbox) else ''
         color = self.ax2_textColor
         bold = ID in posData.new_IDs
 
@@ -12647,6 +12674,15 @@ class guiWin(QMainWindow):
         w, h = LabelItemID.rect().right(), LabelItemID.rect().bottom()
         LabelItemID.setPos(x-w/2, y-h/2)
 
+    def updateAnnotations(self, checked):
+        if not checked:
+            return
+        
+        posData = self.data[self.pos_i]
+        for i, obj in enumerate(posData.rp):
+            if not self.isObjVisible(obj.bbox):
+                continue
+            self.drawID_and_Contour(obj)
 
     def drawID_and_Contour(self, obj, drawContours=True, updateColor=False):
         posData = self.data[self.pos_i]
@@ -15396,7 +15432,36 @@ class guiWin(QMainWindow):
         ])
         return True
     
-    def addSelectChannelsToGradientMenu(self, lutItem):
+    def addActionsLutItemContextMenu(self, lutItem):
+        annotationMenu = lutItem.gradient.menu.addMenu('Annotations settings')
+        ID_menu = annotationMenu.addMenu('IDs')
+        self.annotSettingsIDmenu = QActionGroup(annotationMenu)
+        labID_action = QAction("Show label's ID")
+        labID_action.setCheckable(True)
+        labID_action.setChecked(True)
+        labID_action.toggled.connect(self.updateAnnotations)
+        treeID_action = QAction("Show tree's ID")
+        treeID_action.setCheckable(True)
+        treeID_action.toggled.connect(self.updateAnnotations)
+        self.annotSettingsIDmenu.addAction(labID_action)
+        self.annotSettingsIDmenu.addAction(treeID_action)
+        ID_menu.addAction(labID_action)
+        ID_menu.addAction(treeID_action)
+
+        ID_menu = annotationMenu.addMenu('Generation number')
+        self.annotSettingsGenNumMenu = QActionGroup(annotationMenu)
+        gen_num_action = QAction("Show default generation number")
+        gen_num_action.setCheckable(True)
+        gen_num_action.setChecked(True)
+        gen_num_action.toggled.connect(self.updateAnnotations)
+        tree_gen_num_action = QAction("Show tree's generation number")
+        tree_gen_num_action.setCheckable(True)
+        tree_gen_num_action.toggled.connect(self.updateAnnotations)
+        self.annotSettingsGenNumMenu.addAction(gen_num_action)
+        self.annotSettingsGenNumMenu.addAction(tree_gen_num_action)
+        ID_menu.addAction(gen_num_action)
+        ID_menu.addAction(tree_gen_num_action)
+
         separator = lutItem.gradient.menu.addSeparator()
         section = lutItem.gradient.menu.addSection('Select channel to adjust: ')
         lutItem.gradient.menu.addAction(self.userChNameAction)
@@ -15453,7 +15518,7 @@ class guiWin(QMainWindow):
             self.setValueLabelsAlphaSlider
         )
 
-        self.addSelectChannelsToGradientMenu(lutItem)
+        self.addActionsLutItemContextMenu(lutItem)
 
         alphaScrollBar = self.addAlphaScrollbar(channelName, imageItem)
 

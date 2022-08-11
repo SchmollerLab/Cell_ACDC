@@ -368,6 +368,8 @@ class mainWin(QMainWindow):
                 self, 'Select experiment folder containing Position_n folders',
                 mostRecentPath
             )
+            if not exp_path:
+                break
             myutils.addToRecentPaths(exp_path)
             baseFolder = os.path.basename(exp_path)
             isPosFolder = re.search('Position_(\d+)$', baseFolder) is not None
