@@ -950,3 +950,148 @@ class ImagesToPositionsWorker(QObject):
             if self.abort:
                 break
         self.finished.emit()
+
+
+class ToSymDivWorker(QObject):
+    progressBar = pyqtSignal(int, int, float)
+
+    def __init__(self, mainWin):
+        QObject.__init__(self)
+        self.signals = signals()
+        self.abort = False
+        self.logger = workerLogger(self.signals.progress)
+        self.mutex = QMutex()
+        self.waitCond = QWaitCondition()
+        self.mainWin = mainWin
+
+    def emitSelectSegmFiles(self, exp_path, pos_foldernames):
+        self.mutex.lock()
+        self.signals.sigSelectSegmFiles.emit(exp_path, pos_foldernames)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        if self.abort:
+            return True
+        else:
+            return False
+
+    @worker_exception_handler
+    def run(self):
+        debugging = False
+        expPaths = self.mainWin.expPaths
+        tot_exp = len(expPaths)
+        self.signals.initProgressBar.emit(0)
+        for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
+            self.errors = {}
+            tot_pos = len(pos_foldernames)
+            self.allPosDataInputs = []
+            posDatas = []
+            self.logger.log('-'*30)
+            expFoldername = os.path.basename(exp_path)
+
+            abort = self.emitSelectSegmFiles(exp_path, pos_foldernames)
+            if abort:
+                self.signals.finished.emit(self)
+                return
+
+            for p, pos in enumerate(pos_foldernames):
+                if self.abort:
+                    self.signals.finished.emit(self)
+                    return
+
+                self.logger.log(
+                    f'Processing experiment n. {i+1}/{tot_exp}, '
+                    f'{pos} ({p+1}/{tot_pos})'
+                )
+
+                pos_path = os.path.join(exp_path, pos)
+                images_path = os.path.join(pos_path, 'Images')
+                basename, chNames = myutils.getBasenameAndChNames(
+                    images_path, useExt=('.tif',)
+                )
+
+                self.signals.sigUpdatePbarDesc.emit(f'Loading {pos_path}...')
+
+                # Use first found channel, it doesn't matter for metrics
+                chName = chNames[0]
+                file_path = myutils.getChannelFilePath(images_path, chName)
+
+                # Load data
+                posData = load.loadData(file_path, chName)
+                posData.getBasenameAndChNames(useExt=('.tif',))
+
+                posData.loadOtherFiles(
+                    load_segm_data=False,
+                    load_acdc_df=True,
+                    load_metadata=True,
+                    loadSegmInfo=True
+                )
+
+                posDatas.append(posData)
+
+                self.allPosDataInputs.append({
+                    'file_path': file_path,
+                    'chName': chName
+                })
+            
+            # Iterate pos and calculate metrics
+            numPos = len(self.allPosDataInputs)
+            for p, posDataInputs in enumerate(self.allPosDataInputs):
+                file_path = posDataInputs['file_path']
+                chName = posDataInputs['chName']
+
+                posData = load.loadData(file_path, chName)
+
+                self.signals.sigUpdatePbarDesc.emit(f'Processing {posData.pos_path}')
+
+                posData.getBasenameAndChNames(useExt=('.tif',))
+                posData.buildPaths()
+                posData.loadImgData()
+
+                posData.loadOtherFiles(
+                    load_segm_data=False,
+                    load_acdc_df=True,
+                    end_filename_segm=self.mainWin.endFilenameSegm
+                )
+                if not posData.acdc_df_found:
+                    relPath = (
+                        f'...{os.sep}{expFoldername}'
+                        f'{os.sep}{posData.pos_foldername}'
+                    )
+                    self.logger.log(
+                        f'Skipping "{relPath}" '
+                        f'because acdc_output.csv file was not found.'
+                    )
+                    continue
+
+                self.logger.log(
+                    'Loaded path:\n'
+                    'ACDC output file name: '
+                    f'"{os.path.basename(posData.acdc_output_csv_path)}"'
+                )
+
+                self.logger.log('Building tree...')
+                try:
+                    tree = core.AddLineageTreeTable(posData.acdc_df)
+                    error = tree.build()
+                    if error is not None:
+                        raise error
+                    posData.acdc_df = tree.df
+                except Exception as error:
+                    traceback_format = traceback.format_exc()
+                    self.logger.log(traceback_format)
+                    self.errors[error] = traceback_format
+                
+                try:
+                    posData.acdc_df.to_csv(posData.acdc_output_csv_path)
+                except PermissionError:
+                    traceback_str = traceback.format_exc()
+                    self.mutex.lock()
+                    self.signals.sigPermissionError.emit(
+                        traceback_str, posData.acdc_output_csv_path
+                    )
+                    self.waitCond.wait(self.mutex)
+                    self.mutex.unlock()
+                    posData.acdc_df.to_csv(posData.acdc_output_csv_path)
+                
+        
+        self.signals.finished.emit(self)

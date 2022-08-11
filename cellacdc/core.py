@@ -1,3 +1,4 @@
+import traceback
 import numpy as np
 import cv2
 import skimage.measure
@@ -18,7 +19,7 @@ import pandas as pd
 from tqdm import tqdm
 
 # Custom modules
-from . import apps
+from . import apps, base_cca_df, printl
 
 def np_replace_values(arr, old_values, new_values):
     # See method_jdehesa https://stackoverflow.com/questions/45735230/how-to-replace-a-list-of-values-in-a-numpy-array
@@ -309,3 +310,117 @@ def cca_df_to_acdc_df(cca_df, rp, acdc_df=None):
 
     acdc_df = acdc_df.join(cca_df, how='left')
     return acdc_df
+
+class AddLineageTreeTable:
+    def __init__(self, acdc_df) -> None:
+        self.acdc_df = acdc_df
+    
+    def build(self):
+        cca_df_colnames = list(base_cca_df.keys())[:-2]
+        try:
+            cca_df = self.acdc_df[cca_df_colnames]
+            self.new_col_loc = self.acdc_df.columns.get_loc('division_frame_i') + 1
+        except Exception as error:
+            return error
+        
+        self.df = self.add_lineage_tree_table_to_acdc_df()
+    
+    def _build_tree(self, gen_df, ID, relID_gen_num):
+        current_ID = gen_df.index.get_level_values(1)[0]
+        if current_ID != ID:
+            return gen_df
+
+        '''
+        Add generation number tree:
+        --> gen_num - 1 for new cells unknown cell
+        --> Mother generation number + gen_num for known relative cell
+        '''
+        gen_nums = gen_df['generation_num_tree'].values
+        gen_df['generation_num_tree'] = gen_nums + relID_gen_num
+
+        
+        '''Assign unique ID every consecutive division'''
+        if not self.gen_dfs:
+            # Keep start ID for cell at the top of the branch
+            gen_df['Cell_ID_tree'] = [ID]*len(gen_df)
+        else:
+            gen_df['Cell_ID_tree'] = [self.uniqueID]*len(gen_df)
+            self.uniqueID += 1
+
+        '''
+        Assign parent ID: --> existing ID between relID and ID in prev gen_num_tree      
+        '''
+        gen_num_tree = gen_df.loc[pd.IndexSlice[:, ID], 'generation_num_tree'].iloc[0]
+
+        if gen_num_tree > 1:
+            ID_idx = pd.IndexSlice[:, ID]
+            relID = gen_df.loc[ID_idx, 'relative_ID'].iloc[0]
+            if not self.gen_dfs:
+                # Start of the branch of a new cell
+                parent_ID = relID
+            else:
+                prev_gen_num_df = self.gen_dfs[-1]
+                ID_idx = pd.IndexSlice[:, ID]
+                try:
+                    parent_ID = prev_gen_num_df.loc[ID_idx, 'Cell_ID_tree'].iloc[0]
+                except KeyError:
+                    prev_gen_frame_i = prev_gen_num_df.index.get_level_values(0)[0]
+                    parent_ID = self.acdc_df.at[
+                        (prev_gen_frame_i, relID), 'Cell_ID_tree'
+                    ].iloc[0]
+                
+            gen_df['parent_ID_tree'] = parent_ID
+
+        self.gen_dfs.append(gen_df)       
+
+        return gen_df
+             
+    def add_lineage_tree_table_to_acdc_df(self):
+        acdc_df = self.acdc_df    
+        acdc_df.insert(self.new_col_loc, 'Cell_ID_tree', 0)
+        acdc_df.insert(self.new_col_loc+1, 'parent_ID_tree', -1)
+        # acdc_df.insert(self.new_col_loc+2, 'relative_ID_tree', -1)
+        gen_nums = acdc_df['generation_num']
+        acdc_df.insert(self.new_col_loc+3, 'generation_num_tree', gen_nums)
+
+        frames_idx = acdc_df.index.get_level_values(0).unique()
+        not_annotated_IDs = acdc_df.index.get_level_values(1).unique().to_list()
+        annotated_IDs = []
+
+        self.uniqueID = max(not_annotated_IDs) + 1
+
+        for frame_i in frames_idx:
+            if not not_annotated_IDs:
+                # Built tree for every ID --> exit
+                break
+            
+            acdc_df_i = acdc_df.loc[frame_i]
+            IDs = acdc_df_i.index.array
+            for ID in IDs:
+                if ID not in not_annotated_IDs:
+                    # Tree already built in previous frame iteration --> skip
+                    continue
+                
+                relID = acdc_df_i.at[ID, 'relative_ID']
+                try:
+                    relID_gen_num = acdc_df_i.at[relID, 'generation_num']
+                except Exception as e:
+                    relID_gen_num = -1
+                
+                self.gen_dfs = []
+                # Iterate the branch till the end
+                self.acdc_df = (
+                    self.acdc_df
+                    .groupby(['Cell_ID', 'generation_num'])
+                    .apply(self._build_tree, ID, relID_gen_num)
+                )
+                not_annotated_IDs.remove(ID)
+        return self.acdc_df
+    
+    def newick(self):
+        if 'Cell_ID_tree' not in self.acdc_df.columns:
+            self.build()
+        
+        pass
+
+    

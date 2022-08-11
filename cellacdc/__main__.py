@@ -38,6 +38,7 @@ try:
     from cellacdc.utils import align as utilsAlign
     from cellacdc.utils import compute as utilsCompute
     from cellacdc.utils import repeat as utilsRepeat
+    from cellacdc.utils import acdcToSymDiv as utilsSymDiv
     from cellacdc import is_win, is_linux, temp_path
     from cellacdc import printl
 except ModuleNotFoundError as e:
@@ -240,6 +241,7 @@ class mainWin(QMainWindow):
         utilsMenu = QMenu("&Utilities", self)
         utilsMenu.addAction(self.concatAcdcDfsAction)
         utilsMenu.addAction(self.calcMetricsAcdcDf)
+        utilsMenu.addAction(self.toSymDivAction)
         utilsMenu.addAction(self.npzToNpyAction)
         utilsMenu.addAction(self.npzToTiffAction)
         utilsMenu.addAction(self.TiffToNpzAction)
@@ -277,6 +279,9 @@ class mainWin(QMainWindow):
         self.calcMetricsAcdcDf = QAction(
             'Compute measurements for one or more experiments...'
         )
+        self.toSymDivAction = QAction(
+            'Add lineage tree table to one or more experiments...'
+        )
         self.renameAction = QAction('Rename files by appending additional text...')
         self.alignAction = QAction('Align or revert alignment...')
 
@@ -300,6 +305,7 @@ class mainWin(QMainWindow):
                 self.launchRepeatDataPrep
             )
         self.welcomeGuideAction.triggered.connect(self.launchWelcomeGuide)
+        self.toSymDivAction.triggered.connect(self.launchToSymDicUtil)
         self.calcMetricsAcdcDf.triggered.connect(self.launchCalcMetricsUtil)
         self.aboutAction.triggered.connect(self.showAbout)
         self.renameAction.triggered.connect(self.launchRenameUtil)
@@ -338,8 +344,8 @@ class mainWin(QMainWindow):
     def showAbout(self):
         self.aboutWin = about.QDialogAbout(parent=self)
         self.aboutWin.show()
-
-    def launchCalcMetricsUtil(self):
+    
+    def getSelectedExpPaths(self, utilityName):
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph("""
             After you click "Ok" on this dialog you will be asked
@@ -348,11 +354,11 @@ class mainWin(QMainWindow):
             from each selected experiment.
         """)
         msg.information(
-            self, 'Compute measurements utility', txt,
+            self, f'{utilityName}', txt,
             buttonsTexts=('Cancel', 'Ok')
         )
         if msg.cancel:
-            print('Compute measurements utility aborted by the user.')
+            print(f'{utilityName} aborted by the user.')
             return
 
         expPaths = {}
@@ -393,7 +399,7 @@ class mainWin(QMainWindow):
                         buttonsTexts=('Cancel', 'Try again')
                     )
                     if msg.cancel:
-                        print('Compute measurements utility aborted by the user.')
+                        print(f'{utilityName} aborted by the user.')
                         return
                     continue
 
@@ -415,16 +421,34 @@ class mainWin(QMainWindow):
             selectPosWin = apps.selectPositionsMultiExp(expPaths, infoPaths=infoPaths)
             selectPosWin.exec_()
             if selectPosWin.cancel:
-                print('Compute measurements utility aborted by the user.')
+                print(f'{utilityName} aborted by the user.')
                 return
             selectedExpPaths = selectPosWin.selectedPaths
         else:
             selectedExpPaths = expPaths
+        
+        return selectedExpPaths
+
+
+    def launchCalcMetricsUtil(self):
+        selectedExpPaths = self.getSelectedExpPaths('Compute measurements utility')
+        if selectedExpPaths is None:
+            return
 
         self.calcMeasWin = utilsCompute.computeMeasurmentsUtilWin(
             selectedExpPaths, self.app, parent=self
         )
         self.calcMeasWin.show()
+    
+    def launchToSymDicUtil(self):
+        selectedExpPaths = self.getSelectedExpPaths('Lineage tree utility')
+        if selectedExpPaths is None:
+            return
+
+        self.toSymDivWin = utilsSymDiv.AcdcToSymDivUtil(
+            selectedExpPaths, self.app, parent=self
+        )
+        self.toSymDivWin.show()
     
     def getInfoPosStatus(self, expPaths):
         infoPaths = {}

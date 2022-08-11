@@ -3904,7 +3904,7 @@ class ComputeMetricsErrorsDialog(QBaseDialog):
                 <b>Standard metrics</b> were <b>NOT saved</b> because Cell-ACDC 
                 encoutered the following errors.<br><br>
             """)
-        else:
+        elif log_type == 'region_props':
             rp_url = 'https://scikit-image.org/docs/0.18.x/api/skimage.measure.html#skimage.measure.regionprops'
             rp_href = f'<a href="{rp_url}">skimage.measure.regionprops</a>'
             infoText = (f"""
@@ -3912,6 +3912,10 @@ class ComputeMetricsErrorsDialog(QBaseDialog):
                 encoutered the following errors.<br>
                 Region properties are calculated using the <code>scikit-image</code> 
                 function called <code>{rp_href}</code>.<br><br>
+            """)
+        else:
+            infoText = ("""
+                Process raised the errors listed below.<br><br>
             """)
 
         github_issues_href = f'<a href={issues_url}>here</a>'   
