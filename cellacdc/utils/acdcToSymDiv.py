@@ -97,7 +97,7 @@ class AcdcToSymDivUtil(QDialog):
 
         self.thread.started.connect(self.worker.run)
         self.thread.start()
-    
+
     def workerInitProgressbar(self, totalIter):
         self.progressWin.mainPbar.setValue(0)
         if totalIter == 1:
@@ -183,6 +183,13 @@ class AcdcToSymDivUtil(QDialog):
         else:
             self.close()
     
+    def warnMissingAnnot(self, missingAnnotErrors):
+        win = apps.ComputeMetricsErrorsDialog(
+            missingAnnotErrors, self.logs_path, log_type='missing_annot', 
+            parent=self
+        )
+        win.exec_()
+    
     def warnErrors(self, errors):
         win = apps.ComputeMetricsErrorsDialog(
             errors, self.logs_path, log_type='generic', parent=self
@@ -207,8 +214,11 @@ class AcdcToSymDivUtil(QDialog):
             self.logger.info(txt)
             msg = widgets.myMessageBox(wrapText=False, showCentered=False)
             msg.warning(self, 'Process aborted', html_utils.paragraph(txt))
-        elif worker.errors:
-            self.warnErrors(worker.errors)
+        elif worker.errors or worker.missingAnnotErrors:
+            if worker.errors:
+                self.warnErrors(worker.errors)
+            else:
+                self.warnMissingAnnot(worker.missingAnnotErrors)
             txt = 'Adding lineage tree table completed <b>WITH ERRORS</b>.'
             msg = widgets.myMessageBox(wrapText=False, showCentered=False)
             msg.warning(self, 'Process warning', html_utils.paragraph(txt))

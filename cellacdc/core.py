@@ -375,12 +375,23 @@ class AddLineageTreeTable:
         return gen_df
              
     def add_lineage_tree_table_to_acdc_df(self):
-        acdc_df = self.acdc_df    
-        acdc_df.insert(self.new_col_loc, 'Cell_ID_tree', 0)
-        acdc_df.insert(self.new_col_loc+1, 'parent_ID_tree', -1)
+        acdc_df = self.acdc_df
+        try:    
+            acdc_df.insert(self.new_col_loc, 'Cell_ID_tree', 0)
+        except ValueError as e:
+            acdc_df['Cell_ID_tree'] = 0
+
+        try:    
+            acdc_df.insert(self.new_col_loc+1, 'parent_ID_tree', -1)
+        except ValueError as e:
+            acdc_df['parent_ID_tree'] = -1
+        
         # acdc_df.insert(self.new_col_loc+2, 'relative_ID_tree', -1)
         gen_nums = acdc_df['generation_num']
-        acdc_df.insert(self.new_col_loc+3, 'generation_num_tree', gen_nums)
+        try:    
+            acdc_df.insert(self.new_col_loc+3, 'generation_num_tree', gen_nums)
+        except ValueError as e:
+            acdc_df['generation_num_tree'] = gen_nums
 
         frames_idx = acdc_df.index.get_level_values(0).unique()
         not_annotated_IDs = acdc_df.index.get_level_values(1).unique().to_list()

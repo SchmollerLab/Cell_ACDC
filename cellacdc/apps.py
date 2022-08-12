@@ -3913,6 +3913,13 @@ class ComputeMetricsErrorsDialog(QBaseDialog):
                 Region properties are calculated using the <code>scikit-image</code> 
                 function called <code>{rp_href}</code>.<br><br>
             """)
+        elif log_type == 'missing_annot':
+            infoText = ("""
+                The following Positions were <b>SKIPPED</b> because they did 
+                <b>not have cell cycle annotations</b>.<br><br>
+                To add lineage tree information you first need to <b>do the 
+                cell cycle analysis</b> in module 3 "Main GUI".<br><br>
+            """)
         else:
             infoText = ("""
                 Process raised the errors listed below.<br><br>

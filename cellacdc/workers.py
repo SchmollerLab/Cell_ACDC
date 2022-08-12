@@ -64,6 +64,7 @@ class signals(QObject):
     sigAskStopFrame = pyqtSignal(object)
     sigWarnMismatchSegmDataShape = pyqtSignal(object)
     sigErrorsReport = pyqtSignal(dict, dict, dict)
+    sigMissingAcdcAnnot = pyqtSignal(dict)
 
 class segmWorker(QObject):
     finished = pyqtSignal(np.ndarray, float)
@@ -982,6 +983,7 @@ class ToSymDivWorker(QObject):
         self.signals.initProgressBar.emit(0)
         for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
             self.errors = {}
+            self.missingAnnotErrors = {}
             tot_pos = len(pos_foldernames)
             self.allPosDataInputs = []
             posDatas = []
@@ -1058,22 +1060,35 @@ class ToSymDivWorker(QObject):
                         f'{os.sep}{posData.pos_foldername}'
                     )
                     self.logger.log(
-                        f'Skipping "{relPath}" '
+                        f'WARNING: Skipping "{relPath}" '
                         f'because acdc_output.csv file was not found.'
                     )
+                    self.missingAnnotErrors[relPath] = (
+                        f'<br>FileNotFoundError: the Positon "{relPath}" '
+                        'does not have the <code>acdc_output.csv</code> file.<br>')
+                    
                     continue
-
+                
+                acdc_df_filename = os.path.basename(posData.acdc_output_csv_path)
                 self.logger.log(
                     'Loaded path:\n'
-                    'ACDC output file name: '
-                    f'"{os.path.basename(posData.acdc_output_csv_path)}"'
+                    f'ACDC output file name: "{acdc_df_filename}"'
                 )
 
                 self.logger.log('Building tree...')
                 try:
                     tree = core.AddLineageTreeTable(posData.acdc_df)
                     error = tree.build()
-                    if error is not None:
+                    if isinstance(error, KeyError):
+                        self.logger.log(str(error))
+                        
+                        self.logger.log(
+                            'WARNING: Annotations missing in '
+                            f'"{posData.acdc_output_csv_path}"'
+                        )
+                        self.missingAnnotErrors[acdc_df_filename] = str(error)
+                        continue
+                    elif error is not None:
                         raise error
                     posData.acdc_df = tree.df
                 except Exception as error:
@@ -1093,5 +1108,4 @@ class ToSymDivWorker(QObject):
                     self.mutex.unlock()
                     posData.acdc_df.to_csv(posData.acdc_output_csv_path)
                 
-        
         self.signals.finished.emit(self)
