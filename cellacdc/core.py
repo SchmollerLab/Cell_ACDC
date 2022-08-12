@@ -335,12 +335,12 @@ class AddLineageTreeTable:
         --> gen_num - 1 for new cells unknown cell
         --> Mother generation number + gen_num for known relative cell
         '''
-        gen_nums = gen_df['generation_num_tree'].values
-        gen_df['generation_num_tree'] = gen_nums + relID_gen_num
+        gen_nums_tree = gen_df['generation_num_tree'].values
+        gen_df['generation_num_tree'] = gen_nums_tree + relID_gen_num
 
         
         '''Assign unique ID every consecutive division'''
-        if not self.gen_dfs:
+        if not self.traversing_tree:
             # Keep start ID for cell at the top of the branch
             gen_df['Cell_ID_tree'] = [ID]*len(gen_df)
         else:
@@ -350,28 +350,31 @@ class AddLineageTreeTable:
         '''
         Assign parent ID: --> existing ID between relID and ID in prev gen_num_tree      
         '''
-        gen_num_tree = gen_df.loc[pd.IndexSlice[:, ID], 'generation_num_tree'].iloc[0]
-
-        if gen_num_tree > 1:
-            ID_slice = pd.IndexSlice[:, ID]
-            relID = gen_df.loc[ID_slice, 'relative_ID'].iloc[0]
-            relID_slice = pd.IndexSlice[:, relID]
+        ID_slice = pd.IndexSlice[:, ID]
+        gen_num_tree = gen_df.loc[ID_slice, 'generation_num_tree'].iloc[0]
+        relID = gen_df.loc[ID_slice, 'relative_ID'].iloc[0]
+        
+        if gen_num_tree > 1:        
             prev_gen_num_tree = gen_num_tree - 1
-            prev_gen_df = self.acdc_df[
-                self.acdc_df['generation_num_tree'] == prev_gen_num_tree
-            ]
             try:
                 # Parent ID is the Cell_ID_tree that current ID had in prev gen
-                parent_ID = prev_gen_df.loc[ID_slice, 'Cell_ID_tree'].iloc[0]
-            except:
+                prev_gen_df = self.gen_dfs[(ID, prev_gen_num_tree)]
+            except Exception as e:
                 # Parent ID is the Cell_ID_tree that the relative of the 
                 # current ID had in prev gen
+                prev_gen_df = self.gen_dfs[(relID, prev_gen_num_tree)]
+            
+            try:
+                relID_slice = pd.IndexSlice[:, relID]
                 parent_ID = prev_gen_df.loc[relID_slice, 'Cell_ID_tree'].iloc[0]
-                
+            except Exception as e:
+                parent_ID = prev_gen_df.loc[ID_slice, 'Cell_ID_tree'].iloc[0]
+            
             gen_df['parent_ID_tree'] = parent_ID
 
-        self.gen_dfs.append(gen_df)       
-
+        self.gen_dfs[(ID, gen_num_tree)] = gen_df
+        
+        self.traversing_tree = True
         return gen_df
              
     def add_lineage_tree_table_to_acdc_df(self):
@@ -387,11 +390,12 @@ class AddLineageTreeTable:
             acdc_df['parent_ID_tree'] = -1
         
         # acdc_df.insert(self.new_col_loc+2, 'relative_ID_tree', -1)
-        gen_nums = acdc_df['generation_num']
-        try:    
-            acdc_df.insert(self.new_col_loc+3, 'generation_num_tree', gen_nums)
+        gen_nums_tree = acdc_df['generation_num'] - 1
+        try:
+            col_loc = self.new_col_loc+3
+            acdc_df.insert(col_loc, 'generation_num_tree', gen_nums_tree)
         except ValueError as e:
-            acdc_df['generation_num_tree'] = gen_nums
+            acdc_df['generation_num_tree'] = gen_nums_tree
 
         frames_idx = acdc_df.index.get_level_values(0).unique()
         not_annotated_IDs = acdc_df.index.get_level_values(1).unique().to_list()
@@ -399,12 +403,13 @@ class AddLineageTreeTable:
 
         self.uniqueID = max(not_annotated_IDs) + 1
 
+        self.gen_dfs = {}
         for frame_i in frames_idx:
             if not not_annotated_IDs:
                 # Built tree for every ID --> exit
                 break
             
-            acdc_df_i = acdc_df.loc[frame_i]
+            acdc_df_i = self.acdc_df.loc[frame_i]
             IDs = acdc_df_i.index.array
             for ID in IDs:
                 if ID not in not_annotated_IDs:
@@ -413,11 +418,11 @@ class AddLineageTreeTable:
                 
                 relID = acdc_df_i.at[ID, 'relative_ID']
                 try:
-                    relID_gen_num = acdc_df_i.at[relID, 'generation_num']
+                    relID_gen_num = acdc_df_i.at[relID, 'generation_num_tree']
                 except Exception as e:
-                    relID_gen_num = -1
-                
-                self.gen_dfs = []
+                    relID_gen_num = 0
+                      
+                self.traversing_tree = False
                 # Iterate the branch till the end
                 self.acdc_df = (
                     self.acdc_df
