@@ -2634,6 +2634,8 @@ class guiWin(QMainWindow):
         )
         self.drawIDsContComboBox.activated.connect(self.clearComboBoxFocus)
 
+        self.showTreeInfoCheckbox.toggled.connect(self.setAnnotInfoMode)
+
         for filtersDict in self.filtersWins.values():
             filtersDict['action'].toggled.connect(self.filterToggled)
 
@@ -2709,6 +2711,10 @@ class guiWin(QMainWindow):
             self.drawIDsContComboBox.AdjustToContents
         )
 
+        # Show tree info checkbox
+        self.showTreeInfoCheckbox = QCheckBox('Show tree info')
+        self.showTreeInfoCheckbox.setFont(_font)
+
         # Toggle highlight z+-1 objects combobox
         self.highlightZneighObjCheckbox = QCheckBox(
             'Highlight objects in neighbouring z-slices'
@@ -2772,7 +2778,12 @@ class guiWin(QMainWindow):
 
         row = 0
         bottomLeftLayout.addWidget(
-            self.drawIDsContComboBox, row, 0, 1, 4,
+            self.drawIDsContComboBox, row, 1, 1, 2,
+            alignment=Qt.AlignCenter
+        )
+
+        bottomLeftLayout.addWidget(
+            self.showTreeInfoCheckbox, row, 0, 1, 1,
             alignment=Qt.AlignCenter
         )
 
@@ -10704,9 +10715,11 @@ class guiWin(QMainWindow):
         if self.isSegm3D:
             layout = self.bottomLeftLayout
             layout.removeWidget(self.drawIDsContComboBox)
-            layout.addWidget(self.drawIDsContComboBox, 0, 2, 1, 2)
-            layout.addWidget(self.highlightZneighObjCheckbox, 0, 0, 1, 2,
-                alignment=Qt.AlignLeft
+            layout.addWidget(self.drawIDsContComboBox, 0, 1, 1, 1,
+                alignment=Qt.AlignCenter
+            )
+            layout.addWidget(self.highlightZneighObjCheckbox, 0, 2, 1, 2,
+                alignment=Qt.AlignRight
             )
             self.highlightZneighObjCheckbox.show()
             self.highlightZneighObjCheckbox.setChecked(True)
@@ -12584,8 +12597,6 @@ class guiWin(QMainWindow):
                     acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
                     gen_num = acdc_df.at[obj.label, 'generation_num_tree']
                 except Exception as e:
-                    gen_num = generation_num
-                else:
                     gen_num = generation_num
             else:
                 gen_num = generation_num
@@ -14919,7 +14930,7 @@ class guiWin(QMainWindow):
             pass
         self.highlightZneighObjCheckbox.hide()
         layout.addWidget(
-            self.drawIDsContComboBox, 0, 0, 1, 4,
+            self.drawIDsContComboBox, 0, 1, 1, 2,
             alignment=Qt.AlignCenter
         )
 
@@ -15454,7 +15465,7 @@ class guiWin(QMainWindow):
         gen_num_action.setCheckable(True)
         gen_num_action.setChecked(True)
         gen_num_action.toggled.connect(self.updateAnnotations)
-        tree_gen_num_action = QAction("Show tree's generation number")
+        tree_gen_num_action = QAction("Show tree generation number")
         tree_gen_num_action.setCheckable(True)
         tree_gen_num_action.toggled.connect(self.updateAnnotations)
         self.annotSettingsGenNumMenu.addAction(gen_num_action)
@@ -15468,6 +15479,26 @@ class guiWin(QMainWindow):
         lutItem.selectChannelsActions = [separator, section, self.userChNameAction]
         for action in lutItem.selectChannelsActions:
             action.setVisible(False)
+    
+    def setAnnotInfoMode(self, checked):
+        if checked:
+            for action in self.annotSettingsIDmenu.actions():
+                if action.text().find('tree') != -1:
+                    action.setChecked(True)
+                    break
+            for action in self.annotSettingsGenNumMenu.actions():
+                if action.text().find('tree') != -1:
+                    action.setChecked(True)
+                    break
+        else:
+            for action in self.annotSettingsIDmenu.actions():
+                if action.text().find('tree') == -1:
+                    action.setChecked(True)
+                    break
+            for action in self.annotSettingsGenNumMenu.actions():
+                if action.text().find('tree') == -1:
+                    action.setChecked(True)
+                    break
     
     def getOverlayItems(self, channelName):
         imageItem = pg.ImageItem()
