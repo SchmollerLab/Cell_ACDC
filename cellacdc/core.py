@@ -397,7 +397,7 @@ class AddLineageTreeTable:
         except ValueError as e:
             acdc_df['generation_num_tree'] = gen_nums_tree
 
-        frames_idx = acdc_df.index.get_level_values(0).unique()
+        frames_idx = acdc_df.dropna().index.get_level_values(0).unique()
         not_annotated_IDs = acdc_df.index.get_level_values(1).unique().to_list()
         annotated_IDs = []
 
