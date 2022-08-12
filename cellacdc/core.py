@@ -353,21 +353,20 @@ class AddLineageTreeTable:
         gen_num_tree = gen_df.loc[pd.IndexSlice[:, ID], 'generation_num_tree'].iloc[0]
 
         if gen_num_tree > 1:
-            ID_idx = pd.IndexSlice[:, ID]
-            relID = gen_df.loc[ID_idx, 'relative_ID'].iloc[0]
-            if not self.gen_dfs:
-                # Start of the branch of a new cell
-                parent_ID = relID
-            else:
-                prev_gen_num_df = self.gen_dfs[-1]
-                ID_idx = pd.IndexSlice[:, ID]
-                try:
-                    parent_ID = prev_gen_num_df.loc[ID_idx, 'Cell_ID_tree'].iloc[0]
-                except KeyError:
-                    prev_gen_frame_i = prev_gen_num_df.index.get_level_values(0)[0]
-                    parent_ID = self.acdc_df.at[
-                        (prev_gen_frame_i, relID), 'Cell_ID_tree'
-                    ].iloc[0]
+            ID_slice = pd.IndexSlice[:, ID]
+            relID = gen_df.loc[ID_slice, 'relative_ID'].iloc[0]
+            relID_slice = pd.IndexSlice[:, relID]
+            prev_gen_num_tree = gen_num_tree - 1
+            prev_gen_df = self.acdc_df[
+                self.acdc_df['generation_num_tree'] == prev_gen_num_tree
+            ]
+            try:
+                # Parent ID is the Cell_ID_tree that current ID had in prev gen
+                parent_ID = prev_gen_df.loc[ID_slice, 'Cell_ID_tree'].iloc[0]
+            except:
+                # Parent ID is the Cell_ID_tree that the relative of the 
+                # current ID had in prev gen
+                parent_ID = prev_gen_df.loc[relID_slice, 'Cell_ID_tree'].iloc[0]
                 
             gen_df['parent_ID_tree'] = parent_ID
 
