@@ -526,7 +526,6 @@ class segmWin(QMainWindow):
         self.progressLabel.setText('Loading data...')
 
         # Ask which model
-        models = myutils.get_list_of_models()
         win = apps.QDialogSelectModel(parent=self)
         win.exec_()
         if win.cancel:

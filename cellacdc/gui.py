@@ -5211,6 +5211,7 @@ class guiWin(QMainWindow):
         
         # Label ROI mouse release --> label the ROI with self.labelRoiWorker
         elif self.isMouseDragImg1 and self.labelRoiButton.isChecked():
+            self.app.setOverrideCursor(Qt.WaitCursor)
             self.isMouseDragImg1 = False
 
             posData = self.data[self.pos_i]
@@ -5235,17 +5236,34 @@ class guiWin(QMainWindow):
                 z0 = z0 if z0>=0 else 0
                 z1 = zc+half_zdepth+1
                 z1 = z1 if z1<posData.SizeZ else posData.SizeZ
-                slicedImg = imgData[z0:z1, y0:y0+h, x0:x0+w]
+                self.labelRoiSlice = (
+                    slice(z0,z1), slice(y0,y0+h), slice(x0,x0+w)
+                )
+                roiImg = imgData[z0:z1, y0:y0+h, x0:x0+w]
             else:
+                self.labelRoiSlice = (slice(y0,y0+h), slice(x0,x0+w))
                 imgData = self.img1.image
-                slicedImg = imgData[y0:y0+h, x0:x0+w]
             
-            printl(slicedImg.shape)
+            roiImg = imgData[self.labelRoiSlice]
 
             if self.labelRoiModel is None:
-                pass
-            else:
-                pass
+                self.app.restoreOverrideCursor()
+                # Ask which model
+                win = apps.QDialogSelectModel(parent=self)
+                win.exec_()
+                self.app.setOverrideCursor(Qt.WaitCursor)
+                model_name = win.selectedModel
+                self.labelRoiModel = self.repeatSegm(
+                    model_name=model_name, askSegmParams=True,
+                    return_model=True
+                )
+
+            self.app.restoreOverrideCursor() 
+            self.labelRoiWorker.start(roiImg)            
+            self.app.setOverrideCursor(Qt.WaitCursor)
+            self.logger.info(
+                f'Magic labeller started on image ROI = {self.labelRoiSlice}...'
+            )
 
         # Move label mouse released, update move
         elif self.isMovingLabel and self.moveLabelToolButton.isChecked():
@@ -8411,6 +8429,7 @@ class guiWin(QMainWindow):
             self.labelRoiThread.finished.connect(
                 self.labelRoiThread.deleteLater
             )
+            self.labelRoiWorker.sigLabellingDone.connect(self.labelRoiDone)
 
             self.labelRoiWorker.progress.connect(self.workerProgress)
 
@@ -8431,6 +8450,21 @@ class guiWin(QMainWindow):
             self.labelRoiItem.setPos((0,0))
             self.labelRoiItem.setSize((0,0))
             self.ax1.removeItem(self.labelRoiItem)
+            self.logger.info('Magic labeller closed.')
+    
+    def labelRoiDone(self, roiLab):
+        roiLab = skimage.segmentation.clear_border(roiLab, buffer_size=1)
+        posData = self.data[self.pos_i]
+        self.setBrushID()
+        roiLab[roiLab>0] += posData.brushID
+        posData.lab[self.labelRoiSlice] = roiLab
+        self.update_rp()
+        self.store_data()
+        self.updateALLimg()
+        self.labelRoiItem.setPos((0,0))
+        self.labelRoiItem.setSize((0,0))
+        self.logger.info('Magic labeller done!')
+        self.app.restoreOverrideCursor()        
 
     def restoreHoveredID(self):
         posData = self.data[self.pos_i]
@@ -9856,7 +9890,7 @@ class guiWin(QMainWindow):
         self.repeatSegmVideo(model_name, win.startFrame, win.stopFrame)
 
     @myutils.exception_handler
-    def repeatSegm(self, model_name='', askSegmParams=False):
+    def repeatSegm(self, model_name='', askSegmParams=False, return_model=False):
         idx = self.modelNames.index(model_name)
         # Ask segm parameters if not already set
         # and not called by segmSingleFrameMenu (askSegmParams=False)
@@ -9881,6 +9915,8 @@ class guiWin(QMainWindow):
         # Otherwise this function is called by "computeSegm" function and
         # we use loaded parameters
         if askSegmParams:
+            if self.app.overrideCursor() == Qt.WaitCursor:
+                self.app.restoreOverrideCursor()
             self.segmModelName = model_name
             # Read all models parameters
             init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
@@ -9921,6 +9957,9 @@ class guiWin(QMainWindow):
             posData.saveSegmHyperparams(self.segment2D_kwargs, postProcessParams)
         else:
             model = self.models[idx]
+        
+        if return_model:
+            return model
 
         self.titleLabel.setText(
             f'{model_name} is thinking... '

@@ -70,6 +70,7 @@ class LabelRoiWorker(QObject):
     finished = pyqtSignal()
     critical = pyqtSignal(object)
     progress = pyqtSignal(str, object)
+    sigLabellingDone = pyqtSignal(object)
 
     def __init__(self, Gui):
         QObject.__init__(self)
@@ -85,6 +86,10 @@ class LabelRoiWorker(QObject):
         self.mutex.lock()
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
+    
+    def start(self, roiImg):
+        self.img = roiImg
+        self.restart()
     
     def restart(self, log=True):
         if log:
@@ -103,9 +108,18 @@ class LabelRoiWorker(QObject):
             if self.exit:
                 break
             elif self.started:
-                pass
-            else:
-                self.pause()
+                lab = self.Gui.labelRoiModel.segment(
+                    self.img, **self.Gui.segment2D_kwargs
+                )
+                if self.Gui.applyPostProcessing:
+                    lab = core.remove_artefacts(
+                        lab,
+                        min_solidity=self.Gui.minSolidity,
+                        min_area=self.Gui.minSize,
+                        max_elongation=self.Gui.maxElongation
+                    )
+                self.sigLabellingDone.emit(lab)
+            self.pause()
         self.finished.emit()
             
 
@@ -121,7 +135,7 @@ class segmWorker(QObject):
 
     @worker_exception_handler
     def run(self):
-        t0 = time.time()
+        t0 = time.perf_counter()
         if self.mainWin.segment3D:
             img = self.mainWin.getDisplayedZstack()
             SizeZ = len(img)
@@ -156,7 +170,7 @@ class segmWorker(QObject):
             # Either whole z-stack or 2D segmentation
             lab = _lab
         
-        t1 = time.time()
+        t1 = time.perf_counter()
         exec_time = t1-t0
         self.finished.emit(lab, exec_time)
 
