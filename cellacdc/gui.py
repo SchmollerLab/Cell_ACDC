@@ -1750,6 +1750,22 @@ class guiWin(QMainWindow):
         self.LeftClickButtons.append(self.wandToolButton)
         self.functionsNotTested3D.append(self.wandToolButton)
 
+        self.labelRoiButton = QToolButton(self)
+        self.labelRoiButton.setIcon(QIcon(":label_roi.svg"))
+        self.labelRoiButton.setCheckable(True)
+        self.labelRoiButton.setShortcut('l')
+        self.labelRoiButton.setToolTip(
+            'Toggle "Magic labeller" ON/OFF\n\n'
+            'ACTION: Draw a rectangular ROI aroung object(s) you want to segment\n\n'
+            'Draw with LEFT button to label with last used model\n'
+            'Draw with RIGHT button to choose a segmentation model\n\n'
+            'SHORTCUT: "L" key')
+        self.labelRoiButton.action = editToolBar.addWidget(self.labelRoiButton)
+        self.LeftClickButtons.append(self.labelRoiButton)
+        self.checkableButtons.append(self.labelRoiButton)
+        self.checkableQButtonsGroup.addButton(self.labelRoiButton)
+        self.functionsNotTested3D.append(self.labelRoiButton)
+
         self.hullContToolButton = QToolButton(self)
         self.hullContToolButton.setIcon(QIcon(":hull.svg"))
         self.hullContToolButton.setCheckable(True)
@@ -2052,7 +2068,7 @@ class guiWin(QMainWindow):
     def gui_createControlsToolbar(self):
         self.addToolBarBreak()
 
-        self.wandControlsToolbar = QToolBar("Controls", self)
+        self.wandControlsToolbar = QToolBar("Magic labeller controls", self)
         self.wandToleranceSlider = widgets.sliderWithSpinBox(
             title='Tolerance', title_loc='in_line'
         )
@@ -2072,6 +2088,14 @@ class guiWin(QMainWindow):
 
         self.addToolBar(Qt.TopToolBarArea , self.wandControlsToolbar)
         self.wandControlsToolbar.setVisible(False)
+
+        self.labelRoiToolbar = QToolBar("Magic labeller controls", self)
+        self.labelRoiZdepthSpinbox = QSpinBox()
+        self.labelRoiToolbar.addWidget(self.labelRoiZdepthSpinbox)
+        self.addToolBar(Qt.TopToolBarArea , self.labelRoiToolbar)
+        self.labelRoiToolbar.setVisible(False)
+
+
 
     def gui_populateToolSettingsMenu(self):
         brushHoverModeActionGroup = QActionGroup(self)
@@ -2564,6 +2588,7 @@ class guiWin(QMainWindow):
         self.eraserButton.toggled.connect(self.Eraser_cb)
         self.curvToolButton.toggled.connect(self.curvTool_cb)
         self.wandToolButton.toggled.connect(self.wand_cb)
+        self.labelRoiButton.toggled.connect(self.labelRoi_cb)
         self.reInitCcaAction.triggered.connect(self.reInitCca)
         self.moveLabelToolButton.toggled.connect(self.moveLabelButtonToggled)
         self.assignBudMothAutoAction.triggered.connect(
@@ -3157,6 +3182,22 @@ class guiWin(QMainWindow):
         )
         return msg.cancel, msg.clickedButton==doNotCreateItemsButton
     
+    def gui_createLabelRoiItem(self):
+        Y, X = self.currentLab2D.shape
+        # Label ROI rectangle
+        pen = pg.mkPen('r', width=3)
+        self.labelRoiItem = pg.ROI(
+            (0,0), (0,0),
+            maxBounds=QRectF(QRect(0,0,X,Y)),
+            scaleSnap=True,
+            translateSnap=True,
+            pen=pen, hoverPen=pen
+        )
+
+        posData = self.data[self.pos_i]
+        self.labelRoiZdepthSpinbox.setValue(posData.SizeZ)
+        self.labelRoiZdepthSpinbox.setMaximum(3000)
+    
     def gui_createOverlayItems(self):
         self.overlayLayersItems = {}
         for ch in self.ch_names:
@@ -3443,7 +3484,8 @@ class guiWin(QMainWindow):
             event.ignore()
             return
 
-        # Left-click is used for brush, eraser, separate bud and curvature tool
+        # Left-click is used for brush, eraser, separate bud, curvature tool
+        # and magic labeller
         # Brush and eraser are mutually exclusive but we want to keep the eraser
         # or brush ON and disable them temporarily to allow left-click with
         # separate ON
@@ -4397,6 +4439,14 @@ class guiWin(QMainWindow):
                     posData.lab==posData.brushID
                 )
                 self.setTempImg1Brush(False, mask, posData.brushID)
+        
+        # Label ROI dragging mouse --> draw ROI
+        elif self.isMouseDragImg1 and self.labelRoiButton.isChecked():
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(x), int(y)
+            x0, y0 = self.labelRoiItem.pos()
+            w, h = (xdata-x0), (ydata-y0)
+            self.labelRoiItem.setSize((w, h))
     
     # @exec_time
     def fillHolesID(self, ID, sender='brush'):
@@ -4580,6 +4630,13 @@ class guiWin(QMainWindow):
         )
         if setWandCursor and self.app.overrideCursor() is None:
             self.app.setOverrideCursor(self.wandCursor)
+        
+        setLabelRoiCursor = (
+            self.labelRoiButton.isChecked() and not event.isExit()
+            and noModifier
+        )
+        if setLabelRoiCursor and self.app.overrideCursor() is None:
+            self.app.setOverrideCursor(Qt.CrossCursor)
 
         setMoveLabelCursor = (
             self.moveLabelToolButton.isChecked() and not event.isExit()
@@ -5151,6 +5208,44 @@ class guiWin(QMainWindow):
                 self.updateALLimg()
             else:
                 self.warnEditingWithCca_df('Add new ID with magic-wand')
+        
+        # Label ROI mouse release --> label the ROI with self.labelRoiWorker
+        elif self.isMouseDragImg1 and self.labelRoiButton.isChecked():
+            self.isMouseDragImg1 = False
+
+            posData = self.data[self.pos_i]
+
+            x0, y0 = [int(round(c)) for c in self.labelRoiItem.pos()]
+            w, h = [int(round(c)) for c in self.labelRoiItem.size()]
+
+            if self.isSegm3D:
+                filteredData = self.filteredData.get(self.user_ch_name)
+                if filteredData is None:
+                    # Filtered data not existing
+                    imgData = posData.img_data[posData.frame_i]
+                else:
+                    # 3D filtered data (see self.applyFilter)
+                    imgData = filteredData
+                roi_zdepth = self.labelRoiZdepthSpinbox.value()
+                if roi_zdepth%2 != 0:
+                    roi_zdepth +=1
+                half_zdepth = int(roi_zdepth/2)
+                zc = self.zSliceScrollBar.sliderPosition()
+                z0 = zc-half_zdepth
+                z0 = z0 if z0>=0 else 0
+                z1 = zc+half_zdepth+1
+                z1 = z1 if z1<posData.SizeZ else posData.SizeZ
+                slicedImg = imgData[z0:z1, y0:y0+h, x0:x0+w]
+            else:
+                imgData = self.img1.image
+                slicedImg = imgData[y0:y0+h, x0:x0+w]
+            
+            printl(slicedImg.shape)
+
+            if self.labelRoiModel is None:
+                pass
+            else:
+                pass
 
         # Move label mouse released, update move
         elif self.isMovingLabel and self.moveLabelToolButton.isChecked():
@@ -5376,6 +5471,7 @@ class guiWin(QMainWindow):
         rulerON = self.rulerButton.isChecked()
         wandON = self.wandToolButton.isChecked() and not isPanImageClick
         polyLineRoiON = self.addDelPolyLineRoiAction.isChecked()
+        labelRoiON = self.labelRoiButton.isChecked()
 
         # Check if right-click on segment of polyline roi to add segment
         segments = self.gui_getHoveredSegmentsPolyLineRoi()
@@ -5399,7 +5495,7 @@ class guiWin(QMainWindow):
         dragImgLeft = (
             left_click and not brushON and not histON
             and not curvToolON and not eraserON and not rulerON
-            and not wandON and not polyLineRoiON
+            and not wandON and not polyLineRoiON and not labelRoiON
         )
         if isPanImageClick:
             dragImgLeft = True
@@ -5413,6 +5509,7 @@ class guiWin(QMainWindow):
              and not self.setIsHistoryKnownButton.isChecked()
              and not self.curvToolButton.isChecked()
              and not is_right_click_custom_ON
+             and not labelRoiON
         )
 
         # In timelapse mode division can be annotated if isCcaMode and right-click
@@ -5447,30 +5544,37 @@ class guiWin(QMainWindow):
         canCurv = (
             curvToolON and not self.assignBudMothButton.isChecked()
             and not brushON and not dragImgLeft and not eraserON
-            and not polyLineRoiON
+            and not polyLineRoiON and not labelRoiON
         )
         canBrush = (
             brushON and not curvToolON and not rulerON
             and not dragImgLeft and not eraserON and not wandON
+            and not labelRoiON
         )
         canErase = (
             eraserON and not curvToolON and not rulerON
             and not dragImgLeft and not brushON and not wandON
-            and not polyLineRoiON
+            and not polyLineRoiON and not labelRoiON
         )
         canRuler = (
             rulerON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not wandON
-            and not polyLineRoiON
+            and not polyLineRoiON and not labelRoiON
         )
         canWand = (
             wandON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
-            and not polyLineRoiON
+            and not polyLineRoiON and not labelRoiON
         )
         canPolyLine = (
             polyLineRoiON and not wandON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
+            and not labelRoiON
+        )
+        canLabelRoi = (
+            labelRoiON and not wandON and not curvToolON and not brushON
+            and not dragImgLeft and not brushON and not rulerON
+            and not polyLineRoiON
         )
 
         # Enable dragging of the image window like pyqtgraph original code
@@ -5751,6 +5855,19 @@ class guiWin(QMainWindow):
                     posData.lab==posData.brushID
                 )
                 self.setTempImg1Brush(True, mask, posData.brushID)
+            self.isMouseDragImg1 = True
+        
+        # Label ROI mouse press
+        elif (left_click or right_click) and canLabelRoi:
+            if right_click:
+                # Force model initialization on mouse release
+                self.labelRoiModel = None
+            
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(x), int(y)
+
+            self.labelRoiItem.setPos((xdata, ydata))
+            
             self.isMouseDragImg1 = True
 
         # Annotate cell cycle division
@@ -8240,6 +8357,7 @@ class guiWin(QMainWindow):
         self.rulerButton.toggled.connect(self.ruler_cb)
         self.eraserButton.toggled.connect(self.Eraser_cb)
         self.wandToolButton.toggled.connect(self.wand_cb)
+        self.labelRoiButton.toggled.connect(self.labelRoi_cb)
         self.expandLabelToolButton.toggled.connect(self.expandLabelCallback)
         self.addDelPolyLineRoiAction.toggled.connect(self.addDelPolyLineRoi_cb)
 
@@ -8265,6 +8383,54 @@ class guiWin(QMainWindow):
             self.wandControlsToolbar.setVisible(False)
         if self.labelsGrad.hideLabelsImgAction.isChecked():
             self.ax1.vb.autoRange()
+    
+    def labelRoi_cb(self, checked):
+        posData = self.data[self.pos_i]
+        if checked:
+            self.disconnectLeftClickButtons()
+            self.uncheckLeftClickButtons(self.labelRoiButton)
+            self.connectLeftClickButtons()
+
+            if self.isSegm3D:
+                self.labelRoiToolbar.setVisible(True)
+
+            # Start thread and pause it
+            self.labelRoiThread = QThread()
+            self.labelRoiMutex = QMutex()
+            self.labelRoiWaitCond = QWaitCondition()
+
+            self.labelRoiWorker = workers.LabelRoiWorker(self)
+
+            self.labelRoiWorker.moveToThread(self.labelRoiThread)
+            self.labelRoiWorker.finished.connect(
+                self.labelRoiThread.quit
+            )
+            self.labelRoiWorker.finished.connect(
+                self.labelRoiWorker.deleteLater
+            )
+            self.labelRoiThread.finished.connect(
+                self.labelRoiThread.deleteLater
+            )
+
+            self.labelRoiWorker.progress.connect(self.workerProgress)
+
+            self.labelRoiThread.started.connect(self.labelRoiWorker.run)
+            self.labelRoiThread.start()
+            self.labelRoiModel = None
+
+            # Add the rectROI to ax1
+            self.ax1.addItem(self.labelRoiItem)
+        else:
+            if self.isSegm3D:
+                self.labelRoiToolbar.setVisible(False)
+            
+            self.labelRoiWorker.stop()
+            while self.app.overrideCursor() is not None:
+                self.app.restoreOverrideCursor()
+            
+            self.labelRoiItem.setPos((0,0))
+            self.labelRoiItem.setSize((0,0))
+            self.ax1.removeItem(self.labelRoiItem)
 
     def restoreHoveredID(self):
         posData = self.data[self.pos_i]
@@ -8649,6 +8815,7 @@ class guiWin(QMainWindow):
                 self.expandFootprintSize += 1
         elif ev.key() == Qt.Key_Escape:
             self.setUncheckedAllButtons()
+            self.isMouseDragImg1 = False
             if self.highlightedID != 0:
                 self.highlightedID = 0
                 self.guiTabControl.highlightCheckbox.setChecked(False)
@@ -10701,6 +10868,8 @@ class guiWin(QMainWindow):
         self.restoreSavedSettings()
 
         self.setMetricsFunc()
+
+        self.gui_createLabelRoiItem()
 
         self.titleLabel.setText(
             'Data successfully loaded.',
