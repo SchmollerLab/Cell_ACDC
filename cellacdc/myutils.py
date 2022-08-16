@@ -1113,7 +1113,7 @@ def get_list_of_models():
     models = []
     for name in listdir(models_path):
         _path = os.path.join(models_path, name)
-        if os.path.isdir(_path) and not name.endswith('__'):
+        if os.path.isdir(_path) and not name.endswith('__') and name != 'thresholding':
             models.append(name)
     return models
 

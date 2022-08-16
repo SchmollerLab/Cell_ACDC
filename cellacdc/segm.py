@@ -533,6 +533,12 @@ class segmWin(QMainWindow):
             if abort:
                 self.close()
                 return
+        
+        win = apps.QDialogAutomaticThresholding(parent=self)
+        win.exec_()
+        if win.cancel:
+            return
+        self.segment2D_kwargs = win.segment_kwargs
 
         model_name = win.selectedModel
         self.logger.info(f'Importing {model_name}...')
@@ -565,7 +571,8 @@ class segmWin(QMainWindow):
                 self.close()
                 return
 
-        self.segment2D_kwargs = win.segment2D_kwargs
+        if model_name != 'thresholding':
+            self.segment2D_kwargs = win.segment2D_kwargs
         self.minSize = win.minSize
         self.minSolidity = win.minSolidity
         self.maxElongation = win.maxElongation

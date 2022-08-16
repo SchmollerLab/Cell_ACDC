@@ -2238,6 +2238,7 @@ class guiWin(QMainWindow):
 
         # Edit actions
         models = myutils.get_list_of_models()
+        models.append('Automatic thresholding')
         self.segmActions = []
         self.modelNames = []
         self.acdcSegment_li = []
@@ -9903,6 +9904,9 @@ class guiWin(QMainWindow):
         # Store undo state before modifying stuff
         self.storeUndoRedoStates(False)
 
+        if model_name == 'Automatic thresholding':
+            model_name = 'thresholding'
+
         posData = self.data[self.pos_i]
         # Check if model needs to be imported
         acdcSegment = self.acdcSegment_li[idx]
@@ -9925,6 +9929,13 @@ class guiWin(QMainWindow):
                 url = acdcSegment.help_url
             except AttributeError:
                 url = None
+            
+            if model_name == 'thresholding':
+                win = apps.QDialogAutomaticThresholding(parent=self)
+                win.exec_()
+                if win.cancel:
+                    return
+                self.segment2D_kwargs = win.segment_kwargs
 
             win = apps.QDialogModelParams(
                 init_params,
@@ -9938,7 +9949,8 @@ class guiWin(QMainWindow):
                 self.titleLabel.setText('Segmentation process cancelled.')
                 return
 
-            self.segment2D_kwargs = win.segment2D_kwargs
+            if model_name != 'thresholding':
+                self.segment2D_kwargs = win.segment2D_kwargs
             self.minSize = win.minSize
             self.minSolidity = win.minSolidity
             self.maxElongation = win.maxElongation
@@ -9962,7 +9974,7 @@ class guiWin(QMainWindow):
             return model
 
         self.titleLabel.setText(
-            f'{model_name} is thinking... '
+            f'Labelling with {model_name}... '
             '(check progress in terminal/console)', color=self.titleColor
         )
 

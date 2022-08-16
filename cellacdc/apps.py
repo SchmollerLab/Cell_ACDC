@@ -2556,6 +2556,72 @@ class QDialogListbox(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
+class QDialogAutomaticThresholding(QBaseDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.cancel = True
+
+        layout = QVBoxLayout()
+        buttonsLayout = QHBoxLayout()
+
+        self.sigmaGaussSpinbox = QDoubleSpinBox()
+        self.sigmaGaussSpinbox.setValue(1)
+        self.sigmaGaussSpinbox.setMaximum(2**31)
+        self.sigmaGaussSpinbox.setAlignment(Qt.AlignCenter)
+        gaussSigmaLayout = QHBoxLayout()
+        gaussSigmaLayout.addWidget(
+            QLabel('Gaussian filter sigma: '), alignment=Qt.AlignRight
+        )
+        gaussSigmaLayout.addWidget(self.sigmaGaussSpinbox)
+
+        self.threshMethodCombobox = QComboBox()
+        self.threshMethodCombobox.addItems([
+            'Isodata', 'Li', 'Mean', 'Minimum', 'Otsu', 'Triangle', 'Yen'
+        ])
+        threshMethodLayout = QHBoxLayout()
+        threshMethodLayout.addWidget(
+            QLabel('Thresholding algorithm: '), alignment=Qt.AlignRight
+        )
+        threshMethodLayout.addWidget(self.threshMethodCombobox)
+
+        okButton = widgets.okPushButton('Ok')
+        cancelButton = widgets.cancelPushButton('Cancel')
+        helpButton = widgets.helpPushButton('Help...')
+
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(helpButton)
+        buttonsLayout.addWidget(okButton)
+
+        layout.addLayout(gaussSigmaLayout)
+        layout.addLayout(threshMethodLayout)
+        layout.addSpacing(10)
+        layout.addLayout(buttonsLayout)
+
+        okButton.clicked.connect(self.ok_cb)
+        helpButton.clicked.connect(self.help_cb)
+        cancelButton.clicked.connect(self.close)
+
+        self.setLayout(layout)
+    
+    def help_cb(self):
+        import webbrowser
+        url = 'https://scikit-image.org/docs/stable/auto_examples/applications/plot_thresholding.html'
+        webbrowser.open(url)
+
+    def ok_cb(self):
+        self.cancel = False
+        self.gaussSigma = self.sigmaGaussSpinbox.value()
+        threshMethod = self.threshMethodCombobox.currentText().lower()
+        self.threshMethod = f'threshold_{threshMethod}'
+        self.segment_kwargs = {
+            'gauss_sigma': self.gaussSigma,
+            'threshold_method': self.threshMethod
+        }
+        self.close()
+
 class QDialogSelectModel(QDialog):
     def __init__(self, parent=None):
         self.cancel = True
@@ -2577,6 +2643,7 @@ class QDialogSelectModel(QDialog):
 
         listBox = widgets.listWidget()
         models = myutils.get_list_of_models()
+        models.append('Automatic thresholding')
         models.append('Custom model...')
         listBox.setFont(font)
         listBox.addItems(models)
@@ -2627,6 +2694,9 @@ class QDialogSelectModel(QDialog):
             msg.information(
                 self, 'Custom model instructions', txt, buttonsTexts=('Ok',)
             )
+        elif model == 'Automatic thresholding':
+            self.selectedModel = 'thresholding'
+            self.close()
         else:
             self.selectedModel = model
             self.close()
@@ -6874,7 +6944,8 @@ class QDialogPbar(QDialog):
 class QDialogModelParams(QDialog):
     def __init__(
             self, init_params, segment_params, model_name,
-            url=None, parent=None):
+            url=None, parent=None
+        ):
         self.cancel = True
         super().__init__(parent)
 
@@ -6917,6 +6988,9 @@ class QDialogModelParams(QDialog):
         segmentLoadLastSelButton.clicked.connect(
             partial(loadFunc, section, self.segment2D_argsWidgets)
         )
+
+        if model_name == 'thresholding':
+            segmentGroupBox.setDisabled(True)
 
         cancelButton = widgets.cancelPushButton(' Cancel ')
         okButton = widgets.okPushButton(' Ok ')
