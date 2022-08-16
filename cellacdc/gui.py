@@ -1766,6 +1766,16 @@ class guiWin(QMainWindow):
         self.checkableQButtonsGroup.addButton(self.labelRoiButton)
         self.functionsNotTested3D.append(self.labelRoiButton)
 
+        self.segmentToolAction = QAction('Segment with last used model', self)
+        self.segmentToolAction.setIcon(QIcon(":segment.svg"))
+        self.segmentToolAction.setShortcut('r')
+        self.segmentToolAction.setToolTip(
+            'Segment with last used model and last used parameters.\n\n'
+            'If you never selected a segmentation model before, you will be \n'
+            'asked to choose it and initialize its parameters.\n\n'
+            'SHORTCUT: "R" key')
+        editToolBar.addAction(self.segmentToolAction)
+
         self.hullContToolButton = QToolButton(self)
         self.hullContToolButton.setIcon(QIcon(":hull.svg"))
         self.hullContToolButton.setCheckable(True)
@@ -1871,9 +1881,9 @@ class guiWin(QMainWindow):
             'EXAMPLE: annotate that a cell is removed from downstream analysis.\n'
             '"is_cell_excluded" set to True in acdc_output.csv table\n\n'
             'ACTION: right-click\n\n'
-            'SHORTCUT: "R" key'
+            'SHORTCUT: "B" key'
         )
-        self.binCellButton.setShortcut("r")
+        self.binCellButton.setShortcut('b')
         self.binCellButton.action = editToolBar.addWidget(self.binCellButton)
         self.checkableButtons.append(self.binCellButton)
         self.checkableQButtonsGroup.addButton(self.binCellButton)
@@ -1889,7 +1899,7 @@ class guiWin(QMainWindow):
             'ACTION: right-click\n\n'
             'SHORTCUT: "D" key'
         )
-        self.ripCellButton.setShortcut("d")
+        self.ripCellButton.setShortcut('d')
         self.ripCellButton.action = editToolBar.addWidget(self.ripCellButton)
         self.checkableButtons.append(self.ripCellButton)
         self.checkableQButtonsGroup.addButton(self.ripCellButton)
@@ -2664,6 +2674,8 @@ class guiWin(QMainWindow):
 
         for filtersDict in self.filtersWins.values():
             filtersDict['action'].toggled.connect(self.filterToggled)
+        
+        self.segmentToolAction.triggered.connect(self.segmentToolActionTriggered)
 
         self.addDelRoiAction.triggered.connect(self.addDelROI)
         self.addDelPolyLineRoiAction.toggled.connect(self.addDelPolyLineRoi_cb)
@@ -9889,9 +9901,25 @@ class guiWin(QMainWindow):
         idx = self.segmActionsVideo.index(action)
         model_name = self.modelNames[idx]
         self.repeatSegmVideo(model_name, win.startFrame, win.stopFrame)
+    
+    def segmentToolActionTriggered(self):
+        if self.segmModelName is None:
+            win = apps.QDialogSelectModel(parent=self)
+            win.exec_()
+            model_name = win.selectedModel
+            self.repeatSegm(
+                model_name=model_name, askSegmParams=True
+            )
+        else:
+            self.repeatSegm(model_name=self.segmModelName)
 
     @myutils.exception_handler
     def repeatSegm(self, model_name='', askSegmParams=False, return_model=False):
+        if model_name == 'thresholding':
+            # thresholding model is stored as 'Automatic thresholding'
+            # at line of code `models.append('Automatic thresholding')`
+            model_name = 'Automatic thresholding'
+        
         idx = self.modelNames.index(model_name)
         # Ask segm parameters if not already set
         # and not called by segmSingleFrameMenu (askSegmParams=False)
@@ -9905,6 +9933,9 @@ class guiWin(QMainWindow):
         self.storeUndoRedoStates(False)
 
         if model_name == 'Automatic thresholding':
+            # Automatic thresholding is the name of the models as stored 
+            # in self.modelNames, but the actual model is called thresholding
+            # (see cellacdc/models/thresholding)
             model_name = 'thresholding'
 
         posData = self.data[self.pos_i]
@@ -10049,10 +10080,21 @@ class guiWin(QMainWindow):
 
     @myutils.exception_handler
     def repeatSegmVideo(self, model_name, startFrameNum, stopFrameNum):
+        if model_name == 'thresholding':
+            # thresholding model is stored as 'Automatic thresholding'
+            # at line of code `models.append('Automatic thresholding')`
+            model_name = 'Automatic thresholding'
+
         idx = self.modelNames.index(model_name)
 
         self.downloadWin = apps.downloadModel(model_name, parent=self)
         self.downloadWin.download()
+
+        if model_name == 'Automatic thresholding':
+            # Automatic thresholding is the name of the models as stored 
+            # in self.modelNames, but the actual model is called thresholding
+            # (see cellacdc/models/thresholding)
+            model_name = 'thresholding'
 
         posData = self.data[self.pos_i]
         # Check if model needs to be imported
@@ -10069,6 +10111,13 @@ class guiWin(QMainWindow):
             url = acdcSegment.help_url
         except AttributeError:
             url = None
+        
+        if model_name == 'thresholding':
+            autoThreshWin = apps.QDialogAutomaticThresholding(parent=self)
+            autoThreshWin.exec_()
+            if win.cancel:
+                return
+            
 
         win = apps.QDialogModelParams(
             init_params,
@@ -10081,6 +10130,9 @@ class guiWin(QMainWindow):
             self.logger.info('Segmentation process cancelled.')
             self.titleLabel.setText('Segmentation process cancelled.')
             return
+        
+        if model_name == 'thresholding':
+            win.segment2D_kwargs = autoThreshWin.segment_kwargs
 
         model = acdcSegment.Model(**win.init_kwargs)
 
@@ -11384,13 +11436,13 @@ class guiWin(QMainWindow):
             action.setChecked(True)
             self.fluoDataChNameActions.append(action)
 
-    def computeSegm(self):
+    def computeSegm(self, force=False):
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
         if mode == 'Viewer' or mode == 'Cell cycle analysis':
             return
 
-        if np.any(posData.lab):
+        if np.any(posData.lab) and not force:
             # Do not compute segm if there is already a mask
             return
 
@@ -11412,7 +11464,6 @@ class guiWin(QMainWindow):
                 return
 
         self.repeatSegm(model_name=self.segmModelName)
-        self.update_rp()
 
     def initImgCmap(self):
         if not 'img_cmap' in self.df_settings.index:

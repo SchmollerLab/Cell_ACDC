@@ -2562,6 +2562,8 @@ class QDialogAutomaticThresholding(QBaseDialog):
 
         self.cancel = True
 
+        self.setWindowTitle('Automatic thresholding parameters')
+
         layout = QVBoxLayout()
         buttonsLayout = QHBoxLayout()
 
@@ -2571,7 +2573,7 @@ class QDialogAutomaticThresholding(QBaseDialog):
         self.sigmaGaussSpinbox.setAlignment(Qt.AlignCenter)
         gaussSigmaLayout = QHBoxLayout()
         gaussSigmaLayout.addWidget(
-            QLabel('Gaussian filter sigma: '), alignment=Qt.AlignRight
+            QLabel('Gaussian filter sigma (0 to ignore): '), alignment=Qt.AlignRight
         )
         gaussSigmaLayout.addWidget(self.sigmaGaussSpinbox)
 
@@ -2605,6 +2607,7 @@ class QDialogAutomaticThresholding(QBaseDialog):
         cancelButton.clicked.connect(self.close)
 
         self.setLayout(layout)
+        self.setFont(font)
     
     def help_cb(self):
         import webbrowser
