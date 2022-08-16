@@ -10115,7 +10115,7 @@ class guiWin(QMainWindow):
         if model_name == 'thresholding':
             autoThreshWin = apps.QDialogAutomaticThresholding(parent=self)
             autoThreshWin.exec_()
-            if win.cancel:
+            if autoThreshWin.cancel:
                 return
             
 
