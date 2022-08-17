@@ -76,6 +76,7 @@ from . import load, prompts, apps, workers, html_utils
 from . import core, myutils, dataPrep, widgets
 from . import measurements, printl
 from . import colors, filters
+from . import user_manual_url
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .myutils import exec_time, setupLogger
@@ -10118,7 +10119,6 @@ class guiWin(QMainWindow):
             if autoThreshWin.cancel:
                 return
             
-
         win = apps.QDialogModelParams(
             init_params,
             segment_params,
@@ -15299,11 +15299,15 @@ class guiWin(QMainWindow):
             select_folder = load.select_exp_folder()
             values = select_folder.get_values_segmGUI(exp_path)
             if not values:
+                href = f'<a href="{user_manual_url}">user manual</a>'
                 txt = html_utils.paragraph(
                     'The selected folder:<br><br>'
                     f'<code>{exp_path}</code><br><br>'
                     'is <b>not a valid folder</b>.<br><br>'
-                    'Select a folder that contains the Position_n folders'
+                    'Select a folder that contains the Position_n folders<br><br>'
+                    f'You can find <b>more information</b> in the {href} at the '
+                    'section "Create required data structure from '
+                    'microscopy file(s)"'
                 )
                 msg = widgets.myMessageBox()
                 msg.critical(
