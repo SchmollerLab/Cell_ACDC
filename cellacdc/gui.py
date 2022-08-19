@@ -462,8 +462,9 @@ class saveDataWorker(QObject):
                 if self.mainWin.isSegm3D:
                     fluo_data_3D = fluo_data
                     outCellsMaskZslice = lab[z_slice]
-                    if ROI_bkgrMask is not None:            
-                        ROI_bkgrMask_zSlice = ROI_bkgrMask[z_slice]
+                
+                if ROI_bkgrMask is not None:            
+                    ROI_bkgrMask_zSlice = ROI_bkgrMask[z_slice]
 
                 # how_3Dto2D = ['_maxProj', '_sumProj', '_zSlice']
                 fluo_data_projs.append(fluo_data_z_maxP)
