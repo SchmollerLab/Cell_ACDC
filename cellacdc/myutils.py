@@ -230,6 +230,11 @@ def getMemoryFootprint(files_list):
     ])
     return required_memory
 
+def get_logs_path():
+    user_path = pathlib.Path.home()
+    logs_path = os.path.join(user_path, '.acdc-logs')
+    return logs_path
+
 def setupLogger(module='gui'):
     logger = logging.getLogger(f'cellacdc-logger-{module}')
     logger.setLevel(logging.INFO)

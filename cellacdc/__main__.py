@@ -258,6 +258,7 @@ class mainWin(QMainWindow):
         helpMenu.addAction(self.aboutAction)
         helpMenu.addAction(self.citeAction)
         helpMenu.addAction(self.contributeAction)
+        helpMenu.addAction(self.showLogsAction)
 
         menuBar.addMenu(helpMenu)
 
@@ -290,6 +291,7 @@ class mainWin(QMainWindow):
         self.aboutAction = QAction('About Cell-ACDC')
         self.citeAction = QAction('Cite us...')
         self.contributeAction = QAction('Contribute...')
+        self.showLogsAction = QAction('Show log files...')
 
     def connectActions(self):
         self.alignAction.triggered.connect(self.launchAlignUtil)
@@ -315,6 +317,11 @@ class mainWin(QMainWindow):
             partial(QDesktopServices.openUrl, QUrl(cite_url))
         )
         self.recentPathsMenu.aboutToShow.connect(self.populateOpenRecent)
+        self.showLogsAction.triggered.connect(self.showLogFiles)
+    
+    def showLogFiles(self):
+        logs_path = myutils.get_logs_path()
+        myutils.showInExplorer(logs_path)
 
     def populateOpenRecent(self):
         # Step 0. Remove the old options from the menu
@@ -779,11 +786,6 @@ def run():
     win.setVersion(version)
     win.show()
     win.launchWelcomeGuide()
-    win.setWindowState(
-        win.windowState() & ~Qt.WindowMinimized | Qt.WindowActive
-    )
-    win.raise_()
-    win.activateWindow()
     try:
         win.welcomeGuide.showPage(win.welcomeGuide.welcomeItem)
     except AttributeError:
