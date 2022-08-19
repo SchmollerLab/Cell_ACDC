@@ -779,6 +779,11 @@ def run():
     win.setVersion(version)
     win.show()
     win.launchWelcomeGuide()
+    win.setWindowState(
+        win.windowState() & ~Qt.WindowMinimized | Qt.WindowActive
+    )
+    win.raise_()
+    win.activateWindow()
     try:
         win.welcomeGuide.showPage(win.welcomeGuide.welcomeItem)
     except AttributeError:

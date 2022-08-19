@@ -1685,6 +1685,7 @@ class guiWin(QMainWindow):
 
         # Edit toolbar
         editToolBar = QToolBar("Edit", self)
+        editToolBar.setContextMenuPolicy(Qt.PreventContextMenu)
         self.addToolBar(editToolBar)
 
         self.brushButton = QToolButton(self)
@@ -1752,7 +1753,7 @@ class guiWin(QMainWindow):
         self.LeftClickButtons.append(self.wandToolButton)
         self.functionsNotTested3D.append(self.wandToolButton)
 
-        self.labelRoiButton = QToolButton(self)
+        self.labelRoiButton = widgets.rightClickToolButton(parent=self)
         self.labelRoiButton.setIcon(QIcon(":label_roi.svg"))
         self.labelRoiButton.setCheckable(True)
         self.labelRoiButton.setShortcut('l')
@@ -2572,6 +2573,7 @@ class guiWin(QMainWindow):
         self.overlayButton.toggled.connect(self.overlay_cb)
         self.overlayLabelsButton.toggled.connect(self.overlayLabels_cb)
         self.overlayButton.sigRightClick.connect(self.showOverlayContextMenu)
+        self.labelRoiButton.sigRightClick.connect(self.showLabelRoiContextMenu)
         self.overlayLabelsButton.sigRightClick.connect(
             self.showOverlayLabelsContextMenu
         )
@@ -5224,7 +5226,7 @@ class guiWin(QMainWindow):
             else:
                 self.warnEditingWithCca_df('Add new ID with magic-wand')
         
-        # Label ROI mouse release --> label the ROI with self.labelRoiWorker
+        # Label ROI mouse release --> label the ROI with labelRoiWorker
         elif self.isMouseDragImg1 and self.labelRoiButton.isChecked():
             self.app.setOverrideCursor(Qt.WaitCursor)
             self.isMouseDragImg1 = False
@@ -5262,19 +5264,12 @@ class guiWin(QMainWindow):
             roiImg = imgData[self.labelRoiSlice]
 
             if self.labelRoiModel is None:
-                self.app.restoreOverrideCursor()
-                # Ask which model
-                win = apps.QDialogSelectModel(parent=self)
-                win.exec_()
-                self.app.setOverrideCursor(Qt.WaitCursor)
-                model_name = win.selectedModel
-                self.labelRoiModel = self.repeatSegm(
-                    model_name=model_name, askSegmParams=True,
-                    return_model=True
-                )
+                cancel = self.initLabelRoiModel()
+                if cancel:
+                    return
 
             self.app.restoreOverrideCursor() 
-            self.labelRoiWorker.start(roiImg)            
+            self.labelRoiActiveWorkers[-1].start(roiImg)            
             self.app.setOverrideCursor(Qt.WaitCursor)
             self.logger.info(
                 f'Magic labeller started on image ROI = {self.labelRoiSlice}...'
@@ -6531,7 +6526,7 @@ class guiWin(QMainWindow):
                 self.ax2.removeItem(item)
         
         for item in self.ax1.items:
-            if isinstance(item, pg.ROI):
+            if isinstance(item, pg.ROI) and item != self.labelRoiItem:
                 self.ax1.removeItem(item)
 
     def removeDelROI(self, event):
@@ -8424,6 +8419,12 @@ class guiWin(QMainWindow):
             self.uncheckLeftClickButtons(self.labelRoiButton)
             self.connectLeftClickButtons()
 
+            if self.labelRoiActiveWorkers:
+                lastActiveWorker = self.labelRoiActiveWorkers[-1]
+                self.labelRoiGarbageWorkers.append(lastActiveWorker)
+                lastActiveWorker.finished.emit()
+                self.logger.info('Collected garbage worker (magic labeller).')
+
             if self.isSegm3D:
                 self.labelRoiToolbar.setVisible(True)
 
@@ -8432,25 +8433,27 @@ class guiWin(QMainWindow):
             self.labelRoiMutex = QMutex()
             self.labelRoiWaitCond = QWaitCondition()
 
-            self.labelRoiWorker = workers.LabelRoiWorker(self)
+            labelRoiWorker = workers.LabelRoiWorker(self)
 
-            self.labelRoiWorker.moveToThread(self.labelRoiThread)
-            self.labelRoiWorker.finished.connect(
+            labelRoiWorker.moveToThread(self.labelRoiThread)
+            labelRoiWorker.finished.connect(
                 self.labelRoiThread.quit
             )
-            self.labelRoiWorker.finished.connect(
-                self.labelRoiWorker.deleteLater
+            labelRoiWorker.finished.connect(
+                labelRoiWorker.deleteLater
             )
             self.labelRoiThread.finished.connect(
                 self.labelRoiThread.deleteLater
             )
-            self.labelRoiWorker.sigLabellingDone.connect(self.labelRoiDone)
+            labelRoiWorker.finished.connect(self.labelRoiWorkerFinished)
+            labelRoiWorker.sigLabellingDone.connect(self.labelRoiDone)
 
-            self.labelRoiWorker.progress.connect(self.workerProgress)
+            labelRoiWorker.progress.connect(self.workerProgress)
 
-            self.labelRoiThread.started.connect(self.labelRoiWorker.run)
+            self.labelRoiActiveWorkers.append(labelRoiWorker)
+
+            self.labelRoiThread.started.connect(labelRoiWorker.run)
             self.labelRoiThread.start()
-            self.labelRoiModel = None
 
             # Add the rectROI to ax1
             self.ax1.addItem(self.labelRoiItem)
@@ -8458,14 +8461,18 @@ class guiWin(QMainWindow):
             if self.isSegm3D:
                 self.labelRoiToolbar.setVisible(False)
             
-            self.labelRoiWorker.stop()
+            for worker in self.labelRoiActiveWorkers:
+                worker.stop()
             while self.app.overrideCursor() is not None:
                 self.app.restoreOverrideCursor()
             
             self.labelRoiItem.setPos((0,0))
             self.labelRoiItem.setSize((0,0))
             self.ax1.removeItem(self.labelRoiItem)
-            self.logger.info('Magic labeller closed.')
+    
+    def labelRoiWorkerFinished(self):
+        self.logger.info('Magic labeller closed.')
+        worker = self.labelRoiActiveWorkers.pop(-1)
     
     def labelRoiDone(self, roiLab):
         roiLab = skimage.segmentation.clear_border(roiLab, buffer_size=1)
@@ -8804,7 +8811,7 @@ class guiWin(QMainWindow):
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
             posData = self.data[self.pos_i]
-            printl(self.regionPropsToSave)
+            printl(self.labelRoiItem in self.ax1.items)
             if self.debug:
                 raise FileNotFoundError
                 posData = self.data[self.pos_i]
@@ -11494,8 +11501,10 @@ class guiWin(QMainWindow):
 
         self.segment2D_kwargs = None
         self.segmModelName = None
-
+        self.labelRoiModel = None
         self.autoSegmDoNotAskAgain = False
+        self.labelRoiGarbageWorkers = []
+        self.labelRoiActiveWorkers = []
 
         self.clickedOnBud = False
         self.postProcessSegmWin = None
@@ -13445,6 +13454,29 @@ class guiWin(QMainWindow):
             for items in self.overlayLayersItems.values():
                 imageItem = items[0]
                 imageItem.clear()
+    
+    def showLabelRoiContextMenu(self, event):
+        menu = QMenu(self.labelRoiButton)
+        action = QAction('Re-initialize magic labeller model...')
+        action.triggered.connect(self.initLabelRoiModel)
+        menu.addAction(action)
+        menu.exec_(QCursor.pos())
+    
+    def initLabelRoiModel(self):
+        self.app.restoreOverrideCursor()
+        # Ask which model
+        win = apps.QDialogSelectModel(parent=self)
+        win.exec_()
+        if win.cancel:
+            self.logger.info('Magic labeller aborted.')
+            return True
+        self.app.setOverrideCursor(Qt.WaitCursor)
+        model_name = win.selectedModel
+        self.labelRoiModel = self.repeatSegm(
+            model_name=model_name, askSegmParams=True,
+            return_model=True
+        )
+        return False
 
     def showOverlayContextMenu(self, event):
         if not self.overlayButton.isChecked():
