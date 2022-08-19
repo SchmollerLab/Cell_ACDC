@@ -534,13 +534,15 @@ class segmWin(QMainWindow):
                 self.close()
                 return
         
-        win = apps.QDialogAutomaticThresholding(parent=self)
-        win.exec_()
-        if win.cancel:
-            return
-        self.segment2D_kwargs = win.segment_kwargs
-
         model_name = win.selectedModel
+
+        if model_name == 'thresholding':
+            win = apps.QDialogAutomaticThresholding(parent=self)
+            win.exec_()
+            if win.cancel:
+                return
+            self.segment2D_kwargs = win.segment_kwargs
+
         self.logger.info(f'Importing {model_name}...')
         self.downloadWin = apps.downloadModel(model_name, parent=self)
         self.downloadWin.download()
