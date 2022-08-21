@@ -15111,7 +15111,48 @@ class guiWin(QMainWindow):
     def newFile(self):
         self.newSegmEndName = ''
         self.isNewFile = True
-        self._openFolder()
+        msg = widgets.myMessageBox(parent=self, showCentered=False)
+        msg.setWindowTitle('File or folder?')
+        msg.addText(html_utils.paragraph(f"""
+            Do you want to load an <b>image file</b> or <b>Position 
+            folder(s)</b>?
+        """))
+        loadPosButton = QPushButton('Load Position folder', msg)
+        loadPosButton.setIcon(QIcon(":folder-open.svg"))
+        loadFileButton = QPushButton('Load image file', msg)
+        loadFileButton.setIcon(QIcon(":image.svg"))
+        helpButton = widgets.helpPushButton('Help...')
+        msg.addButton(helpButton)
+        helpButton.disconnect()
+        helpButton.clicked.connect(self.helpNewFile)
+        msg.addCancelButton(connect=True)
+        msg.addButton(loadFileButton)
+        msg.addButton(loadPosButton)
+        loadPosButton.setDefault(True)
+        msg.exec_()
+        if msg.cancel:
+            return
+        
+        if msg.clickedButton == loadPosButton:
+            self._openFolder()
+        else:
+            self._openFile()
+    
+    def helpNewFile(self):
+        msg = widgets.myMessageBox(showCentered=False)
+        href = f'<a href="{user_manual_url}">user manual</a>'
+        txt = html_utils.paragraph(f"""
+            Cell-ACDC can open both a single image file or files structured 
+            into Position folders.<br><br>
+            If you are just testing out you can load a single image file, but 
+            in general <b>we reccommend structuring your data into Position 
+            folders.</b><br><br>
+            More info about Position folders in the {href} at the section 
+            called "Create required data structure from microscopy file(s)".
+        """)
+        msg.information(
+            self, 'Help on Position folders', txt
+        )
 
     def openFile(self, checked=False, file_path=None):
         self.logger.info(f'Opening FILE "{file_path}"')
