@@ -361,7 +361,9 @@ class saveDataWorker(QObject):
             how_3Dto2D, _ = measurements.get_how_3Dto2D(
                 is_3D, self.mainWin.isSegm3D
             )
-            
+        else:
+            how_3Dto2D = []
+
         # Defined in function setMetricsFunc
         metrics_func = self.mainWin.metrics_func
         custom_func_dict = self.mainWin.custom_func_dict
@@ -413,6 +415,24 @@ class saveDataWorker(QObject):
                         ROI_bkgrMask[yl:yl+h, xl:xl+w] = True
         else:
             ROI_bkgrMask = None
+        
+        for i, obj in enumerate(rp):
+            IDs[i] = obj.label
+            # Calc volume
+            vol_vox = None
+            vol_fl = None
+            if 'cell_vol_vox' in self.mainWin.sizeMetricsToSave:
+                IDs_vol_vox[i] = obj.vol_vox
+                IDs_vol_fl[i] = obj.vol_fl
+                vol_vox = obj.vol_vox
+                vol_fl = obj.vol_fl
+                if self.mainWin.isSegm3D:
+                    IDs_vol_vox_3D[i] = obj.area
+                    IDs_vol_fl_3D[i] = obj.area*vox_to_fl_3D
+
+            if 'cell_area_pxl' in self.mainWin.sizeMetricsToSave:
+                IDs_area_pxl[i] = obj.area
+                IDs_area_um2[i] = obj.area*yx_pxl_to_um2
 
         # Iteare fluo channels and get 2D data from 3D if needed
         for chName, filename in zip(posData.loadedChNames, fluo_keys):
@@ -572,22 +592,6 @@ class saveDataWorker(QObject):
                     obj2Dslice = obj.slice
                     obj2Dproj = obj.image
                     obj2DzImage = obj.image # self.mainWin.getObjImage(obj.image, obj.bbox)
-                IDs[i] = obj.label
-                # Calc volume
-                vol_vox = None
-                vol_fl = None
-                if 'cell_vol_vox' in self.mainWin.sizeMetricsToSave:
-                    IDs_vol_vox[i] = obj.vol_vox
-                    IDs_vol_fl[i] = obj.vol_fl
-                    vol_vox = obj.vol_vox
-                    vol_fl = obj.vol_fl
-                    if self.mainWin.isSegm3D:
-                        IDs_vol_vox_3D[i] = obj.area
-                        IDs_vol_fl_3D[i] = obj.area*vox_to_fl_3D
-
-                if 'cell_area_pxl' in self.mainWin.sizeMetricsToSave:
-                    IDs_area_pxl[i] = obj.area
-                    IDs_area_um2[i] = obj.area*yx_pxl_to_um2
 
                 # Iterate method of 3D to 2D
                 # '_maxProj', '_meanProj', '_zSlice', '_3D'
@@ -16170,7 +16174,7 @@ class guiWin(QMainWindow):
                 acdc_df = data_dict['acdc_df']
                 if acdc_df is None:
                     continue
-
+                
                 acdc_df = acdc_df.drop(columns=delCols, errors='ignore')
                 for col_rp in delRps:
                     drop_df_rp = acdc_df.filter(regex=fr'{col_rp}.*', axis=1)
