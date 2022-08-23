@@ -355,12 +355,13 @@ class saveDataWorker(QObject):
 
         # Initialize fluo metrics arrays
         fluo_keys = list(posData.fluo_data_dict.keys())
-        fluo_data = posData.fluo_data_dict[fluo_keys[0]][frame_i]
-        is_3D = fluo_data.ndim == 3
-        how_3Dto2D, _ = measurements.get_how_3Dto2D(is_3D, self.mainWin.isSegm3D)
-        n = len(how_3Dto2D)
-        numFluoChannels = len(fluo_keys)
-
+        if fluo_keys:
+            fluo_data = posData.fluo_data_dict[fluo_keys[0]][frame_i]
+            is_3D = fluo_data.ndim == 3
+            how_3Dto2D, _ = measurements.get_how_3Dto2D(
+                is_3D, self.mainWin.isSegm3D
+            )
+            
         # Defined in function setMetricsFunc
         metrics_func = self.mainWin.metrics_func
         custom_func_dict = self.mainWin.custom_func_dict
@@ -10664,7 +10665,8 @@ class guiWin(QMainWindow):
 
         selectedSegmEndName = ''
         self.newSegmEndName = ''
-        if self.isNewFile:
+        if self.isNewFile or not existingSegmEndNames:
+            self.isNewFile = True
             # Remove the 'segm_' part to allow filenameDialog to check if
             # a new file is existing (since we only ask for the part after
             # 'segm_')
@@ -10674,7 +10676,7 @@ class guiWin(QMainWindow):
             ]
             win = apps.filenameDialog(
                 basename=f'{posData.basename}segm',
-                hintText='Insert a <b>filename</b> for the segmentation file:<br>',
+                hintText='Insert a <b>filename</b> for the segmentation file:',
                 existingNames=existingEndNames
             )
             win.exec_()
@@ -10685,14 +10687,18 @@ class guiWin(QMainWindow):
         else:
             if len(existingSegmEndNames) > 1:
                 win = apps.QDialogMultiSegmNpz(
-                    existingSegmEndNames, self.exp_path, parent=self
+                    existingSegmEndNames, self.exp_path, parent=self,
+                    addNewFileButton=True, basename=posData.basename
                 )
                 win.exec_()
                 if win.cancel:
                     self.loadingDataAborted()
                     return
-
-                selectedSegmEndName = win.selectedItemText
+                if win.newSegmEndName is None:
+                    selectedSegmEndName = win.selectedItemText
+                else:
+                    self.newSegmEndName = win.newSegmEndName
+                    self.isNewFile = True
             elif len(existingSegmEndNames) == 1:
                 selectedSegmEndName = list(existingSegmEndNames)[0]
 

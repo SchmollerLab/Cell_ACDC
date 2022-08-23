@@ -6746,14 +6746,25 @@ class QDialogZsliceAbsent(QDialog):
             self.loop.exit()
 
 class QDialogMultiSegmNpz(QDialog):
-    def __init__(self, images_ls, parent_path, parent=None):
+    def __init__(
+            self, images_ls, parent_path, parent=None, 
+            addNewFileButton=False, basename=''
+        ):
         self.cancel = True
         self.selectedItemText = ''
         self.selectedItemIdx = None
         self.removeOthers = False
         self.okAllPos = False
-
+        self.newSegmEndName = None
+        self.basename = basename
         images_ls = sorted(images_ls, key=len)
+
+        # Remove the 'segm_' part to allow filenameDialog to check if
+        # a new file is existing (since we only ask for the part after
+        # 'segm_')
+        self.existingEndNames = [
+            n.replace('segm', '', 1).replace('_', '', 1) for n in images_ls
+        ]
 
         self.images_ls = images_ls
         self.parent_path = parent_path
@@ -6797,19 +6808,19 @@ class QDialogMultiSegmNpz(QDialog):
         self.listWidget = listWidget
 
         okButton = widgets.okPushButton(' Load selected ')
-        okAndRemoveButton = QPushButton(
-            'Load selected and delete the other files'
-        )
-        okAndRemoveButton.setIcon(QIcon(':bin.svg'))
         txt = 'Reveal in Finder...' if is_mac else 'Show in Explorer...'
         showInFileManagerButton = widgets.showInFileManagerButton(txt)
         cancelButton = widgets.cancelPushButton(' Cancel ')
 
+        if addNewFileButton:
+            newFileButton = widgets.newFilePushButton('New file...')
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.addWidget(showInFileManagerButton)
         buttonsLayout.addSpacing(20)
+        if addNewFileButton:
+            buttonsLayout.addWidget(newFileButton)
         buttonsLayout.addWidget(okButton)
 
         buttonsLayout.setContentsMargins(0, 10, 0, 10)
@@ -6825,11 +6836,11 @@ class QDialogMultiSegmNpz(QDialog):
         self.setLayout(mainLayout)
 
         self.okButton = okButton
-        self.okAndRemoveButton = okAndRemoveButton
 
         # Connect events
         okButton.clicked.connect(self.ok_cb)
-        okAndRemoveButton.clicked.connect(self.ok_cb)
+        if addNewFileButton:
+            newFileButton.clicked.connect(self.newFile_cb)
         cancelButton.clicked.connect(self.close)
         showInFileManagerButton.clicked.connect(self.showInFileManager)
     
@@ -6838,6 +6849,19 @@ class QDialogMultiSegmNpz(QDialog):
 
     def showInFileManager(self, checked=True):
         myutils.showInExplorer(self.parent_path)
+    
+    def newFile_cb(self):
+        win = filenameDialog(
+            basename=f'{self.basename}segm',
+            hintText='Insert a <b>filename</b> for the segmentation file:',
+            existingNames=self.existingEndNames
+        )
+        win.exec_()
+        if win.cancel:
+            return
+        self.cancel = False
+        self.newSegmEndName = win.entryText
+        self.close()
 
     def ok_cb(self, event):
         self.cancel = False

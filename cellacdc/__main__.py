@@ -672,9 +672,8 @@ class mainWin(QMainWindow):
             # self.concatWin.setWindowState(Qt.WindowNoState)
             self.concatWin.setWindowState(Qt.WindowActive)
             self.concatWin.raise_()
-
-    def show(self):
-        QMainWindow.show(self)
+    
+    def showEvent(self, a0: QtGui.QShowEvent) -> None:
         h = self.dataPrepButton.geometry().height()
         f = 1.8
         self.dataStructButton.setMinimumHeight(int(h*f))
@@ -687,6 +686,7 @@ class mainWin(QMainWindow):
         # self.closeButton.setIconSize(QSize(iconWidth, iconWidth))
         self.setColorsAndText()
         self.readSettings()
+        return super().showEvent(a0)
 
     def saveWindowGeometry(self):
         settings = QSettings('schmollerlab', 'acdc_main')
@@ -797,7 +797,6 @@ def run():
     print('NOTE: If application is not visible, it is probably minimized\n'
           'or behind some other open window.')
     print('----------------------------------------------')
-    # win.raise_()
     sys.exit(app.exec_())
 
 def main():
