@@ -6276,7 +6276,6 @@ class manualSeparateGui(QMainWindow):
         xi, yi = scipy.interpolate.splev(self.hoverLinSpace, tck)
         return xi, yi
 
-
     def gui_mousePressEventImg(self, event):
         right_click = event.button() == Qt.MouseButton.RightButton
         left_click = event.button() == Qt.MouseButton.LeftButton

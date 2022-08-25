@@ -8,6 +8,7 @@
 
 # TODO:
 print('Importing GUI modules...')
+from gc import garbage
 import sys
 import os
 import shutil
@@ -59,7 +60,7 @@ from PyQt5.QtWidgets import (
     QMainWindow, QMenu, QToolBar, QGroupBox, QGridLayout,
     QScrollBar, QCheckBox, QToolButton, QSpinBox, QGroupBox,
     QComboBox, QDial, QButtonGroup, QActionGroup,
-    QShortcut, QFileDialog, QDoubleSpinBox,
+    QShortcut, QFileDialog, QDoubleSpinBox, QWidgetAction,
     QAbstractSlider, QMessageBox, QWidget, QDockWidget,
     QDockWidget, QGridLayout, QSizePolicy, QVBoxLayout
 )
@@ -1285,6 +1286,11 @@ class guiWin(QMainWindow):
         self.gui_createLeftSideWidgets()
         self.gui_createPropsDockWidget()
 
+        self.autoSaveGarbageWorkers = []
+        self.autoSaveActiveWorkers = []
+
+        self.gui_createAutoSaveWorker()
+
         self.gui_connectActions()
         self.gui_createStatusBar()
 
@@ -1451,6 +1457,7 @@ class guiWin(QMainWindow):
 
     def gui_createMenuBar(self):
         menuBar = self.menuBar()
+
         # File menu
         fileMenu = QMenu("&File", self)
         menuBar.addMenu(fileMenu)
@@ -1462,6 +1469,7 @@ class guiWin(QMainWindow):
         fileMenu.addAction(self.saveAction)
         fileMenu.addAction(self.saveAsAction)
         fileMenu.addAction(self.quickSaveAction)
+        fileMenu.addAction(self.autoSaveAction)
         fileMenu.addAction(self.loadFluoAction)
         # Separator
         fileMenu.addSeparator()
@@ -1561,6 +1569,7 @@ class guiWin(QMainWindow):
         fileToolBar = self.addToolBar("File")
         # fileToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         fileToolBar.setMovable(False)
+
         fileToolBar.addAction(self.newAction)
         fileToolBar.addAction(self.openAction)
         fileToolBar.addAction(self.saveAction)
@@ -2045,6 +2054,39 @@ class guiWin(QMainWindow):
 
         self.lazyLoaderThread.started.connect(self.lazyLoader.run)
         self.lazyLoaderThread.start()
+    
+    def gui_createAutoSaveWorker(self):
+        if self.autoSaveActiveWorkers:
+            garbage = self.autoSaveActiveWorkers[-1]
+            self.autoSaveGarbageWorkers.append(garbage)
+            worker = garbage[0]
+            worker.finished.emit()
+       
+        autoSaveThread = QThread()
+        self.autoSaveMutex = QMutex()
+        self.autoSaveWaitCond = QWaitCondition()
+
+        autoSaveWorker = workers.AutoSaveWorker(
+            self.autoSaveMutex, self.autoSaveWaitCond
+        )
+
+        autoSaveWorker.moveToThread(autoSaveThread)
+        autoSaveWorker.finished.connect(autoSaveThread.quit)
+        autoSaveWorker.finished.connect(autoSaveWorker.deleteLater)
+        autoSaveThread.finished.connect(autoSaveThread.deleteLater)
+
+        autoSaveWorker.finished.connect(self.autoSaveWorkerClosed)
+        
+        autoSaveThread.started.connect(autoSaveWorker.run)
+        autoSaveThread.start()
+
+        self.autoSaveActiveWorkers.append((autoSaveWorker, autoSaveThread))
+
+        self.logger.info('Autosaving worker started.')
+    
+    def autoSaveWorkerClosed(self):
+        self.logger.info('Autosaving worker closed.')
+        self.autoSaveActiveWorkers.pop(-1)
 
     def gui_createMainLayout(self):
         mainLayout = QGridLayout()
@@ -2222,6 +2264,9 @@ class guiWin(QMainWindow):
         )
         self.saveAction = QAction(QIcon(":file-save.svg"), "Save", self)
         self.saveAsAction = QAction("Save as...", self)
+        self.autoSaveAction = QAction('Autosave', self)
+        self.autoSaveAction.setCheckable(True)
+        self.autoSaveAction.setChecked(True)
         self.quickSaveAction = QAction("Save only segm. file", self)
         self.loadFluoAction = QAction("Load fluorescent images...", self)
         # self.reloadAction = QAction(
@@ -8441,15 +8486,12 @@ class guiWin(QMainWindow):
             labelRoiWorker = workers.LabelRoiWorker(self)
 
             labelRoiWorker.moveToThread(self.labelRoiThread)
-            labelRoiWorker.finished.connect(
-                self.labelRoiThread.quit
-            )
-            labelRoiWorker.finished.connect(
-                labelRoiWorker.deleteLater
-            )
+            labelRoiWorker.finished.connect(self.labelRoiThread.quit)
+            labelRoiWorker.finished.connect(labelRoiWorker.deleteLater)
             self.labelRoiThread.finished.connect(
                 self.labelRoiThread.deleteLater
             )
+
             labelRoiWorker.finished.connect(self.labelRoiWorkerFinished)
             labelRoiWorker.sigLabellingDone.connect(self.labelRoiDone)
 
@@ -16723,6 +16765,10 @@ class guiWin(QMainWindow):
             self.lazyLoader.exit = True
             self.lazyLoaderWaitCond.wakeAll()
             self.waitReadH5cond.wakeAll()
+        
+        for worker, thread in self.autoSaveActiveWorkers:
+            worker.stop()
+            worker.finished.emit()
 
         self.saveWindowGeometry()
         # self.saveCustomAnnot()

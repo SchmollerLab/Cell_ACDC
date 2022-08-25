@@ -121,7 +121,44 @@ class LabelRoiWorker(QObject):
                 self.sigLabellingDone.emit(lab)
             self.pause()
         self.finished.emit()
-            
+
+class AutoSaveWorker(QObject):
+    finished = pyqtSignal()
+    critical = pyqtSignal(object)
+    progress = pyqtSignal(str, object)
+
+    def __init__(self, mutex, waitCond):
+        QObject.__init__(self)
+        self.logger = workerLogger(self.progress)
+        self.mutex = mutex
+        self.waitCond = waitCond
+        self.exit = False
+        self.started = False
+    
+    def pause(self):
+        self.logger.log('Autosaving is idle.')
+        self.mutex.lock()
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+    
+    def start(self):
+        self.started = True
+        self.waitCond.wakeAll()
+    
+    def stop(self):
+        self.exit = True
+        self.start()
+    
+    @worker_exception_handler
+    def run(self):
+        while True:
+            if self.exit:
+                self.logger.log('Closing autosaving worker...')
+                break
+            elif self.started:
+                self.logger.log('Autosaving...')
+            self.pause()
+        self.finished.emit()
 
 class segmWorker(QObject):
     finished = pyqtSignal(np.ndarray, float)
