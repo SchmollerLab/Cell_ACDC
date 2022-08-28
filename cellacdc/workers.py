@@ -1,3 +1,4 @@
+from distutils.log import error
 import sys
 import os
 import time
@@ -12,6 +13,8 @@ import traceback
 
 import skimage.io
 import skimage.measure
+
+import queue
 
 from tifffile.tifffile import TiffFile
 
@@ -65,6 +68,7 @@ class signals(QObject):
     sigWarnMismatchSegmDataShape = pyqtSignal(object)
     sigErrorsReport = pyqtSignal(dict, dict, dict)
     sigMissingAcdcAnnot = pyqtSignal(dict)
+    sigRecovery = pyqtSignal(object)
 
 class LabelRoiWorker(QObject):
     finished = pyqtSignal()
@@ -100,7 +104,7 @@ class LabelRoiWorker(QObject):
     def stop(self):
         self.logger.log('Magic labeller backend process done. Closing it...')
         self.exit = True
-        self.restart(log=False)
+        self.waitCond.wakeAll()
     
     @worker_exception_handler
     def run(self):
@@ -119,11 +123,13 @@ class LabelRoiWorker(QObject):
                         max_elongation=self.Gui.maxElongation
                     )
                 self.sigLabellingDone.emit(lab)
+                self.started = False
             self.pause()
         self.finished.emit()
 
 class AutoSaveWorker(QObject):
     finished = pyqtSignal()
+    sigDone = pyqtSignal()
     critical = pyqtSignal(object)
     progress = pyqtSignal(str, object)
 
@@ -133,7 +139,7 @@ class AutoSaveWorker(QObject):
         self.mutex = mutex
         self.waitCond = waitCond
         self.exit = False
-        self.started = False
+        self.dataQ = queue.Queue()
     
     def pause(self):
         self.logger.log('Autosaving is idle.')
@@ -141,13 +147,14 @@ class AutoSaveWorker(QObject):
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
     
-    def start(self):
-        self.started = True
-        self.waitCond.wakeAll()
+    def enqueue(self, data):
+        self.dataQ.put(data)
+        if self.dataQ.qsize() == 1:
+            self.waitCond.wakeAll()
     
     def stop(self):
         self.exit = True
-        self.start()
+        self.waitCond.wakeAll()
     
     @worker_exception_handler
     def run(self):
@@ -155,10 +162,83 @@ class AutoSaveWorker(QObject):
             if self.exit:
                 self.logger.log('Closing autosaving worker...')
                 break
-            elif self.started:
+            elif not self.dataQ.empty():
                 self.logger.log('Autosaving...')
-            self.pause()
+                data = self.dataQ.get()
+                try:
+                    self.saveData(data)
+                except Exception as e:
+                    error = traceback.format_exc()
+                    print('*'*40)
+                    self.logger.log(error)
+                    print('='*40)
+                if self.dataQ.empty():
+                    self.sigDone.emit()
+            else:
+                self.pause()
         self.finished.emit()
+    
+    def getLastTrackedFrame(self, posData):
+        last_tracked_i = 0
+        for frame_i, data_dict in enumerate(posData.allData_li):
+            lab = data_dict['labels']
+            if lab is None:
+                frame_i -= 1
+                break
+        if frame_i > 0:
+            return frame_i
+        else:
+            return last_tracked_i
+    
+    def saveData(self, data):
+        for posData in data:
+            posData.setTempPaths()
+            segm_npz_path = posData.segm_npz_temp_path
+            acdc_output_csv_path = posData.acdc_output_temp_csv_path
+
+            end_i = self.getLastTrackedFrame(posData)
+
+            if end_i < len(posData.segm_data):
+                saved_segm_data = posData.segm_data
+            else:
+                frame_shape = posData.segm_data.shape[1:]
+                segm_shape = (end_i+1, *frame_shape)
+                saved_segm_data = np.zeros(segm_shape, dtype=np.uint16)
+            
+            keys = []
+            acdc_df_li = []
+
+            for frame_i, data_dict in enumerate(posData.allData_li[:end_i+1]):
+                # Build saved_segm_data
+                lab = data_dict['labels']
+                posData.lab = lab
+                if lab is None:
+                    break
+
+                if posData.SizeT > 1:
+                    saved_segm_data[frame_i] = lab
+                else:
+                    saved_segm_data = lab
+
+                acdc_df = data_dict['acdc_df']
+
+                if acdc_df is None:
+                    continue
+
+                if not np.any(lab):
+                    continue
+
+                acdc_df = load.pd_bool_to_int(acdc_df, inplace=False)
+                acdc_df_li.append(acdc_df)
+                key = (frame_i, posData.TimeIncrement*frame_i)
+                keys.append(key)
+
+            np.savez_compressed(segm_npz_path, np.squeeze(saved_segm_data))
+            all_frames_acdc_df = pd.concat(
+                acdc_df_li, keys=keys,
+                names=['frame_i', 'time_seconds', 'Cell_ID']
+            )
+            all_frames_acdc_df.to_csv(acdc_output_csv_path)
 
 class segmWorker(QObject):
     finished = pyqtSignal(np.ndarray, float)
@@ -593,6 +673,9 @@ class loadDataWorker(QObject):
         self.mutex = self.mainWin.loadDataMutex
         self.waitCond = self.mainWin.loadDataWaitCond
         self.firstPosData = firstPosData
+        self.abort = False
+        self.loadUnsaved = False
+        self.recoveryAsked = False
 
     def pause(self):
         self.mutex.lock()
@@ -741,6 +824,26 @@ class loadDataWorker(QObject):
             elif abort:
                 data = 'abort'
                 break
+
+            posData.setTempPaths(createFolder=False)
+            if os.path.exists(posData.segm_npz_temp_path):
+                if not self.recoveryAsked:
+                    self.mutex.lock()
+                    self.signals.sigRecovery.emit(posData)
+                    self.waitCond.wait(self.mutex)
+                    self.mutex.unlock()
+                    self.recoveryAsked = True
+                    if self.abort:
+                        data = 'abort'
+                        break
+                if self.loadUnsaved:
+                    self.logger.log('Loading unsaved data...')
+                    posData.segm_npz_path = posData.segm_npz_temp_path
+                    posData.segm_data = np.load(posData.segm_npz_path)['arr_0']
+                    acdc_df_temp_path = posData.acdc_output_temp_csv_path
+                    if os.path.exists(acdc_df_temp_path):
+                        posData.acdc_output_csv_path = acdc_df_temp_path
+                        posData.loadAcdcDf(acdc_df_temp_path)
 
             # Allow single 2D/3D image
             if posData.SizeT == 1:

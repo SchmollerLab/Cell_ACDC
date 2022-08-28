@@ -495,16 +495,7 @@ class loadData:
                 self.TifPathFound = True
             elif load_acdc_df and is_acdc_df_file and not create_new_segm:
                 self.acdc_df_found = True
-                acdc_df = pd.read_csv(filePath)
-                try:
-                    acdc_df_drop_cca = acdc_df.drop(columns=cca_df_colnames).fillna(0)
-                    acdc_df[acdc_df_drop_cca.columns] = acdc_df_drop_cca
-                except KeyError:
-                    pass
-                acdc_df = acdc_df.set_index(['frame_i', 'Cell_ID'])
-                acdc_df = pd_bool_to_int(acdc_df, acdc_df_bool_cols, inplace=True)
-                acdc_df = pd_int_to_bool(acdc_df, acdc_df_bool_cols)
-                self.acdc_df = acdc_df
+                self.loadAcdcDf(filePath)
             elif load_shifts and file.endswith('align_shift.npy'):
                 self.shiftsFound = True
                 self.loaded_shifts = np.load(filePath)
@@ -582,6 +573,18 @@ class loadData:
 
         self.getCustomAnnotatedIDs()
         self.setNotFoundData()
+    
+    def loadAcdcDf(self, filePath):
+        acdc_df = pd.read_csv(filePath)
+        try:
+            acdc_df_drop_cca = acdc_df.drop(columns=cca_df_colnames).fillna(0)
+            acdc_df[acdc_df_drop_cca.columns] = acdc_df_drop_cca
+        except KeyError:
+            pass
+        acdc_df = acdc_df.set_index(['frame_i', 'Cell_ID'])
+        acdc_df = pd_bool_to_int(acdc_df, acdc_df_bool_cols, inplace=True)
+        acdc_df = pd_int_to_bool(acdc_df, acdc_df_bool_cols)
+        self.acdc_df = acdc_df
 
     def askBooleanSegm(self):
         segmFilename = os.path.basename(self.segm_npz_path)
@@ -1003,6 +1006,18 @@ class loadData:
 
         with open(self.segm_hyperparams_ini_path, 'w') as configfile:
             cp.write(configfile)
+    
+    def setTempPaths(self, createFolder=True):
+        temp_folder = os.path.join(self.images_path, '.recovery')
+        self.recoveryFolderPath = temp_folder
+        if not os.path.exists(temp_folder) and createFolder:
+            os.mkdir(temp_folder)
+        segm_filename = os.path.basename(self.segm_npz_path)
+        acdc_df_filename = os.path.basename(self.acdc_output_csv_path)
+        self.segm_npz_temp_path = os.path.join(temp_folder, segm_filename)
+        self.acdc_output_temp_csv_path = os.path.join(
+            temp_folder, acdc_df_filename
+        )
 
     def buildPaths(self):
         if self.basename.endswith('_'):

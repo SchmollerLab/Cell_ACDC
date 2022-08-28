@@ -6862,7 +6862,7 @@ class QDialogMultiSegmNpz(QDialog):
         self.newSegmEndName = win.entryText
         self.close()
 
-    def ok_cb(self, event):
+    def ok_cb(self, event=None):
         self.cancel = False
         self.selectedItemText = self.listWidget.selectedItems()[0].text()
         self.selectedItemIdx = self.items.index(self.selectedItemText)

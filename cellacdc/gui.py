@@ -56,11 +56,10 @@ from PyQt5.QtGui import (
     QPixmap, QColor
 )
 from PyQt5.QtWidgets import (
-    QAction, QApplication, QLabel, QPushButton, QHBoxLayout,
+    QAction, QLabel, QPushButton, QHBoxLayout,
     QMainWindow, QMenu, QToolBar, QGroupBox, QGridLayout,
     QScrollBar, QCheckBox, QToolButton, QSpinBox, QGroupBox,
-    QComboBox, QDial, QButtonGroup, QActionGroup,
-    QShortcut, QFileDialog, QDoubleSpinBox, QWidgetAction,
+    QComboBox, QButtonGroup, QActionGroup, QFileDialog,
     QAbstractSlider, QMessageBox, QWidget, QDockWidget,
     QDockWidget, QGridLayout, QSizePolicy, QVBoxLayout
 )
@@ -1088,6 +1087,10 @@ class saveDataWorker(QObject):
                 # Save segmentation file
                 np.savez_compressed(segm_npz_path, np.squeeze(saved_segm_data))
                 posData.segm_data = saved_segm_data
+                try:
+                    os.remove(posData.segm_npz_temp_path)
+                except Exception as e:
+                    pass
 
                 if posData.segmInfo_df is not None:
                     try:
@@ -1136,6 +1139,10 @@ class saveDataWorker(QObject):
                         # Save segmentation metadata
                         all_frames_acdc_df.to_csv(acdc_output_csv_path)
                         posData.acdc_df = all_frames_acdc_df
+                        try:
+                            os.remove(posData.acdc_output_temp_csv_path)
+                        except Exception as e:
+                            pass
                     except PermissionError:
                         err_msg = (
                             'The below file is open in another app '
@@ -1156,6 +1163,11 @@ class saveDataWorker(QObject):
                         self.critical.emit(traceback.format_exc())
                         self.waitCond.wait(self.mutex)
                         self.mutex.unlock()
+
+                try:
+                    shutil.rmtree(posData.recoveryFolderPath)
+                except Exception as e:
+                    pass
 
                 with open(last_tracked_i_path, 'w+') as txt:
                     txt.write(str(frame_i))
@@ -2060,7 +2072,7 @@ class guiWin(QMainWindow):
             garbage = self.autoSaveActiveWorkers[-1]
             self.autoSaveGarbageWorkers.append(garbage)
             worker = garbage[0]
-            worker.finished.emit()
+            worker.stop()
        
         autoSaveThread = QThread()
         self.autoSaveMutex = QMutex()
@@ -2075,6 +2087,8 @@ class guiWin(QMainWindow):
         autoSaveWorker.finished.connect(autoSaveWorker.deleteLater)
         autoSaveThread.finished.connect(autoSaveThread.deleteLater)
 
+        autoSaveWorker.sigDone.connect(self.autoSaveWorkerDone)
+        autoSaveWorker.progress.connect(self.workerProgress)
         autoSaveWorker.finished.connect(self.autoSaveWorkerClosed)
         
         autoSaveThread.started.connect(autoSaveWorker.run)
@@ -2084,9 +2098,13 @@ class guiWin(QMainWindow):
 
         self.logger.info('Autosaving worker started.')
     
+    def autoSaveWorkerDone(self):
+        self.setImageNameText()
+    
     def autoSaveWorkerClosed(self):
-        self.logger.info('Autosaving worker closed.')
-        self.autoSaveActiveWorkers.pop(-1)
+        if len(self.autoSaveActiveWorkers) > 1:
+            self.logger.info('Autosaving worker closed.')
+            self.autoSaveActiveWorkers.pop(-1)
 
     def gui_createMainLayout(self):
         mainLayout = QGridLayout()
@@ -2587,6 +2605,7 @@ class guiWin(QMainWindow):
         self.saveAction.triggered.connect(self.saveData)
         self.saveAsAction.triggered.connect(self.saveAsData)
         self.quickSaveAction.triggered.connect(self.quickSave)
+        self.autoSaveAction.toggled.connect(self.autoSaveToggled)
         self.showInExplorerAction.triggered.connect(self.showInExplorer_cb)
         self.exitAction.triggered.connect(self.close)
         self.undoAction.triggered.connect(self.undo)
@@ -3686,6 +3705,7 @@ class guiWin(QMainWindow):
                 for i in range(posData.frame_i+1, endFrame_i+1):
                     lab = posData.allData_li[i]['labels']
                     if lab is None:
+                        self.enqAutosave()
                         break
 
                     lab[lab==delID] = 0
@@ -3695,7 +3715,7 @@ class guiWin(QMainWindow):
                     # Get the rest of the stored metadata based on the new lab
                     posData.frame_i = i
                     self.get_data()
-                    self.store_data()
+                    self.store_data(autosave=i==endFrame_i)
 
             # Back to current frame
             if applyFutFrames:
@@ -4075,7 +4095,7 @@ class guiWin(QMainWindow):
                             else:
                                 posData.lab[posData.lab == old_ID] = new_ID
                         self.update_rp(draw=False)
-                    self.store_data()
+                    self.store_data(autosave=i==endFrame_i)
 
                 # Back to current frame
                 posData.frame_i = self.current_frame_i
@@ -4133,7 +4153,7 @@ class guiWin(QMainWindow):
                     else:
                         posData.binnedIDs.add(ID)
                     self.update_rp_metadata(draw=False)
-                    self.store_data()
+                    self.store_data(autosave=i==endFrame_i)
 
                 self.app.restoreOverrideCursor()
 
@@ -4209,7 +4229,7 @@ class guiWin(QMainWindow):
                     else:
                         posData.ripIDs.add(ID)
                     self.update_rp_metadata(draw=False)
-                    self.store_data()
+                    self.store_data(autosave=i==endFrame_i)
                 self.app.restoreOverrideCursor()
 
             # Back to current frame
@@ -6258,7 +6278,7 @@ class guiWin(QMainWindow):
                 for frame_i in range(self.start_n-1, self.stop_n):
                     posData.frame_i = frame_i
                     self.get_data()
-                    self.store_data()
+                    self.store_data(autosave=frame_i==self.stop_n-1)
                 posData.last_tracked_i = frame_i
                 self.setNavigateScrollBarMaximum()
 
@@ -6607,10 +6627,11 @@ class guiWin(QMainWindow):
                         self.restoreAnnotDelROI(self.roi_to_del, enforce=True)
                         posData.allData_li[i]['labels'] = posData.lab
                         self.get_data()
-                        self.store_data()
+                        self.store_data(autosave=False)
                 delROIs_info['rois'].pop(idx)
                 delROIs_info['delMasks'].pop(idx)
                 delROIs_info['delIDsROI'].pop(idx)
+        self.enqAutosave()
         
         if isinstance(self.roi_to_del, pg.PolyLineROI):
             # PolyLine ROIs are only on ax1
@@ -8857,8 +8878,9 @@ class guiWin(QMainWindow):
     @myutils.exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
-            posData = self.data[self.pos_i]
-            printl(self.labelRoiItem in self.ax1.items)
+            # posData = self.data[self.pos_i]
+            printl(self.autoSaveActiveWorkers)
+            printl(self.autoSaveActiveWorkers[0][0].dataQ.qsize())
             if self.debug:
                 raise FileNotFoundError
                 posData = self.data[self.pos_i]
@@ -10893,9 +10915,46 @@ class guiWin(QMainWindow):
         self.loadDataWorker.signals.sigWarnMismatchSegmDataShape.connect(
             self.askMismatchSegmDataShape
         )
+        self.loadDataWorker.signals.sigRecovery.connect(
+            self.askRecoverNotSavedData
+        )
 
         self.thread.started.connect(self.loadDataWorker.run)
         self.thread.start()
+    
+    def askRecoverNotSavedData(self, posData):
+        last_modified_time_unsaved = (
+            datetime.datetime.fromtimestamp(
+                os.path.getmtime(posData.segm_npz_path)
+            ).strftime("%a %d. %b. %y - %H:%M:%S")
+        )
+        last_modified_time_saved = (
+            datetime.datetime.fromtimestamp(
+                os.path.getmtime(posData.segm_npz_temp_path)
+            ).strftime("%a %d. %b. %y - %H:%M:%S")
+        )
+        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        txt = html_utils.paragraph("""
+            Cell-ACDC detected <b>unsaved data</b>.<br><br>
+            Do you want to <b>load and recover</b> the unsaved data or 
+            load the data that was <b>last saved by the user</b>?
+        """)
+        details = ("""
+            The unsaved data was created on {last_modified_time_unsaved}\n\n
+            The user saved the data last time on {last_modified_time_saved}
+        """)
+        msg.setDetailedText(details)
+        loadUnsavedButton = widgets.reloadPushButton('Recover unsaved data')
+        loadSavedButton = widgets.savePushButton('Load saved data')
+        msg.question(
+            self, 'Recover unsaved data?', txt, 
+            buttonsTexts=('Cancel', loadSavedButton, loadUnsavedButton)
+        )
+        if msg.cancel:
+            self.loadDataWorker.abort = True
+        elif msg.clickedButton == loadUnsavedButton:
+            self.loadDataWorker.loadUnsaved = True
+        self.loadDataWorker.waitCond.wakeAll()
     
     def askMismatchSegmDataShape(self, posData):
         msg = widgets.myMessageBox(wrapText=False)
@@ -11685,7 +11744,7 @@ class guiWin(QMainWindow):
                 for i in range(last_tracked_num):
                     posData.frame_i = i
                     self.get_data()
-                    self.store_data(enforce=True)
+                    self.store_data(enforce=True, autosave=i==last_tracked_num-1)
                     # self.load_delROIs_info(delROIshapes, last_tracked_num)
                     posData.binnedIDs = set()
                     posData.ripIDs = set()
@@ -11802,7 +11861,10 @@ class guiWin(QMainWindow):
             }
         }
 
-    def store_data(self, pos_i=None, enforce=True, debug=False, mainThread=True):
+    def store_data(
+            self, pos_i=None, enforce=True, debug=False, mainThread=True,
+            autosave=True
+        ):
         pos_i = self.pos_i if pos_i is None else pos_i
         posData = self.data[pos_i]
         if posData.frame_i < 0:
@@ -11864,7 +11926,7 @@ class guiWin(QMainWindow):
             acdc_df['was_manually_edited'] = areManuallyEdited
             posData.allData_li[posData.frame_i]['acdc_df'] = acdc_df
 
-        self.store_cca_df(pos_i=pos_i, mainThread=mainThread)
+        self.store_cca_df(pos_i=pos_i, mainThread=mainThread, autosave=autosave)
 
     def nearest_point_2Dyx(self, points, all_others):
         """
@@ -12663,7 +12725,7 @@ class guiWin(QMainWindow):
                 for i in range(current_frame_i):
                     posData.frame_i = i
                     self.get_data()
-                    self.store_data()
+                    self.store_data(autosave=i==current_frame_i-1)
 
                 posData.frame_i = current_frame_i
                 self.get_data()
@@ -12716,7 +12778,6 @@ class guiWin(QMainWindow):
                 The <b>last annotated frame</b> is frame {last_cca_frame_i+1}.<br>
                 The cell cycle analysis will restart from that frame.<br><br>
                 Do you want to proceed?
-                {last_cca_frame_i+1}?
             """)
             goTo_last_annotated_frame_i = msg.warning(
                 self, 'Go to last annotated frame?', txt, 
@@ -12829,7 +12890,10 @@ class guiWin(QMainWindow):
                 continue
             acdc_df.drop(col, axis=1, inplace=True)
 
-    def store_cca_df(self, pos_i=None, frame_i=None, cca_df=None, mainThread=True):
+    def store_cca_df(
+            self, pos_i=None, frame_i=None, cca_df=None, mainThread=True,
+            autosave=True
+        ):
         pos_i = self.pos_i if pos_i is None else pos_i
         posData = self.data[pos_i]
         i = posData.frame_i if frame_i is None else frame_i
@@ -12850,6 +12914,15 @@ class guiWin(QMainWindow):
         elif cca_df is not None:
             df = acdc_df.join(cca_df, how='left')
             posData.allData_li[i]['acdc_df'] = df.copy()
+        
+        if autosave:
+            self.enqAutosave()
+    
+    def enqAutosave(self):  
+        if self.autoSaveActiveWorkers:
+            worker, thread = self.autoSaveActiveWorkers[-1]
+            self.statusBarLabel.setText('Autosaving...')
+            worker.enqueue(self.data)
 
     def ax1_setTextID(self, obj, how, updateColor=False, debug=False):
         posData = self.data[self.pos_i]
@@ -16667,6 +16740,13 @@ class guiWin(QMainWindow):
         self.thread.started.connect(self.worker.run)
 
         self.thread.start()
+    
+    def autoSaveToggled(self, checked):
+        for worker, thread in self.autoSaveActiveWorkers:
+            worker.stop()
+        
+        if checked:
+            self.gui_createAutoSaveWorker()
     
     def warnErrorsCustomMetrics(self):
         win = apps.ComputeMetricsErrorsDialog(
