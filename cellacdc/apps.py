@@ -1028,20 +1028,28 @@ class setMeasurementsDialog(QBaseDialog):
         groupsLayout.addWidget(regionPropsQGBox, 1, current_col)
         groupsLayout.setRowStretch(1, 2)
 
-        desc = measurements.get_user_combine_mixed_channels_desc(
+        desc, equations = measurements._user_combine_mixed_channels_desc(
             isSegm3D=isSegm3D
         )
         self.mixedChannelsCombineMetricsQGBox = None
         if desc:
-            mixedChannelsCombineMetricsQGBox = widgets._metricsQGBox(
+            self.mixedChannelsCombineMetricsQGBox = widgets._metricsQGBox(
                 desc, 'Mixed channels combined measurements',
-                favourite_funcs=favourite_funcs, isZstack=isZstack
+                favourite_funcs=favourite_funcs, isZstack=isZstack,
+                equations=equations
             )
-            self.mixedChannelsCombineMetricsQGBox = mixedChannelsCombineMetricsQGBox
             groupsLayout.addWidget(
-                mixedChannelsCombineMetricsQGBox, 2, current_col
+                self.mixedChannelsCombineMetricsQGBox, 2, current_col
             )
             groupsLayout.setRowStretch(1, 1)
+            self.setDisabledMetricsRequestedForCombined()
+            self.mixedChannelsCombineMetricsQGBox.toggled.connect(
+                self.setDisabledMetricsRequestedForCombined
+            )
+            for combCheckbox in self.mixedChannelsCombineMetricsQGBox.checkBoxes:
+                combCheckbox.toggled.connect(
+                    self.setDisabledMetricsRequestedForCombined
+                )
 
         self.numberCols = current_col
 
@@ -1068,6 +1076,41 @@ class setMeasurementsDialog(QBaseDialog):
 
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
+    
+    def setDisabledMetricsRequestedForCombined(self, checked=True):
+        # Set checked and disable those metrics that are requested for 
+        # combined measurements
+        allCheckboxes = []
+
+        for chNameGroupbox in self.chNameGroupboxes:
+            for chCheckBox in chNameGroupbox.checkBoxes:
+                chCheckBox.setDisabled(False)
+                allCheckboxes.append(chCheckBox)
+        
+        for sizeCheckBox in self.sizeMetricsQGBox.checkBoxes:
+            sizeCheckBox.setDisabled(False)
+            allCheckboxes.append(chCheckBox)
+        
+        for rpCheckBox in self.regionPropsQGBox.checkBoxes:
+            rpCheckBox.setDisabled(False)
+            allCheckboxes.append(chCheckBox)
+        
+        if not self.mixedChannelsCombineMetricsQGBox.isChecked():
+            return
+        
+        for cb in allCheckboxes:
+            metricName = cb.text()
+            for combCheckbox in self.mixedChannelsCombineMetricsQGBox.checkBoxes:
+                equation = combCheckbox.equation
+                if equation.find(metricName) == -1:
+                    continue
+                elif combCheckbox.isChecked():
+                    cb.setChecked(True)
+                    cb.setDisabled(True)
+                    cb.setToolTip(
+                        'This metric cannot be removed because it is required '
+                        f'by the combined measurement "{combCheckbox.text()}"'
+                    )
 
     def ok_cb(self):
         if self.acdc_df is None:

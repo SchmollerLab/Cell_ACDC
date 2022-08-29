@@ -1383,7 +1383,8 @@ class readOnlySpinbox(QSpinBox):
 
 class _metricsQGBox(QGroupBox):
     def __init__(
-            self, desc_dict, title, favourite_funcs=None, isZstack=False
+            self, desc_dict, title, favourite_funcs=None, isZstack=False,
+            equations=None
         ):
         QGroupBox.__init__(self)
         self.scrollArea = QScrollArea()
@@ -1402,6 +1403,11 @@ class _metricsQGBox(QGroupBox):
             checkBox = QCheckBox(metric_colname)
             checkBox.setChecked(True)
             self.checkBoxes.append(checkBox)
+
+            try:
+                checkBox.equation = equations[metric_colname]
+            except Exception as e:
+                pass
 
             infoButton = QPushButton(self)
             infoButton.setCursor(Qt.WhatsThisCursor)

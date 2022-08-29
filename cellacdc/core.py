@@ -316,6 +316,7 @@ class AddLineageTreeTable:
         self.acdc_df = acdc_df
     
     def build(self):
+        print('Building lineage tree...')
         cca_df_colnames = list(base_cca_df.keys())[:-2]
         try:
             cca_df = self.acdc_df[cca_df_colnames]
@@ -324,6 +325,7 @@ class AddLineageTreeTable:
             return error
         
         self.df = self.add_lineage_tree_table_to_acdc_df()
+        print('Lineage tree built successfully!')
     
     def _build_tree(self, gen_df, ID, relID_gen_num):
         current_ID = gen_df.index.get_level_values(1)[0]
@@ -435,7 +437,9 @@ class AddLineageTreeTable:
     def newick(self):
         if 'Cell_ID_tree' not in self.acdc_df.columns:
             self.build()
-        
-        pass
+    
+    def plot(self):
+        if 'Cell_ID_tree' not in self.acdc_df.columns:
+            self.build()
 
     
