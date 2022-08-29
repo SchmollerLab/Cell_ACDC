@@ -7187,7 +7187,7 @@ class QDialogModelParams(QDialog):
             defaultVal = argWidget.defaultVal
             widget = argWidget.widget
             argWidget.valueSetter(widget, defaultVal)
-            if defaultVal == False:
+            if isinstance(defaultVal, bool):
                 argWidget.valueSetter(widget.notButton, True)
 
     def restoreDefaultSegment(self):
@@ -7195,7 +7195,7 @@ class QDialogModelParams(QDialog):
             defaultVal = argWidget.defaultVal
             widget = argWidget.widget
             argWidget.valueSetter(widget, defaultVal)
-            if defaultVal == False:
+            if isinstance(defaultVal, bool) and not defaultVal:
                 argWidget.valueSetter(widget.notButton, True)
 
     def restoreDefaultPostprocess(self):
