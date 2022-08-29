@@ -21,6 +21,7 @@ import pandas as pd
 import skimage
 from distutils.dir_util import copy_tree
 import inspect
+import typing
 import matplotlib.colors
 import colorsys
 
@@ -632,10 +633,15 @@ def getModelArgSpec(acdcSegment):
     ArgSpec = namedtuple('ArgSpec', ['name', 'default', 'type'])
 
     init_ArgSpec = inspect.getfullargspec(acdcSegment.Model.__init__)
+    init_kwargs_type_hints = typing.get_type_hints(acdcSegment.Model.__init__)
     init_params = []
     if len(init_ArgSpec.args)>1:
         for arg, default in zip(init_ArgSpec.args[1:], init_ArgSpec.defaults):
-            param = ArgSpec(name=arg, default=default, type=type(default))
+            if arg in init_kwargs_type_hints:
+                _type = init_kwargs_type_hints[arg]
+            else:
+                _type = type(default)
+            param = ArgSpec(name=arg, default=default, type=_type)
             init_params.append(param)
 
     segment_ArgSpec = inspect.getfullargspec(acdcSegment.Model.segment)

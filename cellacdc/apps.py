@@ -7154,6 +7154,13 @@ class QDialogModelParams(QDialog):
                 defaultVal = ArgSpec.default
                 valueSetter = QDoubleSpinBox.setValue
                 groupBoxLayout.addWidget(doubleSpinBox, row, 1, 1, 2)
+            elif ArgSpec.type == os.PathLike:
+                filePathControl = widgets.filePathControl()
+                filePathControl.setText(str(ArgSpec.default))
+                widget = filePathControl
+                defaultVal = str(ArgSpec.default)
+                valueSetter = widgets.filePathControl.setText
+                groupBoxLayout.addWidget(filePathControl, row, 1, 1, 2)
             else:
                 lineEdit = QLineEdit()
                 lineEdit.setText(str(ArgSpec.default))
@@ -7297,6 +7304,8 @@ class QDialogModelParams(QDialog):
                 kwargs_dict[argWidget.name] = argWidget.widget.value()
             elif argWidget.type == str:
                 kwargs_dict[argWidget.name] = argWidget.widget.text()
+            elif argWidget.type == os.PathLike:
+                kwargs_dict[argWidget.name] = argWidget.widget.path()
             else:
                 to_type = argWidget.type
                 s = argWidget.widget.text()

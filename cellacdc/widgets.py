@@ -251,12 +251,43 @@ class browseFileButton(QPushButton):
             self._file_types = f'{self._file_types};;All Files (*)'
 
     def browse(self):
-        print(self._start_dir)
         file_path = QFileDialog.getOpenFileName(
             self, self._title, self._start_dir, self._file_types
         )[0]
         if file_path:
             self.sigPathSelected.emit(file_path)
+
+class filePathControl(QFrame):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        layout = QHBoxLayout()
+        self.le = QLineEdit()
+        self.browseButton = browseFileButton()
+
+        layout.addWidget(self.le)
+        layout.addWidget(self.browseButton)
+        self.setLayout(layout)
+
+        self.le.editingFinished.connect(self.setTextTooltip)
+        self.browseButton.sigPathSelected.connect(self.setText)
+    
+        self.setFrameStyle(QFrame.StyledPanel)
+
+    def setText(self, text):
+        self.le.setText(text)
+        self.le.setToolTip(text)
+
+    def setTextTooltip(self):
+        self.le.setToolTip(self.le.text())
+    
+    def path(self):
+        return self.le.text()
+    
+    def showEvent(self, a0: QtGui.QShowEvent) -> None:
+        self.le.setFixedHeight(self.browseButton.height())
+        return super().showEvent(a0)
+
 
 class QHLine(QFrame):
     def __init__(self):

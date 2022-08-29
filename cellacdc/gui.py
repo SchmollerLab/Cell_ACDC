@@ -8878,9 +8878,9 @@ class guiWin(QMainWindow):
     @myutils.exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
-            # posData = self.data[self.pos_i]
-            printl(self.autoSaveActiveWorkers)
-            printl(self.autoSaveActiveWorkers[0][0].dataQ.qsize())
+            posData = self.data[self.pos_i]
+            printl(posData.frame_i)
+            printl(posData.IDs)
             if self.debug:
                 raise FileNotFoundError
                 posData = self.data[self.pos_i]
@@ -11744,7 +11744,7 @@ class guiWin(QMainWindow):
                 for i in range(last_tracked_num):
                     posData.frame_i = i
                     self.get_data()
-                    self.store_data(enforce=True, autosave=i==last_tracked_num-1)
+                    self.store_data(enforce=True, autosave=False)
                     # self.load_delROIs_info(delROIshapes, last_tracked_num)
                     posData.binnedIDs = set()
                     posData.ripIDs = set()
@@ -11770,7 +11770,7 @@ class guiWin(QMainWindow):
         # Back to first position
         self.pos_i = 0
         self.get_data(debug=False)
-        self.store_data()
+        self.store_data(autosave=False)
         # self.updateALLimg()
 
         # Link Y and X axis of both plots to scroll zoom and pan together
