@@ -211,7 +211,6 @@ class AutoSaveWorker(QObject):
             for frame_i, data_dict in enumerate(posData.allData_li[:end_i+1]):
                 # Build saved_segm_data
                 lab = data_dict['labels']
-                posData.lab = lab
                 if lab is None:
                     break
 
@@ -234,11 +233,12 @@ class AutoSaveWorker(QObject):
                 keys.append(key)
 
             np.savez_compressed(segm_npz_path, np.squeeze(saved_segm_data))
-            all_frames_acdc_df = pd.concat(
-                acdc_df_li, keys=keys,
-                names=['frame_i', 'time_seconds', 'Cell_ID']
-            )
-            all_frames_acdc_df.to_csv(acdc_output_csv_path)
+            if acdc_df_li:
+                all_frames_acdc_df = pd.concat(
+                    acdc_df_li, keys=keys,
+                    names=['frame_i', 'time_seconds', 'Cell_ID']
+                )
+                all_frames_acdc_df.to_csv(acdc_output_csv_path)
 
 class segmWorker(QObject):
     finished = pyqtSignal(np.ndarray, float)

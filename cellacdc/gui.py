@@ -484,8 +484,10 @@ class saveDataWorker(QObject):
                     fluo_data_3D = fluo_data
                     outCellsMaskZslice = lab[z_slice]
                 
-                if ROI_bkgrMask is not None:            
+                if ROI_bkgrMask is not None and self.mainWin.isSegm3D:    
                     ROI_bkgrMask_zSlice = ROI_bkgrMask[z_slice]
+                else:
+                    ROI_bkgrMask_zSlice = ROI_bkgrMask
 
                 # how_3Dto2D = ['_maxProj', '_sumProj', '_zSlice']
                 fluo_data_projs.append(fluo_data_z_maxP)
@@ -604,22 +606,30 @@ class saveDataWorker(QObject):
                     if how == '_maxProj':
                         fluo_data_ID = fluo_img[obj2Dslice][obj2Dproj]
                         backgrMask = np.logical_and(outCellsMaskProj, fluo_img!=0)
-                        if ROI_bkgrMask is not None:
+                        if ROI_bkgrMask is not None and self.mainWin.isSegm3D:
                             ROI_bkgrMask_k = ROI_bkgrMask.max(axis=0)
+                        elif ROI_bkgrMask is not None:
+                            ROI_bkgrMask_k = ROI_bkgrMask
                     elif how == '_meanProj':
                         fluo_data_ID = fluo_img[obj2Dslice][obj2Dproj]
                         backgrMask = np.logical_and(outCellsMaskProj, fluo_img!=0)
-                        if ROI_bkgrMask is not None:
+                        if ROI_bkgrMask is not None and self.mainWin.isSegm3D:
                             ROI_bkgrMask_k = ROI_bkgrMask.max(axis=0)
+                        elif ROI_bkgrMask is not None:
+                            ROI_bkgrMask_k = ROI_bkgrMask
                     elif how == '_zSlice':
                         fluo_data_ID = fluo_img[obj2Dslice][obj2DzImage]
                         backgrMask = np.logical_and(outCellsMaskZslice, fluo_img!=0)
-                        if ROI_bkgrMask is not None:
+                        if ROI_bkgrMask is not None and self.mainWin.isSegm3D:
                             ROI_bkgrMask_k = ROI_bkgrMask_zSlice
+                        elif ROI_bkgrMask is not None:
+                            ROI_bkgrMask_k = ROI_bkgrMask
                     elif how == '_3D':
                         fluo_data_ID = fluo_img[obj3Dslice][obj3Dimage]
                         backgrMask = np.logical_and(outCellsMask3D, fluo_img!=0)
-                        if ROI_bkgrMask is not None:
+                        if ROI_bkgrMask is not None and self.mainWin.isSegm3D:
+                            ROI_bkgrMask_k = ROI_bkgrMask
+                        elif ROI_bkgrMask is not None:
                             ROI_bkgrMask_k = ROI_bkgrMask
                     else:
                         # 2D data
@@ -8879,8 +8889,14 @@ class guiWin(QMainWindow):
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
             posData = self.data[self.pos_i]
-            printl(posData.frame_i)
-            printl(posData.IDs)
+            ROI_bkgrMask = np.zeros(posData.lab.shape, bool)
+            for roi in posData.bkgrROIs:
+                xl, yl = [int(round(c)) for c in roi.pos()]
+                w, h = [int(round(c)) for c in roi.size()]
+                printl((xl, yl), (xl+w, yl+h), (w, h))
+                ROI_bkgrMask[yl:yl+h, xl:xl+w] = True
+            printl(ROI_bkgrMask.shape)
+                
             if self.debug:
                 raise FileNotFoundError
                 posData = self.data[self.pos_i]
@@ -11861,6 +11877,7 @@ class guiWin(QMainWindow):
             }
         }
 
+    @myutils.exception_handler
     def store_data(
             self, pos_i=None, enforce=True, debug=False, mainThread=True,
             autosave=True
@@ -13195,7 +13212,7 @@ class guiWin(QMainWindow):
                 # drawingContoursTimes = t1-t0
                 # self.drawingContoursTimes.append(drawingContoursTimes)
 
-    # @exec_time
+    @myutils.exception_handler
     def update_rp(self, draw=True, debug=False):
         posData = self.data[self.pos_i]
         # Update rp for current posData.lab (e.g. after any change)
