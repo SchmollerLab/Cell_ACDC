@@ -20,6 +20,7 @@ notebooks/.ipynb_checkpoints
 .idea/
 test.txt
 cellacdc/_version.py
+cellacdc/models/beno
 cellacdc/test_qt_app.py
 cellacdc/test_qthread.py
 cellacdc/test.py
