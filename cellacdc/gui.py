@@ -1049,9 +1049,10 @@ class saveDataWorker(QObject):
 
                     # Build saved_segm_data
                     lab = data_dict['labels']
-                    posData.lab = lab
                     if lab is None:
                         break
+                    
+                    posData.lab = lab
 
                     if posData.SizeT > 1:
                         saved_segm_data[frame_i] = lab
@@ -2109,7 +2110,7 @@ class guiWin(QMainWindow):
         self.logger.info('Autosaving worker started.')
     
     def autoSaveWorkerDone(self):
-        self.setImageNameText()
+        self.setImageNameText(log=False)
     
     def autoSaveWorkerClosed(self):
         if len(self.autoSaveActiveWorkers) > 1:
@@ -6898,7 +6899,7 @@ class guiWin(QMainWindow):
                 self.setHistoryKnowledge(ID, cca_df_i)
                 if relID in IDs:
                     cca_df_i.loc[relID] = relID_cca
-                self.store_cca_df(frame_i=i, cca_df=cca_df_i)
+                self.store_cca_df(frame_i=i, cca_df=cca_df_i, autosave=False)
 
 
         # Correct past frames
@@ -6918,7 +6919,9 @@ class guiWin(QMainWindow):
                 self.setHistoryKnowledge(ID, cca_df_i)
                 if relID in IDs:
                     cca_df_i.loc[relID] = relID_cca
-                self.store_cca_df(frame_i=i, cca_df=cca_df_i)
+                self.store_cca_df(frame_i=i, cca_df=cca_df_i, autosave=False)
+        
+        self.enqAutosave()
 
     def annotateDivision(self, cca_df, ID, relID):
         # Correct as follows:
@@ -7079,17 +7082,17 @@ class guiWin(QMainWindow):
                         # Cell is in G1 in the future again so stop annotating
                         break
                     self.annotateDivision(cca_df_i, ID, relID)
-                    self.store_cca_df(frame_i=i, cca_df=cca_df_i)
+                    self.store_cca_df(frame_i=i, cca_df=cca_df_i, autosave=False)
                 else:
                     if ccs == 'S':
                         # Cell is in S in the future again so stop undoing (break)
                         # also leave a 1 frame duration G1 to avoid a continuous
                         # S phase
                         self.annotateDivision(cca_df_i, ID, relID)
-                        self.store_cca_df(frame_i=i, cca_df=cca_df_i)
+                        self.store_cca_df(frame_i=i, cca_df=cca_df_i, autosave=False)
                         break
                     store = self.undoDivisionAnnotation(cca_df_i, ID, relID)
-                    self.store_cca_df(frame_i=i, cca_df=cca_df_i)
+                    self.store_cca_df(frame_i=i, cca_df=cca_df_i, autosave=False)
 
         # Correct past frames
         for i in range(posData.frame_i-1, -1, -1):
@@ -7107,7 +7110,9 @@ class guiWin(QMainWindow):
                 break
             else:
                 store = self.undoDivisionAnnotation(cca_df_i, ID, relID)
-                self.store_cca_df(frame_i=i, cca_df=cca_df_i)
+                self.store_cca_df(frame_i=i, cca_df=cca_df_i, autosave=False)
+        
+        self.enqAutosave()
 
     def warnMotherNotEligible(self, new_mothID, budID, i, why):
         if why == 'not_G1_in_the_future':
@@ -7433,7 +7438,7 @@ class guiWin(QMainWindow):
                 # which is not an existing cell
                 cca_df_i.loc[curr_mothID] = curr_moth_cca
 
-            self.store_cca_df(frame_i=i, cca_df=cca_df_i)
+            self.store_cca_df(frame_i=i, cca_df=cca_df_i, autosave=False)
 
         # Correct past frames
         for i in range(posData.frame_i-1, -1, -1):
@@ -7461,7 +7466,9 @@ class guiWin(QMainWindow):
                 # which is not an existing cell
                 cca_df_i.loc[curr_mothID] = curr_moth_cca
 
-            self.store_cca_df(frame_i=i, cca_df=cca_df_i)
+            self.store_cca_df(frame_i=i, cca_df=cca_df_i, autosave=False)
+        
+        self.enqAutosave()
 
     def getSpline(self, xx, yy, resolutionSpace=None, per=False, appendFirst=False):
         # Remove duplicates
@@ -9358,7 +9365,9 @@ class guiWin(QMainWindow):
                 continue
 
             cca_df_i = CcaState_i['cca_df']
-            self.store_cca_df(frame_i=frame_i, cca_df=cca_df_i)
+            self.store_cca_df(frame_i=frame_i, cca_df=cca_df_i, autosave=False)
+        
+        self.enqAutosave()
 
     def undo(self):
         posData = self.data[self.pos_i]
@@ -11139,7 +11148,7 @@ class guiWin(QMainWindow):
             how = self.df_settings.at['how_draw_annotations', 'value']
             self.drawIDsContComboBox.setCurrentText(how)
 
-    def setImageNameText(self):
+    def setImageNameText(self, log=True):
         self.statusbar.clearMessage()
         posData = self.data[self.pos_i]
         segmentedChannelname = posData.filename[len(posData.basename):]
@@ -11151,7 +11160,8 @@ class guiWin(QMainWindow):
         )
         if not self.isSnapshot:
             txt = f'{txt} || {posData.pos_foldername}'
-        self.logger.info(txt)
+        if log:
+            self.logger.info(txt)
         self.statusBarLabel.setText(txt)
 
     def autoRange(self):

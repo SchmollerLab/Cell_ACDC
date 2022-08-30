@@ -142,7 +142,7 @@ class AutoSaveWorker(QObject):
         self.dataQ = queue.Queue()
     
     def pause(self):
-        self.logger.log('Autosaving is idle.')
+        # self.logger.log('Autosaving is idle.')
         self.mutex.lock()
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
@@ -163,7 +163,7 @@ class AutoSaveWorker(QObject):
                 self.logger.log('Closing autosaving worker...')
                 break
             elif not self.dataQ.empty():
-                self.logger.log('Autosaving...')
+                # self.logger.log('Autosaving...')
                 data = self.dataQ.get()
                 try:
                     self.saveData(data)
@@ -1274,7 +1274,7 @@ class ToSymDivWorker(QObject):
 
                 self.logger.log('Building tree...')
                 try:
-                    tree = core.AddLineageTreeTable(posData.acdc_df)
+                    tree = core.LineageTree(posData.acdc_df)
                     error = tree.build()
                     if isinstance(error, KeyError):
                         self.logger.log(str(error))
