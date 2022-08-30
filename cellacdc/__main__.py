@@ -673,7 +673,8 @@ class mainWin(QMainWindow):
             self.concatWin.setWindowState(Qt.WindowActive)
             self.concatWin.raise_()
     
-    def showEvent(self, a0: QtGui.QShowEvent) -> None:
+    def show(self):
+        super().show()
         h = self.dataPrepButton.geometry().height()
         f = 1.8
         self.dataStructButton.setMinimumHeight(int(h*f))
@@ -686,7 +687,6 @@ class mainWin(QMainWindow):
         # self.closeButton.setIconSize(QSize(iconWidth, iconWidth))
         self.setColorsAndText()
         self.readSettings()
-        return super().showEvent(a0)
 
     def saveWindowGeometry(self):
         settings = QSettings('schmollerlab', 'acdc_main')

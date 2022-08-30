@@ -20,6 +20,7 @@ from tqdm import tqdm
 
 # Custom modules
 from . import apps, base_cca_df, printl
+from . import load
 
 def np_replace_values(arr, old_values, new_values):
     # See method_jdehesa https://stackoverflow.com/questions/45735230/how-to-replace-a-list-of-values-in-a-numpy-array
@@ -313,9 +314,9 @@ def cca_df_to_acdc_df(cca_df, rp, acdc_df=None):
 
 class LineageTree:
     def __init__(self, acdc_df) -> None:
-        self.acdc_df = acdc_df
+        self.acdc_df = load.pd_bool_to_int(acdc_df)
         self.df = acdc_df.copy()
-        self.cca_df_colnames = list(base_cca_df.keys())[:-2]
+        self.cca_df_colnames = list(base_cca_df.keys())
     
     def build(self):
         print('Building lineage tree...')
@@ -329,36 +330,51 @@ class LineageTree:
         self.df = self.add_lineage_tree_table_to_acdc_df()
         print('Lineage tree built successfully!')
     
-    def _build_tree(self, gen_df, ID, relID_gen_num):
+    def _build_tree(self, gen_df, ID):
         current_ID = gen_df.index.get_level_values(1)[0]
         if current_ID != ID:
             return gen_df
 
         '''
         Add generation number tree:
-        --> gen_num - 1 for new cells unknown cell
-        --> Mother generation number + gen_num for known relative cell
+        --> At the start of a branch we set the generation number as either 
+            0 (if also start of tree) or relative ID generation number tree
+            --> This value called gen_num_relID_tree is added to the current 
+                generation_num
         '''
+        ID_slice = pd.IndexSlice[:, ID]
+        relID = gen_df.loc[ID_slice, 'relative_ID'].iloc[0]
+        relID_slice = pd.IndexSlice[:, relID]
         gen_nums_tree = gen_df['generation_num_tree'].values
-        gen_df['generation_num_tree'] = gen_nums_tree + relID_gen_num        
-
-        '''Add root_ID_tree'''
-        gen_df['root_ID_tree'] = ID
+        start_frame_i = gen_df.index.get_level_values(0)[0]
+        if not self.traversing_branch_ID:
+            try:  
+                gen_num_relID_tree = self.df_G1.at[
+                    (start_frame_i, relID), 'generation_num_tree'
+                ] - 1
+            except Exception as e:
+                gen_num_relID_tree = 0
+            self.branch_start_gen_num[ID] = gen_num_relID_tree
+        else:
+            gen_num_relID_tree = self.branch_start_gen_num[ID]
+        
+        gen_df['generation_num_tree'] = gen_nums_tree + gen_num_relID_tree        
         
         '''Assign unique ID every consecutive division'''
         if not self.traversing_branch_ID:
             # Keep start ID for cell at the top of the branch
+            Cell_ID_tree = ID
             gen_df['Cell_ID_tree'] = [ID]*len(gen_df)
         else:
-            gen_df['Cell_ID_tree'] = [self.uniqueID]*len(gen_df)
+            Cell_ID_tree = self.uniqueID
             self.uniqueID += 1
+        
+        gen_df['Cell_ID_tree'] = [Cell_ID_tree]*len(gen_df)
 
         '''
         Assign parent ID --> existing ID between relID and ID in prev gen_num_tree      
         '''
-        ID_slice = pd.IndexSlice[:, ID]
         gen_num_tree = gen_df.loc[ID_slice, 'generation_num_tree'].iloc[0]
-        relID = gen_df.loc[ID_slice, 'relative_ID'].iloc[0]
         
         if gen_num_tree > 1:        
             prev_gen_num_tree = gen_num_tree - 1
@@ -371,87 +387,129 @@ class LineageTree:
                 prev_gen_df = self.gen_dfs[(relID, prev_gen_num_tree)]
             
             try:
-                relID_slice = pd.IndexSlice[:, relID]
                 parent_ID = prev_gen_df.loc[relID_slice, 'Cell_ID_tree'].iloc[0]
             except Exception as e:
                 parent_ID = prev_gen_df.loc[ID_slice, 'Cell_ID_tree'].iloc[0]
             
             gen_df['parent_ID_tree'] = parent_ID
+        else:
+            parent_ID = -1
         
         '''
         Assign root ID --> 
             at start of branch (self.traversing_branch_ID is True) the root_ID
-            is ID if gen_num_tree == 1 otherwise it is the parent_ID
+            is ID if gen_num_tree == 1 otherwise we go back until 
+            the parent_ID == -1
             --> store this and use when traversing branch
         '''
         if not self.traversing_branch_ID:
-            if gen_num_tree > 1:
+            if gen_num_tree == 2:
                 root_ID_tree = parent_ID
+            elif gen_num_tree > 2:
+                prev_gen_num_tree = gen_num_tree - 1
+                prev_gen_idx = parent_ID
+                parent_ID_df = self.gen_dfs_by_ID_tree[prev_gen_idx]
+                root_ID_tree = parent_ID_df['parent_ID_tree'].iloc[0]
+                while prev_gen_num_tree > 2:
+                    prev_gen_num_tree -= 1
+                    prev_gen_idx = root_ID_tree
+                    parent_ID_df = self.gen_dfs_by_ID_tree[prev_gen_idx]
+                    root_ID_tree = parent_ID_df['parent_ID_tree'].iloc[0]    
             else:
                 root_ID_tree = ID
             self.root_IDs_trees[ID] = root_ID_tree
         else:
             root_ID_tree = self.root_IDs_trees[ID]
             
-        gen_df['root_ID_tree'] = root_ID_tree
+        gen_df['root_ID_tree'] = root_ID_tree     
+
+        # printl(
+        #     f'Traversing ID: {ID}\n'
+        #     f'Parent ID: {parent_ID}\n'
+        #     f'Started traversing: {self.traversing_branch_ID}\n'
+        #     f'Relative ID: {relID}\n'
+        #     f'Relative ID generation num tree: {gen_num_relID_tree}\n'
+        #     f'Generation number tree: {gen_num_tree}\n'
+        #     f'New cell ID tree: {Cell_ID_tree}\n'
+        #     f'Start branch gen number: {self.branch_start_gen_num[ID]}\n'
+        #     f'root_ID_tree: {root_ID_tree}'
+        # )
+        # import pdb; pdb.set_trace()
             
         self.gen_dfs[(ID, gen_num_tree)] = gen_df
+        self.gen_dfs_by_ID_tree[Cell_ID_tree] = gen_df
         
         self.traversing_branch_ID = True
         return gen_df
              
     def add_lineage_tree_table_to_acdc_df(self):
-        df_G1 = self.df_G1
-        Cell_ID_tree_vals = df_G1.index.get_level_values(1)
-        df_G1['Cell_ID_tree'] = Cell_ID_tree_vals
-        df_G1['parent_ID_tree'] = -1
-        df_G1['root_ID_tree'] = -1    
-        df_G1['generation_num_tree'] = df_G1['generation_num'] - 1
-        cols_tree = [col for col in df_G1.columns if col.endswith('_tree')]
+        Cell_ID_tree_vals = self.df_G1.index.get_level_values(1)
+        self.df_G1['Cell_ID_tree'] = Cell_ID_tree_vals
+        self.df_G1['parent_ID_tree'] = -1
+        self.df_G1['root_ID_tree'] = -1
+        self.df_G1['sister_ID_tree'] = -1
+            
+        self.df_G1['generation_num_tree'] = self.df_G1['generation_num']
+        history_unknown_mask = self.df_G1['is_history_known'] == 0
+        self.df_G1.loc[history_unknown_mask, 'generation_num_tree'] = (
+            self.df_G1.loc[history_unknown_mask, 'generation_num'] - 1
+        )
+        
+        cols_tree = [col for col in self.df_G1.columns if col.endswith('_tree')]
 
-        frames_idx = df_G1.dropna().index.get_level_values(0).unique()
-        not_annotated_IDs = df_G1.index.get_level_values(1).unique().to_list()
+        frames_idx = self.df_G1.dropna().index.get_level_values(0).unique()
+        not_annotated_IDs = self.df_G1.index.get_level_values(1).unique().to_list()
 
         self.uniqueID = max(not_annotated_IDs) + 1
 
         self.gen_dfs = {}
+        self.gen_dfs_by_ID_tree = {}
         self.root_IDs_trees = {}
+        self.branch_start_gen_num = {}
         for frame_i in frames_idx:
             if not not_annotated_IDs:
                 # Built tree for every ID --> exit
                 break
             
-            df_i = df_G1.loc[frame_i]
+            df_i = self.df_G1.loc[frame_i]
             IDs = df_i.index.array
             for ID in IDs:
                 if ID not in not_annotated_IDs:
                     # Tree already built in previous frame iteration --> skip
                     continue
-                
-                relID = df_i.at[ID, 'relative_ID']
-                try:
-                    relID_gen_num = df_i.at[relID, 'generation_num_tree']
-                except Exception as e:
-                    relID_gen_num = 0
                       
                 self.traversing_branch_ID = False
                 # Iterate the branch till the end
                 self.df_G1 = (
                     self.df_G1
                     .groupby(['Cell_ID', 'generation_num'])
-                    .apply(self._build_tree, ID, relID_gen_num)
+                    .apply(self._build_tree, ID)
                 )
                 not_annotated_IDs.remove(ID)
         
+        self._add_sister_ID()
+
         for c, col_tree in enumerate(cols_tree):
             if col_tree in self.acdc_df.columns:
                 self.acdc_df.pop(col_tree)
-            self.acdc_df.insert(self.new_col_loc+c, col_tree, 0)
+            self.acdc_df.insert(self.new_col_loc, col_tree, 0)
 
         self.acdc_df.loc[self.df_G1.index, self.df_G1.columns] = self.df_G1
         self._build_tree_S(cols_tree)
 
         return self.acdc_df
+    
+    def _add_sister_ID(self):
+        grouped_ID_tree = self.df_G1.groupby('Cell_ID_tree')
+        for Cell_ID_tree, df in grouped_ID_tree:
+            relative_ID = df['relative_ID'].iloc[0]
+            if relative_ID == -1:
+                continue
+            start_frame_i = df.index.get_level_values(0)[0]
+            sister_ID_tree = self.df_G1.at[
+                (start_frame_i, relative_ID), 'Cell_ID_tree'
+            ]
+            self.df_G1.loc[df.index, 'sister_ID_tree'] = sister_ID_tree
     
     def _build_tree_S(self, cols_tree):
         '''In S we consider the bud still the same as the mother in the tree'''
@@ -459,7 +517,7 @@ class LineageTree:
         df_S = self.acdc_df[S_mask].copy()
         gen_acdc_df = self.acdc_df.reset_index().set_index(
             ['Cell_ID', 'generation_num', 'cell_cycle_stage']
-        )
+        ).sort_index()
         for row_S in df_S.itertuples():
             relationship = row_S.relationship
             if relationship == 'mother':

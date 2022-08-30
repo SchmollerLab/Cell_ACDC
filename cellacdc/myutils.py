@@ -108,6 +108,10 @@ def get_gdrive_path():
     elif is_mac:
         return os.path.join('/Volumes/GoogleDrive/My Drive')
 
+def get_acdc_data_path():
+    Cell_ACDC_path = os.path.dirname(cellacdc_path)
+    return os.path.join(Cell_ACDC_path, 'data')
+
 def get_open_filemaneger_os_string():
     if is_win:
         return 'Show in Explorer...'
