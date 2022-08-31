@@ -8897,15 +8897,16 @@ class guiWin(QMainWindow):
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
             posData = self.data[self.pos_i]
-            # columns = set()
-            # for frame_i, data_dict in enumerate(posData.allData_li):
-            #     acdc_df = data_dict['acdc_df']
-            #     if acdc_df is None:
-            #         continue
-                
-            #     columns.update(acdc_df.columns)
+            columns = set()
+            for _posData in self.data:
+                for frame_i, data_dict in enumerate(_posData.allData_li):
+                    acdc_df = data_dict['acdc_df']
+                    if acdc_df is None:
+                        continue
+                    
+                    columns.update(acdc_df.columns)
             
-            # printl(columns, pretty=True)
+            printl(columns, pretty=True)
             # printl('Number of columns: ', len(columns))
             # fluo_keys = list(posData.fluo_data_dict.keys())
             # printl(fluo_keys, pretty=True)
@@ -16300,14 +16301,22 @@ class guiWin(QMainWindow):
             favourite_funcs = None
 
         posData = self.data[self.pos_i]
-        fluo_keys = list(posData.fluo_data_dict.keys())
+        allPos_acdc_df_cols = set()
+        for _posData in self.data:
+            for frame_i, data_dict in enumerate(_posData.allData_li):
+                acdc_df = data_dict['acdc_df']
+                if acdc_df is None:
+                    continue
+                
+                allPos_acdc_df_cols.update(acdc_df.columns)
         loadedChNames = self.getChNames(posData, returnList=True)
         loadedChNames.insert(0, self.user_ch_name)
         notLoadedChNames = [c for c in self.ch_names if c not in loadedChNames]
         self.notLoadedChNames = notLoadedChNames
         self.measurementsWin = apps.setMeasurementsDialog(
             loadedChNames, notLoadedChNames, posData.SizeZ > 1, self.isSegm3D,
-            favourite_funcs=favourite_funcs, acdc_df=posData.acdc_df,
+            favourite_funcs=favourite_funcs, 
+            allPos_acdc_df_cols=list(allPos_acdc_df_cols),
             acdc_df_path=posData.images_path, posData=posData,
             addCombineMetricCallback=self.addCombineMetric
         )
@@ -16325,19 +16334,19 @@ class guiWin(QMainWindow):
             delCols_format.extend(delRps_format)
             delCols_format = '\n'.join(delCols_format)
             self.logger.info(delCols_format)
-            for frame_i, data_dict in enumerate(posData.allData_li):
-                acdc_df = data_dict['acdc_df']
-                if acdc_df is None:
-                    continue
-                
-                acdc_df = acdc_df.drop(columns=delCols, errors='ignore')
-                for col_rp in delRps:
-                    drop_df_rp = acdc_df.filter(regex=fr'{col_rp}.*', axis=1)
-                    drop_cols_rp = drop_df_rp.columns
-                    acdc_df = acdc_df.drop(columns=drop_cols_rp, errors='ignore')
-                posData.allData_li[frame_i]['acdc_df'] = acdc_df
+            for _posData in self.data:
+                for frame_i, data_dict in enumerate(_posData.allData_li):
+                    acdc_df = data_dict['acdc_df']
+                    if acdc_df is None:
+                        continue
+                    
+                    acdc_df = acdc_df.drop(columns=delCols, errors='ignore')
+                    for col_rp in delRps:
+                        drop_df_rp = acdc_df.filter(regex=fr'{col_rp}.*', axis=1)
+                        drop_cols_rp = drop_df_rp.columns
+                        acdc_df = acdc_df.drop(columns=drop_cols_rp, errors='ignore')
+                    _posData.allData_li[frame_i]['acdc_df'] = acdc_df
         self.logger.info('Setting measurements...')
-        fluo_keys = list(posData.fluo_data_dict.keys())
         self.setMetricsToSkip(self.measurementsWin)
         self.logger.info('Metrics successfully set.')
 

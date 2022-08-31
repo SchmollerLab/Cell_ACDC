@@ -955,8 +955,8 @@ class setMeasurementsDialog(QBaseDialog):
 
     def __init__(
             self, loadedChNames, notLoadedChNames, isZstack, isSegm3D,
-            favourite_funcs=None, parent=None, acdc_df=None,
-            acdc_df_path=None, posData=None, addCombineMetricCallback=None
+            favourite_funcs=None, parent=None, allPos_acdc_df_cols=None,
+            acdc_df_path=None, posData=None, addCombineMetricCallback=None,
         ):
         super().__init__(parent=parent)
 
@@ -966,7 +966,7 @@ class setMeasurementsDialog(QBaseDialog):
 
         self.delExistingCols = False
         self.okClicked = False
-        self.acdc_df = acdc_df
+        self.allPos_acdc_df_cols = allPos_acdc_df_cols
         self.acdc_df_path = acdc_df_path
 
         self.setWindowTitle('Set measurements')
@@ -1121,14 +1121,14 @@ class setMeasurementsDialog(QBaseDialog):
         return super().keyPressEvent(a0)
 
     def ok_cb(self):
-        if self.acdc_df is None:
+        if self.allPos_acdc_df_cols is None:
             self.cancel = False
             self.close()
             self.sigClosed.emit()
             return
 
         self.okClicked = True
-        existing_colnames = list(self.acdc_df.columns)
+        existing_colnames = self.allPos_acdc_df_cols
         unchecked_existing_colnames = []
         unchecked_existing_rps = []
         for chNameGroupbox in self.chNameGroupboxes:
