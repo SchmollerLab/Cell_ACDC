@@ -14,6 +14,7 @@ import os
 import shutil
 import pathlib
 import re
+from tkinter import TRUE
 import traceback
 import time
 import datetime
@@ -8896,13 +8897,25 @@ class guiWin(QMainWindow):
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
             posData = self.data[self.pos_i]
-            ROI_bkgrMask = np.zeros(posData.lab.shape, bool)
-            for roi in posData.bkgrROIs:
-                xl, yl = [int(round(c)) for c in roi.pos()]
-                w, h = [int(round(c)) for c in roi.size()]
-                printl((xl, yl), (xl+w, yl+h), (w, h))
-                ROI_bkgrMask[yl:yl+h, xl:xl+w] = True
-            printl(ROI_bkgrMask.shape)
+            # columns = set()
+            # for frame_i, data_dict in enumerate(posData.allData_li):
+            #     acdc_df = data_dict['acdc_df']
+            #     if acdc_df is None:
+            #         continue
+                
+            #     columns.update(acdc_df.columns)
+            
+            # printl(columns, pretty=True)
+            # printl('Number of columns: ', len(columns))
+            # fluo_keys = list(posData.fluo_data_dict.keys())
+            # printl(fluo_keys, pretty=True)
+            # printl(self.metricsToSkip, pretty=True)
+            # printl(self.chNamesToSkip, pretty=True)
+            # printl(self.notLoadedChNames)
+
+            # for chName in self.notLoadedChNames:
+            #     fluo_path, filename = self.getPathFromChName(chName, posData)
+            #     printl(fluo_path)
                 
             if self.debug:
                 raise FileNotFoundError
@@ -15872,12 +15885,12 @@ class guiWin(QMainWindow):
 
     def getPathFromChName(self, chName, posData):
         ls = myutils.listdir(posData.images_path)
-        basenames = {f[len(posData.basename):]:f for f in ls}
+        endnames = {f[len(posData.basename):]:f for f in ls}
         validEnds = ['_aligned.npz', '_aligned.h5', '.h5', '.tif']
         for end in validEnds:
             files = [
-                filename for basename, filename in basenames.items()
-                if basename.find(f'{chName}{end}')!=-1
+                filename for endname, filename in endnames.items()
+                if endname == f'{chName}{end}'
             ]
             if files:
                 filename = files[0]
@@ -16342,7 +16355,7 @@ class guiWin(QMainWindow):
                 if chName in self.notLoadedChNames:
                     success = self.loadFluo_cb(fluo_channels=[chName])
                     if not success:
-                        return
+                        continue
                 for checkBox in chNameGroupbox.checkBoxes:
                     colname = checkBox.text()
                     if not checkBox.isChecked():

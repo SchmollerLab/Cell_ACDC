@@ -1114,6 +1114,12 @@ class setMeasurementsDialog(QBaseDialog):
                         f'by the combined measurement "{combCheckbox.text()}"'
                     )
 
+    def keyPressEvent(self, a0: QtGui.QKeyEvent) -> None:
+        for chNameGroupbox in self.chNameGroupboxes:
+            for checkBox in chNameGroupbox.checkBoxes:
+                colname = checkBox.text()
+        return super().keyPressEvent(a0)
+
     def ok_cb(self):
         if self.acdc_df is None:
             self.cancel = False
@@ -1194,12 +1200,18 @@ class setMeasurementsDialog(QBaseDialog):
         super().show(block=False)
         screenWidth = self.screen().size().width()
         screenHeight = self.screen().size().height()
+        screenLeft = self.screen().geometry().x()
+        screenTop = self.screen().geometry().y()
         h = screenHeight-200
         minColWith = screenWidth/5
         w = minColWith*self.numberCols
         xLeft = int((screenWidth-w)/2)
-        self.move(xLeft, 50)
-        self.resize(int(w), h)
+        if w > screenWidth:
+            self.move(screenLeft+10, screenTop+50)
+            self.resize(screenWidth-20, h)
+        else:
+            self.move(screenLeft+xLeft, screenTop+50)
+            self.resize(int(w), h)
         super().show(block=block)
 
 class QDialogMetadataXML(QDialog):

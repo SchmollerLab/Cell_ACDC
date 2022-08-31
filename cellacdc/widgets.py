@@ -1396,13 +1396,14 @@ class _metricsQGBox(QGroupBox):
         self.inner_layout = inner_layout
 
         self.checkBoxes = []
-
+        self.checkedState = {}
         for metric_colname, metric_desc in desc_dict.items():
             rowLayout = QHBoxLayout()
 
             checkBox = QCheckBox(metric_colname)
             checkBox.setChecked(True)
             self.checkBoxes.append(checkBox)
+            self.checkedState[checkBox] = True
 
             try:
                 checkBox.equation = equations[metric_colname]
@@ -1416,9 +1417,9 @@ class _metricsQGBox(QGroupBox):
             infoButton.colname = metric_colname
             infoButton.clicked.connect(self.showInfo)
 
-            rowLayout.addWidget(checkBox)
-            rowLayout.addStretch(1)
             rowLayout.addWidget(infoButton)
+            rowLayout.addWidget(checkBox)   
+            rowLayout.addStretch(1)          
 
             inner_layout.addLayout(rowLayout)
 
@@ -1450,6 +1451,16 @@ class _metricsQGBox(QGroupBox):
         _font = QFont()
         _font.setPixelSize(11)
         self.setFont(_font)
+
+        self.toggled.connect(self.toggled_cb)
+    
+    def toggled_cb(self, checked):
+        for checkbox in self.checkBoxes:
+            if not checked:
+                self.checkedState[checkbox] = checkbox.isChecked()
+                checkbox.setChecked(False)
+            else:
+                checkbox.setChecked(self.checkedState[checkbox])
 
     def checkFavouriteFuncs(self, checked=True, isZstack=False):
         for checkBox in self.checkBoxes:
