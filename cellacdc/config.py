@@ -26,17 +26,23 @@ class QtWarningHandler(QObject):
 warningHandler = QtWarningHandler()
 qInstallMessageHandler(warningHandler._resizeWarningHandler)
 
-ap = argparse.ArgumentParser(description='Cell-ACDC parser')
-ap.add_argument(
-    '-d', '--debug', action='store_true',
-    help=(
-        'Used for debugging. Test code with'
-        '"from cellacdc.config import parser_args, debug = parser_args["debug"]", '
-        'if debug: <debug code here>'
+try:
+    ap = argparse.ArgumentParser(description='Cell-ACDC parser')
+    ap.add_argument(
+        '-d', '--debug', action='store_true',
+        help=(
+            'Used for debugging. Test code with'
+            '"from cellacdc.config import parser_args, debug = parser_args["debug"]", '
+            'if debug: <debug code here>'
+        )
     )
-)
 
-# Add dummy argument for stupid Jupyter
-ap.add_argument('-f')
+    # Add dummy argument for stupid Jupyter
+    # ap.add_argument('-f')
 
-parser_args = vars(ap.parse_args())
+    parser_args, unknown = ap.parse_known_args()
+    parser_args = vars(parser_args)
+except:
+    print('Importing from notebook, ignoring Cell-ACDC argument parser...')
+    parser_args = {}
+    parser_args['debug'] = False
