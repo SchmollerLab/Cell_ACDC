@@ -960,6 +960,8 @@ class setMeasurementsDialog(QBaseDialog):
         ):
         super().__init__(parent=parent)
 
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+
         self.cancel = True
 
         self.delExistingCols = False
