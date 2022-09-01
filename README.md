@@ -1,4 +1,4 @@
-# <img src="https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/17a6def3cc7b4a118c38a4dc8e86b84ae078916e/cellacdc/resources/icons/assign-motherbud.svg" width="80" height="80"> Cell-ACDC
+# <a href="https://github.com/SchmollerLab/Cell_ACDC/blob/main/cellacdc/resources/logo.svg"><img src="https://raw.githubusercontent.com/SchmollerLab/Cell_ACDC/6bf8442b6a33d41fa9de09a2098c6c2b9efbcff1/cellacdc/resources/logo.svg" width="80" height="80"></a> Cell-ACDC
 
 ### A GUI-based Python framework for **segmentation**, **tracking**, **cell cycle annotations** and **quantification** of microscopy data
 
