@@ -12959,11 +12959,12 @@ class guiWin(QMainWindow):
         if autosave:
             self.enqAutosave()
     
-    def enqAutosave(self):  
+    def enqAutosave(self):
+        posData = self.data[self.pos_i]  
         if self.autoSaveActiveWorkers:
             worker, thread = self.autoSaveActiveWorkers[-1]
             self.statusBarLabel.setText('Autosaving...')
-            worker.enqueue(self.data)
+            worker.enqueue(posData)
 
     def ax1_setTextID(self, obj, how, updateColor=False, debug=False):
         posData = self.data[self.pos_i]
@@ -16894,10 +16895,6 @@ class guiWin(QMainWindow):
             self.lazyLoader.exit = True
             self.lazyLoaderWaitCond.wakeAll()
             self.waitReadH5cond.wakeAll()
-        
-        for worker, thread in self.autoSaveActiveWorkers:
-            worker.stop()
-            worker.finished.emit()
 
         self.saveWindowGeometry()
         # self.saveCustomAnnot()
@@ -16928,6 +16925,10 @@ class guiWin(QMainWindow):
         for handler in handlers:
             handler.close()
             self.logger.removeHandler(handler)
+        
+        for worker, thread in self.autoSaveActiveWorkers:
+            worker.stop()
+            # worker.finished.emit()
         
         if self.lazyLoader is None:
             self.sigClosed.emit(self)

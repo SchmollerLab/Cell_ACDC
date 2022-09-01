@@ -147,8 +147,8 @@ class AutoSaveWorker(QObject):
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
     
-    def enqueue(self, data):
-        self.dataQ.put(data)
+    def enqueue(self, posData):
+        self.dataQ.put(posData)
         if self.dataQ.qsize() == 1:
             self.waitCond.wakeAll()
     
@@ -190,55 +190,54 @@ class AutoSaveWorker(QObject):
         else:
             return last_tracked_i
     
-    def saveData(self, data):
-        for posData in data:
-            posData.setTempPaths()
-            segm_npz_path = posData.segm_npz_temp_path
-            acdc_output_csv_path = posData.acdc_output_temp_csv_path
+    def saveData(self, posData):
+        posData.setTempPaths()
+        segm_npz_path = posData.segm_npz_temp_path
+        acdc_output_csv_path = posData.acdc_output_temp_csv_path
 
-            end_i = self.getLastTrackedFrame(posData)
+        end_i = self.getLastTrackedFrame(posData)
 
-            if end_i < len(posData.segm_data):
-                saved_segm_data = posData.segm_data
+        if end_i < len(posData.segm_data):
+            saved_segm_data = posData.segm_data
+        else:
+            frame_shape = posData.segm_data.shape[1:]
+            segm_shape = (end_i+1, *frame_shape)
+            saved_segm_data = np.zeros(segm_shape, dtype=np.uint16)
+        
+        keys = []
+        acdc_df_li = []
+
+        for frame_i, data_dict in enumerate(posData.allData_li[:end_i+1]):
+            # Build saved_segm_data
+            lab = data_dict['labels']
+            if lab is None:
+                break
+
+            if posData.SizeT > 1:
+                saved_segm_data[frame_i] = lab
             else:
-                frame_shape = posData.segm_data.shape[1:]
-                segm_shape = (end_i+1, *frame_shape)
-                saved_segm_data = np.zeros(segm_shape, dtype=np.uint16)
-            
-            keys = []
-            acdc_df_li = []
+                saved_segm_data = lab
 
-            for frame_i, data_dict in enumerate(posData.allData_li[:end_i+1]):
-                # Build saved_segm_data
-                lab = data_dict['labels']
-                if lab is None:
-                    break
+            acdc_df = data_dict['acdc_df']
 
-                if posData.SizeT > 1:
-                    saved_segm_data[frame_i] = lab
-                else:
-                    saved_segm_data = lab
+            if acdc_df is None:
+                continue
 
-                acdc_df = data_dict['acdc_df']
+            if not np.any(lab):
+                continue
 
-                if acdc_df is None:
-                    continue
+            acdc_df = load.pd_bool_to_int(acdc_df, inplace=False)
+            acdc_df_li.append(acdc_df)
+            key = (frame_i, posData.TimeIncrement*frame_i)
+            keys.append(key)
 
-                if not np.any(lab):
-                    continue
-
-                acdc_df = load.pd_bool_to_int(acdc_df, inplace=False)
-                acdc_df_li.append(acdc_df)
-                key = (frame_i, posData.TimeIncrement*frame_i)
-                keys.append(key)
-
-            np.savez_compressed(segm_npz_path, np.squeeze(saved_segm_data))
-            if acdc_df_li:
-                all_frames_acdc_df = pd.concat(
-                    acdc_df_li, keys=keys,
-                    names=['frame_i', 'time_seconds', 'Cell_ID']
-                )
-                all_frames_acdc_df.to_csv(acdc_output_csv_path)
+        np.savez_compressed(segm_npz_path, np.squeeze(saved_segm_data))
+        if acdc_df_li:
+            all_frames_acdc_df = pd.concat(
+                acdc_df_li, keys=keys,
+                names=['frame_i', 'time_seconds', 'Cell_ID']
+            )
+            all_frames_acdc_df.to_csv(acdc_output_csv_path)
 
 class segmWorker(QObject):
     finished = pyqtSignal(np.ndarray, float)
