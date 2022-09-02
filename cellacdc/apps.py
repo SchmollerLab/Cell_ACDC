@@ -4785,7 +4785,6 @@ class imageViewer(QMainWindow):
                 img = self.getOverlayImg()
             else:
                 img = self.parent.getImage(frame_i=self.frame_i)
-                img = self.parent.getImageWithCmap(img=img)
         self.img.setImage(img)
         self.framesScrollBar.setSliderPosition(self.frame_i+1)
 
@@ -4801,7 +4800,6 @@ class imageViewer(QMainWindow):
                 self.overlayButton.setChecked(False)
                 self.overlayButton.toggled.connect(self.update_img)
                 img = self.parent.getImage(frame_i=self.frame_i)
-                img = self.parent.getImageWithCmap(img=img)
             else:
                 self.parent.setCheckedOverlayContextMenusAction()
                 img = self.parent.getOverlayImg(
