@@ -2111,7 +2111,7 @@ class guiWin(QMainWindow):
         self.logger.info('Autosaving worker started.')
     
     def autoSaveWorkerDone(self):
-        self.setImageNameText(log=False)
+        self.setSaturBarLabel(log=False)
     
     def autoSaveWorkerClosed(self):
         if len(self.autoSaveActiveWorkers) > 1:
@@ -10567,7 +10567,7 @@ class guiWin(QMainWindow):
             self.logger.info('You reached last position.')
             self.pos_i = 0
         self.addCustomAnnotationSavedPos()
-        self.setImageNameText()
+        self.setSaturBarLabel()
         self.removeAlldelROIsCurrentFrame()
         proceed_cca, never_visited = self.get_data()
         self.postProcessing()
@@ -10585,7 +10585,7 @@ class guiWin(QMainWindow):
             self.logger.info('You reached first position.')
             self.pos_i = self.num_pos-1
         self.addCustomAnnotationSavedPos()
-        self.setImageNameText()
+        self.setSaturBarLabel()
         self.removeAlldelROIsCurrentFrame()
         proceed_cca, never_visited = self.get_data()
         self.postProcessing()
@@ -11121,7 +11121,7 @@ class guiWin(QMainWindow):
 
         self.setBottomLayoutStretch()
         self.setAxesMaxRange()
-        self.setImageNameText()
+        self.setSaturBarLabel()
 
         self.initLookupTableLab()
         if self.invertBwAction.isChecked():
@@ -11163,7 +11163,7 @@ class guiWin(QMainWindow):
             how = self.df_settings.at['how_draw_annotations', 'value']
             self.drawIDsContComboBox.setCurrentText(how)
 
-    def setImageNameText(self, log=True):
+    def setSaturBarLabel(self, log=True):
         self.statusbar.clearMessage()
         posData = self.data[self.pos_i]
         segmentedChannelname = posData.filename[len(posData.basename):]
@@ -11833,6 +11833,7 @@ class guiWin(QMainWindow):
         self.updateFramePosLabel()
         proceed_cca, never_visited = self.get_data()
         self.updateALLimg()
+        self.setSaturBarLabel()
 
     def PosScrollBarReleased(self):
         self.pos_i = self.navigateScrollBar.sliderPosition()-1
@@ -16636,7 +16637,7 @@ class guiWin(QMainWindow):
         for posData in self.data:
             posData.setFilePaths(new_endname=win.entryText)
 
-        self.setImageNameText()
+        self.setSaturBarLabel()
         self.saveData()
 
 
