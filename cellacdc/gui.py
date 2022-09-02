@@ -3624,6 +3624,7 @@ class guiWin(QMainWindow):
             self.eraseOnlyOneID = eraseOnlyOneID
 
             self.erasedIDs.extend(lab_2D[mask])
+            self.setTempImg1Eraser(mask, init=True)
             self.applyEraserMask(mask)
             self.setImageImg2()
 
@@ -4498,11 +4499,11 @@ class guiWin(QMainWindow):
 
             self.setImageImg2()
 
-            self.erasesedLab = np.zeros_like(posData.lab)
+            self.erasedLab = np.zeros_like(posData.lab)
             for erasedID in np.unique(self.erasedIDs):
                 if erasedID == 0:
                     continue
-                self.erasesedLab[posData.lab==erasedID] = erasedID
+                self.erasedLab[posData.lab==erasedID] = erasedID
 
             eraserMask = mask[diskSlice]
             self.setTempImg1Eraser(eraserMask, toLocalSlice=diskSlice)
@@ -5821,7 +5822,7 @@ class guiWin(QMainWindow):
             for erasedID in np.unique(self.erasedIDs):
                 if erasedID == 0:
                     continue
-                self.erasesedLab[lab_2D==erasedID] = erasedID
+                self.erasedLab[lab_2D==erasedID] = erasedID
 
             self.img2.updateImage()
             self.isMouseDragImg1 = True
@@ -14263,11 +14264,11 @@ class guiWin(QMainWindow):
   
     def setTempImg1Eraser(self, mask, init=False, toLocalSlice=None):
         if init:
-            self.erasesedLab = np.zeros_like(self.currentLab2D)  
+            self.erasedLab = np.zeros_like(self.currentLab2D)  
 
         how = self.drawIDsContComboBox.currentText()
         if how.find('contours') != -1:
-            erasedRp = skimage.measure.regionprops(self.erasesedLab)
+            erasedRp = skimage.measure.regionprops(self.erasedLab)
             for obj in erasedRp:
                 idx = obj.label-1
                 curveID = self.ax1_ContoursCurves[idx]
@@ -14427,20 +14428,26 @@ class guiWin(QMainWindow):
             checkBox = QCheckBox('Remember my choice and do not ask again')
         else:
             checkBox = None
-        yesButton, _ = msg.warning(
+        removeAnnotButton = msg.warning(
             self, 'Edited segmentation with annotations!', txt,
             buttonsTexts=(
+                'Cancel',
                 'Remove annotations from future frames (RECOMMENDED)',
                 'Do not remove annotations'
-                ),
+            ),
             widgets=checkBox
-            )
+            )[0]
+        if msg.cancel:
+            removeAnnotations = False
+            return removeAnnotations
+        
         if action is not None:
             action.setChecked(not checkBox.isChecked())
-            action.removeAnnot = msg.clickedButton == yesButton
+            action.removeAnnot = msg.clickedButton == removeAnnotButton
         if return_answer:
-            return msg.clickedButton == yesButton
-        if msg.clickedButton == yesButton:
+            return msg.clickedButton == removeAnnotButton
+        
+        if msg.clickedButton == removeAnnotButton:
             self.store_data()
             posData.frame_i -= 1
             self.get_data()

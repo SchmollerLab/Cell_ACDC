@@ -7547,7 +7547,10 @@ class combineMetricsEquationDialog(QBaseDialog):
     def __init__(self, allChNames, isZstack, isSegm3D, parent=None, debug=False):
         super().__init__(parent)
 
+        self.setWindowTitle('Add combined measurement')
+
         self.initAttributes()
+        
 
         self.allChNames = allChNames
 
