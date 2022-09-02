@@ -16935,7 +16935,7 @@ class guiWin(QMainWindow):
         
         for worker, thread in self.autoSaveActiveWorkers:
             worker.stop()
-            # worker.finished.emit()
+            worker.finished.emit()
         
         if self.lazyLoader is None:
             self.sigClosed.emit(self)
