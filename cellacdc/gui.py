@@ -8,6 +8,7 @@
 
 # TODO:
 print('Importing GUI modules...')
+from ctypes import alignment
 from gc import garbage
 import sys
 import os
@@ -1365,6 +1366,12 @@ class guiWin(QMainWindow):
             self.df_settings = pd.DataFrame({
                 'setting': idx,'value': values}
             ).set_index('setting')
+        
+        if 'isLabelsVisible' not in self.df_settings.index:
+            self.df_settings.at['isLabelsVisible', 'value'] = 'Yes'
+        
+        if 'isRightImageVisible' not in self.df_settings.index:
+            self.df_settings.at['isRightImageVisible', 'value'] = 'No'
 
     def dragEnterEvent(self, event):
         file_path = event.mimeData().urls()[0].toLocalFile()
@@ -1498,6 +1505,7 @@ class guiWin(QMainWindow):
         # Separator
         fileMenu.addSeparator()
         fileMenu.addAction(self.exitAction)
+        
         # Edit menu
         editMenu = menuBar.addMenu("&Edit")
         editMenu.addSeparator()
@@ -1512,6 +1520,9 @@ class guiWin(QMainWindow):
         editMenu.addAction(self.enableSmartTrackAction)
         editMenu.addAction(self.enableAutoZoomToCellsAction)
 
+        # View menu
+        self.viewMenu = menuBar.addMenu("&View")
+        self.viewMenu.addSeparator()
 
         # Image menu
         ImageMenu = menuBar.addMenu("&Image")
@@ -2125,6 +2136,7 @@ class guiWin(QMainWindow):
 
         row, col = 0, 2
         mainLayout.addWidget(self.graphLayout, row, col, 1, 2)
+        mainLayout.setRowStretch(row, 2)
 
         row, col = 0, 4 # graphLayout spans two columns
         mainLayout.addWidget(self.labelsGrad, row, col)
@@ -2731,7 +2743,9 @@ class guiWin(QMainWindow):
         self.labelsGrad.shuffleCmapAction.triggered.connect(self.shuffle_cmap)
         self.shuffleCmapAction.triggered.connect(self.shuffle_cmap)
         self.labelsGrad.invertBwAction.toggled.connect(self.setCheckedInvertBW)
-        self.labelsGrad.hideLabelsImgAction.toggled.connect(self.hideLabels)
+        self.labelsGrad.sigShowLabelsImgToggled.connect(self.showLabelImageItem)
+        self.labelsGrad.sigShowRightImgToggled.connect(self.showRightImageItem)
+        
         self.labelsGrad.defaultSettingsAction.triggered.connect(
             self.restoreDefaultSettings
         )
@@ -2754,6 +2768,11 @@ class guiWin(QMainWindow):
             self.drawIDsContComboBox_cb
         )
         self.drawIDsContComboBox.activated.connect(self.clearComboBoxFocus)
+
+        self.annotateRightHowCombobox.currentIndexChanged.connect(
+            self.annotateRightHowCombobox_cb
+        )
+        self.annotateRightHowCombobox.activated.connect(self.clearComboBoxFocus)
 
         self.showTreeInfoCheckbox.toggled.connect(self.setAnnotInfoMode)
 
@@ -2943,59 +2962,44 @@ class guiWin(QMainWindow):
         return container
 
     def gui_createLabWidgets(self):
-        bottomRightLayout = QGridLayout()
-        self.labBottomGroupbox = QGroupBox('Segmentation image controls')
-        self.labBottomGroupbox.setCheckable(True)
-        self.labBottomGroupbox.setChecked(False)
+        bottomRightLayout = QVBoxLayout()
+        self.rightBottomGroupbox = QGroupBox('Right image controls')
+        self.rightBottomGroupbox.setCheckable(True)
+        self.rightBottomGroupbox.setChecked(False)
+        self.rightBottomGroupbox.hide()
 
         font = QtGui.QFont()
         font.setPixelSize(12)
 
         row = 0
-        self.z_label_lab = QLabel('z-slice  ')
-        bottomRightLayout.addWidget(
-            self.z_label_lab, row, 0, alignment=Qt.AlignRight
+        rowLayout = QHBoxLayout()
+        self.annotateRightHowCombobox = QComboBox()
+        self.annotateRightHowCombobox.setFont(_font)
+        self.annotateRightHowCombobox.addItems(self.drawIDsContComboBoxSegmItems)
+        self.annotateRightHowCombobox.setCurrentIndex(
+            self.drawIDsContComboBox.currentIndex()
         )
-        self.zSliceScrollBarLab = widgets.labelledQScrollbar(Qt.Horizontal)
-        self.zSliceScrollBarLab.moving = False
-        self.zSliceScrollBarLab.setLabel(self.z_label_lab)
-        self.zSliceScrollBar.linkScrollBar(self.zSliceScrollBarLab)
-        bottomRightLayout.addWidget(self.zSliceScrollBarLab, row, 1)
 
-        bottomRightLayout.setColumnStretch(0,0)
-        bottomRightLayout.setColumnStretch(1,3)
-        # bottomRightLayout.setColumnStretch(2,0)
+        rowLayout.addWidget(
+            self.annotateRightHowCombobox, alignment=Qt.AlignCenter
+        )
 
-        self.labBottomGroupbox.setLayout(bottomRightLayout)
+        bottomRightLayout.addLayout(rowLayout)
+        bottomRightLayout.addStretch()
 
-        self.labBottomGroupbox.toggled.connect(self.labControlsToggled)
+        self.rightBottomGroupbox.setLayout(bottomRightLayout)
 
-    def labControlsToggled(self, checked):
-        if checked:
-            self.zSliceScrollBar.unlinkScrollBar()
-            self.connectZSliceScrollBarLab()
-        else:
-            self.zSliceScrollBar.linkScrollBar(self.zSliceScrollBarLab)
-            self.connectZSliceScrollBarLab(disconnect=True)
+        self.rightBottomGroupbox.toggled.connect(self.rightImageControlsToggled)
 
-    def connectZSliceScrollBarLab(self, disconnect=False):
-        if disconnect:
-            self.zSliceScrollBarLab.actionTriggered.disconnect()
-            self.zSliceScrollBarLab.sliderReleased.disconnect()
-        else:
-            self.zSliceScrollBarLab.actionTriggered.connect(
-                self.updateZsliceLab
-            )
-            self.zSliceScrollBarLab.sliderReleased.connect(
-                self.zSliceScrollBarLabReleased
-            )
+    def rightImageControlsToggled(self, checked):
+        self.updateALLimg()
 
     def gui_addBottomWidgetsToBottomLayout(self):
         self.bottomLayout = QHBoxLayout()
         self.bottomLayout.addStretch(1)
         self.bottomLayout.addWidget(self.img1BottomGroupbox)
         self.bottomLayout.addStretch(1)
-        self.bottomLayout.addWidget(self.labBottomGroupbox)
+        self.bottomLayout.addWidget(self.rightBottomGroupbox)
         self.bottomLayout.addStretch(1)
         self.setBottomLayoutStretch()
 
@@ -3038,8 +3042,6 @@ class guiWin(QMainWindow):
 
         # Left image histogram
         self.imgGrad = widgets.myHistogramLUTitem()
-        # Disable histogram default context Menu event
-        self.imgGrad.vb.raiseContextMenu = lambda x: None
         self.imgGrad.restoreState(self.df_settings)
         self.graphLayout.addItem(self.imgGrad, row=1, col=0)
         self.currentLutItem = self.imgGrad
@@ -3056,6 +3058,29 @@ class guiWin(QMainWindow):
                 'Using default colormap "viridis"'
             )
             self.labelsGrad.item.loadPreset('viridis')
+        
+        # Add actions to imgGrad gradient item
+        self.imgGrad.gradient.menu.addAction(
+            self.labelsGrad.showLabelsImgAction
+        )
+        self.imgGrad.gradient.menu.addAction(
+            self.labelsGrad.showRightImgAction
+        )
+        
+        # Add actions to view menu
+        self.viewMenu.addAction(self.labelsGrad.showLabelsImgAction)
+        self.viewMenu.addAction(self.labelsGrad.showRightImgAction)
+        
+        # Right image histogram
+        self.rightImageGrad = widgets.baseHistogramLUTitem(
+            gradientPosition='left'
+        )
+        self.rightImageGrad.gradient.menu.addAction(
+            self.labelsGrad.showLabelsImgAction
+        )
+        self.rightImageGrad.gradient.menu.addAction(
+            self.labelsGrad.showRightImgAction
+        )
 
         # Title
         self.titleLabel = pg.LabelItem(
@@ -3098,9 +3123,15 @@ class guiWin(QMainWindow):
             self.ax2_textColor = (255, 0, 0)
         
         self.emptyLab = np.zeros((2,2), dtype=np.uint16)
+
+        # Right image item linked to left
+        self.rightImageItem = pg.ImageItem()
+        self.rightImageGrad.setImageItem(self.rightImageItem)   
+        self.rightImageItem.isActive = False
+        self.ax2.addItem(self.rightImageItem)
         
         # Left image
-        self.img1 = pg.ImageItem()
+        self.img1 = widgets.LeftImageItem(linkedImageItem=self.rightImageItem)
         self.imgGrad.setImageItem(self.img1)
         self.ax1.addItem(self.img1)
 
@@ -3167,7 +3198,6 @@ class guiWin(QMainWindow):
         )
         self.topLayerItems.append(self.ax1_EraserX)
         
-
         self.ax1_binnedIDs_ScatterPlot = pg.ScatterPlotItem()
         self.ax1_binnedIDs_ScatterPlot.setData(
                                  [], [], symbol='t', pxMode=False,
@@ -3324,6 +3354,7 @@ class guiWin(QMainWindow):
         self.ax1_BudMothLines = [None]*numItems
         self.ax1_LabelItemsIDs = [None]*numItems
         self.ax2_LabelItemsIDs = [None]*numItems
+        self.ax2_BudMothLines = [None]*numItems
 
         if numItems > 500:
             cancel, doNotCreateItems = self._warn_too_many_items(numItems)
@@ -3351,6 +3382,7 @@ class guiWin(QMainWindow):
             self.ax1_LabelItemsIDs[ID-1] = widgets.myLabelItem()
             self.ax2_LabelItemsIDs[ID-1] = widgets.myLabelItem()
             self.ax2_ContoursCurves[ID-1] = pg.PlotDataItem()
+            self.ax2_BudMothLines[ID-1] = pg.PlotDataItem()
 
         self.progressWin.mainPbar.setMaximum(0)
         self.gui_addOverlayLayerItems()
@@ -3493,7 +3525,11 @@ class guiWin(QMainWindow):
         self.img2.mousePressEvent = self.gui_mousePressEventImg2
         self.img2.mouseMoveEvent = self.gui_mouseDragEventImg2
         self.img2.mouseReleaseEvent = self.gui_mouseReleaseEventImg2
+        self.rightImageItem.mousePressEvent = self.gui_mousePressRightImage
+        self.rightImageItem.mouseMoveEvent = self.gui_mouseDragRightImage
+        self.rightImageItem.mouseReleaseEvent = self.gui_mouseReleaseRightImage
         self.imgGrad.gradient.showMenu = self.gui_gradientContextMenuEvent
+        self.rightImageGrad.gradient.showMenu = self.gui_rightImageShowContextMenu
         # self.imgGrad.vb.contextMenuEvent = self.gui_gradientContextMenuEvent
 
     def gui_initImg1BottomWidgets(self):
@@ -4338,7 +4374,7 @@ class guiWin(QMainWindow):
 
         self.update_rp()
 
-        if not self.labelsGrad.hideLabelsImgAction.isChecked():
+        if self.labelsGrad.showLabelsImgAction.isChecked():
             self.img2.setImage(img=self.currentLab2D, autoLevels=False)
 
         self.setTempImg1ExpandLabel(prevCoords, expandedObjCoords)
@@ -4398,7 +4434,7 @@ class guiWin(QMainWindow):
         else:
             posData.lab[yy, xx] = self.movingID
 
-        if not self.labelsGrad.hideLabelsImgAction.isChecked():
+        if self.labelsGrad.showLabelsImgAction.isChecked():
             self.img2.setImage(self.currentLab2D, autoLevels=False)
         
         self.setTempImg1MoveLabel()
@@ -4993,7 +5029,14 @@ class guiWin(QMainWindow):
             self.setHoverToolSymbolData(
                 [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
             )
-
+    
+    def gui_rightImageShowContextMenu(self, event):
+        try:
+            # Convert QPointF to QPoint
+            self.rightImageGrad.gradient.menu.popup(event.screenPos().toPoint())
+        except AttributeError:
+            self.rightImageGrad.gradient.menu.popup(event.screenPos())
+            
     def gui_gradientContextMenuEvent(self, event):
         if self.overlayButton.isChecked():
             for action in self.currentLutItem.selectChannelsActions:
@@ -5560,6 +5603,31 @@ class guiWin(QMainWindow):
                     handle.roi = roi
                     handles.append(handle)
         return handles
+    
+    @myutils.exception_handler
+    def gui_mousePressRightImage(self, event):
+        modifiers = QGuiApplication.keyboardModifiers()
+        ctrl = modifiers == Qt.ControlModifier
+        alt = modifiers == Qt.AltModifier
+        isMod = ctrl or alt
+        right_click = event.button() == Qt.MouseButton.RightButton and not isMod
+        is_right_click_action_ON = any([
+            b.isChecked() for b in self.checkableQButtonsGroup.buttons()
+        ])
+        showLabelsGradMenu = right_click and not is_right_click_action_ON
+        if showLabelsGradMenu:
+            self.gui_rightImageShowContextMenu(event)
+            event.ignore()
+        else: 
+            self.gui_mousePressEventImg1(event)
+
+    @myutils.exception_handler
+    def gui_mouseDragRightImage(self, event):
+        self.gui_mouseDragEventImg1(event)
+
+    @myutils.exception_handler
+    def gui_mouseReleaseRightImage(self, event):
+        self.gui_mouseReleaseEventImg1(event)
 
     @myutils.exception_handler
     def gui_mousePressEventImg1(self, event):
@@ -6139,14 +6207,15 @@ class guiWin(QMainWindow):
             self.ax2_ContoursCurves,
             self.ax1_LabelItemsIDs,
             self.ax2_LabelItemsIDs,
-            self.ax1_BudMothLines
+            self.ax1_BudMothLines,
+            self.ax2_BudMothLines
         )
         self.logger.info(f'Adding {len(self.ax1_ContoursCurves)} axes items...')
         pbar = tqdm(total=len(self.ax1_ContoursCurves), ncols=100)
         for items_ID in allItems:
             (ax1ContCurve, ax2ContCurve,
             ax1_IDlabel, ax2_IDlabel,
-            BudMothLine) = items_ID
+            BudMothLine, ax2_mothBudLine) = items_ID
 
             pbar.update()
 
@@ -6159,6 +6228,7 @@ class guiWin(QMainWindow):
 
             self.ax2.addItem(ax2_IDlabel)
             self.ax2.addItem(ax2ContCurve)
+            self.ax2.addItem(ax2_mothBudLine)
         pbar.close()
 
     def relabelSequentialCallback(self):
@@ -6649,7 +6719,7 @@ class guiWin(QMainWindow):
         if isinstance(self.roi_to_del, pg.PolyLineROI):
             # PolyLine ROIs are only on ax1
             self.ax1.removeItem(self.roi_to_del)
-        elif self.labelsGrad.hideLabelsImgAction.isChecked():
+        elif not self.labelsGrad.showLabelsImgAction.isChecked():
             # Rect ROI is on ax1 because ax2 is hidden
             self.ax1.removeItem(self.roi_to_del)
         else:
@@ -7520,7 +7590,7 @@ class guiWin(QMainWindow):
     def addDelROI(self, event):       
         roi = self.getDelROI()
         self.addRoiToDelRoiInfo(roi)
-        if self.labelsGrad.hideLabelsImgAction.isChecked():
+        if not self.labelsGrad.showLabelsImgAction.isChecked():
             self.ax1.addItem(roi)
         else:
             self.ax2.addItem(roi)
@@ -8076,6 +8146,12 @@ class guiWin(QMainWindow):
         posData.cca_df = editCcaWidget.cca_df
         self.checkMultiBudMoth()
         self.updateALLimg()
+    
+    def annotateRightHowCombobox_cb(self, idx):
+        self.updateALLimg()
+        how = self.annotateRightHowCombobox.currentText()
+        self.df_settings.at['how_draw_right_annotations', 'value'] = how
+        self.df_settings.to_csv(self.settings_csv_path)
 
     def drawIDsContComboBox_cb(self, idx):
         self.updateALLimg()
@@ -8092,6 +8168,8 @@ class guiWin(QMainWindow):
         onlyMasks = how == 'Draw only overlay segm. masks'
         ccaInfo_and_masks = how == 'Draw cell cycle info and overlay segm. masks'
 
+        how_ax2 = self.getAnnotateHowRightImage()
+
         # if how.find('segm. masks') != -1:
         #     self.imgGrad.labelsAlphaMenu.setDisabled(False)
         # else:
@@ -8099,13 +8177,16 @@ class guiWin(QMainWindow):
 
         # Clear contours if requested
         if how.find('contours') == -1 or nothing:
-            allCont = zip(self.ax1_ContoursCurves,
-                          self.ax2_ContoursCurves)
-            for ax1ContCurve, ax2ContCurve in allCont:
+            for ax1ContCurve in self.ax1_ContoursCurves:
                 if ax1ContCurve is None:
                     continue
                 if ax1ContCurve.getData()[0] is not None:
                     ax1ContCurve.setData([], [])
+        
+        if how_ax2.find('contours') == -1 or how_ax2.find('nothing') != -1:
+            for ax2ContCurve in self.ax2_ContoursCurves:
+                if ax2ContCurve is None:
+                    continue
                 if ax2ContCurve.getData()[0] is not None:
                     ax2ContCurve.setData([], [])
 
@@ -8258,7 +8339,6 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         mode = self.modeComboBox.itemText(idx)
         self.annotateToolbar.setVisible(False)
-        self.labBottomGroupbox.hide()
         if mode == 'Segmentation and Tracking':
             self.trackingMenu.setDisabled(False)
             self.modeToolBar.setVisible(True)
@@ -8307,7 +8387,6 @@ class guiWin(QMainWindow):
             self.setEnabledEditToolbarButton(enabled=False)
             self.setEnabledCcaToolbar(enabled=False)
             self.removeAlldelROIsCurrentFrame()
-            self.labBottomGroupbox.show()
             # self.disableTrackingCheckBox.setChecked(True)
             # currentMode = self.drawIDsContComboBox.currentText()
             # self.drawIDsContComboBox.clear()
@@ -8499,7 +8578,7 @@ class guiWin(QMainWindow):
             while self.app.overrideCursor() is not None:
                 self.app.restoreOverrideCursor()
             self.wandControlsToolbar.setVisible(False)
-        if self.labelsGrad.hideLabelsImgAction.isChecked():
+        if not self.labelsGrad.showLabelsImgAction.isChecked():
             self.ax1.vb.autoRange()
     
     def labelRoi_cb(self, checked):
@@ -8897,17 +8976,19 @@ class guiWin(QMainWindow):
     @myutils.exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
-            posData = self.data[self.pos_i]
-            columns = set()
-            for _posData in self.data:
-                for frame_i, data_dict in enumerate(_posData.allData_li):
-                    acdc_df = data_dict['acdc_df']
-                    if acdc_df is None:
-                        continue
-                    
-                    columns.update(acdc_df.columns)
-            
-            printl(columns, pretty=True)
+            printl([item.getData() for item in self.ax2_ContoursCurves if item is not None])
+            printl('isRightImageVisible', self.df_settings.at['isRightImageVisible', 'value'])
+            printl('isLabelsVisible', self.df_settings.at['isLabelsVisible', 'value'])
+            printl('showRightImgAction', self.labelsGrad.showRightImgAction.isChecked())
+            printl('showLabelsImgAction', self.labelsGrad.showLabelsImgAction.isChecked())
+            printl(self.ax2.items, pretty=True)
+            printl([item.getData() for item in self.ax2_ContoursCurves if item is not None])
+            for item1, item2 in zip(self.ax1_ContoursCurves, self.ax2_ContoursCurves):
+                if item1 is None:
+                    continue
+                printl(item1.getData())
+                item2.setData(item1.getData()[0], item1.getData()[1])
+
             # printl('Number of columns: ', len(columns))
             # fluo_keys = list(posData.fluo_data_dict.keys())
             # printl(fluo_keys, pretty=True)
@@ -10986,15 +11067,34 @@ class guiWin(QMainWindow):
         msg.setDetailedText(details)
         loadUnsavedButton = widgets.reloadPushButton('Recover unsaved data')
         loadSavedButton = widgets.savePushButton('Load saved data')
+        infoButton = widgets.infoPushButton('More info...')
+        buttons = ('Cancel', loadSavedButton, loadUnsavedButton, infoButton)
         msg.question(
-            self, 'Recover unsaved data?', txt, 
-            buttonsTexts=('Cancel', loadSavedButton, loadUnsavedButton)
+            self, 'Recover unsaved data?', txt, buttonsTexts=buttons,
+            showDialog=False
         )
+        infoButton.disconnect()
+        infoButton.clicked.connect(partial(self.showInfoAutosave, posData))
+        msg.exec_()
         if msg.cancel:
             self.loadDataWorker.abort = True
         elif msg.clickedButton == loadUnsavedButton:
             self.loadDataWorker.loadUnsaved = True
         self.loadDataWorker.waitCond.wakeAll()
+    
+    def showInfoAutosave(self, posData):
+        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        txt = html_utils.paragraph(f"""
+            Cell-ACDC detected unsaved data in a previous session and it stored 
+            it because the <b>Autosave</b><br>
+            function was active.<br><br>
+            You can toggle Autosave ON and OFF from the menu on the top menubar 
+            <code>File --> Autosave</code>.<br><br>
+            You can find the recovered data in the following folder:<br><br>
+            <code>{posData.recoveryFolderPath}</code><br><br>
+            This folder <b>will be deleted when you save data the next time</b>.
+        """)
+        msg.information(self, 'Autosave info', txt)
     
     def askMismatchSegmDataShape(self, posData):
         msg = widgets.myMessageBox(wrapText=False)
@@ -11102,24 +11202,26 @@ class guiWin(QMainWindow):
         self.img1BottomGroupbox.show()
 
         isLabVisible = self.df_settings.at['isLabelsVisible', 'value'] == 'Yes'
-        if self.isSegm3D and isLabVisible and not self.isSnapshot:
-            self.labBottomGroupbox.show()
-        else:
-            self.labBottomGroupbox.hide()
+        isRightImgVisible = (
+            self.df_settings.at['isRightImageVisible', 'value'] == 'Yes'
+        )
         self.updateScrollbars()
         self.openAction.setEnabled(True)
         self.editTextIDsColorAction.setDisabled(False)
         self.imgPropertiesAction.setEnabled(True)
         self.navigateToolBar.setVisible(True)
-        if 'isLabelsVisible' in self.df_settings.index:
-            val = self.df_settings.at['isLabelsVisible', 'value'] == 'No'
-            if val:
-                self.labelsGrad.hideLabelsImgAction.setChecked(True)
+        self.labelsGrad.showLabelsImgAction.setChecked(isLabVisible)
+        self.labelsGrad.showRightImgAction.setChecked(isRightImgVisible)
+
+        if isRightImgVisible or isLabVisible:
+            self.setTwoImagesLayout(True)
+        else:
+            self.setTwoImagesLayout(False)
+        
+        self.setBottomLayoutStretch()
 
         self.readSavedCustomAnnot()
         self.addCustomAnnotationSavedPos()
-
-        self.setBottomLayoutStretch()
         self.setAxesMaxRange()
         self.setSaturBarLabel()
 
@@ -11162,6 +11264,11 @@ class guiWin(QMainWindow):
         if 'how_draw_annotations' in self.df_settings.index:
             how = self.df_settings.at['how_draw_annotations', 'value']
             self.drawIDsContComboBox.setCurrentText(how)
+            self.annotateRightHowCombobox.setCurrentText(how)
+        
+        if 'how_draw_right_annotations' in self.df_settings.index:
+            how = self.df_settings.at['how_draw_right_annotations', 'value']
+            self.annotateRightHowCombobox.setCurrentText(how)
 
     def setSaturBarLabel(self, log=True):
         self.statusbar.clearMessage()
@@ -11180,7 +11287,7 @@ class guiWin(QMainWindow):
         self.statusBarLabel.setText(txt)
 
     def autoRange(self):
-        if not self.labelsGrad.hideLabelsImgAction.isChecked():
+        if self.labelsGrad.showLabelsImgAction.isChecked():
             self.ax2.vb.autoRange()
         self.ax1.vb.autoRange()
 
@@ -11218,6 +11325,7 @@ class guiWin(QMainWindow):
             self.drawIDsContComboBox.currentIndexChanged.connect(
                 self.drawIDsContComboBox_cb
             )
+            self.showTreeInfoCheckbox.hide()
         else:
             self.annotateToolbar.setVisible(False)
             self.disableTrackingCheckBox.setDisabled(False)
@@ -11287,20 +11395,6 @@ class guiWin(QMainWindow):
             self.autoSegmDoNotAskAgain = True
             self.autoSegmAction.setChecked(False)
 
-    def updateZsliceLab(self, action):
-        self.zSliceScrollBarLab.updateLabel()
-        if action == QAbstractSlider.SliderMove:
-            if not self.zSliceScrollBarLab.moving:
-                self.clearAllItems()
-                self.zSliceScrollBarLab.moving = True
-            self.setImageImg2()
-        else:
-            self.updateALLimg()
-
-    def zSliceScrollBarLabReleased(self):
-        self.zSliceScrollBarLab.moving = False
-        self.updateALLimg()
-
     def init_segmInfo_df(self):
         for posData in self.data:
             if posData.SizeZ > 1 and posData.segmInfo_df is not None:
@@ -11353,8 +11447,6 @@ class guiWin(QMainWindow):
             )
             self.zProjComboBox.currentTextChanged.connect(self.updateZproj)
             self.zProjComboBox.activated.connect(self.clearComboBoxFocus)
-            if self.isSegm3D and self.labBottomGroupbox.isChecked():
-                self.connectZSliceScrollBarLab()
 
         posData = self.data[self.pos_i]
         if posData.SizeT == 1:
@@ -11403,7 +11495,6 @@ class guiWin(QMainWindow):
         self.update_z_slice(self.zSliceScrollBar.sliderPosition())
 
     def zSliceScrollBarReleased(self):
-        self.zSliceScrollBarLab.moving = False
         self.update_z_slice(self.zSliceScrollBar.sliderPosition())
 
     def update_z_slice(self, z):
@@ -11438,17 +11529,6 @@ class guiWin(QMainWindow):
             self.z_label.setStyleSheet('color: gray')
             self.updateALLimg()
 
-    def clearItems_IDs(self, IDs_to_clear):
-        for ID in IDs_to_clear:
-            if self.ax1_ContoursCurves[ID-1] is None:
-                continue
-
-            self.ax1_ContoursCurves[ID-1].setData([], [])
-            self.ax2_ContoursCurves[ID-1].setData([], [])
-            self.ax1_LabelItemsIDs[ID-1].setText('')
-            self.ax2_LabelItemsIDs[ID-1].setText('')
-            self.ax1_BudMothLines[ID-1].setData([], [])
-
     def removeGraphicsItemsIDs(self, maxID):
         itemsToRemove = zip(
             self.ax1_ContoursCurves[maxID:],
@@ -11476,13 +11556,6 @@ class guiWin(QMainWindow):
         self.ax1_LabelItemsIDs = self.ax1_LabelItemsIDs[:maxID]
         self.ax2_LabelItemsIDs = self.ax2_LabelItemsIDs[:maxID]
         self.ax1_BudMothLines = self.ax1_BudMothLines[:maxID]
-
-    def clearLabAnnotations(self):
-        labAnnot = zip(self.ax2_ContoursCurves, self.ax2_LabelItemsIDs)
-        for ax2ContCurve, _IDlabel2 in labAnnot:
-            if ax2ContCurve.getData()[0] is not None:
-                ax2ContCurve.setData([], [])
-            _IDlabel2.setText('')
     
     def clearAx2Items(self):
         self.ax2_binnedIDs_ScatterPlot.clear()
@@ -11490,10 +11563,11 @@ class guiWin(QMainWindow):
 
         allItems = zip(
             self.ax2_LabelItemsIDs,
-            self.ax2_ContoursCurves
+            self.ax2_ContoursCurves,
+            self.ax2_BudMothLines
         )
         for idx, items_ID in enumerate(allItems):
-            _IDlabel2, ax2ContCurve = items_ID
+            _IDlabel2, ax2ContCurve, mothBudLine = items_ID
 
             if ax2ContCurve is None:
                 continue
@@ -11501,6 +11575,9 @@ class guiWin(QMainWindow):
             if ax2ContCurve.getData()[0] is not None:
                 ax2ContCurve.setData([], [])
             _IDlabel2.setText('')
+
+            if mothBudLine.getData()[0] is not None:
+                mothBudLine.setData([], [])
     
     def clearAx1Items(self):
         self.ax1_binnedIDs_ScatterPlot.clear()
@@ -11877,7 +11954,7 @@ class guiWin(QMainWindow):
         self.t_label.setText(
             f'frame n. {posData.frame_i+1}/{posData.SizeT}'
         )
-        if not self.labelsGrad.hideLabelsImgAction.isChecked():
+        if self.labelsGrad.showLabelsImgAction.isChecked():
             self.img2.setImage(posData.lab, z=self.z_lab(), autoLevels=False)
         self.updateLookuptable()
         self.updateFramePosLabel()
@@ -12415,7 +12492,7 @@ class guiWin(QMainWindow):
 
     def z_lab(self):
         if self.isSegm3D:
-            return self.zSliceScrollBarLab.sliderPosition()
+            return self.zSliceScrollBar.sliderPosition()
         else:
             return None
 
@@ -12425,7 +12502,7 @@ class guiWin(QMainWindow):
                 return lab[self.z_lab()]
             zProjHow = self.zProjComboBox.currentText()
             isZslice = zProjHow == 'single z-slice'
-            if self.labBottomGroupbox.isChecked() or isZslice:
+            if isZslice:
                 return lab[self.z_lab()]
             else:
                 return lab.max(axis=0)
@@ -12437,7 +12514,7 @@ class guiWin(QMainWindow):
         if self.isSegm3D:
             zProjHow = self.zProjComboBox.currentText()
             isZslice = zProjHow == 'single z-slice'
-            if self.labBottomGroupbox.isChecked() or isZslice:
+            if isZslice:
                 posData.lab[self.z_lab(), mask] = 0
             else:
                 posData.lab[:, mask] = 0
@@ -12497,7 +12574,7 @@ class guiWin(QMainWindow):
         if self.isSegm3D:
             zProjHow = self.zProjComboBox.currentText()
             isZslice = zProjHow == 'single z-slice'
-            if self.labBottomGroupbox.isChecked() or isZslice:
+            if isZslice:
                 if toLocalSlice is not None:
                     toLocalSlice = (self.z_lab(), *toLocalSlice)
                     posData.lab[toLocalSlice][mask] = ID
@@ -12968,10 +13045,13 @@ class guiWin(QMainWindow):
             self.statusBarLabel.setText('Autosaving...')
             worker.enqueue(posData)
 
-    def ax1_setTextID(self, obj, how, updateColor=False, debug=False):
+    def annotateObject(self, obj, how, debug=False, ax=0):
         posData = self.data[self.pos_i]
         # Draw ID label on ax1 image depending on how
-        LabelItemID = self.ax1_LabelItemsIDs[obj.label-1]       
+        if ax == 0:
+            LabelItemID = self.ax1_LabelItemsIDs[obj.label-1]
+        else:
+            LabelItemID = self.ax2_LabelItemsIDs[obj.label-1]       
         df = posData.cca_df
         ID = obj.label
         if df is None or how.find('cell cycle') == -1:
@@ -12984,8 +13064,6 @@ class guiWin(QMainWindow):
             else:
                 annotID = obj.label
             txt = f'{annotID}'
-            if updateColor:
-                LabelItemID.setText(txt, size=self.fontSize)
             if ID in posData.new_IDs:
                 color = 'r'
                 bold = True
@@ -13052,8 +13130,6 @@ class guiWin(QMainWindow):
                 gen_num = generation_num
             
             txt = f'{ccs}-{gen_num}'
-            if updateColor:
-                LabelItemID.setText(txt, size=self.fontSize)
             if ccs == 'G1':
                 color = self.ax1_G1cellColor
                 bold = False
@@ -13097,6 +13173,108 @@ class guiWin(QMainWindow):
 
         self.setLabelCenteredObject(obj, LabelItemID)
 
+    def annotateObjectRightImage(self, obj):
+        if not self.labelsGrad.showRightImgAction.isChecked():
+            return
+        
+        how = self.getAnnotateHowRightImage()
+        isAnnotActive = (
+            how.find('IDs') != -1 or how.find('cell cycle') != -1
+        )
+        if not isAnnotActive:
+            return
+        
+        self.annotateObject(obj, how, ax=1)
+    
+    def drawMotherBudLineRightImage(
+            self, obj, lineData=None, pen=None, posData=None
+        ):
+        if not self.labelsGrad.showRightImgAction.isChecked():
+            return
+
+        how = self.getAnnotateHowRightImage()
+        isMothBudLineActive = (
+            how.find('mother-bud lines') != -1 or how.find('cell cycle') != -1
+        )
+        if not isMothBudLineActive:
+            return
+        
+        ID = obj.label
+        if lineData is not None:
+            # Contour already computed for ax1
+            BudMothLine = self.ax2_BudMothLines[ID-1]
+            BudMothLine.setData(lineData[0], lineData[1], pen=pen)
+        else:
+            # Contour NOT computed for ax1 --> compute for ax2
+            self._drawMothBudLine(obj, posData, ax=1)
+    
+    def _drawMothBudLine(self, obj, posData, ax=0):
+        ID = obj.label
+        if ax == 0:
+            BudMothLine = self.ax1_BudMothLines[ID-1]
+        else:
+            BudMothLine = self.ax2_BudMothLines[ID-1]
+        cca_df_ID = posData.cca_df.loc[ID]
+        ccs_ID = cca_df_ID['cell_cycle_stage']
+        relationship = cca_df_ID['relationship']
+        isObjVisible = self.isObjVisible(obj.bbox)
+        if ccs_ID == 'S' and relationship=='bud' and isObjVisible:
+            emerg_frame_i = cca_df_ID['emerg_frame_i']
+            if emerg_frame_i == posData.frame_i:
+                pen = self.NewBudMoth_Pen
+            else:
+                pen = self.OldBudMoth_Pen
+            relative_ID = cca_df_ID['relative_ID']
+            if relative_ID in posData.IDs:
+                relative_rp_idx = posData.IDs.index(relative_ID)
+                relative_ID_obj = posData.rp[relative_rp_idx]
+                y1, x1 = self.getObjCentroid(obj.centroid)
+                y2, x2 = self.getObjCentroid(relative_ID_obj.centroid)
+                lineData = [x1, x2], [y1, y2]
+                BudMothLine.setData(lineData[0], lineData[1], pen=pen)
+                self.drawMotherBudLineRightImage(
+                    obj, lineData=lineData, pen=pen
+                )
+        else:
+            BudMothLine.setData([], [])
+    
+    def drawContourRightImage(self, obj, posData, contData=None, pen=None):
+        if not self.labelsGrad.showRightImgAction.isChecked():
+            return
+
+        how = self.getAnnotateHowRightImage()
+        isContourActive = how.find('contours') != -1
+        if not isContourActive:
+            return
+        
+        if contData is not None:
+            contItem = self.ax2_ContoursCurves[obj.label-1]
+            contItem.setData(contData[0], contData[1], pen=pen)
+        else:
+            self._drawContour(obj, posData, ax=1)
+    
+    def _drawContour(self, obj, posData, ax=0):
+        idx = obj.label-1
+        if ax == 0:
+            curveID = self.ax1_ContoursCurves[idx]
+        else:
+            curveID = self.ax2_ContoursCurves[idx]
+        
+        if not self.isObjVisible(obj.bbox):
+            curveID.setData([], [])
+            self.drawContourRightImage(obj, posData, contData=([], []))
+        else:
+            ID = obj.label
+            cont = self.getObjContours(obj, approx=True)
+            pen = (
+                self.newIDs_cpen if ID in posData.new_IDs
+                else self.oldIDs_cpen
+            )
+            contData = (cont[:,0], cont[:,1])
+            curveID.setData(contData[0], contData[1], pen=pen)
+            self.drawContourRightImage(obj, posData, contData=contData, pen=pen)
+        
+
     def setLabelCenteredObject(self, obj, LabelItemID):
         # Center LabelItem at centroid
         y, x = self.getObjCentroid(obj.centroid)
@@ -13108,8 +13286,18 @@ class guiWin(QMainWindow):
             return obj_centroid[1:3]
         else:
             return obj_centroid
+    
+    def getAnnotateHowRightImage(self):
+        if self.rightBottomGroupbox.isChecked():
+            how = self.annotateRightHowCombobox.currentText()
+        else:
+            how = self.drawIDsContComboBox.currentText()
+        return how
 
     def ax2_setTextID(self, obj):
+        if not self.labelsGrad.showLabelsImgAction.isChecked():
+            return
+
         posData = self.data[self.pos_i]
         # Draw ID label on ax1 image
         LabelItemID = self.ax2_LabelItemsIDs[obj.label-1]
@@ -13145,7 +13333,7 @@ class guiWin(QMainWindow):
                 continue
             self.drawID_and_Contour(obj)
 
-    def drawID_and_Contour(self, obj, drawContours=True, updateColor=False):
+    def drawID_and_Contour(self, obj, drawContours=True):
         posData = self.data[self.pos_i]
         how = self.drawIDsContComboBox.currentText()
         IDs_and_cont = how == 'Draw IDs and contours'
@@ -13160,9 +13348,6 @@ class guiWin(QMainWindow):
         ccaInfo_and_masks = how == 'Draw cell cycle info and overlay segm. masks'
 
         # Draw LabelItems for IDs on ax2
-        y, x = self.getObjCentroid(obj.centroid)
-        idx = obj.label-1
-        t0 = time.time()
         self.ax2_setTextID(obj)
 
         if posData.cca_df is not None and self.isSnapshot:
@@ -13179,7 +13364,9 @@ class guiWin(QMainWindow):
         if draw_LIs:
             # Draw LabelItems for IDs on ax2
             # t0 = time.time()
-            self.ax1_setTextID(obj, how, updateColor=updateColor)
+            self.annotateObject(obj, how)
+        
+        self.annotateObjectRightImage(obj)
 
         # t1 = time.time()
         # self.drawingLabelsTimes.append(t1-t0)
@@ -13190,54 +13377,19 @@ class guiWin(QMainWindow):
             or ccaInfo_and_masks
         )
         if drawLines and posData.cca_df is not None:
-            ID = obj.label
-            BudMothLine = self.ax1_BudMothLines[ID-1]
-            cca_df_ID = posData.cca_df.loc[ID]
-            ccs_ID = cca_df_ID['cell_cycle_stage']
-            relationship = cca_df_ID['relationship']
-            isObjVisible = self.isObjVisible(obj.bbox)
-            if ccs_ID == 'S' and relationship=='bud' and isObjVisible:
-                emerg_frame_i = cca_df_ID['emerg_frame_i']
-                if emerg_frame_i == posData.frame_i:
-                    pen = self.NewBudMoth_Pen
-                else:
-                    pen = self.OldBudMoth_Pen
-                relative_ID = cca_df_ID['relative_ID']
-                if relative_ID in posData.IDs:
-                    relative_rp_idx = posData.IDs.index(relative_ID)
-                    relative_ID_obj = posData.rp[relative_rp_idx]
-                    y1, x1 = self.getObjCentroid(obj.centroid)
-                    y2, x2 = self.getObjCentroid(relative_ID_obj.centroid)
-                    BudMothLine.setData([x1, x2], [y1, y2], pen=pen)
-            else:
-                BudMothLine.setData([], [])
+            self._drawMothBudLine(obj, posData)
+        else:
+            # Check if moth-bud line needed by the right image
+            self.drawMotherBudLineRightImage(obj, posData=posData)
 
         if not drawContours:
             return
 
         # Draw contours on ax1 if requested
         if IDs_and_cont or onlyCont or ccaInfo_and_cont:
-            if not self.isObjVisible(obj.bbox):
-                curveID = self.ax1_ContoursCurves[idx]
-                curveID.setData([], [])
-            else:
-                ID = obj.label
-                # t0 = time.time()
-                cont = self.getObjContours(obj, approx=True)
-                # t1 = time.time()
-                # computingContoursTime = t1-t0
-                # self.computingContoursTimes.append(computingContoursTime)
-
-                # t0 = time.time()
-                curveID = self.ax1_ContoursCurves[idx]
-                pen = (
-                    self.newIDs_cpen if ID in posData.new_IDs
-                    else self.oldIDs_cpen
-                )
-                curveID.setData(cont[:,0], cont[:,1], pen=pen)
-                # t1 = time.time()
-                # drawingContoursTimes = t1-t0
-                # self.drawingContoursTimes.append(drawingContoursTimes)
+            self._drawContour(obj, posData)
+        else:
+            self.drawContourRightImage(obj, posData)
 
     @myutils.exception_handler
     def update_rp(self, draw=True, debug=False):
@@ -13737,10 +13889,6 @@ class guiWin(QMainWindow):
     def imgGradLUT_cb(self, LUTitem):
         pass
 
-    def updateOnlyImg(self):
-        isSegm2D = not self.isSegm3D
-        return isSegm2D or self.labBottomGroupbox.isChecked()
-
     def imgGradLUTfinished_cb(self):
         posData = self.data[self.pos_i]
         ticks = self.imgGrad.gradient.listTicks()
@@ -13881,7 +14029,7 @@ class guiWin(QMainWindow):
         if self.isSegm3D:
             zProjHow = self.zProjComboBox.currentText()
             isZslice = zProjHow == 'single z-slice'
-            if not self.labBottomGroupbox.isChecked() and not isZslice:
+            if not isZslice:
                 # required a projection --> all obj are visible
                 return True
             min_z = obj_bbox[0]
@@ -13897,7 +14045,7 @@ class guiWin(QMainWindow):
         if self.isSegm3D and len(obj_bbox)==6:
             zProjHow = self.zProjComboBox.currentText()
             isZslice = zProjHow == 'single z-slice'
-            if not self.labBottomGroupbox.isChecked() and not isZslice:
+            if not isZslice:
                 # required a projection
                 return obj_image.max(axis=0)
 
@@ -14000,10 +14148,19 @@ class guiWin(QMainWindow):
             pass
         else:
             pass
-
-    def hideLabels(self, checked):
-        if checked:
-            # self.addDelRoiAction.setDisabled(True)
+    
+    def setTwoImagesLayout(self, isTwoImages):
+        if isTwoImages:
+            self.graphLayout.removeItem(self.titleLabel)
+            self.graphLayout.addItem(self.titleLabel, row=0, col=1, colspan=2)
+            self.mainLayout.setAlignment(self.bottomLayout, Qt.AlignLeft)
+            self.ax2.show()
+            self.ax2.vb.setYLink(self.ax1.vb)
+            self.ax2.vb.setXLink(self.ax1.vb)
+        else:
+            self.graphLayout.removeItem(self.titleLabel)
+            self.graphLayout.addItem(self.titleLabel, row=0, col=1)
+            self.mainLayout.setAlignment(self.bottomLayout, Qt.AlignCenter)  
             self.ax2.hide()
             oldLink = self.ax2.vb.linkedView(self.ax1.vb.YAxis)
             try:
@@ -14011,12 +14168,42 @@ class guiWin(QMainWindow):
                 oldLink.sigXRangeChanged.disconnect()
             except TypeError:
                 pass
-            self.labBottomGroupbox.hide()
-            self.graphLayout.removeItem(self.titleLabel)
-            self.graphLayout.addItem(self.titleLabel, row=0, col=1)
-            self.mainLayout.setAlignment(self.bottomLayout, Qt.AlignCenter)
+    
+    def showRightImageItem(self, checked):
+        self.setTwoImagesLayout(checked)
+
+        if checked:
+            self.df_settings.at['isRightImageVisible', 'value'] = 'Yes'
+            self.graphLayout.addItem(self.rightImageGrad, row=1, col=3)
+            self.rightBottomGroupbox.show()
+            self.rightImageItem.isActive = True
+            self.updateALLimg()
+        else:
+            self.clearAx2Items()
+            self.df_settings.at['isRightImageVisible', 'value'] = 'No'
+            try:
+                self.graphLayout.removeItem(self.rightImageGrad)
+            except Exception:
+                return
+            self.rightImageItem.clear()
+            self.rightImageItem.isActive = False
+        
+        self.df_settings.to_csv(self.settings_csv_path)
+            
+        QTimer.singleShot(200, self.autoRange)
+
+        self.setBottomLayoutStretch()    
+        
+    def showLabelImageItem(self, checked):
+        self.setTwoImagesLayout(checked)
+        self.rightBottomGroupbox.hide()
+        if checked:
+            self.df_settings.at['isLabelsVisible', 'value'] = 'Yes'
+            self.updateALLimg()
+        else:
+            self.clearAx2Items()
+            self.img2.clear()
             self.df_settings.at['isLabelsVisible', 'value'] = 'No'
-            self.df_settings.to_csv(self.settings_csv_path)
             # Move del ROIs to the left image
             for posData in self.data:
                 delROIs_info = posData.allData_li[posData.frame_i]['delROIs_info']
@@ -14026,41 +14213,21 @@ class guiWin(QMainWindow):
 
                     self.ax1.addItem(roi)
                     # self.ax2.removeItem(roi)
-            QTimer.singleShot(200, self.autoRange)
-        else:
-            self.graphLayout.removeItem(self.titleLabel)
-            self.graphLayout.addItem(self.titleLabel, row=0, col=1, colspan=2)
-            self.mainLayout.setAlignment(self.bottomLayout, Qt.AlignLeft)
-            if self.isSegm3D and not self.isSnapshot:
-                self.labBottomGroupbox.show()
-            self.df_settings.at['isLabelsVisible', 'value'] = 'Yes'
-            self.df_settings.to_csv(self.settings_csv_path)
-            self.ax2.show()
-            self.updateALLimg()
-            self.ax2.vb.setYLink(self.ax1.vb)
-            self.ax2.vb.setXLink(self.ax1.vb)
-            QTimer.singleShot(200, self.autoRange)
+        
+        self.df_settings.to_csv(self.settings_csv_path)
+        QTimer.singleShot(200, self.autoRange)
 
         self.setBottomLayoutStretch()
 
     def setBottomLayoutStretch(self):
-        if 'isLabelsVisible' not in self.df_settings.index:
-            self.df_settings.at['isLabelsVisible', 'value'] = 'Yes'
-
-        bothControl = (
-            self.isSegm3D and
-            self.df_settings.at['isLabelsVisible', 'value'] == 'Yes'
-            and not self.isSnapshot
-        )
-
-        if bothControl:
+        if self.labelsGrad.showRightImgAction.isChecked():
             # Equally share space between the two control groupboxes
             self.bottomLayout.setStretch(0, 1)
             self.bottomLayout.setStretch(1, 6)
-            self.bottomLayout.setStretch(2, 2)
+            self.bottomLayout.setStretch(2, 1)
             self.bottomLayout.setStretch(3, 6)
             self.bottomLayout.setStretch(4, 1)
-        elif self.df_settings.at['isLabelsVisible', 'value'] == 'Yes':
+        elif self.labelsGrad.showLabelsImgAction.isChecked():
             # Left control takes only left space
             self.bottomLayout.setStretch(0, 1)
             self.bottomLayout.setStretch(1, 5)
@@ -14070,7 +14237,7 @@ class guiWin(QMainWindow):
         else:
             # Left control takes all the space
             self.bottomLayout.setStretch(0, 3)
-            self.bottomLayout.setStretch(1, 11)
+            self.bottomLayout.setStretch(1, 10)
             self.bottomLayout.setStretch(2, 1)
             self.bottomLayout.setStretch(3, 1)
             self.bottomLayout.setStretch(4, 1)
@@ -14175,8 +14342,6 @@ class guiWin(QMainWindow):
                 self.zSliceScrollBarReleased
             )
         self.z_label.setText(f'z-slice  {z+1:02}/{posData.SizeZ}')
-        if not self.labBottomGroupbox.isChecked():
-            self.z_label_lab.setText(f'z-slice  {z+1:02}/{posData.SizeZ}')
 
     def getImage(self, frame_i=None, normalizeIntens=True):
         posData = self.data[self.pos_i]
@@ -14204,7 +14369,7 @@ class guiWin(QMainWindow):
         else:
             DelROIlab = self.get_2Dlab(posData.lab, force_z=False)
             allDelIDs = set()
-        if not self.labelsGrad.hideLabelsImgAction.isChecked() and set_image:
+        if self.labelsGrad.showLabelsImgAction.isChecked() and set_image:
             self.img2.setImage(DelROIlab, z=self.z_lab(), autoLevels=False)
         self.currentLab2D = DelROIlab
         if updateLookuptable:
@@ -14473,7 +14638,7 @@ class guiWin(QMainWindow):
             if isinstance(roi, pg.PolyLineROI):
                 # PolyLine ROIs are only on ax1
                 self.ax1.addItem(roi)
-            elif self.labelsGrad.hideLabelsImgAction.isChecked():
+            elif not self.labelsGrad.showLabelsImgAction.isChecked():
                 # Rect ROI is on ax1 because ax2 is hidden
                 self.ax1.addItem(roi)
             else:
@@ -14514,6 +14679,10 @@ class guiWin(QMainWindow):
         ax2ContCurve = pg.PlotDataItem()
         self.ax2.addItem(ax2ContCurve)
 
+        # Bud mother line on ax1
+        ax2_mothBudLine = pg.PlotDataItem()
+        self.ax1.addItem(ax2_mothBudLine)
+
         self.logger.info(f'Items created for new cell ID {newID}')
         if newID > start:
             empty = [None]*(newID-start)
@@ -14522,12 +14691,14 @@ class guiWin(QMainWindow):
             self.ax1_LabelItemsIDs.extend(empty)
             self.ax2_LabelItemsIDs.extend(empty)
             self.ax2_ContoursCurves.extend(empty)
+            self.ax2_BudMothLines.extend(empty)
 
         self.ax1_ContoursCurves[newID-1] = ax1ContCurve
         self.ax1_BudMothLines[newID-1] = BudMothLine
         self.ax1_LabelItemsIDs[newID-1] = ax1_IDlabel
         self.ax2_LabelItemsIDs[newID-1] = ax2_IDlabel
-        self.ax2_ContoursCurves[newID-1] = ax2ContCurve        
+        self.ax2_ContoursCurves[newID-1] = ax2ContCurve
+        self.ax2_BudMothLines[newID-1] = ax2_mothBudLine         
 
     def updateFramePosLabel(self):
         if self.isSnapshot:
@@ -14591,7 +14762,8 @@ class guiWin(QMainWindow):
         if ID == self.highlightedID and not force:
             return
 
-        how = self.drawIDsContComboBox.currentText()
+        how_ax1 = self.drawIDsContComboBox.currentText()
+        how_ax2 = self.getAnnotateHowRightImage()
         contours = zip(
             self.ax1_ContoursCurves,
             self.ax2_ContoursCurves
@@ -14600,35 +14772,40 @@ class guiWin(QMainWindow):
             if ax1ContCurve is None:
                 continue
             if ax1ContCurve.getData()[0] is not None:
-                if how.find('contours') != -1:
+                if how_ax1.find('contours') != -1:
                     ax1ContCurve.setPen(self.oldIDs_cpen)
                 else:
                     ax1ContCurve.setData([], [])
             if ax2ContCurve.getData()[0] is not None:
-                if how.find('contours') != -1:
+                if how_ax2.find('contours') != -1:
                     ax2ContCurve.setPen(self.oldIDs_cpen)
                 else:
                     ax1ContCurve.setData([], [])
 
-        if how.find('IDs') == -1:
-            labelItems = zip(self.ax1_LabelItemsIDs, self.ax2_LabelItemsIDs)
-            for labelItem_ax1, labelItem_ax2 in labelItems:
+        if how_ax1.find('IDs') == -1:
+            labelItems = self.ax1_LabelItemsIDs
+            for labelItem_ax1 in labelItems:
                 if labelItem_ax1 is None:
                     continue
                 labelItem_ax1.setText('')
+        
+        if how_ax2.find('IDs') == -1:
+            labelItems = self.ax2_LabelItemsIDs
+            for labelItem_ax2 in labelItems:
+                if labelItem_ax2 is None:
+                    continue
                 labelItem_ax2.setText('')
 
         posData = self.data[self.pos_i]
         self.highlightedID = ID
 
-        how = self.drawIDsContComboBox.currentText()
         if ID not in posData.IDs:
             return
 
         objIdx = posData.IDs.index(ID)
         obj = posData.rp[objIdx]
 
-        if how.find('segm. masks') != -1:
+        if how_ax1.find('segm. masks') != -1:
             highlightedLab = np.zeros_like(self.currentLab2D)
             lut = np.zeros((2, 4), dtype=np.uint8)
             for _obj in posData.rp:
@@ -14672,7 +14849,7 @@ class guiWin(QMainWindow):
         # Restore other text IDs to default
         if draw_LIs:
             for _obj in posData.rp:
-                self.ax1_setTextID(_obj, how, debug=False)
+                self.annotateObject(_obj, how, debug=False)
                 self.ax2_setTextID(_obj)
 
         # Label ID
@@ -14728,10 +14905,11 @@ class guiWin(QMainWindow):
     # @exec_time
     @myutils.exception_handler
     def updateALLimg(
-            self, image=None, only_ax1=False, updateFilters=False,
-            useEraserImg=False
+            self, image=None, updateFilters=False, useEraserImg=False
         ):
         self.clearAx1Items()
+        self.clearAx2Items()
+
         posData = self.data[self.pos_i]
 
         if self.last_pos_i != self.pos_i or posData.frame_i != self.last_frame_i:
@@ -14771,11 +14949,7 @@ class guiWin(QMainWindow):
             self.slideshowWin.frame_i = posData.frame_i
             self.slideshowWin.update_img()
 
-        if only_ax1:
-            return
-
         self.addItemsAllIDs(posData.IDs)
-        self.clearAx2Items()
         self.update_rp()
 
         self.computingContoursTimes = []
@@ -14882,7 +15056,7 @@ class guiWin(QMainWindow):
         for obj in posData.rp:
             if obj.label in posData.new_IDs:
                 # self.ax2_setTextID(obj, 'Draw IDs and contours')
-                self.ax1_setTextID(obj, 'Draw IDs and contours')
+                self.annotateObject(obj, 'Draw IDs and contours')
                 cont = self.getObjContours(obj)
                 curveID = self.ax1_ContoursCurves[obj.label-1]
                 curveID.setData(cont[:,0], cont[:,1], pen=self.tempNewIDs_cpen)
@@ -14900,13 +15074,6 @@ class guiWin(QMainWindow):
         IDs_and_masks = how == 'Draw IDs and overlay segm. masks'
         onlyMasks = how == 'Draw only overlay segm. masks'
         ccaInfo_and_masks = how == 'Draw cell cycle info and overlay segm. masks'
-
-        for ax2ContCurve in self.ax2_ContoursCurves:
-            if ax2ContCurve is None:
-                continue
-
-            if ax2ContCurve.getData()[0] is not None:
-                ax2ContCurve.setData([], [])
 
         if posData.frame_i == 0:
             return
@@ -16898,6 +17065,10 @@ class guiWin(QMainWindow):
         self.openFolder(exp_path=path)
 
     def closeEvent(self, event):
+        for worker, thread in self.autoSaveActiveWorkers:
+            worker.stop()
+            worker.finished.emit()
+
         # Close the inifinte loop of the thread
         if self.lazyLoader is not None:
             self.lazyLoader.exit = True
@@ -16933,10 +17104,6 @@ class guiWin(QMainWindow):
         for handler in handlers:
             handler.close()
             self.logger.removeHandler(handler)
-        
-        for worker, thread in self.autoSaveActiveWorkers:
-            worker.stop()
-            worker.finished.emit()
         
         if self.lazyLoader is None:
             self.sigClosed.emit(self)
@@ -16990,12 +17157,10 @@ class guiWin(QMainWindow):
         h = self.drawIDsContComboBox.size().height()
         self.navigateScrollBar.setFixedHeight(h)
         self.zSliceScrollBar.setFixedHeight(h)
-        self.zSliceScrollBarLab.setFixedHeight(h)
         self.zSliceOverlay_SB.setFixedHeight(h)
 
         self.gui_initImg1BottomWidgets()
         self.img1BottomGroupbox.hide()
-        self.labBottomGroupbox.hide()
 
         w = self.showPropsDockButton.width()
         h = self.showPropsDockButton.height()

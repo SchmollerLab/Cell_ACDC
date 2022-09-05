@@ -788,50 +788,58 @@ class myMessageBox(QDialog):
 
     def critical(
             self, parent, title, message,
-            buttonsTexts=None, layouts=None, widgets=None
+            buttonsTexts=None, layouts=None, widgets=None,
+            showDialog=True
         ):
         self.setIcon(iconName='SP_MessageBoxCritical')
         buttons = self._template(
             parent, title, message,
             buttonsTexts=buttonsTexts, layouts=layouts, widgets=widgets
         )
-        self.exec_()
+        if showDialog:
+            self.exec_()
         return buttons
 
     def information(
             self, parent, title, message,
-            buttonsTexts=None, layouts=None, widgets=None
+            buttonsTexts=None, layouts=None, widgets=None,
+            showDialog=True
         ):
         self.setIcon(iconName='SP_MessageBoxInformation')
         buttons = self._template(
             parent, title, message,
             buttonsTexts=buttonsTexts, layouts=layouts, widgets=widgets
         )
-        self.exec_()
+        if showDialog:
+            self.exec_()
         return buttons
 
     def warning(
             self, parent, title, message,
-            buttonsTexts=None, layouts=None, widgets=None
+            buttonsTexts=None, layouts=None, widgets=None,
+            showDialog=True
         ):
         self.setIcon(iconName='SP_MessageBoxWarning')
         buttons = self._template(
             parent, title, message,
             buttonsTexts=buttonsTexts, layouts=layouts, widgets=widgets
         )
-        self.exec_()
+        if showDialog:
+            self.exec_()
         return buttons
 
     def question(
             self, parent, title, message,
-            buttonsTexts=None, layouts=None, widgets=None
+            buttonsTexts=None, layouts=None, widgets=None,
+            showDialog=True
         ):
         self.setIcon(iconName='SP_MessageBoxQuestion')
         buttons = self._template(
             parent, title, message,
             buttonsTexts=buttonsTexts, layouts=layouts, widgets=widgets
         )
-        self.exec_()
+        if showDialog:
+            self.exec_()
         return buttons
 
     def _block(self):
@@ -1776,14 +1784,11 @@ class PolyLineROI(pg.PolyLineROI):
     def __init__(self, positions, closed=False, pos=None, **args):
         super().__init__(positions, closed, pos, **args)
 
-class myHistogramLUTitem(pg.HistogramLUTItem):
-    sigGradientMenuEvent = pyqtSignal(object)
-    sigTickColorAccepted = pyqtSignal(object)
-
+class baseHistogramLUTitem(pg.HistogramLUTItem):
     def __init__(self, **kwargs):
-        self.cmaps = cmaps
-
         super().__init__(**kwargs)
+
+        self.cmaps = cmaps
 
         self.gradient.colorDialog.setWindowFlags(
             Qt.Dialog | Qt.WindowStaysOnTopHint
@@ -1802,6 +1807,23 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
                 RGB_ation = action
         self.gradient.menu.removeAction(HSV_action)
         self.gradient.menu.removeAction(RGB_ation)
+
+        # hide histogram tool
+        self.vb.hide()
+
+        # Disable histogram default context Menu event
+        self.vb.raiseContextMenu = lambda x: None
+    
+    def tickColorAccepted(self):
+        self.gradient.currentColorAccepted()
+        # self.sigTickColorAccepted.emit(self.gradient.colorDialog.color().getRgb())
+
+class myHistogramLUTitem(baseHistogramLUTitem):
+    sigGradientMenuEvent = pyqtSignal(object)
+    sigTickColorAccepted = pyqtSignal(object)
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
         # Invert bw action
         self.invertBwAction = QAction('Invert black/white', self)
@@ -1884,7 +1906,6 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
         act.triggered.connect(self.mothBudLineColorButton.click)
         self.gradient.menu.addAction(act)
 
-
         self.labelsAlphaMenu = self.gradient.menu.addMenu(
             'Segm. masks overlay alpha...'
         )
@@ -1910,9 +1931,6 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
         # Default settings
         self.defaultSettingsAction = QAction('Restore default settings...', self)
         self.gradient.menu.addAction(self.defaultSettingsAction)
-
-        # hide histogram tool
-        self.vb.hide()
 
         # Set inverted gradients for invert bw action
         self.addInvertedColorMaps()
@@ -1958,10 +1976,6 @@ class myHistogramLUTitem(pg.HistogramLUTItem):
         act.setDefaultWidget(widget)
         act.triggered.connect(self.overlayColorButton.click)
         self.gradient.menu.addAction(act)
-    
-    def tickColorAccepted(self):
-        self.gradient.currentColorAccepted()
-        # self.sigTickColorAccepted.emit(self.gradient.colorDialog.color().getRgb())
     
     def invertGradient(self, gradient):
         ticks = gradient['ticks']
@@ -2307,6 +2321,9 @@ class overlayLabelsGradientWidget(pg.GradientWidget):
         self.imageItem.setOpacity(value)
 
 class labelsGradientWidget(pg.GradientWidget):
+    sigShowRightImgToggled = pyqtSignal(bool)
+    sigShowLabelsImgToggled = pyqtSignal(bool)
+
     def __init__(self, parent=None, orientation='right',  *args, **kargs):
         pg.GradientWidget.__init__(
             self, parent=parent, orientation=orientation,  *args, **kargs
@@ -2362,16 +2379,38 @@ class labelsGradientWidget(pg.GradientWidget):
         self.invertBwAction.setCheckable(True)
         self.menu.addAction(self.invertBwAction)
 
-        # hide labels action
-        self.hideLabelsImgAction = QAction('Hide segmentation image', self)
-        self.hideLabelsImgAction.setCheckable(True)
-        self.menu.addAction(self.hideLabelsImgAction)
+        # Show labels action
+        self.showLabelsImgAction = QAction('Show segmentation image', self)
+        self.showLabelsImgAction.setCheckable(True)
+        self.menu.addAction(self.showLabelsImgAction)
+
+        # Show right image action
+        self.showRightImgAction = QAction('Show duplicated left image', self)
+        self.showRightImgAction.setCheckable(True)
+        self.menu.addAction(self.showRightImgAction)
 
         # Default settings
         self.defaultSettingsAction = QAction('Restore default settings...', self)
         self.menu.addAction(self.defaultSettingsAction)
 
         self.menu.addSeparator()
+
+        self.showRightImgAction.toggled.connect(self.showRightImageToggled)
+        self.showLabelsImgAction.toggled.connect(self.showLabelsImageToggled)
+    
+    def showRightImageToggled(self, checked):
+        if checked and self.showLabelsImgAction.isChecked():
+            # Hide the right labels image before showing right image
+            self.showLabelsImgAction.setChecked(False)
+            self.sigShowLabelsImgToggled.emit(False)
+        self.sigShowRightImgToggled.emit(checked)
+    
+    def showLabelsImageToggled(self, checked):
+        if checked and self.showRightImgAction.isChecked():
+            # Hide the right image before showing labels image
+            self.showRightImgAction.setChecked(False)
+            self.sigShowRightImgToggled.emit(False)
+        self.sigShowLabelsImgToggled.emit(checked)
 
     def saveState(self, df):
         # remove previous state
@@ -2645,6 +2684,18 @@ class sliderWithSpinBox(QWidget):
 
     def value(self):
         return self.spinBox.value()
+
+class LeftImageItem(pg.ImageItem):
+    def __init__(self, image=None, linkedImageItem=None, **kargs):
+        super().__init__(image, **kargs)
+        self.linkedImageItem = linkedImageItem
+    
+    def setImage(self, image=None, autoLevels=None, **kargs):
+        if self.linkedImageItem is not None:
+            if self.linkedImageItem.isActive:
+                self.linkedImageItem.setImage(image, autoLevels=autoLevels)
+        return super().setImage(image, autoLevels, **kargs)
+
 
 class labImageItem(pg.ImageItem):
     def __init__(self, *args, **kwargs):

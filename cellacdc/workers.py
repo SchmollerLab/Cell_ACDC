@@ -139,10 +139,11 @@ class AutoSaveWorker(QObject):
         self.mutex = mutex
         self.waitCond = waitCond
         self.exit = False
+        self.isFinished = False
         self.dataQ = queue.Queue()
     
     def pause(self):
-        # self.logger.log('Autosaving is idle.')
+        self.logger.log('Autosaving is idle.')
         self.mutex.lock()
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
@@ -163,7 +164,7 @@ class AutoSaveWorker(QObject):
                 self.logger.log('Closing autosaving worker...')
                 break
             elif not self.dataQ.empty():
-                # self.logger.log('Autosaving...')
+                self.logger.log('Autosaving...')
                 data = self.dataQ.get()
                 try:
                     self.saveData(data)
@@ -176,6 +177,7 @@ class AutoSaveWorker(QObject):
                     self.sigDone.emit()
             else:
                 self.pause()
+        self.isFinished = True
         self.finished.emit()
     
     def getLastTrackedFrame(self, posData):
