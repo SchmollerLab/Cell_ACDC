@@ -2699,7 +2699,23 @@ class ParentImageItem(pg.ImageItem):
             if self.activatingAction.isChecked():
                 self.linkedImageItem.setImage(image, autoLevels=autoLevels)
         return super().setImage(image, autoLevels, **kargs)
-
+    
+    def updateImage(self, *args, **kargs):
+        if self.linkedImageItem is not None:
+            if self.activatingAction.isChecked():
+                self.linkedImageItem.image = self.image
+                self.linkedImageItem.updateImage(*args, **kargs)
+        return super().updateImage(*args, **kargs)
+    
+    def setOpacity(self, value):
+        super().setOpacity(value)
+        if self.linkedImageItem is not None:
+            self.linkedImageItem.setOpacity(value)
+    
+    def setLookupTable(self, lut):
+        super().setLookupTable(lut)
+        if self.linkedImageItem is not None:
+            self.linkedImageItem.setLookupTable(lut)
 
 class labImageItem(pg.ImageItem):
     def __init__(self, *args, **kwargs):

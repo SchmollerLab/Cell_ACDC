@@ -3172,10 +3172,11 @@ class guiWin(QMainWindow):
 
         # Brush/Eraser/Wand.. layer item
         self.tempLayerRightImage = pg.ImageItem()
-        self.tempLayerImg1 = widgets.ParentImageItem(
-            linkedImageItem=self.tempLayerRightImage,
-            activatingAction=self.labelsGrad.showRightImgAction
-        )
+        self.tempLayerImg1 = pg.ImageItem()
+        # self.tempLayerImg1 = widgets.ParentImageItem(
+        #     linkedImageItem=self.tempLayerRightImage,
+        #     activatingAction=self.labelsGrad.showRightImgAction
+        # )
         self.topLayerItems.append(self.tempLayerImg1)
         self.topLayerItemsRight.append(self.tempLayerRightImage)
 
@@ -5287,14 +5288,14 @@ class guiWin(QMainWindow):
 
             posData.lab[posData.lab==ID] = self.firstID
 
-            # Mask to keep track of which ID needs redrawing of the contours
-            mergedID_mask = self.get_2Dlab(posData.lab)==self.firstID
-
             # Update data (rp, etc)
             self.update_rp()
 
             # Repeat tracking
-            self.tracking(enforce=True, assign_unique_new_IDs=False)
+            self.tracking(
+                enforce=True, assign_unique_new_IDs=False,
+                separateByLabel=False
+            )
 
             if self.isSnapshot:
                 self.fixCcaDfAfterEdit('Merge IDs')
@@ -15410,7 +15411,8 @@ class guiWin(QMainWindow):
     def tracking(
             self, onlyIDs=[], enforce=False, DoManualEdit=True,
             storeUndo=False, prev_lab=None, prev_rp=None,
-            return_lab=False, assign_unique_new_IDs=True
+            return_lab=False, assign_unique_new_IDs=True,
+            separateByLabel=True
         ):
         try:
             posData = self.data[self.pos_i]
@@ -15465,9 +15467,10 @@ class guiWin(QMainWindow):
                 self.storeUndoRedoStates(False)
 
             # First separate by labelling
-            setRp = self.separateByLabelling(posData.lab, posData.rp)
-            if setRp:
-                self.update_rp()
+            if separateByLabel:
+                setRp = self.separateByLabelling(posData.lab, posData.rp)
+                if setRp:
+                    self.update_rp()
 
             if prev_lab is None:
                 prev_lab = posData.allData_li[posData.frame_i-1]['labels']
@@ -17217,8 +17220,13 @@ class guiWin(QMainWindow):
 
     def closeEvent(self, event):
         for worker, thread in self.autoSaveActiveWorkers:
-            worker.stop()
-            worker.finished.emit()
+            try:
+                worker.stop()
+                while not worker.isFinished:
+                    continue
+                worker.finished.emit()
+            except RuntimeError:
+                self.logger('Autosaving worker closed while running.')
 
         # Close the inifinte loop of the thread
         if self.lazyLoader is not None:
