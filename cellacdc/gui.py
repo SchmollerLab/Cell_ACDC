@@ -1933,9 +1933,8 @@ class guiWin(QMainWindow):
             'EXAMPLE: annotate that a cell is removed from downstream analysis.\n'
             '"is_cell_excluded" set to True in acdc_output.csv table\n\n'
             'ACTION: right-click\n\n'
-            'SHORTCUT: "B" key'
         )
-        self.binCellButton.setShortcut('b')
+        # self.binCellButton.setShortcut('r')
         self.binCellButton.action = editToolBar.addWidget(self.binCellButton)
         self.checkableButtons.append(self.binCellButton)
         self.checkableQButtonsGroup.addButton(self.binCellButton)
@@ -3127,11 +3126,13 @@ class guiWin(QMainWindow):
         # Right image item linked to left
         self.rightImageItem = pg.ImageItem()
         self.rightImageGrad.setImageItem(self.rightImageItem)   
-        self.rightImageItem.isActive = False
         self.ax2.addItem(self.rightImageItem)
         
         # Left image
-        self.img1 = widgets.LeftImageItem(linkedImageItem=self.rightImageItem)
+        self.img1 = widgets.ParentImageItem(
+            linkedImageItem=self.rightImageItem,
+            activatingAction=self.labelsGrad.showRightImgAction
+        )
         self.imgGrad.setImageItem(self.img1)
         self.ax1.addItem(self.img1)
 
@@ -3140,6 +3141,7 @@ class guiWin(QMainWindow):
         self.ax2.addItem(self.img2)
 
         self.topLayerItems = []
+        self.topLayerItemsRight = []
 
         self.gui_createContourPens()
         self.gui_createMothBudLinePens()
@@ -3169,8 +3171,13 @@ class guiWin(QMainWindow):
         self.topLayerItems.append(self.ax2BorderLine)
 
         # Brush/Eraser/Wand.. layer item
-        self.tempLayerImg1 = pg.ImageItem()
+        self.tempLayerRightImage = pg.ImageItem()
+        self.tempLayerImg1 = widgets.ParentImageItem(
+            linkedImageItem=self.tempLayerRightImage,
+            activatingAction=self.labelsGrad.showRightImgAction
+        )
         self.topLayerItems.append(self.tempLayerImg1)
+        self.topLayerItemsRight.append(self.tempLayerRightImage)
 
         # Highlighted ID layer item
         self.highLightIDLayerImg1 = pg.ImageItem()        
@@ -3406,6 +3413,9 @@ class guiWin(QMainWindow):
     def gui_addTopLayerItems(self):
         for item in self.topLayerItems:
             self.ax1.addItem(item)
+        
+        for item in self.topLayerItemsRight:
+            self.ax2.addItem(self.tempLayerRightImage)
     
     def gui_createMothBudLinePens(self):
         if 'mothBudLineWeight' in self.df_settings.index:
@@ -3532,6 +3542,7 @@ class guiWin(QMainWindow):
         self.rightImageItem.mousePressEvent = self.gui_mousePressRightImage
         self.rightImageItem.mouseMoveEvent = self.gui_mouseDragRightImage
         self.rightImageItem.mouseReleaseEvent = self.gui_mouseReleaseRightImage
+        self.rightImageItem.hoverEvent = self.gui_hoverEventRightImage
         self.imgGrad.gradient.showMenu = self.gui_gradientContextMenuEvent
         self.rightImageGrad.gradient.showMenu = self.gui_rightImageShowContextMenu
         # self.imgGrad.vb.contextMenuEvent = self.gui_gradientContextMenuEvent
@@ -4552,6 +4563,7 @@ class guiWin(QMainWindow):
 
             eraserMask = mask[diskSlice]
             self.setTempImg1Eraser(eraserMask, toLocalSlice=diskSlice)
+            self.setTempImg1Eraser(eraserMask, toLocalSlice=diskSlice, ax=1)
 
         # Move label dragging mouse --> keep moving
         elif self.isMovingLabel and self.moveLabelToolButton.isChecked():
@@ -4729,9 +4741,20 @@ class guiWin(QMainWindow):
             value = func(objData)
 
         intensMeasurQGBox.additionalMeasCombobox.indicator.setValue(value)
+    
+    def gui_hoverEventRightImage(self, event):
+        if event.isExit():
+            self.ax1_cursor.setData([], [])
 
-
-    def gui_hoverEventImg1(self, event):
+        self.gui_hoverEventImg1(event, isHoverImg1=False)
+        setMirroredCursor = (
+            self.app.overrideCursor() is None and not event.isExit()
+        )
+        if setMirroredCursor:
+            x, y = event.pos()
+            self.ax1_cursor.setData([x], [y])
+        
+    def gui_hoverEventImg1(self, event, isHoverImg1=True):
         posData = self.data[self.pos_i]
         # Update x, y, value label bottom right
         if not event.isExit():
@@ -4943,10 +4966,14 @@ class guiWin(QMainWindow):
                     xi, yi = self.getSpline(xx, yy, per=per)
                 self.curvHoverPlotItem.setData(xi, yi)
         
-        if self.app.overrideCursor() is None and not event.isExit():
+        setMirroredCursor = (
+            self.app.overrideCursor() is None and not event.isExit()
+            and isHoverImg1
+        )
+        if setMirroredCursor:
             x, y = event.pos()
             self.ax2_cursor.setData([x], [y])
-    
+
     def gui_add_ax_cursors(self):
         try:
             self.ax1.removeItem(self.ax1_cursor)
@@ -4972,9 +4999,6 @@ class guiWin(QMainWindow):
             self.xHoverImg, self.yHoverImg = event.pos()
         else:
             self.xHoverImg, self.yHoverImg = None, None
-
-        if event.isExit():
-            self.ax1_cursor.setData([], [])
 
         # Cursor left image --> restore cursor
         if event.isExit() and self.app.overrideCursor() is not None:
@@ -5067,10 +5091,6 @@ class guiWin(QMainWindow):
             self.setHoverToolSymbolData(
                 [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
             )
-        
-        if self.app.overrideCursor() is None and not event.isExit():
-            x, y = event.pos()
-            self.ax1_cursor.setData([x], [y])
             
     
     def gui_rightImageShowContextMenu(self, event):
@@ -5207,8 +5227,6 @@ class guiWin(QMainWindow):
                     else:
                         self.warnEditingWithCca_df('Delete ID with eraser')
                     break
-            else:
-                self.updateALLimg(useEraserImg=True)
 
         # Brush button mouse release --> update IDs and contours
         elif self.isMouseDragImg2 and self.brushButton.isChecked():
@@ -7638,6 +7656,7 @@ class guiWin(QMainWindow):
         else:
             self.ax2.addItem(roi)
         self.applyDelROIimg1(roi, init=True)
+        self.applyDelROIimg1(roi, init=True, ax=1)
 
         if self.isSnapshot:
             self.fixCcaDfAfterEdit('Delete IDs using ROI')
@@ -7741,6 +7760,7 @@ class guiWin(QMainWindow):
         self.restoreAnnotDelROI(roi)
         self.setImageImg2()
         self.applyDelROIimg1(roi)
+        self.applyDelROIimg1(roi, ax=1)
 
     def delROImovingFinished(self, roi):
         roi.setPen(color='r')
@@ -11310,7 +11330,6 @@ class guiWin(QMainWindow):
         if 'how_draw_annotations' in self.df_settings.index:
             how = self.df_settings.at['how_draw_annotations', 'value']
             self.drawIDsContComboBox.setCurrentText(how)
-            self.annotateRightHowCombobox.setCurrentText(how)
         
         if 'how_draw_right_annotations' in self.df_settings.index:
             how = self.df_settings.at['how_draw_right_annotations', 'value']
@@ -14247,7 +14266,6 @@ class guiWin(QMainWindow):
             self.df_settings.at['isRightImageVisible', 'value'] = 'Yes'
             self.graphLayout.addItem(self.rightImageGrad, row=1, col=3)
             self.rightBottomGroupbox.show()
-            self.rightImageItem.isActive = True
             self.updateALLimg()
         else:
             self.clearAx2Items()
@@ -14257,7 +14275,6 @@ class guiWin(QMainWindow):
             except Exception:
                 return
             self.rightImageItem.clear()
-            self.rightImageItem.isActive = False
         
         self.df_settings.to_csv(self.settings_csv_path)
             
@@ -14452,6 +14469,9 @@ class guiWin(QMainWindow):
         else:
             how = self.getAnnotateHowRightImage()
         
+        if ax == 1 and not self.labelsGrad.showRightImgAction.isChecked():
+            return
+        
         if init and how.find('contours') == -1:
             self.setOverlaySegmMasks(force=True)
             return
@@ -14499,7 +14519,7 @@ class guiWin(QMainWindow):
         return tempImage        
 
     # @exec_time
-    def setTempImg1Brush(self, init: bool, mask, ID, toLocalSlice=None):
+    def setTempImg1Brush(self, init: bool, mask, ID, toLocalSlice=None, ax=0):
         if init:
             Y, X = self.img1.image.shape[:2]
             alpha = self.imgGrad.labelsAlphaSlider.value()
@@ -14507,9 +14527,9 @@ class guiWin(QMainWindow):
             self.initTempLayer(ID)
         
         if toLocalSlice is None:
-           self.tempLayerImg1.image[mask] = ID
+            self.tempLayerImg1.image[mask] = ID
         else:
-           self.tempLayerImg1.image[toLocalSlice][mask] = ID
+            self.tempLayerImg1.image[toLocalSlice][mask] = ID
         
         self.tempLayerImg1.updateImage()
   
@@ -14521,6 +14541,9 @@ class guiWin(QMainWindow):
             how = self.drawIDsContComboBox.currentText()
         else:
             how = self.getAnnotateHowRightImage()
+        
+        if ax == 1 and not self.labelsGrad.showRightImgAction.isChecked():
+            return
         
         if how.find('contours') != -1:
             erasedRp = skimage.measure.regionprops(self.erasedLab)
@@ -15036,9 +15059,7 @@ class guiWin(QMainWindow):
 
     # @exec_time
     @myutils.exception_handler
-    def updateALLimg(
-            self, image=None, updateFilters=False, useEraserImg=False
-        ):
+    def updateALLimg(self, image=None, updateFilters=False):
         self.clearAx1Items()
         self.clearAx2Items()
 
@@ -15112,9 +15133,6 @@ class guiWin(QMainWindow):
             self.ccaTableWin.updateTable(posData.cca_df)
 
         self.doCustomAnnotation(0)
-
-        if self.eraserButton.isChecked() and useEraserImg:
-            self.setTempImg1Eraser(None, init=self.isSegm3D)
     
     def setOverlayLabelsItems(self):
         if not self.overlayLabelsButton.isChecked():
