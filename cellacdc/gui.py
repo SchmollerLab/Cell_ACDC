@@ -5904,8 +5904,7 @@ class guiWin(QMainWindow):
             self.globalBrushMask = np.zeros(lab2D.shape, dtype=bool)
             brushMask = lab2D[diskSlice] == posData.brushID
             self.setTempImg1Brush(
-                True, brushMask, posData.brushID, 
-                toLocalSlice=diskSlice
+                True, brushMask, posData.brushID, toLocalSlice=diskSlice
             )
 
             self.lastHoverID = -1
@@ -9054,18 +9053,10 @@ class guiWin(QMainWindow):
     @myutils.exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
-            printl(self.annotateRightHowCombobox.currentText())
-
-            # printl('Number of columns: ', len(columns))
-            # fluo_keys = list(posData.fluo_data_dict.keys())
-            # printl(fluo_keys, pretty=True)
-            # printl(self.metricsToSkip, pretty=True)
-            # printl(self.chNamesToSkip, pretty=True)
-            # printl(self.notLoadedChNames)
-
-            # for chName in self.notLoadedChNames:
-            #     fluo_path, filename = self.getPathFromChName(chName, posData)
-            #     printl(fluo_path)
+            printl(self.tempLayerImg1.opacity())
+            printl(self.tempLayerImg1.image)
+            printl(self.tempLayerImg1.lut)
+            printl(self.tempLayerImg1 in self.ax1.items)
                 
             if self.debug:
                 raise FileNotFoundError
@@ -14748,7 +14739,7 @@ class guiWin(QMainWindow):
             checkBox = QCheckBox('Remember my choice and do not ask again')
         else:
             checkBox = None
-        removeAnnotButton = msg.warning(
+        _, removeAnnotButton, _ = msg.warning(
             self, 'Edited segmentation with annotations!', txt,
             buttonsTexts=(
                 'Cancel',
@@ -14756,7 +14747,7 @@ class guiWin(QMainWindow):
                 'Do not remove annotations'
             ),
             widgets=checkBox
-            )[0]
+            )
         if msg.cancel:
             removeAnnotations = False
             return removeAnnotations
@@ -14774,6 +14765,7 @@ class guiWin(QMainWindow):
             self.remove_future_cca_df(posData.frame_i)
             self.next_frame()
         else:
+            self.updateALLimg()
             self.store_data()
         if action is not None:
             if action.removeAnnot:
@@ -17226,7 +17218,7 @@ class guiWin(QMainWindow):
                     continue
                 worker.finished.emit()
             except RuntimeError:
-                self.logger('Autosaving worker closed while running.')
+                self.logger.info('Autosaving worker closed while running.')
 
         # Close the inifinte loop of the thread
         if self.lazyLoader is not None:
