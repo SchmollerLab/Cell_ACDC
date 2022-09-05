@@ -3172,11 +3172,11 @@ class guiWin(QMainWindow):
 
         # Brush/Eraser/Wand.. layer item
         self.tempLayerRightImage = pg.ImageItem()
-        self.tempLayerImg1 = pg.ImageItem()
-        # self.tempLayerImg1 = widgets.ParentImageItem(
-        #     linkedImageItem=self.tempLayerRightImage,
-        #     activatingAction=self.labelsGrad.showRightImgAction
-        # )
+        # self.tempLayerImg1 = pg.ImageItem()
+        self.tempLayerImg1 = widgets.ParentImageItem(
+            linkedImageItem=self.tempLayerRightImage,
+            activatingAction=self.labelsGrad.showRightImgAction
+        )
         self.topLayerItems.append(self.tempLayerImg1)
         self.topLayerItemsRight.append(self.tempLayerRightImage)
 
@@ -3416,7 +3416,7 @@ class guiWin(QMainWindow):
             self.ax1.addItem(item)
         
         for item in self.topLayerItemsRight:
-            self.ax2.addItem(self.tempLayerRightImage)
+            self.ax2.addItem(item)
     
     def gui_createMothBudLinePens(self):
         if 'mothBudLineWeight' in self.df_settings.index:
@@ -3810,12 +3810,12 @@ class guiWin(QMainWindow):
             how = self.drawIDsContComboBox.currentText()
             if how.find('overlay segm. masks') != -1:
                 self.labelsLayerImg1.image[delID_mask] = 0
-                self.labelsLayerImg1.updateImage()
+                self.labelsLayerImg1.setImage(self.labelsLayerImg1.image)
             
             how_ax2 = self.getAnnotateHowRightImage()
             if how_ax2.find('overlay segm. masks') != -1:
                 self.labelsLayerRightImg.image[delID_mask] = 0
-                self.labelsLayerRightImg.updateImage()
+                self.labelsLayerRightImg.setImage(self.labelsLayerRightImg.image)
 
             self.setTitleText()
             self.highlightLostNew()
@@ -5921,8 +5921,6 @@ class guiWin(QMainWindow):
             lab_2D = self.get_2Dlab(posData.lab)
             self.erasedID = self.getHoverID(xdata, ydata)
 
-            
-
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
             # Build eraser mask
@@ -5953,7 +5951,6 @@ class guiWin(QMainWindow):
                     continue
                 self.erasedLab[lab_2D==erasedID] = erasedID
 
-            self.img2.updateImage()
             self.isMouseDragImg1 = True
 
         elif left_click and canRuler or canPolyLine:
@@ -9054,7 +9051,8 @@ class guiWin(QMainWindow):
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
             printl(self.tempLayerImg1.opacity())
-            printl(self.tempLayerImg1.image)
+            printl(self.tempLayerImg1.image.shape)
+            printl(self.tempLayerImg1.image.max())
             printl(self.tempLayerImg1.lut)
             printl(self.tempLayerImg1 in self.ax1.items)
                 
@@ -14223,6 +14221,7 @@ class guiWin(QMainWindow):
     def shuffle_cmap(self):
         posData = self.data[self.pos_i]
         np.random.shuffle(posData.lut[1:])
+        self.initLabelsLayersImg1()
         self.updateALLimg()
     
     def highlightZneighLabels_cb(self, checked):
@@ -14523,7 +14522,7 @@ class guiWin(QMainWindow):
         else:
             self.tempLayerImg1.image[toLocalSlice][mask] = ID
         
-        self.tempLayerImg1.updateImage()
+        self.tempLayerImg1.setImage(self.tempLayerImg1.image)
   
     def setTempImg1Eraser(self, mask, init=False, toLocalSlice=None, ax=0):
         if init:
@@ -14555,16 +14554,16 @@ class guiWin(QMainWindow):
                     if ax == 0:
                         self.labelsLayerImg1.image[mask] = 0
                     else:
-                        self.labelsLayerRightImg.updateImage()
+                        self.labelsLayerRightImg.image[mask] = 0
                 else:
                     if ax == 0:
                         self.labelsLayerImg1.image[toLocalSlice][mask] = 0
                     else:
-                        self.labelsLayerRightImg.updateImage()                   
+                        self.labelsLayerRightImg.image[toLocalSlice][mask] = 0               
             if ax == 0:
-                self.labelsLayerImg1.updateImage()
+                self.labelsLayerImg1.setImage(self.labelsLayerImg1.image)
             else:
-                self.labelsLayerRightImg.updateImage()
+                self.labelsLayerRightImg.setImage(self.labelsLayerRightImg.image)
 
     def setTempImg1ExpandLabel(self, prevCoords, expandedObjCoords, ax=0):
         if ax == 0:
@@ -14586,9 +14585,9 @@ class guiWin(QMainWindow):
                 self.labelsLayerRightImg.image[expandedObjCoords] = self.expandingID
 
             if ax == 0:
-                self.labelsLayerImg1.updateImage()
+                self.labelsLayerImg1.setImage(self.labelsLayerImg1.image)
             else:
-                self.labelsLayerRightImg.updateImage()
+                self.labelsLayerRightImg.setImage(self.labelsLayerRightImg.image)
         else:
             if ax == 0:
                 contCurveID = self.ax1_ContoursCurves[self.expandingID-1]
