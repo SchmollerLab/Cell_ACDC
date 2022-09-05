@@ -3388,6 +3388,7 @@ class guiWin(QMainWindow):
         self.gui_addOverlayLayerItems()
         self.gui_addTopLayerItems()
         self.gui_addCreatedAxesItems()
+        self.gui_add_ax_cursors()
         self.progressWin.workerFinished = True
         self.progressWin.close()
 
@@ -4730,6 +4731,9 @@ class guiWin(QMainWindow):
         else:
             self.xHoverImg, self.yHoverImg = None, None
 
+        if event.isExit():
+            self.ax2_cursor.setData([], [])
+
         # Cursor left image --> restore cursor
         if event.isExit() and self.app.overrideCursor() is not None:
             while self.app.overrideCursor() is not None:
@@ -4930,6 +4934,29 @@ class guiWin(QMainWindow):
                     yy = np.r_[yy, y]
                     xi, yi = self.getSpline(xx, yy, per=per)
                 self.curvHoverPlotItem.setData(xi, yi)
+        
+        if self.app.overrideCursor() is None and not event.isExit():
+            x, y = event.pos()
+            self.ax2_cursor.setData([x], [y])
+    
+    def gui_add_ax_cursors(self):
+        try:
+            self.ax1.removeItem(self.ax1_cursor)
+            self.ax2.removeItem(self.ax2_cursor)
+        except Exception as e:
+            pass
+
+        self.ax2_cursor = pg.ScatterPlotItem(
+            symbol='+', pxMode=True, pen=pg.mkPen('k', width=1),
+            brush=pg.mkBrush('w'), size=16
+        )
+        self.ax2.addItem(self.ax2_cursor)
+
+        self.ax1_cursor = pg.ScatterPlotItem(
+            symbol='+', pxMode=True, pen=pg.mkPen('k', width=1),
+            brush=pg.mkBrush('w'), size=16
+        )
+        self.ax1.addItem(self.ax1_cursor)
 
     def gui_hoverEventImg2(self, event):
         posData = self.data[self.pos_i]
@@ -4937,6 +4964,9 @@ class guiWin(QMainWindow):
             self.xHoverImg, self.yHoverImg = event.pos()
         else:
             self.xHoverImg, self.yHoverImg = None, None
+
+        if event.isExit():
+            self.ax1_cursor.setData([], [])
 
         # Cursor left image --> restore cursor
         if event.isExit() and self.app.overrideCursor() is not None:
@@ -5029,6 +5059,11 @@ class guiWin(QMainWindow):
             self.setHoverToolSymbolData(
                 [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
             )
+        
+        if self.app.overrideCursor() is None and not event.isExit():
+            x, y = event.pos()
+            self.ax1_cursor.setData([x], [y])
+            
     
     def gui_rightImageShowContextMenu(self, event):
         try:
@@ -13209,6 +13244,9 @@ class guiWin(QMainWindow):
             self._drawMothBudLine(obj, posData, ax=1)
     
     def _drawMothBudLine(self, obj, posData, ax=0):
+        if posData.cca_df is None:
+            return 
+
         ID = obj.label
         if ax == 0:
             BudMothLine = self.ax1_BudMothLines[ID-1]
@@ -13378,7 +13416,7 @@ class guiWin(QMainWindow):
         )
         if drawLines and posData.cca_df is not None:
             self._drawMothBudLine(obj, posData)
-        else:
+        elif posData.cca_df is not None:
             # Check if moth-bud line needed by the right image
             self.drawMotherBudLineRightImage(obj, posData=posData)
 
