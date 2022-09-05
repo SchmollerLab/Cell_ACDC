@@ -3157,6 +3157,9 @@ class guiWin(QMainWindow):
         self.labelsLayerImg1 = pg.ImageItem()
         self.ax1.addItem(self.labelsLayerImg1)
 
+        self.labelsLayerRightImg = pg.ImageItem()
+        self.ax2.addItem(self.labelsLayerRightImg)
+
         # Red/green border rect item
         self.GreenLinePen = pg.mkPen(color='g', width=2)
         self.RedLinePen = pg.mkPen(color='r', width=2)
@@ -3796,6 +3799,11 @@ class guiWin(QMainWindow):
             if how.find('overlay segm. masks') != -1:
                 self.labelsLayerImg1.image[delID_mask] = 0
                 self.labelsLayerImg1.updateImage()
+            
+            how_ax2 = self.getAnnotateHowRightImage()
+            if how_ax2.find('overlay segm. masks') != -1:
+                self.labelsLayerRightImg.image[delID_mask] = 0
+                self.labelsLayerRightImg.updateImage()
 
             self.setTitleText()
             self.highlightLostNew()
@@ -7762,22 +7770,36 @@ class guiWin(QMainWindow):
         self.set_2Dlab(lab2D)
         self.update_rp()
 
-    def restoreDelROIimg1(self, delMaskID, delID):
+    def restoreDelROIimg1(self, delMaskID, delID, ax=0):
         posData = self.data[self.pos_i]
-        how = self.drawIDsContComboBox.currentText()
+        if ax == 0:
+            how = self.drawIDsContComboBox.currentText()
+        else:
+            how = self.getAnnotateHowRightImage()
+
         idx = delID-1
         if how.find('nothing') != -1:
             return
         elif how.find('contours') != -1:        
             obj = skimage.measure.regionprops(delMaskID.astype(int))[0]
-            curveID = self.ax1_ContoursCurves[idx]
+            if ax == 0:
+                curveID = self.ax1_ContoursCurves[idx]
+            else:
+                curveID = self.ax2_ContoursCurves[idx]
             cont = self.getObjContours(obj)
             curveID.setData(
                 cont[:,0], cont[:,1], pen=self.oldIDs_cpen
             )       
         elif how.find('overlay segm. masks') != -1:
-            self.labelsLayerImg1.setImage(self.currentLab2D, autoLevels=False)
+            if ax == 0:
+                self.labelsLayerImg1.setImage(self.currentLab2D, autoLevels=False)
+            else:
+                self.labelsLayerRightImg.setImage(
+                    self.currentLab2D, autoLevels=False
+                )
+
         self.ax1_LabelItemsIDs[delID-1].setText(f'{delID}')
+        self.ax2_LabelItemsIDs[delID-1].setText(f'{delID}')
 
     def getDelROIlab(self):
         posData = self.data[self.pos_i]
@@ -9011,18 +9033,7 @@ class guiWin(QMainWindow):
     @myutils.exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
-            printl([item.getData() for item in self.ax2_ContoursCurves if item is not None])
-            printl('isRightImageVisible', self.df_settings.at['isRightImageVisible', 'value'])
-            printl('isLabelsVisible', self.df_settings.at['isLabelsVisible', 'value'])
-            printl('showRightImgAction', self.labelsGrad.showRightImgAction.isChecked())
-            printl('showLabelsImgAction', self.labelsGrad.showLabelsImgAction.isChecked())
-            printl(self.ax2.items, pretty=True)
-            printl([item.getData() for item in self.ax2_ContoursCurves if item is not None])
-            for item1, item2 in zip(self.ax1_ContoursCurves, self.ax2_ContoursCurves):
-                if item1 is None:
-                    continue
-                printl(item1.getData())
-                item2.setData(item1.getData()[0], item1.getData()[1])
+            printl(self.annotateRightHowCombobox.currentText())
 
             # printl('Number of columns: ', len(columns))
             # fluo_keys = list(posData.fluo_data_dict.keys())
@@ -11618,6 +11629,7 @@ class guiWin(QMainWindow):
         self.ax1_binnedIDs_ScatterPlot.clear()
         self.ax1_ripIDs_ScatterPlot.clear()
         self.labelsLayerImg1.clear()
+        self.labelsLayerRightImg.clear()
         self.highLightIDLayerImg1.setImage(self.emptyLab.copy())
         allItems = zip(
             self.ax1_ContoursCurves,
@@ -13326,6 +13338,9 @@ class guiWin(QMainWindow):
             return obj_centroid
     
     def getAnnotateHowRightImage(self):
+        if not self.labelsGrad.showRightImgAction.isChecked():
+            return 'nothing'
+        
         if self.rightBottomGroupbox.isChecked():
             how = self.annotateRightHowCombobox.currentText()
         else:
@@ -13516,9 +13531,12 @@ class guiWin(QMainWindow):
         brushLayerLut[:,:-1] = posData.lut
         brushLayerLut[0] = [0,0,0,0]
         self.labelsLayerImg1.setLevels([0, len(brushLayerLut)])
+        self.labelsLayerRightImg.setLevels([0, len(brushLayerLut)])
         self.labelsLayerImg1.setLookupTable(brushLayerLut)
+        self.labelsLayerRightImg.setLookupTable(brushLayerLut)
         alpha = self.imgGrad.labelsAlphaSlider.value()
         self.labelsLayerImg1.setOpacity(alpha)
+        self.labelsLayerRightImg.setOpacity(alpha)
 
     def updateLookuptable(self, lenNewLut=None, delIDs=None):
         posData = self.data[self.pos_i]
@@ -14029,7 +14047,13 @@ class guiWin(QMainWindow):
 
     def setOverlaySegmMasks(self, force=False):
         how = self.drawIDsContComboBox.currentText()
-        if how.find('overlay segm. masks') == -1 and not force:
+        how_ax2 = self.getAnnotateHowRightImage()
+        isOverlaySegmActive = (
+            how.find('overlay segm. masks') != -1
+            or how_ax2.find('overlay segm. masks') != -1
+            or force
+        )
+        if not isOverlaySegmActive:
             return
 
         alpha = self.imgGrad.labelsAlphaSlider.value()
@@ -14045,7 +14069,16 @@ class guiWin(QMainWindow):
         if maxID >= len(posData.lut):
             self.extendLabelsLUT(maxID+10)
 
-        self.labelsLayerImg1.setImage(self.currentLab2D, autoLevels=False)
+        isOverlaySegmLeftActive = how.find('overlay segm. masks') != -1
+        if isOverlaySegmLeftActive:
+            self.labelsLayerImg1.setImage(self.currentLab2D, autoLevels=False)
+
+        isOverlaySegmRightActive = (
+            how_ax2.find('overlay segm. masks') != -1
+            and self.labelsGrad.showRightImgAction.isChecked()
+        )
+        if isOverlaySegmRightActive: 
+            self.labelsLayerRightImg.setImage(self.currentLab2D, autoLevels=False)
     
     def getObject2DimageFromZ(self, z, obj):
         posData = self.data[self.pos_i]
@@ -14413,8 +14446,12 @@ class guiWin(QMainWindow):
         if updateLookuptable:
             self.updateLookuptable(delIDs=allDelIDs)
 
-    def applyDelROIimg1(self, roi, init=False):
-        how = self.drawIDsContComboBox.currentText()
+    def applyDelROIimg1(self, roi, init=False, ax=0):
+        if ax == 0:
+            how = self.drawIDsContComboBox.currentText()
+        else:
+            how = self.getAnnotateHowRightImage()
+        
         if init and how.find('contours') == -1:
             self.setOverlaySegmMasks(force=True)
             return
@@ -14428,14 +14465,24 @@ class guiWin(QMainWindow):
             return
         elif how.find('contours') != -1:
             for ID in delIDs:
-                self.ax1_ContoursCurves[ID-1].setData([], [])
-                self.ax1_LabelItemsIDs[ID-1].setText('')
+                if ax == 0:
+                    self.ax1_ContoursCurves[ID-1].setData([], [])
+                    self.ax1_LabelItemsIDs[ID-1].setText('')
+                else:
+                    self.ax2_ContoursCurves[ID-1].setData([], [])
+                    self.ax2_LabelItemsIDs[ID-1].setText('')
         elif how.find('overlay segm. masks') != -1:
             lab = self.currentLab2D.copy()
             lab[delMask] = 0
             for ID in delIDs:
-                self.ax1_LabelItemsIDs[ID-1].setText('')
-            self.labelsLayerImg1.setImage(lab, autoLevels=False)
+                if ax == 0:
+                    self.ax1_LabelItemsIDs[ID-1].setText('')
+                else:
+                    self.ax2_LabelItemsIDs[ID-1].setText('')
+            if ax == 0:
+                self.labelsLayerImg1.setImage(lab, autoLevels=False)
+            else:
+                self.labelsLayerRightImg.setImage(lab, autoLevels=False)
     
     def initTempLayer(self, ID):
         posData = self.data[self.pos_i]
@@ -14466,16 +14513,23 @@ class guiWin(QMainWindow):
         
         self.tempLayerImg1.updateImage()
   
-    def setTempImg1Eraser(self, mask, init=False, toLocalSlice=None):
+    def setTempImg1Eraser(self, mask, init=False, toLocalSlice=None, ax=0):
         if init:
             self.erasedLab = np.zeros_like(self.currentLab2D)  
 
-        how = self.drawIDsContComboBox.currentText()
+        if ax == 0:
+            how = self.drawIDsContComboBox.currentText()
+        else:
+            how = self.getAnnotateHowRightImage()
+        
         if how.find('contours') != -1:
             erasedRp = skimage.measure.regionprops(self.erasedLab)
             for obj in erasedRp:
                 idx = obj.label-1
-                curveID = self.ax1_ContoursCurves[idx]
+                if ax == 0:
+                    curveID = self.ax1_ContoursCurves[idx]
+                else:
+                    curveID = self.ax2_ContoursCurves[idx]
                 cont = self.getObjContours(obj)
                 curveID.setData(
                     cont[:,0], cont[:,1], pen=self.oldIDs_cpen
@@ -14483,23 +14537,49 @@ class guiWin(QMainWindow):
         elif how.find('overlay segm. masks') != -1:
             if mask is not None:
                 if toLocalSlice is None:
-                    self.labelsLayerImg1.image[mask] = 0
+                    if ax == 0:
+                        self.labelsLayerImg1.image[mask] = 0
+                    else:
+                        self.labelsLayerRightImg.updateImage()
                 else:
-                    self.labelsLayerImg1.image[toLocalSlice][mask] = 0        
-            self.labelsLayerImg1.updateImage()
+                    if ax == 0:
+                        self.labelsLayerImg1.image[toLocalSlice][mask] = 0
+                    else:
+                        self.labelsLayerRightImg.updateImage()                   
+            if ax == 0:
+                self.labelsLayerImg1.updateImage()
+            else:
+                self.labelsLayerRightImg.updateImage()
 
-    def setTempImg1ExpandLabel(self, prevCoords, expandedObjCoords):
-        how = self.drawIDsContComboBox.currentText()
+    def setTempImg1ExpandLabel(self, prevCoords, expandedObjCoords, ax=0):
+        if ax == 0:
+            how = self.drawIDsContComboBox.currentText()
+        else:
+            how = self.getAnnotateHowRightImage()
+        
         if how.find('overlay segm. masks') != -1:
             # Remove previous overlaid mask
-            self.labelsLayerImg1.image[prevCoords] = 0
+            if ax == 0:
+                self.labelsLayerImg1.image[prevCoords] = 0
+            else:
+                self.labelsLayerRightImg.image[prevCoords] = 0
             
             # Overlay new moved mask
-            self.labelsLayerImg1.image[expandedObjCoords] = self.expandingID
+            if ax == 0:
+                self.labelsLayerImg1.image[expandedObjCoords] = self.expandingID
+            else:
+                self.labelsLayerRightImg.image[expandedObjCoords] = self.expandingID
 
-            self.labelsLayerImg1.updateImage()
+            if ax == 0:
+                self.labelsLayerImg1.updateImage()
+            else:
+                self.labelsLayerRightImg.updateImage()
         else:
-            contCurveID = self.ax1_ContoursCurves[self.expandingID-1]
+            if ax == 0:
+                contCurveID = self.ax1_ContoursCurves[self.expandingID-1]
+            else:
+                contCurveID = self.ax2_ContoursCurves[self.expandingID-1]
+            
             contCurveID.setData([], [])
             currentLab2Drp = skimage.measure.regionprops(self.currentLab2D)
             for obj in currentLab2Drp:
@@ -14510,10 +14590,17 @@ class guiWin(QMainWindow):
                     )
                     break
 
-    def setTempImg1MoveLabel(self):
-        how = self.drawIDsContComboBox.currentText()
+    def setTempImg1MoveLabel(self, ax=0):
+        if ax == 0:
+            how = self.drawIDsContComboBox.currentText()
+        else:
+            how = self.getAnnotateHowRightImage()
+        
         if how.find('contours') != -1:
-            contCurveID = self.ax1_ContoursCurves[self.movingID-1]
+            if ax == 0:
+                contCurveID = self.ax1_ContoursCurves[self.movingID-1]
+            else:
+                contCurveID = self.ax2_ContoursCurves[self.movingID-1]
             contCurveID.setData([], [])
             currentLab2Drp = skimage.measure.regionprops(self.currentLab2D)
             for obj in currentLab2Drp:
@@ -14524,7 +14611,12 @@ class guiWin(QMainWindow):
                     )
                     break
         elif how.find('overlay segm. masks') != -1:
-            self.labelsLayerImg1.setImage(self.currentLab2D, autoLevels=False)
+            if ax == 0:
+                self.labelsLayerImg1.setImage(self.currentLab2D, autoLevels=False)
+            else:
+                self.labelsLayerRightImg.setImage(
+                    self.currentLab2D, autoLevels=False
+                )
 
 
     def update_cca_df_relabelling(self, posData, oldIDs, newIDs):
@@ -14862,6 +14954,7 @@ class guiWin(QMainWindow):
             self.highLightIDLayerImg1.setImage(highlightedLab)
             alpha = self.imgGrad.labelsAlphaSlider.value()
             self.labelsLayerImg1.setOpacity(alpha/3)
+            self.labelsLayerRightImg.setOpacity(alpha/3)
         else:
             # Red thick contour of searched ID
             cont = self.getObjContours(obj)
@@ -14939,6 +15032,7 @@ class guiWin(QMainWindow):
         self.df_settings.at['overlaySegmMasksAlpha', 'value'] = value
         self.df_settings.to_csv(self.settings_csv_path)
         self.labelsLayerImg1.setOpacity(value)
+        self.labelsLayerRightImg.setOpacity(value)
 
     # @exec_time
     @myutils.exception_handler
@@ -15639,6 +15733,7 @@ class guiWin(QMainWindow):
         
         alpha = self.imgGrad.labelsAlphaSlider.value()
         self.labelsLayerImg1.setOpacity(alpha)
+        self.labelsLayerRightImg.setOpacity(alpha)
     
     def reinitWidgetsPos(self):
         try:
