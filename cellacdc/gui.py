@@ -7052,6 +7052,10 @@ class guiWin(QMainWindow):
         undoId = uuid.uuid4()
         self.storeUndoRedoCca(posData.frame_i, posData.cca_df, undoId)
 
+        if ID not in posData.ccaStatus_whenEmerged:
+            self.warnSettingHistoryKnownCellsFirstFrame(ID)
+            return
+
         self.setHistoryKnowledge(ID, posData.cca_df)
 
         if relID in posData.cca_df.index:
@@ -7368,6 +7372,18 @@ class guiWin(QMainWindow):
             )
             cancel = None
         return cancel
+    
+    def warnSettingHistoryKnownCellsFirstFrame(self, ID):
+        txt = html_utils.paragraph(f"""
+            Cell ID {ID} is a cell that is <b>present since the first 
+            frame.</b><br><br>
+            These cells already have history UNKNOWN assigned and the 
+            history status <b>cannot be changed.</b>
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.warning(
+            self, 'First frame cells', txt
+        )
 
     def checkMothEligibility(self, budID, new_mothID):
         """

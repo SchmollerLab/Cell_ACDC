@@ -535,6 +535,9 @@ class welcomeWin(QWidget):
                     &nbsp;&nbsp; - Double press <code>H key</code> -->
                     <b>zoom out</b><br>
 
+                    &nbsp;&nbsp; - <code>Shift+S</code> -->
+                    Shuffle colormap to change labels' color<br>
+
                     &nbsp;&nbsp; - <code>Z+left/right arrow</code> -->
                     Change visualized z-slice (for z-stack data)<br>
 
