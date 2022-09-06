@@ -1368,10 +1368,10 @@ class guiWin(QMainWindow):
             ).set_index('setting')
         
         if 'isLabelsVisible' not in self.df_settings.index:
-            self.df_settings.at['isLabelsVisible', 'value'] = 'Yes'
+            self.df_settings.at['isLabelsVisible', 'value'] = 'No'
         
         if 'isRightImageVisible' not in self.df_settings.index:
-            self.df_settings.at['isRightImageVisible', 'value'] = 'No'
+            self.df_settings.at['isRightImageVisible', 'value'] = 'Yes'
 
     def dragEnterEvent(self, event):
         file_path = event.mimeData().urls()[0].toLocalFile()
@@ -1593,6 +1593,10 @@ class guiWin(QMainWindow):
         self.settingsMenu = QMenu("Settings", self)
         menuBar.addMenu(self.settingsMenu)
         self.settingsMenu.addSeparator()
+
+        # Mode menu (actions added when self.modeComboBox is created)
+        self.modeMenu = menuBar.addMenu('Mode')
+        self.modeMenu.menuAction().setVisible(False)
 
         # Help menu
         helpMenu = menuBar.addMenu("&Help")
@@ -2008,15 +2012,6 @@ class guiWin(QMainWindow):
         self.disableTrackingAction.setVisible(False)
         self.functionsNotTested3D.append(self.disableTrackingAction)
 
-        self.brushSizeSpinbox = QSpinBox()
-        self.brushSizeSpinbox.setValue(4)
-        brushSizeLabel = QLabel('   Size: ')
-        brushSizeLabel.setBuddy(self.brushSizeSpinbox)
-        self.brushSizeLabelAction = widgetsToolBar.addWidget(brushSizeLabel)
-        self.brushSizeAction = widgetsToolBar.addWidget(self.brushSizeSpinbox)
-        self.brushSizeLabelAction.setVisible(False)
-        self.brushSizeAction.setVisible(False)
-        
         self.editIDspinbox = QSpinBox()
         self.editIDspinbox.setMaximum(2**16)
         editIDLabel = QLabel('   ID: ')
@@ -2033,6 +2028,15 @@ class guiWin(QMainWindow):
         self.editIDcheckboxAction = widgetsToolBar.addWidget(self.editIDcheckbox)
         self.editIDcheckboxAction.setVisible(False)
 
+        self.brushSizeSpinbox = QSpinBox()
+        self.brushSizeSpinbox.setValue(4)
+        brushSizeLabel = QLabel('   Size: ')
+        brushSizeLabel.setBuddy(self.brushSizeSpinbox)
+        self.brushSizeLabelAction = widgetsToolBar.addWidget(brushSizeLabel)
+        self.brushSizeAction = widgetsToolBar.addWidget(self.brushSizeSpinbox)
+        self.brushSizeLabelAction.setVisible(False)
+        self.brushSizeAction.setVisible(False)
+        
         widgetsToolBar.addWidget(QLabel('  '))
         self.brushAutoFillCheckbox = QCheckBox('Auto-fill holes')
         self.brushAutoFillAction = widgetsToolBar.addWidget(
@@ -2060,7 +2064,15 @@ class guiWin(QMainWindow):
         modeToolBar.addWidget(self.modeComboBoxLabel)
         modeToolBar.addWidget(self.modeComboBox)
         modeToolBar.setVisible(False)
-
+        
+        self.modeActionGroup = QActionGroup(self.modeMenu)
+        for mode in self.modeItems:
+            action = QAction(mode)
+            action.setCheckable(True)
+            self.modeActionGroup.addAction(action)
+            self.modeMenu.addAction(action)
+            if mode == 'Viewer':
+                action.setChecked(True)
 
         self.modeToolBar = modeToolBar
         self.editToolBar = editToolBar
@@ -2223,8 +2235,6 @@ class guiWin(QMainWindow):
         self.labelRoiToolbar.addWidget(self.labelRoiZdepthSpinbox)
         self.addToolBar(Qt.TopToolBarArea , self.labelRoiToolbar)
         self.labelRoiToolbar.setVisible(False)
-
-
 
     def gui_populateToolSettingsMenu(self):
         brushHoverModeActionGroup = QActionGroup(self)
@@ -2743,6 +2753,7 @@ class guiWin(QMainWindow):
         self.brushSizeSpinbox.valueChanged.connect(self.brushSize_cb)
         self.editIDcheckbox.toggled.connect(self.autoIDtoggled)
         # Mode
+        self.modeActionGroup.triggered.connect(self.changeModeFromMenu)
         self.modeComboBox.currentIndexChanged.connect(self.changeMode)
         self.modeComboBox.activated.connect(self.clearComboBoxFocus)
         self.equalizeHistPushButton.toggled.connect(self.equalizeHist)
@@ -8457,6 +8468,9 @@ class guiWin(QMainWindow):
             self.modeComboBox.setStyleSheet('background-color: none')
         except Exception as e:
             pass
+    
+    def changeModeFromMenu(self, action):
+        self.modeComboBox.setCurrentText(action.text())
 
     def changeMode(self, idx):
         self.reconnectUndoRedo()
@@ -11367,6 +11381,10 @@ class guiWin(QMainWindow):
 
         self.disableNonFunctionalButtons()
 
+        # Overwrite axes viewbox context menu
+        self.ax1.vb.menu = self.imgGrad.gradient.menu
+        self.ax2.vb.menu = self.labelsGrad.menu
+
         QTimer.singleShot(200, self.autoRange)
     
     def showHighlightZneighCheckbox(self):
@@ -11440,6 +11458,7 @@ class guiWin(QMainWindow):
             self.modeComboBox.clear()
             self.modeComboBox.addItems(['Snapshot'])
             self.modeComboBox.setDisabled(True)
+            self.modeMenu.menuAction().setVisible(False)
             self.drawIDsContComboBox.clear()
             self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxSegmItems)
             self.drawIDsContComboBox.setCurrentIndex(1)
@@ -11455,6 +11474,7 @@ class guiWin(QMainWindow):
             self.disableTrackingCheckBox.setDisabled(False)
             self.repeatTrackingAction.setDisabled(False)
             self.modeComboBox.setDisabled(False)
+            self.modeMenu.menuAction().setVisible(True)
             try:
                 self.modeComboBox.activated.disconnect()
                 self.modeComboBox.currentIndexChanged.disconnect()
