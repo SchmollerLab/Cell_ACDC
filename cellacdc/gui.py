@@ -1471,6 +1471,7 @@ class guiWin(QMainWindow):
             middle_click = (
                 mouseEvent.button() == Qt.MouseButton.LeftButton
                 and modifiers == Qt.ControlModifier
+                and not self.brushButton.isChecked()
             )
         else:
             middle_click = mouseEvent.button() == Qt.MouseButton.MidButton
@@ -1743,15 +1744,25 @@ class guiWin(QMainWindow):
         self.brushButton.setToolTip(
             'Edit segmentation labels with a circular brush.\n'
             'Increase brush size with UP/DOWN arrows on the keyboard.\n\n'
-            'Default behaviour:\n\n'
+            'Default behaviour:\n'
             '   - Painting on the background will create a new label.\n'
             '   - Edit an existing label by starting to paint on the label\n'
             '     (brush cursor changes color when hovering an existing label).\n'
-            '   - Power brush: Painting is always UNDER existing labels,\n'
-            '     unless you press "b" key twice quickly.\n'
-            '     If double-press is successfull, then brush button turns red\n'
-            '     and brush cursor always white.\n\n'
-            'SHORTCUT: "B" key')
+            '   - Painting in default mode always draw UNDER existing labels.\n\n'
+            'Power brush mode:\n'
+            '   - Power brush: press "b" key twice quickly to force the brush '
+            '     to draw ABOVE existing labels.\n'
+            '     NOTE: If double-press is successful, then brush button turns red.\n'
+            '     and brush cursor always white.\n'
+            '   - Power brush will draw a new object unless you keep "Ctrl" pressed.\n'
+            '     --> draw the ID you start the painting from.'
+            'Manual ID mode:\n'
+            '   - Toggle the manual ID mode with the "Auto-ID" checkbox on the\n'
+            '     top-left toolbar.\n'
+            '   - Enter the ID that you want to paint.\n'
+            '     NOTE: use the power brush to draw ABOVE the existing labels.\n\n'
+            'SHORTCUT: "B" key'
+        )
         editToolBar.addWidget(self.brushButton)
         self.checkableButtons.append(self.brushButton)
         self.LeftClickButtons.append(self.brushButton)
@@ -2003,15 +2014,32 @@ class guiWin(QMainWindow):
         brushSizeLabel.setBuddy(self.brushSizeSpinbox)
         self.brushSizeLabelAction = widgetsToolBar.addWidget(brushSizeLabel)
         self.brushSizeAction = widgetsToolBar.addWidget(self.brushSizeSpinbox)
+        self.brushSizeLabelAction.setVisible(False)
+        self.brushSizeAction.setVisible(False)
+        
+        self.editIDspinbox = QSpinBox()
+        self.editIDspinbox.setMaximum(2**16)
+        editIDLabel = QLabel('   ID: ')
+        self.editIDLabelAction = widgetsToolBar.addWidget(editIDLabel)
+        self.editIDspinboxAction = widgetsToolBar.addWidget(self.editIDspinbox)
+        self.editIDLabelAction.setVisible(False)
+        self.editIDspinboxAction.setVisible(False)
+        self.editIDspinboxAction.setDisabled(True)
+        self.editIDLabelAction.setDisabled(True)
+
+        widgetsToolBar.addWidget(QLabel(' '))
+        self.editIDcheckbox = QCheckBox('Auto-ID')
+        self.editIDcheckbox.setChecked(True)
+        self.editIDcheckboxAction = widgetsToolBar.addWidget(self.editIDcheckbox)
+        self.editIDcheckboxAction.setVisible(False)
+
         widgetsToolBar.addWidget(QLabel('  '))
         self.brushAutoFillCheckbox = QCheckBox('Auto-fill holes')
         self.brushAutoFillAction = widgetsToolBar.addWidget(
             self.brushAutoFillCheckbox
         )
-        self.brushSizeLabelAction.setVisible(False)
-        self.brushSizeAction.setVisible(False)
         self.brushAutoFillAction.setVisible(False)
-
+        
         widgetsToolBar.setVisible(False)
         self.widgetsToolBar = widgetsToolBar
 
@@ -2713,6 +2741,7 @@ class guiWin(QMainWindow):
         self.enableSmartTrackAction.toggled.connect(self.enableSmartTrack)
         # Brush/Eraser size action
         self.brushSizeSpinbox.valueChanged.connect(self.brushSize_cb)
+        self.editIDcheckbox.toggled.connect(self.autoIDtoggled)
         # Mode
         self.modeComboBox.currentIndexChanged.connect(self.changeMode)
         self.modeComboBox.activated.connect(self.clearComboBoxFocus)
@@ -3562,7 +3591,7 @@ class guiWin(QMainWindow):
         modifiers = QGuiApplication.keyboardModifiers()
         ctrl = modifiers == Qt.ControlModifier
         alt = modifiers == Qt.AltModifier
-        isMod = ctrl or alt
+        isMod = alt
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
         left_click = event.button() == Qt.MouseButton.LeftButton and not isMod
@@ -3700,11 +3729,7 @@ class guiWin(QMainWindow):
 
             ID = self.getHoverID(xdata, ydata)
 
-            # If user double-pressed 'b' then draw over the labels
-            color = self.brushButton.palette().button().color().name()
-            drawUnder = color != self.doublePressKeyButtonColor
-
-            if ID > 0 and drawUnder:
+            if ID > 0:
                 self.ax2BrushID = ID
                 self.isNewID = False
             else:
@@ -3718,7 +3743,7 @@ class guiWin(QMainWindow):
             # Draw new objects
             localLab = lab_2D[diskSlice]
             mask = diskMask.copy()
-            if drawUnder:
+            if not self.isPowerBrush():
                 mask[localLab!=0] = False
 
             self.applyBrushMask(mask, self.ax2BrushID, toLocalSlice=diskSlice)
@@ -4776,12 +4801,13 @@ class guiWin(QMainWindow):
         modifiers = QGuiApplication.keyboardModifiers()
         noModifier = modifiers == Qt.NoModifier
         shift = modifiers == Qt.ShiftModifier
+        ctrl = modifiers == Qt.ControlModifier
         if self.app.overrideCursor() == Qt.SizeAllCursor and noModifier:
             self.app.restoreOverrideCursor()
 
         setBrushCursor = (
             self.brushButton.isChecked() and not event.isExit()
-            and (noModifier or shift)
+            and (noModifier or shift or ctrl)
         )
         setEraserCursor = (
             self.eraserButton.isChecked() and not event.isExit()
@@ -5011,12 +5037,13 @@ class guiWin(QMainWindow):
         modifiers = QGuiApplication.keyboardModifiers()
         noModifier = modifiers == Qt.NoModifier
         shift = modifiers == Qt.ShiftModifier
+        ctrl = modifiers == Qt.ControlModifier
         if self.app.overrideCursor() == Qt.SizeAllCursor and noModifier:
             self.app.restoreOverrideCursor()
 
         setBrushCursor = (
             self.brushButton.isChecked() and not event.isExit()
-            and (noModifier or shift)
+            and (noModifier or shift or ctrl)
         )
         setEraserCursor = (
             self.eraserButton.isChecked() and not event.isExit()
@@ -5236,7 +5263,9 @@ class guiWin(QMainWindow):
 
             self.update_rp()
             self.fillHolesID(self.ax2BrushID, sender='brush')
-            self.tracking(enforce=True, assign_unique_new_IDs=False)
+
+            if self.editIDcheckbox.isChecked():
+                self.tracking(enforce=True, assign_unique_new_IDs=False)
 
             # Update images
             if self.isNewID:
@@ -5381,7 +5410,8 @@ class guiWin(QMainWindow):
             self.fillHolesID(posData.brushID, sender='brush')
 
             # Repeat tracking
-            self.tracking(enforce=True, assign_unique_new_IDs=False)
+            if self.editIDcheckbox.isChecked():
+                self.tracking(enforce=True, assign_unique_new_IDs=False)
 
             # Update images
             if self.isNewID:
@@ -5399,6 +5429,8 @@ class guiWin(QMainWindow):
         # Wand tool release, add new object
         elif self.isMouseDragImg1 and self.wandToolButton.isChecked():
             self.isMouseDragImg1 = False
+
+            self.tempLayerImg1.setImage(self.emptyLab)
 
             posData = self.data[self.pos_i]
             posData.lab[self.flood_mask] = posData.brushID
@@ -5672,7 +5704,7 @@ class guiWin(QMainWindow):
         modifiers = QGuiApplication.keyboardModifiers()
         ctrl = modifiers == Qt.ControlModifier
         alt = modifiers == Qt.AltModifier
-        isMod = ctrl or alt
+        isMod = alt
         right_click = event.button() == Qt.MouseButton.RightButton and not isMod
         is_right_click_action_ON = any([
             b.isChecked() for b in self.checkableQButtonsGroup.buttons()
@@ -5697,7 +5729,7 @@ class guiWin(QMainWindow):
         modifiers = QGuiApplication.keyboardModifiers()
         ctrl = modifiers == Qt.ControlModifier
         alt = modifiers == Qt.AltModifier
-        isMod = ctrl or alt
+        isMod = alt
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
         isCcaMode = mode == 'Cell cycle analysis'
@@ -5864,13 +5896,9 @@ class guiWin(QMainWindow):
             Y, X = lab_2D.shape
             self.storeUndoRedoStates(False)
 
-            # If user double-pressed 'b' then draw over the labels
-            color = self.brushButton.palette().button().color().name()
-            drawUnder = color != self.doublePressKeyButtonColor
-
             ID = self.getHoverID(xdata, ydata)
 
-            if ID > 0 and drawUnder:
+            if ID > 0:
                 posData.brushID = ID
                 self.isNewID = False
             else:
@@ -5892,7 +5920,7 @@ class guiWin(QMainWindow):
             # Draw new objects
             localLab = lab_2D[diskSlice]
             mask = diskMask.copy()
-            if drawUnder:
+            if not self.isPowerBrush():
                 mask[localLab!=0] = False
 
             self.applyBrushMask(mask, posData.brushID, toLocalSlice=diskSlice)
@@ -6586,6 +6614,15 @@ class guiWin(QMainWindow):
         if not hasattr(self, 'diskMask'):
             return 0
         
+        modifiers = QGuiApplication.keyboardModifiers()
+        ctrl = modifiers == Qt.ControlModifier
+
+        if self.isPowerBrush() and not ctrl:
+            return 0        
+
+        if not self.editIDcheckbox.isChecked():
+            return self.editIDspinbox.value()
+
         ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
         posData = self.data[self.pos_i]
         lab_2D = self.get_2Dlab(posData.lab)
@@ -6649,6 +6686,8 @@ class guiWin(QMainWindow):
                 masked_lab = lab_2D[ymin:ymax, xmin:xmax][diskMask]
                 hoverID = np.bincount(masked_lab).argmax()
 
+        self.editIDspinbox.setValue(hoverID)
+
         return hoverID
 
     def setHoverToolSymbolColor(
@@ -6666,10 +6705,8 @@ class guiWin(QMainWindow):
             hoverID = self.getHoverID(xdata, ydata)
         else:
             hoverID = ID
-            
-        color = button.palette().button().color().name()
-        drawAbove = color == self.doublePressKeyButtonColor
-        if hoverID == 0 or drawAbove:
+        
+        if hoverID == 0:
             for item in ScatterItems:
                 item.setPen(pen)
                 item.setBrush(brush)
@@ -6677,7 +6714,7 @@ class guiWin(QMainWindow):
             try:
                 rgb = self.img2.lut[hoverID]
                 rgb = rgb if hoverRGB is None else hoverRGB
-                rgbPen = np.clip(rgb*1.2, 0, 255)
+                rgbPen = np.clip(rgb*1.1, 0, 255)
                 for item in ScatterItems:
                     item.setPen(*rgbPen, width=2)
                     item.setBrush(*rgb, 100)
@@ -6694,6 +6731,18 @@ class guiWin(QMainWindow):
             self.changeBrushID()
         
         self.lastHoverID = hoverID
+    
+    def isPowerBrush(self):
+        color = self.brushButton.palette().button().color().name()
+        return color == self.doublePressKeyButtonColor
+    
+    def isPowerEraser(self):
+        color = self.eraserButton.palette().button().color().name()
+        return color == self.doublePressKeyButtonColor
+    
+    def isPowerButton(self, button):
+        color = button.palette().button().color().name()
+        return color == self.doublePressKeyButtonColor
 
     def getCheckNormAction(self):
         normalize = False
@@ -8009,8 +8058,8 @@ class guiWin(QMainWindow):
             # Light mode
             self.equalizeHistPushButton.setStyleSheet('')
             self.graphLayout.setBackground(graphLayoutBkgrColor)
-            self.ax2_BrushCirclePen = pg.mkPen((0,0,0), width=2)
-            self.ax2_BrushCircleBrush = pg.mkBrush((0,0,0,50))
+            self.ax2_BrushCirclePen = pg.mkPen((150,150,150), width=2)
+            self.ax2_BrushCircleBrush = pg.mkBrush((200,200,200,150))
             self.ax1_oldIDcolor = [255-v for v in self.ax1_oldIDcolor]
             self.ax1_G1cellColor = [255-v for v in self.ax1_G1cellColor[:3]]
             self.ax1_G1cellColor.append(178)
@@ -8641,6 +8690,13 @@ class guiWin(QMainWindow):
         self.ax2_EraserX.setSize(value)
         self.ax1_EraserX.setSize(value)
         self.setDiskMask()
+    
+    def autoIDtoggled(self, checked):
+        self.editIDspinboxAction.setDisabled(checked)
+        self.editIDLabelAction.setDisabled(checked)
+        if not checked and self.editIDspinbox.value() == 0:
+            newID = self.setBrushID(return_val=True)
+            self.editIDspinbox.setValue(newID)
 
     def wand_cb(self, checked):
         posData = self.data[self.pos_i]
@@ -8650,8 +8706,7 @@ class guiWin(QMainWindow):
             self.connectLeftClickButtons()
             self.wandControlsToolbar.setVisible(True)
         else:
-            while self.app.overrideCursor() is not None:
-                self.app.restoreOverrideCursor()
+            self.resetCursors()
             self.wandControlsToolbar.setVisible(False)
         if not self.labelsGrad.showLabelsImgAction.isChecked():
             self.ax1.vb.autoRange()
@@ -8831,13 +8886,25 @@ class guiWin(QMainWindow):
             self.eraserButton.setStyleSheet(f'background-color: {c}')
             self.connectLeftClickButtons()
             self.enableSizeSpinbox(True)
+            self.showEditIDwidgets(True)
         else:
             self.setHoverToolSymbolData(
                 [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
             )
             self.enableSizeSpinbox(False)
-            while self.app.overrideCursor() is not None:
-                self.app.restoreOverrideCursor()
+            self.showEditIDwidgets(False)
+            self.resetCursors()
+    
+    def showEditIDwidgets(self, visible):
+        self.editIDLabelAction.setVisible(visible)
+        self.editIDspinboxAction.setVisible(visible)
+        self.editIDcheckboxAction.setVisible(visible)
+    
+    def resetCursors(self):
+        self.ax1_cursor.setData([], [])
+        self.ax2_cursor.setData([], [])
+        while self.app.overrideCursor() is not None:
+            self.app.restoreOverrideCursor()
 
     def setDiskMask(self):
         brushSize = self.brushSizeSpinbox.value()
@@ -8908,7 +8975,7 @@ class guiWin(QMainWindow):
 
         return yBottom, xLeft, yTop, xRight, diskMask
 
-    def setBrushID(self, useCurrentLab=True):
+    def setBrushID(self, useCurrentLab=True, return_val=False):
         # Make sure that the brushed ID is always a new one based on
         # already visited frames
         posData = self.data[self.pos_i]
@@ -8929,6 +8996,8 @@ class guiWin(QMainWindow):
             if manual_ID > newID:
                 newID = manual_ID
         posData.brushID = newID+1
+        if return_val:
+            return posData.brushID
 
     def equalizeHist(self):
         # Store undo state before modifying stuff
@@ -9043,8 +9112,7 @@ class guiWin(QMainWindow):
                          self.ax1_EraserX, self.ax2_EraserX)
             )
             self.enableSizeSpinbox(False)
-            while self.app.overrideCursor() is not None:
-                self.app.restoreOverrideCursor()
+            self.resetCursors()
             self.updateALLimg()
 
     @myutils.exception_handler
@@ -9115,6 +9183,7 @@ class guiWin(QMainWindow):
                 self.expandFootprintSize += 1
         elif ev.key() == Qt.Key_Escape:
             self.setUncheckedAllButtons()
+            self.tempLayerImg1.setImage(self.emptyLab)
             self.isMouseDragImg1 = False
             if self.highlightedID != 0:
                 self.highlightedID = 0
