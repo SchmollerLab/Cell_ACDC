@@ -79,6 +79,7 @@
     <file alias="bkgrRoi.svg">resources/icons/bkgrRoi.svg</file>
     <file alias="hull.svg">resources/icons/hull.svg</file>
     <file alias="image.svg">resources/icons/image.svg</file>
+    <file alias="edit_cca.svg">resources/icons/edit_cca.svg</file>
     <file alias="home.svg">resources/icons/home.svg</file>
     <file alias="quickStart.svg">resources/icons/quickStart.svg</file>
     <file alias="cog.svg">resources/icons/cog.svg</file>

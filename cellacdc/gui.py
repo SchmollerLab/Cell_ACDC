@@ -1731,11 +1731,13 @@ class guiWin(QMainWindow):
         self.functionsNotTested3D.append(self.setIsHistoryKnownButton)
 
         ccaToolBar.addAction(self.assignBudMothAutoAction)
+        ccaToolBar.addAction(self.editCcaToolAction)
         ccaToolBar.addAction(self.reInitCcaAction)
         ccaToolBar.setVisible(False)
         self.ccaToolBar = ccaToolBar
         self.functionsNotTested3D.append(self.assignBudMothAutoAction)
         self.functionsNotTested3D.append(self.reInitCcaAction)
+        self.functionsNotTested3D.append(self.editCcaToolAction)
 
         # Edit toolbar
         editToolBar = QToolBar("Edit", self)
@@ -2476,6 +2478,13 @@ class guiWin(QMainWindow):
             'Automatically assign buds to mothers using YeastMate'
         )
 
+        self.editCcaToolAction = QAction(self)
+        self.editCcaToolAction.setIcon(QIcon(":edit_cca.svg"))
+        self.editCcaToolAction.setDisabled(True)
+        self.editCcaToolAction.setVisible(False)
+        self.editCcaToolAction.setToolTip(
+            'Manually edit cell cycle annotations table.'
+        )
 
         self.reInitCcaAction = QAction(self)
         self.reInitCcaAction.setIcon(QIcon(":reinitCca.svg"))
@@ -2736,6 +2745,7 @@ class guiWin(QMainWindow):
         self.labelRoiButton.toggled.connect(self.labelRoi_cb)
         self.reInitCcaAction.triggered.connect(self.reInitCca)
         self.moveLabelToolButton.toggled.connect(self.moveLabelButtonToggled)
+        self.editCcaToolAction.triggered.connect(self.manualEditCca)
         self.assignBudMothAutoAction.triggered.connect(
             self.autoAssignBud_YeastMate
         )
@@ -8288,7 +8298,7 @@ class guiWin(QMainWindow):
         else:
             self.updateALLimg()
 
-    def manualEditCca(self):
+    def manualEditCca(self, checked=True):
         posData = self.data[self.pos_i]
         editCcaWidget = apps.editCcaTableWidget(posData.cca_df, parent=self)
         editCcaWidget.exec_()
