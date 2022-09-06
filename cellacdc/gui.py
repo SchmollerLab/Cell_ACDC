@@ -1516,13 +1516,13 @@ class guiWin(QMainWindow):
         editMenu.addAction(self.editTextIDsColorAction)
         editMenu.addAction(self.editOverlayColorAction)
         editMenu.addAction(self.manuallyEditCcaAction)
-        editMenu.addAction(self.viewCcaTableAction)
         editMenu.addAction(self.enableSmartTrackAction)
         editMenu.addAction(self.enableAutoZoomToCellsAction)
 
         # View menu
         self.viewMenu = menuBar.addMenu("&View")
         self.viewMenu.addSeparator()
+        self.viewMenu.addAction(self.viewCcaTableAction)
 
         # Image menu
         ImageMenu = menuBar.addMenu("&Image")
@@ -2716,7 +2716,7 @@ class guiWin(QMainWindow):
         # Mode
         self.modeComboBox.currentIndexChanged.connect(self.changeMode)
         self.modeComboBox.activated.connect(self.clearComboBoxFocus)
-        self.equalizeHistPushButton.clicked.connect(self.equalizeHist)
+        self.equalizeHistPushButton.toggled.connect(self.equalizeHist)
         self.editOverlayColorAction.triggered.connect(self.toggleOverlayColorButton)
         self.editTextIDsColorAction.triggered.connect(self.toggleTextIDsColorButton)
         self.overlayColorButton.sigColorChanging.connect(self.updateOlColors)
@@ -3029,7 +3029,8 @@ class guiWin(QMainWindow):
     def gui_addGraphicsItems(self):
         # Auto image adjustment button
         proxy = QtGui.QGraphicsProxyWidget()
-        equalizeHistPushButton = QPushButton("Auto")
+        equalizeHistPushButton = QPushButton("Auto-contrast")
+        equalizeHistPushButton.setCheckable(True)
         if not self.invertBwAction.isChecked():
             equalizeHistPushButton.setStyleSheet(
                 'QPushButton {background-color: #282828; color: #F0F0F0;}'
@@ -4871,9 +4872,9 @@ class guiWin(QMainWindow):
                     val = [v for v in val]
                     value = f'{val}'
                     val_l0 = self.img_layer0[ydata, xdata]
-                    val_str = f'rgb={val}, value_l0={val_l0:.2f}'
+                    val_str = f'rgb={val}, value base layer={val_l0:.2f}'
                 else:
-                    val_str = f'value={val:.2f}'
+                    val_str = f'value={val:.4f}'
                 txt = (
                     f'x={x:.2f}, y={y:.2f}, {val_str}, '
                     f'max={maxVal:.2f}, ID={ID}, max_ID={maxID}, '
@@ -7997,7 +7998,7 @@ class guiWin(QMainWindow):
             lutItem.invertBwAction.toggled.connect(self.setCheckedInvertBW)
             lutItem.setInvertedColorMaps(checked)
             rgb = self.overlayColorButton.color().getRgb()[:3]
-            lutItem.initColormapOverlayLayerItem(rgb, lutItem)
+            self.initColormapOverlayLayerItem(rgb, lutItem)
 
         if self.slideshowWin is not None:
             self.slideshowWin.is_bw_inverted = checked
@@ -8932,7 +8933,6 @@ class guiWin(QMainWindow):
     def equalizeHist(self):
         # Store undo state before modifying stuff
         self.storeUndoRedoStates(False)
-        img = self.getDisplayedCellsImg()
         self.updateALLimg()
 
     def curvTool_cb(self, checked):
@@ -15080,6 +15080,8 @@ class guiWin(QMainWindow):
         else:
             img = image
         
+        if self.equalizeHistPushButton.isChecked():
+            img = skimage.exposure.equalize_adapthist(img)
         self.img1.setImage(img)
         
         if self.overlayButton.isChecked():
