@@ -15822,10 +15822,10 @@ class guiWin(QMainWindow):
             self._openFolder(exp_path=exp_path, imageFilePath=tif_path)
 
     def criticalNoTifFound(self, images_path):
-        err_title = f'No .tif files found in folder.'
+        err_title = 'No .tif files found in folder.'
         err_msg = html_utils.paragraph(
             'The following folder<br><br>'
-            '<code>{images_path}</code><br><br>'
+            f'<code>{images_path}</code><br><br>'
             '<b>does not contain .tif or .h5 files</b>.<br><br>'
             'Only .tif or .h5 files can be loaded with "Open Folder" button.<br><br>'
             'Try with <code>File --> Open image/video file...</code> '
