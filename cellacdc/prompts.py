@@ -21,7 +21,7 @@ from PyQt5.QtCore import (
     Qt
 )
 
-from . import apps, myutils
+from . import apps, myutils, printl
 
 class RichTextPushButton(QPushButton):
     def __init__(self, parent=None, text=None):
@@ -102,11 +102,16 @@ class select_channel_name:
                         for file in filenames:
                             _, ext = os.path.splitext(file)
                             pattern = f'{chName}{ext}'
-                            if file.endswith(pattern):
+                            pattern_aligned = f'{chName}_aligned.npz'
+                            if file.endswith(pattern) or file.endswith(pattern_aligned):
                                 chSaved.append(True)
-                                m = tuple(re.finditer(pattern, file))[-1]
+                                try:
+                                    m = tuple(re.finditer(pattern, file))[-1]
+                                except IndexError:
+                                    m = tuple(re.finditer(pattern_aligned, file))[-1]
                                 chName_idx = m.start()
                                 basename = file[:chName_idx]
+                                break
                         if not any(chSaved):
                             channel_names.remove(chName)
 

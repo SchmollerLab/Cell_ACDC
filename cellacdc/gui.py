@@ -16045,10 +16045,8 @@ class guiWin(QMainWindow):
         images_path = self.images_paths[0]
         filenames = myutils.listdir(images_path)
         if ch_name_selector.is_first_call and user_ch_name is None:
-            ch_names, basenameNotFound = (
-                ch_name_selector.get_available_channels(
+            ch_names, _ = ch_name_selector.get_available_channels(
                     filenames, images_path
-                )
             )
             self.ch_names = ch_names
             if not ch_names:
@@ -16083,7 +16081,15 @@ class guiWin(QMainWindow):
             h5_path = ''
             npz_aligned_path = ''
             tif_path = ''
+            not_allowed_ends = ['btrack_tracks.h5']
             for file in myutils.listdir(images_path):
+                self.isValidEnd = True
+                for not_allowed_end in not_allowed_ends:
+                    if file.endswith(not_allowed_end):
+                        self.isValidEnd = False
+                        break
+                if not self.isValidEnd:
+                    continue
                 channelDataPath = os.path.join(images_path, file)
                 if file.endswith(f'{user_ch_name}_aligned.h5'):
                     h5_aligned_path = channelDataPath
