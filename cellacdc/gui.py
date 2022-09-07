@@ -11831,7 +11831,7 @@ class guiWin(QMainWindow):
         xxS, yyS = self.curvPlotItem.getData()
 
         self.setBrushID()
-        newIDMask = np.zeros(self.currentLab2D.lab.shape, bool)
+        newIDMask = np.zeros(self.currentLab2D.shape, bool)
         rr, cc = skimage.draw.polygon(yyS, xxS)
         newIDMask[rr, cc] = True
         newIDMask[self.currentLab2D!=0] = False
