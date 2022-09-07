@@ -96,7 +96,7 @@ def indexAssignment(
         # If we don't replace unique new IDs we check that tracked IDs are
         # not already existing to avoid duplicates
         new_IDs_in_trackedIDs = [ID for ID in new_untracked_IDs if ID in tracked_IDs]
-        new_tracked_IDs = [uniqueID+i for i in range(len(new_IDs_in_trackedIDs))]
+        new_tracked_IDs = [uniqueID+i+1 for i in range(len(new_IDs_in_trackedIDs))]
         lab_replace_values(
             tracked_lab, rp, new_IDs_in_trackedIDs, new_tracked_IDs
         )
@@ -124,7 +124,7 @@ def indexAssignment(
 def track_frame(
         prev_lab, prev_rp, lab, rp, IDs_curr_untracked=None,
         uniqueID=None, setBrushID_func=None, posData=None,
-        assign_unique_new_IDs=True, IoA_thresh=0.4
+        assign_unique_new_IDs=True, IoA_thresh=0.4, debug=False
     ):
     if not np.any(lab):
         # Skip empty frames

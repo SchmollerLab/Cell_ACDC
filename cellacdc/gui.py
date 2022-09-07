@@ -15620,6 +15620,7 @@ class guiWin(QMainWindow):
                 rp = skimage.measure.regionprops(tracked_lab)
                 IDs = [obj.label for obj in rp]
                 self.manuallyEditTracking(tracked_lab, IDs)
+
         except ValueError:
             tracked_lab = self.get_2Dlab(posData.lab)
 
