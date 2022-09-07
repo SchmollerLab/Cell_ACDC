@@ -8814,11 +8814,18 @@ class guiWin(QMainWindow):
         roiLab = skimage.segmentation.clear_border(roiLab, buffer_size=1)
         posData = self.data[self.pos_i]
         self.setBrushID()
-        roiLab[roiLab>0] += posData.brushID
-        posData.lab[self.labelRoiSlice] = roiLab
+        roiLabMask = roiLab>0
+        roiLab[roiLabMask] += posData.brushID
+        posData.lab[self.labelRoiSlice][roiLabMask] = roiLab[roiLabMask]
         self.update_rp()
+        
+        # Repeat tracking
+        if self.editIDcheckbox.isChecked():
+            self.tracking(enforce=True, assign_unique_new_IDs=False)
+        
         self.store_data()
         self.updateALLimg()
+        
         self.labelRoiItem.setPos((0,0))
         self.labelRoiItem.setSize((0,0))
         self.logger.info('Magic labeller done!')
