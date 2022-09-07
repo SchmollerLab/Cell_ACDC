@@ -96,7 +96,7 @@ def indexAssignment(
         # If we don't replace unique new IDs we check that tracked IDs are
         # not already existing to avoid duplicates
         new_IDs_in_trackedIDs = [ID for ID in new_untracked_IDs if ID in tracked_IDs]
-        new_tracked_IDs = [uniqueID+i+1 for i in range(len(new_IDs_in_trackedIDs))]
+        new_tracked_IDs = [uniqueID+i for i in range(len(new_IDs_in_trackedIDs))]
         lab_replace_values(
             tracked_lab, rp, new_IDs_in_trackedIDs, new_tracked_IDs
         )
@@ -145,7 +145,7 @@ def track_frame(
     elif uniqueID is None:
         # Compute starting unique ID
         setBrushID_func(useCurrentLab=False)
-        uniqueID = posData.brushID
+        uniqueID = posData.brushID+1
 
     tracked_lab = indexAssignment(
         old_IDs, tracked_IDs, IDs_curr_untracked,
