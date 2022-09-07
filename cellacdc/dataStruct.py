@@ -782,9 +782,9 @@ class createDataStructWin(QMainWindow):
         self.logWin.setReadOnly(True)
         mainLayout.addWidget(self.logWin)
 
-        abortButton = QPushButton('Abort process')
+        abortButton = widgets.cancelPushButton(' Abort process ')
         abortButton.clicked.connect(self.close)
-        mainLayout.addWidget(abortButton)
+        mainLayout.addWidget(abortButton, alignment=Qt.AlignCenter)
 
         mainLayout.setContentsMargins(20, 0, 20, 20)
         mainContainer.setLayout(mainLayout)
