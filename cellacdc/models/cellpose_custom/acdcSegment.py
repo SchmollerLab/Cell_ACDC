@@ -5,8 +5,8 @@ from cellpose import models
 
 class Model:
     def __init__(self, model_path: os.PathLike = '', net_avg=False, gpu=False):
-        self.cp = cp.Model()
-        self.cp.model = models.CellposeModel(
+        self.acdcCellpose = cp.Model()
+        self.acdcCellpose.model = models.CellposeModel(
             gpu=gpu, net_avg=net_avg, pretrained_model=model_path
         )
 
@@ -22,7 +22,7 @@ class Model:
             resample=True,
             segment_3D_volume=False            
         ):
-        labels = self.cp.model.segment(
+        labels = self.acdcCellpose.segment(
             image,
             diameter=diameter,
             flow_threshold=flow_threshold,
