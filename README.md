@@ -77,20 +77,22 @@ More details [here](https://github.com/SchmollerLab/Cell_ACDC/releases/tag/v1.2.
 *NOTE: If you don't know what Anaconda is or you are not familiar with it, we recommend reading the detailed installation instructions found in manual [here](https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf).*
 
 1. Install [Anaconda](https://www.anaconda.com/products/individual) or [Miniconda](https://docs.conda.io/en/latest/miniconda.html) for **Python 3.9**. *IMPORTANT: For Windows make sure to choose the **64 bit** version*.
-2. Update conda with `conda update conda`. Optionally, consider removing unused packages with the command `conda clean --all`
-3. Create a virtual environment with the command `conda create -n acdc python=3.9`
-4. Upgrade pip with the command `python -m pip install --upgrade pip`
-5. Activate the environment `conda activate acdc`
-6. Install Cell-ACDC with the command `pip install cellacdc`
+2. Open a terminal. On Windows, use the Anaconda Prompt and NOT the Command Prompt.
+3. Update conda with `conda update conda`. Optionally, consider removing unused packages with the command `conda clean --all`
+4. Create a virtual environment with the command `conda create -n acdc python=3.9`
+5. Upgrade pip with the command `python -m pip install --upgrade pip`
+6. Activate the environment `conda activate acdc`
+7. Install Cell-ACDC with the command `pip install cellacdc`
 
 ## Installation using Pip
 
 1. Download and install [Python 3.9](https://www.python.org/downloads/)
-2. Upgrade pip: Windows: `py -m pip install --updgrade pip`, macOS/Unix: `python3 -m pip install --updgrade pip`
-3. Navigate to a folder where you want to create the virtual environment
-4. Create a virtual environment: Windows: `py -m venv acdc`, macOS/Unix `python3 -m venv acdc`
-5. Activate the environment: Windows: `.\acdc\Scripts\activate`, macOS/Unix: `source acdc/bin/activate`
-6. Install Cell-ACDC with the command `pip install cellacdc`
+2. Open a terminal. On Windows we recommend using the PowerShell that you can install from [here](https://docs.microsoft.com/it-it/powershell/scripting/install/installing-powershell-on-windows?view=powershell-7.2#installing-the-msi-package). On macOS use the Terminal app.
+3. Upgrade pip: Windows: `py -m pip install --updgrade pip`, macOS/Unix: `python3 -m pip install --updgrade pip`
+4. Navigate to a folder where you want to create the virtual environment
+5. Create a virtual environment: Windows: `py -m venv acdc`, macOS/Unix `python3 -m venv acdc`
+6. Activate the environment: Windows: `.\acdc\Scripts\activate`, macOS/Unix: `source acdc/bin/activate`
+7. Install Cell-ACDC with the command `pip install cellacdc`
 
 ## Install from source
 
