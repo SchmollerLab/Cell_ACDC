@@ -12641,7 +12641,7 @@ class guiWin(QMainWindow):
         approxMode = cv2.CHAIN_APPROX_SIMPLE if approx else cv2.CHAIN_APPROX_NONE
         contours, _ = cv2.findContours(
            self.getObjImage(obj.image, obj.bbox).astype(np.uint8),
-           cv2.RETR_CCOMP, approxMode
+           cv2.RETR_EXTERNAL, approxMode
         )
         if not contours:
             return np.array([[np.nan, np.nan]])
@@ -15456,6 +15456,9 @@ class guiWin(QMainWindow):
         curr_IDs = [obj.label for obj in posData.rp]
         lost_IDs = [ID for ID in prev_IDs if ID not in curr_IDs]
         new_IDs = [ID for ID in curr_IDs if ID not in prev_IDs]
+        IDs_with_holes = [
+            obj.label for obj in posData.rp if obj.area/obj.filled_area < 1
+        ]
         posData.lost_IDs = lost_IDs
         posData.new_IDs = new_IDs
         posData.old_IDs = prev_IDs
@@ -15476,6 +15479,12 @@ class guiWin(QMainWindow):
             warn_txt = f'New IDs in current frame: {new_IDs_format}'
             htmlTxt = (
                 f'{htmlTxt}, <font color="green">{warn_txt}</font>'
+            )
+        if IDs_with_holes:
+            IDs_with_holes_format = myutils.get_trimmed_list(IDs_with_holes)
+            warn_txt = f'IDs with holes: {IDs_with_holes_format}'
+            htmlTxt = (
+                f'{htmlTxt}, <font color="red">{warn_txt}</font>'
             )
         if posData.multiContIDs:
             multiContIDs = myutils.get_trimmed_list(list(posData.multiContIDs))
