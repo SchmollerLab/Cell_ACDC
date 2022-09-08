@@ -5,6 +5,7 @@ import re
 import numpy as np
 import string
 import traceback
+import logging
 from functools import partial
 
 from matplotlib.colors import ListedColormap, LinearSegmentedColormap
@@ -27,8 +28,7 @@ from PyQt5.QtWidgets import (
     QGroupBox, QAbstractSlider, QDoubleSpinBox, QWidgetAction,
     QAction, QTabWidget, QAbstractSpinBox, QMessageBox,
     QStyle, QDialog, QSpacerItem, QFrame, QMenu, QActionGroup,
-    QListWidget, QAbstractItemView, QShortcut, QPlainTextEdit,
-    QFileDialog
+    QListWidget, QPlainTextEdit, QFileDialog
 )
 
 import pyqtgraph as pg
@@ -94,6 +94,51 @@ nonInvertibleCmaps = ['cool', 'sunset', 'bipolar']
 renamePgCmaps()
 removeHSVcmaps()
 cmaps, Gradients = addGradients()
+
+class XStream(QObject):
+    _stdout = None
+    _stderr = None
+    messageWritten = pyqtSignal(str)
+    
+    def flush( self ):
+        pass
+   
+    def fileno( self ):
+        return -1
+    
+    def write( self, msg ):
+        if ( not self.signalsBlocked() ):
+            self.messageWritten.emit(msg)
+    
+    @staticmethod
+    def stdout():
+        if ( not XStream._stdout ):
+            XStream._stdout = XStream()
+            sys.stdout = XStream._stdout
+        return XStream._stdout
+    
+    @staticmethod
+    def stderr():
+        if ( not XStream._stderr ):
+            XStream._stderr = XStream()
+            sys.stderr = XStream._stderr
+        return XStream._stderr
+
+class QtHandler(logging.Handler):
+    def __init__(self):
+        super().__init__()
+    
+    def emit(self, record):
+        record = self.format(record)
+        if record: 
+            XStream.stdout().write('%s\n'%record)
+
+class QLog(QPlainTextEdit):
+    def __init__(self, *args):
+        super().__init__(*args)
+
+        XStream.stdout().messageWritten.connect(self.insertPlainText)
+        XStream.stderr().messageWritten.connect(self.insertPlainText)
 
 class okPushButton(QPushButton):
     def __init__(self, *args):

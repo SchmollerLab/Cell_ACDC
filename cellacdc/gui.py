@@ -11384,6 +11384,8 @@ class guiWin(QMainWindow):
         self.navigateToolBar.setVisible(True)
         self.labelsGrad.showLabelsImgAction.setChecked(isLabVisible)
         self.labelsGrad.showRightImgAction.setChecked(isRightImgVisible)
+        if isRightImgVisible:
+            self.rightBottomGroupbox.setChecked(True)
 
         if isRightImgVisible or isLabVisible:
             self.setTwoImagesLayout(True)
@@ -11440,10 +11442,16 @@ class guiWin(QMainWindow):
         if 'how_draw_annotations' in self.df_settings.index:
             how = self.df_settings.at['how_draw_annotations', 'value']
             self.drawIDsContComboBox.setCurrentText(how)
+        else:
+            self.drawIDsContComboBox.setCurrentText('Draw IDs and contours')
         
         if 'how_draw_right_annotations' in self.df_settings.index:
             how = self.df_settings.at['how_draw_right_annotations', 'value']
             self.annotateRightHowCombobox.setCurrentText(how)
+        else:
+            self.annotateRightHowCombobox.setCurrentText(
+                'Draw IDs and overlay segm. masks'
+            )
 
     def setSaturBarLabel(self, log=True):
         self.statusbar.clearMessage()
