@@ -1418,6 +1418,45 @@ class formWidget(QWidget):
         msg.addButton('   Ok   ')
         msg.exec_()
 
+class ToggleTerminalButton(QPushButton):
+    sigClicked = pyqtSignal(bool)
+
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setIcon(QIcon(':terminal_up.svg'))
+        self.setFixedSize(32,16)
+        self.setIconSize(QSize(32, 16))
+        self.setFlat(True)
+        self.terminalVisible = False
+        self.clicked.connect(self.mouseClick)
+    
+    def mouseClick(self):
+        if self.terminalVisible:
+            self.setIcon(QIcon(':terminal_up.svg'))
+            self.terminalVisible = False
+        else:
+            self.setIcon(QIcon(':terminal_down.svg'))
+            self.terminalVisible = True
+        self.sigClicked.emit(self.terminalVisible)
+    
+    def showEvent(self, a0) -> None:
+        self.idlePalette = self.palette()
+        return super().showEvent(a0)
+    
+    def enterEvent(self, event) -> None:
+        pal = self.palette()
+        pal.setColor(QPalette.Button, QColor(200, 200, 200))
+        self.setAutoFillBackground(True)
+        self.setPalette(pal)
+        self.update()
+        return super().enterEvent(event)
+    
+    def leaveEvent(self, event) -> None:
+        self.setPalette(self.idlePalette)
+        self.update()
+        return super().leaveEvent(event)
+        
+
 class readOnlyDoubleSpinbox(QDoubleSpinBox):
     def __init__(self, parent=None):
         super().__init__(parent=parent)

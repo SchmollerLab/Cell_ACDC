@@ -1318,6 +1318,7 @@ class guiWin(QMainWindow):
 
         self.gui_connectActions()
         self.gui_createStatusBar()
+        self.gui_createTerminalWidget()
 
         self.gui_createGraphicsPlots()
         self.gui_addGraphicsItems()
@@ -2189,6 +2190,10 @@ class guiWin(QMainWindow):
         self.bottomLayout.row = row
         mainLayout.setRowStretch(row, 0)
 
+        row, col = 2, 1
+        mainLayout.addWidget(self.terminal, row, col, 1, 4)
+        self.terminal.hide()
+
         return mainLayout
 
     def gui_createPropsDockWidget(self):
@@ -2328,9 +2333,21 @@ class guiWin(QMainWindow):
         # Permanent widget
         self.wcLabel = QLabel('')
         self.statusbar.addPermanentWidget(self.wcLabel)
+
+        self.toggleTerminalButton = widgets.ToggleTerminalButton()
+        self.statusbar.addWidget(self.toggleTerminalButton)
+        self.toggleTerminalButton.sigClicked.connect(
+            self.gui_terminalButtonClicked
+        )
+
         self.statusBarLabel = QLabel('')
         self.statusbar.addWidget(self.statusBarLabel)
-
+    
+    def gui_createTerminalWidget(self):
+        self.terminal = widgets.QLog()
+    
+    def gui_terminalButtonClicked(self, terminalVisible):
+        self.terminal.setVisible(terminalVisible)
 
     def gui_createActions(self):
         # File actions
