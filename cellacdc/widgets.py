@@ -139,6 +139,10 @@ class QLog(QPlainTextEdit):
 
         XStream.stdout().messageWritten.connect(self.insertPlainText)
         XStream.stderr().messageWritten.connect(self.insertPlainText)
+    
+    def insertPlainText(self, text: str) -> None:
+        super().insertPlainText(text)
+        self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
 
 class okPushButton(QPushButton):
     def __init__(self, *args):
