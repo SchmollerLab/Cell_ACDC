@@ -2190,9 +2190,9 @@ class guiWin(QMainWindow):
         self.bottomLayout.row = row
         mainLayout.setRowStretch(row, 0)
 
-        row, col = 2, 1
-        mainLayout.addWidget(self.terminal, row, col, 1, 4)
-        self.terminal.hide()
+        # row, col = 2, 1
+        # mainLayout.addWidget(self.terminal, row, col, 1, 4)
+        # self.terminal.hide()
 
         return mainLayout
 
@@ -2345,9 +2345,19 @@ class guiWin(QMainWindow):
     
     def gui_createTerminalWidget(self):
         self.terminal = widgets.QLog()
-    
+        self.terminalDock = QDockWidget('Terminal', self)
+
+        self.terminalDock.setWidget(self.terminal)
+        self.terminalDock.setFeatures(
+            QDockWidget.DockWidgetFloatable | QDockWidget.DockWidgetMovable
+        )
+        self.terminalDock.setAllowedAreas(Qt.BottomDockWidgetArea)
+        self.addDockWidget(Qt.BottomDockWidgetArea, self.terminalDock)
+        # self.terminalDock.widget().layout().setContentsMargins(10,0,10,0)
+        self.terminalDock.setVisible(False)
+        
     def gui_terminalButtonClicked(self, terminalVisible):
-        self.terminal.setVisible(terminalVisible)
+        self.terminalDock.setVisible(terminalVisible)
 
     def gui_createActions(self):
         # File actions
