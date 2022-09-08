@@ -13249,7 +13249,13 @@ class guiWin(QMainWindow):
                 color = self.ax1_oldIDcolor
                 bold = False
         else:
-            df_ID = df.loc[ID]
+            try:
+                df_ID = df.loc[ID]
+            except KeyError:
+                LabelItemID.setText('?', color='r', size=self.fontSize)
+                self.setLabelCenteredObject(obj, LabelItemID)
+                return
+            
             ccs = df_ID['cell_cycle_stage']
             relationship = df_ID['relationship']
             generation_num = int(df_ID['generation_num'])
@@ -13395,7 +13401,11 @@ class guiWin(QMainWindow):
             BudMothLine = self.ax1_BudMothLines[ID-1]
         else:
             BudMothLine = self.ax2_BudMothLines[ID-1]
-        cca_df_ID = posData.cca_df.loc[ID]
+        try:
+            cca_df_ID = posData.cca_df.loc[ID]
+        except KeyError:
+            return
+        
         ccs_ID = cca_df_ID['cell_cycle_stage']
         relationship = cca_df_ID['relationship']
         isObjVisible = self.isObjVisible(obj.bbox)
@@ -14754,6 +14764,9 @@ class guiWin(QMainWindow):
                     self.currentLab2D, autoLevels=False
                 )
 
+    def addMissingIDs_cca_df(self, posData):
+        base_cca_df = self.getBaseCca_df()
+        posData.cca_df = posData.cca_df.combine_first(base_cca_df)
 
     def update_cca_df_relabelling(self, posData, oldIDs, newIDs):
         relIDs = posData.cca_df['relative_ID']
@@ -14886,6 +14899,7 @@ class guiWin(QMainWindow):
             self.remove_future_cca_df(posData.frame_i)
             self.next_frame()
         else:
+            self.addMissingIDs_cca_df(posData)
             self.updateALLimg()
             self.store_data()
         if action is not None:
