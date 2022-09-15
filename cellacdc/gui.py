@@ -2344,7 +2344,8 @@ class guiWin(QMainWindow):
         self.statusbar.addWidget(self.statusBarLabel)
     
     def gui_createTerminalWidget(self):
-        self.terminal = widgets.QLog()
+        self.terminal = widgets.QLog(logger=self.logger)
+        self.terminal.connect()
         self.terminalDock = QDockWidget('Terminal', self)
 
         self.terminalDock.setWidget(self.terminal)
@@ -9192,11 +9193,11 @@ class guiWin(QMainWindow):
     @myutils.exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
-            printl(self.tempLayerImg1.opacity())
-            printl(self.tempLayerImg1.image.shape)
-            printl(self.tempLayerImg1.image.max())
-            printl(self.tempLayerImg1.lut)
-            printl(self.tempLayerImg1 in self.ax1.items)
+            # printl(self.tempLayerImg1.opacity())
+            # printl(self.tempLayerImg1.image.shape)
+            # printl(self.tempLayerImg1.image.max())
+            # printl(self.tempLayerImg1.lut)
+            # printl(self.tempLayerImg1 in self.ax1.items)
                 
             if self.debug:
                 raise FileNotFoundError
@@ -14427,6 +14428,7 @@ class guiWin(QMainWindow):
             self.updateALLimg()
         else:
             self.clearAx2Items()
+            self.rightBottomGroupbox.hide()
             self.df_settings.at['isRightImageVisible', 'value'] = 'No'
             try:
                 self.graphLayout.removeItem(self.rightImageGrad)

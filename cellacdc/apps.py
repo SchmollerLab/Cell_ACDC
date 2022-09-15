@@ -54,8 +54,8 @@ from PyQt5.QtWidgets import (
     QDockWidget, QMessageBox, QStyle, QPlainTextEdit, QSpacerItem,
     QTreeWidget, QTreeWidgetItem, QTextEdit
 )
-
-from . import myutils, load, prompts, widgets, core, measurements, html_utils
+from . import widgets
+from . import myutils, load, prompts, core, measurements, html_utils
 from . import is_mac, is_win, is_linux, temp_path, config
 from . import qrc_resources, printl
 from . import colors

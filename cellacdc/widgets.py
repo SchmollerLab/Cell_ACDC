@@ -106,20 +106,20 @@ class XStream(QObject):
     def fileno( self ):
         return -1
     
-    def write( self, msg ):
-        if ( not self.signalsBlocked() ):
+    def write(self, msg):
+        if not self.signalsBlocked():
             self.messageWritten.emit(msg)
     
     @staticmethod
     def stdout():
-        if ( not XStream._stdout ):
+        if not XStream._stdout:
             XStream._stdout = XStream()
             sys.stdout = XStream._stdout
         return XStream._stdout
     
     @staticmethod
     def stderr():
-        if ( not XStream._stderr ):
+        if not XStream._stderr:
             XStream._stderr = XStream()
             sys.stderr = XStream._stderr
         return XStream._stderr
@@ -134,16 +134,23 @@ class QtHandler(logging.Handler):
             XStream.stdout().write('%s\n'%record)
 
 class QLog(QPlainTextEdit):
-    def __init__(self, *args):
+    def __init__(self, *args, logger=None):
         super().__init__(*args)
+        self.logger = logger
 
     def connect(self):
-        # XStream.stdout().messageWritten.connect(self.insertPlainText)
-        XStream.stderr().messageWritten.connect(self.insertPlainText)
+        XStream.stdout().messageWritten.connect(self.writeStdOutput)
+        # XStream.stderr().messageWritten.connect(self.writeStdErr)
     
-    def insertPlainText(self, text: str) -> None:
+    def writeStdOutput(self, text: str) -> None:
         super().insertPlainText(text)
         self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
+
+    def writeStdErr(self, text: str) -> None:
+        super().insertPlainText(text)
+        self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
+        if self.logger is not None:
+            self.logger.exception(text)
 
 class okPushButton(QPushButton):
     def __init__(self, *args):
@@ -1449,15 +1456,17 @@ class ToggleTerminalButton(QPushButton):
         return super().showEvent(a0)
     
     def enterEvent(self, event) -> None:
-        pal = self.palette()
-        pal.setColor(QPalette.Button, QColor(200, 200, 200))
-        self.setAutoFillBackground(True)
-        self.setPalette(pal)
+        self.setFlat(True)
+        # pal = self.palette()
+        # pal.setColor(QPalette.Button, QColor(200, 200, 200))
+        # self.setAutoFillBackground(True)
+        # self.setPalette(pal)
         self.update()
         return super().enterEvent(event)
     
     def leaveEvent(self, event) -> None:
-        self.setPalette(self.idlePalette)
+        self.setFlat(False)
+        # self.setPalette(self.idlePalette)
         self.update()
         return super().leaveEvent(event)
         
