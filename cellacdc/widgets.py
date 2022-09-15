@@ -137,7 +137,8 @@ class QLog(QPlainTextEdit):
     def __init__(self, *args):
         super().__init__(*args)
 
-        XStream.stdout().messageWritten.connect(self.insertPlainText)
+    def connect(self):
+        # XStream.stdout().messageWritten.connect(self.insertPlainText)
         XStream.stderr().messageWritten.connect(self.insertPlainText)
     
     def insertPlainText(self, text: str) -> None:

@@ -264,8 +264,8 @@ def setupLogger(module='gui'):
     output_file_handler = logging.FileHandler(log_path, mode='w')
     stdout_handler = logging.StreamHandler(sys.stdout)
 
-    qt_handler = widgets.QtHandler()
-    qt_handler.setFormatter(logging.Formatter("%(message)s"))
+    # qt_handler = widgets.QtHandler()
+    # qt_handler.setFormatter(logging.Formatter("%(message)s"))
 
     # Format your logs (optional)
     formatter = logging.Formatter(
@@ -278,7 +278,7 @@ def setupLogger(module='gui'):
 
     logger.addHandler(output_file_handler)
     logger.addHandler(stdout_handler)
-    logger.addHandler(qt_handler)
+    # logger.addHandler(qt_handler)
 
     return logger, logs_path, log_path, log_filename
 
