@@ -1436,8 +1436,8 @@ class ToggleTerminalButton(QPushButton):
     def __init__(self, *args):
         super().__init__(*args)
         self.setIcon(QIcon(':terminal_up.svg'))
-        self.setFixedSize(32,16)
-        self.setIconSize(QSize(32, 16))
+        self.setFixedSize(34,18)
+        self.setIconSize(QSize(30, 14))
         self.setFlat(True)
         self.terminalVisible = False
         self.clicked.connect(self.mouseClick)
@@ -1456,7 +1456,7 @@ class ToggleTerminalButton(QPushButton):
         return super().showEvent(a0)
     
     def enterEvent(self, event) -> None:
-        self.setFlat(True)
+        self.setFlat(False)
         # pal = self.palette()
         # pal.setColor(QPalette.Button, QColor(200, 200, 200))
         # self.setAutoFillBackground(True)
@@ -1465,7 +1465,7 @@ class ToggleTerminalButton(QPushButton):
         return super().enterEvent(event)
     
     def leaveEvent(self, event) -> None:
-        self.setFlat(False)
+        self.setFlat(True)
         # self.setPalette(self.idlePalette)
         self.update()
         return super().leaveEvent(event)
