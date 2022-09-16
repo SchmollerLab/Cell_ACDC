@@ -19,6 +19,7 @@ from tkinter import TRUE
 import traceback
 import time
 import datetime
+import inspect
 import logging
 import uuid
 import json
@@ -1239,8 +1240,28 @@ class guiWin(QMainWindow):
         self.mainWin = mainWin
         self.app = app
         self.closeGUI = False
-
+    
+    def _print(
+            self, *objects, is_decorator=False, **kwargs
+        ):
+        timestap = datetime.datetime.now().strftime('%H:%M:%S')
+        currentframe = inspect.currentframe()
+        outerframes = inspect.getouterframes(currentframe)
+        idx = 2 if is_decorator else 1
+        callingframe = outerframes[idx].frame
+        callingframe_info = inspect.getframeinfo(callingframe)
+        filpath = callingframe_info.filename
+        filename = os.path.basename(filpath)
+        self.logger.info('*'*30)
+        self.logger.info(
+            f'{timestap} - File "{filename}", line {callingframe_info.lineno}:'
+        )
+        self.logger.info(', '.join([str(x) for x in objects]))
+        self.logger.info('='*30)
+    
     def run(self):
+        global print, printl
+        
         self.is_win = sys.platform.startswith("win")
         if self.is_win:
             self.openFolderText = 'Show in Explorer...'
@@ -1259,6 +1280,9 @@ class guiWin(QMainWindow):
         self.log_path = log_path
         self.log_filename = log_filename
         self.logs_path = logs_path
+
+        print = self._print
+        printl = self._print
 
         self.loadLastSessionSettings()
 
@@ -2359,7 +2383,6 @@ class guiWin(QMainWindow):
         
     def gui_terminalButtonClicked(self, terminalVisible):
         self.ax1_viewRange = self.ax1.vb.viewRange()
-        printl(self.ax1_viewRange)
         self.terminalDock.setVisible(terminalVisible)
         QTimer.singleShot(200, self.resetRange)
 
@@ -11512,7 +11535,6 @@ class guiWin(QMainWindow):
         if self.labelsGrad.showLabelsImgAction.isChecked():
             self.ax2.vb.setRange(xRange=xRange, yRange=yRange)
         self.ax1.vb.setRange(xRange=xRange, yRange=yRange)
-        printl(self.ax1.vb.viewRange())
         self.ax1_viewRange = None
 
     def setAxesMaxRange(self):
