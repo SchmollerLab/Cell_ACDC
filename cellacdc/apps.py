@@ -1064,11 +1064,14 @@ class setMeasurementsDialog(QBaseDialog):
             addCombineMetricButton.clicked.connect(addCombineMetricCallback)
         self.okButton = okButton
 
+        loadLastSelButton = widgets.reloadPushButton('Load last selection...')
+
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.addSpacing(20)
         if addCombineMetricCallback is not None:
             buttonsLayout.addWidget(addCombineMetricButton)
+        buttonsLayout.addWidget(loadLastSelButton)
         buttonsLayout.addWidget(okButton)
 
         layout.addLayout(groupsLayout)
@@ -1078,6 +1081,14 @@ class setMeasurementsDialog(QBaseDialog):
 
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
+        loadLastSelButton.clicked.connect(self.loadLastSelection)
+    
+    def loadLastSelection(self):
+        for chNameGroupbox in self.chNameGroupboxes:
+            chNameGroupbox.checkFavouriteFuncs()
+        self.sizeMetricsQGBox.checkFavouriteFuncs()
+        self.regionPropsQGBox.checkFavouriteFuncs()
+
     
     def setDisabledMetricsRequestedForCombined(self, checked=True):
         # Set checked and disable those metrics that are requested for 

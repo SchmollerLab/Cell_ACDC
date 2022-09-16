@@ -1627,6 +1627,8 @@ class channelMetricsQGBox(QGroupBox):
         self.checkBoxes = metricsQGBox.checkBoxes.copy()
         self.checkBoxes.extend(bkgrValsQGBox.checkBoxes)
 
+        self.groupboxes = [metricsQGBox, bkgrValsQGBox]
+
         layout.addWidget(metricsQGBox)
         layout.addWidget(bkgrValsQGBox)
 
@@ -1641,10 +1643,13 @@ class channelMetricsQGBox(QGroupBox):
             layout.addWidget(customMetricsQGBox)
             self.checkBoxes.extend(customMetricsQGBox.checkBoxes)
 
-
         self.setTitle(f'{chName} metrics')
         self.setCheckable(True)
         self.setLayout(layout)
+    
+    def checkFavouriteFuncs(self):
+        for groupbox in self.groupboxes:
+            groupbox.checkFavouriteFuncs()
 
 class objPropsQGBox(QGroupBox):
     def __init__(self, parent=None):

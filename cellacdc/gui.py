@@ -2359,6 +2359,7 @@ class guiWin(QMainWindow):
         
     def gui_terminalButtonClicked(self, terminalVisible):
         self.terminalDock.setVisible(terminalVisible)
+        QTimer.singleShot(200, self.autoRange)
 
     def gui_createActions(self):
         # File actions
