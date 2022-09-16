@@ -2358,8 +2358,10 @@ class guiWin(QMainWindow):
         self.terminalDock.setVisible(False)
         
     def gui_terminalButtonClicked(self, terminalVisible):
+        self.ax1_viewRange = self.ax1.vb.viewRange()
+        printl(self.ax1_viewRange)
         self.terminalDock.setVisible(terminalVisible)
-        QTimer.singleShot(200, self.autoRange)
+        QTimer.singleShot(200, self.resetRange)
 
     def gui_createActions(self):
         # File actions
@@ -11502,6 +11504,16 @@ class guiWin(QMainWindow):
         if self.labelsGrad.showLabelsImgAction.isChecked():
             self.ax2.vb.autoRange()
         self.ax1.vb.autoRange()
+    
+    def resetRange(self):
+        if self.ax1_viewRange is None:
+            return
+        xRange, yRange = self.ax1_viewRange
+        if self.labelsGrad.showLabelsImgAction.isChecked():
+            self.ax2.vb.setRange(xRange=xRange, yRange=yRange)
+        self.ax1.vb.setRange(xRange=xRange, yRange=yRange)
+        printl(self.ax1.vb.viewRange())
+        self.ax1_viewRange = None
 
     def setAxesMaxRange(self):
         return
@@ -11942,6 +11954,8 @@ class guiWin(QMainWindow):
         self.isShiftDown = False
         self.autoContourHoverON = False
         self.navigateScrollBarStartedMoving = True
+
+        self.ax1_viewRange = None
 
         self.segment2D_kwargs = None
         self.segmModelName = None
