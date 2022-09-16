@@ -3684,7 +3684,7 @@ class guiWin(QMainWindow):
         # Drag image if neither brush or eraser are On pressed
         dragImg = (
             left_click and not eraserON and not
-            brushON and not separateON
+            brushON and not separateON and not middle_click
         )
         if isPanImageClick:
             dragImg = True
@@ -3726,7 +3726,7 @@ class guiWin(QMainWindow):
             is_event_from_img1 = event.isImg1Sender
         showLabelsGradMenu = (
             right_click and not is_right_click_action_ON
-            and not is_event_from_img1
+            and not is_event_from_img1 and not middle_click
         )
         if showLabelsGradMenu:
             self.labelsGrad.showMenu(event)
@@ -5850,6 +5850,7 @@ class guiWin(QMainWindow):
             left_click and not brushON and not histON
             and not curvToolON and not eraserON and not rulerON
             and not wandON and not polyLineRoiON and not labelRoiON
+            and not middle_click
         )
         if isPanImageClick:
             dragImgLeft = True
@@ -5936,12 +5937,6 @@ class guiWin(QMainWindow):
             pg.ImageItem.mousePressEvent(self.img1, event)
             event.ignore()
             return
-
-        dragImgMiddle = middle_click
-        # if dragImgMiddle:
-        #     pg.ImageItem.mousePressEvent(self.img1, event)
-        #     event.ignore()
-        #     return
 
         if mode == 'Viewer' and not canRuler:
             self.startBlinkingModeCB()
