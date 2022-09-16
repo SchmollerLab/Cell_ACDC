@@ -1241,7 +1241,7 @@ class guiWin(QMainWindow):
         self.app = app
         self.closeGUI = False
     
-    def _print(
+    def _printl(
             self, *objects, is_decorator=False, **kwargs
         ):
         timestap = datetime.datetime.now().strftime('%H:%M:%S')
@@ -1258,6 +1258,10 @@ class guiWin(QMainWindow):
         )
         self.logger.info(', '.join([str(x) for x in objects]))
         self.logger.info('='*30)
+    
+    def _print(self, *objects):
+        self.logger.info(', '.join([str(x) for x in objects]))
+            
     
     def run(self):
         global print, printl
@@ -1282,7 +1286,7 @@ class guiWin(QMainWindow):
         self.logs_path = logs_path
 
         print = self._print
-        printl = self._print
+        printl = self._printl
 
         self.loadLastSessionSettings()
 
@@ -4615,8 +4619,9 @@ class guiWin(QMainWindow):
             self.setImageImg2(updateLookuptable=False)
 
             lab2D = self.get_2Dlab(posData.lab)
-            localLab = lab2D[diskSlice]
-            brushMask = localLab == posData.brushID
+            brushMask = np.logical_and(
+                lab2D[diskSlice] == posData.brushID, diskMask
+            )
             self.setTempImg1Brush(
                 False, brushMask, posData.brushID, 
                 toLocalSlice=diskSlice

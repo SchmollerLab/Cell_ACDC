@@ -801,7 +801,10 @@ class segmWin(QMainWindow):
                 if abort:
                     self.close()
                     return
-            self.endFilenameSegm = f'segm_{win.entryText}.npz'
+            if win.entryText:
+                self.endFilenameSegm = f'segm_{win.entryText}.npz'
+            else:
+                self.endFilenameSegm = f'segm.npz'
 
         # Save hyperparams
         post_process_params = {

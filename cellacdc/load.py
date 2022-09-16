@@ -631,11 +631,17 @@ class loadData:
         else:
             basename = f'{self.basename}_'
 
-        segm_new_filename = f'{basename}segm_{new_endname}.npz'
+        if new_endname:
+            segm_new_filename = f'{basename}segm_{new_endname}.npz'
+            acdc_output_filename = f'{basename}acdc_output_{new_endname}.csv'
+        else:
+            segm_new_filename = f'{basename}segm.npz'
+            acdc_output_filename = f'{basename}acdc_output.csv'
+        
         filePath = os.path.join(self.images_path, segm_new_filename)
         self.segm_npz_path = filePath
 
-        acdc_output_filename = f'{basename}acdc_output_{new_endname}.csv'
+        
         filePath = os.path.join(self.images_path, acdc_output_filename)
         self.acdc_output_csv_path = filePath
 
