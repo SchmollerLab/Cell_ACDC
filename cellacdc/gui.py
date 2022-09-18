@@ -1123,6 +1123,9 @@ class saveDataWorker(QObject):
                         posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
 
                 if self.saveOnlySegm:
+                    # Go back to current frame
+                    posData.frame_i = current_frame_i
+                    self.mainWin.get_data()
                     continue
 
                 if add_user_channel_data:
