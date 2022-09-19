@@ -61,9 +61,15 @@ class tracker:
             if not IDs_curr_untracked:
                 # No cells segmented
                 continue
-
-            tracked_IDs = tp_df_frame['particle'].to_list()
-            old_IDs = tp_df_frame['ID'].to_list()
+            
+            try:
+                tracked_IDs = tp_df_frame['particle'].astype(int).to_list()
+                old_IDs = tp_df_frame['ID'].astype(int).to_list()
+            except AttributeError:
+                # Single cell
+                tracked_IDs = [int(tp_df_frame['particle'])]
+                old_IDs = [int(tp_df_frame['ID'])]
+            
             if not tracked_IDs:
                 # No cells tracked
                 continue
