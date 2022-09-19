@@ -2566,7 +2566,7 @@ class QDialogListbox(QDialog):
         if additionalButtons:
             self._additionalButtons = []
             for button in additionalButtons:
-                _button = QPushButton(button)
+                _button, isCancelButton = widgets.getPushButton(button)
                 self._additionalButtons.append(_button)
                 bottomLayout.addWidget(_button)
                 _button.clicked.connect(self.ok_cb)
@@ -7033,6 +7033,329 @@ class QDialogPbar(QDialog):
         if not self.workerFinished:
             event.ignore()
 
+class QDialogTrackerParams(QDialog):
+    def __init__(
+            self, init_params, track_params, tracker_name,
+            url=None, parent=None
+        ):
+        self.cancel = True
+        super().__init__(parent)
+        self.url = url
+
+        self.tracker_name = tracker_name
+
+        self.setWindowTitle(f'{tracker_name} parameters')
+
+        mainLayout = QVBoxLayout()
+        buttonsLayout = QHBoxLayout()
+
+        loadFunc = self.loadLastSelection
+
+        initGroupBox, self.init_argsWidgets = self.createGroupParams(
+            init_params,
+            'Parameters for model initialization'
+        )
+        initDefaultButton = widgets.reloadPushButton('Restore default')
+        initLoadLastSelButton = QPushButton('Load last parameters')
+        initButtonsLayout = QHBoxLayout()
+        initButtonsLayout.addStretch(1)
+        initButtonsLayout.addWidget(initDefaultButton)
+        initButtonsLayout.addWidget(initLoadLastSelButton)
+        initDefaultButton.clicked.connect(self.restoreDefaultInit)
+        initLoadLastSelButton.clicked.connect(
+            partial(loadFunc, f'{self.tracker_name}.init', self.init_argsWidgets)
+        )
+
+        trackGroupBox, self.track_kwargs = self.createGroupParams(
+            track_params,
+            'Parameters for segmentation'
+        )
+        trackDefaultButton = widgets.reloadPushButton('Restore default')
+        trackLoadLastSelButton = QPushButton('Load last parameters')
+        trackButtonsLayout = QHBoxLayout()
+        trackButtonsLayout.addStretch(1)
+        trackButtonsLayout.addWidget(trackDefaultButton)
+        trackButtonsLayout.addWidget(trackLoadLastSelButton)
+        trackDefaultButton.clicked.connect(self.restoreDefaultTrack)
+        section = f'{self.tracker_name}.segment'
+        trackLoadLastSelButton.clicked.connect(
+            partial(loadFunc, section, self.track_kwargs)
+        )
+
+        if tracker_name == 'thresholding':
+            trackGroupBox.setDisabled(True)
+
+        cancelButton = widgets.cancelPushButton(' Cancel ')
+        okButton = widgets.okPushButton(' Ok ')
+        if url is not None:
+            infoButton = widgets.infoPushButton(' Help... ')
+        # restoreDefaultButton = widgets.reloadPushButton('Restore default')
+
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+        if url is not None:
+            buttonsLayout.addWidget(infoButton)
+        # buttonsLayout.addWidget(restoreDefaultButton)
+        buttonsLayout.addWidget(okButton)
+
+        buttonsLayout.setContentsMargins(0, 10, 0, 10)
+
+        okButton.clicked.connect(self.ok_cb)
+        if url is not None:
+            infoButton.clicked.connect(self.openUrlHelp)
+        cancelButton.clicked.connect(self.close)
+        # restoreDefaultButton.clicked.connect(self.restoreDefault)
+
+        mainLayout.addWidget(initGroupBox)
+        mainLayout.addLayout(initButtonsLayout)
+        mainLayout.addSpacing(15)
+        mainLayout.addStretch(1)
+        mainLayout.addWidget(trackGroupBox)
+        mainLayout.addLayout(trackButtonsLayout)
+
+        if url is not None:
+            mainLayout.addWidget(
+                self.createSeeHereLabel(url),
+                alignment=Qt.AlignCenter
+            )
+
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+
+        self.setLayout(mainLayout)
+
+        self.configPars = self.readLastSelection()
+        if self.configPars is None:
+            initLoadLastSelButton.setDisabled(True)
+            trackLoadLastSelButton.setDisabled(True)
+
+        initLoadLastSelButton.click()
+        trackLoadLastSelButton.click()
+
+        self.setFont(font)
+
+        # self.setModal(True)
+    
+    def openUrlHelp(self):
+        import webbrowser
+        webbrowser.open(self.url, new=2)
+
+    def createGroupParams(self, ArgSpecs_list, groupName):
+        ArgWidget = namedtuple(
+            'ArgsWidgets',
+            ['name', 'type', 'widget', 'defaultVal', 'valueSetter']
+        )
+        ArgsWidgets_list = []
+        groupBox = QGroupBox(groupName)
+
+        groupBoxLayout = QGridLayout()
+        for row, ArgSpec in enumerate(ArgSpecs_list):
+            var_name = ArgSpec.name.replace('_', ' ').title()
+            label = QLabel(f'{var_name}:  ')
+            groupBoxLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
+            if ArgSpec.type == bool:
+                booleanGroup = QButtonGroup()
+                booleanGroup.setExclusive(True)
+                trueRadioButton = QRadioButton('True')
+                falseRadioButton = QRadioButton('False')
+                booleanGroup.addButton(trueRadioButton)
+                booleanGroup.addButton(falseRadioButton)
+                trueRadioButton.notButton = falseRadioButton
+                falseRadioButton.notButton = trueRadioButton
+                trueRadioButton.group = booleanGroup
+                if ArgSpec.default:
+                    trueRadioButton.setChecked(True)
+                    defaultVal = True
+                else:
+                    falseRadioButton.setChecked(True)
+                    defaultVal = False
+                valueSetter = QRadioButton.setChecked
+                widget = trueRadioButton
+                groupBoxLayout.addWidget(trueRadioButton, row, 1)
+                groupBoxLayout.addWidget(falseRadioButton, row, 2)
+            elif ArgSpec.type == int:
+                spinBox = QSpinBox()
+                spinBox.setAlignment(Qt.AlignCenter)
+                spinBox.setMaximum(2147483647)
+                spinBox.setValue(ArgSpec.default)
+                defaultVal = ArgSpec.default
+                valueSetter = QSpinBox.setValue
+                widget = spinBox
+                groupBoxLayout.addWidget(spinBox, row, 1, 1, 2)
+            elif ArgSpec.type == float:
+                doubleSpinBox = QDoubleSpinBox()
+                doubleSpinBox.setAlignment(Qt.AlignCenter)
+                doubleSpinBox.setMaximum(2**32)
+                doubleSpinBox.setValue(ArgSpec.default)
+                widget = doubleSpinBox
+                defaultVal = ArgSpec.default
+                valueSetter = QDoubleSpinBox.setValue
+                groupBoxLayout.addWidget(doubleSpinBox, row, 1, 1, 2)
+            elif ArgSpec.type == os.PathLike:
+                filePathControl = widgets.filePathControl()
+                filePathControl.setText(str(ArgSpec.default))
+                widget = filePathControl
+                defaultVal = str(ArgSpec.default)
+                valueSetter = widgets.filePathControl.setText
+                groupBoxLayout.addWidget(filePathControl, row, 1, 1, 2)
+            else:
+                lineEdit = QLineEdit()
+                lineEdit.setText(str(ArgSpec.default))
+                lineEdit.setAlignment(Qt.AlignCenter)
+                widget = lineEdit
+                defaultVal = str(ArgSpec.default)
+                valueSetter = QLineEdit.setText
+                groupBoxLayout.addWidget(lineEdit, row, 1, 1, 2)
+
+            argsInfo = ArgWidget(
+                name=ArgSpec.name,
+                type=ArgSpec.type,
+                widget=widget,
+                defaultVal=defaultVal,
+                valueSetter=valueSetter
+            )
+            ArgsWidgets_list.append(argsInfo)
+
+        groupBox.setLayout(groupBoxLayout)
+        return groupBox, ArgsWidgets_list
+
+    def restoreDefaultInit(self):
+        for argWidget in self.init_argsWidgets:
+            defaultVal = argWidget.defaultVal
+            widget = argWidget.widget
+            argWidget.valueSetter(widget, defaultVal)
+            if isinstance(defaultVal, bool):
+                argWidget.valueSetter(widget.notButton, True)
+
+    def restoreDefaultTrack(self):
+        for argWidget in self.track_kwargs:
+            defaultVal = argWidget.defaultVal
+            widget = argWidget.widget
+            argWidget.valueSetter(widget, defaultVal)
+            if isinstance(defaultVal, bool) and not defaultVal:
+                argWidget.valueSetter(widget.notButton, True)
+
+    def readLastSelection(self):
+        self.ini_path = os.path.join(temp_path, 'last_params_trackers.ini')
+        if not os.path.exists(self.ini_path):
+            return None
+
+        configPars = config.ConfigParser()
+        configPars.read(self.ini_path)
+        return configPars
+
+    def loadLastSelection(self, section, argWidgetList):
+        if self.configPars is None:
+            return
+
+        getters = ['getboolean', 'getfloat', 'getint', 'get']
+        try:
+            options = self.configPars.options(section)
+        except Exception:
+            return
+
+        for argWidget in argWidgetList:
+            option = argWidget.name
+            val = None
+            for getter in getters:
+                try:
+                    val = getattr(self.configPars, getter)(section, option)
+                    break
+                except Exception:
+                    pass
+            widget = argWidget.widget
+            argWidget.valueSetter(widget, val)
+
+    def loadLastSelectionPostProcess(self):
+        postProcessSection = f'{self.tracker_name}.postprocess'
+
+        if postProcessSection not in self.configPars.sections():
+            return
+
+        minSize = self.configPars.getint(postProcessSection, 'minSize')
+        self.minSize_SB.setValue(minSize)
+
+        minSolidity = self.configPars.getfloat(
+            postProcessSection, 'minSolidity'
+        )
+        self.minSolidity_DSB.setValue(minSolidity)
+
+        maxElongation = self.configPars.getfloat(
+            postProcessSection, 'maxElongation'
+        )
+        self.maxElongation_DSB.setValue(maxElongation)
+
+        applyPostProcessing = self.configPars.getboolean(
+            postProcessSection, 'applyPostProcessing'
+        )
+        self.artefactsGroupBox.setChecked(applyPostProcessing)
+
+    def createSeeHereLabel(self, url):
+        htmlTxt = f'<a href=\"{url}">here</a>'
+        seeHereLabel = QLabel()
+        seeHereLabel.setText(f"""
+            <p style="font-size:13px">
+                See {htmlTxt} for details on the parameters
+            </p>
+        """)
+        seeHereLabel.setTextFormat(Qt.RichText)
+        seeHereLabel.setTextInteractionFlags(Qt.TextBrowserInteraction)
+        seeHereLabel.setOpenExternalLinks(True)
+        seeHereLabel.setStyleSheet("padding:12px 0px 0px 0px;")
+        return seeHereLabel
+
+    def argsWidgets_to_kwargs(self, argsWidgets):
+        kwargs_dict = {}
+        for argWidget in argsWidgets:
+            if argWidget.type == bool:
+                kwargs_dict[argWidget.name] = argWidget.widget.isChecked()
+            elif argWidget.type == int or argWidget.type == float:
+                kwargs_dict[argWidget.name] = argWidget.widget.value()
+            elif argWidget.type == str:
+                kwargs_dict[argWidget.name] = argWidget.widget.text()
+            elif argWidget.type == os.PathLike:
+                kwargs_dict[argWidget.name] = argWidget.widget.path()
+            else:
+                to_type = argWidget.type
+                s = argWidget.widget.text()
+                kwargs_dict[argWidget.name] = eval(s)
+        return kwargs_dict
+
+    def ok_cb(self, checked):
+        self.cancel = False
+        self.init_kwargs = self.argsWidgets_to_kwargs(self.init_argsWidgets)
+        self.track_kwargs = self.argsWidgets_to_kwargs(self.track_kwargs)
+        self._saveParams()
+        self.close()
+
+    def _saveParams(self):
+        if self.configPars is None:
+            self.configPars = config.ConfigParser()
+        self.configPars[f'{self.tracker_name}.init'] = {}
+        self.configPars[f'{self.tracker_name}.segment'] = {}
+        for key, val in self.init_kwargs.items():
+            self.configPars[f'{self.tracker_name}.init'][key] = str(val)
+        for key, val in self.track_kwargs.items():
+            self.configPars[f'{self.tracker_name}.segment'][key] = str(val)
+
+        with open(self.ini_path, 'w') as configfile:
+            self.configPars.write(configfile)
+
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        super().show()
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()
+
 class QDialogModelParams(QDialog):
     def __init__(
             self, init_params, segment_params, model_name,
@@ -7089,8 +7412,9 @@ class QDialogModelParams(QDialog):
         infoButton = widgets.infoPushButton(' Help... ')
         # restoreDefaultButton = widgets.reloadPushButton('Restore default')
 
-        buttonsLayout.addWidget(cancelButton)
         buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
         buttonsLayout.addWidget(infoButton)
         # buttonsLayout.addWidget(restoreDefaultButton)
         buttonsLayout.addWidget(okButton)
@@ -7152,10 +7476,6 @@ class QDialogModelParams(QDialog):
         mainLayout.addLayout(buttonsLayout)
 
         self.setLayout(mainLayout)
-
-        font = QtGui.QFont()
-        font.setPixelSize(13)
-        self.setFont(font)
 
         self.configPars = self.readLastSelection()
         if self.configPars is None:

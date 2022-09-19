@@ -314,6 +314,53 @@ class browseFileButton(QPushButton):
         if file_path:
             self.sigPathSelected.emit(file_path)
 
+def getPushButton(buttonText, qparent=None):
+    isCancelButton = (
+        buttonText.lower().find('cancel') != -1
+        or buttonText.lower().find('abort') != -1
+    )
+    isYesButton = (
+        buttonText.lower().find('yes') != -1
+        or buttonText.lower().find('ok') != -1
+        or buttonText.lower().find('continue') != -1
+        or buttonText.lower().find('recommended') != -1
+    )
+    isSettingsButton = buttonText.lower().find('set') != -1
+    isNoButton = (
+        buttonText.replace(' ', '').lower() == 'no'
+        or buttonText.lower().find('Do not ') != -1
+    )
+    isDelButton = buttonText.lower().find('delete') != -1
+    isAddButton = buttonText.lower().find('add ') != -1
+    is3Dbutton = buttonText.find(' 3D ') != -1
+    is2Dbutton = buttonText.find(' 2D ') != -1
+
+    if isCancelButton:
+        button = cancelPushButton(buttonText, qparent)
+        if qparent is not None:
+            qparent.addCancelButton(button=button)
+    elif isYesButton:
+        button = okPushButton(buttonText, qparent)
+        if qparent is not None:
+            qparent.okButton = button
+    elif isSettingsButton:
+        button = setPushButton(buttonText, qparent)
+    elif isNoButton:
+        button = noPushButton(buttonText, qparent)
+    elif isDelButton:
+        button = delPushButton(buttonText, qparent)
+    elif isAddButton:
+        button = addPushButton(buttonText, qparent)
+    elif is3Dbutton:
+        button = threeDPushButton(buttonText, qparent)
+    elif is2Dbutton:
+        button = twoDPushButton(buttonText, qparent)
+    else:
+        button = QPushButton(buttonText, qparent)
+    
+    return button, isCancelButton
+
+
 class filePathControl(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -599,51 +646,9 @@ class myMessageBox(QDialog):
             button.clicked.connect(self.buttonCallBack)
             self.buttons.append(button)
             return button
-
-        isCancelButton = (
-            buttonText.lower().find('cancel') != -1
-            or buttonText.lower().find('abort') != -1
-        )
-        isYesButton = (
-            buttonText.lower().find('yes') != -1
-            or buttonText.lower().find('ok') != -1
-            or buttonText.lower().find('continue') != -1
-            or buttonText.lower().find('recommended') != -1
-        )
-        isSettingsButton = buttonText.lower().find('set') != -1
-        isNoButton = buttonText.replace(' ', '').lower() == 'no'
-        isDelButton = buttonText.lower().find('delete') != -1
-        isAddButton = buttonText.lower().find('add ') != -1
-        is3Dbutton = buttonText.find(' 3D ') != -1
-        is2Dbutton = buttonText.find(' 2D ') != -1
-
-        if isCancelButton:
-            button = cancelPushButton(buttonText, self)
-            self.addCancelButton(button=button)
-        elif isYesButton:
-            button = okPushButton(buttonText, self)
-            self.buttonsLayout.addWidget(button)
-            self.okButton = button
-        elif isSettingsButton:
-            button = setPushButton(buttonText, self)
-            self.buttonsLayout.addWidget(button)
-        elif isNoButton:
-            button = noPushButton(buttonText, self)
-            self.buttonsLayout.addWidget(button)
-        elif isDelButton:
-            button = delPushButton(buttonText, self)
-            self.buttonsLayout.addWidget(button)
-        elif isAddButton:
-            button = addPushButton(buttonText, self)
-            self.buttonsLayout.addWidget(button)
-        elif is3Dbutton:
-            button = threeDPushButton(buttonText, self)
-            self.buttonsLayout.addWidget(button)
-        elif is2Dbutton:
-            button = twoDPushButton(buttonText, self)
-            self.buttonsLayout.addWidget(button)
-        else:
-            button = QPushButton(buttonText, self)
+        
+        button, isCancelButton = getPushButton(buttonText, qparent=self)
+        if not isCancelButton:
             self.buttonsLayout.addWidget(button)
 
         button.clicked.connect(self.buttonCallBack)

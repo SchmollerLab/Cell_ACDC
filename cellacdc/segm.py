@@ -29,7 +29,7 @@ from PyQt5 import QtGui
 
 # Custom modules
 from . import prompts, load, myutils, apps, core, dataPrep, widgets
-from . import qrc_resources, html_utils
+from . import qrc_resources, html_utils, printl
 
 if os.name == 'nt':
     try:
@@ -308,10 +308,8 @@ class segmWorker(QRunnable):
                 self.signals.progress.emit(f'Saving NON-tracked masks of {posData.relPath}...')
                 np.savez_compressed(posData.segm_npz_path, lab_stack)
             
-            tracked_stack = self.tracker.track(
-                lab_stack, signals=self.signals,
-                export_to=posData.btrack_tracks_h5_path
-            )
+            self.track_params['signals'] = self.signals
+            tracked_stack = self.tracker.track(lab_stack, **self.track_params)
             if self.concat_segm and posData.segm_data is not None:
                 # Remove first frame that comes from existing segm
                 tracked_stack = tracked_stack[1:]
@@ -1004,24 +1002,14 @@ class segmWin(QMainWindow):
                 self.do_tracking = True
                 trackerName = win.selectedItemsText[0]
                 self.trackerName = trackerName
-                trackerModule = import_module(
-                    f'trackers.{trackerName}.{trackerName}_tracker'
+                self.tracker, self.track_params = myutils.import_tracker(
+                    posData, trackerName, qparent=self
                 )
-                params = {}
-                if trackerName == 'BayesianTracker':
-                    Y, X = posData.img_data_shape[-2:]
-                    if posData.isSegm3D:
-                        labShape = (posData.SizeZ, Y, X)
-                    else:
-                        labShape = (1, Y, X)
-                    paramsWin = apps.BayesianTrackerParamsWin(labShape, parent=self)
-                    paramsWin.exec_()
-                    params = paramsWin.params
-                elif trackerName == 'CellACDC':
-                    paramsWin = apps.CellACDCTrackerParamsWin(parent=self)
-                    paramsWin.exec_()
-                    params = paramsWin.params
-                self.tracker = trackerModule.tracker(**params)
+                if self.track_params is None:
+                    abort = self.doAbort()
+                    if abort:
+                        self.close()
+                        return
 
         self.progressLabel.setText('Starting main worker...')
 

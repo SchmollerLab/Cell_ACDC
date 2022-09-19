@@ -10,6 +10,7 @@ import logging
 import datetime
 import time
 import subprocess
+from importlib import import_module
 from math import pow
 from functools import wraps, partial
 from collections import namedtuple, Counter
@@ -256,6 +257,8 @@ def setupLogger(module='gui'):
             ls.sort(key=lambda x: os.path.getmtime(x))
             for file in ls[:-20]:
                 os.remove(file)
+    
+    logger.default_stdout = sys.stdout
 
     date_time = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     log_filename = f'{date_time}_{module}_stdout.log'
@@ -661,6 +664,32 @@ def getModelArgSpec(acdcSegment):
             param = ArgSpec(name=arg, default=default, type=type(default))
             segment_params.append(param)
     return init_params, segment_params
+
+def getTrackerArgSpec(trackerModule):
+    ArgSpec = namedtuple('ArgSpec', ['name', 'default', 'type'])
+
+    init_ArgSpec = inspect.getfullargspec(trackerModule.tracker.__init__)
+    init_kwargs_type_hints = typing.get_type_hints(trackerModule.tracker.__init__)
+    init_params = []
+    if len(init_ArgSpec.args)>1:
+        for arg, default in zip(init_ArgSpec.args[1:], init_ArgSpec.defaults):
+            if arg in init_kwargs_type_hints:
+                _type = init_kwargs_type_hints[arg]
+            else:
+                _type = type(default)
+            param = ArgSpec(name=arg, default=default, type=_type)
+            init_params.append(param)
+
+    track_ArgSpec = inspect.getfullargspec(trackerModule.tracker.track)
+    track_params = []
+    if len(track_ArgSpec.args)>1:
+        iter = zip(track_ArgSpec.args[2:], track_ArgSpec.defaults)
+        for arg, default in iter:
+            if arg == 'signals':
+                continue
+            param = ArgSpec(name=arg, default=default, type=type(default))
+            track_params.append(param)
+    return init_params, track_params
 
 def getDefault_SegmInfo_df(posData, filename):
     mid_slice = int(posData.SizeZ/2)
@@ -1340,6 +1369,51 @@ def install_package_msg(pkg_name, note='', parent=None):
     cancel = msg.addButton(' Cancel ')
     msg.exec_()
     return msg.clickedButton == cancel
+
+def import_tracker(posData, trackerName, qparent=None):
+    trackerModule = import_module(
+        f'trackers.{trackerName}.{trackerName}_tracker'
+    )
+    init_params = {}
+    track_params = {}
+    paramsWin = None
+    if trackerName == 'BayesianTracker':
+        Y, X = posData.img_data_shape[-2:]
+        if posData.isSegm3D:
+            labShape = (posData.SizeZ, Y, X)
+        else:
+            labShape = (1, Y, X)
+        paramsWin = apps.BayesianTrackerParamsWin(labShape, parent=qparent)
+        paramsWin.exec_()
+        init_params = paramsWin.params
+        track_params['export_to'] = posData.btrack_tracks_h5_path
+    elif trackerName == 'CellACDC':
+        paramsWin = apps.CellACDCTrackerParamsWin(parent=qparent)
+        paramsWin.exec_()
+        init_params = paramsWin.params
+    else:
+        init_params, track_params = getTrackerArgSpec(
+            trackerModule
+        )
+        if init_params or track_params:
+            try:
+                url = trackerModule.url_help()
+            except AttributeError:
+                url = None
+            paramsWin = apps.QDialogTrackerParams(
+                init_params, track_params, trackerName, url=url
+            )
+            paramsWin.exec_()
+            if not paramsWin.cancel:
+                init_params = paramsWin.init_kwargs
+                track_params = paramsWin.track_kwargs
+
+    if paramsWin is not None:
+        if paramsWin.cancel:
+            return None, None
+    
+    tracker = trackerModule.tracker(**init_params)
+    return tracker, track_params
 
 if __name__ == '__main__':
     print(get_list_of_models())

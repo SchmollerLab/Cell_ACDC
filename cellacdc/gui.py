@@ -179,6 +179,7 @@ class trackingWorker(QObject):
         self.mutex = QMutex()
         self.waitCond = QWaitCondition()
         self.tracker = self.mainWin.tracker
+        self.track_params = self.mainWin.track_params
         self.video_to_track = video_to_track
 
     @workers.worker_exception_handler
@@ -187,9 +188,9 @@ class trackingWorker(QObject):
 
         self.progress.emit('Tracking process started...')
 
+        self.track_params['signals'] = self.signals
         tracked_video = self.tracker.track(
-            self.video_to_track, signals=self.signals,
-            export_to=self.posData.btrack_tracks_h5_path
+            self.video_to_track, **self.track_params
         )
 
         # Store new tracked video
@@ -1265,7 +1266,6 @@ class guiWin(QMainWindow):
     def _print(self, *objects):
         self.logger.info(', '.join([str(x) for x in objects]))
             
-    
     def run(self):
         global print, printl
         
@@ -1288,7 +1288,7 @@ class guiWin(QMainWindow):
         self.log_filename = log_filename
         self.logs_path = logs_path
 
-        print = self._print
+        # print = self._print
         printl = self._printl
 
         self.loadLastSessionSettings()
@@ -9222,6 +9222,9 @@ class guiWin(QMainWindow):
     @myutils.exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
+            print('Ciao')
+            sys.stdout = self.logger.default_stdout
+            print('Ciao')
             # printl(self.tempLayerImg1.opacity())
             # printl(self.tempLayerImg1.image.shape)
             # printl(self.tempLayerImg1.image.max())
@@ -9798,27 +9801,13 @@ class guiWin(QMainWindow):
 
         trackerName = win.selectedItemsText[0]
         self.logger.info(f'Importing {trackerName} tracker...')
-        trackerModule = import_module(
-            f'trackers.{trackerName}.{trackerName}_tracker'
+        self.tracker, self.track_params = myutils.import_tracker(
+            posData, trackerName, qparent=self
         )
-
-        params = {}
-        if trackerName == 'BayesianTracker':
-            if self.isSegm3D:
-                labShape = posData.lab.shape
-            else:
-                labShape = (1, *posData.lab.shape)
-            paramsWin = apps.BayesianTrackerParamsWin(labShape, parent=self)
-            paramsWin.exec_()
-            if paramsWin.cancel:
-                pass
-            params = paramsWin.params
-        elif trackerName == 'CellACDC':
-            paramsWin = apps.CellACDCTrackerParamsWin(parent=self)
-            paramsWin.exec_()
-            params = paramsWin.params
-
-        self.tracker = trackerModule.tracker(**params)
+        if self.track_params is None:
+            self.logger.info('Tracking aborted.')
+            return
+        
         start_n = win.startFrame
         stop_n = win.stopFrame
         video_to_track = posData.segm_data
@@ -17485,6 +17474,9 @@ class guiWin(QMainWindow):
         for handler in handlers:
             handler.close()
             self.logger.removeHandler(handler)
+        
+        # Restore default stdout that was overweritten by setupLogger
+        sys.stdout = self.logger.default_stdout
         
         if self.lazyLoader is None:
             self.sigClosed.emit(self)
