@@ -5,9 +5,22 @@ import trackpy as tp
 import skimage.measure
 from cellacdc.trackers.CellACDC import CellACDC_tracker
 
+from cellacdc import apps, printl
+
+DEBUG = True
+
 class tracker:
     def __init__(self) -> None:
         pass
+
+    def _set_frame_features(self, lab, frame_i, tp_df):
+        rp = skimage.measure.regionprops(lab)
+        for obj in rp:
+            yc, xc = obj.centroid
+            tp_df['x'].append(xc)
+            tp_df['y'].append(yc)
+            tp_df['frame'].append(frame_i)
+            tp_df['ID'].append(obj.label)
 
     def track(
             self, segm_video,
@@ -29,14 +42,7 @@ class tracker:
         # Build tp DataFrame --> https://soft-matter.github.io/trackpy/v0.5.0/generated/trackpy.link.html#trackpy.link
         tp_df = {'x': [], 'y': [], 'frame': [], 'ID': []}
         for frame_i, lab in enumerate(segm_video):
-            rp = skimage.measure.regionprops(lab)
-            for obj in rp:
-                yc, xc = obj.centroid
-                tp_df['x'].append(xc)
-                tp_df['y'].append(yc)
-                tp_df['frame'].append(frame_i)
-                tp_df['ID'].append(obj.label)
-
+            self._set_frame_features(lab, frame_i, tp_df)
         tp_df = pd.DataFrame(tp_df)
 
         # Run tracker
@@ -58,6 +64,10 @@ class tracker:
             tp_df_frame = tp_df.loc[frame_i]
 
             IDs_curr_untracked = [obj.label for obj in rp]
+
+            if DEBUG:
+                printl(f'Current untracked IDs: {IDs_curr_untracked}')
+
             if not IDs_curr_untracked:
                 # No cells segmented
                 continue
@@ -75,6 +85,13 @@ class tracker:
                 continue
 
             uniqueID = max((max(tracked_IDs), max(IDs_curr_untracked)))+1
+
+            if DEBUG:
+                print('-------------------------')
+                print(f'Tracking frame n. {frame_i+1}')
+                for old_ID, tracked_ID in zip(old_IDs, tracked_IDs):
+                    print(f'Tracking ID {old_ID} --> {tracked_ID}')
+                print('-------------------------')
             
             tracked_lab = CellACDC_tracker.indexAssignment(
                 old_IDs, tracked_IDs, IDs_curr_untracked,

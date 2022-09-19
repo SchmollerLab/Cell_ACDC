@@ -1604,8 +1604,8 @@ class guiWin(QMainWindow):
         selectTrackAlgoMenu = trackingMenu.addMenu(
             'Select real-time tracking algorithm'
         )
-        selectTrackAlgoMenu.addAction(self.trackWithAcdcAction)
-        selectTrackAlgoMenu.addAction(self.trackWithYeazAction)
+        for rtTrackerAction in self.trackingAlgosGroup.actions():
+            selectTrackAlgoMenu.addAction(rtTrackerAction)
 
         trackingMenu.addAction(self.repeatTrackingVideoAction)
 
@@ -2500,15 +2500,20 @@ class guiWin(QMainWindow):
         self.repeatTrackingVideoAction.setDisabled(True)
         self.repeatTrackingVideoAction.setShortcut('Alt+Shift+T')
 
-        trackingAlgosGroup = QActionGroup(self)
+        self.trackingAlgosGroup = QActionGroup(self)
         self.trackWithAcdcAction = QAction('Cell-ACDC', self)
         self.trackWithAcdcAction.setCheckable(True)
-        trackingAlgosGroup.addAction(self.trackWithAcdcAction)
+        self.trackingAlgosGroup.addAction(self.trackWithAcdcAction)
 
         self.trackWithYeazAction = QAction('YeaZ', self)
         self.trackWithYeazAction.setCheckable(True)
-        trackingAlgosGroup.addAction(self.trackWithYeazAction)
+        self.trackingAlgosGroup.addAction(self.trackWithYeazAction)
 
+        rt_trackers = myutils.get_list_of_real_time_trackers()
+        for rt_tracker in rt_trackers:
+            rtTrackerAction = QAction(rt_tracker, self)
+            rtTrackerAction.setCheckable(True)
+            self.trackingAlgosGroup.addAction(rtTrackerAction)
 
         self.trackWithAcdcAction.setChecked(True)
         if 'tracking_algorithm' in self.df_settings.index:
@@ -2517,6 +2522,11 @@ class guiWin(QMainWindow):
                 self.trackWithAcdcAction.setChecked(True)
             elif trackingAlgo == 'YeaZ':
                 self.trackWithYeazAction.setChecked(True)
+            else:
+                for rtTrackerAction in self.trackingAlgosGroup.actions():
+                    if rtTrackerAction.text() == trackingAlgo:
+                        rtTrackerAction.setChecked(True)
+                        break
 
         self.setMeasurementsAction = QAction('Set measurements...')
         self.addCustomMetricAction = QAction('Add custom measurement...')
@@ -2795,9 +2805,8 @@ class guiWin(QMainWindow):
         self.repeatTrackingVideoAction.triggered.connect(
             self.repeatTrackingVideo
         )
-        self.trackWithAcdcAction.toggled.connect(self.storeTrackingAlgo)
-        self.trackWithYeazAction.toggled.connect(self.storeTrackingAlgo)
-
+        for rtTrackerAction in self.trackingAlgosGroup.actions():
+            rtTrackerAction.toggled.connect(self.storeTrackingAlgo)
 
         self.brushButton.toggled.connect(self.Brush_cb)
         self.eraserButton.toggled.connect(self.Eraser_cb)
@@ -6448,6 +6457,8 @@ class guiWin(QMainWindow):
                 we recommend using Cell-ACDC tracking algorithm.
             """)
             msg.information(self, 'Info about YeaZ', info_txt, msg.Ok)
+        
+        self.initRealTimeTracker()
 
     def findID(self):
         posData = self.data[self.pos_i]
@@ -11393,6 +11404,7 @@ class guiWin(QMainWindow):
         self.initPosAttr()
         self.initCustomMetrics()
         self.initFluoData()
+        self.initRealTimeTracker()
         self.createChannelNamesActions()
         self.addActionsLutItemContextMenu(self.imgGrad)
         
@@ -15694,6 +15706,10 @@ class guiWin(QMainWindow):
                     prev_lab, posData.lab, use_modified_yeaz=True,
                     use_scipy=True
                 )
+            else:
+                tracked_lab = self.realTimeTracker.track_frame(
+                    prev_lab, posData.lab, **self.track_frame_params
+                )
 
             if DoManualEdit:
                 # Correct tracking with manually changed IDs
@@ -16403,6 +16419,24 @@ class guiWin(QMainWindow):
         okButton = msg.critical(
             self, 'No valid files found!', err_msg, buttonsTexts=('Ok',)
         )
+    
+    def initRealTimeTracker(self):
+        for rtTrackerAction in self.trackingAlgosGroup.actions():
+            if rtTrackerAction.isChecked():
+                break
+        
+        rtTracker = rtTrackerAction.text()
+        if rtTracker == 'Cell-ACDC':
+            return
+        if rtTracker == 'YeaZ':
+            return
+        
+        self.logger.info(f'Initializing {rtTracker} tracker...')
+        posData = self.data[self.pos_i]
+        self.realTimeTracker, self.track_frame_params = myutils.import_tracker(
+            posData, rtTracker, qparent=self
+        )
+        self.logger.info(f'{rtTracker} tracker successfully initialized.')
 
     def initFluoData(self):
         if len(self.ch_names) <= 1:

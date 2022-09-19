@@ -665,7 +665,7 @@ def getModelArgSpec(acdcSegment):
             segment_params.append(param)
     return init_params, segment_params
 
-def getTrackerArgSpec(trackerModule):
+def getTrackerArgSpec(trackerModule, realTime=False):
     ArgSpec = namedtuple('ArgSpec', ['name', 'default', 'type'])
 
     init_ArgSpec = inspect.getfullargspec(trackerModule.tracker.__init__)
@@ -680,7 +680,10 @@ def getTrackerArgSpec(trackerModule):
             param = ArgSpec(name=arg, default=default, type=_type)
             init_params.append(param)
 
-    track_ArgSpec = inspect.getfullargspec(trackerModule.tracker.track)
+    if realTime:
+        track_ArgSpec = inspect.getfullargspec(trackerModule.tracker.track_frame)
+    else:
+        track_ArgSpec = inspect.getfullargspec(trackerModule.tracker.track)
     track_params = []
     if len(track_ArgSpec.args)>1:
         iter = zip(track_ArgSpec.args[2:], track_ArgSpec.defaults)
@@ -1146,6 +1149,22 @@ def imagej_tiffwriter(
             metadata = {}
         new_tif.save(data, metadata=metadata)
 
+def get_list_of_real_time_trackers():
+    trackers = get_list_of_trackers()
+    rt_trackers = []
+    for tracker in trackers:
+        if tracker == 'CellACDC':
+            continue
+        if tracker == 'YeaZ':
+            continue
+        tracker_filename = f'{tracker}_tracker.py'
+        tracker_path = os.path.join(cellacdc_path, 'trackers', tracker, tracker_filename)
+        with open(tracker_path) as file:
+            txt = file.read()
+        if txt.find('def track_frame') != -1:
+            rt_trackers.append(tracker)
+    return rt_trackers
+
 def get_list_of_trackers():
     cellacdc_path = os.path.dirname(os.path.abspath(__file__))
     trackers_path = os.path.join(cellacdc_path, 'trackers')
@@ -1370,7 +1389,7 @@ def install_package_msg(pkg_name, note='', parent=None):
     msg.exec_()
     return msg.clickedButton == cancel
 
-def import_tracker(posData, trackerName, qparent=None):
+def import_tracker(posData, trackerName, realTime=False, qparent=None):
     trackerModule = import_module(
         f'trackers.{trackerName}.{trackerName}_tracker'
     )
@@ -1393,7 +1412,7 @@ def import_tracker(posData, trackerName, qparent=None):
         init_params = paramsWin.params
     else:
         init_params, track_params = getTrackerArgSpec(
-            trackerModule
+            trackerModule, realTime=realTime
         )
         if init_params or track_params:
             try:
