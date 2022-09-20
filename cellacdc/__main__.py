@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 print('Importing modules...')
+from modulefinder import Module
 import sys
 import os
 import subprocess
@@ -54,6 +55,17 @@ except ModuleNotFoundError as e:
     )
     print('----------------------------------------')
     exit('Execution aborted due to an error. See above for details.')
+
+try:
+    import spotmax
+    from spotmax import gui as spotmaxGui
+    from spotmax import utils as spotmaxUtils
+    spotmax_filepath = os.path.dirname(os.path.abspath(spotmax.__file__))
+    spotmax_logo_path = os.path.join(spotmax_filepath, 'resources', 'logo.svg')
+    SPOTMAX = True
+except ModuleNotFoundError:
+    SPOTMAX = False
+
 
 if os.name == 'nt':
     try:
@@ -143,6 +155,15 @@ class mainWin(QMainWindow):
         self.guiButton = guiButton
         mainLayout.addWidget(guiButton)
 
+        if SPOTMAX:
+            spotmaxButton = QPushButton('  4. Launch spotMAX...')
+            spotmaxButton.setIcon(QIcon(spotmax_logo_path))
+            spotmaxButton.setIconSize(QSize(iconSize,iconSize))
+            spotmaxButton.setFont(font)
+            self.spotmaxButton = spotmaxButton
+            spotmaxButton.clicked.connect(self.launchSpotmaxGui)
+            mainLayout.addWidget(spotmaxButton)
+
         font = QtGui.QFont()
         font.setPixelSize(13)
 
@@ -171,6 +192,7 @@ class mainWin(QMainWindow):
         self.start_JVM = True
 
         self.guiWins = []
+        self.spotmaxWins = []
         self.dataPrepWin = None
         self._version = None
 
@@ -640,6 +662,17 @@ class mainWin(QMainWindow):
         
     def guiClosed(self, guiWin):
         self.guiWins.remove(guiWin)
+    
+    def launchSpotmaxGui(self, checked=False):
+        print('Launching spotMAX...')
+        version = spotmaxUtils.read_version()
+        spotmaxWin = spotmaxGui.spotMAX_Win(self.app, mainWin=self)
+        spotmaxWin.setVersion(version)
+        spotmaxWin.show()
+        self.spotmaxWins.append(spotmaxWin)
+        
+    def guiClosed(self, guiWin):
+        self.guiWins.remove(guiWin)
 
     def launchAlignUtil(self, checked=False):
         if self.alignAction.isEnabled():
@@ -681,6 +714,7 @@ class mainWin(QMainWindow):
         self.dataPrepButton.setMinimumHeight(int(h*f))
         self.segmButton.setMinimumHeight(int(h*f))
         self.guiButton.setMinimumHeight(int(h*f))
+        self.spotmaxButton.setMinimumHeight(int(h*f))
         self.restartButton.setMinimumHeight(int(int(h*f)))
         self.closeButton.setMinimumHeight(int(int(h*f)))
         # iconWidth = int(self.closeButton.iconSize().width()*1.3)
