@@ -7,7 +7,7 @@ from cellacdc.trackers.CellACDC import CellACDC_tracker
 
 from cellacdc import apps, printl
 
-DEBUG = True
+DEBUG = False
 
 class tracker:
     def __init__(self) -> None:
@@ -30,7 +30,9 @@ class tracker:
             adaptive_step=0.95,
             neighbor_strategy='KDTree',
             link_strategy = 'recursive',
-            signals=None
+            export_to_extension='.csv',
+            signals=None, 
+            export_to=None,
         ):
         # Handle string input for adaptive_stop
         if isinstance(adaptive_stop, str):
@@ -54,6 +56,10 @@ class tracker:
             neighbor_strategy=neighbor_strategy,
             link_strategy=link_strategy,
         ).set_index('frame')
+        
+        if export_to is not None:
+            tp_df.to_csv(export_to)
+        
         tp_df['particle'] += 1 # trackpy starts from 0 with tracked ids
 
         # Generate tracked video data

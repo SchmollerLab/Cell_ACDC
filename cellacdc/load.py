@@ -1051,9 +1051,18 @@ class loadData:
         self.raw_postproc_segm_path = f'{base_path}segm_raw_postproc'
         self.post_proc_mot_metrics = f'{base_path}post_proc_mot_metrics'
         self.segm_hyperparams_ini_path = f'{base_path}segm_hyperparams.ini'
-        self.btrack_tracks_h5_path = f'{base_path}btrack_tracks.h5'
         self.custom_annot_json_path = f'{base_path}custom_annot_params.json'
         self.custom_combine_metrics_path = f'{base_path}custom_combine_metrics.ini'
+    
+    def get_btrack_export_path(self):
+        btrack_path = self.segm_npz_path.replace('.npz', '.h5')
+        btrack_path = btrack_path.replace('_segm', '_btrack_tracks')
+        return btrack_path
+    
+    def get_tracker_export_path(self, trackerName, ext):
+        tracker_path = self.segm_npz_path.replace('_segm', f'_{trackerName}_tracks')
+        tracker_path = tracker_path.replace('.npz', ext)
+        return tracker_path
 
     def setBlankSegmData(self, SizeT, SizeZ, SizeY, SizeX):
         Y, X = self.img_data.shape[-2:]

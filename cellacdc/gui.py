@@ -9233,9 +9233,11 @@ class guiWin(QMainWindow):
     @myutils.exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
-            print('Ciao')
-            sys.stdout = self.logger.default_stdout
-            print('Ciao')
+            posData = self.data[self.pos_i]
+            _, track_params = myutils.import_tracker(
+                posData, 'trackpy', qparent=self
+            )
+            printl(track_params, pretty=True)
             # printl(self.tempLayerImg1.opacity())
             # printl(self.tempLayerImg1.image.shape)
             # printl(self.tempLayerImg1.image.max())

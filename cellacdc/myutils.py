@@ -690,6 +690,8 @@ def getTrackerArgSpec(trackerModule, realTime=False):
         for arg, default in iter:
             if arg == 'signals':
                 continue
+            if arg == 'export_to':
+                continue
             param = ArgSpec(name=arg, default=default, type=type(default))
             track_params.append(param)
     return init_params, track_params
@@ -1405,27 +1407,32 @@ def import_tracker(posData, trackerName, realTime=False, qparent=None):
         paramsWin = apps.BayesianTrackerParamsWin(labShape, parent=qparent)
         paramsWin.exec_()
         init_params = paramsWin.params
-        track_params['export_to'] = posData.btrack_tracks_h5_path
+        track_params['export_to'] = posData.get_btrack_export_path()
     elif trackerName == 'CellACDC':
         paramsWin = apps.CellACDCTrackerParamsWin(parent=qparent)
         paramsWin.exec_()
         init_params = paramsWin.params
     else:
-        init_params, track_params = getTrackerArgSpec(
+        init_argspecs, track_argspecs = getTrackerArgSpec(
             trackerModule, realTime=realTime
         )
-        if init_params or track_params:
+        if init_argspecs or track_argspecs:
             try:
                 url = trackerModule.url_help()
             except AttributeError:
                 url = None
             paramsWin = apps.QDialogTrackerParams(
-                init_params, track_params, trackerName, url=url
+                init_argspecs, track_argspecs, trackerName, url=url
             )
             paramsWin.exec_()
             if not paramsWin.cancel:
                 init_params = paramsWin.init_kwargs
                 track_params = paramsWin.track_kwargs
+        if 'export_to_extension' in track_params:
+            ext = track_params['export_to_extension']
+            track_params['export_to'] = posData.get_tracker_export_path(
+                trackerName, ext
+            )
 
     if paramsWin is not None:
         if paramsWin.cancel:

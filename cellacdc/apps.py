@@ -7052,8 +7052,7 @@ class QDialogTrackerParams(QDialog):
         loadFunc = self.loadLastSelection
 
         initGroupBox, self.init_argsWidgets = self.createGroupParams(
-            init_params,
-            'Parameters for model initialization'
+            init_params, 'Parameters for tracker initialization'
         )
         initDefaultButton = widgets.reloadPushButton('Restore default')
         initLoadLastSelButton = QPushButton('Load last parameters')
@@ -7067,8 +7066,7 @@ class QDialogTrackerParams(QDialog):
         )
 
         trackGroupBox, self.track_kwargs = self.createGroupParams(
-            track_params,
-            'Parameters for segmentation'
+            track_params, 'Parameters for tracking'
         )
         trackDefaultButton = widgets.reloadPushButton('Restore default')
         trackLoadLastSelButton = QPushButton('Load last parameters')
@@ -7264,8 +7262,9 @@ class QDialogTrackerParams(QDialog):
                     break
                 except Exception:
                     pass
-            widget = argWidget.widget
-            argWidget.valueSetter(widget, val)
+            if val:
+                widget = argWidget.widget
+                argWidget.valueSetter(widget, val)
 
     def loadLastSelectionPostProcess(self):
         postProcessSection = f'{self.tracker_name}.postprocess'
