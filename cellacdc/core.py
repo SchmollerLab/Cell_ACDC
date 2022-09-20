@@ -378,7 +378,8 @@ class LineageTree:
         else:
             gen_num_relID_tree = self.branch_start_gen_num[ID]
         
-        gen_df['generation_num_tree'] = gen_nums_tree + gen_num_relID_tree        
+        updated_gen_nums_tree = gen_nums_tree + gen_num_relID_tree
+        gen_df['generation_num_tree'] = updated_gen_nums_tree       
         
         '''Assign unique ID every consecutive division'''
         if not self.traversing_branch_ID:
@@ -396,6 +397,7 @@ class LineageTree:
         '''
         gen_num_tree = gen_df.loc[ID_slice, 'generation_num_tree'].iloc[0]
         
+        prev_gen_G1_existing = True
         if gen_num_tree > 1:        
             prev_gen_num_tree = gen_num_tree - 1
             try:
@@ -404,14 +406,23 @@ class LineageTree:
             except Exception as e:
                 # Parent ID is the Cell_ID_tree that the relative of the 
                 # current ID had in prev gen
-                prev_gen_df = self.gen_dfs[(relID, prev_gen_num_tree)]
+                try:
+                    prev_gen_df = self.gen_dfs[(relID, prev_gen_num_tree)]
+                except Exception as e:
+                    # Cell has not previous gen because the gen_num_tree
+                    # starts at 2 (cell appeared in S and then started G1)
+                    prev_gen_G1_existing = False
+                    pass
             
-            try:
-                parent_ID = prev_gen_df.loc[relID_slice, 'Cell_ID_tree'].iloc[0]
-            except Exception as e:
-                parent_ID = prev_gen_df.loc[ID_slice, 'Cell_ID_tree'].iloc[0]
+            if prev_gen_G1_existing:
+                try:
+                    parent_ID = prev_gen_df.loc[relID_slice, 'Cell_ID_tree'].iloc[0]
+                except Exception as e:
+                    parent_ID = prev_gen_df.loc[ID_slice, 'Cell_ID_tree'].iloc[0]
             
-            gen_df['parent_ID_tree'] = parent_ID
+                gen_df['parent_ID_tree'] = parent_ID
+            else:
+                parent_ID = -1
         else:
             parent_ID = -1
         
@@ -423,7 +434,7 @@ class LineageTree:
             --> store this and use when traversing branch
         '''
         if not self.traversing_branch_ID:
-            if gen_num_tree == 2:
+            if gen_num_tree == 2 and prev_gen_G1_existing:
                 root_ID_tree = parent_ID
             elif gen_num_tree > 2:
                 prev_gen_num_tree = gen_num_tree - 1
@@ -470,9 +481,13 @@ class LineageTree:
         self.df_G1['sister_ID_tree'] = -1
             
         self.df_G1['generation_num_tree'] = self.df_G1['generation_num']
+        
+        # For cells that starts at ccs = 2 subtract 1
         history_unknown_mask = self.df_G1['is_history_known'] == 0
-        self.df_G1.loc[history_unknown_mask, 'generation_num_tree'] = (
-            self.df_G1.loc[history_unknown_mask, 'generation_num'] - 1
+        ccs_greater_one_mask = self.df_G1['generation_num'] > 1
+        subtract_gen_num_mask = (history_unknown_mask) & (ccs_greater_one_mask)
+        self.df_G1.loc[subtract_gen_num_mask, 'generation_num_tree'] = (
+            self.df_G1.loc[subtract_gen_num_mask, 'generation_num'] - 1
         )
         
         cols_tree = [col for col in self.df_G1.columns if col.endswith('_tree')]
@@ -532,7 +547,11 @@ class LineageTree:
             self.df_G1.loc[df.index, 'sister_ID_tree'] = sister_ID_tree
     
     def _build_tree_S(self, cols_tree):
-        '''In S we consider the bud still the same as the mother in the tree'''
+        '''In S we consider the bud still the same as the mother in the tree
+        --> either copy the tree information from the G1 phase or, in case 
+        the cell doesn't have a G1 (before S) because it appeared already in S,
+        copy from the current S phase (e.g., Cell_ID_tree = Cell_ID)
+        '''
         S_mask = self.acdc_df['cell_cycle_stage'] == 'S'
         df_S = self.acdc_df[S_mask].copy()
         gen_acdc_df = self.acdc_df.reset_index().set_index(
@@ -547,9 +566,19 @@ class LineageTree:
                 idx_ID = row_S.relative_ID
                 frame_i = row_S.Index[0]
                 idx_gen_num = self.acdc_df.at[(frame_i, idx_ID), 'generation_num']
-            row_G1 = gen_acdc_df.loc[(idx_ID, idx_gen_num, 'G1')].iloc[0]
-            for col_tree in cols_tree:
-                self.acdc_df.loc[row_S.Index, col_tree] = row_G1[col_tree]
+            cc_df = gen_acdc_df.loc[(idx_ID, idx_gen_num)]
+            if 'G1' in cc_df.index:
+                row_G1 = cc_df.loc[['G1']].iloc[0]
+                for col_tree in cols_tree:
+                    self.acdc_df.loc[row_S.Index, col_tree] = row_G1[col_tree]
+            else:
+                # Cell that was already in S at appearance --> There is not G1 to copy from
+                sister_ID = cc_df.iloc[0]['relative_ID']
+                self.acdc_df.loc[row_S.Index, 'Cell_ID_tree'] = idx_ID
+                self.acdc_df.loc[row_S.Index, 'parent_ID_tree'] = -1
+                self.acdc_df.loc[row_S.Index, 'root_ID_tree'] = idx_ID
+                self.acdc_df.loc[row_S.Index, 'generation_num_tree'] = 1
+                self.acdc_df.loc[row_S.Index, 'sister_ID_tree'] = sister_ID
     
     def newick(self):
         if 'Cell_ID_tree' not in self.acdc_df.columns:
@@ -557,6 +586,10 @@ class LineageTree:
     
     def plot(self):
         if 'Cell_ID_tree' not in self.acdc_df.columns:
+            self.build()
+    
+    def to_arboretum(self, rebuild=False):
+        if 'Cell_ID_tree' not in self.acdc_df.columns or rebuild:
             self.build()
 
     
