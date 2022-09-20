@@ -4,7 +4,7 @@ import os
 import time
 
 from pprint import pprint
-from functools import wraps
+from functools import wraps, partial
 
 import numpy as np
 import pandas as pd
@@ -19,10 +19,12 @@ import queue
 from tifffile.tifffile import TiffFile
 
 from PyQt5.QtCore import (
-    pyqtSignal, QObject, QRunnable, QMutex, QWaitCondition
+    pyqtSignal, QObject, QRunnable, QMutex, QWaitCondition, QTimer
 )
 
 from . import load, myutils, core, measurements, prompts, printl
+
+DEBUG = False
 
 def worker_exception_handler(func):
     @wraps(func)
@@ -101,7 +103,7 @@ class LabelRoiWorker(QObject):
         self.started = True
         self.waitCond.wakeAll()
     
-    def stop(self):
+    def _stop(self):
         self.logger.log('Magic labeller backend process done. Closing it...')
         self.exit = True
         self.waitCond.wakeAll()
@@ -140,20 +142,44 @@ class AutoSaveWorker(QObject):
         self.waitCond = waitCond
         self.exit = False
         self.isFinished = False
+        self.abortSaving = False
+        self.isSaving = False
         self.dataQ = queue.Queue()
     
     def pause(self):
-        # self.logger.log('Autosaving is idle.')
+        if DEBUG:
+            self.logger.log('Autosaving is idle.')
         self.mutex.lock()
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
     
     def enqueue(self, posData):
+        # First stop previously saving data
+        if self.isSaving:
+            self.abortSaving = True
+            self.timer = QTimer()
+            self.timer.timeout.connect(partial(self.waitAbortSaving, posData))
+            self.timer.start(100)
+        else:
+            self._enqueue(posData)
+    
+    def waitAbortSaving(self, posData):
+        if DEBUG:
+            self.logger.log(f'Waiting abort autosaving: {self.isSaving}...')
+        
+        if not self.isSaving:
+            self.timer.stop()
+            self._enqueue(posData)
+    
+    def _enqueue(self, posData):
+        if DEBUG:
+            self.logger.log('Enqueing posData autosave...')
         self.dataQ.put(posData)
         if self.dataQ.qsize() == 1:
+            self.abortSaving = False
             self.waitCond.wakeAll()
     
-    def stop(self):
+    def _stop(self):
         self.exit = True
         self.waitCond.wakeAll()
     
@@ -164,7 +190,8 @@ class AutoSaveWorker(QObject):
                 self.logger.log('Closing autosaving worker...')
                 break
             elif not self.dataQ.empty():
-                # self.logger.log('Autosaving...')
+                if DEBUG:
+                    self.logger.log('Autosaving...')
                 data = self.dataQ.get()
                 try:
                     self.saveData(data)
@@ -179,6 +206,8 @@ class AutoSaveWorker(QObject):
                 self.pause()
         self.isFinished = True
         self.finished.emit()
+        if DEBUG:
+            self.logger.log('Autosave finished signal emitted')
     
     def getLastTrackedFrame(self, posData):
         last_tracked_i = 0
@@ -193,6 +222,10 @@ class AutoSaveWorker(QObject):
             return last_tracked_i
     
     def saveData(self, posData):
+        if DEBUG:
+            self.logger.log('Started autosaving...')
+        
+        self.isSaving = True
         posData.setTempPaths()
         segm_npz_path = posData.segm_npz_temp_path
         acdc_output_csv_path = posData.acdc_output_temp_csv_path
@@ -210,6 +243,9 @@ class AutoSaveWorker(QObject):
         acdc_df_li = []
 
         for frame_i, data_dict in enumerate(posData.allData_li[:end_i+1]):
+            if self.abortSaving:
+                break
+            
             # Build saved_segm_data
             lab = data_dict['labels']
             if lab is None:
@@ -233,13 +269,24 @@ class AutoSaveWorker(QObject):
             key = (frame_i, posData.TimeIncrement*frame_i)
             keys.append(key)
 
-        np.savez_compressed(segm_npz_path, np.squeeze(saved_segm_data))
-        if acdc_df_li:
-            all_frames_acdc_df = pd.concat(
-                acdc_df_li, keys=keys,
-                names=['frame_i', 'time_seconds', 'Cell_ID']
-            )
-            all_frames_acdc_df.to_csv(acdc_output_csv_path)
+            if self.abortSaving:
+                break
+        
+        if not self.abortSaving:
+            np.savez_compressed(segm_npz_path, np.squeeze(saved_segm_data))
+            if acdc_df_li:
+                all_frames_acdc_df = pd.concat(
+                    acdc_df_li, keys=keys,
+                    names=['frame_i', 'time_seconds', 'Cell_ID']
+                )
+                all_frames_acdc_df.to_csv(acdc_output_csv_path)
+
+        if DEBUG:
+            self.logger.log(f'Autosaving done.')
+            self.logger.log(f'Aborted autosaving {self.abortSaving}.')
+
+        self.abortSaving = False
+        self.isSaving = False
 
 class segmWorker(QObject):
     finished = pyqtSignal(np.ndarray, float)

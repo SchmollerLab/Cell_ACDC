@@ -2210,7 +2210,7 @@ class guiWin(QMainWindow):
             garbage = self.autoSaveActiveWorkers[-1]
             self.autoSaveGarbageWorkers.append(garbage)
             worker = garbage[0]
-            worker.stop()
+            worker._stop()
        
         autoSaveThread = QThread()
         self.autoSaveMutex = QMutex()
@@ -2240,7 +2240,7 @@ class guiWin(QMainWindow):
         self.setSaturBarLabel(log=False)
     
     def autoSaveWorkerClosed(self):
-        if len(self.autoSaveActiveWorkers) > 1:
+        if self.autoSaveActiveWorkers:
             self.logger.info('Autosaving worker closed.')
             self.autoSaveActiveWorkers.pop(-1)
 
@@ -8908,7 +8908,7 @@ class guiWin(QMainWindow):
                 self.labelRoiToolbar.setVisible(False)
             
             for worker in self.labelRoiActiveWorkers:
-                worker.stop()
+                worker._stop()
             while self.app.overrideCursor() is not None:
                 self.app.restoreOverrideCursor()
             
@@ -9276,7 +9276,7 @@ class guiWin(QMainWindow):
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
             posData = self.data[self.pos_i]
-            print(self.sizeMetricsToSave)
+            printl(self.autoSaveActiveWorkers)
         try:
             posData = self.data[self.pos_i]
         except AttributeError:
@@ -13322,7 +13322,7 @@ class guiWin(QMainWindow):
     
     def enqAutosave(self):
         posData = self.data[self.pos_i]  
-        if self.autoSaveActiveWorkers:
+        if self.autoSaveAction.isChecked():
             worker, thread = self.autoSaveActiveWorkers[-1]
             self.statusBarLabel.setText('Autosaving...')
             worker.enqueue(posData)
@@ -17394,7 +17394,7 @@ class guiWin(QMainWindow):
     
     def autoSaveToggled(self, checked):
         for worker, thread in self.autoSaveActiveWorkers:
-            worker.stop()
+            worker._stop()
         
         if checked:
             self.gui_createAutoSaveWorker()
@@ -17493,7 +17493,7 @@ class guiWin(QMainWindow):
     def closeEvent(self, event):
         for worker, thread in self.autoSaveActiveWorkers:
             try:
-                worker.stop()
+                worker._stop()
                 while not worker.isFinished:
                     continue
                 worker.finished.emit()

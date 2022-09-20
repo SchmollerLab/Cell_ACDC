@@ -710,7 +710,8 @@ class mainWin(QMainWindow):
         self.dataPrepButton.setMinimumHeight(int(h*f))
         self.segmButton.setMinimumHeight(int(h*f))
         self.guiButton.setMinimumHeight(int(h*f))
-        self.spotmaxButton.setMinimumHeight(int(h*f))
+        if hasattr(self, 'spotmaxButton'):
+            self.spotmaxButton.setMinimumHeight(int(h*f))
         self.restartButton.setMinimumHeight(int(int(h*f)))
         self.closeButton.setMinimumHeight(int(int(h*f)))
         # iconWidth = int(self.closeButton.iconSize().width()*1.3)

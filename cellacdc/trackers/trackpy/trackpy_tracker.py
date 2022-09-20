@@ -28,6 +28,7 @@ class tracker:
             memory=0,
             adaptive_stop: float=None, 
             adaptive_step=0.95,
+            dynamic_predictor=False,
             neighbor_strategy='KDTree',
             link_strategy = 'recursive',
             export_to_extension='.csv',
@@ -48,7 +49,12 @@ class tracker:
         tp_df = pd.DataFrame(tp_df)
 
         # Run tracker
-        tp_df = tp.link_df(
+        if dynamic_predictor:
+            predictor = tp.predict.NearestVelocityPredict()
+        else:
+            predictor = tp
+
+        tp_df = predictor.link_df(
             tp_df, search_range,
             memory=int(memory),
             adaptive_stop=adaptive_stop, 
