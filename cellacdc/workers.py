@@ -606,6 +606,19 @@ class calcMetricsWorker(QObject):
                         self.logger.log(traceback_format)
                         print('-'*30)
                         self.standardMetricsErrors[str(error)] = traceback_format
+                    
+                    try:
+                        prev_data_dict = posData.allData_li[frame_i-1]
+                        prev_lab = prev_data_dict['labels']
+                        acdc_df = self.addVelocityMeasurement(
+                            acdc_df, prev_lab, lab, posData
+                        )
+                    except Exception as error:
+                        traceback_format = traceback.format_exc()
+                        print('-'*30)      
+                        self.logger.log(traceback_format)
+                        print('-'*30)
+                        self.standardMetricsErrors[str(error)] = traceback_format
 
                     self.signals.progressBar.emit(1)
 

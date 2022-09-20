@@ -967,7 +967,7 @@ class saveDataWorker(QObject):
             prev_lab, lab, spacing=spacing
         )
         acdc_df['velocity_pixel'] = velocities_pxl
-        acdc_df['velocities_um'] = velocities_um
+        acdc_df['velocity_um'] = velocities_um
         return acdc_df
 
     def addVolumeMetrics(self, df, rp, posData):
