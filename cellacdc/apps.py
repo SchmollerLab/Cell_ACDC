@@ -1011,7 +1011,7 @@ class setMeasurementsDialog(QBaseDialog):
                 if not key.endswith('_3D')
             }
         sizeMetricsQGBox = widgets._metricsQGBox(
-            size_metrics_desc, 'Size metrics',
+            size_metrics_desc, 'Physical measurements',
             favourite_funcs=favourite_funcs, isZstack=isZstack
         )
         self.sizeMetricsQGBox = sizeMetricsQGBox

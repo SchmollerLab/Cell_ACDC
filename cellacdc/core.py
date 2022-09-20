@@ -34,6 +34,26 @@ def np_replace_values(arr, old_values, new_values):
     arr = replacer[arr - n_min]
     return arr
 
+def compute_twoframes_velocity(prev_lab, lab, spacing=None):
+    prev_rp = skimage.measure.regionprops(prev_lab)
+    rp = skimage.measure.regionprops(lab)
+    prev_IDs = [obj.label for obj in prev_rp]
+    velocities_pxl = [0]*len(rp)
+    velocities_um = [0]*len(rp)
+    for i, obj in enumerate(rp):
+        if obj.label not in prev_IDs:
+            continue
+
+        prev_obj = prev_rp[prev_IDs.index(obj.label)]
+        diff = np.subtract(obj.centroid, prev_obj.centroid)
+        v_pixel = np.linalg.norm(diff)
+        velocities_pxl[i] = v_pixel
+        if spacing is not None:
+            v_um = np.linalg.norm(diff*spacing)
+            velocities_um[i] = v_um
+    return velocities_pxl, velocities_um
+
+
 def lab_replace_values(lab, rp, oldIDs, newIDs, in_place=True):
     if not in_place:
         lab = lab.copy()

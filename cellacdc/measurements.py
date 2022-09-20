@@ -387,6 +387,14 @@ def get_size_metrics_desc():
             (in {_um()}), while <code>PhysicalSizeY</code> and 
             <code>PhysicalSizeX</code> are the pixel height and pixel width, 
             respectively (in {_um()}). 
+        """),
+        'velocity_pixel': html_utils.paragraph(f"""
+            Velocity in <code>[pixel/frame]</code> of the segmented object 
+            between previous and current frame. 
+        """),
+        'velocity_um': html_utils.paragraph(f"""
+            Velocity in <code>[{_um()}/frame]</code> of the segmented object 
+            between previous and current frame. 
         """)
     }
     return size_metrics

@@ -20,6 +20,8 @@ def printl(*objects, pretty=False, is_decorator=False, **kwargs):
     print('='*30)
 
 cellacdc_path = os.path.dirname(os.path.abspath(__file__))
+parent_path = os.path.dirname(cellacdc_path)
+data_path = os.path.join(parent_path, 'data')
 temp_path = os.path.join(cellacdc_path, 'temp')
 user_manual_url = 'https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf'
 

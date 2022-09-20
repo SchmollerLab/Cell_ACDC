@@ -945,6 +945,30 @@ class saveDataWorker(QObject):
             if newColName in self.mainWin.mixedChCombineMetricsToSkip:
                 continue
             self._dfEvalEquation(df, newColName, equation)
+    
+    def addVelocityMeasurement(self, acdc_df, prev_lab, lab, posData):
+        if 'velocity_pixel' not in self.mainWin.sizeMetricsToSave:
+            return acdc_df
+        
+        if 'velocity_um' not in self.mainWin.sizeMetricsToSave:
+            spacing = None 
+        elif self.mainWin.isSegm3D:
+            spacing = np.array([
+                posData.PhysicalSizeZ, 
+                posData.PhysicalSizeY, 
+                posData.PhysicalSizeX
+            ])
+        else:
+            spacing = np.array([
+                posData.PhysicalSizeY, 
+                posData.PhysicalSizeX
+            ])
+        velocities_pxl, velocities_um = core.compute_twoframes_velocity(
+            prev_lab, lab, spacing=spacing
+        )
+        acdc_df['velocity_pixel'] = velocities_pxl
+        acdc_df['velocities_um'] = velocities_um
+        return acdc_df
 
     def addVolumeMetrics(self, df, rp, posData):
         PhysicalSizeY = posData.PhysicalSizeY
@@ -1079,6 +1103,12 @@ class saveDataWorker(QObject):
                         acdc_df = load.pd_bool_to_int(acdc_df, inplace=False)
                         rp = data_dict['regionprops']
                         if save_metrics:
+                            if frame_i > 0:
+                                prev_data_dict = posData.allData_li[frame_i-1]
+                                prev_lab = prev_data_dict['labels']
+                                acdc_df = self.addVelocityMeasurement(
+                                    acdc_df, prev_lab, lab, posData
+                                )
                             acdc_df = self.addMetrics_acdc_df(
                                 acdc_df, rp, frame_i, lab, posData
                             )
@@ -1089,6 +1119,18 @@ class saveDataWorker(QObject):
                         acdc_df_li.append(acdc_df)
                         key = (frame_i, posData.TimeIncrement*frame_i)
                         keys.append(key)
+                    except Exception as error:
+                        self.addMetricsCritical.emit(
+                            traceback.format_exc(), str(error)
+                        )
+                    
+                    try:
+                        if save_metrics and frame_i > 0:
+                            prev_data_dict = posData.allData_li[frame_i-1]
+                            prev_lab = prev_data_dict['labels']
+                            acdc_df = self.addVelocityMeasurement(
+                                acdc_df, prev_lab, lab, posData
+                            )
                     except Exception as error:
                         self.addMetricsCritical.emit(
                             traceback.format_exc(), str(error)
@@ -9234,24 +9276,7 @@ class guiWin(QMainWindow):
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
             posData = self.data[self.pos_i]
-            _, track_params = myutils.import_tracker(
-                posData, 'trackpy', qparent=self
-            )
-            printl(track_params, pretty=True)
-            # printl(self.tempLayerImg1.opacity())
-            # printl(self.tempLayerImg1.image.shape)
-            # printl(self.tempLayerImg1.image.max())
-            # printl(self.tempLayerImg1.lut)
-            # printl(self.tempLayerImg1 in self.ax1.items)
-                
-            if self.debug:
-                raise FileNotFoundError
-                posData = self.data[self.pos_i]
-                print(posData.ol_data.keys())
-                values = posData.ol_data.values()
-                values = list(values)
-                print((values[0][posData.frame_i]).max())
-                print(posData.img_data[posData.frame_i].max())
+            print(self.sizeMetricsToSave)
         try:
             posData = self.data[self.pos_i]
         except AttributeError:
