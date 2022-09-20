@@ -58,8 +58,7 @@ except ModuleNotFoundError as e:
 
 try:
     import spotmax
-    from spotmax import gui as spotmaxGui
-    from spotmax import utils as spotmaxUtils
+    from spotmax import _run as spotmaxRun
     spotmax_filepath = os.path.dirname(os.path.abspath(spotmax.__file__))
     spotmax_logo_path = os.path.join(spotmax_filepath, 'resources', 'logo.svg')
     SPOTMAX = True
@@ -665,10 +664,7 @@ class mainWin(QMainWindow):
     
     def launchSpotmaxGui(self, checked=False):
         print('Launching spotMAX...')
-        version = spotmaxUtils.read_version()
-        spotmaxWin = spotmaxGui.spotMAX_Win(self.app, mainWin=self)
-        spotmaxWin.setVersion(version)
-        spotmaxWin.show()
+        spotmaxWin = spotmaxRun.run_gui(app=self.app)
         self.spotmaxWins.append(spotmaxWin)
         
     def guiClosed(self, guiWin):
@@ -744,6 +740,8 @@ class mainWin(QMainWindow):
             openModules.append(self.segmWin)
         if self.guiWins:
             openModules.extend(self.guiWins)
+        if self.spotmaxWins:
+            openModules.extend(self.spotmaxWins)
 
         if not openModules:
             return True, openModules
@@ -818,8 +816,8 @@ def run():
     win = mainWin(app)
     version = myutils.read_version()
     win.setVersion(version)
-    win.show()
     win.launchWelcomeGuide()
+    win.show()
     try:
         win.welcomeGuide.showPage(win.welcomeGuide.welcomeItem)
     except AttributeError:
