@@ -574,7 +574,7 @@ class loadData:
         self.getCustomAnnotatedIDs()
         self.setNotFoundData()
     
-    def loadAcdcDf(self, filePath):
+    def loadAcdcDf(self, filePath, updatePaths=True, return_df=False):
         acdc_df = pd.read_csv(filePath)
         try:
             acdc_df_drop_cca = acdc_df.drop(columns=cca_df_colnames).fillna(0)
@@ -584,7 +584,12 @@ class loadData:
         acdc_df = acdc_df.set_index(['frame_i', 'Cell_ID'])
         acdc_df = pd_bool_to_int(acdc_df, acdc_df_bool_cols, inplace=True)
         acdc_df = pd_int_to_bool(acdc_df, acdc_df_bool_cols)
-        self.acdc_df = acdc_df
+        if updatePaths:
+            self.acdc_df = acdc_df
+            self.acdc_df_found = True
+            self.last_tracked_i = max(self.acdc_df.index.get_level_values(0))
+        if return_df:
+            return acdc_df
 
     def askBooleanSegm(self):
         segmFilename = os.path.basename(self.segm_npz_path)

@@ -273,13 +273,17 @@ class AutoSaveWorker(QObject):
                 break
         
         if not self.abortSaving:
-            np.savez_compressed(segm_npz_path, np.squeeze(saved_segm_data))
+            segm_data = np.squeeze(saved_segm_data)
+            self._saveSegm(segm_npz_path, posData.segm_npz_path, segm_data)
             if acdc_df_li:
                 all_frames_acdc_df = pd.concat(
                     acdc_df_li, keys=keys,
                     names=['frame_i', 'time_seconds', 'Cell_ID']
                 )
-                all_frames_acdc_df.to_csv(acdc_output_csv_path)
+                self._save_acdc_df(
+                    acdc_output_csv_path, all_frames_acdc_df, posData
+                    
+                )
 
         if DEBUG:
             self.logger.log(f'Autosaving done.')
@@ -287,6 +291,60 @@ class AutoSaveWorker(QObject):
 
         self.abortSaving = False
         self.isSaving = False
+    
+    def _saveSegm(self, recovery_path, main_segm_path, data):
+        saved_data = np.load(main_segm_path)['arr_0']
+        if np.all(saved_data == data):
+            try:
+                # Remove currently recovered data since the saved main 
+                # segm data is the latest (if exists --> try)
+                os.remove(recovery_path)
+            except Exception as e:
+                pass
+        else:
+            np.savez_compressed(recovery_path, np.squeeze(data))
+    
+    def _save_acdc_df(self, recovery_path, recovery_acdc_df, posData):
+        saved_acdc_df = pd.read_csv(
+            posData.acdc_output_csv_path
+        ).set_index(['frame_i', 'Cell_ID'])
+        
+        recovery_acdc_df = (
+            recovery_acdc_df.reset_index().set_index(['frame_i', 'Cell_ID'])
+        )
+        idx = recovery_acdc_df.index
+        for col in saved_acdc_df.columns:
+            if col in recovery_acdc_df.columns:
+                continue
+            
+            # Try to insert into the recovery_acdc_df any column that was saved
+            # but is not in the recovered df (e.g., metrics)
+            try:
+                recovery_acdc_df.loc[idx, col] = saved_acdc_df.loc[idx, col]
+            except:
+                pass
+        
+        equals = []
+        for col in recovery_acdc_df.columns:
+            if col not in saved_acdc_df.columns:
+                # recovery_acdc_df has a new col --> definitely not the same
+                equals = [False]
+                break
+            
+            col_equals = (saved_acdc_df[col] == recovery_acdc_df[col]).all()
+            equals.append(col_equals)
+
+        if all(equals):
+            try:
+                # Remove currently recovered data since the saved main 
+                # acdc_df is the latest (recovery == saved)
+                os.remove(recovery_path)
+            except Exception as e:
+                self.logger.log('Could not remove recovered acdc_df file.')
+                pass
+        else:
+            recovery_acdc_df.to_csv(recovery_path)
+
 
 class segmWorker(QObject):
     finished = pyqtSignal(np.ndarray, float)
@@ -887,7 +945,11 @@ class loadDataWorker(QObject):
                 break
 
             posData.setTempPaths(createFolder=False)
-            if os.path.exists(posData.segm_npz_temp_path):
+            isRecoveredDataPresent = (
+                os.path.exists(posData.segm_npz_temp_path)
+                or os.path.exists(posData.acdc_output_temp_csv_path)
+            )
+            if isRecoveredDataPresent:
                 if not self.recoveryAsked:
                     self.mutex.lock()
                     self.signals.sigRecovery.emit(posData)
@@ -899,11 +961,20 @@ class loadDataWorker(QObject):
                         break
                 if self.loadUnsaved:
                     self.logger.log('Loading unsaved data...')
-                    posData.segm_npz_path = posData.segm_npz_temp_path
-                    posData.segm_data = np.load(posData.segm_npz_path)['arr_0']
+                    if os.path.exists(posData.segm_npz_temp_path):
+                        segm_npz_path = posData.segm_npz_temp_path
+                        posData.segm_data = np.load(segm_npz_path)['arr_0']
+                        segm_filename = os.path.basename(segm_npz_path)
+                        posData.segm_npz_path = os.path.join(
+                            posData.images_path, segm_filename
+                        )
+                    
                     acdc_df_temp_path = posData.acdc_output_temp_csv_path
                     if os.path.exists(acdc_df_temp_path):
-                        posData.acdc_output_csv_path = acdc_df_temp_path
+                        acdc_df_filename = os.path.basename(acdc_df_temp_path)
+                        posData.acdc_output_csv_path = os.path.join(
+                            posData.images_path, acdc_df_filename
+                        )
                         posData.loadAcdcDf(acdc_df_temp_path)
 
             # Allow single 2D/3D image

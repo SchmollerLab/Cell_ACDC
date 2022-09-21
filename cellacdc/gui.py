@@ -9279,7 +9279,9 @@ class guiWin(QMainWindow):
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
             posData = self.data[self.pos_i]
-            printl(self.autoSaveActiveWorkers)
+            printl(posData.segm_npz_path)
+            printl(posData.acdc_output_csv_path)
+        
         try:
             posData = self.data[self.pos_i]
         except AttributeError:
@@ -10834,9 +10836,10 @@ class guiWin(QMainWindow):
         if 'cell_cycle_stage' in df.columns:
             cca_df = df[self.cca_df_colnames]
             self.logger.info(cca_df)
-            cca_df = cca_df.merge(posData.cca_df, how='outer',
-                                  left_index=True, right_index=True,
-                                  suffixes=('_STORED', '_CURRENT'))
+            cca_df = cca_df.merge(
+                posData.cca_df, how='outer', left_index=True, right_index=True,
+                suffixes=('_STORED', '_CURRENT')
+            )
             cca_df = cca_df.reindex(sorted(cca_df.columns), axis=1)
             num_cols = len(cca_df.columns)
             for j in range(0,num_cols,2):
@@ -11310,9 +11313,14 @@ class guiWin(QMainWindow):
                 os.path.getmtime(posData.segm_npz_path)
             ).strftime("%a %d. %b. %y - %H:%M:%S")
         )
+        if os.path.exists(posData.segm_npz_temp_path):
+            recovered_file_path = posData.segm_npz_temp_path
+        else:
+            recovered_file_path = posData.acdc_output_temp_csv_path
+        
         last_modified_time_saved = (
             datetime.datetime.fromtimestamp(
-                os.path.getmtime(posData.segm_npz_temp_path)
+                os.path.getmtime(recovered_file_path)
             ).strftime("%a %d. %b. %y - %H:%M:%S")
         )
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
@@ -16044,7 +16052,6 @@ class guiWin(QMainWindow):
 
         self.isNewFile = False
         if hasattr(self, 'data'):
-            self.store_data()
             msg = widgets.myMessageBox()
             txt = html_utils.paragraph(
                 'Do you want to <b>save</b> before loading another dataset?'
@@ -16058,7 +16065,10 @@ class guiWin(QMainWindow):
                 cancel = self.saveData(finishedCallback=func)
                 return
             elif msg.cancel:
+                self.store_data()
                 return
+            else:
+                self.store_data(autosave=False)
 
         self._openFolder(exp_path=exp_path, imageFilePath=imageFilePath)
 
