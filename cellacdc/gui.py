@@ -195,6 +195,7 @@ class trackingWorker(QObject):
 
         # Store new tracked video
         current_frame_i = self.posData.frame_i
+        
         self.trackingOnNeverVisitedFrames = False
         for rel_frame_i, lab in enumerate(tracked_video):
             frame_i = rel_frame_i + self.mainWin.start_n - 1
@@ -209,11 +210,12 @@ class trackingWorker(QObject):
                 self.posData.allData_li[frame_i]['labels'] = lab
                 self.posData.frame_i = frame_i
                 self.mainWin.get_data()
-                self.mainWin.store_data()
+                self.mainWin.store_data(autosave=False)
 
         # Back to current frame
         self.posData.frame_i = current_frame_i
         self.mainWin.get_data()
+        self.mainWin.store_data(autosave=True)
 
         self.mutex.unlock()
         self.finished.emit()
@@ -9281,7 +9283,8 @@ class guiWin(QMainWindow):
             posData = self.data[self.pos_i]
             printl(posData.segm_npz_path)
             printl(posData.acdc_output_csv_path)
-        
+            printl(posData.acdc_df)
+            printl(posData.cca_df)
         try:
             posData = self.data[self.pos_i]
         except AttributeError:
@@ -9853,6 +9856,19 @@ class guiWin(QMainWindow):
         
         start_n = win.startFrame
         stop_n = win.stopFrame
+
+        last_tracked_i = self.get_last_tracked_i()
+        if start_n-1 <= last_tracked_i:
+            proceed = self.warnRepeatTrackingVideoWithAnnotations(
+                last_tracked_i, start_n
+            )
+            if not proceed:
+                self.logger.info('Tracking aborted.')
+                return
+            
+            self.logger.info(f'Removing annotations from frame n. {start_n}.')
+            self.remove_future_cca_df(start_n-1)
+
         video_to_track = posData.segm_data
         for frame_i in range(start_n-1, stop_n):
             data_dict = posData.allData_li[frame_i]
@@ -9865,6 +9881,8 @@ class guiWin(QMainWindow):
 
         self.start_n = start_n
         self.stop_n = stop_n
+
+        
 
         self.progressWin = apps.QDialogWorkerProgress(
             title='Tracking', parent=self,
@@ -14999,8 +15017,7 @@ class guiWin(QMainWindow):
                 'Cancel',
                 'Remove annotations from future frames (RECOMMENDED)',
                 'Do not remove annotations'
-            ),
-            widgets=checkBox
+            ), widgets=checkBox
             )
         if msg.cancel:
             removeAnnotations = False
@@ -15029,6 +15046,33 @@ class guiWin(QMainWindow):
                 self.get_data()
                 self.remove_future_cca_df(posData.frame_i)
                 self.next_frame()
+    
+    def warnRepeatTrackingVideoWithAnnotations(self, last_tracked_i, start_n):
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph(
+            'You are repeating tracking on frames that <b>have cell cycle '
+            'annotations</b>.<br><br>'
+            'This will very likely make the <b>annotations wrong</b>.<br><br>'
+            'If you really want to repeat tracking on the frames before '
+            f'{last_tracked_i+1} the <b>annotations from frame '
+            f'{start_n} to frame {last_tracked_i+1} '
+            'will be removed</b>.<br><br>'
+            'Do you want to continue?'
+        )
+        noButton, yesButton = msg.warning(
+            self, 'Repating tracking with annotations!', txt,
+            buttonsTexts=(
+                '  No, stop tracking and keep annotations.',
+                '  Yes, repeat tracking and DELETE annotations.' 
+            )
+        )
+        if msg.cancel:
+            return False
+
+        if msg.clickedButton == noButton:
+            return False
+        else:
+            return True
 
     def addExistingDelROIs(self):
         posData = self.data[self.pos_i]

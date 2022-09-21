@@ -281,8 +281,7 @@ class AutoSaveWorker(QObject):
                     names=['frame_i', 'time_seconds', 'Cell_ID']
                 )
                 self._save_acdc_df(
-                    acdc_output_csv_path, all_frames_acdc_df, posData
-                    
+                    acdc_output_csv_path, all_frames_acdc_df, posData   
                 )
 
         if DEBUG:
@@ -331,7 +330,12 @@ class AutoSaveWorker(QObject):
                 equals = [False]
                 break
             
-            col_equals = (saved_acdc_df[col] == recovery_acdc_df[col]).all()
+            try:
+                col_equals = (saved_acdc_df[col] == recovery_acdc_df[col]).all()
+            except Exception as e:
+                equals = [False]
+                break
+            
             equals.append(col_equals)
 
         if all(equals):
@@ -340,7 +344,6 @@ class AutoSaveWorker(QObject):
                 # acdc_df is the latest (recovery == saved)
                 os.remove(recovery_path)
             except Exception as e:
-                self.logger.log('Could not remove recovered acdc_df file.')
                 pass
         else:
             recovery_acdc_df.to_csv(recovery_path)
