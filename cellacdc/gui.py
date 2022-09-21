@@ -12951,14 +12951,14 @@ class guiWin(QMainWindow):
             if str(self.modeComboBox.currentText()) == 'Cell cycle analysis':
                 # Warn that we are visiting a frame that was never segm-checked
                 # on cell cycle analysis mode
-                msg = QMessageBox()
+                msg = widgets.myMessageBox()
                 warn_cca = msg.critical(
                     self, 'Never checked segmentation on requested frame',
-                    'Segmentation and Tracking was never checked from '
-                    f'frame {posData.frame_i+1} onward.\n To ensure correct cell '
-                    'cell cycle analysis you have to first visit frames '
-                    f'{posData.frame_i+1}-end with "Segmentation and Tracking" mode.',
-                    msg.Ok
+                    'Segmentation and Tracking was <b>never checked from '
+                    f'frame {posData.frame_i+1} onwards</b>.<br><br>'
+                    'To ensure correct cell cell cycle analysis you have to '
+                    'first visit frames '
+                    f'{posData.frame_i+1}-end with "Segmentation and Tracking" mode.'
                 )
                 proceed_cca = False
                 return proceed_cca, never_visited
@@ -13875,15 +13875,14 @@ class guiWin(QMainWindow):
         if posData.filename.find('aligned') != -1:
             filename, _ = os.path.splitext(os.path.basename(fluo_path))
             path = f'.../{posData.pos_foldername}/Images/{filename}_aligned.npz'
-            msg = QMessageBox()
+            msg = widgets.myMessageBox()
             msg.critical(
                 self, 'Aligned fluo channel not found!',
                 'Aligned data for fluorescent channel not found!\n\n'
                 f'You loaded aligned data for the cells channel, therefore '
                 'loading NON-aligned fluorescent data is not allowed.\n\n'
                 'Run the script "dataPrep.py" to create the following file:\n\n'
-                f'{path}',
-                msg.Ok
+                f'{path}'
             )
             return None
         fluo_data = skimage.io.imread(fluo_path)
