@@ -919,6 +919,7 @@ class saveDataWorker(QObject):
         df = df.drop(columns=cell_id_cols, errors='ignore')
         time_seconds_cols = df.filter(regex='time_seconds.*').columns
         df = df.drop(columns=time_seconds_cols, errors='ignore')
+        df = df.drop(columns='relative_ID_tree', errors='ignore')
 
         return df
 
@@ -10851,7 +10852,9 @@ class guiWin(QMainWindow):
         self.logger.info('========================')
         if posData.cca_df is None:
             return
-        df = posData.cca_df.reset_index()
+        df = posData.add_tree_cols_to_cca_df(
+            posData.cca_df, frame_i=posData.frame_i
+        )
         if self.ccaTableWin is None:
             self.ccaTableWin = apps.pdDataFrameWidget(df, parent=self)
             self.ccaTableWin.show()

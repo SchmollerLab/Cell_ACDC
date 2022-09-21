@@ -796,6 +796,36 @@ class loadData:
                 key = name.replace('__', '', 1)
                 additionalMetadataValues[key] = value
         return additionalMetadataValues
+    
+    def add_tree_cols_to_cca_df(self, cca_df, frame_i=None):
+        cca_df = cca_df.sort_index().reset_index()
+
+        if self.acdc_df is None:
+            return cca_df
+        
+        if frame_i is not None:
+            df = self.acdc_df.loc[frame_i].sort_index().reset_index()
+        else:
+            df = self.acdc_df.sort_index().reset_index()
+
+        cols = cca_df.columns.to_list()
+        for col in df.columns:
+            if not col.endswith('tree'):
+                continue
+
+            ref_col = col[:col.find('_tree')]
+            if ref_col in cols:
+                ref_col_idx = cols.index(ref_col) + 1
+            else:
+                ref_col_idx = len(cols) - 4
+
+            if col in cols:
+                cca_df[col] = df[col]
+            else:
+                cca_df.insert(ref_col_idx, col, df[col])
+        
+        return cca_df
+
 
     def setNotFoundData(self):
         if self.segmFound is not None and not self.segmFound:
