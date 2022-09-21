@@ -9,7 +9,7 @@ import btrack
 from btrack.constants import BayesianUpdates
 
 from skimage.measure import regionprops
-from cellacdc.trackers.CellACDC import CellACDC_tracker
+from ..CellACDC import CellACDC_tracker
 
 from tqdm import tqdm
 

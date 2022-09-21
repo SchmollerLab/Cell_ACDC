@@ -2495,6 +2495,7 @@ class QDialogCombobox(QDialog):
         self.loop = None
 
         self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        self.setFont(font)
 
     def ok_cb(self, event):
         self.cancel = False

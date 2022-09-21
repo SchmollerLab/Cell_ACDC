@@ -3,9 +3,9 @@ import numpy as np
 import trackpy as tp
 
 import skimage.measure
-from cellacdc.trackers.CellACDC import CellACDC_tracker
+from ..CellACDC import CellACDC_tracker
 
-from cellacdc import apps, printl
+from ... import apps, printl
 
 DEBUG = False
 

@@ -40,6 +40,7 @@ try:
     from cellacdc.utils import compute as utilsCompute
     from cellacdc.utils import repeat as utilsRepeat
     from cellacdc.utils import acdcToSymDiv as utilsSymDiv
+    from cellacdc.napari_utils import arboretum
     from cellacdc import is_win, is_linux, temp_path
     from cellacdc import printl
 except ModuleNotFoundError as e:
@@ -273,6 +274,10 @@ class mainWin(QMainWindow):
         utilsMenu.addAction(self.renameAction)
         menuBar.addMenu(utilsMenu)
 
+        napariMenu = QMenu("&napari", self)
+        napariMenu.addAction(self.arboretumAction)
+        menuBar.addMenu(napariMenu)
+
         helpMenu = QMenu("&Help", self)
         helpMenu.addAction(self.welcomeGuideAction)
         helpMenu.addAction(self.userManualAction)
@@ -307,6 +312,10 @@ class mainWin(QMainWindow):
         self.renameAction = QAction('Rename files by appending additional text...')
         self.alignAction = QAction('Align or revert alignment...')
 
+        self.arboretumAction = QAction(
+            'View lineage tree in napari-arboretum...'
+        )
+
         self.welcomeGuideAction = QAction('Welcome Guide')
         self.userManualAction = QAction('User manual...')
         self.aboutAction = QAction('About Cell-ACDC')
@@ -332,6 +341,10 @@ class mainWin(QMainWindow):
         self.calcMetricsAcdcDf.triggered.connect(self.launchCalcMetricsUtil)
         self.aboutAction.triggered.connect(self.showAbout)
         self.renameAction.triggered.connect(self.launchRenameUtil)
+
+        self.arboretumAction.triggered.connect(self.launchArboretum)
+        
+        
         self.userManualAction.triggered.connect(myutils.showUserManual)
         self.contributeAction.triggered.connect(self.showContribute)
         self.citeAction.triggered.connect(
@@ -373,6 +386,74 @@ class mainWin(QMainWindow):
         self.aboutWin = about.QDialogAbout(parent=self)
         self.aboutWin.show()
     
+    def getSelectedPosPath(self, utilityName):
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph("""
+            After you click "Ok" on this dialog you will be asked
+            to <b>select one position folder</b> that contains timelapse
+            data.
+        """)
+        msg.information(
+            self, f'{utilityName}', txt,
+            buttonsTexts=('Cancel', 'Ok')
+        )
+        if msg.cancel:
+            print(f'{utilityName} aborted by the user.')
+            return
+        
+        mostRecentPath = myutils.getMostRecentPath()
+        exp_path = QFileDialog.getExistingDirectory(
+            self, 'Select Position_n folder',
+            mostRecentPath
+        )
+        if not exp_path:
+            print(f'{utilityName} aborted by the user.')
+            return
+        
+        myutils.addToRecentPaths(exp_path)
+        baseFolder = os.path.basename(exp_path)
+        isPosFolder = re.search('Position_(\d+)$', baseFolder) is not None
+        isImagesFolder = baseFolder == 'Images'
+        if isImagesFolder:
+            posPath = os.path.dirname(exp_path)
+            posFolders = [os.path.basename(posPath)]
+            exp_path = os.path.dirname(posPath)
+        elif isPosFolder:
+            posPath = exp_path
+            posFolders = [os.path.basename(posPath)]
+            exp_path = os.path.dirname(exp_path)
+        else:
+            posFolders = myutils.get_pos_foldernames(exp_path)
+            if not posFolders:
+                msg = widgets.myMessageBox()
+                msg.addShowInFileManagerButton(
+                    exp_path, txt='Show selected folder...'
+                )
+                _ls = "\n".join(os.listdir(exp_path))
+                msg.setDetailedText(f'Files present in the folder:\n{_ls}')
+                txt = html_utils.paragraph(f"""
+                    The selected folder:<br><br>
+                    <code>{exp_path}</code><br><br>
+                    does not contain any valid Position folders.<br>
+                """)
+                msg.warning(
+                    self, 'Not valid folder', txt,
+                    buttonsTexts=('Cancel', 'Try again')
+                )
+                if msg.cancel:
+                    print(f'{utilityName} aborted by the user.')
+                    return
+
+        if len(posFolders) > 1:
+            win = apps.QDialogCombobox(
+                'Select position folder', posFolders, 'Select position folder',
+                'Positions: ', parent=self
+            )
+            win.exec_()
+            posPath = os.path.join(exp_path, win.selectedItemText)
+        
+        return posPath
+
     def getSelectedExpPaths(self, utilityName):
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph("""
@@ -459,7 +540,18 @@ class mainWin(QMainWindow):
         
         return selectedExpPaths
 
+    def launchArboretum(self):
+        posPath = self.getSelectedPosPath('napari-arboretum')
+        if posPath is None:
+            return
 
+        title = 'napari-arboretum utility'
+        infoText = 'Launching napari-arboretum to visualize lineage tree...'
+        self.arboretumWindow = arboretum.NapariArboretumDialog(
+            posPath, self.app, title, infoText, parent=self
+        )
+        self.arboretumWindow.show()
+    
     def launchCalcMetricsUtil(self):
         selectedExpPaths = self.getSelectedExpPaths('Compute measurements utility')
         if selectedExpPaths is None:

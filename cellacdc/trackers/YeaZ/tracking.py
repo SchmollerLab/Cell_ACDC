@@ -11,7 +11,7 @@ from skimage.measure import regionprops
 from skimage.segmentation import relabel_sequential
 from math import sqrt
 
-from cellacdc.trackers.CellACDC.CellACDC_tracker import indexAssignment
+from ..CellACDC.CellACDC_tracker import indexAssignment
 
 try:
     from munkres import Munkres

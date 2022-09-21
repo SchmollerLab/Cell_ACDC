@@ -79,6 +79,13 @@ def exception_handler(func):
         return result
     return inner_function
 
+def get_module_name(script_file_path):
+    parts = pathlib.Path(script_file_path).parts
+    parts = list(parts[parts.index('cellacdc')+1:])
+    parts[-1] = os.path.splitext(parts[-1])[0]
+    module = '.'.join(parts)
+    return module
+
 def get_pos_status(pos_path):
     images_path = os.path.join(pos_path, 'Images')
     ls = listdir(images_path)

@@ -589,7 +589,25 @@ class LineageTree:
             self.build()
     
     def to_arboretum(self, rebuild=False):
+        # See https://github.com/lowe-lab-ucl/arboretum/blob/main/examples/show_sample_data.py
         if 'Cell_ID_tree' not in self.acdc_df.columns or rebuild:
             self.build()
 
-    
+        tracks_cols = ['Cell_ID_tree', 'frame_i', 'y_centroid', 'x_centroid']
+        tracks_data = self.df[tracks_cols].to_numpy()
+
+        graph_df = self.df.groupby('Cell_ID_tree').agg('first').reset_index()
+        graph_df = graph_df[graph_df.parent_ID_tree > 0]
+        graph = {
+            child_ID:[parent_ID] for child_ID, parent_ID 
+            in zip(graph_df.Cell_ID_tree, graph_df.parent_ID_tree)
+        }
+
+        properties = pd.DataFrame({
+            't': self.df.frame_i,
+            'root': self.df.root_ID_tree,
+            'parent': self.df.parent_ID_tree
+        })
+
+        return tracks_data, graph, properties
+

@@ -6,7 +6,7 @@ import numpy as np
 from skimage.measure import regionprops
 from skimage.segmentation import relabel_sequential
 
-from cellacdc.core import lab_replace_values, np_replace_values
+from ...core import lab_replace_values, np_replace_values
 
 debug = False
 
