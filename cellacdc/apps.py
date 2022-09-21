@@ -5140,7 +5140,7 @@ class editCcaTableWidget(QDialog):
             tableLayout.addWidget(divisFrameSpinBox, row+1, col, alignment=AC)
             self.divisFrameSpinBoxes.append(divisFrameSpinBox)
             self.divisFrameSpinPrevValues.append(divisFrameSpinBox.value())
-            emergFrameSpinBox.valueChanged.connect(self.skip0divisFrame)
+            divisFrameSpinBox.valueChanged.connect(self.skip0divisFrame)
 
             col += 1
             HistoryCheckBox = QCheckBox()
