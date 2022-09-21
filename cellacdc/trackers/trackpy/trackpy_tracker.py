@@ -5,7 +5,7 @@ import trackpy as tp
 import skimage.measure
 from ..CellACDC import CellACDC_tracker
 
-from ... import apps, printl
+from cellacdc import apps, printl
 
 DEBUG = False
 
