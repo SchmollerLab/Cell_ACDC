@@ -6,7 +6,7 @@ import numpy as np
 from skimage.measure import regionprops
 from skimage.segmentation import relabel_sequential
 
-from ...core import lab_replace_values, np_replace_values
+from ... import core
 
 debug = False
 
@@ -80,7 +80,7 @@ def indexAssignment(
             new_tracked_IDs = [
                 uniqueID+i for i in range(len(new_untracked_IDs))
             ]
-        lab_replace_values(
+        core.lab_replace_values(
             tracked_lab, rp, new_untracked_IDs, new_tracked_IDs
         )
         if debug:
@@ -97,7 +97,7 @@ def indexAssignment(
         # not already existing to avoid duplicates
         new_IDs_in_trackedIDs = [ID for ID in new_untracked_IDs if ID in tracked_IDs]
         new_tracked_IDs = [uniqueID+i for i in range(len(new_IDs_in_trackedIDs))]
-        lab_replace_values(
+        core.lab_replace_values(
             tracked_lab, rp, new_IDs_in_trackedIDs, new_tracked_IDs
         )
         if debug:
@@ -107,7 +107,7 @@ def indexAssignment(
                 print(f'{_ID} --> {replacingID}')
             print('***********************')
     if tracked_IDs:
-        lab_replace_values(
+        core.lab_replace_values(
             tracked_lab, rp, old_IDs, tracked_IDs, in_place=True
         )
         if debug:

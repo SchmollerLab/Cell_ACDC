@@ -11,7 +11,7 @@ from skimage.measure import regionprops
 from skimage.segmentation import relabel_sequential
 from math import sqrt
 
-from ..CellACDC.CellACDC_tracker import indexAssignment
+from ..CellACDC import CellACDC_tracker
 
 try:
     from munkres import Munkres
@@ -41,7 +41,7 @@ def correspondence(prev, curr, use_scipy=True, use_modified_yeaz=True):
     else:
         uniqueID = 1
 
-    tracked_lab = indexAssignment(
+    tracked_lab = CellACDC_tracker.indexAssignment(
         old_IDs, tracked_IDs, IDs_curr_untracked,
         curr.copy(), rp, uniqueID
     )
