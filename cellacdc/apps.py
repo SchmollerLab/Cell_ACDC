@@ -4948,7 +4948,8 @@ class selectPositionsMultiExp(QBaseDialog):
 
 class editCcaTableWidget(QDialog):
     def __init__(
-            self, cca_df, title='Edit cell cycle annotations', parent=None
+            self, cca_df, SizeT, title='Edit cell cycle annotations', 
+            parent=None
         ):
         self.inputCca_df = cca_df
         self.cancel = True
@@ -5091,6 +5092,7 @@ class editCcaTableWidget(QDialog):
             genNumSpinBox.setFocusPolicy(Qt.StrongFocus)
             genNumSpinBox.installEventFilter(self)
             genNumSpinBox.setValue(2)
+            genNumSpinBox.setMaximum(2147483647)
             genNumSpinBox.setAlignment(Qt.AlignCenter)
             genNumSpinBox.setFixedWidth(int(genNumColWidth*2/3))
             genNumSpinBox.setValue(cca_df.at[ID, 'generation_num'])
@@ -5113,6 +5115,7 @@ class editCcaTableWidget(QDialog):
             emergFrameSpinBox = QSpinBox()
             emergFrameSpinBox.setFocusPolicy(Qt.StrongFocus)
             emergFrameSpinBox.installEventFilter(self)
+            emergFrameSpinBox.setMaximum(SizeT)
             emergFrameSpinBox.setMinimum(-1)
             emergFrameSpinBox.setValue(-1)
             emergFrameSpinBox.setAlignment(Qt.AlignCenter)
@@ -5131,6 +5134,7 @@ class editCcaTableWidget(QDialog):
             divisFrameSpinBox.setFocusPolicy(Qt.StrongFocus)
             divisFrameSpinBox.installEventFilter(self)
             divisFrameSpinBox.setMinimum(-1)
+            divisFrameSpinBox.setMaximum(SizeT)
             divisFrameSpinBox.setValue(-1)
             divisFrameSpinBox.setAlignment(Qt.AlignCenter)
             divisFrameSpinBox.setFixedWidth(int(genNumColWidth*2/3))
@@ -5543,7 +5547,7 @@ class QLineEditDialog(QDialog):
                 ID_QLineEdit.setMinimum(_min)
                 ID_QLineEdit.setMaximum(_max)
             else:
-                ID_QLineEdit.setMaximum(2**32)
+                ID_QLineEdit.setMaximum(2147483647)
             if defaultTxt:
                 ID_QLineEdit.setValue(float(defaultTxt))
 
@@ -7185,7 +7189,7 @@ class QDialogTrackerParams(QDialog):
             elif ArgSpec.type == float:
                 doubleSpinBox = QDoubleSpinBox()
                 doubleSpinBox.setAlignment(Qt.AlignCenter)
-                doubleSpinBox.setMaximum(2**32)
+                doubleSpinBox.setMaximum(2147483647)
                 doubleSpinBox.setValue(ArgSpec.default)
                 widget = doubleSpinBox
                 defaultVal = ArgSpec.default
@@ -7534,7 +7538,7 @@ class QDialogModelParams(QDialog):
             elif ArgSpec.type == float:
                 doubleSpinBox = QDoubleSpinBox()
                 doubleSpinBox.setAlignment(Qt.AlignCenter)
-                doubleSpinBox.setMaximum(2**32)
+                doubleSpinBox.setMaximum(2147483647)
                 doubleSpinBox.setValue(ArgSpec.default)
                 widget = doubleSpinBox
                 defaultVal = ArgSpec.default

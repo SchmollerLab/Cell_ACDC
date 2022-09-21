@@ -804,10 +804,10 @@ class ImageReader(object):
             scale = 65535
         elif pixel_type == FormatTools.UINT32:
             dtype = '<u4' if little_endian else '>u4'
-            scale = 2**32
+            scale = 2147483647
         elif pixel_type == FormatTools.INT32:
             dtype = '<i4' if little_endian else '>i4'
-            scale = 2**32-1
+            scale = 2147483647-1
         elif pixel_type == FormatTools.FLOAT:
             dtype = '<f4' if little_endian else '>f4'
             scale = 1

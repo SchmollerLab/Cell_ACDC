@@ -8411,7 +8411,9 @@ class guiWin(QMainWindow):
 
     def manualEditCca(self, checked=True):
         posData = self.data[self.pos_i]
-        editCcaWidget = apps.editCcaTableWidget(posData.cca_df, parent=self)
+        editCcaWidget = apps.editCcaTableWidget(
+            posData.cca_df, posData.SizeT, parent=self
+        )
         editCcaWidget.exec_()
         if editCcaWidget.cancel:
             return
@@ -10989,7 +10991,7 @@ class guiWin(QMainWindow):
             if posData.frame_i <= 0 and mode == 'Cell cycle analysis':
                 IDs = [obj.label for obj in posData.rp]
                 editCcaWidget = apps.editCcaTableWidget(
-                    posData.cca_df, parent=self,
+                    posData.cca_df, posData.SizeT, parent=self,
                     title='Initialize cell cycle annotations'
                 )
                 editCcaWidget.exec_()
@@ -13326,6 +13328,9 @@ class guiWin(QMainWindow):
     def enqAutosave(self):
         posData = self.data[self.pos_i]  
         if self.autoSaveAction.isChecked():
+            if not self.autoSaveActiveWorkers:
+                self.gui_createAutoSaveWorker()
+            
             worker, thread = self.autoSaveActiveWorkers[-1]
             self.statusBarLabel.setText('Autosaving...')
             worker.enqueue(posData)
