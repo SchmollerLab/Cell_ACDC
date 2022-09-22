@@ -14,7 +14,10 @@ from PyQt5.QtCore import (
     pyqtSignal, QTimer, Qt, QPoint, pyqtSlot, pyqtProperty,
     QPropertyAnimation, QEasingCurve, QSequentialAnimationGroup,
     QSize, QRectF, QPointF, QRect, QPoint, QEasingCurve, QRegExp,
-    QEvent, QEventLoop, QPropertyAnimation, QObject
+    QEvent, QEventLoop, QPropertyAnimation, QObject,
+    QItemSelectionModel, QAbstractListModel, QModelIndex,
+    QByteArray, QDataStream, QMimeData, QAbstractItemModel, 
+    QIODevice, QItemSelection
 )
 from PyQt5.QtGui import (
     QFont, QPalette, QColor, QPen, QPaintEvent, QBrush, QPainter,
@@ -28,7 +31,7 @@ from PyQt5.QtWidgets import (
     QGroupBox, QAbstractSlider, QDoubleSpinBox, QWidgetAction,
     QAction, QTabWidget, QAbstractSpinBox, QMessageBox,
     QStyle, QDialog, QSpacerItem, QFrame, QMenu, QActionGroup,
-    QListWidget, QPlainTextEdit, QFileDialog
+    QListWidget, QPlainTextEdit, QFileDialog, QListView, QAbstractItemView
 )
 
 import pyqtgraph as pg
@@ -359,6 +362,228 @@ def getPushButton(buttonText, qparent=None):
         button = QPushButton(buttonText, qparent)
     
     return button, isCancelButton
+
+class _ReorderableListModel(QAbstractListModel):
+    '''
+    ReorderableListModel is a list model which implements reordering of its
+    items via drag-n-drop
+    '''
+    dragDropFinished = pyqtSignal()
+
+    def __init__(self, items, parent=None):
+        QAbstractItemModel.__init__(self, parent)
+        self.nodes = items
+        self.lastDroppedItems = []
+        self.pendingRemoveRowsAfterDrop = False
+
+    def rowForItem(self, text):
+        '''
+        rowForItem method returns the row corresponding to the passed in item
+        or None if no such item exists in the model
+        '''
+        try:
+            row = self.nodes.index(text)
+        except ValueError:
+            return None
+        return row
+
+    def index(self, row, column, parent):
+        if row < 0 or row >= len(self.nodes):
+            return QModelIndex()
+        return self.createIndex(row, column)
+
+    def parent(self, index):
+        return QModelIndex()
+
+    def rowCount(self, index):
+        if index.isValid():
+            return 0
+        return len(self.nodes)
+
+    def data(self, index, role):
+        if not index.isValid():
+            return None
+        if role == Qt.DisplayRole:
+            row = index.row()
+            if row < 0 or row >= len(self.nodes):
+                return None
+            return self.nodes[row]
+        elif role == Qt.SizeHintRole:
+            return QSize(48, 32)
+        else:
+            return None
+
+    def supportedDropActions(self):
+        return Qt.MoveAction
+
+    def flags(self, index):
+        if not index.isValid():
+            return Qt.ItemIsEnabled
+        return Qt.ItemIsEnabled | Qt.ItemIsSelectable | \
+               Qt.ItemIsDragEnabled | Qt.ItemIsDropEnabled
+
+    def insertRows(self, row, count, index):
+        if index.isValid():
+            return False
+        if count <= 0:
+            return False
+        # inserting 'count' empty rows starting at 'row'
+        self.beginInsertRows(QModelIndex(), row, row + count - 1)
+        for i in range(0, count):
+            self.nodes.insert(row + i, '')
+        self.endInsertRows()
+        return True
+
+    # def removeRows(self, row, count, index):
+    #     if index.isValid():
+    #         return False
+    #     if count <= 0:
+    #         return False
+    #     num_rows = self.rowCount(QModelIndex())
+    #     self.beginRemoveRows(QModelIndex(), row, row + count - 1)
+    #     for i in range(count, 0, -1):
+    #         self.nodes.pop(row - i + 1)
+    #     self.endRemoveRows()
+
+    #     if self.pendingRemoveRowsAfterDrop:
+    #         '''
+    #         If we got here, it means this call to removeRows is the automatic
+    #         'cleanup' action after drag-n-drop performed by Qt
+    #         '''
+    #         self.pendingRemoveRowsAfterDrop = False
+    #         self.dragDropFinished.emit()
+
+    #     return True
+
+    def setData(self, index, value, role):
+        if not index.isValid():
+            return False
+        if index.row() < 0 or index.row() > len(self.nodes):
+            return False
+        self.nodes[index.row()] = str(value)
+        self.dataChanged.emit(index, index)
+        return True
+
+    def mimeTypes(self):
+        return ['application/vnd.treeviewdragdrop.list']
+
+    def mimeData(self, indexes):
+        mimedata = QMimeData()
+        encoded_data = QByteArray()
+        stream = QDataStream(encoded_data, QIODevice.WriteOnly)
+        for index in indexes:
+            if index.isValid():
+                text = self.data(index, 0)
+        stream << QByteArray(text.encode('utf-8'))
+        mimedata.setData('application/vnd.treeviewdragdrop.list', encoded_data)
+        return mimedata
+
+    def dropMimeData(self, data, action, row, column, parent):
+        if action == Qt.IgnoreAction:
+            return True
+        if not data.hasFormat('application/vnd.treeviewdragdrop.list'):
+            return False
+        if column > 0:
+            return False
+
+        num_rows = self.rowCount(QModelIndex())
+        if num_rows <= 0:
+            return False
+
+        if row < 0:
+            if parent.isValid():
+                row = parent.row()
+            else:
+                return False
+
+        encoded_data = data.data('application/vnd.treeviewdragdrop.list')
+        stream = QDataStream(encoded_data, QIODevice.ReadOnly)
+
+        new_items = []
+        rows = 0
+        while not stream.atEnd():
+            text = QByteArray()
+            stream >> text
+            text = bytes(text).decode('utf-8')
+            index = self.nodes.index(text)
+            new_items.append((text, index))
+            rows += 1
+
+        self.lastDroppedItems = []
+        for (text, index) in new_items:
+            target_row = row
+            if index < row:
+                target_row += 1
+            self.beginInsertRows(QModelIndex(), target_row, target_row)
+            self.nodes.insert(target_row, self.nodes[index])
+            self.endInsertRows()
+            self.lastDroppedItems.append(text)
+            row += 1
+
+        self.pendingRemoveRowsAfterDrop = True
+        return True
+
+class _SelectionModel(QItemSelectionModel):
+    def __init__(self, parent=None):
+        QItemSelectionModel.__init__(self, parent)
+
+    def onModelItemsReordered(self):
+        new_selection = QItemSelection()
+        new_index = QModelIndex()
+        for item in self.model().lastDroppedItems:
+            row = self.model().rowForItem(item)
+            if row is None:
+                continue
+            new_index = self.model().index(row, 0, QModelIndex())
+            new_selection.select(new_index, new_index)
+
+        self.clearSelection()
+        flags = (
+            QItemSelectionModel.ClearAndSelect 
+            | QItemSelectionModel.Rows 
+            | QItemSelectionModel.Current
+        )
+        self.select(new_selection, flags)
+        self.setCurrentIndex(new_index, flags)
+        self.reset()
+
+class ReorderableListView(QListView):
+    def __init__(self, items=None, parent=None) -> None:
+        super().__init__(parent)
+        if items is None:
+            items = []
+        self._model = _ReorderableListModel(items)
+        self._selectionModel = _SelectionModel(self._model)
+        self._model.dragDropFinished.connect(
+            self._selectionModel.onModelItemsReordered
+        )
+        self.setModel(self._model)
+        self.setSelectionModel(self._selectionModel)
+        self.setDragDropMode(QAbstractItemView.InternalMove)
+        self.setDragDropOverwriteMode(False)
+        self.setStyleSheet("""
+            QListView {
+                selection-background-color: rgba(200, 200, 200, 0.30);
+                selection-color: black;
+                show-decoration-selected: 1;
+            }
+            QListView::item {
+                border-bottom: 1px solid rgba(180, 180, 180, 0.5);
+            }
+            QListView::item:hover {
+                background: rgba(200, 200, 200, 0.30);
+            }
+        """)
+    
+    def setItems(self, items):
+        self._model.nodes = items
+    
+    def items(self):
+        return self._model.nodes
+    
+    def mouseReleaseEvent(self, e: QtGui.QMouseEvent) -> None:
+        super().mouseReleaseEvent(e)
+        self._selectionModel.reset()
 
 
 class filePathControl(QFrame):
