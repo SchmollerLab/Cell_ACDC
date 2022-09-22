@@ -334,7 +334,11 @@ def cca_df_to_acdc_df(cca_df, rp, acdc_df=None):
 
 class LineageTree:
     def __init__(self, acdc_df) -> None:
-        self.acdc_df = load.pd_bool_to_int(acdc_df)
+        self.acdc_df = (
+            load.pd_bool_to_int(acdc_df)
+            .reset_index()
+            .set_index(['frame_i', 'Cell_ID'])
+        )
         self.df = acdc_df.copy()
         self.cca_df_colnames = list(base_cca_df.keys())
     
@@ -583,20 +587,25 @@ class LineageTree:
     def newick(self):
         if 'Cell_ID_tree' not in self.acdc_df.columns:
             self.build()
+        
+        df = self.df.reset_index()
     
     def plot(self):
         if 'Cell_ID_tree' not in self.acdc_df.columns:
             self.build()
+        
+        df = self.df.reset_index()
     
     def to_arboretum(self, rebuild=False):
         # See https://github.com/lowe-lab-ucl/arboretum/blob/main/examples/show_sample_data.py
         if 'Cell_ID_tree' not in self.acdc_df.columns or rebuild:
             self.build()
 
+        df = self.df.reset_index()
         tracks_cols = ['Cell_ID_tree', 'frame_i', 'y_centroid', 'x_centroid']
-        tracks_data = self.df[tracks_cols].to_numpy()
+        tracks_data = df[tracks_cols].to_numpy()
 
-        graph_df = self.df.groupby('Cell_ID_tree').agg('first').reset_index()
+        graph_df = df.groupby('Cell_ID_tree').agg('first').reset_index()
         graph_df = graph_df[graph_df.parent_ID_tree > 0]
         graph = {
             child_ID:[parent_ID] for child_ID, parent_ID 
@@ -604,9 +613,9 @@ class LineageTree:
         }
 
         properties = pd.DataFrame({
-            't': self.df.frame_i,
-            'root': self.df.root_ID_tree,
-            'parent': self.df.parent_ID_tree
+            't': df.frame_i,
+            'root': df.root_ID_tree,
+            'parent': df.parent_ID_tree
         })
 
         return tracks_data, graph, properties

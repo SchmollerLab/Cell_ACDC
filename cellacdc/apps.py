@@ -900,7 +900,10 @@ class filenameDialog(QDialog):
             self.filenameLabel.setText(f'{self.basename}{self.ext}')
         else:
             text = text.replace(' ', '_')
-            self.filenameLabel.setText(f'{self.basename}_{text}{self.ext}')
+            if self.basename:
+                self.filenameLabel.setText(f'{self.basename}_{text}{self.ext}')
+            else:
+                self.filenameLabel.setText(f'{text}{self.ext}')
 
     def ok_cb(self, checked=True):
         valid = self.checkExistingNames()

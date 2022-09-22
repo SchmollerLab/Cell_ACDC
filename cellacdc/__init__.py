@@ -5,6 +5,9 @@ from datetime import datetime
 from pprint import pprint
 
 def printl(*objects, pretty=False, is_decorator=False, **kwargs):
+    # Copy current stdout, reset to default __stdout__ and then restore current
+    current_stdout = sys.stdout
+    sys.stdout = sys.__stdout__
     timestap = datetime.now().strftime('%H:%M:%S')
     currentframe = inspect.currentframe()
     outerframes = inspect.getouterframes(currentframe)
@@ -18,6 +21,7 @@ def printl(*objects, pretty=False, is_decorator=False, **kwargs):
     print(f'{timestap} - File "{filename}", line {callingframe_info.lineno}:')
     print_func(*objects, **kwargs)
     print('='*30)
+    sys.stdout = current_stdout
 
 cellacdc_path = os.path.dirname(os.path.abspath(__file__))
 parent_path = os.path.dirname(cellacdc_path)
