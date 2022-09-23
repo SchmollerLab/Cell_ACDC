@@ -40,7 +40,6 @@ try:
     from cellacdc.utils import compute as utilsCompute
     from cellacdc.utils import repeat as utilsRepeat
     from cellacdc.utils import acdcToSymDiv as utilsSymDiv
-    from cellacdc.napari_utils import arboretum
     from cellacdc import is_win, is_linux, temp_path
     from cellacdc import printl
 except ModuleNotFoundError as e:
@@ -276,6 +275,7 @@ class mainWin(QMainWindow):
 
         napariMenu = QMenu("&napari", self)
         napariMenu.addAction(self.arboretumAction)
+        napariMenu.triggered.connect(self.launchNapariUtil)
         menuBar.addMenu(napariMenu)
 
         helpMenu = QMenu("&Help", self)
@@ -342,9 +342,6 @@ class mainWin(QMainWindow):
         self.aboutAction.triggered.connect(self.showAbout)
         self.renameAction.triggered.connect(self.launchRenameUtil)
 
-        self.arboretumAction.triggered.connect(self.launchArboretum)
-        
-        
         self.userManualAction.triggered.connect(myutils.showUserManual)
         self.contributeAction.triggered.connect(self.showContribute)
         self.citeAction.triggered.connect(
@@ -539,8 +536,17 @@ class mainWin(QMainWindow):
             selectedExpPaths = expPaths
         
         return selectedExpPaths
+    
+    def launchNapariUtil(self, action):
+        myutils.install_package('napari', parent=self)
+        if action == self.arboretumAction:
+            self._launchArboretum()
 
-    def launchArboretum(self):
+    def _launchArboretum(self):
+        myutils.install_package('napari_arboretum', parent=self)
+
+        from cellacdc.napari_utils import arboretum
+        
         posPath = self.getSelectedPosPath('napari-arboretum')
         if posPath is None:
             return

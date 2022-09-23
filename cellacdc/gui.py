@@ -8341,6 +8341,7 @@ class guiWin(QMainWindow):
             else:
                 posData.cca_df = self.getBaseCca_df()
                 self.remove_future_cca_df(posData.frame_i)
+                self.store_data()
                 self.updateALLimg()
         else:
             # Store undo state before modifying stuff

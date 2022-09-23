@@ -334,11 +334,9 @@ def cca_df_to_acdc_df(cca_df, rp, acdc_df=None):
 
 class LineageTree:
     def __init__(self, acdc_df) -> None:
-        self.acdc_df = (
-            load.pd_bool_to_int(acdc_df)
-            .reset_index()
-            .set_index(['frame_i', 'Cell_ID'])
-        )
+        acdc_df = load.pd_bool_to_int(acdc_df).reset_index()
+        acdc_df = self._normalize_gen_num(acdc_df)
+        self.acdc_df = acdc_df.set_index(['frame_i', 'Cell_ID'])
         self.df = acdc_df.copy()
         self.cca_df_colnames = list(base_cca_df.keys())
     
@@ -353,6 +351,42 @@ class LineageTree:
         
         self.df = self.add_lineage_tree_table_to_acdc_df()
         print('Lineage tree built successfully!')
+    
+    def _normalize_gen_num(self, acdc_df):
+        '''
+        Since the user is allowed to start the generation_num of unknown mother
+        cells with any number we need to normalise this to 2 -->
+        Create a new 'normalized_gen_num' column where we make sure that mother
+        cells with unknown history have 'normalized_gen_num' starting from 2
+        (required by the logic of _build_tree)
+        '''
+        acdc_df = acdc_df.reset_index()
+
+        # Get the starting generation number of the unknown mother cells
+        df_emerg = acdc_df.groupby('Cell_ID').agg('first')
+        history_unknown_mask = df_emerg['is_history_known'] == 0
+        moth_mask = df_emerg['relationship'] == 'mother'
+        df_emerg_moth_uknown = df_emerg[(history_unknown_mask) & (moth_mask)]
+
+        # Get the difference from 2
+        df_diff = 2 - df_emerg_moth_uknown['generation_num']
+
+        # Build a normalizing df with the number to be added for each cell
+        normalizing_df = pd.DataFrame(
+            data=acdc_df[['frame_i', 'Cell_ID']]
+        ).set_index('Cell_ID')
+        normalizing_df['gen_num_diff'] = 0
+        normalizing_df.loc[df_emerg_moth_uknown.index, 'gen_num_diff'] = (
+            df_diff
+        )
+
+        # Add the normalising_df to create the new normalized_gen_num col
+        normalizing_df = normalizing_df.reset_index().set_index(['frame_i', 'Cell_ID'])
+        acdc_df = acdc_df.reset_index().set_index(['frame_i', 'Cell_ID'])
+        acdc_df['normalized_gen_num'] = (
+            acdc_df['generation_num'] + normalizing_df['generation_num_diff']
+        )
+        return acdc_df
     
     def _build_tree(self, gen_df, ID):
         current_ID = gen_df.index.get_level_values(1)[0]

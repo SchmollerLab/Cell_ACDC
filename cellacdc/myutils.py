@@ -1370,23 +1370,68 @@ def install_javabridge_help(parent=None):
     msg.exec_()
     return msg.clickedButton == cancel
 
+def check_napari_plugin(plugin_name, module_name, parent=None):
+    try:
+        import_module(module_name)
+    except ModuleNotFoundError as e:
+        url = 'https://napari.org/stable/plugins/find_and_install_plugin.html#find-and-install-plugins'
+        href = html_utils.href_tag('this guide', url)
+        txt = html_utils.paragraph(f"""
+            To correctly use this napari utility you need to <b>install the 
+            plugin</b> called <code>{plugin_name}</code>.<br><br>
+            Please, read {href} on how to install plugins in napari.<br><br>
+            You will need to <b>restart</b> both napari and Cell-ACDC after installing 
+            the plugin.<br><br>
+            NOTE: in the text box in napari you will need to write the full name 
+            <code>{plugin_name}</code> becasue it is NOT A SEARCH BOX.
+        """)
+        msg = widgets.myMessageBox()
+        msg.critical(parent, f'Napari plugin required', txt)
+        raise e
+
+def install_package(pkg_name: str, note='', parent=None):
+    try:
+        import_module(pkg_name)
+    except ModuleNotFoundError:
+        cancel = install_package_msg(pkg_name, note=note, parent=parent)
+        if cancel:
+            raise ModuleNotFoundError(
+                f'User aborted {pkg_name} installation'
+            )
+        try:
+            subprocess.check_call(
+                [sys.executable, '-m', 'pip', 'install', pkg_name]
+            )
+        except Exception as e:
+            inform_install_package_failed(pkg_name, parent=parent)
+            raise e
+
+def inform_install_package_failed(pkg_name, parent=None):
+    txt = html_utils.paragraph(f"""
+        Unfortunately, <b>installation of</b> <code>{pkg_name}</code> <b>failed</b>.<br><br>
+        Please close Cell-ACDC and, with the <code>acdc</code> <b>environment ACTIVE</b>, 
+        install <code>{pkg_name}</code> manually with the follwing command:<br><br>
+        <code>pip install {pkg_name.lower()}</code><br><br>
+        Thank you for your patience.
+    """)
+    msg = widgets.myMessageBox()
+    msg.critical(parent, f'{pkg_name} installation failed', txt)
+
 def install_package_msg(pkg_name, note='', parent=None):
     msg = widgets.myMessageBox()
     if pkg_name == 'BayesianTracker':
         pkg_name = 'btrack'
     txt = html_utils.paragraph(f"""
-    <p>
         Cell-ACDC is going to <b>download and install</b>
         <code>{pkg_name}</code>.<br><br>
         Make sure you have an <b>active internet connection</b>,
-        before continuing.
+        before continuing.<br>
         Progress will be displayed on the terminal<br><br>
         You might have to <b>restart Cell-ACDC</b>.<br><br>
         <b>IMPORTANT:</b> If the installation fails please install
         <code>{pkg_name}</code> manually with the follwing command:<br><br>
         <code>pip install {pkg_name.lower()}</code><br><br>
         Alternatively, you can cancel the process and try later.
-    </p>
     """)
     if note:
         txt = f'{txt}{note}'
