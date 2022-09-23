@@ -8414,7 +8414,8 @@ class guiWin(QMainWindow):
     def manualEditCca(self, checked=True):
         posData = self.data[self.pos_i]
         editCcaWidget = apps.editCcaTableWidget(
-            posData.cca_df, posData.SizeT, parent=self
+            posData.cca_df, posData.SizeT, current_frame_i=posData.frame_i,
+            parent=self
         )
         editCcaWidget.exec_()
         if editCcaWidget.cancel:

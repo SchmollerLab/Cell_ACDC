@@ -4952,11 +4952,12 @@ class selectPositionsMultiExp(QBaseDialog):
 class editCcaTableWidget(QDialog):
     def __init__(
             self, cca_df, SizeT, title='Edit cell cycle annotations', 
-            parent=None
+            parent=None, current_frame_i=0
         ):
         self.inputCca_df = cca_df
         self.cancel = True
         self.cca_df = None
+        self.current_frame_i = current_frame_i
 
         super().__init__(parent)
         self.setWindowTitle(title)
@@ -5247,6 +5248,14 @@ class editCcaTableWidget(QDialog):
         check_relID_S = [ccs=='S' and relID==-1
                          for ccs, relID
                          in zip(ccsValues, relIDValues)]
+        # Mother cells with unknown history at emergence is recommended to have
+        # generation number = 2 (easier downstream analysis)
+        check_unknown_mothers = [
+            rel_ship=='mother' and not is_history_known and gen_num!=2
+            and (emerg_frame_i == self.current_frame_i or self.current_frame_i==0)
+            for rel_ship, is_history_known, gen_num, emerg_frame_i
+            in zip(relatValues, historyValues, genNumValues, emergFrameValues)
+        ]
         if any(check_rel):
             QMessageBox().critical(self,
                     'Cell ID = Relative\'s ID', 'Some cells are '
@@ -5254,6 +5263,23 @@ class editCcaTableWidget(QDialog):
                     ' is different from the Cell ID!',
                     QMessageBox.Ok)
             return None
+        elif any(check_unknown_mothers):
+            txt = html_utils.paragraph("""
+                We recommend to set <b>generation number to 2 for mother cells 
+                with unknown history<br>
+                that just appeared</b> (i.e., first cell cycle in the video).<br><br>
+                While it is allowed to insert any number, knowing that these 
+                cells start at generation number 2<br>
+                <b>makes downstream analysis easier</b>.<br><br>
+                What do you want to do?
+            """)
+            correctButtonText = ' Fine, let me correct. '
+            keepButtonText = ' Keep the generation number that I chose. '
+            buttonsTexts = (correctButtonText, keepButtonText)
+            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+            msg.warning(self, 'Recommendation', txt, buttonsTexts=buttonsTexts)
+            if msg.cancel or msg.clickedButton == correctButtonText:
+                return None
         elif any(check_buds_S):
             QMessageBox().critical(self,
                 'Bud in S/G2/M not in 0 Generation number',
@@ -5293,22 +5319,22 @@ class editCcaTableWidget(QDialog):
                 'ID as Relative\'s ID!',
                 QMessageBox.Ok)
             return None
-        else:
-            corrected_assignment = self.inputCca_df['corrected_assignment']
-            cca_df = pd.DataFrame({
-                                'cell_cycle_stage': ccsValues,
-                                'generation_num': genNumValues,
-                                'relative_ID': relIDValues,
-                                'relationship': relatValues,
-                                'emerg_frame_i': emergFrameValues,
-                                'division_frame_i': divisFrameValues,
-                                'is_history_known': historyValues,
-                                'corrected_assignment': corrected_assignment},
-                                index=self.IDs)
-            cca_df.index.name = 'Cell_ID'
-            d = dict.fromkeys(cca_df.select_dtypes(np.int64).columns, np.int32)
-            cca_df = cca_df.astype(d)
-            return cca_df
+        
+        corrected_assignment = self.inputCca_df['corrected_assignment']
+        cca_df = pd.DataFrame({
+                            'cell_cycle_stage': ccsValues,
+                            'generation_num': genNumValues,
+                            'relative_ID': relIDValues,
+                            'relationship': relatValues,
+                            'emerg_frame_i': emergFrameValues,
+                            'division_frame_i': divisFrameValues,
+                            'is_history_known': historyValues,
+                            'corrected_assignment': corrected_assignment},
+                            index=self.IDs)
+        cca_df.index.name = 'Cell_ID'
+        d = dict.fromkeys(cca_df.select_dtypes(np.int64).columns, np.int32)
+        cca_df = cca_df.astype(d)
+        return cca_df
 
     def ok_cb(self, checked):
         cca_df = self.getCca_df()
