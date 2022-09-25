@@ -3737,6 +3737,7 @@ class guiWin(QMainWindow):
         eraserON = self.eraserButton.isChecked()
         brushON = self.brushButton.isChecked()
         separateON = self.separateBudButton.isChecked()
+        self.typingEditID = False
 
         # Drag image if neither brush or eraser are On pressed
         dragImg = (
@@ -5846,6 +5847,7 @@ class guiWin(QMainWindow):
         is_right_click_action_ON = any([
             b.isChecked() for b in self.checkableQButtonsGroup.buttons()
         ])
+        self.typingEditID = False
         showLabelsGradMenu = right_click and not is_right_click_action_ON
         if showLabelsGradMenu:
             self.gui_rightImageShowContextMenu(event)
@@ -5863,6 +5865,7 @@ class guiWin(QMainWindow):
 
     @myutils.exception_handler
     def gui_mousePressEventImg1(self, event):
+        self.typingEditID = False
         modifiers = QGuiApplication.keyboardModifiers()
         ctrl = modifiers == Qt.ControlModifier
         alt = modifiers == Qt.AltModifier
@@ -9036,6 +9039,7 @@ class guiWin(QMainWindow):
 
     def Brush_cb(self, checked):
         if checked:
+            self.typingEditID = False
             self.setDiskMask()
             self.setHoverToolSymbolData(
                 [], [], (self.ax1_EraserCircle, self.ax2_EraserCircle,
@@ -9312,6 +9316,23 @@ class guiWin(QMainWindow):
         isBrushActive = (
             self.brushButton.isChecked() or self.eraserButton.isChecked()
         )
+        if self.brushButton.isChecked():
+            try:
+                n = int(ev.text())
+                printl(n)
+                printl(self.editIDcheckbox.isChecked())
+                if self.editIDcheckbox.isChecked():
+                    self.editIDcheckbox.setChecked(False)
+                if self.typingEditID:
+                    ID = int(f'{self.editIDspinbox.value()}{n}')
+                else:
+                    ID = n
+                    self.typingEditID = True
+                printl(ID)
+                self.editIDspinbox.setValue(ID)
+            except Exception as e:
+                printl(traceback.format_exc())
+                pass
         isExpandLabelActive = self.expandLabelToolButton.isChecked()
         isWandActive = self.wandToolButton.isChecked()
         how = self.drawIDsContComboBox.currentText()
@@ -9336,10 +9357,19 @@ class guiWin(QMainWindow):
             elif isExpandLabelActive:
                 self.expandLabel(dilation=False)
                 self.expandFootprintSize += 1
+        elif ev.key() == Qt.Key_Enter or ev.key() == Qt.Key_Return:
+            if self.brushButton.isChecked():
+                self.typingEditID = False
         elif ev.key() == Qt.Key_Escape:
+            if self.brushButton.isChecked() and self.typingEditID:
+                self.editIDcheckbox.setChecked(True)
+                self.typingEditID = False
+                return
+            
             self.setUncheckedAllButtons()
             self.tempLayerImg1.setImage(self.emptyLab)
             self.isMouseDragImg1 = False
+            self.typingEditID = False
             if self.highlightedID != 0:
                 self.highlightedID = 0
                 self.guiTabControl.highlightCheckbox.setChecked(False)
@@ -12037,6 +12067,7 @@ class guiWin(QMainWindow):
         self.splineHoverON = False
         self.tempSegmentON = False
         self.isCtrlDown = False
+        self.typingEditID = False
         self.isShiftDown = False
         self.autoContourHoverON = False
         self.navigateScrollBarStartedMoving = True
