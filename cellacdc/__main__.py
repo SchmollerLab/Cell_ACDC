@@ -297,7 +297,7 @@ class mainWin(QMainWindow):
         self.TiffToNpzAction = QAction('Convert .tif file(s) to _segm.npz...')
         self.h5ToNpzAction = QAction('Convert .h5 file(s) to _segm.npz...')
         self.toImageJroiAction = QAction(
-            'Convert _segm.npz file(s) to ImageJ ROIs..'
+            'Convert _segm.npz file(s) to ImageJ ROIs...'
         )
         self.batchConverterAction = QAction(
             'Create required data structure from image files...'

@@ -1372,14 +1372,14 @@ class ToImajeJroiWorker(BaseWorkerUtil):
                     rois = myutils.from_lab_to_imagej_rois(
                         posData.segm_data, ImagejRoi
                     )
-                
+
+                roi_filepath = posData.segm_npz_path.replace('.npz', '.zip')
+                roi_filepath = roi_filepath.replace('_segm', '_imagej_rois')
+
                 try:
                     os.remove(roi_filepath)
                 except Exception as e:
                     pass
-                
-                roi_filepath = posData.segm_npz_path.replace('.npz', '.zip')
-                roi_filepath = roi_filepath.replace('_segm', '_imagej_rois')
 
                 roiwrite(roi_filepath, rois)
                         
