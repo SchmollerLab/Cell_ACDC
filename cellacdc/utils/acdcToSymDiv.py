@@ -209,6 +209,7 @@ class AcdcToSymDivUtil(QDialog):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
+        
         if worker.abort:
             txt = 'Adding lineage tree table ABORTED.'
             self.logger.info(txt)

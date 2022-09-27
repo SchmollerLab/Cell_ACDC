@@ -255,8 +255,12 @@ def label_3d_segm(labels):
     return labels
 
 def get_objContours(obj, all=False):
+    if all:
+        retrieveMode = cv2.RETR_CCOMP
+    else:
+        retrieveMode = cv2.RETR_EXTERNAL
     contours, _ = cv2.findContours(
-        obj.image.astype(np.uint8), cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE
+        obj.image.astype(np.uint8), retrieveMode, cv2.CHAIN_APPROX_NONE
     )
     min_y, min_x, _, _ = obj.bbox
     if all:

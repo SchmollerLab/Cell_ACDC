@@ -81,10 +81,7 @@ class NewThreadMultipleExpBaseUtil(QDialog):
 
         self.setLayout(mainLayout)
 
-    def showEvent(self, event):
-        self.runWorker()
-
-    def runWorker(self):
+    def runWorker(self, worker):
         self.progressWin = apps.QDialogWorkerProgress(
             title=self.progressDialogueTitle, parent=self,
             pbarDesc=f'{self.progressDialogueTitle}...'
@@ -93,7 +90,6 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         self.progressWin.show(self.app)
 
         self.thread = QThread()
-        self.worker = workers.ToSymDivWorker(self)
         self.worker.moveToThread(self.thread)
 
         self.worker.signals.finished.connect(self.thread.quit)

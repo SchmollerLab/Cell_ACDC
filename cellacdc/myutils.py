@@ -1158,6 +1158,37 @@ def imagej_tiffwriter(
             metadata = {}
         new_tif.save(data, metadata=metadata)
 
+def from_lab_to_imagej_rois(lab, ImagejRoi, t=0, SizeT=1, max_ID=None):
+    if max_ID is None:
+        max_ID = lab.max()
+    rois = []
+    if lab.ndim == 3:
+        SizeZ = len(lab)
+        for z, lab2D in enumerate(lab):
+            rp = skimage.measure.regionprops(lab2D)
+            for obj in rp:
+                cont = core.get_objContours(obj)
+                t_str = str(t).zfill(len(str(SizeT)))
+                z_str = str(z).zfill(len(str(SizeZ)))
+                id_str = str(obj.label).zfill(len(str(max_ID)))
+                name = f't={t_str}-z={z_str}-id={id_str}'
+                roi = ImagejRoi.frompoints(
+                    cont, name=name, t=t
+                )
+                rois.append(roi)
+    else:
+        rp = skimage.measure.regionprops(lab)
+        for obj in rp:
+            cont = core.get_objContours(obj)
+            t_str = str(t).zfill(len(str(SizeT)))
+            id_str = str(obj.label).zfill(len(str(max_ID)))
+            name = f't={t_str}-id={id_str}'
+            roi = ImagejRoi.frompoints(
+                cont, name=name, t=t
+            )
+            rois.append(roi)
+    return rois
+
 def get_list_of_real_time_trackers():
     trackers = get_list_of_trackers()
     rt_trackers = []

@@ -39,6 +39,7 @@ try:
     from cellacdc.utils import align as utilsAlign
     from cellacdc.utils import compute as utilsCompute
     from cellacdc.utils import repeat as utilsRepeat
+    from cellacdc.utils import toImageJroi as utilsToImageJroi
     from cellacdc.utils import acdcToSymDiv as utilsSymDiv
     from cellacdc import is_win, is_linux, temp_path
     from cellacdc import printl
@@ -267,10 +268,12 @@ class mainWin(QMainWindow):
         utilsMenu.addAction(self.npzToTiffAction)
         utilsMenu.addAction(self.TiffToNpzAction)
         utilsMenu.addAction(self.h5ToNpzAction)
+        utilsMenu.addAction(self.toImageJroiAction)
         utilsMenu.addAction(self.batchConverterAction)
         utilsMenu.addAction(self.repeatDataPrepAction)
         utilsMenu.addAction(self.alignAction)
         utilsMenu.addAction(self.renameAction)
+    
         menuBar.addMenu(utilsMenu)
 
         napariMenu = QMenu("&napari", self)
@@ -293,6 +296,9 @@ class mainWin(QMainWindow):
         self.npzToTiffAction = QAction('Convert .npz file(s) to .tif...')
         self.TiffToNpzAction = QAction('Convert .tif file(s) to _segm.npz...')
         self.h5ToNpzAction = QAction('Convert .h5 file(s) to _segm.npz...')
+        self.toImageJroiAction = QAction(
+            'Convert _segm.npz file(s) to ImageJ ROIs..'
+        )
         self.batchConverterAction = QAction(
             'Create required data structure from image files...'
         )
@@ -330,6 +336,7 @@ class mainWin(QMainWindow):
         self.npzToTiffAction.triggered.connect(self.launchConvertFormatUtil)
         self.TiffToNpzAction.triggered.connect(self.launchConvertFormatUtil)
         self.h5ToNpzAction.triggered.connect(self.launchConvertFormatUtil)
+        self.toImageJroiAction.triggered.connect(self.launchToImageJroiUtil)
         self.batchConverterAction.triggered.connect(
                 self.launchImageBatchConverter
             )
@@ -557,6 +564,25 @@ class mainWin(QMainWindow):
             posPath, self.app, title, infoText, parent=self
         )
         self.arboretumWindow.show()
+    
+    def launchToImageJroiUtil(self):
+        myutils.install_package('roifile', parent=self)
+
+        import roifile
+
+        selectedExpPaths = self.getSelectedExpPaths('From _segm.npz to ImageJ ROIs')
+        if selectedExpPaths is None:
+            return
+        
+        title = 'Convert _segm.npz file(s) to ImageJ ROIs'
+        infoText = 'Launching to ImageJ ROIs process...'
+        progressDialogueTitle = 'Converting _segm.npz file(s) to ImageJ ROIs'
+        self.toImageJroiWin = utilsToImageJroi.toImageRoiUtil(
+            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
+            parent=None
+        )
+        self.toImageJroiWin.show()
+
     
     def launchCalcMetricsUtil(self):
         selectedExpPaths = self.getSelectedExpPaths('Compute measurements utility')
