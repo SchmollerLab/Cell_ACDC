@@ -29,6 +29,7 @@ def binned_means_plot(
         bins_min_count: int = 0,
         data: pd.DataFrame = None,
         scatter: bool = True,
+        use_std_err: bool = True,
         color = None,
         label = None,
         scatter_kws = None,
@@ -67,7 +68,8 @@ def binned_means_plot(
     xe, ye, std, std_err = _binned_mean_stats(x, y, nbins, bins_min_count)
     if scatter:
         ax.scatter(x, y, color=color, **scatter_kws)
-    ax.errorbar(xe, ye, yerr=std, color=color, label=label, **errorbar_kws)
+    yerr = std_err if use_std_err else std
+    ax.errorbar(xe, ye, yerr=yerr, color=color, label=label, **errorbar_kws)
 
     return ax
 
