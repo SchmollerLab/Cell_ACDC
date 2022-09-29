@@ -4023,7 +4023,7 @@ class guiWin(QMainWindow):
                 manualSep = apps.manualSeparateGui(
                     self.get_2Dlab(posData.lab), ID, img,
                     fontSize=self.fontSize,
-                    IDcolor=self.img2.lut[ID],
+                    IDcolor=posData.lut[ID],
                     parent=self
                 )
                 manualSep.show()
