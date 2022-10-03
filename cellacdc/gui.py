@@ -2019,6 +2019,21 @@ class guiWin(QMainWindow):
         self.checkableQButtonsGroup.addButton(self.mergeIDsButton)
         self.functionsNotTested3D.append(self.mergeIDsButton)
 
+        self.keepObjButton = QToolButton(self)
+        self.keepObjButton.setIcon(QIcon(":keep_objects.svg"))
+        self.keepObjButton.setCheckable(True)
+        self.keepObjButton.setToolTip(
+            'Toggle "Select objects to keep" mode ON/OFF\n\n'
+            'EXAMPLE: Select the objects to keep. Press "Enter" to confirm '
+            'selection or "Esc" to clear the selection.\n'
+            'After confirming, all the NON selected objects will be deleted.\n\n'
+            'ACTION: right- or left-click on objects to keep\n\n'
+        )
+        self.keepObjButton.action = editToolBar.addWidget(self.keepObjButton)
+        self.checkableButtons.append(self.keepObjButton)
+        self.checkableQButtonsGroup.addButton(self.keepObjButton)
+        self.functionsNotTested3D.append(self.keepObjButton)
+
         self.binCellButton = QToolButton(self)
         self.binCellButton.setIcon(QIcon(":bin.svg"))
         self.binCellButton.setCheckable(True)
@@ -2316,7 +2331,7 @@ class guiWin(QMainWindow):
         self.labelRoiToolbar = QToolBar("Magic labeller controls", self)
         self.labelRoiZdepthSpinbox = QSpinBox()
         self.labelRoiToolbar.addWidget(self.labelRoiZdepthSpinbox)
-        self.addToolBar(Qt.TopToolBarArea , self.labelRoiToolbar)
+        self.addToolBar(Qt.TopToolBarArea, self.labelRoiToolbar)
         self.labelRoiToolbar.setVisible(False)
 
     def gui_populateToolSettingsMenu(self):
@@ -2864,6 +2879,7 @@ class guiWin(QMainWindow):
         self.assignBudMothAutoAction.triggered.connect(
             self.autoAssignBud_YeastMate
         )
+        self.keepObjButton.toggled.connect(self.keepObj_cb)
 
         self.expandLabelToolButton.toggled.connect(self.expandLabelCallback)
 
@@ -4334,6 +4350,33 @@ class guiWin(QMainWindow):
                 posData.frame_i = self.current_frame_i
                 self.get_data()
                 self.app.restoreOverrideCursor()
+        
+        elif (right_click or left_click) and self.keepObjButton.isChecked():
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(x), int(y)
+            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
+            if ID == 0:
+                nearest_ID = self.nearest_nonzero(
+                    self.get_2Dlab(posData.lab), y, x
+                )
+                keepID_win = apps.QLineEditDialog(
+                    title='Clicked on background',
+                    msg='You clicked on the background.\n'
+                        'Enter ID that you want to keep',
+                    parent=self, allowedValues=posData.IDs,
+                    defaultTxt=str(nearest_ID)
+                )
+                keepID_win.exec_()
+                if keepID_win.cancel:
+                    return
+                else:
+                    ID = keepID_win.EntryID
+            
+            if ID in self.keptObjectsIDs:
+                self.keptObjectsIDs.remove(ID)
+                self.highlightHoverIDsKeptObj(hoverID=ID)
+            else:
+                self.keptObjectsIDs.append(ID)
 
         # Annotate cell as removed from the analysis
         elif right_click and self.binCellButton.isChecked():
@@ -4998,6 +5041,13 @@ class guiWin(QMainWindow):
         )
         if setCustomAnnotCursor and self.app.overrideCursor() is None:
             self.app.setOverrideCursor(Qt.PointingHandCursor)
+        
+        setKeepObjCursor = (
+            self.keepObjButton.isChecked() and not event.isExit()
+            and noModifier
+        )
+        if setKeepObjCursor and self.app.overrideCursor() is None:
+            self.app.setOverrideCursor(Qt.PointingHandCursor)
 
         # Cursor is moving on image while Alt key is pressed --> pan cursor
         alt = QGuiApplication.keyboardModifiers() == Qt.AltModifier
@@ -5057,6 +5107,10 @@ class guiWin(QMainWindow):
                 self.clickedOnBud = False
                 self.BudMothTempLine.setData([], [])
                 self.wcLabel.setText(f'')
+        
+        if setKeepObjCursor:
+            x, y = event.pos()
+            self.highlightHoverIDsKeptObj(x, y)
 
         if setMoveLabelCursor or setExpandLabelCursor:
             x, y = event.pos()
@@ -5205,6 +5259,13 @@ class guiWin(QMainWindow):
         setPanImageCursor = alt and not event.isExit()
         if setPanImageCursor and self.app.overrideCursor() is None:
             self.app.setOverrideCursor(Qt.SizeAllCursor)
+        
+        setKeepObjCursor = (
+            self.keepObjButton.isChecked() and not event.isExit()
+            and noModifier
+        )
+        if setKeepObjCursor and self.app.overrideCursor() is None:
+            self.app.setOverrideCursor(Qt.PointingHandCursor)
 
         # Update x, y, value label bottom right
         if not event.isExit():
@@ -5239,6 +5300,10 @@ class guiWin(QMainWindow):
         if setMoveLabelCursor or setExpandLabelCursor:
             x, y = event.pos()
             self.updateHoverLabelCursor(x, y)
+        
+        if setKeepObjCursor:
+            x, y = event.pos()
+            self.highlightHoverIDsKeptObj(x, y)
 
         # Draw eraser circle
         if setEraserCursor:
@@ -5886,6 +5951,7 @@ class guiWin(QMainWindow):
         wandON = self.wandToolButton.isChecked() and not isPanImageClick
         polyLineRoiON = self.addDelPolyLineRoiAction.isChecked()
         labelRoiON = self.labelRoiButton.isChecked()
+        keepObjON = self.keepObjButton.isChecked()
 
         # Check if right-click on segment of polyline roi to add segment
         segments = self.gui_getHoveredSegmentsPolyLineRoi()
@@ -5910,7 +5976,7 @@ class guiWin(QMainWindow):
             left_click and not brushON and not histON
             and not curvToolON and not eraserON and not rulerON
             and not wandON and not polyLineRoiON and not labelRoiON
-            and not middle_click
+            and not middle_click and not keepObjON
         )
         if isPanImageClick:
             dragImgLeft = True
@@ -5989,7 +6055,12 @@ class guiWin(QMainWindow):
         canLabelRoi = (
             labelRoiON and not wandON and not curvToolON and not brushON
             and not dragImgLeft and not brushON and not rulerON
-            and not polyLineRoiON
+            and not polyLineRoiON and not keepObjON
+        )
+        canKeep = (
+            keepObjON and not wandON and not curvToolON and not brushON
+            and not dragImgLeft and not brushON and not rulerON
+            and not polyLineRoiON and not labelRoiON
         )
 
         # Enable dragging of the image window like pyqtgraph original code
@@ -6160,6 +6231,34 @@ class guiWin(QMainWindow):
                     # Call roi moving on closing ROI
                     self.delROImoving(self.polyLineRoi)
                     self.delROImovingFinished(self.polyLineRoi)
+        
+        elif left_click and canKeep:
+            # Right click is passed earlier to gui_mousePressImg2
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(x), int(y)
+            ID = self.get_2Dlab(posData.lab)[ydata, xdata]
+            if ID == 0:
+                nearest_ID = self.nearest_nonzero(
+                    self.get_2Dlab(posData.lab), y, x
+                )
+                keepID_win = apps.QLineEditDialog(
+                    title='Clicked on background',
+                    msg='You clicked on the background.\n'
+                        'Enter ID that you want to keep',
+                    parent=self, allowedValues=posData.IDs,
+                    defaultTxt=str(nearest_ID)
+                )
+                keepID_win.exec_()
+                if keepID_win.cancel:
+                    return
+                else:
+                    ID = keepID_win.EntryID
+            
+            if ID in self.keptObjectsIDs:
+                self.keptObjectsIDs.remove(ID)
+                self.highlightHoverIDsKeptObj(hoverID=ID)
+            else:
+                self.keptObjectsIDs.append(ID)
 
         elif right_click and canCurv:
             # Draw manually assisted auto contour
@@ -8831,6 +8930,8 @@ class guiWin(QMainWindow):
                 button.setChecked(False)
         self.wandControlsToolbar.setVisible(False)
         self.enableSizeSpinbox(False)
+        if sender is not None:
+            self.keepObjButton.setChecked(False)
 
     def connectLeftClickButtons(self):
         self.brushButton.toggled.connect(self.Brush_cb)
@@ -9036,6 +9137,31 @@ class guiWin(QMainWindow):
             self.highlightedID = 0
             self.highLightIDLayerImg1.clear()
             self.highlightIDcheckBoxToggled(False)
+    
+    def keepObj_cb(self, checked):
+        if checked:
+            self.uncheckLeftClickButtons(None)
+            self.initKeepObjLabelsLayers()
+        else:
+            # restore items to non-grayed out
+            self.tempLayerImg1.setImage(self.emptyLab, autoLevels=False)
+            self.tempLayerRightImage.setImage(self.emptyLab, autoLevels=False)
+            alpha = self.imgGrad.labelsAlphaSlider.value()
+            self.labelsLayerImg1.setOpacity(alpha)
+            self.labelsLayerRightImg.setOpacity(alpha)
+            contours = zip(
+                self.ax1_ContoursCurves,
+                self.ax2_ContoursCurves
+            )
+            for ax1ContCurve, ax2ContCurve in contours:
+                if ax1ContCurve is None:
+                    continue
+
+                ax1ContCurve.setOpacity(1.0)
+                ax2ContCurve.setOpacity(1.0)
+        
+        self.keptObjectsIDs = []
+        self.updateALLimg()
 
     def Brush_cb(self, checked):
         if checked:
@@ -9360,7 +9486,14 @@ class guiWin(QMainWindow):
         elif ev.key() == Qt.Key_Enter or ev.key() == Qt.Key_Return:
             if self.brushButton.isChecked():
                 self.typingEditID = False
+            elif self.keepObjButton.isChecked():
+                self.applyKeepObjects()
         elif ev.key() == Qt.Key_Escape:
+            if self.keepObjButton.isChecked() and self.keptObjectsIDs:
+                self.keptObjectsIDs = []
+                self.highlightHoverIDsKeptObj(hoverID=0)
+                return
+
             if self.brushButton.isChecked() and self.typingEditID:
                 self.editIDcheckbox.setChecked(True)
                 self.typingEditID = False
@@ -13849,6 +13982,60 @@ class guiWin(QMainWindow):
         alpha = self.imgGrad.labelsAlphaSlider.value()
         self.labelsLayerImg1.setOpacity(alpha)
         self.labelsLayerRightImg.setOpacity(alpha)
+    
+    def initKeepObjLabelsLayers(self):
+        posData = self.data[self.pos_i]
+        brushLayerLut = np.zeros((len(posData.lut), 4), dtype=np.uint8)
+        brushLayerLut[:,:-1] = posData.lut
+        brushLayerLut[0] = [0,0,0,0]
+        self.tempLayerImg1.setLevels([0, len(brushLayerLut)])
+        self.tempLayerRightImage.setLevels([0, len(brushLayerLut)])
+        self.tempLayerImg1.setLookupTable(brushLayerLut)
+        self.tempLayerRightImage.setLookupTable(brushLayerLut)
+        self.tempLayerImg1.setOpacity(0.7)
+        self.tempLayerRightImage.setOpacity(0.7)
+        self.tempLayerImg1.setImage(self.currentLab2D, autoLevels=False)
+        self.tempLayerRightImage.setImage(self.currentLab2D, autoLevels=False)
+
+        # Gray out objects
+        alpha = self.imgGrad.labelsAlphaSlider.value()
+        self.labelsLayerImg1.setOpacity(alpha/3)
+        self.labelsLayerRightImg.setOpacity(alpha/3)
+
+        # Gray out contours
+        contours = zip(
+            self.ax1_ContoursCurves,
+            self.ax2_ContoursCurves
+        )
+        for ax1ContCurve, ax2ContCurve in contours:
+            if ax1ContCurve is None:
+                continue
+
+            ax1ContCurve.setOpacity(0.3)
+            ax2ContCurve.setOpacity(0.3)
+    
+    @myutils.exception_handler
+    def applyKeepObjects(self):
+        # Store undo state before modifying stuff
+        self.storeUndoRedoStates(False)
+
+        posData = self.data[self.pos_i]
+
+        for obj in posData.rp:
+            if obj.label not in self.keptObjectsIDs:
+                posData.lab[obj.slice][obj.image] = 0
+
+        self.update_rp()
+        # Repeat tracking
+        self.tracking(enforce=True, assign_unique_new_IDs=False)
+
+        if self.isSnapshot:
+            self.fixCcaDfAfterEdit('Removed non-selected objects')
+            self.updateALLimg()
+        else:
+            self.warnEditingWithCca_df('Removed non-selected objects')
+        
+        self.keptObjectsIDs = []
 
     def updateLookuptable(self, lenNewLut=None, delIDs=None):
         posData = self.data[self.pos_i]
@@ -13882,8 +14069,11 @@ class guiWin(QMainWindow):
 
         if updateLevels:
             self.img2.setLevels([0, len(lut)])
-        self.img2.setLookupTable(lut)
+        
+        if self.keepObjButton.isChecked():
+            lut = np.round(lut*0.3).astype(np.uint8)
 
+        self.img2.setLookupTable(lut)
 
     def update_rp_metadata(self, draw=True):
         posData = self.data[self.pos_i]
@@ -14756,6 +14946,9 @@ class guiWin(QMainWindow):
         self.currentLab2D = DelROIlab
         if updateLookuptable:
             self.updateLookuptable(delIDs=allDelIDs)
+        if self.keepObjButton.isChecked():
+            self.tempLayerImg1.setImage(self.currentLab2D, autoLevels=False)
+            self.tempLayerRightImage.setImage(self.currentLab2D, autoLevels=False)
 
     def applyDelROIimg1(self, roi, init=False, ax=0):
         if ax == 0:
@@ -14975,6 +15168,10 @@ class guiWin(QMainWindow):
 
         elif editTxt == 'Annotate ID as dead':
             return
+        
+        elif editTxt == 'Removed non-selected objects':
+            deleted_IDs = [ID for ID in cca_df_IDs if ID not in posData.IDs]
+            self.update_cca_df_deletedIDs(posData, deleted_IDs)
 
         elif editTxt == 'Delete ID with eraser':
             deleted_IDs = [ID for ID in cca_df_IDs if ID not in posData.IDs]
@@ -15232,6 +15429,21 @@ class guiWin(QMainWindow):
             self.reinitGraphicalItems(IDs)
         for ID in IDs:
             self.addNewItems(ID)
+    
+    def highlightHoverIDsKeptObj(self, x, y, hoverID=None):
+        if hoverID is None:
+            hoverID = self.currentLab2D[int(y), int(x)]
+
+        self.tempLayerImg1.lut[:,-1:] = 0
+        self.tempLayerRightImage.lut[:,-1:] = 0
+        self.tempLayerImg1.lut[self.keptObjectsIDs,-1:] = 255
+        self.tempLayerRightImage.lut[self.keptObjectsIDs,-1:] = 255
+        if hoverID != 0:
+            self.tempLayerImg1.lut[hoverID,-1:] = 255
+            self.tempLayerRightImage.lut[hoverID,-1:] = 255
+        
+        self.tempLayerImg1.updateImage()
+        self.tempLayerRightImage.updateImage()
 
     def highlightSearchedID(self, ID, force=False):
         if ID == 0:
@@ -15246,16 +15458,18 @@ class guiWin(QMainWindow):
             self.ax1_ContoursCurves,
             self.ax2_ContoursCurves
         )
+        isContourON_ax1 = how_ax1.find('contours') != -1
+        isContourON_ax2 = how_ax2.find('contours') != -1
         for ax1ContCurve, ax2ContCurve in contours:
             if ax1ContCurve is None:
                 continue
             if ax1ContCurve.getData()[0] is not None:
-                if how_ax1.find('contours') != -1:
+                if isContourON_ax1:
                     ax1ContCurve.setPen(self.oldIDs_cpen)
                 else:
                     ax1ContCurve.setData([], [])
             if ax2ContCurve.getData()[0] is not None:
-                if how_ax2.find('contours') != -1:
+                if isContourON_ax2:
                     ax2ContCurve.setPen(self.oldIDs_cpen)
                 else:
                     ax1ContCurve.setData([], [])
@@ -15379,6 +15593,8 @@ class guiWin(QMainWindow):
     def updateLabelsAlpha(self, value):
         self.df_settings.at['overlaySegmMasksAlpha', 'value'] = value
         self.df_settings.to_csv(self.settings_csv_path)
+        if self.keepObjButton.isChecked():
+            value = value/3
         self.labelsLayerImg1.setOpacity(value)
         self.labelsLayerRightImg.setOpacity(value)
 
