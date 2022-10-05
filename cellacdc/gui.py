@@ -1390,8 +1390,6 @@ class guiWin(QMainWindow):
         self.autoSaveGarbageWorkers = []
         self.autoSaveActiveWorkers = []
 
-        self.gui_createAutoSaveWorker()
-
         self.gui_connectActions()
         self.gui_createStatusBar()
         self.gui_createTerminalWidget()
@@ -2229,13 +2227,15 @@ class guiWin(QMainWindow):
             self.autoSaveGarbageWorkers.append(garbage)
             worker = garbage[0]
             worker._stop()
-       
+
+        posData = self.data[self.pos_i]
         autoSaveThread = QThread()
         self.autoSaveMutex = QMutex()
         self.autoSaveWaitCond = QWaitCondition()
 
+        savedSegmData = posData.segm_data.copy()
         autoSaveWorker = workers.AutoSaveWorker(
-            self.autoSaveMutex, self.autoSaveWaitCond
+            self.autoSaveMutex, self.autoSaveWaitCond, savedSegmData
         )
 
         autoSaveWorker.moveToThread(autoSaveThread)
@@ -9458,7 +9458,7 @@ class guiWin(QMainWindow):
                 printl(ID)
                 self.editIDspinbox.setValue(ID)
             except Exception as e:
-                printl(traceback.format_exc())
+                # printl(traceback.format_exc())
                 pass
         isExpandLabelActive = self.expandLabelToolButton.isChecked()
         isWandActive = self.wandToolButton.isChecked()
@@ -11092,6 +11092,7 @@ class guiWin(QMainWindow):
         prev_pos_i = self.pos_i
         if self.pos_i < self.num_pos-1:
             self.pos_i += 1
+            self.updateSegmDataAutoSaveWorker()
         else:
             self.logger.info('You reached last position.')
             self.pos_i = 0
@@ -11110,6 +11111,7 @@ class guiWin(QMainWindow):
         prev_pos_i = self.pos_i
         if self.pos_i > 0:
             self.pos_i -= 1
+            self.updateSegmDataAutoSaveWorker()
         else:
             self.logger.info('You reached first position.')
             self.pos_i = self.num_pos-1
@@ -11623,6 +11625,7 @@ class guiWin(QMainWindow):
         self.guiTabControl.addChannels([posData.user_ch_name])
         self.showPropsDockButton.setDisabled(False)
 
+        self.gui_createAutoSaveWorker()
         self.init_segmInfo_df()
         self.connectScrollbars()
         self.initPosAttr()
@@ -17605,13 +17608,22 @@ class guiWin(QMainWindow):
             seconds = round(exec_time*steps_left)
             ETA = myutils.seconds_to_ETA(seconds)
             self.saveWin.ETA_label.setText(f'ETA: {ETA}')
-
+    
     def quickSave(self):
         self.saveData(isQuickSave=True)
 
     @myutils.exception_handler
     def saveData(self, checked=False, finishedCallback=None, isQuickSave=False):
         self.store_data()
+
+        # Wait autosave worker to finish
+        for worker, thread in self.autoSaveActiveWorkers:
+            self.logger.info('Waiting autosaving process to finish....')
+            if worker.isFinished:
+                break
+            while not worker.dataQ.empty() and not worker.isPaused:
+                time.sleep(0.05)
+
         self.titleLabel.setText(
             'Saving data... (check progress in the terminal)', color=self.titleColor
         )
@@ -17730,6 +17742,12 @@ class guiWin(QMainWindow):
             log_type='region_props', parent=self
         )
         win.exec_()
+    
+    def updateSegmDataAutoSaveWorker(self):
+        # Update savedSegmData in autosave worker
+        posData = self.data[self.pos_i]
+        for worker, thread in self.autoSaveActiveWorkers:
+            worker.savedSegmData = posData.segm_data.copy()
 
     def saveDataFinished(self):
         if self.saveWin.aborted:
@@ -17738,6 +17756,10 @@ class guiWin(QMainWindow):
             self.titleLabel.setText('Saved!')
         self.saveWin.workerFinished = True
         self.saveWin.close()
+
+        # Update savedSegmData in autosave worker
+        self.updateSegmDataAutoSaveWorker()
+
         if self.worker.addMetricsErrors:
            self.warnErrorsAddMetrics()    
         if self.worker.regionPropsErrors:
@@ -17810,6 +17832,9 @@ class guiWin(QMainWindow):
                 worker.finished.emit()
             except RuntimeError:
                 self.logger.info('Autosaving worker closed while running.')
+        
+        # Block main thread while separate threads closes
+        time.sleep(0.1)
 
         # Close the inifinte loop of the thread
         if self.lazyLoader is not None:

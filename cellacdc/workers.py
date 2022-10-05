@@ -135,8 +135,9 @@ class AutoSaveWorker(QObject):
     critical = pyqtSignal(object)
     progress = pyqtSignal(str, object)
 
-    def __init__(self, mutex, waitCond):
+    def __init__(self, mutex, waitCond, savedSegmData):
         QObject.__init__(self)
+        self.savedSegmData = savedSegmData
         self.logger = workerLogger(self.progress)
         self.mutex = mutex
         self.waitCond = waitCond
@@ -144,14 +145,17 @@ class AutoSaveWorker(QObject):
         self.isFinished = False
         self.abortSaving = False
         self.isSaving = False
+        self.isPaused = False
         self.dataQ = queue.Queue()
     
     def pause(self):
         if DEBUG:
             self.logger.log('Autosaving is idle.')
         self.mutex.lock()
+        self.isPaused = True
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
+        self.isPaused = False
     
     def enqueue(self, posData):
         # First stop previously saving data
@@ -292,8 +296,7 @@ class AutoSaveWorker(QObject):
         self.isSaving = False
     
     def _saveSegm(self, recovery_path, main_segm_path, data):
-        saved_data = np.load(main_segm_path)['arr_0']
-        if np.all(saved_data == data):
+        if np.all(self.savedSegmData == data):
             try:
                 # Remove currently recovered data since the saved main 
                 # segm data is the latest (if exists --> try)
