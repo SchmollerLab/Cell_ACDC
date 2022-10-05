@@ -8722,6 +8722,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         mode = self.modeComboBox.itemText(idx)
         self.annotateToolbar.setVisible(False)
+        self.store_data(autosave=False)
         if mode == 'Segmentation and Tracking':
             self.trackingMenu.setDisabled(False)
             self.modeToolBar.setVisible(True)
