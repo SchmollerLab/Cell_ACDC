@@ -17833,14 +17833,14 @@ class guiWin(QMainWindow):
             except RuntimeError:
                 self.logger.info('Autosaving worker closed while running.')
         
-        # Block main thread while separate threads closes
-        time.sleep(0.1)
-
         # Close the inifinte loop of the thread
         if self.lazyLoader is not None:
             self.lazyLoader.exit = True
             self.lazyLoaderWaitCond.wakeAll()
             self.waitReadH5cond.wakeAll()
+        
+        # Block main thread while separate threads closes
+        time.sleep(0.1)
 
         self.saveWindowGeometry()
         # self.saveCustomAnnot()
