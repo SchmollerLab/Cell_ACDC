@@ -1524,6 +1524,14 @@ def import_tracker(posData, trackerName, realTime=False, qparent=None):
     tracker = trackerModule.tracker(**init_params)
     return tracker, track_params
 
+def synthetic_image_geneator(size=(512,512), f_x=1, f_y=1):
+    Y, X = size
+    x = np.linspace(0, 10, Y)
+    y = np.linspace(0, 10, X)
+    xx, yy = np.meshgrid(x, y)
+    img = np.sin(f_x*xx)*np.cos(f_y*yy)
+    return img
+
 if __name__ == '__main__':
     print(get_list_of_models())
     # model_name = 'cellpose'
