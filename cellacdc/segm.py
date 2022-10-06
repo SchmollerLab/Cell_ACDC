@@ -84,6 +84,7 @@ class segmWorker(QRunnable):
         self.isNewSegmFile = mainWin.isNewSegmFile
         self.endFilenameSegm = mainWin.endFilenameSegm
         self.isSegm3D = mainWin.isSegm3D
+        self.track_params = mainWin.track_params
 
     def setupPausingItems(self):
         self.mutex = QMutex()
