@@ -953,6 +953,9 @@ def run():
     from cellacdc.config import parser_args
     print('Launching application...')
 
+    if not splashScreen.isVisible():
+        splashScreen.show()
+
     app.setStyle(QStyleFactory.create('Fusion'))
     app.setWindowIcon(QIcon(":icon.ico"))
     win = mainWin(app)
@@ -977,8 +980,10 @@ def run():
 
 def main():
     # Keep compatibility with users that installed older versions
-    # when the entry point was main()
+    # where the entry point was main()
     run()
 
 if __name__ == "__main__":
     run()
+else:
+    splashScreen.hide()
