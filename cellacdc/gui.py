@@ -2257,10 +2257,13 @@ class guiWin(QMainWindow):
     def autoSaveWorkerDone(self):
         self.setSaturBarLabel(log=False)
     
-    def autoSaveWorkerClosed(self):
+    def autoSaveWorkerClosed(self, worker):
         if self.autoSaveActiveWorkers:
             self.logger.info('Autosaving worker closed.')
-            self.autoSaveActiveWorkers.pop(-1)
+            try:
+                self.autoSaveActiveWorkers.remove(worker)
+            except Exception as e:
+                pass
 
     def gui_createMainLayout(self):
         mainLayout = QGridLayout()
@@ -11383,7 +11386,7 @@ class guiWin(QMainWindow):
 
         self.overlayLabelsItems = {}
         self.drawModeOverlayLabelsChannels = {}
-        if len(existingSegmEndNames) > 1 and not self.isSegm3D:
+        if not self.isSegm3D:
             self.existingSegmEndNames = existingSegmEndNames
             self.overlayLabelsButtonAction.setVisible(True)
             self.createOverlayLabelsContextMenu(existingSegmEndNames)
@@ -17829,7 +17832,6 @@ class guiWin(QMainWindow):
                 worker._stop()
                 while not worker.isFinished:
                     continue
-                worker.finished.emit()
             except RuntimeError:
                 self.logger.info('Autosaving worker closed while running.')
         

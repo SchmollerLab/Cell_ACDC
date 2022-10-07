@@ -130,7 +130,7 @@ class LabelRoiWorker(QObject):
         self.finished.emit()
 
 class AutoSaveWorker(QObject):
-    finished = pyqtSignal()
+    finished = pyqtSignal(object)
     sigDone = pyqtSignal()
     critical = pyqtSignal(object)
     progress = pyqtSignal(str, object)
@@ -209,7 +209,7 @@ class AutoSaveWorker(QObject):
             else:
                 self.pause()
         self.isFinished = True
-        self.finished.emit()
+        self.finished.emit(self)
         if DEBUG:
             self.logger.log('Autosave finished signal emitted')
     
