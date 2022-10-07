@@ -1360,8 +1360,8 @@ class select_exp_folder:
                 if filename.find('acdc_output.csv') != -1:
                     last_tracked_i_found = True
                     acdc_df_path = f'{images_path}/{filename}'
-                    acd_df = pd.read_csv(acdc_df_path)
-                    last_tracked_i = max(acd_df['frame_i'])
+                    acdc_df = pd.read_csv(acdc_df_path)
+                    last_tracked_i = max(acdc_df['frame_i'])
                     break
             if last_tracked_i_found:
                 values.append(f'{pos} (Last tracked frame: {last_tracked_i+1})')

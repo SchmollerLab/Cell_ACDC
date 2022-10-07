@@ -307,6 +307,10 @@ class AutoSaveWorker(QObject):
             np.savez_compressed(recovery_path, np.squeeze(data))
     
     def _save_acdc_df(self, recovery_path, recovery_acdc_df, posData):
+        if not os.path.exists(posData.acdc_output_csv_path):
+            recovery_acdc_df.to_csv(recovery_path)
+            return
+
         saved_acdc_df = pd.read_csv(
             posData.acdc_output_csv_path
         ).set_index(['frame_i', 'Cell_ID'])
