@@ -24,7 +24,10 @@ class AcdcSPlashScreen(QtWidgets.QSplashScreen):
     # def mousePressEvent(self, a0: QtGui.QMouseEvent) -> None:
     #     pass
 
-splashScreenApp = QtWidgets.QApplication([])
+# Create the application
+app = QtWidgets.QApplication([])
+
+# Launch splashscreen
 splashScreen = AcdcSPlashScreen()
 splashScreen.show()
 
@@ -950,9 +953,6 @@ def run():
     from cellacdc.config import parser_args
     print('Launching application...')
 
-    # Create the application
-    app = QApplication([])
-
     app.setStyle(QStyleFactory.create('Fusion'))
     app.setWindowIcon(QIcon(":icon.ico"))
     win = mainWin(app)
@@ -972,7 +972,7 @@ def run():
           'or behind some other open window.')
     print('----------------------------------------------')
     splashScreen.close()
-    splashScreenApp.quit()
+    # splashScreenApp.quit()
     sys.exit(app.exec_())
 
 def main():
