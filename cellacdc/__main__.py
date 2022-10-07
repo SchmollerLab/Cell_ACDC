@@ -1,9 +1,36 @@
 #!/usr/bin/env python
+import os
+from PyQt5 import QtGui, QtWidgets, QtCore
+
+# Handle high resolution displays:
+if hasattr(QtCore.Qt, 'AA_EnableHighDpiScaling'):
+    QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_EnableHighDpiScaling, True)
+if hasattr(QtCore.Qt, 'AA_UseHighDpiPixmaps'):
+    QtWidgets.QApplication.setAttribute(QtCore.Qt.AA_UseHighDpiPixmaps, True)
+
+# Needed by pyqtgraph with display resolution scaling
+QtWidgets.QApplication.setAttribute(
+    QtCore.Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+)
+
+class AcdcSPlashScreen(QtWidgets.QSplashScreen):
+    def __init__(self):
+        super().__init__()
+        cellacdc_path = os.path.dirname(os.path.abspath(__file__))
+        resources_path = os.path.join(cellacdc_path, 'resources')
+        logo_path = os.path.join(resources_path, 'logo.png')
+        self.setPixmap(QtGui.QPixmap(logo_path))
+    
+    # def mousePressEvent(self, a0: QtGui.QMouseEvent) -> None:
+    #     pass
+
+splashScreenApp = QtWidgets.QApplication([])
+splashScreen = AcdcSPlashScreen()
+splashScreen.show()
 
 print('Importing modules...')
 from modulefinder import Module
 import sys
-import os
 import subprocess
 import re
 import time
@@ -91,7 +118,7 @@ class mainWin(QMainWindow):
         self.createMenuBar()
         self.connectActions()
 
-        mainContainer = QtGui.QWidget()
+        mainContainer = QtWidgets.QWidget()
         self.setCentralWidget(mainContainer)
 
         mainLayout = QVBoxLayout()
@@ -922,16 +949,6 @@ class mainWin(QMainWindow):
 def run():
     from cellacdc.config import parser_args
     print('Launching application...')
-    # Handle high resolution displays:
-    if hasattr(Qt, 'AA_EnableHighDpiScaling'):
-        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-    if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
-        QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
-    
-    # Needed by pyqtgraph with display resolution scaling
-    QApplication.setAttribute(
-        Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
-    )
 
     # Create the application
     app = QApplication([])
@@ -954,6 +971,8 @@ def run():
     print('NOTE: If application is not visible, it is probably minimized\n'
           'or behind some other open window.')
     print('----------------------------------------------')
+    splashScreen.close()
+    splashScreenApp.quit()
     sys.exit(app.exec_())
 
 def main():

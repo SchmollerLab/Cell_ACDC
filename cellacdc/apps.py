@@ -41,7 +41,7 @@ from pyqtgraph.Qt import QtGui
 from PyQt5 import QtCore
 from PyQt5.QtGui import (
     QIcon, QFontMetrics, QKeySequence, QFont, QGuiApplication, QCursor,
-    QKeyEvent  
+    QKeyEvent, QPixmap
 )
 from PyQt5.QtCore import Qt, QSize, QEvent, pyqtSignal, QEventLoop, QTimer
 from PyQt5.QtWidgets import (
@@ -52,7 +52,7 @@ from PyQt5.QtWidgets import (
     QSpinBox, QToolButton, QTableView, QTextBrowser, QDoubleSpinBox,
     QScrollArea, QFrame, QProgressBar, QGroupBox, QRadioButton,
     QDockWidget, QMessageBox, QStyle, QPlainTextEdit, QSpacerItem,
-    QTreeWidget, QTreeWidgetItem, QTextEdit
+    QTreeWidget, QTreeWidgetItem, QTextEdit, QSplashScreen
 )
 from . import widgets
 from . import myutils, load, prompts, core, measurements, html_utils
@@ -82,6 +82,16 @@ class QBaseDialog(QDialog):
     def closeEvent(self, event):
         if hasattr(self, 'loop'):
             self.loop.exit()
+
+class AcdcSPlashScreen(QSplashScreen):
+    def __init__(self):
+        super().__init__()
+        # self.showMessage('Test', color=Qt.white)
+        self.setPixmap(QPixmap(':logo.png'))
+    
+    def mousePressEvent(self, a0: QtGui.QMouseEvent) -> None:
+        pass
+
 
 class installJavaDialog(widgets.myMessageBox):
     def __init__(self, parent=None):
