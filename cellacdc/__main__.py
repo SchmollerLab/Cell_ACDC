@@ -21,8 +21,8 @@ class AcdcSPlashScreen(QtWidgets.QSplashScreen):
         logo_path = os.path.join(resources_path, 'logo.png')
         self.setPixmap(QtGui.QPixmap(logo_path))
     
-    # def mousePressEvent(self, a0: QtGui.QMouseEvent) -> None:
-    #     pass
+    def mousePressEvent(self, a0: QtGui.QMouseEvent) -> None:
+        pass
 
 # Create the application
 app = QtWidgets.QApplication([])
