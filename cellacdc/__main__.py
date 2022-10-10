@@ -26,10 +26,18 @@ class AcdcSPlashScreen(QtWidgets.QSplashScreen):
 
 # Create the application
 app = QtWidgets.QApplication([])
+app.setStyle(QtWidgets.QStyleFactory.create('Fusion'))
+app.setWindowIcon(QtGui.QIcon(":icon.ico"))
 
 # Launch splashscreen
 splashScreen = AcdcSPlashScreen()
+splashScreen.setWindowFlags(
+    QtCore.Qt.WindowStaysOnTopHint 
+    | QtCore.Qt.SplashScreen 
+    | QtCore.Qt.FramelessWindowHint
+)
 splashScreen.show()
+splashScreen.raise_()
 
 print('Importing modules...')
 from modulefinder import Module
@@ -44,8 +52,8 @@ import pandas as pd
 from functools import partial
 
 from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QVBoxLayout, QPushButton, QLabel, QAction,
-    QMenu, QMessageBox, QStyleFactory, QHBoxLayout, QFileDialog
+    QMainWindow, QVBoxLayout, QPushButton, QLabel, QAction,
+    QMenu, QHBoxLayout, QFileDialog
 )
 from PyQt5.QtCore import (
     Qt, QProcess, pyqtSignal, pyqtSlot, QTimer, QSize,
@@ -956,8 +964,6 @@ def run():
     if not splashScreen.isVisible():
         splashScreen.show()
 
-    app.setStyle(QStyleFactory.create('Fusion'))
-    app.setWindowIcon(QIcon(":icon.ico"))
     win = mainWin(app)
     version = myutils.read_version()
     win.setVersion(version)

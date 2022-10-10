@@ -55,8 +55,8 @@ from PyQt5.QtCore import (
     QThread, QMutex, QWaitCondition, QSettings
 )
 from PyQt5.QtGui import (
-    QIcon, QKeySequence, QCursor, QKeyEvent, QGuiApplication,
-    QPixmap, QColor
+    QIcon, QKeySequence, QCursor, QGuiApplication, QPixmap, QColor,
+    QFont
 )
 from PyQt5.QtWidgets import (
     QAction, QLabel, QPushButton, QHBoxLayout,
@@ -64,10 +64,9 @@ from PyQt5.QtWidgets import (
     QScrollBar, QCheckBox, QToolButton, QSpinBox, QGroupBox,
     QComboBox, QButtonGroup, QActionGroup, QFileDialog,
     QAbstractSlider, QMessageBox, QWidget, QDockWidget,
-    QDockWidget, QGridLayout, QSizePolicy, QVBoxLayout
+    QDockWidget, QGridLayout, QGraphicsProxyWidget, QVBoxLayout
 )
 
-from pyqtgraph.Qt import QtGui
 import pyqtgraph as pg
 
 # NOTE: Enable icons
@@ -102,7 +101,7 @@ favourite_func_metrics_csv_path = os.path.join(
 )
 custom_annot_path = os.path.join(temp_path, 'custom_annotations.json')
 
-_font = QtGui.QFont()
+_font = QFont()
 _font.setPixelSize(12)
 
 # Interpret image data as row-major instead of col-major
@@ -3151,7 +3150,7 @@ class guiWin(QMainWindow):
         self.rightBottomGroupbox.setChecked(False)
         self.rightBottomGroupbox.hide()
 
-        font = QtGui.QFont()
+        font = QFont()
         font.setPixelSize(12)
 
         row = 0
@@ -3212,7 +3211,7 @@ class guiWin(QMainWindow):
 
     def gui_addGraphicsItems(self):
         # Auto image adjustment button
-        proxy = QtGui.QGraphicsProxyWidget()
+        proxy = QGraphicsProxyWidget()
         equalizeHistPushButton = QPushButton("Auto-contrast")
         equalizeHistPushButton.setCheckable(True)
         if not self.invertBwAction.isChecked():
@@ -9522,7 +9521,7 @@ class guiWin(QMainWindow):
             if self.xHoverImg is not None and not isCursorSizeAll:
                 self.app.setOverrideCursor(Qt.SizeAllCursor)
             if ev.key() == Qt.Key_C:
-                font = QtGui.QFont()
+                font = QFont()
                 font.setPixelSize(13)
                 win = apps.QDialogEntriesWidget(
                     ['Z coord.', 'Y coord.', 'X coord.'], ['0', '0', '0'],
@@ -10138,7 +10137,7 @@ class guiWin(QMainWindow):
         # )
         # self.ax1.addItem(self.RWforegrScatterItem)
 
-        font = QtGui.QFont()
+        font = QFont()
         font.setPixelSize(13)
 
         # Store undo state before modifying stuff
@@ -17674,7 +17673,7 @@ class guiWin(QMainWindow):
         self.saveWin = apps.QDialogPbar(
             parent=self, title='Saving data', infoTxt=infoTxt
         )
-        font = QtGui.QFont()
+        font = QFont()
         font.setPixelSize(13)
         self.saveWin.setFont(font)
         # if not self.save_metrics:
