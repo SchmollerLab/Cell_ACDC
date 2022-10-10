@@ -29,6 +29,12 @@ app = QtWidgets.QApplication([])
 app.setStyle(QtWidgets.QStyleFactory.create('Fusion'))
 app.setWindowIcon(QtGui.QIcon(":icon.ico"))
 
+try:
+    import qdarktheme
+    app.setStyleSheet(qdarktheme.load_stylesheet("light"))
+except ModuleNotFoundError:
+    pass
+
 # Launch splashscreen
 splashScreen = AcdcSPlashScreen()
 splashScreen.setWindowFlags(

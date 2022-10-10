@@ -339,7 +339,8 @@ def cca_df_to_acdc_df(cca_df, rp, acdc_df=None):
 class LineageTree:
     def __init__(self, acdc_df) -> None:
         acdc_df = load.pd_bool_to_int(acdc_df).reset_index()
-        acdc_df = self._normalize_gen_num(acdc_df)
+        acdc_df = self._normalize_gen_num(acdc_df).reset_index()
+        acdc_df = acdc_df.drop(columns=['index', 'level_0'], errors='ignore')
         self.acdc_df = acdc_df.set_index(['frame_i', 'Cell_ID'])
         self.df = acdc_df.copy()
         self.cca_df_colnames = list(base_cca_df.keys())
@@ -364,7 +365,7 @@ class LineageTree:
         cells with unknown history have 'normalized_gen_num' starting from 2
         (required by the logic of _build_tree)
         '''
-        acdc_df = acdc_df.reset_index()
+        acdc_df = acdc_df.reset_index().drop(columns='index', errors='ignore')
 
         # Get the starting generation number of the unknown mother cells
         df_emerg = acdc_df.groupby('Cell_ID').agg('first')
@@ -385,10 +386,12 @@ class LineageTree:
         )
 
         # Add the normalising_df to create the new normalized_gen_num col
-        normalizing_df = normalizing_df.reset_index().set_index(['frame_i', 'Cell_ID'])
-        acdc_df = acdc_df.reset_index().set_index(['frame_i', 'Cell_ID'])
+        normalizing_df = normalizing_df.reset_index().set_index(
+            ['frame_i', 'Cell_ID']
+        )
+        acdc_df = acdc_df.set_index(['frame_i', 'Cell_ID'])
         acdc_df['normalized_gen_num'] = (
-            acdc_df['generation_num'] + normalizing_df['generation_num_diff']
+            acdc_df['generation_num'] + normalizing_df['gen_num_diff']
         )
         return acdc_df
     
