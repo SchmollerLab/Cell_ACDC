@@ -1,5 +1,15 @@
 #!/usr/bin/env python
 import os
+from . import qrc_resources
+if os.name == 'nt':
+    try:
+        # Set taskbar icon in windows
+        import ctypes
+        myappid = 'schmollerlab.cellacdc.pyqt.v1' # arbitrary string
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+    except Exception as e:
+        pass
+
 from PyQt5 import QtGui, QtWidgets, QtCore
 
 # Handle high resolution displays:
@@ -29,14 +39,9 @@ app = QtWidgets.QApplication([])
 app.setStyle(QtWidgets.QStyleFactory.create('Fusion'))
 app.setWindowIcon(QtGui.QIcon(":icon.ico"))
 
-try:
-    import qdarktheme
-    app.setStyleSheet(qdarktheme.load_stylesheet("light"))
-except ModuleNotFoundError:
-    pass
-
 # Launch splashscreen
 splashScreen = AcdcSPlashScreen()
+splashScreen.setWindowIcon(QtGui.QIcon(":icon.ico"))
 splashScreen.setWindowFlags(
     QtCore.Qt.WindowStaysOnTopHint 
     | QtCore.Qt.SplashScreen 
@@ -65,8 +70,10 @@ from PyQt5.QtCore import (
     Qt, QProcess, pyqtSignal, pyqtSlot, QTimer, QSize,
     QSettings, QUrl, QObject
 )
-from PyQt5.QtGui import QFontDatabase, QIcon, QDesktopServices
-from pyqtgraph.Qt import QtGui
+from PyQt5.QtGui import (
+    QFontDatabase, QIcon, QDesktopServices, QFont, QMouseEvent, 
+    QPixmap
+)
 
 # acdc modules
 try:
@@ -109,16 +116,6 @@ try:
     SPOTMAX = True
 except ModuleNotFoundError:
     SPOTMAX = False
-
-
-if os.name == 'nt':
-    try:
-        # Set taskbar icon in windows
-        import ctypes
-        myappid = 'schmollerlab.cellacdc.pyqt.v1' # arbitrary string
-        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
-    except Exception as e:
-        pass
 
 class mainWin(QMainWindow):
     def __init__(self, app, parent=None):
@@ -166,7 +163,7 @@ class mainWin(QMainWindow):
             '  0. Create data structure from microscopy file(s)...  '
         )
         dataStructButton.setIconSize(QSize(iconSize,iconSize))
-        font = QtGui.QFont()
+        font = QFont()
         font.setPixelSize(13)
         dataStructButton.setFont(font)
         dataStructButton.clicked.connect(self.launchDataStruct)
@@ -176,7 +173,7 @@ class mainWin(QMainWindow):
         dataPrepButton = QPushButton('  1. Launch data prep module...')
         dataPrepButton.setIcon(QIcon(':prep.svg'))
         dataPrepButton.setIconSize(QSize(iconSize,iconSize))
-        font = QtGui.QFont()
+        font = QFont()
         font.setPixelSize(13)
         dataPrepButton.setFont(font)
         dataPrepButton.clicked.connect(self.launchDataPrep)
@@ -208,7 +205,7 @@ class mainWin(QMainWindow):
             spotmaxButton.clicked.connect(self.launchSpotmaxGui)
             mainLayout.addWidget(spotmaxButton)
 
-        font = QtGui.QFont()
+        font = QFont()
         font.setPixelSize(13)
 
         closeLayout = QHBoxLayout()
@@ -244,7 +241,7 @@ class mainWin(QMainWindow):
         self._version = version
 
     def loadFonts(self):
-        font = QtGui.QFont()
+        font = QFont()
         # font.setFamily('Ubuntu')
         QFontDatabase.addApplicationFont(":Ubuntu-Regular.ttf")
         QFontDatabase.addApplicationFont(":Ubuntu-Bold.ttf")

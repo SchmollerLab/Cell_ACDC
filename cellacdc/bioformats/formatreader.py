@@ -47,7 +47,7 @@ import tempfile
 import traceback
 
 import javabridge as jutil
-from .. import bioformats
+from .. import printl
 from . import metadatatools as metadatatools
 import javabridge
 import boto3

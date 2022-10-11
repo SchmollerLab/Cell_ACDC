@@ -13,7 +13,7 @@ import scipy.interpolate
 import tkinter as tk
 import cv2
 import traceback
-from itertools import combinations
+from itertools import combinations, permutations
 from collections import namedtuple
 from natsort import natsorted
 # from MyWidgets import Slider, Button, MyRadioButtons
@@ -37,11 +37,10 @@ import math
 import time
 
 import pyqtgraph as pg
-from pyqtgraph.Qt import QtGui
 from PyQt5 import QtCore
 from PyQt5.QtGui import (
     QIcon, QFontMetrics, QKeySequence, QFont, QGuiApplication, QCursor,
-    QKeyEvent, QPixmap
+    QKeyEvent, QPixmap, QFont, QPalette, QMouseEvent, QColor
 )
 from PyQt5.QtCore import Qt, QSize, QEvent, pyqtSignal, QEventLoop, QTimer
 from PyQt5.QtWidgets import (
@@ -62,7 +61,7 @@ from . import colors
 from . import issues_url
 
 pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
-font = QtGui.QFont()
+font = QFont()
 font.setPixelSize(13)
 
 class QBaseDialog(QDialog):
@@ -89,7 +88,7 @@ class AcdcSPlashScreen(QSplashScreen):
         # self.showMessage('Test', color=Qt.white)
         self.setPixmap(QPixmap(':logo.png'))
     
-    def mousePressEvent(self, a0: QtGui.QMouseEvent) -> None:
+    def mousePressEvent(self, a0: QMouseEvent) -> None:
         pass
 
 
@@ -1138,7 +1137,7 @@ class setMeasurementsDialog(QBaseDialog):
                         f'by the combined measurement "{combCheckbox.text()}"'
                     )
 
-    def keyPressEvent(self, a0: QtGui.QKeyEvent) -> None:
+    def keyPressEvent(self, a0: QKeyEvent) -> None:
         for chNameGroupbox in self.chNameGroupboxes:
             for checkBox in chNameGroupbox.checkBoxes:
                 colname = checkBox.text()
@@ -1239,9 +1238,11 @@ class setMeasurementsDialog(QBaseDialog):
         super().show(block=block)
 
 class QDialogMetadataXML(QDialog):
+    sigDimensionOrderEditFinished = pyqtSignal(str, int, int, object)
+
     def __init__(
             self, title='Metadata',
-            LensNA=1.0, DimensionOrder='', rawFilename='test',
+            LensNA=1.0, DimensionOrder='zct', rawFilename='test',
             SizeT=1, SizeZ=1, SizeC=1, SizeS=1,
             TimeIncrement=180.0, TimeIncrementUnit='s',
             PhysicalSizeX=1.0, PhysicalSizeY=1.0, PhysicalSizeZ=1.0,
@@ -1258,9 +1259,10 @@ class QDialogMetadataXML(QDialog):
         self.sampleImgData = sampleImgData
         self.ImageName = ImageName
         self.rawDataStruct = rawDataStruct
+        self.imageViewer = None
         super().__init__(parent)
         self.setWindowTitle(title)
-        font = QtGui.QFont()
+        font = QFont()
         font.setPixelSize(13)
         self.setFont(font)
 
@@ -1337,14 +1339,20 @@ class QDialogMetadataXML(QDialog):
         entriesLayout.addWidget(self.LensNA_DSB, row, 1)
 
         row += 1
-        self.DimensionOrder_QLE = QLineEdit()
-        self.DimensionOrder_QLE.setAlignment(Qt.AlignCenter)
-        self.DimensionOrder_QLE.setText(DimensionOrder)
+        self.DimensionOrderCombo = widgets.QCenteredComboBox()
+        items = [''.join(perm) for perm in permutations('zct', 3)]
+        self.DimensionOrderCombo.addItems(items)
+        self.lastValidDimensionOrderText = DimensionOrder
         txt = 'Order of dimensions:  '
         label = QLabel(txt)
         entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
-        entriesLayout.addWidget(self.DimensionOrder_QLE, row, 1)
-
+        entriesLayout.addWidget(self.DimensionOrderCombo, row, 1)
+        dimensionOrderLayout = QHBoxLayout()
+        DimensionOrderHelpButton = widgets.infoPushButton()
+        dimensionOrderLayout.addWidget(DimensionOrderHelpButton)
+        dimensionOrderLayout.addStretch(1)
+        entriesLayout.addLayout(dimensionOrderLayout, row, 2, 1, 2)
+        
         row += 1
         self.SizeT_SB = QSpinBox()
         self.SizeT_SB.setAlignment(Qt.AlignCenter)
@@ -1635,9 +1643,38 @@ class QDialogMetadataXML(QDialog):
 
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.cancel_cb)
+        self.DimensionOrderCombo.currentTextChanged.connect(
+            self.dimensionOrderChanged
+        )
+        DimensionOrderHelpButton.clicked.connect(self.dimensionOrderHelp)
 
         self.setLayout(mainLayout)
         # self.setModal(True)
+    
+    def dimensionOrderChanged(self, dimsOrder):
+        if self.imageViewer is None:
+            return
+        
+        idx = self.imageViewer.channelIndex
+        imgData = self.sampleImgData[dimsOrder][idx] 
+        self.imageViewer.posData.img_data = [imgData] # single frame data
+        self.imageViewer.update_img()
+    
+    def dimensionOrderHelp(self):
+        txt = html_utils.paragraph('''
+            The "Order of dimensions" is used to get the correct frame given 
+            the <b>z-slice</b> (if SizeZ > 1) index, the <b>channel</b> (if SizeC > 1) index, 
+            and the <b>frame</b> (if SizeT > 1) index.<br><br>
+            Example: "zct" means that the order of dimensions in the image shape  
+            is (SizeZ, SizeC, SizeT).<br><br>
+            To test this, click on the "eye" button besides the channel name below. 
+            If the order of dimensions is correct, the displayed image should be 
+            the <b>first frame of the corresponding channel</b>. Make sure to also check 
+            that the z-slices are in the correct order by scrolling with the 
+            z-slice scrollbar.
+        ''')
+        msg = widgets.myMessageBox()
+        msg.information(self, 'Order of dimensions help', txt)
 
     def saveCh_checkBox_cb(self, state):
         self.checkChNames()
@@ -1792,8 +1829,11 @@ class QDialogMetadataXML(QDialog):
         self.PhysicalSizeYUnit_Label.setText(unit)
         self.PhysicalSizeZUnit_Label.setText(unit)
 
-    def showChannelData(self, checked=False):
-        idx = self.showChannelDataButtons.index(self.sender())
+    def showChannelData(self, checked=False, idx=None):
+        if idx is None:
+            idx = self.showChannelDataButtons.index(self.sender())
+        dimsOrder = self.DimensionOrderCombo.currentText()
+        imgData = self.sampleImgData[dimsOrder][idx]
         posData = myutils.utilClass()
         posData.frame_i = 0
         posData.SizeT = self.SizeT_SB.value()
@@ -1809,20 +1849,27 @@ class QDialogMetadataXML(QDialog):
         posData.relPath = f'{f"{os.sep}".join(path_li[-3:1])}'
         posData.relPath = f'{posData.relPath}{os.sep}{posData.filename}'
         try:
-            posData.img_data = [self.sampleImgData[idx]] # single frame data
+            posData.img_data = [imgData] # single frame data
         except Exception as e:
             traceback.print_exc()
             return
 
+        if self.imageViewer is not None:
+            self.imageViewer.close()
+        
         self.imageViewer = imageViewer(posData=posData)
+        self.imageViewer.channelIndex = idx
         if posData.SizeT > 1:
             self.imageViewer.framesScrollBar.setDisabled(True)
             self.imageViewer.framesScrollBar.setVisible(False)
             self.imageViewer.frameLabel.hide()
             self.imageViewer.t_label.hide()
         self.imageViewer.update_img()
+        self.imageViewer.sigClosed.connect(self.imageViewerClosed)
         self.imageViewer.show()
-
+    
+    def imageViewerClosed(self):
+        self.imageViewer = None
 
     def addRemoveChannels(self, value):
         currentSizeC = len(self.chNames_QLEs)
@@ -1931,21 +1978,6 @@ class QDialogMetadataXML(QDialog):
                 self.adjustSize()
 
     def ok_cb(self, event):
-        DimensionOrder = self.DimensionOrder_QLE.text()
-        m = re.findall('[TZCYXStzcyxs]', DimensionOrder)
-
-        if len(m) != len(DimensionOrder) or not m:
-            err_msg = (
-                f'"{DimensionOrder}" is not a valid order of dimensions.\n\n'
-                f'The letters available are {list("TZCYXS")} without spaces or punctuation.'
-                '(e.g. ZYX)'
-            )
-            msg = QMessageBox()
-            msg.critical(
-               self, 'Invalid order of dimensions', err_msg, msg.Ok
-            )
-            return
-
         areChNamesValid = self.checkChNames()
         if not areChNamesValid:
             err_msg = (
@@ -1971,7 +2003,7 @@ class QDialogMetadataXML(QDialog):
 
     def getValues(self):
         self.LensNA = self.LensNA_DSB.value()
-        self.DimensionOrder = self.DimensionOrder_QLE.text()
+        self.DimensionOrder = self.DimensionOrderCombo.currentText()
         self.SizeT = self.SizeT_SB.value()
         self.SizeZ = self.SizeZ_SB.value()
         self.SizeC = self.SizeC_SB.value()
@@ -2547,7 +2579,7 @@ class QDialogListbox(QDialog):
         self.mainLayout = mainLayout
 
         label = QLabel(text)
-        _font = QtGui.QFont()
+        _font = QFont()
         _font.setPixelSize(13)
         label.setFont(_font)
         # padding: top, left, bottom, right
@@ -3734,7 +3766,7 @@ class randomWalkerDialog(QDialog):
         seeHereLabel.setTextFormat(Qt.RichText)
         seeHereLabel.setTextInteractionFlags(Qt.TextBrowserInteraction)
         seeHereLabel.setOpenExternalLinks(True)
-        font = QtGui.QFont()
+        font = QFont()
         font.setPixelSize(13)
         seeHereLabel.setFont(font)
         seeHereLabel.setStyleSheet("padding:12px 0px 0px 0px;")
@@ -3870,7 +3902,7 @@ class FutureFramesAction_QDialog(QDialog):
         )
 
         txtLabel = QLabel(txt)
-        _font = QtGui.QFont()
+        _font = QFont()
         _font.setPixelSize(13)
         _font.setBold(True)
         txtLabel.setFont(_font)
@@ -3897,7 +3929,7 @@ class FutureFramesAction_QDialog(QDialog):
             )
 
         infotxtLabel = QLabel(infoTxt)
-        _font = QtGui.QFont()
+        _font = QFont()
         _font.setPixelSize(13)
         infotxtLabel.setFont(_font)
 
@@ -3910,7 +3942,7 @@ class FutureFramesAction_QDialog(QDialog):
         )
 
         noteTxtLabel = QLabel(noteTxt)
-        _font = QtGui.QFont()
+        _font = QFont()
         _font.setPixelSize(13)
         _font.setBold(True)
         noteTxtLabel.setFont(_font)
@@ -4523,6 +4555,7 @@ class postProcessSegmDialog(QBaseDialog):
 
 class imageViewer(QMainWindow):
     """Main Window."""
+    sigClosed = pyqtSignal()
 
     def __init__(
             self, parent=None, posData=None, button_toUncheck=None,
@@ -4554,10 +4587,10 @@ class imageViewer(QMainWindow):
         self.gui_createImgWidgets()
         self.gui_connectActions()
 
-        mainContainer = QtGui.QWidget()
+        mainContainer = QWidget()
         self.setCentralWidget(mainContainer)
 
-        mainLayout = QtGui.QGridLayout()
+        mainLayout = QGridLayout()
         mainLayout.addWidget(self.graphLayout, 0, 0, 1, 1)
         mainLayout.addLayout(self.img_Widglayout, 1, 0)
 
@@ -4678,7 +4711,7 @@ class imageViewer(QMainWindow):
             posData = self.parent.data[self.parent.pos_i]
         else:
             posData = self.posData
-        self.img_Widglayout = QtGui.QGridLayout()
+        self.img_Widglayout = QGridLayout()
 
         # Frames scrollbar
         self.framesScrollBar = QScrollBar(Qt.Horizontal)
@@ -4686,7 +4719,7 @@ class imageViewer(QMainWindow):
         self.framesScrollBar.setMinimum(1)
         self.framesScrollBar.setMaximum(posData.SizeT)
         t_label = QLabel('frame  ')
-        _font = QtGui.QFont()
+        _font = QFont()
         _font.setPixelSize(13)
         t_label.setFont(_font)
         self.img_Widglayout.addWidget(
@@ -4701,7 +4734,7 @@ class imageViewer(QMainWindow):
         # self.zSliceScrollBar.setFixedHeight(20)
         self.zSliceScrollBar.setMaximum(self.posData.SizeZ-1)
         _z_label = QLabel('z-slice  ')
-        _font = QtGui.QFont()
+        _font = QFont()
         _font.setPixelSize(13)
         _z_label.setFont(_font)
         self.z_label = _z_label
@@ -4835,6 +4868,7 @@ class imageViewer(QMainWindow):
     def closeEvent(self, event):
         if self.button_toUncheck is not None:
             self.button_toUncheck.setChecked(False)
+        self.sigClosed.emit()
 
     def show(self, left=None, top=None):
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
@@ -5427,7 +5461,7 @@ class askStopFrameSegm(QDialog):
         """
         )
         infoLabel = QLabel(infoTxt, self)
-        _font = QtGui.QFont()
+        _font = QFont()
         _font.setPixelSize(13)
         infoLabel.setFont(_font)
         infoLabel.setAlignment(Qt.AlignCenter)
@@ -5572,7 +5606,7 @@ class QLineEditDialog(QDialog):
 
         # Widgets
         msg = QLabel(msg)
-        _font = QtGui.QFont()
+        _font = QFont()
         _font.setPixelSize(13)
         msg.setFont(_font)
         msg.setAlignment(Qt.AlignCenter)
@@ -5743,7 +5777,7 @@ class editID_QWidget(QDialog):
 
         VBoxLayout = QVBoxLayout()
         msg = QLabel(f'Replace ID {clickedID} with:')
-        _font = QtGui.QFont()
+        _font = QFont()
         _font.setPixelSize(13)
         msg.setFont(_font)
         # padding: top, left, bottom, right
@@ -6195,10 +6229,10 @@ class manualSeparateGui(QMainWindow):
         self.updateImg()
         self.zoomToObj()
 
-        mainContainer = QtGui.QWidget()
+        mainContainer = QWidget()
         self.setCentralWidget(mainContainer)
 
-        mainLayout = QtGui.QGridLayout()
+        mainLayout = QGridLayout()
         mainLayout.addWidget(self.graphLayout, 0, 0, 1, 1)
         mainLayout.addLayout(self.img_Widglayout, 1, 0)
 
@@ -6318,7 +6352,7 @@ class manualSeparateGui(QMainWindow):
         self.ax.addItem(self.lineHoverPlotItem)
 
     def gui_createImgWidgets(self):
-        self.img_Widglayout = QtGui.QGridLayout()
+        self.img_Widglayout = QGridLayout()
         self.img_Widglayout.setContentsMargins(50, 0, 50, 0)
 
         alphaScrollBar_label = QLabel('Overlay alpha  ')
@@ -6709,7 +6743,7 @@ class pdDataFrameWidget(QMainWindow):
 
 
 
-        mainContainer = QtGui.QWidget()
+        mainContainer = QWidget()
         self.setCentralWidget(mainContainer)
 
         layout = QVBoxLayout()
@@ -6821,7 +6855,7 @@ class QDialogZsliceAbsent(QDialog):
 
         self.setLayout(mainLayout)
 
-        font = QtGui.QFont()
+        font = QFont()
         font.setPixelSize(13)
         self.setFont(font)
 
@@ -7016,10 +7050,10 @@ class QDialogPbar(QDialog):
 
         self.QPbar = QProgressBar(self)
         self.QPbar.setValue(0)
-        palette = QtGui.QPalette()
-        palette.setColor(QtGui.QPalette.Highlight, QtGui.QColor(207, 235, 155))
-        palette.setColor(QtGui.QPalette.Text, QtGui.QColor(0, 0, 0))
-        palette.setColor(QtGui.QPalette.HighlightedText, QtGui.QColor(0, 0, 0))
+        palette = QPalette()
+        palette.setColor(QPalette.Highlight, QColor(207, 235, 155))
+        palette.setColor(QPalette.Text, QColor(0, 0, 0))
+        palette.setColor(QPalette.HighlightedText, QColor(0, 0, 0))
         self.QPbar.setPalette(palette)
         pBarLayout.addWidget(self.QPbar, 0, 0)
         self.ETA_label = QLabel('NDh:NDm:NDs')
@@ -7027,10 +7061,10 @@ class QDialogPbar(QDialog):
 
         self.metricsQPbar = QProgressBar(self)
         self.metricsQPbar.setValue(0)
-        palette = QtGui.QPalette()
-        palette.setColor(QtGui.QPalette.Highlight, QtGui.QColor(207, 235, 155))
-        palette.setColor(QtGui.QPalette.Text, QtGui.QColor(0, 0, 0))
-        palette.setColor(QtGui.QPalette.HighlightedText, QtGui.QColor(0, 0, 0))
+        palette = QPalette()
+        palette.setColor(QPalette.Highlight, QColor(207, 235, 155))
+        palette.setColor(QPalette.Text, QColor(0, 0, 0))
+        palette.setColor(QPalette.HighlightedText, QColor(0, 0, 0))
         self.metricsQPbar.setPalette(palette)
         pBarLayout.addWidget(self.metricsQPbar, 1, 0)
 

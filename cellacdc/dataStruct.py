@@ -16,6 +16,7 @@ from tqdm import tqdm
 from natsort import natsorted
 from pprint import pprint
 from functools import wraps, partial
+from itertools import permutations
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QFileDialog,
@@ -31,7 +32,7 @@ from PyQt5 import QtGui
 # Here we use from cellacdc because this script is laucnhed in
 # a separate process that doesn't have a parent package
 from . import qrc_resources
-from . import apps, myutils, widgets, html_utils
+from . import apps, myutils, widgets, html_utils, printl
 
 if os.name == 'nt':
     try:
@@ -129,18 +130,7 @@ class bioFormatsWorker(QObject):
         else:
             SizeS = self.SizeS
 
-        try:
-            DimensionOrder = metadata.image().Pixels.DimensionOrder
-            if DimensionOrder is None:
-                raise
-        except Exception as e:
-            self.progress.emit(
-                '===================================================')
-            self.progress.emit(rawFilePath)
-            self.progress.emit('WARNING: DimensionOrder not found in metadata.')
-            self.progress.emit(
-                '===================================================')
-            DimensionOrder = ''
+        DimensionOrder = 'zct'
 
         try:
             SizeZ = int(metadata.image().Pixels.SizeZ)
@@ -319,20 +309,30 @@ class bioFormatsWorker(QObject):
             self.emWavelens = emWavelens
         else:
             self.mutex.lock()
-            sampleImgData = []
+            sampleImgData = None
             if self.rawDataStruct != 2:
+                sampleImgData = {}
                 self.progress.emit('Reading sample image data...')
-                for c in range(SizeC):
-                    imgData_z = []
-                    with bioformats.ImageReader(rawFilePath) as reader:
-                        for z in range(SizeZ):
-                            imgData = reader.read(
-                                c=c, z=z, t=0, rescale=False
-                            )
-                            imgData_z.append(imgData)
-                    imgData_z = np.array(imgData_z, dtype=imgData.dtype)
-                    imgData_z = np.squeeze(imgData_z)
-                    sampleImgData.append(imgData_z)
+                dimsIdx = {'t': 0}   
+                with bioformats.ImageReader(rawFilePath) as reader:
+                    for dimsOrd in permutations('zct', 3):
+                        allChannelsData = []
+                        idxs = self.buildIndexes(SizeC, SizeT, SizeZ, dimsOrd)
+                        for c in range(SizeC):
+                            imgData_z = []
+                            dimsIdx['c'] = c
+                            for z in range(SizeZ):
+                                dimsIdx['z'] = z
+                                idx = self.getIndex(idxs, dimsIdx, dimsOrd)
+                                imgData = reader.read(
+                                    c=c, z=z, t=0, rescale=False, index=idx
+                                )
+                                imgData_z.append(imgData)                
+                            imgData_z = np.array(imgData_z, dtype=imgData.dtype)
+                            imgData_z = np.squeeze(imgData_z)
+                            allChannelsData.append(imgData_z)
+                        sampleImgData[''.join(dimsOrd)] = allChannelsData
+            
             self.confirmMetadata.emit(
                 filename, LensNA, DimensionOrder, SizeT, SizeZ, SizeC, SizeS,
                 TimeIncrement, TimeIncrementUnit, PhysicalSizeX, PhysicalSizeY,
@@ -415,10 +415,27 @@ class bioFormatsWorker(QObject):
         else:
             filename = f'{filenameNOext}_s{s0p}_{appendTxt}{ext}'
         return filename
+    
+    def buildIndexes(self, SizeC, SizeT, SizeZ, DimensionOrder):
+        SizesCTZ = {'c': SizeC, 't': SizeT, 'z': SizeZ}
+        idxs = {}
+        k_key, i_key, j_key = DimensionOrder
+        idx = 0
 
+        for k in range(SizesCTZ[k_key]):
+            for i in range(SizesCTZ[i_key]):
+                for j in range(SizesCTZ[j_key]):
+                    idxs[(k,i,j)] = idx
+                    idx += 1
+        return idxs
+
+    def getIndex(self, idxs, dimsIdx, DimensionOrder):
+        dims = tuple([dimsIdx.get(v, 0) for v in DimensionOrder])
+        return idxs[dims]
+            
     def saveImgDataChannel(
             self, reader, series, images_path, filenameNOext, s0p, chName,
-            ch_idx
+            ch_idx, idxs
         ):
         if self.to_h5:
             filename = self.getFilename(
@@ -447,11 +464,16 @@ class bioFormatsWorker(QObject):
             imgData_ch = []
 
         filePath = os.path.join(images_path, filename)
+        dimsIdx = {'c': ch_idx} 
         for t in range(self.SizeT):
             imgData_z = []
+            dimsIdx = {'t': t}
             for z in range(self.SizeZ):
+                dimsIdx['z'] = z
+                idx = self.getIndex(idxs, dimsIdx, self.DimensionOrder)
                 imgData = reader.read(
-                    c=ch_idx, z=z, t=t, series=series, rescale=False
+                    c=ch_idx, z=z, t=t, series=series, rescale=False,
+                    index=idx
                 )
                 if self.to_h5:
                     imgData_ch[t, z] = imgData
@@ -516,7 +538,10 @@ class bioFormatsWorker(QObject):
 
         df.to_csv(metadata_csv_path)
 
-        if self.rawDataStruct != 2:
+        idxs = self.buildIndexes(
+            self.SizeC, self.SizeT, self.SizeZ, self.DimensionOrder
+        )
+        if self.rawDataStruct != 2:       
             with bioformats.ImageReader(rawFilePath) as reader:
                 iter = enumerate(zip(self.chNames, self.saveChannels))
                 for c, (chName, saveCh) in iter:
@@ -529,7 +554,7 @@ class bioFormatsWorker(QObject):
                     )
                     self.saveImgDataChannel(
                         reader, series, images_path, filenameNOext, s0p,
-                        chName, c
+                        chName, c, idxs
                     )
 
         elif self.rawDataStruct == 2:
@@ -557,7 +582,7 @@ class bioFormatsWorker(QObject):
                     imgData_ch = []
                     self.saveImgDataChannel(
                         reader, series, images_path, filenameNOext, s0p,
-                        chName, 0
+                        chName, 0, idxs
                     )
 
             if self.moveOtherFiles or self.copyOtherFiles:
@@ -573,10 +598,10 @@ class bioFormatsWorker(QObject):
                     if isPosFile and notRawFile:
                         rawFilePath.add(os.path.join(raw_src_path, f))
 
-                for cellacdc in rawFilePath:
+                for file in rawFilePath:
                     # Determine basename, posNum and chName to build
                     # filename as "basename_s01_chName.ext"
-                    _filename = os.path.basename(cellacdc)
+                    _filename = os.path.basename(file)
                     m = re.findall(fr'{basename}(\d+)_(.+)', _filename)
                     if not m or len(m[0])!=2:
                         dst = os.path.join(images_path, _filename)
@@ -585,9 +610,15 @@ class bioFormatsWorker(QObject):
                         _filename = f'{filenameNOext}_s{s0p}_{_chNameWithExt}'
                         dst = os.path.join(images_path, _filename)
                     if self.moveOtherFiles:
-                        shutil.move(cellacdc, dst)
+                        try:
+                            shutil.move(file, dst)
+                        except Exception as e:
+                            self.progress.emit(e)
                     elif self.copyOtherFiles:
-                        shutil.copy(cellacdc, dst)
+                        try:
+                            shutil.copy(file, dst)
+                        except Exception as e:
+                            self.progress.emit(e)
 
     @worker_exception_handler
     def run(self):
@@ -645,7 +676,10 @@ class bioFormatsWorker(QObject):
                 if not os.path.exists(raw_path):
                     os.mkdir(raw_path)
                 dst = os.path.join(raw_path, filename)
-                shutil.move(rawFilePath, dst)
+                try:
+                    shutil.move(rawFilePath, dst)
+                except PermissionError as e:
+                    self.progress.emit(e)
 
         if self.rawDataStruct == 2:
             filename = self.rawFilenames[0]
@@ -680,12 +714,17 @@ class bioFormatsWorker(QObject):
                     if not os.path.exists(raw_path):
                         os.mkdir(raw_path)
                     dst = os.path.join(raw_path, filename)
-                    shutil.move(rawFilePath, dst)
+                    try:
+                        shutil.move(rawFilePath, dst)
+                    except PermissionError as e:
+                        self.progress.emit(e)
 
         self.finished.emit()
         javabridge.kill_vm()
 
 class createDataStructWin(QMainWindow):
+    sigFinishedReadingSampleImgData = pyqtSignal(object)
+
     def __init__(
             self, parent=None, allowExit=False,
             buttonToRestore=None, mainWin=None,
@@ -1188,16 +1227,18 @@ class createDataStructWin(QMainWindow):
         self.logWin.appendPlainText(text)
 
     def askRawDataStruct(self):
+        infoText =  html_utils.paragraph(
+            'Select how you have your <b>raw microscopy files arranged</b>'
+        )
         win = apps.QDialogCombobox(
             'Raw data structure',
-            ['Single microscopy file with one or more positions',
-             'Multiple microscopy files, one for each position',
-             'Multiple microscopy files, one for each channel',
-             'NONE of the above'],
-             '<p style="font-size:11px">'
-             'Select how you have your <b>raw_microscopy_files arranged</b>'
-             '</p>',
-             CbLabel='', parent=self
+            [
+                'Single microscopy file with one or more positions',
+                'Multiple microscopy files, one for each position',
+                'Multiple microscopy files, one for each channel',
+                'NONE of the above'
+            ],
+            infoText, CbLabel='', parent=self
         )
         win.exec_()
         return win.selectedItemIdx, win.cancel

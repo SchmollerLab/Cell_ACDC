@@ -8,18 +8,12 @@ import pandas as pd
 import tkinter as tk
 import sys
 from tkinter import ttk
-from ast import literal_eval
-from skimage.color import label2rgb, gray2rgb
-from skimage.measure import regionprops
-from skimage import img_as_float
-from natsort import natsorted
-from pyqtgraph.Qt import QtGui
+
 from PyQt5.QtWidgets import (
     QApplication, QPushButton, QHBoxLayout, QLabel, QSizePolicy
 )
-from PyQt5.QtCore import (
-    Qt
-)
+from PyQt5.QtCore import Qt
+from PyQt5.QtGui import QFont
 
 from . import apps, myutils, printl
 
@@ -194,7 +188,7 @@ class select_channel_name:
 
     def QtPrompt(self, parent, channel_names, informativeText='',
                  CbLabel='Select channel name:  '):
-        font = QtGui.QFont()
+        font = QFont()
         font.setPixelSize(13)
         win = apps.QDialogCombobox(
             'Select channel name',

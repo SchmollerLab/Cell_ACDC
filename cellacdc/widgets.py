@@ -21,7 +21,8 @@ from PyQt5.QtCore import (
 )
 from PyQt5.QtGui import (
     QFont, QPalette, QColor, QPen, QPaintEvent, QBrush, QPainter,
-    QRegExpValidator, QIcon, QPixmap, QKeySequence,QLinearGradient 
+    QRegExpValidator, QIcon, QPixmap, QKeySequence, QLinearGradient,
+    QShowEvent, QMouseEvent
 )
 from PyQt5.QtWidgets import (
     QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
@@ -35,7 +36,6 @@ from PyQt5.QtWidgets import (
 )
 
 import pyqtgraph as pg
-from pyqtgraph import QtGui
 
 from . import myutils, apps, measurements, is_mac, is_win, html_utils
 from . import qrc_resources, printl
@@ -581,7 +581,7 @@ class ReorderableListView(QListView):
     def items(self):
         return self._model.nodes
     
-    def mouseReleaseEvent(self, e: QtGui.QMouseEvent) -> None:
+    def mouseReleaseEvent(self, e: QMouseEvent) -> None:
         super().mouseReleaseEvent(e)
         self._selectionModel.reset()
 
@@ -613,7 +613,7 @@ class filePathControl(QFrame):
     def path(self):
         return self.le.text()
     
-    def showEvent(self, a0: QtGui.QShowEvent) -> None:
+    def showEvent(self, a0: QShowEvent) -> None:
         self.le.setFixedHeight(self.browseButton.height())
         return super().showEvent(a0)
 
@@ -634,6 +634,20 @@ class QClickableLabel(QLabel):
     def mousePressEvent(self, event):
         self.clicked.emit(self)
 
+
+class QCenteredComboBox(QComboBox):
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+
+        self.setEditable(True)
+        self.lineEdit().setReadOnly(True)
+        self.lineEdit().setAlignment(Qt.AlignCenter)
+
+        self.currentIndexChanged.connect(self.centerItems)
+    
+    def centerItems(self, idx):
+        for i in range(self.count()):
+            self.setItemData(i, Qt.AlignCenter, Qt.TextAlignmentRole)
 
 class statusBarPermanentLabel(QWidget):
     def __init__(self, parent=None):

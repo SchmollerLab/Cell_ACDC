@@ -21,17 +21,16 @@ from PyQt5.QtCore import (
 )
 from PyQt5.QtGui import (
     QIcon, QKeySequence, QCursor, QTextBlockFormat,
-    QTextCursor
+    QTextCursor, QFont
 )
 from PyQt5.QtWidgets import (
-    QAction, QApplication, QLabel, QPushButton,
-    QMainWindow, QMenu, QToolBar, QGroupBox,
+    QAction, QApplication, QLabel, QPushButton, QWidget,
+    QMainWindow, QMenu, QToolBar, QGroupBox, QGridLayout,
     QScrollBar, QCheckBox, QToolButton, QSpinBox,
     QComboBox, QDial, QButtonGroup, QFileDialog,
-    QAbstractSlider, QMessageBox
+    QAbstractSlider, QMessageBox, QStyleFactory
 )
 
-from pyqtgraph.Qt import QtGui
 import pyqtgraph as pg
 
 # NOTE: Enable icons
@@ -121,10 +120,10 @@ class dataPrepWin(QMainWindow):
         # when dataprep is launched from the other modules
         self.onlySelectingZslice = False
 
-        mainContainer = QtGui.QWidget()
+        mainContainer = QWidget()
         self.setCentralWidget(mainContainer)
 
-        mainLayout = QtGui.QGridLayout()
+        mainLayout = QGridLayout()
         mainLayout.addWidget(self.graphLayout, 0, 0, 1, 1)
         mainLayout.addLayout(self.img_Widglayout, 1, 0)
 
@@ -319,9 +318,9 @@ class dataPrepWin(QMainWindow):
         self.img.mousePressEvent = self.gui_mousePressEventImg
 
     def gui_createImgWidgets(self):
-        self.img_Widglayout = QtGui.QGridLayout()
+        self.img_Widglayout = QGridLayout()
 
-        _font = QtGui.QFont()
+        _font = QFont()
         _font.setPixelSize(13)
 
         self.navigateScrollbar = QScrollBar(Qt.Horizontal)
@@ -2246,6 +2245,6 @@ if __name__ == "__main__":
     win = dataPrepWin()
     win.show()
     # Apply style
-    app.setStyle(QtGui.QStyleFactory.create('Fusion'))
+    app.setStyle(QStyleFactory.create('Fusion'))
     # Run the event loop
     sys.exit(app.exec_())
