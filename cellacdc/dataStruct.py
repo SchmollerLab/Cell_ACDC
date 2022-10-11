@@ -430,6 +430,31 @@ class bioFormatsWorker(QObject):
         return idxs
 
     def getIndex(self, idxs, dimsIdx, DimensionOrder):
+        """Get the index of the single 2D image given `dimsIdx`. 
+        
+        Note that `idxs` is generated in `buildIndexes` method.
+
+        Example:
+            Given a `DimensionOrder = 'tcz'`, and a 
+            `dimsIdx = {'t': 0, 'c': 1, 'z': 0}` the returned index is `3`.
+
+        Args:
+            idxs (dict): Dictionary where the keys are tuples of `(t, c, z)`, 
+                i.e., `t` is the index requested in the time dimension.
+                Values are the corresponding incremental indexes in the correct
+                order (see `DimensionOrder`)
+            dimsIdx (dict): Dictionary with three keys, 'z', 't', and 'c'. 
+                Values are the corresponding requested index.
+            DimensionOrder (str): String of three lower-case characters 
+                (no spaces, no punctuation) from a combination of 'z', 't', 
+                and 'c'. This value determines the order of dimensions in the 
+                Bio-Formats file. 
+
+        Returns:
+            int: incremental index requested.
+        
+
+        """
         dims = tuple([dimsIdx.get(v, 0) for v in DimensionOrder])
         return idxs[dims]
             
