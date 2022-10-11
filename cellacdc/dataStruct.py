@@ -492,7 +492,7 @@ class bioFormatsWorker(QObject):
         dimsIdx = {'c': ch_idx} 
         for t in range(self.SizeT):
             imgData_z = []
-            dimsIdx = {'t': t}
+            dimsIdx['t'] = t
             for z in range(self.SizeZ):
                 dimsIdx['z'] = z
                 idx = self.getIndex(idxs, dimsIdx, self.DimensionOrder)
@@ -712,8 +712,8 @@ class bioFormatsWorker(QObject):
                 abort = self.readMetadata(raw_src_path, filename)
                 if abort:
                     self.aborted = True
-                    self.finished.emit()
                     javabridge.kill_vm()
+                    self.finished.emit()
                     return
 
 
@@ -744,8 +744,9 @@ class bioFormatsWorker(QObject):
                     except PermissionError as e:
                         self.progress.emit(e)
 
-        self.finished.emit()
         javabridge.kill_vm()
+        self.finished.emit()
+        
 
 class createDataStructWin(QMainWindow):
     sigFinishedReadingSampleImgData = pyqtSignal(object)
@@ -1144,6 +1145,11 @@ class createDataStructWin(QMainWindow):
             self, 'Select the folder in which to save the images files',
             raw_src_path
         )
+        if not exp_dst_path:
+            self.close()
+            return
+
+        self.addToRecentPaths(exp_dst_path)
 
         self.log(
             'Starting a Java Virtual Machine...'

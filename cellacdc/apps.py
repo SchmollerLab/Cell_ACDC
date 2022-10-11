@@ -1857,13 +1857,8 @@ class QDialogMetadataXML(QDialog):
         if self.imageViewer is not None:
             self.imageViewer.close()
         
-        self.imageViewer = imageViewer(posData=posData)
+        self.imageViewer = imageViewer(posData=posData, isSigleFrame=True)
         self.imageViewer.channelIndex = idx
-        if posData.SizeT > 1:
-            self.imageViewer.framesScrollBar.setDisabled(True)
-            self.imageViewer.framesScrollBar.setVisible(False)
-            self.imageViewer.frameLabel.hide()
-            self.imageViewer.t_label.hide()
         self.imageViewer.update_img()
         self.imageViewer.sigClosed.connect(self.imageViewerClosed)
         self.imageViewer.show()
@@ -4560,12 +4555,14 @@ class imageViewer(QMainWindow):
     def __init__(
             self, parent=None, posData=None, button_toUncheck=None,
             spinBox=None, linkWindow=None, enableOverlay=False,
+            isSigleFrame=False
         ):
         self.button_toUncheck = button_toUncheck
         self.parent = parent
         self.posData = posData
         self.spinBox = spinBox
         self.linkWindow = linkWindow
+        self.isSigleFrame = isSigleFrame
         """Initializer."""
         super().__init__(parent)
 
@@ -4586,6 +4583,8 @@ class imageViewer(QMainWindow):
 
         self.gui_createImgWidgets()
         self.gui_connectActions()
+
+        self.gui_setSingleFrameMode(self.isSigleFrame)
 
         mainContainer = QWidget()
         self.setCentralWidget(mainContainer)
@@ -4617,6 +4616,10 @@ class imageViewer(QMainWindow):
         self.nextAction.setShortcut("right")
         self.jumpForwardAction.setShortcut("up")
         self.jumpBackwardAction.setShortcut("down")
+        self.nextAction.setVisible(False)
+        self.prevAction.setVisible(False)
+        self.jumpForwardAction.setVisible(False)
+        self.jumpBackwardAction.setVisible(False)
         if self.enableOverlay:
             self.overlayButton = widgets.rightClickToolButton(parent=self)
             self.overlayButton.setIcon(QIcon(":overlay.svg"))
@@ -4642,6 +4645,8 @@ class imageViewer(QMainWindow):
         editToolBar.addAction(self.jumpBackwardAction)
         editToolBar.addAction(self.jumpForwardAction)
 
+        self.editToolBar = editToolBar
+
         if self.enableOverlay:
             editToolBar.addWidget(self.overlayButton)
 
@@ -4661,6 +4666,20 @@ class imageViewer(QMainWindow):
         if self.enableOverlay:
             self.overlayButton.toggled.connect(self.update_img)
             self.overlayButton.sigRightClick.connect(self.showOverlayContextMenu)
+    
+    def gui_setSingleFrameMode(self, isSingleFrame: bool):
+        if not isSingleFrame:
+            return
+
+        self.framesScrollBar.setDisabled(True)
+        self.framesScrollBar.setVisible(False)
+        self.frameLabel.hide()
+        self.t_label.hide()
+        self.prevAction.triggered.disconnect()
+        self.nextAction.triggered.disconnect()
+        self.jumpForwardAction.triggered.disconnect()
+        self.jumpBackwardAction.triggered.disconnect()
+        self.editToolBar.setVisible(False)
 
     def showOverlayContextMenu(self, event):
         if not self.overlayButton.isChecked():
@@ -4747,7 +4766,7 @@ class imageViewer(QMainWindow):
             _z_label.setVisible(False)
 
         self.img_Widglayout.setContentsMargins(100, 0, 50, 0)
-        self.zSliceScrollBar.sliderMoved.connect(self.update_z_slice)
+        self.zSliceScrollBar.valueChanged.connect(self.update_z_slice)
 
     def framesScrollBarMoved(self, frame_n):
         self.frame_i = frame_n-1
