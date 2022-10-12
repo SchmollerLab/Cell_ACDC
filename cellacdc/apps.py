@@ -3889,61 +3889,49 @@ class FutureFramesAction_QDialog(QDialog):
         doNotShowLayout = QVBoxLayout()
         buttonsLayout = QVBoxLayout()
 
-        txt = (
+        txt = html_utils.paragraph(
             'You already visited/checked future frames '
-            f'{frame_i+1}-{last_tracked_i}.\n\n'
-            f'The requested "{change_txt}" change might result in\n'
-            'NON-correct segmentation/tracking for those frames.\n'
+            f'{frame_i+1}-{last_tracked_i+1}.<br><br>'
+            f'The requested <b>"{change_txt}"</b> change might result in<br>'
+            '<b>NON-correct segmentation/tracking</b> for those frames.<br>'
         )
 
         txtLabel = QLabel(txt)
-        _font = QFont()
-        _font.setPixelSize(13)
-        _font.setBold(True)
-        txtLabel.setFont(_font)
         txtLabel.setAlignment(Qt.AlignCenter)
-        # padding: top, left, bottom, right
-        txtLabel.setStyleSheet("padding:0px 0px 3px 0px;")
         txtLayout.addWidget(txtLabel, alignment=Qt.AlignCenter)
 
-        infoTxt = (
-           f'  Choose one of the following options:\n\n'
-           f'      1.  Apply the "{change_txt}" only to this frame and re-initialize\n'
-            '          the future frames to the segmentation file present\n'
-            '          on the hard drive.\n'
-            '      2.  Apply only to this frame and keep the future frames as they are.\n'
-            '      3.  Apply the change to ALL visited/checked future frames.\n'
-            # '      4.  Apply the change to a specific range of future frames.\n'
-
-        )
-
+        options = [
+            f'Apply the "{change_txt}" <b>only to current frame and re-initialize</b><br>'
+            'the future frames to the segmentation file present<br>'
+            'on the hard drive.',
+            'Apply <b>only to this frame and keep the future frames</b> as they are.',
+            'Apply the change to <b>ALL visited/checked future frames</b>.',
+            'Apply to <b>ALL future frames including unvisited ones</b>.'
+        ]
         if applyTrackingB:
-            infoTxt = (
-                f'{infoTxt}'
-                '4. Repeat ONLY tracking for all future frames (RECOMMENDED)'
-            )
+            options.append('Repeat ONLY tracking for all future frames (RECOMMENDED)')
+
+        infoTxt = html_utils.paragraph(
+           f'Choose <b>one of the following options:</b>'
+           f'{html_utils.to_list(options, ordered=True)}'
+        )
 
         infotxtLabel = QLabel(infoTxt)
-        _font = QFont()
-        _font.setPixelSize(13)
-        infotxtLabel.setFont(_font)
-
-        infotxtLabel.setStyleSheet("padding:0px 0px 3px 0px;")
         txtLayout.addWidget(infotxtLabel, alignment=Qt.AlignCenter)
 
-        noteTxt = (
-            'NOTE: Only changes applied to current frame can be undone.\n'
-            '      Changes applied to future frames CANNOT be UNDONE!\n'
+        noteLayout = QHBoxLayout()
+        noteTxt = html_utils.paragraph(
+            'Only changes applied to current frame can be undone.<br>'
+            'Changes applied to <b>future frames CANNOT be UNDONE</b><br>'
         )
-
+        noteLayout.addWidget(
+            QLabel(html_utils.paragraph('NOTE:')), alignment=Qt.AlignTop
+        )
         noteTxtLabel = QLabel(noteTxt)
-        _font = QFont()
-        _font.setPixelSize(13)
-        _font.setBold(True)
-        noteTxtLabel.setFont(_font)
-        # padding: top, left, bottom, right
-        noteTxtLabel.setStyleSheet("padding:0px 0px 3px 0px;")
-        txtLayout.addWidget(noteTxtLabel, alignment=Qt.AlignCenter)
+        noteLayout.addWidget(noteTxtLabel)
+        noteLayout.addStretch(1)
+        txtLayout.addSpacing(10)
+        txtLayout.addLayout(noteLayout)
 
         # Do not show this message again checkbox
         doNotShowCheckbox = QCheckBox(
@@ -3952,33 +3940,39 @@ class FutureFramesAction_QDialog(QDialog):
         doNotShowLayout.setContentsMargins(50, 0, 0, 10)
         self.doNotShowCheckbox = doNotShowCheckbox
 
-        apply_and_reinit_b = QPushButton(
-                    'Apply only to this frame and re-initialize future frames')
+        apply_and_reinit_b = widgets.reloadPushButton(
+            '1. Apply only to this frame and re-initialize future frames'
+        )
 
         self.apply_and_reinit_b = apply_and_reinit_b
         buttonsLayout.addWidget(apply_and_reinit_b)
 
-        apply_and_NOTreinit_b = QPushButton(
-                'Apply only to this frame and keep future frames as they are')
+        apply_and_NOTreinit_b = widgets.currentPushButton(
+            '2. Apply only to this frame and keep future frames as they are'
+        )
         self.apply_and_NOTreinit_b = apply_and_NOTreinit_b
         buttonsLayout.addWidget(apply_and_NOTreinit_b)
 
-        apply_to_all_b = QPushButton(
-                    'Apply to all future frames')
+        apply_to_all_visited_b = widgets.futurePushButton(
+            '3. Apply to all future VISITED frames'
+        )
+        self.apply_to_all_visited_b = apply_to_all_visited_b
+        buttonsLayout.addWidget(apply_to_all_visited_b)
+
+        apply_to_all_b = widgets.futurePushButton(
+            '4. Apply to ALL future frames (including unvisted)'
+        )
         self.apply_to_all_b = apply_to_all_b
         buttonsLayout.addWidget(apply_to_all_b)
 
         self.applyTrackingButton = None
         if applyTrackingB:
             applyTrackingButton = QPushButton(
-                        'Repeat ONLY tracking for all future frames')
+                '5. Repeat ONLY tracking for all future frames'
+            )
+            applyTrackingButton.setIcon(QIcon(':repeat-tracking.svg'))
             self.applyTrackingButton = applyTrackingButton
             buttonsLayout.addWidget(applyTrackingButton)
-
-        apply_to_range_b = QPushButton(
-                    'Apply only to a range of future frames')
-        self.apply_to_range_b = apply_to_range_b
-        # buttonsLayout.addWidget(apply_to_range_b)
 
         buttonsLayout.setContentsMargins(20, 0, 20, 0)
 
@@ -3993,18 +3987,19 @@ class FutureFramesAction_QDialog(QDialog):
         if applyTrackingB:
             ButtonsGroup.addButton(applyTrackingButton)
         ButtonsGroup.addButton(apply_to_all_b)
-        ButtonsGroup.addButton(apply_to_range_b)
         ButtonsGroup.addButton(self.OkRangeButton)
 
         mainLayout.addLayout(txtLayout)
         mainLayout.addLayout(doNotShowLayout)
         mainLayout.addLayout(buttonsLayout)
         mainLayout.addLayout(self.formLayout)
+        mainLayout.addStretch(1)
         self.mainLayout = mainLayout
         self.setLayout(mainLayout)
 
         # Connect events
         ButtonsGroup.buttonClicked.connect(self.buttonClicked)
+        self.ButtonsGroup = ButtonsGroup
 
         # self.setModal(True)
 
@@ -4012,35 +4007,21 @@ class FutureFramesAction_QDialog(QDialog):
         if button == self.apply_and_reinit_b:
             self.decision = 'apply_and_reinit'
             self.endFrame_i = None
-            self.close()
         elif button == self.apply_and_NOTreinit_b:
             self.decision = 'apply_and_NOTreinit'
             self.endFrame_i = None
-            self.close()
-        elif button == self.apply_to_all_b:
-            self.decision = 'apply_to_all'
+        elif button == self.apply_to_all_visited_b:
+            self.decision = 'apply_to_all_visited'
             self.endFrame_i = self.last_tracked_i
-            self.close()
         elif button == self.applyTrackingButton:
             self.decision = 'only_tracking'
             self.endFrame_i = self.last_tracked_i
-            self.close()
-        elif button == self.apply_to_range_b:
-            endFrame_LineEntry = QLineEdit()
-            self.formLayout.addRow('Apply until frame: ',
-                                   endFrame_LineEntry)
-            endFrame_LineEntry.setText(f'{self.last_tracked_i}')
-            endFrame_LineEntry.setAlignment(Qt.AlignCenter)
-            self.formLayout.setContentsMargins(100, 10, 100, 0)
-
-            self.mainLayout.addLayout(self.OkRangeLayout)
-            self.OkRangeLayout.setContentsMargins(150, 0, 150, 0)
-
-            self.endRangeFrame_i = int(endFrame_LineEntry.text())
+        elif button == self.apply_to_all_b:
+            self.decision = 'apply_to_all'
         elif button == self.OkRangeButton:
             self.decision = 'apply_to_range'
             self.endFrame_i = self.endRangeFrame_i
-            self.close()
+        self.close()
 
     def exec_(self):
         self.show(block=True)
@@ -4048,6 +4029,8 @@ class FutureFramesAction_QDialog(QDialog):
     def show(self, block=False):
         self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
         super().show()
+        for button in self.ButtonsGroup.buttons():
+            button.setMinimumHeight(int(button.height()*1.2))
         if block:
             self.loop = QEventLoop()
             self.loop.exec_()

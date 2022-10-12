@@ -9735,7 +9735,11 @@ class guiWin(QMainWindow):
                 if modID in futureIDs:
                     areFutureIDs_affected.append(True)
 
-        if i == posData.frame_i+1:
+        printl(f'Last tracked frame = {i}')
+        printl(f'Are there future frames to propagate = {i == posData.frame_i+1}')
+        printl(f'Are there IDs affected in the future = {areFutureIDs_affected}')
+        
+        if i == posData.frame_i:
             # No future frames to propagate the change to
             return False, False, None, doNotShow
 
@@ -9749,8 +9753,9 @@ class guiWin(QMainWindow):
             return UndoFutFrames, applyFutFrames, endFrame_i, doNotShow
         else:
             ffa = apps.FutureFramesAction_QDialog(
-                    posData.frame_i+1, i, modTxt, applyTrackingB=applyTrackingB,
-                    parent=self)
+                posData.frame_i+1, i, modTxt, applyTrackingB=applyTrackingB,
+                parent=self
+            )
             ffa.exec_()
             decision = ffa.decision
 
@@ -9761,13 +9766,14 @@ class guiWin(QMainWindow):
             doNotShowAgain = ffa.doNotShowCheckbox.isChecked()
 
             self.onlyTracking = False
+            self.includeUnvisited = False
             if decision == 'apply_and_reinit':
                 UndoFutFrames = True
                 applyFutFrames = False
             elif decision == 'apply_and_NOTreinit':
                 UndoFutFrames = False
                 applyFutFrames = False
-            elif decision == 'apply_to_all':
+            elif decision == 'apply_to_all_visited':
                 UndoFutFrames = False
                 applyFutFrames = True
             elif decision == 'apply_to_range':
@@ -9777,6 +9783,10 @@ class guiWin(QMainWindow):
                 UndoFutFrames = False
                 applyFutFrames = True
                 self.onlyTracking = True
+            elif decision == 'apply_to_all':
+                UndoFutFrames = False
+                applyFutFrames = True
+                self.includeUnvisited = True
         return UndoFutFrames, applyFutFrames, endFrame_i, doNotShowAgain
 
     def addCcaState(self, frame_i, cca_df, undoId):

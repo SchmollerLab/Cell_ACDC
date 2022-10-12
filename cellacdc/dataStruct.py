@@ -1558,8 +1558,6 @@ class createDataStructWin(QMainWindow):
             self.mainWin.raise_()
 
 
-
-
 if __name__ == "__main__":
     print('Launching data structure module...')
     # Handle high resolution displays:
