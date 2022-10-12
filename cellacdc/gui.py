@@ -3930,10 +3930,9 @@ class guiWin(QMainWindow):
             # Ask to propagate change to all future visited frames
             (UndoFutFrames, applyFutFrames, endFrame_i,
             doNotShowAgain) = self.propagateChange(
-                                    delID, 'Delete ID',
-                                    posData.doNotShowAgain_DelID,
-                                    posData.UndoFutFrames_DelID,
-                                    posData.applyFutFrames_DelID)
+                delID, 'Delete ID', posData.doNotShowAgain_DelID,
+                posData.UndoFutFrames_DelID, posData.applyFutFrames_DelID
+            )
 
             if UndoFutFrames is None:
                 return
@@ -3948,20 +3947,26 @@ class guiWin(QMainWindow):
             if applyFutFrames:
                 # Store current data before going to future frames
                 self.store_data()
-                for i in range(posData.frame_i+1, endFrame_i+1):
+                for i in range(posData.frame_i+1, posData.SizeT):
                     lab = posData.allData_li[i]['labels']
-                    if lab is None:
+                    if lab is None and not self.includeUnvisited:
                         self.enqAutosave()
                         break
+                    
+                    if lab is not None:
+                        # Visited frame
+                        lab[lab==delID] = 0
 
-                    lab[lab==delID] = 0
-
-                    # Store change
-                    posData.allData_li[i]['labels'] = lab.copy()
-                    # Get the rest of the stored metadata based on the new lab
-                    posData.frame_i = i
-                    self.get_data()
-                    self.store_data(autosave=i==endFrame_i)
+                        # Store change
+                        posData.allData_li[i]['labels'] = lab.copy()
+                        # Get the rest of the stored metadata based on the new lab
+                        posData.frame_i = i
+                        self.get_data()
+                        self.store_data(autosave=False)
+                    elif self.includeUnvisited:
+                        # Unvisited frame (self.includeUnvisited = True)
+                        lab = posData.segm_data[i]
+                        lab[lab==delID] = 0
 
             # Back to current frame
             if applyFutFrames:
@@ -4331,22 +4336,40 @@ class guiWin(QMainWindow):
                 if endFrame_i is None:
                     self.app.restoreOverrideCursor()
                     return
-                for i in range(posData.frame_i+1, endFrame_i+1):
-                    posData.frame_i = i
-                    self.get_data()
-                    if self.onlyTracking:
-                        self.tracking(enforce=True)
-                    else:
+                for i in range(posData.frame_i+1, posData.SizeT):
+                    lab = posData.allData_li[i]['labels']
+                    if lab is None and not self.includeUnvisited:
+                        self.enqAutosave()
+                        break
+
+                    if lab is not None:
+                        # Visited frame
+                        posData.frame_i = i
+                        self.get_data()
+                        if self.onlyTracking:
+                            self.tracking(enforce=True)
+                        else:
+                            for old_ID, new_ID in editID.how:
+                                if new_ID in posData.lab:
+                                    tempID = posData.lab.max() + 1
+                                    posData.lab[posData.lab == old_ID] = tempID
+                                    posData.lab[posData.lab == new_ID] = old_ID
+                                    posData.lab[posData.lab == tempID] = new_ID
+                                else:
+                                    posData.lab[posData.lab == old_ID] = new_ID
+                            self.update_rp(draw=False)
+                        self.store_data(autosave=i==endFrame_i)
+                    elif self.includeUnvisited:
+                        # Unvisited frame (self.includeUnvisited = True)
+                        lab = posData.segm_data[i]
                         for old_ID, new_ID in editID.how:
-                            if new_ID in prev_IDs:
-                                tempID = posData.lab.max() + 1
-                                posData.lab[posData.lab == old_ID] = tempID
-                                posData.lab[posData.lab == new_ID] = old_ID
-                                posData.lab[posData.lab == tempID] = new_ID
+                            if new_ID in lab:
+                                tempID = lab.max() + 1
+                                lab[lab == old_ID] = tempID
+                                lab[lab == new_ID] = old_ID
+                                lab[lab == tempID] = new_ID
                             else:
-                                posData.lab[posData.lab == old_ID] = new_ID
-                        self.update_rp(draw=False)
-                    self.store_data(autosave=i==endFrame_i)
+                                lab[lab == old_ID] = new_ID
 
                 # Back to current frame
                 posData.frame_i = self.current_frame_i
@@ -4405,10 +4428,11 @@ class guiWin(QMainWindow):
             # Ask to propagate change to all future visited frames
             (UndoFutFrames, applyFutFrames, endFrame_i,
             doNotShowAgain) = self.propagateChange(
-                                    ID, 'Exclude cell from analysis',
-                                    posData.doNotShowAgain_BinID,
-                                    posData.UndoFutFrames_BinID,
-                                    posData.applyFutFrames_BinID)
+                ID, 'Exclude cell from analysis',
+                posData.doNotShowAgain_BinID,
+                posData.UndoFutFrames_BinID,
+                posData.applyFutFrames_BinID
+            )
 
             if UndoFutFrames is None:
                 return
@@ -4481,10 +4505,11 @@ class guiWin(QMainWindow):
             # Ask to propagate change to all future visited frames
             (UndoFutFrames, applyFutFrames, endFrame_i,
             doNotShowAgain) = self.propagateChange(
-                                    ID, 'Annotate cell as dead',
-                                    posData.doNotShowAgain_RipID,
-                                    posData.UndoFutFrames_RipID,
-                                    posData.applyFutFrames_RipID)
+                ID, 'Annotate cell as dead',
+                posData.doNotShowAgain_RipID,
+                posData.UndoFutFrames_RipID,
+                posData.applyFutFrames_RipID
+            )
 
             if UndoFutFrames is None:
                 return
@@ -9734,10 +9759,6 @@ class guiWin(QMainWindow):
                 futureIDs = np.unique(posData.allData_li[i]['labels'])
                 if modID in futureIDs:
                     areFutureIDs_affected.append(True)
-
-        printl(f'Last tracked frame = {i}')
-        printl(f'Are there future frames to propagate = {i == posData.frame_i+1}')
-        printl(f'Are there IDs affected in the future = {areFutureIDs_affected}')
         
         if i == posData.frame_i:
             # No future frames to propagate the change to
@@ -9752,9 +9773,10 @@ class guiWin(QMainWindow):
             endFrame_i = i
             return UndoFutFrames, applyFutFrames, endFrame_i, doNotShow
         else:
+            addApplyAllButton = modTxt == 'Delete ID' or modTxt == 'Edit ID'
             ffa = apps.FutureFramesAction_QDialog(
                 posData.frame_i+1, i, modTxt, applyTrackingB=applyTrackingB,
-                parent=self
+                parent=self, addApplyAllButton=addApplyAllButton
             )
             ffa.exec_()
             decision = ffa.decision
@@ -9774,9 +9796,6 @@ class guiWin(QMainWindow):
                 UndoFutFrames = False
                 applyFutFrames = False
             elif decision == 'apply_to_all_visited':
-                UndoFutFrames = False
-                applyFutFrames = True
-            elif decision == 'apply_to_range':
                 UndoFutFrames = False
                 applyFutFrames = True
             elif decision == 'only_tracking':

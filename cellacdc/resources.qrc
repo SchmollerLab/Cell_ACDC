@@ -32,6 +32,7 @@
     <file alias="arrow-up.svg">resources/icons/arrow-up.svg</file>
     <file alias="arrow_current.svg">resources/icons/arrow_current.svg</file>
     <file alias="arrow_future.svg">resources/icons/arrow_future.svg</file>
+    <file alias="arrow_future_all.svg">resources/icons/arrow_future_all.svg</file>
     <file alias="arrow-down.svg">resources/icons/arrow-down.svg</file>
     <file alias="showDown.svg">resources/icons/showDown.svg</file>
     <file alias="terminal_up.svg">resources/icons/terminal_up.svg</file>

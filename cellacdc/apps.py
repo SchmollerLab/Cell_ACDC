@@ -3877,8 +3877,11 @@ class randomWalkerDialog(QDialog):
         self.mainWindow.updateALLimg()
 
 class FutureFramesAction_QDialog(QDialog):
-    def __init__(self, frame_i, last_tracked_i, change_txt,
-                 applyTrackingB=False, parent=None):
+    def __init__(
+            self, frame_i, last_tracked_i, change_txt,
+            applyTrackingB=False, parent=None, 
+            addApplyAllButton=False
+        ):
         self.decision = None
         self.last_tracked_i = last_tracked_i
         super().__init__(parent)
@@ -3905,9 +3908,10 @@ class FutureFramesAction_QDialog(QDialog):
             'the future frames to the segmentation file present<br>'
             'on the hard drive.',
             'Apply <b>only to this frame and keep the future frames</b> as they are.',
-            'Apply the change to <b>ALL visited/checked future frames</b>.',
-            'Apply to <b>ALL future frames including unvisited ones</b>.'
+            'Apply the change to <b>ALL visited/checked future frames</b>.'
         ]
+        if addApplyAllButton:
+            options.append('Apply to <b>ALL future frames including unvisited ones</b>.')
         if applyTrackingB:
             options.append('Repeat ONLY tracking for all future frames (RECOMMENDED)')
 
@@ -3941,34 +3945,38 @@ class FutureFramesAction_QDialog(QDialog):
         self.doNotShowCheckbox = doNotShowCheckbox
 
         apply_and_reinit_b = widgets.reloadPushButton(
-            '1. Apply only to this frame and re-initialize future frames'
+            ' 1. Apply only to this frame and re-initialize future frames'
         )
 
         self.apply_and_reinit_b = apply_and_reinit_b
         buttonsLayout.addWidget(apply_and_reinit_b)
 
         apply_and_NOTreinit_b = widgets.currentPushButton(
-            '2. Apply only to this frame and keep future frames as they are'
+            ' 2. Apply only to this frame and keep future frames as they are'
         )
         self.apply_and_NOTreinit_b = apply_and_NOTreinit_b
         buttonsLayout.addWidget(apply_and_NOTreinit_b)
 
         apply_to_all_visited_b = widgets.futurePushButton(
-            '3. Apply to all future VISITED frames'
+            ' 3. Apply to all future VISITED frames'
         )
         self.apply_to_all_visited_b = apply_to_all_visited_b
         buttonsLayout.addWidget(apply_to_all_visited_b)
 
-        apply_to_all_b = widgets.futurePushButton(
-            '4. Apply to ALL future frames (including unvisted)'
-        )
-        self.apply_to_all_b = apply_to_all_b
-        buttonsLayout.addWidget(apply_to_all_b)
+        
+        if addApplyAllButton:
+            apply_to_all_b = QPushButton(
+                ' 4. Apply to ALL future frames (including unvisted)'
+            )
+            apply_to_all_b.setIcon(QIcon(':arrow_future_all.svg'))
+            self.apply_to_all_b = apply_to_all_b
+            buttonsLayout.addWidget(apply_to_all_b)
 
         self.applyTrackingButton = None
         if applyTrackingB:
+            n = '5' if addApplyAllButton else '4'
             applyTrackingButton = QPushButton(
-                '5. Repeat ONLY tracking for all future frames'
+                f' {n}. Repeat ONLY tracking for all future frames'
             )
             applyTrackingButton.setIcon(QIcon(':repeat-tracking.svg'))
             self.applyTrackingButton = applyTrackingButton
@@ -3977,18 +3985,16 @@ class FutureFramesAction_QDialog(QDialog):
         buttonsLayout.setContentsMargins(20, 0, 20, 0)
 
         self.formLayout = QFormLayout()
-        self.OkRangeLayout = QVBoxLayout()
-        self.OkRangeButton = QPushButton('Ok')
-        self.OkRangeLayout.addWidget(self.OkRangeButton)
 
         ButtonsGroup = QButtonGroup(self)
         ButtonsGroup.addButton(apply_and_reinit_b)
         ButtonsGroup.addButton(apply_and_NOTreinit_b)
+        ButtonsGroup.addButton(apply_to_all_visited_b)
+        if addApplyAllButton:
+            ButtonsGroup.addButton(apply_to_all_b)
         if applyTrackingB:
             ButtonsGroup.addButton(applyTrackingButton)
-        ButtonsGroup.addButton(apply_to_all_b)
-        ButtonsGroup.addButton(self.OkRangeButton)
-
+        
         mainLayout.addLayout(txtLayout)
         mainLayout.addLayout(doNotShowLayout)
         mainLayout.addLayout(buttonsLayout)
@@ -4018,9 +4024,7 @@ class FutureFramesAction_QDialog(QDialog):
             self.endFrame_i = self.last_tracked_i
         elif button == self.apply_to_all_b:
             self.decision = 'apply_to_all'
-        elif button == self.OkRangeButton:
-            self.decision = 'apply_to_range'
-            self.endFrame_i = self.endRangeFrame_i
+            self.endFrame_i = self.last_tracked_i
         self.close()
 
     def exec_(self):
@@ -4031,6 +4035,8 @@ class FutureFramesAction_QDialog(QDialog):
         super().show()
         for button in self.ButtonsGroup.buttons():
             button.setMinimumHeight(int(button.height()*1.2))
+        iconHeight = self.apply_to_all_b.iconSize().height()
+        self.apply_to_all_b.setIconSize(QSize(iconHeight*2, iconHeight))
         if block:
             self.loop = QEventLoop()
             self.loop.exec_()
