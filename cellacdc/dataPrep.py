@@ -157,16 +157,18 @@ class dataPrepWin(QMainWindow):
                                         "Previous frame", self)
         self.nextAction = QAction(QIcon(":arrow-right.svg"),
                                         "Next Frame", self)
-        self.jumpForwardAction = QAction(QIcon(":arrow-up.svg"),
-                                        "Jump to 10 frames ahead", self)
-        self.jumpBackwardAction = QAction(QIcon(":arrow-down.svg"),
-                                        "Jump to 10 frames back", self)
+        # self.jumpForwardAction = QAction(QIcon(":arrow-up.svg"),
+        #                                 "Jump to 10 frames ahead", self)
+        # self.jumpBackwardAction = QAction(QIcon(":arrow-down.svg"),
+        #                                 "Jump to 10 frames back", self)
         self.prevAction.setShortcut("left")
         self.openAction.setShortcut("Ctrl+O")
         self.nextAction.setShortcut("right")
-        self.jumpForwardAction.setShortcut("up")
-        self.jumpBackwardAction.setShortcut("down")
+        # self.jumpForwardAction.setShortcut("up")
+        # self.jumpBackwardAction.setShortcut("down")
         self.openAction.setShortcut("Ctrl+O")
+        self.prevAction.setVisible(False)
+        self.nextAction.setVisible(False)
 
         toolTip = "Add ROI where to calculate background intensity"
         self.addBkrgRoiActon = QAction(QIcon(":bkgrRoi.svg"), toolTip, self)
@@ -256,8 +258,8 @@ class dataPrepWin(QMainWindow):
         self.prevAction.triggered.connect(self.prev_cb)
         self.nextAction.triggered.connect(self.next_cb)
         self.showInExplorerAction.triggered.connect(self.showInExplorer)
-        self.jumpForwardAction.triggered.connect(self.skip10ahead_cb)
-        self.jumpBackwardAction.triggered.connect(self.skip10back_cb)
+        # self.jumpForwardAction.triggered.connect(self.skip10ahead_cb)
+        # self.jumpBackwardAction.triggered.connect(self.skip10back_cb)
         self.addBkrgRoiActon.triggered.connect(self.addDefaultBkgrROI)
         self.cropAction.triggered.connect(self.crop_cb)
         self.cropZaction.toggled.connect(self.openCropZtool)

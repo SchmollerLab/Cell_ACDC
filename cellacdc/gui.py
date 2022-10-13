@@ -585,7 +585,8 @@ class saveDataWorker(QObject):
                     bkgrData_q05s.append(np.quantile(bkgrVals_2D, q=0.05))
 
             # Iterate cells
-            for i, obj in enumerate(rp):
+            print('Iterating objects...')
+            for i, obj in enumerate(tqdm(rp, leave=False)):
                 if self.mainWin.isSegm3D:
                     obj3Dslice = obj.slice
                     obj3Dimage = obj.image
@@ -9760,7 +9761,7 @@ class guiWin(QMainWindow):
                 if modID in futureIDs:
                     areFutureIDs_affected.append(True)
         
-        if i == posData.frame_i:
+        if i == posData.frame_i and not self.includeUnvisited:
             # No future frames to propagate the change to
             return False, False, None, doNotShow
 
@@ -12239,6 +12240,7 @@ class guiWin(QMainWindow):
         self.isShiftDown = False
         self.autoContourHoverON = False
         self.navigateScrollBarStartedMoving = True
+        self.includeUnvisited = False
 
         self.ax1_viewRange = None
 
