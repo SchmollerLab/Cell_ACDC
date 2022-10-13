@@ -423,6 +423,8 @@ class bioFormatsWorker(QObject):
             trim_ = chName.endswith('_')
 
     def getFilename(self, filenameNOext, s0p, appendTxt, series, ext):
+        # Do not allow dots in the filename since it breaks stuff here and there
+        filenameNOext = filenameNOext.replace('.', '_')
         if self.addImageName:
             try:
                 ImageName = self.metadata.image(index=series).Name

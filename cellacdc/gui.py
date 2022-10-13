@@ -8252,9 +8252,11 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         if channelName == self.user_ch_name:
             imgData = posData.img_data[posData.frame_i]
+            isLayer0 = True
         else:
             _, filename = self.getPathFromChName(channelName, posData)
             imgData = posData.ol_data_dict[filename][posData.frame_i]
+            isLayer0 = False
         filteredData = imgData.copy()
         storeFiltered = False
         for filterDict in self.filtersWins.values():
@@ -8268,7 +8270,7 @@ class guiWin(QMainWindow):
             self.filteredData[channelName] = filteredData
 
         if posData.SizeZ > 1:
-            img = self.get_2Dimg_from_3D(filteredData)
+            img = self.get_2Dimg_from_3D(filteredData, isLayer0=isLayer0)
         else:
             img = filteredData
         
@@ -9473,8 +9475,6 @@ class guiWin(QMainWindow):
         if self.brushButton.isChecked():
             try:
                 n = int(ev.text())
-                printl(n)
-                printl(self.editIDcheckbox.isChecked())
                 if self.editIDcheckbox.isChecked():
                     self.editIDcheckbox.setChecked(False)
                 if self.typingEditID:
@@ -9482,7 +9482,6 @@ class guiWin(QMainWindow):
                 else:
                     ID = n
                     self.typingEditID = True
-                printl(ID)
                 self.editIDspinbox.setValue(ID)
             except Exception as e:
                 # printl(traceback.format_exc())
@@ -14911,11 +14910,21 @@ class guiWin(QMainWindow):
         else:
             return posData.ol_data_dict.get(filename)
 
-    def get_2Dimg_from_3D(self, imgData):
+    def get_2Dimg_from_3D(self, imgData, isLayer0=True):
         posData = self.data[self.pos_i]
         idx = (posData.filename, posData.frame_i)
-        z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
-        zProjHow = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
+        zProjHow_L0 = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
+        if isLayer0:
+            z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
+            zProjHow = zProjHow_L0
+        else:
+            z = self.zSliceOverlay_SB.sliderPosition()
+            zProjHow_L1 = self.zProjOverlay_CB.currentText()
+            if zProjHow_L1 == 'same as above': 
+                zProjHow = zProjHow_L0
+            else:
+                zProjHow = zProjHow_L1
+        
         if zProjHow == 'single z-slice':
             img = imgData[z].copy()
         elif zProjHow == 'max z-projection':

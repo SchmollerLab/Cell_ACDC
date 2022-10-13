@@ -1868,7 +1868,7 @@ class QDialogMetadataXML(QDialog):
         imgData = self.sampleImgData[dimsOrder][idx]
         posData = myutils.utilClass()
         posData.frame_i = 0
-        sampleSizeT = 4 if self.SizeT_SB.value() > 1 else 1
+        sampleSizeT = 4 if self.SizeT_SB.value() >= 4 else self.SizeT_SB.value()
         posData.SizeT = sampleSizeT
         posData.SizeZ = self.SizeZ_SB.value()
         posData.filename = f'{self.rawFilename}_C={idx}'

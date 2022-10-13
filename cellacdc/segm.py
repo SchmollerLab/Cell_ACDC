@@ -823,8 +823,8 @@ class segmWin(QMainWindow):
             'Do you want to segment only a rectangular '
             '<b>region-of-interest (ROI)</b>?<br><br>'
             'NOTE: If a ROI is already present from the data prep step, Cell-ACDC '
-            'will use it.<br?'
-            'If you want to modify it, abort the process now and repeat '
+            'will use it.<br>'
+            'If you want to modify it, abort the process now and repeat the '
             'data prep step.'
         )
         _, yesButton, noButton = msg.question(self, 'ROI?', txt,
@@ -906,7 +906,7 @@ class segmWin(QMainWindow):
                 """)
                 msg.warning(
                     self, '3D z-stacks info missing', txt, 
-                    buttonsTexts=('Cancel, Ok')
+                    buttonsTexts=('Cancel', 'Ok')
                 )
                 if msg.cancel:
                     abort = self.doAbort()
@@ -985,11 +985,13 @@ class segmWin(QMainWindow):
 
             # Ask whether to track the frames
             trackers = myutils.get_list_of_trackers()
+            txt = html_utils.paragraph('''
+                Do you want to track the objects?<br><br>
+                If yes, <b>select the tracker</b> to use<br><br>
+                If you are unsure, choose YeaZ
+            ''')
             win = apps.QDialogListbox(
-                'Track objects?',
-                'Do you want to track the objects?\n\n'
-                'If yes, <b>select the tracker</b> to use\n\n'
-                'If you are unsure, choose YeaZ',
+                'Track objects?', txt,
                 trackers, additionalButtons=['Do not track'],
                 multiSelection=False,
                 parent=self
