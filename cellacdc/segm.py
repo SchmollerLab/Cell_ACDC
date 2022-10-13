@@ -177,7 +177,7 @@ class segmWorker(QRunnable):
                         img_data[i] = np.median(img, axis=0)
                 if isROIactive:
                     Y, X = img_data.shape[-2:]
-                    img_data = img_data[:, :, y0:y1, x0:x1]
+                    img_data = img_data[:, y0:y1, x0:x1]
                     pad_info = ((0, 0), (0, 0), (y0, Y-y1), (x0, X-x1))
             elif posData.SizeZ > 1 and self.isSegm3D:
                 # 3D segmentation on 3D data over time
@@ -815,24 +815,28 @@ class segmWin(QMainWindow):
         }
         posData.saveSegmHyperparams(self.segment2D_kwargs, post_process_params)
 
-        if posData.dataPrep_ROIcoords is None:
-            # Ask ROI
-            msg = QMessageBox()
-            msg.setFont(font)
-            answer = msg.question(self, 'ROI?',
-                'Do you want to choose to segment only '
-                'a rectangular region-of-interest (ROI)?',
-                msg.Yes | msg.No | msg.Cancel
-            )
-            if answer == msg.Yes:
-                selectROI = True
-            elif answer == msg.No:
-                selectROI = False
-            else:
-                abort = self.doAbort()
-                if abort:
-                    self.close()
-                    return
+        # Ask ROI
+        selectROI = False
+        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        txt = html_utils.paragraph(
+            'Do you want to segment only a rectangular '
+            '<b>region-of-interest (ROI)</b>?'
+        )
+        _, yesButton, noButton = msg.question(self, 'ROI?', txt,
+            buttonsTexts = ('Cancel','Yes','No')
+        )
+        if msg.cancel:
+            abort = self.doAbort()
+            if abort:
+                self.close()
+                return
+
+        if msg.clickedButton == yesButton:
+            # User requested ROI but it was not present --> ask later
+            selectROI = posData.dataPrep_ROIcoords is None
+        else:
+            # User did not requested ROI --> discard existing oes
+            posData.dataPrep_ROIcoords = None
 
         # Check if we should launch dataPrep:
         #   1. 2D segmentation on z-stack data that was never visualized
@@ -885,10 +889,7 @@ class segmWin(QMainWindow):
                     f'_segmInfo.csv file not found. Launching dataPrep.py...'
                 )
                 msg = widgets.myMessageBox()
-                msg.setWindowTitle('3D z-stacks info missing')
-                msg.setIcon(iconName='SP_MessageBoxWarning')
-                txt = (f"""
-                <p style="font-size:13px">
+                txt = html_utils.paragraph(f"""
                     You loaded 3D z-stacks, but you <b>never selected which
                     z-slice or projection method to use for segmentation</b>
                     (Cell-ACDC cannot segment 3D z-stacks,
@@ -896,13 +897,12 @@ class segmWin(QMainWindow):
                     I opened a window where you can visualize
                     your z-stacks and <b>select an appropriate z-slice
                     or projection for each Position or frame</b>.
-                </p>
                 """)
-                msg.addText(txt)
-                msg.addButton('Ok')
-                cancel = msg.addButton(' Cancel ')
-                msg.exec_()
-                if msg.clickedButton == cancel:
+                msg.warning(
+                    self, '3D z-stacks info missing', txt, 
+                    buttonsTexts=('Cancel, Ok')
+                )
+                if msg.cancel:
                     abort = self.doAbort()
                     if abort:
                         self.close()

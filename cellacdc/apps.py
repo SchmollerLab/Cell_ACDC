@@ -4075,8 +4075,9 @@ class FutureFramesAction_QDialog(QDialog):
         super().show()
         for button in self.ButtonsGroup.buttons():
             button.setMinimumHeight(int(button.height()*1.2))
-        iconHeight = self.apply_to_all_b.iconSize().height()
-        self.apply_to_all_b.setIconSize(QSize(iconHeight*2, iconHeight))
+        if hasattr(self, 'apply_to_all_b'):
+            iconHeight = self.apply_to_all_b.iconSize().height()
+            self.apply_to_all_b.setIconSize(QSize(iconHeight*2, iconHeight))
         if block:
             self.loop = QEventLoop()
             self.loop.exec_()
