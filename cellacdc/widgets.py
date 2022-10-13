@@ -596,6 +596,80 @@ class ReorderableListView(QListView):
         self._selectionModel.reset()
 
 
+class ExpandableListBox(QComboBox):
+    def __init__(self, parent=None, centered=True) -> None:
+        super().__init__(parent)
+
+        self.setEditable(True)
+        self.lineEdit().setReadOnly(True)
+
+        infoTxt = html_utils.paragraph(
+            'Select <b>Positions to save</b><br><br>'
+            '<code>Ctrl+Click</code> <i>to select multiple items</i><br>'
+            '<code>Shift+Click</code> <i>to select a range of items</i><br>',
+            center=True
+        )
+
+        self.listW = apps.QDialogListbox(
+            'Select Positions to save', infoTxt,
+            [], multiSelection=True, parent=self
+        )
+
+        self.listW.listBox.itemClicked.connect(self.listItemClicked)
+        self.listW.sigSelectionConfirmed.connect(self.updateCombobox)
+
+        self.centered = centered 
+
+    def listItemClicked(self, item):
+        if item.text().find('All') == -1:
+            return
+        
+        for i in range(self.listW.listBox.count()):
+            _item = self.listW.listBox.item(i)
+            _item.setSelected(True)
+
+    def clear(self) -> None:
+        self.listW.listBox.clear()
+        return super().clear()
+    
+    def setItems(self, items):
+        self.clear()
+        self.addItems(items)
+    
+    def addItems(self, items):
+        super().addItems(items)
+        self.listW.listBox.addItems(items)
+        self.listW.listBox.setCurrentRow(self.currentIndex())
+        self.listItemClicked(self.listW.listBox.currentItem())
+        if self.centered:
+            self.centerItems()
+    
+    def updateCombobox(self, selectedItemsText):
+        isAllItem = [
+            i for i, t in enumerate(selectedItemsText) if t.find('All') != -1
+        ]
+        if len(selectedItemsText) == 1:
+            self.setCurrentText(selectedItemsText[0])
+        elif isAllItem:
+            idx = isAllItem[0]
+            self.setCurrentText(selectedItemsText[idx])
+        else:
+            super().clear()
+            super().addItems(['Custom selection'])
+    
+    def centerItems(self, idx=None):
+        self.lineEdit().setAlignment(Qt.AlignCenter)
+    
+    def selectedItems(self):
+        return self.listW.listBox.selectedItems()
+    
+    def selectedItemsText(self):
+        return [item.text() for item in self.selectedItems()]
+    
+    def showPopup(self) -> None:
+        self.listW.show()
+
+
 class filePathControl(QFrame):
     def __init__(self, parent=None):
         super().__init__(parent)

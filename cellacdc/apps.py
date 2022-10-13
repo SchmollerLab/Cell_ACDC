@@ -1323,10 +1323,22 @@ class QDialogMetadataXML(QDialog):
         self.SizeS_SB.setMinimum(1)
         self.SizeS_SB.setMaximum(2147483647)
         self.SizeS_SB.setValue(SizeS)
-        txt = 'Number of positions (S):  '
+        txt = 'Number of positions (SizeS):  '
         label = QLabel(txt)
         entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         entriesLayout.addWidget(self.SizeS_SB, row, 1)
+        self.SizeS_SB.valueChanged.connect(self.SizeSvalueChanged)
+
+        if rawDataStruct == 0:
+            row += 1
+            self.posSelector = widgets.ExpandableListBox()
+            positions = ['All positions']
+            positions.extend([f'Position_{i+1}' for i in range(SizeS)])
+            self.posSelector.addItems(positions)
+            txt = 'Positions to save:  '
+            label = QLabel(txt)
+            entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
+            entriesLayout.addWidget(self.posSelector, row, 1)
 
         row += 1
         self.LensNA_DSB = QDoubleSpinBox()
@@ -1342,6 +1354,8 @@ class QDialogMetadataXML(QDialog):
         self.DimensionOrderCombo = widgets.QCenteredComboBox()
         items = [''.join(perm) for perm in permutations('zct', 3)]
         self.DimensionOrderCombo.addItems(items)
+        # ztc should be default for .czi and .nd2
+        self.DimensionOrderCombo.setCurrentText('ztc')
         self.lastValidDimensionOrderText = DimensionOrder
         txt = 'Order of dimensions:  '
         label = QLabel(txt)
@@ -1359,7 +1373,7 @@ class QDialogMetadataXML(QDialog):
         self.SizeT_SB.setMinimum(1)
         self.SizeT_SB.setMaximum(2147483647)
         self.SizeT_SB.setValue(SizeT)
-        txt = 'Number of frames (T):  '
+        txt = 'Number of frames (SizeT):  '
         label = QLabel(txt)
         entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         entriesLayout.addWidget(self.SizeT_SB, row, 1)
@@ -1371,7 +1385,7 @@ class QDialogMetadataXML(QDialog):
         self.SizeZ_SB.setMinimum(1)
         self.SizeZ_SB.setMaximum(2147483647)
         self.SizeZ_SB.setValue(SizeZ)
-        txt = 'Number of z-slices in the z-stack (Z):  '
+        txt = 'Number of z-slices in the z-stack (SizeZ):  '
         label = QLabel(txt)
         entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         entriesLayout.addWidget(self.SizeZ_SB, row, 1)
@@ -1488,7 +1502,7 @@ class QDialogMetadataXML(QDialog):
         self.SizeC_SB.setMinimum(1)
         self.SizeC_SB.setMaximum(2147483647)
         self.SizeC_SB.setValue(SizeC)
-        txt = 'Number of channels:  '
+        txt = 'Number of channels (SizeC):  '
         label = QLabel(txt)
         entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         entriesLayout.addWidget(self.SizeC_SB, row, 1)
@@ -1524,10 +1538,9 @@ class QDialogMetadataXML(QDialog):
 
             chName = chName_QLE.text()
             chName = self.removeInvalidCharacters(chName)
+            rawFilename = self.elidedRawFilename()
             filenameLabel = QLabel(f"""
-                <p style=font-size:9pt>
-                    {self.rawFilename}_{chName}.{ext}
-                </p>
+                <p style=font-size:9pt>{rawFilename}_{chName}.{ext}</p>
             """)
 
             checkBox = QCheckBox('Save this channel')
@@ -1544,7 +1557,7 @@ class QDialogMetadataXML(QDialog):
             )
 
             self.channelNameLayouts[2].addWidget(checkBox)
-            if c == 0:
+            if c == 0 and ImageName:
                 addImageName_QCB = QCheckBox('Include image name')
                 addImageName_QCB.stateChanged.connect(self.addImageName_cb)
                 self.addImageName_QCB = addImageName_QCB
@@ -1657,7 +1670,10 @@ class QDialogMetadataXML(QDialog):
         
         idx = self.imageViewer.channelIndex
         imgData = self.sampleImgData[dimsOrder][idx] 
-        self.imageViewer.posData.img_data = [imgData] # single frame data
+        if self.imageViewer.posData.SizeT == 1:
+            self.imageViewer.posData.img_data = [imgData] # single frame data
+        else:
+            self.imageViewer.posData.img_data = imgData
         self.imageViewer.update_img()
     
     def dimensionOrderHelp(self):
@@ -1726,6 +1742,20 @@ class QDialogMetadataXML(QDialog):
     def updateFileFormat(self, is_h5):
         for idx in range(len(self.chNames_QLEs)):
             self.updateFilename(idx)
+    
+    def SizeSvalueChanged(self, SizeS):
+        positions = ['All positions']
+        positions.extend([f'Position_{i+1}' for i in range(SizeS)])
+        self.posSelector.setItems(positions)
+    
+    def elidedRawFilename(self):
+        n = 31
+        idx = int((n-3)/2)
+        if len(self.rawFilename) > 21:
+            elidedText = f'{self.rawFilename[:idx]}...{self.rawFilename[-idx:]}'
+        else:
+            elidedText = self.rawFilename
+        return elidedText
 
     def updateFilename(self, idx):
         chName = self.chNames_QLEs[idx].text()
@@ -1736,6 +1766,8 @@ class QDialogMetadataXML(QDialog):
             rawFilename = self.rawFilename
 
         ext = 'h5' if self.to_h5_radiobutton.isChecked() else 'tif'
+
+        rawFilename = self.elidedRawFilename()
 
         filenameLabel = self.filename_QLabels[idx]
         if self.addImageName_QCB.isChecked():
@@ -1836,28 +1868,28 @@ class QDialogMetadataXML(QDialog):
         imgData = self.sampleImgData[dimsOrder][idx]
         posData = myutils.utilClass()
         posData.frame_i = 0
-        posData.SizeT = self.SizeT_SB.value()
+        sampleSizeT = 4 if self.SizeT_SB.value() > 1 else 1
+        posData.SizeT = sampleSizeT
         posData.SizeZ = self.SizeZ_SB.value()
         posData.filename = f'{self.rawFilename}_C={idx}'
         posData.segmInfo_df = pd.DataFrame({
-            'filename': [posData.filename],
-            'frame_i': [0],
-            'which_z_proj_gui': ['single z-slice'],
-            'z_slice_used_gui': [int(posData.SizeZ/2)]
+            'filename': [posData.filename]*sampleSizeT,
+            'frame_i': range(sampleSizeT),
+            'which_z_proj_gui': ['single z-slice']*sampleSizeT,
+            'z_slice_used_gui': [int(posData.SizeZ/2)]*sampleSizeT
         }).set_index(['filename', 'frame_i'])
         path_li = os.path.normpath(self.rawFilePath).split(os.sep)
         posData.relPath = f'{f"{os.sep}".join(path_li[-3:1])}'
         posData.relPath = f'{posData.relPath}{os.sep}{posData.filename}'
-        try:
+        if sampleSizeT == 1:
             posData.img_data = [imgData] # single frame data
-        except Exception as e:
-            traceback.print_exc()
-            return
+        else:
+            posData.img_data = imgData
 
         if self.imageViewer is not None:
             self.imageViewer.close()
         
-        self.imageViewer = imageViewer(posData=posData, isSigleFrame=True)
+        self.imageViewer = imageViewer(posData=posData, isSigleFrame=False)
         self.imageViewer.channelIndex = idx
         self.imageViewer.update_img()
         self.imageViewer.sigClosed.connect(self.imageViewerClosed)
@@ -1888,10 +1920,9 @@ class QDialogMetadataXML(QDialog):
                 )
 
                 chName = chName_QLE.text()
+                rawFilename = self.elidedRawFilename()
                 filenameLabel = QLabel(f"""
-                    <p style=font-size:9pt>
-                        {self.rawFilename}_{chName}.{ext}
-                    </p>
+                    <p style=font-size:9pt>{rawFilename}_{chName}.{ext}</p>
                 """)
 
                 checkBox = QCheckBox('Save this channel')
@@ -2008,8 +2039,15 @@ class QDialogMetadataXML(QDialog):
         self.PhysicalSizeY = self.PhysicalSizeY_DSB.value()
         self.PhysicalSizeZ = self.PhysicalSizeZ_DSB.value()
         self.to_h5 = self.to_h5_radiobutton.isChecked()
+        if hasattr(self, 'posSelector'):
+            self.selectedPos = self.posSelector.selectedItemsText()
+        else:
+            self.selectedPos = ['All Positions']
         self.chNames = []
-        self.addImageName = self.addImageName_QCB.isChecked()
+        if hasattr(self, 'addImageName_QCB'):
+            self.addImageName = self.addImageName_QCB.isChecked()
+        else:
+            self.addImageName = False
         self.saveChannels = []
         for LE, QCB in zip(self.chNames_QLEs, self.saveChannels_QCBs):
             s = LE.text()
@@ -2558,6 +2596,8 @@ class QDialogCombobox(QDialog):
             self.loop.exit()
 
 class QDialogListbox(QDialog):
+    sigSelectionConfirmed = pyqtSignal(list)
+
     def __init__(
             self, title, text, items, cancelText='Cancel',
             multiSelection=True, parent=None,
@@ -2598,7 +2638,6 @@ class QDialogListbox(QDialog):
         else:
             cancelButton = QPushButton(cancelText)
         okButton = widgets.okPushButton(' Ok ')
-        okButton.setShortcut(Qt.Key_Enter)
 
         bottomLayout.addStretch(1)
         bottomLayout.addWidget(cancelButton)
@@ -2639,6 +2678,7 @@ class QDialogListbox(QDialog):
         self.cancel = False
         selectedItems = self.listBox.selectedItems()
         self.selectedItemsText = [item.text() for item in selectedItems]
+        self.sigSelectionConfirmed.emit(self.selectedItemsText)
         self.close()
 
     def cancel_cb(self, event):

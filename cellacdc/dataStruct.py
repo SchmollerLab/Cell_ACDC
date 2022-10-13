@@ -313,24 +313,34 @@ class bioFormatsWorker(QObject):
             if self.rawDataStruct != 2:
                 sampleImgData = {}
                 self.progress.emit('Reading sample image data...')
-                dimsIdx = {'t': 0}   
+                dimsIdx = {}
+                if SizeT >= 4:
+                    sampleSizeT = 4
+                else:
+                    sampleSizeT = SizeT  
                 with bioformats.ImageReader(rawFilePath) as reader:
                     for dimsOrd in permutations('zct', 3):
                         allChannelsData = []
                         idxs = self.buildIndexes(SizeC, SizeT, SizeZ, dimsOrd)
                         for c in range(SizeC):
-                            imgData_z = []
                             dimsIdx['c'] = c
-                            for z in range(SizeZ):
-                                dimsIdx['z'] = z
-                                idx = self.getIndex(idxs, dimsIdx, dimsOrd)
-                                imgData = reader.read(
-                                    c=c, z=z, t=0, rescale=False, index=idx
-                                )
-                                imgData_z.append(imgData)                
-                            imgData_z = np.array(imgData_z, dtype=imgData.dtype)
-                            imgData_z = np.squeeze(imgData_z)
-                            allChannelsData.append(imgData_z)
+                            imgData_tz = []
+                            for t in range(sampleSizeT):   
+                                dimsIdx['t'] = t
+                                imgData_z = []
+                                for z in range(SizeZ):
+                                    dimsIdx['z'] = z
+                                    idx = self.getIndex(idxs, dimsIdx, dimsOrd)
+                                    imgData = reader.read(
+                                        c=c, z=z, t=0, rescale=False, index=idx
+                                    )
+                                    imgData_z.append(imgData)                
+                                imgData_z = np.array(imgData_z, dtype=imgData.dtype)
+                                imgData_z = np.squeeze(imgData_z)
+                                imgData_tz.append(imgData_z)
+                            imgData_tz = np.array(imgData_tz, dtype=imgData.dtype)
+                            imgData_tz = np.squeeze(imgData_tz)
+                            allChannelsData.append(imgData_tz)
                         sampleImgData[''.join(dimsOrd)] = allChannelsData
             
             self.confirmMetadata.emit(
@@ -359,6 +369,7 @@ class bioFormatsWorker(QObject):
             self.PhysicalSizeX = self.metadataWin.PhysicalSizeX
             self.PhysicalSizeY = self.metadataWin.PhysicalSizeY
             self.PhysicalSizeZ = self.metadataWin.PhysicalSizeZ
+            self.selectedPos = self.metadataWin.selectedPos
             self.chNames = self.metadataWin.chNames
             self.saveChannels = self.metadataWin.saveChannels
             self.emWavelens = self.metadataWin.emWavelens
@@ -371,6 +382,13 @@ class bioFormatsWorker(QObject):
 
         if os.path.basename(raw_src_path) == 'raw_microscopy_files':
             raw_src_path = os.path.dirname(raw_src_path)
+        
+        pos_name = f'Position_{p+1}'
+        savePos = (
+            'All Positions' in self.selectedPos or pos_name in self.selectedPos
+        )
+        if not savePos:
+            return False
 
         pos_path = os.path.join(exp_dst_path, f'Position_{p+1}')
         images_path = os.path.join(pos_path, 'Images')
@@ -391,6 +409,8 @@ class bioFormatsWorker(QObject):
             os.makedirs(images_path)
 
         self.saveData(images_path, rawFilePath, filename, p, series, p_idx=p_idx)
+
+        return False
 
     def removeInvalidCharacters(self, chName_in):
         # Remove invalid charachters
@@ -649,7 +669,8 @@ class bioFormatsWorker(QObject):
     def run(self):
         raw_src_path = self.raw_src_path
         exp_dst_path = self.exp_dst_path
-        javabridge.start_vm(class_path=bioformats.JARS)
+        javabridge.start_vm(class_path=bioformats.JARS, run_headless=True)
+        # bioformats.init_logger()
         self.progress.emit('Java VM running.')
         self.aborted = False
         self.isCriticalError = False
@@ -1275,27 +1296,22 @@ class createDataStructWin(QMainWindow):
         return win.selectedItemIdx, win.cancel
 
     def instructMoveRawFiles(self):
-        msg = QMessageBox(self)
-        msg.setWindowTitle('Move microscopy files')
-        msg.setIcon(msg.Information)
-        msg.setTextFormat(Qt.RichText)
-        msg.setText(
-        """
-        Put all of the raw microscopy files from the <b>same experiment</b>
-        into an <b>empty folder</b>.<br><br>
+        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        txt = html_utils.paragraph("""
+            Put all of the raw microscopy files from the <b>same experiment</b><br> 
+            into an <b>empty folder</b> before closing this dialogue.<br><br>
 
-        Note that there should be <b>no other files</b> in this folder.
+            Note that there should be <b>no other files</b> in this folder.
         """
         )
-        doneButton = QPushButton('Done')
-        cancelButton = QPushButton('Cancel')
-        msg.addButton(doneButton, msg.YesRole)
-        msg.addButton(cancelButton, msg.NoRole)
-        msg.exec_()
-        if msg.clickedButton() == doneButton:
-            return True
-        else:
+        msg.information(
+            self, 'Microscopy files location', txt, 
+            buttonsTexts=('Cancel', 'Done')
+        )
+        if msg.cancel:
             return False
+        else:
+            return True
 
     def checkFileFormat(self, raw_src_path):
         self.moveOtherFiles = False
