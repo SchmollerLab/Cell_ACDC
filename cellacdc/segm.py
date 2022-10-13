@@ -85,6 +85,7 @@ class segmWorker(QRunnable):
         self.endFilenameSegm = mainWin.endFilenameSegm
         self.isSegm3D = mainWin.isSegm3D
         self.track_params = mainWin.track_params
+        self.ROIdeactivatedByUser = mainWin.ROIdeactivatedByUser
 
     def setupPausingItems(self):
         self.mutex = QMutex()
@@ -139,7 +140,7 @@ class segmWorker(QRunnable):
         posData.saveMetadata()
 
         isROIactive = False
-        if posData.dataPrep_ROIcoords is not None:
+        if posData.dataPrep_ROIcoords is not None and not self.ROIdeactivatedByUser:
             isROIactive = posData.dataPrep_ROIcoords.at['cropped', 'value'] == 0
             x0, x1, y0, y1 = posData.dataPrep_ROIcoords['value'][:4]
             Y, X = posData.img_data.shape[-2:]
@@ -820,7 +821,11 @@ class segmWin(QMainWindow):
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
         txt = html_utils.paragraph(
             'Do you want to segment only a rectangular '
-            '<b>region-of-interest (ROI)</b>?'
+            '<b>region-of-interest (ROI)</b>?<br><br>'
+            'NOTE: If a ROI is already present from the data prep step, Cell-ACDC '
+            'will use it.<br?'
+            'If you want to modify it, abort the process now and repeat '
+            'data prep step.'
         )
         _, yesButton, noButton = msg.question(self, 'ROI?', txt,
             buttonsTexts = ('Cancel','Yes','No')
@@ -831,12 +836,13 @@ class segmWin(QMainWindow):
                 self.close()
                 return
 
+        self.ROIdeactivatedByUser = False
         if msg.clickedButton == yesButton:
             # User requested ROI but it was not present --> ask later
             selectROI = posData.dataPrep_ROIcoords is None
         else:
-            # User did not requested ROI --> discard existing oes
-            posData.dataPrep_ROIcoords = None
+            # User did not requested ROI --> discard existing ones
+            self.ROIdeactivatedByUser = True
 
         # Check if we should launch dataPrep:
         #   1. 2D segmentation on z-stack data that was never visualized
@@ -956,7 +962,7 @@ class segmWin(QMainWindow):
             zz = df['z_slice_used_dataPrep'].to_list()
 
         isROIactive = False
-        if posData.dataPrep_ROIcoords is not None:
+        if posData.dataPrep_ROIcoords is not None and not self.ROIdeactivatedByUser:
             isROIactive = posData.dataPrep_ROIcoords.at['cropped', 'value'] == 0
             x0, x1, y0, y1 = posData.dataPrep_ROIcoords['value'][:4]
 
@@ -982,7 +988,7 @@ class segmWin(QMainWindow):
             win = apps.QDialogListbox(
                 'Track objects?',
                 'Do you want to track the objects?\n\n'
-                'If yes, choose which tracker to use and click "Ok"\n\n'
+                'If yes, <b>select the tracker</b> to use\n\n'
                 'If you are unsure, choose YeaZ',
                 trackers, additionalButtons=['Do not track'],
                 multiSelection=False,
