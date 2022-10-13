@@ -229,8 +229,8 @@ class dataPrepWin(QMainWindow):
 
         navigateToolbar.addAction(self.prevAction)
         navigateToolbar.addAction(self.nextAction)
-        navigateToolbar.addAction(self.jumpBackwardAction)
-        navigateToolbar.addAction(self.jumpForwardAction)
+        # navigateToolbar.addAction(self.jumpBackwardAction)
+        # navigateToolbar.addAction(self.jumpForwardAction)
 
         navigateToolbar.addAction(self.addBkrgRoiActon)
 
