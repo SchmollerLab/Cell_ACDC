@@ -9761,6 +9761,7 @@ class guiWin(QMainWindow):
                 i -= 1
                 break
             else:
+                # if includeUnvisited extend search to segm_data and not only stored
                 futureIDs = np.unique(posData.allData_li[i]['labels'])
                 if modID in futureIDs:
                     areFutureIDs_affected.append(True)
@@ -9772,6 +9773,8 @@ class guiWin(QMainWindow):
         if not areFutureIDs_affected:
             # There are future frames but they are not affected by the change
             return UndoFutFrames, False, None, doNotShow
+        
+        printl('test', UndoFutFrames)
 
         # Ask what to do unless the user has previously checked doNotShowAgain
         if doNotShow:
