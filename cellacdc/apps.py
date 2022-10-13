@@ -6857,15 +6857,12 @@ class QDialogZsliceAbsent(QDialog):
         mainLayout = QVBoxLayout()
         buttonsLayout = QGridLayout()
 
-        txt = (
-        f"""
-        <p style="font-size:14px; text-align: center;">
+        txt = html_utils.paragraph(f"""
             You loaded the fluorescent file called<br><br>{filename}<br><br>
             however you <b>never selected which z-slice</b><br> you want to use
             when calculating metrics<br> (e.g., mean, median, amount...etc.)<br><br>
             Choose one of following options:
-        <p>
-        """
+        """, center=True
         )
         infoLabel = QLabel(txt)
         mainLayout.addWidget(infoLabel, alignment=Qt.AlignCenter)

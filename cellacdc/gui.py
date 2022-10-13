@@ -838,6 +838,7 @@ class saveDataWorker(QObject):
                         # self.metricsPbarProgress.emit(-1, 1)
                         # pbar.update()
 
+
         if 'cell_area_pxl' in self.mainWin.sizeMetricsToSave:
             df['cell_area_pxl'] = pd.Series(
                 data=IDs_area_pxl, index=IDs, dtype=float
@@ -17192,30 +17193,30 @@ class guiWin(QMainWindow):
                 posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
         elif win.useSameAsCh:
             user_ch_name = filename[len(posData.basename):]
-            for _posData in self.data:
+            for posData in self.data:
                 _, srcFilename = self.getPathFromChName(
-                    win.selectedChannel, _posData
+                    win.selectedChannel, posData
                 )
-                cellacdc_df = _posData.segmInfo_df.loc[srcFilename].copy()
-                _, dstFilename = self.getPathFromChName(user_ch_name, _posData)
-                dst_df = myutils.getDefault_SegmInfo_df(_posData, dstFilename)
+                cellacdc_df = posData.segmInfo_df.loc[srcFilename].copy()
+                _, dstFilename = self.getPathFromChName(user_ch_name, posData)
+                dst_df = myutils.getDefault_SegmInfo_df(posData, dstFilename)
                 for z_info in cellacdc_df.itertuples():
                     frame_i = z_info.Index
                     zProjHow = z_info.which_z_proj
                     if zProjHow == 'single z-slice':
                         src_idx = (srcFilename, frame_i)
-                        if _posData.segmInfo_df.at[src_idx, 'resegmented_in_gui']:
+                        if posData.segmInfo_df.at[src_idx, 'resegmented_in_gui']:
                             col = 'z_slice_used_gui'
                         else:
                             col = 'z_slice_used_dataPrep'
-                        z_slice = _posData.segmInfo_df.at[src_idx, col]
+                        z_slice = posData.segmInfo_df.at[src_idx, col]
                         dst_idx = (dstFilename, frame_i)
                         dst_df.at[dst_idx, 'z_slice_used_dataPrep'] = z_slice
                         dst_df.at[dst_idx, 'z_slice_used_gui'] = z_slice
-                _posData.segmInfo_df = pd.concat([dst_df, _posData.segmInfo_df])
+                posData.segmInfo_df = pd.concat([dst_df, posData.segmInfo_df])
                 unique_idx = ~posData.segmInfo_df.index.duplicated()
                 posData.segmInfo_df = posData.segmInfo_df[unique_idx]
-                _posData.segmInfo_df.to_csv(_posData.segmInfo_df_csv_path)
+                posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
         elif win.runDataPrep:
             user_ch_file_paths = []
             user_ch_name = filename[len(self.data[self.pos_i].basename):]
