@@ -3942,6 +3942,7 @@ class guiWin(QMainWindow):
             posData.doNotShowAgain_DelID = doNotShowAgain
             posData.UndoFutFrames_DelID = UndoFutFrames
             posData.applyFutFrames_DelID = applyFutFrames
+            includeUnvisited = posData.includeUnvisitedInfo['Delete ID']
 
             self.current_frame_i = posData.frame_i
 
@@ -3951,7 +3952,7 @@ class guiWin(QMainWindow):
                 self.store_data()
                 for i in range(posData.frame_i+1, posData.SizeT):
                     lab = posData.allData_li[i]['labels']
-                    if lab is None and not self.includeUnvisited:
+                    if lab is None and not includeUnvisited:
                         self.enqAutosave()
                         break
                     
@@ -3965,8 +3966,8 @@ class guiWin(QMainWindow):
                         posData.frame_i = i
                         self.get_data()
                         self.store_data(autosave=False)
-                    elif self.includeUnvisited:
-                        # Unvisited frame (self.includeUnvisited = True)
+                    elif includeUnvisited:
+                        # Unvisited frame (includeUnvisited = True)
                         lab = posData.segm_data[i]
                         lab[lab==delID] = 0
 
@@ -4329,6 +4330,7 @@ class guiWin(QMainWindow):
             posData.doNotShowAgain_EditID = doNotShowAgain
             posData.UndoFutFrames_EditID = UndoFutFrames
             posData.applyFutFrames_EditID = applyFutFrames
+            includeUnvisited = posData.includeUnvisitedInfo['Edit ID']
 
             self.current_frame_i = posData.frame_i
 
@@ -4340,7 +4342,7 @@ class guiWin(QMainWindow):
                     return
                 for i in range(posData.frame_i+1, posData.SizeT):
                     lab = posData.allData_li[i]['labels']
-                    if lab is None and not self.includeUnvisited:
+                    if lab is None and not includeUnvisited:
                         self.enqAutosave()
                         break
 
@@ -4361,8 +4363,8 @@ class guiWin(QMainWindow):
                                     posData.lab[posData.lab == old_ID] = new_ID
                             self.update_rp(draw=False)
                         self.store_data(autosave=i==endFrame_i)
-                    elif self.includeUnvisited:
-                        # Unvisited frame (self.includeUnvisited = True)
+                    elif includeUnvisited:
+                        # Unvisited frame (includeUnvisited = True)
                         lab = posData.segm_data[i]
                         for old_ID, new_ID in editID.how:
                             if new_ID in lab:
@@ -9749,6 +9751,8 @@ class guiWin(QMainWindow):
             # No future frames to propagate the change to
             return False, False, None, doNotShow
 
+        includeUnvisited = posData.includeUnvisitedInfo[modTxt]
+        printl(modTxt, f'{includeUnvisited = }')
         areFutureIDs_affected = []
         # Get number of future frames already visited and checked if future
         # frames has an ID affected by the change
@@ -9761,7 +9765,7 @@ class guiWin(QMainWindow):
                 if modID in futureIDs:
                     areFutureIDs_affected.append(True)
         
-        if i == posData.frame_i and not self.includeUnvisited:
+        if i == posData.frame_i and not includeUnvisited:
             # No future frames to propagate the change to
             return False, False, None, doNotShow
 
@@ -9789,7 +9793,6 @@ class guiWin(QMainWindow):
             doNotShowAgain = ffa.doNotShowCheckbox.isChecked()
 
             self.onlyTracking = False
-            self.includeUnvisited = False
             if decision == 'apply_and_reinit':
                 UndoFutFrames = True
                 applyFutFrames = False
@@ -9806,7 +9809,7 @@ class guiWin(QMainWindow):
             elif decision == 'apply_to_all':
                 UndoFutFrames = False
                 applyFutFrames = True
-                self.includeUnvisited = True
+                posData.includeUnvisitedInfo[modTxt] = True
         return UndoFutFrames, applyFutFrames, endFrame_i, doNotShowAgain
 
     def addCcaState(self, frame_i, cca_df, undoId):
@@ -12240,7 +12243,6 @@ class guiWin(QMainWindow):
         self.isShiftDown = False
         self.autoContourHoverON = False
         self.navigateScrollBarStartedMoving = True
-        self.includeUnvisited = False
 
         self.ax1_viewRange = None
 
@@ -12330,6 +12332,10 @@ class guiWin(QMainWindow):
             posData.doNotShowAgain_DelID = False
             posData.UndoFutFrames_DelID = False
             posData.applyFutFrames_DelID = False
+
+            posData.includeUnvisitedInfo = {
+                'Delete ID': False, 'Edit ID': False
+            }
 
             posData.doNotShowAgain_BinID = False
             posData.UndoFutFrames_BinID = False
