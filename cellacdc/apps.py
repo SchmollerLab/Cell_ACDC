@@ -8564,12 +8564,26 @@ class stopFrameDialog(QBaseDialog):
         self.slideshowWin.show()
         senderButton.setText('Visualize...')
 
-        
-
-
     def ok_cb(self):
         self.cancel = False
         for posData in self.posDatas:
             stopFrameNum = posData.stopFrameSpinbox.value()
             posData.stopFrameNum = stopFrameNum
         self.close()
+
+class pgTestWindow(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        layout = QVBoxLayout()
+
+        self.graphLayout = pg.GraphicsLayoutWidget()
+        self.ax1 = pg.PlotItem()
+        self.ax1.setAspectLocked(True)
+        self.graphLayout.addItem(self.ax1)
+
+        layout.addWidget(self.graphLayout)
+
+        self.setLayout(layout)
+
+        

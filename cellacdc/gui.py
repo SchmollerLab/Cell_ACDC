@@ -1985,18 +1985,18 @@ class guiWin(QMainWindow):
         self.LeftClickButtons.append(self.expandLabelToolButton)
         self.checkableQButtonsGroup.addButton(self.expandLabelToolButton)
 
-        self.editID_Button = QToolButton(self)
-        self.editID_Button.setIcon(QIcon(":edit-id.svg"))
-        self.editID_Button.setCheckable(True)
-        self.editID_Button.setShortcut('n')
-        self.editID_Button.setToolTip(
+        self.editIDbutton = QToolButton(self)
+        self.editIDbutton.setIcon(QIcon(":edit-id.svg"))
+        self.editIDbutton.setCheckable(True)
+        self.editIDbutton.setShortcut('n')
+        self.editIDbutton.setToolTip(
             'Toggle "Edit ID" mode ON/OFF\n\n'
             'EXAMPLE: manually change ID of a cell\n\n'
             'ACTION: right-click on cell\n\n'
             'SHORTCUT: "N" key')
-        editToolBar.addWidget(self.editID_Button)
-        self.checkableButtons.append(self.editID_Button)
-        self.checkableQButtonsGroup.addButton(self.editID_Button)
+        editToolBar.addWidget(self.editIDbutton)
+        self.checkableButtons.append(self.editIDbutton)
+        self.checkableQButtonsGroup.addButton(self.editIDbutton)
 
         self.separateBudButton = QToolButton(self)
         self.separateBudButton.setIcon(QIcon(":separate-bud.svg"))
@@ -2028,20 +2028,20 @@ class guiWin(QMainWindow):
         self.checkableQButtonsGroup.addButton(self.mergeIDsButton)
         self.functionsNotTested3D.append(self.mergeIDsButton)
 
-        self.keepObjButton = QToolButton(self)
-        self.keepObjButton.setIcon(QIcon(":keep_objects.svg"))
-        self.keepObjButton.setCheckable(True)
-        self.keepObjButton.setToolTip(
+        self.keepIDsButton = QToolButton(self)
+        self.keepIDsButton.setIcon(QIcon(":keep_objects.svg"))
+        self.keepIDsButton.setCheckable(True)
+        self.keepIDsButton.setToolTip(
             'Toggle "Select objects to keep" mode ON/OFF\n\n'
             'EXAMPLE: Select the objects to keep. Press "Enter" to confirm '
             'selection or "Esc" to clear the selection.\n'
             'After confirming, all the NON selected objects will be deleted.\n\n'
             'ACTION: right- or left-click on objects to keep\n\n'
         )
-        self.keepObjButton.action = editToolBar.addWidget(self.keepObjButton)
-        self.checkableButtons.append(self.keepObjButton)
-        self.checkableQButtonsGroup.addButton(self.keepObjButton)
-        self.functionsNotTested3D.append(self.keepObjButton)
+        self.keepIDsButton.action = editToolBar.addWidget(self.keepIDsButton)
+        self.checkableButtons.append(self.keepIDsButton)
+        self.checkableQButtonsGroup.addButton(self.keepIDsButton)
+        self.functionsNotTested3D.append(self.keepIDsButton)
 
         self.binCellButton = QToolButton(self)
         self.binCellButton.setIcon(QIcon(":bin.svg"))
@@ -2893,7 +2893,7 @@ class guiWin(QMainWindow):
         self.assignBudMothAutoAction.triggered.connect(
             self.autoAssignBud_YeastMate
         )
-        self.keepObjButton.toggled.connect(self.keepObj_cb)
+        self.keepIDsButton.toggled.connect(self.keepIDs_cb)
 
         self.expandLabelToolButton.toggled.connect(self.expandLabelCallback)
 
@@ -3376,10 +3376,19 @@ class guiWin(QMainWindow):
         self.topLayerItems.append(self.tempLayerImg1)
         self.topLayerItemsRight.append(self.tempLayerRightImage)
 
-        # Highlighted ID layer item
-        self.highLightIDLayerImg1 = pg.ImageItem()        
-        self.topLayerItems.append(self.highLightIDLayerImg1)
+        # Highlighted ID layer items
+        self.highLightIDLayerImg1 = pg.ImageItem()
+        self.topLayerItems.append(self.highLightIDLayerImg1)  
 
+        # Keep IDs temp layers
+        self.keepIDsTempLayerRight = pg.ImageItem()
+        self.keepIDsTempLayerLeft = widgets.ParentImageItem(
+            linkedImageItem=self.keepIDsTempLayerRight,
+            activatingAction=self.labelsGrad.showRightImgAction
+        )
+        self.topLayerItems.append(self.keepIDsTempLayerLeft)
+        self.topLayerItemsRight.append(self.keepIDsTempLayerRight)
+        
         # Brush circle img1
         self.ax1_BrushCircle = pg.ScatterPlotItem()
         self.ax1_BrushCircle.setData(
@@ -4229,7 +4238,7 @@ class guiWin(QMainWindow):
             self.firstID = ID
 
         # Edit ID
-        elif right_click and self.editID_Button.isChecked():
+        elif right_click and self.editIDbutton.isChecked():
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
@@ -4261,8 +4270,8 @@ class guiWin(QMainWindow):
             editID.show(block=True)
             if editID.cancel:
                 posData.disableAutoActivateViewerWindow = False
-                if not self.editID_Button.findChild(QAction).isChecked():
-                    self.editID_Button.setChecked(False)
+                if not self.editIDbutton.findChild(QAction).isChecked():
+                    self.editIDbutton.setChecked(False)
                 return
 
             # Ask to propagate change to all future visited frames
@@ -4331,8 +4340,8 @@ class guiWin(QMainWindow):
             else:
                 self.warnEditingWithCca_df('Edit ID')
 
-            if not self.editID_Button.findChild(QAction).isChecked():
-                self.editID_Button.setChecked(False)
+            if not self.editIDbutton.findChild(QAction).isChecked():
+                self.editIDbutton.setChecked(False)
 
             posData.disableAutoActivateViewerWindow = True
 
@@ -4390,7 +4399,7 @@ class guiWin(QMainWindow):
                 self.get_data()
                 self.app.restoreOverrideCursor()
         
-        elif (right_click or left_click) and self.keepObjButton.isChecked():
+        elif (right_click or left_click) and self.keepIDsButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             ID = self.get_2Dlab(posData.lab)[ydata, xdata]
@@ -4413,9 +4422,12 @@ class guiWin(QMainWindow):
             
             if ID in self.keptObjectsIDs:
                 self.keptObjectsIDs.remove(ID)
-                self.highlightHoverIDsKeptObj(hoverID=ID)
+                self.restoreHighlightedLabelID(ID)
             else:
                 self.keptObjectsIDs.append(ID)
+                self.highlightLabelID(ID)
+            
+            self.updateTempLayerKeepIDs()
 
         # Annotate cell as removed from the analysis
         elif right_click and self.binCellButton.isChecked():
@@ -4945,7 +4957,7 @@ class guiWin(QMainWindow):
         vol_vox, vol_fl = _calc_rot_vol(
             obj, PhysicalSizeY, PhysicalSizeX
         )
-        propsQGBox.cellVolVoxSB.setValue(vol_vox)
+        propsQGBox.cellVolVoxSB.setValue(int(vol_vox))
         propsQGBox.cellVolFlDSB.setValue(vol_fl)
 
 
@@ -4969,7 +4981,11 @@ class guiWin(QMainWindow):
         except Exception as e:
             image = posData.img_data[posData.frame_i]
 
-        objData = image[obj.slice][obj.image]
+        if posData.SizeZ > 1:
+            objData = image[obj.slice][obj.image]
+        else:
+            z = self.zSliceScrollBar.sliderPosition()
+            objData = image[z][obj.slice][obj.image]
 
         intensMeasurQGBox.minimumDSB.setValue(np.min(objData))
         intensMeasurQGBox.maximumDSB.setValue(np.max(objData))
@@ -5084,7 +5100,7 @@ class guiWin(QMainWindow):
             self.app.setOverrideCursor(Qt.PointingHandCursor)
         
         setKeepObjCursor = (
-            self.keepObjButton.isChecked() and not event.isExit()
+            self.keepIDsButton.isChecked() and not event.isExit()
             and noModifier
         )
         if setKeepObjCursor and self.app.overrideCursor() is None:
@@ -5302,7 +5318,7 @@ class guiWin(QMainWindow):
             self.app.setOverrideCursor(Qt.SizeAllCursor)
         
         setKeepObjCursor = (
-            self.keepObjButton.isChecked() and not event.isExit()
+            self.keepIDsButton.isChecked() and not event.isExit()
             and noModifier
         )
         if setKeepObjCursor and self.app.overrideCursor() is None:
@@ -5992,7 +6008,7 @@ class guiWin(QMainWindow):
         wandON = self.wandToolButton.isChecked() and not isPanImageClick
         polyLineRoiON = self.addDelPolyLineRoiAction.isChecked()
         labelRoiON = self.labelRoiButton.isChecked()
-        keepObjON = self.keepObjButton.isChecked()
+        keepObjON = self.keepIDsButton.isChecked()
 
         # Check if right-click on segment of polyline roi to add segment
         segments = self.gui_getHoveredSegmentsPolyLineRoi()
@@ -6178,7 +6194,8 @@ class guiWin(QMainWindow):
             how = self.drawIDsContComboBox.currentText()
             lab2D = self.get_2Dlab(posData.lab)
             self.globalBrushMask = np.zeros(lab2D.shape, dtype=bool)
-            brushMask = lab2D[diskSlice] == posData.brushID
+            brushMask = localLab == posData.brushID
+            brushMask = np.logical_and(brushMask, diskMask)
             self.setTempImg1Brush(
                 True, brushMask, posData.brushID, toLocalSlice=diskSlice
             )
@@ -6297,9 +6314,12 @@ class guiWin(QMainWindow):
             
             if ID in self.keptObjectsIDs:
                 self.keptObjectsIDs.remove(ID)
-                self.highlightHoverIDsKeptObj(hoverID=ID)
+                self.restoreHighlightedLabelID(ID)
             else:
                 self.keptObjectsIDs.append(ID)
+                self.highlightLabelID(ID)
+            
+            self.updateTempLayerKeepIDs()
 
         elif right_click and canCurv:
             # Draw manually assisted auto contour
@@ -8975,7 +8995,7 @@ class guiWin(QMainWindow):
         self.wandControlsToolbar.setVisible(False)
         self.enableSizeSpinbox(False)
         if sender is not None:
-            self.keepObjButton.setChecked(False)
+            self.keepIDsButton.setChecked(False)
 
     def connectLeftClickButtons(self):
         self.brushButton.toggled.connect(self.Brush_cb)
@@ -9182,7 +9202,7 @@ class guiWin(QMainWindow):
             self.highLightIDLayerImg1.clear()
             self.highlightIDcheckBoxToggled(False)
     
-    def keepObj_cb(self, checked):
+    def keepIDs_cb(self, checked):
         if checked:
             self.uncheckLeftClickButtons(None)
             self.initKeepObjLabelsLayers()
@@ -9204,6 +9224,7 @@ class guiWin(QMainWindow):
                 ax1ContCurve.setOpacity(1.0)
                 ax2ContCurve.setOpacity(1.0)
         
+        self.highlightedIDopts = None
         self.keptObjectsIDs = []
         self.updateALLimg()
 
@@ -9457,10 +9478,10 @@ class guiWin(QMainWindow):
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
             posData = self.data[self.pos_i]
-            printl(posData.segm_npz_path)
-            printl(posData.acdc_output_csv_path)
-            printl(posData.acdc_df)
-            printl(posData.cca_df)
+            self.win = apps.pgTestWindow()
+            self.win.ax1.addItem(self.tempLayerImg1)
+            self.win.show()
+            # apps.imshow_tk(self.tempLayerImg1.image)
         try:
             posData = self.data[self.pos_i]
         except AttributeError:
@@ -9527,12 +9548,12 @@ class guiWin(QMainWindow):
         elif ev.key() == Qt.Key_Enter or ev.key() == Qt.Key_Return:
             if self.brushButton.isChecked():
                 self.typingEditID = False
-            elif self.keepObjButton.isChecked():
+            elif self.keepIDsButton.isChecked():
                 self.applyKeepObjects()
         elif ev.key() == Qt.Key_Escape:
-            if self.keepObjButton.isChecked() and self.keptObjectsIDs:
+            if self.keepIDsButton.isChecked() and self.keptObjectsIDs:
                 self.keptObjectsIDs = []
-                self.highlightHoverIDsKeptObj(hoverID=0)
+                self.highlightHoverIDsKeptObj(0, 0, hoverID=0)
                 return
 
             if self.brushButton.isChecked() and self.typingEditID:
@@ -9748,8 +9769,10 @@ class guiWin(QMainWindow):
         self.isRightClickDragImg1 = False
         self.clearCurvItems(removeItems=False)
 
-    def propagateChange(self, modID, modTxt, doNotShow, UndoFutFrames,
-                        applyFutFrames, applyTrackingB=False):
+    def propagateChange(
+            self, modID, modTxt, doNotShow, UndoFutFrames,
+            applyFutFrames, applyTrackingB=False, force=False
+        ):
         """
         This function determines whether there are already visited future frames
         that contains "modID". If so, it triggers a pop-up asking the user
@@ -9791,7 +9814,7 @@ class guiWin(QMainWindow):
             # No future frames to propagate the change to
             return False, False, None, doNotShow
 
-        if not areFutureIDs_affected:
+        if not areFutureIDs_affected and not force:
             # There are future frames but they are not affected by the change
             return UndoFutFrames, False, None, doNotShow
 
@@ -12121,6 +12144,8 @@ class guiWin(QMainWindow):
         self.ax1_ripIDs_ScatterPlot.clear()
         self.labelsLayerImg1.clear()
         self.labelsLayerRightImg.clear()
+        self.keepIDsTempLayerLeft.clear()
+        self.keepIDsTempLayerRight.clear()
         self.highLightIDLayerImg1.setImage(self.emptyLab.copy())
         allItems = zip(
             self.ax1_ContoursCurves,
@@ -12356,8 +12381,12 @@ class guiWin(QMainWindow):
             posData.UndoFutFrames_DelID = False
             posData.applyFutFrames_DelID = False
 
+            posData.doNotShowAgain_keepID = False
+            posData.UndoFutFrames_keepID = False
+            posData.applyFutFrames_keepID = False
+
             posData.includeUnvisitedInfo = {
-                'Delete ID': False, 'Edit ID': False
+                'Delete ID': False, 'Edit ID': False, 'Keep ID': False
             }
 
             posData.doNotShowAgain_BinID = False
@@ -13499,7 +13528,7 @@ class guiWin(QMainWindow):
 
         if posData.cca_df is None:
             posData.cca_df = self.getBaseCca_df()
-            msg = 'Cell cycle analysis initiliazed!'
+            msg = 'Cell cycle analysis initialized!'
             self.logger.info(msg)
             self.titleLabel.setText(msg, color=self.titleColor)
         else:
@@ -14051,17 +14080,13 @@ class guiWin(QMainWindow):
     
     def initKeepObjLabelsLayers(self):
         posData = self.data[self.pos_i]
-        brushLayerLut = np.zeros((len(posData.lut), 4), dtype=np.uint8)
-        brushLayerLut[:,:-1] = posData.lut
-        brushLayerLut[0] = [0,0,0,0]
-        self.tempLayerImg1.setLevels([0, len(brushLayerLut)])
-        self.tempLayerRightImage.setLevels([0, len(brushLayerLut)])
-        self.tempLayerImg1.setLookupTable(brushLayerLut)
-        self.tempLayerRightImage.setLookupTable(brushLayerLut)
-        self.tempLayerImg1.setOpacity(0.7)
-        self.tempLayerRightImage.setOpacity(0.7)
-        self.tempLayerImg1.setImage(self.currentLab2D, autoLevels=False)
-        self.tempLayerRightImage.setImage(self.currentLab2D, autoLevels=False)
+
+        lut = np.zeros((len(posData.lut), 4), dtype=np.uint8)
+        lut[:,:-1] = posData.lut
+        lut[:,-1:] = 255
+        lut[0] = [0,0,0,0]
+        self.keepIDsTempLayerLeft.setLevels([0, len(lut)])
+        self.keepIDsTempLayerLeft.setLookupTable(lut)
 
         # Gray out objects
         alpha = self.imgGrad.labelsAlphaSlider.value()
@@ -14080,16 +14105,79 @@ class guiWin(QMainWindow):
             ax1ContCurve.setOpacity(0.3)
             ax2ContCurve.setOpacity(0.3)
     
+    def updateTempLayerKeepIDs(self):
+        keptLab = np.zeros_like(self.currentLab2D)
+
+        posData = self.data[self.pos_i]
+        for obj in posData.rp:
+            if obj.label not in self.keptObjectsIDs:
+                continue
+
+            if not self.isObjVisible(obj.bbox):
+                continue
+
+            _slice = self.getObjSlice(obj.slice)
+            _objMask = self.getObjImage(obj.image, obj.bbox)
+
+            keptLab[_slice][_objMask] = obj.label
+
+        self.keepIDsTempLayerLeft.setImage(keptLab, autoLevels=False)
+
+    def highlightLabelID(self, ID):
+        # Label ID
+        LabelItemID = self.ax1_LabelItemsIDs[ID-1]
+        
+        posData = self.data[self.pos_i]
+        obj_idx = posData.IDs.index(ID)
+        obj = posData.rp[obj_idx]
+
+        txt = f'{ID}'
+        LabelItemID.setText(txt, color='r', bold=True, size=self.fontSize)
+        y, x = self.getObjCentroid(obj.centroid)
+        w, h = LabelItemID.rect().right(), LabelItemID.rect().bottom()
+        LabelItemID.setPos(x-w/2, y-h/2)
+
+        LabelItemID = self.ax2_LabelItemsIDs[ID-1]
+        LabelItemID.setText(txt, color='r', bold=True, size=self.fontSize)
+        w, h = LabelItemID.rect().right(), LabelItemID.rect().bottom()
+        LabelItemID.setPos(x-w/2, y-h/2)
+    
+    def restoreHighlightedLabelID(self, ID):
+        posData = self.data[self.pos_i]
+        obj_idx = posData.IDs.index(ID)
+        obj = posData.rp[obj_idx]
+
+        self.ax2_setTextID(obj)
+
+        how = self.drawIDsContComboBox.currentText()
+        self.annotateObject(obj, how)
+        self.annotateObjectRightImage(obj)
+    
+    def _keepObjects(self, keepIDs=None, lab=None, rp=None):
+        posData = self.data[self.pos_i]
+        if lab is None:
+            lab = posData.lab
+        
+        if rp is None:
+            rp = posData.rp
+        
+        if keepIDs is None:
+            keepIDs = self.keptObjectsIDs
+        
+        for obj in rp:
+            if obj.label in keepIDs:
+                continue
+
+            lab[obj.slice][obj.image] = 0
+        
+        return lab
+    
     @myutils.exception_handler
     def applyKeepObjects(self):
         # Store undo state before modifying stuff
         self.storeUndoRedoStates(False)
 
-        posData = self.data[self.pos_i]
-
-        for obj in posData.rp:
-            if obj.label not in self.keptObjectsIDs:
-                posData.lab[obj.slice][obj.image] = 0
+        self._keepObjects()
 
         self.update_rp()
         # Repeat tracking
@@ -14100,6 +14188,26 @@ class guiWin(QMainWindow):
             self.updateALLimg()
         else:
             self.warnEditingWithCca_df('Removed non-selected objects')
+        
+        posData = self.data[self.pos_i]
+
+        self.tempLayerImg1.setImage(self.emptyLab, autoLevels=False)
+
+        # Ask to propagate change to all future visited frames
+        (UndoFutFrames, applyFutFrames, endFrame_i,
+        doNotShowAgain) = self.propagateChange(
+            self.keptObjectsIDs, 'Keep ID', posData.doNotShowAgain_keepID,
+            posData.UndoFutFrames_keepID, posData.applyFutFrames_keepID,
+            force=True
+        )
+
+        if UndoFutFrames is None:
+            return
+
+        posData.doNotShowAgain_keepID = doNotShowAgain
+        posData.UndoFutFrames_keepID = UndoFutFrames
+        posData.applyFutFrames_keepID = applyFutFrames
+        includeUnvisited = posData.includeUnvisitedInfo['Keep ID']
         
         self.keptObjectsIDs = []
 
@@ -14136,8 +14244,10 @@ class guiWin(QMainWindow):
         if updateLevels:
             self.img2.setLevels([0, len(lut)])
         
-        if self.keepObjButton.isChecked():
+        if self.keepIDsButton.isChecked():
             lut = np.round(lut*0.3).astype(np.uint8)
+            keptLut = np.round(lut[self.keptObjectsIDs]/0.3).astype(np.uint8)
+            lut[self.keptObjectsIDs] = keptLut
 
         self.img2.setLookupTable(lut)
 
@@ -15022,9 +15132,6 @@ class guiWin(QMainWindow):
         self.currentLab2D = DelROIlab
         if updateLookuptable:
             self.updateLookuptable(delIDs=allDelIDs)
-        if self.keepObjButton.isChecked():
-            self.tempLayerImg1.setImage(self.currentLab2D, autoLevels=False)
-            self.tempLayerRightImage.setImage(self.currentLab2D, autoLevels=False)
 
     def applyDelROIimg1(self, roi, init=False, ax=0):
         if ax == 0:
@@ -15510,23 +15617,66 @@ class guiWin(QMainWindow):
         if hoverID is None:
             hoverID = self.currentLab2D[int(y), int(x)]
 
-        self.tempLayerImg1.lut[:,-1:] = 0
-        self.tempLayerRightImage.lut[:,-1:] = 0
-        self.tempLayerImg1.lut[self.keptObjectsIDs,-1:] = 255
-        self.tempLayerRightImage.lut[self.keptObjectsIDs,-1:] = 255
-        if hoverID != 0:
-            self.tempLayerImg1.lut[hoverID,-1:] = 255
-            self.tempLayerRightImage.lut[hoverID,-1:] = 255
-        
-        self.tempLayerImg1.updateImage()
-        self.tempLayerRightImage.updateImage()
+        if hoverID == 0:
+            self.clearHighlightedID()
 
-    def highlightSearchedID(self, ID, force=False):
+        self.highlightSearchedID(hoverID)
+        for ID in self.keptObjectsIDs:
+            self.highlightLabelID(ID)
+
+    def clearHighlightedID(self, clearID=None):
+        if self.highlightedIDopts is None:
+            return
+
+        self.highLightIDLayerImg1.clear()
+
+        ID = self.highlightedID
+
+        if ID in self.keptObjectsIDs:
+            # Do not clear kept IDs
+            return
+
+        ax1Cont = self.ax1_ContoursCurves[ID-1]
+        ax1Cont.setPen(self.highlightedIDopts['ax1ContPen'])
+
+        LabelItemID = self.ax1_LabelItemsIDs[ID-1]
+        LabelItemID.setText(
+            self.highlightedIDopts['ax1text'], 
+            color=self.highlightedIDopts['ax1color'],
+            bold=self.highlightedIDopts['ax1LabelIsBold']
+        )
+
+        ID = self.highlightedID
+        ax2Cont = self.ax2_ContoursCurves[ID-1]
+        ax2Cont.setPen(self.highlightedIDopts['ax2ContPen'])
+
+        LabelItemID = self.ax2_LabelItemsIDs[ID-1]
+        LabelItemID.setText(
+            self.highlightedIDopts['ax2text'], 
+            color=self.highlightedIDopts['ax2color'],
+            bold=self.highlightedIDopts['ax2LabelIsBold']
+        )
+
+        self.highlightedIDopts = None
+        self.highlightedID = 0
+
+    def highlightSearchedID(self, ID, force=False, doNotClearIDs=None):
         if ID == 0:
             return
 
         if ID == self.highlightedID and not force:
             return
+
+        self.highlightedIDopts = {
+            'ax1ContPen': self.ax1_ContoursCurves[ID-1].opts['pen'],
+            'ax2ContPen': self.ax2_ContoursCurves[ID-1].opts['pen'],
+            'ax1text': self.ax1_LabelItemsIDs[ID-1].text,
+            'ax2text': self.ax2_LabelItemsIDs[ID-1].text,
+            'ax1color': self.ax1_LabelItemsIDs[ID-1].opts['color'],
+            'ax2color': self.ax2_LabelItemsIDs[ID-1].opts['color'],
+            'ax1LabelIsBold': self.ax1_LabelItemsIDs[ID-1].opts['bold'],
+            'ax2LabelIsBold': self.ax2_LabelItemsIDs[ID-1].opts['bold'],
+        }
 
         how_ax1 = self.drawIDsContComboBox.currentText()
         how_ax2 = self.getAnnotateHowRightImage()
@@ -15536,6 +15686,8 @@ class guiWin(QMainWindow):
         )
         isContourON_ax1 = how_ax1.find('contours') != -1
         isContourON_ax2 = how_ax2.find('contours') != -1
+
+        # Set contours to normal pen if requested or clear
         for ax1ContCurve, ax2ContCurve in contours:
             if ax1ContCurve is None:
                 continue
@@ -15548,7 +15700,7 @@ class guiWin(QMainWindow):
                 if isContourON_ax2:
                     ax2ContCurve.setPen(self.oldIDs_cpen)
                 else:
-                    ax1ContCurve.setData([], [])
+                    ax2ContCurve.setData([], [])
 
         if how_ax1.find('IDs') == -1:
             labelItems = self.ax1_LabelItemsIDs
@@ -15585,7 +15737,7 @@ class guiWin(QMainWindow):
                 _objMask = self.getObjImage(_obj.image, _obj.bbox)
                 highlightedLab[_slice][_objMask] = _obj.label
                 rgb = posData.lut[_obj.label].copy()    
-                lut[:, :-1] = rgb
+                lut[1, :-1] = rgb
                 # Set alpha to 0.7
                 lut[1, -1] = 178
             self.highLightIDLayerImg1.setLookupTable(lut)
@@ -15669,7 +15821,7 @@ class guiWin(QMainWindow):
     def updateLabelsAlpha(self, value):
         self.df_settings.at['overlaySegmMasksAlpha', 'value'] = value
         self.df_settings.to_csv(self.settings_csv_path)
-        if self.keepObjButton.isChecked():
+        if self.keepIDsButton.isChecked():
             value = value/3
         self.labelsLayerImg1.setOpacity(value)
         self.labelsLayerRightImg.setOpacity(value)
