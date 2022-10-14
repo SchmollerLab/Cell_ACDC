@@ -1784,6 +1784,7 @@ class dataPrepWin(QMainWindow):
         _zip = zip(posData.tif_paths, posData.npz_paths)
         for i, (tif, npz) in enumerate(_zip):
             doAlign = npz is None or aligned
+
             # Align the other channels
             if doAlign and tif.find(user_ch_name) == -1:
                 if posData.loaded_shifts is None:
@@ -1802,9 +1803,8 @@ class dataPrepWin(QMainWindow):
                     zz = None
                 if align:
                     aligned_frames, shifts = align_func(
-                                          tif_data,
-                                          slices=zz,
-                                          user_shifts=posData.loaded_shifts)
+                        tif_data, slices=zz, user_shifts=posData.loaded_shifts
+                    )
                 else:
                     aligned_frames = tif_data.copy()
                 _npz = f'{os.path.splitext(tif)[0]}_aligned.npz'
@@ -1825,7 +1825,7 @@ class dataPrepWin(QMainWindow):
         self.segmAligned = False
         if posData.segmFound and aligned:
             if posData.loaded_shifts is None or not align:
-                return
+                return True
             msg = QMessageBox()
             alignAnswer = msg.question(
                 self, 'Align segmentation data?',
@@ -1875,19 +1875,21 @@ class dataPrepWin(QMainWindow):
     def warnTifAligned(self, numFramesWith0s, tifPath, posData):
         proceed = True
         if numFramesWith0s>0 and posData.loaded_shifts is not None:
-            msg = QMessageBox()
-            proceedAnswer = msg.warning(
-               self, 'Tif data ALREADY aligned!',
-               'The system detected that the .tif file contains ALREADY '
-               'aligned data.\n\n'
-               'Using the found "align_shifts.npy" file to align would result '
-               'in misalignemnt of the data.\n\n'
-               'Therefore, the alignment routine will re-calculate the shifts '
-               'and it will NOT use the saved shifts.\n\n'
-               'Do you want to continue?',
-               msg.Yes | msg.Cancel
+            msg = widgets.myMessageBox()
+            txt = html_utils.paragraph("""
+                The system detected that the .tif file contains <b>LREADY 
+                aligned data</b>.<br><br>
+                Using the found "align_shifts.npy" file to align would result 
+                in misalignemnt of the data.<br><br>
+                Therefore, the alignment routine will re-calculate the shifts 
+                and it will NOT use the saved shifts.<br><br>
+                Do you want to continue?
+            """)
+            msg.warning(
+               self, 'Tif data ALREADY aligned!', txt,
+               buttonsTexts=('Cancel', 'Yes')
             )
-            if proceedAnswer == msg.Cancel:
+            if msg.cancel:
                 proceed = False
         return proceed
 
