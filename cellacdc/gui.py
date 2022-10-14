@@ -9752,39 +9752,49 @@ class guiWin(QMainWindow):
             return False, False, None, doNotShow
 
         includeUnvisited = posData.includeUnvisitedInfo[modTxt]
-        printl(modTxt, f'{includeUnvisited = }')
         areFutureIDs_affected = []
-        # Get number of future frames already visited and checked if future
+        # Get number of future frames already visited and check if future
         # frames has an ID affected by the change
+        last_tracked_i_found = False
         for i in range(posData.frame_i+1, posData.SizeT):
             if posData.allData_li[i]['labels'] is None:
-                i -= 1
-                break
+                if not last_tracked_i_found:
+                    # We set last tracked frame at -1 first None found
+                    last_tracked_i = i - 1
+                    last_tracked_i_found = True
+                if not includeUnvisited:
+                    # Stop at last visited frame since includeUnvisited = False
+                    break
+                else:
+                    lab = posData.segm_data[i]
             else:
-                # if includeUnvisited extend search to segm_data and not only stored
-                futureIDs = np.unique(posData.allData_li[i]['labels'])
-                if modID in futureIDs:
-                    areFutureIDs_affected.append(True)
+                lab = posData.allData_li[i]['labels']
+            
+            if modID in lab:
+                areFutureIDs_affected.append(True)
         
-        if i == posData.frame_i and not includeUnvisited:
+        if not last_tracked_i_found:
+            # All frames have been visited in segm&track mode
+            pass
+
+        if last_tracked_i == posData.frame_i and not includeUnvisited:
             # No future frames to propagate the change to
             return False, False, None, doNotShow
 
         if not areFutureIDs_affected:
             # There are future frames but they are not affected by the change
             return UndoFutFrames, False, None, doNotShow
-        
-        printl('test', UndoFutFrames)
 
         # Ask what to do unless the user has previously checked doNotShowAgain
         if doNotShow:
-            endFrame_i = i
+            endFrame_i = last_tracked_i
             return UndoFutFrames, applyFutFrames, endFrame_i, doNotShow
         else:
             addApplyAllButton = modTxt == 'Delete ID' or modTxt == 'Edit ID'
             ffa = apps.FutureFramesAction_QDialog(
-                posData.frame_i+1, i, modTxt, applyTrackingB=applyTrackingB,
-                parent=self, addApplyAllButton=addApplyAllButton
+                posData.frame_i+1, last_tracked_i, modTxt, 
+                applyTrackingB=applyTrackingB, parent=self, 
+                addApplyAllButton=addApplyAllButton
             )
             ffa.exec_()
             decision = ffa.decision
