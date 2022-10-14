@@ -6851,6 +6851,8 @@ class QDialogZsliceAbsent(QDialog):
         self.useMiddleSlice = False
         self.useSameAsCh = False
 
+        self.cancel = True
+
         super().__init__(parent)
         self.setWindowTitle('z-slice info absent!')
 
@@ -6868,7 +6870,7 @@ class QDialogZsliceAbsent(QDialog):
         mainLayout.addWidget(infoLabel, alignment=Qt.AlignCenter)
 
         runDataPrepButton = QPushButton(
-            '  Visualize the data now and select a z-slice (RECOMMENDED)  '
+            '   Visualize the data now and select a z-slice    '
         )
         buttonsLayout.addWidget(runDataPrepButton, 0, 1, 1, 2)
         runDataPrepButton.clicked.connect(self.runDataPrep_cb)
@@ -6893,11 +6895,26 @@ class QDialogZsliceAbsent(QDialog):
         buttonsLayout.addWidget(useSameAsChButton, 2, 1)
         buttonsLayout.addWidget(chNameComboBox, 2, 2)
 
+        
+
         buttonsLayout.setColumnStretch(0, 1)
         buttonsLayout.setColumnStretch(3, 1)
         buttonsLayout.setContentsMargins(10, 0, 10, 0)
 
+        
+
+        cancelButtonLayout = QHBoxLayout()
+        cancelButton = widgets.cancelPushButton('Cancel')
+        cancelButtonLayout.addStretch(1)
+        cancelButtonLayout.addWidget(cancelButton)
+        cancelButtonLayout.addStretch(1)
+        cancelButtonLayout.setStretch(1,1)
+        cancelButton.clicked.connect(self.close)
+
         mainLayout.addLayout(buttonsLayout)
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(cancelButtonLayout)
+        mainLayout.addStretch(1)
 
         self.setLayout(mainLayout)
 
@@ -6906,19 +6923,23 @@ class QDialogZsliceAbsent(QDialog):
         self.setFont(font)
 
         # self.setModal(True)
+    
+    def ok_cb(self, checked=True):
+        self.cancel = False
+        self.close()
 
     def useSameAsCh_cb(self, checked):
         self.useSameAsCh = True
         self.selectedChannel = self.chNameComboBox.currentText()
-        self.close()
+        self.ok_cb()
 
     def useMiddleSlice_cb(self, checked):
         self.useMiddleSlice = True
-        self.close()
+        self.ok_cb()
 
     def runDataPrep_cb(self, checked):
         self.runDataPrep = True
-        self.close()
+        self.ok_cb()
 
     def exec_(self):
         self.show(block=True)

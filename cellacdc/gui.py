@@ -319,6 +319,7 @@ class saveDataWorker(QObject):
         self.customMetricsErrors = {}
         self.addMetricsErrors = {}
         self.regionPropsErrors = {}
+        self.abort = False
 
     def addMetrics_acdc_df(self, df, rp, frame_i, lab, posData):
         """
@@ -476,6 +477,11 @@ class saveDataWorker(QObject):
                         self.askZsliceAbsent.emit(filename, posData)
                         self.waitCond.wait(self.mutex)
                         self.mutex.unlock()
+                        if self.abort:
+                            return
+                        self.progress.emit(
+                            f'Saving (check terminal for additional progress info)...'
+                        )
                         segmInfo_df = pd.read_csv(posData.segmInfo_df_csv_path)
                         index_col = ['filename', 'frame_i']
                         posData.segmInfo_df = segmInfo_df.set_index(index_col)
@@ -586,7 +592,7 @@ class saveDataWorker(QObject):
 
             # Iterate cells
             print('Iterating objects...')
-            for i, obj in enumerate(tqdm(rp, leave=False)):
+            for i, obj in enumerate(tqdm(rp, leave=False, ncols=100)):
                 if self.mainWin.isSegm3D:
                     obj3Dslice = obj.slice
                     obj3Dimage = obj.image
@@ -1116,6 +1122,10 @@ class saveDataWorker(QObject):
                             acdc_df = self.addMetrics_acdc_df(
                                 acdc_df, rp, frame_i, lab, posData
                             )
+                            if self.abort:
+                                self.progress.emit(f'Saving process aborted.')
+                                self.finished.emit()
+                                return
                         elif mode == 'Cell cycle analysis':
                             acdc_df = self.addVolumeMetrics(
                                 acdc_df, rp, posData
@@ -14490,8 +14500,8 @@ class guiWin(QMainWindow):
             f'The folder <code>{posData.pos_path}</code> '
             '<b>does not contain</b> '
             'either one of the following files:<br><br>'
-            f'{posData.basename}_{fluo_ch}.tif<br>'
-            f'{posData.basename}_{fluo_ch}_aligned.npz<br><br>'
+            f'{posData.basename}{fluo_ch}.tif<br>'
+            f'{posData.basename}{fluo_ch}_aligned.npz<br><br>'
             'Data loading aborted.'
         )
         msg.addShowInFileManagerButton(posData.images_path)
@@ -16865,7 +16875,7 @@ class guiWin(QMainWindow):
     def getPathFromChName(self, chName, posData):
         ls = myutils.listdir(posData.images_path)
         endnames = {f[len(posData.basename):]:f for f in ls}
-        validEnds = ['_aligned.npz', '_aligned.h5', '.h5', '.tif']
+        validEnds = ['_aligned.npz', '_aligned.h5', '.h5', '.tif', '.npz']
         for end in validEnds:
             files = [
                 filename for endname, filename in endnames.items()
@@ -17203,6 +17213,10 @@ class guiWin(QMainWindow):
         ]
         win = apps.QDialogZsliceAbsent(filename, SizeZ, chNamesPresent)
         win.exec_()
+        if win.cancel:
+            self.worker.abort = True
+            self.waitCond.wakeAll()
+            return
         if win.useMiddleSlice:
             user_ch_name = filename[len(posData.basename):]
             for posData in self.data:
@@ -17220,6 +17234,10 @@ class guiWin(QMainWindow):
                 )
                 cellacdc_df = posData.segmInfo_df.loc[srcFilename].copy()
                 _, dstFilename = self.getPathFromChName(user_ch_name, posData)
+                if dstFilename is None:
+                    self.worker.abort = True
+                    self.waitCond.wakeAll()
+                    return
                 dst_df = myutils.getDefault_SegmInfo_df(posData, dstFilename)
                 for z_info in cellacdc_df.itertuples():
                     frame_i = z_info.Index
@@ -17243,6 +17261,10 @@ class guiWin(QMainWindow):
             user_ch_name = filename[len(self.data[self.pos_i].basename):]
             for _posData in self.data:
                 user_ch_path, _ = self.getPathFromChName(user_ch_name, _posData)
+                if user_ch_path is None:
+                    self.worker.abort = True
+                    self.waitCond.wakeAll()
+                    return
                 user_ch_file_paths.append(user_ch_path)
                 exp_path = os.path.dirname(_posData.pos_path)
 
@@ -17812,7 +17834,7 @@ class guiWin(QMainWindow):
             worker.savedSegmData = posData.segm_data.copy()
 
     def saveDataFinished(self):
-        if self.saveWin.aborted:
+        if self.saveWin.aborted or self.worker.abort:
             self.titleLabel.setText('Saving process cancelled.', color='r')
         else:
             self.titleLabel.setText('Saved!')

@@ -501,10 +501,11 @@ class loadData:
                 self.loaded_shifts = np.load(filePath)
             elif loadSegmInfo and file.endswith('segmInfo.csv'):
                 self.segmInfoFound = True
-                df = pd.read_csv(filePath)
+                df = pd.read_csv(filePath).dropna()
                 if 'filename' not in df.columns:
                     df['filename'] = self.filename
                 self.segmInfo_df = df.set_index(['filename', 'frame_i'])
+                self.segmInfo_df.to_csv(filePath)
             elif load_delROIsInfo and file.endswith('delROIsInfo.npz'):
                 self.delROIsInfoFound = True
                 self.delROIsInfo_npz = np.load(filePath)
