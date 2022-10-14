@@ -9785,7 +9785,7 @@ class guiWin(QMainWindow):
         
         if not last_tracked_i_found:
             # All frames have been visited in segm&track mode
-            pass
+            last_tracked_i = posData.SizeT - 1
 
         if last_tracked_i == posData.frame_i and not includeUnvisited:
             # No future frames to propagate the change to
