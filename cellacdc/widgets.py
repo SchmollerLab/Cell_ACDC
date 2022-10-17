@@ -2,10 +2,12 @@ import sys
 import operator
 import time
 import re
+from matplotlib.pyplot import text
 import numpy as np
 import string
 import traceback
 import logging
+import difflib
 from functools import partial
 
 from matplotlib.colors import ListedColormap, LinearSegmentedColormap
@@ -372,6 +374,73 @@ def getPushButton(buttonText, qparent=None):
         button = QPushButton(buttonText, qparent)
     
     return button, isCancelButton
+
+class ValidLineEdit(QLineEdit):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+    
+    def setInvalidStyleSheet(self):
+        self.setStyleSheet(
+            'background: #FEF9C3;'
+            'border-radius: 4px;'
+            'border: 1.5px solid red;'
+            'padding: 1px 0px 1px 0px'
+        )
+    
+    def setValidStyleSheet(self):
+        self.setStyleSheet('')
+
+class KeepIDsLineEdit(ValidLineEdit):
+    sigIDsChanged = pyqtSignal(list)
+    sigSort = pyqtSignal()
+
+    def __init__(self, instructionsLabel, parent=None):
+        super().__init__(parent)
+
+        self.validPattern = '^[0-9-, ]+$'
+        self.setValidator(QRegExpValidator(QRegExp(self.validPattern)))
+
+        self.textChanged.connect(self.onTextChanged)
+        self.editingFinished.connect(self.onEditingFinished)
+
+        self.instructionsText = instructionsLabel.text()
+        self._label = instructionsLabel
+    
+    def keyPressEvent(self, event) -> None:
+        super().keyPressEvent(event)
+        if event.text() == ',':
+            self.sigSort.emit()
+    
+    def onTextChanged(self, text):
+        IDs = []
+        rangesMatch = re.findall('(\d+-\d+)', text)
+        if rangesMatch:
+            for rangeText in rangesMatch:
+                start, stop = rangeText.split('-')
+                start, stop = int(start), int(stop)
+                IDs.extend(range(start, stop+1))
+            text = re.sub('(\d+)-(\d+)', '', text)
+        IDsMatch = re.findall('(\d+)', text)
+        if IDsMatch:
+            for ID in IDsMatch:
+                IDs.append(int(ID))
+        self.IDs = sorted(list(set(IDs)))
+        self.sigIDsChanged.emit(self.IDs)
+    
+    def onEditingFinished(self):
+        self.sigSort.emit()
+    
+    def warnNotExistingID(self):
+        self.setInvalidStyleSheet()
+        self._label.setText(
+            'Some of the IDs are not existing --> they will be IGNORED'
+        )
+        self._label.setStyleSheet('color: red')
+
+    def setInstructionsText(self):
+        self.setValidStyleSheet()
+        self._label.setText(self.instructionsText)
+        self._label.setStyleSheet('')
 
 class _ReorderableListModel(QAbstractListModel):
     '''
@@ -829,6 +898,86 @@ class mySpinBox(QSpinBox):
 
         return super().event(event)
 
+class KeptObjectIDsList(list):
+    def __init__(self, lineEdit, confirmSelectionAction, *args):
+        self.lineEdit = lineEdit
+        self.confirmSelectionAction = confirmSelectionAction
+        super().__init__(*args)
+    
+    def setText(self):
+        IDsRange = []
+        text = ''
+        sorted_vals = sorted(self)
+        for i, e in enumerate(sorted_vals):
+            # Get previous and next value (if possible)
+            if i > 0:
+                prevVal = sorted_vals[i-1]
+            else:
+                prevVal = -1
+            if i < len(sorted_vals)-1:
+                nextVal = sorted_vals[i+1]
+            else:
+                nextVal = -1
+
+            if e-prevVal == 1 or nextVal-e == 1:
+                if not IDsRange:
+                    if nextVal-e == 1 and e-prevVal != 1:
+                        # Current value is the first value of a new range
+                        IDsRange = [e]
+                    else:
+                        # Current value is the second element of a new range
+                        IDsRange = [prevVal, e]
+                else:
+                    if e-prevVal == 1:
+                        # Current value is part of an ongoing range
+                        IDsRange.append(e)
+                    else:
+                        # Current value is the first element of a new range 
+                        # --> create range text and this element will 
+                        # be added to the new range at the next iter
+                        start, stop = IDsRange[0], IDsRange[-1]
+                        if stop-start > 1:
+                            sep = '-'
+                        else:
+                            sep = ','
+                        text = f'{text},{start}{sep}{stop}'
+                        IDsRange = []
+            else:
+                # Current value doesn't belong to a range
+                if IDsRange:
+                    # There was a range not added to text --> add it now
+                    start, stop = IDsRange[0], IDsRange[-1]
+                    if stop-start > 1:
+                        sep = '-'
+                    else:
+                        sep = ','
+                    text = f'{text},{start}{sep}{stop}'
+                
+                text = f'{text},{e}'    
+                IDsRange = []
+
+        if IDsRange:
+            # Last range was not added  --> add it now
+            start, stop = IDsRange[0], IDsRange[-1]
+            text = f'{text},{start}-{stop}'
+
+        text = text[1:]
+        
+        self.lineEdit.setText(text)
+    
+    def append(self, element, editText=True):
+        super().append(element)
+        if editText:
+            self.setText()
+        if not self.confirmSelectionAction.isEnabled():
+            self.confirmSelectionAction.setEnabled(True)
+
+    def remove(self, element, editText=True):
+        super().remove(element)
+        if editText:
+            self.setText()
+        if not self:
+            self.confirmSelectionAction.setEnabled(False)
 
 class myLabelItem(pg.LabelItem):
     def __init__(self, *args, **kwargs):

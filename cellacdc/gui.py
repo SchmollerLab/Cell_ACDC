@@ -59,7 +59,7 @@ from PyQt5.QtGui import (
     QFont
 )
 from PyQt5.QtWidgets import (
-    QAction, QLabel, QPushButton, QHBoxLayout,
+    QAction, QLabel, QPushButton, QHBoxLayout, QSizePolicy,
     QMainWindow, QMenu, QToolBar, QGroupBox, QGridLayout,
     QScrollBar, QCheckBox, QToolButton, QSpinBox, QGroupBox,
     QComboBox, QButtonGroup, QActionGroup, QFileDialog,
@@ -102,7 +102,7 @@ favourite_func_metrics_csv_path = os.path.join(
 custom_annot_path = os.path.join(temp_path, 'custom_annotations.json')
 
 _font = QFont()
-_font.setPixelSize(12)
+_font.setPixelSize(11)
 
 # Interpret image data as row-major instead of col-major
 pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
@@ -2347,6 +2347,32 @@ class guiWin(QMainWindow):
         self.labelRoiToolbar.addWidget(self.labelRoiZdepthSpinbox)
         self.addToolBar(Qt.TopToolBarArea, self.labelRoiToolbar)
         self.labelRoiToolbar.setVisible(False)
+
+        self.keepIDsToolbar = QToolBar("Magic labeller controls", self)
+        self.keepIDsConfirmAction = QAction()
+        self.keepIDsConfirmAction.setIcon(QIcon(":greenTick.svg"))
+        self.keepIDsConfirmAction.setToolTip('Apply "keep IDs" selection')
+        self.keepIDsConfirmAction.setDisabled(True)
+        self.keepIDsToolbar.addAction(self.keepIDsConfirmAction)
+        self.keepIDsToolbar.addWidget(QLabel('  IDs to keep: '))
+        instructionsText = (
+            ' (Separate IDs by comma. Use a dash to denote a range of IDs)'
+        )
+        instructionsLabel = QLabel(instructionsText)
+        self.keptIDsLineEdit = widgets.KeepIDsLineEdit(
+            instructionsLabel, parent=self
+        )
+        self.keepIDsToolbar.addWidget(self.keptIDsLineEdit)
+        self.keepIDsToolbar.addWidget(instructionsLabel)
+        spacer = QWidget()
+        spacer.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.keepIDsToolbar.addWidget(spacer)
+        self.addToolBar(Qt.TopToolBarArea, self.keepIDsToolbar)
+        self.keepIDsToolbar.setVisible(False)
+
+        self.keptIDsLineEdit.sigIDsChanged.connect(self.updateKeepIDs)
+        self.keepIDsConfirmAction.triggered.connect(self.applyKeepObjects)
+
 
     def gui_populateToolSettingsMenu(self):
         brushHoverModeActionGroup = QActionGroup(self)
@@ -9203,9 +9229,10 @@ class guiWin(QMainWindow):
             self.highlightIDcheckBoxToggled(False)
     
     def keepIDs_cb(self, checked):
+        self.keepIDsToolbar.setVisible(checked)
         if checked:
             self.uncheckLeftClickButtons(None)
-            self.initKeepObjLabelsLayers()
+            self.initKeepObjLabelsLayers()      
         else:
             # restore items to non-grayed out
             self.tempLayerImg1.setImage(self.emptyLab, autoLevels=False)
@@ -9225,7 +9252,9 @@ class guiWin(QMainWindow):
                 ax2ContCurve.setOpacity(1.0)
         
         self.highlightedIDopts = None
-        self.keptObjectsIDs = []
+        self.keptObjectsIDs = widgets.KeptObjectIDsList(
+            self.keptIDsLineEdit, self.keepIDsConfirmAction
+        )
         self.updateALLimg()
 
     def Brush_cb(self, checked):
@@ -9549,10 +9578,12 @@ class guiWin(QMainWindow):
             if self.brushButton.isChecked():
                 self.typingEditID = False
             elif self.keepIDsButton.isChecked():
-                self.applyKeepObjects()
+                self.keepIDsConfirmAction.click()
         elif ev.key() == Qt.Key_Escape:
             if self.keepIDsButton.isChecked() and self.keptObjectsIDs:
-                self.keptObjectsIDs = []
+                self.keptObjectsIDs = widgets.KeptObjectIDsList(
+                    self.keptIDsLineEdit, self.keepIDsConfirmAction
+                )
                 self.highlightHoverIDsKeptObj(0, 0, hoverID=0)
                 return
 
@@ -14172,22 +14203,40 @@ class guiWin(QMainWindow):
         
         return lab
     
+    def updateKeepIDs(self, IDs):
+        posData = self.data[self.pos_i]
+
+        isAnyIDnotExisting = False
+        # Check if IDs from line edit are present in current keptObjectIDs list
+        for ID in IDs:
+            if ID not in posData.IDs:
+                isAnyIDnotExisting = True
+                continue
+            if ID not in self.keptObjectsIDs:
+                self.keptObjectsIDs.append(ID, editText=False)
+                self.highlightLabelID(ID)
+        
+        # Check if IDs in current keptObjectsIDs are present in IDs from line edit
+        for ID in self.keptObjectsIDs:
+            if ID not in posData.IDs:
+                isAnyIDnotExisting = True
+                continue
+            if ID not in IDs:
+                self.keptObjectsIDs.remove(ID, editText=False)
+                self.restoreHighlightedLabelID(ID)
+        
+        self.updateTempLayerKeepIDs()
+        if isAnyIDnotExisting:
+            self.keptIDsLineEdit.warnNotExistingID()
+        else:
+            self.keptIDsLineEdit.setInstructionsText()
+    
     @myutils.exception_handler
     def applyKeepObjects(self):
         # Store undo state before modifying stuff
         self.storeUndoRedoStates(False)
 
         self._keepObjects()
-
-        self.update_rp()
-        # Repeat tracking
-        self.tracking(enforce=True, assign_unique_new_IDs=False)
-
-        if self.isSnapshot:
-            self.fixCcaDfAfterEdit('Removed non-selected objects')
-            self.updateALLimg()
-        else:
-            self.warnEditingWithCca_df('Removed non-selected objects')
         
         posData = self.data[self.pos_i]
 
@@ -14202,14 +14251,64 @@ class guiWin(QMainWindow):
         )
 
         if UndoFutFrames is None:
+            # Empty keep object list
+            self.keptObjectsIDs = widgets.KeptObjectIDsList(
+                self.keptIDsLineEdit, self.keepIDsConfirmAction
+            )
             return
 
         posData.doNotShowAgain_keepID = doNotShowAgain
         posData.UndoFutFrames_keepID = UndoFutFrames
         posData.applyFutFrames_keepID = applyFutFrames
         includeUnvisited = posData.includeUnvisitedInfo['Keep ID']
+
+        self.current_frame_i = posData.frame_i
+
+        if applyFutFrames:
+            self.store_data()
+
+            for i in range(posData.frame_i+1, posData.SizeT):
+                lab = posData.allData_li[i]['labels']
+                if lab is None and not includeUnvisited:
+                    self.enqAutosave()
+                    break
+                
+                rp = posData.allData_li[i]['regionprops']
+
+                if lab is not None:
+                    keepLab = self._keepObjects(lab=lab, rp=rp)
+
+                    # Store change
+                    posData.allData_li[i]['labels'] = keepLab.copy()
+                    # Get the rest of the stored metadata based on the new lab
+                    posData.frame_i = i
+                    self.get_data()
+                    self.store_data(autosave=False)
+                elif includeUnvisited:
+                    # Unvisited frame (includeUnvisited = True)
+                    lab = posData.segm_data[i]
+                    rp = skimage.measure.regionprops(lab)
+                    keepLab = self._keepObjects(lab=lab, rp=rp)
+                    posData.segm_data[i] = keepLab
         
-        self.keptObjectsIDs = []
+        # Back to current frame
+        if applyFutFrames:
+            posData.frame_i = self.current_frame_i
+            self.get_data()
+
+        self.update_rp()
+        # Repeat tracking
+        self.tracking(enforce=True, assign_unique_new_IDs=False)
+
+        if self.isSnapshot:
+            self.fixCcaDfAfterEdit('Removed non-selected objects')
+            self.updateALLimg()
+        else:
+            self.warnEditingWithCca_df('Removed non-selected objects')
+
+        self.keptObjectsIDs = widgets.KeptObjectIDsList(
+            self.keptIDsLineEdit, self.keepIDsConfirmAction
+        )
 
     def updateLookuptable(self, lenNewLut=None, delIDs=None):
         posData = self.data[self.pos_i]
@@ -15394,22 +15493,22 @@ class guiWin(QMainWindow):
         # Tracking" mode a frame that contains cca annotations.
         # Ask whether to remove annotations from all future frames 
         if self.isSnapshot:
-            return
+            return True
 
         posData = self.data[self.pos_i]
         acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
         if acdc_df is None:
             self.updateALLimg()
-            return
+            return True
         else:
             if 'cell_cycle_stage' not in acdc_df.columns:
                 self.updateALLimg()
-                return
+                return True
         action = self.warnEditingWithAnnotActions.get(editTxt, None)
         if action is not None:
             if not action.isChecked():
                 self.updateALLimg()
-                return
+                return True
 
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph(
@@ -15459,6 +15558,8 @@ class guiWin(QMainWindow):
                 self.get_data()
                 self.remove_future_cca_df(posData.frame_i)
                 self.next_frame()
+        
+        return True
     
     def warnRepeatTrackingVideoWithAnnotations(self, last_tracked_i, start_n):
         msg = widgets.myMessageBox()
