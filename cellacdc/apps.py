@@ -7790,7 +7790,7 @@ class QDialogModelParams(QDialog):
         self.artefactsGroupBox.setChecked(applyPostProcessing)
 
     def info_params(self):
-        from cellacdc.models import CELLPOSE_MODELS, STARDIST_MODELS
+        from cellacdc.models import CELLPOSE_MODELS, STARDIST_MODELS, OMNI_MODELS
         self.infoWin = widgets.myMessageBox()
         self.infoWin.setWindowTitle('Model parameters info')
         self.infoWin.setIcon()
@@ -7798,14 +7798,26 @@ class QDialogModelParams(QDialog):
         cp_models = '<br>'.join(cp_models)
         stardist_models = [f'  - {m}'for m in STARDIST_MODELS]
         stardist_models = '<br>'.join(stardist_models)
+        if OMNI_MODELS:
+            omni_models = [f'  - {m}'for m in OMNI_MODELS]
+            omni_models = '<br>'.join(omni_models)
+        
+        _models = None
+        if self.model_name == 'cellpose':
+            _models = cp_models
+        elif self.model_name == 'stardist':
+            _models = stardist_models
+        elif self.model_name == 'omnipose':
+            _models = omni_models
+        if _models is None:
+            return
+             
         txt = html_utils.paragraph(
             'Currently Cell-ACDC has <b>four models implemented</b>: '
             'YeaZ, Cellpose, StarDist, and YeastMate.<br><br>'
             'Cellpose and StarDist have the following default models available:<br><br>'
-            '<b>Cellpose</b>:<br><br>'
-            f'{cp_models}<br><br>'
-            '<b>StarDist</b>:<br>'
-            f'{stardist_models}'
+            f'<b>{self.model_name}</b>:<br><br>'
+            f'{_models}<br>'
         )
         self.infoWin.addText(txt)
         self.infoWin.addButton(' Ok ')
