@@ -718,6 +718,7 @@ class saveDataWorker(QObject):
                         elif is_ROIbkgr_func:
                             if ROI_bkgrMask is not None:
                                 ROI_bkgrData = fluo_img[ROI_bkgrMask_k]
+                                ROI_bkgrData = ROI_bkgrData[ROI_bkgrData!=0]
                                 ROI_bkgrVal = np.median(ROI_bkgrData)
                             else:
                                 ROI_bkgrVal = bkgrData_medians[k]
@@ -800,6 +801,7 @@ class saveDataWorker(QObject):
 
                         if ROI_bkgrMask is not None:
                             ROI_bkgrData = fluo_img[ROI_bkgrMask_k]
+                            ROI_bkgrData = ROI_bkgrData[ROI_bkgrData!=0]
                             ROI_bkgrVal = np.median(ROI_bkgrData)
                         elif bkgrArchive is not None:
                             ROI_bkgrVal = bkgrData_medians[k]
