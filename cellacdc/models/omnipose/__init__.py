@@ -12,7 +12,7 @@ except ModuleNotFoundError:
         app = QApplication(sys.argv)
 
     from cellacdc import myutils
-    cancel = myutils.install_package_msg('omnipose')
+    cancel = myutils.install_package_msg('omnipose_acdc')
     if cancel:
         raise ModuleNotFoundError(
             'User aborted cellpose installation'
