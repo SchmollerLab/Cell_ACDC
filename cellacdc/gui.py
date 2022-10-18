@@ -9513,9 +9513,10 @@ class guiWin(QMainWindow):
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
             posData = self.data[self.pos_i]
-            self.win = apps.pgTestWindow()
-            self.win.ax1.addItem(self.tempLayerImg1)
-            self.win.show()
+            self.keepIDsTempLayerLeft.clear()
+            # self.win = apps.pgTestWindow()
+            # self.win.ax1.addItem(self.tempLayerImg1)
+            # self.win.show()
             # apps.imshow_tk(self.tempLayerImg1.image)
         try:
             posData = self.data[self.pos_i]
@@ -9780,6 +9781,7 @@ class guiWin(QMainWindow):
             or ev.key() == Qt.Key_Down
             or ev.key() == Qt.Key_Control
             or ev.key() == Qt.Key_Z
+            or ev.key() == Qt.Key_Backspace
         )
         if canRepeat:
             return
@@ -13794,7 +13796,7 @@ class guiWin(QMainWindow):
 
         self.setLabelCenteredObject(obj, LabelItemID)
 
-    def annotateObjectRightImage(self, obj):
+    def annotateObjectRightImage(self, obj, debug=False):
         if not self.labelsGrad.showRightImgAction.isChecked():
             return
         
@@ -13802,6 +13804,7 @@ class guiWin(QMainWindow):
         isAnnotActive = (
             how.find('IDs') != -1 or how.find('cell cycle') != -1
         )
+
         if not isAnnotActive:
             return
         
@@ -14144,6 +14147,9 @@ class guiWin(QMainWindow):
             ax2ContCurve.setOpacity(0.3)
     
     def updateTempLayerKeepIDs(self):
+        if not self.keepIDsButton.isChecked():
+            return
+        
         keptLab = np.zeros_like(self.currentLab2D)
 
         posData = self.data[self.pos_i]
@@ -14189,7 +14195,7 @@ class guiWin(QMainWindow):
 
         how = self.drawIDsContComboBox.currentText()
         self.annotateObject(obj, how)
-        self.annotateObjectRightImage(obj)
+        self.annotateObjectRightImage(obj, debug=True)
     
     def _keepObjects(self, keepIDs=None, lab=None, rp=None):
         posData = self.data[self.pos_i]
@@ -14247,14 +14253,28 @@ class guiWin(QMainWindow):
         
         posData = self.data[self.pos_i]
 
-        self.tempLayerImg1.setImage(self.emptyLab, autoLevels=False)
+        self.update_rp()
+        # Repeat tracking
+        self.tracking(enforce=True, assign_unique_new_IDs=False)
+
+        if self.isSnapshot:
+            self.fixCcaDfAfterEdit('Deleted non-selected objects')
+            self.updateALLimg()
+        else:
+            result = self.warnEditingWithCca_df(
+                'Deleted non-selected objects', get_answer=True
+            )
+            if not result:
+                return
+        
+        removeAnnot = result[1]
 
         # Ask to propagate change to all future visited frames
         (UndoFutFrames, applyFutFrames, endFrame_i,
         doNotShowAgain) = self.propagateChange(
             self.keptObjectsIDs, 'Keep ID', posData.doNotShowAgain_keepID,
             posData.UndoFutFrames_keepID, posData.applyFutFrames_keepID,
-            force=True
+            force=True, applyTrackingB=True
         )
 
         if UndoFutFrames is None:
@@ -14274,10 +14294,13 @@ class guiWin(QMainWindow):
         if applyFutFrames:
             self.store_data()
 
+            self.logger.info('Applying to future frames...')
+            pbar = tqdm(total=posData.SizeT, ncols=100)
             for i in range(posData.frame_i+1, posData.SizeT):
                 lab = posData.allData_li[i]['labels']
                 if lab is None and not includeUnvisited:
                     self.enqAutosave()
+                    pbar.update(posData.SizeT-i)
                     break
                 
                 rp = posData.allData_li[i]['regionprops']
@@ -14290,6 +14313,12 @@ class guiWin(QMainWindow):
                     # Get the rest of the stored metadata based on the new lab
                     posData.frame_i = i
                     self.get_data()
+                    if not removeAnnot and posData.cca_df is not None:
+                        delIDs = [
+                            ID for ID in posData.cca_df.index 
+                            if ID not in posData.IDs
+                        ]
+                        self.update_cca_df_deletedIDs(posData, delIDs)
                     self.store_data(autosave=False)
                 elif includeUnvisited:
                     # Unvisited frame (includeUnvisited = True)
@@ -14297,21 +14326,14 @@ class guiWin(QMainWindow):
                     rp = skimage.measure.regionprops(lab)
                     keepLab = self._keepObjects(lab=lab, rp=rp)
                     posData.segm_data[i] = keepLab
+                
+                pbar.update()
+            pbar.close()
         
         # Back to current frame
         if applyFutFrames:
             posData.frame_i = self.current_frame_i
             self.get_data()
-
-        self.update_rp()
-        # Repeat tracking
-        self.tracking(enforce=True, assign_unique_new_IDs=False)
-
-        if self.isSnapshot:
-            self.fixCcaDfAfterEdit('Removed non-selected objects')
-            self.updateALLimg()
-        else:
-            self.warnEditingWithCca_df('Removed non-selected objects')
 
         self.keptObjectsIDs = widgets.KeptObjectIDsList(
             self.keptIDsLineEdit, self.keepIDsConfirmAction
@@ -15458,7 +15480,7 @@ class guiWin(QMainWindow):
         elif editTxt == 'Annotate ID as dead':
             return
         
-        elif editTxt == 'Removed non-selected objects':
+        elif editTxt == 'Deleted non-selected objects':
             deleted_IDs = [ID for ID in cca_df_IDs if ID not in posData.IDs]
             self.update_cca_df_deletedIDs(posData, deleted_IDs)
 
@@ -15491,11 +15513,11 @@ class guiWin(QMainWindow):
     def fixCcaDfAfterEdit(self, editTxt):
         posData = self.data[self.pos_i]
         if posData.cca_df is not None:
-            # For snapshot mode we re-initialize cca_df depending on the edit
+            # For snapshot mode we fix or reinit cca_df depending on the edit
             self.update_cca_df_snapshots(editTxt, posData)
             self.store_data()
 
-    def warnEditingWithCca_df(self, editTxt, return_answer=False):
+    def warnEditingWithCca_df(self, editTxt, return_answer=False, get_answer=False):
         # Function used to warn that the user is editing in "Segmentation and
         # Tracking" mode a frame that contains cca annotations.
         # Ask whether to remove annotations from all future frames 
@@ -15522,20 +15544,25 @@ class guiWin(QMainWindow):
             'You modified a frame that <b>has cell cycle annotations</b>.<br><br>'
             f'The change <b>"{editTxt}"</b> most likely makes the '
             '<b>annotations wrong</b>.<br><br>'
-            'If you really want to apply this change we reccommend to remove<br>'
-            'ALL cell cycle annotations from current frame to the end.<br><br>'
+            'If you really want to apply this change we reccommend to remove'
+            'ALL cell cycle annotations<br>'
+            'from current frame to the end.<br><br>'
             'What do you want to do?'
         )
         if action is not None:
             checkBox = QCheckBox('Remember my choice and do not ask again')
         else:
             checkBox = None
+        
+        dropDelIDsNoteText = (
+            '' if editTxt.find('Delete') == -1 else ' (drop removed IDs)'
+        )
         _, removeAnnotButton, _ = msg.warning(
             self, 'Edited segmentation with annotations!', txt,
             buttonsTexts=(
                 'Cancel',
                 'Remove annotations from future frames (RECOMMENDED)',
-                'Do not remove annotations'
+                f'Do not remove annotations{dropDelIDsNoteText}'
             ), widgets=checkBox
             )
         if msg.cancel:
@@ -15545,6 +15572,7 @@ class guiWin(QMainWindow):
         if action is not None:
             action.setChecked(not checkBox.isChecked())
             action.removeAnnot = msg.clickedButton == removeAnnotButton
+        
         if return_answer:
             return msg.clickedButton == removeAnnotButton
         
@@ -15555,6 +15583,11 @@ class guiWin(QMainWindow):
             self.remove_future_cca_df(posData.frame_i)
             self.next_frame()
         else:
+            if dropDelIDsNoteText and posData.cca_df is not None:
+                delIDs = [
+                    ID for ID in posData.cca_df.index if ID not in posData.IDs
+                ]
+                self.update_cca_df_deletedIDs(posData, delIDs)
             self.addMissingIDs_cca_df(posData)
             self.updateALLimg()
             self.store_data()
@@ -15566,7 +15599,10 @@ class guiWin(QMainWindow):
                 self.remove_future_cca_df(posData.frame_i)
                 self.next_frame()
         
-        return True
+        if get_answer:
+            return True, msg.clickedButton == removeAnnotButton
+        else:
+            return True
     
     def warnRepeatTrackingVideoWithAnnotations(self, last_tracked_i, start_n):
         msg = widgets.myMessageBox()
@@ -15723,7 +15759,10 @@ class guiWin(QMainWindow):
     
     def highlightHoverIDsKeptObj(self, x, y, hoverID=None):
         if hoverID is None:
-            hoverID = self.currentLab2D[int(y), int(x)]
+            try:
+                hoverID = self.currentLab2D[int(y), int(x)]
+            except IndexError:
+                return
 
         if hoverID != self.highlightedID:
             self.clearHighlightedID()
@@ -15745,8 +15784,17 @@ class guiWin(QMainWindow):
             # Do not clear kept IDs
             return
 
-        ax1Cont = self.ax1_ContoursCurves[ID-1]
-        ax1Cont.setPen(self.highlightedIDopts['ax1ContPen'])
+        how_ax1 = self.drawIDsContComboBox.currentText()
+        how_ax2 = self.getAnnotateHowRightImage()
+
+        isContourON_ax1 = how_ax1.find('contours') != -1
+        isContourON_ax2 = how_ax2.find('contours') != -1
+
+        if isContourON_ax1:
+            ax1Cont = self.ax1_ContoursCurves[ID-1]
+            ax1Cont.setPen(self.highlightedIDopts['ax1ContPen'])
+        else:
+            ax1Cont.clear()
 
         LabelItemID = self.ax1_LabelItemsIDs[ID-1]
         LabelItemID.setText(
@@ -15756,8 +15804,11 @@ class guiWin(QMainWindow):
         )
 
         ID = self.highlightedID
-        ax2Cont = self.ax2_ContoursCurves[ID-1]
-        ax2Cont.setPen(self.highlightedIDopts['ax2ContPen'])
+        if isContourON_ax2:
+            ax2Cont = self.ax2_ContoursCurves[ID-1]
+            ax2Cont.setPen(self.highlightedIDopts['ax2ContPen'])
+        else:
+            ax2Cont.clear()
 
         LabelItemID = self.ax2_LabelItemsIDs[ID-1]
         LabelItemID.setText(
@@ -16029,6 +16080,8 @@ class guiWin(QMainWindow):
             self.ccaTableWin.updateTable(posData.cca_df)
 
         self.doCustomAnnotation(0)
+
+        self.updateTempLayerKeepIDs()
     
     def setOverlayLabelsItems(self):
         if not self.overlayLabelsButton.isChecked():

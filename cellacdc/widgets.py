@@ -433,7 +433,7 @@ class KeepIDsLineEdit(ValidLineEdit):
     def warnNotExistingID(self):
         self.setInvalidStyleSheet()
         self._label.setText(
-            'Some of the IDs are not existing --> they will be IGNORED'
+            '  Some of the IDs are not existing --> they will be IGNORED'
         )
         self._label.setStyleSheet('color: red')
 
@@ -901,7 +901,9 @@ class mySpinBox(QSpinBox):
 class KeptObjectIDsList(list):
     def __init__(self, lineEdit, confirmSelectionAction, *args):
         self.lineEdit = lineEdit
+        self.lineEdit.setText('')
         self.confirmSelectionAction = confirmSelectionAction
+        confirmSelectionAction.setDisabled(True)
         super().__init__(*args)
     
     def setText(self):
@@ -3267,12 +3269,23 @@ class sliderWithSpinBox(QWidget):
 
 class ParentImageItem(pg.ImageItem):
     def __init__(
-            self, image=None, linkedImageItem=None, activatingAction=None, 
-            **kargs
+            self, image=None, linkedImageItem=None, activatingAction=None,
+            debug=False, **kargs
         ):
         super().__init__(image, **kargs)
         self.linkedImageItem = linkedImageItem
         self.activatingAction = activatingAction
+        self.debug = debug
+    
+    def clear(self):
+        if self.linkedImageItem is not None:
+            self.linkedImageItem.clear()
+        return super().clear()
+    
+    def setLevels(self, levels, **kargs):
+        if self.linkedImageItem is not None:
+            self.linkedImageItem.setLevels(levels)
+        return super().setLevels(levels, **kargs)
     
     def setImage(self, image=None, autoLevels=None, **kargs):
         if self.linkedImageItem is not None:

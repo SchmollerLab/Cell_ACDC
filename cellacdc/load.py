@@ -26,6 +26,9 @@ from PyQt5.QtWidgets import (
 )
 import pyqtgraph as pg
 
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
+
 from . import prompts, apps, myutils, widgets, measurements, config
 from . import base_cca_df, base_acdc_df, html_utils, temp_path, printl
 
