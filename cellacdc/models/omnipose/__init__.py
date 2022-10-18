@@ -19,5 +19,5 @@ except ModuleNotFoundError:
         )
 
     subprocess.check_call(
-        [sys.executable, '-m', 'pip', 'install', 'omnipose-acdc']
+        [sys.executable, '-m', 'pip', 'install', 'omnipose_acdc']
     )
