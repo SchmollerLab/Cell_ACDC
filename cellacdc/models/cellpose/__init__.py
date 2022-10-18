@@ -71,6 +71,3 @@ except ModuleNotFoundError:
     subprocess.check_call(
         [sys.executable, '-m', 'pip', 'install', 'cellpose']
     )
-    subprocess.check_call(
-        [sys.executable, '-m', 'pip', 'install', 'omnipose']
-    )
