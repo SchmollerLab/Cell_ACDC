@@ -3406,6 +3406,10 @@ class guiWin(QMainWindow):
         self.highLightIDLayerImg1 = pg.ImageItem()
         self.topLayerItems.append(self.highLightIDLayerImg1)  
 
+        # Highlighted ID layer items
+        self.highLightIDLayerRightImage = pg.ImageItem()
+        self.topLayerItemsRight.append(self.highLightIDLayerRightImage)
+
         # Keep IDs temp layers
         self.keepIDsTempLayerRight = pg.ImageItem()
         self.keepIDsTempLayerLeft = widgets.ParentImageItem(
@@ -4697,6 +4701,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         self.isMovingLabel = True
         self.highLightIDLayerImg1.clear()
+        self.highLightIDLayerRightImage.clear()
         self.movingID = ID
         self.prevMovePos = (xdata, ydata)
         movingObj = posData.rp[posData.IDs.index(ID)]
@@ -9226,6 +9231,7 @@ class guiWin(QMainWindow):
             self.hoverLabelID = 0
             self.highlightedID = 0
             self.highLightIDLayerImg1.clear()
+            self.highLightIDLayerRightImage.clear()
             self.highlightIDcheckBoxToggled(False)
     
     def keepIDs_cb(self, checked):
@@ -12177,7 +12183,8 @@ class guiWin(QMainWindow):
         self.labelsLayerRightImg.clear()
         self.keepIDsTempLayerLeft.clear()
         self.keepIDsTempLayerRight.clear()
-        self.highLightIDLayerImg1.setImage(self.emptyLab.copy())
+        self.highLightIDLayerImg1.clear()
+        self.highLightIDLayerRightImage.clear()
         allItems = zip(
             self.ax1_ContoursCurves,
             self.ax1_LabelItemsIDs,
@@ -13762,7 +13769,7 @@ class guiWin(QMainWindow):
 
             if not is_history_known:
                 txt = f'{txt}?'
-
+        
         if not self.isObjVisible(obj.bbox):
             # Object not visible (entire bbox in another z_range)
             LabelItemID.setText('')
@@ -15718,7 +15725,7 @@ class guiWin(QMainWindow):
         if hoverID is None:
             hoverID = self.currentLab2D[int(y), int(x)]
 
-        if hoverID == 0:
+        if hoverID != self.highlightedID:
             self.clearHighlightedID()
 
         self.highlightSearchedID(hoverID)
@@ -15730,6 +15737,7 @@ class guiWin(QMainWindow):
             return
 
         self.highLightIDLayerImg1.clear()
+        self.highLightIDLayerRightImage.clear()
 
         ID = self.highlightedID
 
@@ -15787,6 +15795,8 @@ class guiWin(QMainWindow):
         )
         isContourON_ax1 = how_ax1.find('contours') != -1
         isContourON_ax2 = how_ax2.find('contours') != -1
+        isOverlaySegm_ax1 = how_ax1.find('segm. masks') != -1 
+        isOverlaySegm_ax2 = how_ax2.find('segm. masks') != -1
 
         # Set contours to normal pen if requested or clear
         for ax1ContCurve, ax2ContCurve in contours:
@@ -15826,7 +15836,8 @@ class guiWin(QMainWindow):
         objIdx = posData.IDs.index(ID)
         obj = posData.rp[objIdx]
 
-        if how_ax1.find('segm. masks') != -1:
+        if isOverlaySegm_ax1 or isOverlaySegm_ax2:
+            alpha = self.imgGrad.labelsAlphaSlider.value()
             highlightedLab = np.zeros_like(self.currentLab2D)
             lut = np.zeros((2, 4), dtype=np.uint8)
             for _obj in posData.rp:
@@ -15840,17 +15851,30 @@ class guiWin(QMainWindow):
                 rgb = posData.lut[_obj.label].copy()    
                 lut[1, :-1] = rgb
                 # Set alpha to 0.7
-                lut[1, -1] = 178
+                lut[1, -1] = 178          
+        
+        cont = None
+        if isOverlaySegm_ax1:
             self.highLightIDLayerImg1.setLookupTable(lut)
-            self.highLightIDLayerImg1.setImage(highlightedLab)
-            alpha = self.imgGrad.labelsAlphaSlider.value()
+            self.highLightIDLayerImg1.setImage(highlightedLab)          
             self.labelsLayerImg1.setOpacity(alpha/3)
-            self.labelsLayerRightImg.setOpacity(alpha/3)
         else:
             # Red thick contour of searched ID
             cont = self.getObjContours(obj)
             pen = self.newIDs_cpen
             curveID = self.ax1_ContoursCurves[ID-1]
+            curveID.setData(cont[:,0], cont[:,1], pen=pen)
+        
+        if isOverlaySegm_ax2:
+            self.highLightIDLayerRightImage.setLookupTable(lut)
+            self.highLightIDLayerRightImage.setImage(highlightedLab)
+            self.labelsLayerRightImg.setOpacity(alpha/3)
+        else:
+            # Red thick contour of searched ID
+            if cont is None:
+                cont = self.getObjContours(obj)
+            pen = self.newIDs_cpen
+            curveID = self.ax2_ContoursCurves[ID-1]
             curveID.setData(cont[:,0], cont[:,1], pen=pen)
 
         how = self.drawIDsContComboBox.currentText()
