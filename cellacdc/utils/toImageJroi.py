@@ -15,7 +15,6 @@ class toImageRoiUtil(NewThreadMultipleExpBaseUtil):
     
     def runWorker(self):
         self.worker = workers.ToImajeJroiWorker(self)
-        self.worker.signals.finished.connect(self.workerFinished)
         super().runWorker(self.worker)
     
     def showEvent(self, event):

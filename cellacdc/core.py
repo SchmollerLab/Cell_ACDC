@@ -20,7 +20,7 @@ from tqdm import tqdm
 
 # Custom modules
 from . import apps, base_cca_df, printl
-from . import load
+from . import load, myutils
 
 def np_replace_values(arr, old_values, new_values):
     # See method_jdehesa https://stackoverflow.com/questions/45735230/how-to-replace-a-list-of-values-in-a-numpy-array
@@ -140,6 +140,204 @@ def remove_artefacts_lab2D(
         return lab, delIDs
     else:
         return lab
+
+def track_sub_cell_objects_acdc_df(
+        tracked_subobj_segm_data, subobj_acdc_df, all_old_sub_ids,
+        all_num_objects_per_cells, SizeT=None, sigProgress=None, 
+        tracked_cells_segm_data=None, cells_acdc_df=None
+    ):
+    if SizeT == 1:
+        tracked_subobj_segm_data = tracked_subobj_segm_data[np.newaxis]
+        if tracked_cells_segm_data is not None:
+            tracked_cells_segm_data = tracked_cells_segm_data[np.newaxis]
+    
+    if tracked_cells_segm_data is not None:
+        acdc_df_list = []
+    sub_acdc_df_list = []
+    keys_cells = []
+    keys_sub = []
+    for frame_i, lab_sub in enumerate(tracked_subobj_segm_data):
+        rp_sub = skimage.measure.regionprops(lab_sub)
+        sub_ids = [sub_obj.label for sub_obj in rp_sub]
+        old_sub_ids = all_old_sub_ids[frame_i]
+        if subobj_acdc_df is None:
+            sub_acdc_df_frame_i = myutils.getBaseAcdcDf(rp_sub)
+        else:
+            sub_acdc_df_frame_i = (
+                subobj_acdc_df.loc[frame_i].rename(index=old_sub_ids) 
+            )
+            if 'relative_ID' in sub_acdc_df_frame_i.columns:
+                sub_acdc_df_frame_i['relative_ID'] = (
+                    sub_acdc_df_frame_i['relative_ID'].replace(old_sub_ids)
+                )
+        
+        num_objects_per_cells = all_num_objects_per_cells[frame_i]
+
+        # For sub-obj that do not have a parent cell the num_sub_cell_objs_per_cell = 0        
+        sub_acdc_df_frame_i['num_sub_cell_objs_per_cell'] = (
+            [num_objects_per_cells.get(sub_id, 0) for sub_id in sub_ids]
+        )
+        
+        sub_acdc_df_list.append(sub_acdc_df_frame_i)
+        keys_sub.append(frame_i)
+        
+        if tracked_cells_segm_data is not None:
+            lab = tracked_cells_segm_data[frame_i]
+            rp = skimage.measure.regionprops(lab)
+            # Untacked sub-obj (if kept) are not present in acdc_df of the cells
+            # --> check with `IDs_with_sub_obj = ... if id in lab`
+            IDs_with_sub_obj = [id for id in sub_ids if id in lab]
+            if cells_acdc_df is None:
+                acdc_df_frame_i = myutils.getBaseAcdcDf(rp)
+            else:
+                acdc_df_frame_i = cells_acdc_df.loc[frame_i].copy()
+
+            acdc_df_frame_i['num_sub_cell_objs_per_cell'] = 0
+            acdc_df_frame_i.loc[IDs_with_sub_obj, 'num_sub_cell_objs_per_cell'] = ([
+                num_objects_per_cells[id] for id in IDs_with_sub_obj
+            ])
+            acdc_df_list.append(acdc_df_frame_i)
+            keys_cells.append(frame_i)
+
+        if sigProgress is not None:
+            sigProgress.emit(1)
+            
+    tracked_acdc_df = None
+    sub_tracked_acdc_df = pd.concat(
+        sub_acdc_df_list, keys=keys_sub, names=['frame_i', 'Cell_ID']
+    )
+    if tracked_cells_segm_data is not None:
+        tracked_acdc_df = pd.concat(
+            acdc_df_list, keys=keys_cells, names=['frame_i', 'Cell_ID']
+        )
+    
+    return sub_tracked_acdc_df, tracked_acdc_df
+        
+        
+def track_sub_cell_objects(
+        cells_segm_data, subobj_segm_data, IoAthresh, 
+        how='delete_sub', SizeT=None, sigProgress=None
+    ):  
+    """Function used to track sub-cellular objects and assign the same ID of 
+    the cell they belong to. 
+    
+    For each sub-cellular object calculate the interesection over area  with cells 
+    --> get max IoA in case it is touching more than one cell 
+    --> assign that cell if IoA >= IoA thresh
+
+    Args:
+        cells_segm_data (ndarray): 2D, 3D or 4D array of `int` type cotaining 
+            the cells segmentation masks.
+
+        subobj_segm_data (ndarray): 2D, 3D or 4D array of `int` type cotaining 
+            the sub-cellular segmentation masks (e.g., nuclei).
+
+        IoAthresh (float): Minimum percentage (0-1) of the sub-cellular object's 
+            area to assign it to a cell
+
+        how (str, optional): _description_. Defaults to 'delete_sub'.
+
+        SizeT (int, optional): Number of frames. Pass `SizeT=1` for non-timelapse
+            data. Defaults to None --> assume first dimension of segm data is SizeT.
+
+        sigProgress (PyQt5.QtCore.pyqtSignal, optional): If provided it will emit 
+            1 for each complete frame. Used to update GUI progress bars. 
+            Defaults to None --> do not emit signal.
+    
+    Returns:
+        tuple: A tuple `(tracked_subobj_segm_data, tracked_cells_segm_data, 
+            all_num_objects_per_cells, old_sub_ids)` where `tracked_subobj_segm_data` is the 
+            segmentation mask of the sub-cellular objects with the same IDs of 
+            the cells they belong to, `tracked_cells_segm_data` is the segmentation 
+            masks of the cells that do have at least on sub-cellular object 
+            (`None` if `how != 'delete_sub'`), `all_num_objects_per_cells` is 
+            a list of dictionary (one per frame) where the dictionaries have 
+            cell IDs as keys and the number of sub-cellular objects per cell as
+            values, and `all_old_sub_ids` is a list of dictionaries (one per frame)
+            where each dictionary has the new sub-cellular objects' ids as keys and 
+            the old (replaced) ids.
+    """    
+    
+    if SizeT == 1:
+        cells_segm_data = cells_segm_data[np.newaxis]
+        subobj_segm_data = subobj_segm_data[np.newaxis]
+
+    tracked_cells_segm_data = None
+    tracked_subobj_segm_data = np.zeros_like(subobj_segm_data)        
+
+    segm_data_zip = zip(cells_segm_data, subobj_segm_data)
+    tracked_IDs = set()
+    all_num_objects_per_cells = []
+    all_old_sub_ids = [{} for _ in range(len(cells_segm_data))]
+    for frame_i, (lab, lab_sub) in enumerate(segm_data_zip):
+        rp = skimage.measure.regionprops(lab)
+        num_objects_per_cells = {obj.label:0 for obj in rp}
+        rp_sub = skimage.measure.regionprops(lab_sub)
+        tracked_lab_sub = tracked_subobj_segm_data[frame_i]
+        old_sub_ids = all_old_sub_ids[frame_i]
+        for sub_obj in rp_sub:
+            intersect_mask = lab[sub_obj.slice][sub_obj.image]
+            intersect_IDs, I_counts = np.unique(
+                intersect_mask, return_counts=True
+            )
+            for intersect_ID, I in zip(intersect_IDs, I_counts):
+                if intersect_ID == 0:
+                    continue
+                
+                IoA = I/sub_obj.area
+                if IoA < IoAthresh:
+                    # Do not add untracked sub-obj
+                    continue
+                
+                old_sub_ids[intersect_ID] = sub_obj.label
+                tracked_lab_sub[sub_obj.slice][sub_obj.image] = intersect_ID
+                num_objects_per_cells[intersect_ID] += 1
+                tracked_IDs.add(intersect_ID)
+        
+        all_num_objects_per_cells.append(num_objects_per_cells)
+        
+        if sigProgress is not None:
+            sigProgress.emit(1)
+    
+    if how == 'delete_both' or how == 'delete_cells':
+        # Delete cells that do not have a sub-cellular object
+        tracked_cells_segm_data = cells_segm_data.copy()
+        for frame_i, lab in enumerate(tracked_cells_segm_data):
+            rp = skimage.measure.regionprops(lab)
+            tracked_lab = tracked_cells_segm_data[frame_i]
+            for obj in rp:
+                if obj.label in tracked_IDs:
+                    continue
+                    
+                tracked_lab[obj.slice][obj.image] = 0
+    
+    if how == 'only_track' or how == 'delete_cells':
+        # Assign unique IDs to untracked sub-cellular objects and add them 
+        # to all_old_sub_ids
+        maxSubObjID = tracked_subobj_segm_data.max() + 1
+        for sub_obj_ID in np.unique(subobj_segm_data):
+            if sub_obj_ID == 0:
+                continue
+
+            if sub_obj_ID in tracked_IDs:
+                continue
+            
+            tracked_subobj_segm_data[subobj_segm_data == sub_obj_ID] = maxSubObjID
+            for frame_i, lab_sub in enumerate(subobj_segm_data):
+                if sub_obj_ID not in lab_sub:
+                    continue
+                all_old_sub_ids[frame_i][maxSubObjID] = sub_obj_ID
+            maxSubObjID += 1
+
+    if SizeT == 1:
+        tracked_subobj_segm_data = tracked_subobj_segm_data[0]
+        if how == 'delete_both':
+            tracked_cells_segm_data = tracked_cells_segm_data[0]
+    
+    return (
+        tracked_subobj_segm_data, tracked_cells_segm_data, 
+        all_num_objects_per_cells, all_old_sub_ids
+    )
 
 def _calc_airy_radius(wavelen, NA):
     airy_radius_nm = (1.22 * wavelen)/(2*NA)

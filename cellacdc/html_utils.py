@@ -1,5 +1,6 @@
 from functools import wraps
 import re
+from matplotlib.colors import to_hex
 
 from . import is_mac
 
@@ -28,6 +29,9 @@ def to_list(items, ordered=False):
     txt = tag(items_txt, tag_info=list_tag)
     return txt
 
+def span(text, color='r'):
+    c = to_hex(color)
+    return f'<span style="color: {c}">{text}</span>'
 
 def css_head(txt):
     # if is_mac:

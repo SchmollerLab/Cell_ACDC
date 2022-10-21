@@ -102,17 +102,32 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         self.worker.signals.sigSelectSegmFiles.connect(self.selectSegmFileLoadData)
         self.worker.signals.sigPermissionError.connect(self.warnPermissionError)
         self.worker.signals.initProgressBar.connect(self.workerInitProgressbar)
+        self.worker.signals.sigInitInnerPbar.connect(self.workerInitInnerPbar)
         self.worker.signals.progressBar.connect(self.workerUpdateProgressbar)
+        self.worker.signals.sigUpdateInnerPbar.connect(
+            self.workerUpdateInnerPbar
+        )
         self.worker.signals.sigUpdatePbarDesc.connect(self.workerUpdatePbarDesc)
 
         self.thread.started.connect(self.worker.run)
         self.thread.start()
+    
+    def workerInitInnerPbar(self, totalIter):
+        if totalIter <= 1:
+            self.progressWin.innerPbar.hide()
+            return
+        self.progressWin.innerPbar.show()
+        self.progressWin.innerPbar.setValue(0)
+        self.progressWin.innerPbar.setMaximum(totalIter)
 
     def workerInitProgressbar(self, totalIter):
         self.progressWin.mainPbar.setValue(0)
         if totalIter == 1:
             totalIter = 0
         self.progressWin.mainPbar.setMaximum(totalIter)
+    
+    def workerUpdateInnerPbar(self, step):
+        self.progressWin.innerPbar.update(step)
     
     def workerUpdateProgressbar(self, step):
         self.progressWin.mainPbar.update(step)
@@ -150,13 +165,20 @@ class NewThreadMultipleExpBaseUtil(QDialog):
             )
             existingSegmEndNames.update(_existingEndnames)
 
+        self.existingSegmEndNames = list(existingSegmEndNames)
+
         if len(existingSegmEndNames) == 1:
             self.endFilenameSegm = list(existingSegmEndNames)[0]
             self.worker.waitCond.wakeAll()
             return
 
+        if hasattr(self, 'infoText'):
+            infoText = self.infoText
+        else:
+            infoText = None
+
         win = apps.QDialogMultiSegmNpz(
-            existingSegmEndNames, exp_path, parent=self
+            existingSegmEndNames, exp_path, parent=self, infoText=infoText
         )
         win.exec_()
         self.endFilenameSegm = win.selectedItemText
@@ -180,6 +202,9 @@ class NewThreadMultipleExpBaseUtil(QDialog):
             self.close()
 
     def workerCritical(self, error):
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+
         try:
             raise error
         except:
@@ -200,6 +225,13 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         if self.progressWin is not None:
             self.progressWin.logConsole.append(text)
         self.logger.log(getattr(logging, loggerLevel), text)
+    
+    def closeEvent(self, event):
+        self.logger.info('Closing logger...')
+        handlers = self.logger.handlers[:]
+        for handler in handlers:
+            handler.close()
+            self.logger.removeHandler(handler)
 
 class MainThreadSinglePosUtilBase(QDialog):
     sigClose = pyqtSignal()
@@ -256,3 +288,10 @@ class MainThreadSinglePosUtilBase(QDialog):
     
     def closeClicked(self):
         self.sigClose.emit()
+    
+    def closeEvent(self, event):
+        self.logger.log('Closing logger...')
+        handlers = self.logger.handlers[:]
+        for handler in handlers:
+            handler.close()
+            self.logger.removeHandler(handler)

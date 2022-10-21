@@ -886,7 +886,9 @@ class filenameDialog(QDialog):
         msg.information(self, 'Filename help', text)
 
     def _text(self):
-        return self.lineEdit.text().replace(' ', '_')
+        _text = self.lineEdit.text().replace(' ', '_')
+        _text = self.lineEdit.text().replace('.', '_')
+        return _text
 
     def checkExistingNames(self):
         if self._text() not in self.existingNames:
@@ -5654,12 +5656,9 @@ class QLineEditDialog(QDialog):
         buttonsLayout = QHBoxLayout()
 
         # Widgets
+        if not msg.startswith('<p'):
+            msg = html_utils.paragraph(msg, center=True)
         msg = QLabel(msg)
-        _font = QFont()
-        _font.setPixelSize(13)
-        msg.setFont(_font)
-        msg.setAlignment(Qt.AlignCenter)
-        # padding: top, left, bottom, right
         msg.setStyleSheet("padding:0px 0px 3px 0px;")
 
         if isFloat:
@@ -5687,7 +5686,7 @@ class QLineEditDialog(QDialog):
             ID_QLineEdit = QLineEdit()
             ID_QLineEdit.setText(defaultTxt)
             ID_QLineEdit.textChanged[str].connect(self.ID_LineEdit_cb)
-        ID_QLineEdit.setFont(_font)
+        ID_QLineEdit.setFont(font)
         ID_QLineEdit.setAlignment(Qt.AlignCenter)
 
         self.ID_QLineEdit = ID_QLineEdit
@@ -5695,7 +5694,7 @@ class QLineEditDialog(QDialog):
         if allowedValues is not None:
             notValidLabel = QLabel()
             notValidLabel.setStyleSheet('color: red')
-            notValidLabel.setFont(_font)
+            notValidLabel.setFont(font)
             notValidLabel.setAlignment(Qt.AlignCenter)
             self.notValidLabel = notValidLabel
 
@@ -5726,7 +5725,7 @@ class QLineEditDialog(QDialog):
             LineEditLayout.addWidget(notValidLabel, alignment=Qt.AlignCenter)
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
-        buttonsLayout.insertSpacing(1, 20)
+        buttonsLayout.addSpacing(20)
         buttonsLayout.addWidget(okButton)
 
         # Add layouts
@@ -5793,6 +5792,7 @@ class QLineEditDialog(QDialog):
 
         self.cancel = False
         self.EntryID = val
+        self.enteredValue = val
         self.close()
 
     def cancel_cb(self, event):
@@ -6958,7 +6958,7 @@ class QDialogZsliceAbsent(QDialog):
 class QDialogMultiSegmNpz(QDialog):
     def __init__(
             self, images_ls, parent_path, parent=None, 
-            addNewFileButton=False, basename=''
+            addNewFileButton=False, basename='', infoText=None
         ):
         self.cancel = True
         self.selectedItemText = ''
@@ -7006,9 +7006,10 @@ class QDialogMultiSegmNpz(QDialog):
         infoLayout.addStretch(1)
         mainLayout.addLayout(infoLayout)
 
-        questionText = html_utils.paragraph(
-            'Select which segmentation file to load:'
-        )
+        if infoText is None:
+            infoText = 'Select which segmentation file to load:'
+
+        questionText = html_utils.paragraph(infoText)
         label = QLabel(questionText)
         listWidget = widgets.listWidget()
         listWidget.addItems(images_ls)

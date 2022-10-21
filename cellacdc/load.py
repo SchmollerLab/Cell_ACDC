@@ -108,6 +108,50 @@ def h5dump_to_arr(h5path):
     arr = np.array([data_dict[key] for key in sorted_keys])
     return arr
 
+def load_segm_file(images_path, end_name_segm_file='segm', return_path=False):
+    if not end_name_segm_file.endswith('.npz'):
+        end_name_segm_file = f'{end_name_segm_file}.npz'
+    for file in myutils.listdir(images_path):
+        if file.endswith(end_name_segm_file):
+            segm_data = np.load(os.path.join(images_path, file))['arr_0']
+            if return_path:
+                return segm_data, os.path.join(images_path, file)
+            else:
+                return segm_data
+    else:
+        if return_path:
+            return None, ''
+        else:
+            return 
+
+def load_acdc_df_file(images_path, end_name_acdc_df_file='segm', return_path=False):
+    if not end_name_acdc_df_file.endswith('.csv'):
+        end_name_acdc_df_file = f'{end_name_acdc_df_file}.csv'
+    for file in myutils.listdir(images_path):
+        if file.endswith(end_name_acdc_df_file):
+            acdc_df = pd.read_csv(os.path.join(images_path, file))
+            if return_path:
+                return acdc_df, os.path.join(images_path, file)
+            else:
+                return acdc_df
+    else:
+        if return_path:
+            return None, ''
+        else:
+            return 
+
+def _load_acdc_df_file(acdc_df_file_path):
+    acdc_df = pd.read_csv(acdc_df_file_path)
+    try:
+        acdc_df_drop_cca = acdc_df.drop(columns=cca_df_colnames).fillna(0)
+        acdc_df[acdc_df_drop_cca.columns] = acdc_df_drop_cca
+    except KeyError:
+        pass
+    acdc_df = acdc_df.set_index(['frame_i', 'Cell_ID'])
+    acdc_df = pd_bool_to_int(acdc_df, acdc_df_bool_cols, inplace=True)
+    acdc_df = pd_int_to_bool(acdc_df, acdc_df_bool_cols)
+    return acdc_df
+
 def get_user_ch_paths(images_paths, user_ch_name):
     user_ch_file_paths = []
     for images_path in images_paths:
@@ -579,15 +623,7 @@ class loadData:
         self.setNotFoundData()
     
     def loadAcdcDf(self, filePath, updatePaths=True, return_df=False):
-        acdc_df = pd.read_csv(filePath)
-        try:
-            acdc_df_drop_cca = acdc_df.drop(columns=cca_df_colnames).fillna(0)
-            acdc_df[acdc_df_drop_cca.columns] = acdc_df_drop_cca
-        except KeyError:
-            pass
-        acdc_df = acdc_df.set_index(['frame_i', 'Cell_ID'])
-        acdc_df = pd_bool_to_int(acdc_df, acdc_df_bool_cols, inplace=True)
-        acdc_df = pd_int_to_bool(acdc_df, acdc_df_bool_cols)
+        acdc_df = _load_acdc_df_file(filePath)
         if updatePaths:
             self.acdc_df = acdc_df
             self.acdc_df_found = True
@@ -650,7 +686,6 @@ class loadData:
         filePath = os.path.join(self.images_path, segm_new_filename)
         self.segm_npz_path = filePath
 
-        
         filePath = os.path.join(self.images_path, acdc_output_filename)
         self.acdc_output_csv_path = filePath
 
