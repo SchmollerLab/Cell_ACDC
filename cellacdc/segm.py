@@ -902,8 +902,8 @@ class segmWin(QMainWindow):
                 )
                 msg = widgets.myMessageBox()
                 txt = html_utils.paragraph(f"""
-                    You loaded 3D z-stacks, but (in some or all Positions) '
-                    'you <b>never selected which
+                    You loaded 3D z-stacks, but (in some or all Positions) 
+                    you <b>never selected which
                     z-slice or projection method to use for segmentation</b>
                     (this is required for 2D segmentation of 3D data).<br><br>
                     I opened a window where you can visualize
