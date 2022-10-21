@@ -522,7 +522,7 @@ class segmWin(QMainWindow):
         else:
             is_images_folder = False
 
-        self.logger.info('Loading data...')
+        self.log('Loading data...')
         self.progressLabel.setText('Loading data...')
 
         # Ask which model
@@ -543,7 +543,7 @@ class segmWin(QMainWindow):
                 return
             self.segment2D_kwargs = win.segment_kwargs
 
-        self.logger.info(f'Importing {model_name}...')
+        self.log(f'Importing {model_name}...')
         self.downloadWin = apps.downloadModel(model_name, parent=self)
         self.downloadWin.download()
 
@@ -637,7 +637,7 @@ class segmWin(QMainWindow):
         user_ch_file_paths = []
         for images_path in images_paths:
             print('')
-            self.logger.info(f'Processing {images_path}')
+            self.log(f'Processing {images_path}')
             filenames = myutils.listdir(images_path)
             if ch_name_selector.is_first_call:
                 ch_names, warn = (
@@ -675,7 +675,7 @@ class segmWin(QMainWindow):
             if not aligned_npz_found and not tif_found:
                 print('')
                 print('-------------------------------------------------------')
-                self.logger.info(f'WARNING: The folder {images_path}\n does not contain the file '
+                self.log(f'The folder {images_path}\n does not contain the file '
                       f'{user_ch_name}_aligned.npz\n or the file {user_ch_name}.tif. '
                       'Skipping it.')
                 print('-------------------------------------------------------')
@@ -683,7 +683,7 @@ class segmWin(QMainWindow):
             elif not aligned_npz_found and tif_found:
                 print('')
                 print('-------------------------------------------------------')
-                self.logger.info(f'WARNING: The folder {images_path}\n does not contain the file '
+                self.log(f'The folder {images_path}\n does not contain the file '
                       f'{user_ch_name}_aligned.npz. Segmenting .tif data.')
                 print('-------------------------------------------------------')
                 print('')
@@ -742,23 +742,22 @@ class segmWin(QMainWindow):
             self.innerPbar_available = True
 
 
-        if posData.SizeT == 1:
-            # Ask if I should predict budding
-            msg = QMessageBox()
-            msg.setFont(font)
-            answer = msg.question(
-                self, 'Predict budding?',
-                'Do you want to automatically predict which cells are budding '
-                '(relevant only to budding yeast cells)?',
-                msg.Yes | msg.No | msg.Cancel
-            )
-            if answer == msg.Yes:
-                self.setPredictBuddingModel()
-            elif answer == msg.Cancel:
-                abort = self.doAbort()
-                if abort:
-                    self.close()
-                    return
+        # if posData.SizeT == 1:
+        #     # Ask if I should predict budding
+        #     msg = widgets.myMessageBox(wrapText=False)
+        #     _, yesButton, noButton = msg.question(
+        #         self, 'Predict budding?',
+        #         'Do you want to automatically predict which cells are budding<br>'
+        #         'using <b>YeastMate</b> (relevant only to budding yeast cells)?',
+        #         buttonsTexts=('Cancel', 'Yes', 'No')
+        #     )
+        #     if msg.clickedButton == yesButton:
+        #         self.setPredictBuddingModel()
+        #     elif msg.cancel:
+        #         abort = self.doAbort()
+        #         if abort:
+        #             self.close()
+        #             return
 
         # Check if there are segmentation already computed
         self.selectedSegmFile = None
@@ -848,15 +847,22 @@ class segmWin(QMainWindow):
         #   1. 2D segmentation on z-stack data that was never visualized
         #      with dataPrep
         #   2. Select a ROI to segment
+        isSegmInfoPresent = True
+        for img_path in user_ch_file_paths:
+            _posData = load.loadData(img_path, user_ch_name, QParent=self)
+            _posData.getBasenameAndChNames()
+            _posData.loadOtherFiles(
+                load_segm_data=False,
+                loadSegmInfo=True,
+            )
+            if _posData.segmInfo_df is None:
+                isSegmInfoPresent = False
+                break
+        
         segm2D_never_visualized_dataPrep = (
             not self.isSegm3D
             and posData.SizeZ > 1
-            and posData.segmInfo_df is None
-        )
-        segm2D_channel_never_visualize = (
-            not self.isSegm3D
-            and posData.SizeZ > 1
-            and posData.segmInfo_df is not None
+            and not isSegmInfoPresent
         )
         launchDataPrep = False
 
@@ -865,7 +871,7 @@ class segmWin(QMainWindow):
         if selectROI:
             launchDataPrep = True
 
-        if segm2D_channel_never_visualize:
+        if not segm2D_never_visualized_dataPrep:
             # segmInfo_df exists --> check if it has channel z-slice info
             filenames = posData.segmInfo_df.index.get_level_values(0).unique()
             for _filename in filenames:
@@ -886,7 +892,7 @@ class segmWin(QMainWindow):
                 )
             else:
                 print('')
-                self.logger.info(
+                self.log(
                     f'WARNING: The image data in {img_path} is 3D but '
                     f'_segmInfo.csv file not found. Launching dataPrep.py...'
                 )
@@ -896,10 +902,10 @@ class segmWin(QMainWindow):
                 )
                 msg = widgets.myMessageBox()
                 txt = html_utils.paragraph(f"""
-                    You loaded 3D z-stacks, but you <b>never selected which
+                    You loaded 3D z-stacks, but (in some or all Positions) '
+                    'you <b>never selected which
                     z-slice or projection method to use for segmentation</b>
-                    (Cell-ACDC cannot segment 3D z-stacks,
-                    it needs to convert them to 2D).<br><br>
+                    (this is required for 2D segmentation of 3D data).<br><br>
                     I opened a window where you can visualize
                     your z-stacks and <b>select an appropriate z-slice
                     or projection for each Position or frame</b>.
@@ -968,6 +974,7 @@ class segmWin(QMainWindow):
 
         self.do_tracking = False
         self.tracker = None
+        self.track_params = {}
         if posData.SizeT > 1:
             # Ask stop frame. The "askStopFrameSegm" will internally load
             # all the posData and save segmSizeT which will be used as stop_i
@@ -1145,6 +1152,16 @@ class segmWin(QMainWindow):
         button.clicked.disconnect()
         button.clicked.connect(msg.buttonCallBack)
         button.click()
+    
+    def log(self, text):
+        self.logger.info(text)
+        try:
+            self.logTerminal.append(text)
+            self.logTerminal.append('-'*30)
+            maxScrollbar = self.logTerminal.verticalScrollBar().maximum()
+            self.logTerminal.verticalScrollBar().setValue(maxScrollbar)
+        except AttributeError:
+            pass
 
     def addlogTerminal(self):
         self.logTerminal = QTerminal()
@@ -1271,7 +1288,7 @@ class segmWin(QMainWindow):
 
     def closeEvent(self, event):
         print('')
-        self.logger.info('Closing segmentation module...')
+        self.log('Closing segmentation module...')
         if self.buttonToRestore is not None:
             button, color, text = self.buttonToRestore
             button.setText(text)
@@ -1280,7 +1297,7 @@ class segmWin(QMainWindow):
             self.mainWin.setWindowState(Qt.WindowNoState)
             self.mainWin.setWindowState(Qt.WindowActive)
             self.mainWin.raise_()
-        self.logger.info('Segmentation module closed.')
+        self.log('Segmentation module closed.')
         handlers = self.logger.handlers[:]
         for handler in handlers:
             handler.close()

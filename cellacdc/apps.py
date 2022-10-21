@@ -7804,20 +7804,20 @@ class QDialogModelParams(QDialog):
             omni_models = '<br>'.join(omni_models)
         
         _models = None
-        if self.model_name == 'cellpose':
+        if self.model_name.lower() == 'cellpose':
             _models = cp_models
-        elif self.model_name == 'stardist':
+        elif self.model_name.lower() == 'stardist':
             _models = stardist_models
-        elif self.model_name == 'omnipose':
+        elif self.model_name.lower() == 'omnipose':
             _models = omni_models
         if _models is None:
             return
              
         txt = html_utils.paragraph(
             'Currently Cell-ACDC has <b>four models implemented</b>: '
-            'YeaZ, Cellpose, StarDist, and YeastMate.<br><br>'
-            'Cellpose and StarDist have the following default models available:<br><br>'
-            f'<b>{self.model_name}</b>:<br><br>'
+            'YeaZ, Cellpose, StarDist, YeastMate, and omnipose.<br><br>'
+            'These are the following models available for '
+            f'<code>{self.model_name}</code>:<br><br>'
             f'{_models}<br>'
         )
         self.infoWin.addText(txt)
