@@ -864,6 +864,11 @@ class segmWin(QMainWindow):
             and posData.SizeZ > 1
             and not isSegmInfoPresent
         )
+        segm2D_on_3D_visualized = (
+            not self.isSegm3D
+            and posData.SizeZ > 1
+            and isSegmInfoPresent
+        )
         launchDataPrep = False
 
         if segm2D_never_visualized_dataPrep:
@@ -871,7 +876,7 @@ class segmWin(QMainWindow):
         if selectROI:
             launchDataPrep = True
 
-        if not segm2D_never_visualized_dataPrep:
+        if segm2D_on_3D_visualized:
             # segmInfo_df exists --> check if it has channel z-slice info
             filenames = posData.segmInfo_df.index.get_level_values(0).unique()
             for _filename in filenames:
