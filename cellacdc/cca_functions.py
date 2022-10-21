@@ -498,7 +498,13 @@ def _calc_rot_vol(obj, PhysicalSizeY=1, PhysicalSizeX=1):
     read from csv they might be a string value.
 
     """
-    if obj.image.ndim == 3:
+    is3Dobj = False
+    try:
+        orientation = obj.orientation
+    except NotImplementedError:
+        is3Dobj = True
+    
+    if obj.image.ndim == 3 or is3Dobj:
         try:
             zc = int(floor(obj.centroid[0]))
             local_z = zc - obj.bbox[0]
