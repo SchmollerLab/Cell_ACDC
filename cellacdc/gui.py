@@ -537,37 +537,37 @@ class saveDataWorker(QObject):
                     bkgrData_medians.append(np.median(bkgrVals_z_sumP))
                     bkgrData_medians.append(np.median(bkgrVals_zSlice))
                     if self.mainWin.isSegm3D:
-                        bkgrData_medians.extend(np.median(bkgrVals_3D))
+                        bkgrData_medians.append(np.median(bkgrVals_3D))
 
                     bkgrData_means.append(np.mean(bkgrVals_z_maxP))
                     bkgrData_means.append(np.mean(bkgrVals_z_sumP))
                     bkgrData_means.append(np.mean(bkgrVals_zSlice))
                     if self.mainWin.isSegm3D:
-                        bkgrData_means.extend(np.mean(bkgrVals_3D))
+                        bkgrData_means.append(np.mean(bkgrVals_3D))
 
                     bkgrData_q75s.append(np.quantile(bkgrVals_z_maxP, q=0.75))
                     bkgrData_q75s.append(np.quantile(bkgrVals_z_sumP, q=0.75))
                     bkgrData_q75s.append(np.quantile(bkgrVals_zSlice, q=0.75))
                     if self.mainWin.isSegm3D:
-                        bkgrData_q75s.extend(np.quantile(bkgrVals_3D, q=0.75))
+                        bkgrData_q75s.append(np.quantile(bkgrVals_3D, q=0.75))
 
                     bkgrData_q25s.append(np.quantile(bkgrVals_z_maxP, q=0.25))
                     bkgrData_q25s.append(np.quantile(bkgrVals_z_sumP, q=0.25))
                     bkgrData_q25s.append(np.quantile(bkgrVals_zSlice, q=0.25))
                     if self.mainWin.isSegm3D:
-                        bkgrData_q25s.extend(np.quantile(bkgrVals_3D, q=0.25))
+                        bkgrData_q25s.append(np.quantile(bkgrVals_3D, q=0.25))
 
                     bkgrData_q95s.append(np.quantile(bkgrVals_z_maxP, q=0.95))
                     bkgrData_q95s.append(np.quantile(bkgrVals_z_sumP, q=0.95))
                     bkgrData_q95s.append(np.quantile(bkgrVals_zSlice, q=0.95))
                     if self.mainWin.isSegm3D:
-                        bkgrData_q95s.extend(np.quantile(bkgrVals_3D, q=0.95))
+                        bkgrData_q95s.append(np.quantile(bkgrVals_3D, q=0.95))
 
                     bkgrData_q05s.append(np.quantile(bkgrVals_z_maxP, q=0.05))
                     bkgrData_q05s.append(np.quantile(bkgrVals_z_sumP, q=0.05))
                     bkgrData_q05s.append(np.quantile(bkgrVals_zSlice, q=0.05))
                     if self.mainWin.isSegm3D:
-                        bkgrData_q05s.extend(np.quantile(bkgrVals_3D, q=0.05))
+                        bkgrData_q05s.append(np.quantile(bkgrVals_3D, q=0.05))
             else:
                 fluo_data_2D = fluo_data
                 fluo_data_projs.append(fluo_data_2D)
@@ -12382,6 +12382,10 @@ class guiWin(QMainWindow):
         self.chNamesToSkip = []
         self.metricsToSkip = {}
         self.regionPropsToSave = measurements.get_props_names()
+        if self.isSegm3D:
+            self.regionPropsToSave = measurements.get_props_names_3D()
+        else:
+            self.regionPropsToSave = measurements.get_props_names()  
         self.mixedChCombineMetricsToSkip = []
         self.sizeMetricsToSave = list(
             measurements.get_size_metrics_desc().keys()

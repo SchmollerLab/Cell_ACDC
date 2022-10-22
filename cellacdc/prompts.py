@@ -94,15 +94,14 @@ class select_channel_name:
                     for chName in channelNames:
                         chSaved = []
                         for file in filenames:
-                            _, ext = os.path.splitext(file)
-                            pattern = f'{chName}{ext}'
-                            pattern_aligned = f'{chName}_aligned.npz'
-                            if file.endswith(pattern) or file.endswith(pattern_aligned):
+                            patterns = (
+                                f'{chName}.tif', f'{chName}_aligned.npz'
+                            )
+                            ends = [p for p in patterns if file.endswith(p)]
+                            if ends:
+                                pattern = ends[0]
                                 chSaved.append(True)
-                                try:
-                                    m = tuple(re.finditer(pattern, file))[-1]
-                                except IndexError:
-                                    m = tuple(re.finditer(pattern_aligned, file))[-1]
+                                m = tuple(re.finditer(pattern, file))[-1]
                                 chName_idx = m.start()
                                 basename = file[:chName_idx]
                                 break

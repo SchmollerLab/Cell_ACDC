@@ -585,6 +585,30 @@ def _is_numeric_dtype(dtype):
     )
     return is_numeric
 
+def get_props_names_3D():
+    props = (
+        'label',
+        'major_axis_length',
+        # 'minor_axis_length', # this often causes math domain error in 3D
+        'inertia_tensor_eigvals', 
+        'equivalent_diameter',
+        'moments',
+        'area',
+        'solidity',
+        'extent',
+        'inertia_tensor',
+        'filled_area',
+        'centroid',
+        'bbox_area',
+        'local_centroid',
+        'convex_area',
+        'euler_number',
+        'moments_normalized',
+        'moments_central',
+        'bbox'
+    )
+    return props
+
 def get_props_names():
     props = (
         'label',

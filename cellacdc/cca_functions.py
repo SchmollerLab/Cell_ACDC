@@ -15,7 +15,7 @@ import difflib
 from scipy.stats import binned_statistic
 import warnings
 
-from . import myutils, prompts, apps, qrc_resources, widgets, html_utils
+from . import myutils, prompts, apps, qrc_resources, widgets, html_utils, printl
 
 def configuration_dialog():
     if os.name == 'nt':
@@ -501,7 +501,9 @@ def _calc_rot_vol(obj, PhysicalSizeY=1, PhysicalSizeX=1):
     is3Dobj = False
     try:
         orientation = obj.orientation
-    except NotImplementedError:
+    except NotImplementedError as e:
+        # if obj.image.ndim != 3:
+        #     printl(e, obj.image.ndim, obj.bbox, obj.centroid)
         is3Dobj = True
     
     if obj.image.ndim == 3 or is3Dobj:
