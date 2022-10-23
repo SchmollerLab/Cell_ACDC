@@ -567,7 +567,8 @@ class bioFormatsWorker(QObject):
             'TimeIncrement': self.TimeIncrement,
             'PhysicalSizeZ': self.PhysicalSizeZ,
             'PhysicalSizeY': self.PhysicalSizeY,
-            'PhysicalSizeX': self.PhysicalSizeX
+            'PhysicalSizeX': self.PhysicalSizeX,
+            'basename': f'{filenameNOext}_'
         }, index=['values']).T
         df.index.name = 'Description'
 
