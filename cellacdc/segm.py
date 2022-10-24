@@ -548,7 +548,7 @@ class segmWin(QMainWindow):
         self.downloadWin.download()
 
         self.model_name = model_name
-        acdcSegment = import_module(f'models.{model_name}.acdcSegment')
+        acdcSegment = myutils.import_segment_module(model_name)
         self.acdcSegment =  acdcSegment
 
         # Read all models parameters

@@ -3,6 +3,7 @@ import os
 import sys
 import re
 import ast
+import pathlib
 from heapq import nlargest
 import matplotlib
 import matplotlib.pyplot as plt
@@ -44,14 +45,15 @@ from PyQt5.QtGui import (
 )
 from PyQt5.QtCore import Qt, QSize, QEvent, pyqtSignal, QEventLoop, QTimer
 from PyQt5.QtWidgets import (
-    QAction, QApplication, QMainWindow, QMenu, QLabel, QToolBar,
+    QFileDialog, QApplication, QMainWindow, QMenu, QLabel, QToolBar,
     QScrollBar, QWidget, QVBoxLayout, QLineEdit, QPushButton,
     QHBoxLayout, QDialog, QFormLayout, QListWidget, QAbstractItemView,
     QButtonGroup, QCheckBox, QSizePolicy, QComboBox, QSlider, QGridLayout,
     QSpinBox, QToolButton, QTableView, QTextBrowser, QDoubleSpinBox,
     QScrollArea, QFrame, QProgressBar, QGroupBox, QRadioButton,
     QDockWidget, QMessageBox, QStyle, QPlainTextEdit, QSpacerItem,
-    QTreeWidget, QTreeWidgetItem, QTextEdit, QSplashScreen
+    QTreeWidget, QTreeWidgetItem, QTextEdit, QSplashScreen, QAction,
+    QListWidgetItem
 )
 from . import widgets
 from . import myutils, load, prompts, core, measurements, html_utils
@@ -63,6 +65,9 @@ from . import issues_url
 pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
 font = QFont()
 font.setPixelSize(13)
+italicFont = QFont()
+italicFont.setPixelSize(13)
+italicFont.setItalic(True)
 
 class QBaseDialog(QDialog):
     def __init__(self, parent=None):
@@ -357,6 +362,43 @@ class installJavaDialog(widgets.myMessageBox):
 
     def exec_(self):
         self.show(block=True)
+
+def addCustomModelMessages(QParent=None):
+    modelFilePath = None
+    msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+    txt = html_utils.paragraph("""
+    Do you <b>already have</b> the <code>acdcSegment.py</code> file for your code 
+    or do you <b>need instructions</b> on how to set-up your custom model?<br>
+    """)
+    infoButton = widgets.infoPushButton(' I need instructions')
+    browseButton = widgets.browseFileButton(' I have the model, let me select it')
+    msg.information(
+        QParent, 'Add custom model', txt, 
+        buttonsTexts=('Cancel', infoButton, browseButton),
+        showDialog=False
+    )
+    browseButton.clicked.disconnect()
+    browseButton.clicked.connect(msg.buttonCallBack)
+    msg.exec_()
+    if msg.cancel:
+        return
+    if msg.clickedButton == infoButton:           
+        txt, models_path = myutils.get_add_custom_model_instructions()
+        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg.addShowInFileManagerButton(models_path, txt='Open models folder...')
+        msg.information(
+            QParent, 'Custom model instructions', txt, buttonsTexts=('Ok',)
+        )
+    else:
+        homePath = pathlib.Path.home()
+        modelFilePath = QFileDialog.getOpenFileName(
+            QParent, 'Select the acdcSegment.py file of your model',
+            str(homePath), 'acdcSegment.py file (*.py);;All files (*)'
+        )[0]
+        if not modelFilePath:
+            return
+    
+    return modelFilePath
 
 class customAnnotationDialog(QDialog):
     sigDeleteSelecAnnot = pyqtSignal(object)
@@ -2797,10 +2839,12 @@ class QDialogSelectModel(QDialog):
 
         listBox = widgets.listWidget()
         models = myutils.get_list_of_models()
-        models.append('Automatic thresholding')
-        models.append('Custom model...')
+        models.append('Automatic thresholding')   
         listBox.setFont(font)
         listBox.addItems(models)
+        addCustomModelItem = QListWidgetItem('Add custom model...')
+        addCustomModelItem.setFont(italicFont)
+        listBox.addItem(addCustomModelItem)
         listBox.setSelectionMode(QAbstractItemView.SingleSelection)
         listBox.setCurrentRow(0)
         self.listBox = listBox
@@ -2841,13 +2885,15 @@ class QDialogSelectModel(QDialog):
         self.cancel = False
         item = self.listBox.currentItem()
         model = item.text()
-        if model == 'Custom model...':
-            txt, models_path = myutils.get_add_custom_model_instructions()
-            msg = widgets.myMessageBox(showCentered=False)
-            msg.addShowInFileManagerButton(models_path, txt='Open models folder...')
-            msg.information(
-                self, 'Custom model instructions', txt, buttonsTexts=('Ok',)
-            )
+        if model == 'Add custom model...':
+            modelFilePath = addCustomModelMessages(self)
+            if modelFilePath is None:
+                return
+            myutils.store_custom_model_path(modelFilePath)
+            modelName = os.path.basename(os.path.dirname(modelFilePath))
+            item = QListWidgetItem(modelName)
+            self.listBox.addItem(item)
+            self.listBox.setCurrentItem(item)
         elif model == 'Automatic thresholding':
             self.selectedModel = 'thresholding'
             self.close()

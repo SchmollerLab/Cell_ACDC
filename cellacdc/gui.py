@@ -79,6 +79,7 @@ from . import core, myutils, dataPrep, widgets
 from . import measurements, printl
 from . import colors, filters
 from . import user_manual_url
+from . import cellacdc_path, temp_path, settings_csv_path
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .myutils import exec_time, setupLogger
@@ -93,9 +94,6 @@ if os.name == 'nt':
     except Exception as e:
         pass
 
-cellacdc_path = os.path.dirname(os.path.abspath(__file__))
-temp_path = os.path.join(cellacdc_path, 'temp')
-settings_csv_path = os.path.join(temp_path, 'settings.csv')
 favourite_func_metrics_csv_path = os.path.join(
     temp_path, 'favourite_func_metrics.csv'
 )
@@ -1639,13 +1637,13 @@ class guiWin(QMainWindow):
         for action in self.segmActions:
             self.segmSingleFrameMenu.addAction(action)
 
-        self.segmSingleFrameMenu.addAction(self.addCustomModelAction)
+        self.segmSingleFrameMenu.addAction(self.addCustomModelFrameAction)
 
         self.segmVideoMenu = SegmMenu.addMenu('Segment multiple frames')
         for action in self.segmActionsVideo:
             self.segmVideoMenu.addAction(action)
 
-        self.segmVideoMenu.addAction(self.addCustomModelAction)
+        self.segmVideoMenu.addAction(self.addCustomModelVideoAction)
 
         SegmMenu.addAction(self.SegmActionRW)
         SegmMenu.addAction(self.postProcessSegmAction)
@@ -2558,7 +2556,8 @@ class guiWin(QMainWindow):
             self.acdcSegment_li.append(None)
             action.setDisabled(True)
 
-        self.addCustomModelAction = QAction('Custom model...', self)
+        self.addCustomModelFrameAction = QAction('Add custom model...', self)
+        self.addCustomModelVideoAction = QAction('Add custom model...', self)
 
         self.segmActionsVideo = []
         for model_name in models:
@@ -2869,9 +2868,15 @@ class guiWin(QMainWindow):
         self.viewAllCustomAnnotAction.toggled.connect(
             self.viewAllCustomAnnot
         )
-        self.addCustomModelAction.triggered.connect(
+        self.addCustomModelVideoAction.triggered.connect(
             self.showInstructionsCustomModel
         )
+        self.addCustomModelFrameAction.triggered.connect(
+            self.showInstructionsCustomModel
+        )
+        self.addCustomModelFrameAction.callback = self.segmFrameCallback
+        self.addCustomModelVideoAction.callback = self.segmVideoCallback
+        
 
     def gui_connectEditActions(self):
         self.showInExplorerAction.setEnabled(True)
@@ -10650,11 +10655,17 @@ class guiWin(QMainWindow):
             self.clearScatterPlotCustomAnnotButton(button)
 
     def segmFrameCallback(self, action):
+        if action == self.addCustomModelFrameAction:
+            return
+        
         idx = self.segmActions.index(action)
         model_name = self.modelNames[idx]
         self.repeatSegm(model_name=model_name, askSegmParams=True)
 
     def segmVideoCallback(self, action):
+        if action == self.addCustomModelVideoAction:
+            return
+
         posData = self.data[self.pos_i]
         win = apps.startStopFramesDialog(
             posData.SizeT, currentFrameNum=posData.frame_i+1
@@ -10709,7 +10720,7 @@ class guiWin(QMainWindow):
         acdcSegment = self.acdcSegment_li[idx]
         if acdcSegment is None:
             self.logger.info(f'Importing {model_name}...')
-            acdcSegment = import_module(f'models.{model_name}.acdcSegment')
+            acdcSegment = myutils.import_segment_module(model_name)
             self.acdcSegment_li[idx] = acdcSegment
 
         # Ask parameters if the user clicked on the action
@@ -10867,7 +10878,7 @@ class guiWin(QMainWindow):
         acdcSegment = self.acdcSegment_li[idx]
         if acdcSegment is None:
             self.logger.info(f'Importing {model_name}...')
-            acdcSegment = import_module(f'models.{model_name}.acdcSegment')
+            acdcSegment = myutils.import_segment_module(model_name)
             self.acdcSegment_li[idx] = acdcSegment
 
         # Read all models parameters
@@ -11044,7 +11055,7 @@ class guiWin(QMainWindow):
         # Check if model needs to be imported
         acdcSegment = self.acdcSegment_li[idx]
         if acdcSegment is None:
-            acdcSegment = import_module(f'models.{model_name}.acdcSegment')
+            acdcSegment = myutils.import_segment_module(model_name)
             self.acdcSegment_li[idx] = acdcSegment
 
         # Read all models parameters
@@ -14679,12 +14690,20 @@ class guiWin(QMainWindow):
         self.overlayLabelsContextMenu.exec_(QCursor.pos())
 
     def showInstructionsCustomModel(self):
-        txt, models_path = myutils.get_add_custom_model_instructions()
-        msg = widgets.myMessageBox(showCentered=False)
-        msg.addShowInFileManagerButton(models_path, txt='Open models folder...')
-        msg.information(
-            self, 'Custom model instructions', txt, buttonsTexts=('Ok',)
-        )
+        modelFilePath = apps.addCustomModelMessages(self)
+        if modelFilePath is None:
+            self.logger.info('Adding custom model process stopped.')
+            return
+        
+        myutils.store_custom_model_path(modelFilePath)
+        modelName = os.path.basename(os.path.dirname(modelFilePath))
+        customModelAction = QAction(modelName)
+        self.segmSingleFrameMenu.addAction(customModelAction)
+        self.segmActions.append(customModelAction)
+        self.modelNames.append(modelName)
+        self.models.append(None)
+        self.sender().callback(customModelAction)
+        
 
     def setCheckedOverlayContextMenusActions(self, channelNames):
         for action in self.overlayContextMenu.actions():

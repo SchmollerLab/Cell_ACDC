@@ -27,6 +27,7 @@ cellacdc_path = os.path.dirname(os.path.abspath(__file__))
 parent_path = os.path.dirname(cellacdc_path)
 data_path = os.path.join(parent_path, 'data')
 temp_path = os.path.join(cellacdc_path, 'temp')
+settings_csv_path = os.path.join(temp_path, 'settings.csv')
 user_manual_url = 'https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf'
 
 if not os.path.exists(temp_path):

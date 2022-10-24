@@ -10,10 +10,12 @@ import logging
 import datetime
 import time
 import subprocess
+import importlib
 from importlib import import_module
 from math import pow
 from functools import wraps, partial
 from collections import namedtuple, Counter
+import natsort
 from tqdm import tqdm
 import requests
 import zipfile
@@ -35,7 +37,10 @@ from PyQt5.QtCore import pyqtSignal, QObject, QCoreApplication
 
 from . import prompts, widgets, apps, core, load
 from . import html_utils, is_linux, is_win, is_mac, issues_url
-from . import cellacdc_path, printl
+from . import cellacdc_path, printl, temp_path
+from . import config
+
+models_list_file_path = os.path.join(temp_path, 'custom_models_paths.ini')
 
 def exception_handler(func):
     @wraps(func)
@@ -169,33 +174,48 @@ def get_add_custom_model_instructions():
     href_user_manual = f'<a href="{user_manual_url}">user manual</a>'
     href = f'<a href="{url}">here</a>'
     models_path = os.path.join(cellacdc_path, 'models')
+    func_color = (111/255,66/255,205/255) # purplish
+    kwargs_color = (208/255,88/255,9/255) # reddish/orange
+    class_color = (215/255,58/255,73/255) # reddish
+    blue_color = (0/255,92/255,197/255) # blueish
+    class_sh = html_utils.span('<i>class</i>', color=class_color)
+    def_sh = html_utils.span('<i>def</i>', color=class_color)
+    kwargs_sh = html_utils.span('**kwargs', color=kwargs_color)
+    Model_sh = html_utils.span('Model', color=func_color)
+    segment_sh = html_utils.span('segment', color=func_color)
+    predict_sh = html_utils.span('predict', color=func_color)
+    init_sh = html_utils.span('__init__', color=blue_color)
+    myModel_sh = html_utils.span('MyModel', color=func_color)
+    return_sh = html_utils.span('<i>return</i>', color=class_color)
+    equal_sh = html_utils.span('=', color=class_color)
+    open_par_sh = html_utils.span('(', color=blue_color)
+    close_par_sh = html_utils.span(')', color=blue_color)
+    image_sh = html_utils.span('image', color=kwargs_color)
+    from_sh = html_utils.span('<i>from</i>', color=class_color)
+    import_sh = html_utils.span('<i>import</i>', color=class_color)
     s = html_utils.paragraph(f"""
-    To use a custom model you need to <b>implement an API</b> in the
-    following folder:<br><br>
-    <code>{models_path}</code><br><br>
-    In the above path, <b>create a folder</b> with the name of your model.
-    Inside this new folder create a file named <code>__init__.py</code> and a
-    file named <br>acdcSegment.py<br>.<br><br>
-    The <code>__init__.py</code> can be left empty or you can use it to
-    define constants that can be imported by your model.<br><br>
-    In the <code>acdcSegment.py</code> file you will <b>implement the main
-    API class</b>.
+    To use a custom model first <b>create a folder</b> with the same name of your model.<br><br>
+    Inside this new folder create a file named <code>acdcSegment.py</code>.<br><br>
+    In the <code>acdcSegment.py</code> file you will <b>implement the model class</b>.<br><br>
     Have a look at the other existing models, but essentially you have to create
-    a class called <code>Model</code> with at least the <code>__init__</code>
-    and the <code>segment</code> method. The segment method takes the image as
-    an input and return the segmentation mask.<br><br>
+    a class called <code>Model</code> with at least<br>
+    the <code>{init_sh}</code> and the <code>{segment_sh}</code> method.<br><br>
+    The <code>{segment_sh}</code> method takes the image (2D or 3D) as an input and return the segmentation mask.<br><br>
     You can find more details in the {href_user_manual} at the section
     called <code>Adding segmentation models to the pipeline</code>.<br><br>
-    Pseudo-code:
+    Pseudo-code for the <code>acdcSegment.py</code> file:
     <pre><code>
-    class Model:
-        def __init__(self, **kwargs):
-            self.model = myModel()
+    {from_sh} myModel {import_sh} {myModel_sh}
 
-        def segment(self, image, **kwargs):
-            labels = self.model.predict(image)
-            return labels
+    {class_sh} {Model_sh}:
+        {def_sh} {init_sh}(self, {kwargs_sh}):
+            self.model {equal_sh} {myModel_sh}{open_par_sh}{close_par_sh}
+
+        {def_sh} {segment_sh}(self, {image_sh}, {kwargs_sh}):
+            labels {equal_sh} self.model.{predict_sh}{open_par_sh}{image_sh}{close_par_sh}
+            {return_sh} labels
     </code></pre>
+    
     If it doesn't work, please report the issue {href} with the
     code you wrote. Thanks.
     """)
@@ -302,7 +322,6 @@ def get_pos_foldernames(exp_path):
     return pos_foldernames
 
 def getMostRecentPath():
-    cellacdc_path = os.path.dirname(os.path.abspath(__file__))
     recentPaths_path = os.path.join(
         cellacdc_path, 'temp', 'recentPaths.csv'
     )
@@ -322,7 +341,6 @@ def getMostRecentPath():
 def addToRecentPaths(exp_path, logger=None):
     if not os.path.exists(exp_path):
         return
-    cellacdc_path = os.path.dirname(os.path.abspath(__file__))
     recentPaths_path = os.path.join(
         cellacdc_path, 'temp', 'recentPaths.csv'
     )
@@ -432,6 +450,18 @@ def get_cca_colname_desc():
 
 def testQcoreApp():
     print(QCoreApplication.instance())
+
+def store_custom_model_path(model_file_path):
+    model_file_path = model_file_path.replace('\\', '/')
+    model_name = os.path.basename(os.path.dirname(model_file_path))
+    cp = config.ConfigParser()
+    if os.path.exists(models_list_file_path):
+        cp.read(models_list_file_path)
+    if model_name not in cp:
+        cp[model_name] = {}
+    cp[model_name]['path'] = model_file_path
+    with open(models_list_file_path, 'w') as configFile:
+        cp.write(configFile)
 
 def check_git_installed(parent=None):
     try:
@@ -909,7 +939,6 @@ def download_java():
     return jre_path, jdk_path, url
 
 def get_model_path(model_name, create_temp_dir=True):
-    cellacdc_path = os.path.dirname(os.path.realpath(__file__))
     model_info_path = os.path.join(cellacdc_path, 'models', model_name, 'model')
 
     if os.path.exists(model_info_path):
@@ -1055,7 +1084,6 @@ def check_v123_model_path(model_name):
     # while from v1.2.4 we save them on user folder. If we find the
     # weights in the package we move them to user folder without downloading
     # new ones.
-    cellacdc_path = os.path.dirname(os.path.realpath(__file__))
     v123_model_path = os.path.join(cellacdc_path, 'models', model_name, 'model')
     exists = check_model_exists(v123_model_path, model_name)
     if exists:
@@ -1064,7 +1092,6 @@ def check_v123_model_path(model_name):
         return ''
 
 def _write_model_location_to_txt(model_name):
-    cellacdc_path = os.path.dirname(os.path.realpath(__file__))
     model_info_path = os.path.join(cellacdc_path, 'models', model_name, 'model')
     user_path = pathlib.Path.home()
     model_path = os.path.join(str(user_path), f'acdc-{model_name}')
@@ -1206,7 +1233,6 @@ def get_list_of_real_time_trackers():
     return rt_trackers
 
 def get_list_of_trackers():
-    cellacdc_path = os.path.dirname(os.path.abspath(__file__))
     trackers_path = os.path.join(cellacdc_path, 'trackers')
     trackers = []
     for name in listdir(trackers_path):
@@ -1216,14 +1242,19 @@ def get_list_of_trackers():
     return trackers
 
 def get_list_of_models():
-    cellacdc_path = os.path.dirname(os.path.abspath(__file__))
     models_path = os.path.join(cellacdc_path, 'models')
-    models = []
+    models = set()
     for name in listdir(models_path):
         _path = os.path.join(models_path, name)
         if os.path.isdir(_path) and not name.endswith('__') and name != 'thresholding':
-            models.append(name)
-    return models
+            models.add(name)
+    if not os.path.exists(models_list_file_path):
+        return list(models)
+    
+    cp = config.ConfigParser()
+    cp.read(models_list_file_path)
+    models.update(cp.sections())
+    return sorted(list(models))
 
 def seconds_to_ETA(seconds):
     seconds = round(seconds)
@@ -1523,6 +1554,19 @@ def import_tracker(posData, trackerName, realTime=False, qparent=None):
     
     tracker = trackerModule.tracker(**init_params)
     return tracker, track_params
+
+def import_segment_module(model_name):
+    try:
+        acdcSegment = import_module(f'models.{model_name}.acdcSegment')
+    except ModuleNotFoundError as e:
+        cp = config.ConfigParser()
+        cp.read(models_list_file_path)
+        model_path = cp[model_name]['path']
+        spec = importlib.util.spec_from_file_location('acdcSegment', model_path)
+        acdcSegment = importlib.util.module_from_spec(spec)
+        sys.modules['acdcSegment'] = acdcSegment
+        spec.loader.exec_module(acdcSegment) 
+    return acdcSegment
 
 def synthetic_image_geneator(size=(512,512), f_x=1, f_y=1):
     Y, X = size
