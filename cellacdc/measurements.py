@@ -11,6 +11,9 @@ from skimage.measure._regionprops import PROPS, COL_DTYPES, RegionProperties
 
 from . import core, base_cca_df, html_utils, config
 
+import warnings
+warnings.filterwarnings("ignore", message="Failed to get convex hull image.")
+
 user_path = pathlib.Path.home()
 acdc_metrics_path = os.path.join(user_path, 'acdc-metrics')
 if not os.path.exists(acdc_metrics_path):
