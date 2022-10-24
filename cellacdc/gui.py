@@ -3164,8 +3164,16 @@ class guiWin(QMainWindow):
         self.navigateScrollBar.setSizePolicy(sp)
 
         row += 1
-        bottomLeftLayout.addWidget(
-            self.z_label, row, 0, alignment=Qt.AlignRight
+        zSliceCheckboxLayout = QHBoxLayout()
+        self.zSliceCheckbox = QCheckBox()
+        self.zSliceCheckbox.setToolTip(
+            'Activate/deactivate control of the z-slices with keyboard arrows.\n\n'
+            'SHORCUT to toggle ON/OFF: "Z" key'
+        )
+        zSliceCheckboxLayout.addWidget(self.zSliceCheckbox)
+        zSliceCheckboxLayout.addWidget(self.z_label)
+        bottomLeftLayout.addLayout(
+            zSliceCheckboxLayout, row, 0, alignment=Qt.AlignRight
         )
         bottomLeftLayout.addWidget(self.zSliceScrollBar, row, 1, 1, 2)
         bottomLeftLayout.addWidget(self.zProjComboBox, row, 3)
@@ -9535,7 +9543,7 @@ class guiWin(QMainWindow):
         isAltModifier = modifiers == Qt.AltModifier
         isCtrlModifier = modifiers == Qt.ControlModifier
         isShiftModifier = modifiers == Qt.ShiftModifier
-        self.isZmodifier = ev.key()==Qt.Key_Z
+        self.isZmodifier = ev.key()== Qt.Key_Z
         if isShiftModifier:
             self.isShiftDown = True
             if self.isSegm3D:
@@ -9787,20 +9795,25 @@ class guiWin(QMainWindow):
             or ev.key() == Qt.Key_Up
             or ev.key() == Qt.Key_Down
             or ev.key() == Qt.Key_Control
-            or ev.key() == Qt.Key_Z
             or ev.key() == Qt.Key_Backspace
         )
         if canRepeat:
             return
-        if ev.isAutoRepeat():
-            msg = QMessageBox()
-            msg.critical(
-                self, 'Release the key!',
-                f'Please, do not keep the key "{ev.text()}" pressed! It confuses me.\n'
-                'You do not need to keep it pressed.\n\n '
-                'Thanks!',
-                msg.Ok
-            )
+        if ev.isAutoRepeat() and not ev.key() == Qt.Key_Z:
+            msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+            txt = html_utils.paragraph(f"""
+            Please, <b>do not keep the key "{ev.text().upper()}" 
+            pressed.</b><br><br>
+            It confuses me :)<br><br>
+            Thanks!
+            """)
+            msg.warning(self, 'Release the key, please',txt)
+        elif ev.isAutoRepeat() and ev.key() == Qt.Key_Z:
+            self.zKeptDown = True
+        elif ev.key() == Qt.Key_Z:
+            if not self.zKeptDown:
+                self.zSliceCheckbox.setChecked(not self.zSliceCheckbox.isChecked())
+            self.zKeptDown = False
 
     def setUncheckedAllButtons(self):
         self.clickedOnBud = False
@@ -11088,7 +11101,7 @@ class guiWin(QMainWindow):
         self.titleLabel.setText('Budding event prediction done.', color='g')
 
     def next_cb(self):
-        if self.isZmodifier:
+        if self.isZmodifier or self.zSliceCheckbox.isChecked():
             stepAddAction = QAbstractSlider.SliderSingleStepAdd
             self.zSliceScrollBar.triggerAction(stepAddAction)
             return
@@ -11103,7 +11116,7 @@ class guiWin(QMainWindow):
         self.updatePropsWidget('')
 
     def prev_cb(self):
-        if self.isZmodifier:
+        if self.isZmodifier or self.zSliceCheckbox.isChecked():
             stepSubAction = QAbstractSlider.SliderSingleStepSub
             self.zSliceScrollBar.triggerAction(stepSubAction)
             return
@@ -11516,14 +11529,11 @@ class guiWin(QMainWindow):
 
         self.overlayLabelsItems = {}
         self.drawModeOverlayLabelsChannels = {}
-        if not self.isSegm3D:
-            self.existingSegmEndNames = existingSegmEndNames
-            self.overlayLabelsButtonAction.setVisible(True)
-            self.createOverlayLabelsContextMenu(existingSegmEndNames)
-            self.createOverlayLabelsItems(existingSegmEndNames)
-        else:
-            self.overlayLabelsButtonAction.setVisible(False)
 
+        self.existingSegmEndNames = existingSegmEndNames
+        self.createOverlayLabelsContextMenu(existingSegmEndNames)
+        self.overlayLabelsButtonAction.setVisible(True)
+        self.createOverlayLabelsItems(existingSegmEndNames)
         self.disableNonFunctionalButtons()
 
         self.isH5chunk = (
@@ -16133,7 +16143,16 @@ class guiWin(QMainWindow):
         elif segmEndname not in posData.ol_labels_data:
             self.loadOverlayLabelsData(segmEndname)
         
-        return posData.ol_labels_data[segmEndname][posData.frame_i]
+        if self.isSegm3D:
+            zProjHow = self.zProjComboBox.currentText()
+            isZslice = zProjHow == 'single z-slice'
+            if isZslice:
+                z = self.zSliceScrollBar.sliderPosition()
+                return posData.ol_labels_data[segmEndname][posData.frame_i][z]
+            else:
+                return posData.ol_labels_data[segmEndname][posData.frame_i].max(axis=0)
+        else:
+            return posData.ol_labels_data[segmEndname][posData.frame_i]
     
     def loadOverlayLabelsData(self, segmEndname):
         posData = self.data[self.pos_i]
@@ -16718,6 +16737,7 @@ class guiWin(QMainWindow):
         self.gui_createLazyLoader()
 
         self.isZmodifier = False
+        self.zKeptDown = False
         self.askRepeatSegment3D = True
         self.askZrangeSegm3D = True
         self.showPropsDockButton.setDisabled(True)

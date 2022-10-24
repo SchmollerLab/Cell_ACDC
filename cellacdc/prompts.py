@@ -85,12 +85,16 @@ class select_channel_name:
         chNames_found = False
         if metadata_csv_path is not None:
             df = pd.read_csv(metadata_csv_path)
+            basename = None
             if 'Description' in df.columns:
                 channelNamesMask = df.Description.str.contains(r'channel_\d+_name')
                 channelNames = df[channelNamesMask]['values'].to_list()
-                if channelNames:
-                    channel_names = channelNames.copy()
+                try:
+                    basename = df.set_index('Description').at['basename', 'values']
+                except Exception as e:
                     basename = None
+                if channelNames and basename is None:
+                    channel_names = channelNames.copy()
                     for chName in channelNames:
                         chSaved = []
                         for file in filenames:
@@ -112,6 +116,10 @@ class select_channel_name:
                         self.basenameNotFound = False
                         self.basename = basename
                         return channel_names, False
+                elif channelNames and basename is not None:
+                    self.basename = basename
+                    self.basenameNotFound = False
+                    return channelNames, True
 
         # Find basename as intersection of filenames
         channel_names = []
