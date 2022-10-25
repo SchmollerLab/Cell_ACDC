@@ -678,6 +678,22 @@ def listdir(path):
         and not f == 'desktop.ini'
     ])
 
+def insertModelArgSpect(params, param_name, param_value, param_type=None):
+    ArgSpec = namedtuple('ArgSpec', ['name', 'default', 'type'])
+    
+    updated_params = []
+    for param in params:
+        if param.name == param_name:
+            if param_type is None:
+                param_type = param.type
+            new_param = ArgSpec(
+                name=param_name, default=param_value, type=param_type
+            )
+            updated_params.append(new_param)
+        else:
+            updated_params.append(param)
+    return updated_params
+
 def getModelArgSpec(acdcSegment):
     ArgSpec = namedtuple('ArgSpec', ['name', 'default', 'type'])
 

@@ -10748,18 +10748,28 @@ class guiWin(QMainWindow):
             except AttributeError:
                 url = None
             
+            initLastParams = True
             if model_name == 'thresholding':
                 win = apps.QDialogAutomaticThresholding(parent=self)
                 win.exec_()
                 if win.cancel:
                     return
                 self.segment2D_kwargs = win.segment_kwargs
+                thresh_method = self.segment2D_kwargs['threshold_method']
+                gauss_sigma = self.segment2D_kwargs['gauss_sigma']
+                segment_params = myutils.insertModelArgSpect(
+                    segment_params, 'threshold_method', thresh_method
+                )
+                segment_params = myutils.insertModelArgSpect(
+                    segment_params, 'gauss_sigma', gauss_sigma
+                )
+                initLastParams = False
 
             win = apps.QDialogModelParams(
                 init_params,
                 segment_params,
                 model_name, parent=self,
-                url=url
+                url=url, initLastParams=initLastParams
             )
             win.exec_()
             if win.cancel:

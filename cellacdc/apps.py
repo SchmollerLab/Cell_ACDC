@@ -7252,7 +7252,7 @@ class QDialogPbar(QDialog):
 class QDialogTrackerParams(QDialog):
     def __init__(
             self, init_params, track_params, tracker_name,
-            url=None, parent=None
+            url=None, parent=None, initLastParams=True
         ):
         self.cancel = True
         super().__init__(parent)
@@ -7344,8 +7344,9 @@ class QDialogTrackerParams(QDialog):
             initLoadLastSelButton.setDisabled(True)
             trackLoadLastSelButton.setDisabled(True)
 
-        initLoadLastSelButton.click()
-        trackLoadLastSelButton.click()
+        if initLastParams:
+            initLoadLastSelButton.click()
+            trackLoadLastSelButton.click()
 
         self.setFont(font)
 
@@ -7574,7 +7575,7 @@ class QDialogTrackerParams(QDialog):
 class QDialogModelParams(QDialog):
     def __init__(
             self, init_params, segment_params, model_name,
-            url=None, parent=None
+            url=None, parent=None, initLastParams=True
         ):
         self.cancel = True
         super().__init__(parent)
@@ -7594,6 +7595,7 @@ class QDialogModelParams(QDialog):
         )
         initDefaultButton = widgets.reloadPushButton('Restore default')
         initLoadLastSelButton = QPushButton('Load last parameters')
+        initLoadLastSelButton.setIcon(QIcon(':folder-open.svg'))
         initButtonsLayout = QHBoxLayout()
         initButtonsLayout.addStretch(1)
         initButtonsLayout.addWidget(initDefaultButton)
@@ -7607,6 +7609,7 @@ class QDialogModelParams(QDialog):
             segment_params,
             'Parameters for segmentation'
         )
+        self.segmentGroupBox = segmentGroupBox
         segmentDefaultButton = widgets.reloadPushButton('Restore default')
         segmentLoadLastSelButton = QPushButton('Load last parameters')
         segmentButtonsLayout = QHBoxLayout()
@@ -7618,9 +7621,6 @@ class QDialogModelParams(QDialog):
         segmentLoadLastSelButton.clicked.connect(
             partial(loadFunc, section, self.segment2D_argsWidgets)
         )
-
-        if model_name == 'thresholding':
-            segmentGroupBox.setDisabled(True)
 
         cancelButton = widgets.cancelPushButton(' Cancel ')
         okButton = widgets.okPushButton(' Ok ')
@@ -7698,8 +7698,10 @@ class QDialogModelParams(QDialog):
             segmentLoadLastSelButton.setDisabled(True)
             postProcLoadLastSelButton.setDisabled(True)
 
-        initLoadLastSelButton.click()
-        segmentLoadLastSelButton.click()
+        if initLastParams:
+            initLoadLastSelButton.click()
+            segmentLoadLastSelButton.click()
+        
         postProcLoadLastSelButton.click()
 
         # self.setModal(True)
@@ -7964,6 +7966,8 @@ class QDialogModelParams(QDialog):
     def show(self, block=False):
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show()
+        if self.model_name == 'thresholding':
+            self.segmentGroupBox.setDisabled(True)
         if block:
             self.loop = QEventLoop()
             self.loop.exec_()
