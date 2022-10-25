@@ -422,7 +422,10 @@ class bioFormatsWorker(QObject):
             chName = chName[:-1]
             trim_ = chName.endswith('_')
 
-    def getFilename(self, filenameNOext, s0p, appendTxt, series, ext):
+    def getFilename(
+            self, filenameNOext, s0p, appendTxt, series, ext, 
+            return_basename=False
+        ):
         # Do not allow dots in the filename since it breaks stuff here and there
         filenameNOext = filenameNOext.replace('.', '_')
         if self.addImageName:
@@ -433,10 +436,15 @@ class bioFormatsWorker(QObject):
             except Exception as e:
                 ImageName = ''
             self.removeInvalidCharacters(ImageName)
-            filename = f'{filenameNOext}_{ImageName}_s{s0p}_{appendTxt}{ext}'
+            basename = f'{filenameNOext}_{ImageName}_s{s0p}_'
+            filename = f'{basename}{appendTxt}{ext}'
         else:
-            filename = f'{filenameNOext}_s{s0p}_{appendTxt}{ext}'
-        return filename
+            basename = f'{filenameNOext}_s{s0p}_'
+            filename = f'{basename}{appendTxt}{ext}'
+        if return_basename:
+            return filename, basename
+        else:
+            return filename
     
     def buildIndexes(self, SizeC, SizeT, SizeZ, DimensionOrder):
         SizesCTZ = {'c': SizeC, 't': SizeT, 'z': SizeZ}
@@ -555,10 +563,11 @@ class bioFormatsWorker(QObject):
         with open(metadataXML_path, 'w', encoding="utf-8") as txt:
             txt.write(self.metadataXML)
 
-        metadata_csv_path = os.path.join(
-            images_path,
-            self.getFilename(filenameNOext, s0p, 'metadata', series, '.csv')
+        metadata_filename, basename = self.getFilename(
+            filenameNOext, s0p, 'metadata', series, '.csv', 
+            return_basename=True
         )
+        metadata_csv_path = os.path.join(images_path, metadata_filename)
         df = pd.DataFrame({
             'LensNA': self.LensNA,
             'DimensionOrder': self.DimensionOrder,
@@ -568,7 +577,7 @@ class bioFormatsWorker(QObject):
             'PhysicalSizeZ': self.PhysicalSizeZ,
             'PhysicalSizeY': self.PhysicalSizeY,
             'PhysicalSizeX': self.PhysicalSizeX,
-            'basename': f'{filenameNOext}_'
+            'basename': basename
         }, index=['values']).T
         df.index.name = 'Description'
 

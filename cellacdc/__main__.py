@@ -306,7 +306,7 @@ class mainWin(QMainWindow):
         utilsMenu = QMenu("&Utilities", self)
         utilsMenu.addAction(self.concatAcdcDfsAction)
         utilsMenu.addAction(self.calcMetricsAcdcDf)
-        utilsMenu.addAction(self.combineMetricsMultiChannelAction)  
+        # utilsMenu.addAction(self.combineMetricsMultiChannelAction)  
         utilsMenu.addAction(self.toSymDivAction)
         utilsMenu.addAction(self.trackSubCellFeaturesAction)  
         utilsMenu.addAction(self.npzToNpyAction)
