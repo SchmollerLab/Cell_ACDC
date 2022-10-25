@@ -1560,10 +1560,10 @@ class ComputeMetricsMultiChannelWorker(BaseWorkerUtil):
                 )
 
                 images_path = os.path.join(exp_path, pos, 'Images')
-                endFilenameSegm = self.mainWin.endFilenameSegm
+
                 ls = myutils.listdir(images_path)
                 
-
+                
 
                 self.signals.progressBar.emit(1)
 

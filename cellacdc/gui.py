@@ -11634,13 +11634,14 @@ class guiWin(QMainWindow):
         self.thread.start()
     
     def askRecoverNotSavedData(self, posData):
-        last_modified_time_unsaved = (
-            datetime.datetime.fromtimestamp(
-                os.path.getmtime(posData.segm_npz_path)
-            ).strftime("%a %d. %b. %y - %H:%M:%S")
-        )
+        last_modified_time_unsaved = 'NEVER'
         if os.path.exists(posData.segm_npz_temp_path):
             recovered_file_path = posData.segm_npz_temp_path
+            last_modified_time_unsaved = (
+                datetime.datetime.fromtimestamp(
+                    os.path.getmtime(posData.segm_npz_path)
+                ).strftime("%a %d. %b. %y - %H:%M:%S")
+            )
         else:
             recovered_file_path = posData.acdc_output_temp_csv_path
         
@@ -11655,7 +11656,7 @@ class guiWin(QMainWindow):
             Do you want to <b>load and recover</b> the unsaved data or 
             load the data that was <b>last saved by the user</b>?
         """)
-        details = ("""
+        details = (f"""
             The unsaved data was created on {last_modified_time_unsaved}\n\n
             The user saved the data last time on {last_modified_time_saved}
         """)
