@@ -93,6 +93,7 @@ try:
     from cellacdc.utils import toImageJroi as utilsToImageJroi
     from cellacdc.utils import acdcToSymDiv as utilsSymDiv
     from cellacdc.utils import trackSubCellFeatures as utilsTrackSubCell
+    from cellacdc.utils import computeMultiChannel as utilsComputeMultiCh
     from cellacdc import is_win, is_linux, temp_path
     from cellacdc import printl
 except ModuleNotFoundError as e:
@@ -305,6 +306,7 @@ class mainWin(QMainWindow):
         utilsMenu = QMenu("&Utilities", self)
         utilsMenu.addAction(self.concatAcdcDfsAction)
         utilsMenu.addAction(self.calcMetricsAcdcDf)
+        utilsMenu.addAction(self.combineMetricsMultiChannelAction)  
         utilsMenu.addAction(self.toSymDivAction)
         utilsMenu.addAction(self.trackSubCellFeaturesAction)  
         utilsMenu.addAction(self.npzToNpyAction)
@@ -358,6 +360,9 @@ class mainWin(QMainWindow):
         self.calcMetricsAcdcDf = QAction(
             'Compute measurements for one or more experiments...'
         )
+        self.combineMetricsMultiChannelAction = QAction(
+            'Combine measurements from multiple segmentation files...'
+        )
         self.toSymDivAction = QAction(
             'Add lineage tree table to one or more experiments...'
         )
@@ -386,6 +391,10 @@ class mainWin(QMainWindow):
         self.trackSubCellFeaturesAction.triggered.connect(
             self.launchTrackSubCellFeaturesiUtil
         )
+        self.combineMetricsMultiChannelAction.triggered.connect(
+            self.launchCombineMeatricsMultiChanneliUtil
+        )
+        
         self.batchConverterAction.triggered.connect(
                 self.launchImageBatchConverter
             )
@@ -634,9 +643,25 @@ class mainWin(QMainWindow):
         )
         self.toImageJroiWin.show()
     
+    def launchCombineMeatricsMultiChanneliUtil(self):
+        selectedExpPaths = self.getSelectedExpPaths(
+            'Combine measurements from multiple channels'
+        )
+        if selectedExpPaths is None:
+            return
+        
+        title = 'Compute measurements from multiple channels'
+        infoText = 'Launching compute measurements from multiple channels process...'
+        progressDialogueTitle = 'Compute measurements from multiple channels'
+        self.trackSubCellObjWin = utilsComputeMultiCh.ComputeMetricsMultiChannel(
+            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
+            parent=self
+        )
+        self.trackSubCellObjWin.show()
+
     def launchTrackSubCellFeaturesiUtil(self):
         selectedExpPaths = self.getSelectedExpPaths(
-            'From _segm.npz to ImageJ ROIs'
+            'Track sub-cellular objects'
         )
         if selectedExpPaths is None:
             return
@@ -908,22 +933,21 @@ class mainWin(QMainWindow):
             self.alignWin.setWindowState(Qt.WindowActive)
             self.alignWin.raise_()
 
-
     def launchConcatUtil(self, checked=False):
-        isConcatEnabled = self.concatAcdcDfsAction.isEnabled()
-        if isConcatEnabled:
-            self.concatAcdcDfsAction.setDisabled(True)
-            self.concatWin = utilsConcat.concatWin(
-                parent=self,
-                actionToEnable=self.concatAcdcDfsAction,
-                mainWin=self
-            )
-            self.concatWin.show()
-            self.concatWin.main()
-        else:
-            # self.concatWin.setWindowState(Qt.WindowNoState)
-            self.concatWin.setWindowState(Qt.WindowActive)
-            self.concatWin.raise_()
+        selectedExpPaths = self.getSelectedExpPaths(
+            'Concatenate acdc_output files'
+        )
+        if selectedExpPaths is None:
+            return
+        
+        title = 'Concatenate acdc_output files'
+        infoText = 'Launching concatenate acdc_output files process...'
+        progressDialogueTitle = 'Concatenate acdc_output files'
+        self.concatWindow = utilsConcat.concatWin(
+            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
+            parent=self
+        )
+        self.concatWindow.show()
     
     def show(self):
         super().show()

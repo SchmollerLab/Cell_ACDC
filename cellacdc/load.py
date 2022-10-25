@@ -171,6 +171,15 @@ def get_user_ch_paths(images_paths, user_ch_name):
         print(f'Loading {img_path}...')
     return user_ch_file_paths
 
+def get_acdc_output_files(images_path):
+    ls = myutils.listdir(images_path)
+
+    acdc_output_files = [
+        file for file in ls 
+        if file.find('acdc_output') != -1 and file.endswith('.csv')
+    ]
+    return acdc_output_files
+
 def get_segm_files(images_path):
     ls = myutils.listdir(images_path)
 
@@ -209,6 +218,7 @@ def get_filename_from_channel(images_path, channel_name):
     else:
         return ''
 
+
 def get_existing_segm_endnames(basename, segm_files):
     existing_endnames = []
     for f in segm_files:
@@ -230,6 +240,9 @@ def get_endname_from_channels(filename, channels):
             return endname
         elif m is not None:
             return endname
+
+def get_endnames_from_basename(basename, filenames):
+    return [os.path.splitext(f)[0][len(basename):] for f in filenames]
 
 def get_path_from_endname(end_name, images_path):
     for file in myutils.listdir(images_path):

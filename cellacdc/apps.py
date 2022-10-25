@@ -830,10 +830,12 @@ class filenameDialog(QDialog):
     def __init__(
             self, ext='.npz', basename='', title='Insert file name',
             hintText='', existingNames='', parent=None, allowEmpty=True,
-            helpText=''
+            helpText='', defaultEntry='', resizeOnShow=True
         ):
         self.cancel = True
         super().__init__(parent)
+
+        self.resizeOnShow = resizeOnShow
 
         if hintText.find('segmentation') != -1:
             helpText = ("""
@@ -877,6 +879,7 @@ class filenameDialog(QDialog):
 
         self.lineEdit = QLineEdit()
         self.lineEdit.setAlignment(Qt.AlignCenter)
+        self.lineEdit.setText(defaultEntry)
 
         extLabel = QLabel(ext)
 
@@ -987,6 +990,8 @@ class filenameDialog(QDialog):
 
     def show(self, block=False):
         super().show()
+        if self.resizeOnShow:
+            self.lineEdit.setMinimumWidth(self.lineEdit.width()*2)
         self.okButton.setDefault(True)
         if block:
             self.loop = QEventLoop()
@@ -2645,11 +2650,14 @@ class QDialogListbox(QDialog):
     def __init__(
             self, title, text, items, cancelText='Cancel',
             multiSelection=True, parent=None,
-            additionalButtons=()
+            additionalButtons=(), includeSelectionHelp=False,
+            allowSingleSelection=True
         ):
         self.cancel = True
         super().__init__(parent)
         self.setWindowTitle(title)
+
+        self.allowSingleSelection = allowSingleSelection
 
         mainLayout = QVBoxLayout()
         topLayout = QVBoxLayout()
@@ -2664,6 +2672,15 @@ class QDialogListbox(QDialog):
         # padding: top, left, bottom, right
         label.setStyleSheet("padding:0px 0px 3px 0px;")
         topLayout.addWidget(label, alignment=Qt.AlignCenter)
+
+        if includeSelectionHelp:
+            selectionHelpLabel = QLabel()
+            txt = html_utils.paragraph("""<br>
+                <code>Ctrl+Click</code> <i>to select multiple items</i><br>
+                <code>Shift+Click</code> <i>to select a range of items</i><br>
+            """)
+            selectionHelpLabel.setText(txt)
+            topLayout.addWidget(label, alignment=Qt.AlignCenter)
 
         listBox = widgets.listWidget()
         listBox.setFont(_font)
@@ -2722,6 +2739,13 @@ class QDialogListbox(QDialog):
         self.cancel = False
         selectedItems = self.listBox.selectedItems()
         self.selectedItemsText = [item.text() for item in selectedItems]
+        if not self.allowSingleSelection and len(self.selectedItemsText) < 2:
+            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+            txt = html_utils.paragraph(
+                'You need to <b>select two or more items</b>.<br>'
+            )
+            msg.warning(self, 'Select two or more items', txt)
+            return
         self.sigSelectionConfirmed.emit(self.selectedItemsText)
         self.close()
 

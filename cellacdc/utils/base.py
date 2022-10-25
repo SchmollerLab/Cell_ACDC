@@ -100,6 +100,9 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         self.worker.signals.progress.connect(self.workerProgress)
         self.worker.signals.critical.connect(self.workerCritical)
         self.worker.signals.sigSelectSegmFiles.connect(self.selectSegmFileLoadData)
+        self.worker.signals.sigSelectAcdcOutputFiles.connect(
+            self.selectAcdcOutputTables
+        )        
         self.worker.signals.sigPermissionError.connect(self.warnPermissionError)
         self.worker.signals.initProgressBar.connect(self.workerInitProgressbar)
         self.worker.signals.sigInitInnerPbar.connect(self.workerInitInnerPbar)
@@ -147,6 +150,41 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         msg.warning(self, 'Permission error', err_msg)
         self.worker.waitCond.wakeAll()
     
+    def selectAcdcOutputTables(
+            self, exp_path, pos_foldernames, infoText, allowSingleSelection,
+            multiSelection
+        ):
+        existingAcdcOutputEndnames = set()
+        for p, pos in enumerate(pos_foldernames):
+            pos_path = os.path.join(exp_path, pos)
+            images_path = os.path.join(pos_path, 'Images') 
+            basename, chNames = myutils.getBasenameAndChNames(images_path)
+            # Use first found channel, it doesn't matter for basename
+            chName = chNames[0]
+            filePath = myutils.getChannelFilePath(images_path, chName)
+            _posData = load.loadData(filePath, chName)
+            _posData.getBasenameAndChNames()
+            if p == 0:
+                self.basename_pos1 = _posData.basename
+            acdc_output_files = load.get_acdc_output_files(_posData.images_path)
+            acdc_output_endnames = load.get_endnames_from_basename(
+                _posData.basename, acdc_output_files
+            )
+            existingAcdcOutputEndnames.update(acdc_output_endnames)
+        
+        self.existingAcdcOutputEndnames = list(existingAcdcOutputEndnames)
+
+        selectWindow = apps.QDialogListbox(
+            'Select acdc_output files',
+            f'Select acdc_output files{infoText}\n',
+            self.existingAcdcOutputEndnames, multiSelection=multiSelection, 
+            parent=self, allowSingleSelection=allowSingleSelection
+        )
+        selectWindow.exec_()
+        self.worker.abort = selectWindow.cancel
+        self.selectedAcdcOutputEndnames = selectWindow.selectedItemsText
+        self.worker.waitCond.wakeAll()
+
     def selectSegmFileLoadData(self, exp_path, pos_foldernames):
         # Get end name of every existing segmentation file
         existingSegmEndNames = set()
@@ -154,7 +192,7 @@ class NewThreadMultipleExpBaseUtil(QDialog):
             pos_path = os.path.join(exp_path, pos)
             images_path = os.path.join(pos_path, 'Images')
             basename, chNames = myutils.getBasenameAndChNames(images_path)
-            # Use first found channel, it doesn't matter for metrics
+            # Use first found channel, it doesn't matter for basename
             chName = chNames[0]
             filePath = myutils.getChannelFilePath(images_path, chName)
             _posData = load.loadData(filePath, chName)

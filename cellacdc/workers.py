@@ -1,4 +1,5 @@
 from distutils.log import error
+from operator import index
 from re import sub
 import sys
 import os
@@ -65,6 +66,7 @@ class signals(QObject):
     innerProgressBar = pyqtSignal(int)
     sigPermissionError = pyqtSignal(str, object)
     sigSelectSegmFiles = pyqtSignal(object, object)
+    sigSelectAcdcOutputFiles = pyqtSignal(object, object, str, bool, bool)
     sigSetMeasurements = pyqtSignal(object)
     sigInitAddMetrics = pyqtSignal(object)
     sigUpdatePbarDesc = pyqtSignal(str)
@@ -1317,6 +1319,22 @@ class BaseWorkerUtil(QObject):
             return True
         else:
             return False
+        
+    def emitSelectAcdcOutputFiles(
+            self, exp_path, pos_foldernames, infoText='', 
+            allowSingleSelection=False, multiSelection=True
+        ):
+        self.mutex.lock()
+        self.signals.sigSelectAcdcOutputFiles.emit(
+            exp_path, pos_foldernames, infoText, allowSingleSelection,
+            multiSelection
+        )
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        if self.abort:
+            return True
+        else:
+            return False
 
 class TrackSubCellObjectsWorker(BaseWorkerUtil):
     sigAskAppendName = pyqtSignal(str, list)
@@ -1487,6 +1505,178 @@ class TrackSubCellObjectsWorker(BaseWorkerUtil):
                     trackedAcdcDf.to_csv(trackedAcdcDfPath)
 
                 self.signals.progressBar.emit(1)
+
+        self.signals.finished.emit(self)
+
+class ComputeMetricsMultiChannelWorker(BaseWorkerUtil):
+    sigAskAppendName = pyqtSignal(str, list, list)
+    sigCriticalNotEnoughSegmFiles = pyqtSignal(str)
+    sigAborted = pyqtSignal()
+
+    def __init__(self, mainWin):
+        super().__init__(mainWin)
+
+    @worker_exception_handler
+    def run(self):
+        debugging = False
+        expPaths = self.mainWin.expPaths
+        tot_exp = len(expPaths)
+        self.signals.initProgressBar.emit(0)
+        for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
+            self.errors = {}
+            tot_pos = len(pos_foldernames)
+            
+            abort = self.emitSelectAcdcOutputFiles(
+                exp_path, pos_foldernames, infoText=' to combine',
+                allowSingleSelection=False
+            )
+            if abort:
+                self.sigAborted.emit()
+                return
+            
+            # Ask appendend name
+            self.mutex.lock()
+            self.sigAskAppendName.emit(
+                self.mainWin.basename_pos1, 
+                self.mainWin.existingAcdcOutputEndnames,
+                self.mainWin.selectedAcdcOutputEndnames
+            )
+            self.waitCond.wait(self.mutex)
+            self.mutex.unlock()
+            if self.abort:
+                self.sigAborted.emit()
+                return
+
+            appendedName = self.appendedName
+            self.signals.initProgressBar.emit(len(pos_foldernames))
+            for p, pos in enumerate(pos_foldernames):
+                if self.abort:
+                    self.sigAborted.emit()
+                    return
+
+                self.logger.log(
+                    f'Processing experiment n. {i+1}/{tot_exp}, '
+                    f'{pos} ({p+1}/{tot_pos})'
+                )
+
+                images_path = os.path.join(exp_path, pos, 'Images')
+                endFilenameSegm = self.mainWin.endFilenameSegm
+                ls = myutils.listdir(images_path)
+                
+
+
+                self.signals.progressBar.emit(1)
+
+        self.signals.finished.emit(self)
+
+class ConcatAcdcDfsWorker(BaseWorkerUtil):
+    sigAborted = pyqtSignal()
+    sigAskFolder = pyqtSignal(str)
+
+    def __init__(self, mainWin):
+        super().__init__(mainWin)
+
+    @worker_exception_handler
+    def run(self):
+        debugging = False
+        expPaths = self.mainWin.expPaths
+        tot_exp = len(expPaths)
+        self.signals.initProgressBar.emit(0)
+        acdc_dfs_allexp = []
+        keys_exp = []
+        for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
+            self.errors = {}
+            tot_pos = len(pos_foldernames)
+            
+            abort = self.emitSelectAcdcOutputFiles(
+                exp_path, pos_foldernames, infoText=' to combine',
+                allowSingleSelection=True, multiSelection=False
+            )
+            if abort:
+                self.sigAborted.emit()
+                return
+
+            selectedAcdcOutputEndname = self.mainWin.selectedAcdcOutputEndnames[0]
+
+            self.signals.initProgressBar.emit(len(pos_foldernames))
+            acdc_dfs = []
+            keys = []
+            for p, pos in enumerate(pos_foldernames):
+                if self.abort:
+                    self.sigAborted.emit()
+                    return
+
+                self.logger.log(
+                    f'Processing experiment n. {i+1}/{tot_exp}, '
+                    f'{pos} ({p+1}/{tot_pos})'
+                )
+
+                images_path = os.path.join(exp_path, pos, 'Images')
+
+                ls = myutils.listdir(images_path)
+
+                acdc_output_file = [
+                    f for f in ls 
+                    if f.endswith(f'{selectedAcdcOutputEndname}.csv')
+                ]
+                if not acdc_output_file:
+                    self.logger.log(
+                        f'{pos} does not contain any '
+                        f'{selectedAcdcOutputEndname}.csv file. '
+                        'Skipping it.'
+                    )
+                    self.signals.progressBar.emit(1)
+                    continue
+                
+                acdc_df_filepath = os.path.join(images_path, acdc_output_file[0])
+                acdc_df = pd.read_csv(acdc_df_filepath)
+                acdc_dfs.append(acdc_df)
+                keys.append(pos)
+
+                self.signals.progressBar.emit(1)
+
+            acdc_df_allpos = pd.concat(
+                acdc_dfs, keys=keys, names=['Position_n']
+            )
+            acdc_dfs_allexp.append(acdc_df_allpos)
+            exp_name = os.path.basename(exp_path)
+            keys_exp.append(exp_name)
+
+            allpos_dir = os.path.join(exp_path, 'AllPos_acdc_output')
+            if not os.path.exists(allpos_dir):
+                os.mkdir(allpos_dir)
+            
+            acdc_dfs_allpos_filepath = os.path.join(
+                allpos_dir, f'AllPos_{selectedAcdcOutputEndname}.csv'
+            )
+
+            self.logger.log(
+                'Saving all positions concatenated file to '
+                f'"{acdc_dfs_allpos_filepath}"'
+            )
+            acdc_df_allpos.to_csv(acdc_dfs_allpos_filepath)
+
+        if len(keys_exp) > 1:
+            allExp_filename = f'multiExp_{selectedAcdcOutputEndname}.csv'
+            self.mutex.lock()
+            self.sigAskFolder.emit(allExp_filename)
+            self.waitCond.wait(self.mutex)
+            self.mutex.unlock()
+            if self.abort:
+                self.sigAborted.emit()
+                return
+            
+            acdc_df_allexp = pd.concat(
+                acdc_dfs_allexp, keys=keys_exp, names=['experiment_foldername']
+            )
+            acdc_dfs_allexp_filepath = os.path.join(
+                self.allExpSaveFolder, allExp_filename
+            )
+            self.logger.log(
+                'Saving multiple experiments concatenated file to '
+                f'"{acdc_dfs_allexp_filepath}"'
+            )
+            acdc_df_allexp.to_csv(acdc_dfs_allexp_filepath)
 
         self.signals.finished.emit(self)
 

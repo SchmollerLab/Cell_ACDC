@@ -8,14 +8,11 @@
 
 # TODO:
 print('Importing GUI modules...')
-from ctypes import alignment
-from gc import garbage
 import sys
 import os
 import shutil
 import pathlib
 import re
-from tkinter import TRUE
 import traceback
 import time
 import datetime
