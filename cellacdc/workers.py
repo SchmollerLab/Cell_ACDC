@@ -26,7 +26,7 @@ from PyQt5.QtCore import (
 
 from cellacdc import html_utils
 
-from . import load, myutils, core, measurements, prompts, printl
+from . import load, myutils, core, measurements, prompts, printl, config
 
 DEBUG = False
 
@@ -1315,10 +1315,7 @@ class BaseWorkerUtil(QObject):
         self.signals.sigSelectSegmFiles.emit(exp_path, pos_foldernames)
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
-        if self.abort:
-            return True
-        else:
-            return False
+        return self.abort
         
     def emitSelectAcdcOutputFiles(
             self, exp_path, pos_foldernames, infoText='', 
@@ -1331,10 +1328,7 @@ class BaseWorkerUtil(QObject):
         )
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
-        if self.abort:
-            return True
-        else:
-            return False
+        return self.abort
 
 class TrackSubCellObjectsWorker(BaseWorkerUtil):
     sigAskAppendName = pyqtSignal(str, list)
@@ -1512,60 +1506,151 @@ class ComputeMetricsMultiChannelWorker(BaseWorkerUtil):
     sigAskAppendName = pyqtSignal(str, list, list)
     sigCriticalNotEnoughSegmFiles = pyqtSignal(str)
     sigAborted = pyqtSignal()
+    sigHowCombineMetrics = pyqtSignal(str, list, list, list)
 
     def __init__(self, mainWin):
         super().__init__(mainWin)
+    
+    def emitHowCombineMetrics(
+            self, imagesPath, selectedAcdcOutputEndnames, 
+            existingAcdcOutputEndnames, allChNames
+        ):
+        self.mutex.lock()
+        self.sigHowCombineMetrics.emit(
+            imagesPath, selectedAcdcOutputEndnames, 
+            existingAcdcOutputEndnames, allChNames
+        )
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+    
+    def loadAcdcDfs(self, imagesPath, selectedAcdcOutputEndnames):
+        for end in selectedAcdcOutputEndnames:
+            filePath, _ = load.get_path_from_endname(end, imagesPath)
+            acdc_df = pd.read_csv(filePath)
+            yield acdc_df
+    
+    def run_iter_exp(self, exp_path, pos_foldernames, i, tot_exp):
+        tot_pos = len(pos_foldernames)
+        
+        abort = self.emitSelectAcdcOutputFiles(
+            exp_path, pos_foldernames, infoText=' to combine',
+            allowSingleSelection=False
+        )
+        if abort:
+            self.sigAborted.emit()
+            return
+        
+        # Ask appendend name
+        self.mutex.lock()
+        self.sigAskAppendName.emit(
+            f'{self.mainWin.basename_pos1}acdc_output', 
+            self.mainWin.existingAcdcOutputEndnames,
+            self.mainWin.selectedAcdcOutputEndnames
+        )
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        if self.abort:
+            self.sigAborted.emit()
+            return
 
+        selectedAcdcOutputEndnames = self.mainWin.selectedAcdcOutputEndnames
+        existingAcdcOutputEndnames = self.mainWin.existingAcdcOutputEndnames
+        appendedName = self.appendedName
+
+        self.signals.initProgressBar.emit(len(pos_foldernames))
+        for p, pos in enumerate(pos_foldernames):
+            if self.abort:
+                self.sigAborted.emit()
+                return
+
+            self.logger.log(
+                f'Processing experiment n. {i+1}/{tot_exp}, '
+                f'{pos} ({p+1}/{tot_pos})'
+            )
+
+            imagesPath = os.path.join(exp_path, pos, 'Images')
+            basename, chNames = myutils.getBasenameAndChNames(
+                imagesPath, useExt=('.tif',)
+            )
+
+            if p == 0:
+                abort = self.emitHowCombineMetrics(
+                    imagesPath, selectedAcdcOutputEndnames, 
+                    existingAcdcOutputEndnames, chNames
+                )
+                if abort:
+                    self.sigAborted.emit()
+                    return
+                acdcDfs = self.acdcDfs.values()
+                # Update selected acdc_dfs since the user could have 
+                # loaded additional ones inside the emitHowCombineMetrics
+                # dialog
+                selectedAcdcOutputEndnames = self.acdcDfs.keys()
+            else:
+                acdcDfs = self.loadAcdcDfs(
+                    imagesPath, selectedAcdcOutputEndnames
+                )
+
+            dfs = []
+            for i, acdc_df in enumerate(acdcDfs):
+                dfs.append(acdc_df.add_suffix(f'_table{i+1}'))
+            combined_df = pd.concat(dfs, axis=1)
+
+            newAcdcDf = pd.DataFrame(index=combined_df.index)
+            for newColname, equation in self.equations.items():
+                newAcdcDf[newColname] = combined_df.eval(equation)
+            
+            newAcdcDfPath = os.path.join(
+                imagesPath, f'{basename}acdc_output_{appendedName}.csv'
+            )
+            newAcdcDf.to_csv(newAcdcDfPath)
+
+            equationsIniPath = os.path.join(
+                imagesPath, f'{basename}equations_{appendedName}.ini'
+            )
+            equationsConfig = config.ConfigParser()
+            if os.path.exists(equationsIniPath):
+                equationsConfig.read(equationsIniPath)
+            equationsConfig = self.addEquationsToConfigPars(
+                equationsConfig, selectedAcdcOutputEndnames, self.equations
+            )
+            with open(equationsIniPath, 'w') as configfile:
+                equationsConfig.write(configfile)
+
+            self.signals.progressBar.emit(1)
+        
+        return True
+    
+    def addEquationsToConfigPars(cp, selectedAcdcOutputEndnames, equations):
+        section = [
+            f'df{i+1}:{end}' for i, end in enumerate(selectedAcdcOutputEndnames)
+        ]
+        section = ';'.join(section)
+        if section not in cp:
+            cp[section] = {}
+        
+        for metricName, expression in equations.items():
+            cp[section][metricName] = expression
+        
+        return cp
+         
     @worker_exception_handler
     def run(self):
         debugging = False
         expPaths = self.mainWin.expPaths
         tot_exp = len(expPaths)
         self.signals.initProgressBar.emit(0)
+        self.errors = {}
         for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
-            self.errors = {}
-            tot_pos = len(pos_foldernames)
-            
-            abort = self.emitSelectAcdcOutputFiles(
-                exp_path, pos_foldernames, infoText=' to combine',
-                allowSingleSelection=False
-            )
-            if abort:
-                self.sigAborted.emit()
-                return
-            
-            # Ask appendend name
-            self.mutex.lock()
-            self.sigAskAppendName.emit(
-                self.mainWin.basename_pos1, 
-                self.mainWin.existingAcdcOutputEndnames,
-                self.mainWin.selectedAcdcOutputEndnames
-            )
-            self.waitCond.wait(self.mutex)
-            self.mutex.unlock()
-            if self.abort:
-                self.sigAborted.emit()
-                return
-
-            appendedName = self.appendedName
-            self.signals.initProgressBar.emit(len(pos_foldernames))
-            for p, pos in enumerate(pos_foldernames):
-                if self.abort:
-                    self.sigAborted.emit()
+            try:
+                result = self.run_iter_exp(exp_path, pos_foldernames, i, tot_exp)
+                if result is None:
                     return
-
-                self.logger.log(
-                    f'Processing experiment n. {i+1}/{tot_exp}, '
-                    f'{pos} ({p+1}/{tot_pos})'
-                )
-
-                images_path = os.path.join(exp_path, pos, 'Images')
-
-                ls = myutils.listdir(images_path)
-                
-                
-
-                self.signals.progressBar.emit(1)
+            except Exception as e:
+                traceback_str = traceback.format_exc()
+                self.errors[e] = traceback_str
+                self.logger.log(traceback_str)
 
         self.signals.finished.emit(self)
 

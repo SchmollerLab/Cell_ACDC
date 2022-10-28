@@ -127,6 +127,14 @@ class mainWin(QMainWindow):
         self.setWindowTitle("Cell-ACDC")
         self.setWindowIcon(QIcon(":icon.ico"))
 
+        logger, logs_path, log_path, log_filename = myutils.setupLogger(
+            module='main'
+        )
+        self.logger = logger
+        self.log_path = log_path
+        self.log_filename = log_filename
+        self.logs_path = logs_path
+
         if not is_linux:
             self.loadFonts()
 
@@ -306,7 +314,7 @@ class mainWin(QMainWindow):
         utilsMenu = QMenu("&Utilities", self)
         utilsMenu.addAction(self.concatAcdcDfsAction)
         utilsMenu.addAction(self.calcMetricsAcdcDf)
-        # utilsMenu.addAction(self.combineMetricsMultiChannelAction)  
+        utilsMenu.addAction(self.combineMetricsMultiChannelAction)  
         utilsMenu.addAction(self.toSymDivAction)
         utilsMenu.addAction(self.trackSubCellFeaturesAction)  
         utilsMenu.addAction(self.npzToNpyAction)
@@ -517,6 +525,7 @@ class mainWin(QMainWindow):
         return posPath
 
     def getSelectedExpPaths(self, utilityName):
+        self.logger.info('Asking to select experiment folders...')
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph("""
             After you click "Ok" on this dialog you will be asked
@@ -529,7 +538,7 @@ class mainWin(QMainWindow):
             buttonsTexts=('Cancel', 'Ok')
         )
         if msg.cancel:
-            print(f'{utilityName} aborted by the user.')
+            self.logger.info(f'{utilityName} aborted by the user.')
             return
 
         expPaths = {}
@@ -572,7 +581,7 @@ class mainWin(QMainWindow):
                         buttonsTexts=('Cancel', 'Try again')
                     )
                     if msg.cancel:
-                        print(f'{utilityName} aborted by the user.')
+                        self.logger.info(f'{utilityName} aborted by the user.')
                         return
                     continue
 
@@ -644,6 +653,7 @@ class mainWin(QMainWindow):
         self.toImageJroiWin.show()
     
     def launchCombineMeatricsMultiChanneliUtil(self):
+        self.logger.info('Launching "Combine measurements from multiple tables" utility...')
         selectedExpPaths = self.getSelectedExpPaths(
             'Combine measurements from multiple channels'
         )
@@ -872,11 +882,16 @@ class mainWin(QMainWindow):
                 buttonToRestore=(self.dataPrepButton, defaultColor, defaultText),
                 mainWin=self, version=self._version
             )
+            self.dataPrepWin.sigClose.connect(self.dataPrepClosed)
             self.dataPrepWin.show()
         else:
             # self.dataPrepWin.setWindowState(Qt.WindowNoState)
             self.dataPrepWin.setWindowState(Qt.WindowActive)
             self.dataPrepWin.raise_()
+    
+    def dataPrepClosed(self):
+        self.logger.info('Data prep window closed.')
+        del self.dataPrepWin
 
     def launchSegm(self, checked=False):
         c = self.segmButton.palette().button().color().name()

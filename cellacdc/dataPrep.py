@@ -64,6 +64,8 @@ class toCsvWorker(QObject):
         self.finished.emit()
 
 class dataPrepWin(QMainWindow):
+    sigClose = pyqtSignal()
+
     def __init__(
             self, parent=None, buttonToRestore=None, mainWin=None,
             version=None
@@ -1467,10 +1469,11 @@ class dataPrepWin(QMainWindow):
             success = self.alignData(self.user_ch_name, posData)
             if not success:
                 self.titleLabel.setText('Data prep cancelled.', color='r')
-                return
+                break
             if posData.SizeZ>1:
                 posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
         else:
+            # For loop did not break, proceed with the rest
             self.update_img()
             self.logger.info('Done.')
             self.addROIs()
@@ -2223,6 +2226,8 @@ class dataPrepWin(QMainWindow):
 
         if self.loop is not None:
             self.loop.exit()
+        
+        self.sigClose.emit()
 
     def saveWindowGeometry(self):
         settings = QSettings('schmollerlab', 'acdc_dataPrep')

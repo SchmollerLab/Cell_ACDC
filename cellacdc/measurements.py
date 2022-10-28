@@ -7,9 +7,7 @@ import traceback
 import shutil
 from importlib import import_module
 
-from skimage.measure._regionprops import PROPS, COL_DTYPES, RegionProperties
-
-from . import core, base_cca_df, html_utils, config
+from . import core, base_cca_df, html_utils, config, printl
 
 import warnings
 warnings.filterwarnings("ignore", message="Failed to get convex hull image.")
@@ -533,6 +531,55 @@ def get_conc_keys(amount_colname):
     )
     conc_key_fl = conc_key_vox.replace('from_vol_vox', 'from_vol_fl')
     return conc_key_vox, conc_key_fl
+
+def classify_acdc_df_colnames(acdc_df, channels):
+    standard_funcs = _get_metrics_names()
+    size_metrics_desc = get_size_metrics_desc()
+    props_names = get_props_names()
+
+    foregr_metrics = {ch:[] for ch in channels}
+    bkgr_metrics = {ch:[] for ch in channels}
+    custom_metrics = {ch:[] for ch in channels}
+    size_metrics = []
+    props_metrics = []
+
+    for col in acdc_df.columns:
+        for ch in channels:
+            if col.startswith(f'{ch}_'):
+                # Channel specific metric
+                if col.find('_bkgrVal_') != -1:
+                    # Bkgr metric
+                    bkgr_metrics[ch].append(col)
+                else:
+                    # Foregr metric
+                    is_standard = any(
+                        [col.find(f'_{f}') != -1 for f in standard_funcs]
+                    )
+                    if is_standard:
+                        # Standard metric
+                        foregr_metrics[ch].append(col)
+                    else:
+                        # Custom metric
+                        custom_metrics[ch].append(col)
+                break
+        else:
+            # Non-channel specific metric
+            if col in size_metrics_desc:
+                # Size metric
+                size_metrics.append(col)
+            elif col in props_names:
+                # regionprop metric
+                props_metrics.append(col)
+    
+    metrics = {
+        'foregr': foregr_metrics, 
+        'bkgr': bkgr_metrics,
+        'custom': custom_metrics, 
+        'size': size_metrics,
+        'props': props_metrics
+    }
+
+    return metrics
 
 def _get_metrics_names():
     metrics_names = {

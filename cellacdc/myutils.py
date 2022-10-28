@@ -61,18 +61,28 @@ def exception_handler(func):
                 pass
             result = None
             traceback_str = traceback.format_exc()
-            self.logger.exception(traceback_str)
+            if hasattr(self, 'logger'):
+                self.logger.exception(traceback_str)
+            else:
+                printl(traceback_str)
             msg = widgets.myMessageBox(wrapText=False, showCentered=False)
-            msg.addShowInFileManagerButton(self.logs_path, txt='Show log file...')
+            if hasattr(self, 'logs_path'):
+                msg.addShowInFileManagerButton(
+                    self.logs_path, txt='Show log file...'
+                )
+            if not hasattr(self, 'log_path'):
+                log_path = 'NULL'
+            else:
+                log_path = self.log_path
             msg.setDetailedText(traceback_str, visible=True)
             href = f'<a href="{issues_url}">GitHub page</a>'
             err_msg = html_utils.paragraph(f"""
                 Error in function <code>{func.__name__}</code>.<br><br>
                 More details below or in the terminal/console.<br><br>
                 Note that the <b>error details</b> from this session are
-                also <b>saved in the following file</b>:
+                also <b>saved in the following log file</b>:
                 <br><br>
-                <code>{self.log_path}</code>
+                <code>{log_path}</code>
                 <br><br>
                 You can <b>report</b> this error by opening an issue
                 on our {href}.<br><br>

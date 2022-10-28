@@ -16678,7 +16678,7 @@ class guiWin(QMainWindow):
             self.MostRecentPath = myutils.getMostRecentPath()
             file_path = QFileDialog.getOpenFileName(
                 self, 'Select image file', self.MostRecentPath,
-                "Images/Videos (*.png *.tif *.tiff *.jpg *.jpeg *.mov *.avi *.mp4)"
+                "Image/Video Files (*.png *.tif *.tiff *.jpg *.jpeg *.mov *.avi *.mp4)"
                 ";;All Files (*)")[0]
             if file_path == '':
                 return

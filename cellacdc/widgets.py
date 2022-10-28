@@ -34,7 +34,8 @@ from PyQt5.QtWidgets import (
     QGroupBox, QAbstractSlider, QDoubleSpinBox, QWidgetAction,
     QAction, QTabWidget, QAbstractSpinBox, QMessageBox,
     QStyle, QDialog, QSpacerItem, QFrame, QMenu, QActionGroup,
-    QListWidget, QPlainTextEdit, QFileDialog, QListView, QAbstractItemView
+    QListWidget, QPlainTextEdit, QFileDialog, QListView, QAbstractItemView,
+    QTreeWidget, QTreeWidgetItem, QListWidgetItem, QLayout
 )
 
 import pyqtgraph as pg
@@ -829,6 +830,135 @@ class listWidget(QListWidget):
                 show-decoration-selected: 1;
             }
         """)
+        self.setFont(apps.font)
+
+class OrderableList(listWidget):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+    
+    def addItems(self, items):
+        self.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        nr_items = len(items)
+        nn = [str(n) for n in range(1, nr_items+1)]
+        for i, item in enumerate(items):
+            itemW = QListWidgetItem()
+            itemContainer = QWidget()
+            itemText = QLabel(item)
+            itemLayout = QHBoxLayout()
+            itemNumberWidget = QComboBox()
+            itemNumberWidget.addItems(nn)
+            itemLayout.addWidget(itemText)
+            itemLayout.addWidget(QLabel('| Table nr.'))
+            itemLayout.addWidget(itemNumberWidget)
+            itemContainer.setLayout(itemLayout)
+            itemLayout.setSizeConstraint(QLayout.SetFixedSize)
+            itemW.setSizeHint(itemContainer.sizeHint())
+            self.addItem(itemW)
+            self.setItemWidget(itemW, itemContainer)
+            itemW._text = item
+            itemW._nrWidget = itemNumberWidget
+            itemNumberWidget.setDisabled(True)
+            itemNumberWidget.textActivated.connect(self.onTextActivated)
+            itemNumberWidget._currentNr = 1
+            itemNumberWidget.row = i
+        
+        self.itemSelectionChanged.connect(self.onItemSelectionChanged)
+    
+    def keyPressEvent(self, event) -> None:
+        if event.key() == Qt.Key_Escape:
+            self.clearSelection()
+            event.ignore()
+            return
+        super().keyPressEvent(event)
+    
+    def updateNr(self):
+        for i in range(self.count()):
+            item = self.item(i)
+            item._currentNr = int(item._nrWidget.currentText())
+    
+    def onItemSelectionChanged(self):
+        for i in range(self.count()):
+            item = self.item(i)
+            if item.isSelected():
+                item._nrWidget.setDisabled(False)
+            else:
+                item._nrWidget.setDisabled(True)
+            if item._nrWidget.currentText() != '1':
+                item._nrWidget.setCurrentText('1')
+                item._currentNr = 1
+        
+        for i, item in enumerate(self.selectedItems()):
+            item._nrWidget.setCurrentText(f'{i+1}')
+            item._currentNr = i+1
+        
+    def onTextActivated(self, text):
+        changedNr = self.sender()._currentNr
+        for item in self.selectedItems():
+            row = self.row(item)
+            if self.sender().row == row:
+                changedNr = item._currentNr
+                continue
+        
+        for item in self.selectedItems():
+            row = self.row(item)
+            if self.sender().row == row:
+                continue
+            nr = int(item._nrWidget.currentText())
+            if nr == int(text):
+                item._nrWidget.setCurrentText(str(changedNr))
+                break
+        
+        self.updateNr()
+            
+
+class TreeWidget(QTreeWidget):
+    def __init__(self, *args, multiSelection=False):
+        super().__init__(*args)    
+        self.setStyleSheet("""
+            QTreeWidget::item:hover {background-color:#E6E6E6;}
+            QTreeWidget::item:selected {background-color:#CFEB9B;}
+            QTreeWidget::item:selected {color:black;}
+            QTreeView {
+                selection-background-color: #CFEB9B;
+                selection-color: white;
+                show-decoration-selected: 1;
+            }
+        """)
+        self.setFont(apps.font)
+        if multiSelection:
+            self.setSelectionMode(QAbstractItemView.ExtendedSelection)
+            self.itemClicked.connect(self.selectAllChildren)
+    
+    def selectAllChildren(self, item):
+        if item.childCount() == 0:
+            return
+
+        for i in range(item.childCount()):
+            item.child(i).setSelected(True)
+
+class CancelOkButtonsLayout(QHBoxLayout):
+    def __init__(self, *args):
+        super().__init__(*args)
+
+        self.cancelButton = cancelPushButton('Cancel')
+        self.okButton = okPushButton(' Ok ')
+
+        self.addStretch(1)
+        self.addWidget(self.cancelButton)
+        self.addSpacing(20)
+        self.addWidget(self.okButton)
+
+class TreeWidgetItem(QTreeWidgetItem):
+    def __init__(self, *args, columnColors=None):
+        super().__init__(*args)
+
+        if columnColors is not None:
+            for c, color in enumerate(columnColors):
+                if color is None:
+                    continue
+                self.setBackground(c, QBrush(color))
+    
+
 
 class FilterObject(QObject):
     sigFilteredEvent = pyqtSignal(object, object)
@@ -844,9 +974,11 @@ class readOnlyQList(QTextEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setReadOnly(True)
+        self.items = []
 
     def addItems(self, items):
-        items = [str(item) for item in items]
+        self.items.extend(items)
+        items = [str(item) for item in self.items]
         columnList = html_utils.paragraph('<br>'.join(items))
         self.setText(columnList)
 

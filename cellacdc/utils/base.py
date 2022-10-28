@@ -174,12 +174,35 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         
         self.existingAcdcOutputEndnames = list(existingAcdcOutputEndnames)
 
-        selectWindow = apps.QDialogListbox(
-            'Select acdc_output files',
-            f'Select acdc_output files{infoText}\n',
-            self.existingAcdcOutputEndnames, multiSelection=multiSelection, 
-            parent=self, allowSingleSelection=allowSingleSelection
+        if multiSelection:
+            selectWindow = apps.OrderableListWidgetDialog(
+            self.existingAcdcOutputEndnames, 
+            title='Select acdc_output files',
+            infoTxt=(
+                'Select acdc_output tables and choose a table number (optional)<br><br>'
+                '<code>Ctrl+Click</code> <i>to select multiple items</i><br>'
+                '<code>Shift+Click</code> <i>to select a range of items</i><br>'
+            ),
+            helpText=(
+                'The table number is useful to ensure that you can load the '
+                'same exact equations you used in a previous sessions.<br><br>'
+                'Cell-ACDC will automatically save the equations you enter. '
+                'They will be saved in a file ending with '
+                '<code>_equations_<custom name>.ini</code><br> and each table will '
+                'be numbered with the number you enter now.<br><br>'
+                'When you reopen the equations dialogue you can select to load '
+                'equations from a saved .ini file,<br>however, <b>only the equations that '
+                'used the table ending with the same name you select now AND '
+                'same number can be loaded</b>.'
+            )
         )
+        else:
+            selectWindow = apps.QDialogListbox(
+                'Select acdc_output files',
+                f'Select acdc_output files{infoText}\n',
+                self.existingAcdcOutputEndnames, multiSelection=multiSelection, 
+                parent=self, allowSingleSelection=allowSingleSelection
+            )
         selectWindow.exec_()
         self.worker.abort = selectWindow.cancel
         self.selectedAcdcOutputEndnames = selectWindow.selectedItemsText
@@ -246,9 +269,9 @@ class NewThreadMultipleExpBaseUtil(QDialog):
         try:
             raise error
         except:
-            traceback_str = traceback.format_exc()
+            self.traceback_str = traceback.format_exc()
             print('='*20)
-            self.worker.logger.log(traceback_str)
+            self.worker.logger.log(self.traceback_str)
             print('='*20)
 
     def workerFinished(self, worker):

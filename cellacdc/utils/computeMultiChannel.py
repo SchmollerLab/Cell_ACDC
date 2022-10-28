@@ -1,4 +1,6 @@
-from .. import apps, myutils, workers, widgets, html_utils
+import pandas as pd
+
+from .. import apps, myutils, workers, widgets, html_utils, load
 
 from .base import NewThreadMultipleExpBaseUtil
 
@@ -20,21 +22,68 @@ class ComputeMetricsMultiChannel(NewThreadMultipleExpBaseUtil):
         self.worker.sigCriticalNotEnoughSegmFiles.connect(
             self.criticalNotEnoughSegmFiles
         )
+        self.worker.sigHowCombineMetrics.connect(self.showHowCombineMetrics)
         self.worker.sigAborted.connect(self.workerAborted)
         super().runWorker(self.worker)
     
     def showEvent(self, event):
         self.runWorker()
     
+    def showHowCombineMetrics(
+            self, imagesPath, selectedAcdcOutputEndnames, 
+            existingAcdcOutputEndnames, allChNames
+        ):
+        self.imagesPath = imagesPath
+        self.existingAcdcOutputEndnames = existingAcdcOutputEndnames
+        acdcDfsDict = {}
+        for endname in selectedAcdcOutputEndnames:
+            filePath, _ = load.get_path_from_endname(endname, imagesPath)
+            acdc_df = pd.read_csv(filePath)
+            acdcDfsDict[endname] = acdc_df
+
+        self.combineWindow = apps.CombineMetricsMultiDfsSummaryDialog(
+            acdcDfsDict, allChNames, parent=self
+        )
+        self.combineWindow.setLogger(
+            self.logger, self.logs_path, self.log_path
+        )
+        self.combineWindow.sigLoadAdditionalAcdcDf.connect(
+            self.loadAdditionalAcdcDf
+        )
+        self.combineWindow.exec_()
+        if self.combineWindow.cancel:
+            self.worker.abort = True
+            self.worker.waitCond.wakeAll()
+            return
+
+        self.worker.equations = self.combineWindow.equations
+        self.worker.acdcDfs = self.combineWindow.acdcDfs
+        self.worker.waitCond.wakeAll()
+    
+    def loadAdditionalAcdcDf(self):
+        selectWindow = apps.QDialogListbox(
+            'Select acdc_output files',
+            f'Select acdc_output files to load\n',
+            self.existingAcdcOutputEndnames, multiSelection=True, 
+            parent=self, allowSingleSelection=True
+        )
+        selectWindow.exec_()
+        if selectWindow.cancel or not selectWindow.selectedItemsText:
+            self.logger.info('Loading additional tables cancelled.')
+            return
+        
+        acdcDfsDict = {}
+        for end in selectWindow.selectedItemsText:
+            filePath, _ = load.get_path_from_endname(end, self.imagesPath)
+            acdc_df = pd.read_csv(filePath)
+            acdcDfsDict[end] = acdc_df
+
     def criticalNotEnoughSegmFiles(self, exp_path):
         text = html_utils.paragraph(f"""
             The following experiment folder<br><br>
             <code>{exp_path}</code><br><br>
-            <b>does NOT contain AT LEAST TWO segmentation files</b>.<br><br>
-            To track sub-cellular objects you need to generate <b>one segmentation 
-            file for the cells and one for the sub-cellular objects</b>.<br><br>
-            Note that you can create as many segmentation files as you want, 
-            you just need to run the segmentation module again. Thanks! 
+            <b>does NOT contain AT LEAST TWO <code>acdc_output</code> 
+            table files.</b>.
         """)
         msg = widgets.myMessageBox(wrapText=False, showCentered=False)
         msg.addShowInFileManagerButton(exp_path)
@@ -79,14 +128,31 @@ class ComputeMetricsMultiChannel(NewThreadMultipleExpBaseUtil):
     def workerAborted(self):
         self.workerFinished(None, aborted=True)
     
+    def workerCritical(self, error):
+        super().workerCritical(error)
+        self.worker.errors[error] = self.traceback_str
+    
+    def warnErrors(self, errors):
+        win = apps.ComputeMetricsErrorsDialog(
+            errors, self.logs_path, log_type='generic', parent=self
+        )
+        win.exec_()
+    
     def workerFinished(self, worker, aborted=False):
+        
         if aborted:
             txt = 'Combining multiple channels measurements aborted.'
+            isWarning = True
+        elif worker.errors:
+            txt = 'Combining multiple channels measurements completed WITH ERRORS.'
+            self.warnErrors(worker.errors)
+            isWarning = True
         else:
             txt = 'Combining multiple channels measurements completed.'
+            isWarning = False
         self.logger.info(txt)
         msg = widgets.myMessageBox(wrapText=False, showCentered=False)
-        if aborted:
+        if isWarning:
             msg.warning(self, 'Process completed', html_utils.paragraph(txt))
         else:
             msg.information(self, 'Process completed', html_utils.paragraph(txt))
