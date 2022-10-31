@@ -2149,7 +2149,7 @@ class QDialogMetadataXML(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show()
         if block:
             self.loop = QEventLoop()
@@ -2164,7 +2164,7 @@ class CellACDCTrackerParamsWin(QDialog):
         self.cancel = True
         super().__init__(parent)
 
-        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         self.setWindowTitle('Cell-ACDC tracker parameters')
 
         paramsLayout = QGridLayout()
@@ -2257,7 +2257,7 @@ class BayesianTrackerParamsWin(QDialog):
         self.cancel = True
         super().__init__(parent)
 
-        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         self.setWindowTitle('Bayesian tracker parameters')
 
         paramsLayout = QGridLayout()
@@ -2548,7 +2548,7 @@ class QDialogWorkerProgress(QDialog):
         self.sigClosed.emit(self.aborted)
 
     def show(self, app):
-        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         QDialog.show(self)
         screen = app.primaryScreen()
         screenWidth = screen.size().width()
@@ -2630,7 +2630,7 @@ class QDialogCombobox(QDialog):
         cancelButton.clicked.connect(self.close)
         self.loop = None
 
-        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         self.setFont(font)
 
     def ok_cb(self, event):
@@ -2643,7 +2643,7 @@ class QDialogCombobox(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         QDialog.show(self)
         if block:
             self.loop = QEventLoop()
@@ -2819,7 +2819,7 @@ class QDialogListbox(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show()
 
         horizontal_sb = self.listBox.horizontalScrollBar()
@@ -3047,7 +3047,7 @@ class QDialogSelectModel(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show()
 
         horizontal_sb = self.listBox.horizontalScrollBar()
@@ -3216,7 +3216,7 @@ class QDialogAppendTextFilename(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show()
         if block:
             self.loop = QEventLoop()
@@ -3283,7 +3283,7 @@ class QDialogEntriesWidget(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show()
         if block:
             self.loop = QEventLoop()
@@ -3792,7 +3792,7 @@ class QDialogMetadata(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show()
         if block:
             self.loop = QEventLoop()
@@ -4256,7 +4256,7 @@ class FutureFramesAction_QDialog(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show()
         for button in self.ButtonsGroup.buttons():
             button.setMinimumHeight(int(button.height()*1.2))
@@ -4755,7 +4755,7 @@ class postProcessSegmDialog(QBaseDialog):
         self.close()
 
     def show(self, block=False):
-        # self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        # self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show(block=block)
         self.resize(int(self.width()*1.5), self.height())
 
@@ -5765,7 +5765,7 @@ class editCcaTableWidget(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show()
         w = (
             self.viewBox.minimumSizeHint().width()
@@ -5938,7 +5938,7 @@ class askStopFrameSegm(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show()
         if block:
             self.loop = QEventLoop()
@@ -6121,7 +6121,7 @@ class QLineEditDialog(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show()
         if block:
             self.loop = QEventLoop()
@@ -6284,7 +6284,7 @@ class editID_QWidget(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show()
         if block:
             self.loop = QEventLoop()
@@ -6547,7 +6547,7 @@ class QtSelectItems(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show()
         self.singleSelectionHeight = self.height()
         if block:
@@ -7263,7 +7263,7 @@ class QDialogZsliceAbsent(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show()
         if block:
             self.loop = QEventLoop()
@@ -7402,7 +7402,7 @@ class QDialogMultiSegmNpz(QDialog):
         self.show(block=True)
 
     def show(self, block=False):
-        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show()
         if block:
             self.loop = QEventLoop()
@@ -7613,6 +7613,7 @@ class QDialogTrackerParams(QDialog):
         groupBox = QGroupBox(groupName)
 
         groupBoxLayout = QGridLayout()
+
         for row, ArgSpec in enumerate(ArgSpecs_list):
             var_name = ArgSpec.name.replace('_', ' ').title()
             label = QLabel(f'{var_name}:  ')
@@ -7854,9 +7855,9 @@ class QDialogModelParams(QDialog):
         )
 
         segmentGroupBox, self.segment2D_argsWidgets = self.createGroupParams(
-            segment_params,
-            'Parameters for segmentation'
-        )
+            segment_params, 'Parameters for segmentation', 
+            addChannelSelector=True
+        ) 
         self.segmentGroupBox = segmentGroupBox
         segmentDefaultButton = widgets.reloadPushButton('Restore default')
         segmentLoadLastSelButton = QPushButton('Load last parameters')
@@ -7953,17 +7954,35 @@ class QDialogModelParams(QDialog):
         postProcLoadLastSelButton.click()
 
         # self.setModal(True)
+    
+    def setChannelNames(self, chNames):
+        if not hasattr(self, 'channelsCombobox'):
+            return
+        
+        items = ['None']
+        items.extend(chNames)
+        self.channelsCombobox.addItems(items)
 
-    def createGroupParams(self, ArgSpecs_list, groupName):
+
+    def createGroupParams(self, ArgSpecs_list, groupName, addChannelSelector=False):
         ArgWidget = namedtuple(
             'ArgsWidgets',
             ['name', 'type', 'widget', 'defaultVal', 'valueSetter']
         )
         ArgsWidgets_list = []
         groupBox = QGroupBox(groupName)
-
         groupBoxLayout = QGridLayout()
+
+        start_row = 0
+        if self.model_name.find('cellpose') != -1 and addChannelSelector:
+            label = QLabel('Second channel (optional):  ')
+            groupBoxLayout.addWidget(label, 0, 0, alignment=Qt.AlignRight)
+            self.channelsCombobox = QComboBox()
+            groupBoxLayout.addWidget(self.channelsCombobox, 0, 1, 1, 2)
+            start_row = 1
+
         for row, ArgSpec in enumerate(ArgSpecs_list):
+            row = row + start_row
             var_name = ArgSpec.name.replace('_', ' ').title()
             label = QLabel(f'{var_name}:  ')
             groupBoxLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
@@ -8185,6 +8204,11 @@ class QDialogModelParams(QDialog):
         self.minSolidity = self.minSolidity_DSB.value()
         self.maxElongation = self.maxElongation_DSB.value()
         self.applyPostProcessing = self.artefactsGroupBox.isChecked()
+        self.secondChannelName = None
+        if hasattr(self, 'channelsCombobox'):
+            self.secondChannelName = self.channelsCombobox.currentText()
+        if self.secondChannelName == 'None':
+            self.secondChannelName = None
         self._saveParams()
         self.close()
 
@@ -9100,13 +9124,14 @@ class CombineMetricsMultiDfsDialog(QBaseDialog):
         okButton.setDisabled(True)
         self.okButton = okButton
 
-        buttonsLayout.addStretch(1)
-
         if debug:
             debugButton = QPushButton('Debug')
             debugButton.clicked.connect(self._debug)
             buttonsLayout.addWidget(debugButton)
 
+        self.statusLabel = QLabel()
+        buttonsLayout.addWidget(self.statusLabel)
+        buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.addSpacing(20)
         buttonsLayout.addWidget(testButton)
@@ -9125,6 +9150,9 @@ class CombineMetricsMultiDfsDialog(QBaseDialog):
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
         testButton.clicked.connect(self.test_cb)
+
+        self.equationDisplay.textChanged.connect(self.equationChanged)
+        # self.newColNameLineEdit.editingFinished.connect(self.equationChanged)
 
         self.setLayout(mainLayout)
         self.setFont(font)
@@ -9160,6 +9188,10 @@ class CombineMetricsMultiDfsDialog(QBaseDialog):
             self.logger.info(txt)
         else:
             print(f'[INFO]: {txt}')
+    
+    def equationChanged(self):
+        self.okButton.setDisabled(True)
+        self.statusLabel.setText('')
 
     @myutils.exception_handler
     def test_cb(self):
@@ -9170,6 +9202,9 @@ class CombineMetricsMultiDfsDialog(QBaseDialog):
         new_df[newColName] = combined_df.eval(equation)
         self.okButton.setDisabled(False)
         self._log('Equation test was successful.')
+        self.statusLabel.setText(
+            'Equation test was successful. You can now click OK.'
+        )
 
     def addOperator(self):
         button = self.sender()
@@ -9507,7 +9542,7 @@ class CombineMetricsMultiDfsSummaryDialog(QBaseDialog):
             self.acdcDfs, self.allChNames, parent=self
         )
         if hasattr(self, 'logger'):
-            self.setLogger(
+            self.addEquationWin.setLogger(
                 self.logger, self.logs_path, self.log_path
             )
         if self.editedIndex is not None:

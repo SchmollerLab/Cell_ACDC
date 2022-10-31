@@ -887,17 +887,29 @@ class saveDataWorker(QObject):
                     'label', *self.mainWin.regionPropsToSave
                 )
             try:
-                rp_table = skimage.measure.regionprops_table(
-                    posData.lab, properties=self.mainWin.regionPropsToSave
+                rp_table, rp_errors = measurements.regionprops_table(
+                    posData.lab, self.mainWin.regionPropsToSave,
+                    logger_func=self.progress.emit
                 )
+
                 df_rp = pd.DataFrame(rp_table).set_index('label')
+                df_rp.index.name = 'Cell_ID'
+
                 # Drop regionprops that were already calculated in a prev session
                 df = df.drop(columns=df_rp.columns, errors='ignore')
                 df = df.join(df_rp)
+
+                if rp_errors:
+                    print('')
+                    self.progress.emit(
+                        'WARNING: Some objects had the following errors:\n'
+                        f'{rp_errors}\n'
+                        'NULL was saved for the region properties above.'
+                    )
             except Exception as error:
                 traceback_format = traceback.format_exc()
                 self.regionPropsCritical.emit(traceback_format, str(error))
-
+            
         # Remove 0s columns
         df = df.loc[:, (df != -2).any(axis=0)]
 
@@ -3550,20 +3562,21 @@ class guiWin(QMainWindow):
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph(f"""
             You loaded a segmentation mask that has <b>{numItems} objects</b>.<br><br>
-            Creating graphical items for this many objects could take
-            a <b>long time</b>.<br><br>
-            We <b>recommend disabling graphical items</b>. The graphical items
-            <b>will be created "on-demand"</b> when you visualize a new time-point,
+            Creating graphical items (contour outlines, annotations, etc.) 
+            for these many objects could take a <b>long time</b>.<br><br>
+            We <b>recommend disabling graphical items</b>. You could try to create 
+            the graphicsl items <b>on-demand</b> when you visualize a new time-point,
             resulting in slighlty higher loading time of a new time-point.<br><br>
             <i>Note that the ID of the object will still be displayed on the
             bottom-right corner when you hover on it with the mouse.</i><br><br>
             What do you want to do?
         """)
-        _, doNotCreateItemsButton, _ = msg.warning(
+
+        _, createOnDemandButton, doNotCreateItemsButton, _ = msg.warning(
             self, 'Too many objects', txt,
             buttonsTexts=(
-                'Cancel', ' Ok, create on-demand ',
-                'Try anyway'
+                'Cancel', 'Create on-demand', ' Disable items ', 
+                'Try anyway'                
             )
         )
         return msg.cancel, msg.clickedButton==doNotCreateItemsButton
@@ -3601,7 +3614,9 @@ class guiWin(QMainWindow):
             IDs = [obj.label for obj in skimage.measure.regionprops(lab)]
             allIDs.update(IDs)
 
-        numItems = (self.data[self.pos_i].segm_data).max()
+        self.createItems = True
+        posData = self.data[self.pos_i]
+        numItems = (posData.segm_data).max()
         if numItems == 0:
             numItems = 100
             # Pre-generate 100 items to make first 100 new objects faster
@@ -3616,12 +3631,13 @@ class guiWin(QMainWindow):
 
         if numItems > 500:
             cancel, doNotCreateItems = self._warn_too_many_items(numItems)
+            self.createItems = not doNotCreateItems
             if cancel:
                 self.progressWin.workerFinished = True
                 self.progressWin.close()
                 return
             elif doNotCreateItems:
-                self.logger.info(f'Graphical items creation aborted.')
+                self.logger.info(f'Graphical items creation skipped.')
                 self.progressWin.workerFinished = True
                 self.progressWin.close()
                 drawModes = self.drawIDsContComboBoxSegmItems
@@ -3630,6 +3646,9 @@ class guiWin(QMainWindow):
                 df = self.df_settings
                 df.at['how_draw_annotations', 'value'] = drawModes[-2]
                 self.drawIDsContComboBox.setCurrentText(drawModes[-2])
+                self.gui_addOverlayLayerItems()
+                self.gui_addTopLayerItems()
+                self.gui_add_ax_cursors()
                 self.loadingDataCompleted()
                 return
 
@@ -5191,7 +5210,7 @@ class guiWin(QMainWindow):
                     val_str = f'value={val:.4f}'
                 txt = (
                     f'x={x:.2f}, y={y:.2f}, {val_str}, '
-                    f'max={maxVal:.2f}, ID={ID}, max_ID={maxID}, '
+                    f'max={maxVal:.2f}, <b>ID={ID}</b>, max_ID={maxID}, '
                     f'num. of objects={len(posData.IDs)}'
                 )
                 xx, yy = self.ax1_rulerPlotItem.getData()
@@ -5786,6 +5805,10 @@ class guiWin(QMainWindow):
                 imgData = self.img1.image
             
             roiImg = imgData[self.labelRoiSlice]
+            roiSecondChannel = None
+            if self.secondChannelName is not None:
+                secondChannelData = self.getSecondChannelData()
+                roiSecondChannel = secondChannelData[self.labelRoiSlice]
 
             if self.labelRoiModel is None:
                 cancel = self.initLabelRoiModel()
@@ -5793,7 +5816,9 @@ class guiWin(QMainWindow):
                     return
 
             self.app.restoreOverrideCursor() 
-            self.labelRoiActiveWorkers[-1].start(roiImg)            
+            self.labelRoiActiveWorkers[-1].start(
+                roiImg, roiSecondChannel=roiSecondChannel
+            )            
             self.app.setOverrideCursor(Qt.WaitCursor)
             self.logger.info(
                 f'Magic labeller started on image ROI = {self.labelRoiSlice}...'
@@ -10771,6 +10796,7 @@ class guiWin(QMainWindow):
                 model_name, parent=self,
                 url=url, initLastParams=initLastParams
             )
+            win.setChannelNames(posData.chNames)
             win.exec_()
             if win.cancel:
                 self.logger.info('Segmentation process cancelled.')
@@ -10783,8 +10809,13 @@ class guiWin(QMainWindow):
             self.minSolidity = win.minSolidity
             self.maxElongation = win.maxElongation
             self.applyPostProcessing = win.applyPostProcessing
+            self.secondChannelName = win.secondChannelName
 
             model = acdcSegment.Model(**win.init_kwargs)
+            try:
+                model.setupLogger(self.logger)
+            except Exception as e:
+                pass
             self.models[idx] = model
 
             postProcessParams = {
@@ -10850,6 +10881,10 @@ class guiWin(QMainWindow):
             if selectZtool.doNotShowAgainCheckbox.isChecked():
                 self.askZrangeSegm3D = False
         
+        secondChannelData = None
+        if self.secondChannelName is not None:
+            secondChannelData = self.getSecondChannelData()
+        
         self.titleLabel.setText(
             f'{model_name} is thinking... '
             '(check progress in terminal/console)', color=self.titleColor
@@ -10858,7 +10893,9 @@ class guiWin(QMainWindow):
         self.model = model
 
         self.thread = QThread()
-        self.worker = workers.segmWorker(self)
+        self.worker = workers.segmWorker(
+            self, secondChannelData=secondChannelData
+        )
         self.worker.z_range = self.z_range
         self.worker.moveToThread(self.thread)
         self.worker.finished.connect(self.thread.quit)
@@ -10921,6 +10958,7 @@ class guiWin(QMainWindow):
             model_name, parent=self,
             url=url
         )
+        win.setChannelNames(posData.chNames)
         win.exec_()
         if win.cancel:
             self.logger.info('Segmentation process cancelled.')
@@ -10930,7 +10968,15 @@ class guiWin(QMainWindow):
         if model_name == 'thresholding':
             win.segment2D_kwargs = autoThreshWin.segment_kwargs
 
+        secondChannelData = None
+        if win.secondChannelName is not None:
+            secondChannelData = self.getSecondChannelData()
+
         model = acdcSegment.Model(**win.init_kwargs)
+        try:
+            model.setupLogger(self.logger)
+        except Exception as e:
+            pass
 
         self.reInitLastSegmFrame(from_frame_i=startFrameNum-1)
 
@@ -10950,6 +10996,7 @@ class guiWin(QMainWindow):
         self.worker = workers.segmVideoWorker(
             posData, win, model, startFrameNum, stopFrameNum
         )
+        self.worker.secondChannelData = secondChannelData
         self.worker.moveToThread(self.thread)
         self.worker.finished.connect(self.thread.quit)
         self.worker.finished.connect(self.worker.deleteLater)
@@ -10969,6 +11016,12 @@ class guiWin(QMainWindow):
         self.progressWin = None
 
         posData = self.data[self.pos_i]
+
+        numItems = (posData.segm_data).max()
+        if numItems > 500:
+            cancel, doNotCreateItems = self._warn_too_many_items(numItems)
+            if cancel or doNotCreateItems:
+                self.createItems = False
 
         self.get_data()
         self.tracking(enforce=True)
@@ -11016,6 +11069,13 @@ class guiWin(QMainWindow):
             self.set_2Dlab(lab)
         else:
             posData.lab = lab.copy()
+        
+        numItems = lab.max()
+        if numItems > 500:
+            cancel, doNotCreateItems = self._warn_too_many_items(numItems)
+            if cancel or doNotCreateItems:
+                self.createItems = False
+
         self.update_rp()
         self.tracking(enforce=True)
         
@@ -11097,6 +11157,11 @@ class guiWin(QMainWindow):
 
         self.segment2D_kwargs = win.segment2D_kwargs
         model = acdcSegment.Model(**win.init_kwargs)
+        try:
+            model.setupLogger(self.logger)
+        except Exception as e:
+            pass
+
         self.models[idx] = model
 
         img = self.getDisplayedCellsImg()
@@ -11647,19 +11712,24 @@ class guiWin(QMainWindow):
         last_modified_time_unsaved = 'NEVER'
         if os.path.exists(posData.segm_npz_temp_path):
             recovered_file_path = posData.segm_npz_temp_path
-            last_modified_time_unsaved = (
-                datetime.datetime.fromtimestamp(
-                    os.path.getmtime(posData.segm_npz_path)
-                ).strftime("%a %d. %b. %y - %H:%M:%S")
-            )
+            if os.path.exists(posData.segm_npz_path):
+                last_modified_time_unsaved = (
+                    datetime.datetime.fromtimestamp(
+                        os.path.getmtime(posData.segm_npz_path)
+                    ).strftime("%a %d. %b. %y - %H:%M:%S")
+                )
         else:
             recovered_file_path = posData.acdc_output_temp_csv_path
         
-        last_modified_time_saved = (
-            datetime.datetime.fromtimestamp(
-                os.path.getmtime(recovered_file_path)
-            ).strftime("%a %d. %b. %y - %H:%M:%S")
-        )
+        if os.path.exists(recovered_file_path):
+            last_modified_time_saved = (
+                datetime.datetime.fromtimestamp(
+                    os.path.getmtime(recovered_file_path)
+                ).strftime("%a %d. %b. %y - %H:%M:%S")
+            )
+        else:
+            last_modified_time_saved = 'Null'
+        
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
         txt = html_utils.paragraph("""
             Cell-ACDC detected <b>unsaved data</b>.<br><br>
@@ -13698,6 +13768,9 @@ class guiWin(QMainWindow):
             worker.enqueue(posData)
 
     def annotateObject(self, obj, how, debug=False, ax=0):
+        if not self.createItems:
+            return
+
         posData = self.data[self.pos_i]
         # Draw ID label on ax1 image depending on how
         if ax == 0:
@@ -14003,6 +14076,9 @@ class guiWin(QMainWindow):
             self.drawID_and_Contour(obj)
 
     def drawID_and_Contour(self, obj, drawContours=True):
+        if not self.createItems:
+            return
+
         posData = self.data[self.pos_i]
         how = self.drawIDsContComboBox.currentText()
         IDs_and_cont = how == 'Draw IDs and contours'
@@ -15691,6 +15767,9 @@ class guiWin(QMainWindow):
                 self.ax2.addItem(roi)
 
     def addNewItems(self, newID):
+        if not self.createItems:
+            return
+
         posData = self.data[self.pos_i]
 
         create = False
@@ -15794,9 +15873,9 @@ class guiWin(QMainWindow):
         numCreatedItems = sum(
             1 for item in self.ax1_ContoursCurves if item is not None
         )
-        if numCreatedItems > 1000:
-            self.logger.info('Re-initializing graphical items...')
-            self.reinitGraphicalItems(IDs)
+        # if numCreatedItems > 1000:
+        #     self.logger.info('Re-initializing graphical items...')
+        #     self.reinitGraphicalItems(IDs)
         for ID in IDs:
             self.addNewItems(ID)
     
@@ -17328,6 +17407,26 @@ class guiWin(QMainWindow):
             posData.user_ch_name, *posData.loadedFluoChannels
         ])
         return True
+    
+    def getSecondChannelData(self):
+        if self.secondChannelName is None:
+            return
+
+        posData = self.data[self.pos_i]
+        fluo_ch = self.secondChannelName
+        fluo_path, filename = self.getPathFromChName(fluo_ch, posData)
+        if filename in posData.fluo_data_dict:
+            fluo_data = posData.fluo_data_dict[filename]
+        else:
+            fluo_data, bkgrData = self.load_fluo_data(fluo_path)
+            posData.fluo_data_dict[filename] = fluo_data
+            posData.fluo_bkgrData_dict[filename] = bkgrData
+        
+        fluo_img_data = fluo_data[posData.frame_i]
+        if self.isSegm3D:
+            return fluo_img_data
+        else:
+            return self.get_2Dimg_from_3D(fluo_img_data)
     
     def addActionsLutItemContextMenu(self, lutItem):
         annotationMenu = lutItem.gradient.menu.addMenu('Annotations settings')

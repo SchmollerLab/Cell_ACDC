@@ -188,12 +188,12 @@ class NewThreadMultipleExpBaseUtil(QDialog):
                 'same exact equations you used in a previous sessions.<br><br>'
                 'Cell-ACDC will automatically save the equations you enter. '
                 'They will be saved in a file ending with '
-                '<code>_equations_<custom name>.ini</code><br> and each table will '
+                '<code>_equations_appended_name.ini</code><br> and each table will '
                 'be numbered with the number you enter now.<br><br>'
                 'When you reopen the equations dialogue you can select to load '
-                'equations from a saved .ini file,<br>however, <b>only the equations that '
-                'used the table ending with the same name you select now AND '
-                'same number can be loaded</b>.'
+                'equations from a saved .ini file, however, <br><b>only the equations that '
+                'used the table ending with the same name you select now<br>'
+                'AND same number can be loaded</b>.'
             )
         )
         else:

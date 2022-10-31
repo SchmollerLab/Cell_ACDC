@@ -100,8 +100,9 @@ class LabelRoiWorker(QObject):
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
     
-    def start(self, roiImg):
+    def start(self, roiImg, roiSecondChannel=None):
         self.img = roiImg
+        self.roiSecondChannel = roiSecondChannel
         self.restart()
     
     def restart(self, log=True):
@@ -121,8 +122,13 @@ class LabelRoiWorker(QObject):
             if self.exit:
                 break
             elif self.started:
+                img = self.img
+                if self.roiSecondChannel is not None:
+                    img = self.Gui.labelRoiModel.to_rgb_stack(
+                        self.img, self.roiSecondChannel
+                    )
                 lab = self.Gui.labelRoiModel.segment(
-                    self.img, **self.Gui.segment2D_kwargs
+                    img, **self.Gui.segment2D_kwargs
                 )
                 if self.Gui.applyPostProcessing:
                     lab = core.remove_artefacts(
@@ -368,10 +374,12 @@ class segmWorker(QObject):
     debug = pyqtSignal(object)
     critical = pyqtSignal(object)
 
-    def __init__(self, mainWin):
+    def __init__(self, mainWin, secondChannelData=None):
         QObject.__init__(self)
         self.mainWin = mainWin
+        self.logger = self.mainWin.logger
         self.z_range = None
+        self.secondChannelData = secondChannelData
 
     @worker_exception_handler
     def run(self):
@@ -388,7 +396,9 @@ class segmWorker(QObject):
         posData = self.mainWin.data[self.mainWin.pos_i]
         lab = np.zeros_like(posData.segm_data[0])
 
-        # img = myutils.uint_to_float(img)
+        if self.secondChannelData is not None:
+            img = self.mainWin.model.to_rgb_stack(img, self.secondChannelData)
+
         _lab = self.mainWin.model.segment(img, **self.mainWin.segment2D_kwargs)
         if self.mainWin.applyPostProcessing:
             _lab = core.remove_artefacts(
@@ -427,6 +437,7 @@ class segmVideoWorker(QObject):
         self.maxElongation = paramWin.maxElongation
         self.applyPostProcessing = paramWin.applyPostProcessing
         self.segment2D_kwargs = paramWin.segment2D_kwargs
+        self.secondChannelName = paramWin.secondChannelName
         self.model = model
         self.posData = posData
         self.startFrameNum = startFrameNum
@@ -438,7 +449,8 @@ class segmVideoWorker(QObject):
         img_data = self.posData.img_data[self.startFrameNum-1:self.stopFrameNum]
         for i, img in enumerate(img_data):
             frame_i = i+self.startFrameNum-1
-            img = myutils.uint_to_float(img)
+            if self.secondChannelData is not None:
+                img = self.model.to_rgb_stack(img, self.secondChannelData)
             lab = self.model.segment(img, **self.segment2D_kwargs)
             if self.applyPostProcessing:
                 lab = core.remove_artefacts(

@@ -258,6 +258,8 @@ class convertFileFormatWin(QMainWindow):
             data = data.astype(np.uint16)
         filename, ext = os.path.splitext(filename)
         if appendedTxt:
+            if basename.endswith('_'):
+                basename = basename[:-1]
             newFilename = f'{basename}_{appendedTxt}.{self.to}'
         else:
             newFilename = f'{basename}.{self.to}'
@@ -291,17 +293,13 @@ class convertFileFormatWin(QMainWindow):
             self, 'Conversion done!', html_utils.paragraph(txt)
         )
 
-
-    def save(self, alignedData, filePath, appendedTxt, first_call=True):
-        dir = os.path.dirname(filePath)
-        filename, ext = os.path.splitext(os.path.basename(filePath))
-        path = os.path.join(dir, f'{filename}_{appendedTxt}{ext}')
-
     def askTxtAppend(self, basename):
         hintText = html_utils.paragraph(
             '<b>OPTIONAL</b>: write here an additional text to append '
             'to the filename'
         )
+        if basename.endswith('_'):
+            basename = basename[:-1]
         win = apps.filenameDialog(
             ext=self.to, title='New filename',
             hintText=hintText, parent=self, basename=basename

@@ -6,11 +6,14 @@ import os
 import traceback
 import shutil
 from importlib import import_module
+import skimage.measure
+from tqdm import tqdm
 
 from . import core, base_cca_df, html_utils, config, printl
 
 import warnings
 warnings.filterwarnings("ignore", message="Failed to get convex hull image.")
+warnings.filterwarnings("ignore", message="divide by zero encountered in long_scalars")
 
 user_path = pathlib.Path.home()
 acdc_metrics_path = os.path.join(user_path, 'acdc-metrics')
@@ -30,6 +33,28 @@ for file in os.listdir(metrics_path):
     src = os.path.join(metrics_path, file)
     dst = os.path.join(acdc_metrics_path, file)
     shutil.copy(src, dst)
+
+PROPS_DTYPES = {
+    'label': int,
+    'major_axis_length': float,
+    'minor_axis_length': float,
+    'inertia_tensor_eigvals': tuple,
+    'equivalent_diameter': float,
+    'moments': np.ndarray,
+    'area': int,
+    'solidity': float,
+    'extent': float,
+    'inertia_tensor': np.ndarray,
+    'filled_area': int,
+    'centroid': tuple,
+    'bbox_area': int,
+    'local_centroid': tuple,
+    'convex_area': int,
+    'euler_number': int,
+    'moments_normalized': np.ndarray,
+    'moments_central': np.ndarray,
+    'bbox': tuple
+}
 
 def getMetricsFunc(posData):
     metrics_func, all_metrics_names = standard_metrics_func()
@@ -635,53 +660,100 @@ def _is_numeric_dtype(dtype):
     )
     return is_numeric
 
+def regionprops_table(labels, props, logger_func=None):
+    rp = skimage.measure.regionprops(labels)
+    if 'label' not in props:
+        props = ('label', *props)
+    
+    empty_metric = [None]*len(rp)
+    rp_table = {}
+    error_ids = {}
+    pbar = tqdm(total=len(props), ncols=100, leave=False)
+    for prop in props:
+        pbar.set_description(f'Computing "{prop}"')
+        for o, obj in enumerate(rp):
+            try:
+                metric = getattr(obj, prop)
+                _type = PROPS_DTYPES[prop]
+                if _type == int or _type == float:
+                    if prop not in rp_table:
+                        rp_table[prop] = empty_metric.copy()
+                    rp_table[prop][o] = metric
+                elif _type == tuple:
+                    for m, val in enumerate(metric):
+                        prop_1d = f'{prop}-{m}'
+                        if prop_1d not in rp_table:
+                            rp_table[prop_1d] = empty_metric.copy()
+                        rp_table[prop_1d][o] = val
+                elif _type == np.ndarray:
+                    for i, val in enumerate(metric.flatten()):
+                        indices = np.unravel_index(i, metric.shape)
+                        s = '-'.join([str(idx) for idx in indices])
+                        prop_1d = f'{prop}-{s}'
+                        if prop_1d not in rp_table:
+                            rp_table[prop_1d] = empty_metric.copy()
+                        rp_table[prop_1d][o] = val
+            except Exception as e:
+                format_exception = traceback.format_exc()
+                if logger_func is None:
+                    printl(format_exception)
+                else:
+                    logger_func(format_exception)
+                
+                if prop not in error_ids:
+                    error_ids[prop] = {'ids': [obj.label], 'error': e}
+                else:
+                    error_ids[prop]['ids'].append(obj.label)
+        pbar.update(1)
+    return rp_table, error_ids
+
 def get_props_names_3D():
-    props = (
-        'label',
-        'major_axis_length',
-        # 'minor_axis_length', # this often causes math domain error in 3D
-        'inertia_tensor_eigvals', 
-        'equivalent_diameter',
-        'moments',
-        'area',
-        'solidity',
-        'extent',
-        'inertia_tensor',
-        'filled_area',
-        'centroid',
-        'bbox_area',
-        'local_centroid',
-        'convex_area',
-        'euler_number',
-        'moments_normalized',
-        'moments_central',
-        'bbox'
-    )
-    return props
+    props = {
+        'label': int,
+        'major_axis_length': float,
+        'minor_axis_length': float,
+        'inertia_tensor_eigvals': tuple,
+        'equivalent_diameter': float,
+        'moments': np.ndarray,
+        'area': int,
+        'solidity': float,
+        'extent': float,
+        'inertia_tensor': np.ndarray,
+        'filled_area': int,
+        'centroid': tuple,
+        'bbox_area': int,
+        'local_centroid': tuple,
+        'convex_area': int,
+        'euler_number': int,
+        'moments_normalized': np.ndarray,
+        'moments_central': np.ndarray,
+        'bbox': tuple
+    }
+    return list(props.keys())
 
 def get_props_names():
-    props = (
-        'label',
-        'major_axis_length',
-        'minor_axis_length',
-        'inertia_tensor_eigvals', 
-        'equivalent_diameter',
-        'moments',
-        'area',
-        'solidity',
-        'extent',
-        'inertia_tensor',
-        'filled_area',
-        'centroid',
-        'bbox_area',
-        'local_centroid',
-        'convex_area',
-        'euler_number',
-        'moments_normalized',
-        'moments_central',
-        'bbox'
-    )
-    return props
+    props = {
+        'label': int,
+        'major_axis_length': float,
+        'minor_axis_length': float,
+        'inertia_tensor_eigvals': tuple,
+        'equivalent_diameter': float,
+        'moments': np.ndarray,
+        'area': int,
+        'solidity': float,
+        'extent': float,
+        'inertia_tensor': np.ndarray,
+        'filled_area': int,
+        'centroid': tuple,
+        'bbox_area': int,
+        'local_centroid': tuple,
+        'convex_area': int,
+        'euler_number': int,
+        'moments_normalized': np.ndarray,
+        'moments_central': np.ndarray,
+        'bbox': tuple
+    }
+    return list(props.keys())
 
 def standard_metrics_func():
     metrics_func = {

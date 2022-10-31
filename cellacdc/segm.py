@@ -86,6 +86,7 @@ class segmWorker(QRunnable):
         self.isSegm3D = mainWin.isSegm3D
         self.track_params = mainWin.track_params
         self.ROIdeactivatedByUser = mainWin.ROIdeactivatedByUser
+        self.secondChannelName = mainWin.secondChannelName
 
     def setupPausingItems(self):
         self.mutex = QMutex()
@@ -153,6 +154,15 @@ class segmWorker(QRunnable):
         # which value it has in that case
         stop_i = posData.segmSizeT
 
+        if self.secondChannelName is not None:
+            self.signals.progress.emit(
+                f'Loading second channel "{self.secondChannelName}"...'
+            )
+            secondChFilePath = load.get_filename_from_channel(
+                posData.images_path, self.secondChannelName
+            )
+            secondChImgData = load.load_image_file(secondChFilePath)
+
         if posData.SizeT > 1:
             self.t0 = 0
             if self.concat_segm and posData.segm_data is not None:
@@ -160,39 +170,64 @@ class segmWorker(QRunnable):
             if posData.SizeZ > 1 and not self.isSegm3D:
                 # 2D segmentation on 3D data over time
                 img_data_slice = posData.img_data[self.t0:stop_i]
+                if self.secondChannelName is not None:
+                    second_ch_data_slice = secondChImgData[self.t0:stop_i]
                 Y, X = posData.img_data.shape[-2:]
-                img_data = np.zeros((stop_i, Y, X), posData.img_data.dtype)
+                newShape = (stop_i, Y, X)
+                img_data = np.zeros(newShape, posData.img_data.dtype)
+                if self.secondChannelName is not None:
+                    second_ch_data = np.zeros(newShape, secondChImgData.dtype)
                 df = posData.segmInfo_df.loc[posData.filename]
                 for z_info in df[:stop_i].itertuples():
                     i = z_info.Index
                     z = z_info.z_slice_used_dataPrep
                     zProjHow = z_info.which_z_proj
                     img = img_data_slice[i]
+                    if self.secondChannelName is not None:
+                        second_ch_img = second_ch_data_slice[i]
                     if zProjHow == 'single z-slice':
                         img_data[i] = img[z]
+                        if self.secondChannelName is not None:
+                            second_ch_data[i] = second_ch_img[z]
                     elif zProjHow == 'max z-projection':
                         img_data[i] = img.max(axis=0)
+                        if self.secondChannelName is not None:
+                            second_ch_data[i] = second_ch_img.max(axis=0)
                     elif zProjHow == 'mean z-projection':
                         img_data[i] = img.mean(axis=0)
+                        if self.secondChannelName is not None:
+                            second_ch_data[i] = second_ch_img.mean(axis=0)
                     elif zProjHow == 'median z-proj.':
                         img_data[i] = np.median(img, axis=0)
+                        if self.secondChannelName is not None:
+                            second_ch_data[i] = np.median(second_ch_img, axis=0)
                 if isROIactive:
                     Y, X = img_data.shape[-2:]
                     img_data = img_data[:, y0:y1, x0:x1]
+                    if self.secondChannelName is not None:
+                        second_ch_data = second_ch_data[:, y0:y1, x0:x1]
                     pad_info = ((0, 0), (0, 0), (y0, Y-y1), (x0, X-x1))
             elif posData.SizeZ > 1 and self.isSegm3D:
                 # 3D segmentation on 3D data over time
                 img_data = posData.img_data[self.t0:stop_i]
+                if self.secondChannelName is not None:
+                    second_ch_data = secondChImgData[self.t0:stop_i]
                 if isROIactive:
                     Y, X = img_data.shape[-2:]
                     img_data = img_data[:, :, y0:y1, x0:x1]
+                    if self.secondChannelName is not None:
+                        second_ch_data = second_ch_data[:, :, y0:y1, x0:x1]
                     pad_info = ((0, 0), (0, 0), (y0, Y-y1), (x0, X-x1))
             else:
                 # 2D data over time
                 img_data = posData.img_data[self.t0:stop_i]
+                if self.secondChannelName is not None:
+                    second_ch_data = secondChImgData[self.t0:stop_i]
                 if isROIactive:
                     Y, X = img_data.shape[-2:]
                     img_data = img_data[:, y0:y1, x0:x1]
+                    if self.secondChannelName is not None:
+                        second_ch_data = second_ch_data[:, :, y0:y1, x0:x1]
                     pad_info = ((0, 0), (y0, Y-y1), (x0, X-x1))
         else:
             if posData.SizeZ > 1 and not self.isSegm3D:
@@ -202,29 +237,44 @@ class segmWorker(QRunnable):
                 zProjHow = z_info.which_z_proj
                 if zProjHow == 'single z-slice':
                     img_data = posData.img_data[z]
+                    if self.secondChannelName is not None:
+                        second_ch_data[i] = secondChImgData[z]
                 elif zProjHow == 'max z-projection':
                     img_data = posData.img_data.max(axis=0)
+                    if self.secondChannelName is not None:
+                        second_ch_data[i] = secondChImgData.max(axis=0)
                 elif zProjHow == 'mean z-projection':
                     img_data = posData.img_data.mean(axis=0)
+                    if self.secondChannelName is not None:
+                        second_ch_data[i] = secondChImgData.mean(axis=0)
                 elif zProjHow == 'median z-proj.':
                     img_data = np.median(posData.img_data, axis=0)
+                    if self.secondChannelName is not None:
+                        second_ch_data[i] = np.median(secondChImgData, axis=0)
                 if isROIactive:
                     Y, X = img_data.shape[-2:]
                     pad_info = ((0, 0), (y0, Y-y1), (x0, X-x1))
                     img_data = img_data[:, y0:y1, x0:x1]
             elif posData.SizeZ > 1 and self.isSegm3D:
+                # 3D segmentation on 3D z-stack
                 img_data = posData.img_data
+                second_ch_data = secondChImgData
                 if isROIactive:
                     Y, X = img_data.shape[-2:]
                     pad_info = ((0, 0), (y0, Y-y1), (x0, X-x1))
                     img_data = img_data[:, y0:y1, x0:x1]
+                    if self.secondChannelName is not None:
+                        second_ch_data = second_ch_data[:, y0:y1, x0:x1]
             else:
                 # Single 2D image
                 img_data = posData.img_data
+                second_ch_data = secondChImgData
                 if isROIactive:
                     Y, X = img_data.shape[-2:]
                     pad_info = ((y0, Y-y1), (x0, X-x1))
                     img_data = img_data[y0:y1, x0:x1]
+                    if self.secondChannelName is not None:
+                        second_ch_data = second_ch_data[y0:y1, x0:x1]
 
         self.signals.progress.emit(f'Image shape = {img_data.shape}')
 
@@ -240,6 +290,8 @@ class segmWorker(QRunnable):
                 self.segment2D_kwargs['signals'] = (
                     self.signals, self.innerPbar_available
                 )
+                if self.secondChannelName is not None:
+                    img_data = self.model.to_rgb_stack(img_data, second_ch_data)
                 lab_stack = self.model.segment3DT(
                     img_data, **self.segment2D_kwargs
                 )
@@ -248,6 +300,8 @@ class segmWorker(QRunnable):
             else:
                 lab_stack = np.zeros(img_data.shape, np.uint16)
                 for t, img in enumerate(img_data):
+                    if self.secondChannelName is not None:
+                        img = self.model.to_rgb_stack(img, second_ch_data[t])
                     lab = self.model.segment(img, **self.segment2D_kwargs)
                     lab_stack[t] = lab
                     if self.innerPbar_available:
@@ -257,6 +311,9 @@ class segmWorker(QRunnable):
                 if self.innerPbar_available:
                     self.signals.progressBar.emit(1)
         else:
+            if self.secondChannelName is not None:
+                img_data = self.model.to_rgb_stack(img_data, second_ch_data)
+        
             lab_stack = self.model.segment(img_data, **self.segment2D_kwargs)
             if self.predictCcaState_model is not None:
                 cca_df = self.predictCcaState_model.predictCcaState(
@@ -543,47 +600,9 @@ class segmWin(QMainWindow):
                 return
             self.segment2D_kwargs = win.segment_kwargs
 
-        self.log(f'Importing {model_name}...')
+        self.log(f'Downloading {model_name} (if needed)...')
         self.downloadWin = apps.downloadModel(model_name, parent=self)
         self.downloadWin.download()
-
-        self.model_name = model_name
-        acdcSegment = myutils.import_segment_module(model_name)
-        self.acdcSegment =  acdcSegment
-
-        # Read all models parameters
-        init_params, segment_params = myutils.getModelArgSpec(self.acdcSegment)
-
-        # Prompt user to enter the model parameters
-        try:
-            url = acdcSegment.url_help()
-        except AttributeError:
-            url = None
-
-        win = apps.QDialogModelParams(
-            init_params,
-            segment_params,
-            model_name, parent=self,
-            url=url)
-        win.exec_()
-
-        if win.cancel:
-            abort = self.doAbort()
-            if abort:
-                self.close()
-                return
-
-        if model_name != 'thresholding':
-            self.segment2D_kwargs = win.segment2D_kwargs
-        self.minSize = win.minSize
-        self.minSolidity = win.minSolidity
-        self.maxElongation = win.maxElongation
-        self.applyPostProcessing = win.applyPostProcessing
-
-        init_kwargs = win.init_kwargs
-
-        # Initialize model
-        self.model = acdcSegment.Model(**init_kwargs)
 
         ch_name_selector = prompts.select_channel_name(
             which_channel='segm', allow_abort=True
@@ -727,6 +746,51 @@ class segmWin(QMainWindow):
             if abort:
                 self.close()
                 return
+        
+        self.log(f'Importing {model_name}...')
+        self.model_name = model_name
+        acdcSegment = myutils.import_segment_module(model_name)
+        self.acdcSegment =  acdcSegment
+
+        # Read all models parameters
+        init_params, segment_params = myutils.getModelArgSpec(self.acdcSegment)
+
+        # Prompt user to enter the model parameters
+        try:
+            url = acdcSegment.url_help()
+        except AttributeError:
+            url = None
+
+        win = apps.QDialogModelParams(
+            init_params,
+            segment_params,
+            model_name, parent=self,
+            url=url)
+        win.setChannelNames(posData.chNames)
+        win.exec_()
+
+        if win.cancel:
+            abort = self.doAbort()
+            if abort:
+                self.close()
+                return
+
+        if model_name != 'thresholding':
+            self.segment2D_kwargs = win.segment2D_kwargs
+        self.minSize = win.minSize
+        self.minSolidity = win.minSolidity
+        self.maxElongation = win.maxElongation
+        self.applyPostProcessing = win.applyPostProcessing
+        self.secondChannelName = win.secondChannelName
+
+        init_kwargs = win.init_kwargs
+
+        # Initialize model
+        self.model = acdcSegment.Model(**init_kwargs)
+        try:
+            self.model.setupLogger(self.logger)
+        except Exception as e:
+            pass
 
         self.predictCcaState_model = None
 

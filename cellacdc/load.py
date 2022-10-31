@@ -5,6 +5,7 @@ import re
 import cv2
 import json
 import h5py
+import shutil
 from math import isnan
 from tqdm import tqdm
 import numpy as np
@@ -218,6 +219,17 @@ def get_filename_from_channel(images_path, channel_name):
     else:
         return ''
 
+def load_image_file(filepath):
+    if filepath.endswith('.h5'):
+        h5f = h5py.File(filepath, 'r')
+        img_data = h5f['data']
+    elif filepath.endswith('.npz'):
+        img_data = np.load(filepath)['arr_0']
+    elif filepath.endswith('.npy'):
+        img_data = np.load(filepath)
+    else:
+        img_data = skimage.io.imread(filepath)
+    return img_data
 
 def get_existing_segm_endnames(basename, segm_files):
     existing_endnames = []
@@ -325,6 +337,56 @@ class loadData:
         self.filename, self.ext = os.path.splitext(filename_ext)
         self._additionalMetadataValues = None
         self.loadLastEntriesMetadata()
+        self.attempFixBasenameBug()
+    
+    def attempFixBasenameBug(self):
+        '''Attempt removing _s(\d+)_ from filenames if not present in basename
+        
+        This was a bug introduced when saving the basename with data structure,
+        it was not saving the _s(\d+)_ part.
+        '''
+
+        try:
+            ls = myutils.listdir(self.images_path)
+            for file in ls:
+                if file.endswith('metadata.csv'):
+                    metadata_csv_path = os.path.join(self.images_path, file)
+                    break
+            else:
+                return
+            
+            df_metadata = pd.read_csv(metadata_csv_path).set_index('Description')
+            try:
+                basename = df_metadata.at['basename', 'values']
+            except Exception as e:
+                return
+            
+            numPos = len(myutils.get_pos_foldernames(self.exp_path))
+            numPosDigits = len(str(numPos))
+            s0p = str(self.pos_num+1).zfill(numPosDigits)
+
+            if basename.endswith(f'_s{s0p}_'):
+                return
+            
+            for file in ls:
+                endname = file[len(basename):]
+                if not endname.startswith(f's{s0p}_'):
+                    continue
+                fixed_endname = endname[len(f's{s0p}_'):]
+                fixed_filename = f'{basename}{fixed_endname}'
+                fixed_filepath = os.path.join(self.images_path, fixed_filename)
+                filepath = os.path.join(self.images_path, file)
+                hidden_filepath = os.path.join(self.images_path, f'.{file}')
+                shutil.copy2(filepath, fixed_filepath)
+                try:
+                    os.rename(filepath, hidden_filepath)
+                except Exception as e:
+                    pass
+                    
+        except Exception as e:
+            traceback.print_exc()
+
+
 
     def getPosNum(self):
         try:
