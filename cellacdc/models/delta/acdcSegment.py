@@ -1,88 +1,216 @@
 """
+This script runs the segmentation U-Net
+For mother machine data, it runs on images of cropped out and resized single
+chambers as fed to it in Pipeline processing.
 
-
-@author: jblugagne
+This script enables the use of delta's segmenting
+in acdc.
 
 @author: jamesroberts
 """
 
 import os
-import sys
-import glob
 import numpy as np
+import pathlib
 
-import delta
-import delta.delta.utilities as utils
-from delta.delta.utilities import cfg
-from delta.delta.model import unet_seg
-from delta.delta import model
-from delta.delta.data import saveResult_seg, predictGenerator_seg, postprocess, readreshape
+import delta.utilities as utils
+import delta.config as cfg
+from delta.model import unet_seg
+from delta.data import binarizerange
+from delta import assets
+import skimage.transform as trans
+from typing import Tuple
 
 
 class Model:
 
-    def __init__(self, **kwargs):
+    def __init__(self, model_type='2D'):
+        """
+        Configures data, initializes model, loads weights for model.
 
-        cfg.load_config(presets="2D")
+        Parameters
+        ----------
+        model_type : string
+            The model name to be used for segmenting.
+        """
 
-        self.model = unet_seg(input_size=cfg.target_size_seg + (1,))
-        self.model.load_weights(cfg.model_file_seg)
+        valid = False
+        while valid == False:
+            try:
+                if model_type == '2D':
+                    cfg.load_config(presets='2D')
+                    weights = 'unet_pads_seg.hdf5'
+                else:
+                    cfg.load_config(presets='mothermachine')
+                    weights = 'unet_moma_seg.hdf5'
 
-    def segment(self, image, **kwargs):
+                valid = True
 
-        inputs_folder = image
+            except ValueError:
+                assets.download_assets(
+                    load_models=True,
+                    load_sets=False,
+                    load_evals=False,
+                    config_level='local'
+                )
 
-        unprocessed = sorted(
-            glob.glob(inputs_folder + "/*.tif") + glob.glob(inputs_folder + "/*.png")
-        )
+        user_path = pathlib.Path.home()
+        model_path = os.path.join(str(user_path), f'acdc-delta')
 
-        # Process
-        while unprocessed:
-            # Pop out filenames
-            ps = min(4096, len(unprocessed))  # 4096 at a time
-            to_process = unprocessed[0:ps]
-            del unprocessed[0:ps]
+        self.weights_path = os.path.join(model_path, weights)
 
-            # Input data generator:
-            predGene = predictGenerator_seg(
-                inputs_folder,
-                files_list=to_process,
-                target_size=cfg.target_size_seg,
-                crop=cfg.crop_windows,
-            )
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f'Weights file not found in {model_path}')
+
+        # Initialize Model
+        self.model = unet_seg(input_size=cfg.target_size_seg+(1,))
+        self.model.load_weights(self.weights_path)
+
+
+    def delta_preprocess(self,
+                         image,
+                         target_size: Tuple[int, int] = (256, 32),
+                         binarize: bool = False,
+                         order: int = 1,
+                         rangescale: bool = True,
+                         crop: bool = False,
+                         ):
+        """
+        Takes image and reformat it
+
+        (Much like delta.data.readreshape)
+
+        Parameters
+        ----------
+        image: numpy.array
+            Supplied by acdc (2D)
+        target_size : tupe of int or None, optional
+            Size to reshape the image.
+            The default is (256,32).
+        binarize : bool, optional
+            Use the binarizerange() function on the image.
+            The default is False.
+        order : int, optional
+            interpolation order (see skimage.transform.warp doc).
+            0 is nearest neighbor
+            1 is bilinear
+            The default is 1.
+        rangescale : bool, optional
+            Scale array image values to 0-1 if True.
+            The default is True.
+        crop : bool
+            Will resize image if True.
+            The default is False.
+
+        Returns
+        -------
+        img : numpy 2d array of floats
+            Loaded array.
+
+        """
+        i = image
+
+        # For DeLTA mothermachine, all images are resized in 256x32
+        if not crop:
+            img = trans.resize(i, target_size, anti_aliasing=True, order=order)
+        # For DeLTA 2D, black space is added if img is smaller than target_size
+        else:
+            fill_shape = [
+                target_size[j] if i.shape[j] < target_size[j] else i.shape[j]
+                for j in range(2)
+            ]
+            img = np.zeros((fill_shape[0], fill_shape[1]))
+            img[0: i.shape[0], 0: i.shape[1]] = i
+
+        if binarize:
+            img = binarizerange(img)
+        if rangescale:
+            if np.ptp(img) != 0:
+                img = (img - np.min(img)) / np.ptp(img)
+        if np.max(img) == 255:
+            img = img / 255
+        return img
+
+    def segment(self,
+                image,
+                model_type='2D'):
+        """
+        Uses initialized model with weights and image to
+        label cells in segmentation mask.
+
+        (Much like delta.segmentation.py)
+
+        Parameters
+        ----------
+        image : numpy array
+                single image from input.
+
+        Returns
+        -------
+        lab : 2D numpy array of uint16
+                Labelled image. Each cell in the image is marked by adjacent pixels
+                with values given by cell number.
+        """
+
+        # Find original shape of image before processing
+        original_shape = image.shape
+
+        # 2D: Cut into overlapping windows
+        img = self.delta_preprocess(image=image,
+                                        target_size=cfg.target_size_seg,
+                                        crop=True)
+
+        if image.ndim == 2:
+
+            # Process image to use for delta
+            image = self.delta_preprocess(image=image,
+                                          target_size=cfg.target_size_seg,
+                                          crop=cfg.crop_windows)
+
+            # Change Dimensions to 4D numpy array
+            image = np.reshape(image, (1,) + image.shape + (1,))
 
             # mother machine: Don't crop images into windows
             if not cfg.crop_windows:
                 # Predictions:
-                results = self.model.predict(predGene, verbose=1)[:, :, :, 0]
+                results = self.model.predict(image, verbose=1)[0, :, :, 0]
+                results = trans.resize(results, original_shape, anti_aliasing=True, order=1)
 
-            # 2D: Cut into overlapping windows
+                # Post process results (binarize + light morphology-based cleaning):
+                # prediction = postprocess(results, crop=cfg.crop_windows)
+
+                # Label the cells using prediction
+                lab = utils.label_seg(seg=results)
+                print(np.unique(lab))
+
             else:
-                img = readreshape(
-                    os.path.join(inputs_folder, to_process[0]),
-                    target_size=cfg.target_size_seg,
-                    crop=True,
-                )
+
                 # Create array to store predictions
-                results = np.zeros((len(to_process), img.shape[0], img.shape[1], 1))
+                results = np.zeros((1, img.shape[0], img.shape[1], 1))
+                print(img.shape)
+                print(image.shape)
+                print(results.shape)
+
                 # Crop, segment, stitch and store predictions in results
-                for i in range(len(to_process)):
+                # This will only happen once because the input is a single image
+                for i in range(1):
+
                     # Crop each frame into overlapping windows:
                     windows, loc_y, loc_x = utils.create_windows(
-                        next(predGene)[0, :, :], target_size=cfg.target_size_seg
+                        image[0, :, :, 0], target_size=cfg.target_size_seg
                     )
-                    # We have to play around with tensor dimensions to conform to
-                    # tensorflow's functions:
                     windows = windows[:, :, :, np.newaxis]
+
                     # Predictions:
                     pred = self.model.predict(windows, verbose=1, steps=windows.shape[0])
                     # Stich prediction frames back together:
                     pred = utils.stitch_pic(pred[:, :, :, 0], loc_y, loc_x)
-                    pred = pred[np.newaxis, :, :, np.newaxis]  # Mess around with dims
+                    pred = pred[:, :, np.newaxis]
 
                     results[i] = pred
 
-            # Post process results (binarize + light morphology-based cleaning):
-            results = postprocess(results, crop=cfg.crop_windows)
+                # Label the cells using prediction
+                lab = utils.label_seg(seg=results[0, :, :, 0])
+                print(np.unique(lab))
 
-        return results
+        return lab.astype(np.uint16)
