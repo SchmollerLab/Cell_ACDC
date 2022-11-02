@@ -1,0 +1,25 @@
+name: Informal request/question
+description: Ask a question or post a comment about Cell-ACDC.
+title: "<Title of your question/comment>"
+labels: [":question: Help/question"]
+
+body:
+  - type: markdown
+    attributes:
+      value: >
+        Thank you for your question! You can also discuss your question/comment on our 
+        [discussion forum](https://github.com/SchmollerLab/Cell_ACDC/discussions)
+
+  - type: textarea
+    validations:
+      required: true
+    attributes:
+      label: "Description:"
+      description: >
+        Ask any question or write any comment about Cell-ACDC. Thanks!
+        NOTE: IUf you had an error, please upload the log file here too. 
+        You can find the log file from the menu on the top menubar 
+        called `Help --> Show log files...`
+      placeholder: |
+        Your question...
+
