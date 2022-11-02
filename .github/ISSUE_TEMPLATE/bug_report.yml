@@ -1,0 +1,64 @@
+name: Report a bug
+description: Report an error, problem or unexpected behavior in Cell-ACDC.
+title: "<Comprehensive title summarizing the bug>"
+labels: [":bug: Bug"]
+
+body:
+  - type: markdown
+    attributes:
+      value: >
+        Thank you for reporting an issue!
+        Please, **remember to upload the log file**. You can find the log file from the 
+        menu `Help --> Show log files...`
+
+  - type: textarea
+    validations:
+      required: true
+    attributes:
+      label: "Description:"
+      description: >
+        Describe your issue with all necessary detail.
+        What kind of behavior are you experiencing?
+        What would you expect instead?
+        Upload the log file here too. You can find the log file from the 
+        menu on the top menubar called `Help --> Show log files...`
+      placeholder: |
+        Your description...
+
+  - type: textarea
+    attributes:
+      label: "Way to reproduce:"
+      description: >
+        Provide a as many details as possible about the process required to 
+        reproduce the error.
+
+  - type: textarea
+    attributes:
+      label: "OPTIONAL Link to data to reproduce error:"
+      description: >
+        Many issues are specifically related to the data you are using. If possible, 
+        consider providing a link to download the data that I can test with. 
+        You could use Google Drive and share it with me at padovaf@tcd.ie
+
+  - type: textarea
+    attributes:
+      label: "Traceback or output:"
+      description: >
+        Include the full error message, traceback or output, if any.
+      placeholder: |
+        Full error (starting from Traceback) or output..
+      render: Shell
+
+  - type: textarea
+    attributes:
+      label: "Version information:"
+      description: |
+        Paste the output after running the following Python commands
+        ```python
+        import sys; print(sys.version)
+        import platform; print(platform.platform())
+        import cellacdc; print(f'Cell-ACDC version: {cellacdc.__version__}')
+        ```
+      placeholder: |
+        Version information...
+      render: Shell

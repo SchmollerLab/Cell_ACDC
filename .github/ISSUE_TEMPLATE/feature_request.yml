@@ -1,0 +1,24 @@
+name: Feature request
+description: Suggest an idea, new feature or improvement to Cell-ACDC.
+title: "<Title of the new feature>"
+labels: [":rocket: New feature"]
+
+body:
+  - type: markdown
+    attributes:
+      value: >
+        Thank you for your suggestion! You can also discuss the new feature on our 
+        [discussion forum](https://github.com/SchmollerLab/Cell_ACDC/discussions)
+
+  - type: textarea
+    validations:
+      required: true
+    attributes:
+      label: "Description:"
+      description: >
+        Describe your suggestion with all necessary detail.
+        What kind of behavior would you like to see?
+        Is your feature request related to a problem?
+        Great! Please let us know.
+      placeholder: |
+        Your suggestion...
