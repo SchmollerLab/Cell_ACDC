@@ -1,18 +1,17 @@
+import collections
 import os
-import collections 
 import re
 import traceback
 from functools import partial
 
-from natsort import natsorted
-import skimage.io
 import numpy as np
 import pandas as pd
-
+import skimage.io
+from natsort import natsorted
 from PyQt5.QtCore import QThread
 from PyQt5.QtWidgets import QFileDialog
 
-from . import apps, widgets, html_utils, myutils, workers, printl
+from . import apps, html_utils, myutils, printl, widgets, workers
 
 frame_name_pattern = r'_(day)*(\d+)\.[A-Za-z0-9]+'
 

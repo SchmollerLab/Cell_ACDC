@@ -967,7 +967,7 @@ class mainWin(QMainWindow):
             f'QPushButton {{background-color: {self.defaultPushButtonColor};}}'
         )
         self.dataStructButton.setText(
-            '0. Create data structure from microscopy file(s)...'
+            '0. Create data structure from microscopy/image file(s)...'
         )
 
 
