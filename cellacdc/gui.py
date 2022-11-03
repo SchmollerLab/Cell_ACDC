@@ -904,7 +904,7 @@ class saveDataWorker(QObject):
                     self.progress.emit(
                         'WARNING: Some objects had the following errors:\n'
                         f'{rp_errors}\n'
-                        'NULL was saved for the region properties above.'
+                        'Region properties with errors were saved as Not a Number.'
                     )
             except Exception as error:
                 traceback_format = traceback.format_exc()
@@ -5805,15 +5805,16 @@ class guiWin(QMainWindow):
                 imgData = self.img1.image
             
             roiImg = imgData[self.labelRoiSlice]
-            roiSecondChannel = None
-            if self.secondChannelName is not None:
-                secondChannelData = self.getSecondChannelData()
-                roiSecondChannel = secondChannelData[self.labelRoiSlice]
 
             if self.labelRoiModel is None:
                 cancel = self.initLabelRoiModel()
                 if cancel:
                     return
+            
+            roiSecondChannel = None
+            if self.secondChannelName is not None:
+                secondChannelData = self.getSecondChannelData()
+                roiSecondChannel = secondChannelData[self.labelRoiSlice]
 
             self.app.restoreOverrideCursor() 
             self.labelRoiActiveWorkers[-1].start(
@@ -6768,7 +6769,7 @@ class guiWin(QMainWindow):
         desc = (
             f'Loading new window, range = ({coord0_chunk}, {coord1_chunk})...'
         )
-        self.progressWin = apps.QDialogWorkerProcess(
+        self.progressWin = apps.QDialogWorkerProgress(
             title='Loading data...', parent=self, pbarDesc=desc
         )
         self.progressWin.mainPbar.setMaximum(0)
@@ -12432,6 +12433,9 @@ class guiWin(QMainWindow):
         self.isShiftDown = False
         self.autoContourHoverON = False
         self.navigateScrollBarStartedMoving = True
+
+        # Second channel used by cellpose
+        self.secondChannelName = None
 
         self.ax1_viewRange = None
 

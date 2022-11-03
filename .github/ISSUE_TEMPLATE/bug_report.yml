@@ -34,7 +34,7 @@ body:
 
   - type: textarea
     attributes:
-      label: "OPTIONAL Link to data to reproduce error:"
+      label: "(Optional) Link to data to reproduce error:"
       description: >
         Many issues are specifically related to the data you are using. If possible, 
         consider providing a link to download the data that I can test with. 
@@ -42,11 +42,11 @@ body:
 
   - type: textarea
     attributes:
-      label: "Traceback or output:"
+      label: "Terminal output:"
       description: >
-        Include the full error message, traceback or output, if any.
+        Paste here the entire terminal session.
       placeholder: |
-        Full error (starting from Traceback) or output..
+        Full error or terminal output..
       render: Shell
 
   - type: textarea

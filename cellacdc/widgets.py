@@ -140,9 +140,12 @@ class QtHandler(logging.Handler):
             XStream.stdout().write('%s\n'%record)
 
 class QLog(QPlainTextEdit):
+    sigClose = pyqtSignal()
+
     def __init__(self, *args, logger=None):
         super().__init__(*args)
         self.logger = logger
+        self.setReadOnly(True)
 
     def connect(self):
         XStream.stdout().messageWritten.connect(self.writeStdOutput)
@@ -157,6 +160,14 @@ class QLog(QPlainTextEdit):
         self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
         if self.logger is not None:
             self.logger.exception(text)
+    
+    def insertPlainText(self, text: str) -> None:
+        super().insertPlainText(f'{text}\n')
+        self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
+    
+    def closeEvent(self, event) -> None:
+        super().closeEvent(event)
+        self.sigClose.emit()
 
 class okPushButton(QPushButton):
     def __init__(self, *args):
@@ -2100,6 +2111,21 @@ class readOnlySpinbox(QSpinBox):
         self.setMaximum(2**31-1)
         self.setStyleSheet('background-color: rgba(240, 240, 240, 200);')
 
+class ReadOnlyLineEdit(QLineEdit):
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
+        self.setReadOnly(True)
+        self.setStyleSheet(
+            'background-color: rgba(240, 240, 240, 200);'
+        )
+        self.installEventFilter(self)
+    
+    def eventFilter(self, a0: 'QObject', a1: 'QEvent') -> bool:
+        if a1.type() == QEvent.FocusIn:
+            return True
+        return super().eventFilter(a0, a1)
+        
+
 class _metricsQGBox(QGroupBox):
     def __init__(
             self, desc_dict, title, favourite_funcs=None, isZstack=False,
@@ -3222,6 +3248,14 @@ class QLogConsole(QTextEdit):
         message = message.replace('\r ', '')
         if message:
             self.apppendText(message)
+        
+    def append(self, text: str) -> None:
+        super().append(text)
+        self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
+    
+    def insertPlainText(self, text: str) -> None:
+        super().append(text)
+        self.verticalScrollBar().setValue(self.verticalScrollBar().maximum())
 
 class QProgressBarWithETA(QProgressBar):
     def __init__(self, parent=None):

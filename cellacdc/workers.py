@@ -2,6 +2,7 @@ from distutils.log import error
 from operator import index
 from re import sub
 import sys
+import re
 import os
 import time
 
@@ -1511,6 +1512,155 @@ class TrackSubCellObjectsWorker(BaseWorkerUtil):
                     trackedAcdcDf.to_csv(trackedAcdcDfPath)
 
                 self.signals.progressBar.emit(1)
+
+        self.signals.finished.emit(self)
+
+class RestructMultiTimepointsWorker(BaseWorkerUtil):
+    def __init__(
+            self, allChannels, frame_name_pattern, basename, validFilenames,
+            rootFolderPath, dstFolderPath
+        ):
+        super().__init__(None)
+        self.allChannels = allChannels
+        self.frame_name_pattern = frame_name_pattern
+        self.basename = basename
+        self.validFilenames = validFilenames
+        self.rootFolderPath = rootFolderPath
+        self.dstFolderPath = dstFolderPath
+
+    @worker_exception_handler
+    def run(self):
+        allChannels = self.allChannels
+        frame_name_pattern = self.frame_name_pattern
+        rootFolderPath = self.rootFolderPath
+        dstFolderPath = self.dstFolderPath
+        filesInfo = {}
+        self.signals.initProgressBar.emit(len(self.validFilenames)+1)
+        for file in self.validFilenames:
+            try:
+                # Determine which channel is this file
+                for ch in allChannels:
+                    m = re.findall(rf'(.*)_{ch}{frame_name_pattern}', file)
+                    if m:
+                        break
+                else:
+                    raise FileNotFoundError(
+                        f'The file name "{file}" does not contain any channel name'
+                    )
+                posName, _, frameName = m[0]
+                frameNumber = int(frameName)
+                if posName not in filesInfo:
+                    filesInfo[posName] = {ch: [(file, frameNumber)]}
+                elif ch not in filesInfo[posName]:
+                    filesInfo[posName][ch] = [(file, frameNumber)]
+                else:
+                    filesInfo[posName][ch].append((file, frameNumber))
+            except Exception as e:
+                self.logger.log(traceback.format_exc())
+                self.logger.log(
+                    f'WARNING: File "{file}" does not contain valid pattern. '
+                    'Skipping it.'
+                )
+                continue
+        
+        self.signals.progressBar.emit(1)
+
+        df_metadata = None
+        partial_basename = self.basename
+        for p, (posName, channelInfo) in enumerate(filesInfo.items()):
+            self.logger.log(f'='*40)
+            self.logger.log(
+                f'Processing position "{posName}"...'
+            )
+
+            for _, filesList in channelInfo.items():
+                filePath = os.path.join(rootFolderPath, filesList[0][0])
+                try:
+                    img = skimage.io.imread(filePath)
+                    break
+                except Exception as e:
+                    self.logger.log(traceback.format_exc())
+                    continue
+            else:
+                self.logger.log(
+                    f'WARNING: No valid image files found for position {posName}'
+                )
+                continue
+
+            # Get basename
+            if partial_basename:
+                basename = f'{partial_basename}_{posName}_'
+            else:
+                basename = f'{posName}_'
+
+            # Get SizeT from first file
+            SizeT = len(filesList)
+            
+            # Save metadata.csv      
+            df_metadata = pd.DataFrame({
+                'SizeT': SizeT,
+                'basename': basename
+            }, index=['values'])
+
+            # Iterate channels
+            for c, (channelName, filesList) in enumerate(channelInfo.items()):
+                self.logger.log(
+                    f'  Processing channel "{channelName}"...'
+                )
+                # Sort by frame number
+                sortedFilesList = sorted(filesList, key=lambda t:t[1])
+
+                df_metadata[f'channel_{c}_name'] = [channelName]
+
+                imagesPath = os.path.join(dstFolderPath, f'Position_{p+1}', 'Images')
+                if not os.path.exists(imagesPath):
+                    os.makedirs(imagesPath)
+
+                # Iterate frames
+                videoData = None
+                for frame_i, fileInfo in enumerate(sortedFilesList):
+                    file, _ = fileInfo
+                    srcImgFilePath = os.path.join(rootFolderPath, file)
+                    try:
+                        img = skimage.io.imread(srcImgFilePath)
+                        if videoData is None:
+                            shape = (SizeT, *img.shape)
+                            videoData = np.zeros(shape, dtype=img.dtype)
+                        videoData[frame_i] = img
+                    except Exception as e:
+                        self.logger.log(traceback.format_exc())
+                        continue
+
+                    SizeZ = 1
+                    if img.ndim == 3:
+                        SizeZ = len(img)
+                    
+                    df_metadata['SizeZ'] = [SizeZ]                 
+
+                    self.signals.progressBar.emit(1)
+                
+                if videoData is None:
+                    self.logger.log(
+                        f'WARNING: No valid image files found for position '
+                        f'"{posName}", channel "{channelName}"'
+                    )
+                    continue
+                else:
+                    imgFileName = f'{basename}{channelName}.tif'
+                    dstImgFilePath = os.path.join(imagesPath, imgFileName)
+                    myutils.imagej_tiffwriter(
+                        dstImgFilePath, videoData, None, SizeT, SizeZ
+                    )
+
+            if df_metadata is not None:
+                metadata_csv_path = os.path.join(
+                    imagesPath, f'{basename}metadata.csv'
+                )
+                df_metadata = df_metadata.T
+                df_metadata.index.name = 'Description'
+                df_metadata.to_csv(metadata_csv_path)
+
+            self.logger.log(f'*'*40)
 
         self.signals.finished.emit(self)
 

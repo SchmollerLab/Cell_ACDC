@@ -1,5 +1,8 @@
 #!/usr/bin/env python
 import os
+import logging
+
+from cellacdc import dataReStruct
 from . import qrc_resources
 if os.name == 'nt':
     try:
@@ -81,7 +84,7 @@ try:
     # if cellacdc was installed with pip or not
     from cellacdc import (
         dataPrep, segm, gui, dataStruct, utils, help, qrc_resources, myutils,
-        cite_url, html_utils, widgets, apps
+        cite_url, html_utils, widgets, apps, dataReStruct
     )
     from cellacdc.help import about
     from cellacdc.utils import concat as utilsConcat
@@ -170,7 +173,7 @@ class mainWin(QMainWindow):
         iconSize = 26
 
         dataStructButton = widgets.setPushButton(
-            '  0. Create data structure from microscopy file(s)...  '
+            '  0. Create data structure from microscopy/image file(s)...  '
         )
         dataStructButton.setIconSize(QSize(iconSize,iconSize))
         font = QFont()
@@ -246,6 +249,15 @@ class mainWin(QMainWindow):
         self.spotmaxWins = []
         self.dataPrepWin = None
         self._version = None
+        self.progressWin = None
+    
+    def log(self, text):
+        self.logger.info(text)
+        
+        if self.progressWin is None:
+            return
+    
+        self.progressWin.log(text)
 
     def setVersion(self, version):
         self._version = version
@@ -799,7 +811,6 @@ class mainWin(QMainWindow):
         self.dataStructButton.setText(
             '0. Creating data structure running...'
         )
-        # self.dataStructButton.setDisabled(True)
 
         QTimer.singleShot(100, self._showDataStructWin)
 
@@ -851,7 +862,38 @@ class mainWin(QMainWindow):
     #     self.dataStructButton.setDisabled(False)
 
     def _showDataStructWin(self):
-        if self.dataStructButton.isEnabled():
+        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        bioformats_url = 'https://www.openmicroscopy.org/bio-formats/'
+        txt = html_utils.paragraph(f"""
+            Cell-ACDC can use <b>Bio-Formats</b> to read microscopy files 
+            (more info {html_utils.href_tag('here', bioformats_url)}).<br><br>
+            Bio-Formats requires Java and a python package called <code>javabridge</code>,<br>
+            that will be automatically installed if missing.<br><br>
+            We recommend using Bio-Formats, since it can read the metadata of the file,<br> 
+            such as pixel size, numerical aperture etc.<br><br>
+            However, if you <b>already pre-processed your microsocpy files into .tif 
+            files</b>,<br>
+            you can choose to simply re-structure them into the Cell-ACDC compatible 
+            format.<br><br>
+            How do you want to proceed?          
+        """)
+        useBioFormatsButton = QPushButton(
+            QIcon(':ome.svg'), ' Use Bio-Formats ', msg
+        )
+        restructButton = QPushButton(
+            QIcon(':folders.svg'), ' Re-structure image files ', msg
+        )
+        _, useBioFormatsButton, restructButton = msg.question(
+            self, 'How to structure files', txt, 
+            buttonsTexts=('Cancel', useBioFormatsButton, restructButton)
+        )
+        if msg.cancel:
+            self.logger.info('Creating data structure process aborted by the user.')
+            self.restoreDefaultButton()
+            return
+        
+        useBioFormats = msg.clickedButton == useBioFormatsButton
+        if self.dataStructButton.isEnabled() and useBioFormats:
             self.dataStructButton.setText(
                 '0. Restart Cell-ACDC to enable module 0 again.')
             self.dataStructButton.setToolTip(
@@ -865,6 +907,68 @@ class mainWin(QMainWindow):
             )
             self.dataStructWin.show()
             self.dataStructWin.main()
+        elif msg.clickedButton == restructButton:
+            self.progressWin = apps.QDialogWorkerProgress(
+                title='Re-structure image files log', parent=self,
+                pbarDesc='Re-structuring image files running...'
+            )
+            self.progressWin.sigClosed.connect(self.progressWinClosed)
+            self.progressWin.show(app)
+            self.workerName = 'Re-structure image files'
+            success = dataReStruct.run(self)
+            if not success:
+                self.logger.info('Re-structuring files NOT completed.')
+    
+    def progressWinClosed(self):
+        self.progressWin = None
+    
+    def workerInitProgressbar(self, totalIter):
+        if self.progressWin is None:
+            return
+
+        self.progressWin.mainPbar.setValue(0)
+        if totalIter == 1:
+            totalIter = 0
+        self.progressWin.mainPbar.setMaximum(totalIter)
+    
+    def workerFinished(self, worker=None):
+        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        txt = html_utils.paragraph(
+            f'{self.workerName} process finished.'
+        )
+        msg.information(self, 'Process finished', txt)
+
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+            self.progressWin.close()
+        
+        self.restoreDefaultButtons()
+    
+    @myutils.exception_handler
+    def workerCritical(self, error):
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+            self.progressWin.close()
+        raise error        
+    
+    def workerUpdateProgressbar(self, step):
+        if self.progressWin is None:
+            return
+
+        self.progressWin.mainPbar.update(step)
+    
+    def workerProgress(self, text, loggerLevel='INFO'):
+        if self.progressWin is not None:
+            self.progressWin.logConsole.append(text)
+        self.logger.log(getattr(logging, loggerLevel), text)
+
+    def restoreDefaultButtons(self):
+        self.dataStructButton.setStyleSheet(
+            f'QPushButton {{background-color: {self.defaultPushButtonColor};}}'
+        )
+        self.dataStructButton.setText(
+            '0. Create data structure from microscopy file(s)...'
+        )
 
 
     def launchDataPrep(self, checked=False):

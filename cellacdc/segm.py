@@ -386,7 +386,8 @@ class segmWorker(QRunnable):
                     self.signals.progressBar.emit(1)
 
         if isROIactive:
-            tracked_stack = np.pad(tracked_stack, pad_info,  mode='constant')
+            self.signals.progress.emit(f'Padding with zeros {pad_info}...')
+            tracked_stack = np.pad(tracked_stack, pad_info, mode='constant')
 
         if self.concat_segm and posData.segm_data is not None:
             # Concatenate existing segmentation with new one
