@@ -73,7 +73,8 @@ class select_channel_name:
 
     def get_available_channels(
             self, filenames, images_path, useExt=None,
-            channelExt=('.h5', '.tif')
+            channelExt=('.h5', '.tif', 'aligned.npz'), 
+            validEndnames=('aligned.npz', 'acdc_output.csv', 'segm.npz')
         ):
         # First check if metadata.csv already has the channel names
         metadata_csv_path = None
@@ -129,32 +130,42 @@ class select_channel_name:
         for file in filenames:
             # Determine the basename based on intersection of all .tif
             _, ext = os.path.splitext(file)
+            validFile = False
             if useExt is None:
-                sm = difflib.SequenceMatcher(None, file, basename)
-                i, j, k = sm.find_longest_match(0, len(file),
-                                                0, len(basename))
-                basename = file[i:i+k]
+                validFile = True
             elif ext in useExt:
-                sm = difflib.SequenceMatcher(None, file, basename)
-                i, j, k = sm.find_longest_match(0, len(file),
-                                                0, len(basename))
-                basename = file[i:i+k]
+                validFile = True
+            elif any([file.endswith(end) for end in validEndnames]):
+                validFile = True
+            else:
+                validFile = (
+                    (file.find('_acdc_output_') != -1 and ext == '.csv')
+                    or (file.find('_segm_') != -1 and ext == '.npz')
+                )
+            if not validFile:
+                continue
+            sm = difflib.SequenceMatcher(None, file, basename)
+            i, j, k = sm.find_longest_match(0, len(file),
+                                            0, len(basename))
+            basename = file[i:i+k]
         self.basename = basename
         basenameNotFound = [False]
         for file in filenames:
             filename, ext = os.path.splitext(file)
-            if channelExt is None:
-                channel_name = filename.split(basename)[-1]
-                channel_names.append(channel_name)
-                if channel_name == filename:
-                    # Warn that an intersection could not be found
-                    basenameNotFound.append(True)
-            elif ext in channelExt:
-                channel_name = filename.split(basename)[-1]
-                channel_names.append(channel_name)
-                if channel_name == filename:
-                    # Warn that an intersection could not be found
-                    basenameNotFound.append(True)
+            validImageFile = False
+            if ext is channelExt:
+                validImageFile = True
+            elif file.endswith('aligned.npz'):
+                validImageFile = True
+                filename = filename[:-len('_aligned')]
+            if not validImageFile:
+                continue
+
+            channel_name = filename.split(basename)[-1]
+            channel_names.append(channel_name)
+            if channel_name == filename:
+                # Warn that an intersection could not be found
+                basenameNotFound.append(True)
         if any(basenameNotFound):
             self.basenameNotFound = True
             filenameNOext, _ = os.path.splitext(basename)

@@ -148,6 +148,8 @@ class AutoSaveWorker(QObject):
     sigDone = pyqtSignal()
     critical = pyqtSignal(object)
     progress = pyqtSignal(str, object)
+    sigStartTimer = pyqtSignal(object, object)
+    sigStopTimer = pyqtSignal()
 
     def __init__(self, mutex, waitCond, savedSegmData):
         QObject.__init__(self)
@@ -175,18 +177,8 @@ class AutoSaveWorker(QObject):
         # First stop previously saving data
         if self.isSaving:
             self.abortSaving = True
-            self.timer = QTimer()
-            self.timer.timeout.connect(partial(self.waitAbortSaving, posData))
-            self.timer.start(100)
+            self.sigStartTimer.emit(self, posData)
         else:
-            self._enqueue(posData)
-    
-    def waitAbortSaving(self, posData):
-        if DEBUG:
-            self.logger.log(f'Waiting abort autosaving: {self.isSaving}...')
-        
-        if not self.isSaving:
-            self.timer.stop()
             self._enqueue(posData)
     
     def _enqueue(self, posData):

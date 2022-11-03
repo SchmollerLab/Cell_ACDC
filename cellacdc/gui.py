@@ -2274,6 +2274,18 @@ class guiWin(QMainWindow):
 
         self.logger.info('Autosaving worker started.')
     
+    def autoSaveWorkerStartTimer(self, worker, posData):
+        self.autoSaveWorkerTimer = QTimer()
+        self.autoSaveWorkerTimer.timeout.connect(
+            partial(self.autoSaveWorkerTimerCallback, worker, posData)
+        )
+        self.autoSaveWorkerTimer.start(150)
+    
+    def autoSaveWorkerTimerCallback(self, worker, posData):
+        if not self.isSaving:
+            self.autoSaveWorkerTimer.stop()
+            worker._enqueue(posData)
+    
     def autoSaveWorkerDone(self):
         self.setSaturBarLabel(log=False)
     
