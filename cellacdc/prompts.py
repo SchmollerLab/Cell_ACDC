@@ -153,7 +153,8 @@ class select_channel_name:
         for file in filenames:
             filename, ext = os.path.splitext(file)
             validImageFile = False
-            if ext is channelExt:
+            printl(filename, ext, basename, ext in channelExt)
+            if ext in channelExt:
                 validImageFile = True
             elif file.endswith('aligned.npz'):
                 validImageFile = True
