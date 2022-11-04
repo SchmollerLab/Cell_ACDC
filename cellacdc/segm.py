@@ -258,7 +258,8 @@ class segmWorker(QRunnable):
             elif posData.SizeZ > 1 and self.isSegm3D:
                 # 3D segmentation on 3D z-stack
                 img_data = posData.img_data
-                second_ch_data = secondChImgData
+                if self.secondChannelName is not None:
+                    second_ch_data = secondChImgData
                 if isROIactive:
                     Y, X = img_data.shape[-2:]
                     pad_info = ((0, 0), (y0, Y-y1), (x0, X-x1))
@@ -268,7 +269,8 @@ class segmWorker(QRunnable):
             else:
                 # Single 2D image
                 img_data = posData.img_data
-                second_ch_data = secondChImgData
+                if self.secondChannelName is not None:
+                   second_ch_data = secondChImgData
                 if isROIactive:
                     Y, X = img_data.shape[-2:]
                     pad_info = ((y0, Y-y1), (x0, X-x1))
