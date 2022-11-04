@@ -1,4 +1,5 @@
 import numpy as np
+import traceback
 from skimage.measure import label, regionprops, regionprops_table
 import skimage.transform
 import pandas as pd
@@ -471,7 +472,7 @@ def _calculate_rp_df(seg_mask, is_timelapse_data, is_zstack_data, metadata, max_
         return rp_df
 
 
-def _calc_rot_vol(obj, PhysicalSizeY=1, PhysicalSizeX=1):
+def _calc_rot_vol(obj, PhysicalSizeY=1, PhysicalSizeX=1, logger=None):
     """Given the region properties of a 2D object (from skimage.measure.regionprops).
     calculate the rotation volume as described in the Supplementary information of
     https://www.nature.com/articles/s41467-020-16764-x
@@ -505,31 +506,30 @@ def _calc_rot_vol(obj, PhysicalSizeY=1, PhysicalSizeX=1):
         # if obj.image.ndim != 3:
         #     printl(e, obj.image.ndim, obj.bbox, obj.centroid)
         is3Dobj = True
-    
-    if obj.image.ndim == 3 or is3Dobj:
-        try:
-            zc = int(floor(obj.centroid[0]))
-            local_z = zc - obj.bbox[0]
-            obj_lab = obj.image.astype(np.uint16)[local_z]*obj.label
-            obj = regionprops(obj_lab)[0]
-        except Exception as e:
-            print('*'*30)
-            print(obj.label)
-            print(obj.centroid)
-            print(obj.image.shape)
-            print('*'*30)
 
-    vox_to_fl = float(PhysicalSizeY)*pow(float(PhysicalSizeX), 2)
-    rotate_ID_img = skimage.transform.rotate(
-        obj.image.astype(np.single), -(obj.orientation*180/np.pi),
-        resize=True, order=3
-    )
-    radii = np.sum(rotate_ID_img, axis=1)/2
-    vol_vox = np.sum(np.pi*(radii**2))
-    if vox_to_fl is not None:
-        return vol_vox, float(vol_vox*vox_to_fl)
-    else:
-        return vol_vox, vol_vox
+    try:
+        if is3Dobj:
+            # For 3D objects we use a max projection for the rotation
+            obj_lab = obj.image.max(axis=0).astype(np.uint16)*obj.label
+            obj = regionprops(obj_lab)[0]
+
+        vox_to_fl = float(PhysicalSizeY)*pow(float(PhysicalSizeX), 2)
+        rotate_ID_img = skimage.transform.rotate(
+            obj.image.astype(np.single), -(obj.orientation*180/np.pi),
+            resize=True, order=3
+        )
+        radii = np.sum(rotate_ID_img, axis=1)/2
+        vol_vox = np.sum(np.pi*(radii**2))
+        if vox_to_fl is not None:
+            return vol_vox, float(vol_vox*vox_to_fl)
+        else:
+            return vol_vox, vol_vox
+    except Exception as e:
+        if logger is not None:
+            logger.exception(traceback.format_exc())
+        else:
+            printl(traceback.format_exc())
+        return np.nan, np.nan
 
 
 def _calculate_flu_signal(seg_mask, channel_data, channels, cc_data, is_timelapse_data, is_zstack_data):
