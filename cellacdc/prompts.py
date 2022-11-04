@@ -123,7 +123,7 @@ class select_channel_name:
                     return channelNames, True
 
         # Find basename as intersection of filenames
-        channel_names = []
+        channel_names = set()
         self.basenameNotFound = False
         isBasenamePresent = myutils.checkDataIntegrity(filenames, images_path)
         basename = filenames[0]
@@ -153,7 +153,6 @@ class select_channel_name:
         for file in filenames:
             filename, ext = os.path.splitext(file)
             validImageFile = False
-            printl(filename, ext, basename, ext in channelExt)
             if ext in channelExt:
                 validImageFile = True
             elif file.endswith('aligned.npz'):
@@ -163,10 +162,11 @@ class select_channel_name:
                 continue
 
             channel_name = filename.split(basename)[-1]
-            channel_names.append(channel_name)
+            channel_names.add(channel_name)
             if channel_name == filename:
                 # Warn that an intersection could not be found
                 basenameNotFound.append(True)
+        channel_names = list(channel_names)
         if any(basenameNotFound):
             self.basenameNotFound = True
             filenameNOext, _ = os.path.splitext(basename)

@@ -1,6 +1,7 @@
 import os
 import sys
 import traceback
+import tempfile
 import re
 import cv2
 import json
@@ -108,6 +109,21 @@ def h5dump_to_arr(h5path):
     sorted_keys = natsorted(data_dict.keys())
     arr = np.array([data_dict[key] for key in sorted_keys])
     return arr
+
+def save_to_h5(dst_filepath, data):
+    filename = os.path.basename(dst_filepath)
+    tempDir = tempfile.mkdtemp()
+    tempFilepath = os.path.join(tempDir, filename)
+    chunks = [1]*data.ndim
+    chunks[-2:] = data.shape[-2:]
+    h5f = h5py.File(tempFilepath, 'w')
+    dataset = h5f.create_dataset(
+        'data', data.shape, dtype=data.dtype,
+        chunks=chunks, shuffle=False
+    )
+    dataset[:] = data
+    shutil.move(tempFilepath, dst_filepath)
+    shutil.rmtree(tempDir)
 
 def load_segm_file(images_path, end_name_segm_file='segm', return_path=False):
     if not end_name_segm_file.endswith('.npz'):
@@ -338,6 +354,12 @@ class loadData:
         self._additionalMetadataValues = None
         self.loadLastEntriesMetadata()
         self.attempFixBasenameBug()
+        self.non_aligned_ext = '.tif'
+        if filename_ext.endswith('aligned.npz'):
+            for file in myutils.listdir(self.images_path):
+                if file.endswith(f'{user_ch_name}.h5'):
+                    self.non_aligned_ext = '.h5'
+                    break
     
     def attempFixBasenameBug(self):
         '''Attempt removing _s(\d+)_ from filenames if not present in basename
@@ -815,9 +837,11 @@ class loadData:
         else:
             self.SizeT = 1
 
+        self.SizeZ_found = False
         if 'SizeZ' in self.metadata_df.index:
             self.SizeZ = float(self.metadata_df.at['SizeZ', 'values'])
             self.SizeZ = int(self.SizeZ)
+            self.SizeZ_found = True
         elif self.last_md_df is not None and 'SizeZ' in self.last_md_df.index:
             self.SizeZ = float(self.last_md_df.at['SizeZ', 'values'])
             self.SizeZ = int(self.SizeZ)

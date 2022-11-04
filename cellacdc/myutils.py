@@ -1187,11 +1187,12 @@ def imagej_tiffwriter(
     if data.dtype != np.uint8 and data.dtype != np.uint16:
         data = scale_float(data)
         data = skimage.img_as_uint(data)
-    with TiffWriter(new_path, imagej=imagej, bigtiff=True) as new_tif:
+    with TiffWriter(new_path, bigtiff=True) as new_tif:
         if not imagej:
             new_tif.save(data)
             return
 
+        orig_shape = data.shape
         if SizeZ > 1 and SizeT > 1:
             # 3D data over time
             T, Z, Y, X = data.shape
@@ -1211,6 +1212,7 @@ def imagej_tiffwriter(
         if metadata is None:
             metadata = {}
         new_tif.save(data, metadata=metadata)
+        data.shape = orig_shape
 
 def from_lab_to_imagej_rois(lab, ImagejRoi, t=0, SizeT=1, max_ID=None):
     if max_ID is None:

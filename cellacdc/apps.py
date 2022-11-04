@@ -965,7 +965,10 @@ class filenameDialog(QDialog):
         else:
             text = text.replace(' ', '_')
             if self.basename:
-                self.filenameLabel.setText(f'{self.basename}_{text}{self.ext}')
+                if self.basename.endswith('_'):
+                    self.filenameLabel.setText(f'{self.basename}{text}{self.ext}')
+                else:
+                    self.filenameLabel.setText(f'{self.basename}_{text}{self.ext}')
             else:
                 self.filenameLabel.setText(f'{text}{self.ext}')
 

@@ -1,6 +1,3 @@
-from distutils.log import error
-from operator import index
-from re import sub
 import sys
 import re
 import os
@@ -514,7 +511,7 @@ class calcMetricsWorker(QObject):
                 pos_path = os.path.join(exp_path, pos)
                 images_path = os.path.join(pos_path, 'Images')
                 basename, chNames = myutils.getBasenameAndChNames(
-                    images_path, useExt=('.tif',)
+                    images_path, useExt=('.tif', '.h5')
                 )
 
                 self.signals.sigUpdatePbarDesc.emit(f'Loading {pos_path}...')
@@ -525,7 +522,7 @@ class calcMetricsWorker(QObject):
 
                 # Load data
                 posData = load.loadData(file_path, chName)
-                posData.getBasenameAndChNames(useExt=('.tif',))
+                posData.getBasenameAndChNames(useExt=('.tif', '.h5'))
 
                 posData.loadOtherFiles(
                     load_segm_data=False,
@@ -568,7 +565,7 @@ class calcMetricsWorker(QObject):
 
                 self.signals.sigUpdatePbarDesc.emit(f'Processing {posData.pos_path}')
 
-                posData.getBasenameAndChNames(useExt=('.tif',))
+                posData.getBasenameAndChNames(useExt=('.tif', '.h5'))
                 posData.buildPaths()
                 posData.loadImgData()
 
@@ -1725,7 +1722,7 @@ class ComputeMetricsMultiChannelWorker(BaseWorkerUtil):
 
             imagesPath = os.path.join(exp_path, pos, 'Images')
             basename, chNames = myutils.getBasenameAndChNames(
-                imagesPath, useExt=('.tif',)
+                imagesPath, useExt=('.tif', '.h5')
             )
 
             if p == 0:
@@ -2054,7 +2051,7 @@ class ToSymDivWorker(QObject):
                 pos_path = os.path.join(exp_path, pos)
                 images_path = os.path.join(pos_path, 'Images')
                 basename, chNames = myutils.getBasenameAndChNames(
-                    images_path, useExt=('.tif',)
+                    images_path, useExt=('.tif', '.h5')
                 )
 
                 self.signals.sigUpdatePbarDesc.emit(f'Loading {pos_path}...')
@@ -2065,7 +2062,7 @@ class ToSymDivWorker(QObject):
 
                 # Load data
                 posData = load.loadData(file_path, chName)
-                posData.getBasenameAndChNames(useExt=('.tif',))
+                posData.getBasenameAndChNames(useExt=('.tif', '.h5'))
 
                 posData.loadOtherFiles(
                     load_segm_data=False,
@@ -2091,7 +2088,7 @@ class ToSymDivWorker(QObject):
 
                 self.signals.sigUpdatePbarDesc.emit(f'Processing {posData.pos_path}')
 
-                posData.getBasenameAndChNames(useExt=('.tif',))
+                posData.getBasenameAndChNames(useExt=('.tif', '.h5'))
                 posData.buildPaths()
                 posData.loadImgData()
 
@@ -2155,3 +2152,217 @@ class ToSymDivWorker(QObject):
                     posData.acdc_df.to_csv(posData.acdc_output_csv_path)
                 
         self.signals.finished.emit(self)
+
+class AlignWorker(BaseWorkerUtil):
+    sigAborted = pyqtSignal()
+    sigAskUseSavedShifts = pyqtSignal(str, str)
+    sigAskSelectChannel = pyqtSignal(list)
+
+    def __init__(self, mainWin):
+        super().__init__(mainWin)
+    
+    def emitAskUseSavedShifts(self, expPath, basename):
+        self.mutex.lock()
+        self.sigAskUseSavedShifts.emit(expPath, basename)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+    
+    def emitAskSelectChannel(self, channels):
+        self.mutex.lock()
+        self.sigAskSelectChannel.emit(channels)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+        return self.abort
+
+    @worker_exception_handler
+    def run(self):
+        expPaths = self.mainWin.expPaths
+        tot_exp = len(expPaths)
+        self.signals.initProgressBar.emit(0)
+        for i, (exp_path, pos_foldernames) in enumerate(expPaths.items()):
+            self.errors = {}
+            tot_pos = len(pos_foldernames)
+
+            shiftsFound = False
+            for pos in pos_foldernames:
+                images_path = os.path.join(exp_path, pos, 'Images')
+                ls = myutils.listdir(images_path)
+                for file in ls:
+                    if file.endswith('align_shift.npy'):
+                        shiftsFound = True
+                        basename, chNames = myutils.getBasenameAndChNames(
+                            images_path, useExt=('.tif', '.h5')
+                        )
+                        break
+                if shiftsFound:
+                    break
+            
+            savedShiftsHow = None
+            if shiftsFound:
+                basename_ch0 = f'{basename}{chNames[0]}_'
+                abort = self.emitAskUseSavedShifts(exp_path, basename_ch0)
+                if abort:
+                    self.sigAborted.emit()
+                    return
+
+                savedShiftsHow = self.savedShiftsHow
+
+            self.signals.initProgressBar.emit(len(pos_foldernames))
+            for p, pos in enumerate(pos_foldernames):
+                if self.abort:
+                    self.sigAborted.emit()
+                    return
+
+                self.logger.log('*'*40)
+                self.logger.log(
+                    f'Processing experiment n. {i+1}/{tot_exp}, '
+                    f'{pos} ({p+1}/{tot_pos})'
+                )
+
+                pos_path = os.path.join(exp_path, pos)
+                images_path = os.path.join(pos_path, 'Images')
+                basename, chNames = myutils.getBasenameAndChNames(
+                    images_path, useExt=('.tif', '.h5')
+                )
+
+                self.signals.sigUpdatePbarDesc.emit(f'Loading {pos_path}...')
+
+                if p == 0:
+                    self.logger.log(f'Asking to select reference channel...')
+                    abort = self.emitAskSelectChannel(chNames)
+                    if abort:
+                        self.sigAborted.emit()
+                        return
+                    chName = self.chName
+                
+                file_path = myutils.getChannelFilePath(images_path, chName)
+
+                # Load data
+                posData = load.loadData(file_path, chName)
+                posData.getBasenameAndChNames(useExt=('.tif', '.h5'))
+                posData.buildPaths()
+                posData.loadImgData()
+
+                posData.loadOtherFiles(
+                    load_segm_data=False, 
+                    load_shifts=True,
+                    loadSegmInfo=True
+                )
+
+                if posData.img_data.ndim == 4:
+                    align_func = core.align_frames_3D
+                    if posData.segmInfo_df is None:
+                        raise FileNotFoundError(
+                            'To align 4D data you need to select which z-slice '
+                            'you want to use for alignment. Please run the module '
+                            '`1. Launch data prep module...` before aligning the '
+                            'frames. (z-slice info MISSING from position '
+                            f'"{posData.relPath}")'
+                        )
+                    df = posData.segmInfo_df.loc[posData.filename]
+                    zz = df['z_slice_used_dataPrep'].to_list()
+                elif posData.img_data.ndim == 3:
+                    align_func = core.align_frames_2D
+                    zz = None
+                
+                useSavedShifts = (
+                    savedShiftsHow == 'use_saved_shifts'
+                    and posData.loaded_shifts is not None
+                )
+                if useSavedShifts:
+                    user_shifts = posData.loaded_shifts
+                else:
+                    user_shifts = None
+                
+                if savedShiftsHow == 'rever_alignment':
+                    if posData.loaded_shifts is None:
+                        self.logger.log(
+                            f'WARNING: Cannot revert alignment in "{posData.relPath}" '
+                            'since it is missing previously computed shifts. '
+                            'Skipping this positon.'
+                        )
+                        continue
+                    
+                    # Revert alignment and save selected channel
+                    for chName in chNames:
+                        self.logger.log(
+                            f'Reverting alignment on "{chName}"...'
+                        )
+                        if chName == posData.user_ch_name:
+                            data = posData.img_data
+                        else:
+                            file_path = myutils.getChannelFilePath(
+                                images_path, chName
+                            )
+                            data = load.load_image_file(file_path)
+                        
+                        self.signals.sigInitInnerPbar.emit(len(data)-1)
+                        revertedData = core.revert_alignment(
+                            posData.loaded_shifts, data, 
+                            sigPyqt=self.signals.sigUpdateInnerPbar
+                        )
+                        self.logger.log(
+                            f'Saving "{chName}"...'
+                        )
+                        self.signals.sigInitInnerPbar.emit(0)
+                        self.saveAlignedData(
+                            revertedData, images_path, posData.basename, 
+                            chName, self.revertedAlignEndname,
+                            ext=posData.ext
+                        )
+                        del revertedData, data
+                else:
+                    for chName in chNames:
+                        self.logger.log(
+                            f'Aligning "{chName}"...'
+                        )
+                        if chName == posData.user_ch_name:
+                            data = posData.img_data
+                        else:
+                            file_path = myutils.getChannelFilePath(
+                                images_path, chName
+                            )
+                            data = load.load_image_file(file_path)
+                        self.signals.sigInitInnerPbar.emit(len(data)-1)
+                        
+                        alignedImgData, shifts = align_func(
+                            data, slices=zz, user_shifts=user_shifts,
+                            sigPyqt=self.signals.sigUpdateInnerPbar
+                        )
+                        self.logger.log(f'Saving "{chName}"...')
+                        np.save(posData.align_shifts_path, shifts)
+                        
+                        self.signals.sigInitInnerPbar.emit(0)
+                        self.saveAlignedData(
+                            alignedImgData, images_path, posData.basename, 
+                            chName, '', ext=posData.non_aligned_ext
+                        )
+                        self.saveAlignedData(
+                            alignedImgData, images_path, posData.basename, 
+                            chName, 'aligned', ext='.npz'
+                        )
+                        del alignedImgData, data
+                
+        self.signals.finished.emit(self)
+    
+    def saveAlignedData(
+            self, data, imagesPath, basename, chName, endname, ext='.tif'
+        ):
+        if endname:
+            newFilename = f'{basename}{chName}_{endname}{ext}'
+        else:
+            newFilename = f'{basename}{chName}{ext}'
+        
+        filePath = os.path.join(imagesPath, newFilename)
+
+        if ext == '.tif':
+            SizeT = data.shape[0]
+            SizeZ = 1
+            if data.ndim == 4:
+                SizeZ = data.shape[1]
+            myutils.imagej_tiffwriter(filePath, data, None, SizeT, SizeZ)
+        elif ext == '.npz':
+            np.savez_compressed(filePath, data)
+        elif ext == '.h5':
+            load.save_to_h5(filePath, data)

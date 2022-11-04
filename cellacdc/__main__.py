@@ -564,7 +564,10 @@ class mainWin(QMainWindow):
                 break
             myutils.addToRecentPaths(exp_path)
             baseFolder = os.path.basename(exp_path)
-            isPosFolder = re.search('Position_(\d+)$', baseFolder) is not None
+            isPosFolder = (
+                re.search('Position_(\d+)$', baseFolder) is not None
+                and os.path.exists(os.path.join(exp_path, 'Images'))
+            )
             isImagesFolder = baseFolder == 'Images'
             if isImagesFolder:
                 posPath = os.path.dirname(exp_path)
@@ -1038,19 +1041,20 @@ class mainWin(QMainWindow):
         self.guiWins.remove(guiWin)
 
     def launchAlignUtil(self, checked=False):
-        if self.alignAction.isEnabled():
-            self.alignAction.setDisabled(True)
-            self.alignWin = utilsAlign.alignWin(
-                parent=self,
-                actionToEnable=self.alignAction,
-                mainWin=self
-            )
-            self.alignWin.show()
-            self.alignWin.main()
-        else:
-            # self.concatWin.setWindowState(Qt.WindowNoState)
-            self.alignWin.setWindowState(Qt.WindowActive)
-            self.alignWin.raise_()
+        selectedExpPaths = self.getSelectedExpPaths(
+            'Align frames in X and Y with phase cross-correlation'
+        )
+        if selectedExpPaths is None:
+            return
+        
+        title = 'Align frames'
+        infoText = 'Aligning frames in X and Y with phase cross-correlation...'
+        progressDialogueTitle = 'Align frames'
+        self.concatWindow = utilsAlign.alignWin(
+            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
+            parent=self
+        )
+        self.concatWindow.show()
 
     def launchConcatUtil(self, checked=False):
         selectedExpPaths = self.getSelectedExpPaths(
