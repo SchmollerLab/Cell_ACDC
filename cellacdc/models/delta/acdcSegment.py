@@ -2,7 +2,9 @@
 This script runs the segmentation U-Net
 for 2D images.
 
-@author: jamesroberts / jamesr787
+Initializes Model for
+
+@author: jroberts / jamesr787
 """
 
 import numpy as np
@@ -10,16 +12,16 @@ from typing import Tuple
 
 import skimage.transform as trans
 
-from .delta import utilities as utils
-from .delta import config as cfg
-from .delta.model import unet_seg
-from .delta.data import binarizerange
-from .delta.assets import download_assets
-
+from delta import utilities as utils
+from delta import config as cfg
+from delta.model import unet_seg
+from delta.data import binarizerange
+from delta.assets import download_assets
 
 class Model:
 
-    def __init__(self, model_type='2D or mothermachine'):
+    def __init__(self,
+                 model_type='2D or mothermachine'):
         """
         Configures data, initializes model, loads weights for model.
 
@@ -39,14 +41,21 @@ class Model:
                 # Loads Presets for 2D images
                 if model_type != 'mothermachine':
                     cfg.load_config(presets='2D')
+                    self.target_size = cfg.target_size_seg
 
-                # Loads Presets for cropped Regions of Interest for mothermachine
+                    # Initialize Model and Load Weights with 2D presets
+                    self.model = unet_seg(input_size=self.target_size + (1,))
+                    self.model.load_weights(cfg.model_file_seg)
+
+                # Load Presets for mothermachine
                 else:
                     cfg.load_config(presets='mothermachine')
+                    self.target_size = cfg.target_size_seg
 
-                # Initialize Model
-                self.model = unet_seg(input_size=cfg.target_size_seg + (1,))
-                self.model.load_weights(cfg.model_file_seg)
+                    # Initialize Model and Load Weights with mothermachine Presets
+                    self.model = unet_seg(input_size=self.target_size + (1,))
+                    self.model.load_weights(cfg.model_file_seg)
+
                 break
 
             except ValueError:
@@ -132,7 +141,7 @@ class Model:
         Parameters
         ----------
         image : numpy array
-                single image from input.
+            single image from input.
 
         Returns
         -------
@@ -147,12 +156,12 @@ class Model:
         if image.ndim == 2:
             # 2D: Cut into overlapping windows
             img = self.delta_preprocess(image=image,
-                                        target_size=cfg.target_size_seg,
+                                        target_size=self.target_size,
                                         crop=True)
 
             # Process image to use for delta
             image = self.delta_preprocess(image=image,
-                                          target_size=cfg.target_size_seg,
+                                          target_size=self.target_size,
                                           crop=cfg.crop_windows)
 
             # Change Dimensions to 4D numpy array
@@ -160,8 +169,12 @@ class Model:
 
             # mother machine: Don't crop images into windows
             if not cfg.crop_windows:
-                # Predictions:
-                results = self.model.predict(image, verbose=1)[0, :, :, 0]
+                if self.target_size == cfg.target_size_seg:
+                    # Predictions:
+                    results = self.model.predict(image, verbose=1)[0, :, :, 0]
+                else:
+                    # Predictions:
+                    results = self.model.predict(image, verbose=1)[0, :, :, 0]
 
                 # Resize to the original shape
                 results = trans.resize(results, original_shape, anti_aliasing=True, order=1)
@@ -177,7 +190,7 @@ class Model:
                 # Crop, segment, stitch and store predictions in results
                 # Crop each frame into overlapping windows:
                 windows, loc_y, loc_x = utils.create_windows(
-                    image[0, :, :, 0], target_size=cfg.target_size_seg
+                    image[0, :, :, 0], target_size=self.target_size
                 )
                 windows = windows[:, :, :, np.newaxis]
 
