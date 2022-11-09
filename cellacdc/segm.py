@@ -298,6 +298,7 @@ class segmWorker(QRunnable):
                     img_data, **self.segment2D_kwargs
                 )
                 if self.innerPbar_available:
+                    # emit one pos done
                     self.signals.progressBar.emit(1)
             else:
                 lab_stack = np.zeros(img_data.shape, np.uint16)
@@ -311,6 +312,7 @@ class segmWorker(QRunnable):
                     else:
                         self.signals.progressBar.emit(1)
                 if self.innerPbar_available:
+                    # emit one pos done
                     self.signals.progressBar.emit(1)
         else:
             if self.secondChannelName is not None:
@@ -1357,6 +1359,10 @@ class segmWin(QMainWindow):
                self, 'Execution aborted', 'Segmentation task aborted.'
             )
             return True
+        
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self.resize(int(self.width()*1.5), int(self.height()*1.5))
 
     def closeEvent(self, event):
         print('')
