@@ -70,7 +70,7 @@ import pyqtgraph as pg
 from . import qrc_resources
 
 # Custom modules
-from . import base_cca_df, graphLayoutBkgrColor
+from . import base_cca_df, graphLayoutBkgrColor, darkBkgrColor
 from . import load, prompts, apps, workers, html_utils
 from . import core, myutils, dataPrep, widgets
 from . import measurements, printl
@@ -3265,6 +3265,7 @@ class guiWin(QMainWindow):
             self.graphLayout.setBackground(graphLayoutBkgrColor)
             self.titleColor = 'black'
         else:
+            self.graphLayout.setBackground(darkBkgrColor)
             self.titleColor = 'white'
 
         # Left plot
@@ -8466,7 +8467,7 @@ class guiWin(QMainWindow):
             self.equalizeHistPushButton.setStyleSheet(
                 'QPushButton {background-color: #282828; color: #F0F0F0;}'
             )
-            self.graphLayout.setBackground('default')
+            self.graphLayout.setBackground(darkBkgrColor)
             self.ax2_BrushCirclePen = pg.mkPen(width=2)
             self.ax2_BrushCircleBrush = pg.mkBrush((255,255,255,50))
             self.ax1_oldIDcolor = [255-v for v in self.ax1_oldIDcolor]

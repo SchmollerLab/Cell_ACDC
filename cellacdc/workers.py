@@ -1556,6 +1556,7 @@ class RestructMultiTimepointsWorker(BaseWorkerUtil):
 
         df_metadata = None
         partial_basename = self.basename
+        allPosDataInfo = []
         for p, (posName, channelInfo) in enumerate(filesInfo.items()):
             self.logger.log(f'='*40)
             self.logger.log(
@@ -1607,8 +1608,10 @@ class RestructMultiTimepointsWorker(BaseWorkerUtil):
 
                 # Iterate frames
                 videoData = None
+                frameNumbers = []
                 for frame_i, fileInfo in enumerate(sortedFilesList):
                     file, _ = fileInfo
+                    ext = os.path.splitext(file)[1]
                     srcImgFilePath = os.path.join(rootFolderPath, file)
                     try:
                         img = skimage.io.imread(srcImgFilePath)
@@ -1616,6 +1619,9 @@ class RestructMultiTimepointsWorker(BaseWorkerUtil):
                             shape = (SizeT, *img.shape)
                             videoData = np.zeros(shape, dtype=img.dtype)
                         videoData[frame_i] = img
+                        frameNumber = int(re.findall(fr'_(\d+){ext}', file)[0])
+                        frameNumbers.append(frameNumber)
+                        dataType = img.dtype
                     except Exception as e:
                         self.logger.log(traceback.format_exc())
                         continue
@@ -1637,9 +1643,11 @@ class RestructMultiTimepointsWorker(BaseWorkerUtil):
                 else:
                     imgFileName = f'{basename}{channelName}.tif'
                     dstImgFilePath = os.path.join(imagesPath, imgFileName)
-                    myutils.imagej_tiffwriter(
-                        dstImgFilePath, videoData, None, SizeT, SizeZ
-                    )
+                    imgDataInfo = {
+                        'path': dstImgFilePath, 'SizeT': SizeT, 'SizeZ': SizeZ,
+                        'data': videoData, 'frameNumbers': frameNumbers
+                    }
+                    allPosDataInfo.append(imgDataInfo)
 
             if df_metadata is not None:
                 metadata_csv_path = os.path.join(
@@ -1650,6 +1658,33 @@ class RestructMultiTimepointsWorker(BaseWorkerUtil):
                 df_metadata.to_csv(metadata_csv_path)
 
             self.logger.log(f'*'*40)
+        
+        if not allPosDataInfo:
+            self.signals.finished.emit(self)
+            return
+        
+        self.signals.initProgressBar.emit(len(allPosDataInfo))
+        self.logger.log('Saving image files...')
+        maxSizeT = max([d['SizeT'] for d in allPosDataInfo])
+        minFrameNumber = min([d['frameNumbers'][0] for d in allPosDataInfo])
+        for p, imgDataInfo in enumerate(allPosDataInfo):
+            SizeT = imgDataInfo['SizeT']
+            SizeZ = imgDataInfo['SizeZ']
+            dstImgFilePath = imgDataInfo['path']
+            videoData = imgDataInfo['data']
+            frameNumbers = imgDataInfo['frameNumbers']
+            paddedShape = (maxSizeT, *videoData.shape[1:])
+            dtype = videoData.dtype
+            paddedVideoData = np.zeros(paddedShape, dtype=dtype)
+            for n, img in zip(frameNumbers, videoData):
+                frame_i = n - minFrameNumber
+                paddedVideoData[frame_i] = img
+
+            myutils.imagej_tiffwriter(
+                dstImgFilePath, paddedVideoData, None, SizeT, SizeZ
+            )
+
+            self.signals.progressBar.emit(1)
 
         self.signals.finished.emit(self)
 

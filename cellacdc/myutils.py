@@ -1192,27 +1192,9 @@ def imagej_tiffwriter(
             new_tif.save(data)
             return
 
-        orig_shape = data.shape
-        if SizeZ > 1 and SizeT > 1:
-            # 3D data over time
-            T, Z, Y, X = data.shape
-        elif SizeZ == 1 and SizeT > 1:
-            # 2D data over time
-            T, Y, X = data.shape
-            Z = 1
-        elif SizeZ > 1 and SizeT == 1:
-            # Single 3D data
-            Z, Y, X = data.shape
-            T = 1
-        elif SizeZ == 1 and SizeT == 1:
-            # Single 2D data
-            Y, X = data.shape
-            T, Z = 1, 1
-        data.shape = T, Z, 1, Y, X, 1  # imageJ format should always have TZCYXS data shape
         if metadata is None:
             metadata = {}
         new_tif.save(data, metadata=metadata)
-        data.shape = orig_shape
 
 def from_lab_to_imagej_rois(lab, ImagejRoi, t=0, SizeT=1, max_ID=None):
     if max_ID is None:
@@ -1596,6 +1578,11 @@ def import_segment_module(model_name):
         sys.modules['acdcSegment'] = acdcSegment
         spec.loader.exec_module(acdcSegment) 
     return acdcSegment
+
+def find_missing_integers(lst, max_range=None):
+    if max_range is not None:
+        max_range = lst[-1]+1
+    return [x for x in range(lst[0], max_range) if x not in lst]
 
 def synthetic_image_geneator(size=(512,512), f_x=1, f_y=1):
     Y, X = size

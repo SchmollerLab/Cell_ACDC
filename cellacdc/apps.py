@@ -2705,14 +2705,31 @@ class MultiTimePointFilePattern(QBaseDialog):
             <br><br>
             For example a file with name "<code>pos1_GFP_1.tif</code>" would be the first time-point of the channell GFP<br>
             and position called <code>pos1</code>.<br><br>
-            The Position number will be determined by <b>alphabetically sorting</b><br>
+            The Position number will be determined by <b>alphabetically sorting</b>
             all the image files.<br><br>
             Please, <b>provide the channel names</b> below. 
             Optionally, you can provide a basename<br>
-            that will be pre-pended to the name of all created files.<br> 
+            that will be pre-pended to the name of all created files.<br>
         """)
+        
+        noteLayout = QHBoxLayout()
+        noteText = html_utils.paragraph("""
+            channels <em>do not need to have the same number of frames</em>, 
+            however, Cell-ACDC will place<br>
+            the frames at the right frame number 
+            (given by <code>timepoint</code> number at the end<br>
+            of the filename) and it will fill missing frames with zeros.<br><br>
+        """)
+        noteLayout.addWidget(
+            QLabel(html_utils.paragraph('NOTE:')), 
+            alignment=(Qt.AlignTop | Qt.AlignRight)
+        )
+        noteLayout.addWidget(QLabel(noteText))
 
         mainLayout.addWidget(QLabel(infoText))
+        mainLayout.addLayout(noteLayout)
+        noteLayout.setStretch(0,0)
+        noteLayout.setStretch(1,1)
 
         label = QLabel(html_utils.paragraph(
             f'Sample file name: <code>{fileName}</code>'
@@ -2728,7 +2745,8 @@ class MultiTimePointFilePattern(QBaseDialog):
 
         formLayout = QGridLayout()
 
-        self.vLayouts = (QVBoxLayout(), QVBoxLayout(), QVBoxLayout())
+        ncols = 3
+        self.vLayouts = [QVBoxLayout() for _ in range(ncols)]
         for j, l in enumerate(self.vLayouts):
             formLayout.addLayout(l, 0, j)
 
@@ -2741,19 +2759,22 @@ class MultiTimePointFilePattern(QBaseDialog):
             self.vLayouts[j].addWidget(w)
         
         row += 1
-        items = QLabel('Frame number name: '), widgets.ReadOnlyLineEdit(), QLabel()
-        label, self.frameNumberEntry, button = items
+        items = (
+            QLabel('Frame number name: '), widgets.ReadOnlyLineEdit(), QLabel()
+        )
+        self.frameNumberEntry = items[1]
         self.frameNumberEntry.setText(str(frameNumber))
         self.frameNumberEntry.setAlignment(Qt.AlignCenter)
         for j, w in enumerate(items):
             self.vLayouts[j].addWidget(w)
         
         row += 1
+        self.channelNameLE = widgets.alphaNumericLineEdit()
         items = (
-            QLabel('Channel_1 name: '), widgets.alphaNumericLineEdit(), 
+            QLabel('Channel_1 name: '), self.channelNameLE, 
             widgets.addPushButton(' Add channel')
         )
-        label, self.channelNameLE, self.addChannelButton = items
+        self.addChannelButton = items[2]
         self.addChannelButton._row = row
         self.channelNameLE.setAlignment(Qt.AlignCenter)
         self.channelNameLE.setText(channelName)
