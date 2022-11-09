@@ -238,15 +238,15 @@ class segmWorker(QRunnable):
                 if zProjHow == 'single z-slice':
                     img_data = posData.img_data[z]
                     if self.secondChannelName is not None:
-                        second_ch_data[i] = secondChImgData[z]
+                        second_ch_data = secondChImgData[z]
                 elif zProjHow == 'max z-projection':
                     img_data = posData.img_data.max(axis=0)
                     if self.secondChannelName is not None:
-                        second_ch_data[i] = secondChImgData.max(axis=0)
+                        second_ch_data = secondChImgData.max(axis=0)
                 elif zProjHow == 'mean z-projection':
                     img_data = posData.img_data.mean(axis=0)
                     if self.secondChannelName is not None:
-                        second_ch_data[i] = secondChImgData.mean(axis=0)
+                        second_ch_data = secondChImgData.mean(axis=0)
                 elif zProjHow == 'median z-proj.':
                     img_data = np.median(posData.img_data, axis=0)
                     if self.secondChannelName is not None:
