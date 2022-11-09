@@ -970,7 +970,6 @@ class TreeWidgetItem(QTreeWidgetItem):
                 self.setBackground(c, QBrush(color))
     
 
-
 class FilterObject(QObject):
     sigFilteredEvent = pyqtSignal(object, object)
 
@@ -2125,11 +2124,12 @@ class ReadOnlyLineEdit(QLineEdit):
             return True
         return super().eventFilter(a0, a1)
         
-
 class _metricsQGBox(QGroupBox):
+    sigDelClicked = pyqtSignal(str, object)
+
     def __init__(
             self, desc_dict, title, favourite_funcs=None, isZstack=False,
-            equations=None
+            equations=None, addDelButton=False
         ):
         QGroupBox.__init__(self)
         self.scrollArea = QScrollArea()
@@ -2154,10 +2154,18 @@ class _metricsQGBox(QGroupBox):
                 checkBox.equation = equations[metric_colname]
             except Exception as e:
                 pass
+            
+            if addDelButton:
+                delButton = delPushButton()
+                delButton.setToolTip('Delete custom combined measurement')
+                delButton.colname = metric_colname
+                delButton.checkbox = checkBox
+                delButton.clicked.connect(self.onDelClicked)
+                delButton._layout = rowLayout
+                rowLayout.addWidget(delButton)
 
-            infoButton = QPushButton(self)
+            infoButton = infoPushButton()
             infoButton.setCursor(Qt.WhatsThisCursor)
-            infoButton.setIcon(QIcon(":info.svg"))
             infoButton.info = metric_desc
             infoButton.colname = metric_colname
             infoButton.clicked.connect(self.showInfo)
@@ -2198,6 +2206,11 @@ class _metricsQGBox(QGroupBox):
         self.setFont(_font)
 
         self.toggled.connect(self.toggled_cb)
+    
+    def onDelClicked(self):
+        button = self.sender()
+        button.checkbox.setChecked(False)
+        self.sigDelClicked.emit(button.colname, button._layout)
     
     def toggled_cb(self, checked):
         for checkbox in self.checkBoxes:
@@ -2275,7 +2288,7 @@ class channelMetricsQGBox(QGroupBox):
 
         if custom_metrics_desc:
             customMetricsQGBox = _metricsQGBox(
-                custom_metrics_desc, 'Custom measurements'
+                custom_metrics_desc, 'Custom measurements', addDelButton=False
             )
             layout.addWidget(customMetricsQGBox)
             self.checkBoxes.extend(customMetricsQGBox.checkBoxes)

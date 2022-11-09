@@ -1029,6 +1029,7 @@ class setMeasurementsDialog(QBaseDialog):
             self, loadedChNames, notLoadedChNames, isZstack, isSegm3D,
             favourite_funcs=None, parent=None, allPos_acdc_df_cols=None,
             acdc_df_path=None, posData=None, addCombineMetricCallback=None,
+            allPosData=None
         ):
         super().__init__(parent=parent)
 
@@ -1040,6 +1041,7 @@ class setMeasurementsDialog(QBaseDialog):
         self.okClicked = False
         self.allPos_acdc_df_cols = allPos_acdc_df_cols
         self.acdc_df_path = acdc_df_path
+        self.allPosData = allPosData
 
         self.setWindowTitle('Set measurements')
         # self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
@@ -1110,7 +1112,10 @@ class setMeasurementsDialog(QBaseDialog):
             self.mixedChannelsCombineMetricsQGBox = widgets._metricsQGBox(
                 desc, 'Mixed channels combined measurements',
                 favourite_funcs=favourite_funcs, isZstack=isZstack,
-                equations=equations
+                equations=equations, addDelButton=True
+            )
+            self.mixedChannelsCombineMetricsQGBox.sigDelClicked.connect(
+                self.delMixedChannelCombineMetric
             )
             groupsLayout.addWidget(
                 self.mixedChannelsCombineMetricsQGBox, 2, current_col
@@ -1154,6 +1159,31 @@ class setMeasurementsDialog(QBaseDialog):
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
         loadLastSelButton.clicked.connect(self.loadLastSelection)
+    
+    def delMixedChannelCombineMetric(self, colname_to_del, hlayout):
+        cp = measurements.read_saved_user_combine_config()
+        for section in cp.sections():
+            cp.remove_option(section, colname_to_del)
+        measurements.save_common_combine_metrics(cp)
+
+        for i in range(hlayout.count()):
+            item = hlayout.itemAt(i)
+            w = item.widget()
+            if w is None:
+                continue
+            w.hide()
+               
+        if self.allPosData is None:
+            return
+     
+        for posData in self.allPosData:
+            _config = posData.combineMetricsConfig
+            for section in _config.sections():
+                _config.remove_option(section, colname_to_del)
+            posData.saveCombineMetrics()
+        
+        
+            
     
     def loadLastSelection(self):
         for chNameGroupbox in self.chNameGroupboxes:
