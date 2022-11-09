@@ -1023,7 +1023,7 @@ class mainWin(QMainWindow):
 
 
     def launchGui(self, checked=False):
-        print('Opening GUI...')
+        self.logger.info('Opening GUI...')
         guiWin = gui.guiWin(self.app, mainWin=self, version=self._version)
         self.guiWins.append(guiWin)
         guiWin.sigClosed.connect(self.guiClosed)
@@ -1033,9 +1033,13 @@ class mainWin(QMainWindow):
         self.guiWins.remove(guiWin)
     
     def launchSpotmaxGui(self, checked=False):
-        print('Launching spotMAX...')
+        self.logger.info('Launching spotMAX...')
         spotmaxWin = spotmaxRun.run_gui(app=self.app)
+        spotmaxWin.sigClosed.connect(self.spotmaxGuiClosed)
         self.spotmaxWins.append(spotmaxWin)
+    
+    def spotmaxGuiClosed(self, spotmaxWin):
+        self.spotmaxWins.remove(spotmaxWin)
         
     def guiClosed(self, guiWin):
         self.guiWins.remove(guiWin)
@@ -1160,9 +1164,9 @@ class mainWin(QMainWindow):
                 print('-----------------------------------------')
                 print('Failed to restart Cell-ACDC. Please restart manually')
         else:
-            print('**********************************************')
-            print(f'Cell-ACDC closed. {myutils.get_salute_string()}')
-            print('**********************************************')
+            self.logger.info('**********************************************')
+            self.logger.info(f'Cell-ACDC closed. {myutils.get_salute_string()}')
+            self.logger.info('**********************************************')
             exit()
 
 def run():
@@ -1181,13 +1185,13 @@ def run():
         win.welcomeGuide.showPage(win.welcomeGuide.welcomeItem)
     except AttributeError:
         pass
-    print('**********************************************')
-    print(f'Welcome to Cell-ACDC v{version}!')
-    print('**********************************************')
-    print('----------------------------------------------')
-    print('NOTE: If application is not visible, it is probably minimized\n'
+    win.logger.info('**********************************************')
+    win.logger.info(f'Welcome to Cell-ACDC v{version}!')
+    win.logger.info('**********************************************')
+    win.logger.info('----------------------------------------------')
+    win.logger.info('NOTE: If application is not visible, it is probably minimized\n'
           'or behind some other open window.')
-    print('----------------------------------------------')
+    win.logger.info('----------------------------------------------')
     splashScreen.close()
     # splashScreenApp.quit()
     sys.exit(app.exec_())

@@ -187,6 +187,11 @@ class savePushButton(QPushButton):
         super().__init__(*args)
         self.setIcon(QIcon(':file-save.svg'))
 
+class autoPushButton(QPushButton):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setIcon(QIcon(':cog_play.svg'))
+
 class newFilePushButton(QPushButton):
     def __init__(self, *args):
         super().__init__(*args)
