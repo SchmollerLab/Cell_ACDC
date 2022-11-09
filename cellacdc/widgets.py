@@ -2129,7 +2129,7 @@ class _metricsQGBox(QGroupBox):
 
     def __init__(
             self, desc_dict, title, favourite_funcs=None, isZstack=False,
-            equations=None, addDelButton=False
+            equations=None, addDelButton=False, delButtonMetricsDesc=None
         ):
         QGroupBox.__init__(self)
         self.scrollArea = QScrollArea()
@@ -2139,6 +2139,8 @@ class _metricsQGBox(QGroupBox):
         layout = QVBoxLayout()
         inner_layout = QVBoxLayout()
         self.inner_layout = inner_layout
+        if delButtonMetricsDesc is None:
+            delButtonMetricsDesc = []
 
         self.checkBoxes = []
         self.checkedState = {}
@@ -2155,7 +2157,7 @@ class _metricsQGBox(QGroupBox):
             except Exception as e:
                 pass
             
-            if addDelButton:
+            if addDelButton or metric_colname in delButtonMetricsDesc:
                 delButton = delPushButton()
                 delButton.setToolTip('Delete custom combined measurement')
                 delButton.colname = metric_colname
@@ -2254,6 +2256,8 @@ class _metricsQGBox(QGroupBox):
         self.minWidth = fw + sw
 
 class channelMetricsQGBox(QGroupBox):
+    sigDelClicked = pyqtSignal(str, object)
+
     def __init__(
             self, isZstack, chName, isSegm3D,
             posData=None, favourite_funcs=None
@@ -2282,20 +2286,27 @@ class channelMetricsQGBox(QGroupBox):
         layout.addWidget(metricsQGBox)
         layout.addWidget(bkgrValsQGBox)
 
-        custom_metrics_desc = measurements.custom_metrics_desc(
-            isZstack, chName, posData=posData, isSegm3D=isSegm3D
+        items = measurements.custom_metrics_desc(
+            isZstack, chName, posData=posData, isSegm3D=isSegm3D,
+            return_combine=True
         )
+        custom_metrics_desc, combine_metrics_desc = items
 
         if custom_metrics_desc:
             customMetricsQGBox = _metricsQGBox(
-                custom_metrics_desc, 'Custom measurements', addDelButton=False
+                custom_metrics_desc, 'Custom measurements', 
+                delButtonMetricsDesc=combine_metrics_desc
             )
             layout.addWidget(customMetricsQGBox)
             self.checkBoxes.extend(customMetricsQGBox.checkBoxes)
+            customMetricsQGBox.sigDelClicked.connect(self.onDelClicked)
 
         self.setTitle(f'{chName} metrics')
         self.setCheckable(True)
         self.setLayout(layout)
+    
+    def onDelClicked(self, colname_to_del, hlayout):
+        self.sigDelClicked.emit(colname_to_del, hlayout)
     
     def checkFavouriteFuncs(self):
         for groupbox in self.groupboxes:

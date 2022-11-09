@@ -552,6 +552,7 @@ class segmWin(QMainWindow):
             self.QPbar = QPbar
             self.ETA_label = ETA_label
             self.mainLayout.insertLayout(3, pBarLayout)
+        self.resize(int(self.width()*1.5), int(self.height()*3))
 
     def main(self):
         self.getMostRecentPath()
@@ -1359,10 +1360,6 @@ class segmWin(QMainWindow):
                self, 'Execution aborted', 'Segmentation task aborted.'
             )
             return True
-        
-    def showEvent(self, event) -> None:
-        super().showEvent(event)
-        self.resize(int(self.width()*1.5), int(self.height()*1.5))
 
     def closeEvent(self, event):
         print('')

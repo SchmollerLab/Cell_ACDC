@@ -1061,6 +1061,7 @@ class setMeasurementsDialog(QBaseDialog):
             channelGBox.chName = chName
             groupsLayout.addWidget(channelGBox, 0, col, 3, 1)
             self.chNameGroupboxes.append(channelGBox)
+            channelGBox.sigDelClicked.connect(self.delMixedChannelCombineMetric)
             groupsLayout.setColumnStretch(col, 5)
 
         current_col = col+1
@@ -1074,6 +1075,7 @@ class setMeasurementsDialog(QBaseDialog):
             groupsLayout.addWidget(channelGBox, 0, current_col, 3, 1)
             self.chNameGroupboxes.append(channelGBox)
             groupsLayout.setColumnStretch(current_col, 5)
+            channelGBox.sigDelClicked.connect(self.delMixedChannelCombineMetric)
             current_col += 1
 
         current_col += 1
@@ -1104,8 +1106,8 @@ class setMeasurementsDialog(QBaseDialog):
         groupsLayout.addWidget(regionPropsQGBox, 1, current_col)
         groupsLayout.setRowStretch(1, 2)
 
-        desc, equations = measurements._user_combine_mixed_channels_desc(
-            isSegm3D=isSegm3D
+        desc, equations = measurements.combine_mixed_channels_desc(
+            isSegm3D=isSegm3D, posData=posData
         )
         self.mixedChannelsCombineMetricsQGBox = None
         if desc:
@@ -1181,9 +1183,91 @@ class setMeasurementsDialog(QBaseDialog):
             for section in _config.sections():
                 _config.remove_option(section, colname_to_del)
             posData.saveCombineMetrics()
+    
+    def state(self):
+        state = {
+            self.sizeMetricsQGBox.title(): {},
+            self.regionPropsQGBox.title(): {}
+        }
+        for chNameGroupbox in self.chNameGroupboxes:
+            state[chNameGroupbox.title()] = {}
+            if not chNameGroupbox.isChecked():
+                # Channel unchecked
+                continue
+            else:
+                for checkBox in chNameGroupbox.checkBoxes:
+                    colname = checkBox.text()
+                    state[chNameGroupbox.title()][colname] = checkBox.isChecked()
+
+        if not self.sizeMetricsQGBox.isChecked():
+            pass
+        else:
+            for checkBox in self.sizeMetricsQGBox.checkBoxes:
+                checked = checkBox.isChecked()
+                state[self.sizeMetricsQGBox.title()][colname] = checked
+
+        if not self.regionPropsQGBox.isChecked():
+            pass
+        else:
+            self.regionPropsToSave = []
+            for checkBox in self.regionPropsQGBox.checkBoxes:
+                checked = checkBox.isChecked()
+                state[self.regionPropsQGBox.title()][colname] = checked
+
+        if self.mixedChannelsCombineMetricsQGBox is not None:
+            state[self.mixedChannelsCombineMetricsQGBox.title()] = {}
+            if not self.mixedChannelsCombineMetricsQGBox.isChecked():
+                checkBoxes = self.mixedChannelsCombineMetricsQGBox.checkBoxes
+                for checkBox in checkBoxes:
+                    checked = checkBox.isChecked()
+                    key = self.mixedChannelsCombineMetricsQGBox.title()
+                    state[key][colname] = checked
         
+        return state
+    
+    def restoreState(self, state):
+        for chNameGroupbox in self.chNameGroupboxes:
+            _state = state.get(chNameGroupbox.title())
+            if _state is None or not _state:
+                continue
+            for checkBox in chNameGroupbox.checkBoxes:
+                isChecked = _state.get(checkBox.text())
+                if isChecked is None:
+                    continue
+                checkBox.setChecked(isChecked)
         
-            
+        _state = state.get(self.sizeMetricsQGBox.title())
+        if _state is None or not _state:
+            pass
+        else:
+            for checkBox in self.sizeMetricsQGBox.checkBoxes:
+                isChecked = _state.get(checkBox.text())
+                if isChecked is None:
+                    continue
+                checkBox.setChecked(isChecked)
+        
+        _state = state.get(self.regionPropsQGBox.title())
+        if _state is None or not _state:
+            pass
+        else:
+            for checkBox in self.regionPropsQGBox.checkBoxes:
+                isChecked = _state.get(checkBox.text())
+                if isChecked is None:
+                    continue
+                checkBox.setChecked(isChecked)
+        
+        if self.mixedChannelsCombineMetricsQGBox is None:
+            return
+        
+        _state = state.get(self.mixedChannelsCombineMetricsQGBox.title())
+        if _state is None or not _state:
+            pass
+        else:
+            for checkBox in self.mixedChannelsCombineMetricsQGBox.checkBoxes:
+                isChecked = _state.get(checkBox.text())
+                if isChecked is None:
+                    continue
+                checkBox.setChecked(isChecked)
     
     def loadLastSelection(self):
         for chNameGroupbox in self.chNameGroupboxes:
@@ -1228,9 +1312,7 @@ class setMeasurementsDialog(QBaseDialog):
                     )
 
     def keyPressEvent(self, a0: QKeyEvent) -> None:
-        for chNameGroupbox in self.chNameGroupboxes:
-            for checkBox in chNameGroupbox.checkBoxes:
-                colname = checkBox.text()
+        state = self.state()
         return super().keyPressEvent(a0)
 
     def ok_cb(self):

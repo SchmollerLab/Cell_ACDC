@@ -174,7 +174,10 @@ def _get_custom_metrics_names():
     custom_metrics_names = {func_name:func_name for func_name in keys}
     return custom_metrics_names
 
-def custom_metrics_desc(isZstack, chName, posData=None, isSegm3D=False):
+def custom_metrics_desc(
+        isZstack, chName, posData=None, isSegm3D=False, 
+        return_combine=False
+    ):
     how_3Dto2D, how_3Dto2D_desc = get_how_3Dto2D(isZstack, isSegm3D)
     custom_metrics_names = _get_custom_metrics_names()
     custom_metrics_desc = {}
@@ -204,7 +207,10 @@ def custom_metrics_desc(isZstack, chName, posData=None, isSegm3D=False):
     )
     custom_metrics_desc = {**custom_metrics_desc, **combine_metrics_desc}
 
-    return custom_metrics_desc
+    if return_combine:
+        return custom_metrics_desc, combine_metrics_desc
+    else:
+        return custom_metrics_desc
 
 def channel_combine_metrics_desc(chName, posData=None, isSegm3D=False):
     combine_metrics_configPars = read_saved_user_combine_config()
@@ -279,17 +285,18 @@ def channel_combine_metrics_desc(chName, posData=None, isSegm3D=False):
     return combine_metrics_desc, equations
 
 def get_user_combine_mixed_channels_equations(isSegm3D=False):
-    _, equations = _user_combine_mixed_channels_desc(isSegm3D=isSegm3D)
+    _, equations = _combine_mixed_channels_desc(isSegm3D=isSegm3D)
     return equations
 
-def get_user_combine_mixed_channels_desc(isSegm3D=False):
-    desc, _ = _user_combine_mixed_channels_desc(isSegm3D=isSegm3D)
+def get_combine_mixed_channels_desc(isSegm3D=False):
+    desc, _ = _combine_mixed_channels_desc(isSegm3D=isSegm3D)
     return desc
 
-def _user_combine_mixed_channels_desc(isSegm3D=False):
-    configPars = _get_saved_user_combine_config()
+def _combine_mixed_channels_desc(isSegm3D=False, configPars=None):
     if configPars is None:
-        return {}, {}
+        configPars = _get_saved_user_combine_config()
+        if configPars is None:
+            return {}, {}
 
     equations = {}
     mixed_channels_desc = {}
@@ -322,6 +329,14 @@ def _user_combine_mixed_channels_desc(isSegm3D=False):
         equations[metric_name] = equation
     return mixed_channels_desc, equations
 
+def combine_mixed_channels_desc(posData=None, isSegm3D=False):
+    desc, equations = _combine_mixed_channels_desc(isSegm3D=isSegm3D)
+    if posData is None:
+        return desc, equations
+    pos_desc, pos_equations = _combine_mixed_channels_desc(
+        isSegm3D=isSegm3D, configPars= posData.combineMetricsConfig
+    )
+    return {**desc, **pos_desc}, {**equations, **pos_equations}
 
 def _um3():
     return '<code>&micro;m<sup>3</sup></code>'

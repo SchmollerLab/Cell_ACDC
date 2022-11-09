@@ -12451,6 +12451,7 @@ class guiWin(QMainWindow):
         self.secondChannelName = None
 
         self.ax1_viewRange = None
+        self.measurementsWin = None
 
         self.segment2D_kwargs = None
         self.segmModelName = None
@@ -17817,7 +17818,8 @@ class guiWin(QMainWindow):
             favourite_funcs=favourite_funcs, 
             allPos_acdc_df_cols=list(allPos_acdc_df_cols),
             acdc_df_path=posData.images_path, posData=posData,
-            addCombineMetricCallback=self.addCombineMetric
+            addCombineMetricCallback=self.addCombineMetric,
+            allPosData=self.data
         )
         self.measurementsWin.sigClosed.connect(self.setMeasurements)
         self.measurementsWin.show()
@@ -17848,6 +17850,7 @@ class guiWin(QMainWindow):
         self.logger.info('Setting measurements...')
         self.setMetricsToSkip(self.measurementsWin)
         self.logger.info('Metrics successfully set.')
+        self.measurementsWin = None
 
     def setMetricsToSkip(self, measurementsWin):
         self.chNamesToSkip = []
@@ -17936,6 +17939,14 @@ class guiWin(QMainWindow):
                     equation, newColName, isMixedChannels
                 )
                 posData.saveCombineMetrics()
+        
+        if self.measurementsWin is None:
+            return
+        
+        self.measurementsWinState = self.measurementsWin.state()
+        self.measurementsWin.close()
+        self.showSetMeasurements()
+        self.measurementsWin.restoreState(self.measurementsWinState)
 
     def setMetricsFunc(self):
         posData = self.data[self.pos_i]
