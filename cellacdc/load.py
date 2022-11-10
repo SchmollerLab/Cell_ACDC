@@ -245,7 +245,7 @@ def load_image_file(filepath):
         img_data = np.load(filepath)
     else:
         img_data = skimage.io.imread(filepath)
-    return img_data
+    return np.squeeze(img_data)
 
 def get_existing_segm_endnames(basename, segm_files):
     existing_endnames = []
@@ -483,16 +483,16 @@ class loadData:
                 self.img_data = np.squeeze(self.dset[:])
 
         elif self.ext == '.npz':
-            self.img_data = np.load(imgPath)['arr_0']
+            self.img_data = np.squeeze(np.load(imgPath)['arr_0'])
             self.dset = self.img_data
             self.img_data_shape = self.img_data.shape
         elif self.ext == '.npy':
-            self.img_data = np.load(imgPath)
+            self.img_data = np.squeeze(np.load(imgPath))
             self.dset = self.img_data
             self.img_data_shape = self.img_data.shape
         else:
             try:
-                self.img_data = skimage.io.imread(imgPath)
+                self.img_data = np.squeeze(skimage.io.imread(imgPath))
                 self.dset = self.img_data
                 self.img_data_shape = self.img_data.shape
             except ValueError:

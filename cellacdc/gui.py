@@ -3455,6 +3455,23 @@ class guiWin(QMainWindow):
         )
         self.topLayerItems.append(self.keepIDsTempLayerLeft)
         self.topLayerItemsRight.append(self.keepIDsTempLayerRight)
+
+        # Searched ID contour
+        self.searchedIDitemRight = pg.ScatterPlotItem()
+        self.searchedIDitemRight.setData(
+            [], [], symbol='s', pxMode=False, size=1,
+            brush=pg.mkBrush(color=(255,0,0,150)),
+            pen=pg.mkPen(width=2, color='r')
+        )
+        self.searchedIDitemLeft = pg.ScatterPlotItem()
+        self.searchedIDitemLeft.setData(
+            [], [], symbol='s', pxMode=False, size=1,
+            brush=pg.mkBrush(color=(255,0,0,150)),
+            pen=pg.mkPen(width=2, color='r')
+        )
+        self.topLayerItems.append(self.searchedIDitemLeft)
+        self.topLayerItemsRight.append(self.searchedIDitemRight)
+
         
         # Brush circle img1
         self.ax1_BrushCircle = pg.ScatterPlotItem()
@@ -12302,6 +12319,8 @@ class guiWin(QMainWindow):
         self.keepIDsTempLayerRight.clear()
         self.highLightIDLayerImg1.clear()
         self.highLightIDLayerRightImage.clear()
+        self.searchedIDitemLeft.clear()
+        self.searchedIDitemRight.clear()
         allItems = zip(
             self.ax1_ContoursCurves,
             self.ax1_LabelItemsIDs,
@@ -14567,7 +14586,7 @@ class guiWin(QMainWindow):
                 f'{path}'
             )
             return None
-        fluo_data = skimage.io.imread(fluo_path)
+        fluo_data = np.squeeze(skimage.io.imread(fluo_path))
         return fluo_data
 
     def load_fluo_data(self, fluo_path):
@@ -14580,9 +14599,9 @@ class guiWin(QMainWindow):
         if ext == '.npy' or ext == '.npz':
             fluo_data = np.load(fluo_path)
             try:
-                fluo_data = fluo_data['arr_0']
+                fluo_data = np.squeeze(fluo_data['arr_0'])
             except Exception as e:
-                fluo_data = fluo_data
+                fluo_data = np.squeeze(fluo_data)
 
             # Load background data
             bkgrData_path = os.path.join(
@@ -16045,28 +16064,38 @@ class guiWin(QMainWindow):
                 lut[1, -1] = 178          
         
         cont = None
+        contours = None
         if isOverlaySegm_ax1:
             self.highLightIDLayerImg1.setLookupTable(lut)
             self.highLightIDLayerImg1.setImage(highlightedLab)          
             self.labelsLayerImg1.setOpacity(alpha/3)
         else:
-            # Red thick contour of searched ID
-            cont = self.getObjContours(obj)
-            pen = self.newIDs_cpen
-            curveID = self.ax1_ContoursCurves[ID-1]
-            curveID.setData(cont[:,0], cont[:,1], pen=pen)
+            # # Red thick contour of searched ID
+            # cont = self.getObjContours(obj)
+            # pen = self.newIDs_cpen
+            # curveID = self.ax1_ContoursCurves[ID-1]
+            # curveID.setData(cont[:,0], cont[:,1], pen=pen)
+            _image = self.getObjImage(obj.image, obj.bbox).astype(np.uint8)
+            contours = core.get_objContours(obj, obj_image=_image, all=True)
+            for cont in contours:
+                self.searchedIDitemLeft.addPoints(cont[:,0], cont[:,1])
         
         if isOverlaySegm_ax2:
             self.highLightIDLayerRightImage.setLookupTable(lut)
             self.highLightIDLayerRightImage.setImage(highlightedLab)
             self.labelsLayerRightImg.setOpacity(alpha/3)
         else:
-            # Red thick contour of searched ID
-            if cont is None:
-                cont = self.getObjContours(obj)
-            pen = self.newIDs_cpen
-            curveID = self.ax2_ContoursCurves[ID-1]
-            curveID.setData(cont[:,0], cont[:,1], pen=pen)
+            # # Red thick contour of searched ID
+            # if cont is None:
+            #     cont = self.getObjContours(obj)
+            # pen = self.newIDs_cpen
+            # curveID = self.ax2_ContoursCurves[ID-1]
+            # curveID.setData(cont[:,0], cont[:,1], pen=pen)
+            if contours is None:
+                _image = self.getObjImage(obj.image, obj.bbox).astype(np.uint8)
+                contours = core.get_objContours(obj, obj_image=_image, all=True)
+            for cont in contours:
+                self.searchedIDitemRight.addPoints(cont[:,0], cont[:,1])
 
         how = self.drawIDsContComboBox.currentText()
         IDs_and_cont = how == 'Draw IDs and contours'
@@ -16234,7 +16263,8 @@ class guiWin(QMainWindow):
             contoursItem.clear()
             if drawMode == 'Draw contours':
                 for obj in skimage.measure.regionprops(ol_lab):
-                    contours = core.get_objContours(obj, all=True)
+                    _img = self.getObjImage(obj.image, obj.bbox).astype(np.uint8)
+                    contours = core.get_objContours(obj, obj_image=_img, all=True)
                     for cont in contours:
                         contoursItem.addPoints(cont[:,0], cont[:,1])
             elif drawMode == 'Overlay labels':
@@ -18507,6 +18537,16 @@ class guiWin(QMainWindow):
             self.propsDockWidget.setVisible(True)
             self.propsDockWidget.setEnabled(True)
         self.updateALLimg()
+    
+    # def hideEvent(self, event):
+    #     printl('Hidden')
+    #     return super().hideEvent(event)
+    
+    # def changeEvent(self, event) -> None:
+    #     if self.isActiveWindow():
+    #         return
+    #     printl(f'{self.isActiveWindow() = }, {self.isMinimized() = }, {self.isMaximized() = }')
+    #     return super().changeEvent(event)
 
     def show(self):
         QMainWindow.show(self)

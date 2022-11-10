@@ -473,15 +473,21 @@ def label_3d_segm(labels):
 
     return labels
 
-def get_objContours(obj, all=False):
+def get_objContours(obj, obj_image=None, all=False):
     if all:
         retrieveMode = cv2.RETR_CCOMP
     else:
         retrieveMode = cv2.RETR_EXTERNAL
+    if obj_image is None:
+        obj_image = obj.image.astype(np.uint8)
     contours, _ = cv2.findContours(
-        obj.image.astype(np.uint8), retrieveMode, cv2.CHAIN_APPROX_NONE
+        obj_image, retrieveMode, cv2.CHAIN_APPROX_NONE
     )
-    min_y, min_x, _, _ = obj.bbox
+    if len(obj.bbox) > 4:
+        # 3D object
+        _, min_y, min_x, _, _, _ = obj.bbox
+    else:
+        min_y, min_x, _, _ = obj.bbox
     if all:
         return [np.squeeze(cont, axis=1)+[min_x, min_y] for cont in contours]
     cont = np.squeeze(contours[0], axis=1)
