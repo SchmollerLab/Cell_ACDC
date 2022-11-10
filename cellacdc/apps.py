@@ -5440,20 +5440,81 @@ class imageViewer(QMainWindow):
 
 class TreeSelectorDialog(QBaseDialog):
     def __init__(
-            self, trees: dict, groupsDescr: dict=None, 
-            title='Tree selector', infoTxt='', parent=None
+            self, title='Tree selector', infoTxt='', parent=None
         ):
         super().__init__(parent)
 
         self.setWindowTitle(title)
         
         self.cancel = True
-        mainLayout = QVBoxLayout()
+        self.mainLayout = QVBoxLayout()
 
         if infoTxt:
-            mainLayout.addWidget(QLabel(html_utils.paragraph(infoTxt)))
+            self.mainLayout.addWidget(QLabel(html_utils.paragraph(infoTxt)))
+        
+        self.treeWidget = widgets.TreeWidget(multiSelection=True)
+        self.treeWidget.setHeaderHidden(True)
+        self.mainLayout.addWidget(self.treeWidget)
+
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+
+        self.mainLayout.addSpacing(20)
+        self.mainLayout.addLayout(buttonsLayout)
+
+        self.buttonsLayout = buttonsLayout
+
+        self.setLayout(self.mainLayout)
+        
+    def addTree(self, tree: dict):
+        for topLevel, children in tree.items():
+            topLevelItem = widgets.TreeWidgetItem(self.treeWidget)
+            topLevelItem.setText(0, topLevel)
+            self.treeWidget.addTopLevelItem(topLevelItem)
+            childrenItems = [widgets.TreeWidgetItem([c]) for c in children]
+            topLevelItem.addChildren(childrenItems)
+            topLevelItem.setExpanded(True)
+    
+    def selectedItems(self):
+        self._selectedItems = {}
+        for i in range(self.treeWidget.topLevelItemCount()):
+            topLevelItem = self.treeWidget.topLevelItem(i)
+            topLevelName = topLevelItem.text(0)
+            for j in range(topLevelItem.childCount()):
+                childItem = topLevelItem.child(j)
+                if not childItem.isSelected():
+                    continue
+                if topLevelName not in self._selectedItems:
+                    self._selectedItems[topLevelName] = [childItem.text(0)]
+                else:
+                    self._selectedItems[topLevelName].append(childItem.text(0))
+        return self._selectedItems
+
+    def ok_cb(self):
+        self.cancel = False
+        self.close()
+        printl(self.selectedItems())
+
+class TreesSelectorDialog(QBaseDialog):
+    def __init__(
+            self, trees, groupsDescr=None, title='Trees selector', 
+            infoTxt='', parent=None
+        ):
+        super().__init__(parent)
+
+        self.setWindowTitle(title)
+        
+        self.cancel = True
+        self.mainLayout = QVBoxLayout()
+
+        if infoTxt:
+            self.mainLayout.addWidget(QLabel(html_utils.paragraph(infoTxt)))
 
         self.treeWidgets = {}
+        self.setLayout(self.mainLayout)
+    
         createdGroupLayouts = {}
         for treeName, tree in trees.items():
             if groupsDescr is None:
@@ -5462,9 +5523,9 @@ class TreeSelectorDialog(QBaseDialog):
                 groupName = groupsDescr.get(treeName, 'Group info missing')
             groupLayout = createdGroupLayouts.get(groupName, None)
             if groupLayout is None:
-                mainLayout.addWidget(QLabel(html_utils.paragraph(groupName)))
+                self.mainLayout.addWidget(QLabel(html_utils.paragraph(groupName)))
                 groupBox = QGroupBox()
-                mainLayout.addWidget(groupBox)
+                self.mainLayout.addWidget(groupBox)
                 groupLayout = QVBoxLayout()
                 groupBox.setLayout(groupLayout)
                 createdGroupLayouts[groupName] = groupLayout
@@ -5482,25 +5543,23 @@ class TreeSelectorDialog(QBaseDialog):
                 topLevelItem.setExpanded(True)
             self.treeWidgets[treeName] = treeWidget
             groupLayout.addWidget(treeWidget)
-            mainLayout.addSpacing(20)
+            self.mainLayout.addSpacing(20)
         
         buttonsLayout = widgets.CancelOkButtonsLayout()
 
         buttonsLayout.okButton.clicked.connect(self.ok_cb)
         buttonsLayout.cancelButton.clicked.connect(self.close)
 
-        mainLayout.addSpacing(10)
-        mainLayout.addLayout(buttonsLayout)
-
-        self.setLayout(mainLayout)
+        self.mainLayout.addSpacing(10)
+        self.mainLayout.addLayout(buttonsLayout)
     
     def ok_cb(self):
         self.cancel = False
         self.selectedItems = {}
         for treeName, treeWidget in self.treeWidgets.items():
-            for i in treeWidget.topLevelItemCount():
+            for i in range(treeWidget.topLevelItemCount()):
                 topLevelItem = treeWidget.topLevelItem(i)
-                for j in topLevelItem.childCount():
+                for j in range(topLevelItem.childCount()):
                     childItem = topLevelItem.child(j)
                     if not childItem.isSelected():
                         continue

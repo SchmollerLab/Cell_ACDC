@@ -588,12 +588,13 @@ class loadData:
             acdc_df_path = os.path.join(self.images_path, _linked_acdc_fn)
             self.acdc_output_csv_path = acdc_df_path
             linked_acdc_filename = _linked_acdc_fn
+        
+        if not hasattr(self, 'basename'):
+            self.getBasenameAndChNames()
 
         for file in ls:
             filePath = os.path.join(self.images_path, file)
             filename, segmExt = os.path.splitext(file)
-            if not hasattr(self, 'basename'):
-                self.getBasenameAndChNames()
             endName = filename[len(self.basename):]
 
             loadMetadata = (

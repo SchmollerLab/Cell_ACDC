@@ -1432,6 +1432,7 @@ class guiWin(QMainWindow):
         self.isEditActionsConnected = False
 
         self.show()
+        # self.installEventFilter(self)
 
     def loadLastSessionSettings(self):
         self.settings_csv_path = settings_csv_path
@@ -18537,6 +18538,11 @@ class guiWin(QMainWindow):
             self.propsDockWidget.setVisible(True)
             self.propsDockWidget.setEnabled(True)
         self.updateALLimg()
+    
+    # def eventFilter(self, qobject: 'QObject', event: 'QEvent') -> bool:
+    #     if event.type() == QEvent.FocusOut:
+    #         printl('Focus out')
+    #     return super().eventFilter(qobject, event)
     
     # def hideEvent(self, event):
     #     printl('Hidden')

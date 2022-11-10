@@ -17,7 +17,7 @@ body:
       label: "Description:"
       description: >
         Ask any question or write any comment about Cell-ACDC. Thanks!
-        NOTE: IUf you had an error, please upload the log file here too. 
+        If you had an error, please upload the log file here too. 
         You can find the log file from the menu on the top menubar 
         called `Help --> Show log files...`
       placeholder: |
