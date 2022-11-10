@@ -153,7 +153,12 @@ class Model:
         # Find original shape of image before processing
         original_shape = image.shape
 
-        if image.ndim == 2:
+        if image.ndim != 2:
+            raise ValueError(
+                f"""Delta only works with 2 dimensional images."""
+            )
+
+        else:
             # 2D: Cut into overlapping windows
             img = self.delta_preprocess(image=image,
                                         target_size=self.target_size,
@@ -169,12 +174,9 @@ class Model:
 
             # mother machine: Don't crop images into windows
             if not cfg.crop_windows:
-                if self.target_size == cfg.target_size_seg:
-                    # Predictions:
-                    results = self.model.predict(image, verbose=1)[0, :, :, 0]
-                else:
-                    # Predictions:
-                    results = self.model.predict(image, verbose=1)[0, :, :, 0]
+
+                # Predictions:
+                results = self.model.predict(image, verbose=1)[0, :, :, 0]
 
                 # Resize to the original shape
                 results = trans.resize(results, original_shape, anti_aliasing=True, order=1)
@@ -204,10 +206,5 @@ class Model:
 
                 # Label the cells using prediction
                 lab = utils.label_seg(seg=results[0, :, :, 0])
-
-        else:
-            raise ValueError(
-                f"""Delta only works with 2 dimensional images."""
-            )
 
         return lab.astype(np.uint16)
