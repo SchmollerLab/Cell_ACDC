@@ -3852,6 +3852,7 @@ class guiWin(QMainWindow):
         self.zSliceOverlay_SB.hide()
         self.zProjOverlay_CB.hide()
         self.overlay_z_label.hide()
+        self.zSliceCheckbox.hide()
 
     @myutils.exception_handler
     def gui_mousePressEventImg2(self, event):
@@ -8568,6 +8569,7 @@ class guiWin(QMainWindow):
             self.zProjComboBox.show()
             self.zSliceScrollBar.show()
             self.z_label.show()
+            self.zSliceCheckbox.show()
         else:
             myutils.setRetainSizePolicy(self.zSliceScrollBar, retain=False)
             myutils.setRetainSizePolicy(self.zProjComboBox, retain=False)
@@ -8579,6 +8581,7 @@ class guiWin(QMainWindow):
             self.zProjComboBox.hide()
             self.zSliceScrollBar.hide()
             self.z_label.hide()
+            self.zSliceCheckbox.hide()
 
     def reInitCca(self):
         if not self.isSnapshot:
