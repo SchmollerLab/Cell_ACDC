@@ -1923,13 +1923,13 @@ class guiWin(QMainWindow):
             'Toggle "Magic labeller" ON/OFF\n\n'
             'ACTION: Draw a rectangular ROI aroung object(s) you want to segment\n\n'
             'Draw with LEFT button to label with last used model\n'
-            'Draw with RIGHT button to choose a segmentation model\n\n'
+            'Draw with RIGHT button to choose a different segmentation model\n\n'
             'SHORTCUT: "L" key')
         self.labelRoiButton.action = editToolBar.addWidget(self.labelRoiButton)
         self.LeftClickButtons.append(self.labelRoiButton)
         self.checkableButtons.append(self.labelRoiButton)
         self.checkableQButtonsGroup.addButton(self.labelRoiButton)
-        self.functionsNotTested3D.append(self.labelRoiButton)
+        # self.functionsNotTested3D.append(self.labelRoiButton)
 
         self.segmentToolAction = QAction('Segment with last used model', self)
         self.segmentToolAction.setIcon(QIcon(":segment.svg"))
@@ -2365,6 +2365,7 @@ class guiWin(QMainWindow):
         self.wandControlsToolbar.setVisible(False)
 
         self.labelRoiToolbar = QToolBar("Magic labeller controls", self)
+        self.labelRoiToolbar.addWidget(QLabel('ROI depth (n. of z-slices): '))
         self.labelRoiZdepthSpinbox = QSpinBox()
         self.labelRoiToolbar.addWidget(self.labelRoiZdepthSpinbox)
         self.addToolBar(Qt.TopToolBarArea, self.labelRoiToolbar)
@@ -5841,6 +5842,8 @@ class guiWin(QMainWindow):
             if self.labelRoiModel is None:
                 cancel = self.initLabelRoiModel()
                 if cancel:
+                    self.labelRoiItem.setPos((0,0))
+                    self.labelRoiItem.setSize((0,0))
                     return
             
             roiSecondChannel = None
@@ -9199,11 +9202,14 @@ class guiWin(QMainWindow):
         worker = self.labelRoiActiveWorkers.pop(-1)
     
     def labelRoiDone(self, roiLab):
-        roiLab = skimage.segmentation.clear_border(roiLab, buffer_size=1)
+        # Delete only objects touching borders in X and Y not in Z
+        mask = np.zeros(roiLab.shape, dtype=bool)
+        mask[..., 1:-1, 1:-1] = True
+        roiLab = skimage.segmentation.clear_border(roiLab, mask=mask)
         posData = self.data[self.pos_i]
         self.setBrushID()
         roiLabMask = roiLab>0
-        roiLab[roiLabMask] += posData.brushID
+        roiLab[roiLabMask] += (posData.brushID-1)
         posData.lab[self.labelRoiSlice][roiLabMask] = roiLab[roiLabMask]
         self.update_rp()
         
@@ -14810,6 +14816,8 @@ class guiWin(QMainWindow):
             model_name=model_name, askSegmParams=True,
             return_model=True
         )
+        if self.labelRoiModel is None:
+            return True
         return False
 
     def showOverlayContextMenu(self, event):

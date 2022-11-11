@@ -3223,27 +3223,44 @@ class QDialogAutomaticThresholding(QBaseDialog):
         self.setWindowTitle('Automatic thresholding parameters')
 
         layout = QVBoxLayout()
+        formLayout = QGridLayout()
         buttonsLayout = QHBoxLayout()
 
+        row = 0
         self.sigmaGaussSpinbox = QDoubleSpinBox()
         self.sigmaGaussSpinbox.setValue(1)
         self.sigmaGaussSpinbox.setMaximum(2**31)
         self.sigmaGaussSpinbox.setAlignment(Qt.AlignCenter)
-        gaussSigmaLayout = QHBoxLayout()
-        gaussSigmaLayout.addWidget(
-            QLabel('Gaussian filter sigma (0 to ignore): '), alignment=Qt.AlignRight
+        formLayout.addWidget(
+            QLabel('Gaussian filter sigma (0 to ignore): '), row, 0,
+            alignment=Qt.AlignRight
         )
-        gaussSigmaLayout.addWidget(self.sigmaGaussSpinbox)
+        formLayout.addWidget(self.sigmaGaussSpinbox, row, 1, 1, 2)
 
+        row += 1
         self.threshMethodCombobox = QComboBox()
         self.threshMethodCombobox.addItems([
             'Isodata', 'Li', 'Mean', 'Minimum', 'Otsu', 'Triangle', 'Yen'
         ])
-        threshMethodLayout = QHBoxLayout()
-        threshMethodLayout.addWidget(
-            QLabel('Thresholding algorithm: '), alignment=Qt.AlignRight
+        formLayout.addWidget(
+            QLabel('Thresholding algorithm: '), row, 0,
+            alignment=Qt.AlignRight
         )
-        threshMethodLayout.addWidget(self.threshMethodCombobox)
+        formLayout.addWidget(self.threshMethodCombobox, row, 1, 1, 2)
+
+        row += 1
+        formLayout.addWidget(
+            QLabel('Segment 3D volume: '), row, 0, alignment=Qt.AlignRight
+        )
+        group = QButtonGroup()
+        group.setExclusive(True)
+        self.segment3Dcheckbox = QRadioButton('Yes')
+        segmentSliceBySliceCheckbox = QRadioButton('No, segment slice-by-slice')
+        group.addButton(self.segment3Dcheckbox)
+        group.addButton(segmentSliceBySliceCheckbox)
+        formLayout.addWidget(self.segment3Dcheckbox, row, 1)
+        formLayout.addWidget(segmentSliceBySliceCheckbox, row, 2)
+        self.segment3Dcheckbox.setChecked(True)
 
         okButton = widgets.okPushButton('Ok')
         cancelButton = widgets.cancelPushButton('Cancel')
@@ -3255,9 +3272,8 @@ class QDialogAutomaticThresholding(QBaseDialog):
         buttonsLayout.addWidget(helpButton)
         buttonsLayout.addWidget(okButton)
 
-        layout.addLayout(gaussSigmaLayout)
-        layout.addLayout(threshMethodLayout)
-        layout.addSpacing(10)
+        layout.addLayout(formLayout)
+        layout.addSpacing(20)
         layout.addLayout(buttonsLayout)
 
         okButton.clicked.connect(self.ok_cb)
@@ -3279,7 +3295,8 @@ class QDialogAutomaticThresholding(QBaseDialog):
         self.threshMethod = f'threshold_{threshMethod}'
         self.segment_kwargs = {
             'gauss_sigma': self.gaussSigma,
-            'threshold_method': self.threshMethod
+            'threshold_method': self.threshMethod,
+            'segment_3D_volume': self.segment3Dcheckbox.isChecked()
         }
         self.close()
 
