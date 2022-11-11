@@ -27,6 +27,20 @@
 - **Report issues, request a feature or ask questions** by opening a new issue [here](https://github.com/SchmollerLab/Cell_ACDC/issues).
 - Twitter [thread](https://twitter.com/frank_pado/status/1443957038841794561?s=20)
 
+## Citation
+
+If you find Cell-ACDC useful, please cite:
+
+> Francesco Padovani, Benedikt Mairhörmann, Pascal Falter-Braun, 
+> Jette Lengefeld, and Kurt M. Schmoller
+> _Segmentation, tracking and cell cycle analysis of live-cell imaging data with 
+> Cell-ACDC_. BMC Biol 20, 174 (2022)
+> https://doi.org/10.1186/s12915-022-01372-6
+
+## How to contribute
+
+See instructions [here](https://github.com/SchmollerLab/Cell_ACDC/blob/main/CONTRIBUTING.rst)
+
 ## Overview
 
 Let's face it, when dealing with segmentation of microscopy data we often do not have time to check that **everything is correct**, because it is a **tedious** and **very time consuming process**. Cell-ACDC comes to the rescue!
@@ -58,19 +72,6 @@ First release that is finally available on PyPi.
 Main new feature: custom trackers! You can now add any tracker you want by implementing a simple tracker class. See the [manual](https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf) at the section "**Adding trackers to the pipeline**".
 
 Additionally, this release includes many UI/UX improvements such as color and style customisation, alongside a light/dark mode switch.
-
-## Update v1.2.3
-
-**NOTE: some users had issues installing the environment with this version. Please see this [issue](https://github.com/SchmollerLab/Cell_ACDC/issues/5) for a possible solution**
-
-This release includes new segmentation models:
-- Cellpose v0.8.0 with the models cyto2 and omnipose
-- StarDist
-
-## Update v1.2.2
-
-This is the first release with **full macOS support**! Additionally, navigating through time-lapse microscopy data is now up to **10x faster** than previous versions.
-More details [here](https://github.com/SchmollerLab/Cell_ACDC/releases/tag/v1.2.2)
 
 ## Installation using Anaconda (recommended)
 
