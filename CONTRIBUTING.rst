@@ -50,7 +50,7 @@ Development process
          source ~/.virtualenvs/acdc-dev/bin/activate
 
          # Navigate to the cloned folder path (parent folder of ``cellacdc``)
-         cd Cell_ACDC
+         cd <path_to_Cell_ACDC>
 
          # Install Cell-ACDC in developer mode
          pip install -e .
@@ -66,7 +66,7 @@ Development process
          conda activate acdc-dev
 
          # Navigate to the cloned folder path (parent folder of ``cellacdc``)
-         cd Cell_ACDC
+         cd <path_to_Cell_ACDC>
 
          # Install Cell-ACDC in developer mode
          pip install -e .
@@ -75,7 +75,7 @@ Development process
 
    * Navigate to the cloned folder path (parent folder of ``cellacdc``)::
         
-        cd Cell_ACDC
+        cd <path_to_Cell_ACDC>
     
    * Pull the latest changes from upstream::
 
