@@ -1,7 +1,7 @@
 How to contribute to Cell-ACDC
 ==============================
 
-Contributions to Cell-ACDC are always very welcome! If you have questions about 
+Contributions to Cell-ACDC are **always very welcome**! If you have questions about 
 contributing feel free to open a new thread on our 
 `forum <https://github.com/SchmollerLab/Cell_ACDC/discussions>`_.
 
@@ -67,7 +67,7 @@ Development process
 
          # Navigate to the cloned folder path (parent folder of ``cellacdc``)
          cd Cell_ACDC
-         
+
          # Install Cell-ACDC in developer mode
          pip install -e .
 
