@@ -10,6 +10,8 @@ import logging
 import difflib
 from functools import partial
 
+import skimage.draw
+
 from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 
 from PyQt5.QtCore import (
@@ -2586,6 +2588,91 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
     def tickColorAccepted(self):
         self.gradient.currentColorAccepted()
         # self.sigTickColorAccepted.emit(self.gradient.colorDialog.color().getRgb())
+
+class ROI(pg.ROI):
+    def __init__(
+            self, pos, size=..., angle=0, invertible=False, maxBounds=None, 
+            snapSize=1, scaleSnap=False, translateSnap=False, rotateSnap=False, 
+            parent=None, pen=None, hoverPen=None, handlePen=None, 
+            handleHoverPen=None, movable=True, rotatable=True, 
+            resizable=True, removable=False, aspectLocked=False
+        ):
+        super().__init__(
+            pos, size, angle, invertible, maxBounds, snapSize, scaleSnap, 
+            translateSnap, rotateSnap, parent, pen, hoverPen, handlePen, 
+            handleHoverPen, movable, rotatable, resizable, removable, 
+            aspectLocked
+        )
+    
+    def slice(self, zRange=None):
+        x0, y0 = [int(round(c)) for c in self.pos()]
+        w, h = [int(round(c)) for c in self.size()]
+        xmin, xmax = x0, x0+w
+        if xmin > xmax:
+            xmin, xmax = xmax, xmin
+        ymin, ymax = y0, y0+h
+        if ymin > ymax:
+            ymin, ymax = ymax, ymin
+        if zRange is not None:
+            zmin, zmax = zRange
+            _slice = (slice(zmin, zmax), slice(ymin, ymax), slice(xmin, xmax))
+        else:
+            _slice = (slice(ymin, ymax), slice(xmin, xmax))
+        return _slice
+        
+
+class PlotCurveItem(pg.PlotCurveItem):
+    def __init__(self, *args, **kargs):
+        super().__init__(*args, **kargs)
+    
+    def addPoint(self, x, y, **kargs):
+        _xx, _yy = self.getData()
+        if _xx is None or len(_xx) == 0:
+            self.xData = np.array([x], dtype=int)
+            self.yData = np.array([y], dtype=int)
+            return
+        if _xx[-1] == x and _yy[-1] == y:
+            # Do not append same point
+            return
+        
+        # Pre-allocate array and insert data (faster than append)
+        xx = np.zeros(len(_xx)+1, dtype=_xx.dtype)
+        xx[:-1] = _xx
+        xx[-1] = x
+        yy = np.zeros(len(_yy)+1, dtype=_xx.dtype)
+        yy[:-1] = _yy
+        yy[-1] = y
+        self.setData(xx, yy, **kargs)
+    
+    def closeCurve(self):
+        _xx, _yy = self.getData()
+        self.addPoint(_xx[0], _yy[0])
+    
+    def mask(self):
+        ymin, xmin, ymax, xmax = self.bbox()
+        _mask = np.zeros((ymax-ymin+1, xmax-xmin+1), dtype=bool)
+        local_xx, local_yy = self.getLocalData()
+        rr, cc = skimage.draw.polygon(local_yy, local_xx)
+        _mask[rr, cc] = True
+        return _mask
+    
+    def getLocalData(self):
+        _xx, _yy = self.getData()
+        return _xx - _xx.min(), _yy - _yy.min()
+
+    def slice(self, zRange=None):
+        ymin, xmin, ymax, xmax = self.bbox()
+        if zRange is not None:
+            zmin, zmax = zRange
+            _slice = (slice(zmin, zmax), slice(ymin, ymax+1), slice(xmin, xmax+1))
+        else:
+            _slice = (slice(ymin, ymax+1), slice(xmin, xmax+1))
+        return _slice
+    
+    def bbox(self):
+        _xx, _yy = self.getData()
+        return _yy.min(), _xx.min(), _yy.max(), _xx.max()
+
 
 class myHistogramLUTitem(baseHistogramLUTitem):
     sigGradientMenuEvent = pyqtSignal(object)

@@ -61,7 +61,8 @@ from PyQt5.QtWidgets import (
     QScrollBar, QCheckBox, QToolButton, QSpinBox, QGroupBox,
     QComboBox, QButtonGroup, QActionGroup, QFileDialog,
     QAbstractSlider, QMessageBox, QWidget, QDockWidget,
-    QDockWidget, QGridLayout, QGraphicsProxyWidget, QVBoxLayout
+    QDockWidget, QGridLayout, QGraphicsProxyWidget, QVBoxLayout,
+    QRadioButton
 )
 
 import pyqtgraph as pg
@@ -2368,6 +2369,16 @@ class guiWin(QMainWindow):
         self.labelRoiToolbar.addWidget(QLabel('ROI depth (n. of z-slices): '))
         self.labelRoiZdepthSpinbox = QSpinBox()
         self.labelRoiToolbar.addWidget(self.labelRoiZdepthSpinbox)
+        self.labelRoiToolbar.addWidget(QLabel('  '))
+        group = QButtonGroup()
+        group.setExclusive(True)
+        self.labelRoiIsRectRadioButton = QRadioButton('Rectangular ROI')
+        self.labelRoiIsRectRadioButton.setChecked(True)
+        self.labelRoiIsFreeHandRadioButton = QRadioButton('Freehand ROI')
+        group.addButton(self.labelRoiIsRectRadioButton)
+        group.addButton(self.labelRoiIsFreeHandRadioButton)
+        self.labelRoiToolbar.addWidget(self.labelRoiIsRectRadioButton)
+        self.labelRoiToolbar.addWidget(self.labelRoiIsFreeHandRadioButton)
         self.addToolBar(Qt.TopToolBarArea, self.labelRoiToolbar)
         self.labelRoiToolbar.setVisible(False)
 
@@ -3583,12 +3594,18 @@ class guiWin(QMainWindow):
                                  brush=pg.mkBrush((255,0,0,50)), size=15,
                                  pen=pg.mkPen(width=3, color='r'))
         self.ax2.addItem(self.ax2_binnedIDs_ScatterPlot)
+        
         self.ax2_ripIDs_ScatterPlot = pg.ScatterPlotItem()
         self.ax2_ripIDs_ScatterPlot.setData(
                                  [], [], symbol='x', pxMode=False,
                                  brush=pg.mkBrush((255,0,0,50)), size=15,
                                  pen=pg.mkPen(width=2, color='r'))
         self.ax2.addItem(self.ax2_ripIDs_ScatterPlot)
+
+        self.freeRoiItem = widgets.PlotCurveItem(
+            pen=pg.mkPen(color='r', width=2)
+        )
+        self.topLayerItems.append(self.freeRoiItem)
 
     def _warn_too_many_items(self, numItems):
         msg = widgets.myMessageBox()
@@ -3617,7 +3634,7 @@ class guiWin(QMainWindow):
         Y, X = self.currentLab2D.shape
         # Label ROI rectangle
         pen = pg.mkPen('r', width=3)
-        self.labelRoiItem = pg.ROI(
+        self.labelRoiItem = widgets.ROI(
             (0,0), (0,0),
             maxBounds=QRectF(QRect(0,0,X,Y)),
             scaleSnap=True,
@@ -4957,9 +4974,12 @@ class guiWin(QMainWindow):
         elif self.isMouseDragImg1 and self.labelRoiButton.isChecked():
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            x0, y0 = self.labelRoiItem.pos()
-            w, h = (xdata-x0), (ydata-y0)
-            self.labelRoiItem.setSize((w, h))
+            if self.labelRoiIsRectRadioButton.isChecked():
+                x0, y0 = self.labelRoiItem.pos()
+                w, h = (xdata-x0), (ydata-y0)
+                self.labelRoiItem.setSize((w, h))
+            elif self.labelRoiIsFreeHandRadioButton.isChecked():
+                self.freeRoiItem.addPoint(xdata, ydata)
     
     # @exec_time
     def fillHolesID(self, ID, sender='brush'):
@@ -5809,8 +5829,8 @@ class guiWin(QMainWindow):
 
             posData = self.data[self.pos_i]
 
-            x0, y0 = [int(round(c)) for c in self.labelRoiItem.pos()]
-            w, h = [int(round(c)) for c in self.labelRoiItem.size()]
+            if self.labelRoiIsFreeHandRadioButton.isChecked():
+                self.freeRoiItem.closeCurve()
 
             if self.isSegm3D:
                 filteredData = self.filteredData.get(self.user_ch_name)
@@ -5821,29 +5841,44 @@ class guiWin(QMainWindow):
                     # 3D filtered data (see self.applyFilter)
                     imgData = filteredData
                 roi_zdepth = self.labelRoiZdepthSpinbox.value()
-                if roi_zdepth%2 != 0:
-                    roi_zdepth +=1
-                half_zdepth = int(roi_zdepth/2)
-                zc = self.zSliceScrollBar.sliderPosition()
-                z0 = zc-half_zdepth
-                z0 = z0 if z0>=0 else 0
-                z1 = zc+half_zdepth+1
-                z1 = z1 if z1<posData.SizeZ else posData.SizeZ
-                self.labelRoiSlice = (
-                    slice(z0,z1), slice(y0,y0+h), slice(x0,x0+w)
-                )
-                roiImg = imgData[z0:z1, y0:y0+h, x0:x0+w]
+                if roi_zdepth == posData.SizeZ:
+                    z0 = 0
+                    z1 = posData.SizeZ
+                else:
+                    if roi_zdepth%2 != 0:
+                        roi_zdepth +=1
+                    half_zdepth = int(roi_zdepth/2)
+                    zc = self.zSliceScrollBar.sliderPosition() + 1
+                    z0 = zc-half_zdepth
+                    z0 = z0 if z0>=0 else 0
+                    z1 = zc+half_zdepth
+                    z1 = z1 if z1<posData.SizeZ else posData.SizeZ
+                if self.labelRoiIsRectRadioButton.isChecked():
+                    self.labelRoiSlice = self.labelRoiItem.slice(zRange=(z0,z1))
+                elif self.labelRoiIsFreeHandRadioButton.isChecked():
+                    self.labelRoiSlice = self.freeRoiItem.slice(zRange=(z0,z1))
             else:
-                self.labelRoiSlice = (slice(y0,y0+h), slice(x0,x0+w))
+                if self.labelRoiIsRectRadioButton.isChecked():
+                    self.labelRoiSlice = self.labelRoiItem.slice()
+                elif self.labelRoiIsFreeHandRadioButton.isChecked():
+                    self.labelRoiSlice = self.freeRoiItem.slice()
                 imgData = self.img1.image
-            
+
             roiImg = imgData[self.labelRoiSlice]
+            if self.labelRoiIsFreeHandRadioButton.isChecked():
+                # Fill outside of freehand roi with minimum of the ROI image
+                roiImg = roiImg.copy()
+                if self.isSegm3D:
+                    roiImg[:, ~self.freeRoiItem.mask()] = roiImg.min()
+                else:
+                    roiImg[~self.freeRoiItem.mask()] = roiImg.min()
 
             if self.labelRoiModel is None:
                 cancel = self.initLabelRoiModel()
                 if cancel:
                     self.labelRoiItem.setPos((0,0))
                     self.labelRoiItem.setSize((0,0))
+                    self.freeRoiItem.clear()
                     return
             
             roiSecondChannel = None
@@ -6531,7 +6566,10 @@ class guiWin(QMainWindow):
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
 
-            self.labelRoiItem.setPos((xdata, ydata))
+            if self.labelRoiIsRectRadioButton.isChecked():
+                self.labelRoiItem.setPos((xdata, ydata))
+            elif self.labelRoiIsFreeHandRadioButton.isChecked():
+                self.freeRoiItem.addPoint(xdata, ydata)
             
             self.isMouseDragImg1 = True
 
@@ -7332,6 +7370,9 @@ class guiWin(QMainWindow):
                     xx, yy = self.curvHoverPlotItem.getData()
                 except TypeError:
                     xx, yy = [], []
+                if x == xx[-1] and yy == yy[-1]:
+                    # Do not append point equal to last point
+                    return
                 xx = np.r_[xx, x]
                 yy = np.r_[yy, y]
                 try:
@@ -9154,9 +9195,12 @@ class guiWin(QMainWindow):
                 self.labelRoiGarbageWorkers.append(lastActiveWorker)
                 lastActiveWorker.finished.emit()
                 self.logger.info('Collected garbage worker (magic labeller).')
-
+            
+            self.labelRoiToolbar.setVisible(True)
             if self.isSegm3D:
-                self.labelRoiToolbar.setVisible(True)
+                self.labelRoiZdepthSpinbox.setDisabled(False)
+            else:
+                self.labelRoiZdepthSpinbox.setDisabled(True)
 
             # Start thread and pause it
             self.labelRoiThread = QThread()
@@ -9185,8 +9229,7 @@ class guiWin(QMainWindow):
             # Add the rectROI to ax1
             self.ax1.addItem(self.labelRoiItem)
         else:
-            if self.isSegm3D:
-                self.labelRoiToolbar.setVisible(False)
+            self.labelRoiToolbar.setVisible(False)
             
             for worker in self.labelRoiActiveWorkers:
                 worker._stop()
@@ -9195,6 +9238,7 @@ class guiWin(QMainWindow):
             
             self.labelRoiItem.setPos((0,0))
             self.labelRoiItem.setSize((0,0))
+            self.freeRoiItem.clear()
             self.ax1.removeItem(self.labelRoiItem)
     
     def labelRoiWorkerFinished(self):
@@ -9222,6 +9266,7 @@ class guiWin(QMainWindow):
         
         self.labelRoiItem.setPos((0,0))
         self.labelRoiItem.setSize((0,0))
+        self.freeRoiItem.clear()
         self.logger.info('Magic labeller done!')
         self.app.restoreOverrideCursor()        
 

@@ -37,7 +37,6 @@ class Model:
             filtered = self._preprocess(image, gauss_sigma)
             thresh = self._apply_threshold(filtered, threshold_method)
         
-        printl(np.any(thresh))
         labels = skimage.measure.label(thresh)
 
         return labels
