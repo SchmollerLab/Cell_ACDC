@@ -42,12 +42,16 @@ Development process
 
          # Navigate to a folder where you want to create the virtual env
          cd ~/.virtualenvs
+
          # Create a virtual env with the name you like, e.g., ``acdc-dev``
          python -m pip venv acdc-dev
+
          # Activate the environment (on PowerShell replace ``source`` with dot ``.``)
          source ~/.virtualenvs/acdc-dev/bin/activate
+
          # Navigate to the cloned folder path (parent folder of ``cellacdc``)
          cd Cell_ACDC
+
          # Install Cell-ACDC in developer mode
          pip install -e .
   
@@ -57,10 +61,13 @@ Development process
 
          # Create a virtual env with the name you like, e.g., ``acdc-dev``
          conda create -n acdc-dev
+
          # Activate the environment
          conda activate acdc-dev
+
          # Navigate to the cloned folder path (parent folder of ``cellacdc``)
          cd Cell_ACDC
+         
          # Install Cell-ACDC in developer mode
          pip install -e .
 
