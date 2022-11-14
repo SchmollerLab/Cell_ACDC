@@ -2092,8 +2092,15 @@ class ToSymDivWorker(QObject):
                 self.signals.sigUpdatePbarDesc.emit(f'Loading {pos_path}...')
 
                 # Use first found channel, it doesn't matter for metrics
-                chName = chNames[0]
-                file_path = myutils.getChannelFilePath(images_path, chName)
+                for chName in chNames:
+                    file_path = myutils.getChannelFilePath(images_path, chName)
+                    if file_path:
+                        break
+                else:
+                    raise FileNotFoundError(
+                        f'None of the channels "{chNames}" were found in the path '
+                        f'"{images_path}".'
+                    )
 
                 # Load data
                 posData = load.loadData(file_path, chName)

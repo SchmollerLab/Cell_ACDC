@@ -130,8 +130,15 @@ class AcdcToSymDivUtil(QDialog):
             images_path = os.path.join(pos_path, 'Images')
             basename, chNames = myutils.getBasenameAndChNames(images_path)
             # Use first found channel, it doesn't matter for metrics
-            chName = chNames[0]
-            filePath = myutils.getChannelFilePath(images_path, chName)
+            for chName in chNames:
+                filePath = myutils.getChannelFilePath(images_path, chName)
+                if filePath:
+                    break
+            else:
+                raise FileNotFoundError(
+                    f'None of the channels "{chNames}" were found in the path '
+                    f'"{images_path}".'
+                )
             _posData = load.loadData(filePath, chName)
             _posData.getBasenameAndChNames()
             segm_files = load.get_segm_files(_posData.images_path)

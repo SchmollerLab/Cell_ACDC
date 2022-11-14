@@ -1342,6 +1342,8 @@ class guiWin(QMainWindow):
         self.mainWin = mainWin
         self.app = app
         self.closeGUI = False
+
+        self.setAcceptDrops(True)
     
     def _printl(
             self, *objects, is_decorator=False, **kwargs
@@ -1410,7 +1412,6 @@ class guiWin(QMainWindow):
 
         self.setWindowTitle("Cell-ACDC - GUI")
         self.setWindowIcon(QIcon(":icon.ico"))
-        self.setAcceptDrops(True)
 
         self.checkableButtons = []
         self.LeftClickButtons = []
@@ -1508,13 +1509,14 @@ class guiWin(QMainWindow):
             exp_path = file_path
             basename = os.path.basename(file_path)
             if basename.find('Position_')!=-1 or basename=='Images':
-                event.accept()
+                event.acceptProposedAction()
             else:
                 event.ignore()
         else:
-            event.accept()
+            event.acceptProposedAction()
 
     def dropEvent(self, event):
+        printl(event)
         event.setDropAction(Qt.CopyAction)
         file_path = event.mimeData().urls()[0].toLocalFile()
         self.logger.info(f'Dragged and dropped path "{file_path}"')
@@ -1559,6 +1561,7 @@ class guiWin(QMainWindow):
                 self.slideshowWin.activateWindow()
 
     def enterEvent(self, event):
+        event.accept()
         if self.slideshowWin is not None:
             posData = self.data[self.pos_i]
             mainWinGeometry = self.geometry()

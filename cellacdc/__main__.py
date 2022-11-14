@@ -129,6 +129,7 @@ class mainWin(QMainWindow):
         super().__init__(parent)
         self.setWindowTitle("Cell-ACDC")
         self.setWindowIcon(QIcon(":icon.ico"))
+        self.setAcceptDrops(True)
 
         logger, logs_path, log_path, log_filename = myutils.setupLogger(
             module='main'
@@ -250,6 +251,9 @@ class mainWin(QMainWindow):
         self.dataPrepWin = None
         self._version = None
         self.progressWin = None
+    
+    def dragEnterEvent(self, event) -> None:
+        printl(event)
     
     def log(self, text):
         self.logger.info(text)
