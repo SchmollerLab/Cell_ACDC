@@ -188,21 +188,21 @@ def get_add_custom_model_instructions():
     kwargs_color = (208/255,88/255,9/255) # reddish/orange
     class_color = (215/255,58/255,73/255) # reddish
     blue_color = (0/255,92/255,197/255) # blueish
-    class_sh = html_utils.span('<i>class</i>', color=class_color)
-    def_sh = html_utils.span('<i>def</i>', color=class_color)
-    kwargs_sh = html_utils.span('**kwargs', color=kwargs_color)
-    Model_sh = html_utils.span('Model', color=func_color)
-    segment_sh = html_utils.span('segment', color=func_color)
-    predict_sh = html_utils.span('predict', color=func_color)
-    init_sh = html_utils.span('__init__', color=blue_color)
-    myModel_sh = html_utils.span('MyModel', color=func_color)
-    return_sh = html_utils.span('<i>return</i>', color=class_color)
-    equal_sh = html_utils.span('=', color=class_color)
-    open_par_sh = html_utils.span('(', color=blue_color)
-    close_par_sh = html_utils.span(')', color=blue_color)
-    image_sh = html_utils.span('image', color=kwargs_color)
-    from_sh = html_utils.span('<i>from</i>', color=class_color)
-    import_sh = html_utils.span('<i>import</i>', color=class_color)
+    class_sh = html_utils.class_sh
+    def_sh = html_utils.def_sh
+    kwargs_sh = html_utils.kwargs_sh
+    Model_sh = html_utils.Model_sh
+    segment_sh = html_utils.segment_sh
+    predict_sh = html_utils.predict_sh
+    init_sh = html_utils.init_sh
+    myModel_sh = html_utils.myModel_sh
+    return_sh = html_utils.return_sh
+    equal_sh = html_utils.equal_sh
+    open_par_sh = html_utils.open_par_sh
+    close_par_sh = html_utils.close_par_sh
+    image_sh = html_utils.image_sh
+    from_sh = html_utils.from_sh
+    import_sh = html_utils.import_sh
     s = html_utils.paragraph(f"""
     To use a custom model first <b>create a folder</b> with the same name of your model.<br><br>
     Inside this new folder create a file named <code>acdcSegment.py</code>.<br><br>

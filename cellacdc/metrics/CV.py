@@ -1,6 +1,9 @@
 import numpy as np
 
-def CV(signal, autoBkgr, dataPrepBkgr, objectRp, correct_with_bkgr=False, which_bkgr='auto'):
+def CV(
+        signal, autoBkgr, dataPrepBkgr, objectRp, 
+        correct_with_bkgr=False, which_bkgr='auto'
+    ):
     """Function used to calculate coefficient of variation.
 
     NOTE: Make sure to call the function with the same name as the Python file

@@ -1,6 +1,9 @@
 import numpy as np
 
-def combine_metrics_example(signal, autoBkgr, dataPrepBkgr, objectRp, metrics_values, correct_with_bkgr=False, which_bkgr='auto'):
+def combine_metrics_example(
+        signal, autoBkgr, dataPrepBkgr, objectRp, metrics_values, image, lab,
+        correct_with_bkgr=False, which_bkgr='auto', isSegm3D=False
+    ):
     """Function used to show how to combine multiple metrics in a custom function.
 
     NOTE 1: Make sure to call the function with the same name as the Python file
@@ -34,6 +37,10 @@ def combine_metrics_example(signal, autoBkgr, dataPrepBkgr, objectRp, metrics_va
             - mCitrine_mean = metrics_values['mCitrine_mean']
             - _mean_key = [key for key in metrics_values if key.endswith('_mean')][0] 
               _mean = metrics_values[_mean_key]
+    image: numpy array
+        Image signal being analysed (if time-lapse this is the current frame)
+    lab: numpy array
+        Segmentation mask of `image`
     correct_with_bkgr : boolean
         Pass True if you need background correction.
     which_bkgr : string
@@ -43,7 +50,7 @@ def combine_metrics_example(signal, autoBkgr, dataPrepBkgr, objectRp, metrics_va
     Returns
     -------
     float
-        Coefficient of Variation
+        Numerical value of the computed metric
 
     """
     # Here we show the code required to compute the concentration for ALL channels

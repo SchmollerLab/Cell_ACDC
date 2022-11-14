@@ -111,6 +111,9 @@ def get_custom_metrics_func():
         if ext != '.py':
             # print(f'The file {file} is not a python file. Ignoring it.')
             continue
+        if module_name == 'combine_metrics_example':
+            # Ignore the example
+            continue
         try:
             module = import_module(module_name)
             func = getattr(module, module_name)
@@ -796,6 +799,21 @@ def add_metrics_instructions():
     href = f'<a href="{url}">here</a>'
     rp_url = f'https://scikit-image.org/docs/stable/api/skimage.measure.html#skimage.measure.regionprops'
     rp_href = f'<a href="{rp_url}">skimage.measure.regionproperties</a>'
+    def_sh = html_utils.def_sh
+    CV_sh = html_utils.CV_sh
+    open_par_sh = html_utils.open_par_sh
+    close_par_sh = html_utils.close_par_sh
+    if_sh = html_utils.if_sh
+    elif_sh = html_utils.elif_sh
+    equal_sh = html_utils.equal_sh
+    np_mean_sh = html_utils.np_mean_sh
+    np_std_sh = html_utils.np_std_sh
+    return_sh = html_utils.return_sh
+    is_not_sh = html_utils.is_not_sh
+    args_sh = html_utils.span(
+        'signal, autoBkgr, dataPrepBkgr, objectRp, correct_with_bkgr=False, '
+        'which_bkgr="auto"', color=html_utils.kwargs_color
+    )
     s = html_utils.paragraph(f"""
     To add custom metrics to the <code>acdc_output.csv</code>
     file you need to <b>create a python script and save it into the
@@ -806,17 +824,17 @@ def add_metrics_instructions():
     similar to the example below:<br><br>
     Pseudo-code:
     <pre><code>
-    def <b>CV</b>(signal, autoBkgr, dataPrepBkgr, objectRp, correct_with_bkgr=False, which_bkgr='auto'):
-        if correct_with_bkgr:
-            if which_bkgr=='auto':
-                signal = signal - autoBkgr
-            elif dataPrepBkgr is not None:
-                signal = signal - dataPrepBkgr
+    {def_sh} {CV_sh}{open_par_sh}{args_sh}{close_par_sh}:
+        {if_sh} correct_with_bkgr:
+            {if_sh} which_bkgr {equal_sh}{equal_sh} 'auto':
+                signal {equal_sh} signal - autoBkgr
+            {elif_sh} dataPrepBkgr {is_not_sh} None:
+                signal {equal_sh} signal - dataPrepBkgr
 
         <i># Here goes your custom metric computation</i>
-        CV = np.std(signal)/np.mean(signal)
+        CV = {np_std_sh}(signal)/{np_mean_sh}(signal)
 
-        return CV
+        {return_sh} CV
     </code></pre>
     where <code>signal</code> is a vector contaning the fluorescent intesities 
     from the segmented object, <code>autoBkgr</code> is the median of the 
@@ -825,7 +843,7 @@ def add_metrics_instructions():
     background ROI drawn in the data prep step, and <code>objectRp</code> 
     are the region properties of the segmented object computed with 
     the function <code>{rp_href}</code>.<br><br>
-    Have a look at the <code>CV.py</code> file (click on "Show example..." below)
+    Have a look at the <code>combine_metrics_example.py</code> file (click on "Show example..." below)
     for a full example.<br><br>
     <i>If it doesn't work, please report the issue {href} with the
     code you wrote. Thanks.</i>
