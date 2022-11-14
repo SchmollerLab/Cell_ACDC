@@ -581,10 +581,22 @@ class bioFormatsWorker(QObject):
         }, index=['values']).T
         df.index.name = 'Description'
 
-        ch_metadata = self.chNames.copy()
-        description = [f'channel_{c}_name' for c in range(self.SizeC)]
-        ch_metadata.extend(self.emWavelens)
-        description.extend([f'channel_{c}_emWavelen' for c in range(self.SizeC)])
+        ch_metadata = [
+            chName for c, chName in enumerate(self.chNames)
+            if self.saveChannels[c]
+        ]
+        description = [
+            f'channel_{c}_name' for c in range(self.SizeC) 
+            if self.saveChannels[c]
+        ]
+        ch_metadata.extend([
+            wavelen for c, wavelen in enumerate(self.emWavelens)
+            if self.saveChannels[c]
+        ])
+        description.extend([
+            f'channel_{c}_emWavelen' for c in range(self.SizeC)
+            if self.saveChannels[c]
+        ])
 
         df_channelNames = pd.DataFrame({
             'Description': description,
@@ -592,6 +604,28 @@ class bioFormatsWorker(QObject):
         }).set_index('Description')
 
         df = pd.concat([df, df_channelNames])
+
+        if os.path.exists(metadata_csv_path):
+            # Keep channel names already existing and not saved now
+            existing_df = pd.read_csv(metadata_csv_path).set_index('Description')
+            for c, chName in enumerate(self.chNames):
+                if self.saveChannels[c]:
+                    continue
+                chName_idx = f'channel_{c}_name'
+                chWavelen_idx = f'channel_{c}_emWavelen'
+                try:
+                    existing_chName = existing_df.at[chName_idx, 'values']
+                    df.at[chName_idx, 'values'] = existing_chName
+                except Exception as e:
+                    traceback.print_exc()
+                    pass
+                
+                try:
+                    existing_chWavelen = existing_df.at[chWavelen_idx, 'values']
+                    df.at[chWavelen_idx, 'values'] = existing_chWavelen
+                except Exception as e:
+                    traceback.print_exc()
+                    pass
 
         df.to_csv(metadata_csv_path)
 
@@ -1419,7 +1453,7 @@ class createDataStructWin(QMainWindow):
     def warnMultipleFiles(self, files):
         win = apps.QDialogCombobox(
             'Multiple microscopy files detected!', files,
-             '<p style="font-size:11px">'
+             '<p style="font-size:13px">'
              'You selected "Single microscopy file", '
              'but the <b>folder contains multiple files</b>.<br>'
              '</p>',
