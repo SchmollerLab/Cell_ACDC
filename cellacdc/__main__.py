@@ -324,16 +324,20 @@ class mainWin(QMainWindow):
         menuBar.addMenu(self.recentPathsMenu)
 
         utilsMenu = QMenu("&Utilities", self)
+
+        convertMenu = utilsMenu.addMenu('Convert file formats')
+        convertMenu.addAction(self.npzToNpyAction)
+        convertMenu.addAction(self.npzToTiffAction)
+        convertMenu.addAction(self.TiffToNpzAction)
+        convertMenu.addAction(self.h5ToNpzAction)
+        convertMenu.addAction(self.toImageJroiAction)
+
         utilsMenu.addAction(self.concatAcdcDfsAction)
         utilsMenu.addAction(self.calcMetricsAcdcDf)
         utilsMenu.addAction(self.combineMetricsMultiChannelAction)  
         utilsMenu.addAction(self.toSymDivAction)
-        utilsMenu.addAction(self.trackSubCellFeaturesAction)  
-        utilsMenu.addAction(self.npzToNpyAction)
-        utilsMenu.addAction(self.npzToTiffAction)
-        utilsMenu.addAction(self.TiffToNpzAction)
-        utilsMenu.addAction(self.h5ToNpzAction)
-        utilsMenu.addAction(self.toImageJroiAction)    
+        utilsMenu.addAction(self.trackSubCellFeaturesAction)          
+            
         utilsMenu.addAction(self.batchConverterAction)
         utilsMenu.addAction(self.repeatDataPrepAction)
         utilsMenu.addAction(self.alignAction)
