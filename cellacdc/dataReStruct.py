@@ -47,7 +47,7 @@ def run(mainWin):
     if selectHowWin.cancel:
         return False
     
-    mainWin.log(f'Selected file structure = "{selectHowWin.selectedItemText}"')
+    mainWin.log(f'[Data Re-Struct] Selected file structure = "{selectHowWin.selectedItemText}"')
 
     msg = widgets.myMessageBox(showCentered=False, wrapText=False)
     txt = html_utils.paragraph("""
@@ -65,7 +65,7 @@ def run(mainWin):
         return False
     
     mainWin.log(
-        'Asking to select the folder that contains the image files...'
+        '[Data Re-Struct] Asking to select the folder that contains the image files...'
     )
     MostRecentPath = myutils.getMostRecentPath()
     rootFolderPath = QFileDialog.getExistingDirectory(
@@ -75,7 +75,7 @@ def run(mainWin):
         return False
     
     mainWin.log(
-        'Asking in which folder to save the images files...'
+        '[Data Re-Struct] Asking in which folder to save the images files...'
     )
     dstFolderPath = QFileDialog.getExistingDirectory(
         mainWin, 'Select the folder in which to save the images files',
@@ -85,7 +85,7 @@ def run(mainWin):
     if not rootFolderPath:
         return False
     
-    mainWin.log('Checking file format of loaded files...')
+    mainWin.log('[Data Re-Struct] Checking file format of loaded files...')
     validFilenames = checkFileFormat(rootFolderPath, mainWin)
     if not validFilenames:
         return False
@@ -153,7 +153,7 @@ def _run_multi_files_timepoints(
     mainWin.thread = QThread()
     mainWin.restructWorker = workers.RestructMultiTimepointsWorker(
         win.allChannels, frame_name_pattern, win.basename, validFilenames,
-        rootFolderPath, dstFolderPath
+        rootFolderPath, dstFolderPath, segmFolderPath=win.segmFolderPath
     )
     mainWin.restructWorker.moveToThread(mainWin.thread)
     mainWin.restructWorker.signals.finished.connect(mainWin.thread.quit)

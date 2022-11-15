@@ -580,7 +580,7 @@ class segmWin(QMainWindow):
         contains_images_folder = os.path.exists(
             os.path.join(exp_path, 'Images')
         )
-        if contains_images_folder:
+        if contains_images_folder and not is_pos_folder:
             is_images_folder = True
             exp_path = os.path.join(exp_path, 'Images')
 

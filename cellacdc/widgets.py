@@ -26,7 +26,7 @@ from PyQt5.QtCore import (
 from PyQt5.QtGui import (
     QFont, QPalette, QColor, QPen, QPaintEvent, QBrush, QPainter,
     QRegExpValidator, QIcon, QPixmap, QKeySequence, QLinearGradient,
-    QShowEvent, QMouseEvent
+    QShowEvent, QMouseEvent, QFontMetrics
 )
 from PyQt5.QtWidgets import (
     QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
@@ -322,13 +322,17 @@ class delPushButton(QPushButton):
 class browseFileButton(QPushButton):
     sigPathSelected = pyqtSignal(str)
 
-    def __init__(self, *args, ext=None, title='Select file', start_dir=''):
+    def __init__(
+            self, *args, ext=None, title='Select file', start_dir='', 
+            openFolder=False
+        ):
         super().__init__(*args)
         self.setIcon(QIcon(':folder-open.svg'))
         self.clicked.connect(self.browse)
         self._file_types = 'All Files (*)'
         self._title = title
         self._start_dir = start_dir
+        self._openFolder = openFolder
         if ext is not None:
             s = ''
             s_li = []
@@ -342,9 +346,15 @@ class browseFileButton(QPushButton):
             self._file_types = f'{self._file_types};;All Files (*)'
 
     def browse(self):
-        file_path = QFileDialog.getOpenFileName(
-            self, self._title, self._start_dir, self._file_types
-        )[0]
+        if self._openFolder:
+            fileDialog = QFileDialog.getExistingDirectory
+            args = (self, self._title, self._start_dir)
+        else:
+            fileDialog = QFileDialog.getOpenFileName
+            args = (self, self._title, self._start_dir, self._file_types)
+        file_path = fileDialog(*args)
+        if not isinstance(file_path, str):
+            file_path = file_path[0]
         if file_path:
             self.sigPathSelected.emit(file_path)
 
@@ -393,6 +403,45 @@ def getPushButton(buttonText, qparent=None):
         button = QPushButton(buttonText, qparent)
     
     return button, isCancelButton
+
+class ElidingLineEdit(QLineEdit):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._text = ''
+    
+    def setText(self, text: str, width=None, elide=True) -> None:
+        if width is None:
+            width = self.width()
+        self._text = text
+        if not elide:
+            super().setText(text)
+            return
+
+        fm = QFontMetrics(self.font())
+        elidedText = fm.elidedText(text, Qt.ElideLeft, width)
+        
+        super().setText(elidedText)
+        self.setToolTip(text)
+    
+    def text(self):
+        return self._text
+
+    def resizeEvent(self, event):
+        newWidth = event.size().width()
+        self.setText(self._text, width=newWidth)
+        event.accept()
+    
+    def focusInEvent(self, event):
+        super().focusInEvent(event)
+        self.setText(self._text, elide=False)
+        self.setCursorPosition(len(self.text()))
+
+    def focusOutEvent(self, event):
+        super().focusOutEvent(event)
+        self.setText(self._text)
 
 class ValidLineEdit(QLineEdit):
     def __init__(self, parent=None):
