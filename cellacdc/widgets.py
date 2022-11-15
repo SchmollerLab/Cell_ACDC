@@ -2166,6 +2166,12 @@ class readOnlySpinbox(QSpinBox):
         self.setMaximum(2**31-1)
         self.setStyleSheet('background-color: rgba(240, 240, 240, 200);')
 
+class SpinBox(QSpinBox):
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
+        self.setAlignment(Qt.AlignCenter)
+        self.setMaximum(2**31-1)
+
 class ReadOnlyLineEdit(QLineEdit):
     def __init__(self, parent=None):
         super().__init__(parent=parent)
