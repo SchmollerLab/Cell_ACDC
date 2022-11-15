@@ -109,15 +109,14 @@ class renameFilesWin(QMainWindow):
             f'Cell-ACDC - Renaming files - "{exp_path}"'
         )
 
-        if os.path.basename(exp_path).find('Position_') != -1:
-            is_pos_folder = True
-        else:
-            is_pos_folder = False
-
-        if os.path.basename(exp_path).find('Images') != -1:
+        is_pos_folder = os.path.basename(exp_path).find('Position_') != -1
+        is_images_folder = os.path.basename(exp_path) == 'Images'
+        contains_images_folder = os.path.exists(
+            os.path.join(exp_path, 'Images')
+        )
+        if contains_images_folder:
             is_images_folder = True
-        else:
-            is_images_folder = False
+            exp_path = os.path.join(exp_path, 'Images')
 
         print('Loading data...')
 
