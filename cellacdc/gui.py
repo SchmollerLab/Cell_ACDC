@@ -10890,7 +10890,7 @@ class guiWin(QMainWindow):
             init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
             # Prompt user to enter the model parameters
             try:
-                url = acdcSegment.help_url
+                url = acdcSegment.url_help()
             except AttributeError:
                 url = None
             
@@ -11063,7 +11063,7 @@ class guiWin(QMainWindow):
         init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
         # Prompt user to enter the model parameters
         try:
-            url = acdcSegment.help_url
+            url = acdcSegment.url_help()
         except AttributeError:
             url = None
         
@@ -17093,7 +17093,13 @@ class guiWin(QMainWindow):
         myutils.addToRecentPaths(exp_path, logger=self.logger)
 
         is_pos_folder = os.path.basename(exp_path).find('Position_') != -1
-        is_images_folder = os.path.basename(exp_path).find('Images') != -1
+        is_images_folder = os.path.basename(exp_path) == 'Images'
+        contains_images_folder = os.path.exists(
+            os.path.join(exp_path, 'Images')
+        )
+        if contains_images_folder and not is_pos_folder:
+            is_images_folder = True
+            exp_path = os.path.join(exp_path, 'Images')
 
         self.titleLabel.setText('Loading data...', color=self.titleColor)
 

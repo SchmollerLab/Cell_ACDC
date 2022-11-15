@@ -722,7 +722,7 @@ def getModelArgSpec(acdcSegment):
 
     segment_ArgSpec = inspect.getfullargspec(acdcSegment.Model.segment)
     segment_params = []
-    if len(segment_ArgSpec.args)>1:
+    if len(segment_ArgSpec.args)>2:
         iter = zip(segment_ArgSpec.args[2:], segment_ArgSpec.defaults)
         for arg, default in iter:
             param = ArgSpec(name=arg, default=default, type=type(default))
@@ -1194,7 +1194,7 @@ def imagej_tiffwriter(
 
         if metadata is None:
             metadata = {}
-        new_tif.save(data, metadata=metadata)
+        new_tif.save(data)
 
 def from_lab_to_imagej_rois(lab, ImagejRoi, t=0, SizeT=1, max_ID=None):
     if max_ID is None:

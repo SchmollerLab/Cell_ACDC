@@ -525,7 +525,10 @@ class bioFormatsWorker(QObject):
             dimsIdx['t'] = t
             for z in range(self.SizeZ):
                 dimsIdx['z'] = z
-                idx = self.getIndex(idxs, dimsIdx, self.DimensionOrder)
+                if self.rawDataStruct != 2:
+                    idx = self.getIndex(idxs, dimsIdx, self.DimensionOrder)
+                else:
+                    idx = None
                 imgData = reader.read(
                     c=ch_idx, z=z, t=t, series=series, rescale=False,
                     index=idx

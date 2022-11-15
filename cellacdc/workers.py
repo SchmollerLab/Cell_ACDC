@@ -1505,9 +1505,11 @@ class TrackSubCellObjectsWorker(BaseWorkerUtil):
         self.signals.finished.emit(self)
 
 class RestructMultiTimepointsWorker(BaseWorkerUtil):
+    sigSaveTiff = pyqtSignal(str, object, object)
+
     def __init__(
             self, allChannels, frame_name_pattern, basename, validFilenames,
-            rootFolderPath, dstFolderPath
+            rootFolderPath, dstFolderPath, segmFolderPath=''
         ):
         super().__init__(None)
         self.allChannels = allChannels
@@ -1516,6 +1518,9 @@ class RestructMultiTimepointsWorker(BaseWorkerUtil):
         self.validFilenames = validFilenames
         self.rootFolderPath = rootFolderPath
         self.dstFolderPath = dstFolderPath
+        self.segmFolderPath = segmFolderPath
+        self.mutex = QMutex()
+        self.waitCond = QWaitCondition()
 
     @worker_exception_handler
     def run(self):
@@ -1523,6 +1528,7 @@ class RestructMultiTimepointsWorker(BaseWorkerUtil):
         frame_name_pattern = self.frame_name_pattern
         rootFolderPath = self.rootFolderPath
         dstFolderPath = self.dstFolderPath
+        segmFolderPath = self.segmFolderPath
         filesInfo = {}
         self.signals.initProgressBar.emit(len(self.validFilenames)+1)
         for file in self.validFilenames:
@@ -1559,11 +1565,10 @@ class RestructMultiTimepointsWorker(BaseWorkerUtil):
         allPosDataInfo = []
         for p, (posName, channelInfo) in enumerate(filesInfo.items()):
             self.logger.log(f'='*40)
-            self.logger.log(
-                f'Processing position "{posName}"...'
-            )
+            self.logger.log(f'Processing position "{posName}"...')
 
             for _, filesList in channelInfo.items():
+                # Get info from first file
                 filePath = os.path.join(rootFolderPath, filesList[0][0])
                 try:
                     img = skimage.io.imread(filePath)
@@ -1608,6 +1613,7 @@ class RestructMultiTimepointsWorker(BaseWorkerUtil):
 
                 # Iterate frames
                 videoData = None
+                srcSegmPaths = ['']*SizeT
                 frameNumbers = []
                 for frame_i, fileInfo in enumerate(sortedFilesList):
                     file, _ = fileInfo
@@ -1621,10 +1627,13 @@ class RestructMultiTimepointsWorker(BaseWorkerUtil):
                         videoData[frame_i] = img
                         frameNumber = int(re.findall(fr'_(\d+){ext}', file)[0])
                         frameNumbers.append(frameNumber)
-                        dataType = img.dtype
                     except Exception as e:
                         self.logger.log(traceback.format_exc())
                         continue
+
+                    if segmFolderPath and c==0:
+                        srcSegmFilePath = os.path.join(segmFolderPath, file)
+                        srcSegmPaths[frame_i] = srcSegmFilePath
 
                     SizeZ = 1
                     if img.ndim == 3:
@@ -1643,9 +1652,13 @@ class RestructMultiTimepointsWorker(BaseWorkerUtil):
                 else:
                     imgFileName = f'{basename}{channelName}.tif'
                     dstImgFilePath = os.path.join(imagesPath, imgFileName)
+                    dstSegmFileName = f'{basename}segm_{channelName}.npz'
+                    dstSegmPath = os.path.join(imagesPath, dstSegmFileName)
                     imgDataInfo = {
                         'path': dstImgFilePath, 'SizeT': SizeT, 'SizeZ': SizeZ,
-                        'data': videoData, 'frameNumbers': frameNumbers
+                        'data': videoData, 'frameNumbers': frameNumbers,
+                        'dst_segm_path': dstSegmPath, 
+                        'src_segm_paths': srcSegmPaths
                     }
                     allPosDataInfo.append(imgDataInfo)
 
@@ -1667,6 +1680,7 @@ class RestructMultiTimepointsWorker(BaseWorkerUtil):
         self.logger.log('Saving image files...')
         maxSizeT = max([d['SizeT'] for d in allPosDataInfo])
         minFrameNumber = min([d['frameNumbers'][0] for d in allPosDataInfo])
+        # Pad missing frames in video files according to frame number
         for p, imgDataInfo in enumerate(allPosDataInfo):
             SizeT = imgDataInfo['SizeT']
             SizeZ = imgDataInfo['SizeZ']
@@ -1674,17 +1688,51 @@ class RestructMultiTimepointsWorker(BaseWorkerUtil):
             videoData = imgDataInfo['data']
             frameNumbers = imgDataInfo['frameNumbers']
             paddedShape = (maxSizeT, *videoData.shape[1:])
+            imgDataInfo['paddedShape'] = paddedShape
             dtype = videoData.dtype
             paddedVideoData = np.zeros(paddedShape, dtype=dtype)
             for n, img in zip(frameNumbers, videoData):
                 frame_i = n - minFrameNumber
                 paddedVideoData[frame_i] = img
 
-            myutils.imagej_tiffwriter(
-                dstImgFilePath, paddedVideoData, None, SizeT, SizeZ
-            )
+            del videoData
+            imgDataInfo['data'] = None
 
-            self.signals.progressBar.emit(1)
+            self.mutex.lock()        
+            self.sigSaveTiff.emit(dstImgFilePath, paddedVideoData, self.waitCond)
+            self.waitCond.wait(self.mutex)
+            self.mutex.unlock()        
+
+            self.signals.progressBar.emit(1)      
+
+        if not segmFolderPath:
+            self.signals.finished.emit(self)
+            return
+
+        self.signals.initProgressBar.emit(len(allPosDataInfo))
+        self.logger.log('Saving segmentation files...')
+        for p, imgDataInfo in enumerate(allPosDataInfo):
+            SizeT = imgDataInfo['SizeT']
+            frameNumbers = imgDataInfo['frameNumbers']
+            SizeT = imgDataInfo['SizeT']
+            SizeZ = imgDataInfo['SizeZ']
+            frameNumbers = imgDataInfo['frameNumbers']
+            paddedShape = imgDataInfo['paddedShape']
+            segmData = np.zeros(paddedShape, dtype=np.uint16)
+            for n, segmFilePath in zip(frameNumbers, imgDataInfo['src_segm_paths']):
+                frame_i = n - minFrameNumber
+                try:
+                    lab = skimage.io.imread(segmFilePath).astype(np.uint16)
+                    segmData[frame_i] = lab
+                except Exception as e:
+                    self.logger.log(traceback.format_exc())
+                    self.logger.log(
+                        'WARNING: The following segmentation file does not '
+                        f'exist, saving empty masks: "{srcSegmFilePath}"'
+                    ) 
+
+            np.savez_compressed(imgDataInfo['dst_segm_path'], segmData)
+            del segmData 
 
         self.signals.finished.emit(self)
 

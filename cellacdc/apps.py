@@ -2929,7 +2929,10 @@ class MultiTimePointFilePattern(QBaseDialog):
             all the image files.<br><br>
             Please, <b>provide the channel names</b> below. 
             Optionally, you can provide a basename<br>
-            that will be pre-pended to the name of all created files.<br>
+            that will be pre-pended to the name of all created files.<br><br>
+            You can also provide a folder path containing the segmentation masks file.<br>
+            These files <b>MUST be named exactly as the raw files</b>.
+            <br>
         """)
         
         noteLayout = QHBoxLayout()
@@ -3017,6 +3020,22 @@ class MultiTimePointFilePattern(QBaseDialog):
         self.relPathEntry.setAlignment(Qt.AlignCenter)
         for j, w in enumerate(items):
             self.vLayouts[j].addWidget(w)
+        
+        row += 1
+        items = (
+            QLabel('Segmentation masks folder path: '), 
+            widgets.ElidingLineEdit(), 
+            widgets.browseFileButton(
+                'Browse...',
+                title='Select folder containing segmentation masks',
+                start_dir=folderPath, openFolder=True
+            )
+        )
+        label, self.segmFolderPathEntry, button = items
+        button.sigPathSelected.connect(self.segmFolderpathSelected)
+        self.segmFolderPathEntry.setAlignment(Qt.AlignCenter)
+        for j, w in enumerate(items):
+            self.vLayouts[j].addWidget(w)
 
         self.formLayout = formLayout
 
@@ -3045,6 +3064,9 @@ class MultiTimePointFilePattern(QBaseDialog):
         self.setLayout(mainLayout)
 
         self.setFont(font)
+    
+    def segmFolderpathSelected(self, path):
+        self.segmFolderPathEntry.setText(path)
     
     def addChannel(self):
         self.addChannelButton._row += 1 
@@ -3113,6 +3135,7 @@ class MultiTimePointFilePattern(QBaseDialog):
             return
         self.allChannels = allChannels
         self.basename = self.baseNameLE.text()
+        self.segmFolderPath = self.segmFolderPathEntry.text()
         self.cancel = False
         self.close()
     

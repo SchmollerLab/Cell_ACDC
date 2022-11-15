@@ -114,8 +114,7 @@ class Model:
         return img
 
     def segment(self,
-                image,
-                model_type='Leave Blank'):
+                image):
         """
         Uses initialized model with weights and image to
         label cells in segmentation mask.
@@ -191,3 +190,6 @@ class Model:
             lab = utils.label_seg(seg=results[0, :, :, 0])
 
         return lab.astype(np.uint16)
+
+def url_help():
+    return 'https://gitlab.com/dunloplab/delta'
