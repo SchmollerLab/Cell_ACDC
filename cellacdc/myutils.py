@@ -1540,7 +1540,7 @@ def import_tracker(posData, trackerName, realTime=False, qparent=None):
     elif trackerName == 'delta':
         paramsWin = apps.DeltaTrackerParamsWin(parent=qparent)
         paramsWin.exec_()
-        params = paramsWin.params
+        init_params = paramsWin.params
     else:
         init_argspecs, track_argspecs = getTrackerArgSpec(
             trackerModule, realTime=realTime

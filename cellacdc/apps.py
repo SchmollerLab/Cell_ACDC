@@ -2718,6 +2718,24 @@ class DeltaTrackerParamsWin(QDialog):
         }
         self.close()
 
+    def cancel_cb(self, event):
+        self.cancel = True
+        self.close()
+
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        super().show()
+        self.resize(int(self.width()*1.3), self.height())
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()
+
 class QDialogWorkerProgress(QDialog):
     sigClosed = pyqtSignal(bool)
 
