@@ -633,8 +633,8 @@ class dataPrepWin(QMainWindow):
             return
 
         self.update_img()
-        self.updateBkgrROIs()
         self.updateROI()
+        self.updateBkgrROIs()
 
     @myutils.exception_handler
     def crop(self, data, posData):
