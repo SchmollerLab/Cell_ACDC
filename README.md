@@ -40,7 +40,7 @@ If you find Cell-ACDC useful, please cite:
 
 ## How to contribute
 
-See instructions [here](https://github.com/SchmollerLab/Cell_ACDC/blob/main/CONTRIBUTING.rst).
+Contributions to Cell-ACDC are always very welcome! For more details see instructions [here](https://github.com/SchmollerLab/Cell_ACDC/blob/main/CONTRIBUTING.rst).
 
 ## Overview
 
