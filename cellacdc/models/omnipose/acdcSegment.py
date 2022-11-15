@@ -11,8 +11,6 @@ from cellpose_omni import models
 from cellacdc.models import OMNI_MODELS
 from cellacdc import printl
 
-help_url = 'https://omnipose.readthedocs.io/'
-
 class Model:
     def __init__(self, model_type='bact_phase_omni', net_avg=False, gpu=False):
         if model_type not in OMNI_MODELS:
@@ -103,4 +101,4 @@ class Model:
         return labels
 
 def url_help():
-    return 'https://cellpose.readthedocs.io/en/latest/api.html'
+    return 'https://omnipose.readthedocs.io/'

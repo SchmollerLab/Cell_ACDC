@@ -11,8 +11,6 @@ from cellpose import models
 from cellacdc.models import CELLPOSE_MODELS
 from cellacdc import printl
 
-help_url = 'https://cellpose.readthedocs.io/en/latest/api.html'
-
 class Model:
     def __init__(self, model_type='cyto', net_avg=False, gpu=False):
         if model_type not in CELLPOSE_MODELS:

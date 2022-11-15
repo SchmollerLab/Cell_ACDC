@@ -10890,7 +10890,7 @@ class guiWin(QMainWindow):
             init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
             # Prompt user to enter the model parameters
             try:
-                url = acdcSegment.help_url
+                url = acdcSegment.url_help()
             except AttributeError:
                 url = None
             
@@ -11063,7 +11063,7 @@ class guiWin(QMainWindow):
         init_params, segment_params = myutils.getModelArgSpec(acdcSegment)
         # Prompt user to enter the model parameters
         try:
-            url = acdcSegment.help_url
+            url = acdcSegment.url_help()
         except AttributeError:
             url = None
         
