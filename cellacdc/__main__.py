@@ -900,7 +900,7 @@ class mainWin(QMainWindow):
         )
         if msg.cancel:
             self.logger.info('Creating data structure process aborted by the user.')
-            self.restoreDefaultButton()
+            self.restoreDefaultButtons()
             return
         
         useBioFormats = msg.clickedButton == useBioFormatsButton
@@ -928,6 +928,9 @@ class mainWin(QMainWindow):
             self.workerName = 'Re-structure image files'
             success = dataReStruct.run(self)
             if not success:
+                self.progressWin.workerFinished = True
+                self.progressWin.close()
+                self.restoreDefaultButtons()
                 self.logger.info('Re-structuring files NOT completed.')
     
     def progressWinClosed(self):

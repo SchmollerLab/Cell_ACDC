@@ -1194,7 +1194,7 @@ def imagej_tiffwriter(
 
         if metadata is None:
             metadata = {}
-        new_tif.save(data, metadata=metadata)
+        new_tif.save(data)
 
 def from_lab_to_imagej_rois(lab, ImagejRoi, t=0, SizeT=1, max_ID=None):
     if max_ID is None:
