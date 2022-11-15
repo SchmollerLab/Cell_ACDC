@@ -145,6 +145,14 @@ class dataPrepWin(QMainWindow):
                 #     print('-'*20)
                 #     print(yt, yt+h, yt+h>yt)
                 #     print(xl, xl+w, xl+w>xl)
+        if event.key() == Qt.Key_Left:
+            self.navigateScrollbar.triggerAction(
+                QAbstractSlider.SliderSingleStepSub
+            )
+        elif event.key() == Qt.Key_Right:
+            self.navigateScrollbar.triggerAction(
+                QAbstractSlider.SliderSingleStepAdd
+            )
 
     def gui_createActions(self):
         # File actions
@@ -155,22 +163,14 @@ class dataPrepWin(QMainWindow):
         self.showInExplorerAction.setDisabled(True)
 
         # Toolbar actions
-        self.prevAction = QAction(QIcon(":arrow-left.svg"),
-                                        "Previous frame", self)
-        self.nextAction = QAction(QIcon(":arrow-right.svg"),
-                                        "Next Frame", self)
         # self.jumpForwardAction = QAction(QIcon(":arrow-up.svg"),
         #                                 "Jump to 10 frames ahead", self)
         # self.jumpBackwardAction = QAction(QIcon(":arrow-down.svg"),
         #                                 "Jump to 10 frames back", self)
-        self.prevAction.setShortcut("left")
         self.openAction.setShortcut("Ctrl+O")
-        self.nextAction.setShortcut("right")
         # self.jumpForwardAction.setShortcut("up")
         # self.jumpBackwardAction.setShortcut("down")
         self.openAction.setShortcut("Ctrl+O")
-        self.prevAction.setVisible(False)
-        self.nextAction.setVisible(False)
 
         toolTip = "Add ROI where to calculate background intensity"
         self.addBkrgRoiActon = QAction(QIcon(":bkgrRoi.svg"), toolTip, self)
@@ -229,8 +229,6 @@ class dataPrepWin(QMainWindow):
         # navigateToolbar.setIconSize(QSize(toolbarSize, toolbarSize))
         self.addToolBar(navigateToolbar)
 
-        navigateToolbar.addAction(self.prevAction)
-        navigateToolbar.addAction(self.nextAction)
         # navigateToolbar.addAction(self.jumpBackwardAction)
         # navigateToolbar.addAction(self.jumpForwardAction)
 
@@ -239,7 +237,6 @@ class dataPrepWin(QMainWindow):
         navigateToolbar.addAction(self.ZbackAction)
         navigateToolbar.addAction(self.ZforwAction)
         navigateToolbar.addAction(self.interpAction)
-
 
         self.ROIshapeComboBox = QComboBox()
         self.ROIshapeComboBox.SizeAdjustPolicy(QComboBox.AdjustToContents)
@@ -257,8 +254,6 @@ class dataPrepWin(QMainWindow):
         # Connect Open Recent to dynamically populate it
         self.openRecentMenu.aboutToShow.connect(self.populateOpenRecent)
         self.exitAction.triggered.connect(self.close)
-        self.prevAction.triggered.connect(self.prev_cb)
-        self.nextAction.triggered.connect(self.next_cb)
         self.showInExplorerAction.triggered.connect(self.showInExplorer)
         # self.jumpForwardAction.triggered.connect(self.skip10ahead_cb)
         # self.jumpBackwardAction.triggered.connect(self.skip10back_cb)
