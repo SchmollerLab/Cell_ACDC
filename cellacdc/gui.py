@@ -2161,7 +2161,7 @@ class guiWin(QMainWindow):
         self.disableTrackingAction.setVisible(False)
         self.functionsNotTested3D.append(self.disableTrackingAction)
 
-        self.editIDspinbox = QSpinBox()
+        self.editIDspinbox = widgets.SpinBox()
         self.editIDspinbox.setMaximum(2**16)
         editIDLabel = QLabel('   ID: ')
         self.editIDLabelAction = widgetsToolBar.addWidget(editIDLabel)
@@ -2177,7 +2177,7 @@ class guiWin(QMainWindow):
         self.editIDcheckboxAction = widgetsToolBar.addWidget(self.editIDcheckbox)
         self.editIDcheckboxAction.setVisible(False)
 
-        self.brushSizeSpinbox = QSpinBox()
+        self.brushSizeSpinbox = widgets.SpinBox()
         self.brushSizeSpinbox.setValue(4)
         brushSizeLabel = QLabel('   Size: ')
         brushSizeLabel.setBuddy(self.brushSizeSpinbox)
@@ -2402,7 +2402,7 @@ class guiWin(QMainWindow):
 
         self.labelRoiToolbar = QToolBar("Magic labeller controls", self)
         self.labelRoiToolbar.addWidget(QLabel('ROI depth (n. of z-slices): '))
-        self.labelRoiZdepthSpinbox = QSpinBox()
+        self.labelRoiZdepthSpinbox = widgets.SpinBox()
         self.labelRoiToolbar.addWidget(self.labelRoiZdepthSpinbox)
         self.labelRoiToolbar.addWidget(QLabel('  '))
         group = QButtonGroup()
@@ -2410,12 +2410,27 @@ class guiWin(QMainWindow):
         self.labelRoiIsRectRadioButton = QRadioButton('Rectangular ROI')
         self.labelRoiIsRectRadioButton.setChecked(True)
         self.labelRoiIsFreeHandRadioButton = QRadioButton('Freehand ROI')
+        self.labelRoiIsCircularRadioButton = QRadioButton('Circular ROI')
         group.addButton(self.labelRoiIsRectRadioButton)
         group.addButton(self.labelRoiIsFreeHandRadioButton)
+        group.addButton(self.labelRoiIsCircularRadioButton)
         self.labelRoiToolbar.addWidget(self.labelRoiIsRectRadioButton)
         self.labelRoiToolbar.addWidget(self.labelRoiIsFreeHandRadioButton)
+        self.labelRoiToolbar.addWidget(self.labelRoiIsCircularRadioButton)
+        self.labelRoiToolbar.addWidget(QLabel(' Circular ROI radius (pixel): '))
+        self.labelRoiCircularRadiusSpinbox = widgets.SpinBox()
+        self.labelRoiCircularRadiusSpinbox.setMinimum(1)
+        self.labelRoiCircularRadiusSpinbox.setValue(3)
+        self.labelRoiCircularRadiusSpinbox.setDisabled(True)
+        self.labelRoiToolbar.addWidget(self.labelRoiCircularRadiusSpinbox)
         self.addToolBar(Qt.TopToolBarArea, self.labelRoiToolbar)
         self.labelRoiToolbar.setVisible(False)
+        self.labelRoiIsCircularRadioButton.toggled.connect(
+            self.labelRoiIsCircularRadioButtonToggled
+        )
+        self.labelRoiCircularRadiusSpinbox.valueChanged.connect(
+            self.updateLabelRoiCircularSize
+        )
 
         self.keepIDsToolbar = QToolBar("Magic labeller controls", self)
         self.keepIDsConfirmAction = QAction()
@@ -3545,6 +3560,24 @@ class guiWin(QMainWindow):
             pen=pg.mkPen(width=1, color='r')
         )
         self.topLayerItems.append(self.ax1_EraserX)
+
+        # Brush circle img1
+        self.labelRoiCircItemLeft = pg.ScatterPlotItem()
+        self.labelRoiCircItemLeft.cleared = False
+        self.labelRoiCircItemLeft.setData(
+            [], [], symbol='o', pxMode=False,
+            brush=pg.mkBrush(color=(255,0,0,0)),
+            pen=pg.mkPen(color='r', width=2)
+        )
+        self.labelRoiCircItemRight = pg.ScatterPlotItem()
+        self.labelRoiCircItemRight.cleared = False
+        self.labelRoiCircItemRight.setData(
+            [], [], symbol='o', pxMode=False,
+            brush=pg.mkBrush(color=(255,0,0,0)),
+            pen=pg.mkPen(color='r', width=2)
+        )
+        self.topLayerItems.append(self.labelRoiCircItemLeft)
+        self.topLayerItemsRight.append(self.labelRoiCircItemRight)
         
         self.ax1_binnedIDs_ScatterPlot = pg.ScatterPlotItem()
         self.ax1_binnedIDs_ScatterPlot.setData(
@@ -3679,7 +3712,7 @@ class guiWin(QMainWindow):
 
         posData = self.data[self.pos_i]
         self.labelRoiZdepthSpinbox.setValue(posData.SizeZ)
-        self.labelRoiZdepthSpinbox.setMaximum(3000)
+        self.labelRoiZdepthSpinbox.setMaximum(posData.SizeZ+1)
     
     def gui_createOverlayItems(self):
         self.overlayLayersItems = {}
@@ -5205,7 +5238,12 @@ class guiWin(QMainWindow):
             self.addDelPolyLineRoiAction.isChecked() and not event.isExit()
             and noModifier
         )
-        if setBrushCursor or setEraserCursor:
+        setLabelRoiCircCursor = (
+            self.labelRoiButton.isChecked() and not event.isExit()
+            and (noModifier or shift or ctrl)
+            and self.labelRoiIsCircularRadioButton.isChecked()
+        )
+        if setBrushCursor or setEraserCursor or setLabelRoiCircCursor:
             self.app.setOverrideCursor(Qt.CrossCursor)
 
         if setAddDelPolyLineCursor:
@@ -5343,6 +5381,13 @@ class guiWin(QMainWindow):
             self.setHoverToolSymbolData(
                 [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
             )
+        
+        # Draw label ROi circular cursor
+        if setLabelRoiCircCursor:
+            x, y = event.pos()
+        else:
+            x, y = None, None
+        self.updateLabelRoiCircularCursor(x, y, setLabelRoiCircCursor)
 
         drawMothBudLine = (
             self.assignBudMothButton.isChecked() and self.clickedOnBud
@@ -5448,7 +5493,12 @@ class guiWin(QMainWindow):
             self.eraserButton.isChecked() and not event.isExit()
             and noModifier
         )
-        if setBrushCursor or setEraserCursor:
+        setLabelRoiCircCursor = (
+            self.labelRoiButton.isChecked() and not event.isExit()
+            and (noModifier or shift or ctrl)
+            and self.labelRoiIsCircularRadioButton.isChecked()
+        )
+        if setBrushCursor or setEraserCursor or setLabelRoiCircCursor:
             self.app.setOverrideCursor(Qt.CrossCursor)
 
         setMoveLabelCursor = (
@@ -5530,7 +5580,13 @@ class guiWin(QMainWindow):
             self.setHoverToolSymbolData(
                 [], [], (self.ax2_BrushCircle, self.ax1_BrushCircle),
             )
-            
+        
+        # Draw label ROi circular cursor
+        if setLabelRoiCircCursor:
+            x, y = event.pos()
+        else:
+            x, y = None, None
+        self.updateLabelRoiCircularCursor(x, y, setLabelRoiCircCursor)
     
     def gui_rightImageShowContextMenu(self, event):
         try:
@@ -6789,6 +6845,12 @@ class guiWin(QMainWindow):
             self.ax2.addItem(ax2ContCurve)
             self.ax2.addItem(ax2_mothBudLine)
         pbar.close()
+    
+    def labelRoiIsCircularRadioButtonToggled(self, checked):
+        if checked:
+            self.labelRoiCircularRadiusSpinbox.setDisabled(False)
+        else:
+            self.labelRoiCircularRadiusSpinbox.setDisabled(True)
 
     def relabelSequentialCallback(self):
         mode = str(self.modeComboBox.currentText())
@@ -7083,6 +7145,28 @@ class guiWin(QMainWindow):
                 item.setData(xx, yy)
             else:
                 item.setData(xx, yy, size=size)
+    
+    def updateLabelRoiCircularSize(self, value):
+        self.labelRoiCircItemLeft.setSize(value)
+        self.labelRoiCircItemRight.setSize(value)
+    
+    def updateLabelRoiCircularCursor(self, x, y, checked):
+        if not self.labelRoiButton.isChecked():
+            return
+        if not self.labelRoiIsCircularRadioButton.isChecked():
+            return
+
+        size = self.labelRoiCircularRadiusSpinbox.value()
+        if not checked:
+            xx, yy = [], []
+        else:
+            xx, yy = [x], [y]
+        
+        if not xx and len(self.labelRoiCircItemLeft.getData()[0]) == 0:
+            return
+
+        self.labelRoiCircItemLeft.setData(xx, yy, size=size)
+        self.labelRoiCircItemRight.setData(xx, yy, size=size)
 
     def getHoverID(self, xdata, ydata):
         if not hasattr(self, 'diskMask'):
@@ -9174,6 +9258,10 @@ class guiWin(QMainWindow):
         for button in self.LeftClickButtons:
             if button != sender:
                 button.setChecked(False)
+        
+        if button != self.labelRoiButton:
+            # self.labelRoiButton is disconnected so we manually call uncheck
+            self.labelRoi_cb(False)
         self.wandControlsToolbar.setVisible(False)
         self.enableSizeSpinbox(False)
         if sender is not None:
@@ -9275,6 +9363,7 @@ class guiWin(QMainWindow):
             self.labelRoiItem.setSize((0,0))
             self.freeRoiItem.clear()
             self.ax1.removeItem(self.labelRoiItem)
+            self.updateLabelRoiCircularCursor(None, None, False)
     
     def labelRoiWorkerFinished(self):
         self.logger.info('Magic labeller closed.')
@@ -9717,6 +9806,10 @@ class guiWin(QMainWindow):
                 pass
         isExpandLabelActive = self.expandLabelToolButton.isChecked()
         isWandActive = self.wandToolButton.isChecked()
+        isLabelRoiCircActive = (
+            self.labelRoiButton.isChecked() 
+            and self.labelRoiIsCircularRadioButton.isChecked()
+        )
         how = self.drawIDsContComboBox.currentText()
         isOverlaySegm = how.find('overlay segm. masks') != -1
         if ev.key()==Qt.Key_Up and not isCtrlModifier:
@@ -9729,6 +9822,9 @@ class guiWin(QMainWindow):
             elif isExpandLabelActive:
                 self.expandLabel(dilation=True)
                 self.expandFootprintSize += 1
+            elif isLabelRoiCircActive:
+                val = self.labelRoiCircularRadiusSpinbox.value()
+                self.labelRoiCircularRadiusSpinbox.setValue(val+1)
         elif ev.key()==Qt.Key_Down and not isCtrlModifier:
             if isBrushActive:
                 brushSize = self.brushSizeSpinbox.value()
@@ -9739,6 +9835,9 @@ class guiWin(QMainWindow):
             elif isExpandLabelActive:
                 self.expandLabel(dilation=False)
                 self.expandFootprintSize += 1
+            elif isLabelRoiCircActive:
+                val = self.labelRoiCircularRadiusSpinbox.value()
+                self.labelRoiCircularRadiusSpinbox.setValue(val-1)
         elif ev.key() == Qt.Key_Enter or ev.key() == Qt.Key_Return:
             if self.brushButton.isChecked():
                 self.typingEditID = False
