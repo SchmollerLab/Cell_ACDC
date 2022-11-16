@@ -10,14 +10,131 @@ import os
 import numpy as np
 from PIL import Image
 import cv2
-from typing import Dict, Any
+from typing import Dict, Any, Tuple, Union
 
 import delta.utilities as utils
 import delta.config as cfg
 from delta.assets import download_assets
 from delta import pipeline
 
-from . import tracking
+
+class FakeReader:
+
+    def __init__(self,
+                 x,
+                 y,
+                 channels,
+                 timepoints,
+                 filename,
+                 original_video,
+                 starting_frame):
+        """
+        Initialize experiment reader
+
+        Parameters
+        ----------
+        x : int
+            Size of images along X axis
+        y : int
+            Size of images along Y axis
+        channels : int
+            Number of imaging channels
+        timepoints : int
+            Number of frames
+        filename : str
+            File or folder name for the experiment
+        original_video : np.array
+            3D numpy array of original images
+        starting_frame : int
+            starting frame to track
+
+        Returns
+        -------
+        None.
+
+        """
+        self.x = x
+        self.y = y
+        self.channels = channels
+        self.timepoints = timepoints
+        self.filename = filename
+        self.original_video = original_video
+        self.starting_frame = starting_frame
+
+    def getframes(self,
+                  squeeze_dimensions: bool = True,
+                  resize: Tuple[int, int] = None,
+                  rescale: Tuple[float, float] = None,
+                  globalrescale: Tuple[float, float] = None,
+                  rotate: float = None,
+                  **kwargs
+                  ):
+        """
+        Get frames from experiment.
+
+        Parameters
+        ----------
+        squeeze_dimensions : bool, optional
+            If True, the numpy squeeze function is applied to the output array,
+            removing all singleton dimensions.
+            The default is True.
+        resize : None or tuple/list of 2 ints, optional
+            Dimensions to resize the frames. If None, no resizing is performed.
+            The default is None.
+        rescale : None or tuple/list of 2 int/floats, optional
+            Rescale all values in each frame to be within the given range.
+            The default is None.
+        globalrescale : None or tuple/list of 2 int/floats, optional
+            Rescale all values in all frames to be within the given range.
+            The default is None.
+        rotate : None or float, optional
+            Rotation to apply to the image (in degrees).
+            The default is None.
+
+        Returns
+        -------
+        Numpy Array
+            Concatenated frames as requested by the different input options.
+            If squeeze_dimensions=False, the array is 5-dimensional, with the
+            dimensions order being: Position, Time, Channel, Y, X
+
+        """
+
+        dt: Union[str, type] = self.dtype if rescale is None else np.float32
+        if resize is None:
+            output = np.empty(
+                [self.timepoints, self.y, self.x], dtype=dt
+            )
+        else:
+            output = np.empty(
+                [self.timepoints, resize[0], resize[1]],
+                dtype=dt,
+            )
+
+        # Load images:
+        for f in range(self.timepoints):
+
+            idx = f + self.starting_frame
+            frame = self.original_video[idx].astype(np.uint16)
+
+            # Optionally resize and rescale:
+            if rotate is not None:
+                frame = utils.imrotate(frame, rotate)
+            if resize is not None:
+                frame = cv2.resize(frame, resize[::-1])  # cv2 inverts shape
+            if rescale is not None:
+                frame = utils.rangescale(frame, rescale)
+            # Add to output array:
+            output[f] = frame
+
+        # Rescale all images:
+        if globalrescale is not None:
+            output = utils.rangescale(output, globalrescale)
+
+        output = output[np.newaxis, :, np.newaxis, :, :]
+
+        # Return:
+        return np.squeeze(output)[0, :, :] if squeeze_dimensions else output
 
 
 class tracker:
@@ -175,14 +292,14 @@ class tracker:
         filename = savepath.replace('.tif', '')
 
         # Init reader
-        xpreader = tracking.FakeReader(x=original_shape[1],
-                                       y=original_shape[0],
-                                       channels=0,
-                                       timepoints=len(segm_video),
-                                       filename=savepath,
-                                       original_video=original_video,
-                                       starting_frame=starting_frame
-                                       )
+        xpreader = FakeReader(x=original_shape[1],
+                              y=original_shape[0],
+                              channels=0,
+                              timepoints=len(segm_video),
+                              filename=savepath,
+                              original_video=original_video,
+                              starting_frame=starting_frame
+                              )
 
         # Init Position
         xp = pipeline.Position(position_nb=0,
@@ -205,12 +322,7 @@ class tracker:
         xp.features(frames=list(range(len(segm_video))))
 
         # Get labels
-        for r in xp.rois:
-            res: Dict[str, Any] = dict()
-
-            # Resized labels stack: (ie original ROI size)
-            res["labelsstack_resized"] = np.array(r.label_stack, dtype=np.uint16)
-        tracked_video = res['labelsstack_resized']
+        tracked_video = np.array(xp.rois[0].label_stack, dtype=np.uint8)
 
         # Save Results
         if self.params['legacy']:
