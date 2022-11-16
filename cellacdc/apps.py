@@ -2624,6 +2624,14 @@ class DeltaTrackerParamsWin(QDialog):
         paramsLayout.addWidget(updateMethodCombobox, row, 1)
 
         row += 1
+        label = QLabel(html_utils.paragraph('Single Mother Machine Chamber?'))
+        paramsLayout.addWidget(label, row, 0)
+        chamberToggle = widgets.Toggle()
+        chamberToggle.setChecked(True)
+        self.chamberToggle = chamberToggle
+        paramsLayout.addWidget(chamberToggle, row, 1, alignment=Qt.AlignCenter)
+
+        row += 1
         label = QLabel(html_utils.paragraph('Verbose'))
         paramsLayout.addWidget(label, row, 0)
         verboseToggle = widgets.Toggle()
@@ -2648,7 +2656,7 @@ class DeltaTrackerParamsWin(QDialog):
         paramsLayout.addWidget(pickleToggle, row, 1, alignment=Qt.AlignCenter)
 
         row += 1
-        label = QLabel(html_utils.paragraph('Movie for 2D images (.mp4)'))
+        label = QLabel(html_utils.paragraph('Movie (.mp4) *only for 2D images'))
         paramsLayout.addWidget(label, row, 0)
         movieToggle = widgets.Toggle()
         movieToggle.setChecked(False)
@@ -2707,6 +2715,7 @@ class DeltaTrackerParamsWin(QDialog):
         self.legacy = self.legacyToggle.isChecked()
         self.pickle = self.pickleToggle.isChecked()
         self.movie = self.movieToggle.isChecked()
+        self.chamber = self.chamberToggle.isChecked()
         self.model_path = os.path.normpath(self.modelPathLineEdit.text())
         self.params = {
             'original_images_path': self.model_path,
@@ -2714,7 +2723,8 @@ class DeltaTrackerParamsWin(QDialog):
             'legacy': self.legacy,
             'pickle': self.pickle,
             'movie': self.movie,
-            'model_type': self.model_type
+            'model_type': self.model_type,
+            'single mothermachine chamber': self.chamber
         }
         self.close()
 
