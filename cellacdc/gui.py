@@ -2405,6 +2405,11 @@ class guiWin(QMainWindow):
         self.labelRoiZdepthSpinbox = widgets.SpinBox()
         self.labelRoiToolbar.addWidget(self.labelRoiZdepthSpinbox)
         self.labelRoiToolbar.addWidget(QLabel('  '))
+        self.labelRoiAutoClearBorderCheckbox = QCheckBox(
+            'Remove objects touching borders'
+        )
+        self.labelRoiAutoClearBorderCheckbox.setChecked(True)
+        self.labelRoiToolbar.addWidget(self.labelRoiAutoClearBorderCheckbox)
         group = QButtonGroup()
         group.setExclusive(True)
         self.labelRoiIsRectRadioButton = QRadioButton('Rectangular ROI')
@@ -2420,16 +2425,32 @@ class guiWin(QMainWindow):
         self.labelRoiToolbar.addWidget(QLabel(' Circular ROI radius (pixel): '))
         self.labelRoiCircularRadiusSpinbox = widgets.SpinBox()
         self.labelRoiCircularRadiusSpinbox.setMinimum(1)
-        self.labelRoiCircularRadiusSpinbox.setValue(3)
+        self.labelRoiCircularRadiusSpinbox.setValue(11)
         self.labelRoiCircularRadiusSpinbox.setDisabled(True)
         self.labelRoiToolbar.addWidget(self.labelRoiCircularRadiusSpinbox)
         self.addToolBar(Qt.TopToolBarArea, self.labelRoiToolbar)
         self.labelRoiToolbar.setVisible(False)
+        self.labelRoiTypesGroup = group
+
+        self.loadLabelRoiLastParams()
+
         self.labelRoiIsCircularRadioButton.toggled.connect(
             self.labelRoiIsCircularRadioButtonToggled
         )
         self.labelRoiCircularRadiusSpinbox.valueChanged.connect(
             self.updateLabelRoiCircularSize
+        )
+        self.labelRoiCircularRadiusSpinbox.valueChanged.connect(
+            self.storeLabelRoiParams
+        )
+        self.labelRoiZdepthSpinbox.valueChanged.connect(
+            self.storeLabelRoiParams
+        )
+        self.labelRoiAutoClearBorderCheckbox.toggled.connect(
+            self.storeLabelRoiParams
+        )
+        group.buttonToggled.connect(
+            self.storeLabelRoiParams
         )
 
         self.keepIDsToolbar = QToolBar("Magic labeller controls", self)
@@ -3562,14 +3583,14 @@ class guiWin(QMainWindow):
         self.topLayerItems.append(self.ax1_EraserX)
 
         # Brush circle img1
-        self.labelRoiCircItemLeft = pg.ScatterPlotItem()
+        self.labelRoiCircItemLeft = widgets.LabelRoiCircularItem()
         self.labelRoiCircItemLeft.cleared = False
         self.labelRoiCircItemLeft.setData(
             [], [], symbol='o', pxMode=False,
             brush=pg.mkBrush(color=(255,0,0,0)),
             pen=pg.mkPen(color='r', width=2)
         )
-        self.labelRoiCircItemRight = pg.ScatterPlotItem()
+        self.labelRoiCircItemRight = widgets.LabelRoiCircularItem()
         self.labelRoiCircItemRight.cleared = False
         self.labelRoiCircItemRight.setData(
             [], [], symbol='o', pxMode=False,
@@ -3711,7 +3732,8 @@ class guiWin(QMainWindow):
         )
 
         posData = self.data[self.pos_i]
-        self.labelRoiZdepthSpinbox.setValue(posData.SizeZ)
+        if self.labelRoiZdepthSpinbox.value() == 0:
+            self.labelRoiZdepthSpinbox.setValue(posData.SizeZ)
         self.labelRoiZdepthSpinbox.setMaximum(posData.SizeZ+1)
     
     def gui_createOverlayItems(self):
@@ -4191,16 +4213,21 @@ class guiWin(QMainWindow):
 
             # Remove contour and LabelItem of deleted ID
             self.ax1_ContoursCurves[delID-1].setData([], [])
+            self.ax2_ContoursCurves[delID-1].setData([], [])
             self.ax1_LabelItemsIDs[delID-1].setText('')
             self.ax2_LabelItemsIDs[delID-1].setText('')
 
             how = self.drawIDsContComboBox.currentText()
             if how.find('overlay segm. masks') != -1:
+                if delID_mask.ndim == 3:
+                    delID_mask = delID_mask[self.z_lab()]
                 self.labelsLayerImg1.image[delID_mask] = 0
                 self.labelsLayerImg1.setImage(self.labelsLayerImg1.image)
             
             how_ax2 = self.getAnnotateHowRightImage()
             if how_ax2.find('overlay segm. masks') != -1:
+                if delID_mask.ndim == 3:
+                    delID_mask = delID_mask[self.z_lab()]
                 self.labelsLayerRightImg.image[delID_mask] = 0
                 self.labelsLayerRightImg.setImage(self.labelsLayerRightImg.image)
 
@@ -5915,58 +5942,20 @@ class guiWin(QMainWindow):
         
         # Label ROI mouse release --> label the ROI with labelRoiWorker
         elif self.isMouseDragImg1 and self.labelRoiButton.isChecked():
+            self.labelRoiRunning = True
             self.app.setOverrideCursor(Qt.WaitCursor)
             self.isMouseDragImg1 = False
-
-            posData = self.data[self.pos_i]
 
             if self.labelRoiIsFreeHandRadioButton.isChecked():
                 self.freeRoiItem.closeCurve()
 
-            if self.isSegm3D:
-                filteredData = self.filteredData.get(self.user_ch_name)
-                if filteredData is None:
-                    # Filtered data not existing
-                    imgData = posData.img_data[posData.frame_i]
-                else:
-                    # 3D filtered data (see self.applyFilter)
-                    imgData = filteredData
-                roi_zdepth = self.labelRoiZdepthSpinbox.value()
-                if roi_zdepth == posData.SizeZ:
-                    z0 = 0
-                    z1 = posData.SizeZ
-                else:
-                    if roi_zdepth%2 != 0:
-                        roi_zdepth +=1
-                    half_zdepth = int(roi_zdepth/2)
-                    zc = self.zSliceScrollBar.sliderPosition() + 1
-                    z0 = zc-half_zdepth
-                    z0 = z0 if z0>=0 else 0
-                    z1 = zc+half_zdepth
-                    z1 = z1 if z1<posData.SizeZ else posData.SizeZ
-                if self.labelRoiIsRectRadioButton.isChecked():
-                    self.labelRoiSlice = self.labelRoiItem.slice(zRange=(z0,z1))
-                elif self.labelRoiIsFreeHandRadioButton.isChecked():
-                    self.labelRoiSlice = self.freeRoiItem.slice(zRange=(z0,z1))
-            else:
-                if self.labelRoiIsRectRadioButton.isChecked():
-                    self.labelRoiSlice = self.labelRoiItem.slice()
-                elif self.labelRoiIsFreeHandRadioButton.isChecked():
-                    self.labelRoiSlice = self.freeRoiItem.slice()
-                imgData = self.img1.image
-
-            roiImg = imgData[self.labelRoiSlice]
-            if self.labelRoiIsFreeHandRadioButton.isChecked():
-                # Fill outside of freehand roi with minimum of the ROI image
-                roiImg = roiImg.copy()
-                if self.isSegm3D:
-                    roiImg[:, ~self.freeRoiItem.mask()] = roiImg.min()
-                else:
-                    roiImg[~self.freeRoiItem.mask()] = roiImg.min()
+            roiImg, self.labelRoiSlice = self.getLabelRoiImage()
 
             if self.labelRoiModel is None:
                 cancel = self.initLabelRoiModel()
                 if cancel:
+                    self.labelRoiRunning = False
+                    self.app.restoreOverrideCursor() 
                     self.labelRoiItem.setPos((0,0))
                     self.labelRoiItem.setSize((0,0))
                     self.freeRoiItem.clear()
@@ -7155,6 +7144,8 @@ class guiWin(QMainWindow):
             return
         if not self.labelRoiIsCircularRadioButton.isChecked():
             return
+        if self.labelRoiRunning:
+            return
 
         size = self.labelRoiCircularRadiusSpinbox.value()
         if not checked:
@@ -7167,6 +7158,63 @@ class guiWin(QMainWindow):
 
         self.labelRoiCircItemLeft.setData(xx, yy, size=size)
         self.labelRoiCircItemRight.setData(xx, yy, size=size)
+    
+    def getLabelRoiImage(self):
+        posData = self.data[self.pos_i]
+
+        if self.isSegm3D:
+            filteredData = self.filteredData.get(self.user_ch_name)
+            if filteredData is None:
+                # Filtered data not existing
+                imgData = posData.img_data[posData.frame_i]
+            else:
+                # 3D filtered data (see self.applyFilter)
+                imgData = filteredData
+            roi_zdepth = self.labelRoiZdepthSpinbox.value()
+            if roi_zdepth == posData.SizeZ:
+                z0 = 0
+                z1 = posData.SizeZ
+            else:
+                if roi_zdepth%2 != 0:
+                    roi_zdepth +=1
+                half_zdepth = int(roi_zdepth/2)
+                zc = self.zSliceScrollBar.sliderPosition() + 1
+                z0 = zc-half_zdepth
+                z0 = z0 if z0>=0 else 0
+                z1 = zc+half_zdepth
+                z1 = z1 if z1<posData.SizeZ else posData.SizeZ
+            if self.labelRoiIsRectRadioButton.isChecked():
+                labelRoiSlice = self.labelRoiItem.slice(zRange=(z0,z1))
+            elif self.labelRoiIsFreeHandRadioButton.isChecked():
+                labelRoiSlice = self.freeRoiItem.slice(zRange=(z0,z1))
+            elif self.labelRoiIsCircularRadioButton.isChecked():
+                labelRoiSlice = self.labelRoiCircItemLeft.slice(zRange=(z0,z1))
+        else:
+            if self.labelRoiIsRectRadioButton.isChecked():
+                labelRoiSlice = self.labelRoiItem.slice()
+            elif self.labelRoiIsFreeHandRadioButton.isChecked():
+                labelRoiSlice = self.freeRoiItem.slice()
+            elif self.labelRoiIsCircularRadioButton.isChecked():
+                labelRoiSlice = self.labelRoiCircItemLeft.slice()
+            imgData = self.img1.image
+
+        roiImg = imgData[labelRoiSlice]
+        if self.labelRoiIsFreeHandRadioButton.isChecked():
+            mask = self.freeRoiItem.mask()
+        elif self.labelRoiIsCircularRadioButton.isChecked():
+            mask = self.labelRoiCircItemLeft.mask()
+        else:
+            mask = None
+        
+        if mask is not None:
+            # Fill outside of freehand roi with minimum of the ROI image
+            roiImg = roiImg.copy()
+            if self.isSegm3D:
+                roiImg[:, ~mask] = roiImg.min()
+            else:
+                roiImg[~mask] = roiImg.min()
+
+        return roiImg, labelRoiSlice
 
     def getHoverID(self, xdata, ydata):
         if not hasattr(self, 'diskMask'):
@@ -9371,9 +9419,10 @@ class guiWin(QMainWindow):
     
     def labelRoiDone(self, roiLab):
         # Delete only objects touching borders in X and Y not in Z
-        mask = np.zeros(roiLab.shape, dtype=bool)
-        mask[..., 1:-1, 1:-1] = True
-        roiLab = skimage.segmentation.clear_border(roiLab, mask=mask)
+        if self.labelRoiAutoClearBorderCheckbox.isChecked():
+            mask = np.zeros(roiLab.shape, dtype=bool)
+            mask[..., 1:-1, 1:-1] = True
+            roiLab = skimage.segmentation.clear_border(roiLab, mask=mask)
         posData = self.data[self.pos_i]
         self.setBrushID()
         roiLabMask = roiLab>0
@@ -9392,7 +9441,9 @@ class guiWin(QMainWindow):
         self.labelRoiItem.setSize((0,0))
         self.freeRoiItem.clear()
         self.logger.info('Magic labeller done!')
-        self.app.restoreOverrideCursor()        
+        self.app.restoreOverrideCursor()  
+
+        self.labelRoiRunning = False      
 
     def restoreHoveredID(self):
         posData = self.data[self.pos_i]
@@ -10198,6 +10249,46 @@ class guiWin(QMainWindow):
         else:
             posData.cca_df = None
         return image_left
+    
+    def storeLabelRoiParams(self, value=None, checked=True):
+        checkedRoiType = self.labelRoiTypesGroup.checkedButton().text()
+        circRoiRadius = self.labelRoiCircularRadiusSpinbox.value()
+        roiZdepth = self.labelRoiZdepthSpinbox.value()
+        autoClearBorder = self.labelRoiAutoClearBorderCheckbox.isChecked()
+        clearBorder = 'Yes' if autoClearBorder else 'No'
+        self.df_settings.at['labelRoi_checkedRoiType', 'value'] = checkedRoiType
+        self.df_settings.at['labelRoi_circRoiRadius', 'value'] = circRoiRadius
+        self.df_settings.at['labelRoi_roiZdepth', 'value'] = roiZdepth
+        self.df_settings.at['labelRoi_autoClearBorder', 'value'] = clearBorder
+        self.df_settings.to_csv(self.settings_csv_path)
+    
+    def loadLabelRoiLastParams(self):
+        idx = 'labelRoi_checkedRoiType'
+        if idx in self.df_settings.index:
+            checkedRoiType = self.df_settings.at[idx, 'value']
+            for button in self.labelRoiTypesGroup.buttons():
+                if button.text() == checkedRoiType:
+                    button.setChecked(True)
+                    break
+        
+        idx = 'labelRoi_circRoiRadius'
+        if idx in self.df_settings.index:
+            circRoiRadius = self.df_settings.at[idx, 'value']
+            self.labelRoiCircularRadiusSpinbox.setValue(int(circRoiRadius))
+        
+        idx = 'labelRoi_roiZdepth'
+        if idx in self.df_settings.index:
+            roiZdepth = self.df_settings.at[idx, 'value']
+            self.labelRoiZdepthSpinbox.setValue(int(roiZdepth))
+        
+        idx = 'labelRoi_autoClearBorder'
+        if idx in self.df_settings.index:
+            clearBorder = self.df_settings.at[idx, 'value']
+            checked = clearBorder == 'Yes'
+            self.labelRoiAutoClearBorderCheckbox.setChecked(checked)
+        
+        if self.labelRoiIsCircularRadioButton.isChecked():
+            self.labelRoiCircularRadiusSpinbox.setDisabled(False)
 
     def storeUndoRedoStates(self, UndoFutFrames):
         posData = self.data[self.pos_i]
@@ -12142,6 +12233,9 @@ class guiWin(QMainWindow):
 
         self.disableNonFunctionalButtons()
 
+        self.labelRoiCircItemLeft.setImageShape(self.currentLab2D.shape)
+        self.labelRoiCircItemRight.setImageShape(self.currentLab2D.shape)
+
         # Overwrite axes viewbox context menu
         self.ax1.vb.menu = self.imgGrad.gradient.menu
         self.ax2.vb.menu = self.labelsGrad.menu
@@ -12654,6 +12748,7 @@ class guiWin(QMainWindow):
         self.isShiftDown = False
         self.autoContourHoverON = False
         self.navigateScrollBarStartedMoving = True
+        self.labelRoiRunning = False
 
         # Second channel used by cellpose
         self.secondChannelName = None

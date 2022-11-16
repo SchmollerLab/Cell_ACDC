@@ -3305,6 +3305,9 @@ class QDialogAutomaticThresholding(QBaseDialog):
 
         self.setLayout(layout)
         self.setFont(font)
+
+        self.configPars = self.loadLastSelection()
+
     
     def help_cb(self):
         import webbrowser
@@ -3322,6 +3325,25 @@ class QDialogAutomaticThresholding(QBaseDialog):
             'segment_3D_volume': self.segment3Dcheckbox.isChecked()
         }
         self.close()
+    
+    def loadLastSelection(self):
+        self.ini_path = os.path.join(temp_path, 'last_params_trackers.ini')
+        if not os.path.exists(self.ini_path):
+            return
+
+        configPars = config.ConfigParser()
+        configPars.read(self.ini_path)
+
+        if 'thresholding.segment' not in configPars:
+            return
+
+        section = configPars['thresholding.segment']
+        self.sigmaGaussSpinbox.setValue(float(section['gauss_sigma']))
+
+        threshold_method = section['threshold_method']
+        Method = threshold_method[10:].capitalize()
+        self.threshMethodCombobox.setCurrentText(Method)
+        self.segment3Dcheckbox.setChecked(section.getboolean('segment_3D_volume'))
 
 class QDialogSelectModel(QDialog):
     def __init__(self, parent=None):
