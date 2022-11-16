@@ -10153,7 +10153,7 @@ class guiWin(QMainWindow):
             # No future frames to propagate the change to
             return False, False, None, doNotShow
 
-        includeUnvisited = posData.includeUnvisitedInfo[modTxt]
+        includeUnvisited = posData.includeUnvisitedInfo.get(modTxt, False)
         areFutureIDs_affected = []
         # Get number of future frames already visited and check if future
         # frames has an ID affected by the change
