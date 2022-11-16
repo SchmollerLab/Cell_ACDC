@@ -110,7 +110,7 @@ class tracker:
                                 load_evals=False,
                                 config_level='local')
 
-        if self.params['single mothermachine chamber']:
+        if self.params['single mothermachine chamber'] and model_type == 'mothermachine':
             self.models.pop('rois')
 
     def track(self,
