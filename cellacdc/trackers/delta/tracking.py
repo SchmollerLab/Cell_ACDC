@@ -27,6 +27,10 @@ class ROI:
 
         Parameters
         ----------
+        segm_video : np.array
+            3D numpy array of segmentation Mask.
+        original_video : np.array
+            3D numpy array of original images.
         roi_nb : int
             ROI index.
         box : dict
@@ -49,11 +53,13 @@ class ROI:
         self.img_stack: List[utils.Image] = []
         "Input images stack"
         # Preprocess Images
+        starting_frame = len(original_video) - len(segm_video)
         for frame in range(len(original_video)):
             # Crop and scale:
             i = utils.rangescale(utils.cropbox(original_video[frame], self.box), rescale=(0, 1))
             # Append i as is to input images stack:
-            self.img_stack.append(i)
+            if frame >= starting_frame:
+                self.img_stack.append(i)
 
         self.seg_stack: List[utils.SegmentationMask] = segm_video
         "Segmentation images stack"

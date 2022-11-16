@@ -168,6 +168,7 @@ class tracker:
                 crop_windows=cfg.crop_windows,
                 segm_video=segm_video,
                 original_video=original_video
+
             )
         ]
 
@@ -226,7 +227,7 @@ class tracker:
 
         # Save Results
         if self.params['legacy'] or self.params['pickle'] or self.params['movie']:
-            self.save_output(original_video=original_video)
+            self.save_output(original_video=np.array(self.rois[0].img_stack))
 
         # Return tracked and labeled video
         return tracked_video
