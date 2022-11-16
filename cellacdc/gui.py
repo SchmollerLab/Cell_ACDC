@@ -30,6 +30,7 @@ import cv2
 import math
 import numpy as np
 import pandas as pd
+import matplotlib
 import scipy.optimize
 import scipy.interpolate
 import scipy.ndimage
@@ -41,8 +42,7 @@ import skimage.draw
 import skimage.exposure
 import skimage.transform
 import skimage.segmentation
-import matplotlib.pyplot as plt
-from matplotlib.colors import ListedColormap, LinearSegmentedColormap
+
 from functools import wraps
 from skimage.color import gray2rgb, gray2rgba, label2rgb
 
@@ -3265,11 +3265,22 @@ class guiWin(QMainWindow):
         )
 
         row += 1
-        bottomLeftLayout.addWidget(self.t_label, row, 0, alignment=Qt.AlignRight)
+        navWidgetsLayout = QHBoxLayout()
+        self.navSpinBox = widgets.SpinBox()
+        self.navSpinBox.setMaximum(1)
+        self.navSizeLabel = QLabel('/ND')
+        navWidgetsLayout.addWidget(self.t_label)
+        navWidgetsLayout.addWidget(self.navSpinBox)
+        navWidgetsLayout.addWidget(self.navSizeLabel)
+        bottomLeftLayout.addLayout(
+            navWidgetsLayout, row, 0, alignment=Qt.AlignRight
+        )
         bottomLeftLayout.addWidget(self.navigateScrollBar, row, 1, 1, 2)
         sp = self.navigateScrollBar.sizePolicy()
         sp.setRetainSizeWhenHidden(True)
         self.navigateScrollBar.setSizePolicy(sp)
+        self.navSpinBox.valueChanged.connect(self.navigateSpinboxValueChanged)
+        self.navSpinBox.editingFinished.connect(self.navigateSpinboxEditingFinished)
 
         row += 1
         zSliceCheckboxLayout = QHBoxLayout()
@@ -11787,13 +11798,17 @@ class guiWin(QMainWindow):
             if posData.last_tracked_i is not None:
                 if posData.frame_i > posData.last_tracked_i:
                     self.navigateScrollBar.setMaximum(posData.frame_i+1)
+                    self.navSpinBox.setMaximum(posData.frame_i+1)
                 else:
                     self.navigateScrollBar.setMaximum(posData.last_tracked_i+1)
+                    self.navSpinBox.setMaximum(posData.last_tracked_i+1)
             else:
                 self.navigateScrollBar.setMaximum(posData.frame_i+1)
+                self.navSpinBox.setMaximum(posData.frame_i+1)
         elif mode == 'Cell cycle analysis':
             if posData.frame_i > self.last_cca_frame_i:
                 self.navigateScrollBar.setMaximum(posData.frame_i+1)
+                self.navSpinBox.setMaximum(posData.frame_i+1)
 
     def prev_frame(self):
         posData = self.data[self.pos_i]
@@ -12203,6 +12218,10 @@ class guiWin(QMainWindow):
             self.gui_connectEditActions()
 
         self.setFramesSnapshotMode()
+        if self.isSnapshot:
+            self.navSizeLabel.setText(f'/{len(self.data)}') 
+        else:
+            self.navSizeLabel.setText(f'/{posData.SizeT}')
 
         self.enableZstackWidgets(posData.SizeZ > 1)
         self.showHighlightZneighCheckbox()
@@ -12485,10 +12504,11 @@ class guiWin(QMainWindow):
 
         posData = self.data[self.pos_i]
         if posData.SizeT == 1:
-            self.t_label.setText('Position n. ')
+            self.t_label.setText('Position n.')
             self.navigateScrollBar.setMinimum(1)
             self.navigateScrollBar.setMaximum(len(self.data))
             self.navigateScrollBar.setAbsoluteMaximum(len(self.data))
+            self.navSpinBox.setMaximum(len(self.data))
             try:
                 self.navigateScrollBar.sliderMoved.disconnect()
                 self.navigateScrollBar.sliderReleased.disconnect()
@@ -12509,13 +12529,14 @@ class guiWin(QMainWindow):
             self.navigateScrollBar.setAbsoluteMaximum(posData.SizeT)
             if posData.last_tracked_i is not None:
                 self.navigateScrollBar.setMaximum(posData.last_tracked_i+1)
+                self.navSpinBox.setMaximum(posData.last_tracked_i+1)
             try:
                 self.navigateScrollBar.sliderMoved.disconnect()
                 self.navigateScrollBar.sliderReleased.disconnect()
                 self.navigateScrollBar.actionTriggered.disconnect()
             except Exception as e:
                 pass
-            self.t_label.setText('frame n.  ')
+            self.t_label.setText('Frame n.')
             self.navigateScrollBar.sliderMoved.connect(
                 self.framesScrollBarMoved
             )
@@ -12987,6 +13008,20 @@ class guiWin(QMainWindow):
         self.ax2.vb.setYLink(self.ax1.vb)
         self.ax2.vb.setXLink(self.ax1.vb)
 
+    def navigateSpinboxValueChanged(self, value):
+        self.navigateScrollBar.setSliderPosition(value)
+        if self.isSnapshot:
+            self.PosScrollBarMoved(value)
+        else:
+            self.navigateScrollBarStartedMoving = True
+            self.framesScrollBarMoved(value)
+    
+    def navigateSpinboxEditingFinished(self):
+        if self.isSnapshot:
+            self.PosScrollBarReleased()
+        else:
+            self.framesScrollBarReleased()
+
     def PosScrollBarAction(self, action):
         if action == QAbstractSlider.SliderSingleStepAdd:
             self.next_cb()
@@ -13042,10 +13077,8 @@ class guiWin(QMainWindow):
 
         if self.navigateScrollBarStartedMoving:
             self.clearAllItems()
-       
-        self.t_label.setText(
-            f'frame n. {posData.frame_i+1}/{posData.SizeT}'
-        )
+
+        self.navSpinBox.setValueNoEmit(posData.frame_i+1)
         if self.labelsGrad.showLabelsImgAction.isChecked():
             self.img2.setImage(posData.lab, z=self.z_lab(), autoLevels=False)
         self.updateLookuptable()
@@ -13911,6 +13944,7 @@ class guiWin(QMainWindow):
         last_tracked_i = self.get_last_tracked_i()
 
         self.navigateScrollBar.setMaximum(last_tracked_i+1)
+        self.navSpinBox.setMaximum(last_tracked_i+1)
         if posData.frame_i > last_tracked_i:
             # Prompt user to go to last tracked frame
             msg = widgets.myMessageBox()
@@ -14043,6 +14077,7 @@ class guiWin(QMainWindow):
         self.last_cca_frame_i = last_cca_frame_i
 
         self.navigateScrollBar.setMaximum(last_cca_frame_i+1)
+        self.navSpinBox.setMaximum(last_cca_frame_i+1)
 
         if posData.cca_df is None:
             posData.cca_df = self.getBaseCca_df()
@@ -14995,6 +15030,11 @@ class guiWin(QMainWindow):
             (49, 222, 134),
             (22, 108, 27)
         ]
+        cmap = matplotlib.colormaps['hsv']
+        self.overlayRGBs.extend(
+            [tuple([round(c*255) for c in cmap(i)][:3]) 
+            for i in np.linspace(0,1,8)]
+        )
         if 'overlayColor' in self.df_settings.index:
             rgba_str = self.df_settings.at['overlayColor', 'value']
             rgb = [int(v) for v in rgba_str.split('-')]
@@ -16213,13 +16253,10 @@ class guiWin(QMainWindow):
     def updateFramePosLabel(self):
         if self.isSnapshot:
             posData = self.data[self.pos_i]
-            self.t_label.setText(
-                     f'Pos. n. {self.pos_i+1}/{self.num_pos} '
-                     f'({posData.pos_foldername})')
+            self.navSpinBox.setValueNoEmit(self.pos_i+1)
         else:
             posData = self.data[0]
-            self.t_label.setText(
-                     f'frame n. {posData.frame_i+1}/{posData.SizeT}')
+            self.navSpinBox.setValueNoEmit(posData.frame_i+1)
 
     def updateFilters(self):
         pass
@@ -17009,6 +17046,7 @@ class guiWin(QMainWindow):
             from_frame_i = posData.frame_i+1
         posData.last_tracked_i = from_frame_i
         self.navigateScrollBar.setMaximum(from_frame_i+1)
+        self.navSpinBox.setMaximum(from_frame_i+1)
         # self.navigateScrollBar.setMinimum(1)
         for i in range(from_frame_i, posData.SizeT):
             if posData.allData_li[i]['labels'] is None:
