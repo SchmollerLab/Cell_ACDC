@@ -12,7 +12,7 @@ import time
 import subprocess
 import importlib
 from importlib import import_module
-from math import pow
+from math import pow, ceil, floor
 from functools import wraps, partial
 from collections import namedtuple, Counter
 import natsort
@@ -681,6 +681,49 @@ def findalliter(patter, string):
         m_test = re.findall(r'(\d+)_(.+)', m_test[0][1])
         m_iter.append(m_test)
     return m_iter
+
+def clipSelemMask(mask, shape, Yc, Xc, copy=True):
+    if copy:
+        mask = mask.copy()
+    
+    Y, X = shape
+    h, w = mask.shape
+
+    # Bottom, Left, Top, Right global coordinates of mask
+    Y0, X0, Y1, X1 = Yc-(h/2), Xc-(w/2), Yc+(h/2), Xc+(w/2)
+    mask_limits = [floor(Y0)+1, floor(X0)+1, floor(Y1)+1, floor(X1)+1]
+    
+    if Y0>=0 and X0>=0 and Y1<=Y and X1<=X:
+        # Mask is withing shape boundaries, no need to clip
+        ystart, xstart, yend, xend = mask_limits
+        mask_slice = slice(ystart, yend), slice(xstart, xend)
+        return mask, mask_slice
+
+    if Y0<0:
+        # Mask is exceeding at the bottom
+        ystart = floor(abs(Y0))
+        mask_limits[0] = 0
+        mask = mask[ystart:]
+    if X0<0:
+        # Mask is exceeding at the left
+        xstart = floor(abs(X0))
+        mask_limits[1] = 0
+        mask = mask[:, xstart:]
+    if Y1>Y:
+        # Mask is exceeding at the top
+        yend = ceil(abs(Y1)) - Y
+        mask_limits[2] = Y
+        mask = mask[:-yend]
+    if X1>X:
+        # Mask is exceeding at the right
+        xend = ceil(abs(X1)) - X
+        mask_limits[3] = X
+        mask = mask[:, :-xend]
+    
+    ystart, xstart, yend, xend = mask_limits
+    mask_slice = slice(ystart, yend), slice(xstart, xend)
+    return mask, mask_slice
+
 
 def listdir(path):
     return natsorted([

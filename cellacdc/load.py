@@ -1171,15 +1171,17 @@ class loadData:
 
         if os.path.exists(self.segm_hyperparams_ini_path):
             cp.read(self.segm_hyperparams_ini_path)
+        
+        model_name = post_process_params['model']
 
         segmEndName = self.getSegmEndname()
         now = datetime.now().strftime('%Y-%m-%d_%H:%M')
-        section = f'{now}.{segmEndName}.segmentation'
+        section = f'{now}.{segmEndName}.{model_name}.segmentation'
         cp[section] = {'segmented_channel': self.user_ch_name}
         for key, value in hyperparams.items():
             cp[section][key] = str(value)
 
-        section = f'{now}.{segmEndName}.post-processing'
+        section = f'{now}.{segmEndName}.{model_name}.post-processing'
         cp[section] = {}
         for key, value in post_process_params.items():
             cp[section][key] = str(value)
