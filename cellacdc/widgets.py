@@ -850,11 +850,21 @@ class QClickableLabel(QLabel):
     clicked = pyqtSignal(object)
 
     def __init__(self, parent=None):
-        self.parent = parent
+        self._parent = parent
         super().__init__(parent)
+        self._checkableItem = None
+    
+    def setCheckableItem(self, widget):
+        self._checkableItem = widget
 
     def mousePressEvent(self, event):
         self.clicked.emit(self)
+        if self._checkableItem is not None:
+            status = not self.self._checkableItem.isChecked()
+            self._checkableItem.setChecked(status)
+
+    def setChecked(self, checked):
+        self._checkableItem.setChecked(checked)
 
 
 class QCenteredComboBox(QComboBox):
@@ -2192,10 +2202,25 @@ class readOnlySpinbox(QSpinBox):
         self.setStyleSheet('background-color: rgba(240, 240, 240, 200);')
 
 class SpinBox(QSpinBox):
+    sigValueChanged = pyqtSignal(int)
+
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.setAlignment(Qt.AlignCenter)
         self.setMaximum(2**31-1)
+        self._valueChangedFunction = None
+    
+    def connectValueChanged(self, function):
+        self._valueChangedFunction = function
+        self.valueChanged.connect(function)
+    
+    def setValueNoEmit(self, value):
+        if self._valueChangedFunction is None:
+            self.setValue(value)
+            return
+        self.valueChanged.disconnect()
+        self.setValue(value)
+        self.valueChanged.connect(self._valueChangedFunction)
 
 class ReadOnlyLineEdit(QLineEdit):
     def __init__(self, parent=None):

@@ -3216,7 +3216,8 @@ class guiWin(QMainWindow):
 
         # z-slice scrollbars
         self.zSliceScrollBar = widgets.linkedQScrollbar(Qt.Horizontal)
-        _z_label = QLabel('z-slice  ')
+        _z_label = widgets.QClickableLabel()
+        _z_label.setText('z-slice  ')
         _z_label.setFont(_font)
         self.z_label = _z_label
 
@@ -3271,17 +3272,24 @@ class guiWin(QMainWindow):
         row += 1
         zSliceCheckboxLayout = QHBoxLayout()
         self.zSliceCheckbox = QCheckBox()
+        self.zSliceSpinbox = widgets.SpinBox()
+        self.SizeZlabel = QLabel('/ND')
+        self.z_label.setCheckableItem(self.zSliceCheckbox)
         self.zSliceCheckbox.setToolTip(
             'Activate/deactivate control of the z-slices with keyboard arrows.\n\n'
             'SHORCUT to toggle ON/OFF: "Z" key'
         )
         zSliceCheckboxLayout.addWidget(self.zSliceCheckbox)
         zSliceCheckboxLayout.addWidget(self.z_label)
+        zSliceCheckboxLayout.addWidget(self.zSliceSpinbox)
+        zSliceCheckboxLayout.addWidget(self.SizeZlabel)
         bottomLeftLayout.addLayout(
             zSliceCheckboxLayout, row, 0, alignment=Qt.AlignRight
         )
         bottomLeftLayout.addWidget(self.zSliceScrollBar, row, 1, 1, 2)
         bottomLeftLayout.addWidget(self.zProjComboBox, row, 3)
+        self.zSliceSpinbox.connectValueChanged(self.onZsliceSpinboxValueChange)
+        self.zSliceSpinbox.editingFinished.connect(self.zSliceScrollBarReleased)
 
         row += 1
         bottomLeftLayout.addWidget(
@@ -3961,6 +3969,8 @@ class guiWin(QMainWindow):
         self.zProjOverlay_CB.hide()
         self.overlay_z_label.hide()
         self.zSliceCheckbox.hide()
+        self.zSliceSpinbox.hide()
+        self.SizeZlabel.hide()
 
     @myutils.exception_handler
     def gui_mousePressEventImg2(self, event):
@@ -8781,6 +8791,8 @@ class guiWin(QMainWindow):
             self.zSliceScrollBar.show()
             self.z_label.show()
             self.zSliceCheckbox.show()
+            self.zSliceSpinbox.show()
+            self.SizeZlabel.show()
         else:
             myutils.setRetainSizePolicy(self.zSliceScrollBar, retain=False)
             myutils.setRetainSizePolicy(self.zProjComboBox, retain=False)
@@ -8793,6 +8805,8 @@ class guiWin(QMainWindow):
             self.zSliceScrollBar.hide()
             self.z_label.hide()
             self.zSliceCheckbox.hide()
+            self.zSliceSpinbox.hide()
+            self.SizeZlabel.hide()
 
     def reInitCca(self):
         if not self.isSnapshot:
@@ -11595,6 +11609,8 @@ class guiWin(QMainWindow):
             how = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
             self.zProjComboBox.setCurrentText(how)
             self.zSliceScrollBar.setMaximum(posData.SizeZ-1)
+            self.zSliceSpinbox.setMaximum(posData.SizeZ)
+            self.SizeZlabel.setText(f'/{posData.SizeZ}')
 
     def updateItemsMousePos(self):
         if self.brushButton.isChecked():
@@ -12446,6 +12462,8 @@ class guiWin(QMainWindow):
         if self.data[0].SizeZ > 1:
             self.enableZstackWidgets(True)
             self.zSliceScrollBar.setMaximum(self.data[0].SizeZ-1)
+            self.zSliceSpinbox.setMaximum(self.data[0].SizeZ)
+            self.SizeZlabel.setText(f'/{self.data[0].SizeZ}')
             try:
                 self.zSliceScrollBar.actionTriggered.disconnect()
                 self.zSliceScrollBar.sliderReleased.disconnect()
@@ -12506,10 +12524,38 @@ class guiWin(QMainWindow):
             )
 
     def zSliceScrollBarActionTriggered(self, action):
-        self.update_z_slice(self.zSliceScrollBar.sliderPosition())
+        singleMove = (
+            action == QAbstractSlider.SliderSingleStepAdd
+            or action == QAbstractSlider.SliderSingleStepSub
+            or action == QAbstractSlider.SliderPageStepAdd
+            or action == QAbstractSlider.SliderPageStepSub
+        )
+        if singleMove:
+            self.update_z_slice(self.zSliceScrollBar.sliderPosition())
+        elif action == QAbstractSlider.SliderMove:
+            if self.zSliceScrollBarStartedMoving and self.isSegm3D:
+                self.clearAllItems()
+            posData = self.data[self.pos_i]
+            idx = (posData.filename, posData.frame_i)
+            z = self.zSliceScrollBar.sliderPosition()
+            posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
+            self.zSliceSpinbox.setValueNoEmit(z+1)
+            img = self.getImage()
+            self.img1.setImage(img)
+            if self.labelsGrad.showLabelsImgAction.isChecked():
+                self.img2.setImage(posData.lab, z=self.z_lab(), autoLevels=False)
+            self.updateViewerWindow()
+            if self.isSegm3D:
+                for obj in posData.rp:
+                    self.annotateObject(obj, 'IDs')
+            self.zSliceScrollBarStartedMoving = False
 
     def zSliceScrollBarReleased(self):
+        self.zSliceScrollBarStartedMoving = True
         self.update_z_slice(self.zSliceScrollBar.sliderPosition())
+    
+    def onZsliceSpinboxValueChange(self, value):
+        self.zSliceScrollBar.setSliderPosition(value-1)
 
     def update_z_slice(self, z):
         posData = self.data[self.pos_i]
@@ -12538,9 +12584,11 @@ class guiWin(QMainWindow):
             self.zSliceScrollBar.setDisabled(False)
             self.z_label.setStyleSheet('color: black')
             self.update_z_slice(self.zSliceScrollBar.sliderPosition())
+            self.zSliceSpinbox.setDisabled(False)
         else:
             self.zSliceScrollBar.setDisabled(True)
             self.z_label.setStyleSheet('color: gray')
+            self.zSliceSpinbox.setDisabled(True)
             self.updateALLimg()
 
     def removeGraphicsItemsIDs(self, maxID):
@@ -12748,6 +12796,7 @@ class guiWin(QMainWindow):
         self.isShiftDown = False
         self.autoContourHoverON = False
         self.navigateScrollBarStartedMoving = True
+        self.zSliceScrollBarStartedMoving = True
         self.labelRoiRunning = False
 
         # Second channel used by cellpose
@@ -14091,13 +14140,21 @@ class guiWin(QMainWindow):
     def annotateObject(self, obj, how, debug=False, ax=0):
         if not self.createItems:
             return
+        
+        
 
         posData = self.data[self.pos_i]
         # Draw ID label on ax1 image depending on how
         if ax == 0:
             LabelItemID = self.ax1_LabelItemsIDs[obj.label-1]
         else:
-            LabelItemID = self.ax2_LabelItemsIDs[obj.label-1]       
+            LabelItemID = self.ax2_LabelItemsIDs[obj.label-1]   
+
+        if not self.isObjVisible(obj.bbox):
+            # Object not visible (entire bbox in another z_range)
+            LabelItemID.setText('')
+            return
+
         df = posData.cca_df
         ID = obj.label
         if df is None or how.find('cell cycle') == -1:
@@ -14201,11 +14258,7 @@ class guiWin(QMainWindow):
             if not is_history_known:
                 txt = f'{txt}?'
         
-        if not self.isObjVisible(obj.bbox):
-            # Object not visible (entire bbox in another z_range)
-            LabelItemID.setText('')
-            return
-        elif self.isSegm3D:
+        if self.isSegm3D:
             if obj.label not in self.currentLab2D:
                 # Object is present in z+1 and z-1 but not in z --> transparent
                 r,g,b = self.ax1_oldIDcolor
@@ -15669,7 +15722,8 @@ class guiWin(QMainWindow):
             self.zSliceScrollBar.sliderReleased.connect(
                 self.zSliceScrollBarReleased
             )
-        self.z_label.setText(f'z-slice  {z+1:02}/{posData.SizeZ}')
+        # self.z_label.setText(f'z-slice  {z+1:02}/{posData.SizeZ}')
+        self.zSliceSpinbox.setValueNoEmit(z+1)
 
     def getImage(self, frame_i=None, normalizeIntens=True):
         posData = self.data[self.pos_i]
