@@ -1644,6 +1644,8 @@ class guiWin(QMainWindow):
         editMenu.addSeparator()
         # Font size
         self.fontSize = self.df_settings.at['fontSize', 'value']
+        intSize = int(re.findall(r'(\d+)', self.fontSize)[0])
+        self.smallFontSize = f'{intSize*0.75}pt'
         self.fontSizeMenu = editMenu.addMenu("Font size")
 
         editMenu.addAction(self.editTextIDsColorAction)
@@ -8752,6 +8754,7 @@ class guiWin(QMainWindow):
     @myutils.exception_handler
     def changeFontSize(self):
         self.fontSize = f'{self.sender().text()}pt'
+        self.smallFontSize = f'{int(int(self.sender().text())*0.75)}pt'
         self.df_settings.at['fontSize', 'value'] = self.fontSize
         self.df_settings.to_csv(self.settings_csv_path)
         LIs = zip(self.ax1_LabelItemsIDs, self.ax2_LabelItemsIDs)
@@ -14263,8 +14266,7 @@ class guiWin(QMainWindow):
                 # Object is present in z+1 and z-1 but not in z --> transparent
                 r,g,b = self.ax1_oldIDcolor
                 color = QColor(r,g,b,70)
-                size = int(self.fontSize*0.75)
-                LabelItemID.setText(txt, color=color, size=size)
+                LabelItemID.setText(txt, color=color, size=self.smallFontSize)
                 self.setLabelCenteredObject(obj, LabelItemID)
                 return
 
@@ -14736,6 +14738,10 @@ class guiWin(QMainWindow):
         self.storeUndoRedoStates(False)
 
         self._keepObjects()
+        self.keptObjectsIDs = widgets.KeptObjectIDsList(
+            self.keptIDsLineEdit, self.keepIDsConfirmAction
+        )
+        self.highlightHoverIDsKeptObj(0, 0, hoverID=0)
         
         posData = self.data[self.pos_i]
 
@@ -14746,6 +14752,7 @@ class guiWin(QMainWindow):
         if self.isSnapshot:
             self.fixCcaDfAfterEdit('Deleted non-selected objects')
             self.updateALLimg()
+            return
         else:
             result = self.warnEditingWithCca_df(
                 'Deleted non-selected objects', get_answer=True
