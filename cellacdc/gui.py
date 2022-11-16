@@ -30,6 +30,7 @@ import cv2
 import math
 import numpy as np
 import pandas as pd
+import matplotlib
 import scipy.optimize
 import scipy.interpolate
 import scipy.ndimage
@@ -41,8 +42,7 @@ import skimage.draw
 import skimage.exposure
 import skimage.transform
 import skimage.segmentation
-import matplotlib.pyplot as plt
-from matplotlib.colors import ListedColormap, LinearSegmentedColormap
+
 from functools import wraps
 from skimage.color import gray2rgb, gray2rgba, label2rgb
 
@@ -1644,6 +1644,8 @@ class guiWin(QMainWindow):
         editMenu.addSeparator()
         # Font size
         self.fontSize = self.df_settings.at['fontSize', 'value']
+        intSize = int(re.findall(r'(\d+)', self.fontSize)[0])
+        self.smallFontSize = f'{intSize*0.75}pt'
         self.fontSizeMenu = editMenu.addMenu("Font size")
 
         editMenu.addAction(self.editTextIDsColorAction)
@@ -2087,7 +2089,7 @@ class guiWin(QMainWindow):
         self.keepIDsButton.action = editToolBar.addWidget(self.keepIDsButton)
         self.checkableButtons.append(self.keepIDsButton)
         self.checkableQButtonsGroup.addButton(self.keepIDsButton)
-        self.functionsNotTested3D.append(self.keepIDsButton)
+        # self.functionsNotTested3D.append(self.keepIDsButton)
 
         self.binCellButton = QToolButton(self)
         self.binCellButton.setIcon(QIcon(":bin.svg"))
@@ -2405,6 +2407,11 @@ class guiWin(QMainWindow):
         self.labelRoiZdepthSpinbox = widgets.SpinBox()
         self.labelRoiToolbar.addWidget(self.labelRoiZdepthSpinbox)
         self.labelRoiToolbar.addWidget(QLabel('  '))
+        self.labelRoiAutoClearBorderCheckbox = QCheckBox(
+            'Remove objects touching borders'
+        )
+        self.labelRoiAutoClearBorderCheckbox.setChecked(True)
+        self.labelRoiToolbar.addWidget(self.labelRoiAutoClearBorderCheckbox)
         group = QButtonGroup()
         group.setExclusive(True)
         self.labelRoiIsRectRadioButton = QRadioButton('Rectangular ROI')
@@ -2420,16 +2427,32 @@ class guiWin(QMainWindow):
         self.labelRoiToolbar.addWidget(QLabel(' Circular ROI radius (pixel): '))
         self.labelRoiCircularRadiusSpinbox = widgets.SpinBox()
         self.labelRoiCircularRadiusSpinbox.setMinimum(1)
-        self.labelRoiCircularRadiusSpinbox.setValue(3)
+        self.labelRoiCircularRadiusSpinbox.setValue(11)
         self.labelRoiCircularRadiusSpinbox.setDisabled(True)
         self.labelRoiToolbar.addWidget(self.labelRoiCircularRadiusSpinbox)
         self.addToolBar(Qt.TopToolBarArea, self.labelRoiToolbar)
         self.labelRoiToolbar.setVisible(False)
+        self.labelRoiTypesGroup = group
+
+        self.loadLabelRoiLastParams()
+
         self.labelRoiIsCircularRadioButton.toggled.connect(
             self.labelRoiIsCircularRadioButtonToggled
         )
         self.labelRoiCircularRadiusSpinbox.valueChanged.connect(
             self.updateLabelRoiCircularSize
+        )
+        self.labelRoiCircularRadiusSpinbox.valueChanged.connect(
+            self.storeLabelRoiParams
+        )
+        self.labelRoiZdepthSpinbox.valueChanged.connect(
+            self.storeLabelRoiParams
+        )
+        self.labelRoiAutoClearBorderCheckbox.toggled.connect(
+            self.storeLabelRoiParams
+        )
+        group.buttonToggled.connect(
+            self.storeLabelRoiParams
         )
 
         self.keepIDsToolbar = QToolBar("Magic labeller controls", self)
@@ -3195,7 +3218,8 @@ class guiWin(QMainWindow):
 
         # z-slice scrollbars
         self.zSliceScrollBar = widgets.linkedQScrollbar(Qt.Horizontal)
-        _z_label = QLabel('z-slice  ')
+        _z_label = widgets.QClickableLabel()
+        _z_label.setText('z-slice  ')
         _z_label.setFont(_font)
         self.z_label = _z_label
 
@@ -3241,26 +3265,44 @@ class guiWin(QMainWindow):
         )
 
         row += 1
-        bottomLeftLayout.addWidget(self.t_label, row, 0, alignment=Qt.AlignRight)
+        navWidgetsLayout = QHBoxLayout()
+        self.navSpinBox = widgets.SpinBox()
+        self.navSpinBox.setMaximum(1)
+        self.navSizeLabel = QLabel('/ND')
+        navWidgetsLayout.addWidget(self.t_label)
+        navWidgetsLayout.addWidget(self.navSpinBox)
+        navWidgetsLayout.addWidget(self.navSizeLabel)
+        bottomLeftLayout.addLayout(
+            navWidgetsLayout, row, 0, alignment=Qt.AlignRight
+        )
         bottomLeftLayout.addWidget(self.navigateScrollBar, row, 1, 1, 2)
         sp = self.navigateScrollBar.sizePolicy()
         sp.setRetainSizeWhenHidden(True)
         self.navigateScrollBar.setSizePolicy(sp)
+        self.navSpinBox.valueChanged.connect(self.navigateSpinboxValueChanged)
+        self.navSpinBox.editingFinished.connect(self.navigateSpinboxEditingFinished)
 
         row += 1
         zSliceCheckboxLayout = QHBoxLayout()
         self.zSliceCheckbox = QCheckBox()
+        self.zSliceSpinbox = widgets.SpinBox()
+        self.SizeZlabel = QLabel('/ND')
+        self.z_label.setCheckableItem(self.zSliceCheckbox)
         self.zSliceCheckbox.setToolTip(
             'Activate/deactivate control of the z-slices with keyboard arrows.\n\n'
             'SHORCUT to toggle ON/OFF: "Z" key'
         )
         zSliceCheckboxLayout.addWidget(self.zSliceCheckbox)
         zSliceCheckboxLayout.addWidget(self.z_label)
+        zSliceCheckboxLayout.addWidget(self.zSliceSpinbox)
+        zSliceCheckboxLayout.addWidget(self.SizeZlabel)
         bottomLeftLayout.addLayout(
             zSliceCheckboxLayout, row, 0, alignment=Qt.AlignRight
         )
         bottomLeftLayout.addWidget(self.zSliceScrollBar, row, 1, 1, 2)
         bottomLeftLayout.addWidget(self.zProjComboBox, row, 3)
+        self.zSliceSpinbox.connectValueChanged(self.onZsliceSpinboxValueChange)
+        self.zSliceSpinbox.editingFinished.connect(self.zSliceScrollBarReleased)
 
         row += 1
         bottomLeftLayout.addWidget(
@@ -3562,14 +3604,14 @@ class guiWin(QMainWindow):
         self.topLayerItems.append(self.ax1_EraserX)
 
         # Brush circle img1
-        self.labelRoiCircItemLeft = pg.ScatterPlotItem()
+        self.labelRoiCircItemLeft = widgets.LabelRoiCircularItem()
         self.labelRoiCircItemLeft.cleared = False
         self.labelRoiCircItemLeft.setData(
             [], [], symbol='o', pxMode=False,
             brush=pg.mkBrush(color=(255,0,0,0)),
             pen=pg.mkPen(color='r', width=2)
         )
-        self.labelRoiCircItemRight = pg.ScatterPlotItem()
+        self.labelRoiCircItemRight = widgets.LabelRoiCircularItem()
         self.labelRoiCircItemRight.cleared = False
         self.labelRoiCircItemRight.setData(
             [], [], symbol='o', pxMode=False,
@@ -3711,7 +3753,8 @@ class guiWin(QMainWindow):
         )
 
         posData = self.data[self.pos_i]
-        self.labelRoiZdepthSpinbox.setValue(posData.SizeZ)
+        if self.labelRoiZdepthSpinbox.value() == 0:
+            self.labelRoiZdepthSpinbox.setValue(posData.SizeZ)
         self.labelRoiZdepthSpinbox.setMaximum(posData.SizeZ+1)
     
     def gui_createOverlayItems(self):
@@ -3939,6 +3982,8 @@ class guiWin(QMainWindow):
         self.zProjOverlay_CB.hide()
         self.overlay_z_label.hide()
         self.zSliceCheckbox.hide()
+        self.zSliceSpinbox.hide()
+        self.SizeZlabel.hide()
 
     @myutils.exception_handler
     def gui_mousePressEventImg2(self, event):
@@ -4191,16 +4236,21 @@ class guiWin(QMainWindow):
 
             # Remove contour and LabelItem of deleted ID
             self.ax1_ContoursCurves[delID-1].setData([], [])
+            self.ax2_ContoursCurves[delID-1].setData([], [])
             self.ax1_LabelItemsIDs[delID-1].setText('')
             self.ax2_LabelItemsIDs[delID-1].setText('')
 
             how = self.drawIDsContComboBox.currentText()
             if how.find('overlay segm. masks') != -1:
+                if delID_mask.ndim == 3:
+                    delID_mask = delID_mask[self.z_lab()]
                 self.labelsLayerImg1.image[delID_mask] = 0
                 self.labelsLayerImg1.setImage(self.labelsLayerImg1.image)
             
             how_ax2 = self.getAnnotateHowRightImage()
             if how_ax2.find('overlay segm. masks') != -1:
+                if delID_mask.ndim == 3:
+                    delID_mask = delID_mask[self.z_lab()]
                 self.labelsLayerRightImg.image[delID_mask] = 0
                 self.labelsLayerRightImg.setImage(self.labelsLayerRightImg.image)
 
@@ -5915,58 +5965,20 @@ class guiWin(QMainWindow):
         
         # Label ROI mouse release --> label the ROI with labelRoiWorker
         elif self.isMouseDragImg1 and self.labelRoiButton.isChecked():
+            self.labelRoiRunning = True
             self.app.setOverrideCursor(Qt.WaitCursor)
             self.isMouseDragImg1 = False
-
-            posData = self.data[self.pos_i]
 
             if self.labelRoiIsFreeHandRadioButton.isChecked():
                 self.freeRoiItem.closeCurve()
 
-            if self.isSegm3D:
-                filteredData = self.filteredData.get(self.user_ch_name)
-                if filteredData is None:
-                    # Filtered data not existing
-                    imgData = posData.img_data[posData.frame_i]
-                else:
-                    # 3D filtered data (see self.applyFilter)
-                    imgData = filteredData
-                roi_zdepth = self.labelRoiZdepthSpinbox.value()
-                if roi_zdepth == posData.SizeZ:
-                    z0 = 0
-                    z1 = posData.SizeZ
-                else:
-                    if roi_zdepth%2 != 0:
-                        roi_zdepth +=1
-                    half_zdepth = int(roi_zdepth/2)
-                    zc = self.zSliceScrollBar.sliderPosition() + 1
-                    z0 = zc-half_zdepth
-                    z0 = z0 if z0>=0 else 0
-                    z1 = zc+half_zdepth
-                    z1 = z1 if z1<posData.SizeZ else posData.SizeZ
-                if self.labelRoiIsRectRadioButton.isChecked():
-                    self.labelRoiSlice = self.labelRoiItem.slice(zRange=(z0,z1))
-                elif self.labelRoiIsFreeHandRadioButton.isChecked():
-                    self.labelRoiSlice = self.freeRoiItem.slice(zRange=(z0,z1))
-            else:
-                if self.labelRoiIsRectRadioButton.isChecked():
-                    self.labelRoiSlice = self.labelRoiItem.slice()
-                elif self.labelRoiIsFreeHandRadioButton.isChecked():
-                    self.labelRoiSlice = self.freeRoiItem.slice()
-                imgData = self.img1.image
-
-            roiImg = imgData[self.labelRoiSlice]
-            if self.labelRoiIsFreeHandRadioButton.isChecked():
-                # Fill outside of freehand roi with minimum of the ROI image
-                roiImg = roiImg.copy()
-                if self.isSegm3D:
-                    roiImg[:, ~self.freeRoiItem.mask()] = roiImg.min()
-                else:
-                    roiImg[~self.freeRoiItem.mask()] = roiImg.min()
+            roiImg, self.labelRoiSlice = self.getLabelRoiImage()
 
             if self.labelRoiModel is None:
                 cancel = self.initLabelRoiModel()
                 if cancel:
+                    self.labelRoiRunning = False
+                    self.app.restoreOverrideCursor() 
                     self.labelRoiItem.setPos((0,0))
                     self.labelRoiItem.setSize((0,0))
                     self.freeRoiItem.clear()
@@ -7155,6 +7167,8 @@ class guiWin(QMainWindow):
             return
         if not self.labelRoiIsCircularRadioButton.isChecked():
             return
+        if self.labelRoiRunning:
+            return
 
         size = self.labelRoiCircularRadiusSpinbox.value()
         if not checked:
@@ -7167,6 +7181,63 @@ class guiWin(QMainWindow):
 
         self.labelRoiCircItemLeft.setData(xx, yy, size=size)
         self.labelRoiCircItemRight.setData(xx, yy, size=size)
+    
+    def getLabelRoiImage(self):
+        posData = self.data[self.pos_i]
+
+        if self.isSegm3D:
+            filteredData = self.filteredData.get(self.user_ch_name)
+            if filteredData is None:
+                # Filtered data not existing
+                imgData = posData.img_data[posData.frame_i]
+            else:
+                # 3D filtered data (see self.applyFilter)
+                imgData = filteredData
+            roi_zdepth = self.labelRoiZdepthSpinbox.value()
+            if roi_zdepth == posData.SizeZ:
+                z0 = 0
+                z1 = posData.SizeZ
+            else:
+                if roi_zdepth%2 != 0:
+                    roi_zdepth +=1
+                half_zdepth = int(roi_zdepth/2)
+                zc = self.zSliceScrollBar.sliderPosition() + 1
+                z0 = zc-half_zdepth
+                z0 = z0 if z0>=0 else 0
+                z1 = zc+half_zdepth
+                z1 = z1 if z1<posData.SizeZ else posData.SizeZ
+            if self.labelRoiIsRectRadioButton.isChecked():
+                labelRoiSlice = self.labelRoiItem.slice(zRange=(z0,z1))
+            elif self.labelRoiIsFreeHandRadioButton.isChecked():
+                labelRoiSlice = self.freeRoiItem.slice(zRange=(z0,z1))
+            elif self.labelRoiIsCircularRadioButton.isChecked():
+                labelRoiSlice = self.labelRoiCircItemLeft.slice(zRange=(z0,z1))
+        else:
+            if self.labelRoiIsRectRadioButton.isChecked():
+                labelRoiSlice = self.labelRoiItem.slice()
+            elif self.labelRoiIsFreeHandRadioButton.isChecked():
+                labelRoiSlice = self.freeRoiItem.slice()
+            elif self.labelRoiIsCircularRadioButton.isChecked():
+                labelRoiSlice = self.labelRoiCircItemLeft.slice()
+            imgData = self.img1.image
+
+        roiImg = imgData[labelRoiSlice]
+        if self.labelRoiIsFreeHandRadioButton.isChecked():
+            mask = self.freeRoiItem.mask()
+        elif self.labelRoiIsCircularRadioButton.isChecked():
+            mask = self.labelRoiCircItemLeft.mask()
+        else:
+            mask = None
+        
+        if mask is not None:
+            # Fill outside of freehand roi with minimum of the ROI image
+            roiImg = roiImg.copy()
+            if self.isSegm3D:
+                roiImg[:, ~mask] = roiImg.min()
+            else:
+                roiImg[~mask] = roiImg.min()
+
+        return roiImg, labelRoiSlice
 
     def getHoverID(self, xdata, ydata):
         if not hasattr(self, 'diskMask'):
@@ -8694,6 +8765,7 @@ class guiWin(QMainWindow):
     @myutils.exception_handler
     def changeFontSize(self):
         self.fontSize = f'{self.sender().text()}pt'
+        self.smallFontSize = f'{int(int(self.sender().text())*0.75)}pt'
         self.df_settings.at['fontSize', 'value'] = self.fontSize
         self.df_settings.to_csv(self.settings_csv_path)
         LIs = zip(self.ax1_LabelItemsIDs, self.ax2_LabelItemsIDs)
@@ -8733,6 +8805,8 @@ class guiWin(QMainWindow):
             self.zSliceScrollBar.show()
             self.z_label.show()
             self.zSliceCheckbox.show()
+            self.zSliceSpinbox.show()
+            self.SizeZlabel.show()
         else:
             myutils.setRetainSizePolicy(self.zSliceScrollBar, retain=False)
             myutils.setRetainSizePolicy(self.zProjComboBox, retain=False)
@@ -8745,6 +8819,8 @@ class guiWin(QMainWindow):
             self.zSliceScrollBar.hide()
             self.z_label.hide()
             self.zSliceCheckbox.hide()
+            self.zSliceSpinbox.hide()
+            self.SizeZlabel.hide()
 
     def reInitCca(self):
         if not self.isSnapshot:
@@ -9371,9 +9447,10 @@ class guiWin(QMainWindow):
     
     def labelRoiDone(self, roiLab):
         # Delete only objects touching borders in X and Y not in Z
-        mask = np.zeros(roiLab.shape, dtype=bool)
-        mask[..., 1:-1, 1:-1] = True
-        roiLab = skimage.segmentation.clear_border(roiLab, mask=mask)
+        if self.labelRoiAutoClearBorderCheckbox.isChecked():
+            mask = np.zeros(roiLab.shape, dtype=bool)
+            mask[..., 1:-1, 1:-1] = True
+            roiLab = skimage.segmentation.clear_border(roiLab, mask=mask)
         posData = self.data[self.pos_i]
         self.setBrushID()
         roiLabMask = roiLab>0
@@ -9392,7 +9469,9 @@ class guiWin(QMainWindow):
         self.labelRoiItem.setSize((0,0))
         self.freeRoiItem.clear()
         self.logger.info('Magic labeller done!')
-        self.app.restoreOverrideCursor()        
+        self.app.restoreOverrideCursor()  
+
+        self.labelRoiRunning = False      
 
     def restoreHoveredID(self):
         posData = self.data[self.pos_i]
@@ -10085,7 +10164,7 @@ class guiWin(QMainWindow):
             # No future frames to propagate the change to
             return False, False, None, doNotShow
 
-        includeUnvisited = posData.includeUnvisitedInfo[modTxt]
+        includeUnvisited = posData.includeUnvisitedInfo.get(modTxt, False)
         areFutureIDs_affected = []
         # Get number of future frames already visited and check if future
         # frames has an ID affected by the change
@@ -10198,6 +10277,46 @@ class guiWin(QMainWindow):
         else:
             posData.cca_df = None
         return image_left
+    
+    def storeLabelRoiParams(self, value=None, checked=True):
+        checkedRoiType = self.labelRoiTypesGroup.checkedButton().text()
+        circRoiRadius = self.labelRoiCircularRadiusSpinbox.value()
+        roiZdepth = self.labelRoiZdepthSpinbox.value()
+        autoClearBorder = self.labelRoiAutoClearBorderCheckbox.isChecked()
+        clearBorder = 'Yes' if autoClearBorder else 'No'
+        self.df_settings.at['labelRoi_checkedRoiType', 'value'] = checkedRoiType
+        self.df_settings.at['labelRoi_circRoiRadius', 'value'] = circRoiRadius
+        self.df_settings.at['labelRoi_roiZdepth', 'value'] = roiZdepth
+        self.df_settings.at['labelRoi_autoClearBorder', 'value'] = clearBorder
+        self.df_settings.to_csv(self.settings_csv_path)
+    
+    def loadLabelRoiLastParams(self):
+        idx = 'labelRoi_checkedRoiType'
+        if idx in self.df_settings.index:
+            checkedRoiType = self.df_settings.at[idx, 'value']
+            for button in self.labelRoiTypesGroup.buttons():
+                if button.text() == checkedRoiType:
+                    button.setChecked(True)
+                    break
+        
+        idx = 'labelRoi_circRoiRadius'
+        if idx in self.df_settings.index:
+            circRoiRadius = self.df_settings.at[idx, 'value']
+            self.labelRoiCircularRadiusSpinbox.setValue(int(circRoiRadius))
+        
+        idx = 'labelRoi_roiZdepth'
+        if idx in self.df_settings.index:
+            roiZdepth = self.df_settings.at[idx, 'value']
+            self.labelRoiZdepthSpinbox.setValue(int(roiZdepth))
+        
+        idx = 'labelRoi_autoClearBorder'
+        if idx in self.df_settings.index:
+            clearBorder = self.df_settings.at[idx, 'value']
+            checked = clearBorder == 'Yes'
+            self.labelRoiAutoClearBorderCheckbox.setChecked(checked)
+        
+        if self.labelRoiIsCircularRadioButton.isChecked():
+            self.labelRoiCircularRadiusSpinbox.setDisabled(False)
 
     def storeUndoRedoStates(self, UndoFutFrames):
         posData = self.data[self.pos_i]
@@ -11504,6 +11623,8 @@ class guiWin(QMainWindow):
             how = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
             self.zProjComboBox.setCurrentText(how)
             self.zSliceScrollBar.setMaximum(posData.SizeZ-1)
+            self.zSliceSpinbox.setMaximum(posData.SizeZ)
+            self.SizeZlabel.setText(f'/{posData.SizeZ}')
 
     def updateItemsMousePos(self):
         if self.brushButton.isChecked():
@@ -11677,13 +11798,17 @@ class guiWin(QMainWindow):
             if posData.last_tracked_i is not None:
                 if posData.frame_i > posData.last_tracked_i:
                     self.navigateScrollBar.setMaximum(posData.frame_i+1)
+                    self.navSpinBox.setMaximum(posData.frame_i+1)
                 else:
                     self.navigateScrollBar.setMaximum(posData.last_tracked_i+1)
+                    self.navSpinBox.setMaximum(posData.last_tracked_i+1)
             else:
                 self.navigateScrollBar.setMaximum(posData.frame_i+1)
+                self.navSpinBox.setMaximum(posData.frame_i+1)
         elif mode == 'Cell cycle analysis':
             if posData.frame_i > self.last_cca_frame_i:
                 self.navigateScrollBar.setMaximum(posData.frame_i+1)
+                self.navSpinBox.setMaximum(posData.frame_i+1)
 
     def prev_frame(self):
         posData = self.data[self.pos_i]
@@ -12093,6 +12218,10 @@ class guiWin(QMainWindow):
             self.gui_connectEditActions()
 
         self.setFramesSnapshotMode()
+        if self.isSnapshot:
+            self.navSizeLabel.setText(f'/{len(self.data)}') 
+        else:
+            self.navSizeLabel.setText(f'/{posData.SizeT}')
 
         self.enableZstackWidgets(posData.SizeZ > 1)
         self.showHighlightZneighCheckbox()
@@ -12141,6 +12270,9 @@ class guiWin(QMainWindow):
         )
 
         self.disableNonFunctionalButtons()
+
+        self.labelRoiCircItemLeft.setImageShape(self.currentLab2D.shape)
+        self.labelRoiCircItemRight.setImageShape(self.currentLab2D.shape)
 
         # Overwrite axes viewbox context menu
         self.ax1.vb.menu = self.imgGrad.gradient.menu
@@ -12352,6 +12484,8 @@ class guiWin(QMainWindow):
         if self.data[0].SizeZ > 1:
             self.enableZstackWidgets(True)
             self.zSliceScrollBar.setMaximum(self.data[0].SizeZ-1)
+            self.zSliceSpinbox.setMaximum(self.data[0].SizeZ)
+            self.SizeZlabel.setText(f'/{self.data[0].SizeZ}')
             try:
                 self.zSliceScrollBar.actionTriggered.disconnect()
                 self.zSliceScrollBar.sliderReleased.disconnect()
@@ -12370,10 +12504,11 @@ class guiWin(QMainWindow):
 
         posData = self.data[self.pos_i]
         if posData.SizeT == 1:
-            self.t_label.setText('Position n. ')
+            self.t_label.setText('Position n.')
             self.navigateScrollBar.setMinimum(1)
             self.navigateScrollBar.setMaximum(len(self.data))
             self.navigateScrollBar.setAbsoluteMaximum(len(self.data))
+            self.navSpinBox.setMaximum(len(self.data))
             try:
                 self.navigateScrollBar.sliderMoved.disconnect()
                 self.navigateScrollBar.sliderReleased.disconnect()
@@ -12394,13 +12529,14 @@ class guiWin(QMainWindow):
             self.navigateScrollBar.setAbsoluteMaximum(posData.SizeT)
             if posData.last_tracked_i is not None:
                 self.navigateScrollBar.setMaximum(posData.last_tracked_i+1)
+                self.navSpinBox.setMaximum(posData.last_tracked_i+1)
             try:
                 self.navigateScrollBar.sliderMoved.disconnect()
                 self.navigateScrollBar.sliderReleased.disconnect()
                 self.navigateScrollBar.actionTriggered.disconnect()
             except Exception as e:
                 pass
-            self.t_label.setText('frame n.  ')
+            self.t_label.setText('Frame n.')
             self.navigateScrollBar.sliderMoved.connect(
                 self.framesScrollBarMoved
             )
@@ -12412,10 +12548,38 @@ class guiWin(QMainWindow):
             )
 
     def zSliceScrollBarActionTriggered(self, action):
-        self.update_z_slice(self.zSliceScrollBar.sliderPosition())
+        singleMove = (
+            action == QAbstractSlider.SliderSingleStepAdd
+            or action == QAbstractSlider.SliderSingleStepSub
+            or action == QAbstractSlider.SliderPageStepAdd
+            or action == QAbstractSlider.SliderPageStepSub
+        )
+        if singleMove:
+            self.update_z_slice(self.zSliceScrollBar.sliderPosition())
+        elif action == QAbstractSlider.SliderMove:
+            if self.zSliceScrollBarStartedMoving and self.isSegm3D:
+                self.clearAllItems()
+            posData = self.data[self.pos_i]
+            idx = (posData.filename, posData.frame_i)
+            z = self.zSliceScrollBar.sliderPosition()
+            posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
+            self.zSliceSpinbox.setValueNoEmit(z+1)
+            img = self.getImage()
+            self.img1.setImage(img)
+            if self.labelsGrad.showLabelsImgAction.isChecked():
+                self.img2.setImage(posData.lab, z=self.z_lab(), autoLevels=False)
+            self.updateViewerWindow()
+            if self.isSegm3D and hasattr(self, 'currentLab2D'):
+                for obj in posData.rp:
+                    self.annotateObject(obj, 'IDs')
+            self.zSliceScrollBarStartedMoving = False
 
     def zSliceScrollBarReleased(self):
+        self.zSliceScrollBarStartedMoving = True
         self.update_z_slice(self.zSliceScrollBar.sliderPosition())
+    
+    def onZsliceSpinboxValueChange(self, value):
+        self.zSliceScrollBar.setSliderPosition(value-1)
 
     def update_z_slice(self, z):
         posData = self.data[self.pos_i]
@@ -12444,9 +12608,11 @@ class guiWin(QMainWindow):
             self.zSliceScrollBar.setDisabled(False)
             self.z_label.setStyleSheet('color: black')
             self.update_z_slice(self.zSliceScrollBar.sliderPosition())
+            self.zSliceSpinbox.setDisabled(False)
         else:
             self.zSliceScrollBar.setDisabled(True)
             self.z_label.setStyleSheet('color: gray')
+            self.zSliceSpinbox.setDisabled(True)
             self.updateALLimg()
 
     def removeGraphicsItemsIDs(self, maxID):
@@ -12654,6 +12820,8 @@ class guiWin(QMainWindow):
         self.isShiftDown = False
         self.autoContourHoverON = False
         self.navigateScrollBarStartedMoving = True
+        self.zSliceScrollBarStartedMoving = True
+        self.labelRoiRunning = False
 
         # Second channel used by cellpose
         self.secondChannelName = None
@@ -12840,6 +13008,20 @@ class guiWin(QMainWindow):
         self.ax2.vb.setYLink(self.ax1.vb)
         self.ax2.vb.setXLink(self.ax1.vb)
 
+    def navigateSpinboxValueChanged(self, value):
+        self.navigateScrollBar.setSliderPosition(value)
+        if self.isSnapshot:
+            self.PosScrollBarMoved(value)
+        else:
+            self.navigateScrollBarStartedMoving = True
+            self.framesScrollBarMoved(value)
+    
+    def navigateSpinboxEditingFinished(self):
+        if self.isSnapshot:
+            self.PosScrollBarReleased()
+        else:
+            self.framesScrollBarReleased()
+
     def PosScrollBarAction(self, action):
         if action == QAbstractSlider.SliderSingleStepAdd:
             self.next_cb()
@@ -12895,10 +13077,8 @@ class guiWin(QMainWindow):
 
         if self.navigateScrollBarStartedMoving:
             self.clearAllItems()
-       
-        self.t_label.setText(
-            f'frame n. {posData.frame_i+1}/{posData.SizeT}'
-        )
+
+        self.navSpinBox.setValueNoEmit(posData.frame_i+1)
         if self.labelsGrad.showLabelsImgAction.isChecked():
             self.img2.setImage(posData.lab, z=self.z_lab(), autoLevels=False)
         self.updateLookuptable()
@@ -13764,6 +13944,7 @@ class guiWin(QMainWindow):
         last_tracked_i = self.get_last_tracked_i()
 
         self.navigateScrollBar.setMaximum(last_tracked_i+1)
+        self.navSpinBox.setMaximum(last_tracked_i+1)
         if posData.frame_i > last_tracked_i:
             # Prompt user to go to last tracked frame
             msg = widgets.myMessageBox()
@@ -13896,6 +14077,7 @@ class guiWin(QMainWindow):
         self.last_cca_frame_i = last_cca_frame_i
 
         self.navigateScrollBar.setMaximum(last_cca_frame_i+1)
+        self.navSpinBox.setMaximum(last_cca_frame_i+1)
 
         if posData.cca_df is None:
             posData.cca_df = self.getBaseCca_df()
@@ -13996,13 +14178,21 @@ class guiWin(QMainWindow):
     def annotateObject(self, obj, how, debug=False, ax=0):
         if not self.createItems:
             return
+        
+        
 
         posData = self.data[self.pos_i]
         # Draw ID label on ax1 image depending on how
         if ax == 0:
             LabelItemID = self.ax1_LabelItemsIDs[obj.label-1]
         else:
-            LabelItemID = self.ax2_LabelItemsIDs[obj.label-1]       
+            LabelItemID = self.ax2_LabelItemsIDs[obj.label-1]   
+
+        if not self.isObjVisible(obj.bbox):
+            # Object not visible (entire bbox in another z_range)
+            LabelItemID.setText('')
+            return
+
         df = posData.cca_df
         ID = obj.label
         if df is None or how.find('cell cycle') == -1:
@@ -14106,16 +14296,12 @@ class guiWin(QMainWindow):
             if not is_history_known:
                 txt = f'{txt}?'
         
-        if not self.isObjVisible(obj.bbox):
-            # Object not visible (entire bbox in another z_range)
-            LabelItemID.setText('')
-            return
-        elif self.isSegm3D:
+        if self.isSegm3D:
             if obj.label not in self.currentLab2D:
                 # Object is present in z+1 and z-1 but not in z --> transparent
                 r,g,b = self.ax1_oldIDcolor
-                color = QColor(r,g,b,100)
-                LabelItemID.setText(txt, color=color, size=self.fontSize)
+                color = QColor(r,g,b,70)
+                LabelItemID.setText(txt, color=color, size=self.smallFontSize)
                 self.setLabelCenteredObject(obj, LabelItemID)
                 return
 
@@ -14587,6 +14773,10 @@ class guiWin(QMainWindow):
         self.storeUndoRedoStates(False)
 
         self._keepObjects()
+        self.keptObjectsIDs = widgets.KeptObjectIDsList(
+            self.keptIDsLineEdit, self.keepIDsConfirmAction
+        )
+        self.highlightHoverIDsKeptObj(0, 0, hoverID=0)
         
         posData = self.data[self.pos_i]
 
@@ -14597,6 +14787,7 @@ class guiWin(QMainWindow):
         if self.isSnapshot:
             self.fixCcaDfAfterEdit('Deleted non-selected objects')
             self.updateALLimg()
+            return
         else:
             result = self.warnEditingWithCca_df(
                 'Deleted non-selected objects', get_answer=True
@@ -14839,6 +15030,11 @@ class guiWin(QMainWindow):
             (49, 222, 134),
             (22, 108, 27)
         ]
+        cmap = matplotlib.colormaps['hsv']
+        self.overlayRGBs.extend(
+            [tuple([round(c*255) for c in cmap(i)][:3]) 
+            for i in np.linspace(0,1,8)]
+        )
         if 'overlayColor' in self.df_settings.index:
             rgba_str = self.df_settings.at['overlayColor', 'value']
             rgb = [int(v) for v in rgba_str.split('-')]
@@ -15478,6 +15674,7 @@ class guiWin(QMainWindow):
         for _posData in self.data:
             self.setLut(_posData)
         self.updateLookuptable()
+        self.initLabelsLayersImg1()
 
         self.df_settings = self.labelsGrad.saveState(self.df_settings)
         self.df_settings.to_csv(self.settings_csv_path)
@@ -15574,7 +15771,8 @@ class guiWin(QMainWindow):
             self.zSliceScrollBar.sliderReleased.connect(
                 self.zSliceScrollBarReleased
             )
-        self.z_label.setText(f'z-slice  {z+1:02}/{posData.SizeZ}')
+        # self.z_label.setText(f'z-slice  {z+1:02}/{posData.SizeZ}')
+        self.zSliceSpinbox.setValueNoEmit(z+1)
 
     def getImage(self, frame_i=None, normalizeIntens=True):
         posData = self.data[self.pos_i]
@@ -16055,13 +16253,10 @@ class guiWin(QMainWindow):
     def updateFramePosLabel(self):
         if self.isSnapshot:
             posData = self.data[self.pos_i]
-            self.t_label.setText(
-                     f'Pos. n. {self.pos_i+1}/{self.num_pos} '
-                     f'({posData.pos_foldername})')
+            self.navSpinBox.setValueNoEmit(self.pos_i+1)
         else:
             posData = self.data[0]
-            self.t_label.setText(
-                     f'frame n. {posData.frame_i+1}/{posData.SizeT}')
+            self.navSpinBox.setValueNoEmit(posData.frame_i+1)
 
     def updateFilters(self):
         pass
@@ -16133,18 +16328,12 @@ class guiWin(QMainWindow):
         if ID in self.keptObjectsIDs:
             # Do not clear kept IDs
             return
+        
+        self.searchedIDitemRight.setData([], [])
+        self.searchedIDitemLeft.setData([], [])
 
         how_ax1 = self.drawIDsContComboBox.currentText()
         how_ax2 = self.getAnnotateHowRightImage()
-
-        isContourON_ax1 = how_ax1.find('contours') != -1
-        isContourON_ax2 = how_ax2.find('contours') != -1
-
-        if isContourON_ax1:
-            ax1Cont = self.ax1_ContoursCurves[ID-1]
-            ax1Cont.setPen(self.highlightedIDopts['ax1ContPen'])
-        else:
-            ax1Cont.clear()
 
         LabelItemID = self.ax1_LabelItemsIDs[ID-1]
         LabelItemID.setText(
@@ -16152,13 +16341,6 @@ class guiWin(QMainWindow):
             color=self.highlightedIDopts['ax1color'],
             bold=self.highlightedIDopts['ax1LabelIsBold']
         )
-
-        ID = self.highlightedID
-        if isContourON_ax2:
-            ax2Cont = self.ax2_ContoursCurves[ID-1]
-            ax2Cont.setPen(self.highlightedIDopts['ax2ContPen'])
-        else:
-            ax2Cont.clear()
 
         LabelItemID = self.ax2_LabelItemsIDs[ID-1]
         LabelItemID.setText(
@@ -16864,6 +17046,7 @@ class guiWin(QMainWindow):
             from_frame_i = posData.frame_i+1
         posData.last_tracked_i = from_frame_i
         self.navigateScrollBar.setMaximum(from_frame_i+1)
+        self.navSpinBox.setMaximum(from_frame_i+1)
         # self.navigateScrollBar.setMinimum(1)
         for i in range(from_frame_i, posData.SizeT):
             if posData.allData_li[i]['labels'] is None:

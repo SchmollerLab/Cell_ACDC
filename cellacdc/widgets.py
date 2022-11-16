@@ -11,6 +11,7 @@ import difflib
 from functools import partial
 
 import skimage.draw
+import skimage.morphology
 
 from matplotlib.colors import ListedColormap, LinearSegmentedColormap
 
@@ -849,11 +850,21 @@ class QClickableLabel(QLabel):
     clicked = pyqtSignal(object)
 
     def __init__(self, parent=None):
-        self.parent = parent
+        self._parent = parent
         super().__init__(parent)
+        self._checkableItem = None
+    
+    def setCheckableItem(self, widget):
+        self._checkableItem = widget
 
     def mousePressEvent(self, event):
         self.clicked.emit(self)
+        if self._checkableItem is not None:
+            status = not self.self._checkableItem.isChecked()
+            self._checkableItem.setChecked(status)
+
+    def setChecked(self, checked):
+        self._checkableItem.setChecked(checked)
 
 
 class QCenteredComboBox(QComboBox):
@@ -1763,6 +1774,30 @@ class customAnnotToolButton(rightClickToolButton):
         self.isHideChecked = checked
         self.sigHideAction.emit(self)
 
+class LabelRoiCircularItem(pg.ScatterPlotItem):
+    def __init__(self, *args, **kargs):
+        super().__init__(*args, **kargs)
+    
+    def setImageShape(self, shape):
+        self._shape = shape
+    
+    def slice(self, zRange=None):
+        self.mask()
+        if zRange is None:
+            return self._slice
+        else:
+            zmin, zmax = zRange
+            return (slice(zmin, zmax), *self._slice)
+
+    def mask(self):
+        shape = self._shape
+        radius = int(self.opts['size']/2)
+        mask = skimage.morphology.disk(radius, dtype=bool)
+        xx, yy = self.getData()
+        Yc, Xc = yy[0], xx[0]
+        mask, self._slice = myutils.clipSelemMask(mask, shape, Yc, Xc, copy=False)
+        return mask
+
 class Toggle(QCheckBox):
     def __init__(
         self,
@@ -2167,10 +2202,25 @@ class readOnlySpinbox(QSpinBox):
         self.setStyleSheet('background-color: rgba(240, 240, 240, 200);')
 
 class SpinBox(QSpinBox):
+    sigValueChanged = pyqtSignal(int)
+
     def __init__(self, parent=None):
         super().__init__(parent=parent)
         self.setAlignment(Qt.AlignCenter)
         self.setMaximum(2**31-1)
+        self._valueChangedFunction = None
+    
+    def connectValueChanged(self, function):
+        self._valueChangedFunction = function
+        self.valueChanged.connect(function)
+    
+    def setValueNoEmit(self, value):
+        if self._valueChangedFunction is None:
+            self.setValue(value)
+            return
+        self.valueChanged.disconnect()
+        self.setValue(value)
+        self.valueChanged.connect(self._valueChangedFunction)
 
 class ReadOnlyLineEdit(QLineEdit):
     def __init__(self, parent=None):
