@@ -159,13 +159,16 @@ class tracker:
             xbr=reference.shape[1], ybr=reference.shape[0],
         )
         img_stack = []
-        starting_frame = len(original_video) - len(segm_video)
-        for frame in range(len(original_video)):
+        if len(original_video) != len(segm_video):
+            starting_frame = len(original_video) - len(segm_video) - 1
+        else:
+            starting_frame = 0
+        for frame in range(len(segm_video)):
+            idx = frame + starting_frame
             # Crop and scale:
-            i = utils.rangescale(utils.cropbox(original_video[frame], box), rescale=(0, 1))
+            i = utils.rangescale(utils.cropbox(original_video[idx], box), rescale=(0, 1))
             # Append i as is to input images stack:
-            if frame >= starting_frame:
-                img_stack.append(i)
+            img_stack.append(i)
 
         # Get Save Path (File Name is same as Original Images + .format)
         savepath = self.params['original_images_path']

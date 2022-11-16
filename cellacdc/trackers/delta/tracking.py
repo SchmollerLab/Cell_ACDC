@@ -5,7 +5,7 @@ Experiment reader class.
 """
 
 # Modules:
-from typing import cast, List, Optional, Tuple, Union
+from typing import Tuple, Union
 
 import cv2
 import numpy as np
@@ -126,20 +126,20 @@ class FakeReader:
             )
 
         # Load images:
-        for f in range(len(self.original_video)):
+        for f in range(self.timepoints):
 
-            if f >= self.starting_frame:
-                frame = self.original_video[f].astype(np.uint16)
+            idx = f + self.starting_frame
+            frame = self.original_video[idx].astype(np.uint16)
 
-                # Optionally resize and rescale:
-                if rotate is not None:
-                    frame = utils.imrotate(frame, rotate)
-                if resize is not None:
-                    frame = cv2.resize(frame, resize[::-1])  # cv2 inverts shape
-                if rescale is not None:
-                    frame = utils.rangescale(frame, rescale)
-                # Add to output array:
-                output[f] = frame
+            # Optionally resize and rescale:
+            if rotate is not None:
+                frame = utils.imrotate(frame, rotate)
+            if resize is not None:
+                frame = cv2.resize(frame, resize[::-1])  # cv2 inverts shape
+            if rescale is not None:
+                frame = utils.rangescale(frame, rescale)
+            # Add to output array:
+            output[f] = frame
 
         # Rescale all images:
         if globalrescale is not None:
@@ -148,4 +148,4 @@ class FakeReader:
         output = output[np.newaxis, :, np.newaxis, :, :]
 
         # Return:
-        return np.squeeze(output)[0,:,:] if squeeze_dimensions else output
+        return np.squeeze(output)[0, :, :] if squeeze_dimensions else output
