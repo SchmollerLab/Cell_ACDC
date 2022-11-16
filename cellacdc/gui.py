@@ -15627,6 +15627,7 @@ class guiWin(QMainWindow):
         for _posData in self.data:
             self.setLut(_posData)
         self.updateLookuptable()
+        self.initLabelsLayersImg1()
 
         self.df_settings = self.labelsGrad.saveState(self.df_settings)
         self.df_settings.to_csv(self.settings_csv_path)
