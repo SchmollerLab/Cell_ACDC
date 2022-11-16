@@ -2087,7 +2087,7 @@ class guiWin(QMainWindow):
         self.keepIDsButton.action = editToolBar.addWidget(self.keepIDsButton)
         self.checkableButtons.append(self.keepIDsButton)
         self.checkableQButtonsGroup.addButton(self.keepIDsButton)
-        self.functionsNotTested3D.append(self.keepIDsButton)
+        # self.functionsNotTested3D.append(self.keepIDsButton)
 
         self.binCellButton = QToolButton(self)
         self.binCellButton.setIcon(QIcon(":bin.svg"))
@@ -12545,7 +12545,7 @@ class guiWin(QMainWindow):
             if self.labelsGrad.showLabelsImgAction.isChecked():
                 self.img2.setImage(posData.lab, z=self.z_lab(), autoLevels=False)
             self.updateViewerWindow()
-            if self.isSegm3D:
+            if self.isSegm3D and hasattr(self, 'currentLab2D'):
                 for obj in posData.rp:
                     self.annotateObject(obj, 'IDs')
             self.zSliceScrollBarStartedMoving = False
@@ -14262,8 +14262,9 @@ class guiWin(QMainWindow):
             if obj.label not in self.currentLab2D:
                 # Object is present in z+1 and z-1 but not in z --> transparent
                 r,g,b = self.ax1_oldIDcolor
-                color = QColor(r,g,b,100)
-                LabelItemID.setText(txt, color=color, size=self.fontSize)
+                color = QColor(r,g,b,70)
+                size = int(self.fontSize*0.75)
+                LabelItemID.setText(txt, color=color, size=size)
                 self.setLabelCenteredObject(obj, LabelItemID)
                 return
 
@@ -16282,18 +16283,12 @@ class guiWin(QMainWindow):
         if ID in self.keptObjectsIDs:
             # Do not clear kept IDs
             return
+        
+        self.searchedIDitemRight.setData([], [])
+        self.searchedIDitemLeft.setData([], [])
 
         how_ax1 = self.drawIDsContComboBox.currentText()
         how_ax2 = self.getAnnotateHowRightImage()
-
-        isContourON_ax1 = how_ax1.find('contours') != -1
-        isContourON_ax2 = how_ax2.find('contours') != -1
-
-        if isContourON_ax1:
-            ax1Cont = self.ax1_ContoursCurves[ID-1]
-            ax1Cont.setPen(self.highlightedIDopts['ax1ContPen'])
-        else:
-            ax1Cont.clear()
 
         LabelItemID = self.ax1_LabelItemsIDs[ID-1]
         LabelItemID.setText(
@@ -16301,13 +16296,6 @@ class guiWin(QMainWindow):
             color=self.highlightedIDopts['ax1color'],
             bold=self.highlightedIDopts['ax1LabelIsBold']
         )
-
-        ID = self.highlightedID
-        if isContourON_ax2:
-            ax2Cont = self.ax2_ContoursCurves[ID-1]
-            ax2Cont.setPen(self.highlightedIDopts['ax2ContPen'])
-        else:
-            ax2Cont.clear()
 
         LabelItemID = self.ax2_LabelItemsIDs[ID-1]
         LabelItemID.setText(
