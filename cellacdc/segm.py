@@ -575,14 +575,8 @@ class segmWin(QMainWindow):
         self.addPbar()
         self.addlogTerminal()
 
-        is_pos_folder = os.path.basename(exp_path).find('Position_') != -1
-        is_images_folder = os.path.basename(exp_path) == 'Images'
-        contains_images_folder = os.path.exists(
-            os.path.join(exp_path, 'Images')
-        )
-        if contains_images_folder and not is_pos_folder:
-            is_images_folder = True
-            exp_path = os.path.join(exp_path, 'Images')
+        folder_type = myutils.determine_folder_type(exp_path)
+        is_pos_folder, is_images_folder, exp_path = folder_type
 
         self.log('Loading data...')
         self.progressLabel.setText('Loading data...')
