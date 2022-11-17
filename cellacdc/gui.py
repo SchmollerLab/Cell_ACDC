@@ -2278,6 +2278,39 @@ class guiWin(QMainWindow):
         self.lazyLoaderThread.started.connect(self.lazyLoader.run)
         self.lazyLoaderThread.start()
     
+    def gui_createStoreStateWorker(self):
+        self.storeStateWorker = None
+        return
+        self.storeStateThread = QThread()
+        self.autoSaveMutex = QMutex()
+        self.autoSaveWaitCond = QWaitCondition()
+
+        self.storeStateWorker = workers.StoreGuiStateWorker(
+            self.autoSaveMutex, self.autoSaveWaitCond
+        )
+
+        self.storeStateWorker.moveToThread(self.storeStateThread)
+        self.storeStateWorker.finished.connect(self.storeStateThread.quit)
+        self.storeStateWorker.finished.connect(self.storeStateWorker.deleteLater)
+        self.storeStateThread.finished.connect(self.storeStateThread.deleteLater)
+
+        self.storeStateWorker.sigDone.connect(self.storeStateWorkerDone)
+        self.storeStateWorker.progress.connect(self.workerProgress)
+        self.storeStateWorker.finished.connect(self.storeStateWorkerClosed)
+        
+        self.storeStateThread.started.connect(self.storeStateWorker.run)
+        self.storeStateThread.start()
+
+        self.logger.info('Store state worker started.')
+    
+    def storeStateWorkerDone(self):
+        if self.storeStateWorker.callbackOnDone is not None:
+            self.storeStateWorker.callbackOnDone()
+        self.storeStateWorker.callbackOnDone = None
+
+    def storeStateWorkerClosed(self):
+        self.logger.info('Store state worker started.')
+    
     def gui_createAutoSaveWorker(self):
         if self.autoSaveActiveWorkers:
             garbage = self.autoSaveActiveWorkers[-1]
@@ -3254,7 +3287,8 @@ class guiWin(QMainWindow):
         row += 1
         navWidgetsLayout = QHBoxLayout()
         self.navSpinBox = widgets.SpinBox()
-        self.navSpinBox.setMaximum(1)
+        self.navSpinBox.setMinimum(1)
+        self.navSpinBox.setMaximum(11)
         self.navSizeLabel = QLabel('/ND')
         navWidgetsLayout.addWidget(self.t_label)
         navWidgetsLayout.addWidget(self.navSpinBox)
@@ -3273,6 +3307,7 @@ class guiWin(QMainWindow):
         zSliceCheckboxLayout = QHBoxLayout()
         self.zSliceCheckbox = QCheckBox()
         self.zSliceSpinbox = widgets.SpinBox()
+        self.zSliceSpinbox.setMinimum(1)
         self.SizeZlabel = QLabel('/ND')
         self.z_label.setCheckableItem(self.zSliceCheckbox)
         self.zSliceCheckbox.setToolTip(
@@ -5027,17 +5062,16 @@ class guiWin(QMainWindow):
                     ID=self.erasedID
                 )
 
-
             self.erasedIDs.extend(lab_2D[mask])
             self.applyEraserMask(mask)
 
             self.setImageImg2()
 
-            self.erasedLab = np.zeros_like(posData.lab)
+            self.erasedLab = np.zeros_like(lab_2D)
             for erasedID in np.unique(self.erasedIDs):
                 if erasedID == 0:
                     continue
-                self.erasedLab[posData.lab==erasedID] = erasedID
+                self.erasedLab[lab_2D==erasedID] = erasedID
 
             eraserMask = mask[diskSlice]
             self.setTempImg1Eraser(eraserMask, toLocalSlice=diskSlice)
@@ -6432,10 +6466,6 @@ class guiWin(QMainWindow):
             self.lastHoverID = -1
 
         elif left_click and canErase:
-            # printl('----------------------------------------')
-            
-            # t0 = time.perf_counter()
-
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             lab_2D = self.get_2Dlab(posData.lab)
@@ -6444,15 +6474,13 @@ class guiWin(QMainWindow):
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(False)
 
-            # t1 = time.perf_counter()
+            t1 = time.perf_counter()
 
             self.yPressAx2, self.xPressAx2 = y, x
             # Keep a list of erased IDs got erased
             self.erasedIDs = []
             
             self.erasedID = self.getHoverID(xdata, ydata)
-
-            
 
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
@@ -6468,8 +6496,6 @@ class guiWin(QMainWindow):
                 and self.erasedID != 0
             )
 
-            # t2 = time.perf_counter()
-
             self.eraseOnlyOneID = eraseOnlyOneID
 
             if eraseOnlyOneID:
@@ -6479,7 +6505,6 @@ class guiWin(QMainWindow):
             self.setTempImg1Eraser(mask, init=True)
             self.applyEraserMask(mask)
 
-            # t3 = time.perf_counter()
             self.erasedIDs.extend(lab_2D[mask])  
 
             for erasedID in np.unique(self.erasedIDs):
@@ -6488,16 +6513,6 @@ class guiWin(QMainWindow):
                 self.erasedLab[lab_2D==erasedID] = erasedID
             
             self.isMouseDragImg1 = True
-            # t4 = time.perf_counter()
-
-            # printl(
-            #     f'First = {(t1-t0)*1000:.3f} ms\n'
-            #     f'Second = {(t2-t1)*1000:.3f} ms\n'
-            #     f'Third = {(t3-t2)*1000:.3f} ms\n'
-            #     f'Fourth = {(t4-t3)*1000:.3f} ms\n'
-            #     f'Total = {(t4-t0)*1000:.3f} ms'
-            # )
-            # printl('----------------------------------------')
 
         elif left_click and canRuler or canPolyLine:
             x, y = event.pos().x(), event.pos().y()
@@ -9732,7 +9747,7 @@ class guiWin(QMainWindow):
 
     def equalizeHist(self):
         # Store undo state before modifying stuff
-        self.storeUndoRedoStates(False)
+        self.storeUndoRedoStates(False, storeImage=True)
         self.updateALLimg()
 
     def curvTool_cb(self, checked):
@@ -9850,7 +9865,7 @@ class guiWin(QMainWindow):
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
             posData = self.data[self.pos_i]
-            printl(posData.frame_i)
+            self.storeUndoRedoStates(False)
             # self.win = apps.pgTestWindow()
             # self.win.ax1.addItem(self.tempLayerImg1)
             # self.win.show()
@@ -10259,19 +10274,24 @@ class guiWin(QMainWindow):
 
     def addCcaState(self, frame_i, cca_df, undoId):
         posData = self.data[self.pos_i]
-        posData.UndoRedoCcaStates[frame_i].insert(0,
-                                     {'id': undoId,
-                                      'cca_df': cca_df.copy()})
+        posData.UndoRedoCcaStates[frame_i].insert(
+            0, {'id': undoId, 'cca_df': cca_df.copy()}
+        )
 
-    def addCurrentState(self):
+    def addCurrentState(self, callbackOnDone=None, storeImage=False):
         posData = self.data[self.pos_i]
         if posData.cca_df is not None:
             cca_df = posData.cca_df.copy()
         else:
             cca_df = None
 
+        if storeImage:
+            image = self.img1.image.copy()
+        else:
+            image = None
+
         state = {
-            'image': self.img1.image.copy(),
+            'image': image,
             'labels': posData.lab.copy(),
             'editID_info': posData.editID_info.copy(),
             'binnedIDs': posData.binnedIDs.copy(),
@@ -10279,13 +10299,20 @@ class guiWin(QMainWindow):
             'cca_df': cca_df
         }
         posData.UndoRedoStates[posData.frame_i].insert(0, state)
+        
+        # posData.storedLab = np.array(posData.lab, order='K', copy=True)
+        # self.storeStateWorker.callbackOnDone = callbackOnDone
+        # self.storeStateWorker.enqueue(posData, self.img1.image)
 
     def getCurrentState(self):
         posData = self.data[self.pos_i]
         i = posData.frame_i
         c = self.UndoCount
         state = posData.UndoRedoStates[i][c]
-        image_left = state['image'].copy()
+        if state['image'] is None:
+            image_left = None
+        else:
+            image_left = state['image'].copy()
         posData.lab = state['labels'].copy()
         posData.editID_info = state['editID_info'].copy()
         posData.binnedIDs = state['binnedIDs'].copy()
@@ -10338,21 +10365,23 @@ class guiWin(QMainWindow):
             self.labelRoiCircularRadiusSpinbox.setDisabled(False)
 
     # @exec_time
-    def storeUndoRedoStates(self, UndoFutFrames):
+    def storeUndoRedoStates(self, UndoFutFrames, storeImage=False):
         posData = self.data[self.pos_i]
         if UndoFutFrames:
             # Since we modified current frame all future frames that were already
             # visited are not valid anymore. Undo changes there
             self.reInitLastSegmFrame()
+        
+        # Keep only 5 Undo/Redo states
+        if len(posData.UndoRedoStates[posData.frame_i]) > 5:
+            posData.UndoRedoStates[posData.frame_i].pop(-1)
 
         # Restart count from the most recent state (index 0)
         # NOTE: index 0 is most recent state before doing last change
         self.UndoCount = 0
         self.undoAction.setEnabled(True)
-        self.addCurrentState()
-        # Keep only 5 Undo/Redo states
-        if len(posData.UndoRedoStates[posData.frame_i]) > 5:
-            posData.UndoRedoStates[posData.frame_i].pop(-1)
+        self.addCurrentState(storeImage=storeImage)
+        
 
     def storeUndoRedoCca(self, frame_i, cca_df, undoId):
         if self.isSnapshot:
@@ -10431,11 +10460,11 @@ class guiWin(QMainWindow):
         self.enqAutosave()
 
     def undo(self):
-        posData = self.data[self.pos_i]
         if self.UndoCount == 0:
             # Store current state to enable redoing it
             self.addCurrentState()
-
+    
+        posData = self.data[self.pos_i]
         # Get previously stored state
         if self.UndoCount < len(posData.UndoRedoStates[posData.frame_i])-1:
             self.UndoCount += 1
@@ -12212,6 +12241,7 @@ class guiWin(QMainWindow):
         self.showPropsDockButton.setDisabled(False)
 
         self.gui_createAutoSaveWorker()
+        self.gui_createStoreStateWorker()
         self.init_segmInfo_df()
         self.connectScrollbars()
         self.initPosAttr()
@@ -18856,6 +18886,12 @@ class guiWin(QMainWindow):
             self.lazyLoader.exit = True
             self.lazyLoaderWaitCond.wakeAll()
             self.waitReadH5cond.wakeAll()
+        
+        if self.storeStateWorker is not None:
+            # Close storeStateWorker
+            self.storeStateWorker._stop()
+            while self.storeStateWorker.isFinished:
+                time.sleep(0.05)
         
         # Block main thread while separate threads closes
         time.sleep(0.1)

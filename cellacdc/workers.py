@@ -140,6 +140,64 @@ class LabelRoiWorker(QObject):
             self.pause()
         self.finished.emit()
 
+class StoreGuiStateWorker(QObject):
+    finished = pyqtSignal(object)
+    sigDone = pyqtSignal()
+    progress = pyqtSignal(str, object)
+
+    def __init__(self, mutex, waitCond):
+        QObject.__init__(self)
+        self.mutex = mutex
+        self.waitCond = waitCond
+        self.exit = False
+        self.isFinished = False
+        self.q = queue.Queue()
+        self.logger = workerLogger(self.progress)
+    
+    def pause(self):
+        self.mutex.lock()
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+    
+    def enqueue(self, posData, img1):
+        self.q.put((posData, img1))
+        self.waitCond.wakeAll()
+    
+    def _stop(self):
+        self.exit = True
+        self.waitCond.wakeAll()
+    
+    def run(self):
+        while True:
+            if self.exit:
+                self.logger.log('Closing store state worker...')
+                break
+            elif not self.q.empty():
+                posData, img1 = self.q.get()
+                # self.logger.log('Storing state...')
+                if posData.cca_df is not None:
+                    cca_df = posData.cca_df.copy()
+                else:
+                    cca_df = None
+
+                state = {
+                    'image': img1.copy(),
+                    'labels': posData.storedLab.copy(),
+                    'editID_info': posData.editID_info.copy(),
+                    'binnedIDs': posData.binnedIDs.copy(),
+                    'ripIDs': posData.ripIDs.copy(),
+                    'cca_df': cca_df
+                }
+                posData.UndoRedoStates[posData.frame_i].insert(0, state)
+                if self.q.empty():
+                    # self.logger.log('State stored...')
+                    self.sigDone.emit()
+            else:
+                self.pause()
+            
+        self.isFinished = True
+        self.finished.emit(self)
+
 class AutoSaveWorker(QObject):
     finished = pyqtSignal(object)
     sigDone = pyqtSignal()
