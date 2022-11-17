@@ -6432,9 +6432,9 @@ class guiWin(QMainWindow):
             self.lastHoverID = -1
 
         elif left_click and canErase:
-            # printl('----------------------------------------')
+            printl('----------------------------------------')
             
-            # t0 = time.perf_counter()
+            t0 = time.perf_counter()
 
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
@@ -6444,7 +6444,7 @@ class guiWin(QMainWindow):
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(False)
 
-            # t1 = time.perf_counter()
+            t1 = time.perf_counter()
 
             self.yPressAx2, self.xPressAx2 = y, x
             # Keep a list of erased IDs got erased
@@ -6468,7 +6468,7 @@ class guiWin(QMainWindow):
                 and self.erasedID != 0
             )
 
-            # t2 = time.perf_counter()
+            t2 = time.perf_counter()
 
             self.eraseOnlyOneID = eraseOnlyOneID
 
@@ -6479,7 +6479,7 @@ class guiWin(QMainWindow):
             self.setTempImg1Eraser(mask, init=True)
             self.applyEraserMask(mask)
 
-            # t3 = time.perf_counter()
+            t3 = time.perf_counter()
             self.erasedIDs.extend(lab_2D[mask])  
 
             for erasedID in np.unique(self.erasedIDs):
@@ -6488,16 +6488,16 @@ class guiWin(QMainWindow):
                 self.erasedLab[lab_2D==erasedID] = erasedID
             
             self.isMouseDragImg1 = True
-            # t4 = time.perf_counter()
+            t4 = time.perf_counter()
 
-            # printl(
-            #     f'First = {(t1-t0)*1000:.3f} ms\n'
-            #     f'Second = {(t2-t1)*1000:.3f} ms\n'
-            #     f'Third = {(t3-t2)*1000:.3f} ms\n'
-            #     f'Fourth = {(t4-t3)*1000:.3f} ms\n'
-            #     f'Total = {(t4-t0)*1000:.3f} ms'
-            # )
-            # printl('----------------------------------------')
+            printl(
+                f'First = {(t1-t0)*1000:.3f} ms\n'
+                f'Second = {(t2-t1)*1000:.3f} ms\n'
+                f'Third = {(t3-t2)*1000:.3f} ms\n'
+                f'Fourth = {(t4-t3)*1000:.3f} ms\n'
+                f'Total = {(t4-t0)*1000:.3f} ms'
+            )
+            printl('----------------------------------------')
 
         elif left_click and canRuler or canPolyLine:
             x, y = event.pos().x(), event.pos().y()
@@ -9850,7 +9850,7 @@ class guiWin(QMainWindow):
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
             posData = self.data[self.pos_i]
-            self.keepIDsTempLayerLeft.clear()
+            printl(posData.frame_i)
             # self.win = apps.pgTestWindow()
             # self.win.ax1.addItem(self.tempLayerImg1)
             # self.win.show()
@@ -9858,14 +9858,19 @@ class guiWin(QMainWindow):
         try:
             posData = self.data[self.pos_i]
         except AttributeError:
+            self.logger.info('Data not loaded yet. Key pressing events are not connected yet.')
             return
         if ev.key() == Qt.Key_Control:
             self.isCtrlDown = True
+        
         modifiers = ev.modifiers()
         isAltModifier = modifiers == Qt.AltModifier
         isCtrlModifier = modifiers == Qt.ControlModifier
         isShiftModifier = modifiers == Qt.ShiftModifier
-        self.isZmodifier = ev.key()== Qt.Key_Z
+        self.isZmodifier = (
+            ev.key()== Qt.Key_Z and not isAltModifier
+            and not isCtrlModifier and not isShiftModifier
+        )
         if isShiftModifier:
             self.isShiftDown = True
             if self.isSegm3D:
@@ -10123,8 +10128,6 @@ class guiWin(QMainWindow):
                 )
                 self.changeBrushID()
             self.isShiftDown = False
-        elif ev.key() == Qt.Key_Z:
-            self.isZmodifier = False
         canRepeat = (
             ev.key() == Qt.Key_Left
             or ev.key() == Qt.Key_Right
@@ -10144,9 +10147,10 @@ class guiWin(QMainWindow):
             Thanks!
             """)
             msg.warning(self, 'Release the key, please',txt)
-        elif ev.isAutoRepeat() and ev.key() == Qt.Key_Z:
+        elif ev.isAutoRepeat() and ev.key() == Qt.Key_Z and self.isZmodifier:
             self.zKeptDown = True
-        elif ev.key() == Qt.Key_Z:
+        elif ev.key() == Qt.Key_Z and self.isZmodifier:
+            self.isZmodifier = False
             if not self.zKeptDown:
                 self.zSliceCheckbox.setChecked(not self.zSliceCheckbox.isChecked())
             self.zKeptDown = False
@@ -11529,7 +11533,7 @@ class guiWin(QMainWindow):
         self.titleLabel.setText('Budding event prediction done.', color='g')
 
     def next_cb(self):
-        if self.isZmodifier or self.zSliceCheckbox.isChecked():
+        if self.zKeptDown or self.zSliceCheckbox.isChecked():
             stepAddAction = QAbstractSlider.SliderSingleStepAdd
             self.zSliceScrollBar.triggerAction(stepAddAction)
             return
@@ -11544,7 +11548,7 @@ class guiWin(QMainWindow):
         self.updatePropsWidget('')
 
     def prev_cb(self):
-        if self.isZmodifier or self.zSliceCheckbox.isChecked():
+        if self.zKeptDown or self.zSliceCheckbox.isChecked():
             stepSubAction = QAbstractSlider.SliderSingleStepSub
             self.zSliceScrollBar.triggerAction(stepSubAction)
             return
@@ -12287,6 +12291,9 @@ class guiWin(QMainWindow):
         )
 
         self.disableNonFunctionalButtons()
+
+        if len(self.data) == 1 and posData.SizeZ == 1 and posData.SizeT == 1:
+            self.zSliceCheckbox.setChecked(True)
 
         self.labelRoiCircItemLeft.setImageShape(self.currentLab2D.shape)
         self.labelRoiCircItemRight.setImageShape(self.currentLab2D.shape)
@@ -16088,6 +16095,7 @@ class guiWin(QMainWindow):
 
         posData = self.data[self.pos_i]
         acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
+        printl(acdc_df)
         if acdc_df is None:
             self.updateALLimg()
             return True
@@ -17057,10 +17065,10 @@ class guiWin(QMainWindow):
         for info in infoToRemove:
             posData.editID_info.remove(info)
 
-    def reInitLastSegmFrame(self, from_frame_i=None):
+    def reInitLastSegmFrame(self, checked=True, from_frame_i=None):
         posData = self.data[self.pos_i]
         if from_frame_i is None:
-            from_frame_i = posData.frame_i+1
+            from_frame_i = posData.frame_i
         posData.last_tracked_i = from_frame_i
         self.navigateScrollBar.setMaximum(from_frame_i+1)
         self.navSpinBox.setMaximum(from_frame_i+1)
