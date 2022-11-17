@@ -346,6 +346,7 @@ class loadData:
         self.loadSizeT = None
         self.loadSizeZ = None
         self.multiSegmAllPos = False
+        self.frame_i = 0
         path_li = os.path.normpath(imgPath).split(os.sep)
         self.relPath = f'{f"{os.sep}".join(path_li[-relPathDepth:])}'
         filename_ext = os.path.basename(imgPath)

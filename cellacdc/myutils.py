@@ -1170,6 +1170,18 @@ def _write_model_location_to_txt(model_name):
         txt.write(model_path)
     return model_path
 
+def determine_folder_type(folder_path):
+    is_pos_folder = os.path.basename(folder_path).find('Position_') != -1
+    is_images_folder = os.path.basename(folder_path) == 'Images'
+    contains_images_folder = os.path.exists(
+        os.path.join(folder_path, 'Images')
+    )
+    if contains_images_folder and not is_pos_folder:
+        # Folder created by loading an image
+        is_images_folder = True
+        folder_path = os.path.join(folder_path, 'Images')
+    return is_pos_folder, is_images_folder, folder_path
+
 def download_model(model_name):
     if model_name != 'YeastMate' and model_name != 'YeaZ':
         # We manage only YeastMate and YeaZ
