@@ -1067,7 +1067,7 @@ class saveDataWorker(QObject):
     def run(self):
         last_pos = self.mainWin.last_pos
         save_metrics = self.mainWin.save_metrics
-        self.time_last_pbar_update = time.time()
+        self.time_last_pbar_update = time.perf_counter()
         mode = self.mode
         for p, posData in enumerate(self.mainWin.data[:last_pos]):
             if self.saveWin.aborted:
@@ -1192,7 +1192,7 @@ class saveDataWorker(QObject):
                             traceback.format_exc(), str(error)
                         )
 
-                    t = time.time()
+                    t = time.perf_counter()
                     exec_time = t - self.time_last_pbar_update
                     self.progressBar.emit(1, -1, exec_time)
                     self.time_last_pbar_update = t
@@ -6432,9 +6432,9 @@ class guiWin(QMainWindow):
             self.lastHoverID = -1
 
         elif left_click and canErase:
-            printl('----------------------------------------')
+            # printl('----------------------------------------')
             
-            t0 = time.perf_counter()
+            # t0 = time.perf_counter()
 
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
@@ -6444,7 +6444,7 @@ class guiWin(QMainWindow):
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(False)
 
-            t1 = time.perf_counter()
+            # t1 = time.perf_counter()
 
             self.yPressAx2, self.xPressAx2 = y, x
             # Keep a list of erased IDs got erased
@@ -6468,7 +6468,7 @@ class guiWin(QMainWindow):
                 and self.erasedID != 0
             )
 
-            t2 = time.perf_counter()
+            # t2 = time.perf_counter()
 
             self.eraseOnlyOneID = eraseOnlyOneID
 
@@ -6479,7 +6479,7 @@ class guiWin(QMainWindow):
             self.setTempImg1Eraser(mask, init=True)
             self.applyEraserMask(mask)
 
-            t3 = time.perf_counter()
+            # t3 = time.perf_counter()
             self.erasedIDs.extend(lab_2D[mask])  
 
             for erasedID in np.unique(self.erasedIDs):
@@ -6488,16 +6488,16 @@ class guiWin(QMainWindow):
                 self.erasedLab[lab_2D==erasedID] = erasedID
             
             self.isMouseDragImg1 = True
-            t4 = time.perf_counter()
+            # t4 = time.perf_counter()
 
-            printl(
-                f'First = {(t1-t0)*1000:.3f} ms\n'
-                f'Second = {(t2-t1)*1000:.3f} ms\n'
-                f'Third = {(t3-t2)*1000:.3f} ms\n'
-                f'Fourth = {(t4-t3)*1000:.3f} ms\n'
-                f'Total = {(t4-t0)*1000:.3f} ms'
-            )
-            printl('----------------------------------------')
+            # printl(
+            #     f'First = {(t1-t0)*1000:.3f} ms\n'
+            #     f'Second = {(t2-t1)*1000:.3f} ms\n'
+            #     f'Third = {(t3-t2)*1000:.3f} ms\n'
+            #     f'Fourth = {(t4-t3)*1000:.3f} ms\n'
+            #     f'Total = {(t4-t0)*1000:.3f} ms'
+            # )
+            # printl('----------------------------------------')
 
         elif left_click and canRuler or canPolyLine:
             x, y = event.pos().x(), event.pos().y()
@@ -11490,7 +11490,6 @@ class guiWin(QMainWindow):
         # Store undo state before modifying stuff
         self.storeUndoRedoStates(False)
 
-        t0 = time.time()
         posData = self.data[self.pos_i]
         # Check if model needs to be imported
         acdcSegment = self.acdcSegment_li[idx]
@@ -14547,9 +14546,6 @@ class guiWin(QMainWindow):
             self.annotateObject(obj, how)
         
         self.annotateObjectRightImage(obj)
-
-        # t1 = time.time()
-        # self.drawingLabelsTimes.append(t1-t0)
 
         # Draw line connecting mother and buds
         drawLines = (
