@@ -1762,8 +1762,6 @@ class guiWin(QMainWindow):
         navigateToolBar.setContextMenuPolicy(Qt.PreventContextMenu)
         # navigateToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         self.addToolBar(navigateToolBar)
-        navigateToolBar.addAction(self.prevAction)
-        navigateToolBar.addAction(self.nextAction)
         navigateToolBar.addAction(self.findIdAction)
 
         self.slideshowButton = QToolButton(self)
@@ -2680,15 +2678,6 @@ class guiWin(QMainWindow):
         self.postProcessSegmAction.setDisabled(True)
         self.postProcessSegmAction.setCheckable(True)
 
-        self.prevAction = QAction(QIcon(":arrow-left.svg"),
-                                        "Previous frame", self)
-        self.nextAction = QAction(QIcon(":arrow-right.svg"),
-                                  "Next Frame", self)
-        self.prevAction.setShortcut("left")
-        self.nextAction.setShortcut("right")
-        # self.nextAction.setVisible(False)
-        # self.prevAction.setVisible(False)
-
         self.repeatTrackingAction = QAction(
             QIcon(":repeat-tracking.svg"), "Repeat tracking", self
         )
@@ -2992,8 +2981,6 @@ class guiWin(QMainWindow):
         self.isEditActionsConnected = True
 
         self.fontSizeMenu.aboutToShow.connect(self.showFontSizeMenu)
-        self.prevAction.triggered.connect(self.prev_cb)
-        self.nextAction.triggered.connect(self.next_cb)
         self.overlayButton.toggled.connect(self.overlay_cb)
         self.overlayLabelsButton.toggled.connect(self.overlayLabels_cb)
         self.overlayButton.sigRightClick.connect(self.showOverlayContextMenu)
@@ -3279,7 +3266,7 @@ class guiWin(QMainWindow):
         sp = self.navigateScrollBar.sizePolicy()
         sp.setRetainSizeWhenHidden(True)
         self.navigateScrollBar.setSizePolicy(sp)
-        self.navSpinBox.valueChanged.connect(self.navigateSpinboxValueChanged)
+        self.navSpinBox.connectValueChanged(self.navigateSpinboxValueChanged)
         self.navSpinBox.editingFinished.connect(self.navigateSpinboxEditingFinished)
 
         row += 1
@@ -6445,16 +6432,27 @@ class guiWin(QMainWindow):
             self.lastHoverID = -1
 
         elif left_click and canErase:
+            # printl('----------------------------------------')
+            
+            # t0 = time.perf_counter()
+
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
-            Y, X = self.get_2Dlab(posData.lab).shape
+            lab_2D = self.get_2Dlab(posData.lab)
+            Y, X = lab_2D.shape
+
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(False)
+
+            # t1 = time.perf_counter()
+
             self.yPressAx2, self.xPressAx2 = y, x
             # Keep a list of erased IDs got erased
             self.erasedIDs = []
-            lab_2D = self.get_2Dlab(posData.lab)
+            
             self.erasedID = self.getHoverID(xdata, ydata)
+
+            
 
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
@@ -6470,6 +6468,8 @@ class guiWin(QMainWindow):
                 and self.erasedID != 0
             )
 
+            # t2 = time.perf_counter()
+
             self.eraseOnlyOneID = eraseOnlyOneID
 
             if eraseOnlyOneID:
@@ -6479,14 +6479,25 @@ class guiWin(QMainWindow):
             self.setTempImg1Eraser(mask, init=True)
             self.applyEraserMask(mask)
 
+            # t3 = time.perf_counter()
             self.erasedIDs.extend(lab_2D[mask])  
 
             for erasedID in np.unique(self.erasedIDs):
                 if erasedID == 0:
                     continue
                 self.erasedLab[lab_2D==erasedID] = erasedID
-
+            
             self.isMouseDragImg1 = True
+            # t4 = time.perf_counter()
+
+            # printl(
+            #     f'First = {(t1-t0)*1000:.3f} ms\n'
+            #     f'Second = {(t2-t1)*1000:.3f} ms\n'
+            #     f'Third = {(t3-t2)*1000:.3f} ms\n'
+            #     f'Fourth = {(t4-t3)*1000:.3f} ms\n'
+            #     f'Total = {(t4-t0)*1000:.3f} ms'
+            # )
+            # printl('----------------------------------------')
 
         elif left_click and canRuler or canPolyLine:
             x, y = event.pos().x(), event.pos().y()
@@ -9917,6 +9928,10 @@ class guiWin(QMainWindow):
             elif isLabelRoiCircActive:
                 val = self.labelRoiCircularRadiusSpinbox.value()
                 self.labelRoiCircularRadiusSpinbox.setValue(val-1)
+        elif ev.key()==Qt.Key_Left and not isCtrlModifier:
+            self.prev_cb()
+        elif ev.key()==Qt.Key_Right and not isCtrlModifier:
+            self.next_cb()
         elif ev.key() == Qt.Key_Enter or ev.key() == Qt.Key_Return:
             if self.brushButton.isChecked():
                 self.typingEditID = False
@@ -10318,6 +10333,7 @@ class guiWin(QMainWindow):
         if self.labelRoiIsCircularRadioButton.isChecked():
             self.labelRoiCircularRadiusSpinbox.setDisabled(False)
 
+    # @exec_time
     def storeUndoRedoStates(self, UndoFutFrames):
         posData = self.data[self.pos_i]
         if UndoFutFrames:
@@ -11433,6 +11449,7 @@ class guiWin(QMainWindow):
         self.titleLabel.setText(txt, color='g')
         self.checkIfAutoSegm()
 
+    # @exec_time
     def getDisplayedCellsImg(self):
         return self.img1.image
     
@@ -13634,6 +13651,7 @@ class guiWin(QMainWindow):
         else:
             return lab
 
+    # @exec_time
     def applyEraserMask(self, mask):
         posData = self.data[self.pos_i]
         if self.isSegm3D:
@@ -14519,8 +14537,6 @@ class guiWin(QMainWindow):
             or IDs_and_masks or ccaInfo_and_masks
         )
         if draw_LIs:
-            # Draw LabelItems for IDs on ax2
-            # t0 = time.time()
             self.annotateObject(obj, how)
         
         self.annotateObjectRightImage(obj)
@@ -15875,7 +15891,8 @@ class guiWin(QMainWindow):
             self.tempLayerImg1.image[toLocalSlice][mask] = ID
         
         self.tempLayerImg1.setImage(self.tempLayerImg1.image)
-  
+    
+    # @exec_time
     def setTempImg1Eraser(self, mask, init=False, toLocalSlice=None, ax=0):
         if init:
             self.erasedLab = np.zeros_like(self.currentLab2D)  
@@ -18949,6 +18966,8 @@ class guiWin(QMainWindow):
         self.h = h
         self.showPropsDockButton.setMaximumWidth(15)
         self.showPropsDockButton.setMaximumHeight(60)
+
+        self.graphLayout.setFocus(True)
 
     def resizeEvent(self, event):
         if hasattr(self, 'ax1'):
