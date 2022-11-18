@@ -838,7 +838,8 @@ class filenameDialog(QDialog):
     def __init__(
             self, ext='.npz', basename='', title='Insert file name',
             hintText='', existingNames='', parent=None, allowEmpty=True,
-            helpText='', defaultEntry='', resizeOnShow=True
+            helpText='', defaultEntry='', resizeOnShow=True,
+            additionalButtons=None
         ):
         self.cancel = True
         super().__init__(parent)
@@ -914,6 +915,9 @@ class filenameDialog(QDialog):
             helpButton = widgets.helpPushButton('Help...')
             helpButton.clicked.connect(partial(self.showHelp, helpText))
             buttonsLayout.addWidget(helpButton)
+        if additionalButtons is not None:
+            for button in additionalButtons:
+                buttonsLayout.addWidget(button)
         buttonsLayout.addWidget(okButton)
 
         cancelButton.clicked.connect(self.close)
@@ -991,10 +995,8 @@ class filenameDialog(QDialog):
         self.close()
 
     def closeEvent(self, event):
-        valid = self.checkExistingNames()
-        if not valid:
-            event.ignore()
-            return
+        if hasattr(self, 'loop'):
+            self.loop.exit()
 
     def exec_(self):
         self.show(block=True)
@@ -1007,10 +1009,7 @@ class filenameDialog(QDialog):
         if block:
             self.loop = QEventLoop()
             self.loop.exec_()
-
-    def closeEvent(self, event):
-        if hasattr(self, 'loop'):
-            self.loop.exit()
+        
 
 class wandToleranceWidget(QFrame):
     def __init__(self, parent=None):
@@ -3354,19 +3353,26 @@ class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
         self.cancel = True
         self.mainLayout = QVBoxLayout()
 
-        self.mainLayout.addWidget(QLabel(html_utils.paragraph(
+        self.instructionsText = html_utils.paragraph(
             f"""
             <b>Select which columns</b> contain the tracking information.<br><br>
             You must choose one of the following combinations:<br> 
             {html_utils.to_list((
-                '"Tracked IDs" and "Segmentation mask IDs"<br>',
-                '"Tracked IDs", "X coord. centroid", and "Y coord. centroid"'
+                '"Frame index (starting from 0)", "Tracked IDs" and "Segmentation mask IDs"<br>',
+                '"Frame index (starting from 0)", "Tracked IDs", "X coord. centroid", and "Y coord. centroid"'
                 )
             )}
             """
-        )))
+        )
+        self.mainLayout.addWidget(QLabel(self.instructionsText))
 
         formLayout = QFormLayout()
+
+        self.frameIndexCombobox = widgets.QCenteredComboBox()
+        self.frameIndexCombobox.addItems(df.columns)
+        formLayout.addRow(
+            'Frame index (starting from 0): ', self.frameIndexCombobox
+        )
 
         self.trackedIDsCombobox = widgets.QCenteredComboBox()
         self.trackedIDsCombobox.addItems(df.columns)
@@ -3401,6 +3407,7 @@ class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
     
     def ok_cb(self):
         self.cancel = False
+        self.frameIndexCol = self.frameIndexCombobox.currentText()
         self.trackedIDsCol = self.trackedIDsCombobox.currentText()
         self.maskIDsCol = self.maskIDsCombobox.currentText()
         self.xCentroidCol = self.xCentroidCombobox.currentText()
@@ -3418,12 +3425,7 @@ class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
         msg.warning(
             self, 'Invalid selection', html_utils.paragraph(
-                '<b>Invalid selection</b><br><br>'
-                'You must choose either <code>Tracked IDs</code> '
-                'and <code>Segmentation mask IDs</code><br> '
-                'OR <code>Tracked IDs</code> and both <code>'
-                'X coord. centroid</code> AND <code>'
-                'Y coord. centroid</code>'
+                f'<b>Invalid selection</b><br> {self.instructionsText}'
             )
         )
 
@@ -5292,22 +5294,18 @@ class imageViewer(QMainWindow):
         self.exitAction = QAction("&Exit", self)
 
         # Toolbar actions
-        self.prevAction = QAction(QIcon(":arrow-left.svg"),
-                                        "Previous frame", self)
-        self.nextAction = QAction(QIcon(":arrow-right.svg"),
-                                        "Next Frame", self)
-        self.jumpForwardAction = QAction(QIcon(":arrow-up.svg"),
-                                        "Jump to 10 frames ahead", self)
-        self.jumpBackwardAction = QAction(QIcon(":arrow-down.svg"),
-                                        "Jump to 10 frames back", self)
+        self.prevAction = QAction("Previous frame", self)
+        self.nextAction = QAction("Next Frame", self)
+        self.jumpForwardAction = QAction("Jump to 10 frames ahead", self)
+        self.jumpBackwardAction = QAction("Jump to 10 frames back", self)
         self.prevAction.setShortcut("left")
         self.nextAction.setShortcut("right")
         self.jumpForwardAction.setShortcut("up")
         self.jumpBackwardAction.setShortcut("down")
-        self.nextAction.setVisible(False)
-        self.prevAction.setVisible(False)
-        self.jumpForwardAction.setVisible(False)
-        self.jumpBackwardAction.setVisible(False)
+        self.addAction(self.nextAction)
+        self.addAction(self.prevAction)
+        self.addAction(self.jumpBackwardAction)
+        self.addAction(self.jumpForwardAction)
         if self.enableOverlay:
             self.overlayButton = widgets.rightClickToolButton(parent=self)
             self.overlayButton.setIcon(QIcon(":overlay.svg"))
@@ -5327,11 +5325,6 @@ class imageViewer(QMainWindow):
         editToolBar = QToolBar("Edit", self)
         editToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         self.addToolBar(editToolBar)
-
-        editToolBar.addAction(self.prevAction)
-        editToolBar.addAction(self.nextAction)
-        editToolBar.addAction(self.jumpBackwardAction)
-        editToolBar.addAction(self.jumpForwardAction)
 
         self.editToolBar = editToolBar
 

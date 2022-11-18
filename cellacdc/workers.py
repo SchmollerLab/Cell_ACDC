@@ -1562,6 +1562,90 @@ class TrackSubCellObjectsWorker(BaseWorkerUtil):
 
         self.signals.finished.emit(self)
 
+
+class ApplyTrackInfoWorker(BaseWorkerUtil):
+    def __init__(
+            self, parentWin, endFilenameSegm, trackInfoCsvPath, 
+            trackedSegmFilename, trackColsInfo, posPath
+        ):
+        super().__init__(parentWin)
+        self.endFilenameSegm = endFilenameSegm
+        self.trackInfoCsvPath = trackInfoCsvPath
+        self.trackedSegmFilename = trackedSegmFilename
+        self.trackColsInfo = trackColsInfo
+        self.posPath = posPath
+    
+    @worker_exception_handler
+    def run(self):
+        self.logger.log('Loading segmentation file...')  
+        self.signals.initProgressBar.emit(0)
+        imagesPath = os.path.join(self.posPath, 'Images')
+        segmFilename = [
+            f for f in myutils.listdir(imagesPath) 
+            if f.endswith(f'{self.endFilenameSegm}.npz')
+        ][0]
+        segmFilePath = os.path.join(imagesPath, segmFilename)
+        segmData = np.load(segmFilePath)['arr_0']
+
+        self.logger.log('Loading table containing tracking info...') 
+        df = pd.read_csv(self.trackInfoCsvPath)
+
+        self.logger.log('Applying tracking info...')  
+        frameIndexCol = self.trackColsInfo['frameIndexCol']
+        grouped = df.groupby(frameIndexCol)
+        self.signals.initProgressBar.emit(len(grouped))
+        trackIDsCol = self.trackColsInfo['trackIDsCol']
+        maxID = max((max(segmData), max(df[trackIDsCol])))
+        segmData += maxID
+        maskIDsCol = self.trackColsInfo['maskIDsCol']
+        xCentroidCol = self.trackColsInfo['xCentroidCol']
+        yCentroidCol = self.trackColsInfo['yCentroidCol']
+        if maskIDsCol != 'None':
+            maskIDsCol = maskIDsCol + maxID
+        for frame_i, df_frame in grouped:
+            lab = segmData[frame_i]
+
+            for idx, row in df_frame.itertuples():
+                trackedID = getattr(row, trackIDsCol)
+                if xCentroidCol == 'None':
+                    maskID = getattr(row, maskIDsCol)
+                    
+                else:
+                    xc = getattr(row, xCentroidCol)
+                    yc = getattr(row, yCentroidCol)
+                    maskID = lab[int(yc), int(xc)]
+                lab[lab==maskID] = trackedID
+            self.signals.progressBar.emit(1)
+        
+        if self.trackedSegmFilename:
+            trackedSegmFilepath = os.path.join(
+                imagesPath, self.trackedSegmFilename
+            )
+        else:
+            trackedSegmFilepath = os.path.join(segmFilePath)
+        
+        self.logger.log('Saving tracked segmentation file...') 
+        np.savez_compressed(trackedSegmFilepath)
+
+        self.logger.log('Generating acdc_output table...')
+        if not self.trackedSegmFilename:
+            acdcEndname = self.endFilenameSegm.replace('_segm', '_acdc_output')
+            acdcFilename = [
+                f for f in myutils.listdir(imagesPath) 
+                if f.endswith(f'{acdcEndname}.csv')
+            ]
+            if acdcFilename:
+                acdcFilePath = os.path.join(imagesPath, acdcFilename[0])
+        acdc_dfs = []
+        keys = []
+        for lab in segmData:
+            rp = skimage.measure.regionprops()
+            acdc_df_frame_i = myutils.getBaseAcdcDf()
+            if acdcFilePath:
+                pass
+        
+        self.signals.finished.emit(self)
+
 class RestructMultiTimepointsWorker(BaseWorkerUtil):
     sigSaveTiff = pyqtSignal(str, object, object)
 

@@ -729,15 +729,15 @@ class mainWin(QMainWindow):
         
         title = 'Apply tracking info from tabular data utility'
         infoText = 'Launching apply tracking info from tabular data...'
-        win = (
+        self.applyTrackWin = (
             utilsApplyTrackFromTab.ApplyTrackingInfoFromTableUtil(
-                posPath, self.app, title, infoText, parent=self
+                self.app, title, infoText, parent=self, 
+                callbackOnFinished=self.applyTrackingFromTableFinished
             )
         )
-        win.show()
-        QTimer.singleShot(
-            200, partial(self._runApplyTrackingFromTableUtil, posPath, win)
-        )
+        self.applyTrackWin.show()
+        func = partial(self._runApplyTrackingFromTableUtil, posPath, self.applyTrackWin)
+        QTimer.singleShot(200, func)
 
     def _runApplyTrackingFromTableUtil(self, posPath, win):
         success = win.run(posPath)
@@ -745,13 +745,16 @@ class mainWin(QMainWindow):
             self.logger.info(
                 'Apply tracking info from tabular data ABORTED by the user.'
             )
-        else:
-            msg = widgets.myMessageBox(showCentered=False, wrapText=False)
-            txt = html_utils.paragraph(
-                'Apply tracking info from tabular data completed.'
-            )
-            msg.information(self, 'Process completed', txt)
-        win.close()
+            win.close()          
+        
+    def applyTrackingFromTableFinished(self):
+        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        txt = html_utils.paragraph(
+            'Apply tracking info from tabular data completed.'
+        )
+        msg.information(self, 'Process completed', txt)
+        self.logger.info('Apply tracking info from tabular data completed.')
+        self.applyTrackWin.close()
 
     
     def launchNapariUtil(self, action):

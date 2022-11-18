@@ -2653,6 +2653,8 @@ class guiWin(QMainWindow):
         # self.reloadAction = QAction(
         #     QIcon(":reload.svg"), "Reload segmentation file", self
         # )
+        self.nextAction = QAction('Next', self)
+        self.prevAction = QAction('Previous', self)
         self.showInExplorerAction = QAction(
             QIcon(":drawer.svg"), f"&{self.openFolderText}", self
         )
@@ -2667,6 +2669,10 @@ class guiWin(QMainWindow):
         self.quickSaveAction.setShortcut("Ctrl+S")
         self.undoAction.setShortcut("Ctrl+Z")
         self.redoAction.setShortcut("Ctrl+Y")
+        self.nextAction.setShortcut(Qt.Key_Right)
+        self.prevAction.setShortcut(Qt.Key_Left)
+        self.addAction(self.nextAction)
+        self.addAction(self.prevAction)
         # Help tips
         newTip = "Create a new segmentation file"
         self.newAction.setStatusTip(newTip)
@@ -2982,6 +2988,8 @@ class guiWin(QMainWindow):
         self.exitAction.triggered.connect(self.close)
         self.undoAction.triggered.connect(self.undo)
         self.redoAction.triggered.connect(self.redo)
+        self.nextAction.triggered.connect(self.next_cb)
+        self.prevAction.triggered.connect(self.prev_cb)
 
         # Connect Help actions
         self.tipsAction.triggered.connect(self.showTipsAndTricks)
@@ -9949,10 +9957,10 @@ class guiWin(QMainWindow):
             elif isLabelRoiCircActive:
                 val = self.labelRoiCircularRadiusSpinbox.value()
                 self.labelRoiCircularRadiusSpinbox.setValue(val-1)
-        elif ev.key()==Qt.Key_Left and not isCtrlModifier:
-            self.prev_cb()
-        elif ev.key()==Qt.Key_Right and not isCtrlModifier:
-            self.next_cb()
+        # elif ev.key()==Qt.Key_Left and not isCtrlModifier:
+        #     self.prev_cb()
+        # elif ev.key()==Qt.Key_Right and not isCtrlModifier:
+        #     self.next_cb()
         elif ev.key() == Qt.Key_Enter or ev.key() == Qt.Key_Return:
             if self.brushButton.isChecked():
                 self.typingEditID = False

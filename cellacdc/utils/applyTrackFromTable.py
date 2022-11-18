@@ -3,26 +3,27 @@ from functools import partial
 
 import pandas as pd
 
-from .. import myutils, apps, widgets, html_utils
+from .. import myutils, apps, widgets, html_utils, printl, workers
 from ..utils import base
 
 from PyQt5.QtWidgets import QFileDialog
 
 class ApplyTrackingInfoFromTableUtil(base.MainThreadSinglePosUtilBase):
     def __init__(
-            self, posPath, app, title: str, infoText: str, parent=None
+            self, app, title: str, infoText: str, parent=None,
+            callbackOnFinished=None
         ):
-        
         module = myutils.get_module_name(__file__)
         super().__init__(
             app, title, module, infoText, parent
         )
 
         self.sigClose.connect(self.close)
+        self.callbackOnFinished = callbackOnFinished
 
     @myutils.exception_handler
     def run(self, posPath):
-        self.logger.info('Loading segmentation file...')
+        self.logger.info('Reading exisiting segmentation file names...')
         endFilenameSegm = self.selectSegmFileLoadData(posPath)
 
         if not endFilenameSegm:
@@ -45,12 +46,53 @@ class ApplyTrackingInfoFromTableUtil(base.MainThreadSinglePosUtilBase):
             return False
 
         csvName = os.path.basename(csvPath)
-        self.logger.info(f'Loading table file {csvName}...')
+        self.logger.info(f'Reading column names in table "{csvName}"...')
 
-        df = pd.read_csv(csvPath)
+        df = pd.read_csv(csvPath, nrows=2)
 
         win = apps.ApplyTrackTableSelectColumnsDialog(df, parent=self)
         win.exec_()
         if win.cancel:
             return False
+        
+        columnsInfo = {
+            'frameIndexCol': win.frameIndexCol,
+            'trackIDsCol': win.trackedIDsCol,
+            'maskIDsCol': win.maskIDsCol,
+            'xCentroidCol': win.xCentroidCol,
+            'yCentroidCol': win.yCentroidCol
+        }
+        
+        imagesPath = os.path.join(posPath, 'Images')
+        segmFilename = [
+            f for f in myutils.listdir(imagesPath) 
+            if f.endswith(f'{endFilenameSegm}.npz')
+        ][0]
+        basename = os.path.splitext(segmFilename)[0]
+        overWriteButton = widgets.savePushButton(
+            'Overwrite existing segmentation file'
+        )
+        win = apps.filenameDialog(
+            basename=f'{basename}_',
+            hintText='Insert a <b>filename for the tracked</b> masks file:',
+            allowEmpty=False, defaultEntry='tracked', 
+            additionalButtons=(overWriteButton, )
+        )
+        overWriteButton.clicked.connect(partial(self.overWriteClicked, win))
+        win.exec_()
+        if win.cancel:
+            return False
+        
+        self.worker = workers.ApplyTrackInfoWorker(
+            self, endFilenameSegm, csvPath, win.filename, columnsInfo, posPath
+        )
+        if self.callbackOnFinished is not None:
+            self.worker.signals.finished.connect(self.callbackOnFinished)
+        self.runWorker(self.worker)
+        return True
+        
+    def overWriteClicked(self, win):
+        win.cancel = False
+        win.filename = ''
+        win.close()
         
