@@ -760,14 +760,14 @@ class loadData:
 
         if self.labelBoolSegm:
             if self.SizeT > 1:
-                segm_data = np.zeros(self.segm_data.shape, dtype=np.uint16)
+                segm_data = np.zeros(self.segm_data.shape, dtype=np.uint32)
                 for i, lab in enumerate(self.segm_data):
                     segm_data[i] = skimage.measure.label(lab)
                 self.segm_data = segm_data
             else:
                 self.segm_data = skimage.measure.label(self.segm_data)
         else:
-            self.segm_data = self.segm_data.astype(np.uint16)
+            self.segm_data = self.segm_data.astype(np.uint32)
 
     def setFilePaths(self, new_endname):
         if self.basename.endswith('_'):

@@ -189,7 +189,7 @@ class Model:
             # Label the cells using prediction
             lab = utils.label_seg(seg=results[0, :, :, 0])
 
-        return lab.astype(np.uint16)
+        return lab.astype(np.uint32)
 
 def url_help():
     return 'https://gitlab.com/dunloplab/delta'

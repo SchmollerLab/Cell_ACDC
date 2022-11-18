@@ -510,7 +510,7 @@ def _calc_rot_vol(obj, PhysicalSizeY=1, PhysicalSizeX=1, logger=None):
     try:
         if is3Dobj:
             # For 3D objects we use a max projection for the rotation
-            obj_lab = obj.image.max(axis=0).astype(np.uint16)*obj.label
+            obj_lab = obj.image.max(axis=0).astype(np.uint32)*obj.label
             obj = regionprops(obj_lab)[0]
 
         vox_to_fl = float(PhysicalSizeY)*pow(float(PhysicalSizeX), 2)

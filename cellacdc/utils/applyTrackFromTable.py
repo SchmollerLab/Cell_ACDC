@@ -82,7 +82,7 @@ class ApplyTrackingInfoFromTableUtil(base.MainThreadSinglePosUtilBase):
         win.exec_()
         if win.cancel:
             return False
-        
+
         self.worker = workers.ApplyTrackInfoWorker(
             self, endFilenameSegm, csvPath, win.filename, columnsInfo, posPath
         )

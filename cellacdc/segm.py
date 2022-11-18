@@ -301,7 +301,7 @@ class segmWorker(QRunnable):
                     # emit one pos done
                     self.signals.progressBar.emit(1)
             else:
-                lab_stack = np.zeros(img_data.shape, np.uint16)
+                lab_stack = np.zeros(img_data.shape, np.uint32)
                 for t, img in enumerate(img_data):
                     if self.secondChannelName is not None:
                         img = self.model.to_rgb_stack(img, second_ch_data[t])

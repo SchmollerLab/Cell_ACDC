@@ -73,7 +73,7 @@ def correspondence_stack(stack, signals=None):
     corrects correspondence of a stack of segmented and labeled masks, by
     fitting the hungarian iteratively on the stack
     """
-    corrected_stack = np.empty(stack.shape, dtype=np.uint16)
+    corrected_stack = np.empty(stack.shape, dtype=np.uint32)
     corrected_stack[0] = stack[0]
     for idx in range(len(stack)):
         try:

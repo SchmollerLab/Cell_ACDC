@@ -1350,7 +1350,7 @@ def uint_to_float(img):
         return img
 
     uint8_max = np.iinfo(np.uint8).max
-    uint16_max = np.iinfo(np.uint16).max
+    uint16_max = np.iinfo(np.uint32).max
     if img_max <= uint8_max:
         img = img/uint8_max
     elif img_max <= uint16_max:

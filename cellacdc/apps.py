@@ -936,6 +936,9 @@ class filenameDialog(QDialog):
 
         self.setLayout(layout)
         self.setFont(font)
+
+        if defaultEntry:
+            self.updateFilename(defaultEntry)
     
     def showHelp(self, text):
         text = html_utils.paragraph(text)
@@ -6607,8 +6610,8 @@ class QLineEditDialog(QDialog):
         # Allow only integers
         try:
             val = int(newChar)
-            if val > np.iinfo(np.uint16).max:
-                self.ID_QLineEdit.setText(str(np.iinfo(np.uint16).max))
+            if val > np.iinfo(np.uint32).max:
+                self.ID_QLineEdit.setText(str(np.iinfo(np.uint32).max))
             if self.allowedValues is not None:
                 currentVal = int(self.ID_QLineEdit.text())
                 if currentVal not in self.allowedValues:
@@ -6755,7 +6758,7 @@ class editID_QWidget(QDialog):
         m_iter = re.finditer(r'\d+', self.ID_QLineEdit.text())
         for m in m_iter:
             val = int(m.group())
-            uint16_max = np.iinfo(np.uint16).max
+            uint16_max = np.iinfo(np.uint32).max
             if val > uint16_max:
                 text = self.ID_QLineEdit.text()
                 text = f'{text[:m.start()]}{uint16_max}{text[m.end():]}'

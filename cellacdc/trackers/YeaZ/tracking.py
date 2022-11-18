@@ -75,7 +75,7 @@ def correspondence_stack(stack, signals=None):
     corrects correspondence of a stack of segmented and labeled masks, by
     fitting the hungarian iteratively on the stack
     """
-    tracked_stack = np.empty(stack.shape, dtype=np.uint16)
+    tracked_stack = np.empty(stack.shape, dtype=np.uint32)
     tracked_stack[0] = stack[0]
     for idx in tqdm(range(len(stack)), ncols=100):
         try:

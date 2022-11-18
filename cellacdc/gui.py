@@ -1098,7 +1098,7 @@ class saveDataWorker(QObject):
                 else:
                     frame_shape = posData.segm_data.shape[1:]
                     segm_shape = (end_i+1, *frame_shape)
-                    saved_segm_data = np.zeros(segm_shape, dtype=np.uint16)
+                    saved_segm_data = np.zeros(segm_shape, dtype=np.uint32)
                 npz_delROIs_info = {}
                 delROIs_info_path = posData.delROIs_info_path
                 acdc_df_li = []
@@ -3516,7 +3516,7 @@ class guiWin(QMainWindow):
         else:
             self.ax2_textColor = (255, 0, 0)
         
-        self.emptyLab = np.zeros((2,2), dtype=np.uint16)
+        self.emptyLab = np.zeros((2,2), dtype=np.uint32)
 
         # Right image item linked to left
         self.rightImageItem = pg.ImageItem()
@@ -13826,7 +13826,7 @@ class guiWin(QMainWindow):
                     shape = (posData.SizeZ, posData.SizeY, posData.SizeX)
                 else:
                     shape = (posData.SizeY, posData.SizeX)
-                labels = np.zeros(shape, dtype=np.uint16)
+                labels = np.zeros(shape, dtype=np.uint32)
         if return_existing:
             return labels, existing
         else:
@@ -15919,7 +15919,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         how = self.drawIDsContComboBox.currentText()
         Y, X = self.img1.image.shape[:2]
-        tempImage = np.zeros((Y, X), dtype=np.uint16)
+        tempImage = np.zeros((Y, X), dtype=np.uint32)
         if how.find('contours') != -1:
             tempImage[self.currentLab2D==ID] = ID
         lut = np.zeros((2, 4), dtype=np.uint8)
@@ -17287,7 +17287,8 @@ class guiWin(QMainWindow):
                 SizeZ = 1
             is_imageJ_dtype = (
                 data.img_data.dtype == np.uint8
-                or data.img_data.dtype == np.uint16
+                or data.img_data.dtype == np.uint32
+                or data.img_data.dtype == np.uint32
                 or data.img_data.dtype == np.float32
             )
             if not is_imageJ_dtype:
