@@ -318,6 +318,8 @@ class MainThreadSinglePosUtilBase(QDialog):
         super().__init__(parent)
         self.setWindowTitle(title)
 
+        self.progressDialogueTitle = title 
+
         self._parent = parent
 
         logger, logs_path, log_path, log_filename = myutils.setupLogger(
@@ -359,14 +361,149 @@ class MainThreadSinglePosUtilBase(QDialog):
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
 
+        self.worker = None
+
         self.setLayout(mainLayout)
     
     def closeClicked(self):
         self.sigClose.emit()
     
     def closeEvent(self, event):
-        self.logger.log('Closing logger...')
+        self.logger.info('Closing logger...')
         handlers = self.logger.handlers[:]
         for handler in handlers:
             handler.close()
             self.logger.removeHandler(handler)
+    
+    def selectSegmFileLoadData(self, posPath):
+        # Get end name of every existing segmentation file
+        existingSegmEndNames = set()
+        pos_path = posPath
+        images_path = os.path.join(pos_path, 'Images')
+        basename, chNames = myutils.getBasenameAndChNames(images_path)
+        # Use first found channel, it doesn't matter for metrics
+        for chName in chNames:
+            filePath = myutils.getChannelFilePath(images_path, chName)
+            if filePath:
+                break
+        else:
+            raise FileNotFoundError(
+                f'None of the channels "{chNames}" were found in the path '
+                f'"{images_path}".'
+            )
+        _posData = load.loadData(filePath, chName)
+        _posData.getBasenameAndChNames()
+        segm_files = load.get_segm_files(_posData.images_path)
+        _existingEndnames = load.get_existing_segm_endnames(
+            _posData.basename, segm_files
+        )
+        existingSegmEndNames.update(_existingEndnames)
+
+        self.existingSegmEndNames = list(existingSegmEndNames)
+
+        if len(existingSegmEndNames) == 1:
+            self.endFilenameSegm = list(existingSegmEndNames)[0]
+            if self.worker is not None:
+                self.worker.waitCond.wakeAll()
+            return self.endFilenameSegm
+
+        if hasattr(self, 'infoText'):
+            infoText = self.infoText
+        else:
+            infoText = None
+
+        win = apps.QDialogMultiSegmNpz(
+            existingSegmEndNames, posPath, parent=self, infoText=infoText
+        )
+        win.exec_()
+        self.endFilenameSegm = win.selectedItemText
+        if self.worker is not None:
+            self.worker.abort = win.cancel
+            self.worker.waitCond.wakeAll()
+        elif win.cancel:
+            return ''
+        else:
+            return self.endFilenameSegm
+    
+    def runWorker(self, worker):
+        self.progressWin = apps.QDialogWorkerProgress(
+            title=self.progressDialogueTitle, parent=self,
+            pbarDesc=f'{self.progressDialogueTitle}...'
+        )
+        self.progressWin.sigClosed.connect(self.progressWinClosed)
+        self.progressWin.show(self.app)
+
+        self.thread = QThread()
+        self.worker.moveToThread(self.thread)
+
+        self.worker.signals.finished.connect(self.thread.quit)
+        self.worker.signals.finished.connect(self.worker.deleteLater)
+        self.worker.signals.finished.connect(self.workerFinished)
+        self.thread.finished.connect(self.thread.deleteLater)
+
+        self.worker.signals.progress.connect(self.workerProgress)
+        self.worker.signals.critical.connect(self.workerCritical)    
+        self.worker.signals.initProgressBar.connect(self.workerInitProgressbar)
+        self.worker.signals.sigInitInnerPbar.connect(self.workerInitInnerPbar)
+        self.worker.signals.progressBar.connect(self.workerUpdateProgressbar)
+        self.worker.signals.sigUpdateInnerPbar.connect(
+            self.workerUpdateInnerPbar
+        )
+        self.worker.signals.sigUpdatePbarDesc.connect(self.workerUpdatePbarDesc)
+
+        self.thread.started.connect(self.worker.run)
+        self.thread.start()
+    
+    def workerCritical(self, error):
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+
+        try:
+            raise error
+        except:
+            self.traceback_str = traceback.format_exc()
+            print('='*20)
+            self.worker.logger.log(self.traceback_str)
+            print('='*20)
+
+    def workerFinished(self, worker):
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+            self.progressWin.close()
+
+        self.worker = None
+        self.progressWin = None
+
+    def workerProgress(self, text, loggerLevel='INFO'):
+        if self.progressWin is not None:
+            self.progressWin.logConsole.append(text)
+        self.logger.log(getattr(logging, loggerLevel), text)
+    
+    def workerInitInnerPbar(self, totalIter):
+        if totalIter <= 1:
+            self.progressWin.innerPbar.hide()
+            return
+        self.progressWin.innerPbar.show()
+        self.progressWin.innerPbar.setValue(0)
+        self.progressWin.innerPbar.setMaximum(totalIter)
+
+    def workerInitProgressbar(self, totalIter):
+        self.progressWin.mainPbar.setValue(0)
+        if totalIter == 1:
+            totalIter = 0
+        self.progressWin.mainPbar.setMaximum(totalIter)
+    
+    def workerUpdateInnerPbar(self, step):
+        self.progressWin.innerPbar.update(step)
+    
+    def workerUpdateProgressbar(self, step):
+        self.progressWin.mainPbar.update(step)
+    
+    def workerUpdatePbarDesc(self, desc):
+        self.progressWin.progressLabel.setText(desc)
+    
+    def progressWinClosed(self, aborted):
+        self.abort = aborted
+        if aborted and self.worker is not None:
+            self.worker.abort = True
+            self.close()

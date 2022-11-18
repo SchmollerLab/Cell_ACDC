@@ -154,7 +154,7 @@ class Model:
 
         # Run cellpose eval
         if not segment_3D_volume and isZstack:
-            labels = np.zeros(image.shape, dtype=np.uint16)
+            labels = np.zeros(image.shape, dtype=np.uint32)
             for i, _img in enumerate(image):
                 _img = self._initialize_image(_img)
                 lab = self._eval(_img, **eval_kwargs)

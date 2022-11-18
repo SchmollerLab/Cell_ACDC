@@ -47,7 +47,7 @@ def segment_stack(th, pred, min_distance=10, topology=None, signals=None):
     apply method segment on a stack of images, given a stack of thresholded
     images th and a stack of raw predictions pred
     """
-    seg_stack = np.zeros(pred.shape, np.uint16)
+    seg_stack = np.zeros(pred.shape, np.uint32)
     for idx, (th_single, pred_single) in enumerate(zip(th, pred)):
         lab = segment(th_single, pred_single, min_distance, topology)
         seg_stack[idx] = lab

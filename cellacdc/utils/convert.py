@@ -248,7 +248,7 @@ class convertFileFormatWin(QMainWindow):
         elif self.from_ == 'h5':
             data = load.h5dump_to_arr(filePath)
         if self.info.find('segm') != -1:
-            data = data.astype(np.uint16)
+            data = data.astype(np.uint32)
         filename, ext = os.path.splitext(filename)
         if appendedTxt:
             if basename.endswith('_'):

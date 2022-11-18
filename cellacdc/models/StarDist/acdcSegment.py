@@ -64,7 +64,7 @@ class Model:
         prob_thresh = prob_thresh if prob_thresh > 0 else None
         nms_thresh = nms_thresh if nms_thresh > 0 else None
         if not segment_3D_volume and image.ndim == 3:
-            labels = np.zeros(image.shape, dtype=np.uint16)
+            labels = np.zeros(image.shape, dtype=np.uint32)
             for i, _img in enumerate(image):
                 lab, _ = self.model.predict_instances(
                     normalize(_img),
@@ -79,4 +79,4 @@ class Model:
                 prob_thresh=prob_thresh,
                 nms_thresh=nms_thresh
             )
-        return labels.astype(np.uint16)
+        return labels.astype(np.uint32)

@@ -23,7 +23,7 @@ script_path = os.path.dirname(os.path.realpath(__file__))
 cellacdc_path = os.path.dirname(script_path)
 sys.path.append(cellacdc_path)
 
-from .. import gui, dataStruct, myutils, cite_url
+from .. import gui, dataStruct, myutils, cite_url, html_utils, urls, widgets
 
 # NOTE: Enable icons
 from .. import qrc_resources
@@ -779,7 +779,9 @@ class welcomeWin(QWidget):
         self.manualFrame = QFrame(self)
         manualLayout = QGridLayout()
 
-        openManualButton = QPushButton(' Open user manual... ')
+        openManualButton = widgets.showInFileManagerButton(
+            ' Download and open user manual... '
+        )
         openManualButton.clicked.connect(myutils.showUserManual)
 
         buttonLayout = QHBoxLayout()
@@ -797,51 +799,44 @@ class welcomeWin(QWidget):
 
         layout = QGridLayout()
 
+        contribute_href = html_utils.href_tag('here', urls.contribute_url)
+        github_href = html_utils.href_tag('GitHub page', urls.github_url)
+        issues_href = html_utils.href_tag('Issues', urls.issues_url)
+        forum_href = html_utils.href_tag('Discussions', urls.forum_url)
+        resources_href = html_utils.href_tag('here', urls.resources_url)
+        my_contact_href = html_utils.href_tag('my email', urls.my_contact_url)
+        user_manual_href = html_utils.href_tag('User Manual', urls.user_manual_url)
+
         text = (f"""
         <p style="font-size:15px; font-family:ubuntu">
             Here at Cell-ACDC we want to keep a <b>community-centred approach</b>.<br><br>
-            If the software is or will be <b>any useful</b> to you it's only thanks to the
-            <b>great feedback</b><br>
+            
+            If the software is <b>any useful</b> to you it's only thanks to the <b>great feedback</b><br>
             we received and we keep receiving from many users.<br><br>
-            The easiest, and yet very effective, way to contribute is to simply
-            <b>give us any feedback</b>.<br><br>
-            It can be <b>ideas</b> you have that can improve the user
-            experience, or a <b>request</b> for a specific feature.<br><br>
-            Additionally, please <b>report any issue</b> you have, because this
-            will greatly help also the other users.<br><br>
+            
+            The easiest, and yet very effective, way to contribute is to simply <b>give us any feedback</b>.<br><br>
+            
+            It can be <b>ideas</b> you have that can improve the user experience, or a <b>request</b> for a specific feature.<br><br>
+            
+            We also welcome <b>contributions to the code</b>, for example by adding your own custom model or tracker.<br>
+            This way you allow users without programming skills to use your models! Check out the instructions<br>
+            on how to contribute to the code {contribute_href}.<br><br>
+
+            You can find instructions on how to add segmentation or tracking models on our {user_manual_href} at the section<br>
+            called <code>Adding segmentation models to the pipeline</code>.<br><br>
+
+            Additionally, please <b>report any issue</b> you have, because this will greatly help also the other users.<br><br>
+
             Finally, do not hesitate to <b>ask any question</b> you have about the software.<br><br>
-            The best way to talk to us is on our
-            <a href="https://github.com/SchmollerLab/Cell_ACDC">
-                GitHub page
-            </a>. You can use the
-            <a href="https://github.com/SchmollerLab/Cell_ACDC/issues">
-                issues
-            </a> page to report an issue,<br>
-            propose a new feature or simply ask a question.<br><br>
-            Alternatively, you can participate or open a new discussion
-            on our
-            <a href="https://github.com/SchmollerLab/Cell_ACDC/discussions">
-                Discussions
-            </a> page.<br><br>
-            Of course, you are also <b>free to contact me</b> directly at
-            <a href="https://www.helmholtz-munich.de/ife/about-us/people/staff-detail/ma/8873/Dr.-Padovani/index.html">
-                my email
-            </a>.<br><br>
-            Additional resources:
-            <ul style="line-height:130%">
-                <li>
-                    Twitter
-                    <a href="https://twitter.com/frank_pado/status/1482793171314745344">
-                        thread
-                    </a>
-                </li>
-                <li>
-                    <a href=\"{cite_url}\">
-                        Publication
-                    </a>
-                    on BMC Biology
-                </li>
-            </ul>
+
+            The best way to talk to us is on our {github_href}. You can use the {issues_href} page to report an issue, propose a new feature<br>
+            or simply ask a question.<br><br>
+
+            Alternatively, you can participate or open a new discussion on our {forum_href} page.<br><br>
+
+            Of course, you are also <b>free to contact me</b> directly at {my_contact_href}.<br><br>
+
+            Additional resources {resources_href}.
         </p>
         """)
 

@@ -24,7 +24,10 @@ from PyQt5.QtCore import (
 
 from cellacdc import html_utils
 
-from . import load, myutils, core, measurements, prompts, printl, config
+from . import (
+    load, myutils, core, measurements, prompts, printl, config,
+    segm_re_pattern
+)
 
 DEBUG = False
 
@@ -140,6 +143,64 @@ class LabelRoiWorker(QObject):
             self.pause()
         self.finished.emit()
 
+class StoreGuiStateWorker(QObject):
+    finished = pyqtSignal(object)
+    sigDone = pyqtSignal()
+    progress = pyqtSignal(str, object)
+
+    def __init__(self, mutex, waitCond):
+        QObject.__init__(self)
+        self.mutex = mutex
+        self.waitCond = waitCond
+        self.exit = False
+        self.isFinished = False
+        self.q = queue.Queue()
+        self.logger = workerLogger(self.progress)
+    
+    def pause(self):
+        self.mutex.lock()
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
+    
+    def enqueue(self, posData, img1):
+        self.q.put((posData, img1))
+        self.waitCond.wakeAll()
+    
+    def _stop(self):
+        self.exit = True
+        self.waitCond.wakeAll()
+    
+    def run(self):
+        while True:
+            if self.exit:
+                self.logger.log('Closing store state worker...')
+                break
+            elif not self.q.empty():
+                posData, img1 = self.q.get()
+                # self.logger.log('Storing state...')
+                if posData.cca_df is not None:
+                    cca_df = posData.cca_df.copy()
+                else:
+                    cca_df = None
+
+                state = {
+                    'image': img1.copy(),
+                    'labels': posData.storedLab.copy(),
+                    'editID_info': posData.editID_info.copy(),
+                    'binnedIDs': posData.binnedIDs.copy(),
+                    'ripIDs': posData.ripIDs.copy(),
+                    'cca_df': cca_df
+                }
+                posData.UndoRedoStates[posData.frame_i].insert(0, state)
+                if self.q.empty():
+                    # self.logger.log('State stored...')
+                    self.sigDone.emit()
+            else:
+                self.pause()
+            
+        self.isFinished = True
+        self.finished.emit(self)
+
 class AutoSaveWorker(QObject):
     finished = pyqtSignal(object)
     sigDone = pyqtSignal()
@@ -244,7 +305,7 @@ class AutoSaveWorker(QObject):
         else:
             frame_shape = posData.segm_data.shape[1:]
             segm_shape = (end_i+1, *frame_shape)
-            saved_segm_data = np.zeros(segm_shape, dtype=np.uint16)
+            saved_segm_data = np.zeros(segm_shape, dtype=np.uint32)
         
         keys = []
         acdc_df_li = []
@@ -1504,6 +1565,128 @@ class TrackSubCellObjectsWorker(BaseWorkerUtil):
 
         self.signals.finished.emit(self)
 
+
+class ApplyTrackInfoWorker(BaseWorkerUtil):
+    def __init__(
+            self, parentWin, endFilenameSegm, trackInfoCsvPath, 
+            trackedSegmFilename, trackColsInfo, posPath
+        ):
+        super().__init__(parentWin)
+        self.endFilenameSegm = endFilenameSegm
+        self.trackInfoCsvPath = trackInfoCsvPath
+        self.trackedSegmFilename = trackedSegmFilename
+        self.trackColsInfo = trackColsInfo
+        self.posPath = posPath
+    
+    @worker_exception_handler
+    def run(self):
+        self.logger.log('Loading segmentation file...')  
+        self.signals.initProgressBar.emit(0)
+        imagesPath = os.path.join(self.posPath, 'Images')
+        segmFilename = [
+            f for f in myutils.listdir(imagesPath) 
+            if f.endswith(f'{self.endFilenameSegm}.npz')
+        ][0]
+        segmFilePath = os.path.join(imagesPath, segmFilename)
+        segmData = np.load(segmFilePath)['arr_0']
+
+        self.logger.log('Loading table containing tracking info...') 
+        df = pd.read_csv(self.trackInfoCsvPath)
+
+        self.logger.log('Applying tracking info...')  
+        frameIndexCol = self.trackColsInfo['frameIndexCol']
+        grouped = df.groupby(frameIndexCol)
+        self.signals.initProgressBar.emit(len(grouped))
+        trackIDsCol = self.trackColsInfo['trackIDsCol']
+        maxID = max(segmData.max(), df[trackIDsCol].max())
+        segmData += maxID
+        maskIDsCol = self.trackColsInfo['maskIDsCol']
+        xCentroidCol = self.trackColsInfo['xCentroidCol']
+        yCentroidCol = self.trackColsInfo['yCentroidCol']
+        if maskIDsCol != 'None':
+            df[maskIDsCol] = df[maskIDsCol] + maxID
+        trackedIDsMapper = {}
+        for frame_i, df_frame in grouped:
+            if frame_i == len(segmData):
+                self.logger.log(
+                    'WARNING: segmentation data has less frames than the '
+                    f'frames in the "{frameIndexCol}" column.'
+                )
+                break
+            
+            lab = segmData[frame_i]
+
+            for row in df_frame.itertuples():
+                trackedID = getattr(row, trackIDsCol)
+                if xCentroidCol == 'None':
+                    maskID = getattr(row, maskIDsCol)
+                else:
+                    xc = getattr(row, xCentroidCol)
+                    yc = getattr(row, yCentroidCol)
+                    maskID = lab[int(yc), int(xc)]
+                lab[lab==maskID] = trackedID
+                trackedIDsMapper[maskID] = trackedID
+            self.signals.progressBar.emit(1)
+        
+        self.logger.log('='*40)
+        s = '\n'.join([f'   {id} --> {ID}' for id, ID in trackedIDsMapper.items()])
+        self.logger.log(
+            f'Applied following ID replacements:\n{s}'
+        )
+        self.logger.log('='*40)
+
+        if self.trackedSegmFilename:
+            trackedSegmFilepath = os.path.join(
+                imagesPath, self.trackedSegmFilename
+            )
+        else:
+            trackedSegmFilepath = os.path.join(segmFilePath)
+        
+        self.logger.log('Saving tracked segmentation file...') 
+        np.savez_compressed(trackedSegmFilepath)
+
+        self.logger.log('Generating acdc_output table...')
+        acdc_df = None
+        if not self.trackedSegmFilename:
+            acdcEndname = self.endFilenameSegm.replace('_segm', '_acdc_output')
+            acdcFilename = [
+                f for f in myutils.listdir(imagesPath) 
+                if f.endswith(f'{acdcEndname}.csv')
+            ]
+            if acdcFilename:
+                acdcFilePath = os.path.join(imagesPath, acdcFilename[0])
+                acdc_df = pd.read_csv(
+                    acdcFilePath, index_col=['frame_i', 'Cell_ID']
+                )
+        
+        if acdc_df is not None:
+            # Substitute mask IDs with tracked IDs
+            acdc_df = acdc_df.rename(index=trackedIDsMapper, level=1)
+            if 'relative_ID' in acdc_df.columns:
+                relIDs = acdc_df['relative_ID']
+                acdc_df['relative_ID'] = relIDs.replace(trackedIDsMapper)
+            
+        else:
+            acdc_dfs = []
+            keys = []
+            for frame_i, lab in enumerate(segmData):            
+                rp = skimage.measure.regionprops()
+                acdc_df_frame_i = myutils.getBaseAcdcDf(rp)
+                acdc_dfs.append(acdc_df_frame_i)
+                keys.append(frame_i)
+            
+            acdc_df = pd.concat(acdc_dfs, keys=keys, names=['frame_i', 'Cell_ID'])
+            segmFilename = os.path.basename(trackedSegmFilepath)
+            acdcFilename = re.sub(segm_re_pattern, '_acdc_output', segmFilename)
+            acdcFilePath = os.path.join(
+                imagesPath, self.acdcFilename
+            )
+        
+        self.logger.log('Saving acdc_output table...')
+        acdc_df.to_csv(acdcFilePath)
+
+        self.signals.finished.emit(self)
+
 class RestructMultiTimepointsWorker(BaseWorkerUtil):
     sigSaveTiff = pyqtSignal(str, object, object)
 
@@ -1718,11 +1901,11 @@ class RestructMultiTimepointsWorker(BaseWorkerUtil):
             SizeZ = imgDataInfo['SizeZ']
             frameNumbers = imgDataInfo['frameNumbers']
             paddedShape = imgDataInfo['paddedShape']
-            segmData = np.zeros(paddedShape, dtype=np.uint16)
+            segmData = np.zeros(paddedShape, dtype=np.uint32)
             for n, segmFilePath in zip(frameNumbers, imgDataInfo['src_segm_paths']):
                 frame_i = n - minFrameNumber
                 try:
-                    lab = skimage.io.imread(segmFilePath).astype(np.uint16)
+                    lab = skimage.io.imread(segmFilePath).astype(np.uint32)
                     segmData[frame_i] = lab
                 except Exception as e:
                     self.logger.log(traceback.format_exc())

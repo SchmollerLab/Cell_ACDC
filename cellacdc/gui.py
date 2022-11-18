@@ -1098,7 +1098,7 @@ class saveDataWorker(QObject):
                 else:
                     frame_shape = posData.segm_data.shape[1:]
                     segm_shape = (end_i+1, *frame_shape)
-                    saved_segm_data = np.zeros(segm_shape, dtype=np.uint16)
+                    saved_segm_data = np.zeros(segm_shape, dtype=np.uint32)
                 npz_delROIs_info = {}
                 delROIs_info_path = posData.delROIs_info_path
                 acdc_df_li = []
@@ -1409,6 +1409,7 @@ class guiWin(QMainWindow):
         self.closeGUI = False
         self.img1ChannelGradients = {}
         self.filtersWins = {}
+        self.storeStateWorker = None
 
         self.setWindowTitle("Cell-ACDC - GUI")
         self.setWindowIcon(QIcon(":icon.ico"))
@@ -2177,7 +2178,7 @@ class guiWin(QMainWindow):
         self.editIDcheckboxAction = widgetsToolBar.addWidget(self.editIDcheckbox)
         self.editIDcheckboxAction.setVisible(False)
 
-        self.brushSizeSpinbox = widgets.SpinBox()
+        self.brushSizeSpinbox = widgets.SpinBox(disableKeyPress=True)
         self.brushSizeSpinbox.setValue(4)
         brushSizeLabel = QLabel('   Size: ')
         brushSizeLabel.setBuddy(self.brushSizeSpinbox)
@@ -2277,6 +2278,39 @@ class guiWin(QMainWindow):
 
         self.lazyLoaderThread.started.connect(self.lazyLoader.run)
         self.lazyLoaderThread.start()
+    
+    def gui_createStoreStateWorker(self):
+        self.storeStateWorker = None
+        return
+        self.storeStateThread = QThread()
+        self.autoSaveMutex = QMutex()
+        self.autoSaveWaitCond = QWaitCondition()
+
+        self.storeStateWorker = workers.StoreGuiStateWorker(
+            self.autoSaveMutex, self.autoSaveWaitCond
+        )
+
+        self.storeStateWorker.moveToThread(self.storeStateThread)
+        self.storeStateWorker.finished.connect(self.storeStateThread.quit)
+        self.storeStateWorker.finished.connect(self.storeStateWorker.deleteLater)
+        self.storeStateThread.finished.connect(self.storeStateThread.deleteLater)
+
+        self.storeStateWorker.sigDone.connect(self.storeStateWorkerDone)
+        self.storeStateWorker.progress.connect(self.workerProgress)
+        self.storeStateWorker.finished.connect(self.storeStateWorkerClosed)
+        
+        self.storeStateThread.started.connect(self.storeStateWorker.run)
+        self.storeStateThread.start()
+
+        self.logger.info('Store state worker started.')
+    
+    def storeStateWorkerDone(self):
+        if self.storeStateWorker.callbackOnDone is not None:
+            self.storeStateWorker.callbackOnDone()
+        self.storeStateWorker.callbackOnDone = None
+
+    def storeStateWorkerClosed(self):
+        self.logger.info('Store state worker started.')
     
     def gui_createAutoSaveWorker(self):
         if self.autoSaveActiveWorkers:
@@ -2402,9 +2436,13 @@ class guiWin(QMainWindow):
 
         self.labelRoiToolbar = QToolBar("Magic labeller controls", self)
         self.labelRoiToolbar.addWidget(QLabel('ROI depth (n. of z-slices): '))
-        self.labelRoiZdepthSpinbox = widgets.SpinBox()
+        self.labelRoiZdepthSpinbox = widgets.SpinBox(disableKeyPress=True)
         self.labelRoiToolbar.addWidget(self.labelRoiZdepthSpinbox)
         self.labelRoiToolbar.addWidget(QLabel('  '))
+        self.labelRoReplaceExistingObjectsCheckbox = QCheckBox(
+            'Replace existing objects'
+        )
+        self.labelRoiToolbar.addWidget(self.labelRoReplaceExistingObjectsCheckbox)
         self.labelRoiAutoClearBorderCheckbox = QCheckBox(
             'Remove objects touching borders'
         )
@@ -2423,7 +2461,7 @@ class guiWin(QMainWindow):
         self.labelRoiToolbar.addWidget(self.labelRoiIsFreeHandRadioButton)
         self.labelRoiToolbar.addWidget(self.labelRoiIsCircularRadioButton)
         self.labelRoiToolbar.addWidget(QLabel(' Circular ROI radius (pixel): '))
-        self.labelRoiCircularRadiusSpinbox = widgets.SpinBox()
+        self.labelRoiCircularRadiusSpinbox = widgets.SpinBox(disableKeyPress=True)
         self.labelRoiCircularRadiusSpinbox.setMinimum(1)
         self.labelRoiCircularRadiusSpinbox.setValue(11)
         self.labelRoiCircularRadiusSpinbox.setDisabled(True)
@@ -2434,6 +2472,9 @@ class guiWin(QMainWindow):
 
         self.loadLabelRoiLastParams()
 
+        self.labelRoReplaceExistingObjectsCheckbox.toggled.connect(
+            self.storeLabelRoiParams
+        )
         self.labelRoiIsCircularRadioButton.toggled.connect(
             self.labelRoiIsCircularRadioButtonToggled
         )
@@ -2619,6 +2660,8 @@ class guiWin(QMainWindow):
         # self.reloadAction = QAction(
         #     QIcon(":reload.svg"), "Reload segmentation file", self
         # )
+        self.nextAction = QAction('Next', self)
+        self.prevAction = QAction('Previous', self)
         self.showInExplorerAction = QAction(
             QIcon(":drawer.svg"), f"&{self.openFolderText}", self
         )
@@ -2633,6 +2676,10 @@ class guiWin(QMainWindow):
         self.quickSaveAction.setShortcut("Ctrl+S")
         self.undoAction.setShortcut("Ctrl+Z")
         self.redoAction.setShortcut("Ctrl+Y")
+        self.nextAction.setShortcut(Qt.Key_Right)
+        self.prevAction.setShortcut(Qt.Key_Left)
+        self.addAction(self.nextAction)
+        self.addAction(self.prevAction)
         # Help tips
         newTip = "Create a new segmentation file"
         self.newAction.setStatusTip(newTip)
@@ -2948,6 +2995,8 @@ class guiWin(QMainWindow):
         self.exitAction.triggered.connect(self.close)
         self.undoAction.triggered.connect(self.undo)
         self.redoAction.triggered.connect(self.redo)
+        self.nextAction.triggered.connect(self.next_cb)
+        self.prevAction.triggered.connect(self.prev_cb)
 
         # Connect Help actions
         self.tipsAction.triggered.connect(self.showTipsAndTricks)
@@ -3253,8 +3302,9 @@ class guiWin(QMainWindow):
 
         row += 1
         navWidgetsLayout = QHBoxLayout()
-        self.navSpinBox = widgets.SpinBox()
-        self.navSpinBox.setMaximum(1)
+        self.navSpinBox = widgets.SpinBox(disableKeyPress=True)
+        self.navSpinBox.setMinimum(1)
+        self.navSpinBox.setMaximum(11)
         self.navSizeLabel = QLabel('/ND')
         navWidgetsLayout.addWidget(self.t_label)
         navWidgetsLayout.addWidget(self.navSpinBox)
@@ -3272,7 +3322,8 @@ class guiWin(QMainWindow):
         row += 1
         zSliceCheckboxLayout = QHBoxLayout()
         self.zSliceCheckbox = QCheckBox()
-        self.zSliceSpinbox = widgets.SpinBox()
+        self.zSliceSpinbox = widgets.SpinBox(disableKeyPress=True)
+        self.zSliceSpinbox.setMinimum(1)
         self.SizeZlabel = QLabel('/ND')
         self.z_label.setCheckableItem(self.zSliceCheckbox)
         self.zSliceCheckbox.setToolTip(
@@ -3472,7 +3523,7 @@ class guiWin(QMainWindow):
         else:
             self.ax2_textColor = (255, 0, 0)
         
-        self.emptyLab = np.zeros((2,2), dtype=np.uint16)
+        self.emptyLab = np.zeros((2,2), dtype=np.uint32)
 
         # Right image item linked to left
         self.rightImageItem = pg.ImageItem()
@@ -5027,17 +5078,16 @@ class guiWin(QMainWindow):
                     ID=self.erasedID
                 )
 
-
             self.erasedIDs.extend(lab_2D[mask])
             self.applyEraserMask(mask)
 
             self.setImageImg2()
 
-            self.erasedLab = np.zeros_like(posData.lab)
             for erasedID in np.unique(self.erasedIDs):
                 if erasedID == 0:
                     continue
-                self.erasedLab[posData.lab==erasedID] = erasedID
+                self.erasedLab[lab_2D==erasedID] = erasedID
+                self.erasedLab[mask] = 0
 
             eraserMask = mask[diskSlice]
             self.setTempImg1Eraser(eraserMask, toLocalSlice=diskSlice)
@@ -6432,10 +6482,6 @@ class guiWin(QMainWindow):
             self.lastHoverID = -1
 
         elif left_click and canErase:
-            # printl('----------------------------------------')
-            
-            # t0 = time.perf_counter()
-
             x, y = event.pos().x(), event.pos().y()
             xdata, ydata = int(x), int(y)
             lab_2D = self.get_2Dlab(posData.lab)
@@ -6444,15 +6490,13 @@ class guiWin(QMainWindow):
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(False)
 
-            # t1 = time.perf_counter()
+            t1 = time.perf_counter()
 
             self.yPressAx2, self.xPressAx2 = y, x
             # Keep a list of erased IDs got erased
             self.erasedIDs = []
             
             self.erasedID = self.getHoverID(xdata, ydata)
-
-            
 
             ymin, xmin, ymax, xmax, diskMask = self.getDiskMask(xdata, ydata)
 
@@ -6468,8 +6512,6 @@ class guiWin(QMainWindow):
                 and self.erasedID != 0
             )
 
-            # t2 = time.perf_counter()
-
             self.eraseOnlyOneID = eraseOnlyOneID
 
             if eraseOnlyOneID:
@@ -6479,7 +6521,6 @@ class guiWin(QMainWindow):
             self.setTempImg1Eraser(mask, init=True)
             self.applyEraserMask(mask)
 
-            # t3 = time.perf_counter()
             self.erasedIDs.extend(lab_2D[mask])  
 
             for erasedID in np.unique(self.erasedIDs):
@@ -6488,16 +6529,6 @@ class guiWin(QMainWindow):
                 self.erasedLab[lab_2D==erasedID] = erasedID
             
             self.isMouseDragImg1 = True
-            # t4 = time.perf_counter()
-
-            # printl(
-            #     f'First = {(t1-t0)*1000:.3f} ms\n'
-            #     f'Second = {(t2-t1)*1000:.3f} ms\n'
-            #     f'Third = {(t3-t2)*1000:.3f} ms\n'
-            #     f'Fourth = {(t4-t3)*1000:.3f} ms\n'
-            #     f'Total = {(t4-t0)*1000:.3f} ms'
-            # )
-            # printl('----------------------------------------')
 
         elif left_click and canRuler or canPolyLine:
             x, y = event.pos().x(), event.pos().y()
@@ -9456,6 +9487,7 @@ class guiWin(QMainWindow):
         self.logger.info('Magic labeller closed.')
         worker = self.labelRoiActiveWorkers.pop(-1)
     
+    @myutils.exception_handler
     def labelRoiDone(self, roiLab):
         # Delete only objects touching borders in X and Y not in Z
         if self.labelRoiAutoClearBorderCheckbox.isChecked():
@@ -9466,7 +9498,19 @@ class guiWin(QMainWindow):
         self.setBrushID()
         roiLabMask = roiLab>0
         roiLab[roiLabMask] += (posData.brushID-1)
-        posData.lab[self.labelRoiSlice][roiLabMask] = roiLab[roiLabMask]
+        if self.labelRoReplaceExistingObjectsCheckbox.isChecked():
+            # Delete objects fully enclosed by ROI
+            borderMask = np.ones(roiLab.shape, dtype=bool)
+            borderMask[..., 1:-1, 1:-1] = False
+            localLab = posData.lab[self.labelRoiSlice]
+            borderIDs = np.unique(localLab[borderMask])
+            for obj in skimage.measure.regionprops(localLab):
+                if obj.label in borderIDs:
+                    continue
+                localLab[obj.slice][obj.image] = 0
+
+        posData.lab[self.labelRoiSlice][roiLabMask] = roiLab[roiLabMask]   
+
         self.update_rp()
         
         # Repeat tracking
@@ -9732,7 +9776,7 @@ class guiWin(QMainWindow):
 
     def equalizeHist(self):
         # Store undo state before modifying stuff
-        self.storeUndoRedoStates(False)
+        self.storeUndoRedoStates(False, storeImage=True)
         self.updateALLimg()
 
     def curvTool_cb(self, checked):
@@ -9850,7 +9894,7 @@ class guiWin(QMainWindow):
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
             posData = self.data[self.pos_i]
-            printl(posData.frame_i)
+            self.storeUndoRedoStates(False)
             # self.win = apps.pgTestWindow()
             # self.win.ax1.addItem(self.tempLayerImg1)
             # self.win.show()
@@ -9933,10 +9977,10 @@ class guiWin(QMainWindow):
             elif isLabelRoiCircActive:
                 val = self.labelRoiCircularRadiusSpinbox.value()
                 self.labelRoiCircularRadiusSpinbox.setValue(val-1)
-        elif ev.key()==Qt.Key_Left and not isCtrlModifier:
-            self.prev_cb()
-        elif ev.key()==Qt.Key_Right and not isCtrlModifier:
-            self.next_cb()
+        # elif ev.key()==Qt.Key_Left and not isCtrlModifier:
+        #     self.prev_cb()
+        # elif ev.key()==Qt.Key_Right and not isCtrlModifier:
+        #     self.next_cb()
         elif ev.key() == Qt.Key_Enter or ev.key() == Qt.Key_Return:
             if self.brushButton.isChecked():
                 self.typingEditID = False
@@ -10259,19 +10303,24 @@ class guiWin(QMainWindow):
 
     def addCcaState(self, frame_i, cca_df, undoId):
         posData = self.data[self.pos_i]
-        posData.UndoRedoCcaStates[frame_i].insert(0,
-                                     {'id': undoId,
-                                      'cca_df': cca_df.copy()})
+        posData.UndoRedoCcaStates[frame_i].insert(
+            0, {'id': undoId, 'cca_df': cca_df.copy()}
+        )
 
-    def addCurrentState(self):
+    def addCurrentState(self, callbackOnDone=None, storeImage=False):
         posData = self.data[self.pos_i]
         if posData.cca_df is not None:
             cca_df = posData.cca_df.copy()
         else:
             cca_df = None
 
+        if storeImage:
+            image = self.img1.image.copy()
+        else:
+            image = None
+
         state = {
-            'image': self.img1.image.copy(),
+            'image': image,
             'labels': posData.lab.copy(),
             'editID_info': posData.editID_info.copy(),
             'binnedIDs': posData.binnedIDs.copy(),
@@ -10279,13 +10328,20 @@ class guiWin(QMainWindow):
             'cca_df': cca_df
         }
         posData.UndoRedoStates[posData.frame_i].insert(0, state)
+        
+        # posData.storedLab = np.array(posData.lab, order='K', copy=True)
+        # self.storeStateWorker.callbackOnDone = callbackOnDone
+        # self.storeStateWorker.enqueue(posData, self.img1.image)
 
     def getCurrentState(self):
         posData = self.data[self.pos_i]
         i = posData.frame_i
         c = self.UndoCount
         state = posData.UndoRedoStates[i][c]
-        image_left = state['image'].copy()
+        if state['image'] is None:
+            image_left = None
+        else:
+            image_left = state['image'].copy()
         posData.lab = state['labels'].copy()
         posData.editID_info = state['editID_info'].copy()
         posData.binnedIDs = state['binnedIDs'].copy()
@@ -10307,6 +10363,10 @@ class guiWin(QMainWindow):
         self.df_settings.at['labelRoi_circRoiRadius', 'value'] = circRoiRadius
         self.df_settings.at['labelRoi_roiZdepth', 'value'] = roiZdepth
         self.df_settings.at['labelRoi_autoClearBorder', 'value'] = clearBorder
+        self.df_settings.at['labelRoi_replaceExistingObjects', 'value'] = (
+            'Yes' if self.labelRoReplaceExistingObjectsCheckbox.isChecked() 
+            else 'No'
+        )
         self.df_settings.to_csv(self.settings_csv_path)
     
     def loadLabelRoiLastParams(self):
@@ -10334,25 +10394,33 @@ class guiWin(QMainWindow):
             checked = clearBorder == 'Yes'
             self.labelRoiAutoClearBorderCheckbox.setChecked(checked)
         
+        idx = 'labelRoi_replaceExistingObjects'
+        if idx in self.df_settings.index:
+            val = self.df_settings.at[idx, 'value']
+            checked = val == 'Yes'
+            self.labelRoReplaceExistingObjectsCheckbox.setChecked(checked)
+        
         if self.labelRoiIsCircularRadioButton.isChecked():
             self.labelRoiCircularRadiusSpinbox.setDisabled(False)
 
     # @exec_time
-    def storeUndoRedoStates(self, UndoFutFrames):
+    def storeUndoRedoStates(self, UndoFutFrames, storeImage=False):
         posData = self.data[self.pos_i]
         if UndoFutFrames:
             # Since we modified current frame all future frames that were already
             # visited are not valid anymore. Undo changes there
             self.reInitLastSegmFrame()
+        
+        # Keep only 5 Undo/Redo states
+        if len(posData.UndoRedoStates[posData.frame_i]) > 5:
+            posData.UndoRedoStates[posData.frame_i].pop(-1)
 
         # Restart count from the most recent state (index 0)
         # NOTE: index 0 is most recent state before doing last change
         self.UndoCount = 0
         self.undoAction.setEnabled(True)
-        self.addCurrentState()
-        # Keep only 5 Undo/Redo states
-        if len(posData.UndoRedoStates[posData.frame_i]) > 5:
-            posData.UndoRedoStates[posData.frame_i].pop(-1)
+        self.addCurrentState(storeImage=storeImage)
+        
 
     def storeUndoRedoCca(self, frame_i, cca_df, undoId):
         if self.isSnapshot:
@@ -10431,11 +10499,11 @@ class guiWin(QMainWindow):
         self.enqAutosave()
 
     def undo(self):
-        posData = self.data[self.pos_i]
         if self.UndoCount == 0:
             # Store current state to enable redoing it
             self.addCurrentState()
-
+    
+        posData = self.data[self.pos_i]
         # Get previously stored state
         if self.UndoCount < len(posData.UndoRedoStates[posData.frame_i])-1:
             self.UndoCount += 1
@@ -12212,6 +12280,7 @@ class guiWin(QMainWindow):
         self.showPropsDockButton.setDisabled(False)
 
         self.gui_createAutoSaveWorker()
+        self.gui_createStoreStateWorker()
         self.init_segmInfo_df()
         self.connectScrollbars()
         self.initPosAttr()
@@ -13155,6 +13224,8 @@ class guiWin(QMainWindow):
         IDs = [0]*len(posData.rp)
         xx_centroid = [0]*len(posData.rp)
         yy_centroid = [0]*len(posData.rp)
+        if self.isSegm3D:
+            zz_centroid = [0]*len(posData.rp)
         areManuallyEdited = [0]*len(posData.rp)
         editedNewIDs = [vals[2] for vals in posData.editID_info]
         for i, obj in enumerate(posData.rp):
@@ -13163,6 +13234,8 @@ class guiWin(QMainWindow):
             IDs[i] = obj.label
             xx_centroid[i] = int(self.getObjCentroid(obj.centroid)[1])
             yy_centroid[i] = int(self.getObjCentroid(obj.centroid)[0])
+            if self.isSegm3D:
+                zz_centroid[i] = int(obj.centroid[0])
             if obj.label in editedNewIDs:
                 areManuallyEdited[i] = 1
 
@@ -13183,6 +13256,10 @@ class guiWin(QMainWindow):
                     'was_manually_edited': areManuallyEdited
                 }
             ).set_index('Cell_ID')
+            if self.isSegm3D:
+                posData.allData_li[posData.frame_i]['acdc_df']['z_centroid'] = (
+                    zz_centroid
+                )
         else:
             # Filter or add IDs that were not stored yet
             acdc_df = acdc_df.drop(columns=['time_seconds'], errors='ignore')
@@ -13191,6 +13268,8 @@ class guiWin(QMainWindow):
             acdc_df['is_cell_excluded'] = is_cell_excluded_li
             acdc_df['x_centroid'] = xx_centroid
             acdc_df['y_centroid'] = yy_centroid
+            if self.isSegm3D:
+                acdc_df['z_centroid'] = zz_centroid
             acdc_df['was_manually_edited'] = areManuallyEdited
             posData.allData_li[posData.frame_i]['acdc_df'] = acdc_df
 
@@ -13777,7 +13856,7 @@ class guiWin(QMainWindow):
                     shape = (posData.SizeZ, posData.SizeY, posData.SizeX)
                 else:
                     shape = (posData.SizeY, posData.SizeX)
-                labels = np.zeros(shape, dtype=np.uint16)
+                labels = np.zeros(shape, dtype=np.uint32)
         if return_existing:
             return labels, existing
         else:
@@ -15870,7 +15949,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         how = self.drawIDsContComboBox.currentText()
         Y, X = self.img1.image.shape[:2]
-        tempImage = np.zeros((Y, X), dtype=np.uint16)
+        tempImage = np.zeros((Y, X), dtype=np.uint32)
         if how.find('contours') != -1:
             tempImage[self.currentLab2D==ID] = ID
         lut = np.zeros((2, 4), dtype=np.uint8)
@@ -16091,7 +16170,6 @@ class guiWin(QMainWindow):
 
         posData = self.data[self.pos_i]
         acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
-        printl(acdc_df)
         if acdc_df is None:
             self.updateALLimg()
             return True
@@ -17238,7 +17316,8 @@ class guiWin(QMainWindow):
                 SizeZ = 1
             is_imageJ_dtype = (
                 data.img_data.dtype == np.uint8
-                or data.img_data.dtype == np.uint16
+                or data.img_data.dtype == np.uint32
+                or data.img_data.dtype == np.uint32
                 or data.img_data.dtype == np.float32
             )
             if not is_imageJ_dtype:
@@ -18856,6 +18935,12 @@ class guiWin(QMainWindow):
             self.lazyLoader.exit = True
             self.lazyLoaderWaitCond.wakeAll()
             self.waitReadH5cond.wakeAll()
+        
+        if self.storeStateWorker is not None:
+            # Close storeStateWorker
+            self.storeStateWorker._stop()
+            while self.storeStateWorker.isFinished:
+                time.sleep(0.05)
         
         # Block main thread while separate threads closes
         time.sleep(0.1)

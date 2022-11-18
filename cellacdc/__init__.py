@@ -30,6 +30,10 @@ temp_path = os.path.join(cellacdc_path, 'temp')
 settings_csv_path = os.path.join(temp_path, 'settings.csv')
 user_manual_url = 'https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf'
 
+# Use to get the acdc_output file name from `segm_filename` as 
+# `m = re.sub(segm_re_pattern, '_acdc_output', segm_filename)`
+segm_re_pattern = r'_segm(?!.*_segm)'
+
 if not os.path.exists(temp_path):
     os.makedirs(temp_path)
 

@@ -34,8 +34,9 @@ class QDialogAbout(QDialog):
 
         titleLabel.setText(txt)
 
-        iconPixmap = QPixmap(":logo.svg")
-        # iconPixmap.scaled(8,8)
+        iconPixmap = QPixmap(":icon.ico")
+        h = 128
+        iconPixmap = iconPixmap.scaled(h,h, aspectRatioMode=Qt.KeepAspectRatio)
         iconLabel = QLabel()
         iconLabel.setPixmap(iconPixmap)
 

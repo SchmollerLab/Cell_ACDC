@@ -105,11 +105,11 @@ class Model:
         # Label the cells
         thresh = neural_network.threshold(prediction, thresh_val=thresh_val)
         lab = segment.segment(thresh, prediction, min_distance=min_distance)
-        return lab.astype(np.uint16)
+        return lab.astype(np.uint32)
 
     def segment(self, image, thresh_val=0.0, min_distance=10):
         if image.ndim == 3:
-            labels = np.zeros(image.shape, dtype=np.uint16)
+            labels = np.zeros(image.shape, dtype=np.uint32)
             for z, img in enumerate(image):
                 lab = self.segment2D(
                     img, thresh_val=thresh_val, min_distance=min_distance
@@ -165,13 +165,13 @@ class Model:
 
         # remove padding with 0s
         prediction = prediction[:, 0:-row_add, 0:-col_add]
-        lab_timelapse = np.zeros(prediction.shape, np.uint16)
+        lab_timelapse = np.zeros(prediction.shape, np.uint32)
         if signals is not None:
             signals[0].create_tqdm.emit(len(prediction))
         for t, pred in enumerate(prediction):
             thresh = neural_network.threshold(pred, thresh_val=thresh_val)
             lab = segment.segment(thresh, pred, min_distance=min_distance)
-            lab_timelapse[t] = lab.astype(np.uint16)
+            lab_timelapse[t] = lab.astype(np.uint32)
             if signals is not None:
                 signals[0].progress_tqdm.emit(1)
         if signals is not None:

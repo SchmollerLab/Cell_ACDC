@@ -2204,11 +2204,27 @@ class readOnlySpinbox(QSpinBox):
 class SpinBox(QSpinBox):
     sigValueChanged = pyqtSignal(int)
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, disableKeyPress=False):
         super().__init__(parent=parent)
         self.setAlignment(Qt.AlignCenter)
         self.setMaximum(2**31-1)
         self._valueChangedFunction = None
+        self.disableKeyPress = disableKeyPress
+    
+    def keyPressEvent(self, event) -> None:
+        isBackSpaceKey = event.key() == Qt.Key_Backspace
+        isDeleteKey = event.key() == Qt.Key_Delete
+        try:
+            int(event.text())
+            isIntegerKey = True
+        except:
+            isIntegerKey = False
+        acceptEvent = isBackSpaceKey or isDeleteKey or isIntegerKey
+        if self.disableKeyPress and not acceptEvent:
+            event.ignore()
+            self.clearFocus()
+        else:
+            super().keyPressEvent(event)
     
     def connectValueChanged(self, function):
         self._valueChangedFunction = function

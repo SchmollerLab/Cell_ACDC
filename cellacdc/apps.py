@@ -838,7 +838,8 @@ class filenameDialog(QDialog):
     def __init__(
             self, ext='.npz', basename='', title='Insert file name',
             hintText='', existingNames='', parent=None, allowEmpty=True,
-            helpText='', defaultEntry='', resizeOnShow=True
+            helpText='', defaultEntry='', resizeOnShow=True,
+            additionalButtons=None
         ):
         self.cancel = True
         super().__init__(parent)
@@ -914,6 +915,9 @@ class filenameDialog(QDialog):
             helpButton = widgets.helpPushButton('Help...')
             helpButton.clicked.connect(partial(self.showHelp, helpText))
             buttonsLayout.addWidget(helpButton)
+        if additionalButtons is not None:
+            for button in additionalButtons:
+                buttonsLayout.addWidget(button)
         buttonsLayout.addWidget(okButton)
 
         cancelButton.clicked.connect(self.close)
@@ -932,6 +936,9 @@ class filenameDialog(QDialog):
 
         self.setLayout(layout)
         self.setFont(font)
+
+        if defaultEntry:
+            self.updateFilename(defaultEntry)
     
     def showHelp(self, text):
         text = html_utils.paragraph(text)
@@ -991,10 +998,8 @@ class filenameDialog(QDialog):
         self.close()
 
     def closeEvent(self, event):
-        valid = self.checkExistingNames()
-        if not valid:
-            event.ignore()
-            return
+        if hasattr(self, 'loop'):
+            self.loop.exit()
 
     def exec_(self):
         self.show(block=True)
@@ -1007,10 +1012,7 @@ class filenameDialog(QDialog):
         if block:
             self.loop = QEventLoop()
             self.loop.exec_()
-
-    def closeEvent(self, event):
-        if hasattr(self, 'loop'):
-            self.loop.exit()
+        
 
 class wandToleranceWidget(QFrame):
     def __init__(self, parent=None):
@@ -3511,6 +3513,92 @@ class QDialogAutomaticThresholding(QBaseDialog):
         self.threshMethodCombobox.setCurrentText(Method)
         self.segment3Dcheckbox.setChecked(section.getboolean('segment_3D_volume'))
 
+class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
+    def __init__(self, df, parent=None):
+        super().__init__(parent)
+
+        self.setWindowTitle('Select columns containing tracking info')
+        
+        self.cancel = True
+        self.mainLayout = QVBoxLayout()
+
+        self.instructionsText = html_utils.paragraph(
+            f"""
+            <b>Select which columns</b> contain the tracking information.<br><br>
+            You must choose one of the following combinations:<br> 
+            {html_utils.to_list((
+                '"Frame index (starting from 0)", "Tracked IDs" and "Segmentation mask IDs"<br>',
+                '"Frame index (starting from 0)", "Tracked IDs", "X coord. centroid", and "Y coord. centroid"'
+                )
+            )}
+            """
+        )
+        self.mainLayout.addWidget(QLabel(self.instructionsText))
+
+        formLayout = QFormLayout()
+
+        self.frameIndexCombobox = widgets.QCenteredComboBox()
+        self.frameIndexCombobox.addItems(df.columns)
+        formLayout.addRow(
+            'Frame index (starting from 0): ', self.frameIndexCombobox
+        )
+
+        self.trackedIDsCombobox = widgets.QCenteredComboBox()
+        self.trackedIDsCombobox.addItems(df.columns)
+        formLayout.addRow('Tracked IDs: ', self.trackedIDsCombobox)
+
+        items = df.columns.to_list()
+        items.insert(0, 'None')
+        self.maskIDsCombobox = widgets.QCenteredComboBox()
+        self.maskIDsCombobox.addItems(items)
+        formLayout.addRow('Segmentation mask IDs: ', self.maskIDsCombobox)
+
+        self.xCentroidCombobox = widgets.QCenteredComboBox()
+        self.xCentroidCombobox.addItems(items)
+        formLayout.addRow('X coord. centroid: ', self.xCentroidCombobox)
+
+        self.yCentroidCombobox = widgets.QCenteredComboBox()
+        self.yCentroidCombobox.addItems(items)
+        formLayout.addRow('Y coord. centroid: ', self.yCentroidCombobox)
+        
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+
+        self.mainLayout.addSpacing(30)
+        self.mainLayout.addLayout(formLayout)
+        self.mainLayout.addSpacing(20)
+        self.mainLayout.addLayout(buttonsLayout)
+
+        self.setLayout(self.mainLayout)
+        self.setFont(font)
+    
+    def ok_cb(self):
+        self.cancel = False
+        self.frameIndexCol = self.frameIndexCombobox.currentText()
+        self.trackedIDsCol = self.trackedIDsCombobox.currentText()
+        self.maskIDsCol = self.maskIDsCombobox.currentText()
+        self.xCentroidCol = self.xCentroidCombobox.currentText()
+        self.yCentroidCol = self.yCentroidCombobox.currentText()
+        if self.maskIDsCol == 'None':
+            if self.xCentroidCol == 'None' or self.yCentroidCol == 'None':
+                self.warnInvalidSelection()
+                return
+        else:
+            self.xCentroidCol = 'None'
+            self.yCentroidCol = 'None'
+        self.close()
+    
+    def warnInvalidSelection(self):
+        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg.warning(
+            self, 'Invalid selection', html_utils.paragraph(
+                f'<b>Invalid selection</b><br> {self.instructionsText}'
+            )
+        )
+
+
 class QDialogSelectModel(QDialog):
     def __init__(self, parent=None):
         self.cancel = True
@@ -5375,22 +5463,18 @@ class imageViewer(QMainWindow):
         self.exitAction = QAction("&Exit", self)
 
         # Toolbar actions
-        self.prevAction = QAction(QIcon(":arrow-left.svg"),
-                                        "Previous frame", self)
-        self.nextAction = QAction(QIcon(":arrow-right.svg"),
-                                        "Next Frame", self)
-        self.jumpForwardAction = QAction(QIcon(":arrow-up.svg"),
-                                        "Jump to 10 frames ahead", self)
-        self.jumpBackwardAction = QAction(QIcon(":arrow-down.svg"),
-                                        "Jump to 10 frames back", self)
+        self.prevAction = QAction("Previous frame", self)
+        self.nextAction = QAction("Next Frame", self)
+        self.jumpForwardAction = QAction("Jump to 10 frames ahead", self)
+        self.jumpBackwardAction = QAction("Jump to 10 frames back", self)
         self.prevAction.setShortcut("left")
         self.nextAction.setShortcut("right")
         self.jumpForwardAction.setShortcut("up")
         self.jumpBackwardAction.setShortcut("down")
-        self.nextAction.setVisible(False)
-        self.prevAction.setVisible(False)
-        self.jumpForwardAction.setVisible(False)
-        self.jumpBackwardAction.setVisible(False)
+        self.addAction(self.nextAction)
+        self.addAction(self.prevAction)
+        self.addAction(self.jumpBackwardAction)
+        self.addAction(self.jumpForwardAction)
         if self.enableOverlay:
             self.overlayButton = widgets.rightClickToolButton(parent=self)
             self.overlayButton.setIcon(QIcon(":overlay.svg"))
@@ -5410,11 +5494,6 @@ class imageViewer(QMainWindow):
         editToolBar = QToolBar("Edit", self)
         editToolBar.setIconSize(QSize(toolbarSize, toolbarSize))
         self.addToolBar(editToolBar)
-
-        editToolBar.addAction(self.prevAction)
-        editToolBar.addAction(self.nextAction)
-        editToolBar.addAction(self.jumpBackwardAction)
-        editToolBar.addAction(self.jumpForwardAction)
 
         self.editToolBar = editToolBar
 
@@ -5667,20 +5746,26 @@ class imageViewer(QMainWindow):
             self.setGeometry(left, top, 850, 800)
 
 class TreeSelectorDialog(QBaseDialog):
+    sigItemDoubleClicked = pyqtSignal(object)
+
     def __init__(
-            self, title='Tree selector', infoTxt='', parent=None
+            self, title='Tree selector', infoTxt='', parent=None,
+            multiSelection=True, widthFactor=None, heightFactor=None
         ):
         super().__init__(parent)
 
         self.setWindowTitle(title)
         
         self.cancel = True
+        self.widthFactor = widthFactor
+        self.heightFactor = heightFactor
         self.mainLayout = QVBoxLayout()
 
         if infoTxt:
             self.mainLayout.addWidget(QLabel(html_utils.paragraph(infoTxt)))
         
-        self.treeWidget = widgets.TreeWidget(multiSelection=True)
+        self.treeWidget = widgets.TreeWidget(multiSelection=multiSelection)
+        self.treeWidget.setExpandsOnDoubleClick(False)
         self.treeWidget.setHeaderHidden(True)
         self.mainLayout.addWidget(self.treeWidget)
 
@@ -5695,6 +5780,11 @@ class TreeSelectorDialog(QBaseDialog):
         self.buttonsLayout = buttonsLayout
 
         self.setLayout(self.mainLayout)
+
+        self.treeWidget.itemDoubleClicked.connect(self.onItemDoubleClicked)
+    
+    def onItemDoubleClicked(self, item):
+        self.sigItemDoubleClicked.emit(item)
         
     def addTree(self, tree: dict):
         for topLevel, children in tree.items():
@@ -5723,7 +5813,13 @@ class TreeSelectorDialog(QBaseDialog):
     def ok_cb(self):
         self.cancel = False
         self.close()
-        printl(self.selectedItems())
+    
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        if self.widthFactor is not None:
+            self.resize(int(self.width()*self.widthFactor), self.height())
+        if self.heightFactor is not None:
+            self.resize(self.width(), int(self.height()*self.heightFactor))
 
 class TreesSelectorDialog(QBaseDialog):
     def __init__(
@@ -6680,8 +6776,8 @@ class QLineEditDialog(QDialog):
         # Allow only integers
         try:
             val = int(newChar)
-            if val > np.iinfo(np.uint16).max:
-                self.ID_QLineEdit.setText(str(np.iinfo(np.uint16).max))
+            if val > np.iinfo(np.uint32).max:
+                self.ID_QLineEdit.setText(str(np.iinfo(np.uint32).max))
             if self.allowedValues is not None:
                 currentVal = int(self.ID_QLineEdit.text())
                 if currentVal not in self.allowedValues:
@@ -6828,7 +6924,7 @@ class editID_QWidget(QDialog):
         m_iter = re.finditer(r'\d+', self.ID_QLineEdit.text())
         for m in m_iter:
             val = int(m.group())
-            uint16_max = np.iinfo(np.uint16).max
+            uint16_max = np.iinfo(np.uint32).max
             if val > uint16_max:
                 text = self.ID_QLineEdit.text()
                 text = f'{text[:m.start()]}{uint16_max}{text[m.end():]}'
