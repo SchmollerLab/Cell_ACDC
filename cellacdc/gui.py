@@ -5068,11 +5068,11 @@ class guiWin(QMainWindow):
 
             self.setImageImg2()
 
-            self.erasedLab = np.zeros_like(lab_2D)
             for erasedID in np.unique(self.erasedIDs):
                 if erasedID == 0:
                     continue
                 self.erasedLab[lab_2D==erasedID] = erasedID
+                self.erasedLab[mask] = 0
 
             eraserMask = mask[diskSlice]
             self.setTempImg1Eraser(eraserMask, toLocalSlice=diskSlice)
