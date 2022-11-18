@@ -24,7 +24,10 @@ from PyQt5.QtCore import (
 
 from cellacdc import html_utils
 
-from . import load, myutils, core, measurements, prompts, printl, config
+from . import (
+    load, myutils, core, measurements, prompts, printl, config,
+    segm_re_pattern
+)
 
 DEBUG = False
 
@@ -302,7 +305,7 @@ class AutoSaveWorker(QObject):
         else:
             frame_shape = posData.segm_data.shape[1:]
             segm_shape = (end_i+1, *frame_shape)
-            saved_segm_data = np.zeros(segm_shape, dtype=np.uint16)
+            saved_segm_data = np.zeros(segm_shape, dtype=np.uint32)
         
         keys = []
         acdc_df_li = []
@@ -1595,28 +1598,43 @@ class ApplyTrackInfoWorker(BaseWorkerUtil):
         grouped = df.groupby(frameIndexCol)
         self.signals.initProgressBar.emit(len(grouped))
         trackIDsCol = self.trackColsInfo['trackIDsCol']
-        maxID = max((max(segmData), max(df[trackIDsCol])))
+        maxID = max(segmData.max(), df[trackIDsCol].max())
         segmData += maxID
         maskIDsCol = self.trackColsInfo['maskIDsCol']
         xCentroidCol = self.trackColsInfo['xCentroidCol']
         yCentroidCol = self.trackColsInfo['yCentroidCol']
         if maskIDsCol != 'None':
-            maskIDsCol = maskIDsCol + maxID
+            df[maskIDsCol] = df[maskIDsCol] + maxID
+        trackedIDsMapper = {}
         for frame_i, df_frame in grouped:
+            if frame_i == len(segmData):
+                self.logger.log(
+                    'WARNING: segmentation data has less frames than the '
+                    f'frames in the "{frameIndexCol}" column.'
+                )
+                break
+            
             lab = segmData[frame_i]
 
-            for idx, row in df_frame.itertuples():
+            for row in df_frame.itertuples():
                 trackedID = getattr(row, trackIDsCol)
                 if xCentroidCol == 'None':
                     maskID = getattr(row, maskIDsCol)
-                    
                 else:
                     xc = getattr(row, xCentroidCol)
                     yc = getattr(row, yCentroidCol)
                     maskID = lab[int(yc), int(xc)]
                 lab[lab==maskID] = trackedID
+                trackedIDsMapper[maskID] = trackedID
             self.signals.progressBar.emit(1)
         
+        self.logger.log('='*40)
+        s = '\n'.join([f'   {id} --> {ID}' for id, ID in trackedIDsMapper.items()])
+        self.logger.log(
+            f'Applied following ID replacements:\n{s}'
+        )
+        self.logger.log('='*40)
+
         if self.trackedSegmFilename:
             trackedSegmFilepath = os.path.join(
                 imagesPath, self.trackedSegmFilename
@@ -1628,6 +1646,7 @@ class ApplyTrackInfoWorker(BaseWorkerUtil):
         np.savez_compressed(trackedSegmFilepath)
 
         self.logger.log('Generating acdc_output table...')
+        acdc_df = None
         if not self.trackedSegmFilename:
             acdcEndname = self.endFilenameSegm.replace('_segm', '_acdc_output')
             acdcFilename = [
@@ -1636,14 +1655,36 @@ class ApplyTrackInfoWorker(BaseWorkerUtil):
             ]
             if acdcFilename:
                 acdcFilePath = os.path.join(imagesPath, acdcFilename[0])
-        acdc_dfs = []
-        keys = []
-        for lab in segmData:
-            rp = skimage.measure.regionprops()
-            acdc_df_frame_i = myutils.getBaseAcdcDf()
-            if acdcFilePath:
-                pass
+                acdc_df = pd.read_csv(
+                    acdcFilePath, index_col=['frame_i', 'Cell_ID']
+                )
         
+        if acdc_df is not None:
+            # Substitute mask IDs with tracked IDs
+            acdc_df = acdc_df.rename(index=trackedIDsMapper, level=1)
+            if 'relative_ID' in acdc_df.columns:
+                relIDs = acdc_df['relative_ID']
+                acdc_df['relative_ID'] = relIDs.replace(trackedIDsMapper)
+            
+        else:
+            acdc_dfs = []
+            keys = []
+            for frame_i, lab in enumerate(segmData):            
+                rp = skimage.measure.regionprops()
+                acdc_df_frame_i = myutils.getBaseAcdcDf(rp)
+                acdc_dfs.append(acdc_df_frame_i)
+                keys.append(frame_i)
+            
+            acdc_df = pd.concat(acdc_dfs, keys=keys, names=['frame_i', 'Cell_ID'])
+            segmFilename = os.path.basename(trackedSegmFilepath)
+            acdcFilename = re.sub(segm_re_pattern, '_acdc_output', segmFilename)
+            acdcFilePath = os.path.join(
+                imagesPath, self.acdcFilename
+            )
+        
+        self.logger.log('Saving acdc_output table...')
+        acdc_df.to_csv(acdcFilePath)
+
         self.signals.finished.emit(self)
 
 class RestructMultiTimepointsWorker(BaseWorkerUtil):
@@ -1860,11 +1901,11 @@ class RestructMultiTimepointsWorker(BaseWorkerUtil):
             SizeZ = imgDataInfo['SizeZ']
             frameNumbers = imgDataInfo['frameNumbers']
             paddedShape = imgDataInfo['paddedShape']
-            segmData = np.zeros(paddedShape, dtype=np.uint16)
+            segmData = np.zeros(paddedShape, dtype=np.uint32)
             for n, segmFilePath in zip(frameNumbers, imgDataInfo['src_segm_paths']):
                 frame_i = n - minFrameNumber
                 try:
-                    lab = skimage.io.imread(segmFilePath).astype(np.uint16)
+                    lab = skimage.io.imread(segmFilePath).astype(np.uint32)
                     segmData[frame_i] = lab
                 except Exception as e:
                     self.logger.log(traceback.format_exc())
