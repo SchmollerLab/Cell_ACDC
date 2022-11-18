@@ -3345,6 +3345,89 @@ class QDialogAutomaticThresholding(QBaseDialog):
         self.threshMethodCombobox.setCurrentText(Method)
         self.segment3Dcheckbox.setChecked(section.getboolean('segment_3D_volume'))
 
+class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
+    def __init__(self, df, parent=None):
+        super().__init__(parent)
+
+        self.setWindowTitle('Select columns containing tracking info')
+        
+        self.cancel = True
+        self.mainLayout = QVBoxLayout()
+
+        self.mainLayout.addWidget(QLabel(html_utils.paragraph(
+            f"""
+            <b>Select which columns</b> contain the tracking information.<br><br>
+            You must choose one of the following combinations:<br> 
+            {html_utils.to_list((
+                '"Tracked IDs" and "Segmentation mask IDs"<br>',
+                '"Tracked IDs", "X coord. centroid", and "Y coord. centroid"'
+                )
+            )}
+            """
+        )))
+
+        formLayout = QFormLayout()
+
+        self.trackedIDsCombobox = widgets.QCenteredComboBox()
+        self.trackedIDsCombobox.addItems(df.columns)
+        formLayout.addRow('Tracked IDs: ', self.trackedIDsCombobox)
+
+        items = df.columns.to_list()
+        items.insert(0, 'None')
+        self.maskIDsCombobox = widgets.QCenteredComboBox()
+        self.maskIDsCombobox.addItems(items)
+        formLayout.addRow('Segmentation mask IDs: ', self.maskIDsCombobox)
+
+        self.xCentroidCombobox = widgets.QCenteredComboBox()
+        self.xCentroidCombobox.addItems(items)
+        formLayout.addRow('X coord. centroid: ', self.xCentroidCombobox)
+
+        self.yCentroidCombobox = widgets.QCenteredComboBox()
+        self.yCentroidCombobox.addItems(items)
+        formLayout.addRow('Y coord. centroid: ', self.yCentroidCombobox)
+        
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+
+        self.mainLayout.addSpacing(30)
+        self.mainLayout.addLayout(formLayout)
+        self.mainLayout.addSpacing(20)
+        self.mainLayout.addLayout(buttonsLayout)
+
+        self.setLayout(self.mainLayout)
+        self.setFont(font)
+    
+    def ok_cb(self):
+        self.cancel = False
+        self.trackedIDsCol = self.trackedIDsCombobox.currentText()
+        self.maskIDsCol = self.maskIDsCombobox.currentText()
+        self.xCentroidCol = self.xCentroidCombobox.currentText()
+        self.yCentroidCol = self.yCentroidCombobox.currentText()
+        if self.maskIDsCol == 'None':
+            if self.xCentroidCol == 'None' or self.yCentroidCol == 'None':
+                self.warnInvalidSelection()
+                return
+        else:
+            self.xCentroidCol = 'None'
+            self.yCentroidCol = 'None'
+        self.close()
+    
+    def warnInvalidSelection(self):
+        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg.warning(
+            self, 'Invalid selection', html_utils.paragraph(
+                '<b>Invalid selection</b><br><br>'
+                'You must choose either <code>Tracked IDs</code> '
+                'and <code>Segmentation mask IDs</code><br> '
+                'OR <code>Tracked IDs</code> and both <code>'
+                'X coord. centroid</code> AND <code>'
+                'Y coord. centroid</code>'
+            )
+        )
+
+
 class QDialogSelectModel(QDialog):
     def __init__(self, parent=None):
         self.cancel = True
@@ -5501,20 +5584,26 @@ class imageViewer(QMainWindow):
             self.setGeometry(left, top, 850, 800)
 
 class TreeSelectorDialog(QBaseDialog):
+    sigItemDoubleClicked = pyqtSignal(object)
+
     def __init__(
-            self, title='Tree selector', infoTxt='', parent=None
+            self, title='Tree selector', infoTxt='', parent=None,
+            multiSelection=True, widthFactor=None, heightFactor=None
         ):
         super().__init__(parent)
 
         self.setWindowTitle(title)
         
         self.cancel = True
+        self.widthFactor = widthFactor
+        self.heightFactor = heightFactor
         self.mainLayout = QVBoxLayout()
 
         if infoTxt:
             self.mainLayout.addWidget(QLabel(html_utils.paragraph(infoTxt)))
         
-        self.treeWidget = widgets.TreeWidget(multiSelection=True)
+        self.treeWidget = widgets.TreeWidget(multiSelection=multiSelection)
+        self.treeWidget.setExpandsOnDoubleClick(False)
         self.treeWidget.setHeaderHidden(True)
         self.mainLayout.addWidget(self.treeWidget)
 
@@ -5529,6 +5618,11 @@ class TreeSelectorDialog(QBaseDialog):
         self.buttonsLayout = buttonsLayout
 
         self.setLayout(self.mainLayout)
+
+        self.treeWidget.itemDoubleClicked.connect(self.onItemDoubleClicked)
+    
+    def onItemDoubleClicked(self, item):
+        self.sigItemDoubleClicked.emit(item)
         
     def addTree(self, tree: dict):
         for topLevel, children in tree.items():
@@ -5557,7 +5651,13 @@ class TreeSelectorDialog(QBaseDialog):
     def ok_cb(self):
         self.cancel = False
         self.close()
-        printl(self.selectedItems())
+    
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        if self.widthFactor is not None:
+            self.resize(int(self.width()*self.widthFactor), self.height())
+        if self.heightFactor is not None:
+            self.resize(self.width(), int(self.height()*self.heightFactor))
 
 class TreesSelectorDialog(QBaseDialog):
     def __init__(

@@ -97,6 +97,8 @@ try:
     from cellacdc.utils import acdcToSymDiv as utilsSymDiv
     from cellacdc.utils import trackSubCellFeatures as utilsTrackSubCell
     from cellacdc.utils import computeMultiChannel as utilsComputeMultiCh
+    from cellacdc.utils import applyTrackFromTable as utilsApplyTrackFromTab
+    from cellacdc.info import utilsInfo
     from cellacdc import is_win, is_linux, temp_path
     from cellacdc import printl
 except ModuleNotFoundError as e:
@@ -336,16 +338,26 @@ class mainWin(QMainWindow):
         convertMenu.addAction(self.h5ToNpzAction)
         convertMenu.addAction(self.toImageJroiAction)
 
-        utilsMenu.addAction(self.concatAcdcDfsAction)
-        utilsMenu.addAction(self.calcMetricsAcdcDf)
-        utilsMenu.addAction(self.combineMetricsMultiChannelAction)  
+        trackingMenu = utilsMenu.addMenu('Tracking')
+        trackingMenu.addAction(self.trackSubCellFeaturesAction)
+        trackingMenu.addAction(self.applyTrackingFromTableAction)
+
+        measurementsMenu = utilsMenu.addMenu('Measurements')
+        measurementsMenu.addAction(self.calcMetricsAcdcDf)
+        measurementsMenu.addAction(self.combineMetricsMultiChannelAction) 
+
         utilsMenu.addAction(self.toSymDivAction)
-        utilsMenu.addAction(self.trackSubCellFeaturesAction)          
-            
+        utilsMenu.addAction(self.concatAcdcDfsAction)                      
         utilsMenu.addAction(self.batchConverterAction)
         utilsMenu.addAction(self.repeatDataPrepAction)
         utilsMenu.addAction(self.alignAction)
         utilsMenu.addAction(self.renameAction)
+
+        self.utilsMenu = utilsMenu
+
+        utilsMenu.addSeparator()
+        utilsHelpAction = utilsMenu.addAction('Help...')
+        utilsHelpAction.triggered.connect(self.showUtilsHelp)
     
         menuBar.addMenu(utilsMenu)
 
@@ -357,12 +369,82 @@ class mainWin(QMainWindow):
         helpMenu = QMenu("&Help", self)
         helpMenu.addAction(self.welcomeGuideAction)
         helpMenu.addAction(self.userManualAction)
-        helpMenu.addAction(self.aboutAction)
         helpMenu.addAction(self.citeAction)
         helpMenu.addAction(self.contributeAction)
         helpMenu.addAction(self.showLogsAction)
+        helpMenu.addSeparator()
+        helpMenu.addAction(self.aboutAction)
 
         menuBar.addMenu(helpMenu)
+    
+    def showUtilsHelp(self):
+        treeInfo = {}
+        for action in self.utilsMenu.actions():
+            if action.menu() is not None:
+                menu = action.menu()
+                for sub_action in menu.actions():
+                    treeInfo = self._addActionToTree(
+                        sub_action, treeInfo, parentMenu=menu
+                    )
+            else:
+                treeInfo = self._addActionToTree(action, treeInfo)
+         
+        self.utilsHelpWin = apps.TreeSelectorDialog(
+            title='Utilities help', 
+            infoTxt="Double click on a utility's name to get help about it<br>",
+            parent=self, multiSelection=False, widthFactor=2, heightFactor=1.5
+        )
+        self.utilsHelpWin.addTree(treeInfo)
+        self.utilsHelpWin.sigItemDoubleClicked.connect(self._showUtilHelp)
+        self.utilsHelpWin.exec_()
+    
+    def _showUtilHelp(self, item):
+        if item.parent() is None:
+            return
+        utilityName = item.text(0)
+        infoText = html_utils.paragraph(utilsInfo[utilityName])
+        runUtilityButton = widgets.playPushButton('Run utility...')
+        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg.information(
+            self.utilsHelpWin, f'"{utilityName}" help', infoText,
+            buttonsTexts=(runUtilityButton, 'Close'), showDialog=False
+        )
+        runUtilityButton.utilityName = utilityName
+        runUtilityButton.clicked.connect(self._runUtility)
+        msg.exec_()
+    
+    def _runUtility(self):
+        self.utilsHelpWin.ok_cb()
+        utilityName = self.sender().utilityName
+        for action in self.utilsMenu.actions():
+            if action.menu() is not None:
+                menu = action.menu()
+                for sub_action in menu.actions():
+                    if sub_action.text() == utilityName:
+                        sub_action.trigger()
+                        break
+                else:
+                    continue
+                break
+            else:
+                action.trigger()
+                break
+    
+    def _addActionToTree(self, action, treeInfo, parentMenu=None):
+        if action.isSeparator():
+            return treeInfo
+        
+        text = action.text()
+        if text not in utilsInfo:
+            return treeInfo
+        
+        if parentMenu is None:
+            treeInfo[text] = []
+        elif parentMenu.title() not in treeInfo:
+            treeInfo[parentMenu.title()] = [text]
+        else:
+            treeInfo[parentMenu.title()].append(text)
+        return treeInfo
 
     def createActions(self):
         self.npzToNpyAction = QAction('Convert .npz file(s) to .npy...')
@@ -375,6 +457,9 @@ class mainWin(QMainWindow):
         self.trackSubCellFeaturesAction = QAction(
             'Track sub-cellular objects (assign same ID as the cell they belong to)...'
         )    
+        self.applyTrackingFromTableAction = QAction(
+            'Apply tracking info from tabular data...'
+        )
         self.batchConverterAction = QAction(
             'Create required data structure from image files...'
         )
@@ -442,6 +527,9 @@ class mainWin(QMainWindow):
         )
         self.recentPathsMenu.aboutToShow.connect(self.populateOpenRecent)
         self.showLogsAction.triggered.connect(self.showLogFiles)
+        self.applyTrackingFromTableAction.triggered.connect(
+            self.launchApplyTrackingFromTableUtil
+        )
     
     def showLogFiles(self):
         logs_path = myutils.get_logs_path()
@@ -633,6 +721,38 @@ class mainWin(QMainWindow):
             selectedExpPaths = expPaths
         
         return selectedExpPaths
+    
+    def launchApplyTrackingFromTableUtil(self):
+        posPath = self.getSelectedPosPath('Apply tracking info from tabular data')
+        if posPath is None:
+            return
+        
+        title = 'Apply tracking info from tabular data utility'
+        infoText = 'Launching apply tracking info from tabular data...'
+        win = (
+            utilsApplyTrackFromTab.ApplyTrackingInfoFromTableUtil(
+                posPath, self.app, title, infoText, parent=self
+            )
+        )
+        win.show()
+        QTimer.singleShot(
+            200, partial(self._runApplyTrackingFromTableUtil, posPath, win)
+        )
+
+    def _runApplyTrackingFromTableUtil(self, posPath, win):
+        success = win.run(posPath)
+        if not success:
+            self.logger.info(
+                'Apply tracking info from tabular data ABORTED by the user.'
+            )
+        else:
+            msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+            txt = html_utils.paragraph(
+                'Apply tracking info from tabular data completed.'
+            )
+            msg.information(self, 'Process completed', txt)
+        win.close()
+
     
     def launchNapariUtil(self, action):
         myutils.install_package('napari', parent=self)

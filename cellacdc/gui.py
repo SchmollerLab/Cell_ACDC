@@ -1409,6 +1409,7 @@ class guiWin(QMainWindow):
         self.closeGUI = False
         self.img1ChannelGradients = {}
         self.filtersWins = {}
+        self.storeStateWorker = None
 
         self.setWindowTitle("Cell-ACDC - GUI")
         self.setWindowIcon(QIcon(":icon.ico"))
@@ -2177,7 +2178,7 @@ class guiWin(QMainWindow):
         self.editIDcheckboxAction = widgetsToolBar.addWidget(self.editIDcheckbox)
         self.editIDcheckboxAction.setVisible(False)
 
-        self.brushSizeSpinbox = widgets.SpinBox()
+        self.brushSizeSpinbox = widgets.SpinBox(disableKeyPress=True)
         self.brushSizeSpinbox.setValue(4)
         brushSizeLabel = QLabel('   Size: ')
         brushSizeLabel.setBuddy(self.brushSizeSpinbox)
@@ -2435,7 +2436,7 @@ class guiWin(QMainWindow):
 
         self.labelRoiToolbar = QToolBar("Magic labeller controls", self)
         self.labelRoiToolbar.addWidget(QLabel('ROI depth (n. of z-slices): '))
-        self.labelRoiZdepthSpinbox = widgets.SpinBox()
+        self.labelRoiZdepthSpinbox = widgets.SpinBox(disableKeyPress=True)
         self.labelRoiToolbar.addWidget(self.labelRoiZdepthSpinbox)
         self.labelRoiToolbar.addWidget(QLabel('  '))
         self.labelRoiAutoClearBorderCheckbox = QCheckBox(
@@ -2456,7 +2457,7 @@ class guiWin(QMainWindow):
         self.labelRoiToolbar.addWidget(self.labelRoiIsFreeHandRadioButton)
         self.labelRoiToolbar.addWidget(self.labelRoiIsCircularRadioButton)
         self.labelRoiToolbar.addWidget(QLabel(' Circular ROI radius (pixel): '))
-        self.labelRoiCircularRadiusSpinbox = widgets.SpinBox()
+        self.labelRoiCircularRadiusSpinbox = widgets.SpinBox(disableKeyPress=True)
         self.labelRoiCircularRadiusSpinbox.setMinimum(1)
         self.labelRoiCircularRadiusSpinbox.setValue(11)
         self.labelRoiCircularRadiusSpinbox.setDisabled(True)
@@ -3286,7 +3287,7 @@ class guiWin(QMainWindow):
 
         row += 1
         navWidgetsLayout = QHBoxLayout()
-        self.navSpinBox = widgets.SpinBox()
+        self.navSpinBox = widgets.SpinBox(disableKeyPress=True)
         self.navSpinBox.setMinimum(1)
         self.navSpinBox.setMaximum(11)
         self.navSizeLabel = QLabel('/ND')
@@ -3306,7 +3307,7 @@ class guiWin(QMainWindow):
         row += 1
         zSliceCheckboxLayout = QHBoxLayout()
         self.zSliceCheckbox = QCheckBox()
-        self.zSliceSpinbox = widgets.SpinBox()
+        self.zSliceSpinbox = widgets.SpinBox(disableKeyPress=True)
         self.zSliceSpinbox.setMinimum(1)
         self.SizeZlabel = QLabel('/ND')
         self.z_label.setCheckableItem(self.zSliceCheckbox)
@@ -13185,6 +13186,8 @@ class guiWin(QMainWindow):
         IDs = [0]*len(posData.rp)
         xx_centroid = [0]*len(posData.rp)
         yy_centroid = [0]*len(posData.rp)
+        if self.isSegm3D:
+            zz_centroid = [0]*len(posData.rp)
         areManuallyEdited = [0]*len(posData.rp)
         editedNewIDs = [vals[2] for vals in posData.editID_info]
         for i, obj in enumerate(posData.rp):
@@ -13193,6 +13196,8 @@ class guiWin(QMainWindow):
             IDs[i] = obj.label
             xx_centroid[i] = int(self.getObjCentroid(obj.centroid)[1])
             yy_centroid[i] = int(self.getObjCentroid(obj.centroid)[0])
+            if self.isSegm3D:
+                zz_centroid[i] = int(obj.centroid[0])
             if obj.label in editedNewIDs:
                 areManuallyEdited[i] = 1
 
@@ -13213,6 +13218,10 @@ class guiWin(QMainWindow):
                     'was_manually_edited': areManuallyEdited
                 }
             ).set_index('Cell_ID')
+            if self.isSegm3D:
+                posData.allData_li[posData.frame_i]['acdc_df']['z_centroid'] = (
+                    zz_centroid
+                )
         else:
             # Filter or add IDs that were not stored yet
             acdc_df = acdc_df.drop(columns=['time_seconds'], errors='ignore')
@@ -13221,6 +13230,8 @@ class guiWin(QMainWindow):
             acdc_df['is_cell_excluded'] = is_cell_excluded_li
             acdc_df['x_centroid'] = xx_centroid
             acdc_df['y_centroid'] = yy_centroid
+            if self.isSegm3D:
+                acdc_df['z_centroid'] = zz_centroid
             acdc_df['was_manually_edited'] = areManuallyEdited
             posData.allData_li[posData.frame_i]['acdc_df'] = acdc_df
 
