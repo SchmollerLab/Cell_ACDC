@@ -2439,6 +2439,10 @@ class guiWin(QMainWindow):
         self.labelRoiZdepthSpinbox = widgets.SpinBox(disableKeyPress=True)
         self.labelRoiToolbar.addWidget(self.labelRoiZdepthSpinbox)
         self.labelRoiToolbar.addWidget(QLabel('  '))
+        self.labelRoReplaceExistingObjectsCheckbox = QCheckBox(
+            'Replace existing objects'
+        )
+        self.labelRoiToolbar.addWidget(self.labelRoReplaceExistingObjectsCheckbox)
         self.labelRoiAutoClearBorderCheckbox = QCheckBox(
             'Remove objects touching borders'
         )
@@ -2468,6 +2472,9 @@ class guiWin(QMainWindow):
 
         self.loadLabelRoiLastParams()
 
+        self.labelRoReplaceExistingObjectsCheckbox.toggled.connect(
+            self.storeLabelRoiParams
+        )
         self.labelRoiIsCircularRadioButton.toggled.connect(
             self.labelRoiIsCircularRadioButtonToggled
         )
@@ -9480,6 +9487,7 @@ class guiWin(QMainWindow):
         self.logger.info('Magic labeller closed.')
         worker = self.labelRoiActiveWorkers.pop(-1)
     
+    @myutils.exception_handler
     def labelRoiDone(self, roiLab):
         # Delete only objects touching borders in X and Y not in Z
         if self.labelRoiAutoClearBorderCheckbox.isChecked():
@@ -9490,7 +9498,19 @@ class guiWin(QMainWindow):
         self.setBrushID()
         roiLabMask = roiLab>0
         roiLab[roiLabMask] += (posData.brushID-1)
-        posData.lab[self.labelRoiSlice][roiLabMask] = roiLab[roiLabMask]
+        if self.labelRoReplaceExistingObjectsCheckbox.isChecked():
+            # Delete objects fully enclosed by ROI
+            borderMask = np.ones(roiLab.shape, dtype=bool)
+            borderMask[..., 1:-1, 1:-1] = False
+            localLab = posData.lab[self.labelRoiSlice]
+            borderIDs = np.unique(localLab[borderMask])
+            for obj in skimage.measure.regionprops(localLab):
+                if obj.label in borderIDs:
+                    continue
+                localLab[obj.slice][obj.image] = 0
+
+        posData.lab[self.labelRoiSlice][roiLabMask] = roiLab[roiLabMask]   
+
         self.update_rp()
         
         # Repeat tracking
@@ -10343,6 +10363,10 @@ class guiWin(QMainWindow):
         self.df_settings.at['labelRoi_circRoiRadius', 'value'] = circRoiRadius
         self.df_settings.at['labelRoi_roiZdepth', 'value'] = roiZdepth
         self.df_settings.at['labelRoi_autoClearBorder', 'value'] = clearBorder
+        self.df_settings.at['labelRoi_replaceExistingObjects', 'value'] = (
+            'Yes' if self.labelRoReplaceExistingObjectsCheckbox.isChecked() 
+            else 'No'
+        )
         self.df_settings.to_csv(self.settings_csv_path)
     
     def loadLabelRoiLastParams(self):
@@ -10369,6 +10393,12 @@ class guiWin(QMainWindow):
             clearBorder = self.df_settings.at[idx, 'value']
             checked = clearBorder == 'Yes'
             self.labelRoiAutoClearBorderCheckbox.setChecked(checked)
+        
+        idx = 'labelRoi_replaceExistingObjects'
+        if idx in self.df_settings.index:
+            val = self.df_settings.at[idx, 'value']
+            checked = val == 'Yes'
+            self.labelRoReplaceExistingObjectsCheckbox.setChecked(checked)
         
         if self.labelRoiIsCircularRadioButton.isChecked():
             self.labelRoiCircularRadiusSpinbox.setDisabled(False)
@@ -16140,7 +16170,6 @@ class guiWin(QMainWindow):
 
         posData = self.data[self.pos_i]
         acdc_df = posData.allData_li[posData.frame_i]['acdc_df']
-        printl(acdc_df)
         if acdc_df is None:
             self.updateALLimg()
             return True
