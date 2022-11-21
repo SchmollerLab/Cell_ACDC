@@ -1065,7 +1065,7 @@ class segmWin(QMainWindow):
                 If yes, <b>select the tracker</b> to use<br><br>
                 If you are unsure, choose YeaZ
             ''')
-            win = apps.QDialogListbox(
+            win = widgets.QDialogListbox(
                 'Track objects?', txt,
                 trackers, additionalButtons=['Do not track'],
                 multiSelection=False,
@@ -1205,7 +1205,7 @@ class segmWin(QMainWindow):
 
     def selectSegmFile(self, segm_files, isOverwrite, msg, button):
         action = 'overwrite' if isOverwrite else 'concatenate to'
-        selectSegmFileWin = apps.QDialogListbox(
+        selectSegmFileWin = widgets.QDialogListbox(
             'Select segmentation file',
             f'Select segmentation file to {action}:\n',
             segm_files, multiSelection=False, parent=msg

@@ -71,6 +71,7 @@ import pyqtgraph as pg
 from . import qrc_resources
 
 # Custom modules
+from . import exception_handler
 from . import base_cca_df, graphLayoutBkgrColor, darkBkgrColor
 from . import load, prompts, apps, workers, html_utils
 from . import core, myutils, dataPrep, widgets
@@ -4065,7 +4066,7 @@ class guiWin(QMainWindow):
         self.zSliceSpinbox.hide()
         self.SizeZlabel.hide()
 
-    @myutils.exception_handler
+    @exception_handler
     def gui_mousePressEventImg2(self, event):
         modifiers = QGuiApplication.keyboardModifiers()
         ctrl = modifiers == Qt.ControlModifier
@@ -5031,7 +5032,7 @@ class guiWin(QMainWindow):
 
         self.prevMovePos = (xdata, ydata)
 
-    @myutils.exception_handler
+    @exception_handler
     def gui_mouseDragEventImg1(self, event):
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
@@ -5740,7 +5741,7 @@ class guiWin(QMainWindow):
         except AttributeError:
             self.currentLutItem.gradient.menu.popup(event.screenPos())
 
-    @myutils.exception_handler
+    @exception_handler
     def gui_mouseDragEventImg2(self, event):
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
@@ -5820,7 +5821,7 @@ class guiWin(QMainWindow):
             x, y = event.pos().x(), event.pos().y()
             self.dragLabel(x, y)
 
-    @myutils.exception_handler
+    @exception_handler
     def gui_mouseReleaseEventImg2(self, event):
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
@@ -5932,7 +5933,7 @@ class guiWin(QMainWindow):
                 self.mergeIDsButton.setChecked(False)
             self.store_data()
 
-    @myutils.exception_handler
+    @exception_handler
     def gui_mouseReleaseEventImg1(self, event):
         posData = self.data[self.pos_i]
         mode = str(self.modeComboBox.currentText())
@@ -6280,7 +6281,7 @@ class guiWin(QMainWindow):
                     handles.append(handle)
         return handles
     
-    @myutils.exception_handler
+    @exception_handler
     def gui_mousePressRightImage(self, event):
         modifiers = QGuiApplication.keyboardModifiers()
         ctrl = modifiers == Qt.ControlModifier
@@ -6298,15 +6299,15 @@ class guiWin(QMainWindow):
         else: 
             self.gui_mousePressEventImg1(event)
 
-    @myutils.exception_handler
+    @exception_handler
     def gui_mouseDragRightImage(self, event):
         self.gui_mouseDragEventImg1(event)
 
-    @myutils.exception_handler
+    @exception_handler
     def gui_mouseReleaseRightImage(self, event):
         self.gui_mouseReleaseEventImg1(event)
 
-    @myutils.exception_handler
+    @exception_handler
     def gui_mousePressEventImg1(self, event):
         self.typingEditID = False
         modifiers = QGuiApplication.keyboardModifiers()
@@ -8848,7 +8849,7 @@ class guiWin(QMainWindow):
             menu.addAction(action)
             action.triggered.connect(self.changeFontSize)
 
-    @myutils.exception_handler
+    @exception_handler
     def changeFontSize(self):
         self.fontSize = f'{self.sender().text()}pt'
         self.smallFontSize = f'{int(int(self.sender().text())*0.75)}pt'
@@ -9087,7 +9088,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         items = list(posData.fluo_data_dict.keys())
         if len(items)>1:
-            selectFluo = apps.QDialogListbox(
+            selectFluo = widgets.QDialogListbox(
                 'Select image',
                 'Select which fluorescent image you want to update the color of\n',
                 items, multiSelection=False, parent=self
@@ -9531,7 +9532,7 @@ class guiWin(QMainWindow):
         self.logger.info('Magic labeller closed.')
         worker = self.labelRoiActiveWorkers.pop(-1)
     
-    @myutils.exception_handler
+    @exception_handler
     def labelRoiDone(self, roiLab):
         # Delete only objects touching borders in X and Y not in Z
         if self.labelRoiAutoClearBorderCheckbox.isChecked():
@@ -9934,7 +9935,7 @@ class guiWin(QMainWindow):
             self.resetCursors()
             self.updateALLimg()
 
-    @myutils.exception_handler
+    @exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
             posData = self.data[self.pos_i]
@@ -10633,7 +10634,7 @@ class guiWin(QMainWindow):
                 self.UserEnforced_DisabledTracking = False
                 self.UserEnforced_Tracking = True
 
-    @myutils.exception_handler
+    @exception_handler
     def repeatTrackingVideo(self):
         posData = self.data[self.pos_i]
         win = apps.selectTrackerGUI(
@@ -10735,7 +10736,7 @@ class guiWin(QMainWindow):
             self.askSegmParam = True
             # Ask which model
             models = myutils.get_list_of_models()
-            win = apps.QDialogListbox(
+            win = widgets.QDialogListbox(
                 'Select model',
                 'Select model to use for segmentation: ',
                 models,
@@ -11196,7 +11197,7 @@ class guiWin(QMainWindow):
         else:
             self.repeatSegm(model_name=self.segmModelName)
 
-    @myutils.exception_handler
+    @exception_handler
     def repeatSegm(self, model_name='', askSegmParams=False, return_model=False):
         if model_name == 'thresholding':
             # thresholding model is stored as 'Automatic thresholding'
@@ -11383,7 +11384,7 @@ class guiWin(QMainWindow):
     def selectZtoolZvalueChanged(self, whichZ, z):
         self.update_z_slice(z)
 
-    @myutils.exception_handler
+    @exception_handler
     def repeatSegmVideo(self, model_name, startFrameNum, stopFrameNum):
         if model_name == 'thresholding':
             # thresholding model is stored as 'Automatic thresholding'
@@ -11504,7 +11505,7 @@ class guiWin(QMainWindow):
         self.logger.info('=================')
         self.titleLabel.setText(txt, color='g')
 
-    @myutils.exception_handler
+    @exception_handler
     def lazyLoaderCritical(self, error):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
@@ -11512,7 +11513,7 @@ class guiWin(QMainWindow):
             self.lazyLoader.pause()
         raise error
     
-    @myutils.exception_handler
+    @exception_handler
     def workerCritical(self, error):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
@@ -11765,7 +11766,7 @@ class guiWin(QMainWindow):
         if self.eraserButton.isChecked():
             self.updateEraserCursor(self.xHoverImg, self.yHoverImg)
 
-    @myutils.exception_handler
+    @exception_handler
     def postProcessing(self):
         if self.postProcessSegmWin is not None:
             self.postProcessSegmWin.setPosData()
@@ -12134,7 +12135,7 @@ class guiWin(QMainWindow):
             action.setDisabled(True)
             
 
-    @myutils.exception_handler
+    @exception_handler
     def startLoadDataWorker(self, user_ch_file_paths, user_ch_name, firstPosData):
         self.funcDescription = 'loading data'
 
@@ -12295,7 +12296,7 @@ class guiWin(QMainWindow):
         msg.addButton('Ok')
         msg.show(block=True)
 
-    @myutils.exception_handler
+    @exception_handler
     def loadDataWorkerFinished(self, data):
         self.funcDescription = 'loading data worker finished'
         if self.progressWin is not None:
@@ -13243,7 +13244,7 @@ class guiWin(QMainWindow):
             }
         }
 
-    @myutils.exception_handler
+    @exception_handler
     def store_data(
             self, pos_i=None, enforce=True, debug=False, mainThread=True,
             autosave=True
@@ -14692,7 +14693,7 @@ class guiWin(QMainWindow):
         else:
             self.drawContourRightImage(obj, posData)
 
-    @myutils.exception_handler
+    @exception_handler
     def update_rp(self, draw=True, debug=False):
         posData = self.data[self.pos_i]
         # Update rp for current posData.lab (e.g. after any change)
@@ -14911,7 +14912,7 @@ class guiWin(QMainWindow):
         else:
             self.keptIDsLineEdit.setInstructionsText()
     
-    @myutils.exception_handler
+    @exception_handler
     def applyKeepObjects(self):
         # Store undo state before modifying stuff
         self.storeUndoRedoStates(False)
@@ -15228,7 +15229,7 @@ class guiWin(QMainWindow):
 
     def askSelectOverlayChannel(self):
         ch_names = [ch for ch in self.ch_names if ch != self.user_ch_name]
-        selectFluo = apps.QDialogListbox(
+        selectFluo = widgets.QDialogListbox(
             'Select channel',
             'Select channel names to overlay:\n',
             ch_names, multiSelection=True, parent=self
@@ -15263,7 +15264,7 @@ class guiWin(QMainWindow):
             self.setOverlayLabelsItemsVisible(False)
     
     def askLabelsToOverlay(self):
-        selectOverlayLabels = apps.QDialogListbox(
+        selectOverlayLabels = widgets.QDialogListbox(
             'Select segmentation to overlay',
             'Select segmentation file to overlay:\n',
             self.existingSegmEndNames, multiSelection=True, parent=self
@@ -16693,7 +16694,7 @@ class guiWin(QMainWindow):
         self.labelsLayerRightImg.setOpacity(value)
 
     # @exec_time
-    @myutils.exception_handler
+    @exception_handler
     def updateALLimg(self, image=None, updateFilters=False):
         self.clearAx1Items()
         self.clearAx2Items()
@@ -17318,7 +17319,7 @@ class guiWin(QMainWindow):
         self.isNewFile = False
         self._openFile(file_path=file_path)
 
-    @myutils.exception_handler
+    @exception_handler
     def _openFile(self, file_path=None):
         """
         Function used for loading an image file directly.
@@ -17474,7 +17475,7 @@ class guiWin(QMainWindow):
 
         self._openFolder(exp_path=exp_path, imageFilePath=imageFilePath)
 
-    @myutils.exception_handler
+    @exception_handler
     def _openFolder(self, exp_path=None, imageFilePath=''):
         """Main function to load data.
 
@@ -17787,7 +17788,7 @@ class guiWin(QMainWindow):
                 self.setOverlayItemsVisible('', False)
         self.updateALLimg()
 
-    @myutils.exception_handler
+    @exception_handler
     def loadDataWorkerDataIntegrityWarning(self, pos_foldername):
         err_msg = (
             'WARNING: Segmentation mask file ("..._segm.npz") not found. '
@@ -17943,7 +17944,7 @@ class guiWin(QMainWindow):
                 )
                 msg.information(self, 'All channels are loaded', txt)
                 return False
-            selectFluo = apps.QDialogListbox(
+            selectFluo = widgets.QDialogListbox(
                 'Select channel',
                 'Select channel names to load:\n',
                 ch_names, multiSelection=True, parent=self
@@ -18760,7 +18761,7 @@ class guiWin(QMainWindow):
     def quickSave(self):
         self.saveData(isQuickSave=True)
 
-    @myutils.exception_handler
+    @exception_handler
     def saveData(self, checked=False, finishedCallback=None, isQuickSave=False):
         self.store_data()
 

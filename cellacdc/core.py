@@ -514,7 +514,7 @@ def smooth_contours(lab, radius=2):
         smooth_lab[temp_mask] = obj.label
     return smooth_lab
 
-def getBaseCca_df(IDs):
+def getBaseCca_df(IDs, with_tree_cols=False):
     cc_stage = ['G1' for ID in IDs]
     num_cycles = [2]*len(IDs)
     relationship = ['mother' for ID in IDs]
@@ -533,6 +533,13 @@ def getBaseCca_df(IDs):
                        'is_history_known': is_history_known,
                        'corrected_assignment': corrected_assignment},
                         index=IDs)
+    if with_tree_cols:
+        cca_df['generation_num_tree'] = [1]*len(IDs)
+        cca_df['Cell_ID_tree'] = IDs
+        cca_df['parent_ID_tree'] = [-1]*len(IDs)
+        cca_df['root_ID_tree'] = [-1]*len(IDs)
+        cca_df['sister_ID_tree'] = [-1]*len(IDs)
+    
     cca_df.index.name = 'Cell_ID'
     return cca_df
 

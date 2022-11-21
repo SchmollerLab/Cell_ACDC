@@ -64,7 +64,7 @@ def configuration_dialog():
                 print('******************************')
                 raise FileNotFoundError
 
-            win = apps.QDialogListbox(
+            win = widgets.QDialogListbox(
                 'Position Selection',
                 'Select which position(s) you want to analyse',
                 available_pos

@@ -1596,13 +1596,17 @@ class ApplyTrackInfoWorker(BaseWorkerUtil):
         self.logger.log('Applying tracking info...')  
         frameIndexCol = self.trackColsInfo['frameIndexCol']
         grouped = df.groupby(frameIndexCol)
-        self.signals.initProgressBar.emit(len(grouped))
         trackIDsCol = self.trackColsInfo['trackIDsCol']
         maxID = max(segmData.max(), df[trackIDsCol].max())
         segmData += maxID
         maskIDsCol = self.trackColsInfo['maskIDsCol']
         xCentroidCol = self.trackColsInfo['xCentroidCol']
         yCentroidCol = self.trackColsInfo['yCentroidCol']
+        parentIDcol = self.trackColsInfo['parentIDcol']
+        if parentIDcol != 'None':
+            self.signals.initProgressBar.emit(len(grouped)*2)
+        else:
+            self.signals.initProgressBar.emit(len(grouped))
         if maskIDsCol != 'None':
             df[maskIDsCol] = df[maskIDsCol] + maxID
         trackedIDsMapper = {}
@@ -1681,6 +1685,41 @@ class ApplyTrackInfoWorker(BaseWorkerUtil):
             acdcFilePath = os.path.join(
                 imagesPath, self.acdcFilename
             )
+        
+        parentIDcol = self.trackColsInfo['parentIDcol']
+        if parentIDcol != 'None':
+            grouped = df.groupby(frameIndexCol)
+            acdc_dfs = []
+            keys = []
+            self.logger.log(f'Adding lineage info from "{parentIDcol}" column...')
+            for frame_i, df_frame in grouped:
+                if frame_i == len(segmData):
+                    break
+                
+                df_frame = df_frame.set_index(trackIDsCol)
+                lab = segmData[frame_i]
+                acdc_df_i = acdc_df.loc[frame_i].copy()
+                IDs = acdc_df_i.index.values
+                base_cca_df = core.getBaseCca_df(IDs, with_tree_cols=True)
+                if frame_i == 0:
+                    prevIDs = []
+                    newIDs = IDs
+                else:
+                    prevIDs = acdc_df.loc[frame_i-1].index.values
+                    newIDs = [ID for ID in IDs if ID not in prevIDs]
+                
+                for newID in newIDs:
+                    parentID = df_frame.at[newID, parentIDcol]
+                    if parentID > 1:
+                        pass
+                    else:
+                        # Set new ID without a parent as history unknown
+                        base_cca_df.at[newID, 'relationship'] = 'bud'
+                        base_cca_df.at[newID, 'is_history_known'] = False
+                        base_cca_df.at[newID, 'generation_num'] = 2
+                acdc_dfs.append(acdc_df_i)
+                keys.append(frame_i)
+                self.signals.progressBar.emit(1)
         
         self.logger.log('Saving acdc_output table...')
         acdc_df.to_csv(acdcFilePath)

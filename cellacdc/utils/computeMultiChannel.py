@@ -61,7 +61,7 @@ class ComputeMetricsMultiChannel(NewThreadMultipleExpBaseUtil):
         self.worker.waitCond.wakeAll()
     
     def loadAdditionalAcdcDf(self):
-        selectWindow = apps.QDialogListbox(
+        selectWindow = widgets.QDialogListbox(
             'Select acdc_output files',
             f'Select acdc_output files to load\n',
             self.existingAcdcOutputEndnames, multiSelection=True, 

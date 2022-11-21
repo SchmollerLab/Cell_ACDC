@@ -8,6 +8,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5 import QtGui
 
+from .. import exception_handler
 from .. import myutils, html_utils, workers, widgets, load, apps
 
 class repeatDataPrepWindow(QDialog):
@@ -98,7 +99,7 @@ class repeatDataPrepWindow(QDialog):
         self.stopButton.hide()
         return super().showEvent(event)
 
-    @myutils.exception_handler    
+    @exception_handler    
     def start(self):
         self.startButton.hide()
         self.stopButton.show()
@@ -177,7 +178,7 @@ class repeatDataPrepWindow(QDialog):
         self.thread.start()
     
     def selectChannels(self, ch_name_selector, ch_names):
-        win = apps.QDialogListbox(
+        win = widgets.QDialogListbox(
             'Select channel',
             'Select channel names to process:\n',
             ch_names, multiSelection=True, parent=self
@@ -222,30 +223,30 @@ class repeatDataPrepWindow(QDialog):
         if hasattr(self, 'worker'):
             self.worker.abort = True
     
-    @myutils.exception_handler
+    @exception_handler
     def workerInitProgressBar(self, maximum):
         self.progressBar.setValue(0)
         self.progressBar.setMaximum(maximum)
     
-    @myutils.exception_handler
+    @exception_handler
     def workerUpdateProgressBar(self):
         self.progressBar.update(1)
     
-    @myutils.exception_handler
+    @exception_handler
     def workerProgress(self, txt):
         self.logger.info(txt)
         self.logConsole.append(txt)
     
-    @myutils.exception_handler
+    @exception_handler
     def workerProgressBar(self, txt):
         self.logger.info(txt)
         self.logConsole.write(txt)
     
-    @myutils.exception_handler
+    @exception_handler
     def workerCritical(self, error):
         raise error
     
-    @myutils.exception_handler
+    @exception_handler
     def workerFinished(self):
         self.startButton.show()
         self.stopButton.hide()

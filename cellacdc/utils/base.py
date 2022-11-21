@@ -204,7 +204,7 @@ class NewThreadMultipleExpBaseUtil(QDialog):
             )
         )
         else:
-            selectWindow = apps.QDialogListbox(
+            selectWindow = widgets.QDialogListbox(
                 'Select acdc_output files',
                 f'Select acdc_output files{infoText}\n',
                 self.existingAcdcOutputEndnames, multiSelection=multiSelection, 

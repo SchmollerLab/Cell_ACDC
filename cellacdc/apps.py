@@ -55,13 +55,14 @@ from PyQt5.QtWidgets import (
     QListWidgetItem, QTreeWidgetItemIterator, QLayout
 )
 
-from cellacdc.utils import align
+from . import exception_handler
 from . import widgets
-from . import myutils, load, prompts, core, measurements, html_utils
+from . import load, prompts, core, measurements, html_utils
 from . import is_mac, is_win, is_linux, temp_path, config
 from . import qrc_resources, printl
 from . import colors
 from . import issues_url
+from . import myutils
 
 pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
 font = QFont()
@@ -644,7 +645,7 @@ class customAnnotationDialog(QDialog):
 
     def loadSavedAnnot(self):
         items = list(self.savedCustomAnnot.keys())
-        self.selectAnnotWin = QDialogListbox(
+        self.selectAnnotWin = widgets.QDialogListbox(
             'Load annotation parameters',
             'Select annotation to load:', items,
             additionalButtons=('Delete selected annnotations', ),
@@ -3026,187 +3027,6 @@ class MultiTimePointFilePattern(QBaseDialog):
     def showEvent(self, event) -> None:
         self.channelNameLE.setFocus(True)
 
-class QDialogListbox(QDialog):
-    sigSelectionConfirmed = pyqtSignal(list)
-
-    def __init__(
-            self, title, text, items, cancelText='Cancel',
-            multiSelection=True, parent=None,
-            additionalButtons=(), includeSelectionHelp=False,
-            allowSingleSelection=True
-        ):
-        self.cancel = True
-        super().__init__(parent)
-        self.setWindowTitle(title)
-
-        self.allowSingleSelection = allowSingleSelection
-
-        mainLayout = QVBoxLayout()
-        topLayout = QVBoxLayout()
-        bottomLayout = QHBoxLayout()
-
-        self.mainLayout = mainLayout
-
-        label = QLabel(text)
-        _font = QFont()
-        _font.setPixelSize(13)
-        label.setFont(_font)
-        # padding: top, left, bottom, right
-        label.setStyleSheet("padding:0px 0px 3px 0px;")
-        topLayout.addWidget(label, alignment=Qt.AlignCenter)
-
-        if includeSelectionHelp:
-            selectionHelpLabel = QLabel()
-            txt = html_utils.paragraph("""<br>
-                <code>Ctrl+Click</code> <i>to select multiple items</i><br>
-                <code>Shift+Click</code> <i>to select a range of items</i><br>
-            """)
-            selectionHelpLabel.setText(txt)
-            topLayout.addWidget(label, alignment=Qt.AlignCenter)
-
-        listBox = widgets.listWidget()
-        listBox.setFont(_font)
-        listBox.addItems(items)
-        if multiSelection:
-            listBox.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        else:
-            listBox.setSelectionMode(QAbstractItemView.SingleSelection)
-        listBox.setCurrentRow(0)
-        self.listBox = listBox
-        if not multiSelection:
-            listBox.itemDoubleClicked.connect(self.ok_cb)
-        topLayout.addWidget(listBox)
-
-        if cancelText.lower().find('cancel') != -1:
-            cancelButton = widgets.cancelPushButton(cancelText)
-        else:
-            cancelButton = QPushButton(cancelText)
-        okButton = widgets.okPushButton(' Ok ')
-
-        bottomLayout.addStretch(1)
-        bottomLayout.addWidget(cancelButton)
-        bottomLayout.addSpacing(20)
-
-        if additionalButtons:
-            self._additionalButtons = []
-            for button in additionalButtons:
-                _button, isCancelButton = widgets.getPushButton(button)
-                self._additionalButtons.append(_button)
-                bottomLayout.addWidget(_button)
-                _button.clicked.connect(self.ok_cb)
-
-        bottomLayout.addWidget(okButton)
-        bottomLayout.setContentsMargins(0, 10, 0, 0)
-
-        mainLayout.addLayout(topLayout)
-        mainLayout.addLayout(bottomLayout)
-        self.setLayout(mainLayout)
-
-        # Connect events
-        okButton.clicked.connect(self.ok_cb)
-        cancelButton.clicked.connect(self.cancel_cb)
-
-        if multiSelection:
-            listBox.itemClicked.connect(self.onItemClicked)
-            listBox.itemSelectionChanged.connect(self.onItemSelectionChanged)
-
-        self.setStyleSheet("""
-            QListWidget::item:hover {background-color:#E6E6E6;}
-            QListWidget::item:selected {background-color:#CFEB9B;}
-            QListWidget::item:selected {color:black;}
-            QListView {
-                selection-background-color: #CFEB9B;
-                selection-color: white;
-                show-decoration-selected: 1;
-            }
-        """)
-        self.areItemsSelected = [
-            listBox.item(i).isSelected() for i in range(listBox.count())
-        ]
-    
-    def keyPressEvent(self, event) -> None:
-        mod = event.modifiers()
-        if mod == Qt.ShiftModifier or mod == Qt.ControlModifier:
-            self.listBox.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        elif event.key() == Qt.Key_Escape:
-            self.listBox.clearSelection()
-            event.ignore()
-            return
-        super().keyPressEvent(event)
-    
-    def onItemSelectionChanged(self):
-        if not self.listBox.selectedItems():
-            self.areItemsSelected = [
-                False for i in range(self.listBox.count())
-            ]
-    
-    def onItemClicked(self, item):
-        mod = QGuiApplication.keyboardModifiers()
-        if mod == Qt.ShiftModifier or mod == Qt.ControlModifier:
-            self.listBox.setSelectionMode(QAbstractItemView.ExtendedSelection)
-            return
-        
-        self.listBox.setSelectionMode(QAbstractItemView.MultiSelection)
-        itemIdx = self.listBox.row(item)
-        wasSelected = self.areItemsSelected[itemIdx]
-        if wasSelected:
-            item.setSelected(False)
-        
-        self.areItemsSelected = [
-            self.listBox.item(i).isSelected() 
-            for i in range(self.listBox.count())
-        ]
-        # self.listBox.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        # else:
-        #     selectedItems.append(item)
-        
-        # self.listBox.clearSelection()
-        # for i in range(self.listBox.count()):
-        #     item = self.listBox.item(i).setSelected(True)
-        
-        # print(self.listBox.selectedItems())
-
-    def ok_cb(self, event):
-        self.clickedButton = self.sender()
-        self.cancel = False
-        selectedItems = self.listBox.selectedItems()
-        self.selectedItemsText = [item.text() for item in selectedItems]
-        if not self.allowSingleSelection and len(self.selectedItemsText) < 2:
-            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
-            txt = html_utils.paragraph(
-                'You need to <b>select two or more items</b>.<br><br>'
-                'Use <code>Ctrl+Click</code> to select multiple items<br>, or<br>'
-                '<code>Shift+Click</code> to select a range of items'
-            )
-            msg.warning(self, 'Select two or more items', txt)
-            return
-        self.sigSelectionConfirmed.emit(self.selectedItemsText)
-        self.close()
-
-    def cancel_cb(self, event):
-        self.cancel = True
-        self.selectedItemsText = None
-        self.close()
-
-    def exec_(self):
-        self.show(block=True)
-
-    def show(self, block=False):
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
-        super().show()
-
-        horizontal_sb = self.listBox.horizontalScrollBar()
-        while horizontal_sb.isVisible():
-            self.resize(self.height(), self.width() + 10)
-
-        if block:
-            self.loop = QEventLoop()
-            self.loop.exec_()
-
-    def closeEvent(self, event):
-        if hasattr(self, 'loop'):
-            self.loop.exit()
-
 class OrderableListWidgetDialog(QBaseDialog):
     def __init__(
             self, items, title='Select items', infoTxt='', helpText='', 
@@ -3376,15 +3196,17 @@ class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
         self.cancel = True
         self.mainLayout = QVBoxLayout()
 
+        options = (
+            '"Frame index (starting from 0)", "Tracked IDs" and "Segmentation mask IDs"<br>',
+            '"Frame index (starting from 0)", "Tracked IDs", "X coord. centroid", and "Y coord. centroid"'
+        )
         self.instructionsText = html_utils.paragraph(
             f"""
             <b>Select which columns</b> contain the tracking information.<br><br>
             You must choose one of the following combinations:<br> 
-            {html_utils.to_list((
-                '"Frame index (starting from 0)", "Tracked IDs" and "Segmentation mask IDs"<br>',
-                '"Frame index (starting from 0)", "Tracked IDs", "X coord. centroid", and "Y coord. centroid"'
-                )
-            )}
+            {html_utils.to_list(options)}
+            Optionally, you can provide the column name containing the parent ID.<br>
+            This will allow you to load lineage information into Cell-ACDC. 
             """
         )
         self.mainLayout.addWidget(QLabel(self.instructionsText))
@@ -3414,6 +3236,10 @@ class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
         self.yCentroidCombobox = widgets.QCenteredComboBox()
         self.yCentroidCombobox.addItems(items)
         formLayout.addRow('Y coord. centroid: ', self.yCentroidCombobox)
+
+        self.parentIDcombobox = widgets.QCenteredComboBox()
+        self.parentIDcombobox.addItems(items)
+        formLayout.addRow('Parent ID (optional): ', self.parentIDcombobox)
         
         buttonsLayout = widgets.CancelOkButtonsLayout()
 
@@ -3442,6 +3268,7 @@ class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
         else:
             self.xCentroidCol = 'None'
             self.yCentroidCol = 'None'
+        self.parentIDcol = self.parentIDcombobox.currentText()
         self.close()
     
     def warnInvalidSelection(self):
@@ -3612,7 +3439,7 @@ class startStopFramesDialog(QBaseDialog):
         if block:
             super().show(block=True)
 
-class selectTrackerGUI(QDialogListbox):
+class selectTrackerGUI(widgets.QDialogListbox):
     def __init__(
             self, SizeT, currentFrameNo=1, parent=None
         ):
@@ -3635,7 +3462,7 @@ class selectTrackerGUI(QDialogListbox):
         else:
             self.startFrame = self.selectFramesGroupbox.startFrame_SB.value()
             self.stopFrame = self.selectFramesGroupbox.stopFrame_SB.value()
-            QDialogListbox.ok_cb(self, event)
+            widgets.QDialogListbox.ok_cb(self, event)
 
 class QDialogAppendTextFilename(QDialog):
     def __init__(self, filename, ext, parent=None, font=None):
@@ -9758,7 +9585,7 @@ class CombineMetricsMultiDfsDialog(QBaseDialog):
         self.okButton.setDisabled(True)
         self.statusLabel.setText('')
 
-    @myutils.exception_handler
+    @exception_handler
     def test_cb(self):
         combined_df = self.getCombinedDf()
         new_df = pd.DataFrame(index=combined_df.index)
