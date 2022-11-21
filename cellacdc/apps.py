@@ -1572,6 +1572,7 @@ class QDialogMetadataXML(QDialog):
         self.TimeIncrement_DSB.setSingleStep(1)
         self.TimeIncrement_DSB.setDecimals(3)
         self.TimeIncrement_DSB.setValue(TimeIncrement)
+        self.TimeIncrement_DSB.setMinimum(0.0)
         txt = 'Frame interval:  '
         label = QLabel(txt)
         self.TimeIncrement_Label = label
@@ -1850,14 +1851,8 @@ class QDialogMetadataXML(QDialog):
         self.TimeIncrement_DSB.setToolTip(
             'Are you sure the time increment is less than/equal to 1.0 seconds?'
         )
-        self.TimeIncrement_DSB.setStyleSheet(
-            'background: #FEF9C3;'
-            'border-radius: 4px;'
-            'border: 1.5px solid orange;'
-            'padding: 1px 0px 1px 0px'
-        )
+        self.TimeIncrement_DSB.setStyleSheet('background-color: #FEF9C3;')
 
-    
     def dimensionOrderChanged(self, dimsOrder):
         if self.imageViewer is None:
             return
@@ -2283,10 +2278,15 @@ class QDialogMetadataXML(QDialog):
 
     def exec_(self):
         self.show(block=True)
+    
+    def setSize(self):
+        h = self.SizeS_SB.height()
+        self.TimeIncrement_DSB.setMinimumHeight(h)
 
     def show(self, block=False):
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show()
+        self.setSize()
         if block:
             self.loop = QEventLoop()
             self.loop.exec_()
