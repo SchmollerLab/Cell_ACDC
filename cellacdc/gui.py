@@ -1466,8 +1466,50 @@ class guiWin(QMainWindow):
 
         self.isEditActionsConnected = False
 
+        self.readRecentPaths()
+
         self.show()
         # self.installEventFilter(self)
+    
+    def readRecentPaths(self):
+        # Step 0. Remove the old options from the menu
+        self.openRecentMenu.clear()
+
+        # Step 1. Read recent Paths
+        cellacdc_path = os.path.dirname(os.path.abspath(__file__))
+        recentPaths_path = os.path.join(
+            cellacdc_path, 'temp', 'recentPaths.csv'
+        )
+        if os.path.exists(recentPaths_path):
+            df = pd.read_csv(recentPaths_path, index_col='index')
+            if 'opened_last_on' in df.columns:
+                df = df.sort_values('opened_last_on', ascending=False)
+            recentPaths = df['path'].to_list()
+        else:
+            recentPaths = []
+        
+        # Step 2. Dynamically create the actions
+        actions = []
+        for path in recentPaths:
+            if not os.path.exists(path):
+                continue
+            action = QAction(path, self)
+            action.triggered.connect(partial(self.openRecentFile, path))
+            actions.append(action)
+
+        # Step 3. Add the actions to the menu
+        self.openRecentMenu.addActions(actions)
+    
+    def addPathToOpenRecentMenu(self, path):
+        for action in self.openRecentMenu.actions():
+            if path == action.text():
+                break
+        else:
+            action = QAction(path, self)
+            action.triggered.connect(partial(self.openRecentFile, path))
+        
+        firstAction = self.openRecentMenu.actions()[0]
+        self.openRecentMenu.insertAction(firstAction, action)
 
     def loadLastSessionSettings(self):
         self.settings_csv_path = settings_csv_path
@@ -3002,7 +3044,7 @@ class guiWin(QMainWindow):
         self.tipsAction.triggered.connect(self.showTipsAndTricks)
         self.UserManualAction.triggered.connect(myutils.showUserManual)
         # Connect Open Recent to dynamically populate it
-        self.openRecentMenu.aboutToShow.connect(self.populateOpenRecent)
+        # self.openRecentMenu.aboutToShow.connect(self.populateOpenRecent)
         self.checkableQButtonsGroup.buttonClicked.connect(self.uncheckQButton)
 
         self.showPropsDockButton.clicked.connect(self.showPropsDockWidget)
@@ -12666,6 +12708,8 @@ class guiWin(QMainWindow):
             if self.isSegm3D and hasattr(self, 'currentLab2D'):
                 for obj in posData.rp:
                     self.annotateObject(obj, 'IDs')
+            self.currentLab2D = posData.lab[self.z_lab()]
+            self.setOverlaySegmMasks(force=True)
             self.zSliceScrollBarStartedMoving = False
 
     def zSliceScrollBarReleased(self):
@@ -15494,6 +15538,9 @@ class guiWin(QMainWindow):
         return ol_img
 
     def setOverlaySegmMasks(self, force=False):
+        if not hasattr(self, 'currentLab2D'):
+            return
+
         how = self.drawIDsContComboBox.currentText()
         how_ax2 = self.getAnnotateHowRightImage()
         isOverlaySegmActive = (
@@ -17475,6 +17522,7 @@ class guiWin(QMainWindow):
         self.exp_path = exp_path
         self.logger.info(f'Loading from {self.exp_path}')
         myutils.addToRecentPaths(exp_path, logger=self.logger)
+        self.addPathToOpenRecentMenu(exp_path)
 
         folder_type = myutils.determine_folder_type(exp_path)
         is_pos_folder, is_images_folder, exp_path = folder_type
@@ -18892,32 +18940,6 @@ class guiWin(QMainWindow):
 
     def about(self):
         pass
-
-    def populateOpenRecent(self):
-        # Step 0. Remove the old options from the menu
-        self.openRecentMenu.clear()
-        # Step 1. Read recent Paths
-        cellacdc_path = os.path.dirname(os.path.abspath(__file__))
-        recentPaths_path = os.path.join(
-            cellacdc_path, 'temp', 'recentPaths.csv'
-        )
-        if os.path.exists(recentPaths_path):
-            df = pd.read_csv(recentPaths_path, index_col='index')
-            if 'opened_last_on' in df.columns:
-                df = df.sort_values('opened_last_on', ascending=False)
-            recentPaths = df['path'].to_list()
-        else:
-            recentPaths = []
-        # Step 2. Dynamically create the actions
-        actions = []
-        for path in recentPaths:
-            if not os.path.exists(path):
-                continue
-            action = QAction(path, self)
-            action.triggered.connect(partial(self.openRecentFile, path))
-            actions.append(action)
-        # Step 3. Add the actions to the menu
-        self.openRecentMenu.addActions(actions)
 
     def openRecentFile(self, path):
         self.logger.info(f'Opening recent folder: {path}')
