@@ -1700,7 +1700,7 @@ class ApplyTrackInfoWorker(BaseWorkerUtil):
                 lab = segmData[frame_i]
                 acdc_df_i = acdc_df.loc[frame_i].copy()
                 IDs = acdc_df_i.index.values
-                base_cca_df = core.getBaseCca_df(IDs, with_tree_cols=True)
+                cca_df = core.getBaseCca_df(IDs, with_tree_cols=True)
                 if frame_i == 0:
                     prevIDs = []
                     newIDs = IDs
@@ -1714,8 +1714,17 @@ class ApplyTrackInfoWorker(BaseWorkerUtil):
                         pass
                     else:
                         # Set new ID without a parent as history unknown
-                        base_cca_df.at[newID, 'is_history_known'] = False
-                        base_cca_df.at[newID, 'generation_num'] = 2
+                        cca_df.at[newID, 'is_history_known'] = False
+                        cca_df.at[newID, 'cell_cycle_stage'] = 'G1'
+                        cca_df.at[newID, 'generation_num'] = 2
+                        cca_df.at[newID, 'emerg_frame_i'] = -1
+                        cca_df.at[newID, 'emerg_frame_i'] = -1
+                        cca_df.at[newID, 'relationship'] = 'mother'
+                        cca_df.at[newID, 'generation_num_tree'] = 1
+                        cca_df.at[newID, 'Cell_ID_tree'] = newID
+                        cca_df.at[newID, 'root_ID_tree'] = -1
+                        cca_df.at[newID, 'parent_ID_tree'] = -1
+                        cca_df.at[newID, 'sister_ID_tree'] = -1
                 acdc_dfs.append(acdc_df_i)
                 keys.append(frame_i)
                 self.signals.progressBar.emit(1)
