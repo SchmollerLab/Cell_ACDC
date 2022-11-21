@@ -2623,7 +2623,7 @@ class guiWin(QMainWindow):
     def gui_createTerminalWidget(self):
         self.terminal = widgets.QLog(logger=self.logger)
         self.terminal.connect()
-        self.terminalDock = QDockWidget('Terminal', self)
+        self.terminalDock = QDockWidget('Log', self)
 
         self.terminalDock.setWidget(self.terminal)
         self.terminalDock.setFeatures(
@@ -7023,12 +7023,14 @@ class guiWin(QMainWindow):
                 'will visit them.<br><br>'
                 'However, you can <b>overwrite this behaviour</b> and explicitly '
                 'disable tracking for all of the frames you already tracked.<br><br>'
+                'NOTE: you can reactivate real-time tracking by clicking on the '
+                '"Reset last segmented frame" button on the top toolbar.<br><br>'
                 'What do you want me to do?'
             )
             _, disableTrackingButton = msg.information(
                 self, title, html_utils.paragraph(txt),
                 buttonsTexts=(
-                    'Keep real-time tracking active (RECOMMENDED)',
+                    'Keep real-time tracking active (recommended)',
                     'Disable real-time tracking'
                 )
             )
@@ -10613,7 +10615,7 @@ class guiWin(QMainWindow):
         stop_n = win.stopFrame
 
         last_tracked_i = self.get_last_tracked_i()
-        if start_n-1 <= last_tracked_i:
+        if start_n-1 <= last_tracked_i and start_n>1:
             proceed = self.warnRepeatTrackingVideoWithAnnotations(
                 last_tracked_i, start_n
             )

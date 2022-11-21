@@ -1291,11 +1291,16 @@ def get_list_of_real_time_trackers():
         if tracker == 'YeaZ':
             continue
         tracker_filename = f'{tracker}_tracker.py'
-        tracker_path = os.path.join(cellacdc_path, 'trackers', tracker, tracker_filename)
-        with open(tracker_path) as file:
-            txt = file.read()
-        if txt.find('def track_frame') != -1:
-            rt_trackers.append(tracker)
+        tracker_path = os.path.join(
+            cellacdc_path, 'trackers', tracker, tracker_filename
+        )
+        try:
+            with open(tracker_path) as file:
+                txt = file.read()
+            if txt.find('def track_frame') != -1:
+                rt_trackers.append(tracker)
+        except Exception as e:
+            continue
     return rt_trackers
 
 def get_list_of_trackers():
@@ -1303,7 +1308,12 @@ def get_list_of_trackers():
     trackers = []
     for name in listdir(trackers_path):
         _path = os.path.join(trackers_path, name)
-        if os.path.isdir(_path) and not name.endswith('__'):
+        tracker_script_path = os.path.join(_path, f'{name}_tracker.py')
+        is_valid_tracker = (
+            os.path.isdir(_path) and os.path.exists(tracker_script_path)
+            and not name.endswith('__')
+        )
+        if is_valid_tracker:
             trackers.append(name)
     return trackers
 

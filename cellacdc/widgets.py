@@ -374,6 +374,7 @@ def getPushButton(buttonText, qparent=None):
     isNoButton = (
         buttonText.replace(' ', '').lower() == 'no'
         or buttonText.lower().find('Do not ') != -1
+        or buttonText.lower().find('no, ') != -1
     )
     isDelButton = buttonText.lower().find('delete') != -1
     isAddButton = buttonText.lower().find('add ') != -1
@@ -866,7 +867,6 @@ class QClickableLabel(QLabel):
     def setChecked(self, checked):
         self._checkableItem.setChecked(checked)
 
-
 class QCenteredComboBox(QComboBox):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -874,12 +874,26 @@ class QCenteredComboBox(QComboBox):
         self.setEditable(True)
         self.lineEdit().setReadOnly(True)
         self.lineEdit().setAlignment(Qt.AlignCenter)
+        self.lineEdit().installEventFilter(self)
 
         self.currentIndexChanged.connect(self.centerItems)
+
+        self._isPopupVisibile = False
     
     def centerItems(self, idx):
         for i in range(self.count()):
             self.setItemData(i, Qt.AlignCenter, Qt.TextAlignmentRole)
+    
+    def eventFilter(self, lineEdit, event):
+        # Reimplement show popup on click
+        if event.type() == QEvent.MouseButtonPress:
+            if self._isPopupVisibile:
+                self.hidePopup()
+                self._isPopupVisibile = False
+            else:
+                self.showPopup()
+                self._isPopupVisibile = True
+        return False
 
 class statusBarPermanentLabel(QWidget):
     def __init__(self, parent=None):
