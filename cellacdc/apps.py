@@ -1418,7 +1418,7 @@ class QDialogMetadataXML(QDialog):
             self, title='Metadata',
             LensNA=1.0, DimensionOrder='zct', rawFilename='test',
             SizeT=1, SizeZ=1, SizeC=1, SizeS=1,
-            TimeIncrement=180.0, TimeIncrementUnit='s',
+            TimeIncrement=1.0, TimeIncrementUnit='s',
             PhysicalSizeX=1.0, PhysicalSizeY=1.0, PhysicalSizeZ=1.0,
             PhysicalSizeUnit='μm', ImageName='', chNames=None, emWavelens=None,
             parent=None, rawDataStruct=None, sampleImgData=None,
@@ -1577,6 +1577,8 @@ class QDialogMetadataXML(QDialog):
         self.TimeIncrement_Label = label
         entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         entriesLayout.addWidget(self.TimeIncrement_DSB, row, 1)
+        self.TimeIncrement_DSB.valueChanged.connect(self.warnTimeIncrement)
+        self.warnTimeIncrement(TimeIncrement)
 
         self.TimeIncrementUnit_CB = QComboBox()
         unitItems = [
@@ -1837,6 +1839,24 @@ class QDialogMetadataXML(QDialog):
 
         self.setLayout(mainLayout)
         # self.setModal(True)
+    
+    def warnTimeIncrement(self, value):
+        if value > 1:
+            self.TimeIncrement_DSB.setToolTip('')
+            self.TimeIncrement_DSB.setStyleSheet('')
+            return
+        
+        # Time increment 1.0 might be wrong
+        self.TimeIncrement_DSB.setToolTip(
+            'Are you sure the time increment is less than/equal to 1.0 seconds?'
+        )
+        self.TimeIncrement_DSB.setStyleSheet(
+            'background: #FEF9C3;'
+            'border-radius: 4px;'
+            'border: 1.5px solid orange;'
+            'padding: 1px 0px 1px 0px'
+        )
+
     
     def dimensionOrderChanged(self, dimsOrder):
         if self.imageViewer is None:
