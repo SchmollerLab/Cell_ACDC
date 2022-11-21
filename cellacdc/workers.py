@@ -1714,7 +1714,6 @@ class ApplyTrackInfoWorker(BaseWorkerUtil):
                         pass
                     else:
                         # Set new ID without a parent as history unknown
-                        base_cca_df.at[newID, 'relationship'] = 'bud'
                         base_cca_df.at[newID, 'is_history_known'] = False
                         base_cca_df.at[newID, 'generation_num'] = 2
                 acdc_dfs.append(acdc_df_i)

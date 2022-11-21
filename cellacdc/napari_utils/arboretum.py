@@ -2,7 +2,7 @@ import os
 from functools import partial
 from natsort import natsorted
 
-from .. import myutils, apps, load, printl, core
+from .. import myutils, apps, load, printl, core, widgets
 from ..utils import base
 
 from PyQt5.QtCore import QTimer, pyqtSignal
