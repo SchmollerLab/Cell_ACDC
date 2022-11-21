@@ -164,7 +164,7 @@ class bioFormatsWorker(QObject):
             self.progress.emit('WARNING: TimeIncrement not found in metadata.')
             self.progress.emit(
                 '===================================================')
-            TimeIncrement = 180.0
+            TimeIncrement = 1.0
 
         try:
             Pixels = metadata.image().Pixels
