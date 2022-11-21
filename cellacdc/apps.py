@@ -2584,7 +2584,7 @@ class BayesianTrackerParamsWin(QDialog):
 
 class DeltaTrackerParamsWin(QDialog):
 
-    def __init__(self, parent=None):
+    def __init__(self, posData=None, parent=None):
         self.cancel = True
         super().__init__(parent)
 
@@ -2612,6 +2612,8 @@ class DeltaTrackerParamsWin(QDialog):
             ext={'': ('.tif',)},
             start_dir=start_dir
         )
+        if posData is not None:
+            modelPathLineEdit.setText(posData.imgPath)
         browseButton.sigPathSelected.connect(self.onPathSelected)
         paramsLayout.addWidget(browseButton, row, 2, alignment=Qt.AlignLeft)
 
