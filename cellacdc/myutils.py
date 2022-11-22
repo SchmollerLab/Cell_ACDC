@@ -1555,6 +1555,11 @@ def import_tracker(posData, trackerName, realTime=False, qparent=None):
         paramsWin.exec_()
         if not paramsWin.cancel:
             init_params = paramsWin.params
+    elif trackerName == 'delta':
+        paramsWin = apps.DeltaTrackerParamsWin(posData=posData, parent=qparent)
+        paramsWin.exec_()
+        if not paramsWin.cancel:
+            init_params = paramsWin.params
     else:
         init_argspecs, track_argspecs = getTrackerArgSpec(
             trackerModule, realTime=realTime

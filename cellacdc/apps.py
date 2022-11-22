@@ -2603,6 +2603,174 @@ class BayesianTrackerParamsWin(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
+class DeltaTrackerParamsWin(QDialog):
+
+    def __init__(self, posData=None, parent=None):
+        self.cancel = True
+        super().__init__(parent)
+
+        self.setWindowFlags(Qt.Dialog | Qt.WindowStaysOnTopHint)
+        self.setWindowTitle('Delta tracker parameters')
+
+        paramsLayout = QGridLayout()
+        paramsBox = QGroupBox()
+
+        row = 0
+        this_path = os.path.dirname(os.path.abspath(__file__))
+        default_model_path = this_path
+
+        label = QLabel(html_utils.paragraph('Original Images path'))
+        paramsLayout.addWidget(label, row, 0)
+        modelPathLineEdit = QLineEdit()
+        start_dir = ''
+        if os.path.exists(default_model_path):
+            start_dir = os.path.dirname(default_model_path)
+            modelPathLineEdit.setText(default_model_path)
+        self.modelPathLineEdit = modelPathLineEdit
+        paramsLayout.addWidget(modelPathLineEdit, row, 1)
+        browseButton = widgets.browseFileButton(
+            title='Select Original Images',
+            ext={'': ('.tif',)},
+            start_dir=start_dir
+        )
+        if posData is not None:
+            modelPathLineEdit.setText(posData.imgPath)
+        browseButton.sigPathSelected.connect(self.onPathSelected)
+        paramsLayout.addWidget(browseButton, row, 2, alignment=Qt.AlignLeft)
+
+        row += 1
+        label = QLabel(html_utils.paragraph('Model Type'))
+        paramsLayout.addWidget(label, row, 0)
+        updateMethodCombobox = QComboBox()
+        updateMethodCombobox.addItems(['2D', 'mothermachine'])
+        self.model_type = '2D'
+        self.updateMethodCombobox = updateMethodCombobox
+        self.updateMethodCombobox.currentTextChanged.connect(self.methodChanged)
+        paramsLayout.addWidget(updateMethodCombobox, row, 1)
+
+        row += 1
+        label = QLabel(html_utils.paragraph('Single Mother Machine Chamber?'))
+        paramsLayout.addWidget(label, row, 0)
+        chamberToggle = widgets.Toggle()
+        chamberToggle.setChecked(True)
+        self.chamberToggle = chamberToggle
+        paramsLayout.addWidget(chamberToggle, row, 1, alignment=Qt.AlignCenter)
+
+        row += 1
+        label = QLabel(html_utils.paragraph('Verbose'))
+        paramsLayout.addWidget(label, row, 0)
+        verboseToggle = widgets.Toggle()
+        verboseToggle.setChecked(True)
+        self.verboseToggle = verboseToggle
+        paramsLayout.addWidget(verboseToggle, row, 1, alignment=Qt.AlignCenter)
+
+        row += 1
+        label = QLabel(html_utils.paragraph('Legacy Save (.mat)'))
+        paramsLayout.addWidget(label, row, 0)
+        legacyToggle = widgets.Toggle()
+        legacyToggle.setChecked(False)
+        self.legacyToggle = legacyToggle
+        paramsLayout.addWidget(legacyToggle, row, 1, alignment=Qt.AlignCenter)
+
+        row += 1
+        label = QLabel(html_utils.paragraph('Pickle (.pkl)'))
+        paramsLayout.addWidget(label, row, 0)
+        pickleToggle = widgets.Toggle()
+        pickleToggle.setChecked(False)
+        self.pickleToggle = pickleToggle
+        paramsLayout.addWidget(pickleToggle, row, 1, alignment=Qt.AlignCenter)
+
+        row += 1
+        label = QLabel(html_utils.paragraph('Movie (.mp4) *only for 2D images'))
+        paramsLayout.addWidget(label, row, 0)
+        movieToggle = widgets.Toggle()
+        movieToggle.setChecked(False)
+        self.movieToggle = movieToggle
+        paramsLayout.addWidget(movieToggle, row, 1, alignment=Qt.AlignCenter)
+
+        cancelButton = widgets.cancelPushButton('Cancel')
+        okButton = widgets.okPushButton(' Ok ')
+        cancelButton.clicked.connect(self.cancel_cb)
+        okButton.clicked.connect(self.ok_cb)
+
+        buttonsLayout = QHBoxLayout()
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(cancelButton)
+        buttonsLayout.addSpacing(20)
+        buttonsLayout.addWidget(okButton)
+
+        layout = QVBoxLayout()
+        infoText = html_utils.paragraph('<b>Delta Tracker parameters</b>')
+        infoLabel = QLabel(infoText)
+        layout.addWidget(infoLabel, alignment=Qt.AlignCenter)
+        layout.addSpacing(10)
+        paramsBox.setLayout(paramsLayout)
+        layout.addWidget(paramsBox)
+
+        url = 'https://delta.readthedocs.io/en/latest/'
+        moreInfoText = html_utils.paragraph(
+            '<i>Find more info on Delta Tracker\'s '
+            f'<a href="{url}">home page</a></i>'
+        )
+        moreInfoLabel = QLabel(moreInfoText)
+        moreInfoLabel.setOpenExternalLinks(True)
+        layout.addWidget(moreInfoLabel, alignment=Qt.AlignCenter)
+
+        layout.addSpacing(20)
+        layout.addLayout(buttonsLayout)
+        layout.addStretch(1)
+        self.setLayout(layout)
+        self.setFont(font)
+
+    def methodChanged(self, method):
+        if method == 'mothermachine':
+            self.model_type = 'mothermachine'
+
+    def onPathSelected(self, path):
+        self.modelPathLineEdit.setText(path)
+
+    def ok_cb(self, checked=False):
+        self.cancel = False
+
+        if not os.path.exists(self.modelPathLineEdit.text()):
+            self.warnNotVaidPath()
+            return
+
+        self.verbose = self.verboseToggle.isChecked()
+        self.legacy = self.legacyToggle.isChecked()
+        self.pickle = self.pickleToggle.isChecked()
+        self.movie = self.movieToggle.isChecked()
+        self.chamber = self.chamberToggle.isChecked()
+        self.model_path = os.path.normpath(self.modelPathLineEdit.text())
+        self.params = {
+            'original_images_path': self.model_path,
+            'verbose': self.verbose,
+            'legacy': self.legacy,
+            'pickle': self.pickle,
+            'movie': self.movie,
+            'model_type': self.model_type,
+            'single mothermachine chamber': self.chamber
+        }
+        self.close()
+
+    def cancel_cb(self, event):
+        self.cancel = True
+        self.close()
+
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        super().show()
+        self.resize(int(self.width()*1.3), self.height())
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()
+
 class QDialogWorkerProgress(QDialog):
     sigClosed = pyqtSignal(bool)
 
