@@ -6613,7 +6613,7 @@ class editID_QWidget(QDialog):
         for m in m_iter:
             val = int(m.group())
             uint32_max = np.iinfo(np.uint32).max
-            if val > uint16_max:
+            if val > uint32_max:
                 text = self.ID_QLineEdit.text()
                 text = f'{text[:m.start()]}{uint32_max}{text[m.end():]}'
                 self.ID_QLineEdit.setText(text)
