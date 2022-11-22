@@ -1,8 +1,9 @@
 from functools import wraps
 import re
+import sys
 from matplotlib.colors import to_hex
 
-from . import is_mac
+is_mac = sys.platform == 'darwin'
 
 def _tag(tag_info='p style="font-size:10px"'):
     def wrapper(func):

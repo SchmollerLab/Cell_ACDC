@@ -3,6 +3,7 @@ from functools import partial
 
 import pandas as pd
 
+from .. import exception_handler
 from .. import myutils, apps, widgets, html_utils, printl, workers
 from ..utils import base
 
@@ -21,7 +22,7 @@ class ApplyTrackingInfoFromTableUtil(base.MainThreadSinglePosUtilBase):
         self.sigClose.connect(self.close)
         self.callbackOnFinished = callbackOnFinished
 
-    @myutils.exception_handler
+    @exception_handler
     def run(self, posPath):
         self.logger.info('Reading exisiting segmentation file names...')
         endFilenameSegm = self.selectSegmFileLoadData(posPath)
@@ -60,7 +61,9 @@ class ApplyTrackingInfoFromTableUtil(base.MainThreadSinglePosUtilBase):
             'trackIDsCol': win.trackedIDsCol,
             'maskIDsCol': win.maskIDsCol,
             'xCentroidCol': win.xCentroidCol,
-            'yCentroidCol': win.yCentroidCol
+            'yCentroidCol': win.yCentroidCol,
+            'parentIDcol': win.parentIDcol,
+            'isFirstFrameOne': win.isFirstFrameOne
         }
         
         imagesPath = os.path.join(posPath, 'Images')

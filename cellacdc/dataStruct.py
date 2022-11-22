@@ -31,6 +31,7 @@ from PyQt5 import QtGui
 
 # Here we use from cellacdc because this script is laucnhed in
 # a separate process that doesn't have a parent package
+from . import exception_handler
 from . import qrc_resources
 from . import apps, myutils, widgets, html_utils, printl
 
@@ -164,7 +165,7 @@ class bioFormatsWorker(QObject):
             self.progress.emit('WARNING: TimeIncrement not found in metadata.')
             self.progress.emit(
                 '===================================================')
-            TimeIncrement = 180.0
+            TimeIncrement = 1.0
 
         try:
             Pixels = metadata.image().Pixels
@@ -1161,7 +1162,7 @@ class createDataStructWin(QMainWindow):
         df.index.name = 'index'
         df.to_csv(recentPaths_path)
 
-    @myutils.exception_handler
+    @exception_handler
     def main(self):
         self.log('Asking how raw data is structured...')
         rawDataStruct, abort = self.askRawDataStruct()
@@ -1260,7 +1261,7 @@ class createDataStructWin(QMainWindow):
 
         self.thread.start()
 
-    @myutils.exception_handler
+    @exception_handler
     def workerCritical(self, error):
         raise error
 

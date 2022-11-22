@@ -372,7 +372,15 @@ class segmWorker(QRunnable):
                 np.savez_compressed(posData.segm_npz_path, lab_stack)
             
             self.track_params['signals'] = self.signals
-            tracked_stack = self.tracker.track(lab_stack, **self.track_params)
+            if 'image' in self.track_params:
+                trackerInputImage = self.track_params.pop('image')
+                tracked_stack = self.tracker.track(
+                    lab_stack, trackerInputImage, **self.track_params
+                )
+            else:
+                tracked_stack = self.tracker.track(
+                    lab_stack, **self.track_params
+                )
             if self.concat_segm and posData.segm_data is not None:
                 # Remove first frame that comes from existing segm
                 tracked_stack = tracked_stack[1:]
@@ -1065,7 +1073,7 @@ class segmWin(QMainWindow):
                 If yes, <b>select the tracker</b> to use<br><br>
                 If you are unsure, choose YeaZ
             ''')
-            win = apps.QDialogListbox(
+            win = widgets.QDialogListbox(
                 'Track objects?', txt,
                 trackers, additionalButtons=['Do not track'],
                 multiSelection=False,
@@ -1205,7 +1213,7 @@ class segmWin(QMainWindow):
 
     def selectSegmFile(self, segm_files, isOverwrite, msg, button):
         action = 'overwrite' if isOverwrite else 'concatenate to'
-        selectSegmFileWin = apps.QDialogListbox(
+        selectSegmFileWin = widgets.QDialogListbox(
             'Select segmentation file',
             f'Select segmentation file to {action}:\n',
             segm_files, multiSelection=False, parent=msg

@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from collections import namedtuple
 from importlib import import_module
 
-from . import apps, myutils
+from . import apps, myutils, widgets
 
 from PyQt5.QtWidgets import QApplication, QStyleFactory
 
@@ -20,7 +20,7 @@ app.setStyle(QStyleFactory.create('Fusion'))
 
 cellacdc_path = os.path.dirname(os.path.abspath(__file__))
 models = myutils.listdir(os.path.join(cellacdc_path, 'models'))
-win = apps.QDialogListbox(
+win = widgets.QDialogListbox(
     'Select model',
     'Select model to use for segmentation: ',
     models,

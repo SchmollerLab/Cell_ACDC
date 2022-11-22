@@ -55,13 +55,14 @@ from PyQt5.QtWidgets import (
     QListWidgetItem, QTreeWidgetItemIterator, QLayout
 )
 
-from cellacdc.utils import align
+from . import exception_handler
 from . import widgets
-from . import myutils, load, prompts, core, measurements, html_utils
+from . import load, prompts, core, measurements, html_utils
 from . import is_mac, is_win, is_linux, temp_path, config
 from . import qrc_resources, printl
 from . import colors
 from . import issues_url
+from . import myutils
 
 pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
 font = QFont()
@@ -644,7 +645,7 @@ class customAnnotationDialog(QDialog):
 
     def loadSavedAnnot(self):
         items = list(self.savedCustomAnnot.keys())
-        self.selectAnnotWin = QDialogListbox(
+        self.selectAnnotWin = widgets.QDialogListbox(
             'Load annotation parameters',
             'Select annotation to load:', items,
             additionalButtons=('Delete selected annnotations', ),
@@ -1418,7 +1419,7 @@ class QDialogMetadataXML(QDialog):
             self, title='Metadata',
             LensNA=1.0, DimensionOrder='zct', rawFilename='test',
             SizeT=1, SizeZ=1, SizeC=1, SizeS=1,
-            TimeIncrement=180.0, TimeIncrementUnit='s',
+            TimeIncrement=1.0, TimeIncrementUnit='s',
             PhysicalSizeX=1.0, PhysicalSizeY=1.0, PhysicalSizeZ=1.0,
             PhysicalSizeUnit='μm', ImageName='', chNames=None, emWavelens=None,
             parent=None, rawDataStruct=None, sampleImgData=None,
@@ -1572,11 +1573,14 @@ class QDialogMetadataXML(QDialog):
         self.TimeIncrement_DSB.setSingleStep(1)
         self.TimeIncrement_DSB.setDecimals(3)
         self.TimeIncrement_DSB.setValue(TimeIncrement)
+        self.TimeIncrement_DSB.setMinimum(0.0)
         txt = 'Frame interval:  '
         label = QLabel(txt)
         self.TimeIncrement_Label = label
         entriesLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         entriesLayout.addWidget(self.TimeIncrement_DSB, row, 1)
+        self.TimeIncrement_DSB.valueChanged.connect(self.warnTimeIncrement)
+        self.warnTimeIncrement(TimeIncrement)
 
         self.TimeIncrementUnit_CB = QComboBox()
         unitItems = [
@@ -1838,6 +1842,18 @@ class QDialogMetadataXML(QDialog):
         self.setLayout(mainLayout)
         # self.setModal(True)
     
+    def warnTimeIncrement(self, value):
+        if value > 1:
+            self.TimeIncrement_DSB.setToolTip('')
+            self.TimeIncrement_DSB.setStyleSheet('')
+            return
+        
+        # Time increment 1.0 might be wrong
+        self.TimeIncrement_DSB.setToolTip(
+            'Are you sure the time increment is less than/equal to 1.0 seconds?'
+        )
+        self.TimeIncrement_DSB.setStyleSheet('background-color: #FEF9C3;')
+
     def dimensionOrderChanged(self, dimsOrder):
         if self.imageViewer is None:
             return
@@ -2263,10 +2279,15 @@ class QDialogMetadataXML(QDialog):
 
     def exec_(self):
         self.show(block=True)
+    
+    def setSize(self):
+        h = self.SizeS_SB.height()
+        self.TimeIncrement_DSB.setMinimumHeight(h)
 
     def show(self, block=False):
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         super().show()
+        self.setSize()
         if block:
             self.loop = QEventLoop()
             self.loop.exec_()
@@ -3174,187 +3195,6 @@ class MultiTimePointFilePattern(QBaseDialog):
     def showEvent(self, event) -> None:
         self.channelNameLE.setFocus(True)
 
-class QDialogListbox(QDialog):
-    sigSelectionConfirmed = pyqtSignal(list)
-
-    def __init__(
-            self, title, text, items, cancelText='Cancel',
-            multiSelection=True, parent=None,
-            additionalButtons=(), includeSelectionHelp=False,
-            allowSingleSelection=True
-        ):
-        self.cancel = True
-        super().__init__(parent)
-        self.setWindowTitle(title)
-
-        self.allowSingleSelection = allowSingleSelection
-
-        mainLayout = QVBoxLayout()
-        topLayout = QVBoxLayout()
-        bottomLayout = QHBoxLayout()
-
-        self.mainLayout = mainLayout
-
-        label = QLabel(text)
-        _font = QFont()
-        _font.setPixelSize(13)
-        label.setFont(_font)
-        # padding: top, left, bottom, right
-        label.setStyleSheet("padding:0px 0px 3px 0px;")
-        topLayout.addWidget(label, alignment=Qt.AlignCenter)
-
-        if includeSelectionHelp:
-            selectionHelpLabel = QLabel()
-            txt = html_utils.paragraph("""<br>
-                <code>Ctrl+Click</code> <i>to select multiple items</i><br>
-                <code>Shift+Click</code> <i>to select a range of items</i><br>
-            """)
-            selectionHelpLabel.setText(txt)
-            topLayout.addWidget(label, alignment=Qt.AlignCenter)
-
-        listBox = widgets.listWidget()
-        listBox.setFont(_font)
-        listBox.addItems(items)
-        if multiSelection:
-            listBox.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        else:
-            listBox.setSelectionMode(QAbstractItemView.SingleSelection)
-        listBox.setCurrentRow(0)
-        self.listBox = listBox
-        if not multiSelection:
-            listBox.itemDoubleClicked.connect(self.ok_cb)
-        topLayout.addWidget(listBox)
-
-        if cancelText.lower().find('cancel') != -1:
-            cancelButton = widgets.cancelPushButton(cancelText)
-        else:
-            cancelButton = QPushButton(cancelText)
-        okButton = widgets.okPushButton(' Ok ')
-
-        bottomLayout.addStretch(1)
-        bottomLayout.addWidget(cancelButton)
-        bottomLayout.addSpacing(20)
-
-        if additionalButtons:
-            self._additionalButtons = []
-            for button in additionalButtons:
-                _button, isCancelButton = widgets.getPushButton(button)
-                self._additionalButtons.append(_button)
-                bottomLayout.addWidget(_button)
-                _button.clicked.connect(self.ok_cb)
-
-        bottomLayout.addWidget(okButton)
-        bottomLayout.setContentsMargins(0, 10, 0, 0)
-
-        mainLayout.addLayout(topLayout)
-        mainLayout.addLayout(bottomLayout)
-        self.setLayout(mainLayout)
-
-        # Connect events
-        okButton.clicked.connect(self.ok_cb)
-        cancelButton.clicked.connect(self.cancel_cb)
-
-        if multiSelection:
-            listBox.itemClicked.connect(self.onItemClicked)
-            listBox.itemSelectionChanged.connect(self.onItemSelectionChanged)
-
-        self.setStyleSheet("""
-            QListWidget::item:hover {background-color:#E6E6E6;}
-            QListWidget::item:selected {background-color:#CFEB9B;}
-            QListWidget::item:selected {color:black;}
-            QListView {
-                selection-background-color: #CFEB9B;
-                selection-color: white;
-                show-decoration-selected: 1;
-            }
-        """)
-        self.areItemsSelected = [
-            listBox.item(i).isSelected() for i in range(listBox.count())
-        ]
-    
-    def keyPressEvent(self, event) -> None:
-        mod = event.modifiers()
-        if mod == Qt.ShiftModifier or mod == Qt.ControlModifier:
-            self.listBox.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        elif event.key() == Qt.Key_Escape:
-            self.listBox.clearSelection()
-            event.ignore()
-            return
-        super().keyPressEvent(event)
-    
-    def onItemSelectionChanged(self):
-        if not self.listBox.selectedItems():
-            self.areItemsSelected = [
-                False for i in range(self.listBox.count())
-            ]
-    
-    def onItemClicked(self, item):
-        mod = QGuiApplication.keyboardModifiers()
-        if mod == Qt.ShiftModifier or mod == Qt.ControlModifier:
-            self.listBox.setSelectionMode(QAbstractItemView.ExtendedSelection)
-            return
-        
-        self.listBox.setSelectionMode(QAbstractItemView.MultiSelection)
-        itemIdx = self.listBox.row(item)
-        wasSelected = self.areItemsSelected[itemIdx]
-        if wasSelected:
-            item.setSelected(False)
-        
-        self.areItemsSelected = [
-            self.listBox.item(i).isSelected() 
-            for i in range(self.listBox.count())
-        ]
-        # self.listBox.setSelectionMode(QAbstractItemView.ExtendedSelection)
-        # else:
-        #     selectedItems.append(item)
-        
-        # self.listBox.clearSelection()
-        # for i in range(self.listBox.count()):
-        #     item = self.listBox.item(i).setSelected(True)
-        
-        # print(self.listBox.selectedItems())
-
-    def ok_cb(self, event):
-        self.clickedButton = self.sender()
-        self.cancel = False
-        selectedItems = self.listBox.selectedItems()
-        self.selectedItemsText = [item.text() for item in selectedItems]
-        if not self.allowSingleSelection and len(self.selectedItemsText) < 2:
-            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
-            txt = html_utils.paragraph(
-                'You need to <b>select two or more items</b>.<br><br>'
-                'Use <code>Ctrl+Click</code> to select multiple items<br>, or<br>'
-                '<code>Shift+Click</code> to select a range of items'
-            )
-            msg.warning(self, 'Select two or more items', txt)
-            return
-        self.sigSelectionConfirmed.emit(self.selectedItemsText)
-        self.close()
-
-    def cancel_cb(self, event):
-        self.cancel = True
-        self.selectedItemsText = None
-        self.close()
-
-    def exec_(self):
-        self.show(block=True)
-
-    def show(self, block=False):
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
-        super().show()
-
-        horizontal_sb = self.listBox.horizontalScrollBar()
-        while horizontal_sb.isVisible():
-            self.resize(self.height(), self.width() + 10)
-
-        if block:
-            self.loop = QEventLoop()
-            self.loop.exec_()
-
-    def closeEvent(self, event):
-        if hasattr(self, 'loop'):
-            self.loop.exit()
-
 class OrderableListWidgetDialog(QBaseDialog):
     def __init__(
             self, items, title='Select items', infoTxt='', helpText='', 
@@ -3524,15 +3364,17 @@ class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
         self.cancel = True
         self.mainLayout = QVBoxLayout()
 
+        options = (
+            '"Frame index", "Tracked IDs" and "Segmentation mask IDs"<br>',
+            '"Frame index", "Tracked IDs", "X coord. centroid", and "Y coord. centroid"'
+        )
         self.instructionsText = html_utils.paragraph(
             f"""
             <b>Select which columns</b> contain the tracking information.<br><br>
             You must choose one of the following combinations:<br> 
-            {html_utils.to_list((
-                '"Frame index (starting from 0)", "Tracked IDs" and "Segmentation mask IDs"<br>',
-                '"Frame index (starting from 0)", "Tracked IDs", "X coord. centroid", and "Y coord. centroid"'
-                )
-            )}
+            {html_utils.to_list(options)}
+            Optionally, you can provide the column name containing the parent ID.<br>
+            This will allow you to load lineage information into Cell-ACDC. 
             """
         )
         self.mainLayout.addWidget(QLabel(self.instructionsText))
@@ -3541,8 +3383,14 @@ class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
 
         self.frameIndexCombobox = widgets.QCenteredComboBox()
         self.frameIndexCombobox.addItems(df.columns)
+        self.frameIndexCheckbox = QCheckBox('1st frame is index 1')
+        frameIndexLayout = QHBoxLayout()
+        frameIndexLayout.addWidget(self.frameIndexCombobox)
+        frameIndexLayout.addWidget(self.frameIndexCheckbox)
+        frameIndexLayout.setStretch(0, 2)
+        frameIndexLayout.setStretch(1, 0)
         formLayout.addRow(
-            'Frame index (starting from 0): ', self.frameIndexCombobox
+            'Frame index: ', frameIndexLayout
         )
 
         self.trackedIDsCombobox = widgets.QCenteredComboBox()
@@ -3562,6 +3410,10 @@ class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
         self.yCentroidCombobox = widgets.QCenteredComboBox()
         self.yCentroidCombobox.addItems(items)
         formLayout.addRow('Y coord. centroid: ', self.yCentroidCombobox)
+
+        self.parentIDcombobox = widgets.QCenteredComboBox()
+        self.parentIDcombobox.addItems(items)
+        formLayout.addRow('Parent ID (optional): ', self.parentIDcombobox)
         
         buttonsLayout = widgets.CancelOkButtonsLayout()
 
@@ -3590,6 +3442,8 @@ class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
         else:
             self.xCentroidCol = 'None'
             self.yCentroidCol = 'None'
+        self.parentIDcol = self.parentIDcombobox.currentText()
+        self.isFirstFrameOne = self.frameIndexCheckbox.isChecked()
         self.close()
     
     def warnInvalidSelection(self):
@@ -3760,7 +3614,7 @@ class startStopFramesDialog(QBaseDialog):
         if block:
             super().show(block=True)
 
-class selectTrackerGUI(QDialogListbox):
+class selectTrackerGUI(widgets.QDialogListbox):
     def __init__(
             self, SizeT, currentFrameNo=1, parent=None
         ):
@@ -3783,7 +3637,7 @@ class selectTrackerGUI(QDialogListbox):
         else:
             self.startFrame = self.selectFramesGroupbox.startFrame_SB.value()
             self.stopFrame = self.selectFramesGroupbox.stopFrame_SB.value()
-            QDialogListbox.ok_cb(self, event)
+            widgets.QDialogListbox.ok_cb(self, event)
 
 class QDialogAppendTextFilename(QDialog):
     def __init__(self, filename, ext, parent=None, font=None):
@@ -6922,14 +6776,14 @@ class editID_QWidget(QDialog):
             self.ID_QLineEdit.setText(text)
             return
 
-        # Cast integers greater than uint16 machine limit
+        # Cast integers greater than uint32 machine limit
         m_iter = re.finditer(r'\d+', self.ID_QLineEdit.text())
         for m in m_iter:
             val = int(m.group())
-            uint16_max = np.iinfo(np.uint32).max
-            if val > uint16_max:
+            uint32_max = np.iinfo(np.uint32).max
+            if val > uint32_max:
                 text = self.ID_QLineEdit.text()
-                text = f'{text[:m.start()]}{uint16_max}{text[m.end():]}'
+                text = f'{text[:m.start()]}{uint32_max}{text[m.end():]}'
                 self.ID_QLineEdit.setText(text)
 
         # Automatically close ( bracket
@@ -8213,13 +8067,17 @@ class QDialogPbar(QDialog):
 class QDialogTrackerParams(QDialog):
     def __init__(
             self, init_params, track_params, tracker_name,
-            url=None, parent=None, initLastParams=True
+            url=None, parent=None, initLastParams=True, channels=None,
+            currentChannelName=None
         ):
         self.cancel = True
         super().__init__(parent)
         self.url = url
 
         self.tracker_name = tracker_name
+        self.channels = channels
+        self.currentChannelName = currentChannelName
+        self.channelCombobox = None
 
         self.setWindowTitle(f'{tracker_name} parameters')
 
@@ -8243,7 +8101,7 @@ class QDialogTrackerParams(QDialog):
         )
 
         trackGroupBox, self.track_kwargs = self.createGroupParams(
-            track_params, 'Parameters for tracking'
+            track_params, 'Parameters for tracking', addChannel=True
         )
         trackDefaultButton = widgets.reloadPushButton('Restore default')
         trackLoadLastSelButton = QPushButton('Load last parameters')
@@ -8317,7 +8175,7 @@ class QDialogTrackerParams(QDialog):
         import webbrowser
         webbrowser.open(self.url, new=2)
 
-    def createGroupParams(self, ArgSpecs_list, groupName):
+    def createGroupParams(self, ArgSpecs_list, groupName, addChannel=False):
         ArgWidget = namedtuple(
             'ArgsWidgets',
             ['name', 'type', 'widget', 'defaultVal', 'valueSetter']
@@ -8327,7 +8185,20 @@ class QDialogTrackerParams(QDialog):
 
         groupBoxLayout = QGridLayout()
 
+        if addChannel and self.channels is not None:
+            row = 0
+            label = QLabel(f'Load input channel:  ')
+            groupBoxLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
+            items = ['None', *self.channels]
+            self.channelCombobox = widgets.QCenteredComboBox()
+            self.channelCombobox.addItems(items)
+            groupBoxLayout.addWidget(self.channelCombobox, row, 1, 1, 2)
+            if self.currentChannelName is not None:
+                self.channelCombobox.setCurrentText(self.currentChannelName)
+
         for row, ArgSpec in enumerate(ArgSpecs_list):
+            if addChannel:
+                row += 1
             var_name = ArgSpec.name.replace('_', ' ').title()
             label = QLabel(f'{var_name}:  ')
             groupBoxLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
@@ -8439,11 +8310,13 @@ class QDialogTrackerParams(QDialog):
                 try:
                     val = getattr(self.configPars, getter)(section, option)
                     break
-                except Exception:
+                except Exception as err:
                     pass
-            if val:
-                widget = argWidget.widget
+            widget = argWidget.widget
+            try:
                 argWidget.valueSetter(widget, val)
+            except TypeError:
+                argWidget.valueSetter(widget, int(val))
 
     def loadLastSelectionPostProcess(self):
         postProcessSection = f'{self.tracker_name}.postprocess'
@@ -8504,6 +8377,9 @@ class QDialogTrackerParams(QDialog):
         self.cancel = False
         self.init_kwargs = self.argsWidgets_to_kwargs(self.init_argsWidgets)
         self.track_kwargs = self.argsWidgets_to_kwargs(self.track_kwargs)
+        self.inputChannelName = 'None'
+        if self.channelCombobox is not None:
+            self.inputChannelName = self.channelCombobox.currentText()
         self._saveParams()
         self.close()
 
@@ -8800,7 +8676,7 @@ class QDialogModelParams(QDialog):
         if self.configPars is None:
             return
 
-        getters = ['getboolean', 'getfloat', 'getint', 'get']
+        getters = ['getboolean', 'getint', 'getfloat', 'get']
         try:
             options = self.configPars.options(section)
         except Exception:
@@ -8813,10 +8689,13 @@ class QDialogModelParams(QDialog):
                 try:
                     val = getattr(self.configPars, getter)(section, option)
                     break
-                except Exception:
+                except Exception as err:
                     pass
             widget = argWidget.widget
-            argWidget.valueSetter(widget, val)
+            try:
+                argWidget.valueSetter(widget, val)
+            except TypeError:
+                argWidget.valueSetter(widget, int(val))
 
     def loadLastSelectionPostProcess(self):
         postProcessSection = f'{self.model_name}.postprocess'
@@ -9906,7 +9785,7 @@ class CombineMetricsMultiDfsDialog(QBaseDialog):
         self.okButton.setDisabled(True)
         self.statusLabel.setText('')
 
-    @myutils.exception_handler
+    @exception_handler
     def test_cb(self):
         combined_df = self.getCombinedDf()
         new_df = pd.DataFrame(index=combined_df.index)

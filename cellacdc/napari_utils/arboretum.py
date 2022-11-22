@@ -2,7 +2,7 @@ import os
 from functools import partial
 from natsort import natsorted
 
-from .. import myutils, apps, load, printl, core
+from .. import myutils, apps, load, printl, core, widgets
 from ..utils import base
 
 from PyQt5.QtCore import QTimer, pyqtSignal
@@ -33,7 +33,7 @@ class NapariArboretumDialog(base.MainThreadSinglePosUtilBase):
             or file.endswith('.h5')
         ]
 
-        selectImageFile = apps.QDialogListbox(
+        selectImageFile = widgets.QDialogListbox(
             'Select image file',
             'Select which image file to load\n',
             image_files, multiSelection=False, parent=self
@@ -86,7 +86,7 @@ class NapariArboretumDialog(base.MainThreadSinglePosUtilBase):
         tracks_data, graph, properties = tree.to_arboretum()
 
         props = natsorted(acdc_df.columns.to_list())
-        selectProps = apps.QDialogListbox(
+        selectProps = widgets.QDialogListbox(
             'Select measurements',
             'Select measurements to add as <b>properties</b> in napari viewer<br><br>'
             '<code>Ctrl+Click</code> <i>to select multiple items</i><br>'

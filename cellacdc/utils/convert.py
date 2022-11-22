@@ -29,6 +29,7 @@ cellacdc_path = os.path.join(os.path.dirname(script_path))
 sys.path.append(cellacdc_path)
 
 # Custom modules
+from .. import exception_handler
 from .. import prompts, load, myutils, apps, load, widgets, html_utils
 from .. import workers
 
@@ -332,7 +333,7 @@ class convertFileFormatWin(QMainWindow):
         else:
             items = files
 
-        selectFilesWidget = apps.QDialogListbox(
+        selectFilesWidget = widgets.QDialogListbox(
             'Select files',
             f'Select the .{self.from_} files you want to convert to '
             f'.{self.to}\n\n'
@@ -486,7 +487,7 @@ class ImagesToPositions(QDialog):
         self.stopButton.hide()
         return super().showEvent(event)
 
-    @myutils.exception_handler    
+    @exception_handler    
     def start(self):
         self.startButton.hide()
         self.stopButton.show()
@@ -553,30 +554,30 @@ class ImagesToPositions(QDialog):
         if hasattr(self, 'worker'):
             self.worker.abort = True
     
-    @myutils.exception_handler
+    @exception_handler
     def workerInitProgressBar(self, maximum):
         self.progressBar.setValue(0)
         self.progressBar.setMaximum(maximum)
     
-    @myutils.exception_handler
+    @exception_handler
     def workerUpdateProgressBar(self):
         self.progressBar.update(1)
     
-    @myutils.exception_handler
+    @exception_handler
     def workerProgress(self, txt):
         self.logger.info(txt)
         self.logConsole.append(txt)
     
-    @myutils.exception_handler
+    @exception_handler
     def workerProgressBar(self, txt):
         self.logger.info(txt)
         self.logConsole.write(txt)
     
-    @myutils.exception_handler
+    @exception_handler
     def workerCritical(self, error):
         raise error
     
-    @myutils.exception_handler
+    @exception_handler
     def workerFinished(self):
         self.startButton.show()
         self.stopButton.hide()

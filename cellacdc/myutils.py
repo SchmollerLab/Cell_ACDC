@@ -35,64 +35,13 @@ from tifffile.tifffile import TiffWriter, TiffFile
 from PyQt5.QtWidgets import QMessageBox
 from PyQt5.QtCore import pyqtSignal, QObject, QCoreApplication
 
-from . import prompts, widgets, apps, core, load
+from . import apps
+from . import prompts, widgets, core, load
 from . import html_utils, is_linux, is_win, is_mac, issues_url
 from . import cellacdc_path, printl, temp_path
 from . import config
 
 models_list_file_path = os.path.join(temp_path, 'custom_models_paths.ini')
-
-def exception_handler(func):
-    @wraps(func)
-    def inner_function(self, *args, **kwargs):
-        try:
-            if func.__code__.co_argcount==1 and func.__defaults__ is None:
-                result = func(self)
-            elif func.__code__.co_argcount>1 and func.__defaults__ is None:
-                result = func(self, *args)
-            else:
-                result = func(self, *args, **kwargs)
-        except Exception as e:
-            try:
-                if self.progressWin is not None:
-                    self.progressWin.workerFinished = True
-                    self.progressWin.close()
-            except AttributeError:
-                pass
-            result = None
-            traceback_str = traceback.format_exc()
-            if hasattr(self, 'logger'):
-                self.logger.exception(traceback_str)
-            else:
-                printl(traceback_str)
-            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
-            if hasattr(self, 'logs_path'):
-                msg.addShowInFileManagerButton(
-                    self.logs_path, txt='Show log file...'
-                )
-            if not hasattr(self, 'log_path'):
-                log_path = 'NULL'
-            else:
-                log_path = self.log_path
-            msg.setDetailedText(traceback_str, visible=True)
-            href = f'<a href="{issues_url}">GitHub page</a>'
-            err_msg = html_utils.paragraph(f"""
-                Error in function <code>{func.__name__}</code>.<br><br>
-                More details below or in the terminal/console.<br><br>
-                Note that the <b>error details</b> from this session are
-                also <b>saved in the following log file</b>:
-                <br><br>
-                <code>{log_path}</code>
-                <br><br>
-                You can <b>report</b> this error by opening an issue
-                on our {href}.<br><br>
-                Please <b>send the log file</b> when reporting a bug, thanks!
-            """)
-
-            msg.critical(self, 'Critical error', err_msg)
-            self.is_error_state = True
-        return result
-    return inner_function
 
 def get_module_name(script_file_path):
     parts = pathlib.Path(script_file_path).parts
@@ -792,8 +741,10 @@ def getTrackerArgSpec(trackerModule, realTime=False):
     else:
         track_ArgSpec = inspect.getfullargspec(trackerModule.tracker.track)
     track_params = []
+    # Start at first kwarg
+    kwargs_start_idx = len(track_ArgSpec.args) - len(track_ArgSpec.defaults)
     if len(track_ArgSpec.args)>1:
-        iter = zip(track_ArgSpec.args[2:], track_ArgSpec.defaults)
+        iter = zip(track_ArgSpec.args[kwargs_start_idx:], track_ArgSpec.defaults)
         for arg, default in iter:
             if arg == 'signals':
                 continue
@@ -1291,11 +1242,16 @@ def get_list_of_real_time_trackers():
         if tracker == 'YeaZ':
             continue
         tracker_filename = f'{tracker}_tracker.py'
-        tracker_path = os.path.join(cellacdc_path, 'trackers', tracker, tracker_filename)
-        with open(tracker_path) as file:
-            txt = file.read()
-        if txt.find('def track_frame') != -1:
-            rt_trackers.append(tracker)
+        tracker_path = os.path.join(
+            cellacdc_path, 'trackers', tracker, tracker_filename
+        )
+        try:
+            with open(tracker_path) as file:
+                txt = file.read()
+            if txt.find('def track_frame') != -1:
+                rt_trackers.append(tracker)
+        except Exception as e:
+            continue
     return rt_trackers
 
 def get_list_of_trackers():
@@ -1303,7 +1259,12 @@ def get_list_of_trackers():
     trackers = []
     for name in listdir(trackers_path):
         _path = os.path.join(trackers_path, name)
-        if os.path.isdir(_path) and not name.endswith('__'):
+        tracker_script_path = os.path.join(_path, f'{name}_tracker.py')
+        is_valid_tracker = (
+            os.path.isdir(_path) and os.path.exists(tracker_script_path)
+            and not name.endswith('__')
+        )
+        if is_valid_tracker:
             trackers.append(name)
     return trackers
 
@@ -1350,7 +1311,7 @@ def uint_to_float(img):
         return img
 
     uint8_max = np.iinfo(np.uint8).max
-    uint16_max = np.iinfo(np.uint32).max
+    uint16_max = np.iinfo(np.uint16).max
     if img_max <= uint8_max:
         img = img/uint8_max
     elif img_max <= uint16_max:
@@ -1586,16 +1547,19 @@ def import_tracker(posData, trackerName, realTime=False, qparent=None):
             labShape = (1, Y, X)
         paramsWin = apps.BayesianTrackerParamsWin(labShape, parent=qparent)
         paramsWin.exec_()
-        init_params = paramsWin.params
-        track_params['export_to'] = posData.get_btrack_export_path()
+        if not paramsWin.cancel:
+            init_params = paramsWin.params
+            track_params['export_to'] = posData.get_btrack_export_path()
     elif trackerName == 'CellACDC':
         paramsWin = apps.CellACDCTrackerParamsWin(parent=qparent)
         paramsWin.exec_()
-        init_params = paramsWin.params
+        if not paramsWin.cancel:
+            init_params = paramsWin.params
     elif trackerName == 'delta':
         paramsWin = apps.DeltaTrackerParamsWin(posData=posData, parent=qparent)
         paramsWin.exec_()
-        init_params = paramsWin.params
+        if not paramsWin.cancel:
+            init_params = paramsWin.params
     else:
         init_argspecs, track_argspecs = getTrackerArgSpec(
             trackerModule, realTime=realTime
@@ -1606,12 +1570,17 @@ def import_tracker(posData, trackerName, realTime=False, qparent=None):
             except AttributeError:
                 url = None
             paramsWin = apps.QDialogTrackerParams(
-                init_argspecs, track_argspecs, trackerName, url=url
+                init_argspecs, track_argspecs, trackerName, url=url,
+                channels=posData.chNames, 
+                currentChannelName=posData.user_ch_name
             )
             paramsWin.exec_()
             if not paramsWin.cancel:
                 init_params = paramsWin.init_kwargs
                 track_params = paramsWin.track_kwargs
+                if paramsWin.inputChannelName != 'None':
+                    chName = paramsWin.inputChannelName
+                    track_params['image'] = posData.loadChannelData(chName)
         if 'export_to_extension' in track_params:
             ext = track_params['export_to_extension']
             track_params['export_to'] = posData.get_tracker_export_path(

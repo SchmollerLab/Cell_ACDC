@@ -503,6 +503,17 @@ class loadData:
             except Exception as e:
                 traceback.print_exc()
                 self.criticalExtNotValid(signals=signals)
+    
+    def loadChannelData(self, channelName):
+        if channelName == self.user_ch_name:
+            return self.img_data
+            
+        dataPath = get_filename_from_channel(self.images_path, channelName)
+        if dataPath:
+            data = load_image_file(dataPath)
+            return data
+        else:
+            return
 
     def _loadVideo(self, path):
         video = cv2.VideoCapture(path)

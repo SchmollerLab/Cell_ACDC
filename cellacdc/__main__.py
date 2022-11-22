@@ -3,6 +3,7 @@ import os
 import logging
 
 from cellacdc import dataReStruct
+from . import exception_handler
 from . import qrc_resources
 if os.name == 'nt':
     try:
@@ -829,7 +830,7 @@ class mainWin(QMainWindow):
             'Only track the objects and keep all the non-tracked objects'
         )
 
-        selectOptionWindow = apps.QDialogListbox(
+        selectOptionWindow = widgets.QDialogListbox(
             'Select tracking mode',
             'Select <b>behaviour with untracked objects</b>:<br><br>'
             'NOTE: this utility <b>always create new files</b>.'
@@ -1081,7 +1082,7 @@ class mainWin(QMainWindow):
         
         self.restoreDefaultButtons()
     
-    @myutils.exception_handler
+    @exception_handler
     def workerCritical(self, error):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True

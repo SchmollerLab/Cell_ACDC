@@ -27,7 +27,7 @@ from PyQt5.QtCore import (
 from PyQt5.QtGui import (
     QFont, QPalette, QColor, QPen, QPaintEvent, QBrush, QPainter,
     QRegExpValidator, QIcon, QPixmap, QKeySequence, QLinearGradient,
-    QShowEvent, QMouseEvent, QFontMetrics
+    QShowEvent, QMouseEvent, QFontMetrics, QGuiApplication
 )
 from PyQt5.QtWidgets import (
     QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
@@ -43,9 +43,12 @@ from PyQt5.QtWidgets import (
 
 import pyqtgraph as pg
 
-from . import myutils, apps, measurements, is_mac, is_win, html_utils
+from . import myutils, measurements, is_mac, is_win, html_utils
 from . import qrc_resources, printl
 from . import colors
+
+font = QFont()
+font.setPixelSize(13)
 
 def removeHSVcmaps():
     hsv_cmaps = []
@@ -374,6 +377,7 @@ def getPushButton(buttonText, qparent=None):
     isNoButton = (
         buttonText.replace(' ', '').lower() == 'no'
         or buttonText.lower().find('Do not ') != -1
+        or buttonText.lower().find('no, ') != -1
     )
     isDelButton = buttonText.lower().find('delete') != -1
     isAddButton = buttonText.lower().find('add ') != -1
@@ -733,6 +737,187 @@ class ReorderableListView(QListView):
         super().mouseReleaseEvent(e)
         self._selectionModel.reset()
 
+class QDialogListbox(QDialog):
+    sigSelectionConfirmed = pyqtSignal(list)
+
+    def __init__(
+            self, title, text, items, cancelText='Cancel',
+            multiSelection=True, parent=None,
+            additionalButtons=(), includeSelectionHelp=False,
+            allowSingleSelection=True
+        ):
+        self.cancel = True
+        super().__init__(parent)
+        self.setWindowTitle(title)
+
+        self.allowSingleSelection = allowSingleSelection
+
+        mainLayout = QVBoxLayout()
+        topLayout = QVBoxLayout()
+        bottomLayout = QHBoxLayout()
+
+        self.mainLayout = mainLayout
+
+        label = QLabel(text)
+        _font = QFont()
+        _font.setPixelSize(13)
+        label.setFont(_font)
+        # padding: top, left, bottom, right
+        label.setStyleSheet("padding:0px 0px 3px 0px;")
+        topLayout.addWidget(label, alignment=Qt.AlignCenter)
+
+        if includeSelectionHelp:
+            selectionHelpLabel = QLabel()
+            txt = html_utils.paragraph("""<br>
+                <code>Ctrl+Click</code> <i>to select multiple items</i><br>
+                <code>Shift+Click</code> <i>to select a range of items</i><br>
+            """)
+            selectionHelpLabel.setText(txt)
+            topLayout.addWidget(label, alignment=Qt.AlignCenter)
+
+        listBox = listWidget()
+        listBox.setFont(_font)
+        listBox.addItems(items)
+        if multiSelection:
+            listBox.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        else:
+            listBox.setSelectionMode(QAbstractItemView.SingleSelection)
+        listBox.setCurrentRow(0)
+        self.listBox = listBox
+        if not multiSelection:
+            listBox.itemDoubleClicked.connect(self.ok_cb)
+        topLayout.addWidget(listBox)
+
+        if cancelText.lower().find('cancel') != -1:
+            cancelButton = cancelPushButton(cancelText)
+        else:
+            cancelButton = QPushButton(cancelText)
+        okButton = okPushButton(' Ok ')
+
+        bottomLayout.addStretch(1)
+        bottomLayout.addWidget(cancelButton)
+        bottomLayout.addSpacing(20)
+
+        if additionalButtons:
+            self._additionalButtons = []
+            for button in additionalButtons:
+                _button, isCancelButton = getPushButton(button)
+                self._additionalButtons.append(_button)
+                bottomLayout.addWidget(_button)
+                _button.clicked.connect(self.ok_cb)
+
+        bottomLayout.addWidget(okButton)
+        bottomLayout.setContentsMargins(0, 10, 0, 0)
+
+        mainLayout.addLayout(topLayout)
+        mainLayout.addLayout(bottomLayout)
+        self.setLayout(mainLayout)
+
+        # Connect events
+        okButton.clicked.connect(self.ok_cb)
+        cancelButton.clicked.connect(self.cancel_cb)
+
+        if multiSelection:
+            listBox.itemClicked.connect(self.onItemClicked)
+            listBox.itemSelectionChanged.connect(self.onItemSelectionChanged)
+
+        self.setStyleSheet("""
+            QListWidget::item:hover {background-color:#E6E6E6;}
+            QListWidget::item:selected {background-color:#CFEB9B;}
+            QListWidget::item:selected {color:black;}
+            QListView {
+                selection-background-color: #CFEB9B;
+                selection-color: white;
+                show-decoration-selected: 1;
+            }
+        """)
+        self.areItemsSelected = [
+            listBox.item(i).isSelected() for i in range(listBox.count())
+        ]
+    
+    def keyPressEvent(self, event) -> None:
+        mod = event.modifiers()
+        if mod == Qt.ShiftModifier or mod == Qt.ControlModifier:
+            self.listBox.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        elif event.key() == Qt.Key_Escape:
+            self.listBox.clearSelection()
+            event.ignore()
+            return
+        super().keyPressEvent(event)
+    
+    def onItemSelectionChanged(self):
+        if not self.listBox.selectedItems():
+            self.areItemsSelected = [
+                False for i in range(self.listBox.count())
+            ]
+    
+    def onItemClicked(self, item):
+        mod = QGuiApplication.keyboardModifiers()
+        if mod == Qt.ShiftModifier or mod == Qt.ControlModifier:
+            self.listBox.setSelectionMode(QAbstractItemView.ExtendedSelection)
+            return
+        
+        self.listBox.setSelectionMode(QAbstractItemView.MultiSelection)
+        itemIdx = self.listBox.row(item)
+        wasSelected = self.areItemsSelected[itemIdx]
+        if wasSelected:
+            item.setSelected(False)
+        
+        self.areItemsSelected = [
+            self.listBox.item(i).isSelected() 
+            for i in range(self.listBox.count())
+        ]
+        # self.listBox.setSelectionMode(QAbstractItemView.ExtendedSelection)
+        # else:
+        #     selectedItems.append(item)
+        
+        # self.listBox.clearSelection()
+        # for i in range(self.listBox.count()):
+        #     item = self.listBox.item(i).setSelected(True)
+        
+        # print(self.listBox.selectedItems())
+
+    def ok_cb(self, event):
+        self.clickedButton = self.sender()
+        self.cancel = False
+        selectedItems = self.listBox.selectedItems()
+        self.selectedItemsText = [item.text() for item in selectedItems]
+        if not self.allowSingleSelection and len(self.selectedItemsText) < 2:
+            msg = myMessageBox(wrapText=False, showCentered=False)
+            txt = html_utils.paragraph(
+                'You need to <b>select two or more items</b>.<br><br>'
+                'Use <code>Ctrl+Click</code> to select multiple items<br>, or<br>'
+                '<code>Shift+Click</code> to select a range of items'
+            )
+            msg.warning(self, 'Select two or more items', txt)
+            return
+        self.sigSelectionConfirmed.emit(self.selectedItemsText)
+        self.close()
+
+    def cancel_cb(self, event):
+        self.cancel = True
+        self.selectedItemsText = None
+        self.close()
+
+    def exec_(self):
+        self.show(block=True)
+
+    def show(self, block=False):
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        super().show()
+
+        horizontal_sb = self.listBox.horizontalScrollBar()
+        while horizontal_sb.isVisible():
+            self.resize(self.height(), self.width() + 10)
+
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()
+
 
 class ExpandableListBox(QComboBox):
     def __init__(self, parent=None, centered=True) -> None:
@@ -748,7 +933,7 @@ class ExpandableListBox(QComboBox):
             center=True
         )
 
-        self.listW = apps.QDialogListbox(
+        self.listW = QDialogListbox(
             'Select Positions to save', infoTxt,
             [], multiSelection=True, parent=self
         )
@@ -866,7 +1051,6 @@ class QClickableLabel(QLabel):
     def setChecked(self, checked):
         self._checkableItem.setChecked(checked)
 
-
 class QCenteredComboBox(QComboBox):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -874,12 +1058,26 @@ class QCenteredComboBox(QComboBox):
         self.setEditable(True)
         self.lineEdit().setReadOnly(True)
         self.lineEdit().setAlignment(Qt.AlignCenter)
+        self.lineEdit().installEventFilter(self)
 
         self.currentIndexChanged.connect(self.centerItems)
+
+        self._isPopupVisibile = False
     
     def centerItems(self, idx):
         for i in range(self.count()):
             self.setItemData(i, Qt.AlignCenter, Qt.TextAlignmentRole)
+    
+    def eventFilter(self, lineEdit, event):
+        # Reimplement show popup on click
+        if event.type() == QEvent.MouseButtonPress:
+            if self._isPopupVisibile:
+                self.hidePopup()
+                self._isPopupVisibile = False
+            else:
+                self.showPopup()
+                self._isPopupVisibile = True
+        return False
 
 class statusBarPermanentLabel(QWidget):
     def __init__(self, parent=None):
@@ -908,7 +1106,7 @@ class listWidget(QListWidget):
                 show-decoration-selected: 1;
             }
         """)
-        self.setFont(apps.font)
+        self.setFont(font)
 
 class OrderableList(listWidget):
     def __init__(self, *args, **kwargs) -> None:
@@ -1002,7 +1200,7 @@ class TreeWidget(QTreeWidget):
                 show-decoration-selected: 1;
             }
         """)
-        self.setFont(apps.font)
+        self.setFont(font)
         if multiSelection:
             self.setSelectionMode(QAbstractItemView.ExtendedSelection)
             self.itemClicked.connect(self.selectAllChildren)
@@ -3726,66 +3924,3 @@ class labImageItem(pg.ImageItem):
             pg.ImageItem.setImage(self, img[z], autolevels=autolevels, **kargs)
         else:
             pg.ImageItem.setImage(self, img, autolevels=autolevels, **kargs)
-
-if __name__ == '__main__':
-    class Window(QMainWindow):
-        def __init__(self):
-            super().__init__()
-
-            container = QWidget()
-            layout = QVBoxLayout()
-
-            # slider = sliderWithSpinBox(isFloat=True)
-            # slider.setMaximum(10)
-            # slider.setValue(3.2)
-            # slider.setSingleStep(0.1)
-            # slider.valueChanged.connect(self.sliderValueChanged)
-            # slider.slider.sliderReleased.connect(self.sliderReleased)
-            # layout.addWidget(slider)
-            # self.slider = slider
-
-            okButton = QPushButton('ok')
-            layout.addWidget(okButton)
-            okButton.clicked.connect(self.okClicked)
-
-            # layout.addStretch(1)
-            container.setLayout(layout)
-            self.setCentralWidget(container)
-
-            self.setFocus()
-
-        def okClicked(self, checked):
-            editID = apps.editID_QWidget(19, [19, 100, 50])
-            editID.exec_()
-            print('closed')
-
-        def sliderValueChanged(self, value):
-            print(value)
-
-        def sliderReleased(self, value):
-            print('released')
-
-        def keyPressEvent(self, event):
-            if event.key() == Qt.Key_T:
-                screens = app.screens()
-                current_screen = self.screen()
-                num_screens = len(screens)
-                if num_screens > 1:
-                    other_screen = None
-                    for screen in screens:
-                        if screen != current_screen:
-                            other_screen = screen
-                            break
-                    print(f'Current screen geometry = {current_screen.geometry()}')
-                    print(f'Other screen geometry = {other_screen.geometry()}')
-            elif event.key() == Qt.Key_P:
-                print(self.slider.value())
-
-
-
-    app = QApplication(sys.argv)
-    app.setStyle(QStyleFactory.create('Fusion'))
-
-    w = Window()
-    w.show()
-    app.exec_()

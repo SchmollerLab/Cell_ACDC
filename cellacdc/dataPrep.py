@@ -37,6 +37,7 @@ import pyqtgraph as pg
 from . import qrc_resources
 
 # Custom modules
+from . import exception_handler
 from . import load, prompts, apps, core, myutils, widgets
 from . import html_utils, myutils, darkBkgrColor, printl
 
@@ -131,7 +132,7 @@ class dataPrepWin(QMainWindow):
 
         mainContainer.setLayout(mainLayout)
 
-    @myutils.exception_handler
+    @exception_handler
     def keyPressEvent(self, event):
         if self.debug:
             if event.key() == Qt.Key_P:
@@ -539,7 +540,7 @@ class dataPrepWin(QMainWindow):
                 img = np.median(img, axis=0)
         return img
 
-    @myutils.exception_handler
+    @exception_handler
     def update_img(self):
         self.updateNavigateItems()
         posData = self.data[self.pos_i]
@@ -636,7 +637,7 @@ class dataPrepWin(QMainWindow):
         self.updateROI()
         self.updateBkgrROIs()
 
-    @myutils.exception_handler
+    @exception_handler
     def crop(self, data, posData):
         x0, y0 = [int(round(c)) for c in posData.cropROI.pos()]
         w, h = [int(round(c)) for c in posData.cropROI.size()]
@@ -1415,7 +1416,7 @@ class dataPrepWin(QMainWindow):
             df.at[(posData.filename, i), 'which_z_proj'] = 'single z-slice'
         posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
 
-    @myutils.exception_handler
+    @exception_handler
     def prepData(self, event):
         self.titleLabel.setText(
             'Prepping data... (check progress in the terminal)',

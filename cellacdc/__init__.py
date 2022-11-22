@@ -1,8 +1,12 @@
 import sys
 import os
 import inspect
+import traceback
 from datetime import datetime
 from pprint import pprint
+
+from functools import wraps
+from . import html_utils
 
 def printl(*objects, pretty=False, is_decorator=False, **kwargs):
     # Copy current stdout, reset to default __stdout__ and then restore current
@@ -87,3 +91,56 @@ yeastmate_weights_filenames = [
 
 graphLayoutBkgrColor = (235, 235, 235)
 darkBkgrColor = [255-v for v in graphLayoutBkgrColor]
+
+def exception_handler(func):
+    @wraps(func)
+    def inner_function(self, *args, **kwargs):
+        try:
+            if func.__code__.co_argcount==1 and func.__defaults__ is None:
+                result = func(self)
+            elif func.__code__.co_argcount>1 and func.__defaults__ is None:
+                result = func(self, *args)
+            else:
+                result = func(self, *args, **kwargs)
+        except Exception as e:
+            try:
+                if self.progressWin is not None:
+                    self.progressWin.workerFinished = True
+                    self.progressWin.close()
+            except AttributeError:
+                pass
+            from . import widgets
+            result = None
+            traceback_str = traceback.format_exc()
+            if hasattr(self, 'logger'):
+                self.logger.exception(traceback_str)
+            else:
+                printl(traceback_str)
+            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+            if hasattr(self, 'logs_path'):
+                msg.addShowInFileManagerButton(
+                    self.logs_path, txt='Show log file...'
+                )
+            if not hasattr(self, 'log_path'):
+                log_path = 'NULL'
+            else:
+                log_path = self.log_path
+            msg.setDetailedText(traceback_str, visible=True)
+            href = f'<a href="{issues_url}">GitHub page</a>'
+            err_msg = html_utils.paragraph(f"""
+                Error in function <code>{func.__name__}</code>.<br><br>
+                More details below or in the terminal/console.<br><br>
+                Note that the <b>error details</b> from this session are
+                also <b>saved in the following log file</b>:
+                <br><br>
+                <code>{log_path}</code>
+                <br><br>
+                You can <b>report</b> this error by opening an issue
+                on our {href}.<br><br>
+                Please <b>send the log file</b> when reporting a bug, thanks!
+            """)
+
+            msg.critical(self, 'Critical error', err_msg)
+            self.is_error_state = True
+        return result
+    return inner_function

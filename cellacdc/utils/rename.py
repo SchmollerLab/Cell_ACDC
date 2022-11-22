@@ -252,7 +252,7 @@ class renameFilesWin(QMainWindow):
         else:
             items = files
 
-        selectFilesWidget = apps.QDialogListbox(
+        selectFilesWidget = widgets.QDialogListbox(
             'Select files',
             'Select the files you want to rename',
             items, multiSelection=True, parent=self
