@@ -3246,6 +3246,13 @@ class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
         self.parentIDcombobox = widgets.QCenteredComboBox()
         self.parentIDcombobox.addItems(items)
         formLayout.addRow('Parent ID (optional): ', self.parentIDcombobox)
+
+        deleteUntrackedLayout = QHBoxLayout()
+        self.deleteUntrackedIDsToggle = widgets.Toggle()
+        deleteUntrackedLayout.addStretch(1)
+        deleteUntrackedLayout.addWidget(self.deleteUntrackedIDsToggle)
+        deleteUntrackedLayout.addStretch(1)
+        formLayout.addRow('Delete untracked IDs: ', deleteUntrackedLayout)
         
         buttonsLayout = widgets.CancelOkButtonsLayout()
 
@@ -3267,6 +3274,7 @@ class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
         self.maskIDsCol = self.maskIDsCombobox.currentText()
         self.xCentroidCol = self.xCentroidCombobox.currentText()
         self.yCentroidCol = self.yCentroidCombobox.currentText()
+        self.deleteUntrackedIDs = self.deleteUntrackedIDsToggle.isChecked()
         if self.maskIDsCol == 'None':
             if self.xCentroidCol == 'None' or self.yCentroidCol == 'None':
                 self.warnInvalidSelection()
@@ -4630,8 +4638,8 @@ class ComputeMetricsErrorsDialog(QBaseDialog):
             """)
         elif log_type == 'standard_metrics':
             infoText = ("""
-                <b>Standard metrics</b> were <b>NOT saved</b> because Cell-ACDC 
-                encoutered the following errors.<br><br>
+                Some or all of the <b>standard metrics</b> were <b>NOT saved</b> 
+                because Cell-ACDC encoutered the following errors.<br><br>
             """)
         elif log_type == 'region_props':
             rp_url = 'https://scikit-image.org/docs/0.18.x/api/skimage.measure.html#skimage.measure.regionprops'
