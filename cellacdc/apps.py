@@ -3197,8 +3197,8 @@ class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
         self.mainLayout = QVBoxLayout()
 
         options = (
-            '"Frame index (starting from 0)", "Tracked IDs" and "Segmentation mask IDs"<br>',
-            '"Frame index (starting from 0)", "Tracked IDs", "X coord. centroid", and "Y coord. centroid"'
+            '"Frame index", "Tracked IDs" and "Segmentation mask IDs"<br>',
+            '"Frame index", "Tracked IDs", "X coord. centroid", and "Y coord. centroid"'
         )
         self.instructionsText = html_utils.paragraph(
             f"""
@@ -3215,8 +3215,14 @@ class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
 
         self.frameIndexCombobox = widgets.QCenteredComboBox()
         self.frameIndexCombobox.addItems(df.columns)
+        self.frameIndexCheckbox = QCheckBox('1st frame is index 1')
+        frameIndexLayout = QHBoxLayout()
+        frameIndexLayout.addWidget(self.frameIndexCombobox)
+        frameIndexLayout.addWidget(self.frameIndexCheckbox)
+        frameIndexLayout.setStretch(0, 2)
+        frameIndexLayout.setStretch(1, 0)
         formLayout.addRow(
-            'Frame index (starting from 0): ', self.frameIndexCombobox
+            'Frame index: ', frameIndexLayout
         )
 
         self.trackedIDsCombobox = widgets.QCenteredComboBox()
@@ -3269,6 +3275,7 @@ class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
             self.xCentroidCol = 'None'
             self.yCentroidCol = 'None'
         self.parentIDcol = self.parentIDcombobox.currentText()
+        self.isFirstFrameOne = self.frameIndexCheckbox.isChecked()
         self.close()
     
     def warnInvalidSelection(self):
@@ -8479,7 +8486,7 @@ class QDialogModelParams(QDialog):
         if self.configPars is None:
             return
 
-        getters = ['getboolean', 'getfloat', 'getint', 'get']
+        getters = ['getboolean', 'getint', 'getfloat', 'get']
         try:
             options = self.configPars.options(section)
         except Exception:
@@ -8492,10 +8499,13 @@ class QDialogModelParams(QDialog):
                 try:
                     val = getattr(self.configPars, getter)(section, option)
                     break
-                except Exception:
+                except Exception as err:
                     pass
             widget = argWidget.widget
-            argWidget.valueSetter(widget, val)
+            try:
+                argWidget.valueSetter(widget, val)
+            except TypeError:
+                argWidget.valueSetter(widget, int(val))
 
     def loadLastSelectionPostProcess(self):
         postProcessSection = f'{self.model_name}.postprocess'
