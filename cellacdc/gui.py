@@ -776,7 +776,6 @@ class saveDataWorker(QObject):
                                 if calc_conc_fl:
                                     conc_fl = val/obj.vol_fl
                                     metrics_values[conc_key_fl][i] = conc_fl
-                                    printl(conc_key_fl, key)
                         elif is_ROIbkgr_func:
                             if ROI_bkgrMask is not None:
                                 ROI_bkgrData = fluo_img[ROI_bkgrMask_k]
