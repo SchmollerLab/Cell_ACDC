@@ -654,6 +654,9 @@ class saveDataWorker(QObject):
                     z_slice = int(math.floor(obj.centroid[0]))
                     local_z = z_slice - min_z
                     obj2DzImage = obj.image[local_z]
+                    if not np.any(obj2DzImage):
+                        # If center z-slice is empty use the projection
+                        obj2DzImage = obj2Dproj
                 else:
                     obj2Dslice = obj.slice
                     obj2Dproj = obj.image
@@ -748,7 +751,13 @@ class saveDataWorker(QObject):
                         )
                         if func_name == 'amount_autoBkgr':
                             if not key in metricsToSkipChannel:
-                                val = func(fluo_data_ID, fluo_backgr, obj.area)
+                                try:
+                                    val = func(fluo_data_ID, fluo_backgr, obj.area)
+                                except Exception as error:
+                                    val = np.nan
+                                    self.addMetricsCritical.emit(
+                                        traceback.format_exc(), str(error)
+                                    )
                                 metrics_values[key][i] = val
                                 conc_key_vox, conc_key_fl = conc_keys
                                 calc_conc_vox = (
@@ -776,7 +785,13 @@ class saveDataWorker(QObject):
                                 ROI_bkgrVal = bkgrData_medians[k]
 
                             if not key in metricsToSkipChannel:
-                                val = func(fluo_data_ID, ROI_bkgrVal, obj.area)
+                                try:
+                                    val = func(fluo_data_ID, ROI_bkgrVal, obj.area)
+                                except Exception as error:
+                                    val = np.nan
+                                    self.addMetricsCritical.emit(
+                                        traceback.format_exc(), str(error)
+                                    )
                                 metrics_values[key][i] = val
                                 conc_key_vox, conc_key_fl = conc_keys
                                 calc_conc = (
@@ -840,7 +855,13 @@ class saveDataWorker(QObject):
 
                         elif func_name.find('amount') == -1:
                             if not key in metricsToSkipChannel:
-                                val = func(fluo_data_ID)
+                                try:
+                                    val = func(fluo_data_ID)
+                                except Exception as error:
+                                    val = np.nan
+                                    self.addMetricsCritical.emit(
+                                        traceback.format_exc(), str(error)
+                                    )
                                 metrics_values[key][i] = val
 
                         # pbar.update()
@@ -12416,7 +12437,7 @@ class guiWin(QMainWindow):
 
         self.disableNonFunctionalButtons()
 
-        if len(self.data) == 1 and posData.SizeZ == 1 and posData.SizeT == 1:
+        if len(self.data) == 1 and posData.SizeZ > 1 and posData.SizeT == 1:
             self.zSliceCheckbox.setChecked(True)
 
         self.labelRoiCircItemLeft.setImageShape(self.currentLab2D.shape)

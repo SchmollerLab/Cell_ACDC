@@ -2,6 +2,7 @@ import sys
 import re
 import os
 import time
+import json
 
 from pprint import pprint
 from functools import wraps, partial
@@ -1603,19 +1604,12 @@ class ApplyTrackInfoWorker(BaseWorkerUtil):
             pbarMax = len(df[frameIndexCol].unique())
             self.signals.initProgressBar.emit(pbarMax)
 
-        self.logger.log('Applying tracking info...')  
-
-        trackedData, trackedIDsMapper = core.apply_tracking_from_table(
+        # Apply tracking info
+        result = core.apply_tracking_from_table(
             segmData, self.trackColsInfo, df, signal=self.signals.progressBar,
             logger=self.logger.log, pbarMax=pbarMax
         )
-        
-        self.logger.log('='*40)
-        s = '\n'.join([f'   {id} --> {ID}' for id, ID in trackedIDsMapper.items()])
-        self.logger.log(
-            f'Applied following ID replacements:\n{s}'
-        )
-        self.logger.log('='*40)
+        trackedData, trackedIDsMapper, deleteIDsMapper = result
 
         if self.trackedSegmFilename:
             trackedSegmFilepath = os.path.join(
@@ -1627,9 +1621,25 @@ class ApplyTrackInfoWorker(BaseWorkerUtil):
         self.logger.log('Saving tracked segmentation file...') 
         np.savez_compressed(trackedSegmFilepath, trackedData)
 
+        
+        mapperPath = os.path.splitext(trackedSegmFilepath)[0]
+        mapperJsonPath = f'{mapperPath}_deletedIDs_mapper.json'
+        mapperJsonName = os.path.basename(mapperJsonPath)
+        self.logger.log(f'Saving deleted IDs to {mapperJsonName}...')
+        with open(mapperJsonPath, 'w') as file:
+            file.write(json.dumps(deleteIDsMapper))
+
+        mapperPath = os.path.splitext(trackedSegmFilepath)[0]
+        mapperJsonPath = f'{mapperPath}_replacedIDs_mapper.json'
+        mapperJsonName = os.path.basename(mapperJsonPath)
+        self.logger.log(f'Saving IDs replacements to {mapperJsonName}...')
+        with open(mapperJsonPath, 'w') as file:
+            file.write(json.dumps(trackedIDsMapper))
+
         self.logger.log('Generating acdc_output table...')
         acdc_df = None
         if not self.trackedSegmFilename:
+            # Fix existing acdc_df
             acdcEndname = self.endFilenameSegm.replace('_segm', '_acdc_output')
             acdcFilename = [
                 f for f in myutils.listdir(imagesPath) 
@@ -1642,12 +1652,9 @@ class ApplyTrackInfoWorker(BaseWorkerUtil):
                 )
         
         if acdc_df is not None:
-            # Substitute mask IDs with tracked IDs
-            acdc_df = acdc_df.rename(index=trackedIDsMapper, level=1)
-            if 'relative_ID' in acdc_df.columns:
-                relIDs = acdc_df['relative_ID']
-                acdc_df['relative_ID'] = relIDs.replace(trackedIDsMapper)
-            
+            acdc_df = core.apply_trackedIDs_mapper_to_acdc_df(
+                trackedIDsMapper, deleteIDsMapper, acdc_df
+            )
         else:
             acdc_dfs = []
             keys = []

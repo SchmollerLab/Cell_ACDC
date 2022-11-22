@@ -560,13 +560,15 @@ def apply_tracking_from_table(
     maskIDsCol = trackColsInfo['maskIDsCol']
     xCentroidCol = trackColsInfo['xCentroidCol']
     yCentroidCol = trackColsInfo['yCentroidCol']
+    deleteUntrackedIDs = trackColsInfo['deleteUntrackedIDs']
     trackedIDsMapper = {}
+    deleteIDsMapper = {}
 
-    for frame_i, df_frame in grouped:
+    for frame_i, df_frame in iterable:
         if frame_i == len(segmData):
             print('')
             logger(
-                'WARNING: segmentation data has less frames than the '
+                '[WARNING]: segmentation data has less frames than the '
                 f'frames in the "{frameIndexCol}" column.'
             )
             if signal is not None and pbarMax is not None:
@@ -575,7 +577,35 @@ def apply_tracking_from_table(
 
         lab = segmData[frame_i]
 
-        # Iterate IDs of current frame_i
+        maxTrackID = df_frame[trackIDsCol].max()
+        trackIDs = df_frame[trackIDsCol].values
+
+        # print('')
+        # print('='*40)
+        # print(f'Unique IDs = {np.unique(lab)}')
+        # if xCentroidCol == 'None':
+        #     print(f'Mask IDs = {df_frame[maskIDsCol].values}')
+        # print(f'Frame_i = {frame_i}')
+
+        deleteIDs = []
+        if deleteUntrackedIDs:
+            if xCentroidCol == 'None':
+                maskIDsTracked = df_frame[maskIDsCol].dropna().astype(int).values
+            else:
+                xx = df_frame[xCentroidCol].dropna().astype(int).values
+                yy = df_frame[yCentroidCol].dropna().astype(int).values
+                maskIDsTracked = lab[yy, xx]
+            for obj in skimage.measure.regionprops(lab):
+                if obj.label in maskIDsTracked:
+                    continue
+                lab[obj.slice][obj.image] = 0
+                deleteIDs.append(obj.label)
+
+        if deleteIDs:
+            deleteIDsMapper[str(frame_i)] = deleteIDs
+
+        firstPassMapper_i = {}
+        # First iterate IDs and make sure there are no overlapping IDs
         for row in df_frame.itertuples():
             trackedID = getattr(row, trackIDsCol)
             if xCentroidCol == 'None':
@@ -584,23 +614,109 @@ def apply_tracking_from_table(
                 xc = getattr(row, xCentroidCol)
                 yc = getattr(row, yCentroidCol)
                 maskID = lab[int(yc), int(xc)]
-            if maskID <= 0:
+            
+            if not maskID > 0:
                 continue
             
             if maskID == trackedID:
                 continue
 
-            if trackedID in lab and trackedID != 0:
-                # Assign unique ID to existing tracked ID
-                uniqueID = lab.max() + 1
-                lab[lab==trackedID] = lab.max() + 1
-                trackedIDsMapper[trackedID] = uniqueID
+            if trackedID == 0:
+                continue
+
+            if trackedID not in lab:
+                continue
+
+            # Assign unique ID to existing tracked ID
+            uniqueID = lab.max() + 1
+            if uniqueID in trackIDs:
+                uniqueID = maxTrackID + 1
+                maxTrackID += 1
+            
+            lab[lab==trackedID] = uniqueID
+            firstPassMapper_i[int(trackedID)] = int(uniqueID)
+            if xCentroidCol == 'None':
+                mask = df_frame[maskIDsCol]==trackedID
+                df_frame.loc[mask, maskIDsCol] = int(uniqueID)
+            
+            # print(f'First = {int(trackedID)} --> {int(uniqueID)}')
+
+        if firstPassMapper_i:
+            trackedIDsMapper[str(frame_i)] = {'first_pass': firstPassMapper_i}
+
+        secondPassMapper_i = {}
+        for row in df_frame.itertuples():
+            trackedID = getattr(row, trackIDsCol)
+            if xCentroidCol == 'None':
+                maskID = getattr(row, maskIDsCol)
+            else:
+                xc = getattr(row, xCentroidCol)
+                yc = getattr(row, yCentroidCol)
+                maskID = lab[int(yc), int(xc)]
+            
+            if not maskID > 0:
+                continue
+            
+            if maskID == trackedID:
+                continue
+
             lab[lab==maskID] = trackedID
-            trackedIDsMapper[maskID] = trackedID
+            secondPassMapper_i[int(maskID)] = int(trackedID)   
+
+            # print(f'Second = {int(maskID)} --> {int(trackedID)}')    
+        
+        if secondPassMapper_i:
+            if firstPassMapper_i:
+                trackedIDsMapper[str(frame_i)]['second_pass'] = secondPassMapper_i
+            else:
+                trackedIDsMapper[str(frame_i)] = {'second_pass': secondPassMapper_i}
+
         if signal is not None:
             signal.emit(1)
+
+        # print('*'*40)
+        # import pdb; pdb.set_trace()
+  
+    return segmData, trackedIDsMapper, deleteIDsMapper
+
+def apply_trackedIDs_mapper_to_acdc_df(
+        tracked_IDs_mapper, deleted_IDs_mapper, acdc_df
+    ):
+    acdc_dfs_renamed = []
+    for frame_i, acdc_df_i in acdc_df.groupby(level=0):
+        df_renamed = acdc_df_i
+
+        deletedIDs = deleted_IDs_mapper.get(str(frame_i))
+        if deletedIDs is not None:
+            df_renamed = df_renamed.drop(index=deletedIDs, level=1)
+
+        mapper_i = tracked_IDs_mapper.get(str(frame_i))
+        if mapper_i is None:
+            acdc_dfs_renamed.append(df_renamed)
+            continue
         
-    return segmData, trackedIDsMapper
+        first_pass = mapper_i.get('first_pass')
+        if first_pass is not None:
+            first_pass = {int(k):int(v) for k,v in first_pass.items()}
+            # Substitute mask IDs with tracked IDs
+            df_renamed = df_renamed.rename(index=first_pass, level=1)
+            if 'relative_ID' in df_renamed.columns:
+                relIDs = df_renamed['relative_ID']
+                df_renamed['relative_ID'] = relIDs.replace(tracked_IDs_mapper)
+            
+        second_pass = mapper_i.get('second_pass')
+        if second_pass is not None:
+            second_pass = {int(k):int(v) for k,v in second_pass.items()}
+            # Substitute mask IDs with tracked IDs
+            df_renamed = df_renamed.rename(index=second_pass, level=1)
+            if 'relative_ID' in df_renamed.columns:
+                relIDs = df_renamed['relative_ID']
+                df_renamed['relative_ID'] = relIDs.replace(tracked_IDs_mapper)
+        
+        acdc_dfs_renamed.append(df_renamed)
+    
+    acdc_df = pd.concat(acdc_dfs_renamed).sort_index()
+    return acdc_df
 
 def add_cca_info_from_parentID_col(
         src_df, acdc_df, frame_idx_colname, IDs_colname, parentID_colname, 
@@ -629,7 +745,10 @@ def add_cca_info_from_parentID_col(
         
         if oldIDs:
             # For the oldIDs copy from previous cca_df
-            prev_acdc_df = acdc_dfs[frame_i-1].filter(oldIDs, axis=0)
+            try:
+                prev_acdc_df = acdc_dfs[frame_i-1].filter(oldIDs, axis=0)
+            except:
+                import pdb; pdb.set_trace()
             cca_df.loc[prev_acdc_df.index] = prev_acdc_df
 
         for newID in newIDs:
@@ -639,7 +758,10 @@ def add_cca_info_from_parentID_col(
                 parentID = -1
             if parentID > 1:
                 prev_acdc_df = acdc_dfs[frame_i-1]
-                parentGenNum = prev_acdc_df.at[parentID, 'generation_num']
+                try:
+                    parentGenNum = prev_acdc_df.at[parentID, 'generation_num']
+                except Exception as e:
+                    import pdb; pdb.set_trace()
                 prentGenNumTree = (
                     prev_acdc_df.at[parentID, 'generation_num_tree']
                 )
