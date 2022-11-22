@@ -2626,6 +2626,7 @@ class channelMetricsQGBox(QGroupBox):
             layout.addWidget(customMetricsQGBox)
             self.checkBoxes.extend(customMetricsQGBox.checkBoxes)
             customMetricsQGBox.sigDelClicked.connect(self.onDelClicked)
+            self.customMetricsQGBox = customMetricsQGBox
 
         self.setTitle(f'{chName} metrics')
         self.setCheckable(True)

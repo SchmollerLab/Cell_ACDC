@@ -643,7 +643,7 @@ class saveDataWorker(QObject):
                     bkgrData_q05s.append(np.quantile(bkgrVals_2D, q=0.05))
 
             # Iterate cells
-            print('Iterating objects...')
+            self.progress.emit('Iterating segmented objects...')
             for i, obj in enumerate(tqdm(rp, leave=False, ncols=100)):
                 if self.mainWin.isSegm3D:
                     obj3Dslice = obj.slice
@@ -948,6 +948,7 @@ class saveDataWorker(QObject):
                     'label', *self.mainWin.regionPropsToSave
                 )
             try:
+                self.progress.emit('Computing region properties...')
                 rp_table, rp_errors = measurements.regionprops_table(
                     posData.lab, self.mainWin.regionPropsToSave,
                     logger_func=self.progress.emit

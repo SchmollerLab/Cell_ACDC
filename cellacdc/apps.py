@@ -1147,23 +1147,41 @@ class setMeasurementsDialog(QBaseDialog):
         self.okButton = okButton
 
         loadLastSelButton = widgets.reloadPushButton('Load last selection...')
+        self.deselectAllButton = QPushButton('Deselect all')
 
         buttonsLayout.addStretch(1)
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.addSpacing(20)
         if addCombineMetricCallback is not None:
             buttonsLayout.addWidget(addCombineMetricButton)
+        buttonsLayout.addWidget(self.deselectAllButton)
         buttonsLayout.addWidget(loadLastSelButton)
         buttonsLayout.addWidget(okButton)
+
+        self.okButton = okButton
 
         layout.addLayout(groupsLayout)
         layout.addLayout(buttonsLayout)
 
         self.setLayout(layout)
 
+        self.deselectAllButton.clicked.connect(self.deselectAll)
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
         loadLastSelButton.clicked.connect(self.loadLastSelection)
+    
+    def deselectAll(self):
+        for chNameGroupbox in self.chNameGroupboxes:
+            for gb in chNameGroupbox.groupboxes:
+                gb.checkAll(False)
+            cgb = getattr(chNameGroupbox, 'customMetricsQGBox', None)
+            if cgb is not None:
+                cgb.checkAll(False)
+                
+        self.sizeMetricsQGBox.checkAll(False)
+        self.regionPropsQGBox.checkAll(False)
+        if self.mixedChannelsCombineMetricsQGBox is not None:
+            self.mixedChannelsCombineMetricsQGBox.checkAll(False)
     
     def delMixedChannelCombineMetric(self, colname_to_del, hlayout):
         cp = measurements.read_saved_user_combine_config()
@@ -1396,6 +1414,7 @@ class setMeasurementsDialog(QBaseDialog):
 
     def show(self, block=False):
         super().show(block=False)
+        self.deselectAllButton.setMinimumHeight(self.okButton.height())
         screenWidth = self.screen().size().width()
         screenHeight = self.screen().size().height()
         screenLeft = self.screen().geometry().x()
