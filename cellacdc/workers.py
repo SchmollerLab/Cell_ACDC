@@ -1597,12 +1597,8 @@ class ApplyTrackInfoWorker(BaseWorkerUtil):
         frameIndexCol = self.trackColsInfo['frameIndexCol']
 
         parentIDcol = self.trackColsInfo['parentIDcol']
-        if parentIDcol != 'None':
-            pbarMax = len(df[frameIndexCol].unique())*2
-            self.signals.initProgressBar.emit(pbarMax)
-        else:
-            pbarMax = len(df[frameIndexCol].unique())
-            self.signals.initProgressBar.emit(pbarMax)
+        pbarMax = len(df[frameIndexCol].unique())
+        self.signals.initProgressBar.emit(pbarMax)
 
         # Apply tracking info
         result = core.apply_tracking_from_table(
@@ -1618,6 +1614,7 @@ class ApplyTrackInfoWorker(BaseWorkerUtil):
         else:
             trackedSegmFilepath = os.path.join(segmFilePath)
         
+        self.signals.initProgressBar.emit(0)
         self.logger.log('Saving tracked segmentation file...') 
         np.savez_compressed(trackedSegmFilepath, trackedData)
 
@@ -1669,6 +1666,7 @@ class ApplyTrackInfoWorker(BaseWorkerUtil):
             acdcFilename = re.sub(segm_re_pattern, '_acdc_output', segmFilename)
             acdcFilePath = os.path.join(imagesPath, acdcFilename)
         
+        self.signals.initProgressBar.emit(pbarMax)
         parentIDcol = self.trackColsInfo['parentIDcol']
         trackIDsCol = self.trackColsInfo['trackIDsCol']
         if parentIDcol != 'None':
