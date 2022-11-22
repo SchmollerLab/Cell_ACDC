@@ -766,7 +766,7 @@ class saveDataWorker(QObject):
                                 )
                                 if calc_conc_vox:
                                     # Compute concentration
-                                    conc_vox = val/vol_vox
+                                    conc_vox = val/obj.vol_vox
                                     metrics_values[conc_key_vox][i] = conc_vox
 
                                 calc_conc_fl = (
@@ -774,8 +774,9 @@ class saveDataWorker(QObject):
                                     and conc_key_fl not in metricsToSkipChannel
                                 )
                                 if calc_conc_fl:
-                                    conc_fl = val/vol_fl
+                                    conc_fl = val/obj.vol_fl
                                     metrics_values[conc_key_fl][i] = conc_fl
+                                    printl(conc_key_fl, key)
                         elif is_ROIbkgr_func:
                             if ROI_bkgrMask is not None:
                                 ROI_bkgrData = fluo_img[ROI_bkgrMask_k]
@@ -804,8 +805,8 @@ class saveDataWorker(QObject):
                                         conc_vox = val/IDs_vol_vox_3D[i]
                                         conc_fl = val/IDs_vol_fl_3D[i]
                                     else:
-                                        conc_vox = val/vol_vox
-                                        conc_fl = val/vol_fl
+                                        conc_vox = val/obj.vol_vox
+                                        conc_fl = val/obj.vol_fl
                                     metrics_values[conc_key_vox][i] = conc_vox
                                     metrics_values[conc_key_fl][i] = conc_fl
 
