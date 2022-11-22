@@ -773,19 +773,40 @@ def get_props_names():
     }
     return list(props.keys())
 
+def _try_metric_func(func, *args):
+    try:
+        val = func(*args)
+    except Exception as e:
+        val = np.nan
+    return val
+
+def _quantile(arr, q):
+    try:
+        val = np.quantile(arr, q=q)
+    except Exception as e:
+        val = np.nan
+    return val
+
+def _amount(arr, bkgr, area):
+    try:
+        val = (np.mean(arr)-bkgr)*area
+    except Exception as e:
+        val = np.nan
+    return val
+
 def standard_metrics_func():
     metrics_func = {
-        'mean': lambda arr: arr.mean(),
-        'sum': lambda arr: arr.sum(),
-        'amount_autoBkgr': lambda arr, bkgr, area: (arr.mean()-bkgr)*area,
-        'amount_dataPrepBkgr': lambda arr, bkgr, area: (arr.mean()-bkgr)*area,
-        'median': lambda arr: np.median(arr),
-        'min': lambda arr: np.min(arr),
-        'max': lambda arr: np.max(arr),
-        'q25': lambda arr: np.quantile(arr, q=0.25),
-        'q75': lambda arr: np.quantile(arr, q=0.75),
-        'q05': lambda arr: np.quantile(arr, q=0.05),
-        'q95': lambda arr: np.quantile(arr, q=0.95)
+        'mean': lambda arr: _try_metric_func(np.mean, arr),
+        'sum': lambda arr: _try_metric_func(np.sum, arr),
+        'amount_autoBkgr': lambda arr, bkgr, area: _amount(arr, bkgr, area),
+        'amount_dataPrepBkgr': lambda arr, bkgr, area: _amount(arr, bkgr, area),
+        'median': lambda arr: _try_metric_func(np.median, arr),
+        'min': lambda arr: _try_metric_func(np.min, arr),
+        'max': lambda arr: _try_metric_func(np.max, arr),
+        'q25': lambda arr: _quantile(arr, 0.25),
+        'q75': lambda arr: _quantile(arr, 0.75),
+        'q05': lambda arr: _quantile(arr, 0.05),
+        'q95': lambda arr: _quantile(arr, 0.95)
     }
     all_metrics_names = list(_get_metrics_names().keys())
 
