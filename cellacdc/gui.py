@@ -185,9 +185,15 @@ class trackingWorker(QObject):
         self.progress.emit('Tracking process started...')
 
         self.track_params['signals'] = self.signals
-        tracked_video = self.tracker.track(
-            self.video_to_track, **self.track_params
-        )
+        if 'image' in self.track_params:
+            trackerInputImage = self.track_params.pop('image')
+            tracked_stack = self.tracker.track(
+                self.video_to_track, trackerInputImage, **self.track_params
+            )
+        else:
+            tracked_video = self.tracker.track(
+                self.video_to_track, **self.track_params
+            )
 
         # Store new tracked video
         current_frame_i = self.posData.frame_i
@@ -3798,7 +3804,10 @@ class guiWin(QMainWindow):
         )
         self.topLayerItems.append(self.freeRoiItem)
 
-    def _warn_too_many_items(self, numItems):
+    def _warn_too_many_items(self, numItems, qparent):
+        self.logger.info(
+            '[WARNING]: asking user what to do with too many graphical items...'
+        )
         msg = widgets.myMessageBox()
         txt = html_utils.paragraph(f"""
             You loaded a segmentation mask that has <b>{numItems} objects</b>.<br><br>
@@ -3813,7 +3822,7 @@ class guiWin(QMainWindow):
         """)
 
         _, createOnDemandButton, doNotCreateItemsButton, _ = msg.warning(
-            self, 'Too many objects', txt,
+            qparent, 'Too many objects', txt,
             buttonsTexts=(
                 'Cancel', 'Create on-demand', ' Disable items ', 
                 'Try anyway'                
@@ -3871,7 +3880,9 @@ class guiWin(QMainWindow):
         self.ax2_BudMothLines = [None]*numItems
 
         if numItems > 500:
-            cancel, doNotCreateItems = self._warn_too_many_items(numItems)
+            cancel, doNotCreateItems = self._warn_too_many_items(
+                numItems, self.progressWin
+            )
             self.createItems = not doNotCreateItems
             if cancel:
                 self.progressWin.workerFinished = True
@@ -11491,7 +11502,7 @@ class guiWin(QMainWindow):
 
         numItems = (posData.segm_data).max()
         if numItems > 500:
-            cancel, doNotCreateItems = self._warn_too_many_items(numItems)
+            cancel, doNotCreateItems = self._warn_too_many_items(numItems, self)
             if cancel or doNotCreateItems:
                 self.createItems = False
 
@@ -11544,7 +11555,7 @@ class guiWin(QMainWindow):
         
         numItems = lab.max()
         if numItems > 500:
-            cancel, doNotCreateItems = self._warn_too_many_items(numItems)
+            cancel, doNotCreateItems = self._warn_too_many_items(numItems, self)
             if cancel or doNotCreateItems:
                 self.createItems = False
 
@@ -16502,7 +16513,7 @@ class guiWin(QMainWindow):
         self.highlightedID = 0
 
     def highlightSearchedID(self, ID, force=False, doNotClearIDs=None):
-        if ID == 0:
+        if ID == 0 or not self.createItems:
             return
 
         if ID == self.highlightedID and not force:
@@ -16882,7 +16893,7 @@ class guiWin(QMainWindow):
             IDs_and_cont or onlyCont or ccaInfo_and_cont
             or IDs_and_masks or onlyMasks or ccaInfo_and_masks
         )
-        if highlight:
+        if highlight and not self.createItems:
             for obj in posData.rp:
                 ID = obj.label
                 if ID in posData.new_IDs:
@@ -16904,6 +16915,9 @@ class guiWin(QMainWindow):
                 self.highlightLost_obj(obj)
 
     def highlight_obj(self, obj, contPen=None, textColor=None):
+        if not self.createItems:
+            return
+
         if contPen is None:
             contPen = self.lostIDs_cpen
         if textColor is None:
@@ -16924,6 +16938,9 @@ class guiWin(QMainWindow):
 
 
     def highlightLost_obj(self, obj, forceContour=False):
+        if not self.createItems:
+            return
+
         posData = self.data[self.pos_i]
         how = self.drawIDsContComboBox.currentText()
         IDs_and_cont = how == 'Draw IDs and contours'
@@ -18993,6 +19010,30 @@ class guiWin(QMainWindow):
             elif msg.cancel:
                 event.ignore()
                 return
+
+        self.logger.info('Clearing memory...')
+        for posData in self.data:
+            try:
+                del posData.img_data
+            except Exception as e:
+                pass
+            try:
+                del posData.segm_data
+            except Exception as e:
+                pass
+            try:
+                del posData.ol_data_dict
+            except Exception as e:
+                pass
+            try:
+                del posData.fluo_data_dict
+            except Exception as e:
+                pass
+            try:
+                del posData.ol_data
+            except Exception as e:
+                pass
+        del self.data
 
         self.logger.info('Closing GUI logger...')
         handlers = self.logger.handlers[:]

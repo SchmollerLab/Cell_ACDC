@@ -741,8 +741,10 @@ def getTrackerArgSpec(trackerModule, realTime=False):
     else:
         track_ArgSpec = inspect.getfullargspec(trackerModule.tracker.track)
     track_params = []
+    # Start at first kwarg
+    kwargs_start_idx = len(track_ArgSpec.args) - len(track_ArgSpec.defaults)
     if len(track_ArgSpec.args)>1:
-        iter = zip(track_ArgSpec.args[2:], track_ArgSpec.defaults)
+        iter = zip(track_ArgSpec.args[kwargs_start_idx:], track_ArgSpec.defaults)
         for arg, default in iter:
             if arg == 'signals':
                 continue
@@ -1309,7 +1311,7 @@ def uint_to_float(img):
         return img
 
     uint8_max = np.iinfo(np.uint8).max
-    uint16_max = np.iinfo(np.uint32).max
+    uint16_max = np.iinfo(np.uint16).max
     if img_max <= uint8_max:
         img = img/uint8_max
     elif img_max <= uint16_max:
@@ -1545,12 +1547,14 @@ def import_tracker(posData, trackerName, realTime=False, qparent=None):
             labShape = (1, Y, X)
         paramsWin = apps.BayesianTrackerParamsWin(labShape, parent=qparent)
         paramsWin.exec_()
-        init_params = paramsWin.params
-        track_params['export_to'] = posData.get_btrack_export_path()
+        if not paramsWin.cancel:
+            init_params = paramsWin.params
+            track_params['export_to'] = posData.get_btrack_export_path()
     elif trackerName == 'CellACDC':
         paramsWin = apps.CellACDCTrackerParamsWin(parent=qparent)
         paramsWin.exec_()
-        init_params = paramsWin.params
+        if not paramsWin.cancel:
+            init_params = paramsWin.params
     else:
         init_argspecs, track_argspecs = getTrackerArgSpec(
             trackerModule, realTime=realTime
@@ -1561,12 +1565,17 @@ def import_tracker(posData, trackerName, realTime=False, qparent=None):
             except AttributeError:
                 url = None
             paramsWin = apps.QDialogTrackerParams(
-                init_argspecs, track_argspecs, trackerName, url=url
+                init_argspecs, track_argspecs, trackerName, url=url,
+                channels=posData.chNames, 
+                currentChannelName=posData.user_ch_name
             )
             paramsWin.exec_()
             if not paramsWin.cancel:
                 init_params = paramsWin.init_kwargs
                 track_params = paramsWin.track_kwargs
+                if paramsWin.inputChannelName != 'None':
+                    chName = paramsWin.inputChannelName
+                    track_params['image'] = posData.loadChannelData(chName)
         if 'export_to_extension' in track_params:
             ext = track_params['export_to_extension']
             track_params['export_to'] = posData.get_tracker_export_path(

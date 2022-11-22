@@ -62,7 +62,8 @@ class ApplyTrackingInfoFromTableUtil(base.MainThreadSinglePosUtilBase):
             'maskIDsCol': win.maskIDsCol,
             'xCentroidCol': win.xCentroidCol,
             'yCentroidCol': win.yCentroidCol,
-            'parentIDcol': win.parentIDcol
+            'parentIDcol': win.parentIDcol,
+            'isFirstFrameOne': win.isFirstFrameOne
         }
         
         imagesPath = os.path.join(posPath, 'Images')

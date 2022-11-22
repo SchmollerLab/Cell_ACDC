@@ -6608,14 +6608,14 @@ class editID_QWidget(QDialog):
             self.ID_QLineEdit.setText(text)
             return
 
-        # Cast integers greater than uint16 machine limit
+        # Cast integers greater than uint32 machine limit
         m_iter = re.finditer(r'\d+', self.ID_QLineEdit.text())
         for m in m_iter:
             val = int(m.group())
-            uint16_max = np.iinfo(np.uint32).max
+            uint32_max = np.iinfo(np.uint32).max
             if val > uint16_max:
                 text = self.ID_QLineEdit.text()
-                text = f'{text[:m.start()]}{uint16_max}{text[m.end():]}'
+                text = f'{text[:m.start()]}{uint32_max}{text[m.end():]}'
                 self.ID_QLineEdit.setText(text)
 
         # Automatically close ( bracket
@@ -7899,13 +7899,17 @@ class QDialogPbar(QDialog):
 class QDialogTrackerParams(QDialog):
     def __init__(
             self, init_params, track_params, tracker_name,
-            url=None, parent=None, initLastParams=True
+            url=None, parent=None, initLastParams=True, channels=None,
+            currentChannelName=None
         ):
         self.cancel = True
         super().__init__(parent)
         self.url = url
 
         self.tracker_name = tracker_name
+        self.channels = channels
+        self.currentChannelName = currentChannelName
+        self.channelCombobox = None
 
         self.setWindowTitle(f'{tracker_name} parameters')
 
@@ -7929,7 +7933,7 @@ class QDialogTrackerParams(QDialog):
         )
 
         trackGroupBox, self.track_kwargs = self.createGroupParams(
-            track_params, 'Parameters for tracking'
+            track_params, 'Parameters for tracking', addChannel=True
         )
         trackDefaultButton = widgets.reloadPushButton('Restore default')
         trackLoadLastSelButton = QPushButton('Load last parameters')
@@ -8003,7 +8007,7 @@ class QDialogTrackerParams(QDialog):
         import webbrowser
         webbrowser.open(self.url, new=2)
 
-    def createGroupParams(self, ArgSpecs_list, groupName):
+    def createGroupParams(self, ArgSpecs_list, groupName, addChannel=False):
         ArgWidget = namedtuple(
             'ArgsWidgets',
             ['name', 'type', 'widget', 'defaultVal', 'valueSetter']
@@ -8013,7 +8017,20 @@ class QDialogTrackerParams(QDialog):
 
         groupBoxLayout = QGridLayout()
 
+        if addChannel and self.channels is not None:
+            row = 0
+            label = QLabel(f'Load input channel:  ')
+            groupBoxLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
+            items = ['None', *self.channels]
+            self.channelCombobox = widgets.QCenteredComboBox()
+            self.channelCombobox.addItems(items)
+            groupBoxLayout.addWidget(self.channelCombobox, row, 1, 1, 2)
+            if self.currentChannelName is not None:
+                self.channelCombobox.setCurrentText(self.currentChannelName)
+
         for row, ArgSpec in enumerate(ArgSpecs_list):
+            if addChannel:
+                row += 1
             var_name = ArgSpec.name.replace('_', ' ').title()
             label = QLabel(f'{var_name}:  ')
             groupBoxLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
@@ -8125,11 +8142,13 @@ class QDialogTrackerParams(QDialog):
                 try:
                     val = getattr(self.configPars, getter)(section, option)
                     break
-                except Exception:
+                except Exception as err:
                     pass
-            if val:
-                widget = argWidget.widget
+            widget = argWidget.widget
+            try:
                 argWidget.valueSetter(widget, val)
+            except TypeError:
+                argWidget.valueSetter(widget, int(val))
 
     def loadLastSelectionPostProcess(self):
         postProcessSection = f'{self.tracker_name}.postprocess'
@@ -8190,6 +8209,9 @@ class QDialogTrackerParams(QDialog):
         self.cancel = False
         self.init_kwargs = self.argsWidgets_to_kwargs(self.init_argsWidgets)
         self.track_kwargs = self.argsWidgets_to_kwargs(self.track_kwargs)
+        self.inputChannelName = 'None'
+        if self.channelCombobox is not None:
+            self.inputChannelName = self.channelCombobox.currentText()
         self._saveParams()
         self.close()
 

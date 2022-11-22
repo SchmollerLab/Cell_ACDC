@@ -1593,44 +1593,22 @@ class ApplyTrackInfoWorker(BaseWorkerUtil):
         self.logger.log('Loading table containing tracking info...') 
         df = pd.read_csv(self.trackInfoCsvPath)
 
-        self.logger.log('Applying tracking info...')  
         frameIndexCol = self.trackColsInfo['frameIndexCol']
-        grouped = df.groupby(frameIndexCol)
-        trackIDsCol = self.trackColsInfo['trackIDsCol']
-        maxID = max(segmData.max(), df[trackIDsCol].max())
-        segmData += maxID
-        maskIDsCol = self.trackColsInfo['maskIDsCol']
-        xCentroidCol = self.trackColsInfo['xCentroidCol']
-        yCentroidCol = self.trackColsInfo['yCentroidCol']
+
         parentIDcol = self.trackColsInfo['parentIDcol']
         if parentIDcol != 'None':
-            self.signals.initProgressBar.emit(len(grouped)*2)
+            pbarMax = len(df[frameIndexCol].unique())*2
+            self.signals.initProgressBar.emit(pbarMax)
         else:
-            self.signals.initProgressBar.emit(len(grouped))
-        if maskIDsCol != 'None':
-            df[maskIDsCol] = df[maskIDsCol] + maxID
-        trackedIDsMapper = {}
-        for frame_i, df_frame in grouped:
-            if frame_i == len(segmData):
-                self.logger.log(
-                    'WARNING: segmentation data has less frames than the '
-                    f'frames in the "{frameIndexCol}" column.'
-                )
-                break
-            
-            lab = segmData[frame_i]
+            pbarMax = len(df[frameIndexCol].unique())
+            self.signals.initProgressBar.emit(pbarMax)
 
-            for row in df_frame.itertuples():
-                trackedID = getattr(row, trackIDsCol)
-                if xCentroidCol == 'None':
-                    maskID = getattr(row, maskIDsCol)
-                else:
-                    xc = getattr(row, xCentroidCol)
-                    yc = getattr(row, yCentroidCol)
-                    maskID = lab[int(yc), int(xc)]
-                lab[lab==maskID] = trackedID
-                trackedIDsMapper[maskID] = trackedID
-            self.signals.progressBar.emit(1)
+        self.logger.log('Applying tracking info...')  
+
+        trackedData, trackedIDsMapper = core.apply_tracking_from_table(
+            segmData, self.trackColsInfo, df, signal=self.signals.progressBar,
+            logger=self.logger.log, pbarMax=pbarMax
+        )
         
         self.logger.log('='*40)
         s = '\n'.join([f'   {id} --> {ID}' for id, ID in trackedIDsMapper.items()])
@@ -1647,7 +1625,7 @@ class ApplyTrackInfoWorker(BaseWorkerUtil):
             trackedSegmFilepath = os.path.join(segmFilePath)
         
         self.logger.log('Saving tracked segmentation file...') 
-        np.savez_compressed(trackedSegmFilepath)
+        np.savez_compressed(trackedSegmFilepath, trackedData)
 
         self.logger.log('Generating acdc_output table...')
         acdc_df = None
@@ -1674,7 +1652,7 @@ class ApplyTrackInfoWorker(BaseWorkerUtil):
             acdc_dfs = []
             keys = []
             for frame_i, lab in enumerate(segmData):            
-                rp = skimage.measure.regionprops()
+                rp = skimage.measure.regionprops(lab)
                 acdc_df_frame_i = myutils.getBaseAcdcDf(rp)
                 acdc_dfs.append(acdc_df_frame_i)
                 keys.append(frame_i)
@@ -1682,52 +1660,16 @@ class ApplyTrackInfoWorker(BaseWorkerUtil):
             acdc_df = pd.concat(acdc_dfs, keys=keys, names=['frame_i', 'Cell_ID'])
             segmFilename = os.path.basename(trackedSegmFilepath)
             acdcFilename = re.sub(segm_re_pattern, '_acdc_output', segmFilename)
-            acdcFilePath = os.path.join(
-                imagesPath, self.acdcFilename
-            )
+            acdcFilePath = os.path.join(imagesPath, acdcFilename)
         
         parentIDcol = self.trackColsInfo['parentIDcol']
+        trackIDsCol = self.trackColsInfo['trackIDsCol']
         if parentIDcol != 'None':
-            grouped = df.groupby(frameIndexCol)
-            acdc_dfs = []
-            keys = []
             self.logger.log(f'Adding lineage info from "{parentIDcol}" column...')
-            for frame_i, df_frame in grouped:
-                if frame_i == len(segmData):
-                    break
-                
-                df_frame = df_frame.set_index(trackIDsCol)
-                lab = segmData[frame_i]
-                acdc_df_i = acdc_df.loc[frame_i].copy()
-                IDs = acdc_df_i.index.values
-                cca_df = core.getBaseCca_df(IDs, with_tree_cols=True)
-                if frame_i == 0:
-                    prevIDs = []
-                    newIDs = IDs
-                else:
-                    prevIDs = acdc_df.loc[frame_i-1].index.values
-                    newIDs = [ID for ID in IDs if ID not in prevIDs]
-                
-                for newID in newIDs:
-                    parentID = df_frame.at[newID, parentIDcol]
-                    if parentID > 1:
-                        pass
-                    else:
-                        # Set new ID without a parent as history unknown
-                        cca_df.at[newID, 'is_history_known'] = False
-                        cca_df.at[newID, 'cell_cycle_stage'] = 'G1'
-                        cca_df.at[newID, 'generation_num'] = 2
-                        cca_df.at[newID, 'emerg_frame_i'] = -1
-                        cca_df.at[newID, 'emerg_frame_i'] = -1
-                        cca_df.at[newID, 'relationship'] = 'mother'
-                        cca_df.at[newID, 'generation_num_tree'] = 1
-                        cca_df.at[newID, 'Cell_ID_tree'] = newID
-                        cca_df.at[newID, 'root_ID_tree'] = -1
-                        cca_df.at[newID, 'parent_ID_tree'] = -1
-                        cca_df.at[newID, 'sister_ID_tree'] = -1
-                acdc_dfs.append(acdc_df_i)
-                keys.append(frame_i)
-                self.signals.progressBar.emit(1)
+            acdc_df = core.add_cca_info_from_parentID_col(
+                df, acdc_df, frameIndexCol, trackIDsCol, parentIDcol, 
+                len(segmData), signal=self.signals.progressBar
+            )     
         
         self.logger.log('Saving acdc_output table...')
         acdc_df.to_csv(acdcFilePath)

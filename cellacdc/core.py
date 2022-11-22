@@ -543,6 +543,173 @@ def getBaseCca_df(IDs, with_tree_cols=False):
     cca_df.index.name = 'Cell_ID'
     return cca_df
 
+def apply_tracking_from_table(
+        segmData, trackColsInfo, src_df, signal=None, logger=print, pbarMax=None
+    ):
+    frameIndexCol = trackColsInfo['frameIndexCol']
+
+    if trackColsInfo['isFirstFrameOne']:
+        # Zeroize frames since first frame starts at 1
+        src_df[frameIndexCol] = src_df[frameIndexCol] - 1
+
+    logger('Applying tracking info...')  
+
+    grouped = src_df.groupby(frameIndexCol)
+    iterable = grouped if signal is not None else tqdm(grouped, ncols=100)
+    trackIDsCol = trackColsInfo['trackIDsCol']
+    maskIDsCol = trackColsInfo['maskIDsCol']
+    xCentroidCol = trackColsInfo['xCentroidCol']
+    yCentroidCol = trackColsInfo['yCentroidCol']
+    trackedIDsMapper = {}
+
+    for frame_i, df_frame in grouped:
+        if frame_i == len(segmData):
+            print('')
+            logger(
+                'WARNING: segmentation data has less frames than the '
+                f'frames in the "{frameIndexCol}" column.'
+            )
+            if signal is not None and pbarMax is not None:
+                signal.emit(pbarMax-frame_i)
+            break
+
+        lab = segmData[frame_i]
+
+        # Iterate IDs of current frame_i
+        for row in df_frame.itertuples():
+            trackedID = getattr(row, trackIDsCol)
+            if xCentroidCol == 'None':
+                maskID = getattr(row, maskIDsCol)
+            else:
+                xc = getattr(row, xCentroidCol)
+                yc = getattr(row, yCentroidCol)
+                maskID = lab[int(yc), int(xc)]
+            if maskID <= 0:
+                continue
+            
+            if maskID == trackedID:
+                continue
+
+            if trackedID in lab and trackedID != 0:
+                # Assign unique ID to existing tracked ID
+                uniqueID = lab.max() + 1
+                lab[lab==trackedID] = lab.max() + 1
+                trackedIDsMapper[trackedID] = uniqueID
+            lab[lab==maskID] = trackedID
+            trackedIDsMapper[maskID] = trackedID
+        if signal is not None:
+            signal.emit(1)
+        
+    return segmData, trackedIDsMapper
+
+def add_cca_info_from_parentID_col(
+        src_df, acdc_df, frame_idx_colname, IDs_colname, parentID_colname, 
+        SizeT, signal=None
+    ):
+    grouped = src_df.groupby(frame_idx_colname)
+    acdc_dfs = []
+    keys = []
+    iterable = grouped if signal is not None else tqdm(grouped, ncols=100)            
+    for frame_i, df_frame in iterable:
+        if frame_i == SizeT:
+            break
+    
+        df_frame = df_frame.set_index(IDs_colname)
+        acdc_df_i = acdc_df.loc[frame_i].copy()
+        IDs = acdc_df_i.index.values
+        cca_df = getBaseCca_df(IDs, with_tree_cols=True)
+        if frame_i == 0:
+            prevIDs = []
+            oldIDs = []
+            newIDs = IDs
+        else:
+            prevIDs = acdc_df.loc[frame_i-1].index.values
+            newIDs = [ID for ID in IDs if ID not in prevIDs]
+            oldIDs = [ID for ID in IDs if ID in prevIDs]
+        
+        if oldIDs:
+            # For the oldIDs copy from previous cca_df
+            prev_acdc_df = acdc_dfs[frame_i-1].filter(oldIDs, axis=0)
+            cca_df.loc[prev_acdc_df.index] = prev_acdc_df
+
+        for newID in newIDs:
+            try:
+                parentID = df_frame.at[newID, parentID_colname]
+            except Exception as e:
+                parentID = -1
+            if parentID > 1:
+                prev_acdc_df = acdc_dfs[frame_i-1]
+                parentGenNum = prev_acdc_df.at[parentID, 'generation_num']
+                prentGenNumTree = (
+                    prev_acdc_df.at[parentID, 'generation_num_tree']
+                )
+                newGenNumTree = prentGenNumTree+1
+                parentRootID = (
+                    prev_acdc_df.at[parentID, 'root_ID_tree']
+                )
+                cca_df.at[newID, 'is_history_known'] = True
+                cca_df.at[newID, 'cell_cycle_stage'] = 'G1'
+                cca_df.at[newID, 'generation_num'] = parentGenNum+1
+                cca_df.at[newID, 'emerg_frame_i'] = frame_i
+                cca_df.at[newID, 'division_frame_i'] = frame_i
+                cca_df.at[newID, 'relationship'] = 'mother'
+                cca_df.at[newID, 'generation_num_tree'] = newGenNumTree
+                cca_df.at[newID, 'Cell_ID_tree'] = newID
+                cca_df.at[newID, 'root_ID_tree'] = parentRootID
+                cca_df.at[newID, 'parent_ID_tree'] = parentID
+                # sister ID is the other cell with the same parent ID
+                sisterIDmask = (
+                    (df_frame[parentID_colname] == parentID)
+                    & (df_frame.index != newID)
+                )
+                sisterID_df = df_frame[sisterIDmask]
+                if len(sisterID_df) == 1:
+                    sisterID = sisterID_df.index[0]
+                else:
+                    sisterID = -1
+                cca_df.at[newID, 'sister_ID_tree'] = sisterID
+            else:
+                # Set new ID without a parent as history unknown
+                cca_df.at[newID, 'is_history_known'] = False
+                cca_df.at[newID, 'cell_cycle_stage'] = 'G1'
+                cca_df.at[newID, 'generation_num'] = 2
+                cca_df.at[newID, 'emerg_frame_i'] = frame_i
+                cca_df.at[newID, 'division_frame_i'] = -1
+                cca_df.at[newID, 'relationship'] = 'mother'
+                cca_df.at[newID, 'generation_num_tree'] = 1
+                cca_df.at[newID, 'Cell_ID_tree'] = newID
+                cca_df.at[newID, 'root_ID_tree'] = newID
+                cca_df.at[newID, 'parent_ID_tree'] = -1
+                cca_df.at[newID, 'sister_ID_tree'] = -1
+        
+        acdc_df_i[cca_df.columns] = cca_df
+        acdc_dfs.append(acdc_df_i)
+        keys.append(frame_i)
+        if signal is not None:
+            signal.emit(1)
+    
+    if acdc_dfs:
+        acdc_df_with_cca = pd.concat(
+            acdc_dfs, keys=keys, names=['frame_i', 'Cell_ID']
+        )
+        if len(acdc_df_with_cca) == len(acdc_df):
+            # All frames from existing acdc_df were cca annotated in src_table
+            acdc_df_with_cca = pd.concat(
+                acdc_dfs, keys=keys, names=['frame_i', 'Cell_ID']
+            )
+            return acdc_df_with_cca
+        else:
+            # Only a subset of frames already present in acdc_df were annotated in src_table
+            acdc_df[cca_df.columns] = np.nan
+            for frame_i, acdc_df_i_with_cca in acdc_df_with_cca.groupby(level=0):
+                acdc_df.loc[acdc_df_i_with_cca.index] = acdc_df_i_with_cca
+    else:
+        # No annotations present in src_table
+        return acdc_df
+    
+    
+    return acdc_df
+
 def cca_df_to_acdc_df(cca_df, rp, acdc_df=None):
     if acdc_df is None:
         IDs = []
