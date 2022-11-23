@@ -19033,29 +19033,30 @@ class guiWin(QMainWindow):
                 event.ignore()
                 return
 
-        self.logger.info('Clearing memory...')
-        for posData in self.data:
-            try:
-                del posData.img_data
-            except Exception as e:
-                pass
-            try:
-                del posData.segm_data
-            except Exception as e:
-                pass
-            try:
-                del posData.ol_data_dict
-            except Exception as e:
-                pass
-            try:
-                del posData.fluo_data_dict
-            except Exception as e:
-                pass
-            try:
-                del posData.ol_data
-            except Exception as e:
-                pass
-        del self.data
+        if hasattr(self, 'data'):
+            self.logger.info('Clearing memory...')
+            for posData in self.data:
+                try:
+                    del posData.img_data
+                except Exception as e:
+                    pass
+                try:
+                    del posData.segm_data
+                except Exception as e:
+                    pass
+                try:
+                    del posData.ol_data_dict
+                except Exception as e:
+                    pass
+                try:
+                    del posData.fluo_data_dict
+                except Exception as e:
+                    pass
+                try:
+                    del posData.ol_data
+                except Exception as e:
+                    pass
+            del self.data
 
         self.logger.info('Closing GUI logger...')
         handlers = self.logger.handlers[:]

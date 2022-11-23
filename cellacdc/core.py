@@ -721,9 +721,48 @@ def apply_trackedIDs_mapper_to_acdc_df(
     acdc_df = pd.concat(acdc_dfs_renamed).sort_index()
     return acdc_df
 
+def _get_cca_info_warn_text(
+        newID, parentID, frame_i, maskID_colname, x_colname, y_colname,
+        df_frame, src_df, frame_idx_colname, trackID_colname
+    ):
+    txt = (
+        f'\n[WARNING]: The parent ID of {newID} at frame index '
+        f'{frame_i} is {parentID}, but this parent {parentID} '
+        f'does not exist at previous frame {frame_i-1} -->\n'
+        f'           --> Setting ID {newID} as a new cell without a parent.\n\n'
+        'More details:\n'
+    )
+    try:
+        df_prev_frame = src_df[src_df[frame_idx_colname] == frame_i-1]
+        df_prev_frame = df_prev_frame.set_index(trackID_colname)
+
+        if maskID_colname != 'None':
+            maskID_of_newID = df_frame.at[newID, maskID_colname]
+            maskID_of_parentID = df_prev_frame.at[parentID, maskID_colname]
+            details_txt = (
+                f'  - "{maskID_colname}" of ID {newID} = {maskID_of_newID}\n'
+                f'  - "{maskID_colname}" of ID {parentID} = {maskID_of_parentID}\n'
+            )
+            txt = f'{txt}{details_txt}'
+        if x_colname != 'None':
+            xc_of_newID = df_frame.at[newID, x_colname]
+            xc_of_parentID = df_prev_frame.at[parentID, x_colname]
+            yc_of_newID = df_frame.at[newID, y_colname]
+            yc_of_parentID = df_prev_frame.at[parentID, y_colname]
+            details_txt = (
+                f'  - (x,y) coordinates of ID {newID} = {(xc_of_newID, yc_of_newID)}\n'
+                f'  - (x,y) coordinates of ID {parentID} = {(xc_of_parentID, yc_of_parentID)}\n'
+            )
+            txt = f'{txt}{details_txt}'
+    except Exception as e:
+        # import pdb; pdb.set_trace()
+        pass
+    return txt
+
 def add_cca_info_from_parentID_col(
         src_df, acdc_df, frame_idx_colname, IDs_colname, parentID_colname, 
-        SizeT, signal=None, trackedData=None, logger=print
+        SizeT, signal=None, trackedData=None, logger=print, 
+        maskID_colname='None', x_colname='None', y_colname='None'
     ):
     grouped = src_df.groupby(frame_idx_colname)
     acdc_dfs = []
@@ -767,16 +806,14 @@ def add_cca_info_from_parentID_col(
                     parentGenNum = prev_acdc_df.at[parentID, 'generation_num']
                 except Exception as e:
                     parentGenNum = None
-                    print('')
                     logger('*'*40)
-                    logger(
-                        f'[WARNING]: The parent ID of {newID} at frame index '
-                        f'{frame_i} is {parentID}, but this parent {parentID} '
-                        f'does not exist at previous frame {frame_i-1} -->\n'
-                        f'Setting {newID} as a new cell without a parent.'
+                    warn_txt = _get_cca_info_warn_text(
+                        newID, parentID, frame_i, maskID_colname, x_colname, 
+                        y_colname, df_frame, src_df, frame_idx_colname, 
+                        IDs_colname
                     )
+                    logger(warn_txt)
                     logger('*'*40)
-                    import pdb; pdb.set_trace()
             
             if parentGenNum is not None:
                 prentGenNumTree = (

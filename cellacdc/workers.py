@@ -1678,7 +1678,10 @@ class ApplyTrackInfoWorker(BaseWorkerUtil):
             self.logger.log(f'Adding lineage info from "{parentIDcol}" column...')
             acdc_df = core.add_cca_info_from_parentID_col(
                 df, acdc_df, frameIndexCol, trackIDsCol, parentIDcol, 
-                len(segmData), signal=self.signals.progressBar
+                len(segmData), signal=self.signals.progressBar,
+                maskID_colname=self.trackColsInfo['maskIDsCol'], 
+                x_colname=self.trackColsInfo['xCentroidCol'], 
+                y_colname=self.trackColsInfo['yCentroidCol']
             )     
         
         self.logger.log('Saving acdc_output table...')
