@@ -82,7 +82,7 @@ class select_channel_name:
             if file.endswith('metadata.csv'):
                 metadata_csv_path = os.path.join(images_path, file)
                 break
-
+        
         chNames_found = False
         channel_names = set()
         if metadata_csv_path is not None:

@@ -215,7 +215,6 @@ class computeMeasurmentsUtilWin(QDialog):
             favourite_funcs=favourite_funcs, posData=posData,
             isSegm3D=posData.isSegm3D
         )
-        printl('setMeasurementsDialog executing')
         measurementsWin.exec_()
         if measurementsWin.cancel:
             self.worker.abort = measurementsWin.cancel

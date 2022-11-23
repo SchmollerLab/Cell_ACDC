@@ -619,6 +619,7 @@ class calcMetricsWorker(QObject):
             # Iterate pos and calculate metrics
             numPos = len(self.allPosDataInputs)
             for p, posDataInputs in enumerate(self.allPosDataInputs):
+                self.logger.log('='*40)
                 file_path = posDataInputs['file_path']
                 chName = posDataInputs['chName']
                 stopFrameNum = posDataInputs['stopFrameNum']
@@ -688,8 +689,12 @@ class calcMetricsWorker(QObject):
                         self.signals.finished.emit(self)
                         return
                 
-                addMetrics_acdc_df = self.mainWin.gui.saveDataWorker.addMetrics_acdc_df
-                addVolumeMetrics = self.mainWin.gui.saveDataWorker.addVolumeMetrics
+                guiWin = self.mainWin.gui
+                addMetrics_acdc_df = guiWin.saveDataWorker.addMetrics_acdc_df
+                addVolumeMetrics = guiWin.saveDataWorker.addVolumeMetrics
+                addVelocityMeasurement = (
+                    guiWin.saveDataWorker.addVelocityMeasurement
+                )
 
                 # Load the other channels
                 posData.loadedChNames = []
@@ -796,7 +801,7 @@ class calcMetricsWorker(QObject):
                     try:
                         prev_data_dict = posData.allData_li[frame_i-1]
                         prev_lab = prev_data_dict['labels']
-                        acdc_df = self.addVelocityMeasurement(
+                        acdc_df = addVelocityMeasurement(
                             acdc_df, prev_lab, lab, posData
                         )
                     except Exception as error:
