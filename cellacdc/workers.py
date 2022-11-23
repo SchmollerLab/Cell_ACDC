@@ -1647,7 +1647,7 @@ class ApplyTrackInfoWorker(BaseWorkerUtil):
                 acdc_df = pd.read_csv(
                     acdcFilePath, index_col=['frame_i', 'Cell_ID']
                 )
-        
+
         if acdc_df is not None:
             acdc_df = core.apply_trackedIDs_mapper_to_acdc_df(
                 trackedIDsMapper, deleteIDsMapper, acdc_df
@@ -1655,7 +1655,7 @@ class ApplyTrackInfoWorker(BaseWorkerUtil):
         else:
             acdc_dfs = []
             keys = []
-            for frame_i, lab in enumerate(segmData):            
+            for frame_i, lab in enumerate(trackedData):            
                 rp = skimage.measure.regionprops(lab)
                 acdc_df_frame_i = myutils.getBaseAcdcDf(rp)
                 acdc_dfs.append(acdc_df_frame_i)

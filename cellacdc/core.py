@@ -544,7 +544,8 @@ def getBaseCca_df(IDs, with_tree_cols=False):
     return cca_df
 
 def apply_tracking_from_table(
-        segmData, trackColsInfo, src_df, signal=None, logger=print, pbarMax=None
+        segmData, trackColsInfo, src_df, signal=None, logger=print, 
+        pbarMax=None, debug=False
     ):
     frameIndexCol = trackColsInfo['frameIndexCol']
 
@@ -576,6 +577,8 @@ def apply_tracking_from_table(
             break
 
         lab = segmData[frame_i]
+        if debug:
+            origLab = segmData[frame_i].copy()
 
         maxTrackID = df_frame[trackIDsCol].max()
         trackIDs = df_frame[trackIDsCol].values
@@ -590,10 +593,10 @@ def apply_tracking_from_table(
         deleteIDs = []
         if deleteUntrackedIDs:
             if xCentroidCol == 'None':
-                maskIDsTracked = df_frame[maskIDsCol].dropna().astype(int).values
+                maskIDsTracked = df_frame[maskIDsCol].dropna().apply(round).values
             else:
-                xx = df_frame[xCentroidCol].dropna().astype(int).values
-                yy = df_frame[yCentroidCol].dropna().astype(int).values
+                xx = df_frame[xCentroidCol].dropna().apply(round).values
+                yy = df_frame[yCentroidCol].dropna().apply(round).values
                 maskIDsTracked = lab[yy, xx]
             for obj in skimage.measure.regionprops(lab):
                 if obj.label in maskIDsTracked:
@@ -613,7 +616,7 @@ def apply_tracking_from_table(
             else:
                 xc = getattr(row, xCentroidCol)
                 yc = getattr(row, yCentroidCol)
-                maskID = lab[int(yc), int(xc)]
+                maskID = lab[round(yc), round(xc)]
             
             if not maskID > 0:
                 continue
@@ -652,7 +655,7 @@ def apply_tracking_from_table(
             else:
                 xc = getattr(row, xCentroidCol)
                 yc = getattr(row, yCentroidCol)
-                maskID = lab[int(yc), int(xc)]
+                maskID = lab[round(yc), round(xc)]
             
             if not maskID > 0:
                 continue
@@ -720,7 +723,7 @@ def apply_trackedIDs_mapper_to_acdc_df(
 
 def add_cca_info_from_parentID_col(
         src_df, acdc_df, frame_idx_colname, IDs_colname, parentID_colname, 
-        SizeT, signal=None
+        SizeT, signal=None, trackedData=None, logger=print
     ):
     grouped = src_df.groupby(frame_idx_colname)
     acdc_dfs = []
@@ -729,7 +732,10 @@ def add_cca_info_from_parentID_col(
     for frame_i, df_frame in iterable:
         if frame_i == SizeT:
             break
-    
+        
+        if trackedData is not None:
+            lab = trackedData[frame_i]
+
         df_frame = df_frame.set_index(IDs_colname)
         acdc_df_i = acdc_df.loc[frame_i].copy()
         IDs = acdc_df_i.index.values
@@ -745,23 +751,34 @@ def add_cca_info_from_parentID_col(
         
         if oldIDs:
             # For the oldIDs copy from previous cca_df
-            try:
-                prev_acdc_df = acdc_dfs[frame_i-1].filter(oldIDs, axis=0)
-            except:
-                import pdb; pdb.set_trace()
+            prev_acdc_df = acdc_dfs[frame_i-1].filter(oldIDs, axis=0)
             cca_df.loc[prev_acdc_df.index] = prev_acdc_df
 
         for newID in newIDs:
             try:
-                parentID = df_frame.at[newID, parentID_colname]
+                parentID = int(df_frame.at[newID, parentID_colname])
             except Exception as e:
                 parentID = -1
+            
+            parentGenNum = None
             if parentID > 1:
                 prev_acdc_df = acdc_dfs[frame_i-1]
                 try:
                     parentGenNum = prev_acdc_df.at[parentID, 'generation_num']
                 except Exception as e:
+                    parentGenNum = None
+                    print('')
+                    logger('*'*40)
+                    logger(
+                        f'[WARNING]: The parent ID of {newID} at frame index '
+                        f'{frame_i} is {parentID}, but this parent {parentID} '
+                        f'does not exist at previous frame {frame_i-1} -->\n'
+                        f'Setting {newID} as a new cell without a parent.'
+                    )
+                    logger('*'*40)
                     import pdb; pdb.set_trace()
+            
+            if parentGenNum is not None:
                 prentGenNumTree = (
                     prev_acdc_df.at[parentID, 'generation_num_tree']
                 )
