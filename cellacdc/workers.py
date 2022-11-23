@@ -894,18 +894,10 @@ class loadDataWorker(QObject):
             not posData.segmFound and posData.SizeT > 1
             and not self.mainWin.isNewFile
         )
-        if numPos > 1:
-            if posData.SizeT > 1:
-                err_msg = (f'{posData.pos_foldername} contains frames over time. '
-                           f'Skipping it.')
-                self.logger.log(err_msg)
-                self.titleLabel.setText(err_msg, color='r')
-                skipPos = True
-        else:
-            if emitWarning:
-                self.signals.dataIntegrityWarning.emit(posData.pos_foldername)
-                self.pause()
-                abort = self.abort
+        if emitWarning:
+            self.signals.dataIntegrityWarning.emit(posData.pos_foldername)
+            self.pause()
+            abort = self.abort
         return skipPos, abort
     
     def warnMismatchSegmDataShape(self, posData):
@@ -946,7 +938,11 @@ class loadDataWorker(QObject):
                 # see loadSelectedData function in gui.py
                 posData.getBasenameAndChNames()
                 posData.buildPaths()
-                posData.loadImgData()
+                if not self.firstPosData.onlyEditMetadata:
+                    posData.loadImgData()
+
+            if self.firstPosData.onlyEditMetadata:
+                loadSegm = False
 
             posData.loadOtherFiles(
                 load_segm_data=loadSegm,
@@ -1009,7 +1005,8 @@ class loadDataWorker(QObject):
                 signals=self.signals, mutex=self.mutex, waitCond=self.waitCond,
                 additionalMetadata=self.firstPosData._additionalMetadataValues
             )
-            SizeY, SizeX = posData.img_data_shape[-2:]
+            if hasattr(posData, 'img_data_shape'):
+                SizeY, SizeX = posData.img_data_shape[-2:]
 
             if posData.SizeZ > 1 and posData.img_data.ndim < 3:
                 posData.SizeZ = 1
@@ -1022,7 +1019,10 @@ class loadDataWorker(QObject):
             posData.setBlankSegmData(
                 posData.SizeT, posData.SizeZ, SizeY, SizeX
             )
-            skipPos, abort = self.checkSelectedDataShape(posData, numPos)
+            if not self.firstPosData.onlyEditMetadata:
+                skipPos, abort = self.checkSelectedDataShape(posData, numPos)
+            else:
+                skipPos, abort = False, False
 
             if skipPos:
                 continue
@@ -1067,12 +1067,19 @@ class loadDataWorker(QObject):
             if posData.SizeT == 1:
                 posData.img_data = posData.img_data[np.newaxis]
                 posData.segm_data = posData.segm_data[np.newaxis]
-            img_shape = posData.img_data_shape
-            posData.segmSizeT = len(posData.segm_data)
+            if hasattr(posData, 'img_data_shape'):
+                img_shape = posData.img_data_shape
+            img_shape = 'Not Loaded'
+            if hasattr(posData, 'img_data_shape'):
+                datasetShape = posData.img_data.shape
+            else:
+                datasetShape = 'Not Loaded'
+            if posData.segm_data is not None:
+                posData.segmSizeT = len(posData.segm_data)
             SizeT = posData.SizeT
             SizeZ = posData.SizeZ
             self.logger.log(f'Full dataset shape = {img_shape}')
-            self.logger.log(f'Loaded dataset shape = {posData.img_data.shape}')
+            self.logger.log(f'Loaded dataset shape = {datasetShape}')
             self.logger.log(f'Number of frames = {SizeT}')
             self.logger.log(f'Number of z-slices per frame = {SizeZ}')
             data.append(posData)

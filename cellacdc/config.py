@@ -19,7 +19,10 @@ class QtWarningHandler(QObject):
 
     def _resizeWarningHandler(self, msg_type, msg_log_context, msg_string):
         if msg_string.find('Unable to set geometry') != -1:
-            self.sigGeometryWarning.emit(msg_type)
+            try:
+                self.sigGeometryWarning.emit(msg_string)
+            except:
+                pass
         elif msg_string:
             print(msg_string)
 

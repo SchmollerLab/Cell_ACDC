@@ -676,19 +676,20 @@ class loadData:
                 with open(filePath) as json_fp:
                     bkgROIs_states = json.load(json_fp)
 
-                for roi_state in bkgROIs_states:
-                    Y, X = self.img_data.shape[-2:]
-                    roi = pg.ROI(
-                        [0, 0], [1, 1],
-                        rotatable=False,
-                        removable=False,
-                        pen=pg.mkPen(color=(150,150,150)),
-                        maxBounds=QRectF(QRect(0,0,X,Y)),
-                        scaleSnap=True,
-                        translateSnap=True
-                    )
-                    roi.setState(roi_state)
-                    self.bkgrROIs.append(roi)
+                if hasattr(self, 'img_data'):
+                    for roi_state in bkgROIs_states:
+                        Y, X = self.img_data.shape[-2:]
+                        roi = pg.ROI(
+                            [0, 0], [1, 1],
+                            rotatable=False,
+                            removable=False,
+                            pen=pg.mkPen(color=(150,150,150)),
+                            maxBounds=QRectF(QRect(0,0,X,Y)),
+                            scaleSnap=True,
+                            translateSnap=True
+                        )
+                        roi.setState(roi_state)
+                        self.bkgrROIs.append(roi)
             elif load_dataPrep_ROIcoords and file.endswith('dataPrepROIs_coords.csv'):
                 df = pd.read_csv(filePath)
                 if 'description' in df.columns:
@@ -1256,6 +1257,10 @@ class loadData:
         return tracker_path
 
     def setBlankSegmData(self, SizeT, SizeZ, SizeY, SizeX):
+        if not hasattr(self, 'img_data'):
+            self.segm_data = None
+            return
+
         Y, X = self.img_data.shape[-2:]
         if self.segmFound is not None and not self.segmFound:
             if SizeT > 1 and self.isSegm3D:
@@ -1308,6 +1313,24 @@ class loadData:
             itemsize = self.dset.dtype.itemsize
             required_memory = size*itemsize
             return required_memory
+    
+    def _warnMultiPosTimeLapse(self, SizeT_metadata):
+        txt = html_utils.paragraph(f"""
+            You are trying to load <b>multiple Positions</b> of what it seems to be 
+            <b>time-lapse data</b> (number of frames in the metadata is 
+            {SizeT_metadata}).<br><br>
+            Note that Cell-ACDC <b>cannot load multiple time-lapse Positions</b>.<br><br>
+            To load time-lapse data, load <b>one Position at a time</b>.<br><br>
+            However, you can proceed anyway if you think the saved metadata is wrong 
+            and you need to correct them.<br><br>
+            Do you want to proceed?
+        """)
+        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        _, noButton, yesButton = msg.warning(
+            self.parent, 'WARNING: Edinting saved metadata', txt, 
+            buttonsTexts=('Cancel', 'No, stop the process', 'Yes, proceed anyway')
+        )
+        return msg.clickedButton == yesButton
 
     def askInputMetadata(
             self, numPos,
@@ -1318,7 +1341,18 @@ class loadData:
             save=False,
             askSegm3D=True,
             forceEnableAskSegm3D=False,
+            warnMultiPos=False
         ):
+        SizeZ_metadata = None
+        SizeT_metadata = None
+        if hasattr(self, 'metadataFound'):
+            if self.metadataFound:
+                SizeT_metadata = self.SizeT
+                SizeZ_metadata = self.SizeZ
+        if SizeT_metadata>1 and numPos>1 and warnMultiPos:
+            proceed_anyway = self._warnMultiPosTimeLapse(SizeT_metadata)
+            if not proceed_anyway:
+                return False
         metadataWin = apps.QDialogMetadata(
             self.SizeT, self.SizeZ, self.TimeIncrement,
             self.PhysicalSizeZ, self.PhysicalSizeY, self.PhysicalSizeX,
@@ -1326,12 +1360,14 @@ class loadData:
             parent=self.parent, font=apps.font, imgDataShape=self.img_data_shape,
             posData=self, singlePos=singlePos, askSegm3D=askSegm3D,
             additionalValues=self._additionalMetadataValues,
-            forceEnableAskSegm3D=forceEnableAskSegm3D
+            forceEnableAskSegm3D=forceEnableAskSegm3D, 
+            SizeT_metadata=SizeT_metadata, SizeZ_metadata=SizeZ_metadata
         )
         metadataWin.exec_()
         if metadataWin.cancel:
             return False
 
+        self.onlyEditMetadata = metadataWin.allowEditSizeTcheckbox.isChecked()
         self.SizeT = metadataWin.SizeT
         self.SizeZ = metadataWin.SizeZ
         self.SizeY, self.SizeX = self.img_data_shape[-2:]

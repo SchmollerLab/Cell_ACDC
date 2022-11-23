@@ -560,7 +560,11 @@ class segmWin(QMainWindow):
             self.QPbar = QPbar
             self.ETA_label = ETA_label
             self.mainLayout.insertLayout(3, pBarLayout)
-        self.resize(int(self.width()*1.5), int(self.height()*3))
+        if not add_inner:
+            screen = self.screen()
+            screenHeight = screen.size().height()
+            screenWidth = screen.size().width()
+            self.resize(int(screenWidth*0.5), int(screenHeight*0.6))
 
     def main(self):
         self.getMostRecentPath()
@@ -1373,8 +1377,11 @@ class segmWin(QMainWindow):
             self.mainWin.setWindowState(Qt.WindowNoState)
             self.mainWin.setWindowState(Qt.WindowActive)
             self.mainWin.raise_()
-        self.log('Segmentation module closed.')
+        
+        self.log('Closing segmentation module logger...')
         handlers = self.logger.handlers[:]
         for handler in handlers:
             handler.close()
             self.logger.removeHandler(handler)
+        
+        self.log('Segmentation module closed.')

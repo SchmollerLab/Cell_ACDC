@@ -12093,7 +12093,8 @@ class guiWin(QMainWindow):
             ask_TimeIncrement=True,
             ask_PhysicalSizes=True,
             singlePos=False,
-            save=True
+            save=True, 
+            warnMultiPos=True
         )
         if not proceed:
             self.loadingDataAborted()
@@ -12338,6 +12339,10 @@ class guiWin(QMainWindow):
             self.progressWin = None
 
         if data is None or data=='abort':
+            self.loadingDataAborted()
+            return
+        
+        if data[0].onlyEditMetadata:
             self.loadingDataAborted()
             return
 

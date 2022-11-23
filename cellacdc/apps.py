@@ -3827,7 +3827,8 @@ class QDialogMetadata(QDialog):
             ask_SizeT, ask_TimeIncrement, ask_PhysicalSizes,
             parent=None, font=None, imgDataShape=None, posData=None,
             singlePos=False, askSegm3D=True, additionalValues=None,
-            forceEnableAskSegm3D=False
+            forceEnableAskSegm3D=False, SizeT_metadata=None, 
+            SizeZ_metadata=None
         ):
         self.cancel = True
         self.ask_TimeIncrement = ask_TimeIncrement
@@ -3836,6 +3837,8 @@ class QDialogMetadata(QDialog):
         self.imgDataShape = imgDataShape
         self.posData = posData
         self._additionalValues = additionalValues
+        self.SizeT_metadata = SizeT_metadata
+        self.SizeZ_metadata = SizeZ_metadata
         super().__init__(parent)
         self.setWindowTitle('Image properties')
 
@@ -3859,14 +3862,26 @@ class QDialogMetadata(QDialog):
         self.SizeT_SpinBox = QSpinBox()
         self.SizeT_SpinBox.setMinimum(1)
         self.SizeT_SpinBox.setMaximum(2147483647)
+        SizeTinfoButton = widgets.infoPushButton()
+        self.allowEditSizeTcheckbox = QCheckBox('Let me edit it')
         if ask_SizeT:
             self.SizeT_SpinBox.setValue(SizeT)
+            SizeTinfoButton.hide()
+            self.allowEditSizeTcheckbox.hide()
         else:
             self.SizeT_SpinBox.setValue(1)
             self.SizeT_SpinBox.setDisabled(True)
+            SizeTinfoButton.show()
+            SizeTinfoButton.clicked.connect(self.showWhySizeTisGrayed)
+            self.allowEditSizeTcheckbox.show()
+            self.allowEditSizeTcheckbox.toggled.connect(self.allowEditSizeT)
         self.SizeT_SpinBox.setAlignment(Qt.AlignCenter)
         self.SizeT_SpinBox.valueChanged.connect(self.TimeIncrementShowHide)
         gridLayout.addWidget(self.SizeT_SpinBox, row, 1)
+        gridLayout.addWidget(SizeTinfoButton, row, 2)
+        gridLayout.setColumnStretch(2,0)
+        gridLayout.addWidget(self.allowEditSizeTcheckbox, row, 3)
+        gridLayout.setColumnStretch(3,0)
 
         row += 1
         gridLayout.addWidget(
@@ -4055,6 +4070,20 @@ class QDialogMetadata(QDialog):
         self.setLayout(mainLayout)
         self.setFont(font)
         # self.setModal(True)
+    
+    def showWhySizeTisGrayed(self):
+        txt = html_utils.paragraph(f"""
+            The "Number of frames" field is grayed-out because you loaded multiple Positions.<br><br>
+            Cell-ACDC <b>cannot load multiple time-lapse Positions</b>, 
+            so it is assuming you are loading NON time-lapse data.<br><br>
+            To load time-lapse data, load <b>one Position at a time</b>.<br><br>
+            Note that you can still edit the number of frames if you need to correct it.<br>
+            However, <b>you can only edit the metadata</b>, then the loading process will be stopped.
+        """)
+        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        msg.information(
+            self, 'Why is the number of frames grayed out?', txt
+        )
 
     def addAdditionalValues(self, values):
         if values is None:
@@ -4178,11 +4207,51 @@ class QDialogMetadata(QDialog):
         else:
             self.TimeIncrementSpinBox.hide()
             self.TimeIncrementLabel.hide()
+    
+    def allowEditSizeT(self, checked):
+        if checked:
+            self.SizeT_SpinBox.setDisabled(False)
+            if self.SizeT_metadata is not None:
+                self.SizeT_SpinBox.setValue(self.SizeT_metadata)
+        else:
+            self.SizeT_SpinBox.setDisabled(True)
+            self.SizeT_SpinBox.setValue(1)
+    
+    def warnEditingMetadata(self, Size, Size_metadata, which_dim):
+        txt = html_utils.paragraph(f"""
+            The <b>number of {which_dim} in the saved metadata is {Size_metadata}</b>,  
+            but you are requesting to <b>change it to {Size}</b>.<br><br>
+            Are you <b>sure you want to proceed</b>?
+        """)
+        msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+        _, noButton, yesButton = msg.warning(
+            self, 'WARNING: Edinting saved metadata', txt, 
+            buttonsTexts=('Cancel', 'No', 'Yes, edit the metadata')
+        )
+        return msg.clickedButton == yesButton
 
     def ok_cb(self, event):
         self.cancel = False
         self.SizeT = self.SizeT_SpinBox.value()
         self.SizeZ = self.SizeZ_SpinBox.value()
+
+        if self.SizeT_metadata is not None:
+            if self.SizeT != self.SizeT_metadata:
+                proceed = self.warnEditingMetadata(
+                    self.SizeT, self.SizeT_metadata, 'frames'
+                )
+                if not proceed:
+                    return
+        
+        if self.SizeZ_metadata is not None:
+            if self.SizeZ != self.SizeZ_metadata:
+                proceed = self.warnEditingMetadata(
+                    self.SizeZ, self.SizeZ_metadata, 'z-slices'
+                )
+                if not proceed:
+                    return
+
+
         self.isSegm3D = self.isSegm3Dtoggle.isChecked()
 
         self.TimeIncrement = self.TimeIncrementSpinBox.value()
