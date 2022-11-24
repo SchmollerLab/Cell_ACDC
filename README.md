@@ -2,7 +2,7 @@
 
 ### A GUI-based Python framework for **segmentation**, **tracking**, **cell cycle annotations** and **quantification** of microscopy data
 
-*Written in Python 3 by Francesco Padovani and Benedikt Mairhoermann.*
+*Written in Python 3 by [Francesco Padovani](https://github.com/ElpadoCan) and [Benedikt Mairhoermann](https://github.com/Beno71).*
 
 [![build ubuntu](https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-ubuntu.yml/badge.svg)](https://github.com/SchmollerLab/Cell_ACDC/actions)
 [![build macos](https://github.com/SchmollerLab/Cell_ACDC/actions/workflows/build-macos.yml/badge.svg)](https://github.com/SchmollerLab/Cell_ACDC/actions)
