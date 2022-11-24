@@ -4609,13 +4609,21 @@ class guiWin(QMainWindow):
 
             posData.disableAutoActivateViewerWindow = True
             prev_IDs = posData.IDs.copy()
-            editID = apps.editID_QWidget(ID, posData.IDs, parent=self)
+            editID = apps.editID_QWidget(
+                ID, posData.IDs, doNotShowAgain=self.doNotAskAgainExistingID,
+                parent=self
+            )
             editID.show(block=True)
             if editID.cancel:
                 posData.disableAutoActivateViewerWindow = False
                 if not self.editIDbutton.findChild(QAction).isChecked():
                     self.editIDbutton.setChecked(False)
                 return
+
+            if not self.doNotAskAgainExistingID:    
+                self.editIDmergeIDs = editID.mergeWithExistingID
+            self.doNotAskAgainExistingID = editID.doNotAskAgainExistingID
+            
 
             # Ask to propagate change to all future visited frames
             (UndoFutFrames, applyFutFrames, endFrame_i,
@@ -4634,7 +4642,7 @@ class guiWin(QMainWindow):
             for old_ID, new_ID in editID.how:
                 self.addNewItems(new_ID)
 
-                if new_ID in prev_IDs:
+                if new_ID in prev_IDs and self.editIDmergeIDs:
                     tempID = np.max(posData.lab) + 1
                     posData.lab[posData.lab == old_ID] = tempID
                     posData.lab[posData.lab == new_ID] = old_ID
@@ -7428,6 +7436,16 @@ class guiWin(QMainWindow):
                     self.isHoverZneighID = True
                 else:
                     hoverID = 0
+                
+                # printl(
+                #     f'{doNotLinkThroughZ = },', 
+                #     f'{ID_z_under = },'
+                #     f'{hoverIDa = }',
+                #     f'{hoverIDb = }',
+                #     f'{hoverIDc = }',
+                #     f'{hoverID = }',
+                #     f'{self.brushHoverCenterModeAction = }'
+                # )
         else:
             if self.brushHoverCenterModeAction.isChecked() or ID>0:
                 hoverID = ID
@@ -7477,7 +7495,6 @@ class guiWin(QMainWindow):
         if checkChangeID:
             # We are hovering an ID in z+1 or z-1
             self.restoreBrushID = hoverID
-            self.changeBrushID()
         
         self.lastHoverID = hoverID
     
@@ -12999,6 +13016,8 @@ class guiWin(QMainWindow):
         self.navigateScrollBarStartedMoving = True
         self.zSliceScrollBarStartedMoving = True
         self.labelRoiRunning = False
+        self.editIDmergeIDs = True
+        self.doNotAskAgainExistingID = False
 
         # Second channel used by cellpose
         self.secondChannelName = None
@@ -13835,6 +13854,8 @@ class guiWin(QMainWindow):
             posData.lab[mask] = 0
     
     def changeBrushID(self):
+        """Function called when pressing or releasing shift
+        """        
         if not self.isSegm3D:
             # Changing brush ID with shift is only for 3D segm
             return
@@ -13844,7 +13865,7 @@ class guiWin(QMainWindow):
             return
         
         if not self.isMouseDragImg2 and not self.isMouseDragImg1:
-            # Mouse if not brushing at the moment
+            # Mouse is not brushing at the moment
             return
 
         posData = self.data[self.pos_i]

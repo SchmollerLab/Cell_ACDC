@@ -175,6 +175,11 @@ class QLog(QPlainTextEdit):
         super().closeEvent(event)
         self.sigClose.emit()
 
+class mergePushButton(QPushButton):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setIcon(QIcon(':merge-IDs.svg'))
+
 class okPushButton(QPushButton):
     def __init__(self, *args):
         super().__init__(*args)

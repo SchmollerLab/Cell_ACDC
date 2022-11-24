@@ -6797,11 +6797,13 @@ class QLineEditDialog(QDialog):
             self.loop.exit()
 
 class editID_QWidget(QDialog):
-    def __init__(self, clickedID, IDs, parent=None):
+    def __init__(self, clickedID, IDs, doNotShowAgain=False, parent=None):
         self.IDs = IDs
         self.clickedID = clickedID
         self.cancel = True
         self.how = None
+        self.mergeWithExistingID = True
+        self.doNotAskAgainExistingID = doNotShowAgain
 
         super().__init__(parent)
         self.setWindowTitle("Edit ID")
@@ -6893,7 +6895,7 @@ class editID_QWidget(QDialog):
     def _warnExistingID(self, existingID, newID):
         warn_msg = html_utils.paragraph(f"""
             ID {existingID} is <b>already existing</b>.<br><br>
-            How do you want to proceed?<br>'
+            How do you want to proceed?<br>
         """)
         msg = widgets.myMessageBox()
         doNotAskAgainCheckbox = QCheckBox('Remember my choice and do not ask again')
@@ -6920,11 +6922,11 @@ class editID_QWidget(QDialog):
         try:
             ID = int(txt)
             how = [(self.clickedID, ID)]
-            if ID in self.IDs:
+            if ID in self.IDs and not self.doNotAskAgainExistingID:
                 proceed = self._warnExistingID(self.clickedID, ID)
                 if not proceed:
                     return
-                    
+                valid = True
             else:
                 valid = True
         except ValueError:
