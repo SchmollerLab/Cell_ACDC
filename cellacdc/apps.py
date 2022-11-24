@@ -6901,7 +6901,7 @@ class editID_QWidget(QDialog):
         doNotAskAgainCheckbox = QCheckBox('Remember my choice and do not ask again')
         swapButton = widgets.reloadPushButton(f'Swap {newID} with {existingID}')
         mergeButton = widgets.mergePushButton(f'Merge {newID} with {existingID}')
-        noButton, yesButton = msg.warning(
+        msg.warning(
             self, 'Existing ID', warn_msg, 
             buttonsTexts=('Cancel', mergeButton, swapButton),
             widgets=doNotAskAgainCheckbox
@@ -6911,7 +6911,6 @@ class editID_QWidget(QDialog):
         self.doNotAskAgainExistingID = doNotAskAgainCheckbox.isChecked()
         self.mergeWithExistingID = msg.clickedButton ==  mergeButton
         return True
-
 
     def ok_cb(self, event):
         self.cancel = False

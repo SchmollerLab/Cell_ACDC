@@ -4642,7 +4642,7 @@ class guiWin(QMainWindow):
             for old_ID, new_ID in editID.how:
                 self.addNewItems(new_ID)
 
-                if new_ID in prev_IDs and self.editIDmergeIDs:
+                if new_ID in prev_IDs and not self.editIDmergeIDs:
                     tempID = np.max(posData.lab) + 1
                     posData.lab[posData.lab == old_ID] = tempID
                     posData.lab[posData.lab == new_ID] = old_ID
@@ -7495,6 +7495,7 @@ class guiWin(QMainWindow):
         if checkChangeID:
             # We are hovering an ID in z+1 or z-1
             self.restoreBrushID = hoverID
+            # self.changeBrushID()
         
         self.lastHoverID = hoverID
     
