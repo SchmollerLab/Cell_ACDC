@@ -1892,9 +1892,11 @@ class QDialogMetadataXML(QDialog):
             and the <b>frame</b> (if SizeT > 1) index.<br><br>
             Example: "zct" means that the order of dimensions in the image shape  
             is (SizeZ, SizeC, SizeT).<br><br>
-            To test this, click on the "eye" button besides the channel name below. 
+            To test this, click on the "eye" button besides the channel name below. For 
+            time-lapse data you will be able to visualize the first 4 frames. 
             If the order of dimensions is correct, the displayed image should be 
-            the <b>first frame of the corresponding channel</b>. Make sure to also check 
+            the <b>image of the corresponding channel</b>. For time-lapse data check that 
+            every frame is correct. Make sure to also check 
             that the z-slices are in the correct order by scrolling with the 
             z-slice scrollbar.
         ''')
@@ -6887,6 +6889,27 @@ class editID_QWidget(QDialog):
             text += ')'
             self.ID_QLineEdit.setText(text)
         self.prevText = text
+    
+    def _warnExistingID(self, existingID, newID):
+        warn_msg = html_utils.paragraph(f"""
+            ID {existingID} is <b>already existing</b>.<br><br>
+            How do you want to proceed?<br>'
+        """)
+        msg = widgets.myMessageBox()
+        doNotAskAgainCheckbox = QCheckBox('Remember my choice and do not ask again')
+        swapButton = widgets.reloadPushButton(f'Swap {newID} with {existingID}')
+        mergeButton = widgets.mergePushButton(f'Merge {newID} with {existingID}')
+        noButton, yesButton = msg.warning(
+            self, 'Existing ID', warn_msg, 
+            buttonsTexts=('Cancel', mergeButton, swapButton),
+            widgets=doNotAskAgainCheckbox
+        )
+        if msg.cancel:
+            return False
+        self.doNotAskAgainExistingID = doNotAskAgainCheckbox.isChecked()
+        self.mergeWithExistingID = msg.clickedButton ==  mergeButton
+        return True
+
 
     def ok_cb(self, event):
         self.cancel = False
@@ -6898,21 +6921,10 @@ class editID_QWidget(QDialog):
             ID = int(txt)
             how = [(self.clickedID, ID)]
             if ID in self.IDs:
-                warn_msg = html_utils.paragraph(
-                    f'ID {ID} is <b>already existing</b>.<br><br>'
-                    f'If you continue, ID {ID} will be swapped with '
-                    f'ID {self.clickedID}<br><br>'
-                    'Do you want to continue?'
-                )
-                msg = widgets.myMessageBox()
-                noButton, yesButton = msg.warning(
-                    self, 'Invalid entry', warn_msg, 
-                    buttonsTexts=('No', 'Yes')
-                )
-                if yesButton == msg.clickedButton:
-                    valid = True
-                else:
+                proceed = self._warnExistingID(self.clickedID, ID)
+                if not proceed:
                     return
+                    
             else:
                 valid = True
         except ValueError:
