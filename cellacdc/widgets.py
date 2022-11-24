@@ -3874,6 +3874,20 @@ class sliderWithSpinBox(QWidget):
     def value(self):
         return self.spinBox.value()
 
+class BaseImageItem(pg.ImageItem):
+    def __init__(
+            self, image=None, **kargs
+        ):
+        super().__init__(image, **kargs)
+    
+    def setImage(self, image=None, **kwargs):
+        if image is None:
+            return
+        autoLevels = kwargs.get('autoLevels')
+        if autoLevels is None:
+            kwargs['autoLevels'] = False
+        super().setImage(image, **kwargs)
+
 class ParentImageItem(pg.ImageItem):
     def __init__(
             self, image=None, linkedImageItem=None, activatingAction=None,

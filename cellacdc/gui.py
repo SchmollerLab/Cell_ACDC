@@ -3629,10 +3629,10 @@ class guiWin(QMainWindow):
         self.topLayerItems.append(self.BudMothTempLine)
 
         # Overlay segm. masks item
-        self.labelsLayerImg1 = pg.ImageItem()
+        self.labelsLayerImg1 = widgets.BaseImageItem()
         self.ax1.addItem(self.labelsLayerImg1)
 
-        self.labelsLayerRightImg = pg.ImageItem()
+        self.labelsLayerRightImg = widgets.BaseImageItem()
         self.ax2.addItem(self.labelsLayerRightImg)
 
         # Red/green border rect item
@@ -16121,9 +16121,11 @@ class guiWin(QMainWindow):
                     else:
                         self.labelsLayerRightImg.image[toLocalSlice][mask] = 0               
             if ax == 0:
-                self.labelsLayerImg1.setImage(self.labelsLayerImg1.image)
+                self.labelsLayerImg1.setImage(
+                    self.labelsLayerImg1.image, autoLevels=False)
             else:
-                self.labelsLayerRightImg.setImage(self.labelsLayerRightImg.image)
+                self.labelsLayerRightImg.setImage(
+                    self.labelsLayerRightImg.image, autoLevels=False)
 
     def setTempImg1ExpandLabel(self, prevCoords, expandedObjCoords, ax=0):
         if ax == 0:
@@ -16145,9 +16147,11 @@ class guiWin(QMainWindow):
                 self.labelsLayerRightImg.image[expandedObjCoords] = self.expandingID
 
             if ax == 0:
-                self.labelsLayerImg1.setImage(self.labelsLayerImg1.image)
+                self.labelsLayerImg1.setImage(
+                    self.labelsLayerImg1.image, autoLevels=False)
             else:
-                self.labelsLayerRightImg.setImage(self.labelsLayerRightImg.image)
+                self.labelsLayerRightImg.setImage(
+                    self.labelsLayerRightImg.image, autoLevels=False)
         else:
             if ax == 0:
                 contCurveID = self.ax1_ContoursCurves[self.expandingID-1]
