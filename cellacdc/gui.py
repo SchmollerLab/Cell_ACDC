@@ -1861,9 +1861,19 @@ class guiWin(QMainWindow):
         # self.checkableButtons.append(self.overlayButton)
         # self.checkableQButtonsGroup.addButton(self.overlayButton)
 
+        self.addPointsLayerAction = QAction('Add points layer', self)
+        self.addPointsLayerAction.setIcon(QIcon(":addPointsLayer.svg"))
+        self.addPointsLayerAction.setToolTip(
+            'Add points layer as a scatter plot'
+        )
+        navigateToolBar.addAction(self.addPointsLayerAction)
+
         self.overlayLabelsButton = widgets.rightClickToolButton(parent=self)
         self.overlayLabelsButton.setIcon(QIcon(":overlay_labels.svg"))
         self.overlayLabelsButton.setCheckable(True)
+        self.overlayLabelsButton.setToolTip(
+            'Add contours layer from another segmentation file'
+        )
         # self.overlayLabelsButton.setVisible(False)
         self.overlayLabelsButtonAction = navigateToolBar.addWidget(
             self.overlayLabelsButton
@@ -2590,6 +2600,10 @@ class guiWin(QMainWindow):
         self.keptIDsLineEdit.sigIDsChanged.connect(self.updateKeepIDs)
         self.keepIDsConfirmAction.triggered.connect(self.applyKeepObjects)
 
+        self.pointsLayersToolbar = QToolBar("Points layers", self)
+        self.addToolBar(Qt.TopToolBarArea, self.pointsLayersToolbar)
+        self.pointsLayersToolbar.setVisible(False)
+
 
     def gui_populateToolSettingsMenu(self):
         brushHoverModeActionGroup = QActionGroup(self)
@@ -3102,6 +3116,7 @@ class guiWin(QMainWindow):
 
         self.fontSizeMenu.aboutToShow.connect(self.showFontSizeMenu)
         self.overlayButton.toggled.connect(self.overlay_cb)
+        self.addPointsLayerAction.triggered.connect(self.addPointsLayer_cb)
         self.overlayLabelsButton.toggled.connect(self.overlayLabels_cb)
         self.overlayButton.sigRightClick.connect(self.showOverlayContextMenu)
         self.labelRoiButton.sigRightClick.connect(self.showLabelRoiContextMenu)
@@ -3401,6 +3416,7 @@ class guiWin(QMainWindow):
             'Activate/deactivate control of the z-slices with keyboard arrows.\n\n'
             'SHORCUT to toggle ON/OFF: "Z" key'
         )
+        self.z_label.setToolTip(self.zSliceCheckbox.toolTip())
         zSliceCheckboxLayout.addWidget(self.zSliceCheckbox)
         zSliceCheckboxLayout.addWidget(self.z_label)
         zSliceCheckboxLayout.addWidget(self.zSliceSpinbox)
@@ -15218,12 +15234,12 @@ class guiWin(QMainWindow):
                 if os.path.exists(bkgrData_path):
                     bkgrData = np.load(bkgrData_path)
         else:
-            txt = (f'File format {ext} is not supported!\n'
-                    'Choose either .tif or .npz files.')
-            msg = QMessageBox()
-            msg.critical(
-                self, 'File not supported', txt, msg.Ok
+            txt = html_utils.paragraph(
+                f'File format {ext} is not supported!\n'
+                'Choose either .tif or .npz files.'
             )
+            msg = widgets.myMessageBox()
+            msg.critical(self, 'File not supported', txt)
             return None, None
 
         return fluo_data, bkgrData
@@ -15334,6 +15350,112 @@ class guiWin(QMainWindow):
             return
 
         return selectOverlayLabels.selectedItemsText
+    
+    def addPointsLayer_cb(self):
+        posData = self.data[self.pos_i]
+        self.addPointsWin = apps.AddPointsLayerDialog(
+            channelNames=posData.chNames, imagesPath=posData.images_path, 
+            parent=self
+        )
+        self.addPointsWin.sigCriticalReadTable.connect(self.logger.info)
+        self.addPointsWin.sigLoadedTable.connect(self.logger.info)
+        self.addPointsWin.sigClosed.connect(self.addPointsLayer)
+        self.addPointsWin.show()
+    
+    def addPointsLayer(self):
+        if self.addPointsWin.cancel:
+            self.logger.info('Adding points layer cancelled.')
+            return
+
+        symbol = self.addPointsWin.symbol
+        color = self.addPointsWin.color
+        r,g,b,a = color.getRgb()
+
+        scatterItem = pg.ScatterPlotItem(
+            [], [], symbol=symbol, pxMode=False, size=4,
+            brush=pg.mkBrush(color=(r,g,b,100)),
+            pen=pg.mkPen(width=2, color=(r,g,b)),
+            hoverable=True, hoverBrush=pg.mkBrush((r,g,b,200))
+        )
+        self.ax1.addItem(scatterItem)
+        self.ax2.addItem(scatterItem)
+
+        toolButton = widgets.PointsLayerToolButton(symbol, color, parent=self)
+        toolButton.setToolTip(
+            f'"{self.addPointsWin.layerType}" points layer\n\n'
+            f'SHORTCUT: "{self.addPointsWin.shortcut}"'
+        )
+        toolButton.setCheckable(True)
+        toolButton.setChecked(True)
+        toolButton.toggled.connect(self.pointLayerToolbuttonToggled)
+
+        action = self.pointsLayersToolbar.addWidget(toolButton)
+        action.scatterItem = scatterItem
+        action.layetTypeIdx = self.addPointsWin.layetTypeIdx
+        action.pointsData = self.addPointsWin.pointsData
+        self.pointsLayersToolbar.setVisible(True)
+
+        self.loadPointsLayerWeighingData(action)
+
+        self.drawPointsLayers()
+    
+    def loadPointsLayerWeighingData(self, action, weighingChannel):
+        if not weighingChannel:
+            return
+        
+        action.weighingData = []
+        for p, posData in enumerate(self.data):
+            path, filename = self.getPathFromChName(weighingChannel, posData)
+            if path is None:
+                self.criticalFluoChannelNotFound(weighingChannel, posData) 
+                action.weighingData = None
+                return
+            if filename:
+                pass
+            else:
+                wData, _ = self.load_fluo_data()
+            action.weighingData.append()
+
+
+    def pointLayerToolbuttonToggled(self, checked):
+        if checked:
+            pass
+        else:
+            pass
+    
+    def drawPointsLayers(self):
+        posData = self.data[self.pos_i]
+        for action in self.pointsLayersToolbar.actions():
+            if not action.isChecked():
+                continue
+            
+            if action.layetTypeIdx < 2:
+                action.pointsData[posData.frame_i] = {
+                    'x': [], 'y': [], 'z': []
+                }
+                if action.weighingData is None:
+                    pass
+                else:
+                    rp = posData.rp
+                for i, obj in enumerate(posData.rp):
+                    if self.isSegm3D:
+                        pass
+    
+    def drawPointsLayers(self):
+        posData = self.data[self.pos_i]
+        for action in self.pointsLayersToolbar.actions():
+            if not action.isChecked():
+                continue
+            
+            if action.layerType.find('Centroids') != -1:
+                xx, yy, zz = [], [], []
+                for i, obj in enumerate(posData.rp):
+                    if not self.isObjVisible(obj.bbox):
+                        continue
+            else:
+                xx, yy = action.xyData
+                xx = action.zData
+            action.scatterItem.setData(xx, yy)
 
     def overlay_cb(self, checked):
         self.UserNormAction, _, _ = self.getCheckNormAction()
