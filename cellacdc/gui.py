@@ -2601,7 +2601,10 @@ class guiWin(QMainWindow):
         self.keepIDsConfirmAction.triggered.connect(self.applyKeepObjects)
 
         self.pointsLayersToolbar = QToolBar("Points layers", self)
+        self.pointsLayersToolbar.setContextMenuPolicy(Qt.PreventContextMenu)
         self.addToolBar(Qt.TopToolBarArea, self.pointsLayersToolbar)
+        self.pointsLayersToolbar.addWidget(QLabel('Points layers:  '))
+        self.pointsLayersToolbar.setIconSize(QSize(16, 16))
         self.pointsLayersToolbar.setVisible(False)
 
 
@@ -10008,7 +10011,8 @@ class guiWin(QMainWindow):
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
             posData = self.data[self.pos_i]
-            self.storeUndoRedoStates(False)
+            # for action in self.pointsLayersToolbar.actions()[1:]:
+            #     printl(action.pointsData, pretty=True)
             # self.win = apps.pgTestWindow()
             # self.win.ax1.addItem(self.tempLayerImg1)
             # self.win.show()
@@ -12786,6 +12790,7 @@ class guiWin(QMainWindow):
                     self.annotateObject(obj, 'IDs')
             self.currentLab2D = posData.lab[self.z_lab()]
             self.setOverlaySegmMasks(force=True)
+            self.drawPointsLayers(computePointsLayers=False)
             self.zSliceScrollBarStartedMoving = False
 
     def zSliceScrollBarReleased(self):
@@ -12799,7 +12804,7 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         idx = (posData.filename, posData.frame_i)
         posData.segmInfo_df.at[idx, 'z_slice_used_gui'] = z
-        self.updateALLimg()
+        self.updateALLimg(computePointsLayers=False)
 
     def update_overlay_z_slice(self, z):
         self.setOverlayImages()
@@ -12906,9 +12911,15 @@ class guiWin(QMainWindow):
             if BudMothLine.getData()[0] is not None:
                 BudMothLine.clear()
             _IDlabel1.setText('')
-        
+
+        self.clearPointsLayers()
+
         self.clearOverlayLabelsItems()
-        
+    
+    def clearPointsLayers(self):
+        for action in self.pointsLayersToolbar.actions()[1:]:
+            action.scatterItem.clear()
+
     def clearOverlayLabelsItems(self):
         for segmEndname, drawMode in self.drawModeOverlayLabelsChannels.items():
             items = self.overlayLabelsItems[segmEndname]
@@ -15373,16 +15384,16 @@ class guiWin(QMainWindow):
 
         symbol = self.addPointsWin.symbol
         color = self.addPointsWin.color
+        pointSize = self.addPointsWin.pointSize
         r,g,b,a = color.getRgb()
 
         scatterItem = pg.ScatterPlotItem(
-            [], [], symbol=symbol, pxMode=False, size=4,
+            [], [], symbol=symbol, pxMode=False, size=pointSize,
             brush=pg.mkBrush(color=(r,g,b,100)),
             pen=pg.mkPen(width=2, color=(r,g,b)),
             hoverable=True, hoverBrush=pg.mkBrush((r,g,b,200))
         )
         self.ax1.addItem(scatterItem)
-        self.ax2.addItem(scatterItem)
 
         toolButton = widgets.PointsLayerToolButton(symbol, color, parent=self)
         toolButton.setToolTip(
@@ -15391,74 +15402,146 @@ class guiWin(QMainWindow):
         )
         toolButton.setCheckable(True)
         toolButton.setChecked(True)
+        if self.addPointsWin.keySequence is not None:
+            toolButton.setShortcut(self.addPointsWin.keySequence)
         toolButton.toggled.connect(self.pointLayerToolbuttonToggled)
+        toolButton.sigEditAppearance.connect(self.editPointsLayerAppearance)
 
         action = self.pointsLayersToolbar.addWidget(toolButton)
+        action.state = self.addPointsWin.state()
+
+        toolButton.action = action
+        action.button = toolButton
         action.scatterItem = scatterItem
         action.layetTypeIdx = self.addPointsWin.layetTypeIdx
         action.pointsData = self.addPointsWin.pointsData
         self.pointsLayersToolbar.setVisible(True)
 
-        self.loadPointsLayerWeighingData(action)
+        weighingChannel = self.addPointsWin.weighingChannel
+        self.loadPointsLayerWeighingData(action, weighingChannel)
 
         self.drawPointsLayers()
+    
+    def editPointsLayerAppearance(self, button):
+        win = apps.EditPointsLayerAppearanceDialog(parent=self)
+        win.restoreState(button.action.state)
+        win.exec_()
+        if win.cancel:
+            return
+        
+        symbol = win.symbol
+        color = win.color
+        pointSize = win.pointSize
+        r,g,b,a = color.getRgb()
+
+        scatterItem = button.action.scatterItem
+        scatterItem.opts['hoverBrush'] = pg.mkBrush((r,g,b,200))
+        scatterItem.setSymbol(symbol, update=False)
+        scatterItem.setBrush(pg.mkBrush(color=(r,g,b,100)), update=False)
+        scatterItem.setPen(pg.mkPen(width=2, color=(r,g,b)), update=False)
+        scatterItem.setSize(pointSize, update=True)
+
+        button.action.state = win.state()
     
     def loadPointsLayerWeighingData(self, action, weighingChannel):
         if not weighingChannel:
             return
         
+        self.logger.info(f'Loading "{weighingChannel}" weighing data...')
         action.weighingData = []
         for p, posData in enumerate(self.data):
+            if weighingChannel == posData.user_ch_name:
+                wData = posData.img_data
+                action.weighingData.append(wData)
+                continue
+
             path, filename = self.getPathFromChName(weighingChannel, posData)
             if path is None:
                 self.criticalFluoChannelNotFound(weighingChannel, posData) 
-                action.weighingData = None
+                action.weighingData = []
                 return
-            if filename:
-                pass
+            
+            if filename in posData.fluo_data_dict:
+                # Weighing data already loaded as additional fluo channel
+                wData = posData.fluo_data_dict[filename]
             else:
-                wData, _ = self.load_fluo_data()
-            action.weighingData.append()
-
+                # Weighing data never loaded --> load now
+                wData, _ = self.load_fluo_data(path)
+                if posData.SizeT == 1:
+                    wData = wData[np.newaxis]
+            action.weighingData.append(wData)
 
     def pointLayerToolbuttonToggled(self, checked):
-        if checked:
-            pass
+        action = self.sender().action
+        action.scatterItem.setVisible(checked)
+    
+    def getCentroidsPointsData(self, action):
+        # Centroids (either weighted or not)
+        # NOTE: if user requested to draw from table we load that in 
+        # apps.AddPointsLayerDialog.ok_cb()
+        posData = self.data[self.pos_i]
+        action.pointsData[posData.frame_i] = {}
+        if action.weighingData:
+            lab = posData.lab
+            img = action.weighingData[self.pos_i][posData.frame_i]
+            rp = skimage.measure.regionprops(lab, intensity_image=img)
+            attr = 'weighted_centroid'
         else:
-            pass
-    
-    def drawPointsLayers(self):
-        posData = self.data[self.pos_i]
-        for action in self.pointsLayersToolbar.actions():
-            if not action.isChecked():
-                continue
-            
-            if action.layetTypeIdx < 2:
-                action.pointsData[posData.frame_i] = {
-                    'x': [], 'y': [], 'z': []
-                }
-                if action.weighingData is None:
-                    pass
+            rp = posData.rp
+            attr = 'centroid'
+        for i, obj in enumerate(rp):
+            centroid = getattr(obj, attr)
+            if len(centroid) == 3:
+                zc, yc, xc = centroid
+                z_int = round(zc)
+                if z_int not in action.pointsData[posData.frame_i]:
+                    action.pointsData[posData.frame_i][z_int] = {
+                        'x': [xc], 'y': [yc]
+                    }
                 else:
-                    rp = posData.rp
-                for i, obj in enumerate(posData.rp):
-                    if self.isSegm3D:
-                        pass
-    
-    def drawPointsLayers(self):
-        posData = self.data[self.pos_i]
-        for action in self.pointsLayersToolbar.actions():
-            if not action.isChecked():
-                continue
-            
-            if action.layerType.find('Centroids') != -1:
-                xx, yy, zz = [], [], []
-                for i, obj in enumerate(posData.rp):
-                    if not self.isObjVisible(obj.bbox):
-                        continue
+                    z_data = action.pointsData[posData.frame_i][z_int]
+                    z_data['x'].append(xc)
+                    z_data['y'].append(yc)
             else:
-                xx, yy = action.xyData
-                xx = action.zData
+                yc, xc = centroid
+                if 'y' not in action.pointsData[posData.frame_i]:
+                    action.pointsData[posData.frame_i]['y'] = [yc]
+                    action.pointsData[posData.frame_i]['x'] = [xc]
+                else:
+                    action.pointsData[posData.frame_i]['y'].append(yc)
+                    action.pointsData[posData.frame_i]['x'].append(xc)
+    
+    def drawPointsLayers(self, computePointsLayers=True):
+        posData = self.data[self.pos_i]
+        for action in self.pointsLayersToolbar.actions()[1:]:
+            if action.layetTypeIdx < 2 and computePointsLayers:
+                self.getCentroidsPointsData(action)
+
+            if not action.button.isChecked():
+                continue
+                
+            if self.isSegm3D:
+                zProjHow = self.zProjComboBox.currentText()
+                isZslice = zProjHow == 'single z-slice'
+                if isZslice:
+                    zSlice = self.z_lab()
+                    z_data = action.pointsData[posData.frame_i].get(zSlice)
+                    if z_data is None:
+                        # There are no objects on this z-slice
+                        action.scatterItem.clear()
+                        return
+                    xx, yy = z_data['x'], z_data['y']
+                else:
+                    xx, yy = [], []
+                    # z-projection --> draw all points
+                    for z, z_data in action.pointsData[posData.frame_i].items():
+                        xx.extend(z_data['x'])
+                        yy.extend(z_data['y'])
+            else:
+                # 2D segmentation
+                xx = action.pointsData[posData.frame_i]['x']
+                yy = action.pointsData[posData.frame_i]['y']
+
             action.scatterItem.setData(xx, yy)
 
     def overlay_cb(self, checked):
@@ -16885,7 +16968,9 @@ class guiWin(QMainWindow):
 
     # @exec_time
     @exception_handler
-    def updateALLimg(self, image=None, updateFilters=False):
+    def updateALLimg(
+            self, image=None, updateFilters=False, computePointsLayers=True
+        ):
         self.clearAx1Items()
         self.clearAx2Items()
 
@@ -16963,6 +17048,7 @@ class guiWin(QMainWindow):
         self.doCustomAnnotation(0)
 
         self.updateTempLayerKeepIDs()
+        self.drawPointsLayers(computePointsLayers=computePointsLayers)
     
     def setOverlayLabelsItems(self):
         if not self.overlayLabelsButton.isChecked():

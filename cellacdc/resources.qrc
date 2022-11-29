@@ -84,6 +84,7 @@
     <file alias="cancelButton.svg">resources/icons/cancelButton.svg</file>
     <file alias="okButton.svg">resources/icons/okButton.svg</file>
     <file alias="greenTick.svg">resources/icons/greenTick.svg</file>
+    <file alias="addPointsLayer.svg">resources/icons/addPointsLayer.svg</file>
     <file alias="no.svg">resources/icons/no.svg</file>
     <file alias="yesGray.svg">resources/icons/yesGray.svg</file>
     <file alias="bkgrRoi.svg">resources/icons/bkgrRoi.svg</file>

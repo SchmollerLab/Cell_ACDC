@@ -38,7 +38,7 @@ from PyQt5.QtWidgets import (
     QAction, QTabWidget, QAbstractSpinBox, QMessageBox,
     QStyle, QDialog, QSpacerItem, QFrame, QMenu, QActionGroup,
     QListWidget, QPlainTextEdit, QFileDialog, QListView, QAbstractItemView,
-    QTreeWidget, QTreeWidgetItem, QListWidgetItem, QLayout
+    QTreeWidget, QTreeWidgetItem, QListWidgetItem, QLayout, QStylePainter
 )
 
 import pyqtgraph as pg
@@ -1700,7 +1700,7 @@ class myMessageBox(QDialog):
             self.timer.stop()
 
     def _template(
-            self, parent, title, message,
+            self, parent, title, message, detailsText=None,
             buttonsTexts=None, layouts=None, widgets=None
         ):
         if parent is not None:
@@ -1732,16 +1732,19 @@ class myMessageBox(QDialog):
             for buttonText in buttonsTexts:
                 button = self.addButton(buttonText)
                 buttons.append(button)
+        
+        if detailsText is not None:
+            self.setDetailedText(detailsText, visible=True)
         return buttons
 
     def critical(
             self, parent, title, message,
             buttonsTexts=None, layouts=None, widgets=None,
-            showDialog=True
+            showDialog=True, detailsText=None,
         ):
         self.setIcon(iconName='SP_MessageBoxCritical')
         buttons = self._template(
-            parent, title, message,
+            parent, title, message, detailsText=detailsText,
             buttonsTexts=buttonsTexts, layouts=layouts, widgets=widgets
         )
         if showDialog:
@@ -1751,11 +1754,11 @@ class myMessageBox(QDialog):
     def information(
             self, parent, title, message,
             buttonsTexts=None, layouts=None, widgets=None,
-            showDialog=True
+            showDialog=True, detailsText=None
         ):
         self.setIcon(iconName='SP_MessageBoxInformation')
         buttons = self._template(
-            parent, title, message,
+            parent, title, message, detailsText=detailsText,
             buttonsTexts=buttonsTexts, layouts=layouts, widgets=widgets
         )
         if showDialog:
@@ -1765,11 +1768,11 @@ class myMessageBox(QDialog):
     def warning(
             self, parent, title, message,
             buttonsTexts=None, layouts=None, widgets=None,
-            showDialog=True
+            showDialog=True, detailsText=None,
         ):
         self.setIcon(iconName='SP_MessageBoxWarning')
         buttons = self._template(
-            parent, title, message,
+            parent, title, message, detailsText=detailsText,
             buttonsTexts=buttonsTexts, layouts=layouts, widgets=widgets
         )
         if showDialog:
@@ -1779,11 +1782,11 @@ class myMessageBox(QDialog):
     def question(
             self, parent, title, message,
             buttonsTexts=None, layouts=None, widgets=None,
-            showDialog=True
+            showDialog=True, detailsText=None,
         ):
         self.setIcon(iconName='SP_MessageBoxQuestion')
         buttons = self._template(
-            parent, title, message,
+            parent, title, message, detailsText=detailsText,
             buttonsTexts=buttonsTexts, layouts=layouts, widgets=widgets
         )
         if showDialog:
@@ -1895,22 +1898,11 @@ class rightClickToolButton(QToolButton):
         elif event.button() == Qt.MouseButton.RightButton:
             self.sigRightClick.emit(event)
 
-class customAnnotToolButton(rightClickToolButton):
-    sigRemoveAction = pyqtSignal(object)
-    sigKeepActiveAction = pyqtSignal(object)
-    sigModifyAction = pyqtSignal(object)
-    sigHideAction = pyqtSignal(object)
-
-    def __init__(
-            self, symbol, color='r', keepToolActive=True, parent=None,
-            isHideChecked=True
-        ):
+class ToolButtonCustomColor(rightClickToolButton):
+    def __init__(self, symbol, color='r', parent=None):
         super().__init__(parent=parent)
         self.symbol = symbol
-        self.keepToolActive = keepToolActive
-        self.isHideChecked = isHideChecked
         self.setColor(color)
-        self.sigRightClick.connect(self.showContextMenu)
 
     def setColor(self, color):
         self.penColor = color
@@ -1936,6 +1928,42 @@ class customAnnotToolButton(rightClickToolButton):
             traceback.print_exc()
         finally:
             p.end()
+
+class PointsLayerToolButton(ToolButtonCustomColor):
+    sigEditAppearance = pyqtSignal(object)
+
+    def __init__(self, symbol, color='r', parent=None):
+        super().__init__(symbol, color, parent)
+        self.sigRightClick.connect(self.showContextMenu)
+    
+    def showContextMenu(self, event):
+        contextMenu = QMenu(self)
+        contextMenu.addSeparator()
+
+        editAction = QAction('Edit points appearance...')
+        editAction.triggered.connect(self.editAppearance)
+        contextMenu.addAction(editAction)
+
+        contextMenu.exec(event.globalPos())
+    
+    def editAppearance(self):
+        self.sigEditAppearance.emit(self)
+
+class customAnnotToolButton(ToolButtonCustomColor):
+    sigRemoveAction = pyqtSignal(object)
+    sigKeepActiveAction = pyqtSignal(object)
+    sigModifyAction = pyqtSignal(object)
+    sigHideAction = pyqtSignal(object)
+
+    def __init__(
+            self, symbol, color='r', keepToolActive=True, parent=None,
+            isHideChecked=True
+        ):
+        super().__init__(symbol, color='r', parent=parent)
+        self.symbol = symbol
+        self.keepToolActive = keepToolActive
+        self.isHideChecked = isHideChecked
+        self.sigRightClick.connect(self.showContextMenu)
 
     def showContextMenu(self, event):
         contextMenu = QMenu(self)
@@ -3384,26 +3412,48 @@ class linkedQScrollbar(QScrollBar):
             self._linkedScrollBar.setMaximum(max)
 
 class myColorButton(pg.ColorButton):
-    def __init__(self, parent=None, color=(128,128,128), padding=3):
+    def __init__(self, parent=None, color=(128,128,128), padding=5):
         super().__init__(parent=parent, color=color)
         if isinstance(padding, (int, float)):
             self.padding = (padding, padding, -padding, -padding)  
         else:
             self.padding = padding
-        self.setFlat(True)
+        self._c = 225
+        self._hoverDeltaC = 30
+        self._alpha = 100
+        self._bkgrColor = QColor(self._c, self._c, self._c, self._alpha) 
+        self._borderColor = QColor(171, 171, 171)      
+        self._rectBorderPen = QPen(QBrush(QColor(0,0,0)), 0.3)
    
-    def paintEvent(self, ev):
-        super().paintEvent(ev)
-        p = QPainter(self)
+    def paintEvent(self, event):
+        # QPushButton.paintEvent(self, ev)
+        p = QStylePainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        rect = self.rect()
+        p.setBrush(QBrush(self._bkgrColor))
+        p.setPen(QPen(self._borderColor))
+        p.drawRoundedRect(rect, 5, 5)
+        # p.fillRect(self.rect(), self._bkgrColor)
         rect = self.rect().adjusted(*self.padding)
         ## draw white base, then texture for indicating transparency, then actual color
         p.setBrush(pg.mkBrush('w'))
         p.drawRect(rect)
         p.setBrush(QBrush(Qt.BrushStyle.DiagCrossPattern))
         p.drawRect(rect)
+        p.setPen(self._rectBorderPen)
         p.setBrush(pg.mkBrush(self._color))
         p.drawRect(rect)
         p.end()
+    
+    def enterEvent(self, event):
+        c = self._c + self._hoverDeltaC
+        self._bkgrColor = QColor(c, c, c, self._alpha) 
+        self.update()
+    
+    def leaveEvent(self, event):
+        c = self._c
+        self._bkgrColor = QColor(c, c, c, self._alpha) 
+        self.update()
 
 class highlightableQWidgetAction(QWidgetAction):
     def __init__(self, parent) -> None:

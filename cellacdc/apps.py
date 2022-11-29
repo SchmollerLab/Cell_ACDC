@@ -700,7 +700,13 @@ class customAnnotationDialog(QDialog):
         self.selectAnnotWin.listBox.addItems(items)
 
     def selectColor(self):
-        pg.ColorButton.selectColor(self.colorButton)
+        color = self.colorButton.color()
+        self.colorButton.origColor = color
+        self.colorButton.colorDialog.setCurrentColor(color)
+        self.colorButton.colorDialog.setWindowFlags(
+            Qt.Window | Qt.WindowStaysOnTopHint
+        )
+        self.colorButton.colorDialog.open()
         w = self.width()
         left = self.pos().x()
         colorDialogTop = self.colorButton.colorDialog.pos().y()
@@ -834,6 +840,429 @@ class customAnnotationDialog(QDialog):
         if block:
             self.loop = QEventLoop()
             self.loop.exec_()
+
+class _PointsLayerAppearanceGroupbox(QGroupBox):
+    def __init__(self, *args):
+        super().__init__(*args)
+
+        self.setTitle('Points appearance')
+
+        layout = widgets.myFormLayout()
+
+        '----------------------------------------------------------------------' 
+        row = 0
+        symbolInfoTxt = ("""
+            <b>Symbol</b> used to draw the points.
+        """)
+        symbolInfoTxt = (f'{html_utils.paragraph(symbolInfoTxt)}')
+        self.symbolWidget = widgets.formWidget(
+            widgets.pgScatterSymbolsCombobox(), addInfoButton=True,
+            labelTextLeft='Symbol: ', parent=self, infoTxt=symbolInfoTxt,
+            stretchWidget=False
+        )
+        layout.addFormWidget(self.symbolWidget, row=row)
+        '----------------------------------------------------------------------' 
+
+        '----------------------------------------------------------------------' 
+        row += 1
+        self.colorButton = widgets.myColorButton(color=(255, 0, 0))
+        self.colorWidget = widgets.formWidget(
+            self.colorButton, stretchWidget=True,
+            labelTextLeft='Colour: ', parent=self
+        )
+        layout.addFormWidget(self.colorWidget, align=Qt.AlignLeft, row=row)
+        self.colorButton.clicked.disconnect()
+        self.colorButton.clicked.connect(self.selectColor)
+        '----------------------------------------------------------------------' 
+
+        '----------------------------------------------------------------------' 
+        row += 1
+        self.sizeSpinBox = widgets.SpinBox()
+        self.sizeSpinBox.setValue(5)
+        self.sizeWidget = widgets.formWidget(
+            self.sizeSpinBox, stretchWidget=True,
+            labelTextLeft='Size: ', parent=self
+        )
+        layout.addFormWidget(self.sizeWidget, align=Qt.AlignLeft, row=row)
+        '----------------------------------------------------------------------' 
+
+        '----------------------------------------------------------------------' 
+        row += 1
+        shortcutInfoTxt = ("""
+        <b>Shortcut</b> that you can use to <b>hide/show</b> points.
+        """)
+        shortcutInfoTxt = (f'{html_utils.paragraph(shortcutInfoTxt)}')
+        self.shortcutWidget = widgets.formWidget(
+            widgets.shortCutLineEdit(), addInfoButton=True,
+            labelTextLeft='Shortcut: ', parent=self, infoTxt=shortcutInfoTxt
+        )
+        layout.addFormWidget(self.shortcutWidget, row=row)
+        '----------------------------------------------------------------------'
+
+        self.setLayout(layout)
+    
+    def restoreState(self, state):
+        self.shortcutWidget.widget.setText(state['shortcut'])
+        self.colorButton.setColor(state['color'])
+        self.symbolWidget.widget.setCurrentText(state['symbol'])
+        self.sizeSpinBox.setValue(state['pointSize'])
+    
+    def selectColor(self):
+        color = self.colorButton.color()
+        self.colorButton.origColor = color
+        self.colorButton.colorDialog.setCurrentColor(color)
+        self.colorButton.colorDialog.setWindowFlags(
+            Qt.Window | Qt.WindowStaysOnTopHint
+        )
+        self.colorButton.colorDialog.open()    
+        w = self.width()
+        left = self.pos().x()
+        colorDialogTop = self.colorButton.colorDialog.pos().y()
+        self.colorButton.colorDialog.move(w+left+10, colorDialogTop)
+    
+    def state(self):
+        r,g,b,a = self.colorButton.color().getRgb()
+        _state = {
+            'symbol': self.symbolWidget.widget.currentText(), 
+            'color': (r,g,b),
+            'pointSize': self.sizeSpinBox.value(),
+            'shortcut': self.shortcutWidget.widget.text()
+        }
+        return _state
+
+class AddPointsLayerDialog(QBaseDialog):
+    sigClosed = pyqtSignal()
+    sigCriticalReadTable = pyqtSignal(str)
+    sigLoadedTable = pyqtSignal(object)
+
+    def __init__(self, channelNames=None, imagesPath='', SizeT=1, parent=None):
+        self.cancel = True
+        super().__init__(parent)
+
+        self._parent = parent
+
+        self.imagesPath = imagesPath
+
+        self.setWindowTitle('Custom annotation')
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+
+        mainLayout = QVBoxLayout()
+
+        typeGroupbox = QGroupBox('Points to draw')
+        typeLayout = QGridLayout()
+        typeGroupbox.setLayout(typeLayout)
+        typeLayout.addItem(QSpacerItem(10,1), 0, 0)
+        typeLayout.setColumnStretch(0, 0)
+        typeLayout.setColumnStretch(2, 1)
+        vSpacing = 15
+
+        '----------------------------------------------------------------------'
+        row = 0
+        self.centroidsRadiobutton = QRadioButton('Centroids')
+        typeLayout.addWidget(self.centroidsRadiobutton, row, 0, 1, 2)
+        self.centroidsRadiobutton.setChecked(True)
+
+        row += 1
+        typeLayout.addItem(QSpacerItem(1,vSpacing), row, 0)
+        '----------------------------------------------------------------------'
+
+        '----------------------------------------------------------------------'   
+        row += 1
+        self.weightedCentroidsRadiobutton = QRadioButton('Weighted centroids')
+        typeLayout.addWidget(self.weightedCentroidsRadiobutton, row, 0, 1, 2)
+
+        row += 1
+        label = QLabel('Weighing channel: ')
+        label.setEnabled(False)
+        typeLayout.addWidget(label, row, 1)
+        self.channelNameForWeightedCentr = widgets.QCenteredComboBox()
+        if channelNames:
+            self.channelNameForWeightedCentr.addItems(channelNames)
+        self.channelNameForWeightedCentr.setDisabled(True)
+        typeLayout.addWidget(self.channelNameForWeightedCentr, row, 2)
+
+        self.weightedCentroidsRadiobutton.toggled.connect(label.setEnabled)
+        self.weightedCentroidsRadiobutton.toggled.connect(
+            self.channelNameForWeightedCentr.setEnabled
+        )
+
+        row += 1
+        typeLayout.addItem(QSpacerItem(1,vSpacing), row, 0)
+        '----------------------------------------------------------------------'
+
+        '----------------------------------------------------------------------'
+        row += 1
+        self.fromTableRadiobutton = QRadioButton('From table')
+        typeLayout.addWidget(self.fromTableRadiobutton, row, 0, 1, 2)
+        self.fromTableRadiobutton.widgets = []
+        
+        row += 1
+        self.tablePath = widgets.ElidingLineEdit()
+        self.tablePath.label = QLabel('Table file path (.csv): ')
+        typeLayout.addWidget(self.tablePath.label, row, 1)
+        typeLayout.addWidget(self.tablePath, row, 2)
+        self.fromTableRadiobutton.widgets.append(self.tablePath)
+
+        browseButton = widgets.browseFileButton(start_dir=imagesPath)
+        typeLayout.addWidget(browseButton, row, 3)
+        browseButton.sigPathSelected.connect(self.tablePathSelected)
+        self.fromTableRadiobutton.widgets.append(browseButton)
+
+        row += 1
+        self.xColName = widgets.QCenteredComboBox()
+        self.xColName.addItem('None')
+        self.xColName.label = QLabel('X coord. column: ')
+        typeLayout.addWidget(self.xColName.label, row, 1)
+        typeLayout.addWidget(self.xColName, row, 2)
+        self.fromTableRadiobutton.widgets.append(self.xColName)
+
+        row += 1
+        self.yColName = widgets.QCenteredComboBox()
+        self.yColName.addItem('None')
+        self.yColName.label = QLabel('Y coord. column: ')
+        typeLayout.addWidget(self.yColName.label, row, 1)
+        typeLayout.addWidget(self.yColName, row, 2)
+        self.fromTableRadiobutton.widgets.append(self.yColName)
+
+        row += 1
+        self.zColName = widgets.QCenteredComboBox()
+        self.zColName.addItem('None')
+        self.zColName.label = QLabel('Z coord. column: ')
+        typeLayout.addWidget(self.zColName.label, row, 1)
+        typeLayout.addWidget(self.zColName, row, 2)
+        self.fromTableRadiobutton.widgets.append(self.zColName)
+
+        row += 1
+        self.tColName = widgets.QCenteredComboBox()
+        self.tColName.addItem('None')
+        self.tColName.label = QLabel('Frame index column: ')
+        typeLayout.addWidget(self.tColName.label, row, 1)
+        typeLayout.addWidget(self.tColName, row, 2)
+        self.fromTableRadiobutton.widgets.append(self.tColName)
+
+        if SizeT == 1:
+            self.tColName.label.setVisible(False)
+            self.tColName.setVisible(False)
+        
+        self.fromTableRadiobutton.toggled.connect(self.enableTableWidgets)
+        self.enableTableWidgets(False)
+        '======================================================================'
+
+        self.appearanceGroupbox = _PointsLayerAppearanceGroupbox()
+
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+
+        mainLayout.addWidget(typeGroupbox)
+        mainLayout.addSpacing(20)
+        _layout = QHBoxLayout()
+        _layout.addWidget(self.appearanceGroupbox)
+        _layout.addStretch(1)
+        mainLayout.addLayout(_layout)
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+
+        self.setLayout(mainLayout)
+
+        self.setFont(font)
+    
+    def closeEvent(self, event):
+        self.sigClosed.emit()
+    
+    def enableTableWidgets(self, enabled):
+        for widget in self.fromTableRadiobutton.widgets:
+            widget.setEnabled(enabled)
+            try:
+                widget.label.setEnabled(enabled)
+            except:
+                pass
+    
+    def tablePathSelected(self, path):
+        self.tablePath.setText(path)
+        try:
+            df = pd.read_csv(path)
+            self.xColName.addItems(df.columns)
+            self.yColName.addItems(df.columns)
+            self.zColName.addItems(df.columns)
+            self.tColName.addItems(df.columns)
+            self.sigLoadedTable.emit(df)
+        except Exception as e:
+            traceback_format = traceback.format_exc()
+            self.sigCriticalReadTable.emit(traceback_format)
+            self.criticalReadTable(path, traceback_format)
+            self.tablePath.setText('')
+        
+    def criticalColNameIsNone(self, axis):        
+        txt = html_utils.paragraph(f"""
+            The "{axis.upper()} coord. column" <b>cannot be "None"</b>
+        """)
+        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg.critical(self, f'{axis.upper()} coord. is None', txt)
+    
+    def criticalReadTable(self, path, traceback_format):
+        txt = html_utils.paragraph(f"""
+            Something went <b>wrong when reading the table</b> from the 
+            following path:<br><br>
+            <code>{path}</code><br><br>
+            See the <b>error message below</b>.
+        """)
+        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        detailsText = traceback_format
+        msg.critical(
+            self, 'Error when reading table', txt, detailsText=detailsText)
+
+    def criticalEmptyTablePath(self):
+        txt = html_utils.paragraph(f"""
+            The table file path <b>cannot be empty</b>.
+        """)
+        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg.critical(self, 'Table file path is empty', txt)   
+
+    def state(self):
+        _state = self.appearanceGroupbox.state() 
+        return _state
+
+    def ok_cb(self):
+        self.pointsData = {}
+        self.weighingChannel = ''
+        if self.fromTableRadiobutton.isChecked():
+            tablePath = self.tablePath.text()
+            if not tablePath:
+                self.criticalEmptyTablePath()
+                return
+            else:
+                try:
+                    df = pd.read_csv(tablePath)
+                    if self.tColName.currentText() != 'None':
+                        grouped = df.groupby(self.tColName.currentText())
+                    else:
+                        grouped = [(0, df)]
+                    
+                    xColName = self.xColName.currentText()
+                    yColName = self.yColName.currentText()
+                    for frame_i, df_frame in grouped:
+                        if self.zColName.currentText() != 'None':
+                            zColName = self.zColName.currentText()
+                            # Use integer z
+                            zz = df_frame[zColName]
+                            self.pointsData[frame_i] = {} 
+                            for z in zz:
+                                df_z = df_frame[df_frame[zColName] == z]
+                                z_int = round(z)
+                                if z_int in self.pointsData[frame_i]:
+                                    continue
+                                self.pointsData[frame_i][z_int] = {
+                                    'x': df_z[xColName].to_list(),
+                                    'y': df_z[yColName].to_list()
+                                }
+                        else:
+                            self.pointsData[frame_i] = {
+                                'x': df[self.xColName.currentText()].to_list(),
+                                'y': df[self.yColName.currentText()].to_list(),
+                            }
+                        
+                except Exception as e:
+                    traceback_format = traceback.format_exc()
+                    self.sigCriticalReadTable.emit(traceback_format)
+                    self.criticalReadTable(tablePath, traceback_format)
+                    return
+            if self.xColName.currentText() == 'None':
+                self.criticalColNameIsNone('x')
+                return
+            if self.yColName.currentText() == 'None':
+                self.criticalColNameIsNone('y')
+                return
+            
+            self.layerType = self.tablePath
+            self.layetTypeIdx = 2
+        elif self.centroidsRadiobutton.isChecked():
+            self.layerType = 'Centroids'
+            self.layetTypeIdx = 0
+        elif self.weightedCentroidsRadiobutton.isChecked():
+            channel = self.channelNameForWeightedCentr.currentText()
+            self.weighingChannel = channel
+            self.layerType = f'Centroids weighted by channel {channel}'
+            self.layetTypeIdx = 1
+        
+        self.cancel = False
+        symbol = self.appearanceGroupbox.symbolWidget.widget.currentText()
+        self.symbol = re.findall(r"\'(\w+)\'", symbol)[0]
+        self.symbolText = symbol
+        self.color = self.appearanceGroupbox.colorButton.color()
+        self.pointSize = self.appearanceGroupbox.sizeSpinBox.value()
+        shortcutWidget = self.appearanceGroupbox.shortcutWidget
+        self.shortcut = shortcutWidget.widget.text()
+        self.keySequence = shortcutWidget.widget.keySequence
+        self.close()
+    
+    def showEvent(self, event) -> None:
+        self.resize(int(self.width()*1.25), self.height())
+        if self._parent is None:
+            screen = self.screen()
+        else:
+            screen = self._parent.screen()
+        screenWidth = screen.size().width()
+        screenHeight = screen.size().height()
+        screenLeft = screen.geometry().x()
+        screenTop = screen.geometry().y()
+        w, h = self.width(), self.height()
+        left = int(screenLeft + screenWidth/2 - w/2)
+        top = int(screenTop + screenHeight/2 - h/2)
+        self.move(left, top)
+
+
+class EditPointsLayerAppearanceDialog(QBaseDialog):
+    sigClosed = pyqtSignal()
+
+    def __init__(self, parent=None):
+        self.cancel = True
+        super().__init__(parent)
+
+        self._parent = parent
+
+        self.setWindowTitle('Custom annotation')
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+
+        mainLayout = QVBoxLayout()
+
+        self.appearanceGroupbox = _PointsLayerAppearanceGroupbox()
+
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+
+        mainLayout.addWidget(self.appearanceGroupbox)
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+
+        self.setLayout(mainLayout)
+
+        self.setFont(font)
+    
+    def restoreState(self, state):
+        self.appearanceGroupbox.restoreState(state)
+    
+    def closeEvent(self, event):
+        super().closeEvent(event)
+        self.sigClosed.emit()
+    
+    def state(self):
+        _state = self.appearanceGroupbox.state()
+        return _state
+    
+    def ok_cb(self):
+        self.cancel = False
+        symbol = self.appearanceGroupbox.symbolWidget.widget.currentText()
+        self.symbol = re.findall(r"\'(\w+)\'", symbol)[0]
+        self.color = self.appearanceGroupbox.colorButton.color()
+        self.pointSize = self.appearanceGroupbox.sizeSpinBox.value()
+        shortcutWidget = self.appearanceGroupbox.shortcutWidget
+        self.shortcut = shortcutWidget.widget.text()
+        self.keySequence = shortcutWidget.widget.keySequence
+        self.close()
 
 class filenameDialog(QDialog):
     def __init__(
