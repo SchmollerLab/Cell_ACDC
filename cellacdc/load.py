@@ -1349,10 +1349,11 @@ class loadData:
             if self.metadataFound:
                 SizeT_metadata = self.SizeT
                 SizeZ_metadata = self.SizeZ
-        if SizeT_metadata>1 and numPos>1 and warnMultiPos:
-            proceed_anyway = self._warnMultiPosTimeLapse(SizeT_metadata)
-            if not proceed_anyway:
-                return False
+                if SizeT_metadata>1 and numPos>1 and warnMultiPos:
+                    printl('warning')
+                    proceed_anyway = self._warnMultiPosTimeLapse(SizeT_metadata)
+                    if not proceed_anyway:
+                        return False
         metadataWin = apps.QDialogMetadata(
             self.SizeT, self.SizeZ, self.TimeIncrement,
             self.PhysicalSizeZ, self.PhysicalSizeY, self.PhysicalSizeX,
