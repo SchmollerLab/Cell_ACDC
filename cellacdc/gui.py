@@ -4323,7 +4323,8 @@ class guiWin(QMainWindow):
             if applyFutFrames:
                 # Store current data before going to future frames
                 self.store_data()
-                for i in range(posData.frame_i+1, posData.SizeT):
+                segmSizeT = len(posData.segm_data)
+                for i in range(posData.frame_i+1, segmSizeT):
                     lab = posData.allData_li[i]['labels']
                     if lab is None and not includeUnvisited:
                         self.enqAutosave()
@@ -4726,7 +4727,8 @@ class guiWin(QMainWindow):
                 if endFrame_i is None:
                     self.app.restoreOverrideCursor()
                     return
-                for i in range(posData.frame_i+1, posData.SizeT):
+                segmSizeT = len(posData.segm_data)
+                for i in range(posData.frame_i+1, segmSizeT):
                     lab = posData.allData_li[i]['labels']
                     if lab is None and not includeUnvisited:
                         self.enqAutosave()
@@ -10344,7 +10346,8 @@ class guiWin(QMainWindow):
         # Get number of future frames already visited and check if future
         # frames has an ID affected by the change
         last_tracked_i_found = False
-        for i in range(posData.frame_i+1, posData.SizeT):
+        segmSizeT = len(posData.segm_data)
+        for i in range(posData.frame_i+1, segmSizeT):
             if posData.allData_li[i]['labels'] is None:
                 if not last_tracked_i_found:
                     # We set last tracked frame at -1 first None found
@@ -15045,7 +15048,8 @@ class guiWin(QMainWindow):
 
             self.logger.info('Applying to future frames...')
             pbar = tqdm(total=posData.SizeT, ncols=100)
-            for i in range(posData.frame_i+1, posData.SizeT):
+            segmSizeT = len(posData.segm_data)
+            for i in range(posData.frame_i+1, segmSizeT):
                 lab = posData.allData_li[i]['labels']
                 if lab is None and not includeUnvisited:
                     self.enqAutosave()
