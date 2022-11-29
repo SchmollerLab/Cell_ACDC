@@ -1046,6 +1046,48 @@ class AddPointsLayerDialog(QBaseDialog):
         
         self.fromTableRadiobutton.toggled.connect(self.enableTableWidgets)
         self.enableTableWidgets(False)
+        '----------------------------------------------------------------------'
+
+        '----------------------------------------------------------------------'
+        row += 1
+        self.manualEntryRadiobutton = QRadioButton('Manual entry')
+        typeLayout.addWidget(self.manualEntryRadiobutton, row, 0, 1, 2)
+        self.manualEntryRadiobutton.widgets = []
+        
+        row += 1
+        self.manualXspinbox = widgets.NumericCommaLineEdit()
+        self.manualXspinbox.label = QLabel('X coords: ')
+        typeLayout.addWidget(self.manualXspinbox.label, row, 1)
+        typeLayout.addWidget(self.manualXspinbox, row, 2)
+        self.manualEntryRadiobutton.widgets.append(self.manualXspinbox)
+
+        row += 1
+        self.manualYspinbox = widgets.NumericCommaLineEdit()
+        self.manualYspinbox.label = QLabel('Y coords: ')
+        typeLayout.addWidget(self.manualYspinbox.label, row, 1)
+        typeLayout.addWidget(self.manualYspinbox, row, 2)
+        self.manualEntryRadiobutton.widgets.append(self.manualYspinbox)
+
+        row += 1
+        self.manualZspinbox = widgets.NumericCommaLineEdit()
+        self.manualZspinbox.label = QLabel('Z coords: ')
+        typeLayout.addWidget(self.manualZspinbox.label, row, 1)
+        typeLayout.addWidget(self.manualZspinbox, row, 2)
+        self.manualEntryRadiobutton.widgets.append(self.manualZspinbox)
+
+        row += 1
+        self.manualTspinbox = widgets.NumericCommaLineEdit()
+        self.manualTspinbox.label = QLabel('Frame numbers: ')
+        typeLayout.addWidget(self.manualTspinbox.label, row, 1)
+        typeLayout.addWidget(self.manualTspinbox, row, 2)
+        self.manualEntryRadiobutton.widgets.append(self.manualTspinbox)
+
+        if SizeT == 1:
+            self.manualTspinbox.setVisible(False)
+            self.manualTspinbox.label.setVisible(False)
+        
+        self.manualEntryRadiobutton.toggled.connect(self.enableManualWidgets)
+        self.enableManualWidgets(False)
         '======================================================================'
 
         self.appearanceGroupbox = _PointsLayerAppearanceGroupbox()
@@ -1071,6 +1113,14 @@ class AddPointsLayerDialog(QBaseDialog):
     def closeEvent(self, event):
         self.sigClosed.emit()
     
+    def enableManualWidgets(self, enabled):
+        for widget in self.manualEntryRadiobutton.widgets:
+            widget.setEnabled(enabled)
+            try:
+                widget.label.setEnabled(enabled)
+            except:
+                pass
+    
     def enableTableWidgets(self, enabled):
         for widget in self.fromTableRadiobutton.widgets:
             widget.setEnabled(enabled)
@@ -1093,6 +1143,13 @@ class AddPointsLayerDialog(QBaseDialog):
             self.sigCriticalReadTable.emit(traceback_format)
             self.criticalReadTable(path, traceback_format)
             self.tablePath.setText('')
+    
+    def criticalLenMismatchManualEntry(self):
+        txt = html_utils.paragraph(f"""
+            X coords and Y coords must have the <b>same length</b>.
+        """)
+        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg.critical(self, f'X and Y have different length', txt)
         
     def criticalColNameIsNone(self, axis):        
         txt = html_utils.paragraph(f"""
@@ -1135,33 +1192,14 @@ class AddPointsLayerDialog(QBaseDialog):
             else:
                 try:
                     df = pd.read_csv(tablePath)
-                    if self.tColName.currentText() != 'None':
-                        grouped = df.groupby(self.tColName.currentText())
-                    else:
-                        grouped = [(0, df)]
-                    
+                    tColName = self.tColName.currentText()
                     xColName = self.xColName.currentText()
                     yColName = self.yColName.currentText()
-                    for frame_i, df_frame in grouped:
-                        if self.zColName.currentText() != 'None':
-                            zColName = self.zColName.currentText()
-                            # Use integer z
-                            zz = df_frame[zColName]
-                            self.pointsData[frame_i] = {} 
-                            for z in zz:
-                                df_z = df_frame[df_frame[zColName] == z]
-                                z_int = round(z)
-                                if z_int in self.pointsData[frame_i]:
-                                    continue
-                                self.pointsData[frame_i][z_int] = {
-                                    'x': df_z[xColName].to_list(),
-                                    'y': df_z[yColName].to_list()
-                                }
-                        else:
-                            self.pointsData[frame_i] = {
-                                'x': df[self.xColName.currentText()].to_list(),
-                                'y': df[self.yColName.currentText()].to_list(),
-                            }
+                    zColName = self.zColName.currentText()
+
+                    self._df_to_pointsData(
+                        df, tColName, xColName, yColName, zColName
+                    )
                         
                 except Exception as e:
                     traceback_format = traceback.format_exc()
@@ -1175,7 +1213,7 @@ class AddPointsLayerDialog(QBaseDialog):
                 self.criticalColNameIsNone('y')
                 return
             
-            self.layerType = self.tablePath
+            self.layerType = os.path.basename(self.tablePath)
             self.layetTypeIdx = 2
         elif self.centroidsRadiobutton.isChecked():
             self.layerType = 'Centroids'
@@ -1185,6 +1223,30 @@ class AddPointsLayerDialog(QBaseDialog):
             self.weighingChannel = channel
             self.layerType = f'Centroids weighted by channel {channel}'
             self.layetTypeIdx = 1
+        elif self.manualEntryRadiobutton.isChecked():
+            xx = self.manualXspinbox.values()
+            yy = self.manualYspinbox.values()
+            if len(xx) != len(yy):
+                self.criticalLenMismatchManualEntry()
+                return
+            zz = self.manualZspinbox.values()
+            tt = [t+1 for t in self.manualTspinbox.values()]
+            df = pd.DataFrame({'x': xx, 'y': yy})
+            if tt:
+                df['t'] = tt
+                tCol = 't'
+            else:
+                tCol = 'None'
+            if zz:
+                df['z'] = zz
+                zCol = 'z'
+            else:
+                zCol = 'None'
+            
+            self._df_to_pointsData(df, tCol, zCol, 'y', 'x')
+            
+            self.layerType = 'Manual entry'
+            self.layetTypeIdx = 3
         
         self.cancel = False
         symbol = self.appearanceGroupbox.symbolWidget.widget.currentText()
@@ -1196,6 +1258,32 @@ class AddPointsLayerDialog(QBaseDialog):
         self.shortcut = shortcutWidget.widget.text()
         self.keySequence = shortcutWidget.widget.keySequence
         self.close()
+    
+    def _df_to_pointsData(self, df, tColName, zColName, yColName, xColName):
+        if tColName != 'None':
+            grouped = df.groupby(tColName)
+        else:
+            grouped = [(0, df)]
+        
+        for frame_i, df_frame in grouped:
+            if zColName != 'None':
+                # Use integer z
+                zz = df_frame[zColName]
+                self.pointsData[frame_i] = {} 
+                for z in zz:
+                    df_z = df_frame[df_frame[zColName] == z]
+                    z_int = round(z)
+                    if z_int in self.pointsData[frame_i]:
+                        continue
+                    self.pointsData[frame_i][z_int] = {
+                        'x': df_z[xColName].to_list(),
+                        'y': df_z[yColName].to_list()
+                    }
+            else:
+                self.pointsData[frame_i] = {
+                    'x': df[xColName].to_list(),
+                    'y': df[yColName].to_list(),
+                }
     
     def showEvent(self, event) -> None:
         self.resize(int(self.width()*1.25), self.height())

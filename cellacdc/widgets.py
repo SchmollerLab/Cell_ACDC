@@ -1297,6 +1297,20 @@ class alphaNumericLineEdit(QLineEdit):
 
         # self.setAlignment(Qt.AlignCenter)
 
+class NumericCommaLineEdit(QLineEdit):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.validPattern = '^[0-9,\.]+$'
+        self.setValidator(QRegExpValidator(QRegExp(self.validPattern)))
+    
+    def values(self):
+        try:
+            vals = [float(c) for c in self.text().split(',')]
+        except Exception as e:
+            vals = []
+        return vals
+
 class mySpinBox(QSpinBox):
     sigTabEvent = pyqtSignal(object, object)
 
@@ -2412,7 +2426,12 @@ class ToggleTerminalButton(QPushButton):
         # self.setPalette(self.idlePalette)
         self.update()
         return super().leaveEvent(event)
-        
+
+class CenteredDoubleSpinbox(QDoubleSpinBox):
+    def __init__(self, parent=None):
+        super().__init__(parent=parent)
+        self.setAlignment(Qt.AlignCenter)
+        self.setMaximum(2**31-1)
 
 class readOnlyDoubleSpinbox(QDoubleSpinBox):
     def __init__(self, parent=None):

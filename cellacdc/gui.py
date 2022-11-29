@@ -15413,6 +15413,7 @@ class guiWin(QMainWindow):
         toolButton.action = action
         action.button = toolButton
         action.scatterItem = scatterItem
+        action.layerType = self.addPointsWin.layerType
         action.layetTypeIdx = self.addPointsWin.layetTypeIdx
         action.pointsData = self.addPointsWin.pointsData
         self.pointsLayersToolbar.setVisible(True)
@@ -15519,6 +15520,13 @@ class guiWin(QMainWindow):
 
             if not action.button.isChecked():
                 continue
+            
+            if posData.frame_i not in action.pointsData:
+                self.logger.info(
+                    f'Frame number {posData.frame_i+1} does not have any '
+                    f'"{action.layerType}" point to display.'
+                )
+                continue
                 
             if self.isSegm3D:
                 zProjHow = self.zProjComboBox.currentText()
@@ -15541,7 +15549,7 @@ class guiWin(QMainWindow):
                 # 2D segmentation
                 xx = action.pointsData[posData.frame_i]['x']
                 yy = action.pointsData[posData.frame_i]['y']
-
+            
             action.scatterItem.setData(xx, yy)
 
     def overlay_cb(self, checked):
