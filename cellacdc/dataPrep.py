@@ -12,6 +12,7 @@ import pandas as pd
 import scipy.interpolate
 import skimage
 import skimage.io
+from tqdm import tqdm
 from functools import partial, wraps
 from tifffile.tifffile import TiffWriter, TiffFile
 
@@ -153,6 +154,14 @@ class dataPrepWin(QMainWindow):
         elif event.key() == Qt.Key_Right:
             self.navigateScrollbar.triggerAction(
                 QAbstractSlider.SliderSingleStepAdd
+            )
+        elif event.key() == Qt.Key_Up:
+            self.zSliceScrollBar.triggerAction(
+                QAbstractSlider.SliderSingleStepAdd
+            )
+        elif event.key() == Qt.Key_Down:
+            self.zSliceScrollBar.triggerAction(
+                QAbstractSlider.SliderSingleStepSub
             )
 
     def gui_createActions(self):
@@ -1163,7 +1172,7 @@ class dataPrepWin(QMainWindow):
     def init_data(self, user_ch_file_paths, user_ch_name):
         # Iterate pos and load_data
         data = []
-        for f, file_path in enumerate(user_ch_file_paths):
+        for f, file_path in enumerate(tqdm(user_ch_file_paths, ncols=100)):
             try:
                 posData = load.loadData(file_path, user_ch_name, QParent=self)
                 posData.getBasenameAndChNames()
@@ -2009,7 +2018,10 @@ class dataPrepWin(QMainWindow):
         self.openRecentMenu.addActions(actions)
 
     def loadFiles(self, exp_path, user_ch_file_paths, user_ch_name):
-        self.titleLabel.setText('Loading data...', color='w')
+        self.titleLabel.setText(
+            'Loading data (check progress in the terminal)...', 
+            color='w'
+        )
         self.setWindowTitle(f'Cell-ACDC - Data Prep. - "{exp_path}"')
 
         self.num_pos = len(user_ch_file_paths)

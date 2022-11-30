@@ -10135,24 +10135,6 @@ class guiWin(QMainWindow):
             # Alt is pressed while cursor is on images --> set SizeAllCursor
             if self.xHoverImg is not None and not isCursorSizeAll:
                 self.app.setOverrideCursor(Qt.SizeAllCursor)
-            if ev.key() == Qt.Key_C:
-                font = QFont()
-                font.setPixelSize(13)
-                win = apps.QDialogEntriesWidget(
-                    ['Z coord.', 'Y coord.', 'X coord.'], ['0', '0', '0'],
-                    winTitle='Point coordinates',
-                    parent=self, font=font
-                )
-                win.show()
-                win.QLEs[0].setFocus()
-                win.QLEs[0].selectAll()
-                win.exec_()
-                z, y, x = win.entriesTxt
-                z, y, x = int(z), int(y), int(x)
-                posData = self.data[self.pos_i]
-                if posData.SizeZ > 1:
-                    self.zSliceScrollBar.setSliderPosition(z)
-                self.ax1_point_ScatterPlot.setData([x], [y])
         elif isCtrlModifier and isOverlaySegm:
             if ev.key() == Qt.Key_Up:
                 val = self.imgGrad.labelsAlphaSlider.value()
@@ -11824,9 +11806,8 @@ class guiWin(QMainWindow):
         pos = self.pos_i+1 if self.isSnapshot else posData.frame_i+1
         self.navigateScrollBar.setSliderPosition(pos)
         if posData.SizeZ > 1:
+            self.updateZsliceScrollbar(posData.frame_i)
             idx = (posData.filename, posData.frame_i)
-            z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
-            self.zSliceScrollBar.setSliderPosition(z)
             how = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
             self.zProjComboBox.setCurrentText(how)
             self.zSliceScrollBar.setMaximum(posData.SizeZ-1)
@@ -17009,14 +16990,14 @@ class guiWin(QMainWindow):
         
         if self.equalizeHistPushButton.isChecked():
             img = skimage.exposure.equalize_adapthist(img)
+        
+        self.setImageImg2()
         self.img1.setImage(img)
         
         if self.overlayButton.isChecked():
             img = self.setOverlayImages(updateFilters=updateFilters)
-        
-        self.setOverlayLabelsItems()
 
-        self.setImageImg2()
+        self.setOverlayLabelsItems()
         self.setOverlaySegmMasks()
               
         if self.slideshowWin is not None:
