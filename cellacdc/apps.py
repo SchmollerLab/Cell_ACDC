@@ -1544,6 +1544,8 @@ class wandToleranceWidget(QFrame):
 
 class setMeasurementsDialog(QBaseDialog):
     sigClosed = pyqtSignal()
+    sigCancel = pyqtSignal()
+    sigRestart = pyqtSignal()
 
     def __init__(
             self, loadedChNames, notLoadedChNames, isZstack, isSegm3D,
@@ -1713,14 +1715,12 @@ class setMeasurementsDialog(QBaseDialog):
                 continue
             w.hide()
                
-        if self.allPosData is None:
-            return
-     
-        for posData in self.allPosData:
-            _config = posData.combineMetricsConfig
-            for section in _config.sections():
-                _config.remove_option(section, colname_to_del)
-            posData.saveCombineMetrics()
+        if self.allPosData is not None:
+            for posData in self.allPosData:
+                _config = posData.combineMetricsConfig
+                for section in _config.sections():
+                    _config.remove_option(section, colname_to_del)
+                posData.saveCombineMetrics()
     
     def state(self):
         state = {
@@ -1852,6 +1852,15 @@ class setMeasurementsDialog(QBaseDialog):
     def keyPressEvent(self, a0: QKeyEvent) -> None:
         state = self.state()
         return super().keyPressEvent(a0)
+    
+    def closeEvent(self, event):
+        if self.cancel:
+            self.sigCancel.emit()
+    
+    def restart(self):
+        self.cancel = False
+        self.close()
+        self.sigRestart.emit()
 
     def ok_cb(self):
         if self.allPos_acdc_df_cols is None:
@@ -9594,7 +9603,10 @@ class warnVisualCppRequired(QMessageBox):
 class combineMetricsEquationDialog(QBaseDialog):
     sigOk = pyqtSignal(object)
 
-    def __init__(self, allChNames, isZstack, isSegm3D, parent=None, debug=False):
+    def __init__(
+            self, allChNames, isZstack, isSegm3D, parent=None, debug=False,
+            closeOnOk=True
+        ):
         super().__init__(parent)
 
         self.setWindowTitle('Add combined measurement')
@@ -9605,6 +9617,7 @@ class combineMetricsEquationDialog(QBaseDialog):
 
         self.cancel = True
         self.isOperatorMode = False
+        self.closeOnOk = closeOnOk
 
         mainLayout = QVBoxLayout()
         equationLayout = QHBoxLayout()
@@ -9956,8 +9969,6 @@ class combineMetricsEquationDialog(QBaseDialog):
                 config, equation, newColName, isMixedChannels
             )
 
-        self.sigOk.emit(self)
-
         isChannelLess = len(self.channelLessColnames) > 0
         if isChannelLess:
             channelLess_equation = self.equationDisplay.toPlainText()
@@ -9969,7 +9980,10 @@ class combineMetricsEquationDialog(QBaseDialog):
 
         measurements.save_common_combine_metrics(config)
 
-        self.close()
+        self.sigOk.emit(self)
+        
+        if self.closeOnOk:
+            self.close()
 
     def warnEmptyEquationName(self):
         msg = widgets.myMessageBox()

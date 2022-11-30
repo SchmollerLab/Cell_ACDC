@@ -40,6 +40,7 @@ class AcdcSPlashScreen(QtWidgets.QSplashScreen):
 
 # Create the application
 app = QtWidgets.QApplication([])
+
 app.setStyle(QtWidgets.QStyleFactory.create('Fusion'))
 app.setWindowIcon(QtGui.QIcon(":icon.ico"))
 
@@ -55,14 +56,12 @@ splashScreen.show()
 splashScreen.raise_()
 
 print('Importing modules...')
-from modulefinder import Module
 import sys
-import subprocess
 import re
-import time
 import traceback
 
 import pandas as pd
+import psutil
 
 from functools import partial
 
@@ -72,7 +71,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import (
     Qt, QProcess, pyqtSignal, pyqtSlot, QTimer, QSize,
-    QSettings, QUrl, QObject
+    QSettings, QUrl, QCoreApplication
 )
 from PyQt5.QtGui import (
     QFontDatabase, QIcon, QDesktopServices, QFont, QMouseEvent, 
@@ -1287,13 +1286,8 @@ class mainWin(QMainWindow):
             return
 
         if self.sender() == self.restartButton:
-            print('Restarting Cell-ACDC...')
             try:
-                if is_win:
-                    os.execv(sys.argv[0], sys.argv)
-                    exit()
-                else:
-                    os.execv(sys.executable, ['python3'] + sys.argv)
+                restart()
             except Exception as e:
                 traceback.print_exc()
                 print('-----------------------------------------')
@@ -1302,7 +1296,15 @@ class mainWin(QMainWindow):
             self.logger.info('**********************************************')
             self.logger.info(f'Cell-ACDC closed. {myutils.get_salute_string()}')
             self.logger.info('**********************************************')
-            exit()
+
+def restart():
+    QCoreApplication.quit()
+    process = QtCore.QProcess()
+    process.setProgram(sys.argv[0])
+    # process.setStandardOutputFile(QProcess.nullDevice())
+    status = process.startDetached()
+    if status:
+        print('Restarting Cell-ACDC...')
 
 def run():
     from cellacdc.config import parser_args

@@ -201,8 +201,32 @@ class computeMeasurmentsUtilWin(QDialog):
         self.endFilenameSegm = win.selectedItemText
         self.worker.abort = win.cancel
         self.worker.waitCond.wakeAll()
+    
+    def addCombineMetric(self):
+        isZstack = self.posData.SizeZ > 1
+        self.combineMetricWindow = apps.combineMetricsEquationDialog(
+            self.posData.chNames, isZstack, self.posData.isSegm3D,
+            parent=self.measurementsWin, closeOnOk=False
+        )
+        self.combineMetricWindow.sigOk.connect(self.saveCombineMetricsToPosData)
+        self.combineMetricWindow.show()
+    
+    def saveCombineMetricsToPosData(self, window):
+        for p, _posData in enumerate(self.allPosData):
+            equationsDict, isMixedChannels = window.getEquationsDict()
+            for newColName, equation in equationsDict.items():
+                _posData.addEquationCombineMetrics(
+                    equation, newColName, isMixedChannels
+                )
+                _posData.saveCombineMetrics()
+        
+        self.combineMetricWindow.close()
+        self.measurementsWinState = self.measurementsWin.state()
+        self.measurementsWin.restart()
+        self.initAddMetricsWorker(self.posData, self.allPosDataInputs)
+        self.measurementsWin.restoreState(self.measurementsWinState)
 
-    def initAddMetricsWorker(self, posData):
+    def initAddMetricsWorker(self, posData, allPosDataInputs):
         # Set measurements
         try:
             df_favourite_funcs = pd.read_csv(favourite_func_metrics_csv_path)
@@ -210,20 +234,43 @@ class computeMeasurmentsUtilWin(QDialog):
         except Exception as e:
             favourite_funcs = None
 
-        measurementsWin = apps.setMeasurementsDialog(
-            posData.chNames, [], posData.SizeZ > 1, posData.isSegm3D,
-            favourite_funcs=favourite_funcs, posData=posData
-        )
-        measurementsWin.exec_()
-        if measurementsWin.cancel:
-            self.worker.abort = measurementsWin.cancel
-            self.worker.waitCond.wakeAll()
-            return
+        self.posData = posData
+        self.allPosDataInputs = allPosDataInputs
 
-        self.gui.ch_names = posData.chNames
+        if not hasattr(self, 'allPosData'):
+            self.allPosData = []
+            for p, posDataInputs in enumerate(self.allPosDataInputs):
+                combineMetricsConfig = posDataInputs['combineMetricsConfig']
+                combineMetricsPath = posDataInputs['combineMetricsPath']
+
+                # Here we build a placeholder loadData class but we get what is 
+                # needed to save custom combine metrics from posDataInputs
+                _posData = load.loadData(
+                    self.posData.imgPath, self.posData.user_ch_name
+                )
+                _posData.combineMetricsConfig = combineMetricsConfig
+                _posData.custom_combine_metrics_path = combineMetricsPath
+                self.allPosData.append(_posData)
+
+        self.measurementsWin = apps.setMeasurementsDialog(
+            posData.chNames, [], posData.SizeZ > 1, posData.isSegm3D,
+            favourite_funcs=favourite_funcs, posData=posData,
+            addCombineMetricCallback=self.addCombineMetric,
+            allPosData=self.allPosData
+        )
+        self.measurementsWin.sigClosed.connect(self.startSaveDataWorker)
+        self.measurementsWin.sigCancel.connect(self.abortWorkerMeasurementsWin)
+        self.measurementsWin.show()
+    
+    def abortWorkerMeasurementsWin(self):
+        self.worker.abort = self.measurementsWin.cancel
+        self.worker.waitCond.wakeAll()
+
+    def startSaveDataWorker(self):
+        self.gui.ch_names = self.posData.chNames
         self.gui.notLoadedChNames = []
         self.gui.setMetricsFunc()
-        self.gui.setMetricsToSkip(measurementsWin)
+        self.gui.setMetricsToSkip(self.measurementsWin)
         self.gui.mutex = self.worker.mutex
         self.gui.waitCond = self.worker.waitCond
         self.gui.saveWin = self.progressWin

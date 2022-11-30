@@ -70,7 +70,7 @@ class signals(QObject):
     sigSelectSegmFiles = pyqtSignal(object, object)
     sigSelectAcdcOutputFiles = pyqtSignal(object, object, str, bool, bool)
     sigSetMeasurements = pyqtSignal(object)
-    sigInitAddMetrics = pyqtSignal(object)
+    sigInitAddMetrics = pyqtSignal(object, object)
     sigUpdatePbarDesc = pyqtSignal(str)
     sigComputeVolume = pyqtSignal(int, object)
     sigAskStopFrame = pyqtSignal(object)
@@ -585,19 +585,23 @@ class calcMetricsWorker(QObject):
                 # Load data
                 posData = load.loadData(file_path, chName)
                 posData.getBasenameAndChNames(useExt=('.tif', '.h5'))
+                posData.buildPaths()
 
                 posData.loadOtherFiles(
                     load_segm_data=False,
                     load_acdc_df=True,
                     load_metadata=True,
-                    loadSegmInfo=True
+                    loadSegmInfo=True,
+                    load_customCombineMetrics=True
                 )
 
                 posDatas.append(posData)
 
                 self.allPosDataInputs.append({
                     'file_path': file_path,
-                    'chName': chName
+                    'chName': chName,
+                    'combineMetricsConfig': posData.combineMetricsConfig,
+                    'combineMetricsPath': posData.custom_combine_metrics_path
                 })
 
             if any([posData.SizeT > 1 for posData in posDatas]):
@@ -682,7 +686,9 @@ class calcMetricsWorker(QObject):
 
                 if p == 0:
                     self.mutex.lock()
-                    self.signals.sigInitAddMetrics.emit(posData)
+                    self.signals.sigInitAddMetrics.emit(
+                        posData, self.allPosDataInputs
+                    )
                     self.waitCond.wait(self.mutex)
                     self.mutex.unlock()
                     if self.abort:
