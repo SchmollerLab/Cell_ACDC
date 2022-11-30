@@ -211,9 +211,8 @@ class computeMeasurmentsUtilWin(QDialog):
             favourite_funcs = None
 
         measurementsWin = apps.setMeasurementsDialog(
-            posData.chNames, [], posData.SizeZ > 1,
-            favourite_funcs=favourite_funcs, posData=posData,
-            isSegm3D=posData.isSegm3D
+            posData.chNames, [], posData.SizeZ > 1, posData.isSegm3D,
+            favourite_funcs=favourite_funcs, posData=posData
         )
         measurementsWin.exec_()
         if measurementsWin.cancel:

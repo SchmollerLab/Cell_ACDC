@@ -835,10 +835,13 @@ class loadData:
         if not self.segmFound:
             return
 
-        if self.SizeT > 1:
-            return self.segm_data.ndim == 4
+        if hasattr(self, 'img_data'):
+            return self.segm_data.ndim == self.img_data.ndim
         else:
-            return self.segm_data.ndim == 3
+            if self.SizeT > 1:
+                return self.segm_data.ndim == 4
+            else:
+                return self.segm_data.ndim == 3
 
     def extractMetadata(self):
         self.metadata_df['values'] = self.metadata_df['values'].astype(str)
@@ -877,7 +880,7 @@ class loadData:
         if hasattr(self, 'segm_npz_path'):
             segmEndName = self.getSegmEndname()
             isSegm3Dkey = f'{segmEndName}_isSegm3D'        
-            if 'isSegm3Dkey' in self.metadata_df.index:
+            if isSegm3Dkey in self.metadata_df.index:
                 isSegm3D = str(self.metadata_df.at[isSegm3Dkey, 'values'])
                 self.isSegm3D = isSegm3D.lower() == 'true'
 
