@@ -7760,6 +7760,7 @@ class QtSelectItems(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
+
 class manualSeparateGui(QMainWindow):
     def __init__(self, lab, ID, img, fontSize='12pt',
                  IDcolor=[255, 255, 0], parent=None,
@@ -7767,7 +7768,7 @@ class manualSeparateGui(QMainWindow):
         super().__init__(parent)
         self.loop = loop
         self.cancel = True
-        self.parent = parent
+        self._parent = parent
         self.lab = lab.copy()
         self.lab[lab!=ID] = 0
         self.ID = ID
@@ -7810,7 +7811,7 @@ class manualSeparateGui(QMainWindow):
         self.setWindowModality(Qt.WindowModal)
 
     def centerWindow(self):
-        parent = self.parent
+        parent = self._parent
         if parent is not None:
             # Center the window on main window
             mainWinGeometry = parent.geometry()
@@ -8101,29 +8102,33 @@ class manualSeparateGui(QMainWindow):
         areas = [obj.area for obj in rp]
         IDs = [obj.label for obj in rp]
         maxAreaIdx = areas.index(max(areas))
-        maxAreaID = IDs[maxAreaIdx]
+        maxAreaID = IDs[maxAreaIdx]  
         if self.ID not in self.lab:
             self.lab[self.lab==maxAreaID] = self.ID
+        else:
+            tempID = self.lab.max() + 1
+            self.lab[self.lab==maxAreaID] = tempID
+            self.lab[self.lab==self.ID] = maxAreaID
+            self.lab[self.lab==tempID] = self.ID
 
         # Keep only the two largest objects
         larger_areas = nlargest(2, areas)
         larger_ids = [rp[areas.index(area)].label for area in larger_areas]
         for obj in rp:
             if obj.label not in larger_ids:
-                print(f'deleting ID {obj.label}')
                 self.lab[tuple(obj.coords.T)] = 0
 
         rp = skimage.measure.regionprops(self.lab)
 
-        if self.parent is not None:
-            self.parent.setBrushID()
+        if self._parent is not None:
+            self._parent.setBrushID()
         # Use parent window setBrushID function for all other IDs
-        for i, obj in enumerate(rp):
-            if self.parent is None:
+        for obj in rp:
+            if self._parent is None:
                 break
-            if i == maxAreaIdx:
+            if obj.label == self.ID:
                 continue
-            posData = self.parent.data[self.parent.pos_i]
+            posData = self._parent.data[self._parent.pos_i]
             posData.brushID += 1
             self.lab[obj.slice][obj.image] = posData.brushID
 
