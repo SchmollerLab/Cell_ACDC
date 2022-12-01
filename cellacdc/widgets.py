@@ -1050,7 +1050,7 @@ class QClickableLabel(QLabel):
     def mousePressEvent(self, event):
         self.clicked.emit(self)
         if self._checkableItem is not None:
-            status = not self.self._checkableItem.isChecked()
+            status = not self._checkableItem.isChecked()
             self._checkableItem.setChecked(status)
 
     def setChecked(self, checked):
@@ -4004,12 +4004,16 @@ class labImageItem(pg.ImageItem):
     def __init__(self, *args, **kwargs):
         pg.ImageItem.__init__(self, *args, **kwargs)
 
-    def setImage(self, img=None, autolevels=False, z=None, **kargs):
+    def setImage(self, img=None, z=None, **kargs):
+        autoLevels = kargs.get('autoLevels')
+        if autoLevels is None:
+            kargs['autoLevels'] = False
+
         if img is None:
             pg.ImageItem.setImage(self, img, **kargs)
             return
 
         if img.ndim == 3 and img.shape[-1] > 4 and z is not None:
-            pg.ImageItem.setImage(self, img[z], autolevels=autolevels, **kargs)
+            pg.ImageItem.setImage(self, img[z], **kargs)
         else:
-            pg.ImageItem.setImage(self, img, autolevels=autolevels, **kargs)
+            pg.ImageItem.setImage(self, img, **kargs)

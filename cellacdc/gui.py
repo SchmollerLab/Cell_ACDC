@@ -4431,7 +4431,7 @@ class guiWin(QMainWindow):
                 manualSep = apps.manualSeparateGui(
                     self.get_2Dlab(posData.lab), ID, img,
                     fontSize=self.fontSize,
-                    IDcolor=posData.lut[ID],
+                    IDcolor=self.lut[ID],
                     parent=self
                 )
                 manualSep.show()
@@ -6555,7 +6555,7 @@ class guiWin(QMainWindow):
                 self.setBrushID()
                 self.updateLookuptable(lenNewLut=posData.brushID+1)
 
-            self.brushColor = posData.lut[posData.brushID]/255
+            self.brushColor = self.lut[posData.brushID]/255
 
             self.yPressAx2, self.xPressAx2 = y, x
 
@@ -7493,14 +7493,14 @@ class guiWin(QMainWindow):
             hoverID = self.getHoverID(xdata, ydata)
         else:
             hoverID = ID
-        
+
         if hoverID == 0:
             for item in ScatterItems:
                 item.setPen(pen)
                 item.setBrush(brush)
         else:
             try:
-                rgb = self.img2.lut[hoverID]
+                rgb = self.lut[hoverID]
                 rgb = rgb if hoverRGB is None else hoverRGB
                 rgbPen = np.clip(rgb*1.1, 0, 255)
                 for item in ScatterItems:
@@ -12475,6 +12475,8 @@ class guiWin(QMainWindow):
 
         if len(self.data) == 1 and posData.SizeZ > 1 and posData.SizeT == 1:
             self.zSliceCheckbox.setChecked(True)
+        else:
+            self.zSliceCheckbox.setChecked(False)
 
         self.labelRoiCircItemLeft.setImageShape(self.currentLab2D.shape)
         self.labelRoiCircItemRight.setImageShape(self.currentLab2D.shape)
@@ -13027,6 +13029,9 @@ class guiWin(QMainWindow):
 
         self.initImgCmap()
 
+        # Colormap
+        self.setLut()
+
         self.fluoDataChNameActions = []
 
         self.filteredData = {}
@@ -13163,9 +13168,6 @@ class guiWin(QMainWindow):
             posData.ol_data = None
 
             posData.ol_labels_data = None
-
-            # Colormap
-            self.setLut(posData)
 
             posData.allData_li = [
                 {
@@ -13923,7 +13925,7 @@ class guiWin(QMainWindow):
         brushIDmask = self.get_2Dlab(posData.lab) == self.changedID
         self.applyBrushMask(brushIDmask, brushID)
         if self.isMouseDragImg1:
-            self.brushColor = posData.lut[posData.brushID]/255
+            self.brushColor = self.lut[posData.brushID]/255
             self.setTempImg1Brush(True, brushIDmask, posData.brushID)
 
     # @exec_time
@@ -14835,32 +14837,32 @@ class guiWin(QMainWindow):
     def extendLabelsLUT(self, lenNewLut):
         posData = self.data[self.pos_i]
         # Build a new lut to include IDs > than original len of lut
-        if lenNewLut > len(posData.lut):
-            numNewColors = lenNewLut-len(posData.lut)
+        if lenNewLut > len(self.lut):
+            numNewColors = lenNewLut-len(self.lut)
             # Index original lut
             _lut = np.zeros((lenNewLut, 3), np.uint8)
-            _lut[:len(posData.lut)] = posData.lut
+            _lut[:len(self.lut)] = self.lut
             # Pick random colors and append them at the end to recycle them
-            randomIdx = np.random.randint(0,len(posData.lut),size=numNewColors)
+            randomIdx = np.random.randint(0,len(self.lut),size=numNewColors)
             for i, idx in enumerate(randomIdx):
-                rgb = posData.lut[idx]
-                _lut[len(posData.lut)+i] = rgb
-            posData.lut = _lut
+                rgb = self.lut[idx]
+                _lut[len(self.lut)+i] = rgb
+            self.lut = _lut
             self.initLabelsLayersImg1()
             return True
         return False
 
     def initLookupTableLab(self):
         posData = self.data[self.pos_i]
-        self.img2.setLookupTable(posData.lut)
-        self.img2.setLevels([0, len(posData.lut)])
+        self.img2.setLookupTable(self.lut)
+        self.img2.setLevels([0, len(self.lut)])
         self.initLabelsLayersImg1()
     
     def initLabelsLayersImg1(self):
         posData = self.data[self.pos_i]
-        brushLayerLut = np.zeros((len(posData.lut), 4), dtype=np.uint8)
+        brushLayerLut = np.zeros((len(self.lut), 4), dtype=np.uint8)
         brushLayerLut[:,-1] = 255
-        brushLayerLut[:,:-1] = posData.lut
+        brushLayerLut[:,:-1] = self.lut
         brushLayerLut[0] = [0,0,0,0]
         self.labelsLayerImg1.setLevels([0, len(brushLayerLut)])
         self.labelsLayerRightImg.setLevels([0, len(brushLayerLut)])
@@ -14873,8 +14875,8 @@ class guiWin(QMainWindow):
     def initKeepObjLabelsLayers(self):
         posData = self.data[self.pos_i]
 
-        lut = np.zeros((len(posData.lut), 4), dtype=np.uint8)
-        lut[:,:-1] = posData.lut
+        lut = np.zeros((len(self.lut), 4), dtype=np.uint8)
+        lut[:,:-1] = self.lut
         lut[:,-1:] = 255
         lut[0] = [0,0,0,0]
         self.keepIDsTempLayerLeft.setLevels([0, len(lut)])
@@ -15111,10 +15113,10 @@ class guiWin(QMainWindow):
                 lenNewLut = 1
         # Build a new lut to include IDs > than original len of lut
         updateLevels = self.extendLabelsLUT(lenNewLut)
-        lut = posData.lut.copy()
+        lut = self.lut.copy()
 
         try:
-            # lut = posData.lut[:lenNewLut].copy()
+            # lut = self.lut[:lenNewLut].copy()
             for ID in posData.binnedIDs:
                 lut[ID] = lut[ID]*0.2
 
@@ -15832,7 +15834,7 @@ class guiWin(QMainWindow):
         else:
             maxID = 0
 
-        if maxID >= len(posData.lut):
+        if maxID >= len(self.lut):
             self.extendLabelsLUT(maxID+10)
 
         isOverlaySegmLeftActive = how.find('overlay segm. masks') != -1
@@ -15942,19 +15944,11 @@ class guiWin(QMainWindow):
         self.df_settings.at['textIDsColor', 'value'] = self.ax1_oldIDcolor
         self.df_settings.to_csv(self.settings_csv_path)
 
-    def setLut(self, posData, shuffle=True):
+    def setLut(self, shuffle=True):
+        self.lut = self.labelsGrad.item.colorMap().getLookupTable(0,1,255)     
         if shuffle:
-            posData.lut = self.labelsGrad.item.colorMap().getLookupTable(0,1,255)     
-            np.random.shuffle(posData.lut)
-        else:
-            if posData.rp is None:
-                posData.lut = self.labelsGrad.item.colorMap().getLookupTable(
-                    0,1,255
-                )
-            else:
-                posData.lut = self.labelsGrad.item.colorMap().getLookupTable(
-                    0,1,len(posData.rp)
-                )
+            np.random.shuffle(self.lut)
+        
         # Insert background color
         if 'labels_bkgrColor' in self.df_settings.index:
             rgbString = self.df_settings.at['labels_bkgrColor', 'value']
@@ -15966,7 +15960,7 @@ class guiWin(QMainWindow):
             r, g, b = 25, 25, 25
             self.df_settings.at['labels_bkgrColor', 'value'] = (r, g, b)
 
-        posData.lut = np.insert(posData.lut, 0, [r, g, b], axis=0)
+        self.lut = np.insert(self.lut, 0, [r, g, b], axis=0)
 
     def useCenterBrushCursorHoverIDtoggled(self, checked):
         if checked:
@@ -15977,7 +15971,7 @@ class guiWin(QMainWindow):
 
     def shuffle_cmap(self):
         posData = self.data[self.pos_i]
-        np.random.shuffle(posData.lut[1:])
+        np.random.shuffle(self.lut[1:])
         self.initLabelsLayersImg1()
         self.updateALLimg()
     
@@ -16089,8 +16083,7 @@ class guiWin(QMainWindow):
         # self.updateLookuptable()
 
     def updateLabelsCmap(self, gradient):
-        for _posData in self.data:
-            self.setLut(_posData)
+        self.setLut()
         self.updateLookuptable()
         self.initLabelsLayersImg1()
 
@@ -16101,8 +16094,7 @@ class guiWin(QMainWindow):
 
     def updateBkgrColor(self, button):
         color = button.color().getRgb()[:3]
-        for _posData in self.data:
-            _posData.lut[0] = color
+        self.lut[0] = color
         self.updateLookuptable()
 
     def updateTextLabelsColor(self, button):
@@ -16274,7 +16266,7 @@ class guiWin(QMainWindow):
             tempImage[self.currentLab2D==ID] = ID
         lut = np.zeros((2, 4), dtype=np.uint8)
         lut[1,-1] = 255
-        lut[1,:-1] = posData.lut[ID]
+        lut[1,:-1] = self.lut[ID]
         self.tempLayerImg1.setLookupTable(lut)
         self.tempLayerImg1.setImage(tempImage)
         return tempImage        
@@ -16854,7 +16846,7 @@ class guiWin(QMainWindow):
                 _slice = self.getObjSlice(_obj.slice)
                 _objMask = self.getObjImage(_obj.image, _obj.bbox)
                 highlightedLab[_slice][_objMask] = _obj.label
-                rgb = posData.lut[_obj.label].copy()    
+                rgb = self.lut[_obj.label].copy()    
                 lut[1, :-1] = rgb
                 # Set alpha to 0.7
                 lut[1, -1] = 178          
@@ -16929,7 +16921,7 @@ class guiWin(QMainWindow):
         LabelItemID.setPos(x-w/2, y-h/2)
 
         # Gray out all IDs excpet searched one
-        lut = posData.lut.copy() # [:max(posData.IDs)+1]
+        lut = self.lut.copy() # [:max(posData.IDs)+1]
         lut[:ID] = lut[:ID]*0.2
         lut[ID+1:] = lut[ID+1:]*0.2
         self.img2.setLookupTable(lut)
