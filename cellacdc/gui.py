@@ -3694,13 +3694,13 @@ class guiWin(QMainWindow):
         self.searchedIDitemRight.setData(
             [], [], symbol='s', pxMode=False, size=1,
             brush=pg.mkBrush(color=(255,0,0,150)),
-            pen=pg.mkPen(width=2, color='r')
+            pen=pg.mkPen(width=2, color='r'), tip=None
         )
         self.searchedIDitemLeft = pg.ScatterPlotItem()
         self.searchedIDitemLeft.setData(
             [], [], symbol='s', pxMode=False, size=1,
             brush=pg.mkBrush(color=(255,0,0,150)),
-            pen=pg.mkPen(width=2, color='r')
+            pen=pg.mkPen(width=2, color='r'), tip=None
         )
         self.topLayerItems.append(self.searchedIDitemLeft)
         self.topLayerItemsRight.append(self.searchedIDitemRight)
@@ -3711,7 +3711,7 @@ class guiWin(QMainWindow):
         self.ax1_BrushCircle.setData(
             [], [], symbol='o', pxMode=False,
             brush=pg.mkBrush((255,255,255,50)),
-            pen=pg.mkPen(width=2)
+            pen=pg.mkPen(width=2), tip=None
         )
         self.topLayerItems.append(self.ax1_BrushCircle)
 
@@ -3719,7 +3719,7 @@ class guiWin(QMainWindow):
         self.ax1_EraserCircle = pg.ScatterPlotItem()
         self.ax1_EraserCircle.setData(
             [], [], symbol='o', pxMode=False,
-            brush=None, pen=self.eraserCirclePen
+            brush=None, pen=self.eraserCirclePen, tip=None
         )
         self.topLayerItems.append(self.ax1_EraserCircle)
 
@@ -3727,7 +3727,7 @@ class guiWin(QMainWindow):
         self.ax1_EraserX.setData(
             [], [], symbol='x', pxMode=False, size=3,
             brush=pg.mkBrush(color=(255,0,0,50)),
-            pen=pg.mkPen(width=1, color='r')
+            pen=pg.mkPen(width=1, color='r'), tip=None
         )
         self.topLayerItems.append(self.ax1_EraserX)
 
@@ -3737,30 +3737,32 @@ class guiWin(QMainWindow):
         self.labelRoiCircItemLeft.setData(
             [], [], symbol='o', pxMode=False,
             brush=pg.mkBrush(color=(255,0,0,0)),
-            pen=pg.mkPen(color='r', width=2)
+            pen=pg.mkPen(color='r', width=2), tip=None
         )
         self.labelRoiCircItemRight = widgets.LabelRoiCircularItem()
         self.labelRoiCircItemRight.cleared = False
         self.labelRoiCircItemRight.setData(
             [], [], symbol='o', pxMode=False,
             brush=pg.mkBrush(color=(255,0,0,0)),
-            pen=pg.mkPen(color='r', width=2)
+            pen=pg.mkPen(color='r', width=2), tip=None
         )
         self.topLayerItems.append(self.labelRoiCircItemLeft)
         self.topLayerItemsRight.append(self.labelRoiCircItemRight)
         
         self.ax1_binnedIDs_ScatterPlot = pg.ScatterPlotItem()
         self.ax1_binnedIDs_ScatterPlot.setData(
-                                 [], [], symbol='t', pxMode=False,
-                                 brush=pg.mkBrush((255,0,0,50)), size=15,
-                                 pen=pg.mkPen(width=3, color='r'))
+            [], [], symbol='t', pxMode=False,
+            brush=pg.mkBrush((255,0,0,50)), size=15,
+            pen=pg.mkPen(width=3, color='r'), tip=None
+        )
         self.topLayerItems.append(self.ax1_binnedIDs_ScatterPlot)
         
         self.ax1_ripIDs_ScatterPlot = pg.ScatterPlotItem()
         self.ax1_ripIDs_ScatterPlot.setData(
-                                 [], [], symbol='x', pxMode=False,
-                                 brush=pg.mkBrush((255,0,0,50)), size=15,
-                                 pen=pg.mkPen(width=2, color='r'))
+            [], [], symbol='x', pxMode=False,
+            brush=pg.mkBrush((255,0,0,50)), size=15,
+            pen=pg.mkPen(width=2, color='r'), tip=None
+        )
         self.topLayerItems.append(self.ax1_ripIDs_ScatterPlot)
 
         # Ruler plotItem and scatterItem
@@ -3769,7 +3771,7 @@ class guiWin(QMainWindow):
         self.ax1_rulerAnchorsItem = pg.ScatterPlotItem(
             symbol='o', size=9,
             brush=pg.mkBrush((255,0,0,50)),
-            pen=pg.mkPen((255,0,0), width=2)
+            pen=pg.mkPen((255,0,0), width=2), tip=None
         )
         self.topLayerItems.append(self.ax1_rulerPlotItem)
         self.topLayerItems.append(self.ax1_rulerAnchorsItem)
@@ -3779,7 +3781,7 @@ class guiWin(QMainWindow):
         self.ax1_point_ScatterPlot.setData(
             [], [], symbol='o', pxMode=False, size=3,
             pen=pg.mkPen(width=2, color='r'),
-            brush=pg.mkBrush((255,0,0,50))
+            brush=pg.mkBrush((255,0,0,50)), tip=None
         )
         self.topLayerItems.append(self.ax1_point_ScatterPlot)
 
@@ -3789,7 +3791,7 @@ class guiWin(QMainWindow):
             [], [], symbol='o', size=9,
             pen=pg.mkPen(width=2, color='r'),
             brush=pg.mkBrush((255,0,0,50)),
-            hoverable=True, hoverBrush=pg.mkBrush((255,0,0,255))
+            hoverable=True, hoverBrush=pg.mkBrush((255,0,0,255)), tip=None
         )
         self.topLayerItems.append(self.startPointPolyLineItem)
 
@@ -3797,7 +3799,7 @@ class guiWin(QMainWindow):
         self.ax2_EraserCircle = pg.ScatterPlotItem()
         self.ax2_EraserCircle.setData(
             [], [], symbol='o', pxMode=False, brush=None,
-            pen=self.eraserCirclePen
+            pen=self.eraserCirclePen, tip=None
         )
         self.ax2.addItem(self.ax2_EraserCircle)
         self.ax2_EraserX = pg.ScatterPlotItem()
@@ -3810,9 +3812,11 @@ class guiWin(QMainWindow):
         self.ax2_BrushCirclePen = pg.mkPen(width=2)
         self.ax2_BrushCircleBrush = pg.mkBrush((255,255,255,50))
         self.ax2_BrushCircle = pg.ScatterPlotItem()
-        self.ax2_BrushCircle.setData([], [], symbol='o', pxMode=False,
-                                 brush=self.ax2_BrushCircleBrush,
-                                 pen=self.ax2_BrushCirclePen)
+        self.ax2_BrushCircle.setData(
+            [], [], symbol='o', pxMode=False,
+            brush=self.ax2_BrushCircleBrush,
+            pen=self.ax2_BrushCirclePen, tip=None
+        )
         self.ax2.addItem(self.ax2_BrushCircle)
 
         # Random walker markers colors
@@ -3828,16 +3832,18 @@ class guiWin(QMainWindow):
         # Annotated metadata markers (ScatterPlotItem)
         self.ax2_binnedIDs_ScatterPlot = pg.ScatterPlotItem()
         self.ax2_binnedIDs_ScatterPlot.setData(
-                                 [], [], symbol='t', pxMode=False,
-                                 brush=pg.mkBrush((255,0,0,50)), size=15,
-                                 pen=pg.mkPen(width=3, color='r'))
+            [], [], symbol='t', pxMode=False,
+            brush=pg.mkBrush((255,0,0,50)), size=15,
+            pen=pg.mkPen(width=3, color='r'), tip=None
+        )
         self.ax2.addItem(self.ax2_binnedIDs_ScatterPlot)
         
         self.ax2_ripIDs_ScatterPlot = pg.ScatterPlotItem()
         self.ax2_ripIDs_ScatterPlot.setData(
-                                 [], [], symbol='x', pxMode=False,
-                                 brush=pg.mkBrush((255,0,0,50)), size=15,
-                                 pen=pg.mkPen(width=2, color='r'))
+            [], [], symbol='x', pxMode=False,
+            brush=pg.mkBrush((255,0,0,50)), size=15,
+            pen=pg.mkPen(width=2, color='r'), tip=None
+        )
         self.ax2.addItem(self.ax2_ripIDs_ScatterPlot)
 
         self.freeRoiItem = widgets.PlotCurveItem(
@@ -5647,13 +5653,13 @@ class guiWin(QMainWindow):
 
         self.ax2_cursor = pg.ScatterPlotItem(
             symbol='+', pxMode=True, pen=pg.mkPen('k', width=1),
-            brush=pg.mkBrush('w'), size=16
+            brush=pg.mkBrush('w'), size=16, tip=None
         )
         self.ax2.addItem(self.ax2_cursor)
 
         self.ax1_cursor = pg.ScatterPlotItem(
             symbol='+', pxMode=True, pen=pg.mkPen('k', width=1),
-            brush=pg.mkBrush('w'), size=16
+            brush=pg.mkBrush('w'), size=16, tip=None
         )
         self.ax1.addItem(self.ax1_cursor)
 
@@ -9910,7 +9916,7 @@ class guiWin(QMainWindow):
                 brush=pg.mkBrush((255,0,0,50)),
                 pen=pg.mkPen((255,0,0), width=2),
                 hoverable=True, hoverPen=pg.mkPen((255,0,0), width=3),
-                hoverBrush=pg.mkBrush((255,0,0))
+                hoverBrush=pg.mkBrush((255,0,0)), tip=None
             )
             self.ax1.addItem(self.curvAnchors)
             self.ax1.addItem(self.curvPlotItem)
@@ -15386,7 +15392,7 @@ class guiWin(QMainWindow):
             [], [], symbol=symbol, pxMode=False, size=pointSize,
             brush=pg.mkBrush(color=(r,g,b,100)),
             pen=pg.mkPen(width=2, color=(r,g,b)),
-            hoverable=True, hoverBrush=pg.mkBrush((r,g,b,200))
+            hoverable=True, hoverBrush=pg.mkBrush((r,g,b,200)), tip=None
         )
         self.ax1.addItem(scatterItem)
 
@@ -18020,7 +18026,7 @@ class guiWin(QMainWindow):
             contoursItem.setData(
                 [], [], symbol='s', pxMode=False, size=1,
                 brush=pg.mkBrush(color=(255,0,0,150)),
-                pen=pg.mkPen(width=2, color='r')
+                pen=pg.mkPen(width=2, color='r'), tip=None
             )
 
             items = (imageItem, contoursItem, gradItem)
