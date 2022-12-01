@@ -10082,6 +10082,10 @@ class guiWin(QMainWindow):
             elif isLabelRoiCircActive:
                 val = self.labelRoiCircularRadiusSpinbox.value()
                 self.labelRoiCircularRadiusSpinbox.setValue(val+1)
+            else:
+                self.zSliceScrollBar.triggerAction(
+                    QAbstractSlider.SliderSingleStepAdd
+                )
         elif ev.key()==Qt.Key_Down and not isCtrlModifier:
             if isBrushActive:
                 brushSize = self.brushSizeSpinbox.value()
@@ -10095,6 +10099,10 @@ class guiWin(QMainWindow):
             elif isLabelRoiCircActive:
                 val = self.labelRoiCircularRadiusSpinbox.value()
                 self.labelRoiCircularRadiusSpinbox.setValue(val-1)
+            else:
+                self.zSliceScrollBar.triggerAction(
+                    QAbstractSlider.SliderSingleStepSub
+                )
         # elif ev.key()==Qt.Key_Left and not isCtrlModifier:
         #     self.prev_cb()
         # elif ev.key()==Qt.Key_Right and not isCtrlModifier:
@@ -12764,13 +12772,17 @@ class guiWin(QMainWindow):
             img = self.getImage()
             self.img1.setImage(img)
             if self.labelsGrad.showLabelsImgAction.isChecked():
-                self.img2.setImage(posData.lab, z=self.z_lab(), autoLevels=False)
+                self.img2.setImage(posData.lab, z=z, autoLevels=False)
             self.updateViewerWindow()
             if self.isSegm3D and hasattr(self, 'currentLab2D'):
                 for obj in posData.rp:
                     self.annotateObject(obj, 'IDs')
-            self.currentLab2D = posData.lab[self.z_lab()]
-            self.setOverlaySegmMasks(force=True)
+            if self.isSegm3D:
+                self.currentLab2D = posData.lab[z]
+                self.setOverlaySegmMasks(force=True)
+            else:
+                self.currentLab2D = posData.lab
+                self.setOverlaySegmMasks(forceIfNotActive=True)
             self.drawPointsLayers(computePointsLayers=False)
             self.zSliceScrollBarStartedMoving = False
 
@@ -15796,7 +15808,7 @@ class guiWin(QMainWindow):
             ol_img = self.normalizeIntensities(ol_img)
         return ol_img
 
-    def setOverlaySegmMasks(self, force=False):
+    def setOverlaySegmMasks(self, force=False, forceIfNotActive=False):
         if not hasattr(self, 'currentLab2D'):
             return
 
@@ -15807,7 +15819,7 @@ class guiWin(QMainWindow):
             or how_ax2.find('overlay segm. masks') != -1
             or force
         )
-        if not isOverlaySegmActive:
+        if not isOverlaySegmActive and not forceIfNotActive:
             return
 
         alpha = self.imgGrad.labelsAlphaSlider.value()
