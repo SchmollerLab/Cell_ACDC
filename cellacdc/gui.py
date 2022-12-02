@@ -15176,6 +15176,8 @@ class guiWin(QMainWindow):
                 'Deleted non-selected objects', get_answer=True
             )
             if not removeAnnot:
+                # We can propagate changes only if the user agrees on 
+                # removing annotations
                 return
         
         # Ask to propagate change to all future visited frames
