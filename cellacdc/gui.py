@@ -1147,6 +1147,7 @@ class saveDataWorker(QObject):
                 posData.fluo_bkgrData_dict[posData.filename] = posData.bkgrData
 
                 self.mainWin.getChNames(posData)
+                self.mainWin.initMetricsToSave(posData)
 
                 self.progress.emit(f'Saving {posData.relPath}')
                 for frame_i, data_dict in enumerate(posData.allData_li[:end_i+1]):
@@ -10093,12 +10094,11 @@ class guiWin(QMainWindow):
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
             posData = self.data[self.pos_i]
-            # for action in self.pointsLayersToolbar.actions()[1:]:
-            #     printl(action.pointsData, pretty=True)
-            # self.win = apps.pgTestWindow()
-            # self.win.ax1.addItem(self.tempLayerImg1)
-            # self.win.show()
-            # apps.imshow_tk(self.tempLayerImg1.image)
+            printl(self.chNamesToSkip, pretty=True)
+            printl(self.metricsToSave, pretty=True)
+            printl(self.sizeMetricsToSave, pretty=True)
+            printl(self.regionPropsToSave, pretty=True)
+            printl(self.mixedChCombineMetricsToSkip, pretty=True)
         try:
             posData = self.data[self.pos_i]
         except AttributeError:
@@ -12479,7 +12479,7 @@ class guiWin(QMainWindow):
         self.init_segmInfo_df()
         self.connectScrollbars()
         self.initPosAttr()
-        self.initCustomMetrics()
+        self.initMetrics()
         self.initFluoData()
         self.initRealTimeTracker()
         self.createChannelNamesActions()
@@ -13249,11 +13249,39 @@ class guiWin(QMainWindow):
             'is_history_known',
             'corrected_assignment'
         ]
+    
+    def initMetricsToSave(self, posData):
+        if self.metricsToSave is None:
+            # self.metricsToSave means that the user did not set 
+            # through setMeasurements dialog --> save all measurements
+            self.metricsToSave = {chName:[] for chName in posData.loadedChNames}
+            for chName in self.ch_names:
+                metrics_desc, bkgr_val_desc = measurements.standard_metrics_desc(
+                    posData.SizeZ>1, chName, isSegm3D=self.isSegm3D
+                )
+                self.metricsToSave[chName].extend(metrics_desc.keys())
+                self.metricsToSave[chName].extend(bkgr_val_desc.keys())
+        
+        if self.mixedChCombineMetricsToSave is None:
+            # self.mixedChCombineMetricsToSave means that the user did not set 
+            # through setMeasurements dialog --> save all measurements
+            desc, equations = measurements.combine_mixed_channels_desc(
+                isSegm3D=self.isSegm3D, posData=posData
+            )
+            if not desc:
+                self.mixedChCombineMetricsToSave = []
+            else:
+                self.mixedChCombineMetricsToSave = list(desc.keys())
 
-    def initCustomMetrics(self):
-        self.logger.info('Initializing custom measurements...')
+    def initMetrics(self):
+        self.logger.info('Initializing measurements...')
         self.chNamesToSkip = []
         self.metricsToSkip = {}
+        # At the moment we don't know how many channels the user will load -->
+        # we set the measurements to save either at setMeasurements dialog
+        # or at initMetricsToSave
+        self.metricsToSave = None
+        self.mixedChCombineMetricsToSave = None
         self.regionPropsToSave = measurements.get_props_names()
         if self.isSegm3D:
             self.regionPropsToSave = measurements.get_props_names_3D()
@@ -19018,13 +19046,14 @@ class guiWin(QMainWindow):
                         acdc_df = acdc_df.drop(columns=drop_cols_rp, errors='ignore')
                     _posData.allData_li[frame_i]['acdc_df'] = acdc_df
         self.logger.info('Setting measurements...')
-        self.setMetricsToSkip(self.measurementsWin)
+        self._setMetrics(self.measurementsWin)
         self.logger.info('Metrics successfully set.')
         self.measurementsWin = None
 
-    def setMetricsToSkip(self, measurementsWin):
+    def _setMetrics(self, measurementsWin):
         self.chNamesToSkip = []
         self.metricsToSkip = {chName:[] for chName in self.ch_names}
+        self.metricsToSave = {chName:[] for chName in self.ch_names}
         favourite_funcs = set()
         # Remove unchecked metrics and load checked not loaded channels
         for chNameGroupbox in measurementsWin.chNameGroupboxes:
@@ -19042,6 +19071,7 @@ class guiWin(QMainWindow):
                     if not checkBox.isChecked():
                         self.metricsToSkip[chName].append(colname)
                     else:
+                        self.metricsToSave[chName].append(colname)
                         func_name = colname[len(chName):]
                         favourite_funcs.add(func_name)
 
@@ -19067,6 +19097,7 @@ class guiWin(QMainWindow):
         if measurementsWin.mixedChannelsCombineMetricsQGBox is not None:
             skipAll = not measurementsWin.mixedChannelsCombineMetricsQGBox.isChecked()
             mixedChCombineMetricsToSkip = []
+            mixedChCombineMetricsToSave = []
             win = measurementsWin
             checkBoxes = win.mixedChannelsCombineMetricsQGBox.checkBoxes
             for checkBox in checkBoxes:
@@ -19076,7 +19107,9 @@ class guiWin(QMainWindow):
                     mixedChCombineMetricsToSkip.append(checkBox.text())
                 else:             
                     favourite_funcs.add(checkBox.text())
+                    mixedChCombineMetricsToSave.append(checkBox.text())
             self.mixedChCombineMetricsToSkip = tuple(mixedChCombineMetricsToSkip)
+            self.mixedChCombineMetricsToSave = tuple(mixedChCombineMetricsToSave)
 
         df_favourite_funcs = pd.DataFrame(
             {'favourite_func_name': list(favourite_funcs)}

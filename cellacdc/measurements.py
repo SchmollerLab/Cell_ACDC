@@ -678,6 +678,28 @@ def _is_numeric_dtype(dtype):
     )
     return is_numeric
 
+def get_bkgrROI_mask(posData, isSegm3D):
+    if posData.bkgrROIs:
+        ROI_bkgrMask = np.zeros(posData.lab.shape, bool)
+        if posData.bkgrROIs:
+            for roi in posData.bkgrROIs:
+                xl, yl = [int(round(c)) for c in roi.pos()]
+                w, h = [int(round(c)) for c in roi.size()]
+                if isSegm3D:
+                    ROI_bkgrMask[:, yl:yl+h, xl:xl+w] = True
+                else:
+                    ROI_bkgrMask[yl:yl+h, xl:xl+w] = True
+    else:
+        ROI_bkgrMask = None
+
+def get_autoBkgr_mask(lab, isSegm3D):
+    autoBkgr_mask = lab == 0
+    if isSegm3D:
+        autoBkgr_mask_proj = lab.max(axis=0) == 0
+    else:
+        autoBkgr_mask_proj = autoBkgr_mask
+    return autoBkgr_mask, autoBkgr_mask_proj
+
 def regionprops_table(labels, props, logger_func=None):
     rp = skimage.measure.regionprops(labels)
     if 'label' not in props:
@@ -793,6 +815,84 @@ def _amount(arr, bkgr, area):
     except Exception as e:
         val = np.nan
     return val
+
+def get_bkgr_data(
+        foregr_img, posData, filename, frame_i, autoBkgr_mask, z,
+        autoBkgr_mask_proj, dataPrepBkgrROI_mask, isSegm3D
+    ):
+    isZstack = foregr_img.ndim == 3
+    bkgr_data = {}
+
+    """Auto Background"""
+    bkgr_data['autoBkgr'] =  {
+        '': 0, 'maxProj': 0, 'meanProj': 0, 'zSlice': 0, '3D': 0
+    }
+    if isZstack:
+        if isSegm3D:
+            autoBkr_3D = foregr_img[autoBkgr_mask]
+            bkgr_data['autoBkgr']['3D'] = autoBkr_3D[autoBkr_3D!=0]
+        autoBkgr_maxP = foregr_img.max(axis=0)[autoBkgr_mask_proj]
+        autoBkgr_meanP = foregr_img.mean(axis=0)[autoBkgr_mask_proj]
+        autoBkgr_zSlice = foregr_img[z][autoBkgr_mask_proj]
+        bkgr_data['autoBkgr']['maxProj'] = autoBkgr_maxP[autoBkgr_maxP!=0]
+        bkgr_data['autoBkgr']['meanProj'] = autoBkgr_meanP[autoBkgr_meanP!=0]
+        bkgr_data['autoBkgr']['zSlice'] = autoBkgr_zSlice[autoBkgr_zSlice!=0]
+    else:
+        autoBkgr_data = foregr_img[autoBkgr_mask]
+        bkgr_data['autoBkgr'][''] = autoBkgr_data[autoBkgr_data!=0]
+
+    """DataPrep Background"""
+    bkgr_archive = posData.fluo_bkgrData_dict[filename]
+    bkgr_data['dataPrepBkgr'] =  {
+        '': [], 'maxProj': [], 'meanProj': [], 'zSlice': [], '3D': []
+    }
+    dataPrepBkgr_present = False
+    if bkgr_archive is not None:
+        for file in bkgr_archive.files:
+            bkgrRoi_data = bkgr_archive[file]
+            if posData.SizeT > 1:
+                bkgrRoi_data = bkgrRoi_data[frame_i]
+            if isZstack:
+                bkgrRoi_maxP = bkgrRoi_data.max(axis=0)
+                bkgrRoi_meanP = bkgrRoi_data.mean(axis=0)
+                bkgrRoi_zSlice = bkgrRoi_data[z]
+                if isSegm3D:
+                    bkgrRoi_3D = bkgrRoi_data
+            else:
+                bkgrRoi = bkgrRoi_data  
+            dataPrepBkgr_present = True       
+    elif dataPrepBkgrROI_mask is not None:
+        if isZstack:
+            if isSegm3D:
+                bkgrRoi_3D = foregr_img[dataPrepBkgrROI_mask]
+                dataPrepBkgrROI_mask_2D = dataPrepBkgrROI_mask[0]
+            else:
+                dataPrepBkgrROI_mask_2D = dataPrepBkgrROI_mask
+            bkgrRoi_maxP = foregr_img.max(axis=0)[dataPrepBkgrROI_mask_2D]
+            bkgrRoi_meanP = foregr_img.mean(axis=0)[dataPrepBkgrROI_mask_2D]
+            bkgrRoi_zSlice = foregr_img[z][dataPrepBkgrROI_mask_2D]      
+        else:
+            bkgrRoi = foregr_img[dataPrepBkgrROI_mask]
+        dataPrepBkgr_present = True 
+    
+    if isZstack and dataPrepBkgr_present:
+        # Note: we remove 0s since they are introduced by the alignment
+        bkgr_data['dataPrepBkgr']['maxProj'].extend(
+            bkgrRoi_maxP[bkgrRoi_maxP!=0]
+        )
+        bkgr_data['dataPrepBkgr']['meanProj'].extend(
+            bkgrRoi_meanP[bkgrRoi_meanP!=0]
+        )
+        bkgr_data['dataPrepBkgr']['zSlice'].extend(
+            bkgrRoi_zSlice[bkgrRoi_zSlice!=0]
+        )
+        if isSegm3D:
+            bkgr_data['dataPrepBkgr']['3D'].extend(bkgrRoi_3D[bkgrRoi_3D!=0])
+    elif dataPrepBkgr_present:
+        bkgr_data['dataPrepBkgr']['maxProj'].extend(bkgrRoi[bkgrRoi!=0])
+    
+    return bkgr_data
+            
 
 def standard_metrics_func():
     metrics_func = {
