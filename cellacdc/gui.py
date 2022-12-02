@@ -15175,7 +15175,7 @@ class guiWin(QMainWindow):
             removeAnnot = self.warnEditingWithCca_df(
                 'Deleted non-selected objects', get_answer=True
             )
-            if not result:
+            if not removeAnnot:
                 return
         
         # Ask to propagate change to all future visited frames
