@@ -392,7 +392,6 @@ class saveDataWorker(QObject):
                --> background values are saved in posData.fluo_bkgrData_dict
                    and we calculate metrics from there
         """
-
         PhysicalSizeY = posData.PhysicalSizeY
         PhysicalSizeX = posData.PhysicalSizeX
 
@@ -473,7 +472,7 @@ class saveDataWorker(QObject):
                         ROI_bkgrMask[yl:yl+h, xl:xl+w] = True
         else:
             ROI_bkgrMask = None
-        
+
         for i, obj in enumerate(rp):
             IDs[i] = obj.label
             # Calc volume
@@ -642,7 +641,9 @@ class saveDataWorker(QObject):
                     bkgrData_q95s.append(np.quantile(bkgrVals_2D, q=0.95))
                     bkgrData_q05s.append(np.quantile(bkgrVals_2D, q=0.05))
 
+            t_objs = np.zeros(len(rp))
             # Iterate cells
+            self.progress.emit('')
             self.progress.emit('Iterating segmented objects...')
             for i, obj in enumerate(tqdm(rp, leave=False, ncols=100)):
                 if self.mainWin.isSegm3D:
@@ -864,8 +865,6 @@ class saveDataWorker(QObject):
                                     )
                                 metrics_values[key][i] = val
 
-                        # pbar.update()
-                        # self.metricsPbarProgress.emit(-1, 1)
                     for custom_func_name, custom_func in custom_func_dict.items():
                         key = f'{chName}_{custom_func_name}{how}'
                         if key in metricsToSkipChannel:
@@ -902,7 +901,6 @@ class saveDataWorker(QObject):
                             # self.mainWin.logger.info(traceback.format_exc())
                         # self.metricsPbarProgress.emit(-1, 1)
                         # pbar.update()
-
 
         if 'cell_area_pxl' in self.mainWin.sizeMetricsToSave:
             df['cell_area_pxl'] = pd.Series(
@@ -971,7 +969,7 @@ class saveDataWorker(QObject):
             except Exception as error:
                 traceback_format = traceback.format_exc()
                 self.regionPropsCritical.emit(traceback_format, str(error))
-            
+
         # Remove 0s columns
         df = df.loc[:, (df != -2).any(axis=0)]
 
@@ -6680,8 +6678,6 @@ class guiWin(QMainWindow):
 
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(False)
-
-            t1 = time.perf_counter()
 
             self.yPressAx2, self.xPressAx2 = y, x
             # Keep a list of erased IDs got erased
@@ -12631,17 +12627,17 @@ class guiWin(QMainWindow):
         self.annotIDsCheckbox.setDisabled(disabled)
         self.annotCcaInfoCheckbox.setDisabled(disabled)
         self.annotContourCheckbox.setDisabled(disabled)
-        self.annotSegmMasksCheckbox.setDisabled(disabled)
+        # self.annotSegmMasksCheckbox.setDisabled(disabled)
         self.drawMothBudLinesCheckbox.setDisabled(disabled)
-        self.drawNothingCheckbox.setDisabled(disabled)
+        # self.drawNothingCheckbox.setDisabled(disabled)
 
         # Right 
         self.annotIDsCheckboxRight.setDisabled(disabled)
         self.annotCcaInfoCheckboxRight.setDisabled(disabled)
         self.annotContourCheckboxRight.setDisabled(disabled)
-        self.annotSegmMasksCheckboxRight.setDisabled(disabled)
+        # self.annotSegmMasksCheckboxRight.setDisabled(disabled)
         self.drawMothBudLinesCheckboxRight.setDisabled(disabled)
-        self.drawNothingCheckboxRight.setDisabled(disabled)
+        # self.drawNothingCheckboxRight.setDisabled(disabled)
         
     def drawAnnotCombobox_to_options(self):
         self.uncheckAnnotOptions()
@@ -15176,14 +15172,12 @@ class guiWin(QMainWindow):
             self.updateALLimg()
             return
         else:
-            result = self.warnEditingWithCca_df(
+            removeAnnot = self.warnEditingWithCca_df(
                 'Deleted non-selected objects', get_answer=True
             )
             if not result:
                 return
         
-        removeAnnot = result[1]
-
         # Ask to propagate change to all future visited frames
         (UndoFutFrames, applyFutFrames, endFrame_i,
         doNotShowAgain) = self.propagateChange(
@@ -16717,7 +16711,7 @@ class guiWin(QMainWindow):
                 self.next_frame()
         
         if get_answer:
-            return True, msg.clickedButton == removeAnnotButton
+            return msg.clickedButton == removeAnnotButton
         else:
             return True
     
