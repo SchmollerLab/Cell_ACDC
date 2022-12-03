@@ -816,6 +816,54 @@ def _amount(arr, bkgr, area):
         val = np.nan
     return val
 
+def get_obj_size_metric(
+        col_name, obj, isSegm3D, yx_pxl_to_um2, vox_to_fl_3D
+    ):
+    if col_name == 'cell_area_pxl':
+        if isSegm3D:
+            return np.count_nonzero(obj.image.max(axis=0))
+        else:
+            return obj.area
+    elif col_name == 'cell_area_um2':
+        if isSegm3D:
+            return np.count_nonzero(obj.image.max(axis=0))*yx_pxl_to_um2
+        else:
+            return obj.area*yx_pxl_to_um2
+    elif col_name == 'cell_vol_vox':
+        return obj.vol_vox
+    elif col_name == 'cell_vol_fl':
+        return obj.vol_fl
+    elif col_name == 'cell_vol_vox_3D':
+        return obj.area
+    elif col_name == 'cell_vol_fl_3D':
+        return obj.area*vox_to_fl_3D
+
+def get_foregr_data(foregr_img, isSegm3D, z):
+    isZstack = foregr_img.ndim == 3
+    foregr_data = {}
+    if isSegm3D:
+        foregr_data['3D'] = foregr_img
+    
+    if isZstack:
+        foregr_data['maxProj'] = foregr_img.max(axis=0)
+        foregr_data['meanProj'] = foregr_img.mean(axis=0)
+        foregr_data['zSlice'] = foregr_img[z]
+    foregr_data[''] = foregr_img
+    return foregr_data
+
+def get_foregr_obj_array(foregr_arr, obj, isSegm3D):
+    if foregr_arr.ndim == 3 and isSegm3D:
+        # 3D mask on 3D data
+        return foregr_arr[obj.slice][obj.image], obj.area
+    elif foregr_arr.ndim == 2 and isSegm3D:
+        # 3D mask on 2D data
+        obj_slice = obj.slice[1:3]
+        obj_image = obj.image.max(axis=0)
+        return foregr_arr[obj_slice][obj_image], np.count_nonzero(obj_image)
+    else:
+        # 2D mask on 2D data
+        return foregr_arr[obj.slice][obj.image], obj.area
+
 def get_bkgr_data(
         foregr_img, posData, filename, frame_i, autoBkgr_mask, z,
         autoBkgr_mask_proj, dataPrepBkgrROI_mask, isSegm3D

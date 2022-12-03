@@ -13255,12 +13255,23 @@ class guiWin(QMainWindow):
             # self.metricsToSave means that the user did not set 
             # through setMeasurements dialog --> save all measurements
             self.metricsToSave = {chName:[] for chName in posData.loadedChNames}
+            self.channelCustomMetricsToSave = {
+                chName:[] for chName in posData.loadedChNames
+            }
             for chName in self.ch_names:
                 metrics_desc, bkgr_val_desc = measurements.standard_metrics_desc(
                     posData.SizeZ>1, chName, isSegm3D=self.isSegm3D
                 )
                 self.metricsToSave[chName].extend(metrics_desc.keys())
                 self.metricsToSave[chName].extend(bkgr_val_desc.keys())
+
+                custom_metrics_desc = measurements.custom_metrics_desc(
+                    posData.SizeZ>1, chName, posData=posData, 
+                    isSegm3D=self.isSegm3D, return_combine=False
+                )
+                self.channelCustomMetricsToSave[chName].extend(
+                    custom_metrics_desc.keys()
+                )
         
         if self.mixedChCombineMetricsToSave is None:
             # self.mixedChCombineMetricsToSave means that the user did not set 
@@ -13281,6 +13292,7 @@ class guiWin(QMainWindow):
         # we set the measurements to save either at setMeasurements dialog
         # or at initMetricsToSave
         self.metricsToSave = None
+        self.channelCustomMetricsToSave = None
         self.mixedChCombineMetricsToSave = None
         self.regionPropsToSave = measurements.get_props_names()
         if self.isSegm3D:
