@@ -1279,6 +1279,9 @@ def add_bkgr_values(df, bkgr_data, bkgr_metrics_params, metrics_func):
     return df
 
 def add_regionprops_metrics(df, lab, regionprops_to_save, logger_func=None):
+    if not regionprops_to_save:
+        return df, []
+
     if 'label' not in regionprops_to_save:
         regionprops_to_save = ('label', *regionprops_to_save)
 
@@ -1343,3 +1346,60 @@ def get_custom_metric_value(
         return '', custom_val
     except Exception as e:
         return traceback.format_exc(), np.nan
+
+def get_metrics_params(all_channels_metrics, metrics_func, custom_func_dict):
+    bkgr_metrics_params = {}
+    foregr_metrics_params = {}
+    concentration_metrics_params = {}
+    custom_metrics_params = {}
+    az = r'[A-Za-z0-9]'
+    bkgrVal_pattern = fr'_({az}+)_bkgrVal_({az}+)_?({az}*)'
+
+    for channel_name, columns in all_channels_metrics.items():
+        for col in columns:
+            m = re.findall(bkgrVal_pattern, col)
+            if m:
+                # The metric is a bkgrVal metric
+                bkgr_type, func_name, how = m[0]
+                bkgr_metrics_params[col] = (bkgr_type, func_name, how)
+                continue
+            
+            is_standard_foregr = False
+            for metric in metrics_func:
+                foregr_pattern = rf'{channel_name}_({metric})_?({az}*)'
+                m = re.findall(foregr_pattern, col)
+                if m:
+                    # Metric is a standard metric 
+                    func_name, how = m[0]
+                    foregr_metrics_params[col] = (func_name, how)
+                    is_standard_foregr = True
+                    break
+            
+            if is_standard_foregr:
+                continue
+
+            # Metric is concentration
+            conc_pattern = rf'concentration_{az}+_from_vol_[a-z]+'
+            conc_metric_pattern = (
+                rf'{channel_name}_({conc_pattern})_?({az}*)'
+            )
+            m = re.findall(conc_metric_pattern, col)
+            if m:
+                func_name, how = m[0]
+                concentration_metrics_params[col] = (func_name, how)
+                continue
+
+            for metric, custom_func in custom_func_dict.items():
+                custom_pattern = rf'{channel_name}_({metric})_?({az}*)'
+                m = re.findall(custom_pattern, col)
+                if m:
+                    # Metric is a standard metric 
+                    func_name, how = m[0]
+                    custom_metrics_params[col] = (custom_func, how)
+                    break
+    
+    params = (
+        bkgr_metrics_params, foregr_metrics_params, 
+        concentration_metrics_params, custom_metrics_params
+    )
+    return params

@@ -1810,6 +1810,7 @@ class setMeasurementsDialog(QBaseDialog):
     def loadLastSelection(self):
         for chNameGroupbox in self.chNameGroupboxes:
             chNameGroupbox.checkFavouriteFuncs()
+            chNameGroupbox.customMetricsQGBox.checkFavouriteFuncs()
         self.sizeMetricsQGBox.checkFavouriteFuncs()
         self.regionPropsQGBox.checkFavouriteFuncs()
 

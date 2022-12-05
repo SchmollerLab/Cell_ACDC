@@ -372,137 +372,11 @@ class saveDataWorker(QObject):
             return '', custom_val
         except Exception as e:
             return traceback.format_exc(), 0
-
-    def addMetrics_acdc_df(self, df, rp, frame_i, lab, posData):
-        """
-        Function used to add metrics to the acdc_df.
-
-        NOTE for 3D data: add the same metrics calculated from 2D data obtained
-        with three different methods:
-            - sum projection
-            - mean projection
-            - z-slice used for segmentation
-
-        For background data there are three options:
-            1. The user did not select any background ROI in data Prep
-               --> save only autoBkgr which are all the pixels outside cells
-            2. The user selected background ROI but did not crop
-               --> get values from the ROI background in this function
-            3. The user selected background ROI AND cropped
-               --> background values are saved in posData.fluo_bkgrData_dict
-                   and we calculate metrics from there
-        """
-        PhysicalSizeY = posData.PhysicalSizeY
-        PhysicalSizeX = posData.PhysicalSizeX
-
-        yx_pxl_to_um2 = PhysicalSizeY*PhysicalSizeX
-        if self.mainWin.isSegm3D:
-            vox_to_fl_3D = PhysicalSizeY*PhysicalSizeX*posData.PhysicalSizeZ
-        numCells = len(rp)
-
-        list_0s = [-2]*numCells
-        IDs = list_0s.copy()
-        IDs_vol_vox = list_0s.copy()
-        IDs_area_pxl = list_0s.copy()
-        IDs_vol_fl = list_0s.copy()
-        IDs_area_um2 = list_0s.copy()
-        if self.mainWin.isSegm3D:
-            IDs_vol_vox_3D = list_0s.copy()
-            IDs_vol_fl_3D = list_0s.copy()
-
-        # Initialize fluo metrics arrays
-        fluo_keys = list(posData.fluo_data_dict.keys())
-        if fluo_keys:
-            fluo_data = posData.fluo_data_dict[fluo_keys[0]][frame_i]
-            is_3D = fluo_data.ndim == 3
-            how_3Dto2D, _ = measurements.get_how_3Dto2D(
-                is_3D, self.mainWin.isSegm3D
-            )
-        else:
-            how_3Dto2D = []
-
-        # Defined in function setMetricsFunc
-        metrics_func = self.mainWin.metrics_func
-        custom_func_dict = self.mainWin.custom_func_dict
-
-        # Dictionary where values is a list of 0s with len=numCells
-        # and key is 'channelName_metrics_how' (e.g. 'GFP_mean_zSlice')
-        metrics_values = {
-            f'{chName}_{metric}{how}':list_0s.copy()
-            for metric in self.mainWin.all_metrics_names
-            for chName in posData.loadedChNames
-            for how in how_3Dto2D
-        }
-        custom_metrics_values = {
-            f'{chName}_{metric}{how}':list_0s.copy()
-            for metric in self.mainWin.custom_func_dict
-            for chName in posData.loadedChNames
-            for how in how_3Dto2D
-        }
-
-        tot_iter = (
-            self.mainWin.total_metrics
-            *len(posData.loadedChNames)
-            *len(how_3Dto2D)
-            *numCells
-        )
-
-        # self.metricsPbarProgress.emit(tot_iter, 0)
-
-        # pbar = tqdm(total=tot_iter, ncols=100, unit='metric', leave=False)
-
-        if self.mainWin.isSegm3D:
-            outCellsMask3D = lab==0
-            outCellsMaskProj = lab.max(axis=0) == 0
-        else:
-            outCellsMask2D = lab==0
-            outCellsMaskZslice = outCellsMask2D
-            outCellsMaskProj = outCellsMask2D
-
-        # Compute ROI bkgrMask
-        if posData.bkgrROIs:
-            ROI_bkgrMask = np.zeros(posData.lab.shape, bool)
-            if posData.bkgrROIs:
-                for roi in posData.bkgrROIs:
-                    xl, yl = [int(round(c)) for c in roi.pos()]
-                    w, h = [int(round(c)) for c in roi.size()]
-                    if self.mainWin.isSegm3D:
-                        ROI_bkgrMask[:, yl:yl+h, xl:xl+w] = True
-                    else:
-                        ROI_bkgrMask[yl:yl+h, xl:xl+w] = True
-        else:
-            ROI_bkgrMask = None
-
-        for i, obj in enumerate(rp):
-            IDs[i] = obj.label
-            # Calc volume
-            vol_vox = None
-            vol_fl = None
-            if 'cell_vol_vox' in self.mainWin.sizeMetricsToSave:
-                IDs_vol_vox[i] = obj.vol_vox
-                IDs_vol_fl[i] = obj.vol_fl
-                vol_vox = obj.vol_vox
-                vol_fl = obj.vol_fl
-                if self.mainWin.isSegm3D:
-                    IDs_vol_vox_3D[i] = obj.area
-                    IDs_vol_fl_3D[i] = obj.area*vox_to_fl_3D
-
-            if 'cell_area_pxl' in self.mainWin.sizeMetricsToSave:
-                IDs_area_pxl[i] = obj.area
-                IDs_area_um2[i] = obj.area*yx_pxl_to_um2
-
+    
+    def _check_zSlice(self, posData, frame_i):
         # Iteare fluo channels and get 2D data from 3D if needed
-        for chName, filename in zip(posData.loadedChNames, fluo_keys):
-            fluo_data = posData.fluo_data_dict[filename][frame_i]
-            bkgrArchive = posData.fluo_bkgrData_dict[filename]
-            metricsToSkipChannel = self.mainWin.metricsToSkip.get(chName, [])
-            fluo_data_projs = []
-            bkgrData_medians = []
-            bkgrData_means = []
-            bkgrData_q75s = []
-            bkgrData_q25s = []
-            bkgrData_q95s = []
-            bkgrData_q05s = []
+        filenames = posData.fluo_data_dict.keys()
+        for chName, filename in zip(posData.loadedChNames, filenames):
             if posData.SizeZ > 1:
                 idx = (filename, frame_i)
                 try:
@@ -539,436 +413,87 @@ class saveDataWorker(QObject):
                         col = 'z_slice_used_dataPrep'
                         z_slice = posData.segmInfo_df.at[idx, col]
 
-                fluo_data_z_maxP = fluo_data.max(axis=0)
-                fluo_data_z_sumP = fluo_data.mean(axis=0)
-                fluo_data_zSlice = fluo_data[z_slice]
-                if self.mainWin.isSegm3D:
-                    fluo_data_3D = fluo_data
-                    outCellsMaskZslice = lab[z_slice]
-                
-                if ROI_bkgrMask is not None and self.mainWin.isSegm3D:    
-                    ROI_bkgrMask_zSlice = ROI_bkgrMask[z_slice]
-                else:
-                    ROI_bkgrMask_zSlice = ROI_bkgrMask
+    def addMetrics_acdc_df(self, stored_df, rp, frame_i, lab, posData):
+        yx_pxl_to_um2 = posData.PhysicalSizeY*posData.PhysicalSizeX
+        vox_to_fl_3D = (
+            posData.PhysicalSizeY*posData.PhysicalSizeX*posData.PhysicalSizeZ
+        )
 
-                # how_3Dto2D = ['_maxProj', '_sumProj', '_zSlice']
-                fluo_data_projs.append(fluo_data_z_maxP)
-                fluo_data_projs.append(fluo_data_z_sumP)
-                fluo_data_projs.append(fluo_data_zSlice)
-                if self.mainWin.isSegm3D:
-                    fluo_data_projs.append(fluo_data)
+        isZstack = posData.SizeZ > 1
+        isSegm3D = self.mainWin.isSegm3D
+        all_channels_metrics = self.mainWin.metricsToSave
+        size_metrics_to_save = self.mainWin.sizeMetricsToSave
+        regionprops_to_save = self.mainWin.regionPropsToSave
+        metrics_func = self.mainWin.metrics_func
+        custom_func_dict = self.mainWin.custom_func_dict
+        bkgr_metrics_params = self.mainWin.bkgr_metrics_params
+        foregr_metrics_params = self.mainWin.foregr_metrics_params
+        concentration_metrics_params = self.mainWin.concentration_metrics_params
+        custom_metrics_params = self.mainWin.custom_metrics_params
 
-                if bkgrArchive is not None:
-                    bkgrVals_z_maxP = []
-                    bkgrVals_z_sumP = []
-                    bkgrVals_zSlice = []
-                    bkgrVals_3D = []
-                    for roi_key in bkgrArchive.files:
-                        roiData = bkgrArchive[roi_key]
-                        if posData.SizeT > 1:
-                            roiData = bkgrArchive[roi_key][frame_i]
-                        roi_z_maxP = roiData.max(axis=0)
-                        roi_z_sumP = roiData.mean(axis=0)
-                        roi_zSlice = roiData[z_slice]
-                        bkgrVals_z_maxP.extend(roi_z_maxP[roi_z_maxP!=0])
-                        bkgrVals_z_sumP.extend(roi_z_sumP[roi_z_sumP!=0])
-                        bkgrVals_zSlice.extend(roi_zSlice[roi_zSlice!=0])
-                        if self.mainWin.isSegm3D:
-                            bkgrVals_3D.extend(roiData[roiData!=0])
-                    if not bkgrVals_z_maxP:
-                        # issue 51: a user had an empty bkgr data
-                        bkgrVals_z_maxP = [0]
-                    if not bkgrVals_z_sumP:
-                        # issue 51: a user had an empty bkgr data
-                        bkgrVals_z_sumP = [0]
-                    if not bkgrVals_zSlice:
-                        # issue 51: a user had an empty bkgr data
-                        bkgrVals_zSlice = [0]
-                    bkgrData_medians.append(np.median(bkgrVals_z_maxP))
-                    bkgrData_medians.append(np.median(bkgrVals_z_sumP))
-                    bkgrData_medians.append(np.median(bkgrVals_zSlice))
-                    if self.mainWin.isSegm3D:
-                        bkgrData_medians.append(np.median(bkgrVals_3D))
+        # Pre-populate columns with zeros
+        all_columns = list(size_metrics_to_save)
+        all_columns.extend(all_channels_metrics)
+        all_columns.extend(regionprops_to_save)
+        df = stored_df.copy()
+        df[all_columns] = 0.0
 
-                    bkgrData_means.append(np.mean(bkgrVals_z_maxP))
-                    bkgrData_means.append(np.mean(bkgrVals_z_sumP))
-                    bkgrData_means.append(np.mean(bkgrVals_zSlice))
-                    if self.mainWin.isSegm3D:
-                        bkgrData_means.append(np.mean(bkgrVals_3D))
+        # Check if z-slice is present for 3D z-stack data
+        self._check_zSlice(posData, frame_i)
 
-                    bkgrData_q75s.append(np.quantile(bkgrVals_z_maxP, q=0.75))
-                    bkgrData_q75s.append(np.quantile(bkgrVals_z_sumP, q=0.75))
-                    bkgrData_q75s.append(np.quantile(bkgrVals_zSlice, q=0.75))
-                    if self.mainWin.isSegm3D:
-                        bkgrData_q75s.append(np.quantile(bkgrVals_3D, q=0.75))
+        # Get background masks
+        autoBkgr_masks = measurements.get_autoBkgr_mask(lab, isSegm3D)
+        autoBkgr_mask, autoBkgr_mask_proj = autoBkgr_masks
+        dataPrepBkgrROI_mask = measurements.get_bkgrROI_mask(posData, isSegm3D)
 
-                    bkgrData_q25s.append(np.quantile(bkgrVals_z_maxP, q=0.25))
-                    bkgrData_q25s.append(np.quantile(bkgrVals_z_sumP, q=0.25))
-                    bkgrData_q25s.append(np.quantile(bkgrVals_zSlice, q=0.25))
-                    if self.mainWin.isSegm3D:
-                        bkgrData_q25s.append(np.quantile(bkgrVals_3D, q=0.25))
+        # Iterate channels
+        iter_channels = zip(posData.loadedChNames, posData.fluo_data_dict.items())
+        for channel, (filename, channel_data) in iter_channels:
+            foregr_img = channel_data[frame_i]
 
-                    bkgrData_q95s.append(np.quantile(bkgrVals_z_maxP, q=0.95))
-                    bkgrData_q95s.append(np.quantile(bkgrVals_z_sumP, q=0.95))
-                    bkgrData_q95s.append(np.quantile(bkgrVals_zSlice, q=0.95))
-                    if self.mainWin.isSegm3D:
-                        bkgrData_q95s.append(np.quantile(bkgrVals_3D, q=0.95))
-
-                    bkgrData_q05s.append(np.quantile(bkgrVals_z_maxP, q=0.05))
-                    bkgrData_q05s.append(np.quantile(bkgrVals_z_sumP, q=0.05))
-                    bkgrData_q05s.append(np.quantile(bkgrVals_zSlice, q=0.05))
-                    if self.mainWin.isSegm3D:
-                        bkgrData_q05s.append(np.quantile(bkgrVals_3D, q=0.05))
-            else:
-                fluo_data_2D = fluo_data
-                fluo_data_projs.append(fluo_data_2D)
-                if bkgrArchive is not None:
-                    # Note that if bkgrArchive is not None then
-                    # ROI_bkgrMask is None (no .json file available)
-                    bkgrVals_2D = []
-                    for roi_key in bkgrArchive.files:
-                        roiData = bkgrArchive[roi_key]
-                        if posData.SizeT > 1:
-                            roiData = bkgrArchive[roi_key][frame_i]
-                        bkgrVals_2D.extend(roiData[roiData!=0])
-                    if not bkgrVals_2D:
-                        # issue 51: a user had an empty bkgr data
-                        bkgrVals_2D = [0]
-                    bkgrData_medians.append(np.median(bkgrVals_2D))
-                    bkgrData_means.append(np.mean(bkgrVals_2D))
-                    bkgrData_q75s.append(np.quantile(bkgrVals_2D, q=0.75))
-                    bkgrData_q25s.append(np.quantile(bkgrVals_2D, q=0.25))
-                    bkgrData_q95s.append(np.quantile(bkgrVals_2D, q=0.95))
-                    bkgrData_q05s.append(np.quantile(bkgrVals_2D, q=0.05))
-
-            t_objs = np.zeros(len(rp))
-            # Iterate cells
-            self.progress.emit('')
-            self.progress.emit('Iterating segmented objects...')
-            for i, obj in enumerate(tqdm(rp, leave=False, ncols=100)):
-                if self.mainWin.isSegm3D:
-                    obj3Dslice = obj.slice
-                    obj3Dimage = obj.image
-                    obj2Dproj = obj.image.max(axis=0)
-                    obj2Dslice = obj3Dslice[1:3]
-                    min_z = obj.bbox[0]
-                    z_slice = int(math.floor(obj.centroid[0]))
-                    local_z = z_slice - min_z
-                    obj2DzImage = obj.image[local_z]
-                    if not np.any(obj2DzImage):
-                        # If center z-slice is empty use the projection
-                        obj2DzImage = obj2Dproj
-                else:
-                    obj2Dslice = obj.slice
-                    obj2Dproj = obj.image
-                    obj2DzImage = obj.image # self.mainWin.getObjImage(obj.image, obj.bbox)
-
-                # Iterate method of 3D to 2D
-                # '_maxProj', '_meanProj', '_zSlice', '_3D'
-                how_iterable = enumerate(zip(how_3Dto2D, fluo_data_projs))
-                for k, (how, fluo_img) in how_iterable:
-
-                    # fluo_img!=0 is required because when we align we pad with 0s
-                    # instead of np.roll and we don't want to include those
-                    # exact 0s in the backgrMask
-                    if how == '_maxProj':
-                        fluo_data_ID = fluo_img[obj2Dslice][obj2Dproj]
-                        backgrMask = np.logical_and(outCellsMaskProj, fluo_img!=0)
-                        if ROI_bkgrMask is not None and self.mainWin.isSegm3D:
-                            ROI_bkgrMask_k = ROI_bkgrMask.max(axis=0)
-                        elif ROI_bkgrMask is not None:
-                            ROI_bkgrMask_k = ROI_bkgrMask
-                    elif how == '_meanProj':
-                        fluo_data_ID = fluo_img[obj2Dslice][obj2Dproj]
-                        backgrMask = np.logical_and(outCellsMaskProj, fluo_img!=0)
-                        if ROI_bkgrMask is not None and self.mainWin.isSegm3D:
-                            ROI_bkgrMask_k = ROI_bkgrMask.max(axis=0)
-                        elif ROI_bkgrMask is not None:
-                            ROI_bkgrMask_k = ROI_bkgrMask
-                    elif how == '_zSlice':
-                        fluo_data_ID = fluo_img[obj2Dslice][obj2DzImage]
-                        backgrMask = np.logical_and(outCellsMaskZslice, fluo_img!=0)
-                        if ROI_bkgrMask is not None and self.mainWin.isSegm3D:
-                            ROI_bkgrMask_k = ROI_bkgrMask_zSlice
-                        elif ROI_bkgrMask is not None:
-                            ROI_bkgrMask_k = ROI_bkgrMask
-                    elif how == '_3D':
-                        fluo_data_ID = fluo_img[obj3Dslice][obj3Dimage]
-                        backgrMask = np.logical_and(outCellsMask3D, fluo_img!=0)
-                        if ROI_bkgrMask is not None and self.mainWin.isSegm3D:
-                            ROI_bkgrMask_k = ROI_bkgrMask
-                        elif ROI_bkgrMask is not None:
-                            ROI_bkgrMask_k = ROI_bkgrMask
-                    else:
-                        # 2D data
-                        fluo_data_ID = fluo_img[obj2Dslice][obj2DzImage]
-                        backgrMask = np.logical_and(outCellsMask2D, fluo_img!=0)
-                        if ROI_bkgrMask is not None:
-                            ROI_bkgrMask_k = ROI_bkgrMask
-
-                    bkgr_arr = fluo_img[backgrMask]
-                    fluo_backgr = np.median(bkgr_arr)
-
-                    bkgr_key = f'{chName}_autoBkgr_bkgrVal_median{how}'
-                    if not bkgr_key in metricsToSkipChannel:
-                        metrics_values[bkgr_key][i] = fluo_backgr
-
-                    bkgr_key = f'{chName}_autoBkgr_bkgrVal_mean{how}'
-                    if not bkgr_key in metricsToSkipChannel:
-                        metrics_values[bkgr_key][i] = bkgr_arr.mean()
-
-                    bkgr_key = f'{chName}_autoBkgr_bkgrVal_q75{how}'
-                    if not bkgr_key in metricsToSkipChannel:
-                        metrics_values[bkgr_key][i] = np.quantile(
-                            bkgr_arr, q=0.75
-                        )
-
-                    bkgr_key = f'{chName}_autoBkgr_bkgrVal_q25{how}'
-                    if not bkgr_key in metricsToSkipChannel:
-                        metrics_values[bkgr_key][i] = np.quantile(
-                            bkgr_arr, q=0.25
-                        )
-
-                    bkgr_key = f'{chName}_autoBkgr_bkgrVal_q95{how}'
-                    if not bkgr_key in metricsToSkipChannel:
-                        metrics_values[bkgr_key][i] = np.quantile(
-                            bkgr_arr, q=0.95
-                        )
-
-                    bkgr_key = f'{chName}_autoBkgr_bkgrVal_q05{how}'
-                    if not bkgr_key in metricsToSkipChannel:
-                        metrics_values[bkgr_key][i] = np.quantile(
-                            bkgr_arr, q=0.05
-                        )
-
-                    # Calculate metrics for each cell
-                    for func_name, func in metrics_func.items():
-                        key = f'{chName}_{func_name}{how}'
-                        conc_keys = measurements.get_conc_keys(key)
-                        is_ROIbkgr_func = (
-                            func_name == 'amount_dataPrepBkgr' and
-                                (ROI_bkgrMask is not None
-                                or bkgrArchive is not None)
-                        )
-                        if func_name == 'amount_autoBkgr':
-                            if not key in metricsToSkipChannel:
-                                try:
-                                    val = func(fluo_data_ID, fluo_backgr, obj.area)
-                                except Exception as error:
-                                    val = np.nan
-                                    self.addMetricsCritical.emit(
-                                        traceback.format_exc(), str(error)
-                                    )
-                                metrics_values[key][i] = val
-                                conc_key_vox, conc_key_fl = conc_keys
-                                calc_conc_vox = (
-                                    vol_vox is not None
-                                    and conc_key_vox not in metricsToSkipChannel
-                                )
-                                if calc_conc_vox:
-                                    # Compute concentration
-                                    conc_vox = val/obj.vol_vox
-                                    metrics_values[conc_key_vox][i] = conc_vox
-
-                                calc_conc_fl = (
-                                    vol_fl is not None
-                                    and conc_key_fl not in metricsToSkipChannel
-                                )
-                                if calc_conc_fl:
-                                    conc_fl = val/obj.vol_fl
-                                    metrics_values[conc_key_fl][i] = conc_fl
-                        elif is_ROIbkgr_func:
-                            if ROI_bkgrMask is not None:
-                                ROI_bkgrData = fluo_img[ROI_bkgrMask_k]
-                                ROI_bkgrData = ROI_bkgrData[ROI_bkgrData!=0]
-                                ROI_bkgrVal = np.median(ROI_bkgrData)
-                            else:
-                                ROI_bkgrVal = bkgrData_medians[k]
-
-                            if not key in metricsToSkipChannel:
-                                try:
-                                    val = func(fluo_data_ID, ROI_bkgrVal, obj.area)
-                                except Exception as error:
-                                    val = np.nan
-                                    self.addMetricsCritical.emit(
-                                        traceback.format_exc(), str(error)
-                                    )
-                                metrics_values[key][i] = val
-                                conc_key_vox, conc_key_fl = conc_keys
-                                calc_conc = (
-                                    vol_vox is not None
-                                    and conc_key_vox not in metricsToSkipChannel
-                                )
-                                if calc_conc:
-                                    # Compute concentration
-                                    if how == '_3D':
-                                        conc_vox = val/IDs_vol_vox_3D[i]
-                                        conc_fl = val/IDs_vol_fl_3D[i]
-                                    else:
-                                        conc_vox = val/obj.vol_vox
-                                        conc_fl = val/obj.vol_fl
-                                    metrics_values[conc_key_vox][i] = conc_vox
-                                    metrics_values[conc_key_fl][i] = conc_fl
-
-                            bkgr_key = f'{chName}_dataPrepBkgr_bkgrVal_median{how}'
-                            if not bkgr_key in metricsToSkipChannel:
-                                metrics_values[bkgr_key][i] = ROI_bkgrVal
-
-                            bkgr_key = f'{chName}_dataPrepBkgr_bkgrVal_mean{how}'
-                            if not bkgr_key in metricsToSkipChannel:
-                                if ROI_bkgrMask is None:
-                                    bkgr_val = bkgrData_means[k]
-                                else:
-                                    bkgr_val = ROI_bkgrData.mean()
-                                metrics_values[bkgr_key][i] = bkgr_val
-
-                            bkgr_key = f'{chName}_dataPrepBkgr_bkgrVal_q75{how}'
-                            if not bkgr_key in metricsToSkipChannel:
-                                if ROI_bkgrMask is None:
-                                    bkgr_val = bkgrData_q75s[k]
-                                else:
-                                    bkgr_val = np.quantile(ROI_bkgrData, q=0.75)
-                                metrics_values[bkgr_key][i] = bkgr_val
-
-                            bkgr_key = f'{chName}_dataPrepBkgr_bkgrVal_q25{how}'
-                            if not bkgr_key in metricsToSkipChannel:
-                                if ROI_bkgrMask is None:
-                                    bkgr_val = bkgrData_q25s[k]
-                                else:
-                                    bkgr_val = np.quantile(ROI_bkgrData, q=0.25)
-                                metrics_values[bkgr_key][i] = bkgr_val
-
-                            bkgr_key = f'{chName}_dataPrepBkgr_bkgrVal_q95{how}'
-                            if not bkgr_key in metricsToSkipChannel:
-                                if ROI_bkgrMask is None:
-                                    bkgr_val = bkgrData_q95s[k]
-                                else:
-                                    bkgr_val = np.quantile(ROI_bkgrData, q=0.95)
-                                metrics_values[bkgr_key][i] = bkgr_val
-
-                            bkgr_key = f'{chName}_dataPrepBkgr_bkgrVal_q05{how}'
-                            if not bkgr_key in metricsToSkipChannel:
-                                if ROI_bkgrMask is None:
-                                    bkgr_val = bkgrData_q05s[k]
-                                else:
-                                    bkgr_val = np.quantile(ROI_bkgrData, q=0.05)
-                                metrics_values[bkgr_key][i] = bkgr_val
-
-                        elif func_name.find('amount') == -1:
-                            if not key in metricsToSkipChannel:
-                                try:
-                                    val = func(fluo_data_ID)
-                                except Exception as error:
-                                    val = np.nan
-                                    self.addMetricsCritical.emit(
-                                        traceback.format_exc(), str(error)
-                                    )
-                                metrics_values[key][i] = val
-
-                    for custom_func_name, custom_func in custom_func_dict.items():
-                        key = f'{chName}_{custom_func_name}{how}'
-                        if key in metricsToSkipChannel:
-                            # Skip metric because unchecked in set measurements
-                            continue
-
-                        if ROI_bkgrMask is not None:
-                            ROI_bkgrData = fluo_img[ROI_bkgrMask_k]
-                            ROI_bkgrData = ROI_bkgrData[ROI_bkgrData!=0]
-                            ROI_bkgrVal = np.median(ROI_bkgrData)
-                        elif bkgrArchive is not None:
-                            ROI_bkgrVal = bkgrData_medians[k]
-                        else:
-                            ROI_bkgrVal = None
-                        if self.mainWin.isSegm3D:
-                            _vol_vox_3D = IDs_vol_vox_3D
-                            _vol_fl_3D = IDs_vol_fl_3D
-                        else:
-                            _vol_vox_3D = None
-                            _vol_fl_3D = None
-                        custom_err, custom_val = self._addCustomMetric(
-                            custom_func, fluo_data_ID, fluo_backgr, ROI_bkgrVal,
-                            obj, i, metrics_values, IDs_vol_vox, IDs_vol_fl, 
-                            IDs_area_pxl, IDs_area_um2, fluo_data, lab,
-                            IDs_vol_vox_3D=_vol_vox_3D, 
-                            IDs_vol_fl_3D=_vol_fl_3D
-                        )
-                        if custom_err:
-                            self.customMetricsCritical.emit(
-                                custom_err, custom_func_name
-                            )
-                        else:
-                            custom_metrics_values[key][i] = custom_val
-                            # self.mainWin.logger.info(traceback.format_exc())
-                        # self.metricsPbarProgress.emit(-1, 1)
-                        # pbar.update()
-
-        if 'cell_area_pxl' in self.mainWin.sizeMetricsToSave:
-            df['cell_area_pxl'] = pd.Series(
-                data=IDs_area_pxl, index=IDs, dtype=float
-            )
-            df['cell_area_um2'] = pd.Series(
-                data=IDs_area_um2, index=IDs, dtype=float
+            # Get the z-slice if we have z-stacks
+            z = posData.zSliceSegmentation(filename, frame_i)
+            
+            # Get the background data
+            bkgr_data = measurements.get_bkgr_data(
+                foregr_img, posData, filename, frame_i, autoBkgr_mask, z,
+                autoBkgr_mask_proj, dataPrepBkgrROI_mask, isSegm3D
             )
 
-        if 'cell_vol_vox' in self.mainWin.sizeMetricsToSave:
-            df['cell_vol_vox'] = pd.Series(
-                data=IDs_vol_vox, index=IDs, dtype=float
+            # Compute background values
+            df = measurements.add_bkgr_values(
+                df, bkgr_data, bkgr_metrics_params, metrics_func
             )
-            df['cell_vol_fl'] = pd.Series(
-                data=IDs_vol_fl, index=IDs, dtype=float
+            
+            foregr_data = measurements.get_foregr_data(foregr_img, isSegm3D, z)
+
+            # Iterate objects and compute foreground metrics
+            df = measurements.add_foregr_metrics(
+                df, rp, channel, foregr_data, foregr_metrics_params, 
+                metrics_func, size_metrics_to_save, custom_metrics_params, 
+                isSegm3D, yx_pxl_to_um2, vox_to_fl_3D, lab, 
+                customMetricsCritical=self.customMetricsCritical
             )
-            if self.mainWin.isSegm3D:
-                df['cell_vol_vox_3D'] = pd.Series(
-                    data=IDs_vol_vox_3D, index=IDs, dtype=float
+
+        df = measurements.add_concentration_metrics(
+            df, concentration_metrics_params
+        )
+
+        # Add region properties
+        try:
+            df, rp_errors = measurements.add_regionprops_metrics(
+                df, lab, regionprops_to_save, logger_func=self.progress.emit
+            )
+            if rp_errors:
+                print('')
+                self.progress.emit(
+                    'WARNING: Some objects had the following errors:\n'
+                    f'{rp_errors}\n'
+                    'Region properties with errors were saved as `Not A Number`.'
                 )
-                df['cell_vol_fl_3D'] = pd.Series(
-                    data=IDs_vol_fl_3D, index=IDs, dtype=float
-                )
-
-        df_metrics = pd.DataFrame(metrics_values, index=IDs)
-
-        # Drop metrics that were already calculated in a prev session
-        df = df.drop(columns=df_metrics.columns, errors='ignore')
-        df = df.join(df_metrics)
-
-        if custom_metrics_values:
-            # Drop custom metrics that were already calculated in a prev session
-            df_custom_metrics = pd.DataFrame(custom_metrics_values, index=IDs)
-            df = df.drop(columns=df_custom_metrics.columns, errors='ignore')
-            df = df.join(df_custom_metrics)
-
-        # pbar.close()
-
-        # Join with regionprops_table
-        if self.mainWin.regionPropsToSave:
-            if 'label' not in self.mainWin.regionPropsToSave:
-                self.mainWin.regionPropsToSave = (
-                    'label', *self.mainWin.regionPropsToSave
-                )
-            try:
-                self.progress.emit('Computing region properties...')
-                rp_table, rp_errors = measurements.regionprops_table(
-                    posData.lab, self.mainWin.regionPropsToSave,
-                    logger_func=self.progress.emit
-                )
-
-                df_rp = pd.DataFrame(rp_table).set_index('label')
-                df_rp.index.name = 'Cell_ID'
-
-                # Drop regionprops that were already calculated in a prev session
-                df = df.drop(columns=df_rp.columns, errors='ignore')
-                df = df.join(df_rp)
-
-                if rp_errors:
-                    print('')
-                    self.progress.emit(
-                        'WARNING: Some objects had the following errors:\n'
-                        f'{rp_errors}\n'
-                        'Region properties with errors were saved as Not a Number.'
-                    )
-            except Exception as error:
-                traceback_format = traceback.format_exc()
-                self.regionPropsCritical.emit(traceback_format, str(error))
+        except Exception as error:
+            traceback_format = traceback.format_exc()
+            self.regionPropsCritical.emit(traceback_format, str(error))
 
         # Remove 0s columns
         df = df.loc[:, (df != -2).any(axis=0)]
@@ -10099,6 +9624,7 @@ class guiWin(QMainWindow):
             printl(self.sizeMetricsToSave, pretty=True)
             printl(self.regionPropsToSave, pretty=True)
             printl(self.mixedChCombineMetricsToSkip, pretty=True)
+            posData.fluo_data_dict[posData.filename] = posData.img_data
             self.initMetricsToSave(posData)
         try:
             posData = self.data[self.pos_i]
@@ -13252,14 +12778,13 @@ class guiWin(QMainWindow):
         ]
     
     def initMetricsToSave(self, posData):
+        posData.setLoadedChannelNames()
+
         if self.metricsToSave is None:
             # self.metricsToSave means that the user did not set 
             # through setMeasurements dialog --> save all measurements
             self.metricsToSave = {chName:[] for chName in posData.loadedChNames}
-            self.channelCustomMetricsToSave = {
-                chName:[] for chName in posData.loadedChNames
-            }
-            for chName in self.ch_names:
+            for chName in posData.loadedChNames:
                 metrics_desc, bkgr_val_desc = measurements.standard_metrics_desc(
                     posData.SizeZ>1, chName, isSegm3D=self.isSegm3D
                 )
@@ -13270,59 +12795,22 @@ class guiWin(QMainWindow):
                     posData.SizeZ>1, chName, posData=posData, 
                     isSegm3D=self.isSegm3D, return_combine=False
                 )
-                self.channelCustomMetricsToSave[chName].extend(
+                self.metricsToSave[chName].extend(
                     custom_metrics_desc.keys()
                 )
         
         # Get metrics parameters --> function name, how etc
-        metrics_func, _ = measurements.standard_metrics_func()
-
-        bkgr_metrics_params = {}
-        foregr_metrics_params = {}
-        concentration_metrics_params = {}
-        az = r'[A-Za-z0-9]'
-        bkgrVal_pattern = fr'_({az}+)_bkgrVal_({az}+)_?({az}*)'
-
-        for channel_name, columns in self.metricsToSave.items():
-            for col in columns:
-                m = re.findall(bkgrVal_pattern, col)
-                if m:
-                    # The metric is a bkgrVal metric
-                    bkgr_type, func_name, how = m[0]
-                    bkgr_metrics_params[col] = (bkgr_type, func_name, how)
-                else:
-                    for metric in metrics_func:
-                        foregr_pattern = rf'{channel_name}_({metric})_?({az}*)'
-                        m = re.findall(foregr_pattern, col)
-                        if m:
-                            # Metric is a standard metric 
-                            func_name, how = m[0]
-                            foregr_metrics_params[col] = (func_name, how)
-                            break
-                    else:
-                        # Metric is concentration
-                        conc_pattern = r'concentration_{az}+_from_vol_[a-z]+'
-                        conc_metric_pattern = (
-                            rf'{channel_name}_({conc_pattern})_?({az}*)'
-                        )
-                        m = re.findall(conc_metric_pattern, col)
-                        func_name, how = m[0]
-                        concentration_metrics_params[col] = (func_name, how)
-        
-        printl(bkgr_metrics_params, pretty=True)
-        printl(foregr_metrics_params, pretty=True)
-        printl(concentration_metrics_params, pretty=True)
-
-        if self.mixedChCombineMetricsToSave is None:
-            # self.mixedChCombineMetricsToSave means that the user did not set 
-            # through setMeasurements dialog --> save all measurements
-            desc, equations = measurements.combine_mixed_channels_desc(
-                isSegm3D=self.isSegm3D, posData=posData
-            )
-            if not desc:
-                self.mixedChCombineMetricsToSave = []
-            else:
-                self.mixedChCombineMetricsToSave = list(desc.keys())
+        self.metrics_func, _ = measurements.standard_metrics_func()
+        self.custom_func_dict = measurements.get_custom_metrics_func()
+        params = measurements.get_metrics_params(
+            self.metricsToSave, self.metrics_func, self.custom_func_dict
+        )
+        (bkgr_metrics_params, foregr_metrics_params, 
+        concentration_metrics_params, custom_metrics_params) = params
+        self.bkgr_metrics_params = bkgr_metrics_params
+        self.foregr_metrics_params = foregr_metrics_params
+        self.concentration_metrics_params = concentration_metrics_params
+        self.custom_metrics_params = custom_metrics_params
 
     def initMetrics(self):
         self.logger.info('Initializing measurements...')
@@ -13332,8 +12820,6 @@ class guiWin(QMainWindow):
         # we set the measurements to save either at setMeasurements dialog
         # or at initMetricsToSave
         self.metricsToSave = None
-        self.channelCustomMetricsToSave = None
-        self.mixedChCombineMetricsToSave = None
         self.regionPropsToSave = measurements.get_props_names()
         if self.isSegm3D:
             self.regionPropsToSave = measurements.get_props_names_3D()
@@ -19131,9 +18617,10 @@ class guiWin(QMainWindow):
             self.regionPropsToSave = tuple(self.regionPropsToSave)
 
         if measurementsWin.mixedChannelsCombineMetricsQGBox is not None:
-            skipAll = not measurementsWin.mixedChannelsCombineMetricsQGBox.isChecked()
+            skipAll = (
+                not measurementsWin.mixedChannelsCombineMetricsQGBox.isChecked()
+            )
             mixedChCombineMetricsToSkip = []
-            mixedChCombineMetricsToSave = []
             win = measurementsWin
             checkBoxes = win.mixedChannelsCombineMetricsQGBox.checkBoxes
             for checkBox in checkBoxes:
@@ -19143,9 +18630,7 @@ class guiWin(QMainWindow):
                     mixedChCombineMetricsToSkip.append(checkBox.text())
                 else:             
                     favourite_funcs.add(checkBox.text())
-                    mixedChCombineMetricsToSave.append(checkBox.text())
             self.mixedChCombineMetricsToSkip = tuple(mixedChCombineMetricsToSkip)
-            self.mixedChCombineMetricsToSave = tuple(mixedChCombineMetricsToSave)
 
         df_favourite_funcs = pd.DataFrame(
             {'favourite_func_name': list(favourite_funcs)}
