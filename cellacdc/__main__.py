@@ -711,7 +711,9 @@ class mainWin(QMainWindow):
 
         if len(expPaths) > 1 or len(posFolders) > 1:
             infoPaths = self.getInfoPosStatus(expPaths)
-            selectPosWin = apps.selectPositionsMultiExp(expPaths, infoPaths=infoPaths)
+            selectPosWin = apps.selectPositionsMultiExp(
+                expPaths, infoPaths=infoPaths
+            )
             selectPosWin.exec_()
             if selectPosWin.cancel:
                 print(f'{utilityName} aborted by the user.')

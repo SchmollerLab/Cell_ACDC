@@ -1146,7 +1146,7 @@ class saveDataWorker(QObject):
 
                 posData.fluo_bkgrData_dict[posData.filename] = posData.bkgrData
 
-                self.mainWin.getChNames(posData)
+                posData.setLoadedChannelNames()
                 self.mainWin.initMetricsToSave(posData)
 
                 self.progress.emit(f'Saving {posData.relPath}')
@@ -10099,6 +10099,7 @@ class guiWin(QMainWindow):
             printl(self.sizeMetricsToSave, pretty=True)
             printl(self.regionPropsToSave, pretty=True)
             printl(self.mixedChCombineMetricsToSkip, pretty=True)
+            self.initMetricsToSave(posData)
         try:
             posData = self.data[self.pos_i]
         except AttributeError:
@@ -13273,6 +13274,45 @@ class guiWin(QMainWindow):
                     custom_metrics_desc.keys()
                 )
         
+        # Get metrics parameters --> function name, how etc
+        metrics_func, _ = measurements.standard_metrics_func()
+
+        bkgr_metrics_params = {}
+        foregr_metrics_params = {}
+        concentration_metrics_params = {}
+        az = r'[A-Za-z0-9]'
+        bkgrVal_pattern = fr'_({az}+)_bkgrVal_({az}+)_?({az}*)'
+
+        for channel_name, columns in self.metricsToSave.items():
+            for col in columns:
+                m = re.findall(bkgrVal_pattern, col)
+                if m:
+                    # The metric is a bkgrVal metric
+                    bkgr_type, func_name, how = m[0]
+                    bkgr_metrics_params[col] = (bkgr_type, func_name, how)
+                else:
+                    for metric in metrics_func:
+                        foregr_pattern = rf'{channel_name}_({metric})_?({az}*)'
+                        m = re.findall(foregr_pattern, col)
+                        if m:
+                            # Metric is a standard metric 
+                            func_name, how = m[0]
+                            foregr_metrics_params[col] = (func_name, how)
+                            break
+                    else:
+                        # Metric is concentration
+                        conc_pattern = r'concentration_{az}+_from_vol_[a-z]+'
+                        conc_metric_pattern = (
+                            rf'{channel_name}_({conc_pattern})_?({az}*)'
+                        )
+                        m = re.findall(conc_metric_pattern, col)
+                        func_name, how = m[0]
+                        concentration_metrics_params[col] = (func_name, how)
+        
+        printl(bkgr_metrics_params, pretty=True)
+        printl(foregr_metrics_params, pretty=True)
+        printl(concentration_metrics_params, pretty=True)
+
         if self.mixedChCombineMetricsToSave is None:
             # self.mixedChCombineMetricsToSave means that the user did not set 
             # through setMeasurements dialog --> save all measurements
@@ -18895,22 +18935,6 @@ class guiWin(QMainWindow):
         path = posData.images_path
         myutils.showInExplorer(path)
 
-    def getChNames(self, posData, returnList=False):
-        fluo_keys = list(posData.fluo_data_dict.keys())
-
-        loadedChNames = []
-        for key in fluo_keys:
-            chName = key[len(posData.basename):]
-            aligned_idx = chName.find('_aligned')
-            if aligned_idx != -1:
-                chName = chName[:aligned_idx]
-            loadedChNames.append(chName)
-
-        if returnList:
-            return loadedChNames
-        else:
-            posData.loadedChNames = loadedChNames
-
     def zSliceAbsent(self, filename, posData):
         self.app.restoreOverrideCursor()
         SizeZ = posData.SizeZ
@@ -19019,7 +19043,7 @@ class guiWin(QMainWindow):
                     continue
                 
                 allPos_acdc_df_cols.update(acdc_df.columns)
-        loadedChNames = self.getChNames(posData, returnList=True)
+        loadedChNames = posData.setLoadedChannelNames(returnList=True)
         loadedChNames.insert(0, self.user_ch_name)
         notLoadedChNames = [c for c in self.ch_names if c not in loadedChNames]
         self.notLoadedChNames = notLoadedChNames

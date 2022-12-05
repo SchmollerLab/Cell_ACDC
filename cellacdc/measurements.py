@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import pathlib
 import re
 import sys
@@ -851,6 +852,66 @@ def get_foregr_data(foregr_img, isSegm3D, z):
     foregr_data[''] = foregr_img
     return foregr_data
 
+def get_cell_volumes_areas(df):
+    try:
+        cell_vol_vox = df.loc['cell_vol_vox']
+    except Exception as e:
+        cell_vol_vox = [np.nan]*len(df)
+    
+    try:
+        cell_vol_fl = df.loc['cell_vol_fl']
+    except Exception as e:
+        cell_vol_fl = [np.nan]*len(df)
+    
+    try:
+        cell_vol_vox_3D = df.loc['cell_vol_vox_3D']
+    except Exception as e:
+        cell_vol_vox_3D = [np.nan]*len(df)
+    
+    try:
+        cell_vol_fl_3D = df.loc['cell_vol_fl_3D']
+    except Exception as e:
+        cell_vol_fl_3D = [np.nan]*len(df)
+    
+    try:
+        cell_area_pxl = df.loc['cell_area_pxl']
+    except Exception as e:
+        cell_area_pxl = [np.nan]*len(df)
+    
+    try:
+        cell_area_um2 = df.loc['cell_vol_fl_3D']
+    except Exception as e:
+        cell_area_um2 = [np.nan]*len(df)
+    
+    items = (
+        cell_vol_vox, cell_vol_fl, cell_vol_vox_3D, cell_vol_fl_3D,
+        cell_area_pxl, cell_area_um2
+    )
+    return items
+
+def get_bkgrVals(df, channel, how, ID):
+    try:
+        if how:
+            autoBkgr_col = f'{channel}_autoBkgr_bkgrVal_median_{how}'
+            autoBkgrVal = df.at[ID, autoBkgr_col]
+        else:
+            autoBkgr_col = f'{channel}_autoBkgr_bkgrVal_median'
+            autoBkgrVal = df.at[ID, autoBkgr_col]
+    except Exception as e:
+        autoBkgrVal = np.nan
+    
+    try:
+        if how:
+            dataPrepBkgr_col = f'{channel}_dataPrepBkgr_bkgrVal_median_{how}'
+            dataPrepBkgrVal = df.at[ID, dataPrepBkgr_col]
+        else:
+            dataPrepBkgr_col = f'{channel}_dataPrepBkgr_bkgrVal_median'
+            dataPrepBkgrVal = df.at[ID, dataPrepBkgr_col]
+    except Exception as e:
+        dataPrepBkgrVal = np.nan
+
+    return autoBkgrVal, dataPrepBkgrVal
+
 def get_foregr_obj_array(foregr_arr, obj, isSegm3D):
     if foregr_arr.ndim == 3 and isSegm3D:
         # 3D mask on 3D data
@@ -1116,3 +1177,169 @@ def get_combine_metrics_help_txt():
         {html_utils.to_list(examples)}
     """)
     return txt
+
+def add_concentration_metrics(df, concentration_metrics_params):
+    for col, (func_name, how) in concentration_metrics_params.items():
+        idx = col.find('_from_vol_')
+        amount_col = col[:idx]
+        amount_col = amount_col.replace('concentration_', 'amount_')
+        if how:
+            amount_col = f'{amount_col}_{how}'
+
+        if col.find('from_vol_vox') != -1:
+            try:
+                if how == '3D':
+                    cell_vol_values = df['cell_vol_vox_3D']
+                else:
+                    cell_vol_values = df['cell_vol_vox']
+                concentration_values = df[amount_col]/cell_vol_values
+            except Exception as e:
+                concentration_values = np.nan
+            df[col] = concentration_values
+        elif col.find('from_vol_fl') != -1:
+            try:
+                if how == '3D':
+                    cell_vol_values = df['cell_vol_fl_3D']
+                else:
+                    cell_vol_values = df['cell_vol_fl']
+                concentration_values = df[amount_col]/cell_vol_values
+            except Exception as e:
+                concentration_values = np.nan
+            df[col] = concentration_values
+    return df
+
+def add_foregr_metrics(
+        df, rp, channel, foregr_data, foregr_metrics_params, metrics_func,
+        size_metrics_to_save, custom_metrics_params, isSegm3D, yx_pxl_to_um2, 
+        vox_to_fl_3D, lab, customMetricsCritical=None
+    ):
+    custom_errors = ''
+    # Iterate objects and compute foreground metrics
+    for o, obj in enumerate(tqdm(rp, ncols=100)):
+        for col, (func_name, how) in foregr_metrics_params.items():
+            func_name, how = foregr_metrics_params[col]
+            foregr_arr = foregr_data[how]
+            foregr_obj_arr, obj_area = get_foregr_obj_array(
+                foregr_arr, obj, isSegm3D
+            )
+            if func_name.find('amount_') != -1:
+                bkgr_type = func_name[len('amount_'):]
+                if how:
+                    bkgr_col = f'{channel}_{bkgr_type}_bkgrVal_median_{how}'
+                else:
+                    bkgr_col = f'{channel}_{bkgr_type}_bkgrVal_median'
+                try:
+                    bkgr_val = df.at[obj.label, bkgr_col]
+                    func = metrics_func[func_name]
+                    val = func(foregr_obj_arr, bkgr_val, obj.area)
+                except Exception as e:
+                    val = np.nan
+            else:
+                func = metrics_func[func_name]
+                val = func(foregr_obj_arr)
+            df.at[obj.label, col] = val
+        
+        for col in size_metrics_to_save:
+            val = get_obj_size_metric(
+                col, obj, isSegm3D, yx_pxl_to_um2, vox_to_fl_3D
+            )
+            df.at[obj.label, col] = val
+
+        for col, (custom_func, how) in custom_metrics_params.items():   
+            foregr_arr = foregr_data[how]
+            foregr_obj_arr, obj_area = get_foregr_obj_array(
+                foregr_arr, obj, isSegm3D
+            )
+            ID = obj.label
+            autoBkgrVal, dataPrepBkgrVal = get_bkgrVals(df, channel, how, ID)
+            metrics_values = df.to_dict('list')
+            items = get_cell_volumes_areas(df)
+            (cell_vols_vox, cell_vols_fl, cell_vols_vox_3D, cell_vols_fl_3D,
+            cell_areas_pxl, cell_areas_um2) = items
+            custom_error, custom_val = get_custom_metric_value(
+                custom_func, foregr_obj_arr, autoBkgrVal, dataPrepBkgrVal, obj,
+                o, metrics_values, cell_vols_vox, cell_vols_fl, cell_areas_pxl, 
+                cell_areas_um2, foregr_data, lab, isSegm3D, 
+                cell_vols_vox_3D=None, cell_vols_fl_3D=None
+            )
+            df.at[ID, col] = custom_val
+            if customMetricsCritical is not None and custom_error:
+                customMetricsCritical.emit(custom_error, col)
+    return df
+
+def add_bkgr_values(df, bkgr_data, bkgr_metrics_params, metrics_func):
+    # Compute background values
+    for col, (bkgr_type, func_name, how) in bkgr_metrics_params.items():
+        bkgr_arr = bkgr_data[bkgr_type][how]
+        bkgr_func = metrics_func[func_name]
+        bkgr_val = bkgr_func(bkgr_arr)
+        printl(bkgr_type, func_name, how, bkgr_val)
+
+        df[col] = bkgr_val
+    return df
+
+def add_regionprops_metrics(df, lab, regionprops_to_save, logger_func=None):
+    if 'label' not in regionprops_to_save:
+        regionprops_to_save = ('label', *regionprops_to_save)
+
+    rp_table, rp_errors = regionprops_table(
+        lab, regionprops_to_save, logger_func=logger_func
+    )
+
+    df_rp = pd.DataFrame(rp_table).set_index('label')
+    df_rp.index.name = 'Cell_ID'
+
+    # Drop regionprops that were already calculated in a prev session
+    df = df.drop(columns=df_rp.columns, errors='ignore')
+    df = df.join(df_rp)
+    return df, rp_errors
+
+def get_custom_metric_value(
+        custom_func, foregr_obj_arr, autoBkgrVal, dataPrepBkgrVal, obj,
+        i, metrics_values, cell_vols_vox, cell_vols_fl, cell_areas_pxl, 
+        cell_areas_um2, foregr_data, lab, isSegm3D, cell_vols_vox_3D=None, 
+        cell_vols_fl_3D=None
+    ):
+    # Original custom metrics without obj
+    try:
+        custom_val = custom_func(foregr_obj_arr, autoBkgrVal, dataPrepBkgrVal)
+        return '', custom_val
+    except Exception as e:
+        pass
+        
+    # Metric without the metrics_values
+    try:
+        custom_val = custom_func(
+            foregr_obj_arr, autoBkgrVal, dataPrepBkgrVal, obj
+        )
+        return '', custom_val
+    except Exception as e:
+        pass
+    
+    metrics_obj = {key:mm[i] for key, mm in metrics_values.items()}
+    metrics_obj['cell_vol_vox'] = cell_vols_vox[i]
+    metrics_obj['cell_vol_fl'] = cell_vols_fl[i]
+    metrics_obj['cell_area_pxl'] = cell_areas_pxl[i]
+    metrics_obj['cell_area_um2'] = cell_areas_um2[i]
+    if isSegm3D:
+        metrics_obj['cell_vol_vox_3D'] = cell_vols_vox_3D[i]
+        metrics_obj['cell_vol_fl_3D'] = cell_vols_fl_3D[i]
+
+    # Metric with the metrics_values         
+    try:            
+        custom_val = custom_func(
+            foregr_obj_arr, autoBkgrVal, dataPrepBkgrVal, obj, metrics_obj
+        )
+        return '', custom_val
+    except Exception as e:
+        pass
+    
+    # Metric with also image and segmentation mask (lab)
+    try:
+        custom_val = custom_func(
+            foregr_obj_arr, autoBkgrVal, dataPrepBkgrVal, obj, metrics_obj,
+            foregr_data, lab, isSegm3D=isSegm3D
+        )
+        return '', custom_val
+    except Exception as e:
+        return traceback.format_exc(), np.nan
