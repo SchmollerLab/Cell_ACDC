@@ -4031,11 +4031,11 @@ class guiWin(QMainWindow):
 
         self.logger.info(f'Creating {len(allIDs)} axes items...')
         for ID in tqdm(allIDs, ncols=100):
-            self.ax1_ContoursCurves[ID-1] = pg.PlotDataItem()
+            self.ax1_ContoursCurves[ID-1] = widgets.ContourItem()
             self.ax1_BudMothLines[ID-1] = pg.PlotDataItem()
             self.ax1_LabelItemsIDs[ID-1] = widgets.myLabelItem()
             self.ax2_LabelItemsIDs[ID-1] = widgets.myLabelItem()
-            self.ax2_ContoursCurves[ID-1] = pg.PlotDataItem()
+            self.ax2_ContoursCurves[ID-1] = widgets.ContourItem()
             self.ax2_BudMothLines[ID-1] = pg.PlotDataItem()
 
         self.progressWin.mainPbar.setMaximum(0)
@@ -10933,6 +10933,9 @@ class guiWin(QMainWindow):
             self.postProcessSegmWin.sigClosed.connect(
                 self.postProcessSegmWinClosed
             )
+            self.postProcessSegmWin.sigValueChanged.connect(
+                self.postProcessSegmValueChanged
+            )
             self.postProcessSegmWin.show()
         else:
             self.postProcessSegmWin.close()
@@ -10943,6 +10946,59 @@ class guiWin(QMainWindow):
         self.postProcessSegmAction.toggled.disconnect()
         self.postProcessSegmAction.setChecked(False)
         self.postProcessSegmAction.toggled.connect(self.postProcessSegm)
+    
+    def postProcessSegmValueChanged(self, lab, delIDs):
+        for delID in delIDs:
+            if self.annotContourCheckboxRight.isChecked():
+                try:
+                    self.ax2_ContoursCurves[delID-1].tempClear()
+                except Exception as e:
+                    pass
+            if self.annotContourCheckbox.isChecked():
+                try:
+                    self.ax1_ContoursCurves[delID-1].tempClear()
+                except Exception as e:
+                    pass
+            try:
+                self.ax1_LabelItemsIDs[delID-1].tempClearText()
+            except Exception as e:
+                pass
+            try:
+                self.ax2_LabelItemsIDs[delID-1].tempClearText()
+            except Exception as e:
+                pass
+            
+        posData = self.data[self.pos_i]
+        for ID in posData.IDs:
+            if ID in delIDs:
+                continue
+
+            if self.annotContourCheckboxRight.isChecked():
+                try:
+                    self.ax2_ContoursCurves[ID-1].restore()
+                except Exception as e:
+                    pass
+            if self.annotContourCheckbox.isChecked():
+                try:
+                    self.ax1_ContoursCurves[ID-1].restore()
+                except Exception as e:
+                    pass
+            
+            try:
+                self.ax1_LabelItemsIDs[ID-1].restoreText()
+            except Exception as e:
+                pass
+            try:
+                self.ax2_LabelItemsIDs[ID-1].restoreText()
+            except Exception as e:
+                pass
+
+        posData.lab = lab
+        self.setImageImg2()
+        if self.annotSegmMasksCheckbox.isChecked():
+            self.labelsLayerImg1.setImage(self.currentLab2D, autoLevels=False)
+        if self.annotSegmMasksCheckboxRight.isChecked():
+            self.labelsLayerRightImg.setImage(self.currentLab2D, autoLevels=False)
 
     def readSavedCustomAnnot(self):
         tempAnnot = {}
@@ -16778,7 +16834,7 @@ class guiWin(QMainWindow):
             return
 
         # Contours on ax1
-        ax1ContCurve = pg.PlotDataItem()
+        ax1ContCurve = widgets.ContourItem()
         self.ax1.addItem(ax1ContCurve)
 
         # Bud mother line on ax1
@@ -16794,7 +16850,7 @@ class guiWin(QMainWindow):
         self.ax2.addItem(ax2_IDlabel)
 
         # Contours on ax2
-        ax2ContCurve = pg.PlotDataItem()
+        ax2ContCurve = widgets.ContourItem()
         self.ax2.addItem(ax2ContCurve)
 
         # Bud mother line on ax1

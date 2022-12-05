@@ -5649,6 +5649,7 @@ class postProcessSegmParams(QGroupBox):
 
 class postProcessSegmDialog(QBaseDialog):
     sigClosed = pyqtSignal()
+    sigValueChanged = pyqtSignal(object, object)
 
     def __init__(self, mainWin=None, useSliders=True):
         super().__init__(mainWin)
@@ -5727,12 +5728,8 @@ class postProcessSegmDialog(QBaseDialog):
 
     def valueChanged(self, value):
         lab, delIDs = self.apply()
-        self.mainWin.clearOverlaidMasks(delIDs)
-        self.posData.lab = lab   
-        self.mainWin.clearItems_IDs(delIDs)
-        self.mainWin.setImageImg2()
-        self.mainWin.clearOverlaidMasks(delIDs)
-
+        self.sigValueChanged.emit(lab, delIDs)
+        
     def apply(self, origLab=None):
         if self.mainWin is None:
             return

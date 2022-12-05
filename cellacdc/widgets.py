@@ -414,6 +414,26 @@ def getPushButton(buttonText, qparent=None):
     
     return button, isCancelButton
 
+class ContourItem(pg.PlotDataItem):
+    def __init__(self, *args, **kargs):
+        super().__init__(*args, **kargs)
+        self._prevData = None
+    
+    def clear(self):
+        self.setData([], [])
+    
+    def tempClear(self):
+        try:
+            self._prevData = [d.copy() for d in self.getData()]
+            self.clear()
+        except Exception as e:
+            pass
+    
+    def restore(self):
+        if self._prevData is not None:
+            if self._prevData[0] is not None:
+                self.setData(*self._prevData)
+
 class ElidingLineEdit(QLineEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1410,6 +1430,7 @@ class KeptObjectIDsList(list):
 class myLabelItem(pg.LabelItem):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._prevText = ''
 
     def setText(self, text, **args):
         self.text = text
@@ -1443,6 +1464,15 @@ class myLabelItem(pg.LabelItem):
         self.updateMin()
         self.resizeEvent(None)
         self.updateGeometry()
+    
+    def tempClearText(self):
+        if self.text:
+            self._prevText = self.text
+            self.setText('')
+    
+    def restoreText(self):
+        if self._prevText:
+            self.setText(self._prevText)
 
 
 class myMessageBox(QDialog):
