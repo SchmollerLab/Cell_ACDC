@@ -471,7 +471,7 @@ class saveDataWorker(QObject):
             df = measurements.add_foregr_metrics(
                 df, rp, channel, foregr_data, foregr_metrics_params, 
                 metrics_func, size_metrics_to_save, custom_metrics_params, 
-                isSegm3D, yx_pxl_to_um2, vox_to_fl_3D, lab, 
+                isSegm3D, yx_pxl_to_um2, vox_to_fl_3D, lab, foregr_img,
                 customMetricsCritical=self.customMetricsCritical
             )
 

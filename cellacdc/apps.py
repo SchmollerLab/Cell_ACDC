@@ -1894,7 +1894,7 @@ class setMeasurementsDialog(QBaseDialog):
                 unchecked_existing_colnames.append(colname)
         for checkBox in self.regionPropsQGBox.checkBoxes:
             colname = checkBox.text()
-            is_existing = any([col.find(colname) !=-1 for col in existing_colnames])
+            is_existing = any([col == colname for col in existing_colnames])
             if not self.regionPropsQGBox.isChecked() and is_existing:
                 unchecked_existing_rps.append(colname)
                 continue
@@ -9964,6 +9964,7 @@ class combineMetricsEquationDialog(QBaseDialog):
         if not self.newColNameLineEdit.text():
             self.warnEmptyEquationName()
             return
+        
         self.cancel = False
 
         # Save equation to "<user_path>/acdc-metrics/combine_metrics.ini" file

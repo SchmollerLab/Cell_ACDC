@@ -1211,7 +1211,7 @@ def add_concentration_metrics(df, concentration_metrics_params):
 def add_foregr_metrics(
         df, rp, channel, foregr_data, foregr_metrics_params, metrics_func,
         size_metrics_to_save, custom_metrics_params, isSegm3D, yx_pxl_to_um2, 
-        vox_to_fl_3D, lab, customMetricsCritical=None
+        vox_to_fl_3D, lab, foregr_img, customMetricsCritical=None
     ):
     custom_errors = ''
     # Iterate objects and compute foreground metrics
@@ -1259,7 +1259,7 @@ def add_foregr_metrics(
             custom_error, custom_val = get_custom_metric_value(
                 custom_func, foregr_obj_arr, autoBkgrVal, dataPrepBkgrVal, obj,
                 o, metrics_values, cell_vols_vox, cell_vols_fl, cell_areas_pxl, 
-                cell_areas_um2, foregr_data, lab, isSegm3D, 
+                cell_areas_um2, foregr_img, lab, isSegm3D, 
                 cell_vols_vox_3D=None, cell_vols_fl_3D=None
             )
             df.at[ID, col] = custom_val
@@ -1273,8 +1273,6 @@ def add_bkgr_values(df, bkgr_data, bkgr_metrics_params, metrics_func):
         bkgr_arr = bkgr_data[bkgr_type][how]
         bkgr_func = metrics_func[func_name]
         bkgr_val = bkgr_func(bkgr_arr)
-        printl(bkgr_type, func_name, how, bkgr_val)
-
         df[col] = bkgr_val
     return df
 
@@ -1300,7 +1298,7 @@ def add_regionprops_metrics(df, lab, regionprops_to_save, logger_func=None):
 def get_custom_metric_value(
         custom_func, foregr_obj_arr, autoBkgrVal, dataPrepBkgrVal, obj,
         i, metrics_values, cell_vols_vox, cell_vols_fl, cell_areas_pxl, 
-        cell_areas_um2, foregr_data, lab, isSegm3D, cell_vols_vox_3D=None, 
+        cell_areas_um2, foregr_img, lab, isSegm3D, cell_vols_vox_3D=None, 
         cell_vols_fl_3D=None
     ):
     # Original custom metrics without obj
@@ -1341,7 +1339,7 @@ def get_custom_metric_value(
     try:
         custom_val = custom_func(
             foregr_obj_arr, autoBkgrVal, dataPrepBkgrVal, obj, metrics_obj,
-            foregr_data, lab, isSegm3D=isSegm3D
+            foregr_img, lab, isSegm3D=isSegm3D
         )
         return '', custom_val
     except Exception as e:
