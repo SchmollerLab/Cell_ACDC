@@ -403,7 +403,7 @@ class saveDataWorker(QObject):
                         self.waitCond.wait(self.mutex)
                         self.mutex.unlock()
                         if self.abort:
-                            return
+                            return False
                         self.progress.emit(
                             f'Saving (check terminal for additional progress info)...'
                         )
@@ -412,6 +412,7 @@ class saveDataWorker(QObject):
                         posData.segmInfo_df = segmInfo_df.set_index(index_col)
                         col = 'z_slice_used_dataPrep'
                         z_slice = posData.segmInfo_df.at[idx, col]
+        return True
 
     def addMetrics_acdc_df(self, stored_df, rp, frame_i, lab, posData):
         yx_pxl_to_um2 = posData.PhysicalSizeY*posData.PhysicalSizeX
@@ -433,13 +434,19 @@ class saveDataWorker(QObject):
 
         # Pre-populate columns with zeros
         all_columns = list(size_metrics_to_save)
-        all_columns.extend(all_channels_metrics)
+        for channel, metrics in all_channels_metrics.items():
+            all_columns.extend(metrics)
         all_columns.extend(regionprops_to_save)
-        df = stored_df.copy()
-        df[all_columns] = 0.0
+
+        df_shape = (len(stored_df), len(all_columns))
+        data = np.zeros(df_shape)
+        df = pd.DataFrame(data=data, index=stored_df.index, columns=all_columns)
+        df = df.combine_first(stored_df)
 
         # Check if z-slice is present for 3D z-stack data
-        self._check_zSlice(posData, frame_i)
+        proceed = self._check_zSlice(posData, frame_i)
+        if not proceed:
+            return
 
         # Get background masks
         autoBkgr_masks = measurements.get_autoBkgr_mask(lab, isSegm3D)
@@ -548,7 +555,9 @@ class saveDataWorker(QObject):
         for newColName, equation in mixedChannelsEquations.items():
             if newColName in self.mainWin.mixedChCombineMetricsToSkip:
                 continue
-            self._dfEvalEquation(df, newColName, equation)
+            cols = re.findall(r'[A-Za-z0-9]+_[A-Za-z0-9_]+', equation)
+            if all([col in df.columns for col in cols]):
+                self._dfEvalEquation(df, newColName, equation)
     
     def addVelocityMeasurement(self, acdc_df, prev_lab, lab, posData):
         if 'velocity_pixel' not in self.mainWin.sizeMetricsToSave:
@@ -1061,8 +1070,11 @@ class guiWin(QMainWindow):
             action = QAction(path, self)
             action.triggered.connect(partial(self.openRecentFile, path))
         
-        firstAction = self.openRecentMenu.actions()[0]
-        self.openRecentMenu.insertAction(firstAction, action)
+        try:
+            firstAction = self.openRecentMenu.actions()[0]
+            self.openRecentMenu.insertAction(firstAction, action)
+        except Exception as e:
+            pass
 
     def loadLastSessionSettings(self):
         self.settings_csv_path = settings_csv_path
@@ -12826,10 +12838,12 @@ class guiWin(QMainWindow):
         else:
             self.regionPropsToSave = measurements.get_props_names()  
         self.mixedChCombineMetricsToSkip = []
-        self.sizeMetricsToSave = list(
-            measurements.get_size_metrics_desc().keys()
-        )
         posData = self.data[self.pos_i]
+        self.sizeMetricsToSave = list(
+            measurements.get_size_metrics_desc(
+                self.isSegm3D, posData.SizeT>1
+            ).keys()
+        )
         exp_path = posData.exp_path
         posFoldernames = myutils.get_pos_foldernames(exp_path)
         for pos in posFoldernames:
@@ -18702,13 +18716,20 @@ class guiWin(QMainWindow):
         # with segmentation fault on macOS. I don't know why yet.
         self.logger.info('Computing cell volume...')
         end_i = self.save_until_frame_i
-        for p, posData in enumerate(self.data[:self.last_pos]):
+        pos_iter = tqdm(self.data[:self.last_pos], ncols=100)
+        for p, posData in enumerate(pos_iter):
             PhysicalSizeY = posData.PhysicalSizeY
             PhysicalSizeX = posData.PhysicalSizeX
-            for frame_i, data_dict in enumerate(tqdm(posData.allData_li[:end_i+1], ncols=100)):
+            frame_iter = tqdm(
+                posData.allData_li[:end_i+1], ncols=100, position=1, leave=False
+            )
+            for frame_i, data_dict in enumerate(frame_iter):
                 lab = data_dict['labels']
+                if lab is None:
+                    break
                 rp = data_dict['regionprops']
-                for i, obj in enumerate(rp):
+                obj_iter = tqdm(rp, ncols=100, position=2, leave=False)
+                for i, obj in enumerate(obj_iter):
                     vol_vox, vol_fl = _calc_rot_vol(
                         obj, PhysicalSizeY, PhysicalSizeX
                     )
