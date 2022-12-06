@@ -737,8 +737,6 @@ class calcMetricsWorker(QObject):
                     posData.fluo_data_dict[filename] = fluo_data
                     posData.fluo_bkgrData_dict[filename] = bkgrData
 
-                
-
                 # Recreate allData_li attribute of the gui
                 posData.allData_li = []
                 for frame_i, lab in enumerate(posData.segm_data[:stopFrameNum]):
@@ -753,6 +751,8 @@ class calcMetricsWorker(QObject):
                 self.signals.sigComputeVolume.emit(stopFrameNum, posData)
                 self.waitCond.wait(self.mutex)
                 self.mutex.unlock()
+
+                guiWin.initMetricsToSave(posData)
 
                 if not posData.fluo_data_dict:
                     self.logger.log(

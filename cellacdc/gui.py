@@ -324,55 +324,6 @@ class saveDataWorker(QObject):
         self.regionPropsErrors = {}
         self.abort = False
     
-    def _addCustomMetric(
-            self, custom_func, fluo_data_ID, fluo_backgr, ROI_bkgrVal, obj,
-            i, metrics_values, IDs_vol_vox, IDs_vol_fl, IDs_area_pxl, 
-            IDs_area_um2, fluo_data, lab, IDs_vol_vox_3D=None, IDs_vol_fl_3D=None
-        ):
-        # Original custom metrics without obj
-        try:
-            custom_val = custom_func(fluo_data_ID, fluo_backgr, ROI_bkgrVal)
-            return '', custom_val
-        except Exception as e:
-            pass
-            
-        # Metric without the metrics_values
-        try:
-            custom_val = custom_func(
-                fluo_data_ID, fluo_backgr, ROI_bkgrVal, obj
-            )
-            return '', custom_val
-        except Exception as e:
-            pass
-        
-        metrics_obj = {key:mm[i] for key, mm in metrics_values.items()}
-        metrics_obj['cell_vol_vox'] = IDs_vol_vox[i]
-        metrics_obj['cell_vol_fl'] = IDs_vol_fl[i]
-        metrics_obj['cell_area_pxl'] = IDs_area_pxl[i]
-        metrics_obj['cell_area_um2'] = IDs_area_um2[i]
-        if self.mainWin.isSegm3D:
-            metrics_obj['cell_vol_vox_3D'] = IDs_vol_vox_3D[i]
-            metrics_obj['cell_vol_fl_3D'] = IDs_vol_fl_3D[i]
-
-        # Metric with the metrics_values         
-        try:            
-            custom_val = custom_func(
-                fluo_data_ID, fluo_backgr, ROI_bkgrVal, obj, metrics_obj
-            )
-            return '', custom_val
-        except Exception as e:
-            pass
-        
-        # Metric with also image and segmentation mask (lab)
-        try:
-            custom_val = custom_func(
-                fluo_data_ID, fluo_backgr, ROI_bkgrVal, obj, metrics_obj,
-                fluo_data, lab, isSegm3D=self.mainWin.isSegm3D
-            )
-            return '', custom_val
-        except Exception as e:
-            return traceback.format_exc(), 0
-    
     def _check_zSlice(self, posData, frame_i):
         # Iteare fluo channels and get 2D data from 3D if needed
         filenames = posData.fluo_data_dict.keys()

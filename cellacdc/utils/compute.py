@@ -270,7 +270,7 @@ class computeMeasurmentsUtilWin(QDialog):
         self.gui.ch_names = self.posData.chNames
         self.gui.notLoadedChNames = []
         self.gui.setMetricsFunc()
-        self.gui.setMetricsToSkip(self.measurementsWin)
+        self.gui._setMetrics(self.measurementsWin)
         self.gui.mutex = self.worker.mutex
         self.gui.waitCond = self.worker.waitCond
         self.gui.saveWin = self.progressWin
@@ -319,7 +319,8 @@ class computeMeasurmentsUtilWin(QDialog):
         for frame_i, data_dict in iterable:
             lab = data_dict['labels']
             rp = data_dict['regionprops']
-            for i, obj in enumerate(rp):
+            obj_iter = tqdm(rp, ncols=100, position=1, leave=False)
+            for i, obj in enumerate(obj_iter):
                 vol_vox, vol_fl = cca_functions._calc_rot_vol(
                     obj, PhysicalSizeY, PhysicalSizeX
                 )
