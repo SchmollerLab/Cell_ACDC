@@ -1573,6 +1573,7 @@ class setMeasurementsDialog(QBaseDialog):
         buttonsLayout = QHBoxLayout()
 
         self.chNameGroupboxes = []
+        self.all_metrics = []
 
         col = 0
         for col, chName in enumerate(loadedChNames):
@@ -1585,6 +1586,7 @@ class setMeasurementsDialog(QBaseDialog):
             self.chNameGroupboxes.append(channelGBox)
             channelGBox.sigDelClicked.connect(self.delMixedChannelCombineMetric)
             groupsLayout.setColumnStretch(col, 5)
+            self.all_metrics.extend([c.text() for c in channelGBox.checkBoxes])
 
         current_col = col+1
         for col, chName in enumerate(notLoadedChNames):
@@ -1599,10 +1601,13 @@ class setMeasurementsDialog(QBaseDialog):
             groupsLayout.setColumnStretch(current_col, 5)
             channelGBox.sigDelClicked.connect(self.delMixedChannelCombineMetric)
             current_col += 1
+            self.all_metrics.extend([c.text() for c in channelGBox.checkBoxes])
 
         current_col += 1
 
-        size_metrics_desc = measurements.get_size_metrics_desc()
+        size_metrics_desc = measurements.get_size_metrics_desc(
+            isSegm3D, posData.SizeT>1
+        )
         if not isSegm3D:
             size_metrics_desc = {
                 key:val for key,val in size_metrics_desc.items()
@@ -1612,6 +1617,7 @@ class setMeasurementsDialog(QBaseDialog):
             size_metrics_desc, 'Physical measurements',
             favourite_funcs=favourite_funcs, isZstack=isZstack
         )
+        self.all_metrics.extend([c.text() for c in sizeMetricsQGBox.checkBoxes])
         self.sizeMetricsQGBox = sizeMetricsQGBox
         groupsLayout.addWidget(sizeMetricsQGBox, 0, current_col)
         groupsLayout.setRowStretch(0, 1)
@@ -1627,9 +1633,10 @@ class setMeasurementsDialog(QBaseDialog):
         self.regionPropsQGBox = regionPropsQGBox
         groupsLayout.addWidget(regionPropsQGBox, 1, current_col)
         groupsLayout.setRowStretch(1, 2)
+        self.all_metrics.extend([c.text() for c in regionPropsQGBox.checkBoxes])
 
         desc, equations = measurements.combine_mixed_channels_desc(
-            isSegm3D=isSegm3D, posData=posData
+            isSegm3D=isSegm3D, posData=posData, available_cols=self.all_metrics
         )
         self.mixedChannelsCombineMetricsQGBox = None
         if desc:
@@ -1810,6 +1817,7 @@ class setMeasurementsDialog(QBaseDialog):
     def loadLastSelection(self):
         for chNameGroupbox in self.chNameGroupboxes:
             chNameGroupbox.checkFavouriteFuncs()
+            chNameGroupbox.customMetricsQGBox.checkFavouriteFuncs()
         self.sizeMetricsQGBox.checkFavouriteFuncs()
         self.regionPropsQGBox.checkFavouriteFuncs()
 
@@ -1893,7 +1901,7 @@ class setMeasurementsDialog(QBaseDialog):
                 unchecked_existing_colnames.append(colname)
         for checkBox in self.regionPropsQGBox.checkBoxes:
             colname = checkBox.text()
-            is_existing = any([col.find(colname) !=-1 for col in existing_colnames])
+            is_existing = any([col == colname for col in existing_colnames])
             if not self.regionPropsQGBox.isChecked() and is_existing:
                 unchecked_existing_rps.append(colname)
                 continue
@@ -9673,7 +9681,9 @@ class combineMetricsEquationDialog(QBaseDialog):
         sizeMetricsTreeItem.setText(0, 'Size measurements')
         metricsTreeWidget.addTopLevelItem(sizeMetricsTreeItem)
 
-        size_metrics_desc = measurements.get_size_metrics_desc()
+        size_metrics_desc = measurements.get_size_metrics_desc(
+            isSegm3D, True
+        )
         self.addTreeItems(
             sizeMetricsTreeItem, size_metrics_desc.keys(), isCol=True
         )
@@ -9960,6 +9970,7 @@ class combineMetricsEquationDialog(QBaseDialog):
         if not self.newColNameLineEdit.text():
             self.warnEmptyEquationName()
             return
+        
         self.cancel = False
 
         # Save equation to "<user_path>/acdc-metrics/combine_metrics.ini" file

@@ -409,7 +409,21 @@ class loadData:
         except Exception as e:
             traceback.print_exc()
 
+    def setLoadedChannelNames(self, returnList=False):
+        fluo_keys = list(self.fluo_data_dict.keys())
 
+        loadedChNames = []
+        for key in fluo_keys:
+            chName = key[len(self.basename):]
+            aligned_idx = chName.find('_aligned')
+            if aligned_idx != -1:
+                chName = chName[:aligned_idx]
+            loadedChNames.append(chName)
+
+        if returnList:
+            return loadedChNames
+        else:
+            self.loadedChNames = loadedChNames
 
     def getPosNum(self):
         try:
@@ -1353,7 +1367,6 @@ class loadData:
                 SizeT_metadata = self.SizeT
                 SizeZ_metadata = self.SizeZ
                 if SizeT_metadata>1 and numPos>1 and warnMultiPos:
-                    printl('warning')
                     proceed_anyway = self._warnMultiPosTimeLapse(SizeT_metadata)
                     if not proceed_anyway:
                         return False
@@ -1394,6 +1407,18 @@ class loadData:
         if save:
             self.saveMetadata(additionalMetadata=metadataWin._additionalValues)
         return True
+    
+    def zSliceSegmentation(self, filename, frame_i):
+        if self.SizeZ > 1:
+            idx = (filename, frame_i)
+            if self.segmInfo_df.at[idx, 'resegmented_in_gui']:
+                col = 'z_slice_used_gui'
+            else:
+                col = 'z_slice_used_dataPrep'
+            z = self.segmInfo_df.at[idx, col]
+        else:
+            z = None
+        return z
 
     def transferMetadata(self, from_posData):
         self.SizeT = from_posData.SizeT

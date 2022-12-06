@@ -2703,7 +2703,8 @@ class channelMetricsQGBox(QGroupBox):
         if custom_metrics_desc:
             customMetricsQGBox = _metricsQGBox(
                 custom_metrics_desc, 'Custom measurements', 
-                delButtonMetricsDesc=combine_metrics_desc
+                delButtonMetricsDesc=combine_metrics_desc,
+                favourite_funcs=favourite_funcs
             )
             layout.addWidget(customMetricsQGBox)
             self.checkBoxes.extend(customMetricsQGBox.checkBoxes)

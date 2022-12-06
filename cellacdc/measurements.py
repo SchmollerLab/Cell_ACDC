@@ -1,4 +1,5 @@
 import numpy as np
+import pandas as pd
 import pathlib
 import re
 import sys
@@ -14,6 +15,8 @@ from . import core, base_cca_df, html_utils, config, printl
 import warnings
 warnings.filterwarnings("ignore", message="Failed to get convex hull image.")
 warnings.filterwarnings("ignore", message="divide by zero encountered in long_scalars")
+warnings.filterwarnings("ignore", message="Mean of empty slice.")
+warnings.filterwarnings("ignore", message="invalid value encountered in double_scalars")
 
 user_path = pathlib.Path.home()
 acdc_metrics_path = os.path.join(user_path, 'acdc-metrics')
@@ -71,7 +74,7 @@ def getMetricsFunc(posData):
 def get_all_metrics_names():
     all_metrics_names = []
     custom_metrics_names = list(_get_custom_metrics_names().keys())
-    size_metrics_names = list(get_size_metrics_desc().keys())
+    size_metrics_names = list(get_size_metrics_desc(True, True).keys())
     standard_metrics_names = list(_get_metrics_names().keys())
     bkgr_val_names = list(_get_bkgr_val_names().keys())
     props_names = get_props_names()
@@ -324,7 +327,7 @@ def _combine_mixed_channels_desc(isSegm3D=False, configPars=None):
 
         desc = html_utils.paragraph(f"""
             <b>{metric_name}</b> is a custom combined measurement that is the
-            <b>result of the following equation</b>:.<br><br>
+            <b>result of the following equation</b>:<br><br>
             <code>{metric_name} = {equation}</code><br><br>
             {note_txt}
         """)
@@ -332,14 +335,29 @@ def _combine_mixed_channels_desc(isSegm3D=False, configPars=None):
         equations[metric_name] = equation
     return mixed_channels_desc, equations
 
-def combine_mixed_channels_desc(posData=None, isSegm3D=False):
+def combine_mixed_channels_desc(posData=None, isSegm3D=False, available_cols=None):
     desc, equations = _combine_mixed_channels_desc(isSegm3D=isSegm3D)
     if posData is None:
-        return desc, equations
-    pos_desc, pos_equations = _combine_mixed_channels_desc(
-        isSegm3D=isSegm3D, configPars= posData.combineMetricsConfig
-    )
-    return {**desc, **pos_desc}, {**equations, **pos_equations}
+        all_desc = desc
+        all_equations = equations
+    else:
+        pos_desc, pos_equations = _combine_mixed_channels_desc(
+            isSegm3D=isSegm3D, configPars=posData.combineMetricsConfig
+        )
+        all_desc = {**desc, **pos_desc}
+        all_equations = {**equations, **pos_equations}
+    
+    if available_cols is not None:
+        available_desc = {}
+        available_equations = {}
+        for name, equation in all_equations.items():
+            cols = re.findall(r'[A-Za-z0-9]+_[A-Za-z0-9_]+', equation)
+            if all([col in available_cols for col in cols]):
+                available_desc[name] = all_desc[name]
+                available_equations[name] = equation
+        return available_desc, available_equations
+    else:
+        return all_desc, all_equations
 
 def _um3():
     return '<code>&micro;m<sup>3</sup></code>'
@@ -361,7 +379,7 @@ def _get_zStack_note(how_desc):
     """)
     return s
 
-def get_size_metrics_desc():
+def get_size_metrics_desc(isSegm3D, is_timelapse):
     url = 'https://www.nature.com/articles/s41467-020-16764-x#Sec16'
     size_metrics = {
         'cell_area_pxl': html_utils.paragraph("""
@@ -416,23 +434,30 @@ def get_size_metrics_desc():
             <i> Note that in <a href=\"{url}">this</a> publication we
             showed that this method strongly correlates with volume
             computed from a 3D segmentation mask.</i>
-        """),
-        'cell_vol_vox_3D': html_utils.paragraph(f"""
-            <b>Volume</b> of the segmented object in <b>voxels</b>.<br><br>
-            This is given by the total number of voxels inside the object.
-        """),
-        'cell_vol_fl_3D': html_utils.paragraph(f"""
-            <b>Volume</b> of the segmented object in <b>{_fl()}</b>.<br><br>
-            This is given by the total number of voxels inside the object 
-            multiplied by the voxel volume.<br><br>
-            The voxel volume is given by:<br><br>
-            <code>PhysicalSizeZ * PhysicalSizeY * PhysicalSizeX</code><br><br>
-            where <code>PhysicalSizeZ</code> is the spacing between z-slices 
-            (in {_um()}), while <code>PhysicalSizeY</code> and 
-            <code>PhysicalSizeX</code> are the pixel height and pixel width, 
-            respectively (in {_um()}). 
-        """),
-        'velocity_pixel': html_utils.paragraph(f"""
+        """)
+    }
+    if isSegm3D:
+        size_metrics_3D = {
+            'cell_vol_vox_3D': html_utils.paragraph(f"""
+                <b>Volume</b> of the segmented object in <b>voxels</b>.<br><br>
+                This is given by the total number of voxels inside the object.
+            """),
+            'cell_vol_fl_3D': html_utils.paragraph(f"""
+                <b>Volume</b> of the segmented object in <b>{_fl()}</b>.<br><br>
+                This is given by the total number of voxels inside the object 
+                multiplied by the voxel volume.<br><br>
+                The voxel volume is given by:<br><br>
+                <code>PhysicalSizeZ * PhysicalSizeY * PhysicalSizeX</code><br><br>
+                where <code>PhysicalSizeZ</code> is the spacing between z-slices 
+                (in {_um()}), while <code>PhysicalSizeY</code> and 
+                <code>PhysicalSizeX</code> are the pixel height and pixel width, 
+                respectively (in {_um()}). 
+            """),
+        }
+        size_metrics = {**size_metrics, **size_metrics_3D}
+    if is_timelapse:
+        velocity_metrics = {
+            'velocity_pixel': html_utils.paragraph(f"""
             Velocity in <code>[pixel/frame]</code> of the segmented object 
             between previous and current frame. 
         """),
@@ -440,7 +465,8 @@ def get_size_metrics_desc():
             Velocity in <code>[{_um()}/frame]</code> of the segmented object 
             between previous and current frame. 
         """)
-    }
+        }
+        size_metrics = {**size_metrics, **velocity_metrics}
     return size_metrics
 
 def get_how_3Dto2D(isZstack, isSegm3D):
@@ -577,7 +603,7 @@ def get_conc_keys(amount_colname):
 
 def classify_acdc_df_colnames(acdc_df, channels):
     standard_funcs = _get_metrics_names()
-    size_metrics_desc = get_size_metrics_desc()
+    size_metrics_desc = get_size_metrics_desc(True, True)
     props_names = get_props_names()
 
     foregr_metrics = {ch:[] for ch in channels}
@@ -677,6 +703,29 @@ def _is_numeric_dtype(dtype):
         dtype is float or dtype is int
     )
     return is_numeric
+
+def get_bkgrROI_mask(posData, isSegm3D):
+    if posData.bkgrROIs:
+        ROI_bkgrMask = np.zeros(posData.lab.shape, bool)
+        if posData.bkgrROIs:
+            for roi in posData.bkgrROIs:
+                xl, yl = [int(round(c)) for c in roi.pos()]
+                w, h = [int(round(c)) for c in roi.size()]
+                if isSegm3D:
+                    ROI_bkgrMask[:, yl:yl+h, xl:xl+w] = True
+                else:
+                    ROI_bkgrMask[yl:yl+h, xl:xl+w] = True
+    else:
+        ROI_bkgrMask = None
+    return ROI_bkgrMask
+
+def get_autoBkgr_mask(lab, isSegm3D):
+    autoBkgr_mask = lab == 0
+    if isSegm3D:
+        autoBkgr_mask_proj = lab.max(axis=0) == 0
+    else:
+        autoBkgr_mask_proj = autoBkgr_mask
+    return autoBkgr_mask, autoBkgr_mask_proj
 
 def regionprops_table(labels, props, logger_func=None):
     rp = skimage.measure.regionprops(labels)
@@ -793,6 +842,192 @@ def _amount(arr, bkgr, area):
     except Exception as e:
         val = np.nan
     return val
+
+def get_obj_size_metric(
+        col_name, obj, isSegm3D, yx_pxl_to_um2, vox_to_fl_3D
+    ):
+    if col_name == 'cell_area_pxl':
+        if isSegm3D:
+            return np.count_nonzero(obj.image.max(axis=0))
+        else:
+            return obj.area
+    elif col_name == 'cell_area_um2':
+        if isSegm3D:
+            return np.count_nonzero(obj.image.max(axis=0))*yx_pxl_to_um2
+        else:
+            return obj.area*yx_pxl_to_um2
+    elif col_name == 'cell_vol_vox':
+        return obj.vol_vox
+    elif col_name == 'cell_vol_fl':
+        return obj.vol_fl
+    elif col_name == 'cell_vol_vox_3D':
+        return obj.area
+    elif col_name == 'cell_vol_fl_3D':
+        return obj.area*vox_to_fl_3D
+
+def get_foregr_data(foregr_img, isSegm3D, z):
+    isZstack = foregr_img.ndim == 3
+    foregr_data = {}
+    if isSegm3D:
+        foregr_data['3D'] = foregr_img
+    
+    if isZstack:
+        foregr_data['maxProj'] = foregr_img.max(axis=0)
+        foregr_data['meanProj'] = foregr_img.mean(axis=0)
+        foregr_data['zSlice'] = foregr_img[z]
+    foregr_data[''] = foregr_img
+    return foregr_data
+
+def get_cell_volumes_areas(df):
+    try:
+        cell_vol_vox = df.loc['cell_vol_vox']
+    except Exception as e:
+        cell_vol_vox = [np.nan]*len(df)
+    
+    try:
+        cell_vol_fl = df.loc['cell_vol_fl']
+    except Exception as e:
+        cell_vol_fl = [np.nan]*len(df)
+    
+    try:
+        cell_vol_vox_3D = df.loc['cell_vol_vox_3D']
+    except Exception as e:
+        cell_vol_vox_3D = [np.nan]*len(df)
+    
+    try:
+        cell_vol_fl_3D = df.loc['cell_vol_fl_3D']
+    except Exception as e:
+        cell_vol_fl_3D = [np.nan]*len(df)
+    
+    try:
+        cell_area_pxl = df.loc['cell_area_pxl']
+    except Exception as e:
+        cell_area_pxl = [np.nan]*len(df)
+    
+    try:
+        cell_area_um2 = df.loc['cell_vol_fl_3D']
+    except Exception as e:
+        cell_area_um2 = [np.nan]*len(df)
+    
+    items = (
+        cell_vol_vox, cell_vol_fl, cell_vol_vox_3D, cell_vol_fl_3D,
+        cell_area_pxl, cell_area_um2
+    )
+    return items
+
+def get_bkgrVals(df, channel, how, ID):
+    try:
+        if how:
+            autoBkgr_col = f'{channel}_autoBkgr_bkgrVal_median_{how}'
+            autoBkgrVal = df.at[ID, autoBkgr_col]
+        else:
+            autoBkgr_col = f'{channel}_autoBkgr_bkgrVal_median'
+            autoBkgrVal = df.at[ID, autoBkgr_col]
+    except Exception as e:
+        autoBkgrVal = np.nan
+    
+    try:
+        if how:
+            dataPrepBkgr_col = f'{channel}_dataPrepBkgr_bkgrVal_median_{how}'
+            dataPrepBkgrVal = df.at[ID, dataPrepBkgr_col]
+        else:
+            dataPrepBkgr_col = f'{channel}_dataPrepBkgr_bkgrVal_median'
+            dataPrepBkgrVal = df.at[ID, dataPrepBkgr_col]
+    except Exception as e:
+        dataPrepBkgrVal = np.nan
+
+    return autoBkgrVal, dataPrepBkgrVal
+
+def get_foregr_obj_array(foregr_arr, obj, isSegm3D):
+    if foregr_arr.ndim == 3 and isSegm3D:
+        # 3D mask on 3D data
+        return foregr_arr[obj.slice][obj.image], obj.area
+    elif foregr_arr.ndim == 2 and isSegm3D:
+        # 3D mask on 2D data
+        obj_slice = obj.slice[1:3]
+        obj_image = obj.image.max(axis=0)
+        return foregr_arr[obj_slice][obj_image], np.count_nonzero(obj_image)
+    else:
+        # 2D mask on 2D data
+        return foregr_arr[obj.slice][obj.image], obj.area
+
+def get_bkgr_data(
+        foregr_img, posData, filename, frame_i, autoBkgr_mask, z,
+        autoBkgr_mask_proj, dataPrepBkgrROI_mask, isSegm3D
+    ):
+    isZstack = foregr_img.ndim == 3
+    bkgr_data = {}
+
+    """Auto Background"""
+    bkgr_data['autoBkgr'] =  {
+        '': 0, 'maxProj': 0, 'meanProj': 0, 'zSlice': 0, '3D': 0
+    }
+    if isZstack:
+        if isSegm3D:
+            autoBkr_3D = foregr_img[autoBkgr_mask]
+            bkgr_data['autoBkgr']['3D'] = autoBkr_3D[autoBkr_3D!=0]
+        autoBkgr_maxP = foregr_img.max(axis=0)[autoBkgr_mask_proj]
+        autoBkgr_meanP = foregr_img.mean(axis=0)[autoBkgr_mask_proj]
+        autoBkgr_zSlice = foregr_img[z][autoBkgr_mask_proj]
+        bkgr_data['autoBkgr']['maxProj'] = autoBkgr_maxP[autoBkgr_maxP!=0]
+        bkgr_data['autoBkgr']['meanProj'] = autoBkgr_meanP[autoBkgr_meanP!=0]
+        bkgr_data['autoBkgr']['zSlice'] = autoBkgr_zSlice[autoBkgr_zSlice!=0]
+    else:
+        autoBkgr_data = foregr_img[autoBkgr_mask]
+        bkgr_data['autoBkgr'][''] = autoBkgr_data[autoBkgr_data!=0]
+
+    """DataPrep Background"""
+    bkgr_archive = posData.fluo_bkgrData_dict[filename]
+    bkgr_data['dataPrepBkgr'] =  {
+        '': [], 'maxProj': [], 'meanProj': [], 'zSlice': [], '3D': []
+    }
+    dataPrepBkgr_present = False
+    if bkgr_archive is not None:
+        for file in bkgr_archive.files:
+            bkgrRoi_data = bkgr_archive[file]
+            if posData.SizeT > 1:
+                bkgrRoi_data = bkgrRoi_data[frame_i]
+            if isZstack:
+                bkgrRoi_maxP = bkgrRoi_data.max(axis=0)
+                bkgrRoi_meanP = bkgrRoi_data.mean(axis=0)
+                bkgrRoi_zSlice = bkgrRoi_data[z]
+                if isSegm3D:
+                    bkgrRoi_3D = bkgrRoi_data
+            else:
+                bkgrRoi = bkgrRoi_data  
+            dataPrepBkgr_present = True       
+    elif dataPrepBkgrROI_mask is not None:
+        if isZstack:
+            if isSegm3D:
+                bkgrRoi_3D = foregr_img[dataPrepBkgrROI_mask]
+                dataPrepBkgrROI_mask_2D = dataPrepBkgrROI_mask[0]
+            else:
+                dataPrepBkgrROI_mask_2D = dataPrepBkgrROI_mask
+            bkgrRoi_maxP = foregr_img.max(axis=0)[dataPrepBkgrROI_mask_2D]
+            bkgrRoi_meanP = foregr_img.mean(axis=0)[dataPrepBkgrROI_mask_2D]
+            bkgrRoi_zSlice = foregr_img[z][dataPrepBkgrROI_mask_2D]      
+        else:
+            bkgrRoi = foregr_img[dataPrepBkgrROI_mask]
+        dataPrepBkgr_present = True 
+    
+    if isZstack and dataPrepBkgr_present:
+        # Note: we remove 0s since they are introduced by the alignment
+        bkgr_data['dataPrepBkgr']['maxProj'].extend(
+            bkgrRoi_maxP[bkgrRoi_maxP!=0]
+        )
+        bkgr_data['dataPrepBkgr']['meanProj'].extend(
+            bkgrRoi_meanP[bkgrRoi_meanP!=0]
+        )
+        bkgr_data['dataPrepBkgr']['zSlice'].extend(
+            bkgrRoi_zSlice[bkgrRoi_zSlice!=0]
+        )
+        if isSegm3D:
+            bkgr_data['dataPrepBkgr']['3D'].extend(bkgrRoi_3D[bkgrRoi_3D!=0])
+    elif dataPrepBkgr_present:
+        bkgr_data['dataPrepBkgr'][''].extend(bkgrRoi[bkgrRoi!=0])
+
+    return bkgr_data
+            
 
 def standard_metrics_func():
     metrics_func = {
@@ -968,3 +1203,235 @@ def get_combine_metrics_help_txt():
         {html_utils.to_list(examples)}
     """)
     return txt
+
+def add_concentration_metrics(df, concentration_metrics_params):
+    for col, (func_name, how) in concentration_metrics_params.items():
+        idx = col.find('_from_vol_')
+        amount_col = col[:idx]
+        amount_col = amount_col.replace('concentration_', 'amount_')
+        if how:
+            amount_col = f'{amount_col}_{how}'
+
+        if col.find('from_vol_vox') != -1:
+            try:
+                if how == '3D':
+                    cell_vol_values = df['cell_vol_vox_3D']
+                else:
+                    cell_vol_values = df['cell_vol_vox']
+                concentration_values = df[amount_col]/cell_vol_values
+            except Exception as e:
+                concentration_values = np.nan
+            df[col] = concentration_values
+        elif col.find('from_vol_fl') != -1:
+            try:
+                if how == '3D':
+                    cell_vol_values = df['cell_vol_fl_3D']
+                else:
+                    cell_vol_values = df['cell_vol_fl']
+                concentration_values = df[amount_col]/cell_vol_values
+            except Exception as e:
+                concentration_values = np.nan
+            df[col] = concentration_values
+    return df
+
+def add_foregr_metrics(
+        df, rp, channel, foregr_data, foregr_metrics_params, metrics_func,
+        size_metrics_to_save, custom_metrics_params, isSegm3D, yx_pxl_to_um2, 
+        vox_to_fl_3D, lab, foregr_img, customMetricsCritical=None
+    ):
+    custom_errors = ''
+    # Iterate objects and compute foreground metrics
+    for o, obj in enumerate(tqdm(rp, ncols=100, leave=False)):
+        for col, (func_name, how) in foregr_metrics_params.items():
+            func_name, how = foregr_metrics_params[col]
+            foregr_arr = foregr_data[how]
+            foregr_obj_arr, obj_area = get_foregr_obj_array(
+                foregr_arr, obj, isSegm3D
+            )
+            if func_name.find('amount_') != -1:
+                bkgr_type = func_name[len('amount_'):]
+                if how:
+                    bkgr_col = f'{channel}_{bkgr_type}_bkgrVal_median_{how}'
+                else:
+                    bkgr_col = f'{channel}_{bkgr_type}_bkgrVal_median'
+                try:
+                    bkgr_val = df.at[obj.label, bkgr_col]
+                    func = metrics_func[func_name]
+                    val = func(foregr_obj_arr, bkgr_val, obj_area)
+                except Exception as e:
+                    val = np.nan
+            else:
+                func = metrics_func[func_name]
+                val = func(foregr_obj_arr)
+            df.at[obj.label, col] = val
+        
+        for col in size_metrics_to_save:
+            val = get_obj_size_metric(
+                col, obj, isSegm3D, yx_pxl_to_um2, vox_to_fl_3D
+            )
+            df.at[obj.label, col] = val
+
+        for col, (custom_func, how) in custom_metrics_params.items():   
+            foregr_arr = foregr_data[how]
+            foregr_obj_arr, obj_area = get_foregr_obj_array(
+                foregr_arr, obj, isSegm3D
+            )
+            ID = obj.label
+            autoBkgrVal, dataPrepBkgrVal = get_bkgrVals(df, channel, how, ID)
+            metrics_values = df.to_dict('list')
+            items = get_cell_volumes_areas(df)
+            (cell_vols_vox, cell_vols_fl, cell_vols_vox_3D, cell_vols_fl_3D,
+            cell_areas_pxl, cell_areas_um2) = items
+            custom_error, custom_val = get_custom_metric_value(
+                custom_func, foregr_obj_arr, autoBkgrVal, dataPrepBkgrVal, obj,
+                o, metrics_values, cell_vols_vox, cell_vols_fl, cell_areas_pxl, 
+                cell_areas_um2, foregr_img, lab, isSegm3D, 
+                cell_vols_vox_3D=cell_vols_vox_3D, 
+                cell_vols_fl_3D=cell_vols_fl_3D
+            )
+            df.at[ID, col] = custom_val
+            if customMetricsCritical is not None and custom_error:
+                customMetricsCritical.emit(custom_error, col)
+    return df
+
+def add_bkgr_values(df, bkgr_data, bkgr_metrics_params, metrics_func):
+    # Compute background values
+    for col, (bkgr_type, func_name, how) in bkgr_metrics_params.items():
+        bkgr_arr = bkgr_data[bkgr_type][how]
+        bkgr_func = metrics_func[func_name]
+        bkgr_val = bkgr_func(bkgr_arr)
+        df[col] = bkgr_val
+    return df
+
+def add_regionprops_metrics(df, lab, regionprops_to_save, logger_func=None):
+    if not regionprops_to_save:
+        return df, []
+
+    if 'label' not in regionprops_to_save:
+        regionprops_to_save = ('label', *regionprops_to_save)
+
+    rp_table, rp_errors = regionprops_table(
+        lab, regionprops_to_save, logger_func=logger_func
+    )
+
+    df_rp = pd.DataFrame(rp_table).set_index('label')
+    df_rp.index.name = 'Cell_ID'
+
+    # Drop regionprops that were already calculated in a prev session
+    df = df.drop(columns=df_rp.columns, errors='ignore')
+    df = df.join(df_rp)
+    return df, rp_errors
+
+def get_custom_metric_value(
+        custom_func, foregr_obj_arr, autoBkgrVal, dataPrepBkgrVal, obj,
+        i, metrics_values, cell_vols_vox, cell_vols_fl, cell_areas_pxl, 
+        cell_areas_um2, foregr_img, lab, isSegm3D, cell_vols_vox_3D=None, 
+        cell_vols_fl_3D=None
+    ):
+    # Original custom metrics without obj
+    try:
+        custom_val = custom_func(foregr_obj_arr, autoBkgrVal, dataPrepBkgrVal)
+        return '', custom_val
+    except Exception as e:
+        pass
+        
+    # Metric without the metrics_values
+    try:
+        custom_val = custom_func(
+            foregr_obj_arr, autoBkgrVal, dataPrepBkgrVal, obj
+        )
+        return '', custom_val
+    except Exception as e:
+        pass
+
+    # Metric with the metrics_values         
+    try:
+        metrics_obj = {key:mm[i] for key, mm in metrics_values.items()}
+        metrics_obj['cell_vol_vox'] = cell_vols_vox[i]
+        metrics_obj['cell_vol_fl'] = cell_vols_fl[i]
+        metrics_obj['cell_area_pxl'] = cell_areas_pxl[i]
+        metrics_obj['cell_area_um2'] = cell_areas_um2[i]
+        if isSegm3D and cell_vols_vox_3D is not None and cell_vols_fl_3D is not None:
+            metrics_obj['cell_vol_vox_3D'] = cell_vols_vox_3D[i]
+            metrics_obj['cell_vol_fl_3D'] = cell_vols_fl_3D[i]            
+        custom_val = custom_func(
+            foregr_obj_arr, autoBkgrVal, dataPrepBkgrVal, obj, metrics_obj
+        )
+        return '', custom_val
+    except Exception as e:
+        pass
+    
+    # Metric with also image and segmentation mask (lab)
+    try:
+        metrics_obj = {key:mm[i] for key, mm in metrics_values.items()}
+        metrics_obj['cell_vol_vox'] = cell_vols_vox[i]
+        metrics_obj['cell_vol_fl'] = cell_vols_fl[i]
+        metrics_obj['cell_area_pxl'] = cell_areas_pxl[i]
+        metrics_obj['cell_area_um2'] = cell_areas_um2[i]
+        if isSegm3D and cell_vols_vox_3D is not None and cell_vols_fl_3D is not None:
+            metrics_obj['cell_vol_vox_3D'] = cell_vols_vox_3D[i]
+            metrics_obj['cell_vol_fl_3D'] = cell_vols_fl_3D[i] 
+        custom_val = custom_func(
+            foregr_obj_arr, autoBkgrVal, dataPrepBkgrVal, obj, metrics_obj,
+            foregr_img, lab, isSegm3D=isSegm3D
+        )
+        return '', custom_val
+    except Exception as e:
+        return traceback.format_exc(), np.nan
+
+def get_metrics_params(all_channels_metrics, metrics_func, custom_func_dict):
+    bkgr_metrics_params = {}
+    foregr_metrics_params = {}
+    concentration_metrics_params = {}
+    custom_metrics_params = {}
+    az = r'[A-Za-z0-9]'
+    bkgrVal_pattern = fr'_({az}+)_bkgrVal_({az}+)_?({az}*)'
+
+    for channel_name, columns in all_channels_metrics.items():
+        for col in columns:
+            m = re.findall(bkgrVal_pattern, col)
+            if m:
+                # The metric is a bkgrVal metric
+                bkgr_type, func_name, how = m[0]
+                bkgr_metrics_params[col] = (bkgr_type, func_name, how)
+                continue
+            
+            is_standard_foregr = False
+            for metric in metrics_func:
+                foregr_pattern = rf'{channel_name}_({metric})_?({az}*)'
+                m = re.findall(foregr_pattern, col)
+                if m:
+                    # Metric is a standard metric 
+                    func_name, how = m[0]
+                    foregr_metrics_params[col] = (func_name, how)
+                    is_standard_foregr = True
+                    break
+            
+            if is_standard_foregr:
+                continue
+
+            # Metric is concentration
+            conc_pattern = rf'concentration_{az}+_from_vol_[a-z]+'
+            conc_metric_pattern = (
+                rf'{channel_name}_({conc_pattern})_?({az}*)'
+            )
+            m = re.findall(conc_metric_pattern, col)
+            if m:
+                func_name, how = m[0]
+                concentration_metrics_params[col] = (func_name, how)
+                continue
+
+            for metric, custom_func in custom_func_dict.items():
+                custom_pattern = rf'{channel_name}_({metric})_?({az}*)'
+                m = re.findall(custom_pattern, col)
+                if m:
+                    # Metric is a standard metric 
+                    func_name, how = m[0]
+                    custom_metrics_params[col] = (custom_func, how)
+                    break
+    
+    params = (
+        bkgr_metrics_params, foregr_metrics_params, 
+        concentration_metrics_params, custom_metrics_params
+    )
+    return params
