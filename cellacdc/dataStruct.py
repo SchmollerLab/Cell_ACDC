@@ -320,7 +320,8 @@ class bioFormatsWorker(QObject):
                 else:
                     sampleSizeT = SizeT  
                 with bioformats.ImageReader(rawFilePath) as reader:
-                    for dimsOrd in tqdm(permutations('zct', 3), ncols=100):
+                    permut_pbar = tqdm(total=6, ncols=100)
+                    for dimsOrd in permutations('zct', 3):
                         allChannelsData = []
                         idxs = self.buildIndexes(SizeC, SizeT, SizeZ, dimsOrd)
                         numIter = SizeC*sampleSizeT*SizeZ
@@ -346,8 +347,9 @@ class bioFormatsWorker(QObject):
                             imgData_tz = np.squeeze(imgData_tz)
                             allChannelsData.append(imgData_tz)
                         pbar.close()
+                        permut_pbar.update(1)
                         sampleImgData[''.join(dimsOrd)] = allChannelsData
-            
+                    permut_pbar.close()
             self.confirmMetadata.emit(
                 filename, LensNA, DimensionOrder, SizeT, SizeZ, SizeC, SizeS,
                 TimeIncrement, TimeIncrementUnit, PhysicalSizeX, PhysicalSizeY,

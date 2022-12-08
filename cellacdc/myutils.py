@@ -1545,11 +1545,17 @@ def import_tracker(posData, trackerName, realTime=False, qparent=None):
             labShape = (posData.SizeZ, Y, X)
         else:
             labShape = (1, Y, X)
-        paramsWin = apps.BayesianTrackerParamsWin(labShape, parent=qparent)
+        paramsWin = apps.BayesianTrackerParamsWin(
+            labShape, parent=qparent, channels=posData.chNames, 
+            currentChannelName=posData.user_ch_name
+        )
         paramsWin.exec_()
         if not paramsWin.cancel:
             init_params = paramsWin.params
             track_params['export_to'] = posData.get_btrack_export_path()
+            if paramsWin.intensityImageChannel is not None:
+                chName = paramsWin.intensityImageChannel
+                track_params['intensity_image'] = posData.loadChannelData(chName)
     elif trackerName == 'CellACDC':
         paramsWin = apps.CellACDCTrackerParamsWin(parent=qparent)
         paramsWin.exec_()

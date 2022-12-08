@@ -637,7 +637,7 @@ def classify_acdc_df_colnames(acdc_df, channels):
                 # Size metric
                 size_metrics.append(col)
             elif col in props_names:
-                # regionprop metric
+                # Regionprop metric
                 props_metrics.append(col)
     
     metrics = {
@@ -773,6 +773,22 @@ def regionprops_table(labels, props, logger_func=None):
                     error_ids[prop]['ids'].append(obj.label)
         pbar.update(1)
     return rp_table, error_ids
+
+def get_btrack_features():
+    features = (
+        'area',
+        'major_axis_length', 
+        'minor_axis_length',
+        'equivalent_diameter',
+        'solidity',
+        'extent',
+        'filled_area',
+        'bbox_area',
+        'convex_area',
+        'euler_number',
+        'orientation'
+    )
+    return features
 
 def get_props_names_3D():
     props = {

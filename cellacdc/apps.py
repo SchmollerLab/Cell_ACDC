@@ -2945,9 +2945,15 @@ class CellACDCTrackerParamsWin(QDialog):
             self.loop.exit()
 
 class BayesianTrackerParamsWin(QDialog):
-    def __init__(self, segmShape, parent=None):
+    def __init__(
+            self, segmShape, parent=None, channels=None, 
+            currentChannelName=None
+        ):
         self.cancel = True
         super().__init__(parent)
+
+        self.channels = channels
+        self.currentChannelName = currentChannelName
 
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         self.setWindowTitle('Bayesian tracker parameters')
@@ -2977,6 +2983,25 @@ class BayesianTrackerParamsWin(QDialog):
         )
         browseButton.sigPathSelected.connect(self.onPathSelected)
         paramsLayout.addWidget(browseButton, row, 2, alignment=Qt.AlignLeft)
+
+        if self.channels is not None:
+            row += 1
+            label = QLabel(html_utils.paragraph('Intensity image channel:  '))
+            paramsLayout.addWidget(label, row, 0)
+            items = ['None', *self.channels]
+            self.channelCombobox = widgets.QCenteredComboBox()
+            self.channelCombobox.addItems(items)
+            paramsLayout.addWidget(self.channelCombobox, row, 1)
+            if self.currentChannelName is not None:
+                self.channelCombobox.setCurrentText(self.currentChannelName)
+
+        row += 1
+        label = QLabel(html_utils.paragraph('Features'))
+        paramsLayout.addWidget(label, row, 0)
+        selectFeaturesButton = widgets.setPushButton('Select features')
+        paramsLayout.addWidget(selectFeaturesButton, row, 1)
+        self.features = []
+        selectFeaturesButton.clicked.connect(self.selectFeatures)
 
         row += 1
         label = QLabel(html_utils.paragraph('Verbose'))
@@ -3072,6 +3097,23 @@ class BayesianTrackerParamsWin(QDialog):
         layout.addStretch(1)
         self.setLayout(layout)
         self.setFont(font)
+    
+    def selectFeatures(self):
+        features = measurements.get_btrack_features()
+        selectWin = widgets.QDialogListbox(
+            'Select features',
+            'Select features to use for tracking:\n',
+            features, multiSelection=True, parent=self, 
+            includeSelectionHelp=True
+        )
+        for i in range(selectWin.listBox.count()):
+            item = selectWin.listBox.item(i)
+            if item.text() in self.features:
+                item.setSelected(True)
+        selectWin.exec_()
+        if selectWin.cancel:
+            return
+        self.features = selectWin.selectedItemsText
 
     def methodChanged(self, method):
         if method == 'APPROXIMATE':
@@ -3099,6 +3141,7 @@ class BayesianTrackerParamsWin(QDialog):
             self.warnNotVaidPath()
             return
 
+        self.intensityImageChannel = None
         self.verbose = self.verboseToggle.isChecked()
         self.max_search_radius = self.maxSearchRadiusSpinbox.value()
         self.update_method = self.updateMethodCombobox.currentText()
@@ -3110,8 +3153,12 @@ class BayesianTrackerParamsWin(QDialog):
             'max_search_radius': self.max_search_radius,
             'update_method': self.update_method,
             'step_size': self.stepSizeSpinbox.value(),
-            'optimize': self.optimizeToggle.isChecked()
+            'optimize': self.optimizeToggle.isChecked(),
+            'features': self.features
         }
+        if self.channels is not None:
+            if self.channelCombobox.currentText() != 'None':
+                self.intensityImageChannel = self.channelCombobox.currentText()
         self.close()
 
     def warnNotVaidPath(self):

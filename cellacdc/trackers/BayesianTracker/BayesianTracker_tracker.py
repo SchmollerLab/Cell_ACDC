@@ -21,12 +21,17 @@ class tracker:
             self, segm_video, signals=None, export_to: os.PathLike=None,
             verbose=False
         ):
+        FEATURES = self.params['features']
+
+        intensity_image_video = self.params.get('intensity_image_video')
+
         if segm_video.ndim == 3:
             # btrack requires 4D data. Add extra dimension for 3D data
             segm_video = segm_video[:, np.newaxis, :, :]
 
         obj_from_arr = btrack.utils.segmentation_to_objects(
-            segm_video, properties=('area',)
+            segm_video, properties=tuple(FEATURES), 
+            intensity_image=intensity_image_video
         )
 
         if signals is not None:
@@ -39,9 +44,14 @@ class tracker:
             tracker.configure_from_file(self.params['model_path'])
             tracker.verbose = self.params['verbose']
             update_method = self.params['update_method']
+
             if update_method == 'APPROXIMATE':
                 tracker.update_method = getattr(BayesianUpdates, update_method)
                 tracker.max_search_radius = self.params['max_search_radius']
+
+            # add features
+            if FEATURES:
+                tracker.features = FEATURES
 
             # append the objects to be tracked
             tracker.append(obj_from_arr)
