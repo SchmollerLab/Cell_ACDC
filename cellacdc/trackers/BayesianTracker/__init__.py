@@ -6,9 +6,10 @@ try:
 
     version = pkg_resources.get_distribution("btrack").version
     minor = version.split('.')[1]
-    if minor < 4:
+    if int(minor) < 5:
         INSTALL_BTRACK = True
-except ModuleNotFoundError:
+    import pdb; pdb.set_trace()
+except Exception as e:
     INSTALL_BTRACK = True
 
 if INSTALL_BTRACK:
