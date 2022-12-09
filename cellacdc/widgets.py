@@ -434,7 +434,7 @@ class ContourItem(pg.PlotDataItem):
             if self._prevData[0] is not None:
                 self.setData(*self._prevData)
 
-class CustomAnnotationScatterPlotItem(pg.ScatterPlotItem):
+class BaseScatterPlotItem(pg.ScatterPlotItem):
     def __init__(self, *args, **kargs):
         super().__init__(*args, **kargs)
     
@@ -449,6 +449,10 @@ class CustomAnnotationScatterPlotItem(pg.ScatterPlotItem):
         if self._prevData is not None:
             if self._prevData[0] is not None:
                 self.setData(*self._prevData)
+
+class CustomAnnotationScatterPlotItem(BaseScatterPlotItem):
+    def __init__(self, *args, **kargs):
+        super().__init__(*args, **kargs)
 
 
 class ElidingLineEdit(QLineEdit):

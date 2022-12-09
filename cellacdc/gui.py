@@ -1671,7 +1671,7 @@ class guiWin(QMainWindow):
         self.binCellButton.action = editToolBar.addWidget(self.binCellButton)
         self.checkableButtons.append(self.binCellButton)
         self.checkableQButtonsGroup.addButton(self.binCellButton)
-        self.functionsNotTested3D.append(self.binCellButton)
+        # self.functionsNotTested3D.append(self.binCellButton)
 
         self.ripCellButton = QToolButton(self)
         self.ripCellButton.setIcon(QIcon(":rip.svg"))
@@ -3313,7 +3313,7 @@ class guiWin(QMainWindow):
         self.topLayerItems.append(self.labelRoiCircItemLeft)
         self.topLayerItemsRight.append(self.labelRoiCircItemRight)
         
-        self.ax1_binnedIDs_ScatterPlot = pg.ScatterPlotItem()
+        self.ax1_binnedIDs_ScatterPlot = widgets.BaseScatterPlotItem()
         self.ax1_binnedIDs_ScatterPlot.setData(
             [], [], symbol='t', pxMode=False,
             brush=pg.mkBrush((255,0,0,50)), size=15,
@@ -3321,7 +3321,7 @@ class guiWin(QMainWindow):
         )
         self.topLayerItems.append(self.ax1_binnedIDs_ScatterPlot)
         
-        self.ax1_ripIDs_ScatterPlot = pg.ScatterPlotItem()
+        self.ax1_ripIDs_ScatterPlot = widgets.BaseScatterPlotItem()
         self.ax1_ripIDs_ScatterPlot.setData(
             [], [], symbol='x', pxMode=False,
             brush=pg.mkBrush((255,0,0,50)), size=15,
@@ -3394,7 +3394,7 @@ class guiWin(QMainWindow):
         # self.brushCursor = QCursor(brushCursorPixmap, 16, 16)
 
         # Annotated metadata markers (ScatterPlotItem)
-        self.ax2_binnedIDs_ScatterPlot = pg.ScatterPlotItem()
+        self.ax2_binnedIDs_ScatterPlot = widgets.BaseScatterPlotItem()
         self.ax2_binnedIDs_ScatterPlot.setData(
             [], [], symbol='t', pxMode=False,
             brush=pg.mkBrush((255,0,0,50)), size=15,
@@ -3402,7 +3402,7 @@ class guiWin(QMainWindow):
         )
         self.ax2.addItem(self.ax2_binnedIDs_ScatterPlot)
         
-        self.ax2_ripIDs_ScatterPlot = pg.ScatterPlotItem()
+        self.ax2_ripIDs_ScatterPlot = widgets.BaseScatterPlotItem()
         self.ax2_ripIDs_ScatterPlot.setData(
             [], [], symbol='x', pxMode=False,
             brush=pg.mkBrush((255,0,0,50)), size=15,
@@ -10009,6 +10009,7 @@ class guiWin(QMainWindow):
             'labels': posData.lab.copy(),
             'editID_info': posData.editID_info.copy(),
             'binnedIDs': posData.binnedIDs.copy(),
+            'keptObejctsIDs': self.keptObjectsIDs.copy(),
             'ripIDs': posData.ripIDs.copy(),
             'cca_df': cca_df
         }
@@ -10031,6 +10032,7 @@ class guiWin(QMainWindow):
         posData.editID_info = state['editID_info'].copy()
         posData.binnedIDs = state['binnedIDs'].copy()
         posData.ripIDs = state['ripIDs'].copy()
+        self.keptObjectsIDs = state['keptObejctsIDs'].copy()
         cca_df = state['cca_df']
         if cca_df is not None:
             posData.cca_df = state['cca_df'].copy()
@@ -12496,6 +12498,7 @@ class guiWin(QMainWindow):
                 self.currentLab2D = posData.lab[z]
                 self.setOverlaySegmMasks(force=True)
                 self.doCustomAnnotation(0)
+                self.update_rp_metadata()
             else:
                 self.currentLab2D = posData.lab
                 self.setOverlaySegmMasks(forceIfNotActive=True)
@@ -12762,6 +12765,9 @@ class guiWin(QMainWindow):
         self.editIDmergeIDs = True
         self.doNotAskAgainExistingID = False
         self.highlightedIDopts = None
+        self.keptObjectsIDs = widgets.KeptObjectIDsList(
+            self.keptIDsLineEdit, self.keepIDsConfirmAction
+        )
 
         # Second channel used by cellpose
         self.secondChannelName = None
@@ -14904,7 +14910,7 @@ class guiWin(QMainWindow):
             # IDs removed from analysis --> store info
             if ID in posData.binnedIDs:
                 obj.excluded = True
-                if draw:
+                if draw and self.isObjVisible(obj.bbox):
                     y, x = self.getObjCentroid(obj.centroid)
                     # Gray out ID label on image
                     LabelID = self.ax2_LabelItemsIDs[ID-1]
@@ -14917,7 +14923,7 @@ class guiWin(QMainWindow):
             # IDs dead --> store info
             if ID in posData.ripIDs:
                 obj.dead = True
-                if draw:
+                if draw and self.isObjVisible(obj.bbox):
                     # Gray out ID label on image
                     y, x = self.getObjCentroid(obj.centroid)
                     LabelID = self.ax2_LabelItemsIDs[ID-1]
@@ -18241,7 +18247,7 @@ class guiWin(QMainWindow):
 
     def setDrawAnnotComboboxTextRight(self):
         if self.annotIDsCheckboxRight.isChecked():
-            if self.annotContourCheckbox.isChecked():
+            if self.annotContourCheckboxRight.isChecked():
                 t = 'Draw IDs and contours'
                 self.annotateRightHowCombobox.setCurrentText(t)
             elif self.annotSegmMasksCheckboxRight.isChecked():
