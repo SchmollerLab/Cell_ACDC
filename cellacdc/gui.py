@@ -103,7 +103,7 @@ _font.setPixelSize(11)
 
 # Interpret image data as row-major instead of col-major
 pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
-np.random.seed(1568)
+np.random.seed(3548784512)
 
 pd.set_option("display.max_columns", 20)
 pd.set_option("display.max_rows", 200)
@@ -14720,7 +14720,7 @@ class guiWin(QMainWindow):
         
         if keepIDs is None:
             keepIDs = self.keptObjectsIDs
-        
+
         for obj in rp:
             if obj.label in keepIDs:
                 continue
@@ -14763,9 +14763,6 @@ class guiWin(QMainWindow):
         self.storeUndoRedoStates(False)
 
         self._keepObjects()
-        self.keptObjectsIDs = widgets.KeptObjectIDsList(
-            self.keptIDsLineEdit, self.keepIDsConfirmAction
-        )
         self.highlightHoverIDsKeptObj(0, 0, hoverID=0)
         
         posData = self.data[self.pos_i]
@@ -14777,6 +14774,9 @@ class guiWin(QMainWindow):
         if self.isSnapshot:
             self.fixCcaDfAfterEdit('Deleted non-selected objects')
             self.updateALLimg()
+            self.keptObjectsIDs = widgets.KeptObjectIDsList(
+                self.keptIDsLineEdit, self.keepIDsConfirmAction
+            )
             return
         else:
             removeAnnot = self.warnEditingWithCca_df(
