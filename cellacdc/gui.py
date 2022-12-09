@@ -2545,13 +2545,13 @@ class guiWin(QMainWindow):
         self.addCustomAnnotationAction = QAction(self)
         self.addCustomAnnotationAction.setIcon(QIcon(":annotate.svg"))
         self.addCustomAnnotationAction.setToolTip('Add custom annotation')
-        self.functionsNotTested3D.append(self.addCustomAnnotationAction)
+        # self.functionsNotTested3D.append(self.addCustomAnnotationAction)
 
         self.viewAllCustomAnnotAction = QAction(self)
         self.viewAllCustomAnnotAction.setCheckable(True)
         self.viewAllCustomAnnotAction.setIcon(QIcon(":eye.svg"))
         self.viewAllCustomAnnotAction.setToolTip('Show all custom annotations')
-        self.functionsNotTested3D.append(self.viewAllCustomAnnotAction)
+        # self.functionsNotTested3D.append(self.viewAllCustomAnnotAction)
 
         # self.imgGradLabelsAlphaUpAction = QAction(self)
         # self.imgGradLabelsAlphaUpAction.setVisible(False)
@@ -5051,6 +5051,10 @@ class guiWin(QMainWindow):
         )
         if setCustomAnnotCursor and self.app.overrideCursor() is None:
             self.app.setOverrideCursor(Qt.PointingHandCursor)
+        
+        if setCustomAnnotCursor:
+            x, y = event.pos()
+            self.highlightHoverID(x, y)
         
         setKeepObjCursor = (
             self.keepIDsButton.isChecked() and not event.isExit()
@@ -10571,7 +10575,7 @@ class guiWin(QMainWindow):
         # Add scatter plot item
         symbolColorBrush = [0, 0, 0, 50]
         symbolColorBrush[:3] = symbolColor.getRgb()[:3]
-        scatterPlotItem = pg.ScatterPlotItem()
+        scatterPlotItem = widgets.CustomAnnotationScatterPlotItem()
         scatterPlotItem.setData(
             [], [], symbol=symbol, pxMode=False,
             brush=pg.mkBrush(symbolColorBrush), size=15,
@@ -10794,6 +10798,8 @@ class guiWin(QMainWindow):
             for annotID in annotIDs_frame_i:
                 obj_idx = posData.IDs.index(annotID)
                 obj = posData.rp[obj_idx]
+                if not self.isObjVisible(obj.bbox):
+                    continue
                 y, x = self.getObjCentroid(obj.centroid)
                 xx.append(x)
                 yy.append(y)
@@ -10803,6 +10809,10 @@ class guiWin(QMainWindow):
             scatterPlotItem.setData(xx, yy)
 
             posData.allData_li[posData.frame_i]['acdc_df'] = acdc_df
+        
+        if self.highlightedID != 0:
+            self.highlightedID = 0
+            self.highlightIDcheckBoxToggled(False)
 
         return buttons[0]
 
@@ -10852,6 +10862,8 @@ class guiWin(QMainWindow):
             if not button.isHideChecked:
                 return
             self.clearScatterPlotCustomAnnotButton(button)
+            self.highlightedID = 0
+            self.highlightIDcheckBoxToggled(False)
 
     def segmFrameCallback(self, action):
         if action == self.addCustomModelFrameAction:
@@ -12483,6 +12495,7 @@ class guiWin(QMainWindow):
             if self.isSegm3D:
                 self.currentLab2D = posData.lab[z]
                 self.setOverlaySegmMasks(force=True)
+                self.doCustomAnnotation(0)
             else:
                 self.currentLab2D = posData.lab
                 self.setOverlaySegmMasks(forceIfNotActive=True)
@@ -12748,6 +12761,7 @@ class guiWin(QMainWindow):
         self.labelRoiRunning = False
         self.editIDmergeIDs = True
         self.doNotAskAgainExistingID = False
+        self.highlightedIDopts = None
 
         # Second channel used by cellpose
         self.secondChannelName = None
@@ -16457,6 +16471,18 @@ class guiWin(QMainWindow):
         for ID in IDs:
             self.addNewItems(ID)
     
+    def highlightHoverID(self, x, y, hoverID=None):
+        if hoverID is None:
+            try:
+                hoverID = self.currentLab2D[int(y), int(x)]
+            except IndexError:
+                return
+
+        if hoverID != self.highlightedID:
+            self.clearHighlightedID()
+
+        self.highlightSearchedID(hoverID)
+    
     def highlightHoverIDsKeptObj(self, x, y, hoverID=None):
         if hoverID is None:
             try:
@@ -16480,9 +16506,10 @@ class guiWin(QMainWindow):
 
         ID = self.highlightedID
 
-        if ID in self.keptObjectsIDs:
-            # Do not clear kept IDs
-            return
+        if hasattr(self, 'keptObjectsIDs'):
+            if ID in self.keptObjectsIDs:
+                # Do not clear kept IDs
+                return
         
         self.searchedIDitemRight.setData([], [])
         self.searchedIDitemLeft.setData([], [])

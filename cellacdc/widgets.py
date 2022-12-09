@@ -434,6 +434,23 @@ class ContourItem(pg.PlotDataItem):
             if self._prevData[0] is not None:
                 self.setData(*self._prevData)
 
+class CustomAnnotationScatterPlotItem(pg.ScatterPlotItem):
+    def __init__(self, *args, **kargs):
+        super().__init__(*args, **kargs)
+    
+    def tempClear(self):
+        try:
+            self._prevData = [d.copy() for d in self.getData()]
+            self.setData([], [])
+        except Exception as e:
+            pass
+    
+    def restore(self):
+        if self._prevData is not None:
+            if self._prevData[0] is not None:
+                self.setData(*self._prevData)
+
+
 class ElidingLineEdit(QLineEdit):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1945,6 +1962,8 @@ class rightClickToolButton(QToolButton):
 class ToolButtonCustomColor(rightClickToolButton):
     def __init__(self, symbol, color='r', parent=None):
         super().__init__(parent=parent)
+        if not isinstance(color, QColor):
+            color = pg.mkColor(color)
         self.symbol = symbol
         self.setColor(color)
 
@@ -1977,7 +1996,7 @@ class PointsLayerToolButton(ToolButtonCustomColor):
     sigEditAppearance = pyqtSignal(object)
 
     def __init__(self, symbol, color='r', parent=None):
-        super().__init__(symbol, color, parent)
+        super().__init__(symbol, color=color, parent=parent)
         self.sigRightClick.connect(self.showContextMenu)
     
     def showContextMenu(self, event):
@@ -2000,10 +2019,10 @@ class customAnnotToolButton(ToolButtonCustomColor):
     sigHideAction = pyqtSignal(object)
 
     def __init__(
-            self, symbol, color='r', keepToolActive=True, parent=None,
+            self, symbol, color, keepToolActive=True, parent=None,
             isHideChecked=True
         ):
-        super().__init__(symbol, color='r', parent=parent)
+        super().__init__(symbol, color=color, parent=parent)
         self.symbol = symbol
         self.keepToolActive = keepToolActive
         self.isHideChecked = isHideChecked
