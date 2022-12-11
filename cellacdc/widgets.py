@@ -388,6 +388,8 @@ def getPushButton(buttonText, qparent=None):
     isAddButton = buttonText.lower().find('add ') != -1
     is3Dbutton = buttonText.find(' 3D ') != -1
     is2Dbutton = buttonText.find(' 2D ') != -1
+    isSaveButton = buttonText.lower().find('overwrite') != -1
+    isNewFileButton = buttonText.lower().find('rename') != -1
 
     if isCancelButton:
         button = cancelPushButton(buttonText, qparent)
@@ -409,6 +411,10 @@ def getPushButton(buttonText, qparent=None):
         button = threeDPushButton(buttonText, qparent)
     elif is2Dbutton:
         button = twoDPushButton(buttonText, qparent)
+    elif isSaveButton:
+        button = savePushButton(buttonText, qparent)
+    elif isNewFileButton:
+        button = newFilePushButton(buttonText, qparent)
     else:
         button = QPushButton(buttonText, qparent)
     

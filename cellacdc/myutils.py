@@ -127,6 +127,14 @@ def getCustomAnnotTooltip(annotState):
     )
     return toolTip
 
+def trim_path(path, depth=3, start_with_dots=True):
+    path_li = os.path.abspath(path).split(os.sep)
+    rel_path = f'{f"{os.sep}".join(path_li[-depth:])}'
+    if start_with_dots:
+        return f'...{os.sep}{rel_path}'
+    else:
+        return rel_path
+
 def get_add_custom_model_instructions():
     url = 'https://github.com/SchmollerLab/Cell_ACDC/issues'
     user_manual_url = 'https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf'

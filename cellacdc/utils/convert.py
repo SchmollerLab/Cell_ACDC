@@ -29,7 +29,7 @@ cellacdc_path = os.path.join(os.path.dirname(script_path))
 sys.path.append(cellacdc_path)
 
 # Custom modules
-from .. import exception_handler
+from .. import exception_handler, printl
 from .. import prompts, load, myutils, apps, load, widgets, html_utils
 from .. import workers
 
@@ -57,6 +57,7 @@ class convertFileFormatWin(QMainWindow):
         self.processFinished = False
         self.actionToEnable = actionToEnable
         self.mainWin = mainWin
+        self.success = False
         super().__init__(parent)
         self.setWindowTitle(f"Cell-ACDC - Convert .{from_} file to .{to}")
         self.setWindowIcon(QtGui.QIcon(":icon.ico"))
@@ -202,15 +203,20 @@ class convertFileFormatWin(QMainWindow):
                 )
                 for file in ls:
                     if file.endswith(_endswith):
-                        self.convert(
+                        proceed = self.convert(
                             images_path, file, appendedTxt, _basename,
                             from_=self.from_, to=self.to, prompt=False
                         )
+                        if not proceed:
+                            self.close()
+                            return
         else:
-            self.convert(
+            proceed = self.convert(
                 images_paths[0], selectedFilenames[0], appendedTxt, basename,
                 from_=self.from_, to=self.to
             )
+        
+        self.success = True
         self.close()
         if self.allowExit:
             exit('Done.')
@@ -258,6 +264,10 @@ class convertFileFormatWin(QMainWindow):
         else:
             newFilename = f'{basename}.{self.to}'
         newPath = os.path.join(images_path, newFilename)
+        if os.path.exists(newPath):
+            newPath = self.warnFileExisting(newPath)
+            if not newPath:
+                return False
         if self.to == 'npy':
             np.save(newPath, data)
         elif self.to == 'tif':
@@ -270,6 +280,39 @@ class convertFileFormatWin(QMainWindow):
         print('-'*30)
         if prompt:
             self.conversionDone(filePath, newPath)
+        return True
+    
+    def warnFileExisting(self, newFilePath):
+        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        txt = html_utils.paragraph(f"""
+            The following file is already existing:<br><br>
+            <code>{myutils.trim_path(newFilePath, depth=4)}</code><br><br>
+            What do you want to do? 
+        """)
+        msg.addShowInFileManagerButton(newFilePath)
+        _, overwriteButton, renameButton = msg.warning(
+            self, 'File existing', txt, 
+            buttonsTexts=('Cancel', 'Overwrite existing', 'Rename new file')
+        )
+        if msg.cancel:
+            return ''
+        
+        if msg.clickedButton == overwriteButton:
+            return newFilePath
+        
+        if msg.clickedButton == renameButton:
+            folderName = os.path.dirname(newFilePath)
+            filename, ext = os.path.splitext(os.path.basename(newFilePath))
+            win = apps.filenameDialog(
+                basename=filename, ext=ext, allowEmpty=False,
+                hintText='Insert a <b>filename</b> for the new file:<br>'
+            )
+            win.exec_()
+            if win.cancel:
+                return ''
+            newFilePath = os.path.join(folderName, win.filename)
+            return newFilePath
+            
 
     def conversionDone(self, src, dst):
         msg = widgets.myMessageBox()
@@ -392,6 +435,13 @@ class convertFileFormatWin(QMainWindow):
             return True
 
     def closeEvent(self, event):
+        if not self.success:
+            msg = widgets.myMessageBox(showCentered=False)
+            txt = html_utils.paragraph("""
+                Conversion process aborted.
+            """)
+            msg.warning(self, 'Process aborted', txt)
+        
         if self.actionToEnable is not None:
             self.actionToEnable.setDisabled(False)
             self.mainWin.setWindowState(Qt.WindowNoState)
