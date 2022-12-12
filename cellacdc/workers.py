@@ -1429,6 +1429,8 @@ class TrackSubCellObjectsWorker(BaseWorkerUtil):
             self.trackingMode = 'only_track'
         
         self.IoAthresh = mainWin.IoAthresh
+        self.createThirdSegm = mainWin.createThirdSegm
+        self.thirdSegmAppendedText = mainWin.thirdSegmAppendedText
 
     @worker_exception_handler
     def run(self):
@@ -1546,6 +1548,27 @@ class TrackSubCellObjectsWorker(BaseWorkerUtil):
                     cellsSegmFilename, ext = os.path.splitext(segmCellsPath)
                     trackedCellsPath = f'{cellsSegmFilename}_{appendedName}.npz'
                     np.savez_compressed(trackedCellsPath, trackedCellsSegmData)
+                
+                if self.createThirdSegm:
+                    self.logger.log(
+                        f'Generating segmentation from '
+                        f'"{self.cellsSegmEndFilename} - {appendedName}" '
+                        'difference...'
+                    )
+                    if trackedCellsSegmData is not None:
+                        parentSegmData = trackedCellsSegmData
+                    else:
+                        parentSegmData = segmDataCells
+                    diffSegmData = parentSegmData.copy()
+                    diffSegmData[trackedSubSegmData != 0] = 0
+
+                    self.logger.log('Saving difference segmentation file...')
+                    diffSegmPath = (
+                        f'{subSegmFilename}_{appendedName}'
+                        f'_{self.thirdSegmAppendedText}.npz'
+                    )
+                    np.savez_compressed(diffSegmPath, diffSegmData)
+                    del diffSegmData
 
                 self.logger.log('Generating acdc_output tables...')  
                 # Update or create acdc_df for sub-cellular objects                

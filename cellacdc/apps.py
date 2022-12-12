@@ -1542,6 +1542,122 @@ class wandToleranceWidget(QFrame):
 
         self.setLayout(self.slider.layout)
 
+class TrackSubCellObjectsDialog(QBaseDialog):
+    def __init__(self, basename='', parent=None):
+        self.cancel = True
+        super().__init__(parent=parent)
+    
+        self.setWindowTitle('Track sub-cellular objects parameters')
+
+        mainLayout = QVBoxLayout()
+        entriesLayout = widgets.myFormLayout()
+
+        row = 0
+        infoTxt = html_utils.paragraph("""
+            Select <b>behaviour with untracked objects</b>:<br><br>
+            NOTE: this utility <b>always create new files</b>.
+            Original segmentation masks <br>are not modified</b>.
+        """)
+        options = (
+            'Delete sub-cellular objects that do not belong to any cell',
+            'Delete cells that do not have any sub-cellular object',
+            'Delete both cells and sub-cellular objects without an assignment',
+            'Only track the objects and keep all the non-tracked objects'
+        )
+        combobox = widgets.QCenteredComboBox()
+        combobox.addItems(options)
+        self.optionsWidget = widgets.formWidget(
+            combobox, addInfoButton=True, labelTextLeft='Tracking mode: ',
+            infoTxt=infoTxt
+        )
+        entriesLayout.addFormWidget(self.optionsWidget, row=row)
+
+        row += 1
+        IoAtext = html_utils.paragraph("""
+            Enter a <b>minimum percentage (0-1) of the sub-cellular object's area</b><br>
+            that MUST overlap with the parent cell to be considered belonging to a cell:
+        """)
+        spinbox = widgets.CenteredDoubleSpinbox()
+        spinbox.setMaximum(1)
+        spinbox.setValue(0.5)
+        spinbox.setSingleStep(0.1)
+        self.IoAwidget = widgets.formWidget(
+            spinbox, addInfoButton=True, labelTextLeft='IoA threshold: ',
+            infoTxt=IoAtext
+        )
+        entriesLayout.addFormWidget(self.IoAwidget, row=row)
+
+        row += 1
+        infoTxt = html_utils.paragraph("""
+            The third segmentation file is the result of <b>subtracting the 
+            sub-cellular objects from the parent objects</b><br><br>
+            This is useful if, for example, you need to compute measurements 
+            only from the cytoplasm (i.e., the sub-cellular object is the nucleus).
+        """)
+        self.createThirdSegmWidget = widgets.formWidget(
+            widgets.Toggle(), addInfoButton=True, stretchWidget=False,
+            labelTextLeft='Create third segmentation: ', infoTxt=infoTxt
+        )
+        entriesLayout.addFormWidget(self.createThirdSegmWidget, row=row)
+
+        row += 1
+        infoTxt = html_utils.paragraph("""
+            Text to append at the end of the third segmentation file.<br><br>
+            The third segmentation file is the result of <b>subtracting the 
+            sub-cellular objects from the parent objects</b><br><br>
+            This is useful if, for example, you need to compute measurements 
+            only from the cytoplasm (i.e., the sub-cellular object is the nucleus).
+        """)
+        lineEdit = widgets.alphaNumericLineEdit()
+        lineEdit.setText('difference')
+        lineEdit.setAlignment(Qt.AlignCenter)
+        self.appendTextWidget = widgets.formWidget(
+            lineEdit, addInfoButton=True, labelTextLeft='Text to append: ', 
+            infoTxt=infoTxt
+        )
+        entriesLayout.addFormWidget(self.appendTextWidget, row=row)
+        self.appendTextWidget.setDisabled(True)
+        
+
+        self.createThirdSegmWidget.widget.toggled.connect(
+            self.createThirdSegmToggled
+        )
+
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+
+        mainLayout.addLayout(entriesLayout)
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+
+        self.setLayout(mainLayout)
+        self.setFont(font)
+    
+    def createThirdSegmToggled(self, checked):
+        self.appendTextWidget.setDisabled(not checked)
+    
+    def ok_cb(self):
+        self.cancel = False
+        if self.createThirdSegmWidget.widget.isChecked():
+            if not self.appendTextWidget.widget.text():
+                msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+                txt = html_utils.paragraph(
+                    'When creating the third segmentation file, '
+                    '<b>the name to append cannot be empty!</b>'
+                )
+                msg.critical(self, 'Empty name', txt)
+                return
+                
+        self.trackSubCellObjParams = {
+            'how': self.optionsWidget.widget.currentText(),
+            'IoA': self.IoAwidget.widget.value(),
+            'createThirdSegm': self.createThirdSegmWidget.widget.isChecked(),
+            'thirdSegmAppendedText': self.appendTextWidget.widget.text()
+        }
+        self.close()
+
 class setMeasurementsDialog(QBaseDialog):
     sigClosed = pyqtSignal()
     sigCancel = pyqtSignal()

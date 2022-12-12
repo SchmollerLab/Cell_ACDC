@@ -95,7 +95,7 @@ try:
     from cellacdc.utils import repeat as utilsRepeat
     from cellacdc.utils import toImageJroi as utilsToImageJroi
     from cellacdc.utils import acdcToSymDiv as utilsSymDiv
-    from cellacdc.utils import trackSubCellFeatures as utilsTrackSubCell
+    from cellacdc.utils import trackSubCellObjects as utilsTrackSubCell
     from cellacdc.utils import computeMultiChannel as utilsComputeMultiCh
     from cellacdc.utils import applyTrackFromTable as utilsApplyTrackFromTab
     from cellacdc.info import utilsInfo
@@ -502,7 +502,7 @@ class mainWin(QMainWindow):
         self.h5ToNpzAction.triggered.connect(self.launchConvertFormatUtil)
         self.toImageJroiAction.triggered.connect(self.launchToImageJroiUtil)
         self.trackSubCellFeaturesAction.triggered.connect(
-            self.launchTrackSubCellFeaturesiUtil
+            self.launchTrackSubCellFeaturesUtil
         )
         self.combineMetricsMultiChannelAction.triggered.connect(
             self.launchCombineMeatricsMultiChanneliUtil
@@ -811,57 +811,30 @@ class mainWin(QMainWindow):
         title = 'Compute measurements from multiple channels'
         infoText = 'Launching compute measurements from multiple channels process...'
         progressDialogueTitle = 'Compute measurements from multiple channels'
-        self.trackSubCellObjWin = utilsComputeMultiCh.ComputeMetricsMultiChannel(
+        self.multiChannelWin = utilsComputeMultiCh.ComputeMetricsMultiChannel(
             selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
             parent=self
         )
-        self.trackSubCellObjWin.show()
+        self.multiChannelWin.show()
 
-    def launchTrackSubCellFeaturesiUtil(self):
+    def launchTrackSubCellFeaturesUtil(self):
         selectedExpPaths = self.getSelectedExpPaths(
             'Track sub-cellular objects'
         )
         if selectedExpPaths is None:
             return
         
-        options = (
-            'Delete sub-cellular objects that do not belong to any cell',
-            'Delete cells that do not have any sub-cellular object',
-            'Delete both cells and sub-cellular objects without an assignment',
-            'Only track the objects and keep all the non-tracked objects'
-        )
-
-        selectOptionWindow = widgets.QDialogListbox(
-            'Select tracking mode',
-            'Select <b>behaviour with untracked objects</b>:<br><br>'
-            'NOTE: this utility <b>always create new files</b>.'
-            'Original segmentation masks <br>are not modified</b>',
-            options, multiSelection=False, parent=self
-        )
-        selectOptionWindow.exec_()
-        if selectOptionWindow.cancel:
+        win = apps.TrackSubCellObjectsDialog()
+        win.exec_()
+        if win.cancel:
             return
         
-        IoAtext = ("""
-            Enter a <b>minimum percentage (0-1) of the sub-cellular object's area</b><br>
-            that MUST overlap with the parent cell to be considered belonging to a cell:
-        """)
-        IoAthreshWin = apps.QLineEditDialog(
-            title='Select IoA threshold', msg=IoAtext, parent=self, 
-            allowedValues=(0, 1), defaultTxt=str(0.5), isFloat=True,
-            stretchEntry=False
-        )
-        IoAthreshWin.exec_()
-        if IoAthreshWin.cancel:
-            return
-
-        trackingMode = selectOptionWindow.selectedItemsText[0]
         title = 'Track sub-cellular objects'
         infoText = 'Launching sub-cellular objects tracker...'
         progressDialogueTitle = 'Tracking sub-cellular objects'
         self.trackSubCellObjWin = utilsTrackSubCell.TrackSubCellFeatures(
             selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
-            trackingMode, IoAthreshWin.enteredValue, parent=self
+            win.trackSubCellObjParams, parent=self
         )
         self.trackSubCellObjWin.show()
 

@@ -5,17 +5,19 @@ from .base import NewThreadMultipleExpBaseUtil
 class TrackSubCellFeatures(NewThreadMultipleExpBaseUtil):
     def __init__(
             self, expPaths, app, title: str, infoText: str, 
-            progressDialogueTitle: str, trackingMode: str, 
-            IoAthresh: bool, parent=None
+            progressDialogueTitle: str, trackSubCellObjParams: dict, 
+            parent=None
         ):
         module = myutils.get_module_name(__file__)
         super().__init__(
             expPaths, app, title, module, infoText, progressDialogueTitle, 
             parent=parent
         )
-        self.trackingMode = trackingMode
-        self.IoAthresh = IoAthresh
         self.expPaths = expPaths
+        self.trackingMode = trackSubCellObjParams['how']
+        self.IoAthresh = trackSubCellObjParams['IoA']
+        self.createThirdSegm = trackSubCellObjParams['createThirdSegm']
+        self.thirdSegmAppendedText = trackSubCellObjParams['thirdSegmAppendedText']
     
     def runWorker(self):
         self.worker = workers.TrackSubCellObjectsWorker(self)

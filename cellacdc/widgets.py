@@ -2445,6 +2445,10 @@ class formWidget(QWidget):
         msg.addText(self.infoTxt)
         msg.addButton('   Ok   ')
         msg.exec_()
+    
+    def setDisabled(self, disabled: bool) -> None:
+        for item in self.items:
+            item.setDisabled(disabled)
 
 class ToggleTerminalButton(QPushButton):
     sigClicked = pyqtSignal(bool)

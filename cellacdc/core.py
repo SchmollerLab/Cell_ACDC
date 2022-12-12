@@ -170,18 +170,12 @@ def track_sub_cell_objects_acdc_df(
                 sub_acdc_df_frame_i['relative_ID'] = (
                     sub_acdc_df_frame_i['relative_ID'].replace(old_sub_ids)
                 )
-        
-        num_objects_per_cells = all_num_objects_per_cells[frame_i]
 
-        # For sub-obj that do not have a parent cell the num_sub_cell_objs_per_cell = 0        
-        sub_acdc_df_frame_i['num_sub_cell_objs_per_cell'] = (
-            [num_objects_per_cells.get(sub_id, 0) for sub_id in sub_ids]
-        )
-        
         sub_acdc_df_list.append(sub_acdc_df_frame_i)
         keys_sub.append(frame_i)
         
         if tracked_cells_segm_data is not None:
+            num_objects_per_cells = all_num_objects_per_cells[frame_i]
             lab = tracked_cells_segm_data[frame_i]
             rp = skimage.measure.regionprops(lab)
             # Untacked sub-obj (if kept) are not present in acdc_df of the cells
@@ -266,15 +260,17 @@ def track_sub_cell_objects(
     tracked_subobj_segm_data = np.zeros_like(subobj_segm_data)        
 
     segm_data_zip = zip(cells_segm_data, subobj_segm_data)
-    tracked_IDs = set()
+    old_tracked_sub_obj_IDs = set()
+    cells_IDs_with_sub_obj = []
     all_num_objects_per_cells = []
+    all_cells_IDs_with_sub_obj = []
     all_old_sub_ids = [{} for _ in range(len(cells_segm_data))]
     for frame_i, (lab, lab_sub) in enumerate(segm_data_zip):
         rp = skimage.measure.regionprops(lab)
         num_objects_per_cells = {obj.label:0 for obj in rp}
         rp_sub = skimage.measure.regionprops(lab_sub)
         tracked_lab_sub = tracked_subobj_segm_data[frame_i]
-        old_sub_ids = all_old_sub_ids[frame_i]
+        cells_IDs_with_sub_obj = []
         for sub_obj in rp_sub:
             intersect_mask = lab[sub_obj.slice][sub_obj.image]
             intersect_IDs, I_counts = np.unique(
@@ -289,12 +285,14 @@ def track_sub_cell_objects(
                     # Do not add untracked sub-obj
                     continue
                 
-                old_sub_ids[intersect_ID] = sub_obj.label
+                all_old_sub_ids[frame_i][sub_obj.label] = intersect_ID
                 tracked_lab_sub[sub_obj.slice][sub_obj.image] = intersect_ID
                 num_objects_per_cells[intersect_ID] += 1
-                tracked_IDs.add(intersect_ID)
+                old_tracked_sub_obj_IDs.add(sub_obj.label)
+                cells_IDs_with_sub_obj.append(intersect_ID)
         
         all_num_objects_per_cells.append(num_objects_per_cells)
+        all_cells_IDs_with_sub_obj.append(cells_IDs_with_sub_obj)
         
         if sigProgress is not None:
             sigProgress.emit(1)
@@ -305,8 +303,10 @@ def track_sub_cell_objects(
         for frame_i, lab in enumerate(tracked_cells_segm_data):
             rp = skimage.measure.regionprops(lab)
             tracked_lab = tracked_cells_segm_data[frame_i]
+            cells_IDs_with_sub_obj = all_cells_IDs_with_sub_obj[frame_i]
             for obj in rp:
-                if obj.label in tracked_IDs:
+                if obj.label in cells_IDs_with_sub_obj:
+                    # Cell has sub-object do not delete
                     continue
                     
                 tracked_lab[obj.slice][obj.image] = 0
@@ -319,14 +319,16 @@ def track_sub_cell_objects(
             if sub_obj_ID == 0:
                 continue
 
-            if sub_obj_ID in tracked_IDs:
+            if sub_obj_ID in old_tracked_sub_obj_IDs:
+                # sub_obj_ID has already ben tracked
                 continue
             
             tracked_subobj_segm_data[subobj_segm_data == sub_obj_ID] = maxSubObjID
+            
             for frame_i, lab_sub in enumerate(subobj_segm_data):
                 if sub_obj_ID not in lab_sub:
                     continue
-                all_old_sub_ids[frame_i][maxSubObjID] = sub_obj_ID
+                all_old_sub_ids[frame_i][sub_obj_ID] = maxSubObjID
             maxSubObjID += 1
 
     if SizeT == 1:
