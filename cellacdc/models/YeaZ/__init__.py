@@ -11,6 +11,4 @@ except ModuleNotFoundError:
         raise ModuleNotFoundError(
             f'User aborted {pkg_name} installation'
         )
-    subprocess.check_call(
-        [sys.executable, '-m', 'pip', 'install', 'tensorflow']
-    )
+    myutils.install_tensorflow()

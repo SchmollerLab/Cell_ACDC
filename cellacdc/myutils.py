@@ -1544,15 +1544,10 @@ def install_package_msg(pkg_name, note='', parent=None):
 def install_tensorflow():
     cpu = platform.processor()
     if is_mac and cpu == 'arm':
-        # subprocess.run(
-        #     'conda install -y -c conda-forge tensorflow', 
-        #     shell=True, check=True, text=True
-        # )
-        args = [conda, 'install', '-y', '-c', 'conda-forge', 'tensorflow']
-        subprocess.check_call(args)
+        args = ['conda', 'install', '-y', '-c', 'conda-forge', 'tensorflow']
     else:
         args = [sys.executable, '-m', 'pip', 'install', '-y', 'tensorflow']
-        subprocess.check_call(args)
+    subprocess.check_call(args)
 
 def import_tracker(posData, trackerName, realTime=False, qparent=None):
     trackerModule = import_module(
