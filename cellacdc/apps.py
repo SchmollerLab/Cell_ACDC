@@ -5815,6 +5815,7 @@ class postProcessSegmParams(QGroupBox):
             self.minObjSizeZ_SB = widgets.NoneWidget()
 
         layout.setColumnStretch(1, 2)
+        layout.setRowStretch(row+1, 1)
 
         self.setLayout(layout)
 
@@ -5827,6 +5828,17 @@ class postProcessSegmParams(QGroupBox):
         self.minSize_SB.setValue(10)
         self.maxElongation_DSB.setValue(3)
         self.minObjSizeZ_SB.setValue(3)
+    
+    def restoreFromKwargs(self, kwargs):
+        for name, value in kwargs.items():
+            if name == 'min_solidity':
+                self.minSolidity_DSB.setValue(value)
+            elif name == 'min_area':
+                self.minSize_SB.setValue(value)
+            elif name == 'max_elongation':
+                self.maxElongation_DSB.setValue(value)
+            elif name == 'min_obj_no_zslices':
+                self.minObjSizeZ_SB.setValue(value)
     
     def kwargs(self):
         kwargs = {
@@ -9155,35 +9167,6 @@ class QDialogTrackerParams(QDialog):
             except TypeError:
                 argWidget.valueSetter(widget, int(val))
 
-    def loadLastSelectionPostProcess(self):
-        postProcessSection = f'{self.tracker_name}.postprocess'
-
-        if postProcessSection not in self.configPars.sections():
-            return
-
-        minSize = self.configPars.getint(postProcessSection, 'min_area')
-        self.minSize_SB.setValue(minSize)
-
-        minSolidity = self.configPars.getfloat(
-            postProcessSection, 'min_solidity'
-        )
-        self.minSolidity_DSB.setValue(minSolidity)
-
-        maxElongation = self.configPars.getfloat(
-            postProcessSection, 'max_elongation'
-        )
-        self.maxElongation_DSB.setValue(maxElongation)
-
-        minObjSizeZ = self.configPars.getint(
-            postProcessSection, 'min_obj_no_zslices'
-        )
-        self.minObjSizeZ_SB.setValue(minObjSizeZ)
-
-        applyPostProcessing = self.configPars.getboolean(
-            postProcessSection, 'applyPostProcessing'
-        )
-        self.artefactsGroupBox.setChecked(applyPostProcessing)
-
     def createSeeHereLabel(self, url):
         htmlTxt = f'<a href=\"{url}">here</a>'
         seeHereLabel = QLabel()
@@ -9533,18 +9516,25 @@ class QDialogModelParams(QDialog):
         if postProcessSection not in self.configPars.sections():
             return
 
-        minSize = self.configPars.getint(postProcessSection, 'minSize')
-        self.minSize_SB.setValue(minSize)
-
+        minSize = self.configPars.getint(
+            postProcessSection, 'min_area', fallback=10
+        )
         minSolidity = self.configPars.getfloat(
-            postProcessSection, 'minSolidity'
+            postProcessSection, 'min_solidity', fallback=0.5
         )
-        self.minSolidity_DSB.setValue(minSolidity)
-
         maxElongation = self.configPars.getfloat(
-            postProcessSection, 'maxElongation'
+            postProcessSection, 'max_elongation', fallback=3
         )
-        self.maxElongation_DSB.setValue(maxElongation)
+        minObjSizeZ = self.configPars.getint(
+            postProcessSection, 'min_obj_no_zslices', fallback=3
+        )
+        kwargs = {
+            'min_solidity': minSolidity,
+            'min_area': minSize,
+            'max_elongation': maxElongation,
+            'min_obj_no_zslices': minObjSizeZ
+        }
+        self.artefactsGroupBox.restoreFromKwargs(kwargs)
 
         applyPostProcessing = self.configPars.getboolean(
             postProcessSection, 'applyPostProcessing'
@@ -9622,9 +9612,6 @@ class QDialogModelParams(QDialog):
         self.segment2D_kwargs = self.argsWidgets_to_kwargs(
             self.segment2D_argsWidgets
         )
-        self.minSize = self.minSize_SB.value()
-        self.minSolidity = self.minSolidity_DSB.value()
-        self.maxElongation = self.maxElongation_DSB.value()
         self.applyPostProcessing = self.artefactsGroupBox.isChecked()
         self.secondChannelName = None
         if hasattr(self, 'channelsCombobox'):

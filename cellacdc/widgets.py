@@ -3899,10 +3899,13 @@ class QProgressBarWithETA(QProgressBar):
         self.ETA_label.hide()
 
 class NoneWidget:
-    def value():
+    def __init__(self):
+        pass
+    
+    def value(self):
         return None
     
-    def setValue(value):
+    def setValue(self, value):
         return
 
 class sliderWithSpinBox(QWidget):
@@ -4196,6 +4199,9 @@ class PostProcessSegmSpinbox(QWidget):
     
     def setValue(self, value):
         self.spinBox.setValue(value)
+    
+    def sizeHint(self):
+        return self.spinBox.sizeHint()
     
     def setMaximum(self, max):
         self.spinBox.setMaximum(max)

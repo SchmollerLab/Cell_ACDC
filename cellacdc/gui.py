@@ -10976,11 +10976,14 @@ class guiWin(QMainWindow):
                 )
                 initLastParams = False
 
+            _SizeZ = None
+            if self.isSegm3D:
+                _SizeZ = posData.SizeZ
             win = apps.QDialogModelParams(
                 init_params,
                 segment_params,
                 model_name, parent=self,
-                url=url, initLastParams=initLastParams
+                url=url, initLastParams=initLastParams, SizeZ=_SizeZ
             )
             win.setChannelNames(posData.chNames)
             win.exec_()
@@ -11133,12 +11136,15 @@ class guiWin(QMainWindow):
             autoThreshWin.exec_()
             if autoThreshWin.cancel:
                 return
-            
+        
+        _SizeZ = None
+        if self.isSegm3D:
+            _SizeZ = posData.SizeZ  
         win = apps.QDialogModelParams(
             init_params,
             segment_params,
             model_name, parent=self,
-            url=url
+            url=url, SizeZ=_SizeZ
         )
         win.setChannelNames(posData.chNames)
         win.exec_()
@@ -11328,10 +11334,14 @@ class guiWin(QMainWindow):
         except AttributeError:
             url = None
 
+        _SizeZ = None
+        if self.isSegm3D:
+            _SizeZ = posData.SizeZ 
         win = apps.QDialogModelParams(
             init_params,
             segment_params,
-            model_name, url=url)
+            model_name, url=url, SizeZ=_SizeZ
+        )
         win.exec_()
         if win.cancel:
             self.titleLabel.setText('Segmentation aborted.')

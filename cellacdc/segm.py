@@ -764,11 +764,15 @@ class segmWin(QMainWindow):
         except AttributeError:
             url = None
 
+        _SizeZ = None
+        if self.isSegm3D:
+            _SizeZ = posData.SizeZ
         win = apps.QDialogModelParams(
             init_params,
             segment_params,
             model_name, parent=self,
-            url=url)
+            url=url, SizeZ=_SizeZ
+        )
         win.setChannelNames(posData.chNames)
         win.exec_()
 
@@ -781,6 +785,7 @@ class segmWin(QMainWindow):
         if model_name != 'thresholding':
             self.segment2D_kwargs = win.segment2D_kwargs
         self.removeArtefactsKwargs = win.artefactsGroupBox.kwargs()
+
         self.applyPostProcessing = win.applyPostProcessing
         self.secondChannelName = win.secondChannelName
 
