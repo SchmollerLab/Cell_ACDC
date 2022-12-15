@@ -2217,7 +2217,6 @@ class ToImajeJroiWorker(BaseWorkerUtil):
     def run(self):
         from roifile import ImagejRoi, roiwrite
 
-
         debugging = False
         expPaths = self.mainWin.expPaths
         tot_exp = len(expPaths)

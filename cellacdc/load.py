@@ -205,6 +205,7 @@ def get_segm_files(images_path):
         or file.find('segm_raw_postproc') != -1
         or file.endswith('segm_raw.npz')
         or (file.endswith('.npz') and file.find('segm') != -1)
+        or file.endswith('_segm.npy')
     ]
     return segm_files
 
