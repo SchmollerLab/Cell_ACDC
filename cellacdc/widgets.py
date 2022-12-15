@@ -2514,6 +2514,31 @@ class readOnlySpinbox(QSpinBox):
         self.setMaximum(2**31-1)
         self.setStyleSheet('background-color: rgba(240, 240, 240, 200);')
 
+class DoubleSpinBox(QDoubleSpinBox):
+    sigValueChanged = pyqtSignal(int)
+
+    def __init__(self, parent=None, disableKeyPress=False):
+        super().__init__(parent=parent)
+        self.setAlignment(Qt.AlignCenter)
+        self.setMaximum(2**31-1)
+        self._valueChangedFunction = None
+        self.disableKeyPress = disableKeyPress
+    
+    def keyPressEvent(self, event) -> None:
+        isBackSpaceKey = event.key() == Qt.Key_Backspace
+        isDeleteKey = event.key() == Qt.Key_Delete
+        try:
+            int(event.text())
+            isIntegerKey = True
+        except:
+            isIntegerKey = False
+        acceptEvent = isBackSpaceKey or isDeleteKey or isIntegerKey
+        if self.disableKeyPress and not acceptEvent:
+            event.ignore()
+            self.clearFocus()
+        else:
+            super().keyPressEvent(event)
+
 class SpinBox(QSpinBox):
     sigValueChanged = pyqtSignal(int)
 
@@ -3879,7 +3904,7 @@ class sliderWithSpinBox(QWidget):
     editingFinished = pyqtSignal()
 
     def __init__(self, *args, **kwargs):
-        QWidget.__init__(self, *args)
+        super().__init__(*args)
 
         layout = QGridLayout()
 
@@ -3900,13 +3925,13 @@ class sliderWithSpinBox(QWidget):
 
         self._normalize = False
         normalize = kwargs.get('normalize')
-        if normalize is not None:
+        if normalize is not None and normalize:
             self._normalize = True
             self._isFloat = True
 
         self._isFloat = False
         isFloat = kwargs.get('isFloat')
-        if isFloat is not None:
+        if isFloat is not None and isFloat:
             self._isFloat = True
 
         self.slider = QSlider(Qt.Horizontal, self)
@@ -3926,6 +3951,8 @@ class sliderWithSpinBox(QWidget):
         layout.setColumnStretch(col+1, 1)
 
         self.layout = layout
+        self.lastCol = col+1
+        self.sliderCol = row+1
 
         self.slider.valueChanged.connect(self.sliderValueChanged)
         self.slider.sliderReleased.connect(self.onEditingFinished)
@@ -4081,3 +4108,76 @@ class labImageItem(pg.ImageItem):
             pg.ImageItem.setImage(self, img[z], **kargs)
         else:
             pg.ImageItem.setImage(self, img, **kargs)
+
+class PostProcessSegmSlider(sliderWithSpinBox):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.checkbox = QCheckBox('Disable')
+        self.layout.addWidget(self.checkbox, self.sliderCol, self.lastCol+1)
+
+class PostProcessSegmSpinbox(QWidget):
+    valueChanged = pyqtSignal(int)
+    editingFinished = pyqtSignal()
+
+    def __init__(self, *args, isFloat=False, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        layout = QHBoxLayout()
+
+        if isFloat:
+            self.spinbox = DoubleSpinBox()
+        else:
+            self.spinbox = SpinBox()
+
+        self.spinBox.valueChanged.connect(self.onValueChanged)
+        self.spinBox.editingFinished.connect(self.onEditingFinished)
+
+        layout.addWidget(self.spinbox)
+        self.checkbox = QCheckBox('Disable')
+        layout.addWidget(self.checkbox)
+        layout.setStretch(0,1)
+        layout.setStretch(1,0)
+
+        self.setLayout(layout)
+    
+    def onValueChange(self, value):
+        self.valueChanged.emit(value)
+    
+    def onEditingFinished(self):
+        self.editingFinished.emit()
+
+    def maximum(self):
+        return self.spinbox.maximum()
+    
+    def setValue(self, value):
+        self.spinbox.setValue(value)
+    
+    def setMaximum(self, max):
+        self.spinbox.setMaximum(max)
+
+    def setSingleStep(self, step):
+        self.spinbox.setSingleStep(step)
+
+    def setMinimum(self, min):
+        self.spinbox.setMinimum(min)
+
+    def setSingleStep(self, step):
+        self.spinbox.setSingleStep(step)
+    
+    def value(self):
+        return self.spinbox.value()
+
+def PostProcessSegmWidget(
+        minimum, maximum, value, useSliders, isFloat=False, normalize=False
+    ):
+    if useSliders:
+        if normalize:
+            maximum = int(maximum*100)
+        widget = PostProcessSegmSlider(normalize=normalize, isFloat=isFloat)
+    else:
+        widget = PostProcessSegmSpinbox()
+    widget.setMinimum(minimum)
+    widget.setMaximum(maximum)
+    widget.setValue(value)
+    return widget

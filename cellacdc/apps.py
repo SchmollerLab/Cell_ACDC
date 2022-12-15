@@ -5695,7 +5695,7 @@ class ComputeMetricsErrorsDialog(QBaseDialog):
         return super().showEvent(a0)
 
 class postProcessSegmParams(QGroupBox):
-    def __init__(self, title, useSliders=False, parent=None, maxSize=None):
+    def __init__(self, title, useSliders=False, parent=None, maxSize=2147483646):
         QGroupBox.__init__(self, title, parent)
         self.useSliders = useSliders
 
@@ -5705,17 +5705,7 @@ class postProcessSegmParams(QGroupBox):
         label = QLabel("Minimum area (pixels) ")
         layout.addWidget(label, row, 0, alignment=Qt.AlignRight)
 
-        if useSliders:
-            minSize_SB = widgets.sliderWithSpinBox()
-            minSize_SB.setMinimum(1)
-            minSize_SB.setMaximum(200)
-            minSize_SB.setValue(5)
-        else:
-            minSize_SB = QSpinBox()
-            minSize_SB.setAlignment(Qt.AlignCenter)
-            minSize_SB.setMinimum(1)
-            minSize_SB.setMaximum(2147483647)
-            minSize_SB.setValue(5)
+        minSize_SB = widgets.PostProcessSegmWidget(1, maxSize, 10, useSliders)
         
         txt = (
             '<b>Area</b> is the total number of pixels in the segmented object.'
@@ -5730,20 +5720,15 @@ class postProcessSegmParams(QGroupBox):
         layout.addWidget(infoButton, row, 2)
         self.minSize_SB = minSize_SB
 
-        minSize_SB.disableThisCheckbox = QCheckBox('Disable this filter')
-        layout.addWidget(minSize_SB.disableThisCheckbox, row, 3)
+        # minSize_SB.disableThisCheckbox = QCheckBox('Disable this filter')
+        # layout.addWidget(minSize_SB.disableThisCheckbox, row, 3)
 
         row += 1
         label = QLabel("Minimum solidity (0-1) ")
         layout.addWidget(label, row, 0, alignment=Qt.AlignRight)
-        if useSliders:
-            minSolidity_DSB = widgets.sliderWithSpinBox(normalize=True)
-            minSolidity_DSB.setMaximum(100)
-        else:
-            minSolidity_DSB = QDoubleSpinBox()
-            minSolidity_DSB.setAlignment(Qt.AlignCenter)
-            minSolidity_DSB.setMinimum(0)
-            minSolidity_DSB.setMaximum(1)
+        minSolidity_DSB = widgets.PostProcessSegmWidget(
+            0, 1.0, 0.5, useSliders, isFloat=True, normalize=True
+        )
         minSolidity_DSB.setValue(0.5)
         minSolidity_DSB.setSingleStep(0.1)
 
@@ -5763,26 +5748,14 @@ class postProcessSegmParams(QGroupBox):
         layout.addWidget(infoButton, row, 2)
         self.minSolidity_DSB = minSolidity_DSB
 
-        minSolidity_DSB.disableThisCheckbox = QCheckBox('Disable this filter')
-        layout.addWidget(minSolidity_DSB.disableThisCheckbox, row, 3)
-
         row += 1
         label = QLabel("Max elongation (1=circle) ")
         layout.addWidget(label, row, 0, alignment=Qt.AlignRight)
-        if useSliders:
-            maxElongation_DSB = widgets.sliderWithSpinBox(isFloat=True)
-            maxElongation_DSB.setMinimum(0)
-            maxElongation_DSB.setMaximum(100)
-            maxElongation_DSB.setValue(3)
-            maxElongation_DSB.setSingleStep(0.5)
-        else:
-            maxElongation_DSB = QDoubleSpinBox()
-            maxElongation_DSB.setAlignment(Qt.AlignCenter)
-            maxElongation_DSB.setMinimum(0)
-            maxElongation_DSB.setMaximum(2147483647.0)
-            maxElongation_DSB.setValue(3)
-            maxElongation_DSB.setDecimals(1)
-            maxElongation_DSB.setSingleStep(1.0)
+        maxElongation_DSB = widgets.PostProcessSegmWidget(
+            0, 100, 3, useSliders, isFloat=True, normalize=False
+        )
+        maxElongation_DSB.setDecimals(1)
+        maxElongation_DSB.setSingleStep(1.0)
 
         txt = (
             '<b>Elongation</b> is the ratio between major and minor axis lengths. '
@@ -5798,9 +5771,6 @@ class postProcessSegmParams(QGroupBox):
         infoButton.desc = f'greater than "{label.text()}"'
         layout.addWidget(infoButton, row, 2)
         self.maxElongation_DSB = maxElongation_DSB
-
-        maxElongation_DSB.disableThisCheckbox = QCheckBox('Disable this filter')
-        layout.addWidget(maxElongation_DSB.disableThisCheckbox, row, 3)
 
         layout.setColumnStretch(1, 2)
 
