@@ -69,9 +69,7 @@ class segmWorker(QRunnable):
         self.SizeZ = mainWin.SizeZ
         self.model = mainWin.model
         self.model_name = mainWin.model_name
-        self.minSize = mainWin.minSize
-        self.minSolidity = mainWin.minSolidity
-        self.maxElongation = mainWin.maxElongation
+        self.removeArtefactsKwargs = mainWin.removeArtefactsKwargs
         self.applyPostProcessing = mainWin.applyPostProcessing
         self.save = mainWin.save
         self.segment2D_kwargs = mainWin.segment2D_kwargs
@@ -341,18 +339,12 @@ class segmWorker(QRunnable):
             if posData.SizeT > 1:
                 for t, lab in enumerate(lab_stack):
                     lab_cleaned = core.remove_artefacts(
-                        lab,
-                        min_solidity=self.minSolidity,
-                        min_area=self.minSize,
-                        max_elongation=self.maxElongation
+                        lab, **self.removeArtefactsKwargs
                     )
                     lab_stack[t] = lab_cleaned
             else:
                 lab_stack = core.remove_artefacts(
-                    lab_stack,
-                    min_solidity=self.minSolidity,
-                    min_area=self.minSize,
-                    max_elongation=self.maxElongation
+                    lab_stack, **self.removeArtefactsKwargs
                 )
 
         if posData.SizeT > 1 and self.do_tracking:
@@ -788,9 +780,7 @@ class segmWin(QMainWindow):
 
         if model_name != 'thresholding':
             self.segment2D_kwargs = win.segment2D_kwargs
-        self.minSize = win.minSize
-        self.minSolidity = win.minSolidity
-        self.maxElongation = win.maxElongation
+        self.removeArtefactsKwargs = win.artefactsGroupBox.kwargs()
         self.applyPostProcessing = win.applyPostProcessing
         self.secondChannelName = win.secondChannelName
 
@@ -883,11 +873,9 @@ class segmWin(QMainWindow):
         # Save hyperparams
         post_process_params = {
             'model': model_name,
-            'minSize': self.minSize,
-            'minSolidity': self.minSolidity,
-            'maxElongation': self.maxElongation,
             'applied_postprocessing': self.applyPostProcessing
         }
+        post_process_params = {**post_process_params, **self.removeArtefactsKwargs}
         posData.saveSegmHyperparams(self.segment2D_kwargs, post_process_params)
 
         # Ask ROI

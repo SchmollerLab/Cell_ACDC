@@ -1288,7 +1288,9 @@ def run():
     if not splashScreen.isVisible():
         splashScreen.show()
 
+    
     win = mainWin(app)
+    myutils.check_matplotlib_version(qparent=win)
     version = myutils.read_version()
     win.setVersion(version)
     win.launchWelcomeGuide()

@@ -70,12 +70,22 @@ def lab_replace_values(lab, rp, oldIDs, newIDs, in_place=True):
         lab[obj.slice][obj.image] = newIDs[idx]
     return lab
 
-def remove_artefacts(
-        labels, min_solidity=0.5, min_area=15, max_elongation=3,
-        return_delIDs=False
-    ):
+def remove_artefacts(labels, return_delIDs=False, **kwargs):
+    min_solidity = kwargs.get('min_solidity')
+    min_area = kwargs.get('min_area')
+    max_elongation = kwargs.get('max_elongation')
+    min_obj_no_zslices = kwargs.get('min_obj_no_zslices')
     if labels.ndim == 3:
         delIDs = set()
+        if min_obj_no_zslices is not None:
+            for obj in skimage.measure.regionprops(labels):
+                obj_no_zslices = np.sum(
+                    np.count_nonzero(obj.image, axis=(1, 2)).astype(bool)
+                )
+                if obj_no_zslices < min_obj_no_zslices:
+                    labels[obj.slice][obj.image] = 0
+                    delIDs.add(obj.label)
+        
         for z, lab in enumerate(labels):
             _result = remove_artefacts_lab2D(
                 lab, min_solidity, min_area, max_elongation,

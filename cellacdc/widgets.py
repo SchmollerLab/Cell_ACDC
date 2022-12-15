@@ -3898,6 +3898,13 @@ class QProgressBarWithETA(QProgressBar):
         QProgressBar.hide(self)
         self.ETA_label.hide()
 
+class NoneWidget:
+    def value():
+        return None
+    
+    def setValue(value):
+        return
+
 class sliderWithSpinBox(QWidget):
     sigValueChange = pyqtSignal(object)
     valueChanged = pyqtSignal(object)
@@ -4033,6 +4040,10 @@ class sliderWithSpinBox(QWidget):
 
     def value(self):
         return self.spinBox.value()
+    
+    def setDisabled(self, disabled) -> None:
+        self.slider.setDisabled(disabled)
+        self.spinBox.setDisabled(disabled)
 
 class BaseImageItem(pg.ImageItem):
     def __init__(
@@ -4110,73 +4121,115 @@ class labImageItem(pg.ImageItem):
             pg.ImageItem.setImage(self, img, **kargs)
 
 class PostProcessSegmSlider(sliderWithSpinBox):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, label=None, **kwargs):
         super().__init__(*args, **kwargs)
 
+        self.label = label
         self.checkbox = QCheckBox('Disable')
         self.layout.addWidget(self.checkbox, self.sliderCol, self.lastCol+1)
+        self.checkbox.toggled.connect(self.onCheckBoxToggled)
+    
+    def onCheckBoxToggled(self, checked: bool) -> None:
+        super().setDisabled(checked)
+        if self.label is not None:
+            self.label.setDisabled(checked)
+        self.onValueChanged(None)
+        self.onEditingFinished()
+    
+    def onValueChanged(self, value):
+        self.valueChanged.emit(value)
+    
+    def onEditingFinished(self):
+        self.editingFinished.emit()
+    
+    def value(self):
+        if self.checkbox.isChecked():
+            return None
+        else:
+            return super().value()
 
 class PostProcessSegmSpinbox(QWidget):
     valueChanged = pyqtSignal(int)
     editingFinished = pyqtSignal()
+    sigCheckboxToggled = pyqtSignal()
 
-    def __init__(self, *args, isFloat=False, **kwargs):
+    def __init__(self, *args, isFloat=False, label=None, **kwargs):
         super().__init__(*args, **kwargs)
 
         layout = QHBoxLayout()
 
         if isFloat:
-            self.spinbox = DoubleSpinBox()
+            self.spinBox = DoubleSpinBox()
         else:
-            self.spinbox = SpinBox()
+            self.spinBox = SpinBox()
 
         self.spinBox.valueChanged.connect(self.onValueChanged)
         self.spinBox.editingFinished.connect(self.onEditingFinished)
 
-        layout.addWidget(self.spinbox)
+        layout.addWidget(self.spinBox)
         self.checkbox = QCheckBox('Disable')
         layout.addWidget(self.checkbox)
         layout.setStretch(0,1)
         layout.setStretch(1,0)
 
+        self.label = label
+
+        self.checkbox.toggled.connect(self.onCheckBoxToggled)
+    
         self.setLayout(layout)
     
-    def onValueChange(self, value):
+    def onCheckBoxToggled(self, checked: bool) -> None:
+        self.spinBox.setDisabled(checked)
+        if self.label is not None:
+            self.label.setDisabled(checked)
+        self.onValueChanged(None)
+        self.onEditingFinished()
+    
+    def onValueChanged(self, value):
         self.valueChanged.emit(value)
     
     def onEditingFinished(self):
         self.editingFinished.emit()
 
     def maximum(self):
-        return self.spinbox.maximum()
+        return self.spinBox.maximum()
     
     def setValue(self, value):
-        self.spinbox.setValue(value)
+        self.spinBox.setValue(value)
     
     def setMaximum(self, max):
-        self.spinbox.setMaximum(max)
+        self.spinBox.setMaximum(max)
 
     def setSingleStep(self, step):
-        self.spinbox.setSingleStep(step)
+        self.spinBox.setSingleStep(step)
 
     def setMinimum(self, min):
-        self.spinbox.setMinimum(min)
+        self.spinBox.setMinimum(min)
 
     def setSingleStep(self, step):
-        self.spinbox.setSingleStep(step)
+        self.spinBox.setSingleStep(step)
+    
+    def setDecimals(self, decimals):
+        self.spinBox.setDecimals(decimals)
     
     def value(self):
-        return self.spinbox.value()
+        if self.checkbox.isChecked():
+            return None
+        else:
+            return self.spinBox.value()
 
 def PostProcessSegmWidget(
-        minimum, maximum, value, useSliders, isFloat=False, normalize=False
+        minimum, maximum, value, useSliders, isFloat=False, normalize=False,
+        label=None
     ):
     if useSliders:
         if normalize:
             maximum = int(maximum*100)
-        widget = PostProcessSegmSlider(normalize=normalize, isFloat=isFloat)
+        widget = PostProcessSegmSlider(
+            normalize=normalize, isFloat=isFloat, label=label
+        )
     else:
-        widget = PostProcessSegmSpinbox()
+        widget = PostProcessSegmSpinbox(label=label, isFloat=isFloat)
     widget.setMinimum(minimum)
     widget.setMaximum(maximum)
     widget.setValue(value)
