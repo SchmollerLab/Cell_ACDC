@@ -1504,23 +1504,51 @@ def install_package(pkg_name: str, note='', parent=None):
             inform_install_package_failed(pkg_name, parent=parent)
             raise e
 
+def check_matplotlib_version(qparent=None):
+    import pkg_resources
+    mpl_version = pkg_resources.get_distribution("matplotlib").version
+    mpl_version_digits = mpl_version.split('.')
+
+    mpl_version = float(f'{mpl_version_digits[0]}.{mpl_version_digits[1]}')
+    if mpl_version < 3.5:
+        cancel = install_package_msg('matplotlib', parent=qparent, upgrade=True)
+        if cancel:
+            raise ModuleNotFoundError(
+                f'User aborted "matplotlib" installation'
+            )
+        import subprocess
+        try:
+            subprocess.check_call(
+                [sys.executable, '-m', 'pip', 'install', '-U', 'matplotlib']
+            )
+        except Exception as e:
+            inform_install_package_failed('matplotlib', parent=qparent)
+            raise e
+            
+
 def inform_install_package_failed(pkg_name, parent=None):
+    install_command = f'<code>pip install --upgrade {pkg_name.lower()}</code>'
     txt = html_utils.paragraph(f"""
-        Unfortunately, <b>installation of</b> <code>{pkg_name}</code> <b>failed</b>.<br><br>
-        Please close Cell-ACDC and, with the <code>acdc</code> <b>environment ACTIVE</b>, 
+        Unfortunately, <b>installation of</b> <code>{pkg_name}</code> <b>returned an error</b>.<br><br>
+        Try restarting Cell-ACDC. If it doesn't work, 
+        please close Cell-ACDC and, with the <code>acdc</code> <b>environment ACTIVE</b>, 
         install <code>{pkg_name}</code> manually with the follwing command:<br><br>
-        <code>pip install {pkg_name.lower()}</code><br><br>
+        {install_command}<br><br>
         Thank you for your patience.
     """)
     msg = widgets.myMessageBox()
     msg.critical(parent, f'{pkg_name} installation failed', txt)
 
-def install_package_msg(pkg_name, note='', parent=None):
-    msg = widgets.myMessageBox()
+def install_package_msg(pkg_name, note='', parent=None, upgrade=False):
+    msg = widgets.myMessageBox(parent=parent)
+    if upgrade:
+        install_text = 'upgrade'
+    else:
+        install_text = 'install'
     if pkg_name == 'BayesianTracker':
         pkg_name = 'btrack'
     txt = html_utils.paragraph(f"""
-        Cell-ACDC is going to <b>download and install</b>
+        Cell-ACDC is going to <b>download and {install_text}</b>
         <code>{pkg_name}</code>.<br><br>
         Make sure you have an <b>active internet connection</b>,
         before continuing.<br>
@@ -1528,7 +1556,7 @@ def install_package_msg(pkg_name, note='', parent=None):
         You might have to <b>restart Cell-ACDC</b>.<br><br>
         <b>IMPORTANT:</b> If the installation fails please install
         <code>{pkg_name}</code> manually with the follwing command:<br><br>
-        <code>pip install {pkg_name.lower()}</code><br><br>
+        <code>pip install --upgrade {pkg_name.lower()}</code><br><br>
         Alternatively, you can cancel the process and try later.
     """)
     if note:

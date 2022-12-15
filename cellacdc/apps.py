@@ -5695,17 +5695,29 @@ class ComputeMetricsErrorsDialog(QBaseDialog):
         return super().showEvent(a0)
 
 class postProcessSegmParams(QGroupBox):
-    def __init__(self, title, useSliders=False, parent=None, maxSize=2147483646):
+    valueChanged = pyqtSignal(object)
+    editingFinished = pyqtSignal()
+
+    def __init__(
+            self, title, useSliders=False, parent=None, maxSize=None,
+            SizeZ=None
+        ):
         QGroupBox.__init__(self, title, parent)
         self.useSliders = useSliders
+        if maxSize is None:
+            maxSize=2147483647
 
         layout = QGridLayout()
+
+        self.controlWidgets = []
 
         row = 0
         label = QLabel("Minimum area (pixels) ")
         layout.addWidget(label, row, 0, alignment=Qt.AlignRight)
 
-        minSize_SB = widgets.PostProcessSegmWidget(1, maxSize, 10, useSliders)
+        minSize_SB = widgets.PostProcessSegmWidget(
+            1, 1000, 10, useSliders, label=label
+        )
         
         txt = (
             '<b>Area</b> is the total number of pixels in the segmented object.'
@@ -5719,6 +5731,7 @@ class postProcessSegmParams(QGroupBox):
         infoButton.desc = f'less than "{label.text()}"'
         layout.addWidget(infoButton, row, 2)
         self.minSize_SB = minSize_SB
+        self.controlWidgets.append(minSize_SB)
 
         # minSize_SB.disableThisCheckbox = QCheckBox('Disable this filter')
         # layout.addWidget(minSize_SB.disableThisCheckbox, row, 3)
@@ -5727,10 +5740,12 @@ class postProcessSegmParams(QGroupBox):
         label = QLabel("Minimum solidity (0-1) ")
         layout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         minSolidity_DSB = widgets.PostProcessSegmWidget(
-            0, 1.0, 0.5, useSliders, isFloat=True, normalize=True
+            0, 1.0, 0.5, useSliders, isFloat=True, normalize=True,
+            label=label
         )
         minSolidity_DSB.setValue(0.5)
         minSolidity_DSB.setSingleStep(0.1)
+        self.controlWidgets.append(minSolidity_DSB)
 
         txt = (
             '<b>Solidity</b> is a measure of convexity. A solidity of 1 means '
@@ -5752,7 +5767,8 @@ class postProcessSegmParams(QGroupBox):
         label = QLabel("Max elongation (1=circle) ")
         layout.addWidget(label, row, 0, alignment=Qt.AlignRight)
         maxElongation_DSB = widgets.PostProcessSegmWidget(
-            0, 100, 3, useSliders, isFloat=True, normalize=False
+            0, 100, 3, useSliders, isFloat=True, normalize=False,
+            label=label
         )
         maxElongation_DSB.setDecimals(1)
         maxElongation_DSB.setSingleStep(1.0)
@@ -5771,10 +5787,61 @@ class postProcessSegmParams(QGroupBox):
         infoButton.desc = f'greater than "{label.text()}"'
         layout.addWidget(infoButton, row, 2)
         self.maxElongation_DSB = maxElongation_DSB
+        self.controlWidgets.append(maxElongation_DSB)
+
+        if SizeZ is not None:
+            row += 1
+            label = QLabel("Minimum number of z-slices ")
+            layout.addWidget(label, row, 0, alignment=Qt.AlignRight)
+            minObjSizeZ_SB = widgets.PostProcessSegmWidget(
+                0, SizeZ, 3, useSliders, isFloat=False, normalize=False,
+                label=label
+            )
+
+            txt = (
+                '<b>Minimum number of z-slices</b> per object.'
+            )
+
+            layout.addWidget(minObjSizeZ_SB, row, 1)
+            infoButton = widgets.infoPushButton()
+            infoButton.clicked.connect(self.showInfo)
+            infoButton.tooltip = txt
+            infoButton.name = 'number of z-slices'
+            infoButton.desc = f'less than "{label.text()}"'
+            layout.addWidget(infoButton, row, 2)
+            self.minObjSizeZ_SB = minObjSizeZ_SB
+            self.controlWidgets.append(minObjSizeZ_SB)
+        else:
+            self.minObjSizeZ_SB = widgets.NoneWidget()
 
         layout.setColumnStretch(1, 2)
 
         self.setLayout(layout)
+
+        for widget in self.controlWidgets:
+            widget.valueChanged.connect(self.onValueChanged)
+            widget.editingFinished.connect(self.onEditingFinished)
+    
+    def restoreDefault(self):
+        self.minSolidity_DSB.setValue(0.5)
+        self.minSize_SB.setValue(10)
+        self.maxElongation_DSB.setValue(3)
+        self.minObjSizeZ_SB.setValue(3)
+    
+    def kwargs(self):
+        kwargs = {
+            'min_solidity': self.minSolidity_DSB.value(),
+            'min_area': self.minSize_SB.value(),
+            'max_elongation': self.maxElongation_DSB.value(),
+            'min_obj_no_zslices': self.minObjSizeZ_SB.value()
+        }
+        return kwargs
+    
+    def onValueChanged(self, value):
+        self.valueChanged.emit(value)
+    
+    def onEditingFinished(self):
+        self.editingFinished.emit()
     
     def showInfo(self):
         title = f'{self.sender().text()} info'
@@ -5801,7 +5868,7 @@ class postProcessSegmDialog(QBaseDialog):
     sigClosed = pyqtSignal()
     sigValueChanged = pyqtSignal(object, object)
 
-    def __init__(self, mainWin=None, useSliders=True):
+    def __init__(self, mainWin=None, useSliders=True, SizeZ=None, maxSize=None):
         super().__init__(mainWin)
         self.cancel = True
         self.mainWin = mainWin
@@ -5817,21 +5884,13 @@ class postProcessSegmDialog(QBaseDialog):
         mainLayout = QVBoxLayout()
         buttonsLayout = QHBoxLayout()
 
-        artefactsGroupBox = postProcessSegmParams(
-            'Post-processing parameters', useSliders=useSliders
+        self.artefactsGroupBox = postProcessSegmParams(
+            'Post-processing parameters', useSliders=useSliders, SizeZ=SizeZ,
+            maxSize=maxSize
         )
 
-        self.minSize_SB = artefactsGroupBox.minSize_SB
-        self.minSolidity_DSB = artefactsGroupBox.minSolidity_DSB
-        self.maxElongation_DSB = artefactsGroupBox.maxElongation_DSB
-
-        self.minSize_SB.valueChanged.connect(self.valueChanged)
-        self.minSolidity_DSB.valueChanged.connect(self.valueChanged)
-        self.maxElongation_DSB.valueChanged.connect(self.valueChanged)
-
-        self.minSize_SB.editingFinished.connect(self.onEditingFinished)
-        self.minSolidity_DSB.editingFinished.connect(self.onEditingFinished)
-        self.maxElongation_DSB.editingFinished.connect(self.onEditingFinished)
+        self.artefactsGroupBox.valueChanged.connect(self.valueChanged)
+        self.artefactsGroupBox.editingFinished.connect(self.onEditingFinished)
 
         if self.isTimelapse:
             applyAllButton = widgets.okPushButton('Apply to all frames...')
@@ -5857,7 +5916,7 @@ class postProcessSegmDialog(QBaseDialog):
         buttonsLayout.addWidget(cancelButton)
         buttonsLayout.setContentsMargins(0,10,0,0)
 
-        mainLayout.addWidget(artefactsGroupBox)
+        mainLayout.addWidget(self.artefactsGroupBox)
         mainLayout.addLayout(buttonsLayout)
 
         self.setLayout(mainLayout)
@@ -5866,7 +5925,6 @@ class postProcessSegmDialog(QBaseDialog):
 
         if mainWin is not None:
             self.setPosData()
-            self.apply_cb()
 
     def setPosData(self):
         if self.mainWin is None:
@@ -5884,21 +5942,13 @@ class postProcessSegmDialog(QBaseDialog):
         if self.mainWin is None:
             return
 
-        minSize = self.minSize_SB.value()
-        minSolidity = self.minSolidity_DSB.value()
-        maxElongation = self.maxElongation_DSB.value()
-
         self.mainWin.warnEditingWithCca_df('post-processing segmentation mask')
 
         if origLab is None:
             origLab = self.origLab.copy()
 
         lab, delIDs = core.remove_artefacts(
-            origLab,
-            min_solidity=minSolidity,
-            min_area=minSize,
-            max_elongation=maxElongation,
-            return_delIDs=True
+            origLab, return_delIDs=True, **self.artefactsGroupBox.kwargs()
         )
 
         return lab, delIDs
@@ -9111,18 +9161,23 @@ class QDialogTrackerParams(QDialog):
         if postProcessSection not in self.configPars.sections():
             return
 
-        minSize = self.configPars.getint(postProcessSection, 'minSize')
+        minSize = self.configPars.getint(postProcessSection, 'min_area')
         self.minSize_SB.setValue(minSize)
 
         minSolidity = self.configPars.getfloat(
-            postProcessSection, 'minSolidity'
+            postProcessSection, 'min_solidity'
         )
         self.minSolidity_DSB.setValue(minSolidity)
 
         maxElongation = self.configPars.getfloat(
-            postProcessSection, 'maxElongation'
+            postProcessSection, 'max_elongation'
         )
         self.maxElongation_DSB.setValue(maxElongation)
+
+        minObjSizeZ = self.configPars.getint(
+            postProcessSection, 'min_obj_no_zslices'
+        )
+        self.minObjSizeZ_SB.setValue(minObjSizeZ)
 
         applyPostProcessing = self.configPars.getboolean(
             postProcessSection, 'applyPostProcessing'
@@ -9200,7 +9255,7 @@ class QDialogTrackerParams(QDialog):
 class QDialogModelParams(QDialog):
     def __init__(
             self, init_params, segment_params, model_name,
-            url=None, parent=None, initLastParams=True
+            url=None, parent=None, initLastParams=True, SizeZ=None
         ):
         self.cancel = True
         super().__init__(parent)
@@ -9275,20 +9330,11 @@ class QDialogModelParams(QDialog):
 
         # Add minimum size spinbox whihc is valid for all models
         artefactsGroupBox = postProcessSegmParams(
-            'Post-processing segmentation parameters'
+            'Post-processing segmentation parameters', SizeZ=SizeZ
         )
         artefactsGroupBox.setCheckable(True)
         artefactsGroupBox.setChecked(True)
         self.artefactsGroupBox = artefactsGroupBox
-
-        self.minSize_SB = artefactsGroupBox.minSize_SB
-        self.minSolidity_DSB = artefactsGroupBox.minSolidity_DSB
-        self.maxElongation_DSB = artefactsGroupBox.maxElongation_DSB
-
-        self.minSize_SB.default = self.minSize_SB.value()
-        self.minSolidity_DSB.default = self.minSolidity_DSB.value()
-        self.maxElongation_DSB.default = self.maxElongation_DSB.value()
-        self.artefactsGroupBox.default = True
 
         mainLayout.addSpacing(15)
         mainLayout.addStretch(1)
@@ -9445,10 +9491,7 @@ class QDialogModelParams(QDialog):
                 argWidget.valueSetter(widget.notButton, True)
 
     def restoreDefaultPostprocess(self):
-        self.minSize_SB.setValue(self.minSize_SB.default)
-        self.minSolidity_DSB.setValue(self.minSolidity_DSB.default)
-        self.maxElongation_DSB.setValue(self.maxElongation_DSB.default)
-        self.artefactsGroupBox.setChecked(self.artefactsGroupBox.default)
+        self.artefactsGroupBox.restoreDefault()
 
     def readLastSelection(self):
         self.ini_path = os.path.join(temp_path, 'last_params_segm_models.ini')

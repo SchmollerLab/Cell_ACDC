@@ -134,10 +134,7 @@ class LabelRoiWorker(QObject):
                 )
                 if self.Gui.applyPostProcessing:
                     lab = core.remove_artefacts(
-                        lab,
-                        min_solidity=self.Gui.minSolidity,
-                        min_area=self.Gui.minSize,
-                        max_elongation=self.Gui.maxElongation
+                        lab, **self.Gui.removeArtefactsKwargs
                     )
                 self.sigLabellingDone.emit(lab)
                 self.started = False
@@ -454,10 +451,7 @@ class segmWorker(QObject):
         _lab = self.mainWin.model.segment(img, **self.mainWin.segment2D_kwargs)
         if self.mainWin.applyPostProcessing:
             _lab = core.remove_artefacts(
-                _lab,
-                min_solidity=self.mainWin.minSolidity,
-                min_area=self.mainWin.minSize,
-                max_elongation=self.mainWin.maxElongation
+                _lab, **self.mainWin.removeArtefactsKwargs
             )
         
         if self.z_range is not None:
@@ -484,9 +478,7 @@ class segmVideoWorker(QObject):
 
     def __init__(self, posData, paramWin, model, startFrameNum, stopFrameNum):
         QObject.__init__(self)
-        self.minSize = paramWin.minSize
-        self.minSolidity = paramWin.minSolidity
-        self.maxElongation = paramWin.maxElongation
+        self.removeArtefactsKwargs = paramWin.artefactsGroupBox.kwargs()
         self.applyPostProcessing = paramWin.applyPostProcessing
         self.segment2D_kwargs = paramWin.segment2D_kwargs
         self.secondChannelName = paramWin.secondChannelName
@@ -506,10 +498,7 @@ class segmVideoWorker(QObject):
             lab = self.model.segment(img, **self.segment2D_kwargs)
             if self.applyPostProcessing:
                 lab = core.remove_artefacts(
-                    lab,
-                    min_solidity=self.minSolidity,
-                    min_area=self.minSize,
-                    max_elongation=self.maxElongation
+                    lab, **self.removeArtefactsKwargs
                 )
             self.posData.segm_data[frame_i] = lab
             self.progressBar.emit(1)
@@ -1041,7 +1030,7 @@ class loadDataWorker(QObject):
                 os.path.exists(posData.segm_npz_temp_path)
                 or os.path.exists(posData.acdc_output_temp_csv_path)
             )
-            if isRecoveredDataPresent:
+            if isRecoveredDataPresent and not self.mainWin.newSegmEndName:
                 if not self.recoveryAsked:
                     self.mutex.lock()
                     self.signals.sigRecovery.emit(posData)

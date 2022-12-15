@@ -10424,8 +10424,14 @@ class guiWin(QMainWindow):
         self.randomWalkerWin.setSize()
 
     def postProcessSegm(self, checked):
+        if self.isSegm3D:
+            SizeZ = max([posData.SizeZ for posData in self.data])
+        else:
+            SizeZ = None
         if checked:
-            self.postProcessSegmWin = apps.postProcessSegmDialog(self)
+            self.postProcessSegmWin = apps.postProcessSegmDialog(
+                SizeZ=SizeZ, mainWin=self
+            )
             self.postProcessSegmWin.sigClosed.connect(
                 self.postProcessSegmWinClosed
             )
@@ -10433,6 +10439,7 @@ class guiWin(QMainWindow):
                 self.postProcessSegmValueChanged
             )
             self.postProcessSegmWin.show()
+            self.postProcessSegmWin.valueChanged(None)
         else:
             self.postProcessSegmWin.close()
             self.postProcessSegmWin = None
@@ -10458,6 +10465,7 @@ class guiWin(QMainWindow):
             try:
                 self.ax1_LabelItemsIDs[delID-1].tempClearText()
             except Exception as e:
+                traceback.print_exc()
                 pass
             try:
                 self.ax2_LabelItemsIDs[delID-1].tempClearText()
@@ -10983,9 +10991,7 @@ class guiWin(QMainWindow):
 
             if model_name != 'thresholding':
                 self.segment2D_kwargs = win.segment2D_kwargs
-            self.minSize = win.minSize
-            self.minSolidity = win.minSolidity
-            self.maxElongation = win.maxElongation
+            self.removeArtefactsKwargs = win.artefactsGroupBox.kwargs()
             self.applyPostProcessing = win.applyPostProcessing
             self.secondChannelName = win.secondChannelName
 
@@ -10998,11 +11004,9 @@ class guiWin(QMainWindow):
 
             postProcessParams = {
                 'model': model_name,
-                'minSize': self.minSize,
-                'minSolidity': self.minSolidity,
-                'maxElongation': self.maxElongation,
                 'applied_postprocessing': self.applyPostProcessing
             }
+            postProcessParams = {**postProcessParams, **self.removeArtefactsKwargs}
             posData.saveSegmHyperparams(self.segment2D_kwargs, postProcessParams)
         else:
             model = self.models[idx]
