@@ -9632,11 +9632,12 @@ class QDialogModelParams(QDialog):
             self.configPars[f'{self.model_name}.segment'][key] = str(val)
 
         self.configPars[f'{self.model_name}.postprocess'] = {}
+        postProcKwargs = self.artefactsGroupBox.kwargs()
         postProcessConfig = self.configPars[f'{self.model_name}.postprocess']
-        postProcessConfig['minSize'] = str(self.minSize)
-        postProcessConfig['minSolidity'] = str(self.minSolidity)
-        postProcessConfig['maxElongation'] = str(self.maxElongation)
-        postProcessConfig['applyPostProcessing'] = str(self.applyPostProcessing)
+        postProcessConfig['minSize'] = str(postProcKwargs['min_area'])
+        postProcessConfig['minSolidity'] = str(postProcKwargs['min_solidity'])
+        postProcessConfig['maxElongation'] = str(postProcKwargs['max_elongation'])
+        postProcessConfig['applyPostProcessing'] = str(postProcKwargs['min_obj_no_zslices'])
 
         with open(self.ini_path, 'w') as configfile:
             self.configPars.write(configfile)
