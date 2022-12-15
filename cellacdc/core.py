@@ -105,7 +105,7 @@ def remove_artefacts(
         return labels
 
 def remove_artefacts_lab2D(
-        lab, min_solidity, min_area, max_elongation,
+        lab, min_solidity=None, min_area=None, max_elongation=None,
         return_delIDs=False
     ):
     """
@@ -116,25 +116,28 @@ def remove_artefacts_lab2D(
     if return_delIDs:
         delIDs = []
     for obj in rp:
-        if obj.area < min_area:
-            lab[obj.slice][obj.image] = 0
-            if return_delIDs:
-                delIDs.append(obj.label)
-            continue
+        if min_area is not None:
+            if obj.area < min_area:
+                lab[obj.slice][obj.image] = 0
+                if return_delIDs:
+                    delIDs.append(obj.label)
+                continue
 
-        if obj.solidity < min_solidity:
-            lab[obj.slice][obj.image] = 0
-            if return_delIDs:
-                delIDs.append(obj.label)
-            continue
+        if min_solidity is not None:
+            if obj.solidity < min_solidity:
+                lab[obj.slice][obj.image] = 0
+                if return_delIDs:
+                    delIDs.append(obj.label)
+                continue
 
-        # NOTE: single pixel horizontal or vertical lines minor_axis_length=0
-        minor_axis_length = max(1, obj.minor_axis_length)
-        elongation = obj.major_axis_length/minor_axis_length
-        if elongation > max_elongation:
-            lab[obj.slice][obj.image] = 0
-            if return_delIDs:
-                delIDs.append(obj.label)
+        if max_elongation is not None:
+            # NOTE: single pixel horizontal or vertical lines minor_axis_length=0
+            minor_axis_length = max(1, obj.minor_axis_length)
+            elongation = obj.major_axis_length/minor_axis_length
+            if elongation > max_elongation:
+                lab[obj.slice][obj.image] = 0
+                if return_delIDs:
+                    delIDs.append(obj.label)
 
     if return_delIDs:
         return lab, delIDs

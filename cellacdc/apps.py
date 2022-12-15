@@ -5730,6 +5730,9 @@ class postProcessSegmParams(QGroupBox):
         layout.addWidget(infoButton, row, 2)
         self.minSize_SB = minSize_SB
 
+        minSize_SB.disableThisCheckbox = QCheckBox('Disable this filter')
+        layout.addWidget(minSize_SB.disableThisCheckbox, row, 3)
+
         row += 1
         label = QLabel("Minimum solidity (0-1) ")
         layout.addWidget(label, row, 0, alignment=Qt.AlignRight)
@@ -5759,6 +5762,9 @@ class postProcessSegmParams(QGroupBox):
         infoButton.desc = f'less than "{label.text()}"'
         layout.addWidget(infoButton, row, 2)
         self.minSolidity_DSB = minSolidity_DSB
+
+        minSolidity_DSB.disableThisCheckbox = QCheckBox('Disable this filter')
+        layout.addWidget(minSolidity_DSB.disableThisCheckbox, row, 3)
 
         row += 1
         label = QLabel("Max elongation (1=circle) ")
@@ -5792,6 +5798,9 @@ class postProcessSegmParams(QGroupBox):
         infoButton.desc = f'greater than "{label.text()}"'
         layout.addWidget(infoButton, row, 2)
         self.maxElongation_DSB = maxElongation_DSB
+
+        maxElongation_DSB.disableThisCheckbox = QCheckBox('Disable this filter')
+        layout.addWidget(maxElongation_DSB.disableThisCheckbox, row, 3)
 
         layout.setColumnStretch(1, 2)
 
@@ -5855,17 +5864,17 @@ class postProcessSegmDialog(QBaseDialog):
         self.maxElongation_DSB.editingFinished.connect(self.onEditingFinished)
 
         if self.isTimelapse:
-            applyAllButton = QPushButton('Apply to all frames...')
+            applyAllButton = widgets.okPushButton('Apply to all frames...')
             applyAllButton.clicked.connect(self.applyAll_cb)
-            applyButton = QPushButton('Apply')
+            applyButton = widgets.okPushButton('Apply')
             applyButton.clicked.connect(self.apply_cb)
         elif self.isMultiPos:
             applyAllButton = QPushButton('Apply to all Positions...')
             applyAllButton.clicked.connect(self.applyAll_cb)
-            applyButton = QPushButton('Apply')
+            applyButton = widgets.okPushButton('Apply')
             applyButton.clicked.connect(self.apply_cb)
         else:
-            applyAllButton = QPushButton('Apply')
+            applyAllButton = widgets.okPushButton('Apply')
             applyAllButton.clicked.connect(self.ok_cb)
             applyButton = None
 
