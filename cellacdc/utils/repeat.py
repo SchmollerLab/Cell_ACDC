@@ -1,10 +1,11 @@
 import os
 import sys
 import traceback
+import shutil
 
 from PyQt5.QtCore import Qt, QThread, QSize
 from PyQt5.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QFileDialog
+    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QFileDialog, QListWidgetItem 
 )
 from PyQt5 import QtGui
 
@@ -36,7 +37,7 @@ class repeatDataPrepWindow(QDialog):
         instructions = [
             'Press <b>start<b> button',
             '<b>Select experiment</b> folder or specific Position folder',
-            'Select which <b>channels</b> to reapply data prep to',
+            'Select which <b>channels</b> or <b>un-prepped .tif file</b> to apply data prep to',
             '<b>Wait</b> until process ends'
         ]
 
@@ -177,17 +178,69 @@ class repeatDataPrepWindow(QDialog):
         self.thread.started.connect(self.worker.run)
         self.thread.start()
     
-    def selectChannels(self, ch_name_selector, ch_names):
-        win = widgets.QDialogListbox(
+    def selectChannels(self, ch_name_selector, ch_names, imagesPath, basename):
+        if basename is not None:
+            self.ch_names = ch_names
+            self.basename = basename
+            self.imagesPath = imagesPath
+            browseButton = widgets.browseFileButton(
+                'Select .tif file to add and prep', start_dir=imagesPath,
+                title='Select .tif file to add and prep', ext={'TIFF files': '.tif'}
+            )
+            browseButton.sigPathSelected.connect(self.selectTifFileToAdd)
+            additionalButtons = (browseButton,)
+        else:
+            additionalButtons = []
+        self.selectChannelWindow = widgets.QDialogListbox(
             'Select channel',
             'Select channel names to process:\n',
-            ch_names, multiSelection=True, parent=self
+            ch_names, multiSelection=True, parent=self, 
+            additionalButtons=additionalButtons
+        )
+        self.selectChannelWindow.exec_()
+        if self.selectChannelWindow.cancel:
+            self.worker.abort = True
+        self.worker.selectedChannels = self.selectChannelWindow.selectedItemsText
+        self.worker.waitCond.wakeAll()
+    
+    def selectTifFileToAdd(self, tif_file_path):
+        tif_filename = os.path.splitext(os.path.basename(tif_file_path))[0]
+        win = apps.filenameDialog(
+            ext='.tif', basename=self.basename, 
+            title='Insert a name for new channel', 
+            hintText='Insert a name for the new channel', 
+            allowEmpty=False, defaultEntry=tif_filename, 
+            existingNames=self.ch_names, parent=self.selectChannelWindow
         )
         win.exec_()
         if win.cancel:
-            self.worker.abort = True
-        self.worker.selectedChannels = win.selectedItemsText
-        self.worker.waitCond.wakeAll()
+            return
+        
+        newTifFilePath = os.path.join(self.imagesPath, win.filename)
+        try:
+            self.logger.info(f'Copying and renaming "{tif_filename}.tif" file...')
+            shutil.copy2(tif_file_path, newTifFilePath)
+        except Exception as e:
+            error = traceback.format_exc()
+            self.warnCopyTifFileFailed(tif_file_path, newTifFilePath, error)
+            return
+        newChannel = win.entryText
+        newItem = QListWidgetItem(newChannel)
+        newItem.setSelected(True)
+        self.selectChannelWindow.listBox.addItem(newItem)
+    
+    def warnCopyTifFileFailed(self, tif_file_path, newTifFilePath, error):
+        tifFilename = os.path.basename(tif_file_path)
+        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        txt = html_utils.paragraph(f"""
+            Unfortunately, <b>copying and renaming</b> the file 
+            <code>{tifFilename}</code> <b>failed</b> (see error detail below).<br><br>
+            Please, <b>manually copy the file</b> to the following location and then try 
+            again.<br><br>
+            Copy to: <code>{newTifFilePath}</code>
+        """)
+        msg.setDetailedText(error)
+        msg.critical(self.selectChannelWindow, 'Copy .tif file failed', txt)
     
     def criticalNotValidFolder(self, path: os.PathLike):
         txt = html_utils.paragraph(

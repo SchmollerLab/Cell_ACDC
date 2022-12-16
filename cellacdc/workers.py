@@ -1094,7 +1094,7 @@ class reapplyDataPrepWorker(QObject):
     initPbar = pyqtSignal(int)
     updatePbar = pyqtSignal()
     sigCriticalNoChannels = pyqtSignal(str)
-    sigSelectChannels = pyqtSignal(object, object)
+    sigSelectChannels = pyqtSignal(object, object, object, str)
 
     def __init__(self, expPath, posFoldernames):
         super().__init__()
@@ -1159,7 +1159,15 @@ class reapplyDataPrepWorker(QObject):
                     self.sigCriticalNoChannels.emit(imagesPath)
                     break
                 self.mutex.lock()
-                self.sigSelectChannels.emit(ch_name_selector, ch_names)
+                if len(self.posFoldernames) == 1:
+                    # User selected only one pos --> allow selecting and adding
+                    # and external .tif file that will be renamed with the basename
+                    basename = ch_name_selector.basename
+                else:
+                    basename = None
+                self.sigSelectChannels.emit(
+                    ch_name_selector, ch_names, imagesPath, basename
+                )
                 self.waitCond.wait(self.mutex)
                 self.mutex.unlock()
                 if self.abort:

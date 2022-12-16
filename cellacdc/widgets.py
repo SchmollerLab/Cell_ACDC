@@ -853,10 +853,13 @@ class QDialogListbox(QDialog):
         if additionalButtons:
             self._additionalButtons = []
             for button in additionalButtons:
-                _button, isCancelButton = getPushButton(button)
-                self._additionalButtons.append(_button)
-                bottomLayout.addWidget(_button)
-                _button.clicked.connect(self.ok_cb)
+                if isinstance(button, str):
+                    _button, isCancelButton = getPushButton(button)
+                    self._additionalButtons.append(_button)
+                    bottomLayout.addWidget(_button)
+                    _button.clicked.connect(self.ok_cb)
+                else:
+                    bottomLayout.addWidget(button)
 
         bottomLayout.addWidget(okButton)
         bottomLayout.setContentsMargins(0, 10, 0, 0)
