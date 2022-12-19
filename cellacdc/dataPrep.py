@@ -1010,9 +1010,7 @@ class dataPrepWin(QMainWindow):
 
                 self.logger.info(f'Saving: {tif}')
                 temp_tif = self.getTempfilePath(tif)
-                self.imagej_tiffwriter(
-                    temp_tif, npz_data, metadata, posData
-                )
+                myutils.imagej_tiffwriter(temp_tif, npz_data)
                 self.moveTempFile(temp_tif, tif)
 
             # Save segm.npz
@@ -1103,31 +1101,6 @@ class dataPrepWin(QMainWindow):
             buttonsTexts=('Cancel', 'Yes, crop please.')
         )
         return msg.cancel
-
-
-    def imagej_tiffwriter(self, new_path, data, metadata, posData):
-        if data.dtype != np.uint8 or data.dtype != np.uint16:
-            data = skimage.img_as_uint(data)
-        with TiffWriter(new_path, imagej=True, bigtiff=True) as new_tif:
-            if posData.SizeZ > 1 and posData.SizeT > 1:
-                # 3D data over time
-                T, Z, Y, X = data.shape
-            elif posData.SizeZ == 1 and posData.SizeT > 1:
-                # 2D data over time
-                T, Y, X = data.shape
-                Z = 1
-            elif posData.SizeZ > 1 and posData.SizeT == 1:
-                # Single 3D data
-                Z, Y, X = data.shape
-                T = 1
-            elif posData.SizeZ == 1 and posData.SizeT == 1:
-                # Single 2D data
-                Y, X = data.shape
-                T, Z = 1, 1
-            data.shape = T, Z, 1, Y, X, 1  # imageJ format should always have TZCYXS data shape
-            if metadata is None:
-                metadata = {}
-            new_tif.save(data, metadata=metadata)
 
     def getDefaultROI(self):
         Y, X = self.img.image.shape
@@ -1784,8 +1757,7 @@ class dataPrepWin(QMainWindow):
 
                     self.logger.info(f'Saving: {tif}')
                     temp_tif = self.getTempfilePath(tif)
-                    self.imagej_tiffwriter(temp_tif, aligned_frames,
-                                           metadata, posData)
+                    myutils.imagej_tiffwriter(temp_tif, aligned_frames)
                     self.moveTempFile(temp_tif, tif)
                 posData.img_data = skimage.io.imread(tif)
 
@@ -1825,8 +1797,7 @@ class dataPrepWin(QMainWindow):
 
                     self.logger.info(f'Saving: {tif}')
                     temp_tif = self.getTempfilePath(tif)
-                    self.imagej_tiffwriter(temp_tif, aligned_frames,
-                                           metadata, posData)
+                    myutils.imagej_tiffwriter(temp_tif, aligned_frames)
                     self.moveTempFile(temp_tif, tif)
 
         # Align segmentation data accordingly

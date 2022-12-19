@@ -1196,19 +1196,13 @@ def download_model(model_name):
         return False
 
 def imagej_tiffwriter(
-        new_path, data, metadata: dict, SizeT, SizeZ,
+        new_path, data, metadata: dict=None, SizeT=None, SizeZ=None,
         imagej=True
     ):
     if data.dtype != np.uint8 and data.dtype != np.uint16:
         data = scale_float(data)
         data = skimage.img_as_uint(data)
     with TiffWriter(new_path, bigtiff=True) as new_tif:
-        if not imagej:
-            new_tif.save(data)
-            return
-
-        if metadata is None:
-            metadata = {}
         new_tif.save(data)
 
 def from_lab_to_imagej_rois(lab, ImagejRoi, t=0, SizeT=1, max_ID=None):
