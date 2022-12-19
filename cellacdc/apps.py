@@ -1504,7 +1504,7 @@ class filenameDialog(QDialog):
         
         if not self.allowEmpty and not self._text():
             msg = widgets.myMessageBox()
-            msg.warning(
+            msg.critical(
                 self, 'Empty text', 
                 html_utils.paragraph('Text entry field <b>cannot be empty</b>')
             )
@@ -3595,9 +3595,11 @@ class QDialogWorkerProgress(QDialog):
         self.setGeometry(left, top, width, height)
 
 class QDialogCombobox(QDialog):
-    def __init__(self, title, ComboBoxItems, informativeText,
-                 CbLabel='Select value:  ', parent=None,
-                 defaultChannelName=None, iconPixmap=None):
+    def __init__(
+            self, title, ComboBoxItems, informativeText,
+            CbLabel='Select value:  ', parent=None,
+            defaultChannelName=None, iconPixmap=None, centeredCombobox=False
+        ):
         self.cancel = True
         self.selectedItemText = ''
         self.selectedItemIdx = None
@@ -3626,7 +3628,10 @@ class QDialogCombobox(QDialog):
             label = QLabel(CbLabel)
             topLayout.addWidget(label, alignment=Qt.AlignRight)
 
-        combobox = QComboBox()
+        if centeredCombobox:
+            combobox = widgets.QCenteredComboBox()
+        else:
+            combobox = QComboBox()
         combobox.addItems(ComboBoxItems)
         if defaultChannelName is not None and defaultChannelName in ComboBoxItems:
             combobox.setCurrentText(defaultChannelName)
@@ -7353,7 +7358,8 @@ class QLineEditDialog(QDialog):
             self, title='Entry messagebox', msg='Entry value',
             defaultTxt='', parent=None, allowedValues=None,
             warnLastFrame=False, isInteger=False, isFloat=False,
-            stretchEntry=True
+            stretchEntry=True, allowEmpty=True, allowedTextEntries=None, 
+            allowText=False
         ):
         QDialog.__init__(self, parent)
 
@@ -7362,7 +7368,10 @@ class QLineEditDialog(QDialog):
         self.allowedValues = allowedValues
         self.warnLastFrame = warnLastFrame
         self.isFloat = isFloat
+        self.allowEmpty = allowEmpty
         self.isInteger = isInteger
+        self.allowedTextEntries = allowedTextEntries
+        self.allowText = allowText
         if allowedValues and warnLastFrame:
             self.maxValue = max(allowedValues)
 
@@ -7403,7 +7412,8 @@ class QLineEditDialog(QDialog):
         else:
             ID_QLineEdit = QLineEdit()
             ID_QLineEdit.setText(defaultTxt)
-            ID_QLineEdit.textChanged[str].connect(self.ID_LineEdit_cb)
+            if not self.allowText:
+                ID_QLineEdit.textChanged[str].connect(self.ID_LineEdit_cb)
         ID_QLineEdit.setFont(font)
         ID_QLineEdit.setAlignment(Qt.AlignCenter)
 
@@ -7494,6 +7504,23 @@ class QLineEditDialog(QDialog):
         return msg.cancel
 
     def ok_cb(self, event):
+        if not self.allowEmpty and not self.ID_QLineEdit.text():
+            msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+            msg.critical(
+                self, 'Empty text', 
+                html_utils.paragraph('Text entry field <b>cannot be empty</b>')
+            )
+            return
+        if self.allowedTextEntries is not None:
+            if self.ID_QLineEdit.text() not in self.allowedTextEntries:
+                msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+                txt = html_utils.paragraph(
+                    f'"{self.ID_QLineEdit.text()}" is not a valid entry.<br><br>'
+                    'Valid entries are:<br>'
+                    f'{html_utils.to_list(self.allowedTextEntries)}'
+                )
+                msg.critical(self, 'Not a valid entry', txt)
+                return
         if self.allowedValues:
             if self.notValidLabel.text():
                 return

@@ -1110,7 +1110,7 @@ class reapplyDataPrepWorker(QObject):
             f'but it was not found: "{path}"'
         )
     
-    def saveBkgrData(self, imageData, posData):
+    def saveBkgrData(self, imageData, posData, isAligned=False):
         bkgrROI_data = {}
         for r, roi in enumerate(posData.bkgrROIs):
             xl, yt = [int(round(c)) for c in roi.pos()]
@@ -1130,13 +1130,18 @@ class reapplyDataPrepWorker(QObject):
                 bkgr_data = imageData[yt:yt+h, xl:xl+w]
             bkgrROI_data[f'roi{r}_data'] = bkgr_data
 
-        if bkgrROI_data:
+        if not bkgrROI_data:
+            return
+
+        if isAligned:
+            bkgr_data_fn = f'{posData.filename}_aligned_bkgrRoiData.npz'
+        else:
             bkgr_data_fn = f'{posData.filename}_bkgrRoiData.npz'
-            bkgr_data_path = os.path.join(posData.images_path, bkgr_data_fn)
-            self.progress.emit('Saving background data to:')
-            self.progress.emit(bkgr_data_path)
-            np.savez_compressed(bkgr_data_path, **bkgrROI_data)
-    
+        bkgr_data_path = os.path.join(posData.images_path, bkgr_data_fn)
+        self.progress.emit('Saving background data to:')
+        self.progress.emit(bkgr_data_path)
+        np.savez_compressed(bkgr_data_path, **bkgrROI_data)
+
     def run(self):
         ch_name_selector = prompts.select_channel_name(
             which_channel='segm', allow_abort=False
@@ -1195,6 +1200,7 @@ class reapplyDataPrepWorker(QObject):
                 imageData = posData.img_data
 
                 prepped = False
+                isAligned = False
                 # Align
                 if posData.loaded_shifts is not None:
                     self.progress.emit('Aligning frames...')
@@ -1205,13 +1211,14 @@ class reapplyDataPrepWorker(QObject):
                         align_func = core.align_frames_2D 
                     imageData, _ = align_func(imageData, user_shifts=shifts)
                     prepped = True
+                    isAligned = True
                 
                 # Crop and save background
                 if posData.dataPrep_ROIcoords is not None:
                     df = posData.dataPrep_ROIcoords
                     isCropped = int(df.at['cropped', 'value']) == 1
                     if isCropped:
-                        self.saveBkgrData(posData)
+                        self.saveBkgrData(imageData, posData, isAligned)
                         self.progress.emit('Cropping...')
                         x0 = int(df.at['x_left', 'value']) 
                         y0 = int(df.at['y_top', 'value']) 

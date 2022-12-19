@@ -2125,6 +2125,16 @@ class dataPrepWin(QMainWindow):
             ch_names, warn = (
                 ch_name_selector.get_available_channels(filenames, images_path)
             )
+            ch_names = ch_name_selector.askChannelName(
+                filenames, images_path, warn, ch_names
+            )
+            if ch_name_selector.was_aborted:
+                self.titleLabel.setText(
+                    'File --> Open or Open recent to start the process',
+                    color='w')
+                self.openAction.setEnabled(True)
+                return
+            
             if not ch_names:
                 self.criticalNoTifFound(images_path)
             elif len(ch_names) > 1:

@@ -329,6 +329,24 @@ def pd_bool_to_int(acdc_df, colsToCast=None, csv_path=None, inplace=True):
         acdc_df.to_csv(csv_path)
     return acdc_df
 
+def get_posData_metadata(images_path, basename):
+    # First check if metadata.csv already has the channel names
+    for file in myutils.listdir(images_path):
+        if file.endswith('metadata.csv'):
+            metadata_csv_path = os.path.join(images_path, file)
+            df_metadata = pd.read_csv(metadata_csv_path).set_index('Description')
+            break
+    else:
+        df_metadata = (
+            pd.DataFrame(
+                columns=['Description', 'values']).set_index('Description')
+            )
+        if basename.endswith('_'):
+            basename = basename[:-1]
+        metadata_csv_path = os.path.join(images_path, f'{basename}_metadata.csv')
+
+    return df_metadata, metadata_csv_path
+
 class loadData:
     def __init__(self, imgPath, user_ch_name, relPathDepth=3, QParent=None):
         self.fluo_data_dict = {}

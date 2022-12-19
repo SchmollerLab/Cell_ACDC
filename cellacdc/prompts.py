@@ -15,7 +15,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 
-from . import apps, myutils, printl
+from . import apps, myutils, printl, html_utils, load
 
 class RichTextPushButton(QPushButton):
     def __init__(self, parent=None, text=None):
@@ -218,6 +218,46 @@ class select_channel_name:
             txt_path = os.path.join(temp_path, f'{ch}_last_sel.txt')
             with open(txt_path, 'w') as txt:
                 txt.write(selection)
+    
+    def askChannelName(self, filenames, images_path, ask, ch_names):
+        if not ask:
+            return ch_names
+        filename = self.basename
+        possibleChannelNames = []
+        splits = [split for split in filename.split('_') if split]
+        possibleChannelNames = []
+        for i in range(len(splits)-1):
+            possibleChanneName = '_'.join(splits[i+1:])
+            possibleChannelNames.append(possibleChanneName)
+        possibleChannelNames = possibleChannelNames[::-1]
+
+        txt = html_utils.paragraph(f"""
+            Cell-ACDC could <b>not determine the channel names</b>.<br><br>
+            Please, <b>select</b> below which part of the filename 
+            you want to use as <b>the channel name</b>.<br><br>
+            Filename: <code>{filename}</code>
+        """)
+        win = apps.QDialogCombobox(
+            'Select channel name', possibleChannelNames, txt, 
+            CbLabel='Select channel name:  ', parent=None, centeredCombobox=True
+        )
+        win.exec_()
+        if win.cancel:
+            self.was_aborted = True
+            return
+
+        channel_name = win.selectedItemText
+        basename_idx = self.basename.find(channel_name)
+        basename = self.basename[:basename_idx]
+        df_metadata, metadata_csv_path = load.get_posData_metadata(
+            images_path, basename
+        )
+        df_metadata.at['channel_0_name', 'values'] = channel_name
+        df_metadata.to_csv(metadata_csv_path)
+        ch_names, _ = self.get_available_channels(filenames, images_path)
+        printl(ch_names)
+        return ch_names
+        
 
     def QtPrompt(self, parent, channel_names, informativeText='',
                  CbLabel='Select channel name:  '):

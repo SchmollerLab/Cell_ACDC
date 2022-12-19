@@ -226,8 +226,10 @@ class repeatDataPrepWindow(QDialog):
             return
         newChannel = win.entryText
         newItem = QListWidgetItem(newChannel)
-        newItem.setSelected(True)
+        self.selectChannelWindow.areItemsSelected.append(newItem)
         self.selectChannelWindow.listBox.addItem(newItem)
+        self.selectChannelWindow.listBox.clearSelection()
+        newItem.setSelected(True)
     
     def warnCopyTifFileFailed(self, tif_file_path, newTifFilePath, error):
         tifFilename = os.path.basename(tif_file_path)
