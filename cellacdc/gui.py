@@ -283,6 +283,10 @@ class relabelSequentialWorker(QObject):
         oldIDs = list(inv.out_values)
         newIDs.append(-1)
         oldIDs.append(-1)
+
+        mainWin.updateAnnotatedIDs(oldIDs, newIDs, logger=self.progress.emit)
+        mainWin.store_data(mainThread=False)
+
         for frame_i, lab in enumerate(segm_data):
             posData.frame_i = frame_i
             posData.lab = lab
@@ -293,6 +297,7 @@ class relabelSequentialWorker(QObject):
                 )
             mainWin.update_rp(draw=False)
             mainWin.store_data(mainThread=False)
+
 
         # Go back to current frame
         posData.frame_i = current_frame_i
@@ -4406,6 +4411,7 @@ class guiWin(QMainWindow):
             )
 
             if UndoFutFrames is None:
+                # User cancelled the process
                 return
 
             posData.doNotShowAgain_BinID = doNotShowAgain
@@ -4443,7 +4449,7 @@ class guiWin(QMainWindow):
             else:
                 posData.binnedIDs.add(ID)
 
-            self.update_rp_metadata()
+            self.annotate_rip_and_bin_IDs(updateLabel=True)
 
             # Gray out ore restore binned ID
             self.updateLookuptable()
@@ -4519,7 +4525,7 @@ class guiWin(QMainWindow):
             else:
                 posData.ripIDs.add(ID)
 
-            self.update_rp_metadata()
+            self.annotate_rip_and_bin_IDs(updateLabel=True)
 
             # Gray out dead ID
             self.updateLookuptable()
@@ -6591,7 +6597,7 @@ class guiWin(QMainWindow):
         if mode == 'Viewer' or mode == 'Cell cycle analysis':
             self.startBlinkingModeCB()
             return
-        self.storeUndoRedoStates(False)
+        self.store_data()
         posData = self.data[self.pos_i]
         if posData.SizeT > 1:
             self.progressWin = apps.QDialogWorkerProgress(
@@ -6602,6 +6608,7 @@ class guiWin(QMainWindow):
             self.progressWin.mainPbar.setMaximum(0)
             self.startRelabellingWorker(posData)
         else:
+            self.storeUndoRedoStates(False)
             posData.lab, fw, inv = skimage.segmentation.relabel_sequential(
                 posData.lab
             )
@@ -6611,14 +6618,35 @@ class guiWin(QMainWindow):
             newIDs.append(-1)
             oldIDs.append(-1)
             self.update_cca_df_relabelling(posData, oldIDs, newIDs)
+            self.updateAnnotatedIDs(oldIDs, newIDs, logger=self.logger.info)
             self.store_data()
             self.update_rp()
             li = list(zip(oldIDs, newIDs))
             s = '\n'.join([str(pair).replace(',', ' -->') for pair in li])
             s = f'IDs relabelled as follows:\n{s}'
             self.logger.info(s)
+            self.updateALLimg()
+    
+    def updateAnnotatedIDs(self, oldIDs, newIDs, logger=print):
+        logger('Updating annotated IDs...')
+        posData = self.data[self.pos_i]
 
-        self.updateALLimg()
+        mapper = dict(zip(oldIDs, newIDs))
+        posData.ripIDs = set([mapper[ripID] for ripID in posData.ripIDs])
+        posData.binnedIDs = set([mapper[binID] for binID in posData.binnedIDs])
+        self.keptObjectsIDs = widgets.KeptObjectIDsList(
+            self.keptIDsLineEdit, self.keepIDsConfirmAction
+        )
+
+        customAnnotButtons = list(self.customAnnotDict.keys())
+        for button in customAnnotButtons:
+            customAnnotValues = self.customAnnotDict[button]
+            annotatedIDs = customAnnotValues['annotatedIDs'][self.pos_i]
+            mappedAnnotIDs = {}
+            for frame_i, annotIDs_i in annotatedIDs.items():
+                mappedIDs = [mapper[ID] for ID in annotIDs_i]
+                mappedAnnotIDs[frame_i] = mappedIDs
+            customAnnotValues['annotatedIDs'][self.pos_i] = mappedAnnotIDs
 
     def storeTrackingAlgo(self, checked):
         if not checked:
@@ -6777,11 +6805,15 @@ class guiWin(QMainWindow):
         self.worker.progress.connect(self.workerProgress)
         self.worker.critical.connect(self.workerCritical)
         self.worker.finished.connect(self.workerFinished)
+        self.worker.finished.connect(self.relabelWorkerFinished)
 
         self.worker.debug.connect(self.workerDebug)
 
         self.thread.started.connect(self.worker.run)
         self.thread.start()
+    
+    def relabelWorkerFinished(self):
+        self.updateALLimg()
 
     def workerDebug(self, item):
         print(f'Updating frame {item.frame_i}')
@@ -9581,18 +9613,36 @@ class guiWin(QMainWindow):
             self.enableSizeSpinbox(False)
             self.resetCursors()
             self.updateALLimg()
+    
+    def onDoubleSpaceBar(self):
+        how = self.drawIDsContComboBox.currentText()
+        if how.find('nothing') == -1:
+            self.prev_how = how
+            self.drawIDsContComboBox.setCurrentText('Draw nothing')
+        else:
+            try:
+                self.drawIDsContComboBox.setCurrentText(self.prev_how)
+            except Exception as e:
+                # traceback.print_exc()
+                pass
+        
+        how = self.annotateRightHowCombobox.currentText()
+        if how.find('nothing') == -1:
+            self.prev_how_right = how
+            self.annotateRightHowCombobox.setCurrentText('Draw nothing')
+        else:
+            try:
+                self.annotateRightHowCombobox.setCurrentText(self.prev_how_right)
+            except Exception as e:
+                # traceback.print_exc()
+                pass
 
     @exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
             posData = self.data[self.pos_i]
-            printl(self.chNamesToSkip, pretty=True)
-            printl(self.metricsToSave, pretty=True)
-            printl(self.sizeMetricsToSave, pretty=True)
-            printl(self.regionPropsToSave, pretty=True)
-            printl(self.mixedChCombineMetricsToSkip, pretty=True)
-            posData.fluo_data_dict[posData.filename] = posData.img_data
-            self.initMetricsToSave(posData)
+            # printl(f'{posData.binnedIDs = }')
+            # printl(f'{posData.ripIDs = }')
         try:
             posData = self.data[self.pos_i]
         except AttributeError:
@@ -9752,16 +9802,7 @@ class guiWin(QMainWindow):
             elif self.countKeyPress == 1 and not self.doubleKeyTimeElapsed:
                 self.isKeyDoublePress = True
                 # Double press --> toggle draw nothing
-                how = self.drawIDsContComboBox.currentText()
-                if how.find('nothing') == -1:
-                    self.prev_how = how
-                    self.drawIDsContComboBox.setCurrentText('Draw nothing')
-                else:
-                    try:
-                        self.drawIDsContComboBox.setCurrentText(self.prev_how)
-                    except Exception as e:
-                        # traceback.print_exc()
-                        pass
+                self.onDoubleSpaceBar()
                 self.countKeyPress = 0
         elif ev.key() == Qt.Key_B or ev.key() == Qt.Key_X:
             mode = self.modeComboBox.currentText()
@@ -12975,8 +13016,6 @@ class guiWin(QMainWindow):
                     self.get_data()
                     self.store_data(enforce=True, autosave=False)
                     # self.load_delROIs_info(delROIshapes, last_tracked_num)
-                    posData.binnedIDs = set()
-                    posData.ripIDs = set()
 
                 # Ask whether to resume from last frame
                 if last_tracked_num>1:
@@ -14305,6 +14344,10 @@ class guiWin(QMainWindow):
             if not is_history_known:
                 txt = f'{txt}?'
         
+        if ID in posData.ripIDs or ID in posData.binnedIDs:
+            color = (*self.ax1_S_oldCellColor, 50)
+            bold = False
+
         if self.isSegm3D:
             if obj.label not in self.currentLab2D:
                 # Object is present in z+1 and z-1 but not in z --> transparent
@@ -14476,8 +14519,12 @@ class guiWin(QMainWindow):
         else:
             annotID = obj.label
         txt = f'{annotID}' if self.isObjVisible(obj.bbox) else ''
-        color = self.ax2_textColor
-        bold = ID in posData.new_IDs
+        if ID in posData.ripIDs or ID in posData.binnedIDs:
+            self.ax2_textColor = (*self.ax2_textColor, 50)
+            bold = False
+        else:
+            color = self.ax2_textColor
+            bold = ID in posData.new_IDs
 
         LabelItemID.setText(txt, color=color, bold=bold, size=self.fontSize)
 
@@ -14921,40 +14968,45 @@ class guiWin(QMainWindow):
         # Add to rp dynamic metadata (e.g. cells annotated as dead)
         for i, obj in enumerate(posData.rp):
             ID = obj.label
-            # IDs removed from analysis --> store info
-            if ID in posData.binnedIDs:
-                obj.excluded = True
-                if draw and self.isObjVisible(obj.bbox):
-                    y, x = self.getObjCentroid(obj.centroid)
-                    # Gray out ID label on image
-                    LabelID = self.ax2_LabelItemsIDs[ID-1]
-                    LabelID.setText(f'{ID}', color=(150, 0, 0))
-                    binnedIDs_xx.append(x)
-                    binnedIDs_yy.append(y)
-            else:
-                obj.excluded = False
-
-            # IDs dead --> store info
-            if ID in posData.ripIDs:
-                obj.dead = True
-                if draw and self.isObjVisible(obj.bbox):
-                    # Gray out ID label on image
-                    y, x = self.getObjCentroid(obj.centroid)
-                    LabelID = self.ax2_LabelItemsIDs[ID-1]
-                    LabelID.setText(f'{ID}', color=(150, 0, 0))
-                    ripIDs_xx.append(x)
-                    ripIDs_yy.append(y)
-            else:
-                obj.dead = False
-
-            # set cell cycle info
-
-        if draw:
-            # Draw markers to annotated IDs
-            self.ax2_binnedIDs_ScatterPlot.setData(binnedIDs_xx, binnedIDs_yy)
-            self.ax2_ripIDs_ScatterPlot.setData(ripIDs_xx, ripIDs_yy)
-            self.ax1_binnedIDs_ScatterPlot.setData(binnedIDs_xx, binnedIDs_yy)
-            self.ax1_ripIDs_ScatterPlot.setData(ripIDs_xx, ripIDs_yy)
+            obj.excluded = ID in posData.binnedIDs
+            obj.dead = ID in posData.ripIDs
+    
+    def annotate_rip_and_bin_IDs(self, updateLabel=False):
+        posData = self.data[self.pos_i]
+        binnedIDs_xx = []
+        binnedIDs_yy = []
+        ripIDs_xx = []
+        ripIDs_yy = []
+        for obj in posData.rp:
+            obj.excluded = obj.label in posData.binnedIDs
+            obj.dead = obj.label in posData.ripIDs
+            if not self.isObjVisible(obj.bbox):
+                continue
+            
+            if obj.excluded:
+                y, x = self.getObjCentroid(obj.centroid)
+                binnedIDs_xx.append(x)
+                binnedIDs_yy.append(y)
+                if updateLabel:
+                    self.ax2_setTextID(obj)
+                    how = self.drawIDsContComboBox.currentText()
+                    self.annotateObject(obj, how)
+                    self.annotateObjectRightImage(obj)
+            
+            if obj.dead:
+                y, x = self.getObjCentroid(obj.centroid)
+                ripIDs_xx.append(x)
+                ripIDs_yy.append(y)
+                if updateLabel:
+                    self.ax2_setTextID(obj)
+                    how = self.drawIDsContComboBox.currentText()
+                    self.annotateObject(obj, how)
+                    self.annotateObjectRightImage(obj)
+        
+        self.ax2_binnedIDs_ScatterPlot.setData(binnedIDs_xx, binnedIDs_yy)
+        self.ax2_ripIDs_ScatterPlot.setData(ripIDs_xx, ripIDs_yy)
+        self.ax1_binnedIDs_ScatterPlot.setData(binnedIDs_xx, binnedIDs_yy)
+        self.ax1_ripIDs_ScatterPlot.setData(ripIDs_xx, ripIDs_yy)
 
     def loadNonAlignedFluoChannel(self, fluo_path):
         posData = self.data[self.pos_i]
@@ -16827,6 +16879,7 @@ class guiWin(QMainWindow):
 
         self.doCustomAnnotation(0)
 
+        self.annotate_rip_and_bin_IDs()
         self.updateTempLayerKeepIDs()
         self.drawPointsLayers(computePointsLayers=computePointsLayers)
     
