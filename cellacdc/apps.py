@@ -9544,13 +9544,13 @@ class QDialogModelParams(QDialog):
             return
 
         minSize = self.configPars.getint(
-            postProcessSection, 'min_area', fallback=10
+            postProcessSection, 'minSize', fallback=10
         )
         minSolidity = self.configPars.getfloat(
-            postProcessSection, 'min_solidity', fallback=0.5
+            postProcessSection, 'minSolidity', fallback=0.5
         )
         maxElongation = self.configPars.getfloat(
-            postProcessSection, 'max_elongation', fallback=3
+            postProcessSection, 'maxElongation', fallback=3
         )
         minObjSizeZ = self.configPars.getint(
             postProcessSection, 'min_obj_no_zslices', fallback=3
@@ -9663,8 +9663,15 @@ class QDialogModelParams(QDialog):
         postProcessConfig = self.configPars[f'{self.model_name}.postprocess']
         postProcessConfig['minSize'] = str(postProcKwargs['min_area'])
         postProcessConfig['minSolidity'] = str(postProcKwargs['min_solidity'])
-        postProcessConfig['maxElongation'] = str(postProcKwargs['max_elongation'])
-        postProcessConfig['applyPostProcessing'] = str(postProcKwargs['min_obj_no_zslices'])
+        postProcessConfig['maxElongation'] = str(
+            postProcKwargs['max_elongation']
+        )
+        postProcessConfig['min_obj_no_zslices'] = str(
+            postProcKwargs['min_obj_no_zslices']
+        )
+        postProcessConfig['applyPostProcessing'] = str(
+            self.artefactsGroupBox.isChecked()
+        )
 
         with open(self.ini_path, 'w') as configfile:
             self.configPars.write(configfile)

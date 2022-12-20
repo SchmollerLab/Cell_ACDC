@@ -1462,7 +1462,7 @@ class guiWin(QMainWindow):
             '     (brush cursor changes color when hovering an existing label).\n'
             '   - Painting in default mode always draw UNDER existing labels.\n\n'
             'Power brush mode:\n'
-            '   - Power brush: press "b" key twice quickly to force the brush '
+            '   - Power brush: press "b" key twice quickly to force the brush\n'
             '     to draw ABOVE existing labels.\n'
             '     NOTE: If double-press is successful, then brush button turns red.\n'
             '     and brush cursor always white.\n'
@@ -8926,20 +8926,10 @@ class guiWin(QMainWindow):
                     self.editToolBar.setVisible(True)
                 self.setEnabledCcaToolbar(enabled=True)
                 self.removeAlldelROIsCurrentFrame()
-                # self.disableTrackingCheckBox.setChecked(True)
-                how = self.drawIDsContComboBox.currentText()
-                if how.find('segm. masks') != -1:
-                    self.drawIDsContComboBox.setCurrentText(
-                        'Draw cell cycle info and overlay segm. masks'
-                    )
-                elif how.find('contours') != -1:
-                    self.drawIDsContComboBox.setCurrentText(
-                        'Draw cell cycle info and contours'
-                    )
-                else:
-                    self.drawIDsContComboBox.setCurrentText(
-                        'Draw only cell cycle info'
-                    )
+                self.annotCcaInfoCheckbox.setChecked(True)
+                self.annotIDsCheckbox.setChecked(False)
+                self.drawMothBudLinesCheckbox.setChecked(False)
+                self.setDrawAnnotComboboxText()
         elif mode == 'Viewer':
             self.modeToolBar.setVisible(True)
             self.setEnabledWidgetsToolbar(False)

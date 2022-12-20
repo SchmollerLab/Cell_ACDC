@@ -2223,6 +2223,7 @@ class dataPrepWin(QMainWindow):
     def show(self):
         QMainWindow.show(self)
         self.readSettings()
+        self.graphLayout.setFocus(True)
 
 if __name__ == "__main__":
     # Handle high resolution displays:
