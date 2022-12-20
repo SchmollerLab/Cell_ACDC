@@ -182,7 +182,7 @@ class trackingWorker(QObject):
     def run(self):
         self.mutex.lock()
 
-        self.progress.emit('Tracking process started...')
+        # self.progress.emit('Tracking process started...')
 
         self.track_params['signals'] = self.signals
         if 'image' in self.track_params:
@@ -6721,7 +6721,11 @@ class guiWin(QMainWindow):
             self.progressWin.workerFinished = True
             self.progressWin.close()
         self.logger.info('Worker process ended.')
-        if self.trackingWorker.trackingOnNeverVisitedFrames:
+        askDisableRealTimeTracking = (
+            self.trackingWorker.trackingOnNeverVisitedFrames
+            and not self.disableTrackingCheckBox.isChecked()
+        )
+        if askDisableRealTimeTracking:
             msg = widgets.myMessageBox()
             title = 'Disable real-time tracking?'
             txt = (
