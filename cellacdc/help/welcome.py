@@ -547,9 +547,6 @@ class welcomeWin(QWidget):
                     &nbsp;&nbsp; - <code>Ctrl+L</code> -->
                     relabel object IDs sequentially<br>
 
-                    &nbsp;&nbsp; - <code>Spacebar</code> -->
-                    toggle between annotations mode (IDs, contours, overlay segm. masks etc.)<br>
-
                     &nbsp;&nbsp; - Double press <code>Spacebar</code> -->
                     hide/show annotations on left image<br>
 

@@ -9831,14 +9831,14 @@ class guiWin(QMainWindow):
         self.doubleKeyTimeElapsed = True
         self.countKeyPress = 0
 
-        # Spacebar single press --> toggle next visualization
-        currentIndex = self.drawIDsContComboBox.currentIndex()
-        nItems = self.drawIDsContComboBox.count()
-        nextIndex = currentIndex+1
-        if nextIndex < nItems:
-            self.drawIDsContComboBox.setCurrentIndex(nextIndex)
-        else:
-            self.drawIDsContComboBox.setCurrentIndex(0)
+        # # Spacebar single press --> toggle next visualization
+        # currentIndex = self.drawIDsContComboBox.currentIndex()
+        # nItems = self.drawIDsContComboBox.count()
+        # nextIndex = currentIndex+1
+        # if nextIndex < nItems:
+        #     self.drawIDsContComboBox.setCurrentIndex(nextIndex)
+        # else:
+        #     self.drawIDsContComboBox.setCurrentIndex(0)
 
     def keyReleaseEvent(self, ev):
         if self.app.overrideCursor() == Qt.SizeAllCursor:
