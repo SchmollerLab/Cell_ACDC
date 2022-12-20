@@ -16641,12 +16641,14 @@ class guiWin(QMainWindow):
                 continue
             if ax1ContCurve.getData()[0] is not None:
                 if isContourON_ax1:
-                    ax1ContCurve.setPen(self.oldIDs_cpen)
+                    if ax1ContCurve.opts['pen'] != self.lostIDs_cpen:
+                        ax1ContCurve.setPen(self.oldIDs_cpen)
                 else:
                     ax1ContCurve.setData([], [])
             if ax2ContCurve.getData()[0] is not None:
                 if isContourON_ax2:
-                    ax2ContCurve.setPen(self.oldIDs_cpen)
+                    if ax2ContCurve.opts['pen'] != self.lostIDs_cpen:
+                        ax2ContCurve.setPen(self.oldIDs_cpen)
                 else:
                     ax2ContCurve.setData([], [])
 
