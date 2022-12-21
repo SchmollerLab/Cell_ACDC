@@ -9333,11 +9333,23 @@ class guiWin(QMainWindow):
             self.highLightIDLayerRightImage.clear()
             self.highlightIDcheckBoxToggled(False)
     
+    def setAllIDs(self):
+        for posData in self.data:
+            posData.allIDs = set()
+            for frame_i in range(posData.SizeT):
+                lab = posData.allData_li[frame_i]['labels']
+                if lab is None:
+                    rp = skimage.measure.regionprops(posData.segm_data[frame_i])
+                else:
+                    rp = posData.allData_li[frame_i]['regionprops']
+                posData.allIDs.update([obj.label for obj in rp])
+    
     def keepIDs_cb(self, checked):
         self.keepIDsToolbar.setVisible(checked)
         if checked:
             self.uncheckLeftClickButtons(None)
             self.initKeepObjLabelsLayers()      
+            self.setAllIDs()
         else:
             # restore items to non-grayed out
             self.tempLayerImg1.setImage(self.emptyLab, autoLevels=False)
@@ -9634,7 +9646,9 @@ class guiWin(QMainWindow):
     @exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
+            # self.setAllIDs()
             posData = self.data[self.pos_i]
+            # printl(posData.allIDs)
             # printl(f'{posData.binnedIDs = }')
             # printl(f'{posData.ripIDs = }')
         try:
@@ -13039,6 +13053,8 @@ class guiWin(QMainWindow):
         self.ax2.vb.setYLink(self.ax1.vb)
         self.ax2.vb.setXLink(self.ax1.vb)
 
+        self.setAllIDs()
+
     def navigateSpinboxValueChanged(self, value):
         self.navigateScrollBar.setSliderPosition(value)
         if self.isSnapshot:
@@ -14740,7 +14756,10 @@ class guiWin(QMainWindow):
         LabelItemID = self.ax1_LabelItemsIDs[ID-1]
         
         posData = self.data[self.pos_i]
-        obj_idx = posData.IDs.index(ID)
+        try:
+            obj_idx = posData.IDs.index(ID)
+        except Exception as e:
+            return
         obj = posData.rp[obj_idx]
 
         txt = f'{ID}'
@@ -14790,7 +14809,7 @@ class guiWin(QMainWindow):
         isAnyIDnotExisting = False
         # Check if IDs from line edit are present in current keptObjectIDs list
         for ID in IDs:
-            if ID not in posData.IDs:
+            if ID not in posData.allIDs:
                 isAnyIDnotExisting = True
                 continue
             if ID not in self.keptObjectsIDs:
@@ -14799,7 +14818,7 @@ class guiWin(QMainWindow):
         
         # Check if IDs in current keptObjectsIDs are present in IDs from line edit
         for ID in self.keptObjectsIDs:
-            if ID not in posData.IDs:
+            if ID not in posData.allIDs:
                 isAnyIDnotExisting = True
                 continue
             if ID not in IDs:
@@ -16614,8 +16633,8 @@ class guiWin(QMainWindow):
             'ax2text': self.ax2_LabelItemsIDs[ID-1].text,
             'ax1color': self.ax1_LabelItemsIDs[ID-1].opts['color'],
             'ax2color': self.ax2_LabelItemsIDs[ID-1].opts['color'],
-            'ax1LabelIsBold': self.ax1_LabelItemsIDs[ID-1].opts['bold'],
-            'ax2LabelIsBold': self.ax2_LabelItemsIDs[ID-1].opts['bold'],
+            'ax1LabelIsBold': self.ax1_LabelItemsIDs[ID-1].opts.get('bold', False),
+            'ax2LabelIsBold': self.ax2_LabelItemsIDs[ID-1].opts.get('bold', False),
         }
 
         how_ax1 = self.drawIDsContComboBox.currentText()
