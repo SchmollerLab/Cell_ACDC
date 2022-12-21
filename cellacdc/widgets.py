@@ -3920,7 +3920,10 @@ class MainPlotItem(pg.PlotItem):
             parent, name, labels, title, viewBox, axisItems, enableMenu, 
             **kargs
         )
-        # Overwrite
+        # Overwrite zoom out button behaviour to disable autoRange after
+        # clicking it.
+        # If autorange is enabled, it is called everytime the brush or eraser 
+        # scatter plot items touches the border causing flickering
         self.autoBtn.mode = 'manual'
     
     def autoBtnClicked(self):

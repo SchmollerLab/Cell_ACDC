@@ -15603,7 +15603,7 @@ class guiWin(QMainWindow):
         self.gui_createContourPens()
         self.updateALLimg()
         for items in self.overlayLayersItems.values():
-            lutItem = items[0]
+            lutItem = items[1]
             lutItem.contoursColorButton.setColor(color)
 
     def saveContColour(self, colorButton):
@@ -15614,7 +15614,7 @@ class guiWin(QMainWindow):
         self.df_settings.at['mothBudLineColor', 'value'] = str(color)
         self.gui_createMothBudLinePens()
         for items in self.overlayLayersItems.values():
-            lutItem = items[0]
+            lutItem = items[1]
             lutItem.mothBudLineColorButton.setColor(color)
         self.updateALLimg()
 
