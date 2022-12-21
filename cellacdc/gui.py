@@ -11598,12 +11598,12 @@ class guiWin(QMainWindow):
         self.slideshowWin.frame_i = posData.frame_i
         self.slideshowWin.update_img()
 
-    def next_frame(self):
+    def next_frame(self, warn=True):
         mode = str(self.modeComboBox.currentText())
         isSegmMode =  mode == 'Segmentation and Tracking'
         posData = self.data[self.pos_i]
         if posData.frame_i < posData.SizeT-1:
-            if 'lost' in self.titleLabel.text and isSegmMode:
+            if 'lost' in self.titleLabel.text and isSegmMode and warn:
                 if self.warnLostCellsAction.isChecked():
                     msg = widgets.myMessageBox()
                     warn_msg = html_utils.paragraph(
@@ -11622,7 +11622,7 @@ class guiWin(QMainWindow):
                     self.warnLostCellsAction.setChecked(doNotWarnLostCells)
                     if msg.clickedButton == noButton:
                         return
-            if 'multiple' in self.titleLabel.text and mode != 'Viewer':
+            if 'multiple' in self.titleLabel.text and mode != 'Viewer' and warn:
                 msg = QMessageBox()
                 warn_msg = (
                     'Current frame contains cells with MULTIPLE contours '
@@ -14861,6 +14861,41 @@ class guiWin(QMainWindow):
                 # removing annotations
                 return
         
+        self.current_frame_i = posData.frame_i
+        if posData.frame_i > 0:
+            txt = html_utils.paragraph("""
+                Do you want to <b>remove un-kept objects in the past</b> frames too?
+            """)
+            msg = widgets.myMessageBox(wrapText=False, showCentered=False)
+            _, _, applyToPastButton = msg.question(
+                self, 'Propagate to past frames?', txt,
+                buttonsTexts=('Cancel', 'No', 'Yes, apply to past frames')
+            )
+            if msg.cancel:
+                return
+            if msg.clickedButton == applyToPastButton:
+                self.store_data()
+                self.logger.info('Applying keep objects to past frames...')
+                for i in tqdm(range(posData.frame_i), ncols=100):
+                    lab = posData.allData_li[i]['labels']
+                    rp = posData.allData_li[i]['regionprops']
+                    keepLab = self._keepObjects(lab=lab, rp=rp)
+                    # Store change
+                    posData.allData_li[i]['labels'] = keepLab.copy()
+                    # Get the rest of the stored metadata based on the new lab
+                    posData.frame_i = i
+                    self.get_data()
+                    if not removeAnnot and posData.cca_df is not None:
+                        delIDs = [
+                            ID for ID in posData.cca_df.index 
+                            if ID not in posData.IDs
+                        ]
+                        self.update_cca_df_deletedIDs(posData, delIDs)
+                    self.store_data(autosave=False)
+                
+                posData.frame_i = self.current_frame_i
+                self.get_data()
+
         # Ask to propagate change to all future visited frames
         (UndoFutFrames, applyFutFrames, endFrame_i,
         doNotShowAgain) = self.propagateChange(
@@ -14881,13 +14916,11 @@ class guiWin(QMainWindow):
         posData.applyFutFrames_keepID = applyFutFrames
         includeUnvisited = posData.includeUnvisitedInfo['Keep ID']
 
-        self.current_frame_i = posData.frame_i
-
         if applyFutFrames:
             self.store_data()
 
             self.logger.info('Applying to future frames...')
-            pbar = tqdm(total=posData.SizeT, ncols=100)
+            pbar = tqdm(total=posData.SizeT-posData.frame_i-1, ncols=100)
             segmSizeT = len(posData.segm_data)
             for i in range(posData.frame_i+1, segmSizeT):
                 lab = posData.allData_li[i]['labels']
@@ -16380,7 +16413,7 @@ class guiWin(QMainWindow):
             posData.frame_i -= 1
             self.get_data()
             self.remove_future_cca_df(posData.frame_i)
-            self.next_frame()
+            self.next_frame(warn=False)
         else:
             if dropDelIDsNoteText and posData.cca_df is not None:
                 delIDs = [
