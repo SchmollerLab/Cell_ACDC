@@ -3911,6 +3911,25 @@ class NoneWidget:
     def setValue(self, value):
         return
 
+class MainPlotItem(pg.PlotItem):
+    def __init__(
+            self, parent=None, name=None, labels=None, title=None, 
+            viewBox=None, axisItems=None, enableMenu=True, **kargs
+        ):
+        super().__init__(
+            parent, name, labels, title, viewBox, axisItems, enableMenu, 
+            **kargs
+        )
+        # Overwrite
+        self.autoBtn.mode = 'manual'
+    
+    def autoBtnClicked(self):
+        self.autoRange()
+    
+    def autoRange(self):
+        self.vb.autoRange()
+        self.autoBtn.hide()
+
 class sliderWithSpinBox(QWidget):
     sigValueChange = pyqtSignal(object)
     valueChanged = pyqtSignal(object)

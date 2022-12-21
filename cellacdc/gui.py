@@ -3071,7 +3071,7 @@ class guiWin(QMainWindow):
             self.titleColor = 'white'
 
         # Left plot
-        self.ax1 = pg.PlotItem()
+        self.ax1 = widgets.MainPlotItem()
         self.ax1.invertY(True)
         self.ax1.setAspectLocked(True)
         self.ax1.hideAxis('bottom')
@@ -3079,7 +3079,7 @@ class guiWin(QMainWindow):
         self.graphLayout.addItem(self.ax1, row=1, col=1)
 
         # Right plot
-        self.ax2 = pg.PlotItem()
+        self.ax2 = widgets.MainPlotItem()
         self.ax2.setAspectLocked(True)
         self.ax2.invertY(True)
         self.ax2.hideAxis('bottom')
@@ -9140,7 +9140,7 @@ class guiWin(QMainWindow):
             self.resetCursors()
             self.wandControlsToolbar.setVisible(False)
         if not self.labelsGrad.showLabelsImgAction.isChecked():
-            self.ax1.vb.autoRange()
+            self.ax1.autoRange()
     
     def labelRoi_cb(self, checked):
         posData = self.data[self.pos_i]
@@ -9797,7 +9797,7 @@ class guiWin(QMainWindow):
                 self.Button = None
                 QTimer.singleShot(400, self.doubleKeyTimerCallBack)
             elif self.countKeyPress == 1 and not self.doubleKeyTimeElapsed:
-                self.ax1.vb.autoRange()
+                self.ax1.autoRange()
                 self.isKeyDoublePress = True
                 self.countKeyPress = 0
         elif ev.key() == Qt.Key_Space:
@@ -11322,7 +11322,7 @@ class guiWin(QMainWindow):
         else:
             self.warnEditingWithCca_df('Repeat segmentation')
 
-        self.ax1.vb.autoRange()
+        self.ax1.autoRange()
 
         txt = f'Done. Segmentation computed in {exec_time:.3f} s'
         self.logger.info('-----------------')
@@ -11444,7 +11444,7 @@ class guiWin(QMainWindow):
         self.updatePropsWidget('')
 
     def zoomOut(self):
-        self.ax1.vb.autoRange()
+        self.ax1.autoRange()
 
     def zoomToObjsActionCallback(self):
         self.zoomToCells(enforce=True)
@@ -12313,8 +12313,8 @@ class guiWin(QMainWindow):
 
     def autoRange(self):
         if self.labelsGrad.showLabelsImgAction.isChecked():
-            self.ax2.vb.autoRange()
-        self.ax1.vb.autoRange()
+            self.ax2.autoRange()
+        self.ax1.autoRange()
     
     def resetRange(self):
         if self.ax1_viewRange is None:
