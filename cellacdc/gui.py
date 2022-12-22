@@ -9696,6 +9696,7 @@ class guiWin(QMainWindow):
     def gui_raiseBottomLayoutContextMenu(self, event):
         menu = QMenu(self)
         resetAction = QAction('Reset default height')
+        resetAction.triggered.connect(self.gui_resetBottomLayoutHeight)
         menu.addAction(resetAction)
         if self.img1BottomGroupbox.isVisible():
             hideAction = QAction('Hide controls')
