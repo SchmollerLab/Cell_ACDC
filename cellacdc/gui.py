@@ -9677,12 +9677,12 @@ class guiWin(QMainWindow):
         if not self.img1BottomGroupbox.isVisible():
             return
         deltaHeight = event.y()/self.bottomLayoutHeight
-        heightFactor = 1 - deltaHeight*2
+        heightFactor = 1 - deltaHeight
         if heightFactor < 0.1:
             heightFactor = 0.1
-        fontSizeFactor = 1 - deltaHeight*0.01
+        fontSizeFactor = 1 - deltaHeight*0.7
         self.resizeSlidersArea(
-            fontSizeFactor=heightFactor, 
+            fontSizeFactor=fontSizeFactor, 
             heightFactor=heightFactor
         )
     
@@ -9728,7 +9728,6 @@ class guiWin(QMainWindow):
         if ev.key() == Qt.Key_T:
             # self.setAllIDs()
             posData = self.data[self.pos_i]
-            self.resizeSlidersArea(7, heightFactor=0.5)
             printl(self.screen().size())
             printl(self.graphLayout.height())
             printl(self.img1BottomGroupbox.height())
@@ -19542,13 +19541,13 @@ class guiWin(QMainWindow):
             self.newCheckBoxesHeight = self.checkBoxesHeight
             self.newHeight = self.h
         else:
-            self.newHeight = int(self.h*heightFactor)
-            self.newCheckBoxesHeight = int(self.checkBoxesHeight*heightFactor)
+            self.newHeight = round(self.h*heightFactor)
+            self.newCheckBoxesHeight = round(self.checkBoxesHeight*heightFactor)
         
         if fontSizeFactor is None:
             newFontSize = self.fontPixelSize
         else:
-            newFontSize = int(self.fontPixelSize*fontSizeFactor)
+            newFontSize = round(self.fontPixelSize*fontSizeFactor)
         newFont = QFont()
         newFont.setPixelSize(newFontSize)
         _font = newFont
