@@ -63,6 +63,8 @@
     <file alias="repeat-tracking.svg">resources/icons/repeat-tracking.svg</file>
     <file alias="bin.svg">resources/icons/bin.svg</file>
     <file alias="rip.svg">resources/icons/rip.svg</file>
+    <file alias="zoom_in.svg">resources/icons/zoom_in.svg</file>
+    <file alias="zoom_out.svg">resources/icons/zoom_out.svg</file>
     <file alias="reinitLastSegm.svg">resources/icons/reinitLastSegm.svg</file>
     <file alias="merge-IDs.svg">resources/icons/merge-IDs.svg</file>
     <file alias="overlay.svg">resources/icons/overlay1.svg</file>

@@ -21,7 +21,7 @@ class QtWarningHandler(QObject):
         if msg_string.find('Unable to set geometry') != -1:
             try:
                 self.sigGeometryWarning.emit(msg_string)
-            except:
+            except Exception as e:
                 pass
         elif msg_string:
             print(msg_string)

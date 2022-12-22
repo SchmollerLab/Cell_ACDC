@@ -188,6 +188,17 @@ class okPushButton(QPushButton):
         # QShortcut(Qt.Key_Return, self, self.click)
         # QShortcut(Qt.Key_Enter, self, self.click)
 
+class zoomPushButton(QPushButton):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setIcon(QIcon(':zoom_out.svg'))
+    
+    def setIconZoomOut(self):
+        self.setIcon(QIcon(':zoom_out.svg'))
+    
+    def setIconZoomIn(self):
+        self.setIcon(QIcon(':zoom_in.svg'))
+
 class reloadPushButton(QPushButton):
     def __init__(self, *args):
         super().__init__(*args)
@@ -1082,9 +1093,43 @@ class filePathControl(QFrame):
 
 class QHLine(QFrame):
     def __init__(self):
-        super(QHLine, self).__init__()
+        super().__init__()
         self.setFrameShape(QFrame.HLine)
         self.setFrameShadow(QFrame.Sunken)
+
+class VerticalResizeHline(QFrame):
+    dragged = pyqtSignal(object)
+    clicked = pyqtSignal(object)
+    released = pyqtSignal(object)
+
+    def __init__(self):
+        super().__init__()
+        self.setCursor(Qt.SizeVerCursor)
+        self.setFrameShape(QFrame.HLine)
+        self.setFrameShadow(QFrame.Sunken)
+        self.installEventFilter(self)
+        self.isMousePressed = False
+    
+    def mousePressEvent(self, event) -> None:
+        self.isMousePressed = True
+        self.clicked.emit(event)
+        return super().mousePressEvent(event)
+    
+    def mouseMoveEvent(self, event) -> None:
+        self.dragged.emit(event)
+        return super().mouseMoveEvent(event)
+    
+    def mouseReleaseEvent(self, event) -> None:
+        self.isMousePressed = False
+        self.released.emit(event)
+        return super().mouseReleaseEvent(event)
+    
+    def eventFilter(self, object, event):
+        if event.type() == QEvent.Enter:
+            self.setStyleSheet('background-color: #4d4d4d') 
+        elif event.type() == QEvent.Leave:
+            self.setStyleSheet('') 
+        return False
 
 class QClickableLabel(QLabel):
     clicked = pyqtSignal(object)

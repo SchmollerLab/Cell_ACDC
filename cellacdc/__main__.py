@@ -1151,7 +1151,10 @@ class mainWin(QMainWindow):
         self.spotmaxWins.remove(spotmaxWin)
         
     def guiClosed(self, guiWin):
-        self.guiWins.remove(guiWin)
+        try:
+            self.guiWins.remove(guiWin)
+        except ValueError:
+            pass
 
     def launchAlignUtil(self, checked=False):
         selectedExpPaths = self.getSelectedExpPaths(

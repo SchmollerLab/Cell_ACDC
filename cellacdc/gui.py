@@ -62,7 +62,7 @@ from PyQt5.QtWidgets import (
     QComboBox, QButtonGroup, QActionGroup, QFileDialog,
     QAbstractSlider, QMessageBox, QWidget, QDockWidget,
     QDockWidget, QGridLayout, QGraphicsProxyWidget, QVBoxLayout,
-    QRadioButton
+    QRadioButton, QSpacerItem
 )
 
 import pyqtgraph as pg
@@ -1954,6 +1954,18 @@ class guiWin(QMainWindow):
         mainLayout.addWidget(self.labelsGrad, row, col)
 
         row, col = 1, 2
+        self.resizeBottomLayoutLine = widgets.VerticalResizeHline()
+        mainLayout.addWidget(self.resizeBottomLayoutLine, row, col, 1, 2)
+        self.resizeBottomLayoutLine.dragged.connect(
+            self.resizeBottomLayoutLineDragged
+        )
+        self.resizeBottomLayoutLine.clicked.connect(
+            self.resizeBottomLayoutLineClicked
+        )
+
+        mainLayout.addItem(QSpacerItem(5,5), row+1, col, 1, 2)
+
+        row, col = 3, 2
         mainLayout.addLayout(
             self.bottomLayout, row, col, 1, 2, alignment=Qt.AlignLeft
         )
@@ -2855,6 +2867,7 @@ class guiWin(QMainWindow):
         annotOptionsLayout.addWidget(QLabel(' | '))
         annotOptionsLayout.addWidget(self.drawNothingCheckbox)
         annotOptionsLayout.addWidget(self.drawIDsContComboBox)
+        self.annotOptionsLayout = annotOptionsLayout
 
         # Toggle highlight z+-1 objects combobox
         self.highlightZneighObjCheckbox = QCheckBox(
@@ -3029,9 +3042,6 @@ class guiWin(QMainWindow):
         self.rightBottomGroupbox.setChecked(False)
         self.rightBottomGroupbox.hide()
 
-        font = QFont()
-        font.setPixelSize(12)
-
         self.annotateRightHowCombobox = QComboBox()
         self.annotateRightHowCombobox.setFont(_font)
         self.annotateRightHowCombobox.addItems(self.drawIDsContComboBoxSegmItems)
@@ -3060,6 +3070,13 @@ class guiWin(QMainWindow):
         self.bottomLayout.addWidget(self.rightBottomGroupbox)
         self.bottomLayout.addStretch(1)
         self.setBottomLayoutStretch()
+    
+    def gui_resetBottomLayoutHeight(self):
+        self.h = self.defaultWidgetHeighBottomLayout
+        self.checkBoxesHeight = 14
+        self.fontPixelSize = 11
+        self.resizeSlidersArea()
+        self.resetHeightButton.hide()
 
     def gui_createGraphicsPlots(self):
         self.graphLayout = pg.GraphicsLayoutWidget()
@@ -5893,7 +5910,11 @@ class guiWin(QMainWindow):
                 action = QAction('Remove ROI')
                 action.triggered.connect(self.removeDelROI)
                 self.roiContextMenu.addAction(action)
-                self.roiContextMenu.exec_(event.screenPos())
+                try:
+                    # Convert QPointF to QPoint
+                    self.roiContextMenu.exec_(event.screenPos().toPoint())
+                except AttributeError:
+                    self.roiContextMenu.exec_(event.screenPos())
                 return True
             elif dragRoi:
                 event.ignore()
@@ -8767,6 +8788,7 @@ class guiWin(QMainWindow):
         if self.eraserButton.isChecked():
             self.setTempImg1Eraser(None, init=True)
 
+
     def mousePressColorButton(self, event):
         posData = self.data[self.pos_i]
         items = list(posData.fluo_data_dict.keys())
@@ -9642,12 +9664,74 @@ class guiWin(QMainWindow):
             except Exception as e:
                 # traceback.print_exc()
                 pass
+    
+    def resizeBottomLayoutLineClicked(self, event):
+        self.bottomLayoutHeight = self.img1BottomGroupbox.height()
+        self.h = self.navSpinBox.size().height()
+        self.fontPixelSize = self.navSpinBox.font().pixelSize()
+        s = self.annotIDsCheckbox.styleSheet()
+        m = re.findall('width: (\d+)px', s)
+        self.checkBoxesHeight = int(m[0])
+        
+    def resizeBottomLayoutLineDragged(self, event):
+        if not self.img1BottomGroupbox.isVisible():
+            return
+        deltaHeight = event.y()/self.bottomLayoutHeight
+        heightFactor = 1 - deltaHeight*2
+        if heightFactor < 0.1:
+            heightFactor = 0.1
+        fontSizeFactor = 1 - deltaHeight*0.01
+        self.resizeSlidersArea(
+            fontSizeFactor=heightFactor, 
+            heightFactor=heightFactor
+        )
+    
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.RightButton:
+            pos = self.resizeBottomLayoutLine.mapFromGlobal(event.globalPos())
+            if pos.y()>=0:
+                self.gui_raiseBottomLayoutContextMenu(event)
+        return super().mousePressEvent(event)
+
+    def gui_raiseBottomLayoutContextMenu(self, event):
+        menu = QMenu(self)
+        resetAction = QAction('Reset default height')
+        menu.addAction(resetAction)
+        if self.img1BottomGroupbox.isVisible():
+            hideAction = QAction('Hide controls')
+            hideAction.triggered.connect(self.gui_hideBottomControls)
+            menu.addAction(hideAction)
+        else:
+            showAction = QAction('Show controls')
+            showAction.triggered.connect(self.gui_showBottomControls)
+            menu.addAction(showAction)
+        try:
+            # Convert QPointF to QPoint
+            menu.exec_(event.screenPos().toPoint())
+        except AttributeError:
+            menu.exec_(event.screenPos())
+    
+    def gui_hideBottomControls(self):
+        self.img1BottomGroupbox.hide()
+        self.rightBottomGroupbox.hide()
+        QTimer.singleShot(100, self.autoRange)
+    
+    def gui_showBottomControls(self):
+        self.img1BottomGroupbox.show()
+        if self.df_settings.at['isRightImageVisible', 'value'] == 'Yes':
+            self.rightBottomGroupbox.show()
+        QTimer.singleShot(100, self.autoRange)
 
     @exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
             # self.setAllIDs()
             posData = self.data[self.pos_i]
+            self.resizeSlidersArea(7, heightFactor=0.5)
+            printl(self.screen().size())
+            printl(self.graphLayout.height())
+            printl(self.img1BottomGroupbox.height())
+            printl(self.height())
             # printl(posData.allIDs)
             # printl(f'{posData.binnedIDs = }')
             # printl(f'{posData.ripIDs = }')
@@ -10460,15 +10544,12 @@ class guiWin(QMainWindow):
         # )
         # self.ax1.addItem(self.RWforegrScatterItem)
 
-        font = QFont()
-        font.setPixelSize(13)
-
         # Store undo state before modifying stuff
         self.storeUndoRedoStates(False)
 
         self.segmModelName = 'randomWalker'
         self.randomWalkerWin = apps.randomWalkerDialog(self)
-        self.randomWalkerWin.setFont(font)
+        self.randomWalkerWin.setFont(_font)
         self.randomWalkerWin.show()
         self.randomWalkerWin.setSize()
 
@@ -19165,9 +19246,7 @@ class guiWin(QMainWindow):
         self.saveWin = apps.QDialogPbar(
             parent=self, title='Saving data', infoTxt=infoTxt
         )
-        font = QFont()
-        font.setPixelSize(13)
-        self.saveWin.setFont(font)
+        self.saveWin.setFont(_font)
         # if not self.save_metrics:
         self.saveWin.metricsQPbar.hide()
         self.saveWin.progressLabel.setText('Preparing data...')
@@ -19437,21 +19516,108 @@ class guiWin(QMainWindow):
 
         self.readSettings()
         self.storeDefaultAndCustomColors()
-        h = self.zProjComboBox.size().height()
-        self.navigateScrollBar.setFixedHeight(h)
-        self.zSliceScrollBar.setFixedHeight(h)
-        self.zSliceOverlay_SB.setFixedHeight(h)
+
+        self.h = self.navSpinBox.size().height()
+        self.defaultWidgetHeighBottomLayout = self.h
+        self.checkBoxesHeight = 14
+        self.fontPixelSize = 11
+        self.defaultBottomLayoutHeight = self.img1BottomGroupbox.height()
+        self.resizeSlidersArea()
 
         self.gui_initImg1BottomWidgets()
         self.img1BottomGroupbox.hide()
 
         w = self.showPropsDockButton.width()
         h = self.showPropsDockButton.height()
-        self.h = h
+
         self.showPropsDockButton.setMaximumWidth(15)
         self.showPropsDockButton.setMaximumHeight(60)
 
         self.graphLayout.setFocus(True)
+    
+    def resizeSlidersArea(self, fontSizeFactor=None, heightFactor=None):
+        global _font
+        if heightFactor is None:
+            self.newCheckBoxesHeight = self.checkBoxesHeight
+            self.newHeight = self.h
+        else:
+            self.newHeight = int(self.h*heightFactor)
+            self.newCheckBoxesHeight = int(self.checkBoxesHeight*heightFactor)
+        
+        if fontSizeFactor is None:
+            newFontSize = self.fontPixelSize
+        else:
+            newFontSize = int(self.fontPixelSize*fontSizeFactor)
+        newFont = QFont()
+        newFont.setPixelSize(newFontSize)
+        _font = newFont
+        self.zProjComboBox.setFont(newFont)
+        self.t_label.setFont(newFont)
+        self.z_label.setFont(newFont)
+        self.zProjOverlay_CB.setFont(newFont)
+        self.annotateRightHowCombobox.setFont(newFont)
+        self.drawIDsContComboBox.setFont(newFont)
+        self.showTreeInfoCheckbox.setFont(newFont)
+        self.highlightZneighObjCheckbox.setFont(newFont)
+        self.navSpinBox.setFont(newFont)
+        self.zSliceSpinbox.setFont(newFont)
+        self.SizeZlabel.setFont(newFont)
+        self.navSizeLabel.setFont(newFont)
+        self.overlay_z_label.setFont(newFont)
+        self.img1BottomGroupbox.setFont(newFont)
+        self.rightBottomGroupbox.setFont(newFont)
+        try:
+            self.img1.alphaScrollbar.label.setFont(newFont)
+        except Exception as e:
+            pass
+        for i in range(self.annotOptionsLayout.count()):
+            widget = self.annotOptionsLayout.itemAt(i).widget()
+            widget.setFont(newFont)
+        for i in range(self.annotOptionsLayoutRight.count()):
+            widget = self.annotOptionsLayoutRight.itemAt(i).widget()
+            widget.setFont(newFont)
+        try:
+            for channel, items in self.overlayLayersItems.items():
+                alphaScrollbar = items[2]
+                alphaScrollbar.label.setFont(newFont)
+        except:
+            pass
+        QTimer.singleShot(100, self._resizeSlidersArea)
+    
+    def _resizeSlidersArea(self):
+        self.navigateScrollBar.setFixedHeight(self.newHeight)
+        self.zSliceScrollBar.setFixedHeight(self.newHeight)
+        self.zSliceOverlay_SB.setFixedHeight(self.newHeight)
+        self.zProjComboBox.setFixedHeight(self.newHeight)
+        self.zProjOverlay_CB.setFixedHeight(self.newHeight)
+        self.navSpinBox.setFixedHeight(self.newHeight)
+        self.zSliceSpinbox.setFixedHeight(self.newHeight)
+        try:
+            self.img1.alphaScrollbar.setFixedHeight(self.newHeight)
+        except Exception as e:
+            pass
+        try:
+            for channel, items in self.overlayLayersItems.items():
+                alphaScrollbar = items[2]
+                alphaScrollbar.setFixedHeight(self.newHeight)
+        except:
+            pass
+        checkBoxStyleSheet = (
+            'QCheckBox::indicator {'
+                f'width: {self.newCheckBoxesHeight}px;'
+                f'height: {self.newCheckBoxesHeight}px'
+            '}'
+        )
+        for i in range(self.annotOptionsLayout.count()):
+            widget = self.annotOptionsLayout.itemAt(i).widget()
+            if isinstance(widget, QCheckBox):
+                widget.setStyleSheet(checkBoxStyleSheet)
+        for i in range(self.annotOptionsLayoutRight.count()):
+            widget = self.annotOptionsLayoutRight.itemAt(i).widget()
+            if isinstance(widget, QCheckBox):
+                widget.setStyleSheet(checkBoxStyleSheet)
+        self.zSliceCheckbox.setStyleSheet(checkBoxStyleSheet)
+        
 
     def resizeEvent(self, event):
         if hasattr(self, 'ax1'):
