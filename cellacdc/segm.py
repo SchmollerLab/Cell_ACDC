@@ -877,11 +877,10 @@ class segmWin(QMainWindow):
 
         # Save hyperparams
         post_process_params = {
-            'model': model_name,
             'applied_postprocessing': self.applyPostProcessing
         }
         post_process_params = {**post_process_params, **self.removeArtefactsKwargs}
-        posData.saveSegmHyperparams(self.segment2D_kwargs, post_process_params)
+        posData.saveSegmHyperparams(model_name, self.segment2D_kwargs, post_process_params)
 
         # Ask ROI
         selectROI = False

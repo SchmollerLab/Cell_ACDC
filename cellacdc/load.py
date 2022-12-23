@@ -1217,26 +1217,51 @@ class loadData:
         segmFilename = os.path.splitext(segmFilename)[0]
         segmEndName = segmFilename[len(self.basename):]
         return segmEndName
+    
+    def getSegmentedChannelHyperparams(self):
+        cp = config.ConfigParser()
+        if os.path.exists(self.segm_hyperparams_ini_path):
+            cp.read(self.segm_hyperparams_ini_path)
+            segmEndName = self.getSegmEndname()
+            section = segmEndName
+            option = 'segmented_channel'
+            channel_name = cp.get(section, option, fallback=self.user_ch_name)
+            return channel_name, segmEndName
+        else:
+            return self.user_ch_name, ''
 
-    def saveSegmHyperparams(self, hyperparams, post_process_params):
+    def saveSegmHyperparams(
+            self, model_name='', hyperparams=None, post_process_params=None
+        ):
         cp = config.ConfigParser()
 
         if os.path.exists(self.segm_hyperparams_ini_path):
             cp.read(self.segm_hyperparams_ini_path)
         
-        model_name = post_process_params['model']
-
         segmEndName = self.getSegmEndname()
-        now = datetime.now().strftime('%Y-%m-%d_%H:%M')
-        section = f'{now}.{segmEndName}.{model_name}.segmentation'
-        cp[section] = {'segmented_channel': self.user_ch_name}
-        for key, value in hyperparams.items():
-            cp[section][key] = str(value)
+        section = segmEndName
+        segm_filename = os.path.basename(self.segm_npz_path)
+        if section not in cp:
+            cp[section] = {}
 
-        section = f'{now}.{segmEndName}.{model_name}.post-processing'
-        cp[section] = {}
-        for key, value in post_process_params.items():
-            cp[section][key] = str(value)
+        cp[section]['segmentation_filename'] = segm_filename
+
+        cp[section]['segmented_channel'] = self.user_ch_name
+
+        now = datetime.now().strftime(r'%Y-%m-%d_%H:%M:%S')
+        cp[section]['last_saved_or_edited'] = now
+
+        if model_name:
+            cp[section]['model_name'] = model_name
+
+        if hyperparams is not None:            
+            cp[section] = {'segmented_channel': self.user_ch_name}
+            for key, value in hyperparams.items():
+                cp[section][key] = str(value)
+
+        if post_process_params is not None:
+            for key, value in post_process_params.items():
+                cp[section][key] = str(value)
 
         with open(self.segm_hyperparams_ini_path, 'w') as configfile:
             cp.write(configfile)

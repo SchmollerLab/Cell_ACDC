@@ -590,7 +590,8 @@ class saveDataWorker(QObject):
             if self.saveWin.aborted:
                 self.finished.emit()
                 return
-
+            
+            posData.saveSegmHyperparams()
             current_frame_i = posData.frame_i
 
             if not self.mainWin.isSnapshot:
@@ -11141,11 +11142,12 @@ class guiWin(QMainWindow):
             self.models[idx] = model
 
             postProcessParams = {
-                'model': model_name,
                 'applied_postprocessing': self.applyPostProcessing
             }
             postProcessParams = {**postProcessParams, **self.removeArtefactsKwargs}
-            posData.saveSegmHyperparams(self.segment2D_kwargs, postProcessParams)
+            posData.saveSegmHyperparams(
+                model_name, self.segment2D_kwargs, postProcessParams
+            )
         else:
             model = self.models[idx]
         
@@ -17789,16 +17791,28 @@ class guiWin(QMainWindow):
             values = select_folder.get_values_segmGUI(exp_path)
             if not values:
                 href = f'<a href="{user_manual_url}">user manual</a>'
-                txt = html_utils.paragraph(
-                    'The selected folder:<br><br>'
-                    f'<code>{exp_path}</code><br><br>'
-                    'is <b>not a valid folder</b>.<br><br>'
-                    'Select a folder that contains the Position_n folders<br><br>'
-                    f'You can find <b>more information</b> in the {href} at the '
-                    'section "Create required data structure from '
-                    'microscopy file(s)"'
-                )
-                msg = widgets.myMessageBox()
+                txt = html_utils.paragraph(f"""
+                    The selected folder:<br><br>
+                    
+                    <code>{exp_path}</code><br><br>
+                    
+                    is <b>not a valid folder</b>.<br><br>
+                    
+                    Select a folder that contains the Position_n folders, 
+                    or a specific Position.<br><br>
+                    
+                    If you are trying to load a single image file go to 
+                    <code>File --> Open image/video file...</code>.<br><br>
+                    
+                    To load a folder containing multiple .tif files the folder must 
+                    be called either <code>Position_n</code><br>
+                    (with <code>n</code> being an integer) or <code>Images</code>.<br><br>
+                    
+                    You can find <b>more information</b> in the {href} at the 
+                    section<br>
+                    "Create required data structure from microscopy file(s)"
+                """)
+                msg = widgets.myMessageBox(wrapText=False)
                 msg.critical(
                     self, 'Incompatible folder', txt
                 )
@@ -19191,6 +19205,26 @@ class guiWin(QMainWindow):
     
     def quickSave(self):
         self.saveData(isQuickSave=True)
+    
+    def warnDifferentSegmChannel(
+            self, loaded_channel, segm_channel_hyperparams, segmEndName
+        ):
+        txt = html_utils.paragraph(f"""
+            You loaded the segmentation file ending with <code>_{segmEndName}.npz</code> 
+            which corresponds to the channel 
+            <code>{segm_channel_hyperparams}</code>.<br><br>
+            However, <b>in this session you loaded the channel</b> 
+            <code>{loaded_channel}</code>.<br><br>
+            If you proceed with saving, the segmentation file ending with 
+            <code>_{segmEndName}.npz</code> <b>will be OVERWRITTEN</b>.<br><br>
+            Are you sure you want to proceed?
+        """)
+        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg.warning(
+            self, 'WARNING: Potential for data loss', txt,
+            buttonsTexts=('Cancel', 'Yes')
+        )
+        return msg.cancel
 
     @exception_handler
     def saveData(self, checked=False, finishedCallback=None, isQuickSave=False):
@@ -19207,6 +19241,20 @@ class guiWin(QMainWindow):
         self.titleLabel.setText(
             'Saving data... (check progress in the terminal)', color=self.titleColor
         )
+
+        # Check channel name correspondence to warn
+        posData = self.data[self.pos_i]
+        lastSegmChannel, segmEndName = posData.getSegmentedChannelHyperparams()
+        if lastSegmChannel != self.user_ch_name:
+            cancel = self.warnDifferentSegmChannel(
+                self.user_ch_name, lastSegmChannel, segmEndName
+            )
+            if cancel:
+                self.titleLabel.setText(
+                    'Saving data process cancelled.', color=self.titleColor
+                )
+                return True
+
         self.save_metrics = False
         if not isQuickSave:
             self.save_metrics, cancel = self.askSaveMetrics()
