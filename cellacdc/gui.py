@@ -1460,7 +1460,8 @@ class guiWin(QMainWindow):
             '   - Painting on the background will create a new label.\n'
             '   - Edit an existing label by starting to paint on the label\n'
             '     (brush cursor changes color when hovering an existing label).\n'
-            '   - Painting in default mode always draw UNDER existing labels.\n\n'
+            '   - Press `Shift` to force drawing a new object\n'
+            '   - Painting in default mode always draws UNDER existing labels.\n\n'
             'Power brush mode:\n'
             '   - Power brush: press "b" key twice quickly to force the brush\n'
             '     to draw ABOVE existing labels.\n'
@@ -1470,7 +1471,7 @@ class guiWin(QMainWindow):
             '     --> draw the ID you start the painting from.'
             'Manual ID mode:\n'
             '   - Toggle the manual ID mode with the "Auto-ID" checkbox on the\n'
-            '     top-left toolbar.\n'
+            '     top-right toolbar.\n'
             '   - Enter the ID that you want to paint.\n'
             '     NOTE: use the power brush to draw ABOVE the existing labels.\n\n'
             'SHORTCUT: "B" key'
@@ -7100,12 +7101,15 @@ class guiWin(QMainWindow):
                 #     f'{self.brushHoverCenterModeAction = }'
                 # )
         else:
-            if self.brushHoverCenterModeAction.isChecked() or ID>0:
+            if self.brushButton.isChecked() and self.isShiftDown:
+                # Force new ID with brush and Shift
+                hoverID = 0
+            elif self.brushHoverCenterModeAction.isChecked() or ID>0:
                 hoverID = ID
             else:
                 masked_lab = lab_2D[ymin:ymax, xmin:xmax][diskMask]
                 hoverID = np.bincount(masked_lab).argmax()
-
+            
         self.editIDspinbox.setValue(hoverID)
 
         return hoverID
@@ -9753,7 +9757,7 @@ class guiWin(QMainWindow):
         )
         if isShiftModifier:
             self.isShiftDown = True
-            if self.isSegm3D:
+            if self.brushButton.isChecked():
                 # Force default brush symbol with shift down
                 self.setHoverToolSymbolColor(
                     1, 1, self.ax2_BrushCirclePen,
@@ -9761,6 +9765,7 @@ class guiWin(QMainWindow):
                     self.brushButton, brush=self.ax2_BrushCircleBrush,
                     ID=0
                 )
+            if self.isSegm3D:
                 self.changeBrushID()        
         isBrushActive = (
             self.brushButton.isChecked() or self.eraserButton.isChecked()

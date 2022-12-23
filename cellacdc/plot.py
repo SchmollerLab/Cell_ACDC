@@ -44,7 +44,7 @@ def binned_means_plot(
     if isinstance(x, str):
         if data is None:
             raise TypeError(
-                "Passing strings to 'x' and 'y' also requires the 'data' "
+                "Passing strings to `x` and `y` also requires the `data` "
                 "variable as a pandas DataFrame"
             )
         ax.set_xlabel(x)
