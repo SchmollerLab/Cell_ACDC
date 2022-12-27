@@ -1109,6 +1109,8 @@ class VerticalResizeHline(QFrame):
         self.setFrameShadow(QFrame.Sunken)
         self.installEventFilter(self)
         self.isMousePressed = False
+        self._height = 4
+        self.setMinimumHeight(self._height)
     
     def mousePressEvent(self, event) -> None:
         self.isMousePressed = True
@@ -1126,9 +1128,70 @@ class VerticalResizeHline(QFrame):
     
     def eventFilter(self, object, event):
         if event.type() == QEvent.Enter:
-            self.setStyleSheet('background-color: #4d4d4d') 
+            self.setLineWidth(0)
+            self.setMidLineWidth(self._height)
+            pal = self.palette()
+            pal.setColor(QPalette.WindowText, QColor('#4d4d4d'))
+            self.setPalette(pal)
+            # self.setStyleSheet('background-color: #4d4d4d') 
         elif event.type() == QEvent.Leave:
-            self.setStyleSheet('') 
+            self.setMidLineWidth(0)
+            self.setLineWidth(1)
+        return False
+
+class ScrollArea(QScrollArea):
+    def __init__(self, parent=None, resizeVerticalOnShow=False) -> None:
+        super().__init__(parent)
+        self.setWidgetResizable(True)
+        self.setFrameStyle(QFrame.NoFrame)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.containerWidget = None
+        self.resizeVerticalOnShow = resizeVerticalOnShow
+        self.isOnlyVertical = False
+    
+    def setVerticalLayout(self, layout, widget=None):
+        if widget is None:
+            self.containerWidget = QWidget()
+        else:
+            self.containerWidget = widget
+        self.containerWidget.setLayout(layout)
+        self.containerWidget.setSizePolicy(
+            QSizePolicy.Preferred, QSizePolicy.Preferred
+        )
+        self.setWidget(self.containerWidget)
+        self.containerWidget.installEventFilter(self)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.isOnlyVertical = True
+    
+    def setWidget(self, widget):
+        self.containerWidget = widget
+        super().setWidget(widget)
+    
+    def _resizeHorizontal(self):
+        self.setMinimumWidth(
+            self.containerWidget.minimumSizeHint().width()
+            + self.verticalScrollBar().width()
+        )
+    
+    def _resizeVertical(self):
+        height = (
+            self.containerWidget.minimumSizeHint().height()
+            + self.horizontalScrollBar().height()
+        )
+        self.containerWidget.setSizePolicy(
+            QSizePolicy.Preferred, QSizePolicy.Preferred
+        )
+        self.setFixedHeight(height)
+
+    def eventFilter(self, object, event):
+        if object != self.containerWidget:
+            return False
+        isResize = event.type() == QEvent.Resize
+        isShow = event.type() == QEvent.Show
+        if isResize and self.isOnlyVertical:
+            self._resizeHorizontal()
+        elif isShow and self.resizeVerticalOnShow:
+            self._resizeVertical()
         return False
 
 class QClickableLabel(QLabel):

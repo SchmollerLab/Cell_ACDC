@@ -60,9 +60,9 @@ from PyQt5.QtWidgets import (
     QMainWindow, QMenu, QToolBar, QGroupBox, QGridLayout,
     QScrollBar, QCheckBox, QToolButton, QSpinBox, QGroupBox,
     QComboBox, QButtonGroup, QActionGroup, QFileDialog,
-    QAbstractSlider, QMessageBox, QWidget, QDockWidget,
-    QDockWidget, QGridLayout, QGraphicsProxyWidget, QVBoxLayout,
-    QRadioButton, QSpacerItem
+    QAbstractSlider, QMessageBox, QWidget, QGridLayout, QDockWidget,
+    QGraphicsProxyWidget, QVBoxLayout, QRadioButton, 
+    QSpacerItem, QScrollArea
 )
 
 import pyqtgraph as pg
@@ -973,7 +973,7 @@ class guiWin(QMainWindow):
 
         self.gui_createImg1Widgets()
         self.gui_createLabWidgets()
-        self.gui_addBottomWidgetsToBottomLayout()
+        self.gui_createBottomWidgetsToBottomLayout()
 
         mainContainer = QWidget()
         self.setCentralWidget(mainContainer)
@@ -1948,14 +1948,16 @@ class guiWin(QMainWindow):
         row, col = 0, 1 # Leave column 1 for the overlay labels gradient editor
         mainLayout.addLayout(self.leftSideDocksLayout, row, col, 2, 1)
 
-        row, col = 0, 2
+        row = 0
+        col = 2
         mainLayout.addWidget(self.graphLayout, row, col, 1, 2)
         mainLayout.setRowStretch(row, 2)
 
-        row, col = 0, 4 # graphLayout spans two columns
+        col = 4 # graphLayout spans two columns
         mainLayout.addWidget(self.labelsGrad, row, col)
 
-        row, col = 1, 2
+        col = 2
+        row += 1
         self.resizeBottomLayoutLine = widgets.VerticalResizeHline()
         mainLayout.addWidget(self.resizeBottomLayoutLine, row, col, 1, 2)
         self.resizeBottomLayoutLine.dragged.connect(
@@ -1964,14 +1966,20 @@ class guiWin(QMainWindow):
         self.resizeBottomLayoutLine.clicked.connect(
             self.resizeBottomLayoutLineClicked
         )
-
-        mainLayout.addItem(QSpacerItem(5,5), row+1, col, 1, 2)
-
-        row, col = 3, 2
-        mainLayout.addLayout(
-            self.bottomLayout, row, col, 1, 2, alignment=Qt.AlignLeft
+        self.resizeBottomLayoutLine.released.connect(
+            self.resizeBottomLayoutLineReleased
         )
-        self.bottomLayout.row = row
+
+        # row += 1
+        # mainLayout.addItem(QSpacerItem(5,5), row+1, col, 1, 2)
+
+        # row, col = 1, 2
+        # mainLayout.addLayout(
+        #     self.bottomLayout, row, col, 1, 2, alignment=Qt.AlignLeft
+        # )
+
+        row += 1
+        mainLayout.addWidget(self.bottomScrollArea, row, col, 1, 2)
         mainLayout.setRowStretch(row, 0)
 
         # row, col = 2, 1
@@ -3039,7 +3047,7 @@ class guiWin(QMainWindow):
 
     def gui_createLabWidgets(self):
         bottomRightLayout = QVBoxLayout()
-        self.rightBottomGroupbox = QGroupBox('Navigate and annotate right image')
+        self.rightBottomGroupbox = QGroupBox('Annotate right image')
         self.rightBottomGroupbox.setCheckable(True)
         self.rightBottomGroupbox.setChecked(False)
         self.rightBottomGroupbox.hide()
@@ -3064,21 +3072,55 @@ class guiWin(QMainWindow):
     def rightImageControlsToggled(self, checked):
         self.updateALLimg()
 
-    def gui_addBottomWidgetsToBottomLayout(self):
+    def gui_createBottomWidgetsToBottomLayout(self):
+        # self.bottomDockWidget = QDockWidget(self)
+        bottomScrollArea = widgets.ScrollArea(resizeVerticalOnShow=True)
+        bottomWidget = QWidget()
+        bottomScrollAreaLayout = QVBoxLayout()
         self.bottomLayout = QHBoxLayout()
         self.bottomLayout.addStretch(1)
         self.bottomLayout.addWidget(self.img1BottomGroupbox)
         self.bottomLayout.addStretch(1)
         self.bottomLayout.addWidget(self.rightBottomGroupbox)
         self.bottomLayout.addStretch(1)
+
+        bottomScrollAreaLayout.addLayout(self.bottomLayout)
+        bottomScrollAreaLayout.addStretch(1)
+
+        bottomWidget.setLayout(bottomScrollAreaLayout)
+        bottomScrollArea.setWidgetResizable(True)
+        bottomScrollArea.setWidget(bottomWidget)
+        self.bottomScrollArea = bottomScrollArea
+        
+        if 'bottom_sliders_zoom_perc' in self.df_settings.index:
+            val = int(self.df_settings.at['bottom_sliders_zoom_perc', 'value'])
+            zoom_perc = val
+        else:
+            zoom_perc = 100
+        self.bottomLayoutContextMenu = QMenu('Bottom layout', self)
+        zoomMenu = self.bottomLayoutContextMenu.addMenu('Zoom')
+        actions = []
+        self.bottomLayoutContextMenu.zoomActionGroup = QActionGroup(zoomMenu)
+        for perc in np.arange(50, 151, 10):
+            action = QAction(f'{perc}%', zoomMenu)
+            action.setCheckable(True)
+            if perc == zoom_perc:
+                action.setChecked(True)
+            action.toggled.connect(self.zoomBottomLayoutActionTriggered)
+            actions.append(action)
+            self.bottomLayoutContextMenu.zoomActionGroup.addAction(action)
+        zoomMenu.addActions(actions)
+        resetAction = self.bottomLayoutContextMenu.addAction(
+            'Reset default height'
+        )
+        resetAction.triggered.connect(self.resizeGui)
         self.setBottomLayoutStretch()
     
     def gui_resetBottomLayoutHeight(self):
-        self.h = self.defaultWidgetHeighBottomLayout
+        self.h = self.defaultWidgetHeightBottomLayout
         self.checkBoxesHeight = 14
         self.fontPixelSize = 11
         self.resizeSlidersArea()
-        self.resetHeightButton.hide()
 
     def gui_createGraphicsPlots(self):
         self.graphLayout = pg.GraphicsLayoutWidget()
@@ -9671,25 +9713,16 @@ class guiWin(QMainWindow):
                 pass
     
     def resizeBottomLayoutLineClicked(self, event):
-        self.bottomLayoutHeight = self.img1BottomGroupbox.height()
-        self.h = self.navSpinBox.size().height()
-        self.fontPixelSize = self.navSpinBox.font().pixelSize()
-        s = self.annotIDsCheckbox.styleSheet()
-        m = re.findall('width: (\d+)px', s)
-        self.checkBoxesHeight = int(m[0])
+        pass
         
     def resizeBottomLayoutLineDragged(self, event):
         if not self.img1BottomGroupbox.isVisible():
             return
-        deltaHeight = event.y()/self.bottomLayoutHeight
-        heightFactor = 1 - deltaHeight
-        if heightFactor < 0.1:
-            heightFactor = 0.1
-        fontSizeFactor = 1 - deltaHeight*0.7
-        self.resizeSlidersArea(
-            fontSizeFactor=fontSizeFactor, 
-            heightFactor=heightFactor
-        )
+        newBottomLayoutHeight = self.bottomScrollArea.minimumHeight() - event.y()
+        self.bottomScrollArea.setFixedHeight(newBottomLayoutHeight)
+    
+    def resizeBottomLayoutLineReleased(self):
+        QTimer.singleShot(100, self.autoRange)
     
     def mousePressEvent(self, event) -> None:
         if event.button() == Qt.MouseButton.RightButton:
@@ -9699,44 +9732,34 @@ class guiWin(QMainWindow):
         return super().mousePressEvent(event)
 
     def gui_raiseBottomLayoutContextMenu(self, event):
-        menu = QMenu(self)
-        resetAction = QAction('Reset default height')
-        resetAction.triggered.connect(self.gui_resetBottomLayoutHeight)
-        menu.addAction(resetAction)
-        if self.img1BottomGroupbox.isVisible():
-            hideAction = QAction('Hide controls')
-            hideAction.triggered.connect(self.gui_hideBottomControls)
-            menu.addAction(hideAction)
-        else:
-            showAction = QAction('Show controls')
-            showAction.triggered.connect(self.gui_showBottomControls)
-            menu.addAction(showAction)
         try:
             # Convert QPointF to QPoint
-            menu.exec_(event.screenPos().toPoint())
+            self.bottomLayoutContextMenu.popup(event.screenPos().toPoint())
         except AttributeError:
-            menu.exec_(event.screenPos())
-    
-    def gui_hideBottomControls(self):
-        self.img1BottomGroupbox.hide()
-        self.rightBottomGroupbox.hide()
-        QTimer.singleShot(100, self.autoRange)
-    
-    def gui_showBottomControls(self):
-        self.img1BottomGroupbox.show()
-        if self.df_settings.at['isRightImageVisible', 'value'] == 'Yes':
-            self.rightBottomGroupbox.show()
-        QTimer.singleShot(100, self.autoRange)
+            self.bottomLayoutContextMenu.popup(event.screenPos())
+        
+    def zoomBottomLayoutActionTriggered(self, checked):
+        if not checked:
+            return
+        perc = int(re.findall(r'(\d+)%', self.sender().text())[0])
+        if perc != 100:
+            fontSizeFactor = perc/100
+            heightFactor = perc/100
+            self.resizeSlidersArea(
+                fontSizeFactor=fontSizeFactor, heightFactor=heightFactor
+            )
+        else:
+            self.gui_resetBottomLayoutHeight()
+        self.df_settings.at['bottom_sliders_zoom_perc', 'value'] = perc
+        self.df_settings.to_csv(self.settings_csv_path)
+        QTimer.singleShot(150, self.resizeGui)
 
     @exception_handler
     def keyPressEvent(self, ev):
         if ev.key() == Qt.Key_T:
             # self.setAllIDs()
             posData = self.data[self.pos_i]
-            printl(self.screen().size())
-            printl(self.graphLayout.height())
-            printl(self.img1BottomGroupbox.height())
-            printl(self.height())
+            self.bottomScrollArea._resizeVertical()
             # printl(posData.allIDs)
             # printl(f'{posData.binnedIDs = }')
             # printl(f'{posData.ripIDs = }')
@@ -12185,6 +12208,7 @@ class guiWin(QMainWindow):
         self.guiTabControl.addChannels([posData.user_ch_name])
         self.showPropsDockButton.setDisabled(False)
 
+        self.bottomScrollArea.show()
         self.gui_createAutoSaveWorker()
         self.gui_createStoreStateWorker()
         self.init_segmInfo_df()
@@ -12278,7 +12302,11 @@ class guiWin(QMainWindow):
         self.ax1.vb.menu = self.imgGrad.gradient.menu
         self.ax2.vb.menu = self.labelsGrad.menu
 
-        QTimer.singleShot(200, self.autoRange)
+        QTimer.singleShot(200, self.resizeGui)
+    
+    def resizeGui(self):
+        self.autoRange()
+        self.bottomScrollArea._resizeVertical()
     
     def showHighlightZneighCheckbox(self):
         if self.isSegm3D:
@@ -15945,14 +15973,14 @@ class guiWin(QMainWindow):
         if isTwoImages:
             self.graphLayout.removeItem(self.titleLabel)
             self.graphLayout.addItem(self.titleLabel, row=0, col=1, colspan=2)
-            self.mainLayout.setAlignment(self.bottomLayout, Qt.AlignLeft)
+            # self.mainLayout.setAlignment(self.bottomLayout, Qt.AlignLeft)
             self.ax2.show()
             self.ax2.vb.setYLink(self.ax1.vb)
             self.ax2.vb.setXLink(self.ax1.vb)
         else:
             self.graphLayout.removeItem(self.titleLabel)
             self.graphLayout.addItem(self.titleLabel, row=0, col=1)
-            self.mainLayout.setAlignment(self.bottomLayout, Qt.AlignCenter)  
+            # self.mainLayout.setAlignment(self.bottomLayout, Qt.AlignCenter)  
             self.ax2.hide()
             oldLink = self.ax2.vb.linkedView(self.ax1.vb.YAxis)
             try:
@@ -19571,11 +19599,23 @@ class guiWin(QMainWindow):
         self.storeDefaultAndCustomColors()
 
         self.h = self.navSpinBox.size().height()
-        self.defaultWidgetHeighBottomLayout = self.h
+        fontSizeFactor = None
+        heightFactor = None
+        if 'bottom_sliders_zoom_perc' in self.df_settings.index:
+            val = int(self.df_settings.at['bottom_sliders_zoom_perc', 'value'])
+            if val != 100:
+                fontSizeFactor = val/100
+                heightFactor = val/100
+
+        self.defaultWidgetHeightBottomLayout = self.h
         self.checkBoxesHeight = 14
         self.fontPixelSize = 11
         self.defaultBottomLayoutHeight = self.img1BottomGroupbox.height()
-        self.resizeSlidersArea()
+        
+        self.resizeSlidersArea(
+            fontSizeFactor=fontSizeFactor, heightFactor=heightFactor
+        )
+        self.bottomScrollArea.hide()
 
         self.gui_initImg1BottomWidgets()
         self.img1BottomGroupbox.hide()
