@@ -3114,6 +3114,20 @@ class guiWin(QMainWindow):
             'Reset default height'
         )
         resetAction.triggered.connect(self.resizeGui)
+        retainSpaceAction = self.bottomLayoutContextMenu.addAction(
+            'Retain space of hidden sliders'
+        )
+        retainSpaceAction.setCheckable(True)
+        if 'retain_space_hidden_sliders' in self.df_settings.index:
+            retainSpaceChecked = (
+                self.df_settings.at['retain_space_hidden_sliders', 'value']
+                == 'Yes'
+            )
+        else:
+            retainSpaceChecked = True
+        retainSpaceAction.setChecked(retainSpaceChecked)
+        retainSpaceAction.toggled.connect(self.retainSpaceSlidersToggled)
+        self.retainSpaceSlidersAction = retainSpaceAction
         self.setBottomLayoutStretch()
     
     def gui_resetBottomLayoutHeight(self):
@@ -9753,6 +9767,31 @@ class guiWin(QMainWindow):
         self.df_settings.at['bottom_sliders_zoom_perc', 'value'] = perc
         self.df_settings.to_csv(self.settings_csv_path)
         QTimer.singleShot(150, self.resizeGui)
+    
+    def retainSpaceSlidersToggled(self, checked):
+        if checked:
+            self.df_settings.at['retain_space_hidden_sliders', 'value'] = 'Yes'
+        else:
+            self.df_settings.at['retain_space_hidden_sliders', 'value'] = 'No'
+        self.df_settings.to_csv(self.settings_csv_path)
+        if not self.zSliceScrollBar.isEnabled():
+            retainSpaceZ = False
+        else:
+            retainSpaceZ = checked
+        myutils.setRetainSizePolicy(self.zSliceScrollBar, retain=retainSpaceZ)
+        myutils.setRetainSizePolicy(self.zProjComboBox, retain=retainSpaceZ)
+        myutils.setRetainSizePolicy(self.z_label, retain=retainSpaceZ)
+        myutils.setRetainSizePolicy(self.zSliceOverlay_SB, retain=retainSpaceZ)
+        myutils.setRetainSizePolicy(self.zProjOverlay_CB, retain=retainSpaceZ)
+        myutils.setRetainSizePolicy(self.overlay_z_label, retain=retainSpaceZ)
+        
+        for overlayItems in self.overlayLayersItems.values():
+            alphaScrollBar = overlayItems[2]
+            myutils.setRetainSizePolicy(alphaScrollBar, retain=checked)
+            myutils.setRetainSizePolicy(alphaScrollBar.label, retain=checked)
+        
+        QTimer.singleShot(200, self.resizeGui)
+
 
     @exception_handler
     def keyPressEvent(self, ev):
@@ -12297,6 +12336,8 @@ class guiWin(QMainWindow):
 
         self.labelRoiCircItemLeft.setImageShape(self.currentLab2D.shape)
         self.labelRoiCircItemRight.setImageShape(self.currentLab2D.shape)
+
+        self.retainSpaceSlidersToggled(self.retainSpaceSlidersAction.isChecked())
 
         # Overwrite axes viewbox context menu
         self.ax1.vb.menu = self.imgGrad.gradient.menu
