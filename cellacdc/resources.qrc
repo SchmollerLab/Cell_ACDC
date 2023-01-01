@@ -50,6 +50,8 @@
     <file alias="undo.svg">resources/icons/undo.svg</file>
     <file alias="redo.svg">resources/icons/redo.svg</file>
     <file alias="eye.svg">resources/icons/eye.svg</file>
+    <file alias="eye-checked.svg">resources/icons/eye-checked.svg</file>
+    <file alias="unchecked.svg">resources/icons/unchecked.svg</file>
     <file alias="play.svg">resources/icons/play.svg</file>
     <file alias="stop.svg">resources/icons/stop.svg</file>
     <file alias="moveLabel.svg">resources/icons/moveLabel.svg</file>

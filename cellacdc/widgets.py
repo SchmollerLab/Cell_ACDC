@@ -3248,8 +3248,52 @@ class PlotCurveItem(pg.PlotCurveItem):
 class ToggleVisibilityButton(QPushButton):
     def __init__(self, *args):
         super().__init__(*args)
-        self.setCheckable(True)
         self.setFlat(True)
+        self.setCheckable(True)
+        self.toggled.connect(self.onToggled)
+    
+    def onToggled(self, checked):
+        if checked:
+            self.setIcon(':eye-checked.svg')
+        else:
+            self.setIcon('unchecked.svg')
+
+class ToggleVisibilityCheckBox(QCheckBox):
+    def __init__(self, *args, pixelSize=24):
+        super().__init__(*args)
+        self._pixelSize = pixelSize
+        self.onToggled(False)
+        self.toggled.connect(self.onToggled)
+        
+    def setPixelSize(self, pixelSize):
+        self._pixelSize = pixelSize
+        
+    def onToggled(self, checked):
+        if checked:
+            self.setStyleSheet(f"""
+                QCheckBox::indicator {{
+                    width: {self._pixelSize}px;
+                    height: {self._pixelSize}px;
+                }}
+
+                QCheckBox::indicator:checked
+                {{
+                    image: url(:eye-checked.svg);
+                }}
+            """)
+        else:
+            self.setStyleSheet(f"""
+                QCheckBox::indicator {{
+                    width: {self._pixelSize}px;
+                    height: {self._pixelSize}px;
+                }}
+                
+                QCheckBox::indicator:unchecked
+                {{
+                    image: url(:unchecked.svg);
+                }}
+            """)
+
 
 class myHistogramLUTitem(baseHistogramLUTitem):
     sigGradientMenuEvent = pyqtSignal(object)
