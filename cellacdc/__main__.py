@@ -42,6 +42,7 @@ class AcdcSPlashScreen(QtWidgets.QSplashScreen):
 app = QtWidgets.QApplication([])
 
 app.setStyle(QtWidgets.QStyleFactory.create('Fusion'))
+app.setPalette(app.style().standardPalette())
 app.setWindowIcon(QtGui.QIcon(":icon.ico"))
 
 # Launch splashscreen

@@ -3245,6 +3245,11 @@ class PlotCurveItem(pg.PlotCurveItem):
         _xx, _yy = self.getData()
         return _yy.min(), _xx.min(), _yy.max(), _xx.max()
 
+class ToggleVisibilityButton(QPushButton):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setCheckable(True)
+        self.setFlat(True)
 
 class myHistogramLUTitem(baseHistogramLUTitem):
     sigGradientMenuEvent = pyqtSignal(object)
