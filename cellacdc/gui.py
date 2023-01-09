@@ -17775,7 +17775,7 @@ class guiWin(QMainWindow):
         self.logger.info(f'Opening FOLDER "{exp_path}"')
 
         self.isNewFile = False
-        if hasattr(self, 'data'):
+        if hasattr(self, 'data') and self.titleLabel.text != 'Saved!':
             msg = widgets.myMessageBox()
             txt = html_utils.paragraph(
                 'Do you want to <b>save</b> before loading another dataset?'
