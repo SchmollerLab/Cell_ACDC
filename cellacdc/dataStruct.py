@@ -34,6 +34,7 @@ from PyQt5 import QtGui
 from . import exception_handler
 from . import qrc_resources
 from . import apps, myutils, widgets, html_utils, printl
+from . import load
 
 if os.name == 'nt':
     try:
@@ -68,6 +69,7 @@ class bioFormatsWorker(QObject):
         str, list, list, str, str, object
     )
     critical = pyqtSignal(object)
+    sigFinishedReadingSampleImageData = pyqtSignal(object)
     # aborted = pyqtSignal()
 
     def __init__(
@@ -87,6 +89,61 @@ class bioFormatsWorker(QObject):
         self.overwritePos = False
         self.addFiles = False
         self.cancel = False
+    
+    def readSampleData(self, rawFilePath, SizeC, SizeT, SizeZ):
+        sampleImgData = {}
+        self.progress.emit('Reading sample image data...')
+        dimsIdx = {}
+        if SizeT >= 4:
+            sampleSizeT = 4
+        else:
+            sampleSizeT = SizeT 
+        if SizeZ > 20:
+            sampleSizeZ = 20
+        else:
+            sampleSizeZ = SizeZ
+        with bioformats.ImageReader(rawFilePath) as reader:
+            permut_pbar = tqdm(total=6, ncols=100)
+            for dimsOrd in permutations('zct', 3):
+                allChannelsData = []
+                idxs = self.buildIndexes(SizeC, SizeT, SizeZ, dimsOrd)
+                numIter = SizeC*sampleSizeT*sampleSizeZ
+                pbar = tqdm(total=numIter, ncols=100, leave=False)
+                skipPermutation = False
+                for c in range(SizeC):
+                    dimsIdx['c'] = c
+                    imgData_tz = []
+                    for t in range(sampleSizeT):   
+                        dimsIdx['t'] = t
+                        imgData_z = []
+                        for z in range(sampleSizeZ):
+                            dimsIdx['z'] = z
+                            try:
+                                idx = self.getIndex(idxs, dimsIdx, dimsOrd)
+                                imgData = reader.read(
+                                    c=c, z=z, t=0, rescale=False, index=idx
+                                )
+                            except Exception as e:
+                                skipPermutation = True
+                                break
+                            imgData_z.append(imgData) 
+                            pbar.update()
+                        if skipPermutation:
+                            break               
+                        imgData_z = np.array(imgData_z, dtype=imgData.dtype)
+                        imgData_z = np.squeeze(imgData_z)
+                        imgData_tz.append(imgData_z)
+                    if not skipPermutation:
+                        imgData_tz = np.array(imgData_tz, dtype=imgData.dtype)
+                        imgData_tz = np.squeeze(imgData_tz)
+                        allChannelsData.append(imgData_tz)
+                pbar.close()
+                permut_pbar.update(1)
+                if not skipPermutation:
+                    sampleImgData[''.join(dimsOrd)] = allChannelsData
+            permut_pbar.close()
+        self.sigFinishedReadingSampleImageData.emit(sampleImgData)
+        return sampleImgData
 
     def readMetadata(self, raw_src_path, filename):
         rawFilePath = os.path.join(raw_src_path, filename)
@@ -94,8 +151,12 @@ class bioFormatsWorker(QObject):
         self.progress.emit('Reading OME metadata...')
 
         try:
-            metadataXML = bioformats.get_omexml_metadata(rawFilePath)
-            metadata = bioformats.OMEXML(metadataXML)
+            if rawFilePath.endswith('.ome.tif'):
+                metadata = load.OMEXML(rawFilePath)
+                metadataXML = metadata.omexml_string
+            else:
+                metadataXML = bioformats.get_omexml_metadata(rawFilePath)
+                metadata = bioformats.OMEXML(metadataXML)
             self.metadata = metadata
             self.metadataXML = metadataXML
         except Exception as e:
@@ -255,7 +316,7 @@ class bioFormatsWorker(QObject):
 
         if self.rawDataStruct != 2:
             try:
-                chNames = ['name_not_found']*SizeC
+                chNames = ['']*SizeC
                 for c in range(SizeC):
                     try:
                         chNames[c] = metadata.image().Pixels.Channel(c).Name
@@ -268,7 +329,7 @@ class bioFormatsWorker(QObject):
                 self.progress.emit('WARNING: chNames not found in metadata.')
                 self.progress.emit(
                     '===================================================')
-                chNames = ['not_found']*SizeC
+                chNames = ['']*SizeC
         else:
             chNames = self.chNames
             SizeC = len(self.chNames)
@@ -277,9 +338,9 @@ class bioFormatsWorker(QObject):
             try:
                 emWavelens = [500.0]*SizeC
                 for c in range(SizeC):
-                    Channel = metadata.image().Pixels.Channel(c)
-                    emWavelen = Channel.node.get("EmissionWavelength")
                     try:
+                        Channel = metadata.image().Pixels.Channel(c)
+                        emWavelen = Channel.node.get("EmissionWavelength")
                         emWavelens[c] = float(emWavelen)
                     except Exception as e:
                         emWavelens[c] = 0.0
@@ -309,55 +370,40 @@ class bioFormatsWorker(QObject):
             # self.chNames = chNames
             self.emWavelens = emWavelens
         else:
-            self.mutex.lock()
             sampleImgData = None
-            if self.rawDataStruct != 2:
-                sampleImgData = {}
-                self.progress.emit('Reading sample image data...')
-                dimsIdx = {}
-                if SizeT >= 4:
-                    sampleSizeT = 4
-                else:
-                    sampleSizeT = SizeT  
-                with bioformats.ImageReader(rawFilePath) as reader:
-                    permut_pbar = tqdm(total=6, ncols=100)
-                    for dimsOrd in permutations('zct', 3):
-                        allChannelsData = []
-                        idxs = self.buildIndexes(SizeC, SizeT, SizeZ, dimsOrd)
-                        numIter = SizeC*sampleSizeT*SizeZ
-                        pbar = tqdm(total=numIter, ncols=100, leave=False)
-                        for c in range(SizeC):
-                            dimsIdx['c'] = c
-                            imgData_tz = []
-                            for t in range(sampleSizeT):   
-                                dimsIdx['t'] = t
-                                imgData_z = []
-                                for z in range(SizeZ):
-                                    dimsIdx['z'] = z
-                                    idx = self.getIndex(idxs, dimsIdx, dimsOrd)
-                                    imgData = reader.read(
-                                        c=c, z=z, t=0, rescale=False, index=idx
-                                    )
-                                    imgData_z.append(imgData) 
-                                    pbar.update()               
-                                imgData_z = np.array(imgData_z, dtype=imgData.dtype)
-                                imgData_z = np.squeeze(imgData_z)
-                                imgData_tz.append(imgData_z)
-                            imgData_tz = np.array(imgData_tz, dtype=imgData.dtype)
-                            imgData_tz = np.squeeze(imgData_tz)
-                            allChannelsData.append(imgData_tz)
-                        pbar.close()
-                        permut_pbar.update(1)
-                        sampleImgData[''.join(dimsOrd)] = allChannelsData
-                    permut_pbar.close()
-            self.confirmMetadata.emit(
-                filename, LensNA, DimensionOrder, SizeT, SizeZ, SizeC, SizeS,
-                TimeIncrement, TimeIncrementUnit, PhysicalSizeX, PhysicalSizeY,
-                PhysicalSizeZ, PhysicalSizeUnit, chNames, emWavelens, ImageName,
-                rawFilePath, sampleImgData
-            )
-            self.waitCond.wait(self.mutex)
-            self.mutex.unlock()
+            while True:
+                self.mutex.lock()
+                if self.rawDataStruct != 2:
+                    sampleImgData = self.readSampleData(
+                        rawFilePath, SizeC, SizeT, SizeZ
+                    )
+                self.confirmMetadata.emit(
+                    filename, LensNA, DimensionOrder, SizeT, SizeZ, SizeC, SizeS,
+                    TimeIncrement, TimeIncrementUnit, PhysicalSizeX, PhysicalSizeY,
+                    PhysicalSizeZ, PhysicalSizeUnit, chNames, emWavelens, ImageName,
+                    rawFilePath, sampleImgData
+                )
+                self.waitCond.wait(self.mutex)
+                self.mutex.unlock()
+
+                if self.metadataWin.cancel:
+                    return True
+
+                if not self.metadataWin.requestedReadingSampleImageDataAgain:
+                    break
+                LensNA = self.metadataWin.LensNA
+                DimensionOrder = self.metadataWin.DimensionOrder
+                SizeT = self.metadataWin.SizeT
+                SizeZ = self.metadataWin.SizeZ
+                SizeC = self.metadataWin.SizeC
+                SizeS = self.metadataWin.SizeS
+                TimeIncrement = self.metadataWin.TimeIncrement
+                PhysicalSizeX = self.metadataWin.PhysicalSizeX
+                PhysicalSizeY = self.metadataWin.PhysicalSizeY
+                PhysicalSizeZ = self.metadataWin.PhysicalSizeZ
+                chNames = self.metadataWin.chNames
+                emWavelens = self.metadataWin.emWavelens
+
             if self.metadataWin.cancel:
                 return True
             elif self.metadataWin.overWrite:
@@ -826,7 +872,6 @@ class bioFormatsWorker(QObject):
         
 
 class createDataStructWin(QMainWindow):
-    sigFinishedReadingSampleImgData = pyqtSignal(object)
 
     def __init__(
             self, parent=None, allowExit=False,
@@ -860,6 +905,7 @@ class createDataStructWin(QMainWindow):
         self.processFinished = False
         self.buttonToRestore = buttonToRestore
         self.mainWin = mainWin
+        self.metadataDialogIsOpen = False
 
         self.setWindowTitle("Cell-ACDC - From raw microscopy file to tifs")
         self.setWindowIcon(QtGui.QIcon(":icon.ico"))
@@ -1266,7 +1312,7 @@ class createDataStructWin(QMainWindow):
         self.thread.started.connect(self.worker.run)
 
         self.thread.start()
-
+    
     @exception_handler
     def workerCritical(self, error):
         raise error
@@ -1578,6 +1624,7 @@ class createDataStructWin(QMainWindow):
         ):
         if self.rawDataStruct == 2:
             filename = self.basename
+        self.metadataDialogIsOpen = True
         self.metadataWin = apps.QDialogMetadataXML(
             title=f'Metadata for {filename}', rawFilename=filename,
             LensNA=LensNA, DimensionOrder=DimensionOrder,
@@ -1590,6 +1637,7 @@ class createDataStructWin(QMainWindow):
             sampleImgData=sampleImgData, rawFilePath=rawFilePath
         )
         self.metadataWin.exec_()
+        self.metadataDialogIsOpen = False
         self.worker.metadataWin = self.metadataWin
         self.waitCond.wakeAll()
 

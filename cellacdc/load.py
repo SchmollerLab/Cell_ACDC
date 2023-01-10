@@ -12,6 +12,7 @@ from tqdm import tqdm
 import numpy as np
 import h5py
 import pandas as pd
+import xml.etree.ElementTree as ET
 import tkinter as tk
 from tkinter import ttk
 from skimage import io
@@ -1736,3 +1737,87 @@ def load_shifts(parent_path, basename=None):
         else:
             shifts = None
     return shifts, shifts_found
+
+class OMEXML_image:
+    def __init__(self, Pixels, ome_schema):
+        if Pixels is None:
+            node = None
+        else:
+            node = Pixels.attrib
+        self.Pixels = OMEXML_Pixels(Pixels, node, ome_schema)
+
+class OMEXML_objective:
+    def __init__(self) -> None:
+        self.LensNA = 1.4
+
+class OMEXML_intrument:
+    def __init__(self):
+        self.Objective = OMEXML_objective()
+
+class OMEXML_Channel:
+    def __init__(self, Channel) -> None:
+        self.Name = Channel.attrib.get('Name', '')
+        self.node = Channel.attrib
+
+class OMEXML_Pixels:
+    def __init__(self, Pixels, node, ome_schema) -> None:
+        self.node = node
+        self.Pixels = Pixels
+        self.ome_schema = ome_schema
+        if node is None:
+            self.SizeZ = 1
+            self.SizeT = 1
+            self.SizeC = 1
+            self.PhysicalSizeX = 1.0
+            self.PhysicalSizeY = 1.0
+            self.PhysicalSizeZ = 1.0
+        else:
+            self.SizeZ = node.get('SizeZ', 1)
+            self.SizeT = node.get('SizeT', 1)
+            self.SizeC = node.get('SizeC', 1)
+            self.PhysicalSizeX = node.get('PhysicalSizeX', 1.0)
+            self.PhysicalSizeY = node.get('PhysicalSizeY', 1.0)
+            self.PhysicalSizeZ = node.get('PhysicalSizeZ', 1.0)
+        
+    def Channel(self, channel_index=0):
+        Channel = self.Pixels.findall(f'{self.ome_schema}Channel')[channel_index]
+        return OMEXML_Channel(Channel)
+
+class OMEXML:
+    def __init__(self, ometiff_filepath):
+        self.filepath = ometiff_filepath
+        self.read_omexml_string()
+        self.parse_metadata()
+    
+    def read_omexml_string(self):
+        with TiffFile(self.filepath) as tif:
+            return tif.ome_metadata
+    
+    def parse_metadata(self):
+        self.omexml_string = self.read_omexml_string()
+        self.root = ET.fromstring(self.omexml_string)
+        self.ome_schema = re.findall(r'({.+})OME', self.root.tag)[0]
+    
+    def instrument(self):
+        instrument = OMEXML_intrument()
+        instrument_xml = self.root.find(f'{self.ome_schema}Instrument')
+        if instrument_xml is None:
+            return instrument
+        objective_xml = instrument_xml.find(f'{self.ome_schema}Objective')
+        if objective_xml is None:
+            return instrument
+        LensNA = objective_xml.attrib.get('LensNA')
+        if LensNA is None:
+            return instrument
+        instrument.Objective.LensNA = LensNA
+        return instrument
+
+    def get_image_count(self):
+        return len(self.root.findall(f'{self.ome_schema}Image'))
+
+    def image(self):
+        Image = self.root.find(f'{self.ome_schema}Image')
+        Pixels = Image.find(f'{self.ome_schema}Pixels')
+        image = OMEXML_image(Pixels, self.ome_schema)
+        image.Name = Image.attrib.get('Name', '')
+        return image

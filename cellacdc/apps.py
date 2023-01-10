@@ -63,6 +63,7 @@ from . import qrc_resources, printl
 from . import colors
 from . import issues_url
 from . import myutils
+from . import qutils
 
 pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
 font = QFont()
@@ -2103,6 +2104,8 @@ class QDialogMetadataXML(QDialog):
         self.sampleImgData = sampleImgData
         self.ImageName = ImageName
         self.rawDataStruct = rawDataStruct
+        self.readSampleImgDataAgain = False
+        self.requestedReadingSampleImageDataAgain = False
         self.imageViewer = None
         super().__init__(parent)
         self.setWindowTitle(title)
@@ -2196,10 +2199,14 @@ class QDialogMetadataXML(QDialog):
 
         row += 1
         self.DimensionOrderCombo = widgets.QCenteredComboBox()
-        items = [''.join(perm) for perm in permutations('zct', 3)]
+        if sampleImgData is None:
+            items = [''.join(perm) for perm in permutations('zct', 3)]
+        else:
+            items = list(sampleImgData.keys())
         self.DimensionOrderCombo.addItems(items)
         # ztc should be default for .czi and .nd2
-        self.DimensionOrderCombo.setCurrentText('ztc')
+        if 'ztc' in items:
+            self.DimensionOrderCombo.setCurrentText('ztc')
         self.lastValidDimensionOrderText = DimensionOrder
         txt = 'Order of dimensions:  '
         label = QLabel(txt)
@@ -2387,8 +2394,9 @@ class QDialogMetadataXML(QDialog):
             chName = self.removeInvalidCharacters(chName)
             rawFilename = self.elidedRawFilename()
             filenameLabel = QLabel(f"""
-                <p style=font-size:9pt>{rawFilename}_{chName}.{ext}</p>
+                <p style=font-size:10px>{rawFilename}_{chName}.{ext}</p>
             """)
+            filenameLabel.setToolTip(f'{self.rawFilename}_{chName}.{ext}')
 
             checkBox = QCheckBox('Save this channel')
             checkBox.setChecked(True)
@@ -2634,16 +2642,19 @@ class QDialogMetadataXML(QDialog):
         if self.addImageName_QCB.isChecked():
             self.ImageName = self.removeInvalidCharacters(self.ImageName)
             filename = (f"""
-                <p style=font-size:9pt>
+                <p style=font-size:10px>
                     {rawFilename}_{self.ImageName}_{chName}.{ext}
                 </p>
             """)
+            fullFilename = f'{self.rawFilename}_{self.ImageName}_{chName}.{ext}'
         else:
             filename = (f"""
-                <p style=font-size:9pt>
+                <p style=font-size:10px>
                     {rawFilename}_{chName}.{ext}
                 </p>
             """)
+            fullFilename = f'{self.rawFilename}_{chName}.{ext}'
+        filenameLabel.setToolTip(fullFilename)
         filenameLabel.setText(filename)
 
     def checkChNames(self, text=''):
@@ -2707,6 +2718,7 @@ class QDialogMetadataXML(QDialog):
             self.TimeIncrement_DSB.hide()
             self.TimeIncrementUnit_CB.hide()
             self.TimeIncrement_Label.hide()
+        self.readSampleImgDataAgain = True
 
     def hideShowPhysicalSizeZ(self, value):
         if value > 1:
@@ -2717,12 +2729,34 @@ class QDialogMetadataXML(QDialog):
             self.PSZlabel.hide()
             self.PhysicalSizeZ_DSB.hide()
             self.PhysicalSizeZUnit_Label.hide()
+        self.readSampleImgDataAgain = True
 
     def updatePSUnit(self, unit):
         self.PhysicalSizeYUnit_Label.setText(unit)
         self.PhysicalSizeZUnit_Label.setText(unit)
+    
+    def warnRestart(self):
+        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        txt = html_utils.paragraph("""
+            Since you manually changed some of the metadata, this dialogue will now restart<br>
+            because it <b>needs to read the image data again</b>.<br><br>
+            Thank you for your patience.
+        """)
+        msg.warning(self, 'Restart required', txt)
 
     def showChannelData(self, checked=False, idx=None):
+        if self.readSampleImgDataAgain:
+            # User changed SizeZ, SizeT, or SizeC --> we need to read sample 
+            # image again
+            del self.sampleImgData
+            self.requestedReadingSampleImageDataAgain = True
+            self.sampleImgData = None
+            self.warnRestart()
+            self.getValues()
+            self.cancel = False
+            self.close()
+            return
+        
         if idx is None:
             idx = self.showChannelDataButtons.index(self.sender())
         dimsOrder = self.DimensionOrderCombo.currentText()
@@ -2731,7 +2765,8 @@ class QDialogMetadataXML(QDialog):
         posData.frame_i = 0
         sampleSizeT = 4 if self.SizeT_SB.value() >= 4 else self.SizeT_SB.value()
         posData.SizeT = sampleSizeT
-        posData.SizeZ = self.SizeZ_SB.value()
+        SizeZ = self.SizeZ_SB.value()
+        posData.SizeZ = 20 if SizeZ>20 else SizeZ
         posData.filename = f'{self.rawFilename}_C={idx}'
         posData.segmInfo_df = pd.DataFrame({
             'filename': [posData.filename]*sampleSizeT,
@@ -2760,6 +2795,7 @@ class QDialogMetadataXML(QDialog):
         self.imageViewer = None
 
     def addRemoveChannels(self, value):
+        self.readSampleImgDataAgain = True
         currentSizeC = len(self.chNames_QLEs)
         DeltaChannels = abs(value-currentSizeC)
         ext = 'h5' if self.to_h5_radiobutton.isChecked() else 'tif'
@@ -2783,8 +2819,9 @@ class QDialogMetadataXML(QDialog):
                 chName = chName_QLE.text()
                 rawFilename = self.elidedRawFilename()
                 filenameLabel = QLabel(f"""
-                    <p style=font-size:9pt>{rawFilename}_{chName}.{ext}</p>
+                    <p style=font-size:10px>{rawFilename}_{chName}.{ext}</p>
                 """)
+                filenameLabel.setToolTip(f'{self.rawFilename}_{chName}.{ext}')
 
                 checkBox = QCheckBox('Save this channel')
                 checkBox.setChecked(True)
