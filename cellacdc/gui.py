@@ -79,6 +79,7 @@ from . import measurements, printl
 from . import colors, filters
 from . import user_manual_url
 from . import cellacdc_path, temp_path, settings_csv_path
+from . import qutils
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .myutils import exec_time, setupLogger
@@ -19491,15 +19492,34 @@ class guiWin(QMainWindow):
     def openRecentFile(self, path):
         self.logger.info(f'Opening recent folder: {path}')
         self.openFolder(exp_path=path)
+    
+    def _waitCloseAutoSaveWorker(self):
+        didWorkersFinished = [True]
+        for worker, thread in self.autoSaveActiveWorkers:
+            if worker.isFinished:
+                didWorkersFinished.append(True)
+            else:
+                didWorkersFinished.append(False)
+        if all(didWorkersFinished):
+            self.waitCloseAutoSaveWorkerLoop.stop()
 
     def closeEvent(self, event):
         for worker, thread in self.autoSaveActiveWorkers:
-            try:
-                worker._stop()
-                while not worker.isFinished:
-                    continue
-            except RuntimeError:
-                self.logger.info('Autosaving worker closed while running.')
+            worker._stop()
+        
+        if self.autoSaveActiveWorkers:
+            progressWin = apps.QDialogWorkerProgress(
+                title='Closing autosaving worker', parent=self,
+                pbarDesc='Closing autosaving worker...'
+            )
+            progressWin.show(self.app)
+            progressWin.mainPbar.setMaximum(0)
+            self.waitCloseAutoSaveWorkerLoop = qutils.QWhileLoop(
+                self._waitCloseAutoSaveWorker, period=250
+            )
+            self.waitCloseAutoSaveWorkerLoop.exec_()
+            progressWin.workerFinished = True
+            progressWin.close()
         
         # Close the inifinte loop of the thread
         if self.lazyLoader is not None:

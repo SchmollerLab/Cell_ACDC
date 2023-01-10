@@ -95,7 +95,7 @@ def add_configPars_metrics(configPars_ref, configPars2_to_add):
 
 def h5py_iter(g, prefix=''):
     for key, item in g.items():
-        path = '{}/{}'.format(prefix, key)
+        path = os.path.join(prefix, key)
         if isinstance(item, h5py.Dataset): # test for dataset
             yield (path, item)
         elif isinstance(item, h5py.Group): # test for group (go down)
