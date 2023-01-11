@@ -363,6 +363,15 @@ def is_pos_prepped(images_path):
             return True
     return False
 
+def is_bkgrROIs_present(images_path):
+    filenames = myutils.listdir(images_path)
+    for filename in filenames:
+        if filename.endswith('dataPrep_bkgrROIs.json'):
+            return True
+        elif filename.endswith('bkgrRoiData.npz'):
+            return True
+    return False
+
 class loadData:
     def __init__(self, imgPath, user_ch_name, relPathDepth=3, QParent=None):
         self.fluo_data_dict = {}
@@ -446,6 +455,9 @@ class loadData:
     
     def isPrepped(self):
         return is_pos_prepped(self.images_path)
+    
+    def isBkgrROIpresent(self):
+        return is_bkgrROIs_present(self.images_path)
 
     def setLoadedChannelNames(self, returnList=False):
         fluo_keys = list(self.fluo_data_dict.keys())

@@ -2897,7 +2897,7 @@ class channelMetricsQGBox(QGroupBox):
         if posData is None:
             return
 
-        if posData.isPrepped():
+        if posData.isBkgrROIpresent():
             return
 
         for checkbox in self.checkBoxes:
