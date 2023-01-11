@@ -498,17 +498,34 @@ def is_in_bounds(x,y,X,Y):
     in_bounds = x >= 0 and x < X and y >= 0 and y < Y
     return in_bounds
 
-def read_version():
+def read_version(logger=None, return_success=False):
     try:
         from setuptools_scm import get_version
         version = get_version(root='..', relative_to=__file__)
-        return version
+        success = True
     except Exception as e:
+        if logger is None:
+            logger = print
+        logger('*'*40)
+        logger(traceback.format_exc())
+        logger('-'*40)
+        logger(
+            '[WARNING]: Cell-ACDC could not determine the current version. '
+            'See details above.'
+        )
+        logger('='*40)
         try:
             from . import _version
-            return _version.version
+            version = _version.version
+            success = False
         except Exception as e:
-            return 'ND'
+            version = 'ND'
+            success = False
+    
+    if return_success:
+        return version, success
+    else:
+        return version
 
 def showInExplorer(path):
     if is_mac:
@@ -1481,22 +1498,28 @@ def check_napari_plugin(plugin_name, module_name, parent=None):
         msg.critical(parent, f'Napari plugin required', txt)
         raise e
 
-def install_package(pkg_name: str, note='', parent=None):
+def install_package(pkg_name: str, note='', parent=None, raise_on_cancel=True):
     try:
         import_module(pkg_name)
     except ModuleNotFoundError:
         cancel = install_package_msg(pkg_name, note=note, parent=parent)
         if cancel:
-            raise ModuleNotFoundError(
-                f'User aborted {pkg_name} installation'
-            )
+            if raise_on_cancel:
+                raise ModuleNotFoundError(
+                    f'User aborted {pkg_name} installation'
+                )
+            else:
+                return traceback.format_exc()
         try:
             subprocess.check_call(
                 [sys.executable, '-m', 'pip', 'install', pkg_name]
             )
         except Exception as e:
             inform_install_package_failed(pkg_name, parent=parent)
-            raise e
+            if raise_on_cancel:
+                raise e
+            else:
+                return traceback.format_exc()
 
 def check_matplotlib_version(qparent=None):
     import pkg_resources

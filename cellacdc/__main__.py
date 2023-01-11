@@ -1295,7 +1295,13 @@ def run():
     
     win = mainWin(app)
     myutils.check_matplotlib_version(qparent=win)
-    version = myutils.read_version()
+    version, success = myutils.read_version(logger=win.logger.info, return_success=True)
+    if not success:
+        error = myutils.install_package('setuptools-scm')
+        if error:
+            win.logger.info(error)
+        else:
+            version = myutils.read_version(logger=win.logger.info)
     win.setVersion(version)
     win.launchWelcomeGuide()
     win.show()
