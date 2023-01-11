@@ -19106,14 +19106,21 @@ class guiWin(QMainWindow):
     def askSaveMetrics(self):
         txt = html_utils.paragraph(
         """
-            Do you also want to <b>save additional metrics</b>
+            Do you also want to <b>save the measurements</b> 
             (e.g., cell volume, mean, amount etc.)?<br><br>
-            NOTE: Saving additional metrics is <b>slower</b>,
+            
+            You can find <b>more information</b> by clicking on the 
+            "Set measurements" button below <br>
+            where you will be able to select which <b>measurements 
+            you want to save</b>.<br><br>
+            If you already set the measurements and you want to save them click "Yes".<br><br>
+            
+            NOTE: Saving metrics might be <b>slow</b>,
             we recommend doing it <b>only when you need it</b>.<br>
         """)
-        msg = widgets.myMessageBox(parent=self, resizeButtons=False)
+        msg = widgets.myMessageBox(parent=self, resizeButtons=False, wrapText=False)
         msg.setIcon(iconName='SP_MessageBoxQuestion')
-        msg.setWindowTitle('Save metrics?')
+        msg.setWindowTitle('Save measurements?')
         msg.addText(txt)
         yesButton = msg.addButton('Yes')
         noButton = msg.addButton('No')
