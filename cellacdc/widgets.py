@@ -2834,6 +2834,7 @@ class _metricsQGBox(QGroupBox):
 
 class channelMetricsQGBox(QGroupBox):
     sigDelClicked = pyqtSignal(str, object)
+    sigCheckboxToggled = pyqtSignal(object)
 
     def __init__(
             self, isZstack, chName, isSegm3D,
@@ -2850,6 +2851,7 @@ class channelMetricsQGBox(QGroupBox):
             metrics_desc, 'Standard measurements',
             favourite_funcs=favourite_funcs
         )
+        
         bkgrValsQGBox = _metricsQGBox(
             bkgr_val_desc, 'Background values',
             favourite_funcs=favourite_funcs
@@ -2859,6 +2861,10 @@ class channelMetricsQGBox(QGroupBox):
         self.checkBoxes.extend(bkgrValsQGBox.checkBoxes)
 
         self.groupboxes = [metricsQGBox, bkgrValsQGBox]
+
+        for checkbox in metricsQGBox.checkBoxes:
+            checkbox.toggled.connect(self.standardMetricToggled)
+            self.standardMetricToggled(checkbox.isChecked(), checkbox=checkbox)
 
         layout.addWidget(metricsQGBox)
         layout.addWidget(bkgrValsQGBox)
@@ -2883,6 +2889,30 @@ class channelMetricsQGBox(QGroupBox):
         self.setTitle(f'{chName} metrics')
         self.setCheckable(True)
         self.setLayout(layout)
+
+    def standardMetricToggled(self, checked, checkbox=None):
+        # IF user toggles the amount metric then make sure that bkgrval is checked too
+        if checkbox is None:
+            checkbox = self.sender()
+
+        self.sigCheckboxToggled.emit(checkbox)
+        if checkbox.text().find('amount_') == -1:
+            return
+        pattern = r'amount_([A-Za-z]+)(_?[A-Za-z0-9]*)'
+        repl = r'\g<1>_bkgrVal_median\g<2>'
+        bkgrValMetric = s1 = re.sub(pattern, repl, checkbox.text())
+        for bkgrCheckbox in self.groupboxes[1].checkBoxes:
+            if bkgrCheckbox.text() == bkgrValMetric:
+                break
+        else:
+            # Make sure to not check for similarly named custom metrics
+            return
+        
+        if checked:
+            bkgrCheckbox.setChecked(True)
+            bkgrCheckbox.setDisabled(True)
+        else:
+            bkgrCheckbox.setDisabled(False)
     
     def onDelClicked(self, colname_to_del, hlayout):
         self.sigDelClicked.emit(colname_to_del, hlayout)

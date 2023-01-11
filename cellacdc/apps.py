@@ -1702,6 +1702,7 @@ class setMeasurementsDialog(QBaseDialog):
             groupsLayout.addWidget(channelGBox, 0, col, 3, 1)
             self.chNameGroupboxes.append(channelGBox)
             channelGBox.sigDelClicked.connect(self.delMixedChannelCombineMetric)
+            channelGBox.sigCheckboxToggled.connect(self.channelCheckboxToggled)
             groupsLayout.setColumnStretch(col, 5)
             self.all_metrics.extend([c.text() for c in channelGBox.checkBoxes])
 
@@ -1717,13 +1718,18 @@ class setMeasurementsDialog(QBaseDialog):
             self.chNameGroupboxes.append(channelGBox)
             groupsLayout.setColumnStretch(current_col, 5)
             channelGBox.sigDelClicked.connect(self.delMixedChannelCombineMetric)
+            channelGBox.sigCheckboxToggled.connect(self.channelCheckboxToggled)
             current_col += 1
             self.all_metrics.extend([c.text() for c in channelGBox.checkBoxes])
 
         current_col += 1
 
+        if posData is None:
+            isTimelapse = False
+        else:
+            isTimelapse = posData.SizeT>1
         size_metrics_desc = measurements.get_size_metrics_desc(
-            isSegm3D, posData.SizeT>1
+            isSegm3D, isTimelapse
         )
         if not isSegm3D:
             size_metrics_desc = {
@@ -1812,6 +1818,48 @@ class setMeasurementsDialog(QBaseDialog):
         okButton.clicked.connect(self.ok_cb)
         cancelButton.clicked.connect(self.close)
         loadLastSelButton.clicked.connect(self.loadLastSelection)
+
+        for channelGBox in self.chNameGroupboxes:
+            for checkbox in channelGBox.checkBoxes:
+                self.channelCheckboxToggled(checkbox)
+    
+    def channelCheckboxToggled(self, checkbox):
+        # Make sure to automatically check the requested cell_vol metric for 
+        # concentration metrics
+        if checkbox.text().find('concentration_') == -1:
+            return
+        
+        pattern = r'.+_from_vol_([a-z]+)(_3D)?(_?[A-Za-z0-9]*)'
+        repl = r'cell_vol_\1\2'
+        cell_vol_metric_name = re.sub(pattern, repl, checkbox.text())
+        for sizeCheckbox in self.sizeMetricsQGBox.checkBoxes:
+            if sizeCheckbox.text() == cell_vol_metric_name:
+                break
+        else:
+            # Make sure to not check for similarly named custom metrics
+            return 
+        
+        if checkbox.isChecked():
+            sizeCheckbox.setChecked(True)
+            sizeCheckbox.setDisabled(True)
+        else:
+            # Do not enable cell vol checkbox is any of the other 
+            # concentration metrics requiring it is checked
+            unit = cell_vol_metric_name[9:]
+            is3D = unit.endswith('3D')
+            for channelGBox in self.chNameGroupboxes:
+                if not channelGBox.isChecked():
+                    continue
+                for _checkbox in channelGBox.checkBoxes: 
+                    if _checkbox.text().find(f'_from_vol_{unit}') == -1: 
+                        continue
+                    if not is3D and _checkbox.text().find(f'{unit}_3D') != -1:
+                        # Metric is 3D but the cell_vol is not 
+                        continue
+                    if _checkbox.isChecked():
+                        return
+            sizeCheckbox.setDisabled(False)
+
     
     def deselectAll(self):
         for chNameGroupbox in self.chNameGroupboxes:

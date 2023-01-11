@@ -393,16 +393,24 @@ def get_size_metrics_desc(isSegm3D, is_timelapse):
             Next, it is divided into slices perpendicular to the
             major axis, where the height of each slice is one pixel
             (i.e., one row).<br><br>
+            
             We then assume <b>rotational symmetry</b> of each slice around
             its middle axis parallel to the object's major axis.<br><br>
             For each slice Cell-ACDC calculates the volume of the resulting
             <b>cylinder</b> with one pixel height and diameter the width
             of the respective slice.<br><br>
+            
             Finally, the volumes of each cylinder are added to obtain
             total object volume.<br><br>
+            
             <i> Note that in <a href=\"{url}">this</a> publication we
             showed that this method strongly correlates with volume
-            computed from a 3D segmentation mask.</i>
+            computed from a 3D segmentation mask.</i><br><br>
+            
+            This value might be <b>grayed out</b> because it is <b>required</b> 
+            by the concentration metric that you requested to save 
+            (see in the <code>Standard measurements</code> group) and <b>it 
+            cannot be unchecked</b>.<br><br>
         """),
         'cell_area_um2': html_utils.paragraph(f"""
             <b>Area of the segmented object</b> in {_um2()}, i.e.,
@@ -433,14 +441,24 @@ def get_size_metrics_desc(isSegm3D, is_timelapse):
 
             <i> Note that in <a href=\"{url}">this</a> publication we
             showed that this method strongly correlates with volume
-            computed from a 3D segmentation mask.</i>
+            computed from a 3D segmentation mask.</i><br><br>
+            
+            This value might be <b>grayed out</b> because it is <b>required</b> 
+            by the concentration metric that you requested to save 
+            (see in the <code>Standard measurements</code> group) and <b>it 
+            cannot be unchecked</b>.<br><br>
         """)
     }
     if isSegm3D:
         size_metrics_3D = {
             'cell_vol_vox_3D': html_utils.paragraph(f"""
                 <b>Volume</b> of the segmented object in <b>voxels</b>.<br><br>
-                This is given by the total number of voxels inside the object.
+                This is given by the total number of voxels inside the object.<br><br>
+            
+                This value might be <b>grayed out</b> because it is <b>required</b> 
+                by the concentration metric that you requested to save 
+                (see in the <code>Standard measurements</code> group) and <b>it 
+                cannot be unchecked</b>.<br><br>
             """),
             'cell_vol_fl_3D': html_utils.paragraph(f"""
                 <b>Volume</b> of the segmented object in <b>{_fl()}</b>.<br><br>
@@ -451,7 +469,12 @@ def get_size_metrics_desc(isSegm3D, is_timelapse):
                 where <code>PhysicalSizeZ</code> is the spacing between z-slices 
                 (in {_um()}), while <code>PhysicalSizeY</code> and 
                 <code>PhysicalSizeX</code> are the pixel height and pixel width, 
-                respectively (in {_um()}). 
+                respectively (in {_um()}).<br><br>
+            
+                This value might be <b>grayed out</b> because it is <b>required</b> 
+                by the concentration metric that you requested to save 
+                (see in the <code>Standard measurements</code> group) and <b>it 
+                cannot be unchecked</b>.<br><br>
             """),
         }
         size_metrics = {**size_metrics, **size_metrics_3D}
@@ -554,6 +577,12 @@ def standard_metrics_desc(isZstack, chName, isSegm3D=False):
             """)
             metrics_desc[metric_name] = desc
 
+        median_note = ("""
+            Note that this value might be <b>grayed out</b> because it is <b>required</b> 
+            by the corresponding amount metric that you requested to save 
+            (see above in the <code>Standard measurements</code> group) and <b>it 
+            cannot be unchecked</b>.<br><br>
+        """)
         for bkgr_name, bkgr_desc in bkgr_val_names.items():
             bkgr_colname = f'{chName}_{bkgr_name}{how}'
             if isZstack:
@@ -583,6 +612,8 @@ def standard_metrics_desc(isZstack, chName, isSegm3D=False):
                     If you didn't do this step, then this value will be set to 0.
                     <br><br>
                 """)
+            if bkgr_name.find('bkgrVal_median') != -1:
+                bkgr_type_desc = f'{bkgr_type_desc}{median_note}'
 
             bkgr_final_desc = html_utils.paragraph(f"""
                 <b>{bkgr_desc}</b> of the background intensities.<br><br>
