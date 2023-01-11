@@ -348,6 +348,21 @@ def get_posData_metadata(images_path, basename):
 
     return df_metadata, metadata_csv_path
 
+def is_pos_prepped(images_path):
+    filenames = myutils.listdir(images_path)
+    for filename in filenames:
+        if filename.endswith('dataPrepROIs_coords.csv'):
+            return True
+        elif filename.endswith('dataPrep_bkgrROIs.json'):
+            return True
+        elif filename.endswith('aligned.npz'):
+            return True
+        elif filename.endswith('align_shift.npy'):
+            return True
+        elif filename.endswith('bkgrRoiData.npz'):
+            return True
+    return False
+
 class loadData:
     def __init__(self, imgPath, user_ch_name, relPathDepth=3, QParent=None):
         self.fluo_data_dict = {}
@@ -428,6 +443,9 @@ class loadData:
                     
         except Exception as e:
             traceback.print_exc()
+    
+    def isPrepped(self):
+        return is_pos_prepped(self.images_path)
 
     def setLoadedChannelNames(self, returnList=False):
         fluo_keys = list(self.fluo_data_dict.keys())

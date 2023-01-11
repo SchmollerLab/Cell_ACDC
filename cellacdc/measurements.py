@@ -529,7 +529,7 @@ def standard_metrics_desc(isZstack, chName, isSegm3D=False):
             if func_desc == 'Amount':
                 amount_desc = ("""
                     Amount is the <b>background corrected total
-                    fluorescent intensity</b>, which is usually the best proxy
+                    fluorescence intensity</b>, which is usually the best proxy
                     for the amount of the tagged molecule, e.g.,
                     <b>protein amount</b>.
                     <br><br>
@@ -539,7 +539,7 @@ def standard_metrics_desc(isZstack, chName, isSegm3D=False):
                 amount_desc = ("""
                     Concentration is given by <code>Amount/cell_volume</code>,
                     where amount is the <b>background corrected total
-                    fluorescent intensity</b>. Amount is usually the best proxy
+                    fluorescence intensity</b>. Amount is usually the best proxy
                     for the amount of the tagged molecule, e.g.,
                     <b>protein amount</b>.
                     <br><br>
@@ -563,9 +563,9 @@ def standard_metrics_desc(isZstack, chName, isSegm3D=False):
                     used to correct the intensities is computed as the <b>median</b>
                     of the pixels from the pixels inside the rectangular
                     <b>background ROIs</b> that you selected in the
-                    data prep module (module 1.).<br>
-                    If you didn't do this step, then the amount will be set to 0.
-                    <br><br>
+                    data prep module (module 1.).<br><br>
+                    Note taht this metric is <b>grayed out</b> and it cannot be selected 
+                    if the <b>selection of the background ROIs was not performed</b>.
                 """)
             else:
                 bkgr_desc = ''
@@ -608,8 +608,9 @@ def standard_metrics_desc(isZstack, chName, isSegm3D=False):
                     <code>dataPrepBkgr</code> means that the background value
                     is computed from the pixels inside the rectangular
                     <b>background ROIs</b> that you selected in the
-                    data prep module (module 1.).<br>
-                    If you didn't do this step, then this value will be set to 0.
+                    data prep module (module 1.).<br><br>
+                    Note taht this metric is <b>grayed out</b> and it cannot be selected 
+                    if the <b>selection of the background ROIs was not performed</b>.
                     <br><br>
                 """)
             if bkgr_name.find('bkgrVal_median') != -1:
@@ -1139,7 +1140,7 @@ def add_metrics_instructions():
 
         {return_sh} CV
     </code></pre>
-    where <code>signal</code> is a vector contaning the fluorescent intesities 
+    where <code>signal</code> is a vector contaning the fluorescence intesities 
     from the segmented object, <code>autoBkgr</code> is the median of the 
     background intensities (all the pixels outside of the objects), 
     <code>dataPrepBkgr</code> is the median of the pixels inside the 

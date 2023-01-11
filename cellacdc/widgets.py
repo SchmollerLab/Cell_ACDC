@@ -2860,6 +2860,8 @@ class channelMetricsQGBox(QGroupBox):
         self.checkBoxes = metricsQGBox.checkBoxes.copy()
         self.checkBoxes.extend(bkgrValsQGBox.checkBoxes)
 
+        self.uncheckAndDisableDataPrepIfPosNotPrepped(posData)
+
         self.groupboxes = [metricsQGBox, bkgrValsQGBox]
 
         for checkbox in metricsQGBox.checkBoxes:
@@ -2889,6 +2891,21 @@ class channelMetricsQGBox(QGroupBox):
         self.setTitle(f'{chName} metrics')
         self.setCheckable(True)
         self.setLayout(layout)
+    
+    def uncheckAndDisableDataPrepIfPosNotPrepped(self, posData):
+        # Uncheck and disable dataprep metrics if pos is not prepped
+        if posData is None:
+            return
+
+        if posData.isPrepped():
+            return
+
+        for checkbox in self.checkBoxes:
+            if checkbox.text().find('dataPrep') == -1:
+                continue
+
+            checkbox.setChecked(False)
+            checkbox.setDisabled(True)
 
     def standardMetricToggled(self, checked, checkbox=None):
         # IF user toggles the amount metric then make sure that bkgrval is checked too

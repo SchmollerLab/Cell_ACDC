@@ -3516,8 +3516,8 @@ class guiWin(QMainWindow):
         _, createOnDemandButton, doNotCreateItemsButton, _ = msg.warning(
             qparent, 'Too many objects', txt,
             buttonsTexts=(
-                'Cancel', 'Create on-demand', ' Disable items ', 
-                'Try anyway'                
+                'Cancel', 'Create on-demand', 
+                widgets.okPushButton(' Disable items '), 'Try anyway'                
             )
         )
         return msg.cancel, msg.clickedButton==doNotCreateItemsButton
