@@ -265,8 +265,6 @@ class dataPrepWin(QMainWindow):
         self.openRecentMenu.aboutToShow.connect(self.populateOpenRecent)
         self.exitAction.triggered.connect(self.close)
         self.showInExplorerAction.triggered.connect(self.showInExplorer)
-        # self.jumpForwardAction.triggered.connect(self.skip10ahead_cb)
-        # self.jumpBackwardAction.triggered.connect(self.skip10back_cb)
         self.addBkrgRoiActon.triggered.connect(self.addDefaultBkgrROI)
         self.cropAction.triggered.connect(self.crop_cb)
         self.cropZaction.toggled.connect(self.openCropZtool)
@@ -392,29 +390,17 @@ class dataPrepWin(QMainWindow):
         except AttributeError:
             pass
 
-    def next_cb(self, checked):
+    def next_cb(self):
         if self.num_pos > 1:
             self.next_pos()
         else:
             self.next_frame()
 
-    def prev_cb(self, checked):
+    def prev_cb(self):
         if self.num_pos > 1:
             self.prev_pos()
         else:
             self.prev_frame()
-
-    def skip10ahead_cb(self, checked):
-        if self.num_pos > 1:
-            self.skip10ahead_pos()
-        else:
-            self.skip10ahead_frame()
-
-    def skip10back_cb(self, checked):
-        if self.num_pos > 1:
-            self.skip10back_pos()
-        else:
-            self.skip10back_frame()
 
     def next_pos(self):
         if self.pos_i < self.num_pos-1:
@@ -426,8 +412,7 @@ class dataPrepWin(QMainWindow):
             self.update_img()
             self.updateROI()
             self.updateBkgrROIs()
-        else:
-            print('You reached last position')
+            self.saveBkgrROIs(self.data[self.pos_i])
 
 
     def prev_pos(self):
@@ -440,9 +425,6 @@ class dataPrepWin(QMainWindow):
             self.update_img()
             self.updateROI()
             self.updateBkgrROIs()
-        else:
-            print('You reached first position')
-            # self.pos_i = self.num_pos-1
 
 
     def skip10ahead_pos(self):
@@ -631,20 +613,21 @@ class dataPrepWin(QMainWindow):
         )
 
     def navigateScrollBarMoved(self, value):
-        posData = self.data[self.pos_i]
-        self.removeBkgrROIs()
-        self.removeCropROI()
+        # posData = self.data[self.pos_i]
+        # self.removeBkgrROIs()
+        # self.removeCropROI()
 
-        if posData.SizeT > 1:
-            self.frame_i = value-1
-        elif self.num_pos > 1:
-            self.pos_i = value-1
+        if self.num_pos > 1:
+            self.pos_i = value-2
         else:
-            return
+            self.frame_i = value-2
 
-        self.update_img()
-        self.updateROI()
-        self.updateBkgrROIs()
+        self.next_cb()
+
+        # self.update_img()
+        # self.updateROI()
+        # self.updateBkgrROIs()
+        # self.saveBkgrROIs(self.data[self.pos_i])
 
     @exception_handler
     def crop(self, data, posData):
@@ -678,6 +661,7 @@ class dataPrepWin(QMainWindow):
         return croppedData, SizeZ
 
     def saveBkgrROIs(self, posData):
+        printl(posData.bkgrROIs)
         if not posData.bkgrROIs:
             return
 
@@ -1277,15 +1261,16 @@ class dataPrepWin(QMainWindow):
                 posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
 
         posData = self.data[0]
+        try:
+            self.zSliceScrollBar.valueChanged.disconnect()
+            self.zProjComboBox.currentTextChanged.disconnect()
+        except Exception as e:
+            pass
         if posData.SizeZ > 1:
+            self.z_label.setDisabled(False)
             self.zSliceScrollBar.setDisabled(False)
             self.zProjComboBox.setDisabled(False)
             self.zSliceScrollBar.setMaximum(posData.SizeZ-1)
-            try:
-                self.zSliceScrollBar.valueChanged.disconnect()
-                self.zProjComboBox.currentTextChanged.disconnect()
-            except Exception as e:
-                pass
             self.zSliceScrollBar.valueChanged.connect(self.update_z_slice)
             self.zProjComboBox.currentTextChanged.connect(self.updateZproj)
             if posData.SizeT > 1:
@@ -1296,6 +1281,10 @@ class dataPrepWin(QMainWindow):
             idx = (posData.filename, self.frame_i)
             how = posData.segmInfo_df.at[idx, 'which_z_proj']
             self.zProjComboBox.setCurrentText(how)
+        else:
+            self.zSliceScrollBar.setDisabled(True)
+            self.zProjComboBox.setDisabled(True)
+            self.z_label.setDisabled(True)
 
     def update_z_slice(self, z):
         if self.zProjComboBox.currentText() == 'single z-slice':
