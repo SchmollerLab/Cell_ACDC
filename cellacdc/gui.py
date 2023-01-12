@@ -79,7 +79,7 @@ from . import measurements, printl
 from . import colors, filters
 from . import user_manual_url
 from . import cellacdc_path, temp_path, settings_csv_path
-from . import qutils
+from . import qutils, autopilot
 from .trackers.CellACDC import CellACDC_tracker
 from .cca_functions import _calc_rot_vol
 from .myutils import exec_time, setupLogger
@@ -917,7 +917,7 @@ class guiWin(QMainWindow):
         self.slideshowWin = None
         self.ccaTableWin = None
         self.customAnnotButton = None
-        self.data_loaded = False
+        self.dataIsLoaded = False
         self.highlightedID = 0
         self.hoverLabelID = 0
         self.expandingID = -1
@@ -929,6 +929,7 @@ class guiWin(QMainWindow):
         self.closeGUI = False
         self.img1ChannelGradients = {}
         self.filtersWins = {}
+        self.lastLoadingProfile = {}
         self.storeStateWorker = None
 
         self.setWindowTitle("Cell-ACDC - GUI")
@@ -1117,7 +1118,7 @@ class guiWin(QMainWindow):
             )
 
             autoActivate = (
-                self.data_loaded and not
+                self.dataIsLoaded and not
                 overlap and not
                 posData.disableAutoActivateViewerWindow
             )
@@ -1151,7 +1152,7 @@ class guiWin(QMainWindow):
             )
 
             autoActivate = (
-                self.data_loaded and not
+                self.dataIsLoaded and not
                 overlap and not
                 posData.disableAutoActivateViewerWindow
             )
@@ -1190,6 +1191,7 @@ class guiWin(QMainWindow):
 
         # File menu
         fileMenu = QMenu("&File", self)
+        self.fileMenu = fileMenu
         menuBar.addMenu(fileMenu)
         fileMenu.addAction(self.newAction)
         fileMenu.addAction(self.openAction)
@@ -1201,8 +1203,9 @@ class guiWin(QMainWindow):
         fileMenu.addAction(self.quickSaveAction)
         fileMenu.addAction(self.autoSaveAction)
         fileMenu.addAction(self.loadFluoAction)
+        fileMenu.addAction(self.loadPosAction)
         # Separator
-        fileMenu.addSeparator()
+        self.fileMenu.lastSeparator = fileMenu.addSeparator()
         fileMenu.addAction(self.exitAction)
         
         # Edit menu
@@ -1349,7 +1352,7 @@ class guiWin(QMainWindow):
             'You can also adjust the opacity of the selected channel with the\n'
             '"Alpha <channel_name>" scrollbar below the image.\n\n'
             'NOTE: This button has a green background if you successfully '
-            'loaded fluorescent data'
+            'loaded fluorescence data'
         )
         self.overlayButtonAction = navigateToolBar.addWidget(self.overlayButton)
         # self.checkableButtons.append(self.overlayButton)
@@ -1385,7 +1388,7 @@ class guiWin(QMainWindow):
         self.checkableButtons.append(self.rulerButton)
         self.LeftClickButtons.append(self.rulerButton)
 
-        # fluorescent image color widget
+        # fluorescence image color widget
         colorsToolBar = QToolBar("Colors", self)
 
         self.overlayColorButton = pg.ColorButton(self, color=(230,230,230))
@@ -2259,7 +2262,8 @@ class guiWin(QMainWindow):
         self.autoSaveAction.setCheckable(True)
         self.autoSaveAction.setChecked(True)
         self.quickSaveAction = QAction("Save only segm. file", self)
-        self.loadFluoAction = QAction("Load fluorescent images...", self)
+        self.loadFluoAction = QAction("Load fluorescence images...", self)
+        self.loadPosAction = QAction("Load different Position...", self)
         # self.reloadAction = QAction(
         #     QIcon(":reload.svg"), "Reload segmentation file", self
         # )
@@ -2274,6 +2278,7 @@ class guiWin(QMainWindow):
         # String-based key sequences
         self.newAction.setShortcut("Ctrl+N")
         self.openAction.setShortcut("Ctrl+O")
+        self.loadPosAction.setShortcut("Ctrl+Shift+O")
         self.saveAsAction.setShortcut("Ctrl+Shift+S")
         self.saveAction.setShortcut("Ctrl+Alt+S")
         self.quickSaveAction.setShortcut("Ctrl+S")
@@ -2643,6 +2648,7 @@ class guiWin(QMainWindow):
         )
         self.rulerButton.toggled.connect(self.ruler_cb)
         self.loadFluoAction.triggered.connect(self.loadFluo_cb)
+        self.loadPosAction.triggered.connect(self.loadPosTriggered)
         # self.reloadAction.triggered.connect(self.reload_cb)
         self.findIdAction.triggered.connect(self.findID)
         self.slideshowButton.toggled.connect(self.launchSlideshow)
@@ -8857,7 +8863,7 @@ class guiWin(QMainWindow):
         if len(items)>1:
             selectFluo = widgets.QDialogListbox(
                 'Select image',
-                'Select which fluorescent image you want to update the color of\n',
+                'Select which fluorescence image you want to update the color of\n',
                 items, multiSelection=False, parent=self
             )
             selectFluo.exec_()
@@ -9420,7 +9426,7 @@ class guiWin(QMainWindow):
     def setAllIDs(self):
         for posData in self.data:
             posData.allIDs = set()
-            for frame_i in range(posData.SizeT):
+            for frame_i in range(len(posData.segm_data)):
                 lab = posData.allData_li[frame_i]['labels']
                 if lab is None:
                     rp = skimage.measure.regionprops(posData.segm_data[frame_i])
@@ -9803,10 +9809,10 @@ class guiWin(QMainWindow):
             # printl(posData.allIDs)
             # printl(f'{posData.binnedIDs = }')
             # printl(f'{posData.ripIDs = }')
-        try:
-            posData = self.data[self.pos_i]
-        except AttributeError:
-            self.logger.info('Data not loaded yet. Key pressing events are not connected yet.')
+        if not self.dataIsLoaded:
+            self.logger.info(
+                '[WARNING]: Data not loaded yet. Key pressing events are not connected.'
+            )
             return
         if ev.key() == Qt.Key_Control:
             self.isCtrlDown = True
@@ -12345,6 +12351,8 @@ class guiWin(QMainWindow):
         self.ax2.vb.menu = self.labelsGrad.menu
 
         QTimer.singleShot(200, self.resizeGui)
+
+        self.dataIsLoaded = True
     
     def resizeGui(self):
         self.autoRange()
@@ -13015,7 +13023,6 @@ class guiWin(QMainWindow):
         self.last_frame_i = -1
 
         # Plots items
-        self.data_loaded = True
         self.isMouseDragImg2 = False
         self.isMouseDragImg1 = False
         self.isMovingLabel = False
@@ -13107,6 +13114,13 @@ class guiWin(QMainWindow):
                 )
 
     def initPosAttr(self):
+        exp_path = self.data[self.pos_i].exp_path
+        pos_foldernames = myutils.get_pos_foldernames(exp_path)
+        if len(pos_foldernames) == 1 and self.data[self.pos_i].SizeT > 1:
+            self.loadPosAction.setDisabled(True)
+        else:
+            self.loadPosAction.setDisabled(False)
+
         for p, posData in enumerate(self.data):
             self.pos_i = p
             posData.curvPlotItems = []
@@ -15220,9 +15234,9 @@ class guiWin(QMainWindow):
             msg = widgets.myMessageBox()
             msg.critical(
                 self, 'Aligned fluo channel not found!',
-                'Aligned data for fluorescent channel not found!\n\n'
+                'Aligned data for fluorescence channel not found!\n\n'
                 f'You loaded aligned data for the cells channel, therefore '
-                'loading NON-aligned fluorescent data is not allowed.\n\n'
+                'loading NON-aligned fluorescence data is not allowed.\n\n'
                 'Run the script "dataPrep.py" to create the following file:\n\n'
                 f'{path}'
             )
@@ -15231,7 +15245,7 @@ class guiWin(QMainWindow):
         return fluo_data
 
     def load_fluo_data(self, fluo_path):
-        self.logger.info(f'Loading fluorescent image data from "{fluo_path}"...')
+        self.logger.info(f'Loading fluorescence image data from "{fluo_path}"...')
         bkgrData = None
         posData = self.data[self.pos_i]
         # Load overlay frames and align if needed
@@ -17720,6 +17734,7 @@ class guiWin(QMainWindow):
         self.zKeptDown = False
         self.askRepeatSegment3D = True
         self.askZrangeSegm3D = True
+        self.dataIsLoaded = False
         self.showPropsDockButton.setDisabled(True)
 
         self.reinitWidgetsPos()
@@ -17772,7 +17787,9 @@ class guiWin(QMainWindow):
         self.openAction.setEnabled(True)
         self.titleLabel.setText('Loading data aborted.')
 
-    def openFolder(self, checked=False, exp_path=None, imageFilePath=''):
+    def openFolder(
+            self, checked=False, exp_path=None, imageFilePath=''
+        ):
         self.logger.info(f'Opening FOLDER "{exp_path}"')
 
         self.isNewFile = False
@@ -17795,10 +17812,14 @@ class guiWin(QMainWindow):
             else:
                 self.store_data(autosave=False)
 
-        self._openFolder(exp_path=exp_path, imageFilePath=imageFilePath)
+        self._openFolder(
+            exp_path=exp_path, imageFilePath=imageFilePath
+        )
 
     @exception_handler
-    def _openFolder(self, exp_path=None, imageFilePath=''):
+    def _openFolder(
+            self, checked=False, exp_path=None, imageFilePath=''
+        ):
         """Main function to load data.
 
         Parameters
@@ -17816,6 +17837,7 @@ class guiWin(QMainWindow):
         -------
             None
         """
+
         if exp_path is None:
             self.MostRecentPath = myutils.getMostRecentPath()
             exp_path = QFileDialog.getExistingDirectory(
@@ -18017,6 +18039,8 @@ class guiWin(QMainWindow):
 
         ch_name_selector.setUserChannelName()
         self.user_ch_name = user_ch_name
+
+        self.lastLoadingProfile['channel'] = self.user_ch_name
 
         self.initGlobalAttr()
         self.createOverlayContextMenu()
@@ -18225,17 +18249,17 @@ class guiWin(QMainWindow):
             return
         msg = widgets.myMessageBox()
         txt = (
-            'Do you also want to <b>load fluorescent images?</b><br>'
+            'Do you also want to <b>load fluorescence images?</b><br>'
             'You can load <b>as many channels as you want</b>.<br><br>'
-            'If you load fluorescent images then the software will '
-            '<b>calculate metrics</b> for each loaded fluorescent channel '
+            'If you load fluorescence images then the software will '
+            '<b>calculate metrics</b> for each loaded fluorescence channel '
             'such as min, max, mean, quantiles, etc. '
             'of each segmented object.<br><br>'
             '<i>NOTE: You can always load them later from the menu</i> '
-            '<code>File --> Load fluorescent images</code>'
+            '<code>File --> Load fluorescence images</code>'
         )
         no, yes = msg.question(
-            self, 'Load fluorescent images?', html_utils.paragraph(txt),
+            self, 'Load fluorescence images?', html_utils.paragraph(txt),
             buttonsTexts=('No', 'Yes')
         )
         if msg.clickedButton == yes:
@@ -18261,6 +18285,16 @@ class guiWin(QMainWindow):
         fluo_path = os.path.join(posData.images_path, filename)
         filename, _ = os.path.splitext(filename)
         return fluo_path, filename
+    
+    def loadPosTriggered(self):
+        if not self.dataIsLoaded:
+            return
+        
+        self.startAutomaticLoadingPos()
+    
+    def startAutomaticLoadingPos(self):
+        self.AutoPilot = autopilot.AutoPilot(self)
+        self.AutoPilot.startLoadPos()
 
     def loadFluo_cb(self, checked=True, fluo_channels=None):
         if fluo_channels is None:
@@ -18648,7 +18682,7 @@ class guiWin(QMainWindow):
         alphaScrollBar.setToolTip(
             f'Control the alpha value of the overlaid channel {channelName}.\n'
             'alpha=0 results in NO overlay,\n'
-            'alpha=1 results in only fluorescent data visible'
+            'alpha=1 results in only fluorescence data visible'
         )
         self.bottomLeftLayout.addWidget(
             alphaScrollBar.label, self.alphaScrollbarRow, 0, 

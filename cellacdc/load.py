@@ -1620,7 +1620,8 @@ class select_exp_folder:
             current=0, title='Select Position folder',
             CbLabel="Select folder to load:",
             showinexplorer_button=False, full_paths=None,
-            allow_abort=True, show=False, toggleMulti=False
+            allow_abort=True, show=False, toggleMulti=False,
+            allowMultiSelection=True
         ):
         font = QtGui.QFont()
         font.setPixelSize(13)
@@ -1632,6 +1633,9 @@ class select_exp_folder:
         toFront = win.windowState() & ~Qt.WindowMinimized | Qt.WindowActive
         win.setWindowState(toFront)
         win.activateWindow()
+        if not allowMultiSelection:
+            win.multiPosButton.setChecked(False)
+            win.multiPosButton.setDisabled(True)
         if toggleMulti:
             win.multiPosButton.setChecked(True)
         win.exec_()

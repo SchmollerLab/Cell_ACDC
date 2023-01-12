@@ -81,6 +81,21 @@ class signals(QObject):
     sigInitInnerPbar = pyqtSignal(int)
     sigUpdateInnerPbar = pyqtSignal(int)
 
+class AutoPilotWorker(QObject):
+    finished = pyqtSignal()
+    critical = pyqtSignal(object)
+    progress = pyqtSignal(str, object)
+
+    def __init__(self, guiWin):
+        QObject.__init__(self)
+        self.logger = workerLogger(self.progress)
+        self.guiWin = guiWin
+        self.app = guiWin.app
+    
+    def run(self):
+        time.sleep(0.5)
+        printl('Test')
+
 class LabelRoiWorker(QObject):
     finished = pyqtSignal()
     critical = pyqtSignal(object)
