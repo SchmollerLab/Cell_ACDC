@@ -5019,7 +5019,7 @@ class QDialogMetadata(QDialog):
         )
         return msg.clickedButton == yesButton
 
-    def ok_cb(self, event):
+    def ok_cb(self, checked=False):
         self.cancel = False
         self.SizeT = self.SizeT_SpinBox.value()
         self.SizeZ = self.SizeZ_SpinBox.value()
@@ -8919,6 +8919,12 @@ class QDialogMultiSegmNpz(QDialog):
         self.cancel = False
         self.newSegmEndName = win.entryText
         self.close()
+    
+    def setSelectedItemFromText(self, itemText):
+        for i in range(self.listWidget.count()):
+            if self.listWidget.item(i).text() == itemText:
+                self.listWidget.setCurrentRow(i)
+                break
 
     def ok_cb(self, event=None):
         self.cancel = False

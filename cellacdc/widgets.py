@@ -942,8 +942,15 @@ class QDialogListbox(QDialog):
         #     item = self.listBox.item(i).setSelected(True)
         
         # print(self.listBox.selectedItems())
+    
+    def setSelectedItems(self, itemsTexts):
+        for i in range(self.listBox.count()):
+            item = self.listBox.item(i)
+            if item.text() in itemsTexts:
+                item.setSelected(True)
+        self.listBox.update()
 
-    def ok_cb(self, event):
+    def ok_cb(self, checked=False):
         self.clickedButton = self.sender()
         self.cancel = False
         selectedItems = self.listBox.selectedItems()
@@ -1981,6 +1988,12 @@ class myMessageBox(QDialog):
 
     def exec_(self):
         self.show(block=True)
+    
+    def clickButtonFromText(self, buttonText):
+        for button in self.buttons:
+            if button.text() == buttonText:
+                button.click()
+                return
 
     def buttonCallBack(self, checked=True):
         self.clickedButton = self.sender()

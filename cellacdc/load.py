@@ -1642,8 +1642,7 @@ class select_exp_folder:
         self.was_aborted = win.cancel
         if not win.cancel:
             self.selected_pos = [
-                self.pos_foldernames[idx]
-                for idx in win.selectedItemsIdx
+                self.pos_foldernames[idx] for idx in win.selectedItemsIdx
             ]
 
     def get_values_segmGUI(self, exp_path):

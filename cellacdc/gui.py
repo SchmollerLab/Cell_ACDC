@@ -929,7 +929,7 @@ class guiWin(QMainWindow):
         self.closeGUI = False
         self.img1ChannelGradients = {}
         self.filtersWins = {}
-        self.lastLoadingProfile = []
+        self.AutoPilotProfile = autopilot.AutoPilotProfile()
         self.storeStateWorker = None
         self.AutoPilot = None
 
@@ -9806,7 +9806,9 @@ class guiWin(QMainWindow):
         if ev.key() == Qt.Key_T:
             # self.setAllIDs()
             posData = self.data[self.pos_i]
-            self.bottomScrollArea._resizeVertical()
+            printl(self.AutoPilotProfile.lastLoadingProfile, pretty=True)
+            printl(self.AutoPilot.loadingProfile, pretty=True)
+            printl(self.app.topLevelWidgets())
             # printl(posData.allIDs)
             # printl(f'{posData.binnedIDs = }')
             # printl(f'{posData.ripIDs = }')
@@ -11957,6 +11959,9 @@ class guiWin(QMainWindow):
                     return
                 if win.newSegmEndName is None:
                     selectedSegmEndName = win.selectedItemText
+                    self.AutoPilotProfile.storeSelectedSegmFile(
+                        selectedSegmEndName
+                    )
                 else:
                     self.newSegmEndName = win.newSegmEndName
                     self.isNewFile = True
@@ -11992,6 +11997,8 @@ class guiWin(QMainWindow):
         if not proceed:
             self.loadingDataAborted()
             return
+        
+        self.AutoPilotProfile.storeOkAskInputMetadata()
 
         self.isSegm3D = posData.isSegm3D
         self.SizeT = posData.SizeT
@@ -12162,6 +12169,7 @@ class guiWin(QMainWindow):
         elif msg.clickedButton == loadUnsavedButton:
             self.loadDataWorker.loadUnsaved = True
         self.loadDataWorker.waitCond.wakeAll()
+        # self.AutoPilotProfile.storeLoadSavedData()
     
     def showInfoAutosave(self, posData):
         msg = widgets.myMessageBox(showCentered=False, wrapText=False)
@@ -18041,11 +18049,7 @@ class guiWin(QMainWindow):
         ch_name_selector.setUserChannelName()
         self.user_ch_name = user_ch_name
 
-        self.lastLoadingProfile.append({
-            'windowTitle': 'Select channel name', 
-            'windowActions': ('ComboBox.setCurrentText', 'ok_cb'),
-            'windowActionsArgs': ((self.user_ch_name,), tuple())
-        })
+        self.AutoPilotProfile.storeSelectedChannel(self.user_ch_name)
 
         self.initGlobalAttr()
         self.createOverlayContextMenu()
@@ -18269,6 +18273,9 @@ class guiWin(QMainWindow):
         )
         if msg.clickedButton == yes:
             self.loadFluo_cb(None)
+        self.AutoPilotProfile.storeClickMessageBox(
+            'Load fluorescence images?', msg.clickedButton.text()
+        )
 
     def getPathFromChName(self, chName, posData):
         ls = myutils.listdir(posData.images_path)
@@ -18319,7 +18326,7 @@ class guiWin(QMainWindow):
                 msg.information(self, 'All channels are loaded', txt)
                 return False
             selectFluo = widgets.QDialogListbox(
-                'Select channel',
+                'Select channel to load',
                 'Select channel names to load:\n',
                 ch_names, multiSelection=True, parent=self
             )
@@ -18329,6 +18336,7 @@ class guiWin(QMainWindow):
                 return False
 
             fluo_channels = selectFluo.selectedItemsText
+            self.AutoPilotProfile.storeLoadedFluoChannels(fluo_channels)
 
         for p, posData in enumerate(self.data):
             # posData.ol_data = None

@@ -6,12 +6,62 @@ from PyQt5.QtCore import (
 
 from . import load, printl, myutils
 
+class AutoPilotProfile:
+    def __init__(self):
+        self.lastLoadingProfile = []
+
+    def storeSelectedChannel(self, user_channel):
+        self.lastLoadingProfile.append({
+            'windowTitle': 'Select channel name', 
+            'windowActions': ('ComboBox.setCurrentText', 'ok_cb'),
+            'windowActionsArgs': ((user_channel,), tuple())
+        })
+
+    def storeSelectedSegmFile(self, selectedSegmEndName):
+        self.lastLoadingProfile.append({
+            'windowTitle': 'Multiple segm.npz files detected', 
+            'windowActions': ('listWidget.setSelectedItemFromText', 'ok_cb'),
+            'windowActionsArgs': ((selectedSegmEndName,), tuple())
+        })
+    
+    def storeOkAskInputMetadata(self):
+        self.lastLoadingProfile.append({
+            'windowTitle': 'Image properties', 
+            'windowActions': ('ok_cb',),
+            'windowActionsArgs': (tuple(),)
+        })
+    
+    def storeLoadSavedData(self):
+        self.lastLoadingProfile.append({
+            'windowTitle': 'Recover unsaved data?', 
+            'windowActions': ('clickButtonFromText',),
+            'windowActionsArgs': (('Load saved data',),)
+        })
+    
+    def storeClickMessageBox(self, windowTitle, buttonTextToClick):
+        self.lastLoadingProfile.append({
+            'windowTitle': windowTitle, 
+            'windowActions': ('clickButtonFromText',),
+            'windowActionsArgs': ((buttonTextToClick,),)
+        })
+    
+    def storeLoadedFluoChannels(self, loadedChannels):
+        self.lastLoadingProfile.append({
+            'windowTitle': 'Select channel to load', 
+            'windowActions': ('setSelectedItems', 'ok_cb'),
+            'windowActionsArgs': ((loadedChannels,), tuple())
+        })
+    
+    def getCopy(self):
+        return self.lastLoadingProfile.copy()
+
+
 class AutoPilot:    
     def __init__(self, guiWin) -> None:
         self.guiWin = guiWin
         self.app = guiWin.app
         self.isFinished = True
-        self.loadingProfile = guiWin.lastLoadingProfile.copy()
+        self.loadingProfile = guiWin.AutoPilotProfile.getCopy()
     
     def _askSelectPos(self):
         posData = self.guiWin.data[self.guiWin.pos_i]
@@ -20,6 +70,7 @@ class AutoPilot:
         values = select_folder.get_values_segmGUI(exp_path)
         # Remove currently loaded position
         values.pop(select_folder.pos_foldernames.index(posData.pos_foldername))
+        select_folder.pos_foldernames.remove(posData.pos_foldername)
         select_folder.QtPrompt(self.guiWin, values, allowMultiSelection=False)
         if select_folder.was_aborted:
             return
@@ -51,6 +102,8 @@ class AutoPilot:
         
         windowTitle = self.loadingProfile[0]['windowTitle']
         for window in openWindows:
+            if not window.windowTitle():
+                continue
             if not window.isVisible():
                 continue
             if not windowTitle == window.windowTitle():
