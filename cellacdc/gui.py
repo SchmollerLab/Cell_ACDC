@@ -929,8 +929,9 @@ class guiWin(QMainWindow):
         self.closeGUI = False
         self.img1ChannelGradients = {}
         self.filtersWins = {}
-        self.lastLoadingProfile = {}
+        self.lastLoadingProfile = []
         self.storeStateWorker = None
+        self.AutoPilot = None
 
         self.setWindowTitle("Cell-ACDC - GUI")
         self.setWindowIcon(QIcon(":icon.ico"))
@@ -2278,7 +2279,7 @@ class guiWin(QMainWindow):
         # String-based key sequences
         self.newAction.setShortcut("Ctrl+N")
         self.openAction.setShortcut("Ctrl+O")
-        self.loadPosAction.setShortcut("Ctrl+Shift+O")
+        self.loadPosAction.setShortcut("Shift+P")
         self.saveAsAction.setShortcut("Ctrl+Shift+S")
         self.saveAction.setShortcut("Ctrl+Alt+S")
         self.quickSaveAction.setShortcut("Ctrl+S")
@@ -18040,7 +18041,11 @@ class guiWin(QMainWindow):
         ch_name_selector.setUserChannelName()
         self.user_ch_name = user_ch_name
 
-        self.lastLoadingProfile['channel'] = self.user_ch_name
+        self.lastLoadingProfile.append({
+            'windowTitle': 'Select channel name', 
+            'windowActions': ('ComboBox.setCurrentText', 'ok_cb'),
+            'windowActionsArgs': ((self.user_ch_name,), tuple())
+        })
 
         self.initGlobalAttr()
         self.createOverlayContextMenu()
@@ -18294,7 +18299,8 @@ class guiWin(QMainWindow):
     
     def startAutomaticLoadingPos(self):
         self.AutoPilot = autopilot.AutoPilot(self)
-        self.AutoPilot.startLoadPos()
+        self.AutoPilot.execLoadPos()
+        self.AutoPilot = None
 
     def loadFluo_cb(self, checked=True, fluo_channels=None):
         if fluo_channels is None:
@@ -19543,6 +19549,7 @@ class guiWin(QMainWindow):
                 didWorkersFinished.append(False)
         if all(didWorkersFinished):
             self.waitCloseAutoSaveWorkerLoop.stop()
+
 
     def closeEvent(self, event):
         for worker, thread in self.autoSaveActiveWorkers:

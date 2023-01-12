@@ -6,7 +6,6 @@ import json
 
 from pprint import pprint
 from functools import wraps, partial
-
 import numpy as np
 import pandas as pd
 import h5py
@@ -85,16 +84,26 @@ class AutoPilotWorker(QObject):
     finished = pyqtSignal()
     critical = pyqtSignal(object)
     progress = pyqtSignal(str, object)
+    sigStarted = pyqtSignal()
+    sigStopTimer = pyqtSignal()
 
     def __init__(self, guiWin):
         QObject.__init__(self)
         self.logger = workerLogger(self.progress)
         self.guiWin = guiWin
         self.app = guiWin.app
+        # self.timer = timer
+    
+    def timerCallback(self):
+        printl('test')
+    
+    def stop(self):
+        self.sigStopTimer.emit()
+        self.finished.emit()        
     
     def run(self):
-        time.sleep(0.5)
-        printl('Test')
+        printl('Running')
+        self.sigStarted.emit()
 
 class LabelRoiWorker(QObject):
     finished = pyqtSignal()

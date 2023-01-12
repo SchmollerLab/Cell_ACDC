@@ -1521,6 +1521,11 @@ def install_package(pkg_name: str, note='', parent=None, raise_on_cancel=True):
             else:
                 return traceback.format_exc()
 
+def get_chained_attr(_object, _name):
+    for attr in _name.split('.'):
+        _object = getattr(_object, attr)
+    return _object
+
 def check_matplotlib_version(qparent=None):
     import pkg_resources
     mpl_version = pkg_resources.get_distribution("matplotlib").version

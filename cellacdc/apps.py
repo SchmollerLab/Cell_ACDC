@@ -3749,7 +3749,7 @@ class QDialogCombobox(QDialog):
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         self.setFont(font)
 
-    def ok_cb(self, event):
+    def ok_cb(self, checked=False):
         self.cancel = False
         self.selectedItemText = self.ComboBox.currentText()
         self.selectedItemIdx = self.ComboBox.currentIndex()
