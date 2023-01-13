@@ -1624,7 +1624,7 @@ class myMessageBox(QDialog):
     def __init__(
             self, parent=None, showCentered=True, wrapText=True,
             scrollableText=False, enlargeWidthFactor=0,
-            resizeButtons=True
+            resizeButtons=True, allowClose=True
         ):
         super().__init__(parent)
 
@@ -1636,6 +1636,7 @@ class myMessageBox(QDialog):
         self.cancelButton = None
         self.okButton = None
         self.clickedButton = None
+        self.allowClose = allowClose
 
         self.showCentered = showCentered
 
@@ -1999,9 +2000,13 @@ class myMessageBox(QDialog):
         self.clickedButton = self.sender()
         if self.clickedButton != self.cancelButton:
             self.cancel = False
+        self.allowClose = True
         self.close()
 
     def closeEvent(self, event):
+        if not self.allowClose:
+            event.ignore()
+            return
         if hasattr(self, 'loop'):
             self.loop.exit()
 

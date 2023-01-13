@@ -9807,8 +9807,9 @@ class guiWin(QMainWindow):
             # self.setAllIDs()
             posData = self.data[self.pos_i]
             printl(self.AutoPilotProfile.lastLoadingProfile, pretty=True)
-            printl(self.AutoPilot.loadingProfile, pretty=True)
             printl(self.app.topLevelWidgets())
+            printl(self.AutoPilot.loadingProfile, pretty=True)
+            printl(self.AutoPilot.timer.isActive())
             # printl(posData.allIDs)
             # printl(f'{posData.binnedIDs = }')
             # printl(f'{posData.ripIDs = }')
@@ -12355,6 +12356,8 @@ class guiWin(QMainWindow):
 
         self.retainSpaceSlidersToggled(self.retainSpaceSlidersAction.isChecked())
 
+        self.stopAutomaticLoadingPos()
+
         # Overwrite axes viewbox context menu
         self.ax1.vb.menu = self.imgGrad.gradient.menu
         self.ax2.vb.menu = self.labelsGrad.menu
@@ -13218,6 +13221,9 @@ class guiWin(QMainWindow):
                     noButton, yesButton = msg.question(
                         self, 'Start from last session?', txt,
                         buttonsTexts=(' No ', 'Yes')
+                    )
+                    self.AutoPilotProfile.storeClickMessageBox(
+                        'Start from last session?', msg.clickedButton.text()
                     )
                     if msg.clickedButton == yesButton:
                         posData.frame_i = posData.last_tracked_i
@@ -18256,7 +18262,11 @@ class guiWin(QMainWindow):
     def initFluoData(self):
         if len(self.ch_names) <= 1:
             return
-        msg = widgets.myMessageBox()
+        
+        if 'ask_load_fluo_at_init' in self.df_settings.index:
+            if self.df_settings.at['ask_load_fluo_at_init', 'value'] == 'No':
+                return   
+        msg = widgets.myMessageBox(allowClose=False)
         txt = (
             'Do you also want to <b>load fluorescence images?</b><br>'
             'You can load <b>as many channels as you want</b>.<br><br>'
@@ -18264,13 +18274,19 @@ class guiWin(QMainWindow):
             '<b>calculate metrics</b> for each loaded fluorescence channel '
             'such as min, max, mean, quantiles, etc. '
             'of each segmented object.<br><br>'
-            '<i>NOTE: You can always load them later from the menu</i> '
-            '<code>File --> Load fluorescence images</code>'
+            'NOTE: You can always load them later from the menu '
+            '<code>File --> Load fluorescence images...</code> or when you set '
+            'measurements from the menu '
+            '<code>Measurements --> Set measurements...</code>'
         )
+        msg.addDoNotShowAgainCheckbox(text='Do not ask again')
         no, yes = msg.question(
             self, 'Load fluorescence images?', html_utils.paragraph(txt),
             buttonsTexts=('No', 'Yes')
         )
+        if msg.doNotShowAgainCheckbox.isChecked():
+            self.df_settings.at['ask_load_fluo_at_init', 'value'] = 'No'
+            self.df_settings.to_csv(self.settings_csv_path)
         if msg.clickedButton == yes:
             self.loadFluo_cb(None)
         self.AutoPilotProfile.storeClickMessageBox(
@@ -18307,6 +18323,13 @@ class guiWin(QMainWindow):
     def startAutomaticLoadingPos(self):
         self.AutoPilot = autopilot.AutoPilot(self)
         self.AutoPilot.execLoadPos()
+    
+    def stopAutomaticLoadingPos(self):
+        if self.AutoPilot is None:
+            return
+        
+        if self.AutoPilot.timer.isActive():
+            self.AutoPilot.timer.stop()
         self.AutoPilot = None
 
     def loadFluo_cb(self, checked=True, fluo_channels=None):

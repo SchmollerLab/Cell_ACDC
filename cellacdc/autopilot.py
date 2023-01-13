@@ -87,13 +87,10 @@ class AutoPilot:
         self.isFinished = False
         self.timer = QTimer()
         self.timer.timeout.connect(self.loadPosTimerCallback)
-        self.timer.start(100)
+        self.timer.start(50)
 
         self.guiWin.openFolder(exp_path=posPath)
 
-        if self.timer.isActive():
-            self.timer.stop()
-    
     def loadPosTimerCallback(self):
         openWindows = self.app.topLevelWidgets()
         if not self.loadingProfile:
@@ -112,7 +109,6 @@ class AutoPilot:
             windowActions = self.loadingProfile[0]['windowActions']
             windowActionsArgs = self.loadingProfile[0]['windowActionsArgs']
             for action, args in zip(windowActions, windowActionsArgs):
-                printl(action, args)
                 func = myutils.get_chained_attr(window, action)
                 func(*args)
             
