@@ -1732,7 +1732,7 @@ class myMessageBox(QDialog):
         return button
 
     def addDoNotShowAgainCheckbox(self, text='Do not show again'):
-        self.doNotShowAgainCheckbox = QCheckBox('Do not show again')
+        self.doNotShowAgainCheckbox = QCheckBox(text)
 
     def addWidget(self, widget):
         self.layout.addWidget(widget, self.currentRow, 1)
@@ -1763,7 +1763,7 @@ class myMessageBox(QDialog):
         # Do not show again checkbox
         if self.doNotShowAgainCheckbox is not None:
             self.layout.addWidget(
-                self.doNotShowAgainCheckbox, self.currentRow, 0, 1, 2
+                self.doNotShowAgainCheckbox, self.currentRow, 1, 1, 2
             )
             self.currentRow += 1
 

@@ -18279,7 +18279,7 @@ class guiWin(QMainWindow):
             'measurements from the menu '
             '<code>Measurements --> Set measurements...</code>'
         )
-        msg.addDoNotShowAgainCheckbox(text='Do not ask again')
+        msg.addDoNotShowAgainCheckbox(text="Don't ask again")
         no, yes = msg.question(
             self, 'Load fluorescence images?', html_utils.paragraph(txt),
             buttonsTexts=('No', 'Yes')
