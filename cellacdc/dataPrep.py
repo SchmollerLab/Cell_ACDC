@@ -41,6 +41,7 @@ from . import qrc_resources
 from . import exception_handler
 from . import load, prompts, apps, core, myutils, widgets
 from . import html_utils, myutils, darkBkgrColor, printl
+from . import autopilot
 
 if os.name == 'nt':
     try:
@@ -95,6 +96,8 @@ class dataPrepWin(QMainWindow):
 
         self.buttonToRestore = buttonToRestore
         self.mainWin = mainWin
+        if mainWin is not None:
+            self.app = mainWin.app
 
         self.setWindowTitle("Cell-ACDC - data prep")
         self.setGeometry(100, 50, 850, 800)
@@ -116,6 +119,9 @@ class dataPrepWin(QMainWindow):
         self.titleText = None
         self.metadataAlreadyAsked = False
         self.cropZtool = None
+        self.AutoPilotProfile = autopilot.AutoPilotProfile()
+        self.AutoPilot = None
+        self.dataIsLoaded = False
 
         # When we load dataprep from other modules we usually disable
         # start because we only want to select the z-slice
@@ -182,6 +188,9 @@ class dataPrepWin(QMainWindow):
         # self.jumpBackwardAction.setShortcut("down")
         self.openAction.setShortcut("Ctrl+O")
 
+        self.loadPosAction = QAction("Load different Position...", self)
+        self.loadPosAction.setShortcut("Shift+P")
+
         toolTip = "Add ROI where to calculate background intensity"
         self.addBkrgRoiActon = QAction(QIcon(":bkgrRoi.svg"), toolTip, self)
         self.addBkrgRoiActon.setDisabled(True)
@@ -219,6 +228,9 @@ class dataPrepWin(QMainWindow):
         fileMenu.addAction(self.openAction)
         # Open Recent submenu
         self.openRecentMenu = fileMenu.addMenu("Open Recent")
+
+        fileMenu.addAction(self.loadPosAction)
+        fileMenu.addSeparator()
         fileMenu.addAction(self.exitAction)
 
     def gui_createToolBars(self):
@@ -272,6 +284,7 @@ class dataPrepWin(QMainWindow):
         self.interpAction.triggered.connect(self.interp_z)
         self.ZbackAction.triggered.connect(self.useSameZ_fromHereBack)
         self.ZforwAction.triggered.connect(self.useSameZ_fromHereForw)
+        self.loadPosAction.triggered.connect(self.loadPosTriggered)
 
     def gui_createStatusBar(self):
         self.statusbar = self.statusBar()
@@ -389,6 +402,24 @@ class dataPrepWin(QMainWindow):
             systems.get(os.name, os.startfile)(posData.images_path)
         except AttributeError:
             pass
+    
+    def loadPosTriggered(self):
+        if not self.dataIsLoaded:
+            return
+        
+        self.startAutomaticLoadingPos()
+    
+    def startAutomaticLoadingPos(self):
+        self.AutoPilot = autopilot.AutoPilot(self)
+        self.AutoPilot.execLoadPos()
+    
+    def stopAutomaticLoadingPos(self):
+        if self.AutoPilot is None:
+            return
+        
+        if self.AutoPilot.timer.isActive():
+            self.AutoPilot.timer.stop()
+        self.AutoPilot = None
 
     def next_cb(self):
         if self.num_pos > 1:
@@ -1174,6 +1205,7 @@ class dataPrepWin(QMainWindow):
                             'File --> Open or Open recent to start the process',
                             color='w')
                         return False
+                    self.AutoPilotProfile.storeOkAskInputMetadata()
                 else:
                     posData.isSegm3D = self.isSegm3D
                     posData.SizeT = self.SizeT
@@ -1995,6 +2027,15 @@ class dataPrepWin(QMainWindow):
         # Connect events at the end of loading data process
         self.gui_connectGraphicsEvents()
 
+        exp_path = self.data[self.pos_i].exp_path
+        pos_foldernames = myutils.get_pos_foldernames(exp_path)
+        if len(pos_foldernames) == 1:
+            # There is only one position --> disable switch pos action
+            self.loadPosAction.setDisabled(True)
+        else:
+            self.loadPosAction.setDisabled(False)
+
+
         if self.titleText is None:
             self.titleLabel.setText(
                 'Data successfully loaded.<br>'
@@ -2012,12 +2053,15 @@ class dataPrepWin(QMainWindow):
         self.update_img()
         self.setFontSizeROIlabels()
 
+        self.stopAutomaticLoadingPos()
+
     def setImageNameText(self):
         self.statusbar.clearMessage()
         posData = self.data[self.pos_i]
         self.statusbar.showMessage(posData.filename_ext)
 
     def initLoading(self):
+        self.dataIsLoaded = False
         # Remove all items from a previous session if open is pressed again
         self.removeAllItems()
         self.gui_addPlotItems()
@@ -2142,9 +2186,12 @@ class dataPrepWin(QMainWindow):
         user_ch_file_paths = load.get_user_ch_paths(
                 self.images_paths, user_ch_name
         )
+        self.AutoPilotProfile.storeSelectedChannel(user_ch_name)
 
         self.loadFiles(exp_path, user_ch_file_paths, user_ch_name)
         self.setCenterAlignmentTitle()
+
+        self.dataIsLoaded = True
 
     def setFontSizeROIlabels(self):
         Y, X = self.img.image.shape
@@ -2213,19 +2260,3 @@ class dataPrepWin(QMainWindow):
         QMainWindow.show(self)
         self.readSettings()
         self.graphLayout.setFocus(True)
-
-if __name__ == "__main__":
-    # Handle high resolution displays:
-    if hasattr(Qt, 'AA_EnableHighDpiScaling'):
-        QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-    if hasattr(Qt, 'AA_UseHighDpiPixmaps'):
-        QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
-    # Create the application
-    app = QApplication(sys.argv)
-    app.setWindowIcon(QIcon(":icon.ico"))
-    win = dataPrepWin()
-    win.show()
-    # Apply style
-    app.setStyle(QStyleFactory.create('Fusion'))
-    # Run the event loop
-    sys.exit(app.exec_())

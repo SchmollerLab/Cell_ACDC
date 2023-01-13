@@ -57,21 +57,21 @@ class AutoPilotProfile:
 
 
 class AutoPilot:    
-    def __init__(self, guiWin) -> None:
-        self.guiWin = guiWin
-        self.app = guiWin.app
+    def __init__(self, parentWin) -> None:
+        self.parentWin = parentWin
+        self.app = parentWin.app
         self.isFinished = True
-        self.loadingProfile = guiWin.AutoPilotProfile.getCopy()
+        self.loadingProfile = parentWin.AutoPilotProfile.getCopy()
     
     def _askSelectPos(self):
-        posData = self.guiWin.data[self.guiWin.pos_i]
+        posData = self.parentWin.data[self.parentWin.pos_i]
         exp_path = posData.exp_path
         select_folder = load.select_exp_folder()
         values = select_folder.get_values_segmGUI(exp_path)
         # Remove currently loaded position
         values.pop(select_folder.pos_foldernames.index(posData.pos_foldername))
         select_folder.pos_foldernames.remove(posData.pos_foldername)
-        select_folder.QtPrompt(self.guiWin, values, allowMultiSelection=False)
+        select_folder.QtPrompt(self.parentWin, values, allowMultiSelection=False)
         if select_folder.was_aborted:
             return
         
@@ -81,7 +81,7 @@ class AutoPilot:
     def execLoadPos(self):
         posPath = self._askSelectPos()
         if posPath is None:
-            self.guiWin.logger.info('Loading Position cancelled.')
+            self.parentWin.logger.info('Loading Position cancelled.')
             return
         
         self.isFinished = False
@@ -89,7 +89,7 @@ class AutoPilot:
         self.timer.timeout.connect(self.loadPosTimerCallback)
         self.timer.start(50)
 
-        self.guiWin.openFolder(exp_path=posPath)
+        self.parentWin.openFolder(exp_path=posPath)
 
     def loadPosTimerCallback(self):
         openWindows = self.app.topLevelWidgets()

@@ -13134,7 +13134,7 @@ class guiWin(QMainWindow):
     def initPosAttr(self):
         exp_path = self.data[self.pos_i].exp_path
         pos_foldernames = myutils.get_pos_foldernames(exp_path)
-        if len(pos_foldernames) == 1 and self.data[self.pos_i].SizeT > 1:
+        if len(pos_foldernames) == 1:
             self.loadPosAction.setDisabled(True)
         else:
             self.loadPosAction.setDisabled(False)
