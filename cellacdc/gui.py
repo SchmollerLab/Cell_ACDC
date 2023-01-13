@@ -12190,7 +12190,9 @@ class guiWin(QMainWindow):
         msg = widgets.myMessageBox(wrapText=False)
         title = 'Segm. data shape mismatch'
         f = '3D' if self.isSegm3D else '2D'
+        f = f'{f} over time' if posData.SizeT > 1 else f
         r = '2D' if self.isSegm3D else '3D'
+        r = f'{r} over time' if posData.SizeT > 1 else r
         text = html_utils.paragraph(f"""
             The segmentation masks of the first Position that you loaded is 
             <b>{f}</b>,<br>

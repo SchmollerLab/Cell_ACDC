@@ -4966,6 +4966,7 @@ class QDialogMetadata(QDialog):
     def SizeZvalueChanged(self, val):
         if len(self.imgDataShape) < 3:
             return
+        
         if val > 1 and self.imgDataShape is not None:
             maxSizeZ = self.imgDataShape[-3]
             self.SizeZ_SpinBox.setMaximum(maxSizeZ)
@@ -4986,10 +4987,37 @@ class QDialogMetadata(QDialog):
             self.isSegm3DLabel.hide()
             self.isSegm3Dtoggle.hide()
             self.infoButtonSegm3D.hide()
+        
+        self.checkSegmDataShape()
+    
+    def checkSegmDataShape(self):
+        if self.posData is None:
+            return
+        
+        if self.isSegm3Dtoggle.isEnabled():
+            return
+        
+        SizeT = self.SizeT_SpinBox.value()
+        SizeZ = self.SizeZ_SpinBox.value()
+        segm_data_ndim = self.posData.segm_data.ndim
+        isSegm3D = False
+        if segm_data_ndim == 4:
+            # Segm data is 4D so it must be 3D over time
+            isSegm3D = True
+        elif segm_data_ndim == 3 and SizeZ > 1 and SizeT == 1:
+            # Segm data is 3D while SizeT == 1 and SizeZ > 1 
+            # --> also segm is 3D z-stack
+            isSegm3D = True
+        
+        self.isSegm3Dtoggle.setDisabled(False)
+        self.isSegm3Dtoggle.setChecked(isSegm3D)
+        self.isSegm3Dtoggle.setDisabled(True)
 
     def TimeIncrementShowHide(self, val):
+        self.checkSegmDataShape()
         if not self.ask_TimeIncrement:
             return
+        
         if val > 1:
             self.TimeIncrementSpinBox.show()
             self.TimeIncrementLabel.show()
