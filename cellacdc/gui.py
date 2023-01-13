@@ -1893,6 +1893,9 @@ class guiWin(QMainWindow):
         self.logger.info('Store state worker started.')
     
     def gui_createAutoSaveWorker(self):
+        if not self.autoSaveAction.isChecked():
+            return
+        
         if self.autoSaveActiveWorkers:
             garbage = self.autoSaveActiveWorkers[-1]
             self.autoSaveGarbageWorkers.append(garbage)
@@ -3558,10 +3561,11 @@ class guiWin(QMainWindow):
 
     def gui_createIDsAxesItems(self):
         allIDs = set()
-        self.logger.info('Counting total number of segmented objects...')
-        for lab in tqdm(self.data[self.pos_i].segm_data, ncols=100):
-            IDs = [obj.label for obj in skimage.measure.regionprops(lab)]
-            allIDs.update(IDs)
+        if np.any(self.data[self.pos_i].segm_data):
+            self.logger.info('Counting total number of segmented objects...')
+            for lab in tqdm(self.data[self.pos_i].segm_data, ncols=100):
+                IDs = [obj.label for obj in skimage.measure.regionprops(lab)]
+                allIDs.update(IDs)
 
         self.createItems = True
         posData = self.data[self.pos_i]
