@@ -17237,7 +17237,9 @@ class guiWin(QMainWindow):
                             cont[:,0], cont[:,1], pen=self.newIDs_cpen
                         )
                     except AttributeError:
-                        self.logger.info(f'Error with ID {ID}')
+                        self.logger.info(traceback.format_exc())
+                        self.logger.info('='*40)
+                        self.logger.info(f'Error with ID {ID}. See details above.')
 
         if posData.lost_IDs:
             # Get the rp from previous frame
@@ -18212,6 +18214,9 @@ class guiWin(QMainWindow):
             buttonsTexts=('Cancel', 'Continue anyway')
         )
         if msg.clickedButton == continueButton:
+            # Disable autosaving since it would keep a copy of the data and 
+            # we cannot afford it with low memory
+            self.autoSaveAction.setChecked(False)
             return True
         else:
             return False
@@ -19489,9 +19494,12 @@ class guiWin(QMainWindow):
 
         self.thread.start()
     
-    def autoSaveToggled(self, checked):
+    def autoSaveClose(self):
         for worker, thread in self.autoSaveActiveWorkers:
             worker._stop()
+    
+    def autoSaveToggled(self, checked):
+        self.autoSaveClose()
         
         if checked:
             self.gui_createAutoSaveWorker()
@@ -19583,8 +19591,7 @@ class guiWin(QMainWindow):
 
 
     def closeEvent(self, event):
-        for worker, thread in self.autoSaveActiveWorkers:
-            worker._stop()
+        self.autoSaveClose()
         
         if self.autoSaveActiveWorkers:
             progressWin = apps.QDialogWorkerProgress(
