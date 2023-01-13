@@ -10602,6 +10602,8 @@ class guiWin(QMainWindow):
                 parent=self
             )
             win.exec_()
+            if win.cancel:
+                return
             model_name = win.selectedItemsText[0]
             self.segmModelName = model_name
             # Store undo state before modifying stuff
@@ -11117,6 +11119,9 @@ class guiWin(QMainWindow):
         if self.segmModelName is None:
             win = apps.QDialogSelectModel(parent=self)
             win.exec_()
+            if win.cancel:
+                self.logger.info('Repeat segmentation cancelled.')
+                return
             model_name = win.selectedModel
             self.repeatSegm(
                 model_name=model_name, askSegmParams=True
