@@ -9810,10 +9810,8 @@ class guiWin(QMainWindow):
         if ev.key() == Qt.Key_T:
             # self.setAllIDs()
             posData = self.data[self.pos_i]
-            printl(self.AutoPilotProfile.lastLoadingProfile, pretty=True)
-            printl(self.app.topLevelWidgets())
-            printl(self.AutoPilot.loadingProfile, pretty=True)
-            printl(self.AutoPilot.timer.isActive())
+            printl(self.drawIDsContComboBox.currentText())
+            printl(self.annotContourCheckboxRight.currentText())
             # printl(posData.allIDs)
             # printl(f'{posData.binnedIDs = }')
             # printl(f'{posData.ripIDs = }')
@@ -18573,97 +18571,66 @@ class guiWin(QMainWindow):
         if self.annotIDsCheckbox.isChecked():
             if self.annotContourCheckbox.isChecked():
                 t = 'Draw IDs and contours'
-                self.drawIDsContComboBox.setCurrentText(t)
             elif self.annotSegmMasksCheckbox.isChecked():
                 t = 'Draw IDs and overlay segm. masks'
-                self.drawIDsContComboBox.setCurrentText(t)
             else:
                 t = 'Draw only IDs'
-                self.drawIDsContComboBox.setCurrentText(t)
-            return
         
-        if self.annotCcaInfoCheckbox.isChecked():
+        elif self.annotCcaInfoCheckbox.isChecked():
             if self.annotContourCheckbox.isChecked():
                 t = 'Draw cell cycle info and contours'
-                self.drawIDsContComboBox.setCurrentText(t)
             elif self.annotSegmMasksCheckbox.isChecked():
                 t = 'Draw cell cycle info and overlay segm. masks'
-                self.drawIDsContComboBox.setCurrentText(t)
             else:
                 t = 'Draw only cell cycle info'
-                self.drawIDsContComboBox.setCurrentText(t)
-            return
         
-        if self.annotSegmMasksCheckbox.isChecked():
+        elif self.annotSegmMasksCheckbox.isChecked():
             t = 'Draw only overlay segm. masks'
-            self.drawIDsContComboBox.setCurrentText(t)
-            return
 
-        if self.annotContourCheckbox.isChecked():
+        elif self.annotContourCheckbox.isChecked():
             t = 'Draw only contours'
-            self.drawIDsContComboBox.setCurrentText(t)
-            return
         
-        if self.drawMothBudLinesCheckbox.isChecked():
+        elif self.drawMothBudLinesCheckbox.isChecked():
             t = 'Draw only mother-bud lines'
-            self.drawIDsContComboBox.setCurrentText(t)
-            return
         
-        if self.drawNothingCheckbox.isChecked():
+        elif self.drawNothingCheckbox.isChecked():
             t = 'Draw nothing'
-            self.drawIDsContComboBox.setCurrentText(t)
-            return
-        
-        t = 'Draw nothing'
+        else:
+            t = 'Draw nothing'
         self.drawIDsContComboBox.setCurrentText(t)
 
     def setDrawAnnotComboboxTextRight(self):
         if self.annotIDsCheckboxRight.isChecked():
             if self.annotContourCheckboxRight.isChecked():
                 t = 'Draw IDs and contours'
-                self.annotateRightHowCombobox.setCurrentText(t)
             elif self.annotSegmMasksCheckboxRight.isChecked():
                 t = 'Draw IDs and overlay segm. masks'
-                self.annotateRightHowCombobox.setCurrentText(t)
             else:
                 t = 'Draw only IDs'
-                self.annotateRightHowCombobox.setCurrentText(t)
-            return
         
-        if self.annotCcaInfoCheckboxRight.isChecked():
+        elif self.annotCcaInfoCheckboxRight.isChecked():
             if self.annotContourCheckboxRight.isChecked():
                 t = 'Draw cell cycle info and contours'
-                self.annotateRightHowCombobox.setCurrentText(t)
             elif self.annotSegmMasksCheckboxRight.isChecked():
                 t = 'Draw cell cycle info and overlay segm. masks'
-                self.annotateRightHowCombobox.setCurrentText(t)
             else:
                 t = 'Draw only cell cycle info'
-                self.annotateRightHowCombobox.setCurrentText(t)
-            return
         
-        if self.annotSegmMasksCheckboxRight.isChecked():
+        elif self.annotSegmMasksCheckboxRight.isChecked():
             t = 'Draw only overlay segm. masks'
-            self.annotateRightHowCombobox.setCurrentText(t)
-            return
 
-        if self.annotContourCheckboxRight.isChecked():
+        elif self.annotContourCheckboxRight.isChecked():
             t = 'Draw only contours'
-            self.annotateRightHowCombobox.setCurrentText(t)
-            return
         
-        if self.drawMothBudLinesCheckboxRight.isChecked():
+        elif self.drawMothBudLinesCheckboxRight.isChecked():
             t = 'Draw only mother-bud lines'
-            self.annotateRightHowCombobox.setCurrentText(t)
-            return
         
-        if self.drawNothingCheckboxRight.isChecked():
+        elif self.drawNothingCheckboxRight.isChecked():
             t = 'Draw nothing'
-            self.annotateRightHowCombobox.setCurrentText(t)
-            return
-        
-        t = 'Draw nothing'
-        self.drawIDsContComboBox.setCurrentText(t)
+        else:
+            t = 'Draw nothing'
+
+        self.annotateRightHowCombobox.setCurrentText(t)
     
     def getOverlayItems(self, channelName):
         imageItem = pg.ImageItem()
