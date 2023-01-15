@@ -15792,6 +15792,9 @@ class guiWin(QMainWindow):
                 'ticks': [(x, t.color.getRgb()) for t,x in ticks],
                 'mode': 'rgb'
             }
+        
+        self.df_settings = self.imgGrad.saveState(self.df_settings)
+        self.df_settings.to_csv(self.settings_csv_path)
 
     def updateContColour(self, colorButton):
         color = colorButton.color().getRgb()

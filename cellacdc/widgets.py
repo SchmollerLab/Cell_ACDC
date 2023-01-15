@@ -3669,6 +3669,61 @@ class myHistogramLUTitem(baseHistogramLUTitem):
         checked = df.at['is_bw_inverted', 'value'] == 'Yes'
         self.invertBwAction.setChecked(checked)
 
+        self.restoreColormap(df)
+    
+    def saveState(self, df):
+        # remove previous state
+        df = df[~df.index.str.contains('img_cmap')].copy()
+
+        state = self.gradient.saveState()
+        for key, value in state.items():
+            if key == 'ticks':
+                for t, tick in enumerate(value):
+                    pos, rgb = tick
+                    df.at[f'img_cmap_tick{t}_rgb', 'value'] = rgb
+                    df.at[f'img_cmap_tick{t}_pos', 'value'] = pos
+            else:
+                if isinstance(value, bool):
+                    value = 'Yes' if value else 'No'
+                df.at[f'img_cmap_{key}', 'value'] = value
+        return df
+    
+    def restoreColormap(self, df):
+        state = {'mode': 'rgb', 'ticksVisible': True, 'ticks': []}
+        ticks_pos = {}
+        ticks_rgb = {}
+        stateFound = False
+        for setting, value in df.itertuples():
+            idx = setting.find('img_cmap_')
+            if idx == -1:
+                continue
+
+            stateFound = True
+            m = re.findall(r'tick(\d+)_(\w+)', setting)
+            if m:
+                tick_idx, tick_type = m[0]
+                if tick_type == 'pos':
+                    ticks_pos[int(tick_idx)] = float(value)
+                elif tick_type == 'rgb':
+                    ticks_rgb[int(tick_idx)] = colors.rgba_str_to_values(value)
+            else:
+                key = setting[9:]
+                if value == 'Yes':
+                    value = True
+                elif value == 'No':
+                    value = False
+                state[key] = value
+
+        if stateFound:
+            ticks = [(0, 0)]*len(ticks_pos)
+            for idx, val in ticks_pos.items():
+                pos = val
+                rgb = ticks_rgb[idx]
+                ticks[idx] = (pos, rgb)
+
+            state['ticks'] = ticks
+            self.gradient.restoreState(state)
+
 class labelledQScrollbar(QScrollBar):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
