@@ -5023,10 +5023,10 @@ class guiWin(QMainWindow):
             image = posData.img_data[posData.frame_i]
 
         if posData.SizeZ > 1:
-            objData = image[obj.slice][obj.image]
-        else:
             z = self.zSliceScrollBar.sliderPosition()
             objData = image[z][obj.slice][obj.image]
+        else:
+            objData = image[obj.slice][obj.image]
 
         intensMeasurQGBox.minimumDSB.setValue(np.min(objData))
         intensMeasurQGBox.maximumDSB.setValue(np.max(objData))
@@ -6424,7 +6424,7 @@ class guiWin(QMainWindow):
             except Exception as e:
                 # traceback.print_exc()
                 pass
-
+            
             if closeSpline:
                 self.splineHoverON = False
                 self.splineToObj()
@@ -6437,6 +6437,7 @@ class guiWin(QMainWindow):
                     self.warnEditingWithCca_df('Add new ID with curvature tool')
                 self.clearCurvItems()
                 self.curvTool_cb(True)
+            t1 = time.perf_counter()
 
         elif left_click and canWand:
             x, y = event.pos().x(), event.pos().y()
@@ -8178,7 +8179,8 @@ class guiWin(QMainWindow):
         k = 2 if len(xx) == 3 else 3
         try:
             tck, u = scipy.interpolate.splprep(
-                        [xx, yy], s=0, k=k, per=per)
+                [xx, yy], s=0, k=k, per=per
+            )
             xi, yi = scipy.interpolate.splev(resolutionSpace, tck)
             return xi, yi
         except (ValueError, TypeError):
@@ -12915,7 +12917,8 @@ class guiWin(QMainWindow):
         except AttributeError:
             # traceback.print_exc()
             pass
-
+    
+    @exec_time
     def splineToObj(self, xxA=None, yyA=None, isRightClick=False):
         posData = self.data[self.pos_i]
         # Store undo state before modifying stuff
@@ -12933,11 +12936,16 @@ class guiWin(QMainWindow):
 
         self.setBrushID()
         newIDMask = np.zeros(self.currentLab2D.shape, bool)
+        t0 = time.perf_counter()
         rr, cc = skimage.draw.polygon(yyS, xxS)
+        t1 = time.perf_counter()
         newIDMask[rr, cc] = True
         newIDMask[self.currentLab2D!=0] = False
         self.currentLab2D[newIDMask] = posData.brushID
         self.set_2Dlab(self.currentLab2D)
+        t2 = time.perf_counter()
+        printl('Skimake polygon', t1-t0, f'Number of points {len(yyS), len(rr)}')
+        printl('Rest', t2-t1)
 
     def addFluoChNameContextMenuAction(self, ch_name):
         posData = self.data[self.pos_i]
