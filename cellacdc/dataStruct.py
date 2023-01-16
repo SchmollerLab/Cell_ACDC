@@ -1431,27 +1431,44 @@ class createDataStructWin(QMainWindow):
         unique_ext = list(counter.keys())
         is_ext_unique = len(unique_ext) == 1
         most_common_ext, _ = counter.most_common(1)[0]
+        if not most_common_ext:
+            most_common_ext_msg = '<empty>'
+        else:
+            most_common_ext = most_common_ext_msg
         if not is_ext_unique:
-            msg = QMessageBox()
-            proceedWithMostCommon = msg.warning(
-                self, 'Multiple extensions detected',
-                f'The folder {raw_src_path}<br>'
-                'contains files with different file extensions '
-                f'(extensions detected: {unique_ext})<br><br>'
-                f'However, the most common extension is <b>{most_common_ext}</b>, '
-                'do you want to proceed with\n'
-                f'loading only files with extension <b>{most_common_ext}</b>?',
-                msg.Yes | msg.Cancel
+            msg = widgets.myMessageBox(showCentered=False)
+            txt = html_utils.paragraph(f"""
+                The following folder
+
+                <br><br><code>{raw_src_path}</code><br><br>
+
+                contains files with different file extensions 
+                (extensions detected: {unique_ext})<br><br>
+                However, the most common extension is 
+                <b>{most_common_ext_msg}</b>,
+                do you want to proceed with
+                loading only files with extension <b>{most_common_ext_msg}</b>?
+                <br>
+            """)
+            _, yesButton, noButton = msg.warning(
+                self, 'Multiple extensions detected', txt, 
+                buttonsTexts=(
+                    'Cancel', 'Yes, load only most common', 
+                    'No, load all files'
+                )
             )
-            if proceedWithMostCommon == msg.Yes:
+            if msg.cancel:
+                return []
+            if msg.clickedButton == yesButton:
                 files = [
                     filename for filename in files
                     if os.path.splitext(filename)[1] == most_common_ext
                 ]
-                otherExt = [ext for ext in unique_ext if ext != most_common_ext]
+                otherExt = [
+                    ext for ext in unique_ext if ext != most_common_ext]
                 files = self.askActionWithOtherFiles(files, otherExt)
             else:
-                return []
+                return files
 
         if self.rawDataStruct == 0 and len(files) > 1:
             files = self.warnMultipleFiles(files)
