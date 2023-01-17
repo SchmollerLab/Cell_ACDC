@@ -16,13 +16,13 @@ Development process
    * Open a terminal window. On Windows I recommend using the `PowerShell 7 
      <https://learn.microsoft.com/en-ie/powershell/scripting/install/installing-powershell-on-windows>`_
 
-   * Clone the project to your local computer::
+   * Clone the forked project to your local computer (remember to replace `your-username` in the link below)::
 
-        git clone https://github.com/SchmollerLab/Cell_ACDC.git
+        git clone https://github.com/your-username/Cell_ACDC.git
 
-   * Navigate to the ``cellacdc`` directory::
+   * Navigate to the ``Cell_ACDC`` directory::
 
-        cd cellacdc
+        cd Cell_ACDC
 
    * Add the upstream repository::
 
@@ -30,7 +30,7 @@ Development process
 
    * Now, you have remote repositories named:
 
-     - ``upstream``, which refers to the ``Cell_ACDC`` repository
+     - ``upstream``, which refers to the original ``Cell_ACDC`` repository
      - ``origin``, which refers to your personal fork
 
    * Install the cloned Cell-ACDC in developer mode (i.e. editable) in a 
