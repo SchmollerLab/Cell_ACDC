@@ -100,17 +100,17 @@ Additionally, this release includes many UI/UX improvements such as color and st
 
 If you want to contribute or try out experimental features (and, if you have time, maybe report a bug or two :D), you can install the developer version from source as follows:
 
-1. Create a personal [GitHub account](https://github.com) and log in. 
-2. Go to the Cell-ACDC [GitHub page](https://github.com/SchmollerLab/Cell_ACDC) and click the "Fork" button (top-right) to create your own copy of the project.
-3. Open a terminal and navigate to a folder where you want to download Cell-ACDC. If you are on Windows I recommend using the [PowerShell 7](https://learn.microsoft.com/en-ie/powershell/scripting/install/installing-powershell-on-windows) as a terminal.
-4. Clone the forked repo with the command `git clone https://github.com/your-username/Cell_ACDC.git`. Remember to replace the `your-username` in the command. If you are on Windows you might need to install `git` first. Install it from [here](https://git-scm.com/download/win).
-5. Navigate to the `Cell_ACDC` folder with the command `cd Cell_ACDC`.
-6. Add the upstream repository with the command `git remote add upstream https://github.com/SchmollerLab/Cell_ACDC.git`
-5. Install [Anaconda](https://www.anaconda.com/products/individual) or [Miniconda](https://docs.conda.io/en/latest/miniconda.html).
-6. Update conda with `conda update conda`. Optionally, consider removing unused packages with the command `conda clean --all`
-7. Create a new conda environment with the command `conda create -n acdc python=3.9`
-8. Activate the environment with the command `conda activate acdc`
-9. Install Cell-ACDC with the command `pip install -e .`. The `.` at the end of the command means that you want to install from the current folder in the terminal. This must be the `Cell_ACDC` folder that you cloned before. 
+1. Install [Anaconda](https://www.anaconda.com/products/individual) or [Miniconda](https://docs.conda.io/en/latest/miniconda.html).
+2. Create a personal [GitHub account](https://github.com) and log in. 
+3. Go to the Cell-ACDC [GitHub page](https://github.com/SchmollerLab/Cell_ACDC) and click the "Fork" button (top-right) to create your own copy of the project.
+4. Open a terminal and navigate to a folder where you want to download Cell-ACDC. If you are on Windows you need to use the "Anaconda Prompt" as a terminal. You should find it by searching for "Anaconda Prompt" in the Start menu.
+5. Clone the forked repo with the command `git clone https://github.com/your-username/Cell_ACDC.git`. Remember to replace the `your-username` in the command. If you are on Windows you might need to install `git` first. Install it from [here](https://git-scm.com/download/win).
+6. Navigate to the `Cell_ACDC` folder with the command `cd Cell_ACDC`.
+7. Add the upstream repository with the command `git remote add upstream https://github.com/SchmollerLab/Cell_ACDC.git`
+8. Update conda with `conda update conda`. Optionally, consider removing unused packages with the command `conda clean --all`
+9. Create a new conda environment with the command `conda create -n acdc python=3.9`
+10. Activate the environment with the command `conda activate acdc`
+11. Install Cell-ACDC with the command `pip install -e .`. The `.` at the end of the command means that you want to install from the current folder in the terminal. This must be the `Cell_ACDC` folder that you cloned before. 
 
 ### Updating Cell-ACDC installed from source
 
