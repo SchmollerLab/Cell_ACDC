@@ -109,7 +109,8 @@ class LabelRoiWorker(QObject):
     finished = pyqtSignal()
     critical = pyqtSignal(object)
     progress = pyqtSignal(str, object)
-    sigLabellingDone = pyqtSignal(object)
+    sigProgressBar = pyqtSignal(int)
+    sigLabellingDone = pyqtSignal(object, bool)
 
     def __init__(self, Gui):
         QObject.__init__(self)
@@ -126,8 +127,9 @@ class LabelRoiWorker(QObject):
         self.waitCond.wait(self.mutex)
         self.mutex.unlock()
     
-    def start(self, roiImg, roiSecondChannel=None):
-        self.img = roiImg
+    def start(self, roiImg, roiSecondChannel=None, isTimelapse=False):
+        self.isTimelapse = isTimelapse
+        self.imageData = roiImg
         self.roiSecondChannel = roiSecondChannel
         self.restart()
     
@@ -142,25 +144,42 @@ class LabelRoiWorker(QObject):
         self.exit = True
         self.waitCond.wakeAll()
     
+    def _process_image(self, img, secondChannelImg):
+        if secondChannelImg is not None:
+            img = self.Gui.labelRoiModel.to_rgb_stack(
+                img, secondChannelImg
+            )
+        lab = self.Gui.labelRoiModel.segment(
+            img, **self.Gui.segment2D_kwargs
+        )
+        if self.Gui.applyPostProcessing:
+            lab = core.remove_artefacts(
+                lab, **self.Gui.removeArtefactsKwargs
+            )
+        return lab
+    
     @worker_exception_handler
     def run(self):
         while not self.exit:
             if self.exit:
                 break
             elif self.started:
-                img = self.img
-                if self.roiSecondChannel is not None:
-                    img = self.Gui.labelRoiModel.to_rgb_stack(
-                        self.img, self.roiSecondChannel
-                    )
-                lab = self.Gui.labelRoiModel.segment(
-                    img, **self.Gui.segment2D_kwargs
-                )
-                if self.Gui.applyPostProcessing:
-                    lab = core.remove_artefacts(
-                        lab, **self.Gui.removeArtefactsKwargs
-                    )
-                self.sigLabellingDone.emit(lab)
+                if self.isTimelapse:
+                    segmData = np.zeros(self.imageData.shape, dtype=np.uint16)
+                    for frame_i, img in enumerate(self.imageData):
+                        if self.roiSecondChannel is not None:
+                            secondChannelImg = self.roiSecondChannel[frame_i]
+                        else:
+                            secondChannelImg = None
+                        lab = self._process_image(img, secondChannelImg)
+                        segmData[frame_i] = lab
+                        self.sigProgressBar.emit(1)
+                else:
+                    img = self.imageData
+                    secondChannelImg = self.roiSecondChannel
+                    segmData = self._process_image(img, secondChannelImg)
+                
+                self.sigLabellingDone.emit(segmData, self.isTimelapse)
                 self.started = False
             self.pause()
         self.finished.emit()

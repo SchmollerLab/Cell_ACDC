@@ -1097,12 +1097,27 @@ class filePathControl(QFrame):
         self.le.setFixedHeight(self.browseButton.height())
         return super().showEvent(a0)
 
+class QHWidgetSpacer(QWidget):
+    def __init__(self, width=10, parent=None) -> None:
+        super().__init__(parent)
+        self.setFixedWidth(width)
+
+class QVWidgetSpacer(QWidget):
+    def __init__(self, height=10, parent=None) -> None:
+        super().__init__(parent)
+        self.setFixedHeight(height)
 
 class QHLine(QFrame):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, shadow='Sunken', parent=None):
+        super().__init__(parent)
         self.setFrameShape(QFrame.HLine)
-        self.setFrameShadow(QFrame.Sunken)
+        self.setFrameShadow(getattr(QFrame, shadow))
+
+class QVLine(QFrame):
+    def __init__(self, shadow='Plain', parent=None):
+        super().__init__(parent)
+        self.setFrameShape(QFrame.VLine)
+        self.setFrameShadow(getattr(QFrame, shadow))
 
 class VerticalResizeHline(QFrame):
     dragged = pyqtSignal(object)
@@ -2214,13 +2229,19 @@ class LabelRoiCircularItem(pg.ScatterPlotItem):
     def setImageShape(self, shape):
         self._shape = shape
     
-    def slice(self, zRange=None):
+    def slice(self, zRange=None, tRange=None):
         self.mask()
         if zRange is None:
-            return self._slice
+            _slice = self._slice
         else:
             zmin, zmax = zRange
-            return (slice(zmin, zmax), *self._slice)
+            _slice = (slice(zmin, zmax), *self._slice)
+        
+        if tRange is not None:
+            tmin, tmax = tRange
+            _slice = (slice(tmin, tmax), *_slice)
+        
+        return _slice
 
     def mask(self):
         shape = self._shape
@@ -3241,7 +3262,7 @@ class ROI(pg.ROI):
             aspectLocked
         )
     
-    def slice(self, zRange=None):
+    def slice(self, zRange=None, tRange=None):
         x0, y0 = [int(round(c)) for c in self.pos()]
         w, h = [int(round(c)) for c in self.size()]
         xmin, xmax = x0, x0+w
@@ -3255,6 +3276,9 @@ class ROI(pg.ROI):
             _slice = (slice(zmin, zmax), slice(ymin, ymax), slice(xmin, xmax))
         else:
             _slice = (slice(ymin, ymax), slice(xmin, xmax))
+        if tRange is not None:
+            tmin, tmax = tRange
+            _slice = (slice(tmin, tmax), *_slice)
         return _slice
         
 
@@ -3297,13 +3321,16 @@ class PlotCurveItem(pg.PlotCurveItem):
         _xx, _yy = self.getData()
         return _xx - _xx.min(), _yy - _yy.min()
 
-    def slice(self, zRange=None):
+    def slice(self, zRange=None, tRange=None):
         ymin, xmin, ymax, xmax = self.bbox()
         if zRange is not None:
             zmin, zmax = zRange
             _slice = (slice(zmin, zmax), slice(ymin, ymax+1), slice(xmin, xmax+1))
         else:
             _slice = (slice(ymin, ymax+1), slice(xmin, xmax+1))
+        if tRange is not None:
+            tmin, tmax = tRange
+            _slice = (slice(tmin, tmax), *_slice)
         return _slice
     
     def bbox(self):

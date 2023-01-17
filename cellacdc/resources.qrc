@@ -82,6 +82,7 @@
     <file alias="zforw.svg">resources/icons/zforw.svg</file>
     <file alias="cog_play.svg">resources/icons/cog_play.svg</file>
     <file alias="addDelRoi.svg">resources/icons/addDelRoi.svg</file>
+    <file alias="frames_end.svg">resources/icons/frames_end.svg</file>
     <file alias="addDelPolyLineRoi.svg">resources/icons/addDelPolyLineRoi.svg</file>
     <file alias="curvature-tool.svg">resources/icons/curvature-tool.svg</file>
     <file alias="cancel.svg">resources/icons/cancel.svg</file>

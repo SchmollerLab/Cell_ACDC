@@ -9671,9 +9671,12 @@ class QDialogModelParams(QDialog):
         maxElongation = self.configPars.getfloat(
             postProcessSection, 'maxElongation', fallback=3
         )
-        minObjSizeZ = self.configPars.getint(
-            postProcessSection, 'min_obj_no_zslices', fallback=3
-        )
+        try:
+            minObjSizeZ = self.configPars.getint(
+                postProcessSection, 'min_obj_no_zslices', fallback=3
+            )
+        except ValueError:
+            minObjSizeZ = 3
         kwargs = {
             'min_solidity': minSolidity,
             'min_area': minSize,

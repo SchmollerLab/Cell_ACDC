@@ -2048,11 +2048,16 @@ class guiWin(QMainWindow):
         self.addToolBar(Qt.TopToolBarArea , self.wandControlsToolbar)
         self.wandControlsToolbar.setVisible(False)
 
+        separatorW = 5
         self.labelRoiToolbar = QToolBar("Magic labeller controls", self)
         self.labelRoiToolbar.addWidget(QLabel('ROI depth (n. of z-slices): '))
         self.labelRoiZdepthSpinbox = widgets.SpinBox(disableKeyPress=True)
         self.labelRoiToolbar.addWidget(self.labelRoiZdepthSpinbox)
-        self.labelRoiToolbar.addWidget(QLabel('  '))
+
+        self.labelRoiToolbar.addWidget(widgets.QHWidgetSpacer(width=separatorW))
+        self.labelRoiToolbar.addWidget(widgets.QVLine())
+        self.labelRoiToolbar.addWidget(widgets.QHWidgetSpacer(width=separatorW))
+
         self.labelRoReplaceExistingObjectsCheckbox = QCheckBox(
             'Replace existing objects'
         )
@@ -2062,6 +2067,11 @@ class guiWin(QMainWindow):
         )
         self.labelRoiAutoClearBorderCheckbox.setChecked(True)
         self.labelRoiToolbar.addWidget(self.labelRoiAutoClearBorderCheckbox)
+        
+        self.labelRoiToolbar.addWidget(widgets.QHWidgetSpacer(width=separatorW))
+        self.labelRoiToolbar.addWidget(widgets.QVLine())
+        self.labelRoiToolbar.addWidget(widgets.QHWidgetSpacer(width=separatorW))
+
         group = QButtonGroup()
         group.setExclusive(True)
         self.labelRoiIsRectRadioButton = QRadioButton('Rectangular ROI')
@@ -2080,6 +2090,21 @@ class guiWin(QMainWindow):
         self.labelRoiCircularRadiusSpinbox.setValue(11)
         self.labelRoiCircularRadiusSpinbox.setDisabled(True)
         self.labelRoiToolbar.addWidget(self.labelRoiCircularRadiusSpinbox)
+        
+        self.labelRoiToolbar.addWidget(widgets.QHWidgetSpacer(width=separatorW))
+        self.labelRoiToolbar.addWidget(widgets.QVLine())
+        self.labelRoiToolbar.addWidget(widgets.QHWidgetSpacer(width=separatorW))
+
+        self.labelRoiToolbar.addWidget(QLabel('No. of future frames to segment: '))
+        self.labelRoiTrangeSpinbox = widgets.SpinBox(disableKeyPress=True)
+        self.labelRoiTrangeSpinbox.setValue(1)
+        self.labelRoiTrangeSpinbox.setMinimum(1)
+        self.labelRoiToolbar.addWidget(self.labelRoiTrangeSpinbox)
+        self.labelRoiToEndFramesAction = QAction(self)
+        self.labelRoiToEndFramesAction.setText('Segment all remaining frames')
+        self.labelRoiToEndFramesAction.setIcon(QIcon(":frames_end.svg"))
+        self.labelRoiToolbar.addAction(self.labelRoiToEndFramesAction)
+
         self.addToolBar(Qt.TopToolBarArea, self.labelRoiToolbar)
         self.labelRoiToolbar.setVisible(False)
         self.labelRoiTypesGroup = group
@@ -2104,8 +2129,9 @@ class guiWin(QMainWindow):
         self.labelRoiAutoClearBorderCheckbox.toggled.connect(
             self.storeLabelRoiParams
         )
-        group.buttonToggled.connect(
-            self.storeLabelRoiParams
+        group.buttonToggled.connect(self.storeLabelRoiParams)
+        self.labelRoiToEndFramesAction.triggered.connect(
+            self.labelRoiToEndFramesTriggered
         )
 
         self.keepIDsToolbar = QToolBar("Magic labeller controls", self)
@@ -2139,7 +2165,6 @@ class guiWin(QMainWindow):
         self.pointsLayersToolbar.addWidget(QLabel('Points layers:  '))
         self.pointsLayersToolbar.setIconSize(QSize(16, 16))
         self.pointsLayersToolbar.setVisible(False)
-
 
     def gui_populateToolSettingsMenu(self):
         brushHoverModeActionGroup = QActionGroup(self)
@@ -3010,7 +3035,7 @@ class guiWin(QMainWindow):
         navWidgetsLayout = QHBoxLayout()
         self.navSpinBox = widgets.SpinBox(disableKeyPress=True)
         self.navSpinBox.setMinimum(1)
-        self.navSpinBox.setMaximum(11)
+        self.navSpinBox.setMaximum(100)
         self.navSizeLabel = QLabel('/ND')
         navWidgetsLayout.addWidget(self.t_label)
         navWidgetsLayout.addWidget(self.navSpinBox)
@@ -5812,9 +5837,22 @@ class guiWin(QMainWindow):
                 secondChannelData = self.getSecondChannelData()
                 roiSecondChannel = secondChannelData[self.labelRoiSlice]
 
+            isTimelapse = self.labelRoiTrangeSpinbox.value()>1
+            if isTimelapse:
+                start_n = posData.frame_i+1
+                stop_n = posData.frame_i+self.labelRoiTrangeSpinbox.value()
+                self.progressWin = apps.QDialogWorkerProgress(
+                    title='ROI segmentation', parent=self,
+                    pbarDesc=f'Segmenting frames n. {start_n} to {stop_n}...'
+                )
+                self.progressWin.show(self.app)
+                self.progressWin.mainPbar.setMaximum(stop_n-start_n)                
+
             self.app.restoreOverrideCursor() 
-            self.labelRoiActiveWorkers[-1].start(
-                roiImg, roiSecondChannel=roiSecondChannel
+            labelRoiWorker = self.labelRoiActiveWorkers[-1]
+            labelRoiWorker.start(
+                roiImg, roiSecondChannel=roiSecondChannel, 
+                isTimelapse=self.labelRoiTrangeSpinbox.value()>1
             )            
             self.app.setOverrideCursor(Qt.WaitCursor)
             self.logger.info(
@@ -6795,6 +6833,7 @@ class guiWin(QMainWindow):
         if self.progressWin is not None:
             self.progressWin.workerFinished = True
             self.progressWin.close()
+            self.progressWin = None
         self.logger.info('Worker process ended.')
         self.updateALLimg()
         self.titleLabel.setText('Done', color='w')
@@ -7048,14 +7087,24 @@ class guiWin(QMainWindow):
     def getLabelRoiImage(self):
         posData = self.data[self.pos_i]
 
+        tRangeLen = self.labelRoiTrangeSpinbox.value()
+        if tRangeLen > 1:
+            tRange = (posData.frame_i, posData.frame_i+tRangeLen)
+        else:
+            tRange = None
         if self.isSegm3D:
             filteredData = self.filteredData.get(self.user_ch_name)
-            if filteredData is None:
-                # Filtered data not existing
-                imgData = posData.img_data[posData.frame_i]
+            if filteredData is None or tRangeLen>1:
+                if tRangeLen > 1:
+                    frame_i_end = posData.frame_i+tRangeLen
+                    imgData = posData.img_data[posData.frame_i:frame_i_end]
+                else:
+                    # Filtered data not existing
+                    imgData = posData.img_data[posData.frame_i]
             else:
                 # 3D filtered data (see self.applyFilter)
                 imgData = filteredData
+            
             roi_zdepth = self.labelRoiZdepthSpinbox.value()
             if roi_zdepth == posData.SizeZ:
                 z0 = 0
@@ -7070,19 +7119,29 @@ class guiWin(QMainWindow):
                 z1 = zc+half_zdepth
                 z1 = z1 if z1<posData.SizeZ else posData.SizeZ
             if self.labelRoiIsRectRadioButton.isChecked():
-                labelRoiSlice = self.labelRoiItem.slice(zRange=(z0,z1))
+                labelRoiSlice = self.labelRoiItem.slice(
+                    zRange=(z0,z1), tRange=tRange
+                )
             elif self.labelRoiIsFreeHandRadioButton.isChecked():
-                labelRoiSlice = self.freeRoiItem.slice(zRange=(z0,z1))
+                labelRoiSlice = self.freeRoiItem.slice(
+                    zRange=(z0,z1), tRange=tRange
+                )
             elif self.labelRoiIsCircularRadioButton.isChecked():
-                labelRoiSlice = self.labelRoiCircItemLeft.slice(zRange=(z0,z1))
+                labelRoiSlice = self.labelRoiCircItemLeft.slice(
+                    zRange=(z0,z1), tRange=tRange
+                )
         else:
             if self.labelRoiIsRectRadioButton.isChecked():
-                labelRoiSlice = self.labelRoiItem.slice()
+                labelRoiSlice = self.labelRoiItem.slice(tRange=tRange)
             elif self.labelRoiIsFreeHandRadioButton.isChecked():
-                labelRoiSlice = self.freeRoiItem.slice()
+                labelRoiSlice = self.freeRoiItem.slice(tRange=tRange)
             elif self.labelRoiIsCircularRadioButton.isChecked():
-                labelRoiSlice = self.labelRoiCircItemLeft.slice()
-            imgData = self.img1.image
+                labelRoiSlice = self.labelRoiCircItemLeft.slice(tRange=tRange)
+            if tRangeLen > 1:
+                frame_i_end = posData.frame_i+tRangeLen 
+                imgData = posData.img_data[posData.frame_i:frame_i_end]
+            else:
+                imgData = self.img1.image
 
         roiImg = imgData[labelRoiSlice]
         if self.labelRoiIsFreeHandRadioButton.isChecked():
@@ -7093,12 +7152,21 @@ class guiWin(QMainWindow):
             mask = None
         
         if mask is not None:
-            # Fill outside of freehand roi with minimum of the ROI image
+            # Copy roiImg otherwise we are replacing minimum inside original image
             roiImg = roiImg.copy()
-            if self.isSegm3D:
-                roiImg[:, ~mask] = roiImg.min()
+            # Fill outside of freehand roi with minimum of the ROI image
+            if tRangeLen > 1:
+                for i in range(tRangeLen):
+                    ith_roiImg = roiImg[i]
+                    if self.isSegm3D:
+                        roiImg[i, :, ~mask] = ith_roiImg.min()
+                    else:
+                        roiImg[i, ~mask] = ith_roiImg.min()
             else:
-                roiImg[~mask] = roiImg.min()
+                if self.isSegm3D:
+                    roiImg[:, ~mask] = roiImg.min()
+                else:
+                    roiImg[~mask] = roiImg.min()
 
         return roiImg, labelRoiSlice
 
@@ -9079,6 +9147,7 @@ class guiWin(QMainWindow):
             # self.drawIDsContComboBox.addItems(self.drawIDsContComboBoxCcaItems)
             # self.drawIDsContComboBox.setCurrentText(currentMode)
             self.navigateScrollBar.setMaximum(posData.SizeT)
+            self.navSpinBox.setMaximum(posData.SizeT)
         elif mode == 'Custom annotations':
             self.modeToolBar.setVisible(True)
             self.setEnabledWidgetsToolbar(False)
@@ -9290,13 +9359,19 @@ class guiWin(QMainWindow):
                 lastActiveWorker = self.labelRoiActiveWorkers[-1]
                 self.labelRoiGarbageWorkers.append(lastActiveWorker)
                 lastActiveWorker.finished.emit()
-                self.logger.info('Collected garbage worker (magic labeller).')
+                self.logger.info('Collected garbage w5orker (magic labeller).')
             
             self.labelRoiToolbar.setVisible(True)
             if self.isSegm3D:
                 self.labelRoiZdepthSpinbox.setDisabled(False)
             else:
                 self.labelRoiZdepthSpinbox.setDisabled(True)
+            
+            if posData.SizeT > 1:
+                self.labelRoiTrangeSpinbox.setDisabled(False)
+                self.labelRoiTrangeSpinbox.setMaximum(posData.SizeT)
+            else:
+                self.labelRoiTrangeSpinbox.setDisabled(True)
 
             # Start thread and pause it
             self.labelRoiThread = QThread()
@@ -9314,6 +9389,7 @@ class guiWin(QMainWindow):
 
             labelRoiWorker.finished.connect(self.labelRoiWorkerFinished)
             labelRoiWorker.sigLabellingDone.connect(self.labelRoiDone)
+            labelRoiWorker.sigProgressBar.connect(self.workerUpdateProgressbar)
 
             labelRoiWorker.progress.connect(self.workerProgress)
 
@@ -9342,29 +9418,70 @@ class guiWin(QMainWindow):
         self.logger.info('Magic labeller closed.')
         worker = self.labelRoiActiveWorkers.pop(-1)
     
-    @exception_handler
-    def labelRoiDone(self, roiLab):
+    def indexRoiLab(self, roiLab, roiLabSlice, lab, brushID):
         # Delete only objects touching borders in X and Y not in Z
         if self.labelRoiAutoClearBorderCheckbox.isChecked():
             mask = np.zeros(roiLab.shape, dtype=bool)
             mask[..., 1:-1, 1:-1] = True
             roiLab = skimage.segmentation.clear_border(roiLab, mask=mask)
-        posData = self.data[self.pos_i]
-        self.setBrushID()
+
         roiLabMask = roiLab>0
-        roiLab[roiLabMask] += (posData.brushID-1)
+        roiLab[roiLabMask] += (brushID-1)
         if self.labelRoReplaceExistingObjectsCheckbox.isChecked():
             # Delete objects fully enclosed by ROI
             borderMask = np.ones(roiLab.shape, dtype=bool)
             borderMask[..., 1:-1, 1:-1] = False
-            localLab = posData.lab[self.labelRoiSlice]
+            localLab = lab[roiLabSlice]
             borderIDs = np.unique(localLab[borderMask])
             for obj in skimage.measure.regionprops(localLab):
                 if obj.label in borderIDs:
                     continue
                 localLab[obj.slice][obj.image] = 0
+        
+        lab[roiLabSlice][roiLabMask] = roiLab[roiLabMask]
+        return lab
 
-        posData.lab[self.labelRoiSlice][roiLabMask] = roiLab[roiLabMask]   
+    
+    @exception_handler
+    def labelRoiDone(self, roiSegmData, isTimeLapse):
+        posData = self.data[self.pos_i]
+        self.setBrushID()
+
+        if isTimeLapse:
+            self.progressWin.mainPbar.setMaximum(0)
+            self.progressWin.mainPbar.setValue(0)
+            current_frame_i = posData.frame_i
+            for i, roiLab in enumerate(roiSegmData):
+                frame_i = current_frame_i + i
+                lab = posData.allData_li[frame_i]['labels']
+                store = True
+                if lab is None:
+                    if frame_i >= len(posData.segm_data):
+                        lab = np.zeros_like(posData.segm_data[0])
+                        posData.segm_data = np.append(
+                            posData.segm_data, lab[np.newaxis], axis=0
+                        )
+                    else:
+                        lab = posData.segm_data[frame_i]
+                    store = False
+                roiLabSlice = self.labelRoiSlice[1:]
+                lab = self.indexRoiLab(
+                    roiLab, roiLabSlice, lab, posData.brushID
+                )
+                if store:
+                    posData.frame_i = frame_i
+                    posData.allData_li[frame_i]['labels'] = lab.copy()
+                    self.get_data()
+                    self.store_data(autosave=False)
+            
+            # Back to current frame
+            posData.frame_i = current_frame_i
+            self.get_data()
+        else:
+            roiLab = roiSegmData
+            posData.lab = self.indexRoiLab(
+                roiLab, self.labelRoiSlice, posData.lab, posData.brushID
+            )
 
         self.update_rp()
         
@@ -9381,7 +9498,11 @@ class guiWin(QMainWindow):
         self.logger.info('Magic labeller done!')
         self.app.restoreOverrideCursor()  
 
-        self.labelRoiRunning = False      
+        self.labelRoiRunning = False    
+        if self.progressWin is not None:
+            self.progressWin.workerFinished = True
+            self.progressWin.close()
+            self.progressWin = None  
 
     def restoreHoveredID(self):
         posData = self.data[self.pos_i]
@@ -16248,9 +16369,11 @@ class guiWin(QMainWindow):
         else:
             return posData.ol_data_dict.get(filename)
 
-    def get_2Dimg_from_3D(self, imgData, isLayer0=True):
+    def get_2Dimg_from_3D(self, imgData, isLayer0=True, frame_i=None):
         posData = self.data[self.pos_i]
-        idx = (posData.filename, posData.frame_i)
+        if frame_i is None:
+            frame_i = posData.frame_i
+        idx = (posData.filename, frame_i)
         zProjHow_L0 = posData.segmInfo_df.at[idx, 'which_z_proj_gui']
         if isLayer0:
             z = posData.segmInfo_df.at[idx, 'z_slice_used_gui']
@@ -18451,6 +18574,7 @@ class guiWin(QMainWindow):
             return
 
         posData = self.data[self.pos_i]
+
         fluo_ch = self.secondChannelName
         fluo_path, filename = self.getPathFromChName(fluo_ch, posData)
         if filename in posData.fluo_data_dict:
@@ -18460,11 +18584,25 @@ class guiWin(QMainWindow):
             posData.fluo_data_dict[filename] = fluo_data
             posData.fluo_bkgrData_dict[filename] = bkgrData
         
-        fluo_img_data = fluo_data[posData.frame_i]
-        if self.isSegm3D:
-            return fluo_img_data
+        tRangeLen = self.labelRoiTrangeSpinbox.value()
+        if tRangeLen > 1:
+            tRange = (posData.frame_i, posData.frame_i+tRangeLen)
+            fluo_img_data = fluo_data[posData.frame_i:tRange[1]]
+            if self.isSegm3D:
+                return fluo_img_data
+            else:
+                T, Z, Y, X = fluo_img_data.shape
+                secondChannelData = np.zeros((T, Y, X), dtype=fluo_img_data.dtype)
+                for frame_i, fluo_img in enumerate(fluo_img_data):
+                    secondChannelData[frame_i] = self.get_2Dimg_from_3D(
+                        fluo_img_data, frame_i=frame_i
+                    )
         else:
-            return self.get_2Dimg_from_3D(fluo_img_data)
+            fluo_img_data = fluo_data[posData.frame_i]
+            if self.isSegm3D:
+                return fluo_img_data
+            else:
+                return self.get_2Dimg_from_3D(fluo_img_data)
     
     def addActionsLutItemContextMenu(self, lutItem):
         annotationMenu = lutItem.gradient.menu.addMenu('Annotations settings')
@@ -19110,6 +19248,10 @@ class guiWin(QMainWindow):
         self.measurementsWin.close()
         self.showSetMeasurements()
         self.measurementsWin.restoreState(self.measurementsWinState)
+
+    def labelRoiToEndFramesTriggered(self):
+        posData = self.data[self.pos_i]
+        self.labelRoiTrangeSpinbox.setValue(posData.SizeT - posData.frame_i)
 
     def setMetricsFunc(self):
         posData = self.data[self.pos_i]
