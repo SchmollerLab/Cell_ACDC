@@ -911,6 +911,7 @@ class guiWin(QMainWindow):
         # print = self._print
         printl = self._printl
 
+        self.initProfileModels()
         self.loadLastSessionSettings()
 
         self.progressWin = None
@@ -992,6 +993,16 @@ class guiWin(QMainWindow):
 
         self.show()
         # self.installEventFilter(self)
+
+        self.logger.info('GUI ready.')
+    
+    def initProfileModels(self):
+        self.logger.info('Initiliazing profilers...')
+        
+        from ._profile.spline_to_obj import model
+        
+        self.splineToObjModel = model.Model()
+        self.splineToObjModel.fit()
     
     def readRecentPaths(self):
         # Step 0. Remove the old options from the menu
@@ -8162,21 +8173,50 @@ class guiWin(QMainWindow):
             self.store_cca_df(frame_i=i, cca_df=cca_df_i, autosave=False)
         
         self.enqAutosave()
+    
+    def getClosedSplineCoords(self):
+        xxS, yyS = self.curvPlotItem.getData()
+        bbox_area = (xxS.max()-xxS.min())*(yyS.max()-yyS.min())
+        if bbox_area < 26_000:
+            # Using 1000 is fast enough according to profiling
+            return xxS, yyS 
+        
+        optimalSpaceSize = self.splineToObjModel.predict(
+            bbox_area, max_exec_time=150
+        )
+        if optimalSpaceSize >= 1000:
+            # Using 1000 is fast enough according to model
+            return xxS, yyS
+        
+        if optimalSpaceSize < 100:
+            # Do not allow a rough spline
+            optimalSpaceSize = 100
+        
+        # Get spline with optimal space size so that exec time 
+        # or skimage.draw.polygon is less than 150 ms
+        xx, yy = self.curvAnchors.getData()
+        resolutionSpace = np.linspace(0, 1, int(optimalSpaceSize))
+        xxS, yyS = self.getSpline(
+            xx, yy, resolutionSpace=resolutionSpace, per=True
+        )
+        return xxS, yyS
+
 
     def getSpline(self, xx, yy, resolutionSpace=None, per=False, appendFirst=False):
         # Remove duplicates
         valid = np.where(np.abs(np.diff(xx)) + np.abs(np.diff(yy)) > 0)
+        xx = np.r_[xx[valid], xx[-1]]
+        yy = np.r_[yy[valid], yy[-1]]
         if appendFirst:
-            xx = np.r_[xx[valid], xx[-1], xx[0]]
-            yy = np.r_[yy[valid], yy[-1], yy[0]]
-        else:
-            xx = np.r_[xx[valid], xx[-1]]
-            yy = np.r_[yy[valid], yy[-1]]
+            xx = np.r_[xx, xx[0]]
+            yy = np.r_[yy, yy[0]]
+            per = True
 
         # Interpolate splice
         if resolutionSpace is None:
             resolutionSpace = self.hoverLinSpace
         k = 2 if len(xx) == 3 else 3
+
         try:
             tck, u = scipy.interpolate.splprep(
                 [xx, yy], s=0, k=k, per=per
@@ -12918,7 +12958,7 @@ class guiWin(QMainWindow):
             # traceback.print_exc()
             pass
     
-    @exec_time
+    # @exec_time
     def splineToObj(self, xxA=None, yyA=None, isRightClick=False):
         posData = self.data[self.pos_i]
         # Store undo state before modifying stuff
@@ -12932,20 +12972,15 @@ class guiWin(QMainWindow):
             N = len(xxS)
             self.smoothAutoContWithSpline(n=int(N*0.05))
 
-        xxS, yyS = self.curvPlotItem.getData()
+        xxS, yyS = self.getClosedSplineCoords()
 
         self.setBrushID()
         newIDMask = np.zeros(self.currentLab2D.shape, bool)
-        t0 = time.perf_counter()
         rr, cc = skimage.draw.polygon(yyS, xxS)
-        t1 = time.perf_counter()
         newIDMask[rr, cc] = True
         newIDMask[self.currentLab2D!=0] = False
         self.currentLab2D[newIDMask] = posData.brushID
         self.set_2Dlab(self.currentLab2D)
-        t2 = time.perf_counter()
-        printl('Skimake polygon', t1-t0, f'Number of points {len(yyS), len(rr)}')
-        printl('Rest', t2-t1)
 
     def addFluoChNameContextMenuAction(self, ch_name):
         posData = self.data[self.pos_i]

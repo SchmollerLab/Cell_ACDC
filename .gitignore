@@ -30,6 +30,7 @@ cellacdc/test_qthread.py
 cellacdc/test.py
 cellacdc/test1.py
 cellacdc/test_segm.npy
+cellacdc/_profile/\spline_to_obj/regression.ipynb
 cellacdc/deprecated
 cellacdc/java
 cellacdc/javabridge_cp37
