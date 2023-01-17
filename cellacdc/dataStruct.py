@@ -1431,11 +1431,12 @@ class createDataStructWin(QMainWindow):
         unique_ext = list(counter.keys())
         is_ext_unique = len(unique_ext) == 1
         most_common_ext, _ = counter.most_common(1)[0]
-        if not most_common_ext:
-            most_common_ext_msg = '<empty>'
-        else:
-            most_common_ext = most_common_ext_msg
         if not is_ext_unique:
+            if not most_common_ext:
+                most_common_ext_msg = '<empty>'
+            else:
+                most_common_ext_msg = most_common_ext
+            
             msg = widgets.myMessageBox(showCentered=False)
             txt = html_utils.paragraph(f"""
                 The following folder
