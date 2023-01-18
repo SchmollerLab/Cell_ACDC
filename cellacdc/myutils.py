@@ -1621,7 +1621,7 @@ def import_tracker(posData, trackerName, realTime=False, qparent=None):
             track_params['export_to'] = posData.get_btrack_export_path()
             if paramsWin.intensityImageChannel is not None:
                 chName = paramsWin.intensityImageChannel
-                track_params['intensity_image'] = posData.loadChannelData(chName)
+                track_params['image'] = posData.loadChannelData(chName)
     elif trackerName == 'CellACDC':
         paramsWin = apps.CellACDCTrackerParamsWin(parent=qparent)
         paramsWin.exec_()

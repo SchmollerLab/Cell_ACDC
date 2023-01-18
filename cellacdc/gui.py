@@ -188,6 +188,10 @@ class trackingWorker(QObject):
         self.track_params['signals'] = self.signals
         if 'image' in self.track_params:
             trackerInputImage = self.track_params.pop('image')
+            start_frame_i = self.mainWin.start_n-1
+            stop_frame_n = self.mainWin.stop_n
+            trackerInputImage = trackerInputImage[start_frame_i:stop_frame_n]
+            printl(trackerInputImage.shape, self.video_to_track.shape)
             try:
                 tracked_video = self.tracker.track(
                     self.video_to_track, trackerInputImage, **self.track_params
@@ -6950,6 +6954,7 @@ class guiWin(QMainWindow):
                 posData.frame_i = current_frame_i
                 self.get_data()
         posData = self.data[self.pos_i]
+        self.addMissingItemsIDs(posData.IDs)
         posData.updateSegmSizeT()
         self.updateALLimg()
         self.titleLabel.setText('Done', color='w')
@@ -10775,8 +10780,6 @@ class guiWin(QMainWindow):
 
         self.start_n = start_n
         self.stop_n = stop_n
-
-        
 
         self.progressWin = apps.QDialogWorkerProgress(
             title='Tracking', parent=self,
@@ -16965,7 +16968,7 @@ class guiWin(QMainWindow):
         ax2_mothBudLine = pg.PlotDataItem()
         self.ax1.addItem(ax2_mothBudLine)
 
-        self.logger.info(f'Items created for new cell ID {newID}')
+        self.logger.info(f'Items created for new ID {newID}')
         if newID > start:
             empty = [None]*(newID-start)
             self.ax1_ContoursCurves.extend(empty)
@@ -17032,6 +17035,13 @@ class guiWin(QMainWindow):
         #     self.logger.info('Re-initializing graphical items...')
         #     self.reinitGraphicalItems(IDs)
         for ID in IDs:
+            self.addNewItems(ID)
+    
+    def addMissingItemsIDs(self, IDs):
+        for ID in IDs:
+            if self.ax1_ContoursCurves[ID-1] is not None:
+                continue
+            
             self.addNewItems(ID)
     
     def highlightHoverID(self, x, y, hoverID=None):

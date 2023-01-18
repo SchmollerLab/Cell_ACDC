@@ -366,9 +366,19 @@ class segmWorker(QRunnable):
             self.track_params['signals'] = self.signals
             if 'image' in self.track_params:
                 trackerInputImage = self.track_params.pop('image')
-                tracked_stack = self.tracker.track(
-                    lab_stack, trackerInputImage, **self.track_params
-                )
+                try:
+                    tracked_stack = self.tracker.track(
+                        lab_stack, trackerInputImage, **self.track_params
+                    )
+                except TypeError:
+                    # User accidentally loaded image data but the tracker doesn't
+                    # need it
+                    self.signals.progress.emit(
+                        'Image data is not required by this tracker, ignoring it...'
+                    )
+                    tracked_stack = self.tracker.track(
+                        lab_stack, **self.track_params
+                    )
             else:
                 tracked_stack = self.tracker.track(
                     lab_stack, **self.track_params

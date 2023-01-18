@@ -11,6 +11,8 @@ from btrack.constants import BayesianUpdates
 from skimage.measure import regionprops
 from ..CellACDC import CellACDC_tracker
 
+from cellacdc import printl
+
 from tqdm import tqdm
 
 class tracker:
@@ -18,21 +20,28 @@ class tracker:
         self.params = params
 
     def track(
-            self, segm_video, signals=None, export_to: os.PathLike=None,
-            verbose=False
+            self, segm_video, image, signals=None, 
+            export_to: os.PathLike=None, verbose=False
         ):
         FEATURES = self.params['features']
-
-        intensity_image_video = self.params.get('intensity_image_video')
 
         if segm_video.ndim == 3:
             # btrack requires 4D data. Add extra dimension for 3D data
             segm_video = segm_video[:, np.newaxis, :, :]
+        
+        if image is not None:
+            if image.ndim == 3:
+                image = image[:, np.newaxis, :, :]
 
-        obj_from_arr = btrack.utils.segmentation_to_objects(
-            segm_video, properties=tuple(FEATURES), 
-            intensity_image=intensity_image_video
-        )
+        try:
+            obj_from_arr = btrack.utils.segmentation_to_objects(
+                segm_video, properties=tuple(FEATURES), intensity_image=image
+            )
+        except Exception as e:
+            # Try ignoring the intensity_image, it might have wrong shape
+            obj_from_arr = btrack.utils.segmentation_to_objects(
+                segm_video, properties=tuple(FEATURES)
+            )
 
         if signals is not None:
             signals.progress.emit('Running BayesianTracker...')
@@ -60,7 +69,7 @@ class tracker:
             tracker.volume=self.params['volume']
 
             # track them (in interactive mode)
-            tracker.track_interactive(step_size=self.params['step_size'])
+            tracker.track(step_size=self.params['step_size'])
 
             # generate hypotheses and run the global optimizer
             if self.params['optimize']:

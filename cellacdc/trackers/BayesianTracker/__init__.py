@@ -1,5 +1,3 @@
-from cellacdc import printl
-
 INSTALL_BTRACK = False
 
 try:
