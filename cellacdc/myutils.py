@@ -1600,9 +1600,8 @@ def install_tensorflow():
     subprocess.check_call(args)
 
 def import_tracker(posData, trackerName, realTime=False, qparent=None):
-    trackerModule = import_module(
-        f'trackers.{trackerName}.{trackerName}_tracker'
-    )
+    trackerModuleName =  f'trackers.{trackerName}.{trackerName}_tracker'
+    trackerModule = import_module(trackerModuleName)
     init_params = {}
     track_params = {}
     paramsWin = None

@@ -183,14 +183,24 @@ class trackingWorker(QObject):
     def run(self):
         self.mutex.lock()
 
-        # self.progress.emit('Tracking process started...')
+        self.progress.emit('Tracking process started...')
 
         self.track_params['signals'] = self.signals
         if 'image' in self.track_params:
             trackerInputImage = self.track_params.pop('image')
-            tracked_stack = self.tracker.track(
-                self.video_to_track, trackerInputImage, **self.track_params
-            )
+            try:
+                tracked_video = self.tracker.track(
+                    self.video_to_track, trackerInputImage, **self.track_params
+                )
+            except TypeError:
+                # User accidentally loaded image data but the tracker doesn't
+                # need it
+                self.progress.emit(
+                    'Image data is not required by this tracker, ignoring it...'
+                )
+                tracked_video = self.tracker.track(
+                    self.video_to_track, **self.track_params
+                )
         else:
             tracked_video = self.tracker.track(
                 self.video_to_track, **self.track_params
@@ -9486,11 +9496,18 @@ class guiWin(QMainWindow):
         roiLabMask = roiLab>0
         roiLab[roiLabMask] += (brushID-1)
         if self.labelRoiReplaceExistingObjectsCheckbox.isChecked():
-            # Delete objects fully enclosed by ROI
-            borderMask = np.ones(roiLab.shape, dtype=bool)
-            borderMask[..., 1:-1, 1:-1] = False
             localLab = lab[roiLabSlice]
-            borderIDs = np.unique(localLab[borderMask])
+            if self.labelRoiAutoClearBorderCheckbox.isChecked():
+                # Delete objects fully enclosed by ROI since 
+                # the user cleared the objects on ROI borders
+                borderMask = np.ones(roiLab.shape, dtype=bool)
+                borderMask[..., 1:-1, 1:-1] = False
+                borderIDs = np.unique(localLab[borderMask])
+            else:
+                # Delete all existing objects since the user is keeping 
+                # new objects touching ROI borders
+                borderIDs = []
+            
             for obj in skimage.measure.regionprops(localLab):
                 if obj.label in borderIDs:
                     continue

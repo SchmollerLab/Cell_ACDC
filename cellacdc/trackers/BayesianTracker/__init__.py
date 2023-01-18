@@ -1,3 +1,5 @@
+from cellacdc import printl
+
 INSTALL_BTRACK = False
 
 try:
@@ -8,7 +10,6 @@ try:
     minor = version.split('.')[1]
     if int(minor) < 5:
         INSTALL_BTRACK = True
-    import pdb; pdb.set_trace()
 except Exception as e:
     INSTALL_BTRACK = True
 
