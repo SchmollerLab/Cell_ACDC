@@ -1,6 +1,7 @@
 from PyQt5.QtCore import (
     Qt, QTimer, QEventLoop
 )
+from PyQt5.QtWidgets import QWidget
 
 class QWhileLoop:
     def __init__(
@@ -26,3 +27,29 @@ class QWhileLoop:
         if self._max_duration is not None:
             self.max_duration_timer.stop()
         self.loop.exit()
+
+class QControlBlink:
+    def __init__(self, QWidgetToBlink: QWidget, duration_ms=2000) -> None:
+        self.duration_ms = duration_ms
+        self._widget = QWidgetToBlink
+        self.blinkON = False
+    
+    def start(self):
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.timerCallback)
+        self.timer.start(100)
+
+        self.stopTimer = QTimer(self)
+        self.stopTimer.timeout.connect(self.stop)
+        self.stopTimer.start(self.duration_ms)
+    
+    def timerCallback(self):
+        if self.blinkON:
+            self._widget.setStyleSheet('background-color: orange')
+        else:
+            self._widget.setStyleSheet('background-color: none')
+        self.blinkON = not self.blinkON
+
+    def stop(self):
+        self.timer.stop()
+        self._widget.setStyleSheet('background-color: none')

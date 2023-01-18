@@ -144,11 +144,12 @@ class LabelRoiWorker(QObject):
         self.exit = True
         self.waitCond.wakeAll()
     
-    def _process_image(self, img, secondChannelImg):
+    def _segment_image(self, img, secondChannelImg):
         if secondChannelImg is not None:
             img = self.Gui.labelRoiModel.to_rgb_stack(
                 img, secondChannelImg
             )
+        
         lab = self.Gui.labelRoiModel.segment(
             img, **self.Gui.segment2D_kwargs
         )
@@ -171,13 +172,13 @@ class LabelRoiWorker(QObject):
                             secondChannelImg = self.roiSecondChannel[frame_i]
                         else:
                             secondChannelImg = None
-                        lab = self._process_image(img, secondChannelImg)
+                        lab = self._segment_image(img, secondChannelImg)
                         segmData[frame_i] = lab
                         self.sigProgressBar.emit(1)
                 else:
                     img = self.imageData
                     secondChannelImg = self.roiSecondChannel
-                    segmData = self._process_image(img, secondChannelImg)
+                    segmData = self._segment_image(img, secondChannelImg)
                 
                 self.sigLabellingDone.emit(segmData, self.isTimelapse)
                 self.started = False

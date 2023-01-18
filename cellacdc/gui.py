@@ -2058,10 +2058,10 @@ class guiWin(QMainWindow):
         self.labelRoiToolbar.addWidget(widgets.QVLine())
         self.labelRoiToolbar.addWidget(widgets.QHWidgetSpacer(width=separatorW))
 
-        self.labelRoReplaceExistingObjectsCheckbox = QCheckBox(
+        self.labelRoiReplaceExistingObjectsCheckbox = QCheckBox(
             'Replace existing objects'
         )
-        self.labelRoiToolbar.addWidget(self.labelRoReplaceExistingObjectsCheckbox)
+        self.labelRoiToolbar.addWidget(self.labelRoiReplaceExistingObjectsCheckbox)
         self.labelRoiAutoClearBorderCheckbox = QCheckBox(
             'Remove objects touching borders'
         )
@@ -2095,15 +2095,41 @@ class guiWin(QMainWindow):
         self.labelRoiToolbar.addWidget(widgets.QVLine())
         self.labelRoiToolbar.addWidget(widgets.QHWidgetSpacer(width=separatorW))
 
-        self.labelRoiToolbar.addWidget(QLabel('No. of future frames to segment: '))
-        self.labelRoiTrangeSpinbox = widgets.SpinBox(disableKeyPress=True)
-        self.labelRoiTrangeSpinbox.setValue(1)
-        self.labelRoiTrangeSpinbox.setMinimum(1)
-        self.labelRoiToolbar.addWidget(self.labelRoiTrangeSpinbox)
+        startFrameLabel = QLabel('Start frame n. ')
+        startFrameLabel.setDisabled(True)
+        self.labelRoiToolbar.addWidget(startFrameLabel)
+        self.labelRoiStartFrameNoSpinbox = widgets.SpinBox(disableKeyPress=True)
+        self.labelRoiStartFrameNoSpinbox.label = startFrameLabel
+        self.labelRoiStartFrameNoSpinbox.setValue(1)
+        self.labelRoiStartFrameNoSpinbox.setMinimum(1)
+        self.labelRoiToolbar.addWidget(self.labelRoiStartFrameNoSpinbox)
+        self.labelRoiStartFrameNoSpinbox.setDisabled(True)
+
+        self.labelRoiFromCurrentFrameAction = QAction(self)
+        self.labelRoiFromCurrentFrameAction.setText('Segment from current frame')
+        self.labelRoiFromCurrentFrameAction.setIcon(QIcon(":frames_current.svg"))
+        self.labelRoiToolbar.addAction(self.labelRoiFromCurrentFrameAction)
+        self.labelRoiFromCurrentFrameAction.setDisabled(True)
+
+        self.labelRoiToolbar.addWidget(widgets.QHWidgetSpacer(width=3))
+        stopFrameLabel = QLabel(' Stop frame n. ')
+        stopFrameLabel.setDisabled(True)
+        self.labelRoiToolbar.addWidget(stopFrameLabel)
+        self.labelRoiStopFrameNoSpinbox = widgets.SpinBox(disableKeyPress=True)
+        self.labelRoiStopFrameNoSpinbox.label = stopFrameLabel
+        self.labelRoiStopFrameNoSpinbox.setValue(1)
+        self.labelRoiStopFrameNoSpinbox.setMinimum(1)
+        self.labelRoiToolbar.addWidget(self.labelRoiStopFrameNoSpinbox)
+        self.labelRoiStopFrameNoSpinbox.setDisabled(True)
+
         self.labelRoiToEndFramesAction = QAction(self)
         self.labelRoiToEndFramesAction.setText('Segment all remaining frames')
         self.labelRoiToEndFramesAction.setIcon(QIcon(":frames_end.svg"))
         self.labelRoiToolbar.addAction(self.labelRoiToEndFramesAction)
+        self.labelRoiToEndFramesAction.setDisabled(True)
+
+        self.labelRoiTrangeCheckbox = QCheckBox('Segment range of frames')
+        self.labelRoiToolbar.addWidget(self.labelRoiTrangeCheckbox)
 
         self.addToolBar(Qt.TopToolBarArea, self.labelRoiToolbar)
         self.labelRoiToolbar.setVisible(False)
@@ -2111,7 +2137,10 @@ class guiWin(QMainWindow):
 
         self.loadLabelRoiLastParams()
 
-        self.labelRoReplaceExistingObjectsCheckbox.toggled.connect(
+        self.labelRoiTrangeCheckbox.toggled.connect(
+            self.lebelRoiTrangeCheckboxToggled
+        )
+        self.labelRoiReplaceExistingObjectsCheckbox.toggled.connect(
             self.storeLabelRoiParams
         )
         self.labelRoiIsCircularRadioButton.toggled.connect(
@@ -2130,8 +2159,12 @@ class guiWin(QMainWindow):
             self.storeLabelRoiParams
         )
         group.buttonToggled.connect(self.storeLabelRoiParams)
+
         self.labelRoiToEndFramesAction.triggered.connect(
             self.labelRoiToEndFramesTriggered
+        )
+        self.labelRoiFromCurrentFrameAction.triggered.connect(
+            self.labelRoiFromCurrentFrameTriggered
         )
 
         self.keepIDsToolbar = QToolBar("Magic labeller controls", self)
@@ -2643,8 +2676,8 @@ class guiWin(QMainWindow):
         self.exitAction.triggered.connect(self.close)
         self.undoAction.triggered.connect(self.undo)
         self.redoAction.triggered.connect(self.redo)
-        self.nextAction.triggered.connect(self.next_cb)
-        self.prevAction.triggered.connect(self.prev_cb)
+        self.nextAction.triggered.connect(self.nextActionTriggered)
+        self.prevAction.triggered.connect(self.prevActionTriggered)
 
         # Connect Help actions
         self.tipsAction.triggered.connect(self.showTipsAndTricks)
@@ -5819,28 +5852,33 @@ class guiWin(QMainWindow):
 
             if self.labelRoiIsFreeHandRadioButton.isChecked():
                 self.freeRoiItem.closeCurve()
+            
+            proceed = self.labelRoiCheckStartStopFrame()
+            if not proceed:
+                self.labelRoiCancelled()
+                return
 
             roiImg, self.labelRoiSlice = self.getLabelRoiImage()
+
+            if roiImg.size == 0:
+                self.labelRoiCancelled()
+                return
 
             if self.labelRoiModel is None:
                 cancel = self.initLabelRoiModel()
                 if cancel:
-                    self.labelRoiRunning = False
-                    self.app.restoreOverrideCursor() 
-                    self.labelRoiItem.setPos((0,0))
-                    self.labelRoiItem.setSize((0,0))
-                    self.freeRoiItem.clear()
+                    self.labelRoiCancelled()
                     return
             
             roiSecondChannel = None
             if self.secondChannelName is not None:
                 secondChannelData = self.getSecondChannelData()
                 roiSecondChannel = secondChannelData[self.labelRoiSlice]
-
-            isTimelapse = self.labelRoiTrangeSpinbox.value()>1
+            
+            isTimelapse = self.labelRoiTrangeCheckbox.isChecked()
             if isTimelapse:
-                start_n = posData.frame_i+1
-                stop_n = posData.frame_i+self.labelRoiTrangeSpinbox.value()
+                start_n = self.labelRoiStartFrameNoSpinbox.value()
+                stop_n = self.labelRoiStopFrameNoSpinbox.value()
                 self.progressWin = apps.QDialogWorkerProgress(
                     title='ROI segmentation', parent=self,
                     pbarDesc=f'Segmenting frames n. {start_n} to {stop_n}...'
@@ -5852,7 +5890,7 @@ class guiWin(QMainWindow):
             labelRoiWorker = self.labelRoiActiveWorkers[-1]
             labelRoiWorker.start(
                 roiImg, roiSecondChannel=roiSecondChannel, 
-                isTimelapse=self.labelRoiTrangeSpinbox.value()>1
+                isTimelapse=isTimelapse
             )            
             self.app.setOverrideCursor(Qt.WaitCursor)
             self.logger.info(
@@ -7087,17 +7125,23 @@ class guiWin(QMainWindow):
     def getLabelRoiImage(self):
         posData = self.data[self.pos_i]
 
-        tRangeLen = self.labelRoiTrangeSpinbox.value()
+        if self.labelRoiTrangeCheckbox.isChecked():
+            start_frame_i = self.labelRoiStartFrameNoSpinbox.value()-1
+            stop_frame_n = self.labelRoiStopFrameNoSpinbox.value()
+            tRangeLen = stop_frame_n-start_frame_i
+        else:
+            tRangeLen = 1
+        
         if tRangeLen > 1:
-            tRange = (posData.frame_i, posData.frame_i+tRangeLen)
+            tRange = (start_frame_i, stop_frame_n)
         else:
             tRange = None
+        
         if self.isSegm3D:
             filteredData = self.filteredData.get(self.user_ch_name)
             if filteredData is None or tRangeLen>1:
                 if tRangeLen > 1:
-                    frame_i_end = posData.frame_i+tRangeLen
-                    imgData = posData.img_data[posData.frame_i:frame_i_end]
+                    imgData = posData.img_data
                 else:
                     # Filtered data not existing
                     imgData = posData.img_data[posData.frame_i]
@@ -7138,8 +7182,7 @@ class guiWin(QMainWindow):
             elif self.labelRoiIsCircularRadioButton.isChecked():
                 labelRoiSlice = self.labelRoiCircItemLeft.slice(tRange=tRange)
             if tRangeLen > 1:
-                frame_i_end = posData.frame_i+tRangeLen 
-                imgData = posData.img_data[posData.frame_i:frame_i_end]
+                imgData = posData.img_data
             else:
                 imgData = self.img1.image
 
@@ -9348,12 +9391,32 @@ class guiWin(QMainWindow):
         if not self.labelsGrad.showLabelsImgAction.isChecked():
             self.ax1.autoRange()
     
+    def lebelRoiTrangeCheckboxToggled(self, checked):
+        disabled = not checked
+        self.labelRoiStartFrameNoSpinbox.setDisabled(disabled)
+        self.labelRoiStopFrameNoSpinbox.setDisabled(disabled)
+        self.labelRoiStartFrameNoSpinbox.label.setDisabled(disabled)
+        self.labelRoiStopFrameNoSpinbox.label.setDisabled(disabled)
+        self.labelRoiToEndFramesAction.setDisabled(disabled)
+        self.labelRoiFromCurrentFrameAction.setDisabled(disabled)
+
+        if disabled:
+            return
+
+        posData = self.data[self.pos_i]
+
+        self.labelRoiStartFrameNoSpinbox.setValue(posData.frame_i+1)
+        self.labelRoiStopFrameNoSpinbox.setValue(posData.SizeT)
+
     def labelRoi_cb(self, checked):
         posData = self.data[self.pos_i]
         if checked:
             self.disconnectLeftClickButtons()
             self.uncheckLeftClickButtons(self.labelRoiButton)
             self.connectLeftClickButtons()
+
+            self.labelRoiStartFrameNoSpinbox.setMaximum(posData.SizeT)
+            self.labelRoiStopFrameNoSpinbox.setMaximum(posData.SizeT)
 
             if self.labelRoiActiveWorkers:
                 lastActiveWorker = self.labelRoiActiveWorkers[-1]
@@ -9366,12 +9429,6 @@ class guiWin(QMainWindow):
                 self.labelRoiZdepthSpinbox.setDisabled(False)
             else:
                 self.labelRoiZdepthSpinbox.setDisabled(True)
-            
-            if posData.SizeT > 1:
-                self.labelRoiTrangeSpinbox.setDisabled(False)
-                self.labelRoiTrangeSpinbox.setMaximum(posData.SizeT)
-            else:
-                self.labelRoiTrangeSpinbox.setDisabled(True)
 
             # Start thread and pause it
             self.labelRoiThread = QThread()
@@ -9392,6 +9449,7 @@ class guiWin(QMainWindow):
             labelRoiWorker.sigProgressBar.connect(self.workerUpdateProgressbar)
 
             labelRoiWorker.progress.connect(self.workerProgress)
+            labelRoiWorker.critical.connect(self.workerCritical)
 
             self.labelRoiActiveWorkers.append(labelRoiWorker)
 
@@ -9427,7 +9485,7 @@ class guiWin(QMainWindow):
 
         roiLabMask = roiLab>0
         roiLab[roiLabMask] += (brushID-1)
-        if self.labelRoReplaceExistingObjectsCheckbox.isChecked():
+        if self.labelRoiReplaceExistingObjectsCheckbox.isChecked():
             # Delete objects fully enclosed by ROI
             borderMask = np.ones(roiLab.shape, dtype=bool)
             borderMask[..., 1:-1, 1:-1] = False
@@ -9441,7 +9499,6 @@ class guiWin(QMainWindow):
         lab[roiLabSlice][roiLabMask] = roiLab[roiLabMask]
         return lab
 
-    
     @exception_handler
     def labelRoiDone(self, roiSegmData, isTimeLapse):
         posData = self.data[self.pos_i]
@@ -9451,8 +9508,9 @@ class guiWin(QMainWindow):
             self.progressWin.mainPbar.setMaximum(0)
             self.progressWin.mainPbar.setValue(0)
             current_frame_i = posData.frame_i
+            start_frame_i = self.labelRoiStartFrameNoSpinbox.value() - 1
             for i, roiLab in enumerate(roiSegmData):
-                frame_i = current_frame_i + i
+                frame_i = start_frame_i + i
                 lab = posData.allData_li[frame_i]['labels']
                 store = True
                 if lab is None:
@@ -10428,7 +10486,7 @@ class guiWin(QMainWindow):
         self.df_settings.at['labelRoi_roiZdepth', 'value'] = roiZdepth
         self.df_settings.at['labelRoi_autoClearBorder', 'value'] = clearBorder
         self.df_settings.at['labelRoi_replaceExistingObjects', 'value'] = (
-            'Yes' if self.labelRoReplaceExistingObjectsCheckbox.isChecked() 
+            'Yes' if self.labelRoiReplaceExistingObjectsCheckbox.isChecked() 
             else 'No'
         )
         self.df_settings.to_csv(self.settings_csv_path)
@@ -10462,7 +10520,7 @@ class guiWin(QMainWindow):
         if idx in self.df_settings.index:
             val = self.df_settings.at[idx, 'value']
             checked = val == 'Yes'
-            self.labelRoReplaceExistingObjectsCheckbox.setChecked(checked)
+            self.labelRoiReplaceExistingObjectsCheckbox.setChecked(checked)
         
         if self.labelRoiIsCircularRadioButton.isChecked():
             self.labelRoiCircularRadiusSpinbox.setDisabled(False)
@@ -11743,13 +11801,22 @@ class guiWin(QMainWindow):
         self.updateALLimg()
 
         self.titleLabel.setText('Budding event prediction done.', color='g')
+    
+    def nextActionTriggered(self):
+        stepAddAction = QAbstractSlider.SliderSingleStepAdd
+        if self.zKeptDown or self.zSliceCheckbox.isChecked():
+            self.zSliceScrollBar.triggerAction(stepAddAction)
+        else:
+            self.navigateScrollBar.triggerAction(stepAddAction)
+    
+    def prevActionTriggered(self):
+        stepSubAction = QAbstractSlider.SliderSingleStepSub
+        if self.zKeptDown or self.zSliceCheckbox.isChecked():
+            self.zSliceScrollBar.triggerAction(stepSubAction)
+        else:
+            self.navigateScrollBar.triggerAction(stepSubAction)
 
     def next_cb(self):
-        if self.zKeptDown or self.zSliceCheckbox.isChecked():
-            stepAddAction = QAbstractSlider.SliderSingleStepAdd
-            self.zSliceScrollBar.triggerAction(stepAddAction)
-            return
-
         if self.isSnapshot:
             self.next_pos()
         else:
@@ -11760,11 +11827,6 @@ class guiWin(QMainWindow):
         self.updatePropsWidget('')
 
     def prev_cb(self):
-        if self.zKeptDown or self.zSliceCheckbox.isChecked():
-            stepSubAction = QAbstractSlider.SliderSingleStepSub
-            self.zSliceScrollBar.triggerAction(stepSubAction)
-            return
-
         if self.isSnapshot:
             self.prev_pos()
         else:
@@ -11954,18 +12016,19 @@ class guiWin(QMainWindow):
                     if msg.clickedButton == noButton:
                         return
             if 'multiple' in self.titleLabel.text and mode != 'Viewer' and warn:
-                msg = QMessageBox()
-                warn_msg = (
-                    'Current frame contains cells with MULTIPLE contours '
-                    '(see title message above the images)!\n\n'
-                    'This is potentially an issue indicating that two distant cells '
-                    'have been merged.\n\n'
+                msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+                warn_msg = html_utils.paragraph(
+                    'Current frame contains <b>cells with MULTIPLE contours</b> '
+                    '(see title message above the images)<br><br>'
+                    'This is potentially an issue indicating that <b>two distant cells '
+                    'have been merged</b>.<br><br>'
                     'Are you sure you want to continue?'
                 )
-                proceed_with_multi = msg.warning(
-                   self, 'Multiple contours detected!', warn_msg, msg.Yes | msg.No
+                noButton, yesButton = msg.warning(
+                   self, 'Multiple contours detected!', warn_msg, 
+                   buttonsTexts=('No', 'Yes')
                 )
-                if proceed_with_multi == msg.No:
+                if msg.cancel or msg.clickedButton==noButton:
                     return
 
             if posData.frame_i <= 0 and mode == 'Cell cycle analysis':
@@ -18569,6 +18632,43 @@ class guiWin(QMainWindow):
         ])
         return True
     
+    def labelRoiCancelled(self):
+        self.labelRoiRunning = False
+        self.app.restoreOverrideCursor() 
+        self.labelRoiItem.setPos((0,0))
+        self.labelRoiItem.setSize((0,0))
+        self.freeRoiItem.clear()
+        self.logger.info('Magic labeller process cancelled.')
+
+    def labelRoiCheckStartStopFrame(self):
+        if not self.labelRoiTrangeCheckbox.isChecked():
+            return True
+        
+        start_n = self.labelRoiStartFrameNoSpinbox.value()
+        stop_n = self.labelRoiStopFrameNoSpinbox.value()
+        if start_n <= stop_n:
+            return True
+        
+        self.blinker = qutils.QControlBlink(self.labelRoiStopFrameNoSpinbox)
+        self.blinker.start()
+        msg = widgets.myMessageBox()
+        txt = html_utils.paragraph("""
+            Stop frame number is less than start frame number!<br><br>
+            What do you want to do?
+        """)
+        msg.warning(
+            self, 'Stop frame number lower than start', txt, 
+            buttonsTexts=('Cancel', 'Segment only current frame')
+        )
+        if msg.cancel:
+            return False
+        
+        posData = self.data[self.pos_i]
+        self.labelRoiStartFrameNoSpinbox.setValue(posData.frame_i+1)
+        self.labelRoiStopFrameNoSpinbox.setValue(posData.frame_i+1)
+        
+
+    
     def getSecondChannelData(self):
         if self.secondChannelName is None:
             return
@@ -18584,10 +18684,16 @@ class guiWin(QMainWindow):
             posData.fluo_data_dict[filename] = fluo_data
             posData.fluo_bkgrData_dict[filename] = bkgrData
         
-        tRangeLen = self.labelRoiTrangeSpinbox.value()
+        if self.labelRoiTrangeCheckbox.isChecked():
+            start_frame_i = self.labelRoiStartFrameNoSpinbox.value()-1
+            stop_frame_n = self.labelRoiStopFrameNoSpinbox.value()
+            tRangeLen = stop_frame_n-start_frame_i
+        else:
+            tRangeLen = 1
+
         if tRangeLen > 1:
-            tRange = (posData.frame_i, posData.frame_i+tRangeLen)
-            fluo_img_data = fluo_data[posData.frame_i:tRange[1]]
+            tRange = (start_frame_i, stop_frame_n)
+            fluo_img_data = fluo_data[start_frame_i:stop_frame_n]
             if self.isSegm3D:
                 return fluo_img_data
             else:
@@ -19251,7 +19357,11 @@ class guiWin(QMainWindow):
 
     def labelRoiToEndFramesTriggered(self):
         posData = self.data[self.pos_i]
-        self.labelRoiTrangeSpinbox.setValue(posData.SizeT - posData.frame_i)
+        self.labelRoiStopFrameNoSpinbox.setValue(posData.SizeT)
+    
+    def labelRoiFromCurrentFrameTriggered(self):
+        posData = self.data[self.pos_i]
+        self.labelRoiStartFrameNoSpinbox.setValue(posData.frame_i+1)
 
     def setMetricsFunc(self):
         posData = self.data[self.pos_i]
