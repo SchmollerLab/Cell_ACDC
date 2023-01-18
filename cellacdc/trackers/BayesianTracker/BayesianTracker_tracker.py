@@ -97,10 +97,6 @@ class tracker:
         # Label the segm_video according to tracks
         tracked_video = np.zeros_like(segm_video)
         for frame_i, lab in enumerate(tqdm(segm_video, ncols=100)):
-            if frame_i == 0:
-                tracked_video[frame_i] = lab
-                continue
-
             rp = regionprops(lab.copy())
             IDs_curr_untracked = [obj.label for obj in rp]
             if not IDs_curr_untracked:
