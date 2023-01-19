@@ -817,7 +817,7 @@ class customAnnotationDialog(QDialog):
         )
 
         symbol = self.symbolWidget.widget.currentText()
-        self.symbol = re.findall(r"\'(\w+)\'", symbol)[0]
+        self.symbol = re.findall(r"\'(.+)\'", symbol)[0]
 
         self.state = {
             'type': self.typeWidget.widget.currentText(),
