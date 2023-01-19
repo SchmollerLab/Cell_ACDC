@@ -498,6 +498,10 @@ class loadData:
         if not os.path.exists(temp_path):
             return
         self.metadata_df.to_csv(last_entries_metadata_path)
+    
+    def saveCustomAnnotationParams(self):
+        with open(self.custom_annot_json_path, mode='w') as file:
+            json.dump(self.customAnnot, file, indent=2)
 
     def getBasenameAndChNames(self, useExt=None):
         ls = myutils.listdir(self.images_path)

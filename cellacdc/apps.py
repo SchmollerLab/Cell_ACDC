@@ -944,7 +944,7 @@ class AddPointsLayerDialog(QBaseDialog):
 
         self.imagesPath = imagesPath
 
-        self.setWindowTitle('Custom annotation')
+        self.setWindowTitle('Add points layer')
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
 
         mainLayout = QVBoxLayout()
@@ -1251,7 +1251,7 @@ class AddPointsLayerDialog(QBaseDialog):
         
         self.cancel = False
         symbol = self.appearanceGroupbox.symbolWidget.widget.currentText()
-        self.symbol = re.findall(r"\'(\w+)\'", symbol)[0]
+        self.symbol = re.findall(r"\'(.+)\'", symbol)[0]
         self.symbolText = symbol
         self.color = self.appearanceGroupbox.colorButton.color()
         self.pointSize = self.appearanceGroupbox.sizeSpinBox.value()
@@ -1345,7 +1345,7 @@ class EditPointsLayerAppearanceDialog(QBaseDialog):
     def ok_cb(self):
         self.cancel = False
         symbol = self.appearanceGroupbox.symbolWidget.widget.currentText()
-        self.symbol = re.findall(r"\'(\w+)\'", symbol)[0]
+        self.symbol = re.findall(r"\'(.+)\'", symbol)[0]
         self.color = self.appearanceGroupbox.colorButton.color()
         self.pointSize = self.appearanceGroupbox.sizeSpinBox.value()
         shortcutWidget = self.appearanceGroupbox.shortcutWidget

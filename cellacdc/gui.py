@@ -191,7 +191,6 @@ class trackingWorker(QObject):
             start_frame_i = self.mainWin.start_n-1
             stop_frame_n = self.mainWin.stop_n
             trackerInputImage = trackerInputImage[start_frame_i:stop_frame_n]
-            printl(trackerInputImage.shape, self.video_to_track.shape)
             try:
                 tracked_video = self.tracker.track(
                     self.video_to_track, trackerInputImage, **self.track_params
@@ -607,6 +606,7 @@ class saveDataWorker(QObject):
                 return
             
             posData.saveSegmHyperparams()
+            posData.saveCustomAnnotationParams()
             current_frame_i = posData.frame_i
 
             if not self.mainWin.isSnapshot:
@@ -6743,7 +6743,7 @@ class guiWin(QMainWindow):
                     y, x = posData.rp[obj_idx].centroid
                     xdata, ydata = int(x), int(y)
 
-            button = self.doCustomAnnotation(ID)
+            button = self.doCustomAnnotation(ID, fromClick=True)
             keepActive = self.customAnnotDict[button]['state']['keepActive']
             if not keepActive:
                 button.setChecked(False)
@@ -10053,9 +10053,14 @@ class guiWin(QMainWindow):
         if ev.key() == Qt.Key_T:
             # self.setAllIDs()
             posData = self.data[self.pos_i]
-            printl(self.drawIDsContComboBox.currentText())
-            printl(self.annotContourCheckboxRight.currentText())
-            # printl(posData.allIDs)
+            buttons = list(self.customAnnotDict.keys())
+            for button, items in self.customAnnotDict.items():
+                printl(
+                    f'{items["state"]}\n'
+                    f'{items["annotatedIDs"]}'
+                )
+
+            printl(posData.customAnnot)
             # printl(f'{posData.binnedIDs = }')
             # printl(f'{posData.ripIDs = }')
         if not self.dataIsLoaded:
@@ -10968,23 +10973,35 @@ class guiWin(QMainWindow):
 
         posData = self.data[self.pos_i]
         self.savedCustomAnnot = {**tempAnnot, **posData.customAnnot}
+    
+    def addCustomAnnotButtonAllLoadedPos(self):
+        allPosCustomAnnot = {}
+        for pos_i, posData in enumerate(self.data):
+            self.addCustomAnnotationSavedPos(pos_i=pos_i)
+            allPosCustomAnnot = {**allPosCustomAnnot, **posData.customAnnot}
+        for posData in self.data:
+            posData.customAnnot = allPosCustomAnnot
 
-    def addCustomAnnotationSavedPos(self):
-        posData = self.data[self.pos_i]
+    def addCustomAnnotationSavedPos(self, pos_i=None):
+        if pos_i is None:
+            pos_i = self.pos_i
+        
+        posData = self.data[pos_i]
         for name, annotState in posData.customAnnot.items():
             # Check if button is already present and update only annotated IDs
             buttons = [b for b in self.customAnnotDict.keys() if b.name==name]
             if buttons:
                 toolButton = buttons[0]
                 allAnnotedIDs = self.customAnnotDict[toolButton]['annotatedIDs']
-                allAnnotedIDs[self.pos_i] = posData.customAnnotIDs.get(name, {})
+                allAnnotedIDs[pos_i] = posData.customAnnotIDs.get(name, {})
                 continue
 
             try:
-                symbol = re.findall(r"\'(\w+)\'", annotState['symbol'])[0]
+                symbol = re.findall(r"\'(.+)\'", annotState['symbol'])[0]
             except Exception as e:
-                traceback.print_exc()
+                self.logger.info(traceback.format_exc())
                 symbol = 'o'
+            
             symbolColor = QColor(*annotState['symbolColor'])
             shortcut = annotState['shortcut']
             if shortcut is not None:
@@ -11069,7 +11086,6 @@ class guiWin(QMainWindow):
             )
         else:
             vb.setToolTip('')
-
 
     def addCustomAnnotation(self):
         self.readSavedCustomAnnot()
@@ -11222,11 +11238,13 @@ class guiWin(QMainWindow):
             pen=pg.mkPen(width=3, color=symbolColor)
         )
 
-    def doCustomAnnotation(self, ID):
+    def doCustomAnnotation(self, ID, fromClick=False):
         # NOTE: pass 0 for ID to not add
         posData = self.data[self.pos_i]
-        if self.viewAllCustomAnnotAction.isChecked():
+        if self.viewAllCustomAnnotAction.isChecked() and not fromClick:
             # User requested to show all annotations --> iterate all buttons
+            # Unless it actively clicked to annotate --> avoid annotating object
+            # with all the annotations present
             buttons = list(self.customAnnotDict.keys())
         else:
             # Annotate if the button is active or isHideChecked is False
@@ -11284,7 +11302,11 @@ class guiWin(QMainWindow):
         name = self.customAnnotDict[button]['state']['name']
         # remove annotation from position
         for posData in self.data:
-            posData.customAnnot.pop(name)
+            try:
+                posData.customAnnot.pop(name)
+            except KeyError as e:
+                # Current pos doesn't have any annotation button. Continue
+                continue
             if posData.acdc_df is not None:
                 posData.acdc_df = posData.acdc_df.drop(
                     columns=name, errors='ignore'
@@ -11315,7 +11337,8 @@ class guiWin(QMainWindow):
                     continue
 
                 button.toggled.disconnect()
-                button.setChecked(False)
+                self.clearScatterPlotCustomAnnotButton(button)
+                button.setChecked(False)                
                 button.toggled.connect(self.customAnnotButtonClicked)
             self.doCustomAnnotation(0)
         else:
@@ -11969,7 +11992,9 @@ class guiWin(QMainWindow):
         else:
             self.logger.info('You reached last position.')
             self.pos_i = 0
-        self.addCustomAnnotationSavedPos()
+        self.updatePos()
+    
+    def updatePos(self):
         self.setSaturBarLabel()
         self.removeAlldelROIsCurrentFrame()
         proceed_cca, never_visited = self.get_data()
@@ -11988,14 +12013,7 @@ class guiWin(QMainWindow):
         else:
             self.logger.info('You reached first position.')
             self.pos_i = self.num_pos-1
-        self.addCustomAnnotationSavedPos()
-        self.setSaturBarLabel()
-        self.removeAlldelROIsCurrentFrame()
-        proceed_cca, never_visited = self.get_data()
-        self.postProcessing()
-        self.updateALLimg(updateFilters=True)
-        self.zoomToCells()
-        self.updateScrollbars()
+        self.updatePos()
 
     def updateViewerWindow(self):
         if self.slideshowWin is None:
@@ -12580,7 +12598,7 @@ class guiWin(QMainWindow):
         self.setBottomLayoutStretch()
 
         self.readSavedCustomAnnot()
-        self.addCustomAnnotationSavedPos()
+        self.addCustomAnnotButtonAllLoadedPos()
         self.setAxesMaxRange()
         self.setSaturBarLabel()
 
@@ -12612,6 +12630,7 @@ class guiWin(QMainWindow):
         self.retainSpaceSlidersToggled(self.retainSpaceSlidersAction.isChecked())
 
         self.stopAutomaticLoadingPos()
+        self.viewAllCustomAnnotAction.setChecked(True)
 
         # Overwrite axes viewbox context menu
         self.ax1.vb.menu = self.imgGrad.gradient.menu
@@ -13532,8 +13551,7 @@ class guiWin(QMainWindow):
     def PosScrollBarReleased(self):
         self.pos_i = self.navigateScrollBar.sliderPosition()-1
         self.updateFramePosLabel()
-        proceed_cca, never_visited = self.get_data()
-        self.updateALLimg()
+        self.updatePos()
 
     def framesScrollBarAction(self, action):
         if action == QAbstractSlider.SliderSingleStepAdd:
