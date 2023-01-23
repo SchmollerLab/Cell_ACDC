@@ -5132,6 +5132,11 @@ class guiWin(QMainWindow):
         intensMeasurQGBox.additionalMeasCombobox.indicator.setValue(value)
     
     def gui_hoverEventRightImage(self, event):
+        try:
+            posData = self.data[self.pos_i]
+        except AttributeError:
+            return
+
         if event.isExit():
             self.ax1_cursor.setData([], [])
 
@@ -5144,7 +5149,11 @@ class guiWin(QMainWindow):
             self.ax1_cursor.setData([x], [y])
         
     def gui_hoverEventImg1(self, event, isHoverImg1=True):
-        posData = self.data[self.pos_i]
+        try:
+            posData = self.data[self.pos_i]
+        except AttributeError:
+            return
+        
         # Update x, y, value label bottom right
         if not event.isExit():
             self.xHoverImg, self.yHoverImg = event.pos()
@@ -5410,7 +5419,11 @@ class guiWin(QMainWindow):
         self.ax1.addItem(self.ax1_cursor)
 
     def gui_hoverEventImg2(self, event):
-        posData = self.data[self.pos_i]
+        try:
+            posData = self.data[self.pos_i]
+        except AttributeError:
+            return
+            
         if not event.isExit():
             self.xHoverImg, self.yHoverImg = event.pos()
         else:
