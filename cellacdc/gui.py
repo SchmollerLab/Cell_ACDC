@@ -1016,6 +1016,7 @@ class guiWin(QMainWindow):
         from ._profile.spline_to_obj import model
         
         self.splineToObjModel = model.Model()
+
         self.splineToObjModel.fit()
     
     def readRecentPaths(self):

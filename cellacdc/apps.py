@@ -65,6 +65,12 @@ from . import issues_url
 from . import myutils
 from . import qutils
 
+PRE_PROCESSING_STEPS = [
+    'Adjust Brightness/Contrast',
+    'Smooth (gaussian filter)', 
+    'Sharpen (difference of gaussians filter)'
+]
+
 pg.setConfigOption('imageAxisOrder', 'row-major') # best performance
 font = QFont()
 font.setPixelSize(13)
@@ -3769,6 +3775,82 @@ class QDialogCombobox(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
+class _PreProcessRecipeList(QWidget):
+    sigItemSelected = pyqtSignal(object)
+    
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+
+        mainLayout = QVBoxLayout()
+
+        listLayout = QHBoxLayout()
+        self.listWidget = widgets.listWidget()
+        listLayout.addWidget(self.listWidget)
+        self.listWidget.setItemHeight(height=40)
+
+        listButtonsLayout = QVBoxLayout()
+        addStepButton = widgets.addPushButton(' Add step ')
+        self.removeStepButton = widgets.subtractPushButton('Remove step')
+        self.removeStepButton.setDisabled(True)
+        self.moveStepUpButton = widgets.arrowUpPushButton(
+            'Move step up', alignIconLeft=True
+        )
+        self.moveStepDownButton = widgets.arrowDownPushButton('Move step down')
+        self.moveStepUpButton.setDisabled(True)
+        self.moveStepDownButton.setDisabled(True)
+
+        listButtonsLayout.addWidget(addStepButton)
+        listButtonsLayout.addWidget(self.removeStepButton)
+        listButtonsLayout.addWidget(self.moveStepUpButton)
+        listButtonsLayout.addWidget(self.moveStepDownButton)
+        listButtonsLayout.addStretch()
+        listLayout.addLayout(listButtonsLayout)
+
+        listLayout.setStretch(0,1)
+        listLayout.setStretch(1,0)
+
+        mainLayout.addLayout(listLayout)
+
+        addStepButton.clicked.connect(self.addStep)
+        self.removeStepButton.clicked.connect(self.removeStep)
+        self.listWidget.itemSelectionChanged.connect(self.itemSelected)
+
+        self.setLayout(mainLayout)
+    
+    def itemSelected(self):
+        if self.listWidget.count() > 1:
+            self.moveStepDownButton.setDisabled(False)
+            self.moveStepUpButton.setDisabled(False)
+        self.removeStepButton.setDisabled(False)
+        self.sigItemSelected.emit(self.listWidget.currentItem())
+
+    def addStep(self):
+        selectStepWindow = widgets.QDialogListbox(
+            'Select pre-processing step',
+            'SSelect pre-processing step to add\n',
+            PRE_PROCESSING_STEPS, multiSelection=False, parent=self
+        )
+        selectStepWindow.exec_()
+        if selectStepWindow.cancel:
+            return
+        
+        selectedStep = selectStepWindow.selectedItemsText[0]
+        selectedStepItem = QListWidgetItem(selectedStep)
+        self.listWidget.addItem(selectedStepItem)
+        self.listWidget.setCurrentItem(selectedStepItem)
+
+    def removeStep(self):
+        item = self.listWidget.takeItem(self.listWidget.currentRow())
+        del item
+
+    def moveStepUp(self):
+        currentRow = self.listWidget.currentRow()
+        currentItem = self.listWidget.takeItem(currentRow)
+        self.listWidget.insertItem(currentRow-1, currentItem)
+
+    def moveStepDown(self):
+        pass
+
 class PreProcessRecipeWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -3778,24 +3860,9 @@ class PreProcessRecipeWidget(QWidget):
         mainLayout = QVBoxLayout()
 
         recipeListLayout = QHBoxLayout()
-        self.recipeListWidget = widgets.listWidget()
-        recipeListLayout.addWidget(self.recipeListWidget)
-        self.recipeListWidget.setItemHeight(height=40)
+        self.recipeListWidget = _PreProcessRecipeList()
 
-        recipeListButtonsLayout = QVBoxLayout()
-        addStepButton = widgets.addPushButton(' Add step ')
-        removeStepButton = widgets.subtractPushButton('Remove step')
-        removeStepButton.setDisabled(True)
-
-        recipeListButtonsLayout.addWidget(addStepButton)
-        recipeListButtonsLayout.addWidget(removeStepButton)
-        recipeListButtonsLayout.addStretch()
-        recipeListLayout.addLayout(recipeListButtonsLayout)
-
-        recipeListLayout.setStretch(0,1)
-        recipeListLayout.setStretch(1,0)
-
-        mainLayout.addLayout(recipeListLayout)
+        mainLayout.addWidget(self.recipeListWidget)
 
         self.setLayout(mainLayout)
 

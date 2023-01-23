@@ -175,6 +175,34 @@ class QLog(QPlainTextEdit):
         super().closeEvent(event)
         self.sigClose.emit()
 
+class PushButton(QPushButton):
+    def __init__(self, *args, icon=None, alignIconLeft=False):
+        super().__init__(*args)
+        if icon is not None:
+            self.setIcon(icon)
+        self.alignIconLeft = alignIconLeft
+        self._text = None
+    
+    def show(self):
+        text = self.text()
+        printl(self.alignIconLeft)
+        if not self.alignIconLeft:
+            super().show()
+            return 
+
+        self._text = text
+        self.setStyleSheet('text-align:left;')
+        self.setLayout(QGridLayout())
+        textLabel = QLabel(self._text)
+        textLabel.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        textLabel.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        self.layout().addWidget(textLabel)
+        super().show()
+        
+    def setText(self, text):
+        if self._text is None:
+            super().setText(self._text)
+
 class mergePushButton(QPushButton):
     def __init__(self, *args):
         super().__init__(*args)
@@ -258,6 +286,17 @@ class currentPushButton(QPushButton):
     def __init__(self, *args):
         super().__init__(*args)
         self.setIcon(QIcon(':arrow_current.svg'))
+
+class arrowUpPushButton(PushButton):
+    def __init__(self, *args, alignIconLeft=False):
+        super().__init__(
+            *args, icon=QIcon(':arrow-up.svg'), alignIconLeft=alignIconLeft
+        )
+
+class arrowDownPushButton(QPushButton):
+    def __init__(self, *args):
+        super().__init__(*args)
+        self.setIcon(QIcon(':arrow-down.svg'))
 
 class subtractPushButton(QPushButton):
     def __init__(self, *args):
