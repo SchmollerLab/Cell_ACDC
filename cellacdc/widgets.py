@@ -649,26 +649,26 @@ class _ReorderableListModel(QAbstractListModel):
         self.endInsertRows()
         return True
 
-    # def removeRows(self, row, count, index):
-    #     if index.isValid():
-    #         return False
-    #     if count <= 0:
-    #         return False
-    #     num_rows = self.rowCount(QModelIndex())
-    #     self.beginRemoveRows(QModelIndex(), row, row + count - 1)
-    #     for i in range(count, 0, -1):
-    #         self.nodes.pop(row - i + 1)
-    #     self.endRemoveRows()
+    def removeRows(self, row, count, index):
+        if index.isValid():
+            return False
+        if count <= 0:
+            return False
+        num_rows = self.rowCount(QModelIndex())
+        self.beginRemoveRows(QModelIndex(), row, row + count - 1)
+        for i in range(count, 0, -1):
+            self.nodes.pop(row - i + 1)
+        self.endRemoveRows()
 
-    #     if self.pendingRemoveRowsAfterDrop:
-    #         '''
-    #         If we got here, it means this call to removeRows is the automatic
-    #         'cleanup' action after drag-n-drop performed by Qt
-    #         '''
-    #         self.pendingRemoveRowsAfterDrop = False
-    #         self.dragDropFinished.emit()
+        if self.pendingRemoveRowsAfterDrop:
+            '''
+            If we got here, it means this call to removeRows is the automatic
+            'cleanup' action after drag-n-drop performed by Qt
+            '''
+            self.pendingRemoveRowsAfterDrop = False
+            self.dragDropFinished.emit()
 
-    #     return True
+        return True
 
     def setData(self, index, value, role):
         if not index.isValid():
@@ -739,8 +739,9 @@ class _ReorderableListModel(QAbstractListModel):
         return True
 
 class _SelectionModel(QItemSelectionModel):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, isSingleSelection=False):
         QItemSelectionModel.__init__(self, parent)
+        self.isSingleSelection = isSingleSelection
 
     def onModelItemsReordered(self):
         new_selection = QItemSelection()
@@ -760,13 +761,18 @@ class _SelectionModel(QItemSelectionModel):
         )
         self.select(new_selection, flags)
         self.setCurrentIndex(new_index, flags)
-        self.reset()
+        if not self.isSingleSelection:
+            self.reset()
 
 class ReorderableListView(QListView):
-    def __init__(self, items=None, parent=None) -> None:
+    def __init__(
+            self, items=None, parent=None, isSingleSelection=False
+        ) -> None:
         super().__init__(parent)
         if items is None:
             items = []
+
+        self.isSingleSelection = isSingleSelection
         self._model = _ReorderableListModel(items)
         self._selectionModel = _SelectionModel(self._model)
         self._model.dragDropFinished.connect(
@@ -776,19 +782,20 @@ class ReorderableListView(QListView):
         self.setSelectionModel(self._selectionModel)
         self.setDragDropMode(QAbstractItemView.InternalMove)
         self.setDragDropOverwriteMode(False)
-        self.setStyleSheet("""
-            QListView {
+        styleSheet = (f"""
+            QListView {{
                 selection-background-color: rgba(200, 200, 200, 0.30);
                 selection-color: black;
                 show-decoration-selected: 1;
-            }
-            QListView::item {
+            }}
+            QListView::item {{
                 border-bottom: 1px solid rgba(180, 180, 180, 0.5);
-            }
-            QListView::item:hover {
-                background: rgba(200, 200, 200, 0.30);
-            }
+            }}
+            QListView::item:hover {{
+                background-color: rgba(200, 200, 200, 0.30);
+            }}
         """)
+        self.setStyleSheet(styleSheet)
     
     def setItems(self, items):
         self._model.nodes = items
@@ -796,9 +803,9 @@ class ReorderableListView(QListView):
     def items(self):
         return self._model.nodes
     
-    def mouseReleaseEvent(self, e: QMouseEvent) -> None:
-        super().mouseReleaseEvent(e)
-        self._selectionModel.reset()
+    # def mouseReleaseEvent(self, e: QMouseEvent) -> None:
+    #     super().mouseReleaseEvent(e)
+    #     self._selectionModel.reset()
 
 class QDialogListbox(QDialog):
     sigSelectionConfirmed = pyqtSignal(list)
@@ -1281,6 +1288,7 @@ class statusBarPermanentLabel(QWidget):
 class listWidget(QListWidget):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.itemHeight = None
         self.setStyleSheet("""
             QListWidget::item:hover {background-color:#E6E6E6;}
             QListWidget::item:selected {background-color:#CFEB9B;}
@@ -1292,6 +1300,24 @@ class listWidget(QListWidget):
             }
         """)
         self.setFont(font)
+    
+    def addItems(self, labels) -> None:
+        super().addItems(labels)
+        if self.itemHeight is None:
+            return
+        self.setItemHeight()
+    
+    def addItem(self, text):
+        super().addItem(text)
+        if self.itemHeight is None:
+            return
+        self.setItemHeight()
+    
+    def setItemHeight(self, height=40):
+        self.itemHeight = height
+        for i in range(self.count()):
+            item = self.item(i)
+            item.setSizeHint(QSize(0, height))
 
 class OrderableList(listWidget):
     def __init__(self, *args, **kwargs) -> None:

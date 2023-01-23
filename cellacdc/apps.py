@@ -3769,6 +3769,36 @@ class QDialogCombobox(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
+class PreProcessRecipeWidget(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+        self.setWindowTitle('Create image pre-processing recipe')
+
+        mainLayout = QVBoxLayout()
+
+        recipeListLayout = QHBoxLayout()
+        self.recipeListWidget = widgets.listWidget()
+        recipeListLayout.addWidget(self.recipeListWidget)
+        self.recipeListWidget.setItemHeight(height=40)
+
+        recipeListButtonsLayout = QVBoxLayout()
+        addStepButton = widgets.addPushButton(' Add step ')
+        removeStepButton = widgets.subtractPushButton('Remove step')
+        removeStepButton.setDisabled(True)
+
+        recipeListButtonsLayout.addWidget(addStepButton)
+        recipeListButtonsLayout.addWidget(removeStepButton)
+        recipeListButtonsLayout.addStretch()
+        recipeListLayout.addLayout(recipeListButtonsLayout)
+
+        recipeListLayout.setStretch(0,1)
+        recipeListLayout.setStretch(1,0)
+
+        mainLayout.addLayout(recipeListLayout)
+
+        self.setLayout(mainLayout)
+
 class MultiTimePointFilePattern(QBaseDialog):
     def __init__(self, fileName, folderPath, readPatternFunc=None, parent=None):
         super().__init__(parent)
