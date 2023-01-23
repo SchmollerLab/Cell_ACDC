@@ -8988,60 +8988,9 @@ class guiWin(QMainWindow):
         how = self.drawIDsContComboBox.currentText()
         self.df_settings.at['how_draw_annotations', 'value'] = how
         self.df_settings.to_csv(self.settings_csv_path)
-        onlyIDs = how == 'Draw only IDs'
-        nothing = how == 'Draw nothing'
-        onlyCont = how == 'Draw only contours'
-        only_ccaInfo = how == 'Draw only cell cycle info'
-        ccaInfo_and_cont = how == 'Draw cell cycle info and contours'
-        onlyMothBudLines = how == 'Draw only mother-bud lines'
-        IDs_and_masks = how == 'Draw IDs and overlay segm. masks'
-        onlyMasks = how == 'Draw only overlay segm. masks'
-        ccaInfo_and_masks = how == 'Draw cell cycle info and overlay segm. masks'
-
-        how_ax2 = self.getAnnotateHowRightImage()
-
-        # if how.find('segm. masks') != -1:
-        #     self.imgGrad.labelsAlphaMenu.setDisabled(False)
-        # else:
-        #     self.imgGrad.labelsAlphaMenu.setDisabled(True)
-
-        # Clear contours if requested
-        if how.find('contours') == -1 or nothing:
-            for ax1ContCurve in self.ax1_ContoursCurves:
-                if ax1ContCurve is None:
-                    continue
-                if ax1ContCurve.getData()[0] is not None:
-                    ax1ContCurve.setData([], [])
-        
-        if how_ax2.find('contours') == -1 or how_ax2.find('nothing') != -1:
-            for ax2ContCurve in self.ax2_ContoursCurves:
-                if ax2ContCurve is None:
-                    continue
-                if ax2ContCurve.getData()[0] is not None:
-                    ax2ContCurve.setData([], [])
-
-        # Clear LabelItems IDs if requested (draw nothing or only contours)
-        if onlyCont or nothing or onlyMothBudLines:
-            for _IDlabel1 in self.ax1_LabelItemsIDs:
-                if _IDlabel1 is None:
-                    continue
-                _IDlabel1.setText('')
-
-        # Clear mother-bud lines if Requested
-        drawLines = (
-            only_ccaInfo or ccaInfo_and_cont or onlyMothBudLines 
-            or ccaInfo_and_masks
-        )
-        if not drawLines:
-            for BudMothLine in self.ax1_BudMothLines:
-                if BudMothLine is None:
-                    continue
-                if BudMothLine.getData()[0] is not None:
-                    BudMothLine.setData([], [])
 
         if self.eraserButton.isChecked():
             self.setTempImg1Eraser(None, init=True)
-
 
     def mousePressColorButton(self, event):
         posData = self.data[self.pos_i]
@@ -14880,6 +14829,7 @@ class guiWin(QMainWindow):
         how = self.getAnnotateHowRightImage()
         isMothBudLineActive = (
             how.find('mother-bud lines') != -1 or how.find('cell cycle') != -1
+            or self.drawMothBudLinesCheckboxRight.isChecked()
         )
         if not isMothBudLineActive:
             return
@@ -15071,7 +15021,7 @@ class guiWin(QMainWindow):
         # Draw line connecting mother and buds
         drawLines = (
             only_ccaInfo or ccaInfo_and_cont or onlyMothBudLines
-            or ccaInfo_and_masks
+            or ccaInfo_and_masks or self.drawMothBudLinesCheckbox.isChecked()
         )
         if drawLines and posData.cca_df is not None:
             self._drawMothBudLine(obj, posData)
@@ -18950,6 +18900,9 @@ class guiWin(QMainWindow):
             t = 'Draw nothing'
         else:
             t = 'Draw nothing'
+
+        if t == self.drawIDsContComboBox.currentText():
+            self.drawIDsContComboBox_cb(0)
         self.drawIDsContComboBox.setCurrentText(t)
 
     def setDrawAnnotComboboxTextRight(self):
@@ -18983,6 +18936,8 @@ class guiWin(QMainWindow):
         else:
             t = 'Draw nothing'
 
+        if t == self.annotateRightHowCombobox.currentText():
+            self.annotateRightHowCombobox_cb(0)
         self.annotateRightHowCombobox.setCurrentText(t)
     
     def getOverlayItems(self, channelName):
