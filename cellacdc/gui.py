@@ -5008,11 +5008,11 @@ class guiWin(QMainWindow):
         if not checked:
             self.highlightedID = 0
             self.initLookupTableLab()
-            self.updateALLimg()
         else:
             self.highlightedID = self.guiTabControl.propsQGBox.idSB.value()
             self.highlightSearchedID(self.highlightedID, force=True)
             self.updatePropsWidget(self.highlightedID)
+        self.updateALLimg()
 
     def updatePropsWidget(self, ID):
         if isinstance(ID, str):
@@ -5155,9 +5155,8 @@ class guiWin(QMainWindow):
             self.ax2_cursor.setData([], [])
 
         # Cursor left image --> restore cursor
-        if event.isExit() and self.app.overrideCursor() is not None:
-            while self.app.overrideCursor() is not None:
-                self.app.restoreOverrideCursor()
+        if event.isExit():
+            self.resetCursor()
 
         # Alt key was released --> restore cursor
         modifiers = QGuiApplication.keyboardModifiers()
@@ -10173,6 +10172,7 @@ class guiWin(QMainWindow):
                 return
             
             self.setUncheckedAllButtons()
+            self.setUncheckedAllCustomAnnotButtons()
             self.tempLayerImg1.setImage(self.emptyLab)
             self.isMouseDragImg1 = False
             self.typingEditID = False
@@ -10357,6 +10357,10 @@ class guiWin(QMainWindow):
         self.tempSegmentON = False
         self.isRightClickDragImg1 = False
         self.clearCurvItems(removeItems=False)
+    
+    def setUncheckedAllCustomAnnotButtons(self):
+        for button in self.customAnnotDict.keys():
+            button.setChecked(False)
 
     def propagateChange(
             self, modID, modTxt, doNotShow, UndoFutFrames,
@@ -11042,7 +11046,7 @@ class guiWin(QMainWindow):
             toolButton.setShortcut(keySequence)
         toolButton.setToolTip(toolTip)
         toolButton.name = annotName
-        toolButton.toggled.connect(self.customAnnotButtonClicked)
+        toolButton.toggled.connect(self.customAnnotButtonToggled)
         toolButton.sigRemoveAction.connect(self.removeCustomAnnotButton)
         toolButton.sigKeepActiveAction.connect(self.customAnnotKeepActive)
         toolButton.sigHideAction.connect(self.customAnnotHide)
@@ -11165,13 +11169,6 @@ class guiWin(QMainWindow):
 
         # Save to pos path
         for posData in self.data:
-            if not posData.customAnnot:
-                if os.path.exists(posData.custom_annot_json_path):
-                    try:
-                        os.remove(posData.custom_annot_json_path)
-                    except Exception as e:
-                        self.logger.info(traceback.format_exc())
-                continue
             with open(posData.custom_annot_json_path, mode='w') as file:
                 json.dump(posData.customAnnot, file, indent=2)
 
@@ -11296,9 +11293,10 @@ class guiWin(QMainWindow):
             self.highlightedID = 0
             self.highlightIDcheckBoxToggled(False)
 
-        return buttons[0]
+        if buttons:
+            return buttons[0]
 
-    def removeCustomAnnotButton(self, button):
+    def removeCustomAnnotButton(self, button, save=True):
         name = self.customAnnotDict[button]['state']['name']
         # remove annotation from position
         for posData in self.data:
@@ -11328,7 +11326,7 @@ class guiWin(QMainWindow):
 
         self.saveCustomAnnot()
 
-    def customAnnotButtonClicked(self, checked):
+    def customAnnotButtonToggled(self, checked):
         if checked:
             self.customAnnotButton = self.sender()
             # Uncheck the other buttons
@@ -11339,18 +11337,24 @@ class guiWin(QMainWindow):
                 button.toggled.disconnect()
                 self.clearScatterPlotCustomAnnotButton(button)
                 button.setChecked(False)                
-                button.toggled.connect(self.customAnnotButtonClicked)
+                button.toggled.connect(self.customAnnotButtonToggled)
             self.doCustomAnnotation(0)
         else:
             self.customAnnotButton = None
             button = self.sender()
-            if self.viewAllCustomAnnotAction.isChecked():
-                return
-            if not button.isHideChecked:
-                return
-            self.clearScatterPlotCustomAnnotButton(button)
-            self.highlightedID = 0
+            clearAnnotation = (
+                button.isHideChecked 
+                or not self.viewAllCustomAnnotAction.isChecked()
+            )
+            if clearAnnotation:    
+                self.clearScatterPlotCustomAnnotButton(button)
             self.highlightIDcheckBoxToggled(False)
+            self.resetCursor()
+    
+    def resetCursor(self):
+        if self.app.overrideCursor() is not None:
+            while self.app.overrideCursor() is not None:
+                self.app.restoreOverrideCursor()
 
     def segmFrameCallback(self, action):
         if action == self.addCustomModelFrameAction:
@@ -18084,7 +18088,7 @@ class guiWin(QMainWindow):
     def reinitCustomAnnot(self):
         buttons = list(self.customAnnotDict.keys())
         for button in buttons:
-            self.removeCustomAnnotButton(button)
+            self.removeCustomAnnotButton(button, save=False)
 
     def loadingDataAborted(self):
         self.openAction.setEnabled(True)
