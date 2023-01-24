@@ -499,28 +499,35 @@ def is_in_bounds(x,y,X,Y):
     return in_bounds
 
 def read_version(logger=None, return_success=False):
-    try:
-        from setuptools_scm import get_version
-        version = get_version(root='..', relative_to=__file__)
+    cellacdc_parent_path = os.path.dirname(cellacdc_path)
+    cellacdc_parent_folder = os.path.basename(cellacdc_parent_path)
+    if cellacdc_parent_folder == 'site-packages':
+        from . import __version__
+        version = __version__
         success = True
-    except Exception as e:
-        if logger is None:
-            logger = print
-        logger('*'*40)
-        logger(traceback.format_exc())
-        logger('-'*40)
-        logger(
-            '[WARNING]: Cell-ACDC could not determine the current version. '
-            'See details above.'
-        )
-        logger('='*40)
+    else:
         try:
-            from . import _version
-            version = _version.version
-            success = False
+            from setuptools_scm import get_version
+            version = get_version(root='..', relative_to=__file__)
+            success = True
         except Exception as e:
-            version = 'ND'
-            success = False
+            if logger is None:
+                logger = print
+            logger('*'*40)
+            logger(traceback.format_exc())
+            logger('-'*40)
+            logger(
+                '[WARNING]: Cell-ACDC could not determine the current version. '
+                'See details above.'
+            )
+            logger('='*40)
+            try:
+                from . import _version
+                version = _version.version
+                success = False
+            except Exception as e:
+                version = 'ND'
+                success = False
     
     if return_success:
         return version, success
@@ -1498,10 +1505,15 @@ def check_napari_plugin(plugin_name, module_name, parent=None):
         msg.critical(parent, f'Napari plugin required', txt)
         raise e
 
-def install_package(pkg_name: str, note='', parent=None, raise_on_cancel=True):
+def install_package(
+        pkg_name: str, pypi_name='setuptools-scm', note='', 
+        parent=None, raise_on_cancel=True
+    ):
     try:
         import_module(pkg_name)
     except ModuleNotFoundError:
+        if pypi_name:
+            pkg_name = pypi_name
         cancel = install_package_msg(pkg_name, note=note, parent=parent)
         if cancel:
             if raise_on_cancel:

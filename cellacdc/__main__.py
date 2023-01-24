@@ -1291,13 +1291,16 @@ def run():
 
     if not splashScreen.isVisible():
         splashScreen.show()
-
     
     win = mainWin(app)
     myutils.check_matplotlib_version(qparent=win)
-    version, success = myutils.read_version(logger=win.logger.info, return_success=True)
+    version, success = myutils.read_version(
+        logger=win.logger.info, return_success=True
+    )
     if not success:
-        error = myutils.install_package('setuptools-scm')
+        error = myutils.install_package(
+            'setuptools_scm', pypi_name='setuptools-scm'
+        )
         if error:
             win.logger.info(error)
         else:
