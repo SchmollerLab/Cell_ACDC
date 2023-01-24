@@ -2971,6 +2971,9 @@ class channelMetricsQGBox(QGroupBox):
         for checkbox in metricsQGBox.checkBoxes:
             checkbox.toggled.connect(self.standardMetricToggled)
             self.standardMetricToggled(checkbox.isChecked(), checkbox=checkbox)
+        
+        for bkgrCheckbox in bkgrValsQGBox.checkBoxes:
+            bkgrCheckbox.toggled.connect(self.backgroundMetricToggled)
 
         layout.addWidget(metricsQGBox)
         layout.addWidget(bkgrValsQGBox)
@@ -3009,12 +3012,49 @@ class channelMetricsQGBox(QGroupBox):
                 continue
 
             checkbox.setChecked(False)
-            checkbox.setDisabled(True)
+            checkbox.isDataPrepDisabled = True
+    
+    def _warnDataPrepCannotBeChecked(self):
+        txt = html_utils.paragraph("""
+            <b>Data prep measurements cannot be saved</b> because you did 
+            not select any background ROI at the data prep step.<br><br>
+
+            You can read more details about data prep metrics by clicking 
+            on the info button besides the measurement's name.<br><br>
+
+            Thank you for you patience!
+        """)
+        msg = myMessageBox(showCentered=False)
+        msg.warning(self, 'Metric cannot be saved', txt)
 
     def standardMetricToggled(self, checked, checkbox=None):
-        # IF user toggles the amount metric then make sure that bkgrval is checked too
+        """Method called when a check-box is toggled. It performs the following 
+        actions:
+            1. If the user try to check a data prep measurement, such as 
+            dataPrep_amount, and this cannot be saved (checkbox has the attr 
+            `isDataPrepDisabled`) then it warns and explains why it cannot be saved
+            2. Make sure that background value median is checked if the user 
+            required amount or concentration metric
+            3. Do not allow unchecking background value median and explain why
+
+        Parameters
+        ----------
+        checked : bool
+            State of the checkbox toggled
+        checkbox : QtWidgets.QCheckBox, optional
+            The checkbox that has been toggled, by default None. If None 
+            use `self.sender()`
+        """        
         if checkbox is None:
             checkbox = self.sender()
+
+        if hasattr(checkbox, 'isDataPrepDisabled'):
+            # Warn that user cannot check data prep metrics and uncheck it
+            if not checkbox.isChecked():
+                return
+            checkbox.setChecked(False)
+            self._warnDataPrepCannotBeChecked()
+            return
 
         self.sigCheckboxToggled.emit(checkbox)
         if checkbox.text().find('amount_') == -1:
@@ -3031,9 +3071,42 @@ class channelMetricsQGBox(QGroupBox):
         
         if checked:
             bkgrCheckbox.setChecked(True)
-            bkgrCheckbox.setDisabled(True)
+            bkgrCheckbox.isRequired = True
         else:
             bkgrCheckbox.setDisabled(False)
+            bkgrCheckbox.isRequired = False
+    
+    def backgroundMetricToggled(self, checked):
+        """Method called when a checkbox of a background metric is toggled.
+        Check if the background value is required and explain why it cannot be 
+        unchecked.
+
+        Parameters
+        ----------
+        checked : bool
+            State of the checkbox toggled
+        """
+
+        checkbox = self.sender()
+        if not hasattr(checkbox, 'isRequired'):
+            return
+        
+        if not checkbox.isRequired:
+            return
+        
+        if checkbox.isChecked():
+            return
+        
+        checkbox.setChecked(True)
+        txt = html_utils.paragraph("""
+            <b>This background value cannot be unchecked</b> because it is required 
+            by the <code>_amount</code> and <code>_concentration</code> measurements 
+            that you requested to save.<br><br>
+
+            Thank you for you patience!
+        """)
+        msg = myMessageBox(showCentered=False)
+        msg.warning(self, 'Background value required', txt)
     
     def onDelClicked(self, colname_to_del, hlayout):
         self.sigDelClicked.emit(colname_to_del, hlayout)

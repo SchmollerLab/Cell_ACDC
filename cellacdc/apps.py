@@ -1748,6 +1748,8 @@ class setMeasurementsDialog(QBaseDialog):
         )
         self.all_metrics.extend([c.text() for c in sizeMetricsQGBox.checkBoxes])
         self.sizeMetricsQGBox = sizeMetricsQGBox
+        for sizeCheckbox in sizeMetricsQGBox.checkBoxes:
+            sizeCheckbox.toggled.connect(self.sizeMetricToggled)
         groupsLayout.addWidget(sizeMetricsQGBox, 0, current_col)
         groupsLayout.setRowStretch(0, 1)
         groupsLayout.setColumnStretch(current_col, 3)
@@ -1847,7 +1849,7 @@ class setMeasurementsDialog(QBaseDialog):
         
         if checkbox.isChecked():
             sizeCheckbox.setChecked(True)
-            sizeCheckbox.setDisabled(True)
+            sizeCheckbox.isRequired = True
         else:
             # Do not enable cell vol checkbox is any of the other 
             # concentration metrics requiring it is checked
@@ -1864,9 +1866,45 @@ class setMeasurementsDialog(QBaseDialog):
                         continue
                     if _checkbox.isChecked():
                         return
-            sizeCheckbox.setDisabled(False)
-
+            sizeCheckbox.isRequired = False
     
+    def sizeMetricToggled(self, checked):
+        """Method called when a checkbox of a size metric is toggled.
+        Check if the size value is required and explain why it cannot be 
+        unchecked.
+
+        Parameters
+        ----------
+        checked : bool
+            State of the checkbox toggled
+        """
+
+        checkbox = self.sender()
+        if not hasattr(checkbox, 'isRequired'):
+            return
+        
+        if not checkbox.isRequired:
+            return
+        
+        if checkbox.isChecked():
+            return
+        
+        checkbox.setChecked(True)
+        linked_autoBkgr_metric = checkbox.text().replace('cell', '_autoBkgr_from')
+        linked_dataPrepBkgr_metric = checkbox.text().replace(
+            'cell', '_dataPrepBkgr_from'
+        )
+        txt = html_utils.paragraph(f"""
+            <b>This physical measurement cannot be unchecked</b> because it is required 
+            by the <code>{linked_autoBkgr_metric}</code> and 
+            <code>{linked_dataPrepBkgr_metric}</code> measurements 
+            that you requested to save.<br><br>
+
+            Thank you for you patience!
+        """)
+        msg = widgets.myMessageBox(showCentered=False)
+        msg.warning(self, 'Physical measurement required', txt)
+
     def deselectAll(self):
         for chNameGroupbox in self.chNameGroupboxes:
             for gb in chNameGroupbox.groupboxes:
