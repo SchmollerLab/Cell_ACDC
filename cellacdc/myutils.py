@@ -1634,6 +1634,7 @@ def import_tracker(posData, trackerName, realTime=False, qparent=None):
             if paramsWin.intensityImageChannel is not None:
                 chName = paramsWin.intensityImageChannel
                 track_params['image'] = posData.loadChannelData(chName)
+                track_params['image_channel_name'] = chName
     elif trackerName == 'CellACDC':
         paramsWin = apps.CellACDCTrackerParamsWin(parent=qparent)
         paramsWin.exec_()

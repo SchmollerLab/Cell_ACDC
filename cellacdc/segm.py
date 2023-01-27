@@ -364,8 +364,16 @@ class segmWorker(QRunnable):
                 np.savez_compressed(posData.segm_npz_path, lab_stack)
             
             self.track_params['signals'] = self.signals
-            if 'image' in self.track_params:
-                trackerInputImage = self.track_params.pop('image')
+            if self.image_chName_tracker:
+                # Check if loading the image for the tracker is required
+                if 'image' in self.track_params:
+                    trackerInputImage = self.track_params.pop('image')
+                else:
+                    self.signals.progress.emit(
+                        'Loading image data of channel '
+                        f'"{self.image_chName_tracker}"')
+                    trackerInputImage = posData.loadChannelData(
+                        self.image_chName_tracker)
                 try:
                     tracked_stack = self.tracker.track(
                         lab_stack, trackerInputImage, **self.track_params
@@ -1092,6 +1100,7 @@ class segmWin(QMainWindow):
                     self.close()
                     return
 
+            self.image_chName_tracker = ''
             if win.clickedButton in win._additionalButtons:
                 self.do_tracking = False
                 trackerName = ''
@@ -1108,6 +1117,11 @@ class segmWin(QMainWindow):
                     if abort:
                         self.close()
                         return
+                if 'image_channel_name' in self.track_params:
+                    # Store the channel name for the tracker for loading it 
+                    # in case of multiple pos
+                    self.image_chName_tracker = self.track_params.pop(
+                        'image_channel_name')
 
         self.progressLabel.setText('Starting main worker...')
 
