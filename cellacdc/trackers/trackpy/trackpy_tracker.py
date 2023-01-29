@@ -111,11 +111,21 @@ class tracker:
             )
             tracked_video[frame_i] = tracked_lab
 
-            # Used to update the progressbar of the gui
-            if signals is not None:
-                signals.progressBar.emit(1)
+            self.updateGuiProgressBar(signals)
         
         return tracked_video
+    
+    def updateGuiProgressBar(self, signals):
+        if signals is None:
+            return
+        
+        if hasattr(signals, 'innerPbar_available'):
+            if signals.innerPbar_available:
+                # Use inner pbar of the GUI widget (top pbar is for positions)
+                signals.innerProgressBar.emit(1)
+                return
+
+        signals.progressBar.emit(1)
             
 def url_help():
     return 'https://soft-matter.github.io/trackpy/v0.5.0/generated/trackpy.link.html#trackpy.link'

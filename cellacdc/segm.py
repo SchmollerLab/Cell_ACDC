@@ -30,6 +30,8 @@ from PyQt5 import QtGui
 # Custom modules
 from . import prompts, load, myutils, apps, core, dataPrep, widgets
 from . import qrc_resources, html_utils, printl
+from . import exception_handler
+from . import workers
 
 if os.name == 'nt':
     try:
@@ -56,6 +58,7 @@ class segmWorkerSignals(QObject):
     signal_close_tqdm = pyqtSignal()
     create_tqdm = pyqtSignal(int)
     debug = pyqtSignal(object)
+    critical = pyqtSignal(object)
 
 class segmWorker(QRunnable):
     def __init__(
@@ -85,12 +88,21 @@ class segmWorker(QRunnable):
         self.track_params = mainWin.track_params
         self.ROIdeactivatedByUser = mainWin.ROIdeactivatedByUser
         self.secondChannelName = mainWin.secondChannelName
+        self.image_chName_tracker = mainWin.image_chName_tracker
 
     def setupPausingItems(self):
         self.mutex = QMutex()
         self.waitCond = QWaitCondition()
 
+    @workers.worker_exception_handler
     def run(self):
+        try:
+            self._run()
+        except Exception as error:
+            self.signals.critical.emit(error)
+            self.signals.finished.emit(-1)
+
+    def _run(self):
         img_path = self.img_path
         user_ch_name = self.user_ch_name
 
@@ -362,7 +374,8 @@ class segmWorker(QRunnable):
                 # version which will eventually be overwritten
                 self.signals.progress.emit(f'Saving NON-tracked masks of {posData.relPath}...')
                 np.savez_compressed(posData.segm_npz_path, lab_stack)
-            
+
+            self.signals.innerPbar_available = self.innerPbar_available
             self.track_params['signals'] = self.signals
             if self.image_chName_tracker:
                 # Check if loading the image for the tracker is required
@@ -444,6 +457,9 @@ class segmWin(QMainWindow):
             module='segm'
         )
         self.logger = logger
+        self.log_path = log_path
+        self.log_filename = log_filename
+        self.logs_path = logs_path
 
         if self._version is not None:
             logger.info(f'Initializing Segmentation module v{self._version}...')
@@ -1138,7 +1154,7 @@ class segmWin(QMainWindow):
             else:
                 max += 1
 
-        # pBar will be updated three times per frame of each pos:
+        # pBar will be updated two times per frame of each pos:
         # 1. After segmentation
         # 2. After tracking
         if self.innerPbar_available:
@@ -1263,7 +1279,7 @@ class segmWin(QMainWindow):
         self.logTerminal = QTerminal()
         self.logTerminal.setReadOnly(True)
         font = QtGui.QFont()
-        font.setPointSize(8)
+        font.setPointSize(10)
         self.logTerminal.setFont(font)
         self.mainLayout.insertWidget(4, self.logTerminal)
 
@@ -1299,8 +1315,13 @@ class segmWin(QMainWindow):
         worker.signals.create_tqdm.connect(self.create_tqdm_pbar)
         worker.signals.progress_tqdm.connect(self.update_tqdm_pbar)
         worker.signals.signal_close_tqdm.connect(self.close_tqdm)
+        worker.signals.critical.connect(self.workerCritical)
         # worker.signals.debug.connect(self.debugSegmWorker)
         self.threadPool.start(worker)
+    
+    @exception_handler
+    def workerCritical(self, error):
+        raise error
 
     def debugSegmWorker(self, lab):
         apps.imshow_tk(lab)
@@ -1346,6 +1367,9 @@ class segmWin(QMainWindow):
         total_ETA = self.ETA_label.setText(f'ETA: {ETA}')
 
     def segmWorkerFinished(self, exec_time):
+        if exec_time == -1:
+            # Worker finished with error. Do not continue
+            return
         self.total_exec_time += exec_time
         self.threadIdx += 1
         if self.threadIdx < self.numPos:

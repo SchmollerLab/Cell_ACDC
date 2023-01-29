@@ -142,10 +142,21 @@ class tracker:
                 lab.copy(), rp, uniqueID
             )
             tracked_video[frame_i] = tracked_lab
-            if signals is not None:
-                signals.progressBar.emit(1)
+            self.updateGuiProgressBar(signals)
 
         return tracked_video
+    
+    def updateGuiProgressBar(self, signals):
+        if signals is None:
+            return
+        
+        if hasattr(signals, 'innerPbar_available'):
+            if signals.innerPbar_available:
+                # Use inner pbar of the GUI widget (top pbar is for positions)
+                signals.innerProgressBar.emit(1)
+                return
+
+        signals.progressBar.emit(1)
 
     def save_output(self):
         pass
