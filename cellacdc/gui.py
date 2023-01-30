@@ -18060,6 +18060,11 @@ class guiWin(QMainWindow):
     def loadingDataAborted(self):
         self.openAction.setEnabled(True)
         self.titleLabel.setText('Loading data aborted.')
+    
+    def cleanUpOnError(self):
+        txt = 'Cell-ACDC is in error state. Please restart.'
+        self.titleLabel.setText(txt)
+        self.logger.info(txt)
 
     def openFolder(
             self, checked=False, exp_path=None, imageFilePath=''

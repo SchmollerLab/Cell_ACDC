@@ -144,5 +144,9 @@ def exception_handler(func):
 
             msg.critical(self, 'Critical error', err_msg)
             self.is_error_state = True
+            try:
+                self.cleanUpOnError()
+            except Exception as e:
+                pass
         return result
     return inner_function
