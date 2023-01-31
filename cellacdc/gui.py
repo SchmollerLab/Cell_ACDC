@@ -12534,6 +12534,7 @@ class guiWin(QMainWindow):
         self.gui_connectGraphicsEvents()
         if not self.isEditActionsConnected:
             self.gui_connectEditActions()
+        self.navSpinBox.connectValueChanged(self.navigateSpinboxValueChanged)
 
         self.setFramesSnapshotMode()
         if self.isSnapshot:
@@ -12601,6 +12602,8 @@ class guiWin(QMainWindow):
 
         self.stopAutomaticLoadingPos()
         self.viewAllCustomAnnotAction.setChecked(True)
+
+        self.graphLayout.setFocus(True)
 
         # Overwrite axes viewbox context menu
         self.ax1.vb.menu = self.imgGrad.gradient.menu
@@ -18003,6 +18006,8 @@ class guiWin(QMainWindow):
 
     def reInitGui(self):
         self.gui_createLazyLoader()
+
+        self.navSpinBox.disconnect()
 
         self.isZmodifier = False
         self.zKeptDown = False
