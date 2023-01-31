@@ -69,6 +69,18 @@ def scipy_align(m1, m2, acdc_yeaz=True):
     d.pop(-1, None)
     return d
 
+def updateGuiProgressBar(signals):
+    if signals is None:
+        return
+    
+    if hasattr(signals, 'innerPbar_available'):
+        if signals.innerPbar_available:
+            # Use inner pbar of the GUI widget (top pbar is for positions)
+            signals.innerProgressBar.emit(1)
+            return
+
+    signals.progressBar.emit(1)
+
 def correspondence_stack(stack, signals=None):
     """
     source: YeaZ
@@ -84,8 +96,7 @@ def correspondence_stack(stack, signals=None):
         except IndexError:
             continue
         tracked_stack[idx+1] = correspondence(prev, curr)
-        if signals is not None:
-            signals.progressBar.emit(1)
+        updateGuiProgressBar(signals)
     # tracked_stack = relabel_sequential(tracked_stack)[0]
     return tracked_stack
 
