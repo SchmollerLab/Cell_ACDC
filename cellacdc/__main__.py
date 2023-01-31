@@ -123,6 +123,8 @@ try:
     spotmax_logo_path = os.path.join(spotmax_filepath, 'resources', 'logo.svg')
     SPOTMAX = True
 except Exception as e:
+    if not isinstance(e, ModuleNotFoundError):
+        traceback.print_exc()
     SPOTMAX = False
 
 class mainWin(QMainWindow):

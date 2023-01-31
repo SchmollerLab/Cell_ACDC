@@ -10120,7 +10120,7 @@ class guiWin(QMainWindow):
             if self.brushButton.isChecked():
                 self.typingEditID = False
             elif self.keepIDsButton.isChecked():
-                self.keepIDsConfirmAction.click()
+                self.keepIDsConfirmAction.trigger()
         elif ev.key() == Qt.Key_Escape:
             if self.keepIDsButton.isChecked() and self.keptObjectsIDs:
                 self.keptObjectsIDs = widgets.KeptObjectIDsList(
