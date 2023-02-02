@@ -38,6 +38,7 @@ cellacdc/javabridge_cp38
 cellacdc/javabridge_linux
 instructions/
 benchmarks/
+.vscode/
 env/*
 data/*
 !data/placeholder.txt
