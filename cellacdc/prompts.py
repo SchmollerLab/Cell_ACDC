@@ -128,7 +128,10 @@ class select_channel_name:
             if channel_names and basename is not None:
                 # Add additional channels existing as file but not in metadata.csv
                 for file in filenames:
-                    ends = [ext for ext in channelExt if file.endswith(ext)]
+                    ends = [
+                        ext for ext in channelExt if (file.endswith(ext) 
+                        and not file.endswith('btrack_tracks.h5'))
+                    ]
                     if ends:
                         endName = file[len(basename):]
                         chName = endName.replace(ends[0], '')
@@ -147,7 +150,7 @@ class select_channel_name:
             validFile = False
             if useExt is None:
                 validFile = True
-            elif ext in useExt:
+            elif ext in useExt and not file.endswith('btrack_tracks.h5'):
                 validFile = True
             elif any([file.endswith(end) for end in validEndnames]):
                 validFile = True

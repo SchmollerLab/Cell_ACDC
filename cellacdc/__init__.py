@@ -25,6 +25,8 @@ def printl(*objects, pretty=False, is_decorator=False, **kwargs):
     print(f'{timestap} - File "{filename}", line {callingframe_info.lineno}:')
     if 'sep' not in kwargs:
         kwargs['sep'] = ', '
+    if pretty:
+        del kwargs['sep']
     print_func(*objects, **kwargs)
     print('='*30)
     sys.stdout = current_stdout

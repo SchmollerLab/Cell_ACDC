@@ -439,15 +439,16 @@ class saveDataWorker(QObject):
 
             # Compute background values
             df = measurements.add_bkgr_values(
-                df, bkgr_data, bkgr_metrics_params, metrics_func
+                df, bkgr_data, bkgr_metrics_params[channel], metrics_func
             )
             
             foregr_data = measurements.get_foregr_data(foregr_img, isSegm3D, z)
+            how = list(foregr_data.keys())[0]
 
             # Iterate objects and compute foreground metrics
             df = measurements.add_foregr_metrics(
-                df, rp, channel, foregr_data, foregr_metrics_params, 
-                metrics_func, size_metrics_to_save, custom_metrics_params, 
+                df, rp, channel, foregr_data, foregr_metrics_params[channel], 
+                metrics_func, size_metrics_to_save, custom_metrics_params[channel], 
                 isSegm3D, yx_pxl_to_um2, vox_to_fl_3D, lab, foregr_img,
                 customMetricsCritical=self.customMetricsCritical
             )
@@ -1110,7 +1111,6 @@ class guiWin(QMainWindow):
             event.acceptProposedAction()
 
     def dropEvent(self, event):
-        printl(event)
         event.setDropAction(Qt.CopyAction)
         file_path = event.mimeData().urls()[0].toLocalFile()
         self.logger.info(f'Dragged and dropped path "{file_path}"')
@@ -10015,14 +10015,9 @@ class guiWin(QMainWindow):
         if ev.key() == Qt.Key_T:
             # self.setAllIDs()
             posData = self.data[self.pos_i]
-            buttons = list(self.customAnnotDict.keys())
-            for button, items in self.customAnnotDict.items():
-                printl(
-                    f'{items["state"]}\n'
-                    f'{items["annotatedIDs"]}'
-                )
-
-            printl(posData.customAnnot)
+            # printl(posData.fluo_data_dict.keys())
+            # for key in posData.fluo_data_dict:
+            #     printl(key, posData.fluo_data_dict[key].max())
             # printl(f'{posData.binnedIDs = }')
             # printl(f'{posData.ripIDs = }')
         if not self.dataIsLoaded:

@@ -1428,10 +1428,11 @@ def get_custom_metric_value(
         return traceback.format_exc(), np.nan
 
 def get_metrics_params(all_channels_metrics, metrics_func, custom_func_dict):
-    bkgr_metrics_params = {}
-    foregr_metrics_params = {}
+    channel_names = list(all_channels_metrics.keys())
+    bkgr_metrics_params = {ch:{} for ch in channel_names}
+    foregr_metrics_params = {ch:{} for ch in channel_names}
     concentration_metrics_params = {}
-    custom_metrics_params = {}
+    custom_metrics_params = {ch:{} for ch in channel_names}
     az = r'[A-Za-z0-9]'
     bkgrVal_pattern = fr'_({az}+)_bkgrVal_({az}+)_?({az}*)'
 
@@ -1441,7 +1442,9 @@ def get_metrics_params(all_channels_metrics, metrics_func, custom_func_dict):
             if m:
                 # The metric is a bkgrVal metric
                 bkgr_type, func_name, how = m[0]
-                bkgr_metrics_params[col] = (bkgr_type, func_name, how)
+                bkgr_metrics_params[channel_name][col] = (
+                    bkgr_type, func_name, how
+                )
                 continue
             
             is_standard_foregr = False
@@ -1451,7 +1454,7 @@ def get_metrics_params(all_channels_metrics, metrics_func, custom_func_dict):
                 if m:
                     # Metric is a standard metric 
                     func_name, how = m[0]
-                    foregr_metrics_params[col] = (func_name, how)
+                    foregr_metrics_params[channel_name][col] = (func_name, how)
                     is_standard_foregr = True
                     break
             
@@ -1475,7 +1478,7 @@ def get_metrics_params(all_channels_metrics, metrics_func, custom_func_dict):
                 if m:
                     # Metric is a standard metric 
                     func_name, how = m[0]
-                    custom_metrics_params[col] = (custom_func, how)
+                    custom_metrics_params[channel_name][col] = (custom_func, how)
                     break
     
     params = (
