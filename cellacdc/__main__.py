@@ -1295,7 +1295,10 @@ def run():
         splashScreen.show()
     
     win = mainWin(app)
-    myutils.check_matplotlib_version(qparent=win)
+    try:
+        myutils.check_matplotlib_version(qparent=win)
+    except Exception as e:
+        pass
     version, success = myutils.read_version(
         logger=win.logger.info, return_success=True
     )

@@ -9797,21 +9797,34 @@ class QDialogModelParams(QDialog):
         if postProcessSection not in self.configPars.sections():
             return
 
-        minSize = self.configPars.getint(
-            postProcessSection, 'minSize', fallback=10
-        )
-        minSolidity = self.configPars.getfloat(
-            postProcessSection, 'minSolidity', fallback=0.5
-        )
-        maxElongation = self.configPars.getfloat(
-            postProcessSection, 'maxElongation', fallback=3
-        )
+        try:
+            minSize = self.configPars.getint(
+                postProcessSection, 'minSize', fallback=10
+            )
+        except ValueError:
+            minSize = 10
+
+        try:
+            minSolidity = self.configPars.getfloat(
+                postProcessSection, 'minSolidity', fallback=0.5
+            )
+        except ValueError:
+            minSolidity = 0.5
+
+        try: 
+            maxElongation = self.configPars.getfloat(
+                postProcessSection, 'maxElongation', fallback=3
+            )
+        except ValueError:
+            maxElongation = 3
+        
         try:
             minObjSizeZ = self.configPars.getint(
                 postProcessSection, 'min_obj_no_zslices', fallback=3
             )
         except ValueError:
             minObjSizeZ = 3
+        
         kwargs = {
             'min_solidity': minSolidity,
             'min_area': minSize,
