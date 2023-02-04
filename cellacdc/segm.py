@@ -1078,6 +1078,7 @@ class segmWin(QMainWindow):
             isROIactive = posData.dataPrep_ROIcoords.at['cropped', 'value'] == 0
             x0, x1, y0, y1 = posData.dataPrep_ROIcoords['value'][:4]
 
+        self.image_chName_tracker = ''
         self.do_tracking = False
         self.tracker = None
         self.track_params = {}
