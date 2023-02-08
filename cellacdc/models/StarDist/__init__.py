@@ -2,43 +2,22 @@ import os
 import sys
 import subprocess
 
-try:
-    import tensorflow
-except ModuleNotFoundError:
-    pkg_name = 'tensorflow'
-    from cellacdc import myutils
-    note = ''
-    if sys.platform == 'darwin':
-        note = ("""
-        <p style="font-size:13px">
-            <b>NOTE for M1 mac users</b>: if you are using one of the latest Mac with
-            M1 Apple Silicon processor <b>cancel this operation</b> and follow the
-            instructions you can find
-            <a href="https://github.com/SchmollerLab/Cell_ACDC/issues/8">
-                here.
-            </a>
-        </p>
-        """)
-    cancel = myutils.install_package_msg(pkg_name, note=note)
-    if cancel:
-        raise ModuleNotFoundError(
-            f'User aborted {pkg_name} installation'
-        )
-    myutils.install_tensorflow()
+from cellacdc import myutils
 
-try:
-    import stardist
-except ModuleNotFoundError:
-    pkg_name = 'StarDist'
-    from cellacdc import myutils
-    cancel = myutils.install_package_msg(pkg_name)
-    if cancel:
-        raise ModuleNotFoundError(
-            f'User aborted {pkg_name} installation'
-        )
-    subprocess.check_call(
-        [sys.executable, '-m', 'pip', 'install', 'stardist']
-    )
+note = ''
+if sys.platform == 'darwin':
+    note = ("""
+    <p style="font-size:13px">
+        <b>NOTE for M1 mac users</b>: if you are using one of the latest Mac with
+        M1 Apple Silicon processor <b>cancel this operation</b> and follow the
+        instructions you can find
+        <a href="https://github.com/SchmollerLab/Cell_ACDC/issues/8">
+            here.
+        </a>
+    </p>
+    """)
+myutils.check_install_package('tensorflow', note=note)
+myutils.check_install_package('stardist')
 
 import sys
 import tensorflow

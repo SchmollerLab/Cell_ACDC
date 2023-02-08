@@ -1505,8 +1505,23 @@ def check_napari_plugin(plugin_name, module_name, parent=None):
         msg.critical(parent, f'Napari plugin required', txt)
         raise e
 
-def install_package(
-        pkg_name: str, pypi_name='setuptools-scm', note='', 
+def _install_pip_package(pkg_name):
+    subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-U', pkg_name])
+
+def check_install_cellpose():
+    check_install_package('cellpose')
+    try:
+        import pkg_resources
+        version = pkg_resources.get_distribution("cellpose").version
+        major = int(version.split('.')[0])
+        if major < 2:
+            _install_pip_package('cellpose')
+    except Exception as e:
+        _inform_install_package_failed('cellpose')
+            
+
+def check_install_package(
+        pkg_name: str, pypi_name='', note='', 
         parent=None, raise_on_cancel=True
     ):
     try:
@@ -1514,7 +1529,7 @@ def install_package(
     except ModuleNotFoundError:
         if pypi_name:
             pkg_name = pypi_name
-        cancel = install_package_msg(pkg_name, note=note, parent=parent)
+        cancel = _install_package_msg(pkg_name, note=note, parent=parent)
         if cancel:
             if raise_on_cancel:
                 raise ModuleNotFoundError(
@@ -1523,15 +1538,14 @@ def install_package(
             else:
                 return traceback.format_exc()
         try:
-            subprocess.check_call(
-                [sys.executable, '-m', 'pip', 'install', pkg_name]
-            )
-        except Exception as e:
-            inform_install_package_failed(pkg_name, parent=parent)
-            if raise_on_cancel:
-                raise e
+            if pkg_name == 'tensorflow':
+                _install_tensorflow()
             else:
-                return traceback.format_exc()
+                _install_pip_package(pkg_name)
+        except Exception as e:
+            _inform_install_package_failed(
+                pkg_name, parent=parent, do_exit=raise_on_cancel
+            )
 
 def get_chained_attr(_object, _name):
     for attr in _name.split('.'):
@@ -1545,7 +1559,7 @@ def check_matplotlib_version(qparent=None):
 
     mpl_version = float(f'{mpl_version_digits[0]}.{mpl_version_digits[1]}')
     if mpl_version < 3.5:
-        cancel = install_package_msg('matplotlib', parent=qparent, upgrade=True)
+        cancel = _install_package_msg('matplotlib', parent=qparent, upgrade=True)
         if cancel:
             raise ModuleNotFoundError(
                 f'User aborted "matplotlib" installation'
@@ -1556,24 +1570,33 @@ def check_matplotlib_version(qparent=None):
                 [sys.executable, '-m', 'pip', 'install', '-U', 'matplotlib']
             )
         except Exception as e:
-            inform_install_package_failed('matplotlib', parent=qparent)
-            raise e
+            _inform_install_package_failed(
+                'matplotlib', parent=qparent, do_exit=False
+            )
             
-
-def inform_install_package_failed(pkg_name, parent=None):
-    install_command = f'<code>pip install --upgrade {pkg_name.lower()}</code>'
+def _inform_install_package_failed(pkg_name, parent=None, do_exit=True):
+    install_command = f'<code>pip install --upgrade {pkg_name}</code>'
     txt = html_utils.paragraph(f"""
         Unfortunately, <b>installation of</b> <code>{pkg_name}</code> <b>returned an error</b>.<br><br>
         Try restarting Cell-ACDC. If it doesn't work, 
         please close Cell-ACDC and, with the <code>acdc</code> <b>environment ACTIVE</b>, 
-        install <code>{pkg_name}</code> manually with the follwing command:<br><br>
+        install <code>{pkg_name}</code> manually using the follwing command:<br><br>
         {install_command}<br><br>
         Thank you for your patience.
     """)
     msg = widgets.myMessageBox()
     msg.critical(parent, f'{pkg_name} installation failed', txt)
+    print('*'*50)
+    print(
+        f'[ERROR]: Installation of "{pkg_name}" failed. '
+        f'Please, close Cell-ACDC and run the command '
+        f'`pip install --upgrade {pkg_name}`'
+    )
+    print('^'*50)
+    if do_exit:
+        exit()
 
-def install_package_msg(pkg_name, note='', parent=None, upgrade=False):
+def _install_package_msg(pkg_name, note='', parent=None, upgrade=False):
     msg = widgets.myMessageBox(parent=parent)
     if upgrade:
         install_text = 'upgrade'
@@ -1603,12 +1626,12 @@ def install_package_msg(pkg_name, note='', parent=None, upgrade=False):
     msg.exec_()
     return msg.clickedButton == cancel
 
-def install_tensorflow():
+def _install_tensorflow():
     cpu = platform.processor()
     if is_mac and cpu == 'arm':
         args = ['conda', 'install', '-y', '-c', 'conda-forge', 'tensorflow']
     else:
-        args = [sys.executable, '-m', 'pip', 'install', '-y', 'tensorflow']
+        args = [sys.executable, '-m', 'pip', 'install', '-U', 'tensorflow']
     subprocess.check_call(args)
 
 def import_tracker(posData, trackerName, realTime=False, qparent=None):

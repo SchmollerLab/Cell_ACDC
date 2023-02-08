@@ -763,12 +763,12 @@ class mainWin(QMainWindow):
 
     
     def launchNapariUtil(self, action):
-        myutils.install_package('napari', parent=self)
+        myutils.check_install_package('napari', parent=self)
         if action == self.arboretumAction:
             self._launchArboretum()
 
     def _launchArboretum(self):
-        myutils.install_package('napari_arboretum', parent=self)
+        myutils.check_install_package('napari_arboretum', parent=self)
 
         from cellacdc.napari_utils import arboretum
         
@@ -784,7 +784,7 @@ class mainWin(QMainWindow):
         self.arboretumWindow.show()
     
     def launchToImageJroiUtil(self):
-        myutils.install_package('roifile', parent=self)
+        myutils.check_install_package('roifile', parent=self)
 
         import roifile
 
@@ -1303,7 +1303,7 @@ def run():
         logger=win.logger.info, return_success=True
     )
     if not success:
-        error = myutils.install_package(
+        error = myutils.check_install_package(
             'setuptools_scm', pypi_name='setuptools-scm'
         )
         if error:
