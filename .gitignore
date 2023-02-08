@@ -24,6 +24,7 @@ cellacdc/metrics/*
 !cellacdc/metrics/CV.py
 !cellacdc/metrics/combine_metrics_example.py
 cellacdc/models/beno
+cellacdc/models/test_segm_model
 cellacdc/trackers/example
 cellacdc/test_qt_app.py
 cellacdc/test_qthread.py

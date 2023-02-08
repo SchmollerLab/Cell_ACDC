@@ -746,11 +746,16 @@ def getModelArgSpec(acdcSegment):
             init_params.append(param)
 
     segment_ArgSpec = inspect.getfullargspec(acdcSegment.Model.segment)
+    segment_kwargs_type_hints = typing.get_type_hints(acdcSegment.Model.segment)
     segment_params = []
     if len(segment_ArgSpec.args)>2:
         iter = zip(segment_ArgSpec.args[2:], segment_ArgSpec.defaults)
         for arg, default in iter:
-            param = ArgSpec(name=arg, default=default, type=type(default))
+            if arg in segment_kwargs_type_hints:
+                _type = segment_kwargs_type_hints[arg]
+            else:
+                _type = type(default)
+            param = ArgSpec(name=arg, default=default, type=_type)
             segment_params.append(param)
     return init_params, segment_params
 

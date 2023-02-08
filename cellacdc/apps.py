@@ -9538,8 +9538,7 @@ class QDialogModelParams(QDialog):
         self.scrollArea.setVerticalLayout(scrollAreaLayout)
         
         initGroupBox, self.init_argsWidgets = self.createGroupParams(
-            init_params,
-            'Parameters for model initialization'
+            init_params, 'Parameters for model initialization'
         )
         initDefaultButton = widgets.reloadPushButton('Restore default')
         initLoadLastSelButton = QPushButton('Load last parameters')
@@ -9589,6 +9588,7 @@ class QDialogModelParams(QDialog):
         cancelButton.clicked.connect(self.close)
         # restoreDefaultButton.clicked.connect(self.restoreDefault)
 
+        scrollAreaLayout.addWidget(initGroupBox)
         scrollAreaLayout.addLayout(initButtonsLayout)
         scrollAreaLayout.addSpacing(15)
         scrollAreaLayout.addStretch(1)
@@ -9656,7 +9656,7 @@ class QDialogModelParams(QDialog):
     def createGroupParams(self, ArgSpecs_list, groupName, addChannelSelector=False):
         ArgWidget = namedtuple(
             'ArgsWidgets',
-            ['name', 'type', 'widget', 'defaultVal', 'valueSetter']
+            ['name', 'type', 'widget', 'defaultVal', 'valueSetter', 'valueGetter']
         )
         ArgsWidgets_list = []
         groupBox = QGroupBox(groupName)
@@ -9675,6 +9675,12 @@ class QDialogModelParams(QDialog):
             var_name = ArgSpec.name.replace('_', ' ').title()
             label = QLabel(f'{var_name}:  ')
             groupBoxLayout.addWidget(label, row, 0, alignment=Qt.AlignRight)
+            try:
+                values = ArgSpec.type().values
+                if all([isinstance(val, str) for val in values]):
+                    isCustomListType = True
+            except Exception as e:
+                isCustomListType = False
             if ArgSpec.type == bool:
                 booleanGroup = QButtonGroup()
                 booleanGroup.setExclusive(True)
@@ -9692,6 +9698,7 @@ class QDialogModelParams(QDialog):
                     falseRadioButton.setChecked(True)
                     defaultVal = False
                 valueSetter = QRadioButton.setChecked
+                valueGetter = QRadioButton.isChecked
                 widget = trueRadioButton
                 groupBoxLayout.addWidget(trueRadioButton, row, 1)
                 groupBoxLayout.addWidget(falseRadioButton, row, 2)
@@ -9702,6 +9709,7 @@ class QDialogModelParams(QDialog):
                 spinBox.setValue(ArgSpec.default)
                 defaultVal = ArgSpec.default
                 valueSetter = QSpinBox.setValue
+                valueGetter = QSpinBox.value
                 widget = spinBox
                 groupBoxLayout.addWidget(spinBox, row, 1, 1, 2)
             elif ArgSpec.type == float:
@@ -9712,6 +9720,7 @@ class QDialogModelParams(QDialog):
                 widget = doubleSpinBox
                 defaultVal = ArgSpec.default
                 valueSetter = QDoubleSpinBox.setValue
+                valueGetter = QDoubleSpinBox.value
                 groupBoxLayout.addWidget(doubleSpinBox, row, 1, 1, 2)
             elif ArgSpec.type == os.PathLike:
                 filePathControl = widgets.filePathControl()
@@ -9719,7 +9728,18 @@ class QDialogModelParams(QDialog):
                 widget = filePathControl
                 defaultVal = str(ArgSpec.default)
                 valueSetter = widgets.filePathControl.setText
+                valueGetter = widgets.filePathControl.path
                 groupBoxLayout.addWidget(filePathControl, row, 1, 1, 2)
+            elif isCustomListType:
+                items = ArgSpec.type().values
+                defaultVal = str(ArgSpec.default)
+                combobox = QComboBox()
+                combobox.addItems(items)
+                combobox.setCurrentText(defaultVal)
+                valueSetter = QComboBox.setCurrentText
+                valueGetter = QComboBox.currentText
+                widget = combobox
+                groupBoxLayout.addWidget(combobox, row, 1, 1, 2)
             else:
                 lineEdit = QLineEdit()
                 lineEdit.setText(str(ArgSpec.default))
@@ -9727,6 +9747,7 @@ class QDialogModelParams(QDialog):
                 widget = lineEdit
                 defaultVal = str(ArgSpec.default)
                 valueSetter = QLineEdit.setText
+                valueGetter = QComboBox.text
                 groupBoxLayout.addWidget(lineEdit, row, 1, 1, 2)
 
             argsInfo = ArgWidget(
@@ -9734,7 +9755,8 @@ class QDialogModelParams(QDialog):
                 type=ArgSpec.type,
                 widget=widget,
                 defaultVal=defaultVal,
-                valueSetter=valueSetter
+                valueSetter=valueSetter,
+                valueGetter=valueGetter
             )
             ArgsWidgets_list.append(argsInfo)
 
@@ -9890,20 +9912,10 @@ class QDialogModelParams(QDialog):
         return seeHereLabel
 
     def argsWidgets_to_kwargs(self, argsWidgets):
-        kwargs_dict = {}
-        for argWidget in argsWidgets:
-            if argWidget.type == bool:
-                kwargs_dict[argWidget.name] = argWidget.widget.isChecked()
-            elif argWidget.type == int or argWidget.type == float:
-                kwargs_dict[argWidget.name] = argWidget.widget.value()
-            elif argWidget.type == str:
-                kwargs_dict[argWidget.name] = argWidget.widget.text()
-            elif argWidget.type == os.PathLike:
-                kwargs_dict[argWidget.name] = argWidget.widget.path()
-            else:
-                to_type = argWidget.type
-                s = argWidget.widget.text()
-                kwargs_dict[argWidget.name] = eval(s)
+        kwargs_dict = {
+            argWidget.name:argWidget.valueGetter(argWidget.widget)
+            for argWidget in argsWidgets
+        }
         return kwargs_dict
 
     def ok_cb(self, checked):
@@ -9966,7 +9978,12 @@ class QDialogModelParams(QDialog):
             self.loop.exit()
     
     def showEvent(self, event) -> None:
-        printl(self.height())
+        height = self.scrollArea.minimumHeightNoScrollbar() + 70
+        self.move(self.pos().x(), 20)
+        screenHeight = self.screen().size().height()
+        if height >= screenHeight - 100:
+            height = screenHeight - 100
+        self.resize(self.width(), height)
 
 class downloadModel(QMessageBox):
     def __init__(self, model_name, parent=None):
