@@ -1241,6 +1241,13 @@ class ScrollArea(QScrollArea):
             + self.verticalScrollBar().width()
         )
     
+    def minimumHeightNoScrollbar(self) -> int:
+        height = (
+            self.containerWidget.minimumSizeHint().height()
+            + self.horizontalScrollBar().height()
+        )
+        return height
+    
     def _resizeVertical(self):
         height = (
             self.containerWidget.minimumSizeHint().height()
@@ -1249,7 +1256,6 @@ class ScrollArea(QScrollArea):
         self.containerWidget.setSizePolicy(
             QSizePolicy.Preferred, QSizePolicy.Preferred
         )
-        self.setFixedHeight(height)
 
     def eventFilter(self, object, event):
         if object != self.containerWidget:

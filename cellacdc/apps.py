@@ -9533,6 +9533,10 @@ class QDialogModelParams(QDialog):
 
         loadFunc = self.loadLastSelection
 
+        self.scrollArea = widgets.ScrollArea()
+        scrollAreaLayout = QVBoxLayout()
+        self.scrollArea.setVerticalLayout(scrollAreaLayout)
+        
         initGroupBox, self.init_argsWidgets = self.createGroupParams(
             init_params,
             'Parameters for model initialization'
@@ -9585,12 +9589,11 @@ class QDialogModelParams(QDialog):
         cancelButton.clicked.connect(self.close)
         # restoreDefaultButton.clicked.connect(self.restoreDefault)
 
-        mainLayout.addWidget(initGroupBox)
-        mainLayout.addLayout(initButtonsLayout)
-        mainLayout.addSpacing(15)
-        mainLayout.addStretch(1)
-        mainLayout.addWidget(segmentGroupBox)
-        mainLayout.addLayout(segmentButtonsLayout)
+        scrollAreaLayout.addLayout(initButtonsLayout)
+        scrollAreaLayout.addSpacing(15)
+        scrollAreaLayout.addStretch(1)
+        scrollAreaLayout.addWidget(segmentGroupBox)
+        scrollAreaLayout.addLayout(segmentButtonsLayout)
 
         # Add minimum size spinbox whihc is valid for all models
         artefactsGroupBox = postProcessSegmParams(
@@ -9600,9 +9603,9 @@ class QDialogModelParams(QDialog):
         artefactsGroupBox.setChecked(True)
         self.artefactsGroupBox = artefactsGroupBox
 
-        mainLayout.addSpacing(15)
-        mainLayout.addStretch(1)
-        mainLayout.addWidget(artefactsGroupBox)
+        scrollAreaLayout.addSpacing(15)
+        scrollAreaLayout.addStretch(1)
+        scrollAreaLayout.addWidget(artefactsGroupBox)
 
         postProcDefaultButton = widgets.reloadPushButton('Restore default')
         postProcLoadLastSelButton = QPushButton('Load last parameters')
@@ -9614,18 +9617,16 @@ class QDialogModelParams(QDialog):
         postProcLoadLastSelButton.clicked.connect(
             self.loadLastSelectionPostProcess
         )
-        mainLayout.addLayout(postProcButtonsLayout)
+        scrollAreaLayout.addLayout(postProcButtonsLayout)
 
         if url is not None:
-            mainLayout.addWidget(
-                self.createSeeHereLabel(url),
-                alignment=Qt.AlignCenter
+            scrollAreaLayout.addWidget(
+                self.createSeeHereLabel(url), alignment=Qt.AlignCenter
             )
 
+        mainLayout.addWidget(self.scrollArea)
         mainLayout.addSpacing(20)
         mainLayout.addLayout(buttonsLayout)
-
-        self.setLayout(mainLayout)
 
         self.configPars = self.readLastSelection()
         if self.configPars is None:
@@ -9638,6 +9639,8 @@ class QDialogModelParams(QDialog):
             segmentLoadLastSelButton.click()
         
         postProcLoadLastSelButton.click()
+
+        self.setLayout(mainLayout)
 
         # self.setModal(True)
     
@@ -9961,6 +9964,9 @@ class QDialogModelParams(QDialog):
     def closeEvent(self, event):
         if hasattr(self, 'loop'):
             self.loop.exit()
+    
+    def showEvent(self, event) -> None:
+        printl(self.height())
 
 class downloadModel(QMessageBox):
     def __init__(self, model_name, parent=None):
