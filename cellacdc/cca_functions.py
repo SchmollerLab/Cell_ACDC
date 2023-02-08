@@ -493,7 +493,7 @@ def _calc_rot_vol(obj, PhysicalSizeY=1, PhysicalSizeX=1, logger=None):
 
     Notes
     -------
-    For 3D objects we take the z-slice passing through the centroid
+    For 3D objects we take max projection
 
     We convert PhysicalSizeY and PhysicalSizeX to float because when they are
     read from csv they might be a string value.
