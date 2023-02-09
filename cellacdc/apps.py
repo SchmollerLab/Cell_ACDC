@@ -9747,7 +9747,7 @@ class QDialogModelParams(QDialog):
                 widget = lineEdit
                 defaultVal = str(ArgSpec.default)
                 valueSetter = QLineEdit.setText
-                valueGetter = QComboBox.text
+                valueGetter = QLineEdit.text
                 groupBoxLayout.addWidget(lineEdit, row, 1, 1, 2)
 
             argsInfo = ArgWidget(
