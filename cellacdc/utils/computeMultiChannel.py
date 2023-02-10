@@ -139,7 +139,6 @@ class ComputeMetricsMultiChannel(NewThreadMultipleExpBaseUtil):
         win.exec_()
     
     def workerFinished(self, worker, aborted=False):
-        
         if aborted:
             txt = 'Combining multiple channels measurements aborted.'
             isWarning = True
@@ -148,7 +147,10 @@ class ComputeMetricsMultiChannel(NewThreadMultipleExpBaseUtil):
             self.warnErrors(worker.errors)
             isWarning = True
         else:
-            txt = 'Combining multiple channels measurements completed.'
+            txt = html_utils.paragraph(
+                'Combining multiple channels measurements completed.<br><br>'
+                'Results were saved in the respective Position folder(s).'
+            )
             isWarning = False
         self.logger.info(txt)
         msg = widgets.myMessageBox(wrapText=False, showCentered=False)

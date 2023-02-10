@@ -10751,7 +10751,7 @@ class CombineMetricsMultiDfsDialog(QBaseDialog):
                     channelTreeItem.addChild(customMetricsTreeItem)
                     self.addTreeItems(
                         customMetricsTreeItem, custom_metrics, 
-                        sCol=True, index=i
+                        isCol=True, index=i
                     )
 
             if classified_metrics['size']:

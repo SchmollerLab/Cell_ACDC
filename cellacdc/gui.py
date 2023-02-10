@@ -331,6 +331,7 @@ class saveDataWorker(QObject):
     metricsPbarProgress = pyqtSignal(int, int)
     askZsliceAbsent = pyqtSignal(str, object)
     customMetricsCritical = pyqtSignal(str, str)
+    sigCombinedMetricsMissingColumn = pyqtSignal(str, str)
 
     def __init__(self, mainWin):
         QObject.__init__(self)
@@ -481,7 +482,12 @@ class saveDataWorker(QObject):
     def _dfEvalEquation(self, df, newColName, expr):
         try:
             df[newColName] = df.eval(expr)
-        except Exception as e:
+        except pd.errors.UndefinedVariableError as error:
+            self.sigCombinedMetricsMissingColumn.emit(str(error), newColName)
+        
+        try:
+             df[newColName] = df.eval(expr)
+        except Exception as error:
             self.customMetricsCritical.emit(
                 traceback.format_exc(), newColName
             )
@@ -18002,7 +18008,10 @@ class guiWin(QMainWindow):
     def reInitGui(self):
         self.gui_createLazyLoader()
 
-        self.navSpinBox.disconnect()
+        try:
+            self.navSpinBox.disconnect()
+        except Exception as e:
+            pass
 
         self.isZmodifier = False
         self.zKeptDown = False
@@ -18063,8 +18072,9 @@ class guiWin(QMainWindow):
     
     def cleanUpOnError(self):
         txt = 'Cell-ACDC is in error state. Please restart.'
+        _hl = '===================================='
         self.titleLabel.setText(txt)
-        self.logger.info(txt)
+        self.logger.info(f'{_hl}\n{txt}\n{_hl}')
 
     def openFolder(
             self, checked=False, exp_path=None, imageFilePath=''
@@ -19611,30 +19621,33 @@ class guiWin(QMainWindow):
 
     def saveDataCustomMetricsCritical(self, traceback_format, func_name):
         self.logger.info('')
-        print('====================================')
-        self.logger.info(traceback_format)
-        print('====================================')
+        _hl = '===================================='
+        self.logger.info(f'{_hl}\n{traceback_format}\n{_hl}')
         self.worker.customMetricsErrors[func_name] = traceback_format
+    
+    def saveDataCombinedMetricsMissingColumn(self, error_msg, func_name):
+        self.logger.info('')
+        warning = f'[WARNING]: {error_msg}. Metric {func_name} was skipped.'
+        _hl = '===================================='
+        self.logger.info(f'{_hl}\n{warning}\n{_hl}')
+        self.worker.customMetricsErrors[func_name] = warning
     
     def saveDataAddMetricsCritical(self, traceback_format, error_message):
         self.logger.info('')
-        print('====================================')
-        self.logger.info(traceback_format)
-        print('====================================')
+        _hl = '===================================='
+        self.logger.info(f'{_hl}\n{traceback_format}\n{_hl}')
         self.worker.addMetricsErrors[error_message] = traceback_format
     
     def saveDataRegionPropsCritical(self, traceback_format, error_message):
         self.logger.info('')
-        print('====================================')
-        self.logger.info(traceback_format)
-        print('====================================')
+        _hl = '===================================='
+        self.logger.info(f'{_hl}\n{traceback_format}\n{_hl}')
         self.worker.regionPropsErrors[error_message] = traceback_format
 
     def saveDataCritical(self, traceback_format):
         self.logger.info('')
-        print('====================================')
-        self.logger.info(traceback_format)
-        print('====================================')
+        _hl = '===================================='
+        self.logger.info(f'{_hl}\n{traceback_format}\n{_hl}')
         msg = QMessageBox(self)
         msg.setIcon(msg.Critical)
         msg.setWindowTitle('Error')
@@ -19787,6 +19800,9 @@ class guiWin(QMainWindow):
         self.worker.critical.connect(self.saveDataCritical)
         self.worker.customMetricsCritical.connect(
             self.saveDataCustomMetricsCritical
+        )
+        self.worker.sigCombinedMetricsMissingColumn.connect(
+            self.saveDataCombinedMetricsMissingColumn
         )
         self.worker.addMetricsCritical.connect(self.saveDataAddMetricsCritical)
         self.worker.regionPropsCritical.connect(

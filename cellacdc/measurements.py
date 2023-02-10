@@ -348,6 +348,7 @@ def combine_mixed_channels_desc(posData=None, isSegm3D=False, available_cols=Non
         all_equations = {**equations, **pos_equations}
     
     if available_cols is not None:
+        # Check that user folder combine metrics have the right columns
         available_desc = {}
         available_equations = {}
         for name, equation in all_equations.items():

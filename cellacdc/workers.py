@@ -2125,7 +2125,7 @@ class ComputeMetricsMultiChannelWorker(BaseWorkerUtil):
         
         return True
     
-    def addEquationsToConfigPars(cp, selectedAcdcOutputEndnames, equations):
+    def addEquationsToConfigPars(self, cp, selectedAcdcOutputEndnames, equations):
         section = [
             f'df{i+1}:{end}' for i, end in enumerate(selectedAcdcOutputEndnames)
         ]
