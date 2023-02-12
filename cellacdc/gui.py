@@ -12180,8 +12180,12 @@ class guiWin(QMainWindow):
                 n.replace('segm', '', 1).replace('_', '', 1)
                 for n in existingSegmEndNames
             ]
+            if posData.basename.endswith('_'):
+                basename = f'{posData.basename}segm'
+            else:
+                basename = f'{posData.basename}_segm'
             win = apps.filenameDialog(
-                basename=f'{posData.basename}segm',
+                basename=basename,
                 hintText='Insert a <b>filename</b> for the segmentation file:',
                 existingNames=existingEndNames
             )
@@ -19599,8 +19603,12 @@ class guiWin(QMainWindow):
             )
             existingEndnames.update(_existingEndnames)
         posData = self.data[self.pos_i]
+        if posData.basename.endswith('_'):
+            basename = f'{posData.basename}segm'
+        else:
+            basename = f'{posData.basename}_segm'
         win = apps.filenameDialog(
-            basename=f'{posData.basename}segm',
+            basename=basename,
             hintText='Insert a <b>filename</b> for the segmentation file:<br>',
             existingNames=existingEndnames
         )
