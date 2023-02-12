@@ -17957,7 +17957,12 @@ class guiWin(QMainWindow):
 
         filename, ext = os.path.splitext(os.path.basename(file_path))
         if ext == '.tif' or ext == '.npz':
-            self._openFolder(exp_path=exp_path, imageFilePath=file_path)
+            filename_ext = os.path.basename(file_path)
+            new_filepath = os.path.join(exp_path, filename_ext)
+            if not os.path.exists(new_filepath):
+                self.logger.info('Copying file to Image folder...')
+                shutil.copy2(file_path, new_filepath)
+            self._openFolder(exp_path=exp_path, imageFilePath=new_filepath)
         else:
             self.logger.info('Copying file to .tif format...')
             data = load.loadData(file_path, '')
