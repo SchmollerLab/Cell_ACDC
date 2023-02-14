@@ -18754,6 +18754,13 @@ class guiWin(QMainWindow):
                 return self.get_2Dimg_from_3D(fluo_img_data)
     
     def addActionsLutItemContextMenu(self, lutItem):
+        try:
+            # try removing actions that were created when loading a previos dset
+            for action in lutItem.datasetActions:
+                lutItem.gradient.menu.removeAction(action)
+        except Exception as e:
+            pass
+        
         annotationMenu = lutItem.gradient.menu.addMenu('Annotations settings')
         ID_menu = annotationMenu.addMenu('IDs')
         self.annotSettingsIDmenu = QActionGroup(annotationMenu)
@@ -18789,7 +18796,11 @@ class guiWin(QMainWindow):
         lutItem.selectChannelsActions = [separator, section, self.userChNameAction]
         for action in lutItem.selectChannelsActions:
             action.setVisible(False)
-    
+        
+        lutItem.datasetActions = [
+            annotationMenu.menuAction(), *lutItem.selectChannelsActions
+        ]
+
     def setAnnotInfoMode(self, checked):
         if checked:
             for action in self.annotSettingsIDmenu.actions():
