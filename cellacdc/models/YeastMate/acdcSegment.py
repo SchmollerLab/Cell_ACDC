@@ -38,9 +38,9 @@ class Model:
         ):
 
         score_thresholds = {
-            score_threshold_0: score_threshold_0, 
-            score_thresholds_1: score_thresholds_1,
-            score_thresholds_2: score_thresholds_2
+            0: score_threshold_0, 
+            1: score_thresholds_1,
+            2: score_thresholds_2
         }
 
         detections, lab = self.model.inference(
