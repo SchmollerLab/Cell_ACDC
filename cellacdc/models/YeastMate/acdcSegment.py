@@ -26,12 +26,22 @@ class Model:
             weights_path
         )
 
-    def segment(self, image,
-                score_thresholds={0:0.9, 1:0.75, 2:0.75},
-                pixel_size=110,
-                reference_pixel_size=110,
-                lower_quantile=1.5,
-                upper_quantile=98.5):
+    def segment(
+            self, image,
+            score_threshold_0=0.9,
+            score_thresholds_1=0.75,
+            score_thresholds_2=0.75,
+            pixel_size=110,
+            reference_pixel_size=110,
+            lower_quantile=1.5,
+            upper_quantile=98.5
+        ):
+
+        score_thresholds = {
+            score_threshold_0: score_threshold_0, 
+            score_thresholds_1: score_thresholds_1,
+            score_thresholds_2: score_thresholds_2
+        }
 
         detections, lab = self.model.inference(
             image,
