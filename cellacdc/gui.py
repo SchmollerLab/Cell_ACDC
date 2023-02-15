@@ -17566,7 +17566,7 @@ class guiWin(QMainWindow):
             fontSize=self.fontSize, ID=ID, y_cursor=y, x_cursor=x
         )
 
-        self.ghostMaskItemRight.image[obj_slice][self.ghostObject.image] = ID
+        self.ghostMaskItemRight.image[slice_global_to_local][obj_image] = ID
         self.ghostMaskItemRight.updateGhostImage(
             fontSize=self.fontSize, ID=ID, y_cursor=y, x_cursor=x
         )
