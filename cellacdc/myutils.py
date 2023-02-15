@@ -341,8 +341,6 @@ def addToRecentPaths(exp_path, logger=None):
     df.to_csv(recentPaths_path)
 
 def checkDataIntegrity(filenames, parent_path, parentQWidget=None):
-    printl(filenames)
-    printl(parent_path)
     char = filenames[0][:2]
     startWithSameChar = all([f.startswith(char) for f in filenames])
     if not startWithSameChar:

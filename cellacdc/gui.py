@@ -6692,7 +6692,7 @@ class guiWin(QMainWindow):
 
             # Store undo state before modifying stuff
             self.storeUndoRedoStates(False)
-            
+
             posData = self.data[self.pos_i]
             self.addNewItems(manualTrackID)
             currentIDs = posData.IDs.copy()
@@ -7370,7 +7370,7 @@ class guiWin(QMainWindow):
                 f'Enter here the ID {text}'
             )
             nearest_ID = self.nearest_nonzero(
-                self.get_2Dlab(posData.lab), y, x
+                self.get_2Dlab(posData.lab), xdata, ydata
             )
             clickedBkgrID = apps.QLineEditDialog(
                 title='Clicked on background',
