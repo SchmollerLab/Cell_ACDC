@@ -27,15 +27,15 @@ from PyQt5.QtCore import (
 from PyQt5.QtGui import (
     QFont, QPalette, QColor, QPen, QPaintEvent, QBrush, QPainter,
     QRegExpValidator, QIcon, QPixmap, QKeySequence, QLinearGradient,
-    QShowEvent, QMouseEvent, QFontMetrics, QGuiApplication
+    QShowEvent, QBitmap, QFontMetrics, QGuiApplication
 )
 from PyQt5.QtWidgets import (
     QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
     QApplication, QWidget, QVBoxLayout, QMainWindow, QStyleFactory,
-    QLineEdit, QSlider, QSpinBox, QGridLayout, QDockWidget,
+    QLineEdit, QSlider, QSpinBox, QGridLayout, QRadioButton,
     QScrollArea, QSizePolicy, QComboBox, QPushButton, QScrollBar,
     QGroupBox, QAbstractSlider, QDoubleSpinBox, QWidgetAction,
-    QAction, QTabWidget, QAbstractSpinBox, QMessageBox,
+    QAction, QTabWidget, QAbstractSpinBox, QToolBar,
     QStyle, QDialog, QSpacerItem, QFrame, QMenu, QActionGroup,
     QListWidget, QPlainTextEdit, QFileDialog, QListView, QAbstractItemView,
     QTreeWidget, QTreeWidgetItem, QListWidgetItem, QLayout, QStylePainter
@@ -2171,6 +2171,101 @@ def QtKeyToText(QtKey):
         if QtKey == QtLetterEnum:
             return letter
     return letter
+
+class ToolBar(QToolBar):
+    def __init__(self, *args) -> None:
+        super().__init__(*args)
+    
+    def addSeparator(self, width=5):
+        self.addWidget(QHWidgetSpacer(width=width))
+        self.addWidget(QVLine())
+        self.addWidget(QHWidgetSpacer(width=width))
+    
+    def addSpinBox(self, label=''):
+        spinbox = SpinBox(disableKeyPress=True)
+        if label:
+            spinbox.label = QLabel(label)
+            self.addWidget(spinbox.label)
+        
+        self.addWidget(spinbox)
+        return spinbox
+
+class ManualTrackingToolBar(ToolBar):
+    sigIDchanged = pyqtSignal(int)
+    sigDisableGhost = pyqtSignal()
+    sigClearGhostContour = pyqtSignal()
+    sigClearGhostMask = pyqtSignal()
+    sigGhostOpacityChanged = pyqtSignal(int)
+
+    def __init__(self, *args) -> None:
+        super().__init__(*args)
+        self.spinboxID = self.addSpinBox(label='ID to track: ')
+        self.spinboxID.setMinimum(1)
+
+        self.addSeparator()
+
+        self.showGhostCheckbox = QCheckBox('Show ghost object')
+        self.showGhostCheckbox.setChecked(True)
+        self.addWidget(self.showGhostCheckbox)
+
+        self.ghostContourRadiobutton = QRadioButton('Contour')
+        self.ghostMaskRadiobutton = QRadioButton('Mask ; ')
+        self.ghostMaskRadiobutton.setChecked(True)
+        self.addWidget(self.ghostContourRadiobutton)
+        self.addWidget(self.ghostMaskRadiobutton)
+
+        self.ghostMaskOpacitySpinbox = self.addSpinBox('Mask opacity:  ')
+        self.ghostMaskOpacitySpinbox.setMaximum(100)
+        self.ghostMaskOpacitySpinbox.setValue(30)
+
+        self.showGhostCheckbox.toggled.connect(self.showGhostCheckboxToggled)
+        self.ghostContourRadiobutton.toggled.connect(
+            self.ghostContourRadiobuttonToggled
+        )
+        self.spinboxID.valueChanged.connect(self.IDchanged)
+
+        self.ghostMaskOpacitySpinbox.valueChanged.connect(
+            self.ghostOpacityValueChanged
+        )
+
+        self.addSeparator()
+
+        self.infoLabel = QLabel('')
+        self.addWidget(self.infoLabel)
+    
+    def showInfo(self, text):
+        text = html_utils.paragraph(text, font_color='black')
+        self.infoLabel.setText(text)
+
+    def showWarning(self, text):
+        text = html_utils.paragraph(f'WARNING: {text}', font_color='red')
+        self.infoLabel.setText(text)
+    
+    def clearInfoText(self):
+        self.infoLabel.setText('')
+    
+    def IDchanged(self, value):
+        self.sigIDchanged.emit(value)
+    
+    def showGhostCheckboxToggled(self, checked):
+        disabled = not checked
+        self.ghostContourRadiobutton.setDisabled(disabled)
+        self.ghostMaskRadiobutton.setDisabled(disabled)
+        self.ghostMaskOpacitySpinbox.setDisabled(disabled)
+        self.ghostMaskOpacitySpinbox.label.setDisabled(disabled)
+        if disabled:
+            self.sigDisableGhost.emit()
+    
+    def ghostContourRadiobuttonToggled(self, checked):
+        self.ghostMaskOpacitySpinbox.setDisabled(checked)
+        self.ghostMaskOpacitySpinbox.label.setDisabled(checked)
+        if checked:
+            self.sigClearGhostMask.emit()      
+        else:
+            self.sigClearGhostContour.emit()
+    
+    def ghostOpacityValueChanged(self, value):
+        self.sigGhostOpacityChanged.emit(value)
 
 class rightClickToolButton(QToolButton):
     sigRightClick = pyqtSignal(object)
@@ -4623,6 +4718,91 @@ class PostProcessSegmSlider(sliderWithSpinBox):
             return None
         else:
             return super().value()
+
+class GhostContourItem(pg.PlotDataItem):
+    def __init__(self,):
+        super().__init__()
+        # Yellow pen
+        self.setPen(pg.mkPen(width=2, color=(245, 184, 0, 100)))
+        self.label = myLabelItem()
+        self.label.setAttr('bold', True)
+        self.label.setAttr('color', (245, 184, 0))
+    
+    def addToPlotItem(self, PlotItem: MainPlotItem):
+        self._plotItem = PlotItem
+        PlotItem.addItem(self)
+        PlotItem.addItem(self.label)
+    
+    def removeFromPlotItem(self):
+        self._plotItem.removeItem(self.label)
+        self._plotItem.removeItem(self)
+    
+    def setData(
+            self, xx=None, yy=None, fontSize=11, ID=0, 
+            y_cursor=None, x_cursor=None
+        ):
+        if xx is None:
+            xx = []
+        if yy is None:
+            yy = []
+        super().setData(xx, yy)
+        if not hasattr(self, 'label'):
+            return
+
+        if ID == 0:
+            self.label.setText('')
+        else:
+            self.label.setText(f'{ID}', size=fontSize)
+            w, h = self.label.rect().right(), self.label.rect().bottom()
+            self.label.setPos(x_cursor-w/2, y_cursor-h/2)
+    
+    def clear(self):
+        self.setData()
+
+class GhostMaskItem(pg.ImageItem):
+    def __init__(self):
+        super().__init__()
+        self.label = myLabelItem()
+        self.label.setAttr('bold', True)
+        self.label.setAttr('color', (245, 184, 0))
+    
+    def initImage(self, imgShape):
+        image = np.zeros(imgShape, dtype=np.uint32)
+        self.setImage(image)
+    
+    def initLookupTable(self, rgbaColor):
+        lut = np.zeros((2, 4), dtype=np.uint8)
+        lut[1,-1] = 255
+        lut[1,:-1] = rgbaColor
+        self.setLookupTable(lut)
+    
+    def addToPlotItem(self, PlotItem: MainPlotItem):
+        self._plotItem = PlotItem
+        PlotItem.addItem(self)
+        PlotItem.addItem(self.label)
+    
+    def removeFromPlotItem(self):
+        self._plotItem.removeItem(self.label)
+        self._plotItem.removeItem(self)
+    
+    def updateGhostImage(self, ID=0, y_cursor=None, x_cursor=None, fontSize=None):
+        self.setImage(self.image)
+
+        if ID == 0:
+            self.label.setText('')
+            return
+        
+        self.label.setText(f'{ID}', size=fontSize)
+        w, h = self.label.rect().right(), self.label.rect().bottom()
+        self.label.setPos(x_cursor-w/2, y_cursor-h/2)
+    
+    def clear(self):
+        if hasattr(self, 'label'):
+            self.label.setText('')
+        if self.image is None:
+            return
+        self.image[:] = 0
+        self.updateImage()
 
 class PostProcessSegmSpinbox(QWidget):
     valueChanged = pyqtSignal(int)

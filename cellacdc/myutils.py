@@ -1735,6 +1735,27 @@ def synthetic_image_geneator(size=(512,512), f_x=1, f_y=1):
     img = np.sin(f_x*xx)*np.cos(f_y*yy)
     return img
 
+def get_slices_local_into_global_arr(yx_center, global_shape, local_shape):
+    slice_global_to_local = []
+    slice_crop_local = []
+    for _c, _d, _D in zip(yx_center, local_shape, global_shape):
+        _r = int(_d/2)
+        _min = _c - _r
+        _max = _c + _r
+        _min_crop, _max_crop = None, None
+        if _min < 0:
+            _min_crop = abs(_min)
+            _min = 0
+        if _max > _D:
+            _max_crop = _D - _max
+            _max = _D
+        
+        slice_global_to_local.append(slice(_min, _max))
+        slice_crop_local.append(slice(_min_crop, _max_crop))
+    
+    return tuple(slice_global_to_local), tuple(slice_crop_local)
+
+
 if __name__ == '__main__':
     print(get_list_of_models())
     # model_name = 'cellpose'

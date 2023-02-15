@@ -596,11 +596,26 @@ class saveDataWorker(QObject):
 
         return df
 
-    def addAdditionalMetadata(self, posData, df):
+    def addAdditionalMetadata(self, posData: load.loadData, df: pd.DataFrame):
         for col, val in posData.additionalMetadataValues().items():
             if col in df.columns:
                 df.pop(col)
             df.insert(0, col, val)
+        
+        try:
+            df.pop('time_minutes')
+        except Exception as e:
+            pass
+        try:
+            df.pop('time_hours')
+        except Exception as e:
+            pass
+        try:
+            time_seconds = df.index.get_level_values('time_seconds')
+            df.insert(0, 'time_minutes', time_seconds/60)
+            df.insert(1, 'time_hours', time_seconds/3600)
+        except Exception as e:
+            pass
 
     def run(self):
         last_pos = self.mainWin.last_pos
@@ -1717,6 +1732,19 @@ class guiWin(QMainWindow):
         self.checkableQButtonsGroup.addButton(self.binCellButton)
         # self.functionsNotTested3D.append(self.binCellButton)
 
+        self.manualTrackingButton = QToolButton(self)
+        self.manualTrackingButton.setIcon(QIcon(":manual_tracking.svg"))
+        self.manualTrackingButton.setCheckable(True)
+        self.manualTrackingButton.setToolTip(
+            'Toggle "Manual tracking" mode ON/OFF\n\n'
+            'ACTION: select ID to track and right-click on an object to assign '
+            'that ID\n\n'
+            'SHORTCUT: "T" key'
+        )
+        self.manualTrackingButton.setShortcut('T')
+        self.checkableQButtonsGroup.addButton(self.manualTrackingButton)
+        self.checkableButtons.append(self.manualTrackingButton)
+
         self.ripCellButton = QToolButton(self)
         self.ripCellButton.setIcon(QIcon(":rip.svg"))
         self.ripCellButton.setCheckable(True)
@@ -1747,8 +1775,13 @@ class guiWin(QMainWindow):
         self.functionsNotTested3D.append(self.delBorderObjAction)
 
         editToolBar.addAction(self.repeatTrackingAction)
+        
+        self.manualTrackingAction = editToolBar.addWidget(
+            self.manualTrackingButton
+        )
 
         self.functionsNotTested3D.append(self.repeatTrackingAction)
+        self.functionsNotTested3D.append(self.manualTrackingAction)
 
         self.reinitLastSegmFrameAction = QAction(self)
         self.reinitLastSegmFrameAction.setIcon(QIcon(":reinitLastSegm.svg"))
@@ -2220,6 +2253,24 @@ class guiWin(QMainWindow):
         self.pointsLayersToolbar.setIconSize(QSize(16, 16))
         self.pointsLayersToolbar.setVisible(False)
 
+        self.manualTrackingToolbar = widgets.ManualTrackingToolBar(
+            "Manual tracking controls", self
+        )
+        self.manualTrackingToolbar.sigIDchanged.connect(self.initGhostObject)
+        self.manualTrackingToolbar.sigDisableGhost.connect(self.clearGhost)
+        self.manualTrackingToolbar.sigClearGhostContour.connect(
+            self.clearGhostContour
+        )
+        self.manualTrackingToolbar.sigClearGhostMask.connect(
+            self.clearGhostMask
+        )
+        self.manualTrackingToolbar.sigGhostOpacityChanged.connect(
+            self.updateGhostMaskOpacity
+        )
+
+        self.addToolBar(Qt.TopToolBarArea, self.manualTrackingToolbar)
+        self.manualTrackingToolbar.setVisible(False)
+
     def gui_populateToolSettingsMenu(self):
         brushHoverModeActionGroup = QActionGroup(self)
         brushHoverModeActionGroup.setExclusionPolicy(
@@ -2434,6 +2485,7 @@ class guiWin(QMainWindow):
             'Repeat tracking on current frame\n'
             'SHORTCUT: "Shift+T"'
         )
+
         self.repeatTrackingMenuAction = QAction(
             'Repeat tracking on current frame...', self
         )
@@ -2755,6 +2807,7 @@ class guiWin(QMainWindow):
         self.autoSegmAction.toggled.connect(self.autoSegm_cb)
         self.disableTrackingCheckBox.clicked.connect(self.disableTracking)
         self.repeatTrackingAction.triggered.connect(self.repeatTracking)
+        self.manualTrackingButton.toggled.connect(self.manualTracking_cb)
         self.repeatTrackingMenuAction.triggered.connect(self.repeatTracking)
         self.repeatTrackingVideoAction.triggered.connect(
             self.repeatTrackingVideo
@@ -3595,6 +3648,12 @@ class guiWin(QMainWindow):
             pen=pg.mkPen(color='r', width=2)
         )
         self.topLayerItems.append(self.freeRoiItem)
+
+        self.ghostContourItemLeft = widgets.GhostContourItem()
+        self.ghostContourItemRight = widgets.GhostContourItem()
+
+        self.ghostMaskItemLeft = widgets.GhostMaskItem()
+        self.ghostMaskItemRight = widgets.GhostMaskItem()
 
     def _warn_too_many_items(self, numItems, qparent):
         self.logger.info(
@@ -5253,6 +5312,13 @@ class guiWin(QMainWindow):
         )
         if setKeepObjCursor and self.app.overrideCursor() is None:
             self.app.setOverrideCursor(Qt.PointingHandCursor)
+        
+        setManualTrackingCursor = (
+            self.manualTrackingButton.isChecked() and not event.isExit()
+            and noModifier
+        )
+        if setManualTrackingCursor and self.app.overrideCursor() is None:
+            self.app.setOverrideCursor(Qt.PointingHandCursor)
 
         # Cursor is moving on image while Alt key is pressed --> pan cursor
         alt = QGuiApplication.keyboardModifiers() == Qt.AltModifier
@@ -5316,6 +5382,14 @@ class guiWin(QMainWindow):
         if setKeepObjCursor:
             x, y = event.pos()
             self.highlightHoverIDsKeptObj(x, y)
+        
+        if setManualTrackingCursor:
+            x, y = event.pos()
+            # self.highlightHoverID(x, y)
+            if event.isExit():
+                self.clearGhost()
+            else:
+                self.drawManualTrackingGhost(x, y)
 
         if setMoveLabelCursor or setExpandLabelCursor:
             x, y = event.pos()
@@ -6600,6 +6674,46 @@ class guiWin(QMainWindow):
                 self.setTempImg1Brush(True, mask, posData.brushID)
             self.isMouseDragImg1 = True
         
+        elif right_click and self.manualTrackingButton.isChecked():
+            x, y = event.pos().x(), event.pos().y()
+            xdata, ydata = int(x), int(y)
+            manualTrackID = self.manualTrackingToolbar.spinboxID.value()
+            clickedID = self.getClickedID(
+                xdata, ydata, text=f'that you want to assign to {manualTrackID}'
+            )
+            if clickedID is None:
+                return
+
+            if clickedID == manualTrackID:
+                self.manualTrackingToolbar.showWarning(
+                    f'The clicked object already has ID = {manualTrackID}'
+                )
+                return
+
+            # Store undo state before modifying stuff
+            self.storeUndoRedoStates(False)
+            
+            posData = self.data[self.pos_i]
+            self.addNewItems(manualTrackID)
+            currentIDs = posData.IDs.copy()
+            if manualTrackID in currentIDs:
+                tempID = np.max(posData.lab) + 1
+                posData.lab[posData.lab == clickedID] = tempID
+                posData.lab[posData.lab == manualTrackID] = clickedID
+                posData.lab[posData.lab == tempID] = manualTrackID
+                self.manualTrackingToolbar.showWarning(
+                    f'The ID {manualTrackID} already exists --> '
+                    f'ID {manualTrackID} has been swapped with {clickedID}'
+                )
+            else:
+                posData.lab[posData.lab == clickedID] = manualTrackID
+                self.manualTrackingToolbar.showInfo(
+                    f'ID {clickedID} changed to {manualTrackID}.'
+                )
+            
+            self.update_rp()
+            self.updateALLimg()
+
         # Label ROI mouse press
         elif (left_click or right_click) and canLabelRoi:
             if right_click:
@@ -7246,6 +7360,29 @@ class guiWin(QMainWindow):
                     roiImg[~mask] = roiImg.min()
 
         return roiImg, labelRoiSlice
+    
+    def getClickedID(self, xdata, ydata, text=''):
+        posData = self.data[self.pos_i]
+        ID = self.get_2Dlab(posData.lab)[ydata, xdata]
+        if ID == 0:
+            msg = (
+                'You clicked on the background.\n'
+                f'Enter here the ID {text}'
+            )
+            nearest_ID = self.nearest_nonzero(
+                self.get_2Dlab(posData.lab), y, x
+            )
+            clickedBkgrID = apps.QLineEditDialog(
+                title='Clicked on background',
+                msg=msg, parent=self, allowedValues=posData.IDs,
+                defaultTxt=str(nearest_ID)
+            )
+            clickedBkgrID.exec_()
+            if clickedBkgrID.cancel:
+                return
+            else:
+                ID = clickedBkgrID.EntryID
+        return ID
 
     def getHoverID(self, xdata, ydata):
         if not hasattr(self, 'diskMask'):
@@ -9161,6 +9298,7 @@ class guiWin(QMainWindow):
                 self.annotIDsCheckbox.setChecked(False)
                 self.drawMothBudLinesCheckbox.setChecked(False)
                 self.setDrawAnnotComboboxText()
+                self.clearGhost()
         elif mode == 'Viewer':
             self.modeToolBar.setVisible(True)
             self.setEnabledWidgetsToolbar(False)
@@ -9174,6 +9312,7 @@ class guiWin(QMainWindow):
             # self.drawIDsContComboBox.setCurrentText(currentMode)
             self.navigateScrollBar.setMaximum(posData.SizeT)
             self.navSpinBox.setMaximum(posData.SizeT)
+            self.clearGhost()
         elif mode == 'Custom annotations':
             self.modeToolBar.setVisible(True)
             self.setEnabledWidgetsToolbar(False)
@@ -9181,6 +9320,7 @@ class guiWin(QMainWindow):
             self.setEnabledCcaToolbar(enabled=False)
             self.removeAlldelROIsCurrentFrame()
             self.annotateToolbar.setVisible(True)
+            self.clearGhost()
         elif mode == 'Snapshot':
             self.reconnectUndoRedo()
             self.setEnabledSnapshotMode()
@@ -9220,7 +9360,10 @@ class guiWin(QMainWindow):
         # self.disableTrackingCheckBox.setChecked(True)
         self.disableTrackingCheckBox.setDisabled(True)
         self.repeatTrackingAction.setVisible(False)
+        self.manualTrackingAction.setVisible(False)
         button = self.editToolBar.widgetForAction(self.repeatTrackingAction)
+        button.setDisabled(True)
+        button = self.editToolBar.widgetForAction(self.manualTrackingAction)
         button.setDisabled(True)
         self.setEnabledWidgetsToolbar(False)
         self.disableNonFunctionalButtons()
@@ -10018,7 +10161,7 @@ class guiWin(QMainWindow):
 
     @exception_handler
     def keyPressEvent(self, ev):
-        if ev.key() == Qt.Key_T:
+        if ev.key() == Qt.Key_I:
             # self.setAllIDs()
             posData = self.data[self.pos_i]
             # printl(posData.fluo_data_dict.keys())
@@ -10669,42 +10812,29 @@ class guiWin(QMainWindow):
         # Turn off smart tracking
         self.enableSmartTrackAction.toggled.disconnect()
         self.enableSmartTrackAction.setChecked(False)
-        self.enableSmartTrackAction.toggled.connect(self.enableSmartTrack)
         if isChecked:
             self.UserEnforced_DisabledTracking = True
             self.UserEnforced_Tracking = False
         else:
-            warn_txt = (
+            txt = html_utils.paragraph("""
 
-            'You requested to explicitly ENABLE tracking. This will '
-            'overwrite the default behaviour of not tracking already '
-            'visited/checked frames.\n\n'
-            'On all future frames that you will visit tracking '
-            'will be automatically performed unless you explicitly '
-            'disable tracking by clicking "Disable tracking" again.\n\n'
-            'To reactive smart handling of enabling/disabling tracking '
-            'go to Edit --> Smart handling of enabling/disabling tracking.\n\n'
-            'If you need to repeat tracking ONLY on the current frame you '
-            'can use the "Repeat tracking" button on the toolbar instead.\n\n'
-            'Are you sure you want to proceed with ENABLING tracking from now on?'
+            Do you want to keep <b>tracking always active</b> including on already 
+            visited frames?<br><br>
+            Note: To re-activate automatic handling of tracking go to<br> 
+            <code>Edit --> Smart handling of enabling/disabling tracking</code>.
 
+            """)
+            msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+            yesButton, noButton = msg.question(
+                self, 'Keep tracking always active?', txt, 
+                buttonsTexts=('Yes', 'No')
             )
-            msg = QMessageBox(self)
-            msg.setWindowTitle('Enable tracking?')
-            msg.setIcon(msg.Warning)
-            msg.setText(warn_txt)
-            msg.addButton(msg.Yes)
-            noButton = QPushButton('No')
-            msg.addButton(noButton, msg.NoRole)
-            msg.exec_()
-            enforce_Tracking = msg.clickedButton()
-            if msg.clickedButton() == noButton:
-                pass
-                # self.disableTrackingCheckBox.setChecked(True)
-            else:
+            if msg.clickedButton == yesButton:
                 self.repeatTracking()
                 self.UserEnforced_DisabledTracking = False
                 self.UserEnforced_Tracking = True
+            else:
+                self.enableSmartTrackAction.setChecked(True)
 
     @exception_handler
     def repeatTrackingVideo(self):
@@ -10803,6 +10933,129 @@ class guiWin(QMainWindow):
                 self.warnEditingWithCca_df('Repeat tracking')
         else:
             self.updateALLimg()
+
+    def updateGhostMaskOpacity(self, alpha_percentage=None):
+        if alpha_percentage is None:
+            alpha_percentage = (
+                self.manualTrackingToolbar.ghostMaskOpacitySpinbox.value()
+            )
+        alpha = alpha_percentage/100
+        self.ghostMaskItemLeft.setOpacity(alpha)
+        self.ghostMaskItemRight.setOpacity(alpha)
+
+    def addManualTrackingItems(self):
+        self.ghostContourItemLeft.addToPlotItem(self.ax1)
+        self.ghostContourItemRight.addToPlotItem(self.ax2)
+
+        self.ghostMaskItemLeft.addToPlotItem(self.ax1)
+        self.ghostMaskItemRight.addToPlotItem(self.ax2)
+
+        Y, X = self.img1.image.shape[:2]
+        self.ghostMaskItemLeft.initImage((Y, X))
+        self.ghostMaskItemRight.initImage((Y, X))
+
+        self.updateGhostMaskOpacity()
+    
+    def removeManualTrackingItems(self):
+        self.ghostContourItemLeft.removeFromPlotItem()
+        self.ghostContourItemRight.removeFromPlotItem()
+
+        self.ghostMaskItemLeft.removeFromPlotItem()
+        self.ghostMaskItemRight.removeFromPlotItem()
+    
+    def initGhostObject(self, ID=None):
+        mode = self.modeComboBox.currentText()
+        if mode != 'Segmentation and Tracking':
+            self.ghostObject = None
+            return
+        
+        if not self.manualTrackingButton.isChecked():
+            self.ghostObject = None
+            return
+        
+        if not self.manualTrackingToolbar.showGhostCheckbox.isChecked():
+            self.ghostObject = None
+            return
+        
+        if ID is None:
+            ID = self.manualTrackingToolbar.spinboxID.value()
+        
+        posData = self.data[self.pos_i]
+        if posData.frame_i == 0:
+            self.ghostObject = None
+            return
+        
+        prevFrameRp = posData.allData_li[posData.frame_i-1]['regionprops']
+        if prevFrameRp is None:
+            self.ghostObject = None
+            return
+        
+        for obj in prevFrameRp:
+            if obj.label != ID:
+                continue
+            self.ghostObject = obj
+            break
+        else:
+            self.ghostObject = None
+            self.manualTrackingToolbar.showWarning(
+                f'The ID {ID} does not exist in previous frame '
+                '--> starting a new track.'
+            )
+            return
+        
+        self.manualTrackingToolbar.clearInfoText()
+
+        self.ghostObject.contour = self.getObjContours(
+            self.ghostObject, local=True
+        )
+        self.ghostObject.xx_contour = self.ghostObject.contour[:,1]
+        self.ghostObject.yy_contour = self.ghostObject.contour[:,0]
+
+        self.ghostMaskItemLeft.initLookupTable(self.lut[ID])
+        self.ghostMaskItemRight.initLookupTable(self.lut[ID])
+    
+    def clearGhost(self):
+        self.clearGhostContour()
+        self.clearGhostMask()
+    
+    def clearGhostContour(self):
+        self.ghostContourItemLeft.clear()
+        self.ghostContourItemRight.clear()
+    
+    def clearGhostMask(self):
+        self.ghostMaskItemLeft.clear()
+        self.ghostMaskItemRight.clear()
+
+    def manualTracking_cb(self, checked):
+        self.manualTrackingToolbar.setVisible(checked)
+        if checked:
+            self.disableTrackingCheckBox.previousStatus = (
+                self.disableTrackingCheckBox.isChecked()
+            )
+            self.disableTrackingCheckBox.setChecked(True)
+            self.UserEnforced_DisabledTracking_previousStatus = (
+                self.UserEnforced_DisabledTracking
+            )
+            self.UserEnforced_Tracking_previousStatus = (
+                self.UserEnforced_Tracking
+            )
+
+            self.UserEnforced_DisabledTracking = True
+            self.UserEnforced_Tracking = False
+            self.initGhostObject()
+            self.addManualTrackingItems()
+        else:
+            self.disableTrackingCheckBox.setChecked(
+                self.disableTrackingCheckBox.previousStatus
+            )
+            self.UserEnforced_DisabledTracking = (
+                self.UserEnforced_DisabledTracking_previousStatus
+            )
+            self.UserEnforced_Tracking = (
+                self.UserEnforced_Tracking_previousStatus
+            )
+            self.removeManualTrackingItems()
+            self.clearGhost()
 
     def autoSegm_cb(self, checked):
         if checked:
@@ -12086,6 +12339,7 @@ class guiWin(QMainWindow):
             self.setNavigateScrollBarMaximum()
             self.updateScrollbars()
             self.computeSegm()
+            self.initGhostObject()
             self.zoomToCells()
         else:
             # Store data for current frame
@@ -12129,6 +12383,7 @@ class guiWin(QMainWindow):
             self.updateALLimg(updateFilters=True)
             self.updateScrollbars()
             self.zoomToCells()
+            self.initGhostObject()
             self.updateViewerWindow()
         else:
             msg = 'You reached the first frame!'
@@ -12776,6 +13031,7 @@ class guiWin(QMainWindow):
                 pass
 
             self.repeatTrackingAction.setDisabled(True)
+            self.manualTrackingAction.setDisabled(True)
             self.logger.info('Setting GUI mode to "Snapshots"...')
             self.modeComboBox.clear()
             self.modeComboBox.addItems(['Snapshot'])
@@ -12795,6 +13051,7 @@ class guiWin(QMainWindow):
             self.annotateToolbar.setVisible(False)
             self.disableTrackingCheckBox.setDisabled(False)
             self.repeatTrackingAction.setDisabled(False)
+            self.manualTrackingAction.setDisabled(False)
             self.modeComboBox.setDisabled(False)
             self.modeMenu.menuAction().setVisible(True)
             try:
@@ -13252,6 +13509,7 @@ class guiWin(QMainWindow):
         self.isCtrlDown = False
         self.typingEditID = False
         self.isShiftDown = False
+        self.ghostObject = None
         self.autoContourHoverON = False
         self.navigateScrollBarStartedMoving = True
         self.zSliceScrollBarStartedMoving = True
@@ -14080,7 +14338,7 @@ class guiWin(QMainWindow):
         proceed = True
         return notEnoughG1Cells, proceed
 
-    def getObjContours(self, obj, appendMultiContID=True, approx=False):
+    def getObjContours(self, obj, appendMultiContID=True, approx=False, local=False):
         approxMode = cv2.CHAIN_APPROX_SIMPLE if approx else cv2.CHAIN_APPROX_NONE
         contours, _ = cv2.findContours(
            self.getObjImage(obj.image, obj.bbox).astype(np.uint8),
@@ -14101,7 +14359,8 @@ class guiWin(QMainWindow):
             contour = contours[0]
         cont = np.squeeze(contour, axis=1)
         cont = np.vstack((cont, cont[0]))
-        cont += [min_x, min_y]
+        if not local:
+            cont += [min_x, min_y]
         return cont
 
     def getObjBbox(self, obj_bbox):
@@ -17264,6 +17523,59 @@ class guiWin(QMainWindow):
         lut[:ID] = lut[:ID]*0.2
         lut[ID+1:] = lut[ID+1:]*0.2
         self.img2.setLookupTable(lut)
+    
+    def _drawGhostContour(self, x, y):
+        if self.ghostObject is None:
+            return
+        
+        ID = self.ghostObject.label
+        yc, xc = self.ghostObject.local_centroid
+        Dx = x-xc
+        Dy = y-yc
+        xx = self.ghostObject.xx_contour + Dx
+        yy = self.ghostObject.yy_contour + Dy
+        self.ghostContourItemLeft.setData(
+            xx, yy, fontSize=self.fontSize, ID=ID, y_cursor=y, x_cursor=x
+        )
+        self.ghostContourItemRight.setData(
+            xx, yy, fontSize=self.fontSize, ID=ID, y_cursor=y, x_cursor=x
+        )
+    
+    def _drawGhostMask(self, x, y):
+        if self.ghostObject is None:
+            return
+        
+        self.clearGhostMask()
+        ID = self.ghostObject.label
+        h, w = self.ghostObject.image.shape[-2:]
+
+        Y, X = self.currentLab2D.shape
+        slices = myutils.get_slices_local_into_global_arr(
+            (int(y), int(x)), (Y, X), (h, w)
+        )
+        slice_global_to_local, slice_crop_local = slices
+
+        obj_image = self.ghostObject.image[slice_crop_local]
+
+        self.ghostMaskItemLeft.image[slice_global_to_local][obj_image] = ID
+        self.ghostMaskItemLeft.updateGhostImage(
+            fontSize=self.fontSize, ID=ID, y_cursor=y, x_cursor=x
+        )
+
+        # self.ghostMaskItemRight.image[obj_slice][self.ghostObject.image] = ID
+        self.ghostMaskItemRight.updateGhostImage(
+            fontSize=self.fontSize, ID=ID, y_cursor=y, x_cursor=x
+        )
+
+
+    def drawManualTrackingGhost(self, x, y):
+        if not self.manualTrackingToolbar.showGhostCheckbox.isChecked():
+            return
+        
+        if self.manualTrackingToolbar.ghostContourRadiobutton.isChecked():
+            self._drawGhostContour(x, y)
+        else:
+            self._drawGhostMask(x, y)
 
     def restoreDefaultSettings(self):
         df = self.df_settings
@@ -17535,7 +17847,6 @@ class guiWin(QMainWindow):
         y, x = self.getObjCentroid(obj.centroid)
         w, h = LabelItemID.rect().right(), LabelItemID.rect().bottom()
         LabelItemID.setPos(x-w/2, y-h/2)
-
 
     def highlightLost_obj(self, obj, forceContour=False):
         if not self.createItems:

@@ -1250,4 +1250,3 @@ class LineageTree:
         })
 
         return tracks_data, graph, properties
-
