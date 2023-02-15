@@ -605,8 +605,9 @@ def getChannelFilePath(images_path, chName):
     else:
         return ''
 
-def get_chname_from_basename(filename, basename):
-    filename = os.path.splitext(filename)[0]
+def get_chname_from_basename(filename, basename, remove_ext=True):
+    if remove_ext:
+        filename, ext = os.path.splitext(filename)
     chName = filename[len(basename):]
     aligned_idx = chName.find('_aligned')
     if aligned_idx != -1:

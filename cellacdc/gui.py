@@ -7546,10 +7546,9 @@ class guiWin(QMainWindow):
         if not normalize:
             return img
         if how == 'Do not normalize. Display raw image':
-            return img
+            img = img 
         elif how == 'Convert to floating point format with values [0, 1]':
             img = myutils.uint_to_float(img)
-            return img
         # elif how == 'Rescale to 8-bit unsigned integer format with values [0, 255]':
         #     img = skimage.img_as_float(img)
         #     img = (img*255).astype(np.uint8)
@@ -7557,7 +7556,6 @@ class guiWin(QMainWindow):
         elif how == 'Rescale to [0, 1]':
             img = skimage.img_as_float(img)
             img = skimage.exposure.rescale_intensity(img)
-            return img
         elif how == 'Normalize by max value':
             img = img/np.max(img)
         return img
@@ -8831,6 +8829,8 @@ class guiWin(QMainWindow):
         else:
             img = filteredData
         
+        img = self.normalizeIntensities(img)
+
         if not setImg:
             return img
         
@@ -10158,20 +10158,23 @@ class guiWin(QMainWindow):
         
         QTimer.singleShot(200, self.resizeGui)
 
-
     @exception_handler
     def keyPressEvent(self, ev):
-        if ev.key() == Qt.Key_I:
+        printl(ev.key() == Qt.Key_Q)
+        if ev.key() == Qt.Key_Q:
             # self.setAllIDs()
             posData = self.data[self.pos_i]
+            printl(posData.ol_data.keys())
             # printl(posData.fluo_data_dict.keys())
             # for key in posData.fluo_data_dict:
             #     printl(key, posData.fluo_data_dict[key].max())
             # printl(f'{posData.binnedIDs = }')
             # printl(f'{posData.ripIDs = }')
+        
         if not self.dataIsLoaded:
             self.logger.info(
-                '[WARNING]: Data not loaded yet. Key pressing events are not connected.'
+                '[WARNING]: Data not loaded yet. '
+                'Key pressing events are not connected.'
             )
             return
         if ev.key() == Qt.Key_Control:
@@ -13491,7 +13494,6 @@ class guiWin(QMainWindow):
             # To ensure mapping to colors we need to normalize image
             self.normalizeByMaxAction.setChecked(True)
 
-
     def initGlobalAttr(self):
         self.setOverlayColors()
 
@@ -16478,7 +16480,9 @@ class guiWin(QMainWindow):
     def setOverlayImages(self, frame_i=None, updateFilters=False):
         posData = self.data[self.pos_i]
         for filename in posData.ol_data:
-            chName = myutils.get_chname_from_basename(filename, posData.basename)
+            chName = myutils.get_chname_from_basename(
+                filename, posData.basename, remove_ext=False
+            )
             if chName not in self.checkedOverlayChannels:
                 continue
             imageItem = self.overlayLayersItems[chName][0]
@@ -16496,7 +16500,7 @@ class guiWin(QMainWindow):
                     ol_img = filteredData
             else:
                 ol_img = self.applyFilter(chName, setImg=False)
-            
+
             imageItem.setImage(ol_img)
             
     def toggleOverlayColorButton(self, checked=True):
@@ -17648,7 +17652,7 @@ class guiWin(QMainWindow):
         
         self.setImageImg2()
         self.img1.setImage(img)
-        
+
         if self.overlayButton.isChecked():
             img = self.setOverlayImages(updateFilters=updateFilters)
 
@@ -20375,21 +20379,6 @@ class guiWin(QMainWindow):
             self.propsDockWidget.setVisible(True)
             self.propsDockWidget.setEnabled(True)
         self.updateALLimg()
-    
-    # def eventFilter(self, qobject: 'QObject', event: 'QEvent') -> bool:
-    #     if event.type() == QEvent.FocusOut:
-    #         printl('Focus out')
-    #     return super().eventFilter(qobject, event)
-    
-    # def hideEvent(self, event):
-    #     printl('Hidden')
-    #     return super().hideEvent(event)
-    
-    # def changeEvent(self, event) -> None:
-    #     if self.isActiveWindow():
-    #         return
-    #     printl(f'{self.isActiveWindow() = }, {self.isMinimized() = }, {self.isMaximized() = }')
-    #     return super().changeEvent(event)
 
     def show(self):
         QMainWindow.show(self)
