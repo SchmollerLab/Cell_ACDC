@@ -30,7 +30,7 @@
 
 ## Citation
 
-If you find Cell-ACDC useful, please cite:
+If you use Cell-ACDC in your publication, please cite:
 
 > Francesco Padovani, Benedikt Mairhörmann, Pascal Falter-Braun, 
 > Jette Lengefeld, and Kurt M. Schmoller
