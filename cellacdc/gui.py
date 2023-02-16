@@ -1985,6 +1985,9 @@ class guiWin(QMainWindow):
         autoSaveWorker.sigDone.connect(self.autoSaveWorkerDone)
         autoSaveWorker.progress.connect(self.workerProgress)
         autoSaveWorker.finished.connect(self.autoSaveWorkerClosed)
+        autoSaveWorker.sigAutoSaveCannotProceed.connect(
+            self.turnOffAutoSaveWorker
+        )
         
         autoSaveThread.started.connect(autoSaveWorker.run)
         autoSaveThread.start()
@@ -14924,6 +14927,9 @@ class guiWin(QMainWindow):
         
         if autosave:
             self.enqAutosave()
+    
+    def turnOffAutoSaveWorker(self):
+        self.autoSaveAction.setChecked(False)
     
     def enqAutosave(self):
         posData = self.data[self.pos_i]  

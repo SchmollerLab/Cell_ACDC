@@ -250,6 +250,7 @@ class AutoSaveWorker(QObject):
     progress = pyqtSignal(str, object)
     sigStartTimer = pyqtSignal(object, object)
     sigStopTimer = pyqtSignal()
+    sigAutoSaveCannotProceed = pyqtSignal()
 
     def __init__(self, mutex, waitCond, savedSegmData):
         QObject.__init__(self)
@@ -336,7 +337,15 @@ class AutoSaveWorker(QObject):
             self.logger.log('Started autosaving...')
         
         self.isSaving = True
-        posData.setTempPaths()
+        try:
+            posData.setTempPaths()
+        except Exception as e:
+            self.logger.log(
+                '[WARNING]: Cell-ACDC cannot create the recovery folder for '
+                'the autosaving process. Autosaving will be turned off.'
+            )
+            self.sigAutoSaveCannotProceed.emit()
+            return
         segm_npz_path = posData.segm_npz_temp_path
         acdc_output_csv_path = posData.acdc_output_temp_csv_path
 
