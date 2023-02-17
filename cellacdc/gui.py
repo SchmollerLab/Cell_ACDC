@@ -3703,7 +3703,7 @@ class guiWin(QMainWindow):
     
     def gui_createOverlayItems(self):
         self.overlayLayersItems = {}
-        for ch in self.ch_names:
+        for c, ch in enumerate(self.ch_names):
             if ch == self.user_ch_name:
                 continue
             overlayItems = self.getOverlayItems(ch)                
@@ -10163,11 +10163,11 @@ class guiWin(QMainWindow):
 
     @exception_handler
     def keyPressEvent(self, ev):
-        printl(ev.key() == Qt.Key_Q)
         if ev.key() == Qt.Key_Q:
             # self.setAllIDs()
             posData = self.data[self.pos_i]
-            printl(posData.ol_data.keys())
+            printl(self.overlayRGBs)
+            printl(self.df_settings.at['overlayColor', 'value'])
             # printl(posData.fluo_data_dict.keys())
             # for key in posData.fluo_data_dict:
             #     printl(key, posData.fluo_data_dict[key].max())
@@ -16153,12 +16153,14 @@ class guiWin(QMainWindow):
             rgb = self.df_settings.at['overlayColor', 'value']
             rgb = [int(v) for v in rgb.split('-')]
             self.overlayColorButton.setColor(rgb)
+            self.updateOlColors(self.overlayColorButton)
                     
             self.setOverlayItemsVisible(self.imgGrad.checkedChannelname, True)
 
             self.updateALLimg()
             self.enableOverlayWidgets(True)
         else:
+            self.img1.setOpacity(1.0)
             self.updateALLimg()
             self.enableOverlayWidgets(False)
             self.setOverlayItemsVisible('', False)
@@ -16218,7 +16220,6 @@ class guiWin(QMainWindow):
         self.models.append(None)
         self.sender().callback(customModelAction)
         
-
     def setCheckedOverlayContextMenusActions(self, channelNames):
         for action in self.overlayContextMenu.actions():
             if action.text() in channelNames:
@@ -19082,6 +19083,7 @@ class guiWin(QMainWindow):
         except Exception as e:
             pass
         
+
         annotationMenu = lutItem.gradient.menu.addMenu('Annotations settings')
         ID_menu = annotationMenu.addMenu('IDs')
         self.annotSettingsIDmenu = QActionGroup(annotationMenu)
@@ -19307,15 +19309,17 @@ class guiWin(QMainWindow):
         imageItem.setOpacity(0.5)
 
         lutItem = widgets.myHistogramLUTitem()
+        
         lutItem.restoreState(self.df_settings)
         lutItem.setImageItem(imageItem)
         lutItem.vb.raiseContextMenu = lambda x: None
-        lutItem.gradient.showMenu = self.gui_gradientContextMenuEvent
         initColor = self.overlayRGBs.pop(0)
         self.initColormapOverlayLayerItem(initColor, lutItem)
         lutItem.addOverlayColorButton(initColor)
         lutItem.initColor = initColor
         lutItem.hide()
+        
+        lutItem.gradient.showMenu = self.gui_gradientContextMenuEvent
 
         lutItem.invertBwAction.toggled.connect(self.setCheckedInvertBW)
         lutItem.fontSizeMenu.aboutToShow.connect(self.showFontSizeMenu)
@@ -19359,6 +19363,7 @@ class guiWin(QMainWindow):
     
     def addAlphaScrollbar(self, channelName, imageItem):
         alphaScrollBar = QScrollBar(Qt.Horizontal)
+        
         label = QLabel(f'Alpha {channelName}')
         label.setFont(_font)
         label.hide()
@@ -19381,6 +19386,7 @@ class guiWin(QMainWindow):
         self.bottomLeftLayout.addWidget(
             alphaScrollBar, self.alphaScrollbarRow, 1, 1, 2
         )
+       
         sp = alphaScrollBar.label.sizePolicy()
         sp.setRetainSizeWhenHidden(True)
         alphaScrollBar.label.setSizePolicy(sp)

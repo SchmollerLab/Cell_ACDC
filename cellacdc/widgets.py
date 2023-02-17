@@ -3630,8 +3630,13 @@ class myHistogramLUTitem(baseHistogramLUTitem):
     sigGradientMenuEvent = pyqtSignal(object)
     sigTickColorAccepted = pyqtSignal(object)
 
-    def __init__(self, **kwargs):
+    def __init__(self, isViewer=False, **kwargs):
         super().__init__(**kwargs)
+
+        self.isViewer = isViewer
+        if isViewer:
+            # In the viewer we don't allow additional settings from the menu
+            return
 
         # Invert bw action
         self.invertBwAction = QAction('Invert black/white', self)

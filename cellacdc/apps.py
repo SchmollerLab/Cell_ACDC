@@ -52,7 +52,7 @@ from PyQt5.QtWidgets import (
     QScrollArea, QFrame, QProgressBar, QGroupBox, QRadioButton,
     QDockWidget, QMessageBox, QStyle, QPlainTextEdit, QSpacerItem,
     QTreeWidget, QTreeWidgetItem, QTextEdit, QSplashScreen, QAction,
-    QListWidgetItem, QTreeWidgetItemIterator, QLayout
+    QListWidgetItem, QActionGroup, QLayout
 )
 
 from . import exception_handler
@@ -2877,7 +2877,9 @@ class QDialogMetadataXML(QDialog):
         if self.imageViewer is not None:
             self.imageViewer.close()
         
-        self.imageViewer = imageViewer(posData=posData, isSigleFrame=False)
+        self.imageViewer = imageViewer(
+            posData=posData, isSigleFrame=False, enableOverlay=False
+        )
         self.imageViewer.channelIndex = idx
         self.imageViewer.update_img()
         self.imageViewer.sigClosed.connect(self.imageViewerClosed)
@@ -6456,7 +6458,7 @@ class imageViewer(QMainWindow):
         self.jumpForwardAction.triggered.connect(self.skip10ahead_frames)
         self.jumpBackwardAction.triggered.connect(self.skip10back_frames)
         if self.enableOverlay:
-            self.overlayButton.toggled.connect(self.update_img)
+            self.overlayButton.toggled.connect(self.overlay_cb)
             self.overlayButton.sigRightClick.connect(self.showOverlayContextMenu)
     
     def gui_setSingleFrameMode(self, isSingleFrame: bool):
@@ -6478,7 +6480,7 @@ class imageViewer(QMainWindow):
             return
 
         if self.parent is not None:
-            self.parent.overlayContextMenu.exec_(QCursor.pos())
+            self.overlayContextMenu.exec_(QCursor.pos())
 
     def gui_createStatusBar(self):
         self.statusbar = self.statusBar()
@@ -6504,15 +6506,105 @@ class imageViewer(QMainWindow):
         self.Plot.addItem(self.img)
 
         #Image histogram
-        hist = widgets.myHistogramLUTitem()
-        self.hist = hist
-        hist.setImageItem(self.img)
-        self.graphLayout.addItem(hist, row=1, col=0)
+        self.imgGrad = widgets.myHistogramLUTitem(isViewer=True)
+        self.imgGrad.gradient.showMenu = self.showLutItemOverlayContextMenu 
+        self.imgGrad.vb.raiseContextMenu = lambda x: None
+        self.imgGrad.setImageItem(self.img)
+        self.graphLayout.addItem(self.imgGrad, row=1, col=0)
 
         # Current frame text
         self.frameLabel = pg.LabelItem(justify='center', color='w', size='14pt')
         self.frameLabel.setText(' ')
         self.graphLayout.addItem(self.frameLabel, row=2, col=0, colspan=2)
+
+        if not self.enableOverlay:
+            return
+    
+    def gui_createOverlayItems(self):
+        self.createOverlayChannelsActions()
+        self.overlayLayersItems = {}
+        for ch in self.posData.chNames:
+            if ch == self.parent.user_ch_name:
+                continue
+            overlayItems = self.getOverlayItems(ch) 
+            imageItem, lutItem, alphaScrollbar = overlayItems
+            lutItem.vb.raiseContextMenu = lambda x: None
+            lutItem.gradient.showMenu = self.showLutItemOverlayContextMenu    
+            lutItem.overlayColorButton.sigColorChanging.connect(
+                self.updateOlColors
+            )
+            self.addAlphaScrollbar(ch, imageItem, alphaScrollbar)
+            self.overlayLayersItems[ch] = overlayItems
+            self.Plot.addItem(imageItem)
+    
+    def createOverlayChannelsActions(self):
+        self.overlayLutItemAdditionalActions = []
+        separator = QAction(self)
+        separator.setSeparator(True)
+        self.overlayLutItemAdditionalActions.append(separator)
+        section = self.imgGrad.gradient.menu.addSection(
+            'Select channel to adjust: '
+        )
+        self.overlayLutItemAdditionalActions.append(section)
+        self.imgGrad.gradient.menu.removeAction(section)
+        
+        self.overlayChNamesActionGroup = QActionGroup(self)
+        self.overlayChNamesActionGroup.setExclusive(True)
+        for chName in self.posData.chNames:
+            action = QAction(chName, self)
+            action.setCheckable(True)
+            if chName == self.parent.user_ch_name:
+                action.setChecked(True)
+            self.overlayChNamesActionGroup.addAction(action)
+        self.overlayChNamesActionGroup.triggered.connect(
+            self.chNameGradientActionClicked
+        )
+    
+    def chNameGradientActionClicked(self, action):
+        # Action triggered from lutItem
+        self.checkedOverlayChName = action.text()
+        if action.text() == self.posData.user_ch_name:
+            self.setOverlayItemsVisible('', False)
+        else:
+            self.setOverlayItemsVisible(action.text(), True)
+
+    def showLutItemOverlayContextMenu(self, event):
+        lutItem = self.currentLutItem
+        
+        for action in self.overlayLutItemAdditionalActions:
+            try:
+                lutItem.gradient.menu.removeAction(action)
+            except Exception as e:
+                pass
+
+        for action in self.overlayChNamesActionGroup.actions():
+            try:
+                lutItem.gradient.menu.removeAction(action)
+            except Exception as e:
+                pass
+        
+        if self.overlayButton.isChecked():        
+            for action in self.overlayLutItemAdditionalActions:
+                lutItem.gradient.menu.addAction(action)
+            
+            for action in self.overlayChNamesActionGroup.actions():
+                if action.text() == self.posData.user_ch_name:
+                    lutItem.gradient.menu.addAction(action)
+                    continue
+                for filename in self.posData.ol_data:
+                    if filename.endswith(action.text()):
+                        lutItem.gradient.menu.addAction(action)
+                        break
+                    if filename.endswith(f'{action.text()}_aligned'):
+                        lutItem.gradient.menu.addAction(action)
+                        break
+
+        try:
+            # Convert QPointF to QPoint
+            lutItem.gradient.menu.popup(event.screenPos().toPoint())
+        except AttributeError:
+            lutItem.gradient.menu.popup(event.screenPos())
+        
 
     def gui_connectImgActions(self):
         self.img.hoverEvent = self.gui_hoverEventImg
@@ -6559,6 +6651,223 @@ class imageViewer(QMainWindow):
 
         self.img_Widglayout.setContentsMargins(100, 0, 50, 0)
         self.zSliceScrollBar.valueChanged.connect(self.update_z_slice)
+
+        if self.enableOverlay:
+            self.setOverlayColors()
+            self.gui_createOverlayItems()
+            self.createOverlayContextMenu()
+
+            self.img.alphaScrollbar = self.addAlphaScrollbar(
+                self.parent.user_ch_name, self.img
+            )
+    
+    def getOverlayItems(self, channelName):
+        imageItem = pg.ImageItem()
+        imageItem.setOpacity(0.5)
+
+        lutItem = widgets.myHistogramLUTitem(isViewer=True)
+        
+        lutItem.setImageItem(imageItem)
+        lutItem.vb.raiseContextMenu = lambda x: None
+        initColor = self.overlayRGBs.pop(0)
+        self.parent.initColormapOverlayLayerItem(initColor, lutItem)
+        lutItem.addOverlayColorButton(initColor)
+        lutItem.initColor = initColor
+        lutItem.hide()
+
+        alphaScrollBar = self.addAlphaScrollbar(channelName, imageItem)
+        return imageItem, lutItem, alphaScrollBar
+    
+    def setOverlayColors(self):
+        self.overlayRGBs = [
+            (255, 255, 0),
+            (252, 72, 254),
+            (49, 222, 134),
+            (22, 108, 27)
+        ]
+        cmap = matplotlib.colormaps['gist_rainbow']
+        self.overlayRGBs.extend(
+            [tuple([round(c*255) for c in cmap(i)][:3]) 
+            for i in np.linspace(0,1,8)]
+        )
+
+    def setOpacityOverlayLayersItems(self, value, imageItem=None):
+        if imageItem is None:
+            imageItem = self.sender().imageItem
+            alpha = value/self.sender().maximum()
+        else:
+            alpha = value
+        imageItem.setOpacity(alpha)
+    
+    def overlay_cb(self, checked):
+        if checked:
+            if self.posData.ol_data is None:
+                selectedChannels = self.askSelectOverlayChannel()
+                if selectedChannels is None:
+                    self.overlayButton.toggled.disconnect()
+                    self.overlayButton.setChecked(False)
+                    self.overlayButton.toggled.connect(self.overlay_cb)
+                    return
+                success = self.parent.loadOverlayData(selectedChannels)         
+                if not success:
+                    return False
+                lastChannel = selectedChannels[-1]
+                self.checkedOverlayChName = lastChannel
+                imageItem = self.overlayLayersItems[lastChannel][0]
+                self.setOpacityOverlayLayersItems(0.5, imageItem=imageItem)
+                self.img.setOpacity(0.5)
+                self.setCheckedOverlayContextMenusActions(selectedChannels)
+            else:
+                self.checkedOverlayChName = (
+                    self.parent.imgGrad.checkedChannelname
+                )
+                selectedChannels = self.parent.checkedOverlayChannels
+                self.setCheckedOverlayContextMenusActions(selectedChannels)
+            self.setOverlayItemsVisible(self.checkedOverlayChName, True)
+        else:
+            self.img.setOpacity(1.0)
+            self.setOverlayItemsVisible('', False)
+            for items in self.overlayLayersItems.values():
+                imageItem = items[0]
+                imageItem.clear()
+        self.update_img()
+    
+    def createOverlayContextMenu(self):
+        ch_names = [
+            ch for ch in self.posData.chNames 
+            if ch != self.posData.user_ch_name
+        ]
+        self.overlayContextMenu = QMenu()
+        self.overlayContextMenu.addSeparator()
+        self.checkedOverlayChannels = set()
+        for chName in ch_names:
+            action = QAction(chName, self.overlayContextMenu)
+            action.setCheckable(True)
+            action.toggled.connect(self.overlayChannelToggled)
+            self.overlayContextMenu.addAction(action)
+    
+    def setCheckedOverlayContextMenusActions(self, channelNames):
+        for action in self.overlayContextMenu.actions():
+            if action.text() not in channelNames:
+                continue
+            action.setChecked(True)
+            self.checkedOverlayChannels.add(action.text())
+
+    def overlayChannelToggled(self, checked):
+        # Action toggled from overlayButton context menu
+        channelName = self.sender().text()
+        if checked:
+            posData = self.posData
+            if channelName not in posData.loadedFluoChannels:
+                self.parent.loadOverlayData([channelName], addToExisting=True)
+            self.setOverlayItemsVisible(channelName, True)
+            self.checkedOverlayChannels.add(channelName)    
+            self.updateOlColors(self.overlayColorButton)
+        else:
+            self.checkedOverlayChannels.remove(channelName)
+            imageItem = self.overlayLayersItems[channelName][0]
+            imageItem.clear()
+            try:
+                channelToShow = next(iter(self.checkedOverlayChannels))
+                self.setOverlayItemsVisible(channelToShow, True)
+            except StopIteration:
+                self.setOverlayItemsVisible('', False)
+        self.update_img()
+    
+    def updateOlColors(self, button):
+        lutItem = self.overlayLayersItems[self.checkedOverlayChName][1]
+        rgb = lutItem.overlayColorButton.color().getRgb()[:3]
+        self.parent.initColormapOverlayLayerItem(rgb, lutItem)
+        lutItem.overlayColorButton.setColor(rgb)
+    
+    def addAlphaScrollbar(self, channelName, imageItem, alphaScrollBar=None):
+        if alphaScrollBar is None:
+            alphaScrollBar = QScrollBar(Qt.Horizontal)
+        label = QLabel(f'Alpha {channelName}')
+        label.setFont(font)
+        label.hide()
+        alphaScrollBar.imageItem = imageItem
+        alphaScrollBar.label = label
+        alphaScrollBar.setFixedHeight(self.parent.h)
+        alphaScrollBar.hide()
+        alphaScrollBar.setMinimum(0)
+        alphaScrollBar.setMaximum(40)
+        alphaScrollBar.setValue(20)
+        alphaScrollBar.setToolTip(
+            f'Control the alpha value of the overlaid channel {channelName}.\n'
+            'alpha=0 results in NO overlay,\n'
+            'alpha=1 results in only fluorescence data visible'
+        )
+        self.img_Widglayout.addWidget(
+            alphaScrollBar.label, 2, 0, alignment=Qt.AlignRight
+        )
+        self.img_Widglayout.addWidget(alphaScrollBar, 2, 1, 1, 20)
+        sp = alphaScrollBar.label.sizePolicy()
+        sp.setRetainSizeWhenHidden(True)
+        alphaScrollBar.label.setSizePolicy(sp)
+        
+        sp = alphaScrollBar.sizePolicy()
+        sp.setRetainSizeWhenHidden(True)
+        alphaScrollBar.setSizePolicy(sp)
+
+        alphaScrollBar.valueChanged.connect(self.setOpacityOverlayLayersItems)
+        return alphaScrollBar
+    
+    def setOverlayItemsVisible(self, channelName, visible):
+        if visible:
+            self.imgGrad.hide()
+            self.img.alphaScrollbar.hide()
+            self.img.alphaScrollbar.label.hide()
+            try:
+                self.graphLayout.removeItem(self.imgGrad)
+            except Exception as e:
+                pass
+            itemsToShow = None
+            for name, items in self.overlayLayersItems.items():
+                _, lutItem, alphaSB = items
+                if name == channelName:
+                    itemsToShow = items
+                else:
+                    lutItem.hide()
+                    alphaSB.hide()
+                    alphaSB.label.hide()
+                    try:
+                        self.graphLayout.removeItem(lutItem)
+                    except Exception as e:
+                        pass
+            
+            if itemsToShow is None:
+                self.graphLayout.addItem(self.imgGrad, row=1, col=0)
+                self.imgGrad.show()
+                self.currentLutItem = self.imgGrad
+                self.img.alphaScrollbar.show()
+                self.img.alphaScrollbar.label.show()
+            else:
+                _, lutItem, alphaSB = itemsToShow
+                lutItem.show()
+                alphaSB.show()
+                alphaSB.label.show()
+                self.currentLutItem = lutItem
+                self.graphLayout.addItem(lutItem, row=1, col=0)
+        else:
+            if self.overlayButton.isChecked():
+                self.img.alphaScrollbar.show()
+                self.img.alphaScrollbar.label.show()
+            else:
+                self.img.alphaScrollbar.hide()
+                self.img.alphaScrollbar.label.hide()
+            for name, items in self.overlayLayersItems.items():
+                _, lutItem, alphaSB = items
+                lutItem.hide()
+                alphaSB.hide()
+                alphaSB.label.hide()
+                try:
+                    self.graphLayout.removeItem(lutItem)
+                except Exception as e:
+                    pass
+            self.graphLayout.addItem(self.imgGrad, row=1, col=0)
+            self.imgGrad.show()
+            self.currentLutItem = self.imgGrad
 
     def framesScrollBarMoved(self, frame_n):
         self.frame_i = frame_n-1
@@ -6650,31 +6959,46 @@ class imageViewer(QMainWindow):
         if self.parent is None:
             img = self.getImage()
         else:
-            if self.overlayButton.isChecked():
-                img = self.getOverlayImg()
-            else:
-                img = self.parent.getImage(frame_i=self.frame_i)
+            img = self.parent.getImage(frame_i=self.frame_i)
         self.img.setImage(img)
         self.framesScrollBar.setSliderPosition(self.frame_i+1)
+        
+        if not self.enableOverlay:
+            return
 
-    def getOverlayImg(self):
-        try:
-            img = self.parent.getOverlayImg(
-                setImg=False, frame_i=self.frame_i
+        if not self.overlayButton.isChecked():
+            return
+        
+        self.setOverlayImages(frame_i=self.frame_i)
+    
+    def askSelectOverlayChannel(self):
+        ch_names = [
+            ch for ch in self.posData.chNames 
+            if ch != self.posData.user_ch_name
+        ]
+        selectFluo = widgets.QDialogListbox(
+            'Select channel',
+            'Select channel names to overlay:\n',
+            ch_names, multiSelection=True, parent=self
+        )
+        selectFluo.exec_()
+        if selectFluo.cancel:
+            return
+
+        return selectFluo.selectedItemsText
+    
+    def setOverlayImages(self, frame_i=None):
+        posData = self.posData
+        for filename in posData.ol_data:
+            chName = myutils.get_chname_from_basename(
+                filename, posData.basename, remove_ext=False
             )
-        except AttributeError:
-            success = self.parent.askSelectOverlayChannel()
-            if not success:
-                self.overlayButton.toggled.disconnect()
-                self.overlayButton.setChecked(False)
-                self.overlayButton.toggled.connect(self.update_img)
-                img = self.parent.getImage(frame_i=self.frame_i)
-            else:
-                self.parent.setCheckedOverlayContextMenusAction()
-                img = self.parent.getOverlayImg(
-                    setImg=False, frame_i=self.frame_i
-                )
-        return img
+            if chName not in self.checkedOverlayChannels:
+                continue
+            
+            imageItem = self.overlayLayersItems[chName][0]
+            ol_img = self.parent.getOlImg(filename, frame_i=frame_i)
+            imageItem.setImage(ol_img)
 
     def closeEvent(self, event):
         if self.button_toUncheck is not None:
@@ -6684,6 +7008,7 @@ class imageViewer(QMainWindow):
     def show(self, left=None, top=None):
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         QMainWindow.show(self)
+        self.framesScrollBar.setFixedHeight(self.parent.h)
         if left is not None and top is not None:
             self.setGeometry(left, top, 850, 800)
 
@@ -8349,7 +8674,9 @@ class manualSeparateGui(QMainWindow):
         self.overlayButton = QToolButton(self)
         self.overlayButton.setIcon(QIcon(":overlay.svg"))
         self.overlayButton.setCheckable(True)
-        self.overlayButton.setToolTip('Overlay cells image')
+        self.overlayButton.setToolTip(
+            'Overlay channel\'s image'
+        )
         editToolBar.addWidget(self.overlayButton)
 
     def gui_connectActions(self):
@@ -8359,7 +8686,7 @@ class manualSeparateGui(QMainWindow):
         self.cancelAction.triggered.connect(self.close)
         self.undoAction.triggered.connect(self.undo)
         self.overlayButton.toggled.connect(self.toggleOverlay)
-        self.hist.sigLookupTableChanged.connect(self.histLUT_cb)
+        self.imgGrad.sigLookupTableChanged.connect(self.histLUT_cb)
 
     def gui_createStatusBar(self):
         self.statusbar = self.statusBar()
@@ -8385,7 +8712,7 @@ class manualSeparateGui(QMainWindow):
         self.ax.addItem(self.imgItem)
 
         #Image histogram
-        self.hist = widgets.myHistogramLUTitem()
+        self.imgGrad = widgets.myHistogramLUTitem()
 
         # Curvature items
         self.hoverLinSpace = np.linspace(0, 1, 1000)
@@ -8656,8 +8983,8 @@ class manualSeparateGui(QMainWindow):
 
     def getOverlay(self):
         # Rescale intensity based on hist ticks values
-        min = self.hist.gradient.listTicks()[0][1]
-        max = self.hist.gradient.listTicks()[1][1]
+        min = self.imgGrad.gradient.listTicks()[0][1]
+        max = self.imgGrad.gradient.listTicks()[1][1]
         img = skimage.exposure.rescale_intensity(
                                       self.img, in_range=(min, max))
         alpha = self.alphaScrollBar.value()/self.alphaScrollBar.maximum()
@@ -8691,11 +9018,11 @@ class manualSeparateGui(QMainWindow):
 
     def toggleOverlay(self, checked):
         if checked:
-            self.graphLayout.addItem(self.hist, row=1, col=0)
+            self.graphLayout.addItem(self.imgGrad, row=1, col=0)
             self.alphaScrollBar.show()
             self.alphaScrollBar_label.show()
         else:
-            self.graphLayout.removeItem(self.hist)
+            self.graphLayout.removeItem(self.imgGrad)
             self.alphaScrollBar.hide()
             self.alphaScrollBar_label.hide()
         self.updateImg()
