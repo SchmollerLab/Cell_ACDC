@@ -14,6 +14,7 @@ import skimage.draw
 import skimage.morphology
 
 from matplotlib.colors import ListedColormap, LinearSegmentedColormap
+import matplotlib.pyplot as plt
 
 from PyQt5.QtCore import (
     pyqtSignal, QTimer, Qt, QPoint, pyqtSlot, pyqtProperty,
@@ -69,6 +70,14 @@ def renamePgCmaps():
     except KeyError:
         pass
 
+def _tab20gradient():
+    cmap = plt.get_cmap('tab20')
+    ticks = [
+        (t, tuple([int(v*255) for v in cmap(t)])) for t in np.linspace(0,1,20)
+    ]
+    gradient = {'ticks': ticks, 'mode': 'rgb'}
+    return gradient
+
 def addGradients():
     Gradients = pg.graphicsItems.GradientEditorItem.Gradients
     Gradients['cividis'] = {
@@ -94,6 +103,7 @@ def addGradients():
             (1.0, (240, 127, 97, 255))],
         'mode': 'rgb'
     }
+    Gradients['tab20'] = _tab20gradient()
     cmaps = {}
     for name, gradient in Gradients.items():
         ticks = gradient['ticks']
