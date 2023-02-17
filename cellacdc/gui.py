@@ -10206,6 +10206,7 @@ class guiWin(QMainWindow):
         isBrushActive = (
             self.brushButton.isChecked() or self.eraserButton.isChecked()
         )
+        isManualTrackingActive = self.manualTrackingButton.isChecked()
         if self.brushButton.isChecked():
             try:
                 n = int(ev.text())
@@ -10220,6 +10221,20 @@ class guiWin(QMainWindow):
             except Exception as e:
                 # printl(traceback.format_exc())
                 pass
+        
+        if self.manualTrackingButton.isChecked():
+            try:
+                n = int(ev.text())
+                if self.typingEditID:
+                    ID = int(f'{self.manualTrackingToolbar.spinboxID.value()}{n}')
+                else:
+                    ID = n
+                    self.typingEditID = True
+                self.manualTrackingToolbar.spinboxID.setValue(ID)
+            except Exception as e:
+                # printl(traceback.format_exc())
+                pass
+
         isExpandLabelActive = self.expandLabelToolButton.isChecked()
         isWandActive = self.wandToolButton.isChecked()
         isLabelRoiCircActive = (
@@ -10267,7 +10282,7 @@ class guiWin(QMainWindow):
         # elif ev.key()==Qt.Key_Right and not isCtrlModifier:
         #     self.next_cb()
         elif ev.key() == Qt.Key_Enter or ev.key() == Qt.Key_Return:
-            if self.brushButton.isChecked():
+            if self.brushButton.isChecked() or isManualTrackingActive:
                 self.typingEditID = False
             elif self.keepIDsButton.isChecked():
                 self.keepIDsConfirmAction.trigger()
@@ -10281,6 +10296,10 @@ class guiWin(QMainWindow):
 
             if self.brushButton.isChecked() and self.typingEditID:
                 self.editIDcheckbox.setChecked(True)
+                self.typingEditID = False
+                return
+            
+            if isManualTrackingActive and self.typingEditID:
                 self.typingEditID = False
                 return
             
@@ -17559,11 +17578,13 @@ class guiWin(QMainWindow):
         self.clearGhostMask()
         ID = self.ghostObject.label
         h, w = self.ghostObject.image.shape[-2:]
+        yc, xc = self.ghostObject.local_centroid
+        Dx = int(x-xc)
+        Dy = int(y-yc)
+        bbox = ((Dy, Dy+h), (Dx, Dx+w))
 
         Y, X = self.currentLab2D.shape
-        slices = myutils.get_slices_local_into_global_arr(
-            (int(y), int(x)), (Y, X), (h, w)
-        )
+        slices = myutils.get_slices_local_into_global_arr(bbox, (Y, X))
         slice_global_to_local, slice_crop_local = slices
 
         obj_image = self.ghostObject.image[slice_crop_local]
