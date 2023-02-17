@@ -2913,6 +2913,7 @@ class guiWin(QMainWindow):
         self.annotSegmMasksCheckbox.clicked.connect(self.annotOptionClicked)
         self.drawMothBudLinesCheckbox.clicked.connect(self.annotOptionClicked)
         self.drawNothingCheckbox.clicked.connect(self.annotOptionClicked)
+        self.annotNumZslicesCheckbox.clicked.connect(self.annotOptionClicked)
 
         # Right 
         self.annotIDsCheckboxRight.clicked.connect(
@@ -2927,6 +2928,9 @@ class guiWin(QMainWindow):
             self.annotOptionClickedRight)
         self.drawNothingCheckboxRight.clicked.connect(
             self.annotOptionClickedRight)
+        self.annotNumZslicesCheckboxRight.clicked.connect(
+            self.annotOptionClickedRight
+        )
 
         for filtersDict in self.filtersWins.values():
             filtersDict['action'].toggled.connect(self.filterToggled)
@@ -3004,6 +3008,7 @@ class guiWin(QMainWindow):
 
         self.annotIDsCheckbox = QCheckBox('IDs')
         self.annotCcaInfoCheckbox = QCheckBox('Cell cycle info')
+        self.annotNumZslicesCheckbox = QCheckBox('No. z-slices/object')
 
         self.annotContourCheckbox = QCheckBox('Contours')
         self.annotSegmMasksCheckbox = QCheckBox('Segm. masks')
@@ -3028,6 +3033,7 @@ class guiWin(QMainWindow):
         annotOptionsLayout.addWidget(self.annotIDsCheckbox)
         annotOptionsLayout.addWidget(self.annotCcaInfoCheckbox)
         annotOptionsLayout.addWidget(self.drawMothBudLinesCheckbox)
+        annotOptionsLayout.addWidget(self.annotNumZslicesCheckbox)
         annotOptionsLayout.addWidget(QLabel(' | '))
         annotOptionsLayout.addWidget(self.annotContourCheckbox)
         annotOptionsLayout.addWidget(self.annotSegmMasksCheckbox)
@@ -3049,6 +3055,7 @@ class guiWin(QMainWindow):
         # Annotations options right image
         self.annotIDsCheckboxRight = QCheckBox('IDs')
         self.annotCcaInfoCheckboxRight = QCheckBox('Cell cycle info')
+        self.annotNumZslicesCheckboxRight = QCheckBox('No. z-slices/object')
 
         self.annotContourCheckboxRight = QCheckBox('Contours')
         self.annotSegmMasksCheckboxRight = QCheckBox('Segm. masks')
@@ -3065,6 +3072,7 @@ class guiWin(QMainWindow):
         annotOptionsLayoutRight.addWidget(self.annotIDsCheckboxRight)
         annotOptionsLayoutRight.addWidget(self.annotCcaInfoCheckboxRight)
         annotOptionsLayoutRight.addWidget(self.drawMothBudLinesCheckboxRight)
+        annotOptionsLayoutRight.addWidget(self.annotNumZslicesCheckboxRight)
         annotOptionsLayoutRight.addWidget(QLabel(' | '))
         annotOptionsLayoutRight.addWidget(self.annotContourCheckboxRight)
         annotOptionsLayoutRight.addWidget(self.annotSegmMasksCheckboxRight)
@@ -12874,6 +12882,7 @@ class guiWin(QMainWindow):
         )
 
         self.disableNonFunctionalButtons()
+        self.setVisible3DsegmWidgets()
 
         if len(self.data) == 1 and posData.SizeZ > 1 and posData.SizeT == 1:
             self.zSliceCheckbox.setChecked(True)
@@ -12901,6 +12910,13 @@ class guiWin(QMainWindow):
     def resizeGui(self):
         self.autoRange()
         self.bottomScrollArea._resizeVertical()
+    
+    def setVisible3DsegmWidgets(self):
+        self.annotNumZslicesCheckbox.setVisible(self.isSegm3D)
+        self.annotNumZslicesCheckboxRight.setVisible(self.isSegm3D)
+        if not self.isSegm3D:
+            self.annotNumZslicesCheckbox.setChecked(False)
+            self.annotNumZslicesCheckboxRight.setChecked(False)
     
     def showHighlightZneighCheckbox(self):
         if self.isSegm3D:
@@ -15092,6 +15108,13 @@ class guiWin(QMainWindow):
                 self.setLabelCenteredObject(obj, LabelItemID)
                 return
 
+        annotNumZslices = (
+            (self.annotNumZslicesCheckbox.isChecked() and ax==0)
+            or (self.annotNumZslicesCheckboxRight.isChecked() and ax==1)
+        )
+        if annotNumZslices:
+            num_zslices = np.sum(np.any(obj.image, axis=(1,2)))
+            txt = f'{txt} ({num_zslices})'
         try:
             if debug:
                 print(txt, color)
@@ -19205,7 +19228,12 @@ class guiWin(QMainWindow):
             self.annotContourCheckbox.setChecked(False)
             self.annotSegmMasksCheckbox.setChecked(False)
             self.drawMothBudLinesCheckbox.setChecked(False)
+            self.annotNumZslicesCheckbox.setChecked(False)
         else:
+            self.drawNothingCheckbox.setChecked(False)
+        
+        if self.sender() == self.annotNumZslicesCheckbox:
+            self.annotIDsCheckbox.setChecked(True)
             self.drawNothingCheckbox.setChecked(False)
         
         self.setDrawAnnotComboboxText()
@@ -19250,7 +19278,12 @@ class guiWin(QMainWindow):
             self.annotContourCheckboxRight.setChecked(False)
             self.annotSegmMasksCheckboxRight.setChecked(False)
             self.drawMothBudLinesCheckboxRight.setChecked(False)
+            self.annotNumZslicesCheckboxRight.setChecked(False)
         else:
+            self.drawNothingCheckboxRight.setChecked(False)
+        
+        if self.sender() == self.annotNumZslicesCheckboxRight:
+            self.annotIDsCheckboxRight.setChecked(True)
             self.drawNothingCheckboxRight.setChecked(False)
 
         self.setDrawAnnotComboboxTextRight()
@@ -19288,6 +19321,7 @@ class guiWin(QMainWindow):
 
         if t == self.drawIDsContComboBox.currentText():
             self.drawIDsContComboBox_cb(0)
+        
         self.drawIDsContComboBox.setCurrentText(t)
 
     def setDrawAnnotComboboxTextRight(self):
