@@ -117,6 +117,34 @@ renamePgCmaps()
 removeHSVcmaps()
 cmaps, Gradients = addGradients()
 
+class QBaseDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+
+    def exec_(self, resizeWidthFactor=None):
+        if resizeWidthFactor is not None:
+            self.show()
+            self.resize(int(self.width()*resizeWidthFactor), self.height())
+        self.show(block=True)
+
+    def show(self, block=False):
+        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
+        super().show()
+        if block:
+            self.loop = QEventLoop()
+            self.loop.exec_()
+
+    def closeEvent(self, event):
+        if hasattr(self, 'loop'):
+            self.loop.exit()
+    
+    def keyPressEvent(self, event) -> None:
+        if event.key() == Qt.Key_Escape:
+            event.ignore()
+            return
+            
+        super().keyPressEvent(event)
+
 class XStream(QObject):
     _stdout = None
     _stderr = None
@@ -520,6 +548,56 @@ class CustomAnnotationScatterPlotItem(BaseScatterPlotItem):
     def __init__(self, *args, **kargs):
         super().__init__(*args, **kargs)
 
+class QInput(QBaseDialog):
+    def __init__(self, parent=None, title='Input'):
+        self.cancel = True
+        self.allowEmpty = True
+
+        super().__init__(parent)
+
+        self.setWindowTitle(title)
+
+        self.mainLayout = QVBoxLayout()
+
+        self.infoLabel = QLabel()
+        self.mainLayout.addWidget(self.infoLabel)
+
+        promptLayout = QHBoxLayout()
+        self.promptLabel = QLabel()
+        promptLayout.addWidget(self.promptLabel)
+        self.lineEdit = QLineEdit()
+        promptLayout.addWidget(self.lineEdit)
+
+        buttonsLayout = CancelOkButtonsLayout()
+
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+
+        self.mainLayout.addLayout(promptLayout)
+        self.mainLayout.addSpacing(20)
+        self.mainLayout.addLayout(buttonsLayout)
+
+        self.buttonsLayout = buttonsLayout
+
+        self.setFont(font)
+        self.setLayout(self.mainLayout)
+    
+    def askText(self, prompt, infoText='', allowEmpty=False):
+        self.allowEmpty = allowEmpty
+        if infoText:
+            infoText = f'{infoText}<br>'
+            self.infoLabel.setText(html_utils.paragraph(infoText))
+        self.promptLabel.setText(prompt)
+        self.exec_(resizeWidthFactor=1.5)
+
+    def ok_cb(self):
+        self.answer = self.lineEdit.text()
+        if not self.allowEmpty and not self.answer:
+            msg = myMessageBox(showCentered=False)
+            msg.critical(self, 'Empty', 'Entry cannot be empty.')
+            return
+        self.cancel = False
+        self.close()
 
 class ElidingLineEdit(QLineEdit):
     def __init__(self, parent=None):
@@ -3463,10 +3541,13 @@ class PolyLineROI(pg.PolyLineROI):
         super().__init__(positions, closed, pos, **args)
 
 class baseHistogramLUTitem(pg.HistogramLUTItem):
-    def __init__(self, **kwargs):
+    sigAddColormap = pyqtSignal(object, str)
+
+    def __init__(self, name='image', parent=None, **kwargs):
         super().__init__(**kwargs)
 
         self.cmaps = cmaps
+        self._parent = parent
 
         self.gradient.colorDialog.setWindowFlags(
             Qt.Dialog | Qt.WindowStaysOnTopHint
@@ -3486,11 +3567,33 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
         self.gradient.menu.removeAction(HSV_action)
         self.gradient.menu.removeAction(RGB_ation)
 
+        # Add custom colormap action
+        self.saveColormapAction = QAction(
+            'Save current colormap...', self
+        )
+        self.gradient.menu.addAction(self.saveColormapAction)
+        self.saveColormapAction.triggered.connect(
+            self.saveColormap
+        )
+
         # hide histogram tool
         self.vb.hide()
 
         # Disable histogram default context Menu event
         self.vb.raiseContextMenu = lambda x: None
+    
+    def _askNameColormap(self):
+        inputWin = QInput(parent=self._parent, title='Colormap name')
+        inputWin.askText('Insert a name for the colormap: ', allowEmpty=False)
+        if inputWin.cancel:
+            return
+        cmapName = inputWin.answer
+        return cmapName
+    
+    def saveColormap(self):
+        cmapName = self._askNameColormap()
+        if cmapName is None:
+            return
     
     def tickColorAccepted(self):
         self.gradient.currentColorAccepted()
@@ -3640,8 +3743,8 @@ class myHistogramLUTitem(baseHistogramLUTitem):
     sigGradientMenuEvent = pyqtSignal(object)
     sigTickColorAccepted = pyqtSignal(object)
 
-    def __init__(self, isViewer=False, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, parent=None, name='image', isViewer=False, **kwargs):
+        super().__init__(parent=parent, name=name, **kwargs)
 
         self.isViewer = isViewer
         if isViewer:
@@ -4237,6 +4340,15 @@ class labelsGradientWidget(pg.GradientWidget):
         self.menu.removeAction(HSV_action)
         self.menu.removeAction(RGB_ation)
 
+        # Add custom colormap action
+        self.saveColormapAction = QAction(
+            'Save current colormap...', self
+        )
+        self.menu.addAction(self.saveColormapAction)
+        self.saveColormapAction.triggered.connect(
+            self.saveColormap
+        )
+
         # Background color button
         hbox = QHBoxLayout()
         hbox.addWidget(QLabel('Background color: '))
@@ -4297,6 +4409,19 @@ class labelsGradientWidget(pg.GradientWidget):
 
         self.showRightImgAction.toggled.connect(self.showRightImageToggled)
         self.showLabelsImgAction.toggled.connect(self.showLabelsImageToggled)
+    
+    def _askNameColormap(self):
+        inputWin = QInput(parent=self._parent, title='Colormap name')
+        inputWin.askText('Insert a name for the colormap: ', allowEmpty=False)
+        if inputWin.cancel:
+            return
+        cmapName = inputWin.answer
+        return cmapName
+    
+    def saveColormap(self):
+        cmapName = self._askNameColormap()
+        if cmapName is None:
+            return
     
     def showRightImageToggled(self, checked):
         if checked and self.showLabelsImgAction.isChecked():

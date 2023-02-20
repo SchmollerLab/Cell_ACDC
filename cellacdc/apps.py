@@ -78,31 +78,6 @@ italicFont = QFont()
 italicFont.setPixelSize(13)
 italicFont.setItalic(True)
 
-class QBaseDialog(QDialog):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-
-    def exec_(self):
-        self.show(block=True)
-
-    def show(self, block=False):
-        self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
-        super().show()
-        if block:
-            self.loop = QEventLoop()
-            self.loop.exec_()
-
-    def closeEvent(self, event):
-        if hasattr(self, 'loop'):
-            self.loop.exit()
-    
-    def keyPressEvent(self, event) -> None:
-        if event.key() == Qt.Key_Escape:
-            event.ignore()
-            return
-            
-        super().keyPressEvent(event)
-
 class AcdcSPlashScreen(QSplashScreen):
     def __init__(self):
         super().__init__()
@@ -937,7 +912,7 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
         }
         return _state
 
-class AddPointsLayerDialog(QBaseDialog):
+class AddPointsLayerDialog(widgets.QBaseDialog):
     sigClosed = pyqtSignal()
     sigCriticalReadTable = pyqtSignal(str)
     sigLoadedTable = pyqtSignal(object)
@@ -1308,7 +1283,7 @@ class AddPointsLayerDialog(QBaseDialog):
         self.move(left, top)
 
 
-class EditPointsLayerAppearanceDialog(QBaseDialog):
+class EditPointsLayerAppearanceDialog(widgets.QBaseDialog):
     sigClosed = pyqtSignal()
 
     def __init__(self, parent=None):
@@ -1549,7 +1524,7 @@ class wandToleranceWidget(QFrame):
 
         self.setLayout(self.slider.layout)
 
-class TrackSubCellObjectsDialog(QBaseDialog):
+class TrackSubCellObjectsDialog(widgets.QBaseDialog):
     def __init__(self, basename='', parent=None):
         self.cancel = True
         super().__init__(parent=parent)
@@ -1665,7 +1640,7 @@ class TrackSubCellObjectsDialog(QBaseDialog):
         }
         self.close()
 
-class setMeasurementsDialog(QBaseDialog):
+class setMeasurementsDialog(widgets.QBaseDialog):
     sigClosed = pyqtSignal()
     sigCancel = pyqtSignal()
     sigRestart = pyqtSignal()
@@ -3906,7 +3881,7 @@ class PreProcessRecipeWidget(QWidget):
 
         self.setLayout(mainLayout)
 
-class MultiTimePointFilePattern(QBaseDialog):
+class MultiTimePointFilePattern(widgets.QBaseDialog):
     def __init__(self, fileName, folderPath, readPatternFunc=None, parent=None):
         super().__init__(parent)
 
@@ -4140,7 +4115,7 @@ class MultiTimePointFilePattern(QBaseDialog):
     def showEvent(self, event) -> None:
         self.channelNameLE.setFocus(True)
 
-class OrderableListWidgetDialog(QBaseDialog):
+class OrderableListWidgetDialog(widgets.QBaseDialog):
     def __init__(
             self, items, title='Select items', infoTxt='', helpText='', 
             parent=None
@@ -4192,7 +4167,7 @@ class OrderableListWidgetDialog(QBaseDialog):
         self.close()
 
 
-class QDialogAutomaticThresholding(QBaseDialog):
+class QDialogAutomaticThresholding(widgets.QBaseDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
 
@@ -4300,7 +4275,7 @@ class QDialogAutomaticThresholding(QBaseDialog):
         self.threshMethodCombobox.setCurrentText(Method)
         self.segment3Dcheckbox.setChecked(section.getboolean('segment_3D_volume'))
 
-class ApplyTrackTableSelectColumnsDialog(QBaseDialog):
+class ApplyTrackTableSelectColumnsDialog(widgets.QBaseDialog):
     def __init__(self, df, parent=None):
         super().__init__(parent)
 
@@ -4515,7 +4490,7 @@ class QDialogSelectModel(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
-class startStopFramesDialog(QBaseDialog):
+class startStopFramesDialog(widgets.QBaseDialog):
     def __init__(
             self, SizeT, currentFrameNum=0, parent=None,
             windowTitle='Select frame range to segment'
@@ -5352,7 +5327,7 @@ class QDialogMetadata(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
-class QCropZtool(QBaseDialog):
+class QCropZtool(widgets.QBaseDialog):
     sigClose = pyqtSignal()
     sigZvalueChanged = pyqtSignal(str, int)
     sigReset = pyqtSignal()
@@ -5821,7 +5796,7 @@ class FutureFramesAction_QDialog(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
-class ComputeMetricsErrorsDialog(QBaseDialog):
+class ComputeMetricsErrorsDialog(widgets.QBaseDialog):
     def __init__(
             self, errorsDict, log_path='', parent=None, 
             log_type='custom_metrics'
@@ -6131,7 +6106,7 @@ class postProcessSegmParams(QGroupBox):
         msg = widgets.myMessageBox(showCentered=False)
         msg.information(self, title, html_utils.paragraph(txt))
 
-class postProcessSegmDialog(QBaseDialog):
+class postProcessSegmDialog(widgets.QBaseDialog):
     sigClosed = pyqtSignal()
     sigValueChanged = pyqtSignal(object, object)
 
@@ -7012,7 +6987,7 @@ class imageViewer(QMainWindow):
         if left is not None and top is not None:
             self.setGeometry(left, top, 850, 800)
 
-class TreeSelectorDialog(QBaseDialog):
+class TreeSelectorDialog(widgets.QBaseDialog):
     sigItemDoubleClicked = pyqtSignal(object)
 
     def __init__(
@@ -7088,7 +7063,7 @@ class TreeSelectorDialog(QBaseDialog):
         if self.heightFactor is not None:
             self.resize(self.width(), int(self.height()*self.heightFactor))
 
-class TreesSelectorDialog(QBaseDialog):
+class TreesSelectorDialog(widgets.QBaseDialog):
     def __init__(
             self, trees, groupsDescr=None, title='Trees selector', 
             infoTxt='', parent=None
@@ -7161,7 +7136,7 @@ class TreesSelectorDialog(QBaseDialog):
         self.close()
 
 
-class MultiListSelector(QBaseDialog):
+class MultiListSelector(widgets.QBaseDialog):
     def __init__(
             self, lists: dict, groupsDescr: dict=None, 
             title='Lists selector', infoTxt='', parent=None
@@ -7222,7 +7197,7 @@ class MultiListSelector(QBaseDialog):
             ]
         self.close()
 
-class selectPositionsMultiExp(QBaseDialog):
+class selectPositionsMultiExp(widgets.QBaseDialog):
     def __init__(self, expPaths: dict, infoPaths: dict=None, parent=None):
         super().__init__(parent=parent)
 
@@ -10437,7 +10412,7 @@ class warnVisualCppRequired(QMessageBox):
         if self.screenShotWin is not None:
             self.screenShotWin.close()
 
-class combineMetricsEquationDialog(QBaseDialog):
+class combineMetricsEquationDialog(widgets.QBaseDialog):
     sigOk = pyqtSignal(object)
 
     def __init__(
@@ -10886,7 +10861,7 @@ class combineMetricsEquationDialog(QBaseDialog):
         """)
         self.testOutputDisplay.setHtml(text)
 
-class stopFrameDialog(QBaseDialog):
+class stopFrameDialog(widgets.QBaseDialog):
     def __init__(self, posDatas, parent=None):
         super().__init__(parent=parent)
 
@@ -11017,7 +10992,7 @@ class pgTestWindow(QWidget):
         self.setLayout(layout)
 
 
-class CombineMetricsMultiDfsDialog(QBaseDialog):
+class CombineMetricsMultiDfsDialog(widgets.QBaseDialog):
     sigOk = pyqtSignal(object, object)
     sigClose = pyqtSignal(bool)
 
@@ -11370,7 +11345,7 @@ class CombineMetricsMultiDfsDialog(QBaseDialog):
             self, 'Empty new measurement name', txt
         )
 
-class CombineMetricsMultiDfsSummaryDialog(QBaseDialog):
+class CombineMetricsMultiDfsSummaryDialog(widgets.QBaseDialog):
     sigLoadAdditionalAcdcDf = pyqtSignal()
 
     def __init__(
@@ -11632,3 +11607,5 @@ class CombineMetricsMultiDfsSummaryDialog(QBaseDialog):
     
     def showEvent(self, event) -> None:
         self.resize(int(self.width()*2), self.height())
+
+

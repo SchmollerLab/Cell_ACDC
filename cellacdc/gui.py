@@ -324,7 +324,7 @@ class saveDataWorker(QObject):
     finished = pyqtSignal()
     progress = pyqtSignal(str)
     progressBar = pyqtSignal(int, int, float)
-    critical = pyqtSignal(str)
+    critical = pyqtSignal(object)
     addMetricsCritical = pyqtSignal(str, str)
     regionPropsCritical = pyqtSignal(str, str)
     criticalPermissionError = pyqtSignal(str)
@@ -617,6 +617,7 @@ class saveDataWorker(QObject):
         except Exception as e:
             pass
 
+    @workers.worker_exception_handler
     def run(self):
         last_pos = self.mainWin.last_pos
         save_metrics = self.mainWin.save_metrics
@@ -643,231 +644,225 @@ class saveDataWorker(QObject):
             if p == 0:
                 self.progressBar.emit(0, last_pos*(last_tracked_i+1), 0)
 
-            try:
-                segm_npz_path = posData.segm_npz_path
-                acdc_output_csv_path = posData.acdc_output_csv_path
-                last_tracked_i_path = posData.last_tracked_i_path
-                end_i = self.mainWin.save_until_frame_i
-                if end_i < len(posData.segm_data):
-                    saved_segm_data = posData.segm_data
+            segm_npz_path = posData.segm_npz_path
+            acdc_output_csv_path = posData.acdc_output_csv_path
+            last_tracked_i_path = posData.last_tracked_i_path
+            end_i = self.mainWin.save_until_frame_i
+            if end_i < len(posData.segm_data):
+                saved_segm_data = posData.segm_data
+            else:
+                frame_shape = posData.segm_data.shape[1:]
+                segm_shape = (end_i+1, *frame_shape)
+                saved_segm_data = np.zeros(segm_shape, dtype=np.uint32)
+            npz_delROIs_info = {}
+            delROIs_info_path = posData.delROIs_info_path
+            acdc_df_li = []
+            keys = []
+
+            # Add segmented channel data for calc metrics if requested
+            add_user_channel_data = True
+            for chName in self.mainWin.chNamesToSkip:
+                skipUserChannel = (
+                    posData.filename.endswith(chName)
+                    or posData.filename.endswith(f'{chName}_aligned')
+                )
+                if skipUserChannel:
+                    add_user_channel_data = False
+
+            if add_user_channel_data:
+                posData.fluo_data_dict[posData.filename] = posData.img_data
+
+            posData.fluo_bkgrData_dict[posData.filename] = posData.bkgrData
+
+            posData.setLoadedChannelNames()
+            self.mainWin.initMetricsToSave(posData)
+
+            self.progress.emit(f'Saving {posData.relPath}')
+            for frame_i, data_dict in enumerate(posData.allData_li[:end_i+1]):
+                if self.saveWin.aborted:
+                    self.finished.emit()
+                    return
+
+                # Build saved_segm_data
+                lab = data_dict['labels']
+                if lab is None:
+                    break
+                
+                posData.lab = lab
+
+                if posData.SizeT > 1:
+                    saved_segm_data[frame_i] = lab
                 else:
-                    frame_shape = posData.segm_data.shape[1:]
-                    segm_shape = (end_i+1, *frame_shape)
-                    saved_segm_data = np.zeros(segm_shape, dtype=np.uint32)
-                npz_delROIs_info = {}
-                delROIs_info_path = posData.delROIs_info_path
-                acdc_df_li = []
-                keys = []
+                    saved_segm_data = lab
 
-                # Add segmented channel data for calc metrics if requested
-                add_user_channel_data = True
-                for chName in self.mainWin.chNamesToSkip:
-                    skipUserChannel = (
-                        posData.filename.endswith(chName)
-                        or posData.filename.endswith(f'{chName}_aligned')
-                    )
-                    if skipUserChannel:
-                        add_user_channel_data = False
+                acdc_df = data_dict['acdc_df']
 
-                if add_user_channel_data:
-                    posData.fluo_data_dict[posData.filename] = posData.img_data
+                if self.saveOnlySegm:
+                    continue
 
-                posData.fluo_bkgrData_dict[posData.filename] = posData.bkgrData
+                if acdc_df is None:
+                    continue
 
-                posData.setLoadedChannelNames()
-                self.mainWin.initMetricsToSave(posData)
+                if not np.any(lab):
+                    continue
 
-                self.progress.emit(f'Saving {posData.relPath}')
-                for frame_i, data_dict in enumerate(posData.allData_li[:end_i+1]):
-                    if self.saveWin.aborted:
-                        self.finished.emit()
-                        return
-
-                    # Build saved_segm_data
-                    lab = data_dict['labels']
-                    if lab is None:
-                        break
-                    
-                    posData.lab = lab
-
-                    if posData.SizeT > 1:
-                        saved_segm_data[frame_i] = lab
-                    else:
-                        saved_segm_data = lab
-
-                    acdc_df = data_dict['acdc_df']
-
-                    if self.saveOnlySegm:
-                        continue
-
-                    if acdc_df is None:
-                        continue
-
-                    if not np.any(lab):
-                        continue
-
-                    # Build acdc_df and index it in each frame_i of acdc_df_li
-                    try:
-                        acdc_df = load.pd_bool_to_int(acdc_df, inplace=False)
-                        rp = data_dict['regionprops']
-                        if save_metrics:
-                            if frame_i > 0:
-                                prev_data_dict = posData.allData_li[frame_i-1]
-                                prev_lab = prev_data_dict['labels']
-                                acdc_df = self.addVelocityMeasurement(
-                                    acdc_df, prev_lab, lab, posData
-                                )
-                            acdc_df = self.addMetrics_acdc_df(
-                                acdc_df, rp, frame_i, lab, posData
-                            )
-                            if self.abort:
-                                self.progress.emit(f'Saving process aborted.')
-                                self.finished.emit()
-                                return
-                        elif mode == 'Cell cycle analysis':
-                            acdc_df = self.addVolumeMetrics(
-                                acdc_df, rp, posData
-                            )
-                        acdc_df_li.append(acdc_df)
-                        key = (frame_i, posData.TimeIncrement*frame_i)
-                        keys.append(key)
-                    except Exception as error:
-                        self.addMetricsCritical.emit(
-                            traceback.format_exc(), str(error)
-                        )
-                    
-                    try:
-                        if save_metrics and frame_i > 0:
+                # Build acdc_df and index it in each frame_i of acdc_df_li
+                try:
+                    acdc_df = load.pd_bool_to_int(acdc_df, inplace=False)
+                    rp = data_dict['regionprops']
+                    if save_metrics:
+                        if frame_i > 0:
                             prev_data_dict = posData.allData_li[frame_i-1]
                             prev_lab = prev_data_dict['labels']
                             acdc_df = self.addVelocityMeasurement(
                                 acdc_df, prev_lab, lab, posData
                             )
-                    except Exception as error:
-                        self.addMetricsCritical.emit(
-                            traceback.format_exc(), str(error)
+                        acdc_df = self.addMetrics_acdc_df(
+                            acdc_df, rp, frame_i, lab, posData
                         )
-
-                    t = time.perf_counter()
-                    exec_time = t - self.time_last_pbar_update
-                    self.progressBar.emit(1, -1, exec_time)
-                    self.time_last_pbar_update = t
-
-                # Save segmentation file
-                np.savez_compressed(segm_npz_path, np.squeeze(saved_segm_data))
-                posData.segm_data = saved_segm_data
-                try:
-                    os.remove(posData.segm_npz_temp_path)
-                except Exception as e:
-                    pass
-
-                if posData.segmInfo_df is not None:
-                    try:
-                        posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
-                    except PermissionError:
-                        err_msg = (
-                            'The below file is open in another app '
-                            '(Excel maybe?).\n\n'
-                            f'{posData.segmInfo_df_csv_path}\n\n'
-                            'Close file and then press "Ok".'
+                        if self.abort:
+                            self.progress.emit(f'Saving process aborted.')
+                            self.finished.emit()
+                            return
+                    elif mode == 'Cell cycle analysis':
+                        acdc_df = self.addVolumeMetrics(
+                            acdc_df, rp, posData
                         )
-                        self.mutex.lock()
-                        self.criticalPermissionError.emit(err_msg)
-                        self.waitCond.wait(self.mutex)
-                        self.mutex.unlock()
-                        posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
-
-                if self.saveOnlySegm:
-                    # Go back to current frame
-                    posData.frame_i = current_frame_i
-                    self.mainWin.get_data()
-                    continue
-
-                if add_user_channel_data:
-                    posData.fluo_data_dict.pop(posData.filename)
-
-                posData.fluo_bkgrData_dict.pop(posData.filename)
-
-                if posData.SizeT > 1:
-                    self.progress.emit('Almost done...')
-                    self.progressBar.emit(0, 0, 0)
-
-                if acdc_df_li:
-                    all_frames_acdc_df = pd.concat(
-                        acdc_df_li, keys=keys,
-                        names=['frame_i', 'time_seconds', 'Cell_ID']
+                    acdc_df_li.append(acdc_df)
+                    key = (frame_i, posData.TimeIncrement*frame_i)
+                    keys.append(key)
+                except Exception as error:
+                    self.addMetricsCritical.emit(
+                        traceback.format_exc(), str(error)
                     )
-                    if save_metrics:
-                        self.addCombineMetrics_acdc_df(
-                            posData, all_frames_acdc_df
-                        )
-
-                    self.addAdditionalMetadata(posData, all_frames_acdc_df)
-
-                    all_frames_acdc_df = self._removeDeprecatedRows(
-                        all_frames_acdc_df
-                    )
-                    try:
-                        # Save segmentation metadata
-                        all_frames_acdc_df.to_csv(acdc_output_csv_path)
-                        posData.acdc_df = all_frames_acdc_df
-                        try:
-                            os.remove(posData.acdc_output_temp_csv_path)
-                        except Exception as e:
-                            pass
-                    except PermissionError:
-                        err_msg = (
-                            'The below file is open in another app '
-                            '(Excel maybe?).\n\n'
-                            f'{acdc_output_csv_path}\n\n'
-                            'Close file and then press "Ok".'
-                        )
-                        self.mutex.lock()
-                        self.criticalPermissionError.emit(err_msg)
-                        self.waitCond.wait(self.mutex)
-                        self.mutex.unlock()
-
-                        # Save segmentation metadata
-                        all_frames_acdc_df.to_csv(acdc_output_csv_path)
-                        posData.acdc_df = all_frames_acdc_df
-                    except Exception as e:
-                        self.mutex.lock()
-                        self.critical.emit(traceback.format_exc())
-                        self.waitCond.wait(self.mutex)
-                        self.mutex.unlock()
-
+                
                 try:
-                    shutil.rmtree(posData.recoveryFolderPath)
-                except Exception as e:
-                    pass
+                    if save_metrics and frame_i > 0:
+                        prev_data_dict = posData.allData_li[frame_i-1]
+                        prev_lab = prev_data_dict['labels']
+                        acdc_df = self.addVelocityMeasurement(
+                            acdc_df, prev_lab, lab, posData
+                        )
+                except Exception as error:
+                    self.addMetricsCritical.emit(
+                        traceback.format_exc(), str(error)
+                    )
 
-                with open(last_tracked_i_path, 'w+') as txt:
-                    txt.write(str(frame_i))
+                t = time.perf_counter()
+                exec_time = t - self.time_last_pbar_update
+                self.progressBar.emit(1, -1, exec_time)
+                self.time_last_pbar_update = t
 
-                # Save combined metrics equations
-                posData.saveCombineMetrics()
+            # Save segmentation file
+            np.savez_compressed(segm_npz_path, np.squeeze(saved_segm_data))
+            posData.segm_data = saved_segm_data
+            try:
+                os.remove(posData.segm_npz_temp_path)
+            except Exception as e:
+                pass
 
-                posData.last_tracked_i = last_tracked_i
+            if posData.segmInfo_df is not None:
+                try:
+                    posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
+                except PermissionError:
+                    err_msg = (
+                        'The below file is open in another app '
+                        '(Excel maybe?).\n\n'
+                        f'{posData.segmInfo_df_csv_path}\n\n'
+                        'Close file and then press "Ok".'
+                    )
+                    self.mutex.lock()
+                    self.criticalPermissionError.emit(err_msg)
+                    self.waitCond.wait(self.mutex)
+                    self.mutex.unlock()
+                    posData.segmInfo_df.to_csv(posData.segmInfo_df_csv_path)
 
+            if self.saveOnlySegm:
                 # Go back to current frame
                 posData.frame_i = current_frame_i
                 self.mainWin.get_data()
+                continue
 
-                if mode == 'Segmentation and Tracking' or mode == 'Viewer':
-                    self.progress.emit(
-                        f'Saved data until frame number {frame_i+1}'
+            if add_user_channel_data:
+                posData.fluo_data_dict.pop(posData.filename)
+
+            posData.fluo_bkgrData_dict.pop(posData.filename)
+
+            if posData.SizeT > 1:
+                self.progress.emit('Almost done...')
+                self.progressBar.emit(0, 0, 0)
+
+            if acdc_df_li:
+                all_frames_acdc_df = pd.concat(
+                    acdc_df_li, keys=keys,
+                    names=['frame_i', 'time_seconds', 'Cell_ID']
+                )
+                if save_metrics:
+                    self.addCombineMetrics_acdc_df(
+                        posData, all_frames_acdc_df
                     )
-                elif mode == 'Cell cycle analysis':
-                    self.progress.emit(
-                        'Saved cell cycle annotations until frame '
-                        f'number {last_tracked_i+1}'
+
+                self.addAdditionalMetadata(posData, all_frames_acdc_df)
+
+                all_frames_acdc_df = self._removeDeprecatedRows(
+                    all_frames_acdc_df
+                )
+                try:
+                    # Save segmentation metadata
+                    all_frames_acdc_df.to_csv(acdc_output_csv_path)
+                    posData.acdc_df = all_frames_acdc_df
+                    try:
+                        os.remove(posData.acdc_output_temp_csv_path)
+                    except Exception as e:
+                        pass
+                except PermissionError:
+                    err_msg = (
+                        'The below file is open in another app '
+                        '(Excel maybe?).\n\n'
+                        f'{acdc_output_csv_path}\n\n'
+                        'Close file and then press "Ok".'
                     )
-                # self.progressBar.emit(1)
+                    self.mutex.lock()
+                    self.criticalPermissionError.emit(err_msg)
+                    self.waitCond.wait(self.mutex)
+                    self.mutex.unlock()
+
+                    # Save segmentation metadata
+                    all_frames_acdc_df.to_csv(acdc_output_csv_path)
+                    posData.acdc_df = all_frames_acdc_df
+                except Exception as e:
+                    self.mutex.lock()
+                    self.critical.emit(traceback.format_exc())
+                    self.waitCond.wait(self.mutex)
+                    self.mutex.unlock()
+
+            try:
+                shutil.rmtree(posData.recoveryFolderPath)
             except Exception as e:
-                self.mutex.lock()
-                self.critical.emit(traceback.format_exc())
-                self.waitCond.wait(self.mutex)
-                self.mutex.unlock()
+                pass
+
+            with open(last_tracked_i_path, 'w+') as txt:
+                txt.write(str(frame_i))
+
+            # Save combined metrics equations
+            posData.saveCombineMetrics()
+
+            posData.last_tracked_i = last_tracked_i
+
+            # Go back to current frame
+            posData.frame_i = current_frame_i
+            self.mainWin.get_data()
+
+            if mode == 'Segmentation and Tracking' or mode == 'Viewer':
+                self.progress.emit(
+                    f'Saved data until frame number {frame_i+1}'
+                )
+            elif mode == 'Cell cycle analysis':
+                self.progress.emit(
+                    'Saved cell cycle annotations until frame '
+                    f'number {last_tracked_i+1}'
+                )
+            # self.progressBar.emit(1)
         if self.mainWin.isSnapshot:
             self.progress.emit(f'Saved all {p+1} Positions!')
 
@@ -1291,6 +1286,8 @@ class guiWin(QMainWindow):
         normalizeIntensitiesMenu.addAction(self.normalizeRescale0to1Action)
         normalizeIntensitiesMenu.addAction(self.normalizeByMaxAction)
         ImageMenu.addAction(self.invertBwAction)
+        ImageMenu.addAction(self.saveImageColormapAction)
+        ImageMenu.addAction(self.saveLabColormapAction)
         ImageMenu.addAction(self.shuffleCmapAction)
         ImageMenu.addAction(self.zoomToObjsAction)
         ImageMenu.addAction(self.zoomOutAction)
@@ -2593,6 +2590,13 @@ class guiWin(QMainWindow):
         self.shuffleCmapAction =  QAction('Shuffle colormap...', self)
         self.shuffleCmapAction.setShortcut('Shift+S')
 
+        self.saveImageColormapAction = QAction(
+            'Save image colormap...', self
+        )
+        self.saveLabColormapAction = QAction(
+            'Save labels colormap...', self
+        )
+
         self.normalizeRawAction = QAction(
             'Do not normalize. Display raw image', self)
         self.normalizeToFloatAction = QAction(
@@ -2838,6 +2842,8 @@ class guiWin(QMainWindow):
         # self.repeatAutoCcaAction.triggered.connect(self.repeatAutoCca)
         self.manuallyEditCcaAction.triggered.connect(self.manualEditCca)
         self.invertBwAction.toggled.connect(self.invertBw)
+        self.saveImageColormapAction.triggered.connect(self.saveImageColormap)
+        self.saveLabColormapAction.triggered.connect(self.saveLabelsColormap)
 
         self.enableSmartTrackAction.toggled.connect(self.enableSmartTrack)
         # Brush/Eraser size action
@@ -3341,7 +3347,7 @@ class guiWin(QMainWindow):
         self.equalizeHistPushButton = equalizeHistPushButton
 
         # Left image histogram
-        self.imgGrad = widgets.myHistogramLUTitem()
+        self.imgGrad = widgets.myHistogramLUTitem(parent=self, name='image')
         self.imgGrad.restoreState(self.df_settings)
         self.graphLayout.addItem(self.imgGrad, row=1, col=0)
         self.currentLutItem = self.imgGrad
@@ -3373,7 +3379,7 @@ class guiWin(QMainWindow):
         
         # Right image histogram
         self.rightImageGrad = widgets.baseHistogramLUTitem(
-            gradientPosition='left'
+            name='image', parent=self, gradientPosition='left'
         )
         self.rightImageGrad.gradient.menu.addAction(
             self.labelsGrad.showLabelsImgAction
@@ -8942,6 +8948,12 @@ class guiWin(QMainWindow):
             if action.text() == how:
                 action.setChecked(True)
                 break
+    
+    def saveImageColormap(self):
+        self.currentLutItem.saveColormap()
+
+    def saveLabelsColormap(self):
+        self.labelsGrad.saveColormap()
 
     def showFontSizeMenu(self):
         menu = self.sender()
@@ -11973,6 +11985,14 @@ class guiWin(QMainWindow):
             self.progressWin.workerFinished = True
             self.progressWin.close()
         raise error
+    
+    def saveDataWorkerCritical(self, error):
+        self.logger.info(
+            f'[WARNING]: Saving process stopped because of critical error.'
+        )
+        self.saveWin.aborted = True
+        self.worker.finished.emit()
+        self.workerCritical(error)
     
     def lazyLoaderWorkerClosed(self):
         if self.lazyLoader.salute:
@@ -19363,7 +19383,7 @@ class guiWin(QMainWindow):
         imageItem = pg.ImageItem()
         imageItem.setOpacity(0.5)
 
-        lutItem = widgets.myHistogramLUTitem()
+        lutItem = widgets.myHistogramLUTitem(parent=self, name='image')
         
         lutItem.restoreState(self.df_settings)
         lutItem.setImageItem(imageItem)
@@ -20050,18 +20070,6 @@ class guiWin(QMainWindow):
         self.logger.info(f'{_hl}\n{traceback_format}\n{_hl}')
         self.worker.regionPropsErrors[error_message] = traceback_format
 
-    def saveDataCritical(self, traceback_format):
-        self.logger.info('')
-        _hl = '===================================='
-        self.logger.info(f'{_hl}\n{traceback_format}\n{_hl}')
-        msg = QMessageBox(self)
-        msg.setIcon(msg.Critical)
-        msg.setWindowTitle('Error')
-        msg.setText(traceback_format)
-        msg.setDefaultButton(msg.Ok)
-        msg.exec_()
-        self.waitCond.wakeAll()
-
     def saveDataUpdateMetricsPbar(self, max, step):
         if max > 0:
             self.saveWin.metricsQPbar.setMaximum(max)
@@ -20127,18 +20135,14 @@ class guiWin(QMainWindow):
                 self.user_ch_name, lastSegmChannel, segmEndName
             )
             if cancel:
-                self.titleLabel.setText(
-                    'Saving data process cancelled.', color=self.titleColor
-                )
+                self.abortSavingInitialisation()
                 return True
 
         self.save_metrics = False
         if not isQuickSave:
             self.save_metrics, cancel = self.askSaveMetrics()
             if cancel:
-                self.titleLabel.setText(
-                    'Saving data process cancelled.', color=self.titleColor
-                )
+                self.abortSavingInitialisation()
                 return True
 
         last_pos = len(self.data)
@@ -20203,7 +20207,7 @@ class guiWin(QMainWindow):
         self.worker.progress.connect(self.saveDataProgress)
         self.worker.progressBar.connect(self.saveDataUpdatePbar)
         # self.worker.metricsPbarProgress.connect(self.saveDataUpdateMetricsPbar)
-        self.worker.critical.connect(self.saveDataCritical)
+        self.worker.critical.connect(self.saveDataWorkerCritical)
         self.worker.customMetricsCritical.connect(
             self.saveDataCustomMetricsCritical
         )
@@ -20266,8 +20270,9 @@ class guiWin(QMainWindow):
         self.saveWin.workerFinished = True
         self.saveWin.close()
 
-        # Update savedSegmData in autosave worker
-        self.updateSegmDataAutoSaveWorker()
+        if not self.closeGUI:
+            # Update savedSegmData in autosave worker
+            self.updateSegmDataAutoSaveWorker()
 
         if self.worker.addMetricsErrors:
            self.warnErrorsAddMetrics()    
@@ -20315,9 +20320,71 @@ class guiWin(QMainWindow):
                 didWorkersFinished.append(False)
         if all(didWorkersFinished):
             self.waitCloseAutoSaveWorkerLoop.stop()
-
+        
+    def abortSavingInitialisation(self):
+        self.titleLabel.setText(
+            'Saving data process cancelled.', color=self.titleColor
+        )
+        self.closeGUI = False
+    
+    def askSaveOnClosing(self, event):
+        if self.saveAction.isEnabled() and self.titleLabel.text != 'Saved!':
+            msg = widgets.myMessageBox()
+            txt = html_utils.paragraph('Do you want to <b>save before closing?</b>')
+            _, noButton, yesButton = msg.question(
+                self, 'Save?', txt,
+                buttonsTexts=('Cancel', 'No', 'Yes')
+            )
+            if msg.cancel:
+                event.ignore()
+                return False
+            
+            if msg.clickedButton == yesButton:
+                self.closeGUI = True
+                QTimer.singleShot(100, self.saveAction.trigger)
+                event.ignore()
+                return False
+        return True
+    
+    def clearMemory(self):
+        if not hasattr(self, 'data'):
+            return
+        self.logger.info('Clearing memory...')
+        for posData in self.data:
+            try:
+                del posData.img_data
+            except Exception as e:
+                pass
+            try:
+                del posData.segm_data
+            except Exception as e:
+                pass
+            try:
+                del posData.ol_data_dict
+            except Exception as e:
+                pass
+            try:
+                del posData.fluo_data_dict
+            except Exception as e:
+                pass
+            try:
+                del posData.ol_data
+            except Exception as e:
+                pass
+        del self.data
 
     def closeEvent(self, event):
+        self.saveWindowGeometry()
+
+        if self.slideshowWin is not None:
+            self.slideshowWin.close()
+        if self.ccaTableWin is not None:
+            self.ccaTableWin.close()
+        
+        proceed = self.askSaveOnClosing(event)
+        if not proceed:
+            return
+
         self.autoSaveClose()
         
         if self.autoSaveActiveWorkers:
@@ -20349,54 +20416,7 @@ class guiWin(QMainWindow):
         # Block main thread while separate threads closes
         time.sleep(0.1)
 
-        self.saveWindowGeometry()
-        # self.saveCustomAnnot()
-        if self.slideshowWin is not None:
-            self.slideshowWin.close()
-        if self.ccaTableWin is not None:
-            self.ccaTableWin.close()
-        if self.saveAction.isEnabled() and self.titleLabel.text != 'Saved!':
-            msg = widgets.myMessageBox()
-            txt = html_utils.paragraph('Do you want to <b>save?</b>')
-            _, no, yes = msg.question(
-                self, 'Save?', txt,
-                buttonsTexts=('Cancel', 'No', 'Yes')
-            )
-            if msg.clickedButton == yes:
-                self.closeGUI = True
-                cancel = self.saveData()
-                event.ignore()
-                if cancel:
-                    self.closeGUI = False
-                    return
-            elif msg.cancel:
-                event.ignore()
-                return
-
-        if hasattr(self, 'data'):
-            self.logger.info('Clearing memory...')
-            for posData in self.data:
-                try:
-                    del posData.img_data
-                except Exception as e:
-                    pass
-                try:
-                    del posData.segm_data
-                except Exception as e:
-                    pass
-                try:
-                    del posData.ol_data_dict
-                except Exception as e:
-                    pass
-                try:
-                    del posData.fluo_data_dict
-                except Exception as e:
-                    pass
-                try:
-                    del posData.ol_data
-                except Exception as e:
-                    pass
-            del self.data
+        self.clearMemory()
 
         self.logger.info('Closing GUI logger...')
         handlers = self.logger.handlers[:]
