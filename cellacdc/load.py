@@ -131,9 +131,10 @@ def load_segm_file(images_path, end_name_segm_file='segm', return_path=False):
         end_name_segm_file = f'{end_name_segm_file}.npz'
     for file in myutils.listdir(images_path):
         if file.endswith(end_name_segm_file):
-            segm_data = np.load(os.path.join(images_path, file))['arr_0']
+            filepath = os.path.join(images_path, file)
+            segm_data = np.load(filepath)['arr_0'].astype(np.uin32)
             if return_path:
-                return segm_data, os.path.join(images_path, file)
+                return segm_data, filepath
             else:
                 return segm_data
     else:
@@ -707,7 +708,7 @@ class loadData:
             if load_segm_data and is_segm_file and not create_new_segm:
                 self.segmFound = True
                 self.segm_npz_path = filePath
-                self.segm_data = np.load(filePath)['arr_0']
+                self.segm_data = np.load(filePath)['arr_0'].astype(np.uint32)
                 if self.segm_data.dtype == bool:
                     if self.labelBoolSegm is None:
                         self.askBooleanSegm()
@@ -785,7 +786,7 @@ class loadData:
                 filePath = os.path.join(self.images_path, file)
                 if load_segm_data and is_segm_npy and not self.segmFound:
                     self.segmFound = True
-                    self.segm_data = np.load(filePath)
+                    self.segm_data = np.load(filePath).astype(np.uint32)
 
         if load_last_tracked_i:
             self.last_tracked_i_found = True
