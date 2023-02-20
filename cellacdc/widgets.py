@@ -4536,7 +4536,7 @@ class labelsGradientWidget(pg.GradientWidget):
         self.menu.addAction(self.shuffleCmapAction)
 
         self.greedyShuffleCmapAction = QAction(
-            'Greedily shuffle colormap', self
+            'Greedily shuffle colormap  (Alt+Shift+S)', self
         )
         self.menu.addAction(self.greedyShuffleCmapAction)
 

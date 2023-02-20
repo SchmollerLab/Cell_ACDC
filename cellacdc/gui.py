@@ -2592,8 +2592,9 @@ class guiWin(QMainWindow):
         self.shuffleCmapAction.setShortcut('Shift+S')
 
         self.greedyShuffleCmapAction =  QAction(
-            'Greedily shuffle colormap...', self
+            'Greedily shuffle colormap', self
         )
+        self.greedyShuffleCmapAction.setShortcut('Alt+Shift+S')
 
         self.saveImageColormapAction = QAction(
             'Save image colormap...', self
