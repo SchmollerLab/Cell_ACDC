@@ -97,6 +97,7 @@ try:
     from cellacdc.utils import toImageJroi as utilsToImageJroi
     from cellacdc.utils import acdcToSymDiv as utilsSymDiv
     from cellacdc.utils import trackSubCellObjects as utilsTrackSubCell
+    from cellacdc.utils import createConnected3Dsegm as utilsConnected3Dsegm
     from cellacdc.utils import computeMultiChannel as utilsComputeMultiCh
     from cellacdc.utils import applyTrackFromTable as utilsApplyTrackFromTab
     from cellacdc.info import utilsInfo
@@ -341,6 +342,9 @@ class mainWin(QMainWindow):
         convertMenu.addAction(self.h5ToNpzAction)
         convertMenu.addAction(self.toImageJroiAction)
 
+        segmMenu = utilsMenu.addMenu('Segmentation')
+        segmMenu.addAction(self.createConnected3Dsegm)
+
         trackingMenu = utilsMenu.addMenu('Tracking')
         trackingMenu.addAction(self.trackSubCellFeaturesAction)
         trackingMenu.addAction(self.applyTrackingFromTableAction)
@@ -457,6 +461,9 @@ class mainWin(QMainWindow):
         self.toImageJroiAction = QAction(
             'Convert _segm.npz file(s) to ImageJ ROIs...'
         )
+        self.createConnected3Dsegm = QAction(
+            'Create connected 3D segmentation mask from z-slices segmentation...'
+        )   
         self.trackSubCellFeaturesAction = QAction(
             'Track sub-cellular objects (assign same ID as the cell they belong to)...'
         )    
@@ -504,6 +511,9 @@ class mainWin(QMainWindow):
         self.TiffToNpzAction.triggered.connect(self.launchConvertFormatUtil)
         self.h5ToNpzAction.triggered.connect(self.launchConvertFormatUtil)
         self.toImageJroiAction.triggered.connect(self.launchToImageJroiUtil)
+        self.createConnected3Dsegm.triggered.connect(
+            self.launchConnected3DsegmActionUtil
+        )
         self.trackSubCellFeaturesAction.triggered.connect(
             self.launchTrackSubCellFeaturesUtil
         )
@@ -819,6 +829,22 @@ class mainWin(QMainWindow):
             parent=self
         )
         self.multiChannelWin.show()
+    
+    def launchConnected3DsegmActionUtil(self):
+        selectedExpPaths = self.getSelectedExpPaths(
+            'Create 3D segmentation mask from 2D'
+        )
+        if selectedExpPaths is None:
+            return
+        
+        title = 'Create connected 3D segmentation mask'
+        infoText = 'Launching connected 3D segmentation mask creation process...'
+        progressDialogueTitle = 'Creating connected 3D segmentation mask'
+        self.connected3DsegmWin = utilsConnected3Dsegm.CreateConnected3Dsegm(
+            selectedExpPaths, self.app, title, infoText, progressDialogueTitle,
+            parent=self
+        )
+        self.connected3DsegmWin.show()
 
     def launchTrackSubCellFeaturesUtil(self):
         selectedExpPaths = self.getSelectedExpPaths(

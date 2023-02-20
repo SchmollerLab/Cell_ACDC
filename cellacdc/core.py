@@ -154,6 +154,28 @@ def remove_artefacts_lab2D(
     else:
         return lab
 
+def connect_3Dlab_zboundaries(lab):
+    connected_lab = np.zeros_like(lab)
+    rp = skimage.measure.regionprops(lab)
+    for obj in rp:
+        if len(obj.image) == 1:
+            lab[obj.slice][obj.image] = obj.label
+            continue
+        
+        # Take the center non-zero z-area as reference object
+        z_areas = [np.count_nonzero(z_img) for z_img in obj.image]
+        nonzero_z_areas = [z_area for z_area in z_areas if z_area > 0]
+        nonzero_center_idx = int(len(nonzero_z_areas)/2)
+        nonzero_center_z_area = nonzero_z_areas[nonzero_center_idx]
+        center_idx = z_areas.index(nonzero_center_z_area)
+        max_obj_image = obj.image[center_idx]
+        num_zslices = len(obj.image)
+        
+        for z in range(num_zslices):
+            connected_lab[obj.slice][z][max_obj_image] = obj.label
+        
+    return connected_lab
+
 def track_sub_cell_objects_acdc_df(
         tracked_subobj_segm_data, subobj_acdc_df, all_old_sub_ids,
         all_num_objects_per_cells, SizeT=None, sigProgress=None, 

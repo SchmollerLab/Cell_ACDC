@@ -8,6 +8,14 @@ utilsInfo = {
         Thank you <b>for your patience</b>! 
     """),
 
+    'Create connected 3D segmentation mask from z-slices segmentation...': (f"""
+        This utility is used to create a 3D segmentation mask by projecting the 
+        center z-slice of the 3D objects to their own z-boundaries. 
+        For example, an object with three segmented z-slices will become 
+        a "cylindrical" object, where the largest z-slice is projected up and 
+        down to the max and min z-slice.
+    """),
+
     'Track sub-cellular objects (assign same ID as the cell they belong to)...': (f"""
         Not documented yet. You can ask help about utilities  on our {forum_href}.<br><br>
         Thank you <b>for your patience</b>! 
