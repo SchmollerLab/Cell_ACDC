@@ -81,6 +81,14 @@ def _tab20gradient():
     gradient = {'ticks': ticks, 'mode': 'rgb'}
     return gradient
 
+def _tab10gradient():
+    cmap = plt.get_cmap('tab10')
+    ticks = [
+        (t, tuple([int(v*255) for v in cmap(t)])) for t in np.linspace(0,1,20)
+    ]
+    gradient = {'ticks': ticks, 'mode': 'rgb'}
+    return gradient
+
 def getCustomGradients(name='image'):
     CustomGradients = {}
     if not os.path.exists(custom_cmaps_filepath):
@@ -128,6 +136,7 @@ def addGradients():
         'mode': 'rgb'
     }
     Gradients['tab20'] = _tab20gradient()
+    Gradients['tab10'] = _tab10gradient()
     cmaps = {}
     for name, gradient in Gradients.items():
         ticks = gradient['ticks']
@@ -140,6 +149,8 @@ nonInvertibleCmaps = ['cool', 'sunset', 'bipolar']
 renamePgCmaps()
 removeHSVcmaps()
 cmaps, Gradients = addGradients()
+GradientsLabels = Gradients.copy()
+GradientsImage = Gradients.copy()
 
 class QBaseDialog(QDialog):
     def __init__(self, parent=None):
@@ -3589,10 +3600,28 @@ class PolyLineROI(pg.PolyLineROI):
     def __init__(self, positions, closed=False, pos=None, **args):
         super().__init__(positions, closed, pos, **args)
 
+class BaseGradientEditorItemImage(pg.GradientEditorItem):
+    def __init__(self, *args, **kargs):
+        super().__init__(*args, **kargs)
+    
+    def restoreState(self, state):
+        pg.graphicsItems.GradientEditorItem.Gradients = GradientsImage
+        return super().restoreState(state)
+
+class BaseGradientEditorItemLabels(pg.GradientEditorItem):
+    def __init__(self, *args, **kargs):
+        super().__init__(*args, **kargs)
+    
+    def restoreState(self, state):
+        pg.graphicsItems.GradientEditorItem.Gradients = GradientsLabels
+        return super().restoreState(state)
+
 class baseHistogramLUTitem(pg.HistogramLUTItem):
     sigAddColormap = pyqtSignal(object, str)
 
     def __init__(self, name='image', parent=None, **kwargs):
+        pg.GradientEditorItem = BaseGradientEditorItemLabels
+
         super().__init__(**kwargs)
 
         self.cmaps = cmaps
@@ -3646,7 +3675,7 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
         action.delButton.clicked.connect(self.removeCustomGradient)
         self.gradient.menu.insertAction(self.saveColormapAction, action)
         self.gradient.length = self.originalLength
-        Gradients[gradient_name] = gradient_ticks
+        GradientsImage[gradient_name] = gradient_ticks
     
     def removeCustomGradient(self):
         button = self.sender()
@@ -4364,7 +4393,7 @@ class overlayLabelsGradientWidget(pg.GradientWidget):
 
         # Shuffle colors action
         self.shuffleCmapAction =  QAction(
-            'Shuffle colormap...', self
+            'Randomly shuffle colormap   (Shift+S)', self
         )
         self.menu.addAction(self.shuffleCmapAction)
 
@@ -4441,6 +4470,8 @@ class labelsGradientWidget(pg.GradientWidget):
     sigShowLabelsImgToggled = pyqtSignal(bool)
 
     def __init__( self, *args, parent=None, orientation='right', **kargs):
+        pg.GradientEditorItem = BaseGradientEditorItemLabels
+        
         pg.GradientWidget.__init__(
             self, *args, parent=parent, orientation=orientation, **kargs
         )
@@ -4500,9 +4531,14 @@ class labelsGradientWidget(pg.GradientWidget):
 
         # Shuffle colors action
         self.shuffleCmapAction =  QAction(
-            'Shuffle colormap...   (Shift+S)', self
+            'Randomly shuffle colormap   (Shift+S)', self
         )
         self.menu.addAction(self.shuffleCmapAction)
+
+        self.greedyShuffleCmapAction = QAction(
+            'Greedily shuffle colormap', self
+        )
+        self.menu.addAction(self.greedyShuffleCmapAction)
 
         # Invert bw action
         self.invertBwAction = QAction('Invert black/white', self)
@@ -4540,7 +4576,7 @@ class labelsGradientWidget(pg.GradientWidget):
         self.item.menu.insertAction(self.saveColormapAction, action)
         self.item.length = self.originalLength
         self.item.restoreState(currentState)
-        Gradients[gradient_name] = gradient_ticks
+        GradientsLabels[gradient_name] = gradient_ticks
     
     def removeCustomGradient(self):
         button = self.sender()

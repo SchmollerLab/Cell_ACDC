@@ -1,6 +1,9 @@
 import re
 import traceback
 
+import skimage.segmentation
+import skimage.measure
+
 from collections.abc import Callable, Sequence
 from pyqtgraph.colormap import ColorMap
 
@@ -9,6 +12,12 @@ import matplotlib
 import colorsys
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
+
+try:
+    import networkx as nx
+    NETWORKX_INSTALLED = True
+except:
+    NETWORKX_INSTALLED = False
 
 __all__ = ['ColorMap']
 _mapCache = {}
@@ -139,3 +148,39 @@ def invertRGB(self, rgb_img):
     rgb_img[:, :, 1] = 1-RB_mean
     rgb_img[:, :, 2] = 1-RG_mean
     return rgb_img
+
+def get_greedy_lut(lab, lut, ids=None):    
+    expanded = skimage.segmentation.expand_labels(lab, distance=7)
+    adj_M = np.zeros([expanded.max() + 1]*2, dtype=bool)
+    if ids is None:
+        ids = [obj.label for obj in skimage.measure.regionprops(lab)]
+    
+    # Taken from https://stackoverflow.com/questions/26486898/matrix-of-labels-to-adjacency-matrix
+    adj_M[expanded[:, :-1], expanded[:, 1:]] = 1
+    adj_M[expanded[:, 1:], expanded[:, :-1]] = 1
+    adj_M[expanded[:-1, :], expanded[1:, :]] = 1
+    adj_M[expanded[1:, :], expanded[:-1, :]] = 1
+    adj_M[expanded[:, 1:], expanded[:, :-1]] = 1
+    adj_M[expanded[1:, :], expanded[:-1, :]] = 1
+    adj_M[expanded[:-1, :], expanded[1:, :]] = 1
+    # adj_M = adj_M[1:, 1:]
+
+    G = nx.from_numpy_matrix(adj_M)
+    color_ids = nx.coloring.greedy_color(
+        G, strategy='independent_set', interchange=False
+    )
+    
+    n_foregr_colors = len(lut)-1
+    n_colors_greedy = max([color_id for color_id in color_ids.values()])
+    color_idxs = {
+        id:abs(int(n_foregr_colors * c/n_colors_greedy)-n_foregr_colors)
+        for id, c in color_ids.items() if id!=0
+    }
+
+    greedy_lut = np.copy(lut)
+    greedy_lut[list(color_idxs.keys())] = lut[list(color_idxs.values())]
+
+    return greedy_lut
+
+
+    

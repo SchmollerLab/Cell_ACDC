@@ -1289,6 +1289,7 @@ class guiWin(QMainWindow):
         ImageMenu.addAction(self.saveImageColormapAction)
         ImageMenu.addAction(self.saveLabColormapAction)
         ImageMenu.addAction(self.shuffleCmapAction)
+        ImageMenu.addAction(self.greedyShuffleCmapAction)
         ImageMenu.addAction(self.zoomToObjsAction)
         ImageMenu.addAction(self.zoomOutAction)
 
@@ -2587,8 +2588,12 @@ class guiWin(QMainWindow):
         checked = self.df_settings.at['is_bw_inverted', 'value'] == 'Yes'
         self.invertBwAction.setChecked(checked)
 
-        self.shuffleCmapAction =  QAction('Shuffle colormap...', self)
+        self.shuffleCmapAction =  QAction('Randomly shuffle colormap', self)
         self.shuffleCmapAction.setShortcut('Shift+S')
+
+        self.greedyShuffleCmapAction =  QAction(
+            'Greedily shuffle colormap...', self
+        )
 
         self.saveImageColormapAction = QAction(
             'Save image colormap...', self
@@ -2877,7 +2882,11 @@ class guiWin(QMainWindow):
         self.labelsGrad.fontSizeMenu.aboutToShow.connect(self.showFontSizeMenu)
 
         self.labelsGrad.shuffleCmapAction.triggered.connect(self.shuffle_cmap)
+        self.labelsGrad.greedyShuffleCmapAction.triggered.connect(
+            self.greedyShuffleCmap
+        )
         self.shuffleCmapAction.triggered.connect(self.shuffle_cmap)
+        self.greedyShuffleCmapAction.triggered.connect(self.greedyShuffleCmap)
         self.labelsGrad.invertBwAction.toggled.connect(self.setCheckedInvertBW)
         self.labelsGrad.sigShowLabelsImgToggled.connect(self.showLabelImageItem)
         self.labelsGrad.sigShowRightImgToggled.connect(self.showRightImageItem)
@@ -16617,8 +16626,14 @@ class guiWin(QMainWindow):
         self.df_settings.to_csv(self.settings_csv_path)
 
     def shuffle_cmap(self):
-        posData = self.data[self.pos_i]
         np.random.shuffle(self.lut[1:])
+        self.initLabelsLayersImg1()
+        self.updateALLimg()
+    
+    def greedyShuffleCmap(self):
+        lut = self.labelsGrad.item.colorMap().getLookupTable(0,1,255)
+        greedy_lut = colors.get_greedy_lut(self.currentLab2D, lut)
+        self.lut = greedy_lut
         self.initLabelsLayersImg1()
         self.updateALLimg()
     
