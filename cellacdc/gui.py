@@ -18337,6 +18337,35 @@ class guiWin(QMainWindow):
 
         self.isNewFile = False
         self._openFile(file_path=file_path)
+    
+    def warnUserCreationImagesFolder(self, images_path):
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(f"""
+            To load the data, Cell-ACDC requires the <b>image(s) to be located in a
+            folder called <code>Images</code></b>.<br><br>
+            The <b>file format</b> of the images must be <b>TIFF</b> (.tif extension).<br><br>
+            You can choose to let Cell-ACDC deal with that, or you can stop the 
+            process and manually place the image(s) into a folder called 
+            <code>Images</code>.<br><br>
+            If you choose to proceed, Cell-ACDC will create the following 
+            folder:<br><br>
+            <code>{images_path}</code>
+            <br><br>
+            How do you want to proceed?
+        """)
+        copyButton = widgets.copyPushButton('Copy the image into the new folder')
+        moveButton = widgets.movePushButton('Move the image into the new folder')
+        _, copyButton, moveButton = msg.warning(
+            self, 'Creating Images folder', txt, 
+            buttonsTexts=('Cancel', copyButton, moveButton)
+        )
+        if msg.cancel:
+            return False, None
+
+        if msg.clickedButton == copyButton:
+            return True, True
+        elif msg.clickedButton == moveButton:
+            return True, False
 
     @exception_handler
     def _openFile(self, file_path=None):
@@ -18353,10 +18382,15 @@ class guiWin(QMainWindow):
                 return
         dirpath = os.path.dirname(file_path)
         dirname = os.path.basename(dirpath)
+        do_copy = True
         if dirname != 'Images':
             timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
             acdc_folder = f'{timestamp}_acdc'
             exp_path = os.path.join(dirpath, acdc_folder, 'Images')
+            proceed, do_copy = self.warnUserCreationImagesFolder(exp_path)
+            if not proceed:
+                self.logger.info('Loading image file aborted.')
+                return
             os.makedirs(exp_path)
         else:
             exp_path = dirpath
@@ -18367,7 +18401,10 @@ class guiWin(QMainWindow):
             new_filepath = os.path.join(exp_path, filename_ext)
             if not os.path.exists(new_filepath):
                 self.logger.info('Copying file to Image folder...')
-                shutil.copy2(file_path, new_filepath)
+                if do_copy:
+                    shutil.copy2(file_path, new_filepath)
+                else:
+                    shutil.move(file_path, new_filepath)
             self._openFolder(exp_path=exp_path, imageFilePath=new_filepath)
         else:
             self.logger.info('Copying file to .tif format...')
