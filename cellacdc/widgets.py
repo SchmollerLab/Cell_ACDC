@@ -1,3 +1,4 @@
+import os
 import sys
 import operator
 import time
@@ -19,7 +20,7 @@ import matplotlib.pyplot as plt
 from PyQt5.QtCore import (
     pyqtSignal, QTimer, Qt, QPoint, pyqtSlot, pyqtProperty,
     QPropertyAnimation, QEasingCurve, QSequentialAnimationGroup,
-    QSize, QRectF, QPointF, QRect, QPoint, QEasingCurve, QRegExp,
+    QSize, QRect, QPointF, QRect, QPoint, QEasingCurve, QRegExp,
     QEvent, QEventLoop, QPropertyAnimation, QObject,
     QItemSelectionModel, QAbstractListModel, QModelIndex,
     QByteArray, QDataStream, QMimeData, QAbstractItemModel, 
@@ -28,7 +29,7 @@ from PyQt5.QtCore import (
 from PyQt5.QtGui import (
     QFont, QPalette, QColor, QPen, QPaintEvent, QBrush, QPainter,
     QRegExpValidator, QIcon, QPixmap, QKeySequence, QLinearGradient,
-    QShowEvent, QBitmap, QFontMetrics, QGuiApplication
+    QShowEvent, QBitmap, QFontMetrics, QGuiApplication, QLinearGradient 
 )
 from PyQt5.QtWidgets import (
     QTextEdit, QLabel, QProgressBar, QHBoxLayout, QToolButton, QCheckBox,
@@ -45,11 +46,13 @@ from PyQt5.QtWidgets import (
 import pyqtgraph as pg
 
 from . import myutils, measurements, is_mac, is_win, html_utils
-from . import qrc_resources, printl
-from . import colors
+from . import qrc_resources, printl, temp_path
+from . import colors, config
 
 font = QFont()
 font.setPixelSize(13)
+
+custom_cmaps_filepath = os.path.join(temp_path, 'custom_colormaps.ini')
 
 def removeHSVcmaps():
     hsv_cmaps = []
@@ -77,6 +80,27 @@ def _tab20gradient():
     ]
     gradient = {'ticks': ticks, 'mode': 'rgb'}
     return gradient
+
+def getCustomGradients(name='image'):
+    CustomGradients = {}
+    if not os.path.exists(custom_cmaps_filepath):
+        return CustomGradients
+    
+    cp = config.ConfigParser()
+    cp.read(custom_cmaps_filepath)
+    for section in cp.sections():
+        if not section.startswith(f'{name}'):
+            continue
+        
+        cmap_name = section[len(f'{name}.'):]
+        CustomGradients[cmap_name] = {'ticks': [], 'mode': 'rgb'}
+        for option in cp.options(section):
+            value = cp[section][option]
+            pos, *rgb = value.split(',')
+            rgb = tuple([int(c) for c in rgb])
+            pos = float(pos)
+            CustomGradients[cmap_name]['ticks'].append((pos, rgb))
+    return CustomGradients
 
 def addGradients():
     Gradients = pg.graphicsItems.GradientEditorItem.Gradients
@@ -507,6 +531,31 @@ def getPushButton(buttonText, qparent=None):
         button = QPushButton(buttonText, qparent)
     
     return button, isCancelButton
+
+def CustomGradientMenuAction(gradient: QLinearGradient, name: str, parent):
+    pixmap = QPixmap(100, 15)
+    painter = QPainter(pixmap)
+    brush = QBrush(gradient)
+    painter.fillRect(QRect(0, 0, 100, 15), brush)
+    painter.end()
+    label = QLabel()
+    label.setPixmap(pixmap)
+    label.setContentsMargins(1, 1, 1, 1)
+    labelName = QLabel(name)
+    hbox = QHBoxLayout()
+    delButton = delPushButton()
+    hbox.addWidget(labelName)
+    hbox.addStretch(1)
+    hbox.addWidget(label)
+    hbox.addWidget(delButton)
+    widget = QWidget()
+    widget.setLayout(hbox)
+    action = QWidgetAction(parent)
+    action.name = name
+    action.setDefaultWidget(widget)
+    action.delButton = delButton
+    delButton.action = action
+    return action
 
 class ContourItem(pg.PlotDataItem):
     def __init__(self, *args, **kargs):
@@ -3548,6 +3597,7 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
 
         self.cmaps = cmaps
         self._parent = parent
+        self.name = name
 
         self.gradient.colorDialog.setWindowFlags(
             Qt.Dialog | Qt.WindowStaysOnTopHint
@@ -3576,11 +3626,48 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
             self.saveColormap
         )
 
+        self.addCustomGradients()
+
+        self.gradient.menu.addSeparator()
+
         # hide histogram tool
         self.vb.hide()
 
         # Disable histogram default context Menu event
         self.vb.raiseContextMenu = lambda x: None
+    
+    def addCustomGradient(self, gradient_name, gradient_ticks):
+        self.originalLength = self.gradient.length
+        self.gradient.length = 100
+        self.gradient.restoreState(gradient_ticks)
+        gradient = self.gradient.getGradient()
+        action = CustomGradientMenuAction(gradient, gradient_name, self.gradient)
+        action.triggered.connect(self.gradient.contextMenuClicked)
+        action.delButton.clicked.connect(self.removeCustomGradient)
+        self.gradient.menu.insertAction(self.saveColormapAction, action)
+        self.gradient.length = self.originalLength
+        Gradients[gradient_name] = gradient_ticks
+    
+    def removeCustomGradient(self):
+        button = self.sender()
+        action = button.action
+        self.gradient.menu.removeAction(action)
+        cp = config.ConfigParser()
+        cp.read(custom_cmaps_filepath)
+        cp.remove_section(f'labels.{action.name}')
+        with open(custom_cmaps_filepath, mode='w') as file:
+            cp.write(file)
+    
+    def addCustomGradients(self):
+        try:
+            CustomGradients = getCustomGradients(name='image')
+            if not CustomGradients:
+                return
+            for gradient_name, gradient_ticks in CustomGradients.items():
+                self.addCustomGradient(gradient_name, gradient_ticks)
+        except Exception as e:
+            printl(traceback.format_exc())
+            pass
     
     def _askNameColormap(self):
         inputWin = QInput(parent=self._parent, title='Colormap name')
@@ -3594,6 +3681,30 @@ class baseHistogramLUTitem(pg.HistogramLUTItem):
         cmapName = self._askNameColormap()
         if cmapName is None:
             return
+        
+        cp = config.ConfigParser()
+        if os.path.exists(custom_cmaps_filepath):
+            cp.read(custom_cmaps_filepath)
+        
+        SECTION = f'{self.name}.{cmapName}'
+        cp[SECTION] = {}
+
+        gradient_ticks = []
+        state = self.gradient.saveState()
+        for key, value in state.items():
+            if key != 'ticks':
+                continue
+            for t, tick in enumerate(value):
+                pos, rgb = tick
+                gradient_ticks.append((pos, rgb))
+                rgb = ','.join([str(c) for c in rgb])
+                val = f'{pos},{rgb}'
+                cp[SECTION][f'tick_{t}_pos_rgb'] = val
+        
+        with open(custom_cmaps_filepath, mode='w') as file:
+            cp.write(file)
+        
+        self.addCustomGradient(SECTION, gradient_ticks)
     
     def tickColorAccepted(self):
         self.gradient.currentColorAccepted()
@@ -3746,6 +3857,9 @@ class myHistogramLUTitem(baseHistogramLUTitem):
     def __init__(self, parent=None, name='image', isViewer=False, **kwargs):
         super().__init__(parent=parent, name=name, **kwargs)
 
+        self.name = name
+        self._parent = parent
+
         self.isViewer = isViewer
         if isViewer:
             # In the viewer we don't allow additional settings from the menu
@@ -3755,7 +3869,6 @@ class myHistogramLUTitem(baseHistogramLUTitem):
         self.invertBwAction = QAction('Invert black/white', self)
         self.invertBwAction.setCheckable(True)
         self.gradient.menu.addAction(self.invertBwAction)
-        self.gradient.menu.addSeparator()
 
         # Font size menu action
         self.fontSizeMenu =  QMenu('Text font size')
@@ -4327,10 +4440,13 @@ class labelsGradientWidget(pg.GradientWidget):
     sigShowRightImgToggled = pyqtSignal(bool)
     sigShowLabelsImgToggled = pyqtSignal(bool)
 
-    def __init__(self, parent=None, orientation='right',  *args, **kargs):
+    def __init__( self, *args, parent=None, orientation='right', **kargs):
         pg.GradientWidget.__init__(
-            self, parent=parent, orientation=orientation,  *args, **kargs
+            self, *args, parent=parent, orientation=orientation, **kargs
         )
+
+        self._parent = parent
+        self.name = 'labels'
 
         for action in self.menu.actions():
             if action.text() == 'HSV':
@@ -4348,6 +4464,8 @@ class labelsGradientWidget(pg.GradientWidget):
         self.saveColormapAction.triggered.connect(
             self.saveColormap
         )
+
+        self.addCustomGradients()
 
         # Background color button
         hbox = QHBoxLayout()
@@ -4410,6 +4528,41 @@ class labelsGradientWidget(pg.GradientWidget):
         self.showRightImgAction.toggled.connect(self.showRightImageToggled)
         self.showLabelsImgAction.toggled.connect(self.showLabelsImageToggled)
     
+    def addCustomGradient(self, gradient_name, gradient_ticks):
+        currentState = self.item.saveState()
+        self.originalLength = self.item.length
+        self.item.length = 100
+        self.item.restoreState(gradient_ticks)
+        gradient = self.item.getGradient()
+        action = CustomGradientMenuAction(gradient, gradient_name, self.item)
+        action.triggered.connect(self.item.contextMenuClicked)
+        action.delButton.clicked.connect(self.removeCustomGradient)
+        self.item.menu.insertAction(self.saveColormapAction, action)
+        self.item.length = self.originalLength
+        self.item.restoreState(currentState)
+        Gradients[gradient_name] = gradient_ticks
+    
+    def removeCustomGradient(self):
+        button = self.sender()
+        action = button.action
+        self.item.menu.removeAction(action)
+        cp = config.ConfigParser()
+        cp.read(custom_cmaps_filepath)
+        cp.remove_section(f'labels.{action.name}')
+        with open(custom_cmaps_filepath, mode='w') as file:
+            cp.write(file)
+    
+    def addCustomGradients(self):
+        try:
+            CustomGradients = getCustomGradients(name='labels')
+            if not CustomGradients:
+                return
+            for gradient_name, gradient_ticks in CustomGradients.items():
+                self.addCustomGradient(gradient_name, gradient_ticks)
+        except Exception as e:
+            printl(traceback.format_exc())
+            pass
+    
     def _askNameColormap(self):
         inputWin = QInput(parent=self._parent, title='Colormap name')
         inputWin.askText('Insert a name for the colormap: ', allowEmpty=False)
@@ -4422,7 +4575,29 @@ class labelsGradientWidget(pg.GradientWidget):
         cmapName = self._askNameColormap()
         if cmapName is None:
             return
-    
+        
+        cp = config.ConfigParser()
+        if os.path.exists(custom_cmaps_filepath):
+            cp.read(custom_cmaps_filepath)
+        
+        SECTION = f'{self.name}.{cmapName}'
+        cp[SECTION] = {}
+
+        state = self.item.saveState()
+        for key, value in state.items():
+            if key != 'ticks':
+                continue
+            for t, tick in enumerate(value):
+                pos, rgb = tick
+                rgb = ','.join([str(c) for c in rgb])
+                val = f'{pos},{rgb}'
+                cp[SECTION][f'tick_{t}_pos_rgb'] = val
+        
+        with open(custom_cmaps_filepath, mode='w') as file:
+            cp.write(file)
+        
+        self.addCustomGradient(cmapName, state)
+
     def showRightImageToggled(self, checked):
         if checked and self.showLabelsImgAction.isChecked():
             # Hide the right labels image before showing right image

@@ -3353,7 +3353,7 @@ class guiWin(QMainWindow):
         self.currentLutItem = self.imgGrad
 
         # Colormap gradient widget
-        self.labelsGrad = widgets.labelsGradientWidget()
+        self.labelsGrad = widgets.labelsGradientWidget(parent=self)
         try:
             stateFound = self.labelsGrad.restoreState(self.df_settings)
         except Exception as e:
