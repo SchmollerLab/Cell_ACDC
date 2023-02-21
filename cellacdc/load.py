@@ -7,6 +7,7 @@ import cv2
 import json
 import h5py
 import shutil
+import difflib
 from math import isnan
 from tqdm import tqdm
 import numpy as np
@@ -1859,3 +1860,116 @@ class OMEXML:
         image = OMEXML_image(Pixels, self.ome_schema)
         image.Name = Image.attrib.get('Name', '')
         return image
+
+def _restructure_multi_files_multi_pos(
+        src_path, dst_path, action='copy', signals=None, logger=print
+    ):
+    if signals is not None:
+        signals.initProgressBar.emit(0)
+    logger('Scanning files...')
+    files = list(os.listdir(src_path))
+    files = [f for f in files if os.path.isfile(os.path.join(src_path, f))]
+    
+    # Group files with same starting string with all possible splits
+    files_scanned = list(files)
+    groups = {}
+    for f, file in enumerate(files):
+        splits = file.split('_')
+        current_split = splits[0]
+        for split in splits[1:]:
+            for other_file in files_scanned:
+                if other_file.startswith(current_split):
+                    if current_split not in groups:
+                        groups[current_split] = {other_file}
+                    else:
+                        groups[current_split].add(other_file)
+            current_split = f'{current_split}_{split}'
+        files_scanned.pop(0)
+    
+    # Determine the keys of duplicated groups
+    keys_duplicates = {}
+    keys_scanned = list(groups.keys())
+    for k, key in enumerate(groups.keys()):
+        set_A = groups[key]
+        for other_key in keys_scanned:
+            set_B = groups[other_key]
+            if not set_A.difference(set_B):
+                if key not in keys_duplicates:
+                    keys_duplicates[key] = {other_key}
+                else:
+                    keys_duplicates[key].add(other_key)
+        keys_scanned.pop(0)
+    
+    # Get unique splits and sort them by length
+    unique_splits = {max(splits, key=len) for splits in keys_duplicates.values()}
+    unique_splits = sorted(list(unique_splits), key=len)
+    
+    # Get groups of files sharing the same starting
+    groups_files = {}
+    for split in unique_splits:
+        for file in files:
+            if file.startswith(split):
+                if split not in groups_files:
+                    groups_files[split] = {file}
+                else:
+                    groups_files[split].add(file)
+    
+    # Sort the files according to exp and pos splits
+    groups_n_splits = {len(split.split('_')):set() for split in groups_files}
+    for split in groups_files:
+        n_splits = len(split.split('_'))
+        groups_n_splits[n_splits].add(split)
+    
+    sorted_n_splits = sorted(groups_n_splits.keys())
+    n_splits_exp, n_splits_pos = sorted_n_splits[-2:]
+    final_structure = {}    
+    for split_exp in groups_n_splits[n_splits_exp]:
+        exp_folder_path = os.path.join(dst_path, split_exp)
+        exp_files = groups_files[split_exp]
+        pos_splits = groups_n_splits[n_splits_pos]   
+        for exp_file in exp_files:
+            p = 1
+            for pos_split in pos_splits:
+                if not pos_split.startswith(split_exp):
+                    continue
+                try:
+                    pos_n = pos_split.split('_')[-1]
+                    pos_n = int(pos_n)
+                except Exception as e:
+                    pos_n = p
+                pos_path = os.path.join(exp_folder_path, f'Position_{pos_n}')
+                images_path = os.path.join(pos_path, 'Images')
+                final_structure[images_path] = []
+                if not os.path.exists(images_path):
+                    os.makedirs(images_path)
+                for file in files:
+                    if not file.startswith(pos_split):
+                        continue 
+                    final_structure[images_path].append(file)
+                    
+                p += 1
+    
+    # Move or copy the files
+    if signals is not None:
+        signals.initProgressBar.emit(len(files))
+    action_str = 'Copying' if action=='copy' else 'Moving'
+    logger(f'{action_str} files...')
+    pbar = tqdm(total=len(files), ncols=100, unit='file')
+    for images_path, files in final_structure.items():
+        for file in files:
+            dst_file = os.path.join(images_path, file)
+            src_file = os.path.join(src_path, file)
+            try:
+                if action == 'copy':
+                    shutil.copy2(src_file, dst_file)
+                else:
+                    shutil.move(src_file, dst_file)
+            except Exception as e:
+                continue
+            pbar.update()
+            if signals is not None:
+                signals.progressBar.emit(1)
+    pbar.close()
+    
+    action_str = 'copied' if action=='copy' else 'moved'
+    logger(f'Done! Files {action_str} and restructured into "{src_path}"')
