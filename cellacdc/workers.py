@@ -1873,6 +1873,26 @@ class ApplyTrackInfoWorker(BaseWorkerUtil):
 
         self.signals.finished.emit(self)
 
+class RestructMultiPosWorker(BaseWorkerUtil):
+    sigSaveTiff = pyqtSignal(str, object, object)
+
+    def __init__(self, rootFolderPath, dstFolderPath, action='copy'):
+        super().__init__(None)
+        self.rootFolderPath = rootFolderPath
+        self.dstFolderPath = dstFolderPath
+        self.mutex = QMutex()
+        self.waitCond = QWaitCondition()
+        self.action = action
+
+    @worker_exception_handler
+    def run(self):
+        load._restructure_multi_files_multi_pos(
+            self.rootFolderPath, self.dstFolderPath, signals=self.signals, 
+            logger=self.logger.log, action=self.action
+        )
+        self.signals.finished.emit(self)
+
+
 class RestructMultiTimepointsWorker(BaseWorkerUtil):
     sigSaveTiff = pyqtSignal(str, object, object)
 
