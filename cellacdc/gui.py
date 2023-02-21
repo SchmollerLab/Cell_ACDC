@@ -98,6 +98,7 @@ favourite_func_metrics_csv_path = os.path.join(
     temp_path, 'favourite_func_metrics.csv'
 )
 custom_annot_path = os.path.join(temp_path, 'custom_annotations.json')
+shortcut_filepath = os.path.join(temp_path, 'shortcuts.ini')
 
 _font = QFont()
 _font.setPixelSize(11)
@@ -964,6 +965,7 @@ class guiWin(QMainWindow):
         self.AutoPilotProfile = autopilot.AutoPilotProfile()
         self.storeStateWorker = None
         self.AutoPilot = None
+        self.widgetsWithShortcut = {}
 
         self.setWindowTitle("Cell-ACDC - GUI")
         self.setWindowIcon(QIcon(":icon.ico"))
@@ -1022,6 +1024,7 @@ class guiWin(QMainWindow):
 
         self.readRecentPaths()
 
+        self.initShortcuts()
         self.show()
         # self.installEventFilter(self)
 
@@ -1260,6 +1263,7 @@ class guiWin(QMainWindow):
         self.smallFontSize = f'{intSize*0.75}pt'
         self.fontSizeMenu = editMenu.addMenu("Font size")
 
+        editMenu.addAction(self.editShortcutsAction)
         editMenu.addAction(self.editTextIDsColorAction)
         editMenu.addAction(self.editOverlayColorAction)
         editMenu.addAction(self.manuallyEditCcaAction)
@@ -1469,6 +1473,7 @@ class guiWin(QMainWindow):
         self.checkableButtons.append(self.assignBudMothButton)
         self.checkableQButtonsGroup.addButton(self.assignBudMothButton)
         self.functionsNotTested3D.append(self.assignBudMothButton)
+        
 
         # Set is_history_known button
         self.setIsHistoryKnownButton = QToolButton(self)
@@ -1486,6 +1491,7 @@ class guiWin(QMainWindow):
         self.checkableButtons.append(self.setIsHistoryKnownButton)
         self.checkableQButtonsGroup.addButton(self.setIsHistoryKnownButton)
         self.functionsNotTested3D.append(self.setIsHistoryKnownButton)
+        
 
         ccaToolBar.addAction(self.assignBudMothAutoAction)
         ccaToolBar.addAction(self.editCcaToolAction)
@@ -1530,6 +1536,8 @@ class guiWin(QMainWindow):
         editToolBar.addWidget(self.brushButton)
         self.checkableButtons.append(self.brushButton)
         self.LeftClickButtons.append(self.brushButton)
+        self.brushButton.keyPressShortcut = Qt.Key_B
+        self.widgetsWithShortcut['Brush'] = self.brushButton
 
         self.eraserButton = QToolButton(self)
         self.eraserButton.setIcon(QIcon(":eraser.svg"))
@@ -1547,6 +1555,8 @@ class guiWin(QMainWindow):
             '     then eraser button is red and eraser cursor always red.\n\n'
             'SHORTCUT: "X" key')
         editToolBar.addWidget(self.eraserButton)
+        self.eraserButton.keyPressShortcut = Qt.Key_X
+        self.widgetsWithShortcut['Eraser'] = self.eraserButton
         self.checkableButtons.append(self.eraserButton)
         self.LeftClickButtons.append(self.eraserButton)
 
@@ -1562,6 +1572,7 @@ class guiWin(QMainWindow):
         self.curvToolButton.action = editToolBar.addWidget(self.curvToolButton)
         self.LeftClickButtons.append(self.curvToolButton)
         self.functionsNotTested3D.append(self.curvToolButton)
+        self.widgetsWithShortcut['Curvature tool'] = self.curvToolButton
         # self.checkableButtons.append(self.curvToolButton)
 
         self.wandToolButton = QToolButton(self)
@@ -1576,6 +1587,14 @@ class guiWin(QMainWindow):
         self.wandToolButton.action = editToolBar.addWidget(self.wandToolButton)
         self.LeftClickButtons.append(self.wandToolButton)
         self.functionsNotTested3D.append(self.wandToolButton)
+        self.widgetsWithShortcut['Magic wand'] = self.wandToolButton
+
+        self.widgetsWithShortcut['Annotate mother/daughter pairing'] = (
+            self.assignBudMothButton
+        )
+        self.widgetsWithShortcut['Annotate unknown history'] = (
+            self.setIsHistoryKnownButton
+        )
 
         self.labelRoiButton = widgets.rightClickToolButton(parent=self)
         self.labelRoiButton.setIcon(QIcon(":label_roi.svg"))
@@ -1591,6 +1610,7 @@ class guiWin(QMainWindow):
         self.LeftClickButtons.append(self.labelRoiButton)
         self.checkableButtons.append(self.labelRoiButton)
         self.checkableQButtonsGroup.addButton(self.labelRoiButton)
+        self.widgetsWithShortcut['Label ROI'] = self.labelRoiButton
         # self.functionsNotTested3D.append(self.labelRoiButton)
 
         self.segmentToolAction = QAction('Segment with last used model', self)
@@ -1601,12 +1621,13 @@ class guiWin(QMainWindow):
             'If you never selected a segmentation model before, you will be \n'
             'asked to choose it and initialize its parameters.\n\n'
             'SHORTCUT: "R" key')
+        self.widgetsWithShortcut['Repeat segmentation'] = self.segmentToolAction
         editToolBar.addAction(self.segmentToolAction)
 
         self.hullContToolButton = QToolButton(self)
         self.hullContToolButton.setIcon(QIcon(":hull.svg"))
         self.hullContToolButton.setCheckable(True)
-        self.hullContToolButton.setShortcut('k')
+        self.hullContToolButton.setShortcut('o')
         self.hullContToolButton.setToolTip(
             'Toggle "Hull contour" ON/OFF\n\n'
             'ACTION: right-click on a cell to replace it with its hull contour.\n'
@@ -1616,6 +1637,7 @@ class guiWin(QMainWindow):
         self.checkableButtons.append(self.hullContToolButton)
         self.checkableQButtonsGroup.addButton(self.hullContToolButton)
         self.functionsNotTested3D.append(self.hullContToolButton)
+        self.widgetsWithShortcut['Hull contour'] = self.hullContToolButton
 
         self.fillHolesToolButton = QToolButton(self)
         self.fillHolesToolButton.setIcon(QIcon(":fill_holes.svg"))
@@ -1629,6 +1651,7 @@ class guiWin(QMainWindow):
         self.checkableButtons.append(self.fillHolesToolButton)
         self.checkableQButtonsGroup.addButton(self.fillHolesToolButton)
         self.functionsNotTested3D.append(self.fillHolesToolButton)
+        self.widgetsWithShortcut['Fill holes'] = self.fillHolesToolButton
 
         self.moveLabelToolButton = QToolButton(self)
         self.moveLabelToolButton.setIcon(QIcon(":moveLabel.svg"))
@@ -1641,6 +1664,7 @@ class guiWin(QMainWindow):
         self.moveLabelToolButton.action = editToolBar.addWidget(self.moveLabelToolButton)
         self.checkableButtons.append(self.moveLabelToolButton)
         self.checkableQButtonsGroup.addButton(self.moveLabelToolButton)
+        self.widgetsWithShortcut['Move label'] = self.moveLabelToolButton
 
         self.expandLabelToolButton = QToolButton(self)
         self.expandLabelToolButton.setIcon(QIcon(":expandLabel.svg"))
@@ -1656,6 +1680,7 @@ class guiWin(QMainWindow):
         self.checkableButtons.append(self.expandLabelToolButton)
         self.LeftClickButtons.append(self.expandLabelToolButton)
         self.checkableQButtonsGroup.addButton(self.expandLabelToolButton)
+        self.widgetsWithShortcut['Expand/shrink label'] = self.expandLabelToolButton
 
         self.editIDbutton = QToolButton(self)
         self.editIDbutton.setIcon(QIcon(":edit-id.svg"))
@@ -1669,6 +1694,7 @@ class guiWin(QMainWindow):
         editToolBar.addWidget(self.editIDbutton)
         self.checkableButtons.append(self.editIDbutton)
         self.checkableQButtonsGroup.addButton(self.editIDbutton)
+        self.widgetsWithShortcut['Edit ID'] = self.editIDbutton
 
         self.separateBudButton = QToolButton(self)
         self.separateBudButton.setIcon(QIcon(":separate-bud.svg"))
@@ -1684,6 +1710,7 @@ class guiWin(QMainWindow):
         self.checkableButtons.append(self.separateBudButton)
         self.checkableQButtonsGroup.addButton(self.separateBudButton)
         self.functionsNotTested3D.append(self.separateBudButton)
+        self.widgetsWithShortcut['Separate objects'] = self.separateBudButton
 
         self.mergeIDsButton = QToolButton(self)
         self.mergeIDsButton.setIcon(QIcon(":merge-IDs.svg"))
@@ -1699,6 +1726,7 @@ class guiWin(QMainWindow):
         self.checkableButtons.append(self.mergeIDsButton)
         self.checkableQButtonsGroup.addButton(self.mergeIDsButton)
         self.functionsNotTested3D.append(self.mergeIDsButton)
+        self.widgetsWithShortcut['Merge objects'] = self.mergeIDsButton
 
         self.keepIDsButton = QToolButton(self)
         self.keepIDsButton.setIcon(QIcon(":keep_objects.svg"))
@@ -1711,9 +1739,11 @@ class guiWin(QMainWindow):
             'ACTION: right- or left-click on objects to keep\n\n'
         )
         self.keepIDsButton.action = editToolBar.addWidget(self.keepIDsButton)
+        self.keepIDsButton.setShortcut('k')
         self.checkableButtons.append(self.keepIDsButton)
         self.checkableQButtonsGroup.addButton(self.keepIDsButton)
         # self.functionsNotTested3D.append(self.keepIDsButton)
+        self.widgetsWithShortcut['Select objects to keep'] = self.keepIDsButton
 
         self.binCellButton = QToolButton(self)
         self.binCellButton.setIcon(QIcon(":bin.svg"))
@@ -1742,6 +1772,7 @@ class guiWin(QMainWindow):
         self.manualTrackingButton.setShortcut('T')
         self.checkableQButtonsGroup.addButton(self.manualTrackingButton)
         self.checkableButtons.append(self.manualTrackingButton)
+        self.widgetsWithShortcut['Manual tracking'] = self.manualTrackingButton
 
         self.ripCellButton = QToolButton(self)
         self.ripCellButton.setIcon(QIcon(":rip.svg"))
@@ -1758,6 +1789,7 @@ class guiWin(QMainWindow):
         self.checkableButtons.append(self.ripCellButton)
         self.checkableQButtonsGroup.addButton(self.ripCellButton)
         self.functionsNotTested3D.append(self.ripCellButton)
+        self.widgetsWithShortcut['Annotate cell as dead'] = self.ripCellButton
 
         editToolBar.addAction(self.addDelRoiAction)
         editToolBar.addAction(self.addDelPolyLineRoiAction)
@@ -2565,6 +2597,11 @@ class guiWin(QMainWindow):
             '(from the current session not the saved information)'
         )
 
+        self.editShortcutsAction = QAction(
+            'Customize keyboard shortcuts...', self
+        )
+        self.editShortcutsAction.setShortcut('Ctrl+K')
+
         self.editTextIDsColorAction = QAction('Text on IDs color...', self)
         self.editTextIDsColorAction.setDisabled(True)
 
@@ -2765,6 +2802,8 @@ class guiWin(QMainWindow):
         self.nextAction.triggered.connect(self.nextActionTriggered)
         self.prevAction.triggered.connect(self.prevActionTriggered)
 
+        self.editShortcutsAction.triggered.connect(self.editShortcuts_cb)
+
         # Connect Help actions
         self.tipsAction.triggered.connect(self.showTipsAndTricks)
         self.UserManualAction.triggered.connect(myutils.showUserManual)
@@ -2860,6 +2899,7 @@ class guiWin(QMainWindow):
         self.modeComboBox.currentIndexChanged.connect(self.changeMode)
         self.modeComboBox.activated.connect(self.clearComboBoxFocus)
         self.equalizeHistPushButton.toggled.connect(self.equalizeHist)
+        
         self.editOverlayColorAction.triggered.connect(self.toggleOverlayColorButton)
         self.editTextIDsColorAction.triggered.connect(self.toggleTextIDsColorButton)
         self.overlayColorButton.sigColorChanging.connect(self.updateOlColors)
@@ -3193,7 +3233,7 @@ class guiWin(QMainWindow):
         self.z_label.setCheckableItem(self.zSliceCheckbox)
         self.zSliceCheckbox.setToolTip(
             'Activate/deactivate control of the z-slices with keyboard arrows.\n\n'
-            'SHORCUT to toggle ON/OFF: "Z" key'
+            'SHORTCUT to toggle ON/OFF: "Z" key'
         )
         self.z_label.setToolTip(self.zSliceCheckbox.toolTip())
         zSliceCheckboxLayout.addWidget(self.zSliceCheckbox)
@@ -10264,7 +10304,9 @@ class guiWin(QMainWindow):
             except Exception as e:
                 # printl(traceback.format_exc())
                 pass
-
+        
+        isBrushKey = ev.key() == self.brushButton.keyPressShortcut
+        isEraserKey = ev.key() == Qt.Key_X
         isExpandLabelActive = self.expandLabelToolButton.isChecked()
         isWandActive = self.wandToolButton.isChecked()
         isLabelRoiCircActive = (
@@ -10387,11 +10429,11 @@ class guiWin(QMainWindow):
                 # Double press --> toggle draw nothing
                 self.onDoubleSpaceBar()
                 self.countKeyPress = 0
-        elif ev.key() == Qt.Key_B or ev.key() == Qt.Key_X:
+        elif isBrushKey or isEraserKey:
             mode = self.modeComboBox.currentText()
             if mode == 'Cell cycle analysis' or mode == 'Viewer':
                 return
-            if ev.key() == Qt.Key_B:
+            if isBrushKey:
                 self.Button = self.brushButton
             else:
                 self.Button = self.eraserButton
@@ -10420,13 +10462,13 @@ class guiWin(QMainWindow):
                 self.countKeyPress = 0
                 if self.xHoverImg is not None:
                     xdata, ydata = int(self.xHoverImg), int(self.yHoverImg)
-                    if ev.key() == Qt.Key_B:
+                    if isBrushKey:
                         self.setHoverToolSymbolColor(
                             xdata, ydata, self.ax2_BrushCirclePen,
                             (self.ax2_BrushCircle, self.ax1_BrushCircle),
                             self.brushButton, brush=self.ax2_BrushCircleBrush
                         )
-                    elif ev.key() == Qt.Key_X:
+                    elif isEraserKey:
                         self.setHoverToolSymbolColor(
                             xdata, ydata, self.eraserCirclePen,
                             (self.ax2_EraserCircle, self.ax1_EraserCircle),
@@ -11284,7 +11326,7 @@ class guiWin(QMainWindow):
             symbolColor = QColor(*annotState['symbolColor'])
             shortcut = annotState['shortcut']
             if shortcut is not None:
-                keySequence = widgets.macShortcutToQKeySequence(shortcut)
+                keySequence = widgets.macShortcutToWindows(shortcut)
                 keySequence = QKeySequence(keySequence)
             else:
                 keySequence = None
@@ -16581,6 +16623,73 @@ class guiWin(QMainWindow):
                 ol_img = self.applyFilter(chName, setImg=False)
 
             imageItem.setImage(ol_img)
+        
+    def initShortcuts(self):
+        from . import config
+        cp = config.ConfigParser()
+        if os.path.exists(shortcut_filepath):
+            cp.read(shortcut_filepath)
+        
+        if 'keyboard.shortcuts' not in cp:
+            cp['keyboard.shortcuts'] = {}
+        
+        shortcuts = {}
+        for name, widget in self.widgetsWithShortcut.items():
+            if name not in cp.options('keyboard.shortcuts'):
+                if hasattr(widget, 'keyPressShortcut'):
+                    key = widget.keyPressShortcut
+                    shortcut = QKeySequence(key)
+                else:
+                    shortcut = widget.shortcut()
+                shortcut_text = shortcut.toString()
+                cp['keyboard.shortcuts'][name] = shortcut_text
+            else:
+                shortcut_text = cp['keyboard.shortcuts'][name]
+                shortcut = QKeySequence(shortcut_text)
+            
+            shortcuts[name] = (shortcut_text, shortcut)
+        
+        self.setShortcuts(shortcuts, save=False)
+        with open(shortcut_filepath, 'w') as ini:
+            cp.write(ini)
+    
+    def setShortcuts(self, shortcuts: dict, save=True):
+        for name, (text, shortcut) in shortcuts.items():
+            widget = self.widgetsWithShortcut[name]
+            if hasattr(widget, 'keyPressShortcut'):
+                widget.keyPressShortcut = shortcut
+            else:
+                widget.setShortcut(shortcut)
+            s = widget.toolTip()
+            toolTip = re.sub(r'SHORTCUT: "(.*)"', f'SHORTCUT: "{text}"', s)
+            widget.setToolTip(toolTip)
+        
+        if not save: 
+            return
+        
+        from . import config
+        cp = config.ConfigParser()
+        if os.path.exists(shortcut_filepath):
+            cp.read(shortcut_filepath)
+        
+        if 'keyboard.shortcuts' not in cp:
+            cp['keyboard.shortcuts'] = {}
+
+        for name, (text, shortcut) in shortcuts.items():
+            cp['keyboard.shortcuts'][name] = text
+        
+        with open(shortcut_filepath, 'w') as ini:
+            cp.write(ini)
+        
+
+
+    
+    def editShortcuts_cb(self):
+        win = apps.ShortcutEditorDialog(self.widgetsWithShortcut, parent=self)
+        win.exec_()
+        if win.cancel:
+            return
+        self.setShortcuts(win.customShortcuts)
             
     def toggleOverlayColorButton(self, checked=True):
         self.mousePressColorButton(None)

@@ -493,7 +493,7 @@ class customAnnotationDialog(QDialog):
         """)
         shortcutInfoTxt = (f'{html_utils.paragraph(shortcutInfoTxt)}')
         self.shortcutWidget = widgets.formWidget(
-            widgets.shortCutLineEdit(), addInfoButton=True,
+            widgets.ShortcutLineEdit(), addInfoButton=True,
             labelTextLeft='Shortcut: ', parent=self, infoTxt=shortcutInfoTxt
         )
         if state is not None:
@@ -651,7 +651,7 @@ class customAnnotationDialog(QDialog):
         self.symbolWidget.widget.setCurrentText(selectedAnnot['symbol'])
         self.shortcutWidget.widget.setText(selectedAnnot['shortcut'])
         self.descWidget.widget.setPlainText(selectedAnnot['description'])
-        keySequence = widgets.macShortcutToQKeySequence(selectedAnnot['shortcut'])
+        keySequence = widgets.macShortcutToWindows(selectedAnnot['shortcut'])
         if keySequence:
             self.shortcutWidget.widget.keySequence = QKeySequence(keySequence)
 
@@ -875,7 +875,7 @@ class _PointsLayerAppearanceGroupbox(QGroupBox):
         """)
         shortcutInfoTxt = (f'{html_utils.paragraph(shortcutInfoTxt)}')
         self.shortcutWidget = widgets.formWidget(
-            widgets.shortCutLineEdit(), addInfoButton=True,
+            widgets.ShortcutLineEdit(), addInfoButton=True,
             labelTextLeft='Shortcut: ', parent=self, infoTxt=shortcutInfoTxt
         )
         layout.addFormWidget(self.shortcutWidget, row=row)
@@ -11608,4 +11608,72 @@ class CombineMetricsMultiDfsSummaryDialog(widgets.QBaseDialog):
     def showEvent(self, event) -> None:
         self.resize(int(self.width()*2), self.height())
 
+class ShortcutEditorDialog(widgets.QBaseDialog):
+    def __init__(self, widgetsWithShortcut: dict, parent=None):
+        self.cancel = True
+        super().__init__(parent)
 
+        self.setWindowTitle('Customize keyboard shortcuts')
+
+        mainLayout = QVBoxLayout()
+
+        self.customShortcuts = {}
+        self.shortcutLineEdits = {}
+
+        scrollArea = QScrollArea(self)
+        scrollAreaWidget = QWidget()
+        entriesLayout = QGridLayout()
+        for row, (name, widget) in enumerate(widgetsWithShortcut.items()):
+            label = QLabel(f'{name}:')
+            shortcutLineEdit = widgets.ShortcutLineEdit()
+            if hasattr(widget, 'keyPressShortcut'):
+                shortcutLineEdit.key = widget.keyPressShortcut
+                shortcut = QKeySequence(widget.keyPressShortcut)
+                isShortcutKeyPress = True
+            else:
+                shortcut = widget.shortcut()
+                isShortcutKeyPress = False
+            shortcutLineEdit.setText(shortcut.toString())
+            shortcutLineEdit.textChanged.connect(self.checkDuplicateShortcuts)
+            shortcutLineEdit.isShortcutKeyPress = isShortcutKeyPress
+            entriesLayout.addWidget(label, row, 0)
+            entriesLayout.addWidget(shortcutLineEdit, row, 1)
+            self.shortcutLineEdits[name] = shortcutLineEdit
+        
+        scrollAreaWidget.setLayout(entriesLayout)
+        scrollArea.setWidget(scrollAreaWidget)
+        buttonsLayout = widgets.CancelOkButtonsLayout()
+
+        buttonsLayout.okButton.clicked.connect(self.ok_cb)
+        buttonsLayout.cancelButton.clicked.connect(self.close)
+
+        mainLayout.addWidget(scrollArea)
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+
+        self.setFont(font)
+        self.setLayout(mainLayout)
+    
+    def checkDuplicateShortcuts(self, text):
+        for name, shortcutLineEdit in self.shortcutLineEdits.items():
+            if shortcutLineEdit == self.sender():
+                continue
+            if shortcutLineEdit.text() != text:
+                continue
+            shortcutLineEdit.setText('')
+    
+    def ok_cb(self):
+        self.cancel = False
+        for name, shortcutLineEdit in self.shortcutLineEdits.items():
+            text = shortcutLineEdit.text()
+            if shortcutLineEdit.isShortcutKeyPress:
+                self.customShortcuts[name] = (text, shortcutLineEdit.key)
+            else:
+                self.customShortcuts[name] = (
+                    text, shortcutLineEdit.keySequence
+                )
+        self.close()
+    
+    def showEvent(self, event) -> None:
+        self.resize(int(self.width()*1.2), self.height())
+        self.move(self.x(), 100)

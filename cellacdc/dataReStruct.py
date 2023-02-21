@@ -37,7 +37,7 @@ def _log(mainWin, text):
 def run(mainWin):
     items = (
         'Multiple files, one for each time-point', 
-        'Multiple files, one for each Position'
+        'Multiple files, one for each channel'
     )
     selectHowWin = apps.QDialogCombobox(
         'Select how files are structured', items,

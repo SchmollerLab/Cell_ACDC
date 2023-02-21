@@ -23,7 +23,7 @@ The `addAnnotWin` window has the following attributes created in its `closeEvent
 
 - **symbol**: any of the `pyqtgraph` valid symbols (only the string inside the quotes, e.g., 'o' for circle, see `widgets.pgScatterSymbolsCombobox`)
 
-- **keySequence**: a `QKeySequence` built with valid PyQt shortcut text, see [here](https://doc.qt.io/qt-5/qkeysequence.html#QKeySequence-1). Note that macOS shortcut strings are converted to valid PyQt string using the `widgets.macShortcutToQKeySequence` function.
+- **keySequence**: a `QKeySequence` built with valid PyQt shortcut text, see [here](https://doc.qt.io/qt-5/qkeysequence.html#QKeySequence-1). Note that macOS shortcut strings are converted to valid PyQt string using the `widgets.macShortcutToWindows` function.
 
 - **toolTip**: formatted text for `setToolTip` method of the button
 

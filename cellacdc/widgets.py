@@ -27,7 +27,7 @@ from PyQt5.QtCore import (
     QIODevice, QItemSelection
 )
 from PyQt5.QtGui import (
-    QFont, QPalette, QColor, QPen, QPaintEvent, QBrush, QPainter,
+    QFont, QPalette, QColor, QPen, QKeyEvent, QBrush, QPainter,
     QRegExpValidator, QIcon, QPixmap, QKeySequence, QLinearGradient,
     QShowEvent, QBitmap, QFontMetrics, QGuiApplication, QLinearGradient 
 )
@@ -2269,61 +2269,13 @@ class myFormLayout(QGridLayout):
             except TypeError:
                 self.addLayout(item, row, col)
 
-def keyboardModifierToText(modifier):
-    if modifier == Qt.ShiftModifier:
-        s = 'Shift'
-        key = s
-    elif modifier == Qt.ControlModifier:
-        s = 'Ctrl' if is_win else 'Command'
-        key = 'Ctrl'
-    elif modifier == Qt.AltModifier:
-        s = 'Alt' if is_win else 'Option'
-        key = 'Alt'
-    elif modifier == Qt.MetaModifier and is_mac:
-        s = 'Control'
-        key = 'Meta'
-    elif modifier == (Qt.ShiftModifier | Qt.ControlModifier):
-        s1 = 'Ctrl' if is_win else 'Command'
-        s = f'Shift+{s1}'
-        key = 'Shift+Ctrl'
-    elif modifier == (Qt.ShiftModifier | Qt.AltModifier):
-        s1 = 'Alt' if is_win else 'Option'
-        s = f'Shift+{s1}'
-        key = 'Shift+Alt'
-    elif modifier == (Qt.ShiftModifier | Qt.MetaModifier) and is_mac:
-        s = f'Shift+Control'
-        key = 'Shift+Meta'
-    elif modifier == (Qt.ControlModifier | Qt.AltModifier):
-        s1 = 'Ctrl' if is_win else 'Command'
-        s = f'Alt+{s1}'
-        key = 'Alt+Ctrl'
-    elif modifier == (Qt.ControlModifier | Qt.MetaModifier) and is_mac:
-        s1 = 'Ctrl' if is_win else 'Command'
-        s = f'Control+{s1}'
-        key = 'Meta+Ctrl'
-    elif modifier == (Qt.AltModifier | Qt.MetaModifier) and is_mac:
-        s = f'Control+Option'
-        key = 'Meta+Alt'
-    else:
-        s = ''
-        key = ''
-    return s, key
-
-def macShortcutToQKeySequence(shortcut: str):
+def macShortcutToWindows(shortcut: str):
     if shortcut is None:
         return
     s = shortcut.replace('Control', 'Meta')
     s = shortcut.replace('Option', 'Alt')
     s = shortcut.replace('Command', 'Ctrl')
     return s
-
-def QtKeyToText(QtKey):
-    letter = ''
-    for letter in string.ascii_uppercase:
-        QtLetterEnum = getattr(Qt, f'Key_{letter}')
-        if QtKey == QtLetterEnum:
-            return letter
-    return letter
 
 class ToolBar(QToolBar):
     def __init__(self, *args) -> None:
@@ -2719,42 +2671,36 @@ class Toggle(QCheckBox):
 
         p.end()
 
-class shortCutLineEdit(QLineEdit):
+class ShortcutLineEdit(QLineEdit):
     def __init__(self, parent=None):
-        super().__init__(parent)
-        self.textChanged.connect(self._setText)
         self.keySequence = None
+        super().__init__(parent)
+        self.setAlignment(Qt.AlignCenter)
+    
+    def setText(self, text):
+        super().setText(text)
+        if not text:
+            self.keySequence = None
+            return
+        try:
+            self.keySequence = QKeySequence(self.text())
+        except Exception as e:
+            pass
 
-    def _setText(self, sender=None):
-        if sender is None:
-            self.setText('')
-
-    def keyPressEvent(self, event):
+    def keyPressEvent(self, event: QKeyEvent):
         if event.key() == Qt.Key_Backspace or event.key() == Qt.Key_Delete:
             self.setText('')
-            self.keySequence = None
-            self.sender = None
             return
 
-        modifier, sequenceKey = keyboardModifierToText(event.modifiers())
-        key = QtKeyToText(event.key())
-        shortcut = self.text()
-        if modifier and key:
-            self.sender = 'keyboard'
-            self.setText(f'{modifier}+{key.upper()}')
-            sequenceKey = f'{sequenceKey}+{key.upper()}'
-            self.keySequence = QKeySequence(sequenceKey)
-        elif modifier:
-            self.sender = 'keyboard'
-            self.setText(modifier)
-            self.keySequence = QKeySequence(sequenceKey)
-        elif key:
-            self.sender = 'keyboard'
-            self.setText(key.upper())
-            self.keySequence = QKeySequence(event.key())
-        else:
-            self.keySequence = None
-        self.sender = None
+        keySequence = QKeySequence(event.modifiers() | event.key()).toString()
+        keySequence = keySequence.encode('ascii', 'ignore').decode('utf-8')
+        self.setText(keySequence)
+        self.key = event.key()
+    
+    def keyReleaseEvent(self, event: QKeyEvent) -> None:
+        if self.text().endswith('+'):
+            self.setText('')
+            
 
 class selectStartStopFrames(QGroupBox):
     def __init__(self, SizeT, currentFrameNum=0, parent=None):
