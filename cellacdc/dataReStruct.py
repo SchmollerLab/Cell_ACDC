@@ -37,6 +37,7 @@ def _log(mainWin, text):
 def run(mainWin):
     items = (
         'Multiple files, one for each time-point', 
+        'Multiple files, one for each Position'
     )
     selectHowWin = apps.QDialogCombobox(
         'Select how files are structured', items,
@@ -88,15 +89,35 @@ def run(mainWin):
         return False
     
     mainWin.log('[Data Re-Struct] Checking file format of loaded files...')
+    printl(rootFolderPath)
     validFilenames = checkFileFormat(rootFolderPath, mainWin)
     if not validFilenames:
         return False
 
     if selectHowWin.selectedItemIdx == 0:
-        s = _run_multi_files_timepoints(
+        started = _run_multi_files_timepoints(
             mainWin, validFilenames, rootFolderPath, dstFolderPath
         )
-        return s
+        return started
+    elif selectHowWin.selectedItemIdx == 1:
+        msg = widgets.myMessageBox(wrapText=False)
+        copyButton = widgets.copyPushButton('Copy files')
+        moveButton = widgets.movePushButton('Move files')
+        txt = html_utils.paragraph(
+            'Do you want to <b>copy or move</b> the files to the '
+            'Position folders?'
+        )
+        msg.question(
+            mainWin, 'Copy or move files?', txt, 
+            buttonsTexts=('Cancel', copyButton, moveButton)
+        )
+        if msg.cancel:
+            return False
+        action = 'copy' if msg.clickedButton == copyButton else 'move'
+        started = _run_multi_files_multi_pos(
+            mainWin, rootFolderPath, dstFolderPath, action
+        )
+        return started
     
     return True
 
@@ -106,6 +127,18 @@ def checkFileFormat(folderPath, mainWin):
         filename for filename in ls
         if os.path.isfile(os.path.join(folderPath, filename))
     ]
+    if not files:
+        msg = widgets.myMessageBox(wrapText=False)
+        txt = html_utils.paragraph(
+            'The following folder<br><br>'
+            f'<code>{folderPath}</code><br><br>'
+            '<b>does not contain any file!</b><br>'
+        )
+        msg.addShowInFileManagerButton(folderPath)
+        msg.critical(
+            mainWin, 'Multiple extensions detected', txt
+        )
+        return []
     all_ext = [
         os.path.splitext(filename)[1] for filename in ls
         if os.path.isfile(os.path.join(folderPath, filename))
@@ -180,6 +213,34 @@ def _run_multi_files_timepoints(
         mainWin.workerUpdateProgressbar
     )
     mainWin.restructWorker.sigSaveTiff.connect(saveTiff)
+
+    mainWin.thread.started.connect(mainWin.restructWorker.run)
+    mainWin.thread.start()
+
+    return True
+
+def _run_multi_files_multi_pos(mainWin, rootFolderPath, dstFolderPath, action):
+    mainWin.thread = QThread()
+    mainWin.restructWorker = workers.RestructMultiPosWorker(
+        rootFolderPath, dstFolderPath, action=action
+    )
+    mainWin.restructWorker.moveToThread(mainWin.thread)
+    mainWin.restructWorker.signals.finished.connect(mainWin.thread.quit)
+    mainWin.restructWorker.signals.finished.connect(
+        mainWin.restructWorker.deleteLater
+    )
+    mainWin.thread.finished.connect(mainWin.thread.deleteLater)
+
+    # Custom signals
+    mainWin.restructWorker.signals.critical.connect(mainWin.workerCritical)
+    mainWin.restructWorker.signals.finished.connect(mainWin.workerFinished)
+    mainWin.restructWorker.signals.progress.connect(mainWin.workerProgress)
+    mainWin.restructWorker.signals.initProgressBar.connect(
+        mainWin.workerInitProgressbar
+    )
+    mainWin.restructWorker.signals.progressBar.connect(
+        mainWin.workerUpdateProgressbar
+    )
 
     mainWin.thread.started.connect(mainWin.restructWorker.run)
     mainWin.thread.start()
