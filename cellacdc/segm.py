@@ -619,28 +619,6 @@ class segmWin(QMainWindow):
         self.log('Loading data...')
         self.progressLabel.setText('Loading data...')
 
-        # Ask which model
-        win = apps.QDialogSelectModel(parent=self)
-        win.exec_()
-        if win.cancel:
-            abort = self.doAbort()
-            if abort:
-                self.close()
-                return
-        
-        model_name = win.selectedModel
-
-        if model_name == 'thresholding':
-            win = apps.QDialogAutomaticThresholding(parent=self)
-            win.exec_()
-            if win.cancel:
-                return
-            self.segment2D_kwargs = win.segment_kwargs
-
-        self.log(f'Downloading {model_name} (if needed)...')
-        self.downloadWin = apps.downloadModel(model_name, parent=self)
-        self.downloadWin.download()
-
         ch_name_selector = prompts.select_channel_name(
             which_channel='segm', allow_abort=True
         )
@@ -783,6 +761,30 @@ class segmWin(QMainWindow):
             if abort:
                 self.close()
                 return
+        
+        # Ask which model
+        win = apps.QDialogSelectModel(parent=self)
+        win.exec_()
+        if win.cancel:
+            abort = self.doAbort()
+            if abort:
+                self.close()
+                return
+        
+        model_name = win.selectedModel
+
+        if model_name == 'thresholding':
+            win = apps.QDialogAutomaticThresholding(
+                parent=self, isSegm3D=self.isSegm3D
+            )
+            win.exec_()
+            if win.cancel:
+                return
+            self.segment2D_kwargs = win.segment_kwargs
+
+        self.log(f'Downloading {model_name} (if needed)...')
+        self.downloadWin = apps.downloadModel(model_name, parent=self)
+        self.downloadWin.download()
         
         self.log(f'Importing {model_name}...')
         self.model_name = model_name

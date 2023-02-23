@@ -2146,11 +2146,11 @@ class guiWin(QMainWindow):
         self.labelRoiToolbar.addWidget(widgets.QHWidgetSpacer(width=separatorW))
 
         self.labelRoiReplaceExistingObjectsCheckbox = QCheckBox(
-            'Replace existing objects'
+            'Remove existing objects touched by new objects'
         )
         self.labelRoiToolbar.addWidget(self.labelRoiReplaceExistingObjectsCheckbox)
         self.labelRoiAutoClearBorderCheckbox = QCheckBox(
-            'Remove objects touching borders'
+            'Clear ROI borders before adding new objects'
         )
         self.labelRoiAutoClearBorderCheckbox.setChecked(True)
         self.labelRoiToolbar.addWidget(self.labelRoiAutoClearBorderCheckbox)
@@ -5416,31 +5416,8 @@ class guiWin(QMainWindow):
                 maxVal = _img.max()
                 ID = self.currentLab2D[ydata, xdata]
                 self.updatePropsWidget(ID)
-                if posData.IDs:
-                    maxID = max(posData.IDs)
-                else:
-                    maxID = 0
-                if _img.ndim > 2:
-                    val = [v for v in val]
-                    value = f'{val}'
-                    val_l0 = self.img_layer0[ydata, xdata]
-                    val_str = f'rgb={val}, value base layer={val_l0:.2f}'
-                else:
-                    val_str = f'value={val:.4f}'
-                txt = (
-                    f'x={x:.2f}, y={y:.2f}, {val_str}, '
-                    f'max={maxVal:.2f}, <b>ID={ID}</b>, max_ID={maxID}, '
-                    f'num. of objects={len(posData.IDs)}'
-                )
-                xx, yy = self.ax1_rulerPlotItem.getData()
-                if xx is not None:
-                    lenPxl = math.sqrt((xx[0]-xx[1])**2 + (yy[0]-yy[1])**2)
-                    pxlToUm = self.data[self.pos_i].PhysicalSizeX
-                    lenTxt = (
-                        f'length={lenPxl:.2f} pxl ({lenPxl*pxlToUm:.2f} um)'
-                    )
-                    txt = f'{txt}, <b>{lenTxt}</b>'
-                self.wcLabel.setText(txt)
+                hoverText = self.hoverValuesFormatted(xdata, ydata)
+                self.wcLabel.setText(hoverText)
             else:
                 self.clickedOnBud = False
                 self.BudMothTempLine.setData([], [])
@@ -8985,12 +8962,122 @@ class guiWin(QMainWindow):
             self.titleColor = 'white'
         
         self.updateALLimg()
+    
+    def _channelHoverValues(self, descr, channel, value, max_value, ff):
+        txt = (
+            f'<b>{descr} {channel}</b>: value={value:{ff}}, '
+            f'<i>max={max_value:{ff}}</i>'
+        )
+        return txt
+    
+    def _addOverlayHoverValuesFormatted(self, txt, xdata, ydata):
+        posData = self.data[self.pos_i]
+        if posData.ol_data is None:
+            return txt
+        
+        for filename in posData.ol_data:
+            chName = myutils.get_chname_from_basename(
+                filename, posData.basename, remove_ext=False
+            )
+            if chName not in self.checkedOverlayChannels:
+                continue
+            
+            raw_overlay_img = self.getRawImage(filename=filename)
+            raw_overlay_value = raw_overlay_img[ydata, xdata]
+            raw_overlay_max_value = raw_overlay_img.max()
+
+            raw_txt = self._channelHoverValues(
+                'Raw', chName, raw_overlay_value, raw_overlay_max_value, 
+                self.rawValueFormatter
+            )
+
+            overlayImageItem = self.overlayLayersItems[chName][0]
+            display_overlay_img = overlayImageItem.image
+            display_overlay_value = display_overlay_img[ydata, xdata]
+            display_overlay_max_value = display_overlay_img.max()
+
+            display_txt = self._channelHoverValues(
+                'Display', chName, display_overlay_value, 
+                display_overlay_max_value, self.imgValueFormatter
+            )
+
+            txt = f'{txt} | {raw_txt} ; {display_txt}'
+        return txt
+    
+    def hoverValuesFormatted(self, xdata, ydata):
+        posData = self.data[self.pos_i]
+
+        txt = f'x={xdata:d}, y={ydata:d}'
+
+        raw_img = self.getRawImage()
+        raw_value = raw_img[ydata, xdata]
+        raw_max_value = raw_img.max()
+
+        ch = self.user_ch_name
+        raw_txt = self._channelHoverValues(
+            'Raw', ch, raw_value, raw_max_value, self.rawValueFormatter
+        )
+
+        display_value = self.img1.image[ydata, xdata]
+        if display_value != raw_value:
+            display_max_value = self.img1.image.max()
+
+            display_txt = self._channelHoverValues(
+                'Display', ch, display_value, display_max_value, 
+                self.imgValueFormatter
+            )
+
+            txt = f'{txt} | {raw_txt} ; {display_txt}'
+        else:
+            txt = f'{txt} | {raw_txt}'
+
+        self._addOverlayHoverValuesFormatted(txt, xdata, ydata)
+        
+        ID = self.currentLab2D[ydata, xdata]
+        if posData.IDs:
+            maxID = max(posData.IDs)
+        else:
+            maxID = 0
+        num_obj = len(posData.IDs)
+        lab_txt = (
+            f'<b>Objects</b>: ID={ID}, <i>max ID={maxID}, '
+            f'num. of objects={num_obj}</i>'
+        )
+        txt = f'{txt} | {lab_txt}'
+
+        xx, yy = self.ax1_rulerPlotItem.getData()
+        if xx is None:
+            return txt
+
+        lenPxl = math.sqrt((xx[0]-xx[1])**2 + (yy[0]-yy[1])**2)
+        pxlToUm = posData.PhysicalSizeX
+        length_txt = (
+            f'length={lenPxl:.2f} pxl ({lenPxl*pxlToUm:.2f} μm)'
+        )
+        txt = f'{txt} | <b>Measurement</b>: {length_txt}'
+        return txt
+
+    def updateImageValueFormatter(self):
+        if self.img1.image is not None:
+            dtype = self.img1.image.dtype
+            n_digits = len(str(int(self.img1.image.max())))
+            self.imgValueFormatter = myutils.get_number_fstring_formatter(
+                dtype, precision=abs(n_digits-5)
+            )
+
+        rawImgData = self.data[self.pos_i].img_data
+        dtype = rawImgData.dtype
+        n_digits = len(str(int(rawImgData.max())))
+        self.rawValueFormatter = myutils.get_number_fstring_formatter(
+            dtype, precision=abs(n_digits-5)
+        )
 
     def saveNormAction(self, action):
         how = action.text()
         self.df_settings.at['how_normIntensities', 'value'] = how
         self.df_settings.to_csv(self.settings_csv_path)
         self.updateALLimg(updateFilters=True)
+        self.updateImageValueFormatter()
 
     def setLastUserNormAction(self):
         how = self.df_settings.at['how_normIntensities', 'value']
@@ -9685,25 +9772,11 @@ class guiWin(QMainWindow):
         roiLabMask = roiLab>0
         roiLab[roiLabMask] += (brushID-1)
         if self.labelRoiReplaceExistingObjectsCheckbox.isChecked():
-            localLab = lab[roiLabSlice]
-            if self.labelRoiAutoClearBorderCheckbox.isChecked():
-                # Delete objects fully enclosed by ROI since 
-                # the user cleared the objects on ROI borders
-                borderMask = np.ones(roiLab.shape, dtype=bool)
-                borderMask[..., 1:-1, 1:-1] = False
-                borderIDs = np.unique(localLab[borderMask])
-            else:
-                # Delete all existing objects since the user is keeping 
-                # new objects touching ROI borders
-                borderIDs = []
-            
-            for obj in skimage.measure.regionprops(localLab):
-                if obj.label in borderIDs:
-                    continue
-                localLab[obj.slice][obj.image] = 0
+            IDs_touched_by_new_objects = np.unique(lab[roiLabSlice][roiLabMask])
+            for ID in IDs_touched_by_new_objects:
+                lab[lab==ID] = 0
         
         lab[roiLabSlice][roiLabMask] = roiLab[roiLabMask]
-        return lab
 
     @exception_handler
     def labelRoiDone(self, roiSegmData, isTimeLapse):
@@ -11762,7 +11835,9 @@ class guiWin(QMainWindow):
             
             initLastParams = True
             if model_name == 'thresholding':
-                win = apps.QDialogAutomaticThresholding(parent=self)
+                win = apps.QDialogAutomaticThresholding(
+                    parent=self, isSegm3D=self.isSegm3D
+                )
                 win.exec_()
                 if win.cancel:
                     return
@@ -11934,7 +12009,9 @@ class guiWin(QMainWindow):
             url = None
         
         if model_name == 'thresholding':
-            autoThreshWin = apps.QDialogAutomaticThresholding(parent=self)
+            autoThreshWin = apps.QDialogAutomaticThresholding(
+                parent=self, isSegm3D=self.isSegm3D
+            )
             autoThreshWin.exec_()
             if autoThreshWin.cancel:
                 return
@@ -12863,6 +12940,7 @@ class guiWin(QMainWindow):
 
     def loadingDataCompleted(self):
         posData = self.data[self.pos_i]
+        self.updateImageValueFormatter()
 
         if self.isSnapshot:
             self.setWindowTitle(f'Cell-ACDC - GUI - "{posData.exp_path}"')
@@ -12968,6 +13046,8 @@ class guiWin(QMainWindow):
 
         self.stopAutomaticLoadingPos()
         self.viewAllCustomAnnotAction.setChecked(True)
+
+        self.updateImageValueFormatter()
 
         self.graphLayout.setFocus(True)
 
@@ -13632,6 +13712,8 @@ class guiWin(QMainWindow):
         self.keptObjectsIDs = widgets.KeptObjectIDsList(
             self.keptIDsLineEdit, self.keepIDsConfirmAction
         )
+        self.imgValueFormatter = 'd'
+        self.rawValueFormatter = 'd'
 
         # Second channel used by cellpose
         self.secondChannelName = None
@@ -16615,7 +16697,9 @@ class guiWin(QMainWindow):
                     ol_img = self.getOlImg(filename, frame_i=frame_i)
                 elif posData.SizeZ > 1:
                     # 3D filtered data (see self.applyFilter)
-                    ol_img = self.get_2Dimg_from_3D(filteredData)
+                    ol_img = self.get_2Dimg_from_3D(
+                        filteredData, isLayer0=False
+                    )
                 else:
                     # 2D filtered data (see self.applyFilter)
                     ol_img = filteredData
@@ -16957,7 +17041,23 @@ class guiWin(QMainWindow):
             )
         # self.z_label.setText(f'z-slice  {z+1:02}/{posData.SizeZ}')
         self.zSliceSpinbox.setValueNoEmit(z+1)
-
+    
+    def getRawImage(self, frame_i=None, filename=None):
+        posData = self.data[self.pos_i]
+        if frame_i is None:
+            frame_i = posData.frame_i
+        if filename is None:
+            rawImgData = posData.img_data[frame_i]
+            isLayer0 = True
+        else: 
+            rawImgData = posData.ol_data[filename][frame_i]
+            isLayer0 = False
+        if posData.SizeZ > 1:
+            rawImg = self.get_2Dimg_from_3D(rawImgData, isLayer0=isLayer0)
+        else:
+            rawImg = rawImgData
+        return rawImg
+        
     def getImage(self, frame_i=None, normalizeIntens=True):
         posData = self.data[self.pos_i]
         if frame_i is None:

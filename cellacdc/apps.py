@@ -4168,7 +4168,7 @@ class OrderableListWidgetDialog(widgets.QBaseDialog):
 
 
 class QDialogAutomaticThresholding(widgets.QBaseDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, isSegm3D=True):
         super().__init__(parent)
 
         self.cancel = True
@@ -4201,19 +4201,21 @@ class QDialogAutomaticThresholding(widgets.QBaseDialog):
         )
         formLayout.addWidget(self.threshMethodCombobox, row, 1, 1, 2)
 
-        row += 1
-        formLayout.addWidget(
-            QLabel('Segment 3D volume: '), row, 0, alignment=Qt.AlignRight
-        )
-        group = QButtonGroup()
-        group.setExclusive(True)
-        self.segment3Dcheckbox = QRadioButton('Yes')
-        segmentSliceBySliceCheckbox = QRadioButton('No, segment slice-by-slice')
-        group.addButton(self.segment3Dcheckbox)
-        group.addButton(segmentSliceBySliceCheckbox)
-        formLayout.addWidget(self.segment3Dcheckbox, row, 1)
-        formLayout.addWidget(segmentSliceBySliceCheckbox, row, 2)
-        self.segment3Dcheckbox.setChecked(True)
+        self.segment3Dcheckbox = None
+        if isSegm3D:
+            row += 1
+            formLayout.addWidget(
+                QLabel('Segment 3D volume: '), row, 0, alignment=Qt.AlignRight
+            )
+            group = QButtonGroup()
+            group.setExclusive(True)
+            self.segment3Dcheckbox = QRadioButton('Yes')
+            segmentSliceBySliceCheckbox = QRadioButton('No, segment slice-by-slice')
+            group.addButton(self.segment3Dcheckbox)
+            group.addButton(segmentSliceBySliceCheckbox)
+            formLayout.addWidget(self.segment3Dcheckbox, row, 1)
+            formLayout.addWidget(segmentSliceBySliceCheckbox, row, 2)
+            self.segment3Dcheckbox.setChecked(True)
 
         okButton = widgets.okPushButton('Ok')
         cancelButton = widgets.cancelPushButton('Cancel')
@@ -4252,8 +4254,11 @@ class QDialogAutomaticThresholding(widgets.QBaseDialog):
         self.segment_kwargs = {
             'gauss_sigma': self.gaussSigma,
             'threshold_method': self.threshMethod,
-            'segment_3D_volume': self.segment3Dcheckbox.isChecked()
+            'segment_3D_volume': False
         }
+        if self.segment3Dcheckbox is not None:
+            doSegm3D = self.segment3Dcheckbox.isChecked()
+            self.segment_kwargs['segment_3D_volume'] = doSegm3D
         self.close()
     
     def loadLastSelection(self):
