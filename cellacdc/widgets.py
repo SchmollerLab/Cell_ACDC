@@ -1361,7 +1361,12 @@ class VerticalResizeHline(QFrame):
         return False
 
 class ScrollArea(QScrollArea):
-    def __init__(self, parent=None, resizeVerticalOnShow=False) -> None:
+    sigLeaveEvent = pyqtSignal()
+
+    def __init__(
+            self, parent=None, resizeVerticalOnShow=False, 
+            dropArrowKeyEvents=False
+        ) -> None:
         super().__init__(parent)
         self.setWidgetResizable(True)
         self.setFrameStyle(QFrame.NoFrame)
@@ -1369,6 +1374,7 @@ class ScrollArea(QScrollArea):
         self.containerWidget = None
         self.resizeVerticalOnShow = resizeVerticalOnShow
         self.isOnlyVertical = False
+        self.dropArrowKeyEvents = dropArrowKeyEvents
     
     def setVerticalLayout(self, layout, widget=None):
         if widget is None:
@@ -1410,9 +1416,15 @@ class ScrollArea(QScrollArea):
             QSizePolicy.Preferred, QSizePolicy.Preferred
         )
 
-    def eventFilter(self, object, event):
+        self.setFixedHeight(height)
+
+    def eventFilter(self, object, event: QEvent):
+        if event.type() == QEvent.Leave:
+            self.sigLeaveEvent.emit()
+
         if object != self.containerWidget:
             return False
+        
         isResize = event.type() == QEvent.Resize
         isShow = event.type() == QEvent.Show
         if isResize and self.isOnlyVertical:

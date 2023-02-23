@@ -3292,10 +3292,17 @@ class guiWin(QMainWindow):
 
     def rightImageControlsToggled(self, checked):
         self.updateALLimg()
+    
+    def setFocusGraphics(self):
+        self.graphLayout.setFocus(True)
+    
+    def setFocusMain(self):
+        self.setFocus(True)
 
     def gui_createBottomWidgetsToBottomLayout(self):
         # self.bottomDockWidget = QDockWidget(self)
         bottomScrollArea = widgets.ScrollArea(resizeVerticalOnShow=True)
+        bottomScrollArea.sigLeaveEvent.connect(self.setFocusMain)
         bottomWidget = QWidget()
         bottomScrollAreaLayout = QVBoxLayout()
         self.bottomLayout = QHBoxLayout()
@@ -10306,6 +10313,7 @@ class guiWin(QMainWindow):
 
     @exception_handler
     def keyPressEvent(self, ev):
+        printl(ev.type())
         if ev.key() == Qt.Key_Q:
             # self.setAllIDs()
             posData = self.data[self.pos_i]
@@ -13049,7 +13057,7 @@ class guiWin(QMainWindow):
 
         self.updateImageValueFormatter()
 
-        self.graphLayout.setFocus(True)
+        self.setFocusGraphics()
 
         # Overwrite axes viewbox context menu
         self.ax1.vb.menu = self.imgGrad.gradient.menu
