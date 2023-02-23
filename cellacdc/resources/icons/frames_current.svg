@@ -60,7 +60,7 @@
 
 <g
    id="g16"
-   transform="matrix(0,1.0601679,-1.1713275,0,834.68389,55.79537)"
+   transform="matrix(0,-1.0601679,1.1713275,0,-92.773224,688.71561)"
    style="stroke-width:0.897374">
 	<g
    id="g14"
@@ -77,7 +77,7 @@
    style="stroke-width:0.897374">
 			<polygon
    class="st2"
-   points="306.8,515.6 306.8,276.2 514,395.9 "
+   points="306.8,276.2 514,395.9 306.8,515.6 "
    id="polygon10"
    style="stroke-width:0.897374" />
 		</g>

@@ -4262,14 +4262,14 @@ class QDialogAutomaticThresholding(widgets.QBaseDialog):
         self.close()
     
     def loadLastSelection(self):
-        self.ini_path = os.path.join(temp_path, 'last_params_trackers.ini')
+        self.ini_path = os.path.join(temp_path, 'last_params_segm_models.ini')
         if not os.path.exists(self.ini_path):
             return
 
         configPars = config.ConfigParser()
         configPars.read(self.ini_path)
 
-        if 'thresholding.segment' not in configPars:
+        if 'thresholding.segment' not in configPars.sections():
             return
 
         section = configPars['thresholding.segment']
@@ -4278,6 +4278,8 @@ class QDialogAutomaticThresholding(widgets.QBaseDialog):
         threshold_method = section['threshold_method']
         Method = threshold_method[10:].capitalize()
         self.threshMethodCombobox.setCurrentText(Method)
+        if self.segment3Dcheckbox is None:
+            return
         self.segment3Dcheckbox.setChecked(section.getboolean('segment_3D_volume'))
 
 class ApplyTrackTableSelectColumnsDialog(widgets.QBaseDialog):
