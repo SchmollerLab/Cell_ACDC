@@ -3760,6 +3760,14 @@ class PlotCurveItem(pg.PlotCurveItem):
         yy[-1] = y
         self.setData(xx, yy, **kargs)
     
+    def clear(self):
+        try:
+            self.setData([], [])
+        except Exception as e:
+            pass
+        super().clear()
+        
+    
     def closeCurve(self):
         _xx, _yy = self.getData()
         self.addPoint(_xx[0], _yy[0])

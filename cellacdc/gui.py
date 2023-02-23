@@ -10313,7 +10313,6 @@ class guiWin(QMainWindow):
 
     @exception_handler
     def keyPressEvent(self, ev):
-        printl(ev.type())
         if ev.key() == Qt.Key_Q:
             # self.setAllIDs()
             posData = self.data[self.pos_i]
@@ -10454,6 +10453,13 @@ class guiWin(QMainWindow):
             
             if isManualTrackingActive and self.typingEditID:
                 self.typingEditID = False
+                return
+            
+            if self.labelRoiButton.isChecked() and self.isMouseDragImg1:
+                self.isMouseDragImg1 = False
+                self.labelRoiItem.setPos((0,0))
+                self.labelRoiItem.setSize((0,0))
+                self.freeRoiItem.clear()
                 return
             
             self.setUncheckedAllButtons()
@@ -12850,8 +12856,8 @@ class guiWin(QMainWindow):
         infoButton = widgets.infoPushButton('More info...')
         buttons = ('Cancel', loadSavedButton, loadUnsavedButton, infoButton)
         msg.question(
-            self, 'Recover unsaved data?', txt, buttonsTexts=buttons,
-            showDialog=False
+            self.progressWin, 'Recover unsaved data?', txt, 
+            buttonsTexts=buttons, showDialog=False
         )
         infoButton.disconnect()
         infoButton.clicked.connect(partial(self.showInfoAutosave, posData))

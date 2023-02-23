@@ -4449,6 +4449,13 @@ class QDialogSelectModel(QDialog):
                 show-decoration-selected: 1;
             }
         """)
+    
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        if event.key() == Qt.Key_Escape:
+            event.ignore()
+            return
+            
+        super().keyPressEvent(event)
 
     def ok_cb(self, event):
         self.clickedButton = self.sender()
