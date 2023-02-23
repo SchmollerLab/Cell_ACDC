@@ -5421,8 +5421,6 @@ class guiWin(QMainWindow):
             _img = self.img1.image
             Y, X = _img.shape[:2]
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
-                val = _img[ydata, xdata]
-                maxVal = _img.max()
                 ID = self.currentLab2D[ydata, xdata]
                 self.updatePropsWidget(ID)
                 hoverText = self.hoverValuesFormatted(xdata, ydata)
@@ -5622,24 +5620,8 @@ class guiWin(QMainWindow):
             _img = self.currentLab2D
             Y, X = _img.shape
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
-                val = _img[ydata, xdata]
-                if posData.IDs:
-                    maxID = max(posData.IDs)
-                else:
-                    maxID = 0
-                maxVal = np.max(self.img1.image)
-                img1_val = self.img1.image[ydata, xdata]
-                if self.img1.image.ndim > 2:
-                    img1_val = [v for v in img1_val]
-                    val_l0 = self.img_layer0[ydata, xdata]
-                    val_str = f'rgb={img1_val}, value_l0={val_l0:.2f}'
-                else:
-                    val_str = f'value={img1_val:.2f}'
-                self.wcLabel.setText(
-                    f'x={x:.2f}, y={y:.2f}, {val_str}, '
-                    f'max={maxVal:.2f}, ID={val}, max_ID={maxID}, '
-                    f'num. of objects={len(posData.IDs)}'
-                )
+                hoverText = self.hoverValuesFormatted(xdata, ydata)
+                self.wcLabel.setText(hoverText)
             else:
                 if self.eraserButton.isChecked() or self.brushButton.isChecked():
                     self.gui_mouseReleaseEventImg2(event)
@@ -8972,7 +8954,12 @@ class guiWin(QMainWindow):
         
         self.updateALLimg()
     
-    def _channelHoverValues(self, descr, channel, value, max_value, ff):
+    def _channelHoverValues(self, descr, channel, value, max_value, ff=None):
+        if ff is None:
+            n_digits = len(str(int(max_value)))
+            ff = myutils.get_number_fstring_formatter(
+                type(value), precision=abs(n_digits-5)
+            )
         txt = (
             f'<b>{descr} {channel}</b>: value={value:{ff}}, '
             f'<i>max={max_value:{ff}}</i>'
@@ -8995,13 +8982,8 @@ class guiWin(QMainWindow):
             raw_overlay_value = raw_overlay_img[ydata, xdata]
             raw_overlay_max_value = raw_overlay_img.max()
 
-            n_digits = len(str(int(raw_overlay_max_value)))
-            ff = myutils.get_number_fstring_formatter(
-                raw_overlay_img.dtype, precision=abs(n_digits-5)
-            )
-
             raw_txt = self._channelHoverValues(
-                'Raw', chName, raw_overlay_value, raw_overlay_max_value, ff
+                'Raw', chName, raw_overlay_value, raw_overlay_max_value
             )
 
             txt = f'{txt} | {raw_txt}'
@@ -9035,7 +9017,7 @@ class guiWin(QMainWindow):
 
         ch = self.user_ch_name
         raw_txt = self._channelHoverValues(
-            'Raw', ch, raw_value, raw_max_value, self.rawValueFormatter
+            'Raw', ch, raw_value, raw_max_value
         )
 
         # display_value = self.img1.image[ydata, xdata]
