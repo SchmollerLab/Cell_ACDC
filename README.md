@@ -74,6 +74,10 @@ Main new feature: custom trackers! You can now add any tracker you want by imple
 
 Additionally, this release includes many UI/UX improvements such as color and style customisation, alongside a inverted LUTs.
 
+## IMPORTANT: Before installing
+
+If you are **new to Python** or you need a **refresher** on how to manage scientific Python environments, I highly recommend reading [this guide](https://focalplane.biologists.com/2022/12/08/managing-scientific-python-environments-using-conda-mamba-and-friends/) by Dr. Robert Haase BEFORE proceeding with Cell-ACDC installation.
+
 ## Installation using Anaconda (recommended)
 
 *NOTE: If you don't know what Anaconda is or you are not familiar with it, we recommend reading the detailed installation instructions found in manual [here](https://github.com/SchmollerLab/Cell_ACDC/blob/main/UserManual/Cell-ACDC_User_Manual.pdf).*
