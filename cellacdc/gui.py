@@ -3002,7 +3002,9 @@ class guiWin(QMainWindow):
             self.imgGradLUTfinished_cb
         )
 
-        self.normalizeQActionGroup.triggered.connect(self.saveNormAction)
+        self.normalizeQActionGroup.triggered.connect(
+            self.normaliseIntensitiesActionTriggered
+        )
         self.imgPropertiesAction.triggered.connect(self.editImgProperties)
 
         self.guiTabControl.propsQGBox.idSB.valueChanged.connect(
@@ -8993,22 +8995,33 @@ class guiWin(QMainWindow):
             raw_overlay_value = raw_overlay_img[ydata, xdata]
             raw_overlay_max_value = raw_overlay_img.max()
 
+            n_digits = len(str(int(raw_overlay_max_value)))
+            ff = myutils.get_number_fstring_formatter(
+                raw_overlay_img.dtype, precision=abs(n_digits-5)
+            )
+
             raw_txt = self._channelHoverValues(
-                'Raw', chName, raw_overlay_value, raw_overlay_max_value, 
-                self.rawValueFormatter
+                'Raw', chName, raw_overlay_value, raw_overlay_max_value, ff
             )
 
-            overlayImageItem = self.overlayLayersItems[chName][0]
-            display_overlay_img = overlayImageItem.image
-            display_overlay_value = display_overlay_img[ydata, xdata]
-            display_overlay_max_value = display_overlay_img.max()
+            txt = f'{txt} | {raw_txt}'
 
-            display_txt = self._channelHoverValues(
-                'Display', chName, display_overlay_value, 
-                display_overlay_max_value, self.imgValueFormatter
-            )
+            # overlayImageItem = self.overlayLayersItems[chName][0]
+            # display_overlay_img = overlayImageItem.image
+            # display_overlay_value = display_overlay_img[ydata, xdata]
+            # display_overlay_max_value = display_overlay_img.max()
 
-            txt = f'{txt} | {raw_txt} ; {display_txt}'
+            # n_digits = len(str(int(display_overlay_max_value)))
+            # ff = myutils.get_number_fstring_formatter(
+            #     display_overlay_img.dtype, precision=abs(n_digits-5)
+            # )
+
+            # display_txt = self._channelHoverValues(
+            #     'Display', chName, display_overlay_value, 
+            #     display_overlay_max_value, self.imgValueFormatter
+            # )
+
+            # txt = f'{txt} | {raw_txt} ; {display_txt}'
         return txt
     
     def hoverValuesFormatted(self, xdata, ydata):
@@ -9025,20 +9038,22 @@ class guiWin(QMainWindow):
             'Raw', ch, raw_value, raw_max_value, self.rawValueFormatter
         )
 
-        display_value = self.img1.image[ydata, xdata]
-        if display_value != raw_value:
-            display_max_value = self.img1.image.max()
+        # display_value = self.img1.image[ydata, xdata]
+        # if display_value != raw_value:
+        #     display_max_value = self.img1.image.max()
 
-            display_txt = self._channelHoverValues(
-                'Display', ch, display_value, display_max_value, 
-                self.imgValueFormatter
-            )
+        #     display_txt = self._channelHoverValues(
+        #         'Display', ch, display_value, display_max_value, 
+        #         self.imgValueFormatter
+        #     )
 
-            txt = f'{txt} | {raw_txt} ; {display_txt}'
-        else:
-            txt = f'{txt} | {raw_txt}'
+        #     txt = f'{txt} | {raw_txt} ; {display_txt}'
+        # else:
+        #     txt = f'{txt} | {raw_txt}'
 
-        self._addOverlayHoverValuesFormatted(txt, xdata, ydata)
+        txt = f'{txt} | {raw_txt}'
+
+        txt = self._addOverlayHoverValuesFormatted(txt, xdata, ydata)
         
         ID = self.currentLab2D[ydata, xdata]
         if posData.IDs:
@@ -9079,7 +9094,7 @@ class guiWin(QMainWindow):
             dtype, precision=abs(n_digits-5)
         )
 
-    def saveNormAction(self, action):
+    def normaliseIntensitiesActionTriggered(self, action):
         how = action.text()
         self.df_settings.at['how_normIntensities', 'value'] = how
         self.df_settings.to_csv(self.settings_csv_path)
@@ -16368,10 +16383,12 @@ class guiWin(QMainWindow):
             self.setOverlayItemsVisible(self.imgGrad.checkedChannelname, True)
 
             self.updateALLimg()
+            self.updateImageValueFormatter()
             self.enableOverlayWidgets(True)
         else:
             self.img1.setOpacity(1.0)
             self.updateALLimg()
+            self.updateImageValueFormatter()
             self.enableOverlayWidgets(False)
             self.setOverlayItemsVisible('', False)
             for items in self.overlayLayersItems.values():
