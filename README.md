@@ -98,7 +98,26 @@ Additionally, this release includes many UI/UX improvements such as color and st
 
 ## Install from source
 
-If you want to contribute or try out experimental features (and, if you have time, maybe report a bug or two :D), you can install the developer version from source as follows:
+If you want to try out experimental features (and, if you have time, maybe report a bug or two :D), you can install the developer version from source as follows:
+
+1. Install [Anaconda](https://www.anaconda.com/products/individual) or [Miniconda](https://docs.conda.io/en/latest/miniconda.html).
+2. Open a terminal and navigate to a folder where you want to download Cell-ACDC. If you are on Windows you need to use the "Anaconda Prompt" as a terminal. You should find it by searching for "Anaconda Prompt" in the Start menu.
+3. Clone the source code with the command `git clone https://github.com/SchmollerLab/Cell_ACDC.git`. If you are on Windows you might need to install `git` first. Install it from [here](https://git-scm.com/download/win).
+4. Navigate to the `Cell_ACDC` folder with the command `cd Cell_ACDC`.
+5. Install Cell-ACDC with the command `pip install -e .`. The `.` at the end of the command means that you want to install from the current folder in the terminal. This must be the `Cell_ACDC` folder that you cloned before. 
+6. OPTIONAL: If you need tensorflow run the command `pip install tensorflow`.
+
+### Updating Cell-ACDC installed from source
+
+To update Cell-ACDC installed from source, open a terminal window, navigate to the Cell-ACDC folder and run the command
+```
+git pull
+```
+Since you installed with the `-e` flag, pulling with `git` is enough.
+
+## Install from source with forking
+
+If you want to contribute to the code or you want to have a developer version that is fixed in time (easier to get back to in case we release a bug :D) we recommend forking before cloning:
 
 1. Install [Anaconda](https://www.anaconda.com/products/individual) or [Miniconda](https://docs.conda.io/en/latest/miniconda.html).
 2. Create a personal [GitHub account](https://github.com) and log in. 
@@ -113,12 +132,13 @@ If you want to contribute or try out experimental features (and, if you have tim
 11. Install Cell-ACDC with the command `pip install -e .`. The `.` at the end of the command means that you want to install from the current folder in the terminal. This must be the `Cell_ACDC` folder that you cloned before. 
 12. OPTIONAL: If you need tensorflow run the command `pip install tensorflow`.
 
-### Updating Cell-ACDC installed from source
+### Updating Cell-ACDC installed from source with forking
 
 To update Cell-ACDC installed from source, open a terminal window, navigate to the Cell-ACDC folder and run the command
 ```
 git pull upstream main
 ```
+Since you installed with the `-e` flag, pulling with `git` is enough.
 
 ## Running Cell-ACDC
 
