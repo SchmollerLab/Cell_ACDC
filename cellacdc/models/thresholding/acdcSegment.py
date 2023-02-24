@@ -17,7 +17,6 @@ class Model:
 
     def _apply_threshold(self, img, threshold_method):
         thresh_val = getattr(skimage.filters, threshold_method)(img)
-        printl(img.shape, img.max(), thresh_val)
         return img > thresh_val
     
     def segment(

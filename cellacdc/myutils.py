@@ -1312,6 +1312,8 @@ def get_list_of_models():
     models = set()
     for name in listdir(models_path):
         _path = os.path.join(models_path, name)
+        if not os.path.exists(_path):
+            continue
         if os.path.isdir(_path) and not name.endswith('__') and name != 'thresholding':
             models.add(name)
     if not os.path.exists(models_list_file_path):

@@ -4504,6 +4504,31 @@ class QDialogSelectModel(QDialog):
         if hasattr(self, 'loop'):
             self.loop.exit()
 
+class ViewTextDialog(widgets.QBaseDialog):
+    def __init__(self, text, parent=None):
+        super().__init__(parent)
+
+        mainLayout = QVBoxLayout()
+
+        textViewWidget = QTextEdit()
+        textViewWidget.setReadOnly(True)
+
+        textViewWidget.setText(text)
+
+        buttonsLayout = QHBoxLayout()
+        okButton = widgets.okPushButton('Ok')
+
+        okButton.clicked.connect(self.close)
+        buttonsLayout.addStretch(1)
+        buttonsLayout.addWidget(okButton)
+
+        mainLayout.addWidget(textViewWidget)
+        mainLayout.addSpacing(20)
+        mainLayout.addLayout(buttonsLayout)
+
+        self.setLayout(mainLayout)
+        self.setFont(font)
+
 class startStopFramesDialog(widgets.QBaseDialog):
     def __init__(
             self, SizeT, currentFrameNum=0, parent=None,

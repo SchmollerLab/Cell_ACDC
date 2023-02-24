@@ -2218,6 +2218,14 @@ class guiWin(QMainWindow):
         self.labelRoiTrangeCheckbox = QCheckBox('Segment range of frames')
         self.labelRoiToolbar.addWidget(self.labelRoiTrangeCheckbox)
 
+        self.labelRoiViewCurrentModelAction = QAction(self)
+        self.labelRoiViewCurrentModelAction.setText(
+            'View current model\'s parameters'
+        )
+        self.labelRoiViewCurrentModelAction.setIcon(QIcon(":view.svg"))
+        self.labelRoiToolbar.addAction(self.labelRoiViewCurrentModelAction)
+        self.labelRoiViewCurrentModelAction.setDisabled(True)
+
         self.addToolBar(Qt.TopToolBarArea, self.labelRoiToolbar)
         self.labelRoiToolbar.setVisible(False)
         self.labelRoiTypesGroup = group
@@ -2252,6 +2260,9 @@ class guiWin(QMainWindow):
         )
         self.labelRoiFromCurrentFrameAction.triggered.connect(
             self.labelRoiFromCurrentFrameTriggered
+        )
+        self.labelRoiViewCurrentModelAction.triggered.connect(
+            self.labelRoiViewCurrentModel
         )
 
         self.keepIDsToolbar = QToolBar("Magic labeller controls", self)
@@ -2629,7 +2640,7 @@ class guiWin(QMainWindow):
         self.shuffleCmapAction.setShortcut('Shift+S')
 
         self.greedyShuffleCmapAction =  QAction(
-            'Greedily shuffle colormap', self
+            'Optimise colormap', self
         )
         self.greedyShuffleCmapAction.setShortcut('Alt+Shift+S')
 
@@ -9781,6 +9792,7 @@ class guiWin(QMainWindow):
                 lab[lab==ID] = 0
         
         lab[roiLabSlice][roiLabMask] = roiLab[roiLabMask]
+        return lab
 
     @exception_handler
     def labelRoiDone(self, roiSegmData, isTimeLapse):
@@ -11899,6 +11911,7 @@ class guiWin(QMainWindow):
             posData.saveSegmHyperparams(
                 model_name, self.segment2D_kwargs, postProcessParams
             )
+            model.model_name = model_name
         else:
             model = self.models[idx]
         
@@ -16400,6 +16413,7 @@ class guiWin(QMainWindow):
         )
         if self.labelRoiModel is None:
             return True
+        self.labelRoiViewCurrentModelAction.setDisabled(False)
         return False
 
     def showOverlayContextMenu(self, event):
@@ -20098,6 +20112,30 @@ class guiWin(QMainWindow):
     def labelRoiFromCurrentFrameTriggered(self):
         posData = self.data[self.pos_i]
         self.labelRoiStartFrameNoSpinbox.setValue(posData.frame_i+1)
+    
+    def labelRoiViewCurrentModel(self):
+        from . import config
+        ini_path = os.path.join(temp_path, 'last_params_segm_models.ini')
+        configPars = config.ConfigParser()
+        configPars.read(ini_path)
+        model_name = self.labelRoiModel.model_name
+        txt = f'Model: <b>{model_name}</b>'
+        SECTION = f'{model_name}.init'
+        txt = f'{txt}<br><br>[Initialization parameters]<br>'
+        for option in configPars.options(SECTION):
+            value = configPars[SECTION][option]
+            param_txt = f'<i>{option}</i> = {value}<br>'
+            txt = f'{txt}{param_txt}'
+        
+        SECTION = f'{model_name}.segment'
+        txt = f'{txt}<br>[Segmentation parameters]<br>'
+        for option in configPars.options(SECTION):
+            value = configPars[SECTION][option]
+            param_txt = f'<i>{option}</i> = {value}<br>'
+            txt = f'{txt}{param_txt}'
+        
+        win = apps.ViewTextDialog(txt, parent=self)
+        win.exec_()
 
     def setMetricsFunc(self):
         posData = self.data[self.pos_i]
