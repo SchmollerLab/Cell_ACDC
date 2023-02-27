@@ -47,6 +47,10 @@ acdc_df_bool_cols = [
 additional_metadata_path = os.path.join(temp_path, 'additional_metadata.json')
 last_entries_metadata_path = os.path.join(temp_path, 'last_entries_metadata.csv')
 
+channel_file_formats = (
+    '_aligned.h5', '.h5', '_aligned.npz', '.tif'
+)
+
 def read_json(json_path, logger_func=print, desc='custom annotations'):
     json_data = {}
     try:
@@ -212,29 +216,66 @@ def get_segm_files(images_path):
     ]
     return segm_files
 
-def get_filename_from_channel(images_path, channel_name):
+def get_filename_from_channel(
+        images_path, channel_name, not_allowed_ends=None, logger=None,
+        basename=None, skip_channels=None
+    ):
+    if not_allowed_ends is None:
+        not_allowed_ends = tuple()
+    if skip_channels is None:
+        skip_channels = tuple()
+    if basename is None:
+        basename = ''
+    
     h5_aligned_path = ''
     h5_path = ''
     npz_aligned_path = ''
     tif_path = ''
     for file in myutils.listdir(images_path):
+        isValidEnd = True
+        for not_allowed_end in not_allowed_ends:
+            if file.endswith(not_allowed_end):
+                isValidEnd = False
+                break
+        if not isValidEnd:
+            continue
+        
+        is_channel_to_skip = False
+        for channel_to_skip in skip_channels:
+            for ff in channel_file_formats:
+                if file.endswith(f'{channel_to_skip}{ff}'):
+                    is_channel_to_skip = True
+                    break
+            if is_channel_to_skip:
+                break
+        if is_channel_to_skip:
+            continue
+
         channelDataPath = os.path.join(images_path, file)
-        if file.endswith(f'{channel_name}_aligned.h5'):
+        if file.endswith(f'{basename}{channel_name}_aligned.h5'):
             h5_aligned_path = channelDataPath
-        elif file.endswith(f'{channel_name}.h5'):
+        elif file.endswith(f'{basename}{channel_name}.h5'):
             h5_path = channelDataPath
-        elif file.endswith(f'{channel_name}_aligned.npz'):
+        elif file.endswith(f'{basename}{channel_name}_aligned.npz'):
             npz_aligned_path = channelDataPath
-        elif file.endswith(f'{channel_name}.tif'):
+        elif file.endswith(f'{basename}{channel_name}.tif'):
             tif_path = channelDataPath
     
     if h5_aligned_path:
+        if logger is not None:
+            logger(f'Using .h5 aligned file ({h5_aligned_path})...')
         return h5_aligned_path
     elif h5_path:
+        if logger is not None:
+            logger(f'Using .h5 file ({h5_path})...')
         return h5_path
     elif npz_aligned_path:
+        if logger is not None:
+            logger(f'Using .npz aligned file ({npz_aligned_path})...')
         return npz_aligned_path
     elif tif_path:
+        if logger is not None:
+            logger(f'Using .tif file ({tif_path})...')
         return tif_path
     else:
         return ''
