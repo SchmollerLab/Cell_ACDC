@@ -18847,6 +18847,7 @@ class guiWin(QMainWindow):
 
         self.titleLabel.setText('Loading data...', color=self.titleColor)
 
+        skip_channels = []
         ch_name_selector = prompts.select_channel_name(
             which_channel='segm', allow_abort=False
         )
@@ -18855,32 +18856,7 @@ class guiWin(QMainWindow):
             select_folder = load.select_exp_folder()
             values = select_folder.get_values_segmGUI(exp_path)
             if not values:
-                href = f'<a href="{user_manual_url}">user manual</a>'
-                txt = html_utils.paragraph(f"""
-                    The selected folder:<br><br>
-                    
-                    <code>{exp_path}</code><br><br>
-                    
-                    is <b>not a valid folder</b>.<br><br>
-                    
-                    Select a folder that contains the Position_n folders, 
-                    or a specific Position.<br><br>
-                    
-                    If you are trying to load a single image file go to 
-                    <code>File --> Open image/video file...</code>.<br><br>
-                    
-                    To load a folder containing multiple .tif files the folder must 
-                    be called either <code>Position_n</code><br>
-                    (with <code>n</code> being an integer) or <code>Images</code>.<br><br>
-                    
-                    You can find <b>more information</b> in the {href} at the 
-                    section<br>
-                    "Create required data structure from microscopy file(s)"
-                """)
-                msg = widgets.myMessageBox(wrapText=False)
-                msg.critical(
-                    self, 'Incompatible folder', txt
-                )
+                self.criticalInvalidPosFolder(exp_path)
                 self.titleLabel.setText(
                     'Drag and drop image file or go to File --> Open folder...',
                     color=self.titleColor)
@@ -18957,6 +18933,9 @@ class guiWin(QMainWindow):
                         color=self.titleColor)
                     self.openAction.setEnabled(True)
                     return
+                skip_channels.extend([
+                    ch for ch in ch_names if ch!=ch_name_selector.channel_name
+                ])
             else:
                 ch_name_selector.channel_name = ch_names[0]
             ch_name_selector.setUserChannelName()
@@ -18966,49 +18945,16 @@ class guiWin(QMainWindow):
             ch_name_selector.channel_name = user_ch_name
 
         user_ch_file_paths = []
+        not_allowed_ends = ['btrack_tracks.h5']
         for images_path in self.images_paths:
-            h5_aligned_path = ''
-            h5_path = ''
-            npz_aligned_path = ''
-            tif_path = ''
-            not_allowed_ends = ['btrack_tracks.h5']
-            for file in myutils.listdir(images_path):
-                self.isValidEnd = True
-                for not_allowed_end in not_allowed_ends:
-                    if file.endswith(not_allowed_end):
-                        self.isValidEnd = False
-                        break
-                if not self.isValidEnd:
-                    continue
-                channelDataPath = os.path.join(images_path, file)
-                if file.endswith(f'{user_ch_name}_aligned.h5'):
-                    h5_aligned_path = channelDataPath
-                elif file.endswith(f'{user_ch_name}.h5'):
-                    h5_path = channelDataPath
-                elif file.endswith(f'{user_ch_name}_aligned.npz'):
-                    npz_aligned_path = channelDataPath
-                elif file.endswith(f'{user_ch_name}.tif'):
-                    tif_path = channelDataPath
-
-            if h5_aligned_path:
-                self.logger.info(
-                    f'Using .h5 aligned file ({h5_aligned_path})...'
-                )
-                user_ch_file_paths.append(h5_aligned_path)
-            elif h5_path:
-                self.logger.info(f'Using .h5 file ({h5_path})...')
-                user_ch_file_paths.append(h5_path)
-            elif npz_aligned_path:
-                self.logger.info(
-                    f'Using .npz aligned file ({npz_aligned_path})...'
-                )
-                user_ch_file_paths.append(npz_aligned_path)
-            elif tif_path:
-                self.logger.info(f'Using .tif file ({tif_path})...')
-                user_ch_file_paths.append(tif_path)
-            else:
+            channel_file_path = load.get_filename_from_channel(
+                images_path, user_ch_name, skip_channels=skip_channels,
+                not_allowed_ends=not_allowed_ends, logger=self.logger.info
+            )
+            if not channel_file_path:
                 self.criticalImgPathNotFound(images_path)
                 return
+            user_ch_file_paths.append(channel_file_path)
 
         ch_name_selector.setUserChannelName()
         self.user_ch_name = user_ch_name
@@ -19028,6 +18974,34 @@ class guiWin(QMainWindow):
                 'Drag and drop image file or go to File --> Open folder...',
                 color=self.titleColor)
             return
+    
+    def criticalInvalidPosFolder(self, exp_path):
+        href = f'<a href="{user_manual_url}">user manual</a>'
+        txt = html_utils.paragraph(f"""
+            The selected folder:<br><br>
+            
+            <code>{exp_path}</code><br><br>
+            
+            is <b>not a valid folder</b>.<br><br>
+            
+            Select a folder that contains the Position_n folders, 
+            or a specific Position.<br><br>
+            
+            If you are trying to load a single image file go to 
+            <code>File --> Open image/video file...</code>.<br><br>
+            
+            To load a folder containing multiple .tif files the folder must 
+            be called either <code>Position_n</code><br>
+            (with <code>n</code> being an integer) or <code>Images</code>.<br><br>
+            
+            You can find <b>more information</b> in the {href} at the 
+            section<br>
+            "Create required data structure from microscopy file(s)"
+        """)
+        msg = widgets.myMessageBox(wrapText=False)
+        msg.critical(
+            self, 'Incompatible folder', txt
+        )
 
     def createOverlayContextMenu(self):
         ch_names = [ch for ch in self.ch_names if ch != self.user_ch_name]
