@@ -738,6 +738,7 @@ class calcMetricsWorker(QObject):
                         return
                 
                 guiWin = self.mainWin.gui
+                guiWin.init_segmInfo_df()
                 addMetrics_acdc_df = guiWin.saveDataWorker.addMetrics_acdc_df
                 addVolumeMetrics = guiWin.saveDataWorker.addVolumeMetrics
                 addVelocityMeasurement = (
@@ -832,6 +833,10 @@ class calcMetricsWorker(QObject):
                             acdc_df = addMetrics_acdc_df(
                                 acdc_df, rp, frame_i, lab, posData
                             )
+                            if guiWin.saveDataWorker.abort:
+                                self.abort = True
+                                self.signals.finished.emit(self)
+                                return
                         else:
                             acdc_df = addVolumeMetrics(
                                 acdc_df, rp, posData

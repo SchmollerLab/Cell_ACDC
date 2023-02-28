@@ -708,7 +708,7 @@ class mainWin(QMainWindow):
                         self.logger.info(f'{utilityName} aborted by the user.')
                         return
                     continue
-
+            
             expPaths[exp_path] = posFolders
             mostRecentPath = exp_path
             msg = widgets.myMessageBox(wrapText=False)
@@ -721,6 +721,10 @@ class mainWin(QMainWindow):
             )
             if msg.clickedButton == noButton:
                 break
+        
+        if not expPaths:
+            self.logger.info(f'{utilityName} aborted by the user.')
+            return
 
         if len(expPaths) > 1 or len(posFolders) > 1:
             infoPaths = self.getInfoPosStatus(expPaths)
@@ -729,7 +733,7 @@ class mainWin(QMainWindow):
             )
             selectPosWin.exec_()
             if selectPosWin.cancel:
-                print(f'{utilityName} aborted by the user.')
+                self.logger.info(f'{utilityName} aborted by the user.')
                 return
             selectedExpPaths = selectPosWin.selectedPaths
         else:
@@ -794,6 +798,7 @@ class mainWin(QMainWindow):
         self.arboretumWindow.show()
     
     def launchToImageJroiUtil(self):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
         myutils.check_install_package('roifile', parent=self)
 
         import roifile
@@ -814,7 +819,7 @@ class mainWin(QMainWindow):
         self.toImageJroiWin.show()
     
     def launchCombineMeatricsMultiChanneliUtil(self):
-        self.logger.info('Launching "Combine measurements from multiple tables" utility...')
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
         selectedExpPaths = self.getSelectedExpPaths(
             'Combine measurements from multiple channels'
         )
@@ -831,6 +836,7 @@ class mainWin(QMainWindow):
         self.multiChannelWin.show()
     
     def launchConnected3DsegmActionUtil(self):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
         selectedExpPaths = self.getSelectedExpPaths(
             'Create 3D segmentation mask from 2D'
         )
@@ -847,6 +853,7 @@ class mainWin(QMainWindow):
         self.connected3DsegmWin.show()
 
     def launchTrackSubCellFeaturesUtil(self):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
         selectedExpPaths = self.getSelectedExpPaths(
             'Track sub-cellular objects'
         )
@@ -869,6 +876,7 @@ class mainWin(QMainWindow):
 
     
     def launchCalcMetricsUtil(self):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
         selectedExpPaths = self.getSelectedExpPaths('Compute measurements utility')
         if selectedExpPaths is None:
             return
@@ -879,6 +887,7 @@ class mainWin(QMainWindow):
         self.calcMeasWin.show()
     
     def launchToSymDicUtil(self):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
         selectedExpPaths = self.getSelectedExpPaths('Lineage tree utility')
         if selectedExpPaths is None:
             return
@@ -1186,6 +1195,7 @@ class mainWin(QMainWindow):
             pass
 
     def launchAlignUtil(self, checked=False):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
         selectedExpPaths = self.getSelectedExpPaths(
             'Align frames in X and Y with phase cross-correlation'
         )
@@ -1202,6 +1212,7 @@ class mainWin(QMainWindow):
         self.concatWindow.show()
 
     def launchConcatUtil(self, checked=False):
+        self.logger.info(f'Launching utility "{self.sender().text()}"')
         selectedExpPaths = self.getSelectedExpPaths(
             'Concatenate acdc_output files'
         )

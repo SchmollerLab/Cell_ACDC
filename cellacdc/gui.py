@@ -10325,8 +10325,7 @@ class guiWin(QMainWindow):
         if ev.key() == Qt.Key_Q:
             # self.setAllIDs()
             posData = self.data[self.pos_i]
-            printl(self.overlayRGBs)
-            printl(self.df_settings.at['overlayColor', 'value'])
+            printl(posData.segmInfo_df)
             # printl(posData.fluo_data_dict.keys())
             # for key in posData.fluo_data_dict:
             #     printl(key, posData.fluo_data_dict[key].max())
@@ -13338,6 +13337,10 @@ class guiWin(QMainWindow):
 
     def init_segmInfo_df(self):
         for posData in self.data:
+            if posData is None:
+                # posData is None when computing measurements with the utility
+                # and with timelapse data
+                continue
             if posData.SizeZ > 1 and posData.segmInfo_df is not None:
                 if 'z_slice_used_gui' not in posData.segmInfo_df.columns:
                     posData.segmInfo_df['z_slice_used_gui'] = (

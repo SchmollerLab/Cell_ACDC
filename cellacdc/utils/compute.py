@@ -270,6 +270,7 @@ class computeMeasurmentsUtilWin(QDialog):
         self.gui.ch_names = self.posData.chNames
         self.gui.notLoadedChNames = []
         self.gui.setMetricsFunc()
+        self.gui.mixedChCombineMetricsToSkip = []
         self.gui._setMetrics(self.measurementsWin)
         self.gui.mutex = self.worker.mutex
         self.gui.waitCond = self.worker.waitCond
@@ -285,7 +286,7 @@ class computeMeasurmentsUtilWin(QDialog):
         self.gui.saveDataWorker.regionPropsCritical.connect(
             self.addRegionPropsErrors
         )
-
+        self.gui.worker = self.gui.saveDataWorker
         self.worker.waitCond.wakeAll()
     
     def addRegionPropsErrors(self, traceback_format, error_message):
