@@ -1637,6 +1637,27 @@ class dataPrepWin(QMainWindow):
         roi.label.setPos(xl, yt-hLabel)
         w, h = [int(round(c)) for c in roi.size()]
         self.ROIshapeLabel.setText(f'   Current ROI shape: {w} x {h}')
+    
+    def warnZeroPaddingAlignment(self):
+        txt = html_utils.paragraph("""
+            To align the frames, Cell-ACDC needs to <b>shift the images</b> 
+            according to the shifts computed by the alignment algorithm.<br><br>
+            This result in <b>padding</b> of the shifted rows and columns with 
+            <b>0-valued pixels</b>.<br><br>
+            For this reason, we <b>recommend cropping</b> 
+            after aligning (you can do it in this GUI after the alignment 
+            is completed).<br><br>
+            If you choose to not crop, these 0-valued pixels will be automatically 
+            excluded from the automatic background estimation.
+        """)
+        msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+        msg.information(
+            self, 'Padding alignment shifts', txt, 
+            buttonsTexts=('Cancel', 'Ok')
+        )
+        if msg.cancel:
+            return False
+        return True
 
     def alignData(self, user_ch_name, posData):
         """
@@ -1690,7 +1711,7 @@ class dataPrepWin(QMainWindow):
 
         align = True
         if posData.loaded_shifts is None and posData.SizeT > 1:
-            msg = widgets.myMessageBox()
+            msg = widgets.myMessageBox(showCentered=False)
             if user_ch_name:
                 txt = html_utils.paragraph(f"""
                     Do you want to <b>align ALL channels</b> based on 
@@ -1718,6 +1739,10 @@ class dataPrepWin(QMainWindow):
             align = False
             # Create 0, 0 shifts to perform 0 alignment
             posData.loaded_shifts = np.zeros((self.num_frames,2), int)
+
+        proceed = self.warnZeroPaddingAlignment()
+        if not proceed:
+            return False
 
         self.align = align
 

@@ -20539,11 +20539,12 @@ class guiWin(QMainWindow):
         self.thread.start()
     
     def _workerDebug(self, stuff_to_debug):
-        from acdctools.plot import imshow
-        lab, frame_i, autoBkgr_masks = stuff_to_debug
-        autoBkgr_mask, autoBkgr_mask_proj = autoBkgr_masks
-        imshow(lab, autoBkgr_mask)
-        self.worker.waitCond.wakeAll()
+        pass
+        # from acdctools.plot import imshow
+        # lab, frame_i, autoBkgr_masks = stuff_to_debug
+        # autoBkgr_mask, autoBkgr_mask_proj = autoBkgr_masks
+        # imshow(lab, autoBkgr_mask)
+        # self.worker.waitCond.wakeAll()
     
     def autoSaveClose(self):
         for worker, thread in self.autoSaveActiveWorkers:
