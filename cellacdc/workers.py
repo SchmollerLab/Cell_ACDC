@@ -1000,11 +1000,12 @@ class loadDataWorker(QObject):
             posData.loadOtherFiles(
                 load_segm_data=loadSegm,
                 load_acdc_df=True,
-                load_shifts=False,
+                load_shifts=True,
                 loadSegmInfo=True,
                 load_delROIsInfo=True,
                 loadBkgrData=True,
                 loadBkgrROIs=True,
+                load_dataPrep_ROIcoords=True,
                 load_last_tracked_i=True,
                 load_metadata=True,
                 load_customAnnot=True,

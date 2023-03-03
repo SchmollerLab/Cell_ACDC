@@ -333,6 +333,7 @@ class saveDataWorker(QObject):
     askZsliceAbsent = pyqtSignal(str, object)
     customMetricsCritical = pyqtSignal(str, str)
     sigCombinedMetricsMissingColumn = pyqtSignal(str, str)
+    sigDebug = pyqtSignal(object)
 
     def __init__(self, mainWin):
         QObject.__init__(self)
@@ -385,6 +386,12 @@ class saveDataWorker(QObject):
                         col = 'z_slice_used_dataPrep'
                         z_slice = posData.segmInfo_df.at[idx, col]
         return True
+    
+    def _emitSigDebug(self, stuff_to_debug):
+        self.mutex.lock()
+        self.sigDebug.emit(stuff_to_debug)
+        self.waitCond.wait(self.mutex)
+        self.mutex.unlock()
 
     def addMetrics_acdc_df(self, stored_df, rp, frame_i, lab, posData):
         yx_pxl_to_um2 = posData.PhysicalSizeY*posData.PhysicalSizeX
@@ -421,7 +428,11 @@ class saveDataWorker(QObject):
             return
 
         # Get background masks
-        autoBkgr_masks = measurements.get_autoBkgr_mask(lab, isSegm3D)
+        autoBkgr_masks = measurements.get_autoBkgr_mask(
+            lab, isSegm3D, posData, frame_i
+        )
+        # self._emitSigDebug((lab, frame_i, autoBkgr_masks))
+        
         autoBkgr_mask, autoBkgr_mask_proj = autoBkgr_masks
         dataPrepBkgrROI_mask = measurements.get_bkgrROI_mask(posData, isSegm3D)
 
@@ -5436,10 +5447,10 @@ class guiWin(QMainWindow):
                 self.updatePropsWidget(ID)
                 hoverText = self.hoverValuesFormatted(xdata, ydata)
                 self.wcLabel.setText(hoverText)
-            else:
-                self.clickedOnBud = False
-                self.BudMothTempLine.setData([], [])
-                self.wcLabel.setText(f'')
+        else:
+            self.clickedOnBud = False
+            self.BudMothTempLine.setData([], [])
+            self.wcLabel.setText('')
         
         if setKeepObjCursor:
             x, y = event.pos()
@@ -5633,10 +5644,10 @@ class guiWin(QMainWindow):
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                 hoverText = self.hoverValuesFormatted(xdata, ydata)
                 self.wcLabel.setText(hoverText)
-            else:
-                if self.eraserButton.isChecked() or self.brushButton.isChecked():
-                    self.gui_mouseReleaseEventImg2(event)
-                self.wcLabel.setText(f'')
+        else:
+            if self.eraserButton.isChecked() or self.brushButton.isChecked():
+                self.gui_mouseReleaseEventImg2(event)
+            self.wcLabel.setText(f'')
 
         if setMoveLabelCursor or setExpandLabelCursor:
             x, y = event.pos()
@@ -9432,11 +9443,21 @@ class guiWin(QMainWindow):
         except Exception as e:
             pass
     
+    def updateModeMenuAction(self):
+        self.modeActionGroup.triggered.disconnect()
+        for action in self.modeActionGroup.actions():
+            if action.text() != self.modeComboBox.currentText():
+                continue
+            action.setChecked(True)
+            break
+        self.modeActionGroup.triggered.connect(self.changeModeFromMenu)
+
     def changeModeFromMenu(self, action):
         self.modeComboBox.setCurrentText(action.text())
 
     def changeMode(self, idx):
         self.reconnectUndoRedo()
+        self.updateModeMenuAction()
         posData = self.data[self.pos_i]
         mode = self.modeComboBox.itemText(idx)
         self.annotateToolbar.setVisible(False)
@@ -10325,7 +10346,7 @@ class guiWin(QMainWindow):
         if ev.key() == Qt.Key_Q:
             # self.setAllIDs()
             posData = self.data[self.pos_i]
-            printl(posData.segmInfo_df)
+            printl(posData.loaded_shifts)
             # printl(posData.fluo_data_dict.keys())
             # for key in posData.fluo_data_dict:
             #     printl(key, posData.fluo_data_dict[key].max())
@@ -13073,6 +13094,7 @@ class guiWin(QMainWindow):
         self.updateImageValueFormatter()
 
         self.setFocusGraphics()
+        self.setFocusMain()
 
         # Overwrite axes viewbox context menu
         self.ax1.vb.menu = self.imgGrad.gradient.menu
@@ -20510,10 +20532,18 @@ class guiWin(QMainWindow):
         )
         self.worker.criticalPermissionError.connect(self.saveDataPermissionError)
         self.worker.askZsliceAbsent.connect(self.zSliceAbsent)
+        self.worker.sigDebug.connect(self._workerDebug)
 
         self.thread.started.connect(self.worker.run)
 
         self.thread.start()
+    
+    def _workerDebug(self, stuff_to_debug):
+        from acdctools.plot import imshow
+        lab, frame_i, autoBkgr_masks = stuff_to_debug
+        autoBkgr_mask, autoBkgr_mask_proj = autoBkgr_masks
+        imshow(lab, autoBkgr_mask)
+        self.worker.waitCond.wakeAll()
     
     def autoSaveClose(self):
         for worker, thread in self.autoSaveActiveWorkers:

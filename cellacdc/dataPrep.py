@@ -318,9 +318,9 @@ class dataPrepWin(QMainWindow):
         self.graphLayout.addItem(self.titleLabel, row=0, col=1)
 
         # Current frame text
-        self.frameLabel = pg.LabelItem(justify='center', color='w', size='14pt')
-        self.frameLabel.setText(' ')
-        self.graphLayout.addItem(self.frameLabel, row=2, col=1)
+        # self.frameLabel = pg.LabelItem(justify='center', color='w', size='14pt')
+        # self.frameLabel.setText(' ')
+        # self.graphLayout.addItem(self.frameLabel, row=2, col=1)
 
     def gui_addPlotItems(self):
         # Image Item
@@ -331,7 +331,7 @@ class dataPrepWin(QMainWindow):
 
     def removeAllItems(self):
         self.ax1.clear()
-        self.frameLabel.setText(' ')
+        # self.frameLabel.setText(' ')
 
     def gui_connectGraphicsEvents(self):
         self.img.hoverEvent = self.gui_hoverEventImg
@@ -384,7 +384,9 @@ class dataPrepWin(QMainWindow):
             Y, X = _img.shape
             if xdata >= 0 and xdata < X and ydata >= 0 and ydata < Y:
                 val = _img[ydata, xdata]
-                self.wcLabel.setText(f'(x={x:.2f}, y={y:.2f}, value={val:.2f})')
+                self.wcLabel.setText(
+                    f'(x={xdata:.2f}, y={ydata:.2f}, value={val:.2f})'
+                )
             else:
                 self.wcLabel.setText(f'')
         except Exception as e:
@@ -505,9 +507,9 @@ class dataPrepWin(QMainWindow):
     def updateNavigateItems(self):
         posData = self.data[self.pos_i]
         if self.num_pos > 1:
-            self.frameLabel.setText(
-                     f'Current position = {self.pos_i+1}/{self.num_pos} '
-                     f'({posData.pos_foldername})')
+            # self.frameLabel.setText(
+            #          f'Current position = {self.pos_i+1}/{self.num_pos} '
+            #          f'({posData.pos_foldername})')
             self.navigateSB_label.setText(f'Pos n. {self.pos_i+1}')
             try:
                 self.navigateScrollbar.valueChanged.disconnect()
@@ -515,8 +517,8 @@ class dataPrepWin(QMainWindow):
                 pass
             self.navigateScrollbar.setValue(self.pos_i+1)
         else:
-            self.frameLabel.setText(
-                     f'Current frame = {self.frame_i+1}/{self.num_frames}')
+            # self.frameLabel.setText(
+            #          f'Current frame = {self.frame_i+1}/{self.num_frames}')
             self.navigateSB_label.setText(f'frame n. {self.frame_i+1}')
             try:
                 self.navigateScrollbar.valueChanged.disconnect()
@@ -692,7 +694,6 @@ class dataPrepWin(QMainWindow):
         return croppedData, SizeZ
 
     def saveBkgrROIs(self, posData):
-        printl(posData.bkgrROIs)
         if not posData.bkgrROIs:
             return
 

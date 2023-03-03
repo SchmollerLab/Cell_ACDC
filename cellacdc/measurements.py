@@ -752,12 +752,19 @@ def get_bkgrROI_mask(posData, isSegm3D):
         ROI_bkgrMask = None
     return ROI_bkgrMask
 
-def get_autoBkgr_mask(lab, isSegm3D):
+def get_autoBkgr_mask(lab, isSegm3D, posData, frame_i):
     autoBkgr_mask = lab == 0
+    autoBkgr_mask = _mask_0valued_pixels_from_alignment(
+        autoBkgr_mask, frame_i, posData
+    )
     if isSegm3D:
         autoBkgr_mask_proj = lab.max(axis=0) == 0
+        autoBkgr_mask_proj = _mask_0valued_pixels_from_alignment(
+            autoBkgr_mask_proj, frame_i, posData
+        )
     else:
         autoBkgr_mask_proj = autoBkgr_mask
+    
     return autoBkgr_mask, autoBkgr_mask_proj
 
 def regionprops_table(labels, props, logger_func=None):
@@ -1005,6 +1012,30 @@ def get_foregr_obj_array(foregr_arr, obj, isSegm3D):
     else:
         # 2D mask on 2D data
         return foregr_arr[obj.slice][obj.image], obj.area
+
+def _mask_0valued_pixels_from_alignment(bkgr_mask, frame_i, posData):
+    if posData.loaded_shifts is None:
+        # Not aligned --> there are no 0-valued pixels
+        return bkgr_mask
+    
+    if posData.dataPrep_ROIcoords is not None:
+        is_cropped = int(posData.dataPrep_ROIcoords.at['cropped', 'value'])
+        if is_cropped:
+            # Do not mask 0valued pixels if image was cropped
+            return bkgr_mask
+    
+    shifts = posData.loaded_shifts[frame_i]
+    dy, dx = shifts
+    if dy>0:
+        bkgr_mask[..., :dy, :] = False
+    elif dy<0:
+        bkgr_mask[..., dy:, :] = False
+    if dx>0:
+        bkgr_mask[..., :dx] = False
+    elif dx<0:
+        bkgr_mask[..., dx:] = False
+    
+    return bkgr_mask
 
 def get_bkgr_data(
         foregr_img, posData, filename, frame_i, autoBkgr_mask, z,
