@@ -964,7 +964,7 @@ def get_cell_volumes_areas(df):
     )
     return items
 
-def get_bkgrVals(df, channel, how, ID):
+def get_bkgrVals(df, channel, how, ID, bkgr_type=None):
     try:
         if how:
             autoBkgr_col = f'{channel}_autoBkgr_bkgrVal_median_{how}'
@@ -985,7 +985,13 @@ def get_bkgrVals(df, channel, how, ID):
     except Exception as e:
         dataPrepBkgrVal = np.nan
 
-    return autoBkgrVal, dataPrepBkgrVal
+    if bkgr_type is None:
+        return autoBkgrVal, dataPrepBkgrVal
+    
+    if bkgr_type.find('dataPrep') != -1:
+        return dataPrepBkgrVal
+    else:
+        return autoBkgrVal
 
 def get_foregr_obj_array(foregr_arr, obj, isSegm3D):
     if foregr_arr.ndim == 3 and isSegm3D:
@@ -1014,16 +1020,16 @@ def get_bkgr_data(
     if isZstack:
         if isSegm3D:
             autoBkr_3D = foregr_img[autoBkgr_mask]
-            bkgr_data['autoBkgr']['3D'] = autoBkr_3D[autoBkr_3D!=0]
+            bkgr_data['autoBkgr']['3D'] = autoBkr_3D
         autoBkgr_maxP = foregr_img.max(axis=0)[autoBkgr_mask_proj]
         autoBkgr_meanP = foregr_img.mean(axis=0)[autoBkgr_mask_proj]
         autoBkgr_zSlice = foregr_img[z][autoBkgr_mask_proj]
-        bkgr_data['autoBkgr']['maxProj'] = autoBkgr_maxP[autoBkgr_maxP!=0]
-        bkgr_data['autoBkgr']['meanProj'] = autoBkgr_meanP[autoBkgr_meanP!=0]
-        bkgr_data['autoBkgr']['zSlice'] = autoBkgr_zSlice[autoBkgr_zSlice!=0]
+        bkgr_data['autoBkgr']['maxProj'] = autoBkgr_maxP
+        bkgr_data['autoBkgr']['meanProj'] = autoBkgr_meanP
+        bkgr_data['autoBkgr']['zSlice'] = autoBkgr_zSlice
     else:
         autoBkgr_data = foregr_img[autoBkgr_mask]
-        bkgr_data['autoBkgr'][''] = autoBkgr_data[autoBkgr_data!=0]
+        bkgr_data['autoBkgr'][''] = autoBkgr_data
 
     """DataPrep Background"""
     bkgr_archive = posData.fluo_bkgrData_dict[filename]
@@ -1060,20 +1066,14 @@ def get_bkgr_data(
         dataPrepBkgr_present = True 
     
     if isZstack and dataPrepBkgr_present:
-        # Note: we remove 0s since they are introduced by the alignment
-        bkgr_data['dataPrepBkgr']['maxProj'].extend(
-            bkgrRoi_maxP[bkgrRoi_maxP!=0]
-        )
-        bkgr_data['dataPrepBkgr']['meanProj'].extend(
-            bkgrRoi_meanP[bkgrRoi_meanP!=0]
-        )
-        bkgr_data['dataPrepBkgr']['zSlice'].extend(
-            bkgrRoi_zSlice[bkgrRoi_zSlice!=0]
-        )
+        # Note: we do not try to exclude 0-valued pixels, see issue #285
+        bkgr_data['dataPrepBkgr']['maxProj'].extend(bkgrRoi_maxP)
+        bkgr_data['dataPrepBkgr']['meanProj'].extend(bkgrRoi_meanP)
+        bkgr_data['dataPrepBkgr']['zSlice'].extend(bkgrRoi_zSlice)
         if isSegm3D:
-            bkgr_data['dataPrepBkgr']['3D'].extend(bkgrRoi_3D[bkgrRoi_3D!=0])
+            bkgr_data['dataPrepBkgr']['3D'].extend(bkgrRoi_3D)
     elif dataPrepBkgr_present:
-        bkgr_data['dataPrepBkgr'][''].extend(bkgrRoi[bkgrRoi!=0])
+        bkgr_data['dataPrepBkgr'][''].extend(bkgrRoi)
 
     return bkgr_data
             
@@ -1299,12 +1299,10 @@ def add_foregr_metrics(
             )
             if func_name.find('amount_') != -1:
                 bkgr_type = func_name[len('amount_'):]
-                if how:
-                    bkgr_col = f'{channel}_{bkgr_type}_bkgrVal_median_{how}'
-                else:
-                    bkgr_col = f'{channel}_{bkgr_type}_bkgrVal_median'
                 try:
-                    bkgr_val = df.at[obj.label, bkgr_col]
+                    bkgr_val = get_bkgrVals(
+                        df, channel, how, obj.label, bkgr_type=bkgr_type
+                    )
                     func = metrics_func[func_name]
                     val = func(foregr_obj_arr, bkgr_val, obj_area)
                 except Exception as e:
