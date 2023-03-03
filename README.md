@@ -86,8 +86,8 @@ If you are **new to Python** or you need a **refresher** on how to manage scient
 2. Open a terminal. On Windows, use the Anaconda Prompt and NOT the Command Prompt.
 3. Update conda with `conda update conda`. Optionally, consider removing unused packages with the command `conda clean --all`
 4. Create a virtual environment with the command `conda create -n acdc python=3.9`
-5. Upgrade pip with the command `python -m pip install --upgrade pip`
-6. Activate the environment `conda activate acdc`
+5. Activate the environment `conda activate acdc`
+6. Upgrade pip with the command `python -m pip install --upgrade pip`
 7. Install Cell-ACDC with the command `pip install cellacdc`. Note that if you know you are going to **need tensorflow** (for segmentation models like YeaZ) you can run the command `pip install "cellacdc[all]"`, or `pip install tensorflow` before or after installing Cell-ACDC.
 
 ## Installation using Pip
@@ -108,8 +108,12 @@ If you want to try out experimental features (and, if you have time, maybe repor
 2. Open a terminal and navigate to a folder where you want to download Cell-ACDC. If you are on Windows you need to use the "Anaconda Prompt" as a terminal. You should find it by searching for "Anaconda Prompt" in the Start menu.
 3. Clone the source code with the command `git clone https://github.com/SchmollerLab/Cell_ACDC.git`. If you are on Windows you might need to install `git` first. Install it from [here](https://git-scm.com/download/win).
 4. Navigate to the `Cell_ACDC` folder with the command `cd Cell_ACDC`.
-5. Install Cell-ACDC with the command `pip install -e .`. The `.` at the end of the command means that you want to install from the current folder in the terminal. This must be the `Cell_ACDC` folder that you cloned before. 
-6. OPTIONAL: If you need tensorflow run the command `pip install tensorflow`.
+5. Update conda with `conda update conda`. Optionally, consider removing unused packages with the command `conda clean --all`
+6. Create a new conda environment with the command `conda create -n acdc python=3.9`
+7. Activate the environment with the command `conda activate acdc`
+8. Upgrade pip with the command `python -m pip install --upgrade pip`
+9. Install Cell-ACDC with the command `pip install -e .`. The `.` at the end of the command means that you want to install from the current folder in the terminal. This must be the `Cell_ACDC` folder that you cloned before. 
+10. OPTIONAL: If you need tensorflow run the command `pip install tensorflow`.
 
 ### Updating Cell-ACDC installed from source
 
@@ -133,8 +137,9 @@ If you want to contribute to the code or you want to have a developer version th
 8. Update conda with `conda update conda`. Optionally, consider removing unused packages with the command `conda clean --all`
 9. Create a new conda environment with the command `conda create -n acdc python=3.9`
 10. Activate the environment with the command `conda activate acdc`
-11. Install Cell-ACDC with the command `pip install -e .`. The `.` at the end of the command means that you want to install from the current folder in the terminal. This must be the `Cell_ACDC` folder that you cloned before. 
-12. OPTIONAL: If you need tensorflow run the command `pip install tensorflow`.
+11. Upgrade pip with the command `python -m pip install --upgrade pip`
+12. Install Cell-ACDC with the command `pip install -e .`. The `.` at the end of the command means that you want to install from the current folder in the terminal. This must be the `Cell_ACDC` folder that you cloned before. 
+13. OPTIONAL: If you need tensorflow run the command `pip install tensorflow`.
 
 ### Updating Cell-ACDC installed from source with forking
 
