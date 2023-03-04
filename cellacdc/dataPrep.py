@@ -1465,7 +1465,6 @@ class dataPrepWin(QMainWindow):
             if doZip:
                 self.logger.info(f'Zipping Images folder: {zipPath}')
                 shutil.make_archive(imagesPath, 'zip', imagesPath)
-            self.npy_to_npz(posData)
             success = self.alignData(self.user_ch_name, posData)
             if not success:
                 self.titleLabel.setText('Data prep cancelled.', color='r')
@@ -1919,36 +1918,6 @@ class dataPrepWin(QMainWindow):
             if msg.cancel:
                 proceed = False
         return proceed
-
-
-    def npy_to_npz(self, posData):
-        posData.all_npz_paths = posData.npz_paths.copy()
-        _zip = zip(posData.npy_paths, posData.npz_paths)
-        for i, (npy, npz) in enumerate(_zip):
-            if npz is None and npy is None:
-                continue
-            elif npy is not None and npz is None:
-                self.logger.info(f'Converting: {npy}')
-                self.titleLabel.setText(
-                    'Converting .npy to .npz... (check progress in terminal)',
-                    color='w')
-                _data = np.load(npy)
-                _npz = f'{os.path.splitext(npy)[0]}.npz'
-                temp_npz = self.getTempfilePath(_npz)
-                np.savez_compressed(temp_npz, _data)
-                self.moveTempFile(temp_npz, _npz)
-                os.remove(npy)
-                posData.all_npz_paths[i] = _npz
-            elif npy is not None and npz is not None:
-                os.remove(npy)
-        # # Convert segm.npy to segm.npz
-        # if posData.segm_npz_path is not None:
-        #     print('Converting: ', posData.segm_npz_path)
-        #     temp_npz = self.getTempfilePath(posData.segm_npz_path)
-        #     np.savez_compressed(temp_npz, posData.segm_data)
-        #     self.moveTempFile(temp_npz, posData.segm_npz_path)
-        #     os.remove(posData.segm_npz_path)
-        self.logger.info(f'{posData.relPath} done.')
 
     def getTempfilePath(self, path):
         temp_dirpath = tempfile.mkdtemp()
