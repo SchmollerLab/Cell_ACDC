@@ -1739,10 +1739,11 @@ class dataPrepWin(QMainWindow):
             align = False
             # Create 0, 0 shifts to perform 0 alignment
             posData.loaded_shifts = np.zeros((self.num_frames,2), int)
-
-        proceed = self.warnZeroPaddingAlignment()
-        if not proceed:
-            return False
+        
+        if align:
+            proceed = self.warnZeroPaddingAlignment()
+            if not proceed:
+                return False
 
         self.align = align
 
