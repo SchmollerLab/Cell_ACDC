@@ -1754,11 +1754,15 @@ class dataPrepWin(QMainWindow):
 
         _zip = zip(posData.tif_paths, posData.npz_paths)
         aligned = False
+        posData.all_npz_paths = [None]*len(posData.tif_paths)
         for i, (tif, npz) in enumerate(_zip):
             doAlign = npz is None or posData.loaded_shifts is None
 
+            filename_tif = os.path.basename(tif)
+            user_ch_filename = f'{posData.basename}{user_ch_name}.tif'
+
             # Align based on user_ch_name
-            if doAlign and tif.find(user_ch_name) != -1:
+            if doAlign and filename_tif == user_ch_filename:
                 aligned = True
                 if align:
                     self.logger.info(f'Aligning: {tif}')
@@ -1806,7 +1810,7 @@ class dataPrepWin(QMainWindow):
                     temp_tif = self.getTempfilePath(tif)
                     myutils.imagej_tiffwriter(temp_tif, aligned_frames)
                     self.moveTempFile(temp_tif, tif)
-                posData.img_data = skimage.io.imread(tif)
+                    posData.img_data = skimage.io.imread(tif)
 
         _zip = zip(posData.tif_paths, posData.npz_paths)
         for i, (tif, npz) in enumerate(_zip):
