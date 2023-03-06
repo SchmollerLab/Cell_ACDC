@@ -33,6 +33,7 @@ cellacdc/test1.py
 cellacdc/test_segm.npy
 cellacdc/_profile/\spline_to_obj/regression.ipynb
 cellacdc/deprecated
+cellacdc/bioformats/jars/.old_bioformats_package.jar
 cellacdc/java
 cellacdc/javabridge_cp37
 cellacdc/javabridge_cp38

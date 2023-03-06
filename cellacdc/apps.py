@@ -7022,7 +7022,10 @@ class imageViewer(QMainWindow):
     def show(self, left=None, top=None):
         self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
         QMainWindow.show(self)
-        self.framesScrollBar.setFixedHeight(self.parent.h)
+        try:
+            self.framesScrollBar.setFixedHeight(self.parent.h)
+        except Exception as e:
+            pass
         if left is not None and top is not None:
             self.setGeometry(left, top, 850, 800)
 
