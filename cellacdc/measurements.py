@@ -529,17 +529,23 @@ def standard_metrics_desc(isZstack, chName, isSegm3D=False):
 
             if func_desc == 'Amount':
                 amount_desc = ("""
-                    Amount is the <b>background corrected total
+                    Amount is the <b>background corrected (subtracted) total
                     fluorescence intensity</b>, which is usually the best proxy
                     for the amount of the tagged molecule, e.g.,
                     <b>protein amount</b>.
+                    <br><br>
+                    The amount is calculated as follows:<br><br>
+                    <code>amount = (mean_obj - median_background)*area_obj</code>
+                    <br><br>
+                    where <code>_obj</code> refers to the pixels inside the 
+                    segmented object.
                     <br><br>
                 """)
                 main_desc = f'<b>{func_desc}</b> computed from'
             elif func_desc == 'Concentration':
                 amount_desc = ("""
                     Concentration is given by <code>Amount/cell_volume</code>,
-                    where amount is the <b>background corrected total
+                    where amount is the <b>background corrected (subtracted) total
                     fluorescence intensity</b>. Amount is usually the best proxy
                     for the amount of the tagged molecule, e.g.,
                     <b>protein amount</b>.
