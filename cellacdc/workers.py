@@ -681,7 +681,7 @@ class calcMetricsWorker(QObject):
                 posData.loadOtherFiles(
                     load_segm_data=True,
                     load_acdc_df=True,
-                    load_shifts=False,
+                    load_shifts=True,
                     loadSegmInfo=True,
                     load_delROIsInfo=True,
                     loadBkgrData=True,

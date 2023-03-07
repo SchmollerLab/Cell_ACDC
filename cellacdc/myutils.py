@@ -1729,6 +1729,56 @@ def import_segment_module(model_name):
         spec.loader.exec_module(acdcSegment) 
     return acdcSegment
 
+def _warn_install_torch_cuda(model_name, qparent=None):
+    cellpose_cuda_url = (
+        r'https://github.com/mouseland/cellpose#gpu-version-cuda-on-windows-or-linux'
+    )
+    torch_cuda_url = (
+        'https://pytorch.org/get-started/locally/'
+    )
+    cellpose_href = f'{html_utils.href_tag("here", cellpose_cuda_url)}'
+    torch_href = f'{html_utils.href_tag("here", torch_cuda_url)}'
+    msg = widgets.myMessageBox(showCentered=False, wrapText=False)
+    txt = html_utils.paragraph(f"""
+        In order to use <code>{model_name}</code> with the GPU you need 
+        to install the <b>CUDA version of PyTorch</b>.<br><br>
+        Checkout these instructions {cellpose_href}, and {torch_href}.<br><br>
+        We <b>highly recommend using Anaconda</b> to install PyTorch GPU.<br><br>
+        First, uninstall the CPU version of PyTorch with the following command:<br><br>
+        <code>pip uninstall torch</code>.<br><br>
+        Then, install the CUDA version required by your GPU with the follwing 
+        command (which installs version 11.6):<br><br>
+        <code>conda install pytorch pytorch-cuda=11.6 -c pytorch -c nvidia</code>
+        <br><br>
+        How do you want to proceed?
+    """)
+    proceedButton = widgets.okPushButton('Proceed without GPU')
+    stopButton = widgets.cancelPushButton('Stop the process')
+    stopButton, proceedButton = msg.warning(
+        qparent, 'PyTorch GPU version not installed', txt, 
+        buttonsTexts=(stopButton, proceedButton)
+    )
+    return msg.clickedButton == proceedButton
+
+def check_cuda(model_name, use_gpu, qparent=None):
+    if not use_gpu:
+        return True
+    is_torch_model = (
+        model_name.lower().find('cellpose') != -1
+        or model_name.lower().find('omnipose') != -1
+    )
+    if is_torch_model:
+        import torch
+        if not torch.cuda.is_available():
+            proceed = _warn_install_torch_cuda(model_name, qparent=qparent)
+            return proceed
+        
+        if not torch.cuda.device_count() > 0:
+            proceed = _warn_install_torch_cuda(model_name, qparent=qparent)
+            return proceed
+    
+    return True
+
 def find_missing_integers(lst, max_range=None):
     if max_range is not None:
         max_range = lst[-1]+1

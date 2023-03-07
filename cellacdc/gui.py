@@ -11917,6 +11917,13 @@ class guiWin(QMainWindow):
             self.applyPostProcessing = win.applyPostProcessing
             self.secondChannelName = win.secondChannelName
 
+            use_gpu = win.init_kwargs.get('gpu', False)
+            proceed = myutils.check_cuda(model_name, use_gpu, qparent=self)
+            if not proceed:
+                self.logger.info('Segmentation process cancelled.')
+                self.titleLabel.setText('Segmentation process cancelled.')
+                return
+            
             model = acdcSegment.Model(**win.init_kwargs)
             try:
                 model.setupLogger(self.logger)
@@ -12082,6 +12089,13 @@ class guiWin(QMainWindow):
         secondChannelData = None
         if win.secondChannelName is not None:
             secondChannelData = self.getSecondChannelData()
+
+        use_gpu = win.init_kwargs.get('gpu', False)
+        proceed = myutils.check_cuda(model_name, use_gpu, qparent=self)
+        if not proceed:
+            self.logger.info('Segmentation process cancelled.')
+            self.titleLabel.setText('Segmentation process cancelled.')
+            return
 
         model = acdcSegment.Model(**win.init_kwargs)
         try:
@@ -12278,6 +12292,13 @@ class guiWin(QMainWindow):
             self.titleLabel.setText('Segmentation aborted.')
             return
 
+        use_gpu = win.init_kwargs.get('gpu', False)
+        proceed = myutils.check_cuda(model_name, use_gpu, qparent=self)
+        if not proceed:
+            self.logger.info('Segmentation process cancelled.')
+            self.titleLabel.setText('Segmentation process cancelled.')
+            return
+            
         self.segment2D_kwargs = win.segment2D_kwargs
         model = acdcSegment.Model(**win.init_kwargs)
         try:

@@ -31,6 +31,12 @@ class Model:
     def setupLogger(self, logger):
         models.models_logger = logger
     
+    def closeLogger(self):
+        handlers = models.models_logger.handlers[:]
+        for handler in handlers:
+            handler.close()
+            models.models_logger.removeHandler(handler)
+    
     def _eval(self, image, **kwargs):
         return self.model.eval(image.astype(np.float32), **kwargs)[0]
     

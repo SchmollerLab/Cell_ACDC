@@ -828,6 +828,14 @@ class segmWin(QMainWindow):
         init_kwargs = win.init_kwargs
 
         # Initialize model
+        use_gpu = init_kwargs.get('gpu', False)
+        proceed = myutils.check_cuda(model_name, use_gpu, qparent=self)
+        if not proceed:
+            abort = self.doAbort()
+            if abort:
+                self.close()
+                return
+
         self.model = acdcSegment.Model(**init_kwargs)
         try:
             self.model.setupLogger(self.logger)
@@ -1426,5 +1434,10 @@ class segmWin(QMainWindow):
         for handler in handlers:
             handler.close()
             self.logger.removeHandler(handler)
+        
+        try:
+            self.model.closeLogger()
+        except Exception as e:
+            pass
         
         self.log('Segmentation module closed.')
