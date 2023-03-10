@@ -3206,7 +3206,6 @@ class guiWin(QMainWindow):
             'single z-slice', 'max z-projection', 'mean z-projection',
             'median z-proj.', 'same as above'
         ])
-        self.zProjOverlay_CB.setCurrentIndex(4)
         self.zSliceOverlay_SB.setDisabled(True)
 
         self.img1BottomGroupbox = self.gui_getImg1BottomWidgets()
@@ -13500,6 +13499,7 @@ class guiWin(QMainWindow):
             self.zSliceSpinbox.setValueNoEmit(z+1)
             img = self.getImage()
             self.img1.setImage(img)
+            self.setOverlayImages()
             if self.labelsGrad.showLabelsImgAction.isChecked():
                 self.img2.setImage(posData.lab, z=z, autoLevels=False)
             self.updateViewerWindow()
@@ -16517,6 +16517,7 @@ class guiWin(QMainWindow):
             self.zProjOverlay_CB.show()
             self.zSliceOverlay_SB.valueChanged.connect(self.update_overlay_z_slice)
             self.zProjOverlay_CB.currentTextChanged.connect(self.updateOverlayZproj)
+            self.zProjOverlay_CB.setCurrentIndex(4)
             self.zProjOverlay_CB.activated.connect(self.clearComboBoxFocus)
         else:
             self.zSliceOverlay_SB.setDisabled(True)
