@@ -117,7 +117,7 @@ If you want to try out experimental features (and, if you have time, maybe repor
 
 ### Updating Cell-ACDC installed from source
 
-To update Cell-ACDC installed from source, open a terminal window, navigate to the Cell-ACDC folder and run the command
+To update Cell-ACDC installed from source, open a terminal window, navigate to the Cell_ACDC folder and run the command
 ```
 git pull
 ```

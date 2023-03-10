@@ -20029,7 +20029,14 @@ class guiWin(QMainWindow):
         self.chNamesToSkip = []
         self.metricsToSkip = {chName:[] for chName in self.ch_names}
         self.metricsToSave = {chName:[] for chName in self.ch_names}
+        
         favourite_funcs = set()
+        last_selected_groupboxes_measurements = load.read_last_selected_gb_meas(
+            logger_func=self.logger.info
+        )
+        refChannel = measurementsWin.chNameGroupboxes[0].chName
+        if refChannel not in last_selected_groupboxes_measurements:
+            last_selected_groupboxes_measurements[refChannel] = []
         # Remove unchecked metrics and load checked not loaded channels
         for chNameGroupbox in measurementsWin.chNameGroupboxes:
             chName = chNameGroupbox.chName
@@ -20037,6 +20044,9 @@ class guiWin(QMainWindow):
                 # Skip entire channel
                 self.chNamesToSkip.append(chName)
             else:
+                last_selected_groupboxes_measurements[refChannel].append(
+                    chNameGroupbox.title()
+                )
                 if chName in self.notLoadedChNames:
                     success = self.loadFluo_cb(fluo_channels=[chName])
                     if not success:
@@ -20054,6 +20064,8 @@ class guiWin(QMainWindow):
             self.sizeMetricsToSave = []
         else:
             self.sizeMetricsToSave = []
+            title = measurementsWin.sizeMetricsQGBox.title()
+            last_selected_groupboxes_measurements[refChannel].append(title)
             for checkBox in measurementsWin.sizeMetricsQGBox.checkBoxes:
                 if checkBox.isChecked():
                     self.sizeMetricsToSave.append(checkBox.text())
@@ -20063,6 +20075,8 @@ class guiWin(QMainWindow):
             self.regionPropsToSave = ()
         else:
             self.regionPropsToSave = []
+            title = measurementsWin.regionPropsQGBox.title()
+            last_selected_groupboxes_measurements[refChannel].append(title)
             for checkBox in measurementsWin.regionPropsQGBox.checkBoxes:
                 if checkBox.isChecked():
                     self.regionPropsToSave.append(checkBox.text())
@@ -20073,6 +20087,9 @@ class guiWin(QMainWindow):
             skipAll = (
                 not measurementsWin.mixedChannelsCombineMetricsQGBox.isChecked()
             )
+            if not skipAll:
+                title = measurementsWin.mixedChannelsCombineMetricsQGBox.title()
+                last_selected_groupboxes_measurements[refChannel].append(title)
             mixedChCombineMetricsToSkip = []
             win = measurementsWin
             checkBoxes = win.mixedChannelsCombineMetricsQGBox.checkBoxes
@@ -20089,6 +20106,8 @@ class guiWin(QMainWindow):
             {'favourite_func_name': list(favourite_funcs)}
         )
         df_favourite_funcs.to_csv(favourite_func_metrics_csv_path)
+
+        load.save_last_selected_gb_meas(last_selected_groupboxes_measurements)
 
     def addCustomMetric(self, checked=False):
         txt = measurements.add_metrics_instructions()

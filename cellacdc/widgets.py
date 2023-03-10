@@ -258,7 +258,6 @@ class PushButton(QPushButton):
     
     def show(self):
         text = self.text()
-        printl(self.alignIconLeft)
         if not self.alignIconLeft:
             super().show()
             return 
@@ -3029,6 +3028,8 @@ class _metricsQGBox(QGroupBox):
         self.scrollAreaWidget = QWidget()
         self.favourite_funcs = favourite_funcs
 
+        self.doNotWarn = False
+
         layout = QVBoxLayout()
         inner_layout = QVBoxLayout()
         self.inner_layout = inner_layout
@@ -3116,6 +3117,7 @@ class _metricsQGBox(QGroupBox):
                 checkbox.setChecked(self.checkedState[checkbox])
 
     def checkFavouriteFuncs(self, checked=True, isZstack=False):
+        self.doNotWarn = True
         for checkBox in self.checkBoxes:
             checkBox.setChecked(False)
             for favourite_func in self.favourite_funcs:
@@ -3123,6 +3125,7 @@ class _metricsQGBox(QGroupBox):
                 if func_name.endswith(favourite_func):
                     checkBox.setChecked(True)
                     break
+        self.doNotWarn = False
 
     def checkAll(self, isChecked):
         for checkBox in self.checkBoxes:
@@ -3157,6 +3160,8 @@ class channelMetricsQGBox(QGroupBox):
             posData=None, favourite_funcs=None
         ):
         QGroupBox.__init__(self)
+
+        self.doNotWarn = False
 
         layout = QVBoxLayout()
         metrics_desc, bkgr_val_desc = measurements.standard_metrics_desc(
@@ -3227,6 +3232,8 @@ class channelMetricsQGBox(QGroupBox):
             checkbox.isDataPrepDisabled = True
     
     def _warnDataPrepCannotBeChecked(self):
+        if self.doNotWarn:
+            return
         txt = html_utils.paragraph("""
             <b>Data prep measurements cannot be saved</b> because you did 
             not select any background ROI at the data prep step.<br><br>
@@ -3246,8 +3253,8 @@ class channelMetricsQGBox(QGroupBox):
             dataPrep_amount, and this cannot be saved (checkbox has the attr 
             `isDataPrepDisabled`) then it warns and explains why it cannot be saved
             2. Make sure that background value median is checked if the user 
-            required amount or concentration metric
-            3. Do not allow unchecking background value median and explain why
+            requires amount or concentration metric.
+            3. Do not allow unchecking background value median and explain why.
 
         Parameters
         ----------
@@ -3309,6 +3316,9 @@ class channelMetricsQGBox(QGroupBox):
         if checkbox.isChecked():
             return
         
+        if self.doNotWarn:
+            return
+        
         checkbox.setChecked(True)
         txt = html_utils.paragraph("""
             <b>This background value cannot be unchecked</b> because it is required 
@@ -3324,8 +3334,10 @@ class channelMetricsQGBox(QGroupBox):
         self.sigDelClicked.emit(colname_to_del, hlayout)
     
     def checkFavouriteFuncs(self):
+        self.doNotWarn = True
         for groupbox in self.groupboxes:
             groupbox.checkFavouriteFuncs()
+        self.doNotWarn = False
 
 class objPropsQGBox(QGroupBox):
     def __init__(self, parent=None):

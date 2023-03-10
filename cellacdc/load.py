@@ -46,7 +46,9 @@ acdc_df_bool_cols = [
 
 additional_metadata_path = os.path.join(temp_path, 'additional_metadata.json')
 last_entries_metadata_path = os.path.join(temp_path, 'last_entries_metadata.csv')
-
+last_selected_groupboxes_measurements_path = os.path.join(
+    temp_path, 'last_selected_groupboxes_set_measurements.json'
+)
 channel_file_formats = (
     '_aligned.h5', '.h5', '_aligned.npz', '.tif'
 )
@@ -62,9 +64,28 @@ def read_json(json_path, logger_func=print, desc='custom annotations'):
         print('****************************')
         logger_func(f'json path: {json_path}')
         print('----------------------------')
-        logger_func(f'Error while reading saved {desc}. See above')
+        logger_func(f'Error while reading saved "{desc}". See above')
         print('============================')
     return json_data
+
+def write_json(json_data, json_path, indent=2):
+    with open(json_path, mode='w') as file:
+        json.dump(json_data, file, indent=indent)
+
+def read_last_selected_gb_meas(logger_func=print):
+    data = {}
+    if not os.path.exists(last_selected_groupboxes_measurements_path):
+        write_json(data, last_selected_groupboxes_measurements_path)
+    else:
+        data = read_json(
+            last_selected_groupboxes_measurements_path,
+            desc='last selected channels (set measurments)',
+            logger_func=logger_func
+        )
+    return data
+
+def save_last_selected_gb_meas(json_data):
+    write_json(json_data, last_selected_groupboxes_measurements_path)
 
 def read_config_metrics(ini_path):
     configPars = config.ConfigParser()

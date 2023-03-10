@@ -1662,6 +1662,7 @@ class setMeasurementsDialog(widgets.QBaseDialog):
         self.allPos_acdc_df_cols = allPos_acdc_df_cols
         self.acdc_df_path = acdc_df_path
         self.allPosData = allPosData
+        self.doNotWarn = False
 
         self.setWindowTitle('Set measurements')
         # self.setWindowFlags(Qt.Window | Qt.WindowStaysOnTopHint)
@@ -1865,12 +1866,17 @@ class setMeasurementsDialog(widgets.QBaseDialog):
             return
         
         checkbox.setChecked(True)
+
+        if self.doNotWarn:
+            return
+
         linked_autoBkgr_metric = checkbox.text().replace('cell', '_autoBkgr_from')
         linked_dataPrepBkgr_metric = checkbox.text().replace(
             'cell', '_dataPrepBkgr_from'
         )
         txt = html_utils.paragraph(f"""
-            <b>This physical measurement cannot be unchecked</b> because it is required 
+            <b>This physical measurement cannot be unchecked</b> 
+            because it is required 
             by the <code>{linked_autoBkgr_metric}</code> and 
             <code>{linked_dataPrepBkgr_metric}</code> measurements 
             that you requested to save.<br><br>
@@ -1999,12 +2005,33 @@ class setMeasurementsDialog(widgets.QBaseDialog):
                 checkBox.setChecked(isChecked)
     
     def loadLastSelection(self):
+        self.doNotWarn = True
         for chNameGroupbox in self.chNameGroupboxes:
             chNameGroupbox.checkFavouriteFuncs()
             chNameGroupbox.customMetricsQGBox.checkFavouriteFuncs()
         self.sizeMetricsQGBox.checkFavouriteFuncs()
         self.regionPropsQGBox.checkFavouriteFuncs()
-
+        last_sel_gb = load.read_last_selected_gb_meas()
+        if not last_sel_gb:
+            return
+        refChannel = self.chNameGroupboxes[0].chName
+        groupboxes = [
+            *self.chNameGroupboxes, self.sizeMetricsQGBox, 
+            self.regionPropsQGBox
+        ]
+        for chNameGroupbox in self.chNameGroupboxes:
+            chNameGroupbox.setChecked(False)
+        self.sizeMetricsQGBox.setChecked(False)
+        self.regionPropsQGBox.setChecked(False)
+        if refChannel not in last_sel_gb:
+            return
+        
+        for gb_title in last_sel_gb[refChannel]:
+            for gb in groupboxes:
+                if gb.title() != gb_title:
+                    continue
+                gb.setChecked(True)
+        self.doNotWarn = False
     
     def setDisabledMetricsRequestedForCombined(self, checked=True):
         # Set checked and disable those metrics that are requested for 
