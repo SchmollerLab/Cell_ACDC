@@ -109,8 +109,8 @@ If you want to try out experimental features (and, if you have time, maybe repor
 3. Clone the source code with the command `git clone https://github.com/SchmollerLab/Cell_ACDC.git`. If you are on Windows you might need to install `git` first. Install it from [here](https://git-scm.com/download/win).
 4. Navigate to the `Cell_ACDC` folder with the command `cd Cell_ACDC`.
 5. Update conda with `conda update conda`. Optionally, consider removing unused packages with the command `conda clean --all`
-6. Create a new conda environment with the command `conda create -n acdc python=3.9`
-7. Activate the environment with the command `conda activate acdc`
+6. Create a new conda environment with the command `conda create -n acdc_dev python=3.9`
+7. Activate the environment with the command `conda activate acdc_dev`
 8. Upgrade pip with the command `python -m pip install --upgrade pip`
 9. Install Cell-ACDC with the command `pip install -e .`. The `.` at the end of the command means that you want to install from the current folder in the terminal. This must be the `Cell_ACDC` folder that you cloned before. 
 10. OPTIONAL: If you need tensorflow run the command `pip install tensorflow`.
@@ -135,8 +135,8 @@ If you want to contribute to the code or you want to have a developer version th
 6. Navigate to the `Cell_ACDC` folder with the command `cd Cell_ACDC`.
 7. Add the upstream repository with the command `git remote add upstream https://github.com/SchmollerLab/Cell_ACDC.git`
 8. Update conda with `conda update conda`. Optionally, consider removing unused packages with the command `conda clean --all`
-9. Create a new conda environment with the command `conda create -n acdc python=3.9`
-10. Activate the environment with the command `conda activate acdc`
+9. Create a new conda environment with the command `conda create -n acdc_dev python=3.9`
+10. Activate the environment with the command `conda activate acdc_dev`
 11. Upgrade pip with the command `python -m pip install --upgrade pip`
 12. Install Cell-ACDC with the command `pip install -e .`. The `.` at the end of the command means that you want to install from the current folder in the terminal. This must be the `Cell_ACDC` folder that you cloned before. 
 13. OPTIONAL: If you need tensorflow run the command `pip install tensorflow`.
