@@ -447,7 +447,7 @@ class saveDataWorker(QObject):
             # Get the background data
             bkgr_data = measurements.get_bkgr_data(
                 foregr_img, posData, filename, frame_i, autoBkgr_mask, z,
-                autoBkgr_mask_proj, dataPrepBkgrROI_mask, isSegm3D
+                autoBkgr_mask_proj, dataPrepBkgrROI_mask, isSegm3D, lab
             )
 
             # Compute background values
@@ -456,7 +456,6 @@ class saveDataWorker(QObject):
             )
             
             foregr_data = measurements.get_foregr_data(foregr_img, isSegm3D, z)
-            how = list(foregr_data.keys())[0]
 
             # Iterate objects and compute foreground metrics
             df = measurements.add_foregr_metrics(

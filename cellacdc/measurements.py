@@ -1045,7 +1045,7 @@ def _mask_0valued_pixels_from_alignment(bkgr_mask, frame_i, posData):
 
 def get_bkgr_data(
         foregr_img, posData, filename, frame_i, autoBkgr_mask, z,
-        autoBkgr_mask_proj, dataPrepBkgrROI_mask, isSegm3D
+        autoBkgr_mask_proj, dataPrepBkgrROI_mask, isSegm3D, lab
     ):
     isZstack = foregr_img.ndim == 3
     bkgr_data = {}
@@ -1075,6 +1075,7 @@ def get_bkgr_data(
     }
     dataPrepBkgr_present = False
     if bkgr_archive is not None:
+        # Background data saved separately after cropping in dataprep
         for file in bkgr_archive.files:
             bkgrRoi_data = bkgr_archive[file]
             if posData.SizeT > 1:
@@ -1089,6 +1090,8 @@ def get_bkgr_data(
                 bkgrRoi = bkgrRoi_data  
             dataPrepBkgr_present = True       
     elif dataPrepBkgrROI_mask is not None:
+        # Get background data from the bkgr ROI mask
+        dataPrepBkgrROI_mask = np.logical_and(dataPrepBkgrROI_mask, lab==0)
         if isZstack:
             if isSegm3D:
                 bkgrRoi_3D = foregr_img[dataPrepBkgrROI_mask]
