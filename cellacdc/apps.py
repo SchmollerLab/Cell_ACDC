@@ -10049,6 +10049,7 @@ class QDialogModelParams(QDialog):
             elif ArgSpec.type == int:
                 spinBox = QSpinBox()
                 spinBox.setAlignment(Qt.AlignCenter)
+                spinBox.setMinimum(-2147483647)
                 spinBox.setMaximum(2147483647)
                 spinBox.setValue(ArgSpec.default)
                 defaultVal = ArgSpec.default
@@ -10059,7 +10060,8 @@ class QDialogModelParams(QDialog):
             elif ArgSpec.type == float:
                 doubleSpinBox = QDoubleSpinBox()
                 doubleSpinBox.setAlignment(Qt.AlignCenter)
-                doubleSpinBox.setMaximum(2147483647)
+                doubleSpinBox.setMinimum(-2147483647.0)
+                doubleSpinBox.setMaximum(2147483647.0)
                 doubleSpinBox.setValue(ArgSpec.default)
                 widget = doubleSpinBox
                 defaultVal = ArgSpec.default
