@@ -540,10 +540,21 @@ class segmVideoWorker(QObject):
         self.startFrameNum = startFrameNum
         self.stopFrameNum = stopFrameNum
 
+    def _check_extend_segm_data(self, segm_data, stop_frame_num):
+        if stop_frame_num <= len(segm_data):
+            return segm_data
+        extended_shape = (stop_frame_num, *segm_data.shape[1:])
+        extended_segm_data = np.zeros(extended_shape, dtype=segm_data.dtype)
+        extended_segm_data[:len(segm_data)] = segm_data
+        return extended_segm_data
+
     @worker_exception_handler
     def run(self):
         t0 = time.perf_counter()
         img_data = self.posData.img_data[self.startFrameNum-1:self.stopFrameNum]
+        self.posData.segm_data = self._check_extend_segm_data(
+            self.posData.segm_data, self.stopFrameNum
+        )
         for i, img in enumerate(img_data):
             frame_i = i+self.startFrameNum-1
             if self.secondChannelData is not None:
