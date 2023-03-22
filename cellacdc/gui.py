@@ -14829,10 +14829,10 @@ class guiWin(QMainWindow):
                     # Since there was already segmentation metadata from
                     # previous closed session add it to current metadata
                     df = posData.acdc_df.loc[posData.frame_i].copy()
-                    binnedIDs_df = df[df['is_cell_excluded']]
+                    binnedIDs_df = df[df['is_cell_excluded']>0]
                     binnedIDs = set(binnedIDs_df.index).union(posData.binnedIDs)
                     posData.binnedIDs = binnedIDs
-                    ripIDs_df = df[df['is_cell_dead']]
+                    ripIDs_df = df[df['is_cell_dead']>0]
                     ripIDs = set(ripIDs_df.index).union(posData.ripIDs)
                     posData.ripIDs = ripIDs
                     posData.editID_info.extend(self._get_editID_info(df))
@@ -14857,9 +14857,9 @@ class guiWin(QMainWindow):
             posData.lab = self.get_labels(is_stored=True)
             posData.rp = skimage.measure.regionprops(posData.lab)
             df = posData.allData_li[posData.frame_i]['acdc_df']
-            binnedIDs_df = df[df['is_cell_excluded']]
+            binnedIDs_df = df[df['is_cell_excluded']>0]
             posData.binnedIDs = set(binnedIDs_df.index)
-            ripIDs_df = df[df['is_cell_dead']]
+            ripIDs_df = df[df['is_cell_dead']>0]
             posData.ripIDs = set(ripIDs_df.index)
             posData.editID_info = self._get_editID_info(df)
             self.get_cca_df()
