@@ -7103,6 +7103,36 @@ class guiWin(QMainWindow):
         else:
             return
     
+    def getCurrentObjTextAnnotOpts(self, ID, ax):
+        if ax == 0:
+            scatterItem = self.getTextAnnotScatterItem_ax1()
+        else:
+            scatterItem = self.getTextAnnotScatterItem_ax2()
+        if scatterItem is None:
+            return
+
+        annotData = scatterItem.data
+        posData = self.data[self.pos_i]
+        idx = posData.IDs_idxs[ID]
+        if idx >= len(annotData):
+            return
+
+        return annotData[idx]        
+
+    def updateObjAnnotCustomText(self, obj, txt, brush, pen, bold, scatterItem):
+        opts = {
+            'brush': brush, 'pen': pen, 
+            'symbol': self.getObjTextAnnotSymbol(txt, bold=bold)
+        }
+        opts['y'], opts['x'] = self.getObjCentroid(obj.centroid)
+
+        posData = self.data[self.pos_i]
+        idx = posData.IDs_idxs[obj.label]
+        for key, value in opts.items():
+            scatterItem.data[key][idx] = value
+        
+        scatterItem.updateSpots()
+    
     def updateObjAnnotText(self, obj):
         objAnnotOpts, objAnnotOptsRight, objAnnotSegmOpts = (
             self.getAllAxisObjTextAnnotOpts(obj)
@@ -7125,7 +7155,14 @@ class guiWin(QMainWindow):
         posData = self.data[self.pos_i]
         idx = posData.IDs_idxs[ID]
         for key, value in opts.items():
-            scatterItem.data[key][idx] = value
+            if key == 'pos':
+                x, y = value
+                scatterItem.data['x'][idx] = x
+                scatterItem.data['y'][idx] = y
+            else:
+                scatterItem.data[key][idx] = value
+        
+        scatterItem.updateSpots()
     
     def hideObjsTextAnnot(self, IDs, ax=0):
         if ax == 0:
@@ -9392,6 +9429,12 @@ class guiWin(QMainWindow):
         self.textAnnotSymbols = plot.texts_to_pg_scatter_symbols(
             self.textAnnotSymbols.keys(), font=annotFont
         )
+
+        for item in self.ax1_textAnnotItems.values():
+            item.setSize(fontSize)
+        
+        for item in self.ax2_textAnnotItems.values():
+            item.setSize(fontSize)
 
         self.updateAnnotations(True)
 
@@ -14452,8 +14495,6 @@ class guiWin(QMainWindow):
             self.MultiBudMoth_msg.setIcon(self.MultiBudMoth_msg.Warning)
             self.MultiBudMoth_msg.setDefaultButton(self.MultiBudMoth_msg.Ok)
             self.MultiBudMoth_msg.exec_()
-        if draw:
-            self.highlightmultiBudMoth()
 
     def isCurrentFrameCcaVisited(self):
         posData = self.data[self.pos_i]
@@ -15440,7 +15481,7 @@ class guiWin(QMainWindow):
         opts = {
             'brush': brush, 
             'pen': pen, 
-            'symbol': self.getObjTextAnnotSymbol('?')
+            'symbol': self.getObjTextAnnotSymbol(txt, bold=bold)
         }
         return opts
 
@@ -15545,27 +15586,22 @@ class guiWin(QMainWindow):
             if ccs == 'G1':
                 brush = self.G1phaseAnnotBrush
                 pen = self.G1phaseAnnotPen
-                hoverBrush = self.G1phaseAnnotHoverBrush
                 bold = False
             elif mothCell_S:
                 brush = self.SphaseAnnotBrush
                 pen = self.SphaseAnnotPen
-                hoverBrush = self.SphaseAnnotHoverBrush
                 bold = False
             elif budNotEmergedNow:
                 brush = self.objNewAnnotBrush
                 pen = self.objNewAnnotPen
-                hoverBrush = self.objNewAnnotHoverBrush
                 bold = False
             elif budEmergedNow:
                 brush = self.objNewAnnotBrush
                 pen = self.objNewAnnotPen
-                hoverBrush = self.objNewAnnotHoverBrush
                 bold = True
             elif is_division_annotated:
                 brush = self.dividedAnnotBrush
                 pen = self.dividedAnnotPen
-                hoverBrush = self.dividedAnnotHoverBrush
                 bold = False
 
             if not is_history_known:
@@ -15860,14 +15896,6 @@ class guiWin(QMainWindow):
 
         self.highlightLostNew()
         self.setTitleText()
-        self.highlightmultiBudMoth()
-
-    def highlightmultiBudMoth(self):
-        posData = self.data[self.pos_i]
-        for ID in posData.multiBud_mothIDs:
-            LabelItemID = self.ax1_LabelItemsIDs[ID-1]
-            txt = LabelItemID
-            LabelItemID.setText(f'{txt} !!', color=self.lostIDs_qMcolor)
 
     def extendLabelsLUT(self, lenNewLut):
         posData = self.data[self.pos_i]
@@ -15955,10 +15983,7 @@ class guiWin(QMainWindow):
 
         self.keepIDsTempLayerLeft.setImage(keptLab, autoLevels=False)
 
-    def highlightLabelID(self, ID):
-        # Label ID
-        LabelItemID = self.ax1_LabelItemsIDs[ID-1]
-        
+    def highlightLabelID(self, ID):        
         posData = self.data[self.pos_i]
         try:
             obj_idx = posData.IDs.index(ID)
@@ -15966,16 +15991,11 @@ class guiWin(QMainWindow):
             return
         obj = posData.rp[obj_idx]
 
-        txt = f'{ID}'
-        LabelItemID.setText(txt, color='r', bold=True, size=self.fontSize)
-        y, x = self.getObjCentroid(obj.centroid)
-        w, h = LabelItemID.rect().right(), LabelItemID.rect().bottom()
-        LabelItemID.setPos(x-w/2, y-h/2)
-
-        LabelItemID = self.ax2_LabelItemsIDs[ID-1]
-        LabelItemID.setText(txt, color='r', bold=True, size=self.fontSize)
-        w, h = LabelItemID.rect().right(), LabelItemID.rect().bottom()
-        LabelItemID.setPos(x-w/2, y-h/2)
+        bold = True
+        self.updateObjAnnotCustomText(
+            obj, str(ID), self.objNewAnnotBrush, self.objNewAnnotPen, bold,
+            self.ax1_textAnnotItems['objLabelAnnotItem']
+        )
     
     def restoreHighlightedLabelID(self, ID):
         posData = self.data[self.pos_i]
@@ -17440,18 +17460,13 @@ class guiWin(QMainWindow):
             for ID in delIDs:
                 if ax == 0:
                     self.ax1_ContoursCurves[ID-1].setData([], [])
-                    self.ax1_LabelItemsIDs[ID-1].setText('')
                 else:
                     self.ax2_ContoursCurves[ID-1].setData([], [])
-                    self.ax2_LabelItemsIDs[ID-1].setText('')
+            self.hideObjsTextAnnot(delIDs, ax=ax)
         elif how.find('overlay segm. masks') != -1:
             lab = self.currentLab2D.copy()
             lab[delMask] = 0
-            for ID in delIDs:
-                if ax == 0:
-                    self.ax1_LabelItemsIDs[ID-1].setText('')
-                else:
-                    self.ax2_LabelItemsIDs[ID-1].setText('')
+            self.hideObjsTextAnnot(delIDs, ax=ax)
             if ax == 0:
                 self.labelsLayerImg1.setImage(lab, autoLevels=False)
             else:
@@ -17853,15 +17868,11 @@ class guiWin(QMainWindow):
             empty = [None]*(newID-start)
             self.ax1_ContoursCurves.extend(empty)
             self.ax1_BudMothLines.extend(empty)
-            self.ax1_LabelItemsIDs.extend(empty)
-            self.ax2_LabelItemsIDs.extend(empty)
             self.ax2_ContoursCurves.extend(empty)
             self.ax2_BudMothLines.extend(empty)
 
         self.ax1_ContoursCurves[newID-1] = ax1ContCurve
         self.ax1_BudMothLines[newID-1] = BudMothLine
-        self.ax1_LabelItemsIDs[newID-1] = ax1_IDlabel
-        self.ax2_LabelItemsIDs[newID-1] = ax2_IDlabel
         self.ax2_ContoursCurves[newID-1] = ax2ContCurve
         self.ax2_BudMothLines[newID-1] = ax2_mothBudLine         
 
@@ -17880,14 +17891,10 @@ class guiWin(QMainWindow):
         allItems = zip(
             self.ax1_ContoursCurves,
             self.ax2_ContoursCurves,
-            self.ax1_LabelItemsIDs,
-            self.ax2_LabelItemsIDs,
             self.ax1_BudMothLines
         )
         for idx, items_ID in enumerate(allItems):
-            (ax1ContCurve, ax2ContCurve,
-            _IDlabel1, _IDlabel2,
-            BudMothLine) = items_ID
+            ax1ContCurve, ax2ContCurve, BudMothLine = items_ID
 
             if idx in IDs or ax1ContCurve is None:
                 continue
@@ -17900,12 +17907,6 @@ class guiWin(QMainWindow):
 
                 self.ax1.removeItem(self.ax1_BudMothLines[idx])
                 self.ax1_BudMothLines[idx] = None
-
-                self.ax1.removeItem(self.ax1_LabelItemsIDs[idx])
-                self.ax1_LabelItemsIDs[idx] = None
-
-                self.ax2.removeItem(self.ax1_ContoursCurves[idx])
-                self.ax2_LabelItemsIDs[idx] = None
 
     def addItemsAllIDs(self, IDs):
         numCreatedItems = sum(
@@ -17967,22 +17968,13 @@ class guiWin(QMainWindow):
         self.searchedIDitemRight.setData([], [])
         self.searchedIDitemLeft.setData([], [])
 
-        how_ax1 = self.drawIDsContComboBox.currentText()
-        how_ax2 = self.getAnnotateHowRightImage()
+        ax1Opts = self.highlightedIDopts['ax1Opts']
+        if ax1Opts is not None:
+            self._updateIDAnnotText(ID, ax1Opts, ax=0)
 
-        LabelItemID = self.ax1_LabelItemsIDs[ID-1]
-        LabelItemID.setText(
-            self.highlightedIDopts['ax1text'], 
-            color=self.highlightedIDopts['ax1color'],
-            bold=self.highlightedIDopts['ax1LabelIsBold']
-        )
-
-        LabelItemID = self.ax2_LabelItemsIDs[ID-1]
-        LabelItemID.setText(
-            self.highlightedIDopts['ax2text'], 
-            color=self.highlightedIDopts['ax2color'],
-            bold=self.highlightedIDopts['ax2LabelIsBold']
-        )
+        ax2Opts = self.highlightedIDopts['ax2Opts']
+        if ax2Opts is not None:
+            self._updateIDAnnotText(ID, ax2Opts, ax=1)
 
         self.highlightedIDopts = None
         self.highlightedID = 0
@@ -17994,15 +17986,13 @@ class guiWin(QMainWindow):
         if ID == self.highlightedID and not force:
             return
 
+        posData = self.data[self.pos_i]
+
         self.highlightedIDopts = {
             'ax1ContPen': self.ax1_ContoursCurves[ID-1].opts['pen'],
             'ax2ContPen': self.ax2_ContoursCurves[ID-1].opts['pen'],
-            'ax1text': self.ax1_LabelItemsIDs[ID-1].text,
-            'ax2text': self.ax2_LabelItemsIDs[ID-1].text,
-            'ax1color': self.ax1_LabelItemsIDs[ID-1].opts['color'],
-            'ax2color': self.ax2_LabelItemsIDs[ID-1].opts['color'],
-            'ax1LabelIsBold': self.ax1_LabelItemsIDs[ID-1].opts.get('bold', False),
-            'ax2LabelIsBold': self.ax2_LabelItemsIDs[ID-1].opts.get('bold', False),
+            'ax1Opts': self.getCurrentObjTextAnnotOpts(ID, 0),
+            'ax2Opts': self.getCurrentObjTextAnnotOpts(ID, 1),
         }
 
         how_ax1 = self.drawIDsContComboBox.currentText()
@@ -18034,20 +18024,13 @@ class guiWin(QMainWindow):
                     ax2ContCurve.setData([], [])
 
         if how_ax1.find('IDs') == -1:
-            labelItems = self.ax1_LabelItemsIDs
-            for labelItem_ax1 in labelItems:
-                if labelItem_ax1 is None:
-                    continue
-                labelItem_ax1.setText('')
+            for item in self.ax1_textAnnotItems.values():
+                item.clear()
         
         if how_ax2.find('IDs') == -1:
-            labelItems = self.ax2_LabelItemsIDs
-            for labelItem_ax2 in labelItems:
-                if labelItem_ax2 is None:
-                    continue
-                labelItem_ax2.setText('')
+            for item in self.ax2_textAnnotItems.values():
+                item.clear()
 
-        posData = self.data[self.pos_i]
         self.highlightedID = ID
 
         if ID not in posData.IDs:
@@ -18126,21 +18109,18 @@ class guiWin(QMainWindow):
         if draw_LIs:
             for _obj in posData.rp:
                 self.getObjTextAnnotOpts(_obj, how, debug=False)
-                self.getObjOptsSegmLabels(_obj)
+                self.getObjOptsSegmLabels(_obj)        
 
-        # Label ID
-        LabelItemID = self.ax1_LabelItemsIDs[ID-1]
-        
-        txt = f'{ID}'
-        LabelItemID.setText(txt, color='r', bold=True, size=self.fontSize)
-        y, x = self.getObjCentroid(obj.centroid)
-        w, h = LabelItemID.rect().right(), LabelItemID.rect().bottom()
-        LabelItemID.setPos(x-w/2, y-h/2)
-
-        LabelItemID = self.ax2_LabelItemsIDs[ID-1]
-        LabelItemID.setText(txt, color='r', bold=True, size=self.fontSize)
-        w, h = LabelItemID.rect().right(), LabelItemID.rect().bottom()
-        LabelItemID.setPos(x-w/2, y-h/2)
+        bold = True
+        txt = str(ID)
+        self.updateObjAnnotCustomText(
+            obj, txt, self.objNewAnnotBrush, self.objNewAnnotPen, bold,
+            self.ax1_textAnnotItems['objLabelAnnotItem']
+        )
+        self.updateObjAnnotCustomText(
+            obj, txt, self.objNewAnnotBrush, self.objNewAnnotPen, bold,
+            self.ax2_textAnnotItems['objLabelAnnotItem']
+        )
 
         # Gray out all IDs excpet searched one
         lut = self.lut.copy() # [:max(posData.IDs)+1]
